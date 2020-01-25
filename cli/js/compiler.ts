@@ -6,7 +6,7 @@ import "./globals.ts";
 import "./ts_global.d.ts";
 
 import { TranspileOnlyResult } from "./compiler_api.ts";
-import { oldProgram } from "./compiler_bootstrap.ts";
+import { TS_SNAPSHOT_PROGRAM } from "./compiler_bootstrap.ts";
 import { setRootExports } from "./compiler_bundler.ts";
 import {
   CompilerHostTarget,
@@ -161,7 +161,7 @@ self.bootstrapTsCompiler = function tsCompilerMain(): void {
             rootNames,
             options,
             host,
-            oldProgram
+            oldProgram: TS_SNAPSHOT_PROGRAM
           });
 
           diagnostics = ts
@@ -248,7 +248,7 @@ self.bootstrapTsCompiler = function tsCompilerMain(): void {
           rootNames,
           options: host.getCompilationSettings(),
           host,
-          oldProgram
+          oldProgram: TS_SNAPSHOT_PROGRAM
         });
 
         if (bundle) {

@@ -46,7 +46,7 @@ fn main() {
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   // Worker snapshot
-  let root_names = vec![c.join("js/worker_globals.ts")];
+  let root_names = vec![c.join("js/worker_main.ts")];
   let bundle_path = o.join("WORKER_SNAPSHOT.js");
   let snapshot_path = o.join("WORKER_SNAPSHOT.bin");
 

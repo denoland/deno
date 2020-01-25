@@ -39,13 +39,13 @@ pub fn worker_isolate_init() -> StartupData<'static> {
   #[cfg(not(feature = "check-only"))]
   let source = include_str!(concat!(
     env!("GN_OUT_DIR"),
-    "/gen/cli/bundle/worker_globals.js"
+    "/gen/cli/bundle/worker_main.js"
   ));
   #[cfg(feature = "check-only")]
   let source = "";
 
   StartupData::Script(Script {
-    filename: "gen/cli/bundle/worker_globals.js",
+    filename: "gen/cli/bundle/worker_main.js",
     source,
   })
 }

@@ -1,15 +1,31 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import "./globals.ts";
 
+// This module is entry point for "main" isolate, ie. the one
+// that is create when you run Deno executable.
+//
+// It provides global scope as `window`.
+
+import {
+  readOnly,
+  writable,
+  nonEnumerable,
+  windowOrWorkerGlobalScopeMethods,
+  windowOrWorkerGlobalScopeProperties,
+  eventTargetProperties
+} from "./globals.ts";
+import * as domTypes from "./dom_types.ts";
 import { assert, log } from "./util.ts";
 import * as os from "./os.ts";
 import { args } from "./deno.ts";
+import * as csprng from "./get_random_values.ts";
 import { setPrepareStackTrace } from "./error_stack.ts";
 import { replLoop } from "./repl.ts";
 import { setVersions } from "./version.ts";
 import { setLocation } from "./location.ts";
 import { setBuildInfo } from "./build.ts";
 import { setSignals } from "./process.ts";
+import * as Deno from "./deno.ts";
+import { internalObject } from "./internals.ts";
 
 function bootstrapMainRuntime(): void {
   const s = os.start(true);
@@ -35,4 +51,40 @@ function bootstrapMainRuntime(): void {
     replLoop();
   }
 }
-globalThis["bootstrapMainRuntime"] = bootstrapMainRuntime;
+
+// Add internal object to Deno object.
+// This is not exposed as part of the Deno types.
+// @ts-ignore
+Deno[Deno.symbols.internal] = internalObject;
+
+export const mainRuntimeGlobalProperties = {
+  bootstrapMainRuntime: nonEnumerable(bootstrapMainRuntime),
+  window: readOnly(globalThis),
+  Deno: readOnly(Deno),
+
+  crypto: readOnly(csprng),
+  // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
+  // it seems those two properties should be availble to workers as well
+  onload: writable(undefined),
+  onunload: writable(undefined)
+};
+
+Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
+Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
+Object.defineProperties(globalThis, eventTargetProperties);
+Object.defineProperties(globalThis, mainRuntimeGlobalProperties);
+
+// Registers the handler for window.onload function.
+globalThis.addEventListener("load", (e: domTypes.Event): void => {
+  const { onload } = globalThis;
+  if (typeof onload === "function") {
+    onload(e);
+  }
+});
+// Registers the handler for window.onunload function.
+globalThis.addEventListener("unload", (e: domTypes.Event): void => {
+  const { onunload } = globalThis;
+  if (typeof onunload === "function") {
+    onunload(e);
+  }
+});
