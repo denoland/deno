@@ -354,7 +354,6 @@ fn run_repl(flags: DenoFlags) {
       let result = worker.clone().await;
       if let Err(err) = result {
         eprintln!("{}", err.to_string());
-        worker.clear_exception();
       }
     }
   };

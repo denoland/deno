@@ -1,4 +1,7 @@
-use std::any::{Any, TypeId};
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+use std::any::Any;
+use std::any::TypeId;
 use std::convert::From;
 use std::error::Error;
 use std::fmt;
