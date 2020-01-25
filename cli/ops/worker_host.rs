@@ -202,7 +202,6 @@ fn op_host_poll_worker(
 ) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
-  let state_ = state.clone();
 
   let future = WorkerPollFuture {
     state: state.clone(),
@@ -211,13 +210,6 @@ fn op_host_poll_worker(
 
   let op = async move {
     let result = future.await;
-
-    if result.is_err() {
-      let mut workers_table = state_.workers.lock().unwrap();
-      let worker = workers_table.get_mut(&id).unwrap();
-      worker.clear_exception();
-    }
-
     Ok(serialize_worker_result(result))
   };
   Ok(JsonOp::Async(op.boxed()))
