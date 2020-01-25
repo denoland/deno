@@ -20,6 +20,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::task::Context;
 use std::task::Poll;
 use tokio::sync::Mutex as AsyncMutex;
@@ -67,21 +68,25 @@ impl Worker {
       state.global_state.flags.debug_address.clone(),
     );
 
-    let mut isolate =
+    let isolate =
       deno_core::EsIsolate::new(Box::new(state.clone()), startup_data, false);
+    let isolate = Arc::new(AsyncMutex::new(isolate));
 
     let global_state_ = state.global_state.clone();
-    isolate.set_js_error_create(move |v8_exception| {
-      JSError::from_v8_exception(v8_exception, &global_state_.ts_compiler)
-    });
+    {
+      let mut i = isolate.try_lock().unwrap();
+      i.set_js_error_create(move |v8_exception| {
+        JSError::from_v8_exception(v8_exception, &global_state_.ts_compiler)
+      });
+    }
 
-    let isolate_ = isolate.clone();
     {
       let inspector_handle = inspector.handle.clone();
-      i.set_inspector_handle(inspector.handle.clone());
+      //i.set_inspector_handle(inspector.handle.clone());
 
       // TODO(bartlomieju): refactor this...
       // I'm pretty sure it can be port of `Poll` for worker
+      let isolate_ = isolate.clone();
       std::thread::spawn(move || loop {
         {
           let message = {
@@ -102,8 +107,8 @@ impl Worker {
 
     Self {
       name,
-      isolate: Arc::new(AsyncMutex::new(isolate)),
       state,
+      isolate,
       inspector: Arc::new(Mutex::new(inspector)),
       external_channels,
     }
