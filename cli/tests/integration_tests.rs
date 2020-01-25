@@ -385,6 +385,12 @@ itest!(_052_no_remote_flag {
   http_server: true,
 });
 
+itest!(_054_info_local_imports {
+  args: "info 005_more_imports.ts",
+  output: "054_info_local_imports.out",
+  exit_code: 0,
+});
+
 itest!(lock_check_ok {
   args: "run --lock=lock_check_ok.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
   output: "003_relative_import.ts.out",

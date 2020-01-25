@@ -178,10 +178,13 @@ impl EsIsolate {
     let module = maybe_module.unwrap();
     let id = module.get_identity_hash();
 
-    let mut import_specifiers: Vec<String> = vec![];
+    let mut import_specifiers: Vec<ModuleSpecifier> = vec![];
     for i in 0..module.get_module_requests_length() {
-      let specifier = module.get_module_request(i);
-      import_specifiers.push(specifier.to_rust_string_lossy(scope));
+      let import_specifier =
+        module.get_module_request(i).to_rust_string_lossy(scope);
+      let module_specifier =
+        self.loader.resolve(&import_specifier, name, false)?;
+      import_specifiers.push(module_specifier);
     }
 
     let mut handle = v8::Global::<v8::Module>::new();
@@ -284,12 +287,10 @@ impl EsIsolate {
     referrer_id: ModuleId,
   ) -> ModuleId {
     let referrer = self.modules.get_name(referrer_id).unwrap();
-    // We should have already resolved and Ready this module, so
-    // resolve() will not fail this time.
     let specifier = self
-      .modules
-      .get_cached_specifier(specifier, &referrer)
-      .expect("Module should already be resolved");
+      .loader
+      .resolve(specifier, referrer, false)
+      .expect("Module should have been already resolved");
     self.modules.get_id(specifier.as_str()).unwrap_or(0)
   }
 
@@ -480,26 +481,12 @@ impl EsIsolate {
     };
 
     // Now we must iterate over all imports of the module and load them.
-    let imports = self
-      .modules
-      .get_info(module_id)
-      .unwrap()
-      .import_specifiers
-      .clone();
-    for import in imports {
-      let module_specifier = self.loader.resolve(
-        &import,
-        referrer_name,
-        false,
-        load.is_dynamic_import(),
-      )?;
-      self
-        .modules
-        .cache_specifier(&import, referrer_name, &module_specifier);
-      let module_name = module_specifier.as_str();
+    let imports = self.modules.get_children(module_id).unwrap();
 
-      if !self.modules.is_registered(module_name) {
-        load.add_import(module_specifier, referrer_specifier.clone());
+    for module_specifier in imports {
+      if !self.modules.is_registered(module_specifier) {
+        load
+          .add_import(module_specifier.to_owned(), referrer_specifier.clone());
       }
     }
 
@@ -589,7 +576,6 @@ pub mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-        _is_dyn_import: bool,
       ) -> Result<ModuleSpecifier, ErrBox> {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "./b.js");
@@ -602,6 +588,7 @@ pub mod tests {
         &self,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
       ) -> Pin<Box<SourceCodeInfoFuture>> {
         unreachable!()
       }
@@ -653,35 +640,20 @@ pub mod tests {
       .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    let imports = isolate
-      .modules
-      .get_info(mod_a)
-      .unwrap()
-      .import_specifiers
-      .clone();
-    let specifier_b = "./b.js".to_string();
-    assert_eq!(imports, vec![specifier_b.clone()]);
+    let imports = isolate.modules.get_children(mod_a);
+    assert_eq!(
+      imports,
+      Some(&vec![ModuleSpecifier::resolve_url("file:///b.js").unwrap()])
+    );
     let mod_b = isolate
       .mod_new(false, "file:///b.js", "export function b() { return 'b' }")
       .unwrap();
-    let imports = isolate
-      .modules
-      .get_info(mod_b)
-      .unwrap()
-      .import_specifiers
-      .clone();
+    let imports = isolate.modules.get_children(mod_b).unwrap();
     assert_eq!(imports.len(), 0);
 
-    let module_specifier =
-      ModuleSpecifier::resolve_import(&specifier_b, &specifier_a).unwrap();
-    isolate.modules.cache_specifier(
-      &specifier_b,
-      &specifier_a,
-      &module_specifier,
-    );
     js_check(isolate.mod_instantiate(mod_b));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-    assert_eq!(resolve_count.load(Ordering::SeqCst), 0);
+    assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
 
     js_check(isolate.mod_instantiate(mod_a));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
@@ -703,7 +675,6 @@ pub mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-        _is_dyn_import: bool,
       ) -> Result<ModuleSpecifier, ErrBox> {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "/foo.js");
@@ -716,6 +687,7 @@ pub mod tests {
         &self,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
       ) -> Pin<Box<SourceCodeInfoFuture>> {
         async { Err(ErrBox::from(io::Error::from(io::ErrorKind::NotFound))) }
           .boxed()
@@ -849,7 +821,6 @@ pub mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-        _is_dyn_import: bool,
       ) -> Result<ModuleSpecifier, ErrBox> {
         let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
         match c {
@@ -866,6 +837,7 @@ pub mod tests {
         &self,
         specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
       ) -> Pin<Box<SourceCodeInfoFuture>> {
         self.load_count.fetch_add(1, Ordering::Relaxed);
         let info = SourceCodeInfo {

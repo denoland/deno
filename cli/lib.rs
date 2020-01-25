@@ -205,7 +205,6 @@ async fn print_file_info(
     eprintln!("\n{}", e.to_string());
     std::process::exit(1);
   }
-  let compiled = maybe_compiled.unwrap();
   if out.media_type == msg::MediaType::TypeScript
     || (out.media_type == msg::MediaType::JavaScript
       && global_state_.ts_compiler.compile_js)
@@ -235,7 +234,7 @@ async fn print_file_info(
   }
 
   let isolate = worker.isolate.try_lock().unwrap();
-  if let Some(deps) = isolate.modules.deps(&compiled.name) {
+  if let Some(deps) = isolate.modules.deps(&module_specifier) {
     println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
     if let Some(ref depsdeps) = deps.deps {
       for d in depsdeps {

@@ -167,7 +167,6 @@ impl Loader for ThreadSafeState {
     specifier: &str,
     referrer: &str,
     is_main: bool,
-    is_dyn_import: bool,
   ) -> Result<ModuleSpecifier, ErrBox> {
     if !is_main {
       if let Some(import_map) = &self.import_map {
@@ -180,10 +179,6 @@ impl Loader for ThreadSafeState {
     let module_specifier =
       ModuleSpecifier::resolve_import(specifier, referrer)?;
 
-    if is_dyn_import {
-      self.check_dyn_import(&module_specifier)?;
-    }
-
     Ok(module_specifier)
   }
 
@@ -192,7 +187,15 @@ impl Loader for ThreadSafeState {
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
+    is_dyn_import: bool,
   ) -> Pin<Box<deno_core::SourceCodeInfoFuture>> {
+    if is_dyn_import {
+      if let Err(e) = self.check_dyn_import(&module_specifier) {
+        return async move { Err(e) }.boxed();
+      }
+    }
+
+    // TODO(bartlomieju): incrementing resolve_count here has no sense...
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
     let module_url_specified = module_specifier.to_string();
     let fut = self
