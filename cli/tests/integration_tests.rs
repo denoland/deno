@@ -385,6 +385,12 @@ itest!(_052_no_remote_flag {
   http_server: true,
 });
 
+itest!(_054_info_local_imports {
+  args: "info 005_more_imports.ts",
+  output: "054_info_local_imports.out",
+  exit_code: 0,
+});
+
 itest!(lock_write_fetch {
   args:
     "run --allow-read --allow-write --allow-env --allow-run lock_write_fetch.ts",
