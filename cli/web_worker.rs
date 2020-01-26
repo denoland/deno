@@ -35,8 +35,12 @@ impl WebWorker {
     let worker = Worker::new(name, startup_data, state_, external_channels);
     {
       let mut isolate = worker.isolate.try_lock().unwrap();
+      ops::runtime::init(&mut isolate, &state);
       ops::web_worker::init(&mut isolate, &state);
       ops::worker_host::init(&mut isolate, &state);
+      ops::errors::init(&mut isolate, &state);
+      ops::timers::init(&mut isolate, &state);
+      ops::fetch::init(&mut isolate, &state);
     }
 
     Self(worker)
@@ -93,7 +97,7 @@ mod tests {
       state,
       ext,
     );
-    worker.execute("bootstrapWorkerRuntime()").unwrap();
+    worker.execute("bootstrapWorkerRuntime(\"TEST\")").unwrap();
     worker.execute("runWorkerMessageLoop()").unwrap();
     worker
   }

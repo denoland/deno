@@ -15,15 +15,11 @@ import {
   eventTargetProperties
 } from "./globals.ts";
 import * as domTypes from "./dom_types.ts";
-import { assert, log } from "./util.ts";
-import * as os from "./os.ts";
+import { log } from "./util.ts";
+import * as runtime from "./runtime.ts";
 import { args } from "./deno.ts";
 import * as csprng from "./get_random_values.ts";
-import { setPrepareStackTrace } from "./error_stack.ts";
 import { replLoop } from "./repl.ts";
-import { setVersions } from "./version.ts";
-import { setLocation } from "./location.ts";
-import { setBuildInfo } from "./build.ts";
 import { setSignals } from "./process.ts";
 import * as Deno from "./deno.ts";
 import { internalObject } from "./internals.ts";
@@ -72,19 +68,9 @@ export function bootstrapMainRuntime(): void {
     }
   });
 
-  // TODO: half of this stuff should be called in worker as well...
-  const s = os.start(true);
-
-  setBuildInfo(s.os, s.arch);
+  const s = runtime.start(true);
   setSignals();
-  setVersions(s.denoVersion, s.v8Version, s.tsVersion);
 
-  setPrepareStackTrace(Error);
-
-  if (s.mainModule) {
-    assert(s.mainModule.length > 0);
-    setLocation(s.mainModule);
-  }
   log("cwd", s.cwd);
   for (let i = 0; i < s.argv.length; i++) {
     args.push(s.argv[i]);
@@ -92,6 +78,7 @@ export function bootstrapMainRuntime(): void {
   log("args", args);
   Object.freeze(args);
 
+  // TODO(bartlomieju): rename to s.repl
   if (!s.mainModule) {
     replLoop();
   }

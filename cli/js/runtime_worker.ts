@@ -23,7 +23,7 @@ import * as dispatch from "./dispatch.ts";
 import { sendAsync, sendSync } from "./dispatch_json.ts";
 import { log } from "./util.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
-import { initOps } from "./os.ts";
+import * as runtime from "./runtime.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -62,7 +62,7 @@ export async function runWorkerMessageLoop(): Promise<void> {
   while (!isClosing) {
     const data = await getMessage();
     if (data == null) {
-      log("bootstrapWorkerRuntime got null message. quitting.");
+      log("runWorkerMessageLoop got null message. quitting.");
       break;
     }
 
@@ -106,14 +106,13 @@ export const workerRuntimeGlobalProperties = {
   postMessage: writable(postMessage)
 };
 
-// TODO(bartlomieju): call os.start in this function
 /**
  * Main method to initialize worker runtime.
  *
  * It sets up global variables for DedicatedWorkerScope,
  * and initializes ops.
  */
-export function bootstrapWorkerRuntime(): void {
+export function bootstrapWorkerRuntime(name: string): void {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
   }
@@ -123,5 +122,5 @@ export function bootstrapWorkerRuntime(): void {
   Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
   Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
   Object.defineProperties(globalThis, eventTargetProperties);
-  initOps();
+  runtime.start(false, name);
 }

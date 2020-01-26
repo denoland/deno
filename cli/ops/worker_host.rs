@@ -97,10 +97,16 @@ fn op_create_worker(
   )?;
   // TODO: add a new option to make child worker not sharing permissions
   // with parent (aka .clone(), requests from child won't reflect in parent)
+  // TODO(bartlomieju): get it from "name" argument when creating worker
   let name = format!("USER-WORKER-{}", specifier);
-  let mut worker =
-    WebWorker::new(name, startup_data::deno_isolate_init(), child_state, ext);
-  js_check(worker.execute("bootstrapWorkerRuntime()"));
+  let mut worker = WebWorker::new(
+    name.to_string(),
+    startup_data::deno_isolate_init(),
+    child_state,
+    ext,
+  );
+  let script = format!("bootstrapWorkerRuntime(\"{}\")", name);
+  js_check(worker.execute(&script));
   js_check(worker.execute("runWorkerMessageLoop()"));
 
   let worker_id = parent_state.add_child_worker(worker.clone());

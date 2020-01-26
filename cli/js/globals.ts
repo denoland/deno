@@ -115,7 +115,9 @@ declare global {
   var bootstrapMainRuntime: (() => void) | undefined;
 
   // Assigned to `self` global - worker runtime and compiler
-  var bootstrapWorkerRuntime: (() => Promise<void> | void) | undefined;
+  var bootstrapWorkerRuntime:
+    | ((name: string) => Promise<void> | void)
+    | undefined;
   var runWorkerMessageLoop: (() => Promise<void> | void) | undefined;
   var onerror:
     | ((

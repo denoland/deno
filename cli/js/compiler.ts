@@ -38,7 +38,7 @@ import {
 } from "./compiler_util.ts";
 import { Diagnostic } from "./diagnostics.ts";
 import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
-import * as os from "./os.ts";
+import * as runtime from "./runtime.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
 import {
@@ -337,15 +337,13 @@ async function wasmCompilerOnMessage({
 }
 
 function bootstrapTsCompilerRuntime(): void {
-  bootstrapWorkerRuntime();
-  os.start(true, "TS");
+  bootstrapWorkerRuntime("TS");
   globalThis.onmessage = tsCompilerOnMessage;
   runWorkerMessageLoop();
 }
 
 function bootstrapWasmCompilerRuntime(): void {
-  bootstrapWorkerRuntime();
-  os.start(true, "WASM");
+  bootstrapWorkerRuntime("WASM");
   globalThis.onmessage = wasmCompilerOnMessage;
   runWorkerMessageLoop();
 }

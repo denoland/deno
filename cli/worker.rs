@@ -180,6 +180,7 @@ impl MainWorker {
       let mut isolate = worker.isolate.try_lock().unwrap();
       let op_registry = isolate.op_registry.clone();
 
+      ops::runtime::init(&mut isolate, &state);
       ops::runtime_compiler::init(&mut isolate, &state);
       ops::errors::init(&mut isolate, &state);
       ops::fetch::init(&mut isolate, &state);
