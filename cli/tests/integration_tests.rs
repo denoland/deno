@@ -631,12 +631,19 @@ itest!(unbuffered_stdout {
   output: "unbuffered_stdout.ts.out",
 });
 
-itest!(v8_flags {
+// Cannot write the expression to evaluate as "console.log(typeof gc)"
+// because itest! splits args on whitespace.
+itest!(eval_v8_flags {
+  args: "eval --v8-flags=--expose-gc console.log(typeof(gc))",
+  output: "v8_flags.js.out",
+});
+
+itest!(run_v8_flags {
   args: "run --v8-flags=--expose-gc v8_flags.js",
   output: "v8_flags.js.out",
 });
 
-itest!(v8_help {
+itest!(run_v8_help {
   args: "run --v8-flags=--help",
   output: "v8_help.out",
 });
