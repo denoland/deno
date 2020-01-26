@@ -7,6 +7,8 @@ use bytes::Bytes;
 use deno_core::ErrBox;
 use futures::future::FutureExt;
 use reqwest;
+use reqwest::header::HeaderMap;
+use reqwest::header::HeaderValue;
 use reqwest::header::ACCEPT_ENCODING;
 use reqwest::header::CONTENT_ENCODING;
 use reqwest::header::CONTENT_TYPE;
@@ -14,7 +16,6 @@ use reqwest::header::ETAG;
 use reqwest::header::IF_NONE_MATCH;
 use reqwest::header::LOCATION;
 use reqwest::header::USER_AGENT;
-use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::redirect::Policy;
 use reqwest::Client;
 use reqwest::Response;
@@ -73,16 +74,23 @@ fn resolve_url_from_location(base_url: &Url, location: &str) -> Url {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct ResultPayload {
+  pub body: String,
+  pub content_type: Option<String>,
+  pub etag: Option<String>,
+  pub x_typescript_types: Option<String>,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum FetchOnceResult {
-  // (code, maybe_content_type, etag)
-  Code(String, Option<String>, Option<String>),
+  Code(ResultPayload),
   NotModified,
   Redirect(Url),
 }
 
 /// Asynchronously fetches the given HTTP URL one pass only.
 /// If no redirect is present and no error occurs,
-/// yields Code(code, maybe_content_type).
+/// yields Code(ResultPayload).
 /// If redirect occurs, does not follow and
 /// yields Redirect(url).
 pub fn fetch_string_once(
@@ -145,6 +153,16 @@ pub fn fetch_string_once(
       .get(CONTENT_ENCODING)
       .map(|content_encoding| content_encoding.to_str().unwrap().to_owned());
 
+    const X_TYPESCRIPT_TYPES: &str = "X-TypeScript-Types";
+
+    let x_typescript_types =
+      response
+        .headers()
+        .get(X_TYPESCRIPT_TYPES)
+        .map(|x_typescript_types| {
+          x_typescript_types.to_str().unwrap().to_owned()
+        });
+
     let body;
     if let Some(content_encoding) = content_encoding {
       body = match content_encoding {
@@ -161,7 +179,12 @@ pub fn fetch_string_once(
       body = response.text().await?;
     }
 
-    return Ok(FetchOnceResult::Code(body, content_type, etag));
+    return Ok(FetchOnceResult::Code(ResultPayload {
+      body,
+      content_type,
+      etag,
+      x_typescript_types,
+    }));
   };
 
   fut.boxed()
@@ -257,10 +280,16 @@ mod tests {
     let client = create_http_client();
     let fut =
       fetch_string_once(client, &url, None).map(|result| match result {
-        Ok(FetchOnceResult::Code(code, maybe_content_type, etag)) => {
+        Ok(FetchOnceResult::Code(ResultPayload {
+          body: code,
+          content_type: maybe_content_type,
+          etag,
+          x_typescript_types,
+        })) => {
           assert!(!code.is_empty());
           assert_eq!(maybe_content_type, Some("application/json".to_string()));
-          assert_eq!(etag, None)
+          assert_eq!(etag, None);
+          assert_eq!(x_typescript_types, None);
         }
         _ => panic!(),
       });
@@ -280,7 +309,12 @@ mod tests {
     let client = create_http_client();
     let fut =
       fetch_string_once(client, &url, None).map(|result| match result {
-        Ok(FetchOnceResult::Code(code, maybe_content_type, etag)) => {
+        Ok(FetchOnceResult::Code(ResultPayload {
+          body: code,
+          content_type: maybe_content_type,
+          etag,
+          x_typescript_types,
+        })) => {
           assert!(!code.is_empty());
           assert_eq!(code, "console.log('gzip')");
           assert_eq!(
@@ -288,6 +322,7 @@ mod tests {
             Some("application/javascript".to_string())
           );
           assert_eq!(etag, None);
+          assert_eq!(x_typescript_types, None);
         }
         _ => panic!(),
       });
@@ -304,14 +339,20 @@ mod tests {
     let fut = async move {
       fetch_string_once(client.clone(), &url, None)
         .map(|result| match result {
-          Ok(FetchOnceResult::Code(code, maybe_content_type, etag)) => {
+          Ok(FetchOnceResult::Code(ResultPayload {
+            body: code,
+            content_type: maybe_content_type,
+            etag,
+            x_typescript_types,
+          })) => {
             assert!(!code.is_empty());
             assert_eq!(code, "console.log('etag')");
             assert_eq!(
               maybe_content_type,
-              Some("application/javascript".to_string())
+              Some("application/typescript".to_string())
             );
             assert_eq!(etag, Some("33a64df551425fcc55e".to_string()));
+            assert_eq!(x_typescript_types, None);
           }
           _ => panic!(),
         })
@@ -341,7 +382,12 @@ mod tests {
     let client = create_http_client();
     let fut =
       fetch_string_once(client, &url, None).map(|result| match result {
-        Ok(FetchOnceResult::Code(code, maybe_content_type, etag)) => {
+        Ok(FetchOnceResult::Code(ResultPayload {
+          body: code,
+          content_type: maybe_content_type,
+          etag,
+          x_typescript_types,
+        })) => {
           assert!(!code.is_empty());
           assert_eq!(code, "console.log('brotli');");
           assert_eq!(
@@ -349,6 +395,7 @@ mod tests {
             Some("application/javascript".to_string())
           );
           assert_eq!(etag, None);
+          assert_eq!(x_typescript_types, None);
         }
         _ => panic!(),
       });
