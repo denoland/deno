@@ -353,6 +353,7 @@ fn repl_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 }
 
 fn eval_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
+  v8_flags_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Eval;
   flags.allow_net = true;
   flags.allow_env = true;
@@ -797,6 +798,7 @@ This command has implicit access to all permissions (--allow-all)
   deno eval \"console.log('hello world')\"",
     )
     .arg(Arg::with_name("code").takes_value(true).required(true))
+    .arg(v8_flags_arg())
 }
 
 fn info_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1537,6 +1539,28 @@ mod tests {
         subcommand: DenoSubcommand::Eval,
         // TODO(ry) argv in this test seems odd and potentially not correct.
         argv: svec!["deno", "'console.log(\"hello\")'"],
+        allow_net: true,
+        allow_env: true,
+        allow_run: true,
+        allow_read: true,
+        allow_write: true,
+        allow_plugin: true,
+        allow_hrtime: true,
+        ..DenoFlags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn eval_with_v8_flags() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "eval", "--v8-flags=--help", "42"]);
+    assert_eq!(
+      r.unwrap(),
+      DenoFlags {
+        subcommand: DenoSubcommand::Eval,
+        argv: svec!["deno", "42"],
+        v8_flags: Some(svec!["--help"]),
         allow_net: true,
         allow_env: true,
         allow_run: true,
