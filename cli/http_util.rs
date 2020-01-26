@@ -74,16 +74,23 @@ fn resolve_url_from_location(base_url: &Url, location: &str) -> Url {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct ResultPayload {
+  pub body: String,
+  pub content_type: Option<String>,
+  pub etag: Option<String>,
+  pub x_typescript_types: Option<String>,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum FetchOnceResult {
-  // (code, maybe_content_type, etag)
-  Code(String, Option<String>, Option<String>, Option<String>),
+  Code(ResultPayload),
   NotModified,
   Redirect(Url),
 }
 
 /// Asynchronously fetches the given HTTP URL one pass only.
 /// If no redirect is present and no error occurs,
-/// yields Code(code, maybe_content_type).
+/// yields Code(ResultPayload).
 /// If redirect occurs, does not follow and
 /// yields Redirect(url).
 pub fn fetch_string_once(
@@ -172,12 +179,12 @@ pub fn fetch_string_once(
       body = response.text().await?;
     }
 
-    return Ok(FetchOnceResult::Code(
+    return Ok(FetchOnceResult::Code(ResultPayload {
       body,
       content_type,
       etag,
       x_typescript_types,
-    ));
+    }));
   };
 
   fut.boxed()

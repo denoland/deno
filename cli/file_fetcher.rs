@@ -6,6 +6,7 @@ use crate::disk_cache::DiskCache;
 use crate::http_util;
 use crate::http_util::create_http_client;
 use crate::http_util::FetchOnceResult;
+use crate::http_util::ResultPayload;
 use crate::msg;
 use crate::progress::Progress;
 use deno_core::ErrBox;
@@ -485,12 +486,12 @@ impl SourceFileFetcher {
             )
             .await
         }
-        FetchOnceResult::Code(
-          source,
-          maybe_content_type,
+        FetchOnceResult::Code(ResultPayload {
+          body: source,
+          content_type: maybe_content_type,
           etag,
           x_typescript_types,
-        ) => {
+        }) => {
           // We land on the code.
           if let Err(e) = dir.save_source_code_headers(
             &module_url,
