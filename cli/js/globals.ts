@@ -137,7 +137,7 @@ declare global {
   var postMessage: (msg: any) => void;
   // Assigned to `self` global - compiler
   var bootstrapTsCompilerRuntime: (() => void) | undefined;
-  var bootstrapWasmCompilerCompiler: (() => void) | undefined;
+  var bootstrapWasmCompilerRuntime: (() => void) | undefined;
   /* eslint-enable */
 }
 

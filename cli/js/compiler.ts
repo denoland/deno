@@ -348,7 +348,7 @@ function bootstrapWasmCompilerRuntime(): void {
 }
 
 Object.defineProperties(globalThis, {
-  bootstrapWasmCompileRuntime: {
+  bootstrapWasmCompilerRuntime: {
     value: bootstrapWasmCompilerRuntime,
     enumerable: false,
     writable: false,
