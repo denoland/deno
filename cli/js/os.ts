@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { core } from "./core.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync } from "./dispatch_json.ts";
 import { ErrorKind } from "./errors.ts";

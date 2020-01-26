@@ -38,7 +38,6 @@ import {
 } from "./compiler_util.ts";
 import { Diagnostic } from "./diagnostics.ts";
 import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
-import * as runtime from "./runtime.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
 import {
