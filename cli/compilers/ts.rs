@@ -712,7 +712,7 @@ mod tests {
         .unwrap()
         .code
         .as_bytes()
-        .starts_with("console.log(\"Hello World\");".as_bytes()));
+        .starts_with(b"console.log(\"Hello World\");"));
     };
 
     tokio_util::run(fut.boxed())
