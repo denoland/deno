@@ -1,12 +1,24 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// This module is entry point for "worker" isolate, ie. the one
-// that is create using `new Worker()` JS API.
+// This module is the entry point for "worker" isolate, ie. the one
+// that is created using `new Worker()` JS API.
 //
-// It provides global scope as `self`.
+// It provides two methods that should be called by Rust:
+//  - `bootstrapWorkerRuntime` - must be called once, when Isolate is created.
+//   It sets up runtime by providing globals for `DedicatedWorkerScope`.
+//  - `runWorkerMessageLoop` - starts receiving messages from parent worker,
+//   can be called multiple times - eg. to restart worker execution after
+//   exception occurred and was handled by parent worker
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { readOnly, writable, nonEnumerable } from "./globals.ts";
+import {
+  readOnly,
+  writable,
+  nonEnumerable,
+  windowOrWorkerGlobalScopeMethods,
+  windowOrWorkerGlobalScopeProperties,
+  eventTargetProperties
+} from "./globals.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendAsync, sendSync } from "./dispatch_json.ts";
 import { log } from "./util.ts";
@@ -16,22 +28,14 @@ import { initOps } from "./os.ts";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-function encodeMessage(data: any): Uint8Array {
-  const dataJson = JSON.stringify(data);
-  return encoder.encode(dataJson);
-}
-
-function decodeMessage(dataIntArray: Uint8Array): any {
-  const dataJson = decoder.decode(dataIntArray);
-  return JSON.parse(dataJson);
-}
-
+// TODO(bartlomieju): remove these funtions
 // Stuff for workers
 export const onmessage: (e: { data: any }) => void = (): void => {};
 export const onerror: (e: { data: any }) => void = (): void => {};
 
 export function postMessage(data: any): void {
-  const dataIntArray = encodeMessage(data);
+  const dataJson = JSON.stringify(data);
+  const dataIntArray = encoder.encode(dataJson);
   sendSync(dispatch.OP_WORKER_POST_MESSAGE, {}, dataIntArray);
 }
 
@@ -39,23 +43,22 @@ export async function getMessage(): Promise<any> {
   log("getMessage");
   const res = await sendAsync(dispatch.OP_WORKER_GET_MESSAGE);
   if (res.data != null) {
-    return decodeMessage(new Uint8Array(res.data));
+    const dataIntArray = new Uint8Array(res.data);
+    const dataJson = decoder.decode(dataIntArray);
+    return JSON.parse(dataJson);
   } else {
     return null;
   }
 }
 
-export let isClosing = false;
+let isClosing = false;
+let hasBootstrapped = false;
 
 export function workerClose(): void {
   isClosing = true;
 }
 
-export async function bootstrapWorkerRuntime(): Promise<void> {
-  initOps();
-
-  log("bootstrapWorkerRuntime");
-
+export async function runWorkerMessageLoop(): Promise<void> {
   while (!isClosing) {
     const data = await getMessage();
     if (data == null) {
@@ -102,3 +105,23 @@ export const workerRuntimeGlobalProperties = {
   workerClose: nonEnumerable(workerClose),
   postMessage: writable(postMessage)
 };
+
+// TODO(bartlomieju): call os.start in this function
+/**
+ * Main method to initialize worker runtime.
+ *
+ * It sets up global variables for DedicatedWorkerScope,
+ * and initializes ops.
+ */
+export function bootstrapWorkerRuntime(): void {
+  if (hasBootstrapped) {
+    throw new Error("Worker runtime already bootstrapped");
+  }
+  log("bootstrapWorkerRuntime");
+  hasBootstrapped = true;
+  Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
+  Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
+  Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
+  Object.defineProperties(globalThis, eventTargetProperties);
+  initOps();
+}

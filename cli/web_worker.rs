@@ -93,8 +93,8 @@ mod tests {
       state,
       ext,
     );
-    worker.execute("setupWorkerRuntimeGlobals()").unwrap();
     worker.execute("bootstrapWorkerRuntime()").unwrap();
+    worker.execute("runWorkerMessageLoop()").unwrap();
     worker
   }
 

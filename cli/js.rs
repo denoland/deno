@@ -25,7 +25,7 @@ fn cli_snapshot() {
     deno_core::StartupData::Snapshot(CLI_SNAPSHOT),
     false,
   );
-  deno_core::js_check(isolate.execute("<anon>", "setupMainRuntimeGlobals()"));
+  deno_core::js_check(isolate.execute("<anon>", "bootstrapMainRuntime()"));
   deno_core::js_check(isolate.execute(
     "<anon>",
     r#"

@@ -116,6 +116,7 @@ declare global {
 
   // Assigned to `self` global - worker runtime and compiler
   var bootstrapWorkerRuntime: (() => Promise<void> | void) | undefined;
+  var runWorkerMessageLoop: (() => Promise<void> | void) | undefined;
   var onerror:
     | ((
         msg: string,
@@ -133,9 +134,8 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   var postMessage: (msg: any) => void;
   // Assigned to `self` global - compiler
-  var bootstrapTsCompiler: (() => void) | undefined;
-  var bootstrapCompilerRuntime: ((compilerType: string) => void) | undefined;
-  var bootstrapWasmCompiler: (() => void) | undefined;
+  var bootstrapTsCompilerRuntime: (() => void) | undefined;
+  var bootstrapWasmCompilerCompiler: (() => void) | undefined;
   /* eslint-enable */
 }
 
