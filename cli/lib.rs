@@ -289,6 +289,17 @@ fn fetch_command(flags: DenoFlags) {
   let main_future = async move {
     let result = worker.execute_mod_async(&main_module, None, true).await;
     js_check(result);
+    if state.flags.lock_write {
+      if let Some(ref lockfile) = state.lockfile {
+        let g = lockfile.lock().unwrap();
+        if let Err(e) = g.write() {
+          print_err_and_exit(ErrBox::from(e));
+        }
+      } else {
+        eprintln!("--lock flag must be specified when using --lock-write");
+        std::process::exit(11);
+      }
+    }
   };
 
   tokio_util::run(main_future);
