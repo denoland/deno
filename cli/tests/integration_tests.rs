@@ -622,6 +622,17 @@ itest!(type_definitions {
   output: "type_definitions.ts.out",
 });
 
+itest!(type_directives_01 {
+  args: "run --reload -L debug type_directives_01.ts",
+  output: "type_directives_01.ts.out",
+  http_server: true,
+});
+
+itest!(type_directives_02 {
+  args: "run --reload -L debug type_directives_02.ts",
+  output: "type_directives_02.ts.out",
+});
+
 itest!(types {
   args: "types",
   output: "types.out",

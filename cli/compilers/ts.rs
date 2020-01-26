@@ -454,6 +454,7 @@ impl TsCompiler {
       filename: compiled_code_filename,
       media_type: msg::MediaType::JavaScript,
       source_code: compiled_code,
+      types_url: None,
     };
 
     Ok(compiled_module)
@@ -521,6 +522,7 @@ impl TsCompiler {
       filename: source_map_filename,
       media_type: msg::MediaType::JavaScript,
       source_code,
+      types_url: None,
     };
 
     Ok(source_map_file)
@@ -694,6 +696,7 @@ mod tests {
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
       media_type: msg::MediaType::TypeScript,
       source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
+      types_url: None,
     };
 
     let mock_state = ThreadSafeGlobalState::mock(vec![
