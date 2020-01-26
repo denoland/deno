@@ -3,7 +3,7 @@
 // This module is the entry point for "worker" isolate, ie. the one
 // that is created using `new Worker()` JS API.
 //
-// It provides two methods that should be called by Rust:
+// It provides two functions that should be called by Rust:
 //  - `bootstrapWorkerRuntime` - must be called once, when Isolate is created.
 //   It sets up runtime by providing globals for `DedicatedWorkerScope`.
 //  - `runWorkerMessageLoop` - starts receiving messages from parent worker,

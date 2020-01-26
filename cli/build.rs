@@ -46,7 +46,7 @@ fn main() {
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   // Main snapshot
-  let root_names = vec![c.join("js/new_main.ts")];
+  let root_names = vec![c.join("js/main.ts")];
   let bundle_path = o.join("CLI_SNAPSHOT.js");
   let snapshot_path = o.join("CLI_SNAPSHOT.bin");
 

@@ -1,6 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // TODO(ry) Combine this implementation with //deno_typescript/compiler_main.js
 
+// This module is the entry point for "compiler" isolate, ie. the one
+// that is created when Deno needs to compile TS/WASM to JS.
+//
+// It provides a two functions that should be called by Rust:
+//  - `bootstrapTsCompilerRuntime`
+//  - `bootstrapWasmCompilerRuntime`
+// Either of these functions must be called when creating isolate
+// to properly setup runtime.
+
 // NOTE: this import has side effects!
 import "./ts_global.d.ts";
 
@@ -32,7 +41,10 @@ import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
 import * as os from "./os.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
-import { bootstrapWorkerRuntime, runWorkerMessageLoop } from "./worker_main.ts";
+import {
+  bootstrapWorkerRuntime,
+  runWorkerMessageLoop
+} from "./runtime_worker.ts";
 
 interface CompilerRequestCompile {
   type: CompilerRequestType.Compile;
@@ -296,13 +308,6 @@ async function tsCompilerOnMessage({
   globalThis.workerClose();
 }
 
-function bootstrapTsCompilerRuntime(): void {
-  bootstrapWorkerRuntime();
-  os.start(true, "TS");
-  globalThis.onmessage = tsCompilerOnMessage;
-  runWorkerMessageLoop();
-}
-
 async function wasmCompilerOnMessage({
   data: binary
 }: {
@@ -329,6 +334,13 @@ async function wasmCompilerOnMessage({
 
   // The compiler isolate exits after a single message.
   globalThis.workerClose();
+}
+
+function bootstrapTsCompilerRuntime(): void {
+  bootstrapWorkerRuntime();
+  os.start(true, "TS");
+  globalThis.onmessage = tsCompilerOnMessage;
+  runWorkerMessageLoop();
 }
 
 function bootstrapWasmCompilerRuntime(): void {
