@@ -280,12 +280,12 @@ mod tests {
     let client = create_http_client();
     let fut =
       fetch_string_once(client, &url, None).map(|result| match result {
-        Ok(FetchOnceResult::Code(
-          code,
-          maybe_content_type,
+        Ok(FetchOnceResult::Code(ResultPayload {
+          body: code,
+          content_type: maybe_content_type,
           etag,
           x_typescript_types,
-        )) => {
+        })) => {
           assert!(!code.is_empty());
           assert_eq!(maybe_content_type, Some("application/json".to_string()));
           assert_eq!(etag, None);
@@ -309,12 +309,12 @@ mod tests {
     let client = create_http_client();
     let fut =
       fetch_string_once(client, &url, None).map(|result| match result {
-        Ok(FetchOnceResult::Code(
-          code,
-          maybe_content_type,
+        Ok(FetchOnceResult::Code(ResultPayload {
+          body: code,
+          content_type: maybe_content_type,
           etag,
           x_typescript_types,
-        )) => {
+        })) => {
           assert!(!code.is_empty());
           assert_eq!(code, "console.log('gzip')");
           assert_eq!(
@@ -339,12 +339,12 @@ mod tests {
     let fut = async move {
       fetch_string_once(client.clone(), &url, None)
         .map(|result| match result {
-          Ok(FetchOnceResult::Code(
-            code,
-            maybe_content_type,
+          Ok(FetchOnceResult::Code(ResultPayload {
+            body: code,
+            content_type: maybe_content_type,
             etag,
             x_typescript_types,
-          )) => {
+          })) => {
             assert!(!code.is_empty());
             assert_eq!(code, "console.log('etag')");
             assert_eq!(
@@ -382,12 +382,12 @@ mod tests {
     let client = create_http_client();
     let fut =
       fetch_string_once(client, &url, None).map(|result| match result {
-        Ok(FetchOnceResult::Code(
-          code,
-          maybe_content_type,
+        Ok(FetchOnceResult::Code(ResultPayload {
+          body: code,
+          content_type: maybe_content_type,
           etag,
           x_typescript_types,
-        )) => {
+        })) => {
           assert!(!code.is_empty());
           assert_eq!(code, "console.log('brotli');");
           assert_eq!(
