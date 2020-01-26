@@ -934,7 +934,7 @@ mod tests {
         let r = result.unwrap();
         assert_eq!(
           r.source_code,
-          "export { printHello } from \"./print_hello.ts\";\n".as_bytes()
+          &b"export { printHello } from \"./print_hello.ts\";\n"[..]
         );
         assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
         // Should not create .headers.json file due to matching ext
@@ -952,7 +952,7 @@ mod tests {
         let r2 = result2.unwrap();
         assert_eq!(
           r2.source_code,
-          "export { printHello } from \"./print_hello.ts\";\n".as_bytes()
+          &b"export { printHello } from \"./print_hello.ts\";\n"[..]
         );
         // If get_source_file_async does not call remote, this should be JavaScript
         // as we modified before! (we do not overwrite .headers.json due to no http fetch)
@@ -979,7 +979,7 @@ mod tests {
         let r3 = result3.unwrap();
         assert_eq!(
           r3.source_code,
-          "export { printHello } from \"./print_hello.ts\";\n".as_bytes()
+          &b"export { printHello } from \"./print_hello.ts\";\n"[..]
         );
         // If get_source_file_async does not call remote, this should be JavaScript
         // as we modified before! (we do not overwrite .headers.json due to no http fetch)
@@ -997,7 +997,7 @@ mod tests {
         assert!(result4.is_ok());
         let r4 = result4.unwrap();
         let expected4 =
-          "export { printHello } from \"./print_hello.ts\";\n".as_bytes();
+          &b"export { printHello } from \"./print_hello.ts\";\n"[..];
         assert_eq!(r4.source_code, expected4);
         // Now the old .headers.json file should have gone! Resolved back to TypeScript
         assert_eq!(&(r4.media_type), &msg::MediaType::TypeScript);
@@ -1029,7 +1029,7 @@ mod tests {
       .then(move |result| {
         assert!(result.is_ok());
         let r = result.unwrap();
-        let expected = "export const loaded = true;\n".as_bytes();
+        let expected = b"export const loaded = true;\n";
         assert_eq!(r.source_code, expected);
         // Mismatch ext with content type, create .headers.json
         assert_eq!(&(r.media_type), &msg::MediaType::JavaScript);
@@ -1053,7 +1053,7 @@ mod tests {
       .then(move |result2| {
         assert!(result2.is_ok());
         let r2 = result2.unwrap();
-        let expected2 = "export const loaded = true;\n".as_bytes();
+        let expected2 = b"export const loaded = true;\n";
         assert_eq!(r2.source_code, expected2);
         // If get_source_file_async does not call remote, this should be TypeScript
         // as we modified before! (we do not overwrite .headers.json due to no http fetch)
@@ -1068,7 +1068,7 @@ mod tests {
       .map(move |result3| {
         assert!(result3.is_ok());
         let r3 = result3.unwrap();
-        let expected3 = "export const loaded = true;\n".as_bytes();
+        let expected3 = b"export const loaded = true;\n";
         assert_eq!(r3.source_code, expected3);
         // Now the old .headers.json file should be overwritten back to JavaScript!
         // (due to http fetch)
@@ -1448,7 +1448,7 @@ mod tests {
       .map(move |result| {
         assert!(result.is_ok());
         let r = result.unwrap();
-        assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
+        assert_eq!(r.source_code, b"export const loaded = true;\n");
         assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
         // matching ext, no .headers.json file created
         assert!(fs::read_to_string(&headers_file_name).is_err());
@@ -1463,7 +1463,7 @@ mod tests {
         let result2 = fetcher.fetch_cached_remote_source(&module_url);
         assert!(result2.is_ok());
         let r2 = result2.unwrap().unwrap();
-        assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
+        assert_eq!(r2.source_code, b"export const loaded = true;\n");
         // Not MediaType::TypeScript due to .headers.json modification
         assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
       });
@@ -1494,7 +1494,7 @@ mod tests {
       .then(move |result| {
         assert!(result.is_ok());
         let r = result.unwrap();
-        assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
+        assert_eq!(r.source_code, b"export const loaded = true;\n");
         assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
         // no ext, should create .headers.json file
         assert_eq!(
@@ -1509,7 +1509,7 @@ mod tests {
       .then(move |result| {
         assert!(result.is_ok());
         let r2 = result.unwrap();
-        assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
+        assert_eq!(r2.source_code, b"export const loaded = true;\n");
         assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
         // mismatch ext, should create .headers.json file
         assert_eq!(
@@ -1525,7 +1525,7 @@ mod tests {
       .map(move |result| {
         assert!(result.is_ok());
         let r3 = result.unwrap();
-        assert_eq!(r3.source_code, "export const loaded = true;\n".as_bytes());
+        assert_eq!(r3.source_code, b"export const loaded = true;\n");
         assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
         // unknown ext, should create .headers.json file
         assert_eq!(
@@ -1822,14 +1822,9 @@ mod tests {
   #[test]
   fn test_filter_shebang() {
     assert_eq!(filter_shebang(b"#!"[..].to_owned()), b"");
-    assert_eq!(
-      filter_shebang("#!\n\n".as_bytes().to_owned()),
-      "\n\n".as_bytes()
-    );
-    let code = "#!/usr/bin/env deno\nconsole.log('hello');\n"
-      .as_bytes()
-      .to_owned();
-    assert_eq!(filter_shebang(code), "\nconsole.log('hello');\n".as_bytes());
+    assert_eq!(filter_shebang(b"#!\n\n"[..].to_owned()), b"\n\n");
+    let code = b"#!/usr/bin/env deno\nconsole.log('hello');\n"[..].to_owned();
+    assert_eq!(filter_shebang(code), b"\nconsole.log('hello');\n");
   }
 
   #[test]
