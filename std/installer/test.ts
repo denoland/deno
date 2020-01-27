@@ -8,6 +8,8 @@ import { TextProtoReader } from "../textproto/mod.ts";
 import * as path from "../path/mod.ts";
 import * as fs from "../fs/mod.ts";
 import { install, isRemoteUrl } from "./mod.ts";
+import { uninstall } from "./uninstall.ts";
+import { exists } from "../fs/mod.ts";
 
 let fileServer: Deno.Process;
 
@@ -467,6 +469,40 @@ test(function testIsRemoteUrl(): void {
   assert(isRemoteUrl("http://deno.land/std/http/file_server.ts"));
   assert(!isRemoteUrl("file:///dev/deno_std/http/file_server.ts"));
   assert(!isRemoteUrl("./dev/deno_std/http/file_server.ts"));
+});
+
+installerTest(async function uninstallBasic(): Promise<void> {
+  await install(
+    "echo_test",
+    "http://localhost:4500/installer/testdata/echo.ts",
+    []
+  );
+
+  const { HOME } = env();
+  const filePath = path.resolve(HOME, ".deno/bin/echo_test");
+  const fileInfo = await stat(filePath);
+  assert(fileInfo.isFile());
+
+  await uninstall("echo_test");
+  assert(!(await exists(filePath)));
+});
+
+installerTest(async function uninstallCustomDir(): Promise<void> {
+  const tempDir = await makeTempDir();
+
+  await install(
+    "echo_test",
+    "http://localhost:4500/installer/testdata/echo.ts",
+    [],
+    tempDir
+  );
+
+  const filePath = path.resolve(tempDir, "echo_test");
+  const fileInfo = await stat(filePath);
+  assert(fileInfo.isFile());
+
+  await uninstall("echo_test", tempDir);
+  assert(!(await exists(filePath)));
 });
 
 runIfMain(import.meta);

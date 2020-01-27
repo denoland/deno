@@ -10,6 +10,12 @@ Install remote or local script as executables.
 deno -A https://deno.land/std/installer/mod.ts deno_installer https://deno.land/std/installer/mod.ts -A
 ```
 
+`uninstaller` can be similarly installed:
+
+```sh
+deno -A https://deno.land/std/installer/mod.ts deno_uninstaller https://deno.land/std/installer/uninstall.ts -A
+```
+
 ## Usage
 
 Install script
@@ -35,6 +41,14 @@ Run installed script:
 ```sh
 $ file_server
 HTTP server listening on http://0.0.0.0:4500/
+```
+
+Uninstall script:
+
+```sh
+# uninstall previously installed command
+$ deno_uninstaller file_server
+> ✅ Successfully uninstalled file_server
 ```
 
 ## Custom installation directory
@@ -86,4 +100,18 @@ ARGS:
 
 OPTIONS:
   -d, --dir <PATH> Installation directory path (defaults to ~/.deno/bin)
+
+$ deno_uninstaller --help
+> deno uninstaller
+  Uninstall previously installed executables.
+
+USAGE:
+  deno -A https://deno.land/std/installer/uninstall.ts [OPTIONS] EXE_NAME
+
+ARGS:
+  EXE_NAME  Name for executable
+
+OPTIONS:
+  -d, --dir <PATH> Installation directory path (defaults to ~/.deno/bin)
+
 ```

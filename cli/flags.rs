@@ -302,7 +302,7 @@ fn install_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
     println!("dir {}", install_dir);
     flags.argv.push(install_dir.to_string());
   } else {
-    println!("no dir");
+    debug!("install_parse: no dir");
   }
 
   let exe_name = matches.value_of("exe_name").unwrap();
