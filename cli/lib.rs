@@ -278,6 +278,15 @@ fn info_command(flags: DenoFlags) {
   tokio_util::run(main_future);
 }
 
+fn install_command(_flags: DenoFlags) {
+  installer::install(
+    "file_server",
+    "https://deno.land/std/http/file_server.ts",
+    None,
+  )
+  .unwrap();
+}
+
 fn fetch_command(flags: DenoFlags) {
   let (mut worker, state) = create_worker_and_state(flags);
 
@@ -443,6 +452,7 @@ pub fn main() {
     DenoSubcommand::Eval => eval_command(flags),
     DenoSubcommand::Fetch => fetch_command(flags),
     DenoSubcommand::Info => info_command(flags),
+    DenoSubcommand::Install => install_command(flags),
     DenoSubcommand::Repl => run_repl(flags),
     DenoSubcommand::Run => run_script(flags),
     DenoSubcommand::Types => types_command(),

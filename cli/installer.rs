@@ -2,8 +2,14 @@
 use regex::{Regex, RegexBuilder};
 use std::env;
 use std::fs;
+use std::fs::File;
 use std::io;
+use std::io::Error;
+use std::io::ErrorKind;
+use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::path::PathBuf;
 use url::Url;
 
 lazy_static! {
@@ -20,45 +26,52 @@ fn yes_no_prompt(msg: &str) -> bool {
   println!("{}", msg);
   let mut buffer = String::new();
   io::stdin()
-    .read_to_string(&mut buffer)
+    .read_line(&mut buffer)
     .expect("Couldn't read from stdin");
-  return buffer.starts_with("y") | buffer.starts_with("Y");
+  buffer.starts_with('y') | buffer.starts_with('Y')
 }
 
-fn check_if_exists_in_path(file_path: &str) -> bool {
+fn check_if_exists_in_path(file_path: &Path) -> bool {
   // In Windows's Powershell $PATH does not exist, so use $Path instead.
   // $HOMEDRIVE is only used on Windows.
 
   // TODO: Rust probably already normalizes env case
-  let env_path = if let Some(p) = env::var_os("PATH") {
+  let env_path = if let Ok(p) = env::var("PATH").map(String::into) {
     p
-  } else if let Some(p) = env::var_os("Path") {
+  } else if let Ok(p) = env::var("Path").map(String::into) {
     p
   } else {
-    ""
+    "".to_string()
   };
 
-  let paths = if cfg!(windows) {
-    env_path.split(";").collect()
+  let paths: Vec<&str> = if cfg!(windows) {
+    env_path.split(';').collect()
   } else {
-    env_path.split(":").collect()
+    env_path.split(':').collect()
   };
 
-  let homedrive = env::var_os("HOMEDIRVE").unwrap_or("");
+  // TODO: this seems brittle
+  let homedrive = env::var("HOMEDIRVE")
+    .map(String::into)
+    .unwrap_or_else(|_| "".to_string());
 
   for p in paths {
-    let mut file_absolute_path = file_path;
+    // TODO: this resolves symlinks, is it ok?
     let path_in_env = fs::canonicalize(p).expect("Failed to canonicalize path");
 
     // On Windows paths from env contain drive letter.
     // (eg. C:\Users\username\.deno\bin)
     // But in the path of Deno, there is no drive letter.
     // (eg \Users\username\.deno\bin)
-    if cfg!(windows) {
-      if DRIVE_LETTER_REG.is_match(path_in_env) {
-        file_absolute_path = format!("{}\\{}", homedrive, file_absolute_path);
+    let file_absolute_path = if cfg!(windows) {
+      if DRIVE_LETTER_REG.is_match(&path_in_env.to_string_lossy()) {
+        PathBuf::from(format!("{}\\{}", homedrive, file_path.to_string_lossy()))
+      } else {
+        file_path.to_owned()
       }
-    }
+    } else {
+      file_path.to_owned()
+    };
 
     if path_in_env == file_absolute_path {
       return true;
@@ -69,19 +82,22 @@ fn check_if_exists_in_path(file_path: &str) -> bool {
 }
 
 fn is_remote_url(module_url: &str) -> bool {
-  module_url.starts_with("http://") || module_url.starts_with("http://")
+  module_url.starts_with("http://") || module_url.starts_with("https://")
 }
 
 fn validate_exec_name(exec_name: &str) -> Result<(), Error> {
   if EXEC_NAME_RE.is_match(exec_name) {
     Ok(())
   } else {
-    Err(Error(format!("Invalid module name: {}", exec_name)))
+    Err(Error::new(
+      ErrorKind::Other,
+      format!("Invalid module name: {}", exec_name),
+    ))
   }
 }
 
 fn generate_executable_file(
-  file_path: Path,
+  file_path: PathBuf,
   commands: Vec<String>,
 ) -> Result<(), Error> {
   // On Windows if user is using Powershell .cmd extension is need to run the
@@ -92,21 +108,21 @@ fn generate_executable_file(
   if cfg!(windows) {
     let template = format!(
       r#"% {} %
-        @IF EXIST "%~dp0\deno.exe" (
-          "%~dp0\deno.exe" {} %*
-        ) ELSE (
-          @SETLOCAL
-          @SET PATHEXT=%PATHEXT:;.TS;=;%
-          ${} %*
-        )"#,
+@IF EXIST "%~dp0\deno.exe" (
+    "%~dp0\deno.exe" {} %*
+) ELSE (
+    @SETLOCAL
+    @SET PATHEXT=%PATHEXT:;.TS;=;%
+    ${} %*
+)"#,
       template_header,
       commands[1..].join(" "),
       commands.join(" ")
     );
     let file_path = file_path.with_extension(".cmd");
     let mut file = File::create(&file_path)?;
-    file.write_all(template.as_bytes)?;
-    return Ok(());
+    file.write_all(template.as_bytes())?;
+    Ok(())
   } else {
     let template = format!(
       r#"#!/bin/sh
@@ -125,104 +141,114 @@ else
   ret=$?
 fi
 exit $ret
-        "#,
+"#,
       template_header,
       commands[1..].join(" "),
       commands.join(" ")
     );
-    let mut file = File::create(file_path)?;
-    file.write_all(template.as_bytes)?;
+    let mut file = File::create(&file_path)?;
+    file.write_all(template.as_bytes())?;
+    let _metadata = fs::metadata(&file_path)?;
     let mut permissions = _metadata.permissions();
     permissions.set_mode(0o755);
-    fs::set_permissions(file_path, perms)?;
-    return Ok(());
-  };
+    fs::set_permissions(&file_path, permissions)?;
+    Ok(())
+  }
 }
 
-fn get_installer_dir() -> Result<Path, Error> {
+fn get_installer_dir() -> Result<PathBuf, Error> {
   // In Windows's Powershell $HOME environmental variable maybe null
   // if so use $USERPROFILE instead.
-  let mut home_path = if let Some(a) = env::var_os("HOME") {
-    a
-  } else if let Some(a) = env::var_os("USERPROFILE") {
-    a
-  } else {
-    return Error("$HOME is not defined");
-  };
+  let home = env::var("HOME")
+    .map(String::into)
+    .unwrap_or_else(|_| "".to_string());
+  let user_profile = env::var("USERPROFILE")
+    .map(String::into)
+    .unwrap_or_else(|_| "".to_string());
 
+  if home.is_empty() && user_profile.is_empty() {
+    return Err(Error::new(ErrorKind::Other, "$HOME is not defined"));
+  }
+
+  let home_path = if !home.is_empty() { home } else { user_profile };
+
+  let mut home_path = PathBuf::from(home_path);
   home_path.push(".deno");
   home_path.push("bin");
   Ok(home_path)
 }
 
-fn install(
+pub fn install(
   exec_name: &str,
   module_url: &str,
-  /*permissions*/ installation_dir: Option<Path>,
+  /*permissions*/ installation_dir: Option<PathBuf>,
 ) -> Result<(), Error> {
   let installation_dir = if let Some(dir) = installation_dir {
     dir
   } else {
-    get_installer_dir?
+    get_installer_dir()?
   };
 
   // ensure directory exists
-  if let Some(metadata) = fs::metadata(installation_dir) {
+  if let Ok(metadata) = fs::metadata(&installation_dir) {
     if !metadata.is_dir() {
-      return Error("Insallation path is not a directory");
+      return Err(Error::new(
+        ErrorKind::Other,
+        "Insallation path is not a directory",
+      ));
     }
   } else {
-    fs::create_dir_all(installation_dir)?;
+    fs::create_dir_all(&installation_dir)?;
   };
 
   // Check if module_url is remote
   let module_url = if is_remote_url(module_url) {
-    Url::parse(module_url).expect("Should be valid url");
+    Url::parse(module_url).expect("Should be valid url")
   } else {
-    let module_url = if module_url.is_absolute() {
-      module_url.to_owned()
+    let module_path = PathBuf::from(module_url);
+    let module_path = if module_path.is_absolute() {
+      module_path
     } else {
       let cwd = env::current_dir().unwrap();
-      cwd.join(path)
+      cwd.join(module_path)
     };
-    Url::from_file_path(resolved_path).expect("Path should be absolute")
+    Url::from_file_path(module_path).expect("Path should be absolute")
   };
 
   validate_exec_name(exec_name)?;
   let file_path = installation_dir.join(exec_name);
 
-  // TODO: do lstat
   if file_path.exists() {
     let msg = format!(
       "⚠️  {} is already installed, do you want to overwrite it?",
       exec_name
     );
-    if !yes_no_prompt(msg) {
+    if !yes_no_prompt(&msg) {
       return Ok(());
     };
   };
 
   // ensure script that is being installed exists
   // TODO: do `deno fetch` here
-  let scripts_args = vec!["foo".to_string()];
 
-  generate_executable_file(file_path)?;
+  let script_args = &[];
+  let permissions = &[];
+  let mut executable_args = vec!["deno".to_string(), "run".to_string()];
+  executable_args.extend_from_slice(permissions);
+  executable_args.push(module_url.to_string());
+  executable_args.extend_from_slice(script_args);
+
+  generate_executable_file(file_path.to_owned(), executable_args)?;
 
   println!("✅ Successfully installed {}", exec_name);
-  println!("{}", file_path);
+  println!("{}", file_path.to_string_lossy());
 
-  if !check_if_exists_in_path(installation_dir) {
+  if !check_if_exists_in_path(&installation_dir) {
     // TODO: improve this message depending on OS
-    println!("ℹ️  Add {} to PATH", installation_dir);
-    println!("    echo 'export PATH=\"{}:$PATH\"' >> ~/.bashrc # change this to your shell", installation_dir);
+    let installation_dir_str = installation_dir.to_string_lossy();
+    println!("ℹ️  Add {} to PATH", installation_dir_str);
+    println!("    echo 'export PATH=\"{}:$PATH\"' >> ~/.bashrc # change this to your shell", installation_dir_str);
   };
 
   Ok(())
-}
-
-fn main() {
-  let exec_name = "";
-  let module_url = "";
-  // permissions
-  let installation_dir = "";
 }
