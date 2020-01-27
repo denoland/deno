@@ -229,7 +229,7 @@ When this program is started, it throws PermissionDenied error.
 
 ```shell
 $ deno https://deno.land/std/examples/echo_server.ts
-error: Uncaught PermissionDenied: run again with the --allow-net flag
+error: Uncaught PermissionDenied: network access to "0.0.0.0:8080", run again with the --allow-net flag
 ► $deno$/dispatch_json.ts:40:11
     at DenoError ($deno$/errors.ts:20:5)
     ...
@@ -329,7 +329,7 @@ This is an example to restrict file system access by whitelist.
 
 ```shell
 $ deno --allow-read=/usr https://deno.land/std/examples/cat.ts /etc/passwd
-error: Uncaught PermissionDenied: run again with the --allow-read flag
+error: Uncaught PermissionDenied: read access to "/etc/passwd", run again with the --allow-read flag
 ► $deno$/dispatch_json.ts:40:11
     at DenoError ($deno$/errors.ts:20:5)
     ...

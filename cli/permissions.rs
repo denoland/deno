@@ -29,12 +29,13 @@ pub enum PermissionState {
 
 impl PermissionState {
   /// Checks the permission state and returns the result.
-  pub fn check(self, msg: &str, err_msg: &str) -> Result<(), ErrBox> {
+  pub fn check(self, msg: &str, flag_name: &str) -> Result<(), ErrBox> {
     if self == PermissionState::Allow {
       log_perm_access(msg);
       return Ok(());
     }
-    Err(permission_denied_msg(err_msg.to_string()))
+    let m = format!("{}, run again with the {} flag", msg, flag_name);
+    Err(permission_denied_msg(m))
   }
   pub fn is_allow(self) -> bool {
     self == PermissionState::Allow
@@ -129,10 +130,9 @@ impl DenoPermissions {
   }
 
   pub fn check_run(&self) -> Result<(), ErrBox> {
-    self.allow_run.check(
-      "access to run a subprocess",
-      "run again with the --allow-run flag",
-    )
+    self
+      .allow_run
+      .check("access to run a subprocess", "--allow-run")
   }
 
   fn get_state_read(&self, path: &Option<&Path>) -> PermissionState {
@@ -145,7 +145,7 @@ impl DenoPermissions {
   pub fn check_read(&self, path: &Path) -> Result<(), ErrBox> {
     self.get_state_read(&Some(path)).check(
       &format!("read access to \"{}\"", path.display()),
-      "run again with the --allow-read flag",
+      "--allow-read",
     )
   }
 
@@ -159,7 +159,7 @@ impl DenoPermissions {
   pub fn check_write(&self, path: &Path) -> Result<(), ErrBox> {
     self.get_state_write(&Some(path)).check(
       &format!("write access to \"{}\"", path.display()),
-      "run again with the --allow-write flag",
+      "--allow-write",
     )
   }
 
@@ -188,30 +188,26 @@ impl DenoPermissions {
   pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
     self.get_state_net(hostname, Some(port)).check(
       &format!("network access to \"{}:{}\"", hostname, port),
-      "run again with the --allow-net flag",
+      "--allow-net",
     )
   }
 
   pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
     self
       .get_state_net(&format!("{}", url.host().unwrap()), url.port())
-      .check(
-        &format!("network access to \"{}\"", url),
-        "run again with the --allow-net flag",
-      )
+      .check(&format!("network access to \"{}\"", url), "--allow-net")
   }
 
   pub fn check_env(&self) -> Result<(), ErrBox> {
-    self.allow_env.check(
-      "access to environment variables",
-      "run again with the --allow-env flag",
-    )
+    self
+      .allow_env
+      .check("access to environment variables", "--allow-env")
   }
 
   pub fn check_plugin(&self, path: &Path) -> Result<(), ErrBox> {
     self.allow_plugin.check(
       &format!("access to open a plugin: {}", path.display()),
-      "run again with the --allow-plugin flag",
+      "--allow-plugin",
     )
   }
 
