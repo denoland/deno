@@ -278,13 +278,25 @@ fn info_command(flags: DenoFlags) {
   tokio_util::run(main_future);
 }
 
-fn install_command(_flags: DenoFlags) {
-  installer::install(
-    "file_server",
-    "https://deno.land/std/http/file_server.ts",
-    None,
-  )
-  .unwrap();
+fn install_command(
+  flags: DenoFlags,
+  dir: Option<String>,
+  exe_name: String,
+  module_url: String,
+  args: Vec<String>,
+) {
+  // Firstly fetch and compile module, this
+  // ensures the module exists.
+  let mut fetch_flags = flags.clone();
+  fetch_flags.argv.push(module_url.to_string());
+  fetch_flags.reload = true;
+  fetch_command(fetch_flags);
+
+  let install_result =
+    installer::install(flags, dir, &exe_name, &module_url, args);
+  if let Err(e) = install_result {
+    print_msg_and_exit(&e.to_string());
+  }
 }
 
 fn fetch_command(flags: DenoFlags) {
@@ -446,13 +458,18 @@ pub fn main() {
   };
   log::set_max_level(log_level.to_level_filter());
 
-  match flags.subcommand {
+  match flags.clone().subcommand {
     DenoSubcommand::Bundle => bundle_command(flags),
     DenoSubcommand::Completions => {}
     DenoSubcommand::Eval => eval_command(flags),
     DenoSubcommand::Fetch => fetch_command(flags),
     DenoSubcommand::Info => info_command(flags),
-    DenoSubcommand::Install => install_command(flags),
+    DenoSubcommand::Install {
+      dir,
+      exe_name,
+      module_url,
+      args,
+    } => install_command(flags, dir, exe_name, module_url, args),
     DenoSubcommand::Repl => run_repl(flags),
     DenoSubcommand::Run => run_script(flags),
     DenoSubcommand::Types => types_command(),

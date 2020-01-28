@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::flags::DenoFlags;
 use regex::{Regex, RegexBuilder};
 use std::env;
 use std::fs;
@@ -23,7 +24,7 @@ lazy_static! {
 }
 
 fn yes_no_prompt(msg: &str) -> bool {
-  println!("{}", msg);
+  println!("{} [yN]", msg);
   let mut buffer = String::new();
   io::stdin()
     .read_line(&mut buffer)
@@ -34,8 +35,6 @@ fn yes_no_prompt(msg: &str) -> bool {
 fn check_if_exists_in_path(file_path: &Path) -> bool {
   // In Windows's Powershell $PATH does not exist, so use $Path instead.
   // $HOMEDRIVE is only used on Windows.
-
-  // TODO: Rust probably already normalizes env case
   let env_path = if let Ok(p) = env::var("PATH").map(String::into) {
     p
   } else if let Ok(p) = env::var("Path").map(String::into) {
@@ -50,7 +49,6 @@ fn check_if_exists_in_path(file_path: &Path) -> bool {
     env_path.split(':').collect()
   };
 
-  // TODO: this seems brittle
   let homedrive = env::var("HOMEDIRVE")
     .map(String::into)
     .unwrap_or_else(|_| "".to_string());
@@ -179,12 +177,14 @@ fn get_installer_dir() -> Result<PathBuf, Error> {
 }
 
 pub fn install(
+  flags: DenoFlags,
+  installation_dir: Option<String>,
   exec_name: &str,
   module_url: &str,
-  /*permissions*/ installation_dir: Option<PathBuf>,
+  args: Vec<String>,
 ) -> Result<(), Error> {
   let installation_dir = if let Some(dir) = installation_dir {
-    dir
+    PathBuf::from(dir).canonicalize()?
   } else {
     get_installer_dir()?
   };
@@ -228,15 +228,10 @@ pub fn install(
     };
   };
 
-  // ensure script that is being installed exists
-  // TODO: do `deno fetch` here
-
-  let script_args = &[];
-  let permissions = &[];
   let mut executable_args = vec!["deno".to_string(), "run".to_string()];
-  executable_args.extend_from_slice(permissions);
+  executable_args.extend_from_slice(&flags.to_permission_args());
   executable_args.push(module_url.to_string());
-  executable_args.extend_from_slice(script_args);
+  executable_args.extend_from_slice(&args);
 
   generate_executable_file(file_path.to_owned(), executable_args)?;
 
