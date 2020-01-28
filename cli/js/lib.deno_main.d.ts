@@ -1533,6 +1533,7 @@ declare namespace __workers {
     onmessage?: (e: { data: any }) => void;
     onmessageerror?: () => void;
     postMessage(data: any): void;
+    terminate(): void;
   }
   export interface WorkerOptions {
     type?: "classic" | "module";
@@ -1546,6 +1547,7 @@ declare namespace __workers {
     onmessageerror?: () => void;
     constructor(specifier: string, options?: WorkerOptions);
     postMessage(data: any): void;
+    terminate(): void;
     private run;
   }
 }

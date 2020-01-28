@@ -72,6 +72,7 @@ export interface Worker {
   onmessage?: (e: { data: any }) => void;
   onmessageerror?: () => void;
   postMessage(data: any): void;
+  terminate(): void;
 }
 
 export interface WorkerOptions {
@@ -194,6 +195,10 @@ export class WorkerImpl extends EventTarget implements Worker {
     }
 
     hostPostMessage(this.id, data);
+  }
+
+  terminate(): void {
+    throw new Error("Not yet implemented");
   }
 
   private async run(): Promise<void> {
