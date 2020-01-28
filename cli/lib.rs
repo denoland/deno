@@ -29,6 +29,7 @@ mod disk_cache;
 mod file_fetcher;
 pub mod flags;
 pub mod fmt_errors;
+mod formatter;
 mod fs;
 mod global_state;
 mod global_timer;
@@ -416,6 +417,11 @@ fn run_script(flags: DenoFlags) {
   }
 }
 
+#[allow(unused)]
+fn format_command(_flags: DenoFlags) {
+  formatter::format(false);
+}
+
 pub fn main() {
   #[cfg(windows)]
   ansi_term::enable_ansi_support().ok(); // For Windows 10
@@ -441,6 +447,7 @@ pub fn main() {
     DenoSubcommand::Completions => {}
     DenoSubcommand::Eval => eval_command(flags),
     DenoSubcommand::Fetch => fetch_command(flags),
+    DenoSubcommand::Format => format_command(flags),
     DenoSubcommand::Info => info_command(flags),
     DenoSubcommand::Repl => run_repl(flags),
     DenoSubcommand::Run => run_script(flags),

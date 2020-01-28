@@ -41,6 +41,7 @@ pub enum DenoSubcommand {
   Completions,
   Eval,
   Fetch,
+  Format,
   Help,
   Info,
   Install,
@@ -230,7 +231,7 @@ fn types_parse(flags: &mut DenoFlags, _matches: &clap::ArgMatches) {
 }
 
 fn fmt_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
-  flags.subcommand = DenoSubcommand::Run;
+  flags.subcommand = DenoSubcommand::Format;
   flags.allow_read = true;
   flags.allow_write = true;
   flags.argv.push(PRETTIER_URL.to_string());
