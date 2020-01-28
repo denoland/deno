@@ -54,6 +54,7 @@ pub mod version;
 mod web_worker;
 pub mod worker;
 
+use crate::compilers::TargetLib;
 use crate::deno_error::js_check;
 use crate::deno_error::{print_err_and_exit, print_msg_and_exit};
 use crate::global_state::ThreadSafeGlobalState;
@@ -147,7 +148,7 @@ fn create_worker_and_state(
 
 fn types_command() {
   // TODO(bartlomieju): fix types output, after libraries split
-  println!("{}\n{}", crate::js::DENO_NS_LIB, crate::js::DENO_MAIN_LIB);
+  println!("{}", crate::js::DENO_NS_LIB);
 }
 
 fn print_cache_info(worker: MainWorker) {
@@ -199,7 +200,7 @@ async fn print_file_info(
 
   let maybe_compiled = global_state_
     .clone()
-    .fetch_compiled_module(&module_specifier, None)
+    .fetch_compiled_module(&module_specifier, None, TargetLib::Main)
     .await;
   if let Err(e) = maybe_compiled {
     debug!("compiler error exiting!");

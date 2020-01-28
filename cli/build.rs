@@ -70,14 +70,6 @@ fn main() {
   let bundle_path = o.join("COMPILER_SNAPSHOT.js");
   let snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
   let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
-  custom_libs.insert(
-    "lib.deno_main.d.ts".to_string(),
-    c.join("js/lib.deno_main.d.ts"),
-  );
-  custom_libs.insert(
-    "lib.deno_worker.d.ts".to_string(),
-    c.join("js/lib.deno_worker.d.ts"),
-  );
   custom_libs
     .insert("lib.window.d.ts".to_string(), c.join("js/lib.window.d.ts"));
   custom_libs

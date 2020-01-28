@@ -15,9 +15,12 @@ const options = host.getCompilationSettings();
 // This is a hacky way of adding our libs to the libs available in TypeScript()
 // as these are internal APIs of TypeScript which maintain valid libs
 /* eslint-disable @typescript-eslint/no-explicit-any */
-(ts as any).libs.push("deno_main", "deno_worker", "deno");
-(ts as any).libMap.set("deno_main", "lib.deno_main.d.ts");
-(ts as any).libMap.set("deno_worker", "lib.deno_worker.d.ts");
+(ts as any).libs.push(
+  "deno",
+  "window",
+  "worker",
+  "window_or_worker_global_scope"
+);
 (ts as any).libMap.set("deno", "lib.deno.d.ts");
 (ts as any).libMap.set("window", "lib.window.d.ts");
 (ts as any).libMap.set("worker", "lib.worker.d.ts");
@@ -29,8 +32,6 @@ const options = host.getCompilationSettings();
 
 // this pre-populates the cache at snapshot time of our library files, so they
 // are available in the future when needed.
-host.getSourceFile(`${ASSETS}/lib.deno_main.d.ts`, ts.ScriptTarget.ESNext);
-host.getSourceFile(`${ASSETS}/lib.deno_worker.d.ts`, ts.ScriptTarget.ESNext);
 host.getSourceFile(`${ASSETS}/lib.deno.d.ts`, ts.ScriptTarget.ESNext);
 host.getSourceFile(`${ASSETS}/lib.window.d.ts`, ts.ScriptTarget.ESNext);
 host.getSourceFile(`${ASSETS}/lib.worker.d.ts`, ts.ScriptTarget.ESNext);

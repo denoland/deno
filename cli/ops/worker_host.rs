@@ -89,7 +89,7 @@ fn op_create_worker(
   }
 
   let (int, ext) = ThreadSafeState::create_channels();
-  let child_state = ThreadSafeState::new(
+  let child_state = ThreadSafeState::new_for_worker(
     state.global_state.clone(),
     Some(parent_state.permissions.clone()), // by default share with parent
     Some(module_specifier.clone()),
