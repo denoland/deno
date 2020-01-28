@@ -21,6 +21,7 @@ pub mod process;
 pub mod random;
 pub mod repl;
 pub mod resources;
+pub mod runtime;
 pub mod runtime_compiler;
 pub mod signal;
 pub mod timers;

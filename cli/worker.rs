@@ -180,6 +180,7 @@ impl MainWorker {
       let mut isolate = worker.isolate.try_lock().unwrap();
       let op_registry = isolate.op_registry.clone();
 
+      ops::runtime::init(&mut isolate, &state);
       ops::runtime_compiler::init(&mut isolate, &state);
       ops::errors::init(&mut isolate, &state);
       ops::fetch::init(&mut isolate, &state);
@@ -376,6 +377,7 @@ mod tests {
         state,
         ext,
       );
+
       worker.execute("bootstrapMainRuntime()").unwrap();
       let result = worker
         .execute_mod_async(&module_specifier, None, false)
@@ -409,82 +411,7 @@ mod tests {
       ext,
     );
     worker.execute("bootstrapMainRuntime()").unwrap();
-    worker.execute("bootstrapWorkerRuntime()").unwrap();
     worker
-  }
-
-  #[test]
-  fn test_worker_messages() {
-    run_in_task(|| {
-      let mut worker = create_test_worker();
-      let source = r#"
-        onmessage = function(e) {
-          console.log("msg from main script", e.data);
-          if (e.data == "exit") {
-            delete window.onmessage;
-            return;
-          } else {
-            console.assert(e.data === "hi");
-          }
-          postMessage([1, 2, 3]);
-          console.log("after postMessage");
-        }
-        "#;
-      worker.execute(source).unwrap();
-
-      let worker_ = worker.clone();
-
-      let fut = async move {
-        let r = worker.await;
-        r.unwrap();
-      };
-
-      tokio::spawn(fut);
-
-      let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-
-      let r = block_on(worker_.post_message(msg));
-      assert!(r.is_ok());
-
-      let maybe_msg = block_on(worker_.get_message());
-      assert!(maybe_msg.is_some());
-      // Check if message received is [1, 2, 3] in json
-      assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
-
-      let msg = json!("exit")
-        .to_string()
-        .into_boxed_str()
-        .into_boxed_bytes();
-      let r = block_on(worker_.post_message(msg));
-      assert!(r.is_ok());
-    })
-  }
-
-  #[test]
-  fn removed_from_resource_table_on_close() {
-    run_in_task(|| {
-      let mut worker = create_test_worker();
-      worker
-        .execute("onmessage = () => { delete window.onmessage; }")
-        .unwrap();
-
-      let worker_ = worker.clone();
-      let worker_future = async move {
-        let result = worker_.await;
-        println!("workers.rs after resource close");
-        result.unwrap();
-      }
-      .shared();
-
-      let worker_future_ = worker_future.clone();
-      tokio::spawn(worker_future_);
-
-      let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-      let r = block_on(worker.post_message(msg));
-      assert!(r.is_ok());
-
-      block_on(worker_future)
-    })
   }
 
   #[test]

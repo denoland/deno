@@ -90,6 +90,9 @@ function cache(
     assert(false, `Trying to cache unhandled file type "${emittedFileName}"`);
   }
 }
+
+let OP_FETCH_ASSET: number;
+
 /**
  * This op is called only during snapshotting.
  *
@@ -98,12 +101,16 @@ function cache(
  * as raw byte arrays.
  */
 export function getAsset(name: string): string {
+  if (!OP_FETCH_ASSET) {
+    const ops = core.ops();
+    const opFetchAsset = ops["fetch_asset"];
+    assert(opFetchAsset, "OP_FETCH_ASSET is not registered");
+    OP_FETCH_ASSET = opFetchAsset;
+  }
+
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
-  const sourceCodeBytes = core.dispatch(
-    dispatch.OP_FETCH_ASSET,
-    encoder.encode(name)
-  );
+  const sourceCodeBytes = core.dispatch(OP_FETCH_ASSET, encoder.encode(name));
   return decoder.decode(sourceCodeBytes!);
 }
 

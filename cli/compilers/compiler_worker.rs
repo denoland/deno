@@ -41,8 +41,16 @@ impl CompilerWorker {
     let worker = Worker::new(name, startup_data, state_, external_channels);
     {
       let mut isolate = worker.isolate.try_lock().unwrap();
+      ops::runtime::init(&mut isolate, &state);
       ops::compiler::init(&mut isolate, &state);
       ops::web_worker::init(&mut isolate, &state);
+      ops::errors::init(&mut isolate, &state);
+
+      // for compatibility with Worker scope, though unused at
+      // the moment
+      ops::timers::init(&mut isolate, &state);
+      ops::fetch::init(&mut isolate, &state);
+
       // TODO(bartlomieju): CompilerWorker should not
       // depend on those ops
       ops::os::init(&mut isolate, &state);
