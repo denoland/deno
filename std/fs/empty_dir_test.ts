@@ -2,6 +2,7 @@
 import { test } from "../testing/mod.ts";
 import {
   assertEquals,
+  assertStrContains,
   assertThrows,
   assertThrowsAsync
 } from "../testing/asserts.ts";
@@ -227,7 +228,7 @@ test(async function emptyDirPermission(): Promise<void> {
 
       const output = await Deno.readAll(stdout);
 
-      assertEquals(new TextDecoder().decode(output), s.output);
+      assertStrContains(new TextDecoder().decode(output), s.output);
     }
   } catch (err) {
     await Deno.remove(testfolder, { recursive: true });

@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test } from "../testing/mod.ts";
-import { assertEquals } from "../testing/asserts.ts";
+import { assertEquals, assertStrContains } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { exists, existsSync } from "./exists.ts";
 
@@ -134,7 +134,7 @@ test(async function existsPermission(): Promise<void> {
 
     const output = await Deno.readAll(stdout);
 
-    assertEquals(new TextDecoder().decode(output), s.output);
+    assertStrContains(new TextDecoder().decode(output), s.output);
   }
 
   // done
