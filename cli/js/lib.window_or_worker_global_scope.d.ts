@@ -1320,6 +1320,7 @@ declare namespace __workers {
   }
   export interface WorkerOptions {
     type?: "classic" | "module";
+    name?: string;
   }
   export class WorkerImpl implements Worker {
     private readonly id;

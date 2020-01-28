@@ -27,12 +27,14 @@ function decodeMessage(dataIntArray: Uint8Array): any {
 function createWorker(
   specifier: string,
   hasSourceCode: boolean,
-  sourceCode: Uint8Array
+  sourceCode: Uint8Array,
+  name?: string
 ): { id: number; loaded: boolean } {
   return sendSync(dispatch.OP_CREATE_WORKER, {
     specifier,
     hasSourceCode,
-    sourceCode: new TextDecoder().decode(sourceCode)
+    sourceCode: new TextDecoder().decode(sourceCode),
+    name
   });
 }
 
@@ -77,6 +79,7 @@ export interface Worker {
 
 export interface WorkerOptions {
   type?: "classic" | "module";
+  name?: string;
 }
 
 export class WorkerImpl extends EventTarget implements Worker {
@@ -122,7 +125,12 @@ export class WorkerImpl extends EventTarget implements Worker {
     }
     */
 
-    const { id, loaded } = createWorker(specifier, hasSourceCode, sourceCode);
+    const { id, loaded } = createWorker(
+      specifier,
+      hasSourceCode,
+      sourceCode,
+      options?.name
+    );
     this.id = id;
     this.ready = loaded;
     this.poll();

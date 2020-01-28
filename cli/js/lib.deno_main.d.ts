@@ -37,7 +37,7 @@ declare interface Window {
   // TODO(bartlomieju): move to WorkerGlobalScope
   onmessage: (e: { data: any }) => void;
   onerror: undefined | typeof onerror;
-  name: typeof __workerMain.close;
+  name: typeof __workerMain.name;
   close: typeof __workerMain.close;
   postMessage: typeof __workerMain.postMessage;
   // TODO(bartlomieju): end of move to WorkerGlobalScope
@@ -1542,6 +1542,7 @@ declare namespace __workers {
   }
   export interface WorkerOptions {
     type?: "classic" | "module";
+    name?: string;
   }
   export class WorkerImpl implements Worker {
     private readonly id;

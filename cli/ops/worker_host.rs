@@ -4,7 +4,6 @@ use crate::deno_error::bad_resource;
 use crate::deno_error::js_check;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
-use crate::deno_error::GetErrorKind;
 use crate::fmt_errors::JSError;
 use crate::ops::json_op;
 use crate::startup_data;
@@ -164,6 +163,8 @@ impl Future for WorkerPollFuture {
 }
 
 fn serialize_worker_result(result: Result<(), ErrBox>) -> Value {
+  use crate::deno_error::GetErrorKind;
+
   if let Err(error) = result {
     match error.kind() {
       ErrorKind::JSError => {

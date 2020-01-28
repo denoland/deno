@@ -13,7 +13,7 @@ declare interface DedicatedWorkerGlobalScope extends WindowOrWorkerGlobalScope {
     typeof globalThis;
   onmessage: (e: { data: any }) => void;
   onerror: undefined | typeof onerror;
-  name: typeof __workerMain.close;
+  name: typeof __workerMain.name;
   close: typeof __workerMain.close;
   postMessage: typeof __workerMain.postMessage;
 }

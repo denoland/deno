@@ -146,6 +146,7 @@ fn create_worker_and_state(
 }
 
 fn types_command() {
+  // TODO(bartlomieju): fix types output, after libraries split
   println!("{}\n{}", crate::js::DENO_NS_LIB, crate::js::DENO_MAIN_LIB);
 }
 
