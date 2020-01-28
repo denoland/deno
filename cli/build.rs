@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use deno_core::include_crate_modules;
 use deno_core::CoreOp;
 use deno_core::Isolate;
 use deno_core::Op;
@@ -42,6 +43,8 @@ fn main() {
     deno_typescript::ts_version()
   );
 
+  let extern_crate_modules = include_crate_modules![deno_core];
+
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
@@ -50,9 +53,12 @@ fn main() {
   let bundle_path = o.join("CLI_SNAPSHOT.js");
   let snapshot_path = o.join("CLI_SNAPSHOT.bin");
 
-  let main_module_name =
-    deno_typescript::compile_bundle(&bundle_path, root_names)
-      .expect("Bundle compilation failed");
+  let main_module_name = deno_typescript::compile_bundle(
+    &bundle_path,
+    root_names,
+    Some(extern_crate_modules.clone()),
+  )
+  .expect("Bundle compilation failed");
   assert!(bundle_path.exists());
 
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
@@ -80,9 +86,12 @@ fn main() {
   );
   custom_libs.insert("lib.deno.d.ts".to_string(), c.join("js/lib.deno.d.ts"));
 
-  let main_module_name =
-    deno_typescript::compile_bundle(&bundle_path, root_names)
-      .expect("Bundle compilation failed");
+  let main_module_name = deno_typescript::compile_bundle(
+    &bundle_path,
+    root_names,
+    Some(extern_crate_modules),
+  )
+  .expect("Bundle compilation failed");
   assert!(bundle_path.exists());
 
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
