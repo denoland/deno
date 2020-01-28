@@ -230,9 +230,9 @@ impl ThreadSafeState {
     (internal_channels, external_channels)
   }
 
+  /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new(
     global_state: ThreadSafeGlobalState,
-    // If Some(perm), use perm. Else copy from global_state.
     shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
     main_module: Option<ModuleSpecifier>,
     internal_channels: WorkerChannels,
@@ -275,9 +275,9 @@ impl ThreadSafeState {
     Ok(ThreadSafeState(Arc::new(state)))
   }
 
+  /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new_for_worker(
     global_state: ThreadSafeGlobalState,
-    // If Some(perm), use perm. Else copy from global_state.
     shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
     main_module: Option<ModuleSpecifier>,
     internal_channels: WorkerChannels,
