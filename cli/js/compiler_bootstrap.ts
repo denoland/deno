@@ -1,20 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { ASSETS, CompilerHostTarget, Host } from "./compiler_host.ts";
-import { core } from "./core.ts";
-import * as dispatch from "./dispatch.ts";
 import { getAsset } from "./compiler_util.ts";
 
-// This registers ops that are available during the snapshotting process.
-const ops = core.ops();
-for (const [name, opId] of Object.entries(ops)) {
-  const opName = `OP_${name.toUpperCase()}`;
-  // TODO This type casting is dangerous, and should be improved when the same
-  // code in `os.ts` is done.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (dispatch as any)[opName] = opId;
-}
-
+// NOTE: target doesn't really matter here,
+// this is in fact a mock host created just to
+// load all type definitions and snapshot them.
 const host = new Host({
   target: CompilerHostTarget.Main,
   writeFile(): void {}
@@ -35,11 +26,15 @@ const options = host.getCompilationSettings();
 host.getSourceFile(`${ASSETS}/lib.deno_main.d.ts`, ts.ScriptTarget.ESNext);
 host.getSourceFile(`${ASSETS}/lib.deno_worker.d.ts`, ts.ScriptTarget.ESNext);
 host.getSourceFile(`${ASSETS}/lib.deno.d.ts`, ts.ScriptTarget.ESNext);
-host.getSourceFile(`${ASSETS}/lib.webworker.d.ts`, ts.ScriptTarget.ESNext);
 
-/** Used to generate the foundational AST for all other compilations, so it can
- * be cached as part of the snapshot and available to speed up startup */
-export const oldProgram = ts.createProgram({
+/**
+ * This function spins up TS compiler and loads all available libraries
+ * into memory (including ones specified above).
+ *
+ * Used to generate the foundational AST for all other compilations, so it can
+ * be cached as part of the snapshot and available to speed up startup.
+ */
+export const TS_SNAPSHOT_PROGRAM = ts.createProgram({
   rootNames: [`${ASSETS}/bootstrap.ts`],
   options,
   host
@@ -49,5 +44,5 @@ export const oldProgram = ts.createProgram({
  *
  * We read all static assets during the snapshotting process, which is
  * why this is located in compiler_bootstrap.
- **/
-export const bundleLoader = getAsset("bundle_loader.js");
+ */
+export const BUNDLE_LOADER = getAsset("bundle_loader.js");

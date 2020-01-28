@@ -160,12 +160,13 @@ fn req(
   root_names: Vec<String>,
   compiler_config: CompilerConfig,
   out_file: Option<String>,
+  target: &str,
   bundle: bool,
 ) -> Buf {
   let j = match (compiler_config.path, compiler_config.content) {
     (Some(config_path), Some(config_data)) => json!({
       "type": request_type as i32,
-      "target": "main",
+      "target": target,
       "rootNames": root_names,
       "outFile": out_file,
       "bundle": bundle,
@@ -174,7 +175,7 @@ fn req(
     }),
     _ => json!({
       "type": request_type as i32,
-      "target": "main",
+      "target": target,
       "rootNames": root_names,
       "outFile": out_file,
       "bundle": bundle,
@@ -248,9 +249,7 @@ impl TsCompiler {
       worker_state,
       ext,
     );
-    worker.execute("bootstrapCompilerRuntime('TS')").unwrap();
-    worker.execute("bootstrapWorkerRuntime()").unwrap();
-    worker.execute("bootstrapTsCompiler()").unwrap();
+    worker.execute("bootstrapTsCompilerRuntime()").unwrap();
     worker
   }
 
@@ -271,6 +270,7 @@ impl TsCompiler {
       root_names,
       self.config.clone(),
       out_file,
+      "main",
       true,
     );
 
@@ -360,12 +360,15 @@ impl TsCompiler {
       &source_file.url
     );
 
+    let target = "main";
+
     let root_names = vec![module_url.to_string()];
     let req_msg = req(
       msg::CompilerRequestType::Compile,
       root_names,
       self.config.clone(),
       None,
+      target,
       false,
     );
 
