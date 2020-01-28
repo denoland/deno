@@ -10,7 +10,7 @@ onmessage = function(e) {
 
   postMessage(e.data);
 
-  workerClose();
+  close();
 };
 
 onerror = function() {

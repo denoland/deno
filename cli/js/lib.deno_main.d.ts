@@ -36,7 +36,7 @@ declare interface Window {
   performance: __performanceUtil.Performance;
   onmessage: (e: { data: any }) => void;
   onerror: undefined | typeof onerror;
-  workerClose: typeof __workerMain.workerClose;
+  close: typeof __workerMain.close;
   postMessage: typeof __workerMain.postMessage;
   Worker: typeof __workers.WorkerImpl;
   addEventListener: (
@@ -94,7 +94,7 @@ declare let onerror:
       e: Event
     ) => boolean | void)
   | undefined;
-declare const workerClose: typeof __workerMain.workerClose;
+declare const close: typeof __workerMain.close;
 declare const postMessage: typeof __workerMain.postMessage;
 declare const Worker: typeof __workers.WorkerImpl;
 declare const addEventListener: (
@@ -1523,7 +1523,7 @@ declare namespace __workerMain {
   export let onmessage: (e: { data: any }) => void;
   export function postMessage(data: any): void;
   export function getMessage(): Promise<any>;
-  export function workerClose(): void;
+  export function close(): void;
 }
 
 declare namespace __workers {

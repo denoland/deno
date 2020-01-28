@@ -3,5 +3,5 @@ onmessage = function(e): void {
 
   postMessage(e.data);
 
-  workerClose();
+  close();
 };
