@@ -19,6 +19,12 @@ const options = host.getCompilationSettings();
 (ts as any).libMap.set("deno_main", "lib.deno_main.d.ts");
 (ts as any).libMap.set("deno_worker", "lib.deno_worker.d.ts");
 (ts as any).libMap.set("deno", "lib.deno.d.ts");
+(ts as any).libMap.set("window", "lib.window.d.ts");
+(ts as any).libMap.set("worker", "lib.worker.d.ts");
+(ts as any).libMap.set(
+  "window_or_worker_global_scope",
+  "lib.window_or_worker_global_scope.d.ts"
+);
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 // this pre-populates the cache at snapshot time of our library files, so they
@@ -26,6 +32,12 @@ const options = host.getCompilationSettings();
 host.getSourceFile(`${ASSETS}/lib.deno_main.d.ts`, ts.ScriptTarget.ESNext);
 host.getSourceFile(`${ASSETS}/lib.deno_worker.d.ts`, ts.ScriptTarget.ESNext);
 host.getSourceFile(`${ASSETS}/lib.deno.d.ts`, ts.ScriptTarget.ESNext);
+host.getSourceFile(`${ASSETS}/lib.window.d.ts`, ts.ScriptTarget.ESNext);
+host.getSourceFile(`${ASSETS}/lib.worker.d.ts`, ts.ScriptTarget.ESNext);
+host.getSourceFile(
+  `${ASSETS}/lib.window_or_worker_global_scope.d.ts`,
+  ts.ScriptTarget.ESNext
+);
 
 /**
  * This function spins up TS compiler and loads all available libraries

@@ -78,6 +78,14 @@ fn main() {
     "lib.deno_worker.d.ts".to_string(),
     c.join("js/lib.deno_worker.d.ts"),
   );
+  custom_libs
+    .insert("lib.window.d.ts".to_string(), c.join("js/lib.window.d.ts"));
+  custom_libs
+    .insert("lib.worker.d.ts".to_string(), c.join("js/lib.worker.d.ts"));
+  custom_libs.insert(
+    "lib.window_or_worker_global_scope.d.ts".to_string(),
+    c.join("js/lib.window_or_worker_global_scope.d.ts"),
+  );
   custom_libs.insert("lib.deno.d.ts".to_string(), c.join("js/lib.deno.d.ts"));
 
   let main_module_name =
