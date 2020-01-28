@@ -100,7 +100,7 @@ fn op_create_worker(
     name
   } else {
     // TODO(bartlomieju): change it to something more descriptive
-    format!("USER-WORKER-{}", specifier);
+    format!("USER-WORKER-{}", specifier)
   };
 
   // TODO: add a new option to make child worker not sharing permissions
