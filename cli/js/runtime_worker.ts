@@ -122,5 +122,6 @@ export function bootstrapWorkerRuntime(name: string): void {
   Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
   Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
   Object.defineProperties(globalThis, eventTargetProperties);
+  Object.defineProperties(globalThis, { name: readOnly(name) });
   runtime.start(false, name);
 }

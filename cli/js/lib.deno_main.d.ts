@@ -34,10 +34,13 @@ declare interface Window {
   Request: __domTypes.RequestConstructor;
   Response: typeof __fetch.Response;
   performance: __performanceUtil.Performance;
+  // TODO(bartlomieju): move to WorkerGlobalScope
   onmessage: (e: { data: any }) => void;
   onerror: undefined | typeof onerror;
+  name: typeof __workerMain.close;
   close: typeof __workerMain.close;
   postMessage: typeof __workerMain.postMessage;
+  // TODO(bartlomieju): end of move to WorkerGlobalScope
   Worker: typeof __workers.WorkerImpl;
   addEventListener: (
     type: string,
@@ -95,6 +98,7 @@ declare let onerror:
     ) => boolean | void)
   | undefined;
 declare const close: typeof __workerMain.close;
+declare const name: typeof __workerMain.name;
 declare const postMessage: typeof __workerMain.postMessage;
 declare const Worker: typeof __workers.WorkerImpl;
 declare const addEventListener: (
@@ -1524,6 +1528,7 @@ declare namespace __workerMain {
   export function postMessage(data: any): void;
   export function getMessage(): Promise<any>;
   export function close(): void;
+  export const name: string;
 }
 
 declare namespace __workers {
