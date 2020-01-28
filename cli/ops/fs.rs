@@ -543,7 +543,8 @@ fn op_make_temp_dir(
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
-  state.check_write(dir.clone().unwrap_or(std::env::temp_dir()).as_path())?;
+  state
+    .check_write(dir.clone().unwrap_or_else(std::env::temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
