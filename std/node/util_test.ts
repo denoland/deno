@@ -57,7 +57,11 @@ test({
 
 test({
   name: "[util] isSymbol",
-  fn() {}
+  fn() {
+    assert(util.isSymbol(Symbol()));
+    assert(!util.isSymbol(123));
+    assert(!util.isSymbol("string"));
+  }
 });
 
 test({

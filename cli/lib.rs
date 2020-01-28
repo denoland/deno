@@ -44,7 +44,7 @@ mod progress;
 mod repl;
 pub mod resolve_addr;
 mod shell;
-mod signal;
+pub mod signal;
 pub mod source_maps;
 mod startup_data;
 pub mod state;
@@ -146,7 +146,7 @@ fn create_worker_and_state(
 }
 
 fn types_command() {
-  println!("{}", crate::js::DENO_RUNTIME);
+  println!("{}\n{}", crate::js::DENO_NS_LIB, crate::js::DENO_MAIN_LIB);
 }
 
 fn print_cache_info(worker: MainWorker) {
@@ -205,7 +205,6 @@ async fn print_file_info(
     eprintln!("\n{}", e.to_string());
     std::process::exit(1);
   }
-  let compiled = maybe_compiled.unwrap();
   if out.media_type == msg::MediaType::TypeScript
     || (out.media_type == msg::MediaType::JavaScript
       && global_state_.ts_compiler.compile_js)
@@ -235,7 +234,7 @@ async fn print_file_info(
   }
 
   let isolate = worker.isolate.try_lock().unwrap();
-  if let Some(deps) = isolate.modules.deps(&compiled.name) {
+  if let Some(deps) = isolate.modules.deps(&module_specifier) {
     println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
     if let Some(ref depsdeps) = deps.deps {
       for d in depsdeps {
@@ -290,6 +289,17 @@ fn fetch_command(flags: DenoFlags) {
   let main_future = async move {
     let result = worker.execute_mod_async(&main_module, None, true).await;
     js_check(result);
+    if state.flags.lock_write {
+      if let Some(ref lockfile) = state.lockfile {
+        let g = lockfile.lock().unwrap();
+        if let Err(e) = g.write() {
+          print_err_and_exit(ErrBox::from(e));
+        }
+      } else {
+        eprintln!("--lock flag must be specified when using --lock-write");
+        std::process::exit(11);
+      }
+    }
   };
 
   tokio_util::run(main_future);
@@ -354,7 +364,6 @@ fn run_repl(flags: DenoFlags) {
       let result = worker.clone().await;
       if let Err(err) = result {
         eprintln!("{}", err.to_string());
-        worker.clear_exception();
       }
     }
   };

@@ -27,7 +27,7 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 fn op_worker_get_message(
   state: &ThreadSafeState,
   _args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let state_ = state.clone();
   let op = async move {
@@ -44,7 +44,7 @@ fn op_worker_get_message(
 fn op_worker_post_message(
   state: &ThreadSafeState,
   _args: Value,
-  data: Option<PinnedBuf>,
+  data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
   let mut sender = state.worker_channels.sender.clone();

@@ -34,7 +34,7 @@ struct ReplStartArgs {
 fn op_repl_start(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ReplStartArgs = serde_json::from_value(args)?;
 
@@ -57,7 +57,7 @@ struct ReplReadlineArgs {
 fn op_repl_readline(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ReplReadlineArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;

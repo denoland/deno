@@ -6,8 +6,20 @@ import { cwd } from "./dir.ts";
 import { assert, notImplemented } from "./util.ts";
 import * as util from "./util.ts";
 
+/** Specifies the target that the host should use to inform the TypeScript
+ * compiler of what types should be used to validate the program against. */
+export enum CompilerHostTarget {
+  /** The main isolate library, where the main program runs. */
+  Main = "main",
+  /** The runtime API library. */
+  Runtime = "runtime",
+  /** The worker isolate library, where worker programs run. */
+  Worker = "worker"
+}
+
 export interface CompilerHostOptions {
   bundle?: boolean;
+  target: CompilerHostTarget;
   writeFile: WriteFileCallback;
 }
 
@@ -124,6 +136,8 @@ const ignoredCompilerOptions: readonly string[] = [
 export class Host implements ts.CompilerHost {
   private readonly _options = defaultCompileOptions;
 
+  private _target: CompilerHostTarget;
+
   private _writeFile: WriteFileCallback;
 
   private _getAsset(filename: string): SourceFile {
@@ -146,7 +160,8 @@ export class Host implements ts.CompilerHost {
 
   /** Provides the `ts.HostCompiler` interface for Deno. */
   constructor(options: CompilerHostOptions) {
-    const { bundle = false, writeFile } = options;
+    const { bundle = false, target, writeFile } = options;
+    this._target = target;
     this._writeFile = writeFile;
     if (bundle) {
       // options we need to change when we are generating a bundle
@@ -215,7 +230,13 @@ export class Host implements ts.CompilerHost {
   }
 
   getDefaultLibFileName(_options: ts.CompilerOptions): string {
-    return ASSETS + "/lib.deno_runtime.d.ts";
+    switch (this._target) {
+      case CompilerHostTarget.Main:
+      case CompilerHostTarget.Runtime:
+        return `${ASSETS}/lib.deno_main.d.ts`;
+      case CompilerHostTarget.Worker:
+        return `${ASSETS}/lib.deno_worker.d.ts`;
+    }
   }
 
   getNewLine(): string {

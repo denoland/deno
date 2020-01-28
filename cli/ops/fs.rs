@@ -63,7 +63,7 @@ struct ChdirArgs {
 fn op_chdir(
   _state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ChdirArgs = serde_json::from_value(args)?;
   std::env::set_current_dir(&args.directory)?;
@@ -82,7 +82,7 @@ struct MkdirArgs {
 fn op_mkdir(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
@@ -109,7 +109,7 @@ struct ChmodArgs {
 fn op_chmod(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ChmodArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
@@ -143,7 +143,7 @@ struct ChownArgs {
 fn op_chown(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ChownArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
@@ -171,7 +171,7 @@ struct RemoveArgs {
 fn op_remove(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: RemoveArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
@@ -205,7 +205,7 @@ struct CopyFileArgs {
 fn op_copy_file(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: CopyFileArgs = serde_json::from_value(args)?;
   let from = deno_fs::resolve_from_cwd(Path::new(&args.from))?;
@@ -304,7 +304,7 @@ struct StatArgs {
 fn op_stat(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: StatArgs = serde_json::from_value(args)?;
   let filename = deno_fs::resolve_from_cwd(Path::new(&args.filename))?;
@@ -334,7 +334,7 @@ struct RealpathArgs {
 fn op_realpath(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: RealpathArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
@@ -366,7 +366,7 @@ struct ReadDirArgs {
 fn op_read_dir(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ReadDirArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
@@ -403,7 +403,7 @@ struct RenameArgs {
 fn op_rename(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: RenameArgs = serde_json::from_value(args)?;
   let oldpath = deno_fs::resolve_from_cwd(Path::new(&args.oldpath))?;
@@ -432,7 +432,7 @@ struct LinkArgs {
 fn op_link(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldname = deno_fs::resolve_from_cwd(Path::new(&args.oldname))?;
@@ -460,7 +460,7 @@ struct SymlinkArgs {
 fn op_symlink(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldname = deno_fs::resolve_from_cwd(Path::new(&args.oldname))?;
@@ -492,7 +492,7 @@ struct ReadLinkArgs {
 fn op_read_link(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ReadLinkArgs = serde_json::from_value(args)?;
   let name = deno_fs::resolve_from_cwd(Path::new(&args.name))?;
@@ -520,7 +520,7 @@ struct TruncateArgs {
 fn op_truncate(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: TruncateArgs = serde_json::from_value(args)?;
   let filename = deno_fs::resolve_from_cwd(Path::new(&args.name))?;
@@ -549,7 +549,7 @@ struct MakeTempDirArgs {
 fn op_make_temp_dir(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: MakeTempDirArgs = serde_json::from_value(args)?;
 
@@ -589,7 +589,7 @@ struct Utime {
 fn op_utime(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: Utime = serde_json::from_value(args)?;
   state.check_write(Path::new(&args.filename))?;
@@ -604,7 +604,7 @@ fn op_utime(
 fn op_cwd(
   _state: &ThreadSafeState,
   _args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let path = std::env::current_dir()?;
   let path_str = path.into_os_string().into_string().unwrap();

@@ -12,8 +12,8 @@ use deno_core::CoreOp;
 use deno_core::ErrBox;
 use deno_core::Isolate;
 use deno_core::ModuleSpecifier;
-use deno_core::PinnedBuf;
 use deno_core::StartupData;
+use deno_core::ZeroCopyBuf;
 pub use ops::EmitResult;
 use ops::WrittenFile;
 use std::fs;
@@ -45,11 +45,11 @@ pub struct TSState {
 fn compiler_op<D>(
   ts_state: Arc<Mutex<TSState>>,
   dispatcher: D,
-) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp
+) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp
 where
   D: Fn(&mut TSState, &[u8]) -> CoreOp,
 {
-  move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
+  move |control: &[u8], zero_copy_buf: Option<ZeroCopyBuf>| -> CoreOp {
     assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in compiler.
     let mut s = ts_state.lock().unwrap();
     dispatcher(&mut s, control)

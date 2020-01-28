@@ -69,7 +69,7 @@ struct CreateWorkerArgs {
 fn op_create_worker(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
@@ -97,10 +97,17 @@ fn op_create_worker(
   )?;
   // TODO: add a new option to make child worker not sharing permissions
   // with parent (aka .clone(), requests from child won't reflect in parent)
+  // TODO(bartlomieju): get it from "name" argument when creating worker
   let name = format!("USER-WORKER-{}", specifier);
-  let mut worker =
-    WebWorker::new(name, startup_data::deno_isolate_init(), child_state, ext);
-  js_check(worker.execute("bootstrapWorkerRuntime()"));
+  let mut worker = WebWorker::new(
+    name.to_string(),
+    startup_data::deno_isolate_init(),
+    child_state,
+    ext,
+  );
+  let script = format!("bootstrapWorkerRuntime(\"{}\")", name);
+  js_check(worker.execute(&script));
+  js_check(worker.execute("runWorkerMessageLoop()"));
 
   let worker_id = parent_state.add_child_worker(worker.clone());
 
@@ -180,7 +187,7 @@ struct WorkerArgs {
 fn op_host_get_worker_loaded(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -198,11 +205,10 @@ fn op_host_get_worker_loaded(
 fn op_host_poll_worker(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
-  let state_ = state.clone();
 
   let future = WorkerPollFuture {
     state: state.clone(),
@@ -211,13 +217,6 @@ fn op_host_poll_worker(
 
   let op = async move {
     let result = future.await;
-
-    if result.is_err() {
-      let mut workers_table = state_.workers.lock().unwrap();
-      let worker = workers_table.get_mut(&id).unwrap();
-      worker.clear_exception();
-    }
-
     Ok(serialize_worker_result(result))
   };
   Ok(JsonOp::Async(op.boxed()))
@@ -226,7 +225,7 @@ fn op_host_poll_worker(
 fn op_host_close_worker(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -249,7 +248,7 @@ fn op_host_close_worker(
 fn op_host_resume_worker(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -257,7 +256,7 @@ fn op_host_resume_worker(
 
   let mut workers_table = state_.workers.lock().unwrap();
   let worker = workers_table.get_mut(&id).unwrap();
-  js_check(worker.execute("bootstrapWorkerRuntime()"));
+  js_check(worker.execute("runWorkerMessageLoop()"));
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -270,7 +269,7 @@ struct HostGetMessageArgs {
 fn op_host_get_message(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: HostGetMessageArgs = serde_json::from_value(args)?;
   let state_ = state.clone();
@@ -297,7 +296,7 @@ struct HostPostMessageArgs {
 fn op_host_post_message(
   state: &ThreadSafeState,
   args: Value,
-  data: Option<PinnedBuf>,
+  data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: HostPostMessageArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -317,7 +316,7 @@ fn op_host_post_message(
 fn op_metrics(
   state: &ThreadSafeState,
   _args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let m = &state.metrics;
 

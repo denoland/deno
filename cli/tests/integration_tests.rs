@@ -385,6 +385,19 @@ itest!(_052_no_remote_flag {
   http_server: true,
 });
 
+itest!(_054_info_local_imports {
+  args: "info 005_more_imports.ts",
+  output: "054_info_local_imports.out",
+  exit_code: 0,
+});
+
+itest!(lock_write_fetch {
+  args:
+    "run --allow-read --allow-write --allow-env --allow-run lock_write_fetch.ts",
+  output: "lock_write_fetch.ts.out",
+  exit_code: 0,
+});
+
 itest!(lock_check_ok {
   args: "run --lock=lock_check_ok.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
   output: "003_relative_import.ts.out",
@@ -609,6 +622,17 @@ itest!(type_definitions {
   output: "type_definitions.ts.out",
 });
 
+itest!(type_directives_01 {
+  args: "run --reload -L debug type_directives_01.ts",
+  output: "type_directives_01.ts.out",
+  http_server: true,
+});
+
+itest!(type_directives_02 {
+  args: "run --reload -L debug type_directives_02.ts",
+  output: "type_directives_02.ts.out",
+});
+
 itest!(types {
   args: "types",
   output: "types.out",
@@ -625,12 +649,19 @@ itest!(unbuffered_stdout {
   output: "unbuffered_stdout.ts.out",
 });
 
-itest!(v8_flags {
+// Cannot write the expression to evaluate as "console.log(typeof gc)"
+// because itest! splits args on whitespace.
+itest!(eval_v8_flags {
+  args: "eval --v8-flags=--expose-gc console.log(typeof(gc))",
+  output: "v8_flags.js.out",
+});
+
+itest!(run_v8_flags {
   args: "run --v8-flags=--expose-gc v8_flags.js",
   output: "v8_flags.js.out",
 });
 
-itest!(v8_help {
+itest!(run_v8_help {
   args: "run --v8-flags=--help",
   output: "v8_help.out",
 });

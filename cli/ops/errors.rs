@@ -27,7 +27,7 @@ struct FormatErrorArgs {
 fn op_format_error(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: FormatErrorArgs = serde_json::from_value(args)?;
   let error = JSError::from_json(&args.error, &state.global_state.ts_compiler);
@@ -47,7 +47,7 @@ struct ApplySourceMap {
 fn op_apply_source_map(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ApplySourceMap = serde_json::from_value(args)?;
 
