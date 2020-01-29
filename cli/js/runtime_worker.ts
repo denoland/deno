@@ -54,7 +54,7 @@ export async function getMessage(): Promise<any> {
 let isClosing = false;
 let hasBootstrapped = false;
 
-export function workerClose(): void {
+export function close(): void {
   isClosing = true;
 }
 
@@ -102,7 +102,7 @@ export const workerRuntimeGlobalProperties = {
   self: readOnly(globalThis),
   onmessage: writable(onmessage),
   onerror: writable(onerror),
-  workerClose: nonEnumerable(workerClose),
+  close: nonEnumerable(close),
   postMessage: writable(postMessage)
 };
 
@@ -122,5 +122,6 @@ export function bootstrapWorkerRuntime(name: string): void {
   Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
   Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
   Object.defineProperties(globalThis, eventTargetProperties);
+  Object.defineProperties(globalThis, { name: readOnly(name) });
   runtime.start(false, name);
 }

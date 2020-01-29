@@ -3,23 +3,23 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-interface, @typescript-eslint/no-explicit-any */
 
 /// <reference no-default-lib="true" />
-/// <reference lib="deno" />
+/// <reference lib="deno_ns" />
 /// <reference lib="esnext" />
 
-declare interface Window {
-  window: Window & typeof globalThis;
+// https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
+
+declare interface WindowOrWorkerGlobalScope {
+  // methods
   atob: typeof __textEncoding.atob;
   btoa: typeof __textEncoding.btoa;
-  fetch: typeof __fetch.fetch;
-  clearTimeout: typeof __timers.clearTimeout;
   clearInterval: typeof __timers.clearInterval;
-  console: __console.Console;
-  setTimeout: typeof __timers.setTimeout;
+  clearTimeout: typeof __timers.clearTimeout;
+  fetch: typeof __fetch.fetch;
+  queueMicrotask: (task: () => void) => void;
   setInterval: typeof __timers.setInterval;
-  location: __domTypes.Location;
-  onload: Function | undefined;
-  onunload: Function | undefined;
-  crypto: Crypto;
+  setTimeout: typeof __timers.setTimeout;
+  // properties
+  console: __console.Console;
   Blob: typeof __blob.DenoBlob;
   File: __domTypes.DomFileConstructor;
   CustomEvent: typeof __customEvent.CustomEvent;
@@ -34,11 +34,9 @@ declare interface Window {
   Request: __domTypes.RequestConstructor;
   Response: typeof __fetch.Response;
   performance: __performanceUtil.Performance;
-  onmessage: (e: { data: any }) => void;
-  onerror: undefined | typeof onerror;
-  workerClose: typeof __workerMain.workerClose;
-  postMessage: typeof __workerMain.postMessage;
   Worker: typeof __workers.WorkerImpl;
+  location: __domTypes.Location;
+
   addEventListener: (
     type: string,
     callback: (event: __domTypes.Event) => void | null,
@@ -50,23 +48,17 @@ declare interface Window {
     callback: (event: __domTypes.Event) => void | null,
     options?: boolean | __domTypes.EventListenerOptions | undefined
   ) => void;
-  queueMicrotask: (task: () => void) => void;
-  Deno: typeof Deno;
 }
 
-declare const window: Window & typeof globalThis;
 declare const atob: typeof __textEncoding.atob;
 declare const btoa: typeof __textEncoding.btoa;
-declare const fetch: typeof __fetch.fetch;
-declare const clearTimeout: typeof __timers.clearTimeout;
 declare const clearInterval: typeof __timers.clearInterval;
-declare const console: __console.Console;
-declare const setTimeout: typeof __timers.setTimeout;
+declare const clearTimeout: typeof __timers.clearTimeout;
+declare const fetch: typeof __fetch.fetch;
 declare const setInterval: typeof __timers.setInterval;
-declare const location: __domTypes.Location;
-declare const onload: Function | undefined;
-declare const onunload: Function | undefined;
-declare const crypto: Crypto;
+declare const setTimeout: typeof __timers.setTimeout;
+
+declare const console: __console.Console;
 declare const Blob: typeof __blob.DenoBlob;
 declare const File: __domTypes.DomFileConstructor;
 declare const CustomEventInit: typeof __customEvent.CustomEventInit;
@@ -78,25 +70,15 @@ declare const EventTarget: typeof __eventTarget.EventTarget;
 declare const URL: typeof __url.URL;
 declare const URLSearchParams: typeof __urlSearchParams.URLSearchParams;
 declare const Headers: __domTypes.HeadersConstructor;
+declare const location: __domTypes.Location;
 declare const FormData: __domTypes.FormDataConstructor;
 declare const TextEncoder: typeof __textEncoding.TextEncoder;
 declare const TextDecoder: typeof __textEncoding.TextDecoder;
 declare const Request: __domTypes.RequestConstructor;
 declare const Response: typeof __fetch.Response;
 declare const performance: __performanceUtil.Performance;
-declare let onmessage: ((e: { data: any }) => Promise<void> | void) | undefined;
-declare let onerror:
-  | ((
-      msg: string,
-      source: string,
-      lineno: number,
-      colno: number,
-      e: Event
-    ) => boolean | void)
-  | undefined;
-declare const workerClose: typeof __workerMain.workerClose;
-declare const postMessage: typeof __workerMain.postMessage;
 declare const Worker: typeof __workers.WorkerImpl;
+
 declare const addEventListener: (
   type: string,
   callback: (event: __domTypes.Event) => void | null,
@@ -131,198 +113,6 @@ declare type Worker = __workers.Worker;
 declare interface ImportMeta {
   url: string;
   main: boolean;
-}
-
-declare interface Crypto {
-  readonly subtle: null;
-  getRandomValues<
-    T extends
-      | Int8Array
-      | Int16Array
-      | Int32Array
-      | Uint8Array
-      | Uint16Array
-      | Uint32Array
-      | Uint8ClampedArray
-      | Float32Array
-      | Float64Array
-      | DataView
-      | null
-  >(
-    array: T
-  ): T;
-}
-
-// This follows the WebIDL at: https://webassembly.github.io/spec/js-api/
-// and: https://webassembly.github.io/spec/web-api/
-
-declare namespace WebAssembly {
-  interface WebAssemblyInstantiatedSource {
-    module: Module;
-    instance: Instance;
-  }
-
-  /** Compiles a `WebAssembly.Module` from WebAssembly binary code.  This
-   * function is useful if it is necessary to a compile a module before it can
-   * be instantiated (otherwise, the `WebAssembly.instantiate()` function
-   * should be used). */
-  function compile(bufferSource: __domTypes.BufferSource): Promise<Module>;
-
-  /** Compiles a `WebAssembly.Module` directly from a streamed underlying
-   * source. This function is useful if it is necessary to a compile a module
-   * before it can be instantiated (otherwise, the
-   * `WebAssembly.instantiateStreaming()` function should be used). */
-  function compileStreaming(
-    source: Promise<__domTypes.Response>
-  ): Promise<Module>;
-
-  /** Takes the WebAssembly binary code, in the form of a typed array or
-   * `ArrayBuffer`, and performs both compilation and instantiation in one step.
-   * The returned `Promise` resolves to both a compiled `WebAssembly.Module` and
-   * its first `WebAssembly.Instance`. */
-  function instantiate(
-    bufferSource: __domTypes.BufferSource,
-    importObject?: object
-  ): Promise<WebAssemblyInstantiatedSource>;
-
-  /** Takes an already-compiled `WebAssembly.Module` and returns a `Promise`
-   * that resolves to an `Instance` of that `Module`. This overload is useful if
-   * the `Module` has already been compiled. */
-  function instantiate(
-    module: Module,
-    importObject?: object
-  ): Promise<Instance>;
-
-  /** Compiles and instantiates a WebAssembly module directly from a streamed
-   * underlying source. This is the most efficient, optimized way to load wasm
-   * code. */
-  function instantiateStreaming(
-    source: Promise<__domTypes.Response>,
-    importObject?: object
-  ): Promise<WebAssemblyInstantiatedSource>;
-
-  /** Validates a given typed array of WebAssembly binary code, returning
-   * whether the bytes form a valid wasm module (`true`) or not (`false`). */
-  function validate(bufferSource: __domTypes.BufferSource): boolean;
-
-  type ImportExportKind = "function" | "table" | "memory" | "global";
-
-  interface ModuleExportDescriptor {
-    name: string;
-    kind: ImportExportKind;
-  }
-  interface ModuleImportDescriptor {
-    module: string;
-    name: string;
-    kind: ImportExportKind;
-  }
-
-  class Module {
-    constructor(bufferSource: __domTypes.BufferSource);
-
-    /** Given a `Module` and string, returns a copy of the contents of all
-     * custom sections in the module with the given string name. */
-    static customSections(
-      moduleObject: Module,
-      sectionName: string
-    ): ArrayBuffer;
-
-    /** Given a `Module`, returns an array containing descriptions of all the
-     * declared exports. */
-    static exports(moduleObject: Module): ModuleExportDescriptor[];
-
-    /** Given a `Module`, returns an array containing descriptions of all the
-     * declared imports. */
-    static imports(moduleObject: Module): ModuleImportDescriptor[];
-  }
-
-  class Instance<T extends object = { [key: string]: any }> {
-    constructor(module: Module, importObject?: object);
-
-    /** An object containing as its members all the functions exported from the
-     * WebAssembly module instance, to allow them to be accessed and used by
-     * JavaScript. */
-    readonly exports: T;
-  }
-
-  interface MemoryDescriptor {
-    initial: number;
-    maximum?: number;
-  }
-
-  class Memory {
-    constructor(descriptor: MemoryDescriptor);
-
-    /** An accessor property that returns the buffer contained in the memory. */
-    readonly buffer: ArrayBuffer;
-
-    /** Increases the size of the memory instance by a specified number of
-     * WebAssembly pages (each one is 64KB in size). */
-    grow(delta: number): number;
-  }
-
-  type TableKind = "anyfunc";
-
-  interface TableDescriptor {
-    element: TableKind;
-    initial: number;
-    maximum?: number;
-  }
-
-  class Table {
-    constructor(descriptor: TableDescriptor);
-
-    /** Returns the length of the table, i.e. the number of elements. */
-    readonly length: number;
-
-    /** Accessor function — gets the element stored at a given index. */
-    get(index: number): (...args: any[]) => any;
-
-    /** Increases the size of the Table instance by a specified number of
-     * elements. */
-    grow(delta: number): number;
-
-    /** Sets an element stored at a given index to a given value. */
-    set(index: number, value: (...args: any[]) => any): void;
-  }
-
-  type ValueType = "i32" | "i64" | "f32" | "f64";
-
-  interface GlobalDescriptor {
-    value: ValueType;
-    mutable?: boolean;
-  }
-
-  /** Represents a global variable instance, accessible from both JavaScript and
-   * importable/exportable across one or more `WebAssembly.Module` instances.
-   * This allows dynamic linking of multiple modules. */
-  class Global {
-    constructor(descriptor: GlobalDescriptor, value?: any);
-
-    /** Old-style method that returns the value contained inside the global
-     * variable. */
-    valueOf(): any;
-
-    /** The value contained inside the global variable — this can be used to
-     * directly set and get the global's value. */
-    value: any;
-  }
-
-  /** Indicates an error during WebAssembly decoding or validation */
-  class CompileError extends Error {
-    constructor(message: string, fileName?: string, lineNumber?: string);
-  }
-
-  /** Indicates an error during module instantiation (besides traps from the
-   * start function). */
-  class LinkError extends Error {
-    constructor(message: string, fileName?: string, lineNumber?: string);
-  }
-
-  /** Is thrown whenever WebAssembly specifies a trap. */
-  class RuntimeError extends Error {
-    constructor(message: string, fileName?: string, lineNumber?: string);
-  }
 }
 
 declare namespace __domTypes {
@@ -1519,13 +1309,6 @@ declare namespace __url {
   };
 }
 
-declare namespace __workerMain {
-  export let onmessage: (e: { data: any }) => void;
-  export function postMessage(data: any): void;
-  export function getMessage(): Promise<any>;
-  export function workerClose(): void;
-}
-
 declare namespace __workers {
   // @url js/workers.d.ts
   export interface Worker {
@@ -1533,9 +1316,11 @@ declare namespace __workers {
     onmessage?: (e: { data: any }) => void;
     onmessageerror?: () => void;
     postMessage(data: any): void;
+    terminate(): void;
   }
   export interface WorkerOptions {
     type?: "classic" | "module";
+    name?: string;
   }
   export class WorkerImpl implements Worker {
     private readonly id;
@@ -1546,6 +1331,7 @@ declare namespace __workers {
     onmessageerror?: () => void;
     constructor(specifier: string, options?: WorkerOptions);
     postMessage(data: any): void;
+    terminate(): void;
     private run;
   }
 }

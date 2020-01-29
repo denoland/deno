@@ -37,6 +37,12 @@ lazy_static! {
     Regex::new(r#""checkJs"\s*?:\s*?true"#).unwrap();
 }
 
+#[derive(Clone, Copy)]
+pub enum TargetLib {
+  Main,
+  Worker,
+}
+
 /// Struct which represents the state of the compiler
 /// configuration where the first is canonical name for the configuration file,
 /// second is a vector of the bytes of the contents of the configuration file,
@@ -318,6 +324,7 @@ impl TsCompiler {
     &self,
     global_state: ThreadSafeGlobalState,
     source_file: &SourceFile,
+    target: TargetLib,
   ) -> Pin<Box<CompiledModuleFuture>> {
     if self.has_compiled(&source_file.url) {
       return match self.get_compiled_module(&source_file.url) {
@@ -360,7 +367,10 @@ impl TsCompiler {
       &source_file.url
     );
 
-    let target = "main";
+    let target = match target {
+      TargetLib::Main => "main",
+      TargetLib::Worker => "worker",
+    };
 
     let root_names = vec![module_url.to_string()];
     let req_msg = req(
@@ -710,7 +720,7 @@ mod tests {
     let fut = async move {
       let result = mock_state
         .ts_compiler
-        .compile_async(mock_state.clone(), &out)
+        .compile_async(mock_state.clone(), &out, TargetLib::Main)
         .await;
 
       assert!(result.is_ok());
