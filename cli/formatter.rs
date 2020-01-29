@@ -3,7 +3,7 @@
 #![allow(unused)]
 
 use dprint_plugin_typescript::{
-  format_text, ResolvedTypeScriptConfiguration, TypeScriptConfiguration,
+  format_text, Configuration, ConfigurationBuilder,
 };
 use glob;
 use regex::Regex;
@@ -20,11 +20,11 @@ fn is_supported(path: &Path) -> bool {
   TYPESCRIPT.is_match(&path_str) || JAVASCRIPT.is_match(&path_str)
 }
 
-fn get_config() -> ResolvedTypeScriptConfiguration {
-  TypeScriptConfiguration::new()
+fn get_config() -> Configuration {
+  ConfigurationBuilder::new()
     .line_width(80)
     .indent_width(2)
-    .resolve()
+    .build()
 }
 
 fn get_supported_files(paths: Vec<PathBuf>) -> Vec<PathBuf> {
@@ -58,7 +58,7 @@ fn check_source_files(paths: Vec<PathBuf>) {
         }
       }
       Err(_) => {
-        panic!("error during formatting");
+        // panic!("error during formatting {}", &file_path_str);
       }
     }
   }
