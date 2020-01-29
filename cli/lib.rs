@@ -28,8 +28,8 @@ pub mod diagnostics;
 mod disk_cache;
 mod file_fetcher;
 pub mod flags;
+mod fmt;
 pub mod fmt_errors;
-mod formatter;
 mod fs;
 mod global_state;
 mod global_timer;
@@ -418,7 +418,7 @@ fn run_script(flags: DenoFlags) {
 }
 
 fn format_command(files: Option<Vec<String>>, check: bool) {
-  formatter::format(files, check);
+  fmt::format_files(files, check);
 }
 
 pub fn main() {

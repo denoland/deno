@@ -1,11 +1,20 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+//! This module provides file formating utilities using
+//! [`dprint`](https://github.com/dsherret/dprint).
+//!
+//! At the moment it is only consumed using CLI but in
+//! the future it can be easily extended to provide
+//! the same functions as ops available in JS runtime.
+
 use dprint_plugin_typescript::format_text;
 use dprint_plugin_typescript::Configuration;
 use dprint_plugin_typescript::ConfigurationBuilder;
 use glob;
 use regex::Regex;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::time::Instant;
 
 lazy_static! {
@@ -138,7 +147,7 @@ fn get_matching_files(glob_paths: Vec<String>) -> Vec<PathBuf> {
 ///
 /// First argument supports globs, and if it is `None`
 /// then the current directory is recursively walked.
-pub fn format(maybe_files: Option<Vec<String>>, check: bool) {
+pub fn format_files(maybe_files: Option<Vec<String>>, check: bool) {
   // TODO: improve glob to look for tsx?/jsx? files only
   let glob_paths = maybe_files.unwrap_or_else(|| vec!["**/*".to_string()]);
   let matching_files = get_matching_files(glob_paths);

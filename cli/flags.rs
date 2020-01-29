@@ -519,7 +519,7 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("fmt")
     .about("Format files")
     .long_about(
-      "Auto-format JavaScript/TypeScript source code using dprint
+      "Auto-format JavaScript/TypeScript source code
 
   deno fmt
 
