@@ -29,12 +29,44 @@ fn fetch_test() {
   drop(g);
 }
 
-// TODO(#2933): Rewrite this test in rust.
 #[test]
 fn fmt_test() {
-  let g = util::http_server();
-  util::run_python_script("tools/fmt_test.py");
-  drop(g);
+  use tempfile::TempDir;
+
+  let t = TempDir::new().expect("tempdir fail");
+  let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
+  let badly_formatted_original =
+    util::root_path().join("cli/tests/badly_formatted.js");
+  let badly_formatted = t.path().join("badly_formatted.js");
+  let badly_formatted_str = badly_formatted.to_str().unwrap();
+  std::fs::copy(&badly_formatted_original, &badly_formatted)
+    .expect("Failed to copy file");
+
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg("--check")
+    .arg(badly_formatted_str)
+    .spawn()
+    .expect("Failed to spawn script")
+    .wait()
+    .expect("Failed to wait for child process");
+
+  assert_eq!(Some(1), status.code());
+
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg(badly_formatted_str)
+    .spawn()
+    .expect("Failed to spawn script")
+    .wait()
+    .expect("Failed to wait for child process");
+
+  assert_eq!(Some(0), status.code());
+  let expected = std::fs::read_to_string(fixed).unwrap();
+  let actual = std::fs::read_to_string(badly_formatted).unwrap();
+  assert_eq!(expected, actual);
 }
 
 #[test]
