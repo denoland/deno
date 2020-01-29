@@ -25,6 +25,7 @@ import * as nodeFS from "./fs.ts";
 import * as nodeUtil from "./util.ts";
 import * as nodePath from "./path.ts";
 import * as nodeTimers from "./timers.ts";
+import * as nodeOs from "./os.ts";
 
 import * as path from "../path/mod.ts";
 import { assert } from "../testing/asserts.ts";
@@ -582,6 +583,7 @@ nativeModulePolyfill.set("fs", createNativeModule("fs", nodeFS));
 nativeModulePolyfill.set("util", createNativeModule("util", nodeUtil));
 nativeModulePolyfill.set("path", createNativeModule("path", nodePath));
 nativeModulePolyfill.set("timers", createNativeModule("timers", nodeTimers));
+nativeModulePolyfill.set("os", createNativeModule("os", nodeOs));
 function loadNativeModule(
   _filename: string,
   request: string
