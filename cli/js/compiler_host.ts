@@ -233,9 +233,9 @@ export class Host implements ts.CompilerHost {
     switch (this._target) {
       case CompilerHostTarget.Main:
       case CompilerHostTarget.Runtime:
-        return `${ASSETS}/lib.window.d.ts`;
+        return `${ASSETS}/lib.deno.window.d.ts`;
       case CompilerHostTarget.Worker:
-        return `${ASSETS}/lib.worker.d.ts`;
+        return `${ASSETS}/lib.deno.worker.d.ts`;
     }
   }
 

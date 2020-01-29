@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-interface, @typescript-eslint/no-explicit-any */
 
 /// <reference no-default-lib="true" />
-/// <reference lib="deno" />
+/// <reference lib="deno_ns" />
 /// <reference lib="esnext" />
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope

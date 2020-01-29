@@ -147,11 +147,10 @@ fn create_worker_and_state(
 }
 
 fn types_command() {
-  // TODO(bartlomieju): fix types output, after libraries split
   println!(
     "{}\n{}\n{}",
     crate::js::DENO_NS_LIB,
-    crate::js::WINDOW_OR_WORKER_GLOBAL_SCOPE_LIB,
+    crate::js::SHARED_GLOBALS_LIB,
     crate::js::WINDOW_LIB
   );
 }
