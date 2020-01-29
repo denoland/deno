@@ -418,8 +418,8 @@ fn run_script(flags: DenoFlags) {
 }
 
 #[allow(unused)]
-fn format_command(flags: DenoFlags) {
-  formatter::format(flags.reload);
+fn format_command(check: bool, _files: Option<Vec<String>>) {
+  formatter::format(check);
 }
 
 pub fn main() {
@@ -442,12 +442,12 @@ pub fn main() {
   };
   log::set_max_level(log_level.to_level_filter());
 
-  match flags.subcommand {
+  match flags.clone().subcommand {
     DenoSubcommand::Bundle => bundle_command(flags),
     DenoSubcommand::Completions => {}
     DenoSubcommand::Eval => eval_command(flags),
     DenoSubcommand::Fetch => fetch_command(flags),
-    DenoSubcommand::Format => format_command(flags),
+    DenoSubcommand::Format { check, files } => format_command(check, files),
     DenoSubcommand::Info => info_command(flags),
     DenoSubcommand::Repl => run_repl(flags),
     DenoSubcommand::Run => run_script(flags),
