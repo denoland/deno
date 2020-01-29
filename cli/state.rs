@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::compilers::TargetLib;
 use crate::deno_error::permission_denied;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::global_timer::GlobalTimer;
@@ -59,6 +60,7 @@ pub struct State {
   pub start_time: Instant,
   pub seeded_rng: Option<Mutex<StdRng>>,
   pub resource_table: Mutex<ResourceTable>,
+  pub target_lib: TargetLib,
 }
 
 impl Clone for ThreadSafeState {
@@ -200,7 +202,7 @@ impl Loader for ThreadSafeState {
     let module_url_specified = module_specifier.to_string();
     let fut = self
       .global_state
-      .fetch_compiled_module(module_specifier, maybe_referrer)
+      .fetch_compiled_module(module_specifier, maybe_referrer, self.target_lib)
       .map_ok(|compiled_module| deno_core::SourceCodeInfo {
         // Real module name, might be different from initial specifier
         // due to redirections.
@@ -228,9 +230,9 @@ impl ThreadSafeState {
     (internal_channels, external_channels)
   }
 
+  /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new(
     global_state: ThreadSafeGlobalState,
-    // If Some(perm), use perm. Else copy from global_state.
     shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
     main_module: Option<ModuleSpecifier>,
     internal_channels: WorkerChannels,
@@ -267,6 +269,46 @@ impl ThreadSafeState {
       seeded_rng,
 
       resource_table: Mutex::new(ResourceTable::default()),
+      target_lib: TargetLib::Main,
+    };
+
+    Ok(ThreadSafeState(Arc::new(state)))
+  }
+
+  /// If `shared_permission` is None then permissions from globa state are used.
+  pub fn new_for_worker(
+    global_state: ThreadSafeGlobalState,
+    shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
+    main_module: Option<ModuleSpecifier>,
+    internal_channels: WorkerChannels,
+  ) -> Result<Self, ErrBox> {
+    let seeded_rng = match global_state.flags.seed {
+      Some(seed) => Some(Mutex::new(StdRng::seed_from_u64(seed))),
+      None => None,
+    };
+
+    let permissions = if let Some(perm) = shared_permissions {
+      perm
+    } else {
+      Arc::new(Mutex::new(global_state.permissions.clone()))
+    };
+
+    let state = State {
+      global_state,
+      main_module,
+      permissions,
+      import_map: None,
+      worker_channels: internal_channels,
+      metrics: Metrics::default(),
+      global_timer: Mutex::new(GlobalTimer::new()),
+      workers: Mutex::new(HashMap::new()),
+      loading_workers: Mutex::new(HashMap::new()),
+      next_worker_id: AtomicUsize::new(0),
+      start_time: Instant::now(),
+      seeded_rng,
+
+      resource_table: Mutex::new(ResourceTable::default()),
+      target_lib: TargetLib::Worker,
     };
 
     Ok(ThreadSafeState(Arc::new(state)))

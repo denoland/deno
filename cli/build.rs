@@ -71,14 +71,21 @@ fn main() {
   let snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
   let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
   custom_libs.insert(
-    "lib.deno_main.d.ts".to_string(),
-    c.join("js/lib.deno_main.d.ts"),
+    "lib.deno.window.d.ts".to_string(),
+    c.join("js/lib.deno.window.d.ts"),
   );
   custom_libs.insert(
-    "lib.deno_worker.d.ts".to_string(),
-    c.join("js/lib.deno_worker.d.ts"),
+    "lib.deno.worker.d.ts".to_string(),
+    c.join("js/lib.deno.worker.d.ts"),
   );
-  custom_libs.insert("lib.deno.d.ts".to_string(), c.join("js/lib.deno.d.ts"));
+  custom_libs.insert(
+    "lib.deno.shared_globals.d.ts".to_string(),
+    c.join("js/lib.deno.shared_globals.d.ts"),
+  );
+  custom_libs.insert(
+    "lib.deno.ns.d.ts".to_string(),
+    c.join("js/lib.deno.ns.d.ts"),
+  );
 
   let main_module_name =
     deno_typescript::compile_bundle(&bundle_path, root_names)

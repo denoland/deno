@@ -2,6 +2,7 @@
 use crate::compilers::CompiledModule;
 use crate::compilers::JsCompiler;
 use crate::compilers::JsonCompiler;
+use crate::compilers::TargetLib;
 use crate::compilers::TsCompiler;
 use crate::compilers::WasmCompiler;
 use crate::deno_dir;
@@ -122,6 +123,7 @@ impl ThreadSafeGlobalState {
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
+    target_lib: TargetLib,
   ) -> impl Future<Output = Result<CompiledModule, ErrBox>> {
     let state1 = self.clone();
     let state2 = self.clone();
@@ -141,11 +143,15 @@ impl ThreadSafeGlobalState {
         msg::MediaType::TypeScript
         | msg::MediaType::TSX
         | msg::MediaType::JSX => {
-          state1.ts_compiler.compile_async(state1.clone(), &out)
+          state1
+            .ts_compiler
+            .compile_async(state1.clone(), &out, target_lib)
         }
         msg::MediaType::JavaScript => {
           if state1.ts_compiler.compile_js {
-            state1.ts_compiler.compile_async(state1.clone(), &out)
+            state1
+              .ts_compiler
+              .compile_async(state1.clone(), &out, target_lib)
           } else {
             state1.js_compiler.compile_async(&out)
           }

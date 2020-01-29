@@ -15,17 +15,27 @@ const options = host.getCompilationSettings();
 // This is a hacky way of adding our libs to the libs available in TypeScript()
 // as these are internal APIs of TypeScript which maintain valid libs
 /* eslint-disable @typescript-eslint/no-explicit-any */
-(ts as any).libs.push("deno_main", "deno_worker", "deno");
-(ts as any).libMap.set("deno_main", "lib.deno_main.d.ts");
-(ts as any).libMap.set("deno_worker", "lib.deno_worker.d.ts");
-(ts as any).libMap.set("deno", "lib.deno.d.ts");
+(ts as any).libs.push(
+  "deno_ns",
+  "deno_window",
+  "deno_worker",
+  "deno_shared_globals"
+);
+(ts as any).libMap.set("deno_ns", "lib.deno.ns.d.ts");
+(ts as any).libMap.set("deno_window", "lib.deno.window.d.ts");
+(ts as any).libMap.set("deno_worker", "lib.deno.worker.d.ts");
+(ts as any).libMap.set("deno_shared_globals", "lib.deno.shared_globals.d.ts");
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 // this pre-populates the cache at snapshot time of our library files, so they
 // are available in the future when needed.
-host.getSourceFile(`${ASSETS}/lib.deno_main.d.ts`, ts.ScriptTarget.ESNext);
-host.getSourceFile(`${ASSETS}/lib.deno_worker.d.ts`, ts.ScriptTarget.ESNext);
-host.getSourceFile(`${ASSETS}/lib.deno.d.ts`, ts.ScriptTarget.ESNext);
+host.getSourceFile(`${ASSETS}/lib.deno.ns.d.ts`, ts.ScriptTarget.ESNext);
+host.getSourceFile(`${ASSETS}/lib.deno.window.d.ts`, ts.ScriptTarget.ESNext);
+host.getSourceFile(`${ASSETS}/lib.deno.worker.d.ts`, ts.ScriptTarget.ESNext);
+host.getSourceFile(
+  `${ASSETS}/lib.deno.shared_globals.d.ts`,
+  ts.ScriptTarget.ESNext
+);
 
 /**
  * This function spins up TS compiler and loads all available libraries
