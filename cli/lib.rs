@@ -417,9 +417,8 @@ fn run_script(flags: DenoFlags) {
   }
 }
 
-#[allow(unused)]
-fn format_command(check: bool, _files: Option<Vec<String>>) {
-  formatter::format(check);
+fn format_command(files: Option<Vec<String>>, check: bool) {
+  formatter::format(files, check);
 }
 
 pub fn main() {
@@ -447,7 +446,7 @@ pub fn main() {
     DenoSubcommand::Completions => {}
     DenoSubcommand::Eval => eval_command(flags),
     DenoSubcommand::Fetch => fetch_command(flags),
-    DenoSubcommand::Format { check, files } => format_command(check, files),
+    DenoSubcommand::Format { check, files } => format_command(files, check),
     DenoSubcommand::Info => info_command(flags),
     DenoSubcommand::Repl => run_repl(flags),
     DenoSubcommand::Run => run_script(flags),
