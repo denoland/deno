@@ -32,7 +32,6 @@ fn get_supported_files(paths: Vec<PathBuf>) -> Vec<PathBuf> {
 
   for path in paths {
     if is_supported(&path) {
-      eprintln!("Found matching file: {:?}", path);
       files_to_check.push(path.to_owned());
     }
   }
@@ -57,8 +56,9 @@ fn check_source_files(paths: Vec<PathBuf>) {
           not_formatted_files.push(file_path);
         }
       }
-      Err(_) => {
-        // panic!("error during formatting {}", &file_path_str);
+      Err(e) => {
+        eprintln!("Error checking: {}", &file_path_str);
+        eprintln!("   {}", e);
       }
     }
   }
@@ -85,8 +85,9 @@ fn format_source_files(paths: Vec<PathBuf>) {
           not_formatted_files.push(file_path);
         }
       }
-      Err(_) => {
-        panic!("error during formatting");
+      Err(e) => {
+        eprintln!("Error formatting: {}", &file_path_str);
+        eprintln!("   {}", e);
       }
     }
   }

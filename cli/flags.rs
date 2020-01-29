@@ -235,6 +235,7 @@ fn fmt_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   flags.allow_read = true;
   flags.allow_write = true;
   flags.argv.push(PRETTIER_URL.to_string());
+  reload_arg_parse(flags, matches);
 
   let files: Vec<String> = matches
     .values_of("files")
@@ -565,6 +566,7 @@ Automatically downloads Prettier dependencies on first run.
 
   deno fmt myfile1.ts myfile2.ts",
         )
+        .arg(reload_arg())
         .arg(
           Arg::with_name("check")
             .long("check")

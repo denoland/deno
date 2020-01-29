@@ -418,8 +418,8 @@ fn run_script(flags: DenoFlags) {
 }
 
 #[allow(unused)]
-fn format_command(_flags: DenoFlags) {
-  formatter::format(true);
+fn format_command(flags: DenoFlags) {
+  formatter::format(flags.reload);
 }
 
 pub fn main() {
