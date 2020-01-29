@@ -1935,7 +1935,7 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       DenoFlags {
-        subcommand: DenoSubcommand::Installer {
+        subcommand: DenoSubcommand::Install {
           dir: None,
           exe_name: "deno_colors".to_string(),
           module_url: "https://deno.land/std/examples/colors.ts".to_string(),
@@ -1960,7 +1960,7 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       DenoFlags {
-        subcommand: DenoSubcommand::Installer {
+        subcommand: DenoSubcommand::Install {
           dir: None,
           exe_name: "file_server".to_string(),
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
@@ -1989,7 +1989,7 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       DenoFlags {
-        subcommand: DenoSubcommand::Installer {
+        subcommand: DenoSubcommand::Install {
           dir: Some("/usr/local/bin".to_string()),
           exe_name: "file_server".to_string(),
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
