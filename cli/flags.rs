@@ -1952,10 +1952,10 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "install",
-      "file_server",
-      "https://deno.land/std/http/file_server.ts",
       "--allow-net",
-      "--allow-read"
+      "--allow-read",
+      "file_server",
+      "https://deno.land/std/http/file_server.ts"
     ]);
     assert_eq!(
       r.unwrap(),
@@ -1981,10 +1981,12 @@ mod tests {
       "install",
       "-d",
       "/usr/local/bin",
+      "--allow-net",
+      "--allow-read",
       "file_server",
       "https://deno.land/std/http/file_server.ts",
-      "--allow-net",
-      "--allow-read"
+      "arg1",
+      "arg2"
     ]);
     assert_eq!(
       r.unwrap(),
@@ -1993,7 +1995,7 @@ mod tests {
           dir: Some("/usr/local/bin".to_string()),
           exe_name: "file_server".to_string(),
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
-          args: vec![],
+          args: svec!["arg1", "arg2"],
         },
         argv: svec!["deno"],
         allow_net: true,
