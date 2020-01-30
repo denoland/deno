@@ -9,9 +9,9 @@ use std::io::Error;
 use std::io::ErrorKind;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
 use std::path::PathBuf;
 use url::Url;
+use which;
 
 lazy_static! {
     static ref EXEC_NAME_RE: Regex = RegexBuilder::new(
@@ -30,59 +30,6 @@ fn yes_no_prompt(msg: &str) -> bool {
     .read_line(&mut buffer)
     .expect("Couldn't read from stdin");
   buffer.starts_with('y') | buffer.starts_with('Y')
-}
-
-fn check_if_exists_in_path(file_path: &Path) -> bool {
-  // In Windows's Powershell $PATH does not exist, so use $Path instead.
-  // $HOMEDRIVE is only used on Windows.
-  let env_path = if let Ok(p) = env::var("PATH").map(String::into) {
-    p
-  } else if let Ok(p) = env::var("Path").map(String::into) {
-    p
-  } else {
-    "".to_string()
-  };
-
-  let paths: Vec<&str> = if cfg!(windows) {
-    env_path.split(';').collect()
-  } else {
-    env_path.split(':').collect()
-  };
-
-  let homedrive = env::var("HOMEDIRVE")
-    .map(String::into)
-    .unwrap_or_else(|_| "".to_string());
-
-  for p in paths {
-    // TODO: this resolves symlinks, is it ok?
-    let path_in_env = match fs::canonicalize(p) {
-      Ok(p) => p,
-      Err(e) => {
-        println!("failed to canonicalize path {:?} {:?}", p, e);
-        continue;
-      }
-    };
-
-    // On Windows paths from env contain drive letter.
-    // (eg. C:\Users\username\.deno\bin)
-    // But in the path of Deno, there is no drive letter.
-    // (eg \Users\username\.deno\bin)
-    let file_absolute_path = if cfg!(windows) {
-      if DRIVE_LETTER_REG.is_match(&path_in_env.to_string_lossy()) {
-        PathBuf::from(format!("{}\\{}", homedrive, file_path.to_string_lossy()))
-      } else {
-        file_path.to_owned()
-      }
-    } else {
-      file_path.to_owned()
-    };
-
-    if path_in_env == file_absolute_path {
-      return true;
-    }
-  }
-
-  false
 }
 
 fn is_remote_url(module_url: &str) -> bool {
@@ -246,13 +193,16 @@ pub fn install(
 
   println!("✅ Successfully installed {}", exec_name);
   println!("{}", file_path.to_string_lossy());
+  let installation_dir_str = installation_dir.to_string_lossy();
 
-  if !check_if_exists_in_path(&installation_dir) {
-    // TODO: improve this message depending on OS
-    let installation_dir_str = installation_dir.to_string_lossy();
+  if which::which(exec_name).is_err() {
     println!("ℹ️  Add {} to PATH", installation_dir_str);
-    println!("    echo 'export PATH=\"{}:$PATH\"' >> ~/.bashrc # change this to your shell", installation_dir_str);
-  };
+    if cfg!(windows) {
+      println!("    set PATH=%PATH%;{}", installation_dir_str);
+    } else {
+      println!("    echo 'export PATH=\"{}:$PATH\"' >> ~/.bashrc # change this to your shell", installation_dir_str);
+    }
+  }
 
   Ok(())
 }
