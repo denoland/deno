@@ -79,15 +79,14 @@ fn op_create_worker(
 
   let parent_state = state.clone();
 
-  // TODO(bartlomieju): Isn't this wrong?
-  let mut module_specifier = ModuleSpecifier::resolve_url_or_path(specifier)?;
-  if !has_source_code {
+  // TODO(bartlomieju): parent_state.main_module should always be defined
+  let module_specifier =
     if let Some(referrer) = parent_state.main_module.as_ref() {
       let referrer = referrer.clone().to_string();
-      module_specifier = ModuleSpecifier::resolve_import(specifier, &referrer)?;
-    }
-  }
-
+      ModuleSpecifier::resolve_import(specifier, &referrer)?
+    } else {
+      ModuleSpecifier::resolve_url_or_path(specifier)?
+    };
   let (int, ext) = ThreadSafeState::create_channels();
   let child_state = ThreadSafeState::new_for_worker(
     state.global_state.clone(),
@@ -287,7 +286,7 @@ fn op_host_get_message(
   let fut = worker.get_message();
 
   let op = async move {
-    let maybe_buf = fut.await.unwrap();
+    let maybe_buf = fut.await;
     Ok(json!({ "data": maybe_buf }))
   };
 

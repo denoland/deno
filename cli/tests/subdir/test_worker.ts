@@ -3,9 +3,6 @@ if (self.name !== "tsWorker") {
 }
 
 onmessage = function(e): void {
-  console.log(e.data);
-
   postMessage(e.data);
-
   close();
 };

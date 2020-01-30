@@ -1199,6 +1199,12 @@ impl ErrWithV8Handle {
   pub fn get_handle(&mut self) -> &mut v8::Global<v8::Value> {
     &mut self.handle
   }
+
+  // Consumes `Self` returning `err`.
+  // Caller must reset global handle manually.
+  pub fn get_error(self) -> ErrBox {
+    self.err
+  }
 }
 
 unsafe impl Send for ErrWithV8Handle {}

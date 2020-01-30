@@ -90,6 +90,7 @@ export class WorkerImpl extends EventTarget implements Worker {
   public onerror?: (e: any) => void;
   public onmessage?: (data: any) => void;
   public onmessageerror?: () => void;
+  private name: string;
 
   constructor(specifier: string, options?: WorkerOptions) {
     super();
@@ -106,6 +107,7 @@ export class WorkerImpl extends EventTarget implements Worker {
       );
     }
 
+    this.name = options?.name ?? "unknown";
     const hasSourceCode = false;
     const sourceCode = new Uint8Array();
 
@@ -161,12 +163,17 @@ export class WorkerImpl extends EventTarget implements Worker {
     // If worker has not been immediately executed
     // then let's await it's readiness
     if (!this.ready) {
+      console.log("result3 pre", this.name);
       const result = await hostGetWorkerLoaded(this.id);
-
+      console.log("result3 post", this.name);
       if (result.error) {
         if (!this.handleError(result.error)) {
+          console.log("error handled in worker");
           throw new Error(result.error.message);
         }
+        console.log("error in worker closing worker");
+        console.log("closing", this.name);
+        hostCloseWorker(this.id);
         return;
       }
     }
@@ -180,8 +187,9 @@ export class WorkerImpl extends EventTarget implements Worker {
     this.run();
 
     while (true) {
+      console.log("result1 pre", this.name);
       const result = await hostPollWorker(this.id);
-
+      console.log("result1 post", this.name);
       if (result.error) {
         if (!this.handleError(result.error)) {
           throw Error(result.error.message);
@@ -190,6 +198,7 @@ export class WorkerImpl extends EventTarget implements Worker {
         }
       } else {
         this.isClosing = true;
+        console.log("closing", this.name);
         hostCloseWorker(this.id);
         break;
       }
@@ -211,7 +220,9 @@ export class WorkerImpl extends EventTarget implements Worker {
 
   private async run(): Promise<void> {
     while (!this.isClosing) {
+      console.log("result2 pre", this.name);
       const data = await hostGetMessage(this.id);
+      console.log("result2 post", this.name);
       if (data == null) {
         log("worker got null message. quitting.");
         break;

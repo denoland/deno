@@ -21,6 +21,10 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
     "worker_get_message",
     s.core_op(json_op(s.stateful_op(op_worker_get_message))),
   );
+  i.register_op(
+    "worker_close",
+    s.core_op(json_op(s.stateful_op(op_worker_close))),
+  );
 }
 
 /// Get message from host as guest worker
@@ -51,5 +55,16 @@ fn op_worker_post_message(
   futures::executor::block_on(sender.send(d))
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
 
+  Ok(JsonOp::Sync(json!({})))
+}
+
+/// Notify host that guest worker closes
+fn op_worker_close(
+  state: &ThreadSafeState,
+  _args: Value,
+  _data: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let mut sender = state.worker_channels.sender.clone();
+  sender.close_channel();
   Ok(JsonOp::Sync(json!({})))
 }

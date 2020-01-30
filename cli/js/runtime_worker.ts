@@ -55,7 +55,13 @@ let isClosing = false;
 let hasBootstrapped = false;
 
 export function close(): void {
+  if (isClosing) {
+    return;
+  }
+
   isClosing = true;
+  console.log("closing worker");
+  sendSync(dispatch.OP_WORKER_CLOSE);
 }
 
 export async function runWorkerMessageLoop(): Promise<void> {
