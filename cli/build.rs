@@ -34,6 +34,11 @@ fn op_fetch_asset(
 }
 
 fn main() {
+  // Don't build V8 if "cargo doc" is being run. This is to support docs.rs.
+  if env::var_os("RUSTDOCFLAGS").is_some() {
+    return;
+  }
+
   // To debug snapshot issues uncomment:
   // deno_typescript::trace_serializer();
 
