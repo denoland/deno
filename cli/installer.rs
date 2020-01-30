@@ -8,6 +8,7 @@ use std::io;
 use std::io::Error;
 use std::io::ErrorKind;
 use std::io::Write;
+#[cfg(not(windows))]
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use url::Url;
