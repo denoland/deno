@@ -4,7 +4,7 @@ const jsWorker = new Worker("./sibling_worker.js", {
   name: "sibling"
 });
 
-jsWorker.onerror = e => {
+jsWorker.onerror = _e => {
   postMessage({ type: "error" });
 };
 

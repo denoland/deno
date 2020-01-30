@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEquals } from "./test_util.ts";
+import { test, assertEquals } from "./test_util.ts";
 import { runIfMain } from "../../std/testing/mod.ts";
 
 export interface ResolvableMethods<T> {
@@ -79,7 +79,7 @@ test(async function workerThrowsWhenExecuting(): Promise<void> {
     type: "module"
   });
 
-  // eslint-disable-next-line @typesciprt-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   throwingWorker.onerror = (e: any): void => {
     e.preventDefault();
     assertEquals(e.message, "Uncaught Error: Thrown error");
