@@ -96,9 +96,17 @@ export function cpus(): CPUCoreInfo[] {
   notImplemented(SEE_GITHUB_ISSUE);
 }
 
-/** Not yet implemented */
+/** 
+ * Returns a string identifying the endianness of the CPU for which the Deno 
+ * binary was compiled. Possible values are 'BE' for big endian and 'LE' for 
+ * little endian.
+ **/
 export function endianness(): "BE" | "LE" {
-  notImplemented(SEE_GITHUB_ISSUE);
+  // Source: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DataView#Endianness
+  const buffer = new ArrayBuffer(2);
+  new DataView(buffer).setInt16(0, 256, true /* littleEndian */);
+  // Int16Array uses the platform's endianness.
+  return new Int16Array(buffer)[0] === 256 ? "LE" : "BE";
 }
 
 /** Not yet implemented */
