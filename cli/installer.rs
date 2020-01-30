@@ -57,8 +57,8 @@ fn check_if_exists_in_path(file_path: &Path) -> bool {
     // TODO: this resolves symlinks, is it ok?
     let path_in_env = match fs::canonicalize(p) {
       Ok(p) => p,
-      Err => {
-        println!("failed to canonicalize path {:?}", p);
+      Err(e) => {
+        println!("failed to canonicalize path {:?} {:?}", p, e);
         continue;
       }
     };
