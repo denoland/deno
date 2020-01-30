@@ -55,7 +55,13 @@ fn check_if_exists_in_path(file_path: &Path) -> bool {
 
   for p in paths {
     // TODO: this resolves symlinks, is it ok?
-    let path_in_env = fs::canonicalize(p).expect("Failed to canonicalize path");
+    let path_in_env = match fs::canonicalize(p) {
+      Ok(p) => p,
+      Err => {
+        println!("failed to canonicalize path {:?}", p);
+        continue;
+      }
+    };
 
     // On Windows paths from env contain drive letter.
     // (eg. C:\Users\username\.deno\bin)
