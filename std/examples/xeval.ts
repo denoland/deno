@@ -7,7 +7,22 @@ type Reader = Deno.Reader;
 const AsyncFunction = Object.getPrototypeOf(async function(): Promise<void> {})
   .constructor;
 
-const HELP_MSG = `Deno xeval
+/* eslint-disable max-len */
+const HELP_MSG = `xeval
+
+Eval a script on lines from stdin.
+Read from standard input and eval code on each whitespace-delimited
+string chunks.
+
+Print all the usernames in /etc/passwd:
+  cat /etc/passwd | deno -A https://deno.land/std/examples/xeval.ts -- "a = $.split(':'); if (a) console.log(a[0])"
+
+A complicated way to print the current git branch:
+  git branch | deno -A https://deno.land/std/examples/xeval.ts -- -I 'line' "if (line.startsWith('*')) console.log(line.slice(2))"
+
+Demonstrates breaking the input up by space delimiter instead of by lines:
+  cat LICENSE | deno -A https://deno.land/std/examples/xeval.ts -- -d " " "if ($ === 'MIT') console.log('MIT licensed')",
+
 USAGE:
   deno -A https://deno.land/std/examples/xeval.ts [OPTIONS] <code>
 OPTIONS:
@@ -15,6 +30,7 @@ OPTIONS:
   -I, --replvar <replvar>   Set variable name to be used in eval, defaults to $
 ARGS:
   <code>`;
+/* eslint-enable max-len */
 
 export type XevalFunc = (v: string) => void;
 
