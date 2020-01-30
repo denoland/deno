@@ -103,10 +103,6 @@ exit $ret
     );
     let mut file = File::create(&file_path)?;
     file.write_all(template.as_bytes())?;
-    let _metadata = fs::metadata(&file_path)?;
-    let mut permissions = _metadata.permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&file_path, permissions)?;
     Ok(())
   }
 }
