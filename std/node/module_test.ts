@@ -42,3 +42,9 @@ test(function requireIndexJS() {
   const { isIndex } = require_("./tests/cjs");
   assert(isIndex);
 });
+
+test(function requireNodeOs() {
+  const os = require_("os");
+  assert(os.arch);
+  assert(typeof os.arch() == "string");
+});
