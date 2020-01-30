@@ -63,11 +63,11 @@ fn generate_executable_file(
   let template = format!(
     r#"% {} %
 @IF EXIST "%~dp0\deno.exe" (
-    "%~dp0\deno.exe" {} %*
+  "%~dp0\deno.exe" {} %*
 ) ELSE (
-    @SETLOCAL
-    @SET PATHEXT=%PATHEXT:;.TS;=;%
-    {} %*
+  @SETLOCAL
+  @SET PATHEXT=%PATHEXT:;.TS;=;%
+  {} %*
 )"#,
     template_header,
     commands[1..].join(" "),
