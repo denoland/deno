@@ -320,11 +320,6 @@ itest!(_036_import_map_fetch {
   output: "036_import_map_fetch.out",
 });
 
-itest!(_037_current_thread {
-  args: "run --current-thread --reload 034_onload/main.ts",
-  output: "034_onload.out",
-});
-
 itest!(_038_checkjs {
   // checking if JS file is run through TS compiler
   args: "run --reload --config 038_checkjs.tsconfig.json 038_checkjs.js",

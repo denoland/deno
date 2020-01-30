@@ -1267,9 +1267,6 @@ Useful V8 flags during profiling:
 - --log-source-code
 - --track-gc-object-stats
 
-Note that you might need to run Deno with `--current-thread` flag to capture
-full V8 profiling output.
-
 To learn more about `d8` and profiling, check out the following links:
 
 - [https://v8.dev/docs/d8](https://v8.dev/docs/d8)
