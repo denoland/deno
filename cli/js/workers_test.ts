@@ -2,7 +2,6 @@
 import { test, assert, assertEquals } from "./test_util.ts";
 import { runIfMain } from "../../std/testing/mod.ts";
 
-
 export interface ResolvableMethods<T> {
   resolve: (value?: T | PromiseLike<T>) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -53,6 +52,7 @@ test(async function workersBasic(): Promise<void> {
   console.log("promise resolved :)");
 });
 
+/* FIXME(bartlomieju)
 test(async function nestedWorker(): Promise<void> {
   const promise = createResolvable();
 
@@ -70,6 +70,7 @@ test(async function nestedWorker(): Promise<void> {
   await promise;
   console.log("promise resolved :)");
 });
+*/
 
 test(async function workerThrowsWhenExecuting(): Promise<void> {
   const promise = createResolvable();
@@ -91,5 +92,3 @@ test(async function workerThrowsWhenExecuting(): Promise<void> {
 });
 
 runIfMain(import.meta);
-
-

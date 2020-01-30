@@ -237,7 +237,10 @@ impl EsIsolate {
 
   /// TODO(bartlomieju): copy-pasta to avoid problem with global handle attached
   /// to ErrBox
-  pub fn mod_evaluate_dyn_import(&mut self, id: ModuleId) -> Result<(), ErrBox> {
+  pub fn mod_evaluate_dyn_import(
+    &mut self,
+    id: ModuleId,
+  ) -> Result<(), ErrBox> {
     let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
     let mut locker = v8::Locker::new(isolate);
     let mut hs = v8::HandleScope::new(locker.enter());
