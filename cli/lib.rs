@@ -378,7 +378,6 @@ fn run_repl(flags: DenoFlags) {
 }
 
 fn run_script(flags: DenoFlags) {
-  let use_current_thread = flags.current_thread;
   let (mut worker, state) = create_worker_and_state(flags);
 
   let maybe_main_module = state.main_module.as_ref();
@@ -416,11 +415,7 @@ fn run_script(flags: DenoFlags) {
     js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
   };
 
-  if use_current_thread {
-    tokio_util::run_on_current_thread(main_future);
-  } else {
-    tokio_util::run(main_future);
-  }
+  tokio_util::run(main_future);
 }
 
 fn format_command(files: Option<Vec<String>>, check: bool) {

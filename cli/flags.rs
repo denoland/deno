@@ -85,8 +85,6 @@ pub struct DenoFlags {
   pub cached_only: bool,
   pub seed: Option<u64>,
   pub v8_flags: Option<Vec<String>>,
-  // Use tokio::runtime::current_thread
-  pub current_thread: bool,
 
   pub bundle_output: Option<String>,
 
@@ -438,10 +436,6 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
     flags.cached_only = true;
   }
 
-  if matches.is_present("current-thread") {
-    flags.current_thread = true;
-  }
-
   if matches.is_present("seed") {
     let seed_string = matches.value_of("seed").unwrap();
     let seed = seed_string.parse::<u64>().unwrap();
@@ -753,11 +747,6 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
       Arg::with_name("cached-only")
         .long("cached-only")
         .help("Require that remote dependencies are already cached"),
-    )
-    .arg(
-      Arg::with_name("current-thread")
-        .long("current-thread")
-        .help("Use tokio::runtime::current_thread"),
     )
     .arg(
       Arg::with_name("seed")
@@ -1868,20 +1857,6 @@ mod tests {
         subcommand: DenoSubcommand::Run,
         argv: svec!["deno", "script.ts"],
         cached_only: true,
-        ..DenoFlags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn current_thread() {
-    let r = flags_from_vec_safe(svec!["deno", "--current-thread", "script.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      DenoFlags {
-        subcommand: DenoSubcommand::Run,
-        argv: svec!["deno", "script.ts"],
-        current_thread: true,
         ..DenoFlags::default()
       }
     );
