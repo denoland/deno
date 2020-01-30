@@ -28,6 +28,7 @@ pub mod diagnostics;
 mod disk_cache;
 mod file_fetcher;
 pub mod flags;
+mod fmt;
 pub mod fmt_errors;
 mod fs;
 mod global_state;
@@ -55,6 +56,7 @@ pub mod version;
 mod web_worker;
 pub mod worker;
 
+use crate::compilers::TargetLib;
 use crate::deno_error::js_check;
 use crate::deno_error::{print_err_and_exit, print_msg_and_exit};
 use crate::global_state::ThreadSafeGlobalState;
@@ -147,7 +149,12 @@ fn create_worker_and_state(
 }
 
 fn types_command() {
-  println!("{}\n{}", crate::js::DENO_NS_LIB, crate::js::DENO_MAIN_LIB);
+  println!(
+    "{}\n{}\n{}",
+    crate::js::DENO_NS_LIB,
+    crate::js::SHARED_GLOBALS_LIB,
+    crate::js::WINDOW_LIB
+  );
 }
 
 fn print_cache_info(worker: MainWorker) {
@@ -199,7 +206,7 @@ async fn print_file_info(
 
   let maybe_compiled = global_state_
     .clone()
-    .fetch_compiled_module(&module_specifier, None)
+    .fetch_compiled_module(&module_specifier, None, TargetLib::Main)
     .await;
   if let Err(e) = maybe_compiled {
     debug!("compiler error exiting!");
@@ -438,6 +445,10 @@ fn run_script(flags: DenoFlags) {
   }
 }
 
+fn format_command(files: Option<Vec<String>>, check: bool) {
+  fmt::format_files(files, check);
+}
+
 pub fn main() {
   #[cfg(windows)]
   ansi_term::enable_ansi_support().ok(); // For Windows 10
@@ -463,6 +474,7 @@ pub fn main() {
     DenoSubcommand::Completions => {}
     DenoSubcommand::Eval => eval_command(flags),
     DenoSubcommand::Fetch => fetch_command(flags),
+    DenoSubcommand::Format { check, files } => format_command(files, check),
     DenoSubcommand::Info => info_command(flags),
     DenoSubcommand::Install {
       dir,

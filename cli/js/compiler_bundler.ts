@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { bundleLoader } from "./compiler_bootstrap.ts";
+import { BUNDLE_LOADER } from "./compiler_bootstrap.ts";
 import {
   assert,
   commonPath,
@@ -55,7 +55,7 @@ export function buildBundle(
   } else {
     instantiate = `instantiate("${rootName}");\n`;
   }
-  return `${bundleLoader}\n${data}\n${instantiate}`;
+  return `${BUNDLE_LOADER}\n${data}\n${instantiate}`;
 }
 
 /** Set the rootExports which will by the `emitBundle()` */

@@ -280,7 +280,6 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
     "lib.esnext.bigint.d.ts" => inc!("lib.esnext.bigint.d.ts"),
     "lib.esnext.intl.d.ts" => inc!("lib.esnext.intl.d.ts"),
     "lib.esnext.symbol.d.ts" => inc!("lib.esnext.symbol.d.ts"),
-    "lib.webworker.d.ts" => inc!("lib.webworker.d.ts"),
     _ => None,
   }
 }

@@ -4,7 +4,6 @@ use crate::deno_error::bad_resource;
 use crate::deno_error::js_check;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
-use crate::deno_error::GetErrorKind;
 use crate::fmt_errors::JSError;
 use crate::ops::json_op;
 use crate::startup_data;
@@ -60,6 +59,7 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateWorkerArgs {
+  name: Option<String>,
   specifier: String,
   has_source_code: bool,
   source_code: String,
@@ -89,18 +89,30 @@ fn op_create_worker(
   }
 
   let (int, ext) = ThreadSafeState::create_channels();
-  let child_state = ThreadSafeState::new(
+  let child_state = ThreadSafeState::new_for_worker(
     state.global_state.clone(),
     Some(parent_state.permissions.clone()), // by default share with parent
     Some(module_specifier.clone()),
     int,
   )?;
+  let worker_name = if let Some(name) = args.name {
+    name
+  } else {
+    // TODO(bartlomieju): change it to something more descriptive
+    format!("USER-WORKER-{}", specifier)
+  };
+
   // TODO: add a new option to make child worker not sharing permissions
   // with parent (aka .clone(), requests from child won't reflect in parent)
-  let name = format!("USER-WORKER-{}", specifier);
-  let mut worker =
-    WebWorker::new(name, startup_data::deno_isolate_init(), child_state, ext);
-  js_check(worker.execute("bootstrapWorkerRuntime()"));
+  let mut worker = WebWorker::new(
+    worker_name.to_string(),
+    startup_data::deno_isolate_init(),
+    child_state,
+    ext,
+  );
+  let script = format!("bootstrapWorkerRuntime(\"{}\")", worker_name);
+  js_check(worker.execute(&script));
+  js_check(worker.execute("runWorkerMessageLoop()"));
 
   let worker_id = parent_state.add_child_worker(worker.clone());
 
@@ -151,6 +163,8 @@ impl Future for WorkerPollFuture {
 }
 
 fn serialize_worker_result(result: Result<(), ErrBox>) -> Value {
+  use crate::deno_error::GetErrorKind;
+
   if let Err(error) = result {
     match error.kind() {
       ErrorKind::JSError => {
@@ -249,7 +263,7 @@ fn op_host_resume_worker(
 
   let mut workers_table = state_.workers.lock().unwrap();
   let worker = workers_table.get_mut(&id).unwrap();
-  js_check(worker.execute("bootstrapWorkerRuntime()"));
+  js_check(worker.execute("runWorkerMessageLoop()"));
   Ok(JsonOp::Sync(json!({})))
 }
 

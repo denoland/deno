@@ -229,7 +229,7 @@ When this program is started, it throws PermissionDenied error.
 
 ```shell
 $ deno https://deno.land/std/examples/echo_server.ts
-error: Uncaught PermissionDenied: run again with the --allow-net flag
+error: Uncaught PermissionDenied: network access to "0.0.0.0:8080", run again with the --allow-net flag
 ► $deno$/dispatch_json.ts:40:11
     at DenoError ($deno$/errors.ts:20:5)
     ...
@@ -329,7 +329,7 @@ This is an example to restrict file system access by whitelist.
 
 ```shell
 $ deno --allow-read=/usr https://deno.land/std/examples/cat.ts /etc/passwd
-error: Uncaught PermissionDenied: run again with the --allow-read flag
+error: Uncaught PermissionDenied: read access to "/etc/passwd", run again with the --allow-read flag
 ► $deno$/dispatch_json.ts:40:11
     at DenoError ($deno$/errors.ts:20:5)
     ...
@@ -847,7 +847,7 @@ $ echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc
 Installation directory can be changed using `-d/--dir` flag:
 
 ```shell
-$ deno install --dir /usr/local/bin prettier https://deno.land/std/prettier/main.ts --allow-write --allow-read
+$ deno install --dir /usr/local/bin file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
 ```
 
 When installing a script you can specify permissions that will be used to run
@@ -857,13 +857,11 @@ additional CLI flags you want to pass to the script.
 Example:
 
 ```shell
-$ deno install format_check https://deno.land/std/prettier/main.ts --allow-write --allow-read --check --print-width 88 --tab-width 2
+$ deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read 8080
 ```
 
-Above command creates an executable called `format_check` that runs `prettier`
-with write and read permissions. When you run `format_check` deno will run
-prettier in `check` mode and configured to use `88` column width with `2` column
-tabs.
+Above command creates an executable called `file_server` that runs with write
+and read permissions and binds to port 8080.
 
 It is a good practice to use `import.meta.main` idiom for an entry point for
 executable file. See
