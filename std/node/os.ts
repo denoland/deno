@@ -19,6 +19,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 import { notImplemented } from "./_utils.ts";
+import { EOL as fsEOL } from "../fs/eol.ts";
 
 const SEE_GITHUB_ISSUE = "See https://github.com/denoland/deno/issues/3802";
 
@@ -209,7 +210,7 @@ export const constants = {
   }
 };
 
-export const EOL = Deno.build.os == "win" ? "\r\n" : "\n";
+export const EOL = Deno.build.os == "win" ? fsEOL.CRLF : fsEOL.LF;
 
 const validateInt32 = (
   value: number,
