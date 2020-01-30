@@ -28,6 +28,7 @@ pub mod diagnostics;
 mod disk_cache;
 mod file_fetcher;
 pub mod flags;
+mod fmt;
 pub mod fmt_errors;
 mod fs;
 mod global_state;
@@ -422,6 +423,10 @@ fn run_script(flags: DenoFlags) {
   }
 }
 
+fn format_command(files: Option<Vec<String>>, check: bool) {
+  fmt::format_files(files, check);
+}
+
 pub fn main() {
   #[cfg(windows)]
   ansi_term::enable_ansi_support().ok(); // For Windows 10
@@ -442,11 +447,12 @@ pub fn main() {
   };
   log::set_max_level(log_level.to_level_filter());
 
-  match flags.subcommand {
+  match flags.clone().subcommand {
     DenoSubcommand::Bundle => bundle_command(flags),
     DenoSubcommand::Completions => {}
     DenoSubcommand::Eval => eval_command(flags),
     DenoSubcommand::Fetch => fetch_command(flags),
+    DenoSubcommand::Format { check, files } => format_command(files, check),
     DenoSubcommand::Info => info_command(flags),
     DenoSubcommand::Repl => run_repl(flags),
     DenoSubcommand::Run => run_script(flags),
