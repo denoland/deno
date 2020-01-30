@@ -265,6 +265,7 @@ mod tests {
   }
 
   #[test]
+  #[ignore]
   fn install_basic() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
@@ -386,6 +387,7 @@ exit $ret
   }
 
   #[test]
+  #[ignore]
   fn install_with_flags() {
     let temp_dir = TempDir::new().expect("tempdir fail");
 
@@ -444,6 +446,7 @@ exit $ret
   }
 
   #[test]
+  #[ignore]
   fn install_local_module() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let local_module = env::current_dir().unwrap().join("echo_server.ts");
