@@ -34,6 +34,7 @@ fn get_config() -> dprint::Configuration {
     .next_control_flow_position(dprint::NextControlFlowPosition::SameLine)
     .force_multi_line_parameters(true)
     .force_multi_line_arguments(true)
+    .binary_expression_operator_position(dprint::OperatorPosition::SameLine)
     .build()
 }
 
