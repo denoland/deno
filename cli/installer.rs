@@ -12,7 +12,6 @@ use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use url::Url;
-use which;
 
 lazy_static! {
     static ref EXEC_NAME_RE: Regex = RegexBuilder::new(
@@ -209,16 +208,27 @@ pub fn install(
   println!("{}", file_path.to_string_lossy());
   let installation_dir_str = installation_dir.to_string_lossy();
 
-  if which::which(exec_name).is_err() {
+  if !is_in_path(&installation_dir) {
     println!("ℹ️  Add {} to PATH", installation_dir_str);
     if cfg!(windows) {
       println!("    set PATH=%PATH%;{}", installation_dir_str);
     } else {
-      println!("    echo 'export PATH=\"{}:$PATH\"' >> ~/.bashrc # change this to your shell", installation_dir_str);
+      println!("    export PATH=\"{}:$PATH\"", installation_dir_str);
     }
   }
 
   Ok(())
+}
+
+fn is_in_path(dir: &PathBuf) -> bool {
+  if let Some(paths) = env::var_os("PATH") {
+    for p in env::split_paths(&paths) {
+      if *dir == p {
+        return true;
+      }
+    }
+  }
+  false
 }
 
 #[cfg(test)]
