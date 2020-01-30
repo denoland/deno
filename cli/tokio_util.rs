@@ -1,13 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use std::future::Future;
-use tokio;
-use tokio::runtime;
 
+#[cfg(test)]
 pub fn run<F>(future: F)
 where
-  F: Future<Output = ()> + Send + 'static,
+  F: std::future::Future<Output = ()> + Send + 'static,
 {
-  let mut rt = runtime::Builder::new()
+  let mut rt = tokio::runtime::Builder::new()
     .threaded_scheduler()
     .enable_all()
     .thread_name("deno")
