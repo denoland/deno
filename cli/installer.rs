@@ -301,6 +301,7 @@ exit $ret
   }
 
   #[test]
+  #[ignore]
   fn install_custom_dir() {
     let temp_dir = TempDir::new().expect("tempdir fail");
 
