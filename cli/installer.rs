@@ -68,7 +68,8 @@ fn generate_executable_file(
   @SETLOCAL
   @SET PATHEXT=%PATHEXT:;.TS;=;%
   {} %*
-)"#,
+)
+"#,
     template_header,
     commands[1..].join(" "),
     commands.join(" ")
