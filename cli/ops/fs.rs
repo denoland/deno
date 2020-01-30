@@ -539,12 +539,12 @@ fn op_make_temp_dir(
 ) -> Result<JsonOp, ErrBox> {
   let args: MakeTempDirArgs = serde_json::from_value(args)?;
 
-  // FIXME
-  state.check_write(Path::new("make_temp"))?;
-
   let dir = args.dir.map(PathBuf::from);
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
+
+  state
+    .check_write(dir.clone().unwrap_or_else(std::env::temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
