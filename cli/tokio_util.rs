@@ -15,16 +15,3 @@ where
     .expect("Unable to create Tokio runtime");
   rt.block_on(future);
 }
-
-pub fn run_on_current_thread<F>(future: F)
-where
-  F: Future<Output = ()> + Send + 'static,
-{
-  let mut rt = runtime::Builder::new()
-    .basic_scheduler()
-    .enable_all()
-    .thread_name("deno")
-    .build()
-    .expect("Unable to create Tokio runtime");
-  rt.block_on(future);
-}
