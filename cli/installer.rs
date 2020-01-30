@@ -98,15 +98,15 @@ fn generate_executable_file(
 basedir=$(dirname "$(echo "$0" | sed -e 's,\\\\,/,g')")
 
 case \`uname\` in
-*CYGWIN*) basedir=\`cygpath -w "$basedir"\`;;
+  *CYGWIN*) basedir=\`cygpath -w "$basedir"\`;;
 esac
 
 if [ -x "$basedir/deno" ]; then
-"$basedir/deno" {} "$@"
-ret=$?
+  "$basedir/deno" {} "$@"
+  ret=$?
 else
-{} "$@"
-ret=$?
+  {} "$@"
+  ret=$?
 fi
 exit $ret
 "#,
@@ -301,7 +301,6 @@ exit $ret
   }
 
   #[test]
-  #[ignore]
   fn install_custom_dir() {
     let temp_dir = TempDir::new().expect("tempdir fail");
 
@@ -356,7 +355,6 @@ exit $ret
   }
 
   #[test]
-  #[ignore]
   fn install_with_flags() {
     let temp_dir = TempDir::new().expect("tempdir fail");
 
@@ -415,7 +413,6 @@ exit $ret
   }
 
   #[test]
-  #[ignore]
   fn install_local_module() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let local_module = env::current_dir().unwrap().join("echo_server.ts");
