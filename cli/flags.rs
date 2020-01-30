@@ -28,8 +28,6 @@ macro_rules! std_url {
   };
 }
 
-/// Used for `deno install...` subcommand
-const INSTALLER_URL: &str = std_url!("installer/mod.ts");
 /// Used for `deno test...` subcommand
 const TEST_RUNNER_URL: &str = std_url!("testing/runner.ts");
 
@@ -45,7 +43,12 @@ pub enum DenoSubcommand {
   },
   Help,
   Info,
-  Install,
+  Install {
+    dir: Option<String>,
+    exe_name: String,
+    module_url: String,
+    args: Vec<String>,
+  },
   Repl,
   Run,
   Types,
@@ -90,6 +93,63 @@ pub struct DenoFlags {
 
   pub lock: Option<String>,
   pub lock_write: bool,
+}
+
+impl DenoFlags {
+  /// Return list of permission arguments that are equivalent
+  /// to the ones used to create `self`.
+  pub fn to_permission_args(&self) -> Vec<String> {
+    let mut args = vec![];
+
+    if !self.read_whitelist.is_empty() {
+      let s = format!("--allow-read={}", self.read_whitelist.join(","));
+      args.push(s);
+    }
+
+    if self.allow_read {
+      args.push("--allow-read".to_string());
+    }
+
+    if !self.write_whitelist.is_empty() {
+      let s = format!("--allow-write={}", self.write_whitelist.join(","));
+      args.push(s);
+    }
+
+    if self.allow_write {
+      args.push("--allow-write".to_string());
+    }
+
+    if !self.net_whitelist.is_empty() {
+      let s = format!("--allow-net={}", self.net_whitelist.join(","));
+      args.push(s);
+    }
+
+    if self.allow_net {
+      args.push("--allow-net".to_string());
+    }
+
+    if self.allow_env {
+      args.push("--allow-env".to_string());
+    }
+
+    if self.allow_run {
+      args.push("--allow-run".to_string());
+    }
+
+    if self.allow_plugin {
+      args.push("--allow-plugin".to_string());
+    }
+
+    if self.allow_hrtime {
+      args.push("--allow-hrtime".to_string());
+    }
+
+    if self.allow_env {
+      args.push("--allow-env".to_string());
+    }
+
+    args
+  }
 }
 
 static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
@@ -247,30 +307,32 @@ fn fmt_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 }
 
 fn install_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
-  flags.subcommand = DenoSubcommand::Run;
-  flags.allow_read = true;
-  flags.allow_write = true;
-  flags.allow_net = true;
-  flags.allow_env = true;
-  flags.allow_run = true;
-  flags.argv.push(INSTALLER_URL.to_string());
+  permission_args_parse(flags, matches);
 
-  if matches.is_present("dir") {
+  let dir = if matches.is_present("dir") {
     let install_dir = matches.value_of("dir").unwrap();
-    flags.argv.push("--dir".to_string());
-    println!("dir {}", install_dir);
-    flags.argv.push(install_dir.to_string());
+    Some(install_dir.to_string())
   } else {
-    println!("no dir");
+    None
+  };
+
+  let exe_name = matches.value_of("exe_name").unwrap().to_string();
+  let cmd_values = matches.values_of("cmd").unwrap();
+  let mut cmd_args = vec![];
+
+  for value in cmd_values {
+    cmd_args.push(value.to_string());
   }
 
-  let exe_name = matches.value_of("exe_name").unwrap();
-  flags.argv.push(String::from(exe_name));
+  let module_url = cmd_args[0].to_string();
+  let args = cmd_args[1..].to_vec();
 
-  let cmd = matches.values_of("cmd").unwrap();
-  for arg in cmd {
-    flags.argv.push(String::from(arg));
-  }
+  flags.subcommand = DenoSubcommand::Install {
+    dir,
+    exe_name,
+    module_url,
+    args,
+  };
 }
 
 fn bundle_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
@@ -375,63 +437,8 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
+  permission_args_parse(flags, matches);
 
-  if matches.is_present("allow-read") {
-    if matches.value_of("allow-read").is_some() {
-      let read_wl = matches.values_of("allow-read").unwrap();
-      let raw_read_whitelist: Vec<String> =
-        read_wl.map(std::string::ToString::to_string).collect();
-      flags.read_whitelist = resolve_fs_whitelist(&raw_read_whitelist);
-      debug!("read whitelist: {:#?}", &flags.read_whitelist);
-    } else {
-      flags.allow_read = true;
-    }
-  }
-  if matches.is_present("allow-write") {
-    if matches.value_of("allow-write").is_some() {
-      let write_wl = matches.values_of("allow-write").unwrap();
-      let raw_write_whitelist: Vec<String> =
-        write_wl.map(std::string::ToString::to_string).collect();
-      flags.write_whitelist =
-        resolve_fs_whitelist(raw_write_whitelist.as_slice());
-      debug!("write whitelist: {:#?}", &flags.write_whitelist);
-    } else {
-      flags.allow_write = true;
-    }
-  }
-  if matches.is_present("allow-net") {
-    if matches.value_of("allow-net").is_some() {
-      let net_wl = matches.values_of("allow-net").unwrap();
-      let raw_net_whitelist =
-        net_wl.map(std::string::ToString::to_string).collect();
-      flags.net_whitelist = resolve_hosts(raw_net_whitelist);
-      debug!("net whitelist: {:#?}", &flags.net_whitelist);
-    } else {
-      flags.allow_net = true;
-    }
-  }
-  if matches.is_present("allow-env") {
-    flags.allow_env = true;
-  }
-  if matches.is_present("allow-run") {
-    flags.allow_run = true;
-  }
-  if matches.is_present("allow-plugin") {
-    flags.allow_plugin = true;
-  }
-  if matches.is_present("allow-hrtime") {
-    flags.allow_hrtime = true;
-  }
-  if matches.is_present("allow-all") {
-    flags.allow_read = true;
-    flags.allow_env = true;
-    flags.allow_net = true;
-    flags.allow_run = true;
-    flags.allow_read = true;
-    flags.allow_write = true;
-    flags.allow_plugin = true;
-    flags.allow_hrtime = true;
-  }
   if matches.is_present("cached-only") {
     flags.cached_only = true;
   }
@@ -542,7 +549,7 @@ fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
 }
 
 fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
-  SubCommand::with_name("install")
+  permission_args(SubCommand::with_name("install"))
         .setting(AppSettings::TrailingVarArg)
         .arg(
           Arg::with_name("dir")
@@ -566,13 +573,13 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
 "Installs a script as executable. The default installation directory is
 $HOME/.deno/bin and it must be added to the path manually.
 
-  deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
+  deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
 
   deno install colors https://deno.land/std/examples/colors.ts
 
 To change installation directory use -d/--dir flag
 
-  deno install -d /usr/local/bin file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read")
+  deno install --allow-net --allow-read -d /usr/local/bin file_server https://deno.land/std/http/file_server.ts")
 }
 
 fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -681,15 +688,8 @@ Once cached, static imports no longer send network requests
     )
 }
 
-fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
+fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
   app
-    .arg(importmap_arg())
-    .arg(reload_arg())
-    .arg(config_arg())
-    .arg(lock_arg())
-    .arg(lock_write_arg())
-    .arg(no_remote_arg())
-    .arg(v8_flags_arg())
     .arg(
       Arg::with_name("allow-read")
         .long("allow-read")
@@ -743,6 +743,17 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .long("allow-all")
         .help("Allow all permissions"),
     )
+}
+
+fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
+  permission_args(app)
+    .arg(importmap_arg())
+    .arg(reload_arg())
+    .arg(config_arg())
+    .arg(lock_arg())
+    .arg(lock_write_arg())
+    .arg(no_remote_arg())
+    .arg(v8_flags_arg())
     .arg(
       Arg::with_name("cached-only")
         .long("cached-only")
@@ -949,6 +960,65 @@ fn no_remote_arg<'a, 'b>() -> Arg<'a, 'b> {
 fn no_remote_arg_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   if matches.is_present("no-remote") {
     flags.no_remote = true;
+  }
+}
+
+fn permission_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
+  if matches.is_present("allow-read") {
+    if matches.value_of("allow-read").is_some() {
+      let read_wl = matches.values_of("allow-read").unwrap();
+      let raw_read_whitelist: Vec<String> =
+        read_wl.map(std::string::ToString::to_string).collect();
+      flags.read_whitelist = resolve_fs_whitelist(&raw_read_whitelist);
+      debug!("read whitelist: {:#?}", &flags.read_whitelist);
+    } else {
+      flags.allow_read = true;
+    }
+  }
+  if matches.is_present("allow-write") {
+    if matches.value_of("allow-write").is_some() {
+      let write_wl = matches.values_of("allow-write").unwrap();
+      let raw_write_whitelist: Vec<String> =
+        write_wl.map(std::string::ToString::to_string).collect();
+      flags.write_whitelist =
+        resolve_fs_whitelist(raw_write_whitelist.as_slice());
+      debug!("write whitelist: {:#?}", &flags.write_whitelist);
+    } else {
+      flags.allow_write = true;
+    }
+  }
+  if matches.is_present("allow-net") {
+    if matches.value_of("allow-net").is_some() {
+      let net_wl = matches.values_of("allow-net").unwrap();
+      let raw_net_whitelist =
+        net_wl.map(std::string::ToString::to_string).collect();
+      flags.net_whitelist = resolve_hosts(raw_net_whitelist);
+      debug!("net whitelist: {:#?}", &flags.net_whitelist);
+    } else {
+      flags.allow_net = true;
+    }
+  }
+  if matches.is_present("allow-env") {
+    flags.allow_env = true;
+  }
+  if matches.is_present("allow-run") {
+    flags.allow_run = true;
+  }
+  if matches.is_present("allow-plugin") {
+    flags.allow_plugin = true;
+  }
+  if matches.is_present("allow-hrtime") {
+    flags.allow_hrtime = true;
+  }
+  if matches.is_present("allow-all") {
+    flags.allow_read = true;
+    flags.allow_env = true;
+    flags.allow_net = true;
+    flags.allow_run = true;
+    flags.allow_read = true;
+    flags.allow_write = true;
+    flags.allow_plugin = true;
+    flags.allow_hrtime = true;
   }
 }
 
@@ -1662,18 +1732,13 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       DenoFlags {
-        subcommand: DenoSubcommand::Run,
-        argv: svec![
-          "deno",
-          INSTALLER_URL,
-          "deno_colors",
-          "https://deno.land/std/examples/colors.ts"
-        ],
-        allow_write: true,
-        allow_net: true,
-        allow_read: true,
-        allow_env: true,
-        allow_run: true,
+        subcommand: DenoSubcommand::Install {
+          dir: None,
+          exe_name: "deno_colors".to_string(),
+          module_url: "https://deno.land/std/examples/colors.ts".to_string(),
+          args: vec![],
+        },
+        argv: svec!["deno"],
         ..DenoFlags::default()
       }
     );
@@ -1684,28 +1749,23 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "install",
-      "file_server",
-      "https://deno.land/std/http/file_server.ts",
       "--allow-net",
-      "--allow-read"
+      "--allow-read",
+      "file_server",
+      "https://deno.land/std/http/file_server.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       DenoFlags {
-        subcommand: DenoSubcommand::Run,
-        argv: svec![
-          "deno",
-          INSTALLER_URL,
-          "file_server",
-          "https://deno.land/std/http/file_server.ts",
-          "--allow-net",
-          "--allow-read"
-        ],
-        allow_write: true,
+        subcommand: DenoSubcommand::Install {
+          dir: None,
+          exe_name: "file_server".to_string(),
+          module_url: "https://deno.land/std/http/file_server.ts".to_string(),
+          args: vec![],
+        },
+        argv: svec!["deno"],
         allow_net: true,
         allow_read: true,
-        allow_env: true,
-        allow_run: true,
         ..DenoFlags::default()
       }
     );
@@ -1718,30 +1778,25 @@ mod tests {
       "install",
       "-d",
       "/usr/local/bin",
+      "--allow-net",
+      "--allow-read",
       "file_server",
       "https://deno.land/std/http/file_server.ts",
-      "--allow-net",
-      "--allow-read"
+      "arg1",
+      "arg2"
     ]);
     assert_eq!(
       r.unwrap(),
       DenoFlags {
-        subcommand: DenoSubcommand::Run,
-        argv: svec![
-          "deno",
-          INSTALLER_URL,
-          "--dir",
-          "/usr/local/bin",
-          "file_server",
-          "https://deno.land/std/http/file_server.ts",
-          "--allow-net",
-          "--allow-read"
-        ],
-        allow_write: true,
+        subcommand: DenoSubcommand::Install {
+          dir: Some("/usr/local/bin".to_string()),
+          exe_name: "file_server".to_string(),
+          module_url: "https://deno.land/std/http/file_server.ts".to_string(),
+          args: svec!["arg1", "arg2"],
+        },
+        argv: svec!["deno"],
         allow_net: true,
         allow_read: true,
-        allow_env: true,
-        allow_run: true,
         ..DenoFlags::default()
       }
     );

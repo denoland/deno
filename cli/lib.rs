@@ -35,6 +35,7 @@ mod global_state;
 mod global_timer;
 mod http_util;
 mod import_map;
+mod installer;
 mod js;
 mod lockfile;
 mod metrics;
@@ -280,6 +281,27 @@ async fn info_command(flags: DenoFlags) {
   js_check(result);
 }
 
+async fn install_command(
+  flags: DenoFlags,
+  dir: Option<String>,
+  exe_name: String,
+  module_url: String,
+  args: Vec<String>,
+) {
+  // Firstly fetch and compile module, this
+  // ensures the module exists.
+  let mut fetch_flags = flags.clone();
+  fetch_flags.argv.push(module_url.to_string());
+  fetch_flags.reload = true;
+  fetch_command(fetch_flags).await;
+
+  let install_result =
+    installer::install(flags, dir, &exe_name, &module_url, args);
+  if let Err(e) = install_result {
+    print_msg_and_exit(&e.to_string());
+  }
+}
+
 async fn fetch_command(flags: DenoFlags) {
   let (mut worker, state) = create_worker_and_state(flags);
 
@@ -428,6 +450,12 @@ pub async fn main() {
     DenoSubcommand::Fetch => fetch_command(flags).await,
     DenoSubcommand::Format { check, files } => fmt_command(files, check).await,
     DenoSubcommand::Info => info_command(flags).await,
+    DenoSubcommand::Install {
+      dir,
+      exe_name,
+      module_url,
+      args,
+    } => install_command(flags, dir, exe_name, module_url, args).await,
     DenoSubcommand::Repl => run_repl(flags).await,
     DenoSubcommand::Run => run_script(flags).await,
     DenoSubcommand::Types => types_command(),

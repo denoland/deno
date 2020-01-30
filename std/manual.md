@@ -285,7 +285,7 @@ await Deno.remove("request.log");
 This one serves a local directory in HTTP.
 
 ```bash
-deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
+deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
 ```
 
 Run it:
@@ -821,8 +821,8 @@ Or you could import it into another ES module to consume:
 Deno provides ability to easily install and distribute executable code via
 `deno install` command.
 
-`deno install [EXE_NAME] [URL] [FLAGS...]` will install script available at
-`URL` with name `EXE_NAME`.
+`deno install [FLAGS...] [EXE_NAME] [URL] [SCRIPT_ARGS...]` will install script
+available at `URL` with name `EXE_NAME`.
 
 This command is a thin wrapper that creates executable shell scripts which
 invoke `deno` with specified permissions and CLI flags.
@@ -830,15 +830,16 @@ invoke `deno` with specified permissions and CLI flags.
 Example:
 
 ```shell
-$ deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
+$ deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
 [1/1] Compiling https://deno.land/std/http/file_server.ts
 
 ✅ Successfully installed file_server.
 /Users/deno/.deno/bin/file_server
 ```
 
-By default scripts are installed at `$HOME/.deno/bin` and that directory must be
-added to the path manually.
+By default scripts are installed at `$HOME/.deno/bin` or
+`$USERPROFILE/.deno/bin` and one of that directories must be added to the path
+manually.
 
 ```shell
 $ echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc
@@ -847,17 +848,16 @@ $ echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc
 Installation directory can be changed using `-d/--dir` flag:
 
 ```shell
-$ deno install --dir /usr/local/bin file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
+$ deno install --allow-net --allow-read --dir /usr/local/bin file_server https://deno.land/std/http/file_server.ts
 ```
 
 When installing a script you can specify permissions that will be used to run
-the script. They are placed after the script URL and can be mixed with any
-additional CLI flags you want to pass to the script.
+the script.
 
 Example:
 
 ```shell
-$ deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read 8080
+$ deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts 8080
 ```
 
 Above command creates an executable called `file_server` that runs with write
