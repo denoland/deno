@@ -97,9 +97,9 @@ export function cpus(): CPUCoreInfo[] {
   notImplemented(SEE_GITHUB_ISSUE);
 }
 
-/** 
- * Returns a string identifying the endianness of the CPU for which the Deno 
- * binary was compiled. Possible values are 'BE' for big endian and 'LE' for 
+/**
+ * Returns a string identifying the endianness of the CPU for which the Deno
+ * binary was compiled. Possible values are 'BE' for big endian and 'LE' for
  * little endian.
  **/
 export function endianness(): "BE" | "LE" {
