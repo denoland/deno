@@ -3,6 +3,8 @@
 extern crate lazy_static;
 extern crate tempfile;
 
+use std::path::PathBuf;
+
 #[test]
 fn test_pattern_match() {
   assert!(util::pattern_match("foo[BAR]baz", "foobarbaz", "[BAR]"));
@@ -69,6 +71,28 @@ fn fmt_test() {
   assert_eq!(expected, actual);
 }
 
+#[cfg(target_os = "windows")]
+static PATH_SEPARATOR: char = ';';
+#[cfg(not(target_os = "windows"))]
+static PATH_SEPARATOR: char = ':';
+
+fn create_path_string(current_path: String, paths: &[PathBuf]) -> String {
+  let mut new_path = strip_quotations(current_path)
+    .trim_end_matches(PATH_SEPARATOR)
+    .to_string();
+
+  for p in paths {
+    new_path = format!(
+      "{}{}{}",
+      new_path,
+      PATH_SEPARATOR,
+      strip_quotations(p.to_string_lossy().to_string())
+    );
+  }
+
+  new_path
+}
+
 #[test]
 fn installer_test_local_module_run() {
   use deno::flags::DenoFlags;
@@ -98,17 +122,19 @@ fn installer_test_local_module_run() {
   assert!(file_path.exists());
 
   let mut envs = HashMap::new();
+  let paths = vec![temp_dir.path().to_owned(), util::target_dir()];
+
   if cfg!(windows) {
     let o = env::var_os("Path").expect("Path not set");
     envs.insert(
       "Path",
-      format!("{:?};{:?};{:?}", o, temp_dir.path(), util::target_dir()),
+      create_path_string(o.to_string_lossy().to_string(), &paths),
     );
   } else {
     let o = env::var_os("PATH").expect("PATH not set");
     envs.insert(
       "PATH",
-      format!("{:?}:{:?}:{:?}", o, temp_dir.path(), util::target_dir()),
+      create_path_string(o.to_string_lossy().to_string(), &paths),
     );
   };
 
@@ -121,15 +147,15 @@ fn installer_test_local_module_run() {
     .output()
     .expect("failed to spawn script");
 
-  eprintln!(
-    "stderr {}",
-    std::str::from_utf8(&output.stderr).unwrap().trim()
-  );
   assert_eq!(
     std::str::from_utf8(&output.stdout).unwrap().trim(),
     "hello, foo"
   );
   drop(temp_dir);
+}
+
+fn strip_quotations(s: String) -> String {
+  s.trim_start_matches('"').trim_end_matches('"').to_string()
 }
 
 #[test]
@@ -160,17 +186,19 @@ fn installer_test_remote_module_run() {
   assert!(file_path.exists());
 
   let mut envs = HashMap::new();
+  let paths = vec![temp_dir.path().to_owned(), util::target_dir()];
+
   if cfg!(windows) {
     let o = env::var_os("Path").expect("Path not set");
     envs.insert(
       "Path",
-      format!("{:?};{:?};{:?}", o, temp_dir.path(), util::target_dir()),
+      create_path_string(o.to_string_lossy().to_string(), &paths),
     );
   } else {
     let o = env::var_os("PATH").expect("PATH not set");
     envs.insert(
       "PATH",
-      format!("{:?}:{:?}:{:?}", o, temp_dir.path(), util::target_dir()),
+      create_path_string(o.to_string_lossy().to_string(), &paths),
     );
   };
 
@@ -183,10 +211,6 @@ fn installer_test_remote_module_run() {
     .output()
     .expect("failed to spawn script");
 
-  eprintln!(
-    "stderr {}",
-    std::str::from_utf8(&output.stderr).unwrap().trim()
-  );
   assert_eq!(
     std::str::from_utf8(&output.stdout).unwrap().trim(),
     "hello, foo"
