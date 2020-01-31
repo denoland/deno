@@ -75,14 +75,6 @@ mod tests {
   use crate::state::ThreadSafeState;
   use crate::tokio_util;
 
-  pub fn run_in_task<F>(f: F)
-  where
-    F: FnOnce() + Send + 'static,
-  {
-    let fut = futures::future::lazy(move |_cx| f());
-    tokio_util::run(fut)
-  }
-
   fn create_test_worker() -> WebWorker {
     let (int, ext) = ThreadSafeState::create_channels();
     let state = ThreadSafeState::mock(
@@ -102,9 +94,8 @@ mod tests {
 
   #[test]
   fn test_worker_messages() {
-    run_in_task(|| {
-      let mut worker = create_test_worker();
-      let source = r#"
+    let mut worker = create_test_worker();
+    let source = r#"
         onmessage = function(e) {
           console.log("msg from main script", e.data);
           if (e.data == "exit") {
@@ -117,47 +108,38 @@ mod tests {
           console.log("after postMessage");
         }
         "#;
-      worker.execute(source).unwrap();
+    worker.execute(source).unwrap();
 
-      let handle = worker.thread_safe_handle();
-      let _ = tokio_util::spawn_thread(move || tokio_util::run_basic(worker));
+    let handle = worker.thread_safe_handle();
+    let _ = tokio_util::spawn_thread(move || tokio_util::run_basic(worker));
 
+    tokio_util::run_basic(async move {
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-
-      tokio_util::run_basic(async move {
-        let r = handle.post_message(msg).await;
-        assert!(r.is_ok());
-
-        let maybe_msg = handle.get_message().await;
-        assert!(maybe_msg.is_some());
-      });
-
-      /*
-      let handle_ = handle.clone();
-      let r = tokio_util::run_basic(handle_.post_message(msg));
+      let r = handle.post_message(msg.clone()).await;
       assert!(r.is_ok());
 
-      let handle_ = handle.clone();
-      let maybe_msg = tokio_util::run_basic(handle_.get_message());
+      let maybe_msg = handle.get_message().await;
       assert!(maybe_msg.is_some());
-      // Check if message received is [1, 2, 3] in json
+
+      let r = handle.post_message(msg.clone()).await;
+      assert!(r.is_ok());
+
+      let maybe_msg = handle.get_message().await;
+      assert!(maybe_msg.is_some());
       assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
 
       let msg = json!("exit")
         .to_string()
         .into_boxed_str()
         .into_boxed_bytes();
-      let handle_ = handle.clone();
-      let r = tokio_util::run_basic(handle_.post_message(msg).await);
+      let r = handle.post_message(msg).await;
       assert!(r.is_ok());
-      */
-    })
+    });
   }
 
   /* TODO(ry) fix
   #[test]
   fn removed_from_resource_table_on_close() {
-    run_in_task(|| {
       let mut worker = create_test_worker();
       let handle = worker.thread_safe_handle();
       tokio_util::spawn_thread(move || {
@@ -173,7 +155,6 @@ mod tests {
 
       use futures::executor::block_on;
       block_on(worker_future)
-    })
   }
   */
 }
