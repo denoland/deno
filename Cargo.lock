@@ -348,7 +348,7 @@ dependencies = [
  "deno_typescript 0.31.0",
  "dirs 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "dlopen 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "dprint-plugin-typescript 0.3.0-alpha.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "dprint-plugin-typescript 0.3.0-alpha.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "fwdansi 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "glob 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -454,15 +454,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "dprint-core"
-version = "0.7.0-alpha"
+version = "0.7.0-alpha.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.3.0-alpha.3"
+version = "0.3.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "dprint-core 0.7.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "dprint-core 0.7.0-alpha.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.104 (registry+https://github.com/rust-lang/crates.io-index)",
  "swc_common 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "swc_ecma_ast 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2348,8 +2348,8 @@ dependencies = [
 "checksum dlopen 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)" = "71e80ad39f814a9abe68583cd50a2d45c8a67561c3361ab8da240587dda80937"
 "checksum dlopen_derive 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "f236d9e1b1fbd81cea0f9cbdc8dcc7e8ebcd80e6659cd7cb2ad5f6c05946c581"
 "checksum downcast-rs 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "52ba6eb47c2131e784a38b726eb54c1e1484904f013e576a25354d0124161af6"
-"checksum dprint-core 0.7.0-alpha (registry+https://github.com/rust-lang/crates.io-index)" = "2605cf7395ff8c16f7d8c8cd746a01cc005e63b645af77cb3d17057fbf2be7bd"
-"checksum dprint-plugin-typescript 0.3.0-alpha.3 (registry+https://github.com/rust-lang/crates.io-index)" = "d536e9fe96491055d62feed66bbc90c1458fb859799b262c396513f676d0badb"
+"checksum dprint-core 0.7.0-alpha.1 (registry+https://github.com/rust-lang/crates.io-index)" = "7f460fbecb15f29013e41c557496f54620a44ac2e0c3554a29c3c7e28e931b70"
+"checksum dprint-plugin-typescript 0.3.0-alpha.4 (registry+https://github.com/rust-lang/crates.io-index)" = "6f1ff9b8a5d9c2a181559464a7425ef49f7092d62589d422597a33c14ee7d57e"
 "checksum dtoa 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)" = "4358a9e11b9a09cf52383b451b49a169e8d797b68aa02301ff586d70d9661ea3"
 "checksum either 1.5.3 (registry+https://github.com/rust-lang/crates.io-index)" = "bb1f6b1ce1c140482ea30ddd3335fc0024ac7ee112895426e0a629a6c20adfe3"
 "checksum encoding_rs 0.8.22 (registry+https://github.com/rust-lang/crates.io-index)" = "cd8d03faa7fe0c1431609dfad7bbe827af30f82e1e2ae6f7ee4fca6bd764bc28"
