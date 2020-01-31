@@ -51,7 +51,7 @@ impl OpRegistry {
 
   pub fn register<F>(&self, name: &str, op: F) -> OpId
   where
-    F: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + Send + Sync + 'static,
+    F: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + 'static,
   {
     let mut lock = self.dispatchers.write().unwrap();
     let op_id = lock.len() as u32;

@@ -648,10 +648,11 @@ fn spawn_ts_compiler_worker(
       let json_str = std::str::from_utf8(&msg).unwrap();
       load_sender.send(Ok(json!(json_str))).unwrap();
     };
-
     crate::tokio_util::run_basic(fut);
   });
-  load_receiver.wait()
+
+  let fut = async { load_receiver.await.unwrap() };
+  fut.boxed_local()
 }
 
 pub fn runtime_compile_async<S: BuildHasher>(

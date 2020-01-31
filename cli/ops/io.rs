@@ -194,7 +194,6 @@ pub fn op_read(
   };
 
   let fut = read(state, rid as u32, zero_copy);
-
   fut.boxed_local()
 }
 

@@ -68,7 +68,7 @@ impl WasmCompiler {
   pub fn compile_async(
     &self,
     global_state: ThreadSafeGlobalState,
-    source_file: &SourceFile,
+    source_file: SourceFile,
   ) -> Pin<Box<CompiledModuleFuture>> {
     let cache = self.cache.clone();
     let maybe_cached = { cache.lock().unwrap().get(&source_file.url).cloned() };
@@ -131,8 +131,8 @@ impl WasmCompiler {
 
       crate::tokio_util::run_basic(fut);
     });
-    let result = load_receiver.wait();
-    result.unwrap()
+    let fut = async { load_receiver.await.unwrap() };
+    fut.boxed_local()
   }
 }
 

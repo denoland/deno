@@ -110,7 +110,7 @@ impl ThreadSafeState {
             state.metrics_op_completed(buf.len());
             buf
           });
-          Op::Async(result_fut.boxed())
+          Op::Async(result_fut.boxed_local())
         }
         Op::AsyncUnref(fut) => {
           let state = state.clone();
@@ -118,7 +118,7 @@ impl ThreadSafeState {
             state.metrics_op_completed(buf.len());
             buf
           });
-          Op::AsyncUnref(result_fut.boxed())
+          Op::AsyncUnref(result_fut.boxed_local())
         }
       }
     }

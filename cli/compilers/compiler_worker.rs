@@ -21,7 +21,6 @@ use std::ops::DerefMut;
 ///
 /// TODO(bartlomieju): add support to reuse the worker - or in other
 /// words support stateful TS compiler
-#[derive(Clone)]
 pub struct CompilerWorker(Worker);
 
 impl CompilerWorker {

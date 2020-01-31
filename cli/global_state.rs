@@ -135,7 +135,7 @@ impl ThreadSafeGlobalState {
       msg::MediaType::Unknown => state1.js_compiler.compile_async(&out),
       msg::MediaType::Json => state1.json_compiler.compile_async(&out),
       msg::MediaType::Wasm => {
-        state1.wasm_compiler.compile_async(state1.clone(), &out)
+        state1.wasm_compiler.compile_async(state1.clone(), out)
       }
       msg::MediaType::TypeScript
       | msg::MediaType::TSX

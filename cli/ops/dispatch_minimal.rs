@@ -16,7 +16,7 @@ use futures::future::FutureExt;
 use std::future::Future;
 use std::pin::Pin;
 
-pub type MinimalOp = dyn Future<Output = Result<i32, ErrBox>> + Send;
+pub type MinimalOp = dyn Future<Output = Result<i32, ErrBox>>;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 // This corresponds to RecordMinimal on the TS side.
@@ -162,9 +162,10 @@ where
       // tokio_util::block_on.
       // This block is only exercised for readSync and writeSync, which I think
       // works since they're simple polling futures.
-      Op::Sync(futures::executor::block_on(fut).unwrap())
+      let r = crate::tokio_util::run_basic(fut).unwrap();
+      Op::Sync(r)
     } else {
-      Op::Async(fut.boxed())
+      Op::Async(fut.boxed_local())
     }
   }
 }

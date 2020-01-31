@@ -150,7 +150,8 @@ fn op_create_worker(
     crate::tokio_util::run_basic(fut);
   });
 
-  let r = crate::tokio_util::run_basic(load_receiver);
+  let fut = async { load_receiver.await.unwrap() };
+  let r = crate::tokio_util::run_basic(fut);
   Ok(JsonOp::Sync(r.unwrap()))
 }
 

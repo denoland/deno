@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use futures::Future;
 
 #[cfg(test)]
 pub fn run<F>(future: F)
@@ -41,3 +42,16 @@ pub fn spawn_basic_thread<R>(fut: impl Future<Output=R>) -> R
   load_receiver.wait()
 }
 */
+pub fn spawn_thread<F, R>(f: F) -> impl Future<Output = R>
+where
+  F: 'static + Send + FnOnce() -> R,
+  R: 'static + Send,
+{
+  let (sender, receiver) = tokio::sync::oneshot::channel::<R>();
+  std::thread::spawn(move || {
+    let result = f();
+    sender.send(result)
+  });
+  let fut = async { receiver.await.unwrap() };
+  fut
+}
