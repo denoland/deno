@@ -80,7 +80,7 @@ impl DerefMut for EsIsolate {
   }
 }
 
-unsafe impl Send for EsIsolate {}
+// unsafe impl Send for EsIsolate {}
 
 impl Drop for EsIsolate {
   fn drop(&mut self) {
@@ -523,25 +523,21 @@ impl EsIsolate {
     let root_id = load.root_module_id.expect("Root module id empty");
     self.mod_instantiate(root_id).map(|_| root_id)
   }
-}
 
-impl Future for EsIsolate {
-  type Output = Result<(), ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-
-    inner.waker.register(cx.waker());
+  pub fn xpoll(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
+    // self.waker.register(cx.waker());
 
     // If there are any pending dyn_import futures, do those first.
-    if !inner.pending_dyn_imports.is_empty() {
-      let poll_imports = inner.poll_dyn_imports(cx)?;
+    if !self.pending_dyn_imports.is_empty() {
+      let poll_imports = self.poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
     }
 
-    match ready!(inner.core_isolate.poll_unpin(cx)) {
+    self.core_isolate.xpoll(cx)
+    /*
+    match ready!(self.core_isolate.poll_unpin(cx)) {
       Ok(()) => {
-        if inner.pending_dyn_imports.is_empty() {
+        if self.pending_dyn_imports.is_empty() {
           Poll::Ready(Ok(()))
         } else {
           Poll::Pending
@@ -549,6 +545,7 @@ impl Future for EsIsolate {
       }
       Err(e) => Poll::Ready(Err(e)),
     }
+    */
   }
 }
 

@@ -48,7 +48,7 @@ pub struct WorkerChannels {
 #[derive(Clone)]
 pub struct Worker {
   pub name: String,
-  pub isolate: Arc<AsyncMutex<Box<deno_core::EsIsolate>>>,
+  pub isolate: deno_core::EsIsolate,
   pub state: ThreadSafeState,
   external_channels: WorkerChannels,
 }
@@ -70,7 +70,7 @@ impl Worker {
 
     Self {
       name,
-      isolate: Arc::new(AsyncMutex::new(isolate)),
+      isolate,
       state,
       external_channels,
     }
@@ -90,13 +90,10 @@ impl Worker {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), ErrBox> {
-    let mut isolate = self.isolate.try_lock().unwrap();
-    isolate.execute(js_filename, js_source)
+    self.execute(js_filename, js_source)
   }
 
   /// Executes the provided JavaScript module.
-  ///
-  /// Takes ownership of the isolate behind mutex.
   pub async fn execute_mod_async(
     &mut self,
     module_specifier: &ModuleSpecifier,
@@ -104,14 +101,13 @@ impl Worker {
     is_prefetch: bool,
   ) -> Result<(), ErrBox> {
     let specifier = module_specifier.to_string();
-    let worker = self.clone();
+    // let global_state = self.state.global_state.clone();
 
-    let mut isolate = self.isolate.lock().await;
-    let id = isolate.load_module(&specifier, maybe_code).await?;
-    worker.state.global_state.progress.done();
+    let id = self.load_module(&specifier, maybe_code).await?;
+    self.state.global_state.progress.done();
 
     if !is_prefetch {
-      return isolate.mod_evaluate(id);
+      return self.mod_evaluate(id);
     }
 
     Ok(())
@@ -141,23 +137,6 @@ impl Worker {
   }
 }
 
-impl Future for Worker {
-  type Output = Result<(), ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    let waker = AtomicWaker::new();
-    waker.register(cx.waker());
-    match inner.isolate.try_lock() {
-      Ok(mut isolate) => isolate.poll_unpin(cx),
-      Err(_) => {
-        waker.wake();
-        Poll::Pending
-      }
-    }
-  }
-}
-
 /// This worker is created and used by Deno executable.
 ///
 /// It provides ops available in the `Deno` namespace.
@@ -177,29 +156,28 @@ impl MainWorker {
     let state_ = state.clone();
     let worker = Worker::new(name, startup_data, state_, external_channels);
     {
-      let mut isolate = worker.isolate.try_lock().unwrap();
-      let op_registry = isolate.op_registry.clone();
-
-      ops::runtime::init(&mut isolate, &state);
-      ops::runtime_compiler::init(&mut isolate, &state);
-      ops::errors::init(&mut isolate, &state);
-      ops::fetch::init(&mut isolate, &state);
-      ops::files::init(&mut isolate, &state);
-      ops::fs::init(&mut isolate, &state);
-      ops::io::init(&mut isolate, &state);
-      ops::plugins::init(&mut isolate, &state, op_registry);
-      ops::net::init(&mut isolate, &state);
-      ops::tls::init(&mut isolate, &state);
-      ops::os::init(&mut isolate, &state);
-      ops::permissions::init(&mut isolate, &state);
-      ops::process::init(&mut isolate, &state);
-      ops::random::init(&mut isolate, &state);
-      ops::repl::init(&mut isolate, &state);
-      ops::resources::init(&mut isolate, &state);
-      ops::signal::init(&mut isolate, &state);
-      ops::timers::init(&mut isolate, &state);
-      ops::worker_host::init(&mut isolate, &state);
-      ops::web_worker::init(&mut isolate, &state);
+      let op_registry = worker.isolate.op_registry.clone();
+      let isolate = &mut worker.isolate;
+      ops::runtime::init(&isolate, &state);
+      ops::runtime_compiler::init(&isolate, &state);
+      ops::errors::init(&isolate, &state);
+      ops::fetch::init(&isolate, &state);
+      ops::files::init(&isolate, &state);
+      ops::fs::init(&isolate, &state);
+      ops::io::init(&isolate, &state);
+      ops::plugins::init(&isolate, &state, op_registry);
+      ops::net::init(&isolate, &state);
+      ops::tls::init(&isolate, &state);
+      ops::os::init(&isolate, &state);
+      ops::permissions::init(&isolate, &state);
+      ops::process::init(&isolate, &state);
+      ops::random::init(&isolate, &state);
+      ops::repl::init(&isolate, &state);
+      ops::resources::init(&isolate, &state);
+      ops::signal::init(&isolate, &state);
+      ops::timers::init(&isolate, &state);
+      ops::worker_host::init(&isolate, &state);
+      ops::web_worker::init(&isolate, &state);
     }
 
     Self(worker)
@@ -216,15 +194,6 @@ impl Deref for MainWorker {
 impl DerefMut for MainWorker {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.0
-  }
-}
-
-impl Future for MainWorker {
-  type Output = Result<(), ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    inner.0.poll_unpin(cx)
   }
 }
 

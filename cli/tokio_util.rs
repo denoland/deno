@@ -13,3 +13,11 @@ where
     .expect("Unable to create Tokio runtime");
   rt.block_on(future);
 }
+
+pub fn run_basic(future: F)
+where
+  F: std::future::Future<Output = ()> + 'static,
+{
+  let rt = runtime::Builder::new().basic_scheduler().build().unwrap();
+  rt.block_on(future);
+}

@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #![deny(warnings)]
+#![allow(dead_code)]
 
 #[macro_use]
 extern crate lazy_static;
@@ -326,7 +327,7 @@ async fn fetch_command(flags: DenoFlags) {
   }
 }
 
-async fn eval_command(flags: DenoFlags) {
+fn eval_command(flags: DenoFlags) {
   let ts_source = flags.argv[1].clone();
   let (mut worker, _state) = create_worker_and_state(flags);
   // Force TypeScript compile.
@@ -381,7 +382,7 @@ async fn run_repl(flags: DenoFlags) {
   }
 }
 
-async fn run_script(flags: DenoFlags) {
+fn run_script(flags: DenoFlags) {
   let (mut worker, state) = create_worker_and_state(flags);
 
   let maybe_main_module = state.main_module.as_ref();
@@ -422,8 +423,7 @@ async fn fmt_command(files: Option<Vec<String>>, check: bool) {
   fmt::format_files(files, check);
 }
 
-#[tokio::main]
-pub async fn main() {
+pub fn main() {
   #[cfg(windows)]
   ansi_term::enable_ansi_support().ok(); // For Windows 10
 
@@ -444,12 +444,13 @@ pub async fn main() {
   log::set_max_level(log_level.to_level_filter());
 
   match flags.clone().subcommand {
-    DenoSubcommand::Bundle => bundle_command(flags).await,
-    DenoSubcommand::Completions => {}
-    DenoSubcommand::Eval => eval_command(flags).await,
-    DenoSubcommand::Fetch => fetch_command(flags).await,
-    DenoSubcommand::Format { check, files } => fmt_command(files, check).await,
-    DenoSubcommand::Info => info_command(flags).await,
+    //DenoSubcommand::Bundle => bundle_command(flags).await,
+    //DenoSubcommand::Completions => {}
+    // DenoSubcommand::Eval => eval_command(flags),
+    //DenoSubcommand::Fetch => fetch_command(flags).await,
+    //DenoSubcommand::Format { check, files } => fmt_command(files, check).await,
+    //DenoSubcommand::Info => info_command(flags).await,
+    /*
     DenoSubcommand::Install {
       dir,
       exe_name,
@@ -457,7 +458,8 @@ pub async fn main() {
       args,
     } => install_command(flags, dir, exe_name, module_url, args).await,
     DenoSubcommand::Repl => run_repl(flags).await,
-    DenoSubcommand::Run => run_script(flags).await,
+    */
+    DenoSubcommand::Run => run_script(flags),
     DenoSubcommand::Types => types_command(),
     _ => panic!("bad subcommand"),
   }

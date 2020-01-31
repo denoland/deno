@@ -180,6 +180,7 @@ pub struct Isolate {
   error_handler: Option<Box<IsolateErrorHandleFn>>,
 }
 
+// TODO(ry) this shouldn't be necessary, v8::OwnedIsolate should impl Send.
 unsafe impl Send for Isolate {}
 
 impl Drop for Isolate {
@@ -631,39 +632,34 @@ impl Isolate {
     self.has_snapshotted = true;
     self.check_last_exception().map(|_| snapshot)
   }
-}
 
-impl Future for Isolate {
-  type Output = Result<(), ErrBox>;
+  pub fn xpoll(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
+    // self.waker.register(cx.waker());
+    self.shared_init();
 
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    inner.waker.register(cx.waker());
-    inner.shared_init();
-
-    let mut locker = v8::Locker::new(&*inner.v8_isolate.as_mut().unwrap());
+    let mut locker = v8::Locker::new(&*self.v8_isolate.as_mut().unwrap());
     let mut hs = v8::HandleScope::new(locker.enter());
     let scope = hs.enter();
-    let context = inner.global_context.get(scope).unwrap();
+    let context = self.global_context.get(scope).unwrap();
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
-    inner.check_promise_exceptions(scope)?;
+    self.check_promise_exceptions(scope)?;
 
     let mut overflow_response: Option<(OpId, Buf)> = None;
 
     loop {
       // Now handle actual ops.
-      inner.have_unpolled_ops = false;
+      self.have_unpolled_ops = false;
       #[allow(clippy::match_wild_err_arm)]
-      match select(&mut inner.pending_ops, &mut inner.pending_unref_ops)
+      match select(&mut self.pending_ops, &mut self.pending_unref_ops)
         .poll_next_unpin(cx)
       {
         Poll::Ready(Some(Err(_))) => panic!("unexpected op error"),
         Poll::Ready(None) => break,
         Poll::Pending => break,
         Poll::Ready(Some(Ok((op_id, buf)))) => {
-          let successful_push = inner.shared.push(op_id, &buf);
+          let successful_push = self.shared.push(op_id, &buf);
           if !successful_push {
             // If we couldn't push the response to the shared queue, because
             // there wasn't enough size, we will return the buffer via the
@@ -675,25 +671,25 @@ impl Future for Isolate {
       }
     }
 
-    if inner.shared.size() > 0 {
-      inner.async_op_response(scope, None)?;
+    if self.shared.size() > 0 {
+      self.async_op_response(scope, None)?;
       // The other side should have shifted off all the messages.
-      assert_eq!(inner.shared.size(), 0);
+      assert_eq!(self.shared.size(), 0);
     }
 
     if overflow_response.is_some() {
       let (op_id, buf) = overflow_response.take().unwrap();
-      inner.async_op_response(scope, Some((op_id, buf)))?;
+      self.async_op_response(scope, Some((op_id, buf)))?;
     }
 
-    inner.check_promise_exceptions(scope)?;
+    self.check_promise_exceptions(scope)?;
 
     // We're idle if pending_ops is empty.
-    if inner.pending_ops.is_empty() {
+    if self.pending_ops.is_empty() {
       Poll::Ready(Ok(()))
     } else {
-      if inner.have_unpolled_ops {
-        inner.waker.wake();
+      if self.have_unpolled_ops {
+        self.waker.wake();
       }
       Poll::Pending
     }
