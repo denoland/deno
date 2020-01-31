@@ -47,6 +47,11 @@ fn main() {
     deno_typescript::ts_version()
   );
 
+  // The generation of snapshots is slow and often unnecessary. Until we figure
+  // out how to speed it up, or avoid it when unnecessary, this env var provides
+  // an escape hatch for the impatient hacker in need of faster incremental
+  // builds.
+  // USE WITH EXTREME CAUTION
   if env::var_os("NO_BUILD_SNAPSHOTS").is_some() {
     println!("NO_BUILD_SNAPSHOTS is set, skipping snapshot building.");
     return;
