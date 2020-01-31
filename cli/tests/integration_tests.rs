@@ -94,7 +94,7 @@ fn installer_test_local_module_run() {
     file_path = file_path.with_extension(".cmd");
   }
   assert!(file_path.exists());
-  let path_var_name = if cfg!(windows) { "Path" } else { "PATH " };
+  let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
   let paths_var = env::var_os(path_var_name).expect("PATH not set");
   let mut paths: Vec<PathBuf> = env::split_paths(&paths_var).collect();
   paths.push(temp_dir.path().to_owned());
@@ -140,7 +140,7 @@ fn installer_test_remote_module_run() {
     file_path = file_path.with_extension(".cmd");
   }
   assert!(file_path.exists());
-  let path_var_name = if cfg!(windows) { "Path" } else { "PATH " };
+  let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
   let paths_var = env::var_os(path_var_name).expect("PATH not set");
   let mut paths: Vec<PathBuf> = env::split_paths(&paths_var).collect();
   paths.push(temp_dir.path().to_owned());
