@@ -36,6 +36,5 @@ where
     let result = f();
     sender.send(result)
   });
-  let fut = async { receiver.await.unwrap() };
-  fut
+  async { receiver.await.unwrap() }
 }

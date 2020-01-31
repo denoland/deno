@@ -77,7 +77,7 @@ fn op_create_worker(
   let specifier = args.specifier.clone();
   let has_source_code = args.has_source_code;
   let source_code = args.source_code.clone();
-  let args_name = args.name.clone();
+  let args_name = args.name;
   let parent_state = state.clone();
 
   let (load_sender, load_receiver) =
