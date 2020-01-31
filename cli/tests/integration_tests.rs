@@ -89,7 +89,7 @@ fn installer_test_local_module_run() {
     vec!["hello".to_string()],
   )
   .expect("Failed to install");
-let mut file_path = temp_dir.path().join("echo_test");
+  let mut file_path = temp_dir.path().join("echo_test");
   if cfg!(windows) {
     file_path = file_path.with_extension(".cmd");
   }
