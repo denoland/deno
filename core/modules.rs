@@ -23,7 +23,7 @@ use std::task::Poll;
 pub type SourceCodeInfoFuture =
   dyn Future<Output = Result<SourceCodeInfo, ErrBox>>;
 
-pub trait Loader {
+pub trait Loader: Send {
   /// Returns an absolute URL.
   /// When implementing an spec-complaint VM, this should be exactly the
   /// algorithm described here:
@@ -739,7 +739,7 @@ mod tests {
         ])
       );
     }
-    .boxed();
+    .boxed_local();
 
     futures::executor::block_on(fut);
   }
@@ -798,7 +798,7 @@ mod tests {
         Some(redirect3_id)
       );
     }
-    .boxed();
+    .boxed_local();
 
     futures::executor::block_on(fut);
   }
@@ -826,7 +826,8 @@ mod tests {
       let loads = loader.loads.clone();
       let mut isolate =
         EsIsolate::new(Box::new(loader), StartupData::None, false);
-      let mut recursive_load = isolate.load_module("/main.js", None).boxed();
+      let mut recursive_load =
+        isolate.load_module("/main.js", None).boxed_local();
 
       let result = recursive_load.poll_unpin(&mut cx);
       assert!(result.is_pending());
@@ -871,7 +872,8 @@ mod tests {
       let loader = MockLoader::new();
       let mut isolate =
         EsIsolate::new(Box::new(loader), StartupData::None, false);
-      let mut load_fut = isolate.load_module("/bad_import.js", None).boxed();
+      let mut load_fut =
+        isolate.load_module("/bad_import.js", None).boxed_local();
       let result = load_fut.poll_unpin(&mut cx);
       if let Poll::Ready(Err(err)) = result {
         assert_eq!(
@@ -904,7 +906,7 @@ mod tests {
     // The behavior should be very similar to /a.js.
     let main_id_fut = isolate
       .load_module("/main_with_code.js", Some(MAIN_WITH_CODE_SRC.to_owned()))
-      .boxed();
+      .boxed_local();
     let main_id =
       futures::executor::block_on(main_id_fut).expect("Failed to load");
 

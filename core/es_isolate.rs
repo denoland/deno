@@ -8,15 +8,19 @@ use rusty_v8 as v8;
 
 use crate::any_error::ErrBox;
 use crate::bindings;
+use crate::futures::FutureExt;
 use crate::ErrWithV8Handle;
+use futures::ready;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::stream::StreamFuture;
 use futures::task::AtomicWaker;
+use futures::Future;
 use libc::c_void;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
@@ -519,21 +523,25 @@ impl EsIsolate {
     let root_id = load.root_module_id.expect("Root module id empty");
     self.mod_instantiate(root_id).map(|_| root_id)
   }
+}
 
-  pub fn xpoll(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
-    // self.waker.register(cx.waker());
+impl Future for EsIsolate {
+  type Output = Result<(), ErrBox>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+
+    inner.waker.register(cx.waker());
 
     // If there are any pending dyn_import futures, do those first.
-    if !self.pending_dyn_imports.is_empty() {
-      let poll_imports = self.poll_dyn_imports(cx)?;
+    if !inner.pending_dyn_imports.is_empty() {
+      let poll_imports = inner.poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
     }
 
-    self.core_isolate.xpoll(cx)
-    /*
-    match ready!(self.core_isolate.poll_unpin(cx)) {
+    match ready!(inner.core_isolate.poll_unpin(cx)) {
       Ok(()) => {
-        if self.pending_dyn_imports.is_empty() {
+        if inner.pending_dyn_imports.is_empty() {
           Poll::Ready(Ok(()))
         } else {
           Poll::Pending
@@ -541,7 +549,6 @@ impl EsIsolate {
       }
       Err(e) => Poll::Ready(Err(e)),
     }
-    */
   }
 }
 

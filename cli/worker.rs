@@ -136,8 +136,8 @@ impl Future for Worker {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
-    // let waker = AtomicWaker::new();
-    // waker.register(cx.waker());
+    let waker = AtomicWaker::new();
+    waker.register(cx.waker());
     inner.isolate.xpoll(cx)
   }
 }
