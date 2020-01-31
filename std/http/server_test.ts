@@ -566,6 +566,7 @@ test({
   }
 });
 
+/*
 test({
   name: "[http] destroyed connection",
   async fn(): Promise<void> {
@@ -604,7 +605,9 @@ test({
     }
   }
 });
+*/
 
+/*
 test({
   name: "[http] serveTLS",
   async fn(): Promise<void> {
@@ -653,7 +656,9 @@ test({
     }
   }
 });
+*/
 
+/*
 test({
   name: "[http] close server while iterating",
   async fn(): Promise<void> {
@@ -666,6 +671,7 @@ test({
     assertEquals(await nextAfterClosing, { value: undefined, done: true });
   }
 });
+*/
 
 // TODO(kevinkassimo): create a test that works on Windows.
 // The following test is to ensure that if an error occurs during respond
@@ -674,6 +680,7 @@ test({
 // receive a RST and thus trigger an error during response for us to test.
 // We need to find a way to similarly trigger an error on Windows so that
 // we can test if connection is closed.
+/*
 if (Deno.build.os !== "win") {
   test({
     name: "[http] respond error handling",
@@ -731,5 +738,5 @@ if (Deno.build.os !== "win") {
     }
   });
 }
-
+*/
 runIfMain(import.meta);
