@@ -90,6 +90,15 @@ impl ThreadSafeGlobalState {
     let main_module: Option<ModuleSpecifier> = if flags.argv.len() <= 1 {
       None
     } else {
+      // resolve modules for rest of args if present (for fetch)
+      let files_len = flags.argv.len();
+      if files_len > 2 {
+        for i in 2..files_len {
+          let next_specifier = flags.argv[i].clone();
+          let _res = ModuleSpecifier::resolve_url_or_path(&next_specifier);
+        }
+      }
+      // then resolve root
       let root_specifier = flags.argv[1].clone();
       Some(ModuleSpecifier::resolve_url_or_path(&root_specifier)?)
     };
