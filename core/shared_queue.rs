@@ -43,8 +43,7 @@ impl SharedQueue {
     let mut buf = Vec::new();
     buf.resize(HEAD_INIT + len, 0);
     let buf = buf.into_boxed_slice();
-    let buf =
-      unsafe { v8::SharedArrayBuffer::new_backing_store_from_boxed_slice(buf) };
+    let buf = v8::SharedArrayBuffer::new_backing_store_from_boxed_slice(buf);
     let mut q = Self {
       buf: buf.make_shared(),
     };

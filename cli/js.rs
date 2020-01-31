@@ -16,8 +16,10 @@ pub static COMPILER_SNAPSHOT_MAP: &[u8] =
 pub static COMPILER_SNAPSHOT_DTS: &[u8] =
   include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.d.ts"));
 
-pub static DENO_NS_LIB: &str = include_str!("js/lib.deno.d.ts");
-pub static DENO_MAIN_LIB: &str = include_str!("js/lib.deno_main.d.ts");
+pub static DENO_NS_LIB: &str = include_str!("js/lib.deno.ns.d.ts");
+pub static SHARED_GLOBALS_LIB: &str =
+  include_str!("js/lib.deno.shared_globals.d.ts");
+pub static WINDOW_LIB: &str = include_str!("js/lib.deno.window.d.ts");
 
 #[test]
 fn cli_snapshot() {

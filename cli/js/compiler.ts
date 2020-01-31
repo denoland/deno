@@ -304,7 +304,7 @@ async function tsCompilerOnMessage({
   }
 
   // The compiler isolate exits after a single message.
-  globalThis.workerClose();
+  globalThis.close();
 }
 
 async function wasmCompilerOnMessage({
@@ -332,7 +332,7 @@ async function wasmCompilerOnMessage({
   util.log("<<< WASM compile end");
 
   // The compiler isolate exits after a single message.
-  globalThis.workerClose();
+  globalThis.close();
 }
 
 function bootstrapTsCompilerRuntime(): void {

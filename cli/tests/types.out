@@ -5,10 +5,12 @@ declare namespace Deno {
 [WILDCARD]
 }
 [WILDCARD]
-declare interface Window {
+declare interface WindowOrWorkerGlobalScope {
+[WILDCARD]
+declare interface Window extends WindowOrWorkerGlobalScope {
 [WILDCARD]
   Deno: typeof Deno;
 }
 
-declare const window: Window & typeof globalThis;
+declare const window: Window & WindowOrWorkerGlobalScope & typeof globalThis;
 [WILDCARD]
