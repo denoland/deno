@@ -1096,7 +1096,7 @@ mod tests {
       });
 
     // http_util::fetch_sync_string requires tokio
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
@@ -1174,7 +1174,7 @@ mod tests {
         );
       });
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
@@ -1193,11 +1193,11 @@ mod tests {
     );
 
     // first download
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
-      |r| {
+    tokio_util::run_basic(
+      fetcher.fetch_source_file_async(&specifier, None).map(|r| {
         assert!(r.is_ok());
-      },
-    ));
+      }),
+    );
 
     let result = fs::File::open(&headers_file_name);
     assert!(result.is_ok());
@@ -1209,11 +1209,11 @@ mod tests {
     // download file again, it should use already fetched file even though `use_disk_cache` is set to
     // false, this can be verified using source header file creation timestamp (should be
     // the same as after first download)
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
-      |r| {
+    tokio_util::run_basic(
+      fetcher.fetch_source_file_async(&specifier, None).map(|r| {
         assert!(r.is_ok());
-      },
-    ));
+      }),
+    );
 
     let result = fs::File::open(&headers_file_name);
     assert!(result.is_ok());
@@ -1278,7 +1278,7 @@ mod tests {
         assert_eq!(mod_meta.url, target_module_url);
       });
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
@@ -1344,7 +1344,7 @@ mod tests {
         assert_eq!(mod_meta.url, target_url);
       });
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
@@ -1398,7 +1398,7 @@ mod tests {
         assert_eq!(file_modified, file_modified_2);
       });
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
@@ -1423,7 +1423,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::Http);
       });
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
@@ -1442,7 +1442,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::NotFound);
       });
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
@@ -1476,7 +1476,7 @@ mod tests {
         assert!(result.is_ok());
       });
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
@@ -1518,7 +1518,7 @@ mod tests {
         assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
       });
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
@@ -1562,7 +1562,7 @@ mod tests {
         assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
       });
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
@@ -1631,7 +1631,7 @@ mod tests {
         );
       });
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
@@ -1642,21 +1642,21 @@ mod tests {
     // Test failure case.
     let specifier =
       ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
-      |r| {
+    tokio_util::run_basic(
+      fetcher.fetch_source_file_async(&specifier, None).map(|r| {
         assert!(r.is_err());
-      },
-    ));
+      }),
+    );
 
     let p =
       std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("js/main.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
-      |r| {
+    tokio_util::run_basic(
+      fetcher.fetch_source_file_async(&specifier, None).map(|r| {
         assert!(r.is_ok());
-      },
-    ));
+      }),
+    );
   }
 
   #[test]
@@ -1667,21 +1667,21 @@ mod tests {
     // Test failure case.
     let specifier =
       ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
-      |r| {
+    tokio_util::run_basic(
+      fetcher.fetch_source_file_async(&specifier, None).map(|r| {
         assert!(r.is_err());
-      },
-    ));
+      }),
+    );
 
     let p =
       std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("js/main.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
-      |r| {
+    tokio_util::run_basic(
+      fetcher.fetch_source_file_async(&specifier, None).map(|r| {
         assert!(r.is_ok());
-      },
-    ));
+      }),
+    );
   }
 
   #[test]
@@ -1693,11 +1693,11 @@ mod tests {
       .join("tests/001_hello.js");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
-      |r| {
+    tokio_util::run_basic(
+      fetcher.fetch_source_file_async(&specifier, None).map(|r| {
         assert!(r.is_ok());
-      },
-    ));
+      }),
+    );
   }
 
   #[test]
@@ -1982,7 +1982,7 @@ mod tests {
       assert_eq!(modified1, modified2);
     };
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
@@ -2088,7 +2088,7 @@ mod tests {
       );
     };
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
@@ -2114,7 +2114,7 @@ mod tests {
       );
     };
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 }

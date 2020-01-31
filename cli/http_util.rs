@@ -294,7 +294,7 @@ mod tests {
         _ => panic!(),
       });
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
@@ -327,7 +327,7 @@ mod tests {
         _ => panic!(),
       });
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
@@ -367,7 +367,7 @@ mod tests {
       assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
     };
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
@@ -400,7 +400,7 @@ mod tests {
         _ => panic!(),
       });
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
@@ -422,7 +422,7 @@ mod tests {
         _ => panic!(),
       });
 
-    tokio_util::run(fut);
+    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
