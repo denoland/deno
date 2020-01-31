@@ -121,6 +121,10 @@ fn installer_test_local_module_run() {
     .output()
     .expect("failed to spawn script");
 
+  eprintln!(
+    "stderr {}",
+    std::str::from_utf8(&output.stderr).unwrap().trim()
+  );
   assert_eq!(
     std::str::from_utf8(&output.stdout).unwrap().trim(),
     "hello, foo"
@@ -179,6 +183,10 @@ fn installer_test_remote_module_run() {
     .output()
     .expect("failed to spawn script");
 
+  eprintln!(
+    "stderr {}",
+    std::str::from_utf8(&output.stderr).unwrap().trim()
+  );
   assert_eq!(
     std::str::from_utf8(&output.stdout).unwrap().trim(),
     "hello, foo"
