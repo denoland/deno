@@ -490,13 +490,13 @@ impl Isolate {
       }
       Op::Async(fut) => {
         let fut2 = fut.map_ok(move |buf| (op_id, buf));
-        self.pending_ops.push(fut2.boxed());
+        self.pending_ops.push(fut2.boxed_local());
         self.have_unpolled_ops = true;
         None
       }
       Op::AsyncUnref(fut) => {
         let fut2 = fut.map_ok(move |buf| (op_id, buf));
-        self.pending_unref_ops.push(fut2.boxed());
+        self.pending_unref_ops.push(fut2.boxed_local());
         self.have_unpolled_ops = true;
         None
       }
