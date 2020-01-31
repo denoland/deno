@@ -520,7 +520,7 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
   deno fmt
 
   deno fmt myfile1.ts myfile2.ts
-  
+
   deno fmt --check",
     )
     .arg(
@@ -1615,6 +1615,20 @@ mod tests {
         subcommand: DenoSubcommand::Fetch,
         argv: svec!["deno", "script.ts"],
         import_map_path: Some("importmap.json".to_owned()),
+        ..DenoFlags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn fetch_multiple() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "fetch", "script.ts", "script_two.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      DenoFlags {
+        subcommand: DenoSubcommand::Fetch,
+        argv: svec!["deno", "script.ts", "script_two.ts"],
         ..DenoFlags::default()
       }
     );
