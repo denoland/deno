@@ -6,18 +6,18 @@
 // https://github.com/golang/go/blob/master/src/net/http/responsewrite_test.go
 
 const { Buffer } = Deno;
-import { TextProtoReader } from "../textproto/mod.ts";
+// import { TextProtoReader } from "../textproto/mod.ts";
 import { test, runIfMain } from "../testing/mod.ts";
 import { assert, assertEquals, assertNotEquals } from "../testing/asserts.ts";
 import {
   Response,
   ServerRequest,
-  serve,
+  // serve,
   writeResponse,
   readRequest,
   parseHTTPVersion
 } from "./server.ts";
-import { delay, deferred } from "../util/async.ts";
+// import { delay, deferred } from "../util/async.ts";
 import {
   BufReader,
   BufWriter,
