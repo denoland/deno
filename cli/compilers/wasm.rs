@@ -6,6 +6,7 @@ use crate::file_fetcher::SourceFile;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::startup_data;
 use crate::state::*;
+use deno_core::ErrBox;
 use futures::FutureExt;
 use serde_derive::Deserialize;
 use serde_json;
@@ -76,7 +77,6 @@ impl WasmCompiler {
     }
     let cache_ = self.cache.clone();
 
-    ////// START
     let (load_sender, load_receiver) =
       tokio::sync::oneshot::channel::<Result<CompiledModule, ErrBox>>();
 
@@ -129,9 +129,8 @@ impl WasmCompiler {
         load_sender.send(Ok(module)).unwrap();
       };
 
-      tokio_util::run_basic(fut);
+      crate::tokio_util::run_basic(fut);
     });
-    ////// END
     let result = load_receiver.wait();
     result.unwrap()
   }

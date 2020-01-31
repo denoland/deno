@@ -18,7 +18,6 @@ use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use std;
 use std::env;
-use std::future::Future;
 use std::ops::Deref;
 use std::path::Path;
 use std::str;

@@ -47,6 +47,11 @@ fn main() {
     deno_typescript::ts_version()
   );
 
+  if env::var_os("NO_BUILD_SNAPSHOTS").is_some() {
+    println!("NO_BUILD_SNAPSHOTS is set, skipping snapshot building.");
+    return;
+  }
+
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 

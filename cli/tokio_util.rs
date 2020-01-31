@@ -14,12 +14,15 @@ where
   rt.block_on(future);
 }
 
-pub fn run_basic(future: F)
+pub fn run_basic<F, R>(future: F) -> R
 where
-  F: std::future::Future<Output = ()> + 'static,
+  F: std::future::Future<Output = R> + 'static,
 {
-  let rt = runtime::Builder::new().basic_scheduler().build().unwrap();
-  rt.block_on(future);
+  let rt = tokio::runtime::Builder::new()
+    .basic_scheduler()
+    .build()
+    .unwrap();
+  rt.block_on(future)
 }
 
 /*

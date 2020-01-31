@@ -4,15 +4,9 @@ use crate::state::ThreadSafeState;
 use crate::worker::Worker;
 use crate::worker::WorkerChannels;
 use deno_core;
-use deno_core::ErrBox;
 use deno_core::StartupData;
-use futures::future::FutureExt;
-use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use std::pin::Pin;
-use std::task::Context;
-use std::task::Poll;
 
 /// This worker is used to host TypeScript and WASM compilers.
 ///

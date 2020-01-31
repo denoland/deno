@@ -6,7 +6,6 @@ use serde_json::json;
 pub use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
-use tokio::task;
 
 pub type JsonResult = Result<Value, ErrBox>;
 
@@ -28,10 +27,7 @@ fn json_err(err: ErrBox) -> Value {
   })
 }
 
-fn serialize_result(
-  promise_id: Option<u64>,
-  result: Result<Value, ErrBox>,
-) -> Buf {
+fn serialize_result(promise_id: Option<u64>, result: JsonResult) -> Buf {
   let value = match result {
     Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
     Err(err) => json!({ "err": json_err(err), "promiseId": promise_id }),
@@ -102,17 +98,17 @@ where
 
 pub fn blocking_json<F>(is_sync: bool, f: F) -> Result<JsonOp, ErrBox>
 where
-  F: 'static + Send + FnOnce() -> Result<Value, ErrBox> + Unpin,
+  F: FnOnce() -> JsonResult + Send + 'static,
 {
   if is_sync {
     Ok(JsonOp::Sync(f()?))
   } else {
     let fut = async move {
-      task::spawn_blocking(move || f())
+      tokio::task::spawn_blocking(move || f())
         .await
         .map_err(ErrBox::from)?
     }
-    .boxed();
-    Ok(JsonOp::Async(fut.boxed()))
+    .boxed_local();
+    Ok(JsonOp::Async(fut))
   }
 }

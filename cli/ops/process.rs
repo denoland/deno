@@ -10,11 +10,6 @@ use futures;
 use futures::future::FutureExt;
 use std;
 use std::convert::From;
-use std::future::Future;
-use std::pin::Pin;
-use std::process::ExitStatus;
-use std::task::Context;
-use std::task::Poll;
 use tokio::process::Command;
 
 #[cfg(unix)]

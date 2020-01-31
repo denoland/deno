@@ -12,7 +12,6 @@ use futures::future::FutureExt;
 use futures::future::TryFutureExt;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
-use futures::task::AtomicWaker;
 use std::env;
 use std::future::Future;
 use std::ops::Deref;

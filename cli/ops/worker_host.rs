@@ -5,6 +5,7 @@ use crate::deno_error::js_check;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::fmt_errors::JSError;
+use crate::ops::dispatch_json::JsonResult;
 use crate::ops::json_op;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
@@ -124,7 +125,7 @@ fn op_create_worker(
     if has_source_code {
       js_check(worker.execute(&source_code));
       load_sender
-        .send(Ok(JsonOp::Sync(json!({"id": worker_id, "loaded": true}))))
+        .send(Ok(json!({"id": worker_id, "loaded": true})))
         .unwrap();
     }
 
@@ -146,10 +147,11 @@ fn op_create_worker(
       .send(Ok(json!({"id": worker_id, "loaded": false})))
       .unwrap();
 
-    tokio_util::run_basic(fut);
+    crate::tokio_util::run_basic(fut);
   });
 
-  load_receiver.wait()
+  let r = crate::tokio_util::run_basic(load_receiver);
+  Ok(JsonOp::Sync(r.unwrap()))
 }
 
 struct WorkerPollFuture {

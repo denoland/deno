@@ -9,7 +9,7 @@ use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::msg;
-use crate::serde_json::json;
+use crate::ops::JsonResult;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::*;
@@ -20,6 +20,7 @@ use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
 use futures::Future;
 use regex::Regex;
+use serde_json::json;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -626,8 +627,6 @@ impl TsCompiler {
 fn spawn_ts_compiler_worker(
   req_msg: Buf,
   global_state: ThreadSafeGlobalState,
-  _sources: &HashMap<String, String, S>,
-  _options: &Option<String>,
 ) -> Pin<Box<CompilationResultFuture>> {
   let (load_sender, load_receiver) =
     tokio::sync::oneshot::channel::<JsonResult>();
@@ -650,7 +649,7 @@ fn spawn_ts_compiler_worker(
       load_sender.send(Ok(json!(json_str))).unwrap();
     };
 
-    tokio_util::run_basic(fut);
+    crate::tokio_util::run_basic(fut);
   });
   load_receiver.wait()
 }
@@ -674,7 +673,7 @@ pub fn runtime_compile_async<S: BuildHasher>(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  spawn_ts_compiler_worker(req_msg, global_state, sources, options)
+  spawn_ts_compiler_worker(req_msg, global_state)
 }
 
 pub fn runtime_transpile_async<S: BuildHasher>(
@@ -691,7 +690,7 @@ pub fn runtime_transpile_async<S: BuildHasher>(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  spawn_ts_compiler_worker(req_msg, global_state, sources, options)
+  spawn_ts_compiler_worker(req_msg, global_state)
 }
 
 #[cfg(test)]
