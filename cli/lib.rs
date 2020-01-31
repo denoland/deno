@@ -281,6 +281,8 @@ async fn info_command(flags: DenoFlags) {
 }
 
 async fn fetch_command(flags: DenoFlags) {
+  let args = flags.argv.clone();
+
   let (mut worker, state) = create_worker_and_state(flags);
 
   let main_module = state.main_module.as_ref().unwrap().clone();
@@ -291,6 +293,18 @@ async fn fetch_command(flags: DenoFlags) {
 
   let result = worker.execute_mod_async(&main_module, None, true).await;
   js_check(result);
+
+  // resolve modules for rest of args if present
+  let files_len = args.len();
+  if files_len > 2 {
+    for i in 2..files_len {
+      let next_specifier = args[i].clone();
+      let next_module = ModuleSpecifier::resolve_url_or_path(&next_specifier).unwrap();
+      let result = worker.execute_mod_async(&next_module, None, true).await;
+      js_check(result);
+    }
+  }
+
   if state.flags.lock_write {
     if let Some(ref lockfile) = state.lockfile {
       let g = lockfile.lock().unwrap();

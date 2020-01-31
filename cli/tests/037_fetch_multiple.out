@@ -1,0 +1,4 @@
+Download https://www.unpkg.com/vue@2.6.11/dist/vue.runtime.esm.js
+Compile file:///home/yamalight/projects/bxjs/deno/cli/tests/fetch/test.ts
+Download https://unpkg.com/leaflet/dist/leaflet-src.esm.js
+Download https://unpkg.com/leaflet@1.6.0/dist/leaflet-src.esm.js
