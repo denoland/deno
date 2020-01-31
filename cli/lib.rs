@@ -299,7 +299,8 @@ async fn fetch_command(flags: DenoFlags) {
   if files_len > 2 {
     for i in 2..files_len {
       let next_specifier = args[i].clone();
-      let next_module = ModuleSpecifier::resolve_url_or_path(&next_specifier).unwrap();
+      let next_module =
+        ModuleSpecifier::resolve_url_or_path(&next_specifier).unwrap();
       let result = worker.execute_mod_async(&next_module, None, true).await;
       js_check(result);
     }
