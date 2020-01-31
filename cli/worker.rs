@@ -138,7 +138,7 @@ impl Future for Worker {
     let inner = self.get_mut();
     let waker = AtomicWaker::new();
     waker.register(cx.waker());
-    inner.isolate.xpoll(cx)
+    inner.isolate.poll_unpin(cx)
   }
 }
 
@@ -218,7 +218,7 @@ mod tests {
     F: FnOnce() + Send + 'static,
   {
     let fut = futures::future::lazy(move |_cx| f());
-    tokio_util::run(fut)
+    tokio_util::run_basic(fut)
   }
 
   pub async fn panic_on_error<I, E, F>(f: F) -> I
@@ -257,7 +257,7 @@ mod tests {
     )
     .unwrap();
     let state_ = state.clone();
-    tokio_util::run(async move {
+    tokio_util::run_basic(async move {
       let mut worker =
         MainWorker::new("TEST".to_string(), StartupData::None, state, ext);
       let result = worker
@@ -266,7 +266,7 @@ mod tests {
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
       }
-      panic_on_error(worker).await
+      panic_on_error(*worker).await
     });
 
     let metrics = &state_.metrics;
@@ -300,7 +300,7 @@ mod tests {
     )
     .unwrap();
     let state_ = state.clone();
-    tokio_util::run(async move {
+    tokio_util::run_basic(async move {
       let mut worker =
         MainWorker::new("TEST".to_string(), StartupData::None, state, ext);
       let result = worker
@@ -309,7 +309,7 @@ mod tests {
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
       }
-      panic_on_error(worker).await
+      panic_on_error(*worker).await
     });
 
     let metrics = &state_.metrics;
@@ -343,7 +343,7 @@ mod tests {
     .unwrap();
     let global_state_ = global_state;
     let state_ = state.clone();
-    tokio_util::run(async move {
+    tokio_util::run_basic(async move {
       let mut worker = MainWorker::new(
         "TEST".to_string(),
         startup_data::deno_isolate_init(),
@@ -359,7 +359,7 @@ mod tests {
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
       }
-      panic_on_error(worker).await
+      panic_on_error(*worker).await
     });
 
     assert_eq!(state_.metrics.resolve_count.load(Ordering::SeqCst), 3);

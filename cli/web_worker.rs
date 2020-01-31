@@ -120,8 +120,6 @@ mod tests {
         "#;
       worker.execute(source).unwrap();
 
-      let worker_ = worker.clone();
-
       let fut = async move {
         let r = worker.await;
         r.unwrap();
@@ -131,10 +129,10 @@ mod tests {
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
 
-      let r = block_on(worker_.post_message(msg));
+      let r = block_on(worker.post_message(msg));
       assert!(r.is_ok());
 
-      let maybe_msg = block_on(worker_.get_message());
+      let maybe_msg = block_on(worker.get_message());
       assert!(maybe_msg.is_some());
       // Check if message received is [1, 2, 3] in json
       assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
@@ -143,7 +141,7 @@ mod tests {
         .to_string()
         .into_boxed_str()
         .into_boxed_bytes();
-      let r = block_on(worker_.post_message(msg));
+      let r = block_on(worker.post_message(msg));
       assert!(r.is_ok());
     })
   }
@@ -156,16 +154,14 @@ mod tests {
         .execute("onmessage = () => { delete self.onmessage; }")
         .unwrap();
 
-      let worker_ = worker.clone();
       let worker_future = async move {
-        let result = worker_.await;
+        let result = worker.await;
         println!("workers.rs after resource close");
         result.unwrap();
       }
       .shared();
 
-      let worker_future_ = worker_future.clone();
-      tokio::spawn(worker_future_);
+      tokio_util::run_basic(worker_future);
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
       let r = block_on(worker.post_message(msg));

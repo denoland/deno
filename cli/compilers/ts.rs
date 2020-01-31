@@ -771,7 +771,7 @@ mod tests {
 
       assert!(result.is_ok());
     };
-    tokio_util::run(fut.boxed())
+    tokio_util::run_basic(fut.boxed_local())
   }
 
   #[test]
