@@ -1,1 +1,1 @@
-import "https://www.unpkg.com/vue/dist/vue.runtime.esm.js";
+import "http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts";

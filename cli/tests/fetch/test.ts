@@ -1,1 +1,1 @@
-import "https://unpkg.com/leaflet/dist/leaflet-src.esm.js";
+import "http://localhost:4545/cli/tests/subdir/mod2.ts";
