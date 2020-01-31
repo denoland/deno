@@ -2,7 +2,6 @@
 use crate::fmt_errors::JSError;
 use crate::ops;
 use crate::state::ThreadSafeState;
-use futures::task::AtomicWaker;
 use deno_core;
 use deno_core::Buf;
 use deno_core::ErrBox;
@@ -13,6 +12,7 @@ use futures::future::FutureExt;
 use futures::future::TryFutureExt;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
+use futures::task::AtomicWaker;
 use std::env;
 use std::future::Future;
 use std::ops::Deref;
@@ -31,6 +31,25 @@ use url::Url;
 pub struct WorkerChannels {
   pub sender: mpsc::Sender<Buf>,
   pub receiver: Arc<AsyncMutex<mpsc::Receiver<Buf>>>,
+}
+
+impl WorkerChannels {
+  /// Post message to worker as a host.
+  pub async fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
+    let mut sender = self.sender.clone();
+    sender.send(buf).map_err(ErrBox::from).await
+  }
+
+  /// Get message from worker as a host.
+  pub fn get_message(&self) -> Pin<Box<dyn Future<Output = Option<Buf>>>> {
+    let receiver_mutex = self.receiver.clone();
+
+    async move {
+      let mut receiver = receiver_mutex.lock().await;
+      receiver.next().await
+    }
+    .boxed_local()
+  }
 }
 
 /// Worker is a CLI wrapper for `deno_core::Isolate`.
@@ -112,18 +131,23 @@ impl Worker {
     Ok(())
   }
 
-  /// Post message to worker as a host.
-  pub async fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
-    let mut sender = self.external_channels.sender.clone();
+  /// Returns a way to communicate with the Worker from other threads.
+  pub fn thread_safe_handle(&self) -> WorkerChannels {
+    self.external_channels.clone()
+  }
+
+  /// Equivalent to calling postMessage in JS inside the worker.
+  pub async fn post_message_internal(&self, buf: Buf) -> Result<(), ErrBox> {
+    let mut sender = self.state.worker_channels.sender.clone();
     let result = sender.send(buf).map_err(ErrBox::from).await;
-    drop(sender);
     result
   }
 
   /// Get message from worker as a host.
-  pub fn get_message(&self) -> Pin<Box<dyn Future<Output = Option<Buf>>>> {
-    let receiver_mutex = self.external_channels.receiver.clone();
-
+  pub fn get_message_internal(
+    &self,
+  ) -> Pin<Box<dyn Future<Output = Option<Buf>>>> {
+    let receiver_mutex = self.state.worker_channels.receiver.clone();
     async move {
       let mut receiver = receiver_mutex.lock().await;
       receiver.next().await

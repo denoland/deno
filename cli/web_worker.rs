@@ -120,19 +120,15 @@ mod tests {
         "#;
       worker.execute(source).unwrap();
 
-      let fut = async move {
-        let r = worker.await;
-        r.unwrap();
-      };
-
-      tokio::spawn(fut);
+      let handle = worker.thread_safe_handle();
+      tokio_util::spawn_thread(move || tokio_util::run_basic(worker));
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
 
-      let r = block_on(worker.post_message(msg));
+      let r = tokio_util::run_basic(handle.post_message(msg));
       assert!(r.is_ok());
 
-      let maybe_msg = block_on(worker.get_message());
+      let maybe_msg = tokio_util::run_basic(handle.get_message());
       assert!(maybe_msg.is_some());
       // Check if message received is [1, 2, 3] in json
       assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
@@ -141,7 +137,7 @@ mod tests {
         .to_string()
         .into_boxed_str()
         .into_boxed_bytes();
-      let r = block_on(worker.post_message(msg));
+      let r = tokio_util::run_basic(handle.post_message(msg));
       assert!(r.is_ok());
     })
   }
@@ -154,17 +150,13 @@ mod tests {
         .execute("onmessage = () => { delete self.onmessage; }")
         .unwrap();
 
-      let worker_future = async move {
-        let result = worker.await;
-        println!("workers.rs after resource close");
-        result.unwrap();
-      }
-      .shared();
+      let handle = worker.thread_safe_handle();
+      tokio_util::spawn_thread(move || tokio_util::run_basic(worker));
 
       tokio_util::run_basic(worker_future);
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-      let r = block_on(worker.post_message(msg));
+      let r = tokio_util::run_basic(handle.post_message(msg));
       assert!(r.is_ok());
 
       block_on(worker_future)

@@ -48,13 +48,14 @@ pub struct State {
   pub global_state: ThreadSafeGlobalState,
   pub permissions: Arc<Mutex<DenoPermissions>>,
   pub main_module: Option<ModuleSpecifier>,
+  // TODO(ry) rename to worker_channels_internal
   pub worker_channels: WorkerChannels,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
   pub metrics: Metrics,
   pub global_timer: Mutex<GlobalTimer>,
-  pub workers: Mutex<HashMap<u32, WebWorker>>,
+  pub workers: Mutex<HashMap<u32, WorkerChannels>>,
   pub loading_workers: Mutex<HashMap<u32, mpsc::Receiver<Result<(), ErrBox>>>>,
   pub next_worker_id: AtomicUsize,
   pub start_time: Instant,

@@ -237,7 +237,8 @@ impl TsCompiler {
     Ok(compiler)
   }
 
-  /// Create a new V8 worker with snapshot of TS compiler and setup compiler's runtime.
+  /// Create a new V8 worker with snapshot of TS compiler and setup compiler's
+  /// runtime.
   fn setup_worker(global_state: ThreadSafeGlobalState) -> CompilerWorker {
     let (int, ext) = ThreadSafeState::create_channels();
     let worker_state =
@@ -284,10 +285,10 @@ impl TsCompiler {
     let mut worker = TsCompiler::setup_worker(global_state);
 
     async move {
-      worker.post_message(req_msg).await?;
+      worker.post_message_internal(req_msg).await?;
       (&mut *worker).await?;
       debug!("Sent message to worker");
-      let maybe_msg = worker.get_message().await;
+      let maybe_msg = worker.get_message_internal().await;
       debug!("Received message from worker");
       if let Some(ref msg) = maybe_msg {
         let json_str = std::str::from_utf8(msg).unwrap();
@@ -300,14 +301,15 @@ impl TsCompiler {
     }
   }
 
-  /// Mark given module URL as compiled to avoid multiple compilations of same module
-  /// in single run.
+  /// Mark given module URL as compiled to avoid multiple compilations of same
+  /// module in single run.
   fn mark_compiled(&self, url: &Url) {
     let mut c = self.compiled.lock().unwrap();
     c.insert(url.clone());
   }
 
-  /// Check if given module URL has already been compiled and can be fetched directly from disk.
+  /// Check if given module URL has already been compiled and can be fetched
+  /// directly from disk.
   fn has_compiled(&self, url: &Url) -> bool {
     let c = self.compiled.lock().unwrap();
     c.contains(url)
@@ -317,9 +319,11 @@ impl TsCompiler {
   ///
   /// This method compiled every module at most once.
   ///
-  /// If `--reload` flag was provided then compiler will not on-disk cache and force recompilation.
+  /// If `--reload` flag was provided then compiler will not on-disk cache and
+  /// force recompilation.
   ///
-  /// If compilation is required then new V8 worker is spawned with fresh TS compiler.
+  /// If compilation is required then new V8 worker is spawned with fresh TS
+  /// compiler.
   pub fn compile_async(
     &self,
     global_state: ThreadSafeGlobalState,
@@ -388,10 +392,10 @@ impl TsCompiler {
       .add("Compile", &module_url.to_string());
 
     async move {
-      worker.post_message(req_msg).await?;
+      worker.post_message_internal(req_msg).await?;
       (&mut *worker).await?;
       debug!("Sent message to worker");
-      let maybe_msg = worker.get_message().await;
+      let maybe_msg = worker.get_message_internal().await;
       if let Some(ref msg) = maybe_msg {
         let json_str = std::str::from_utf8(msg).unwrap();
         debug!("Message: {}", json_str);
@@ -636,7 +640,7 @@ fn spawn_ts_compiler_worker(
 
     let fut = async move {
       debug!("Sent message to worker");
-      if let Err(err) = worker.post_message(req_msg).await {
+      if let Err(err) = worker.post_message_internal(req_msg).await {
         load_sender.send(Err(err)).unwrap();
         return;
       }
@@ -644,7 +648,7 @@ fn spawn_ts_compiler_worker(
         load_sender.send(Err(err)).unwrap();
         return;
       }
-      let msg = (worker.get_message().await).unwrap();
+      let msg = (worker.get_message_internal().await).unwrap();
       let json_str = std::str::from_utf8(&msg).unwrap();
       load_sender.send(Ok(json!(json_str))).unwrap();
     };

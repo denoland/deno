@@ -15,6 +15,7 @@ where
   rt.block_on(future);
 }
 
+// TODO(ry) rename to run_local ?
 pub fn run_basic<F, R>(future: F) -> R
 where
   F: std::future::Future<Output = R> + 'static,

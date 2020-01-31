@@ -89,7 +89,7 @@ impl WasmCompiler {
 
       let fut = async move {
         let _ = worker
-          .post_message(
+          .post_message_internal(
             serde_json::to_string(&base64_data)
               .unwrap()
               .into_boxed_str()
@@ -104,7 +104,8 @@ impl WasmCompiler {
         }
 
         debug!("Sent message to worker");
-        let json_msg = worker.get_message().await.expect("not handled");
+        let json_msg =
+          worker.get_message_internal().await.expect("not handled");
 
         debug!("Received message from worker");
         let module_info: WasmModuleInfo =

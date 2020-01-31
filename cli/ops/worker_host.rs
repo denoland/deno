@@ -169,6 +169,8 @@ fn op_create_worker(
   Ok(JsonOp::Sync(r.unwrap()))
 }
 
+/* TODO(ry) Not sure what WorkerPollFuture does
+
 struct WorkerPollFuture {
   state: ThreadSafeState,
   rid: ResourceId,
@@ -179,18 +181,22 @@ impl Future for WorkerPollFuture {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
+    inner.poll(cx)
     let mut workers_table = inner.state.workers.lock().unwrap();
-    let maybe_worker = workers_table.get_mut(&inner.rid);
-    if maybe_worker.is_none() {
+    let maybe_worker_handle = workers_table.get_mut(&inner.rid);
+    if maybe_worker_handle.is_none() {
       return Poll::Ready(Ok(()));
     }
-    match maybe_worker.unwrap().poll_unpin(cx) {
+    let h = maybe_worker_handle.unwrap();
+
+    match h.poll_unpin(cx) {
       Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
       Poll::Ready(Ok(_)) => Poll::Ready(Ok(())),
       Poll::Pending => Poll::Pending,
     }
   }
 }
+*/
 
 fn serialize_worker_result(result: Result<(), ErrBox>) -> Value {
   use crate::deno_error::GetErrorKind;
@@ -247,6 +253,9 @@ fn op_host_poll_worker(
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
 
+  // TODO(ry) I don't understand what this is doing. Is it getting messages?
+  todo!()
+  /*
   let future = WorkerPollFuture {
     state: state.clone(),
     rid: id,
@@ -257,6 +266,7 @@ fn op_host_poll_worker(
     Ok(serialize_worker_result(result))
   };
   Ok(JsonOp::Async(op.boxed_local()))
+  */
 }
 
 fn op_host_close_worker(
@@ -269,13 +279,13 @@ fn op_host_close_worker(
   let state_ = state.clone();
 
   let mut workers_table = state_.workers.lock().unwrap();
-  let maybe_worker = workers_table.remove(&id);
-  if let Some(worker) = maybe_worker {
-    let channels = worker.state.worker_channels.clone();
-    let mut sender = channels.sender.clone();
+  let maybe_worker_handle = workers_table.remove(&id);
+  if let Some(worker_handle) = maybe_worker_handle {
+    let mut sender = worker_handle.sender.clone();
     sender.close_channel();
 
-    let mut receiver = futures::executor::block_on(channels.receiver.lock());
+    let mut receiver =
+      futures::executor::block_on(worker_handle.receiver.lock());
     receiver.close();
   };
 
@@ -291,10 +301,15 @@ fn op_host_resume_worker(
   let id = args.id as u32;
   let state_ = state.clone();
 
+  // We are not on the same thread. We cannot just call worker.execute.
+  // We can only send messages. This needs to be reimplemented somehow.
+  todo!()
+  /*
   let mut workers_table = state_.workers.lock().unwrap();
   let worker = workers_table.get_mut(&id).unwrap();
   js_check(worker.execute("runWorkerMessageLoop()"));
   Ok(JsonOp::Sync(json!({})))
+  */
 }
 
 #[derive(Deserialize)]
@@ -313,14 +328,12 @@ fn op_host_get_message(
   let id = args.id as u32;
   let mut table = state_.workers.lock().unwrap();
   // TODO: don't return bad resource anymore
-  let worker = table.get_mut(&id).ok_or_else(bad_resource)?;
-  let fut = worker.get_message();
-
+  let worker_handle = table.get_mut(&id).ok_or_else(bad_resource)?;
+  let fut = worker_handle.get_message();
   let op = async move {
     let maybe_buf = fut.await.unwrap();
     Ok(json!({ "data": maybe_buf }))
   };
-
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
