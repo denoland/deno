@@ -323,6 +323,7 @@ itest!(_036_import_map_fetch {
 itest!(_037_fetch_multiple {
   args: "fetch --reload fetch/test.ts fetch/other.ts",
   check_stderr: true,
+  http_server: true,
   output: "037_fetch_multiple.out",
 });
 
