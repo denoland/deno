@@ -3,8 +3,6 @@
 extern crate lazy_static;
 extern crate tempfile;
 
-use std::path::PathBuf;
-
 #[test]
 fn test_pattern_match() {
   assert!(util::pattern_match("foo[BAR]baz", "foobarbaz", "[BAR]"));
@@ -71,41 +69,18 @@ fn fmt_test() {
   assert_eq!(expected, actual);
 }
 
-#[cfg(target_os = "windows")]
-static PATH_SEPARATOR: char = ';';
-#[cfg(not(target_os = "windows"))]
-static PATH_SEPARATOR: char = ':';
-
-fn create_path_string(current_path: String, paths: &[PathBuf]) -> String {
-  let mut new_path = strip_quotations(current_path)
-    .trim_end_matches(PATH_SEPARATOR)
-    .to_string();
-
-  for p in paths {
-    new_path = format!(
-      "{}{}{}",
-      new_path,
-      PATH_SEPARATOR,
-      strip_quotations(p.to_string_lossy().to_string())
-    );
-  }
-
-  new_path
-}
-
 #[test]
 fn installer_test_local_module_run() {
   use deno::flags::DenoFlags;
   use deno::installer;
-  use std::collections::HashMap;
   use std::env;
+  use std::path::PathBuf;
   use std::process::Command;
   use tempfile::TempDir;
 
   let temp_dir = TempDir::new().expect("tempdir fail");
   let local_module = env::current_dir().unwrap().join("tests/echo.ts");
   let local_module_str = local_module.to_string_lossy();
-
   installer::install(
     DenoFlags::default(),
     Some(temp_dir.path().to_string_lossy().to_string()),
@@ -114,36 +89,23 @@ fn installer_test_local_module_run() {
     vec!["hello".to_string()],
   )
   .expect("Failed to install");
-
-  let mut file_path = temp_dir.path().join("echo_test");
+let mut file_path = temp_dir.path().join("echo_test");
   if cfg!(windows) {
     file_path = file_path.with_extension(".cmd");
   }
   assert!(file_path.exists());
-
-  let mut envs = HashMap::new();
-  let paths = vec![temp_dir.path().to_owned(), util::target_dir()];
-
-  if cfg!(windows) {
-    let o = env::var_os("Path").expect("Path not set");
-    envs.insert(
-      "Path",
-      create_path_string(o.to_string_lossy().to_string(), &paths),
-    );
-  } else {
-    let o = env::var_os("PATH").expect("PATH not set");
-    envs.insert(
-      "PATH",
-      create_path_string(o.to_string_lossy().to_string(), &paths),
-    );
-  };
-
+  let path_var_name = if cfg!(windows) { "Path" } else { "PATH " };
+  let paths_var = env::var_os(path_var_name).expect("PATH not set");
+  let mut paths: Vec<PathBuf> = env::split_paths(&paths_var).collect();
+  paths.push(temp_dir.path().to_owned());
+  paths.push(util::target_dir());
+  let path_var_value = env::join_paths(paths).expect("Can't create PATH");
   // NOTE: using file_path here instead of exec_name, because tests
   // shouldn't mess with user's PATH env variable
   let output = Command::new(file_path)
     .current_dir(temp_dir.path())
     .arg("foo")
-    .envs(envs)
+    .env(path_var_name, path_var_value)
     .output()
     .expect("failed to spawn script");
 
@@ -154,22 +116,17 @@ fn installer_test_local_module_run() {
   drop(temp_dir);
 }
 
-fn strip_quotations(s: String) -> String {
-  s.trim_start_matches('"').trim_end_matches('"').to_string()
-}
-
 #[test]
 fn installer_test_remote_module_run() {
   use deno::flags::DenoFlags;
   use deno::installer;
-  use std::collections::HashMap;
   use std::env;
+  use std::path::PathBuf;
   use std::process::Command;
   use tempfile::TempDir;
 
   let g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
-
   installer::install(
     DenoFlags::default(),
     Some(temp_dir.path().to_string_lossy().to_string()),
@@ -178,39 +135,25 @@ fn installer_test_remote_module_run() {
     vec!["hello".to_string()],
   )
   .expect("Failed to install");
-
   let mut file_path = temp_dir.path().join("echo_test");
   if cfg!(windows) {
     file_path = file_path.with_extension(".cmd");
   }
   assert!(file_path.exists());
-
-  let mut envs = HashMap::new();
-  let paths = vec![temp_dir.path().to_owned(), util::target_dir()];
-
-  if cfg!(windows) {
-    let o = env::var_os("Path").expect("Path not set");
-    envs.insert(
-      "Path",
-      create_path_string(o.to_string_lossy().to_string(), &paths),
-    );
-  } else {
-    let o = env::var_os("PATH").expect("PATH not set");
-    envs.insert(
-      "PATH",
-      create_path_string(o.to_string_lossy().to_string(), &paths),
-    );
-  };
-
+  let path_var_name = if cfg!(windows) { "Path" } else { "PATH " };
+  let paths_var = env::var_os(path_var_name).expect("PATH not set");
+  let mut paths: Vec<PathBuf> = env::split_paths(&paths_var).collect();
+  paths.push(temp_dir.path().to_owned());
+  paths.push(util::target_dir());
+  let path_var_value = env::join_paths(paths).expect("Can't create PATH");
   // NOTE: using file_path here instead of exec_name, because tests
   // shouldn't mess with user's PATH env variable
   let output = Command::new(file_path)
     .current_dir(temp_dir.path())
     .arg("foo")
-    .envs(envs)
+    .env(path_var_name, path_var_value)
     .output()
     .expect("failed to spawn script");
-
   assert_eq!(
     std::str::from_utf8(&output.stdout).unwrap().trim(),
     "hello, foo"
