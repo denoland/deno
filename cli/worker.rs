@@ -2,6 +2,7 @@
 use crate::fmt_errors::JSError;
 use crate::ops;
 use crate::state::ThreadSafeState;
+use futures::task::AtomicWaker;
 use deno_core;
 use deno_core::Buf;
 use deno_core::ErrBox;

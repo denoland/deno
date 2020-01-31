@@ -739,7 +739,7 @@ mod tests {
         .starts_with(b"console.log(\"Hello World\");"));
     };
 
-    tokio_util::run(fut.boxed())
+    tokio_util::run_basic(fut.boxed_local())
   }
 
   #[test]
