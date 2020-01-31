@@ -154,6 +154,13 @@ test({
   }
 });
 
+test({
+  name: "Endianness is determined",
+  fn() {
+    assert(["LE", "BE"].includes(os.endianness()));
+  }
+});
+
 // Method is currently implemented correctly for windows but not for any other os
 test({
   name: "Load average is an array of 3 numbers",
@@ -183,13 +190,6 @@ test({
     assertThrows(
       () => {
         os.cpus();
-      },
-      Error,
-      "Not implemented"
-    );
-    assertThrows(
-      () => {
-        os.endianness();
       },
       Error,
       "Not implemented"

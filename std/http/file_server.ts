@@ -48,7 +48,7 @@ if (serverArgs.h || serverArgs.help) {
   Serves a local directory in HTTP.
 
 INSTALL:
-  deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
+  deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
 
 USAGE:
   file_server [path] [options]
