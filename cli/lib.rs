@@ -35,7 +35,7 @@ mod global_state;
 mod global_timer;
 mod http_util;
 mod import_map;
-mod installer;
+pub mod installer;
 mod js;
 mod lockfile;
 mod metrics;
