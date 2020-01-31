@@ -1402,8 +1402,8 @@ mod tests {
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_get_source_code_6() {
+  #[tokio::test]
+  async fn test_get_source_code_6() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let double_redirect_url =
@@ -1411,43 +1411,40 @@ mod tests {
         .unwrap();
 
     // Test that redirections can be limited
-    let fut = fetcher
+    let result = fetcher
       .fetch_remote_source_async(&double_redirect_url, false, false, 2)
-      .then(move |result| {
-        assert!(result.is_ok());
-        fetcher.fetch_remote_source_async(&double_redirect_url, false, false, 1)
-      })
-      .map(move |result| {
-        assert!(result.is_err());
-        let err = result.err().unwrap();
-        assert_eq!(err.kind(), ErrorKind::Http);
-      });
+      .await;
+    assert!(result.is_ok());
 
-    tokio_util::run_basic(fut);
+    let result = fetcher
+      .fetch_remote_source_async(&double_redirect_url, false, false, 1)
+      .await;
+    assert!(result.is_err());
+    let err = result.err().unwrap();
+    assert_eq!(err.kind(), ErrorKind::Http);
+
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_get_source_no_remote() {
+  #[tokio::test]
+  async fn test_get_source_no_remote() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
       Url::parse("http://localhost:4545/tests/002_hello.ts").unwrap();
     // Remote modules are not allowed
-    let fut = fetcher
+    let result = fetcher
       .get_source_file_async(&module_url, true, true, false)
-      .map(move |result| {
-        assert!(result.is_err());
-        let err = result.err().unwrap();
-        assert_eq!(err.kind(), ErrorKind::NotFound);
-      });
+      .await;
+    assert!(result.is_err());
+    let err = result.err().unwrap();
+    assert_eq!(err.kind(), ErrorKind::NotFound);
 
-    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_get_source_cached_only() {
+  #[tokio::test]
+  async fn test_get_source_cached_only() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let fetcher_1 = fetcher.clone();
@@ -1456,32 +1453,32 @@ mod tests {
       Url::parse("http://localhost:4545/tests/002_hello.ts").unwrap();
     let module_url_1 = module_url.clone();
     let module_url_2 = module_url.clone();
+
     // file hasn't been cached before
-    let fut = fetcher
+    let result = fetcher
       .get_source_file_async(&module_url, true, false, true)
-      .then(move |result| {
-        assert!(result.is_err());
-        let err = result.err().unwrap();
-        assert_eq!(err.kind(), ErrorKind::PermissionDenied);
+      .await;
+    assert!(result.is_err());
+    let err = result.err().unwrap();
+    assert_eq!(err.kind(), ErrorKind::PermissionDenied);
 
-        // download and cache file
-        fetcher_1.get_source_file_async(&module_url_1, true, false, false)
-      })
-      .then(move |result| {
-        assert!(result.is_ok());
-        // module is already cached, should be ok even with `cached_only`
-        fetcher_2.get_source_file_async(&module_url_2, true, false, true)
-      })
-      .map(move |result| {
-        assert!(result.is_ok());
-      });
+    // download and cache file
+    let result = fetcher_1
+      .get_source_file_async(&module_url_1, true, false, false)
+      .await;
+    assert!(result.is_ok());
 
-    tokio_util::run_basic(fut);
+    // module is already cached, should be ok even with `cached_only`
+    let result = fetcher_2
+      .get_source_file_async(&module_url_2, true, false, true)
+      .await;
+    assert!(result.is_ok());
+
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_fetch_source_async_1() {
+  #[tokio::test]
+  async fn test_fetch_source_async_1() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
@@ -1493,32 +1490,30 @@ mod tests {
         .get_cache_filename_with_extension(&module_url, "headers.json"),
     );
 
-    let fut = fetcher
+    let result = fetcher
       .fetch_remote_source_async(&module_url, false, false, 10)
-      .map(move |result| {
-        assert!(result.is_ok());
-        let r = result.unwrap();
-        assert_eq!(r.source_code, b"export const loaded = true;\n");
-        assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-        // matching ext, no .headers.json file created
-        assert!(fs::read_to_string(&headers_file_name).is_err());
-        // Modify .headers.json, make sure read from local
-        let _ = fetcher.save_source_code_headers(
-          &module_url,
-          Some("text/javascript".to_owned()),
-          None,
-          None,
-          None,
-        );
-        let result2 = fetcher.fetch_cached_remote_source(&module_url);
-        assert!(result2.is_ok());
-        let r2 = result2.unwrap().unwrap();
-        assert_eq!(r2.source_code, b"export const loaded = true;\n");
-        // Not MediaType::TypeScript due to .headers.json modification
-        assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
-      });
+      .await;
+    assert!(result.is_ok());
+    let r = result.unwrap();
+    assert_eq!(r.source_code, b"export const loaded = true;\n");
+    assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
+    // matching ext, no .headers.json file created
+    assert!(fs::read_to_string(&headers_file_name).is_err());
+    // Modify .headers.json, make sure read from local
+    let _ = fetcher.save_source_code_headers(
+      &module_url,
+      Some("text/javascript".to_owned()),
+      None,
+      None,
+      None,
+    );
+    let result2 = fetcher.fetch_cached_remote_source(&module_url);
+    assert!(result2.is_ok());
+    let r2 = result2.unwrap().unwrap();
+    assert_eq!(r2.source_code, b"export const loaded = true;\n");
+    // Not MediaType::TypeScript due to .headers.json modification
+    assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
 
-    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
