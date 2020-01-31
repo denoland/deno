@@ -120,22 +120,23 @@ impl ThreadSafeGlobalState {
 
   pub async fn fetch_compiled_module(
     &self,
-    module_specifier: &ModuleSpecifier,
+    module_specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     target_lib: TargetLib,
   ) -> Result<CompiledModule, ErrBox> {
     let state1 = self.clone();
     let state2 = self.clone();
+    let module_specifier = module_specifier.clone();
 
     let out = self
       .file_fetcher
       .fetch_source_file_async(&module_specifier, maybe_referrer)
       .await?;
     let compiled_module_fut = match out.media_type {
-      msg::MediaType::Unknown => state1.js_compiler.compile_async(&out),
+      msg::MediaType::Unknown => state1.js_compiler.compile_async(out),
       msg::MediaType::Json => state1.json_compiler.compile_async(&out),
       msg::MediaType::Wasm => {
-        state1.wasm_compiler.compile_async(state1.clone(), out)
+        state1.wasm_compiler.compile_async(state1.clone(), &out)
       }
       msg::MediaType::TypeScript
       | msg::MediaType::TSX
@@ -150,7 +151,7 @@ impl ThreadSafeGlobalState {
             .ts_compiler
             .compile_async(state1.clone(), &out, target_lib)
         } else {
-          state1.js_compiler.compile_async(&out)
+          state1.js_compiler.compile_async(out)
         }
       }
     };

@@ -74,39 +74,52 @@ fn op_create_worker(
 ) -> Result<JsonOp, ErrBox> {
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
-  let specifier = args.specifier.as_ref();
+  let specifier = args.specifier.clone();
   let has_source_code = args.has_source_code;
-  let source_code = args.source_code;
-
+  let source_code = args.source_code.clone();
+  let args_name = args.name.clone();
   let parent_state = state.clone();
-
-  // TODO(bartlomieju): Isn't this wrong?
-  let mut module_specifier = ModuleSpecifier::resolve_url_or_path(specifier)?;
-  if !has_source_code {
-    if let Some(referrer) = parent_state.main_module.as_ref() {
-      let referrer = referrer.clone().to_string();
-      module_specifier = ModuleSpecifier::resolve_import(specifier, &referrer)?;
-    }
-  }
-
-  let (int, ext) = ThreadSafeState::create_channels();
-  let child_state = ThreadSafeState::new_for_worker(
-    state.global_state.clone(),
-    Some(parent_state.permissions.clone()), // by default share with parent
-    Some(module_specifier.clone()),
-    int,
-  )?;
-  let worker_name = if let Some(name) = args.name {
-    name
-  } else {
-    // TODO(bartlomieju): change it to something more descriptive
-    format!("USER-WORKER-{}", specifier)
-  };
 
   let (load_sender, load_receiver) =
     tokio::sync::oneshot::channel::<JsonResult>();
 
   std::thread::spawn(move || {
+    // TODO(bartlomieju): Isn't this wrong?
+    let result = ModuleSpecifier::resolve_url_or_path(&specifier);
+    if let Err(err) = result {
+      load_sender.send(Err(err.into())).unwrap();
+      return;
+    }
+    let mut module_specifier = result.unwrap();
+    if !has_source_code {
+      if let Some(referrer) = parent_state.main_module.as_ref() {
+        let referrer = referrer.clone().to_string();
+        let result = ModuleSpecifier::resolve_import(&specifier, &referrer);
+        if let Err(err) = result {
+          load_sender.send(Err(err.into())).unwrap();
+          return;
+        }
+        module_specifier = result.unwrap();
+      }
+    }
+
+    let (int, ext) = ThreadSafeState::create_channels();
+    let result = ThreadSafeState::new_for_worker(
+      parent_state.global_state.clone(),
+      Some(parent_state.permissions.clone()), // by default share with parent
+      Some(module_specifier.clone()),
+      int,
+    );
+    if let Err(err) = result {
+      load_sender.send(Err(err)).unwrap();
+      return;
+    }
+    let child_state = result.unwrap();
+    let worker_name = args_name.unwrap_or_else(|| {
+      // TODO(bartlomieju): change it to something more descriptive
+      format!("USER-WORKER-{}", specifier)
+    });
+
     // TODO: add a new option to make child worker not sharing permissions
     // with parent (aka .clone(), requests from child won't reflect in parent)
     let mut worker = WebWorker::new(
@@ -119,7 +132,7 @@ fn op_create_worker(
     js_check(worker.execute(&script));
     js_check(worker.execute("runWorkerMessageLoop()"));
 
-    let worker_id = parent_state.add_child_worker(worker);
+    let worker_id = parent_state.add_child_worker(&worker);
 
     // Has provided source code, execute immediately.
     if has_source_code {
@@ -127,6 +140,7 @@ fn op_create_worker(
       load_sender
         .send(Ok(json!({"id": worker_id, "loaded": true})))
         .unwrap();
+      return;
     }
 
     let (mut sender, receiver) = mpsc::channel::<Result<(), ErrBox>>(1);
@@ -140,8 +154,8 @@ fn op_create_worker(
       sender.send(result).await.expect("Failed to send message");
     }
     .boxed_local();
-    let mut table = state.loading_workers.lock().unwrap();
-    table.insert(worker_id, done_receiver);
+    let mut table = parent_state.loading_workers.lock().unwrap();
+    table.insert(worker_id, receiver);
 
     load_sender
       .send(Ok(json!({"id": worker_id, "loaded": false})))

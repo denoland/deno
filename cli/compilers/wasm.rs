@@ -68,9 +68,10 @@ impl WasmCompiler {
   pub fn compile_async(
     &self,
     global_state: ThreadSafeGlobalState,
-    source_file: SourceFile,
+    source_file: &SourceFile,
   ) -> Pin<Box<CompiledModuleFuture>> {
     let cache = self.cache.clone();
+    let source_file = source_file.clone();
     let maybe_cached = { cache.lock().unwrap().get(&source_file.url).cloned() };
     if let Some(m) = maybe_cached {
       return futures::future::ok(m).boxed();
@@ -83,7 +84,7 @@ impl WasmCompiler {
     std::thread::spawn(move || {
       debug!(">>>>> wasm_compile_async START");
       let base64_data = base64::encode(&source_file.source_code);
-      let worker = WasmCompiler::setup_worker(global_state);
+      let mut worker = WasmCompiler::setup_worker(global_state);
       let url = source_file.url.clone();
 
       let fut = async move {
@@ -96,7 +97,7 @@ impl WasmCompiler {
           )
           .await;
 
-        if let Err(err) = (*worker).await {
+        if let Err(err) = (&mut *worker).await {
           // TODO(ry) Need to forward the error instead of exiting.
           eprintln!("{}", err.to_string());
           std::process::exit(1);

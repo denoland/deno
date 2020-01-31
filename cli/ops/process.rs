@@ -196,7 +196,7 @@ fn op_run_status(
       let child_resource = table
         .get_mut::<ChildResource>(rid)
         .ok_or_else(bad_resource)?;
-      child_resource.child.await.map_err(ErrBox::from)?
+      (&mut child_resource.child).await.map_err(ErrBox::from)?
     };
 
     let code = run_status.code();

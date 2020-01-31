@@ -191,6 +191,7 @@ impl Loader for ThreadSafeState {
     maybe_referrer: Option<ModuleSpecifier>,
     is_dyn_import: bool,
   ) -> Pin<Box<deno_core::SourceCodeInfoFuture>> {
+    let module_specifier = module_specifier.clone();
     if is_dyn_import {
       if let Err(e) = self.check_dyn_import(&module_specifier) {
         return async move { Err(e) }.boxed_local();
@@ -200,12 +201,11 @@ impl Loader for ThreadSafeState {
     // TODO(bartlomieju): incrementing resolve_count here has no sense...
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
     let module_url_specified = module_specifier.to_string();
-    let module_specifier = module_specifier.clone();
     let global_state = self.global_state.clone();
     let target_lib = self.target_lib.clone();
-    let fut = async {
+    let fut = async move {
       let compiled_module = global_state
-        .fetch_compiled_module(&module_specifier, maybe_referrer, target_lib)
+        .fetch_compiled_module(module_specifier, maybe_referrer, target_lib)
         .await?;
       Ok(deno_core::SourceCodeInfo {
         // Real module name, might be different from initial specifier
@@ -319,10 +319,12 @@ impl ThreadSafeState {
     Ok(ThreadSafeState(Arc::new(state)))
   }
 
-  pub fn add_child_worker(&self, worker: WebWorker) -> u32 {
+  pub fn add_child_worker(&self, _worker: &WebWorker) -> u32 {
     let worker_id = self.next_worker_id.fetch_add(1, Ordering::Relaxed) as u32;
-    let mut workers_tl = self.workers.lock().unwrap();
-    workers_tl.insert(worker_id, worker);
+    // TODO(ry) Fix this... we can't have owned references to workers. so what
+    // goes in the table?
+    // let workers_tl = self.workers.lock().unwrap();
+    // workers_tl.insert(worker_id, worker);
     worker_id
   }
 

@@ -158,7 +158,7 @@ impl MainWorker {
     external_channels: WorkerChannels,
   ) -> Self {
     let state_ = state.clone();
-    let worker = Worker::new(name, startup_data, state_, external_channels);
+    let mut worker = Worker::new(name, startup_data, state_, external_channels);
     {
       let op_registry = worker.isolate.op_registry.clone();
       let isolate = &mut worker.isolate;

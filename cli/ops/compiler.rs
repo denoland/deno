@@ -130,7 +130,7 @@ fn op_fetch_source_files(
           msg::MediaType::Wasm => {
             global_state
               .wasm_compiler
-              .compile_async(global_state.clone(), file)
+              .compile_async(global_state.clone(), &file)
               .await?
               .code
           }

@@ -182,9 +182,9 @@ async fn print_file_info(
   worker: &MainWorker,
   module_specifier: ModuleSpecifier,
 ) {
-  let global_state_ = worker.state.global_state;
+  let global_state = worker.state.global_state.clone();
 
-  let maybe_source_file = global_state_
+  let maybe_source_file = global_state
     .file_fetcher
     .fetch_source_file_async(&module_specifier, None)
     .await;
@@ -205,9 +205,10 @@ async fn print_file_info(
     msg::enum_name_media_type(out.media_type)
   );
 
-  let maybe_compiled = global_state_
+  let module_specifier_ = module_specifier.clone();
+  let maybe_compiled = global_state
     .clone()
-    .fetch_compiled_module(&module_specifier, None, TargetLib::Main)
+    .fetch_compiled_module(module_specifier_, None, TargetLib::Main)
     .await;
   if let Err(e) = maybe_compiled {
     debug!("compiler error exiting!");
@@ -216,9 +217,9 @@ async fn print_file_info(
   }
   if out.media_type == msg::MediaType::TypeScript
     || (out.media_type == msg::MediaType::JavaScript
-      && global_state_.ts_compiler.compile_js)
+      && global_state.ts_compiler.compile_js)
   {
-    let compiled_source_file = global_state_
+    let compiled_source_file = global_state
       .ts_compiler
       .get_compiled_source_file(&out.url)
       .unwrap();
@@ -230,7 +231,7 @@ async fn print_file_info(
     );
   }
 
-  if let Ok(source_map) = global_state_
+  if let Ok(source_map) = global_state
     .clone()
     .ts_compiler
     .get_source_map_file(&module_specifier)
@@ -277,7 +278,7 @@ async fn info_command(flags: DenoFlags) {
     print_err_and_exit(e);
   }
   print_file_info(&worker, main_module.clone()).await;
-  let result = (*worker).await;
+  let result = (&mut *worker).await;
   js_check(result);
 }
 
@@ -343,19 +344,19 @@ async fn eval_command(flags: DenoFlags) {
     print_err_and_exit(e);
   }
   js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
-  let result = (*worker).await;
+  let result = (&mut *worker).await;
   js_check(result);
   js_check(worker.execute("window.dispatchEvent(new Event('unload'))"));
 }
 
 async fn bundle_command(flags: DenoFlags) {
   let out_file = flags.bundle_output.clone();
-  let (worker, state) = create_worker_and_state(flags);
+  let (mut worker, state) = create_worker_and_state(flags);
   let main_module = state.main_module.as_ref().unwrap().clone();
 
   debug!(">>>>> bundle_async START");
   // NOTE: we need to poll `worker` otherwise TS compiler worker won't run properly
-  let result = (*worker).await;
+  let result = (&mut *worker).await;
   js_check(result);
   let bundle_result = state
     .ts_compiler
@@ -373,7 +374,7 @@ async fn run_repl(flags: DenoFlags) {
   let (mut worker, _state) = create_worker_and_state(flags);
   js_check(worker.execute("bootstrapMainRuntime()"));
   loop {
-    let result = (*worker).await;
+    let result = (&mut *worker).await;
     if let Err(err) = result {
       eprintln!("{}", err.to_string());
     }
@@ -410,7 +411,7 @@ async fn run_script(flags: DenoFlags) {
     }
   }
   js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
-  let result = (*worker).await;
+  let result = (&mut *worker).await;
   js_check(result);
   js_check(worker.execute("window.dispatchEvent(new Event('unload'))"));
 }

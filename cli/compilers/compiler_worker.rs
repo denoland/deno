@@ -31,7 +31,7 @@ impl CompilerWorker {
     external_channels: WorkerChannels,
   ) -> Self {
     let state_ = state.clone();
-    let worker = Worker::new(name, startup_data, state_, external_channels);
+    let mut worker = Worker::new(name, startup_data, state_, external_channels);
     {
       let isolate = &mut worker.isolate;
       ops::runtime::init(isolate, &state);

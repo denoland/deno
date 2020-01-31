@@ -76,7 +76,7 @@ impl DerefMut for EsIsolate {
   }
 }
 
-// unsafe impl Send for EsIsolate {}
+unsafe impl Send for EsIsolate {}
 
 impl Drop for EsIsolate {
   fn drop(&mut self) {

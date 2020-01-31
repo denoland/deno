@@ -38,7 +38,7 @@ lazy_static! {
     Regex::new(r#""checkJs"\s*?:\s*?true"#).unwrap();
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum TargetLib {
   Main,
   Worker,
@@ -281,11 +281,11 @@ impl TsCompiler {
       true,
     );
 
-    let worker = TsCompiler::setup_worker(global_state);
+    let mut worker = TsCompiler::setup_worker(global_state);
 
     async move {
       worker.post_message(req_msg).await?;
-      (*worker).await?;
+      (&mut *worker).await?;
       debug!("Sent message to worker");
       let maybe_msg = worker.get_message().await;
       debug!("Received message from worker");
@@ -382,14 +382,14 @@ impl TsCompiler {
       false,
     );
 
-    let worker = TsCompiler::setup_worker(global_state.clone());
+    let mut worker = TsCompiler::setup_worker(global_state.clone());
     let compiling_job = global_state
       .progress
       .add("Compile", &module_url.to_string());
 
     async move {
       worker.post_message(req_msg).await?;
-      (*worker).await?;
+      (&mut *worker).await?;
       debug!("Sent message to worker");
       let maybe_msg = worker.get_message().await;
       if let Some(ref msg) = maybe_msg {
@@ -632,7 +632,7 @@ fn spawn_ts_compiler_worker(
     tokio::sync::oneshot::channel::<JsonResult>();
 
   std::thread::spawn(move || {
-    let worker = TsCompiler::setup_worker(global_state);
+    let mut worker = TsCompiler::setup_worker(global_state);
 
     let fut = async move {
       debug!("Sent message to worker");
@@ -640,7 +640,7 @@ fn spawn_ts_compiler_worker(
         load_sender.send(Err(err)).unwrap();
         return;
       }
-      if let Err(err) = (*worker).await {
+      if let Err(err) = (&mut *worker).await {
         load_sender.send(Err(err)).unwrap();
         return;
       }
