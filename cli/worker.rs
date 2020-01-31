@@ -45,10 +45,9 @@ pub struct WorkerChannels {
 ///  - `MainWorker`
 ///  - `CompilerWorker`
 ///  - `WebWorker`
-#[derive(Clone)]
 pub struct Worker {
   pub name: String,
-  pub isolate: deno_core::EsIsolate,
+  pub isolate: Box<deno_core::EsIsolate>,
   pub state: ThreadSafeState,
   external_channels: WorkerChannels,
 }
@@ -90,7 +89,7 @@ impl Worker {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), ErrBox> {
-    self.execute(js_filename, js_source)
+    self.isolate.execute(js_filename, js_source)
   }
 
   /// Executes the provided JavaScript module.
@@ -150,7 +149,6 @@ impl Future for Worker {
 ///
 /// All WebWorkers created during program execution are decendants of
 /// this worker.
-#[derive(Clone)]
 pub struct MainWorker(Worker);
 
 impl MainWorker {
@@ -165,26 +163,26 @@ impl MainWorker {
     {
       let op_registry = worker.isolate.op_registry.clone();
       let isolate = &mut worker.isolate;
-      ops::runtime::init(&isolate, &state);
-      ops::runtime_compiler::init(&isolate, &state);
-      ops::errors::init(&isolate, &state);
-      ops::fetch::init(&isolate, &state);
-      ops::files::init(&isolate, &state);
-      ops::fs::init(&isolate, &state);
-      ops::io::init(&isolate, &state);
-      ops::plugins::init(&isolate, &state, op_registry);
-      ops::net::init(&isolate, &state);
-      ops::tls::init(&isolate, &state);
-      ops::os::init(&isolate, &state);
-      ops::permissions::init(&isolate, &state);
-      ops::process::init(&isolate, &state);
-      ops::random::init(&isolate, &state);
-      ops::repl::init(&isolate, &state);
-      ops::resources::init(&isolate, &state);
-      ops::signal::init(&isolate, &state);
-      ops::timers::init(&isolate, &state);
-      ops::worker_host::init(&isolate, &state);
-      ops::web_worker::init(&isolate, &state);
+      ops::runtime::init(isolate, &state);
+      ops::runtime_compiler::init(isolate, &state);
+      ops::errors::init(isolate, &state);
+      ops::fetch::init(isolate, &state);
+      ops::files::init(isolate, &state);
+      ops::fs::init(isolate, &state);
+      ops::io::init(isolate, &state);
+      ops::plugins::init(isolate, &state, op_registry);
+      ops::net::init(isolate, &state);
+      ops::tls::init(isolate, &state);
+      ops::os::init(isolate, &state);
+      ops::permissions::init(isolate, &state);
+      ops::process::init(isolate, &state);
+      ops::random::init(isolate, &state);
+      ops::repl::init(isolate, &state);
+      ops::resources::init(isolate, &state);
+      ops::signal::init(isolate, &state);
+      ops::timers::init(isolate, &state);
+      ops::worker_host::init(isolate, &state);
+      ops::web_worker::init(isolate, &state);
     }
 
     Self(worker)

@@ -118,7 +118,7 @@ fn op_create_worker(
     js_check(worker.execute(&script));
     js_check(worker.execute("runWorkerMessageLoop()"));
 
-    let worker_id = parent_state.add_child_worker(worker.clone());
+    let worker_id = parent_state.add_child_worker(worker);
 
     // Has provided source code, execute immediately.
     if has_source_code {

@@ -179,10 +179,10 @@ fn print_cache_info(worker: MainWorker) {
 }
 
 async fn print_file_info(
-  worker: MainWorker,
+  worker: &MainWorker,
   module_specifier: ModuleSpecifier,
 ) {
-  let global_state_ = &worker.state.global_state;
+  let global_state_ = worker.state.global_state;
 
   let maybe_source_file = global_state_
     .file_fetcher
@@ -242,7 +242,7 @@ async fn print_file_info(
     );
   }
 
-  if let Some(deps) = worker.modules.deps(&module_specifier) {
+  if let Some(deps) = worker.isolate.modules.deps(&module_specifier) {
     println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
     if let Some(ref depsdeps) = deps.deps {
       for d in depsdeps {
@@ -276,8 +276,8 @@ async fn info_command(flags: DenoFlags) {
   if let Err(e) = main_result {
     print_err_and_exit(e);
   }
-  print_file_info(worker.clone(), main_module.clone()).await;
-  let result = worker.await;
+  print_file_info(&worker, main_module.clone()).await;
+  let result = (*worker).await;
   js_check(result);
 }
 
@@ -356,7 +356,7 @@ async fn bundle_command(flags: DenoFlags) {
 
   debug!(">>>>> bundle_async START");
   // NOTE: we need to poll `worker` otherwise TS compiler worker won't run properly
-  let result = worker.await;
+  let result = (*worker).await;
   js_check(result);
   let bundle_result = state
     .ts_compiler
@@ -374,7 +374,7 @@ async fn run_repl(flags: DenoFlags) {
   let (mut worker, _state) = create_worker_and_state(flags);
   js_check(worker.execute("bootstrapMainRuntime()"));
   loop {
-    let result = worker.clone().await;
+    let result = (*worker).await;
     if let Err(err) = result {
       eprintln!("{}", err.to_string());
     }

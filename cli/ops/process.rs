@@ -8,8 +8,6 @@ use crate::state::ThreadSafeState;
 use deno_core::*;
 use futures;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
-use futures::task::SpawnExt;
 use std;
 use std::convert::From;
 use std::future::Future;

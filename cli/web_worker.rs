@@ -21,7 +21,6 @@ use std::task::Poll;
 ///
 /// Each `WebWorker` is either a child of `MainWorker` or other
 /// `WebWorker`.
-#[derive(Clone)]
 pub struct WebWorker(Worker);
 
 impl WebWorker {
@@ -34,13 +33,13 @@ impl WebWorker {
     let state_ = state.clone();
     let worker = Worker::new(name, startup_data, state_, external_channels);
     {
-      let mut isolate = worker.isolate.try_lock().unwrap();
-      ops::runtime::init(&mut isolate, &state);
-      ops::web_worker::init(&mut isolate, &state);
-      ops::worker_host::init(&mut isolate, &state);
-      ops::errors::init(&mut isolate, &state);
-      ops::timers::init(&mut isolate, &state);
-      ops::fetch::init(&mut isolate, &state);
+      let isolate = &mut worker.isolate;
+      ops::runtime::init(isolate, &state);
+      ops::web_worker::init(isolate, &state);
+      ops::worker_host::init(isolate, &state);
+      ops::errors::init(isolate, &state);
+      ops::timers::init(isolate, &state);
+      ops::fetch::init(isolate, &state);
     }
 
     Self(worker)

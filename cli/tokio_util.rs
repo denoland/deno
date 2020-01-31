@@ -21,3 +21,20 @@ where
   let rt = runtime::Builder::new().basic_scheduler().build().unwrap();
   rt.block_on(future);
 }
+
+/*
+pub fn spawn_basic_thread<R>(fut: impl Future<Output=R>) -> R
+{
+  let (load_sender, load_receiver) =
+    tokio::sync::oneshot::channel::<JsonResult>();
+  std::thread::spawn(move || {
+    async {
+      let r = fut.await;
+      load_sender.send(r).unwrap();
+    }
+    let r = f();
+    run_basic(fut);
+  });
+  load_receiver.wait()
+}
+*/
