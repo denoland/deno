@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-#![deny(warnings)]
+// #![deny(warnings)]
 #![allow(dead_code)]
 
 #[macro_use]
@@ -242,8 +242,7 @@ async fn print_file_info(
     );
   }
 
-  let isolate = worker.isolate.try_lock().unwrap();
-  if let Some(deps) = isolate.modules.deps(&module_specifier) {
+  if let Some(deps) = worker.modules.deps(&module_specifier) {
     println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
     if let Some(ref depsdeps) = deps.deps {
       for d in depsdeps {

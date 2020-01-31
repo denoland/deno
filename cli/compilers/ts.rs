@@ -281,16 +281,15 @@ impl TsCompiler {
     );
 
     let worker = TsCompiler::setup_worker(global_state);
-    let worker_ = worker.clone();
 
     async move {
       worker.post_message(req_msg).await?;
-      worker.await?;
+      (*worker).await?;
       debug!("Sent message to worker");
-      let maybe_msg = worker_.get_message().await;
+      let maybe_msg = worker.get_message().await;
       debug!("Received message from worker");
-      if let Some(msg) = maybe_msg {
-        let json_str = std::str::from_utf8(&msg).unwrap();
+      if let Some(ref msg) = maybe_msg {
+        let json_str = std::str::from_utf8(msg).unwrap();
         debug!("Message: {}", json_str);
         if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
           return Err(ErrBox::from(diagnostics));
@@ -383,25 +382,23 @@ impl TsCompiler {
     );
 
     let worker = TsCompiler::setup_worker(global_state.clone());
-    let worker_ = worker.clone();
     let compiling_job = global_state
       .progress
       .add("Compile", &module_url.to_string());
-    let global_state_ = global_state;
 
     async move {
       worker.post_message(req_msg).await?;
-      worker.await?;
+      (*worker).await?;
       debug!("Sent message to worker");
-      let maybe_msg = worker_.get_message().await;
-      if let Some(msg) = maybe_msg {
-        let json_str = std::str::from_utf8(&msg).unwrap();
+      let maybe_msg = worker.get_message().await;
+      if let Some(ref msg) = maybe_msg {
+        let json_str = std::str::from_utf8(msg).unwrap();
         debug!("Message: {}", json_str);
         if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
           return Err(ErrBox::from(diagnostics));
         }
       }
-      let compiled_module = global_state_
+      let compiled_module = global_state
         .ts_compiler
         .get_compiled_module(&source_file_.url)
         .expect("Expected to find compiled file");
@@ -409,7 +406,7 @@ impl TsCompiler {
       debug!(">>>>> compile_sync END");
       Ok(compiled_module)
     }
-    .boxed()
+    .boxed_local()
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
@@ -625,6 +622,39 @@ impl TsCompiler {
   }
 }
 
+// TODO(ry) this is pretty general purpose and should be lifted and generalized.
+fn spawn_ts_compiler_worker(
+  req_msg: Buf,
+  global_state: ThreadSafeGlobalState,
+  _sources: &HashMap<String, String, S>,
+  _options: &Option<String>,
+) -> Pin<Box<CompilationResultFuture>> {
+  let (load_sender, load_receiver) =
+    tokio::sync::oneshot::channel::<JsonResult>();
+
+  std::thread::spawn(move || {
+    let worker = TsCompiler::setup_worker(global_state);
+
+    let fut = async move {
+      debug!("Sent message to worker");
+      if let Err(err) = worker.post_message(req_msg).await {
+        load_sender.send(Err(err)).unwrap();
+        return;
+      }
+      if let Err(err) = (*worker).await {
+        load_sender.send(Err(err)).unwrap();
+        return;
+      }
+      let msg = (worker.get_message().await).unwrap();
+      let json_str = std::str::from_utf8(&msg).unwrap();
+      load_sender.send(Ok(json!(json_str))).unwrap();
+    };
+
+    tokio_util::run_basic(fut);
+  });
+  load_receiver.wait()
+}
+
 pub fn runtime_compile_async<S: BuildHasher>(
   global_state: ThreadSafeGlobalState,
   root_name: &str,
@@ -644,18 +674,7 @@ pub fn runtime_compile_async<S: BuildHasher>(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  let worker = TsCompiler::setup_worker(global_state);
-  let worker_ = worker.clone();
-
-  async move {
-    worker.post_message(req_msg).await?;
-    worker.await?;
-    debug!("Sent message to worker");
-    let msg = (worker_.get_message().await).unwrap();
-    let json_str = std::str::from_utf8(&msg).unwrap();
-    Ok(json!(json_str))
-  }
-  .boxed()
+  spawn_ts_compiler_worker(req_msg, global_state, sources, options)
 }
 
 pub fn runtime_transpile_async<S: BuildHasher>(
@@ -672,18 +691,7 @@ pub fn runtime_transpile_async<S: BuildHasher>(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  let worker = TsCompiler::setup_worker(global_state);
-  let worker_ = worker.clone();
-
-  async move {
-    worker.post_message(req_msg).await?;
-    worker.await?;
-    debug!("Sent message to worker");
-    let msg = (worker_.get_message().await).unwrap();
-    let json_str = std::str::from_utf8(&msg).unwrap();
-    Ok(json!(json_str))
-  }
-  .boxed()
+  spawn_ts_compiler_worker(req_msg, global_state, sources, options)
 }
 
 #[cfg(test)]

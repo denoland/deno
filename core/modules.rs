@@ -21,7 +21,7 @@ use std::task::Context;
 use std::task::Poll;
 
 pub type SourceCodeInfoFuture =
-  dyn Future<Output = Result<SourceCodeInfo, ErrBox>> + Send;
+  dyn Future<Output = Result<SourceCodeInfo, ErrBox>>;
 
 pub trait Loader: Send + Sync {
   /// Returns an absolute URL.
@@ -148,7 +148,7 @@ impl RecursiveModuleLoad {
       _ => self
         .loader
         .load(&module_specifier, None, self.is_dynamic_import())
-        .boxed(),
+        .boxed_local(),
     };
 
     self.pending.push(load_fut);
@@ -167,7 +167,7 @@ impl RecursiveModuleLoad {
         self
           .loader
           .load(&specifier, Some(referrer), self.is_dynamic_import());
-      self.pending.push(fut.boxed());
+      self.pending.push(fut.boxed_local());
       self.is_pending.insert(specifier);
     }
   }

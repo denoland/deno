@@ -193,25 +193,30 @@ impl Loader for ThreadSafeState {
   ) -> Pin<Box<deno_core::SourceCodeInfoFuture>> {
     if is_dyn_import {
       if let Err(e) = self.check_dyn_import(&module_specifier) {
-        return async move { Err(e) }.boxed();
+        return async move { Err(e) }.boxed_local();
       }
     }
 
     // TODO(bartlomieju): incrementing resolve_count here has no sense...
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
     let module_url_specified = module_specifier.to_string();
-    let fut = self
-      .global_state
-      .fetch_compiled_module(module_specifier, maybe_referrer, self.target_lib)
-      .map_ok(|compiled_module| deno_core::SourceCodeInfo {
+    let module_specifier = module_specifier.clone();
+    let global_state = self.global_state.clone();
+    let target_lib = self.target_lib.clone();
+    let fut = async {
+      let compiled_module = global_state
+        .fetch_compiled_module(&module_specifier, maybe_referrer, target_lib)
+        .await?;
+      Ok(deno_core::SourceCodeInfo {
         // Real module name, might be different from initial specifier
         // due to redirections.
         code: compiled_module.code,
         module_url_specified,
         module_url_found: compiled_module.name,
-      });
+      })
+    };
 
-    fut.boxed()
+    fut.boxed_local()
   }
 }
 

@@ -102,41 +102,54 @@ fn op_create_worker(
     format!("USER-WORKER-{}", specifier)
   };
 
-  // TODO: add a new option to make child worker not sharing permissions
-  // with parent (aka .clone(), requests from child won't reflect in parent)
-  let mut worker = WebWorker::new(
-    worker_name.to_string(),
-    startup_data::deno_isolate_init(),
-    child_state,
-    ext,
-  );
-  let script = format!("bootstrapWorkerRuntime(\"{}\")", worker_name);
-  js_check(worker.execute(&script));
-  js_check(worker.execute("runWorkerMessageLoop()"));
+  let (load_sender, load_receiver) =
+    tokio::sync::oneshot::channel::<JsonResult>();
 
-  let worker_id = parent_state.add_child_worker(worker.clone());
+  std::thread::spawn(move || {
+    // TODO: add a new option to make child worker not sharing permissions
+    // with parent (aka .clone(), requests from child won't reflect in parent)
+    let mut worker = WebWorker::new(
+      worker_name.to_string(),
+      startup_data::deno_isolate_init(),
+      child_state,
+      ext,
+    );
+    let script = format!("bootstrapWorkerRuntime(\"{}\")", worker_name);
+    js_check(worker.execute(&script));
+    js_check(worker.execute("runWorkerMessageLoop()"));
 
-  // Has provided source code, execute immediately.
-  if has_source_code {
-    js_check(worker.execute(&source_code));
-    return Ok(JsonOp::Sync(json!({"id": worker_id, "loaded": true})));
-  }
+    let worker_id = parent_state.add_child_worker(worker.clone());
 
-  let (mut sender, receiver) = mpsc::channel::<Result<(), ErrBox>>(1);
+    // Has provided source code, execute immediately.
+    if has_source_code {
+      js_check(worker.execute(&source_code));
+      load_sender
+        .send(Ok(JsonOp::Sync(json!({"id": worker_id, "loaded": true}))))
+        .unwrap();
+    }
 
-  // TODO(bartlomieju): this future should be spawned on the separate thread,
-  // dedicated to that worker
-  let fut = async move {
-    let result = worker
-      .execute_mod_async(&module_specifier, None, false)
-      .await;
-    sender.send(result).await.expect("Failed to send message");
-  }
-  .boxed();
-  tokio::spawn(fut);
-  let mut table = state.loading_workers.lock().unwrap();
-  table.insert(worker_id, receiver);
-  Ok(JsonOp::Sync(json!({"id": worker_id, "loaded": false})))
+    let (mut sender, receiver) = mpsc::channel::<Result<(), ErrBox>>(1);
+
+    // TODO(bartlomieju): this future should be spawned on the separate thread,
+    // dedicated to that worker
+    let fut = async move {
+      let result = worker
+        .execute_mod_async(&module_specifier, None, false)
+        .await;
+      sender.send(result).await.expect("Failed to send message");
+    }
+    .boxed_local();
+    let mut table = state.loading_workers.lock().unwrap();
+    table.insert(worker_id, done_receiver);
+
+    load_sender
+      .send(Ok(json!({"id": worker_id, "loaded": false})))
+      .unwrap();
+
+    tokio_util::run_basic(fut);
+  });
+
+  load_receiver.wait()
 }
 
 struct WorkerPollFuture {
@@ -206,7 +219,7 @@ fn op_host_get_worker_loaded(
     Ok(serialize_worker_result(result))
   };
 
-  Ok(JsonOp::Async(op.boxed()))
+  Ok(JsonOp::Async(op.boxed_local()))
 }
 
 fn op_host_poll_worker(
@@ -226,7 +239,7 @@ fn op_host_poll_worker(
     let result = future.await;
     Ok(serialize_worker_result(result))
   };
-  Ok(JsonOp::Async(op.boxed()))
+  Ok(JsonOp::Async(op.boxed_local()))
 }
 
 fn op_host_close_worker(
@@ -291,7 +304,7 @@ fn op_host_get_message(
     Ok(json!({ "data": maybe_buf }))
   };
 
-  Ok(JsonOp::Async(op.boxed()))
+  Ok(JsonOp::Async(op.boxed_local()))
 }
 
 #[derive(Deserialize)]

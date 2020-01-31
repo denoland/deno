@@ -10,7 +10,6 @@ use crate::any_error::ErrBox;
 use crate::bindings;
 use crate::ErrWithV8Handle;
 use futures::future::Future;
-use futures::future::FutureExt;
 use futures::ready;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;

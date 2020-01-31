@@ -17,8 +17,7 @@ pub use ts::TargetLib;
 pub use ts::TsCompiler;
 pub use wasm::WasmCompiler;
 
-pub type CompilationResultFuture =
-  dyn Future<Output = Result<Value, ErrBox>> + Send;
+pub type CompilationResultFuture = dyn Future<Output = Result<Value, ErrBox>>;
 
 #[derive(Debug, Clone)]
 pub struct CompiledModule {
@@ -27,4 +26,4 @@ pub struct CompiledModule {
 }
 
 pub type CompiledModuleFuture =
-  dyn Future<Output = Result<CompiledModule, ErrBox>> + Send;
+  dyn Future<Output = Result<CompiledModule, ErrBox>>;

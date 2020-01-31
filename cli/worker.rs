@@ -103,19 +103,17 @@ impl Worker {
     let specifier = module_specifier.to_string();
     // let global_state = self.state.global_state.clone();
 
-    let id = self.load_module(&specifier, maybe_code).await?;
+    let id = self.isolate.load_module(&specifier, maybe_code).await?;
     self.state.global_state.progress.done();
 
     if !is_prefetch {
-      return self.mod_evaluate(id);
+      return self.isolate.mod_evaluate(id);
     }
 
     Ok(())
   }
 
   /// Post message to worker as a host.
-  ///
-  /// This method blocks current thread.
   pub async fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
     let mut sender = self.external_channels.sender.clone();
     let result = sender.send(buf).map_err(ErrBox::from).await;
@@ -124,16 +122,25 @@ impl Worker {
   }
 
   /// Get message from worker as a host.
-  pub fn get_message(
-    &self,
-  ) -> Pin<Box<dyn Future<Output = Option<Buf>> + Send>> {
+  pub fn get_message(&self) -> Pin<Box<dyn Future<Output = Option<Buf>>>> {
     let receiver_mutex = self.external_channels.receiver.clone();
 
     async move {
       let mut receiver = receiver_mutex.lock().await;
       receiver.next().await
     }
-    .boxed()
+    .boxed_local()
+  }
+}
+
+impl Future for Worker {
+  type Output = Result<(), ErrBox>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+    // let waker = AtomicWaker::new();
+    // waker.register(cx.waker());
+    inner.isolate.xpoll(cx)
   }
 }
 

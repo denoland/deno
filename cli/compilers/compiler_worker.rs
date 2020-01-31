@@ -40,25 +40,22 @@ impl CompilerWorker {
     let state_ = state.clone();
     let worker = Worker::new(name, startup_data, state_, external_channels);
     {
-      let mut isolate = worker.isolate.try_lock().unwrap();
-      ops::runtime::init(&mut isolate, &state);
-      ops::compiler::init(&mut isolate, &state);
-      ops::web_worker::init(&mut isolate, &state);
-      ops::errors::init(&mut isolate, &state);
-
+      let isolate = &mut worker.isolate;
+      ops::runtime::init(isolate, &state);
+      ops::compiler::init(isolate, &state);
+      ops::web_worker::init(isolate, &state);
+      ops::errors::init(isolate, &state);
       // for compatibility with Worker scope, though unused at
       // the moment
-      ops::timers::init(&mut isolate, &state);
-      ops::fetch::init(&mut isolate, &state);
-
+      ops::timers::init(isolate, &state);
+      ops::fetch::init(isolate, &state);
       // TODO(bartlomieju): CompilerWorker should not
       // depend on those ops
-      ops::os::init(&mut isolate, &state);
-      ops::files::init(&mut isolate, &state);
-      ops::fs::init(&mut isolate, &state);
-      ops::io::init(&mut isolate, &state);
+      ops::os::init(isolate, &state);
+      ops::files::init(isolate, &state);
+      ops::fs::init(isolate, &state);
+      ops::io::init(isolate, &state);
     }
-
     Self(worker)
   }
 }
@@ -73,14 +70,5 @@ impl Deref for CompilerWorker {
 impl DerefMut for CompilerWorker {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.0
-  }
-}
-
-impl Future for CompilerWorker {
-  type Output = Result<(), ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    inner.0.poll_unpin(cx)
   }
 }

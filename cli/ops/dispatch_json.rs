@@ -8,8 +8,9 @@ use std::future::Future;
 use std::pin::Pin;
 use tokio::task;
 
-pub type AsyncJsonOp =
-  Pin<Box<dyn Future<Output = Result<Value, ErrBox>> + Send>>;
+pub type JsonResult = Result<Value, ErrBox>;
+
+pub type AsyncJsonOp = Pin<Box<dyn Future<Output = JsonResult>>>;
 
 pub enum JsonOp {
   Sync(Value),

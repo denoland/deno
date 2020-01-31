@@ -81,5 +81,5 @@ pub fn op_fetch(
     Ok(json_res)
   };
 
-  Ok(JsonOp::Async(future.boxed()))
+  Ok(JsonOp::Async(future.boxed_local()))
 }

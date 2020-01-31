@@ -180,25 +180,6 @@ fn op_run(
   })))
 }
 
-pub struct ChildStatus {
-  rid: ResourceId,
-  state: ThreadSafeState,
-}
-
-impl Future for ChildStatus {
-  type Output = Result<ExitStatus, ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    let mut table = inner.state.lock_resource_table();
-    let child_resource = table
-      .get_mut::<ChildResource>(inner.rid)
-      .ok_or_else(bad_resource)?;
-    let child = &mut child_resource.child;
-    child.map_err(ErrBox::from).poll_unpin(cx)
-  }
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RunStatusArgs {
@@ -214,14 +195,17 @@ fn op_run_status(
   let rid = args.rid as u32;
 
   state.check_run()?;
-
-  let future = ChildStatus {
-    rid,
-    state: state.clone(),
-  };
+  let state = state.clone();
 
   let future = async move {
-    let run_status = future.await?;
+    let run_status = {
+      let mut table = state.lock_resource_table();
+      let child_resource = table
+        .get_mut::<ChildResource>(rid)
+        .ok_or_else(bad_resource)?;
+      child_resource.child.await.map_err(ErrBox::from)?
+    };
+
     let code = run_status.code();
 
     #[cfg(unix)]
@@ -241,10 +225,11 @@ fn op_run_status(
     }))
   };
 
-  let pool = futures::executor::ThreadPool::new().unwrap();
-  let handle = pool.spawn_with_handle(future).unwrap();
+  // TODO(ry) I don't understand why this needs to be in a pool?
+  //let pool = futures::executor::ThreadPool::new().unwrap();
+  //let handle = pool.spawn_with_handle(future).unwrap();
 
-  Ok(JsonOp::Async(handle.boxed()))
+  Ok(JsonOp::Async(future.boxed_local()))
 }
 
 #[derive(Deserialize)]
