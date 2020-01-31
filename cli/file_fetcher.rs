@@ -1522,8 +1522,8 @@ mod tests {
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_fetch_source_1() {
+  #[tokio::test]
+  async fn test_fetch_source_1() {
     let http_server_guard = crate::test_util::http_server();
 
     let (_temp_dir, fetcher) = test_setup();
@@ -1536,33 +1536,31 @@ mod tests {
         .get_cache_filename_with_extension(&module_url, "headers.json"),
     );
 
-    let fut = fetcher
+    let result = fetcher
       .fetch_remote_source_async(&module_url, false, false, 10)
-      .map(move |result| {
-        assert!(result.is_ok());
-        let r = result.unwrap();
-        assert_eq!(r.source_code, b"export const loaded = true;\n");
-        assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-        // matching ext, no .headers.json file created
-        assert!(fs::read_to_string(&headers_file_name).is_err());
+      .await;
+    assert!(result.is_ok());
+    let r = result.unwrap();
+    assert_eq!(r.source_code, b"export const loaded = true;\n");
+    assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
+    // matching ext, no .headers.json file created
+    assert!(fs::read_to_string(&headers_file_name).is_err());
 
-        // Modify .headers.json, make sure read from local
-        let _ = fetcher.save_source_code_headers(
-          &module_url,
-          Some("text/javascript".to_owned()),
-          None,
-          None,
-          None,
-        );
-        let result2 = fetcher.fetch_cached_remote_source(&module_url);
-        assert!(result2.is_ok());
-        let r2 = result2.unwrap().unwrap();
-        assert_eq!(r2.source_code, b"export const loaded = true;\n");
-        // Not MediaType::TypeScript due to .headers.json modification
-        assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
-      });
+    // Modify .headers.json, make sure read from local
+    let _ = fetcher.save_source_code_headers(
+      &module_url,
+      Some("text/javascript".to_owned()),
+      None,
+      None,
+      None,
+    );
+    let result2 = fetcher.fetch_cached_remote_source(&module_url);
+    assert!(result2.is_ok());
+    let r2 = result2.unwrap().unwrap();
+    assert_eq!(r2.source_code, b"export const loaded = true;\n");
+    // Not MediaType::TypeScript due to .headers.json modification
+    assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
 
-    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
