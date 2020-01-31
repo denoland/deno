@@ -297,8 +297,7 @@ async fn fetch_command(flags: DenoFlags) {
   // resolve modules for rest of args if present
   let files_len = args.len();
   if files_len > 2 {
-    for i in 2..files_len {
-      let next_specifier = args[i].clone();
+    for next_specifier in args.iter().take(files_len).skip(2) {
       let next_module =
         ModuleSpecifier::resolve_url_or_path(&next_specifier).unwrap();
       let result = worker.execute_mod_async(&next_module, None, true).await;
