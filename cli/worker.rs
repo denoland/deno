@@ -246,17 +246,6 @@ mod tests {
     tokio_util::run_basic(fut)
   }
 
-  pub async fn panic_on_error<I, E, F>(f: F) -> I
-  where
-    F: Future<Output = Result<I, E>>,
-    E: std::fmt::Debug,
-  {
-    match f.await {
-      Ok(v) => v,
-      Err(e) => panic!("Future got unexpected error: {:?}", e),
-    }
-  }
-
   #[test]
   fn execute_mod_esm_imports_a() {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -291,7 +280,9 @@ mod tests {
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
       }
-      panic_on_error(*worker).await
+      if let Err(e) = (&mut *worker).await {
+        panic!("Future got unexpected error: {:?}", e);
+      }
     });
 
     let metrics = &state_.metrics;
@@ -334,7 +325,9 @@ mod tests {
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
       }
-      panic_on_error(*worker).await
+      if let Err(e) = (&mut *worker).await {
+        panic!("Future got unexpected error: {:?}", e);
+      }
     });
 
     let metrics = &state_.metrics;
@@ -384,7 +377,9 @@ mod tests {
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
       }
-      panic_on_error(*worker).await
+      if let Err(e) = (&mut *worker).await {
+        panic!("Future got unexpected error: {:?}", e);
+      }
     });
 
     assert_eq!(state_.metrics.resolve_count.load(Ordering::SeqCst), 3);

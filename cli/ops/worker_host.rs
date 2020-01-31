@@ -19,11 +19,7 @@ use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use std;
 use std::convert::From;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::atomic::Ordering;
-use std::task::Context;
-use std::task::Poll;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op(
@@ -246,16 +242,15 @@ fn op_host_get_worker_loaded(
 }
 
 fn op_host_poll_worker(
-  state: &ThreadSafeState,
-  args: Value,
+  _state: &ThreadSafeState,
+  _args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: WorkerArgs = serde_json::from_value(args)?;
-  let id = args.id as u32;
-
   // TODO(ry) I don't understand what this is doing. Is it getting messages?
   todo!()
   /*
+  let args: WorkerArgs = serde_json::from_value(args)?;
+  let id = args.id as u32;
   let future = WorkerPollFuture {
     state: state.clone(),
     rid: id,
@@ -293,19 +288,18 @@ fn op_host_close_worker(
 }
 
 fn op_host_resume_worker(
-  state: &ThreadSafeState,
-  args: Value,
+  _state: &ThreadSafeState,
+  _args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: WorkerArgs = serde_json::from_value(args)?;
-  let id = args.id as u32;
-  let state_ = state.clone();
-
-  // We are not on the same thread. We cannot just call worker.execute.
+  // TODO(ry) We are not on the same thread. We cannot just call worker.execute.
   // We can only send messages. This needs to be reimplemented somehow.
   todo!()
   /*
-  let mut workers_table = state_.workers.lock().unwrap();
+  let args: WorkerArgs = serde_json::from_value(args)?;
+  let id = args.id as u32;
+  let state = state.clone();
+  let mut workers_table = state.workers.lock().unwrap();
   let worker = workers_table.get_mut(&id).unwrap();
   js_check(worker.execute("runWorkerMessageLoop()"));
   Ok(JsonOp::Sync(json!({})))
