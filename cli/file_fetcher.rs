@@ -1564,8 +1564,8 @@ mod tests {
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_fetch_source_2() {
+  #[tokio::test]
+  async fn test_fetch_source_2() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let fetcher_1 = fetcher.clone();
@@ -1581,55 +1581,53 @@ mod tests {
         .unwrap();
     let module_url_3_ = module_url_3.clone();
 
-    let fut = fetcher
+    let result = fetcher
       .fetch_remote_source_async(&module_url, false, false, 10)
-      .then(move |result| {
-        assert!(result.is_ok());
-        let r = result.unwrap();
-        assert_eq!(r.source_code, b"export const loaded = true;\n");
-        assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-        // no ext, should create .headers.json file
-        assert_eq!(
-          fetcher_1
-            .get_source_code_headers(&module_url)
-            .mime_type
-            .unwrap(),
-          "text/typescript"
-        );
-        fetcher_1.fetch_remote_source_async(&module_url_2, false, false, 10)
-      })
-      .then(move |result| {
-        assert!(result.is_ok());
-        let r2 = result.unwrap();
-        assert_eq!(r2.source_code, b"export const loaded = true;\n");
-        assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
-        // mismatch ext, should create .headers.json file
-        assert_eq!(
-          fetcher_2
-            .get_source_code_headers(&module_url_2_)
-            .mime_type
-            .unwrap(),
-          "text/javascript"
-        );
-        // test unknown extension
-        fetcher_2.fetch_remote_source_async(&module_url_3, false, false, 10)
-      })
-      .map(move |result| {
-        assert!(result.is_ok());
-        let r3 = result.unwrap();
-        assert_eq!(r3.source_code, b"export const loaded = true;\n");
-        assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
-        // unknown ext, should create .headers.json file
-        assert_eq!(
-          fetcher_3
-            .get_source_code_headers(&module_url_3_)
-            .mime_type
-            .unwrap(),
-          "text/typescript"
-        );
-      });
+      .await;
+    assert!(result.is_ok());
+    let r = result.unwrap();
+    assert_eq!(r.source_code, b"export const loaded = true;\n");
+    assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
+    // no ext, should create .headers.json file
+    assert_eq!(
+      fetcher_1
+        .get_source_code_headers(&module_url)
+        .mime_type
+        .unwrap(),
+      "text/typescript"
+    );
+    let result = fetcher_1
+      .fetch_remote_source_async(&module_url_2, false, false, 10)
+      .await;
+    assert!(result.is_ok());
+    let r2 = result.unwrap();
+    assert_eq!(r2.source_code, b"export const loaded = true;\n");
+    assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
+    // mismatch ext, should create .headers.json file
+    assert_eq!(
+      fetcher_2
+        .get_source_code_headers(&module_url_2_)
+        .mime_type
+        .unwrap(),
+      "text/javascript"
+    );
+    // test unknown extension
+    let result = fetcher_2
+      .fetch_remote_source_async(&module_url_3, false, false, 10)
+      .await;
+    assert!(result.is_ok());
+    let r3 = result.unwrap();
+    assert_eq!(r3.source_code, b"export const loaded = true;\n");
+    assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
+    // unknown ext, should create .headers.json file
+    assert_eq!(
+      fetcher_3
+        .get_source_code_headers(&module_url_3_)
+        .mime_type
+        .unwrap(),
+      "text/typescript"
+    );
 
-    tokio_util::run_basic(fut);
     drop(http_server_guard);
   }
 
