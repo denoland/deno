@@ -413,6 +413,13 @@ itest!(_036_import_map_fetch {
   output: "036_import_map_fetch.out",
 });
 
+itest!(_037_fetch_multiple {
+  args: "fetch --reload fetch/test.ts fetch/other.ts",
+  check_stderr: true,
+  http_server: true,
+  output: "037_fetch_multiple.out",
+});
+
 itest!(_038_checkjs {
   // checking if JS file is run through TS compiler
   args: "run --reload --config 038_checkjs.tsconfig.json 038_checkjs.js",
