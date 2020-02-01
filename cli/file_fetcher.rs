@@ -1106,7 +1106,8 @@ mod tests {
     let (temp_dir, fetcher) = test_setup();
     let fetcher_1 = fetcher.clone();
     let module_url =
-      Url::parse("http://localhost:4545/cli/tests/subdir/mismatch_ext.ts").unwrap();
+      Url::parse("http://localhost:4545/cli/tests/subdir/mismatch_ext.ts")
+        .unwrap();
     let module_url_1 = module_url.clone();
     let module_url_2 = module_url.clone();
     let headers_file_name = fetcher.deps_cache.location.join(
@@ -1231,18 +1232,20 @@ mod tests {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
 
-    let redirect_module_url =
-      Url::parse("http://localhost:4546/cli/tests/subdir/redirects/redirect1.js")
-        .unwrap();
+    let redirect_module_url = Url::parse(
+      "http://localhost:4546/cli/tests/subdir/redirects/redirect1.js",
+    )
+    .unwrap();
     let redirect_source_filepath = fetcher
       .deps_cache
       .location
       .join("http/localhost_PORT4546/cli/tests/subdir/redirects/redirect1.js");
     let redirect_source_filename =
       redirect_source_filepath.to_str().unwrap().to_string();
-    let target_module_url =
-      Url::parse("http://localhost:4545/cli/tests/subdir/redirects/redirect1.js")
-        .unwrap();
+    let target_module_url = Url::parse(
+      "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js",
+    )
+    .unwrap();
     let redirect_target_filepath = fetcher
       .deps_cache
       .location
@@ -1286,25 +1289,28 @@ mod tests {
   fn test_get_source_code_4() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
-    let double_redirect_url =
-      Url::parse("http://localhost:4548/cli/tests/subdir/redirects/redirect1.js")
-        .unwrap();
+    let double_redirect_url = Url::parse(
+      "http://localhost:4548/cli/tests/subdir/redirects/redirect1.js",
+    )
+    .unwrap();
     let double_redirect_path = fetcher
       .deps_cache
       .location
       .join("http/localhost_PORT4548/cli/tests/subdir/redirects/redirect1.js");
 
-    let redirect_url =
-      Url::parse("http://localhost:4546/cli/tests/subdir/redirects/redirect1.js")
-        .unwrap();
+    let redirect_url = Url::parse(
+      "http://localhost:4546/cli/tests/subdir/redirects/redirect1.js",
+    )
+    .unwrap();
     let redirect_path = fetcher
       .deps_cache
       .location
       .join("http/localhost_PORT4546/cli/tests/subdir/redirects/redirect1.js");
 
-    let target_url =
-      Url::parse("http://localhost:4545/cli/tests/subdir/redirects/redirect1.js")
-        .unwrap();
+    let target_url = Url::parse(
+      "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js",
+    )
+    .unwrap();
     let target_path = fetcher
       .deps_cache
       .location
@@ -1353,13 +1359,15 @@ mod tests {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
 
-    let double_redirect_url =
-      Url::parse("http://localhost:4548/cli/tests/subdir/redirects/redirect1.js")
-        .unwrap();
+    let double_redirect_url = Url::parse(
+      "http://localhost:4548/cli/tests/subdir/redirects/redirect1.js",
+    )
+    .unwrap();
 
-    let redirect_url =
-      Url::parse("http://localhost:4546/cli/tests/subdir/redirects/redirect1.js")
-        .unwrap();
+    let redirect_url = Url::parse(
+      "http://localhost:4546/cli/tests/subdir/redirects/redirect1.js",
+    )
+    .unwrap();
 
     let target_path = fetcher
       .deps_cache
@@ -1406,9 +1414,10 @@ mod tests {
   fn test_get_source_code_6() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
-    let double_redirect_url =
-      Url::parse("http://localhost:4548/cli/tests/subdir/redirects/redirect1.js")
-        .unwrap();
+    let double_redirect_url = Url::parse(
+      "http://localhost:4548/cli/tests/subdir/redirects/redirect1.js",
+    )
+    .unwrap();
 
     // Test that redirections can be limited
     let fut = fetcher
@@ -1576,7 +1585,8 @@ mod tests {
     let module_url =
       Url::parse("http://localhost:4545/cli/tests/subdir/no_ext").unwrap();
     let module_url_2 =
-      Url::parse("http://localhost:4545/cli/tests/subdir/mismatch_ext.ts").unwrap();
+      Url::parse("http://localhost:4545/cli/tests/subdir/mismatch_ext.ts")
+        .unwrap();
     let module_url_2_ = module_url_2.clone();
     let module_url_3 =
       Url::parse("http://localhost:4545/cli/tests/subdir/unknown_ext.deno")
