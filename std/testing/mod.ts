@@ -6,7 +6,7 @@ import diff from "./diff.ts";
 export { diff };
 export * from "./format.ts";
 export * from "./runner.ts";
-
+export { test } from "./new_mod.ts";
 import {
   bgRed,
   white,
@@ -115,48 +115,48 @@ function filter(name: string): boolean {
   }
 }
 
-export function test(t: TestDefinition): void;
-export function test(fn: TestFunction): void;
-export function test(name: string, fn: TestFunction): void;
-export function test(
-  t: string | TestDefinition | TestFunction,
-  fn?: TestFunction
-): void {
-  let name: string;
+// export function test(t: TestDefinition): void;
+// export function test(fn: TestFunction): void;
+// export function test(name: string, fn: TestFunction): void;
+// export function test(
+//   t: string | TestDefinition | TestFunction,
+//   fn?: TestFunction
+// ): void {
+//   let name: string;
 
-  if (typeof t === "string") {
-    if (!fn) {
-      throw new Error("Missing test function");
-    }
-    name = t;
-    if (!name) {
-      throw new Error("The name of test case can't be empty");
-    }
-  } else if (typeof t === "function") {
-    fn = t;
-    name = t.name;
-    if (!name) {
-      throw new Error("Test function can't be anonymous");
-    }
-  } else {
-    fn = t.fn;
-    if (!fn) {
-      throw new Error("Missing test function");
-    }
-    name = t.name;
-    if (!name) {
-      throw new Error("The name of test case can't be empty");
-    }
-  }
-  assert(!!name, "The name of test case shouldn't be empty");
-  assert(!!fn, "Test function shouldn't be empty");
+//   if (typeof t === "string") {
+//     if (!fn) {
+//       throw new Error("Missing test function");
+//     }
+//     name = t;
+//     if (!name) {
+//       throw new Error("The name of test case can't be empty");
+//     }
+//   } else if (typeof t === "function") {
+//     fn = t;
+//     name = t.name;
+//     if (!name) {
+//       throw new Error("Test function can't be anonymous");
+//     }
+//   } else {
+//     fn = t.fn;
+//     if (!fn) {
+//       throw new Error("Missing test function");
+//     }
+//     name = t.name;
+//     if (!name) {
+//       throw new Error("The name of test case can't be empty");
+//     }
+//   }
+//   assert(!!name, "The name of test case shouldn't be empty");
+//   assert(!!fn, "Test function shouldn't be empty");
 
-  if (filter(name)) {
-    candidates.push({ fn, name });
-  } else {
-    filtered++;
-  }
-}
+//   if (filter(name)) {
+//     candidates.push({ fn, name });
+//   } else {
+//     filtered++;
+//   }
+// }
 
 const RED_FAILED = red("FAILED");
 const GREEN_OK = green("OK");

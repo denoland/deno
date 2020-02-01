@@ -3,7 +3,7 @@
 import { parse } from "../flags/mod.ts";
 import { ExpandGlobOptions, expandGlob } from "../fs/mod.ts";
 import { isWindows, join } from "../path/mod.ts";
-import { RunTestsOptions, runTests } from "./mod.ts";
+import { RunTestsOptions, runTests } from "./new_mod.ts";
 const { DenoError, ErrorKind, args, cwd, exit } = Deno;
 
 const DIR_GLOBS = [join("**", "?(*_)test.{js,ts}")];
@@ -114,6 +114,7 @@ export interface RunTestModulesOptions extends RunTestsOptions {
   include?: string[];
   exclude?: string[];
   allowNone?: boolean;
+  disableLog?: boolean;
 }
 
 /**
@@ -168,10 +169,10 @@ export async function runTestModules({
   include = ["."],
   exclude = [],
   allowNone = false,
-  parallel = false,
+  // parallel = false,
   exitOnFail = false,
-  only = /[^\s]/,
-  skip = /^\s*$/,
+  // only = /[^\s]/,
+  // skip = /^\s*$/,
   disableLog = false
 }: RunTestModulesOptions = {}): Promise<void> {
   let moduleCount = 0;
@@ -234,11 +235,11 @@ export async function runTestModules({
   }
 
   await runTests({
-    parallel,
-    exitOnFail,
-    only,
-    skip,
-    disableLog
+    // parallel,
+    exitOnFail
+    // only,
+    // skip,
+    // disableLog
   });
 }
 

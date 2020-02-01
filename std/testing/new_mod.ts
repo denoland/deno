@@ -1,0 +1,225 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import {
+  red,
+  green,
+  bgRed,
+  yellow,
+  bold,
+  white,
+  gray,
+  italic
+} from "../fmt/colors.ts";
+
+// Clear the current line of the console.
+// see: http://ascii-table.com/ansi-escape-sequences-vt-100.php
+const CLEAR_LINE = "\x1b[2K\r";
+const RED_FAILED = red("FAILED");
+const GREEN_OK = green("OK");
+const RED_BG_FAIL = bgRed(" FAIL ");
+
+const encoder = new TextEncoder();
+
+// TODO(bartlomieju): just use console :) ?
+function print(txt: string, newline = true): void {
+  if (newline) {
+    txt += "\n";
+  }
+  Deno.stdout.writeSync(encoder.encode(`${txt}`));
+}
+
+function formatTestTime(time = 0): string {
+  return `${time.toFixed(2)}ms`;
+}
+
+function promptTestTime(time = 0, displayWarning = false): string {
+  // if time > 5s we display a warning
+  // only for test time, not the full runtime
+  if (displayWarning && time >= 5000) {
+    return bgRed(white(bold(`(${formatTestTime(time)})`)));
+  } else {
+    return gray(italic(`(${formatTestTime(time)})`));
+  }
+}
+
+export type TestFunction = () => void | Promise<void>;
+
+export interface TestDefinition {
+  fn: TestFunction;
+  name: string;
+}
+
+declare global {
+  // Only `var` variables show up in the `globalThis` type when doing a global
+  // scope augmentation.
+  // eslint-disable-next-line no-var
+  var DENO_TEST_REGISTRY: TestDefinition[];
+}
+
+let TEST_REGISTRY: TestDefinition[] = [];
+if (globalThis["DENO_TEST_REGISTRY"]) {
+  TEST_REGISTRY = globalThis.DENO_TEST_REGISTRY as TestDefinition[];
+} else {
+  Object.defineProperty(globalThis, "DENO_TEST_REGISTRY", {
+    enumerable: false,
+    value: TEST_REGISTRY
+  });
+}
+
+export function test(t: TestDefinition): void;
+export function test(fn: TestFunction): void;
+export function test(name: string, fn: TestFunction): void;
+// Main test function provided by Deno, as you can see it merely
+// creates a new object with "name" and "fn" fields.
+export function test(
+  t: string | TestDefinition | TestFunction,
+  fn?: TestFunction
+): void {
+  let name: string;
+
+  if (typeof t === "string") {
+    if (!fn) {
+      throw new Error("Missing test function");
+    }
+    name = t;
+    if (!name) {
+      throw new Error("The name of test case can't be empty");
+    }
+  } else if (typeof t === "function") {
+    fn = t;
+    name = t.name;
+    if (!name) {
+      throw new Error("Test function can't be anonymous");
+    }
+  } else {
+    fn = t.fn;
+    if (!fn) {
+      throw new Error("Missing test function");
+    }
+    name = t.name;
+    if (!name) {
+      throw new Error("The name of test case can't be empty");
+    }
+  }
+
+  TEST_REGISTRY.push({ fn, name });
+}
+
+interface TestStats {
+  filtered: number;
+  ignored: number;
+  measured: number;
+  passed: number;
+  failed: number;
+}
+
+interface TestCase {
+  name: string;
+  fn: TestFunction;
+  timeElapsed?: number;
+  error?: Error;
+  ok: boolean;
+}
+
+export interface RunTestsOptions {
+  exitOnFail?: boolean;
+  // only?: RegExp;
+  // skip?: RegExp;
+  // disableLog?: boolean;
+}
+
+async function runTestCase(testCase: TestCase): Promise<void> {
+  const { name, fn } = testCase;
+  print(`${yellow("RUNNING")} ${name}`, false);
+
+  try {
+    const start = performance.now();
+    await fn();
+    const end = performance.now();
+    testCase.timeElapsed = end - start;
+    // Rewriting the current prompt line to erase `running ....`
+    print(CLEAR_LINE, false);
+    print(GREEN_OK + "     " + name + " " + promptTestTime(end - start, true));
+  } catch (err) {
+    print(CLEAR_LINE, false);
+    print(`${RED_FAILED} ${name}`);
+    print(err.stack);
+    throw err;
+  }
+}
+
+export async function runTests({
+  exitOnFail = false
+}: RunTestsOptions = {}): Promise<void> {
+  // TODO: add filtering
+  const testsToRun = TEST_REGISTRY;
+  // const testsToRun = TEST_REGISTRY.filter(
+  //   ({ name }): boolean => include.test(name) && !exclude.test(name)
+  // );
+
+  const stats: TestStats = {
+    measured: 0,
+    ignored: 0,
+    filtered: 0,
+    passed: 0,
+    failed: 0
+  };
+
+  const testCases = testsToRun.map(
+    ({ name, fn }): TestCase => {
+      return {
+        name,
+        fn,
+        timeElapsed: 0,
+        error: null,
+        ok: true
+      };
+    }
+  );
+
+  console.log(`running ${testsToRun.length} tests`);
+  const start = performance.now();
+
+  for (const testCase of testCases) {
+    try {
+      await runTestCase(testCase);
+      testCase.ok = true;
+      stats.passed++;
+    } catch (e) {
+      testCase.ok = false;
+      testCase.error = e;
+      stats.failed++;
+      if (exitOnFail) {
+        break;
+      }
+    } finally {
+    }
+  }
+
+  const end = performance.now();
+
+  // Attempting to match the output of Rust's test runner.
+  print(
+    `\ntest result: ${stats.failed ? RED_BG_FAIL : GREEN_OK} ` +
+      `${stats.passed} passed; ${stats.failed} failed; ` +
+      `${stats.ignored} ignored; ${stats.measured} measured; ` +
+      `${stats.filtered} filtered out ` +
+      `${promptTestTime(end - start)}\n`
+  );
+
+  // TODO: what's it for? Do we really need, maybe add handler for unhandled
+  // promise to avoid such shenanigans
+  if (stats.failed) {
+    // Use setTimeout to avoid the error being ignored due to unhandled
+    // promise rejections being swallowed.
+    setTimeout((): void => {
+      console.error(`There were ${stats.failed} test failures.`);
+      testCases
+        .filter(testCase => !testCase.ok)
+        .forEach(testCase => {
+          console.error(`${RED_BG_FAIL} ${red(testCase.name)}`);
+          console.error(testCase.error);
+        });
+      Deno.exit(1);
+    }, 0);
+  }
+}
