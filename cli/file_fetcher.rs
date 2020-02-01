@@ -1952,7 +1952,7 @@ mod tests {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
-      Url::parse("http://127.0.0.1:4545/cli/etag_script.ts").unwrap();
+      Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
 
     let fut = async move {
       let source = fetcher
@@ -2080,7 +2080,7 @@ mod tests {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
-      Url::parse("http://127.0.0.1:4545/cli/xTypeScriptTypes.js").unwrap();
+      Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.js").unwrap();
 
     let fut = async move {
       let source = fetcher
@@ -2093,7 +2093,7 @@ mod tests {
       assert_eq!(
         source.types_url,
         Some(
-          Url::parse("http://127.0.0.1:4545/cli/xTypeScriptTypes.d.ts")
+          Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.d.ts")
             .unwrap()
         )
       );
@@ -2108,7 +2108,7 @@ mod tests {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
-      Url::parse("http://127.0.0.1:4545/cli/referenceTypes.js").unwrap();
+      Url::parse("http://127.0.0.1:4545/referenceTypes.js").unwrap();
 
     let fut = async move {
       let source = fetcher
@@ -2120,7 +2120,7 @@ mod tests {
       assert_eq!(
         source.types_url,
         Some(
-          Url::parse("http://127.0.0.1:4545/cli/xTypeScriptTypes.d.ts")
+          Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.d.ts")
             .unwrap()
         )
       );
