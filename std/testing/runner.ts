@@ -3,7 +3,7 @@
 import { parse } from "../flags/mod.ts";
 import { ExpandGlobOptions, expandGlob } from "../fs/mod.ts";
 import { isWindows, join } from "../path/mod.ts";
-import { RunTestsOptions, runTests } from "./new_mod.ts";
+import { RunTestsOptions, runTests } from "./mod.ts";
 const { DenoError, ErrorKind, args, cwd, exit } = Deno;
 
 const DIR_GLOBS = [join("**", "?(*_)test.{js,ts}")];
