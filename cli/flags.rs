@@ -49,6 +49,10 @@ pub enum DenoSubcommand {
     module_url: String,
     args: Vec<String>,
   },
+  Uninstall {
+    dir: Option<String>,
+    exe_names: Vec<String>,
+  },
   Repl,
   Run,
   Types,
@@ -237,6 +241,8 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<DenoFlags> {
     bundle_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("install") {
     install_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("uninstall") {
+    uninstall_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("completions") {
     completions_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("test") {
@@ -277,6 +283,7 @@ fn clap_root<'a, 'b>() -> App<'a, 'b> {
     .subcommand(fmt_subcommand())
     .subcommand(info_subcommand())
     .subcommand(install_subcommand())
+    .subcommand(uninstall_subcommand())
     .subcommand(repl_subcommand())
     .subcommand(run_subcommand())
     .subcommand(test_subcommand())
@@ -333,6 +340,23 @@ fn install_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
     module_url,
     args,
   };
+}
+
+fn uninstall_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
+  let dir = if matches.is_present("dir") {
+    let install_dir = matches.value_of("dir").unwrap();
+    Some(install_dir.to_string())
+  } else {
+    None
+  };
+
+  let exe_names: Vec<String> = matches
+    .values_of("exe_names")
+    .unwrap()
+    .map(|x| x.to_owned())
+    .collect();
+
+  flags.subcommand = DenoSubcommand::Uninstall { dir, exe_names };
 }
 
 fn bundle_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
@@ -582,6 +606,33 @@ $HOME/.deno/bin and it must be added to the path manually.
 To change installation directory use -d/--dir flag
 
   deno install --allow-net --allow-read -d /usr/local/bin file_server https://deno.land/std/http/file_server.ts")
+}
+
+fn uninstall_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("uninstall")
+        .setting(AppSettings::TrailingVarArg)
+        .arg(
+          Arg::with_name("dir")
+            .long("dir")
+            .short("d")
+            .help("Installation directory (defaults to $HOME/.deno/bin)")
+            .takes_value(true)
+            .multiple(false))
+        .arg(
+          Arg::with_name("exe_names")
+            .required(true)
+            .multiple(true)
+        )
+        .about("Uninstall previously installed executables")
+        .long_about(
+"Uninstalls previously installed executables. The default installation directory that
+will be searched is $HOME/.deno/bin.
+
+  deno uninstall file_server colors
+
+To change installation directory use -d/--dir flag
+
+  deno uninstall -d /usr/local/bin file_server")
 }
 
 fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1110,6 +1161,7 @@ fn arg_hacks(mut args: Vec<String>) -> Vec<String> {
     "run",
     "types",
     "install",
+    "uninstall",
     "help",
     "version"
   ];
@@ -1818,6 +1870,46 @@ mod tests {
         argv: svec!["deno"],
         allow_net: true,
         allow_read: true,
+        ..DenoFlags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn uninstall_multiple() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "uninstall", "file_server", "colors"]);
+    assert_eq!(
+      r.unwrap(),
+      DenoFlags {
+        subcommand: DenoSubcommand::Uninstall {
+          dir: None,
+          exe_names: vec!["file_server".to_owned(), "colors".to_owned()],
+        },
+        argv: svec!["deno"],
+        ..DenoFlags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn uninstall_multiple_and_dir() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "uninstall",
+      "-d",
+      "/usr/local/bin",
+      "file_server",
+      "colors"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      DenoFlags {
+        subcommand: DenoSubcommand::Uninstall {
+          dir: Some("/usr/local/bin".to_string()),
+          exe_names: vec!["file_server".to_owned(), "colors".to_owned()],
+        },
+        argv: svec!["deno"],
         ..DenoFlags::default()
       }
     );

@@ -302,6 +302,10 @@ async fn install_command(
   }
 }
 
+fn uninstall_command(dir: Option<String>, exe_names: Vec<String>) {
+  let _ = installer::uninstall(dir, exe_names);
+}
+
 async fn fetch_command(flags: DenoFlags) {
   let args = flags.argv.clone();
 
@@ -470,6 +474,9 @@ pub async fn main() {
       module_url,
       args,
     } => install_command(flags, dir, exe_name, module_url, args).await,
+    DenoSubcommand::Uninstall { dir, exe_names } => {
+      uninstall_command(dir, exe_names)
+    }
     DenoSubcommand::Repl => run_repl(flags).await,
     DenoSubcommand::Run => run_script(flags).await,
     DenoSubcommand::Types => types_command(),
