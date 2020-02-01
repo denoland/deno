@@ -579,8 +579,10 @@ declare namespace Deno {
      */
     grow(n: number): void;
     /** readFrom() reads data from r until EOF and appends it to the buffer,
-     * growing the buffer as needed. It returns the number of bytes read. If the
-     * buffer becomes too large, readFrom will panic with ErrTooLarge.
+     * growing the buffer as needed. It returns the number of bytes read.
+     * If reader disappears before EOF is reached (including if it was never
+     * available), returns the two's complement of the number of bytes read.
+     * If the buffer becomes too large, readFrom will panic with ErrTooLarge.
      * Based on https://golang.org/pkg/bytes/#Buffer.ReadFrom
      */
     readFrom(r: Reader): Promise<number>;

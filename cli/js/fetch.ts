@@ -48,7 +48,8 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
     assert(this._bodyPromise == null);
     const buf = new Buffer();
     try {
-      const nread = await buf.readFrom(this);
+      let nread = await buf.readFrom(this);
+      nread = nread < 0 ? -nread - 1 : nread;
       const ui8 = buf.bytes();
       assert(ui8.byteLength === nread);
       this._data = ui8.buffer.slice(

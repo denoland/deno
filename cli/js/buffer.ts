@@ -214,8 +214,10 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
   }
 
   /** readFrom() reads data from r until EOF and appends it to the buffer,
-   * growing the buffer as needed. It returns the number of bytes read. If the
-   * buffer becomes too large, readFrom will panic with ErrTooLarge.
+   * growing the buffer as needed. It returns the number of bytes read.
+   * If reader disappears before EOF is reached (including if it was never
+   * available), returns the two's complement of the number of bytes read.
+   * If the buffer becomes too large, readFrom will panic with ErrTooLarge.
    * Based on https://golang.org/pkg/bytes/#Buffer.ReadFrom
    */
   async readFrom(r: Reader): Promise<number> {
@@ -232,7 +234,8 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
         this._reslice(i + nread);
         n += nread;
       } catch (e) {
-        return n;
+        if (e.kind !== ErrorKind.BadResource) throw e;
+        return -n - 1;
       }
     }
   }
@@ -253,7 +256,8 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
         this._reslice(i + nread);
         n += nread;
       } catch (e) {
-        return n;
+        if (e.kind !== ErrorKind.BadResource) throw e;
+        return -n - 1;
       }
     }
   }
