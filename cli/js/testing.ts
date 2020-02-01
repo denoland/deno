@@ -1,19 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { red, green, bgRed, bold, white, gray, italic } from "../fmt/colors.ts";
-
-const RED_FAILED = red("FAILED");
-const GREEN_OK = green("OK");
-const RED_BG_FAIL = bgRed(" FAIL ");
-
-const encoder = new TextEncoder();
-
-// TODO(bartlomieju): just use console :) ?
-function print(txt: string, newline = true): void {
-  if (newline) {
-    txt += "\n";
-  }
-  Deno.stdout.writeSync(encoder.encode(`${txt}`));
-}
+import { red, green, bgRed, bold, white, gray, italic } from "./colors.ts";
+import { exit } from "./os.ts";
 
 function formatTestTime(time = 0): string {
   return `${time.toFixed(2)}ms`;
@@ -137,10 +124,14 @@ export async function runTests({
         name,
         fn,
         timeElapsed: 0,
-        error: null
+        error: undefined
       };
     }
   );
+
+  const RED_FAILED = red("FAILED");
+  const GREEN_OK = green("OK");
+  const RED_BG_FAIL = bgRed(" FAIL ");
 
   console.log(`running ${testsToRun.length} tests`);
   const suiteStart = performance.now();
@@ -151,14 +142,14 @@ export async function runTests({
       await testCase.fn();
       const end = performance.now();
       testCase.timeElapsed = end - start;
-      print(
+      console.log(
         `${GREEN_OK}     ${testCase.name} ${promptTestTime(end - start, true)}`
       );
       stats.passed++;
     } catch (err) {
       testCase.error = err;
-      print(`${RED_FAILED} ${testCase.name}`);
-      print(err.stack);
+      console.log(`${RED_FAILED} ${testCase.name}`);
+      console.log(err.stack);
       stats.failed++;
       if (exitOnFail) {
         break;
@@ -169,7 +160,7 @@ export async function runTests({
   const suiteEnd = performance.now();
 
   // Attempting to match the output of Rust's test runner.
-  print(
+  console.log(
     `\ntest result: ${stats.failed ? RED_BG_FAIL : GREEN_OK} ` +
       `${stats.passed} passed; ${stats.failed} failed; ` +
       `${stats.ignored} ignored; ${stats.measured} measured; ` +
@@ -190,7 +181,7 @@ export async function runTests({
           console.error(`${RED_BG_FAIL} ${red(testCase.name)}`);
           console.error(testCase.error);
         });
-      Deno.exit(1);
+      exit(1);
     }, 0);
   }
 }

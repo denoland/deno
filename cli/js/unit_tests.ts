@@ -58,11 +58,9 @@ import "./performance_test.ts";
 import "./permissions_test.ts";
 import "./version_test.ts";
 
-import { runIfMain } from "../../std/testing/mod.ts";
-
 async function main(): Promise<void> {
   // Testing entire test suite serially
-  runIfMain(import.meta);
+  Deno.runIfMain(import.meta);
 }
 
 main();

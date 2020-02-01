@@ -105,6 +105,7 @@ export { signal, signals, SignalStream } from "./signals.ts";
 export { build, OperatingSystem, Arch } from "./build.ts";
 export { version } from "./version.ts";
 export const args: string[] = [];
+export { test, runTests, runIfMain } from "./testing.ts";
 
 // These are internal Deno APIs.  We are marking them as internal so they do not
 // appear in the runtime type library.
