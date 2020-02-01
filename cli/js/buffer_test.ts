@@ -237,7 +237,7 @@ test(async function bufferTestGrow(): Promise<void> {
 test(async function testReadAll(): Promise<void> {
   init();
   const reader = new Buffer(testBytes.buffer as ArrayBuffer);
-  const actualBytes = await readAll(reader);
+  const actualBytes = (await readAll(reader)).content;
   assertEquals(testBytes.byteLength, actualBytes.byteLength);
   for (let i = 0; i < testBytes.length; ++i) {
     assertEquals(testBytes[i], actualBytes[i]);
@@ -247,7 +247,7 @@ test(async function testReadAll(): Promise<void> {
 test(function testReadAllSync(): void {
   init();
   const reader = new Buffer(testBytes.buffer as ArrayBuffer);
-  const actualBytes = readAllSync(reader);
+  const actualBytes = readAllSync(reader).content;
   assertEquals(testBytes.byteLength, actualBytes.byteLength);
   for (let i = 0; i < testBytes.length; ++i) {
     assertEquals(testBytes[i], actualBytes[i]);

@@ -10,9 +10,9 @@ import { readAll, readAllSync } from "./buffer.ts";
  */
 export function readFileSync(filename: string): Uint8Array {
   const file = openSync(filename);
-  const contents = readAllSync(file);
+  const output = readAllSync(file);
   file.close();
-  return contents;
+  return output.content;
 }
 
 /** Read the entire contents of a file.
@@ -23,7 +23,7 @@ export function readFileSync(filename: string): Uint8Array {
  */
 export async function readFile(filename: string): Promise<Uint8Array> {
   const file = await open(filename);
-  const contents = await readAll(file);
+  const output = await readAll(file);
   file.close();
-  return contents;
+  return output.content;
 }

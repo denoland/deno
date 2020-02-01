@@ -98,7 +98,8 @@ export class Process {
       throw new Error("Process.output: stdout is undefined");
     }
     try {
-      return await readAll(this.stdout);
+      const output = await readAll(this.stdout);
+      return output.content;
     } finally {
       this.stdout.close();
     }
@@ -113,7 +114,8 @@ export class Process {
       throw new Error("Process.stderrOutput: stderr is undefined");
     }
     try {
-      return await readAll(this.stderr);
+      const output = await readAll(this.stderr);
+      return output.content;
     } finally {
       this.stderr.close();
     }

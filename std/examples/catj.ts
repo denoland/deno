@@ -94,8 +94,8 @@ if (parsedArgs.h || parsedArgs.help || parsedArgs._.length === 0) {
 }
 
 if (parsedArgs._[0] === "-") {
-  const contents = await Deno.readAll(Deno.stdin);
-  const json = JSON.parse(decoder.decode(contents));
+  const output = await Deno.readAll(Deno.stdin);
+  const json = JSON.parse(decoder.decode(output.content));
   print(json);
 } else {
   for (const fileName of parsedArgs._) {

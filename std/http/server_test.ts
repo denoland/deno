@@ -144,7 +144,7 @@ test(async function requestBodyWithContentLength(): Promise<void> {
     req.headers.set("content-length", "5");
     const buf = new Buffer(enc.encode("Hello"));
     req.r = new BufReader(buf);
-    const body = dec.decode(await Deno.readAll(req.body));
+    const body = dec.decode((await Deno.readAll(req.body)).content);
     assertEquals(body, "Hello");
   }
 
@@ -156,7 +156,7 @@ test(async function requestBodyWithContentLength(): Promise<void> {
     req.headers.set("Content-Length", "5000");
     const buf = new Buffer(enc.encode(longText));
     req.r = new BufReader(buf);
-    const body = dec.decode(await Deno.readAll(req.body));
+    const body = dec.decode((await Deno.readAll(req.body)).content);
     assertEquals(body, longText);
   }
 });
@@ -181,7 +181,7 @@ test(async function requestBodyWithTransferEncoding(): Promise<void> {
     chunksData += "0\r\n\r\n";
     const buf = new Buffer(enc.encode(chunksData));
     req.r = new BufReader(buf);
-    const body = dec.decode(await Deno.readAll(req.body));
+    const body = dec.decode((await Deno.readAll(req.body)).content);
     assertEquals(body, shortText);
   }
 
@@ -205,7 +205,7 @@ test(async function requestBodyWithTransferEncoding(): Promise<void> {
     chunksData += "0\r\n\r\n";
     const buf = new Buffer(enc.encode(chunksData));
     req.r = new BufReader(buf);
-    const body = dec.decode(await Deno.readAll(req.body));
+    const body = dec.decode((await Deno.readAll(req.body)).content);
     assertEquals(body, longText);
   }
 });

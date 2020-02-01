@@ -134,7 +134,7 @@ test(async function existsPermission(): Promise<void> {
 
     const output = await Deno.readAll(stdout);
 
-    assertStrContains(new TextDecoder().decode(output), s.output);
+    assertStrContains(new TextDecoder().decode(output.content), s.output);
   }
 
   // done
