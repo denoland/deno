@@ -109,19 +109,19 @@ interface TestCase {
 
 export interface RunTestsOptions {
   exitOnFail?: boolean;
-  // only?: RegExp;
-  // skip?: RegExp;
-  // disableLog?: boolean;
+  only?: RegExp;
+  skip?: RegExp;
+  disableLog?: boolean;
 }
 
 export async function runTests({
-  exitOnFail = false
+  exitOnFail = false,
+  only = /[^\s]/,
+  skip = /^\s*$/,
 }: RunTestsOptions = {}): Promise<void> {
-  // TODO: add filtering
-  const testsToRun = TEST_REGISTRY;
-  // const testsToRun = TEST_REGISTRY.filter(
-  //   ({ name }): boolean => include.test(name) && !exclude.test(name)
-  // );
+  const testsToRun = TEST_REGISTRY.filter(
+    ({ name }): boolean => only.test(name) && !skip.test(name)
+  );
 
   const stats: TestStats = {
     measured: 0,
@@ -192,5 +192,18 @@ export async function runTests({
         });
       Deno.exit(1);
     }, 0);
+  }
+}
+
+
+/**
+ * Runs specified test cases if the enclosing script is main.
+ */
+export async function runIfMain(
+  meta: ImportMeta,
+  opts?: RunTestsOptions
+): Promise<void> {
+  if (meta.main) {
+    return runTests(opts);
   }
 }

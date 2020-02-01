@@ -114,7 +114,6 @@ export interface RunTestModulesOptions extends RunTestsOptions {
   include?: string[];
   exclude?: string[];
   allowNone?: boolean;
-  disableLog?: boolean;
 }
 
 /**
@@ -169,10 +168,9 @@ export async function runTestModules({
   include = ["."],
   exclude = [],
   allowNone = false,
-  // parallel = false,
   exitOnFail = false,
-  // only = /[^\s]/,
-  // skip = /^\s*$/,
+  only = /[^\s]/,
+  skip = /^\s*$/,
   disableLog = false
 }: RunTestModulesOptions = {}): Promise<void> {
   let moduleCount = 0;
@@ -235,11 +233,10 @@ export async function runTestModules({
   }
 
   await runTests({
-    // parallel,
-    exitOnFail
-    // only,
-    // skip,
-    // disableLog
+    exitOnFail,
+    only,
+    skip,
+    disableLog
   });
 }
 
