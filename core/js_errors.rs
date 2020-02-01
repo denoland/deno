@@ -306,7 +306,7 @@ mod tests {
         "line":2,
         "column":11,
         "functionName":"foo",
-        "scriptName":"/Users/rld/src/deno/tests/error_001.ts",
+        "scriptName":"/Users/rld/src/deno/cli/tests/error_001.ts",
         "isEval":true,
         "isConstructor":false,
         "isWasm":false
@@ -319,7 +319,7 @@ mod tests {
       Some(StackFrame {
         line: 1,
         column: 10,
-        script_name: "/Users/rld/src/deno/tests/error_001.ts".to_string(),
+        script_name: "/Users/rld/src/deno/cli/tests/error_001.ts".to_string(),
         function_name: "foo".to_string(),
         is_eval: true,
         is_constructor: false,
@@ -332,7 +332,7 @@ mod tests {
   fn stack_frame_from_json_value_2() {
     let v = serde_json::from_str::<serde_json::Value>(
       r#"{
-        "scriptName": "/Users/rld/src/deno/tests/error_001.ts",
+        "scriptName": "/Users/rld/src/deno/cli/tests/error_001.ts",
         "line": 2,
         "column": 11
       }"#,
@@ -343,7 +343,7 @@ mod tests {
     let f = r.unwrap();
     assert_eq!(f.line, 1);
     assert_eq!(f.column, 10);
-    assert_eq!(f.script_name, "/Users/rld/src/deno/tests/error_001.ts");
+    assert_eq!(f.script_name, "/Users/rld/src/deno/cli/tests/error_001.ts");
   }
 
   #[test]
@@ -356,7 +356,7 @@ mod tests {
             "line":2,
             "column":11,
             "functionName":"foo",
-            "scriptName":"/Users/rld/src/deno/tests/error_001.ts",
+            "scriptName":"/Users/rld/src/deno/cli/tests/error_001.ts",
             "isEval":true,
             "isConstructor":false,
             "isWasm":false
@@ -364,7 +364,7 @@ mod tests {
             "line":5,
             "column":5,
             "functionName":"bar",
-            "scriptName":"/Users/rld/src/deno/tests/error_001.ts",
+            "scriptName":"/Users/rld/src/deno/cli/tests/error_001.ts",
             "isEval":true,
             "isConstructor":false,
             "isWasm":false
@@ -380,7 +380,7 @@ mod tests {
       StackFrame {
         line: 1,
         column: 10,
-        script_name: "/Users/rld/src/deno/tests/error_001.ts".to_string(),
+        script_name: "/Users/rld/src/deno/cli/tests/error_001.ts".to_string(),
         function_name: "foo".to_string(),
         is_eval: true,
         is_constructor: false,

@@ -1005,7 +1005,7 @@ mod tests {
     let fetcher_1 = fetcher.clone();
     let fetcher_2 = fetcher.clone();
     let module_url =
-      Url::parse("http://localhost:4545/tests/subdir/mod2.ts").unwrap();
+      Url::parse("http://localhost:4545/cli/tests/subdir/mod2.ts").unwrap();
     let module_url_1 = module_url.clone();
     let module_url_2 = module_url.clone();
     let headers_file_name = fetcher.deps_cache.location.join(
@@ -1106,7 +1106,7 @@ mod tests {
     let (temp_dir, fetcher) = test_setup();
     let fetcher_1 = fetcher.clone();
     let module_url =
-      Url::parse("http://localhost:4545/tests/subdir/mismatch_ext.ts").unwrap();
+      Url::parse("http://localhost:4545/cli/tests/subdir/mismatch_ext.ts").unwrap();
     let module_url_1 = module_url.clone();
     let module_url_2 = module_url.clone();
     let headers_file_name = fetcher.deps_cache.location.join(
@@ -1183,7 +1183,7 @@ mod tests {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let specifier = ModuleSpecifier::resolve_url(
-      "http://localhost:4545/tests/subdir/mismatch_ext.ts",
+      "http://localhost:4545/cli/tests/subdir/mismatch_ext.ts",
     )
     .unwrap();
     let headers_file_name = fetcher.deps_cache.location.join(
@@ -1232,21 +1232,21 @@ mod tests {
     let (_temp_dir, fetcher) = test_setup();
 
     let redirect_module_url =
-      Url::parse("http://localhost:4546/tests/subdir/redirects/redirect1.js")
+      Url::parse("http://localhost:4546/cli/tests/subdir/redirects/redirect1.js")
         .unwrap();
     let redirect_source_filepath = fetcher
       .deps_cache
       .location
-      .join("http/localhost_PORT4546/tests/subdir/redirects/redirect1.js");
+      .join("http/localhost_PORT4546/cli/tests/subdir/redirects/redirect1.js");
     let redirect_source_filename =
       redirect_source_filepath.to_str().unwrap().to_string();
     let target_module_url =
-      Url::parse("http://localhost:4545/tests/subdir/redirects/redirect1.js")
+      Url::parse("http://localhost:4545/cli/tests/subdir/redirects/redirect1.js")
         .unwrap();
     let redirect_target_filepath = fetcher
       .deps_cache
       .location
-      .join("http/localhost_PORT4545/tests/subdir/redirects/redirect1.js");
+      .join("http/localhost_PORT4545/cli/tests/subdir/redirects/redirect1.js");
     let redirect_target_filename =
       redirect_target_filepath.to_str().unwrap().to_string();
 
@@ -1263,7 +1263,7 @@ mod tests {
           fetcher.get_source_code_headers(&redirect_module_url);
         assert_eq!(
           redirect_source_headers.redirect_to.unwrap(),
-          "http://localhost:4545/tests/subdir/redirects/redirect1.js"
+          "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js"
         );
         // The target of redirection is downloaded instead.
         assert_eq!(
@@ -1287,28 +1287,28 @@ mod tests {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let double_redirect_url =
-      Url::parse("http://localhost:4548/tests/subdir/redirects/redirect1.js")
+      Url::parse("http://localhost:4548/cli/tests/subdir/redirects/redirect1.js")
         .unwrap();
     let double_redirect_path = fetcher
       .deps_cache
       .location
-      .join("http/localhost_PORT4548/tests/subdir/redirects/redirect1.js");
+      .join("http/localhost_PORT4548/cli/tests/subdir/redirects/redirect1.js");
 
     let redirect_url =
-      Url::parse("http://localhost:4546/tests/subdir/redirects/redirect1.js")
+      Url::parse("http://localhost:4546/cli/tests/subdir/redirects/redirect1.js")
         .unwrap();
     let redirect_path = fetcher
       .deps_cache
       .location
-      .join("http/localhost_PORT4546/tests/subdir/redirects/redirect1.js");
+      .join("http/localhost_PORT4546/cli/tests/subdir/redirects/redirect1.js");
 
     let target_url =
-      Url::parse("http://localhost:4545/tests/subdir/redirects/redirect1.js")
+      Url::parse("http://localhost:4545/cli/tests/subdir/redirects/redirect1.js")
         .unwrap();
     let target_path = fetcher
       .deps_cache
       .location
-      .join("http/localhost_PORT4545/tests/subdir/redirects/redirect1.js");
+      .join("http/localhost_PORT4545/cli/tests/subdir/redirects/redirect1.js");
 
     // Test double redirects and headers recording
     let fut = fetcher
@@ -1354,17 +1354,17 @@ mod tests {
     let (_temp_dir, fetcher) = test_setup();
 
     let double_redirect_url =
-      Url::parse("http://localhost:4548/tests/subdir/redirects/redirect1.js")
+      Url::parse("http://localhost:4548/cli/tests/subdir/redirects/redirect1.js")
         .unwrap();
 
     let redirect_url =
-      Url::parse("http://localhost:4546/tests/subdir/redirects/redirect1.js")
+      Url::parse("http://localhost:4546/cli/tests/subdir/redirects/redirect1.js")
         .unwrap();
 
     let target_path = fetcher
       .deps_cache
       .location
-      .join("http/localhost_PORT4545/tests/subdir/redirects/redirect1.js");
+      .join("http/localhost_PORT4545/cli/tests/subdir/redirects/redirect1.js");
     let target_path_ = target_path.clone();
 
     // Test that redirect target is not downloaded twice for different redirect source.
@@ -1407,7 +1407,7 @@ mod tests {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let double_redirect_url =
-      Url::parse("http://localhost:4548/tests/subdir/redirects/redirect1.js")
+      Url::parse("http://localhost:4548/cli/tests/subdir/redirects/redirect1.js")
         .unwrap();
 
     // Test that redirections can be limited
@@ -1432,7 +1432,7 @@ mod tests {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
-      Url::parse("http://localhost:4545/tests/002_hello.ts").unwrap();
+      Url::parse("http://localhost:4545/cli/tests/002_hello.ts").unwrap();
     // Remote modules are not allowed
     let fut = fetcher
       .get_source_file_async(&module_url, true, true, false)
@@ -1453,7 +1453,7 @@ mod tests {
     let fetcher_1 = fetcher.clone();
     let fetcher_2 = fetcher.clone();
     let module_url =
-      Url::parse("http://localhost:4545/tests/002_hello.ts").unwrap();
+      Url::parse("http://localhost:4545/cli/tests/002_hello.ts").unwrap();
     let module_url_1 = module_url.clone();
     let module_url_2 = module_url.clone();
     // file hasn't been cached before
@@ -1485,7 +1485,7 @@ mod tests {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
-      Url::parse("http://127.0.0.1:4545/tests/subdir/mt_video_mp2t.t3.ts")
+      Url::parse("http://127.0.0.1:4545/cli/tests/subdir/mt_video_mp2t.t3.ts")
         .unwrap();
     let headers_file_name = fetcher.deps_cache.location.join(
       fetcher
@@ -1528,7 +1528,7 @@ mod tests {
 
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
-      Url::parse("http://localhost:4545/tests/subdir/mt_video_mp2t.t3.ts")
+      Url::parse("http://localhost:4545/cli/tests/subdir/mt_video_mp2t.t3.ts")
         .unwrap();
     let headers_file_name = fetcher.deps_cache.location.join(
       fetcher
@@ -1574,12 +1574,12 @@ mod tests {
     let fetcher_2 = fetcher.clone();
     let fetcher_3 = fetcher.clone();
     let module_url =
-      Url::parse("http://localhost:4545/tests/subdir/no_ext").unwrap();
+      Url::parse("http://localhost:4545/cli/tests/subdir/no_ext").unwrap();
     let module_url_2 =
-      Url::parse("http://localhost:4545/tests/subdir/mismatch_ext.ts").unwrap();
+      Url::parse("http://localhost:4545/cli/tests/subdir/mismatch_ext.ts").unwrap();
     let module_url_2_ = module_url_2.clone();
     let module_url_3 =
-      Url::parse("http://localhost:4545/tests/subdir/unknown_ext.deno")
+      Url::parse("http://localhost:4545/cli/tests/subdir/unknown_ext.deno")
         .unwrap();
     let module_url_3_ = module_url_3.clone();
 
@@ -1942,7 +1942,7 @@ mod tests {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
-      Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
+      Url::parse("http://127.0.0.1:4545/cli/etag_script.ts").unwrap();
 
     let fut = async move {
       let source = fetcher
@@ -2070,7 +2070,7 @@ mod tests {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
-      Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.js").unwrap();
+      Url::parse("http://127.0.0.1:4545/cli/xTypeScriptTypes.js").unwrap();
 
     let fut = async move {
       let source = fetcher
@@ -2083,7 +2083,8 @@ mod tests {
       assert_eq!(
         source.types_url,
         Some(
-          Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.d.ts").unwrap()
+          Url::parse("http://127.0.0.1:4545/cli/xTypeScriptTypes.d.ts")
+            .unwrap()
         )
       );
     };
@@ -2097,7 +2098,7 @@ mod tests {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
-      Url::parse("http://127.0.0.1:4545/referenceTypes.js").unwrap();
+      Url::parse("http://127.0.0.1:4545/cli/referenceTypes.js").unwrap();
 
     let fut = async move {
       let source = fetcher
@@ -2109,7 +2110,8 @@ mod tests {
       assert_eq!(
         source.types_url,
         Some(
-          Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.d.ts").unwrap()
+          Url::parse("http://127.0.0.1:4545/cli/xTypeScriptTypes.d.ts")
+            .unwrap()
         )
       );
     };
