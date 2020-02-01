@@ -263,20 +263,37 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
   }
 }
 
-/** Read `r` until EOF and return the content as `Uint8Array`.
- */
-export async function readAll(r: Reader): Promise<Uint8Array> {
-  const buf = new Buffer();
-  await buf.readFrom(r);
-  return buf.bytes();
+export interface ReadAllOption {
+  maxBytes?: number;
 }
 
-/** Read synchronously `r` until EOF and return the content as `Uint8Array`.
+export interface ReadAllResponse {
+  content: Uint8Array;
+  closed?: boolean;
+  truncated?: boolean;
+  aborted?: boolean;
+}
+
+/** Read `r` until EOF and return the content as `ReadAllResponse`.
  */
-export function readAllSync(r: SyncReader): Uint8Array {
+export async function readAll(
+  r: Reader,
+  options: ReadAllOption = {}
+): Promise<ReadAllResponse> {
+  const buf = new Buffer();
+  await buf.readFrom(r);
+  return { content: buf.bytes() };
+}
+
+/** Read synchronously `r` until EOF and return the content as `ReadAllResponse`.
+ */
+export function readAllSync(
+  r: SyncReader,
+  options: ReadAllOption = {}
+): ReadAllResponse {
   const buf = new Buffer();
   buf.readFromSync(r);
-  return buf.bytes();
+  return { content: buf.bytes() };
 }
 
 /** Write all the content of `arr` to `w`.

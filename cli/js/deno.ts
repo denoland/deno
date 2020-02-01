@@ -43,6 +43,8 @@ export {
 } from "./io.ts";
 export {
   Buffer,
+  ReadAllOption,
+  ReadAllResponse,
   readAll,
   readAllSync,
   writeAll,

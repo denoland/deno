@@ -591,11 +591,28 @@ declare namespace Deno {
     readFromSync(r: SyncReader): number;
   }
 
-  /** Read `r` until EOF and return the content as `Uint8Array` */
-  export function readAll(r: Reader): Promise<Uint8Array>;
+  export interface ReadAllOption {
+    maxBytes?: number;
+  }
 
-  /** Read synchronously `r` until EOF and return the content as `Uint8Array`  */
-  export function readAllSync(r: SyncReader): Uint8Array;
+  export interface ReadAllResponse {
+    content: Uint8Array;
+    closed?: boolean;
+    truncated?: boolean;
+    aborted?: boolean;
+  }
+
+  /** Read `r` until EOF and return the content as `ReadAllResponse` */
+  export function readAll(
+    r: Reader,
+    options: ReadAllOption = {}
+  ): Promise<ReadAllResponse>;
+
+  /** Read synchronously `r` until EOF and return the content as `ReadAllResponse`  */
+  export function readAllSync(
+    r: SyncReader,
+    options: ReadAllOption = {}
+  ): ReadAllResponse;
 
   /** Write all the content of `arr` to `w` */
   export function writeAll(w: Writer, arr: Uint8Array): Promise<void>;
