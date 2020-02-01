@@ -7,7 +7,6 @@ use crate::fs as deno_fs;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno_core::*;
-use remove_dir_all::remove_dir_all;
 use std::convert::From;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -168,11 +167,12 @@ fn op_remove(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_remove {}", path.display());
-    let metadata = fs::metadata(&path)?;
-    if metadata.is_file() {
+    let metadata = fs::symlink_metadata(&path)?;
+    let file_type = metadata.file_type();
+    if file_type.is_file() || file_type.is_symlink() {
       fs::remove_file(&path)?;
     } else if recursive {
-      remove_dir_all(&path)?;
+      fs::remove_dir_all(&path)?;
     } else {
       fs::remove_dir(&path)?;
     }
