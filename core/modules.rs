@@ -449,6 +449,26 @@ impl fmt::Display for Deps {
   }
 }
 
+#[macro_export]
+macro_rules! crate_modules {
+  () => {
+    pub const DENO_CRATE_PATH: &'static str = env!("CARGO_MANIFEST_DIR");
+  };
+}
+
+#[macro_export]
+macro_rules! include_crate_modules {
+  ( $( $x:ident ),* ) => {
+    {
+      let mut temp: HashMap<String, String> = HashMap::new();
+      $(
+        temp.insert(stringify!($x).to_string(), $x::DENO_CRATE_PATH.to_string());
+      )*
+      temp
+    }
+  };
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
