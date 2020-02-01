@@ -16,6 +16,7 @@ use deno_core::StartupData;
 use deno_core::ZeroCopyBuf;
 pub use ops::EmitResult;
 use ops::WrittenFile;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -32,6 +33,8 @@ pub fn ts_version() -> String {
   pkg["version"].as_str().unwrap().to_string()
 }
 
+type ExternCrateModules = HashMap<String, String>;
+
 #[derive(Debug)]
 pub struct TSState {
   bundle: bool,
@@ -40,6 +43,7 @@ pub struct TSState {
   /// A list of files emitted by typescript. WrittenFile is tuple of the form
   /// (url, corresponding_module, source_code)
   written_files: Vec<WrittenFile>,
+  extern_crate_modules: ExternCrateModules,
 }
 
 fn compiler_op<D>(
@@ -62,21 +66,27 @@ pub struct TSIsolate {
 }
 
 impl TSIsolate {
-  fn new(bundle: bool) -> TSIsolate {
+  fn new(
+    bundle: bool,
+    maybe_extern_crate_modules: Option<ExternCrateModules>,
+  ) -> TSIsolate {
     let mut isolate = Isolate::new(StartupData::None, false);
     js_check(isolate.execute("assets/typescript.js", TYPESCRIPT_CODE));
     js_check(isolate.execute("compiler_main.js", COMPILER_CODE));
+
+    let extern_crate_modules = maybe_extern_crate_modules.unwrap_or_default();
 
     let state = Arc::new(Mutex::new(TSState {
       bundle,
       exit_code: 0,
       emit_result: None,
       written_files: Vec::new(),
+      extern_crate_modules,
     }));
 
     isolate.register_op(
-      "readFile",
-      compiler_op(state.clone(), ops::json_op(ops::read_file)),
+      "loadModule",
+      compiler_op(state.clone(), ops::json_op(ops::load_module)),
     );
     isolate
       .register_op("exit", compiler_op(state.clone(), ops::json_op(ops::exit)));
@@ -125,8 +135,9 @@ impl TSIsolate {
 pub fn compile_bundle(
   bundle_filename: &Path,
   root_names: Vec<PathBuf>,
+  extern_crate_modules: Option<ExternCrateModules>,
 ) -> Result<String, ErrBox> {
-  let ts_isolate = TSIsolate::new(true);
+  let ts_isolate = TSIsolate::new(true, extern_crate_modules);
 
   let config_json = serde_json::json!({
     "compilerOptions": {
