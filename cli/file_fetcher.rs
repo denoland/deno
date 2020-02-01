@@ -2093,8 +2093,7 @@ mod tests {
       assert_eq!(
         source.types_url,
         Some(
-          Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.d.ts")
-            .unwrap()
+          Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.d.ts").unwrap()
         )
       );
     };
@@ -2120,8 +2119,7 @@ mod tests {
       assert_eq!(
         source.types_url,
         Some(
-          Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.d.ts")
-            .unwrap()
+          Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.d.ts").unwrap()
         )
       );
     };
