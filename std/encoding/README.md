@@ -219,3 +219,26 @@ Serializes `object` as a YAML document.
 See [`./yaml/example`](./yaml/example) folder and [js-yaml] repository.
 
 [js-yaml]: https://github.com/nodeca/js-yaml
+
+## base32
+
+[RFC4648 base32](https://tools.ietf.org/html/rfc4648#section-6) encoder/decoder
+for Deno
+
+### Basic usage
+
+`encode` encodes a `Uint8Array` to RFC4648 base32 representation, and `decode`
+decodes the given RFC4648 base32 representation to a `Uint8Array`.
+
+```ts
+import { encode, decode } from "https://deno.land/std/encoding/base32.ts";
+
+const b32Repr = "RC2E6GA=";
+
+const binaryData = decode(b32Repr);
+console.log(binaryData);
+// => Uint8Array [ 136, 180, 79, 24 ]
+
+console.log(encode(binaryData));
+// => RC2E6GA=
+```
