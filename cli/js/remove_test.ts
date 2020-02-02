@@ -5,8 +5,7 @@ import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 testPerm({ write: true, read: true }, function removeSyncDirSuccess(): void {
   // REMOVE EMPTY DIRECTORY
-  const tempDir = Deno.makeTempDirSync();
-  const path = tempDir + "/subdir";
+  const path = Deno.makeTempDirSync() + "/subdir";
   Deno.mkdirSync(path);
   const pathInfo = Deno.statSync(path);
   assert(pathInfo.isDirectory()); // check exist first
@@ -21,15 +20,13 @@ testPerm({ write: true, read: true }, function removeSyncDirSuccess(): void {
   // Directory is gone
   assertEquals(err.kind, Deno.ErrorKind.NotFound);
   assertEquals(err.name, "NotFound");
-  // Deno.removeSync(tempDir);
 });
 
 testPerm({ write: true, read: true }, function removeSyncFileSuccess(): void {
   // REMOVE FILE
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
-  const tempDir = Deno.makeTempDirSync();
-  const filename = tempDir + "/test.txt";
+  const filename = Deno.makeTempDirSync() + "/test.txt";
   Deno.writeFileSync(filename, data, { perm: 0o666 });
   const fileInfo = Deno.statSync(filename);
   assert(fileInfo.isFile()); // check exist first
@@ -44,7 +41,6 @@ testPerm({ write: true, read: true }, function removeSyncFileSuccess(): void {
   // File is gone
   assertEquals(err.kind, Deno.ErrorKind.NotFound);
   assertEquals(err.name, "NotFound");
-  // Deno.removeSync(tempDir);
 });
 
 testPerm({ write: true, read: true }, function removeSyncFail(): void {
@@ -82,18 +78,29 @@ testPerm(
   { write: true, read: true },
   function removeSyncDanglingSymlinkSuccess(): void {
     const danglingSymlinkPath = Deno.makeTempDirSync() + "/dangling_symlink";
-    Deno.symlinkSync("unexistent_file", danglingSymlinkPath);
-    const pathInfo = Deno.lstatSync(danglingSymlinkPath);
-    assert(pathInfo.isSymlink());
-    Deno.removeSync(danglingSymlinkPath);
-    let err;
+    // TODO(#3832): Remove "Not Implemented" error checking when symlink creation is implemented for Windows
+    let errOnWindows;
     try {
-      Deno.lstatSync(danglingSymlinkPath);
-    } catch (e) {
-      err = e;
+      Deno.symlinkSync("unexistent_file", danglingSymlinkPath);
+    } catch (err) {
+      errOnWindows = err;
     }
-    assertEquals(err.kind, Deno.ErrorKind.NotFound);
-    assertEquals(err.name, "NotFound");
+    if (errOnWindows) {
+      assertEquals(Deno.build.os, "win");
+      assertEquals(errOnWindows.message, "Not implemented");
+    } else {
+      const pathInfo = Deno.lstatSync(danglingSymlinkPath);
+      assert(pathInfo.isSymlink());
+      Deno.removeSync(danglingSymlinkPath);
+      let err;
+      try {
+        Deno.lstatSync(danglingSymlinkPath);
+      } catch (e) {
+        err = e;
+      }
+      assertEquals(err.kind, Deno.ErrorKind.NotFound);
+      assertEquals(err.name, "NotFound");
+    }
   }
 );
 
@@ -106,19 +113,30 @@ testPerm(
     const filePath = tempDir + "/test.txt";
     const validSymlinkPath = tempDir + "/valid_symlink";
     Deno.writeFileSync(filePath, data, { perm: 0o666 });
-    Deno.symlinkSync(filePath, validSymlinkPath);
-    const symlinkPathInfo = Deno.statSync(validSymlinkPath);
-    assert(symlinkPathInfo.isFile());
-    Deno.removeSync(validSymlinkPath);
-    let err;
+    // TODO(#3832): Remove "Not Implemented" error checking when symlink creation is implemented for Windows
+    let errOnWindows;
     try {
-      Deno.statSync(validSymlinkPath);
-    } catch (e) {
-      err = e;
+      Deno.symlinkSync(filePath, validSymlinkPath);
+    } catch (err) {
+      errOnWindows = err;
     }
-    Deno.removeSync(filePath);
-    assertEquals(err.kind, Deno.ErrorKind.NotFound);
-    assertEquals(err.name, "NotFound");
+    if (errOnWindows) {
+      assertEquals(Deno.build.os, "win");
+      assertEquals(errOnWindows.message, "Not implemented");
+    } else {
+      const symlinkPathInfo = Deno.statSync(validSymlinkPath);
+      assert(symlinkPathInfo.isFile());
+      Deno.removeSync(validSymlinkPath);
+      let err;
+      try {
+        Deno.statSync(validSymlinkPath);
+      } catch (e) {
+        err = e;
+      }
+      Deno.removeSync(filePath);
+      assertEquals(err.kind, Deno.ErrorKind.NotFound);
+      assertEquals(err.name, "NotFound");
+    }
   }
 );
 
@@ -303,18 +321,29 @@ testPerm(
   { write: true, read: true },
   async function removeDanglingSymlinkSuccess(): Promise<void> {
     const danglingSymlinkPath = Deno.makeTempDirSync() + "/dangling_symlink";
-    Deno.symlinkSync("unexistent_file", danglingSymlinkPath);
-    const pathInfo = Deno.lstatSync(danglingSymlinkPath);
-    assert(pathInfo.isSymlink());
-    await Deno.remove(danglingSymlinkPath);
-    let err;
+    // TODO(#3832): Remove "Not Implemented" error checking when symlink creation is implemented for Windows
+    let errOnWindows;
     try {
-      Deno.lstatSync(danglingSymlinkPath);
+      Deno.symlinkSync("unexistent_file", danglingSymlinkPath);
     } catch (e) {
-      err = e;
+      errOnWindows = e;
     }
-    assertEquals(err.kind, Deno.ErrorKind.NotFound);
-    assertEquals(err.name, "NotFound");
+    if (errOnWindows) {
+      assertEquals(Deno.build.os, "win");
+      assertEquals(errOnWindows.message, "Not implemented");
+    } else {
+      const pathInfo = Deno.lstatSync(danglingSymlinkPath);
+      assert(pathInfo.isSymlink());
+      await Deno.remove(danglingSymlinkPath);
+      let err;
+      try {
+        Deno.lstatSync(danglingSymlinkPath);
+      } catch (e) {
+        err = e;
+      }
+      assertEquals(err.kind, Deno.ErrorKind.NotFound);
+      assertEquals(err.name, "NotFound");
+    }
   }
 );
 
@@ -327,19 +356,30 @@ testPerm(
     const filePath = tempDir + "/test.txt";
     const validSymlinkPath = tempDir + "/valid_symlink";
     Deno.writeFileSync(filePath, data, { perm: 0o666 });
-    Deno.symlinkSync(filePath, validSymlinkPath);
-    const symlinkPathInfo = Deno.statSync(validSymlinkPath);
-    assert(symlinkPathInfo.isFile());
-    await Deno.remove(validSymlinkPath);
-    let err;
+    // TODO(#3832): Remove "Not Implemented" error checking when symlink creation is implemented for Windows
+    let errOnWindows;
     try {
-      Deno.statSync(validSymlinkPath);
+      Deno.symlinkSync(filePath, validSymlinkPath);
     } catch (e) {
-      err = e;
+      errOnWindows = e;
     }
-    Deno.removeSync(filePath);
-    assertEquals(err.kind, Deno.ErrorKind.NotFound);
-    assertEquals(err.name, "NotFound");
+    if (errOnWindows) {
+      assertEquals(Deno.build.os, "win");
+      assertEquals(errOnWindows.message, "Not implemented");
+    } else {
+      const symlinkPathInfo = Deno.statSync(validSymlinkPath);
+      assert(symlinkPathInfo.isFile());
+      await Deno.remove(validSymlinkPath);
+      let err;
+      try {
+        Deno.statSync(validSymlinkPath);
+      } catch (e) {
+        err = e;
+      }
+      Deno.removeSync(filePath);
+      assertEquals(err.kind, Deno.ErrorKind.NotFound);
+      assertEquals(err.name, "NotFound");
+    }
   }
 );
 
