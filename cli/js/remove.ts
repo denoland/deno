@@ -24,6 +24,9 @@ export function removeSync(path: string, options: RemoveOption = {}): void {
  *
  *       await Deno.remove("/path/to/dir/or/file", {recursive: false});
  */
-export async function remove(path: string, options: RemoveOption = {}): Promise<void> {
+export async function remove(
+  path: string,
+  options: RemoveOption = {}
+): Promise<void> {
   await sendAsync(dispatch.OP_REMOVE, { path, recursive: !!options.recursive });
 }
