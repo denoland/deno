@@ -278,6 +278,7 @@ export interface ReadAllResponse {
  */
 export async function readAll(
   r: Reader,
+  //eslint-disable-next-line @typescript-eslint/no-unused-vars
   options: ReadAllOption = {}
 ): Promise<ReadAllResponse> {
   const buf = new Buffer();
@@ -289,6 +290,7 @@ export async function readAll(
  */
 export function readAllSync(
   r: SyncReader,
+  //eslint-disable-next-line @typescript-eslint/no-unused-vars
   options: ReadAllOption = {}
 ): ReadAllResponse {
   const buf = new Buffer();
