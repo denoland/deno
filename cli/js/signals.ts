@@ -112,7 +112,7 @@ export const signals = {
   }
 };
 
-/** Signals represents the stream of signals, implements both
+/** SignalStream represents the stream of signals, implements both
  * AsyncIterator and PromiseLike */
 class SignalStream implements AsyncIterator<void>, PromiseLike<void> {
   private rid: number;
