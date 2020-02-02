@@ -11,14 +11,15 @@ import * as testing from "../../std/testing/mod.ts";
 import { assert, assertEquals } from "../../std/testing/asserts.ts";
 export {
   assert,
-  assertThrows,
   assertEquals,
   assertMatch,
   assertNotEquals,
   assertStrictEq,
   assertStrContains,
-  unreachable,
+  assertThrows,
+  assertThrowsAsync,
   fail
+  unreachable
 } from "../../std/testing/asserts.ts";
 
 interface TestPermissions {

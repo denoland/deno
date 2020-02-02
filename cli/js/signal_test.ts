@@ -1,11 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import {
-  test,
-  testPerm,
-  assert,
-  assertEquals,
-  assertThrows
-} from "./test_util.ts";
+import { test, testPerm, assertEquals, assertThrows } from "./test_util.ts";
 
 function defer(n: number): Promise<void> {
   return new Promise((resolve, _) => {
@@ -101,9 +95,18 @@ if (Deno.build.os === "win") {
     );
   });
 } else {
-  testPerm({ run: true, net: true }, async function signalStreamTest(): Promise<
-    void
-  > {
+  test(function emptySignalTest(): void {
+    assertThrows(
+      () => {
+        // @ts-ignore
+        Deno.signal();
+      },
+      Error,
+      "No signals are given."
+    );
+  });
+
+  testPerm({ run: true }, async function singleSignalTest(): Promise<void> {
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);
 
@@ -129,57 +132,80 @@ if (Deno.build.os === "win") {
     clearTimeout(t);
   });
 
-  testPerm(
-    { run: true, net: true },
-    async function signalPromiseTest(): Promise<void> {
-      // This prevents the program from exiting.
-      const t = setInterval(() => {}, 1000);
+  testPerm({ run: true }, async function multipleSignalTest(): Promise<void> {
+    // This prevents the program from exiting.
+    const t = setInterval(() => {}, 1000);
 
-      const sig = Deno.signal(Deno.Signal.SIGUSR1);
-      setTimeout(() => {
-        Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
-      }, 20);
-      await sig;
+    let c = 0;
+    const sig = Deno.signal(
+      Deno.Signal.SIGUSR1,
+      Deno.Signal.SIGUSR2,
+      Deno.Signal.SIGINT
+    );
+
+    setTimeout(async () => {
+      await defer(20);
+      Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
+      await defer(20);
+      Deno.kill(Deno.pid, Deno.Signal.SIGUSR2);
+      await defer(20);
+      Deno.kill(Deno.pid, Deno.Signal.SIGINT);
+      await defer(20);
+      Deno.kill(Deno.pid, Deno.Signal.SIGUSR2);
+      await defer(20);
+      Deno.kill(Deno.pid, Deno.Signal.SIGINT);
+      await defer(20);
+      Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
+      await defer(20);
       sig.dispose();
+    });
 
-      clearTimeout(t);
+    for await (const _ of sig) {
+      c += 1;
     }
-  );
+
+    assertEquals(c, 6);
+
+    clearTimeout(t);
+  });
+
+  testPerm({ run: true }, async function signalPromiseTest(): Promise<void> {
+    // This prevents the program from exiting.
+    const t = setInterval(() => {}, 1000);
+
+    const sig = Deno.signal(Deno.Signal.SIGUSR1);
+    setTimeout(() => {
+      Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
+    }, 20);
+    await sig;
+    sig.dispose();
+
+    clearTimeout(t);
+  });
 
   testPerm({ run: true }, async function signalShorthandsTest(): Promise<void> {
-    let s: Deno.SignalStream;
+    let s: Deno.Signals;
     s = Deno.signals.alarm(); // for SIGALRM
-    assert(s instanceof Deno.SignalStream);
     s.dispose();
     s = Deno.signals.child(); // for SIGCHLD
-    assert(s instanceof Deno.SignalStream);
     s.dispose();
     s = Deno.signals.hungup(); // for SIGHUP
-    assert(s instanceof Deno.SignalStream);
     s.dispose();
     s = Deno.signals.interrupt(); // for SIGINT
-    assert(s instanceof Deno.SignalStream);
     s.dispose();
     s = Deno.signals.io(); // for SIGIO
-    assert(s instanceof Deno.SignalStream);
     s.dispose();
     s = Deno.signals.pipe(); // for SIGPIPE
-    assert(s instanceof Deno.SignalStream);
     s.dispose();
     s = Deno.signals.quit(); // for SIGQUIT
-    assert(s instanceof Deno.SignalStream);
     s.dispose();
     s = Deno.signals.terminate(); // for SIGTERM
-    assert(s instanceof Deno.SignalStream);
     s.dispose();
     s = Deno.signals.userDefined1(); // for SIGUSR1
-    assert(s instanceof Deno.SignalStream);
     s.dispose();
     s = Deno.signals.userDefined2(); // for SIGURS2
-    assert(s instanceof Deno.SignalStream);
     s.dispose();
     s = Deno.signals.windowChange(); // for SIGWINCH
-    assert(s instanceof Deno.SignalStream);
     s.dispose();
   });
 }

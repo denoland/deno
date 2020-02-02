@@ -3,7 +3,13 @@ import { Signal } from "./process.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 import { build } from "./build.ts";
+import { mux } from "./mux_async_iterator.ts";
+import { assert } from "./util.ts";
 
+export type Signals = AsyncIterableIterator<void> &
+  PromiseLike<void> & {
+    dispose: () => void;
+  };
 /**
  * Returns the stream of the given signal number. You can use it as an async
  * iterator.
@@ -29,74 +35,86 @@ import { build } from "./build.ts";
  *
  * The above for-await loop exits after 5 seconds when sig.dispose() is called.
  */
-export function signal(signo: number): SignalStream {
+export function signal(...signos: [number, ...number[]]): Signals {
   if (build.os === "win") {
     throw new Error("not implemented!");
   }
-  return new SignalStream(signo);
+
+  assert(
+    signos.length >= 1,
+    "No signals are given. You need to specify at least one signal to create a signal stream."
+  );
+
+  const streams = signos.map(signo => new SignalStream(signo));
+
+  const dispose = (): void => {
+    streams.forEach(stream => stream.dispose());
+  };
+
+  return Object.assign(mux(...streams), { dispose });
 }
 
 export const signals = {
   /** Returns the stream of SIGALRM signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGALRM). */
-  alarm(): SignalStream {
+  alarm(): Signals {
     return signal(Signal.SIGALRM);
   },
   /** Returns the stream of SIGCHLD signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGCHLD). */
-  child(): SignalStream {
+  child(): Signals {
     return signal(Signal.SIGCHLD);
   },
   /** Returns the stream of SIGHUP signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGHUP). */
-  hungup(): SignalStream {
+  hungup(): Signals {
     return signal(Signal.SIGHUP);
   },
   /** Returns the stream of SIGINT signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGINT). */
-  interrupt(): SignalStream {
+  interrupt(): Signals {
     return signal(Signal.SIGINT);
   },
   /** Returns the stream of SIGIO signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGIO). */
-  io(): SignalStream {
+  io(): Signals {
     return signal(Signal.SIGIO);
   },
   /** Returns the stream of SIGPIPE signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGPIPE). */
-  pipe(): SignalStream {
+  pipe(): Signals {
     return signal(Signal.SIGPIPE);
   },
   /** Returns the stream of SIGQUIT signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGQUIT). */
-  quit(): SignalStream {
+  quit(): Signals {
     return signal(Signal.SIGQUIT);
   },
   /** Returns the stream of SIGTERM signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGTERM). */
-  terminate(): SignalStream {
+  terminate(): Signals {
     return signal(Signal.SIGTERM);
   },
   /** Returns the stream of SIGUSR1 signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGUSR1). */
-  userDefined1(): SignalStream {
+  userDefined1(): Signals {
     return signal(Signal.SIGUSR1);
   },
   /** Returns the stream of SIGUSR2 signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGUSR2). */
-  userDefined2(): SignalStream {
+  userDefined2(): Signals {
     return signal(Signal.SIGUSR2);
   },
   /** Returns the stream of SIGWINCH signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGWINCH). */
-  windowChange(): SignalStream {
+  windowChange(): Signals {
     return signal(Signal.SIGWINCH);
   }
 };
 
-/** SignalStream represents the stream of signals, implements both
+/** Signals represents the stream of signals, implements both
  * AsyncIterator and PromiseLike */
-export class SignalStream implements AsyncIterator<void>, PromiseLike<void> {
+class SignalStream implements AsyncIterator<void>, PromiseLike<void> {
   private rid: number;
   /** The promise of polling the signal,
    * resolves with false when it receives signal,
