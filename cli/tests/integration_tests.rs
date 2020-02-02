@@ -131,7 +131,7 @@ fn installer_test_remote_module_run() {
     DenoFlags::default(),
     Some(temp_dir.path().to_string_lossy().to_string()),
     "echo_test",
-    "http://localhost:4545/tests/echo.ts",
+    "http://localhost:4545/cli/tests/echo.ts",
     vec!["hello".to_string()],
   )
   .expect("Failed to install");
