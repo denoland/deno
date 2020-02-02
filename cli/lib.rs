@@ -50,6 +50,7 @@ pub mod signal;
 pub mod source_maps;
 mod startup_data;
 pub mod state;
+mod test_runner;
 pub mod test_util;
 mod tokio_util;
 pub mod version;
@@ -422,6 +423,15 @@ async fn fmt_command(files: Option<Vec<String>>, check: bool) {
   fmt::format_files(files, check);
 }
 
+async fn test_command(
+  include: Option<Vec<String>>,
+  exclude: Option<Vec<String>>,
+  fail_fast: bool,
+  quiet: bool,
+) {
+  test_runner::run_test_modules(include, exclude, fail_fast, quiet);
+}
+
 #[tokio::main]
 pub async fn main() {
   #[cfg(windows)]
@@ -456,6 +466,12 @@ pub async fn main() {
       module_url,
       args,
     } => install_command(flags, dir, exe_name, module_url, args).await,
+    DenoSubcommand::Test {
+      quiet,
+      fail_fast,
+      exclude,
+      include,
+    } => test_command(include, exclude, fail_fast, quiet).await,
     DenoSubcommand::Repl => run_repl(flags).await,
     DenoSubcommand::Run => run_script(flags).await,
     DenoSubcommand::Types => types_command(),

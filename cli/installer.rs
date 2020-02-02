@@ -32,7 +32,7 @@ fn yes_no_prompt(msg: &str) -> bool {
   buffer.starts_with('y') | buffer.starts_with('Y')
 }
 
-fn is_remote_url(module_url: &str) -> bool {
+pub fn is_remote_url(module_url: &str) -> bool {
   module_url.starts_with("http://") || module_url.starts_with("https://")
 }
 

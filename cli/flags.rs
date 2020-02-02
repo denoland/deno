@@ -22,15 +22,6 @@ macro_rules! sset {
   }}
 }
 
-macro_rules! std_url {
-  ($x:expr) => {
-    concat!("https://deno.land/std@v0.29.0/", $x)
-  };
-}
-
-/// Used for `deno test...` subcommand
-const TEST_RUNNER_URL: &str = std_url!("testing/runner.ts");
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum DenoSubcommand {
   Bundle,
@@ -51,6 +42,12 @@ pub enum DenoSubcommand {
   },
   Repl,
   Run,
+  Test {
+    fail_fast: bool,
+    quiet: bool,
+    exclude: Option<Vec<String>>,
+    include: Option<Vec<String>>,
+  },
   Types,
 }
 
@@ -468,12 +465,12 @@ fn run_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 }
 
 fn test_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
-  flags.subcommand = DenoSubcommand::Run;
   flags.allow_read = true;
 
-  flags.argv.push(TEST_RUNNER_URL.to_string());
-
   run_test_args_parse(flags, matches);
+
+  let quiet = matches.is_present("quiet");
+  let failfast = matches.is_present("failfast");
 
   if matches.is_present("quiet") {
     flags.argv.push("--quiet".to_string());
@@ -483,25 +480,34 @@ fn test_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
     flags.argv.push("--failfast".to_string());
   }
 
-  if matches.is_present("exclude") {
-    flags.argv.push("--exclude".to_string());
+  let exclude = if matches.is_present("exclude") {
     let exclude: Vec<String> = matches
       .values_of("exclude")
       .unwrap()
       .map(String::from)
       .collect();
-    flags.argv.extend(exclude);
-  }
+    Some(exclude)
+  } else {
+    None
+  };
 
-  if matches.is_present("files") {
-    flags.argv.push("--".to_string());
+  let include = if matches.is_present("files") {
     let files: Vec<String> = matches
       .values_of("files")
       .unwrap()
       .map(String::from)
       .collect();
-    flags.argv.extend(files);
-  }
+    Some(files)
+  } else {
+    None
+  };
+
+  flags.subcommand = DenoSubcommand::Test {
+    quiet,
+    fail_fast: failfast,
+    include,
+    exclude,
+  };
 }
 
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1976,16 +1982,13 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       DenoFlags {
-        subcommand: DenoSubcommand::Run,
-        argv: svec![
-          "deno",
-          TEST_RUNNER_URL,
-          "--exclude",
-          "some_dir/",
-          "--",
-          "dir1/",
-          "dir2/"
-        ],
+        subcommand: DenoSubcommand::Test {
+          fail_fast: false,
+          quiet: false,
+          exclude: Some(svec!["some_dir/"]),
+          include: Some(svec!["dir1/", "dir2/"]),
+        },
+        argv: svec!["deno"],
         allow_read: true,
         ..DenoFlags::default()
       }
@@ -2004,8 +2007,13 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       DenoFlags {
-        subcommand: DenoSubcommand::Run,
-        argv: svec!["deno", TEST_RUNNER_URL, "--", "dir1/", "dir2/"],
+        subcommand: DenoSubcommand::Test {
+          fail_fast: false,
+          quiet: false,
+          exclude: None,
+          include: Some(svec!["dir1/", "dir2/"]),
+        },
+        argv: svec!["deno"],
         allow_read: true,
         allow_net: true,
         ..DenoFlags::default()
