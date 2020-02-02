@@ -316,7 +316,7 @@ mod tests {
           x_typescript_types,
         })) => {
           assert!(!code.is_empty());
-          assert_eq!(code, "console.log('gzip')");
+          assert_eq!(String::from_utf8(code).unwrap(), "console.log('gzip')");
           assert_eq!(
             maybe_content_type,
             Some("application/javascript".to_string())
@@ -346,7 +346,7 @@ mod tests {
             x_typescript_types,
           })) => {
             assert!(!code.is_empty());
-            assert_eq!(code, "console.log('etag')");
+            assert_eq!(String::from_utf8(code).unwrap(), "console.log('etag')");
             assert_eq!(
               maybe_content_type,
               Some("application/typescript".to_string())
@@ -389,7 +389,7 @@ mod tests {
           x_typescript_types,
         })) => {
           assert!(!code.is_empty());
-          assert_eq!(code, "console.log('brotli');");
+          assert_eq!(String::from_utf8(code).unwrap(), "console.log('brotli');");
           assert_eq!(
             maybe_content_type,
             Some("application/javascript".to_string())
