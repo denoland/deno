@@ -3,9 +3,10 @@ import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 // SYNC
 
-testPerm({ write: true }, function removeSyncDirSuccess(): void {
+testPerm({ write: true, read: true }, function removeSyncDirSuccess(): void {
   // REMOVE EMPTY DIRECTORY
-  const path = Deno.makeTempDirSync() + "/dir/subdir";
+  const tempDir = Deno.makeTempDirSync();
+  const path = tempDir + "/subdir";
   Deno.mkdirSync(path);
   const pathInfo = Deno.statSync(path);
   assert(pathInfo.isDirectory()); // check exist first
@@ -20,13 +21,15 @@ testPerm({ write: true }, function removeSyncDirSuccess(): void {
   // Directory is gone
   assertEquals(err.kind, Deno.ErrorKind.NotFound);
   assertEquals(err.name, "NotFound");
+  // Deno.removeSync(tempDir);
 });
 
-testPerm({ write: true }, function removeSyncFileSuccess(): void {
+testPerm({ write: true, read: true }, function removeSyncFileSuccess(): void {
   // REMOVE FILE
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
-  const filename = Deno.makeTempDirSync() + "/test.txt";
+  const tempDir = Deno.makeTempDirSync();
+  const filename = tempDir + "/test.txt";
   Deno.writeFileSync(filename, data, { perm: 0o666 });
   const fileInfo = Deno.statSync(filename);
   assert(fileInfo.isFile()); // check exist first
@@ -41,13 +44,14 @@ testPerm({ write: true }, function removeSyncFileSuccess(): void {
   // File is gone
   assertEquals(err.kind, Deno.ErrorKind.NotFound);
   assertEquals(err.name, "NotFound");
+  // Deno.removeSync(tempDir);
 });
 
-testPerm({ write: true }, function removeSyncFail(): void {
+testPerm({ write: true, read: true }, function removeSyncFail(): void {
   // NON-EMPTY DIRECTORY
   const path = Deno.makeTempDirSync() + "/dir/subdir";
   const subPath = path + "/subsubdir";
-  Deno.mkdirSync(path);
+  Deno.mkdirSync(path, { recursive: true });
   Deno.mkdirSync(subPath);
   const pathInfo = Deno.statSync(path);
   assert(pathInfo.isDirectory()); // check exist first
@@ -74,6 +78,44 @@ testPerm({ write: true }, function removeSyncFail(): void {
   assertEquals(err.name, "NotFound");
 });
 
+testPerm({ write: true, read: true }, function removeSyncDanglingSymlinkSuccess(): void {
+  const danglingSymlinkPath = Deno.makeTempDirSync() + "/dangling_symlink";
+  Deno.symlinkSync("unexistent_file", danglingSymlinkPath);
+  const pathInfo = Deno.lstatSync(danglingSymlinkPath);
+  assert(pathInfo.isSymlink());
+  Deno.removeSync(danglingSymlinkPath);
+  let err;
+  try {
+    Deno.lstatSync(danglingSymlinkPath);
+  } catch (e) {
+    err = e;
+  }
+  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.name, "NotFound");
+});
+
+testPerm({ write: true, read: true }, function removeSyncValidSymlinkSuccess(): void {
+  const encoder = new TextEncoder();
+  const data = encoder.encode("Test");
+  const tempDir = Deno.makeTempDirSync();
+  const filePath = tempDir + "/test.txt";
+  const validSymlinkPath = tempDir + "/valid_symlink";
+  Deno.writeFileSync(filePath, data, { perm: 0o666 });
+  Deno.symlinkSync(filePath, validSymlinkPath);
+  const symlinkPathInfo = Deno.statSync(validSymlinkPath);
+  assert(symlinkPathInfo.isFile());
+  Deno.removeSync(validSymlinkPath);
+  let err;
+  try {
+    Deno.statSync(validSymlinkPath);
+  } catch (e) {
+    err = e;
+  }
+  Deno.removeSync(filePath);
+  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.name, "NotFound");
+});
+
 testPerm({ write: false }, function removeSyncPerm(): void {
   let err;
   try {
@@ -85,10 +127,10 @@ testPerm({ write: false }, function removeSyncPerm(): void {
   assertEquals(err.name, "PermissionDenied");
 });
 
-testPerm({ write: true }, function removeAllSyncDirSuccess(): void {
+testPerm({ write: true, read: true }, function removeAllSyncDirSuccess(): void {
   // REMOVE EMPTY DIRECTORY
   let path = Deno.makeTempDirSync() + "/dir/subdir";
-  Deno.mkdirSync(path);
+  Deno.mkdirSync(path, { recursive: true });
   let pathInfo = Deno.statSync(path);
   assert(pathInfo.isDirectory()); // check exist first
   Deno.removeSync(path, { recursive: true }); // remove
@@ -105,7 +147,7 @@ testPerm({ write: true }, function removeAllSyncDirSuccess(): void {
   // REMOVE NON-EMPTY DIRECTORY
   path = Deno.makeTempDirSync() + "/dir/subdir";
   const subPath = path + "/subsubdir";
-  Deno.mkdirSync(path);
+  Deno.mkdirSync(path, { recursive: true });
   Deno.mkdirSync(subPath);
   pathInfo = Deno.statSync(path);
   assert(pathInfo.isDirectory()); // check exist first
@@ -123,7 +165,7 @@ testPerm({ write: true }, function removeAllSyncDirSuccess(): void {
   assertEquals(err.name, "NotFound");
 });
 
-testPerm({ write: true }, function removeAllSyncFileSuccess(): void {
+testPerm({ write: true, read: true }, function removeAllSyncFileSuccess(): void {
   // REMOVE FILE
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
@@ -168,12 +210,12 @@ testPerm({ write: false }, function removeAllSyncPerm(): void {
   assertEquals(err.name, "PermissionDenied");
 });
 
-// ASYNC
+// // ASYNC
 
-testPerm({ write: true }, async function removeDirSuccess(): Promise<void> {
+testPerm({ write: true, read: true }, async function removeDirSuccess(): Promise<void> {
   // REMOVE EMPTY DIRECTORY
   const path = Deno.makeTempDirSync() + "/dir/subdir";
-  Deno.mkdirSync(path);
+  Deno.mkdirSync(path, { recursive: true });
   const pathInfo = Deno.statSync(path);
   assert(pathInfo.isDirectory()); // check exist first
   await Deno.remove(path); // remove
@@ -189,7 +231,7 @@ testPerm({ write: true }, async function removeDirSuccess(): Promise<void> {
   assertEquals(err.name, "NotFound");
 });
 
-testPerm({ write: true }, async function removeFileSuccess(): Promise<void> {
+testPerm({ write: true, read: true }, async function removeFileSuccess(): Promise<void> {
   // REMOVE FILE
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
@@ -210,11 +252,11 @@ testPerm({ write: true }, async function removeFileSuccess(): Promise<void> {
   assertEquals(err.name, "NotFound");
 });
 
-testPerm({ write: true }, async function removeFail(): Promise<void> {
+testPerm({ write: true, read: true }, async function removeFail(): Promise<void> {
   // NON-EMPTY DIRECTORY
   const path = Deno.makeTempDirSync() + "/dir/subdir";
   const subPath = path + "/subsubdir";
-  Deno.mkdirSync(path);
+  Deno.mkdirSync(path, { recursive: true });
   Deno.mkdirSync(subPath);
   const pathInfo = Deno.statSync(path);
   assert(pathInfo.isDirectory()); // check exist first
@@ -240,6 +282,44 @@ testPerm({ write: true }, async function removeFail(): Promise<void> {
   assertEquals(err.name, "NotFound");
 });
 
+testPerm({ write: true, read: true }, async function removeDanglingSymlinkSuccess(): Promise<void> {
+  const danglingSymlinkPath = Deno.makeTempDirSync() + "/dangling_symlink";
+  Deno.symlinkSync("unexistent_file", danglingSymlinkPath);
+  const pathInfo = Deno.lstatSync(danglingSymlinkPath);
+  assert(pathInfo.isSymlink());
+  await Deno.remove(danglingSymlinkPath);
+  let err;
+  try {
+    Deno.lstatSync(danglingSymlinkPath);
+  } catch (e) {
+    err = e;
+  }
+  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.name, "NotFound");
+});
+
+testPerm({ write: true, read: true }, async function removeValidSymlinkSuccess(): Promise<void> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode("Test");
+  const tempDir = Deno.makeTempDirSync();
+  const filePath = tempDir + "/test.txt";
+  const validSymlinkPath = tempDir + "/valid_symlink";
+  Deno.writeFileSync(filePath, data, { perm: 0o666 });
+  Deno.symlinkSync(filePath, validSymlinkPath);
+  const symlinkPathInfo = Deno.statSync(validSymlinkPath);
+  assert(symlinkPathInfo.isFile());
+  await Deno.remove(validSymlinkPath);
+  let err;
+  try {
+    Deno.statSync(validSymlinkPath);
+  } catch (e) {
+    err = e;
+  }
+  Deno.removeSync(filePath);
+  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.name, "NotFound");
+});
+
 testPerm({ write: false }, async function removePerm(): Promise<void> {
   let err;
   try {
@@ -251,10 +331,10 @@ testPerm({ write: false }, async function removePerm(): Promise<void> {
   assertEquals(err.name, "PermissionDenied");
 });
 
-testPerm({ write: true }, async function removeAllDirSuccess(): Promise<void> {
+testPerm({ write: true, read: true }, async function removeAllDirSuccess(): Promise<void> {
   // REMOVE EMPTY DIRECTORY
   let path = Deno.makeTempDirSync() + "/dir/subdir";
-  Deno.mkdirSync(path);
+  Deno.mkdirSync(path, { recursive: true });
   let pathInfo = Deno.statSync(path);
   assert(pathInfo.isDirectory()); // check exist first
   await Deno.remove(path, { recursive: true }); // remove
@@ -271,7 +351,7 @@ testPerm({ write: true }, async function removeAllDirSuccess(): Promise<void> {
   // REMOVE NON-EMPTY DIRECTORY
   path = Deno.makeTempDirSync() + "/dir/subdir";
   const subPath = path + "/subsubdir";
-  Deno.mkdirSync(path);
+  Deno.mkdirSync(path, { recursive: true });
   Deno.mkdirSync(subPath);
   pathInfo = Deno.statSync(path);
   assert(pathInfo.isDirectory()); // check exist first
@@ -289,7 +369,7 @@ testPerm({ write: true }, async function removeAllDirSuccess(): Promise<void> {
   assertEquals(err.name, "NotFound");
 });
 
-testPerm({ write: true }, async function removeAllFileSuccess(): Promise<void> {
+testPerm({ write: true, read: true }, async function removeAllFileSuccess(): Promise<void> {
   // REMOVE FILE
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
