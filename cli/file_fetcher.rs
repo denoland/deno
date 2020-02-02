@@ -526,7 +526,7 @@ impl SourceFileFetcher {
           let types_url = match media_type {
             msg::MediaType::JavaScript | msg::MediaType::JSX => get_types_url(
               &module_url,
-              source.as_bytes(),
+              &source,
               x_typescript_types.as_ref().map(String::as_str),
             ),
             _ => None,
@@ -536,7 +536,7 @@ impl SourceFileFetcher {
             url: module_url.clone(),
             filename: filepath,
             media_type,
-            source_code: source.as_bytes().to_owned(),
+            source_code: source,
             types_url,
           };
 
@@ -571,13 +571,13 @@ impl SourceFileFetcher {
   }
 
   /// Save contents of downloaded remote file in on-disk cache for subsequent access.
-  fn save_source_code(&self, url: &Url, source: &str) -> std::io::Result<()> {
+  fn save_source_code(&self, url: &Url, source: &[u8]) -> std::io::Result<()> {
     let cache_key = self.deps_cache.get_cache_filename(url);
 
     // May not exist. DON'T unwrap.
     let _ = self.deps_cache.remove(&cache_key);
 
-    self.deps_cache.set(&cache_key, source.as_bytes())
+    self.deps_cache.set(&cache_key, source)
   }
 
   /// Save headers related to source file to {filename}.headers.json file,

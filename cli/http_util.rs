@@ -75,7 +75,7 @@ fn resolve_url_from_location(base_url: &Url, location: &str) -> Url {
 
 #[derive(Debug, PartialEq)]
 pub struct ResultPayload {
-  pub body: String,
+  pub body: Vec<u8>,
   pub content_type: Option<String>,
   pub etag: Option<String>,
   pub x_typescript_types: Option<String>,
@@ -169,14 +169,14 @@ pub fn fetch_string_once(
         _ if content_encoding == "br" => {
           let full_bytes = response.bytes().await?;
           let mut decoder = BrotliDecoder::new(full_bytes.as_ref());
-          let mut body = String::new();
-          decoder.read_to_string(&mut body)?;
+          let mut body = vec![];
+          decoder.read_to_end(&mut body)?;
           body
         }
-        _ => response.text().await?,
+        _ => response.bytes().await?.to_vec(),
       }
     } else {
-      body = response.text().await?;
+      body = response.bytes().await?.to_vec();
     }
 
     return Ok(FetchOnceResult::Code(ResultPayload {
