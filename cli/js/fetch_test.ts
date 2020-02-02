@@ -114,7 +114,7 @@ testPerm({ net: true }, async function fetchMultipartFormDataSuccess(): Promise<
   void
 > {
   const response = await fetch(
-    "http://localhost:4545/tests/subdir/multipart_form_data.txt"
+    "http://localhost:4545/cli/tests/subdir/multipart_form_data.txt"
   );
   const formData = await response.formData();
   assert(formData.has("field_1"));
@@ -131,7 +131,7 @@ testPerm(
   { net: true },
   async function fetchURLEncodedFormDataSuccess(): Promise<void> {
     const response = await fetch(
-      "http://localhost:4545/tests/subdir/form_urlencoded.txt"
+      "http://localhost:4545/cli/tests/subdir/form_urlencoded.txt"
     );
     const formData = await response.formData();
     assert(formData.has("field_1"));
@@ -153,11 +153,11 @@ testPerm({ net: true }, async function fetchWithRedirection(): Promise<void> {
 testPerm({ net: true }, async function fetchWithRelativeRedirection(): Promise<
   void
 > {
-  const response = await fetch("http://localhost:4545/tests"); // will redirect to /tests/
+  const response = await fetch("http://localhost:4545/cli/tests"); // will redirect to /cli/tests/
   assertEquals(response.status, 200);
   assertEquals(response.statusText, "OK");
   const body = await response.text();
-  assert(body.includes("<title>Directory listing for /tests/</title>"));
+  assert(body.includes("<title>Directory listing for /cli/tests/</title>"));
 });
 
 // The feature below is not implemented, but the test should work after implementation
@@ -165,7 +165,7 @@ testPerm({ net: true }, async function fetchWithRelativeRedirection(): Promise<
 testPerm({ net: true }, async function fetchWithInfRedirection(): Promise<
   void
 > {
-  const response = await fetch("http://localhost:4549/tests"); // will redirect to the same place
+  const response = await fetch("http://localhost:4549/cli/tests"); // will redirect to the same place
   assertEquals(response.status, 0); // network error
 });
 */

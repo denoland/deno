@@ -114,7 +114,7 @@ class TestRepl(DenoTestCase):
 
     # def test_async_op(self):
     #     out, err, code = self.input(
-    #         "fetch('http://localhost:4545/tests/001_hello.js')" +
+    #         "fetch('http://localhost:4545/cli/tests/001_hello.js')" +
     #         ".then(res => res.text()).then(console.log)",
     #         sleep=1)
     #     self.assertEqual(out, 'Promise {}\nconsole.log("Hello World");\n\n')
