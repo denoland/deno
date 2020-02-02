@@ -6,9 +6,9 @@ import { assertEquals, assert } from "../testing/asserts.ts";
 import { encode, decode } from "./base32.ts";
 
 // Lifted from https://stackoverflow.com/questions/38987784
-const fromHexString = (hexString: string) =>
+const fromHexString = (hexString: string): Uint8Array =>
   new Uint8Array(hexString.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-const toHexString = (bytes: Uint8Array) =>
+const toHexString = (bytes: Uint8Array): string =>
   bytes.reduce((str, byte) => str + byte.toString(16).padStart(2, "0"), "");
 
 const testCases = [
