@@ -85,8 +85,8 @@ testPerm(
     } catch (err) {
       errOnWindows = err;
     }
-    if (errOnWindows) {
-      assertEquals(Deno.build.os, "win");
+    if (Deno.build.os === "win") {
+      assertEquals(errOnWindows.kind, Deno.ErrorKind.Other);
       assertEquals(errOnWindows.message, "Not implemented");
     } else {
       const pathInfo = Deno.lstatSync(danglingSymlinkPath);
@@ -120,8 +120,8 @@ testPerm(
     } catch (err) {
       errOnWindows = err;
     }
-    if (errOnWindows) {
-      assertEquals(Deno.build.os, "win");
+    if (Deno.build.os === "win") {
+      assertEquals(errOnWindows.kind, Deno.ErrorKind.Other);
       assertEquals(errOnWindows.message, "Not implemented");
     } else {
       const symlinkPathInfo = Deno.statSync(validSymlinkPath);
@@ -328,8 +328,8 @@ testPerm(
     } catch (e) {
       errOnWindows = e;
     }
-    if (errOnWindows) {
-      assertEquals(Deno.build.os, "win");
+    if (Deno.build.os === "win") {
+      assertEquals(errOnWindows.kind, Deno.ErrorKind.Other);
       assertEquals(errOnWindows.message, "Not implemented");
     } else {
       const pathInfo = Deno.lstatSync(danglingSymlinkPath);
@@ -363,8 +363,8 @@ testPerm(
     } catch (e) {
       errOnWindows = e;
     }
-    if (errOnWindows) {
-      assertEquals(Deno.build.os, "win");
+    if (Deno.build.os === "win") {
+      assertEquals(errOnWindows.kind, Deno.ErrorKind.Other);
       assertEquals(errOnWindows.message, "Not implemented");
     } else {
       const symlinkPathInfo = Deno.statSync(validSymlinkPath);
