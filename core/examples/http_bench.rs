@@ -172,6 +172,7 @@ fn main() {
 
   let mut runtime = tokio::runtime::Builder::new()
     .basic_scheduler()
+    .enable_all()
     .build()
     .unwrap();
   let result = runtime.block_on(isolate.boxed_local());
