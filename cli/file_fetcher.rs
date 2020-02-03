@@ -1934,7 +1934,7 @@ mod tests {
     // it again with the cache parameters turned off.
     // If the fetched content changes, the cached content is used.
     fetcher
-      .save_source_code(&module_url, "changed content")
+      .save_source_code(&module_url, b"changed content")
       .unwrap();
     let cached_source = fetcher
       .fetch_remote_source_async(&module_url, false, false, 1)
