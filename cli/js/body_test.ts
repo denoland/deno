@@ -34,7 +34,7 @@ test(async function arrayBufferFromByteArrays(): Promise<void> {
 //FormData
 testPerm({ net: true }, async function bodyMultipartFormData(): Promise<void> {
   const response = await fetch(
-    "http://localhost:4545/tests/subdir/multipart_form_data.txt"
+    "http://localhost:4545/cli/tests/subdir/multipart_form_data.txt"
   );
   const text = await response.text();
 
@@ -51,7 +51,7 @@ testPerm({ net: true }, async function bodyMultipartFormData(): Promise<void> {
 
 testPerm({ net: true }, async function bodyURLEncodedFormData(): Promise<void> {
   const response = await fetch(
-    "http://localhost:4545/tests/subdir/form_urlencoded.txt"
+    "http://localhost:4545/cli/tests/subdir/form_urlencoded.txt"
   );
   const text = await response.text();
 
