@@ -300,7 +300,10 @@ mod tests {
     let client = create_http_client();
     let result = fetch_string_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(payload)) = result {
-      assert_eq!(String::from_utf8(payload.body).unwrap(), "console.log('gzip')");
+      assert_eq!(
+        String::from_utf8(payload.body).unwrap(),
+        "console.log('gzip')"
+      );
       assert_eq!(
         payload.content_type,
         Some("application/javascript".to_string())
