@@ -1,13 +1,13 @@
 // Copyright (c) 2019 Denolibs authors. All rights reserved. MIT license.
 // Based on https://github.com/denolibs/event_emitter/blob/master/mod.ts
 
-class EventEmitter {
+export class EventEmitter {
   public static defaultMaxListeners: number = 10;
   private maxListeners: number | undefined;
-  private events: Map<string | symbol, Function[]>;
+  private _events: Map<string | symbol, Function[]>;
 
   public constructor() {
-    this.events = new Map();
+    this._events = new Map();
   }
 
   private _addListener(
@@ -16,15 +16,15 @@ class EventEmitter {
     prepend: boolean
   ): this {
     this.emit("newListener", eventName, listener);
-    if (this.events.has(eventName)) {
-      const listeners = this.events.get(eventName) as Function[];
+    if (this._events.has(eventName)) {
+      const listeners = this._events.get(eventName) as Function[];
       if (prepend) {
         listeners.unshift(listener);
       } else {
         listeners.push(listener);
       }
     } else {
-      this.events.set(eventName, [listener]);
+      this._events.set(eventName, [listener]);
     }
     const max = this.getMaxListeners();
     if (max > 0 && this.listenerCount(eventName) > max) {
@@ -49,8 +49,8 @@ class EventEmitter {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public emit(eventName: string | symbol, ...args: any[]): boolean {
-    if (this.events.has(eventName)) {
-      const listeners = (this.events.get(eventName) as Function[]).slice(); // We copy with slice() so array is not mutated during emit
+    if (this._events.has(eventName)) {
+      const listeners = (this._events.get(eventName) as Function[]).slice(); // We copy with slice() so array is not mutated during emit
       for (const listener of listeners) {
         try {
           listener.apply(this, args);
@@ -67,7 +67,7 @@ class EventEmitter {
   }
 
   public eventNames(): [string | symbol] {
-    return Array.from(this.events.keys()) as [string | symbol];
+    return Array.from(this._events.keys()) as [string | symbol];
   }
 
   public getMaxListeners(): number {
@@ -75,8 +75,8 @@ class EventEmitter {
   }
 
   public listenerCount(eventName: string | symbol): number {
-    if (this.events.has(eventName)) {
-      return (this.events.get(eventName) as Function[]).length;
+    if (this._events.has(eventName)) {
+      return (this._events.get(eventName) as Function[]).length;
     } else {
       return 0;
     }
@@ -87,10 +87,10 @@ class EventEmitter {
     eventName: string | symbol,
     unwrap: boolean
   ): Function[] {
-    if (!target.events.has(eventName)) {
+    if (!target._events.has(eventName)) {
       return [];
     }
-    const eventListeners: Function[] = target.events.get(
+    const eventListeners: Function[] = target._events.get(
       eventName
     ) as Function[];
 
@@ -172,13 +172,13 @@ class EventEmitter {
   }
 
   public removeAllListeners(eventName?: string | symbol): this {
-    if (this.events === undefined) {
+    if (this._events === undefined) {
       return this;
     }
 
-    if (this.events.has(eventName)) {
-      const listeners = (this.events.get(eventName) as Function[]).slice(); // Create a copy; We use it AFTER it's deleted.
-      this.events.delete(eventName);
+    if (this._events.has(eventName)) {
+      const listeners = (this._events.get(eventName) as Function[]).slice(); // Create a copy; We use it AFTER it's deleted.
+      this._events.delete(eventName);
       for (const listener of listeners) {
         this.emit("removeListener", eventName, listener);
       }
@@ -196,13 +196,23 @@ class EventEmitter {
     eventName: string | symbol,
     listener: Function
   ): this {
-    if (this.events.has(eventName)) {
-      const arr: Function[] = this.events.get(eventName) as Function[];
-      if (arr.indexOf(listener) !== -1) {
-        arr.splice(arr.indexOf(listener), 1);
+    if (this._events.has(eventName)) {
+      const arr: Function[] = this._events.get(eventName);
+
+      let listenerIndex = -1;
+      for (let i=arr.length-1; i>=0; i--) {
+        // arr[i]["listener"] is the reference to the listener inside a bound 'once' wrapper
+        if (arr[i] == listener || arr[i]["listener"] == listener) {
+          listenerIndex = i;
+          break;
+        }
+      }
+
+      if (listenerIndex >= 0) {
+        arr.splice(listenerIndex, 1);
         this.emit("removeListener", eventName, listener);
         if (arr.length === 0) {
-          this.events.delete(eventName);
+          this._events.delete(eventName);
         }
       }
     }
@@ -214,5 +224,3 @@ class EventEmitter {
     return this;
   }
 }
-
-export default EventEmitter;
