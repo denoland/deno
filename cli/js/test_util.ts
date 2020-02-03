@@ -18,7 +18,7 @@ export {
   assertStrContains,
   assertThrows,
   assertThrowsAsync,
-  fail
+  fail,
   unreachable
 } from "../../std/testing/asserts.ts";
 
