@@ -218,10 +218,6 @@ fn op_run_status(
     }))
   };
 
-  // TODO(ry) I don't understand why this needs to be in a pool?
-  //let pool = futures::executor::ThreadPool::new().unwrap();
-  //let handle = pool.spawn_with_handle(future).unwrap();
-
   Ok(JsonOp::Async(future.boxed_local()))
 }
 
