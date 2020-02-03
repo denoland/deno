@@ -320,13 +320,11 @@ impl ThreadSafeState {
     Ok(ThreadSafeState(Arc::new(state)))
   }
 
-  pub fn add_child_worker(&self, _worker: &WebWorker) -> u32 {
+  pub fn add_child_worker(&self, worker: &WebWorker) -> u32 {
     let worker_id = self.next_worker_id.fetch_add(1, Ordering::Relaxed) as u32;
-    println!("WARNING broken add_child_worker {}", worker_id);
-    // TODO(ry) Fix this... we can't have owned references to workers. so what
-    // goes in the table?
-    // let workers_tl = self.workers.lock().unwrap();
-    // workers_tl.insert(worker_id, worker);
+    let handle = worker.thread_safe_handle();
+    let mut workers_tl = self.workers.lock().unwrap();
+    workers_tl.insert(worker_id, handle);
     worker_id
   }
 

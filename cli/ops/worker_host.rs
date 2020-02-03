@@ -165,35 +165,6 @@ fn op_create_worker(
   Ok(JsonOp::Sync(r.unwrap()))
 }
 
-/* TODO(ry) Not sure what WorkerPollFuture does
-
-struct WorkerPollFuture {
-  state: ThreadSafeState,
-  rid: ResourceId,
-}
-
-impl Future for WorkerPollFuture {
-  type Output = Result<(), ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    inner.poll(cx)
-    let mut workers_table = inner.state.workers.lock().unwrap();
-    let maybe_worker_handle = workers_table.get_mut(&inner.rid);
-    if maybe_worker_handle.is_none() {
-      return Poll::Ready(Ok(()));
-    }
-    let h = maybe_worker_handle.unwrap();
-
-    match h.poll_unpin(cx) {
-      Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
-      Poll::Ready(Ok(_)) => Poll::Ready(Ok(())),
-      Poll::Pending => Poll::Pending,
-    }
-  }
-}
-*/
-
 fn serialize_worker_result(result: Result<(), ErrBox>) -> Value {
   use crate::deno_error::GetErrorKind;
 
@@ -246,22 +217,10 @@ fn op_host_poll_worker(
   _args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  // TODO(ry) I don't understand what this is doing. Is it getting messages?
-  todo!()
-  /*
-  let args: WorkerArgs = serde_json::from_value(args)?;
-  let id = args.id as u32;
-  let future = WorkerPollFuture {
-    state: state.clone(),
-    rid: id,
-  };
-
-  let op = async move {
-    let result = future.await;
-    Ok(serialize_worker_result(result))
-  };
+  println!("op_host_poll_worker");
+  // TOOO(ry) remove this.
+  let op = async { Ok(serialize_worker_result(Ok(()))) };
   Ok(JsonOp::Async(op.boxed_local()))
-  */
 }
 
 fn op_host_close_worker(
@@ -349,8 +308,8 @@ fn op_host_post_message(
   debug!("post message to worker {}", id);
   let mut table = state.workers.lock().unwrap();
   // TODO: don't return bad resource anymore
-  let worker = table.get_mut(&id).ok_or_else(bad_resource)?;
-  let fut = worker
+  let worker_handle = table.get_mut(&id).ok_or_else(bad_resource)?;
+  let fut = worker_handle
     .post_message(msg)
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()));
   futures::executor::block_on(fut)?;

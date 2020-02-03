@@ -162,8 +162,7 @@ where
       // tokio_util::block_on.
       // This block is only exercised for readSync and writeSync, which I think
       // works since they're simple polling futures.
-      let r = crate::tokio_util::run_basic(fut).unwrap();
-      Op::Sync(r)
+      Op::Sync(futures::executor::block_on(fut).unwrap())
     } else {
       Op::Async(fut.boxed_local())
     }

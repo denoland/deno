@@ -368,7 +368,7 @@ impl TsCompiler {
         );
 
         if metadata.version_hash == version_hash_to_validate {
-          println!("load_cache metadata version hash match");
+          debug!("load_cache metadata version hash match");
           if let Ok(compiled_module) =
             self.get_compiled_module(&source_file.url)
           {
