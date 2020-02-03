@@ -8,8 +8,15 @@ use crate::state::ThreadSafeState;
 use deno_core::*;
 use futures;
 use futures::future::FutureExt;
+use futures::future::TryFutureExt;
+use futures::task::SpawnExt;
 use std;
 use std::convert::From;
+use std::future::Future;
+use std::pin::Pin;
+use std::process::ExitStatus;
+use std::task::Context;
+use std::task::Poll;
 use tokio::process::Command;
 
 #[cfg(unix)]
@@ -173,6 +180,25 @@ fn op_run(
   })))
 }
 
+pub struct ChildStatus {
+  rid: ResourceId,
+  state: ThreadSafeState,
+}
+
+impl Future for ChildStatus {
+  type Output = Result<ExitStatus, ErrBox>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+    let mut table = inner.state.lock_resource_table();
+    let child_resource = table
+      .get_mut::<ChildResource>(inner.rid)
+      .ok_or_else(bad_resource)?;
+    let child = &mut child_resource.child;
+    child.map_err(ErrBox::from).poll_unpin(cx)
+  }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RunStatusArgs {
@@ -188,17 +214,14 @@ fn op_run_status(
   let rid = args.rid as u32;
 
   state.check_run()?;
-  let state = state.clone();
+
+  let future = ChildStatus {
+    rid,
+    state: state.clone(),
+  };
 
   let future = async move {
-    let run_status = {
-      let mut table = state.lock_resource_table();
-      let child_resource = table
-        .get_mut::<ChildResource>(rid)
-        .ok_or_else(bad_resource)?;
-      (&mut child_resource.child).await.map_err(ErrBox::from)?
-    };
-
+    let run_status = future.await?;
     let code = run_status.code();
 
     #[cfg(unix)]
@@ -218,7 +241,10 @@ fn op_run_status(
     }))
   };
 
-  Ok(JsonOp::Async(future.boxed_local()))
+  let pool = futures::executor::ThreadPool::new().unwrap();
+  let handle = pool.spawn_with_handle(future).unwrap();
+
+  Ok(JsonOp::Async(handle.boxed()))
 }
 
 #[derive(Deserialize)]
