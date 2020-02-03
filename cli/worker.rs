@@ -135,25 +135,6 @@ impl Worker {
   pub fn thread_safe_handle(&self) -> WorkerChannels {
     self.external_channels.clone()
   }
-
-  /// Equivalent to calling postMessage in JS inside the worker.
-  pub async fn post_message_internal(&self, buf: Buf) -> Result<(), ErrBox> {
-    let mut sender = self.state.worker_channels.sender.clone();
-    let result = sender.send(buf).map_err(ErrBox::from).await;
-    result
-  }
-
-  /// Get message from worker as a host.
-  pub fn get_message_internal(
-    &self,
-  ) -> Pin<Box<dyn Future<Output = Option<Buf>>>> {
-    let receiver_mutex = self.state.worker_channels.receiver.clone();
-    async move {
-      let mut receiver = receiver_mutex.lock().await;
-      receiver.next().await
-    }
-    .boxed_local()
-  }
 }
 
 impl Future for Worker {

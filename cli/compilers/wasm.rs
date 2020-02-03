@@ -85,11 +85,12 @@ impl WasmCompiler {
       debug!(">>>>> wasm_compile_async START");
       let base64_data = base64::encode(&source_file.source_code);
       let mut worker = WasmCompiler::setup_worker(global_state);
+      let handle = worker.thread_safe_handle();
       let url = source_file.url.clone();
 
       let fut = async move {
-        let _ = worker
-          .post_message_internal(
+        let _ = handle
+          .post_message(
             serde_json::to_string(&base64_data)
               .unwrap()
               .into_boxed_str()
@@ -98,14 +99,12 @@ impl WasmCompiler {
           .await;
 
         if let Err(err) = (&mut *worker).await {
-          // TODO(ry) Need to forward the error instead of exiting.
-          eprintln!("{}", err.to_string());
-          std::process::exit(1);
+          load_sender.send(Err(err)).unwrap();
+          return;
         }
 
         debug!("Sent message to worker");
-        let json_msg =
-          worker.get_message_internal().await.expect("not handled");
+        let json_msg = handle.get_message().await.expect("not handled");
 
         debug!("Received message from worker");
         let module_info: WasmModuleInfo =
@@ -123,7 +122,6 @@ impl WasmCompiler {
           code,
           name: url.to_string(),
         };
-
         {
           cache_.lock().unwrap().insert(url.clone(), module.clone());
         }

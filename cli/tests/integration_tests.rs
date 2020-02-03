@@ -504,7 +504,6 @@ itest!(_050_more_jsons {
   output: "050_more_jsons.ts.out",
 });
 
-/* TODO(ry) Disabled to get #3844 landed faster. Re-enable.
 itest!(_051_wasm_import {
   args: "run --reload --allow-net --allow-read 051_wasm_import.ts",
   output: "051_wasm_import.ts.out",
@@ -519,7 +518,6 @@ itest!(_052_no_remote_flag {
   check_stderr: true,
   http_server: true,
 });
-*/
 
 itest!(_054_info_local_imports {
   args: "info 005_more_imports.ts",
