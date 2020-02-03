@@ -77,7 +77,7 @@ fn op_create_worker(
   let parent_state = state.clone();
 
   let (load_sender, load_receiver) =
-    tokio::sync::oneshot::channel::<JsonResult>();
+    std::sync::mpsc::sync_channel::<JsonResult>(1);
 
   std::thread::spawn(move || {
     // TODO(bartlomieju): Isn't this wrong?
@@ -160,8 +160,8 @@ fn op_create_worker(
     crate::tokio_util::run_basic(fut);
   });
 
-  let fut = async { load_receiver.await.unwrap() };
-  let r = crate::tokio_util::run_basic(fut);
+  let r = load_receiver.recv().unwrap();
+
   Ok(JsonOp::Sync(r.unwrap()))
 }
 
