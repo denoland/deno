@@ -8,6 +8,8 @@ where
 {
   let mut rt = tokio::runtime::Builder::new()
     .basic_scheduler()
+    .enable_io()
+    .enable_time()
     .build()
     .unwrap();
   rt.block_on(future)

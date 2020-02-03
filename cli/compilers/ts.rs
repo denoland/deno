@@ -431,7 +431,7 @@ impl TsCompiler {
           .get_compiled_module(&source_file_.url)
           .expect("Expected to find compiled file");
         drop(compiling_job);
-        println!(">>>>> compile_sync END");
+        debug!(">>>>> compile_sync END");
         load_sender.send(Ok(compiled_module)).unwrap();
       }
       .boxed_local();

@@ -336,10 +336,9 @@ mod tests {
     assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 0);
   }
 
-  #[test]
-  fn execute_006_url_imports() {
+  #[tokio::test]
+  async fn execute_006_url_imports() {
     let http_server_guard = crate::test_util::http_server();
-
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
@@ -359,33 +358,26 @@ mod tests {
       int,
     )
     .unwrap();
-    let global_state_ = global_state;
-    let state_ = state.clone();
-    tokio_util::run_basic(async move {
-      let mut worker = MainWorker::new(
-        "TEST".to_string(),
-        startup_data::deno_isolate_init(),
-        state,
-        ext,
-      );
-
-      worker.execute("bootstrapMainRuntime()").unwrap();
-      let result = worker
-        .execute_mod_async(&module_specifier, None, false)
-        .await;
-
-      if let Err(err) = result {
-        eprintln!("execute_mod err {:?}", err);
-      }
-      if let Err(e) = (&mut *worker).await {
-        panic!("Future got unexpected error: {:?}", e);
-      }
-    });
-
-    assert_eq!(state_.metrics.resolve_count.load(Ordering::SeqCst), 3);
+    let mut worker = MainWorker::new(
+      "TEST".to_string(),
+      startup_data::deno_isolate_init(),
+      state.clone(),
+      ext,
+    );
+    worker.execute("bootstrapMainRuntime()").unwrap();
+    let result = worker
+      .execute_mod_async(&module_specifier, None, false)
+      .await;
+    if let Err(err) = result {
+      eprintln!("execute_mod err {:?}", err);
+    }
+    if let Err(e) = (&mut *worker).await {
+      panic!("Future got unexpected error: {:?}", e);
+    }
+    assert_eq!(state.metrics.resolve_count.load(Ordering::SeqCst), 3);
     // Check that we've only invoked the compiler once.
     assert_eq!(
-      global_state_.metrics.compiler_starts.load(Ordering::SeqCst),
+      global_state.metrics.compiler_starts.load(Ordering::SeqCst),
       1
     );
     drop(http_server_guard);
