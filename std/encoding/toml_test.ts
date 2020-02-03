@@ -276,7 +276,7 @@ test({
         log: "0.4.6",
         rand: "0.6.5",
         regex: "1.1.0",
-        remove_dir_all: "0.5.1",
+        remove_dir_all: "0.5.2",
         ring: "0.14.6",
         rustyline: "3.0.0",
         serde_json: "1.0.38",
