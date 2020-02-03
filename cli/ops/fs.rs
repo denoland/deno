@@ -4,6 +4,7 @@ use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
+use crate::ops::dispatch_json::JsonResult;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno_core::*;
@@ -233,7 +234,7 @@ macro_rules! to_seconds {
 fn get_stat_json(
   metadata: fs::Metadata,
   maybe_name: Option<String>,
-) -> Result<Value, ErrBox> {
+) -> JsonResult {
   // Unix stat member (number types only). 0 if not on unix.
   macro_rules! usm {
     ($member: ident) => {{

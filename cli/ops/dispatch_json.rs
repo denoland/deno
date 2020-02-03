@@ -6,10 +6,10 @@ use serde_json::json;
 pub use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
-use tokio::task;
 
-pub type AsyncJsonOp =
-  Pin<Box<dyn Future<Output = Result<Value, ErrBox>> + Send>>;
+pub type JsonResult = Result<Value, ErrBox>;
+
+pub type AsyncJsonOp = Pin<Box<dyn Future<Output = JsonResult>>>;
 
 pub enum JsonOp {
   Sync(Value),
@@ -27,10 +27,7 @@ fn json_err(err: ErrBox) -> Value {
   })
 }
 
-fn serialize_result(
-  promise_id: Option<u64>,
-  result: Result<Value, ErrBox>,
-) -> Buf {
+fn serialize_result(promise_id: Option<u64>, result: JsonResult) -> Buf {
   let value = match result {
     Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
     Err(err) => json!({ "err": json_err(err), "promiseId": promise_id }),
@@ -78,21 +75,21 @@ where
         let fut2 = fut.then(move |result| {
           futures::future::ok(serialize_result(promise_id, result))
         });
-        CoreOp::Async(fut2.boxed())
+        CoreOp::Async(fut2.boxed_local())
       }
       Ok(JsonOp::AsyncUnref(fut)) => {
         assert!(promise_id.is_some());
         let fut2 = fut.then(move |result| {
           futures::future::ok(serialize_result(promise_id, result))
         });
-        CoreOp::AsyncUnref(fut2.boxed())
+        CoreOp::AsyncUnref(fut2.boxed_local())
       }
       Err(sync_err) => {
         let buf = serialize_result(promise_id, Err(sync_err));
         if is_sync {
           CoreOp::Sync(buf)
         } else {
-          CoreOp::Async(futures::future::ok(buf).boxed())
+          CoreOp::Async(futures::future::ok(buf).boxed_local())
         }
       }
     }
@@ -101,17 +98,20 @@ where
 
 pub fn blocking_json<F>(is_sync: bool, f: F) -> Result<JsonOp, ErrBox>
 where
-  F: 'static + Send + FnOnce() -> Result<Value, ErrBox> + Unpin,
+  F: 'static + Send + FnOnce() -> JsonResult,
 {
   if is_sync {
     Ok(JsonOp::Sync(f()?))
   } else {
-    let fut = async move {
-      task::spawn_blocking(move || f())
-        .await
-        .map_err(ErrBox::from)?
-    }
-    .boxed();
-    Ok(JsonOp::Async(fut.boxed()))
+    // TODO(ry) use thread pool.
+    let fut = crate::tokio_util::spawn_thread(f);
+    /*
+      let fut = async move {
+        tokio::task::spawn_blocking(move || f())
+          .await
+          .map_err(ErrBox::from)?
+      }.boxed_local();
+    */
+    Ok(JsonOp::Async(fut.boxed_local()))
   }
 }

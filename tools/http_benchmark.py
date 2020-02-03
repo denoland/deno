@@ -87,11 +87,6 @@ def deno_core_single(exe):
     return run([exe, "--single-thread"], 4544)
 
 
-def deno_core_multi(exe):
-    print "http_benchmark testing deno_core_multi"
-    return run([exe, "--multi-thread"], 4544)
-
-
 def node_http():
     port = get_port()
     node_cmd = ["node", "tools/node_http.js", port]
@@ -148,7 +143,6 @@ def http_benchmark(build_dir):
         "deno_proxy": deno_http_proxy(deno_exe, hyper_hello_exe),
         "deno_proxy_tcp": deno_tcp_proxy(deno_exe, hyper_hello_exe),
         "deno_core_single": deno_core_single(core_http_bench_exe),
-        "deno_core_multi": deno_core_multi(core_http_bench_exe),
         # "node_http" was once called "node"
         "node_http": node_http(),
         "node_proxy": node_http_proxy(hyper_hello_exe),

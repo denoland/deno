@@ -178,12 +178,12 @@ fn print_cache_info(worker: MainWorker) {
 }
 
 async fn print_file_info(
-  worker: MainWorker,
+  worker: &MainWorker,
   module_specifier: ModuleSpecifier,
 ) {
-  let global_state_ = &worker.state.global_state;
+  let global_state = worker.state.global_state.clone();
 
-  let maybe_source_file = global_state_
+  let maybe_source_file = global_state
     .file_fetcher
     .fetch_source_file_async(&module_specifier, None)
     .await;
@@ -204,9 +204,10 @@ async fn print_file_info(
     msg::enum_name_media_type(out.media_type)
   );
 
-  let maybe_compiled = global_state_
+  let module_specifier_ = module_specifier.clone();
+  let maybe_compiled = global_state
     .clone()
-    .fetch_compiled_module(&module_specifier, None, TargetLib::Main)
+    .fetch_compiled_module(module_specifier_, None, TargetLib::Main)
     .await;
   if let Err(e) = maybe_compiled {
     debug!("compiler error exiting!");
@@ -215,9 +216,9 @@ async fn print_file_info(
   }
   if out.media_type == msg::MediaType::TypeScript
     || (out.media_type == msg::MediaType::JavaScript
-      && global_state_.ts_compiler.compile_js)
+      && global_state.ts_compiler.compile_js)
   {
-    let compiled_source_file = global_state_
+    let compiled_source_file = global_state
       .ts_compiler
       .get_compiled_source_file(&out.url)
       .unwrap();
@@ -229,7 +230,7 @@ async fn print_file_info(
     );
   }
 
-  if let Ok(source_map) = global_state_
+  if let Ok(source_map) = global_state
     .clone()
     .ts_compiler
     .get_source_map_file(&module_specifier)
@@ -241,8 +242,7 @@ async fn print_file_info(
     );
   }
 
-  let isolate = worker.isolate.try_lock().unwrap();
-  if let Some(deps) = isolate.modules.deps(&module_specifier) {
+  if let Some(deps) = worker.isolate.modules.deps(&module_specifier) {
     println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
     if let Some(ref depsdeps) = deps.deps {
       for d in depsdeps {
@@ -276,8 +276,8 @@ async fn info_command(flags: DenoFlags) {
   if let Err(e) = main_result {
     print_err_and_exit(e);
   }
-  print_file_info(worker.clone(), main_module.clone()).await;
-  let result = worker.await;
+  print_file_info(&worker, main_module.clone()).await;
+  let result = (&mut *worker).await;
   js_check(result);
 }
 
@@ -357,20 +357,19 @@ async fn eval_command(flags: DenoFlags) {
     print_err_and_exit(e);
   }
   js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
-  let mut worker_ = worker.clone();
-  let result = worker.await;
+  let result = (&mut *worker).await;
   js_check(result);
-  js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
+  js_check(worker.execute("window.dispatchEvent(new Event('unload'))"));
 }
 
 async fn bundle_command(flags: DenoFlags) {
   let out_file = flags.bundle_output.clone();
-  let (worker, state) = create_worker_and_state(flags);
+  let (mut worker, state) = create_worker_and_state(flags);
   let main_module = state.main_module.as_ref().unwrap().clone();
 
   debug!(">>>>> bundle_async START");
   // NOTE: we need to poll `worker` otherwise TS compiler worker won't run properly
-  let result = worker.await;
+  let result = (&mut *worker).await;
   js_check(result);
   let bundle_result = state
     .ts_compiler
@@ -388,7 +387,7 @@ async fn run_repl(flags: DenoFlags) {
   let (mut worker, _state) = create_worker_and_state(flags);
   js_check(worker.execute("bootstrapMainRuntime()"));
   loop {
-    let result = worker.clone().await;
+    let result = (&mut *worker).await;
     if let Err(err) = result {
       eprintln!("{}", err.to_string());
     }
@@ -409,8 +408,6 @@ async fn run_script(flags: DenoFlags) {
   js_check(worker.execute("bootstrapMainRuntime()"));
   debug!("main_module {}", main_module);
 
-  let mut worker_ = worker.clone();
-
   let mod_result = worker.execute_mod_async(&main_module, None, false).await;
   if let Err(err) = mod_result {
     print_err_and_exit(err);
@@ -427,17 +424,16 @@ async fn run_script(flags: DenoFlags) {
     }
   }
   js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
-  let result = worker.await;
+  let result = (&mut *worker).await;
   js_check(result);
-  js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
+  js_check(worker.execute("window.dispatchEvent(new Event('unload'))"));
 }
 
 async fn fmt_command(files: Option<Vec<String>>, check: bool) {
   fmt::format_files(files, check);
 }
 
-#[tokio::main]
-pub async fn main() {
+pub fn main() {
   #[cfg(windows)]
   ansi_term::enable_ansi_support().ok(); // For Windows 10
 
@@ -457,22 +453,27 @@ pub async fn main() {
   };
   log::set_max_level(log_level.to_level_filter());
 
-  match flags.clone().subcommand {
-    DenoSubcommand::Bundle => bundle_command(flags).await,
-    DenoSubcommand::Completions => {}
-    DenoSubcommand::Eval => eval_command(flags).await,
-    DenoSubcommand::Fetch => fetch_command(flags).await,
-    DenoSubcommand::Format { check, files } => fmt_command(files, check).await,
-    DenoSubcommand::Info => info_command(flags).await,
-    DenoSubcommand::Install {
-      dir,
-      exe_name,
-      module_url,
-      args,
-    } => install_command(flags, dir, exe_name, module_url, args).await,
-    DenoSubcommand::Repl => run_repl(flags).await,
-    DenoSubcommand::Run => run_script(flags).await,
-    DenoSubcommand::Types => types_command(),
-    _ => panic!("bad subcommand"),
-  }
+  let fut = async move {
+    match flags.clone().subcommand {
+      DenoSubcommand::Bundle => bundle_command(flags).await,
+      DenoSubcommand::Completions => {}
+      DenoSubcommand::Eval => eval_command(flags).await,
+      DenoSubcommand::Fetch => fetch_command(flags).await,
+      DenoSubcommand::Format { check, files } => {
+        fmt_command(files, check).await
+      }
+      DenoSubcommand::Info => info_command(flags).await,
+      DenoSubcommand::Install {
+        dir,
+        exe_name,
+        module_url,
+        args,
+      } => install_command(flags, dir, exe_name, module_url, args).await,
+      DenoSubcommand::Repl => run_repl(flags).await,
+      DenoSubcommand::Run => run_script(flags).await,
+      DenoSubcommand::Types => types_command(),
+      _ => panic!("bad subcommand"),
+    }
+  };
+  tokio_util::run_basic(fut);
 }
