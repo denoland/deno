@@ -282,23 +282,41 @@ impl TsCompiler {
       true,
     );
 
-    let mut worker = TsCompiler::setup_worker(global_state);
+    // TODO(ry) The code below looks very similar to spawn_ts_compiler_worker.
+    // Can we combine them?
+    let (load_sender, load_receiver) =
+      tokio::sync::oneshot::channel::<Result<(), ErrBox>>();
+    std::thread::spawn(move || {
+      let mut worker = TsCompiler::setup_worker(global_state);
+      let handle = worker.thread_safe_handle();
 
-    async move {
-      worker.post_message_internal(req_msg).await?;
-      (&mut *worker).await?;
-      debug!("Sent message to worker");
-      let maybe_msg = worker.get_message_internal().await;
-      debug!("Received message from worker");
-      if let Some(ref msg) = maybe_msg {
-        let json_str = std::str::from_utf8(msg).unwrap();
-        debug!("Message: {}", json_str);
-        if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-          return Err(ErrBox::from(diagnostics));
+      let fut = async move {
+        if let Err(err) = handle.post_message(req_msg).await {
+          load_sender.send(Err(err)).unwrap();
+          return;
         }
+        debug!("Sent message to worker");
+        if let Err(err) = (&mut *worker).await {
+          load_sender.send(Err(err)).unwrap();
+          return;
+        }
+        let maybe_msg = handle.get_message().await;
+        debug!("Received message from worker");
+        if let Some(ref msg) = maybe_msg {
+          let json_str = std::str::from_utf8(msg).unwrap();
+          debug!("Message: {}", json_str);
+          if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+            let err = ErrBox::from(diagnostics);
+            load_sender.send(Err(err)).unwrap();
+            return;
+          }
+        }
+        load_sender.send(Ok(())).unwrap();
       }
-      Ok(())
-    }
+      .boxed_local();
+      crate::tokio_util::run_basic(fut);
+    });
+    async { load_receiver.await.unwrap() }.boxed_local()
   }
 
   /// Mark given module URL as compiled to avoid multiple compilations of same
@@ -712,7 +730,6 @@ pub fn runtime_transpile_async<S: BuildHasher>(
 mod tests {
   use super::*;
   use crate::fs as deno_fs;
-  use crate::tokio_util;
   use deno_core::ModuleSpecifier;
   use std::path::PathBuf;
   use tempfile::TempDir;
@@ -748,8 +765,8 @@ mod tests {
       .starts_with(b"console.log(\"Hello World\");"));
   }
 
-  #[test]
-  fn test_bundle_async() {
+  #[tokio::test]
+  async fn test_bundle_async() {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
@@ -765,19 +782,15 @@ mod tests {
       String::from("$deno$/bundle.js"),
     ]);
 
-    let fut = async move {
-      let result = state
-        .ts_compiler
-        .bundle_async(
-          state.clone(),
-          module_name,
-          Some(String::from("$deno$/bundle.js")),
-        )
-        .await;
-
-      assert!(result.is_ok());
-    };
-    tokio_util::run_basic(fut.boxed_local())
+    let result = state
+      .ts_compiler
+      .bundle_async(
+        state.clone(),
+        module_name,
+        Some(String::from("$deno$/bundle.js")),
+      )
+      .await;
+    assert!(result.is_ok());
   }
 
   #[test]
