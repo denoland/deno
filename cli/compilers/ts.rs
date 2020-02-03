@@ -399,7 +399,7 @@ impl TsCompiler {
     let (load_sender, load_receiver) =
       tokio::sync::oneshot::channel::<Result<CompiledModule, ErrBox>>();
     std::thread::spawn(move || {
-      debug!(">>>>> compile_sync START");
+      debug!(">>>>> compile_async START");
 
       let mut worker = TsCompiler::setup_worker(global_state.clone());
       let handle = worker.thread_safe_handle();

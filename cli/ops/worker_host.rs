@@ -219,8 +219,11 @@ fn op_host_poll_worker(
 ) -> Result<JsonOp, ErrBox> {
   println!("op_host_poll_worker");
   // TOOO(ry) remove this.
+  todo!()
+  /*
   let op = async { Ok(serialize_worker_result(Ok(()))) };
   Ok(JsonOp::Async(op.boxed_local()))
+  */
 }
 
 fn op_host_close_worker(
