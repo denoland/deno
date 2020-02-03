@@ -16,7 +16,7 @@ use futures::future::FutureExt;
 use std::future::Future;
 use std::pin::Pin;
 
-pub type MinimalOp = dyn Future<Output = Result<i32, ErrBox>> + Send;
+pub type MinimalOp = dyn Future<Output = Result<i32, ErrBox>>;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 // This corresponds to RecordMinimal on the TS side.
@@ -164,7 +164,7 @@ where
       // works since they're simple polling futures.
       Op::Sync(futures::executor::block_on(fut).unwrap())
     } else {
-      Op::Async(fut.boxed())
+      Op::Async(fut.boxed_local())
     }
   }
 }

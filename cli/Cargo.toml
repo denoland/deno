@@ -56,7 +56,7 @@ source-map-mappings = "0.5.0"
 sys-info = "0.5.8"
 tempfile = "3.1.0"
 termcolor = "1.0.5"
-tokio = { version = "0.2.9", features = ["full"] }
+tokio = { version = "0.2", features = ["rt-core", "tcp", "process", "fs", "blocking", "sync", "io-std", "macros", "time"] }
 tokio-rustls = "0.12.1"
 url = "2.1.0"
 utime = "0.2.1"

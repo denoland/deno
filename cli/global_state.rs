@@ -18,7 +18,6 @@ use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use std;
 use std::env;
-use std::future::Future;
 use std::ops::Deref;
 use std::path::Path;
 use std::str;
@@ -119,66 +118,64 @@ impl ThreadSafeGlobalState {
     Ok(ThreadSafeGlobalState(Arc::new(state)))
   }
 
-  pub fn fetch_compiled_module(
+  pub async fn fetch_compiled_module(
     &self,
-    module_specifier: &ModuleSpecifier,
+    module_specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     target_lib: TargetLib,
-  ) -> impl Future<Output = Result<CompiledModule, ErrBox>> {
+  ) -> Result<CompiledModule, ErrBox> {
     let state1 = self.clone();
     let state2 = self.clone();
+    let module_specifier = module_specifier.clone();
 
-    let source_file = self
+    let out = self
       .file_fetcher
-      .fetch_source_file_async(&module_specifier, maybe_referrer);
-
-    async move {
-      let out = source_file.await?;
-      let compiled_module = match out.media_type {
-        msg::MediaType::Unknown => state1.js_compiler.compile_async(&out),
-        msg::MediaType::Json => state1.json_compiler.compile_async(&out),
-        msg::MediaType::Wasm => {
-          state1.wasm_compiler.compile_async(state1.clone(), &out)
-        }
-        msg::MediaType::TypeScript
-        | msg::MediaType::TSX
-        | msg::MediaType::JSX => {
+      .fetch_source_file_async(&module_specifier, maybe_referrer)
+      .await?;
+    let compiled_module_fut = match out.media_type {
+      msg::MediaType::Unknown => state1.js_compiler.compile_async(out),
+      msg::MediaType::Json => state1.json_compiler.compile_async(&out),
+      msg::MediaType::Wasm => {
+        state1.wasm_compiler.compile_async(state1.clone(), &out)
+      }
+      msg::MediaType::TypeScript
+      | msg::MediaType::TSX
+      | msg::MediaType::JSX => {
+        state1
+          .ts_compiler
+          .compile_async(state1.clone(), &out, target_lib)
+      }
+      msg::MediaType::JavaScript => {
+        if state1.ts_compiler.compile_js {
           state1
             .ts_compiler
             .compile_async(state1.clone(), &out, target_lib)
-        }
-        msg::MediaType::JavaScript => {
-          if state1.ts_compiler.compile_js {
-            state1
-              .ts_compiler
-              .compile_async(state1.clone(), &out, target_lib)
-          } else {
-            state1.js_compiler.compile_async(&out)
-          }
-        }
-      }
-      .await?;
-
-      if let Some(ref lockfile) = state2.lockfile {
-        let mut g = lockfile.lock().unwrap();
-        if state2.flags.lock_write {
-          g.insert(&compiled_module);
         } else {
-          let check = match g.check(&compiled_module) {
-            Err(e) => return Err(ErrBox::from(e)),
-            Ok(v) => v,
-          };
-          if !check {
-            eprintln!(
-              "Subresource integrity check failed --lock={}\n{}",
-              g.filename, compiled_module.name
-            );
-            std::process::exit(10);
-          }
+          state1.js_compiler.compile_async(out)
         }
       }
-      Ok(compiled_module)
+    };
+    let compiled_module = compiled_module_fut.await?;
+
+    if let Some(ref lockfile) = state2.lockfile {
+      let mut g = lockfile.lock().unwrap();
+      if state2.flags.lock_write {
+        g.insert(&compiled_module);
+      } else {
+        let check = match g.check(&compiled_module) {
+          Err(e) => return Err(ErrBox::from(e)),
+          Ok(v) => v,
+        };
+        if !check {
+          eprintln!(
+            "Subresource integrity check failed --lock={}\n{}",
+            g.filename, compiled_module.name
+          );
+          std::process::exit(10);
+        }
+      }
     }
+    Ok(compiled_module)
   }
 
   #[inline]

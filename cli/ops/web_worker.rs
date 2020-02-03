@@ -37,7 +37,7 @@ fn op_worker_get_message(
     Ok(json!({ "data": maybe_buf }))
   };
 
-  Ok(JsonOp::Async(op.boxed()))
+  Ok(JsonOp::Async(op.boxed_local()))
 }
 
 /// Post message to host as guest worker

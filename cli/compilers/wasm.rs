@@ -6,6 +6,7 @@ use crate::file_fetcher::SourceFile;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::startup_data;
 use crate::state::*;
+use deno_core::ErrBox;
 use futures::FutureExt;
 use serde_derive::Deserialize;
 use serde_json;
@@ -70,56 +71,68 @@ impl WasmCompiler {
     source_file: &SourceFile,
   ) -> Pin<Box<CompiledModuleFuture>> {
     let cache = self.cache.clone();
+    let source_file = source_file.clone();
     let maybe_cached = { cache.lock().unwrap().get(&source_file.url).cloned() };
     if let Some(m) = maybe_cached {
       return futures::future::ok(m).boxed();
     }
     let cache_ = self.cache.clone();
 
-    debug!(">>>>> wasm_compile_async START");
-    let base64_data = base64::encode(&source_file.source_code);
-    let worker = WasmCompiler::setup_worker(global_state);
-    let worker_ = worker.clone();
-    let url = source_file.url.clone();
+    let (load_sender, load_receiver) =
+      tokio::sync::oneshot::channel::<Result<CompiledModule, ErrBox>>();
 
-    Box::pin(async move {
-      let _ = worker
-        .post_message(
-          serde_json::to_string(&base64_data)
-            .unwrap()
-            .into_boxed_str()
-            .into_boxed_bytes(),
-        )
-        .await;
+    std::thread::spawn(move || {
+      debug!(">>>>> wasm_compile_async START");
+      let base64_data = base64::encode(&source_file.source_code);
+      let mut worker = WasmCompiler::setup_worker(global_state);
+      let handle = worker.thread_safe_handle();
+      let url = source_file.url.clone();
 
-      if let Err(err) = worker.await {
-        // TODO(ry) Need to forward the error instead of exiting.
-        eprintln!("{}", err.to_string());
-        std::process::exit(1);
-      }
-      debug!("Sent message to worker");
-      let json_msg = worker_.get_message().await.expect("not handled");
+      let fut = async move {
+        let _ = handle
+          .post_message(
+            serde_json::to_string(&base64_data)
+              .unwrap()
+              .into_boxed_str()
+              .into_boxed_bytes(),
+          )
+          .await;
 
-      debug!("Received message from worker");
-      let module_info: WasmModuleInfo =
-        serde_json::from_slice(&json_msg).unwrap();
-      debug!("WASM module info: {:#?}", &module_info);
-      let code = wrap_wasm_code(
-        &base64_data,
-        &module_info.import_list,
-        &module_info.export_list,
-      );
-      debug!("Generated code: {}", &code);
-      let module = CompiledModule {
-        code,
-        name: url.to_string(),
+        if let Err(err) = (&mut *worker).await {
+          load_sender.send(Err(err)).unwrap();
+          return;
+        }
+
+        debug!("Sent message to worker");
+        let json_msg = handle.get_message().await.expect("not handled");
+
+        debug!("Received message from worker");
+        let module_info: WasmModuleInfo =
+          serde_json::from_slice(&json_msg).unwrap();
+
+        debug!("WASM module info: {:#?}", &module_info);
+        let code = wrap_wasm_code(
+          &base64_data,
+          &module_info.import_list,
+          &module_info.export_list,
+        );
+
+        debug!("Generated code: {}", &code);
+        let module = CompiledModule {
+          code,
+          name: url.to_string(),
+        };
+        {
+          cache_.lock().unwrap().insert(url.clone(), module.clone());
+        }
+        debug!("<<<<< wasm_compile_async END");
+        load_sender.send(Ok(module)).unwrap();
       };
-      {
-        cache_.lock().unwrap().insert(url.clone(), module.clone());
-      }
-      debug!("<<<<< wasm_compile_async END");
-      Ok(module)
-    })
+
+      crate::tokio_util::run_basic(fut);
+    });
+    let fut = async { load_receiver.await.unwrap() };
+    fut.boxed_local()
   }
 }
 

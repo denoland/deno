@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::ops::JsonResult;
 use deno_core::ErrBox;
 use futures::Future;
-use serde_json::Value;
 
 mod compiler_worker;
 mod js;
@@ -17,8 +17,7 @@ pub use ts::TargetLib;
 pub use ts::TsCompiler;
 pub use wasm::WasmCompiler;
 
-pub type CompilationResultFuture =
-  dyn Future<Output = Result<Value, ErrBox>> + Send;
+pub type CompilationResultFuture = dyn Future<Output = JsonResult>;
 
 #[derive(Debug, Clone)]
 pub struct CompiledModule {
@@ -27,4 +26,4 @@ pub struct CompiledModule {
 }
 
 pub type CompiledModuleFuture =
-  dyn Future<Output = Result<CompiledModule, ErrBox>> + Send;
+  dyn Future<Output = Result<CompiledModule, ErrBox>>;
