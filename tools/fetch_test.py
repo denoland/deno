@@ -23,7 +23,7 @@ class TestFetch(DenoTestCase):
             os.path.exists(
                 os.path.join(
                     deno_dir,
-                    "deps/http/localhost_PORT4545/tests/subdir/mod2.ts"))
+                    "deps/http/localhost_PORT4545/cli/tests/subdir/mod2.ts"))
         finally:
             shutil.rmtree(deno_dir)
 

@@ -223,7 +223,7 @@ def redirect_server():
 # BUT with an extra subdir path
 def another_redirect_server():
     return base_redirect_server(
-        ANOTHER_REDIRECT_PORT, PORT, extra_path_segment="/tests/subdir")
+        ANOTHER_REDIRECT_PORT, PORT, extra_path_segment="/cli/tests/subdir")
 
 
 # redirect server that points to another redirect server

@@ -12,7 +12,7 @@ testPerm({ read: true }, async function statSyncSuccess(): Promise<void> {
   assert(modulesInfo.isDirectory());
   assert(!modulesInfo.isSymlink());
 
-  const testsInfo = Deno.statSync("tests");
+  const testsInfo = Deno.statSync("cli/tests");
   assert(testsInfo.isDirectory());
   assert(!testsInfo.isSymlink());
 });
@@ -96,7 +96,7 @@ testPerm({ read: true }, async function statSuccess(): Promise<void> {
   assert(modulesInfo.isDirectory());
   assert(!modulesInfo.isSymlink());
 
-  const i = await Deno.stat("tests");
+  const i = await Deno.stat("cli/tests");
   assert(i.isDirectory());
   assert(!i.isSymlink());
 });

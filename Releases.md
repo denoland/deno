@@ -6,6 +6,37 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.32.0 / 2020.02.03
+
+- BREAKING CHANGE: Replace formatter for "deno fmt", use dprint (#3820, #3824,
+  #3842)
+- BREAKING CHANGE: Remove std/prettier (#3820)
+- BREAKING CHANGE: Remove std/installer (#3843)
+- BREAKING CHANGE: Remove --current-thread flag (#3830)
+- BREAKING CHANGE: Deno.makeTempDir() checks permissions (#3810)
+- feat: deno install in Rust (#3806)
+- feat: Improve support of type definitions (#3755)
+- feat: deno fetch supports --lock-write (#3787)
+- feat: deno eval supports --v8-flags=... (#3797)
+- feat: descriptive permission errors (#3808)
+- feat: Make fetch API more standards compliant (#3667)
+- feat: deno fetch supports multiple files (#3845)
+- feat(std/node): Endianness (#3833)
+- feat(std/node): Partial os polyfill (#3821)
+- feat(std/examples): Bring back xeval (#3822)
+- feat(std/encoding): Add base32 support (#3855)
+- feat(deno_typescript): Support crate imports (#3814)
+- fix: Panic on cache miss (#3784)
+- fix: Deno.remove() to properly remove dangling symlinks (#3860)
+- refactor: Use tokio::main attribute in lib.rs (#3831)
+- refactor: Provide TS libraries for window and worker scope (#3771, #3812,
+  #3728)
+- refactor(deno_core): Error tracking and scope passing (#3783)
+- refactor(deno_core): Rename PinnedBuf to ZeroCopyBuf (#3782)
+- refactor(deno_core): Change Loader trait (#3791)
+- upgrade: Rust 1.41.0 (#3838)
+- upgrade: Rust crates (#3829)
+
 ### v0.31.0 / 2020.01.24
 
 - BREAKING CHANGE: remove support for blob: URL in Worker (#3722)

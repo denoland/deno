@@ -1083,7 +1083,7 @@ declare namespace __fetch {
     readonly url: string;
     readonly status: number;
     statusText: string;
-    readonly type = "basic";
+    readonly type: __domTypes.ResponseType;
     readonly redirected: boolean;
     headers: __domTypes.Headers;
     readonly trailer: Promise<__domTypes.Headers>;
@@ -1092,9 +1092,11 @@ declare namespace __fetch {
     constructor(
       url: string,
       status: number,
+      statusText: string,
       headersList: Array<[string, string]>,
       rid: number,
       redirected_: boolean,
+      type_?: null | __domTypes.ResponseType,
       body_?: null | Body
     );
     arrayBuffer(): Promise<ArrayBuffer>;
@@ -1104,6 +1106,7 @@ declare namespace __fetch {
     text(): Promise<string>;
     readonly ok: boolean;
     clone(): __domTypes.Response;
+    redirect(url: URL | string, status: number): __domTypes.Response;
   }
   /** Fetch a resource from the network. */
   export function fetch(

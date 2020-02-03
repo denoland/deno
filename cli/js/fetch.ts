@@ -252,11 +252,11 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
 }
 
 export class Response implements domTypes.Response {
-  readonly type = "basic"; // TODO
+  readonly type: domTypes.ResponseType;
   readonly redirected: boolean;
   headers: domTypes.Headers;
   readonly trailer: Promise<domTypes.Headers>;
-  readonly body: Body;
+  readonly body: null | Body;
 
   constructor(
     readonly url: string,
@@ -265,6 +265,7 @@ export class Response implements domTypes.Response {
     headersList: Array<[string, string]>,
     rid: number,
     redirected_: boolean,
+    readonly type_: null | domTypes.ResponseType = "default",
     body_: null | Body = null
   ) {
     this.trailer = createResolvable();
@@ -277,27 +278,112 @@ export class Response implements domTypes.Response {
       this.body = body_;
     }
 
+    if (type_ == null) {
+      this.type = "default";
+    } else {
+      this.type = type_;
+      if (type_ == "error") {
+        // spec: https://fetch.spec.whatwg.org/#concept-network-error
+        this.status = 0;
+        this.statusText = "";
+        this.headers = new Headers();
+        this.body = null;
+        /* spec for other Response types:
+           https://fetch.spec.whatwg.org/#concept-filtered-response-basic
+           Please note that type "basic" is not the same thing as "default".*/
+      } else if (type_ == "basic") {
+        for (const h of this.headers) {
+          /* Forbidden Response-Header Names:
+             https://fetch.spec.whatwg.org/#forbidden-response-header-name */
+          if (["set-cookie", "set-cookie2"].includes(h[0].toLowerCase())) {
+            this.headers.delete(h[0]);
+          }
+        }
+      } else if (type_ == "cors") {
+        /* CORS-safelisted Response-Header Names:
+             https://fetch.spec.whatwg.org/#cors-safelisted-response-header-name */
+        const allowedHeaders = [
+          "Cache-Control",
+          "Content-Language",
+          "Content-Length",
+          "Content-Type",
+          "Expires",
+          "Last-Modified",
+          "Pragma"
+        ].map((c: string) => c.toLowerCase());
+        for (const h of this.headers) {
+          /* Technically this is still not standards compliant because we are
+             supposed to allow headers allowed in the
+             'Access-Control-Expose-Headers' header in the 'internal response'
+             However, this implementation of response doesn't seem to have an
+             easy way to access the internal response, so we ignore that
+             header.
+             TODO(serverhiccups): change how internal responses are handled
+             so we can do this properly. */
+          if (!allowedHeaders.includes(h[0].toLowerCase())) {
+            this.headers.delete(h[0]);
+          }
+        }
+        /* TODO(serverhiccups): Once I fix the 'internal response' thing,
+           these actually need to treat the internal response differently */
+      } else if (type_ == "opaque" || type_ == "opaqueredirect") {
+        this.url = "";
+        this.status = 0;
+        this.statusText = "";
+        this.headers = new Headers();
+        this.body = null;
+      }
+    }
+
     this.redirected = redirected_;
   }
 
+  private bodyViewable(): boolean {
+    if (
+      this.type == "error" ||
+      this.type == "opaque" ||
+      this.type == "opaqueredirect" ||
+      this.body == undefined
+    )
+      return true;
+    return false;
+  }
+
   async arrayBuffer(): Promise<ArrayBuffer> {
+    /* You have to do the null check here and not in the function because
+     * otherwise TS complains about this.body potentially being null */
+    if (this.bodyViewable() || this.body == null) {
+      return Promise.reject(new Error("Response body is null"));
+    }
     return this.body.arrayBuffer();
   }
 
   async blob(): Promise<domTypes.Blob> {
+    if (this.bodyViewable() || this.body == null) {
+      return Promise.reject(new Error("Response body is null"));
+    }
     return this.body.blob();
   }
 
   async formData(): Promise<domTypes.FormData> {
+    if (this.bodyViewable() || this.body == null) {
+      return Promise.reject(new Error("Response body is null"));
+    }
     return this.body.formData();
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async json(): Promise<any> {
+    if (this.bodyViewable() || this.body == null) {
+      return Promise.reject(new Error("Response body is null"));
+    }
     return this.body.json();
   }
 
   async text(): Promise<string> {
+    if (this.bodyViewable() || this.body == null) {
+      return Promise.reject(new Error("Response body is null"));
+    }
     return this.body.text();
   }
 
@@ -306,6 +392,7 @@ export class Response implements domTypes.Response {
   }
 
   get bodyUsed(): boolean {
+    if (this.body === null) return false;
     return this.body.bodyUsed;
   }
 
@@ -329,7 +416,26 @@ export class Response implements domTypes.Response {
       headersList,
       -1,
       this.redirected,
+      this.type,
       this.body
+    );
+  }
+
+  redirect(url: URL | string, status: number): domTypes.Response {
+    if (![301, 302, 303, 307, 308].includes(status)) {
+      throw new RangeError(
+        "The redirection status must be one of 301, 302, 303, 307 and 308."
+      );
+    }
+    return new Response(
+      "",
+      status,
+      "",
+      [["Location", typeof url === "string" ? url : url.toString()]],
+      -1,
+      false,
+      "default",
+      null
     );
   }
 }
@@ -445,9 +551,11 @@ export async function fetch(
       // We're in a redirect status
       switch ((init && init.redirect) || "follow") {
         case "error":
-          throw notImplemented();
+          /* I suspect that deno will probably crash if you try to use that
+             rid, which suggests to me that Response needs to be refactored */
+          return new Response("", 0, "", [], -1, false, "error", null);
         case "manual":
-          throw notImplemented();
+          return new Response("", 0, "", [], -1, false, "opaqueredirect", null);
         case "follow":
         default:
           let redirectUrl = response.headers.get("Location");

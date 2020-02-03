@@ -251,7 +251,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("tests/esm_imports_a.js");
+      .join("cli/tests/esm_imports_a.js");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = ThreadSafeGlobalState::new(
@@ -421,7 +421,7 @@ mod tests {
       let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
-        .join("tests/002_hello.ts");
+        .join("cli/tests/002_hello.ts");
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
       let result =

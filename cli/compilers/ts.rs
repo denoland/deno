@@ -739,7 +739,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("tests/002_hello.ts");
+      .join("cli/tests/002_hello.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let out = SourceFile {
@@ -770,7 +770,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("tests/002_hello.ts");
+      .join("cli/tests/002_hello.ts");
     use deno_core::ModuleSpecifier;
     let module_name = ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap())
       .unwrap()
