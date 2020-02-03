@@ -851,7 +851,6 @@ impl SourceCodeHeaders {
 mod tests {
   use super::*;
   use crate::fs as deno_fs;
-  use crate::tokio_util;
   use tempfile::TempDir;
 
   fn setup_file_fetcher(dir_path: &Path) -> SourceFileFetcher {
@@ -998,8 +997,8 @@ mod tests {
     }
   }
 
-  #[test]
-  fn test_get_source_code_1() {
+  #[tokio::test]
+  async fn test_get_source_code_1() {
     let http_server_guard = crate::test_util::http_server();
     let (temp_dir, fetcher) = test_setup();
     let fetcher_1 = fetcher.clone();
@@ -1017,91 +1016,87 @@ mod tests {
     let headers_file_name_2 = headers_file_name.clone();
     let headers_file_name_3 = headers_file_name;
 
-    let fut = fetcher
+    let result = fetcher
       .get_source_file_async(&module_url, true, false, false)
-      .then(move |result| {
-        assert!(result.is_ok());
-        let r = result.unwrap();
-        assert_eq!(
-          r.source_code,
-          &b"export { printHello } from \"./print_hello.ts\";\n"[..]
-        );
-        assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-        // Should not create .headers.json file due to matching ext
-        assert!(fs::read_to_string(&headers_file_name_1).is_err());
+      .await;
+    assert!(result.is_ok());
+    let r = result.unwrap();
+    assert_eq!(
+      r.source_code,
+      &b"export { printHello } from \"./print_hello.ts\";\n"[..]
+    );
+    assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
+    // Should not create .headers.json file due to matching ext
+    assert!(fs::read_to_string(&headers_file_name_1).is_err());
 
-        // Modify .headers.json, write using fs write and read using save_source_code_headers
-        let _ = fs::write(
-          &headers_file_name_1,
-          "{ \"mime_type\": \"text/javascript\" }",
-        );
-        fetcher_1.get_source_file_async(&module_url, true, false, false)
-      })
-      .then(move |result2| {
-        assert!(result2.is_ok());
-        let r2 = result2.unwrap();
-        assert_eq!(
-          r2.source_code,
-          &b"export { printHello } from \"./print_hello.ts\";\n"[..]
-        );
-        // If get_source_file_async does not call remote, this should be JavaScript
-        // as we modified before! (we do not overwrite .headers.json due to no http fetch)
-        assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
-        assert_eq!(
-          fetcher_2
-            .get_source_code_headers(&module_url_1)
-            .mime_type
-            .unwrap(),
-          "text/javascript"
-        );
+    // Modify .headers.json, write using fs write and read using save_source_code_headers
+    let _ = fs::write(
+      &headers_file_name_1,
+      "{ \"mime_type\": \"text/javascript\" }",
+    );
+    let result2 = fetcher_1
+      .get_source_file_async(&module_url, true, false, false)
+      .await;
+    assert!(result2.is_ok());
+    let r2 = result2.unwrap();
+    assert_eq!(
+      r2.source_code,
+      &b"export { printHello } from \"./print_hello.ts\";\n"[..]
+    );
+    // If get_source_file_async does not call remote, this should be JavaScript
+    // as we modified before! (we do not overwrite .headers.json due to no http fetch)
+    assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
+    assert_eq!(
+      fetcher_2
+        .get_source_code_headers(&module_url_1)
+        .mime_type
+        .unwrap(),
+      "text/javascript"
+    );
 
-        // Modify .headers.json again, but the other way around
-        let _ = fetcher_2.save_source_code_headers(
-          &module_url_1,
-          Some("application/json".to_owned()),
-          None,
-          None,
-          None,
-        );
-        fetcher_2.get_source_file_async(&module_url_1, true, false, false)
-      })
-      .then(move |result3| {
-        assert!(result3.is_ok());
-        let r3 = result3.unwrap();
-        assert_eq!(
-          r3.source_code,
-          &b"export { printHello } from \"./print_hello.ts\";\n"[..]
-        );
-        // If get_source_file_async does not call remote, this should be JavaScript
-        // as we modified before! (we do not overwrite .headers.json due to no http fetch)
-        assert_eq!(&(r3.media_type), &msg::MediaType::Json);
-        assert!(fs::read_to_string(&headers_file_name_2)
-          .unwrap()
-          .contains("application/json"));
+    // Modify .headers.json again, but the other way around
+    let _ = fetcher_2.save_source_code_headers(
+      &module_url_1,
+      Some("application/json".to_owned()),
+      None,
+      None,
+      None,
+    );
+    let result3 = fetcher_2
+      .get_source_file_async(&module_url_1, true, false, false)
+      .await;
+    assert!(result3.is_ok());
+    let r3 = result3.unwrap();
+    assert_eq!(
+      r3.source_code,
+      &b"export { printHello } from \"./print_hello.ts\";\n"[..]
+    );
+    // If get_source_file_async does not call remote, this should be JavaScript
+    // as we modified before! (we do not overwrite .headers.json due to no http fetch)
+    assert_eq!(&(r3.media_type), &msg::MediaType::Json);
+    assert!(fs::read_to_string(&headers_file_name_2)
+      .unwrap()
+      .contains("application/json"));
 
-        // let's create fresh instance of DenoDir (simulating another freshh Deno process)
-        // and don't use cache
-        let fetcher = setup_file_fetcher(temp_dir.path());
-        fetcher.get_source_file_async(&module_url_2, false, false, false)
-      })
-      .map(move |result4| {
-        assert!(result4.is_ok());
-        let r4 = result4.unwrap();
-        let expected4 =
-          &b"export { printHello } from \"./print_hello.ts\";\n"[..];
-        assert_eq!(r4.source_code, expected4);
-        // Now the old .headers.json file should have gone! Resolved back to TypeScript
-        assert_eq!(&(r4.media_type), &msg::MediaType::TypeScript);
-        assert!(fs::read_to_string(&headers_file_name_3).is_err());
-      });
+    // let's create fresh instance of DenoDir (simulating another freshh Deno process)
+    // and don't use cache
+    let fetcher = setup_file_fetcher(temp_dir.path());
+    let result4 = fetcher
+      .get_source_file_async(&module_url_2, false, false, false)
+      .await;
+    assert!(result4.is_ok());
+    let r4 = result4.unwrap();
+    let expected4 = &b"export { printHello } from \"./print_hello.ts\";\n"[..];
+    assert_eq!(r4.source_code, expected4);
+    // Now the old .headers.json file should have gone! Resolved back to TypeScript
+    assert_eq!(&(r4.media_type), &msg::MediaType::TypeScript);
+    assert!(fs::read_to_string(&headers_file_name_3).is_err());
 
-    // http_util::fetch_sync_string requires tokio
-    tokio_util::run(fut);
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_get_source_code_2() {
+  #[tokio::test]
+  async fn test_get_source_code_2() {
     let http_server_guard = crate::test_util::http_server();
     let (temp_dir, fetcher) = test_setup();
     let fetcher_1 = fetcher.clone();
@@ -1116,71 +1111,70 @@ mod tests {
         .get_cache_filename_with_extension(&module_url, "headers.json"),
     );
 
-    let fut = fetcher
+    let result = fetcher
       .get_source_file_async(&module_url, true, false, false)
-      .then(move |result| {
-        assert!(result.is_ok());
-        let r = result.unwrap();
-        let expected = b"export const loaded = true;\n";
-        assert_eq!(r.source_code, expected);
-        // Mismatch ext with content type, create .headers.json
-        assert_eq!(&(r.media_type), &msg::MediaType::JavaScript);
-        assert_eq!(
-          fetcher
-            .get_source_code_headers(&module_url)
-            .mime_type
-            .unwrap(),
-          "text/javascript"
-        );
+      .await;
+    assert!(result.is_ok());
+    let r = result.unwrap();
+    let expected = b"export const loaded = true;\n";
+    assert_eq!(r.source_code, expected);
+    // Mismatch ext with content type, create .headers.json
+    assert_eq!(&(r.media_type), &msg::MediaType::JavaScript);
+    assert_eq!(
+      fetcher
+        .get_source_code_headers(&module_url)
+        .mime_type
+        .unwrap(),
+      "text/javascript"
+    );
 
-        // Modify .headers.json
-        let _ = fetcher.save_source_code_headers(
-          &module_url,
-          Some("text/typescript".to_owned()),
-          None,
-          None,
-          None,
-        );
-        fetcher.get_source_file_async(&module_url, true, false, false)
-      })
-      .then(move |result2| {
-        assert!(result2.is_ok());
-        let r2 = result2.unwrap();
-        let expected2 = b"export const loaded = true;\n";
-        assert_eq!(r2.source_code, expected2);
-        // If get_source_file_async does not call remote, this should be TypeScript
-        // as we modified before! (we do not overwrite .headers.json due to no http fetch)
-        assert_eq!(&(r2.media_type), &msg::MediaType::TypeScript);
-        assert!(fs::read_to_string(&headers_file_name).is_err());
+    // Modify .headers.json
+    let _ = fetcher.save_source_code_headers(
+      &module_url,
+      Some("text/typescript".to_owned()),
+      None,
+      None,
+      None,
+    );
+    let result2 = fetcher
+      .get_source_file_async(&module_url, true, false, false)
+      .await;
+    assert!(result2.is_ok());
+    let r2 = result2.unwrap();
+    let expected2 = b"export const loaded = true;\n";
+    assert_eq!(r2.source_code, expected2);
+    // If get_source_file_async does not call remote, this should be TypeScript
+    // as we modified before! (we do not overwrite .headers.json due to no http
+    // fetch)
+    assert_eq!(&(r2.media_type), &msg::MediaType::TypeScript);
+    assert!(fs::read_to_string(&headers_file_name).is_err());
 
-        // let's create fresh instance of DenoDir (simulating another freshh Deno process)
-        // and don't use cache
-        let fetcher = setup_file_fetcher(temp_dir.path());
-        fetcher.get_source_file_async(&module_url_1, false, false, false)
-      })
-      .map(move |result3| {
-        assert!(result3.is_ok());
-        let r3 = result3.unwrap();
-        let expected3 = b"export const loaded = true;\n";
-        assert_eq!(r3.source_code, expected3);
-        // Now the old .headers.json file should be overwritten back to JavaScript!
-        // (due to http fetch)
-        assert_eq!(&(r3.media_type), &msg::MediaType::JavaScript);
-        assert_eq!(
-          fetcher_1
-            .get_source_code_headers(&module_url_2)
-            .mime_type
-            .unwrap(),
-          "text/javascript"
-        );
-      });
+    // let's create fresh instance of DenoDir (simulating another freshh Deno
+    // process) and don't use cache
+    let fetcher = setup_file_fetcher(temp_dir.path());
+    let result3 = fetcher
+      .get_source_file_async(&module_url_1, false, false, false)
+      .await;
+    assert!(result3.is_ok());
+    let r3 = result3.unwrap();
+    let expected3 = b"export const loaded = true;\n";
+    assert_eq!(r3.source_code, expected3);
+    // Now the old .headers.json file should be overwritten back to JavaScript!
+    // (due to http fetch)
+    assert_eq!(&(r3.media_type), &msg::MediaType::JavaScript);
+    assert_eq!(
+      fetcher_1
+        .get_source_code_headers(&module_url_2)
+        .mime_type
+        .unwrap(),
+      "text/javascript"
+    );
 
-    tokio_util::run(fut);
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_get_source_code_multiple_downloads_of_same_file() {
+  #[tokio::test]
+  async fn test_get_source_code_multiple_downloads_of_same_file() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let specifier = ModuleSpecifier::resolve_url(
@@ -1194,11 +1188,8 @@ mod tests {
     );
 
     // first download
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
-      |r| {
-        assert!(r.is_ok());
-      },
-    ));
+    let r = fetcher.fetch_source_file_async(&specifier, None).await;
+    assert!(r.is_ok());
 
     let result = fs::File::open(&headers_file_name);
     assert!(result.is_ok());
@@ -1207,14 +1198,12 @@ mod tests {
     let headers_file_metadata = headers_file.metadata().unwrap();
     let headers_file_modified = headers_file_metadata.modified().unwrap();
 
-    // download file again, it should use already fetched file even though `use_disk_cache` is set to
-    // false, this can be verified using source header file creation timestamp (should be
-    // the same as after first download)
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
-      |r| {
-        assert!(r.is_ok());
-      },
-    ));
+    // download file again, it should use already fetched file even though
+    // `use_disk_cache` is set to false, this can be verified using source
+    // header file creation timestamp (should be the same as after first
+    // download)
+    let r = fetcher.fetch_source_file_async(&specifier, None).await;
+    assert!(r.is_ok());
 
     let result = fs::File::open(&headers_file_name);
     assert!(result.is_ok());
@@ -1227,8 +1216,8 @@ mod tests {
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_get_source_code_3() {
+  #[tokio::test]
+  async fn test_get_source_code_3() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
 
@@ -1254,39 +1243,37 @@ mod tests {
       redirect_target_filepath.to_str().unwrap().to_string();
 
     // Test basic follow and headers recording
-    let fut = fetcher
+    let result = fetcher
       .get_source_file_async(&redirect_module_url, true, false, false)
-      .map(move |result| {
-        assert!(result.is_ok());
-        let mod_meta = result.unwrap();
-        // File that requires redirection is not downloaded.
-        assert!(fs::read_to_string(&redirect_source_filename).is_err());
-        // ... but its .headers.json is created.
-        let redirect_source_headers =
-          fetcher.get_source_code_headers(&redirect_module_url);
-        assert_eq!(
-          redirect_source_headers.redirect_to.unwrap(),
-          "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js"
-        );
-        // The target of redirection is downloaded instead.
-        assert_eq!(
-          fs::read_to_string(&redirect_target_filename).unwrap(),
-          "export const redirect = 1;\n"
-        );
-        let redirect_target_headers =
-          fetcher.get_source_code_headers(&target_module_url);
-        assert!(redirect_target_headers.redirect_to.is_none());
+      .await;
+    assert!(result.is_ok());
+    let mod_meta = result.unwrap();
+    // File that requires redirection is not downloaded.
+    assert!(fs::read_to_string(&redirect_source_filename).is_err());
+    // ... but its .headers.json is created.
+    let redirect_source_headers =
+      fetcher.get_source_code_headers(&redirect_module_url);
+    assert_eq!(
+      redirect_source_headers.redirect_to.unwrap(),
+      "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js"
+    );
+    // The target of redirection is downloaded instead.
+    assert_eq!(
+      fs::read_to_string(&redirect_target_filename).unwrap(),
+      "export const redirect = 1;\n"
+    );
+    let redirect_target_headers =
+      fetcher.get_source_code_headers(&target_module_url);
+    assert!(redirect_target_headers.redirect_to.is_none());
 
-        // Examine the meta result.
-        assert_eq!(mod_meta.url, target_module_url);
-      });
+    // Examine the meta result.
+    assert_eq!(mod_meta.url, target_module_url);
 
-    tokio_util::run(fut);
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_get_source_code_4() {
+  #[tokio::test]
+  async fn test_get_source_code_4() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let double_redirect_url = Url::parse(
@@ -1317,45 +1304,42 @@ mod tests {
       .join("http/localhost_PORT4545/cli/tests/subdir/redirects/redirect1.js");
 
     // Test double redirects and headers recording
-    let fut = fetcher
+    let result = fetcher
       .get_source_file_async(&double_redirect_url, true, false, false)
-      .map(move |result| {
-        assert!(result.is_ok());
-        let mod_meta = result.unwrap();
-        assert!(fs::read_to_string(&double_redirect_path).is_err());
-        assert!(fs::read_to_string(&redirect_path).is_err());
+      .await;
+    assert!(result.is_ok());
+    let mod_meta = result.unwrap();
+    assert!(fs::read_to_string(&double_redirect_path).is_err());
+    assert!(fs::read_to_string(&redirect_path).is_err());
 
-        let double_redirect_headers =
-          fetcher.get_source_code_headers(&double_redirect_url);
-        assert_eq!(
-          double_redirect_headers.redirect_to.unwrap(),
-          redirect_url.to_string()
-        );
-        let redirect_headers = fetcher.get_source_code_headers(&redirect_url);
-        assert_eq!(
-          redirect_headers.redirect_to.unwrap(),
-          target_url.to_string()
-        );
+    let double_redirect_headers =
+      fetcher.get_source_code_headers(&double_redirect_url);
+    assert_eq!(
+      double_redirect_headers.redirect_to.unwrap(),
+      redirect_url.to_string()
+    );
+    let redirect_headers = fetcher.get_source_code_headers(&redirect_url);
+    assert_eq!(
+      redirect_headers.redirect_to.unwrap(),
+      target_url.to_string()
+    );
 
-        // The target of redirection is downloaded instead.
-        assert_eq!(
-          fs::read_to_string(&target_path).unwrap(),
-          "export const redirect = 1;\n"
-        );
-        let redirect_target_headers =
-          fetcher.get_source_code_headers(&target_url);
-        assert!(redirect_target_headers.redirect_to.is_none());
+    // The target of redirection is downloaded instead.
+    assert_eq!(
+      fs::read_to_string(&target_path).unwrap(),
+      "export const redirect = 1;\n"
+    );
+    let redirect_target_headers = fetcher.get_source_code_headers(&target_url);
+    assert!(redirect_target_headers.redirect_to.is_none());
 
-        // Examine the meta result.
-        assert_eq!(mod_meta.url, target_url);
-      });
+    // Examine the meta result.
+    assert_eq!(mod_meta.url, target_url);
 
-    tokio_util::run(fut);
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_get_source_code_5() {
+  #[tokio::test]
+  async fn test_get_source_code_5() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
 
@@ -1376,42 +1360,39 @@ mod tests {
     let target_path_ = target_path.clone();
 
     // Test that redirect target is not downloaded twice for different redirect source.
-    let fut = fetcher
+    let result = fetcher
       .get_source_file_async(&double_redirect_url, true, false, false)
-      .then(move |result| {
-        assert!(result.is_ok());
-        let result = fs::File::open(&target_path);
-        assert!(result.is_ok());
-        let file = result.unwrap();
-        // save modified timestamp for headers file of redirect target
-        let file_metadata = file.metadata().unwrap();
-        let file_modified = file_metadata.modified().unwrap();
+      .await;
+    assert!(result.is_ok());
+    let result = fs::File::open(&target_path);
+    assert!(result.is_ok());
+    let file = result.unwrap();
+    // save modified timestamp for headers file of redirect target
+    let file_metadata = file.metadata().unwrap();
+    let file_modified = file_metadata.modified().unwrap();
 
-        // When another file is fetched that also point to redirect target, then redirect target
-        // shouldn't be downloaded again. It can be verified using source header file creation
-        // timestamp (should be the same as after first `get_source_file`)
-        fetcher
-          .get_source_file_async(&redirect_url, true, false, false)
-          .map(move |r| (r, file_modified))
-      })
-      .map(move |(result, file_modified)| {
-        assert!(result.is_ok());
-        let result = fs::File::open(&target_path_);
-        assert!(result.is_ok());
-        let file_2 = result.unwrap();
-        // save modified timestamp for headers file
-        let file_metadata_2 = file_2.metadata().unwrap();
-        let file_modified_2 = file_metadata_2.modified().unwrap();
+    // When another file is fetched that also point to redirect target, then
+    // redirect target shouldn't be downloaded again. It can be verified
+    // using source header file creation timestamp (should be the same as
+    // after first `get_source_file`)
+    let result = fetcher
+      .get_source_file_async(&redirect_url, true, false, false)
+      .await;
+    assert!(result.is_ok());
+    let result = fs::File::open(&target_path_);
+    assert!(result.is_ok());
+    let file_2 = result.unwrap();
+    // save modified timestamp for headers file
+    let file_metadata_2 = file_2.metadata().unwrap();
+    let file_modified_2 = file_metadata_2.modified().unwrap();
 
-        assert_eq!(file_modified, file_modified_2);
-      });
+    assert_eq!(file_modified, file_modified_2);
 
-    tokio_util::run(fut);
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_get_source_code_6() {
+  #[tokio::test]
+  async fn test_get_source_code_6() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let double_redirect_url = Url::parse(
@@ -1420,43 +1401,40 @@ mod tests {
     .unwrap();
 
     // Test that redirections can be limited
-    let fut = fetcher
+    let result = fetcher
       .fetch_remote_source_async(&double_redirect_url, false, false, 2)
-      .then(move |result| {
-        assert!(result.is_ok());
-        fetcher.fetch_remote_source_async(&double_redirect_url, false, false, 1)
-      })
-      .map(move |result| {
-        assert!(result.is_err());
-        let err = result.err().unwrap();
-        assert_eq!(err.kind(), ErrorKind::Http);
-      });
+      .await;
+    assert!(result.is_ok());
 
-    tokio_util::run(fut);
+    let result = fetcher
+      .fetch_remote_source_async(&double_redirect_url, false, false, 1)
+      .await;
+    assert!(result.is_err());
+    let err = result.err().unwrap();
+    assert_eq!(err.kind(), ErrorKind::Http);
+
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_get_source_no_remote() {
+  #[tokio::test]
+  async fn test_get_source_no_remote() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
       Url::parse("http://localhost:4545/cli/tests/002_hello.ts").unwrap();
     // Remote modules are not allowed
-    let fut = fetcher
+    let result = fetcher
       .get_source_file_async(&module_url, true, true, false)
-      .map(move |result| {
-        assert!(result.is_err());
-        let err = result.err().unwrap();
-        assert_eq!(err.kind(), ErrorKind::NotFound);
-      });
+      .await;
+    assert!(result.is_err());
+    let err = result.err().unwrap();
+    assert_eq!(err.kind(), ErrorKind::NotFound);
 
-    tokio_util::run(fut);
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_get_source_cached_only() {
+  #[tokio::test]
+  async fn test_get_source_cached_only() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let fetcher_1 = fetcher.clone();
@@ -1465,32 +1443,32 @@ mod tests {
       Url::parse("http://localhost:4545/cli/tests/002_hello.ts").unwrap();
     let module_url_1 = module_url.clone();
     let module_url_2 = module_url.clone();
+
     // file hasn't been cached before
-    let fut = fetcher
+    let result = fetcher
       .get_source_file_async(&module_url, true, false, true)
-      .then(move |result| {
-        assert!(result.is_err());
-        let err = result.err().unwrap();
-        assert_eq!(err.kind(), ErrorKind::PermissionDenied);
+      .await;
+    assert!(result.is_err());
+    let err = result.err().unwrap();
+    assert_eq!(err.kind(), ErrorKind::PermissionDenied);
 
-        // download and cache file
-        fetcher_1.get_source_file_async(&module_url_1, true, false, false)
-      })
-      .then(move |result| {
-        assert!(result.is_ok());
-        // module is already cached, should be ok even with `cached_only`
-        fetcher_2.get_source_file_async(&module_url_2, true, false, true)
-      })
-      .map(move |result| {
-        assert!(result.is_ok());
-      });
+    // download and cache file
+    let result = fetcher_1
+      .get_source_file_async(&module_url_1, true, false, false)
+      .await;
+    assert!(result.is_ok());
 
-    tokio_util::run(fut);
+    // module is already cached, should be ok even with `cached_only`
+    let result = fetcher_2
+      .get_source_file_async(&module_url_2, true, false, true)
+      .await;
+    assert!(result.is_ok());
+
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_fetch_source_async_1() {
+  #[tokio::test]
+  async fn test_fetch_source_async_1() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
@@ -1502,37 +1480,35 @@ mod tests {
         .get_cache_filename_with_extension(&module_url, "headers.json"),
     );
 
-    let fut = fetcher
+    let result = fetcher
       .fetch_remote_source_async(&module_url, false, false, 10)
-      .map(move |result| {
-        assert!(result.is_ok());
-        let r = result.unwrap();
-        assert_eq!(r.source_code, b"export const loaded = true;\n");
-        assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-        // matching ext, no .headers.json file created
-        assert!(fs::read_to_string(&headers_file_name).is_err());
-        // Modify .headers.json, make sure read from local
-        let _ = fetcher.save_source_code_headers(
-          &module_url,
-          Some("text/javascript".to_owned()),
-          None,
-          None,
-          None,
-        );
-        let result2 = fetcher.fetch_cached_remote_source(&module_url);
-        assert!(result2.is_ok());
-        let r2 = result2.unwrap().unwrap();
-        assert_eq!(r2.source_code, b"export const loaded = true;\n");
-        // Not MediaType::TypeScript due to .headers.json modification
-        assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
-      });
+      .await;
+    assert!(result.is_ok());
+    let r = result.unwrap();
+    assert_eq!(r.source_code, b"export const loaded = true;\n");
+    assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
+    // matching ext, no .headers.json file created
+    assert!(fs::read_to_string(&headers_file_name).is_err());
+    // Modify .headers.json, make sure read from local
+    let _ = fetcher.save_source_code_headers(
+      &module_url,
+      Some("text/javascript".to_owned()),
+      None,
+      None,
+      None,
+    );
+    let result2 = fetcher.fetch_cached_remote_source(&module_url);
+    assert!(result2.is_ok());
+    let r2 = result2.unwrap().unwrap();
+    assert_eq!(r2.source_code, b"export const loaded = true;\n");
+    // Not MediaType::TypeScript due to .headers.json modification
+    assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
 
-    tokio_util::run(fut);
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_fetch_source_1() {
+  #[tokio::test]
+  async fn test_fetch_source_1() {
     let http_server_guard = crate::test_util::http_server();
 
     let (_temp_dir, fetcher) = test_setup();
@@ -1545,38 +1521,36 @@ mod tests {
         .get_cache_filename_with_extension(&module_url, "headers.json"),
     );
 
-    let fut = fetcher
+    let result = fetcher
       .fetch_remote_source_async(&module_url, false, false, 10)
-      .map(move |result| {
-        assert!(result.is_ok());
-        let r = result.unwrap();
-        assert_eq!(r.source_code, b"export const loaded = true;\n");
-        assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-        // matching ext, no .headers.json file created
-        assert!(fs::read_to_string(&headers_file_name).is_err());
+      .await;
+    assert!(result.is_ok());
+    let r = result.unwrap();
+    assert_eq!(r.source_code, b"export const loaded = true;\n");
+    assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
+    // matching ext, no .headers.json file created
+    assert!(fs::read_to_string(&headers_file_name).is_err());
 
-        // Modify .headers.json, make sure read from local
-        let _ = fetcher.save_source_code_headers(
-          &module_url,
-          Some("text/javascript".to_owned()),
-          None,
-          None,
-          None,
-        );
-        let result2 = fetcher.fetch_cached_remote_source(&module_url);
-        assert!(result2.is_ok());
-        let r2 = result2.unwrap().unwrap();
-        assert_eq!(r2.source_code, b"export const loaded = true;\n");
-        // Not MediaType::TypeScript due to .headers.json modification
-        assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
-      });
+    // Modify .headers.json, make sure read from local
+    let _ = fetcher.save_source_code_headers(
+      &module_url,
+      Some("text/javascript".to_owned()),
+      None,
+      None,
+      None,
+    );
+    let result2 = fetcher.fetch_cached_remote_source(&module_url);
+    assert!(result2.is_ok());
+    let r2 = result2.unwrap().unwrap();
+    assert_eq!(r2.source_code, b"export const loaded = true;\n");
+    // Not MediaType::TypeScript due to .headers.json modification
+    assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
 
-    tokio_util::run(fut);
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_fetch_source_2() {
+  #[tokio::test]
+  async fn test_fetch_source_2() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let fetcher_1 = fetcher.clone();
@@ -1593,109 +1567,95 @@ mod tests {
         .unwrap();
     let module_url_3_ = module_url_3.clone();
 
-    let fut = fetcher
+    let result = fetcher
       .fetch_remote_source_async(&module_url, false, false, 10)
-      .then(move |result| {
-        assert!(result.is_ok());
-        let r = result.unwrap();
-        assert_eq!(r.source_code, b"export const loaded = true;\n");
-        assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-        // no ext, should create .headers.json file
-        assert_eq!(
-          fetcher_1
-            .get_source_code_headers(&module_url)
-            .mime_type
-            .unwrap(),
-          "text/typescript"
-        );
-        fetcher_1.fetch_remote_source_async(&module_url_2, false, false, 10)
-      })
-      .then(move |result| {
-        assert!(result.is_ok());
-        let r2 = result.unwrap();
-        assert_eq!(r2.source_code, b"export const loaded = true;\n");
-        assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
-        // mismatch ext, should create .headers.json file
-        assert_eq!(
-          fetcher_2
-            .get_source_code_headers(&module_url_2_)
-            .mime_type
-            .unwrap(),
-          "text/javascript"
-        );
-        // test unknown extension
-        fetcher_2.fetch_remote_source_async(&module_url_3, false, false, 10)
-      })
-      .map(move |result| {
-        assert!(result.is_ok());
-        let r3 = result.unwrap();
-        assert_eq!(r3.source_code, b"export const loaded = true;\n");
-        assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
-        // unknown ext, should create .headers.json file
-        assert_eq!(
-          fetcher_3
-            .get_source_code_headers(&module_url_3_)
-            .mime_type
-            .unwrap(),
-          "text/typescript"
-        );
-      });
+      .await;
+    assert!(result.is_ok());
+    let r = result.unwrap();
+    assert_eq!(r.source_code, b"export const loaded = true;\n");
+    assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
+    // no ext, should create .headers.json file
+    assert_eq!(
+      fetcher_1
+        .get_source_code_headers(&module_url)
+        .mime_type
+        .unwrap(),
+      "text/typescript"
+    );
+    let result = fetcher_1
+      .fetch_remote_source_async(&module_url_2, false, false, 10)
+      .await;
+    assert!(result.is_ok());
+    let r2 = result.unwrap();
+    assert_eq!(r2.source_code, b"export const loaded = true;\n");
+    assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
+    // mismatch ext, should create .headers.json file
+    assert_eq!(
+      fetcher_2
+        .get_source_code_headers(&module_url_2_)
+        .mime_type
+        .unwrap(),
+      "text/javascript"
+    );
+    // test unknown extension
+    let result = fetcher_2
+      .fetch_remote_source_async(&module_url_3, false, false, 10)
+      .await;
+    assert!(result.is_ok());
+    let r3 = result.unwrap();
+    assert_eq!(r3.source_code, b"export const loaded = true;\n");
+    assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
+    // unknown ext, should create .headers.json file
+    assert_eq!(
+      fetcher_3
+        .get_source_code_headers(&module_url_3_)
+        .mime_type
+        .unwrap(),
+      "text/typescript"
+    );
 
-    tokio_util::run(fut);
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_fetch_source_file() {
+  #[tokio::test]
+  async fn test_fetch_source_file() {
     let (_temp_dir, fetcher) = test_setup();
 
     // Test failure case.
     let specifier =
       ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
-      |r| {
-        assert!(r.is_err());
-      },
-    ));
+    let r = fetcher.fetch_source_file_async(&specifier, None).await;
+    assert!(r.is_err());
 
     let p =
       std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("js/main.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
-      |r| {
-        assert!(r.is_ok());
-      },
-    ));
+    let r = fetcher.fetch_source_file_async(&specifier, None).await;
+    assert!(r.is_ok());
   }
 
-  #[test]
-  fn test_fetch_source_file_1() {
+  #[tokio::test]
+  async fn test_fetch_source_file_1() {
     /*recompile ts file*/
     let (_temp_dir, fetcher) = test_setup();
 
     // Test failure case.
     let specifier =
       ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
-      |r| {
-        assert!(r.is_err());
-      },
-    ));
+    let r = fetcher.fetch_source_file_async(&specifier, None).await;
+    assert!(r.is_err());
 
     let p =
       std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("js/main.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
-      |r| {
-        assert!(r.is_ok());
-      },
-    ));
+    let r = fetcher.fetch_source_file_async(&specifier, None).await;
+    assert!(r.is_ok());
   }
 
-  #[test]
-  fn test_fetch_source_file_2() {
+  #[tokio::test]
+  async fn test_fetch_source_file_2() {
     /*recompile ts file*/
     let (_temp_dir, fetcher) = test_setup();
 
@@ -1703,11 +1663,8 @@ mod tests {
       .join("tests/001_hello.js");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
-      |r| {
-        assert!(r.is_ok());
-      },
-    ));
+    let r = fetcher.fetch_source_file_async(&specifier, None).await;
+    assert!(r.is_ok());
   }
 
   #[test]
@@ -1947,52 +1904,49 @@ mod tests {
     assert_eq!(filter_shebang(code), b"\nconsole.log('hello');\n");
   }
 
-  #[test]
-  fn test_fetch_with_etag() {
+  #[tokio::test]
+  async fn test_fetch_with_etag() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
       Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
 
-    let fut = async move {
-      let source = fetcher
-        .fetch_remote_source_async(&module_url, false, false, 1)
-        .await;
-      assert!(source.is_ok());
-      let source = source.unwrap();
-      assert_eq!(source.source_code, b"console.log('etag')");
-      assert_eq!(&(source.media_type), &msg::MediaType::TypeScript);
+    let source = fetcher
+      .fetch_remote_source_async(&module_url, false, false, 1)
+      .await;
+    assert!(source.is_ok());
+    let source = source.unwrap();
+    assert_eq!(source.source_code, b"console.log('etag')");
+    assert_eq!(&(source.media_type), &msg::MediaType::TypeScript);
 
-      let headers = fetcher.get_source_code_headers(&module_url);
-      assert_eq!(headers.etag, Some("33a64df551425fcc55e".to_string()));
+    let headers = fetcher.get_source_code_headers(&module_url);
+    assert_eq!(headers.etag, Some("33a64df551425fcc55e".to_string()));
 
-      let header_path = fetcher.deps_cache.location.join(
-        fetcher
-          .deps_cache
-          .get_cache_filename_with_extension(&module_url, "headers.json"),
-      );
-
-      let modified1 = header_path.metadata().unwrap().modified().unwrap();
-
-      // Forcibly change the contents of the cache file and request
-      // it again with the cache parameters turned off.
-      // If the fetched content changes, the cached content is used.
+    let header_path = fetcher.deps_cache.location.join(
       fetcher
-        .save_source_code(&module_url, "changed content")
-        .unwrap();
-      let cached_source = fetcher
-        .fetch_remote_source_async(&module_url, false, false, 1)
-        .await
-        .unwrap();
-      assert_eq!(cached_source.source_code, b"changed content");
+        .deps_cache
+        .get_cache_filename_with_extension(&module_url, "headers.json"),
+    );
 
-      let modified2 = header_path.metadata().unwrap().modified().unwrap();
+    let modified1 = header_path.metadata().unwrap().modified().unwrap();
 
-      // Assert that the file has not been modified
-      assert_eq!(modified1, modified2);
-    };
+    // Forcibly change the contents of the cache file and request
+    // it again with the cache parameters turned off.
+    // If the fetched content changes, the cached content is used.
+    fetcher
+      .save_source_code(&module_url, "changed content")
+      .unwrap();
+    let cached_source = fetcher
+      .fetch_remote_source_async(&module_url, false, false, 1)
+      .await
+      .unwrap();
+    assert_eq!(cached_source.source_code, b"changed content");
 
-    tokio_util::run(fut);
+    let modified2 = header_path.metadata().unwrap().modified().unwrap();
+
+    // Assert that the file has not been modified
+    assert_eq!(modified1, modified2);
+
     drop(http_server_guard);
   }
 
@@ -2075,56 +2029,42 @@ mod tests {
     );
   }
 
-  #[test]
-  fn test_fetch_with_types_header() {
+  #[tokio::test]
+  async fn test_fetch_with_types_header() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
       Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.js").unwrap();
-
-    let fut = async move {
-      let source = fetcher
-        .fetch_remote_source_async(&module_url, false, false, 1)
-        .await;
-      assert!(source.is_ok());
-      let source = source.unwrap();
-      assert_eq!(source.source_code, b"export const foo = 'foo';");
-      assert_eq!(&(source.media_type), &msg::MediaType::JavaScript);
-      assert_eq!(
-        source.types_url,
-        Some(
-          Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.d.ts").unwrap()
-        )
-      );
-    };
-
-    tokio_util::run(fut);
+    let source = fetcher
+      .fetch_remote_source_async(&module_url, false, false, 1)
+      .await;
+    assert!(source.is_ok());
+    let source = source.unwrap();
+    assert_eq!(source.source_code, b"export const foo = 'foo';");
+    assert_eq!(&(source.media_type), &msg::MediaType::JavaScript);
+    assert_eq!(
+      source.types_url,
+      Some(Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.d.ts").unwrap())
+    );
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_fetch_with_types_reference() {
+  #[tokio::test]
+  async fn test_fetch_with_types_reference() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
       Url::parse("http://127.0.0.1:4545/referenceTypes.js").unwrap();
-
-    let fut = async move {
-      let source = fetcher
-        .fetch_remote_source_async(&module_url, false, false, 1)
-        .await;
-      assert!(source.is_ok());
-      let source = source.unwrap();
-      assert_eq!(&(source.media_type), &msg::MediaType::JavaScript);
-      assert_eq!(
-        source.types_url,
-        Some(
-          Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.d.ts").unwrap()
-        )
-      );
-    };
-
-    tokio_util::run(fut);
+    let source = fetcher
+      .fetch_remote_source_async(&module_url, false, false, 1)
+      .await;
+    assert!(source.is_ok());
+    let source = source.unwrap();
+    assert_eq!(&(source.media_type), &msg::MediaType::JavaScript);
+    assert_eq!(
+      source.types_url,
+      Some(Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.d.ts").unwrap())
+    );
     drop(http_server_guard);
   }
 }
