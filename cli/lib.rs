@@ -424,12 +424,16 @@ async fn fmt_command(files: Option<Vec<String>>, check: bool) {
 }
 
 async fn test_command(
+  flags: DenoFlags,
   include: Option<Vec<String>>,
-  exclude: Option<Vec<String>>,
   fail_fast: bool,
   quiet: bool,
 ) {
-  test_runner::run_test_modules(include, exclude, fail_fast, quiet);
+  if let Some(test_file_path) = test_runner::run_test_modules(include, fail_fast, quiet) {
+    let mut flags = flags.clone();
+    flags.argv.push(test_file_path.to_string_lossy().to_string());
+    run_script(flags).await;
+  }
 }
 
 #[tokio::main]
@@ -469,9 +473,8 @@ pub async fn main() {
     DenoSubcommand::Test {
       quiet,
       fail_fast,
-      exclude,
       include,
-    } => test_command(include, exclude, fail_fast, quiet).await,
+    } => test_command(flags, include, fail_fast, quiet).await,
     DenoSubcommand::Repl => run_repl(flags).await,
     DenoSubcommand::Run => run_script(flags).await,
     DenoSubcommand::Types => types_command(),

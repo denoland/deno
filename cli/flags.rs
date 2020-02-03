@@ -45,7 +45,6 @@ pub enum DenoSubcommand {
   Test {
     fail_fast: bool,
     quiet: bool,
-    exclude: Option<Vec<String>>,
     include: Option<Vec<String>>,
   },
   Types,
@@ -480,17 +479,6 @@ fn test_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
     flags.argv.push("--failfast".to_string());
   }
 
-  let exclude = if matches.is_present("exclude") {
-    let exclude: Vec<String> = matches
-      .values_of("exclude")
-      .unwrap()
-      .map(String::from)
-      .collect();
-    Some(exclude)
-  } else {
-    None
-  };
-
   let include = if matches.is_present("files") {
     let files: Vec<String> = matches
       .values_of("files")
@@ -506,7 +494,6 @@ fn test_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
     quiet,
     fail_fast: failfast,
     include,
-    exclude,
   };
 }
 
@@ -820,13 +807,6 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .long("quiet")
         .help("Don't show output from test cases")
         .takes_value(false),
-    )
-    .arg(
-      Arg::with_name("exclude")
-        .short("e")
-        .long("exclude")
-        .help("List of file names to exclude from run")
-        .takes_value(true),
     )
     .arg(
       Arg::with_name("files")
@@ -1964,32 +1944,6 @@ mod tests {
         argv: svec!["deno", "script.ts"],
         lock_write: true,
         lock: Some("lock.json".to_string()),
-        ..DenoFlags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn test_with_exclude() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "test",
-      "--exclude",
-      "some_dir/",
-      "dir1/",
-      "dir2/"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      DenoFlags {
-        subcommand: DenoSubcommand::Test {
-          fail_fast: false,
-          quiet: false,
-          exclude: Some(svec!["some_dir/"]),
-          include: Some(svec!["dir1/", "dir2/"]),
-        },
-        argv: svec!["deno"],
-        allow_read: true,
         ..DenoFlags::default()
       }
     );
