@@ -1,26 +1,50 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { ASSETS, Host } from "./compiler_host.ts";
-import { core } from "./core.ts";
-import * as dispatch from "./dispatch.ts";
+import { ASSETS, CompilerHostTarget, Host } from "./compiler_host.ts";
 import { getAsset } from "./compiler_util.ts";
 
-// This registers ops that are available during the snapshotting process.
-const ops = core.ops();
-for (const [name, opId] of Object.entries(ops)) {
-  const opName = `OP_${name.toUpperCase()}`;
-  // TODO This type casting is dangerous, and should be improved when the same
-  // code in `os.ts` is done.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (dispatch as any)[opName] = opId;
-}
-
-const host = new Host({ writeFile(): void {} });
+// NOTE: target doesn't really matter here,
+// this is in fact a mock host created just to
+// load all type definitions and snapshot them.
+const host = new Host({
+  target: CompilerHostTarget.Main,
+  writeFile(): void {}
+});
 const options = host.getCompilationSettings();
 
-/** Used to generate the foundational AST for all other compilations, so it can
- * be cached as part of the snapshot and available to speed up startup */
-export const oldProgram = ts.createProgram({
+// This is a hacky way of adding our libs to the libs available in TypeScript()
+// as these are internal APIs of TypeScript which maintain valid libs
+/* eslint-disable @typescript-eslint/no-explicit-any */
+(ts as any).libs.push(
+  "deno_ns",
+  "deno_window",
+  "deno_worker",
+  "deno_shared_globals"
+);
+(ts as any).libMap.set("deno_ns", "lib.deno.ns.d.ts");
+(ts as any).libMap.set("deno_window", "lib.deno.window.d.ts");
+(ts as any).libMap.set("deno_worker", "lib.deno.worker.d.ts");
+(ts as any).libMap.set("deno_shared_globals", "lib.deno.shared_globals.d.ts");
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+// this pre-populates the cache at snapshot time of our library files, so they
+// are available in the future when needed.
+host.getSourceFile(`${ASSETS}/lib.deno.ns.d.ts`, ts.ScriptTarget.ESNext);
+host.getSourceFile(`${ASSETS}/lib.deno.window.d.ts`, ts.ScriptTarget.ESNext);
+host.getSourceFile(`${ASSETS}/lib.deno.worker.d.ts`, ts.ScriptTarget.ESNext);
+host.getSourceFile(
+  `${ASSETS}/lib.deno.shared_globals.d.ts`,
+  ts.ScriptTarget.ESNext
+);
+
+/**
+ * This function spins up TS compiler and loads all available libraries
+ * into memory (including ones specified above).
+ *
+ * Used to generate the foundational AST for all other compilations, so it can
+ * be cached as part of the snapshot and available to speed up startup.
+ */
+export const TS_SNAPSHOT_PROGRAM = ts.createProgram({
   rootNames: [`${ASSETS}/bootstrap.ts`],
   options,
   host
@@ -30,5 +54,5 @@ export const oldProgram = ts.createProgram({
  *
  * We read all static assets during the snapshotting process, which is
  * why this is located in compiler_bootstrap.
- **/
-export const bundleLoader = getAsset("bundle_loader.js");
+ */
+export const BUNDLE_LOADER = getAsset("bundle_loader.js");

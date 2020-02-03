@@ -29,12 +29,137 @@ fn fetch_test() {
   drop(g);
 }
 
-// TODO(#2933): Rewrite this test in rust.
 #[test]
 fn fmt_test() {
+  use tempfile::TempDir;
+
+  let t = TempDir::new().expect("tempdir fail");
+  let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
+  let badly_formatted_original =
+    util::root_path().join("cli/tests/badly_formatted.js");
+  let badly_formatted = t.path().join("badly_formatted.js");
+  let badly_formatted_str = badly_formatted.to_str().unwrap();
+  std::fs::copy(&badly_formatted_original, &badly_formatted)
+    .expect("Failed to copy file");
+
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg("--check")
+    .arg(badly_formatted_str)
+    .spawn()
+    .expect("Failed to spawn script")
+    .wait()
+    .expect("Failed to wait for child process");
+
+  assert_eq!(Some(1), status.code());
+
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg(badly_formatted_str)
+    .spawn()
+    .expect("Failed to spawn script")
+    .wait()
+    .expect("Failed to wait for child process");
+
+  assert_eq!(Some(0), status.code());
+  let expected = std::fs::read_to_string(fixed).unwrap();
+  let actual = std::fs::read_to_string(badly_formatted).unwrap();
+  assert_eq!(expected, actual);
+}
+
+#[test]
+fn installer_test_local_module_run() {
+  use deno::flags::DenoFlags;
+  use deno::installer;
+  use std::env;
+  use std::path::PathBuf;
+  use std::process::Command;
+  use tempfile::TempDir;
+
+  let temp_dir = TempDir::new().expect("tempdir fail");
+  let local_module = env::current_dir().unwrap().join("tests/echo.ts");
+  let local_module_str = local_module.to_string_lossy();
+  installer::install(
+    DenoFlags::default(),
+    Some(temp_dir.path().to_string_lossy().to_string()),
+    "echo_test",
+    &local_module_str,
+    vec!["hello".to_string()],
+  )
+  .expect("Failed to install");
+  let mut file_path = temp_dir.path().join("echo_test");
+  if cfg!(windows) {
+    file_path = file_path.with_extension(".cmd");
+  }
+  assert!(file_path.exists());
+  let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
+  let paths_var = env::var_os(path_var_name).expect("PATH not set");
+  let mut paths: Vec<PathBuf> = env::split_paths(&paths_var).collect();
+  paths.push(temp_dir.path().to_owned());
+  paths.push(util::target_dir());
+  let path_var_value = env::join_paths(paths).expect("Can't create PATH");
+  // NOTE: using file_path here instead of exec_name, because tests
+  // shouldn't mess with user's PATH env variable
+  let output = Command::new(file_path)
+    .current_dir(temp_dir.path())
+    .arg("foo")
+    .env(path_var_name, path_var_value)
+    .output()
+    .expect("failed to spawn script");
+
+  assert_eq!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "hello, foo"
+  );
+  drop(temp_dir);
+}
+
+#[test]
+fn installer_test_remote_module_run() {
+  use deno::flags::DenoFlags;
+  use deno::installer;
+  use std::env;
+  use std::path::PathBuf;
+  use std::process::Command;
+  use tempfile::TempDir;
+
   let g = util::http_server();
-  util::run_python_script("tools/fmt_test.py");
-  drop(g);
+  let temp_dir = TempDir::new().expect("tempdir fail");
+  installer::install(
+    DenoFlags::default(),
+    Some(temp_dir.path().to_string_lossy().to_string()),
+    "echo_test",
+    "http://localhost:4545/tests/echo.ts",
+    vec!["hello".to_string()],
+  )
+  .expect("Failed to install");
+  let mut file_path = temp_dir.path().join("echo_test");
+  if cfg!(windows) {
+    file_path = file_path.with_extension(".cmd");
+  }
+  assert!(file_path.exists());
+  let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
+  let paths_var = env::var_os(path_var_name).expect("PATH not set");
+  let mut paths: Vec<PathBuf> = env::split_paths(&paths_var).collect();
+  paths.push(temp_dir.path().to_owned());
+  paths.push(util::target_dir());
+  let path_var_value = env::join_paths(paths).expect("Can't create PATH");
+  // NOTE: using file_path here instead of exec_name, because tests
+  // shouldn't mess with user's PATH env variable
+  let output = Command::new(file_path)
+    .current_dir(temp_dir.path())
+    .arg("foo")
+    .env(path_var_name, path_var_value)
+    .output()
+    .expect("failed to spawn script");
+  assert_eq!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "hello, foo"
+  );
+  drop(temp_dir);
+  drop(g)
 }
 
 #[test]
@@ -288,11 +413,6 @@ itest!(_036_import_map_fetch {
   output: "036_import_map_fetch.out",
 });
 
-itest!(_037_current_thread {
-  args: "run --current-thread --reload 034_onload/main.ts",
-  output: "034_onload.out",
-});
-
 itest!(_038_checkjs {
   // checking if JS file is run through TS compiler
   args: "run --reload --config 038_checkjs.tsconfig.json 038_checkjs.js",
@@ -383,6 +503,19 @@ itest!(_052_no_remote_flag {
   exit_code: 1,
   check_stderr: true,
   http_server: true,
+});
+
+itest!(_054_info_local_imports {
+  args: "info 005_more_imports.ts",
+  output: "054_info_local_imports.out",
+  exit_code: 0,
+});
+
+itest!(lock_write_fetch {
+  args:
+    "run --allow-read --allow-write --allow-env --allow-run lock_write_fetch.ts",
+  output: "lock_write_fetch.ts.out",
+  exit_code: 0,
 });
 
 itest!(lock_check_ok {
@@ -609,6 +742,17 @@ itest!(type_definitions {
   output: "type_definitions.ts.out",
 });
 
+itest!(type_directives_01 {
+  args: "run --reload -L debug type_directives_01.ts",
+  output: "type_directives_01.ts.out",
+  http_server: true,
+});
+
+itest!(type_directives_02 {
+  args: "run --reload -L debug type_directives_02.ts",
+  output: "type_directives_02.ts.out",
+});
+
 itest!(types {
   args: "types",
   output: "types.out",
@@ -625,12 +769,19 @@ itest!(unbuffered_stdout {
   output: "unbuffered_stdout.ts.out",
 });
 
-itest!(v8_flags {
+// Cannot write the expression to evaluate as "console.log(typeof gc)"
+// because itest! splits args on whitespace.
+itest!(eval_v8_flags {
+  args: "eval --v8-flags=--expose-gc console.log(typeof(gc))",
+  output: "v8_flags.js.out",
+});
+
+itest!(run_v8_flags {
   args: "run --v8-flags=--expose-gc v8_flags.js",
   output: "v8_flags.js.out",
 });
 
-itest!(v8_help {
+itest!(run_v8_help {
   args: "run --v8-flags=--help",
   output: "v8_help.out",
 });

@@ -29,10 +29,6 @@ exec_time_benchmarks = [
     ("workers_round_robin", ["tests/workers_round_robin_bench.ts"]),
     ("text_decoder", ["cli/tests/text_decoder_perf.js"]),
     ("text_encoder", ["cli/tests/text_encoder_perf.js"]),
-    ("compile_local_prettier", ["fetch", "--reload", "std/prettier/main.ts"]),
-    ("compile_remote_prettier",
-     ["fetch", "--reload",
-      "https://deno.land/x/std@v0.29.0/prettier/main.ts"]),
 ]
 
 

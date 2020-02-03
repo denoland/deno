@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::compilers::TargetLib;
 use crate::deno_error::permission_denied;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::global_timer::GlobalTimer;
@@ -15,8 +16,8 @@ use deno_core::ErrBox;
 use deno_core::Loader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
-use deno_core::PinnedBuf;
 use deno_core::ResourceTable;
+use deno_core::ZeroCopyBuf;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
@@ -59,6 +60,7 @@ pub struct State {
   pub start_time: Instant,
   pub seeded_rng: Option<Mutex<StdRng>>,
   pub resource_table: Mutex<ResourceTable>,
+  pub target_lib: TargetLib,
 }
 
 impl Clone for ThreadSafeState {
@@ -83,13 +85,13 @@ impl ThreadSafeState {
   pub fn core_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp
+  ) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp
   where
-    D: Fn(&[u8], Option<PinnedBuf>) -> CoreOp,
+    D: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp,
   {
     let state = self.clone();
 
-    move |control: &[u8], zero_copy: Option<PinnedBuf>| -> CoreOp {
+    move |control: &[u8], zero_copy: Option<ZeroCopyBuf>| -> CoreOp {
       let bytes_sent_control = control.len();
       let bytes_sent_zero_copy =
         zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
@@ -126,13 +128,13 @@ impl ThreadSafeState {
   pub fn stateful_minimal_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(i32, Option<PinnedBuf>) -> Pin<Box<MinimalOp>>
+  ) -> impl Fn(i32, Option<ZeroCopyBuf>) -> Pin<Box<MinimalOp>>
   where
-    D: Fn(&ThreadSafeState, i32, Option<PinnedBuf>) -> Pin<Box<MinimalOp>>,
+    D: Fn(&ThreadSafeState, i32, Option<ZeroCopyBuf>) -> Pin<Box<MinimalOp>>,
   {
     let state = self.clone();
 
-    move |rid: i32, zero_copy: Option<PinnedBuf>| -> Pin<Box<MinimalOp>> {
+    move |rid: i32, zero_copy: Option<ZeroCopyBuf>| -> Pin<Box<MinimalOp>> {
       dispatcher(&state, rid, zero_copy)
     }
   }
@@ -145,15 +147,19 @@ impl ThreadSafeState {
   pub fn stateful_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(Value, Option<PinnedBuf>) -> Result<JsonOp, ErrBox>
+  ) -> impl Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, ErrBox>
   where
-    D: Fn(&ThreadSafeState, Value, Option<PinnedBuf>) -> Result<JsonOp, ErrBox>,
+    D: Fn(
+      &ThreadSafeState,
+      Value,
+      Option<ZeroCopyBuf>,
+    ) -> Result<JsonOp, ErrBox>,
   {
     let state = self.clone();
 
-    move |args: Value, zero_copy: Option<PinnedBuf>| -> Result<JsonOp, ErrBox> {
-      dispatcher(&state, args, zero_copy)
-    }
+    move |args: Value,
+          zero_copy: Option<ZeroCopyBuf>|
+          -> Result<JsonOp, ErrBox> { dispatcher(&state, args, zero_copy) }
   }
 }
 
@@ -163,7 +169,6 @@ impl Loader for ThreadSafeState {
     specifier: &str,
     referrer: &str,
     is_main: bool,
-    is_dyn_import: bool,
   ) -> Result<ModuleSpecifier, ErrBox> {
     if !is_main {
       if let Some(import_map) = &self.import_map {
@@ -176,10 +181,6 @@ impl Loader for ThreadSafeState {
     let module_specifier =
       ModuleSpecifier::resolve_import(specifier, referrer)?;
 
-    if is_dyn_import {
-      self.check_dyn_import(&module_specifier)?;
-    }
-
     Ok(module_specifier)
   }
 
@@ -188,12 +189,20 @@ impl Loader for ThreadSafeState {
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
+    is_dyn_import: bool,
   ) -> Pin<Box<deno_core::SourceCodeInfoFuture>> {
+    if is_dyn_import {
+      if let Err(e) = self.check_dyn_import(&module_specifier) {
+        return async move { Err(e) }.boxed();
+      }
+    }
+
+    // TODO(bartlomieju): incrementing resolve_count here has no sense...
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
     let module_url_specified = module_specifier.to_string();
     let fut = self
       .global_state
-      .fetch_compiled_module(module_specifier, maybe_referrer)
+      .fetch_compiled_module(module_specifier, maybe_referrer, self.target_lib)
       .map_ok(|compiled_module| deno_core::SourceCodeInfo {
         // Real module name, might be different from initial specifier
         // due to redirections.
@@ -221,9 +230,9 @@ impl ThreadSafeState {
     (internal_channels, external_channels)
   }
 
+  /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new(
     global_state: ThreadSafeGlobalState,
-    // If Some(perm), use perm. Else copy from global_state.
     shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
     main_module: Option<ModuleSpecifier>,
     internal_channels: WorkerChannels,
@@ -260,6 +269,46 @@ impl ThreadSafeState {
       seeded_rng,
 
       resource_table: Mutex::new(ResourceTable::default()),
+      target_lib: TargetLib::Main,
+    };
+
+    Ok(ThreadSafeState(Arc::new(state)))
+  }
+
+  /// If `shared_permission` is None then permissions from globa state are used.
+  pub fn new_for_worker(
+    global_state: ThreadSafeGlobalState,
+    shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
+    main_module: Option<ModuleSpecifier>,
+    internal_channels: WorkerChannels,
+  ) -> Result<Self, ErrBox> {
+    let seeded_rng = match global_state.flags.seed {
+      Some(seed) => Some(Mutex::new(StdRng::seed_from_u64(seed))),
+      None => None,
+    };
+
+    let permissions = if let Some(perm) = shared_permissions {
+      perm
+    } else {
+      Arc::new(Mutex::new(global_state.permissions.clone()))
+    };
+
+    let state = State {
+      global_state,
+      main_module,
+      permissions,
+      import_map: None,
+      worker_channels: internal_channels,
+      metrics: Metrics::default(),
+      global_timer: Mutex::new(GlobalTimer::new()),
+      workers: Mutex::new(HashMap::new()),
+      loading_workers: Mutex::new(HashMap::new()),
+      next_worker_id: AtomicUsize::new(0),
+      start_time: Instant::now(),
+      seeded_rng,
+
+      resource_table: Mutex::new(ResourceTable::default()),
+      target_lib: TargetLib::Worker,
     };
 
     Ok(ThreadSafeState(Arc::new(state)))

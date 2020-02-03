@@ -6,6 +6,24 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.31.0 / 2020.01.24
+
+- BREAKING CHANGE: remove support for blob: URL in Worker (#3722)
+- BREAKING CHANGE: remove Deno namespace support and noDenoNamespace option in
+  Worker constructor (#3722)
+- BREAKING CHANGE: rename dial to connect and dialTLS to connectTLS (#3710)
+- feat: Add signal handlers (#3757)
+- feat: Implemented alternative open mode in files (#3119)
+- feat: Use globalThis to reference global scope (#3719)
+- feat: add AsyncUnref ops (#3721)
+- feat: stabilize net Addr (#3709)
+- fix: correct yaml's sortKeys type (#3708)
+- refactor: Improve path handling in permission checks (#3714)
+- refactor: Improve web workers (#3722, #3732, #3730, #3735)
+- refactor: Reduce number of ErrorKind variants (#3662)
+- refactor: Remove Isolate.shared_response_buf optimization (#3759)
+- upgrade: rusty_v8 (#3764, #3769, #3741)
+
 ### v0.30.0 / 2020.01.17
 
 - BREAKING CHANGE Revert "feat(flags): script arguments come after '--'" (#3681)

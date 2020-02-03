@@ -98,7 +98,7 @@ struct AcceptArgs {
 fn op_accept(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: AcceptArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -143,7 +143,7 @@ struct ConnectArgs {
 fn op_connect(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ConnectArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp"); // TODO Support others.
@@ -185,7 +185,7 @@ struct ShutdownArgs {
 fn op_shutdown(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ShutdownArgs = serde_json::from_value(args)?;
 
@@ -277,7 +277,7 @@ impl TcpListenerResource {
 fn op_listen(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ListenArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp");

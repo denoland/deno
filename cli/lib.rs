@@ -28,12 +28,14 @@ pub mod diagnostics;
 mod disk_cache;
 mod file_fetcher;
 pub mod flags;
+mod fmt;
 pub mod fmt_errors;
 mod fs;
 mod global_state;
 mod global_timer;
 mod http_util;
 mod import_map;
+pub mod installer;
 mod js;
 mod lockfile;
 mod metrics;
@@ -44,7 +46,7 @@ mod progress;
 mod repl;
 pub mod resolve_addr;
 mod shell;
-mod signal;
+pub mod signal;
 pub mod source_maps;
 mod startup_data;
 pub mod state;
@@ -54,6 +56,7 @@ pub mod version;
 mod web_worker;
 pub mod worker;
 
+use crate::compilers::TargetLib;
 use crate::deno_error::js_check;
 use crate::deno_error::{print_err_and_exit, print_msg_and_exit};
 use crate::global_state::ThreadSafeGlobalState;
@@ -146,7 +149,12 @@ fn create_worker_and_state(
 }
 
 fn types_command() {
-  println!("{}", crate::js::DENO_RUNTIME);
+  println!(
+    "{}\n{}\n{}",
+    crate::js::DENO_NS_LIB,
+    crate::js::SHARED_GLOBALS_LIB,
+    crate::js::WINDOW_LIB
+  );
 }
 
 fn print_cache_info(worker: MainWorker) {
@@ -198,14 +206,13 @@ async fn print_file_info(
 
   let maybe_compiled = global_state_
     .clone()
-    .fetch_compiled_module(&module_specifier, None)
+    .fetch_compiled_module(&module_specifier, None, TargetLib::Main)
     .await;
   if let Err(e) = maybe_compiled {
     debug!("compiler error exiting!");
     eprintln!("\n{}", e.to_string());
     std::process::exit(1);
   }
-  let compiled = maybe_compiled.unwrap();
   if out.media_type == msg::MediaType::TypeScript
     || (out.media_type == msg::MediaType::JavaScript
       && global_state_.ts_compiler.compile_js)
@@ -235,7 +242,7 @@ async fn print_file_info(
   }
 
   let isolate = worker.isolate.try_lock().unwrap();
-  if let Some(deps) = isolate.modules.deps(&compiled.name) {
+  if let Some(deps) = isolate.modules.deps(&module_specifier) {
     println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
     if let Some(ref depsdeps) = deps.deps {
       for d in depsdeps {
@@ -250,7 +257,7 @@ async fn print_file_info(
   }
 }
 
-fn info_command(flags: DenoFlags) {
+async fn info_command(flags: DenoFlags) {
   let argv_len = flags.argv.len();
   let (mut worker, state) = create_worker_and_state(flags);
 
@@ -265,20 +272,37 @@ fn info_command(flags: DenoFlags) {
   js_check(worker.execute("bootstrapMainRuntime()"));
   debug!("main_module {}", main_module);
 
-  let main_future = async move {
-    let main_result = worker.execute_mod_async(&main_module, None, true).await;
-    if let Err(e) = main_result {
-      print_err_and_exit(e);
-    }
-    print_file_info(worker.clone(), main_module.clone()).await;
-    let result = worker.await;
-    js_check(result);
-  };
-
-  tokio_util::run(main_future);
+  let main_result = worker.execute_mod_async(&main_module, None, true).await;
+  if let Err(e) = main_result {
+    print_err_and_exit(e);
+  }
+  print_file_info(worker.clone(), main_module.clone()).await;
+  let result = worker.await;
+  js_check(result);
 }
 
-fn fetch_command(flags: DenoFlags) {
+async fn install_command(
+  flags: DenoFlags,
+  dir: Option<String>,
+  exe_name: String,
+  module_url: String,
+  args: Vec<String>,
+) {
+  // Firstly fetch and compile module, this
+  // ensures the module exists.
+  let mut fetch_flags = flags.clone();
+  fetch_flags.argv.push(module_url.to_string());
+  fetch_flags.reload = true;
+  fetch_command(fetch_flags).await;
+
+  let install_result =
+    installer::install(flags, dir, &exe_name, &module_url, args);
+  if let Err(e) = install_result {
+    print_msg_and_exit(&e.to_string());
+  }
+}
+
+async fn fetch_command(flags: DenoFlags) {
   let (mut worker, state) = create_worker_and_state(flags);
 
   let main_module = state.main_module.as_ref().unwrap().clone();
@@ -287,15 +311,22 @@ fn fetch_command(flags: DenoFlags) {
   js_check(worker.execute("bootstrapMainRuntime()"));
   debug!("main_module {}", main_module);
 
-  let main_future = async move {
-    let result = worker.execute_mod_async(&main_module, None, true).await;
-    js_check(result);
-  };
-
-  tokio_util::run(main_future);
+  let result = worker.execute_mod_async(&main_module, None, true).await;
+  js_check(result);
+  if state.flags.lock_write {
+    if let Some(ref lockfile) = state.lockfile {
+      let g = lockfile.lock().unwrap();
+      if let Err(e) = g.write() {
+        print_err_and_exit(ErrBox::from(e));
+      }
+    } else {
+      eprintln!("--lock flag must be specified when using --lock-write");
+      std::process::exit(11);
+    }
+  }
 }
 
-fn eval_command(flags: DenoFlags) {
+async fn eval_command(flags: DenoFlags) {
   let ts_source = flags.argv[1].clone();
   let (mut worker, _state) = create_worker_and_state(flags);
   // Force TypeScript compile.
@@ -305,64 +336,52 @@ fn eval_command(flags: DenoFlags) {
   js_check(worker.execute("bootstrapMainRuntime()"));
   debug!("main_module {}", &main_module);
 
-  let main_future = async move {
-    let exec_result = worker
-      .execute_mod_async(&main_module, Some(ts_source), false)
-      .await;
-    if let Err(e) = exec_result {
-      print_err_and_exit(e);
-    }
-    js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
-    let mut worker_ = worker.clone();
-    let result = worker.await;
-    js_check(result);
-    js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
-  };
-
-  tokio_util::run(main_future);
+  let exec_result = worker
+    .execute_mod_async(&main_module, Some(ts_source), false)
+    .await;
+  if let Err(e) = exec_result {
+    print_err_and_exit(e);
+  }
+  js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
+  let mut worker_ = worker.clone();
+  let result = worker.await;
+  js_check(result);
+  js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
 }
 
-fn bundle_command(flags: DenoFlags) {
+async fn bundle_command(flags: DenoFlags) {
   let out_file = flags.bundle_output.clone();
   let (worker, state) = create_worker_and_state(flags);
   let main_module = state.main_module.as_ref().unwrap().clone();
 
   debug!(">>>>> bundle_async START");
   // NOTE: we need to poll `worker` otherwise TS compiler worker won't run properly
-  let main_future = async move {
-    let result = worker.await;
-    js_check(result);
-    let bundle_result = state
-      .ts_compiler
-      .bundle_async(state.clone(), main_module.to_string(), out_file)
-      .await;
-    if let Err(err) = bundle_result {
-      debug!("diagnostics returned, exiting!");
-      eprintln!("");
-      print_err_and_exit(err);
-    }
-    debug!(">>>>> bundle_async END");
-  };
-  tokio_util::run(main_future);
+  let result = worker.await;
+  js_check(result);
+  let bundle_result = state
+    .ts_compiler
+    .bundle_async(state.clone(), main_module.to_string(), out_file)
+    .await;
+  if let Err(err) = bundle_result {
+    debug!("diagnostics returned, exiting!");
+    eprintln!("");
+    print_err_and_exit(err);
+  }
+  debug!(">>>>> bundle_async END");
 }
 
-fn run_repl(flags: DenoFlags) {
+async fn run_repl(flags: DenoFlags) {
   let (mut worker, _state) = create_worker_and_state(flags);
   js_check(worker.execute("bootstrapMainRuntime()"));
-  let main_future = async move {
-    loop {
-      let result = worker.clone().await;
-      if let Err(err) = result {
-        eprintln!("{}", err.to_string());
-        worker.clear_exception();
-      }
+  loop {
+    let result = worker.clone().await;
+    if let Err(err) = result {
+      eprintln!("{}", err.to_string());
     }
-  };
-  tokio_util::run(main_future);
+  }
 }
 
-fn run_script(flags: DenoFlags) {
-  let use_current_thread = flags.current_thread;
+async fn run_script(flags: DenoFlags) {
   let (mut worker, state) = create_worker_and_state(flags);
 
   let maybe_main_module = state.main_module.as_ref();
@@ -378,36 +397,33 @@ fn run_script(flags: DenoFlags) {
 
   let mut worker_ = worker.clone();
 
-  let main_future = async move {
-    let mod_result = worker.execute_mod_async(&main_module, None, false).await;
-    if let Err(err) = mod_result {
-      print_err_and_exit(err);
-    }
-    if state.flags.lock_write {
-      if let Some(ref lockfile) = state.lockfile {
-        let g = lockfile.lock().unwrap();
-        if let Err(e) = g.write() {
-          print_err_and_exit(ErrBox::from(e));
-        }
-      } else {
-        eprintln!("--lock flag must be specified when using --lock-write");
-        std::process::exit(11);
-      }
-    }
-    js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
-    let result = worker.await;
-    js_check(result);
-    js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
-  };
-
-  if use_current_thread {
-    tokio_util::run_on_current_thread(main_future);
-  } else {
-    tokio_util::run(main_future);
+  let mod_result = worker.execute_mod_async(&main_module, None, false).await;
+  if let Err(err) = mod_result {
+    print_err_and_exit(err);
   }
+  if state.flags.lock_write {
+    if let Some(ref lockfile) = state.lockfile {
+      let g = lockfile.lock().unwrap();
+      if let Err(e) = g.write() {
+        print_err_and_exit(ErrBox::from(e));
+      }
+    } else {
+      eprintln!("--lock flag must be specified when using --lock-write");
+      std::process::exit(11);
+    }
+  }
+  js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
+  let result = worker.await;
+  js_check(result);
+  js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
 }
 
-pub fn main() {
+async fn fmt_command(files: Option<Vec<String>>, check: bool) {
+  fmt::format_files(files, check);
+}
+
+#[tokio::main]
+pub async fn main() {
   #[cfg(windows)]
   ansi_term::enable_ansi_support().ok(); // For Windows 10
 
@@ -427,14 +443,21 @@ pub fn main() {
   };
   log::set_max_level(log_level.to_level_filter());
 
-  match flags.subcommand {
-    DenoSubcommand::Bundle => bundle_command(flags),
+  match flags.clone().subcommand {
+    DenoSubcommand::Bundle => bundle_command(flags).await,
     DenoSubcommand::Completions => {}
-    DenoSubcommand::Eval => eval_command(flags),
-    DenoSubcommand::Fetch => fetch_command(flags),
-    DenoSubcommand::Info => info_command(flags),
-    DenoSubcommand::Repl => run_repl(flags),
-    DenoSubcommand::Run => run_script(flags),
+    DenoSubcommand::Eval => eval_command(flags).await,
+    DenoSubcommand::Fetch => fetch_command(flags).await,
+    DenoSubcommand::Format { check, files } => fmt_command(files, check).await,
+    DenoSubcommand::Info => info_command(flags).await,
+    DenoSubcommand::Install {
+      dir,
+      exe_name,
+      module_url,
+      args,
+    } => install_command(flags, dir, exe_name, module_url, args).await,
+    DenoSubcommand::Repl => run_repl(flags).await,
+    DenoSubcommand::Run => run_script(flags).await,
     DenoSubcommand::Types => types_command(),
     _ => panic!("bad subcommand"),
   }

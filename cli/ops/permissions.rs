@@ -40,7 +40,7 @@ fn resolve_path(path: &str) -> String {
 pub fn op_query_permission(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
   let permissions = state.permissions.lock().unwrap();
@@ -56,7 +56,7 @@ pub fn op_query_permission(
 pub fn op_revoke_permission(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
   let mut permissions = state.permissions.lock().unwrap();
@@ -82,7 +82,7 @@ pub fn op_revoke_permission(
 pub fn op_request_permission(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
   let mut permissions = state.permissions.lock().unwrap();

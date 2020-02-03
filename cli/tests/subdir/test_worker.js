@@ -1,5 +1,10 @@
 let thrown = false;
 
+// TODO(bartlomieju): add test for throwing in web worker
+if (self.name !== "jsWorker") {
+  throw Error(`Bad worker name: ${self.name}, expected jsWorker`);
+}
+
 onmessage = function(e) {
   console.log(e.data);
 
@@ -10,7 +15,7 @@ onmessage = function(e) {
 
   postMessage(e.data);
 
-  workerClose();
+  close();
 };
 
 onerror = function() {

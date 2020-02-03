@@ -43,9 +43,10 @@ impl SharedQueue {
     let mut buf = Vec::new();
     buf.resize(HEAD_INIT + len, 0);
     let buf = buf.into_boxed_slice();
-    let buf =
-      unsafe { v8::SharedArrayBuffer::new_backing_store_from_boxed_slice(buf) };
-    let mut q = Self { buf };
+    let buf = v8::SharedArrayBuffer::new_backing_store_from_boxed_slice(buf);
+    let mut q = Self {
+      buf: buf.make_shared(),
+    };
     q.reset();
     q
   }
@@ -55,17 +56,11 @@ impl SharedQueue {
   }
 
   pub fn bytes(&self) -> &[u8] {
-    unsafe {
-      // This is quite bad. The rusty_v8 issue that makes it necessitates it
-      // just barely missed the rusty_v8 v0.1.1 release cutoff.
-      #[allow(clippy::cast_ref_to_mut)]
-      let self_mut = &mut *(self as *const _ as *mut Self);
-      self_mut.bytes_mut()
-    }
+    unsafe { &*self.buf.get() }
   }
 
   pub fn bytes_mut(&mut self) -> &mut [u8] {
-    self.buf.data_bytes()
+    unsafe { &mut *self.buf.get() }
   }
 
   fn reset(&mut self) {

@@ -108,12 +108,12 @@ fn test_record_from() {
 pub type HttpOp = dyn Future<Output = Result<i32, std::io::Error>> + Send;
 
 pub type HttpOpHandler =
-  fn(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Pin<Box<HttpOp>>;
+  fn(record: Record, zero_copy_buf: Option<ZeroCopyBuf>) -> Pin<Box<HttpOp>>;
 
 fn http_op(
   handler: HttpOpHandler,
-) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp {
-  move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
+) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp {
+  move |control: &[u8], zero_copy_buf: Option<ZeroCopyBuf>| -> CoreOp {
     let record = Record::from(control);
     let is_sync = record.promise_id == 0;
     let op = handler(record.clone(), zero_copy_buf);
@@ -232,7 +232,7 @@ impl Future for Accept {
 
 fn op_accept(
   record: Record,
-  _zero_copy_buf: Option<PinnedBuf>,
+  _zero_copy_buf: Option<ZeroCopyBuf>,
 ) -> Pin<Box<HttpOp>> {
   let rid = record.arg as u32;
   debug!("accept {}", rid);
@@ -250,7 +250,7 @@ fn op_accept(
 
 fn op_listen(
   _record: Record,
-  _zero_copy_buf: Option<PinnedBuf>,
+  _zero_copy_buf: Option<ZeroCopyBuf>,
 ) -> Pin<Box<HttpOp>> {
   debug!("listen");
   let fut = async {
@@ -266,7 +266,7 @@ fn op_listen(
 
 fn op_close(
   record: Record,
-  _zero_copy_buf: Option<PinnedBuf>,
+  _zero_copy_buf: Option<ZeroCopyBuf>,
 ) -> Pin<Box<HttpOp>> {
   debug!("close");
   let fut = async move {
@@ -282,7 +282,7 @@ fn op_close(
 
 struct Read {
   rid: ResourceId,
-  buf: PinnedBuf,
+  buf: ZeroCopyBuf,
 }
 
 impl Future for Read {
@@ -304,7 +304,7 @@ impl Future for Read {
 
 fn op_read(
   record: Record,
-  zero_copy_buf: Option<PinnedBuf>,
+  zero_copy_buf: Option<ZeroCopyBuf>,
 ) -> Pin<Box<HttpOp>> {
   let rid = record.arg as u32;
   debug!("read rid={}", rid);
@@ -325,7 +325,7 @@ fn op_read(
 
 struct Write {
   rid: ResourceId,
-  buf: PinnedBuf,
+  buf: ZeroCopyBuf,
 }
 
 impl Future for Write {
@@ -347,7 +347,7 @@ impl Future for Write {
 
 fn op_write(
   record: Record,
-  zero_copy_buf: Option<PinnedBuf>,
+  zero_copy_buf: Option<ZeroCopyBuf>,
 ) -> Pin<Box<HttpOp>> {
   let rid = record.arg as u32;
   debug!("write rid={}", rid);
