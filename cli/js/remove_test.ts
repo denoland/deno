@@ -237,7 +237,7 @@ testPerm({ write: false }, function removeAllSyncPerm(): void {
   assertEquals(err.name, "PermissionDenied");
 });
 
-// // ASYNC
+// ASYNC
 
 testPerm(
   { write: true, read: true },
