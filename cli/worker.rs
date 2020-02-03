@@ -119,15 +119,11 @@ impl Worker {
     is_prefetch: bool,
   ) -> Result<(), ErrBox> {
     let specifier = module_specifier.to_string();
-    // let global_state = self.state.global_state.clone();
-
     let id = self.isolate.load_module(&specifier, maybe_code).await?;
     self.state.global_state.progress.done();
-
     if !is_prefetch {
       return self.isolate.mod_evaluate(id);
     }
-
     Ok(())
   }
 
@@ -189,7 +185,6 @@ impl MainWorker {
       ops::worker_host::init(isolate, &state);
       ops::web_worker::init(isolate, &state);
     }
-
     Self(worker)
   }
 }

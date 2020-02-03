@@ -137,24 +137,23 @@ mod tests {
     });
   }
 
-  /* TODO(ry) fix
   #[test]
   fn removed_from_resource_table_on_close() {
-      let mut worker = create_test_worker();
-      let handle = worker.thread_safe_handle();
-      tokio_util::spawn_thread(move || {
-        worker
-          .execute("onmessage = () => { delete self.onmessage; }")
-          .unwrap();
-        tokio_util::run_basic(worker)
-      });
+    let mut worker = create_test_worker();
+    let handle = worker.thread_safe_handle();
+    let worker_complete_fut = tokio_util::spawn_thread(move || {
+      worker
+        .execute("onmessage = () => { delete self.onmessage; }")
+        .unwrap();
+      tokio_util::run_basic(worker)
+    });
 
-      let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-      let r = tokio_util::run_basic(handle.post_message(msg));
+    let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
+    tokio_util::run_basic(async move {
+      let r = handle.post_message(msg).await;
       assert!(r.is_ok());
-
-      use futures::executor::block_on;
-      block_on(worker_future)
+      let r = worker_complete_fut.await;
+      assert!(r.is_ok());
+    });
   }
-  */
 }
