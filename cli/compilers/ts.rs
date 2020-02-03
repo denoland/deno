@@ -350,7 +350,7 @@ impl TsCompiler {
         );
 
         if metadata.version_hash == version_hash_to_validate {
-          debug!("load_cache metadata version hash match");
+          println!("load_cache metadata version hash match");
           if let Ok(compiled_module) =
             self.get_compiled_module(&source_file.url)
           {
@@ -360,22 +360,12 @@ impl TsCompiler {
         }
       }
     }
-
     let source_file_ = source_file.clone();
-
-    debug!(">>>>> compile_sync START");
     let module_url = source_file.url.clone();
-
-    debug!(
-      "Running rust part of compile_sync, module specifier: {}",
-      &source_file.url
-    );
-
     let target = match target {
       TargetLib::Main => "main",
       TargetLib::Worker => "worker",
     };
-
     let root_names = vec![module_url.to_string()];
     let req_msg = req(
       msg::CompilerRequestType::Compile,
@@ -386,32 +376,51 @@ impl TsCompiler {
       false,
     );
 
-    let mut worker = TsCompiler::setup_worker(global_state.clone());
-    let compiling_job = global_state
-      .progress
-      .add("Compile", &module_url.to_string());
+    // TODO(ry) The code below looks very similar to spawn_ts_compiler_worker.
+    // Can we combine them?
+    let (load_sender, load_receiver) =
+      tokio::sync::oneshot::channel::<Result<CompiledModule, ErrBox>>();
+    std::thread::spawn(move || {
+      debug!(">>>>> compile_sync START");
 
-    async move {
-      worker.post_message_internal(req_msg).await?;
-      (&mut *worker).await?;
-      debug!("Sent message to worker");
-      let maybe_msg = worker.get_message_internal().await;
-      if let Some(ref msg) = maybe_msg {
-        let json_str = std::str::from_utf8(msg).unwrap();
-        debug!("Message: {}", json_str);
-        if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-          return Err(ErrBox::from(diagnostics));
+      let mut worker = TsCompiler::setup_worker(global_state.clone());
+      let handle = worker.thread_safe_handle();
+
+      let compiling_job = global_state
+        .progress
+        .add("Compile", &module_url.to_string());
+
+      let fut = async move {
+        if let Err(err) = handle.post_message(req_msg).await {
+          load_sender.send(Err(err)).unwrap();
+          return;
         }
+        if let Err(err) = (&mut *worker).await {
+          load_sender.send(Err(err)).unwrap();
+          return;
+        }
+        let maybe_msg = handle.get_message().await;
+        if let Some(ref msg) = maybe_msg {
+          let json_str = std::str::from_utf8(msg).unwrap();
+          if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+            let err = ErrBox::from(diagnostics);
+            load_sender.send(Err(err)).unwrap();
+            return;
+          }
+        }
+        let compiled_module = global_state
+          .ts_compiler
+          .get_compiled_module(&source_file_.url)
+          .expect("Expected to find compiled file");
+        drop(compiling_job);
+        println!(">>>>> compile_sync END");
+        load_sender.send(Ok(compiled_module)).unwrap();
       }
-      let compiled_module = global_state
-        .ts_compiler
-        .get_compiled_module(&source_file_.url)
-        .expect("Expected to find compiled file");
-      drop(compiling_job);
-      debug!(">>>>> compile_sync END");
-      Ok(compiled_module)
-    }
-    .boxed_local()
+      .boxed_local();
+      crate::tokio_util::run_basic(fut);
+    });
+
+    async { load_receiver.await.unwrap() }.boxed_local()
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
@@ -637,10 +646,11 @@ fn spawn_ts_compiler_worker(
 
   std::thread::spawn(move || {
     let mut worker = TsCompiler::setup_worker(global_state);
+    let handle = worker.thread_safe_handle();
 
     let fut = async move {
       debug!("Sent message to worker");
-      if let Err(err) = worker.post_message_internal(req_msg).await {
+      if let Err(err) = handle.post_message(req_msg).await {
         load_sender.send(Err(err)).unwrap();
         return;
       }
@@ -648,7 +658,7 @@ fn spawn_ts_compiler_worker(
         load_sender.send(Err(err)).unwrap();
         return;
       }
-      let msg = (worker.get_message_internal().await).unwrap();
+      let msg = handle.get_message().await.unwrap();
       let json_str = std::str::from_utf8(&msg).unwrap();
       load_sender.send(Ok(json!(json_str))).unwrap();
     };
@@ -707,15 +717,14 @@ mod tests {
   use std::path::PathBuf;
   use tempfile::TempDir;
 
-  #[test]
-  fn test_compile_async() {
+  #[tokio::test]
+  async fn test_compile_async() {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
       .join("tests/002_hello.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-
     let out = SourceFile {
       url: specifier.as_url().clone(),
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
@@ -723,27 +732,20 @@ mod tests {
       source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
       types_url: None,
     };
-
     let mock_state = ThreadSafeGlobalState::mock(vec![
       String::from("deno"),
       String::from("hello.js"),
     ]);
-
-    let fut = async move {
-      let result = mock_state
-        .ts_compiler
-        .compile_async(mock_state.clone(), &out, TargetLib::Main)
-        .await;
-
-      assert!(result.is_ok());
-      assert!(result
-        .unwrap()
-        .code
-        .as_bytes()
-        .starts_with(b"console.log(\"Hello World\");"));
-    };
-
-    tokio_util::run_basic(fut.boxed_local())
+    let result = mock_state
+      .ts_compiler
+      .compile_async(mock_state.clone(), &out, TargetLib::Main)
+      .await;
+    assert!(result.is_ok());
+    assert!(result
+      .unwrap()
+      .code
+      .as_bytes()
+      .starts_with(b"console.log(\"Hello World\");"));
   }
 
   #[test]
