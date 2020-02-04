@@ -440,9 +440,13 @@ async fn test_command(
   fail_fast: bool,
   quiet: bool,
 ) {
-  if let Some(test_file_path) = test_runner::run_test_modules(include, fail_fast, quiet) {
+  if let Some(test_file_path) =
+    test_runner::run_test_modules(include, fail_fast, quiet)
+  {
     let mut flags = flags.clone();
-    flags.argv.push(test_file_path.to_string_lossy().to_string());
+    flags
+      .argv
+      .push(test_file_path.to_string_lossy().to_string());
     run_script(flags).await;
   }
 }
