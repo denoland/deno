@@ -165,7 +165,7 @@ impl SourceFileFetcher {
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Pin<Box<SourceFileFuture>> {
     let module_url = specifier.as_url().to_owned();
-    debug!("fetch_source_file. specifier {} ", &module_url);
+    debug!("fetch_source_file_async specifier: {} ", &module_url);
 
     // Check if this file was already fetched and can be retrieved from in-process cache.
     if let Some(source_file) = self.source_file_cache.get(specifier.to_string())
@@ -368,18 +368,13 @@ impl SourceFileFetcher {
       }
       Ok(c) => c,
     };
-    let media_type = map_content_type(
-      &filepath,
-      source_code_headers.mime_type.as_ref().map(String::as_str),
-    );
+    let media_type =
+      map_content_type(&filepath, source_code_headers.mime_type.as_deref());
     let types_url = match media_type {
       msg::MediaType::JavaScript | msg::MediaType::JSX => get_types_url(
         &module_url,
         &source_code,
-        source_code_headers
-          .x_typescript_types
-          .as_ref()
-          .map(String::as_str),
+        source_code_headers.x_typescript_types.as_deref(),
       ),
       _ => None,
     };
@@ -515,17 +510,13 @@ impl SourceFileFetcher {
             .location
             .join(dir.deps_cache.get_cache_filename(&module_url));
 
-          let media_type = map_content_type(
-            &filepath,
-            maybe_content_type.as_ref().map(String::as_str),
-          );
+          let media_type =
+            map_content_type(&filepath, maybe_content_type.as_deref());
 
           let types_url = match media_type {
-            msg::MediaType::JavaScript | msg::MediaType::JSX => get_types_url(
-              &module_url,
-              &source,
-              x_typescript_types.as_ref().map(String::as_str),
-            ),
+            msg::MediaType::JavaScript | msg::MediaType::JSX => {
+              get_types_url(&module_url, &source, x_typescript_types.as_deref())
+            }
             _ => None,
           };
 

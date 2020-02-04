@@ -248,7 +248,7 @@ declare namespace Deno {
   /** UNSTABLE: might move to Deno.symbols */
   export const EOF: unique symbol;
 
-  /** UNSTABLE: might move to Deno.symbols */
+  /** UNSTABLE: might move to Deno.symbols  */
   export type EOF = typeof EOF;
 
   /** UNSTABLE: maybe remove "SEEK_" prefix. Maybe capitalization wrong. */
@@ -1916,6 +1916,10 @@ declare namespace Deno {
     /** Emit class fields with ECMAScript-standard semantics. Defaults to `false`.
      * Does not apply to `"esnext"` target. */
     useDefineForClassFields?: boolean;
+
+    /** List of library files to be included in the compilation.  If omitted,
+     * then the Deno main runtime libs are used. */
+    lib?: string[];
 
     /** The locale to use to show error messages. */
     locale?: string;
