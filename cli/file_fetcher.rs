@@ -446,8 +446,7 @@ impl SourceFileFetcher {
     let http_client = self.http_client.clone();
     // Single pass fetch, either yields code or yields redirect.
     let f = async move {
-      match http_util::fetch_once(http_client, &module_url, module_etag)
-        .await?
+      match http_util::fetch_once(http_client, &module_url, module_etag).await?
       {
         FetchOnceResult::NotModified => {
           let source_file =

@@ -339,8 +339,7 @@ mod tests {
     }
 
     let res =
-      fetch_once(client, &url, Some("33a64df551425fcc55e".to_string()))
-        .await;
+      fetch_once(client, &url, Some("33a64df551425fcc55e".to_string())).await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
 
     drop(http_server_guard);
