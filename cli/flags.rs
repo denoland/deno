@@ -347,7 +347,6 @@ fn bundle_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   let source_file = matches.value_of("source_file").unwrap().to_string();
 
   let out_file = if let Some(out_file) = matches.value_of("out_file") {
-    // TODO(bartlomieju): this permission should not be necessary
     flags.allow_write = true;
     Some(out_file.to_string())
   } else {
@@ -1927,7 +1926,7 @@ mod tests {
       flags_from_vec_safe(svec!["deno""script.ts", "foo", "bar"]);
     assert_eq!(flags, DenoFlags::default());
     assert_eq!(subcommand, DenoSubcommand::Run);
-    assert_eq!(argv, svec!["script.ts", "foo", "bar"]);
+  assert_eq!(argv, svec!["script.ts", "foo", "bar"]);
 
     let (flags, subcommand, argv) =
       flags_from_vec_safe(svec!["deno""script.ts", "-"]);
