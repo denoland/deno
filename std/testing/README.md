@@ -8,7 +8,7 @@ in Deno.
 The module exports a `test` function which is the test harness in Deno. It
 accepts either a function (including async functions) or an object which
 contains a `name` property and a `fn` property. When running tests and
-outputting the results, the name of the past function is used, or if the object
+outputting the results, the name of the passed function is used, or if the object
 is passed, the `name` property is used to identify the test. If the assertion is
 false an `AssertionError` will be thrown.
 
