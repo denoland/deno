@@ -40,7 +40,7 @@ class TestDenoDir(DenoTestCase):
     def run_deno(self, deno_dir=None):
         cmd = [
             self.deno_exe, "run",
-            "http://localhost:4545/tests/subdir/print_hello.ts"
+            "http://localhost:4545/cli/tests/subdir/print_hello.ts"
         ]
         deno_dir_env = {"DENO_DIR": deno_dir} if deno_dir is not None else None
         res = run_output(cmd, quiet=True, env=deno_dir_env)

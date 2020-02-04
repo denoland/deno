@@ -187,14 +187,14 @@ pub fn op_read(
   debug!("read rid={}", rid);
   let zero_copy = match zero_copy {
     None => {
-      return futures::future::err(deno_error::no_buffer_specified()).boxed()
+      return futures::future::err(deno_error::no_buffer_specified())
+        .boxed_local()
     }
     Some(buf) => buf,
   };
 
   let fut = read(state, rid as u32, zero_copy);
-
-  fut.boxed()
+  fut.boxed_local()
 }
 
 /// `DenoAsyncWrite` is the same as the `tokio_io::AsyncWrite` trait
@@ -332,12 +332,13 @@ pub fn op_write(
   debug!("write rid={}", rid);
   let zero_copy = match zero_copy {
     None => {
-      return futures::future::err(deno_error::no_buffer_specified()).boxed()
+      return futures::future::err(deno_error::no_buffer_specified())
+        .boxed_local()
     }
     Some(buf) => buf,
   };
 
   let fut = write(state, rid as u32, zero_copy);
 
-  fut.boxed()
+  fut.boxed_local()
 }

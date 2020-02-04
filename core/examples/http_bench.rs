@@ -164,27 +164,18 @@ fn main() {
   isolate.register_op("write", http_op(op_write));
   isolate.register_op("close", http_op(op_close));
 
-  let multi_thread = args.iter().any(|a| a == "--multi-thread");
-
   println!(
     "num cpus; logical: {}; physical: {}",
     num_cpus::get(),
     num_cpus::get_physical()
   );
-  let mut builder = tokio::runtime::Builder::new();
-  let builder = if multi_thread {
-    println!("multi-thread");
-    builder.threaded_scheduler()
-  } else {
-    println!("single-thread");
-    builder.basic_scheduler()
-  };
 
-  let mut runtime = builder
-    .enable_io()
+  let mut runtime = tokio::runtime::Builder::new()
+    .basic_scheduler()
+    .enable_all()
     .build()
-    .expect("Unable to create tokio runtime");
-  let result = runtime.block_on(isolate.boxed());
+    .unwrap();
+  let result = runtime.block_on(isolate.boxed_local());
   js_check(result);
 }
 

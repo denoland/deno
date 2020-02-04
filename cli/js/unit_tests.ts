@@ -39,6 +39,7 @@ import "./realpath_test.ts";
 import "./read_dir_test.ts";
 import "./read_file_test.ts";
 import "./read_link_test.ts";
+import "./remove_test.ts";
 import "./rename_test.ts";
 import "./request_test.ts";
 import "./resources_test.ts";

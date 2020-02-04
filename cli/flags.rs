@@ -397,8 +397,10 @@ fn fetch_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   importmap_arg_parse(flags, matches);
   config_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
-  if let Some(file) = matches.value_of("file") {
-    flags.argv.push(file.into());
+  if let Some(files) = matches.values_of("file") {
+    for file in files {
+      flags.argv.push(file.into());
+    }
   }
 }
 
@@ -518,7 +520,7 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
   deno fmt
 
   deno fmt myfile1.ts myfile2.ts
-  
+
   deno fmt --check",
     )
     .arg(
@@ -662,7 +664,12 @@ fn fetch_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(importmap_arg())
     .arg(config_arg())
     .arg(no_remote_arg())
-    .arg(Arg::with_name("file").takes_value(true).required(true))
+    .arg(
+      Arg::with_name("file")
+        .takes_value(true)
+        .required(true)
+        .min_values(1),
+    )
     .about("Fetch the dependencies")
     .long_about(
       "Fetch and compile remote dependencies recursively.
@@ -1664,6 +1671,20 @@ mod tests {
         subcommand: DenoSubcommand::Fetch,
         argv: svec!["deno", "script.ts"],
         import_map_path: Some("importmap.json".to_owned()),
+        ..DenoFlags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn fetch_multiple() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "fetch", "script.ts", "script_two.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      DenoFlags {
+        subcommand: DenoSubcommand::Fetch,
+        argv: svec!["deno", "script.ts", "script_two.ts"],
         ..DenoFlags::default()
       }
     );

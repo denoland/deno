@@ -24,7 +24,7 @@ testPerm({ read: true }, async function filesCopyToStdout(): Promise<void> {
 });
 
 testPerm({ read: true }, async function filesToAsyncIterator(): Promise<void> {
-  const filename = "tests/hello.txt";
+  const filename = "cli/tests/hello.txt";
   const file = await Deno.open(filename);
 
   let totalSize = 0;
@@ -297,7 +297,7 @@ testPerm(
 );
 
 testPerm({ read: true }, async function seekStart(): Promise<void> {
-  const filename = "tests/hello.txt";
+  const filename = "cli/tests/hello.txt";
   const file = await Deno.open(filename);
   // Deliberately move 1 step forward
   await file.read(new Uint8Array(1)); // "H"
@@ -310,7 +310,7 @@ testPerm({ read: true }, async function seekStart(): Promise<void> {
 });
 
 testPerm({ read: true }, function seekSyncStart(): void {
-  const filename = "tests/hello.txt";
+  const filename = "cli/tests/hello.txt";
   const file = Deno.openSync(filename);
   // Deliberately move 1 step forward
   file.readSync(new Uint8Array(1)); // "H"
@@ -323,7 +323,7 @@ testPerm({ read: true }, function seekSyncStart(): void {
 });
 
 testPerm({ read: true }, async function seekCurrent(): Promise<void> {
-  const filename = "tests/hello.txt";
+  const filename = "cli/tests/hello.txt";
   const file = await Deno.open(filename);
   // Deliberately move 1 step forward
   await file.read(new Uint8Array(1)); // "H"
@@ -336,7 +336,7 @@ testPerm({ read: true }, async function seekCurrent(): Promise<void> {
 });
 
 testPerm({ read: true }, function seekSyncCurrent(): void {
-  const filename = "tests/hello.txt";
+  const filename = "cli/tests/hello.txt";
   const file = Deno.openSync(filename);
   // Deliberately move 1 step forward
   file.readSync(new Uint8Array(1)); // "H"
@@ -349,7 +349,7 @@ testPerm({ read: true }, function seekSyncCurrent(): void {
 });
 
 testPerm({ read: true }, async function seekEnd(): Promise<void> {
-  const filename = "tests/hello.txt";
+  const filename = "cli/tests/hello.txt";
   const file = await Deno.open(filename);
   await file.seek(-6, Deno.SeekMode.SEEK_END);
   const buf = new Uint8Array(6);
@@ -359,7 +359,7 @@ testPerm({ read: true }, async function seekEnd(): Promise<void> {
 });
 
 testPerm({ read: true }, function seekSyncEnd(): void {
-  const filename = "tests/hello.txt";
+  const filename = "cli/tests/hello.txt";
   const file = Deno.openSync(filename);
   file.seekSync(-6, Deno.SeekMode.SEEK_END);
   const buf = new Uint8Array(6);
@@ -369,7 +369,7 @@ testPerm({ read: true }, function seekSyncEnd(): void {
 });
 
 testPerm({ read: true }, async function seekMode(): Promise<void> {
-  const filename = "tests/hello.txt";
+  const filename = "cli/tests/hello.txt";
   const file = await Deno.open(filename);
   let err;
   try {

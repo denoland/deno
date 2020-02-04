@@ -48,13 +48,14 @@ pub struct State {
   pub global_state: ThreadSafeGlobalState,
   pub permissions: Arc<Mutex<DenoPermissions>>,
   pub main_module: Option<ModuleSpecifier>,
+  // TODO(ry) rename to worker_channels_internal
   pub worker_channels: WorkerChannels,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
   pub metrics: Metrics,
   pub global_timer: Mutex<GlobalTimer>,
-  pub workers: Mutex<HashMap<u32, WebWorker>>,
+  pub workers: Mutex<HashMap<u32, WorkerChannels>>,
   pub loading_workers: Mutex<HashMap<u32, mpsc::Receiver<Result<(), ErrBox>>>>,
   pub next_worker_id: AtomicUsize,
   pub start_time: Instant,
@@ -110,7 +111,7 @@ impl ThreadSafeState {
             state.metrics_op_completed(buf.len());
             buf
           });
-          Op::Async(result_fut.boxed())
+          Op::Async(result_fut.boxed_local())
         }
         Op::AsyncUnref(fut) => {
           let state = state.clone();
@@ -118,7 +119,7 @@ impl ThreadSafeState {
             state.metrics_op_completed(buf.len());
             buf
           });
-          Op::AsyncUnref(result_fut.boxed())
+          Op::AsyncUnref(result_fut.boxed_local())
         }
       }
     }
@@ -191,27 +192,32 @@ impl Loader for ThreadSafeState {
     maybe_referrer: Option<ModuleSpecifier>,
     is_dyn_import: bool,
   ) -> Pin<Box<deno_core::SourceCodeInfoFuture>> {
+    let module_specifier = module_specifier.clone();
     if is_dyn_import {
       if let Err(e) = self.check_dyn_import(&module_specifier) {
-        return async move { Err(e) }.boxed();
+        return async move { Err(e) }.boxed_local();
       }
     }
 
     // TODO(bartlomieju): incrementing resolve_count here has no sense...
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
     let module_url_specified = module_specifier.to_string();
-    let fut = self
-      .global_state
-      .fetch_compiled_module(module_specifier, maybe_referrer, self.target_lib)
-      .map_ok(|compiled_module| deno_core::SourceCodeInfo {
+    let global_state = self.global_state.clone();
+    let target_lib = self.target_lib.clone();
+    let fut = async move {
+      let compiled_module = global_state
+        .fetch_compiled_module(module_specifier, maybe_referrer, target_lib)
+        .await?;
+      Ok(deno_core::SourceCodeInfo {
         // Real module name, might be different from initial specifier
         // due to redirections.
         code: compiled_module.code,
         module_url_specified,
         module_url_found: compiled_module.name,
-      });
+      })
+    };
 
-    fut.boxed()
+    fut.boxed_local()
   }
 }
 
@@ -314,10 +320,11 @@ impl ThreadSafeState {
     Ok(ThreadSafeState(Arc::new(state)))
   }
 
-  pub fn add_child_worker(&self, worker: WebWorker) -> u32 {
+  pub fn add_child_worker(&self, worker: &WebWorker) -> u32 {
     let worker_id = self.next_worker_id.fetch_add(1, Ordering::Relaxed) as u32;
+    let handle = worker.thread_safe_handle();
     let mut workers_tl = self.workers.lock().unwrap();
-    workers_tl.insert(worker_id, worker);
+    workers_tl.insert(worker_id, handle);
     worker_id
   }
 

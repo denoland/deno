@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use deno_core::include_crate_modules;
 use deno_core::CoreOp;
 use deno_core::Isolate;
 use deno_core::Op;
@@ -47,6 +48,8 @@ fn main() {
     deno_typescript::ts_version()
   );
 
+  let extern_crate_modules = include_crate_modules![deno_core];
+
   // The generation of snapshots is slow and often unnecessary. Until we figure
   // out how to speed it up, or avoid it when unnecessary, this env var provides
   // an escape hatch for the impatient hacker in need of faster incremental
@@ -65,9 +68,12 @@ fn main() {
   let bundle_path = o.join("CLI_SNAPSHOT.js");
   let snapshot_path = o.join("CLI_SNAPSHOT.bin");
 
-  let main_module_name =
-    deno_typescript::compile_bundle(&bundle_path, root_names)
-      .expect("Bundle compilation failed");
+  let main_module_name = deno_typescript::compile_bundle(
+    &bundle_path,
+    root_names,
+    Some(extern_crate_modules.clone()),
+  )
+  .expect("Bundle compilation failed");
   assert!(bundle_path.exists());
 
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
@@ -102,9 +108,12 @@ fn main() {
     c.join("js/lib.deno.ns.d.ts"),
   );
 
-  let main_module_name =
-    deno_typescript::compile_bundle(&bundle_path, root_names)
-      .expect("Bundle compilation failed");
+  let main_module_name = deno_typescript::compile_bundle(
+    &bundle_path,
+    root_names,
+    Some(extern_crate_modules),
+  )
+  .expect("Bundle compilation failed");
   assert!(bundle_path.exists());
 
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);

@@ -16,7 +16,8 @@ export {
   assertNotEquals,
   assertStrictEq,
   assertStrContains,
-  unreachable
+  unreachable,
+  fail
 } from "../../std/testing/asserts.ts";
 
 interface TestPermissions {

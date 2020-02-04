@@ -11,7 +11,7 @@ pub struct JsCompiler {}
 impl JsCompiler {
   pub fn compile_async(
     &self,
-    source_file: &SourceFile,
+    source_file: SourceFile,
   ) -> Pin<Box<CompiledModuleFuture>> {
     let module = CompiledModule {
       code: str::from_utf8(&source_file.source_code)
