@@ -37,7 +37,9 @@ pub enum DenoSubcommand {
     source_file: String,
     out_file: Option<String>,
   },
-  Completions,
+  Completions {
+    buf: Box<[u8]>,
+  },
   Eval,
   Fetch,
   Format {
@@ -354,7 +356,6 @@ fn bundle_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 }
 
 fn completions_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
-  flags.subcommand = DenoSubcommand::Completions;
   let shell: &str = matches.value_of("shell").unwrap();
   let mut buf: Vec<u8> = vec![];
   use std::str::FromStr;
@@ -363,10 +364,10 @@ fn completions_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
     clap::Shell::from_str(shell).unwrap(),
     &mut buf,
   );
-  // TODO(ry) This flags module should only be for parsing flags, not actually
-  // acting upon the flags. Although this print is innocent, it breaks the
-  // model. The print should be moved out.
-  print!("{}", std::str::from_utf8(&buf).unwrap());
+
+  flags.subcommand = DenoSubcommand::Completions {
+    buf: buf.into_boxed_slice(),
+  };
 }
 
 fn repl_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
@@ -1852,15 +1853,12 @@ mod tests {
 
   #[test]
   fn completions() {
-    let r = flags_from_vec_safe(svec!["deno", "completions", "bash"]);
-    assert_eq!(
-      r.unwrap(),
-      DenoFlags {
-        subcommand: DenoSubcommand::Completions,
-        argv: svec!["deno"], // TODO(ry) argv doesn't make sense here. Make it Option.
-        ..DenoFlags::default()
-      }
-    );
+    let r = flags_from_vec_safe(svec!["deno", "completions", "bash"]).unwrap();
+
+    match r.subcommand {
+      DenoSubcommand::Completions { buf } => assert!(!buf.is_empty()),
+      _ => unreachable!(),
+    }
   }
 
   /* TODO(ry) Fix this test

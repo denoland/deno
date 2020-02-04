@@ -464,7 +464,9 @@ pub fn main() {
         source_file,
         out_file,
       } => bundle_command(flags, source_file, out_file).await,
-      DenoSubcommand::Completions => {}
+      DenoSubcommand::Completions { buf } => {
+        print!("{}", std::str::from_utf8(&buf).unwrap());
+      }
       DenoSubcommand::Eval => eval_command(flags).await,
       DenoSubcommand::Fetch => fetch_command(flags).await,
       DenoSubcommand::Format { check, files } => {
