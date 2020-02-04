@@ -794,7 +794,7 @@ itest!(run_v8_flags {
 });
 
 itest!(run_v8_help {
-  args: "run --v8-flags=--help",
+  args: "--v8-flags=--help",
   output: "v8_help.out",
 });
 

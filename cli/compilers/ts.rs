@@ -241,8 +241,10 @@ impl TsCompiler {
   /// runtime.
   fn setup_worker(global_state: ThreadSafeGlobalState) -> CompilerWorker {
     let (int, ext) = ThreadSafeState::create_channels();
+    let entry_point =
+      ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
     let worker_state =
-      ThreadSafeState::new(global_state.clone(), None, None, int)
+      ThreadSafeState::new(global_state.clone(), None, entry_point, int)
         .expect("Unable to create worker state");
 
     // Count how many times we start the compiler worker.

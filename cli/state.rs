@@ -47,7 +47,7 @@ pub struct ThreadSafeState(Arc<State>);
 pub struct State {
   pub global_state: ThreadSafeGlobalState,
   pub permissions: Arc<Mutex<DenoPermissions>>,
-  pub main_module: Option<ModuleSpecifier>,
+  pub main_module: ModuleSpecifier,
   // TODO(ry) rename to worker_channels_internal
   pub worker_channels: WorkerChannels,
   /// When flags contains a `.import_map_path` option, the content of the
@@ -240,7 +240,7 @@ impl ThreadSafeState {
   pub fn new(
     global_state: ThreadSafeGlobalState,
     shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
-    main_module: Option<ModuleSpecifier>,
+    main_module: ModuleSpecifier,
     internal_channels: WorkerChannels,
   ) -> Result<Self, ErrBox> {
     let import_map: Option<ImportMap> =
@@ -285,7 +285,7 @@ impl ThreadSafeState {
   pub fn new_for_worker(
     global_state: ThreadSafeGlobalState,
     shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
-    main_module: Option<ModuleSpecifier>,
+    main_module: ModuleSpecifier,
     internal_channels: WorkerChannels,
   ) -> Result<Self, ErrBox> {
     let seeded_rng = match global_state.flags.seed {
@@ -389,19 +389,13 @@ impl ThreadSafeState {
 
   #[cfg(test)]
   pub fn mock(
-    argv: Vec<String>,
+    main_module: &str,
     internal_channels: WorkerChannels,
   ) -> ThreadSafeState {
-    let module_specifier = if argv.is_empty() {
-      None
-    } else {
-      let module_specifier = ModuleSpecifier::resolve_url_or_path(&argv[0])
-        .expect("Invalid entry module");
-      Some(module_specifier)
-    };
-
+    let module_specifier = ModuleSpecifier::resolve_url_or_path(main_module)
+      .expect("Invalid entry module");
     ThreadSafeState::new(
-      ThreadSafeGlobalState::mock(argv),
+      ThreadSafeGlobalState::mock(vec!["deno".to_string()]),
       None,
       module_specifier,
       internal_channels,
@@ -438,8 +432,5 @@ impl ThreadSafeState {
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
   let (int, _) = ThreadSafeState::create_channels();
-  f(ThreadSafeState::mock(
-    vec![String::from("./deno"), String::from("hello.js")],
-    int,
-  ));
+  f(ThreadSafeState::mock("./hello.js", int));
 }
