@@ -34,8 +34,6 @@ pub struct ThreadSafeGlobalState(Arc<GlobalState>);
 pub struct GlobalState {
   /// Flags parsed from `argv` contents.
   pub flags: flags::DenoFlags,
-  /// Entry script parsed from CLI arguments.
-  pub main_module: Option<ModuleSpecifier>,
   /// Permissions parsed from `flags`.
   pub permissions: DenoPermissions,
   pub dir: deno_dir::DenoDir,
@@ -86,13 +84,6 @@ impl ThreadSafeGlobalState {
       flags.config_path.clone(),
     )?;
 
-    let main_module: Option<ModuleSpecifier> = if flags.argv.len() <= 1 {
-      None
-    } else {
-      let root_specifier = flags.argv[1].clone();
-      Some(ModuleSpecifier::resolve_url_or_path(&root_specifier)?)
-    };
-
     // Note: reads lazily from disk on first call to lockfile.check()
     let lockfile = if let Some(filename) = &flags.lock {
       Some(Mutex::new(Lockfile::new(filename.to_string())))
@@ -101,7 +92,6 @@ impl ThreadSafeGlobalState {
     };
 
     let state = GlobalState {
-      main_module,
       dir,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
@@ -258,7 +248,6 @@ fn thread_safe() {
 fn import_map_given_for_repl() {
   let _result = ThreadSafeGlobalState::new(
     flags::DenoFlags {
-      argv: vec![String::from("./deno")],
       import_map_path: Some("import_map.json".to_string()),
       ..flags::DenoFlags::default()
     },

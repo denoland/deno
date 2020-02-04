@@ -113,11 +113,9 @@ fn create_global_state(flags: DenoFlags) -> ThreadSafeGlobalState {
     }
   });
 
-  let global_state = ThreadSafeGlobalState::new(flags, progress)
+  ThreadSafeGlobalState::new(flags, progress)
     .map_err(deno_error::print_err_and_exit)
-    .unwrap();
-
-  global_state
+    .unwrap()
 }
 
 fn create_main_worker(
@@ -125,10 +123,9 @@ fn create_main_worker(
   main_module: ModuleSpecifier,
 ) -> MainWorker {
   let (int, ext) = ThreadSafeState::create_channels();
-  let state =
-    ThreadSafeState::new(global_state.clone(), None, main_module, int)
-      .map_err(deno_error::print_err_and_exit)
-      .unwrap();
+  let state = ThreadSafeState::new(global_state, None, main_module, int)
+    .map_err(deno_error::print_err_and_exit)
+    .unwrap();
 
   let state_ = state.clone();
   {
@@ -326,8 +323,7 @@ async fn fetch_command(flags: DenoFlags, files: Vec<String>) {
   }
 }
 
-async fn eval_command(flags: DenoFlags) {
-  let ts_source = flags.argv[1].clone();
+async fn eval_command(flags: DenoFlags, code: String) {
   // Force TypeScript compile.
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
@@ -338,7 +334,7 @@ async fn eval_command(flags: DenoFlags) {
   debug!("main_module {}", &main_module);
 
   let exec_result = worker
-    .execute_mod_async(&main_module, Some(ts_source), false)
+    .execute_mod_async(&main_module, Some(code), false)
     .await;
   if let Err(e) = exec_result {
     print_err_and_exit(e);
@@ -458,7 +454,7 @@ pub fn main() {
       DenoSubcommand::Completions { buf } => {
         print!("{}", std::str::from_utf8(&buf).unwrap());
       }
-      DenoSubcommand::Eval => eval_command(flags).await,
+      DenoSubcommand::Eval { code } => eval_command(flags, code).await,
       DenoSubcommand::Fetch { files } => fetch_command(flags, files).await,
       DenoSubcommand::Format { check, files } => {
         fmt_command(files, check).await

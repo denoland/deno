@@ -13,7 +13,7 @@ import { setPrepareStackTrace } from "./error_stack.ts";
 interface Start {
   cwd: string;
   pid: number;
-  argv: string[];
+  args: string[];
   location: string; // Absolute URL.
   repl: boolean;
   debugFlag: boolean;

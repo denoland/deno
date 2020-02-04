@@ -46,11 +46,11 @@ impl WasmCompiler {
   /// Create a new V8 worker with snapshot of WASM compiler and setup compiler's runtime.
   fn setup_worker(global_state: ThreadSafeGlobalState) -> CompilerWorker {
     let (int, ext) = ThreadSafeState::create_channels();
-    let main_module =
+    let entry_point =
       ModuleSpecifier::resolve_url_or_path("./__$deno$wasm_compiler.ts")
         .unwrap();
     let worker_state =
-      ThreadSafeState::new(global_state.clone(), None, main_module, int)
+      ThreadSafeState::new(global_state.clone(), None, entry_point, int)
         .expect("Unable to create worker state");
 
     // Count how many times we start the compiler worker.
