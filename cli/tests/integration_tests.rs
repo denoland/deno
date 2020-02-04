@@ -69,7 +69,6 @@ fn fmt_test() {
   assert_eq!(expected, actual);
 }
 
-
 #[test]
 fn installer_test_local_module_run() {
   use deno::flags::DenoFlags;
