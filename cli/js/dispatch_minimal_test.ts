@@ -16,7 +16,7 @@ const readErrorStackPattern = new RegExp(
 
 test(async function sendAsyncStackTrace(): Promise<void> {
   const buf = new Uint8Array(10);
-  await Deno.read(10, "nonexistent.txt", buf)
+  await Deno.read(-1, buf)
     .then(unreachable)
     .catch((error): void => {
       assertMatch(error.stack, readErrorStackPattern);
