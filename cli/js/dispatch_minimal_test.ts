@@ -9,14 +9,14 @@ import {
 const readErrorStackPattern = new RegExp(
   `^.*
     at unwrapResponse \\(.*dispatch_minimal\\.ts:.*\\)
-    at Object.sendAsync \\(.*dispatch_minimal\\.ts:.*\\)
-    at async Object\\.open \\(.*files\\.ts:.*\\).*$`,
+    at Object.sendAsyncMinimal \\(.*dispatch_minimal\\.ts:.*\\)
+    at async Object\\.read \\(.*files\\.ts:.*\\).*$`,
   "ms"
 );
 
 test(async function sendAsyncStackTrace(): Promise<void> {
   const buf = new Uint8Array(10);
-  await Deno.read(999999999999999, buf)
+  await Deno.read(10, buf)
     .then(unreachable)
     .catch((error): void => {
       assertMatch(error.stack, readErrorStackPattern);
