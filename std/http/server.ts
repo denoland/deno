@@ -468,6 +468,9 @@ export class Server implements AsyncIterable<ServerRequest> {
   }
 }
 
+/** Options for creating an HTTP server. */
+export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
+
 /**
  * Start a HTTP server
  *
@@ -478,7 +481,7 @@ export class Server implements AsyncIterable<ServerRequest> {
  *       req.respond({ body });
  *     }
  */
-export function serve(addr: string | Deno.ListenOptions): Server {
+export function serve(addr: string | HTTPOptions): Server {
   if (typeof addr === "string") {
     const [hostname, port] = addr.split(":");
     addr = { hostname, port: Number(port) };
@@ -489,7 +492,7 @@ export function serve(addr: string | Deno.ListenOptions): Server {
 }
 
 export async function listenAndServe(
-  addr: string | Deno.ListenOptions,
+  addr: string | HTTPOptions,
   handler: (req: ServerRequest) => void
 ): Promise<void> {
   const server = serve(addr);
