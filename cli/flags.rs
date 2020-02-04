@@ -1985,7 +1985,6 @@ mod tests {
         subcommand: DenoSubcommand::Test {
           fail_fast: false,
           quiet: false,
-          exclude: None,
           include: Some(svec!["dir1/", "dir2/"]),
         },
         argv: svec!["deno"],
