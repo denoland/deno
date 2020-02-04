@@ -69,7 +69,6 @@ fn fmt_test() {
   assert_eq!(expected, actual);
 }
 
-/* TODO(ry) Disabled to get #3844 landed faster. Re-enable.
 #[test]
 fn installer_test_local_module_run() {
   use deno::flags::DenoFlags;
@@ -163,7 +162,6 @@ fn installer_test_remote_module_run() {
   drop(temp_dir);
   drop(g)
 }
-*/
 
 #[test]
 fn js_unit_tests() {
