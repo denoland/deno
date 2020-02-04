@@ -468,11 +468,6 @@ export class Server implements AsyncIterable<ServerRequest> {
   }
 }
 
-interface ServerConfig {
-  port: number;
-  hostname?: string;
-}
-
 /**
  * Start a HTTP server
  *
@@ -483,7 +478,7 @@ interface ServerConfig {
  *       req.respond({ body });
  *     }
  */
-export function serve(addr: string | ServerConfig): Server {
+export function serve(addr: string | Deno.ListenOptions): Server {
   if (typeof addr === "string") {
     const [hostname, port] = addr.split(":");
     addr = { hostname, port: Number(port) };
@@ -494,7 +489,7 @@ export function serve(addr: string | ServerConfig): Server {
 }
 
 export async function listenAndServe(
-  addr: string | ServerConfig,
+  addr: string | Deno.ListenOptions,
   handler: (req: ServerRequest) => void
 ): Promise<void> {
   const server = serve(addr);
