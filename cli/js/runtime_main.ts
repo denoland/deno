@@ -78,8 +78,7 @@ export function bootstrapMainRuntime(): void {
   log("args", args);
   Object.freeze(args);
 
-  // TODO(bartlomieju): rename to s.repl
-  if (!s.mainModule) {
+  if (s.repl) {
     replLoop();
   }
 }

@@ -47,7 +47,7 @@ pub struct ThreadSafeState(Arc<State>);
 pub struct State {
   pub global_state: ThreadSafeGlobalState,
   pub permissions: Arc<Mutex<DenoPermissions>>,
-  pub main_module: Option<ModuleSpecifier>,
+  pub main_module: ModuleSpecifier,
   // TODO(ry) rename to worker_channels_internal
   pub worker_channels: WorkerChannels,
   /// When flags contains a `.import_map_path` option, the content of the
@@ -240,7 +240,7 @@ impl ThreadSafeState {
   pub fn new(
     global_state: ThreadSafeGlobalState,
     shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
-    main_module: Option<ModuleSpecifier>,
+    main_module: ModuleSpecifier,
     internal_channels: WorkerChannels,
   ) -> Result<Self, ErrBox> {
     let import_map: Option<ImportMap> =
@@ -285,7 +285,7 @@ impl ThreadSafeState {
   pub fn new_for_worker(
     global_state: ThreadSafeGlobalState,
     shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
-    main_module: Option<ModuleSpecifier>,
+    main_module: ModuleSpecifier,
     internal_channels: WorkerChannels,
   ) -> Result<Self, ErrBox> {
     let seeded_rng = match global_state.flags.seed {

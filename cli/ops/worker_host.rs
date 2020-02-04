@@ -88,22 +88,20 @@ fn op_create_worker(
     }
     let mut module_specifier = result.unwrap();
     if !has_source_code {
-      if let Some(referrer) = parent_state.main_module.as_ref() {
-        let referrer = referrer.clone().to_string();
-        let result = ModuleSpecifier::resolve_import(&specifier, &referrer);
-        if let Err(err) = result {
-          load_sender.send(Err(err.into())).unwrap();
-          return;
-        }
-        module_specifier = result.unwrap();
+      let referrer = parent_state.main_module.to_string();
+      let result = ModuleSpecifier::resolve_import(&specifier, &referrer);
+      if let Err(err) = result {
+        load_sender.send(Err(err.into())).unwrap();
+        return;
       }
+      module_specifier = result.unwrap();
     }
 
     let (int, ext) = ThreadSafeState::create_channels();
     let result = ThreadSafeState::new_for_worker(
       parent_state.global_state.clone(),
       Some(parent_state.permissions.clone()), // by default share with parent
-      Some(module_specifier.clone()),
+      module_specifier.clone(),
       int,
     );
     if let Err(err) = result {

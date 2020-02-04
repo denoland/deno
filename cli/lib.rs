@@ -98,36 +98,18 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
+// TODO: remove me
 fn create_worker_and_state(
   flags: DenoFlags,
 ) -> (MainWorker, ThreadSafeGlobalState) {
-  use crate::shell::Shell;
-  use std::sync::Arc;
-  use std::sync::Mutex;
-
-  let shell = Arc::new(Mutex::new(Shell::new()));
-
-  let progress = Progress::new();
-  progress.set_callback(move |_done, _completed, _total, status, msg| {
-    if !status.is_empty() {
-      let mut s = shell.lock().unwrap();
-      s.status(status, msg).expect("shell problem");
-    }
-  });
-
-  let global_state = ThreadSafeGlobalState::new(flags, progress)
-    .map_err(deno_error::print_err_and_exit)
-    .unwrap();
+  let global_state = create_global_state(flags);
+  let main_module = global_state.main_module.as_ref().unwrap().clone();
 
   let (int, ext) = ThreadSafeState::create_channels();
-  let state = ThreadSafeState::new(
-    global_state.clone(),
-    None,
-    global_state.main_module.clone(),
-    int,
-  )
-  .map_err(deno_error::print_err_and_exit)
-  .unwrap();
+  let state =
+    ThreadSafeState::new(global_state.clone(), None, main_module, int)
+      .map_err(deno_error::print_err_and_exit)
+      .unwrap();
 
   let state_ = state.clone();
   {
@@ -146,6 +128,55 @@ fn create_worker_and_state(
   );
 
   (worker, global_state)
+}
+
+fn create_global_state(flags: DenoFlags) -> ThreadSafeGlobalState {
+  use crate::shell::Shell;
+  use std::sync::Arc;
+  use std::sync::Mutex;
+
+  let shell = Arc::new(Mutex::new(Shell::new()));
+
+  let progress = Progress::new();
+  progress.set_callback(move |_done, _completed, _total, status, msg| {
+    if !status.is_empty() {
+      let mut s = shell.lock().unwrap();
+      s.status(status, msg).expect("shell problem");
+    }
+  });
+
+  let global_state = ThreadSafeGlobalState::new(flags, progress)
+    .map_err(deno_error::print_err_and_exit)
+    .unwrap();
+
+  global_state
+}
+
+fn create_main_worker(
+  global_state: ThreadSafeGlobalState,
+  main_module: ModuleSpecifier,
+) -> MainWorker {
+  let (int, ext) = ThreadSafeState::create_channels();
+  let state =
+    ThreadSafeState::new(global_state.clone(), None, main_module, int)
+      .map_err(deno_error::print_err_and_exit)
+      .unwrap();
+
+  let state_ = state.clone();
+  {
+    let mut resource_table = state_.lock_resource_table();
+    let (stdin, stdout, stderr) = get_stdio();
+    resource_table.add("stdin", Box::new(stdin));
+    resource_table.add("stdout", Box::new(stdout));
+    resource_table.add("stderr", Box::new(stderr));
+  }
+
+  MainWorker::new(
+    "main".to_string(),
+    startup_data::deno_isolate_init(),
+    state,
+    ext,
+  )
 }
 
 fn types_command() {
@@ -266,6 +297,7 @@ async fn info_command(flags: DenoFlags) {
     return print_cache_info(worker);
   }
 
+  // TODO: doesn't need main module, pass it through arguments
   let main_module = state.main_module.as_ref().unwrap().clone();
 
   // Setup runtime.
@@ -307,6 +339,7 @@ async fn fetch_command(flags: DenoFlags) {
 
   let (mut worker, state) = create_worker_and_state(flags);
 
+  // TODO: doesn't need main module, pass it through arguments
   let main_module = state.main_module.as_ref().unwrap().clone();
 
   // Setup runtime.
@@ -342,10 +375,11 @@ async fn fetch_command(flags: DenoFlags) {
 
 async fn eval_command(flags: DenoFlags) {
   let ts_source = flags.argv[1].clone();
-  let (mut worker, _state) = create_worker_and_state(flags);
   // Force TypeScript compile.
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
+  let global_state = create_global_state(flags);
+  let mut worker = create_main_worker(global_state, main_module.clone());
 
   js_check(worker.execute("bootstrapMainRuntime()"));
   debug!("main_module {}", &main_module);
@@ -367,18 +401,23 @@ async fn bundle_command(
   source_file: String,
   out_file: Option<String>,
 ) {
-  let (mut worker, state) = create_worker_and_state(flags);
   debug!(">>>>> bundle_async START");
-  // TODO:resolve source file relative to cwd (just like main_module)
   let source_file_specifier =
     ModuleSpecifier::resolve_url_or_path(&source_file).expect("Bad specifier");
+  let global_state = create_global_state(flags);
+  let mut worker =
+    create_main_worker(global_state.clone(), source_file_specifier.clone());
 
   // NOTE: we need to poll `worker` otherwise TS compiler worker won't run properly
   let result = (&mut *worker).await;
   js_check(result);
-  let bundle_result = state
+  let bundle_result = global_state
     .ts_compiler
-    .bundle_async(state.clone(), source_file_specifier.to_string(), out_file)
+    .bundle_async(
+      global_state.clone(),
+      source_file_specifier.to_string(),
+      out_file,
+    )
     .await;
   if let Err(err) = bundle_result {
     debug!("diagnostics returned, exiting!");
@@ -389,7 +428,10 @@ async fn bundle_command(
 }
 
 async fn run_repl(flags: DenoFlags) {
-  let (mut worker, _state) = create_worker_and_state(flags);
+  let main_module =
+    ModuleSpecifier::resolve_url_or_path("./__$deno$repl.ts").unwrap();
+  let global_state = create_global_state(flags);
+  let mut worker = create_main_worker(global_state, main_module);
   js_check(worker.execute("bootstrapMainRuntime()"));
   loop {
     let result = (&mut *worker).await;
@@ -406,6 +448,7 @@ async fn run_script(flags: DenoFlags) {
   if maybe_main_module.is_none() {
     print_msg_and_exit("Please provide a name to the main script to run.");
   }
+  // TODO: doesn't need main module, pass it through arguments
   let main_module = maybe_main_module.unwrap().clone();
   // Normal situation of executing a module.
 

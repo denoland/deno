@@ -37,7 +37,7 @@ fn op_start(
     "cwd": deno_fs::normalize_path(&env::current_dir().unwrap()),
     "pid": std::process::id(),
     "argv": script_args,
-    "mainModule": gs.main_module.as_ref().map(|x| x.to_string()),
+    "location": state.main_module.to_string(),
     "debugFlag": gs.flags.log_level.map_or(false, |l| l == log::Level::Debug),
     "versionFlag": gs.flags.version,
     "v8Version": version::v8(),
