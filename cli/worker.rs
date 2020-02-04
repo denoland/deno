@@ -303,8 +303,13 @@ mod tests {
       .join("cli/tests/006_url_imports.ts");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let mut flags = flags::DenoFlags::default();
-    flags.reload = true;
+    let flags = flags::DenoFlags {
+      subcommand: flags::DenoSubcommand::Run {
+        script: module_specifier.to_string(),
+      },
+      reload: true,
+      ..flags::DenoFlags::default()
+    };
     let global_state =
       ThreadSafeGlobalState::new(flags, Progress::new()).unwrap();
     let (int, ext) = ThreadSafeState::create_channels();
