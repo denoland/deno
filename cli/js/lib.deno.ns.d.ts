@@ -605,13 +605,13 @@ declare namespace Deno {
   /** Read `r` until EOF and return the content as `ReadAllResponse` */
   export function readAll(
     r: Reader,
-    options: ReadAllOption
+    options?: ReadAllOption
   ): Promise<ReadAllResponse>;
 
   /** Read synchronously `r` until EOF and return the content as `ReadAllResponse`  */
   export function readAllSync(
     r: SyncReader,
-    options: ReadAllOption
+    options?: ReadAllOption
   ): ReadAllResponse;
 
   /** Write all the content of `arr` to `w` */
