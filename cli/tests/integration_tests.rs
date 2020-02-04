@@ -831,6 +831,7 @@ itest!(_053_import_compression {
 
 itest!(import_wasm_via_network {
   args: "run --reload http://127.0.0.1:4545/cli/tests/055_import_wasm_via_network.ts",
+  output: "055_import_wasm_via_network.ts.out",
   http_server: true,
 });
 
