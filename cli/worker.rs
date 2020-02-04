@@ -239,13 +239,9 @@ mod tests {
     )
     .unwrap();
     let (int, ext) = ThreadSafeState::create_channels();
-    let state = ThreadSafeState::new(
-      global_state,
-      None,
-      Some(module_specifier.clone()),
-      int,
-    )
-    .unwrap();
+    let state =
+      ThreadSafeState::new(global_state, None, module_specifier.clone(), int)
+        .unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -284,13 +280,9 @@ mod tests {
     )
     .unwrap();
     let (int, ext) = ThreadSafeState::create_channels();
-    let state = ThreadSafeState::new(
-      global_state,
-      None,
-      Some(module_specifier.clone()),
-      int,
-    )
-    .unwrap();
+    let state =
+      ThreadSafeState::new(global_state, None, module_specifier.clone(), int)
+        .unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -330,7 +322,7 @@ mod tests {
     let state = ThreadSafeState::new(
       global_state.clone(),
       None,
-      Some(module_specifier.clone()),
+      module_specifier.clone(),
       int,
     )
     .unwrap();
@@ -361,10 +353,7 @@ mod tests {
 
   fn create_test_worker() -> MainWorker {
     let (int, ext) = ThreadSafeState::create_channels();
-    let state = ThreadSafeState::mock(
-      vec![String::from("./deno"), String::from("hello.js")],
-      int,
-    );
+    let state = ThreadSafeState::mock("./hello.js", int);
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),

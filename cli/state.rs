@@ -389,19 +389,13 @@ impl ThreadSafeState {
 
   #[cfg(test)]
   pub fn mock(
-    argv: Vec<String>,
+    main_module: &str,
     internal_channels: WorkerChannels,
   ) -> ThreadSafeState {
-    let module_specifier = if argv.is_empty() {
-      None
-    } else {
-      let module_specifier = ModuleSpecifier::resolve_url_or_path(&argv[0])
-        .expect("Invalid entry module");
-      Some(module_specifier)
-    };
-
+    let module_specifier = ModuleSpecifier::resolve_url_or_path(main_module)
+      .expect("Invalid entry module");
     ThreadSafeState::new(
-      ThreadSafeGlobalState::mock(argv),
+      ThreadSafeGlobalState::mock(vec!["deno".to_string()]),
       None,
       module_specifier,
       internal_channels,
@@ -438,8 +432,5 @@ impl ThreadSafeState {
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
   let (int, _) = ThreadSafeState::create_channels();
-  f(ThreadSafeState::mock(
-    vec![String::from("./deno"), String::from("hello.js")],
-    int,
-  ));
+  f(ThreadSafeState::mock("./hello.js", int));
 }

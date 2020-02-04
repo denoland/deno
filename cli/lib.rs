@@ -98,38 +98,6 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
-// TODO: remove me
-fn create_worker_and_state(
-  flags: DenoFlags,
-) -> (MainWorker, ThreadSafeGlobalState) {
-  let global_state = create_global_state(flags);
-  let main_module = global_state.main_module.as_ref().unwrap().clone();
-
-  let (int, ext) = ThreadSafeState::create_channels();
-  let state =
-    ThreadSafeState::new(global_state.clone(), None, main_module, int)
-      .map_err(deno_error::print_err_and_exit)
-      .unwrap();
-
-  let state_ = state.clone();
-  {
-    let mut resource_table = state_.lock_resource_table();
-    let (stdin, stdout, stderr) = get_stdio();
-    resource_table.add("stdin", Box::new(stdin));
-    resource_table.add("stdout", Box::new(stdout));
-    resource_table.add("stderr", Box::new(stderr));
-  }
-
-  let worker = MainWorker::new(
-    "main".to_string(),
-    startup_data::deno_isolate_init(),
-    state,
-    ext,
-  );
-
-  (worker, global_state)
-}
-
 fn create_global_state(flags: DenoFlags) -> ThreadSafeGlobalState {
   use crate::shell::Shell;
   use std::sync::Arc;
@@ -188,9 +156,7 @@ fn types_command() {
   );
 }
 
-fn print_cache_info(worker: MainWorker) {
-  let state = &worker.state.global_state;
-
+fn print_cache_info(state: &ThreadSafeGlobalState) {
   println!(
     "{} {:?}",
     colors::bold("DENO_DIR location:".to_string()),
@@ -288,21 +254,19 @@ async fn print_file_info(
   }
 }
 
-async fn info_command(flags: DenoFlags) {
-  let argv_len = flags.argv.len();
-  let (mut worker, state) = create_worker_and_state(flags);
-
+async fn info_command(flags: DenoFlags, file: Option<String>) {
+  let global_state = create_global_state(flags);
   // If it was just "deno info" print location of caches and exit
-  if argv_len == 1 {
-    return print_cache_info(worker);
+  if file.is_none() {
+    return print_cache_info(&global_state);
   }
-
-  // TODO: doesn't need main module, pass it through arguments
-  let main_module = state.main_module.as_ref().unwrap().clone();
-
   // Setup runtime.
+  let main_module = ModuleSpecifier::resolve_url_or_path(&file.unwrap())
+    .expect("Bad specifier");
+  let mut worker = create_main_worker(global_state, main_module.clone());
+
+  // TODO(bartlomieju): not needed?
   js_check(worker.execute("bootstrapMainRuntime()"));
-  debug!("main_module {}", main_module);
 
   let main_result = worker.execute_mod_async(&main_module, None, true).await;
   if let Err(e) = main_result {
@@ -323,9 +287,8 @@ async fn install_command(
   // Firstly fetch and compile module, this
   // ensures the module exists.
   let mut fetch_flags = flags.clone();
-  fetch_flags.argv.push(module_url.to_string());
   fetch_flags.reload = true;
-  fetch_command(fetch_flags).await;
+  fetch_command(fetch_flags, vec![module_url.to_string()]).await;
 
   let install_result =
     installer::install(flags, dir, &exe_name, &module_url, args);
@@ -334,34 +297,24 @@ async fn install_command(
   }
 }
 
-async fn fetch_command(flags: DenoFlags) {
-  let args = flags.argv.clone();
+async fn fetch_command(flags: DenoFlags, files: Vec<String>) {
+  let main_module =
+    ModuleSpecifier::resolve_url_or_path("./__$deno$fetch.ts").unwrap();
+  let global_state = create_global_state(flags);
+  let mut worker =
+    create_main_worker(global_state.clone(), main_module.clone());
 
-  let (mut worker, state) = create_worker_and_state(flags);
-
-  // TODO: doesn't need main module, pass it through arguments
-  let main_module = state.main_module.as_ref().unwrap().clone();
-
-  // Setup runtime.
+  // TODO(bartlomieju): not needed?
   js_check(worker.execute("bootstrapMainRuntime()"));
-  debug!("main_module {}", main_module);
 
-  let result = worker.execute_mod_async(&main_module, None, true).await;
-  js_check(result);
-
-  // resolve modules for rest of args if present
-  let files_len = args.len();
-  if files_len > 2 {
-    for next_specifier in args.iter().take(files_len).skip(2) {
-      let next_module =
-        ModuleSpecifier::resolve_url_or_path(&next_specifier).unwrap();
-      let result = worker.execute_mod_async(&next_module, None, true).await;
-      js_check(result);
-    }
+  for file in files {
+    let specifier = ModuleSpecifier::resolve_url_or_path(&file).unwrap();
+    let result = worker.execute_mod_async(&specifier, None, true).await;
+    js_check(result);
   }
 
-  if state.flags.lock_write {
-    if let Some(ref lockfile) = state.lockfile {
+  if global_state.flags.lock_write {
+    if let Some(ref lockfile) = global_state.lockfile {
       let g = lockfile.lock().unwrap();
       if let Err(e) = g.write() {
         print_err_and_exit(ErrBox::from(e));
@@ -441,16 +394,11 @@ async fn run_repl(flags: DenoFlags) {
   }
 }
 
-async fn run_script(flags: DenoFlags) {
-  let (mut worker, state) = create_worker_and_state(flags);
-
-  let maybe_main_module = state.main_module.as_ref();
-  if maybe_main_module.is_none() {
-    print_msg_and_exit("Please provide a name to the main script to run.");
-  }
-  // TODO: doesn't need main module, pass it through arguments
-  let main_module = maybe_main_module.unwrap().clone();
-  // Normal situation of executing a module.
+async fn run_script(flags: DenoFlags, script: String) {
+  let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
+  let global_state = create_global_state(flags);
+  let mut worker =
+    create_main_worker(global_state.clone(), main_module.clone());
 
   // Setup runtime.
   js_check(worker.execute("bootstrapMainRuntime()"));
@@ -460,8 +408,8 @@ async fn run_script(flags: DenoFlags) {
   if let Err(err) = mod_result {
     print_err_and_exit(err);
   }
-  if state.flags.lock_write {
-    if let Some(ref lockfile) = state.lockfile {
+  if global_state.flags.lock_write {
+    if let Some(ref lockfile) = global_state.lockfile {
       let g = lockfile.lock().unwrap();
       if let Err(e) = g.write() {
         print_err_and_exit(ErrBox::from(e));
@@ -511,11 +459,11 @@ pub fn main() {
         print!("{}", std::str::from_utf8(&buf).unwrap());
       }
       DenoSubcommand::Eval => eval_command(flags).await,
-      DenoSubcommand::Fetch => fetch_command(flags).await,
+      DenoSubcommand::Fetch { files } => fetch_command(flags, files).await,
       DenoSubcommand::Format { check, files } => {
         fmt_command(files, check).await
       }
-      DenoSubcommand::Info => info_command(flags).await,
+      DenoSubcommand::Info { file } => info_command(flags, file).await,
       DenoSubcommand::Install {
         dir,
         exe_name,
@@ -523,7 +471,7 @@ pub fn main() {
         args,
       } => install_command(flags, dir, exe_name, module_url, args).await,
       DenoSubcommand::Repl => run_repl(flags).await,
-      DenoSubcommand::Run => run_script(flags).await,
+      DenoSubcommand::Run { script } => run_script(flags, script).await,
       DenoSubcommand::Types => types_command(),
       _ => panic!("bad subcommand"),
     }
