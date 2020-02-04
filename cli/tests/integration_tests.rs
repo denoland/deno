@@ -834,6 +834,12 @@ itest!(_053_import_compression {
   http_server: true,
 });
 
+itest!(import_wasm_via_network {
+  args: "run --reload http://127.0.0.1:4545/cli/tests/055_import_wasm_via_network.ts",
+  output: "055_import_wasm_via_network.ts.out",
+  http_server: true,
+});
+
 mod util {
   use deno::colors::strip_ansi_codes;
   pub use deno::test_util::*;
