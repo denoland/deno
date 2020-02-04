@@ -48,8 +48,7 @@ pub struct State {
   pub global_state: ThreadSafeGlobalState,
   pub permissions: Arc<Mutex<DenoPermissions>>,
   pub main_module: Option<ModuleSpecifier>,
-  // TODO(ry) rename to worker_channels_internal
-  pub worker_channels: WorkerChannels,
+  pub worker_channels_internal: WorkerChannels,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
@@ -265,7 +264,7 @@ impl ThreadSafeState {
       main_module,
       permissions,
       import_map,
-      worker_channels: internal_channels,
+      worker_channels_internal: internal_channels,
       metrics: Metrics::default(),
       global_timer: Mutex::new(GlobalTimer::new()),
       workers: Mutex::new(HashMap::new()),
@@ -304,7 +303,7 @@ impl ThreadSafeState {
       main_module,
       permissions,
       import_map: None,
-      worker_channels: internal_channels,
+      worker_channels_internal: internal_channels,
       metrics: Metrics::default(),
       global_timer: Mutex::new(GlobalTimer::new()),
       workers: Mutex::new(HashMap::new()),
