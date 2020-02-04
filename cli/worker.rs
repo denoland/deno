@@ -230,22 +230,13 @@ mod tests {
       .join("cli/tests/esm_imports_a.js");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let global_state = ThreadSafeGlobalState::new(
-      flags::DenoFlags {
-        argv: vec![String::from("./deno"), module_specifier.to_string()],
-        ..flags::DenoFlags::default()
-      },
-      Progress::new(),
-    )
-    .unwrap();
+    let global_state =
+      ThreadSafeGlobalState::new(flags::DenoFlags::default(), Progress::new())
+        .unwrap();
     let (int, ext) = ThreadSafeState::create_channels();
-    let state = ThreadSafeState::new(
-      global_state,
-      None,
-      Some(module_specifier.clone()),
-      int,
-    )
-    .unwrap();
+    let state =
+      ThreadSafeState::new(global_state, None, module_specifier.clone(), int)
+        .unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -275,22 +266,13 @@ mod tests {
       .join("tests/circular1.ts");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let global_state = ThreadSafeGlobalState::new(
-      flags::DenoFlags {
-        argv: vec![String::from("deno"), module_specifier.to_string()],
-        ..flags::DenoFlags::default()
-      },
-      Progress::new(),
-    )
-    .unwrap();
+    let global_state =
+      ThreadSafeGlobalState::new(flags::DenoFlags::default(), Progress::new())
+        .unwrap();
     let (int, ext) = ThreadSafeState::create_channels();
-    let state = ThreadSafeState::new(
-      global_state,
-      None,
-      Some(module_specifier.clone()),
-      int,
-    )
-    .unwrap();
+    let state =
+      ThreadSafeState::new(global_state, None, module_specifier.clone(), int)
+        .unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -321,16 +303,20 @@ mod tests {
       .join("cli/tests/006_url_imports.ts");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let mut flags = flags::DenoFlags::default();
-    flags.argv = vec![String::from("deno"), module_specifier.to_string()];
-    flags.reload = true;
+    let flags = flags::DenoFlags {
+      subcommand: flags::DenoSubcommand::Run {
+        script: module_specifier.to_string(),
+      },
+      reload: true,
+      ..flags::DenoFlags::default()
+    };
     let global_state =
       ThreadSafeGlobalState::new(flags, Progress::new()).unwrap();
     let (int, ext) = ThreadSafeState::create_channels();
     let state = ThreadSafeState::new(
       global_state.clone(),
       None,
-      Some(module_specifier.clone()),
+      module_specifier.clone(),
       int,
     )
     .unwrap();
@@ -361,10 +347,7 @@ mod tests {
 
   fn create_test_worker() -> MainWorker {
     let (int, ext) = ThreadSafeState::create_channels();
-    let state = ThreadSafeState::mock(
-      vec![String::from("./deno"), String::from("hello.js")],
-      int,
-    );
+    let state = ThreadSafeState::mock("./hello.js", int);
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),

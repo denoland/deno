@@ -77,10 +77,7 @@ mod tests {
 
   fn create_test_worker() -> WebWorker {
     let (int, ext) = ThreadSafeState::create_channels();
-    let state = ThreadSafeState::mock(
-      vec![String::from("./deno"), String::from("hello.js")],
-      int,
-    );
+    let state = ThreadSafeState::mock("./hello.js", int);
     let mut worker = WebWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),

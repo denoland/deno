@@ -7,6 +7,7 @@ use crate::global_state::ThreadSafeGlobalState;
 use crate::startup_data;
 use crate::state::*;
 use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
 use futures::FutureExt;
 use serde_derive::Deserialize;
 use serde_json;
@@ -45,8 +46,11 @@ impl WasmCompiler {
   /// Create a new V8 worker with snapshot of WASM compiler and setup compiler's runtime.
   fn setup_worker(global_state: ThreadSafeGlobalState) -> CompilerWorker {
     let (int, ext) = ThreadSafeState::create_channels();
+    let entry_point =
+      ModuleSpecifier::resolve_url_or_path("./__$deno$wasm_compiler.ts")
+        .unwrap();
     let worker_state =
-      ThreadSafeState::new(global_state.clone(), None, None, int)
+      ThreadSafeState::new(global_state.clone(), None, entry_point, int)
         .expect("Unable to create worker state");
 
     // Count how many times we start the compiler worker.
