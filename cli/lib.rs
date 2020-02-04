@@ -362,18 +362,23 @@ async fn eval_command(flags: DenoFlags) {
   js_check(worker.execute("window.dispatchEvent(new Event('unload'))"));
 }
 
-async fn bundle_command(flags: DenoFlags) {
-  let out_file = flags.bundle_output.clone();
+async fn bundle_command(
+  flags: DenoFlags,
+  source_file: String,
+  out_file: Option<String>,
+) {
   let (mut worker, state) = create_worker_and_state(flags);
-  let main_module = state.main_module.as_ref().unwrap().clone();
-
   debug!(">>>>> bundle_async START");
+  // TODO:resolve source file relative to cwd (just like main_module)
+  let source_file_specifier =
+    ModuleSpecifier::resolve_url_or_path(&source_file).expect("Bad specifier");
+
   // NOTE: we need to poll `worker` otherwise TS compiler worker won't run properly
   let result = (&mut *worker).await;
   js_check(result);
   let bundle_result = state
     .ts_compiler
-    .bundle_async(state.clone(), main_module.to_string(), out_file)
+    .bundle_async(state.clone(), source_file_specifier.to_string(), out_file)
     .await;
   if let Err(err) = bundle_result {
     debug!("diagnostics returned, exiting!");
@@ -455,7 +460,10 @@ pub fn main() {
 
   let fut = async move {
     match flags.clone().subcommand {
-      DenoSubcommand::Bundle => bundle_command(flags).await,
+      DenoSubcommand::Bundle {
+        source_file,
+        out_file,
+      } => bundle_command(flags, source_file, out_file).await,
       DenoSubcommand::Completions => {}
       DenoSubcommand::Eval => eval_command(flags).await,
       DenoSubcommand::Fetch => fetch_command(flags).await,

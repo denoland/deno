@@ -33,7 +33,10 @@ const TEST_RUNNER_URL: &str = std_url!("testing/runner.ts");
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum DenoSubcommand {
-  Bundle,
+  Bundle {
+    source_file: String,
+    out_file: Option<String>,
+  },
   Completions,
   Eval,
   Fetch,
@@ -88,8 +91,6 @@ pub struct DenoFlags {
   pub cached_only: bool,
   pub seed: Option<u64>,
   pub v8_flags: Option<Vec<String>>,
-
-  pub bundle_output: Option<String>,
 
   pub lock: Option<String>,
   pub lock_write: bool,
@@ -336,13 +337,20 @@ fn install_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 }
 
 fn bundle_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
-  flags.subcommand = DenoSubcommand::Bundle;
-  let source_file: &str = matches.value_of("source_file").unwrap();
-  flags.argv.push(source_file.into());
-  if let Some(out_file) = matches.value_of("out_file") {
+  let source_file = matches.value_of("source_file").unwrap().to_string();
+
+  let out_file = if let Some(out_file) = matches.value_of("out_file") {
+    // TODO(bartlomieju): this permission should not be necessary
     flags.allow_write = true;
-    flags.bundle_output = Some(out_file.to_string());
-  }
+    Some(out_file.to_string())
+  } else {
+    None
+  };
+
+  flags.subcommand = DenoSubcommand::Bundle {
+    source_file,
+    out_file,
+  };
 }
 
 fn completions_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
@@ -1610,9 +1618,11 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       DenoFlags {
-        subcommand: DenoSubcommand::Bundle,
-        argv: svec!["deno", "source.ts"],
-        bundle_output: None,
+        subcommand: DenoSubcommand::Bundle {
+          source_file: "source.ts".to_string(),
+          out_file: None,
+        },
+        argv: svec!["deno"],
         ..DenoFlags::default()
       }
     );
@@ -1625,9 +1635,11 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       DenoFlags {
-        subcommand: DenoSubcommand::Bundle,
-        argv: svec!["deno", "source.ts"],
-        bundle_output: Some("bundle.js".to_string()),
+        subcommand: DenoSubcommand::Bundle {
+          source_file: "source.ts".to_string(),
+          out_file: Some("bundle.js".to_string()),
+        },
+        argv: svec!["deno"],
         allow_write: true,
         ..DenoFlags::default()
       }
