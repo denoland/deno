@@ -122,8 +122,7 @@ fn create_main_worker(
   global_state: ThreadSafeGlobalState,
   main_module: ModuleSpecifier,
 ) -> MainWorker {
-  let (int, ext) = ThreadSafeState::create_channels();
-  let state = ThreadSafeState::new(global_state, None, main_module, int)
+  let state = ThreadSafeState::new(global_state, None, main_module)
     .map_err(deno_error::print_err_and_exit)
     .unwrap();
 
@@ -136,12 +135,7 @@ fn create_main_worker(
     resource_table.add("stderr", Box::new(stderr));
   }
 
-  MainWorker::new(
-    "main".to_string(),
-    startup_data::deno_isolate_init(),
-    state,
-    ext,
-  )
+  MainWorker::new("main".to_string(), startup_data::deno_isolate_init(), state)
 }
 
 fn types_command() {

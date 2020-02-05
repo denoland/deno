@@ -9,7 +9,8 @@ use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
 use crate::permissions::DenoPermissions;
 use crate::web_worker::WebWorker;
-use crate::worker::WorkerChannels;
+use crate::worker::WorkerChannelsExternal;
+use crate::worker::WorkerChannelsInternal;
 use deno_core::Buf;
 use deno_core::CoreOp;
 use deno_core::ErrBox;
@@ -36,7 +37,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::time::Instant;
-use tokio::sync::Mutex as AsyncMutex;
 
 /// Isolate cannot be passed between threads but ThreadSafeState can.
 /// ThreadSafeState satisfies Send and Sync. So any state that needs to be
@@ -48,14 +48,13 @@ pub struct State {
   pub global_state: ThreadSafeGlobalState,
   pub permissions: Arc<Mutex<DenoPermissions>>,
   pub main_module: ModuleSpecifier,
-  // TODO(ry) rename to worker_channels_internal
-  pub worker_channels: WorkerChannels,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
   pub metrics: Metrics,
   pub global_timer: Mutex<GlobalTimer>,
-  pub workers: Mutex<HashMap<u32, WorkerChannels>>,
+  pub workers: Mutex<HashMap<u32, WorkerChannelsExternal>>,
+  pub worker_channels_internal: Mutex<Option<WorkerChannelsInternal>>,
   pub loading_workers: Mutex<HashMap<u32, mpsc::Receiver<Result<(), ErrBox>>>>,
   pub next_worker_id: AtomicUsize,
   pub start_time: Instant,
@@ -222,26 +221,11 @@ impl Loader for ThreadSafeState {
 }
 
 impl ThreadSafeState {
-  pub fn create_channels() -> (WorkerChannels, WorkerChannels) {
-    let (in_tx, in_rx) = mpsc::channel::<Buf>(1);
-    let (out_tx, out_rx) = mpsc::channel::<Buf>(1);
-    let internal_channels = WorkerChannels {
-      sender: out_tx,
-      receiver: Arc::new(AsyncMutex::new(in_rx)),
-    };
-    let external_channels = WorkerChannels {
-      sender: in_tx,
-      receiver: Arc::new(AsyncMutex::new(out_rx)),
-    };
-    (internal_channels, external_channels)
-  }
-
   /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new(
     global_state: ThreadSafeGlobalState,
     shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
     main_module: ModuleSpecifier,
-    internal_channels: WorkerChannels,
   ) -> Result<Self, ErrBox> {
     let import_map: Option<ImportMap> =
       match global_state.flags.import_map_path.as_ref() {
@@ -265,9 +249,9 @@ impl ThreadSafeState {
       main_module,
       permissions,
       import_map,
-      worker_channels: internal_channels,
       metrics: Metrics::default(),
       global_timer: Mutex::new(GlobalTimer::new()),
+      worker_channels_internal: Mutex::new(None),
       workers: Mutex::new(HashMap::new()),
       loading_workers: Mutex::new(HashMap::new()),
       next_worker_id: AtomicUsize::new(0),
@@ -286,7 +270,6 @@ impl ThreadSafeState {
     global_state: ThreadSafeGlobalState,
     shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
     main_module: ModuleSpecifier,
-    internal_channels: WorkerChannels,
   ) -> Result<Self, ErrBox> {
     let seeded_rng = match global_state.flags.seed {
       Some(seed) => Some(Mutex::new(StdRng::seed_from_u64(seed))),
@@ -304,9 +287,9 @@ impl ThreadSafeState {
       main_module,
       permissions,
       import_map: None,
-      worker_channels: internal_channels,
       metrics: Metrics::default(),
       global_timer: Mutex::new(GlobalTimer::new()),
+      worker_channels_internal: Mutex::new(None),
       workers: Mutex::new(HashMap::new()),
       loading_workers: Mutex::new(HashMap::new()),
       next_worker_id: AtomicUsize::new(0),
@@ -388,17 +371,13 @@ impl ThreadSafeState {
   }
 
   #[cfg(test)]
-  pub fn mock(
-    main_module: &str,
-    internal_channels: WorkerChannels,
-  ) -> ThreadSafeState {
+  pub fn mock(main_module: &str) -> ThreadSafeState {
     let module_specifier = ModuleSpecifier::resolve_url_or_path(main_module)
       .expect("Invalid entry module");
     ThreadSafeState::new(
       ThreadSafeGlobalState::mock(vec!["deno".to_string()]),
       None,
       module_specifier,
-      internal_channels,
     )
     .unwrap()
   }
@@ -431,6 +410,5 @@ impl ThreadSafeState {
 #[test]
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
-  let (int, _) = ThreadSafeState::create_channels();
-  f(ThreadSafeState::mock("./hello.js", int));
+  f(ThreadSafeState::mock("./hello.js"));
 }
