@@ -11,9 +11,12 @@ use walkdir::WalkDir;
 
 fn create_dir_globset(dir_path: &Path) -> globset::GlobMatcher {
   // TODO: make lazy static
-  let glob_path = dir_path.join("**/{*_,}test.{js,ts}");
+  let glob_path = dir_path.join("**/{*_test.js,*_test.ts,test.js,test.ts}");
   eprintln!("expanded glob_path {:?}", glob_path);
-  globset::GlobBuilder::new(&glob_path.to_string_lossy()).build().unwrap().compile_matcher()
+  globset::GlobBuilder::new(&glob_path.to_string_lossy())
+    .build()
+    .unwrap()
+    .compile_matcher()
 }
 
 fn expand_directory(dir_path: &Path) -> Vec<PathBuf> {
@@ -48,7 +51,9 @@ fn find_local_test_modules(globs: Vec<String>, root_path: PathBuf) -> Vec<Url> {
     if !glob_path.is_absolute() {
       glob_path = root_path.join(glob_path);
     }
-    let glob_path = glob_path.canonicalize().unwrap();
+    if let Ok(p) = glob_path.canonicalize() {
+      glob_path = p;
+    }
     dbg!(&glob_path);
     let g = Glob::new(&glob_path.to_string_lossy()).expect("Bad glob string");
     builder.add(g.clone());
@@ -71,9 +76,7 @@ fn find_local_test_modules(globs: Vec<String>, root_path: PathBuf) -> Vec<Url> {
         vec![p.path().to_owned()]
       }
     })
-    .map(|path| {
-      Url::from_file_path(path).unwrap()
-    })
+    .map(|path| Url::from_file_path(path).unwrap())
     .collect()
 }
 
@@ -83,10 +86,9 @@ fn find_test_modules(include: Vec<String>, root_path: PathBuf) -> Vec<Url> {
 
   let (include_paths, include_urls): (Vec<String>, Vec<String>) =
     include.into_iter().partition(|n| !is_remote_url(n));
-  
+
   let mut file_urls = find_local_test_modules(include_paths, root_path);
   // TODO: handle exclusion
-
 
   // TODO: handle errors
   // TODO: handle exclusion
@@ -94,7 +96,7 @@ fn find_test_modules(include: Vec<String>, root_path: PathBuf) -> Vec<Url> {
     .into_iter()
     .map(|u| Url::parse(&u).unwrap())
     .collect();
-  
+
   file_urls.extend_from_slice(&remote_urls);
   file_urls
 }
@@ -166,17 +168,21 @@ mod tests {
   #[test]
   fn find_test_modules_dir_1() {
     let test_data_path = test_util::root_path().join("cli/tests/test_runner");
-    let mut matched_urls = find_test_modules(vec![".".to_string()], test_data_path.clone());
-    let mut expected_urls = filepaths_to_urls(test_data_path, vec![
-      "bar_test.js",
-      "foo_test.ts",
-      "subdir/bar_test.js",
-      "subdir/foo_test.ts",
-      "subdir/test.js",
-      "subdir/test.ts",
-      "test.js",
-      "test.ts",
-    ]);
+    let mut matched_urls =
+      find_test_modules(vec![".".to_string()], test_data_path.clone());
+    let mut expected_urls = filepaths_to_urls(
+      test_data_path,
+      vec![
+        "bar_test.js",
+        "foo_test.ts",
+        "subdir/bar_test.js",
+        "subdir/foo_test.ts",
+        "subdir/test.js",
+        "subdir/test.ts",
+        "test.js",
+        "test.ts",
+      ],
+    );
     matched_urls.sort();
     expected_urls.sort();
     assert_eq!(matched_urls, expected_urls);
@@ -185,16 +191,17 @@ mod tests {
   #[test]
   fn find_test_modules_dir2() {
     let test_data_path = test_util::root_path().join("cli/tests/test_runner");
-    let mut matched_urls = find_test_modules(
-      vec!["subdir".to_string()],
-      test_data_path.clone(),
+    let mut matched_urls =
+      find_test_modules(vec!["subdir".to_string()], test_data_path.clone());
+    let mut expected_urls = filepaths_to_urls(
+      test_data_path,
+      vec![
+        "subdir/bar_test.js",
+        "subdir/foo_test.ts",
+        "subdir/test.js",
+        "subdir/test.ts",
+      ],
     );
-    let mut expected_urls = filepaths_to_urls(test_data_path, vec![
-      "subdir/bar_test.js",
-      "subdir/foo_test.ts",
-      "subdir/test.js",
-      "subdir/test.ts",
-    ]);
     matched_urls.sort();
     expected_urls.sort();
     assert_eq!(matched_urls, expected_urls);
@@ -207,12 +214,15 @@ mod tests {
       vec!["**/*_test.{js,ts}".to_string()],
       test_data_path.clone(),
     );
-    let mut expected_urls = filepaths_to_urls(test_data_path, vec![
-      "bar_test.js",
-      "foo_test.ts",
-      "subdir/bar_test.js",
-      "subdir/foo_test.ts",
-    ]);
+    let mut expected_urls = filepaths_to_urls(
+      test_data_path,
+      vec![
+        "bar_test.js",
+        "foo_test.ts",
+        "subdir/bar_test.js",
+        "subdir/foo_test.ts",
+      ],
+    );
     matched_urls.sort();
     expected_urls.sort();
     assert_eq!(matched_urls, expected_urls);
