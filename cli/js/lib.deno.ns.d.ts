@@ -28,7 +28,7 @@ declare namespace Deno {
     disableLog?: boolean;
   }
 
-  export function runTests(opts: RunTestsOptions): Promise<void>;
+  export function runTests(opts?: RunTestsOptions): Promise<void>;
 
   /** Check if running in terminal.
    *
