@@ -47,7 +47,7 @@ pub struct ThreadSafeState(Arc<State>);
 pub struct State {
   pub global_state: ThreadSafeGlobalState,
   pub permissions: Arc<Mutex<DenoPermissions>>,
-  pub main_module: Option<ModuleSpecifier>,
+  pub main_module: ModuleSpecifier,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
@@ -225,7 +225,7 @@ impl ThreadSafeState {
   pub fn new(
     global_state: ThreadSafeGlobalState,
     shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
-    main_module: Option<ModuleSpecifier>,
+    main_module: ModuleSpecifier,
   ) -> Result<Self, ErrBox> {
     let import_map: Option<ImportMap> =
       match global_state.flags.import_map_path.as_ref() {
@@ -269,7 +269,7 @@ impl ThreadSafeState {
   pub fn new_for_worker(
     global_state: ThreadSafeGlobalState,
     shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
-    main_module: Option<ModuleSpecifier>,
+    main_module: ModuleSpecifier,
   ) -> Result<Self, ErrBox> {
     let seeded_rng = match global_state.flags.seed {
       Some(seed) => Some(Mutex::new(StdRng::seed_from_u64(seed))),
@@ -371,17 +371,11 @@ impl ThreadSafeState {
   }
 
   #[cfg(test)]
-  pub fn mock(argv: Vec<String>) -> ThreadSafeState {
-    let module_specifier = if argv.is_empty() {
-      None
-    } else {
-      let module_specifier = ModuleSpecifier::resolve_url_or_path(&argv[0])
-        .expect("Invalid entry module");
-      Some(module_specifier)
-    };
-
+  pub fn mock(main_module: &str) -> ThreadSafeState {
+    let module_specifier = ModuleSpecifier::resolve_url_or_path(main_module)
+      .expect("Invalid entry module");
     ThreadSafeState::new(
-      ThreadSafeGlobalState::mock(argv),
+      ThreadSafeGlobalState::mock(vec!["deno".to_string()]),
       None,
       module_specifier,
     )
@@ -416,8 +410,5 @@ impl ThreadSafeState {
 #[test]
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
-  f(ThreadSafeState::mock(vec![
-    String::from("./deno"),
-    String::from("hello.js"),
-  ]));
+  f(ThreadSafeState::mock("./hello.js"));
 }

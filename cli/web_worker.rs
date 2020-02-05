@@ -74,10 +74,7 @@ mod tests {
   use crate::tokio_util;
 
   fn create_test_worker() -> WebWorker {
-    let state = ThreadSafeState::mock(vec![
-      String::from("./deno"),
-      String::from("hello.js"),
-    ]);
+    let state = ThreadSafeState::mock("./hello.js");
     let mut worker = WebWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),

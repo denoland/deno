@@ -72,14 +72,13 @@ export function bootstrapMainRuntime(): void {
   setSignals();
 
   log("cwd", s.cwd);
-  for (let i = 0; i < s.argv.length; i++) {
-    args.push(s.argv[i]);
+  for (let i = 0; i < s.args.length; i++) {
+    args.push(s.args[i]);
   }
   log("args", args);
   Object.freeze(args);
 
-  // TODO(bartlomieju): rename to s.repl
-  if (!s.mainModule) {
+  if (s.repl) {
     replLoop();
   }
 }
