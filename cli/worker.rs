@@ -287,18 +287,13 @@ mod tests {
       Progress::new(),
     )
     .unwrap();
-    let (int, ext) = ThreadSafeState::create_channels();
-    let state = ThreadSafeState::new(
-      global_state,
-      None,
-      Some(module_specifier.clone()),
-      int,
-    )
-    .unwrap();
+    let state =
+      ThreadSafeState::new(global_state, None, Some(module_specifier.clone()))
+        .unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
-        MainWorker::new("TEST".to_string(), StartupData::None, state, ext);
+        MainWorker::new("TEST".to_string(), StartupData::None, state);
       let result = worker
         .execute_mod_async(&module_specifier, None, false)
         .await;
@@ -332,18 +327,13 @@ mod tests {
       Progress::new(),
     )
     .unwrap();
-    let (int, ext) = ThreadSafeState::create_channels();
-    let state = ThreadSafeState::new(
-      global_state,
-      None,
-      Some(module_specifier.clone()),
-      int,
-    )
-    .unwrap();
+    let state =
+      ThreadSafeState::new(global_state, None, Some(module_specifier.clone()))
+        .unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
-        MainWorker::new("TEST".to_string(), StartupData::None, state, ext);
+        MainWorker::new("TEST".to_string(), StartupData::None, state);
       let result = worker
         .execute_mod_async(&module_specifier, None, false)
         .await;
@@ -375,19 +365,16 @@ mod tests {
     flags.reload = true;
     let global_state =
       ThreadSafeGlobalState::new(flags, Progress::new()).unwrap();
-    let (int, ext) = ThreadSafeState::create_channels();
     let state = ThreadSafeState::new(
       global_state.clone(),
       None,
       Some(module_specifier.clone()),
-      int,
     )
     .unwrap();
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),
       state.clone(),
-      ext,
     );
     worker.execute("bootstrapMainRuntime()").unwrap();
     let result = worker
@@ -409,16 +396,14 @@ mod tests {
   }
 
   fn create_test_worker() -> MainWorker {
-    let (int, ext) = ThreadSafeState::create_channels();
-    let state = ThreadSafeState::mock(
-      vec![String::from("./deno"), String::from("hello.js")],
-      int,
-    );
+    let state = ThreadSafeState::mock(vec![
+      String::from("./deno"),
+      String::from("hello.js"),
+    ]);
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),
       state,
-      ext,
     );
     worker.execute("bootstrapMainRuntime()").unwrap();
     worker
