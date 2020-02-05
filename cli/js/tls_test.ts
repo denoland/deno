@@ -201,5 +201,3 @@ testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
   assertEquals(decoder.decode(bodyBuf), "Hello World\n");
   conn.close();
 });
-
-Deno.runIfMain(import.meta);

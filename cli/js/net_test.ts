@@ -239,5 +239,3 @@ testPerm({ net: true }, async function netDoubleCloseWrite() {
   conn.close();
 });
 */
-
-Deno.runIfMain(import.meta);

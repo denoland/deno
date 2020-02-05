@@ -30,11 +30,6 @@ declare namespace Deno {
 
   export function runTests(opts: RunTestsOptions): Promise<void>;
 
-  export function runIfMain(
-    meta: ImportMeta,
-    opts?: RunTestsOptions
-  ): Promise<void>;
-
   /** Check if running in terminal.
    *
    *       console.log(Deno.isTTY().stdout);

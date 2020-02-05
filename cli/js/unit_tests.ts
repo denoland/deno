@@ -60,9 +60,6 @@ import "./performance_test.ts";
 import "./permissions_test.ts";
 import "./version_test.ts";
 
-async function main(): Promise<void> {
-  // Testing entire test suite serially
-  Deno.runIfMain(import.meta);
+if (import.meta.main) {
+  await Deno.runTests();
 }
-
-main();

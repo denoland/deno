@@ -185,15 +185,3 @@ export async function runTests({
     }, 0);
   }
 }
-
-/**
- * Runs specified test cases if the enclosing script is main.
- */
-export async function runIfMain(
-  meta: ImportMeta,
-  opts?: RunTestsOptions
-): Promise<void> {
-  if (meta.main) {
-    return runTests(opts);
-  }
-}
