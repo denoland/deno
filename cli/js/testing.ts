@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { red, green, bgRed, bold, white, gray, italic } from "./colors.ts";
 import { exit } from "./os.ts";
+import { Console } from "./console.ts";
 
 function formatTestTime(time = 0): string {
   return `${time.toFixed(2)}ms`;
@@ -27,14 +28,14 @@ declare global {
   // Only `var` variables show up in the `globalThis` type when doing a global
   // scope augmentation.
   // eslint-disable-next-line no-var
-  var DENO_TEST_REGISTRY: TestDefinition[];
+  var __DENO_TEST_REGISTRY: TestDefinition[];
 }
 
 let TEST_REGISTRY: TestDefinition[] = [];
-if (globalThis["DENO_TEST_REGISTRY"]) {
-  TEST_REGISTRY = globalThis.DENO_TEST_REGISTRY as TestDefinition[];
+if (globalThis["__DENO_TEST_REGISTRY"]) {
+  TEST_REGISTRY = globalThis.__DENO_TEST_REGISTRY as TestDefinition[];
 } else {
-  Object.defineProperty(globalThis, "DENO_TEST_REGISTRY", {
+  Object.defineProperty(globalThis, "__DENO_TEST_REGISTRY", {
     enumerable: false,
     value: TEST_REGISTRY
   });
@@ -104,7 +105,8 @@ export interface RunTestsOptions {
 export async function runTests({
   exitOnFail = false,
   only = /[^\s]/,
-  skip = /^\s*$/
+  skip = /^\s*$/,
+  disableLog = false
 }: RunTestsOptions = {}): Promise<void> {
   const testsToRun = TEST_REGISTRY.filter(
     ({ name }): boolean => only.test(name) && !skip.test(name)
@@ -129,11 +131,24 @@ export async function runTests({
     }
   );
 
+  // @ts-ignore
+  const originalConsole = globalThis.console;
+  // TODO(bartlomieju): add option to capture output of test
+  // cases and display it if test fails (like --nopcature in Rust)
+  const disabledConsole = new Console(
+    (_x: string, _isErr?: boolean): void => {}
+  );
+
+  if (disableLog) {
+    // @ts-ignore
+    globalThis.console = disabledConsole;
+  }
+
   const RED_FAILED = red("FAILED");
   const GREEN_OK = green("OK");
   const RED_BG_FAIL = bgRed(" FAIL ");
 
-  console.log(`running ${testsToRun.length} tests`);
+  originalConsole.log(`running ${testsToRun.length} tests`);
   const suiteStart = performance.now();
 
   for (const testCase of testCases) {
@@ -142,14 +157,14 @@ export async function runTests({
       await testCase.fn();
       const end = performance.now();
       testCase.timeElapsed = end - start;
-      console.log(
+      originalConsole.log(
         `${GREEN_OK}     ${testCase.name} ${promptTestTime(end - start, true)}`
       );
       stats.passed++;
     } catch (err) {
       testCase.error = err;
-      console.log(`${RED_FAILED} ${testCase.name}`);
-      console.log(err.stack);
+      originalConsole.log(`${RED_FAILED} ${testCase.name}`);
+      originalConsole.log(err.stack);
       stats.failed++;
       if (exitOnFail) {
         break;
@@ -159,8 +174,13 @@ export async function runTests({
 
   const suiteEnd = performance.now();
 
+  if (disableLog) {
+    // @ts-ignore
+    globalThis.console = originalConsole;
+  }
+
   // Attempting to match the output of Rust's test runner.
-  console.log(
+  originalConsole.log(
     `\ntest result: ${stats.failed ? RED_BG_FAIL : GREEN_OK} ` +
       `${stats.passed} passed; ${stats.failed} failed; ` +
       `${stats.ignored} ignored; ${stats.measured} measured; ` +
@@ -174,12 +194,12 @@ export async function runTests({
     // Use setTimeout to avoid the error being ignored due to unhandled
     // promise rejections being swallowed.
     setTimeout((): void => {
-      console.error(`There were ${stats.failed} test failures.`);
+      originalConsole.error(`There were ${stats.failed} test failures.`);
       testCases
         .filter(testCase => !!testCase.error)
         .forEach(testCase => {
-          console.error(`${RED_BG_FAIL} ${red(testCase.name)}`);
-          console.error(testCase.error);
+          originalConsole.error(`${RED_BG_FAIL} ${red(testCase.name)}`);
+          originalConsole.error(testCase.error);
         });
       exit(1);
     }, 0);
