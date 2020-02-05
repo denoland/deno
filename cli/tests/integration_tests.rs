@@ -401,6 +401,11 @@ itest!(_026_workers {
 });
 */
 
+itest!(workers_basic {
+  args: "run --reload workers_basic.ts",
+  output: "workers_basic.out",
+});
+
 itest!(_027_redirect_typescript {
   args: "run --reload 027_redirect_typescript.ts",
   output: "027_redirect_typescript.ts.out",
