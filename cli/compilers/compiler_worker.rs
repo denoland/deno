@@ -2,7 +2,6 @@
 use crate::ops;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
-use crate::worker::WorkerChannels;
 use deno_core;
 use deno_core::StartupData;
 use std::ops::Deref;
@@ -28,10 +27,9 @@ impl CompilerWorker {
     name: String,
     startup_data: StartupData,
     state: ThreadSafeState,
-    external_channels: WorkerChannels,
   ) -> Self {
     let state_ = state.clone();
-    let mut worker = Worker::new(name, startup_data, state_, external_channels);
+    let mut worker = Worker::new(name, startup_data, state_);
     {
       let isolate = &mut worker.isolate;
       ops::runtime::init(isolate, &state);

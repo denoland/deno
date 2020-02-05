@@ -75,7 +75,7 @@ fn resolve_url_from_location(base_url: &Url, location: &str) -> Url {
 
 #[derive(Debug, PartialEq)]
 pub struct ResultPayload {
-  pub body: String,
+  pub body: Vec<u8>,
   pub content_type: Option<String>,
   pub etag: Option<String>,
   pub x_typescript_types: Option<String>,
@@ -93,7 +93,7 @@ pub enum FetchOnceResult {
 /// yields Code(ResultPayload).
 /// If redirect occurs, does not follow and
 /// yields Redirect(url).
-pub fn fetch_string_once(
+pub fn fetch_once(
   client: Client,
   url: &Url,
   cached_etag: Option<String>,
@@ -169,14 +169,14 @@ pub fn fetch_string_once(
         _ if content_encoding == "br" => {
           let full_bytes = response.bytes().await?;
           let mut decoder = BrotliDecoder::new(full_bytes.as_ref());
-          let mut body = String::new();
-          decoder.read_to_string(&mut body)?;
+          let mut body = vec![];
+          decoder.read_to_end(&mut body)?;
           body
         }
-        _ => response.text().await?,
+        _ => response.bytes().await?.to_vec(),
       }
     } else {
-      body = response.text().await?;
+      body = response.bytes().await?.to_vec();
     }
 
     return Ok(FetchOnceResult::Code(ResultPayload {
@@ -277,7 +277,7 @@ mod tests {
     let url =
       Url::parse("http://127.0.0.1:4545/cli/tests/fixture.json").unwrap();
     let client = create_http_client();
-    let result = fetch_string_once(client, &url, None).await;
+    let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(payload)) = result {
       assert!(!payload.body.is_empty());
       assert_eq!(payload.content_type, Some("application/json".to_string()));
@@ -298,9 +298,12 @@ mod tests {
     )
     .unwrap();
     let client = create_http_client();
-    let result = fetch_string_once(client, &url, None).await;
+    let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(payload)) = result {
-      assert_eq!(payload.body, "console.log('gzip')");
+      assert_eq!(
+        String::from_utf8(payload.body).unwrap(),
+        "console.log('gzip')"
+      );
       assert_eq!(
         payload.content_type,
         Some("application/javascript".to_string())
@@ -318,7 +321,7 @@ mod tests {
     let http_server_guard = crate::test_util::http_server();
     let url = Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
     let client = create_http_client();
-    let result = fetch_string_once(client.clone(), &url, None).await;
+    let result = fetch_once(client.clone(), &url, None).await;
     if let Ok(FetchOnceResult::Code(ResultPayload {
       body,
       content_type,
@@ -327,7 +330,7 @@ mod tests {
     })) = result
     {
       assert!(!body.is_empty());
-      assert_eq!(body, "console.log('etag')");
+      assert_eq!(String::from_utf8(body).unwrap(), "console.log('etag')");
       assert_eq!(content_type, Some("application/typescript".to_string()));
       assert_eq!(etag, Some("33a64df551425fcc55e".to_string()));
       assert_eq!(x_typescript_types, None);
@@ -336,8 +339,7 @@ mod tests {
     }
 
     let res =
-      fetch_string_once(client, &url, Some("33a64df551425fcc55e".to_string()))
-        .await;
+      fetch_once(client, &url, Some("33a64df551425fcc55e".to_string())).await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
 
     drop(http_server_guard);
@@ -352,10 +354,13 @@ mod tests {
     )
     .unwrap();
     let client = create_http_client();
-    let result = fetch_string_once(client, &url, None).await;
+    let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(payload)) = result {
       assert!(!payload.body.is_empty());
-      assert_eq!(payload.body, "console.log('brotli');");
+      assert_eq!(
+        String::from_utf8(payload.body).unwrap(),
+        "console.log('brotli');"
+      );
       assert_eq!(
         payload.content_type,
         Some("application/javascript".to_string())
@@ -369,7 +374,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_fetch_string_once_with_redirect() {
+  async fn test_fetch_once_with_redirect() {
     let http_server_guard = crate::test_util::http_server();
     // Relies on external http server. See tools/http_server.py
     let url =
@@ -378,7 +383,7 @@ mod tests {
     let target_url =
       Url::parse("http://localhost:4545/cli/tests/fixture.json").unwrap();
     let client = create_http_client();
-    let result = fetch_string_once(client, &url, None).await;
+    let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Redirect(url)) = result {
       assert_eq!(url, target_url);
     } else {

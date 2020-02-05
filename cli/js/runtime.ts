@@ -13,8 +13,9 @@ import { setPrepareStackTrace } from "./error_stack.ts";
 interface Start {
   cwd: string;
   pid: number;
-  argv: string[];
-  mainModule: string; // Absolute URL.
+  args: string[];
+  location: string; // Absolute URL.
+  repl: boolean;
   debugFlag: boolean;
   depsFlag: boolean;
   typesFlag: boolean;
@@ -57,10 +58,8 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
   util.setLogDebug(s.debugFlag, source);
 
   // TODO(bartlomieju): this field should always be set
-  if (s.mainModule) {
-    assert(s.mainModule.length > 0);
-    setLocation(s.mainModule);
-  }
+  assert(s.location.length > 0);
+  setLocation(s.location);
   setPrepareStackTrace(Error);
 
   // TODO(bartlomieju): I don't like that it's mixed in here, when

@@ -21,11 +21,36 @@ fn deno_dir_test() {
   drop(g);
 }
 
-// TODO(#2933): Rewrite this test in rust.
 #[test]
 fn fetch_test() {
+  pub use deno::test_util::*;
+  use std::process::Command;
+  use tempfile::TempDir;
+
   let g = util::http_server();
-  util::run_python_script("tools/fetch_test.py");
+
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let t = util::root_path().join("cli/tests/006_url_imports.ts");
+
+  let output = Command::new(deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("fetch")
+    .arg(t)
+    .output()
+    .expect("Failed to spawn script");
+
+  let code = output.status.code();
+  let out = std::str::from_utf8(&output.stdout).unwrap();
+
+  assert_eq!(Some(0), code);
+  assert_eq!(out, "");
+
+  let expected_path = deno_dir
+    .path()
+    .join("deps/http/localhost_PORT4545/cli/tests/subdir/mod2.ts");
+  assert_eq!(expected_path.exists(), true);
+
   drop(g);
 }
 
@@ -69,7 +94,6 @@ fn fmt_test() {
   assert_eq!(expected, actual);
 }
 
-/* TODO(ry) Disabled to get #3844 landed faster. Re-enable.
 #[test]
 fn installer_test_local_module_run() {
   use deno::flags::DenoFlags;
@@ -163,7 +187,6 @@ fn installer_test_remote_module_run() {
   drop(temp_dir);
   drop(g)
 }
-*/
 
 #[test]
 fn js_unit_tests() {
@@ -796,7 +819,7 @@ itest!(run_v8_flags {
 });
 
 itest!(run_v8_help {
-  args: "run --v8-flags=--help",
+  args: "--v8-flags=--help",
   output: "v8_help.out",
 });
 
@@ -833,6 +856,12 @@ itest!(top_level_for_await_ts {
 itest!(_053_import_compression {
   args: "run --reload --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",
+  http_server: true,
+});
+
+itest!(import_wasm_via_network {
+  args: "run --reload http://127.0.0.1:4545/cli/tests/055_import_wasm_via_network.ts",
+  output: "055_import_wasm_via_network.ts.out",
   http_server: true,
 });
 
