@@ -87,7 +87,7 @@ declare namespace Deno {
    * "public", "template", "video"
    *
    * "cache"
-   * 
+   *
    * |Platform | Value                               | Example                      |
    * | ------- | ----------------------------------- | ---------------------------- |
    * | Linux   | `$XDG_CACHE_HOME` or `$HOME`/.cache | /home/alice/.cache           |
@@ -95,7 +95,7 @@ declare namespace Deno {
    * | Windows | `{FOLDERID_LocalAppData}`           | C:\Users\Alice\AppData\Local |
    *
    * "config"
-   * 
+   *
    * |Platform | Value                                 | Example                          |
    * | ------- | ------------------------------------- | -------------------------------- |
    * | Linux   | `$XDG_CONFIG_HOME` or `$HOME`/.config | /home/alice/.config              |
@@ -103,7 +103,7 @@ declare namespace Deno {
    * | Windows | `{FOLDERID_RoamingAppData}`           | C:\Users\Alice\AppData\Roaming   |
    *
    * "executable"
-   * 
+   *
    * |Platform | Value                                                           | Example                |
    * | ------- | --------------------------------------------------------------- | -----------------------|
    * | Linux   | `XDG_BIN_HOME` or `$XDG_DATA_HOME`/../bin or `$HOME`/.local/bin | /home/alice/.local/bin |
@@ -111,7 +111,7 @@ declare namespace Deno {
    * | Windows | -                                                               | -                      |
    *
    * "data"
-   * 
+   *
    * |Platform | Value                                    | Example                                  |
    * | ------- | ---------------------------------------- | ---------------------------------------- |
    * | Linux   | `$XDG_DATA_HOME` or `$HOME`/.local/share | /home/alice/.local/share                 |
@@ -119,7 +119,7 @@ declare namespace Deno {
    * | Windows | `{FOLDERID_RoamingAppData}`              | C:\Users\Alice\AppData\Roaming           |
    *
    * "data_local"
-   * 
+   *
    * |Platform | Value                                    | Example                                  |
    * | ------- | ---------------------------------------- | ---------------------------------------- |
    * | Linux   | `$XDG_DATA_HOME` or `$HOME`/.local/share | /home/alice/.local/share                 |
@@ -127,7 +127,7 @@ declare namespace Deno {
    * | Windows | `{FOLDERID_LocalAppData}`                | C:\Users\Alice\AppData\Local             |
    *
    * "audio"
-   * 
+   *
    * |Platform | Value              | Example              |
    * | ------- | ------------------ | -------------------- |
    * | Linux   | `XDG_MUSIC_DIR`    | /home/alice/Music    |
@@ -135,7 +135,7 @@ declare namespace Deno {
    * | Windows | `{FOLDERID_Music}` | C:\Users\Alice\Music |
    *
    * "desktop"
-   * 
+   *
    * |Platform | Value                | Example                |
    * | ------- | -------------------- | ---------------------- |
    * | Linux   | `XDG_DESKTOP_DIR`    | /home/alice/Desktop    |
@@ -143,7 +143,7 @@ declare namespace Deno {
    * | Windows | `{FOLDERID_Desktop}` | C:\Users\Alice\Desktop |
    *
    * "document"
-   * 
+   *
    * |Platform | Value                  | Example                  |
    * | ------- | ---------------------- | ------------------------ |
    * | Linux   | `XDG_DOCUMENTS_DIR`    | /home/alice/Documents    |
@@ -151,7 +151,7 @@ declare namespace Deno {
    * | Windows | `{FOLDERID_Documents}` | C:\Users\Alice\Documents |
    *
    * "download"
-   * 
+   *
    * |Platform | Value                  | Example                  |
    * | ------- | ---------------------- | ------------------------ |
    * | Linux   | `XDG_DOWNLOAD_DIR`     | /home/alice/Downloads    |
@@ -159,7 +159,7 @@ declare namespace Deno {
    * | Windows | `{FOLDERID_Downloads}` | C:\Users\Alice\Downloads |
    *
    * "font"
-   * 
+   *
    * |Platform | Value                                                | Example                        |
    * | ------- | ---------------------------------------------------- | ------------------------------ |
    * | Linux   | `$XDG_DATA_HOME`/fonts or `$HOME`/.local/share/fonts | /home/alice/.local/share/fonts |
@@ -167,7 +167,7 @@ declare namespace Deno {
    * | Windows | –                                                    | –                              |
    *
    * "picture"
-   * 
+   *
    * |Platform | Value                 | Example                 |
    * | ------- | --------------------- | ----------------------- |
    * | Linux   | `XDG_PICTURES_DIR`    | /home/alice/Pictures    |
@@ -175,7 +175,7 @@ declare namespace Deno {
    * | Windows | `{FOLDERID_Pictures}` | C:\Users\Alice\Pictures |
    *
    * "public"
-   * 
+   *
    * |Platform | Value                 | Example             |
    * | ------- | --------------------- | ------------------- |
    * | Linux   | `XDG_PUBLICSHARE_DIR` | /home/alice/Public  |
@@ -183,7 +183,7 @@ declare namespace Deno {
    * | Windows | `{FOLDERID_Public}`   | C:\Users\Public     |
    *
    * "template"
-   * 
+   *
    * |Platform | Value                  | Example                                                    |
    * | ------- | ---------------------- | ---------------------------------------------------------- |
    * | Linux   | `XDG_TEMPLATES_DIR`    | /home/alice/Templates                                      |
@@ -191,7 +191,7 @@ declare namespace Deno {
    * | Windows | `{FOLDERID_Templates}` | C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Templates |
    *
    * "video"
-   * 
+   *
    * |Platform | Value               | Example               |
    * | ------- | ------------------- | --------------------- |
    * | Linux   | `XDG_VIDEOS_DIR`    | /home/alice/Videos    |
