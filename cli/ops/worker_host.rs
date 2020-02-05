@@ -99,12 +99,10 @@ fn op_create_worker(
       result.unwrap()
     };
 
-    let (int, ext) = ThreadSafeState::create_channels();
     let result = ThreadSafeState::new_for_worker(
       parent_state.global_state.clone(),
       Some(parent_state.permissions.clone()), // by default share with parent
       module_specifier.clone(),
-      int,
     );
     if let Err(err) = result {
       load_sender.send(Err(err)).unwrap();
@@ -122,7 +120,6 @@ fn op_create_worker(
       worker_name.to_string(),
       startup_data::deno_isolate_init(),
       child_state,
-      ext,
     );
     let script = format!("bootstrapWorkerRuntime(\"{}\")", worker_name);
     js_check(worker.execute(&script));

@@ -2,7 +2,6 @@
 use crate::ops;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
-use crate::worker::WorkerChannels;
 use deno_core;
 use deno_core::ErrBox;
 use deno_core::StartupData;
@@ -28,10 +27,9 @@ impl WebWorker {
     name: String,
     startup_data: StartupData,
     state: ThreadSafeState,
-    external_channels: WorkerChannels,
   ) -> Self {
     let state_ = state.clone();
-    let mut worker = Worker::new(name, startup_data, state_, external_channels);
+    let mut worker = Worker::new(name, startup_data, state_);
     {
       let isolate = &mut worker.isolate;
       ops::runtime::init(isolate, &state);
@@ -76,13 +74,11 @@ mod tests {
   use crate::tokio_util;
 
   fn create_test_worker() -> WebWorker {
-    let (int, ext) = ThreadSafeState::create_channels();
-    let state = ThreadSafeState::mock("./hello.js", int);
+    let state = ThreadSafeState::mock("./hello.js");
     let mut worker = WebWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),
       state,
-      ext,
     );
     worker.execute("bootstrapWorkerRuntime(\"TEST\")").unwrap();
     worker.execute("runWorkerMessageLoop()").unwrap();

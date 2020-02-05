@@ -7,8 +7,6 @@ use crate::state::ThreadSafeState;
 use deno_core::*;
 use futures;
 use futures::future::FutureExt;
-use futures::sink::SinkExt;
-use futures::stream::StreamExt;
 use std;
 use std::convert::From;
 
@@ -31,8 +29,8 @@ fn op_worker_get_message(
 ) -> Result<JsonOp, ErrBox> {
   let state_ = state.clone();
   let op = async move {
-    let mut receiver = state_.worker_channels.receiver.lock().await;
-    let maybe_buf = receiver.next().await;
+    let c = state_.worker_channels_internal.lock().unwrap();
+    let maybe_buf = c.as_ref().unwrap().get_message().await;
     debug!("op_worker_get_message");
     Ok(json!({ "data": maybe_buf }))
   };
@@ -47,8 +45,9 @@ fn op_worker_post_message(
   data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
-  let mut sender = state.worker_channels.sender.clone();
-  futures::executor::block_on(sender.send(d))
+  let c = state.worker_channels_internal.lock().unwrap();
+  let fut = c.as_ref().unwrap().post_message(d);
+  futures::executor::block_on(fut)
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
 
   Ok(JsonOp::Sync(json!({})))
