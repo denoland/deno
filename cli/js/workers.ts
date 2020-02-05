@@ -29,25 +29,13 @@ function createWorker(
   hasSourceCode: boolean,
   sourceCode: Uint8Array,
   name?: string
-): { id: number; loaded: boolean } {
+): { id: number } {
   return sendSync(dispatch.OP_CREATE_WORKER, {
     specifier,
     hasSourceCode,
     sourceCode: new TextDecoder().decode(sourceCode),
     name
   });
-}
-
-async function hostPollWorker(id: number): Promise<any> {
-  return await sendAsync(dispatch.OP_HOST_POLL_WORKER, { id });
-}
-
-function hostCloseWorker(id: number): void {
-  sendSync(dispatch.OP_HOST_CLOSE_WORKER, { id });
-}
-
-function hostResumeWorker(id: number): void {
-  sendSync(dispatch.OP_HOST_RESUME_WORKER, { id });
 }
 
 function hostPostMessage(id: number, data: any): void {
@@ -119,7 +107,7 @@ export class WorkerImpl extends EventTarget implements Worker {
     }
     */
 
-    const { id, loaded } = createWorker(
+    const { id } = createWorker(
       specifier,
       hasSourceCode,
       sourceCode,

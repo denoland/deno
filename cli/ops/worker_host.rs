@@ -23,16 +23,8 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
     s.core_op(json_op(s.stateful_op(op_create_worker))),
   );
   i.register_op(
-    "host_poll_worker",
-    s.core_op(json_op(s.stateful_op(op_host_poll_worker))),
-  );
-  i.register_op(
     "host_close_worker",
     s.core_op(json_op(s.stateful_op(op_host_close_worker))),
-  );
-  i.register_op(
-    "host_resume_worker",
-    s.core_op(json_op(s.stateful_op(op_host_resume_worker))),
   );
   i.register_op(
     "host_post_message",
@@ -151,20 +143,6 @@ struct WorkerArgs {
   id: i32,
 }
 
-fn op_host_poll_worker(
-  _state: &ThreadSafeState,
-  _args: Value,
-  _data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
-  println!("op_host_poll_worker");
-  // TOOO(ry) remove this.
-  todo!()
-  /*
-  let op = async { Ok(serialize_worker_result(Ok(()))) };
-  Ok(JsonOp::Async(op.boxed_local()))
-  */
-}
-
 fn op_host_close_worker(
   state: &ThreadSafeState,
   args: Value,
@@ -186,25 +164,6 @@ fn op_host_close_worker(
   };
 
   Ok(JsonOp::Sync(json!({})))
-}
-
-fn op_host_resume_worker(
-  _state: &ThreadSafeState,
-  _args: Value,
-  _data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
-  // TODO(ry) We are not on the same thread. We cannot just call worker.execute.
-  // We can only send messages. This needs to be reimplemented somehow.
-  todo!()
-  /*
-  let args: WorkerArgs = serde_json::from_value(args)?;
-  let id = args.id as u32;
-  let state = state.clone();
-  let mut workers_table = state.workers.lock().unwrap();
-  let worker = workers_table.get_mut(&id).unwrap();
-  js_check(worker.execute("runWorkerMessageLoop()"));
-  Ok(JsonOp::Sync(json!({})))
-  */
 }
 
 #[derive(Deserialize)]
