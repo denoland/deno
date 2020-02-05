@@ -433,7 +433,7 @@ async fn test_command(
     flags
       .argv
       .push(test_file_path.to_string_lossy().to_string());
-    run_script(flags).await;
+    run_script(flags, test_file_path.to_string_lossy().to_string()).await;
   }
 }
 

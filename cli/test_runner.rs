@@ -16,7 +16,9 @@ fn find_local_test_modules(globs: Vec<String>, root_path: PathBuf) -> Vec<Url> {
   // independently.
   assert!(root_path.is_absolute());
   assert!(root_path.is_dir());
-  let root_path = root_path.canonicalize().expect("Can't canonicalize root path");
+  let root_path = root_path
+    .canonicalize()
+    .expect("Can't canonicalize root path");
 
   // TODO: use errors here
   for glob_string in globs {
@@ -36,7 +38,7 @@ fn find_local_test_modules(globs: Vec<String>, root_path: PathBuf) -> Vec<Url> {
     .filter_map(|v| v.ok())
     .filter(|p| {
       let result = glob_set.is_match(p.path());
-      dbg!(p.path(), result.clone());
+      dbg!(p.path(), result);
       result
     })
     .map(|p| {
@@ -74,7 +76,7 @@ fn render_test_file(
     format!("Deno.runTests({{ exitOnFail: {} }});\n", fail_fast);
   test_file.push_str(&run_tests_cmd);
 
-  test_file.to_string()
+  test_file
 }
 
 pub fn run_test_modules(
@@ -114,7 +116,12 @@ mod tests {
   #[test]
   fn find_test_modules_dir_1() {
     let test_data_path = test_util::root_path().join("cli/tests/test_runner");
-    let g = vec!["**/test.js".to_string(), "**/test.ts".to_string(), "**/*_test.js".to_string(), "**/*_test.ts".to_string()];
+    let g = vec![
+      "**/test.js".to_string(),
+      "**/test.ts".to_string(),
+      "**/*_test.js".to_string(),
+      "**/*_test.ts".to_string(),
+    ];
     let mut matched_urls = find_test_modules(g, test_data_path.clone());
     let expected_file_paths = vec![
       "bar_test.js",
@@ -124,12 +131,15 @@ mod tests {
       "subdir/test.js",
       "subdir/test.ts",
       "test.js",
-      "test.ts"
+      "test.ts",
     ];
-    let mut expected_urls: Vec<Url> = expected_file_paths.into_iter().map(|p| {
-      let full_path = test_data_path.join(p).canonicalize().unwrap();
-      Url::from_file_path(full_path).unwrap()
-    }).collect();
+    let mut expected_urls: Vec<Url> = expected_file_paths
+      .into_iter()
+      .map(|p| {
+        let full_path = test_data_path.join(p).canonicalize().unwrap();
+        Url::from_file_path(full_path).unwrap()
+      })
+      .collect();
     matched_urls.sort();
     expected_urls.sort();
     assert_eq!(matched_urls, expected_urls);
@@ -149,17 +159,23 @@ mod tests {
   #[test]
   fn find_test_modules_glob() {
     let test_data_path = test_util::root_path().join("cli/tests/test_runner");
-    let mut matched_urls = find_test_modules(vec!["**/test.{js,ts}".to_string()], test_data_path.clone());
+    let mut matched_urls = find_test_modules(
+      vec!["**/test.{js,ts}".to_string()],
+      test_data_path.clone(),
+    );
     let expected_file_paths = vec![
       "bar_test.js",
       "foo_test.ts",
       "subdir/bar_test.js",
       "subdir/foo_test.ts",
     ];
-    let mut expected_urls: Vec<Url> = expected_file_paths.into_iter().map(|p| {
-      let full_path = test_data_path.join(p).canonicalize().unwrap();
-      Url::from_file_path(full_path).unwrap()
-    }).collect();
+    let mut expected_urls: Vec<Url> = expected_file_paths
+      .into_iter()
+      .map(|p| {
+        let full_path = test_data_path.join(p).canonicalize().unwrap();
+        Url::from_file_path(full_path).unwrap()
+      })
+      .collect();
     matched_urls.sort();
     expected_urls.sort();
     assert_eq!(matched_urls, expected_urls);
@@ -195,8 +211,10 @@ mod tests {
       "https://example.com/colors_test.ts".to_string(),
       "http://example.com/printf_test.ts".to_string(),
     ];
-    let matches = find_test_modules(urls.clone(), std::env::current_dir().unwrap());
-    let matched_urls: Vec<String> = matches.into_iter().map(|m| m.to_string()).collect();
+    let matches =
+      find_test_modules(urls.clone(), std::env::current_dir().unwrap());
+    let matched_urls: Vec<String> =
+      matches.into_iter().map(|m| m.to_string()).collect();
     assert_eq!(matched_urls, urls);
   }
 }
