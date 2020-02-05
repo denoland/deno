@@ -119,12 +119,10 @@ fn create_worker_and_state(
     .map_err(deno_error::print_err_and_exit)
     .unwrap();
 
-  let (int, ext) = ThreadSafeState::create_channels();
   let state = ThreadSafeState::new(
     global_state.clone(),
     None,
     global_state.main_module.clone(),
-    int,
   )
   .map_err(deno_error::print_err_and_exit)
   .unwrap();
@@ -142,7 +140,6 @@ fn create_worker_and_state(
     "main".to_string(),
     startup_data::deno_isolate_init(),
     state,
-    ext,
   );
 
   (worker, global_state)

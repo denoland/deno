@@ -44,10 +44,8 @@ pub struct WasmCompiler {
 impl WasmCompiler {
   /// Create a new V8 worker with snapshot of WASM compiler and setup compiler's runtime.
   fn setup_worker(global_state: ThreadSafeGlobalState) -> CompilerWorker {
-    let (int, ext) = ThreadSafeState::create_channels();
-    let worker_state =
-      ThreadSafeState::new(global_state.clone(), None, None, int)
-        .expect("Unable to create worker state");
+    let worker_state = ThreadSafeState::new(global_state.clone(), None, None)
+      .expect("Unable to create worker state");
 
     // Count how many times we start the compiler worker.
     global_state
@@ -59,7 +57,6 @@ impl WasmCompiler {
       "WASM".to_string(),
       startup_data::compiler_isolate_init(),
       worker_state,
-      ext,
     );
     worker.execute("bootstrapWasmCompilerRuntime()").unwrap();
     worker
