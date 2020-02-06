@@ -3,11 +3,11 @@ use futures::Future;
 
 pub fn create_basic_runtime() -> tokio::runtime::Runtime {
   tokio::runtime::Builder::new()
-  .basic_scheduler()
-  .enable_io()
-  .enable_time()
-  .build()
-  .unwrap()
+    .basic_scheduler()
+    .enable_io()
+    .enable_time()
+    .build()
+    .unwrap()
 }
 
 // TODO(ry) rename to run_local ?

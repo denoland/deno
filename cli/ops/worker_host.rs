@@ -37,8 +37,11 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("metrics", s.core_op(json_op(s.stateful_op(op_metrics))));
 }
 
-
-fn create_web_worker(global_state: ThreadSafeGlobalState, permissions: DenoPermissions, specifier: ModuleSpecifier) -> Result<WebWorker, ErrBox> {
+fn create_web_worker(
+  global_state: ThreadSafeGlobalState,
+  permissions: DenoPermissions,
+  specifier: ModuleSpecifier,
+) -> Result<WebWorker, ErrBox> {
   let child_state = ThreadSafeState::new_for_worker(
     global_state,
     Some(permissions),
@@ -64,7 +67,12 @@ fn create_web_worker(global_state: ThreadSafeGlobalState, permissions: DenoPermi
 }
 
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
-fn run_worker_thread(handle_sender: std::sync::mpsc::Sender<JsonResult>, global_state: ThreadSafeGlobalState, permissions: DenoPermissions, specifier: ModuleSpecifier) -> Result<u32, ErrBox> {
+fn run_worker_thread(
+  handle_sender: std::sync::mpsc::Sender<JsonResult>,
+  global_state: ThreadSafeGlobalState,
+  permissions: DenoPermissions,
+  specifier: ModuleSpecifier,
+) -> Result<u32, ErrBox> {
   // TODO: do it in new thread
   std::thread::spawn(move || {
     // Any error inside this block is terminal:
@@ -95,11 +103,11 @@ fn run_worker_thread(handle_sender: std::sync::mpsc::Sender<JsonResult>, global_
         handle_sender.send(Err(e)).unwrap();
         return;
       }
-    } 
-    
+    }
+
     let mut rt = create_basic_runtime();
-  
-    // TODO(bartlomieju): add "type": "classic", ie. ability to load 
+
+    // TODO(bartlomieju): add "type": "classic", ie. ability to load
     // script instead of module
     // Load provided module
     if !has_source_code {
@@ -112,35 +120,29 @@ fn run_worker_thread(handle_sender: std::sync::mpsc::Sender<JsonResult>, global_
         return;
       }
     }
-  
-    // TODO(bartlomieju): add a lot of smaller global functions in JS 
-    // and drive everything in here manually? "genius!"
-
 
     // Drive worker event loop
     loop {
-      // Start message loop
-      worker.execute("runWorkerMessageLoop()").expect("Can't start message loop");
-      // Wait until all futures finish
-      // TODO(bartlomieju): this should always return error?
-      // Message loop should be 
-      let r = (&mut *worker).await;
-      handle_sender.send(r).unwrap();
+      let a = select!(worker.await, message_receiver.recv().await);
 
-      // blocks
-      let msg = result_receiver.recv();
-      match msg {
-        Resume => {
-          // pass - execute again
+      let result = match a {
+        worker => {
+          worker
         },
-        Cleanup => {
-          // errored out and not resuming
-        }
-      }
+        message => {
+          // TODO: just add second value and then bind using rusty_v8 
+          // to get structured clone/transfer working
+          let json_string = "";
+          let script = format!("globalThis.workerMessageRecvCallback({})", json_string);
+          let result = worker.execute(script);
+          result
+        },
+      };
+
+      handle_sender.send(result).unwrap();
     }
   })
 }
-
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -171,7 +173,7 @@ fn op_create_worker(
   let referrer = parent_state.main_module.to_string();
   let module_specifier =
     ModuleSpecifier::resolve_import(&specifier, &referrer)?;
-  
+
   let worker_id = run_worker_thread()?;
   std::thread::spawn(move || {
     let result = ThreadSafeState::new_for_worker(

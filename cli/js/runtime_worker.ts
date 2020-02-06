@@ -63,6 +63,38 @@ export function close(): void {
   sendSync(dispatch.OP_WORKER_CLOSE);
 }
 
+export async function workerMessageRecvCallback(data: string): Promise<void> {
+  let result: void | Promise<void>;
+  const event = { data };
+
+  try {
+    // 
+    if (globalThis["onmessage"]) {
+      result = globalThis.onmessage!(event);
+      if (result && "then" in result) {
+        await result;
+      }
+    }
+
+    // TODO: run the rest of liteners
+  } catch (e) {
+    if (globalThis["onerror"]) {
+      const result = globalThis.onerror(
+        e.message,
+        e.fileName,
+        e.lineNumber,
+        e.columnNumber,
+        e
+      );
+      if (result === true) {
+        return;
+      }
+    }
+    throw e;
+  }
+}
+
+
 export async function runWorkerMessageLoop(): Promise<void> {
   while (!isClosing) {
     const data = await getMessage();
