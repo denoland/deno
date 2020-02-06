@@ -3,7 +3,7 @@
 // Copyright (c) 2018 Terkel Gjervig Nielsen
 
 const isWin = Deno.build.os === "win";
-const SEP = isWin ? `(?:\\\\+|\\/+)` : `\\/`;
+const SEP = isWin ? `(?:\\\\|\\/)` : `\\/`;
 const SEP_ESC = isWin ? `\\\\` : `/`;
 const SEP_RAW = isWin ? `\\` : `/`;
 const GLOBSTAR = `(?:(?:[^${SEP_ESC}/]*(?:${SEP_ESC}|\/|$))*)`;
@@ -57,6 +57,7 @@ export function globrex(
     flags = ""
   }: GlobrexOptions = {}
 ): GlobrexResult {
+  const sepPattern = new RegExp(`^${SEP}${strict ? "" : "+"}$`);
   let regex = "";
   let segment = "";
   let pathRegexStr = "";
@@ -84,7 +85,7 @@ export function globrex(
     const { split, last, only } = options;
     if (only !== "path") regex += str;
     if (filepath && only !== "regex") {
-      pathRegexStr += str.match(new RegExp(`^${SEP}$`)) ? SEP : str;
+      pathRegexStr += str.match(sepPattern) ? SEP : str;
       if (split) {
         if (last) segment += str;
         if (segment !== "") {
@@ -109,9 +110,9 @@ export function globrex(
       continue;
     }
 
-    if (c === "/") {
-      add(`\\${c}`, { split: true });
-      if (n === "/" && !strict) regex += "?";
+    if (c.match(sepPattern)) {
+      add(SEP, { split: true });
+      if (n != null && n.match(sepPattern) && !strict) regex += "?";
       continue;
     }
 
