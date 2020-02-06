@@ -35,9 +35,10 @@ const DEFAULT_CONFIG: LogConfig = {
   }
 };
 
+const defaultLogger = new Logger("NOTSET", []);
 const state = {
   handlers: new Map<string, BaseHandler>(),
-  loggers: new Map<string, Logger>(),
+  loggers: new Map<string, Logger>([["default", defaultLogger]]),
   config: DEFAULT_CONFIG
 };
 
@@ -50,16 +51,15 @@ export const handlers = {
 
 export function getLogger(name?: string): Logger {
   if (!name) {
-    return state.loggers.get("default")!;
+    return defaultLogger;
   }
-
-  if (!state.loggers.has(name)) {
+  const result = state.loggers.get(name);
+  if (!result) {
     const logger = new Logger("NOTSET", []);
     state.loggers.set(name, logger);
     return logger;
   }
-
-  return state.loggers.get(name)!;
+  return result;
 }
 
 export const debug = (msg: string, ...args: unknown[]): void =>
@@ -105,8 +105,9 @@ export async function setup(config: LogConfig): Promise<void> {
     const handlers: BaseHandler[] = [];
 
     handlerNames.forEach((handlerName): void => {
-      if (state.handlers.has(handlerName)) {
-        handlers.push(state.handlers.get(handlerName)!);
+      const handler = state.handlers.get(handlerName);
+      if (handler) {
+        handlers.push(handler);
       }
     });
 

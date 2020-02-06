@@ -56,8 +56,8 @@ function populateMaps(
     extensions.set(type, exts);
 
     for (const ext of exts) {
-      if (types.has(ext)) {
-        const current = types.get(ext)!;
+      const current = types.get(ext);
+      if (current) {
         const from = preference.indexOf(db[current].source);
         const to = preference.indexOf(mime.source);
 

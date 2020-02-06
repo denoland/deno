@@ -7,7 +7,7 @@ import { BufReader, UnexpectedEOFError } from "../io/bufio.ts";
 import { charCode } from "../io/util.ts";
 
 const asciiDecoder = new TextDecoder();
-function str(buf: Uint8Array): string {
+function str(buf: Uint8Array | null | undefined): string {
   if (buf == null) {
     return "";
   } else {
@@ -82,7 +82,7 @@ export class TextProtoReader {
       throw new UnexpectedEOFError();
     } else if (buf[0] == charCode(" ") || buf[0] == charCode("\t")) {
       throw new ProtocolError(
-        `malformed MIME header initial line: ${str(line!)}`
+        `malformed MIME header initial line: ${str(line)}`
       );
     }
 
@@ -142,7 +142,7 @@ export class TextProtoReader {
       const { line: l, more } = r;
 
       // Avoid the copy if the first call produced a full line.
-      if (!line! && !more) {
+      if (!line && !more) {
         // TODO(ry):
         // This skipSpace() is definitely misplaced, but I don't know where it
         // comes from nor how to fix it.

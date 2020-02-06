@@ -14,10 +14,10 @@ for (let i = 0, len = code.length; i < len; ++i) {
 const placeHolderPadLookup = [0, 1, , 2, 3, , 4];
 function _getPadLen(placeHoldersLen: number): number {
   const maybeLen = placeHolderPadLookup[placeHoldersLen];
-  if (maybeLen === undefined) {
+  if (typeof maybeLen !== "number") {
     throw new Error("Invalid pad length");
   }
-  return maybeLen!;
+  return maybeLen;
 }
 
 function getLens(b32: string): [number, number] {

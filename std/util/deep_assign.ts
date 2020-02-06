@@ -24,7 +24,7 @@ export function deepAssign(
       if (typeof target[key] !== `object` || !target[key]) {
         target[key] = {};
       }
-      deepAssign(target[key] as Record<string, unknown>, value!);
+      deepAssign(target[key] as Record<string, unknown>, value);
     });
   }
   return target;

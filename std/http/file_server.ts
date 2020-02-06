@@ -66,7 +66,7 @@ function modeToString(isDir: boolean, maybeMode: number | null): string {
   if (maybeMode === null) {
     return "(unknown mode)";
   }
-  const mode = maybeMode!.toString(8);
+  const mode = maybeMode.toString(8);
   if (mode.length < 3) {
     return "(unknown mode)";
   }
@@ -186,8 +186,8 @@ function setCORS(res: Response): void {
   if (!res.headers) {
     res.headers = new Headers();
   }
-  res.headers!.append("access-control-allow-origin", "*");
-  res.headers!.append(
+  res.headers.append("access-control-allow-origin", "*");
+  res.headers.append(
     "access-control-allow-headers",
     "Origin, X-Requested-With, Content-Type, Accept, Range"
   );

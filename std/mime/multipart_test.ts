@@ -199,7 +199,8 @@ test(async function multipartMultipartReader2(): Promise<void> {
     assertEquals(form["bar"], "bar");
     const file = form["file"] as FormFile;
     assertEquals(file.type, "application/octet-stream");
-    const f = await open(file.tempfile!);
+    assert(file.tempfile != null);
+    const f = await open(file.tempfile);
     const w = new StringWriter();
     await copy(w, f);
     const json = JSON.parse(w.toString());
@@ -207,7 +208,9 @@ test(async function multipartMultipartReader2(): Promise<void> {
     f.close();
   } finally {
     const file = form["file"] as FormFile;
-    await remove(file.tempfile!);
+    if (file.tempfile) {
+      await remove(file.tempfile);
+    }
   }
 });
 

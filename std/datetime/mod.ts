@@ -1,8 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { pad } from "../strings/pad.ts";
+import { assert } from "../testing/mod.ts";
 
 export type DateFormat = "mm-dd-yyyy" | "dd-mm-yyyy" | "yyyy-mm-dd";
 
+function execForce(reg: RegExp, pat: string): RegExpExecArray {
+  const v = reg.exec(pat);
+  assert(v != null);
+  return v;
+}
 /**
  * Parse date from string using format string
  * @param dateStr Date string
@@ -16,15 +22,15 @@ export function parseDate(dateStr: string, format: DateFormat): Date {
   switch (format) {
     case "mm-dd-yyyy":
       datePattern = /^(\d{2})-(\d{2})-(\d{4})$/;
-      [, m, d, y] = datePattern.exec(dateStr)!;
+      [, m, d, y] = execForce(datePattern, dateStr);
       break;
     case "dd-mm-yyyy":
       datePattern = /^(\d{2})-(\d{2})-(\d{4})$/;
-      [, d, m, y] = datePattern.exec(dateStr)!;
+      [, d, m, y] = execForce(datePattern, dateStr);
       break;
     case "yyyy-mm-dd":
       datePattern = /^(\d{4})-(\d{2})-(\d{2})$/;
-      [, y, m, d] = datePattern.exec(dateStr)!;
+      [, y, m, d] = execForce(datePattern, dateStr);
       break;
     default:
       throw new Error("Invalid date format!");
@@ -57,27 +63,27 @@ export function parseDateTime(
   switch (format) {
     case "mm-dd-yyyy hh:mm":
       datePattern = /^(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2})$/;
-      [, m, d, y, ho, mi] = datePattern.exec(datetimeStr)!;
+      [, m, d, y, ho, mi] = execForce(datePattern, datetimeStr);
       break;
     case "dd-mm-yyyy hh:mm":
       datePattern = /^(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2})$/;
-      [, d, m, y, ho, mi] = datePattern.exec(datetimeStr)!;
+      [, d, m, y, ho, mi] = execForce(datePattern, datetimeStr);
       break;
     case "yyyy-mm-dd hh:mm":
       datePattern = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/;
-      [, y, m, d, ho, mi] = datePattern.exec(datetimeStr)!;
+      [, y, m, d, ho, mi] = execForce(datePattern, datetimeStr);
       break;
     case "hh:mm mm-dd-yyyy":
       datePattern = /^(\d{2}):(\d{2}) (\d{2})-(\d{2})-(\d{4})$/;
-      [, ho, mi, m, d, y] = datePattern.exec(datetimeStr)!;
+      [, ho, mi, m, d, y] = execForce(datePattern, datetimeStr);
       break;
     case "hh:mm dd-mm-yyyy":
       datePattern = /^(\d{2}):(\d{2}) (\d{2})-(\d{2})-(\d{4})$/;
-      [, ho, mi, d, m, y] = datePattern.exec(datetimeStr)!;
+      [, ho, mi, d, m, y] = execForce(datePattern, datetimeStr);
       break;
     case "hh:mm yyyy-mm-dd":
       datePattern = /^(\d{2}):(\d{2}) (\d{4})-(\d{2})-(\d{2})$/;
-      [, ho, mi, y, m, d] = datePattern.exec(datetimeStr)!;
+      [, ho, mi, y, m, d] = execForce(datePattern, datetimeStr);
       break;
     default:
       throw new Error("Invalid datetime format!");
