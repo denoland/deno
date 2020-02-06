@@ -37,6 +37,10 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::time::Instant;
 
+// TODO(bartlomieju): remove - this is temporary
+type LoadingWorkersTable =
+  Arc<Mutex<HashMap<u32, mpsc::Receiver<Result<(), ErrBox>>>>>;
+
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Clone)]
 pub struct State {
@@ -50,8 +54,7 @@ pub struct State {
   pub global_timer: Arc<Mutex<GlobalTimer>>,
   pub workers: Arc<Mutex<HashMap<u32, WorkerChannelsExternal>>>,
   pub worker_channels_internal: Arc<Mutex<Option<WorkerChannelsInternal>>>,
-  pub loading_workers:
-    Arc<Mutex<HashMap<u32, mpsc::Receiver<Result<(), ErrBox>>>>>,
+  pub loading_workers: LoadingWorkersTable,
   pub next_worker_id: Arc<Mutex<AtomicUsize>>,
   pub start_time: Instant,
   pub seeded_rng: Option<Arc<Mutex<StdRng>>>,
