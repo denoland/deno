@@ -63,7 +63,8 @@ fn op_worker_close(
   _args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let mut sender = state.worker_channels.sender.clone();
+  let mut c = state.worker_channels_internal.lock().unwrap();
+  let mut sender = c.as_mut().unwrap().sender.clone();
   sender.close_channel();
   Ok(JsonOp::Sync(json!({})))
 }
