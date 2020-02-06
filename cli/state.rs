@@ -8,7 +8,6 @@ use crate::metrics::Metrics;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
 use crate::permissions::DenoPermissions;
-use crate::web_worker::WebWorker;
 use crate::worker::WorkerChannelsExternal;
 use crate::worker::WorkerChannelsInternal;
 use deno_core::Buf;
@@ -29,6 +28,7 @@ use std;
 use std::collections::HashMap;
 use std::path::Path;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::str;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -46,7 +46,7 @@ pub struct State {
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
-  pub metrics: Arc<Metrics>,
+  pub metrics: Rc<Metrics>,
   pub global_timer: Arc<Mutex<GlobalTimer>>,
   pub workers: Arc<Mutex<HashMap<u32, WorkerChannelsExternal>>>,
   pub worker_channels_internal: Arc<Mutex<Option<WorkerChannelsInternal>>>,
@@ -228,7 +228,7 @@ impl State {
       main_module,
       permissions,
       import_map,
-      metrics: Arc::new(Metrics::default()),
+      metrics: Rc::new(Metrics::default()),
       global_timer: Arc::new(Mutex::new(GlobalTimer::new())),
       worker_channels_internal: Arc::new(Mutex::new(None)),
       workers: Arc::new(Mutex::new(HashMap::new())),
@@ -266,7 +266,7 @@ impl State {
       main_module,
       permissions,
       import_map: None,
-      metrics: Arc::new(Metrics::default()),
+      metrics: Rc::new(Metrics::default()),
       global_timer: Arc::new(Mutex::new(GlobalTimer::new())),
       worker_channels_internal: Arc::new(Mutex::new(None)),
       workers: Arc::new(Mutex::new(HashMap::new())),
@@ -282,10 +282,9 @@ impl State {
     Ok(state)
   }
 
-  pub fn add_child_worker(&self, worker: &WebWorker) -> u32 {
+  pub fn add_child_worker(&self, handle: WorkerChannelsExternal) -> u32 {
     let next_id = self.next_worker_id.lock().unwrap();
     let worker_id = next_id.fetch_add(1, Ordering::Relaxed) as u32;
-    let handle = worker.thread_safe_handle();
     let mut workers_tl = self.workers.lock().unwrap();
     workers_tl.insert(worker_id, handle);
     worker_id
@@ -385,10 +384,4 @@ impl State {
       .bytes_received
       .fetch_add(bytes_received, Ordering::SeqCst);
   }
-}
-
-#[test]
-fn thread_safe() {
-  fn f<S: Send + Sync>(_: S) {}
-  f(State::mock("./hello.js"));
 }

@@ -23,7 +23,7 @@ use std::task::Poll;
 pub type SourceCodeInfoFuture =
   dyn Future<Output = Result<SourceCodeInfo, ErrBox>>;
 
-pub trait Loader: Send {
+pub trait Loader {
   /// Returns an absolute URL.
   /// When implementing an spec-complaint VM, this should be exactly the
   /// algorithm described here:

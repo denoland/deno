@@ -64,11 +64,11 @@ fn op_repl_readline(
   let prompt = args.prompt;
   debug!("op_repl_readline {} {}", rid, prompt);
   let state = state.clone();
+  let table = state.lock_resource_table();
+  let resource = table.get::<ReplResource>(rid).ok_or_else(bad_resource)?;
+  let repl = resource.0.clone();
 
   blocking_json(false, move || {
-    let table = state.lock_resource_table();
-    let resource = table.get::<ReplResource>(rid).ok_or_else(bad_resource)?;
-    let repl = resource.0.clone();
     let line = repl.lock().unwrap().readline(&prompt)?;
     Ok(json!(line))
   })

@@ -9,7 +9,6 @@ use deno_core::*;
 use futures;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
-use futures::task::SpawnExt;
 use std;
 use std::convert::From;
 use std::future::Future;
@@ -238,10 +237,7 @@ fn op_run_status(
     }))
   };
 
-  let pool = futures::executor::ThreadPool::new().unwrap();
-  let handle = pool.spawn_with_handle(future).unwrap();
-
-  Ok(JsonOp::Async(handle.boxed()))
+  Ok(JsonOp::Async(future.boxed_local()))
 }
 
 #[derive(Deserialize)]

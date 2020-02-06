@@ -4,11 +4,11 @@ use crate::deno_error::bad_resource;
 use crate::deno_error::js_check;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
-use crate::ops::dispatch_json::JsonResult;
 use crate::ops::json_op;
 use crate::startup_data;
 use crate::state::State;
 use crate::web_worker::WebWorker;
+use crate::worker::WorkerChannelsExternal;
 use deno_core::*;
 use futures;
 use futures::future::FutureExt;
@@ -60,36 +60,29 @@ fn op_create_worker(
   let args_name = args.name;
   let parent_state = state.clone();
 
-  let (load_sender, load_receiver) =
-    std::sync::mpsc::sync_channel::<JsonResult>(1);
+  let (handle_sender, handle_receiver) =
+    std::sync::mpsc::sync_channel::<Result<WorkerChannelsExternal, ErrBox>>(1);
+
+  // TODO(bartlomieju): Isn't this wrong?
+  let result = ModuleSpecifier::resolve_url_or_path(&specifier)?;
+  let module_specifier = if !has_source_code {
+    let referrer = parent_state.main_module.to_string();
+    ModuleSpecifier::resolve_import(&specifier, &referrer)?
+  } else {
+    result
+  };
+
+  let global_state = parent_state.global_state.clone();
+  let child_permissions = parent_state.permissions.clone();
 
   std::thread::spawn(move || {
-    // TODO(bartlomieju): Isn't this wrong?
-    let result = ModuleSpecifier::resolve_url_or_path(&specifier);
-    if let Err(err) = result {
-      load_sender.send(Err(err.into())).unwrap();
-      return;
-    }
-
-    let module_specifier = if !has_source_code {
-      let referrer = parent_state.main_module.to_string();
-      let result = ModuleSpecifier::resolve_import(&specifier, &referrer);
-      if let Err(err) = result {
-        load_sender.send(Err(err.into())).unwrap();
-        return;
-      }
-      result.unwrap()
-    } else {
-      result.unwrap()
-    };
-
     let result = State::new_for_worker(
-      parent_state.global_state.clone(),
-      Some(parent_state.permissions.clone()), // by default share with parent
+      global_state,
+      Some(child_permissions), // by default share with parent
       module_specifier.clone(),
     );
     if let Err(err) = result {
-      load_sender.send(Err(err)).unwrap();
+      handle_sender.send(Err(err)).unwrap();
       return;
     }
     let child_state = result.unwrap();
@@ -109,12 +102,12 @@ fn op_create_worker(
     js_check(worker.execute(&script));
     js_check(worker.execute("runWorkerMessageLoop()"));
 
-    let worker_id = parent_state.add_child_worker(&worker);
+    handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
 
     // Has provided source code, execute immediately.
     if has_source_code {
       js_check(worker.execute(&source_code));
-      load_sender.send(Ok(json!({ "id": worker_id }))).unwrap();
+      // FIXME(bartlomieju): runtime is not run in this case
       return;
     }
 
@@ -128,14 +121,13 @@ fn op_create_worker(
     }
     .boxed_local();
 
-    load_sender.send(Ok(json!({ "id": worker_id }))).unwrap();
-
     crate::tokio_util::run_basic(fut);
   });
 
-  let r = load_receiver.recv().unwrap();
+  let handle = handle_receiver.recv().unwrap()?;
+  let worker_id = parent_state.add_child_worker(handle);
 
-  Ok(JsonOp::Sync(r.unwrap()))
+  Ok(JsonOp::Sync(json!({ "id": worker_id })))
 }
 
 #[derive(Deserialize)]
