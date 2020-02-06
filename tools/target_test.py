@@ -34,7 +34,7 @@ class TestTarget(DenoTestCase):
     def test_exec_path(self):
         cmd = [
             self.deno_exe, "run", "--allow-run", "--allow-env",
-            "tests/exec_path.ts"
+            "cli/tests/exec_path.ts"
         ]
         result = run_output(cmd, quiet=True)
         print "exec_path", result

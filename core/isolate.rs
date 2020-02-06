@@ -20,12 +20,12 @@ use futures::stream::select;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
+use futures::Future;
 use libc::c_void;
 use std::collections::HashMap;
 use std::convert::From;
 use std::error::Error;
 use std::fmt;
-use std::future::Future;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
@@ -180,6 +180,7 @@ pub struct Isolate {
   error_handler: Option<Box<IsolateErrorHandleFn>>,
 }
 
+// TODO(ry) this shouldn't be necessary, v8::OwnedIsolate should impl Send.
 unsafe impl Send for Isolate {}
 
 impl Drop for Isolate {
@@ -423,7 +424,7 @@ impl Isolate {
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
   pub fn register_op<F>(&self, name: &str, op: F) -> OpId
   where
-    F: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + Send + Sync + 'static,
+    F: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + 'static,
   {
     self.op_registry.register(name, op)
   }
@@ -489,13 +490,13 @@ impl Isolate {
       }
       Op::Async(fut) => {
         let fut2 = fut.map_ok(move |buf| (op_id, buf));
-        self.pending_ops.push(fut2.boxed());
+        self.pending_ops.push(fut2.boxed_local());
         self.have_unpolled_ops = true;
         None
       }
       Op::AsyncUnref(fut) => {
         let fut2 = fut.map_ok(move |buf| (op_id, buf));
-        self.pending_unref_ops.push(fut2.boxed());
+        self.pending_unref_ops.push(fut2.boxed_local());
         self.have_unpolled_ops = true;
         None
       }

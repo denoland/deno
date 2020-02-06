@@ -139,7 +139,7 @@ fn op_open(
     let buf = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(buf))
   } else {
-    Ok(JsonOp::Async(fut.boxed()))
+    Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
 
@@ -211,6 +211,6 @@ fn op_seek(
     let buf = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(buf))
   } else {
-    Ok(JsonOp::Async(fut.boxed()))
+    Ok(JsonOp::Async(fut.boxed_local()))
   }
 }

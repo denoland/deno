@@ -293,7 +293,7 @@ export const ignoredDiagnostics = [
   // TS5009: Cannot find the common subdirectory path for the input files.
   5009,
   // TS5055: Cannot write file
-  // 'http://localhost:4545/tests/subdir/mt_application_x_javascript.j4.js'
+  // 'http://localhost:4545/cli/tests/subdir/mt_application_x_javascript.j4.js'
   // because it would overwrite input file.
   5055,
   // TypeScript is overly opinionated that only CommonJS modules kinds can

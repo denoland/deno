@@ -4,6 +4,7 @@ use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
+use crate::ops::dispatch_json::JsonResult;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno_core::*;
@@ -168,8 +169,9 @@ fn op_remove(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_remove {}", path.display());
-    let metadata = fs::metadata(&path)?;
-    if metadata.is_file() {
+    let metadata = fs::symlink_metadata(&path)?;
+    let file_type = metadata.file_type();
+    if file_type.is_file() || file_type.is_symlink() {
       fs::remove_file(&path)?;
     } else if recursive {
       remove_dir_all(&path)?;
@@ -232,7 +234,7 @@ macro_rules! to_seconds {
 fn get_stat_json(
   metadata: fs::Metadata,
   maybe_name: Option<String>,
-) -> Result<Value, ErrBox> {
+) -> JsonResult {
   // Unix stat member (number types only). 0 if not on unix.
   macro_rules! usm {
     ($member: ident) => {{

@@ -18,7 +18,6 @@ use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use std;
 use std::env;
-use std::future::Future;
 use std::ops::Deref;
 use std::path::Path;
 use std::str;
@@ -35,8 +34,6 @@ pub struct ThreadSafeGlobalState(Arc<GlobalState>);
 pub struct GlobalState {
   /// Flags parsed from `argv` contents.
   pub flags: flags::DenoFlags,
-  /// Entry script parsed from CLI arguments.
-  pub main_module: Option<ModuleSpecifier>,
   /// Permissions parsed from `flags`.
   pub permissions: DenoPermissions,
   pub dir: deno_dir::DenoDir,
@@ -87,13 +84,6 @@ impl ThreadSafeGlobalState {
       flags.config_path.clone(),
     )?;
 
-    let main_module: Option<ModuleSpecifier> = if flags.argv.len() <= 1 {
-      None
-    } else {
-      let root_specifier = flags.argv[1].clone();
-      Some(ModuleSpecifier::resolve_url_or_path(&root_specifier)?)
-    };
-
     // Note: reads lazily from disk on first call to lockfile.check()
     let lockfile = if let Some(filename) = &flags.lock {
       Some(Mutex::new(Lockfile::new(filename.to_string())))
@@ -102,7 +92,6 @@ impl ThreadSafeGlobalState {
     };
 
     let state = GlobalState {
-      main_module,
       dir,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
@@ -119,66 +108,64 @@ impl ThreadSafeGlobalState {
     Ok(ThreadSafeGlobalState(Arc::new(state)))
   }
 
-  pub fn fetch_compiled_module(
+  pub async fn fetch_compiled_module(
     &self,
-    module_specifier: &ModuleSpecifier,
+    module_specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     target_lib: TargetLib,
-  ) -> impl Future<Output = Result<CompiledModule, ErrBox>> {
+  ) -> Result<CompiledModule, ErrBox> {
     let state1 = self.clone();
     let state2 = self.clone();
+    let module_specifier = module_specifier.clone();
 
-    let source_file = self
+    let out = self
       .file_fetcher
-      .fetch_source_file_async(&module_specifier, maybe_referrer);
-
-    async move {
-      let out = source_file.await?;
-      let compiled_module = match out.media_type {
-        msg::MediaType::Unknown => state1.js_compiler.compile_async(&out),
-        msg::MediaType::Json => state1.json_compiler.compile_async(&out),
-        msg::MediaType::Wasm => {
-          state1.wasm_compiler.compile_async(state1.clone(), &out)
-        }
-        msg::MediaType::TypeScript
-        | msg::MediaType::TSX
-        | msg::MediaType::JSX => {
+      .fetch_source_file_async(&module_specifier, maybe_referrer)
+      .await?;
+    let compiled_module_fut = match out.media_type {
+      msg::MediaType::Unknown => state1.js_compiler.compile_async(out),
+      msg::MediaType::Json => state1.json_compiler.compile_async(&out),
+      msg::MediaType::Wasm => {
+        state1.wasm_compiler.compile_async(state1.clone(), &out)
+      }
+      msg::MediaType::TypeScript
+      | msg::MediaType::TSX
+      | msg::MediaType::JSX => {
+        state1
+          .ts_compiler
+          .compile_async(state1.clone(), &out, target_lib)
+      }
+      msg::MediaType::JavaScript => {
+        if state1.ts_compiler.compile_js {
           state1
             .ts_compiler
             .compile_async(state1.clone(), &out, target_lib)
-        }
-        msg::MediaType::JavaScript => {
-          if state1.ts_compiler.compile_js {
-            state1
-              .ts_compiler
-              .compile_async(state1.clone(), &out, target_lib)
-          } else {
-            state1.js_compiler.compile_async(&out)
-          }
-        }
-      }
-      .await?;
-
-      if let Some(ref lockfile) = state2.lockfile {
-        let mut g = lockfile.lock().unwrap();
-        if state2.flags.lock_write {
-          g.insert(&compiled_module);
         } else {
-          let check = match g.check(&compiled_module) {
-            Err(e) => return Err(ErrBox::from(e)),
-            Ok(v) => v,
-          };
-          if !check {
-            eprintln!(
-              "Subresource integrity check failed --lock={}\n{}",
-              g.filename, compiled_module.name
-            );
-            std::process::exit(10);
-          }
+          state1.js_compiler.compile_async(out)
         }
       }
-      Ok(compiled_module)
+    };
+    let compiled_module = compiled_module_fut.await?;
+
+    if let Some(ref lockfile) = state2.lockfile {
+      let mut g = lockfile.lock().unwrap();
+      if state2.flags.lock_write {
+        g.insert(&compiled_module);
+      } else {
+        let check = match g.check(&compiled_module) {
+          Err(e) => return Err(ErrBox::from(e)),
+          Ok(v) => v,
+        };
+        if !check {
+          eprintln!(
+            "Subresource integrity check failed --lock={}\n{}",
+            g.filename, compiled_module.name
+          );
+          std::process::exit(10);
+        }
+      }
     }
+    Ok(compiled_module)
   }
 
   #[inline]
@@ -261,7 +248,6 @@ fn thread_safe() {
 fn import_map_given_for_repl() {
   let _result = ThreadSafeGlobalState::new(
     flags::DenoFlags {
-      argv: vec![String::from("./deno")],
       import_map_path: Some("import_map.json".to_string()),
       ..flags::DenoFlags::default()
     },

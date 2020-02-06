@@ -29,29 +29,13 @@ function createWorker(
   hasSourceCode: boolean,
   sourceCode: Uint8Array,
   name?: string
-): { id: number; loaded: boolean } {
+): { id: number } {
   return sendSync(dispatch.OP_CREATE_WORKER, {
     specifier,
     hasSourceCode,
     sourceCode: new TextDecoder().decode(sourceCode),
     name
   });
-}
-
-async function hostGetWorkerLoaded(id: number): Promise<any> {
-  return await sendAsync(dispatch.OP_HOST_GET_WORKER_LOADED, { id });
-}
-
-async function hostPollWorker(id: number): Promise<any> {
-  return await sendAsync(dispatch.OP_HOST_POLL_WORKER, { id });
-}
-
-function hostCloseWorker(id: number): void {
-  sendSync(dispatch.OP_HOST_CLOSE_WORKER, { id });
-}
-
-function hostResumeWorker(id: number): void {
-  sendSync(dispatch.OP_HOST_RESUME_WORKER, { id });
 }
 
 function hostPostMessage(id: number, data: any): void {
@@ -85,8 +69,6 @@ export interface WorkerOptions {
 export class WorkerImpl extends EventTarget implements Worker {
   private readonly id: number;
   private isClosing = false;
-  private messageBuffer: any[] = [];
-  private ready = false;
   public onerror?: (e: any) => void;
   public onmessage?: (data: any) => void;
   public onmessageerror?: () => void;
@@ -127,14 +109,13 @@ export class WorkerImpl extends EventTarget implements Worker {
     }
     */
 
-    const { id, loaded } = createWorker(
+    const { id } = createWorker(
       specifier,
       hasSourceCode,
       sourceCode,
       options?.name
     );
     this.id = id;
-    this.ready = loaded;
     this.poll();
   }
 
@@ -160,32 +141,19 @@ export class WorkerImpl extends EventTarget implements Worker {
   }
 
   async poll(): Promise<void> {
-    // If worker has not been immediately executed
-    // then let's await it's readiness
-    if (!this.ready) {
-      console.log("result3 pre", this.name);
-      const result = await hostGetWorkerLoaded(this.id);
-      console.log("result3 post", this.name);
-      if (result.error) {
-        if (!this.handleError(result.error)) {
-          console.log("error handled in worker");
-          throw new Error(result.error.message);
-        }
-        console.log("error in worker closing worker");
-        console.log("closing", this.name);
-        hostCloseWorker(this.id);
-        return;
+    while (!this.isClosing) {
+      const data = await hostGetMessage(this.id);
+      if (data == null) {
+        log("worker got null message. quitting.");
+        break;
+      }
+      if (this.onmessage) {
+        const event = { data };
+        this.onmessage(event);
       }
     }
 
-    // drain messages
-    for (const data of this.messageBuffer) {
-      hostPostMessage(this.id, data);
-    }
-    this.messageBuffer = [];
-    this.ready = true;
-    this.run();
-
+    /*
     while (true) {
       console.log("result1 pre", this.name);
       const result = await hostPollWorker(this.id);
@@ -203,34 +171,14 @@ export class WorkerImpl extends EventTarget implements Worker {
         break;
       }
     }
+    */
   }
 
   postMessage(data: any): void {
-    if (!this.ready) {
-      this.messageBuffer.push(data);
-      return;
-    }
-
     hostPostMessage(this.id, data);
   }
 
   terminate(): void {
     throw new Error("Not yet implemented");
-  }
-
-  private async run(): Promise<void> {
-    while (!this.isClosing) {
-      console.log("result2 pre", this.name);
-      const data = await hostGetMessage(this.id);
-      console.log("result2 post", this.name);
-      if (data == null) {
-        log("worker got null message. quitting.");
-        break;
-      }
-      if (this.onmessage) {
-        const event = { data };
-        this.onmessage(event);
-      }
-    }
   }
 }

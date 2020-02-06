@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-#![deny(warnings)]
 
 #[macro_use]
 extern crate log;
@@ -45,3 +44,5 @@ pub fn v8_version() -> &'static str {
 fn test_v8_version() {
   assert!(v8_version().len() > 3);
 }
+
+crate_modules!();

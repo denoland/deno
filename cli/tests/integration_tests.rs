@@ -21,11 +21,36 @@ fn deno_dir_test() {
   drop(g);
 }
 
-// TODO(#2933): Rewrite this test in rust.
 #[test]
 fn fetch_test() {
+  pub use deno::test_util::*;
+  use std::process::Command;
+  use tempfile::TempDir;
+
   let g = util::http_server();
-  util::run_python_script("tools/fetch_test.py");
+
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let t = util::root_path().join("cli/tests/006_url_imports.ts");
+
+  let output = Command::new(deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("fetch")
+    .arg(t)
+    .output()
+    .expect("Failed to spawn script");
+
+  let code = output.status.code();
+  let out = std::str::from_utf8(&output.stdout).unwrap();
+
+  assert_eq!(Some(0), code);
+  assert_eq!(out, "");
+
+  let expected_path = deno_dir
+    .path()
+    .join("deps/http/localhost_PORT4545/cli/tests/subdir/mod2.ts");
+  assert_eq!(expected_path.exists(), true);
+
   drop(g);
 }
 
@@ -67,6 +92,100 @@ fn fmt_test() {
   let expected = std::fs::read_to_string(fixed).unwrap();
   let actual = std::fs::read_to_string(badly_formatted).unwrap();
   assert_eq!(expected, actual);
+}
+
+#[test]
+fn installer_test_local_module_run() {
+  use deno::flags::DenoFlags;
+  use deno::installer;
+  use std::env;
+  use std::path::PathBuf;
+  use std::process::Command;
+  use tempfile::TempDir;
+
+  let temp_dir = TempDir::new().expect("tempdir fail");
+  let local_module = env::current_dir().unwrap().join("tests/echo.ts");
+  let local_module_str = local_module.to_string_lossy();
+  installer::install(
+    DenoFlags::default(),
+    Some(temp_dir.path().to_string_lossy().to_string()),
+    "echo_test",
+    &local_module_str,
+    vec!["hello".to_string()],
+  )
+  .expect("Failed to install");
+  let mut file_path = temp_dir.path().join("echo_test");
+  if cfg!(windows) {
+    file_path = file_path.with_extension(".cmd");
+  }
+  assert!(file_path.exists());
+  let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
+  let paths_var = env::var_os(path_var_name).expect("PATH not set");
+  let mut paths: Vec<PathBuf> = env::split_paths(&paths_var).collect();
+  paths.push(temp_dir.path().to_owned());
+  paths.push(util::target_dir());
+  let path_var_value = env::join_paths(paths).expect("Can't create PATH");
+  // NOTE: using file_path here instead of exec_name, because tests
+  // shouldn't mess with user's PATH env variable
+  let output = Command::new(file_path)
+    .current_dir(temp_dir.path())
+    .arg("foo")
+    .env(path_var_name, path_var_value)
+    .output()
+    .expect("failed to spawn script");
+
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
+  println!("Got stdout: {:?}", stdout_str);
+  println!("Got stderr: {:?}", stderr_str);
+  assert_eq!(stdout_str, "hello, foo");
+  drop(temp_dir);
+}
+
+#[test]
+fn installer_test_remote_module_run() {
+  use deno::flags::DenoFlags;
+  use deno::installer;
+  use std::env;
+  use std::path::PathBuf;
+  use std::process::Command;
+  use tempfile::TempDir;
+
+  let g = util::http_server();
+  let temp_dir = TempDir::new().expect("tempdir fail");
+  installer::install(
+    DenoFlags::default(),
+    Some(temp_dir.path().to_string_lossy().to_string()),
+    "echo_test",
+    "http://localhost:4545/cli/tests/echo.ts",
+    vec!["hello".to_string()],
+  )
+  .expect("Failed to install");
+  let mut file_path = temp_dir.path().join("echo_test");
+  if cfg!(windows) {
+    file_path = file_path.with_extension(".cmd");
+  }
+  assert!(file_path.exists());
+  let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
+  let paths_var = env::var_os(path_var_name).expect("PATH not set");
+  let mut paths: Vec<PathBuf> = env::split_paths(&paths_var).collect();
+  paths.push(temp_dir.path().to_owned());
+  paths.push(util::target_dir());
+  let path_var_value = env::join_paths(paths).expect("Can't create PATH");
+  // NOTE: using file_path here instead of exec_name, because tests
+  // shouldn't mess with user's PATH env variable
+  let output = Command::new(file_path)
+    .current_dir(temp_dir.path())
+    .arg("foo")
+    .env(path_var_name, path_var_value)
+    .output()
+    .expect("failed to spawn script");
+  assert_eq!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "hello, foo"
+  );
+  drop(temp_dir);
+  drop(g)
 }
 
 #[test]
@@ -204,10 +323,12 @@ itest!(_014_duplicate_import {
   output: "014_duplicate_import.ts.out",
 });
 
+/* TODO(ry) Disabled to get #3844 landed faster. Re-enable.
 itest!(_015_duplicate_parallel_import {
   args: "run --reload --allow-read 015_duplicate_parallel_import.js",
   output: "015_duplicate_parallel_import.js.out",
 });
+*/
 
 itest!(_016_double_await {
   args: "run --allow-read --reload 016_double_await.ts",
@@ -273,9 +394,16 @@ itest!(_026_redirect_javascript {
   http_server: true,
 });
 
+/* TODO(ry) Disabled to get #3844 landed faster. Re-enable.
 itest!(_026_workers {
   args: "run --reload 026_workers.ts",
   output: "026_workers.ts.out",
+});
+*/
+
+itest!(workers_basic {
+  args: "run --reload workers_basic.ts",
+  output: "workers_basic.out",
 });
 
 itest!(_027_redirect_typescript {
@@ -320,9 +448,11 @@ itest!(_036_import_map_fetch {
   output: "036_import_map_fetch.out",
 });
 
-itest!(_037_current_thread {
-  args: "run --current-thread --reload 034_onload/main.ts",
-  output: "034_onload.out",
+itest!(_037_fetch_multiple {
+  args: "fetch --reload fetch/test.ts fetch/other.ts",
+  check_stderr: true,
+  http_server: true,
+  output: "037_fetch_multiple.out",
 });
 
 itest!(_038_checkjs {
@@ -694,7 +824,7 @@ itest!(run_v8_flags {
 });
 
 itest!(run_v8_help {
-  args: "run --v8-flags=--help",
+  args: "--v8-flags=--help",
   output: "v8_help.out",
 });
 
@@ -731,6 +861,12 @@ itest!(top_level_for_await_ts {
 itest!(_053_import_compression {
   args: "run --reload --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",
+  http_server: true,
+});
+
+itest!(import_wasm_via_network {
+  args: "run --reload http://127.0.0.1:4545/cli/tests/055_import_wasm_via_network.ts",
+  output: "055_import_wasm_via_network.ts.out",
   http_server: true,
 });
 

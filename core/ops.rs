@@ -10,11 +10,10 @@ pub type OpId = u32;
 
 pub type Buf = Box<[u8]>;
 
-pub type OpAsyncFuture<E> =
-  Pin<Box<dyn Future<Output = Result<Buf, E>> + Send>>;
+pub type OpAsyncFuture<E> = Pin<Box<dyn Future<Output = Result<Buf, E>>>>;
 
 pub(crate) type PendingOpFuture =
-  Pin<Box<dyn Future<Output = Result<(OpId, Buf), CoreError>> + Send>>;
+  Pin<Box<dyn Future<Output = Result<(OpId, Buf), CoreError>>>>;
 
 pub type OpResult<E> = Result<Op<E>, E>;
 
@@ -31,8 +30,7 @@ pub type CoreError = ();
 pub type CoreOp = Op<CoreError>;
 
 /// Main type describing op
-pub type OpDispatcher =
-  dyn Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + Send + Sync + 'static;
+pub type OpDispatcher = dyn Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + 'static;
 
 #[derive(Default)]
 pub struct OpRegistry {
@@ -53,7 +51,7 @@ impl OpRegistry {
 
   pub fn register<F>(&self, name: &str, op: F) -> OpId
   where
-    F: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + Send + Sync + 'static,
+    F: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + 'static,
   {
     let mut lock = self.dispatchers.write().unwrap();
     let op_id = lock.len() as u32;

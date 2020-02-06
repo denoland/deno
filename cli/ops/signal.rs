@@ -94,7 +94,7 @@ fn op_signal_poll(
   })
   .then(|result| async move { Ok(json!({ "done": result.is_none() })) });
 
-  Ok(JsonOp::AsyncUnref(future.boxed()))
+  Ok(JsonOp::AsyncUnref(future.boxed_local()))
 }
 
 #[cfg(unix)]

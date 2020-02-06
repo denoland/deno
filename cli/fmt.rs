@@ -27,14 +27,16 @@ fn is_supported(path: &Path) -> bool {
     && (TYPESCRIPT.is_match(&path_str) || JAVASCRIPT.is_match(&path_str))
 }
 
-fn get_config() -> dprint::Configuration {
-  dprint::ConfigurationBuilder::new()
+fn get_config() -> dprint::configuration::Configuration {
+  dprint::configuration::ConfigurationBuilder::new()
     .line_width(80)
     .indent_width(2)
-    .next_control_flow_position(dprint::NextControlFlowPosition::SameLine)
-    .force_multi_line_parameters(true)
-    .force_multi_line_arguments(true)
-    .binary_expression_operator_position(dprint::OperatorPosition::SameLine)
+    .next_control_flow_position(
+      dprint::configuration::NextControlFlowPosition::SameLine,
+    )
+    .binary_expression_operator_position(
+      dprint::configuration::OperatorPosition::SameLine,
+    )
     .build()
 }
 
@@ -50,7 +52,10 @@ fn get_supported_files(paths: Vec<PathBuf>) -> Vec<PathBuf> {
   files_to_check
 }
 
-fn check_source_files(config: dprint::Configuration, paths: Vec<PathBuf>) {
+fn check_source_files(
+  config: dprint::configuration::Configuration,
+  paths: Vec<PathBuf>,
+) {
   let start = Instant::now();
   let mut not_formatted_files = vec![];
 
@@ -93,7 +98,10 @@ fn check_source_files(config: dprint::Configuration, paths: Vec<PathBuf>) {
   }
 }
 
-fn format_source_files(config: dprint::Configuration, paths: Vec<PathBuf>) {
+fn format_source_files(
+  config: dprint::configuration::Configuration,
+  paths: Vec<PathBuf>,
+) {
   let start = Instant::now();
   let mut not_formatted_files = vec![];
 
