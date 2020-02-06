@@ -112,6 +112,7 @@ impl SourceFileFetcher {
     cache_blacklist: Vec<String>,
     no_remote: bool,
     cached_only: bool,
+    ca_file: Option<String>,
   ) -> std::io::Result<Self> {
     let file_fetcher = Self {
       deps_cache,
@@ -121,7 +122,7 @@ impl SourceFileFetcher {
       use_disk_cache,
       no_remote,
       cached_only,
-      http_client: create_http_client(),
+      http_client: create_http_client(ca_file),
     };
 
     Ok(file_fetcher)
@@ -860,6 +861,7 @@ mod tests {
       vec![],
       false,
       false,
+      None
     )
     .expect("setup fail")
   }

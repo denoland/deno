@@ -7,6 +7,7 @@ use bytes::Bytes;
 use deno_core::ErrBox;
 use futures::future::FutureExt;
 use reqwest;
+use reqwest::Client;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderValue;
 use reqwest::header::ACCEPT_ENCODING;
@@ -17,10 +18,10 @@ use reqwest::header::IF_NONE_MATCH;
 use reqwest::header::LOCATION;
 use reqwest::header::USER_AGENT;
 use reqwest::redirect::Policy;
-use reqwest::Client;
 use reqwest::Response;
 use reqwest::StatusCode;
 use std::cmp::min;
+use std::fs::File;
 use std::future::Future;
 use std::io;
 use std::io::Read;
@@ -30,20 +31,30 @@ use std::task::Poll;
 use tokio::io::AsyncRead;
 use url::Url;
 
+
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
-pub fn create_http_client() -> Client {
+pub fn create_http_client(ca_file: Option<String>) -> Client {
   let mut headers = HeaderMap::new();
   headers.insert(
     USER_AGENT,
     format!("Deno/{}", version::DENO).parse().unwrap(),
   );
-  Client::builder()
+  let mut builder = Client::builder()
     .redirect(Policy::none())
     .default_headers(headers)
-    .use_rustls_tls()
-    .build()
-    .unwrap()
+    .use_rustls_tls();
+
+    if let Some(ca_file) = ca_file {
+      let mut buf = Vec::new();
+      File::open(ca_file).unwrap().read_to_end(&mut buf).unwrap();
+      let cert = reqwest::Certificate::from_der(&buf).unwrap();
+      builder = builder.add_root_certificate(cert);
+    }
+
+    builder
+      .build()
+      .unwrap()
 }
 
 /// Construct the next uri based on base uri and location header fragment
@@ -276,7 +287,7 @@ mod tests {
     // Relies on external http server. See tools/http_server.py
     let url =
       Url::parse("http://127.0.0.1:4545/cli/tests/fixture.json").unwrap();
-    let client = create_http_client();
+    let client = create_http_client(None);
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(payload)) = result {
       assert!(!payload.body.is_empty());
@@ -297,7 +308,7 @@ mod tests {
       "http://127.0.0.1:4545/cli/tests/053_import_compression/gziped",
     )
     .unwrap();
-    let client = create_http_client();
+    let client = create_http_client(None);
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(payload)) = result {
       assert_eq!(
@@ -320,7 +331,7 @@ mod tests {
   async fn test_fetch_with_etag() {
     let http_server_guard = crate::test_util::http_server();
     let url = Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
-    let client = create_http_client();
+    let client = create_http_client(None);
     let result = fetch_once(client.clone(), &url, None).await;
     if let Ok(FetchOnceResult::Code(ResultPayload {
       body,
@@ -353,7 +364,7 @@ mod tests {
       "http://127.0.0.1:4545/cli/tests/053_import_compression/brotli",
     )
     .unwrap();
-    let client = create_http_client();
+    let client = create_http_client(None);
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(payload)) = result {
       assert!(!payload.body.is_empty());
@@ -382,7 +393,7 @@ mod tests {
     // Dns resolver substitutes `127.0.0.1` with `localhost`
     let target_url =
       Url::parse("http://localhost:4545/cli/tests/fixture.json").unwrap();
-    let client = create_http_client();
+    let client = create_http_client(None);
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Redirect(url)) = result {
       assert_eq!(url, target_url);
