@@ -60,12 +60,12 @@ fn op_create_worker(
   let args_name = args.name;
   let parent_state = state.clone();
 
-
   let (load_sender, load_receiver) =
     std::sync::mpsc::sync_channel::<JsonResult>(1);
 
   let referrer = parent_state.main_module.to_string();
-  let module_specifier = ModuleSpecifier::resolve_import(&specifier, &referrer)?;
+  let module_specifier =
+    ModuleSpecifier::resolve_import(&specifier, &referrer)?;
 
   std::thread::spawn(move || {
     let result = ThreadSafeState::new_for_worker(
