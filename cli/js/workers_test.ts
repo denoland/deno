@@ -43,10 +43,12 @@ test(async function workersBasic(): Promise<void> {
   };
 
   jsWorker.onerror = (e: Event): void => {
+    console.log("on error in jsWorker");
     e.preventDefault();
     jsWorker.postMessage("Hello World");
   };
 
+  console.log("before!!!!");
   jsWorker.postMessage("Hello World");
   await promise;
   console.log("promise resolved :)");
@@ -72,23 +74,24 @@ test(async function nestedWorker(): Promise<void> {
 });
 */
 
-test(async function workerThrowsWhenExecuting(): Promise<void> {
-  const promise = createResolvable();
+// test(async function workerThrowsWhenExecuting(): Promise<void> {
+//   const promise = createResolvable();
 
-  const throwingWorker = new Worker("../tests/subdir/throwing_worker.js", {
-    type: "module"
-  });
+//   const throwingWorker = new Worker("../tests/subdir/throwing_worker.js", {
+//     type: "module"
+//   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  throwingWorker.onerror = (e: any): void => {
-    e.preventDefault();
-    assertEquals(e.message, "Uncaught Error: Thrown error");
-    promise.resolve();
-  };
+//   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+//   throwingWorker.onerror = (e: any): void => {
+//     e.preventDefault();
+//     assertEquals(e.message, "Uncaught Error: Thrown error");
+//     promise.resolve();
+//   };
 
-  await promise;
-  console.log("promise resolved :)");
-  console.table(Deno.metrics());
-});
+//   console.log("before!!!!");
+//   await promise;
+//   console.log("promise resolved :)");
+//   console.table(Deno.metrics());
+// });
 
 runIfMain(import.meta);

@@ -3,6 +3,8 @@ if (self.name !== "tsWorker") {
 }
 
 onmessage = function(e): void {
+  console.log("calling onmessage ts!");
   postMessage(e.data);
+  console.log("calling close in ts!");
   close();
 };

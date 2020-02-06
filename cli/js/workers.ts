@@ -140,6 +140,40 @@ export class WorkerImpl extends EventTarget implements Worker {
     return handled;
   }
 
+  async runLoop(): Promise<void> {
+    const msg = hostGetMessage(this.id);
+
+    switch (msg.type) {
+      case "error":
+        if (!this.handleError(msg.error)) {
+          throw Error("asdfasdf")
+        }
+        // fooo
+        break;
+      case "data":
+        if (this.onmessage) {
+          const event = { data: msg.data };
+          this.onmessage(event);
+        }
+        break;
+      default:
+        log("worker got null message. quitting.");
+        break;
+    }
+
+    while (!this.isClosing) {
+      const data = await hostGetMessage(this.id);
+      if (data == null) {
+        log("worker got null message. quitting.");
+        break;
+      }
+      if (this.onmessage) {
+        const event = { data };
+        this.onmessage(event);
+      }
+    }
+  }
+
   async poll(): Promise<void> {
     while (!this.isClosing) {
       const data = await hostGetMessage(this.id);

@@ -37,6 +37,111 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("metrics", s.core_op(json_op(s.stateful_op(op_metrics))));
 }
 
+
+fn create_web_worker(global_state: ThreadSafeGlobalState, permissions: DenoPermissions, specifier: ModuleSpecifier) -> Result<WebWorker, ErrBox> {
+  let child_state = ThreadSafeState::new_for_worker(
+    global_state,
+    Some(permissions),
+    module_specifier,
+  )?;
+
+  let worker_name = args_name.unwrap_or_else(|| {
+    // TODO(bartlomieju): change it to something more descriptive
+    format!("USER-WORKER-{}", specifier)
+  });
+
+  let mut worker = WebWorker::new(
+    worker_name.to_string(),
+    startup_data::deno_isolate_init(),
+    child_state,
+  );
+
+  // 2. Bootstrap runtime
+  let script = format!("bootstrapWorkerRuntime(\"{}\")", worker_name);
+  worker.execute(&script)?;
+
+  Ok(worker)
+}
+
+// TODO(bartlomieju): check if order of actions is aligned to Worker spec
+fn run_worker_thread(handle_sender: std::sync::mpsc::Sender<JsonResult>, global_state: ThreadSafeGlobalState, permissions: DenoPermissions, specifier: ModuleSpecifier) -> Result<u32, ErrBox> {
+  // TODO: do it in new thread
+  std::thread::spawn(move || {
+    // Any error inside this block is terminal:
+    // - JS worker is useless - meaning it throws an exception and can't do anything else,
+    //  all action done upon it should be noops
+    // - newly spawned thread exits
+    let result = create_web_worker(global_state, permissions, specifier);
+
+    if let Err(err) = result {
+      handle_sender.send(Err(err)).unwrap();
+      return;
+    }
+
+    let worker = result.unwrap();
+    // Send thread safe handle to newly created worker to host thread
+    handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
+
+    // At this point host can already push messages and interact with worker.
+    // Next steps:
+    // - execute provided code (optionally)
+    // - create tokio runtime
+    // - load provided module (optionally)
+    // - start driving worker's event loop
+
+    // Execute provided source code immediately
+    if has_source_code {
+      if let Err(e) = worker.execute(&source_code) {
+        handle_sender.send(Err(e)).unwrap();
+        return;
+      }
+    } 
+    
+    let mut rt = create_basic_runtime();
+  
+    // TODO(bartlomieju): add "type": "classic", ie. ability to load 
+    // script instead of module
+    // Load provided module
+    if !has_source_code {
+      let load_future = worker
+        .execute_mod_async(&module_specifier, None, false)
+        .boxed_local();
+
+      if let Err(e) = rt.block_on(load_future) {
+        handle_sender.send(Err(e)).unwrap();
+        return;
+      }
+    }
+  
+    // TODO(bartlomieju): add a lot of smaller global functions in JS 
+    // and drive everything in here manually? "genius!"
+
+
+    // Drive worker event loop
+    loop {
+      // Start message loop
+      worker.execute("runWorkerMessageLoop()").expect("Can't start message loop");
+      // Wait until all futures finish
+      // TODO(bartlomieju): this should always return error?
+      // Message loop should be 
+      let r = (&mut *worker).await;
+      handle_sender.send(r).unwrap();
+
+      // blocks
+      let msg = result_receiver.recv();
+      match msg {
+        Resume => {
+          // pass - execute again
+        },
+        Cleanup => {
+          // errored out and not resuming
+        }
+      }
+    }
+  })
+}
+
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateWorkerArgs {
@@ -66,7 +171,8 @@ fn op_create_worker(
   let referrer = parent_state.main_module.to_string();
   let module_specifier =
     ModuleSpecifier::resolve_import(&specifier, &referrer)?;
-
+  
+  let worker_id = run_worker_thread()?;
   std::thread::spawn(move || {
     let result = ThreadSafeState::new_for_worker(
       parent_state.global_state.clone(),
@@ -121,7 +227,7 @@ fn op_create_worker(
 
   let r = load_receiver.recv().unwrap();
 
-  Ok(JsonOp::Sync(r.unwrap()))
+  Ok(JsonOp::Sync(json!({ "id": worker_id })))
 }
 
 #[derive(Deserialize)]
