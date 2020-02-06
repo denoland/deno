@@ -38,9 +38,14 @@ export interface GlobToRegExpOptions extends GlobOptions {
  */
 export function globToRegExp(
   glob: string,
-  options: GlobToRegExpOptions = {}
+  { extended = false, globstar = true }: GlobToRegExpOptions = {}
 ): RegExp {
-  const result = globrex(glob, { ...options, strict: false, filepath: true });
+  const result = globrex(glob, {
+    extended,
+    globstar,
+    strict: false,
+    filepath: true
+  });
   return result.path!.regex;
 }
 
