@@ -55,7 +55,9 @@ testWalk(
     await touch(d + "/b/z.js");
   },
   async function globInWalkWildcard(): Promise<void> {
-    const arr = await walkArray(".", { match: [globToRegExp("*/*.ts")] });
+    const arr = await walkArray(".", {
+      match: [globToRegExp(join("*", "*.ts"))]
+    });
     assertEquals(arr.length, 2);
     assertEquals(arr[0], "a/x.ts");
     assertEquals(arr[1], "b/z.ts");
