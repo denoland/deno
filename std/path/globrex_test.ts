@@ -19,9 +19,9 @@ function match(
     opts = strWin;
     strWin = "";
   }
-  const res = globrex(glob, opts);
-  const match = (isWin && strWin ? strWin : strUnix).match(res.regex);
-  if (match && !(opts.flags || "").includes("g")) {
+  const { regex } = globrex(glob, opts);
+  const match = (isWin && strWin ? strWin : strUnix).match(regex);
+  if (match && !regex.flags.includes("g")) {
     assertEquals(match.length, 1);
   }
   return !!match;
