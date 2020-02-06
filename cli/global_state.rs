@@ -9,6 +9,7 @@ use crate::deno_dir;
 use crate::deno_error::permission_denied;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
+use crate::futures::FutureExt;
 use crate::lockfile::Lockfile;
 use crate::metrics::Metrics;
 use crate::msg;
@@ -130,16 +131,16 @@ impl ThreadSafeGlobalState {
       }
       msg::MediaType::TypeScript
       | msg::MediaType::TSX
-      | msg::MediaType::JSX => {
-        state1
-          .ts_compiler
-          .compile_async(state1.clone(), &out, target_lib)
-      }
+      | msg::MediaType::JSX => state1
+        .ts_compiler
+        .compile_async(state1.clone(), &out, target_lib)
+        .boxed_local(),
       msg::MediaType::JavaScript => {
         if state1.ts_compiler.compile_js {
-          state1
+          state2
             .ts_compiler
             .compile_async(state1.clone(), &out, target_lib)
+            .boxed_local()
         } else {
           state1.js_compiler.compile_async(out)
         }

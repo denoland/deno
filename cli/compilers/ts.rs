@@ -2,7 +2,6 @@
 use super::compiler_worker::CompilerWorker;
 use crate::compilers::CompilationResultFuture;
 use crate::compilers::CompiledModule;
-use crate::compilers::CompiledModuleFuture;
 use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
@@ -26,11 +25,15 @@ use std::collections::HashSet;
 use std::fs;
 use std::hash::BuildHasher;
 use std::io;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::str;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::sync::Mutex;
+use tokio::sync::Mutex as AsyncMutex;
 use url::Url;
 
 lazy_static! {
@@ -202,7 +205,7 @@ pub fn source_code_version_hash(
   crate::checksum::gen(vec![source_code, version.as_bytes(), config_hash])
 }
 
-pub struct TsCompiler {
+pub struct TsCompilerInner {
   pub file_fetcher: SourceFileFetcher,
   pub config: CompilerConfig,
   pub disk_cache: DiskCache,
@@ -214,6 +217,24 @@ pub struct TsCompiler {
   pub use_disk_cache: bool,
   /// This setting is controlled by `compilerOptions.checkJs`
   pub compile_js: bool,
+
+  compile_lock: AsyncMutex<()>,
+}
+
+#[derive(Clone)]
+pub struct TsCompiler(Arc<TsCompilerInner>);
+
+impl Deref for TsCompiler {
+  type Target = TsCompilerInner;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl DerefMut for TsCompiler {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    Arc::get_mut(&mut self.0).unwrap()
+  }
 }
 
 impl TsCompiler {
@@ -225,14 +246,15 @@ impl TsCompiler {
   ) -> Result<Self, ErrBox> {
     let config = CompilerConfig::load(config_path)?;
 
-    let compiler = Self {
+    let compiler = TsCompiler(Arc::new(TsCompilerInner {
       file_fetcher,
       disk_cache,
       compile_js: config.compile_js,
       config,
       compiled: Mutex::new(HashSet::new()),
       use_disk_cache,
-    };
+      compile_lock: AsyncMutex::new(()),
+    }));
 
     Ok(compiler)
   }
@@ -342,17 +364,15 @@ impl TsCompiler {
   ///
   /// If compilation is required then new V8 worker is spawned with fresh TS
   /// compiler.
-  pub fn compile_async(
+  pub async fn compile_async(
     &self,
     global_state: ThreadSafeGlobalState,
     source_file: &SourceFile,
     target: TargetLib,
-  ) -> Pin<Box<CompiledModuleFuture>> {
+  ) -> Result<CompiledModule, ErrBox> {
+    let compile_lock = self.compile_lock.lock().await;
     if self.has_compiled(&source_file.url) {
-      return match self.get_compiled_module(&source_file.url) {
-        Ok(compiled) => futures::future::ok(compiled).boxed(),
-        Err(err) => futures::future::err(err).boxed(),
-      };
+      return self.get_compiled_module(&source_file.url);
     }
 
     if self.use_disk_cache {
@@ -373,7 +393,7 @@ impl TsCompiler {
             self.get_compiled_module(&source_file.url)
           {
             self.mark_compiled(&source_file.url);
-            return futures::future::ok(compiled_module).boxed();
+            return Ok(compiled_module);
           }
         }
       }
@@ -397,7 +417,7 @@ impl TsCompiler {
     // TODO(ry) The code below looks very similar to spawn_ts_compiler_worker.
     // Can we combine them?
     let (load_sender, load_receiver) =
-      tokio::sync::oneshot::channel::<Result<CompiledModule, ErrBox>>();
+      tokio::sync::oneshot::channel::<Result<Option<Buf>, ErrBox>>();
     std::thread::spawn(move || {
       debug!(">>>>> compile_async START");
 
@@ -418,27 +438,27 @@ impl TsCompiler {
           return;
         }
         let maybe_msg = handle.get_message().await;
-        if let Some(ref msg) = maybe_msg {
-          let json_str = std::str::from_utf8(msg).unwrap();
-          if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-            let err = ErrBox::from(diagnostics);
-            load_sender.send(Err(err)).unwrap();
-            return;
-          }
-        }
-        let compiled_module = global_state
-          .ts_compiler
-          .get_compiled_module(&source_file_.url)
-          .expect("Expected to find compiled file");
+        load_sender.send(Ok(maybe_msg)).unwrap();
         drop(compiling_job);
         debug!(">>>>> compile_sync END");
-        load_sender.send(Ok(compiled_module)).unwrap();
       }
       .boxed_local();
       crate::tokio_util::run_basic(fut);
     });
 
-    async { load_receiver.await.unwrap() }.boxed_local()
+    let ts_compiler = self.clone();
+
+    let maybe_msg = load_receiver.await.unwrap().unwrap();
+
+    if let Some(ref msg) = maybe_msg {
+      let json_str = std::str::from_utf8(msg).unwrap();
+      if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+        return Err(ErrBox::from(diagnostics));
+      }
+    }
+    let compiled_module = ts_compiler.get_compiled_module(&source_file_.url)?;
+    drop(compile_lock);
+    Ok(compiled_module)
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
