@@ -8,7 +8,6 @@ use crate::metrics::Metrics;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
 use crate::permissions::DenoPermissions;
-use crate::web_worker::WebWorker;
 use crate::worker::WorkerChannelsExternal;
 use crate::worker::WorkerChannelsInternal;
 use deno_core::Buf;
@@ -303,9 +302,8 @@ impl ThreadSafeState {
     Ok(ThreadSafeState(Arc::new(state)))
   }
 
-  pub fn add_child_worker(&self, worker: &WebWorker) -> u32 {
+  pub fn add_child_worker(&self, handle: WorkerChannelsExternal) -> u32 {
     let worker_id = self.next_worker_id.fetch_add(1, Ordering::Relaxed) as u32;
-    let handle = worker.thread_safe_handle();
     let mut workers_tl = self.workers.lock().unwrap();
     workers_tl.insert(worker_id, handle);
     worker_id

@@ -13,6 +13,9 @@ use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 
+
+pub struct WorkerCloseError {}
+
 /// This worker is implementation of `Worker` Web API
 ///
 /// At the moment this type of worker supports only
