@@ -60,7 +60,6 @@ export function close(): void {
   }
 
   isClosing = true;
-  console.log("closing worker");
   sendSync(dispatch.OP_WORKER_CLOSE);
 }
 
