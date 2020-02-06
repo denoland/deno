@@ -4,7 +4,7 @@ use super::io::StreamResource;
 use crate::deno_error::bad_resource;
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::Resource;
 use deno_core::*;
 use futures::future::FutureExt;
@@ -20,7 +20,7 @@ use tokio;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("accept", s.core_op(json_op(s.stateful_op(op_accept))));
   i.register_op("connect", s.core_op(json_op(s.stateful_op(op_connect))));
   i.register_op("shutdown", s.core_op(json_op(s.stateful_op(op_shutdown))));
@@ -34,7 +34,7 @@ enum AcceptState {
 }
 
 /// Simply accepts a connection.
-pub fn accept(state: &ThreadSafeState, rid: ResourceId) -> Accept {
+pub fn accept(state: &State, rid: ResourceId) -> Accept {
   Accept {
     accept_state: AcceptState::Pending,
     rid,
@@ -46,7 +46,7 @@ pub fn accept(state: &ThreadSafeState, rid: ResourceId) -> Accept {
 pub struct Accept<'a> {
   accept_state: AcceptState,
   rid: ResourceId,
-  state: &'a ThreadSafeState,
+  state: &'a State,
 }
 
 impl Future for Accept<'_> {
@@ -96,7 +96,7 @@ struct AcceptArgs {
 }
 
 fn op_accept(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -141,7 +141,7 @@ struct ConnectArgs {
 }
 
 fn op_connect(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -183,7 +183,7 @@ struct ShutdownArgs {
 }
 
 fn op_shutdown(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -275,7 +275,7 @@ impl TcpListenerResource {
 }
 
 fn op_listen(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {

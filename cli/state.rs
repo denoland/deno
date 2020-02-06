@@ -27,7 +27,6 @@ use rand::SeedableRng;
 use serde_json::Value;
 use std;
 use std::collections::HashMap;
-use std::ops::Deref;
 use std::path::Path;
 use std::pin::Pin;
 use std::str;
@@ -38,12 +37,8 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::time::Instant;
 
-/// Isolate cannot be passed between threads but ThreadSafeState can.
-/// ThreadSafeState satisfies Send and Sync. So any state that needs to be
-/// accessed outside the main V8 thread should be inside ThreadSafeState.
-pub struct ThreadSafeState(Arc<State>);
-
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+#[derive(Clone)]
 pub struct State {
   pub global_state: ThreadSafeGlobalState,
   pub permissions: Arc<Mutex<DenoPermissions>>,
@@ -51,32 +46,20 @@ pub struct State {
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
-  pub metrics: Metrics,
-  pub global_timer: Mutex<GlobalTimer>,
-  pub workers: Mutex<HashMap<u32, WorkerChannelsExternal>>,
-  pub worker_channels_internal: Mutex<Option<WorkerChannelsInternal>>,
-  pub loading_workers: Mutex<HashMap<u32, mpsc::Receiver<Result<(), ErrBox>>>>,
-  pub next_worker_id: AtomicUsize,
+  pub metrics: Arc<Metrics>,
+  pub global_timer: Arc<Mutex<GlobalTimer>>,
+  pub workers: Arc<Mutex<HashMap<u32, WorkerChannelsExternal>>>,
+  pub worker_channels_internal: Arc<Mutex<Option<WorkerChannelsInternal>>>,
+  pub loading_workers:
+    Arc<Mutex<HashMap<u32, mpsc::Receiver<Result<(), ErrBox>>>>>,
+  pub next_worker_id: Arc<Mutex<AtomicUsize>>,
   pub start_time: Instant,
-  pub seeded_rng: Option<Mutex<StdRng>>,
-  pub resource_table: Mutex<ResourceTable>,
+  pub seeded_rng: Option<Arc<Mutex<StdRng>>>,
+  pub resource_table: Arc<Mutex<ResourceTable>>,
   pub target_lib: TargetLib,
 }
 
-impl Clone for ThreadSafeState {
-  fn clone(&self) -> Self {
-    ThreadSafeState(self.0.clone())
-  }
-}
-
-impl Deref for ThreadSafeState {
-  type Target = Arc<State>;
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
-}
-
-impl ThreadSafeState {
+impl State {
   pub fn lock_resource_table(&self) -> MutexGuard<ResourceTable> {
     self.resource_table.lock().unwrap()
   }
@@ -130,7 +113,7 @@ impl ThreadSafeState {
     dispatcher: D,
   ) -> impl Fn(i32, Option<ZeroCopyBuf>) -> Pin<Box<MinimalOp>>
   where
-    D: Fn(&ThreadSafeState, i32, Option<ZeroCopyBuf>) -> Pin<Box<MinimalOp>>,
+    D: Fn(&State, i32, Option<ZeroCopyBuf>) -> Pin<Box<MinimalOp>>,
   {
     let state = self.clone();
 
@@ -149,11 +132,7 @@ impl ThreadSafeState {
     dispatcher: D,
   ) -> impl Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, ErrBox>
   where
-    D: Fn(
-      &ThreadSafeState,
-      Value,
-      Option<ZeroCopyBuf>,
-    ) -> Result<JsonOp, ErrBox>,
+    D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, ErrBox>,
   {
     let state = self.clone();
 
@@ -163,7 +142,7 @@ impl ThreadSafeState {
   }
 }
 
-impl Loader for ThreadSafeState {
+impl Loader for State {
   fn resolve(
     &self,
     specifier: &str,
@@ -220,7 +199,7 @@ impl Loader for ThreadSafeState {
   }
 }
 
-impl ThreadSafeState {
+impl State {
   /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new(
     global_state: ThreadSafeGlobalState,
@@ -234,7 +213,7 @@ impl ThreadSafeState {
       };
 
     let seeded_rng = match global_state.flags.seed {
-      Some(seed) => Some(Mutex::new(StdRng::seed_from_u64(seed))),
+      Some(seed) => Some(Arc::new(Mutex::new(StdRng::seed_from_u64(seed)))),
       None => None,
     };
 
@@ -249,20 +228,20 @@ impl ThreadSafeState {
       main_module,
       permissions,
       import_map,
-      metrics: Metrics::default(),
-      global_timer: Mutex::new(GlobalTimer::new()),
-      worker_channels_internal: Mutex::new(None),
-      workers: Mutex::new(HashMap::new()),
-      loading_workers: Mutex::new(HashMap::new()),
-      next_worker_id: AtomicUsize::new(0),
+      metrics: Arc::new(Metrics::default()),
+      global_timer: Arc::new(Mutex::new(GlobalTimer::new())),
+      worker_channels_internal: Arc::new(Mutex::new(None)),
+      workers: Arc::new(Mutex::new(HashMap::new())),
+      loading_workers: Arc::new(Mutex::new(HashMap::new())),
+      next_worker_id: Arc::new(Mutex::new(AtomicUsize::new(0))),
       start_time: Instant::now(),
       seeded_rng,
 
-      resource_table: Mutex::new(ResourceTable::default()),
+      resource_table: Arc::new(Mutex::new(ResourceTable::default())),
       target_lib: TargetLib::Main,
     };
 
-    Ok(ThreadSafeState(Arc::new(state)))
+    Ok(state)
   }
 
   /// If `shared_permission` is None then permissions from globa state are used.
@@ -272,7 +251,7 @@ impl ThreadSafeState {
     main_module: ModuleSpecifier,
   ) -> Result<Self, ErrBox> {
     let seeded_rng = match global_state.flags.seed {
-      Some(seed) => Some(Mutex::new(StdRng::seed_from_u64(seed))),
+      Some(seed) => Some(Arc::new(Mutex::new(StdRng::seed_from_u64(seed)))),
       None => None,
     };
 
@@ -287,24 +266,25 @@ impl ThreadSafeState {
       main_module,
       permissions,
       import_map: None,
-      metrics: Metrics::default(),
-      global_timer: Mutex::new(GlobalTimer::new()),
-      worker_channels_internal: Mutex::new(None),
-      workers: Mutex::new(HashMap::new()),
-      loading_workers: Mutex::new(HashMap::new()),
-      next_worker_id: AtomicUsize::new(0),
+      metrics: Arc::new(Metrics::default()),
+      global_timer: Arc::new(Mutex::new(GlobalTimer::new())),
+      worker_channels_internal: Arc::new(Mutex::new(None)),
+      workers: Arc::new(Mutex::new(HashMap::new())),
+      loading_workers: Arc::new(Mutex::new(HashMap::new())),
+      next_worker_id: Arc::new(Mutex::new(AtomicUsize::new(0))),
       start_time: Instant::now(),
       seeded_rng,
 
-      resource_table: Mutex::new(ResourceTable::default()),
+      resource_table: Arc::new(Mutex::new(ResourceTable::default())),
       target_lib: TargetLib::Worker,
     };
 
-    Ok(ThreadSafeState(Arc::new(state)))
+    Ok(state)
   }
 
   pub fn add_child_worker(&self, worker: &WebWorker) -> u32 {
-    let worker_id = self.next_worker_id.fetch_add(1, Ordering::Relaxed) as u32;
+    let next_id = self.next_worker_id.lock().unwrap();
+    let worker_id = next_id.fetch_add(1, Ordering::Relaxed) as u32;
     let handle = worker.thread_safe_handle();
     let mut workers_tl = self.workers.lock().unwrap();
     workers_tl.insert(worker_id, handle);
@@ -371,10 +351,10 @@ impl ThreadSafeState {
   }
 
   #[cfg(test)]
-  pub fn mock(main_module: &str) -> ThreadSafeState {
+  pub fn mock(main_module: &str) -> State {
     let module_specifier = ModuleSpecifier::resolve_url_or_path(main_module)
       .expect("Invalid entry module");
-    ThreadSafeState::new(
+    State::new(
       ThreadSafeGlobalState::mock(vec!["deno".to_string()]),
       None,
       module_specifier,
@@ -410,5 +390,5 @@ impl ThreadSafeState {
 #[test]
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
-  f(ThreadSafeState::mock("./hello.js"));
+  f(State::mock("./hello.js"));
 }

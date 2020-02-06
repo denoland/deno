@@ -4,11 +4,11 @@ use crate::fmt_errors::JSError;
 use crate::ops::json_op;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::*;
 use std::collections::HashMap;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "apply_source_map",
     s.core_op(json_op(s.stateful_op(op_apply_source_map))),
@@ -25,7 +25,7 @@ struct FormatErrorArgs {
 }
 
 fn op_format_error(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -45,7 +45,7 @@ struct ApplySourceMap {
 }
 
 fn op_apply_source_map(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {

@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::*;
 
 #[cfg(unix)]
@@ -19,7 +19,7 @@ use std::task::Waker;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "signal_bind",
     s.core_op(json_op(s.stateful_op(op_signal_bind))),
@@ -56,7 +56,7 @@ struct SignalArgs {
 
 #[cfg(unix)]
 fn op_signal_bind(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -76,7 +76,7 @@ fn op_signal_bind(
 
 #[cfg(unix)]
 fn op_signal_poll(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -99,7 +99,7 @@ fn op_signal_poll(
 
 #[cfg(unix)]
 pub fn op_signal_unbind(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -120,7 +120,7 @@ pub fn op_signal_unbind(
 
 #[cfg(not(unix))]
 pub fn op_signal_bind(
-  _state: &ThreadSafeState,
+  _state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -129,7 +129,7 @@ pub fn op_signal_bind(
 
 #[cfg(not(unix))]
 fn op_signal_unbind(
-  _state: &ThreadSafeState,
+  _state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -138,7 +138,7 @@ fn op_signal_unbind(
 
 #[cfg(not(unix))]
 fn op_signal_poll(
-  _state: &ThreadSafeState,
+  _state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {

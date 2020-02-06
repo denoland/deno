@@ -3,11 +3,11 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::compilers::runtime_compile_async;
 use crate::compilers::runtime_transpile_async;
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::*;
 use std::collections::HashMap;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("compile", s.core_op(json_op(s.stateful_op(op_compile))));
   i.register_op("transpile", s.core_op(json_op(s.stateful_op(op_transpile))));
 }
@@ -22,7 +22,7 @@ struct CompileArgs {
 }
 
 fn op_compile(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -43,7 +43,7 @@ struct TranspileArgs {
 }
 
 fn op_transpile(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {

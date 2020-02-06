@@ -6,7 +6,7 @@ use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::*;
 use futures::future::FutureExt;
 use std;
@@ -15,7 +15,7 @@ use std::io::SeekFrom;
 use std::path::Path;
 use tokio;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("open", s.core_op(json_op(s.stateful_op(op_open))));
   i.register_op("close", s.core_op(json_op(s.stateful_op(op_close))));
   i.register_op("seek", s.core_op(json_op(s.stateful_op(op_seek))));
@@ -43,7 +43,7 @@ struct OpenOptions {
 }
 
 fn op_open(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -149,7 +149,7 @@ struct CloseArgs {
 }
 
 fn op_close(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -170,7 +170,7 @@ struct SeekArgs {
 }
 
 fn op_seek(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {

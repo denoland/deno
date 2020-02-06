@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
 use crate::ops;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core;
 use deno_core::Buf;
 use deno_core::ErrBox;
@@ -112,16 +112,12 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerChannelsExternal) {
 pub struct Worker {
   pub name: String,
   pub isolate: Box<deno_core::EsIsolate>,
-  pub state: ThreadSafeState,
+  pub state: State,
   external_channels: WorkerChannelsExternal,
 }
 
 impl Worker {
-  pub fn new(
-    name: String,
-    startup_data: StartupData,
-    state: ThreadSafeState,
-  ) -> Self {
+  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let mut isolate =
       deno_core::EsIsolate::new(Box::new(state.clone()), startup_data, false);
 
@@ -203,11 +199,7 @@ impl Future for Worker {
 pub struct MainWorker(Worker);
 
 impl MainWorker {
-  pub fn new(
-    name: String,
-    startup_data: StartupData,
-    state: ThreadSafeState,
-  ) -> Self {
+  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let state_ = state.clone();
     let mut worker = Worker::new(name, startup_data, state_);
     {
@@ -258,7 +250,7 @@ mod tests {
   use crate::global_state::ThreadSafeGlobalState;
   use crate::progress::Progress;
   use crate::startup_data;
-  use crate::state::ThreadSafeState;
+  use crate::state::State;
   use crate::tokio_util;
   use futures::executor::block_on;
   use std::sync::atomic::Ordering;
@@ -283,8 +275,7 @@ mod tests {
       ThreadSafeGlobalState::new(flags::DenoFlags::default(), Progress::new())
         .unwrap();
     let state =
-      ThreadSafeState::new(global_state, None, module_specifier.clone())
-        .unwrap();
+      State::new(global_state, None, module_specifier.clone()).unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -318,8 +309,7 @@ mod tests {
       ThreadSafeGlobalState::new(flags::DenoFlags::default(), Progress::new())
         .unwrap();
     let state =
-      ThreadSafeState::new(global_state, None, module_specifier.clone())
-        .unwrap();
+      State::new(global_state, None, module_specifier.clone()).unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -359,12 +349,8 @@ mod tests {
     };
     let global_state =
       ThreadSafeGlobalState::new(flags, Progress::new()).unwrap();
-    let state = ThreadSafeState::new(
-      global_state.clone(),
-      None,
-      module_specifier.clone(),
-    )
-    .unwrap();
+    let state =
+      State::new(global_state.clone(), None, module_specifier.clone()).unwrap();
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),
@@ -390,7 +376,7 @@ mod tests {
   }
 
   fn create_test_worker() -> MainWorker {
-    let state = ThreadSafeState::mock("./hello.js");
+    let state = State::mock("./hello.js");
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),

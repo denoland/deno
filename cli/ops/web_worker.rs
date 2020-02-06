@@ -3,14 +3,14 @@ use super::dispatch_json::{JsonOp, Value};
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::*;
 use futures;
 use futures::future::FutureExt;
 use std;
 use std::convert::From;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "worker_post_message",
     s.core_op(json_op(s.stateful_op(op_worker_post_message))),
@@ -23,7 +23,7 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 
 /// Get message from host as guest worker
 fn op_worker_get_message(
-  state: &ThreadSafeState,
+  state: &State,
   _args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -40,7 +40,7 @@ fn op_worker_get_message(
 
 /// Post message to host as guest worker
 fn op_worker_post_message(
-  state: &ThreadSafeState,
+  state: &State,
   _args: Value,
   data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {

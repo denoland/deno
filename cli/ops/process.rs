@@ -4,7 +4,7 @@ use super::io::StreamResource;
 use crate::deno_error::bad_resource;
 use crate::ops::json_op;
 use crate::signal::kill;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::*;
 use futures;
 use futures::future::FutureExt;
@@ -22,7 +22,7 @@ use tokio::process::Command;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("run", s.core_op(json_op(s.stateful_op(op_run))));
   i.register_op(
     "run_status",
@@ -31,10 +31,7 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("kill", s.core_op(json_op(s.stateful_op(op_kill))));
 }
 
-fn clone_file(
-  rid: u32,
-  state: &ThreadSafeState,
-) -> Result<std::fs::File, ErrBox> {
+fn clone_file(rid: u32, state: &State) -> Result<std::fs::File, ErrBox> {
   let mut table = state.lock_resource_table();
   let repr = table
     .get_mut::<StreamResource>(rid)
@@ -78,7 +75,7 @@ struct ChildResource {
 impl Resource for ChildResource {}
 
 fn op_run(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -182,7 +179,7 @@ fn op_run(
 
 pub struct ChildStatus {
   rid: ResourceId,
-  state: ThreadSafeState,
+  state: State,
 }
 
 impl Future for ChildStatus {
@@ -206,7 +203,7 @@ struct RunStatusArgs {
 }
 
 fn op_run_status(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -254,7 +251,7 @@ struct KillArgs {
 }
 
 fn op_kill(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {

@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-#![deny(warnings)]
 
 #[macro_use]
 extern crate lazy_static;
@@ -62,7 +61,7 @@ use crate::deno_error::{print_err_and_exit, print_msg_and_exit};
 use crate::global_state::ThreadSafeGlobalState;
 use crate::ops::io::get_stdio;
 use crate::progress::Progress;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
 use deno_core::ErrBox;
@@ -122,7 +121,7 @@ fn create_main_worker(
   global_state: ThreadSafeGlobalState,
   main_module: ModuleSpecifier,
 ) -> MainWorker {
-  let state = ThreadSafeState::new(global_state, None, main_module)
+  let state = State::new(global_state, None, main_module)
     .map_err(deno_error::print_err_and_exit)
     .unwrap();
 

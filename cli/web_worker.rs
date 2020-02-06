@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::ops;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use crate::worker::Worker;
 use deno_core;
 use deno_core::ErrBox;
@@ -23,11 +23,7 @@ use std::task::Poll;
 pub struct WebWorker(Worker);
 
 impl WebWorker {
-  pub fn new(
-    name: String,
-    startup_data: StartupData,
-    state: ThreadSafeState,
-  ) -> Self {
+  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let state_ = state.clone();
     let mut worker = Worker::new(name, startup_data, state_);
     {
@@ -70,11 +66,11 @@ impl Future for WebWorker {
 mod tests {
   use super::*;
   use crate::startup_data;
-  use crate::state::ThreadSafeState;
+  use crate::state::State;
   use crate::tokio_util;
 
   fn create_test_worker() -> WebWorker {
-    let state = ThreadSafeState::mock("./hello.js");
+    let state = State::mock("./hello.js");
     let mut worker = WebWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),

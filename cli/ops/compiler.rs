@@ -3,11 +3,11 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::futures::future::try_join_all;
 use crate::msg;
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::Loader;
 use deno_core::*;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("cache", s.core_op(json_op(s.stateful_op(op_cache))));
   i.register_op(
     "resolve_modules",
@@ -28,7 +28,7 @@ struct CacheArgs {
 }
 
 fn op_cache(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -53,7 +53,7 @@ struct SpecifiersReferrerArgs {
 }
 
 fn op_resolve_modules(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -78,7 +78,7 @@ fn op_resolve_modules(
 }
 
 fn op_fetch_source_files(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {

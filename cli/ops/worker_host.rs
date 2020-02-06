@@ -7,7 +7,7 @@ use crate::deno_error::ErrorKind;
 use crate::ops::dispatch_json::JsonResult;
 use crate::ops::json_op;
 use crate::startup_data;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use crate::web_worker::WebWorker;
 use deno_core::*;
 use futures;
@@ -17,7 +17,7 @@ use std;
 use std::convert::From;
 use std::sync::atomic::Ordering;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "create_worker",
     s.core_op(json_op(s.stateful_op(op_create_worker))),
@@ -48,7 +48,7 @@ struct CreateWorkerArgs {
 
 /// Create worker as the host
 fn op_create_worker(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -83,7 +83,7 @@ fn op_create_worker(
       result.unwrap()
     };
 
-    let result = ThreadSafeState::new_for_worker(
+    let result = State::new_for_worker(
       parent_state.global_state.clone(),
       Some(parent_state.permissions.clone()), // by default share with parent
       module_specifier.clone(),
@@ -144,7 +144,7 @@ struct WorkerArgs {
 }
 
 fn op_host_close_worker(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -173,7 +173,7 @@ struct HostGetMessageArgs {
 
 /// Get message from guest worker as host
 fn op_host_get_message(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -198,7 +198,7 @@ struct HostPostMessageArgs {
 
 /// Post message to guest worker as host
 fn op_host_post_message(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -218,7 +218,7 @@ fn op_host_post_message(
 }
 
 fn op_metrics(
-  state: &ThreadSafeState,
+  state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {

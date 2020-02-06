@@ -3,7 +3,7 @@ use crate::deno_error;
 use crate::deno_error::bad_resource;
 use crate::http_util::HttpBody;
 use crate::ops::minimal_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::ErrBox;
 use deno_core::Resource;
 use deno_core::*;
@@ -48,7 +48,7 @@ lazy_static! {
   };
 }
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "read",
     s.core_op(minimal_op(s.stateful_minimal_op(op_read))),
@@ -134,7 +134,7 @@ enum IoState {
 ///
 /// The returned future will resolve to both the I/O stream and the buffer
 /// as well as the number of bytes read once the read operation is completed.
-pub fn read<T>(state: &ThreadSafeState, rid: ResourceId, buf: T) -> Read<T>
+pub fn read<T>(state: &State, rid: ResourceId, buf: T) -> Read<T>
 where
   T: AsMut<[u8]>,
 {
@@ -154,7 +154,7 @@ pub struct Read<T> {
   rid: ResourceId,
   buf: T,
   io_state: IoState,
-  state: ThreadSafeState,
+  state: State,
 }
 
 impl<T> Future for Read<T>
@@ -180,7 +180,7 @@ where
 }
 
 pub fn op_read(
-  state: &ThreadSafeState,
+  state: &State,
   rid: i32,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Pin<Box<MinimalOp>> {
@@ -260,7 +260,7 @@ pub struct Write<T> {
   rid: ResourceId,
   buf: T,
   io_state: IoState,
-  state: ThreadSafeState,
+  state: State,
   nwritten: i32,
 }
 
@@ -269,7 +269,7 @@ pub struct Write<T> {
 ///
 /// Any error which happens during writing will cause both the stream and the
 /// buffer to get destroyed.
-pub fn write<T>(state: &ThreadSafeState, rid: ResourceId, buf: T) -> Write<T>
+pub fn write<T>(state: &State, rid: ResourceId, buf: T) -> Write<T>
 where
   T: AsRef<[u8]>,
 {
@@ -325,7 +325,7 @@ where
 }
 
 pub fn op_write(
-  state: &ThreadSafeState,
+  state: &State,
   rid: i32,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Pin<Box<MinimalOp>> {

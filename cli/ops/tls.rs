@@ -6,7 +6,7 @@ use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::Resource;
 use deno_core::*;
 use futures::future::FutureExt;
@@ -36,7 +36,7 @@ use webpki;
 use webpki::DNSNameRef;
 use webpki_roots;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "connect_tls",
     s.core_op(json_op(s.stateful_op(op_connect_tls))),
@@ -61,7 +61,7 @@ struct ConnectTLSArgs {
 }
 
 pub fn op_connect_tls(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -244,7 +244,7 @@ struct ListenTlsArgs {
 }
 
 fn op_listen_tls(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -293,7 +293,7 @@ enum AcceptTlsState {
 }
 
 /// Simply accepts a TLS connection.
-pub fn accept_tls(state: &ThreadSafeState, rid: ResourceId) -> AcceptTls {
+pub fn accept_tls(state: &State, rid: ResourceId) -> AcceptTls {
   AcceptTls {
     accept_state: AcceptTlsState::Pending,
     rid,
@@ -305,7 +305,7 @@ pub fn accept_tls(state: &ThreadSafeState, rid: ResourceId) -> AcceptTls {
 pub struct AcceptTls {
   accept_state: AcceptTlsState,
   rid: ResourceId,
-  state: ThreadSafeState,
+  state: State,
 }
 
 impl Future for AcceptTls {
@@ -355,7 +355,7 @@ struct AcceptTlsArgs {
 }
 
 fn op_accept_tls(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {

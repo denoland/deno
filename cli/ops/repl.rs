@@ -4,13 +4,13 @@ use crate::deno_error::bad_resource;
 use crate::ops::json_op;
 use crate::repl;
 use crate::repl::Repl;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::Resource;
 use deno_core::*;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "repl_start",
     s.core_op(json_op(s.stateful_op(op_repl_start))),
@@ -32,7 +32,7 @@ struct ReplStartArgs {
 }
 
 fn op_repl_start(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -55,7 +55,7 @@ struct ReplReadlineArgs {
 }
 
 fn op_repl_readline(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {

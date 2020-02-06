@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::ops;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use crate::worker::Worker;
 use deno_core;
 use deno_core::StartupData;
@@ -23,11 +23,7 @@ use std::ops::DerefMut;
 pub struct CompilerWorker(Worker);
 
 impl CompilerWorker {
-  pub fn new(
-    name: String,
-    startup_data: StartupData,
-    state: ThreadSafeState,
-  ) -> Self {
+  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let state_ = state.clone();
     let mut worker = Worker::new(name, startup_data, state_);
     {
