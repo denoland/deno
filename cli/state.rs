@@ -18,7 +18,6 @@ use deno_core::ModuleSpecifier;
 use deno_core::Op;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
-use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
 use rand::rngs::StdRng;
@@ -37,10 +36,6 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::time::Instant;
 
-// TODO(bartlomieju): remove - this is temporary
-type LoadingWorkersTable =
-  Arc<Mutex<HashMap<u32, mpsc::Receiver<Result<(), ErrBox>>>>>;
-
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Clone)]
 pub struct State {
@@ -54,7 +49,6 @@ pub struct State {
   pub global_timer: Arc<Mutex<GlobalTimer>>,
   pub workers: Arc<Mutex<HashMap<u32, WorkerChannelsExternal>>>,
   pub worker_channels_internal: Arc<Mutex<Option<WorkerChannelsInternal>>>,
-  pub loading_workers: LoadingWorkersTable,
   pub next_worker_id: Arc<Mutex<AtomicUsize>>,
   pub start_time: Instant,
   pub seeded_rng: Option<Arc<Mutex<StdRng>>>,
@@ -235,7 +229,6 @@ impl State {
       global_timer: Arc::new(Mutex::new(GlobalTimer::new())),
       worker_channels_internal: Arc::new(Mutex::new(None)),
       workers: Arc::new(Mutex::new(HashMap::new())),
-      loading_workers: Arc::new(Mutex::new(HashMap::new())),
       next_worker_id: Arc::new(Mutex::new(AtomicUsize::new(0))),
       start_time: Instant::now(),
       seeded_rng,
@@ -273,7 +266,6 @@ impl State {
       global_timer: Arc::new(Mutex::new(GlobalTimer::new())),
       worker_channels_internal: Arc::new(Mutex::new(None)),
       workers: Arc::new(Mutex::new(HashMap::new())),
-      loading_workers: Arc::new(Mutex::new(HashMap::new())),
       next_worker_id: Arc::new(Mutex::new(AtomicUsize::new(0))),
       start_time: Instant::now(),
       seeded_rng,
