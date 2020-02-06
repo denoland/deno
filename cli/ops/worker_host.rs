@@ -126,16 +126,29 @@ fn run_worker_thread(
       let a = select!(worker.await, message_receiver.recv().await);
 
       let result = match a {
-        worker => {
-          worker
+        worker_result => match worker_result {
+          Ok(()) => {
+            // worker finished scripts, no point in polling it
+            // until we receive as message (not valid if we add unref 
+            // ops to worker)
+          },
+          Err(e) =>{
+            if let Ok(err) = e.downcast::<WorkerCloseError>() {
+              // worker shuts down - empty event loop and notify
+              // host that this worker is closed
+            } else {
+              // serialize and send to host and decide what later -
+              // - ie. worker should not be polled unless exception is handled by host
+            }
+          },
         },
         message => {
           // TODO: just add second value and then bind using rusty_v8 
           // to get structured clone/transfer working
           let json_string = "";
           let script = format!("globalThis.workerMessageRecvCallback({})", json_string);
-          let result = worker.execute(script);
-          result
+          worker.execute(script).expect("Failed to execute message cb");
+          // result
         },
       };
 

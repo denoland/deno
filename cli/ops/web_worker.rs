@@ -66,5 +66,11 @@ fn op_worker_close(
   let mut c = state.worker_channels_internal.lock().unwrap();
   let mut sender = c.as_mut().unwrap().sender.clone();
   sender.close_channel();
+
+  // TODO(bartlomieju): actually return some new Error
+  // type - it will cause Worker to break out of thread 
+  // loop and cleanup
+
+
   Ok(JsonOp::Sync(json!({})))
 }
