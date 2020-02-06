@@ -1538,7 +1538,7 @@ Build with Cargo:
 cargo build -vv
 
 # Run:
-./target/debug/deno tests/002_hello.ts
+./target/debug/deno cli/tests/002_hello.ts
 ```
 
 #### Testing and Tools
