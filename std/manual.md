@@ -644,6 +644,11 @@ reference directive. If Deno used this, it would interfere with the behavior of
 the TypeScript compiler. Deno only looks for the directive in JavaScript (and
 JSX) files.
 
+### Using plugins
+
+`deno_core` crate can be used to register custom ops in existing Rust code.
+See [the example](https://github.com/denoland/deno/blob/master/test_plugin/src/lib.rs).
+
 ### Testing if current file is the main program
 
 To test if the current script has been executed as the main input to the program
