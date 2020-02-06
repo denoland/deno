@@ -225,7 +225,7 @@ Deno.test(async function emptyDirPermission(): Promise<void> {
         args: args
       });
 
-      const output = await Deno.readAll(stdout);
+      const output = await Deno.readAll(stdout!);
 
       assertStrContains(new TextDecoder().decode(output), s.output);
     }

@@ -54,7 +54,7 @@ testPerm({ net: true }, async function fetchHeaders(): Promise<void> {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;
   assertEquals(headers.get("Content-Type"), "application/json");
-  assert(headers.get("Server").startsWith("SimpleHTTP"));
+  assert(headers.get("Server")!.startsWith("SimpleHTTP"));
 });
 
 testPerm({ net: true }, async function fetchBlob(): Promise<void> {
@@ -96,6 +96,7 @@ testPerm({ net: true }, async function responseClone(): Promise<void> {
   const ab = await response.arrayBuffer();
   const ab1 = await response1.arrayBuffer();
   for (let i = 0; i < ab.byteLength; i++) {
+    // @ts-ignore
     assertEquals(ab[i], ab1[i]);
   }
 });
@@ -119,7 +120,7 @@ testPerm({ net: true }, async function fetchMultipartFormDataSuccess(): Promise<
   );
   const formData = await response.formData();
   assert(formData.has("field_1"));
-  assertEquals(formData.get("field_1").toString(), "value_1 \r\n");
+  assertEquals(formData.get("field_1")!.toString(), "value_1 \r\n");
   assert(formData.has("field_2"));
   /* TODO(ry) Re-enable this test once we bring back the global File type.
   const file = formData.get("field_2") as File;
@@ -136,9 +137,9 @@ testPerm(
     );
     const formData = await response.formData();
     assert(formData.has("field_1"));
-    assertEquals(formData.get("field_1").toString(), "Hi");
+    assertEquals(formData.get("field_1")!.toString(), "Hi");
     assert(formData.has("field_2"));
-    assertEquals(formData.get("field_2").toString(), "<Deno>");
+    assertEquals(formData.get("field_2")!.toString(), "<Deno>");
   }
 );
 
@@ -179,7 +180,7 @@ testPerm({ net: true }, async function fetchInitStringBody(): Promise<void> {
   });
   const text = await response.text();
   assertEquals(text, data);
-  assert(response.headers.get("content-type").startsWith("text/plain"));
+  assert(response.headers.get("content-type")!.startsWith("text/plain"));
 });
 
 testPerm({ net: true }, async function fetchRequestInitStringBody(): Promise<
@@ -220,7 +221,7 @@ testPerm({ net: true }, async function fetchInitURLSearchParamsBody(): Promise<
   assertEquals(text, data);
   assert(
     response.headers
-      .get("content-type")
+      .get("content-type")!
       .startsWith("application/x-www-form-urlencoded")
   );
 });
@@ -236,7 +237,7 @@ testPerm({ net: true }, async function fetchInitBlobBody(): Promise<void> {
   });
   const text = await response.text();
   assertEquals(text, data);
-  assert(response.headers.get("content-type").startsWith("text/javascript"));
+  assert(response.headers.get("content-type")!.startsWith("text/javascript"));
 });
 
 testPerm({ net: true }, async function fetchUserAgent(): Promise<void> {

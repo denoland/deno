@@ -436,7 +436,7 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     const bufr = new BufReader(conn);
     const w = new BufWriter(conn);
-    let req: ServerRequest | Deno.EOF;
+    let req: ServerRequest | Deno.EOF | undefined;
     let err: Error | undefined;
 
     while (!this.closing) {

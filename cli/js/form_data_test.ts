@@ -36,7 +36,9 @@ test(function formDataParamsGetSuccess(): void {
   formData.append("a", "true");
   formData.append("b", "false");
   formData.append("a", "null");
+  // @ts-ignore
   formData.append("d", undefined);
+  // @ts-ignore
   formData.append("e", null);
   assertEquals(formData.get("a"), "true");
   assertEquals(formData.get("b"), "false");
@@ -63,8 +65,10 @@ test(function formDataParamsSetSuccess(): void {
   assertEquals(formData.getAll("b"), ["false"]);
   formData.set("a", "false");
   assertEquals(formData.getAll("a"), ["false"]);
+  // @ts-ignore
   formData.set("d", undefined);
   assertEquals(formData.get("d"), "undefined");
+  // @ts-ignore
   formData.set("e", null);
   assertEquals(formData.get("e"), "null");
 });
@@ -110,6 +114,7 @@ test(function formDataParamsArgumentsCheck(): void {
     let hasThrown = 0;
     let errMsg = "";
     try {
+      // @ts-ignore
       formData[method]();
       hasThrown = 1;
     } catch (err) {
@@ -133,6 +138,7 @@ test(function formDataParamsArgumentsCheck(): void {
     let errMsg = "";
 
     try {
+      // @ts-ignore
       formData[method]();
       hasThrown = 1;
     } catch (err) {
@@ -152,6 +158,7 @@ test(function formDataParamsArgumentsCheck(): void {
     hasThrown = 0;
     errMsg = "";
     try {
+      // @ts-ignore
       formData[method]("foo");
       hasThrown = 1;
     } catch (err) {

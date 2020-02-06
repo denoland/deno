@@ -125,8 +125,8 @@ async function serveDir(
   const listEntry: EntryInfo[] = [];
   const fileInfos = await readDir(dirPath);
   for (const fileInfo of fileInfos) {
-    const filePath = posix.join(dirPath, fileInfo.name);
-    const fileUrl = posix.join(dirUrl, fileInfo.name);
+    const filePath = posix.join(dirPath, fileInfo.name || "");
+    const fileUrl = posix.join(dirUrl, fileInfo.name || "");
     if (fileInfo.name === "index.html" && fileInfo.isFile()) {
       // in case index.html as dir...
       return await serveFile(req, filePath);
@@ -139,7 +139,7 @@ async function serveDir(
     listEntry.push({
       mode: modeToString(fileInfo.isDirectory(), mode),
       size: fileInfo.isFile() ? fileLenToString(fileInfo.len) : "",
-      name: fileInfo.name,
+      name: fileInfo.name || "",
       url: fileUrl
     });
   }
@@ -311,7 +311,7 @@ listenAndServe(
     }
     const fsPath = posix.join(target, normalizedUrl);
 
-    let response: Response;
+    let response: Response | undefined;
     try {
       const info = await stat(fsPath);
       if (info.isDirectory()) {
@@ -324,10 +324,10 @@ listenAndServe(
       response = await serveFallback(req, e);
     } finally {
       if (CORSEnabled) {
-        setCORS(response);
+        setCORS(response!);
       }
-      serverLog(req, response);
-      req.respond(response);
+      serverLog(req, response!);
+      req.respond(response!);
     }
   }
 );

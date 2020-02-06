@@ -195,7 +195,7 @@ testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
   assertEquals(ok, "OK");
   const headers = await tpr.readMIMEHeader();
   assert(headers !== Deno.EOF);
-  const contentLength = parseInt(headers.get("content-length"));
+  const contentLength = parseInt(headers.get("content-length")!);
   const bodyBuf = new Uint8Array(contentLength);
   await r.readFull(bodyBuf);
   assertEquals(decoder.decode(bodyBuf), "Hello World\n");

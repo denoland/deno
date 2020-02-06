@@ -71,6 +71,7 @@ test(function eventPreventDefaultSuccess(): void {
 
 test(function eventInitializedWithNonStringType(): void {
   const type = undefined;
+  // @ts-ignore
   const event = new Event(type);
 
   assertEquals(event.isTrusted, false);
@@ -85,11 +86,11 @@ test(function eventInitializedWithNonStringType(): void {
 test(function eventIsTrusted(): void {
   const desc1 = Object.getOwnPropertyDescriptor(new Event("x"), "isTrusted");
   assertNotEquals(desc1, undefined);
-  assertEquals(typeof desc1.get, "function");
+  assertEquals(typeof desc1!.get, "function");
 
   const desc2 = Object.getOwnPropertyDescriptor(new Event("x"), "isTrusted");
   assertNotEquals(desc2, undefined);
-  assertEquals(typeof desc2.get, "function");
+  assertEquals(typeof desc2!.get, "function");
 
-  assertEquals(desc1.get, desc2.get);
+  assertEquals(desc1!.get, desc2!.get);
 });

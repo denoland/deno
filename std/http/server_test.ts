@@ -545,7 +545,7 @@ test(async function testReadRequestError(): Promise<void> {
   for (const test of testCases) {
     const reader = new BufReader(new StringReader(test.in));
     let err;
-    let req: ServerRequest | Deno.EOF;
+    let req: ServerRequest | Deno.EOF | undefined;
     try {
       req = await readRequest(mockConn as Deno.Conn, reader);
     } catch (e) {
@@ -562,7 +562,7 @@ test(async function testReadRequestError(): Promise<void> {
       assert(test.headers != null);
       assertEquals(err, undefined);
       assertNotEquals(req, Deno.EOF);
-      for (const h of test.headers) {
+      for (const h of test.headers!) {
         assertEquals(req.headers.get(h.key), h.value);
       }
     }

@@ -14,8 +14,8 @@ const customInspect = Deno.symbols.customInspect;
 const {
   Console,
   stringifyArgs
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} = Deno[Deno.symbols.internal] as any;
+  // @ts-ignore
+} = Deno[Deno.symbols.internal];
 
 function stringify(...args: unknown[]): string {
   return stringifyArgs(args).replace(/\n$/, "");
@@ -306,6 +306,7 @@ test(function consoleTestCallToStringOnLabel(): void {
   for (const method of methods) {
     let hasCalled = false;
 
+    // @ts-ignore
     console[method]({
       toString(): void {
         hasCalled = true;
@@ -464,7 +465,7 @@ test(function consoleGroupWarn(): void {
     console.warn("6");
     console.warn("7");
     assertEquals(
-      both.toString(),
+      both!.toString(),
       `1
   2
     3
@@ -694,6 +695,6 @@ test(function consoleDirXml(): void {
 test(function consoleTrace(): void {
   mockConsole((console, _out, err): void => {
     console.trace("%s", "custom message");
-    assert(err.toString().includes("Trace: custom message"));
+    assert(err!.toString().includes("Trace: custom message"));
   });
 });

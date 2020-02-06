@@ -19,8 +19,8 @@ testPerm({ read: true, write: true }, function utimeSyncFileSuccess(): void {
   Deno.utimeSync(filename, atime, mtime);
 
   const fileInfo = Deno.statSync(filename);
-  assertFuzzyTimestampEquals(fileInfo.accessed, atime);
-  assertFuzzyTimestampEquals(fileInfo.modified, mtime);
+  assertFuzzyTimestampEquals(fileInfo.accessed!, atime);
+  assertFuzzyTimestampEquals(fileInfo.modified!, mtime);
 });
 
 testPerm(
@@ -33,8 +33,8 @@ testPerm(
     Deno.utimeSync(testDir, atime, mtime);
 
     const dirInfo = Deno.statSync(testDir);
-    assertFuzzyTimestampEquals(dirInfo.accessed, atime);
-    assertFuzzyTimestampEquals(dirInfo.modified, mtime);
+    assertFuzzyTimestampEquals(dirInfo.accessed!, atime);
+    assertFuzzyTimestampEquals(dirInfo.modified!, mtime);
   }
 );
 
@@ -46,8 +46,8 @@ testPerm({ read: true, write: true }, function utimeSyncDateSuccess(): void {
   Deno.utimeSync(testDir, new Date(atime * 1000), new Date(mtime * 1000));
 
   const dirInfo = Deno.statSync(testDir);
-  assertFuzzyTimestampEquals(dirInfo.accessed, atime);
-  assertFuzzyTimestampEquals(dirInfo.modified, mtime);
+  assertFuzzyTimestampEquals(dirInfo.accessed!, atime);
+  assertFuzzyTimestampEquals(dirInfo.modified!, mtime);
 });
 
 testPerm(
@@ -62,8 +62,8 @@ testPerm(
     Deno.utimeSync(testDir, atime, mtime);
 
     const dirInfo = Deno.statSync(testDir);
-    assertFuzzyTimestampEquals(dirInfo.accessed, atime);
-    assertFuzzyTimestampEquals(dirInfo.modified, mtime);
+    assertFuzzyTimestampEquals(dirInfo.accessed!, atime);
+    assertFuzzyTimestampEquals(dirInfo.modified!, mtime);
   }
 );
 
@@ -111,8 +111,8 @@ testPerm(
     await Deno.utime(filename, atime, mtime);
 
     const fileInfo = Deno.statSync(filename);
-    assertFuzzyTimestampEquals(fileInfo.accessed, atime);
-    assertFuzzyTimestampEquals(fileInfo.modified, mtime);
+    assertFuzzyTimestampEquals(fileInfo.accessed!, atime);
+    assertFuzzyTimestampEquals(fileInfo.modified!, mtime);
   }
 );
 
@@ -126,8 +126,8 @@ testPerm(
     await Deno.utime(testDir, atime, mtime);
 
     const dirInfo = Deno.statSync(testDir);
-    assertFuzzyTimestampEquals(dirInfo.accessed, atime);
-    assertFuzzyTimestampEquals(dirInfo.modified, mtime);
+    assertFuzzyTimestampEquals(dirInfo.accessed!, atime);
+    assertFuzzyTimestampEquals(dirInfo.modified!, mtime);
   }
 );
 
@@ -141,8 +141,8 @@ testPerm(
     await Deno.utime(testDir, new Date(atime * 1000), new Date(mtime * 1000));
 
     const dirInfo = Deno.statSync(testDir);
-    assertFuzzyTimestampEquals(dirInfo.accessed, atime);
-    assertFuzzyTimestampEquals(dirInfo.modified, mtime);
+    assertFuzzyTimestampEquals(dirInfo.accessed!, atime);
+    assertFuzzyTimestampEquals(dirInfo.modified!, mtime);
   }
 );
 
