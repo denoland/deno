@@ -6,6 +6,8 @@ use deno_core;
 use deno_core::ErrBox;
 use deno_core::StartupData;
 use futures::future::FutureExt;
+use std::error::Error;
+use std::fmt;
 use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -13,8 +15,15 @@ use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 
+#[derive(Debug)]
 pub struct WorkerCloseError {}
+impl Error for WorkerCloseError {}
 
+impl fmt::Display for WorkerCloseError {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.pad("worker close!")
+  }
+}
 /// This worker is implementation of `Worker` Web API
 ///
 /// At the moment this type of worker supports only

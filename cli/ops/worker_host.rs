@@ -3,15 +3,15 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::deno_error::bad_resource;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
+use crate::deno_error::GetErrorKind;
 use crate::fmt_errors::JSError;
-use crate::global_state::ThreadSafeGlobalState;
+use crate::global_state::GlobalState;
 use crate::ops::json_op;
 use crate::permissions::DenoPermissions;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
 use crate::tokio_util::create_basic_runtime;
 use crate::web_worker::WebWorker;
-use crate::web_worker::WorkerCloseError;
 use crate::worker::WorkerChannelsExternal;
 use deno_core::*;
 use futures;
@@ -45,8 +45,6 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 }
 
 fn serialize_worker_result(result: Result<(), ErrBox>) -> Value {
-  use crate::deno_error::GetErrorKind;
-
   if let Err(error) = result {
     match error.kind() {
       ErrorKind::JSError => {
@@ -70,7 +68,7 @@ fn serialize_worker_result(result: Result<(), ErrBox>) -> Value {
 
 fn create_web_worker(
   name: String,
-  global_state: ThreadSafeGlobalState,
+  global_state: GlobalState,
   permissions: Arc<Mutex<DenoPermissions>>,
   specifier: ModuleSpecifier,
 ) -> Result<WebWorker, ErrBox> {
@@ -81,7 +79,7 @@ fn create_web_worker(
   )?;
 
   let mut worker =
-    WebWorker::new(name, startup_data::deno_isolate_init(), state);
+    WebWorker::new(name.to_string(), startup_data::deno_isolate_init(), state);
 
   // 2. Bootstrap runtime
   let script = format!("bootstrapWorkerRuntime(\"{}\")", name);
@@ -93,7 +91,7 @@ fn create_web_worker(
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
 fn run_worker_thread(
   name: String,
-  global_state: ThreadSafeGlobalState,
+  global_state: GlobalState,
   permissions: Arc<Mutex<DenoPermissions>>,
   specifier: ModuleSpecifier,
   has_source_code: bool,
@@ -108,14 +106,15 @@ fn run_worker_thread(
     // - JS worker is useless - meaning it throws an exception and can't do anything else,
     //  all action done upon it should be noops
     // - newly spawned thread exits
-    let result = create_web_worker(name, global_state, permissions, specifier);
+    let result =
+      create_web_worker(name, global_state, permissions, specifier.clone());
 
     if let Err(err) = result {
       handle_sender.send(Err(err)).unwrap();
       return;
     }
 
-    let worker = result.unwrap();
+    let mut worker = result.unwrap();
     // Send thread safe handle to newly created worker to host thread
     handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
     drop(handle_sender);
@@ -146,12 +145,8 @@ fn run_worker_thread(
 
     // This is kind of "heart-beat" or a signal that worker is ready
     {
-      let channels = worker
-        .state
-        .worker_channels_internal
-        .lock()
-        .unwrap()
-        .unwrap();
+      let mut_channels = worker.state.worker_channels_internal.lock().unwrap();
+      let channels = mut_channels.as_ref().unwrap().clone();
       let msg = serialize_worker_result(result)
         .to_string()
         .into_boxed_str()
@@ -164,65 +159,66 @@ fn run_worker_thread(
     let fut = async move {
       loop {
         let receive_msg_fut = {
-          let channels = worker
-            .state
-            .worker_channels_internal
-            .lock()
-            .unwrap()
-            .unwrap();
+          let mut_channels =
+            worker.state.worker_channels_internal.lock().unwrap();
+          let channels = mut_channels.as_ref().unwrap().clone();
           channels.get_message()
         };
 
-        let result =
+        let _result =
           match futures::future::select(&mut *worker, receive_msg_fut).await {
-            Either::Left((worker_result, msg_fut)) => match worker_result {
+            Either::Left((worker_result, _msg_fut)) => match worker_result {
               Ok(()) => {
                 // worker finished scripts, no point in polling it
-                // until we receive as message (not valid if we add unref
+                // until we receive next message from host (not valid if we add unref
                 // ops to worker)
               }
-              Err(e) => {
-                if let Ok(err) = e.downcast::<WorkerCloseError>() {
-                  // worker shuts down - empty event loop and notify
+              Err(e) => match e.kind() {
+                ErrorKind::WorkerCloseError => {
+                  // TODO: worker shuts down - empty event loop and notify
                   // host that this worker is closed
                   break;
-                } else {
+                }
+                _ => {
                   // serialize and send to host and decide what later -
                   // - ie. worker should not be polled unless exception is handled by host
+                  let result = Err(e);
+                  let mut_channels =
+                    worker.state.worker_channels_internal.lock().unwrap();
+                  let channels = mut_channels.as_ref().unwrap().clone();
+                  let msg = serialize_worker_result(result)
+                    .to_string()
+                    .into_boxed_str()
+                    .into_boxed_bytes();
+                  futures::executor::block_on(channels.post_message(msg))
+                    .expect("Failed to post message to host");
+                }
+              },
+            },
+            Either::Right((maybe_messsage, _worker_fut)) => {
+              match maybe_messsage {
+                None => {
+                  eprintln!("none message received");
+                  // TODO: handle if message is none
+                }
+                Some(msg) => {
+                  eprintln!(
+                    "message received {}",
+                    String::from_utf8(msg.to_vec()).unwrap()
+                  );
+                  // TODO: just add second value and then bind using rusty_v8
+                  // to get structured clone/transfer working
+                  let script = format!(
+                    "globalThis.workerMessageRecvCallback(\"{}\")",
+                    String::from_utf8(msg.to_vec()).unwrap()
+                  );
+                  worker
+                    .execute(&script)
+                    .expect("Failed to execute message cb");
                 }
               }
-            },
-            Either::Right((maybe_messsage, worker_fut)) => match maybe_messsage
-            {
-              None => {
-                // TODO: handle if message is none
-              }
-              Some(msg) => {
-                // TODO: just add second value and then bind using rusty_v8
-                // to get structured clone/transfer working
-                let script = format!(
-                  "globalThis.workerMessageRecvCallback(\"{}\")",
-                  String::from_utf8(msg.to_vec()).unwrap()
-                );
-                worker
-                  .execute(&script)
-                  .expect("Failed to execute message cb");
-              }
-            },
+            }
           };
-
-        // let channels = worker
-        //   .state
-        //   .worker_channels_internal
-        //   .lock()
-        //   .unwrap()
-        //   .unwrap();
-        // let msg = serialize_worker_result(result)
-        //   .to_string()
-        //   .into_boxed_str()
-        //   .into_boxed_bytes();
-        // futures::executor::block_on(channels.post_message(msg))
-        //   .expect("Failed to post message to host");
       }
     };
 

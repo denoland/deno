@@ -34,6 +34,7 @@ pub enum ErrorKind {
   ImportPrefixMissing = 26,
   Diagnostic = 27,
   JSError = 28,
+  WorkerCloseError = 29,
 }
 
 // Warning! The values in this enum are duplicated in js/compiler.ts

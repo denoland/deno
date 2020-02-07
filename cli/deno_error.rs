@@ -3,6 +3,7 @@ use crate::diagnostics::Diagnostic;
 use crate::fmt_errors::JSError;
 use crate::import_map::ImportMapError;
 pub use crate::msg::ErrorKind;
+use crate::web_worker::WorkerCloseError;
 use deno_core::AnyError;
 use deno_core::ErrBox;
 use deno_core::ModuleResolutionError;
@@ -129,6 +130,13 @@ impl GetErrorKind for ModuleResolutionError {
       InvalidPath(_) => ErrorKind::InvalidPath,
       ImportPrefixMissing(_, _) => ErrorKind::ImportPrefixMissing,
     }
+  }
+}
+
+// TODO(bartlomieju): not very elegant solution
+impl GetErrorKind for WorkerCloseError {
+  fn kind(&self) -> ErrorKind {
+    ErrorKind::WorkerCloseError
   }
 }
 
@@ -278,6 +286,7 @@ impl GetErrorKind for dyn AnyError {
       .or_else(|| self.downcast_ref::<url::ParseError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<VarError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<ReadlineError>().map(Get::kind))
+      .or_else(|| self.downcast_ref::<WorkerCloseError>().map(Get::kind))
       .or_else(|| {
         self
           .downcast_ref::<serde_json::error::Error>()
