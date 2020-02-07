@@ -144,9 +144,13 @@ fn get_matching_files(glob_paths: Vec<String>) -> Vec<PathBuf> {
   let mut target_files = Vec::with_capacity(128);
 
   for path in glob_paths {
-    let files = glob::glob(&path)
+    let files: Vec<PathBuf> = glob::glob(&path)
       .expect("Failed to execute glob.")
-      .filter_map(Result::ok);
+      .filter_map(Result::ok)
+      .collect();
+    if files.is_empty() {
+      eprintln!("Warning: '{}' does not match any files", &path);
+    }
     target_files.extend(files);
   }
 
