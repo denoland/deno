@@ -414,6 +414,30 @@ impl TsCompiler {
       false,
     );
 
+    let ts_compiler = self.clone();
+
+    let compiling_job = global_state
+      .progress
+      .add("Compile", &module_url.to_string());
+    let maybe_msg =
+      Self::execute_in_thread(global_state.clone(), req_msg).await?;
+
+    if let Some(ref msg) = maybe_msg {
+      let json_str = std::str::from_utf8(msg).unwrap();
+      if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+        return Err(ErrBox::from(diagnostics));
+      }
+    }
+    let compiled_module = ts_compiler.get_compiled_module(&source_file_.url)?;
+    drop(compiling_job);
+    drop(compile_lock);
+    Ok(compiled_module)
+  }
+
+  async fn execute_in_thread(
+    global_state: ThreadSafeGlobalState,
+    req: Buf,
+  ) -> Result<Option<Buf>, ErrBox> {
     // TODO(ry) The code below looks very similar to spawn_ts_compiler_worker.
     // Can we combine them?
     let (load_sender, load_receiver) =
@@ -424,41 +448,25 @@ impl TsCompiler {
       let mut worker = TsCompiler::setup_worker(global_state.clone());
       let handle = worker.thread_safe_handle();
 
-      let compiling_job = global_state
-        .progress
-        .add("Compile", &module_url.to_string());
-
-      let fut = async move {
-        if let Err(err) = handle.post_message(req_msg).await {
-          load_sender.send(Err(err)).unwrap();
-          return;
+      crate::tokio_util::run_basic(
+        async move {
+          if let Err(err) = handle.post_message(req).await {
+            load_sender.send(Err(err)).unwrap();
+            return;
+          }
+          if let Err(err) = (&mut *worker).await {
+            load_sender.send(Err(err)).unwrap();
+            return;
+          }
+          let maybe_msg = handle.get_message().await;
+          load_sender.send(Ok(maybe_msg)).unwrap();
+          debug!(">>>>> compile_sync END");
         }
-        if let Err(err) = (&mut *worker).await {
-          load_sender.send(Err(err)).unwrap();
-          return;
-        }
-        let maybe_msg = handle.get_message().await;
-        load_sender.send(Ok(maybe_msg)).unwrap();
-        drop(compiling_job);
-        debug!(">>>>> compile_sync END");
-      }
-      .boxed_local();
-      crate::tokio_util::run_basic(fut);
+        .boxed_local(),
+      );
     });
 
-    let ts_compiler = self.clone();
-
-    let maybe_msg = load_receiver.await.unwrap().unwrap();
-
-    if let Some(ref msg) = maybe_msg {
-      let json_str = std::str::from_utf8(msg).unwrap();
-      if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-        return Err(ErrBox::from(diagnostics));
-      }
-    }
-    let compiled_module = ts_compiler.get_compiled_module(&source_file_.url)?;
-    drop(compile_lock);
-    Ok(compiled_module)
+    load_receiver.await.unwrap()
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
