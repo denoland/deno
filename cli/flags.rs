@@ -155,10 +155,6 @@ impl DenoFlags {
       args.push("--allow-hrtime".to_string());
     }
 
-    if self.allow_env {
-      args.push("--allow-env".to_string());
-    }
-
     args
   }
 }
