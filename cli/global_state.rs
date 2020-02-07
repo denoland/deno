@@ -33,7 +33,6 @@ pub struct GlobalState(Arc<GlobalStateInner>);
 /// This structure represents state of single "deno" program.
 ///
 /// It is shared by all created workers (thus V8 isolates).
-// #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct GlobalStateInner {
   /// Flags parsed from `argv` contents.
   pub flags: flags::DenoFlags,
