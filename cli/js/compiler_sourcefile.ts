@@ -44,7 +44,9 @@ function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
       return ts.Extension.Js;
     case MediaType.Unknown:
     default:
-      throw TypeError("Cannot resolve extension.");
+      throw TypeError(
+        `Cannot resolve extension for "${fileName}" with mediaType "${MediaType[mediaType]}".`
+      );
   }
 }
 
