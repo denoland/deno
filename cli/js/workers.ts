@@ -145,33 +145,23 @@ export class WorkerImpl extends EventTarget implements Worker {
       const data = await hostGetMessage(this.id);
       if (data == null) {
         log("worker got null message. quitting.");
+        // TODO(bartlomieju): mark that worker was closed
+        // and make sure no method in this worker calls
+        // any ops
         break;
       }
-      if (this.onmessage) {
-        const event = { data };
-        this.onmessage(event);
-      }
-    }
 
-    /*
-    while (true) {
-      console.log("result1 pre", this.name);
-      const result = await hostPollWorker(this.id);
-      console.log("result1 post", this.name);
-      if (result.error) {
-        if (!this.handleError(result.error)) {
-          throw Error(result.error.message);
-        } else {
-          hostResumeWorker(this.id);
+      if (data.type === "error") {
+        if (!this.handleError(data.error)) {
+          throw Error(data.error.message);
         }
       } else {
-        this.isClosing = true;
-        console.log("closing", this.name);
-        hostCloseWorker(this.id);
-        break;
+        if (this.onmessage) {
+          const event = { data };
+          this.onmessage(event);
+        }
       }
     }
-    */
   }
 
   postMessage(data: any): void {

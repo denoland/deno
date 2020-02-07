@@ -143,16 +143,18 @@ fn run_worker_thread(
       rt.block_on(load_future)
     };
 
-    // This is kind of "heart-beat" or a signal that worker is ready
-    {
+    if let Err(e) = result {
       let mut_channels = worker.state.worker_channels_internal.lock().unwrap();
       let channels = mut_channels.as_ref().unwrap().clone();
-      let msg = serialize_worker_result(result)
+      let msg = serialize_worker_result(Err(e))
         .to_string()
         .into_boxed_str()
         .into_boxed_bytes();
       futures::executor::block_on(channels.post_message(msg))
         .expect("Failed to post message to host");
+
+      // Failing to execute script it terminal error
+      return;
     }
 
     // Drive worker event loop
@@ -172,28 +174,23 @@ fn run_worker_thread(
                 // worker finished scripts, no point in polling it
                 // until we receive next message from host (not valid if we add unref
                 // ops to worker)
+                eprintln!("worker done")
               }
-              Err(e) => match e.kind() {
-                ErrorKind::WorkerCloseError => {
-                  // TODO: worker shuts down - empty event loop and notify
-                  // host that this worker is closed
-                  break;
-                }
-                _ => {
-                  // serialize and send to host and decide what later -
-                  // - ie. worker should not be polled unless exception is handled by host
-                  let result = Err(e);
-                  let mut_channels =
-                    worker.state.worker_channels_internal.lock().unwrap();
-                  let channels = mut_channels.as_ref().unwrap().clone();
-                  let msg = serialize_worker_result(result)
-                    .to_string()
-                    .into_boxed_str()
-                    .into_boxed_bytes();
-                  futures::executor::block_on(channels.post_message(msg))
-                    .expect("Failed to post message to host");
-                }
-              },
+              Err(e) => {
+                // serialize and send to host and decide what later -
+                // - ie. worker should not be polled unless exception is handled by host
+                let result = Err(e);
+                let mut_channels =
+                  worker.state.worker_channels_internal.lock().unwrap();
+                let channels = mut_channels.as_ref().unwrap().clone();
+                let msg = serialize_worker_result(result)
+                  .to_string()
+                  .into_boxed_str()
+                  .into_boxed_bytes();
+                // TODO: json!({ "type": "error", "error": serialized_error })
+                futures::executor::block_on(channels.post_message(msg))
+                  .expect("Failed to post message to host");
+              }
             },
             Either::Right((maybe_messsage, _worker_fut)) => {
               match maybe_messsage {
@@ -315,12 +312,19 @@ fn op_host_get_message(
   let args: HostGetMessageArgs = serde_json::from_value(args)?;
   let state_ = state.clone();
   let id = args.id as u32;
-  let mut table = state_.workers.lock().unwrap();
+  let mut table = state.workers.lock().unwrap();
   // TODO: don't return bad resource anymore
   let worker_handle = table.get_mut(&id).ok_or_else(bad_resource)?;
   let fut = worker_handle.get_message();
   let op = async move {
     let maybe_buf = fut.await;
+
+    // Remove worker if null message
+    if maybe_buf.is_none() {
+      let mut table = state_.workers.lock().unwrap();
+      table.remove(&id);
+    }
+
     Ok(json!({ "data": maybe_buf }))
   };
   Ok(JsonOp::Async(op.boxed_local()))

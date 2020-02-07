@@ -4,7 +4,6 @@ use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
-use crate::web_worker::WorkerCloseError;
 use deno_core::*;
 use futures;
 use futures::future::FutureExt;
@@ -67,10 +66,5 @@ fn op_worker_close(
   let mut c = state.worker_channels_internal.lock().unwrap();
   let mut sender = c.as_mut().unwrap().sender.clone();
   sender.close_channel();
-
-  // TODO(bartlomieju): actually return some new Error
-  // type - it will cause Worker to break out of thread
-  // loop and cleanup
-  return Err(ErrBox::from(WorkerCloseError {}));
-  // Ok(JsonOp::Sync(json!({})))
+  Ok(JsonOp::Sync(json!({})))
 }
