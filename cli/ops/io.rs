@@ -5,7 +5,6 @@ use crate::http_util::HttpBody;
 use crate::ops::minimal_op;
 use crate::state::ThreadSafeState;
 use deno_core::ErrBox;
-use deno_core::Resource;
 use deno_core::*;
 use futures::future::FutureExt;
 use futures::ready;
@@ -85,8 +84,6 @@ pub enum StreamResource {
   ChildStdout(tokio::process::ChildStdout),
   ChildStderr(tokio::process::ChildStderr),
 }
-
-impl Resource for StreamResource {}
 
 /// `DenoAsyncRead` is the same as the `tokio_io::AsyncRead` trait
 /// but uses an `ErrBox` error instead of `std::io:Error`

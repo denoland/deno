@@ -9,8 +9,6 @@ use super::dispatch_json::Deserialize;
 #[cfg(unix)]
 use crate::deno_error::bad_resource;
 #[cfg(unix)]
-use deno_core::Resource;
-#[cfg(unix)]
 use futures::future::{poll_fn, FutureExt};
 #[cfg(unix)]
 use serde_json;
@@ -38,9 +36,6 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 /// The resource for signal stream.
 /// The second element is the waker of polling future.
 pub struct SignalStreamResource(pub Signal, pub Option<Waker>);
-
-#[cfg(unix)]
-impl Resource for SignalStreamResource {}
 
 #[cfg(unix)]
 #[derive(Deserialize)]

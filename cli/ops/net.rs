@@ -5,7 +5,6 @@ use crate::deno_error::bad_resource;
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::state::ThreadSafeState;
-use deno_core::Resource;
 use deno_core::*;
 use futures::future::FutureExt;
 use std;
@@ -225,8 +224,6 @@ struct TcpListenerResource {
   waker: Option<futures::task::AtomicWaker>,
   local_addr: SocketAddr,
 }
-
-impl Resource for TcpListenerResource {}
 
 impl Drop for TcpListenerResource {
   fn drop(&mut self) {
