@@ -34,8 +34,6 @@ struct PluginResource {
   ops: HashMap<String, OpId>,
 }
 
-impl Resource for PluginResource {}
-
 struct InitContext {
   ops: HashMap<String, Box<OpDispatcher>>,
 }

@@ -5,7 +5,6 @@ use crate::ops::json_op;
 use crate::repl;
 use crate::repl::Repl;
 use crate::state::ThreadSafeState;
-use deno_core::Resource;
 use deno_core::*;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -22,8 +21,6 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 }
 
 struct ReplResource(Arc<Mutex<Repl>>);
-
-impl Resource for ReplResource {}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
