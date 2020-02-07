@@ -105,7 +105,7 @@ test(async function bundleApiConfig() {
 });
 
 test(async function diagnosticsTest() {
-  const [diagnostics] = await compile("foo.ts", {
+  const [diagnostics] = await compile("/foo.ts", {
     "/foo.ts": `document.getElementById("foo");`
   });
   assert(Array.isArray(diagnostics));
