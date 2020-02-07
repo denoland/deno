@@ -9,7 +9,6 @@ use crate::deno_dir;
 use crate::deno_error::permission_denied;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
-use crate::futures::FutureExt;
 use crate::lockfile::Lockfile;
 use crate::metrics::Metrics;
 use crate::msg;
@@ -123,31 +122,34 @@ impl ThreadSafeGlobalState {
       .file_fetcher
       .fetch_source_file_async(&module_specifier, maybe_referrer)
       .await?;
-    let compiled_module_fut = match out.media_type {
-      msg::MediaType::Unknown => state1.js_compiler.compile_async(out),
-      msg::MediaType::Json => state1.json_compiler.compile_async(&out),
-      msg::MediaType::Wasm => state1
-        .wasm_compiler
-        .compile_async(state1.clone(), &out)
-        .boxed_local(),
+    let compiled_module = match out.media_type {
+      msg::MediaType::Unknown => state1.js_compiler.compile_async(out).await,
+      msg::MediaType::Json => state1.json_compiler.compile_async(&out).await,
+      msg::MediaType::Wasm => {
+        state1
+          .wasm_compiler
+          .compile_async(state1.clone(), &out)
+          .await
+      }
       msg::MediaType::TypeScript
       | msg::MediaType::TSX
-      | msg::MediaType::JSX => state1
-        .ts_compiler
-        .compile_async(state1.clone(), &out, target_lib)
-        .boxed_local(),
+      | msg::MediaType::JSX => {
+        state1
+          .ts_compiler
+          .compile_async(state1.clone(), &out, target_lib)
+          .await
+      }
       msg::MediaType::JavaScript => {
         if state1.ts_compiler.compile_js {
           state2
             .ts_compiler
             .compile_async(state1.clone(), &out, target_lib)
-            .boxed_local()
+            .await
         } else {
-          state1.js_compiler.compile_async(out)
+          state1.js_compiler.compile_async(out).await
         }
       }
-    };
-    let compiled_module = compiled_module_fut.await?;
+    }?;
 
     if let Some(ref lockfile) = state2.lockfile {
       let mut g = lockfile.lock().unwrap();
