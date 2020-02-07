@@ -323,12 +323,10 @@ itest!(_014_duplicate_import {
   output: "014_duplicate_import.ts.out",
 });
 
-/* TODO(ry) Disabled to get #3844 landed faster. Re-enable.
 itest!(_015_duplicate_parallel_import {
   args: "run --reload --allow-read 015_duplicate_parallel_import.js",
   output: "015_duplicate_parallel_import.js.out",
 });
-*/
 
 itest!(_016_double_await {
   args: "run --allow-read --reload 016_double_await.ts",
