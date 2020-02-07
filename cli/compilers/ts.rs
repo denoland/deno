@@ -25,7 +25,6 @@ use std::fs;
 use std::hash::BuildHasher;
 use std::io;
 use std::ops::Deref;
-use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::str;
@@ -224,12 +223,6 @@ impl Deref for TsCompiler {
   type Target = TsCompilerInner;
   fn deref(&self) -> &Self::Target {
     &self.0
-  }
-}
-
-impl DerefMut for TsCompiler {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    Arc::get_mut(&mut self.0).unwrap()
   }
 }
 
