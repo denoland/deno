@@ -708,10 +708,8 @@ mod tests {
       source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
       types_url: None,
     };
-    let mock_state = GlobalState::mock(vec![
-      String::from("deno"),
-      String::from("hello.js"),
-    ]);
+    let mock_state =
+      GlobalState::mock(vec![String::from("deno"), String::from("hello.js")]);
     let result = mock_state
       .ts_compiler
       .compile_async(mock_state.clone(), &out, TargetLib::Main)
