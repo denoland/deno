@@ -103,11 +103,7 @@ where
   if is_sync {
     Ok(JsonOp::Sync(f()?))
   } else {
-    let fut = async move {
-      let r = tokio::task::spawn_blocking(move || f()).await.unwrap();
-      r
-    };
-
+    let fut = async move { tokio::task::spawn_blocking(f).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
