@@ -25,15 +25,31 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::sync::Mutex as AsyncMutex;
 
-/// Holds state of the program and can be accessed by V8 isolate.
+lazy_static! {
+  // TODO(ry) use Cell instead of Mutex?
+  static ref GLOBAL_STATE: Mutex<Option<GlobalState>> = Mutex::new(None);
+}
+
+pub fn get() -> GlobalState {
+  GLOBAL_STATE.lock().unwrap().as_ref().unwrap().clone()
+}
+
+/// Holds state of the program and can be accessed by any thread.
 #[derive(Clone)]
-pub struct ThreadSafeGlobalState(Arc<GlobalState>);
+pub struct GlobalState(Arc<GlobalStateInner>);
+
+impl Deref for GlobalState {
+  type Target = GlobalStateInner;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
 
 /// This structure represents state of single "deno" program.
 ///
 /// It is shared by all created workers (thus V8 isolates).
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub struct GlobalState {
+pub struct GlobalStateInner {
   /// Flags parsed from `argv` contents.
   pub flags: flags::DenoFlags,
   /// Permissions parsed from `flags`.
@@ -50,14 +66,7 @@ pub struct GlobalState {
   compile_lock: AsyncMutex<()>,
 }
 
-impl Deref for ThreadSafeGlobalState {
-  type Target = Arc<GlobalState>;
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
-}
-
-impl ThreadSafeGlobalState {
+impl GlobalState {
   pub fn new(
     flags: flags::DenoFlags,
     progress: Progress,
@@ -88,7 +97,7 @@ impl ThreadSafeGlobalState {
       None
     };
 
-    let state = GlobalState {
+    let global_state = GlobalState(Arc::new(GlobalStateInner {
       dir,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
@@ -101,9 +110,13 @@ impl ThreadSafeGlobalState {
       wasm_compiler: WasmCompiler::default(),
       lockfile,
       compile_lock: AsyncMutex::new(()),
-    };
+    }));
 
-    Ok(ThreadSafeGlobalState(Arc::new(state)))
+    let mut g = GLOBAL_STATE.lock().unwrap();
+    assert!(g.is_none()); // Only one global state should ever be created.
+    *g = Some(global_state.clone());
+
+    Ok(global_state)
   }
 
   pub async fn fetch_compiled_module(
@@ -128,26 +141,15 @@ impl ThreadSafeGlobalState {
     let compiled_module = match out.media_type {
       msg::MediaType::Unknown => state1.js_compiler.compile_async(out).await,
       msg::MediaType::Json => state1.json_compiler.compile_async(&out).await,
-      msg::MediaType::Wasm => {
-        state1
-          .wasm_compiler
-          .compile_async(state1.clone(), &out)
-          .await
-      }
+      msg::MediaType::Wasm => state1.wasm_compiler.compile_async(&out).await,
       msg::MediaType::TypeScript
       | msg::MediaType::TSX
       | msg::MediaType::JSX => {
-        state1
-          .ts_compiler
-          .compile_async(state1.clone(), &out, target_lib)
-          .await
+        state1.ts_compiler.compile_async(&out, target_lib).await
       }
       msg::MediaType::JavaScript => {
         if state1.ts_compiler.compile_js {
-          state2
-            .ts_compiler
-            .compile_async(state1.clone(), &out, target_lib)
-            .await
+          state2.ts_compiler.compile_async(&out, target_lib).await
         } else {
           state1.js_compiler.compile_async(out).await
         }
@@ -231,8 +233,8 @@ impl ThreadSafeGlobalState {
   }
 
   #[cfg(test)]
-  pub fn mock(argv: Vec<String>) -> ThreadSafeGlobalState {
-    ThreadSafeGlobalState::new(
+  pub fn mock(argv: Vec<String>) -> GlobalState {
+    GlobalState::new(
       flags::DenoFlags {
         argv,
         ..flags::DenoFlags::default()
@@ -246,7 +248,7 @@ impl ThreadSafeGlobalState {
 #[test]
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
-  f(ThreadSafeGlobalState::mock(vec![
+  f(GlobalState::mock(vec![
     String::from("./deno"),
     String::from("hello.js"),
   ]));
@@ -254,7 +256,7 @@ fn thread_safe() {
 
 #[test]
 fn import_map_given_for_repl() {
-  let _result = ThreadSafeGlobalState::new(
+  let _result = GlobalState::new(
     flags::DenoFlags {
       import_map_path: Some("import_map.json".to_string()),
       ..flags::DenoFlags::default()

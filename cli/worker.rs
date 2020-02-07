@@ -255,7 +255,7 @@ impl DerefMut for MainWorker {
 mod tests {
   use super::*;
   use crate::flags;
-  use crate::global_state::ThreadSafeGlobalState;
+  use crate::global_state::GlobalState;
   use crate::progress::Progress;
   use crate::startup_data;
   use crate::state::ThreadSafeState;
@@ -280,7 +280,7 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state =
-      ThreadSafeGlobalState::new(flags::DenoFlags::default(), Progress::new())
+      GlobalState::new(flags::DenoFlags::default(), Progress::new())
         .unwrap();
     let state =
       ThreadSafeState::new(global_state, None, module_specifier.clone())
@@ -315,7 +315,7 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state =
-      ThreadSafeGlobalState::new(flags::DenoFlags::default(), Progress::new())
+      GlobalState::new(flags::DenoFlags::default(), Progress::new())
         .unwrap();
     let state =
       ThreadSafeState::new(global_state, None, module_specifier.clone())
@@ -358,7 +358,7 @@ mod tests {
       ..flags::DenoFlags::default()
     };
     let global_state =
-      ThreadSafeGlobalState::new(flags, Progress::new()).unwrap();
+      GlobalState::new(flags, Progress::new()).unwrap();
     let state = ThreadSafeState::new(
       global_state.clone(),
       None,

@@ -22,13 +22,12 @@ struct CompileArgs {
 }
 
 fn op_compile(
-  state: &ThreadSafeState,
+  _state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: CompileArgs = serde_json::from_value(args)?;
   Ok(JsonOp::Async(runtime_compile_async(
-    state.global_state.clone(),
     &args.root_name,
     &args.sources,
     args.bundle,
@@ -43,13 +42,12 @@ struct TranspileArgs {
 }
 
 fn op_transpile(
-  state: &ThreadSafeState,
+  _state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: TranspileArgs = serde_json::from_value(args)?;
   Ok(JsonOp::Async(runtime_transpile_async(
-    state.global_state.clone(),
     &args.sources,
     &args.options,
   )))

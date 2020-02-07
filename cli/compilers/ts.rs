@@ -6,7 +6,6 @@ use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
-use crate::global_state::ThreadSafeGlobalState;
 use crate::msg;
 use crate::ops::JsonResult;
 use crate::source_maps::SourceMapGetter;
@@ -246,9 +245,11 @@ impl TsCompiler {
 
   /// Create a new V8 worker with snapshot of TS compiler and setup compiler's
   /// runtime.
-  fn setup_worker(global_state: ThreadSafeGlobalState) -> CompilerWorker {
+  fn setup_worker() -> CompilerWorker {
     let entry_point =
       ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
+
+    let global_state = crate::global_state::get();
     let worker_state =
       ThreadSafeState::new(global_state.clone(), None, entry_point)
         .expect("Unable to create worker state");
@@ -270,7 +271,6 @@ impl TsCompiler {
 
   pub async fn bundle_async(
     &self,
-    global_state: ThreadSafeGlobalState,
     module_name: String,
     out_file: Option<String>,
   ) -> Result<(), ErrBox> {
@@ -289,7 +289,7 @@ impl TsCompiler {
       true,
     );
 
-    let maybe_msg = execute_in_thread(global_state.clone(), req_msg).await?;
+    let maybe_msg = execute_in_thread(req_msg).await?;
     if let Some(ref msg) = maybe_msg {
       let json_str = std::str::from_utf8(msg).unwrap();
       debug!("Message: {}", json_str);
@@ -325,7 +325,6 @@ impl TsCompiler {
   /// compiler.
   pub async fn compile_async(
     &self,
-    global_state: ThreadSafeGlobalState,
     source_file: &SourceFile,
     target: TargetLib,
   ) -> Result<CompiledModule, ErrBox> {
@@ -374,11 +373,11 @@ impl TsCompiler {
 
     let ts_compiler = self.clone();
 
-    let compiling_job = global_state
+    let compiling_job = crate::global_state::get()
       .progress
       .add("Compile", &module_url.to_string());
-    let maybe_msg = execute_in_thread(global_state.clone(), req_msg).await?;
 
+    let maybe_msg = execute_in_thread(req_msg).await?;
     if let Some(ref msg) = maybe_msg {
       let json_str = std::str::from_utf8(msg).unwrap();
       if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
@@ -603,16 +602,13 @@ impl TsCompiler {
   }
 }
 
-async fn execute_in_thread(
-  global_state: ThreadSafeGlobalState,
-  req: Buf,
-) -> Result<Option<Buf>, ErrBox> {
+async fn execute_in_thread(req: Buf) -> Result<Option<Buf>, ErrBox> {
   let (load_sender, load_receiver) =
     tokio::sync::oneshot::channel::<Result<Option<Buf>, ErrBox>>();
   std::thread::spawn(move || {
     debug!(">>>>> compile_async START");
 
-    let mut worker = TsCompiler::setup_worker(global_state.clone());
+    let mut worker = TsCompiler::setup_worker();
     let handle = worker.thread_safe_handle();
 
     crate::tokio_util::run_basic(
@@ -636,18 +632,14 @@ async fn execute_in_thread(
   load_receiver.await.unwrap()
 }
 
-async fn execute_in_thread_json(
-  req_msg: Buf,
-  global_state: ThreadSafeGlobalState,
-) -> JsonResult {
-  let maybe_msg = execute_in_thread(global_state, req_msg).await?;
+async fn execute_in_thread_json(req_msg: Buf) -> JsonResult {
+  let maybe_msg = execute_in_thread(req_msg).await?;
   let msg = maybe_msg.unwrap();
   let json_str = std::str::from_utf8(&msg).unwrap();
   Ok(json!(json_str))
 }
 
 pub fn runtime_compile_async<S: BuildHasher>(
-  global_state: ThreadSafeGlobalState,
   root_name: &str,
   sources: &Option<HashMap<String, String, S>>,
   bundle: bool,
@@ -665,11 +657,10 @@ pub fn runtime_compile_async<S: BuildHasher>(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  execute_in_thread_json(req_msg, global_state).boxed_local()
+  execute_in_thread_json(req_msg).boxed_local()
 }
 
 pub fn runtime_transpile_async<S: BuildHasher>(
-  global_state: ThreadSafeGlobalState,
   sources: &HashMap<String, String, S>,
   options: &Option<String>,
 ) -> Pin<Box<CompilationResultFuture>> {
@@ -682,7 +673,7 @@ pub fn runtime_transpile_async<S: BuildHasher>(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  execute_in_thread_json(req_msg, global_state).boxed_local()
+  execute_in_thread_json(req_msg).boxed_local()
 }
 
 #[cfg(test)]
@@ -708,10 +699,8 @@ mod tests {
       source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
       types_url: None,
     };
-    let mock_state = ThreadSafeGlobalState::mock(vec![
-      String::from("deno"),
-      String::from("hello.js"),
-    ]);
+    let mock_state =
+      GlobalState::mock(vec![String::from("deno"), String::from("hello.js")]);
     let result = mock_state
       .ts_compiler
       .compile_async(mock_state.clone(), &out, TargetLib::Main)
@@ -735,7 +724,7 @@ mod tests {
       .unwrap()
       .to_string();
 
-    let state = ThreadSafeGlobalState::mock(vec![
+    let state = GlobalState::mock(vec![
       String::from("deno"),
       p.to_string_lossy().into(),
       String::from("$deno$/bundle.js"),

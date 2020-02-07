@@ -59,7 +59,7 @@ pub mod worker;
 use crate::compilers::TargetLib;
 use crate::deno_error::js_check;
 use crate::deno_error::{print_err_and_exit, print_msg_and_exit};
-use crate::global_state::ThreadSafeGlobalState;
+use crate::global_state::GlobalState;
 use crate::ops::io::get_stdio;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
@@ -98,7 +98,7 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
-fn create_global_state(flags: DenoFlags) -> ThreadSafeGlobalState {
+fn create_global_state(flags: DenoFlags) -> GlobalState {
   use crate::shell::Shell;
   use std::sync::Arc;
   use std::sync::Mutex;
@@ -113,13 +113,13 @@ fn create_global_state(flags: DenoFlags) -> ThreadSafeGlobalState {
     }
   });
 
-  ThreadSafeGlobalState::new(flags, progress)
+  GlobalState::new(flags, progress)
     .map_err(deno_error::print_err_and_exit)
     .unwrap()
 }
 
 fn create_main_worker(
-  global_state: ThreadSafeGlobalState,
+  global_state: GlobalState,
   main_module: ModuleSpecifier,
 ) -> MainWorker {
   let state = ThreadSafeState::new(global_state, None, main_module)
@@ -147,7 +147,7 @@ fn types_command() {
   );
 }
 
-fn print_cache_info(state: &ThreadSafeGlobalState) {
+fn print_cache_info(state: &GlobalState) {
   println!(
     "{} {:?}",
     colors::bold("DENO_DIR location:".to_string()),
@@ -356,11 +356,7 @@ async fn bundle_command(
   js_check(result);
   let bundle_result = global_state
     .ts_compiler
-    .bundle_async(
-      global_state.clone(),
-      source_file_specifier.to_string(),
-      out_file,
-    )
+    .bundle_async(source_file_specifier.to_string(), out_file)
     .await;
   if let Err(err) = bundle_result {
     debug!("diagnostics returned, exiting!");

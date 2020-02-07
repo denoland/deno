@@ -128,11 +128,7 @@ fn op_fetch_source_files(
         // This allows TS to do correct export types.
         let source_code = match file.media_type {
           msg::MediaType::Wasm => {
-            global_state
-              .wasm_compiler
-              .compile_async(global_state.clone(), &file)
-              .await?
-              .code
+            global_state.wasm_compiler.compile_async(&file).await?.code
           }
           _ => String::from_utf8(file.source_code).unwrap(),
         };

@@ -2,7 +2,6 @@
 use super::compiler_worker::CompilerWorker;
 use crate::compilers::CompiledModule;
 use crate::file_fetcher::SourceFile;
-use crate::global_state::ThreadSafeGlobalState;
 use crate::startup_data;
 use crate::state::*;
 use deno_core::ErrBox;
@@ -48,14 +47,15 @@ pub struct WasmCompiler {
 
 impl WasmCompiler {
   /// Create a new V8 worker with snapshot of WASM compiler and setup compiler's runtime.
-  fn setup_worker(global_state: ThreadSafeGlobalState) -> CompilerWorker {
+  fn setup_worker() -> CompilerWorker {
     let entry_point =
       ModuleSpecifier::resolve_url_or_path("./__$deno$wasm_compiler.ts")
         .unwrap();
+
+    let global_state = crate::global_state::get();
     let worker_state =
       ThreadSafeState::new(global_state.clone(), None, entry_point)
         .expect("Unable to create worker state");
-
     // Count how many times we start the compiler worker.
     global_state
       .metrics
@@ -73,7 +73,6 @@ impl WasmCompiler {
 
   pub async fn compile_async(
     &self,
-    global_state: ThreadSafeGlobalState,
     source_file: &SourceFile,
   ) -> Result<CompiledModule, ErrBox> {
     let cache = self.cache.clone();
@@ -91,7 +90,7 @@ impl WasmCompiler {
     std::thread::spawn(move || {
       debug!(">>>>> wasm_compile_async START");
       let base64_data = base64::encode(&source_file.source_code);
-      let mut worker = WasmCompiler::setup_worker(global_state);
+      let mut worker = WasmCompiler::setup_worker();
       let handle = worker.thread_safe_handle();
       let url = source_file.url.clone();
 
