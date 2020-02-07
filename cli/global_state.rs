@@ -113,6 +113,7 @@ impl GlobalState {
     }));
 
     let mut g = GLOBAL_STATE.lock().unwrap();
+    #[cfg(not(test))]
     assert!(g.is_none()); // Only one global state should ever be created.
     *g = Some(global_state.clone());
 

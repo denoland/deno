@@ -680,6 +680,7 @@ pub fn runtime_transpile_async<S: BuildHasher>(
 mod tests {
   use super::*;
   use crate::fs as deno_fs;
+  use crate::global_state::GlobalState;
   use deno_core::ModuleSpecifier;
   use std::path::PathBuf;
   use tempfile::TempDir;
@@ -703,7 +704,7 @@ mod tests {
       GlobalState::mock(vec![String::from("deno"), String::from("hello.js")]);
     let result = mock_state
       .ts_compiler
-      .compile_async(mock_state.clone(), &out, TargetLib::Main)
+      .compile_async(&out, TargetLib::Main)
       .await;
     assert!(result.is_ok());
     assert!(result
@@ -732,11 +733,7 @@ mod tests {
 
     let result = state
       .ts_compiler
-      .bundle_async(
-        state.clone(),
-        module_name,
-        Some(String::from("$deno$/bundle.js")),
-      )
+      .bundle_async(module_name, Some(String::from("$deno$/bundle.js")))
       .await;
     assert!(result.is_ok());
   }

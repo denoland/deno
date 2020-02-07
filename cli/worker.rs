@@ -280,8 +280,7 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state =
-      GlobalState::new(flags::DenoFlags::default(), Progress::new())
-        .unwrap();
+      GlobalState::new(flags::DenoFlags::default(), Progress::new()).unwrap();
     let state =
       ThreadSafeState::new(global_state, None, module_specifier.clone())
         .unwrap();
@@ -315,8 +314,7 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state =
-      GlobalState::new(flags::DenoFlags::default(), Progress::new())
-        .unwrap();
+      GlobalState::new(flags::DenoFlags::default(), Progress::new()).unwrap();
     let state =
       ThreadSafeState::new(global_state, None, module_specifier.clone())
         .unwrap();
@@ -357,8 +355,7 @@ mod tests {
       reload: true,
       ..flags::DenoFlags::default()
     };
-    let global_state =
-      GlobalState::new(flags, Progress::new()).unwrap();
+    let global_state = GlobalState::new(flags, Progress::new()).unwrap();
     let state = ThreadSafeState::new(
       global_state.clone(),
       None,
