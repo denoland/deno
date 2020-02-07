@@ -14,10 +14,7 @@ impl JsonCompiler {
     &self,
     source_file: &SourceFile,
   ) -> Result<CompiledModule, ErrBox> {
-    let maybe_json_value: serde_json::Result<serde_json::Value> =
-      serde_json::from_str(
-        &std::str::from_utf8(&source_file.source_code).unwrap(),
-      );
+    let maybe_json_value = serde_json::from_slice(&source_file.source_code);
     if let Err(err) = maybe_json_value {
       return Err(ErrBox::from(err));
     }
