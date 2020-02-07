@@ -73,9 +73,10 @@ export async function writeResponse(w: Writer, r: Response): Promise<void> {
   let out = `HTTP/${protoMajor}.${protoMinor} ${statusCode} ${statusText}\r\n`;
 
   setContentLength(r);
-  const headers = r.headers!;
+  assert(r.headers != null);
+  const headers = r.headers;
 
-  for (const [key, value] of headers!) {
+  for (const [key, value] of headers) {
     out += `${key}: ${value}\r\n`;
   }
   out += "\r\n";
@@ -88,7 +89,9 @@ export async function writeResponse(w: Writer, r: Response): Promise<void> {
     const n = await writer.write(r.body);
     assert(n === r.body.byteLength);
   } else if (headers.has("content-length")) {
-    const bodyLength = parseInt(headers.get("content-length")!);
+    const contentLength = headers.get("content-length");
+    assert(contentLength != null);
+    const bodyLength = parseInt(contentLength);
     const n = await copy(writer, r.body);
     assert(n === bodyLength);
   } else {
@@ -129,8 +132,9 @@ export class ServerRequest {
     // undefined means not cached.
     // null means invalid or not provided.
     if (this._contentLength === undefined) {
-      if (this.headers.has("content-length")) {
-        this._contentLength = +this.headers.get("content-length")!;
+      const cl = this.headers.get("content-length");
+      if (cl) {
+        this._contentLength = parseInt(cl);
         // Convert NaN to null (as NaN harder to test)
         if (Number.isNaN(this._contentLength)) {
           this._contentLength = null;
@@ -190,12 +194,12 @@ export class ServerRequest {
       }
       yield nread;
     } else {
-      if (this.headers.has("transfer-encoding")) {
-        const transferEncodings = this.headers
-          .get("transfer-encoding")!
+      const transferEncoding = this.headers.get("transfer-encoding");
+      if (transferEncoding) {
+        const parts = transferEncoding
           .split(",")
           .map((e): string => e.trim().toLowerCase());
-        if (transferEncodings.includes("chunked")) {
+        if (parts.includes("chunked")) {
           // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
           const tp = new TextProtoReader(this.r);
           let line = await tp.readLine();
@@ -413,7 +417,7 @@ export class Server implements AsyncIterable<ServerRequest> {
 
       // Wait for the request to be processed before we accept a new request on
       // this connection.
-      const procError = await req!.done;
+      const procError = await req.done;
       if (procError) {
         // Something bad happened during response.
         // (likely other side closed during pipelined req)
@@ -422,12 +426,12 @@ export class Server implements AsyncIterable<ServerRequest> {
       }
     }
 
-    if (req! === Deno.EOF) {
+    if (req === Deno.EOF) {
       // The connection was gracefully closed.
-    } else if (err) {
+    } else if (err && req) {
       // An error was thrown while parsing request headers.
       try {
-        await writeResponse(req!.w, {
+        await writeResponse(req.w, {
           status: 400,
           body: encoder.encode(`${err.message}\r\n\r\n`)
         });

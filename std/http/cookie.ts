@@ -45,8 +45,8 @@ function toString(cookie: Cookie): string {
   if (cookie.httpOnly) {
     out.push("HttpOnly");
   }
-  if (Number.isInteger(cookie.maxAge!)) {
-    assert(cookie.maxAge! > 0, "Max-Age must be an integer superior to 0");
+  if (Number.isInteger(cookie.maxAge)) {
+    assert(cookie.maxAge > 0, "Max-Age must be an integer superior to 0");
     out.push(`Max-Age=${cookie.maxAge}`);
   }
   if (cookie.domain) {
@@ -73,12 +73,14 @@ function toString(cookie: Cookie): string {
  * @param req Server Request
  */
 export function getCookies(req: ServerRequest): Cookies {
-  if (req.headers.has("Cookie")) {
+  const cookie = req.headers.get("Cookie");
+  if (cookie != null) {
     const out: Cookies = {};
-    const c = req.headers.get("Cookie")!.split(";");
+    const c = cookie.split(";");
     for (const kv of c) {
-      const cookieVal = kv.split("=");
-      const key = cookieVal.shift()!.trim();
+      const [cookieKey, ...cookieVal] = kv.split("=");
+      assert(cookieKey != null);
+      const key = cookieKey.trim();
       out[key] = cookieVal.join("=");
     }
     return out;
