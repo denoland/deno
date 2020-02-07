@@ -1,3 +1,5 @@
+import { assert } from "./asserts.ts";
+
 // This file is ported from pretty-format@24.0.0
 /**
  * Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
@@ -361,7 +363,9 @@ const getKeysOfEnumerableProperties = (object: {}): Array<string | symbol> => {
 
   if (Object.getOwnPropertySymbols) {
     Object.getOwnPropertySymbols(object).forEach((symbol): void => {
-      if (Object.getOwnPropertyDescriptor(object, symbol)!.enumerable) {
+      const d = Object.getOwnPropertyDescriptor(object, symbol);
+      assert(d != null);
+      if (d.enumerable) {
         keys.push(symbol);
       }
     });

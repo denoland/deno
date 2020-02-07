@@ -4,7 +4,7 @@
 
 import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
-import { globrex } from "./globrex.ts";
+import { GlobrexOptions, globrex } from "./globrex.ts";
 
 const isWin = Deno.build.os === "win";
 const t = { equal: assertEquals, is: assertEquals };
@@ -13,14 +13,18 @@ function match(
   glob: string,
   strUnix: string,
   strWin?: string | object,
-  opts = {}
+  opts: GlobrexOptions = {}
 ): boolean {
   if (typeof strWin === "object") {
     opts = strWin;
     strWin = "";
   }
-  const res = globrex(glob, opts);
-  return res.regex.test(isWin && strWin ? strWin : strUnix);
+  const { regex } = globrex(glob, opts);
+  const match = (isWin && strWin ? strWin : strUnix).match(regex);
+  if (match && !regex.flags.includes("g")) {
+    assertEquals(match.length, 1);
+  }
+  return !!match;
 }
 
 test({

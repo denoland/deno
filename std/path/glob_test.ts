@@ -49,25 +49,15 @@ test({
 testWalk(
   async (d: string): Promise<void> => {
     await mkdir(d + "/a");
-    await touch(d + "/a/x.ts");
-  },
-  async function globInWalk(): Promise<void> {
-    const arr = await walkArray(".", { match: [globToRegExp("*.ts")] });
-    assertEquals(arr.length, 1);
-    assertEquals(arr[0], "a/x.ts");
-  }
-);
-
-testWalk(
-  async (d: string): Promise<void> => {
-    await mkdir(d + "/a");
     await mkdir(d + "/b");
     await touch(d + "/a/x.ts");
     await touch(d + "/b/z.ts");
     await touch(d + "/b/z.js");
   },
-  async function globInWalkWildcardFiles(): Promise<void> {
-    const arr = await walkArray(".", { match: [globToRegExp("*.ts")] });
+  async function globInWalkWildcard(): Promise<void> {
+    const arr = await walkArray(".", {
+      match: [globToRegExp(join("*", "*.ts"))]
+    });
     assertEquals(arr.length, 2);
     assertEquals(arr[0], "a/x.ts");
     assertEquals(arr[1], "b/z.ts");

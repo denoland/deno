@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::compilers::TargetLib;
 use crate::deno_error::permission_denied;
-use crate::global_state::ThreadSafeGlobalState;
+use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
@@ -45,7 +45,7 @@ pub struct ThreadSafeState(Arc<State>);
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct State {
-  pub global_state: ThreadSafeGlobalState,
+  pub global_state: GlobalState,
   pub permissions: Arc<Mutex<DenoPermissions>>,
   pub main_module: ModuleSpecifier,
   /// When flags contains a `.import_map_path` option, the content of the
@@ -223,7 +223,7 @@ impl Loader for ThreadSafeState {
 impl ThreadSafeState {
   /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new(
-    global_state: ThreadSafeGlobalState,
+    global_state: GlobalState,
     shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
     main_module: ModuleSpecifier,
   ) -> Result<Self, ErrBox> {
@@ -267,7 +267,7 @@ impl ThreadSafeState {
 
   /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new_for_worker(
-    global_state: ThreadSafeGlobalState,
+    global_state: GlobalState,
     shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
     main_module: ModuleSpecifier,
   ) -> Result<Self, ErrBox> {
@@ -375,7 +375,7 @@ impl ThreadSafeState {
     let module_specifier = ModuleSpecifier::resolve_url_or_path(main_module)
       .expect("Invalid entry module");
     ThreadSafeState::new(
-      ThreadSafeGlobalState::mock(vec!["deno".to_string()]),
+      GlobalState::mock(vec!["deno".to_string()]),
       None,
       module_specifier,
     )

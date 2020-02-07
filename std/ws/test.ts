@@ -3,6 +3,7 @@ import { BufReader, BufWriter } from "../io/bufio.ts";
 import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 import { runIfMain, test } from "../testing/mod.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
+import * as bytes from "../bytes/mod.ts";
 import {
   acceptable,
   connectWebSocket,
@@ -11,10 +12,13 @@ import {
   OpCode,
   readFrame,
   unmask,
-  writeFrame
+  writeFrame,
+  createWebSocket
 } from "./mod.ts";
-import { encode } from "../strings/mod.ts";
-
+import { encode, decode } from "../strings/mod.ts";
+type Writer = Deno.Writer;
+type Reader = Deno.Reader;
+type Conn = Deno.Conn;
 const { Buffer } = Deno;
 
 test(async function wsReadUnmaskedTextFrame(): Promise<void> {
@@ -30,7 +34,7 @@ test(async function wsReadUnmaskedTextFrame(): Promise<void> {
 });
 
 test(async function wsReadMaskedTextFrame(): Promise<void> {
-  //a masked single text frame with payload "Hello"
+  // a masked single text frame with payload "Hello"
   const buf = new BufReader(
     new Buffer(
       new Uint8Array([
@@ -270,6 +274,57 @@ test("handshake should send search correctly", async function wsHandshakeWithSea
   const statusLine = await tpReader.readLine();
 
   assertEquals(statusLine, "GET /?a=1 HTTP/1.1");
+});
+
+function dummyConn(r: Reader, w: Writer): Conn {
+  return {
+    rid: -1,
+    closeRead: (): void => {},
+    closeWrite: (): void => {},
+    read: (x): Promise<number | Deno.EOF> => r.read(x),
+    write: (x): Promise<number> => w.write(x),
+    close: (): void => {},
+    localAddr: { transport: "tcp", hostname: "0.0.0.0", port: 0 },
+    remoteAddr: { transport: "tcp", hostname: "0.0.0.0", port: 0 }
+  };
+}
+
+function delayedWriter(ms: number, dest: Writer): Writer {
+  return {
+    write(p: Uint8Array): Promise<number> {
+      return new Promise<number>(resolve => {
+        setTimeout(async (): Promise<void> => {
+          resolve(await dest.write(p));
+        }, ms);
+      });
+    }
+  };
+}
+test("WebSocket.send(), WebSocket.ping() should be exclusive", async (): Promise<
+  void
+> => {
+  const buf = new Buffer();
+  const conn = dummyConn(new Buffer(), delayedWriter(1, buf));
+  const sock = createWebSocket({ conn });
+  // Ensure send call
+  await Promise.all([
+    sock.send("first"),
+    sock.send("second"),
+    sock.ping(),
+    sock.send(new Uint8Array([3]))
+  ]);
+  const bufr = new BufReader(buf);
+  const first = await readFrame(bufr);
+  const second = await readFrame(bufr);
+  const ping = await readFrame(bufr);
+  const third = await readFrame(bufr);
+  assertEquals(first.opcode, OpCode.TextFrame);
+  assertEquals(decode(first.payload), "first");
+  assertEquals(first.opcode, OpCode.TextFrame);
+  assertEquals(decode(second.payload), "second");
+  assertEquals(ping.opcode, OpCode.Ping);
+  assertEquals(third.opcode, OpCode.BinaryFrame);
+  assertEquals(bytes.equal(third.payload, new Uint8Array([3])), true);
 });
 
 runIfMain(import.meta);
