@@ -6,6 +6,7 @@ import {
   WriterHandler,
   FileHandler
 } from "./handlers.ts";
+import { assert } from "../testing/mod.ts";
 
 export class LoggerConfig {
   level?: string;
@@ -35,10 +36,9 @@ const DEFAULT_CONFIG: LogConfig = {
   }
 };
 
-const defaultLogger = new Logger("NOTSET", []);
 const state = {
   handlers: new Map<string, BaseHandler>(),
-  loggers: new Map<string, Logger>([["default", defaultLogger]]),
+  loggers: new Map<string, Logger>(),
   config: DEFAULT_CONFIG
 };
 
@@ -51,7 +51,12 @@ export const handlers = {
 
 export function getLogger(name?: string): Logger {
   if (!name) {
-    return defaultLogger;
+    const d = state.loggers.get("default");
+    assert(
+      d != null,
+      `"default" logger must be set for getting logger without name`
+    );
+    return d;
   }
   const result = state.loggers.get(name);
   if (!result) {
