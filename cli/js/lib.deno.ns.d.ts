@@ -2146,14 +2146,15 @@ declare namespace Deno {
    * SignalStream represents the stream of signals, implements both
    * AsyncIterator and PromiseLike
    */
-  export class SignalStream implements AsyncIterator<void>, PromiseLike<void> {
+  export class SignalStream
+    implements AsyncIterableIterator<void>, PromiseLike<void> {
     constructor(signal: typeof Deno.Signal);
     then<T, S>(
       f: (v: void) => T | Promise<T>,
       g?: (v: void) => S | Promise<S>
     ): Promise<T | S>;
     next(): Promise<IteratorResult<void>>;
-    [Symbol.asyncIterator](): AsyncIterator<void>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<void>;
     dispose(): void;
   }
 
