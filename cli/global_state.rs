@@ -23,8 +23,10 @@ use std::path::Path;
 use std::str;
 use std::sync::Arc;
 use std::sync::Mutex;
+use tokio::sync::Mutex as AsyncMutex;
 
 /// Holds state of the program and can be accessed by V8 isolate.
+#[derive(Clone)]
 pub struct ThreadSafeGlobalState(Arc<GlobalState>);
 
 /// This structure represents state of single "deno" program.
@@ -45,12 +47,7 @@ pub struct GlobalState {
   pub ts_compiler: TsCompiler,
   pub wasm_compiler: WasmCompiler,
   pub lockfile: Option<Mutex<Lockfile>>,
-}
-
-impl Clone for ThreadSafeGlobalState {
-  fn clone(&self) -> Self {
-    ThreadSafeGlobalState(self.0.clone())
-  }
+  compile_lock: AsyncMutex<()>,
 }
 
 impl Deref for ThreadSafeGlobalState {
@@ -103,6 +100,7 @@ impl ThreadSafeGlobalState {
       json_compiler: JsonCompiler {},
       wasm_compiler: WasmCompiler::default(),
       lockfile,
+      compile_lock: AsyncMutex::new(()),
     };
 
     Ok(ThreadSafeGlobalState(Arc::new(state)))
@@ -122,6 +120,11 @@ impl ThreadSafeGlobalState {
       .file_fetcher
       .fetch_source_file_async(&module_specifier, maybe_referrer)
       .await?;
+
+    // TODO(ry) Try to lift compile_lock as high up in the call stack for
+    // sanity.
+    let compile_lock = self.compile_lock.lock().await;
+
     let compiled_module = match out.media_type {
       msg::MediaType::Unknown => state1.js_compiler.compile_async(out).await,
       msg::MediaType::Json => state1.json_compiler.compile_async(&out).await,
@@ -150,6 +153,7 @@ impl ThreadSafeGlobalState {
         }
       }
     }?;
+    drop(compile_lock);
 
     if let Some(ref lockfile) = state2.lockfile {
       let mut g = lockfile.lock().unwrap();

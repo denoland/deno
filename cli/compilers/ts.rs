@@ -32,7 +32,6 @@ use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
-use tokio::sync::Mutex as AsyncMutex;
 use url::Url;
 
 lazy_static! {
@@ -216,8 +215,6 @@ pub struct TsCompilerInner {
   pub use_disk_cache: bool,
   /// This setting is controlled by `compilerOptions.checkJs`
   pub compile_js: bool,
-
-  compile_lock: AsyncMutex<()>,
 }
 
 #[derive(Clone)]
@@ -244,18 +241,14 @@ impl TsCompiler {
     config_path: Option<String>,
   ) -> Result<Self, ErrBox> {
     let config = CompilerConfig::load(config_path)?;
-
-    let compiler = TsCompiler(Arc::new(TsCompilerInner {
+    Ok(TsCompiler(Arc::new(TsCompilerInner {
       file_fetcher,
       disk_cache,
       compile_js: config.compile_js,
       config,
       compiled: Mutex::new(HashSet::new()),
       use_disk_cache,
-      compile_lock: AsyncMutex::new(()),
-    }));
-
-    Ok(compiler)
+    })))
   }
 
   /// Create a new V8 worker with snapshot of TS compiler and setup compiler's
@@ -343,7 +336,6 @@ impl TsCompiler {
     source_file: &SourceFile,
     target: TargetLib,
   ) -> Result<CompiledModule, ErrBox> {
-    let compile_lock = self.compile_lock.lock().await;
     if self.has_compiled(&source_file.url) {
       return self.get_compiled_module(&source_file.url);
     }
@@ -402,7 +394,6 @@ impl TsCompiler {
     }
     let compiled_module = ts_compiler.get_compiled_module(&source_file_.url)?;
     drop(compiling_job);
-    drop(compile_lock);
     Ok(compiled_module)
   }
 
