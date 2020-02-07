@@ -2,7 +2,7 @@
 use super::compiler_worker::CompilerWorker;
 use crate::compilers::CompiledModule;
 use crate::file_fetcher::SourceFile;
-use crate::global_state::ThreadSafeGlobalState;
+use crate::global_state::GlobalState;
 use crate::startup_data;
 use crate::state::*;
 use deno_core::ErrBox;
@@ -48,7 +48,7 @@ pub struct WasmCompiler {
 
 impl WasmCompiler {
   /// Create a new V8 worker with snapshot of WASM compiler and setup compiler's runtime.
-  fn setup_worker(global_state: ThreadSafeGlobalState) -> CompilerWorker {
+  fn setup_worker(global_state: GlobalState) -> CompilerWorker {
     let entry_point =
       ModuleSpecifier::resolve_url_or_path("./__$deno$wasm_compiler.ts")
         .unwrap();
@@ -73,7 +73,7 @@ impl WasmCompiler {
 
   pub async fn compile_async(
     &self,
-    global_state: ThreadSafeGlobalState,
+    global_state: GlobalState,
     source_file: &SourceFile,
   ) -> Result<CompiledModule, ErrBox> {
     let cache = self.cache.clone();

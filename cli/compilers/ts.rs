@@ -6,7 +6,7 @@ use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
-use crate::global_state::ThreadSafeGlobalState;
+use crate::global_state::GlobalState;
 use crate::msg;
 use crate::ops::JsonResult;
 use crate::source_maps::SourceMapGetter;
@@ -246,7 +246,7 @@ impl TsCompiler {
 
   /// Create a new V8 worker with snapshot of TS compiler and setup compiler's
   /// runtime.
-  fn setup_worker(global_state: ThreadSafeGlobalState) -> CompilerWorker {
+  fn setup_worker(global_state: GlobalState) -> CompilerWorker {
     let entry_point =
       ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
     let worker_state =
@@ -270,7 +270,7 @@ impl TsCompiler {
 
   pub async fn bundle_async(
     &self,
-    global_state: ThreadSafeGlobalState,
+    global_state: GlobalState,
     module_name: String,
     out_file: Option<String>,
   ) -> Result<(), ErrBox> {
@@ -325,7 +325,7 @@ impl TsCompiler {
   /// compiler.
   pub async fn compile_async(
     &self,
-    global_state: ThreadSafeGlobalState,
+    global_state: GlobalState,
     source_file: &SourceFile,
     target: TargetLib,
   ) -> Result<CompiledModule, ErrBox> {
@@ -604,7 +604,7 @@ impl TsCompiler {
 }
 
 async fn execute_in_thread(
-  global_state: ThreadSafeGlobalState,
+  global_state: GlobalState,
   req: Buf,
 ) -> Result<Option<Buf>, ErrBox> {
   let (load_sender, load_receiver) =
@@ -638,7 +638,7 @@ async fn execute_in_thread(
 
 async fn execute_in_thread_json(
   req_msg: Buf,
-  global_state: ThreadSafeGlobalState,
+  global_state: GlobalState,
 ) -> JsonResult {
   let maybe_msg = execute_in_thread(global_state, req_msg).await?;
   let msg = maybe_msg.unwrap();
@@ -647,7 +647,7 @@ async fn execute_in_thread_json(
 }
 
 pub fn runtime_compile_async<S: BuildHasher>(
-  global_state: ThreadSafeGlobalState,
+  global_state: GlobalState,
   root_name: &str,
   sources: &Option<HashMap<String, String, S>>,
   bundle: bool,
@@ -669,7 +669,7 @@ pub fn runtime_compile_async<S: BuildHasher>(
 }
 
 pub fn runtime_transpile_async<S: BuildHasher>(
-  global_state: ThreadSafeGlobalState,
+  global_state: GlobalState,
   sources: &HashMap<String, String, S>,
   options: &Option<String>,
 ) -> Pin<Box<CompilationResultFuture>> {
@@ -708,10 +708,8 @@ mod tests {
       source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
       types_url: None,
     };
-    let mock_state = ThreadSafeGlobalState::mock(vec![
-      String::from("deno"),
-      String::from("hello.js"),
-    ]);
+    let mock_state =
+      GlobalState::mock(vec![String::from("deno"), String::from("hello.js")]);
     let result = mock_state
       .ts_compiler
       .compile_async(mock_state.clone(), &out, TargetLib::Main)
@@ -735,7 +733,7 @@ mod tests {
       .unwrap()
       .to_string();
 
-    let state = ThreadSafeGlobalState::mock(vec![
+    let state = GlobalState::mock(vec![
       String::from("deno"),
       p.to_string_lossy().into(),
       String::from("$deno$/bundle.js"),
