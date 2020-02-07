@@ -49,7 +49,7 @@ export function normalizeString(
   let code: number;
   for (let i = 0, len = path.length; i <= len; ++i) {
     if (i < len) code = path.charCodeAt(i);
-    else if (isPathSeparator(code!)) break;
+    else if (isPathSeparator(code)) break;
     else code = CHAR_FORWARD_SLASH;
 
     if (isPathSeparator(code)) {

@@ -97,7 +97,7 @@ export interface WebSocket {
 export function unmask(payload: Uint8Array, mask?: Uint8Array): void {
   if (mask) {
     for (let i = 0, len = payload.length; i < len; i++) {
-      payload[i] ^= mask![i & 3];
+      payload[i] ^= mask[i & 3];
     }
   }
 }

@@ -1,7 +1,7 @@
 // Documentation and interface for walk were adapted from Go
 // https://golang.org/pkg/path/filepath/#Walk
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
-import { unimplemented } from "../testing/asserts.ts";
+import { unimplemented, assert } from "../testing/asserts.ts";
 import { join } from "../path/mod.ts";
 const { readDir, readDirSync, stat, statSync } = Deno;
 type FileInfo = Deno.FileInfo;
@@ -90,7 +90,8 @@ export async function* walk(
       }
     }
 
-    const filename = join(root, info.name!);
+    assert(info.name != null);
+    const filename = join(root, info.name);
 
     if (info.isFile()) {
       if (includeFiles && include(filename, exts, match, skip)) {
@@ -142,7 +143,8 @@ export function* walkSync(
       }
     }
 
-    const filename = join(root, info.name!);
+    assert(info.name != null);
+    const filename = join(root, info.name);
 
     if (info.isFile()) {
       if (includeFiles && include(filename, exts, match, skip)) {
