@@ -9,6 +9,7 @@ import {
   normalize
 } from "../path/mod.ts";
 import { WalkInfo, walk, walkSync } from "./walk.ts";
+import { assert } from "../testing/mod.ts";
 const { ErrorKind, cwd, stat, statSync } = Deno;
 type ErrorKind = Deno.ErrorKind;
 type DenoError = Deno.DenoError<ErrorKind>;
@@ -80,7 +81,9 @@ export async function* expandGlob(
 
   let fixedRoot = winRoot != undefined ? winRoot : "/";
   while (segments.length > 0 && !isGlob(segments[0])) {
-    fixedRoot = joinGlobs([fixedRoot, segments.shift()!], globOptions);
+    const seg = segments.shift();
+    assert(seg != null);
+    fixedRoot = joinGlobs([fixedRoot, seg], globOptions);
   }
 
   let fixedRootInfo: WalkInfo;
@@ -182,7 +185,9 @@ export function* expandGlobSync(
 
   let fixedRoot = winRoot != undefined ? winRoot : "/";
   while (segments.length > 0 && !isGlob(segments[0])) {
-    fixedRoot = joinGlobs([fixedRoot, segments.shift()!], globOptions);
+    const seg = segments.shift();
+    assert(seg != null);
+    fixedRoot = joinGlobs([fixedRoot, seg], globOptions);
   }
 
   let fixedRootInfo: WalkInfo;

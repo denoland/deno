@@ -138,7 +138,7 @@ fn installer_test_local_module_run() {
   let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
   println!("Got stdout: {:?}", stdout_str);
   println!("Got stderr: {:?}", stderr_str);
-  assert_eq!(stdout_str, "hello, foo");
+  assert!(stdout_str.ends_with("hello, foo"));
   drop(temp_dir);
 }
 
@@ -180,10 +180,10 @@ fn installer_test_remote_module_run() {
     .env(path_var_name, path_var_value)
     .output()
     .expect("failed to spawn script");
-  assert_eq!(
-    std::str::from_utf8(&output.stdout).unwrap().trim(),
-    "hello, foo"
-  );
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("hello, foo"));
   drop(temp_dir);
   drop(g)
 }
@@ -243,7 +243,10 @@ fn bundle_exports() {
     .output()
     .expect("failed to spawn script");
   // check the output of the test.ts program.
-  assert_eq!(std::str::from_utf8(&output.stdout).unwrap().trim(), "Hello");
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello"));
   assert_eq!(output.stderr, b"");
 }
 
@@ -323,12 +326,10 @@ itest!(_014_duplicate_import {
   output: "014_duplicate_import.ts.out",
 });
 
-/* TODO(ry) Disabled to get #3844 landed faster. Re-enable.
 itest!(_015_duplicate_parallel_import {
   args: "run --reload --allow-read 015_duplicate_parallel_import.js",
   output: "015_duplicate_parallel_import.js.out",
 });
-*/
 
 itest!(_016_double_await {
   args: "run --allow-read --reload 016_double_await.ts",
