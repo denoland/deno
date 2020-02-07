@@ -165,44 +165,51 @@ fn run_worker_thread(
       loop {
         let receive_msg_fut = {
           let channels = worker
-          .state
-          .worker_channels_internal
-          .lock()
-          .unwrap()
-          .unwrap();
+            .state
+            .worker_channels_internal
+            .lock()
+            .unwrap()
+            .unwrap();
           channels.get_message()
         };
 
-        let result = match futures::future::select(&mut *worker, receive_msg_fut).await {
-          Either::Left((worker_result, msg_fut)) => match worker_result { 
-            Ok(()) => {
-              // worker finished scripts, no point in polling it
-              // until we receive as message (not valid if we add unref
-              // ops to worker)
-            },
-            Err(e) =>{
-              if let Ok(err) = e.downcast::<WorkerCloseError>() {
-                // worker shuts down - empty event loop and notify
-                // host that this worker is closed
-                break;
-              } else {
-                // serialize and send to host and decide what later -
-                // - ie. worker should not be polled unless exception is handled by host
+        let result =
+          match futures::future::select(&mut *worker, receive_msg_fut).await {
+            Either::Left((worker_result, msg_fut)) => match worker_result {
+              Ok(()) => {
+                // worker finished scripts, no point in polling it
+                // until we receive as message (not valid if we add unref
+                // ops to worker)
+              }
+              Err(e) => {
+                if let Ok(err) = e.downcast::<WorkerCloseError>() {
+                  // worker shuts down - empty event loop and notify
+                  // host that this worker is closed
+                  break;
+                } else {
+                  // serialize and send to host and decide what later -
+                  // - ie. worker should not be polled unless exception is handled by host
+                }
               }
             },
-          },
-          Either::Right((maybe_messsage, worker_fut)) => match maybe_messsage {
-            None => {
-              // TODO: handle if message is none
-            }
-            Some(msg) => {
-              // TODO: just add second value and then bind using rusty_v8
-              // to get structured clone/transfer working
-              let script = format!("globalThis.workerMessageRecvCallback(\"{}\")", String::from_utf8(msg.to_vec()).unwrap());
-              worker.execute(&script).expect("Failed to execute message cb");
-            }
-          },
-        };
+            Either::Right((maybe_messsage, worker_fut)) => match maybe_messsage
+            {
+              None => {
+                // TODO: handle if message is none
+              }
+              Some(msg) => {
+                // TODO: just add second value and then bind using rusty_v8
+                // to get structured clone/transfer working
+                let script = format!(
+                  "globalThis.workerMessageRecvCallback(\"{}\")",
+                  String::from_utf8(msg.to_vec()).unwrap()
+                );
+                worker
+                  .execute(&script)
+                  .expect("Failed to execute message cb");
+              }
+            },
+          };
 
         // let channels = worker
         //   .state

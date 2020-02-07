@@ -6,7 +6,7 @@ if (self.name !== "jsWorker") {
 
 onmessage = function(e) {
   console.log("calling onmessage js!");
-  
+
   if (thrown === false) {
     thrown = true;
     throw new SyntaxError("[test error]");

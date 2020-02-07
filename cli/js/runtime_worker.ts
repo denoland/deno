@@ -68,7 +68,7 @@ export async function workerMessageRecvCallback(data: string): Promise<void> {
   const event = { data };
 
   try {
-    // 
+    //
     if (globalThis["onmessage"]) {
       result = globalThis.onmessage!(event);
       if (result && "then" in result) {
@@ -93,7 +93,6 @@ export async function workerMessageRecvCallback(data: string): Promise<void> {
     throw e;
   }
 }
-
 
 export async function runWorkerMessageLoop(): Promise<void> {
   while (!isClosing) {
