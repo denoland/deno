@@ -59,9 +59,8 @@ pub mod worker;
 use crate::compilers::TargetLib;
 use crate::deno_error::js_check;
 use crate::deno_error::{print_err_and_exit, print_msg_and_exit};
-use crate::global_state::ThreadSafeGlobalState;
+use crate::global_state::GlobalState;
 use crate::ops::io::get_stdio;
-use crate::progress::Progress;
 use crate::state::ThreadSafeState;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
@@ -98,28 +97,14 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
-fn create_global_state(flags: DenoFlags) -> ThreadSafeGlobalState {
-  use crate::shell::Shell;
-  use std::sync::Arc;
-  use std::sync::Mutex;
-
-  let shell = Arc::new(Mutex::new(Shell::new()));
-
-  let progress = Progress::new();
-  progress.set_callback(move |_done, _completed, _total, status, msg| {
-    if !status.is_empty() {
-      let mut s = shell.lock().unwrap();
-      s.status(status, msg).expect("shell problem");
-    }
-  });
-
-  ThreadSafeGlobalState::new(flags, progress)
+fn create_global_state(flags: DenoFlags) -> GlobalState {
+  GlobalState::new(flags)
     .map_err(deno_error::print_err_and_exit)
     .unwrap()
 }
 
 fn create_main_worker(
-  global_state: ThreadSafeGlobalState,
+  global_state: GlobalState,
   main_module: ModuleSpecifier,
 ) -> MainWorker {
   let state = ThreadSafeState::new(global_state, None, main_module)
@@ -147,7 +132,7 @@ fn types_command() {
   );
 }
 
-fn print_cache_info(state: &ThreadSafeGlobalState) {
+fn print_cache_info(state: &GlobalState) {
   println!(
     "{} {:?}",
     colors::bold("DENO_DIR location:".to_string()),

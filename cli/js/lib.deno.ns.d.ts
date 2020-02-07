@@ -2093,7 +2093,7 @@ declare namespace Deno {
     rootName: string,
     sources?: Record<string, string>,
     options?: CompilerOptions
-  ): Promise<[Diagnostic | undefined, Record<string, string>]>;
+  ): Promise<[DiagnosticItem[] | undefined, Record<string, string>]>;
 
   /** UNSTABLE: new API, yet to be vetted.
    *
@@ -2129,7 +2129,7 @@ declare namespace Deno {
     rootName: string,
     sources?: Record<string, string>,
     options?: CompilerOptions
-  ): Promise<[Diagnostic | undefined, string]>;
+  ): Promise<[DiagnosticItem[] | undefined, string]>;
 
   /** Returns the script arguments to the program. If for example we run a program
    *
@@ -2146,14 +2146,15 @@ declare namespace Deno {
    * SignalStream represents the stream of signals, implements both
    * AsyncIterator and PromiseLike
    */
-  export class SignalStream implements AsyncIterator<void>, PromiseLike<void> {
+  export class SignalStream
+    implements AsyncIterableIterator<void>, PromiseLike<void> {
     constructor(signal: typeof Deno.Signal);
     then<T, S>(
       f: (v: void) => T | Promise<T>,
       g?: (v: void) => S | Promise<S>
     ): Promise<T | S>;
     next(): Promise<IteratorResult<void>>;
-    [Symbol.asyncIterator](): AsyncIterator<void>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<void>;
     dispose(): void;
   }
 

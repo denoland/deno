@@ -255,7 +255,9 @@ async function tsCompilerOnMessage({
 
       assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
       const result = [
-        diagnostics.length ? fromTypeScriptDiagnostic(diagnostics) : undefined,
+        diagnostics.length
+          ? fromTypeScriptDiagnostic(diagnostics).items
+          : undefined,
         bundle ? state.emitBundle : state.emitMap
       ];
       globalThis.postMessage(result);

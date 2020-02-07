@@ -3,13 +3,13 @@
 // Copyright (c) 2018 Terkel Gjervig Nielsen
 
 const isWin = Deno.build.os === "win";
-const SEP = isWin ? `(\\\\+|\\/)` : `\\/`;
+const SEP = isWin ? `(?:\\\\|\\/)` : `\\/`;
 const SEP_ESC = isWin ? `\\\\` : `/`;
 const SEP_RAW = isWin ? `\\` : `/`;
-const GLOBSTAR = `((?:[^${SEP_ESC}/]*(?:${SEP_ESC}|\/|$))*)`;
-const WILDCARD = `([^${SEP_ESC}/]*)`;
+const GLOBSTAR = `(?:(?:[^${SEP_ESC}/]*(?:${SEP_ESC}|\/|$))*)`;
+const WILDCARD = `(?:[^${SEP_ESC}/]*)`;
 const GLOBSTAR_SEGMENT = `((?:[^${SEP_ESC}/]*(?:${SEP_ESC}|\/|$))*)`;
-const WILDCARD_SEGMENT = `([^${SEP_ESC}/]*)`;
+const WILDCARD_SEGMENT = `(?:[^${SEP_ESC}/]*)`;
 
 export interface GlobrexOptions {
   // Allow ExtGlob features
@@ -57,6 +57,7 @@ export function globrex(
     flags = ""
   }: GlobrexOptions = {}
 ): GlobrexResult {
+  const sepPattern = new RegExp(`^${SEP}${strict ? "" : "+"}$`);
   let regex = "";
   let segment = "";
   let pathRegexStr = "";
@@ -84,7 +85,7 @@ export function globrex(
     const { split, last, only } = options;
     if (only !== "path") regex += str;
     if (filepath && only !== "regex") {
-      pathRegexStr += str.match(new RegExp(`^${SEP}$`)) ? SEP : str;
+      pathRegexStr += str.match(sepPattern) ? SEP : str;
       if (split) {
         if (last) segment += str;
         if (segment !== "") {
@@ -109,15 +110,15 @@ export function globrex(
       continue;
     }
 
-    if (c === "/") {
-      add(`\\${c}`, { split: true });
-      if (n === "/" && !strict) regex += "?";
+    if (c.match(sepPattern)) {
+      add(SEP, { split: true });
+      if (n != null && n.match(sepPattern) && !strict) regex += "?";
       continue;
     }
 
     if (c === "(") {
       if (ext.length) {
-        add(c);
+        add(`${c}?:`);
         continue;
       }
       add(`\\${c}`);
@@ -131,7 +132,7 @@ export function globrex(
         if (type === "@") {
           add("{1}");
         } else if (type === "!") {
-          add("([^/]*)");
+          add(WILDCARD);
         } else {
           add(type as string);
         }
@@ -203,7 +204,7 @@ export function globrex(
         i++; // skip [
         let value = "";
         while (glob[++i] !== ":") value += glob[i];
-        if (value === "alnum") add("(\\w|\\d)");
+        if (value === "alnum") add("(?:\\w|\\d)");
         else if (value === "space") add("\\s");
         else if (value === "digit") add("\\d");
         i++; // skip last ]
@@ -231,7 +232,7 @@ export function globrex(
     if (c === "{") {
       if (extended) {
         inGroup = true;
-        add("(");
+        add("(?:");
         continue;
       }
       add(`\\${c}`);

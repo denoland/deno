@@ -3,7 +3,7 @@
 // This file contains the runtime APIs which will dispatch work to the internal
 // compiler within Deno.
 
-import { Diagnostic } from "./diagnostics.ts";
+import { DiagnosticItem } from "./diagnostics.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendAsync } from "./dispatch_json.ts";
 import * as util from "./util.ts";
@@ -328,7 +328,7 @@ export function compile(
   rootName: string,
   sources?: Record<string, string>,
   options?: CompilerOptions
-): Promise<[Diagnostic | undefined, Record<string, string>]> {
+): Promise<[DiagnosticItem[] | undefined, Record<string, string>]> {
   const payload = {
     rootName: sources ? rootName : checkRelative(rootName),
     sources,
@@ -377,7 +377,7 @@ export function bundle(
   rootName: string,
   sources?: Record<string, string>,
   options?: CompilerOptions
-): Promise<[Diagnostic | undefined, string]> {
+): Promise<[DiagnosticItem[] | undefined, string]> {
   const payload = {
     rootName: sources ? rootName : checkRelative(rootName),
     sources,

@@ -96,7 +96,8 @@ export const signals = {
 
 /** SignalStream represents the stream of signals, implements both
  * AsyncIterator and PromiseLike */
-export class SignalStream implements AsyncIterator<void>, PromiseLike<void> {
+export class SignalStream
+  implements AsyncIterableIterator<void>, PromiseLike<void> {
   private rid: number;
   /** The promise of polling the signal,
    * resolves with false when it receives signal,
@@ -134,7 +135,7 @@ export class SignalStream implements AsyncIterator<void>, PromiseLike<void> {
     return { done: await this.pollingPromise, value: undefined };
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<void> {
+  [Symbol.asyncIterator](): AsyncIterableIterator<void> {
     return this;
   }
 
