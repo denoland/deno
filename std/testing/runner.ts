@@ -168,6 +168,7 @@ export async function runTestModules({
   include = ["."],
   exclude = [],
   allowNone = false,
+  parallel = false,
   exitOnFail = false,
   only = /[^\s]/,
   skip = /^\s*$/,
@@ -233,6 +234,7 @@ export async function runTestModules({
   }
 
   await runTests({
+    parallel,
     exitOnFail,
     only,
     skip,
