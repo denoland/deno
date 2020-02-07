@@ -2093,7 +2093,7 @@ declare namespace Deno {
     rootName: string,
     sources?: Record<string, string>,
     options?: CompilerOptions
-  ): Promise<[Diagnostic | undefined, Record<string, string>]>;
+  ): Promise<[DiagnosticItem[] | undefined, Record<string, string>]>;
 
   /** UNSTABLE: new API, yet to be vetted.
    *
@@ -2129,7 +2129,7 @@ declare namespace Deno {
     rootName: string,
     sources?: Record<string, string>,
     options?: CompilerOptions
-  ): Promise<[Diagnostic | undefined, string]>;
+  ): Promise<[DiagnosticItem[] | undefined, string]>;
 
   /** Returns the script arguments to the program. If for example we run a program
    *
