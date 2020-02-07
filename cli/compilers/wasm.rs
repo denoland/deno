@@ -1,21 +1,25 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::compiler_worker::CompilerWorker;
 use crate::compilers::CompiledModule;
-use crate::compilers::CompiledModuleFuture;
 use crate::file_fetcher::SourceFile;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::startup_data;
 use crate::state::*;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use futures::FutureExt;
 use serde_derive::Deserialize;
 use serde_json;
 use std::collections::HashMap;
-use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use url::Url;
+
+// TODO(ry) The entire concept of spawning a thread, sending data to JS,
+// compiling WASM there, and moving the data back into the calling thread is
+// completelly wrong. V8 has native facilities for getting this information.
+// We might be lacking bindings for this currently in rusty_v8 but ultimately
+// this "compiler" should be calling into rusty_v8 directly, not spawning
+// threads.
 
 // TODO(kevinkassimo): This is a hack to encode/decode data as base64 string.
 // (Since Deno namespace might not be available, Deno.read can fail).
@@ -67,18 +71,19 @@ impl WasmCompiler {
     worker
   }
 
-  pub fn compile_async(
+  pub async fn compile_async(
     &self,
     global_state: ThreadSafeGlobalState,
     source_file: &SourceFile,
-  ) -> Pin<Box<CompiledModuleFuture>> {
+  ) -> Result<CompiledModule, ErrBox> {
     let cache = self.cache.clone();
+    let cache_ = self.cache.clone();
     let source_file = source_file.clone();
+
     let maybe_cached = { cache.lock().unwrap().get(&source_file.url).cloned() };
     if let Some(m) = maybe_cached {
-      return futures::future::ok(m).boxed();
+      return Ok(m);
     }
-    let cache_ = self.cache.clone();
 
     let (load_sender, load_receiver) =
       tokio::sync::oneshot::channel::<Result<CompiledModule, ErrBox>>();
@@ -133,8 +138,7 @@ impl WasmCompiler {
 
       crate::tokio_util::run_basic(fut);
     });
-    let fut = async { load_receiver.await.unwrap() };
-    fut.boxed_local()
+    load_receiver.await.unwrap()
   }
 }
 
