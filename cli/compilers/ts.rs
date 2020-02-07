@@ -17,7 +17,6 @@ use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
-use futures::Future;
 use regex::Regex;
 use serde_json::json;
 use std::collections::HashMap;
@@ -283,12 +282,12 @@ impl TsCompiler {
     worker
   }
 
-  pub fn bundle_async(
+  pub async fn bundle_async(
     &self,
     global_state: ThreadSafeGlobalState,
     module_name: String,
     out_file: Option<String>,
-  ) -> impl Future<Output = Result<(), ErrBox>> {
+  ) -> Result<(), ErrBox> {
     debug!(
       "Invoking the compiler to bundle. module_name: {}",
       module_name
@@ -304,41 +303,15 @@ impl TsCompiler {
       true,
     );
 
-    // TODO(ry) The code below looks very similar to spawn_ts_compiler_worker.
-    // Can we combine them?
-    let (load_sender, load_receiver) =
-      tokio::sync::oneshot::channel::<Result<(), ErrBox>>();
-    std::thread::spawn(move || {
-      let mut worker = TsCompiler::setup_worker(global_state);
-      let handle = worker.thread_safe_handle();
-
-      let fut = async move {
-        if let Err(err) = handle.post_message(req_msg).await {
-          load_sender.send(Err(err)).unwrap();
-          return;
-        }
-        debug!("Sent message to worker");
-        if let Err(err) = (&mut *worker).await {
-          load_sender.send(Err(err)).unwrap();
-          return;
-        }
-        let maybe_msg = handle.get_message().await;
-        debug!("Received message from worker");
-        if let Some(ref msg) = maybe_msg {
-          let json_str = std::str::from_utf8(msg).unwrap();
-          debug!("Message: {}", json_str);
-          if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-            let err = ErrBox::from(diagnostics);
-            load_sender.send(Err(err)).unwrap();
-            return;
-          }
-        }
-        load_sender.send(Ok(())).unwrap();
+    let maybe_msg = execute_in_thread(global_state.clone(), req_msg).await?;
+    if let Some(ref msg) = maybe_msg {
+      let json_str = std::str::from_utf8(msg).unwrap();
+      debug!("Message: {}", json_str);
+      if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+        return Err(ErrBox::from(diagnostics));
       }
-      .boxed_local();
-      crate::tokio_util::run_basic(fut);
-    });
-    async { load_receiver.await.unwrap() }.boxed_local()
+    }
+    Ok(())
   }
 
   /// Mark given module URL as compiled to avoid multiple compilations of same
@@ -419,8 +392,7 @@ impl TsCompiler {
     let compiling_job = global_state
       .progress
       .add("Compile", &module_url.to_string());
-    let maybe_msg =
-      Self::execute_in_thread(global_state.clone(), req_msg).await?;
+    let maybe_msg = execute_in_thread(global_state.clone(), req_msg).await?;
 
     if let Some(ref msg) = maybe_msg {
       let json_str = std::str::from_utf8(msg).unwrap();
@@ -432,41 +404,6 @@ impl TsCompiler {
     drop(compiling_job);
     drop(compile_lock);
     Ok(compiled_module)
-  }
-
-  async fn execute_in_thread(
-    global_state: ThreadSafeGlobalState,
-    req: Buf,
-  ) -> Result<Option<Buf>, ErrBox> {
-    // TODO(ry) The code below looks very similar to spawn_ts_compiler_worker.
-    // Can we combine them?
-    let (load_sender, load_receiver) =
-      tokio::sync::oneshot::channel::<Result<Option<Buf>, ErrBox>>();
-    std::thread::spawn(move || {
-      debug!(">>>>> compile_async START");
-
-      let mut worker = TsCompiler::setup_worker(global_state.clone());
-      let handle = worker.thread_safe_handle();
-
-      crate::tokio_util::run_basic(
-        async move {
-          if let Err(err) = handle.post_message(req).await {
-            load_sender.send(Err(err)).unwrap();
-            return;
-          }
-          if let Err(err) = (&mut *worker).await {
-            load_sender.send(Err(err)).unwrap();
-            return;
-          }
-          let maybe_msg = handle.get_message().await;
-          load_sender.send(Ok(maybe_msg)).unwrap();
-          debug!(">>>>> compile_sync END");
-        }
-        .boxed_local(),
-      );
-    });
-
-    load_receiver.await.unwrap()
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
@@ -682,37 +619,47 @@ impl TsCompiler {
   }
 }
 
-// TODO(ry) this is pretty general purpose and should be lifted and generalized.
-fn spawn_ts_compiler_worker(
-  req_msg: Buf,
+async fn execute_in_thread(
   global_state: ThreadSafeGlobalState,
-) -> Pin<Box<CompilationResultFuture>> {
+  req: Buf,
+) -> Result<Option<Buf>, ErrBox> {
   let (load_sender, load_receiver) =
-    tokio::sync::oneshot::channel::<JsonResult>();
-
+    tokio::sync::oneshot::channel::<Result<Option<Buf>, ErrBox>>();
   std::thread::spawn(move || {
-    let mut worker = TsCompiler::setup_worker(global_state);
+    debug!(">>>>> compile_async START");
+
+    let mut worker = TsCompiler::setup_worker(global_state.clone());
     let handle = worker.thread_safe_handle();
 
-    let fut = async move {
-      debug!("Sent message to worker");
-      if let Err(err) = handle.post_message(req_msg).await {
-        load_sender.send(Err(err)).unwrap();
-        return;
+    crate::tokio_util::run_basic(
+      async move {
+        if let Err(err) = handle.post_message(req).await {
+          load_sender.send(Err(err)).unwrap();
+          return;
+        }
+        if let Err(err) = (&mut *worker).await {
+          load_sender.send(Err(err)).unwrap();
+          return;
+        }
+        let maybe_msg = handle.get_message().await;
+        load_sender.send(Ok(maybe_msg)).unwrap();
+        debug!(">>>>> compile_sync END");
       }
-      if let Err(err) = (&mut *worker).await {
-        load_sender.send(Err(err)).unwrap();
-        return;
-      }
-      let msg = handle.get_message().await.unwrap();
-      let json_str = std::str::from_utf8(&msg).unwrap();
-      load_sender.send(Ok(json!(json_str))).unwrap();
-    };
-    crate::tokio_util::run_basic(fut);
+      .boxed_local(),
+    );
   });
 
-  let fut = async { load_receiver.await.unwrap() };
-  fut.boxed_local()
+  load_receiver.await.unwrap()
+}
+
+async fn execute_in_thread_json(
+  req_msg: Buf,
+  global_state: ThreadSafeGlobalState,
+) -> JsonResult {
+  let maybe_msg = execute_in_thread(global_state, req_msg).await?;
+  let msg = maybe_msg.unwrap();
+  let json_str = std::str::from_utf8(&msg).unwrap();
+  Ok(json!(json_str))
 }
 
 pub fn runtime_compile_async<S: BuildHasher>(
@@ -734,7 +681,7 @@ pub fn runtime_compile_async<S: BuildHasher>(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  spawn_ts_compiler_worker(req_msg, global_state)
+  execute_in_thread_json(req_msg, global_state).boxed_local()
 }
 
 pub fn runtime_transpile_async<S: BuildHasher>(
@@ -751,7 +698,7 @@ pub fn runtime_transpile_async<S: BuildHasher>(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  spawn_ts_compiler_worker(req_msg, global_state)
+  execute_in_thread_json(req_msg, global_state).boxed_local()
 }
 
 #[cfg(test)]
