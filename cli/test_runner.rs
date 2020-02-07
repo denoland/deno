@@ -93,13 +93,13 @@ mod tests {
 
   #[test]
   fn test_prepare_test_modules_urls() {
-    let test_data_path = test_util::root_path().join("cli/tests/test_runner");
+    let test_data_path = test_util::root_path().join("cli/tests/subdir");
     let mut matched_urls = prepare_test_modules_urls(
       vec![
         "https://example.com/colors_test.ts".to_string(),
-        "./bar_test.js".to_string(),
-        "./foo_test.ts".to_string(),
-        "./subdir/bar_test.js".to_string(),
+        "./mod1.ts".to_string(),
+        "./mod3.js".to_string(),
+        "subdir2/mod2.ts".to_string(),
         "http://example.com/printf_test.ts".to_string(),
       ],
       test_data_path.clone(),
@@ -109,9 +109,9 @@ mod tests {
       Url::from_file_path(test_data_path).unwrap().to_string();
 
     let expected: Vec<Url> = vec![
-      format!("{}/bar_test.js", test_data_url),
-      format!("{}/foo_test.ts", test_data_url),
-      format!("{}/subdir/bar_test.js", test_data_url),
+      format!("{}/mod1.ts", test_data_url),
+      format!("{}/mod3.js", test_data_url),
+      format!("{}/subdir2/mod2.ts", test_data_url),
       "http://example.com/printf_test.ts".to_string(),
       "https://example.com/colors_test.ts".to_string(),
     ]
