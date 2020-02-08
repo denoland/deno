@@ -8,16 +8,6 @@ const testData = path.resolve(path.join("node", "testdata", "hello.txt"));
 const testLinkPath = "./testdata/hello.txt";
 const testLink = "hello.txt";
 
-if (Deno.build.os === "win") {
-  run({
-    args: ["cmd", "/c", "mklink", testLink, testLinkPath]
-  });
-} else {
-  run({
-    args: ["ln", "-s", testLinkPath, testLink]
-  });
-}
-
 // Need to convert to promises, otherwise test() won't report error correctly.
 test(async function readFileSuccess() {
   const data = await new Promise((res, rej) => {
@@ -59,51 +49,51 @@ test(function readFileEncodeUtf8Success() {
   assertEquals(data as string, "hello world");
 });
 
-test(async function readlinkSuccess() {
-  const data = await new Promise((res, rej) => {
-    readlink(testLink, (err, data) => {
-      if (err) {
-        rej(err);
-      }
-      res(data);
-    });
+if (Deno.build.os !== "win") {
+  run({
+    args: ["ln", "-s", testLinkPath, testLink]
   });
 
-  assertEquals(typeof data, "string");
-  assertEquals(data as string, testLinkPath);
-});
-
-test(async function readlinkEncodeBufferSuccess() {
-  const data = await new Promise((res, rej) => {
-    readlink(testLink, { encoding: "buffer" }, (err, data) => {
-      if (err) {
-        rej(err);
-      }
-      res(data);
+  test(async function readlinkSuccess() {
+    const data = await new Promise((res, rej) => {
+      readlink(testLink, (err, data) => {
+        if (err) {
+          rej(err);
+        }
+        res(data);
+      });
     });
+
+    assertEquals(typeof data, "string");
+    assertEquals(data as string, testLinkPath);
   });
 
-  assert(data instanceof Uint8Array);
-  assertEquals(new TextDecoder().decode(data as Uint8Array), testLinkPath);
-});
-
-test(function readlinkSyncSuccess() {
-  const data = readlinkSync(testLink);
-  assertEquals(typeof data, "string");
-  assertEquals(data as string, testLinkPath);
-});
-
-test(function readlinkEncodeBufferSuccess() {
-  const data = readlinkSync(testLink, { encoding: "buffer" });
-  assert(data instanceof Uint8Array);
-  assertEquals(new TextDecoder().decode(data as Uint8Array), testLinkPath);
-  if (Deno.build.os === "win") {
-    run({
-      args: ["rm", testLink]
+  test(async function readlinkEncodeBufferSuccess() {
+    const data = await new Promise((res, rej) => {
+      readlink(testLink, { encoding: "buffer" }, (err, data) => {
+        if (err) {
+          rej(err);
+        }
+        res(data);
+      });
     });
-  } else {
+
+    assert(data instanceof Uint8Array);
+    assertEquals(new TextDecoder().decode(data as Uint8Array), testLinkPath);
+  });
+
+  test(function readlinkSyncSuccess() {
+    const data = readlinkSync(testLink);
+    assertEquals(typeof data, "string");
+    assertEquals(data as string, testLinkPath);
+  });
+
+  test(function readlinkEncodeBufferSuccess() {
+    const data = readlinkSync(testLink, { encoding: "buffer" });
+    assert(data instanceof Uint8Array);
+    assertEquals(new TextDecoder().decode(data as Uint8Array), testLinkPath);
     run({
       args: ["rm", "-rf", testLink]
     });
-  }
-});
+  });
+}
