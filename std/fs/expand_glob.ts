@@ -9,7 +9,7 @@ import {
   normalize
 } from "../path/mod.ts";
 import { WalkInfo, walk, walkSync } from "./walk.ts";
-import { assert } from "../testing/mod.ts";
+import { assert } from "../testing/asserts.ts";
 const { ErrorKind, cwd, stat, statSync } = Deno;
 type ErrorKind = Deno.ErrorKind;
 type DenoError = Deno.DenoError<ErrorKind>;

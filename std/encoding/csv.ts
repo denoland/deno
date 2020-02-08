@@ -5,6 +5,7 @@
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { StringReader } from "../io/readers.ts";
+import { assert } from "../testing/asserts.ts";
 
 const INVALID_RUNE = ["\r", "\n", '"'];
 
@@ -37,11 +38,15 @@ export interface ReadOptions {
 }
 
 function chkOptions(opt: ReadOptions): void {
-  if (!opt.comma) opt.comma = ",";
-  if (!opt.trimLeadingSpace) opt.trimLeadingSpace = false;
+  if (!opt.comma) {
+    opt.comma = ",";
+  }
+  if (!opt.trimLeadingSpace) {
+    opt.trimLeadingSpace = false;
+  }
   if (
-    INVALID_RUNE.includes(opt.comma!) ||
-    INVALID_RUNE.includes(opt.comment!) ||
+    INVALID_RUNE.includes(opt.comma) ||
+    INVALID_RUNE.includes(opt.comment) ||
     opt.comma === opt.comment
   ) {
     throw new Error("Invalid Delimiter");
@@ -81,7 +86,8 @@ async function read(
     return [];
   }
 
-  result = line.split(opt.comma!);
+  assert(opt.comma != null);
+  result = line.split(opt.comma);
 
   let quoteError = false;
   result = result.map((r): string => {
@@ -141,7 +147,7 @@ export async function readMatrix(
     }
 
     if (lineResult.length > 0) {
-      if (_nbFields! && _nbFields! !== lineResult.length) {
+      if (_nbFields && _nbFields !== lineResult.length) {
         throw new ParseError(lineIndex, lineIndex, "wrong number of fields");
       }
       result.push(lineResult);
@@ -215,7 +221,9 @@ export async function parse(
         );
       }
     } else {
-      headers = r.shift()!.map(
+      const head = r.shift();
+      assert(head != null);
+      headers = head.map(
         (e): HeaderOptions => {
           return {
             name: e
@@ -245,7 +253,8 @@ export async function parse(
     });
   }
   if (opt.parse) {
-    return r.map((e: string[]): unknown => opt.parse!(e));
+    assert(opt.parse != null, "opt.parse must be set");
+    return r.map((e: string[]): unknown => opt.parse(e));
   }
   return r;
 }

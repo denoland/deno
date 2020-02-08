@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { deepAssign } from "../util/deep_assign.ts";
 import { pad } from "../strings/pad.ts";
+import { assert } from "../testing/asserts.ts";
 
 class KeyValuePair {
   constructor(public key: string, public value: unknown) {}
@@ -138,15 +139,16 @@ class Parser {
     }
   }
   _groupToOutput(): void {
-    const arrProperty = this.context
-      .currentGroup!.name.replace(/"/g, "")
+    assert(this.context.currentGroup != null, "currentGroup must be set");
+    const arrProperty = this.context.currentGroup.name
+      .replace(/"/g, "")
       .replace(/'/g, "")
       .split(".");
     let u = {};
-    if (this.context.currentGroup!.type === "array") {
-      u = this._unflat(arrProperty, this.context.currentGroup!.arrValues);
+    if (this.context.currentGroup.type === "array") {
+      u = this._unflat(arrProperty, this.context.currentGroup.arrValues);
     } else {
-      u = this._unflat(arrProperty, this.context.currentGroup!.objValues);
+      u = this._unflat(arrProperty, this.context.currentGroup.objValues);
     }
     deepAssign(this.context.output, u);
     delete this.context.currentGroup;
@@ -170,10 +172,14 @@ class Parser {
     }
 
     let type;
-    let name = line.match(captureReg)![1];
+    let m = line.match(captureReg);
+    assert(m != null, "line mut be matched");
+    let name = m[1];
     if (name.match(/\[.*\]/)) {
       type = "array";
-      name = name.match(captureReg)![1];
+      m = name.match(captureReg);
+      assert(m != null, "name must be matched");
+      name = m[1];
     } else {
       type = "object";
     }
