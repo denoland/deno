@@ -26,6 +26,7 @@ use serde_json::Value;
 use std;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -34,8 +35,15 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-#[derive(Clone, Deref)]
+#[derive(Clone)]
 pub struct State(Rc<RefCell<StateInner>>);
+
+impl Deref for State {
+  type Target = Rc<RefCell<StateInner>>;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct StateInner {
@@ -45,7 +53,7 @@ pub struct StateInner {
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
-  pub metrics: Rc<Metrics>,
+  pub metrics: Metrics,
   pub global_timer: GlobalTimer,
   pub workers: HashMap<u32, WorkerChannelsExternal>,
   pub worker_channels_internal: Option<WorkerChannelsInternal>,
@@ -222,7 +230,7 @@ impl State {
       main_module,
       permissions,
       import_map,
-      metrics: Rc::new(Metrics::default()),
+      metrics: Metrics::default(),
       global_timer: GlobalTimer::new(),
       worker_channels_internal: None,
       workers: HashMap::new(),
@@ -259,7 +267,7 @@ impl State {
       main_module,
       permissions,
       import_map: None,
-      metrics: Rc::new(Metrics::default()),
+      metrics: Metrics::default(),
       global_timer: GlobalTimer::new(),
       worker_channels_internal: None,
       workers: HashMap::new(),

@@ -346,7 +346,6 @@ dependencies = [
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "deno_core 0.32.0",
  "deno_typescript 0.32.0",
- "derive_deref 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "dirs 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "dlopen 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "dprint-plugin-typescript 0.3.0-alpha.6 (registry+https://github.com/rust-lang/crates.io-index)",
