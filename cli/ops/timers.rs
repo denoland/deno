@@ -26,7 +26,7 @@ fn op_global_timer_stop(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let state = state;
-  let mut t = state.global_timer.lock().unwrap();
+  let mut t = state.global_timer.borrow_mut();
   t.cancel();
   Ok(JsonOp::Sync(json!({})))
 }
@@ -45,7 +45,7 @@ fn op_global_timer(
   let val = args.timeout;
 
   let state = state;
-  let mut t = state.global_timer.lock().unwrap();
+  let mut t = state.global_timer.borrow_mut();
   let deadline = Instant::now() + Duration::from_millis(val);
   let f = t
     .new_timeout(deadline)

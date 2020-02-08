@@ -24,6 +24,7 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde_json::Value;
 use std;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
 use std::pin::Pin;
@@ -46,10 +47,10 @@ pub struct State {
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
   pub metrics: Rc<Metrics>,
-  pub global_timer: Arc<Mutex<GlobalTimer>>,
+  pub global_timer: Rc<RefCell<GlobalTimer>>,
   pub workers: Arc<Mutex<HashMap<u32, WorkerChannelsExternal>>>,
   pub worker_channels_internal: Arc<Mutex<Option<WorkerChannelsInternal>>>,
-  pub next_worker_id: Arc<Mutex<AtomicUsize>>,
+  pub next_worker_id: Rc<RefCell<AtomicUsize>>,
   pub start_time: Instant,
   pub seeded_rng: Option<Arc<Mutex<StdRng>>>,
   pub resource_table: Arc<Mutex<ResourceTable>>,
@@ -226,10 +227,10 @@ impl State {
       permissions,
       import_map,
       metrics: Rc::new(Metrics::default()),
-      global_timer: Arc::new(Mutex::new(GlobalTimer::new())),
+      global_timer: Rc::new(RefCell::new(GlobalTimer::new())),
       worker_channels_internal: Arc::new(Mutex::new(None)),
       workers: Arc::new(Mutex::new(HashMap::new())),
-      next_worker_id: Arc::new(Mutex::new(AtomicUsize::new(0))),
+      next_worker_id: Rc::new(RefCell::new(AtomicUsize::new(0))),
       start_time: Instant::now(),
       seeded_rng,
 
@@ -263,10 +264,10 @@ impl State {
       permissions,
       import_map: None,
       metrics: Rc::new(Metrics::default()),
-      global_timer: Arc::new(Mutex::new(GlobalTimer::new())),
+      global_timer: Rc::new(RefCell::new(GlobalTimer::new())),
       worker_channels_internal: Arc::new(Mutex::new(None)),
       workers: Arc::new(Mutex::new(HashMap::new())),
-      next_worker_id: Arc::new(Mutex::new(AtomicUsize::new(0))),
+      next_worker_id: Rc::new(RefCell::new(AtomicUsize::new(0))),
       start_time: Instant::now(),
       seeded_rng,
 
@@ -278,8 +279,10 @@ impl State {
   }
 
   pub fn add_child_worker(&self, handle: WorkerChannelsExternal) -> u32 {
-    let next_id = self.next_worker_id.lock().unwrap();
-    let worker_id = next_id.fetch_add(1, Ordering::Relaxed) as u32;
+    let worker_id = {
+      let next_id = self.next_worker_id.borrow_mut();
+      next_id.fetch_add(1, Ordering::Relaxed) as u32
+    };
     let mut workers_tl = self.workers.lock().unwrap();
     workers_tl.insert(worker_id, handle);
     worker_id
