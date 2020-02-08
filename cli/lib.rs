@@ -262,6 +262,7 @@ async fn install_command(
   exe_name: String,
   module_url: String,
   args: Vec<String>,
+  force: bool,
 ) {
   // Firstly fetch and compile module, this
   // ensures the module exists.
@@ -270,7 +271,7 @@ async fn install_command(
   fetch_command(fetch_flags, vec![module_url.to_string()]).await;
 
   let install_result =
-    installer::install(flags, dir, &exe_name, &module_url, args);
+    installer::install(flags, dir, &exe_name, &module_url, args, force);
   if let Err(e) = install_result {
     print_msg_and_exit(&e.to_string());
   }
@@ -447,7 +448,8 @@ pub fn main() {
         exe_name,
         module_url,
         args,
-      } => install_command(flags, dir, exe_name, module_url, args).await,
+        force,
+      } => install_command(flags, dir, exe_name, module_url, args, force).await,
       DenoSubcommand::Repl => run_repl(flags).await,
       DenoSubcommand::Run { script } => run_script(flags, script).await,
       DenoSubcommand::Types => types_command(),
