@@ -1,4 +1,5 @@
-#!/usr/bin/env -S deno run
+#!/bin/sh
+":" //; exec /usr/bin/env deno run "$0" "$@"
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { runIfMain } from "../testing/mod.ts";
 

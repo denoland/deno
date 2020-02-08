@@ -1,4 +1,5 @@
-#!/usr/bin/env -S deno -A
+#!/bin/sh
+":" //; exec /usr/bin/env deno run -A "$0" "$@"
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { parse } from "../flags/mod.ts";
 import { ExpandGlobOptions, expandGlob } from "../fs/mod.ts";

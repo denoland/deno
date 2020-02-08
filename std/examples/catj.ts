@@ -1,4 +1,5 @@
-#!/usr/bin/env -S deno --allow-read
+#!/bin/sh
+":" //; exec /usr/bin/env deno run --allow-read "$0" "$@"
 // Ported from: https://github.com/soheilpro/catj
 // Copyright (c) 2014 Soheil Rashidi
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
