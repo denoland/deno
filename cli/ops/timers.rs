@@ -25,9 +25,8 @@ fn op_global_timer_stop(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let state = state;
-  let mut t = state.global_timer.borrow_mut();
-  t.cancel();
+  let mut state = state.borrow_mut();
+  state.global_timer.cancel();
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -44,10 +43,10 @@ fn op_global_timer(
   let args: GlobalTimerArgs = serde_json::from_value(args)?;
   let val = args.timeout;
 
-  let state = state;
-  let mut t = state.global_timer.borrow_mut();
+  let mut state = state.borrow_mut();
   let deadline = Instant::now() + Duration::from_millis(val);
-  let f = t
+  let f = state
+    .global_timer
     .new_timeout(deadline)
     .then(move |_| futures::future::ok(json!({})));
 
@@ -63,6 +62,7 @@ fn op_now(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
+  let state = state.borrow();
   let seconds = state.start_time.elapsed().as_secs();
   let mut subsec_nanos = state.start_time.elapsed().subsec_nanos();
   let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
@@ -70,7 +70,7 @@ fn op_now(
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if !state.permissions.borrow().allow_hrtime.is_allow() {
+  if !state.permissions.allow_hrtime.is_allow() {
     subsec_nanos -= subsec_nanos % reduced_time_precision
   }
 

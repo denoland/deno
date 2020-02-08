@@ -20,9 +20,8 @@ fn op_get_random_values(
 ) -> Result<JsonOp, ErrBox> {
   assert!(zero_copy.is_some());
 
-  if let Some(ref seeded_rng) = state.seeded_rng {
-    let mut rng = seeded_rng.borrow_mut();
-    rng.fill(&mut zero_copy.unwrap()[..]);
+  if let Some(ref mut seeded_rng) = state.borrow_mut().seeded_rng {
+    seeded_rng.fill(&mut zero_copy.unwrap()[..]);
   } else {
     let mut rng = thread_rng();
     rng.fill(&mut zero_copy.unwrap()[..]);

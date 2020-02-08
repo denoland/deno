@@ -56,8 +56,8 @@ fn op_signal_bind(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: BindSignalArgs = serde_json::from_value(args)?;
-  let mut table = state.resource_table.borrow_mut();
-  let rid = table.add(
+  let mut state = state.borrow_mut();
+  let rid = state.resource_table.add(
     "signal",
     Box::new(SignalStreamResource(
       signal(SignalKind::from_raw(args.signo)).expect(""),
@@ -80,8 +80,10 @@ fn op_signal_poll(
   let state_ = state.clone();
 
   let future = poll_fn(move |cx| {
-    let mut table = state_.resource_table.borrow_mut();
-    if let Some(mut signal) = table.get_mut::<SignalStreamResource>(rid) {
+    let mut state = state_.borrow_mut();
+    if let Some(mut signal) =
+      state.resource_table.get_mut::<SignalStreamResource>(rid)
+    {
       signal.1 = Some(cx.waker().clone());
       return signal.0.poll_recv(cx);
     }
@@ -100,8 +102,8 @@ pub fn op_signal_unbind(
 ) -> Result<JsonOp, ErrBox> {
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let mut table = state.resource_table.borrow_mut();
-  let resource = table.get::<SignalStreamResource>(rid);
+  let mut state = state.borrow_mut();
+  let resource = state.resource_table.get::<SignalStreamResource>(rid);
   if let Some(signal) = resource {
     if let Some(waker) = &signal.1 {
       // Wakes up the pending poll if exists.
@@ -109,7 +111,7 @@ pub fn op_signal_unbind(
       waker.clone().wake();
     }
   }
-  table.close(rid).ok_or_else(bad_resource)?;
+  state.resource_table.close(rid).ok_or_else(bad_resource)?;
   Ok(JsonOp::Sync(json!({})))
 }
 

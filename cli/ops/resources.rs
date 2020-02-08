@@ -13,7 +13,7 @@ fn op_resources(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let resource_table = state.resource_table.borrow();
-  let serialized_resources = resource_table.entries();
+  let state = state.borrow();
+  let serialized_resources = state.resource_table.entries();
   Ok(JsonOp::Sync(json!(serialized_resources)))
 }

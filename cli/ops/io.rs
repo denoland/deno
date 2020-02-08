@@ -166,9 +166,9 @@ where
       panic!("poll a Read after it's done");
     }
 
-    // TODO(bartlomieju): rewrite as poll_fn(|| {})
-    let mut table = inner.state.resource_table.borrow_mut();
-    let resource = table
+    let mut state = inner.state.borrow_mut();
+    let resource = state
+      .resource_table
       .get_mut::<StreamResource>(inner.rid)
       .ok_or_else(bad_resource)?;
     let nread = ready!(resource.poll_read(cx, &mut inner.buf.as_mut()[..]))?;
@@ -295,8 +295,9 @@ where
     }
 
     if inner.io_state == IoState::Pending {
-      let mut table = inner.state.resource_table.borrow_mut();
-      let resource = table
+      let mut state = inner.state.borrow_mut();
+      let resource = state
+        .resource_table
         .get_mut::<StreamResource>(inner.rid)
         .ok_or_else(bad_resource)?;
 
@@ -310,8 +311,9 @@ where
     // Figure out why it's needed and preferably remove it.
     // https://github.com/denoland/deno/issues/3565
     if inner.io_state == IoState::Flush {
-      let mut table = inner.state.resource_table.borrow_mut();
-      let resource = table
+      let mut state = inner.state.borrow_mut();
+      let resource = state
+        .resource_table
         .get_mut::<StreamResource>(inner.rid)
         .ok_or_else(bad_resource)?;
       ready!(resource.poll_flush(cx))?;

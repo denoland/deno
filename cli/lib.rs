@@ -2,6 +2,8 @@
 #![deny(warnings)]
 
 #[macro_use]
+extern crate derive_deref;
+#[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
@@ -113,11 +115,11 @@ fn create_main_worker(
 
   let state_ = state.clone();
   {
-    let mut resource_table = state_.resource_table.borrow_mut();
+    let mut state = state_.borrow_mut();
     let (stdin, stdout, stderr) = get_stdio();
-    resource_table.add("stdin", Box::new(stdin));
-    resource_table.add("stdout", Box::new(stdout));
-    resource_table.add("stderr", Box::new(stderr));
+    state.resource_table.add("stdin", Box::new(stdin));
+    state.resource_table.add("stdout", Box::new(stdout));
+    state.resource_table.add("stderr", Box::new(stderr));
   }
 
   MainWorker::new("main".to_string(), startup_data::deno_isolate_init(), state)
@@ -157,7 +159,7 @@ async fn print_file_info(
   worker: &MainWorker,
   module_specifier: ModuleSpecifier,
 ) {
-  let global_state = worker.state.global_state.clone();
+  let global_state = worker.state.borrow().global_state.clone();
 
   let maybe_source_file = global_state
     .file_fetcher

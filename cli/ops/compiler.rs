@@ -37,11 +37,15 @@ fn op_cache(
   let module_specifier = ModuleSpecifier::resolve_url(&args.module_id)
     .expect("Should be valid module specifier");
 
-  state.global_state.ts_compiler.cache_compiler_output(
-    &module_specifier,
-    &args.extension,
-    &args.contents,
-  )?;
+  state
+    .borrow()
+    .global_state
+    .ts_compiler
+    .cache_compiler_output(
+      &module_specifier,
+      &args.extension,
+      &args.contents,
+    )?;
 
   Ok(JsonOp::Sync(json!({})))
 }
@@ -93,17 +97,16 @@ fn op_fetch_source_files(
   };
 
   let mut futures = vec![];
+  let global_state = state.borrow().global_state.clone();
+
   for specifier in &args.specifiers {
     let resolved_specifier =
       ModuleSpecifier::resolve_url(&specifier).expect("Invalid specifier");
-    let fut = state
-      .global_state
+    let fut = global_state
       .file_fetcher
       .fetch_source_file_async(&resolved_specifier, ref_specifier.clone());
     futures.push(fut);
   }
-
-  let global_state = state.global_state.clone();
 
   let future = Box::pin(async move {
     let files = try_join_all(futures).await?;

@@ -34,23 +34,25 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
+#[derive(Clone, Deref)]
+pub struct State(Rc<RefCell<StateInner>>);
+
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-#[derive(Clone)]
-pub struct State {
+pub struct StateInner {
   pub global_state: GlobalState,
-  pub permissions: Rc<RefCell<DenoPermissions>>,
+  pub permissions: DenoPermissions,
   pub main_module: ModuleSpecifier,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
   pub metrics: Rc<Metrics>,
-  pub global_timer: Rc<RefCell<GlobalTimer>>,
-  pub workers: Rc<RefCell<HashMap<u32, WorkerChannelsExternal>>>,
-  pub worker_channels_internal: Rc<RefCell<Option<WorkerChannelsInternal>>>,
-  pub next_worker_id: Rc<RefCell<AtomicUsize>>,
+  pub global_timer: GlobalTimer,
+  pub workers: HashMap<u32, WorkerChannelsExternal>,
+  pub worker_channels_internal: Option<WorkerChannelsInternal>,
+  pub next_worker_id: AtomicUsize,
   pub start_time: Instant,
-  pub seeded_rng: Option<Rc<RefCell<StdRng>>>,
-  pub resource_table: Rc<RefCell<ResourceTable>>,
+  pub seeded_rng: Option<StdRng>,
+  pub resource_table: ResourceTable,
   pub target_lib: TargetLib,
 }
 
@@ -141,7 +143,7 @@ impl Loader for State {
     is_main: bool,
   ) -> Result<ModuleSpecifier, ErrBox> {
     if !is_main {
-      if let Some(import_map) = &self.import_map {
+      if let Some(import_map) = &self.borrow().import_map {
         let result = import_map.resolve(specifier, referrer)?;
         if let Some(r) = result {
           return Ok(r);
@@ -168,11 +170,12 @@ impl Loader for State {
       }
     }
 
+    let state = self.borrow();
     // TODO(bartlomieju): incrementing resolve_count here has no sense...
-    self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
+    state.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
     let module_url_specified = module_specifier.to_string();
-    let global_state = self.global_state.clone();
-    let target_lib = self.target_lib.clone();
+    let global_state = state.global_state.clone();
+    let target_lib = state.target_lib.clone();
     let fut = async move {
       let compiled_module = global_state
         .fetch_compiled_module(module_specifier, maybe_referrer, target_lib)
@@ -204,7 +207,7 @@ impl State {
       };
 
     let seeded_rng = match global_state.flags.seed {
-      Some(seed) => Some(Rc::new(RefCell::new(StdRng::seed_from_u64(seed)))),
+      Some(seed) => Some(StdRng::seed_from_u64(seed)),
       None => None,
     };
 
@@ -214,24 +217,24 @@ impl State {
       global_state.permissions.clone()
     };
 
-    let state = State {
+    let state = Rc::new(RefCell::new(StateInner {
       global_state,
       main_module,
-      permissions: Rc::new(RefCell::new(permissions)),
+      permissions,
       import_map,
       metrics: Rc::new(Metrics::default()),
-      global_timer: Rc::new(RefCell::new(GlobalTimer::new())),
-      worker_channels_internal: Rc::new(RefCell::new(None)),
-      workers: Rc::new(RefCell::new(HashMap::new())),
-      next_worker_id: Rc::new(RefCell::new(AtomicUsize::new(0))),
+      global_timer: GlobalTimer::new(),
+      worker_channels_internal: None,
+      workers: HashMap::new(),
+      next_worker_id: AtomicUsize::new(0),
       start_time: Instant::now(),
       seeded_rng,
 
-      resource_table: Rc::new(RefCell::new(ResourceTable::default())),
+      resource_table: ResourceTable::default(),
       target_lib: TargetLib::Main,
-    };
+    }));
 
-    Ok(state)
+    Ok(Self(state))
   }
 
   /// If `shared_permission` is None then permissions from globa state are used.
@@ -241,7 +244,7 @@ impl State {
     main_module: ModuleSpecifier,
   ) -> Result<Self, ErrBox> {
     let seeded_rng = match global_state.flags.seed {
-      Some(seed) => Some(Rc::new(RefCell::new(StdRng::seed_from_u64(seed)))),
+      Some(seed) => Some(StdRng::seed_from_u64(seed)),
       None => None,
     };
 
@@ -251,69 +254,67 @@ impl State {
       global_state.permissions.clone()
     };
 
-    let state = State {
+    let state = Rc::new(RefCell::new(StateInner {
       global_state,
       main_module,
-      permissions: Rc::new(RefCell::new(permissions)),
+      permissions,
       import_map: None,
       metrics: Rc::new(Metrics::default()),
-      global_timer: Rc::new(RefCell::new(GlobalTimer::new())),
-      worker_channels_internal: Rc::new(RefCell::new(None)),
-      workers: Rc::new(RefCell::new(HashMap::new())),
-      next_worker_id: Rc::new(RefCell::new(AtomicUsize::new(0))),
+      global_timer: GlobalTimer::new(),
+      worker_channels_internal: None,
+      workers: HashMap::new(),
+      next_worker_id: AtomicUsize::new(0),
       start_time: Instant::now(),
       seeded_rng,
 
-      resource_table: Rc::new(RefCell::new(ResourceTable::default())),
+      resource_table: ResourceTable::default(),
       target_lib: TargetLib::Worker,
-    };
+    }));
 
-    Ok(state)
+    Ok(Self(state))
   }
 
   pub fn add_child_worker(&self, handle: WorkerChannelsExternal) -> u32 {
-    let worker_id = {
-      let next_id = self.next_worker_id.borrow_mut();
-      next_id.fetch_add(1, Ordering::Relaxed) as u32
-    };
-    let mut workers_tl = self.workers.borrow_mut();
-    workers_tl.insert(worker_id, handle);
+    let mut inner_state = self.borrow_mut();
+    let worker_id =
+      inner_state.next_worker_id.fetch_add(1, Ordering::Relaxed) as u32;
+    inner_state.workers.insert(worker_id, handle);
     worker_id
   }
 
   #[inline]
   pub fn check_read(&self, path: &Path) -> Result<(), ErrBox> {
-    self.permissions.borrow().check_read(path)
+    self.borrow().permissions.check_read(path)
   }
 
   #[inline]
   pub fn check_write(&self, path: &Path) -> Result<(), ErrBox> {
-    self.permissions.borrow().check_write(path)
+    self.borrow().permissions.check_write(path)
   }
 
   #[inline]
   pub fn check_env(&self) -> Result<(), ErrBox> {
-    self.permissions.borrow().check_env()
+    self.borrow().permissions.check_env()
   }
 
   #[inline]
   pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
-    self.permissions.borrow().check_net(hostname, port)
+    self.borrow().permissions.check_net(hostname, port)
   }
 
   #[inline]
   pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
-    self.permissions.borrow().check_net_url(url)
+    self.borrow().permissions.check_net_url(url)
   }
 
   #[inline]
   pub fn check_run(&self) -> Result<(), ErrBox> {
-    self.permissions.borrow().check_run()
+    self.borrow().permissions.check_run()
   }
 
   #[inline]
   pub fn check_plugin(&self, filename: &Path) -> Result<(), ErrBox> {
-    self.permissions.borrow().check_plugin(filename)
+    self.borrow().permissions.check_plugin(filename)
   }
 
   pub fn check_dyn_import(
@@ -357,20 +358,22 @@ impl State {
     bytes_sent_control: usize,
     bytes_sent_data: usize,
   ) {
-    self.metrics.ops_dispatched.fetch_add(1, Ordering::SeqCst);
-    self
+    let state = self.borrow();
+    state.metrics.ops_dispatched.fetch_add(1, Ordering::SeqCst);
+    state
       .metrics
       .bytes_sent_control
       .fetch_add(bytes_sent_control, Ordering::SeqCst);
-    self
+    state
       .metrics
       .bytes_sent_data
       .fetch_add(bytes_sent_data, Ordering::SeqCst);
   }
 
   pub fn metrics_op_completed(&self, bytes_received: usize) {
-    self.metrics.ops_completed.fetch_add(1, Ordering::SeqCst);
-    self
+    let state = self.borrow();
+    state.metrics.ops_completed.fetch_add(1, Ordering::SeqCst);
+    state
       .metrics
       .bytes_received
       .fetch_add(bytes_received, Ordering::SeqCst);

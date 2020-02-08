@@ -30,7 +30,8 @@ fn op_format_error(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: FormatErrorArgs = serde_json::from_value(args)?;
-  let error = JSError::from_json(&args.error, &state.global_state.ts_compiler);
+  let error =
+    JSError::from_json(&args.error, &state.borrow().global_state.ts_compiler);
 
   Ok(JsonOp::Sync(json!({
     "error": error.to_string(),
@@ -57,7 +58,7 @@ fn op_apply_source_map(
     args.line.into(),
     args.column.into(),
     &mut mappings_map,
-    &state.global_state.ts_compiler,
+    &state.borrow().global_state.ts_compiler,
   );
 
   Ok(JsonOp::Sync(json!({

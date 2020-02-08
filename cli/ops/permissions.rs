@@ -43,9 +43,9 @@ pub fn op_query_permission(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let permissions = state.permissions.borrow();
+  let state = state.borrow();
   let resolved_path = args.path.as_ref().map(String::as_str).map(resolve_path);
-  let perm = permissions.get_permission_state(
+  let perm = state.permissions.get_permission_state(
     &args.name,
     &args.url.as_ref().map(String::as_str),
     &resolved_path.as_ref().map(String::as_str).map(Path::new),
@@ -59,7 +59,8 @@ pub fn op_revoke_permission(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let mut permissions = state.permissions.borrow_mut();
+  let mut state = state.borrow_mut();
+  let permissions = &mut state.permissions;
   match args.name.as_ref() {
     "run" => permissions.allow_run.revoke(),
     "read" => permissions.allow_read.revoke(),
@@ -85,7 +86,8 @@ pub fn op_request_permission(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let mut permissions = state.permissions.borrow_mut();
+  let mut state = state.borrow_mut();
+  let permissions = &mut state.permissions;
   let resolved_path = args.path.as_ref().map(String::as_str).map(resolve_path);
   let perm = match args.name.as_ref() {
     "run" => Ok(permissions.request_run()),

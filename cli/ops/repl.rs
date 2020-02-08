@@ -37,11 +37,11 @@ fn op_repl_start(
 
   debug!("op_repl_start {}", args.history_file);
   let history_path =
-    repl::history_path(&state.global_state.dir, &args.history_file);
+    repl::history_path(&state.borrow().global_state.dir, &args.history_file);
   let repl = repl::Repl::new(history_path);
+  let mut state = state.borrow_mut();
   let resource = ReplResource(Arc::new(Mutex::new(repl)));
-  let mut table = state.resource_table.borrow_mut();
-  let rid = table.add("repl", Box::new(resource));
+  let rid = state.resource_table.add("repl", Box::new(resource));
   Ok(JsonOp::Sync(json!(rid)))
 }
 
@@ -60,9 +60,11 @@ fn op_repl_readline(
   let rid = args.rid as u32;
   let prompt = args.prompt;
   debug!("op_repl_readline {} {}", rid, prompt);
-  let state = state.clone();
-  let table = state.resource_table.borrow_mut();
-  let resource = table.get::<ReplResource>(rid).ok_or_else(bad_resource)?;
+  let state = state.borrow();
+  let resource = state
+    .resource_table
+    .get::<ReplResource>(rid)
+    .ok_or_else(bad_resource)?;
   let repl = resource.0.clone();
 
   blocking_json(false, move || {

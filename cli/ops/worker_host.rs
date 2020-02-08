@@ -59,6 +59,11 @@ fn op_create_worker(
   let source_code = args.source_code.clone();
   let args_name = args.name;
   let parent_state = state.clone();
+  let state = state.borrow();
+  let global_state = state.global_state.clone();
+  let child_permissions = state.permissions.clone();
+  let referrer = state.main_module.to_string();
+  drop(state);
 
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WorkerChannelsExternal, ErrBox>>(1);
@@ -66,14 +71,10 @@ fn op_create_worker(
   // TODO(bartlomieju): Isn't this wrong?
   let result = ModuleSpecifier::resolve_url_or_path(&specifier)?;
   let module_specifier = if !has_source_code {
-    let referrer = parent_state.main_module.to_string();
     ModuleSpecifier::resolve_import(&specifier, &referrer)?
   } else {
     result
   };
-
-  let global_state = parent_state.global_state.clone();
-  let child_permissions = parent_state.permissions.borrow().clone();
 
   std::thread::spawn(move || {
     let result = State::new_for_worker(
@@ -142,10 +143,9 @@ fn op_host_close_worker(
 ) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
-  let state_ = state.clone();
+  let mut state = state.borrow_mut();
 
-  let mut workers_table = state_.workers.borrow_mut();
-  let maybe_worker_handle = workers_table.remove(&id);
+  let maybe_worker_handle = state.workers.remove(&id);
   if let Some(worker_handle) = maybe_worker_handle {
     let mut sender = worker_handle.sender.clone();
     sender.close_channel();
@@ -170,11 +170,11 @@ fn op_host_get_message(
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: HostGetMessageArgs = serde_json::from_value(args)?;
-  let state_ = state.clone();
   let id = args.id as u32;
-  let table = state_.workers.borrow();
+
+  let state = state.borrow();
   // TODO: don't return bad resource anymore
-  let worker_handle = table.get(&id).ok_or_else(bad_resource)?;
+  let worker_handle = state.workers.get(&id).ok_or_else(bad_resource)?;
   let fut = worker_handle.get_message();
   let op = async move {
     let maybe_buf = fut.await;
@@ -199,9 +199,9 @@ fn op_host_post_message(
   let msg = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
 
   debug!("post message to worker {}", id);
-  let table = state.workers.borrow();
+  let state = state.borrow();
   // TODO: don't return bad resource anymore
-  let worker_handle = table.get(&id).ok_or_else(bad_resource)?;
+  let worker_handle = state.workers.get(&id).ok_or_else(bad_resource)?;
   let fut = worker_handle
     .post_message(msg)
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()));
@@ -214,6 +214,7 @@ fn op_metrics(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
+  let state = state.borrow();
   let m = &state.metrics;
 
   Ok(JsonOp::Sync(json!({

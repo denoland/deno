@@ -28,6 +28,7 @@ fn op_start(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
+  let state = state.borrow();
   let gs = &state.global_state;
 
   Ok(JsonOp::Sync(json!({

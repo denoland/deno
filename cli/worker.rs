@@ -121,15 +121,15 @@ impl Worker {
     let mut isolate =
       deno_core::EsIsolate::new(Box::new(state.clone()), startup_data, false);
 
-    let global_state_ = state.global_state.clone();
+    let global_state_ = state.borrow().global_state.clone();
     isolate.set_js_error_create(move |v8_exception| {
       JSError::from_v8_exception(v8_exception, &global_state_.ts_compiler)
     });
 
     let (internal_channels, external_channels) = create_channels();
     {
-      let mut c = state.worker_channels_internal.borrow_mut();
-      *c = Some(internal_channels);
+      let mut state = state.borrow_mut();
+      state.worker_channels_internal = Some(internal_channels);
     }
 
     Self {
@@ -166,7 +166,7 @@ impl Worker {
   ) -> Result<(), ErrBox> {
     let specifier = module_specifier.to_string();
     let id = self.isolate.load_module(&specifier, maybe_code).await?;
-    self.state.global_state.progress.done();
+    self.state.borrow().global_state.progress.done();
     if !is_prefetch {
       return self.isolate.mod_evaluate(id);
     }
@@ -287,8 +287,8 @@ mod tests {
         panic!("Future got unexpected error: {:?}", e);
       }
     });
-
-    let metrics = &state_.metrics;
+    let mut state = state_.borrow_mut();
+    let metrics = &mut state.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
     // Check that we didn't start the compiler.
     assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 0);
@@ -320,7 +320,8 @@ mod tests {
       }
     });
 
-    let metrics = &state_.metrics;
+    let mut state = state_.borrow_mut();
+    let metrics = &mut state.metrics;
     // TODO  assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
     // Check that we didn't start the compiler.
     assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 0);
@@ -360,6 +361,7 @@ mod tests {
     if let Err(e) = (&mut *worker).await {
       panic!("Future got unexpected error: {:?}", e);
     }
+    let state = state.borrow_mut();
     assert_eq!(state.metrics.resolve_count.load(Ordering::SeqCst), 3);
     // Check that we've only invoked the compiler once.
     assert_eq!(
