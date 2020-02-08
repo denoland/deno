@@ -59,6 +59,7 @@ pub enum DenoSubcommand {
     exe_name: String,
     module_url: String,
     args: Vec<String>,
+    force: bool,
   },
   Repl,
   Run {
@@ -320,6 +321,7 @@ fn install_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
     None
   };
 
+  let force = matches.is_present("force");
   let exe_name = matches.value_of("exe_name").unwrap().to_string();
   let cmd_values = matches.values_of("cmd").unwrap();
   let mut cmd_args = vec![];
@@ -336,6 +338,7 @@ fn install_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
     exe_name,
     module_url,
     args,
+    force,
   };
 }
 
@@ -579,6 +582,12 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
             .help("Installation directory (defaults to $HOME/.deno/bin)")
             .takes_value(true)
             .multiple(false))
+        .arg(
+          Arg::with_name("force")
+            .long("force")
+            .short("f")
+            .help("Forcefully overwrite existing installation")
+            .takes_value(false))
         .arg(
           Arg::with_name("exe_name")
             .required(true)
@@ -1791,6 +1800,7 @@ mod tests {
           exe_name: "deno_colors".to_string(),
           module_url: "https://deno.land/std/examples/colors.ts".to_string(),
           args: vec![],
+          force: false,
         },
         ..DenoFlags::default()
       }
@@ -1815,6 +1825,7 @@ mod tests {
           exe_name: "file_server".to_string(),
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
           args: vec![],
+          force: false,
         },
         allow_net: true,
         allow_read: true,
@@ -1824,12 +1835,13 @@ mod tests {
   }
 
   #[test]
-  fn install_with_args_and_dir() {
+  fn install_with_args_and_dir_and_force() {
     let r = flags_from_vec_safe(svec![
       "deno",
       "install",
       "-d",
       "/usr/local/bin",
+      "-f",
       "--allow-net",
       "--allow-read",
       "file_server",
@@ -1845,6 +1857,7 @@ mod tests {
           exe_name: "file_server".to_string(),
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
           args: svec!["arg1", "arg2"],
+          force: true,
         },
         allow_net: true,
         allow_read: true,

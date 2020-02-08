@@ -27,7 +27,7 @@ rusty_v8 = "0.2.1"
 name = "deno_core_http_bench"
 path = "examples/http_bench.rs"
 
-# tokio is only used for deno_core_http_bench
-[dev_dependencies]
+# These dependendencies are only used for deno_core_http_bench.
+[dev-dependencies]
+derive_deref = "1.1.0"
 tokio = { version = "0.2", features = ["rt-core", "tcp"] }
-num_cpus = "1.11.1"

@@ -77,4 +77,5 @@ impl ResourceTable {
 /// that allows to cast resource to concrete type in `TableResource::get`
 /// and `TableResource::get_mut` methods.
 pub trait Resource: Downcast + Any + Send {}
+impl<T> Resource for T where T: Downcast + Any + Send {}
 impl_downcast!(Resource);
