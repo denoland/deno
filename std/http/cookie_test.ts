@@ -2,9 +2,8 @@
 import { ServerRequest, Response } from "./server.ts";
 import { getCookies, delCookie, setCookie } from "./cookie.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
-import { test } from "../testing/mod.ts";
 
-test({
+Deno.test({
   name: "[HTTP] Cookie parser",
   fn(): void {
     const req = new ServerRequest();
@@ -32,7 +31,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[HTTP] Cookie Delete",
   fn(): void {
     const res: Response = {};
@@ -44,7 +43,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[HTTP] Cookie Set",
   fn(): void {
     const res: Response = {};

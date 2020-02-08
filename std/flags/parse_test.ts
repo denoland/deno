@@ -1,9 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
-test(function _arseArgs(): void {
+Deno.test(function parseArgs(): void {
   assertEquals(parse(["--no-moo"]), { moo: false, _: [] });
   assertEquals(parse(["-v", "a", "-v", "b", "-v", "c"]), {
     v: ["a", "b", "c"],
@@ -11,7 +10,7 @@ test(function _arseArgs(): void {
   });
 });
 
-test(function comprehensive(): void {
+Deno.test(function comprehensive(): void {
   assertEquals(
     parse([
       "--name=meowmers",
@@ -48,13 +47,13 @@ test(function comprehensive(): void {
   );
 });
 
-test(function flagBoolean(): void {
+Deno.test(function flagBoolean(): void {
   const argv = parse(["-t", "moo"], { boolean: "t" });
   assertEquals(argv, { t: true, _: ["moo"] });
   assertEquals(typeof argv.t, "boolean");
 });
 
-test(function flagBooleanValue(): void {
+Deno.test(function flagBooleanValue(): void {
   const argv = parse(["--verbose", "false", "moo", "-t", "true"], {
     boolean: ["t", "verbose"],
     default: { verbose: true }
@@ -70,7 +69,7 @@ test(function flagBooleanValue(): void {
   assertEquals(typeof argv.t, "boolean");
 });
 
-test(function newlinesInParams(): void {
+Deno.test(function newlinesInParams(): void {
   const args = parse(["-s", "X\nX"]);
   assertEquals(args, { _: [], s: "X\nX" });
 
@@ -82,7 +81,7 @@ test(function newlinesInParams(): void {
   assertEquals(args2, { _: [], s: "X\nX" });
 });
 
-test(function strings(): void {
+Deno.test(function strings(): void {
   const s = parse(["-s", "0001234"], { string: "s" }).s;
   assertEquals(s, "0001234");
   assertEquals(typeof s, "string");
@@ -92,7 +91,7 @@ test(function strings(): void {
   assertEquals(typeof x, "string");
 });
 
-test(function stringArgs(): void {
+Deno.test(function stringArgs(): void {
   const s = parse(["  ", "  "], { string: "_" })._;
   assertEquals(s.length, 2);
   assertEquals(typeof s[0], "string");
@@ -101,7 +100,7 @@ test(function stringArgs(): void {
   assertEquals(s[1], "  ");
 });
 
-test(function emptyStrings(): void {
+Deno.test(function emptyStrings(): void {
   const s = parse(["-s"], { string: "s" }).s;
   assertEquals(s, "");
   assertEquals(typeof s, "string");
@@ -119,7 +118,7 @@ test(function emptyStrings(): void {
   assertEquals(letters.t, "");
 });
 
-test(function stringAndAlias(): void {
+Deno.test(function stringAndAlias(): void {
   const x = parse(["--str", "000123"], {
     string: "s",
     alias: { s: "str" }
@@ -141,7 +140,7 @@ test(function stringAndAlias(): void {
   assertEquals(typeof y.s, "string");
 });
 
-test(function slashBreak(): void {
+Deno.test(function slashBreak(): void {
   assertEquals(parse(["-I/foo/bar/baz"]), { I: "/foo/bar/baz", _: [] });
   assertEquals(parse(["-xyz/foo/bar/baz"]), {
     x: true,
@@ -151,7 +150,7 @@ test(function slashBreak(): void {
   });
 });
 
-test(function alias(): void {
+Deno.test(function alias(): void {
   const argv = parse(["-f", "11", "--zoom", "55"], {
     alias: { z: "zoom" }
   });
@@ -160,7 +159,7 @@ test(function alias(): void {
   assertEquals(argv.f, 11);
 });
 
-test(function multiAlias(): void {
+Deno.test(function multiAlias(): void {
   const argv = parse(["-f", "11", "--zoom", "55"], {
     alias: { z: ["zm", "zoom"] }
   });
@@ -170,7 +169,7 @@ test(function multiAlias(): void {
   assertEquals(argv.f, 11);
 });
 
-test(function nestedDottedObjects(): void {
+Deno.test(function nestedDottedObjects(): void {
   const argv = parse([
     "--foo.bar",
     "3",
@@ -193,7 +192,7 @@ test(function nestedDottedObjects(): void {
   assertEquals(argv.beep, { boop: true });
 });
 
-test(function flagBuiltinProperty(): void {
+Deno.test(function flagBuiltinProperty(): void {
   const argv = parse(["--toString", "--valueOf", "foo"]);
   assertEquals(argv, { toString: true, valueOf: "foo", _: [] });
   assertEquals(typeof argv.toString, "boolean");

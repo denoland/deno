@@ -6,7 +6,6 @@
 // https://github.com/golang/go/blob/master/src/net/http/responsewrite_test.go
 
 const { Buffer } = Deno;
-import { test, runIfMain } from "../testing/mod.ts";
 import { assert, assertEquals, assertNotEquals } from "../testing/asserts.ts";
 import {
   Response,
@@ -88,7 +87,7 @@ const responseTests: ResponseTest[] = [
   }
 ];
 
-test(async function responseWrite(): Promise<void> {
+Deno.test(async function responseWrite(): Promise<void> {
   for (const testCase of responseTests) {
     const buf = new Buffer();
     const bufw = new BufWriter(buf);
@@ -103,7 +102,7 @@ test(async function responseWrite(): Promise<void> {
   }
 });
 
-test(async function requestContentLength(): Promise<void> {
+Deno.test(async function requestContentLength(): Promise<void> {
   // Has content length
   {
     const req = new ServerRequest();
@@ -137,7 +136,7 @@ test(async function requestContentLength(): Promise<void> {
   }
 });
 
-test(async function requestBodyWithContentLength(): Promise<void> {
+Deno.test(async function requestBodyWithContentLength(): Promise<void> {
   {
     const req = new ServerRequest();
     req.headers = new Headers();
@@ -161,7 +160,7 @@ test(async function requestBodyWithContentLength(): Promise<void> {
   }
 });
 
-test(async function requestBodyWithTransferEncoding(): Promise<void> {
+Deno.test(async function requestBodyWithTransferEncoding(): Promise<void> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
@@ -210,7 +209,7 @@ test(async function requestBodyWithTransferEncoding(): Promise<void> {
   }
 });
 
-test(async function requestBodyReaderWithContentLength(): Promise<void> {
+Deno.test(async function requestBodyReaderWithContentLength(): Promise<void> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
@@ -253,7 +252,9 @@ test(async function requestBodyReaderWithContentLength(): Promise<void> {
   }
 });
 
-test(async function requestBodyReaderWithTransferEncoding(): Promise<void> {
+Deno.test(async function requestBodyReaderWithTransferEncoding(): Promise<
+  void
+> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
@@ -320,7 +321,7 @@ test(async function requestBodyReaderWithTransferEncoding(): Promise<void> {
   }
 });
 
-test(async function writeUint8ArrayResponse(): Promise<void> {
+Deno.test(async function writeUint8ArrayResponse(): Promise<void> {
   const shortText = "Hello";
 
   const body = new TextEncoder().encode(shortText);
@@ -353,7 +354,7 @@ test(async function writeUint8ArrayResponse(): Promise<void> {
   assertEquals(eof, Deno.EOF);
 });
 
-test(async function writeStringResponse(): Promise<void> {
+Deno.test(async function writeStringResponse(): Promise<void> {
   const body = "Hello";
 
   const res: Response = { body };
@@ -385,7 +386,7 @@ test(async function writeStringResponse(): Promise<void> {
   assertEquals(eof, Deno.EOF);
 });
 
-test(async function writeStringReaderResponse(): Promise<void> {
+Deno.test(async function writeStringReaderResponse(): Promise<void> {
   const shortText = "Hello";
 
   const body = new StringReader(shortText);
@@ -423,7 +424,7 @@ test(async function writeStringReaderResponse(): Promise<void> {
   assertEquals(r.more, false);
 });
 
-test(async function readRequestError(): Promise<void> {
+Deno.test(async function readRequestError(): Promise<void> {
   const input = `GET / HTTP/1.1
 malformedHeader
 `;
@@ -441,7 +442,7 @@ malformedHeader
 // Ported from Go
 // https://github.com/golang/go/blob/go1.12.5/src/net/http/request_test.go#L377-L443
 // TODO(zekth) fix tests
-test(async function testReadRequestError(): Promise<void> {
+Deno.test(async function testReadRequestError(): Promise<void> {
   const testCases = [
     {
       in: "GET / HTTP/1.1\r\nheader: foo\r\n\r\n",
@@ -531,7 +532,7 @@ test(async function testReadRequestError(): Promise<void> {
 });
 
 // Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request_test.go#L535-L565
-test({
+Deno.test({
   name: "[http] parseHttpVersion",
   fn(): void {
     const testCases = [
@@ -565,7 +566,7 @@ test({
 });
 
 /* TODO(bartlomieju): after removing std/installer/ it hangs, fix and reenable
-test({
+Deno.test({
   name: "[http] destroyed connection",
   async fn(): Promise<void> {
     // Runs a simple server as another process
@@ -606,7 +607,7 @@ test({
 */
 
 /* TODO(bartlomieju): after removing std/installer/ it hangs, fix and reenable
-test({
+Deno.test({
   name: "[http] serveTLS",
   async fn(): Promise<void> {
     // Runs a simple server as another process
@@ -657,7 +658,7 @@ test({
 */
 
 /* TODO(bartlomieju): after removing std/installer/ it hangs, fix and reenable
-test({
+Deno.test({
   name: "[http] close server while iterating",
   async fn(): Promise<void> {
     const server = serve(":8123");
@@ -680,7 +681,7 @@ test({
 // we can test if connection is closed.
 /* TODO(bartlomieju): after removing std/installer/ it hangs, fix and reenable
 if (Deno.build.os !== "win") {
-  test({
+  Deno.test({
     name: "[http] respond error handling",
     async fn(): Promise<void> {
       const connClosedPromise = deferred();
@@ -737,4 +738,3 @@ if (Deno.build.os !== "win") {
   });
 }
 */
-runIfMain(import.meta);

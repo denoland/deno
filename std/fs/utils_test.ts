@@ -1,6 +1,5 @@
 // Copyright the Browserify authors. MIT License.
 
-import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { isSubdir, getFileInfoType, PathType } from "./utils.ts";
@@ -9,7 +8,7 @@ import { ensureDirSync } from "./ensure_dir.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-test(function _isSubdir(): void {
+Deno.test(function _isSubdir(): void {
   const pairs = [
     ["", "", false, path.posix.sep],
     ["/first/second", "/first", false, path.posix.sep],
@@ -34,7 +33,7 @@ test(function _isSubdir(): void {
   });
 });
 
-test(function _getFileInfoType(): void {
+Deno.test(function _getFileInfoType(): void {
   const pairs = [
     [path.join(testdataDir, "file_type_1"), "file"],
     [path.join(testdataDir, "file_type_dir_1"), "dir"]

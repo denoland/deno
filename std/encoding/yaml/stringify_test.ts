@@ -3,11 +3,10 @@
 // Copyright 2011-2015 by Vitaly Puzrin. All rights reserved. MIT license.
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { test } from "../../testing/mod.ts";
 import { assertEquals } from "../../testing/asserts.ts";
 import { stringify } from "./stringify.ts";
 
-test({
+Deno.test({
   name: "stringified correctly",
   fn(): void {
     const FIXTURE = {

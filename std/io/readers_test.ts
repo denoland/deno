@@ -1,5 +1,4 @@
-const { copy } = Deno;
-import { test } from "../testing/mod.ts";
+const { copy, test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import { MultiReader, StringReader } from "./readers.ts";
 import { StringWriter } from "./writers.ts";

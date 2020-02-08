@@ -1,6 +1,5 @@
 const { connect, run } = Deno;
 
-import { test, runIfMain } from "../testing/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
@@ -48,7 +47,7 @@ content-length: 8
 World 4
 `;
 
-test(async function serverPipelineRace(): Promise<void> {
+Deno.test(async function serverPipelineRace(): Promise<void> {
   await startServer();
 
   const conn = await connect({ port: 4501 });
@@ -62,5 +61,3 @@ test(async function serverPipelineRace(): Promise<void> {
   }
   killServer();
 });
-
-runIfMain(import.meta);

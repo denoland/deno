@@ -6,7 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  *
  */
-import { test } from "./mod.ts";
+const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import { format } from "./format.ts";
 
