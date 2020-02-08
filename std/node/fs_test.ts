@@ -7,9 +7,16 @@ const { run } = Deno;
 const testData = path.resolve(path.join("node", "testdata", "hello.txt"));
 const testLinkPath = "./testdata/hello.txt";
 const testLink = "hello.txt";
-run({
-  args: ["ln", "-s", testLinkPath, testLink]
-});
+
+if (Deno.build.os === "win") {
+  run({
+    args: ["mklink", "/J", testLink , testLinkPath]
+  });
+} else {
+  run({
+    args: ["ln", "-s", testLinkPath, testLink]
+  });
+}
 
 // Need to convert to promises, otherwise test() won't report error correctly.
 test(async function readFileSuccess() {
@@ -90,7 +97,13 @@ test(function readlinkEncodeBufferSuccess() {
   const data = readlinkSync(testLink, { encoding: "buffer" });
   assert(data instanceof Uint8Array);
   assertEquals(new TextDecoder().decode(data as Uint8Array), testLinkPath);
-  run({
-    args: ["rm", "-rf", testLink]
-  });
+  if (Deno.build.os === "win") {
+    run({
+      args: ["rmdir", testLink]
+    });
+  } else {
+    run({
+      args: ["rm", "-rf", testLink]
+    });
+  }
 });
