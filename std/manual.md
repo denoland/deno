@@ -646,8 +646,8 @@ JSX) files.
 
 ### Using plugins
 
-`deno_core` crate can be used to register custom ops in existing Rust code.
-See [the example](https://github.com/denoland/deno/blob/master/test_plugin/src/lib.rs).
+`deno_core` crate can be used to register custom ops in existing Rust code. See
+[the example](https://github.com/denoland/deno/blob/master/test_plugin/src/lib.rs).
 
 ### Testing if current file is the main program
 
