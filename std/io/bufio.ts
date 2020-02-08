@@ -345,7 +345,7 @@ export class BufReader implements Reader {
       try {
         await this._fill();
       } catch (err) {
-        err.partial = slice!;
+        err.partial = slice;
         throw err;
       }
     }
