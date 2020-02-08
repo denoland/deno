@@ -10,7 +10,7 @@ const testLink = "hello.txt";
 
 if (Deno.build.os === "win") {
   run({
-    args: ["mklink", "/J", testLink , testLinkPath]
+    args: ["mklink", "/J", testLink, testLinkPath]
   });
 } else {
   run({
