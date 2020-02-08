@@ -9,6 +9,8 @@ use futures;
 use futures::future::FutureExt;
 use std;
 use std::convert::From;
+use crate::worker::WorkerEvent;
+
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
@@ -25,6 +27,7 @@ pub fn init(i: &mut Isolate, s: &State) {
   );
 }
 
+// TODO: remove
 /// Get message from host as guest worker
 fn op_worker_get_message(
   state: &State,
@@ -61,7 +64,7 @@ fn op_worker_post_message(
     .worker_channels_internal
     .as_ref()
     .unwrap()
-    .post_message(d);
+    .post_event(WorkerEvent::Message(d));
   futures::executor::block_on(fut)
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
 
@@ -70,12 +73,13 @@ fn op_worker_post_message(
 
 /// Notify host that guest worker closes
 fn op_worker_close(
-  state: &ThreadSafeState,
+  state: &State,
   _args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let mut c = state.worker_channels_internal.lock().unwrap();
-  let mut sender = c.as_mut().unwrap().sender.clone();
-  sender.close_channel();
+  let state = state.borrow();
+  let channels = state.worker_channels_internal.as_ref().unwrap().clone();
+  futures::executor::block_on(channels.post_event(WorkerEvent::Close))
+    .expect("Failed to post message to host");
   Ok(JsonOp::Sync(json!({})))
 }

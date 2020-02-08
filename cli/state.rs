@@ -8,7 +8,7 @@ use crate::metrics::Metrics;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
 use crate::permissions::DenoPermissions;
-use crate::worker::WorkerChannelsExternal;
+use crate::worker::WorkerHandle;
 use crate::worker::WorkerChannelsInternal;
 use deno_core::Buf;
 use deno_core::CoreOp;
@@ -55,7 +55,7 @@ pub struct StateInner {
   pub import_map: Option<ImportMap>,
   pub metrics: Metrics,
   pub global_timer: GlobalTimer,
-  pub workers: HashMap<u32, WorkerChannelsExternal>,
+  pub workers: HashMap<u32, WorkerHandle>,
   pub worker_channels_internal: Option<WorkerChannelsInternal>,
   pub next_worker_id: AtomicUsize,
   pub start_time: Instant,
@@ -282,7 +282,7 @@ impl State {
     Ok(Self(state))
   }
 
-  pub fn add_child_worker(&self, handle: WorkerChannelsExternal) -> u32 {
+  pub fn add_child_worker(&self, handle: WorkerHandle) -> u32 {
     let mut inner_state = self.borrow_mut();
     let worker_id =
       inner_state.next_worker_id.fetch_add(1, Ordering::Relaxed) as u32;

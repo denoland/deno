@@ -24,20 +24,36 @@ use std::task::Poll;
 use tokio::sync::Mutex as AsyncMutex;
 use url::Url;
 
+pub enum WorkerEvent {
+  Message(Buf),
+  Error(ErrBox),
+  Idle,
+  Close,
+}
+
 /// Wraps mpsc channels so they can be referenced
 /// from ops and used to facilitate parent-child communication
 /// for workers.
 #[derive(Clone)]
 pub struct WorkerChannels {
-  pub sender: mpsc::Sender<Buf>,
-  pub receiver: Arc<AsyncMutex<mpsc::Receiver<Buf>>>,
+  pub sender: mpsc::Sender<WorkerEvent>,
+  pub receiver: Arc<AsyncMutex<mpsc::Receiver<WorkerEvent>>>,
 }
 
 impl WorkerChannels {
   /// Post message to worker as a host.
   pub async fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
+    self.post_event(WorkerEvent::Message(buf)).await
+  }
+
+  pub async fn post_event(&self, event: WorkerEvent) -> Result<(), ErrBox> {
     let mut sender = self.sender.clone();
-    sender.send(buf).map_err(ErrBox::from).await
+    sender.send(event).map_err(ErrBox::from).await
+  }
+
+  pub async fn get_event(&self) -> WorkerEvent {
+    let mut receiver = self.receiver.lock().await;
+    receiver.next().await.expect("Empty message")
   }
 
   /// Get message from worker as a host.
@@ -46,7 +62,13 @@ impl WorkerChannels {
 
     async move {
       let mut receiver = receiver_mutex.lock().await;
-      receiver.next().await
+      let event = receiver.next().await.expect("Empty message");
+      match event {
+        WorkerEvent::Message(buf) => buf.into(),
+        _ => {
+          panic!();
+        }
+      }
     }
     .boxed_local()
   }
@@ -68,32 +90,48 @@ impl DerefMut for WorkerChannelsInternal {
 }
 
 #[derive(Clone)]
-pub struct WorkerChannelsExternal(WorkerChannels);
+pub struct WorkerHandle {
+  channels: WorkerChannels,
+  // terminate_channel
+}
 
-impl Deref for WorkerChannelsExternal {
+impl WorkerHandle {
+  pub fn terminate(&self) {
+    todo!() 
+  }
+
+  /// Called when worker requests to be closed
+  pub fn notify_close(&self) {
+    todo!()
+  }
+}
+
+impl Deref for WorkerHandle {
   type Target = WorkerChannels;
   fn deref(&self) -> &Self::Target {
-    &self.0
+    &self.channels
   }
 }
 
-impl DerefMut for WorkerChannelsExternal {
+impl DerefMut for WorkerHandle {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.0
+    &mut self.channels
   }
 }
 
-fn create_channels() -> (WorkerChannelsInternal, WorkerChannelsExternal) {
-  let (in_tx, in_rx) = mpsc::channel::<Buf>(1);
-  let (out_tx, out_rx) = mpsc::channel::<Buf>(1);
+fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
+  let (in_tx, in_rx) = mpsc::channel::<WorkerEvent>(1);
+  let (out_tx, out_rx) = mpsc::channel::<WorkerEvent>(1);
   let internal_channels = WorkerChannelsInternal(WorkerChannels {
     sender: out_tx,
     receiver: Arc::new(AsyncMutex::new(in_rx)),
   });
-  let external_channels = WorkerChannelsExternal(WorkerChannels {
-    sender: in_tx,
-    receiver: Arc::new(AsyncMutex::new(out_rx)),
-  });
+  let external_channels = WorkerHandle {
+    channels: WorkerChannels {
+      sender: in_tx,
+      receiver: Arc::new(AsyncMutex::new(out_rx)),
+    }
+  };
   (internal_channels, external_channels)
 }
 
@@ -113,7 +151,7 @@ pub struct Worker {
   pub name: String,
   pub isolate: Box<deno_core::EsIsolate>,
   pub state: State,
-  external_channels: WorkerChannelsExternal,
+  external_channels: WorkerHandle,
 }
 
 impl Worker {
@@ -174,7 +212,7 @@ impl Worker {
   }
 
   /// Returns a way to communicate with the Worker from other threads.
-  pub fn thread_safe_handle(&self) -> WorkerChannelsExternal {
+  pub fn thread_safe_handle(&self) -> WorkerHandle {
     self.external_channels.clone()
   }
 }

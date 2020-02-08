@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::deno_error::bad_resource;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::deno_error::GetErrorKind;
@@ -9,10 +8,11 @@ use crate::global_state::GlobalState;
 use crate::ops::json_op;
 use crate::permissions::DenoPermissions;
 use crate::startup_data;
-use crate::tokio_util::create_basic_runtime;
 use crate::state::State;
+use crate::tokio_util::create_basic_runtime;
 use crate::web_worker::WebWorker;
-use crate::worker::WorkerChannelsExternal;
+use crate::worker::WorkerEvent;
+use crate::worker::WorkerHandle;
 use deno_core::*;
 use futures;
 use futures::future::Either;
@@ -20,9 +20,6 @@ use futures::future::FutureExt;
 use futures::future::TryFutureExt;
 use std;
 use std::convert::From;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::sync::Mutex;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
@@ -30,8 +27,8 @@ pub fn init(i: &mut Isolate, s: &State) {
     s.core_op(json_op(s.stateful_op(op_create_worker))),
   );
   i.register_op(
-    "host_close_worker",
-    s.core_op(json_op(s.stateful_op(op_host_close_worker))),
+    "host_terminate_worker",
+    s.core_op(json_op(s.stateful_op(op_host_terminate_worker))),
   );
   i.register_op(
     "host_post_message",
@@ -41,38 +38,15 @@ pub fn init(i: &mut Isolate, s: &State) {
     "host_get_message",
     s.core_op(json_op(s.stateful_op(op_host_get_message))),
   );
-  i.register_op("metrics", s.core_op(json_op(s.stateful_op(op_metrics))));
-}
-
-fn serialize_worker_result(result: Result<(), ErrBox>) -> Value {
-  if let Err(error) = result {
-    match error.kind() {
-      ErrorKind::JSError => {
-        let error = error.downcast::<JSError>().unwrap();
-        let exception: V8Exception = error.into();
-        json!({"error": {
-          "message": exception.message,
-          "fileName": exception.script_resource_name,
-          "lineNumber": exception.line_number,
-          "columnNumber": exception.start_column,
-        }})
-      }
-      _ => json!({"error": {
-        "message": error.to_string(),
-      }}),
-    }
-  } else {
-    json!({"ok": true})
-  }
 }
 
 fn create_web_worker(
   name: String,
   global_state: GlobalState,
-  permissions: Arc<Mutex<DenoPermissions>>,
+  permissions: DenoPermissions,
   specifier: ModuleSpecifier,
 ) -> Result<WebWorker, ErrBox> {
-  let state = ThreadSafeState::new_for_worker(
+  let state = State::new_for_worker(
     global_state,
     Some(permissions),
     specifier,
@@ -80,8 +54,6 @@ fn create_web_worker(
 
   let mut worker =
     WebWorker::new(name.to_string(), startup_data::deno_isolate_init(), state);
-
-  // 2. Bootstrap runtime
   let script = format!("bootstrapWorkerRuntime(\"{}\")", name);
   worker.execute(&script)?;
 
@@ -92,14 +64,16 @@ fn create_web_worker(
 fn run_worker_thread(
   name: String,
   global_state: GlobalState,
-  permissions: Arc<Mutex<DenoPermissions>>,
+  permissions: DenoPermissions,
   specifier: ModuleSpecifier,
   has_source_code: bool,
   source_code: String,
-) -> Result<WorkerChannelsExternal, ErrBox> {
+) -> Result<WorkerHandle, ErrBox> {
   let (handle_sender, handle_receiver) =
-    std::sync::mpsc::sync_channel::<Result<WorkerChannelsExternal, ErrBox>>(1);
+    std::sync::mpsc::sync_channel::<Result<WorkerHandle, ErrBox>>(1);
 
+  // TODO(bartlomieju): use thread builder and give thread descriptive name 
+  //  so it's easy to ID worker in htop/ps
   // TODO(bartlomieju): should we store JoinHandle as well?
   std::thread::spawn(move || {
     // Any error inside this block is terminal:
@@ -130,6 +104,9 @@ fn run_worker_thread(
     // - start driving worker's event loop
 
     let mut rt = create_basic_runtime();
+
+    // TODO: run with using select with terminate
+
     // Execute provided source code immediately
     let result = if has_source_code {
       worker.execute(&source_code)
@@ -144,53 +121,47 @@ fn run_worker_thread(
     };
 
     if let Err(e) = result {
-      let mut_channels = worker.state.worker_channels_internal.lock().unwrap();
-      let channels = mut_channels.as_ref().unwrap().clone();
-      let msg = serialize_worker_result(Err(e))
-        .to_string()
-        .into_boxed_str()
-        .into_boxed_bytes();
-      futures::executor::block_on(channels.post_message(msg))
+      let state = worker.state.borrow();
+      let channels = state.worker_channels_internal.as_ref().unwrap().clone();
+      futures::executor::block_on(channels.post_event(WorkerEvent::Error(e)))
         .expect("Failed to post message to host");
 
-      // Failing to execute script it terminal error
+      // Failure to execute script is a terminal error, bye, bye.
       return;
     }
+
+    // TODO: when worker polled and returns ready then send Worker::Idle message
+    // then host will be able to suspend us or whatever - use thread.park()
 
     // Drive worker event loop
     let fut = async move {
       loop {
+
+        // TODO(bartlomieju): figure out what happens here:
         let receive_msg_fut = {
-          let mut_channels =
-            worker.state.worker_channels_internal.lock().unwrap();
-          let channels = mut_channels.as_ref().unwrap().clone();
+          let state = worker.state.borrow();
+          let channels = state.worker_channels_internal.as_ref().unwrap().clone();
           channels.get_message()
         };
 
         let _result =
           match futures::future::select(&mut *worker, receive_msg_fut).await {
-            Either::Left((worker_result, _msg_fut)) => match worker_result {
-              Ok(()) => {
-                // worker finished scripts, no point in polling it
-                // until we receive next message from host (not valid if we add unref
-                // ops to worker)
-                eprintln!("worker done")
-              }
-              Err(e) => {
-                // serialize and send to host and decide what later -
-                // - ie. worker should not be polled unless exception is handled by host
-                let result = Err(e);
-                let mut_channels =
-                  worker.state.worker_channels_internal.lock().unwrap();
-                let channels = mut_channels.as_ref().unwrap().clone();
-                let msg = serialize_worker_result(result)
-                  .to_string()
-                  .into_boxed_str()
-                  .into_boxed_bytes();
-                // TODO: json!({ "type": "error", "error": serialized_error })
-                futures::executor::block_on(channels.post_message(msg))
-                  .expect("Failed to post message to host");
-              }
+            Either::Left((worker_result, _msg_fut)) => {
+              // worker finished scripts, no point in polling it
+              // until we receive next message from host (not valid if we add unref
+              // ops to worker) 
+
+              // serialize and send to host and decide what later -
+              // - ie. worker should not be polled unless exception is handled by host
+
+              let event = match worker_result {
+                Ok(()) => WorkerEvent::Idle,
+                Err(e) => WorkerEvent::Error(e),
+              };
+              let state = worker.state.borrow();
+              let channels = state.worker_channels_internal.as_ref().unwrap().clone();
+              futures::executor::block_on(channels.post_event(event))
+                .expect("Failed to post message to host");
             },
             Either::Right((maybe_messsage, _worker_fut)) => {
               match maybe_messsage {
@@ -249,11 +220,10 @@ fn op_create_worker(
   let parent_state = state.clone();
   let state = state.borrow();
   let global_state = state.global_state.clone();
-  let child_permissions = state.permissions.clone();
+  let permissions = state.permissions.clone();
   let referrer = state.main_module.to_string();
   drop(state);
 
-  let referrer = parent_state.main_module.to_string();
   let module_specifier =
     ModuleSpecifier::resolve_import(&specifier, &referrer)?;
   let worker_name = args_name.unwrap_or_else(|| {
@@ -281,7 +251,7 @@ struct WorkerArgs {
   id: i32,
 }
 
-fn op_host_close_worker(
+fn op_host_terminate_worker(
   state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
@@ -289,54 +259,66 @@ fn op_host_close_worker(
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let mut state = state.borrow_mut();
-
-  let maybe_worker_handle = state.workers.remove(&id);
-  if let Some(worker_handle) = maybe_worker_handle {
-    let mut sender = worker_handle.sender.clone();
-    sender.close_channel();
-
-    let mut receiver =
-      futures::executor::block_on(worker_handle.receiver.lock());
-    receiver.close();
-  };
-
+  let worker_handle = state.workers.remove(&id).expect("No worker handle found");
+  worker_handle.terminate();
   Ok(JsonOp::Sync(json!({})))
 }
 
-#[derive(Deserialize)]
-struct HostGetMessageArgs {
-  id: i32,
-}
 
+// TODO(bartlomieju): rename to get_event
 /// Get message from guest worker as host
 fn op_host_get_message(
   state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: HostGetMessageArgs = serde_json::from_value(args)?;
+  let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
-  let state = state.borrow();
-  // TODO: don't return bad resource anymore
-  let worker_handle = state.workers.get(&id).ok_or_else(bad_resource)?;
-  let fut = worker_handle.get_message();
+  let state_ = state.borrow();
+  let worker_handle = state_.workers.get(&id).expect("No worker handle found").clone();
+  let state_ = state.clone();
   let op = async move {
-    let maybe_buf = fut.await;
-
-    // Remove worker if null message
-    if maybe_buf.is_none() {
-      let mut table = state_.workers.lock().unwrap();
-      table.remove(&id);
+    match worker_handle.get_event().await {
+      WorkerEvent::Message(buf) => {
+        Ok(json!({ "type": "msg", "data": buf }))
+      },
+      WorkerEvent::Error(error) => match error.kind() {
+        ErrorKind::JSError => {
+          let error = error.downcast::<JSError>().unwrap();
+          let exception: V8Exception = error.into();
+          Ok(json!({
+            "type": "error", 
+            "error": {
+              "message": exception.message,
+              "fileName": exception.script_resource_name,
+              "lineNumber": exception.line_number,
+              "columnNumber": exception.start_column,
+            }
+          }))
+        }
+        _ => Ok(json!({
+          "type": "error", 
+          "error": {
+            "message": error.to_string(),
+          }
+        })),
+      },
+      WorkerEvent::Close => {
+        // worker requests to be terminated
+        // TODO: shutdown all channels
+        let mut state = state_.borrow_mut();
+        state.workers.remove(&id);
+        // TODO: worker_handle.fuse() ?????;
+        worker_handle.notify_close();
+        
+        Ok(json!({ "type": "close" }))
+      },
+      WorkerEvent::Idle => {
+        todo!()
+      },
     }
-
-    Ok(json!({ "data": maybe_buf }))
   };
   Ok(JsonOp::Async(op.boxed_local()))
-}
-
-#[derive(Deserialize)]
-struct HostPostMessageArgs {
-  id: i32,
 }
 
 /// Post message to guest worker as host
@@ -345,34 +327,16 @@ fn op_host_post_message(
   args: Value,
   data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: HostPostMessageArgs = serde_json::from_value(args)?;
+  let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let msg = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
 
   debug!("post message to worker {}", id);
   let state = state.borrow();
-  // TODO: don't return bad resource anymore
-  let worker_handle = state.workers.get(&id).ok_or_else(bad_resource)?;
+  let worker_handle = state.workers.get(&id).expect("No worker handle found");
   let fut = worker_handle
     .post_message(msg)
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()));
   futures::executor::block_on(fut)?;
   Ok(JsonOp::Sync(json!({})))
-}
-
-fn op_metrics(
-  state: &State,
-  _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
-  let state = state.borrow();
-  let m = &state.metrics;
-
-  Ok(JsonOp::Sync(json!({
-    "opsDispatched": m.ops_dispatched.load(Ordering::SeqCst) as u64,
-    "opsCompleted": m.ops_completed.load(Ordering::SeqCst) as u64,
-    "bytesSentControl": m.bytes_sent_control.load(Ordering::SeqCst) as u64,
-    "bytesSentData": m.bytes_sent_data.load(Ordering::SeqCst) as u64,
-    "bytesReceived": m.bytes_received.load(Ordering::SeqCst) as u64
-  })))
 }
