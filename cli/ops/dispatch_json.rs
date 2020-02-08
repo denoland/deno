@@ -103,15 +103,7 @@ where
   if is_sync {
     Ok(JsonOp::Sync(f()?))
   } else {
-    // TODO(ry) use thread pool.
-    let fut = crate::tokio_util::spawn_thread(f);
-    /*
-      let fut = async move {
-        tokio::task::spawn_blocking(move || f())
-          .await
-          .map_err(ErrBox::from)?
-      }.boxed_local();
-    */
+    let fut = async move { tokio::task::spawn_blocking(f).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }

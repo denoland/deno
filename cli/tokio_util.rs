@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use futures::Future;
 
 // TODO(ry) rename to run_local ?
 pub fn run_basic<F, R>(future: F) -> R
@@ -15,7 +14,9 @@ where
   rt.block_on(future)
 }
 
-pub fn spawn_thread<F, R>(f: F) -> impl Future<Output = R>
+// TODO(ry) maybe replace with tokio::task::spawn_blocking
+#[cfg(test)]
+pub fn spawn_thread<F, R>(f: F) -> impl std::future::Future<Output = R>
 where
   F: 'static + Send + FnOnce() -> R,
   R: 'static + Send,

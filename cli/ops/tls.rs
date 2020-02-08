@@ -7,7 +7,6 @@ use crate::deno_error::ErrorKind;
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::state::ThreadSafeState;
-use deno_core::Resource;
 use deno_core::*;
 use futures::future::FutureExt;
 use std;
@@ -184,8 +183,6 @@ pub struct TlsListenerResource {
   waker: Option<futures::task::AtomicWaker>,
   local_addr: SocketAddr,
 }
-
-impl Resource for TlsListenerResource {}
 
 impl Drop for TlsListenerResource {
   fn drop(&mut self) {

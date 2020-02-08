@@ -36,18 +36,18 @@ const scratchBytes = new Uint8Array(
 );
 assert(scratchBytes.byteLength === 3 * 4);
 
-function send(promiseId, opId, arg, zeroCopy = null) {
+function send(promiseId, opId, rid, zeroCopy = null) {
   scratch32[0] = promiseId;
-  scratch32[1] = arg;
+  scratch32[1] = rid;
   scratch32[2] = -1;
   return Deno.core.dispatch(opId, scratchBytes, zeroCopy);
 }
 
 /** Returns Promise<number> */
-function sendAsync(opId, arg, zeroCopy = null) {
+function sendAsync(opId, rid, zeroCopy = null) {
   const promiseId = nextPromiseId++;
   const p = createResolvable();
-  const buf = send(promiseId, opId, arg, zeroCopy);
+  const buf = send(promiseId, opId, rid, zeroCopy);
   if (buf) {
     const record = recordFromBuf(buf);
     // Sync result.
@@ -60,8 +60,8 @@ function sendAsync(opId, arg, zeroCopy = null) {
 }
 
 /** Returns i32 number */
-function sendSync(opId, arg) {
-  const buf = send(0, opId, arg);
+function sendSync(opId, rid) {
+  const buf = send(0, opId, rid);
   const record = recordFromBuf(buf);
   return record[2];
 }
@@ -131,7 +131,7 @@ async function main() {
   Deno.core.print("http_bench.js start\n");
 
   const listenerRid = listen();
-  Deno.core.print(`listening http://127.0.0.1:4544/ rid = ${listenerRid}\n`);
+  Deno.core.print(`listening http://127.0.0.1:4544/ rid=${listenerRid}\n`);
   while (true) {
     const rid = await accept(listenerRid);
     // Deno.core.print(`accepted ${rid}`);

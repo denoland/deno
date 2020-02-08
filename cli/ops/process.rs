@@ -75,8 +75,6 @@ struct ChildResource {
   child: tokio::process::Child,
 }
 
-impl Resource for ChildResource {}
-
 fn op_run(
   state: &ThreadSafeState,
   args: Value,
