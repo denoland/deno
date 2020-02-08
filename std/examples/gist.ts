@@ -1,5 +1,5 @@
 #!/bin/sh
-":" //; exec /usr/bin/env deno run --allow-net --allow-env "$0" "$@"
+":"; //; exec /usr/bin/env deno run --allow-net --allow-env "$0" "$@"
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { parse } from "https://deno.land/std/flags/mod.ts";
 

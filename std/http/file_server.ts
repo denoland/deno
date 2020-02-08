@@ -1,5 +1,5 @@
 #!/bin/sh
-":" //; exec /usr/bin/env deno run --allow-net "$0" "$@"
+":"; //; exec /usr/bin/env deno run --allow-net "$0" "$@"
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // This program serves files in the current directory over HTTP.
