@@ -1,5 +1,6 @@
 #!/bin/sh
-":"; //; exec /usr/bin/env deno run --reload --allow-run "$0" "$@"
+":" //; exec /usr/bin/env deno run --reload --allow-run "$0" "$@"
+  .charAt(0);
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import "./unit_tests.ts";
 import {
