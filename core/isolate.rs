@@ -781,7 +781,7 @@ pub mod tests {
           Mode::Async => {
             assert_eq!(control.len(), 1);
             assert_eq!(control[0], 42);
-            let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
+            let buf = vec![43u8].into_boxed_slice();
             Op::Async(futures::future::ok(buf).boxed())
           }
           Mode::AsyncUnref => {
@@ -790,14 +790,14 @@ pub mod tests {
             let fut = async {
               // This future never finish.
               futures::future::pending::<()>().await;
-              let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
+              let buf = vec![43u8].into_boxed_slice();
               Ok(buf)
             };
             Op::AsyncUnref(fut.boxed())
           }
           Mode::OverflowReqSync => {
             assert_eq!(control.len(), 100 * 1024 * 1024);
-            let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
+            let buf = vec![43u8].into_boxed_slice();
             Op::Sync(buf)
           }
           Mode::OverflowResSync => {
@@ -811,7 +811,7 @@ pub mod tests {
           }
           Mode::OverflowReqAsync => {
             assert_eq!(control.len(), 100 * 1024 * 1024);
-            let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
+            let buf = vec![43u8].into_boxed_slice();
             Op::Async(futures::future::ok(buf).boxed())
           }
           Mode::OverflowResAsync => {
@@ -1007,7 +1007,7 @@ pub mod tests {
         let control = new Uint8Array(100 * 1024 * 1024);
         let response = Deno.core.dispatch(1, control);
         assert(response instanceof Uint8Array);
-        assert(response.length == 4);
+        assert(response.length == 1);
         assert(response[0] == 43);
         assert(asyncRecv == 0);
         "#,
@@ -1046,7 +1046,7 @@ pub mod tests {
         r#"
          let asyncRecv = 0;
          Deno.core.setAsyncHandler(1, (buf) => {
-           assert(buf.byteLength === 4);
+           assert(buf.byteLength === 1);
            assert(buf[0] === 43);
            asyncRecv++;
          });
