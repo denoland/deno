@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
 use crate::ops;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core;
 use deno_core::Buf;
 use deno_core::ErrBox;
@@ -112,28 +112,24 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerChannelsExternal) {
 pub struct Worker {
   pub name: String,
   pub isolate: Box<deno_core::EsIsolate>,
-  pub state: ThreadSafeState,
+  pub state: State,
   external_channels: WorkerChannelsExternal,
 }
 
 impl Worker {
-  pub fn new(
-    name: String,
-    startup_data: StartupData,
-    state: ThreadSafeState,
-  ) -> Self {
+  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let mut isolate =
       deno_core::EsIsolate::new(Box::new(state.clone()), startup_data, false);
 
-    let global_state_ = state.global_state.clone();
+    let global_state_ = state.borrow().global_state.clone();
     isolate.set_js_error_create(move |v8_exception| {
       JSError::from_v8_exception(v8_exception, &global_state_.ts_compiler)
     });
 
     let (internal_channels, external_channels) = create_channels();
     {
-      let mut c = state.worker_channels_internal.lock().unwrap();
-      *c = Some(internal_channels);
+      let mut state = state.borrow_mut();
+      state.worker_channels_internal = Some(internal_channels);
     }
 
     Self {
@@ -170,7 +166,7 @@ impl Worker {
   ) -> Result<(), ErrBox> {
     let specifier = module_specifier.to_string();
     let id = self.isolate.load_module(&specifier, maybe_code).await?;
-    self.state.global_state.progress.done();
+    self.state.borrow().global_state.progress.done();
     if !is_prefetch {
       return self.isolate.mod_evaluate(id);
     }
@@ -203,11 +199,7 @@ impl Future for Worker {
 pub struct MainWorker(Worker);
 
 impl MainWorker {
-  pub fn new(
-    name: String,
-    startup_data: StartupData,
-    state: ThreadSafeState,
-  ) -> Self {
+  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let state_ = state.clone();
     let mut worker = Worker::new(name, startup_data, state_);
     {
@@ -257,7 +249,7 @@ mod tests {
   use crate::flags;
   use crate::global_state::GlobalState;
   use crate::startup_data;
-  use crate::state::ThreadSafeState;
+  use crate::state::State;
   use crate::tokio_util;
   use futures::executor::block_on;
   use std::sync::atomic::Ordering;
@@ -280,8 +272,7 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::DenoFlags::default()).unwrap();
     let state =
-      ThreadSafeState::new(global_state, None, module_specifier.clone())
-        .unwrap();
+      State::new(global_state, None, module_specifier.clone()).unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -296,8 +287,8 @@ mod tests {
         panic!("Future got unexpected error: {:?}", e);
       }
     });
-
-    let metrics = &state_.metrics;
+    let mut state = state_.borrow_mut();
+    let metrics = &mut state.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
     // Check that we didn't start the compiler.
     assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 0);
@@ -313,8 +304,7 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::DenoFlags::default()).unwrap();
     let state =
-      ThreadSafeState::new(global_state, None, module_specifier.clone())
-        .unwrap();
+      State::new(global_state, None, module_specifier.clone()).unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -330,7 +320,8 @@ mod tests {
       }
     });
 
-    let metrics = &state_.metrics;
+    let mut state = state_.borrow_mut();
+    let metrics = &mut state.metrics;
     // TODO  assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
     // Check that we didn't start the compiler.
     assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 0);
@@ -353,12 +344,8 @@ mod tests {
       ..flags::DenoFlags::default()
     };
     let global_state = GlobalState::new(flags).unwrap();
-    let state = ThreadSafeState::new(
-      global_state.clone(),
-      None,
-      module_specifier.clone(),
-    )
-    .unwrap();
+    let state =
+      State::new(global_state.clone(), None, module_specifier.clone()).unwrap();
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),
@@ -374,6 +361,7 @@ mod tests {
     if let Err(e) = (&mut *worker).await {
       panic!("Future got unexpected error: {:?}", e);
     }
+    let state = state.borrow_mut();
     assert_eq!(state.metrics.resolve_count.load(Ordering::SeqCst), 3);
     // Check that we've only invoked the compiler once.
     assert_eq!(
@@ -384,7 +372,7 @@ mod tests {
   }
 
   fn create_test_worker() -> MainWorker {
-    let state = ThreadSafeState::mock("./hello.js");
+    let state = State::mock("./hello.js");
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),
