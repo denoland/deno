@@ -62,12 +62,12 @@ function hasKey(obj: NestedMapping, keys: string[]): boolean {
 export function parse(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   args: any[],
-  initialOptions?: Partial<ArgParsingOptions>
+  initialOptions: Partial<ArgParsingOptions> = {}
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): { [key: string]: any } {
   const options: ArgParsingOptions = {
     ...DEFAULT_OPTIONS,
-    ...(initialOptions || {})
+    ...initialOptions
   };
 
   const flags: Flags = {
@@ -179,7 +179,7 @@ export function parse(
 
   function aliasIsBoolean(key: string): boolean {
     return getForce(aliases, key).some(function(x): boolean {
-      return getForce(flags.bools, x);
+      return typeof get(flags.bools, x) === "boolean";
     });
   }
 
@@ -216,12 +216,11 @@ export function parse(
     } else if (/^--no-.+/.test(arg)) {
       const m = arg.match(/^--no-(.+)/);
       assert(m != null);
-      const [key] = m;
-      setArg(key, false, arg);
+      setArg(m[1], false, arg);
     } else if (/^--.+/.test(arg)) {
       const m = arg.match(/^--(.+)/);
       assert(m != null);
-      const [key] = m;
+      const key = m[1];
       const next = args[i + 1];
       if (
         next !== undefined &&

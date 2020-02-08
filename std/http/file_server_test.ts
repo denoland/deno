@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test } from "../testing/mod.ts";
+import { test, runIfMain } from "../testing/mod.ts";
 import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
@@ -135,3 +135,5 @@ test(async function printHelp(): Promise<void> {
   helpProcess.close();
   helpProcess.stdout.close();
 });
+
+runIfMain(import.meta);
