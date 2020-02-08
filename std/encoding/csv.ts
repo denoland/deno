@@ -5,7 +5,7 @@
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { StringReader } from "../io/readers.ts";
-import { assert } from "../testing/mod.ts";
+import { assert } from "../testing/asserts.ts";
 
 const INVALID_RUNE = ["\r", "\n", '"'];
 

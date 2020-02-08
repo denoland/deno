@@ -28,7 +28,7 @@
  */
 import { MultiReader } from "../io/readers.ts";
 import { BufReader } from "../io/bufio.ts";
-import { assert } from "../testing/mod.ts";
+import { assert } from "../testing/asserts.ts";
 
 const recordSize = 512;
 const ustar = "ustar\u000000";

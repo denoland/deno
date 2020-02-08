@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { deepAssign } from "../util/deep_assign.ts";
 import { pad } from "../strings/pad.ts";
-import { assert } from "../testing/mod.ts";
+import { assert } from "../testing/asserts.ts";
 
 class KeyValuePair {
   constructor(public key: string, public value: unknown) {}
