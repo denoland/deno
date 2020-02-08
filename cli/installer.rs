@@ -60,9 +60,6 @@ fn generate_executable_file(
   file_path: PathBuf,
   args: Vec<String>,
 ) -> Result<(), Error> {
-  // On Windows if user is using Powershell .cmd extension is need to run the
-  // installed module.
-  // Generate batch script to satisfy that.
   let args: Vec<String> = args.iter().map(|c| format!("\"{}\"", c)).collect();
   let template = format!(
     r#"#!/bin/sh
