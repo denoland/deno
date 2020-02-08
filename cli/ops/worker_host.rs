@@ -73,7 +73,7 @@ fn op_create_worker(
   };
 
   let global_state = parent_state.global_state.clone();
-  let child_permissions = parent_state.permissions.clone();
+  let child_permissions = parent_state.permissions.borrow().clone();
 
   std::thread::spawn(move || {
     let result = State::new_for_worker(
@@ -144,7 +144,7 @@ fn op_host_close_worker(
   let id = args.id as u32;
   let state_ = state.clone();
 
-  let mut workers_table = state_.workers.lock().unwrap();
+  let mut workers_table = state_.workers.borrow_mut();
   let maybe_worker_handle = workers_table.remove(&id);
   if let Some(worker_handle) = maybe_worker_handle {
     let mut sender = worker_handle.sender.clone();
@@ -172,9 +172,9 @@ fn op_host_get_message(
   let args: HostGetMessageArgs = serde_json::from_value(args)?;
   let state_ = state.clone();
   let id = args.id as u32;
-  let mut table = state_.workers.lock().unwrap();
+  let table = state_.workers.borrow();
   // TODO: don't return bad resource anymore
-  let worker_handle = table.get_mut(&id).ok_or_else(bad_resource)?;
+  let worker_handle = table.get(&id).ok_or_else(bad_resource)?;
   let fut = worker_handle.get_message();
   let op = async move {
     let maybe_buf = fut.await;
@@ -199,9 +199,9 @@ fn op_host_post_message(
   let msg = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
 
   debug!("post message to worker {}", id);
-  let mut table = state.workers.lock().unwrap();
+  let table = state.workers.borrow();
   // TODO: don't return bad resource anymore
-  let worker_handle = table.get_mut(&id).ok_or_else(bad_resource)?;
+  let worker_handle = table.get(&id).ok_or_else(bad_resource)?;
   let fut = worker_handle
     .post_message(msg)
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()));

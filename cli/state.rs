@@ -41,18 +41,18 @@ use std::time::Instant;
 #[derive(Clone)]
 pub struct State {
   pub global_state: GlobalState,
-  pub permissions: Arc<Mutex<DenoPermissions>>,
+  pub permissions: Rc<RefCell<DenoPermissions>>,
   pub main_module: ModuleSpecifier,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
   pub metrics: Rc<Metrics>,
   pub global_timer: Rc<RefCell<GlobalTimer>>,
-  pub workers: Arc<Mutex<HashMap<u32, WorkerChannelsExternal>>>,
-  pub worker_channels_internal: Arc<Mutex<Option<WorkerChannelsInternal>>>,
+  pub workers: Rc<RefCell<HashMap<u32, WorkerChannelsExternal>>>,
+  pub worker_channels_internal: Rc<RefCell<Option<WorkerChannelsInternal>>>,
   pub next_worker_id: Rc<RefCell<AtomicUsize>>,
   pub start_time: Instant,
-  pub seeded_rng: Option<Arc<Mutex<StdRng>>>,
+  pub seeded_rng: Option<Rc<RefCell<StdRng>>>,
   pub resource_table: Arc<Mutex<ResourceTable>>,
   pub target_lib: TargetLib,
 }
@@ -201,7 +201,7 @@ impl State {
   /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new(
     global_state: GlobalState,
-    shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
+    shared_permissions: Option<DenoPermissions>,
     main_module: ModuleSpecifier,
   ) -> Result<Self, ErrBox> {
     let import_map: Option<ImportMap> =
@@ -211,25 +211,25 @@ impl State {
       };
 
     let seeded_rng = match global_state.flags.seed {
-      Some(seed) => Some(Arc::new(Mutex::new(StdRng::seed_from_u64(seed)))),
+      Some(seed) => Some(Rc::new(RefCell::new(StdRng::seed_from_u64(seed)))),
       None => None,
     };
 
     let permissions = if let Some(perm) = shared_permissions {
       perm
     } else {
-      Arc::new(Mutex::new(global_state.permissions.clone()))
+      global_state.permissions.clone()
     };
 
     let state = State {
       global_state,
       main_module,
-      permissions,
+      permissions: Rc::new(RefCell::new(permissions)),
       import_map,
       metrics: Rc::new(Metrics::default()),
       global_timer: Rc::new(RefCell::new(GlobalTimer::new())),
-      worker_channels_internal: Arc::new(Mutex::new(None)),
-      workers: Arc::new(Mutex::new(HashMap::new())),
+      worker_channels_internal: Rc::new(RefCell::new(None)),
+      workers: Rc::new(RefCell::new(HashMap::new())),
       next_worker_id: Rc::new(RefCell::new(AtomicUsize::new(0))),
       start_time: Instant::now(),
       seeded_rng,
@@ -244,29 +244,29 @@ impl State {
   /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new_for_worker(
     global_state: GlobalState,
-    shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
+    shared_permissions: Option<DenoPermissions>,
     main_module: ModuleSpecifier,
   ) -> Result<Self, ErrBox> {
     let seeded_rng = match global_state.flags.seed {
-      Some(seed) => Some(Arc::new(Mutex::new(StdRng::seed_from_u64(seed)))),
+      Some(seed) => Some(Rc::new(RefCell::new(StdRng::seed_from_u64(seed)))),
       None => None,
     };
 
     let permissions = if let Some(perm) = shared_permissions {
       perm
     } else {
-      Arc::new(Mutex::new(global_state.permissions.clone()))
+      global_state.permissions.clone()
     };
 
     let state = State {
       global_state,
       main_module,
-      permissions,
+      permissions: Rc::new(RefCell::new(permissions)),
       import_map: None,
       metrics: Rc::new(Metrics::default()),
       global_timer: Rc::new(RefCell::new(GlobalTimer::new())),
-      worker_channels_internal: Arc::new(Mutex::new(None)),
-      workers: Arc::new(Mutex::new(HashMap::new())),
+      worker_channels_internal: Rc::new(RefCell::new(None)),
+      workers: Rc::new(RefCell::new(HashMap::new())),
       next_worker_id: Rc::new(RefCell::new(AtomicUsize::new(0))),
       start_time: Instant::now(),
       seeded_rng,
@@ -283,44 +283,44 @@ impl State {
       let next_id = self.next_worker_id.borrow_mut();
       next_id.fetch_add(1, Ordering::Relaxed) as u32
     };
-    let mut workers_tl = self.workers.lock().unwrap();
+    let mut workers_tl = self.workers.borrow_mut();
     workers_tl.insert(worker_id, handle);
     worker_id
   }
 
   #[inline]
   pub fn check_read(&self, path: &Path) -> Result<(), ErrBox> {
-    self.permissions.lock().unwrap().check_read(path)
+    self.permissions.borrow().check_read(path)
   }
 
   #[inline]
   pub fn check_write(&self, path: &Path) -> Result<(), ErrBox> {
-    self.permissions.lock().unwrap().check_write(path)
+    self.permissions.borrow().check_write(path)
   }
 
   #[inline]
   pub fn check_env(&self) -> Result<(), ErrBox> {
-    self.permissions.lock().unwrap().check_env()
+    self.permissions.borrow().check_env()
   }
 
   #[inline]
   pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
-    self.permissions.lock().unwrap().check_net(hostname, port)
+    self.permissions.borrow().check_net(hostname, port)
   }
 
   #[inline]
   pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
-    self.permissions.lock().unwrap().check_net_url(url)
+    self.permissions.borrow().check_net_url(url)
   }
 
   #[inline]
   pub fn check_run(&self) -> Result<(), ErrBox> {
-    self.permissions.lock().unwrap().check_run()
+    self.permissions.borrow().check_run()
   }
 
   #[inline]
   pub fn check_plugin(&self, filename: &Path) -> Result<(), ErrBox> {
-    self.permissions.lock().unwrap().check_plugin(filename)
+    self.permissions.borrow().check_plugin(filename)
   }
 
   pub fn check_dyn_import(

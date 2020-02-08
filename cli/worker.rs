@@ -128,7 +128,7 @@ impl Worker {
 
     let (internal_channels, external_channels) = create_channels();
     {
-      let mut c = state.worker_channels_internal.lock().unwrap();
+      let mut c = state.worker_channels_internal.borrow_mut();
       *c = Some(internal_channels);
     }
 

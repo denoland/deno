@@ -21,7 +21,7 @@ fn op_get_random_values(
   assert!(zero_copy.is_some());
 
   if let Some(ref seeded_rng) = state.seeded_rng {
-    let mut rng = seeded_rng.lock().unwrap();
+    let mut rng = seeded_rng.borrow_mut();
     rng.fill(&mut zero_copy.unwrap()[..]);
   } else {
     let mut rng = thread_rng();
