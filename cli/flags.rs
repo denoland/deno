@@ -550,7 +550,9 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
 
   deno fmt myfile1.ts myfile2.ts
 
-  deno fmt --check",
+  deno fmt --check
+
+  cat file.ts | deno fmt --stdin",
     )
     .arg(
       Arg::with_name("check")
@@ -561,7 +563,7 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(
       Arg::with_name("stdin")
         .long("stdin")
-        .help("Read the code from stdin.")
+        .help("Read from stdin and write formatted code to stdout.")
         .takes_value(false),
     )
     .arg(
