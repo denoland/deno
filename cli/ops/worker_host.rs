@@ -9,8 +9,8 @@ use crate::global_state::GlobalState;
 use crate::ops::json_op;
 use crate::permissions::DenoPermissions;
 use crate::startup_data;
-use crate::state::ThreadSafeState;
 use crate::tokio_util::create_basic_runtime;
+use crate::state::State;
 use crate::web_worker::WebWorker;
 use crate::worker::WorkerChannelsExternal;
 use deno_core::*;
@@ -24,7 +24,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "create_worker",
     s.core_op(json_op(s.stateful_op(op_create_worker))),
@@ -236,7 +236,7 @@ struct CreateWorkerArgs {
 
 /// Create worker as the host
 fn op_create_worker(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -247,6 +247,11 @@ fn op_create_worker(
   let source_code = args.source_code.clone();
   let args_name = args.name;
   let parent_state = state.clone();
+  let state = state.borrow();
+  let global_state = state.global_state.clone();
+  let child_permissions = state.permissions.clone();
+  let referrer = state.main_module.to_string();
+  drop(state);
 
   let referrer = parent_state.main_module.to_string();
   let module_specifier =
@@ -258,8 +263,8 @@ fn op_create_worker(
 
   let worker_handle = run_worker_thread(
     worker_name,
-    parent_state.global_state.clone(),
-    parent_state.permissions.clone(),
+    global_state,
+    permissions,
     module_specifier.clone(),
     has_source_code,
     source_code,
@@ -267,6 +272,7 @@ fn op_create_worker(
   // At this point all interactions with worker happen using thread
   // safe handler returned from previous function call
   let worker_id = parent_state.add_child_worker(worker_handle);
+
   Ok(JsonOp::Sync(json!({ "id": worker_id })))
 }
 
@@ -276,16 +282,15 @@ struct WorkerArgs {
 }
 
 fn op_host_close_worker(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
-  let state_ = state.clone();
+  let mut state = state.borrow_mut();
 
-  let mut workers_table = state_.workers.lock().unwrap();
-  let maybe_worker_handle = workers_table.remove(&id);
+  let maybe_worker_handle = state.workers.remove(&id);
   if let Some(worker_handle) = maybe_worker_handle {
     let mut sender = worker_handle.sender.clone();
     sender.close_channel();
@@ -305,16 +310,15 @@ struct HostGetMessageArgs {
 
 /// Get message from guest worker as host
 fn op_host_get_message(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: HostGetMessageArgs = serde_json::from_value(args)?;
-  let state_ = state.clone();
   let id = args.id as u32;
-  let mut table = state.workers.lock().unwrap();
+  let state = state.borrow();
   // TODO: don't return bad resource anymore
-  let worker_handle = table.get_mut(&id).ok_or_else(bad_resource)?;
+  let worker_handle = state.workers.get(&id).ok_or_else(bad_resource)?;
   let fut = worker_handle.get_message();
   let op = async move {
     let maybe_buf = fut.await;
@@ -337,7 +341,7 @@ struct HostPostMessageArgs {
 
 /// Post message to guest worker as host
 fn op_host_post_message(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -346,9 +350,9 @@ fn op_host_post_message(
   let msg = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
 
   debug!("post message to worker {}", id);
-  let mut table = state.workers.lock().unwrap();
+  let state = state.borrow();
   // TODO: don't return bad resource anymore
-  let worker_handle = table.get_mut(&id).ok_or_else(bad_resource)?;
+  let worker_handle = state.workers.get(&id).ok_or_else(bad_resource)?;
   let fut = worker_handle
     .post_message(msg)
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()));
@@ -357,10 +361,11 @@ fn op_host_post_message(
 }
 
 fn op_metrics(
-  state: &ThreadSafeState,
+  state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
+  let state = state.borrow();
   let m = &state.metrics;
 
   Ok(JsonOp::Sync(json!({

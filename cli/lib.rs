@@ -61,7 +61,7 @@ use crate::deno_error::js_check;
 use crate::deno_error::{print_err_and_exit, print_msg_and_exit};
 use crate::global_state::GlobalState;
 use crate::ops::io::get_stdio;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
 use deno_core::ErrBox;
@@ -107,17 +107,17 @@ fn create_main_worker(
   global_state: GlobalState,
   main_module: ModuleSpecifier,
 ) -> MainWorker {
-  let state = ThreadSafeState::new(global_state, None, main_module)
+  let state = State::new(global_state, None, main_module)
     .map_err(deno_error::print_err_and_exit)
     .unwrap();
 
   let state_ = state.clone();
   {
-    let mut resource_table = state_.lock_resource_table();
+    let mut state = state_.borrow_mut();
     let (stdin, stdout, stderr) = get_stdio();
-    resource_table.add("stdin", Box::new(stdin));
-    resource_table.add("stdout", Box::new(stdout));
-    resource_table.add("stderr", Box::new(stderr));
+    state.resource_table.add("stdin", Box::new(stdin));
+    state.resource_table.add("stdout", Box::new(stdout));
+    state.resource_table.add("stderr", Box::new(stderr));
   }
 
   MainWorker::new("main".to_string(), startup_data::deno_isolate_init(), state)
@@ -157,7 +157,7 @@ async fn print_file_info(
   worker: &MainWorker,
   module_specifier: ModuleSpecifier,
 ) {
-  let global_state = worker.state.global_state.clone();
+  let global_state = worker.state.borrow().global_state.clone();
 
   let maybe_source_file = global_state
     .file_fetcher
@@ -262,6 +262,7 @@ async fn install_command(
   exe_name: String,
   module_url: String,
   args: Vec<String>,
+  force: bool,
 ) {
   // Firstly fetch and compile module, this
   // ensures the module exists.
@@ -270,7 +271,7 @@ async fn install_command(
   fetch_command(fetch_flags, vec![module_url.to_string()]).await;
 
   let install_result =
-    installer::install(flags, dir, &exe_name, &module_url, args);
+    installer::install(flags, dir, &exe_name, &module_url, args, force);
   if let Err(e) = install_result {
     print_msg_and_exit(&e.to_string());
   }
@@ -447,7 +448,8 @@ pub fn main() {
         exe_name,
         module_url,
         args,
-      } => install_command(flags, dir, exe_name, module_url, args).await,
+        force,
+      } => install_command(flags, dir, exe_name, module_url, args, force).await,
       DenoSubcommand::Repl => run_repl(flags).await,
       DenoSubcommand::Run { script } => run_script(flags, script).await,
       DenoSubcommand::Types => types_command(),

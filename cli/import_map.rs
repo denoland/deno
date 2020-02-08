@@ -38,7 +38,7 @@ const SUPPORTED_FETCH_SCHEMES: [&str; 3] = ["http", "https", "file"];
 type SpecifierMap = IndexMap<String, Vec<ModuleSpecifier>>;
 type ScopesMap = IndexMap<String, SpecifierMap>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ImportMap {
   base_url: String,
   imports: SpecifierMap,
