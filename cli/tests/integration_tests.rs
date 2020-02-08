@@ -601,6 +601,24 @@ itest!(bundle {
   output: "bundle.test.out",
 });
 
+itest!(fmt_stdin {
+  args: "fmt --stdin",
+  input: Some("const a = 1\n"),
+  output_str: Some("const a = 1;\n"),
+});
+
+itest!(fmt_stdin_check_formatted {
+  args: "fmt --stdin --check",
+  input: Some("const a = 1;\n"),
+  output_str: Some(""),
+});
+
+itest!(fmt_stdin_check_not_formatted {
+  args: "fmt --stdin --check",
+  input: Some("const a = 1\n"),
+  output_str: Some("Not formatted stdin\n"),
+});
+
 itest!(circular1 {
   args: "run --reload circular1.js",
   output: "circular1.js.out",
@@ -915,6 +933,7 @@ mod util {
     pub args: &'static str,
     pub output: &'static str,
     pub input: Option<&'static str>,
+    pub output_str: Option<&'static str>,
     pub exit_code: i32,
     pub check_stderr: bool,
     pub http_server: bool,
@@ -980,10 +999,13 @@ mod util {
         );
       }
 
-      let output_path = tests_dir.join(self.output);
-      println!("output path {}", output_path.display());
-      let expected =
-        std::fs::read_to_string(output_path).expect("cannot read output");
+      let expected = if let Some(s) = self.output_str {
+        s.to_owned()
+      } else {
+        let output_path = tests_dir.join(self.output);
+        println!("output path {}", output_path.display());
+        std::fs::read_to_string(output_path).expect("cannot read output")
+      };
 
       if !wildcard_match(&expected, &actual) {
         println!("OUTPUT\n{}\nOUTPUT", actual);

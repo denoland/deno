@@ -11,6 +11,10 @@ use dprint_plugin_typescript as dprint;
 use glob;
 use regex::Regex;
 use std::fs;
+use std::io::stdin;
+use std::io::stdout;
+use std::io::Read;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -168,5 +172,33 @@ pub fn format_files(maybe_files: Option<Vec<String>>, check: bool) {
     check_source_files(config, matching_files);
   } else {
     format_source_files(config, matching_files);
+  }
+}
+
+pub fn format_stdin(check: bool) {
+  let mut source = String::new();
+  if stdin().read_to_string(&mut source).is_err() {
+    eprintln!("Failed to read from stdin");
+  }
+  let config = get_config();
+
+  match dprint::format_text("_stdin.ts", &source, &config) {
+    Ok(None) => {
+      // Should not happen, but whatever.
+    }
+    Ok(Some(formatted_text)) => {
+      if check {
+        if formatted_text != source {
+          println!("Not formatted stdin");
+        }
+      } else {
+        let _r = stdout().write_all(formatted_text.as_bytes());
+        // TODO(ry) Only ignore SIGPIPE. Currently ignoring all errors.
+      }
+    }
+    Err(e) => {
+      eprintln!("Error formatting from stdin");
+      eprintln!("   {}", e);
+    }
   }
 }

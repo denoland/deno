@@ -403,8 +403,12 @@ async fn run_script(flags: DenoFlags, script: String) {
   js_check(worker.execute("window.dispatchEvent(new Event('unload'))"));
 }
 
-async fn fmt_command(files: Option<Vec<String>>, check: bool) {
-  fmt::format_files(files, check);
+async fn fmt_command(files: Option<Vec<String>>, check: bool, stdin: bool) {
+  if stdin {
+    fmt::format_stdin(check);
+  } else {
+    fmt::format_files(files, check);
+  }
 }
 
 pub fn main() {
@@ -438,9 +442,11 @@ pub fn main() {
       }
       DenoSubcommand::Eval { code } => eval_command(flags, code).await,
       DenoSubcommand::Fetch { files } => fetch_command(flags, files).await,
-      DenoSubcommand::Format { check, files } => {
-        fmt_command(files, check).await
-      }
+      DenoSubcommand::Format {
+        check,
+        stdin,
+        files,
+      } => fmt_command(files, check, stdin).await,
       DenoSubcommand::Info { file } => info_command(flags, file).await,
       DenoSubcommand::Install {
         dir,
