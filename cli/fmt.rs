@@ -184,7 +184,8 @@ pub fn format_stdin(check: bool) {
 
   match dprint::format_text("_stdin.ts", &source, &config) {
     Ok(None) => {
-      // Should not happen, but whatever.
+      // Should not happen
+      unreachable!();
     }
     Ok(Some(formatted_text)) => {
       if check {
