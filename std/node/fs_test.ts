@@ -10,7 +10,7 @@ const testLink = "hello.txt";
 
 if (Deno.build.os === "win") {
   run({
-    args: ["mklink", "/J", testLink, testLinkPath]
+    args: ["cmd", "/c", "mklink", testLink, testLinkPath]
   });
 } else {
   run({
@@ -99,7 +99,7 @@ test(function readlinkEncodeBufferSuccess() {
   assertEquals(new TextDecoder().decode(data as Uint8Array), testLinkPath);
   if (Deno.build.os === "win") {
     run({
-      args: ["rmdir", testLink]
+      args: ["rm", testLink]
     });
   } else {
     run({
