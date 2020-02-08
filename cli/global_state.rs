@@ -14,6 +14,7 @@ use crate::metrics::Metrics;
 use crate::msg;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
+use crate::shell::Shell;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use std;
@@ -23,15 +24,16 @@ use std::path::Path;
 use std::str;
 use std::sync::Arc;
 use std::sync::Mutex;
+use tokio::sync::Mutex as AsyncMutex;
 
 /// Holds state of the program and can be accessed by V8 isolate.
-pub struct ThreadSafeGlobalState(Arc<GlobalState>);
+#[derive(Clone)]
+pub struct GlobalState(Arc<GlobalStateInner>);
 
 /// This structure represents state of single "deno" program.
 ///
 /// It is shared by all created workers (thus V8 isolates).
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub struct GlobalState {
+pub struct GlobalStateInner {
   /// Flags parsed from `argv` contents.
   pub flags: flags::DenoFlags,
   /// Permissions parsed from `flags`.
@@ -45,28 +47,32 @@ pub struct GlobalState {
   pub ts_compiler: TsCompiler,
   pub wasm_compiler: WasmCompiler,
   pub lockfile: Option<Mutex<Lockfile>>,
+  compile_lock: AsyncMutex<()>,
 }
 
-impl Clone for ThreadSafeGlobalState {
-  fn clone(&self) -> Self {
-    ThreadSafeGlobalState(self.0.clone())
-  }
-}
-
-impl Deref for ThreadSafeGlobalState {
-  type Target = Arc<GlobalState>;
+impl Deref for GlobalState {
+  type Target = GlobalStateInner;
   fn deref(&self) -> &Self::Target {
     &self.0
   }
 }
 
-impl ThreadSafeGlobalState {
-  pub fn new(
-    flags: flags::DenoFlags,
-    progress: Progress,
-  ) -> Result<Self, ErrBox> {
+impl GlobalState {
+  pub fn new(flags: flags::DenoFlags) -> Result<Self, ErrBox> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
+
+    // TODO(ry) Shell is a useless abstraction and should be removed at
+    // some point.
+    let shell = Arc::new(Mutex::new(Shell::new()));
+
+    let progress = Progress::new();
+    progress.set_callback(move |_done, _completed, _total, status, msg| {
+      if !status.is_empty() {
+        let mut s = shell.lock().unwrap();
+        s.status(status, msg).expect("shell problem");
+      }
+    });
 
     let file_fetcher = SourceFileFetcher::new(
       dir.deps_cache.clone(),
@@ -91,7 +97,7 @@ impl ThreadSafeGlobalState {
       None
     };
 
-    let state = GlobalState {
+    let inner = GlobalStateInner {
       dir,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
@@ -103,9 +109,10 @@ impl ThreadSafeGlobalState {
       json_compiler: JsonCompiler {},
       wasm_compiler: WasmCompiler::default(),
       lockfile,
+      compile_lock: AsyncMutex::new(()),
     };
 
-    Ok(ThreadSafeGlobalState(Arc::new(state)))
+    Ok(GlobalState(Arc::new(inner)))
   }
 
   pub async fn fetch_compiled_module(
@@ -122,11 +129,19 @@ impl ThreadSafeGlobalState {
       .file_fetcher
       .fetch_source_file_async(&module_specifier, maybe_referrer)
       .await?;
-    let compiled_module_fut = match out.media_type {
-      msg::MediaType::Unknown => state1.js_compiler.compile_async(out),
-      msg::MediaType::Json => state1.json_compiler.compile_async(&out),
+
+    // TODO(ry) Try to lift compile_lock as high up in the call stack for
+    // sanity.
+    let compile_lock = self.compile_lock.lock().await;
+
+    let compiled_module = match out.media_type {
+      msg::MediaType::Unknown => state1.js_compiler.compile_async(out).await,
+      msg::MediaType::Json => state1.json_compiler.compile_async(&out).await,
       msg::MediaType::Wasm => {
-        state1.wasm_compiler.compile_async(state1.clone(), &out)
+        state1
+          .wasm_compiler
+          .compile_async(state1.clone(), &out)
+          .await
       }
       msg::MediaType::TypeScript
       | msg::MediaType::TSX
@@ -134,18 +149,20 @@ impl ThreadSafeGlobalState {
         state1
           .ts_compiler
           .compile_async(state1.clone(), &out, target_lib)
+          .await
       }
       msg::MediaType::JavaScript => {
         if state1.ts_compiler.compile_js {
-          state1
+          state2
             .ts_compiler
             .compile_async(state1.clone(), &out, target_lib)
+            .await
         } else {
-          state1.js_compiler.compile_async(out)
+          state1.js_compiler.compile_async(out).await
         }
       }
-    };
-    let compiled_module = compiled_module_fut.await?;
+    }?;
+    drop(compile_lock);
 
     if let Some(ref lockfile) = state2.lockfile {
       let mut g = lockfile.lock().unwrap();
@@ -223,14 +240,11 @@ impl ThreadSafeGlobalState {
   }
 
   #[cfg(test)]
-  pub fn mock(argv: Vec<String>) -> ThreadSafeGlobalState {
-    ThreadSafeGlobalState::new(
-      flags::DenoFlags {
-        argv,
-        ..flags::DenoFlags::default()
-      },
-      Progress::new(),
-    )
+  pub fn mock(argv: Vec<String>) -> GlobalState {
+    GlobalState::new(flags::DenoFlags {
+      argv,
+      ..flags::DenoFlags::default()
+    })
     .unwrap()
   }
 }
@@ -238,7 +252,7 @@ impl ThreadSafeGlobalState {
 #[test]
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
-  f(ThreadSafeGlobalState::mock(vec![
+  f(GlobalState::mock(vec![
     String::from("./deno"),
     String::from("hello.js"),
   ]));
@@ -246,11 +260,8 @@ fn thread_safe() {
 
 #[test]
 fn import_map_given_for_repl() {
-  let _result = ThreadSafeGlobalState::new(
-    flags::DenoFlags {
-      import_map_path: Some("import_map.json".to_string()),
-      ..flags::DenoFlags::default()
-    },
-    Progress::new(),
-  );
+  let _result = GlobalState::new(flags::DenoFlags {
+    import_map_path: Some("import_map.json".to_string()),
+    ..flags::DenoFlags::default()
+  });
 }

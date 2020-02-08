@@ -1,6 +1,8 @@
 import { SEP, SEP_PATTERN } from "./constants.ts";
 import { globrex } from "./globrex.ts";
 import { join, normalize } from "./mod.ts";
+import { assert } from "../testing/asserts.ts";
+
 const { DenoError, ErrorKind } = Deno;
 
 export interface GlobOptions {
@@ -38,10 +40,16 @@ export interface GlobToRegExpOptions extends GlobOptions {
  */
 export function globToRegExp(
   glob: string,
-  options: GlobToRegExpOptions = {}
+  { extended = false, globstar = true }: GlobToRegExpOptions = {}
 ): RegExp {
-  const result = globrex(glob, { ...options, strict: false, filepath: true });
-  return result.path!.regex;
+  const result = globrex(glob, {
+    extended,
+    globstar,
+    strict: false,
+    filepath: true
+  });
+  assert(result.path != null);
+  return result.path.regex;
 }
 
 /** Test whether the given string is a glob */

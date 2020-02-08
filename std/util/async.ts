@@ -23,7 +23,7 @@ export function deferred<T>(): Deferred<T> {
   const promise = new Promise<T>((resolve, reject): void => {
     methods = { resolve, reject };
   });
-  return Object.assign(promise, methods)! as Deferred<T>;
+  return Object.assign(promise, methods) as Deferred<T>;
 }
 
 interface TaggedYieldedValue<T> {

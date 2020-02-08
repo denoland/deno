@@ -261,11 +261,14 @@ function printResults(
 }
 
 function previousPrinted(name: string, results: TestResults): boolean {
-  const curIndex: number = results.keys.get(name)!;
+  const curIndex = results.keys.get(name);
+  assert(curIndex != null);
   if (curIndex === 0) {
     return true;
   }
-  return results.cases.get(curIndex - 1)!.printed;
+  const prev = results.cases.get(curIndex - 1);
+  assert(prev != null);
+  return prev.printed;
 }
 
 async function createTestCase(
@@ -274,7 +277,10 @@ async function createTestCase(
   exitOnFail: boolean,
   { fn, name }: TestDefinition
 ): Promise<void> {
-  const result: TestResult = results.cases.get(results.keys.get(name)!)!;
+  const i = results.keys.get(name);
+  assert(i != null);
+  const result = results.cases.get(i);
+  assert(result != null);
   try {
     const start = performance.now();
     await fn();

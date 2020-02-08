@@ -103,3 +103,11 @@ test(async function bundleApiConfig() {
   assert(diagnostics == null);
   assert(!actual.includes(`random`));
 });
+
+test(async function diagnosticsTest() {
+  const [diagnostics] = await compile("/foo.ts", {
+    "/foo.ts": `document.getElementById("foo");`
+  });
+  assert(Array.isArray(diagnostics));
+  assert(diagnostics.length === 1);
+});
