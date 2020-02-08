@@ -130,7 +130,7 @@ fn op_open(
 
   let fut = async move {
     let fs_file = open_options.open(filename).await?;
-    let mut table = state_.lock_resource_table();
+    let mut table = state_.resource_table.borrow_mut();
     let rid = table.add("fsFile", Box::new(StreamResource::FsFile(fs_file)));
     Ok(json!(rid))
   };
@@ -155,7 +155,7 @@ fn op_close(
 ) -> Result<JsonOp, ErrBox> {
   let args: CloseArgs = serde_json::from_value(args)?;
 
-  let mut table = state.lock_resource_table();
+  let mut table = state.resource_table.borrow_mut();
   table.close(args.rid as u32).ok_or_else(bad_resource)?;
   Ok(JsonOp::Sync(json!({})))
 }
@@ -191,13 +191,11 @@ fn op_seek(
     }
   };
 
-  let mut table = state.lock_resource_table();
-  let resource = table
-    .get_mut::<StreamResource>(rid)
-    .ok_or_else(bad_resource)?;
+  let table = state.resource_table.borrow();
+  let resource = table.get::<StreamResource>(rid).ok_or_else(bad_resource)?;
 
   let tokio_file = match resource {
-    StreamResource::FsFile(ref mut file) => file,
+    StreamResource::FsFile(ref file) => file,
     _ => return Err(bad_resource()),
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;

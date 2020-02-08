@@ -95,7 +95,7 @@ pub fn op_connect_tls(
     let dnsname =
       DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
     let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
-    let mut table = state_.lock_resource_table();
+    let mut table = state_.resource_table.borrow_mut();
     let rid = table.add(
       "clientTlsStream",
       Box::new(StreamResource::ClientTlsStream(Box::new(tls_stream))),
@@ -270,7 +270,7 @@ fn op_listen_tls(
     waker: None,
     local_addr,
   };
-  let mut table = state.lock_resource_table();
+  let mut table = state.resource_table.borrow_mut();
   let rid = table.add("tlsListener", Box::new(tls_listener_resource));
 
   Ok(JsonOp::Sync(json!({
@@ -314,7 +314,7 @@ impl Future for AcceptTls {
       panic!("poll AcceptTls after it's done");
     }
 
-    let mut table = inner.state.lock_resource_table();
+    let mut table = inner.state.resource_table.borrow_mut();
     let listener_resource = table
       .get_mut::<TlsListenerResource>(inner.rid)
       .ok_or_else(|| {
@@ -364,7 +364,7 @@ fn op_accept_tls(
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
     let tls_acceptor = {
-      let table = state.lock_resource_table();
+      let table = state.resource_table.borrow();
       let resource = table
         .get::<TlsListenerResource>(rid)
         .ok_or_else(bad_resource)
@@ -373,7 +373,7 @@ fn op_accept_tls(
     };
     let tls_stream = tls_acceptor.accept(tcp_stream).await?;
     let rid = {
-      let mut table = state.lock_resource_table();
+      let mut table = state.resource_table.borrow_mut();
       table.add(
         "serverTlsStream",
         Box::new(StreamResource::ServerTlsStream(Box::new(tls_stream))),

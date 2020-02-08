@@ -57,7 +57,7 @@ impl Future for Accept<'_> {
       panic!("poll Accept after it's done");
     }
 
-    let mut table = inner.state.lock_resource_table();
+    let mut table = inner.state.resource_table.borrow_mut();
     let listener_resource = table
       .get_mut::<TcpListenerResource>(inner.rid)
       .ok_or_else(|| {
@@ -102,7 +102,7 @@ fn op_accept(
   let args: AcceptArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let state_ = state.clone();
-  let table = state.lock_resource_table();
+  let table = state.resource_table.borrow();
   table
     .get::<TcpListenerResource>(rid)
     .ok_or_else(bad_resource)?;
@@ -111,7 +111,7 @@ fn op_accept(
     let (tcp_stream, _socket_addr) = accept(&state_, rid).await?;
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
-    let mut table = state_.lock_resource_table();
+    let mut table = state_.resource_table.borrow_mut();
     let rid =
       table.add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
     Ok(json!({
@@ -154,7 +154,7 @@ fn op_connect(
     let tcp_stream = TcpStream::connect(&addr).await?;
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
-    let mut table = state_.lock_resource_table();
+    let mut table = state_.resource_table.borrow_mut();
     let rid =
       table.add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
     Ok(json!({
@@ -197,7 +197,7 @@ fn op_shutdown(
     _ => unimplemented!(),
   };
 
-  let mut table = state.lock_resource_table();
+  let mut table = state.resource_table.borrow_mut();
   let resource = table
     .get_mut::<StreamResource>(rid)
     .ok_or_else(bad_resource)?;
@@ -290,7 +290,7 @@ fn op_listen(
     waker: None,
     local_addr,
   };
-  let mut table = state.lock_resource_table();
+  let mut table = state.resource_table.borrow_mut();
   let rid = table.add("tcpListener", Box::new(listener_resource));
   debug!(
     "New listener {} {}:{}",

@@ -32,9 +32,6 @@ use std::rc::Rc;
 use std::str;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
 use std::time::Instant;
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
@@ -53,15 +50,11 @@ pub struct State {
   pub next_worker_id: Rc<RefCell<AtomicUsize>>,
   pub start_time: Instant,
   pub seeded_rng: Option<Rc<RefCell<StdRng>>>,
-  pub resource_table: Arc<Mutex<ResourceTable>>,
+  pub resource_table: Rc<RefCell<ResourceTable>>,
   pub target_lib: TargetLib,
 }
 
 impl State {
-  pub fn lock_resource_table(&self) -> MutexGuard<ResourceTable> {
-    self.resource_table.lock().unwrap()
-  }
-
   /// Wrap core `OpDispatcher` to collect metrics.
   pub fn core_op<D>(
     &self,
@@ -234,7 +227,7 @@ impl State {
       start_time: Instant::now(),
       seeded_rng,
 
-      resource_table: Arc::new(Mutex::new(ResourceTable::default())),
+      resource_table: Rc::new(RefCell::new(ResourceTable::default())),
       target_lib: TargetLib::Main,
     };
 
@@ -271,7 +264,7 @@ impl State {
       start_time: Instant::now(),
       seeded_rng,
 
-      resource_table: Arc::new(Mutex::new(ResourceTable::default())),
+      resource_table: Rc::new(RefCell::new(ResourceTable::default())),
       target_lib: TargetLib::Worker,
     };
 

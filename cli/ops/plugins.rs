@@ -66,7 +66,7 @@ pub fn op_open_plugin(
     lib,
     ops: HashMap::new(),
   };
-  let mut table = state.lock_resource_table();
+  let mut table = state.resource_table.borrow_mut();
   let rid = table.add("plugin", Box::new(plugin_resource));
   let plugin_resource = table.get_mut::<PluginResource>(rid).unwrap();
 

@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+#![deny(warnings)]
 
 #[macro_use]
 extern crate lazy_static;
@@ -112,7 +113,7 @@ fn create_main_worker(
 
   let state_ = state.clone();
   {
-    let mut resource_table = state_.lock_resource_table();
+    let mut resource_table = state_.resource_table.borrow_mut();
     let (stdin, stdout, stderr) = get_stdio();
     resource_table.add("stdin", Box::new(stdin));
     resource_table.add("stdout", Box::new(stdout));

@@ -65,7 +65,7 @@ pub fn op_fetch(
     }
 
     let body = HttpBody::from(res);
-    let mut table = state_.lock_resource_table();
+    let mut table = state_.resource_table.borrow_mut();
     let rid = table.add(
       "httpBody",
       Box::new(StreamResource::HttpBody(Box::new(body))),

@@ -31,7 +31,7 @@ pub fn init(i: &mut Isolate, s: &State) {
 }
 
 fn clone_file(rid: u32, state: &State) -> Result<std::fs::File, ErrBox> {
-  let mut table = state.lock_resource_table();
+  let mut table = state.resource_table.borrow_mut();
   let repr = table
     .get_mut::<StreamResource>(rid)
     .ok_or_else(bad_resource)?;
@@ -127,7 +127,7 @@ fn op_run(
   let mut child = c.spawn()?;
   let pid = child.id();
 
-  let mut table = state_.lock_resource_table();
+  let mut table = state_.resource_table.borrow_mut();
 
   let stdin_rid = match child.stdin.take() {
     Some(child_stdin) => {
@@ -184,7 +184,7 @@ impl Future for ChildStatus {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
-    let mut table = inner.state.lock_resource_table();
+    let mut table = inner.state.resource_table.borrow_mut();
     let child_resource = table
       .get_mut::<ChildResource>(inner.rid)
       .ok_or_else(bad_resource)?;
