@@ -3,11 +3,11 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::futures::future::try_join_all;
 use crate::msg;
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::Loader;
 use deno_core::*;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("cache", s.core_op(json_op(s.stateful_op(op_cache))));
   i.register_op(
     "resolve_modules",
@@ -28,7 +28,7 @@ struct CacheArgs {
 }
 
 fn op_cache(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -37,11 +37,15 @@ fn op_cache(
   let module_specifier = ModuleSpecifier::resolve_url(&args.module_id)
     .expect("Should be valid module specifier");
 
-  state.global_state.ts_compiler.cache_compiler_output(
-    &module_specifier,
-    &args.extension,
-    &args.contents,
-  )?;
+  state
+    .borrow()
+    .global_state
+    .ts_compiler
+    .cache_compiler_output(
+      &module_specifier,
+      &args.extension,
+      &args.contents,
+    )?;
 
   Ok(JsonOp::Sync(json!({})))
 }
@@ -53,7 +57,7 @@ struct SpecifiersReferrerArgs {
 }
 
 fn op_resolve_modules(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -78,7 +82,7 @@ fn op_resolve_modules(
 }
 
 fn op_fetch_source_files(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -93,17 +97,16 @@ fn op_fetch_source_files(
   };
 
   let mut futures = vec![];
+  let global_state = state.borrow().global_state.clone();
+
   for specifier in &args.specifiers {
     let resolved_specifier =
       ModuleSpecifier::resolve_url(&specifier).expect("Invalid specifier");
-    let fut = state
-      .global_state
+    let fut = global_state
       .file_fetcher
       .fetch_source_file_async(&resolved_specifier, ref_specifier.clone());
     futures.push(fut);
   }
-
-  let global_state = state.global_state.clone();
 
   let future = Box::pin(async move {
     let files = try_join_all(futures).await?;

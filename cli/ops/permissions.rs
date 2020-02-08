@@ -3,11 +3,11 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::deno_error::other_error;
 use crate::fs as deno_fs;
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::*;
 use std::path::Path;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "query_permission",
     s.core_op(json_op(s.stateful_op(op_query_permission))),
@@ -38,14 +38,14 @@ fn resolve_path(path: &str) -> String {
 }
 
 pub fn op_query_permission(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let permissions = state.permissions.lock().unwrap();
+  let state = state.borrow();
   let resolved_path = args.path.as_ref().map(String::as_str).map(resolve_path);
-  let perm = permissions.get_permission_state(
+  let perm = state.permissions.get_permission_state(
     &args.name,
     &args.url.as_ref().map(String::as_str),
     &resolved_path.as_ref().map(String::as_str).map(Path::new),
@@ -54,12 +54,13 @@ pub fn op_query_permission(
 }
 
 pub fn op_revoke_permission(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let mut permissions = state.permissions.lock().unwrap();
+  let mut state = state.borrow_mut();
+  let permissions = &mut state.permissions;
   match args.name.as_ref() {
     "run" => permissions.allow_run.revoke(),
     "read" => permissions.allow_read.revoke(),
@@ -80,12 +81,13 @@ pub fn op_revoke_permission(
 }
 
 pub fn op_request_permission(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let mut permissions = state.permissions.lock().unwrap();
+  let mut state = state.borrow_mut();
+  let permissions = &mut state.permissions;
   let resolved_path = args.path.as_ref().map(String::as_str).map(resolve_path);
   let perm = match args.name.as_ref() {
     "run" => Ok(permissions.request_run()),

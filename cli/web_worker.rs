@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::ops;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use crate::worker::Worker;
 use deno_core;
 use deno_core::ErrBox;
@@ -23,11 +23,7 @@ use std::task::Poll;
 pub struct WebWorker(Worker);
 
 impl WebWorker {
-  pub fn new(
-    name: String,
-    startup_data: StartupData,
-    state: ThreadSafeState,
-  ) -> Self {
+  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let state_ = state.clone();
     let mut worker = Worker::new(name, startup_data, state_);
     {
@@ -70,11 +66,11 @@ impl Future for WebWorker {
 mod tests {
   use super::*;
   use crate::startup_data;
-  use crate::state::ThreadSafeState;
+  use crate::state::State;
   use crate::tokio_util;
 
   fn create_test_worker() -> WebWorker {
-    let state = ThreadSafeState::mock("./hello.js");
+    let state = State::mock("./hello.js");
     let mut worker = WebWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),
@@ -104,48 +100,53 @@ mod tests {
     worker.execute(source).unwrap();
 
     let handle = worker.thread_safe_handle();
-    let _ = tokio_util::spawn_thread(move || tokio_util::run_basic(worker));
+    let _ = tokio_util::spawn_thread(move || {
+      tokio_util::run_basic(async move {
+        let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
+        let r = handle.post_message(msg.clone()).await;
+        assert!(r.is_ok());
 
-    tokio_util::run_basic(async move {
-      let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-      let r = handle.post_message(msg.clone()).await;
-      assert!(r.is_ok());
+        let maybe_msg = handle.get_message().await;
+        assert!(maybe_msg.is_some());
 
-      let maybe_msg = handle.get_message().await;
-      assert!(maybe_msg.is_some());
+        let r = handle.post_message(msg.clone()).await;
+        assert!(r.is_ok());
 
-      let r = handle.post_message(msg.clone()).await;
-      assert!(r.is_ok());
+        let maybe_msg = handle.get_message().await;
+        assert!(maybe_msg.is_some());
+        assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
 
-      let maybe_msg = handle.get_message().await;
-      assert!(maybe_msg.is_some());
-      assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
-
-      let msg = json!("exit")
-        .to_string()
-        .into_boxed_str()
-        .into_boxed_bytes();
-      let r = handle.post_message(msg).await;
-      assert!(r.is_ok());
+        let msg = json!("exit")
+          .to_string()
+          .into_boxed_str()
+          .into_boxed_bytes();
+        let r = handle.post_message(msg).await;
+        assert!(r.is_ok());
+      })
     });
+
+    let r = tokio_util::run_basic(worker);
+    assert!(r.is_ok())
   }
 
   #[test]
   fn removed_from_resource_table_on_close() {
     let mut worker = create_test_worker();
     let handle = worker.thread_safe_handle();
-    let worker_complete_fut = tokio_util::spawn_thread(move || {
-      worker
-        .execute("onmessage = () => { delete self.onmessage; }")
-        .unwrap();
-      tokio_util::run_basic(worker)
+
+    worker
+      .execute("onmessage = () => { delete self.onmessage; }")
+      .unwrap();
+
+    let worker_post_message_fut = tokio_util::spawn_thread(move || {
+      let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
+      let r = futures::executor::block_on(handle.post_message(msg));
+      assert!(r.is_ok());
     });
 
-    let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
     tokio_util::run_basic(async move {
-      let r = handle.post_message(msg).await;
-      assert!(r.is_ok());
-      let r = worker_complete_fut.await;
+      worker_post_message_fut.await;
+      let r = worker.await;
       assert!(r.is_ok());
     });
   }

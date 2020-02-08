@@ -55,7 +55,7 @@ impl fmt::Debug for Shell {
 enum ShellOut {
   /// A plain write object without color support
   // TODO(ry) Disabling this type of output because it makes Shell
-  // not thread safe and thus not includable in ThreadSafeState.
+  // not thread safe and thus not includable in State.
   // But I think we will want this in the future.
   //Write(Box<dyn Write>),
   /// Color-enabled stdio, with information on whether color should be used
