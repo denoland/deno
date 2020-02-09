@@ -25,6 +25,7 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("connect", s.core_op(json_op(s.stateful_op(op_connect))));
   i.register_op("shutdown", s.core_op(json_op(s.stateful_op(op_shutdown))));
   i.register_op("listen", s.core_op(json_op(s.stateful_op(op_listen))));
+  i.register_op("receive", s.core_op(json_op(s.stateful_op(op_receive))));
 }
 
 #[derive(Debug, PartialEq)]
@@ -131,6 +132,55 @@ fn op_accept(
         "hostname": remote_addr.ip().to_string(),
         "port": remote_addr.port(),
         "transport": "tcp",
+      }
+    }))
+  };
+
+  Ok(JsonOp::Async(op.boxed_local()))
+}
+
+/// Simply receives a message.
+pub fn receive(state: &State, rid: ResourceId) -> Receive {
+  Receive {
+    receive_state: AcceptState::Pending,
+    rid,
+    state,
+  }
+}
+
+// TODO: Receive future
+
+#[derive(Deserialize)]
+struct ReceiveArgs {
+  rid: i32,
+}
+
+// TODO: correct this
+fn op_receive(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: ReceiveArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let state_ = state.clone();
+  {
+    let state = state.borrow();
+    state
+      .resource_table
+      .get::<UdpSocketResource>(rid)
+      .ok_or_else(bad_resource)?;
+  }
+
+  let op = async move {
+    let (size, remote_addr) = receive(&state_, rid).await?;
+    let mut state = state_.borrow_mut();
+    Ok(json!({
+      "payload": ,
+      "sender": {
+        "hostname": remote_addr.ip().to_string(),
+        "port": remote_addr.port(),
+        "transport": "udp",
       }
     }))
   };
