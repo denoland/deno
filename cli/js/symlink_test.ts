@@ -15,7 +15,6 @@ testPerm({ read: true, write: true }, function symlinkSyncSuccess(): void {
   }
   if (errOnWindows) {
     assertEquals(Deno.build.os, "win");
-    assertEquals(errOnWindows.kind, Deno.ErrorKind.Other);
     assertEquals(errOnWindows.message, "Not implemented");
   } else {
     const newNameInfoLStat = Deno.lstatSync(newname);
@@ -69,7 +68,6 @@ testPerm({ read: true, write: true }, async function symlinkSuccess(): Promise<
     errOnWindows = e;
   }
   if (errOnWindows) {
-    assertEquals(errOnWindows.kind, Deno.ErrorKind.Other);
     assertEquals(errOnWindows.message, "Not implemented");
   } else {
     const newNameInfoLStat = Deno.lstatSync(newname);

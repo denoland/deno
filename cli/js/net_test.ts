@@ -21,7 +21,7 @@ testPerm({ net: true }, async function netCloseWhileAccept(): Promise<void> {
     err = e;
   }
   assert(!!err);
-  assertEquals(err.kind, Deno.ErrorKind.Other);
+  assert(err instanceof Error);
   assertEquals(err.message, "Listener has been closed");
 });
 
@@ -29,7 +29,6 @@ testPerm({ net: true }, async function netConcurrentAccept(): Promise<void> {
   const listener = Deno.listen({ port: 4502 });
   let acceptErrCount = 0;
   const checkErr = (e): void => {
-    assertEquals(e.kind, Deno.ErrorKind.Other);
     if (e.message === "Listener has been closed") {
       assertEquals(acceptErrCount, 1);
     } else if (e.message === "Another accept task is ongoing") {

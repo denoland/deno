@@ -1,5 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+export function deserializeError(kind: ErrorKind, msg: string): Error {
+  switch (kind) {
+    case ErrorKind.Other:
+      return new Error(msg);
+    case ErrorKind.UrlParse:
+    case ErrorKind.InvalidPath:
+    case ErrorKind.ImportPrefixMissing:
+      return new URIError(msg);
+    default:
+      return new DenoError(kind, msg);
+  }
+}
+
 /** A Deno specific error.  The `kind` property is set to a specific error code
  * which can be used to in application logic.
  *

@@ -109,8 +109,7 @@ testPerm(
     } catch (e) {
       err = e;
     }
-    assertEquals(err.kind, Deno.ErrorKind.Other);
-    assertEquals(err.name, "Other");
+    assert(err instanceof Error);
   }
 );
 
@@ -139,8 +138,7 @@ testPerm(
     } catch (e) {
       err = e;
     }
-    assertEquals(err.kind, Deno.ErrorKind.Other);
-    assertEquals(err.name, "Other");
+    assert(err instanceof Error);
   }
 );
 

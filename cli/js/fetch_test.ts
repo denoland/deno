@@ -107,8 +107,7 @@ testPerm({ net: true }, async function fetchEmptyInvalid(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assertEquals(err.kind, Deno.ErrorKind.UrlParse);
-  assertEquals(err.name, "UrlParse");
+  assert(err instanceof URIError);
 });
 
 testPerm({ net: true }, async function fetchMultipartFormDataSuccess(): Promise<

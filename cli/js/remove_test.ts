@@ -61,8 +61,7 @@ testPerm({ write: true, read: true }, function removeSyncFail(): void {
     err = e;
   }
   // TODO(ry) Is Other really the error we should get here? What would Go do?
-  assertEquals(err.kind, Deno.ErrorKind.Other);
-  assertEquals(err.name, "Other");
+  assert(err instanceof Error);
   // NON-EXISTENT DIRECTORY/FILE
   try {
     // Non-existent
@@ -86,7 +85,6 @@ testPerm(
       errOnWindows = err;
     }
     if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.kind, Deno.ErrorKind.Other);
       assertEquals(errOnWindows.message, "Not implemented");
     } else {
       const pathInfo = Deno.lstatSync(danglingSymlinkPath);
@@ -121,7 +119,6 @@ testPerm(
       errOnWindows = err;
     }
     if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.kind, Deno.ErrorKind.Other);
       assertEquals(errOnWindows.message, "Not implemented");
     } else {
       const symlinkPathInfo = Deno.statSync(validSymlinkPath);
@@ -304,8 +301,7 @@ testPerm({ write: true, read: true }, async function removeFail(): Promise<
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.Other);
-  assertEquals(err.name, "Other");
+  assert(err instanceof Error);
   // NON-EXISTENT DIRECTORY/FILE
   try {
     // Non-existent
@@ -329,7 +325,6 @@ testPerm(
       errOnWindows = e;
     }
     if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.kind, Deno.ErrorKind.Other);
       assertEquals(errOnWindows.message, "Not implemented");
     } else {
       const pathInfo = Deno.lstatSync(danglingSymlinkPath);
@@ -364,7 +359,6 @@ testPerm(
       errOnWindows = e;
     }
     if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.kind, Deno.ErrorKind.Other);
       assertEquals(errOnWindows.message, "Not implemented");
     } else {
       const symlinkPathInfo = Deno.statSync(validSymlinkPath);

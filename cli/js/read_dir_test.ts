@@ -46,7 +46,7 @@ testPerm({ read: true }, function readDirSyncNotDir(): void {
     src = Deno.readDirSync("cli/tests/fixture.json");
   } catch (err) {
     caughtError = true;
-    assertEquals(err.kind, Deno.ErrorKind.Other);
+    assert(err instanceof Error);
   }
   assert(caughtError);
   assertEquals(src, undefined);
