@@ -287,4 +287,18 @@ mod tests {
     let _ignored = q.shift().unwrap();
     assert_eq!(q.push(0, &alloc_buf(1)), false);
   }
+
+  #[test]
+  fn allow_any_buf_length() {
+    let mut q = SharedQueue::new(RECOMMENDED_SIZE);
+    // check that `record` that has length not a multiple of 4 will cause panic
+    q.push(0, &alloc_buf(1));
+    q.push(0, &alloc_buf(2));
+    q.push(0, &alloc_buf(3));
+    q.push(0, &alloc_buf(4));
+    q.push(0, &alloc_buf(5));
+    q.push(0, &alloc_buf(6));
+    q.push(0, &alloc_buf(7));
+    q.push(0, &alloc_buf(8));
+  }
 }
