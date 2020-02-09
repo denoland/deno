@@ -1,12 +1,14 @@
+import { assert } from "../testing/asserts.ts";
+
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 export interface ArgParsingOptions {
-  unknown?: (i: unknown) => unknown;
-  boolean?: boolean | string | string[];
-  alias?: { [key: string]: string | string[] };
-  string?: string | string[];
-  default?: { [key: string]: unknown };
-  "--"?: boolean;
-  stopEarly?: boolean;
+  unknown: (i: unknown) => unknown;
+  boolean: boolean | string | string[];
+  alias: { [key: string]: string | string[] };
+  string: string | string[];
+  default: { [key: string]: unknown };
+  "--": boolean;
+  stopEarly: boolean;
 }
 
 const DEFAULT_OPTIONS = {
@@ -35,6 +37,11 @@ function get<T>(obj: { [s: string]: T }, key: string): T | undefined {
     return obj[key];
   }
 }
+function getForce<T>(obj: { [s: string]: T }, key: string): T {
+  const v = get(obj, key);
+  assert(v != null);
+  return v;
+}
 
 function isNumber(x: unknown): boolean {
   if (typeof x === "number") return true;
@@ -55,18 +62,18 @@ function hasKey(obj: NestedMapping, keys: string[]): boolean {
 export function parse(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   args: any[],
-  initialOptions?: ArgParsingOptions
+  initialOptions: Partial<ArgParsingOptions> = {}
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): { [key: string]: any } {
   const options: ArgParsingOptions = {
     ...DEFAULT_OPTIONS,
-    ...(initialOptions || {})
+    ...initialOptions
   };
 
   const flags: Flags = {
     bools: {},
     strings: {},
-    unknownFn: options.unknown!,
+    unknownFn: options.unknown,
     allBools: false
   };
 
@@ -88,15 +95,13 @@ export function parse(
   const aliases: { [key: string]: string[] } = {};
   if (options.alias !== undefined) {
     for (const key in options.alias) {
-      const val = get(options.alias, key)!;
-
+      const val = getForce(options.alias, key);
       if (typeof val === "string") {
         aliases[key] = [val];
       } else {
         aliases[key] = val;
       }
-
-      for (const alias of get(aliases, key)!) {
+      for (const alias of getForce(aliases, key)) {
         aliases[alias] = [key].concat(
           aliases[key].filter((y: string): boolean => alias !== y)
         );
@@ -119,7 +124,7 @@ export function parse(
     });
   }
 
-  const defaults = options.default!;
+  const defaults = options.default;
 
   const argv: { [key: string]: unknown[] } = { _: [] };
 
@@ -173,8 +178,8 @@ export function parse(
   }
 
   function aliasIsBoolean(key: string): boolean {
-    return get(aliases, key)!.some(function(x): boolean {
-      return get(flags.bools, x)!;
+    return getForce(aliases, key).some(function(x): boolean {
+      return typeof get(flags.bools, x) === "boolean";
     });
   }
 
@@ -197,7 +202,8 @@ export function parse(
       // Using [\s\S] instead of . because js doesn't support the
       // 'dotall' regex modifier. See:
       // http://stackoverflow.com/a/1068308/13216
-      const m = arg.match(/^--([^=]+)=([\s\S]*)$/)!;
+      const m = arg.match(/^--([^=]+)=([\s\S]*)$/);
+      assert(m != null);
       const key = m[1];
       const value = m[2];
 
@@ -208,10 +214,13 @@ export function parse(
         setArg(key, value, arg);
       }
     } else if (/^--no-.+/.test(arg)) {
-      const key = arg.match(/^--no-(.+)/)![1];
-      setArg(key, false, arg);
+      const m = arg.match(/^--no-(.+)/);
+      assert(m != null);
+      setArg(m[1], false, arg);
     } else if (/^--.+/.test(arg)) {
-      const key = arg.match(/^--(.+)/)![1];
+      const m = arg.match(/^--(.+)/);
+      assert(m != null);
+      const key = m[1];
       const next = args[i + 1];
       if (
         next !== undefined &&

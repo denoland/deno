@@ -6,6 +6,55 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.32.0 / 2020.02.03
+
+- BREAKING CHANGE: Replace formatter for "deno fmt", use dprint (#3820, #3824,
+  #3842)
+- BREAKING CHANGE: Remove std/prettier (#3820)
+- BREAKING CHANGE: Remove std/installer (#3843)
+- BREAKING CHANGE: Remove --current-thread flag (#3830)
+- BREAKING CHANGE: Deno.makeTempDir() checks permissions (#3810)
+- feat: deno install in Rust (#3806)
+- feat: Improve support of type definitions (#3755)
+- feat: deno fetch supports --lock-write (#3787)
+- feat: deno eval supports --v8-flags=... (#3797)
+- feat: descriptive permission errors (#3808)
+- feat: Make fetch API more standards compliant (#3667)
+- feat: deno fetch supports multiple files (#3845)
+- feat(std/node): Endianness (#3833)
+- feat(std/node): Partial os polyfill (#3821)
+- feat(std/examples): Bring back xeval (#3822)
+- feat(std/encoding): Add base32 support (#3855)
+- feat(deno_typescript): Support crate imports (#3814)
+- fix: Panic on cache miss (#3784)
+- fix: Deno.remove() to properly remove dangling symlinks (#3860)
+- refactor: Use tokio::main attribute in lib.rs (#3831)
+- refactor: Provide TS libraries for window and worker scope (#3771, #3812,
+  #3728)
+- refactor(deno_core): Error tracking and scope passing (#3783)
+- refactor(deno_core): Rename PinnedBuf to ZeroCopyBuf (#3782)
+- refactor(deno_core): Change Loader trait (#3791)
+- upgrade: Rust 1.41.0 (#3838)
+- upgrade: Rust crates (#3829)
+
+### v0.31.0 / 2020.01.24
+
+- BREAKING CHANGE: remove support for blob: URL in Worker (#3722)
+- BREAKING CHANGE: remove Deno namespace support and noDenoNamespace option in
+  Worker constructor (#3722)
+- BREAKING CHANGE: rename dial to connect and dialTLS to connectTLS (#3710)
+- feat: Add signal handlers (#3757)
+- feat: Implemented alternative open mode in files (#3119)
+- feat: Use globalThis to reference global scope (#3719)
+- feat: add AsyncUnref ops (#3721)
+- feat: stabilize net Addr (#3709)
+- fix: correct yaml's sortKeys type (#3708)
+- refactor: Improve path handling in permission checks (#3714)
+- refactor: Improve web workers (#3722, #3732, #3730, #3735)
+- refactor: Reduce number of ErrorKind variants (#3662)
+- refactor: Remove Isolate.shared_response_buf optimization (#3759)
+- upgrade: rusty_v8 (#3764, #3769, #3741)
+
 ### v0.30.0 / 2020.01.17
 
 - BREAKING CHANGE Revert "feat(flags): script arguments come after '--'" (#3681)

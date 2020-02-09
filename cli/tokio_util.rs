@@ -1,30 +1,30 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use std::future::Future;
-use tokio;
-use tokio::runtime;
 
-pub fn run<F>(future: F)
+// TODO(ry) rename to run_local ?
+pub fn run_basic<F, R>(future: F) -> R
 where
-  F: Future<Output = ()> + Send + 'static,
+  F: std::future::Future<Output = R> + 'static,
 {
-  let mut rt = runtime::Builder::new()
-    .threaded_scheduler()
-    .enable_all()
-    .thread_name("deno")
+  let mut rt = tokio::runtime::Builder::new()
+    .basic_scheduler()
+    .enable_io()
+    .enable_time()
     .build()
-    .expect("Unable to create Tokio runtime");
-  rt.block_on(future);
+    .unwrap();
+  rt.block_on(future)
 }
 
-pub fn run_on_current_thread<F>(future: F)
+// TODO(ry) maybe replace with tokio::task::spawn_blocking
+#[cfg(test)]
+pub fn spawn_thread<F, R>(f: F) -> impl std::future::Future<Output = R>
 where
-  F: Future<Output = ()> + Send + 'static,
+  F: 'static + Send + FnOnce() -> R,
+  R: 'static + Send,
 {
-  let mut rt = runtime::Builder::new()
-    .basic_scheduler()
-    .enable_all()
-    .thread_name("deno")
-    .build()
-    .expect("Unable to create Tokio runtime");
-  rt.block_on(future);
+  let (sender, receiver) = tokio::sync::oneshot::channel::<R>();
+  std::thread::spawn(move || {
+    let result = f();
+    sender.send(result)
+  });
+  async { receiver.await.unwrap() }
 }

@@ -1,5 +1,11 @@
-const jsWorker = new Worker("./subdir/test_worker.js", { type: "module" });
-const tsWorker = new Worker("./subdir/test_worker.ts", { type: "module" });
+const jsWorker = new Worker("./subdir/test_worker.js", {
+  type: "module",
+  name: "jsWorker"
+});
+const tsWorker = new Worker("./subdir/test_worker.ts", {
+  type: "module",
+  name: "tsWorker"
+});
 
 tsWorker.onmessage = (e): void => {
   console.log("Received ts: " + e.data);

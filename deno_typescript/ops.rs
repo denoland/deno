@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde_json::json;
 use serde_json::Value;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct WrittenFile {
   pub url: String,
   pub module_name: String,
@@ -35,27 +35,54 @@ pub fn json_op(d: Dispatcher) -> impl Fn(&mut TSState, &[u8]) -> CoreOp {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ReadFile {
-  file_name: String,
+struct LoadModule {
+  module_url: String,
   language_version: Option<i32>,
   should_create_new_source_file: bool,
 }
 
-pub fn read_file(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
-  let v: ReadFile = serde_json::from_value(v)?;
-  let (module_name, source_code) = if v.file_name.starts_with("$asset$/") {
-    let asset = v.file_name.replace("$asset$/", "");
-    let source_code = crate::get_asset2(&asset)?;
+pub fn load_module(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+  let v: LoadModule = serde_json::from_value(v)?;
+  let (module_name, source_code) = if v.module_url.starts_with("$asset$/") {
+    let asset = v.module_url.replace("$asset$/", "");
+
+    let source_code = match crate::get_asset(&asset) {
+      Some(code) => code.to_string(),
+      None => {
+        return Err(
+          std::io::Error::new(std::io::ErrorKind::NotFound, "Asset not found")
+            .into(),
+        );
+      }
+    };
+
     (asset, source_code)
   } else {
-    assert!(!v.file_name.starts_with("$assets$"), "you meant $asset$");
-    let module_specifier = ModuleSpecifier::resolve_url_or_path(&v.file_name)?;
-    let path = module_specifier.as_url().to_file_path().unwrap();
-    println!("cargo:rerun-if-changed={}", path.display());
-    (
-      module_specifier.as_str().to_string(),
-      std::fs::read_to_string(&path)?,
-    )
+    assert!(!v.module_url.starts_with("$assets$"), "you meant $asset$");
+    let module_specifier = ModuleSpecifier::resolve_url_or_path(&v.module_url)?;
+    let module_url = module_specifier.as_url();
+    match module_url.scheme() {
+      "file" => {
+        let path = module_url.to_file_path().unwrap();
+        println!("cargo:rerun-if-changed={}", path.display());
+        (
+          module_specifier.as_str().to_string(),
+          std::fs::read_to_string(&path)?,
+        )
+      }
+      "crate" => {
+        let crate_name = module_url.host_str().unwrap();
+        // TODO(afinch7) turn failures here into real error messages.
+        let path_prefix = s.extern_crate_modules.get(crate_name).unwrap();
+        let path =
+          std::path::Path::new(path_prefix).join(&module_url.path()[1..]);
+        (
+          module_specifier.as_str().to_string(),
+          std::fs::read_to_string(&path)?,
+        )
+      }
+      _ => unimplemented!(),
+    }
   };
   Ok(json!({
     "moduleName": module_name,
@@ -108,21 +135,6 @@ pub fn resolve_module_names(
     }
   }
   Ok(json!(resolved))
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct FetchAssetArgs {
-  name: String,
-}
-
-pub fn fetch_asset(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
-  let args: FetchAssetArgs = serde_json::from_value(v)?;
-  if let Some(source_code) = crate::get_asset(&args.name) {
-    Ok(json!(source_code))
-  } else {
-    panic!("op_fetch_asset bad asset {}", args.name)
-  }
 }
 
 #[derive(Debug, Deserialize)]

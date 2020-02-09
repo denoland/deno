@@ -7,6 +7,8 @@ use bytes::Bytes;
 use deno_core::ErrBox;
 use futures::future::FutureExt;
 use reqwest;
+use reqwest::header::HeaderMap;
+use reqwest::header::HeaderValue;
 use reqwest::header::ACCEPT_ENCODING;
 use reqwest::header::CONTENT_ENCODING;
 use reqwest::header::CONTENT_TYPE;
@@ -14,7 +16,6 @@ use reqwest::header::ETAG;
 use reqwest::header::IF_NONE_MATCH;
 use reqwest::header::LOCATION;
 use reqwest::header::USER_AGENT;
-use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::redirect::Policy;
 use reqwest::Client;
 use reqwest::Response;
@@ -73,19 +74,26 @@ fn resolve_url_from_location(base_url: &Url, location: &str) -> Url {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct ResultPayload {
+  pub body: Vec<u8>,
+  pub content_type: Option<String>,
+  pub etag: Option<String>,
+  pub x_typescript_types: Option<String>,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum FetchOnceResult {
-  // (code, maybe_content_type, etag)
-  Code(String, Option<String>, Option<String>),
+  Code(ResultPayload),
   NotModified,
   Redirect(Url),
 }
 
 /// Asynchronously fetches the given HTTP URL one pass only.
 /// If no redirect is present and no error occurs,
-/// yields Code(code, maybe_content_type).
+/// yields Code(ResultPayload).
 /// If redirect occurs, does not follow and
 /// yields Redirect(url).
-pub fn fetch_string_once(
+pub fn fetch_once(
   client: Client,
   url: &Url,
   cached_etag: Option<String>,
@@ -145,23 +153,38 @@ pub fn fetch_string_once(
       .get(CONTENT_ENCODING)
       .map(|content_encoding| content_encoding.to_str().unwrap().to_owned());
 
+    const X_TYPESCRIPT_TYPES: &str = "X-TypeScript-Types";
+
+    let x_typescript_types =
+      response
+        .headers()
+        .get(X_TYPESCRIPT_TYPES)
+        .map(|x_typescript_types| {
+          x_typescript_types.to_str().unwrap().to_owned()
+        });
+
     let body;
     if let Some(content_encoding) = content_encoding {
       body = match content_encoding {
         _ if content_encoding == "br" => {
           let full_bytes = response.bytes().await?;
           let mut decoder = BrotliDecoder::new(full_bytes.as_ref());
-          let mut body = String::new();
-          decoder.read_to_string(&mut body)?;
+          let mut body = vec![];
+          decoder.read_to_end(&mut body)?;
           body
         }
-        _ => response.text().await?,
+        _ => response.bytes().await?.to_vec(),
       }
     } else {
-      body = response.text().await?;
+      body = response.bytes().await?.to_vec();
     }
 
-    return Ok(FetchOnceResult::Code(body, content_type, etag));
+    return Ok(FetchOnceResult::Code(ResultPayload {
+      body,
+      content_type,
+      etag,
+      x_typescript_types,
+    }));
   };
 
   fut.boxed()
@@ -246,31 +269,28 @@ impl AsyncRead for HttpBody {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::tokio_util;
 
-  #[test]
-  fn test_fetch_sync_string() {
+  #[tokio::test]
+  async fn test_fetch_sync_string() {
     let http_server_guard = crate::test_util::http_server();
     // Relies on external http server. See tools/http_server.py
     let url =
       Url::parse("http://127.0.0.1:4545/cli/tests/fixture.json").unwrap();
     let client = create_http_client();
-    let fut =
-      fetch_string_once(client, &url, None).map(|result| match result {
-        Ok(FetchOnceResult::Code(code, maybe_content_type, etag)) => {
-          assert!(!code.is_empty());
-          assert_eq!(maybe_content_type, Some("application/json".to_string()));
-          assert_eq!(etag, None)
-        }
-        _ => panic!(),
-      });
-
-    tokio_util::run(fut);
+    let result = fetch_once(client, &url, None).await;
+    if let Ok(FetchOnceResult::Code(payload)) = result {
+      assert!(!payload.body.is_empty());
+      assert_eq!(payload.content_type, Some("application/json".to_string()));
+      assert_eq!(payload.etag, None);
+      assert_eq!(payload.x_typescript_types, None);
+    } else {
+      panic!();
+    }
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_fetch_gzip() {
+  #[tokio::test]
+  async fn test_fetch_gzip() {
     let http_server_guard = crate::test_util::http_server();
     // Relies on external http server. See tools/http_server.py
     let url = Url::parse(
@@ -278,60 +298,55 @@ mod tests {
     )
     .unwrap();
     let client = create_http_client();
-    let fut =
-      fetch_string_once(client, &url, None).map(|result| match result {
-        Ok(FetchOnceResult::Code(code, maybe_content_type, etag)) => {
-          assert!(!code.is_empty());
-          assert_eq!(code, "console.log('gzip')");
-          assert_eq!(
-            maybe_content_type,
-            Some("application/javascript".to_string())
-          );
-          assert_eq!(etag, None);
-        }
-        _ => panic!(),
-      });
-
-    tokio_util::run(fut);
+    let result = fetch_once(client, &url, None).await;
+    if let Ok(FetchOnceResult::Code(payload)) = result {
+      assert_eq!(
+        String::from_utf8(payload.body).unwrap(),
+        "console.log('gzip')"
+      );
+      assert_eq!(
+        payload.content_type,
+        Some("application/javascript".to_string())
+      );
+      assert_eq!(payload.etag, None);
+      assert_eq!(payload.x_typescript_types, None);
+    } else {
+      panic!();
+    }
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_fetch_with_etag() {
+  #[tokio::test]
+  async fn test_fetch_with_etag() {
     let http_server_guard = crate::test_util::http_server();
     let url = Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
     let client = create_http_client();
-    let fut = async move {
-      fetch_string_once(client.clone(), &url, None)
-        .map(|result| match result {
-          Ok(FetchOnceResult::Code(code, maybe_content_type, etag)) => {
-            assert!(!code.is_empty());
-            assert_eq!(code, "console.log('etag')");
-            assert_eq!(
-              maybe_content_type,
-              Some("application/javascript".to_string())
-            );
-            assert_eq!(etag, Some("33a64df551425fcc55e".to_string()));
-          }
-          _ => panic!(),
-        })
-        .await;
+    let result = fetch_once(client.clone(), &url, None).await;
+    if let Ok(FetchOnceResult::Code(ResultPayload {
+      body,
+      content_type,
+      etag,
+      x_typescript_types,
+    })) = result
+    {
+      assert!(!body.is_empty());
+      assert_eq!(String::from_utf8(body).unwrap(), "console.log('etag')");
+      assert_eq!(content_type, Some("application/typescript".to_string()));
+      assert_eq!(etag, Some("33a64df551425fcc55e".to_string()));
+      assert_eq!(x_typescript_types, None);
+    } else {
+      panic!();
+    }
 
-      let res = fetch_string_once(
-        client,
-        &url,
-        Some("33a64df551425fcc55e".to_string()),
-      )
-      .await;
-      assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
-    };
+    let res =
+      fetch_once(client, &url, Some("33a64df551425fcc55e".to_string())).await;
+    assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
 
-    tokio_util::run(fut);
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_fetch_brotli() {
+  #[tokio::test]
+  async fn test_fetch_brotli() {
     let http_server_guard = crate::test_util::http_server();
     // Relies on external http server. See tools/http_server.py
     let url = Url::parse(
@@ -339,26 +354,27 @@ mod tests {
     )
     .unwrap();
     let client = create_http_client();
-    let fut =
-      fetch_string_once(client, &url, None).map(|result| match result {
-        Ok(FetchOnceResult::Code(code, maybe_content_type, etag)) => {
-          assert!(!code.is_empty());
-          assert_eq!(code, "console.log('brotli');");
-          assert_eq!(
-            maybe_content_type,
-            Some("application/javascript".to_string())
-          );
-          assert_eq!(etag, None);
-        }
-        _ => panic!(),
-      });
-
-    tokio_util::run(fut);
+    let result = fetch_once(client, &url, None).await;
+    if let Ok(FetchOnceResult::Code(payload)) = result {
+      assert!(!payload.body.is_empty());
+      assert_eq!(
+        String::from_utf8(payload.body).unwrap(),
+        "console.log('brotli');"
+      );
+      assert_eq!(
+        payload.content_type,
+        Some("application/javascript".to_string())
+      );
+      assert_eq!(payload.etag, None);
+      assert_eq!(payload.x_typescript_types, None);
+    } else {
+      panic!();
+    }
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_fetch_string_once_with_redirect() {
+  #[tokio::test]
+  async fn test_fetch_once_with_redirect() {
     let http_server_guard = crate::test_util::http_server();
     // Relies on external http server. See tools/http_server.py
     let url =
@@ -367,15 +383,12 @@ mod tests {
     let target_url =
       Url::parse("http://localhost:4545/cli/tests/fixture.json").unwrap();
     let client = create_http_client();
-    let fut =
-      fetch_string_once(client, &url, None).map(move |result| match result {
-        Ok(FetchOnceResult::Redirect(url)) => {
-          assert_eq!(url, target_url);
-        }
-        _ => panic!(),
-      });
-
-    tokio_util::run(fut);
+    let result = fetch_once(client, &url, None).await;
+    if let Ok(FetchOnceResult::Redirect(url)) = result {
+      assert_eq!(url, target_url);
+    } else {
+      panic!();
+    }
     drop(http_server_guard);
   }
 

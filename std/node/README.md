@@ -23,7 +23,7 @@ deno standard library as it's a compatiblity module.
 - [ ] https
 - [x] module
 - [ ] net
-- [ ] os
+- [x] os _partly_
 - [x] path
 - [ ] perf_hooks
 - [x] process _partly_

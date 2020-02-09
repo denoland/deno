@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { assert, assertEquals, test } from "./test_util.ts";
 
@@ -102,4 +102,12 @@ test(async function bundleApiConfig() {
   );
   assert(diagnostics == null);
   assert(!actual.includes(`random`));
+});
+
+test(async function diagnosticsTest() {
+  const [diagnostics] = await compile("/foo.ts", {
+    "/foo.ts": `document.getElementById("foo");`
+  });
+  assert(Array.isArray(diagnostics));
+  assert(diagnostics.length === 1);
 });

@@ -23,13 +23,13 @@ import {
   readRequest,
   parseHTTPVersion
 } from "./server.ts";
-import { delay, deferred } from "../util/async.ts";
 import {
   BufReader,
   BufWriter,
   ReadLineResult,
   UnexpectedEOFError
 } from "../io/bufio.ts";
+import { delay, deferred } from "../util/async.ts";
 import { StringReader } from "../io/readers.ts";
 
 function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
@@ -515,8 +515,7 @@ test(async function testReadRequestError(): Promise<void> {
   for (const test of testCases) {
     const reader = new BufReader(new StringReader(test.in));
     let err;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let req: any;
+    let req: ServerRequest | Deno.EOF;
     try {
       req = await readRequest(mockConn as Deno.Conn, reader);
     } catch (e) {
@@ -529,10 +528,12 @@ test(async function testReadRequestError(): Promise<void> {
     } else if (test.err) {
       assert(err instanceof (test.err as typeof UnexpectedEOFError));
     } else {
+      assert(req instanceof ServerRequest);
+      assert(test.headers != null);
       assertEquals(err, undefined);
       assertNotEquals(req, Deno.EOF);
-      for (const h of test.headers!) {
-        assertEquals((req! as ServerRequest).headers.get(h.key), h.value);
+      for (const h of test.headers) {
+        assertEquals(req.headers.get(h.key), h.value);
       }
     }
   }

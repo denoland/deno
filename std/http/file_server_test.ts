@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test } from "../testing/mod.ts";
-import { assert, assertEquals } from "../testing/asserts.ts";
+import { test, runIfMain } from "../testing/mod.ts";
+import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 
@@ -20,14 +20,15 @@ async function startFileServer(): Promise<void> {
     stdout: "piped"
   });
   // Once fileServer is ready it will write to its stdout.
-  const r = new TextProtoReader(new BufReader(fileServer.stdout!));
+  assert(fileServer.stdout != null);
+  const r = new TextProtoReader(new BufReader(fileServer.stdout));
   const s = await r.readLine();
   assert(s !== Deno.EOF && s.includes("server listening"));
 }
 
 function killFileServer(): void {
   fileServer.close();
-  fileServer.stdout!.close();
+  fileServer.stdout?.close();
 }
 
 test(async function serveFile(): Promise<void> {
@@ -102,21 +103,23 @@ test(async function servePermissionDenied(): Promise<void> {
     stdout: "piped",
     stderr: "piped"
   });
-  const reader = new TextProtoReader(new BufReader(deniedServer.stdout!));
-  const errReader = new TextProtoReader(new BufReader(deniedServer.stderr!));
+  assert(deniedServer.stdout != null);
+  const reader = new TextProtoReader(new BufReader(deniedServer.stdout));
+  assert(deniedServer.stderr != null);
+  const errReader = new TextProtoReader(new BufReader(deniedServer.stderr));
   const s = await reader.readLine();
   assert(s !== Deno.EOF && s.includes("server listening"));
 
   try {
     await fetch("http://localhost:4500/");
-    assertEquals(
-      await errReader.readLine(),
+    assertStrContains(
+      (await errReader.readLine()) as string,
       "run again with the --allow-read flag"
     );
   } finally {
     deniedServer.close();
-    deniedServer.stdout!.close();
-    deniedServer.stderr!.close();
+    deniedServer.stdout.close();
+    deniedServer.stderr.close();
   }
 });
 
@@ -125,9 +128,12 @@ test(async function printHelp(): Promise<void> {
     args: [Deno.execPath(), "run", "http/file_server.ts", "--help"],
     stdout: "piped"
   });
-  const r = new TextProtoReader(new BufReader(helpProcess.stdout!));
+  assert(helpProcess.stdout != null);
+  const r = new TextProtoReader(new BufReader(helpProcess.stdout));
   const s = await r.readLine();
   assert(s !== Deno.EOF && s.includes("Deno File Server"));
   helpProcess.close();
-  helpProcess.stdout!.close();
+  helpProcess.stdout.close();
 });
+
+runIfMain(import.meta);

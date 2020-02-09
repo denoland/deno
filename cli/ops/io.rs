@@ -3,9 +3,8 @@ use crate::deno_error;
 use crate::deno_error::bad_resource;
 use crate::http_util::HttpBody;
 use crate::ops::minimal_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::ErrBox;
-use deno_core::Resource;
 use deno_core::*;
 use futures::future::FutureExt;
 use futures::ready;
@@ -49,7 +48,7 @@ lazy_static! {
   };
 }
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "read",
     s.core_op(minimal_op(s.stateful_minimal_op(op_read))),
@@ -86,8 +85,6 @@ pub enum StreamResource {
   ChildStdout(tokio::process::ChildStdout),
   ChildStderr(tokio::process::ChildStderr),
 }
-
-impl Resource for StreamResource {}
 
 impl Drop for StreamResource {
   fn drop(&mut self) {
@@ -146,7 +143,7 @@ enum IoState {
 ///
 /// The returned future will resolve to both the I/O stream and the buffer
 /// as well as the number of bytes read once the read operation is completed.
-pub fn read<T>(state: &ThreadSafeState, rid: ResourceId, buf: T) -> Read<T>
+pub fn read<T>(state: &State, rid: ResourceId, buf: T) -> Read<T>
 where
   T: AsMut<[u8]>,
 {
@@ -166,7 +163,7 @@ pub struct Read<T> {
   rid: ResourceId,
   buf: T,
   io_state: IoState,
-  state: ThreadSafeState,
+  state: State,
 }
 
 impl<T> Future for Read<T>
@@ -181,8 +178,9 @@ where
       panic!("poll a Read after it's done");
     }
 
-    let mut table = inner.state.lock_resource_table();
-    let resource = table
+    let mut state = inner.state.borrow_mut();
+    let resource = state
+      .resource_table
       .get_mut::<StreamResource>(inner.rid)
       .ok_or_else(bad_resource)?;
     let nread = ready!(resource.poll_read(cx, &mut inner.buf.as_mut()[..]))?;
@@ -192,21 +190,21 @@ where
 }
 
 pub fn op_read(
-  state: &ThreadSafeState,
+  state: &State,
   rid: i32,
-  zero_copy: Option<PinnedBuf>,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Pin<Box<MinimalOp>> {
   debug!("read rid={}", rid);
   let zero_copy = match zero_copy {
     None => {
-      return futures::future::err(deno_error::no_buffer_specified()).boxed()
+      return futures::future::err(deno_error::no_buffer_specified())
+        .boxed_local()
     }
     Some(buf) => buf,
   };
 
   let fut = read(state, rid as u32, zero_copy);
-
-  fut.boxed()
+  fut.boxed_local()
 }
 
 /// `DenoAsyncWrite` is the same as the `tokio_io::AsyncWrite` trait
@@ -272,7 +270,7 @@ pub struct Write<T> {
   rid: ResourceId,
   buf: T,
   io_state: IoState,
-  state: ThreadSafeState,
+  state: State,
   nwritten: i32,
 }
 
@@ -281,7 +279,7 @@ pub struct Write<T> {
 ///
 /// Any error which happens during writing will cause both the stream and the
 /// buffer to get destroyed.
-pub fn write<T>(state: &ThreadSafeState, rid: ResourceId, buf: T) -> Write<T>
+pub fn write<T>(state: &State, rid: ResourceId, buf: T) -> Write<T>
 where
   T: AsRef<[u8]>,
 {
@@ -309,8 +307,9 @@ where
     }
 
     if inner.io_state == IoState::Pending {
-      let mut table = inner.state.lock_resource_table();
-      let resource = table
+      let mut state = inner.state.borrow_mut();
+      let resource = state
+        .resource_table
         .get_mut::<StreamResource>(inner.rid)
         .ok_or_else(bad_resource)?;
 
@@ -324,8 +323,9 @@ where
     // Figure out why it's needed and preferably remove it.
     // https://github.com/denoland/deno/issues/3565
     if inner.io_state == IoState::Flush {
-      let mut table = inner.state.lock_resource_table();
-      let resource = table
+      let mut state = inner.state.borrow_mut();
+      let resource = state
+        .resource_table
         .get_mut::<StreamResource>(inner.rid)
         .ok_or_else(bad_resource)?;
       ready!(resource.poll_flush(cx))?;
@@ -337,19 +337,20 @@ where
 }
 
 pub fn op_write(
-  state: &ThreadSafeState,
+  state: &State,
   rid: i32,
-  zero_copy: Option<PinnedBuf>,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Pin<Box<MinimalOp>> {
   debug!("write rid={}", rid);
   let zero_copy = match zero_copy {
     None => {
-      return futures::future::err(deno_error::no_buffer_specified()).boxed()
+      return futures::future::err(deno_error::no_buffer_specified())
+        .boxed_local()
     }
     Some(buf) => buf,
   };
 
   let fut = write(state, rid as u32, zero_copy);
 
-  fut.boxed()
+  fut.boxed_local()
 }

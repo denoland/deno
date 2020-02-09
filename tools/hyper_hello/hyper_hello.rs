@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Adapted from https://github.com/hyperium/hyper/blob/master/examples/hello.rs
 
 #![deny(warnings)]
@@ -28,8 +28,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // `service_fn` is a helper to convert a function that
     // returns a Response into a `Service`.
     async {
-      Just::Ok(service_fn(|_req| {
-        async { Just::Ok(Response::new(Body::from(&b"Hello World!"[..]))) }
+      Just::Ok(service_fn(|_req| async {
+        Just::Ok(Response::new(Body::from(&b"Hello World!"[..])))
       }))
     }
   });

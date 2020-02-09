@@ -42,11 +42,8 @@ export let OP_QUERY_PERMISSION: number;
 export let OP_REVOKE_PERMISSION: number;
 export let OP_REQUEST_PERMISSION: number;
 export let OP_CREATE_WORKER: number;
-export let OP_HOST_GET_WORKER_LOADED: number;
 export let OP_HOST_POST_MESSAGE: number;
-export let OP_HOST_POLL_WORKER: number;
 export let OP_HOST_CLOSE_WORKER: number;
-export let OP_HOST_RESUME_WORKER: number;
 export let OP_HOST_GET_MESSAGE: number;
 export let OP_WORKER_POST_MESSAGE: number;
 export let OP_WORKER_GET_MESSAGE: number;
@@ -74,6 +71,9 @@ export let OP_HOSTNAME: number;
 export let OP_OPEN_PLUGIN: number;
 export let OP_COMPILE: number;
 export let OP_TRANSPILE: number;
+export let OP_SIGNAL_BIND: number;
+export let OP_SIGNAL_UNBIND: number;
+export let OP_SIGNAL_POLL: number;
 
 /** **WARNING:** This is only available during the snapshotting process and is
  * unavailable at runtime. */

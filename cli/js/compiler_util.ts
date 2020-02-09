@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { bold, cyan, yellow } from "./colors.ts";
 import { CompilerOptions } from "./compiler_api.ts";
@@ -7,7 +7,8 @@ import { ConfigureResponse, Host } from "./compiler_host.ts";
 import { SourceFile } from "./compiler_sourcefile.ts";
 import { sendSync } from "./dispatch_json.ts";
 import * as dispatch from "./dispatch.ts";
-import { TextEncoder } from "./text_encoding.ts";
+import { TextDecoder, TextEncoder } from "./text_encoding.ts";
+import { core } from "./core.ts";
 import * as util from "./util.ts";
 import { assert } from "./util.ts";
 import { writeFileSync } from "./write_file.ts";
@@ -90,11 +91,33 @@ function cache(
   }
 }
 
-const encoder = new TextEncoder();
+let OP_FETCH_ASSET: number;
+
+/**
+ * This op is called only during snapshotting.
+ *
+ * We really don't want to depend on JSON dispatch
+ * during snapshotting, so this op exchanges strings with Rust
+ * as raw byte arrays.
+ */
+export function getAsset(name: string): string {
+  if (!OP_FETCH_ASSET) {
+    const ops = core.ops();
+    const opFetchAsset = ops["fetch_asset"];
+    assert(opFetchAsset, "OP_FETCH_ASSET is not registered");
+    OP_FETCH_ASSET = opFetchAsset;
+  }
+
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const sourceCodeBytes = core.dispatch(OP_FETCH_ASSET, encoder.encode(name));
+  return decoder.decode(sourceCodeBytes!);
+}
 
 /** Generates a `writeFile` function which can be passed to the compiler `Host`
  * to use when emitting files. */
 export function createWriteFile(state: WriteFileState): WriteFileCallback {
+  const encoder = new TextEncoder();
   if (state.type === CompilerRequestType.Compile) {
     return function writeFile(
       fileName: string,
@@ -270,7 +293,7 @@ export const ignoredDiagnostics = [
   // TS5009: Cannot find the common subdirectory path for the input files.
   5009,
   // TS5055: Cannot write file
-  // 'http://localhost:4545/tests/subdir/mt_application_x_javascript.j4.js'
+  // 'http://localhost:4545/cli/tests/subdir/mt_application_x_javascript.j4.js'
   // because it would overwrite input file.
   5055,
   // TypeScript is overly opinionated that only CommonJS modules kinds can

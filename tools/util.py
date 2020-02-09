@@ -1,4 +1,4 @@
-# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import collections
 import os
 import re
@@ -21,7 +21,7 @@ executable_suffix = ".exe" if os.name == "nt" else ""
 
 root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 libdeno_path = os.path.join(root_path, "core", "libdeno")
-tests_path = os.path.join(root_path, "tests")
+tests_path = os.path.join(root_path, "cli/tests")
 third_party_path = os.path.join(root_path, "third_party")
 
 

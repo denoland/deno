@@ -1,40 +1,47 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use super::compiler_worker::CompilerWorker;
 use crate::compilers::CompilationResultFuture;
 use crate::compilers::CompiledModule;
-use crate::compilers::CompiledModuleFuture;
 use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
-use crate::global_state::ThreadSafeGlobalState;
+use crate::global_state::GlobalState;
 use crate::msg;
-use crate::serde_json::json;
+use crate::ops::JsonResult;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::*;
 use crate::version;
-use crate::worker::Worker;
 use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
-use futures::Future;
 use regex::Regex;
+use serde_json::json;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
 use std::hash::BuildHasher;
 use std::io;
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::str;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::sync::Mutex;
 use url::Url;
 
 lazy_static! {
   static ref CHECK_JS_RE: Regex =
     Regex::new(r#""checkJs"\s*?:\s*?true"#).unwrap();
+}
+
+#[derive(Clone)]
+pub enum TargetLib {
+  Main,
+  Worker,
 }
 
 /// Struct which represents the state of the compiler
@@ -160,11 +167,13 @@ fn req(
   root_names: Vec<String>,
   compiler_config: CompilerConfig,
   out_file: Option<String>,
+  target: &str,
   bundle: bool,
 ) -> Buf {
   let j = match (compiler_config.path, compiler_config.content) {
     (Some(config_path), Some(config_data)) => json!({
       "type": request_type as i32,
+      "target": target,
       "rootNames": root_names,
       "outFile": out_file,
       "bundle": bundle,
@@ -173,6 +182,7 @@ fn req(
     }),
     _ => json!({
       "type": request_type as i32,
+      "target": target,
       "rootNames": root_names,
       "outFile": out_file,
       "bundle": bundle,
@@ -192,7 +202,7 @@ pub fn source_code_version_hash(
   crate::checksum::gen(vec![source_code, version.as_bytes(), config_hash])
 }
 
-pub struct TsCompiler {
+pub struct TsCompilerInner {
   pub file_fetcher: SourceFileFetcher,
   pub config: CompilerConfig,
   pub disk_cache: DiskCache,
@@ -206,6 +216,16 @@ pub struct TsCompiler {
   pub compile_js: bool,
 }
 
+#[derive(Clone)]
+pub struct TsCompiler(Arc<TsCompilerInner>);
+
+impl Deref for TsCompiler {
+  type Target = TsCompilerInner;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
 impl TsCompiler {
   pub fn new(
     file_fetcher: SourceFileFetcher,
@@ -214,25 +234,23 @@ impl TsCompiler {
     config_path: Option<String>,
   ) -> Result<Self, ErrBox> {
     let config = CompilerConfig::load(config_path)?;
-
-    let compiler = Self {
+    Ok(TsCompiler(Arc::new(TsCompilerInner {
       file_fetcher,
       disk_cache,
       compile_js: config.compile_js,
       config,
       compiled: Mutex::new(HashSet::new()),
       use_disk_cache,
-    };
-
-    Ok(compiler)
+    })))
   }
 
-  /// Create a new V8 worker with snapshot of TS compiler and setup compiler's runtime.
-  fn setup_worker(global_state: ThreadSafeGlobalState) -> Worker {
-    let (int, ext) = ThreadSafeState::create_channels();
-    let worker_state =
-      ThreadSafeState::new(global_state.clone(), None, None, int)
-        .expect("Unable to create worker state");
+  /// Create a new V8 worker with snapshot of TS compiler and setup compiler's
+  /// runtime.
+  fn setup_worker(global_state: GlobalState) -> CompilerWorker {
+    let entry_point =
+      ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
+    let worker_state = State::new(global_state.clone(), None, entry_point)
+      .expect("Unable to create worker state");
 
     // Count how many times we start the compiler worker.
     global_state
@@ -240,24 +258,21 @@ impl TsCompiler {
       .compiler_starts
       .fetch_add(1, Ordering::SeqCst);
 
-    let mut worker = Worker::new(
+    let mut worker = CompilerWorker::new(
       "TS".to_string(),
       startup_data::compiler_isolate_init(),
       worker_state,
-      ext,
     );
-    worker.execute("denoMain()").unwrap();
-    worker.execute("workerMain()").unwrap();
-    worker.execute("compilerMain()").unwrap();
+    worker.execute("bootstrapTsCompilerRuntime()").unwrap();
     worker
   }
 
-  pub fn bundle_async(
+  pub async fn bundle_async(
     &self,
-    global_state: ThreadSafeGlobalState,
+    global_state: GlobalState,
     module_name: String,
     out_file: Option<String>,
-  ) -> impl Future<Output = Result<(), ErrBox>> {
+  ) -> Result<(), ErrBox> {
     debug!(
       "Invoking the compiler to bundle. module_name: {}",
       module_name
@@ -269,37 +284,30 @@ impl TsCompiler {
       root_names,
       self.config.clone(),
       out_file,
+      "main",
       true,
     );
 
-    let worker = TsCompiler::setup_worker(global_state);
-    let worker_ = worker.clone();
-
-    async move {
-      worker.post_message(req_msg).await?;
-      worker.await?;
-      debug!("Sent message to worker");
-      let maybe_msg = worker_.get_message().await?;
-      debug!("Received message from worker");
-      if let Some(msg) = maybe_msg {
-        let json_str = std::str::from_utf8(&msg).unwrap();
-        debug!("Message: {}", json_str);
-        if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-          return Err(ErrBox::from(diagnostics));
-        }
+    let maybe_msg = execute_in_thread(global_state.clone(), req_msg).await?;
+    if let Some(ref msg) = maybe_msg {
+      let json_str = std::str::from_utf8(msg).unwrap();
+      debug!("Message: {}", json_str);
+      if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+        return Err(ErrBox::from(diagnostics));
       }
-      Ok(())
     }
+    Ok(())
   }
 
-  /// Mark given module URL as compiled to avoid multiple compilations of same module
-  /// in single run.
+  /// Mark given module URL as compiled to avoid multiple compilations of same
+  /// module in single run.
   fn mark_compiled(&self, url: &Url) {
     let mut c = self.compiled.lock().unwrap();
     c.insert(url.clone());
   }
 
-  /// Check if given module URL has already been compiled and can be fetched directly from disk.
+  /// Check if given module URL has already been compiled and can be fetched
+  /// directly from disk.
   fn has_compiled(&self, url: &Url) -> bool {
     let c = self.compiled.lock().unwrap();
     c.contains(url)
@@ -309,19 +317,19 @@ impl TsCompiler {
   ///
   /// This method compiled every module at most once.
   ///
-  /// If `--reload` flag was provided then compiler will not on-disk cache and force recompilation.
+  /// If `--reload` flag was provided then compiler will not on-disk cache and
+  /// force recompilation.
   ///
-  /// If compilation is required then new V8 worker is spawned with fresh TS compiler.
-  pub fn compile_async(
+  /// If compilation is required then new V8 worker is spawned with fresh TS
+  /// compiler.
+  pub async fn compile_async(
     &self,
-    global_state: ThreadSafeGlobalState,
+    global_state: GlobalState,
     source_file: &SourceFile,
-  ) -> Pin<Box<CompiledModuleFuture>> {
+    target: TargetLib,
+  ) -> Result<CompiledModule, ErrBox> {
     if self.has_compiled(&source_file.url) {
-      return match self.get_compiled_module(&source_file.url) {
-        Ok(compiled) => futures::future::ok(compiled).boxed(),
-        Err(err) => futures::future::err(err).boxed(),
-      };
+      return self.get_compiled_module(&source_file.url);
     }
 
     if self.use_disk_cache {
@@ -342,59 +350,43 @@ impl TsCompiler {
             self.get_compiled_module(&source_file.url)
           {
             self.mark_compiled(&source_file.url);
-            return futures::future::ok(compiled_module).boxed();
+            return Ok(compiled_module);
           }
         }
       }
     }
-
     let source_file_ = source_file.clone();
-
-    debug!(">>>>> compile_sync START");
     let module_url = source_file.url.clone();
-
-    debug!(
-      "Running rust part of compile_sync, module specifier: {}",
-      &source_file.url
-    );
-
+    let target = match target {
+      TargetLib::Main => "main",
+      TargetLib::Worker => "worker",
+    };
     let root_names = vec![module_url.to_string()];
     let req_msg = req(
       msg::CompilerRequestType::Compile,
       root_names,
       self.config.clone(),
       None,
+      target,
       false,
     );
 
-    let worker = TsCompiler::setup_worker(global_state.clone());
-    let worker_ = worker.clone();
+    let ts_compiler = self.clone();
+
     let compiling_job = global_state
       .progress
       .add("Compile", &module_url.to_string());
-    let global_state_ = global_state;
+    let maybe_msg = execute_in_thread(global_state.clone(), req_msg).await?;
 
-    async move {
-      worker.post_message(req_msg).await?;
-      worker.await?;
-      debug!("Sent message to worker");
-      let maybe_msg = worker_.get_message().await?;
-      if let Some(msg) = maybe_msg {
-        let json_str = std::str::from_utf8(&msg).unwrap();
-        debug!("Message: {}", json_str);
-        if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-          return Err(ErrBox::from(diagnostics));
-        }
+    if let Some(ref msg) = maybe_msg {
+      let json_str = std::str::from_utf8(msg).unwrap();
+      if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+        return Err(ErrBox::from(diagnostics));
       }
-      let compiled_module = global_state_
-        .ts_compiler
-        .get_compiled_module(&source_file_.url)
-        .expect("Expected to find compiled file");
-      drop(compiling_job);
-      debug!(">>>>> compile_sync END");
-      Ok(compiled_module)
     }
-    .boxed()
+    let compiled_module = ts_compiler.get_compiled_module(&source_file_.url)?;
+    drop(compiling_job);
+    Ok(compiled_module)
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
@@ -452,6 +444,7 @@ impl TsCompiler {
       filename: compiled_code_filename,
       media_type: msg::MediaType::JavaScript,
       source_code: compiled_code,
+      types_url: None,
     };
 
     Ok(compiled_module)
@@ -519,6 +512,7 @@ impl TsCompiler {
       filename: source_map_filename,
       media_type: msg::MediaType::JavaScript,
       source_code,
+      types_url: None,
     };
 
     Ok(source_map_file)
@@ -608,8 +602,51 @@ impl TsCompiler {
   }
 }
 
+async fn execute_in_thread(
+  global_state: GlobalState,
+  req: Buf,
+) -> Result<Option<Buf>, ErrBox> {
+  let (load_sender, load_receiver) =
+    tokio::sync::oneshot::channel::<Result<Option<Buf>, ErrBox>>();
+  std::thread::spawn(move || {
+    debug!(">>>>> compile_async START");
+
+    let mut worker = TsCompiler::setup_worker(global_state.clone());
+    let handle = worker.thread_safe_handle();
+
+    crate::tokio_util::run_basic(
+      async move {
+        if let Err(err) = handle.post_message(req).await {
+          load_sender.send(Err(err)).unwrap();
+          return;
+        }
+        if let Err(err) = (&mut *worker).await {
+          load_sender.send(Err(err)).unwrap();
+          return;
+        }
+        let maybe_msg = handle.get_message().await;
+        load_sender.send(Ok(maybe_msg)).unwrap();
+        debug!(">>>>> compile_sync END");
+      }
+      .boxed_local(),
+    );
+  });
+
+  load_receiver.await.unwrap()
+}
+
+async fn execute_in_thread_json(
+  req_msg: Buf,
+  global_state: GlobalState,
+) -> JsonResult {
+  let maybe_msg = execute_in_thread(global_state, req_msg).await?;
+  let msg = maybe_msg.unwrap();
+  let json_str = std::str::from_utf8(&msg).unwrap();
+  Ok(json!(json_str))
+}
+
 pub fn runtime_compile_async<S: BuildHasher>(
-  global_state: ThreadSafeGlobalState,
+  global_state: GlobalState,
   root_name: &str,
   sources: &Option<HashMap<String, String, S>>,
   bundle: bool,
@@ -617,6 +654,7 @@ pub fn runtime_compile_async<S: BuildHasher>(
 ) -> Pin<Box<CompilationResultFuture>> {
   let req_msg = json!({
     "type": msg::CompilerRequestType::RuntimeCompile as i32,
+    "target": "runtime",
     "rootName": root_name,
     "sources": sources,
     "options": options,
@@ -626,22 +664,11 @@ pub fn runtime_compile_async<S: BuildHasher>(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  let worker = TsCompiler::setup_worker(global_state);
-  let worker_ = worker.clone();
-
-  async move {
-    worker.post_message(req_msg).await?;
-    worker.await?;
-    debug!("Sent message to worker");
-    let msg = (worker_.get_message().await?).unwrap();
-    let json_str = std::str::from_utf8(&msg).unwrap();
-    Ok(json!(json_str))
-  }
-  .boxed()
+  execute_in_thread_json(req_msg, global_state).boxed_local()
 }
 
 pub fn runtime_transpile_async<S: BuildHasher>(
-  global_state: ThreadSafeGlobalState,
+  global_state: GlobalState,
   sources: &HashMap<String, String, S>,
   options: &Option<String>,
 ) -> Pin<Box<CompilationResultFuture>> {
@@ -654,97 +681,72 @@ pub fn runtime_transpile_async<S: BuildHasher>(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  let worker = TsCompiler::setup_worker(global_state);
-  let worker_ = worker.clone();
-
-  async move {
-    worker.post_message(req_msg).await?;
-    worker.await?;
-    debug!("Sent message to worker");
-    let msg = (worker_.get_message().await?).unwrap();
-    let json_str = std::str::from_utf8(&msg).unwrap();
-    Ok(json!(json_str))
-  }
-  .boxed()
+  execute_in_thread_json(req_msg, global_state).boxed_local()
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::fs as deno_fs;
-  use crate::tokio_util;
   use deno_core::ModuleSpecifier;
   use std::path::PathBuf;
   use tempfile::TempDir;
 
-  #[test]
-  fn test_compile_async() {
+  #[tokio::test]
+  async fn test_compile_async() {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("tests/002_hello.ts");
+      .join("cli/tests/002_hello.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-
     let out = SourceFile {
       url: specifier.as_url().clone(),
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
       media_type: msg::MediaType::TypeScript,
       source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
+      types_url: None,
     };
-
-    let mock_state = ThreadSafeGlobalState::mock(vec![
-      String::from("deno"),
-      String::from("hello.js"),
-    ]);
-
-    let fut = async move {
-      let result = mock_state
-        .ts_compiler
-        .compile_async(mock_state.clone(), &out)
-        .await;
-
-      assert!(result.is_ok());
-      assert!(result
-        .unwrap()
-        .code
-        .as_bytes()
-        .starts_with("console.log(\"Hello World\");".as_bytes()));
-    };
-
-    tokio_util::run(fut.boxed())
+    let mock_state =
+      GlobalState::mock(vec![String::from("deno"), String::from("hello.js")]);
+    let result = mock_state
+      .ts_compiler
+      .compile_async(mock_state.clone(), &out, TargetLib::Main)
+      .await;
+    assert!(result.is_ok());
+    assert!(result
+      .unwrap()
+      .code
+      .as_bytes()
+      .starts_with(b"console.log(\"Hello World\");"));
   }
 
-  #[test]
-  fn test_bundle_async() {
+  #[tokio::test]
+  async fn test_bundle_async() {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("tests/002_hello.ts");
+      .join("cli/tests/002_hello.ts");
     use deno_core::ModuleSpecifier;
     let module_name = ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap())
       .unwrap()
       .to_string();
 
-    let state = ThreadSafeGlobalState::mock(vec![
+    let state = GlobalState::mock(vec![
       String::from("deno"),
       p.to_string_lossy().into(),
       String::from("$deno$/bundle.js"),
     ]);
 
-    let fut = async move {
-      let result = state
-        .ts_compiler
-        .bundle_async(
-          state.clone(),
-          module_name,
-          Some(String::from("$deno$/bundle.js")),
-        )
-        .await;
-
-      assert!(result.is_ok());
-    };
-    tokio_util::run(fut.boxed())
+    let result = state
+      .ts_compiler
+      .bundle_async(
+        state.clone(),
+        module_name,
+        Some(String::from("$deno$/bundle.js")),
+      )
+      .await;
+    assert!(result.is_ok());
   }
 
   #[test]

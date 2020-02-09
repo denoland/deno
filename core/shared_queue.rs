@@ -17,6 +17,7 @@ SharedQueue Binary Layout
  */
 
 use crate::ops::OpId;
+use rusty_v8 as v8;
 
 const MAX_RECORDS: usize = 100;
 /// Total number of records added.
@@ -34,16 +35,32 @@ const HEAD_INIT: usize = 4 * INDEX_RECORDS;
 pub const RECOMMENDED_SIZE: usize = 128 * MAX_RECORDS;
 
 pub struct SharedQueue {
-  pub bytes: Vec<u8>,
+  buf: v8::SharedRef<v8::BackingStore>,
 }
 
 impl SharedQueue {
   pub fn new(len: usize) -> Self {
-    let mut bytes = Vec::new();
-    bytes.resize(HEAD_INIT + len, 0);
-    let mut q = Self { bytes };
+    let mut buf = Vec::new();
+    buf.resize(HEAD_INIT + len, 0);
+    let buf = buf.into_boxed_slice();
+    let buf = v8::SharedArrayBuffer::new_backing_store_from_boxed_slice(buf);
+    let mut q = Self {
+      buf: buf.make_shared(),
+    };
     q.reset();
     q
+  }
+
+  pub fn get_backing_store(&mut self) -> &mut v8::SharedRef<v8::BackingStore> {
+    &mut self.buf
+  }
+
+  pub fn bytes(&self) -> &[u8] {
+    unsafe { &*self.buf.get() }
+  }
+
+  pub fn bytes_mut(&mut self) -> &mut [u8] {
+    unsafe { &mut *self.buf.get() }
   }
 
   fn reset(&mut self) {
@@ -55,21 +72,21 @@ impl SharedQueue {
   }
 
   fn as_u32_slice(&self) -> &[u32] {
-    let p = self.bytes.as_ptr();
+    let p = self.bytes().as_ptr();
     // Assert pointer is 32 bit aligned before casting.
     assert_eq!((p as usize) % std::mem::align_of::<u32>(), 0);
     #[allow(clippy::cast_ptr_alignment)]
     let p32 = p as *const u32;
-    unsafe { std::slice::from_raw_parts(p32, self.bytes.len() / 4) }
+    unsafe { std::slice::from_raw_parts(p32, self.bytes().len() / 4) }
   }
 
   fn as_u32_slice_mut(&mut self) -> &mut [u32] {
-    let p = self.bytes.as_mut_ptr();
+    let p = self.bytes_mut().as_mut_ptr();
     // Assert pointer is 32 bit aligned before casting.
     assert_eq!((p as usize) % std::mem::align_of::<u32>(), 0);
     #[allow(clippy::cast_ptr_alignment)]
     let p32 = p as *mut u32;
-    unsafe { std::slice::from_raw_parts_mut(p32, self.bytes.len() / 4) }
+    unsafe { std::slice::from_raw_parts_mut(p32, self.bytes().len() / 4) }
   }
 
   pub fn size(&self) -> usize {
@@ -149,7 +166,7 @@ impl SharedQueue {
       self.num_shifted_off(),
       self.head()
     );
-    Some((op_id, &self.bytes[off..end]))
+    Some((op_id, &self.bytes()[off..end]))
   }
 
   /// Because JS-side may cast `record` to Int32Array it is required
@@ -166,13 +183,13 @@ impl SharedQueue {
     );
     assert_eq!(record.len() % 4, 0);
     let index = self.num_records();
-    if end > self.bytes.len() || index >= MAX_RECORDS {
+    if end > self.bytes().len() || index >= MAX_RECORDS {
       debug!("WARNING the sharedQueue overflowed");
       return false;
     }
     self.set_meta(index, end, op_id);
     assert_eq!(end - off, record.len());
-    self.bytes[off..end].copy_from_slice(record);
+    self.bytes_mut()[off..end].copy_from_slice(record);
     let u32_slice = self.as_u32_slice_mut();
     u32_slice[INDEX_NUM_RECORDS] += 1;
     u32_slice[INDEX_HEAD] = end as u32;

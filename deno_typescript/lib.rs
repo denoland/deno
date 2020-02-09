@@ -12,10 +12,11 @@ use deno_core::CoreOp;
 use deno_core::ErrBox;
 use deno_core::Isolate;
 use deno_core::ModuleSpecifier;
-use deno_core::PinnedBuf;
 use deno_core::StartupData;
+use deno_core::ZeroCopyBuf;
 pub use ops::EmitResult;
 use ops::WrittenFile;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -32,6 +33,8 @@ pub fn ts_version() -> String {
   pkg["version"].as_str().unwrap().to_string()
 }
 
+type ExternCrateModules = HashMap<String, String>;
+
 #[derive(Debug)]
 pub struct TSState {
   bundle: bool,
@@ -40,23 +43,17 @@ pub struct TSState {
   /// A list of files emitted by typescript. WrittenFile is tuple of the form
   /// (url, corresponding_module, source_code)
   written_files: Vec<WrittenFile>,
-}
-
-impl TSState {
-  fn main_module_name(&self) -> String {
-    // Assuming that TypeScript has emitted the main file last.
-    self.written_files.last().unwrap().module_name.clone()
-  }
+  extern_crate_modules: ExternCrateModules,
 }
 
 fn compiler_op<D>(
   ts_state: Arc<Mutex<TSState>>,
   dispatcher: D,
-) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp
+) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp
 where
   D: Fn(&mut TSState, &[u8]) -> CoreOp,
 {
-  move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
+  move |control: &[u8], zero_copy_buf: Option<ZeroCopyBuf>| -> CoreOp {
     assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in compiler.
     let mut s = ts_state.lock().unwrap();
     dispatcher(&mut s, control)
@@ -69,21 +66,27 @@ pub struct TSIsolate {
 }
 
 impl TSIsolate {
-  fn new(bundle: bool) -> TSIsolate {
+  fn new(
+    bundle: bool,
+    maybe_extern_crate_modules: Option<ExternCrateModules>,
+  ) -> TSIsolate {
     let mut isolate = Isolate::new(StartupData::None, false);
     js_check(isolate.execute("assets/typescript.js", TYPESCRIPT_CODE));
     js_check(isolate.execute("compiler_main.js", COMPILER_CODE));
+
+    let extern_crate_modules = maybe_extern_crate_modules.unwrap_or_default();
 
     let state = Arc::new(Mutex::new(TSState {
       bundle,
       exit_code: 0,
       emit_result: None,
       written_files: Vec::new(),
+      extern_crate_modules,
     }));
 
     isolate.register_op(
-      "readFile",
-      compiler_op(state.clone(), ops::json_op(ops::read_file)),
+      "loadModule",
+      compiler_op(state.clone(), ops::json_op(ops::load_module)),
     );
     isolate
       .register_op("exit", compiler_op(state.clone(), ops::json_op(ops::exit)));
@@ -121,11 +124,20 @@ impl TSIsolate {
   }
 }
 
+/// Compile provided roots into a single JS bundle.
+///
+/// This function writes compiled bundle to disk at provided path.
+///
+/// Source map file and type declaration file are emmited
+/// alongside the bundle.
+///
+/// To instantiate bundle use returned `module_name`.
 pub fn compile_bundle(
-  bundle: &Path,
+  bundle_filename: &Path,
   root_names: Vec<PathBuf>,
-) -> Result<Arc<Mutex<TSState>>, ErrBox> {
-  let ts_isolate = TSIsolate::new(true);
+  extern_crate_modules: Option<ExternCrateModules>,
+) -> Result<String, ErrBox> {
+  let ts_isolate = TSIsolate::new(true, extern_crate_modules);
 
   let config_json = serde_json::json!({
     "compilerOptions": {
@@ -142,7 +154,7 @@ pub fn compile_bundle(
       // requires --inlineSourceMap or --sourceMap to be set.
       // "inlineSources": true,
       "sourceMap": true,
-      "outFile": bundle,
+      "outFile": bundle_filename,
     },
   });
 
@@ -160,9 +172,12 @@ pub fn compile_bundle(
     .collect();
 
   // TODO lift js_check to caller?
-  let state = js_check(ts_isolate.compile(&config_json, root_names_str));
-
-  Ok(state)
+  let locked_state = js_check(ts_isolate.compile(&config_json, root_names_str));
+  let state = locked_state.lock().unwrap();
+  // Assuming that TypeScript has emitted the main file last.
+  let main = state.written_files.last().unwrap();
+  let module_name = main.module_name.clone();
+  Ok(module_name)
 }
 
 #[allow(dead_code)]
@@ -176,98 +191,62 @@ fn print_source_code(code: &str) {
 
 /// Create a V8 snapshot.
 pub fn mksnapshot_bundle(
-  bundle: &Path,
-  state: Arc<Mutex<TSState>>,
+  isolate: &mut Isolate,
+  snapshot_filename: &Path,
+  bundle_filename: &Path,
+  main_module_name: &str,
 ) -> Result<(), ErrBox> {
-  let runtime_isolate = &mut Isolate::new(StartupData::None, true);
-  let source_code_vec = std::fs::read(bundle)?;
-  let source_code = std::str::from_utf8(&source_code_vec)?;
-
-  js_check(runtime_isolate.execute("bundle_loader.js", BUNDLE_LOADER));
-  js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
-
-  let main = state.lock().unwrap().main_module_name();
+  js_check(isolate.execute("bundle_loader.js", BUNDLE_LOADER));
+  let source_code_vec = std::fs::read(bundle_filename).unwrap();
+  let bundle_source_code = std::str::from_utf8(&source_code_vec).unwrap();
   js_check(
-    runtime_isolate.execute("anon", &format!("instantiate('{}')", main)),
+    isolate.execute(&bundle_filename.to_string_lossy(), bundle_source_code),
   );
-
-  write_snapshot(runtime_isolate, bundle)?;
-
+  let script = &format!("instantiate('{}')", main_module_name);
+  js_check(isolate.execute("anon", script));
+  write_snapshot(isolate, snapshot_filename)?;
   Ok(())
 }
 
 /// Create a V8 snapshot. This differs from mksnapshot_bundle in that is also
 /// runs typescript.js
 pub fn mksnapshot_bundle_ts(
-  bundle: &Path,
-  state: Arc<Mutex<TSState>>,
+  isolate: &mut Isolate,
+  snapshot_filename: &Path,
+  bundle_filename: &Path,
+  main_module_name: &str,
 ) -> Result<(), ErrBox> {
-  let runtime_isolate = &mut Isolate::new(StartupData::None, true);
-  runtime_isolate.register_op(
-    "fetch_asset",
-    compiler_op(state.clone(), ops::json_op(ops::fetch_asset)),
-  );
-  let source_code_vec = std::fs::read(bundle)?;
-  let source_code = std::str::from_utf8(&source_code_vec)?;
-
-  js_check(runtime_isolate.execute("bundle_loader.js", BUNDLE_LOADER));
-  js_check(runtime_isolate.execute("typescript.js", TYPESCRIPT_CODE));
-  js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
-
-  let main = state.lock().unwrap().main_module_name();
-  js_check(
-    runtime_isolate.execute("anon", &format!("instantiate('{}')", main)),
-  );
-
-  write_snapshot(runtime_isolate, bundle)?;
-
-  Ok(())
+  js_check(isolate.execute("typescript.js", TYPESCRIPT_CODE));
+  mksnapshot_bundle(
+    isolate,
+    snapshot_filename,
+    bundle_filename,
+    main_module_name,
+  )
 }
 
 fn write_snapshot(
   runtime_isolate: &mut Isolate,
-  bundle: &Path,
+  snapshot_filename: &Path,
 ) -> Result<(), ErrBox> {
-  println!("creating snapshot...");
+  println!("Creating snapshot...");
   let snapshot = runtime_isolate.snapshot()?;
   let snapshot_slice: &[u8] = &*snapshot;
-  println!("snapshot bytes {}", snapshot_slice.len());
-
-  let snapshot_path = bundle.with_extension("bin");
-
-  fs::write(&snapshot_path, snapshot_slice)?;
-  println!("snapshot path {} ", snapshot_path.display());
+  println!("Snapshot size: {}", snapshot_slice.len());
+  fs::write(&snapshot_filename, snapshot_slice)?;
+  println!("Snapshot written to: {} ", snapshot_filename.display());
   Ok(())
 }
 
-/// Same as get_asset() but returns NotFound intead of None.
-pub fn get_asset2(name: &str) -> Result<String, ErrBox> {
-  match get_asset(name) {
-    Some(a) => Ok(a),
-    None => Err(
-      std::io::Error::new(std::io::ErrorKind::NotFound, "Asset not found")
-        .into(),
-    ),
+pub fn get_asset(name: &str) -> Option<&'static str> {
+  macro_rules! inc {
+    ($e:expr) => {
+      Some(include_str!(concat!("typescript/lib/", $e)))
+    };
   }
-}
-
-fn read_file(name: &str) -> String {
-  fs::read_to_string(name).unwrap()
-}
-
-macro_rules! inc {
-  ($e:expr) => {
-    Some(read_file(concat!("../deno_typescript/typescript/lib/", $e)))
-  };
-}
-
-pub fn get_asset(name: &str) -> Option<String> {
   match name {
-    "bundle_loader.js" => {
-      Some(read_file("../deno_typescript/bundle_loader.js"))
-    }
-    "lib.deno_runtime.d.ts" => Some(read_file("js/lib.deno_runtime.d.ts")),
-    "bootstrap.ts" => Some("console.log(\"hello deno\");".to_string()),
+    "bundle_loader.js" => Some(include_str!("bundle_loader.js")),
+    "bootstrap.ts" => Some("console.log(\"hello deno\");"),
     "typescript.d.ts" => inc!("typescript.d.ts"),
     "lib.esnext.d.ts" => inc!("lib.esnext.d.ts"),
     "lib.es2020.d.ts" => inc!("lib.es2020.d.ts"),

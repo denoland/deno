@@ -141,10 +141,10 @@ Using [Homebrew](https://formulae.brew.sh/formula/deno) (mac):
 brew install deno
 ```
 
-Using [Cargo](https://crates.io/crates/deno_cli):
+Using [Cargo](https://crates.io/crates/deno):
 
 ```shell
-cargo install deno_cli
+cargo install deno
 ```
 
 Deno binaries can also be installed manually, by downloading a tarball or zip
@@ -229,7 +229,7 @@ When this program is started, it throws PermissionDenied error.
 
 ```shell
 $ deno https://deno.land/std/examples/echo_server.ts
-error: Uncaught PermissionDenied: run again with the --allow-net flag
+error: Uncaught PermissionDenied: network access to "0.0.0.0:8080", run again with the --allow-net flag
 ► $deno$/dispatch_json.ts:40:11
     at DenoError ($deno$/errors.ts:20:5)
     ...
@@ -285,7 +285,7 @@ await Deno.remove("request.log");
 This one serves a local directory in HTTP.
 
 ```bash
-deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
+deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
 ```
 
 Run it:
@@ -329,7 +329,7 @@ This is an example to restrict file system access by whitelist.
 
 ```shell
 $ deno --allow-read=/usr https://deno.land/std/examples/cat.ts /etc/passwd
-error: Uncaught PermissionDenied: run again with the --allow-read flag
+error: Uncaught PermissionDenied: read access to "/etc/passwd", run again with the --allow-read flag
 ► $deno$/dispatch_json.ts:40:11
     at DenoError ($deno$/errors.ts:20:5)
     ...
@@ -427,6 +427,39 @@ Uncaught NotFound: No such file or directory (os error 2)
     at maybeError (deno/js/errors.ts:41:12)
     at handleAsyncMsgFromRust (deno/js/dispatch.ts:27:17)
 ```
+
+### Handle OS Signals
+
+[API Reference](https://deno.land/typedoc/index.html#signal)
+
+You can use `Deno.signal()` function for handling OS signals.
+
+```
+for await (const _ of Deno.signal(Deno.Signal.SIGINT)) {
+  console.log("interrupted!");
+}
+```
+
+`Deno.signal()` also works as a promise.
+
+```
+await Deno.signal(Deno.Singal.SIGINT);
+console.log("interrupted!");
+```
+
+If you want to stop watching the signal, you can use `dispose()` method of the
+signal object.
+
+```
+const sig = Deno.signal(Deno.Signal.SIGINT);
+setTimeout(() => { sig.dispose(); }, 5000);
+
+for await (const _ of sig) {
+  console.log("interrupted");
+}
+```
+
+The above for-await loop exits after 5 seconds when sig.dispose() is called.
 
 ### Linking to third party code
 
@@ -534,20 +567,65 @@ The out of the box TypeScript compiler though relies on both extension-less
 modules and the Node.js module resolution logic to apply types to JavaScript
 modules.
 
-In order to bridge this gap, Deno supports compiler hints that inform Deno the
-location of `.d.ts` files and the JavaScript code they relate to. A compiler
-hint looks like this:
+In order to bridge this gap, Deno supports three ways of referencing type
+definition files without having to resort to "magic" resolution.
+
+#### Compiler hint
+
+If you are importing a JavaScript module, and you know where the type definition
+for that module is located, you can specify the type definition at import. This
+takes the form of a compiler hint. Compiler hints inform Deno the location of
+`.d.ts` files and the JavaScript code that is imported that they relate to. The
+hint is `@deno-types` and when specified the value will be used in the compiler
+instead of the JavaScript module. For example if you had `foo.js`, but you know
+that along side of it was `foo.d.ts` which was the types for the file, the code
+would look like this:
 
 ```ts
 // @deno-types="./foo.d.ts"
 import * as foo from "./foo.js";
 ```
 
-Where the hint affects the next `import` statement (or `export ... from`
-statement) where the value of the `@deno-types` will be substituted at compile
-time instead of the specified module. Like in the above example, the Deno
-compiler will load `./foo.d.ts` instead of `./foo.js`. Deno will still load
-`./foo.js` when it runs the program.
+The value follows the same resolution logic as importing a module, meaning the
+file needs to have an extension and is relative to the current module. Remote
+specifiers are also allowed.
+
+The hint affects the next `import` statement (or `export ... from` statement)
+where the value of the `@deno-types` will be substituted at compile time instead
+of the specified module. Like in the above example, the Deno compiler will load
+`./foo.d.ts` instead of `./foo.js`. Deno will still load `./foo.js` when it runs
+the program.
+
+#### Triple-slash reference directive in JavaScript files
+
+If you are hosting modules which you want to be consumed by Deno, and you want
+to inform Deno the location of the type definitions, you can utilise a
+triple-slash directive in the actual code. For example, if you have a JavaScript
+module, where you want to provide Deno with the location of the type definitions
+for that JavaScript file, which happens to be along side that file. You
+JavaScript module named `foo.js` might look like this:
+
+```js
+/// <reference types="./foo.d.ts" />
+export const foo = "foo";
+```
+
+Deno will see this, and the compiler will use `foo.d.ts` when type checking the
+file, though `foo.js` will be loaded at runtime. The resolution of the value of
+the directive follows the same resolution logic as importing a module, meaning
+the file needs to have an extension and is relative to the current file. Remote
+specifiers are also allowed.
+
+#### X-TypeScript-Types custom header
+
+If you are hosting modules which you want to be consumed by Deno, and you want
+to inform Deno the location of the type definitions, you can use a custom HTTP
+header of `X-TypeScript-Types` to inform Deno of the location of that file.
+
+The header works in the same way as the triple-slash reference mentioned above,
+it just means that the content of the JavaScript file itself does not need to be
+modified, and the location of the type definitions can be determined by the
+server itself.
 
 **Not all type definitions are supported.**
 
@@ -559,11 +637,12 @@ include `node`, expecting to resolve to some path like
 `./node_modules/@types/node/index.d.ts`. Since this depends on non-relative
 "magical" resolution, Deno cannot resolve this.
 
-**Why not use the triple-slash type reference?**
+**Why not use the triple-slash type reference in TypeScript files?**
 
 The TypeScript compiler supports triple-slash directives, including a type
 reference directive. If Deno used this, it would interfere with the behavior of
-the TypeScript compiler.
+the TypeScript compiler. Deno only looks for the directive in JavaScript (and
+JSX) files.
 
 ### Testing if current file is the main program
 
@@ -742,8 +821,8 @@ Or you could import it into another ES module to consume:
 Deno provides ability to easily install and distribute executable code via
 `deno install` command.
 
-`deno install [EXE_NAME] [URL] [FLAGS...]` will install script available at
-`URL` with name `EXE_NAME`.
+`deno install [FLAGS...] [EXE_NAME] [URL] [SCRIPT_ARGS...]` will install script
+available at `URL` with name `EXE_NAME`.
 
 This command is a thin wrapper that creates executable shell scripts which
 invoke `deno` with specified permissions and CLI flags.
@@ -751,15 +830,16 @@ invoke `deno` with specified permissions and CLI flags.
 Example:
 
 ```shell
-$ deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
+$ deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
 [1/1] Compiling https://deno.land/std/http/file_server.ts
 
 ✅ Successfully installed file_server.
 /Users/deno/.deno/bin/file_server
 ```
 
-By default scripts are installed at `$HOME/.deno/bin` and that directory must be
-added to the path manually.
+By default scripts are installed at `$HOME/.deno/bin` or
+`$USERPROFILE/.deno/bin` and one of that directories must be added to the path
+manually.
 
 ```shell
 $ echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc
@@ -768,23 +848,20 @@ $ echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc
 Installation directory can be changed using `-d/--dir` flag:
 
 ```shell
-$ deno install --dir /usr/local/bin prettier https://deno.land/std/prettier/main.ts --allow-write --allow-read
+$ deno install --allow-net --allow-read --dir /usr/local/bin file_server https://deno.land/std/http/file_server.ts
 ```
 
 When installing a script you can specify permissions that will be used to run
-the script. They are placed after the script URL and can be mixed with any
-additional CLI flags you want to pass to the script.
+the script.
 
 Example:
 
 ```shell
-$ deno install format_check https://deno.land/std/prettier/main.ts --allow-write --allow-read --check --print-width 88 --tab-width 2
+$ deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts 8080
 ```
 
-Above command creates an executable called `format_check` that runs `prettier`
-with write and read permissions. When you run `format_check` deno will run
-prettier in `check` mode and configured to use `88` column width with `2` column
-tabs.
+Above command creates an executable called `file_server` that runs with write
+and read permissions and binds to port 8080.
 
 It is a good practice to use `import.meta.main` idiom for an entry point for
 executable file. See
@@ -969,7 +1046,7 @@ which can be supported by Deno.
 An example of providing sources:
 
 ```ts
-const [diagnostics, emit] = await Deno.compile("/foo.ts", {
+const [diagnostics, emit] = await Deno.bundle("/foo.ts", {
   "/foo.ts": `import * as bar from "./bar.ts";\nconsole.log(bar);\n`,
   "/bar.ts": `export const bar = "bar";\n`
 });
@@ -985,7 +1062,7 @@ When not supplying resources, you can use local or remote modules, just like you
 could do on the command line. So you could do something like this:
 
 ```ts
-const [diagnostics, emit] = await Deno.compile(
+const [diagnostics, emit] = await Deno.bundle(
   "https://deno.land/std/http/server.ts"
 );
 ```
@@ -1189,9 +1266,6 @@ Useful V8 flags during profiling:
 - --track-gc
 - --log-source-code
 - --track-gc-object-stats
-
-Note that you might need to run Deno with `--current-thread` flag to capture
-full V8 profiling output.
 
 To learn more about `d8` and profiling, check out the following links:
 
