@@ -7,10 +7,17 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
+use crate::deno_error::DenoError;
+use crate::deno_error::ErrorKind;
+use deno_core::ErrBox;
 use dprint_plugin_typescript as dprint;
 use glob;
 use regex::Regex;
 use std::fs;
+use std::io::stdin;
+use std::io::stdout;
+use std::io::Read;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -27,12 +34,16 @@ fn is_supported(path: &Path) -> bool {
     && (TYPESCRIPT.is_match(&path_str) || JAVASCRIPT.is_match(&path_str))
 }
 
-fn get_config() -> dprint::Configuration {
-  dprint::ConfigurationBuilder::new()
+fn get_config() -> dprint::configuration::Configuration {
+  dprint::configuration::ConfigurationBuilder::new()
     .line_width(80)
     .indent_width(2)
-    .next_control_flow_position(dprint::NextControlFlowPosition::SameLine)
-    .binary_expression_operator_position(dprint::OperatorPosition::SameLine)
+    .next_control_flow_position(
+      dprint::configuration::NextControlFlowPosition::SameLine,
+    )
+    .binary_expression_operator_position(
+      dprint::configuration::OperatorPosition::SameLine,
+    )
     .build()
 }
 
@@ -48,7 +59,10 @@ fn get_supported_files(paths: Vec<PathBuf>) -> Vec<PathBuf> {
   files_to_check
 }
 
-fn check_source_files(config: dprint::Configuration, paths: Vec<PathBuf>) {
+fn check_source_files(
+  config: dprint::configuration::Configuration,
+  paths: Vec<PathBuf>,
+) {
   let start = Instant::now();
   let mut not_formatted_files = vec![];
 
@@ -91,7 +105,10 @@ fn check_source_files(config: dprint::Configuration, paths: Vec<PathBuf>) {
   }
 }
 
-fn format_source_files(config: dprint::Configuration, paths: Vec<PathBuf>) {
+fn format_source_files(
+  config: dprint::configuration::Configuration,
+  paths: Vec<PathBuf>,
+) {
   let start = Instant::now();
   let mut not_formatted_files = vec![];
 
@@ -147,9 +164,29 @@ fn get_matching_files(glob_paths: Vec<String>) -> Vec<PathBuf> {
 ///
 /// First argument supports globs, and if it is `None`
 /// then the current directory is recursively walked.
-pub fn format_files(maybe_files: Option<Vec<String>>, check: bool) {
+pub fn format_files(
+  maybe_files: Option<Vec<String>>,
+  check: bool,
+) -> Result<(), ErrBox> {
   // TODO: improve glob to look for tsx?/jsx? files only
   let glob_paths = maybe_files.unwrap_or_else(|| vec!["**/*".to_string()]);
+
+  for glob_path in glob_paths.iter() {
+    if glob_path == "-" {
+      // If the only given path is '-', format stdin.
+      if glob_paths.len() == 1 {
+        format_stdin(check);
+      } else {
+        // Otherwise it is an error
+        return Err(ErrBox::from(DenoError::new(
+          ErrorKind::Other,
+          "Ambiguous filename input. To format stdin, provide a single '-' instead.".to_owned()
+        )));
+      }
+      return Ok(());
+    }
+  }
+
   let matching_files = get_matching_files(glob_paths);
   let matching_files = get_supported_files(matching_files);
   let config = get_config();
@@ -158,5 +195,39 @@ pub fn format_files(maybe_files: Option<Vec<String>>, check: bool) {
     check_source_files(config, matching_files);
   } else {
     format_source_files(config, matching_files);
+  }
+
+  Ok(())
+}
+
+/// Format stdin and write result to stdout.
+/// Treats input as TypeScript.
+/// Compatible with `--check` flag.
+fn format_stdin(check: bool) {
+  let mut source = String::new();
+  if stdin().read_to_string(&mut source).is_err() {
+    eprintln!("Failed to read from stdin");
+  }
+  let config = get_config();
+
+  match dprint::format_text("_stdin.ts", &source, &config) {
+    Ok(None) => {
+      // Should not happen.
+      unreachable!();
+    }
+    Ok(Some(formatted_text)) => {
+      if check {
+        if formatted_text != source {
+          println!("Not formatted stdin");
+        }
+      } else {
+        let _r = stdout().write_all(formatted_text.as_bytes());
+        // TODO(ry) Only ignore SIGPIPE. Currently ignoring all errors.
+      }
+    }
+    Err(e) => {
+      eprintln!("Error formatting from stdin");
+      eprintln!("   {}", e);
+    }
   }
 }

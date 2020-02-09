@@ -8,14 +8,14 @@ use rusty_v8 as v8;
 
 use crate::any_error::ErrBox;
 use crate::bindings;
+use crate::futures::FutureExt;
 use crate::ErrWithV8Handle;
-use futures::future::Future;
-use futures::future::FutureExt;
 use futures::ready;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::stream::StreamFuture;
 use futures::task::AtomicWaker;
+use futures::Future;
 use libc::c_void;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};

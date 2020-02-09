@@ -21,11 +21,36 @@ fn deno_dir_test() {
   drop(g);
 }
 
-// TODO(#2933): Rewrite this test in rust.
 #[test]
 fn fetch_test() {
+  pub use deno::test_util::*;
+  use std::process::Command;
+  use tempfile::TempDir;
+
   let g = util::http_server();
-  util::run_python_script("tools/fetch_test.py");
+
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let t = util::root_path().join("cli/tests/006_url_imports.ts");
+
+  let output = Command::new(deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("fetch")
+    .arg(t)
+    .output()
+    .expect("Failed to spawn script");
+
+  let code = output.status.code();
+  let out = std::str::from_utf8(&output.stdout).unwrap();
+
+  assert_eq!(Some(0), code);
+  assert_eq!(out, "");
+
+  let expected_path = deno_dir
+    .path()
+    .join("deps/http/localhost_PORT4545/cli/tests/subdir/mod2.ts");
+  assert_eq!(expected_path.exists(), true);
+
   drop(g);
 }
 
@@ -87,6 +112,7 @@ fn installer_test_local_module_run() {
     "echo_test",
     &local_module_str,
     vec!["hello".to_string()],
+    false,
   )
   .expect("Failed to install");
   let mut file_path = temp_dir.path().join("echo_test");
@@ -109,10 +135,11 @@ fn installer_test_local_module_run() {
     .output()
     .expect("failed to spawn script");
 
-  assert_eq!(
-    std::str::from_utf8(&output.stdout).unwrap().trim(),
-    "hello, foo"
-  );
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
+  println!("Got stdout: {:?}", stdout_str);
+  println!("Got stderr: {:?}", stderr_str);
+  assert!(stdout_str.ends_with("hello, foo"));
   drop(temp_dir);
 }
 
@@ -131,8 +158,9 @@ fn installer_test_remote_module_run() {
     DenoFlags::default(),
     Some(temp_dir.path().to_string_lossy().to_string()),
     "echo_test",
-    "http://localhost:4545/tests/echo.ts",
+    "http://localhost:4545/cli/tests/echo.ts",
     vec!["hello".to_string()],
+    false,
   )
   .expect("Failed to install");
   let mut file_path = temp_dir.path().join("echo_test");
@@ -154,10 +182,10 @@ fn installer_test_remote_module_run() {
     .env(path_var_name, path_var_value)
     .output()
     .expect("failed to spawn script");
-  assert_eq!(
-    std::str::from_utf8(&output.stdout).unwrap().trim(),
-    "hello, foo"
-  );
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("hello, foo"));
   drop(temp_dir);
   drop(g)
 }
@@ -217,7 +245,10 @@ fn bundle_exports() {
     .output()
     .expect("failed to spawn script");
   // check the output of the test.ts program.
-  assert_eq!(std::str::from_utf8(&output.stdout).unwrap().trim(), "Hello");
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello"));
   assert_eq!(output.stderr, b"");
 }
 
@@ -366,9 +397,16 @@ itest!(_026_redirect_javascript {
   http_server: true,
 });
 
+/* TODO(ry) Disabled to get #3844 landed faster. Re-enable.
 itest!(_026_workers {
   args: "run --reload 026_workers.ts",
   output: "026_workers.ts.out",
+});
+*/
+
+itest!(workers_basic {
+  args: "run --reload workers_basic.ts",
+  output: "workers_basic.out",
 });
 
 itest!(_027_redirect_typescript {
@@ -411,6 +449,13 @@ itest!(_036_import_map_fetch {
   args:
     "fetch --reload --importmap=importmaps/import_map.json importmaps/test.ts",
   output: "036_import_map_fetch.out",
+});
+
+itest!(_037_fetch_multiple {
+  args: "fetch --reload fetch/test.ts fetch/other.ts",
+  check_stderr: true,
+  http_server: true,
+  output: "037_fetch_multiple.out",
 });
 
 itest!(_038_checkjs {
@@ -556,6 +601,32 @@ itest!(async_error {
 itest!(bundle {
   args: "bundle subdir/mod1.ts",
   output: "bundle.test.out",
+});
+
+itest!(fmt_stdin {
+  args: "fmt -",
+  input: Some("const a = 1\n"),
+  output_str: Some("const a = 1;\n"),
+});
+
+itest!(fmt_stdin_ambiguous {
+  args: "fmt - file.ts",
+  input: Some("const a = 1\n"),
+  check_stderr: true,
+  exit_code: 1,
+  output_str: Some("Ambiguous filename input. To format stdin, provide a single '-' instead.\n"),
+});
+
+itest!(fmt_stdin_check_formatted {
+  args: "fmt --check -",
+  input: Some("const a = 1;\n"),
+  output_str: Some(""),
+});
+
+itest!(fmt_stdin_check_not_formatted {
+  args: "fmt --check -",
+  input: Some("const a = 1\n"),
+  output_str: Some("Not formatted stdin\n"),
 });
 
 itest!(circular1 {
@@ -782,7 +853,7 @@ itest!(run_v8_flags {
 });
 
 itest!(run_v8_help {
-  args: "run --v8-flags=--help",
+  args: "--v8-flags=--help",
   output: "v8_help.out",
 });
 
@@ -819,6 +890,12 @@ itest!(top_level_for_await_ts {
 itest!(_053_import_compression {
   args: "run --reload --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",
+  http_server: true,
+});
+
+itest!(import_wasm_via_network {
+  args: "run --reload http://127.0.0.1:4545/cli/tests/055_import_wasm_via_network.ts",
+  output: "055_import_wasm_via_network.ts.out",
   http_server: true,
 });
 
@@ -866,6 +943,7 @@ mod util {
     pub args: &'static str,
     pub output: &'static str,
     pub input: Option<&'static str>,
+    pub output_str: Option<&'static str>,
     pub exit_code: i32,
     pub check_stderr: bool,
     pub http_server: bool,
@@ -931,10 +1009,13 @@ mod util {
         );
       }
 
-      let output_path = tests_dir.join(self.output);
-      println!("output path {}", output_path.display());
-      let expected =
-        std::fs::read_to_string(output_path).expect("cannot read output");
+      let expected = if let Some(s) = self.output_str {
+        s.to_owned()
+      } else {
+        let output_path = tests_dir.join(self.output);
+        println!("output path {}", output_path.display());
+        std::fs::read_to_string(output_path).expect("cannot read output")
+      };
 
       if !wildcard_match(&expected, &actual) {
         println!("OUTPUT\n{}\nOUTPUT", actual);

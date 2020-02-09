@@ -436,12 +436,12 @@ mod tests {
 
   #[test]
   fn source_map_from_json() {
-    let json = r#"{"version":3,"file":"error_001.js","sourceRoot":"","sources":["file:///Users/rld/src/deno/tests/error_001.ts"],"names":[],"mappings":"AAAA,SAAS,GAAG;IACV,MAAM,KAAK,CAAC,KAAK,CAAC,CAAC;AACrB,CAAC;AAED,SAAS,GAAG;IACV,GAAG,EAAE,CAAC;AACR,CAAC;AAED,GAAG,EAAE,CAAC"}"#;
+    let json = r#"{"version":3,"file":"error_001.js","sourceRoot":"","sources":["file:///Users/rld/src/deno/cli/tests/error_001.ts"],"names":[],"mappings":"AAAA,SAAS,GAAG;IACV,MAAM,KAAK,CAAC,KAAK,CAAC,CAAC;AACrB,CAAC;AAED,SAAS,GAAG;IACV,GAAG,EAAE,CAAC;AACR,CAAC;AAED,GAAG,EAAE,CAAC"}"#;
     let sm = SourceMap::from_json(json).unwrap();
     assert_eq!(sm.sources.len(), 1);
     assert_eq!(
       sm.sources[0],
-      "file:///Users/rld/src/deno/tests/error_001.ts"
+      "file:///Users/rld/src/deno/cli/tests/error_001.ts"
     );
     let mapping = sm
       .mappings

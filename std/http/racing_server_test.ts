@@ -12,13 +12,14 @@ async function startServer(): Promise<void> {
     stdout: "piped"
   });
   // Once racing server is ready it will write to its stdout.
-  const r = new TextProtoReader(new BufReader(server.stdout!));
+  assert(server.stdout != null);
+  const r = new TextProtoReader(new BufReader(server.stdout));
   const s = await r.readLine();
   assert(s !== Deno.EOF && s.includes("Racing server listening..."));
 }
 function killServer(): void {
   server.close();
-  server.stdout!.close();
+  server.stdout?.close();
 }
 
 const input = `GET / HTTP/1.1

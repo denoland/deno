@@ -4,8 +4,9 @@ use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
+use crate::ops::dispatch_json::JsonResult;
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::*;
 use remove_dir_all::remove_dir_all;
 use std::convert::From;
@@ -18,7 +19,7 @@ use std::os::unix::fs::MetadataExt;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("chdir", s.core_op(json_op(s.stateful_op(op_chdir))));
   i.register_op("mkdir", s.core_op(json_op(s.stateful_op(op_mkdir))));
   i.register_op("chmod", s.core_op(json_op(s.stateful_op(op_chmod))));
@@ -47,7 +48,7 @@ struct ChdirArgs {
 }
 
 fn op_chdir(
-  _state: &ThreadSafeState,
+  _state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -66,7 +67,7 @@ struct MkdirArgs {
 }
 
 fn op_mkdir(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -93,7 +94,7 @@ struct ChmodArgs {
 }
 
 fn op_chmod(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -127,7 +128,7 @@ struct ChownArgs {
 }
 
 fn op_chown(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -155,7 +156,7 @@ struct RemoveArgs {
 }
 
 fn op_remove(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -168,8 +169,9 @@ fn op_remove(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_remove {}", path.display());
-    let metadata = fs::metadata(&path)?;
-    if metadata.is_file() {
+    let metadata = fs::symlink_metadata(&path)?;
+    let file_type = metadata.file_type();
+    if file_type.is_file() || file_type.is_symlink() {
       fs::remove_file(&path)?;
     } else if recursive {
       remove_dir_all(&path)?;
@@ -189,7 +191,7 @@ struct CopyFileArgs {
 }
 
 fn op_copy_file(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -232,7 +234,7 @@ macro_rules! to_seconds {
 fn get_stat_json(
   metadata: fs::Metadata,
   maybe_name: Option<String>,
-) -> Result<Value, ErrBox> {
+) -> JsonResult {
   // Unix stat member (number types only). 0 if not on unix.
   macro_rules! usm {
     ($member: ident) => {{
@@ -288,7 +290,7 @@ struct StatArgs {
 }
 
 fn op_stat(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -318,7 +320,7 @@ struct RealpathArgs {
 }
 
 fn op_realpath(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -350,7 +352,7 @@ struct ReadDirArgs {
 }
 
 fn op_read_dir(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -387,7 +389,7 @@ struct RenameArgs {
 }
 
 fn op_rename(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -416,7 +418,7 @@ struct LinkArgs {
 }
 
 fn op_link(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -444,7 +446,7 @@ struct SymlinkArgs {
 }
 
 fn op_symlink(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -476,7 +478,7 @@ struct ReadLinkArgs {
 }
 
 fn op_read_link(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -504,7 +506,7 @@ struct TruncateArgs {
 }
 
 fn op_truncate(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -533,7 +535,7 @@ struct MakeTempDirArgs {
 }
 
 fn op_make_temp_dir(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -573,7 +575,7 @@ struct Utime {
 }
 
 fn op_utime(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -588,7 +590,7 @@ fn op_utime(
 }
 
 fn op_cwd(
-  _state: &ThreadSafeState,
+  _state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {

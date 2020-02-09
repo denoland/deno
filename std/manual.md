@@ -1419,7 +1419,7 @@ Extra steps for Mac users:
 
 Extra steps for Windows users:
 
-1. Get [VS Community 2017](https://www.visualstudio.com/downloads/) with
+1. Get [VS Community 2019](https://www.visualstudio.com/downloads/) with
    "Desktop development with C++" toolkit and make sure to select the following
    required tools listed below along with all C++ tools.
     - Windows 10 SDK >= 10.0.17134

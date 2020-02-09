@@ -6,12 +6,14 @@
 // https://github.com/golang/go/blob/master/src/net/http/responsewrite_test.go
 
 const { Buffer } = Deno;
+import { TextProtoReader } from "../textproto/mod.ts";
 import { test, runIfMain } from "../testing/mod.ts";
 import { assert, assertEquals, assertNotEquals } from "../testing/asserts.ts";
 import {
   Response,
   ServerRequest,
   writeResponse,
+  serve,
   readRequest,
   parseHTTPVersion
 } from "./server.ts";
@@ -21,6 +23,7 @@ import {
   ReadLineResult,
   UnexpectedEOFError
 } from "../io/bufio.ts";
+import { delay, deferred } from "../util/async.ts";
 import { StringReader } from "../io/readers.ts";
 
 function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
@@ -506,8 +509,7 @@ test(async function testReadRequestError(): Promise<void> {
   for (const test of testCases) {
     const reader = new BufReader(new StringReader(test.in));
     let err;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let req: any;
+    let req: ServerRequest | Deno.EOF;
     try {
       req = await readRequest(mockConn as Deno.Conn, reader);
     } catch (e) {
@@ -520,10 +522,12 @@ test(async function testReadRequestError(): Promise<void> {
     } else if (test.err) {
       assert(err instanceof (test.err as typeof UnexpectedEOFError));
     } else {
+      assert(req instanceof ServerRequest);
+      assert(test.headers != null);
       assertEquals(err, undefined);
       assertNotEquals(req, Deno.EOF);
-      for (const h of test.headers!) {
-        assertEquals((req! as ServerRequest).headers.get(h.key), h.value);
+      for (const h of test.headers) {
+        assertEquals(req.headers.get(h.key), h.value);
       }
     }
   }
@@ -563,7 +567,6 @@ test({
   }
 });
 
-/* TODO(bartlomieju): after removing std/installer/ it hangs, fix and reenable
 test({
   name: "[http] destroyed connection",
   async fn(): Promise<void> {
@@ -602,9 +605,7 @@ test({
     }
   }
 });
-*/
 
-/* TODO(bartlomieju): after removing std/installer/ it hangs, fix and reenable
 test({
   name: "[http] serveTLS",
   async fn(): Promise<void> {
@@ -653,9 +654,7 @@ test({
     }
   }
 });
-*/
 
-/* TODO(bartlomieju): after removing std/installer/ it hangs, fix and reenable
 test({
   name: "[http] close server while iterating",
   async fn(): Promise<void> {
@@ -668,7 +667,6 @@ test({
     assertEquals(await nextAfterClosing, { value: undefined, done: true });
   }
 });
-*/
 
 // TODO(kevinkassimo): create a test that works on Windows.
 // The following test is to ensure that if an error occurs during respond
@@ -677,7 +675,6 @@ test({
 // receive a RST and thus trigger an error during response for us to test.
 // We need to find a way to similarly trigger an error on Windows so that
 // we can test if connection is closed.
-/* TODO(bartlomieju): after removing std/installer/ it hangs, fix and reenable
 if (Deno.build.os !== "win") {
   test({
     name: "[http] respond error handling",
@@ -735,5 +732,5 @@ if (Deno.build.os !== "win") {
     }
   });
 }
-*/
+
 runIfMain(import.meta);

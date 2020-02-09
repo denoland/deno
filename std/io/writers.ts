@@ -32,6 +32,6 @@ export class StringWriter implements Writer {
       offs += chunk.byteLength;
     }
     this.cache = decode(buf);
-    return this.cache!;
+    return this.cache;
   }
 }

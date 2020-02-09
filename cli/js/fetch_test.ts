@@ -5,7 +5,8 @@ import {
   assert,
   assertEquals,
   assertStrContains,
-  assertThrows
+  assertThrows,
+  fail
 } from "./test_util.ts";
 
 testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
@@ -114,7 +115,7 @@ testPerm({ net: true }, async function fetchMultipartFormDataSuccess(): Promise<
   void
 > {
   const response = await fetch(
-    "http://localhost:4545/tests/subdir/multipart_form_data.txt"
+    "http://localhost:4545/cli/tests/subdir/multipart_form_data.txt"
   );
   const formData = await response.formData();
   assert(formData.has("field_1"));
@@ -131,7 +132,7 @@ testPerm(
   { net: true },
   async function fetchURLEncodedFormDataSuccess(): Promise<void> {
     const response = await fetch(
-      "http://localhost:4545/tests/subdir/form_urlencoded.txt"
+      "http://localhost:4545/cli/tests/subdir/form_urlencoded.txt"
     );
     const formData = await response.formData();
     assert(formData.has("field_1"));
@@ -153,11 +154,11 @@ testPerm({ net: true }, async function fetchWithRedirection(): Promise<void> {
 testPerm({ net: true }, async function fetchWithRelativeRedirection(): Promise<
   void
 > {
-  const response = await fetch("http://localhost:4545/tests"); // will redirect to /tests/
+  const response = await fetch("http://localhost:4545/cli/tests"); // will redirect to /cli/tests/
   assertEquals(response.status, 200);
   assertEquals(response.statusText, "OK");
   const body = await response.text();
-  assert(body.includes("<title>Directory listing for /tests/</title>"));
+  assert(body.includes("<title>Directory listing for /cli/tests/</title>"));
 });
 
 // The feature below is not implemented, but the test should work after implementation
@@ -165,7 +166,7 @@ testPerm({ net: true }, async function fetchWithRelativeRedirection(): Promise<
 testPerm({ net: true }, async function fetchWithInfRedirection(): Promise<
   void
 > {
-  const response = await fetch("http://localhost:4549/tests"); // will redirect to the same place
+  const response = await fetch("http://localhost:4549/cli/tests"); // will redirect to the same place
   assertEquals(response.status, 0); // network error
 });
 */
@@ -360,3 +361,75 @@ testPerm({ net: true }, async function fetchPostBodyTypedArray():Promise<void> {
   assertEquals(actual, expected);
 });
 */
+
+testPerm({ net: true }, async function fetchWithManualRedirection(): Promise<
+  void
+> {
+  const response = await fetch("http://localhost:4546/", {
+    redirect: "manual"
+  }); // will redirect to http://localhost:4545/
+  assertEquals(response.status, 0);
+  assertEquals(response.statusText, "");
+  assertEquals(response.url, "");
+  assertEquals(response.type, "opaqueredirect");
+  try {
+    await response.text();
+    fail(
+      "Reponse.text() didn't throw on a filtered response without a body (type opaqueredirect)"
+    );
+  } catch (e) {
+    return;
+  }
+});
+
+testPerm({ net: true }, async function fetchWithErrorRedirection(): Promise<
+  void
+> {
+  const response = await fetch("http://localhost:4546/", {
+    redirect: "error"
+  }); // will redirect to http://localhost:4545/
+  assertEquals(response.status, 0);
+  assertEquals(response.statusText, "");
+  assertEquals(response.url, "");
+  assertEquals(response.type, "error");
+  try {
+    await response.text();
+    fail(
+      "Reponse.text() didn't throw on a filtered response without a body (type error)"
+    );
+  } catch (e) {
+    return;
+  }
+});
+
+test(function responseRedirect(): void {
+  const response = new Response(
+    "example.com/beforeredirect",
+    200,
+    "OK",
+    [["This-Should", "Disappear"]],
+    -1,
+    false,
+    null
+  );
+  const redir = response.redirect("example.com/newLocation", 301);
+  assertEquals(redir.status, 301);
+  assertEquals(redir.statusText, "");
+  assertEquals(redir.url, "");
+  assertEquals(redir.headers.get("Location"), "example.com/newLocation");
+  assertEquals(redir.type, "default");
+});
+
+test(function responseConstructionHeaderRemoval(): void {
+  const res = new Response(
+    "example.com",
+    200,
+    "OK",
+    [["Set-Cookie", "mysessionid"]],
+    -1,
+    false,
+    "basic",
+    null
+  );
+  assert(res.headers.get("Set-Cookie") != "mysessionid");
+});

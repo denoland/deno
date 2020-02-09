@@ -184,8 +184,8 @@ class Host {
       fileName = moduleMap.get(fileName);
     }
 
-    const { sourceCode, moduleName } = dispatch("readFile", {
-      fileName,
+    const { sourceCode, moduleName } = dispatch("loadModule", {
+      moduleUrl: fileName,
       languageVersion,
       shouldCreateNewSourceFile
     });

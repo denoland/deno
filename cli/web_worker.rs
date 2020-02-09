@@ -1,8 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::ops;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use crate::worker::Worker;
-use crate::worker::WorkerChannels;
 use deno_core;
 use deno_core::ErrBox;
 use deno_core::StartupData;
@@ -21,26 +20,20 @@ use std::task::Poll;
 ///
 /// Each `WebWorker` is either a child of `MainWorker` or other
 /// `WebWorker`.
-#[derive(Clone)]
 pub struct WebWorker(Worker);
 
 impl WebWorker {
-  pub fn new(
-    name: String,
-    startup_data: StartupData,
-    state: ThreadSafeState,
-    external_channels: WorkerChannels,
-  ) -> Self {
+  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let state_ = state.clone();
-    let worker = Worker::new(name, startup_data, state_, external_channels);
+    let mut worker = Worker::new(name, startup_data, state_);
     {
-      let mut isolate = worker.isolate.try_lock().unwrap();
-      ops::runtime::init(&mut isolate, &state);
-      ops::web_worker::init(&mut isolate, &state);
-      ops::worker_host::init(&mut isolate, &state);
-      ops::errors::init(&mut isolate, &state);
-      ops::timers::init(&mut isolate, &state);
-      ops::fetch::init(&mut isolate, &state);
+      let isolate = &mut worker.isolate;
+      ops::runtime::init(isolate, &state);
+      ops::web_worker::init(isolate, &state);
+      ops::worker_host::init(isolate, &state);
+      ops::errors::init(isolate, &state);
+      ops::timers::init(isolate, &state);
+      ops::fetch::init(isolate, &state);
     }
 
     Self(worker)
@@ -73,29 +66,15 @@ impl Future for WebWorker {
 mod tests {
   use super::*;
   use crate::startup_data;
-  use crate::state::ThreadSafeState;
+  use crate::state::State;
   use crate::tokio_util;
-  use futures::executor::block_on;
-
-  pub fn run_in_task<F>(f: F)
-  where
-    F: FnOnce() + Send + 'static,
-  {
-    let fut = futures::future::lazy(move |_cx| f());
-    tokio_util::run(fut)
-  }
 
   fn create_test_worker() -> WebWorker {
-    let (int, ext) = ThreadSafeState::create_channels();
-    let state = ThreadSafeState::mock(
-      vec![String::from("./deno"), String::from("hello.js")],
-      int,
-    );
+    let state = State::mock("./hello.js");
     let mut worker = WebWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),
       state,
-      ext,
     );
     worker.execute("bootstrapWorkerRuntime(\"TEST\")").unwrap();
     worker.execute("runWorkerMessageLoop()").unwrap();
@@ -104,9 +83,8 @@ mod tests {
 
   #[test]
   fn test_worker_messages() {
-    run_in_task(|| {
-      let mut worker = create_test_worker();
-      let source = r#"
+    let mut worker = create_test_worker();
+    let source = r#"
         onmessage = function(e) {
           console.log("msg from main script", e.data);
           if (e.data == "exit") {
@@ -119,60 +97,57 @@ mod tests {
           console.log("after postMessage");
         }
         "#;
-      worker.execute(source).unwrap();
+    worker.execute(source).unwrap();
 
-      let worker_ = worker.clone();
+    let handle = worker.thread_safe_handle();
+    let _ = tokio_util::spawn_thread(move || {
+      tokio_util::run_basic(async move {
+        let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
+        let r = handle.post_message(msg.clone()).await;
+        assert!(r.is_ok());
 
-      let fut = async move {
-        let r = worker.await;
-        r.unwrap();
-      };
+        let maybe_msg = handle.get_message().await;
+        assert!(maybe_msg.is_some());
 
-      tokio::spawn(fut);
+        let r = handle.post_message(msg.clone()).await;
+        assert!(r.is_ok());
 
-      let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
+        let maybe_msg = handle.get_message().await;
+        assert!(maybe_msg.is_some());
+        assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
 
-      let r = block_on(worker_.post_message(msg));
-      assert!(r.is_ok());
+        let msg = json!("exit")
+          .to_string()
+          .into_boxed_str()
+          .into_boxed_bytes();
+        let r = handle.post_message(msg).await;
+        assert!(r.is_ok());
+      })
+    });
 
-      let maybe_msg = block_on(worker_.get_message());
-      assert!(maybe_msg.is_some());
-      // Check if message received is [1, 2, 3] in json
-      assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
-
-      let msg = json!("exit")
-        .to_string()
-        .into_boxed_str()
-        .into_boxed_bytes();
-      let r = block_on(worker_.post_message(msg));
-      assert!(r.is_ok());
-    })
+    let r = tokio_util::run_basic(worker);
+    assert!(r.is_ok())
   }
 
   #[test]
   fn removed_from_resource_table_on_close() {
-    run_in_task(|| {
-      let mut worker = create_test_worker();
-      worker
-        .execute("onmessage = () => { delete self.onmessage; }")
-        .unwrap();
+    let mut worker = create_test_worker();
+    let handle = worker.thread_safe_handle();
 
-      let worker_ = worker.clone();
-      let worker_future = async move {
-        let result = worker_.await;
-        println!("workers.rs after resource close");
-        result.unwrap();
-      }
-      .shared();
+    worker
+      .execute("onmessage = () => { delete self.onmessage; }")
+      .unwrap();
 
-      let worker_future_ = worker_future.clone();
-      tokio::spawn(worker_future_);
-
+    let worker_post_message_fut = tokio_util::spawn_thread(move || {
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-      let r = block_on(worker.post_message(msg));
+      let r = futures::executor::block_on(handle.post_message(msg));
       assert!(r.is_ok());
+    });
 
-      block_on(worker_future)
-    })
+    tokio_util::run_basic(async move {
+      worker_post_message_fut.await;
+      let r = worker.await;
+      assert!(r.is_ok());
+    });
   }
 }
