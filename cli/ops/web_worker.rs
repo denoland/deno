@@ -79,6 +79,7 @@ fn op_worker_close(
 ) -> Result<JsonOp, ErrBox> {
   let state = state.borrow();
   let channels = state.worker_channels_internal.as_ref().unwrap().clone();
+  eprintln!("closing worker!!!!");
   futures::executor::block_on(channels.post_event(WorkerEvent::Close))
     .expect("Failed to post message to host");
   Ok(JsonOp::Sync(json!({})))

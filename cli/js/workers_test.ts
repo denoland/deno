@@ -22,11 +22,12 @@ export function createResolvable<T>(): Resolvable<T> {
 
 test(async function workersBasic(): Promise<void> {
   const promise = createResolvable();
-
+  console.log("creating worker!!!!");
   const jsWorker = new Worker("../tests/subdir/test_worker.js", {
     type: "module",
     name: "jsWorker"
   });
+  console.log("created worker !!!!");
   const tsWorker = new Worker("../tests/subdir/test_worker.ts", {
     type: "module",
     name: "tsWorker"
