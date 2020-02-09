@@ -18,6 +18,7 @@ use std::task::Poll;
 use tokio;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
+use tokio::net::UdpSocket;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("accept", s.core_op(json_op(s.stateful_op(op_accept))));
@@ -150,19 +151,36 @@ fn op_connect(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ConnectArgs = serde_json::from_value(args)?;
-  assert_eq!(args.transport, "tcp"); // TODO Support others.
+  assert!(args.transport == "tcp" || args.transport == "udp"); // TODO Support others.
   let state_ = state.clone();
   state.check_net(&args.hostname, args.port)?;
 
   let op = async move {
     let addr = resolve_addr(&args.hostname, args.port).await?;
-    let tcp_stream = TcpStream::connect(&addr).await?;
-    let local_addr = tcp_stream.local_addr()?;
-    let remote_addr = tcp_stream.peer_addr()?;
-    let mut state = state_.borrow_mut();
-    let rid = state
-      .resource_table
-      .add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
+    let local_addr;
+    let remote_addr;
+    let rid;
+    
+    if args.transport == "tcp" {
+      let tcp_stream = TcpStream::connect(&addr).await?;
+      local_addr = tcp_stream.local_addr()?;
+      let remote_addr = tcp_stream.peer_addr()?;
+      let mut state = state_.borrow_mut();
+      rid = state
+        .resource_table
+        .add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
+    }
+    
+    if args.transport == "udp" {
+      let udp_socket = UdpSocket::connect(&addr).await?;
+      local_addr = udp_socket.local_addr()?;
+      remote_addr = udp_socket.peer_addr()?;
+      let mut state = state_.borrow_mut();
+      rid = state
+        .resource_table
+        .add("udpSocket", Box::new(StreamResource::UdpSocket(udp_socket)));
+    }
+    
     Ok(json!({
       "rid": rid,
       "localAddr": {
@@ -278,29 +296,101 @@ impl TcpListenerResource {
   }
 }
 
+#[allow(dead_code)]
+struct UdpSocketResource {
+  socket: UdpSocket,
+  waker: Option<futures::task::AtomicWaker>,
+  local_addr: SocketAddr,
+}
+
+impl Drop for UdpSocketResource {
+  fn drop(&mut self) {
+    self.wake_task();
+  }
+}
+
+impl UdpSocketResource {
+  /// Track the current task so future awaiting for connection
+  /// can be notified when listener is closed.
+  ///
+  /// Throws an error if another task is already tracked.
+  pub fn track_task(&mut self, cx: &Context) -> Result<(), ErrBox> {
+    // Currently, we only allow tracking a single accept task for a listener.
+    // This might be changed in the future with multiple workers.
+    // Caveat: TcpListener by itself also only tracks an accept task at a time.
+    // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
+    if self.waker.is_some() {
+      let e = std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "Another accept task is ongoing",
+      );
+      return Err(ErrBox::from(e));
+    }
+
+    let waker = futures::task::AtomicWaker::new();
+    waker.register(cx.waker());
+    self.waker.replace(waker);
+    Ok(())
+  }
+
+  /// Notifies a task when listener is closed so accept future can resolve.
+  pub fn wake_task(&mut self) {
+    if let Some(waker) = self.waker.as_ref() {
+      waker.wake();
+    }
+  }
+
+  /// Stop tracking a task.
+  /// Happens when the task is done and thus no further tracking is needed.
+  pub fn untrack_task(&mut self) {
+    if self.waker.is_some() {
+      self.waker.take();
+    }
+  }
+}
+
 fn op_listen(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ListenArgs = serde_json::from_value(args)?;
-  assert_eq!(args.transport, "tcp");
+  assert!(args.transport == "tcp" || args.transport == "udp");
 
   state.check_net(&args.hostname, args.port)?;
 
   let addr =
     futures::executor::block_on(resolve_addr(&args.hostname, args.port))?;
-  let listener = futures::executor::block_on(TcpListener::bind(&addr))?;
-  let local_addr = listener.local_addr()?;
-  let listener_resource = TcpListenerResource {
-    listener,
-    waker: None,
-    local_addr,
-  };
   let mut state = state.borrow_mut();
-  let rid = state
-    .resource_table
-    .add("tcpListener", Box::new(listener_resource));
+  let local_addr;
+  let rid;
+  
+  if args.transport == "tcp" {
+    let listener = futures::executor::block_on(TcpListener::bind(&addr))?;
+    local_addr = listener.local_addr()?;
+    let listener_resource = TcpListenerResource {
+      listener,
+      waker: None,
+      local_addr,
+    };
+    rid = state
+      .resource_table
+      .add("tcpListener", Box::new(listener_resource));
+  }
+  
+  if args.transport == "udp" {
+    let socket = futures::executor::block_on(UdpSocket::bind(&addr))?;
+    local_addr = socket.local_addr()?;
+    let socket_resource = UdpSocketResource {
+      socket,
+      waker: None,
+      local_addr,
+    };
+    rid = state
+      .resource_table
+      .add("udpSocket", Box::new(socket_resource)); 
+  }
+  
   debug!(
     "New listener {} {}:{}",
     rid,
