@@ -550,7 +550,10 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
 
   deno fmt myfile1.ts myfile2.ts
 
-  deno fmt --check",
+  deno fmt --check
+
+  # Format stdin and write to stdout
+  cat file.ts | deno fmt -",
     )
     .arg(
       Arg::with_name("check")
@@ -1385,6 +1388,18 @@ mod tests {
       DenoFlags {
         subcommand: DenoSubcommand::Format {
           check: true,
+          files: None
+        },
+        ..DenoFlags::default()
+      }
+    );
+
+    let r = flags_from_vec_safe(svec!["deno", "fmt"]);
+    assert_eq!(
+      r.unwrap(),
+      DenoFlags {
+        subcommand: DenoSubcommand::Format {
+          check: false,
           files: None
         },
         ..DenoFlags::default()
