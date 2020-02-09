@@ -159,7 +159,7 @@ export class WorkerImpl extends EventTarget implements Worker {
       if (type === "msg") {
         if (this.onmessage) {
           const message = decodeMessage(new Uint8Array(event.data));
-          this.onmessage(event);
+          this.onmessage({ data: message });
         }
         continue;
       } 

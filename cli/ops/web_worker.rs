@@ -4,13 +4,12 @@ use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::ops::json_op;
 use crate::state::State;
+use crate::worker::WorkerEvent;
 use deno_core::*;
 use futures;
 use futures::future::FutureExt;
 use std;
 use std::convert::From;
-use crate::worker::WorkerEvent;
-
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(

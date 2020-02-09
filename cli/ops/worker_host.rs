@@ -15,11 +15,12 @@ use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
 use deno_core::*;
 use futures;
+use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
+use futures::stream::StreamExt;
 use std;
 use std::convert::From;
-use futures::future::poll_fn;
 use std::task::Poll;
 
 pub fn init(i: &mut Isolate, s: &State) {
@@ -47,11 +48,8 @@ fn create_web_worker(
   permissions: DenoPermissions,
   specifier: ModuleSpecifier,
 ) -> Result<WebWorker, ErrBox> {
-  let state = State::new_for_worker(
-    global_state,
-    Some(permissions),
-    specifier,
-  )?;
+  let state =
+    State::new_for_worker(global_state, Some(permissions), specifier)?;
 
   let mut worker =
     WebWorker::new(name.to_string(), startup_data::deno_isolate_init(), state);
@@ -73,7 +71,7 @@ fn run_worker_thread(
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WorkerHandle, ErrBox>>(1);
 
-  // TODO(bartlomieju): use thread builder and give thread descriptive name 
+  // TODO(bartlomieju): use thread builder and give thread descriptive name
   //  so it's easy to ID worker in htop/ps
   // TODO(bartlomieju): should we store JoinHandle as well?
   std::thread::spawn(move || {
@@ -138,13 +136,6 @@ fn run_worker_thread(
     // Drive worker event loop
     let fut = async move {
       loop {
-        // TODO(bartlomieju): figure out what happens here:
-        let mut receive_host_msg_future = {
-          let state = worker.state.borrow();
-          let channels = state.worker_channels_internal.as_ref().unwrap().clone();
-          channels.get_message()
-        };
-
         let _r: Result<(), ErrBox> = poll_fn(|cx| {
           if !worker_is_ready {
             match worker.poll_unpin(cx) {
@@ -155,15 +146,24 @@ fn run_worker_thread(
                 };
                 worker_is_ready = true;
                 let state = worker.state.borrow();
-                let channels = state.worker_channels_internal.as_ref().unwrap().clone();
+                let channels =
+                  state.worker_channels_internal.as_ref().unwrap().clone();
                 futures::executor::block_on(channels.post_event(event))
                   .expect("Failed to post message to host");
-              },
-              Poll::Pending => {},
+              }
+              Poll::Pending => {}
             }
           }
-          
-          match receive_host_msg_future.poll_unpin(cx) {
+
+          // TODO(bartlmieju): this is BS, remove this
+          let receiver = {
+            let state_ = worker.state.clone();
+            let s = state_.borrow();
+            let channels = s.worker_channels_internal.as_ref().unwrap().clone();
+            channels.receiver.clone()
+          };
+          let mut receiver = receiver.try_lock().unwrap();
+          match receiver.poll_next_unpin(cx) {
             Poll::Ready(r) => match r {
               Some(msg) => {
                 eprintln!(
@@ -177,10 +177,12 @@ fn run_worker_thread(
                   String::from_utf8(msg.to_vec()).unwrap()
                 );
                 eprintln!("script: {}", &script);
-                let r = worker
+                worker
                   .execute(&script)
                   .expect("Failed to execute message cb");
-              },
+                // Let worker be polled again
+                worker_is_ready = false;
+              }
               None => {
                 eprintln!("none message received");
                 // TODO: handle if message is none
@@ -192,7 +194,8 @@ fn run_worker_thread(
           }
 
           Poll::Pending
-        }).await;
+        })
+        .await;
       }
     };
 
@@ -265,22 +268,25 @@ fn op_host_terminate_worker(
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let mut state = state.borrow_mut();
-  let worker_handle = state.workers.remove(&id).expect("No worker handle found");
+  let worker_handle =
+    state.workers.remove(&id).expect("No worker handle found");
   worker_handle.terminate();
   Ok(JsonOp::Sync(json!({})))
 }
 
-fn handle_worker_event(state: &State, worker_id: u32, event: WorkerEvent) -> Option<Value> {
+fn handle_worker_event(
+  state: &State,
+  worker_id: u32,
+  event: WorkerEvent,
+) -> Option<Value> {
   match event {
-    WorkerEvent::Message(buf) => {
-      Some(json!({ "type": "msg", "data": buf }))
-    },
+    WorkerEvent::Message(buf) => Some(json!({ "type": "msg", "data": buf })),
     WorkerEvent::Error(error) => match error.kind() {
       ErrorKind::JSError => {
         let error = error.downcast::<JSError>().unwrap();
         let exception: V8Exception = error.into();
         Some(json!({
-          "type": "error", 
+          "type": "error",
           "error": {
             "message": exception.message,
             "fileName": exception.script_resource_name,
@@ -290,7 +296,7 @@ fn handle_worker_event(state: &State, worker_id: u32, event: WorkerEvent) -> Opt
         }))
       }
       _ => Some(json!({
-        "type": "error", 
+        "type": "error",
         "error": {
           "message": error.to_string(),
         }
@@ -303,13 +309,13 @@ fn handle_worker_event(state: &State, worker_id: u32, event: WorkerEvent) -> Opt
       state_.workers.remove(&worker_id);
       // TODO: worker_handle.fuse() ?????;
       // worker_handle.notify_close();
-      
+
       Some(json!({ "type": "close" }))
-    },
+    }
     WorkerEvent::Idle => {
       // TODO: potentially handle somehow?
       None
-    },
+    }
   }
 }
 
@@ -323,7 +329,11 @@ fn op_host_get_message(
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let state_ = state.borrow();
-  let worker_handle = state_.workers.get(&id).expect("No worker handle found").clone();
+  let worker_handle = state_
+    .workers
+    .get(&id)
+    .expect("No worker handle found")
+    .clone();
   let state_ = state.clone();
   let op = async move {
     let mut response = None;

@@ -6,9 +6,9 @@ use crate::ops::json_op;
 use crate::state::State;
 use crate::version;
 use crate::DenoSubcommand;
-use std::sync::atomic::Ordering;
 use deno_core::*;
 use std::env;
+use std::sync::atomic::Ordering;
 
 /// BUILD_OS and BUILD_ARCH match the values in Deno.build. See js/build.ts.
 #[cfg(target_os = "macos")]

@@ -44,7 +44,7 @@ impl WorkerChannelsInternal {
     sender.send(event).map_err(ErrBox::from).await
   }
 
-  // TODO(bartlomieju): change type of channel so it's clear communication 
+  // TODO(bartlomieju): change type of channel so it's clear communication
   // between parent and child
   /// Get message from host.
   pub fn get_message(&self) -> Pin<Box<dyn Future<Output = Option<Buf>>>> {
@@ -67,7 +67,7 @@ pub struct WorkerHandle {
 
 impl WorkerHandle {
   pub fn terminate(&self) {
-    todo!() 
+    todo!()
   }
 
   /// Called when worker requests to be closed
