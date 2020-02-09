@@ -181,7 +181,6 @@ impl SharedQueue {
       end,
       record.len()
     );
-    assert_eq!(record.len() % 4, 0);
     let index = self.num_records();
     if end > self.bytes().len() || index >= MAX_RECORDS {
       debug!("WARNING the sharedQueue overflowed");
@@ -259,21 +258,21 @@ mod tests {
   #[test]
   fn overflow() {
     let mut q = SharedQueue::new(RECOMMENDED_SIZE);
-    assert!(q.push(0, &alloc_buf(RECOMMENDED_SIZE - 4)));
+    assert!(q.push(0, &alloc_buf(RECOMMENDED_SIZE - 1)));
     assert_eq!(q.size(), 1);
-    assert!(!q.push(0, &alloc_buf(8)));
+    assert!(!q.push(0, &alloc_buf(2)));
     assert_eq!(q.size(), 1);
-    assert!(q.push(0, &alloc_buf(4)));
+    assert!(q.push(0, &alloc_buf(1)));
     assert_eq!(q.size(), 2);
 
     let (_op_id, buf) = q.shift().unwrap();
-    assert_eq!(buf.len(), RECOMMENDED_SIZE - 4);
+    assert_eq!(buf.len(), RECOMMENDED_SIZE - 1);
     assert_eq!(q.size(), 1);
 
-    assert!(!q.push(0, &alloc_buf(4)));
+    assert!(!q.push(0, &alloc_buf(1)));
 
     let (_op_id, buf) = q.shift().unwrap();
-    assert_eq!(buf.len(), 4);
+    assert_eq!(buf.len(), 1);
     assert_eq!(q.size(), 0);
   }
 
@@ -281,19 +280,25 @@ mod tests {
   fn full_records() {
     let mut q = SharedQueue::new(RECOMMENDED_SIZE);
     for _ in 0..MAX_RECORDS {
-      assert!(q.push(0, &alloc_buf(4)))
+      assert!(q.push(0, &alloc_buf(1)))
     }
-    assert_eq!(q.push(0, &alloc_buf(4)), false);
+    assert_eq!(q.push(0, &alloc_buf(1)), false);
     // Even if we shift one off, we still cannot push a new record.
     let _ignored = q.shift().unwrap();
-    assert_eq!(q.push(0, &alloc_buf(4)), false);
+    assert_eq!(q.push(0, &alloc_buf(1)), false);
   }
 
   #[test]
-  #[should_panic]
-  fn bad_buf_length() {
+  fn allow_any_buf_length() {
     let mut q = SharedQueue::new(RECOMMENDED_SIZE);
     // check that `record` that has length not a multiple of 4 will cause panic
+    q.push(0, &alloc_buf(1));
+    q.push(0, &alloc_buf(2));
     q.push(0, &alloc_buf(3));
+    q.push(0, &alloc_buf(4));
+    q.push(0, &alloc_buf(5));
+    q.push(0, &alloc_buf(6));
+    q.push(0, &alloc_buf(7));
+    q.push(0, &alloc_buf(8));
   }
 }
