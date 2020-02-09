@@ -15,11 +15,12 @@ use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
 use deno_core::*;
 use futures;
-use futures::future::Either;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
 use std;
 use std::convert::From;
+use futures::future::poll_fn;
+use std::task::Poll;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
@@ -133,60 +134,66 @@ fn run_worker_thread(
     // TODO: when worker polled and returns ready then send Worker::Idle message
     // then host will be able to suspend us or whatever - use thread.park()
 
+    let mut worker_is_ready = false;
     // Drive worker event loop
     let fut = async move {
       loop {
-
         // TODO(bartlomieju): figure out what happens here:
-        let receive_msg_fut = {
+        let mut receive_host_msg_future = {
           let state = worker.state.borrow();
           let channels = state.worker_channels_internal.as_ref().unwrap().clone();
           channels.get_message()
         };
 
-        let _result =
-          match futures::future::select(&mut *worker, receive_msg_fut).await {
-            Either::Left((worker_result, _msg_fut)) => {
-              // worker finished scripts, no point in polling it
-              // until we receive next message from host (not valid if we add unref
-              // ops to worker) 
-
-              // serialize and send to host and decide what later -
-              // - ie. worker should not be polled unless exception is handled by host
-
-              let event = match worker_result {
-                Ok(()) => WorkerEvent::Idle,
-                Err(e) => WorkerEvent::Error(e),
-              };
-              let state = worker.state.borrow();
-              let channels = state.worker_channels_internal.as_ref().unwrap().clone();
-              futures::executor::block_on(channels.post_event(event))
-                .expect("Failed to post message to host");
-            },
-            Either::Right((maybe_messsage, _worker_fut)) => {
-              match maybe_messsage {
-                None => {
-                  eprintln!("none message received");
-                  // TODO: handle if message is none
-                }
-                Some(msg) => {
-                  eprintln!(
-                    "message received {}",
-                    String::from_utf8(msg.to_vec()).unwrap()
-                  );
-                  // TODO: just add second value and then bind using rusty_v8
-                  // to get structured clone/transfer working
-                  let script = format!(
-                    "globalThis.workerMessageRecvCallback(\"{}\")",
-                    String::from_utf8(msg.to_vec()).unwrap()
-                  );
-                  worker
-                    .execute(&script)
-                    .expect("Failed to execute message cb");
-                }
-              }
+        let _r: Result<(), ErrBox> = poll_fn(|cx| {
+          if !worker_is_ready {
+            match worker.poll_unpin(cx) {
+              Poll::Ready(r) => {
+                let event = match r {
+                  Ok(()) => WorkerEvent::Idle,
+                  Err(e) => WorkerEvent::Error(e),
+                };
+                worker_is_ready = true;
+                let state = worker.state.borrow();
+                let channels = state.worker_channels_internal.as_ref().unwrap().clone();
+                futures::executor::block_on(channels.post_event(event))
+                  .expect("Failed to post message to host");
+              },
+              Poll::Pending => {},
             }
-          };
+          }
+          
+          match receive_host_msg_future.poll_unpin(cx) {
+            Poll::Ready(r) => match r {
+              Some(msg) => {
+                eprintln!(
+                  "message received {}",
+                  String::from_utf8(msg.to_vec()).unwrap()
+                );
+                // TODO: just add second value and then bind using rusty_v8
+                // to get structured clone/transfer working
+                let script = format!(
+                  "globalThis.workerMessageRecvCallback(\"{}\")",
+                  String::from_utf8(msg.to_vec()).unwrap()
+                );
+                let r = worker
+                  .execute(&script);
+
+                  eprintln!("result {:?}", r);
+                  // .expect("Failed to execute message cb");
+              },
+              None => {
+                eprintln!("none message received");
+                // TODO: handle if message is none
+                // TODO: unreachable!()?
+                todo!();
+              }
+            },
+            Poll::Pending => {}
+          }
+
+          Poll::Pending
+        }).await;
       }
     };
 
@@ -314,6 +321,7 @@ fn op_host_get_message(
         Ok(json!({ "type": "close" }))
       },
       WorkerEvent::Idle => {
+        // pass
         todo!()
       },
     }
