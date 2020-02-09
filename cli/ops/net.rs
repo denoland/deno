@@ -157,6 +157,7 @@ fn op_connect(
 
   let op = async move {
     let addr = resolve_addr(&args.hostname, args.port).await?;
+    let mut state = state_.borrow_mut();
     let local_addr;
     let remote_addr;
     let rid;
@@ -164,8 +165,7 @@ fn op_connect(
     if args.transport == "tcp" {
       let tcp_stream = TcpStream::connect(&addr).await?;
       local_addr = tcp_stream.local_addr()?;
-      let remote_addr = tcp_stream.peer_addr()?;
-      let mut state = state_.borrow_mut();
+      remote_addr = tcp_stream.peer_addr()?;
       rid = state
         .resource_table
         .add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
@@ -175,7 +175,6 @@ fn op_connect(
       let udp_socket = UdpSocket::connect(&addr).await?;
       local_addr = udp_socket.local_addr()?;
       remote_addr = udp_socket.peer_addr()?;
-      let mut state = state_.borrow_mut();
       rid = state
         .resource_table
         .add("udpSocket", Box::new(StreamResource::UdpSocket(udp_socket)));
