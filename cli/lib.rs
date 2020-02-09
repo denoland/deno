@@ -405,7 +405,9 @@ async fn run_script(flags: DenoFlags, script: String) {
 }
 
 async fn fmt_command(files: Option<Vec<String>>, check: bool) {
-  fmt::format_files(files, check);
+  if let Err(err) = fmt::format_files(files, check) {
+    print_err_and_exit(err);
+  }
 }
 
 pub fn main() {
