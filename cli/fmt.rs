@@ -7,6 +7,9 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
+use crate::deno_error::DenoError;
+use crate::deno_error::ErrorKind;
+use deno_core::ErrBox;
 use dprint_plugin_typescript as dprint;
 use glob;
 use regex::Regex;
@@ -161,9 +164,29 @@ fn get_matching_files(glob_paths: Vec<String>) -> Vec<PathBuf> {
 ///
 /// First argument supports globs, and if it is `None`
 /// then the current directory is recursively walked.
-pub fn format_files(maybe_files: Option<Vec<String>>, check: bool) {
+pub fn format_files(
+  maybe_files: Option<Vec<String>>,
+  check: bool,
+) -> Result<(), ErrBox> {
   // TODO: improve glob to look for tsx?/jsx? files only
   let glob_paths = maybe_files.unwrap_or_else(|| vec!["**/*".to_string()]);
+
+  for glob_path in glob_paths.iter() {
+    if glob_path == "-" {
+      // If the only given path is '-', format stdin.
+      if glob_paths.len() == 1 {
+        format_stdin(check);
+      } else {
+        // Otherwise it is an error
+        return Err(ErrBox::from(DenoError::new(
+          ErrorKind::Other,
+          "Ambiguous filename input. To format stdin, provide a single '-' instead.".to_owned()
+        )));
+      }
+      return Ok(());
+    }
+  }
+
   let matching_files = get_matching_files(glob_paths);
   let matching_files = get_supported_files(matching_files);
   let config = get_config();
@@ -173,9 +196,14 @@ pub fn format_files(maybe_files: Option<Vec<String>>, check: bool) {
   } else {
     format_source_files(config, matching_files);
   }
+
+  Ok(())
 }
 
-pub fn format_stdin(check: bool) {
+/// Format stdin and write result to stdout.
+/// Treats input as TypeScript.
+/// Compatible with `--check` flag.
+fn format_stdin(check: bool) {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     eprintln!("Failed to read from stdin");
@@ -184,7 +212,7 @@ pub fn format_stdin(check: bool) {
 
   match dprint::format_text("_stdin.ts", &source, &config) {
     Ok(None) => {
-      // Should not happen
+      // Should not happen.
       unreachable!();
     }
     Ok(Some(formatted_text)) => {

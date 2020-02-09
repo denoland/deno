@@ -48,7 +48,6 @@ pub enum DenoSubcommand {
   },
   Format {
     check: bool,
-    stdin: bool,
     files: Option<Vec<String>>,
   },
   Help,
@@ -304,11 +303,9 @@ fn fmt_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   };
 
   let check = matches.is_present("check");
-  let stdin = matches.is_present("stdin");
 
   flags.subcommand = DenoSubcommand::Format {
     check,
-    stdin,
     files: maybe_files,
   }
 }
@@ -552,18 +549,13 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
 
   deno fmt --check
 
-  cat file.ts | deno fmt --stdin",
+  # Format stdin and write to stdout
+  cat file.ts | deno fmt -",
     )
     .arg(
       Arg::with_name("check")
         .long("check")
         .help("Check if the source files are formatted.")
-        .takes_value(false),
-    )
-    .arg(
-      Arg::with_name("stdin")
-        .long("stdin")
-        .help("Read from stdin and write formatted code to stdout.")
         .takes_value(false),
     )
     .arg(
@@ -1375,7 +1367,6 @@ mod tests {
       DenoFlags {
         subcommand: DenoSubcommand::Format {
           check: false,
-          stdin: false,
           files: Some(svec!["script_1.ts", "script_2.ts"])
         },
         ..DenoFlags::default()
@@ -1388,20 +1379,18 @@ mod tests {
       DenoFlags {
         subcommand: DenoSubcommand::Format {
           check: true,
-          stdin: false,
           files: None
         },
         ..DenoFlags::default()
       }
     );
 
-    let r = flags_from_vec_safe(svec!["deno", "fmt", "--stdin"]);
+    let r = flags_from_vec_safe(svec!["deno", "fmt"]);
     assert_eq!(
       r.unwrap(),
       DenoFlags {
         subcommand: DenoSubcommand::Format {
           check: false,
-          stdin: true,
           files: None
         },
         ..DenoFlags::default()

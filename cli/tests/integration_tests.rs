@@ -602,19 +602,27 @@ itest!(bundle {
 });
 
 itest!(fmt_stdin {
-  args: "fmt --stdin",
+  args: "fmt -",
   input: Some("const a = 1\n"),
   output_str: Some("const a = 1;\n"),
 });
 
+itest!(fmt_stdin_ambiguous {
+  args: "fmt - file.ts",
+  input: Some("const a = 1\n"),
+  check_stderr: true,
+  exit_code: 1,
+  output_str: Some("Ambiguous filename input. To format stdin, provide a single '-' instead.\n"),
+});
+
 itest!(fmt_stdin_check_formatted {
-  args: "fmt --stdin --check",
+  args: "fmt --check -",
   input: Some("const a = 1;\n"),
   output_str: Some(""),
 });
 
 itest!(fmt_stdin_check_not_formatted {
-  args: "fmt --stdin --check",
+  args: "fmt --check -",
   input: Some("const a = 1\n"),
   output_str: Some("Not formatted stdin\n"),
 });
