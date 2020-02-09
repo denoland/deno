@@ -173,14 +173,13 @@ fn run_worker_thread(
                 // TODO: just add second value and then bind using rusty_v8
                 // to get structured clone/transfer working
                 let script = format!(
-                  "globalThis.workerMessageRecvCallback(\"{}\")",
+                  "workerMessageRecvCallback({})",
                   String::from_utf8(msg.to_vec()).unwrap()
                 );
+                eprintln!("script: {}", &script);
                 let r = worker
-                  .execute(&script);
-
-                  eprintln!("result {:?}", r);
-                  // .expect("Failed to execute message cb");
+                  .execute(&script)
+                  .expect("Failed to execute message cb");
               },
               None => {
                 eprintln!("none message received");
@@ -271,6 +270,48 @@ fn op_host_terminate_worker(
   Ok(JsonOp::Sync(json!({})))
 }
 
+fn handle_worker_event(state: &State, worker_id: u32, event: WorkerEvent) -> Option<Value> {
+  match event {
+    WorkerEvent::Message(buf) => {
+      Some(json!({ "type": "msg", "data": buf }))
+    },
+    WorkerEvent::Error(error) => match error.kind() {
+      ErrorKind::JSError => {
+        let error = error.downcast::<JSError>().unwrap();
+        let exception: V8Exception = error.into();
+        Some(json!({
+          "type": "error", 
+          "error": {
+            "message": exception.message,
+            "fileName": exception.script_resource_name,
+            "lineNumber": exception.line_number,
+            "columnNumber": exception.start_column,
+          }
+        }))
+      }
+      _ => Some(json!({
+        "type": "error", 
+        "error": {
+          "message": error.to_string(),
+        }
+      })),
+    },
+    WorkerEvent::Close => {
+      // worker requests to be terminated
+      // TODO: shutdown all channels
+      let mut state_ = state.borrow_mut();
+      state_.workers.remove(&worker_id);
+      // TODO: worker_handle.fuse() ?????;
+      // worker_handle.notify_close();
+      
+      Some(json!({ "type": "close" }))
+    },
+    WorkerEvent::Idle => {
+      // TODO: potentially handle somehow?
+      None
+    },
+  }
+}
 
 // TODO(bartlomieju): rename to get_event
 /// Get message from guest worker as host
@@ -285,46 +326,12 @@ fn op_host_get_message(
   let worker_handle = state_.workers.get(&id).expect("No worker handle found").clone();
   let state_ = state.clone();
   let op = async move {
-    match worker_handle.get_event().await {
-      WorkerEvent::Message(buf) => {
-        Ok(json!({ "type": "msg", "data": buf }))
-      },
-      WorkerEvent::Error(error) => match error.kind() {
-        ErrorKind::JSError => {
-          let error = error.downcast::<JSError>().unwrap();
-          let exception: V8Exception = error.into();
-          Ok(json!({
-            "type": "error", 
-            "error": {
-              "message": exception.message,
-              "fileName": exception.script_resource_name,
-              "lineNumber": exception.line_number,
-              "columnNumber": exception.start_column,
-            }
-          }))
-        }
-        _ => Ok(json!({
-          "type": "error", 
-          "error": {
-            "message": error.to_string(),
-          }
-        })),
-      },
-      WorkerEvent::Close => {
-        // worker requests to be terminated
-        // TODO: shutdown all channels
-        let mut state = state_.borrow_mut();
-        state.workers.remove(&id);
-        // TODO: worker_handle.fuse() ?????;
-        worker_handle.notify_close();
-        
-        Ok(json!({ "type": "close" }))
-      },
-      WorkerEvent::Idle => {
-        // pass
-        todo!()
-      },
+    let mut response = None;
+    while response.is_none() {
+      let event = worker_handle.get_event().await;
+      response = handle_worker_event(&state_, id, event);
     }
+    Ok(response.unwrap())
   };
   Ok(JsonOp::Async(op.boxed_local()))
 }

@@ -31,24 +31,54 @@ pub enum WorkerEvent {
   Close,
 }
 
-/// Wraps mpsc channels so they can be referenced
-/// from ops and used to facilitate parent-child communication
-/// for workers.
-#[derive(Clone)]
-pub struct WorkerChannels {
+pub struct WorkerChannelsInternal {
   pub sender: mpsc::Sender<WorkerEvent>,
-  pub receiver: Arc<AsyncMutex<mpsc::Receiver<WorkerEvent>>>,
+  // TODO: no need for a MUTEX only ever used by a single thread :))
+  pub receiver: Arc<AsyncMutex<mpsc::Receiver<Buf>>>,
 }
 
-impl WorkerChannels {
-  /// Post message to worker as a host.
-  pub async fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
-    self.post_event(WorkerEvent::Message(buf)).await
-  }
-
+impl WorkerChannelsInternal {
+  /// Send event to host.
   pub async fn post_event(&self, event: WorkerEvent) -> Result<(), ErrBox> {
     let mut sender = self.sender.clone();
     sender.send(event).map_err(ErrBox::from).await
+  }
+
+  // TODO(bartlomieju): change type of channel so it's clear communication 
+  // between parent and child
+  /// Get message from host.
+  pub fn get_message(&self) -> Pin<Box<dyn Future<Output = Option<Buf>>>> {
+    let receiver_mutex = self.receiver.clone();
+
+    async move {
+      let mut receiver = receiver_mutex.lock().await;
+      receiver.next().await
+    }
+    .boxed_local()
+  }
+}
+
+#[derive(Clone)]
+pub struct WorkerHandle {
+  pub sender: mpsc::Sender<Buf>,
+  pub receiver: Arc<AsyncMutex<mpsc::Receiver<WorkerEvent>>>,
+  // terminate_channel
+}
+
+impl WorkerHandle {
+  pub fn terminate(&self) {
+    todo!() 
+  }
+
+  /// Called when worker requests to be closed
+  pub fn notify_close(&self) {
+    todo!()
+  }
+
+  /// Post message to worker as a host.
+  pub async fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
+    let mut sender = self.sender.clone();
+    sender.send(buf).map_err(ErrBox::from).await
   }
 
   pub async fn get_event(&self) -> WorkerEvent {
@@ -56,6 +86,9 @@ impl WorkerChannels {
     receiver.next().await.expect("Empty message")
   }
 
+  // TODO(bartlomieju): remove this method, used in:
+  // - TS compiler
+  // - WASM compiler (ditto)
   /// Get message from worker as a host.
   pub fn get_message(&self) -> Pin<Box<dyn Future<Output = Option<Buf>>>> {
     let receiver_mutex = self.receiver.clone();
@@ -74,63 +107,16 @@ impl WorkerChannels {
   }
 }
 
-pub struct WorkerChannelsInternal(WorkerChannels);
-
-impl Deref for WorkerChannelsInternal {
-  type Target = WorkerChannels;
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
-}
-
-impl DerefMut for WorkerChannelsInternal {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.0
-  }
-}
-
-#[derive(Clone)]
-pub struct WorkerHandle {
-  channels: WorkerChannels,
-  // terminate_channel
-}
-
-impl WorkerHandle {
-  pub fn terminate(&self) {
-    todo!() 
-  }
-
-  /// Called when worker requests to be closed
-  pub fn notify_close(&self) {
-    todo!()
-  }
-}
-
-impl Deref for WorkerHandle {
-  type Target = WorkerChannels;
-  fn deref(&self) -> &Self::Target {
-    &self.channels
-  }
-}
-
-impl DerefMut for WorkerHandle {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.channels
-  }
-}
-
 fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
-  let (in_tx, in_rx) = mpsc::channel::<WorkerEvent>(1);
+  let (in_tx, in_rx) = mpsc::channel::<Buf>(1);
   let (out_tx, out_rx) = mpsc::channel::<WorkerEvent>(1);
-  let internal_channels = WorkerChannelsInternal(WorkerChannels {
+  let internal_channels = WorkerChannelsInternal {
     sender: out_tx,
     receiver: Arc::new(AsyncMutex::new(in_rx)),
-  });
+  };
   let external_channels = WorkerHandle {
-    channels: WorkerChannels {
-      sender: in_tx,
-      receiver: Arc::new(AsyncMutex::new(out_rx)),
-    }
+    sender: in_tx,
+    receiver: Arc::new(AsyncMutex::new(out_rx)),
   };
   (internal_channels, external_channels)
 }

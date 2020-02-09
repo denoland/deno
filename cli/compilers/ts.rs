@@ -624,6 +624,7 @@ async fn execute_in_thread(
           load_sender.send(Err(err)).unwrap();
           return;
         }
+        // TODO(bartlomieju): remove
         let maybe_msg = handle.get_message().await;
         load_sender.send(Ok(maybe_msg)).unwrap();
         debug!(">>>>> compile_sync END");
