@@ -4,7 +4,7 @@ import { read, write, close } from "./files.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
-export type Transport = "tcp";
+export type Transport = "tcp" | "udp";
 // TODO support other types:
 // export type Transport = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
 
@@ -12,6 +12,27 @@ export interface Addr {
   transport: Transport;
   hostname: string;
   port: number;
+}
+
+export interface Message {
+  payload: Uint8Array;
+  sender: Addr; 
+}
+
+/** A receiver is a generic transport listener for message-oriented protocols */
+export interface Receiver extends AsyncIterator<Message> {
+  /** Waits for and resolves to the next message to the `Receiver`. */
+  receive(): Promise<Message>;
+  
+  /** Close closes the receiver. Any pending message promises will be rejected
+   * with errors.
+   */
+  close(): void;
+  
+  /** Return the address of the `Received`. */
+  addr: Addr;
+  
+  [Symbol.asyncIterator](): AsyncIterator<Message>;
 }
 
 /** A Listener is a generic transport listener for stream-oriented protocols. */
@@ -123,6 +144,45 @@ export class ListenerImpl implements Listener {
   }
 }
 
+export class ReceiverImpl implements Receiver {
+  constructor(
+    readonly rid: number,
+    public addr: Addr,
+    private closing: boolean = false
+  ) {}
+  
+  async accept(): Promise<Message> {
+    const res = await sendAsync(dispatch.OP_RECEIVE, { rid: this.rid });
+    return { payload: res.payload, sender: res.sender };
+  }
+  
+  close(): void {
+    this.closing = true;
+    close(this.rid);
+  }
+  
+  async next(): Promise<IteratorResult<Message>> {
+    if (this.closing) {
+      return { value: undefined, done: true };
+    }
+    return await this.accept()
+      .then(value => ({ value, done: false }))
+      .catch(e => {
+        // It wouldn't be correct to simply check this.closing here.
+        // TODO: Get a proper error kind for this case, don't check the message.
+        // The current error kind is Other.
+        if (e.message == "Receiver has been closed") {
+          return { value: undefined, done: true };
+        }
+        throw e;
+      });
+  }
+  
+  [Symbol.asyncIterator](): AsyncIterator<Conn> {
+    return this;
+  }
+}
+
 export interface Conn extends Reader, Writer, Closer {
   /** The local address of the connection. */
   localAddr: Addr;
@@ -152,8 +212,8 @@ export interface ListenOptions {
  * @param options.port The port to connect to. (Required.)
  * @param options.hostname A literal IP address or host name that can be
  *   resolved to an IP address. If not specified, defaults to 0.0.0.0
- * @param options.transport Defaults to "tcp". Later we plan to add "tcp4",
- *   "tcp6", "udp", "udp4", "udp6", "ip", "ip4", "ip6", "unix", "unixgram" and
+ * @param options.transport Must be "tcp" or "udp". Defaults to "tcp". Later we plan to add "tcp4",
+ *   "tcp6", "udp4", "udp6", "ip", "ip4", "ip6", "unix", "unixgram" and
  *   "unixpacket".
  *
  * Examples:
@@ -163,7 +223,7 @@ export interface ListenOptions {
  *     listen({ hostname: "[2001:db8::1]", port: 80 });
  *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
-export function listen(options: ListenOptions): Listener {
+export function listen(options: ListenOptions): Listener | Receiver {
   const hostname = options.hostname || "0.0.0.0";
   const transport = options.transport || "tcp";
 
@@ -172,7 +232,16 @@ export function listen(options: ListenOptions): Listener {
     port: options.port,
     transport
   });
-  return new ListenerImpl(res.rid, res.localAddr);
+  
+  if(transport === "tcp") {
+    return new ListenerImpl(res.rid, res.localAddr);
+  }
+  
+  if(transport === "udp") {
+    return new ReceiverImpl(res.id, res.localAddr); 
+  }
+  
+  return null;
 }
 
 export interface ConnectOptions {
@@ -189,8 +258,8 @@ const connectDefaults = { hostname: "127.0.0.1", transport: "tcp" };
  * @param options.port The port to connect to. (Required.)
  * @param options.hostname A literal IP address or host name that can be
  *   resolved to an IP address. If not specified, defaults to 127.0.0.1
- * @param options.transport Defaults to "tcp". Later we plan to add "tcp4",
- *   "tcp6", "udp", "udp4", "udp6", "ip", "ip4", "ip6", "unix", "unixgram" and
+ * @param options.transport Must be "tcp" or "udp". Defaults to "tcp". Later we plan to add "tcp4",
+ *   "tcp6", "udp4", "udp6", "ip", "ip4", "ip6", "unix", "unixgram" and
  *   "unixpacket".
  *
  * Examples:
