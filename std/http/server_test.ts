@@ -8,14 +8,21 @@
 const { Buffer } = Deno;
 import { TextProtoReader } from "../textproto/mod.ts";
 import { test, runIfMain } from "../testing/mod.ts";
-import { assert, assertEquals, assertNotEquals } from "../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertNotEquals,
+  assertThrowsAsync,
+  AssertionError
+} from "../testing/asserts.ts";
 import {
   Response,
   ServerRequest,
   writeResponse,
   serve,
   readRequest,
-  parseHTTPVersion
+  parseHTTPVersion,
+  writeTrailers
 } from "./server.ts";
 import {
   BufReader,
@@ -426,6 +433,35 @@ test(async function writeStringReaderResponse(): Promise<void> {
   assertEquals(r.more, false);
 });
 
+test("writeResponse with trailer", async () => {
+  const w = new Buffer();
+  const body = new StringReader("Hello");
+  await writeResponse(w, {
+    status: 200,
+    headers: new Headers({
+      "transfer-encoding": "chunked",
+      trailer: "deno,node"
+    }),
+    body,
+    trailers: () => new Headers({ deno: "land", node: "js" })
+  });
+  const ret = w.toString();
+  const exp = [
+    "HTTP/1.1 200 OK",
+    "transfer-encoding: chunked",
+    "trailer: deno,node",
+    "",
+    "5",
+    "Hello",
+    "0",
+    "",
+    "deno: land",
+    "node: js",
+    ""
+  ].join("\r\n");
+  assertEquals(ret, exp);
+});
+
 test(async function readRequestError(): Promise<void> {
   const input = `GET / HTTP/1.1
 malformedHeader
@@ -732,5 +768,57 @@ if (Deno.build.os !== "win") {
     }
   });
 }
+
+test("writeTrailer", async () => {
+  const w = new Buffer();
+  await writeTrailers(
+    w,
+    new Headers({ "transfer-encoding": "chunked", trailer: "deno,node" }),
+    new Headers({ deno: "land", node: "js" })
+  );
+  assertEquals(w.toString(), "deno: land\r\nnode: js\r\n");
+});
+
+test("writeTrailer should throw", async () => {
+  const w = new Buffer();
+  await assertThrowsAsync(
+    () => {
+      return writeTrailers(w, new Headers(), new Headers());
+    },
+    Error,
+    'must have "trailer"'
+  );
+  await assertThrowsAsync(
+    () => {
+      return writeTrailers(w, new Headers({ trailer: "deno" }), new Headers());
+    },
+    Error,
+    "only allowed"
+  );
+  for (const f of ["content-length", "trailer", "transfer-encoding"]) {
+    await assertThrowsAsync(
+      () => {
+        return writeTrailers(
+          w,
+          new Headers({ "transfer-encoding": "chunked", trailer: f }),
+          new Headers({ [f]: "1" })
+        );
+      },
+      AssertionError,
+      "prohibited"
+    );
+  }
+  await assertThrowsAsync(
+    () => {
+      return writeTrailers(
+        w,
+        new Headers({ "transfer-encoding": "chunked", trailer: "deno" }),
+        new Headers({ node: "js" })
+      );
+    },
+    AssertionError,
+    "Not trailer"
+  );
+});
 
 runIfMain(import.meta);
