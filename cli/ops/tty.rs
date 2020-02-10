@@ -12,6 +12,15 @@ use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use serde_json::Value;
 
+#[cfg(windows)]
+use winapi::shared::minwindef::DWORD;
+#[cfg(windows)]
+use winapi::um::wincon;
+#[cfg(windows)]
+const RAW_MODE_MASK: DWORD = wincon::ENABLE_LINE_INPUT
+  | wincon::ENABLE_ECHO_INPUT
+  | wincon::ENABLE_PROCESSED_INPUT;
+
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("set_raw", s.core_op(json_op(s.stateful_op(op_set_raw))));
 }
@@ -89,7 +98,7 @@ pub fn op_set_raw(
     return Err(bad_resource());
   }
 
-  // For now, only stdin
+  // For now, only stdin.
   match resource.unwrap() {
     StreamResource::Stdin(_) => (),
     _ => {
@@ -104,8 +113,7 @@ pub fn op_set_raw(
   #[cfg(windows)]
   {
     use std::os::windows::io::AsRawHandle;
-    use winapi::shared::minwindef::DWORD;
-    use winapi::um::{consoleapi, handleapi, wincon};
+    use winapi::um::{consoleapi, handleapi};
 
     let handle = std::io::stdin().as_raw_handle();
     if handle == handleapi::INVALID_HANDLE_VALUE {
@@ -114,9 +122,6 @@ pub fn op_set_raw(
       return Err(ErrBox::from(other_error("null handle".to_owned())));
     }
     let mut original_mode: DWORD = 0;
-    let RAW_MODE_MASK = wincon::ENABLE_LINE_INPUT
-      | wincon::ENABLE_ECHO_INPUT
-      | wincon::ENABLE_PROCESSED_INPUT;
     wincheck!(consoleapi::GetConsoleMode(handle, &mut original_mode));
     let new_mode = if is_raw {
       original_mode & !RAW_MODE_MASK
