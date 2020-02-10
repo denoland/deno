@@ -69,6 +69,7 @@ mod tests {
   use crate::startup_data;
   use crate::state::State;
   use crate::tokio_util;
+  use crate::worker::WorkerEvent;
 
   fn create_test_worker() -> WebWorker {
     let state = State::mock("./hello.js");
@@ -115,8 +116,8 @@ mod tests {
         let maybe_msg = handle.get_event().await;
         assert!(maybe_msg.is_some());
         match maybe_msg {
-          WorkerEvent::Message(buf) => {
-            assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
+          Some(WorkerEvent::Message(buf)) => {
+            assert_eq!(*buf, *b"[1,2,3]");
           }
           _ => unreachable!(),
         }
