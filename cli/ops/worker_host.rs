@@ -61,8 +61,7 @@ fn create_web_worker(
   Ok(worker)
 }
 
-// TODO(bartlomieju): need some way to return Poll::Ready when `close()`
-// is called - otherwise thread running this function never terminates
+// TODO(bartlomieju): this function should probably live in `cli/web_worker.rs`
 pub fn run_worker_loop(
   rt: &mut tokio::runtime::Runtime,
   worker: &mut Worker,
@@ -89,11 +88,11 @@ pub fn run_worker_loop(
         Poll::Ready(r) => match r {
           Some(msg) => {
             let msg_str = String::from_utf8(msg.to_vec()).unwrap();
-            eprintln!("message received {}", msg_str);
+            debug!("received message from host: {}", msg_str);
             Some(msg_str)
           }
           None => {
-            eprintln!("none message received, worker finishes");
+            debug!("channel closed by host, worker event loop shuts down");
             return Poll::Ready(Ok(()));
           }
         },
@@ -105,7 +104,6 @@ pub fn run_worker_loop(
       // TODO: just add second value and then bind using rusty_v8
       // to get structured clone/transfer working
       let script = format!("workerMessageRecvCallback({})", msg);
-      eprintln!("script: {}", &script);
       worker
         .execute(&script)
         .expect("Failed to execute message cb");
@@ -120,6 +118,7 @@ pub fn run_worker_loop(
   rt.block_on(fut)
 }
 
+// TODO(bartlomieju): this function should probably live in `cli/web_worker.rs`
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
 fn run_worker_thread(
   name: String,
@@ -134,7 +133,7 @@ fn run_worker_thread(
 
   // TODO(bartlomieju): use thread builder and give thread descriptive name
   //  so it's easy to ID worker in htop/ps
-  // TODO(bartlomieju): should we store JoinHandle as well?
+  // TODO(bartlomieju): store JoinHandle as
   std::thread::spawn(move || {
     // Any error inside this block is terminal:
     // - JS worker is useless - meaning it throws an exception and can't do anything else,
@@ -189,6 +188,9 @@ fn run_worker_thread(
       return;
     }
 
+    // TODO(bartlomieju): this thread should return result of event loop
+    // that means that we should store JoinHandle to thread to ensure 
+    // that it actually terminates.
     run_worker_loop(&mut rt, &mut worker).expect("Panic in event loop");
   });
 
@@ -234,7 +236,7 @@ fn op_create_worker(
     worker_name,
     global_state,
     permissions,
-    module_specifier.clone(),
+    module_specifier,
     has_source_code,
     source_code,
   )?;
@@ -264,18 +266,16 @@ fn op_host_terminate_worker(
   Ok(JsonOp::Sync(json!({})))
 }
 
-fn handle_worker_event(
-  _state: &State,
-  _worker_id: u32,
+fn serialize_worker_event(
   event: WorkerEvent,
-) -> Option<Value> {
+) -> Value {
   match event {
-    WorkerEvent::Message(buf) => Some(json!({ "type": "msg", "data": buf })),
+    WorkerEvent::Message(buf) => json!({ "type": "msg", "data": buf }),
     WorkerEvent::Error(error) => match error.kind() {
       ErrorKind::JSError => {
         let error = error.downcast::<JSError>().unwrap();
         let exception: V8Exception = error.into();
-        Some(json!({
+        json!({
           "type": "error",
           "error": {
             "message": exception.message,
@@ -283,20 +283,18 @@ fn handle_worker_event(
             "lineNumber": exception.line_number,
             "columnNumber": exception.start_column,
           }
-        }))
+        })
       }
-      _ => Some(json!({
+      _ => json!({
         "type": "error",
         "error": {
           "message": error.to_string(),
         }
-      })),
+      }),
     },
-    WorkerEvent::Close => unreachable!(),
   }
 }
 
-// TODO(bartlomieju): rename to get_event
 /// Get message from guest worker as host
 fn op_host_get_message(
   state: &State,
@@ -313,17 +311,17 @@ fn op_host_get_message(
     .clone();
   let state_ = state.clone();
   let op = async move {
-    let mut response = None;
-    while response.is_none() {
-      if let Some(event) = worker_handle.get_event().await {
-        response = handle_worker_event(&state_, id, event);
-      } else {
+    let response = match worker_handle.get_event().await {
+      Some(event) => serialize_worker_event(event),
+      None => {
         let mut state_ = state_.borrow_mut();
-        state_.workers.remove(&id);
-        response = Some(json!({ "type": "close" }))
+        let mut handle = state_.workers.remove(&id).expect("No worker handle found");
+        handle.sender.close_channel();
+        // TODO(bartlomieju): join thread handle here
+        json!({ "type": "close" })
       }
-    }
-    Ok(response.unwrap())
+    };
+    Ok(response)
   };
   Ok(JsonOp::Async(op.boxed_local()))
 }

@@ -77,7 +77,7 @@ export class WorkerImpl extends EventTarget implements Worker {
   public onmessage?: (data: any) => void;
   public onmessageerror?: () => void;
   private name: string;
-  private terminated: boolean = false;
+  private terminated = false;
 
   constructor(specifier: string, options?: WorkerOptions) {
     super();

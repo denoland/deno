@@ -616,7 +616,6 @@ fn handle_compiler_event(event: WorkerEvent) -> Result<Option<Buf>, ErrBox> {
       eprintln!("error {:?}", error);
       Err(error)
     }
-    WorkerEvent::Close => unreachable!(),
   }
 }
 
@@ -644,7 +643,6 @@ async fn execute_in_thread(
     let event = handle.get_event().await.unwrap();
     buf = handle_compiler_event(event)?;
   }
-  eprintln!("here!!!");
   assert!(handle.get_event().await.is_none());
   handle.sender.close_channel();
   join_handle.join().unwrap();

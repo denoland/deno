@@ -17,13 +17,12 @@ import {
   eventTargetProperties
 } from "./globals.ts";
 import * as dispatch from "./dispatch.ts";
-import { sendAsync, sendSync } from "./dispatch_json.ts";
+import { sendSync } from "./dispatch_json.ts";
 import { log } from "./util.ts";
-import { TextDecoder, TextEncoder } from "./text_encoding.ts";
+import { TextEncoder } from "./text_encoding.ts";
 import * as runtime from "./runtime.ts";
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder();
 
 // TODO(bartlomieju): remove these funtions
 // Stuff for workers

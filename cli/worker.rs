@@ -29,7 +29,6 @@ use url::Url;
 pub enum WorkerEvent {
   Message(Buf),
   Error(ErrBox),
-  Close,
 }
 
 pub struct WorkerChannelsInternal {
