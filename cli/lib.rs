@@ -415,15 +415,40 @@ async fn test_command(
   fail_fast: bool,
   quiet: bool,
 ) {
-  if let Some(test_file_path) =
-    test_runner::run_test_modules(include, fail_fast, quiet)
-  {
-    let mut flags = flags.clone();
-    flags
-      .argv
-      .push(test_file_path.to_string_lossy().to_string());
-    run_script(flags, test_file_path.to_string_lossy().to_string()).await;
+  // TODO: this should be a flag
+  let allow_none = false;
+  let cwd = std::env::current_dir().expect("No current directory");
+  let res = test_runner::prepare_test_modules_urls(include, cwd);
+
+  if let Err(e) = res {
+    print_err_and_exit(e);
   }
+
+  let test_modules = res.unwrap();
+  if test_modules.is_empty() {
+    println!("No matching test modules found");
+    if !allow_none {
+      std::process::exit(1);
+    }
+    return;
+  }
+  
+  let mut test_file = "".to_string();
+  for url in test_modules {
+    test_file.push_str(&format!("import \"{}\";\n", module.to_string()));
+  }
+  let run_tests_cmd =
+    format!("Deno.runTests({{ exitOnFail: {} }});\n", fail_fast);
+  test_file.push_str(&run_tests_cmd);
+  let test_file_path = cwd.join(".deno.test.ts");
+  deno_fs::write_file(&test_file_path, test_file.as_bytes(), 0o666)
+    .expect("Can't write test file");
+
+  flags
+    .argv
+    .push(test_file_path.to_string_lossy().to_string());
+  run_script(flags, test_file_path.to_string_lossy().to_string()).await;
+  fs::remove_file(&path).expect("Failed to remove temp file");
 }
 
 pub fn main() {

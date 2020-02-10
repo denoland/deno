@@ -12,8 +12,6 @@ fn prepare_test_modules_urls(
   include: Vec<String>,
   root_path: PathBuf,
 ) -> Result<Vec<Url>, ErrBox> {
-  eprintln!("includes {:?}", include.clone());
-
   let (include_paths, include_urls): (Vec<String>, Vec<String>) =
     include.into_iter().partition(|n| !is_remote_url(n));
 
