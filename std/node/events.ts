@@ -32,6 +32,7 @@ export interface WrappedFunction extends Function {
  */
 export default class EventEmitter {
   public static defaultMaxListeners = 10;
+  public static errorMonitor = Symbol("events.errorMonitor");
   private maxListeners: number | undefined;
   private _events: Map<string | symbol, Array<Function | WrappedFunction>>;
 
@@ -88,6 +89,12 @@ export default class EventEmitter {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public emit(eventName: string | symbol, ...args: any[]): boolean {
     if (this._events.has(eventName)) {
+      if (
+        eventName === "error" &&
+        this._events.get(EventEmitter.errorMonitor)
+      ) {
+        this.emit(EventEmitter.errorMonitor, ...args);
+      }
       const listeners = (this._events.get(eventName) as Function[]).slice(); // We copy with slice() so array is not mutated during emit
       for (const listener of listeners) {
         try {
@@ -98,6 +105,9 @@ export default class EventEmitter {
       }
       return true;
     } else if (eventName === "error") {
+      if (this._events.get(EventEmitter.errorMonitor)) {
+        this.emit(EventEmitter.errorMonitor, ...args);
+      }
       const errMsg = args.length > 0 ? args[0] : Error("Unhandled error.");
       throw errMsg;
     }

@@ -15,7 +15,7 @@ test({
   name:
     'When adding a new event, "eventListener" event is fired before adding the listener',
   fn() {
-    let eventsFired = [];
+    let eventsFired: string[] = [];
     const testEmitter = new EventEmitter();
     testEmitter.on("newListener", event => {
       if (event !== "newListener") {
@@ -36,7 +36,7 @@ test({
   name:
     'When removing a listenert, "removeListener" event is fired after removal',
   fn() {
-    const eventsFired = [];
+    const eventsFired: string[] = [];
     const testEmitter = new EventEmitter();
     testEmitter.on("removeListener", () => {
       eventsFired.push("removeListener");
@@ -80,7 +80,7 @@ test({
   name: "Emitted events are called synchronously in the order they were added",
   fn() {
     const testEmitter = new EventEmitter();
-    const eventsFired = [];
+    const eventsFired: string[] = [];
     testEmitter.on("event", oneArg => {
       eventsFired.push("event(" + oneArg + ")");
     });
@@ -162,7 +162,7 @@ test({
 test({
   name: "Events can be registered to only fire once",
   fn() {
-    let eventsFired = [];
+    let eventsFired: string[] = [];
     const testEmitter = new EventEmitter();
     //prove multiple emits on same event first (when registered with 'on')
     testEmitter.on("multiple event", () => {
@@ -187,7 +187,7 @@ test({
   name:
     "You can inject a listener into the start of the stack, rather than at the end",
   fn() {
-    const eventsFired = [];
+    const eventsFired: string[] = [];
     const testEmitter = new EventEmitter();
     testEmitter.on("event", () => {
       eventsFired.push("first");
@@ -206,7 +206,7 @@ test({
 test({
   name: 'You can prepend a "once" listener',
   fn() {
-    const eventsFired = [];
+    const eventsFired: string[] = [];
     const testEmitter = new EventEmitter();
     testEmitter.on("event", () => {
       eventsFired.push("first");
@@ -288,7 +288,7 @@ test({
   name: "all listeners complete execution even if removed before execution",
   fn() {
     const testEmitter = new EventEmitter();
-    let eventsProcessed = [];
+    let eventsProcessed: string[] = [];
     const listenerB = (): number => eventsProcessed.push("B");
     const listenerA = (): void => {
       eventsProcessed.push("A");
@@ -311,7 +311,7 @@ test({
   name: 'Raw listener will return event listener or wrapped "once" function',
   fn() {
     const testEmitter = new EventEmitter();
-    const eventsProcessed = [];
+    const eventsProcessed: string[] = [];
     const listenerA = (): number => eventsProcessed.push("A");
     const listenerB = (): number => eventsProcessed.push("B");
     testEmitter.on("event", listenerA);
@@ -335,7 +335,7 @@ test({
     "Once wrapped raw listeners may be executed multiple times, until the wrapper is executed",
   fn() {
     const testEmitter = new EventEmitter();
-    let eventsProcessed = [];
+    let eventsProcessed: string[] = [];
     const listenerA = (): number => eventsProcessed.push("A");
     testEmitter.once("once-event", listenerA);
 
@@ -356,7 +356,7 @@ test({
 test({
   name: "Can add once event listener to EventEmitter via standalone function",
   async fn() {
-    const ee: EventEmitter = new EventEmitter();
+    const ee = new EventEmitter();
     setTimeout(() => {
       ee.emit("event", 42, "foo");
     }, 0);
@@ -383,7 +383,7 @@ test({
 test({
   name: "Only valid integers are allowed for max listeners",
   fn() {
-    const ee: EventEmitter = new EventEmitter();
+    const ee = new EventEmitter();
     ee.setMaxListeners(0);
     assertThrows(
       () => {
@@ -399,5 +399,43 @@ test({
       Error,
       "must be 'an integer'"
     );
+  }
+});
+
+test({
+  name: "ErrorMonitor can spy on error events without consuming them",
+  fn() {
+    const ee = new EventEmitter();
+    let events: string[] = [];
+    //unhandled error scenario should throw
+    assertThrows(
+      () => {
+        ee.emit("error");
+      },
+      Error,
+      "Unhandled error"
+    );
+
+    ee.on(EventEmitter.errorMonitor, () => {
+      events.push("errorMonitor event");
+    });
+
+    //error is still unhandled but also intercepted by error monitor
+    assertThrows(
+      () => {
+        ee.emit("error");
+      },
+      Error,
+      "Unhandled error"
+    );
+    assertEquals(events, ["errorMonitor event"]);
+
+    //A registered error handler won't throw, but still be monitored
+    events = [];
+    ee.on("error", () => {
+      events.push("error");
+    });
+    ee.emit("error");
+    assertEquals(events, ["errorMonitor event", "error"]);
   }
 });
