@@ -148,7 +148,7 @@ fn run_worker_thread(
                 let state = worker.state.borrow();
                 let channels =
                   state.worker_channels_internal.as_ref().unwrap().clone();
-                futures::executor::block_on(channels.post_event(event))
+                channels.post_event_sync(event)
                   .expect("Failed to post message to host");
               }
               Poll::Pending => {}
@@ -182,6 +182,7 @@ fn run_worker_thread(
                   .expect("Failed to execute message cb");
                 // Let worker be polled again
                 worker_is_ready = false;
+                worker.waker.wake();
               }
               None => {
                 eprintln!("none message received");

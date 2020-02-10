@@ -12,11 +12,16 @@ use crate::ops::JsonResult;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::*;
+use crate::tokio_util::create_basic_runtime;
 use crate::version;
+use crate::worker::WorkerEvent;
+use crate::worker::WorkerHandle;
 use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
+use futures::future::poll_fn;
 use futures::future::FutureExt;
+use futures::stream::StreamExt;
 use regex::Regex;
 use serde_json::json;
 use std::collections::HashMap;
@@ -31,6 +36,7 @@ use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::task::Poll;
 use url::Url;
 
 lazy_static! {
@@ -602,38 +608,150 @@ impl TsCompiler {
   }
 }
 
+fn handle_compiler_event(event: WorkerEvent) -> Option<Box<[u8]>> {
+  match event {
+    WorkerEvent::Message(buf) => {
+      eprintln!("message");
+      Some(buf)
+    }
+    WorkerEvent::Error(error) => {
+      eprintln!("error {:?}", error);
+      None
+    }
+    WorkerEvent::Close => {
+      eprintln!("close");
+      None
+    }
+    WorkerEvent::Idle => {
+      eprintln!("idle");
+      None
+    }
+  }
+}
+
 async fn execute_in_thread(
   global_state: GlobalState,
   req: Buf,
 ) -> Result<Option<Buf>, ErrBox> {
-  let (load_sender, load_receiver) =
-    tokio::sync::oneshot::channel::<Result<Option<Buf>, ErrBox>>();
+  let handle = run_worker_thread(global_state.clone())?;
+
+  handle.post_message(req).await?;
+  let mut buf = None;
+
+  eprintln!("before event");
+  while buf.is_none() {
+    let event = handle.get_event().await;
+    eprintln!("got event");
+    buf = handle_compiler_event(event);
+  }
+  eprintln!("after event");
+  match handle.get_event().await {
+    WorkerEvent::Close => {}
+    _ => panic!(),
+  };
+
+  Ok(buf)
+}
+
+// TODO: copy-paste from worker_host.rs
+fn run_worker_thread(
+  global_state: GlobalState,
+) -> Result<WorkerHandle, ErrBox> {
+  let (handle_sender, handle_receiver) =
+    std::sync::mpsc::sync_channel::<Result<WorkerHandle, ErrBox>>(1);
+
+  // TODO(bartlomieju): use thread builder and give thread descriptive name
+  //  so it's easy to ID worker in htop/ps
+  // TODO(bartlomieju): should we store JoinHandle as well?
   std::thread::spawn(move || {
-    debug!(">>>>> compile_async START");
-
     let mut worker = TsCompiler::setup_worker(global_state.clone());
-    let handle = worker.thread_safe_handle();
+    // Send thread safe handle to newly created worker to host thread
+    handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
+    drop(handle_sender);
 
-    crate::tokio_util::run_basic(
-      async move {
-        if let Err(err) = handle.post_message(req).await {
-          load_sender.send(Err(err)).unwrap();
-          return;
-        }
-        if let Err(err) = (&mut *worker).await {
-          load_sender.send(Err(err)).unwrap();
-          return;
-        }
-        // TODO(bartlomieju): remove
-        let maybe_msg = handle.get_message().await;
-        load_sender.send(Ok(maybe_msg)).unwrap();
-        debug!(">>>>> compile_sync END");
+    // At this point the only method of communication with host
+    // is using `state.internal_worker_channels`.
+    //
+    // Host can already push messages and interact with worker.
+    //
+    // Next steps:
+    // - create tokio runtime
+    // - load provided module or code
+    // - start driving worker's event loop
+
+    let mut rt = create_basic_runtime();
+
+    // TODO: when worker polled and returns ready then send Worker::Idle message
+    // then host will be able to suspend us or whatever - use thread.park()
+
+    let mut worker_is_ready = false;
+    // Drive worker event loop
+    let fut = async move {
+      loop {
+        let _r: Result<(), ErrBox> = poll_fn(|cx| {
+          if !worker_is_ready {
+            match worker.poll_unpin(cx) {
+              Poll::Ready(r) => {
+                let event = match r {
+                  Ok(()) => WorkerEvent::Idle,
+                  Err(e) => WorkerEvent::Error(e),
+                };
+                worker_is_ready = true;
+                let state = worker.state.borrow();
+                let channels =
+                  state.worker_channels_internal.as_ref().unwrap().clone();
+                futures::executor::block_on(channels.post_event(event))
+                  .expect("Failed to post message to host");
+              }
+              Poll::Pending => {}
+            }
+          }
+
+          // TODO(bartlmieju): this is BS, remove this
+          let receiver = {
+            let state_ = worker.state.clone();
+            let s = state_.borrow();
+            let channels = s.worker_channels_internal.as_ref().unwrap().clone();
+            channels.receiver.clone()
+          };
+          let mut receiver = receiver.try_lock().unwrap();
+          match receiver.poll_next_unpin(cx) {
+            Poll::Ready(r) => match r {
+              Some(msg) => {
+                let msg_str = String::from_utf8(msg.to_vec()).unwrap();
+                eprintln!("message received {}", msg_str);
+                // TODO: just add second value and then bind using rusty_v8
+                // to get structured clone/transfer working
+                let script = format!(
+                  "workerMessageRecvCallback({})",
+                  msg_str
+                );
+                eprintln!("script: {}", &script);
+                worker
+                  .execute(&script)
+                  .expect("Failed to execute message cb");
+                // Let worker be polled again
+                worker_is_ready = false;
+                worker.waker.wake();
+              }
+              None => {
+                eprintln!("none message received");
+                todo!();
+              }
+            },
+            Poll::Pending => {}
+          }
+
+          Poll::Pending
+        })
+        .await;
       }
-      .boxed_local(),
-    );
+    };
+
+    rt.block_on(fut);
   });
 
-  load_receiver.await.unwrap()
+  handle_receiver.recv().unwrap()
 }
 
 async fn execute_in_thread_json(

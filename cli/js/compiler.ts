@@ -340,13 +340,13 @@ async function wasmCompilerOnMessage({
 function bootstrapTsCompilerRuntime(): void {
   bootstrapWorkerRuntime("TS");
   globalThis.onmessage = tsCompilerOnMessage;
-  runWorkerMessageLoop();
+  // runWorkerMessageLoop();
 }
 
 function bootstrapWasmCompilerRuntime(): void {
   bootstrapWorkerRuntime("WASM");
   globalThis.onmessage = wasmCompilerOnMessage;
-  runWorkerMessageLoop();
+  // runWorkerMessageLoop();
 }
 
 Object.defineProperties(globalThis, {

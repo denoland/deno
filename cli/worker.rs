@@ -44,6 +44,10 @@ impl WorkerChannelsInternal {
     sender.send(event).map_err(ErrBox::from).await
   }
 
+  pub fn post_event_sync(&self, event: WorkerEvent) -> Result<(), ErrBox> {
+    futures::executor::block_on(channels.post_event(event))?
+  }
+
   // TODO(bartlomieju): change type of channel so it's clear communication
   // between parent and child
   /// Get message from host.
@@ -137,6 +141,7 @@ pub struct Worker {
   pub name: String,
   pub isolate: Box<deno_core::EsIsolate>,
   pub state: State,
+  pub waker: AtomicWaker,
   external_channels: WorkerHandle,
 }
 
@@ -160,6 +165,7 @@ impl Worker {
       name,
       isolate,
       state,
+      waker: AtomicWaker::new(),
       external_channels,
     }
   }
@@ -208,8 +214,7 @@ impl Future for Worker {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
-    let waker = AtomicWaker::new();
-    waker.register(cx.waker());
+    inner.waker.register(cx.waker());
     inner.isolate.poll_unpin(cx)
   }
 }
