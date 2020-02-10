@@ -5,6 +5,7 @@ use crate::deno_error::other_error;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
+#[cfg(unix)]
 use nix::sys::termios;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
@@ -18,7 +19,7 @@ macro_rules! wincheck {
   ($funcall:expr) => {{
     let rc = unsafe { $funcall };
     if rc == 0 {
-      Err(std::io::Error::last_os_error())?;
+      Err(ErrBox::from(std::io::Error::last_os_error()))?;
     }
     rc
   }};
@@ -26,6 +27,7 @@ macro_rules! wincheck {
 
 // libc::termios cannot be serialized.
 // Create a similar one for our use.
+#[cfg(unix)]
 #[derive(Serialize, Deserialize)]
 struct SerializedTermios {
   iflags: libc::tcflag_t,
@@ -35,6 +37,7 @@ struct SerializedTermios {
   cc: [libc::cc_t; libc::NCCS],
 }
 
+#[cfg(unix)]
 impl From<termios::Termios> for SerializedTermios {
   fn from(t: termios::Termios) -> Self {
     Self {
@@ -47,6 +50,7 @@ impl From<termios::Termios> for SerializedTermios {
   }
 }
 
+#[cfg(unix)]
 impl Into<termios::Termios> for SerializedTermios {
   fn into(self) -> termios::Termios {
     let mut t = unsafe { termios::Termios::default_uninit() };
@@ -63,7 +67,7 @@ impl Into<termios::Termios> for SerializedTermios {
 struct SetRawArgs {
   rid: u32,
   raw: bool,
-  #[cfg(not(windows))]
+  #[cfg(unix)]
   restore: Option<String>, // Only used for *nix
                            // Saved as string in case of u64 problem in JS
 }
@@ -99,17 +103,18 @@ pub fn op_set_raw(
   {
     use std::os::windows::io::AsRawHandle;
     use winapi::shared::minwindef::DWORD;
-    use winapi::um::{consoleapi, handleapi, winbase, wincon, winuser};
+    use winapi::um::{consoleapi, handleapi, wincon};
 
     let handle = std::io::stdin().as_raw_handle();
     if handle == handleapi::INVALID_HANDLE_VALUE {
-      return Err(std::io::Error::last_os_error());
+      return Err(ErrBox::from(std::io::Error::last_os_error()));
     } else if handle.is_null() {
-      return Err(other_error("null handle".to_owned()));
+      return Err(ErrBox::from(other_error("null handle".to_owned())));
     }
     let mut original_mode: DWORD = 0;
-    let RAW_MODE_MASK =
-      ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT;
+    let RAW_MODE_MASK = wincon::ENABLE_LINE_INPUT
+      | wincon::ENABLE_ECHO_INPUT
+      | wincon::ENABLE_PROCESSED_INPUT;
     wincheck!(consoleapi::GetConsoleMode(handle, &mut original_mode));
     let new_mode = if is_raw {
       original_mode & !RAW_MODE_MASK;
@@ -121,7 +126,7 @@ pub fn op_set_raw(
     Ok(JsonOp::Sync(json!({})))
   }
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/unix.rs
-  #[cfg(not(windows))]
+  #[cfg(unix)]
   {
     use std::os::unix::io::AsRawFd;
     let raw_fd = std::io::stdin().as_raw_fd();
