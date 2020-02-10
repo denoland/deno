@@ -61,7 +61,7 @@ fn create_web_worker(
   Ok(worker)
 }
 
-// TODO(bartlomieju): need some way to return Poll::Ready when `close()` 
+// TODO(bartlomieju): need some way to return Poll::Ready when `close()`
 // is called - otherwise thread running this function never terminates
 pub fn run_worker_loop(
   rt: &mut tokio::runtime::Runtime,
@@ -73,14 +73,12 @@ pub fn run_worker_loop(
     if !worker_is_ready {
       match worker.poll_unpin(cx) {
         Poll::Ready(r) => {
-          let event = match r {
-            Ok(()) => WorkerEvent::Idle,
-            Err(e) => WorkerEvent::Error(e),
-          };
+          if let Err(e) = r {
+            let mut sender = worker.internal_channels.sender.clone();
+            futures::executor::block_on(sender.send(WorkerEvent::Error(e)))
+              .expect("Failed to post message to host");
+          }
           worker_is_ready = true;
-          let mut sender = worker.internal_channels.sender.clone();
-          futures::executor::block_on(sender.send(event))
-            .expect("Failed to post message to host");
         }
         Poll::Pending => {}
       }
@@ -95,8 +93,8 @@ pub fn run_worker_loop(
             Some(msg_str)
           }
           None => {
-            eprintln!("none message received");
-            todo!();
+            eprintln!("none message received, worker finishes");
+            return Poll::Ready(Ok(()));
           }
         },
         Poll::Pending => None,
@@ -267,8 +265,8 @@ fn op_host_terminate_worker(
 }
 
 fn handle_worker_event(
-  state: &State,
-  worker_id: u32,
+  _state: &State,
+  _worker_id: u32,
   event: WorkerEvent,
 ) -> Option<Value> {
   match event {
@@ -294,20 +292,7 @@ fn handle_worker_event(
         }
       })),
     },
-    WorkerEvent::Close => {
-      // worker requests to be terminated
-      // TODO: shutdown all channels
-      let mut state_ = state.borrow_mut();
-      state_.workers.remove(&worker_id);
-      // TODO: worker_handle.fuse() ?????;
-      // worker_handle.notify_close();
-
-      Some(json!({ "type": "close" }))
-    }
-    WorkerEvent::Idle => {
-      // TODO: potentially handle somehow?
-      None
-    }
+    WorkerEvent::Close => unreachable!(),
   }
 }
 
@@ -330,8 +315,13 @@ fn op_host_get_message(
   let op = async move {
     let mut response = None;
     while response.is_none() {
-      let event = worker_handle.get_event().await;
-      response = handle_worker_event(&state_, id, event);
+      if let Some(event) = worker_handle.get_event().await {
+        response = handle_worker_event(&state_, id, event);
+      } else {
+        let mut state_ = state_.borrow_mut();
+        state_.workers.remove(&id);
+        response = Some(json!({ "type": "close" }))
+      }
     }
     Ok(response.unwrap())
   };

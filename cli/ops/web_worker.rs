@@ -60,7 +60,6 @@ fn op_worker_close(
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let mut sender = sender.clone();
-  let fut = sender.send(WorkerEvent::Close);
-  futures::executor::block_on(fut).expect("Failed to post message to host");
+  sender.close_channel();
   Ok(JsonOp::Sync(json!({})))
 }

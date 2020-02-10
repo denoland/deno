@@ -606,24 +606,17 @@ impl TsCompiler {
   }
 }
 
-fn handle_compiler_event(event: WorkerEvent) -> Option<Box<[u8]>> {
+fn handle_compiler_event(event: WorkerEvent) -> Result<Option<Buf>, ErrBox> {
   match event {
     WorkerEvent::Message(buf) => {
       eprintln!("message");
-      Some(buf)
+      Ok(Some(buf))
     }
     WorkerEvent::Error(error) => {
       eprintln!("error {:?}", error);
-      None
+      Err(error)
     }
-    WorkerEvent::Close => {
-      eprintln!("close");
-      None
-    }
-    WorkerEvent::Idle => {
-      eprintln!("idle");
-      None
-    }
+    WorkerEvent::Close => unreachable!(),
   }
 }
 
@@ -633,11 +626,10 @@ async fn execute_in_thread(
 ) -> Result<Option<Buf>, ErrBox> {
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WorkerHandle, ErrBox>>(1);
-
   // TODO(bartlomieju): use thread builder and give thread descriptive name
   //  so it's easy to ID worker in htop/ps
   // TODO(bartlomieju): should we store JoinHandle as well?
-  std::thread::spawn(move || {
+  let join_handle = std::thread::spawn(move || {
     let mut worker = TsCompiler::setup_worker(global_state.clone());
     // Send thread safe handle to newly created worker to host thread
     handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
@@ -645,24 +637,17 @@ async fn execute_in_thread(
     let mut rt = create_basic_runtime();
     run_worker_loop(&mut rt, &mut worker).expect("Panic in event loop");
   });
-
-  let handle = handle_receiver.recv().unwrap();
-
+  let mut handle = handle_receiver.recv().unwrap()?;
   handle.post_message(req).await?;
   let mut buf = None;
-
-  eprintln!("before event");
   while buf.is_none() {
-    let event = handle.get_event().await;
-    eprintln!("got event");
-    buf = handle_compiler_event(event);
+    let event = handle.get_event().await.unwrap();
+    buf = handle_compiler_event(event)?;
   }
-  eprintln!("after event");
-  match handle.get_event().await {
-    WorkerEvent::Close => {}
-    _ => panic!(),
-  };
-
+  eprintln!("here!!!");
+  assert!(handle.get_event().await.is_none());
+  handle.sender.close_channel();
+  join_handle.join().unwrap();
   Ok(buf)
 }
 

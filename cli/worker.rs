@@ -29,7 +29,6 @@ use url::Url;
 pub enum WorkerEvent {
   Message(Buf),
   Error(ErrBox),
-  Idle,
   Close,
 }
 
@@ -56,9 +55,9 @@ impl WorkerHandle {
     sender.send(buf).map_err(ErrBox::from).await
   }
 
-  pub async fn get_event(&self) -> WorkerEvent {
+  pub async fn get_event(&self) -> Option<WorkerEvent> {
     let mut receiver = self.receiver.lock().await;
-    receiver.next().await.expect("Empty message")
+    receiver.next().await
   }
 
   // TODO(bartlomieju): remove this method, used in:
