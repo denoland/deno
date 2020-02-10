@@ -292,13 +292,11 @@ impl TsCompiler {
       true,
     );
 
-    let maybe_msg = execute_in_thread(global_state.clone(), req_msg).await?;
-    if let Some(ref msg) = maybe_msg {
-      let json_str = std::str::from_utf8(msg).unwrap();
-      debug!("Message: {}", json_str);
-      if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-        return Err(ErrBox::from(diagnostics));
-      }
+    let msg = execute_in_thread(global_state.clone(), req_msg).await?;
+    let json_str = std::str::from_utf8(&msg).unwrap();
+    debug!("Message: {}", json_str);
+    if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+      return Err(ErrBox::from(diagnostics));
     }
     Ok(())
   }
@@ -380,13 +378,11 @@ impl TsCompiler {
     let compiling_job = global_state
       .progress
       .add("Compile", &module_url.to_string());
-    let maybe_msg = execute_in_thread(global_state.clone(), req_msg).await?;
+    let msg = execute_in_thread(global_state.clone(), req_msg).await?;
 
-    if let Some(ref msg) = maybe_msg {
-      let json_str = std::str::from_utf8(msg).unwrap();
-      if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-        return Err(ErrBox::from(diagnostics));
-      }
+    let json_str = std::str::from_utf8(&msg).unwrap();
+    if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+      return Err(ErrBox::from(diagnostics));
     }
     let compiled_module = ts_compiler.get_compiled_module(&source_file_.url)?;
     drop(compiling_job);
@@ -606,23 +602,10 @@ impl TsCompiler {
   }
 }
 
-fn handle_compiler_event(event: WorkerEvent) -> Result<Option<Buf>, ErrBox> {
-  match event {
-    WorkerEvent::Message(buf) => {
-      eprintln!("message");
-      Ok(Some(buf))
-    }
-    WorkerEvent::Error(error) => {
-      eprintln!("error {:?}", error);
-      Err(error)
-    }
-  }
-}
-
 async fn execute_in_thread(
   global_state: GlobalState,
   req: Buf,
-) -> Result<Option<Buf>, ErrBox> {
+) -> Result<Buf, ErrBox> {
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WorkerHandle, ErrBox>>(1);
   // TODO(bartlomieju): use thread builder and give thread descriptive name
@@ -638,12 +621,16 @@ async fn execute_in_thread(
   });
   let mut handle = handle_receiver.recv().unwrap()?;
   handle.post_message(req).await?;
-  let mut buf = None;
-  while buf.is_none() {
-    let event = handle.get_event().await.unwrap();
-    buf = handle_compiler_event(event)?;
-  }
-  assert!(handle.get_event().await.is_none());
+  let event = handle.get_event().await.expect("Compiler didn't respond");
+  let buf = match event {
+    WorkerEvent::Message(buf) => Ok(buf),
+    WorkerEvent::Error(error) => Err(error),
+  }?;
+  // Compiler worker finishes after one request
+  // so we should receive signal that channel was closed.
+  // Then close worker's channel and join the thread.
+  let event = handle.get_event().await;
+  assert!(event.is_none());
   handle.sender.close_channel();
   join_handle.join().unwrap();
   Ok(buf)
@@ -653,8 +640,7 @@ async fn execute_in_thread_json(
   req_msg: Buf,
   global_state: GlobalState,
 ) -> JsonResult {
-  let maybe_msg = execute_in_thread(global_state, req_msg).await?;
-  let msg = maybe_msg.unwrap();
+  let msg = execute_in_thread(global_state, req_msg).await?;
   let json_str = std::str::from_utf8(&msg).unwrap();
   Ok(json!(json_str))
 }
