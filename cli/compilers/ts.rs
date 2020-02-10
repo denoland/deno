@@ -631,7 +631,22 @@ async fn execute_in_thread(
   global_state: GlobalState,
   req: Buf,
 ) -> Result<Option<Buf>, ErrBox> {
-  let handle = run_compiler_worker_thread(global_state.clone())?;
+  let (handle_sender, handle_receiver) =
+    std::sync::mpsc::sync_channel::<Result<WorkerHandle, ErrBox>>(1);
+
+  // TODO(bartlomieju): use thread builder and give thread descriptive name
+  //  so it's easy to ID worker in htop/ps
+  // TODO(bartlomieju): should we store JoinHandle as well?
+  std::thread::spawn(move || {
+    let mut worker = TsCompiler::setup_worker(global_state.clone());
+    // Send thread safe handle to newly created worker to host thread
+    handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
+    drop(handle_sender);
+    let mut rt = create_basic_runtime();
+    run_worker_loop(&mut rt, &mut worker).expect("Panic in event loop");
+  });
+
+  let handle = handle_receiver.recv().unwrap();
 
   handle.post_message(req).await?;
   let mut buf = None;
@@ -649,38 +664,6 @@ async fn execute_in_thread(
   };
 
   Ok(buf)
-}
-
-fn run_compiler_worker_thread(
-  global_state: GlobalState,
-) -> Result<WorkerHandle, ErrBox> {
-  let (handle_sender, handle_receiver) =
-    std::sync::mpsc::sync_channel::<Result<WorkerHandle, ErrBox>>(1);
-
-  // TODO(bartlomieju): use thread builder and give thread descriptive name
-  //  so it's easy to ID worker in htop/ps
-  // TODO(bartlomieju): should we store JoinHandle as well?
-  std::thread::spawn(move || {
-    let mut worker = TsCompiler::setup_worker(global_state.clone());
-    // Send thread safe handle to newly created worker to host thread
-    handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
-    drop(handle_sender);
-
-    // At this point the only method of communication with host
-    // is using `worker.internal_channels`.
-    //
-    // Host can already push messages and interact with worker.
-    //
-    // Next steps:
-    // - create tokio runtime
-    // - load provided module or code
-    // - start driving worker's event loop
-
-    let mut rt = create_basic_runtime();
-    run_worker_loop(&mut rt, &mut worker).expect("Panic in event loop");
-  });
-
-  handle_receiver.recv().unwrap()
 }
 
 async fn execute_in_thread_json(

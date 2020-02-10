@@ -61,6 +61,8 @@ fn create_web_worker(
   Ok(worker)
 }
 
+// TODO(bartlomieju): need some way to return Poll::Ready when `close()` 
+// is called - otherwise thread running this function never terminates
 pub fn run_worker_loop(
   rt: &mut tokio::runtime::Runtime,
   worker: &mut Worker,
