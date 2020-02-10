@@ -16,7 +16,7 @@ deno standard library as it's a compatiblity module.
 - [ ] crypto
 - [ ] dgram
 - [ ] dns
-- [ ] events
+- [x] events
 - [x] fs _partly_
 - [ ] http
 - [ ] http2
