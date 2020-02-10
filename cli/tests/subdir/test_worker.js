@@ -5,7 +5,7 @@ if (self.name !== "jsWorker") {
 }
 
 onmessage = function(e) {
-  console.log("calling onmessage js!");
+  console.log(e.data);
 
   if (thrown === false) {
     thrown = true;
@@ -13,10 +13,10 @@ onmessage = function(e) {
   }
 
   postMessage(e.data);
-  console.log("calling close in js!");
   close();
 };
 
 onerror = function() {
+  console.log("called onerror in worker");
   return false;
 };
