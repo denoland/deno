@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEquals } from "./test_util.ts";
-import { runIfMain } from "../../std/testing/mod.ts";
 
 export interface ResolvableMethods<T> {
   resolve: (value?: T | PromiseLike<T>) => void;
@@ -83,5 +82,3 @@ test(async function workerThrowsWhenExecuting(): Promise<void> {
 
   await promise;
 });
-
-runIfMain(import.meta);
