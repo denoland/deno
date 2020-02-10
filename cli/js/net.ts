@@ -16,7 +16,7 @@ export interface Addr {
 
 export interface Message {
   payload: Uint8Array;
-  sender: Addr;
+  remote: Addr;
 }
 
 /** A receiver is a generic transport listener for message-oriented protocols */
@@ -151,9 +151,9 @@ export class ReceiverImpl implements Receiver {
     private closing: boolean = false
   ) {}
 
-  async accept(): Promise<Message> {
+  async receive(): Promise<Message> {
     const res = await sendAsync(dispatch.OP_RECEIVE, { rid: this.rid });
-    return { payload: res.payload, sender: res.sender };
+    return { payload: res.payload, remote: res.remoteAddr };
   }
 
   close(): void {
@@ -241,7 +241,7 @@ export function listen(options: ListenOptions): Listener | Receiver {
     return new ReceiverImpl(res.id, res.localAddr);
   }
 
-  return null;
+  throw new Error("Invalid transport: " + transport);
 }
 
 export interface ConnectOptions {
