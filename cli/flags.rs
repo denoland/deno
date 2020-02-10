@@ -48,7 +48,7 @@ pub enum DenoSubcommand {
   },
   Format {
     check: bool,
-    files: Option<Vec<String>>,
+    files: Option<Vec<PathBuf>>,
   },
   Help,
   Info {
@@ -297,7 +297,7 @@ fn types_parse(flags: &mut DenoFlags, _matches: &clap::ArgMatches) {
 fn fmt_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   let maybe_files = match matches.values_of("files") {
     Some(f) => {
-      let files: Vec<String> = f.map(String::from).collect();
+      let files: Vec<PathBuf> = f.map(PathBuf::from).collect();
       Some(files)
     }
     None => None,
@@ -1376,7 +1376,10 @@ mod tests {
       DenoFlags {
         subcommand: DenoSubcommand::Format {
           check: false,
-          files: Some(svec!["script_1.ts", "script_2.ts"])
+          files: Some(vec![
+            PathBuf::from("script_1.ts"),
+            PathBuf::from("script_2.ts")
+          ])
         },
         ..DenoFlags::default()
       }

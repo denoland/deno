@@ -405,7 +405,7 @@ async fn run_script(flags: DenoFlags, script: String) {
   js_check(worker.execute("window.dispatchEvent(new Event('unload'))"));
 }
 
-async fn fmt_command(files: Option<Vec<String>>, check: bool) {
+async fn fmt_command(files: Option<Vec<PathBuf>>, check: bool) {
   if let Err(err) = fmt::format_files(files, check) {
     print_err_and_exit(err);
   }
