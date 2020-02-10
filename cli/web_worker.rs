@@ -29,7 +29,7 @@ impl WebWorker {
     {
       let isolate = &mut worker.isolate;
       ops::runtime::init(isolate, &state);
-      ops::web_worker::init(isolate, &state);
+      ops::web_worker::init(isolate, &state, &worker.internal_channels.sender);
       ops::worker_host::init(isolate, &state);
       ops::errors::init(isolate, &state);
       ops::timers::init(isolate, &state);

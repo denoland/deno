@@ -24,6 +24,8 @@ use std::task::Poll;
 use tokio::sync::Mutex as AsyncMutex;
 use url::Url;
 
+/// Events that are sent to host from child
+/// worker.
 pub enum WorkerEvent {
   Message(Buf),
   Error(ErrBox),
@@ -33,20 +35,7 @@ pub enum WorkerEvent {
 
 pub struct WorkerChannelsInternal {
   pub sender: mpsc::Sender<WorkerEvent>,
-  // TODO: no need for a MUTEX only ever used by a single thread :))
   pub receiver: mpsc::Receiver<Buf>,
-}
-
-impl WorkerChannelsInternal {
-  /// Send event to host.
-  pub async fn post_event(&self, event: WorkerEvent) -> Result<(), ErrBox> {
-    let mut sender = self.sender.clone();
-    sender.send(event).map_err(ErrBox::from).await
-  }
-
-  pub fn post_event_sync(&self, event: WorkerEvent) -> Result<(), ErrBox> {
-    futures::executor::block_on(self.post_event(event))
-  }
 }
 
 #[derive(Clone)]
@@ -58,11 +47,6 @@ pub struct WorkerHandle {
 
 impl WorkerHandle {
   pub fn terminate(&self) {
-    todo!()
-  }
-
-  /// Called when worker requests to be closed
-  pub fn notify_close(&self) {
     todo!()
   }
 
@@ -129,6 +113,7 @@ pub struct Worker {
   pub isolate: Box<deno_core::EsIsolate>,
   pub state: State,
   pub waker: AtomicWaker,
+  pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
 }
 
@@ -143,16 +128,13 @@ impl Worker {
     });
 
     let (internal_channels, external_channels) = create_channels();
-    {
-      let mut state = state.borrow_mut();
-      state.worker_channels_internal = Some(internal_channels);
-    }
 
     Self {
       name,
       isolate,
       state,
       waker: AtomicWaker::new(),
+      internal_channels,
       external_channels,
     }
   }
@@ -240,7 +222,7 @@ impl MainWorker {
       ops::signal::init(isolate, &state);
       ops::timers::init(isolate, &state);
       ops::worker_host::init(isolate, &state);
-      ops::web_worker::init(isolate, &state);
+      ops::web_worker::init(isolate, &state, &worker.internal_channels.sender);
     }
     Self(worker)
   }

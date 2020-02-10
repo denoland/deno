@@ -6,6 +6,7 @@ use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
+use crate::futures::SinkExt;
 use crate::global_state::GlobalState;
 use crate::msg;
 use crate::ops::JsonResult;
@@ -670,7 +671,7 @@ fn run_worker_thread(
     drop(handle_sender);
 
     // At this point the only method of communication with host
-    // is using `state.internal_worker_channels`.
+    // is using `worker.internal_channels`.
     //
     // Host can already push messages and interact with worker.
     //
@@ -691,10 +692,8 @@ fn run_worker_thread(
               Err(e) => WorkerEvent::Error(e),
             };
             worker_is_ready = true;
-            let state = worker.state.borrow();
-            let channels =
-              state.worker_channels_internal.as_ref().unwrap().clone();
-            futures::executor::block_on(channels.post_event(event))
+            let mut sender = worker.internal_channels.sender.clone();
+            futures::executor::block_on(sender.send(event))
               .expect("Failed to post message to host");
           }
           Poll::Pending => {}
@@ -702,9 +701,7 @@ fn run_worker_thread(
       }
 
       let maybe_msg = {
-        let mut state = worker.state.borrow_mut();
-        let channels = state.worker_channels_internal.as_mut().unwrap();
-        match channels.receiver.poll_next_unpin(cx) {
+        match worker.internal_channels.receiver.poll_next_unpin(cx) {
           Poll::Ready(r) => match r {
             Some(msg) => {
               let msg_str = String::from_utf8(msg.to_vec()).unwrap();

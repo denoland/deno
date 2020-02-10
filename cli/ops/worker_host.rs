@@ -4,6 +4,7 @@ use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::deno_error::GetErrorKind;
 use crate::fmt_errors::JSError;
+use crate::futures::SinkExt;
 use crate::global_state::GlobalState;
 use crate::ops::json_op;
 use crate::permissions::DenoPermissions;
@@ -93,7 +94,7 @@ fn run_worker_thread(
     drop(handle_sender);
 
     // At this point the only method of communication with host
-    // is using `state.internal_worker_channels`.
+    // is using `worker.internal_channels`.
     //
     // Host can already push messages and interact with worker.
     //
@@ -120,9 +121,8 @@ fn run_worker_thread(
     };
 
     if let Err(e) = result {
-      let state = worker.state.borrow();
-      let channels = state.worker_channels_internal.as_ref().unwrap().clone();
-      futures::executor::block_on(channels.post_event(WorkerEvent::Error(e)))
+      let mut sender = worker.internal_channels.sender.clone();
+      futures::executor::block_on(sender.send(WorkerEvent::Error(e)))
         .expect("Failed to post message to host");
 
       // Failure to execute script is a terminal error, bye, bye.
@@ -143,10 +143,8 @@ fn run_worker_thread(
               Err(e) => WorkerEvent::Error(e),
             };
             worker_is_ready = true;
-            let state = worker.state.borrow();
-            let channels =
-              state.worker_channels_internal.as_ref().unwrap().clone();
-            futures::executor::block_on(channels.post_event(event))
+            let mut sender = worker.internal_channels.sender.clone();
+            futures::executor::block_on(sender.send(event))
               .expect("Failed to post message to host");
           }
           Poll::Pending => {}
@@ -154,9 +152,7 @@ fn run_worker_thread(
       }
 
       let maybe_msg = {
-        let mut state = worker.state.borrow_mut();
-        let channels = state.worker_channels_internal.as_mut().unwrap();
-        match channels.receiver.poll_next_unpin(cx) {
+        match worker.internal_channels.receiver.poll_next_unpin(cx) {
           Poll::Ready(r) => match r {
             Some(msg) => {
               let msg_str = String::from_utf8(msg.to_vec()).unwrap();

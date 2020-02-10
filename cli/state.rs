@@ -8,7 +8,6 @@ use crate::metrics::Metrics;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
 use crate::permissions::DenoPermissions;
-use crate::worker::WorkerChannelsInternal;
 use crate::worker::WorkerHandle;
 use deno_core::Buf;
 use deno_core::CoreOp;
@@ -56,7 +55,6 @@ pub struct StateInner {
   pub metrics: Metrics,
   pub global_timer: GlobalTimer,
   pub workers: HashMap<u32, WorkerHandle>,
-  pub worker_channels_internal: Option<WorkerChannelsInternal>,
   pub next_worker_id: AtomicUsize,
   pub start_time: Instant,
   pub seeded_rng: Option<StdRng>,
@@ -232,7 +230,6 @@ impl State {
       import_map,
       metrics: Metrics::default(),
       global_timer: GlobalTimer::new(),
-      worker_channels_internal: None,
       workers: HashMap::new(),
       next_worker_id: AtomicUsize::new(0),
       start_time: Instant::now(),
@@ -269,7 +266,6 @@ impl State {
       import_map: None,
       metrics: Metrics::default(),
       global_timer: GlobalTimer::new(),
-      worker_channels_internal: None,
       workers: HashMap::new(),
       next_worker_id: AtomicUsize::new(0),
       start_time: Instant::now(),
