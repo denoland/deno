@@ -165,7 +165,7 @@ export class ReceiverImpl implements Receiver {
     if (this.closing) {
       return { value: undefined, done: true };
     }
-    return await this.accept()
+    return await this.receive()
       .then(value => ({ value, done: false }))
       .catch(e => {
         // It wouldn't be correct to simply check this.closing here.
