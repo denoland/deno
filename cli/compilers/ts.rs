@@ -680,75 +680,63 @@ fn run_worker_thread(
     // - start driving worker's event loop
 
     let mut rt = create_basic_runtime();
-
-    // TODO: when worker polled and returns ready then send Worker::Idle message
-    // then host will be able to suspend us or whatever - use thread.park()
-
     let mut worker_is_ready = false;
     // Drive worker event loop
-    let fut = async move {
-      loop {
-        let _r: Result<(), ErrBox> = poll_fn(|cx| {
-          if !worker_is_ready {
-            match worker.poll_unpin(cx) {
-              Poll::Ready(r) => {
-                let event = match r {
-                  Ok(()) => WorkerEvent::Idle,
-                  Err(e) => WorkerEvent::Error(e),
-                };
-                worker_is_ready = true;
-                let state = worker.state.borrow();
-                let channels =
-                  state.worker_channels_internal.as_ref().unwrap().clone();
-                futures::executor::block_on(channels.post_event(event))
-                  .expect("Failed to post message to host");
-              }
-              Poll::Pending => {}
-            }
+    let fut = poll_fn(|cx| -> Poll<Result<(), ErrBox>> {
+      if !worker_is_ready {
+        match worker.poll_unpin(cx) {
+          Poll::Ready(r) => {
+            let event = match r {
+              Ok(()) => WorkerEvent::Idle,
+              Err(e) => WorkerEvent::Error(e),
+            };
+            worker_is_ready = true;
+            let state = worker.state.borrow();
+            let channels =
+              state.worker_channels_internal.as_ref().unwrap().clone();
+            futures::executor::block_on(channels.post_event(event))
+              .expect("Failed to post message to host");
           }
-
-          // TODO(bartlmieju): this is BS, remove this
-          let receiver = {
-            let state_ = worker.state.clone();
-            let s = state_.borrow();
-            let channels = s.worker_channels_internal.as_ref().unwrap().clone();
-            channels.receiver.clone()
-          };
-          let mut receiver = receiver.try_lock().unwrap();
-          match receiver.poll_next_unpin(cx) {
-            Poll::Ready(r) => match r {
-              Some(msg) => {
-                let msg_str = String::from_utf8(msg.to_vec()).unwrap();
-                eprintln!("message received {}", msg_str);
-                // TODO: just add second value and then bind using rusty_v8
-                // to get structured clone/transfer working
-                let script = format!(
-                  "workerMessageRecvCallback({})",
-                  msg_str
-                );
-                eprintln!("script: {}", &script);
-                worker
-                  .execute(&script)
-                  .expect("Failed to execute message cb");
-                // Let worker be polled again
-                worker_is_ready = false;
-                worker.waker.wake();
-              }
-              None => {
-                eprintln!("none message received");
-                todo!();
-              }
-            },
-            Poll::Pending => {}
-          }
-
-          Poll::Pending
-        })
-        .await;
+          Poll::Pending => {}
+        }
       }
-    };
 
-    rt.block_on(fut);
+      let maybe_msg = {
+        let mut state = worker.state.borrow_mut();
+        let channels = state.worker_channels_internal.as_mut().unwrap();
+        match channels.receiver.poll_next_unpin(cx) {
+          Poll::Ready(r) => match r {
+            Some(msg) => {
+              let msg_str = String::from_utf8(msg.to_vec()).unwrap();
+              eprintln!("message received {}", msg_str);
+              Some(msg_str)
+            }
+            None => {
+              eprintln!("none message received");
+              todo!();
+            }
+          },
+          Poll::Pending => None,
+        }
+      };
+
+      if let Some(msg) = maybe_msg {
+        // TODO: just add second value and then bind using rusty_v8
+        // to get structured clone/transfer working
+        let script = format!("workerMessageRecvCallback({})", msg);
+        eprintln!("script: {}", &script);
+        worker
+          .execute(&script)
+          .expect("Failed to execute message cb");
+        // Let worker be polled again
+        worker_is_ready = false;
+        worker.waker.wake();
+      }
+
+      Poll::Pending
+    });
+
+    rt.block_on(fut).expect("Panic in event loop");
   });
 
   handle_receiver.recv().unwrap()

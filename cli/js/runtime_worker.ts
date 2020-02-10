@@ -3,12 +3,9 @@
 // This module is the entry point for "worker" isolate, ie. the one
 // that is created using `new Worker()` JS API.
 //
-// It provides two functions that should be called by Rust:
+// It provides a single function that should be called by Rust:
 //  - `bootstrapWorkerRuntime` - must be called once, when Isolate is created.
 //   It sets up runtime by providing globals for `DedicatedWorkerScope`.
-//  - `runWorkerMessageLoop` - starts receiving messages from parent worker,
-//   can be called multiple times - eg. to restart worker execution after
-//   exception occurred and was handled by parent worker
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
@@ -37,18 +34,6 @@ export function postMessage(data: any): void {
   const dataJson = JSON.stringify(data);
   const dataIntArray = encoder.encode(dataJson);
   sendSync(dispatch.OP_WORKER_POST_MESSAGE, {}, dataIntArray);
-}
-
-export async function getMessage(): Promise<any> {
-  log("getMessage");
-  const res = await sendAsync(dispatch.OP_WORKER_GET_MESSAGE);
-  if (res.data != null) {
-    const dataIntArray = new Uint8Array(res.data);
-    const dataJson = decoder.decode(dataIntArray);
-    return JSON.parse(dataJson);
-  } else {
-    return null;
-  }
 }
 
 let isClosing = false;
@@ -91,46 +76,6 @@ export async function workerMessageRecvCallback(data: string): Promise<void> {
       }
     }
     throw e;
-  }
-}
-
-export async function runWorkerMessageLoop(): Promise<void> {
-  while (!isClosing) {
-    const data = await getMessage();
-    if (data == null) {
-      log("runWorkerMessageLoop got null message. quitting.");
-      break;
-    }
-
-    let result: void | Promise<void>;
-    const event = { data };
-
-    try {
-      if (!globalThis["onmessage"]) {
-        break;
-      }
-      result = globalThis.onmessage!(event);
-      if (result && "then" in result) {
-        await result;
-      }
-      if (!globalThis["onmessage"]) {
-        break;
-      }
-    } catch (e) {
-      if (globalThis["onerror"]) {
-        const result = globalThis.onerror(
-          e.message,
-          e.fileName,
-          e.lineNumber,
-          e.columnNumber,
-          e
-        );
-        if (result === true) {
-          continue;
-        }
-      }
-      throw e;
-    }
   }
 }
 

@@ -42,7 +42,6 @@ import { assert } from "./util.ts";
 import * as util from "./util.ts";
 import {
   bootstrapWorkerRuntime,
-  runWorkerMessageLoop
 } from "./runtime_worker.ts";
 
 interface CompilerRequestCompile {
@@ -340,13 +339,11 @@ async function wasmCompilerOnMessage({
 function bootstrapTsCompilerRuntime(): void {
   bootstrapWorkerRuntime("TS");
   globalThis.onmessage = tsCompilerOnMessage;
-  // runWorkerMessageLoop();
 }
 
 function bootstrapWasmCompilerRuntime(): void {
   bootstrapWorkerRuntime("WASM");
   globalThis.onmessage = wasmCompilerOnMessage;
-  // runWorkerMessageLoop();
 }
 
 Object.defineProperties(globalThis, {

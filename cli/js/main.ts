@@ -2,7 +2,6 @@
 import { bootstrapMainRuntime } from "./runtime_main.ts";
 import {
   bootstrapWorkerRuntime,
-  runWorkerMessageLoop
 } from "./runtime_worker.ts";
 
 Object.defineProperties(globalThis, {
@@ -18,10 +17,4 @@ Object.defineProperties(globalThis, {
     writable: false,
     configurable: false
   },
-  runWorkerMessageLoop: {
-    value: runWorkerMessageLoop,
-    enumerable: false,
-    writable: false,
-    configurable: false
-  }
 });

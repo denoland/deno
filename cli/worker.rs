@@ -34,7 +34,7 @@ pub enum WorkerEvent {
 pub struct WorkerChannelsInternal {
   pub sender: mpsc::Sender<WorkerEvent>,
   // TODO: no need for a MUTEX only ever used by a single thread :))
-  pub receiver: Arc<AsyncMutex<mpsc::Receiver<Buf>>>,
+  pub receiver: mpsc::Receiver<Buf>,
 }
 
 impl WorkerChannelsInternal {
@@ -45,20 +45,7 @@ impl WorkerChannelsInternal {
   }
 
   pub fn post_event_sync(&self, event: WorkerEvent) -> Result<(), ErrBox> {
-    futures::executor::block_on(channels.post_event(event))?
-  }
-
-  // TODO(bartlomieju): change type of channel so it's clear communication
-  // between parent and child
-  /// Get message from host.
-  pub fn get_message(&self) -> Pin<Box<dyn Future<Output = Option<Buf>>>> {
-    let receiver_mutex = self.receiver.clone();
-
-    async move {
-      let mut receiver = receiver_mutex.lock().await;
-      receiver.next().await
-    }
-    .boxed_local()
+    futures::executor::block_on(self.post_event(event))
   }
 }
 
@@ -116,7 +103,7 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
   let (out_tx, out_rx) = mpsc::channel::<WorkerEvent>(1);
   let internal_channels = WorkerChannelsInternal {
     sender: out_tx,
-    receiver: Arc::new(AsyncMutex::new(in_rx)),
+    receiver: in_rx,
   };
   let external_channels = WorkerHandle {
     sender: in_tx,

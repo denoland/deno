@@ -46,7 +46,6 @@ export let OP_HOST_POST_MESSAGE: number;
 export let OP_HOST_TERMINATE_WORKER: number;
 export let OP_HOST_GET_MESSAGE: number;
 export let OP_WORKER_POST_MESSAGE: number;
-export let OP_WORKER_GET_MESSAGE: number;
 export let OP_WORKER_CLOSE: number;
 export let OP_RUN: number;
 export let OP_RUN_STATUS: number;

@@ -77,7 +77,6 @@ mod tests {
       state,
     );
     worker.execute("bootstrapWorkerRuntime(\"TEST\")").unwrap();
-    worker.execute("runWorkerMessageLoop()").unwrap();
     worker
   }
 
