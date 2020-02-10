@@ -7,7 +7,9 @@ use crate::state::State;
 use deno_core::*;
 #[cfg(unix)]
 use nix::sys::termios;
-use serde_derive::{Deserialize, Serialize};
+use serde_derive::Deserialize;
+#[cfg(unix)]
+use serde_derive::Serialize;
 use serde_json::Value;
 
 pub fn init(i: &mut Isolate, s: &State) {
@@ -117,9 +119,9 @@ pub fn op_set_raw(
       | wincon::ENABLE_PROCESSED_INPUT;
     wincheck!(consoleapi::GetConsoleMode(handle, &mut original_mode));
     let new_mode = if is_raw {
-      original_mode & !RAW_MODE_MASK;
+      original_mode & !RAW_MODE_MASK
     } else {
-      original_mode | RAW_MODE_MASK;
+      original_mode | RAW_MODE_MASK
     };
     wincheck!(consoleapi::SetConsoleMode(handle, new_mode));
 
