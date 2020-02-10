@@ -14,8 +14,7 @@ import { sendAsyncMinimal, sendSyncMinimal } from "./dispatch_minimal.ts";
 import * as dispatch from "./dispatch.ts";
 import {
   sendSync as sendSyncJson,
-  sendAsync as sendAsyncJson,
-  sendSync
+  sendAsync as sendAsyncJson
 } from "./dispatch_json.ts";
 
 /** Open a file and return an instance of the `File` object
@@ -260,21 +259,29 @@ export class File
 export type RestoreModeFunc = () => void;
 /** Extended file abstraction with setRaw() */
 export class Stdin extends File {
+  private _isRaw = false;
+  private _restoreFunc?: RestoreModeFunc;
   /** Set input mode to raw (non-canonical).
    * Returns a function that when called, restores previous mode.
    */
   setRaw(): RestoreModeFunc {
-    const restoreInfo = sendSync(dispatch.OP_SET_RAW, {
+    if (this._isRaw) {
+      return this._restoreFunc!;
+    }
+    const restoreInfo = sendSyncJson(dispatch.OP_SET_RAW, {
       rid: this.rid,
       raw: true
     });
-    return (): void => {
-      sendSync(dispatch.OP_SET_RAW, {
+    this._isRaw = true;
+    this._restoreFunc = (): void => {
+      sendSyncJson(dispatch.OP_SET_RAW, {
         rid: this.rid,
         raw: false,
         ...restoreInfo
       });
+      this._isRaw = false;
     };
+    return this._restoreFunc!;
   }
 }
 

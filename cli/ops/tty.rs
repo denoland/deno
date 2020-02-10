@@ -117,7 +117,7 @@ pub fn op_set_raw(
     };
     wincheck!(consoleapi::SetConsoleMode(handle, new_mode));
 
-    return Ok(JsonOp::Sync(json!({})));
+    Ok(JsonOp::Sync(json!({})))
   }
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/unix.rs
   #[cfg(not(windows))]
@@ -144,10 +144,10 @@ pub fn op_set_raw(
       raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
       raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
       termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
-      return Ok(JsonOp::Sync(json!({
+      Ok(JsonOp::Sync(json!({
         "restore":
           serde_json::to_string(&SerializedTermios::from(original_mode)).unwrap(),
-      })));
+      })))
     } else {
       // Restore old mode.
       if args.restore.is_none() {
@@ -164,7 +164,7 @@ pub fn op_set_raw(
         termios::SetArg::TCSADRAIN,
         &old_termios.into(),
       )?;
-      return Ok(JsonOp::Sync(json!({})));
+      Ok(JsonOp::Sync(json!({})))
     }
   }
 }
