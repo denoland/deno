@@ -68,6 +68,7 @@ mod tests {
   use crate::startup_data;
   use crate::state::State;
   use crate::tokio_util;
+  use crate::ops::worker_host::run_worker_loop;
 
   fn create_test_worker() -> WebWorker {
     let state = State::mock("./hello.js");
@@ -87,8 +88,7 @@ mod tests {
         onmessage = function(e) {
           console.log("msg from main script", e.data);
           if (e.data == "exit") {
-            delete self.onmessage;
-            return;
+            close();
           } else {
             console.assert(e.data === "hi");
           }
@@ -124,7 +124,8 @@ mod tests {
       })
     });
 
-    let r = tokio_util::run_basic(worker);
+    let mut rt = tokio_util::create_basic_runtime();
+    let r = run_worker_loop(&mut rt, &mut worker);
     assert!(r.is_ok())
   }
 
@@ -134,7 +135,7 @@ mod tests {
     let handle = worker.thread_safe_handle();
 
     worker
-      .execute("onmessage = () => { delete self.onmessage; }")
+      .execute("onmessage = () => { close(); }")
       .unwrap();
 
     let worker_post_message_fut = tokio_util::spawn_thread(move || {
@@ -143,10 +144,9 @@ mod tests {
       assert!(r.is_ok());
     });
 
-    tokio_util::run_basic(async move {
-      worker_post_message_fut.await;
-      let r = worker.await;
-      assert!(r.is_ok());
-    });
+    let mut rt = tokio_util::create_basic_runtime();
+    rt.block_on(worker_post_message_fut);
+    let r = run_worker_loop(&mut rt, &mut worker);
+    assert!(r.is_ok());
   }
 }
