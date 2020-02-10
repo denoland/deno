@@ -106,15 +106,20 @@ mod tests {
         let r = handle.post_message(msg.clone()).await;
         assert!(r.is_ok());
 
-        let maybe_msg = handle.get_message().await;
+        let maybe_msg = handle.get_event().await;
         assert!(maybe_msg.is_some());
 
         let r = handle.post_message(msg.clone()).await;
         assert!(r.is_ok());
 
-        let maybe_msg = handle.get_message().await;
+        let maybe_msg = handle.get_event().await;
         assert!(maybe_msg.is_some());
-        assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
+        match maybe_msg {
+          WorkerEvent::Message(buf) => {
+            assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
+          }
+          _ => unreachable!(),
+        }
 
         let msg = json!("exit")
           .to_string()

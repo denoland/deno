@@ -54,29 +54,11 @@ impl WorkerHandle {
     sender.send(buf).map_err(ErrBox::from).await
   }
 
+  // TODO: should use `try_lock` and return error if
+  // more than one listener tries to get event
   pub async fn get_event(&self) -> Option<WorkerEvent> {
     let mut receiver = self.receiver.lock().await;
     receiver.next().await
-  }
-
-  // TODO(bartlomieju): remove this method, used in:
-  // - TS compiler
-  // - WASM compiler (ditto)
-  /// Get message from worker as a host.
-  pub fn get_message(&self) -> Pin<Box<dyn Future<Output = Option<Buf>>>> {
-    let receiver_mutex = self.receiver.clone();
-
-    async move {
-      let mut receiver = receiver_mutex.lock().await;
-      let event = receiver.next().await.expect("Empty message");
-      match event {
-        WorkerEvent::Message(buf) => buf.into(),
-        _ => {
-          panic!();
-        }
-      }
-    }
-    .boxed_local()
   }
 }
 
