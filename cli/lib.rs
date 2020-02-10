@@ -259,7 +259,7 @@ async fn info_command(flags: DenoFlags, file: Option<String>) {
 
 async fn install_command(
   flags: DenoFlags,
-  dir: Option<String>,
+  dir: Option<PathBuf>,
   exe_name: String,
   module_url: String,
   args: Vec<String>,

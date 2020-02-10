@@ -55,7 +55,7 @@ pub enum DenoSubcommand {
     file: Option<String>,
   },
   Install {
-    dir: Option<String>,
+    dir: Option<PathBuf>,
     exe_name: String,
     module_url: String,
     args: Vec<String>,
@@ -316,7 +316,7 @@ fn install_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 
   let dir = if matches.is_present("dir") {
     let install_dir = matches.value_of("dir").unwrap();
-    Some(install_dir.to_string())
+    Some(PathBuf::from(install_dir))
   } else {
     None
   };
@@ -1871,7 +1871,7 @@ mod tests {
       r.unwrap(),
       DenoFlags {
         subcommand: DenoSubcommand::Install {
-          dir: Some("/usr/local/bin".to_string()),
+          dir: Some(PathBuf::from("/usr/local/bin")),
           exe_name: "file_server".to_string(),
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
           args: svec!["arg1", "arg2"],
