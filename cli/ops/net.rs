@@ -341,7 +341,8 @@ fn listen_tcp(
   let rid = state
     .resource_table
     .add("tcpListener", Box::new(listener_resource));
-  return Ok((rid, local_addr));
+
+  Ok((rid, local_addr))
 }
 
 fn listen_udp(
@@ -355,7 +356,8 @@ fn listen_udp(
   let rid = state
     .resource_table
     .add("udpSocket", Box::new(socket_resource));
-  return Ok((rid, local_addr));
+
+  Ok((rid, local_addr))
 }
 
 fn op_listen(
