@@ -28,11 +28,11 @@ macro_rules! wincheck {
 // Create a similar one for our use.
 #[derive(Serialize, Deserialize)]
 struct SerializedTermios {
-  iflags: u64,
-  oflags: u64,
-  cflags: u64,
-  lflags: u64,
-  cc: [u8; libc::NCCS],
+  iflags: libc::tcflag_t,
+  oflags: libc::tcflag_t,
+  cflags: libc::tcflag_t,
+  lflags: libc::tcflag_t,
+  cc: [libc::cc_t; libc::NCCS],
 }
 
 impl From<termios::Termios> for SerializedTermios {
@@ -98,6 +98,7 @@ pub fn op_set_raw(
   #[cfg(windows)]
   {
     use std::os::windows::io::AsRawHandle;
+    use winapi::shared::minwindef::DWORD;
     use winapi::um::{consoleapi, handleapi, winbase, wincon, winuser};
 
     let handle = std::io::stdin().as_raw_handle();
@@ -106,7 +107,7 @@ pub fn op_set_raw(
     } else if handle.is_null() {
       return Err(other_error("null handle".to_owned()));
     }
-    let mut original_mode = 0;
+    let mut original_mode: DWORD = 0;
     let RAW_MODE_MASK =
       ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT;
     wincheck!(consoleapi::GetConsoleMode(handle, &mut original_mode));
