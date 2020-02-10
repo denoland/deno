@@ -27,6 +27,9 @@ export interface WrappedFunction extends Function {
   listener: Function;
 }
 
+/**
+ * See also https://nodejs.org/api/events.html
+ */
 export default class EventEmitter {
   public static defaultMaxListeners = 10;
   private maxListeners: number | undefined;
@@ -68,6 +71,7 @@ export default class EventEmitter {
     return this;
   }
 
+  /** Alias for emitter.on(eventName, listener). */
   public addListener(
     eventName: string | symbol,
     listener: Function | WrappedFunction
@@ -75,6 +79,12 @@ export default class EventEmitter {
     return this._addListener(eventName, listener, false);
   }
 
+  /**
+   * Synchronously calls each of the listeners registered for the event named
+   * eventName, in the order they were registered, passing the supplied
+   * arguments to each.
+   * @return true if the event had listeners, false otherwise
+   */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public emit(eventName: string | symbol, ...args: any[]): boolean {
     if (this._events.has(eventName)) {
@@ -94,14 +104,27 @@ export default class EventEmitter {
     return false;
   }
 
+  /**
+   * Returns an array listing the events for which the emitter has
+   * registered listeners.
+   */
   public eventNames(): [string | symbol] {
     return Array.from(this._events.keys()) as [string | symbol];
   }
 
+  /**
+   * Returns the current max listener value for the EventEmitter which is
+   * either set by emitter.setMaxListeners(n) or defaults to
+   * EventEmitter.defaultMaxListeners.
+   */
   public getMaxListeners(): number {
     return this.maxListeners || EventEmitter.defaultMaxListeners;
   }
 
+  /**
+   * Returns the number of listeners listening to the event named
+   * eventName.
+   */
   public listenerCount(eventName: string | symbol): number {
     if (this._events.has(eventName)) {
       return (this._events.get(eventName) as Function[]).length;
@@ -135,20 +158,33 @@ export default class EventEmitter {
     return unwrappedListeners;
   }
 
+  /** Returns a copy of the array of listeners for the event named eventName.*/
   public listeners(eventName: string | symbol): Function[] {
     return this._listeners(this, eventName, true);
   }
 
+  /**
+   * Returns a copy of the array of listeners for the event named eventName,
+   * including any wrappers (such as those created by .once()).
+   */
   public rawListeners(
     eventName: string | symbol
   ): Array<Function | WrappedFunction> {
     return this._listeners(this, eventName, false);
   }
 
+  /** Alias for emitter.removeListener(). */
   public off(eventName: string | symbol, listener: Function): this {
     return this.removeListener(eventName, listener);
   }
 
+  /**
+   * Adds the listener function to the end of the listeners array for the event
+   *  named eventName. No checks are made to see if the listener has already
+   * been added. Multiple calls passing the same combination of eventName and
+   * listener will result in the listener being added, and called, multiple
+   * times.
+   */
   public on(
     eventName: string | symbol,
     listener: Function | WrappedFunction
@@ -156,6 +192,10 @@ export default class EventEmitter {
     return this.addListener(eventName, listener);
   }
 
+  /**
+   * Adds a one-time listener function for the event named eventName. The next
+   * time eventName is triggered, this listener is removed and then invoked.
+   */
   public once(eventName: string | symbol, listener: Function): this {
     const wrapped: WrappedFunction = this.onceWrap(eventName, listener);
     this.on(eventName, wrapped);
@@ -191,6 +231,13 @@ export default class EventEmitter {
     return wrapped as WrappedFunction;
   }
 
+  /**
+   * Adds the listener function to the beginning of the listeners array for the
+   *  event named eventName. No checks are made to see if the listener has
+   * already been added. Multiple calls passing the same combination of
+   * eventName and listener will result in the listener being added, and
+   * called, multiple times.
+   */
   public prependListener(
     eventName: string | symbol,
     listener: Function | WrappedFunction
@@ -198,6 +245,11 @@ export default class EventEmitter {
     return this._addListener(eventName, listener, true);
   }
 
+  /**
+   * Adds a one-time listener function for the event named eventName to the
+   * beginning of the listeners array. The next time eventName is triggered,
+   * this listener is removed, and then invoked.
+   */
   public prependOnceListener(
     eventName: string | symbol,
     listener: Function
@@ -207,6 +259,7 @@ export default class EventEmitter {
     return this;
   }
 
+  /** Removes all listeners, or those of the specified eventName. */
   public removeAllListeners(eventName?: string | symbol): this {
     if (this._events === undefined) {
       return this;
@@ -230,6 +283,10 @@ export default class EventEmitter {
     return this;
   }
 
+  /**
+   * Removes the specified listener from the listener array for the event
+   * named eventName.
+   */
   public removeListener(eventName: string | symbol, listener: Function): this {
     if (this._events.has(eventName)) {
       const arr: Array<Function | WrappedFunction> = this._events.get(
@@ -256,6 +313,14 @@ export default class EventEmitter {
     return this;
   }
 
+  /**
+   * By default EventEmitters will print a warning if more than 10 listeners
+   * are added for a particular event. This is a useful default that helps
+   * finding memory leaks. Obviously, not all events should be limited to just
+   * 10 listeners. The emitter.setMaxListeners() method allows the limit to be
+   * modified for this specific EventEmitter instance. The value can be set to
+   * Infinity (or 0) to indicate an unlimited number of listeners.
+   */
   public setMaxListeners(n: number): this {
     validateIntegerRange(n, "maxListeners", 0);
     this.maxListeners = n;
@@ -263,6 +328,11 @@ export default class EventEmitter {
   }
 }
 
+/**
+ * Creates a Promise that is fulfilled when the EventEmitter emits the given
+ * event or that is rejected when the EventEmitter emits 'error'. The Promise
+ * will resolve with an array of all the arguments emitted to the given event.
+ */
 export function once(
   emitter: EventEmitter | EventTarget,
   name: string
