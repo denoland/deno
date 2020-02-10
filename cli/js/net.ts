@@ -178,7 +178,7 @@ export class ReceiverImpl implements Receiver {
       });
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<Conn> {
+  [Symbol.asyncIterator](): AsyncIterator<Message> {
     return this;
   }
 }
