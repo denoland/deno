@@ -174,7 +174,7 @@ command line:
 $ deno types
 ```
 
-[This is what the output looks like.](https://github.com/denoland/deno/blob/master/cli/js/lib.deno_runtime.d.ts)
+[This is what the output looks like.](https://github.com/denoland/deno/blob/master/cli/js/lib.deno.ns.d.ts)
 
 ### Reference websites
 
