@@ -131,10 +131,10 @@ fn run_worker_thread(
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WorkerHandle, ErrBox>>(1);
 
-  // TODO(bartlomieju): use thread builder and give thread descriptive name
-  //  so it's easy to ID worker in htop/ps
-  // TODO(bartlomieju): store JoinHandle as
-  std::thread::spawn(move || {
+  let builder =
+    std::thread::Builder::new().name(format!("deno-worker-{}", name));
+  // TODO(bartlomieju): store JoinHandle as well
+  builder.spawn(move || {
     // Any error inside this block is terminal:
     // - JS worker is useless - meaning it throws an exception and can't do anything else,
     //  all action done upon it should be noops
@@ -192,7 +192,7 @@ fn run_worker_thread(
     // that means that we should store JoinHandle to thread to ensure
     // that it actually terminates.
     run_worker_loop(&mut rt, &mut worker).expect("Panic in event loop");
-  });
+  })?;
 
   handle_receiver.recv().unwrap()
 }

@@ -602,23 +602,23 @@ impl TsCompiler {
   }
 }
 
+// TODO(bartlomieju): exactly same function is in `wasm.rs` - only difference
+// it created WasmCompiler instead of TsCompiler - deduplicate
 async fn execute_in_thread(
   global_state: GlobalState,
   req: Buf,
 ) -> Result<Buf, ErrBox> {
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WorkerHandle, ErrBox>>(1);
-  // TODO(bartlomieju): use thread builder and give thread descriptive name
-  //  so it's easy to ID worker in htop/ps
-  // TODO(bartlomieju): should we store JoinHandle as well?
-  let join_handle = std::thread::spawn(move || {
+  let builder =
+    std::thread::Builder::new().name("deno-ts-compiler".to_string());
+  let join_handle = builder.spawn(move || {
     let mut worker = TsCompiler::setup_worker(global_state.clone());
-    // Send thread safe handle to newly created worker to host thread
     handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
     drop(handle_sender);
     let mut rt = create_basic_runtime();
     run_worker_loop(&mut rt, &mut worker).expect("Panic in event loop");
-  });
+  })?;
   let mut handle = handle_receiver.recv().unwrap()?;
   handle.post_message(req).await?;
   let event = handle.get_event().await.expect("Compiler didn't respond");
