@@ -139,9 +139,7 @@ test(async function printHelp(): Promise<void> {
 test(async function serveWithUnorthodoxFilename(): Promise<void> {
   await startFileServer();
   try {
-    const res = await fetch(
-      "http://localhost:4500/http/testdata/%"
-    );
+    const res = await fetch("http://localhost:4500/http/testdata/%");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 200);
