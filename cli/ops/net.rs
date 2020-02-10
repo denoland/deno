@@ -151,25 +151,20 @@ fn op_receive(
 ) -> Result<JsonOp, ErrBox> {
   let args: ReceiveArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let mut state = state.borrow_mut();
-  let resource = state
-    .resource_table
-    .get::<UdpSocketResource>(rid)
-    .ok_or_else(bad_resource)?;
-
-  let socket = match resource {
-    UdpSocketResource {
-      socket,
-      waker,
-      local_addr,
-    } => socket,
-    _ => return Err(bad_resource()),
-  };
+  let state_ = state.clone();
 
   let op = async move {
-    let mut buf = vec![0; 1024];
-    let (size, remote_addr) = socket.recv(&mut buf).await?;
     let mut state = state_.borrow_mut();
+
+    let resource = state
+      .resource_table
+      .get_mut::<UdpSocketResource>(rid)
+      .ok_or_else(bad_resource)?;
+
+    let socket = &mut resource.socket;
+    let mut buf = vec![0; 1024];
+
+    let (_size, remote_addr) = socket.recv_from(&mut buf).await?;
 
     Ok(json!({
       "payload": buf,
@@ -197,35 +192,19 @@ fn op_connect(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ConnectArgs = serde_json::from_value(args)?;
-  assert!(args.transport == "tcp" || args.transport == "udp"); // TODO Support others.
+  assert_eq!(args.transport, "tcp"); // TODO Support others.
   let state_ = state.clone();
   state.check_net(&args.hostname, args.port)?;
 
   let op = async move {
     let addr = resolve_addr(&args.hostname, args.port).await?;
+    let tcp_stream = TcpStream::connect(&addr).await?;
+    let local_addr = tcp_stream.local_addr()?;
+    let remote_addr = tcp_stream.peer_addr()?;
     let mut state = state_.borrow_mut();
-    let local_addr;
-    let remote_addr;
-    let rid;
-
-    if args.transport == "tcp" {
-      let tcp_stream = TcpStream::connect(&addr).await?;
-      local_addr = tcp_stream.local_addr()?;
-      remote_addr = tcp_stream.peer_addr()?;
-      rid = state
-        .resource_table
-        .add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
-    }
-
-    if args.transport == "udp" {
-      let udp_socket = UdpSocket::connect(&addr).await?;
-      local_addr = udp_socket.local_addr()?;
-      remote_addr = udp_socket.peer_addr()?;
-      rid = state
-        .resource_table
-        .add("udpSocket", Box::new(StreamResource::UdpSocket(udp_socket)));
-    }
-
+    let rid = state
+      .resource_table
+      .add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
     Ok(json!({
       "rid": rid,
       "localAddr": {
@@ -344,54 +323,39 @@ impl TcpListenerResource {
 #[allow(dead_code)]
 struct UdpSocketResource {
   socket: UdpSocket,
-  waker: Option<futures::task::AtomicWaker>,
   local_addr: SocketAddr,
 }
 
-impl Drop for UdpSocketResource {
-  fn drop(&mut self) {
-    self.wake_task();
-  }
+fn listen_tcp(
+  state: &State,
+  addr: SocketAddr,
+) -> Result<(u32, SocketAddr), ErrBox> {
+  let mut state = state.borrow_mut();
+  let listener = futures::executor::block_on(TcpListener::bind(&addr))?;
+  let local_addr = listener.local_addr()?;
+  let listener_resource = TcpListenerResource {
+    listener,
+    waker: None,
+    local_addr,
+  };
+  let rid = state
+    .resource_table
+    .add("tcpListener", Box::new(listener_resource));
+  return Ok((rid, local_addr));
 }
 
-impl UdpSocketResource {
-  /// Track the current task so future awaiting for connection
-  /// can be notified when listener is closed.
-  ///
-  /// Throws an error if another task is already tracked.
-  pub fn track_task(&mut self, cx: &Context) -> Result<(), ErrBox> {
-    // Currently, we only allow tracking a single accept task for a listener.
-    // This might be changed in the future with multiple workers.
-    // Caveat: TcpListener by itself also only tracks an accept task at a time.
-    // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
-    if self.waker.is_some() {
-      let e = std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "Another accept task is ongoing",
-      );
-      return Err(ErrBox::from(e));
-    }
-
-    let waker = futures::task::AtomicWaker::new();
-    waker.register(cx.waker());
-    self.waker.replace(waker);
-    Ok(())
-  }
-
-  /// Notifies a task when listener is closed so accept future can resolve.
-  pub fn wake_task(&mut self) {
-    if let Some(waker) = self.waker.as_ref() {
-      waker.wake();
-    }
-  }
-
-  /// Stop tracking a task.
-  /// Happens when the task is done and thus no further tracking is needed.
-  pub fn untrack_task(&mut self) {
-    if self.waker.is_some() {
-      self.waker.take();
-    }
-  }
+fn listen_udp(
+  state: &State,
+  addr: SocketAddr,
+) -> Result<(u32, SocketAddr), ErrBox> {
+  let mut state = state.borrow_mut();
+  let socket = futures::executor::block_on(UdpSocket::bind(&addr))?;
+  let local_addr = socket.local_addr()?;
+  let socket_resource = UdpSocketResource { socket, local_addr };
+  let rid = state
+    .resource_table
+    .add("udpSocket", Box::new(socket_resource));
+  return Ok((rid, local_addr));
 }
 
 fn op_listen(
@@ -406,35 +370,12 @@ fn op_listen(
 
   let addr =
     futures::executor::block_on(resolve_addr(&args.hostname, args.port))?;
-  let mut state = state.borrow_mut();
-  let local_addr;
-  let rid;
 
-  if args.transport == "tcp" {
-    let listener = futures::executor::block_on(TcpListener::bind(&addr))?;
-    local_addr = listener.local_addr()?;
-    let listener_resource = TcpListenerResource {
-      listener,
-      waker: None,
-      local_addr,
-    };
-    rid = state
-      .resource_table
-      .add("tcpListener", Box::new(listener_resource));
-  }
-
-  if args.transport == "udp" {
-    let socket = futures::executor::block_on(UdpSocket::bind(&addr))?;
-    local_addr = socket.local_addr()?;
-    let socket_resource = UdpSocketResource {
-      socket,
-      waker: None,
-      local_addr,
-    };
-    rid = state
-      .resource_table
-      .add("udpSocket", Box::new(socket_resource));
-  }
+  let (rid, local_addr) = if args.transport == "tcp" {
+    listen_tcp(state, addr)?
+  } else {
+    listen_udp(state, addr)?
+  };
 
   debug!(
     "New listener {} {}:{}",
