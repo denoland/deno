@@ -460,8 +460,16 @@ declare namespace Deno {
     seekSync(offset: number, whence: SeekMode): void;
     close(): void;
   }
-  /** An instance of `File` for stdin. */
-  export const stdin: File;
+  export type RestoreModeFunc = () => void;
+  /** Extended file abstraction with setRaw() */
+  export class Stdin extends File {
+    /** Set input mode to raw (non-canonical).
+     * Returns a function that when called, restores previous mode.
+     */
+    setRaw(): RestoreModeFunc;
+  }
+  /** An instance of `Stdin` for stdin. */
+  export const stdin: Stdin;
   /** An instance of `File` for stdout. */
   export const stdout: File;
   /** An instance of `File` for stderr. */
