@@ -7,7 +7,7 @@ use clap::ArgMatches;
 use clap::SubCommand;
 use log::Level;
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -35,7 +35,7 @@ const TEST_RUNNER_URL: &str = std_url!("testing/runner.ts");
 pub enum DenoSubcommand {
   Bundle {
     source_file: String,
-    out_file: Option<String>,
+    out_file: Option<PathBuf>,
   },
   Completions {
     buf: Box<[u8]>,
@@ -347,7 +347,7 @@ fn bundle_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 
   let out_file = if let Some(out_file) = matches.value_of("out_file") {
     flags.allow_write = true;
-    Some(out_file.to_string())
+    Some(PathBuf::from(out_file))
   } else {
     None
   };
@@ -1677,7 +1677,7 @@ mod tests {
       DenoFlags {
         subcommand: DenoSubcommand::Bundle {
           source_file: "source.ts".to_string(),
-          out_file: Some("bundle.js".to_string()),
+          out_file: Some(PathBuf::from("bundle.js")),
         },
         allow_write: true,
         ..DenoFlags::default()

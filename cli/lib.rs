@@ -72,6 +72,7 @@ use log::Level;
 use log::Metadata;
 use log::Record;
 use std::env;
+use std::path::PathBuf;
 
 static LOGGER: Logger = Logger;
 
@@ -331,7 +332,7 @@ async fn eval_command(flags: DenoFlags, code: String) {
 async fn bundle_command(
   flags: DenoFlags,
   source_file: String,
-  out_file: Option<String>,
+  out_file: Option<PathBuf>,
 ) {
   debug!(">>>>> bundle_async START");
   let source_file_specifier =
