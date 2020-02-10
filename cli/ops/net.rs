@@ -139,23 +139,11 @@ fn op_accept(
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
-/// Simply receives a message.
-pub fn receive(state: &State, rid: ResourceId) -> Receive {
-  Receive {
-    receive_state: AcceptState::Pending,
-    rid,
-    state,
-  }
-}
-
-// TODO: Receive future
-
 #[derive(Deserialize)]
 struct ReceiveArgs {
   rid: i32,
 }
 
-// TODO: correct this
 fn op_receive(
   state: &State,
   args: Value,
@@ -163,21 +151,29 @@ fn op_receive(
 ) -> Result<JsonOp, ErrBox> {
   let args: ReceiveArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let state_ = state.clone();
-  {
-    let state = state.borrow();
-    state
-      .resource_table
-      .get::<UdpSocketResource>(rid)
-      .ok_or_else(bad_resource)?;
-  }
+  let mut state = state.borrow_mut();
+  let resource = state
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .ok_or_else(bad_resource)?;
+
+  let socket = match resource {
+    UdpSocketResource {
+      socket,
+      waker,
+      local_addr,
+    } => socket,
+    _ => return Err(bad_resource()),
+  };
 
   let op = async move {
-    let (size, remote_addr) = receive(&state_, rid).await?;
+    let mut buf = vec![0; 1024];
+    let (size, remote_addr) = socket.recv(&mut buf).await?;
     let mut state = state_.borrow_mut();
+
     Ok(json!({
-      "payload": ,
-      "sender": {
+      "payload": buf,
+      "remoteAddr": {
         "hostname": remote_addr.ip().to_string(),
         "port": remote_addr.port(),
         "transport": "udp",
@@ -211,7 +207,7 @@ fn op_connect(
     let local_addr;
     let remote_addr;
     let rid;
-    
+
     if args.transport == "tcp" {
       let tcp_stream = TcpStream::connect(&addr).await?;
       local_addr = tcp_stream.local_addr()?;
@@ -220,7 +216,7 @@ fn op_connect(
         .resource_table
         .add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
     }
-    
+
     if args.transport == "udp" {
       let udp_socket = UdpSocket::connect(&addr).await?;
       local_addr = udp_socket.local_addr()?;
@@ -229,7 +225,7 @@ fn op_connect(
         .resource_table
         .add("udpSocket", Box::new(StreamResource::UdpSocket(udp_socket)));
     }
-    
+
     Ok(json!({
       "rid": rid,
       "localAddr": {
@@ -413,7 +409,7 @@ fn op_listen(
   let mut state = state.borrow_mut();
   let local_addr;
   let rid;
-  
+
   if args.transport == "tcp" {
     let listener = futures::executor::block_on(TcpListener::bind(&addr))?;
     local_addr = listener.local_addr()?;
@@ -426,7 +422,7 @@ fn op_listen(
       .resource_table
       .add("tcpListener", Box::new(listener_resource));
   }
-  
+
   if args.transport == "udp" {
     let socket = futures::executor::block_on(UdpSocket::bind(&addr))?;
     local_addr = socket.local_addr()?;
@@ -437,9 +433,9 @@ fn op_listen(
     };
     rid = state
       .resource_table
-      .add("udpSocket", Box::new(socket_resource)); 
+      .add("udpSocket", Box::new(socket_resource));
   }
-  
+
   debug!(
     "New listener {} {}:{}",
     rid,

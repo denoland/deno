@@ -16,22 +16,22 @@ export interface Addr {
 
 export interface Message {
   payload: Uint8Array;
-  sender: Addr; 
+  sender: Addr;
 }
 
 /** A receiver is a generic transport listener for message-oriented protocols */
 export interface Receiver extends AsyncIterator<Message> {
   /** Waits for and resolves to the next message to the `Receiver`. */
   receive(): Promise<Message>;
-  
+
   /** Close closes the receiver. Any pending message promises will be rejected
    * with errors.
    */
   close(): void;
-  
+
   /** Return the address of the `Received`. */
   addr: Addr;
-  
+
   [Symbol.asyncIterator](): AsyncIterator<Message>;
 }
 
@@ -150,17 +150,17 @@ export class ReceiverImpl implements Receiver {
     public addr: Addr,
     private closing: boolean = false
   ) {}
-  
+
   async accept(): Promise<Message> {
     const res = await sendAsync(dispatch.OP_RECEIVE, { rid: this.rid });
     return { payload: res.payload, sender: res.sender };
   }
-  
+
   close(): void {
     this.closing = true;
     close(this.rid);
   }
-  
+
   async next(): Promise<IteratorResult<Message>> {
     if (this.closing) {
       return { value: undefined, done: true };
@@ -177,7 +177,7 @@ export class ReceiverImpl implements Receiver {
         throw e;
       });
   }
-  
+
   [Symbol.asyncIterator](): AsyncIterator<Conn> {
     return this;
   }
@@ -232,15 +232,15 @@ export function listen(options: ListenOptions): Listener | Receiver {
     port: options.port,
     transport
   });
-  
-  if(transport === "tcp") {
+
+  if (transport === "tcp") {
     return new ListenerImpl(res.rid, res.localAddr);
   }
-  
-  if(transport === "udp") {
-    return new ReceiverImpl(res.id, res.localAddr); 
+
+  if (transport === "udp") {
+    return new ReceiverImpl(res.id, res.localAddr);
   }
-  
+
   return null;
 }
 
