@@ -83,12 +83,15 @@ test(async function serveFallback(): Promise<void> {
   }
 });
 
-test(async function serveFallback(): Promise<void> {
+test(async function serveWithUnorthodoxFilename(): Promise<void> {
   await startFileServer();
   try {
-    const res = await fetch(
-      "http://localhost:4500/http/testdata/test%20file.txt"
-    );
+    let res = await fetch("http://localhost:4500/http/testdata/%");
+    assert(res.headers.has("access-control-allow-origin"));
+    assert(res.headers.has("access-control-allow-headers"));
+    assertEquals(res.status, 200);
+
+    res = await fetch("http://localhost:4500/http/testdata/test%20file.txt");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 200);
@@ -134,18 +137,6 @@ test(async function printHelp(): Promise<void> {
   assert(s !== Deno.EOF && s.includes("Deno File Server"));
   helpProcess.close();
   helpProcess.stdout.close();
-});
-
-test(async function serveWithUnorthodoxFilename(): Promise<void> {
-  await startFileServer();
-  try {
-    const res = await fetch("http://localhost:4500/http/testdata/%");
-    assert(res.headers.has("access-control-allow-origin"));
-    assert(res.headers.has("access-control-allow-headers"));
-    assertEquals(res.status, 200);
-  } finally {
-    killFileServer();
-  }
 });
 
 runIfMain(import.meta);
