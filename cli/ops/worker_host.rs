@@ -12,6 +12,7 @@ use crate::startup_data;
 use crate::state::State;
 use crate::tokio_util::create_basic_runtime;
 use crate::web_worker::WebWorker;
+use crate::worker::Worker;
 use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
 use deno_core::*;
@@ -58,6 +59,65 @@ fn create_web_worker(
   worker.execute(&script)?;
 
   Ok(worker)
+}
+
+pub fn run_worker_loop(
+  rt: &mut tokio::runtime::Runtime,
+  worker: &mut Worker,
+) -> Result<(), ErrBox> {
+  let mut worker_is_ready = false;
+
+  let fut = poll_fn(|cx| -> Poll<Result<(), ErrBox>> {
+    if !worker_is_ready {
+      match worker.poll_unpin(cx) {
+        Poll::Ready(r) => {
+          let event = match r {
+            Ok(()) => WorkerEvent::Idle,
+            Err(e) => WorkerEvent::Error(e),
+          };
+          worker_is_ready = true;
+          let mut sender = worker.internal_channels.sender.clone();
+          futures::executor::block_on(sender.send(event))
+            .expect("Failed to post message to host");
+        }
+        Poll::Pending => {}
+      }
+    }
+
+    let maybe_msg = {
+      match worker.internal_channels.receiver.poll_next_unpin(cx) {
+        Poll::Ready(r) => match r {
+          Some(msg) => {
+            let msg_str = String::from_utf8(msg.to_vec()).unwrap();
+            eprintln!("message received {}", msg_str);
+            Some(msg_str)
+          }
+          None => {
+            eprintln!("none message received");
+            todo!();
+          }
+        },
+        Poll::Pending => None,
+      }
+    };
+
+    if let Some(msg) = maybe_msg {
+      // TODO: just add second value and then bind using rusty_v8
+      // to get structured clone/transfer working
+      let script = format!("workerMessageRecvCallback({})", msg);
+      eprintln!("script: {}", &script);
+      worker
+        .execute(&script)
+        .expect("Failed to execute message cb");
+      // Let worker be polled again
+      worker_is_ready = false;
+      worker.waker.wake();
+    }
+
+    Poll::Pending
+  });
+
+  rt.block_on(fut)
 }
 
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
@@ -129,62 +189,7 @@ fn run_worker_thread(
       return;
     }
 
-    // TODO: when worker polled and returns ready then send Worker::Idle message
-    // then host will be able to suspend us or whatever - use thread.park()
-    let mut rt = create_basic_runtime();
-    let mut worker_is_ready = false;
-    // Drive worker event loop
-    let fut = poll_fn(|cx| -> Poll<Result<(), ErrBox>> {
-      if !worker_is_ready {
-        match worker.poll_unpin(cx) {
-          Poll::Ready(r) => {
-            let event = match r {
-              Ok(()) => WorkerEvent::Idle,
-              Err(e) => WorkerEvent::Error(e),
-            };
-            worker_is_ready = true;
-            let mut sender = worker.internal_channels.sender.clone();
-            futures::executor::block_on(sender.send(event))
-              .expect("Failed to post message to host");
-          }
-          Poll::Pending => {}
-        }
-      }
-
-      let maybe_msg = {
-        match worker.internal_channels.receiver.poll_next_unpin(cx) {
-          Poll::Ready(r) => match r {
-            Some(msg) => {
-              let msg_str = String::from_utf8(msg.to_vec()).unwrap();
-              eprintln!("message received {}", msg_str);
-              Some(msg_str)
-            }
-            None => {
-              eprintln!("none message received");
-              todo!();
-            }
-          },
-          Poll::Pending => None,
-        }
-      };
-
-      if let Some(msg) = maybe_msg {
-        // TODO: just add second value and then bind using rusty_v8
-        // to get structured clone/transfer working
-        let script = format!("workerMessageRecvCallback({})", msg);
-        eprintln!("script: {}", &script);
-        worker
-          .execute(&script)
-          .expect("Failed to execute message cb");
-        // Let worker be polled again
-        worker_is_ready = false;
-        worker.waker.wake();
-      }
-
-      Poll::Pending
-    });
-
-    rt.block_on(fut).expect("Panic in event loop");
+    run_worker_loop(&mut rt, &mut worker).expect("Panic in event loop");
   });
 
   handle_receiver.recv().unwrap()

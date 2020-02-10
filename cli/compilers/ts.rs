@@ -6,9 +6,9 @@ use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
-use crate::futures::SinkExt;
 use crate::global_state::GlobalState;
 use crate::msg;
+use crate::ops::worker_host::run_worker_loop;
 use crate::ops::JsonResult;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
@@ -20,9 +20,7 @@ use crate::worker::WorkerHandle;
 use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use futures::future::poll_fn;
 use futures::future::FutureExt;
-use futures::stream::StreamExt;
 use regex::Regex;
 use serde_json::json;
 use std::collections::HashMap;
@@ -37,7 +35,6 @@ use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::task::Poll;
 use url::Url;
 
 lazy_static! {
@@ -634,7 +631,7 @@ async fn execute_in_thread(
   global_state: GlobalState,
   req: Buf,
 ) -> Result<Option<Buf>, ErrBox> {
-  let handle = run_worker_thread(global_state.clone())?;
+  let handle = run_compiler_worker_thread(global_state.clone())?;
 
   handle.post_message(req).await?;
   let mut buf = None;
@@ -654,8 +651,7 @@ async fn execute_in_thread(
   Ok(buf)
 }
 
-// TODO: copy-paste from worker_host.rs
-fn run_worker_thread(
+fn run_compiler_worker_thread(
   global_state: GlobalState,
 ) -> Result<WorkerHandle, ErrBox> {
   let (handle_sender, handle_receiver) =
@@ -681,59 +677,7 @@ fn run_worker_thread(
     // - start driving worker's event loop
 
     let mut rt = create_basic_runtime();
-    let mut worker_is_ready = false;
-    // Drive worker event loop
-    let fut = poll_fn(|cx| -> Poll<Result<(), ErrBox>> {
-      if !worker_is_ready {
-        match worker.poll_unpin(cx) {
-          Poll::Ready(r) => {
-            let event = match r {
-              Ok(()) => WorkerEvent::Idle,
-              Err(e) => WorkerEvent::Error(e),
-            };
-            worker_is_ready = true;
-            let mut sender = worker.internal_channels.sender.clone();
-            futures::executor::block_on(sender.send(event))
-              .expect("Failed to post message to host");
-          }
-          Poll::Pending => {}
-        }
-      }
-
-      let maybe_msg = {
-        match worker.internal_channels.receiver.poll_next_unpin(cx) {
-          Poll::Ready(r) => match r {
-            Some(msg) => {
-              let msg_str = String::from_utf8(msg.to_vec()).unwrap();
-              eprintln!("message received {}", msg_str);
-              Some(msg_str)
-            }
-            None => {
-              eprintln!("none message received");
-              todo!();
-            }
-          },
-          Poll::Pending => None,
-        }
-      };
-
-      if let Some(msg) = maybe_msg {
-        // TODO: just add second value and then bind using rusty_v8
-        // to get structured clone/transfer working
-        let script = format!("workerMessageRecvCallback({})", msg);
-        eprintln!("script: {}", &script);
-        worker
-          .execute(&script)
-          .expect("Failed to execute message cb");
-        // Let worker be polled again
-        worker_is_ready = false;
-        worker.waker.wake();
-      }
-
-      Poll::Pending
-    });
-
-    rt.block_on(fut).expect("Panic in event loop");
+    run_worker_loop(&mut rt, &mut worker).expect("Panic in event loop");
   });
 
   handle_receiver.recv().unwrap()
