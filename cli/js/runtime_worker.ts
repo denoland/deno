@@ -85,7 +85,7 @@ export const workerRuntimeGlobalProperties = {
   // TODO: should be readonly?
   close: nonEnumerable(close),
   postMessage: writable(postMessage),
-  workerMessageRecvCallback: nonEnumerable(workerMessageRecvCallback),
+  workerMessageRecvCallback: nonEnumerable(workerMessageRecvCallback)
 };
 
 /**

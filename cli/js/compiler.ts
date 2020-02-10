@@ -40,9 +40,7 @@ import { Diagnostic } from "./diagnostics.ts";
 import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
-import {
-  bootstrapWorkerRuntime,
-} from "./runtime_worker.ts";
+import { bootstrapWorkerRuntime } from "./runtime_worker.ts";
 
 interface CompilerRequestCompile {
   type: CompilerRequestType.Compile;

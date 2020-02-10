@@ -48,9 +48,9 @@ function hostPostMessage(id: number, data: any): void {
 }
 
 interface WorkerEvent {
-  event: "error" | "msg" | "close",
-  data?: any,
-  error?: any,
+  event: "error" | "msg" | "close";
+  data?: any;
+  error?: any;
 }
 
 async function hostGetMessage(id: number): Promise<any> {
@@ -162,21 +162,21 @@ export class WorkerImpl extends EventTarget implements Worker {
           this.onmessage({ data: message });
         }
         continue;
-      } 
-      
+      }
+
       if (type === "error") {
         if (!this.handleError(event.error)) {
           throw Error(event.error.message);
         }
         continue;
-      } 
-      
+      }
+
       if (type === "close") {
         log(`Host got "close" message from worker: ${this.name}`);
         this.terminated = true;
         return;
       }
-      
+
       throw new Error(`Unknown worker event: "${type}"`);
     }
   }

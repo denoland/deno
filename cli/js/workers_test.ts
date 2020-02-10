@@ -55,7 +55,7 @@ test(async function nestedWorker(): Promise<void> {
 
   const nestedWorker = new Worker("../tests/subdir/nested_worker.js", {
     type: "module",
-    name: "nested",
+    name: "nested"
   });
 
   nestedWorker.onmessage = (e): void => {

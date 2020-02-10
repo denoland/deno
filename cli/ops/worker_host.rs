@@ -189,7 +189,7 @@ fn run_worker_thread(
     }
 
     // TODO(bartlomieju): this thread should return result of event loop
-    // that means that we should store JoinHandle to thread to ensure 
+    // that means that we should store JoinHandle to thread to ensure
     // that it actually terminates.
     run_worker_loop(&mut rt, &mut worker).expect("Panic in event loop");
   });
@@ -266,9 +266,7 @@ fn op_host_terminate_worker(
   Ok(JsonOp::Sync(json!({})))
 }
 
-fn serialize_worker_event(
-  event: WorkerEvent,
-) -> Value {
+fn serialize_worker_event(event: WorkerEvent) -> Value {
   match event {
     WorkerEvent::Message(buf) => json!({ "type": "msg", "data": buf }),
     WorkerEvent::Error(error) => match error.kind() {
@@ -315,7 +313,8 @@ fn op_host_get_message(
       Some(event) => serialize_worker_event(event),
       None => {
         let mut state_ = state_.borrow_mut();
-        let mut handle = state_.workers.remove(&id).expect("No worker handle found");
+        let mut handle =
+          state_.workers.remove(&id).expect("No worker handle found");
         handle.sender.close_channel();
         // TODO(bartlomieju): join thread handle here
         json!({ "type": "close" })
