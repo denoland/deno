@@ -107,7 +107,7 @@ pub struct DenoFlags {
   pub lock_write: bool,
 }
 
-fn join_paths(whitelist: &Vec<PathBuf>, d: &str) -> String {
+fn join_paths(whitelist: &[PathBuf], d: &str) -> String {
   whitelist
     .iter()
     .map(|path| path.to_str().unwrap().to_string())
@@ -437,7 +437,7 @@ fn lock_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   }
 }
 
-fn resolve_fs_whitelist(whitelist: &Vec<PathBuf>) -> Vec<PathBuf> {
+fn resolve_fs_whitelist(whitelist: &[PathBuf]) -> Vec<PathBuf> {
   whitelist
     .iter()
     .map(|raw_path| resolve_from_cwd(Path::new(&raw_path)).unwrap())
