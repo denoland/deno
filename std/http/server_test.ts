@@ -6,14 +6,23 @@
 // https://github.com/golang/go/blob/master/src/net/http/responsewrite_test.go
 
 const { Buffer } = Deno;
+import { TextProtoReader } from "../textproto/mod.ts";
 import { test, runIfMain } from "../testing/mod.ts";
-import { assert, assertEquals, assertNotEquals } from "../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertNotEquals,
+  assertThrowsAsync,
+  AssertionError
+} from "../testing/asserts.ts";
 import {
   Response,
   ServerRequest,
   writeResponse,
+  serve,
   readRequest,
-  parseHTTPVersion
+  parseHTTPVersion,
+  writeTrailers
 } from "./server.ts";
 import {
   BufReader,
@@ -21,6 +30,7 @@ import {
   ReadLineResult,
   UnexpectedEOFError
 } from "../io/bufio.ts";
+import { delay, deferred } from "../util/async.ts";
 import { StringReader } from "../io/readers.ts";
 
 function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
@@ -423,6 +433,35 @@ test(async function writeStringReaderResponse(): Promise<void> {
   assertEquals(r.more, false);
 });
 
+test("writeResponse with trailer", async () => {
+  const w = new Buffer();
+  const body = new StringReader("Hello");
+  await writeResponse(w, {
+    status: 200,
+    headers: new Headers({
+      "transfer-encoding": "chunked",
+      trailer: "deno,node"
+    }),
+    body,
+    trailers: () => new Headers({ deno: "land", node: "js" })
+  });
+  const ret = w.toString();
+  const exp = [
+    "HTTP/1.1 200 OK",
+    "transfer-encoding: chunked",
+    "trailer: deno,node",
+    "",
+    "5",
+    "Hello",
+    "0",
+    "",
+    "deno: land",
+    "node: js",
+    ""
+  ].join("\r\n");
+  assertEquals(ret, exp);
+});
+
 test(async function readRequestError(): Promise<void> {
   const input = `GET / HTTP/1.1
 malformedHeader
@@ -564,7 +603,6 @@ test({
   }
 });
 
-/* TODO(bartlomieju): after removing std/installer/ it hangs, fix and reenable
 test({
   name: "[http] destroyed connection",
   async fn(): Promise<void> {
@@ -603,9 +641,7 @@ test({
     }
   }
 });
-*/
 
-/* TODO(bartlomieju): after removing std/installer/ it hangs, fix and reenable
 test({
   name: "[http] serveTLS",
   async fn(): Promise<void> {
@@ -654,9 +690,7 @@ test({
     }
   }
 });
-*/
 
-/* TODO(bartlomieju): after removing std/installer/ it hangs, fix and reenable
 test({
   name: "[http] close server while iterating",
   async fn(): Promise<void> {
@@ -669,7 +703,6 @@ test({
     assertEquals(await nextAfterClosing, { value: undefined, done: true });
   }
 });
-*/
 
 // TODO(kevinkassimo): create a test that works on Windows.
 // The following test is to ensure that if an error occurs during respond
@@ -678,7 +711,6 @@ test({
 // receive a RST and thus trigger an error during response for us to test.
 // We need to find a way to similarly trigger an error on Windows so that
 // we can test if connection is closed.
-/* TODO(bartlomieju): after removing std/installer/ it hangs, fix and reenable
 if (Deno.build.os !== "win") {
   test({
     name: "[http] respond error handling",
@@ -736,5 +768,57 @@ if (Deno.build.os !== "win") {
     }
   });
 }
-*/
+
+test("writeTrailer", async () => {
+  const w = new Buffer();
+  await writeTrailers(
+    w,
+    new Headers({ "transfer-encoding": "chunked", trailer: "deno,node" }),
+    new Headers({ deno: "land", node: "js" })
+  );
+  assertEquals(w.toString(), "deno: land\r\nnode: js\r\n");
+});
+
+test("writeTrailer should throw", async () => {
+  const w = new Buffer();
+  await assertThrowsAsync(
+    () => {
+      return writeTrailers(w, new Headers(), new Headers());
+    },
+    Error,
+    'must have "trailer"'
+  );
+  await assertThrowsAsync(
+    () => {
+      return writeTrailers(w, new Headers({ trailer: "deno" }), new Headers());
+    },
+    Error,
+    "only allowed"
+  );
+  for (const f of ["content-length", "trailer", "transfer-encoding"]) {
+    await assertThrowsAsync(
+      () => {
+        return writeTrailers(
+          w,
+          new Headers({ "transfer-encoding": "chunked", trailer: f }),
+          new Headers({ [f]: "1" })
+        );
+      },
+      AssertionError,
+      "prohibited"
+    );
+  }
+  await assertThrowsAsync(
+    () => {
+      return writeTrailers(
+        w,
+        new Headers({ "transfer-encoding": "chunked", trailer: "deno" }),
+        new Headers({ node: "js" })
+      );
+    },
+    AssertionError,
+    "Not trailer"
+  );
+});
+
 runIfMain(import.meta);

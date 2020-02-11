@@ -2,6 +2,7 @@
 import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { isSubdir, getFileInfoType } from "./utils.ts";
+import { assert } from "../testing/asserts.ts";
 
 export interface CopyOptions {
   /**
@@ -22,8 +23,8 @@ async function ensureValidCopy(
   dest: string,
   options: CopyOptions,
   isCopyFolder = false
-): Promise<Deno.FileInfo> {
-  let destStat: Deno.FileInfo | null;
+): Promise<Deno.FileInfo | undefined> {
+  let destStat: Deno.FileInfo;
 
   try {
     destStat = await Deno.lstat(dest);
@@ -31,6 +32,7 @@ async function ensureValidCopy(
     if (err instanceof Deno.DenoError && err.kind == Deno.ErrorKind.NotFound) {
       return;
     }
+    throw err;
   }
 
   if (isCopyFolder && !destStat.isDirectory()) {
@@ -42,7 +44,7 @@ async function ensureValidCopy(
     throw new Error(`'${dest}' already exists.`);
   }
 
-  return destStat!;
+  return destStat;
 }
 
 function ensureValidCopySync(
@@ -50,18 +52,18 @@ function ensureValidCopySync(
   dest: string,
   options: CopyOptions,
   isCopyFolder = false
-): Deno.FileInfo {
-  let destStat: Deno.FileInfo | null;
-
+): Deno.FileInfo | undefined {
+  let destStat: Deno.FileInfo;
   try {
     destStat = Deno.lstatSync(dest);
   } catch (err) {
     if (err instanceof Deno.DenoError && err.kind == Deno.ErrorKind.NotFound) {
       return;
     }
+    throw err;
   }
 
-  if (isCopyFolder && !destStat!.isDirectory()) {
+  if (isCopyFolder && !destStat.isDirectory()) {
     throw new Error(
       `Cannot overwrite non-directory '${dest}' with directory '${src}'.`
     );
@@ -70,7 +72,7 @@ function ensureValidCopySync(
     throw new Error(`'${dest}' already exists.`);
   }
 
-  return destStat!;
+  return destStat;
 }
 
 /* copy file to dest */
@@ -83,7 +85,7 @@ async function copyFile(
   await Deno.copyFile(src, dest);
   if (options.preserveTimestamps) {
     const statInfo = await Deno.stat(src);
-    await Deno.utime(dest, statInfo.accessed!, statInfo.modified!);
+    await Deno.utime(dest, statInfo.accessed, statInfo.modified);
   }
 }
 /* copy file to dest synchronously */
@@ -92,7 +94,9 @@ function copyFileSync(src: string, dest: string, options: CopyOptions): void {
   Deno.copyFileSync(src, dest);
   if (options.preserveTimestamps) {
     const statInfo = Deno.statSync(src);
-    Deno.utimeSync(dest, statInfo.accessed!, statInfo.modified!);
+    assert(statInfo.accessed != null, `statInfo.accessed is unavailable`);
+    assert(statInfo.modified != null, `statInfo.modified is unavailable`);
+    Deno.utimeSync(dest, statInfo.accessed, statInfo.modified);
   }
 }
 
@@ -108,7 +112,9 @@ async function copySymLink(
   await Deno.symlink(originSrcFilePath, dest, type);
   if (options.preserveTimestamps) {
     const statInfo = await Deno.lstat(src);
-    await Deno.utime(dest, statInfo.accessed!, statInfo.modified!);
+    assert(statInfo.accessed != null, `statInfo.accessed is unavailable`);
+    assert(statInfo.modified != null, `statInfo.modified is unavailable`);
+    await Deno.utime(dest, statInfo.accessed, statInfo.modified);
   }
 }
 
@@ -124,7 +130,9 @@ function copySymlinkSync(
   Deno.symlinkSync(originSrcFilePath, dest, type);
   if (options.preserveTimestamps) {
     const statInfo = Deno.lstatSync(src);
-    Deno.utimeSync(dest, statInfo.accessed!, statInfo.modified!);
+    assert(statInfo.accessed != null, `statInfo.accessed is unavailable`);
+    assert(statInfo.modified != null, `statInfo.modified is unavailable`);
+    Deno.utimeSync(dest, statInfo.accessed, statInfo.modified);
   }
 }
 
@@ -142,13 +150,16 @@ async function copyDir(
 
   if (options.preserveTimestamps) {
     const srcStatInfo = await Deno.stat(src);
-    await Deno.utime(dest, srcStatInfo.accessed!, srcStatInfo.modified!);
+    assert(srcStatInfo.accessed != null, `statInfo.accessed is unavailable`);
+    assert(srcStatInfo.modified != null, `statInfo.modified is unavailable`);
+    await Deno.utime(dest, srcStatInfo.accessed, srcStatInfo.modified);
   }
 
   const files = await Deno.readDir(src);
 
   for (const file of files) {
-    const srcPath = path.join(src, file.name!);
+    assert(file.name != null, "file.name must be set");
+    const srcPath = path.join(src, file.name);
     const destPath = path.join(dest, path.basename(srcPath as string));
     if (file.isDirectory()) {
       await copyDir(srcPath, destPath, options);
@@ -162,7 +173,7 @@ async function copyDir(
 
 /* copy folder from src to dest synchronously */
 function copyDirSync(src: string, dest: string, options: CopyOptions): void {
-  const destStat: Deno.FileInfo = ensureValidCopySync(src, dest, options, true);
+  const destStat = ensureValidCopySync(src, dest, options, true);
 
   if (!destStat) {
     ensureDirSync(dest);
@@ -170,13 +181,16 @@ function copyDirSync(src: string, dest: string, options: CopyOptions): void {
 
   if (options.preserveTimestamps) {
     const srcStatInfo = Deno.statSync(src);
-    Deno.utimeSync(dest, srcStatInfo.accessed!, srcStatInfo.modified!);
+    assert(srcStatInfo.accessed != null, `statInfo.accessed is unavailable`);
+    assert(srcStatInfo.modified != null, `statInfo.modified is unavailable`);
+    Deno.utimeSync(dest, srcStatInfo.accessed, srcStatInfo.modified);
   }
 
   const files = Deno.readDirSync(src);
 
   for (const file of files) {
-    const srcPath = path.join(src, file.name!);
+    assert(file.name != null, "file.name must be set");
+    const srcPath = path.join(src, file.name);
     const destPath = path.join(dest, path.basename(srcPath as string));
     if (file.isDirectory()) {
       copyDirSync(srcPath, destPath, options);

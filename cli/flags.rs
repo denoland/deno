@@ -7,7 +7,7 @@ use clap::ArgMatches;
 use clap::SubCommand;
 use log::Level;
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -26,7 +26,7 @@ macro_rules! sset {
 pub enum DenoSubcommand {
   Bundle {
     source_file: String,
-    out_file: Option<String>,
+    out_file: Option<PathBuf>,
   },
   Completions {
     buf: Box<[u8]>,
@@ -39,14 +39,14 @@ pub enum DenoSubcommand {
   },
   Format {
     check: bool,
-    files: Option<Vec<String>>,
+    files: Option<Vec<PathBuf>>,
   },
   Help,
   Info {
     file: Option<String>,
   },
   Install {
-    dir: Option<String>,
+    dir: Option<PathBuf>,
     exe_name: String,
     module_url: String,
     args: Vec<String>,
@@ -83,10 +83,10 @@ pub struct DenoFlags {
   pub config_path: Option<String>,
   pub import_map_path: Option<String>,
   pub allow_read: bool,
-  pub read_whitelist: Vec<String>,
+  pub read_whitelist: Vec<PathBuf>,
   pub cache_blacklist: Vec<String>,
   pub allow_write: bool,
-  pub write_whitelist: Vec<String>,
+  pub write_whitelist: Vec<PathBuf>,
   pub allow_net: bool,
   pub net_whitelist: Vec<String>,
   pub allow_env: bool,
@@ -103,6 +103,14 @@ pub struct DenoFlags {
   pub lock_write: bool,
 }
 
+fn join_paths(whitelist: &[PathBuf], d: &str) -> String {
+  whitelist
+    .iter()
+    .map(|path| path.to_str().unwrap().to_string())
+    .collect::<Vec<String>>()
+    .join(d)
+}
+
 impl DenoFlags {
   /// Return list of permission arguments that are equivalent
   /// to the ones used to create `self`.
@@ -110,7 +118,7 @@ impl DenoFlags {
     let mut args = vec![];
 
     if !self.read_whitelist.is_empty() {
-      let s = format!("--allow-read={}", self.read_whitelist.join(","));
+      let s = format!("--allow-read={}", join_paths(&self.read_whitelist, ","));
       args.push(s);
     }
 
@@ -119,7 +127,8 @@ impl DenoFlags {
     }
 
     if !self.write_whitelist.is_empty() {
-      let s = format!("--allow-write={}", self.write_whitelist.join(","));
+      let s =
+        format!("--allow-write={}", join_paths(&self.write_whitelist, ","));
       args.push(s);
     }
 
@@ -293,7 +302,7 @@ fn types_parse(flags: &mut DenoFlags, _matches: &clap::ArgMatches) {
 fn fmt_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   let maybe_files = match matches.values_of("files") {
     Some(f) => {
-      let files: Vec<String> = f.map(String::from).collect();
+      let files: Vec<PathBuf> = f.map(PathBuf::from).collect();
       Some(files)
     }
     None => None,
@@ -312,7 +321,7 @@ fn install_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 
   let dir = if matches.is_present("dir") {
     let install_dir = matches.value_of("dir").unwrap();
-    Some(install_dir.to_string())
+    Some(PathBuf::from(install_dir))
   } else {
     None
   };
@@ -343,7 +352,7 @@ fn bundle_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 
   let out_file = if let Some(out_file) = matches.value_of("out_file") {
     flags.allow_write = true;
-    Some(out_file.to_string())
+    Some(PathBuf::from(out_file))
   } else {
     None
   };
@@ -424,16 +433,10 @@ fn lock_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   }
 }
 
-fn resolve_fs_whitelist(whitelist: &[String]) -> Vec<String> {
+fn resolve_fs_whitelist(whitelist: &[PathBuf]) -> Vec<PathBuf> {
   whitelist
     .iter()
-    .map(|raw_path| {
-      resolve_from_cwd(Path::new(&raw_path))
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_owned()
-    })
+    .map(|raw_path| resolve_from_cwd(Path::new(&raw_path)).unwrap())
     .collect()
 }
 
@@ -543,7 +546,10 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
 
   deno fmt myfile1.ts myfile2.ts
 
-  deno fmt --check",
+  deno fmt --check
+
+  # Format stdin and write to stdout
+  cat file.ts | deno fmt -",
     )
     .arg(
       Arg::with_name("check")
@@ -981,8 +987,8 @@ fn permission_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   if matches.is_present("allow-read") {
     if matches.value_of("allow-read").is_some() {
       let read_wl = matches.values_of("allow-read").unwrap();
-      let raw_read_whitelist: Vec<String> =
-        read_wl.map(std::string::ToString::to_string).collect();
+      let raw_read_whitelist: Vec<PathBuf> =
+        read_wl.map(PathBuf::from).collect();
       flags.read_whitelist = resolve_fs_whitelist(&raw_read_whitelist);
       debug!("read whitelist: {:#?}", &flags.read_whitelist);
     } else {
@@ -992,10 +998,9 @@ fn permission_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   if matches.is_present("allow-write") {
     if matches.value_of("allow-write").is_some() {
       let write_wl = matches.values_of("allow-write").unwrap();
-      let raw_write_whitelist: Vec<String> =
-        write_wl.map(std::string::ToString::to_string).collect();
-      flags.write_whitelist =
-        resolve_fs_whitelist(raw_write_whitelist.as_slice());
+      let raw_write_whitelist: Vec<PathBuf> =
+        write_wl.map(PathBuf::from).collect();
+      flags.write_whitelist = resolve_fs_whitelist(&raw_write_whitelist);
       debug!("write whitelist: {:#?}", &flags.write_whitelist);
     } else {
       flags.allow_write = true;
@@ -1359,7 +1364,10 @@ mod tests {
       DenoFlags {
         subcommand: DenoSubcommand::Format {
           check: false,
-          files: Some(svec!["script_1.ts", "script_2.ts"])
+          files: Some(vec![
+            PathBuf::from("script_1.ts"),
+            PathBuf::from("script_2.ts")
+          ])
         },
         ..DenoFlags::default()
       }
@@ -1371,6 +1379,18 @@ mod tests {
       DenoFlags {
         subcommand: DenoSubcommand::Format {
           check: true,
+          files: None
+        },
+        ..DenoFlags::default()
+      }
+    );
+
+    let r = flags_from_vec_safe(svec!["deno", "fmt"]);
+    assert_eq!(
+      r.unwrap(),
+      DenoFlags {
+        subcommand: DenoSubcommand::Format {
+          check: false,
           files: None
         },
         ..DenoFlags::default()
@@ -1515,23 +1535,19 @@ mod tests {
   #[test]
   fn allow_read_whitelist() {
     use tempfile::TempDir;
-    let temp_dir = TempDir::new().expect("tempdir fail");
-    let temp_dir_path = temp_dir.path().to_str().unwrap();
+    let temp_dir = TempDir::new().expect("tempdir fail").path().to_path_buf();
 
     let r = flags_from_vec_safe(svec![
       "deno",
       "run",
-      format!("--allow-read=.,{}", &temp_dir_path),
+      format!("--allow-read=.,{}", temp_dir.to_str().unwrap()),
       "script.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       DenoFlags {
         allow_read: false,
-        read_whitelist: svec![
-          current_dir().unwrap().to_str().unwrap().to_owned(),
-          &temp_dir_path
-        ],
+        read_whitelist: vec![current_dir().unwrap(), temp_dir],
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
@@ -1543,23 +1559,19 @@ mod tests {
   #[test]
   fn allow_write_whitelist() {
     use tempfile::TempDir;
-    let temp_dir = TempDir::new().expect("tempdir fail");
-    let temp_dir_path = temp_dir.path().to_str().unwrap();
+    let temp_dir = TempDir::new().expect("tempdir fail").path().to_path_buf();
 
     let r = flags_from_vec_safe(svec![
       "deno",
       "run",
-      format!("--allow-write=.,{}", &temp_dir_path),
+      format!("--allow-write=.,{}", temp_dir.to_str().unwrap()),
       "script.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       DenoFlags {
         allow_write: false,
-        write_whitelist: svec![
-          current_dir().unwrap().to_str().unwrap().to_owned(),
-          &temp_dir_path
-        ],
+        write_whitelist: vec![current_dir().unwrap(), temp_dir],
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
@@ -1648,7 +1660,7 @@ mod tests {
       DenoFlags {
         subcommand: DenoSubcommand::Bundle {
           source_file: "source.ts".to_string(),
-          out_file: Some("bundle.js".to_string()),
+          out_file: Some(PathBuf::from("bundle.js")),
         },
         allow_write: true,
         ..DenoFlags::default()
@@ -1839,7 +1851,7 @@ mod tests {
       r.unwrap(),
       DenoFlags {
         subcommand: DenoSubcommand::Install {
-          dir: Some("/usr/local/bin".to_string()),
+          dir: Some(PathBuf::from("/usr/local/bin")),
           exe_name: "file_server".to_string(),
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
           args: svec!["arg1", "arg2"],

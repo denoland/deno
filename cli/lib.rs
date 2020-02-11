@@ -62,7 +62,7 @@ use crate::deno_error::js_check;
 use crate::deno_error::{print_err_and_exit, print_msg_and_exit};
 use crate::global_state::GlobalState;
 use crate::ops::io::get_stdio;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
 use deno_core::ErrBox;
@@ -73,6 +73,7 @@ use log::Level;
 use log::Metadata;
 use log::Record;
 use std::env;
+use std::path::PathBuf;
 
 static LOGGER: Logger = Logger;
 
@@ -108,17 +109,17 @@ fn create_main_worker(
   global_state: GlobalState,
   main_module: ModuleSpecifier,
 ) -> MainWorker {
-  let state = ThreadSafeState::new(global_state, None, main_module)
+  let state = State::new(global_state, None, main_module)
     .map_err(deno_error::print_err_and_exit)
     .unwrap();
 
   let state_ = state.clone();
   {
-    let mut resource_table = state_.lock_resource_table();
+    let mut state = state_.borrow_mut();
     let (stdin, stdout, stderr) = get_stdio();
-    resource_table.add("stdin", Box::new(stdin));
-    resource_table.add("stdout", Box::new(stdout));
-    resource_table.add("stderr", Box::new(stderr));
+    state.resource_table.add("stdin", Box::new(stdin));
+    state.resource_table.add("stdout", Box::new(stdout));
+    state.resource_table.add("stderr", Box::new(stderr));
   }
 
   MainWorker::new("main".to_string(), startup_data::deno_isolate_init(), state)
@@ -158,7 +159,7 @@ async fn print_file_info(
   worker: &MainWorker,
   module_specifier: ModuleSpecifier,
 ) {
-  let global_state = worker.state.global_state.clone();
+  let global_state = worker.state.borrow().global_state.clone();
 
   let maybe_source_file = global_state
     .file_fetcher
@@ -259,7 +260,7 @@ async fn info_command(flags: DenoFlags, file: Option<String>) {
 
 async fn install_command(
   flags: DenoFlags,
-  dir: Option<String>,
+  dir: Option<PathBuf>,
   exe_name: String,
   module_url: String,
   args: Vec<String>,
@@ -332,7 +333,7 @@ async fn eval_command(flags: DenoFlags, code: String) {
 async fn bundle_command(
   flags: DenoFlags,
   source_file: String,
-  out_file: Option<String>,
+  out_file: Option<PathBuf>,
 ) {
   debug!(">>>>> bundle_async START");
   let source_file_specifier =
@@ -405,8 +406,10 @@ async fn run_script(flags: DenoFlags, script: String) {
   js_check(worker.execute("window.dispatchEvent(new Event('unload'))"));
 }
 
-async fn fmt_command(files: Option<Vec<String>>, check: bool) {
-  fmt::format_files(files, check);
+async fn fmt_command(files: Option<Vec<PathBuf>>, check: bool) {
+  if let Err(err) = fmt::format_files(files, check) {
+    print_err_and_exit(err);
+  }
 }
 
 async fn test_command(

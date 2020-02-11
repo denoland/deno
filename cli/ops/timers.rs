@@ -1,14 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::*;
 use futures::future::FutureExt;
 use std;
 use std::time::Duration;
 use std::time::Instant;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "global_timer_stop",
     s.core_op(json_op(s.stateful_op(op_global_timer_stop))),
@@ -21,13 +21,12 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 }
 
 fn op_global_timer_stop(
-  state: &ThreadSafeState,
+  state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let state = state;
-  let mut t = state.global_timer.lock().unwrap();
-  t.cancel();
+  let mut state = state.borrow_mut();
+  state.global_timer.cancel();
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -37,17 +36,17 @@ struct GlobalTimerArgs {
 }
 
 fn op_global_timer(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: GlobalTimerArgs = serde_json::from_value(args)?;
   let val = args.timeout;
 
-  let state = state;
-  let mut t = state.global_timer.lock().unwrap();
+  let mut state = state.borrow_mut();
   let deadline = Instant::now() + Duration::from_millis(val);
-  let f = t
+  let f = state
+    .global_timer
     .new_timeout(deadline)
     .then(move |_| futures::future::ok(json!({})));
 
@@ -59,19 +58,19 @@ fn op_global_timer(
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
 fn op_now(
-  state: &ThreadSafeState,
+  state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
+  let state = state.borrow();
   let seconds = state.start_time.elapsed().as_secs();
   let mut subsec_nanos = state.start_time.elapsed().subsec_nanos();
   let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
-  let permissions = state.permissions.lock().unwrap();
 
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if !permissions.allow_hrtime.is_allow() {
+  if !state.permissions.allow_hrtime.is_allow() {
     subsec_nanos -= subsec_nanos % reduced_time_precision
   }
 

@@ -6,7 +6,7 @@ import {
   WriterHandler,
   FileHandler
 } from "./handlers.ts";
-import { assert } from "../testing/mod.ts";
+import { assert } from "../testing/asserts.ts";
 
 export class LoggerConfig {
   level?: string;
