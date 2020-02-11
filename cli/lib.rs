@@ -50,6 +50,7 @@ pub mod signal;
 pub mod source_maps;
 mod startup_data;
 pub mod state;
+mod test_runner;
 pub mod test_util;
 mod tokio_util;
 pub mod version;
@@ -59,6 +60,7 @@ pub mod worker;
 use crate::compilers::TargetLib;
 use crate::deno_error::js_check;
 use crate::deno_error::{print_err_and_exit, print_msg_and_exit};
+use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::ops::io::get_stdio;
 use crate::state::State;
@@ -72,6 +74,7 @@ use log::Level;
 use log::Metadata;
 use log::Record;
 use std::env;
+use std::fs as std_fs;
 use std::path::PathBuf;
 
 static LOGGER: Logger = Logger;
@@ -374,18 +377,10 @@ async fn run_repl(flags: DenoFlags) {
   }
 }
 
-async fn run_script(flags: DenoFlags, script: String) {
-  let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
-  let global_state = create_global_state(flags);
-  let mut worker =
-    create_main_worker(global_state.clone(), main_module.clone());
-
-  // Setup runtime.
-  js_check(worker.execute("bootstrapMainRuntime()"));
-  debug!("main_module {}", main_module);
-
-  let mod_result = worker.execute_mod_async(&main_module, None, false).await;
-  if let Err(err) = mod_result {
+async fn run_command(flags: DenoFlags, script: String) {
+  let global_state = create_global_state(flags.clone());
+  let result = run_script(global_state.clone(), script).await;
+  if let Err(err) = result {
     print_err_and_exit(err);
   }
   if global_state.flags.lock_write {
@@ -399,14 +394,70 @@ async fn run_script(flags: DenoFlags, script: String) {
       std::process::exit(11);
     }
   }
-  js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
-  let result = (&mut *worker).await;
-  js_check(result);
-  js_check(worker.execute("window.dispatchEvent(new Event('unload'))"));
+}
+
+async fn run_script(
+  global_state: GlobalState,
+  script: String,
+) -> Result<(), ErrBox> {
+  let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
+  let mut worker =
+    create_main_worker(global_state.clone(), main_module.clone());
+  // Setup runtime.
+  worker.execute("bootstrapMainRuntime()")?;
+  debug!("main_module {}", main_module);
+  worker.execute_mod_async(&main_module, None, false).await?;
+  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  (&mut *worker).await?;
+  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  Ok(())
 }
 
 async fn fmt_command(files: Option<Vec<PathBuf>>, check: bool) {
   if let Err(err) = fmt::format_files(files, check) {
+    print_err_and_exit(err);
+  }
+}
+
+async fn test_command(
+  flags: DenoFlags,
+  include: Option<Vec<String>>,
+  fail_fast: bool,
+  _quiet: bool,
+  allow_none: bool,
+) {
+  let global_state = create_global_state(flags.clone());
+  let cwd = std::env::current_dir().expect("No current directory");
+  let include = include.unwrap_or_else(|| vec![".".to_string()]);
+  let res = test_runner::prepare_test_modules_urls(include, cwd.clone());
+
+  let test_modules = match res {
+    Ok(modules) => modules,
+    Err(e) => return print_err_and_exit(e),
+  };
+  if test_modules.is_empty() {
+    println!("No matching test modules found");
+    if !allow_none {
+      std::process::exit(1);
+    }
+    return;
+  }
+
+  let test_file = test_runner::render_test_file(test_modules, fail_fast);
+  let test_file_path = cwd.join(".deno.test.ts");
+  deno_fs::write_file(&test_file_path, test_file.as_bytes(), 0o666)
+    .expect("Can't write test file");
+
+  let mut flags = flags.clone();
+  flags
+    .argv
+    .push(test_file_path.to_string_lossy().to_string());
+
+  let result =
+    run_script(global_state, test_file_path.to_string_lossy().to_string())
+      .await;
+  std_fs::remove_file(&test_file_path).expect("Failed to remove temp file");
+  if let Err(err) = result {
     print_err_and_exit(err);
   }
 }
@@ -454,7 +505,13 @@ pub fn main() {
         force,
       } => install_command(flags, dir, exe_name, module_url, args, force).await,
       DenoSubcommand::Repl => run_repl(flags).await,
-      DenoSubcommand::Run { script } => run_script(flags, script).await,
+      DenoSubcommand::Run { script } => run_command(flags, script).await,
+      DenoSubcommand::Test {
+        quiet,
+        fail_fast,
+        include,
+        allow_none,
+      } => test_command(flags, include, fail_fast, quiet, allow_none).await,
       DenoSubcommand::Types => types_command(),
       _ => panic!("bad subcommand"),
     }

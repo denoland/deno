@@ -7,7 +7,6 @@
 // tests by the special string. permW1N0 means allow-write but not allow-net.
 // See tools/unit_tests.py for more details.
 
-import * as testing from "../../std/testing/mod.ts";
 import { assert, assertEquals } from "../../std/testing/asserts.ts";
 export {
   assert,
@@ -103,10 +102,7 @@ function normalizeTestPermissions(perms: TestPermissions): Permissions {
   };
 }
 
-export function testPerm(
-  perms: TestPermissions,
-  fn: testing.TestFunction
-): void {
+export function testPerm(perms: TestPermissions, fn: Deno.TestFunction): void {
   const normalizedPerms = normalizeTestPermissions(perms);
 
   registerPermCombination(normalizedPerms);
@@ -115,10 +111,10 @@ export function testPerm(
     return;
   }
 
-  testing.test(fn);
+  Deno.test(fn);
 }
 
-export function test(fn: testing.TestFunction): void {
+export function test(fn: Deno.TestFunction): void {
   testPerm(
     {
       read: false,
