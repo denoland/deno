@@ -262,9 +262,8 @@ async fn info_command(flags: DenoFlags, file: Option<String>) {
 
 async fn install_command(
   flags: DenoFlags,
-  dir: Option<PathBuf>,
-  exe_name: String,
-  module_url: String,
+  exe_specifier: String,
+  module: String,
   args: Vec<String>,
   force: bool,
 ) {
@@ -272,10 +271,10 @@ async fn install_command(
   // ensures the module exists.
   let mut fetch_flags = flags.clone();
   fetch_flags.reload = true;
-  fetch_command(fetch_flags, vec![module_url.to_string()]).await;
+  fetch_command(fetch_flags, vec![module.to_string()]).await;
 
   let install_result =
-    installer::install(flags, dir, &exe_name, &module_url, args, force);
+    installer::install(flags, &exe_specifier, &module, args, force);
   if let Err(e) = install_result {
     print_msg_and_exit(&e.to_string());
   }
@@ -498,12 +497,11 @@ pub fn main() {
       }
       DenoSubcommand::Info { file } => info_command(flags, file).await,
       DenoSubcommand::Install {
-        dir,
-        exe_name,
-        module_url,
+        exe_specifier,
+        module,
         args,
         force,
-      } => install_command(flags, dir, exe_name, module_url, args, force).await,
+      } => install_command(flags, exe_specifier, module, args, force).await,
       DenoSubcommand::Repl => run_repl(flags).await,
       DenoSubcommand::Run { script } => run_command(flags, script).await,
       DenoSubcommand::Test {

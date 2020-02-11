@@ -108,8 +108,7 @@ fn installer_test_local_module_run() {
   let local_module_str = local_module.to_string_lossy();
   installer::install(
     DenoFlags::default(),
-    Some(temp_dir.path().to_path_buf()),
-    "echo_test",
+    temp_dir.path().join("echo_test").to_str().unwrap(),
     &local_module_str,
     vec!["hello".to_string()],
     false,
@@ -156,8 +155,7 @@ fn installer_test_remote_module_run() {
   let temp_dir = TempDir::new().expect("tempdir fail");
   installer::install(
     DenoFlags::default(),
-    Some(temp_dir.path().to_path_buf()),
-    "echo_test",
+    temp_dir.path().join("echo_test").to_str().unwrap(),
     "http://localhost:4545/cli/tests/echo.ts",
     vec!["hello".to_string()],
     false,

@@ -9,7 +9,7 @@ use std::io::ErrorKind;
 use std::io::Write;
 #[cfg(not(windows))]
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use url::Url;
 
 lazy_static! {
@@ -26,13 +26,13 @@ pub fn is_remote_url(module_url: &str) -> bool {
   module_url.starts_with("http://") || module_url.starts_with("https://")
 }
 
-fn validate_exec_name(exec_name: &str) -> Result<(), Error> {
-  if EXEC_NAME_RE.is_match(exec_name) {
+fn validate_exe_name(exe_name: &str) -> Result<(), Error> {
+  if EXEC_NAME_RE.is_match(exe_name) {
     Ok(())
   } else {
     Err(Error::new(
       ErrorKind::Other,
-      format!("Invalid module name: {}", exec_name),
+      format!("Invalid executable name: {}", exe_name),
     ))
   }
 }
@@ -101,17 +101,29 @@ fn get_installer_dir() -> Result<PathBuf, Error> {
 
 pub fn install(
   flags: DenoFlags,
-  installation_dir: Option<PathBuf>,
-  exec_name: &str,
-  module_url: &str,
+  exe_specifier: &str,
+  module: &str,
   args: Vec<String>,
   force: bool,
 ) -> Result<(), Error> {
-  let installation_dir = if let Some(dir) = installation_dir {
-    dir.canonicalize()?
-  } else {
-    get_installer_dir()?
+  let exe_path = PathBuf::from(exe_specifier);
+  let installation_dir = match exe_path.parent() {
+    Some(parent) => {
+      if parent != Path::new("") {
+        parent.to_path_buf()
+      } else {
+        get_installer_dir()?
+      }
+    }
+    None => {
+      return Err(Error::new(ErrorKind::Other, "Invalid installation path"))
+    }
   };
+  let exe_name = exe_path
+    .file_name()
+    .ok_or(Error::new(ErrorKind::Other, "Invalid executable name"))?
+    .to_str()
+    .unwrap();
 
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&installation_dir) {
@@ -126,10 +138,10 @@ pub fn install(
   };
 
   // Check if module_url is remote
-  let module_url = if is_remote_url(module_url) {
-    Url::parse(module_url).expect("Should be valid url")
+  let module_url = if is_remote_url(module) {
+    Url::parse(module).expect("Should be valid url")
   } else {
-    let module_path = PathBuf::from(module_url);
+    let module_path = PathBuf::from(module);
     let module_path = if module_path.is_absolute() {
       module_path
     } else {
@@ -139,8 +151,8 @@ pub fn install(
     Url::from_file_path(module_path).expect("Path should be absolute")
   };
 
-  validate_exec_name(exec_name)?;
-  let mut file_path = installation_dir.join(exec_name);
+  validate_exe_name(exe_name)?;
+  let mut file_path = installation_dir.join(exe_name);
 
   if cfg!(windows) {
     file_path = file_path.with_extension(".cmd");
@@ -160,8 +172,9 @@ pub fn install(
 
   generate_executable_file(file_path.to_owned(), executable_args)?;
 
-  println!("✅ Successfully installed {}", exec_name);
+  println!("✅ Successfully installed {}", exe_name);
   println!("{}", file_path.to_string_lossy());
+  let installation_dir = installation_dir.canonicalize()?;
   let installation_dir_str = installation_dir.to_string_lossy();
 
   if !is_in_path(&installation_dir) {
@@ -211,7 +224,6 @@ mod tests {
 
     install(
       DenoFlags::default(),
-      None,
       "echo_test",
       "http://localhost:4545/cli/tests/echo_server.ts",
       vec![],
@@ -245,8 +257,7 @@ mod tests {
     let temp_dir = TempDir::new().expect("tempdir fail");
     install(
       DenoFlags::default(),
-      Some(temp_dir.path().to_path_buf()),
-      "echo_test",
+      temp_dir.path().join("echo_test").to_str().unwrap(),
       "http://localhost:4545/cli/tests/echo_server.ts",
       vec![],
       false,
@@ -274,8 +285,7 @@ mod tests {
         allow_read: true,
         ..DenoFlags::default()
       },
-      Some(temp_dir.path().to_path_buf()),
-      "echo_test",
+      temp_dir.path().join("echo_test").to_str().unwrap(),
       "http://localhost:4545/cli/tests/echo_server.ts",
       vec!["--foobar".to_string()],
       false,
@@ -301,8 +311,7 @@ mod tests {
 
     install(
       DenoFlags::default(),
-      Some(temp_dir.path().to_path_buf()),
-      "echo_test",
+      temp_dir.path().join("echo_test").to_str().unwrap(),
       &local_module_str,
       vec![],
       false,
@@ -330,7 +339,6 @@ mod tests {
 
     install(
       DenoFlags::default(),
-      None,
       "echo_test",
       "http://localhost:4545/cli/tests/echo_server.ts",
       vec![],
@@ -347,7 +355,6 @@ mod tests {
     // No force. Install failed.
     let no_force_result = install(
       DenoFlags::default(),
-      None,
       "echo_test",
       "http://localhost:4545/cli/tests/cat.ts", // using a different URL
       vec![],
@@ -365,7 +372,6 @@ mod tests {
     // Force. Install success.
     let force_result = install(
       DenoFlags::default(),
-      None,
       "echo_test",
       "http://localhost:4545/cli/tests/cat.ts", // using a different URL
       vec![],
