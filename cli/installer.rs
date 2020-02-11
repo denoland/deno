@@ -121,7 +121,7 @@ pub fn install(
   };
   let exe_name = exe_path
     .file_name()
-    .ok_or(Error::new(ErrorKind::Other, "Invalid executable name"))?
+    .ok_or_else(|| Error::new(ErrorKind::Other, "Invalid executable name"))?
     .to_str()
     .unwrap();
 

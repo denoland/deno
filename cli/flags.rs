@@ -322,12 +322,10 @@ fn install_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   let force = matches.is_present("force");
   let exe_specifier = matches.value_of("exe_specifier").unwrap().to_string();
   let module = matches.value_of("module").unwrap().to_string();
-  let mut args = vec![];
-  matches.values_of("args").map(|values| {
-    for value in values {
-      args.push(value.to_string());
-    }
-  });
+  let args = match matches.values_of("args") {
+    Some(arg_values) => arg_values.map(String::from).collect(),
+    None => vec![],
+  };
 
   flags.subcommand = DenoSubcommand::Install {
     exe_specifier,
