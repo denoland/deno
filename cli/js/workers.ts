@@ -38,19 +38,23 @@ function createWorker(
   });
 }
 
+function hostTerminateWorker(id: number): void {
+  sendSync(dispatch.OP_HOST_TERMINATE_WORKER, { id });
+}
+
 function hostPostMessage(id: number, data: any): void {
   const dataIntArray = encodeMessage(data);
   sendSync(dispatch.OP_HOST_POST_MESSAGE, { id }, dataIntArray);
 }
 
-async function hostGetMessage(id: number): Promise<any> {
-  const res = await sendAsync(dispatch.OP_HOST_GET_MESSAGE, { id });
+interface WorkerEvent {
+  event: "error" | "msg" | "close";
+  data?: any;
+  error?: any;
+}
 
-  if (res.data != null) {
-    return decodeMessage(new Uint8Array(res.data));
-  } else {
-    return null;
-  }
+async function hostGetMessage(id: number): Promise<any> {
+  return await sendAsync(dispatch.OP_HOST_GET_MESSAGE, { id });
 }
 
 export interface Worker {
@@ -72,6 +76,8 @@ export class WorkerImpl extends EventTarget implements Worker {
   public onerror?: (e: any) => void;
   public onmessage?: (data: any) => void;
   public onmessageerror?: () => void;
+  private name: string;
+  private terminated = false;
 
   constructor(specifier: string, options?: WorkerOptions) {
     super();
@@ -88,6 +94,7 @@ export class WorkerImpl extends EventTarget implements Worker {
       );
     }
 
+    this.name = options?.name ?? "unknown";
     const hasSourceCode = false;
     const sourceCode = new Uint8Array();
 
@@ -139,42 +146,53 @@ export class WorkerImpl extends EventTarget implements Worker {
   }
 
   async poll(): Promise<void> {
-    while (!this.isClosing) {
-      const data = await hostGetMessage(this.id);
-      if (data == null) {
-        log("worker got null message. quitting.");
-        break;
-      }
-      if (this.onmessage) {
-        const event = { data };
-        this.onmessage(event);
-      }
-    }
+    while (!this.terminated) {
+      const event = await hostGetMessage(this.id);
 
-    /*
-    while (true) {
-      const result = await hostPollWorker(this.id);
+      // If terminate was called then we ignore all messages
+      if (this.terminated) {
+        return;
+      }
 
-      if (result.error) {
-        if (!this.handleError(result.error)) {
-          throw Error(result.error.message);
-        } else {
-          hostResumeWorker(this.id);
+      const type = event.type;
+
+      if (type === "msg") {
+        if (this.onmessage) {
+          const message = decodeMessage(new Uint8Array(event.data));
+          this.onmessage({ data: message });
         }
-      } else {
-        this.isClosing = true;
-        hostCloseWorker(this.id);
-        break;
+        continue;
       }
+
+      if (type === "error") {
+        if (!this.handleError(event.error)) {
+          throw Error(event.error.message);
+        }
+        continue;
+      }
+
+      if (type === "close") {
+        log(`Host got "close" message from worker: ${this.name}`);
+        this.terminated = true;
+        return;
+      }
+
+      throw new Error(`Unknown worker event: "${type}"`);
     }
-    */
   }
 
   postMessage(data: any): void {
+    if (this.terminated) {
+      return;
+    }
+
     hostPostMessage(this.id, data);
   }
 
   terminate(): void {
-    throw new Error("Not yet implemented");
+    if (!this.terminated) {
+      this.terminated = true;
+      hostTerminateWorker(this.id);
+    }
   }
 }
