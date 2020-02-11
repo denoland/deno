@@ -2,6 +2,7 @@
 
 // This is a specialised implementation of a System module loader.
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 let System;
 let __inst;
 
