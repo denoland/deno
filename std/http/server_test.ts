@@ -719,6 +719,7 @@ if (Deno.build.os !== "win") {
       const serverRoutine = async (): Promise<void> => {
         let reqCount = 0;
         const server = serve(":8124");
+        // @ts-ignore
         const serverRid = server.listener["rid"];
         let connRid = -1;
         for await (const req of server) {
