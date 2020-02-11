@@ -262,9 +262,7 @@ test(async function requestBodyReaderWithContentLength(): Promise<void> {
   }
 });
 
-test(async function requestBodyReaderWithTransferEncoding(): Promise<
-  void
-> {
+test(async function requestBodyReaderWithTransferEncoding(): Promise<void> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
@@ -769,7 +767,6 @@ if (Deno.build.os !== "win") {
     }
   });
 }
-*/
 
 test("writeTrailer", async () => {
   const w = new Buffer();
@@ -822,4 +819,3 @@ test("writeTrailer should throw", async () => {
     "Not trailer"
   );
 });
-

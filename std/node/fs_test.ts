@@ -1,4 +1,3 @@
-
 const { test } = Deno;
 import { readFile, readFileSync, readlink, readlinkSync } from "./fs.ts";
 import * as path from "../path/mod.ts";

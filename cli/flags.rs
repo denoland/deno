@@ -2044,10 +2044,7 @@ mod tests {
         subcommand: DenoSubcommand::Test {
           fail_fast: false,
           quiet: false,
-<<<<<<< HEAD
-=======
           allow_none: true,
->>>>>>> master
           include: Some(svec!["dir1/", "dir2/"]),
         },
         allow_read: true,

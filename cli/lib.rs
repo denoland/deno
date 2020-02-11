@@ -462,23 +462,6 @@ async fn test_command(
   }
 }
 
-async fn test_command(
-  flags: DenoFlags,
-  include: Option<Vec<String>>,
-  fail_fast: bool,
-  quiet: bool,
-) {
-  if let Some(test_file_path) =
-    test_runner::run_test_modules(include, fail_fast, quiet)
-  {
-    let mut flags = flags.clone();
-    flags
-      .argv
-      .push(test_file_path.to_string_lossy().to_string());
-    run_script(flags, test_file_path.to_string_lossy().to_string()).await;
-  }
-}
-
 pub fn main() {
   #[cfg(windows)]
   ansi_term::enable_ansi_support().ok(); // For Windows 10
