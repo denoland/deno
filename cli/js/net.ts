@@ -24,12 +24,15 @@ export interface Receiver extends AsyncIterator<Message> {
   /** Waits for and resolves to the next message to the `Receiver`. */
   receive(): Promise<Message>;
 
+  /** Sends a message to the target. */
+  send(buffer: Uint8Array, target: Addr): Promise<void>;
+
   /** Close closes the receiver. Any pending message promises will be rejected
    * with errors.
    */
   close(): void;
 
-  /** Return the address of the `Received`. */
+  /** Return the address of the `Receiver`. */
   addr: Addr;
 
   [Symbol.asyncIterator](): AsyncIterator<Message>;
@@ -156,6 +159,10 @@ export class ReceiverImpl implements Receiver {
     return { payload: res.payload, remote: res.remoteAddr };
   }
 
+  async send(buffer: Uint8Array, target: Addr): Promise<void> {
+    await sendAsync(dispatch.OP_SEND, { rid: this.rid, buffer, target });
+  }
+
   close(): void {
     this.closing = true;
     close(this.rid);
@@ -223,25 +230,18 @@ export interface ListenOptions {
  *     listen({ hostname: "[2001:db8::1]", port: 80 });
  *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
-export function listen(options: ListenOptions): Listener | Receiver {
-  const hostname = options.hostname || "0.0.0.0";
-  const transport = options.transport || "tcp";
+export function listen(
+  options: ListenOptions & { transport: "tcp" }
+): Listener {
+  const res = sendSync(dispatch.OP_LISTEN, { hostname: "0.0.0.0", ...options });
+  return new ListenerImpl(res.id, res.localAddr);
+}
 
-  const res = sendSync(dispatch.OP_LISTEN, {
-    hostname,
-    port: options.port,
-    transport
-  });
-
-  if (transport === "tcp") {
-    return new ListenerImpl(res.rid, res.localAddr);
-  }
-
-  if (transport === "udp") {
-    return new ReceiverImpl(res.id, res.localAddr);
-  }
-
-  throw new Error("Invalid transport: " + transport);
+export function listen(
+  options: ListenOptions & { transport: "udp" }
+): Receiver {
+  const res = sendSync(dispatch.OP_LISTEN, { hostname: "0.0.0.0", ...options });
+  return new ReceiverImpl(res.id, res.localAddr);
 }
 
 export interface ConnectOptions {

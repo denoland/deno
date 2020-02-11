@@ -26,6 +26,7 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("shutdown", s.core_op(json_op(s.stateful_op(op_shutdown))));
   i.register_op("listen", s.core_op(json_op(s.stateful_op(op_listen))));
   i.register_op("receive", s.core_op(json_op(s.stateful_op(op_receive))));
+  i.register_op("send", s.core_op(json_op(s.stateful_op(op_send))));
 }
 
 #[derive(Debug, PartialEq)]
@@ -174,6 +175,42 @@ fn op_receive(
         "transport": "udp",
       }
     }))
+  };
+
+  Ok(JsonOp::Async(op.boxed_local()))
+}
+
+#[derive(Deserialize)]
+struct SendArgs {
+  rid: i32,
+  buffer: [u8],
+  hostname: String,
+  port: u16,
+}
+
+fn op_send(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: SendArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let state_ = state.clone();
+  state.check_net(&args.hostname, args.port)?;
+
+  let op = async move {
+    let mut state = state_.borrow_mut();
+
+    let resource = state
+      .resource_table
+      .get_mut::<UdpSocketResource>(rid)
+      .ok_or_else(bad_resource)?;
+
+    let socket = &mut resource.socket;
+    let addr = resolve_addr(&args.hostname, args.port).await?;
+    socket.send_to(&mut buf, addr).await?;
+
+    Ok(json!({}))
   };
 
   Ok(JsonOp::Async(op.boxed_local()))
