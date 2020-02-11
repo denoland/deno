@@ -3,7 +3,7 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
 use crate::http_util::{create_http_client, HttpBody};
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::*;
 use futures::future::FutureExt;
 use http::header::HeaderName;
@@ -12,7 +12,7 @@ use http::Method;
 use std;
 use std::convert::From;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("fetch", s.core_op(json_op(s.stateful_op(op_fetch))));
 }
 
@@ -24,7 +24,7 @@ struct FetchArgs {
 }
 
 pub fn op_fetch(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -65,8 +65,8 @@ pub fn op_fetch(
     }
 
     let body = HttpBody::from(res);
-    let mut table = state_.lock_resource_table();
-    let rid = table.add(
+    let mut state = state_.borrow_mut();
+    let rid = state.resource_table.add(
       "httpBody",
       Box::new(StreamResource::HttpBody(Box::new(body))),
     );

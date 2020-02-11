@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
 use crate::ops;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core;
 use deno_core::Buf;
 use deno_core::ErrBox;
@@ -24,76 +24,55 @@ use std::task::Poll;
 use tokio::sync::Mutex as AsyncMutex;
 use url::Url;
 
-/// Wraps mpsc channels so they can be referenced
-/// from ops and used to facilitate parent-child communication
-/// for workers.
-#[derive(Clone)]
-pub struct WorkerChannels {
-  pub sender: mpsc::Sender<Buf>,
-  pub receiver: Arc<AsyncMutex<mpsc::Receiver<Buf>>>,
+/// Events that are sent to host from child
+/// worker.
+pub enum WorkerEvent {
+  Message(Buf),
+  Error(ErrBox),
 }
 
-impl WorkerChannels {
+pub struct WorkerChannelsInternal {
+  pub sender: mpsc::Sender<WorkerEvent>,
+  pub receiver: mpsc::Receiver<Buf>,
+}
+
+#[derive(Clone)]
+pub struct WorkerHandle {
+  pub sender: mpsc::Sender<Buf>,
+  pub receiver: Arc<AsyncMutex<mpsc::Receiver<WorkerEvent>>>,
+  // terminate_channel
+}
+
+impl WorkerHandle {
+  pub fn terminate(&self) {
+    todo!()
+  }
+
   /// Post message to worker as a host.
   pub async fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
     let mut sender = self.sender.clone();
     sender.send(buf).map_err(ErrBox::from).await
   }
 
-  /// Get message from worker as a host.
-  pub fn get_message(&self) -> Pin<Box<dyn Future<Output = Option<Buf>>>> {
-    let receiver_mutex = self.receiver.clone();
-
-    async move {
-      let mut receiver = receiver_mutex.lock().await;
-      receiver.next().await
-    }
-    .boxed_local()
+  // TODO: should use `try_lock` and return error if
+  // more than one listener tries to get event
+  pub async fn get_event(&self) -> Option<WorkerEvent> {
+    let mut receiver = self.receiver.lock().await;
+    receiver.next().await
   }
 }
 
-pub struct WorkerChannelsInternal(WorkerChannels);
-
-impl Deref for WorkerChannelsInternal {
-  type Target = WorkerChannels;
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
-}
-
-impl DerefMut for WorkerChannelsInternal {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.0
-  }
-}
-
-#[derive(Clone)]
-pub struct WorkerChannelsExternal(WorkerChannels);
-
-impl Deref for WorkerChannelsExternal {
-  type Target = WorkerChannels;
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
-}
-
-impl DerefMut for WorkerChannelsExternal {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.0
-  }
-}
-
-fn create_channels() -> (WorkerChannelsInternal, WorkerChannelsExternal) {
+fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
   let (in_tx, in_rx) = mpsc::channel::<Buf>(1);
-  let (out_tx, out_rx) = mpsc::channel::<Buf>(1);
-  let internal_channels = WorkerChannelsInternal(WorkerChannels {
+  let (out_tx, out_rx) = mpsc::channel::<WorkerEvent>(1);
+  let internal_channels = WorkerChannelsInternal {
     sender: out_tx,
-    receiver: Arc::new(AsyncMutex::new(in_rx)),
-  });
-  let external_channels = WorkerChannelsExternal(WorkerChannels {
+    receiver: in_rx,
+  };
+  let external_channels = WorkerHandle {
     sender: in_tx,
     receiver: Arc::new(AsyncMutex::new(out_rx)),
-  });
+  };
   (internal_channels, external_channels)
 }
 
@@ -112,34 +91,30 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerChannelsExternal) {
 pub struct Worker {
   pub name: String,
   pub isolate: Box<deno_core::EsIsolate>,
-  pub state: ThreadSafeState,
-  external_channels: WorkerChannelsExternal,
+  pub state: State,
+  pub waker: AtomicWaker,
+  pub(crate) internal_channels: WorkerChannelsInternal,
+  external_channels: WorkerHandle,
 }
 
 impl Worker {
-  pub fn new(
-    name: String,
-    startup_data: StartupData,
-    state: ThreadSafeState,
-  ) -> Self {
+  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let mut isolate =
       deno_core::EsIsolate::new(Box::new(state.clone()), startup_data, false);
 
-    let global_state_ = state.global_state.clone();
+    let global_state_ = state.borrow().global_state.clone();
     isolate.set_js_error_create(move |v8_exception| {
       JSError::from_v8_exception(v8_exception, &global_state_.ts_compiler)
     });
 
     let (internal_channels, external_channels) = create_channels();
-    {
-      let mut c = state.worker_channels_internal.lock().unwrap();
-      *c = Some(internal_channels);
-    }
 
     Self {
       name,
       isolate,
       state,
+      waker: AtomicWaker::new(),
+      internal_channels,
       external_channels,
     }
   }
@@ -170,7 +145,7 @@ impl Worker {
   ) -> Result<(), ErrBox> {
     let specifier = module_specifier.to_string();
     let id = self.isolate.load_module(&specifier, maybe_code).await?;
-    self.state.global_state.progress.done();
+    self.state.borrow().global_state.progress.done();
     if !is_prefetch {
       return self.isolate.mod_evaluate(id);
     }
@@ -178,7 +153,7 @@ impl Worker {
   }
 
   /// Returns a way to communicate with the Worker from other threads.
-  pub fn thread_safe_handle(&self) -> WorkerChannelsExternal {
+  pub fn thread_safe_handle(&self) -> WorkerHandle {
     self.external_channels.clone()
   }
 }
@@ -188,8 +163,7 @@ impl Future for Worker {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
-    let waker = AtomicWaker::new();
-    waker.register(cx.waker());
+    inner.waker.register(cx.waker());
     inner.isolate.poll_unpin(cx)
   }
 }
@@ -203,11 +177,7 @@ impl Future for Worker {
 pub struct MainWorker(Worker);
 
 impl MainWorker {
-  pub fn new(
-    name: String,
-    startup_data: StartupData,
-    state: ThreadSafeState,
-  ) -> Self {
+  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let state_ = state.clone();
     let mut worker = Worker::new(name, startup_data, state_);
     {
@@ -232,7 +202,7 @@ impl MainWorker {
       ops::signal::init(isolate, &state);
       ops::timers::init(isolate, &state);
       ops::worker_host::init(isolate, &state);
-      ops::web_worker::init(isolate, &state);
+      ops::web_worker::init(isolate, &state, &worker.internal_channels.sender);
     }
     Self(worker)
   }
@@ -257,7 +227,7 @@ mod tests {
   use crate::flags;
   use crate::global_state::GlobalState;
   use crate::startup_data;
-  use crate::state::ThreadSafeState;
+  use crate::state::State;
   use crate::tokio_util;
   use futures::executor::block_on;
   use std::sync::atomic::Ordering;
@@ -280,8 +250,7 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::DenoFlags::default()).unwrap();
     let state =
-      ThreadSafeState::new(global_state, None, module_specifier.clone())
-        .unwrap();
+      State::new(global_state, None, module_specifier.clone()).unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -296,8 +265,8 @@ mod tests {
         panic!("Future got unexpected error: {:?}", e);
       }
     });
-
-    let metrics = &state_.metrics;
+    let mut state = state_.borrow_mut();
+    let metrics = &mut state.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
     // Check that we didn't start the compiler.
     assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 0);
@@ -313,8 +282,7 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::DenoFlags::default()).unwrap();
     let state =
-      ThreadSafeState::new(global_state, None, module_specifier.clone())
-        .unwrap();
+      State::new(global_state, None, module_specifier.clone()).unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -330,7 +298,8 @@ mod tests {
       }
     });
 
-    let metrics = &state_.metrics;
+    let mut state = state_.borrow_mut();
+    let metrics = &mut state.metrics;
     // TODO  assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
     // Check that we didn't start the compiler.
     assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 0);
@@ -353,12 +322,8 @@ mod tests {
       ..flags::DenoFlags::default()
     };
     let global_state = GlobalState::new(flags).unwrap();
-    let state = ThreadSafeState::new(
-      global_state.clone(),
-      None,
-      module_specifier.clone(),
-    )
-    .unwrap();
+    let state =
+      State::new(global_state.clone(), None, module_specifier.clone()).unwrap();
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),
@@ -374,6 +339,7 @@ mod tests {
     if let Err(e) = (&mut *worker).await {
       panic!("Future got unexpected error: {:?}", e);
     }
+    let state = state.borrow_mut();
     assert_eq!(state.metrics.resolve_count.load(Ordering::SeqCst), 3);
     // Check that we've only invoked the compiler once.
     assert_eq!(
@@ -384,7 +350,7 @@ mod tests {
   }
 
   fn create_test_worker() -> MainWorker {
-    let state = ThreadSafeState::mock("./hello.js");
+    let state = State::mock("./hello.js");
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),

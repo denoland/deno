@@ -28,6 +28,7 @@
  */
 import { MultiReader } from "../io/readers.ts";
 import { BufReader } from "../io/bufio.ts";
+import { assert } from "../testing/asserts.ts";
 
 const recordSize = 512;
 const ustar = "ustar\u000000";
@@ -271,16 +272,17 @@ export class Tar {
 
   /**
    * Append a file to this tar archive
-   * @param fileName file name
+   * @param fn file name
    *                 e.g., test.txt; use slash for directory separators
    * @param opts options
    */
-  async append(fileName: string, opts: TarOptions): Promise<void> {
-    if (typeof fileName !== "string")
+  async append(fn: string, opts: TarOptions): Promise<void> {
+    if (typeof fn !== "string") {
       throw new Error("file name not specified");
-
+    }
+    let fileName = fn;
     // separate file name into two parts if needed
-    let fileNamePrefix: string;
+    let fileNamePrefix: string | undefined;
     if (fileName.length > 100) {
       let i = fileName.length;
       while (i >= 0) {
@@ -292,19 +294,26 @@ export class Tar {
         }
         i--;
       }
-      if (i < 0 || fileName.length > 100 || fileNamePrefix!.length > 155) {
-        throw new Error(
-          "ustar format does not allow a long file name (length of [file name" +
-            "prefix] + / + [file name] must be shorter than 256 bytes)"
-        );
+      const errMsg =
+        "ustar format does not allow a long file name (length of [file name" +
+        "prefix] + / + [file name] must be shorter than 256 bytes)";
+      if (i < 0 || fileName.length > 100) {
+        throw new Error(errMsg);
+      } else {
+        assert(fileNamePrefix != null);
+        if (fileNamePrefix.length > 155) {
+          throw new Error(errMsg);
+        }
       }
     }
-    fileNamePrefix = fileNamePrefix!;
 
     opts = opts || {};
 
     // set meta data
-    const info = opts.filePath && (await Deno.stat(opts.filePath));
+    let info: Deno.FileInfo | undefined;
+    if (opts.filePath) {
+      info = await Deno.stat(opts.filePath);
+    }
 
     const mode =
         opts.fileMode || (info && info.mode) || parseInt("777", 8) & 0xfff,
@@ -325,13 +334,15 @@ export class Tar {
       );
     }
 
+    const fileSize = info?.len ?? opts.contentSize;
+    assert(fileSize != null, "fileSize must be set");
     const tarData: TarDataWithSource = {
       fileName,
       fileNamePrefix,
       fileMode: pad(mode, 7),
       uid: pad(uid, 7),
       gid: pad(gid, 7),
-      fileSize: pad((info ? info.len : opts.contentSize)!, 11),
+      fileSize: pad(fileSize, 11),
       mtime: pad(mtime, 11),
       checksum: "        ",
       type: "0", // just a file
@@ -368,16 +379,18 @@ export class Tar {
       const headerArr = formatHeader(tarData);
       readers.push(new Deno.Buffer(headerArr));
       if (!reader) {
-        reader = new FileReader(filePath!);
+        assert(filePath != null);
+        reader = new FileReader(filePath);
       }
       readers.push(reader);
 
       // to the nearest multiple of recordSize
+      assert(tarData.fileSize != null, "fileSize must be set");
       readers.push(
         new Deno.Buffer(
           clean(
             recordSize -
-              (parseInt(tarData.fileSize!, 8) % recordSize || recordSize)
+              (parseInt(tarData.fileSize, 8) % recordSize || recordSize)
           )
         )
       );

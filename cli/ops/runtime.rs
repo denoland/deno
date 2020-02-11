@@ -3,11 +3,12 @@ use super::dispatch_json::{JsonOp, Value};
 use crate::colors;
 use crate::fs as deno_fs;
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use crate::version;
 use crate::DenoSubcommand;
 use deno_core::*;
 use std::env;
+use std::sync::atomic::Ordering;
 
 /// BUILD_OS and BUILD_ARCH match the values in Deno.build. See js/build.ts.
 #[cfg(target_os = "macos")]
@@ -19,15 +20,17 @@ static BUILD_OS: &str = "win";
 #[cfg(target_arch = "x86_64")]
 static BUILD_ARCH: &str = "x64";
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("start", s.core_op(json_op(s.stateful_op(op_start))));
+  i.register_op("metrics", s.core_op(json_op(s.stateful_op(op_metrics))));
 }
 
 fn op_start(
-  state: &ThreadSafeState,
+  state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
+  let state = state.borrow();
   let gs = &state.global_state;
 
   Ok(JsonOp::Sync(json!({
@@ -44,5 +47,22 @@ fn op_start(
     "noColor": !colors::use_color(),
     "os": BUILD_OS,
     "arch": BUILD_ARCH,
+  })))
+}
+
+fn op_metrics(
+  state: &State,
+  _args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let state = state.borrow();
+  let m = &state.metrics;
+
+  Ok(JsonOp::Sync(json!({
+    "opsDispatched": m.ops_dispatched.load(Ordering::SeqCst) as u64,
+    "opsCompleted": m.ops_completed.load(Ordering::SeqCst) as u64,
+    "bytesSentControl": m.bytes_sent_control.load(Ordering::SeqCst) as u64,
+    "bytesSentData": m.bytes_sent_data.load(Ordering::SeqCst) as u64,
+    "bytesReceived": m.bytes_received.load(Ordering::SeqCst) as u64
   })))
 }

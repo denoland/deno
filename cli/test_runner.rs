@@ -1,19 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::deno_error::print_err_and_exit;
-use crate::fs as deno_fs;
 use crate::installer::is_remote_url;
 use deno_core::ErrBox;
 use std;
 use std::path::PathBuf;
 use url::Url;
 
-fn prepare_test_modules_urls(
+pub fn prepare_test_modules_urls(
   include: Vec<String>,
   root_path: PathBuf,
 ) -> Result<Vec<Url>, ErrBox> {
-  eprintln!("includes {:?}", include.clone());
-
   let (include_paths, include_urls): (Vec<String>, Vec<String>) =
     include.into_iter().partition(|n| !is_remote_url(n));
 
@@ -33,11 +29,7 @@ fn prepare_test_modules_urls(
   Ok(prepared)
 }
 
-fn render_test_file(
-  modules: Vec<Url>,
-  fail_fast: bool,
-  _quiet: bool,
-) -> String {
+pub fn render_test_file(modules: Vec<Url>, fail_fast: bool) -> String {
   let mut test_file = "".to_string();
 
   for module in modules {
@@ -49,41 +41,6 @@ fn render_test_file(
   test_file.push_str(&run_tests_cmd);
 
   test_file
-}
-
-pub fn run_test_modules(
-  include: Option<Vec<String>>,
-  fail_fast: bool,
-  quiet: bool,
-) -> Option<PathBuf> {
-  let allow_none = false;
-  let include = include.unwrap_or_else(|| vec![]);
-  let cwd = std::env::current_dir().expect("No current directory");
-  let res_test_modules = prepare_test_modules_urls(include, cwd.to_owned());
-
-  if let Err(e) = res_test_modules {
-    print_err_and_exit(e);
-    return None;
-  }
-
-  let test_modules = res_test_modules.unwrap();
-  if test_modules.is_empty() {
-    println!("No matching test modules found");
-
-    if !allow_none {
-      std::process::exit(1);
-    }
-
-    return None;
-  }
-
-  // Create temporary test file which contains
-  // all matched modules as import statements.
-  let test_file = render_test_file(test_modules, fail_fast, quiet);
-  let test_file_path = cwd.join(".deno.test.ts");
-  deno_fs::write_file(&test_file_path, test_file.as_bytes(), 0o666)
-    .expect("Can't write test file");
-  Some(test_file_path)
 }
 
 #[cfg(test)]

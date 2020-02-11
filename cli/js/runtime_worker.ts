@@ -3,12 +3,9 @@
 // This module is the entry point for "worker" isolate, ie. the one
 // that is created using `new Worker()` JS API.
 //
-// It provides two functions that should be called by Rust:
+// It provides a single function that should be called by Rust:
 //  - `bootstrapWorkerRuntime` - must be called once, when Isolate is created.
 //   It sets up runtime by providing globals for `DedicatedWorkerScope`.
-//  - `runWorkerMessageLoop` - starts receiving messages from parent worker,
-//   can be called multiple times - eg. to restart worker execution after
-//   exception occurred and was handled by parent worker
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
@@ -20,13 +17,12 @@ import {
   eventTargetProperties
 } from "./globals.ts";
 import * as dispatch from "./dispatch.ts";
-import { sendAsync, sendSync } from "./dispatch_json.ts";
+import { sendSync } from "./dispatch_json.ts";
 import { log } from "./util.ts";
-import { TextDecoder, TextEncoder } from "./text_encoding.ts";
+import { TextEncoder } from "./text_encoding.ts";
 import * as runtime from "./runtime.ts";
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder();
 
 // TODO(bartlomieju): remove these funtions
 // Stuff for workers
@@ -39,62 +35,46 @@ export function postMessage(data: any): void {
   sendSync(dispatch.OP_WORKER_POST_MESSAGE, {}, dataIntArray);
 }
 
-export async function getMessage(): Promise<any> {
-  log("getMessage");
-  const res = await sendAsync(dispatch.OP_WORKER_GET_MESSAGE);
-  if (res.data != null) {
-    const dataIntArray = new Uint8Array(res.data);
-    const dataJson = decoder.decode(dataIntArray);
-    return JSON.parse(dataJson);
-  } else {
-    return null;
-  }
-}
-
 let isClosing = false;
 let hasBootstrapped = false;
 
 export function close(): void {
+  if (isClosing) {
+    return;
+  }
+
   isClosing = true;
+  sendSync(dispatch.OP_WORKER_CLOSE);
 }
 
-export async function runWorkerMessageLoop(): Promise<void> {
-  while (!isClosing) {
-    const data = await getMessage();
-    if (data == null) {
-      log("runWorkerMessageLoop got null message. quitting.");
-      break;
-    }
+export async function workerMessageRecvCallback(data: string): Promise<void> {
+  let result: void | Promise<void>;
+  const event = { data };
 
-    let result: void | Promise<void>;
-    const event = { data };
-
-    try {
-      if (!globalThis["onmessage"]) {
-        break;
-      }
+  try {
+    //
+    if (globalThis["onmessage"]) {
       result = globalThis.onmessage!(event);
       if (result && "then" in result) {
         await result;
       }
-      if (!globalThis["onmessage"]) {
-        break;
-      }
-    } catch (e) {
-      if (globalThis["onerror"]) {
-        const result = globalThis.onerror(
-          e.message,
-          e.fileName,
-          e.lineNumber,
-          e.columnNumber,
-          e
-        );
-        if (result === true) {
-          continue;
-        }
-      }
-      throw e;
     }
+
+    // TODO: run the rest of liteners
+  } catch (e) {
+    if (globalThis["onerror"]) {
+      const result = globalThis.onerror(
+        e.message,
+        e.fileName,
+        e.lineNumber,
+        e.columnNumber,
+        e
+      );
+      if (result === true) {
+        return;
+      }
+    }
+    throw e;
   }
 }
 
@@ -102,8 +82,10 @@ export const workerRuntimeGlobalProperties = {
   self: readOnly(globalThis),
   onmessage: writable(onmessage),
   onerror: writable(onerror),
+  // TODO: should be readonly?
   close: nonEnumerable(close),
-  postMessage: writable(postMessage)
+  postMessage: writable(postMessage),
+  workerMessageRecvCallback: nonEnumerable(workerMessageRecvCallback)
 };
 
 /**

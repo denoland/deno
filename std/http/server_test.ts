@@ -5,14 +5,23 @@
 // Ported from
 // https://github.com/golang/go/blob/master/src/net/http/responsewrite_test.go
 
-const { Buffer } = Deno;
-import { assert, assertEquals, assertNotEquals } from "../testing/asserts.ts";
+const { Buffer, test } = Deno;
+import { TextProtoReader } from "../textproto/mod.ts";
+import {
+  assert,
+  assertEquals,
+  assertNotEquals,
+  assertThrowsAsync,
+  AssertionError
+} from "../testing/asserts.ts";
 import {
   Response,
   ServerRequest,
   writeResponse,
+  serve,
   readRequest,
-  parseHTTPVersion
+  parseHTTPVersion,
+  writeTrailers
 } from "./server.ts";
 import {
   BufReader,
@@ -20,6 +29,7 @@ import {
   ReadLineResult,
   UnexpectedEOFError
 } from "../io/bufio.ts";
+import { delay, deferred } from "../util/async.ts";
 import { StringReader } from "../io/readers.ts";
 
 function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
@@ -87,7 +97,7 @@ const responseTests: ResponseTest[] = [
   }
 ];
 
-Deno.test(async function responseWrite(): Promise<void> {
+test(async function responseWrite(): Promise<void> {
   for (const testCase of responseTests) {
     const buf = new Buffer();
     const bufw = new BufWriter(buf);
@@ -102,7 +112,7 @@ Deno.test(async function responseWrite(): Promise<void> {
   }
 });
 
-Deno.test(async function requestContentLength(): Promise<void> {
+test(async function requestContentLength(): Promise<void> {
   // Has content length
   {
     const req = new ServerRequest();
@@ -136,7 +146,7 @@ Deno.test(async function requestContentLength(): Promise<void> {
   }
 });
 
-Deno.test(async function requestBodyWithContentLength(): Promise<void> {
+test(async function requestBodyWithContentLength(): Promise<void> {
   {
     const req = new ServerRequest();
     req.headers = new Headers();
@@ -160,7 +170,7 @@ Deno.test(async function requestBodyWithContentLength(): Promise<void> {
   }
 });
 
-Deno.test(async function requestBodyWithTransferEncoding(): Promise<void> {
+test(async function requestBodyWithTransferEncoding(): Promise<void> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
@@ -209,7 +219,7 @@ Deno.test(async function requestBodyWithTransferEncoding(): Promise<void> {
   }
 });
 
-Deno.test(async function requestBodyReaderWithContentLength(): Promise<void> {
+test(async function requestBodyReaderWithContentLength(): Promise<void> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
@@ -252,7 +262,7 @@ Deno.test(async function requestBodyReaderWithContentLength(): Promise<void> {
   }
 });
 
-Deno.test(async function requestBodyReaderWithTransferEncoding(): Promise<
+test(async function requestBodyReaderWithTransferEncoding(): Promise<
   void
 > {
   {
@@ -321,7 +331,7 @@ Deno.test(async function requestBodyReaderWithTransferEncoding(): Promise<
   }
 });
 
-Deno.test(async function writeUint8ArrayResponse(): Promise<void> {
+test(async function writeUint8ArrayResponse(): Promise<void> {
   const shortText = "Hello";
 
   const body = new TextEncoder().encode(shortText);
@@ -354,7 +364,7 @@ Deno.test(async function writeUint8ArrayResponse(): Promise<void> {
   assertEquals(eof, Deno.EOF);
 });
 
-Deno.test(async function writeStringResponse(): Promise<void> {
+test(async function writeStringResponse(): Promise<void> {
   const body = "Hello";
 
   const res: Response = { body };
@@ -386,7 +396,7 @@ Deno.test(async function writeStringResponse(): Promise<void> {
   assertEquals(eof, Deno.EOF);
 });
 
-Deno.test(async function writeStringReaderResponse(): Promise<void> {
+test(async function writeStringReaderResponse(): Promise<void> {
   const shortText = "Hello";
 
   const body = new StringReader(shortText);
@@ -424,7 +434,36 @@ Deno.test(async function writeStringReaderResponse(): Promise<void> {
   assertEquals(r.more, false);
 });
 
-Deno.test(async function readRequestError(): Promise<void> {
+test("writeResponse with trailer", async () => {
+  const w = new Buffer();
+  const body = new StringReader("Hello");
+  await writeResponse(w, {
+    status: 200,
+    headers: new Headers({
+      "transfer-encoding": "chunked",
+      trailer: "deno,node"
+    }),
+    body,
+    trailers: () => new Headers({ deno: "land", node: "js" })
+  });
+  const ret = w.toString();
+  const exp = [
+    "HTTP/1.1 200 OK",
+    "transfer-encoding: chunked",
+    "trailer: deno,node",
+    "",
+    "5",
+    "Hello",
+    "0",
+    "",
+    "deno: land",
+    "node: js",
+    ""
+  ].join("\r\n");
+  assertEquals(ret, exp);
+});
+
+test(async function readRequestError(): Promise<void> {
   const input = `GET / HTTP/1.1
 malformedHeader
 `;
@@ -442,7 +481,7 @@ malformedHeader
 // Ported from Go
 // https://github.com/golang/go/blob/go1.12.5/src/net/http/request_test.go#L377-L443
 // TODO(zekth) fix tests
-Deno.test(async function testReadRequestError(): Promise<void> {
+test(async function testReadRequestError(): Promise<void> {
   const testCases = [
     {
       in: "GET / HTTP/1.1\r\nheader: foo\r\n\r\n",
@@ -532,7 +571,7 @@ Deno.test(async function testReadRequestError(): Promise<void> {
 });
 
 // Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request_test.go#L535-L565
-Deno.test({
+test({
   name: "[http] parseHttpVersion",
   fn(): void {
     const testCases = [
@@ -565,8 +604,7 @@ Deno.test({
   }
 });
 
-/* TODO(bartlomieju): after removing std/installer/ it hangs, fix and reenable
-Deno.test({
+test({
   name: "[http] destroyed connection",
   async fn(): Promise<void> {
     // Runs a simple server as another process
@@ -604,10 +642,8 @@ Deno.test({
     }
   }
 });
-*/
 
-/* TODO(bartlomieju): after removing std/installer/ it hangs, fix and reenable
-Deno.test({
+test({
   name: "[http] serveTLS",
   async fn(): Promise<void> {
     // Runs a simple server as another process
@@ -655,10 +691,8 @@ Deno.test({
     }
   }
 });
-*/
 
-/* TODO(bartlomieju): after removing std/installer/ it hangs, fix and reenable
-Deno.test({
+test({
   name: "[http] close server while iterating",
   async fn(): Promise<void> {
     const server = serve(":8123");
@@ -670,7 +704,6 @@ Deno.test({
     assertEquals(await nextAfterClosing, { value: undefined, done: true });
   }
 });
-*/
 
 // TODO(kevinkassimo): create a test that works on Windows.
 // The following test is to ensure that if an error occurs during respond
@@ -679,9 +712,8 @@ Deno.test({
 // receive a RST and thus trigger an error during response for us to test.
 // We need to find a way to similarly trigger an error on Windows so that
 // we can test if connection is closed.
-/* TODO(bartlomieju): after removing std/installer/ it hangs, fix and reenable
 if (Deno.build.os !== "win") {
-  Deno.test({
+  test({
     name: "[http] respond error handling",
     async fn(): Promise<void> {
       const connClosedPromise = deferred();
@@ -738,3 +770,56 @@ if (Deno.build.os !== "win") {
   });
 }
 */
+
+test("writeTrailer", async () => {
+  const w = new Buffer();
+  await writeTrailers(
+    w,
+    new Headers({ "transfer-encoding": "chunked", trailer: "deno,node" }),
+    new Headers({ deno: "land", node: "js" })
+  );
+  assertEquals(w.toString(), "deno: land\r\nnode: js\r\n");
+});
+
+test("writeTrailer should throw", async () => {
+  const w = new Buffer();
+  await assertThrowsAsync(
+    () => {
+      return writeTrailers(w, new Headers(), new Headers());
+    },
+    Error,
+    'must have "trailer"'
+  );
+  await assertThrowsAsync(
+    () => {
+      return writeTrailers(w, new Headers({ trailer: "deno" }), new Headers());
+    },
+    Error,
+    "only allowed"
+  );
+  for (const f of ["content-length", "trailer", "transfer-encoding"]) {
+    await assertThrowsAsync(
+      () => {
+        return writeTrailers(
+          w,
+          new Headers({ "transfer-encoding": "chunked", trailer: f }),
+          new Headers({ [f]: "1" })
+        );
+      },
+      AssertionError,
+      "prohibited"
+    );
+  }
+  await assertThrowsAsync(
+    () => {
+      return writeTrailers(
+        w,
+        new Headers({ "transfer-encoding": "chunked", trailer: "deno" }),
+        new Headers({ node: "js" })
+      );
+    },
+    AssertionError,
+    "Not trailer"
+  );
+});
+

@@ -108,7 +108,7 @@ fn installer_test_local_module_run() {
   let local_module_str = local_module.to_string_lossy();
   installer::install(
     DenoFlags::default(),
-    Some(temp_dir.path().to_string_lossy().to_string()),
+    Some(temp_dir.path().to_path_buf()),
     "echo_test",
     &local_module_str,
     vec!["hello".to_string()],
@@ -156,7 +156,7 @@ fn installer_test_remote_module_run() {
   let temp_dir = TempDir::new().expect("tempdir fail");
   installer::install(
     DenoFlags::default(),
-    Some(temp_dir.path().to_string_lossy().to_string()),
+    Some(temp_dir.path().to_path_buf()),
     "echo_test",
     "http://localhost:4545/cli/tests/echo.ts",
     vec!["hello".to_string()],
@@ -397,12 +397,10 @@ itest!(_026_redirect_javascript {
   http_server: true,
 });
 
-/* TODO(ry) Disabled to get #3844 landed faster. Re-enable.
 itest!(_026_workers {
   args: "run --reload 026_workers.ts",
   output: "026_workers.ts.out",
 });
-*/
 
 itest!(workers_basic {
   args: "run --reload workers_basic.ts",
@@ -601,6 +599,32 @@ itest!(async_error {
 itest!(bundle {
   args: "bundle subdir/mod1.ts",
   output: "bundle.test.out",
+});
+
+itest!(fmt_stdin {
+  args: "fmt -",
+  input: Some("const a = 1\n"),
+  output_str: Some("const a = 1;\n"),
+});
+
+itest!(fmt_stdin_ambiguous {
+  args: "fmt - file.ts",
+  input: Some("const a = 1\n"),
+  check_stderr: true,
+  exit_code: 1,
+  output_str: Some("Ambiguous filename input. To format stdin, provide a single '-' instead.\n"),
+});
+
+itest!(fmt_stdin_check_formatted {
+  args: "fmt --check -",
+  input: Some("const a = 1;\n"),
+  output_str: Some(""),
+});
+
+itest!(fmt_stdin_check_not_formatted {
+  args: "fmt --check -",
+  input: Some("const a = 1\n"),
+  output_str: Some("Not formatted stdin\n"),
 });
 
 itest!(circular1 {
@@ -917,6 +941,7 @@ mod util {
     pub args: &'static str,
     pub output: &'static str,
     pub input: Option<&'static str>,
+    pub output_str: Option<&'static str>,
     pub exit_code: i32,
     pub check_stderr: bool,
     pub http_server: bool,
@@ -982,10 +1007,13 @@ mod util {
         );
       }
 
-      let output_path = tests_dir.join(self.output);
-      println!("output path {}", output_path.display());
-      let expected =
-        std::fs::read_to_string(output_path).expect("cannot read output");
+      let expected = if let Some(s) = self.output_str {
+        s.to_owned()
+      } else {
+        let output_path = tests_dir.join(self.output);
+        println!("output path {}", output_path.display());
+        std::fs::read_to_string(output_path).expect("cannot read output")
+      };
 
       if !wildcard_match(&expected, &actual) {
         println!("OUTPUT\n{}\nOUTPUT", actual);
