@@ -170,7 +170,7 @@ fn req(
   request_type: msg::CompilerRequestType,
   root_names: Vec<String>,
   compiler_config: CompilerConfig,
-  out_file: Option<String>,
+  out_file: Option<PathBuf>,
   target: &str,
   bundle: bool,
 ) -> Buf {
@@ -275,7 +275,7 @@ impl TsCompiler {
     &self,
     global_state: GlobalState,
     module_name: String,
-    out_file: Option<String>,
+    out_file: Option<PathBuf>,
   ) -> Result<(), ErrBox> {
     debug!(
       "Invoking the compiler to bundle. module_name: {}",
@@ -743,7 +743,7 @@ mod tests {
       .bundle_async(
         state.clone(),
         module_name,
-        Some(String::from("$deno$/bundle.js")),
+        Some(PathBuf::from("$deno$/bundle.js")),
       )
       .await;
     assert!(result.is_ok());
