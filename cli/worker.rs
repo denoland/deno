@@ -230,7 +230,6 @@ mod tests {
   use crate::state::State;
   use crate::tokio_util;
   use futures::executor::block_on;
-  use std::sync::atomic::Ordering;
 
   pub fn run_in_task<F>(f: F)
   where
@@ -267,8 +266,6 @@ mod tests {
     });
     let state = state_.borrow();
     assert_eq!(state.metrics.resolve_count, 2);
-    // Check that we didn't start the compiler.
-    assert_eq!(state.metrics.compiler_starts, 0);
   }
 
   #[test]
@@ -297,11 +294,8 @@ mod tests {
       }
     });
 
-    let mut state = state_.borrow_mut();
-    let metrics = &mut state.metrics;
-    // TODO  assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
-    // Check that we didn't start the compiler.
-    assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 0);
+    let state = state_.borrow();
+    assert_eq!(state.metrics.resolve_count, 1);
   }
 
   #[tokio::test]
@@ -338,13 +332,8 @@ mod tests {
     if let Err(e) = (&mut *worker).await {
       panic!("Future got unexpected error: {:?}", e);
     }
-    let state = state.borrow_mut();
-    assert_eq!(state.metrics.resolve_count.load(Ordering::SeqCst), 3);
-    // Check that we've only invoked the compiler once.
-    assert_eq!(
-      global_state.metrics.compiler_starts.load(Ordering::SeqCst),
-      1
-    );
+    let state = state.borrow();
+    assert_eq!(state.metrics.resolve_count, 3);
     drop(http_server_guard);
   }
 

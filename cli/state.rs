@@ -364,19 +364,13 @@ impl State {
   ) {
     let mut state = self.borrow_mut();
     state.metrics.ops_dispatched += 1;
-    state
-      .metrics
-      .bytes_sent_control += bytes_sent_control;
-    state
-      .metrics
-      .bytes_sent_data += bytes_sent_data;
+    state.metrics.bytes_sent_control += bytes_sent_control;
+    state.metrics.bytes_sent_data += bytes_sent_data;
   }
 
   pub fn metrics_op_completed(&self, bytes_received: u64) {
     let mut state = self.borrow_mut();
     state.metrics.ops_completed += 1;
-    state
-      .metrics
-      .bytes_received += bytes_received;
+    state.metrics.bytes_received += bytes_received;
   }
 }

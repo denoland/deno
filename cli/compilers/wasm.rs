@@ -56,13 +56,8 @@ impl WasmCompiler {
     let entry_point =
       ModuleSpecifier::resolve_url_or_path("./__$deno$wasm_compiler.ts")
         .unwrap();
-    let worker_state = State::new(global_state.clone(), None, entry_point)
+    let worker_state = State::new(global_state, None, entry_point)
       .expect("Unable to create worker state");
-
-    // Count how many times we start the compiler worker.
-    global_state
-      .metrics
-      .compiler_starts += 1;
 
     let mut worker = CompilerWorker::new(
       "WASM".to_string(),

@@ -10,7 +10,6 @@ use crate::deno_error::permission_denied;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
 use crate::lockfile::Lockfile;
-use crate::metrics::Metrics;
 use crate::msg;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
@@ -39,7 +38,6 @@ pub struct GlobalStateInner {
   /// Permissions parsed from `flags`.
   pub permissions: DenoPermissions,
   pub dir: deno_dir::DenoDir,
-  pub metrics: Metrics,
   pub progress: Progress,
   pub file_fetcher: SourceFileFetcher,
   pub js_compiler: JsCompiler,
@@ -101,7 +99,6 @@ impl GlobalState {
       dir,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
-      metrics: Metrics::default(),
       progress,
       file_fetcher,
       ts_compiler,

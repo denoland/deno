@@ -7,5 +7,4 @@ pub struct Metrics {
   pub bytes_sent_data: u64,
   pub bytes_received: u64,
   pub resolve_count: u64,
-  pub compiler_starts: u64,
 }
