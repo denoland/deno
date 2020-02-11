@@ -82,7 +82,9 @@ fn op_create_worker(
   let mut parent_state = parent_state.borrow_mut();
   let worker_id = parent_state.next_worker_id;
   parent_state.next_worker_id += 1;
-  parent_state.workers.insert(worker_id, (join_handle, worker_handle));
+  parent_state
+    .workers
+    .insert(worker_id, (join_handle, worker_handle));
 
   Ok(JsonOp::Sync(json!({ "id": worker_id })))
 }
