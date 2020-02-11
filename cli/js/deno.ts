@@ -73,6 +73,7 @@ export { mkdirSync, mkdir } from "./mkdir.ts";
 export {
   connect,
   listen,
+  Socket,
   Listener,
   Conn,
   ShutdownMode,

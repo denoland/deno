@@ -147,7 +147,7 @@ export class ListenerImpl implements Listener {
   }
 }
 
-interface SendOptions {
+export interface SendOptions {
   buffer: Uint8Array;
   hostname: string;
   port: number;
