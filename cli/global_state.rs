@@ -21,6 +21,7 @@ use std::env;
 use std::ops::Deref;
 use std::path::Path;
 use std::str;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::sync::Mutex as AsyncMutex;
@@ -45,6 +46,7 @@ pub struct GlobalStateInner {
   pub ts_compiler: TsCompiler,
   pub wasm_compiler: WasmCompiler,
   pub lockfile: Option<Mutex<Lockfile>>,
+  pub compiler_starts: AtomicUsize,
   compile_lock: AsyncMutex<()>,
 }
 
@@ -106,6 +108,7 @@ impl GlobalState {
       json_compiler: JsonCompiler {},
       wasm_compiler: WasmCompiler::default(),
       lockfile,
+      compiler_starts: AtomicUsize::new(0),
       compile_lock: AsyncMutex::new(()),
     };
 

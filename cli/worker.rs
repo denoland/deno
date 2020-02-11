@@ -230,6 +230,7 @@ mod tests {
   use crate::state::State;
   use crate::tokio_util;
   use futures::executor::block_on;
+  use std::sync::atomic::Ordering;
 
   pub fn run_in_task<F>(f: F)
   where
@@ -266,6 +267,8 @@ mod tests {
     });
     let state = state_.borrow();
     assert_eq!(state.metrics.resolve_count, 2);
+    // Check that we didn't start the compiler.
+    assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 0);
   }
 
   #[test]
@@ -296,6 +299,8 @@ mod tests {
 
     let state = state_.borrow();
     assert_eq!(state.metrics.resolve_count, 1);
+    // Check that we didn't start the compiler.
+    assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 0);
   }
 
   #[tokio::test]
@@ -334,6 +339,8 @@ mod tests {
     }
     let state = state.borrow();
     assert_eq!(state.metrics.resolve_count, 3);
+    // Check that we've only invoked the compiler once.
+    assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 1);
     drop(http_server_guard);
   }
 

@@ -32,6 +32,7 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::str;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use url::Url;
@@ -252,8 +253,11 @@ impl TsCompiler {
   fn setup_worker(global_state: GlobalState) -> CompilerWorker {
     let entry_point =
       ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
-    let worker_state = State::new(global_state, None, entry_point)
+    let worker_state = State::new(global_state.clone(), None, entry_point)
       .expect("Unable to create worker state");
+
+    // Count how many times we start the compiler worker.
+    global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
 
     let mut worker = CompilerWorker::new(
       "TS".to_string(),
