@@ -256,42 +256,6 @@ export class File
   }
 }
 
-export type RestoreModeFunc = () => void;
-/** Extended file abstraction with setRaw() */
-export class Stdin extends File {
-  private _isRaw = false;
-  private _restoreFunc?: RestoreModeFunc;
-  /** Set input mode to raw (non-canonical).
-   * Returns a function that when called, restores previous mode.
-   */
-  setRaw(): RestoreModeFunc {
-    if (this._isRaw) {
-      return this._restoreFunc!;
-    }
-    const restoreInfo = sendSyncJson(dispatch.OP_SET_RAW, {
-      rid: this.rid,
-      raw: true
-    });
-    this._isRaw = true;
-    this._restoreFunc = (): void => {
-      sendSyncJson(dispatch.OP_SET_RAW, {
-        rid: this.rid,
-        raw: false,
-        ...restoreInfo
-      });
-      this._isRaw = false;
-    };
-    return this._restoreFunc!;
-  }
-}
-
-/** An instance of `Stdin` for stdin. */
-export const stdin = new Stdin(0);
-/** An instance of `File` for stdout. */
-export const stdout = new File(1);
-/** An instance of `File` for stderr. */
-export const stderr = new File(2);
-
 export interface OpenOptions {
   /** Sets the option for read access. This option, when true, will indicate that the file should be read-able if opened. */
   read?: boolean;

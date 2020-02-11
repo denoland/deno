@@ -4,6 +4,7 @@ use crate::deno_error::bad_resource;
 use crate::deno_error::other_error;
 use crate::ops::json_op;
 use crate::state::State;
+use atty;
 use deno_core::*;
 #[cfg(unix)]
 use nix::sys::termios;
@@ -20,9 +21,25 @@ use winapi::um::wincon;
 const RAW_MODE_MASK: DWORD = wincon::ENABLE_LINE_INPUT
   | wincon::ENABLE_ECHO_INPUT
   | wincon::ENABLE_PROCESSED_INPUT;
+#[cfg(windows)]
+fn get_windows_handle(
+  f: &std::fs::File,
+) -> Result<std::os::windows::io::RawHandle, ErrBox> {
+  use std::os::windows::io::AsRawHandle;
+  use winapi::um::handleapi;
+
+  let handle = f.as_raw_handle();
+  if handle == handleapi::INVALID_HANDLE_VALUE {
+    return Err(ErrBox::from(std::io::Error::last_os_error()));
+  } else if handle.is_null() {
+    return Err(ErrBox::from(other_error("null handle".to_owned())));
+  }
+  Ok(handle)
+}
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("set_raw", s.core_op(json_op(s.stateful_op(op_set_raw))));
+  i.register_op("isatty", s.core_op(json_op(s.stateful_op(op_isatty))));
 }
 
 #[cfg(windows)]
@@ -98,24 +115,29 @@ pub fn op_set_raw(
     return Err(bad_resource());
   }
 
-  // For now, only stdin.
-  match resource.unwrap() {
-    StreamResource::Stdin(_) => (),
-    _ => {
-      return Err(other_error(
-        "Resource other than stdin is not implemented".to_owned(),
-      ))
-    }
-  }
-
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs
+  // and https://github.com/kkawakam/rustyline/blob/master/src/tty/unix.rs
   // and https://github.com/crossterm-rs/crossterm/blob/e35d4d2c1cc4c919e36d242e014af75f6127ab50/src/terminal/sys/windows.rs
+  // Copyright (c) 2015 Katsu Kawakami & Rustyline authors. MIT license.
+  // Copyright (c) 2019 Timon. MIT license.
   #[cfg(windows)]
   {
     use std::os::windows::io::AsRawHandle;
     use winapi::um::{consoleapi, handleapi};
 
-    let handle = std::io::stdin().as_raw_handle();
+    // For now, only stdin.
+    let handle = match resource.unwrap() {
+      StreamResource::Stdin(_) => std::io::stdin().as_raw_handle(),
+      StreamResource::FsFile(f) => {
+        let tokio_file = futures::executor::block_on(f.try_clone())?;
+        let std_file = futures::executor::block_on(tokio_file.into_std());
+        std_file.as_raw_handle()
+      }
+      _ => {
+        return Err(other_error("Not implemented".to_owned()));
+      }
+    };
+
     if handle == handleapi::INVALID_HANDLE_VALUE {
       return Err(ErrBox::from(std::io::Error::last_os_error()));
     } else if handle.is_null() {
@@ -132,11 +154,20 @@ pub fn op_set_raw(
 
     Ok(JsonOp::Sync(json!({})))
   }
-  // From https://github.com/kkawakam/rustyline/blob/master/src/tty/unix.rs
   #[cfg(unix)]
   {
     use std::os::unix::io::AsRawFd;
-    let raw_fd = std::io::stdin().as_raw_fd();
+    let raw_fd = match resource.unwrap() {
+      StreamResource::Stdin(_) => std::io::stdin().as_raw_fd(),
+      StreamResource::FsFile(f) => {
+        let tokio_file = futures::executor::block_on(f.try_clone())?;
+        let std_file = futures::executor::block_on(tokio_file.into_std());
+        std_file.as_raw_fd()
+      }
+      _ => {
+        return Err(other_error("Not implemented".to_owned()));
+      }
+    };
 
     if is_raw {
       let original_mode = termios::tcgetattr(raw_fd)?;
@@ -179,5 +210,64 @@ pub fn op_set_raw(
       )?;
       Ok(JsonOp::Sync(json!({})))
     }
+  }
+}
+
+#[derive(Deserialize)]
+struct IsattyArgs {
+  rid: u32,
+}
+
+pub fn op_isatty(
+  state_: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: IsattyArgs = serde_json::from_value(args)?;
+  let rid = args.rid;
+
+  let state = state_.borrow_mut();
+  if !state.resource_table.has(rid) {
+    return Err(bad_resource());
+  }
+
+  let resource = state.resource_table.get::<StreamResource>(rid);
+  if resource.is_none() {
+    return Ok(JsonOp::Sync(json!(false)));
+  }
+
+  match resource.unwrap() {
+    StreamResource::Stdin(_) => {
+      Ok(JsonOp::Sync(json!(atty::is(atty::Stream::Stdin))))
+    }
+    StreamResource::Stdout(_) => {
+      Ok(JsonOp::Sync(json!(atty::is(atty::Stream::Stdout))))
+    }
+    StreamResource::Stderr(_) => {
+      Ok(JsonOp::Sync(json!(atty::is(atty::Stream::Stderr))))
+    }
+    StreamResource::FsFile(f) => {
+      let tokio_file = futures::executor::block_on(f.try_clone())?;
+      let std_file = futures::executor::block_on(tokio_file.into_std());
+      #[cfg(windows)]
+      {
+        use winapi::um::consoleapi;
+
+        let handle = get_windows_handle(&std_file)?;
+        let mut test_mode: DWORD = 0;
+        // If I cannot get mode out of console, it is not a console.
+        let result =
+          unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 };
+        Ok(JsonOp::Sync(json!(result)))
+      }
+      #[cfg(unix)]
+      {
+        use std::os::unix::io::AsRawFd;
+        let raw_fd = std_file.as_raw_fd();
+        let result = unsafe { libc::isatty(raw_fd as libc::c_int) == 1 };
+        Ok(JsonOp::Sync(json!(result)))
+      }
+    }
+    _ => Ok(JsonOp::Sync(json!(false))),
   }
 }

@@ -30,9 +30,6 @@ export {
   openSync,
   create,
   createSync,
-  stdin,
-  stdout,
-  stderr,
   read,
   readSync,
   write,
@@ -114,6 +111,7 @@ export { statSync, lstatSync, stat, lstat } from "./stat.ts";
 export { symlinkSync, symlink } from "./symlink.ts";
 export { connectTLS, listenTLS } from "./tls.ts";
 export { truncateSync, truncate } from "./truncate.ts";
+export { TTYInput, isatty, stdin, stdout, stderr } from "./tty.ts";
 export { utimeSync, utime } from "./utime.ts";
 export { version } from "./version.ts";
 export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";

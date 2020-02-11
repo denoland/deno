@@ -486,20 +486,6 @@ declare namespace Deno {
     seekSync(offset: number, whence: SeekMode): void;
     close(): void;
   }
-  export type RestoreModeFunc = () => void;
-  /** Extended file abstraction with setRaw() */
-  export class Stdin extends File {
-    /** Set input mode to raw (non-canonical).
-     * Returns a function that when called, restores previous mode.
-     */
-    setRaw(): RestoreModeFunc;
-  }
-  /** An instance of `Stdin` for stdin. */
-  export const stdin: Stdin;
-  /** An instance of `File` for stdout. */
-  export const stdout: File;
-  /** An instance of `File` for stderr. */
-  export const stderr: File;
 
   export interface OpenOptions {
     /** Sets the option for read access. This option, when true, will indicate that the file should be read-able if opened. */
@@ -556,6 +542,24 @@ declare namespace Deno {
     | "x"
     /** Read-write. Behaves like `x` and allows to read from file. */
     | "x+";
+
+  // @url js/tty.d.ts
+
+  /** Check if a given resource is TTY. */
+  export function isatty(rid: number): boolean;
+  /** Extended file abstraction for TTY input */
+  export class TTYInput extends File {
+    /** Is TTY under raw mode. */
+    get isRaw(): boolean;
+    /** Set TTY to be under raw mode. */
+    setRaw(mode: boolean): void;
+  }
+  /** An instance of `TTYInput` for stdin. */
+  export const stdin: TTYInput;
+  /** An instance of `File` for stdout. */
+  export const stdout: File;
+  /** An instance of `File` for stderr. */
+  export const stderr: File;
 
   // @url js/buffer.d.ts
 

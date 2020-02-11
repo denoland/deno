@@ -2,7 +2,8 @@
 import { isTypedArray } from "./util.ts";
 import { TypedArray } from "./types.ts";
 import { TextEncoder } from "./text_encoding.ts";
-import { File, stdout } from "./files.ts";
+import { File } from "./files.ts";
+import { stdout } from "./tty.ts";
 import { cliTable } from "./console_table.ts";
 import { exposeForTest } from "./internals.ts";
 

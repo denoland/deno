@@ -26,6 +26,10 @@ pub struct ResourceTable {
 }
 
 impl ResourceTable {
+  pub fn has(&self, rid: ResourceId) -> bool {
+    self.map.contains_key(&rid)
+  }
+
   pub fn get<T: Resource>(&self, rid: ResourceId) -> Option<&T> {
     if let Some((_name, resource)) = self.map.get(&rid) {
       return resource.downcast_ref::<T>();
