@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test } from "../testing/mod.ts";
 import {
   assertEquals,
   assertStrContains,
@@ -11,7 +10,7 @@ import { emptyDir, emptyDirSync } from "./empty_dir.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-test(async function emptyDirIfItNotExist(): Promise<void> {
+Deno.test(async function emptyDirIfItNotExist(): Promise<void> {
   const testDir = path.join(testdataDir, "empty_dir_test_1");
   const testNestDir = path.join(testDir, "nest");
   // empty a dir which not exist. then it will create new one
@@ -27,7 +26,7 @@ test(async function emptyDirIfItNotExist(): Promise<void> {
   }
 });
 
-test(function emptyDirSyncIfItNotExist(): void {
+Deno.test(function emptyDirSyncIfItNotExist(): void {
   const testDir = path.join(testdataDir, "empty_dir_test_2");
   const testNestDir = path.join(testDir, "nest");
   // empty a dir which not exist. then it will create new one
@@ -43,7 +42,7 @@ test(function emptyDirSyncIfItNotExist(): void {
   }
 });
 
-test(async function emptyDirIfItExist(): Promise<void> {
+Deno.test(async function emptyDirIfItExist(): Promise<void> {
   const testDir = path.join(testdataDir, "empty_dir_test_3");
   const testNestDir = path.join(testDir, "nest");
   // create test dir
@@ -86,7 +85,7 @@ test(async function emptyDirIfItExist(): Promise<void> {
   }
 });
 
-test(function emptyDirSyncIfItExist(): void {
+Deno.test(function emptyDirSyncIfItExist(): void {
   const testDir = path.join(testdataDir, "empty_dir_test_4");
   const testNestDir = path.join(testDir, "nest");
   // create test dir
@@ -125,7 +124,7 @@ test(function emptyDirSyncIfItExist(): void {
   }
 });
 
-test(async function emptyDirPermission(): Promise<void> {
+Deno.test(async function emptyDirPermission(): Promise<void> {
   interface Scenes {
     read: boolean; // --allow-read
     write: boolean; // --allow-write

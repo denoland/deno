@@ -14,8 +14,8 @@ import {
   unimplemented,
   unreachable
 } from "./asserts.ts";
-import { test } from "./mod.ts";
 import { red, green, white, gray, bold } from "../fmt/colors.ts";
+const { test } = Deno;
 
 test(function testingEqual(): void {
   assert(equal("world", "world"));

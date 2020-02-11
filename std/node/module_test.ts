@@ -1,4 +1,4 @@
-import { test } from "../testing/mod.ts";
+const { test } = Deno;
 import { assertEquals, assert } from "../testing/asserts.ts";
 import { createRequire } from "./module.ts";
 

@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test } from "../testing/mod.ts";
 import {
   assertEquals,
   assertThrows,
@@ -22,7 +21,7 @@ async function testCopy(
   name: string,
   cb: (tempDir: string) => Promise<void>
 ): Promise<void> {
-  test({
+  Deno.test({
     name,
     async fn(): Promise<void> {
       const tempDir = await Deno.makeTempDir({
@@ -35,7 +34,7 @@ async function testCopy(
 }
 
 function testCopySync(name: string, cb: (tempDir: string) => void): void {
-  test({
+  Deno.test({
     name,
     fn: (): void => {
       const tempDir = Deno.makeTempDirSync({

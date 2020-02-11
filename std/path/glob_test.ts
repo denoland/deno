@@ -1,5 +1,4 @@
-const { mkdir } = Deno;
-import { test, runIfMain } from "../testing/mod.ts";
+const { mkdir, test } = Deno;
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { testWalk, touch, walkArray } from "../fs/walk_test.ts";
 import { globToRegExp, isGlob, joinGlobs, normalizeGlob } from "./glob.ts";
@@ -247,5 +246,3 @@ test(function normalizeGlobGlobstar(): void {
 test(function joinGlobsGlobstar(): void {
   assertEquals(joinGlobs(["**", ".."], { globstar: true }), `**${SEP}..`);
 });
-
-runIfMain(import.meta);

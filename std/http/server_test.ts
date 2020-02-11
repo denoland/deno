@@ -5,9 +5,8 @@
 // Ported from
 // https://github.com/golang/go/blob/master/src/net/http/responsewrite_test.go
 
-const { Buffer } = Deno;
+const { Buffer, test } = Deno;
 import { TextProtoReader } from "../textproto/mod.ts";
-import { test, runIfMain } from "../testing/mod.ts";
 import {
   assert,
   assertEquals,
@@ -820,5 +819,3 @@ test("writeTrailer should throw", async () => {
     "Not trailer"
   );
 });
-
-runIfMain(import.meta);

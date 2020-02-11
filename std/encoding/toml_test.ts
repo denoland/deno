@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { runIfMain, test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { existsSync } from "../fs/exists.ts";
 import { readFileStrSync } from "../fs/read_file_str.ts";
@@ -16,7 +15,7 @@ function parseFile(filePath: string): object {
   return parse(strFile);
 }
 
-test({
+Deno.test({
   name: "[TOML] Strings",
   fn(): void {
     const expected = {
@@ -38,7 +37,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[TOML] CRLF",
   fn(): void {
     const expected = { boolean: { bool1: true, bool2: false } };
@@ -47,7 +46,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[TOML] Boolean",
   fn(): void {
     const expected = { boolean: { bool1: true, bool2: false } };
@@ -56,7 +55,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[TOML] Integer",
   fn(): void {
     const expected = {
@@ -81,7 +80,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[TOML] Float",
   fn(): void {
     const expected = {
@@ -107,7 +106,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[TOML] Arrays",
   fn(): void {
     const expected = {
@@ -124,7 +123,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[TOML] Table",
   fn(): void {
     const expected = {
@@ -157,7 +156,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[TOML] Simple",
   fn(): void {
     const expected = {
@@ -172,7 +171,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[TOML] Datetime",
   fn(): void {
     const expected = {
@@ -191,7 +190,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[TOML] Inline Table",
   fn(): void {
     const expected = {
@@ -236,7 +235,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[TOML] Array of Tables",
   fn(): void {
     const expected = {
@@ -251,7 +250,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[TOML] Cargo",
   fn(): void {
     /* eslint-disable @typescript-eslint/camelcase */
@@ -298,7 +297,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[TOML] Stringify",
   fn(): void {
     const src = {
@@ -412,5 +411,3 @@ the     = "array"
     assertEquals(actual, expected);
   }
 });
-
-runIfMain(import.meta);
