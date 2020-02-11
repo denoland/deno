@@ -246,9 +246,9 @@ export function listen(options: ListenOptions): Listener | Socket {
   const res = sendSync(dispatch.OP_LISTEN, { hostname: "0.0.0.0", ...options });
 
   if (options.transport === "tcp") {
-    return new ListenerImpl(res.id, res.localAddr);
+    return new ListenerImpl(res.rid, res.localAddr);
   } else {
-    return new SocketImpl(res.id, res.localAddr);
+    return new SocketImpl(res.rid, res.localAddr);
   }
 }
 
