@@ -7,7 +7,6 @@ use bytes::Bytes;
 use deno_core::ErrBox;
 use futures::future::FutureExt;
 use reqwest;
-use reqwest::Client;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderValue;
 use reqwest::header::ACCEPT_ENCODING;
@@ -18,6 +17,7 @@ use reqwest::header::IF_NONE_MATCH;
 use reqwest::header::LOCATION;
 use reqwest::header::USER_AGENT;
 use reqwest::redirect::Policy;
+use reqwest::Client;
 use reqwest::Response;
 use reqwest::StatusCode;
 use std::cmp::min;
@@ -30,7 +30,6 @@ use std::task::Context;
 use std::task::Poll;
 use tokio::io::AsyncRead;
 use url::Url;
-
 
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
@@ -45,16 +44,14 @@ pub fn create_http_client(ca_file: Option<String>) -> Client {
     .default_headers(headers)
     .use_rustls_tls();
 
-    if let Some(ca_file) = ca_file {
-      let mut buf = Vec::new();
-      File::open(ca_file).unwrap().read_to_end(&mut buf).unwrap();
-      let cert = reqwest::Certificate::from_der(&buf).unwrap();
-      builder = builder.add_root_certificate(cert);
-    }
+  if let Some(ca_file) = ca_file {
+    let mut buf = Vec::new();
+    File::open(ca_file).unwrap().read_to_end(&mut buf).unwrap();
+    let cert = reqwest::Certificate::from_der(&buf).unwrap();
+    builder = builder.add_root_certificate(cert);
+  }
 
-    builder
-      .build()
-      .unwrap()
+  builder.build().unwrap()
 }
 
 /// Construct the next uri based on base uri and location header fragment

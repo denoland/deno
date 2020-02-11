@@ -861,7 +861,7 @@ mod tests {
       vec![],
       false,
       false,
-      None
+      None,
     )
     .expect("setup fail")
   }

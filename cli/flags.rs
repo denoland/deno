@@ -2181,12 +2181,7 @@ fn fetch_with_cafile() {
 
 #[test]
 fn fmt_with_cafile() {
-  let r = flags_from_vec_safe(svec![
-    "deno",
-    "fmt",
-    "--cert",
-    "example.crt"
-  ]);
+  let r = flags_from_vec_safe(svec!["deno", "fmt", "--cert", "example.crt"]);
   assert_eq!(
     r.unwrap(),
     DenoFlags {
@@ -2247,19 +2242,13 @@ fn install_with_cafile() {
   );
 }
 
-
 #[test]
 fn repl_with_cafile() {
-  let r = flags_from_vec_safe(svec![
-    "deno",
-    "repl",
-    "--cert",
-    "example.crt"
-  ]);
+  let r = flags_from_vec_safe(svec!["deno", "repl", "--cert", "example.crt"]);
   assert_eq!(
     r.unwrap(),
     DenoFlags {
-      subcommand: DenoSubcommand::Repl{},
+      subcommand: DenoSubcommand::Repl {},
       ca_file: Some("example.crt".to_owned()),
       allow_read: true,
       allow_write: true,
@@ -2269,7 +2258,6 @@ fn repl_with_cafile() {
       allow_plugin: true,
       allow_hrtime: true,
       ..DenoFlags::default()
-
     }
   );
 }
