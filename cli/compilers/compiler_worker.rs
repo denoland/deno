@@ -30,7 +30,7 @@ impl CompilerWorker {
       let isolate = &mut worker.isolate;
       ops::runtime::init(isolate, &state);
       ops::compiler::init(isolate, &state);
-      ops::web_worker::init(isolate, &state);
+      ops::web_worker::init(isolate, &state, &worker.internal_channels.sender);
       ops::errors::init(isolate, &state);
       // for compatibility with Worker scope, though unused at
       // the moment

@@ -40,10 +40,7 @@ import { Diagnostic } from "./diagnostics.ts";
 import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
-import {
-  bootstrapWorkerRuntime,
-  runWorkerMessageLoop
-} from "./runtime_worker.ts";
+import { bootstrapWorkerRuntime } from "./runtime_worker.ts";
 
 interface CompilerRequestCompile {
   type: CompilerRequestType.Compile;
@@ -340,13 +337,11 @@ async function wasmCompilerOnMessage({
 function bootstrapTsCompilerRuntime(): void {
   bootstrapWorkerRuntime("TS");
   globalThis.onmessage = tsCompilerOnMessage;
-  runWorkerMessageLoop();
 }
 
 function bootstrapWasmCompilerRuntime(): void {
   bootstrapWorkerRuntime("WASM");
   globalThis.onmessage = wasmCompilerOnMessage;
-  runWorkerMessageLoop();
 }
 
 Object.defineProperties(globalThis, {

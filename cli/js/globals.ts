@@ -118,7 +118,6 @@ declare global {
   var bootstrapWorkerRuntime:
     | ((name: string) => Promise<void> | void)
     | undefined;
-  var runWorkerMessageLoop: (() => Promise<void> | void) | undefined;
   var onerror:
     | ((
         msg: string,

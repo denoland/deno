@@ -37,7 +37,6 @@ declare const postMessage: typeof __workerMain.postMessage;
 declare namespace __workerMain {
   export let onmessage: (e: { data: any }) => void;
   export function postMessage(data: any): void;
-  export function getMessage(): Promise<any>;
   export function close(): void;
   export const name: string;
 }

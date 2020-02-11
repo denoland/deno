@@ -397,12 +397,10 @@ itest!(_026_redirect_javascript {
   http_server: true,
 });
 
-/* TODO(ry) Disabled to get #3844 landed faster. Re-enable.
 itest!(_026_workers {
   args: "run --reload 026_workers.ts",
   output: "026_workers.ts.out",
 });
-*/
 
 itest!(workers_basic {
   args: "run --reload workers_basic.ts",
