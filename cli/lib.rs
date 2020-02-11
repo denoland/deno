@@ -256,7 +256,7 @@ async fn info_command(flags: DenoFlags, file: Option<String>) {
     print_err_and_exit(e);
   }
   print_file_info(&worker, main_module.clone()).await;
-  let result = (&mut *worker).await;
+  let result = worker.run_event_loop().await;
   js_check(result);
 }
 
@@ -327,7 +327,7 @@ async fn eval_command(flags: DenoFlags, code: String) {
     print_err_and_exit(e);
   }
   js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
-  let result = (&mut *worker).await;
+  let result = worker.run_event_loop().await;
   js_check(result);
   js_check(worker.execute("window.dispatchEvent(new Event('unload'))"));
 }
@@ -345,7 +345,7 @@ async fn bundle_command(
     create_main_worker(global_state.clone(), source_file_specifier.clone());
 
   // NOTE: we need to poll `worker` otherwise TS compiler worker won't run properly
-  let result = (&mut *worker).await;
+  let result = worker.run_event_loop().await;
   js_check(result);
   let bundle_result = global_state
     .ts_compiler
@@ -370,7 +370,7 @@ async fn run_repl(flags: DenoFlags) {
   let mut worker = create_main_worker(global_state, main_module);
   js_check(worker.execute("bootstrapMainRuntime()"));
   loop {
-    let result = (&mut *worker).await;
+    let result = worker.run_event_loop().await;
     if let Err(err) = result {
       eprintln!("{}", err.to_string());
     }
@@ -408,7 +408,7 @@ async fn run_script(
   debug!("main_module {}", main_module);
   worker.execute_mod_async(&main_module, None, false).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
-  (&mut *worker).await?;
+  worker.run_event_loop().await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
   Ok(())
 }

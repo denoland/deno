@@ -8,18 +8,16 @@ use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use deno_core::StartupData;
 use futures::channel::mpsc;
+use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use std::env;
-use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::Context;
 use std::task::Poll;
 use tokio::sync::Mutex as AsyncMutex;
 use url::Url;
@@ -95,6 +93,9 @@ pub struct Worker {
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
+  // TODO: replace with an enum describing current stage of
+  // worker lifecycle?
+  is_ready: bool,
 }
 
 impl Worker {
@@ -116,6 +117,7 @@ impl Worker {
       waker: AtomicWaker::new(),
       internal_channels,
       external_channels,
+      is_ready: false,
     }
   }
 
@@ -156,15 +158,56 @@ impl Worker {
   pub fn thread_safe_handle(&self) -> WorkerHandle {
     self.external_channels.clone()
   }
-}
 
-impl Future for Worker {
-  type Output = Result<(), ErrBox>;
+  // TODO(bartlomieju): I don't like that it's defined on Worker
+  // MainWorker will not use this method - it will be controlled directly
+  pub async fn run_event_loop(&mut self) -> Result<(), ErrBox> {
+    poll_fn(|cx| -> Poll<Result<(), ErrBox>> {
+      self.waker.register(cx.waker());
+      if !self.is_ready {
+        match self.isolate.poll_unpin(cx) {
+          Poll::Ready(r) => {
+            if let Err(e) = r {
+              let mut sender = self.internal_channels.sender.clone();
+              futures::executor::block_on(sender.send(WorkerEvent::Error(e)))
+                .expect("Failed to post message to host");
+            }
+            self.is_ready = true;
+          }
+          Poll::Pending => {}
+        }
+      }
 
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    inner.waker.register(cx.waker());
-    inner.isolate.poll_unpin(cx)
+      let maybe_msg = {
+        match self.internal_channels.receiver.poll_next_unpin(cx) {
+          Poll::Ready(r) => match r {
+            Some(msg) => {
+              let msg_str = String::from_utf8(msg.to_vec()).unwrap();
+              debug!("received message from host: {}", msg_str);
+              Some(msg_str)
+            }
+            None => {
+              debug!("channel closed by host, worker event loop shuts down");
+              return Poll::Ready(Ok(()));
+            }
+          },
+          Poll::Pending => None,
+        }
+      };
+
+      if let Some(msg) = maybe_msg {
+        // TODO: just add second value and then bind using rusty_v8
+        // to get structured clone/transfer working
+        let script = format!("workerMessageRecvCallback({})", msg);
+        self.execute(&script).expect("Failed to execute message cb");
+        // Let worker be polled again
+        self.is_ready = false;
+        self.waker.wake();
+      }
+
+      Poll::Pending
+    })
+    .await
   }
 }
 
@@ -205,6 +248,15 @@ impl MainWorker {
       ops::web_worker::init(isolate, &state, &worker.internal_channels.sender);
     }
     Self(worker)
+  }
+
+  // TODO(bartlomieju): just so it's not run by accident - this should probably just poll isolate /shrug
+  pub async fn run_event_loop(&mut self) -> Result<(), ErrBox> {
+    poll_fn(|cx| -> Poll<Result<(), ErrBox>> {
+      self.waker.register(cx.waker());
+      self.isolate.poll_unpin(cx)
+    })
+    .await
   }
 }
 
@@ -261,7 +313,7 @@ mod tests {
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
       }
-      if let Err(e) = (&mut *worker).await {
+      if let Err(e) = worker.run_event_loop().await {
         panic!("Future got unexpected error: {:?}", e);
       }
     });
@@ -293,7 +345,7 @@ mod tests {
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
       }
-      if let Err(e) = (&mut *worker).await {
+      if let Err(e) = worker.run_event_loop().await {
         panic!("Future got unexpected error: {:?}", e);
       }
     });
@@ -336,7 +388,7 @@ mod tests {
     if let Err(err) = result {
       eprintln!("execute_mod err {:?}", err);
     }
-    if let Err(e) = (&mut *worker).await {
+    if let Err(e) = worker.run_event_loop().await {
       panic!("Future got unexpected error: {:?}", e);
     }
     let state = state.borrow_mut();
