@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert } from "../../testing/asserts.ts";
-import { test } from "../../testing/mod.ts";
+const { test } = Deno;
 // @ts-ignore
 import { NIL_UUID, isNil } from "../mod.ts";
 

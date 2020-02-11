@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, runIfMain } from "../testing/mod.ts";
+const { test } = Deno;
 import { assert, assertEquals, assertStrictEq } from "../testing/asserts.ts";
 import { collectUint8Arrays, deferred, MuxAsyncIterator } from "./async.ts";
 
@@ -69,5 +69,3 @@ test(async function collectUint8Arrays4(): Promise<void> {
     assertStrictEq(result[i], i + 1);
   }
 });
-
-runIfMain(import.meta);

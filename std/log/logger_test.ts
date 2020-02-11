@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test } from "../testing/mod.ts";
+const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import { LogRecord, Logger } from "./logger.ts";
 import { LogLevel } from "./levels.ts";

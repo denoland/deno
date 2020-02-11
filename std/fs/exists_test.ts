@@ -1,12 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test } from "../testing/mod.ts";
 import { assertEquals, assertStrContains } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { exists, existsSync } from "./exists.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-test(async function existsFile(): Promise<void> {
+Deno.test(async function existsFile(): Promise<void> {
   assertEquals(
     await exists(path.join(testdataDir, "not_exist_file.ts")),
     false
@@ -14,12 +13,12 @@ test(async function existsFile(): Promise<void> {
   assertEquals(await existsSync(path.join(testdataDir, "0.ts")), true);
 });
 
-test(function existsFileSync(): void {
+Deno.test(function existsFileSync(): void {
   assertEquals(existsSync(path.join(testdataDir, "not_exist_file.ts")), false);
   assertEquals(existsSync(path.join(testdataDir, "0.ts")), true);
 });
 
-test(async function existsDirectory(): Promise<void> {
+Deno.test(async function existsDirectory(): Promise<void> {
   assertEquals(
     await exists(path.join(testdataDir, "not_exist_directory")),
     false
@@ -27,7 +26,7 @@ test(async function existsDirectory(): Promise<void> {
   assertEquals(existsSync(testdataDir), true);
 });
 
-test(function existsDirectorySync(): void {
+Deno.test(function existsDirectorySync(): void {
   assertEquals(
     existsSync(path.join(testdataDir, "not_exist_directory")),
     false
@@ -35,19 +34,19 @@ test(function existsDirectorySync(): void {
   assertEquals(existsSync(testdataDir), true);
 });
 
-test(function existsLinkSync(): void {
+Deno.test(function existsLinkSync(): void {
   // TODO(axetroy): generate link file use Deno api instead of set a link file
   // in repository
   assertEquals(existsSync(path.join(testdataDir, "0-link.ts")), true);
 });
 
-test(async function existsLink(): Promise<void> {
+Deno.test(async function existsLink(): Promise<void> {
   // TODO(axetroy): generate link file use Deno api instead of set a link file
   // in repository
   assertEquals(await exists(path.join(testdataDir, "0-link.ts")), true);
 });
 
-test(async function existsPermission(): Promise<void> {
+Deno.test(async function existsPermission(): Promise<void> {
   interface Scenes {
     read: boolean; // --allow-read
     async: boolean;

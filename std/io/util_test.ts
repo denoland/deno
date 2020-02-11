@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { remove } = Deno;
-import { test } from "../testing/mod.ts";
+const { remove, test } = Deno;
 import { assert, assertEquals } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { copyBytes, tempFile } from "./util.ts";

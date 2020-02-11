@@ -1,5 +1,5 @@
+const { test } = Deno;
 import { readFile, readFileSync, readlink, readlinkSync } from "./fs.ts";
-import { test } from "../testing/mod.ts";
 import * as path from "../path/mod.ts";
 import { assertEquals, assert } from "../testing/asserts.ts";
 

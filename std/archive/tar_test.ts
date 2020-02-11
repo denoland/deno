@@ -8,7 +8,6 @@
  * **to run this test**
  * deno run --allow-read archive/tar_test.ts
  */
-import { test, runIfMain } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 
 import { resolve } from "../path/mod.ts";
@@ -16,7 +15,7 @@ import { Tar, Untar } from "./tar.ts";
 
 const filePath = resolve("archive", "testdata", "example.txt");
 
-test(async function createTarArchive(): Promise<void> {
+Deno.test(async function createTarArchive(): Promise<void> {
   // initialize
   const tar = new Tar();
 
@@ -41,7 +40,7 @@ test(async function createTarArchive(): Promise<void> {
   assertEquals(wrote, 3072);
 });
 
-test(async function deflateTarArchive(): Promise<void> {
+Deno.test(async function deflateTarArchive(): Promise<void> {
   const fileName = "output.txt";
   const text = "hello tar world!";
 
@@ -64,7 +63,7 @@ test(async function deflateTarArchive(): Promise<void> {
   assertEquals(untarText, text);
 });
 
-test(async function appendFileWithLongNameToTarArchive(): Promise<void> {
+Deno.test(async function appendFileWithLongNameToTarArchive(): Promise<void> {
   // 9 * 15 + 13 = 148 bytes
   const fileName = new Array(10).join("long-file-name/") + "file-name.txt";
   const text = "hello tar world!";
@@ -87,5 +86,3 @@ test(async function appendFileWithLongNameToTarArchive(): Promise<void> {
   assertEquals(result.fileName, fileName);
   assertEquals(untarText, text);
 });
-
-runIfMain(import.meta);

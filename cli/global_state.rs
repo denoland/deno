@@ -10,7 +10,6 @@ use crate::deno_error::permission_denied;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
 use crate::lockfile::Lockfile;
-use crate::metrics::Metrics;
 use crate::msg;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
@@ -22,6 +21,7 @@ use std::env;
 use std::ops::Deref;
 use std::path::Path;
 use std::str;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::sync::Mutex as AsyncMutex;
@@ -39,7 +39,6 @@ pub struct GlobalStateInner {
   /// Permissions parsed from `flags`.
   pub permissions: DenoPermissions,
   pub dir: deno_dir::DenoDir,
-  pub metrics: Metrics,
   pub progress: Progress,
   pub file_fetcher: SourceFileFetcher,
   pub js_compiler: JsCompiler,
@@ -47,6 +46,7 @@ pub struct GlobalStateInner {
   pub ts_compiler: TsCompiler,
   pub wasm_compiler: WasmCompiler,
   pub lockfile: Option<Mutex<Lockfile>>,
+  pub compiler_starts: AtomicUsize,
   compile_lock: AsyncMutex<()>,
 }
 
@@ -101,7 +101,6 @@ impl GlobalState {
       dir,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
-      metrics: Metrics::default(),
       progress,
       file_fetcher,
       ts_compiler,
@@ -109,6 +108,7 @@ impl GlobalState {
       json_compiler: JsonCompiler {},
       wasm_compiler: WasmCompiler::default(),
       lockfile,
+      compiler_starts: AtomicUsize::new(0),
       compile_lock: AsyncMutex::new(()),
     };
 

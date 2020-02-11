@@ -1,9 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
-test(function booleanAndAliasIsNotUnknown(): void {
+Deno.test(function booleanAndAliasIsNotUnknown(): void {
   const unknown: unknown[] = [];
   function unknownFn(arg: unknown): boolean {
     unknown.push(arg);
@@ -22,7 +21,7 @@ test(function booleanAndAliasIsNotUnknown(): void {
   assertEquals(unknown, ["--derp", "-d"]);
 });
 
-test(function flagBooleanTrueAnyDoubleHyphenArgumentIsNotUnknown(): void {
+Deno.test(function flagBooleanTrueAnyDoubleHyphenArgumentIsNotUnknown(): void {
   const unknown: unknown[] = [];
   function unknownFn(arg: unknown): boolean {
     unknown.push(arg);
@@ -39,7 +38,7 @@ test(function flagBooleanTrueAnyDoubleHyphenArgumentIsNotUnknown(): void {
   });
 });
 
-test(function stringAndAliasIsNotUnkown(): void {
+Deno.test(function stringAndAliasIsNotUnkown(): void {
   const unknown: unknown[] = [];
   function unknownFn(arg: unknown): boolean {
     unknown.push(arg);
@@ -58,7 +57,7 @@ test(function stringAndAliasIsNotUnkown(): void {
   assertEquals(unknown, ["--derp", "-d"]);
 });
 
-test(function defaultAndAliasIsNotUnknown(): void {
+Deno.test(function defaultAndAliasIsNotUnknown(): void {
   const unknown: unknown[] = [];
   function unknownFn(arg: unknown): boolean {
     unknown.push(arg);
@@ -77,7 +76,7 @@ test(function defaultAndAliasIsNotUnknown(): void {
   assertEquals(unknown, []);
 });
 
-test(function valueFollowingDoubleHyphenIsNotUnknown(): void {
+Deno.test(function valueFollowingDoubleHyphenIsNotUnknown(): void {
   const unknown: unknown[] = [];
   function unknownFn(arg: unknown): boolean {
     unknown.push(arg);
