@@ -55,4 +55,4 @@ export const TS_SNAPSHOT_PROGRAM = ts.createProgram({
  * We read all static assets during the snapshotting process, which is
  * why this is located in compiler_bootstrap.
  */
-export const BUNDLE_LOADER = getAsset("bundle_loader.js");
+export const SYSTEM_LOADER = getAsset("system_loader.js");
