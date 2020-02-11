@@ -165,12 +165,14 @@ export class SocketImpl implements Socket {
 
   async receive(): Promise<Message> {
     const res = await sendAsync(dispatch.OP_RECEIVE, { rid: this.rid });
-    return { buffer: res.buffer, remote: res.remoteAddr };
+    const buffer = new Uint8Array(res.buffer);
+    return { buffer, remote: res.remoteAddr };
   }
 
   async send(options: SendOptions): Promise<void> {
-    options = Object.assign(sendDefaults, options);
-    await sendAsync(dispatch.OP_SEND, { rid: this.rid, ...options });
+    const buffer = Array.from(options.buffer);
+    const args = { ...sendDefaults, ...options, rid: this.rid, buffer };
+    await sendAsync(dispatch.OP_SEND, args);
   }
 
   close(): void {

@@ -163,7 +163,7 @@ fn op_receive(
       .ok_or_else(bad_resource)?;
 
     let socket = &mut resource.socket;
-    let mut buf = vec![0; 1024];
+    let mut buf = vec![0; 8192];
 
     let (_size, remote_addr) = socket.recv_from(&mut buf).await?;
 
@@ -183,7 +183,7 @@ fn op_receive(
 #[derive(Deserialize)]
 struct SendArgs {
   rid: i32,
-  buffer: [u8],
+  buffer: Vec<u8>,
   hostname: String,
   port: u16,
   transport: String,
@@ -194,7 +194,7 @@ fn op_send(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: SendArgs = serde_json::from_value(args)?;
+  let mut args: SendArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "udp");
   let rid = args.rid as u32;
   let state_ = state.clone();
@@ -210,7 +210,7 @@ fn op_send(
 
     let socket = &mut resource.socket;
     let addr = resolve_addr(&args.hostname, args.port).await?;
-    socket.send_to(&mut buf, addr).await?;
+    socket.send_to(&mut args.buffer, addr).await?;
 
     Ok(json!({}))
   };
