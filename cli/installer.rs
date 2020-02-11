@@ -22,7 +22,7 @@ lazy_static! {
     ).case_insensitive(true).build().unwrap();
 }
 
-fn is_remote_url(module_url: &str) -> bool {
+pub fn is_remote_url(module_url: &str) -> bool {
   module_url.starts_with("http://") || module_url.starts_with("https://")
 }
 

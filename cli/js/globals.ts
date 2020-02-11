@@ -59,6 +59,11 @@ declare global {
     thrown: any;
   }
 
+  interface ImportMeta {
+    url: string;
+    main: boolean;
+  }
+
   interface DenoCore {
     print(s: string, isErr?: boolean): void;
     dispatch(
@@ -137,6 +142,9 @@ declare global {
   // Assigned to `self` global - compiler
   var bootstrapTsCompilerRuntime: (() => void) | undefined;
   var bootstrapWasmCompilerRuntime: (() => void) | undefined;
+
+  var performance: performanceUtil.Performance;
+  var setTimeout: typeof timers.setTimeout;
   /* eslint-enable */
 }
 

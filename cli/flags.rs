@@ -22,15 +22,6 @@ macro_rules! sset {
   }}
 }
 
-macro_rules! std_url {
-  ($x:expr) => {
-    concat!("https://deno.land/std@v0.29.0/", $x)
-  };
-}
-
-/// Used for `deno test...` subcommand
-const TEST_RUNNER_URL: &str = std_url!("testing/runner.ts");
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum DenoSubcommand {
   Bundle {
@@ -64,6 +55,12 @@ pub enum DenoSubcommand {
   Repl,
   Run {
     script: String,
+  },
+  Test {
+    fail_fast: bool,
+    quiet: bool,
+    allow_none: bool,
+    include: Option<Vec<String>>,
   },
   Types,
 }
@@ -495,40 +492,31 @@ fn run_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 }
 
 fn test_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
-  flags.subcommand = DenoSubcommand::Run {
-    script: TEST_RUNNER_URL.to_string(),
-  };
   flags.allow_read = true;
 
   run_test_args_parse(flags, matches);
 
-  if matches.is_present("quiet") {
-    flags.argv.push("--quiet".to_string());
-  }
+  let quiet = matches.is_present("quiet");
+  let failfast = matches.is_present("failfast");
+  let allow_none = matches.is_present("allow_none");
 
-  if matches.is_present("failfast") {
-    flags.argv.push("--failfast".to_string());
-  }
-
-  if matches.is_present("exclude") {
-    flags.argv.push("--exclude".to_string());
-    let exclude: Vec<String> = matches
-      .values_of("exclude")
-      .unwrap()
-      .map(String::from)
-      .collect();
-    flags.argv.extend(exclude);
-  }
-
-  if matches.is_present("files") {
-    flags.argv.push("--".to_string());
+  let include = if matches.is_present("files") {
     let files: Vec<String> = matches
       .values_of("files")
       .unwrap()
       .map(String::from)
       .collect();
-    flags.argv.extend(files);
-  }
+    Some(files)
+  } else {
+    None
+  };
+
+  flags.subcommand = DenoSubcommand::Test {
+    quiet,
+    fail_fast: failfast,
+    include,
+    allow_none,
+  };
 }
 
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -857,11 +845,10 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(false),
     )
     .arg(
-      Arg::with_name("exclude")
-        .short("e")
-        .long("exclude")
-        .help("List of file names to exclude from run")
-        .takes_value(true),
+      Arg::with_name("allow_none")
+        .long("allow-none")
+        .help("Don't return error code if no test files are found")
+        .takes_value(false),
     )
     .arg(
       Arg::with_name("files")
@@ -2042,44 +2029,24 @@ mod tests {
   }
 
   #[test]
-  fn test_with_exclude() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "test",
-      "--exclude",
-      "some_dir/",
-      "dir1/",
-      "dir2/"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      DenoFlags {
-        subcommand: DenoSubcommand::Run {
-          script: TEST_RUNNER_URL.to_string(),
-        },
-        argv: svec!["--exclude", "some_dir/", "--", "dir1/", "dir2/"],
-        allow_read: true,
-        ..DenoFlags::default()
-      }
-    );
-  }
-
-  #[test]
   fn test_with_allow_net() {
     let r = flags_from_vec_safe(svec![
       "deno",
       "test",
       "--allow-net",
+      "--allow-none",
       "dir1/",
       "dir2/"
     ]);
     assert_eq!(
       r.unwrap(),
       DenoFlags {
-        subcommand: DenoSubcommand::Run {
-          script: TEST_RUNNER_URL.to_string(),
+        subcommand: DenoSubcommand::Test {
+          fail_fast: false,
+          quiet: false,
+          allow_none: true,
+          include: Some(svec!["dir1/", "dir2/"]),
         },
-        argv: svec!["--", "dir1/", "dir2/"],
         allow_read: true,
         allow_net: true,
         ..DenoFlags::default()
