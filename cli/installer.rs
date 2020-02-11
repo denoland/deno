@@ -204,6 +204,10 @@ mod tests {
   fn install_basic() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
+    // NOTE: this test overrides environmental variables
+    // don't add other tests in this file that mess with "HOME" and "USEPROFILE"
+    // otherwise transient failures are possible because tests are run in parallel.
+    // It means that other test can override env vars when this test is running.
     let original_home = env::var_os("HOME");
     let original_user_profile = env::var_os("HOME");
     env::set_var("HOME", &temp_dir_str);
@@ -322,15 +326,10 @@ mod tests {
   #[test]
   fn install_force() {
     let temp_dir = TempDir::new().expect("tempdir fail");
-    let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
-    let original_home = env::var_os("HOME");
-    let original_user_profile = env::var_os("HOME");
-    env::set_var("HOME", &temp_dir_str);
-    env::set_var("USERPROFILE", &temp_dir_str);
 
     install(
       DenoFlags::default(),
-      None,
+      Some(temp_dir.path().to_path_buf()),
       "echo_test",
       "http://localhost:4545/cli/tests/echo_server.ts",
       vec![],
@@ -338,7 +337,7 @@ mod tests {
     )
     .expect("Install failed");
 
-    let mut file_path = temp_dir.path().join(".deno/bin/echo_test");
+    let mut file_path = temp_dir.path().join("echo_test");
     if cfg!(windows) {
       file_path = file_path.with_extension(".cmd");
     }
@@ -347,7 +346,7 @@ mod tests {
     // No force. Install failed.
     let no_force_result = install(
       DenoFlags::default(),
-      None,
+      Some(temp_dir.path().to_path_buf()),
       "echo_test",
       "http://localhost:4545/cli/tests/cat.ts", // using a different URL
       vec![],
@@ -365,7 +364,7 @@ mod tests {
     // Force. Install success.
     let force_result = install(
       DenoFlags::default(),
-      None,
+      Some(temp_dir.path().to_path_buf()),
       "echo_test",
       "http://localhost:4545/cli/tests/cat.ts", // using a different URL
       vec![],
@@ -375,12 +374,5 @@ mod tests {
     // Assert modified
     let file_content_2 = fs::read_to_string(&file_path).unwrap();
     assert!(file_content_2.contains("cat.ts"));
-
-    if let Some(home) = original_home {
-      env::set_var("HOME", home);
-    }
-    if let Some(user_profile) = original_user_profile {
-      env::set_var("USERPROFILE", user_profile);
-    }
   }
 }
