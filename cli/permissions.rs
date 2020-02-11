@@ -102,9 +102,9 @@ impl Default for PermissionState {
 pub struct DenoPermissions {
   // Keep in sync with cli/js/permissions.ts
   pub allow_read: PermissionState,
-  pub read_whitelist: HashSet<PathBuf>,
+  pub read_whitelist: HashSet<String>,
   pub allow_write: PermissionState,
-  pub write_whitelist: HashSet<PathBuf>,
+  pub write_whitelist: HashSet<String>,
   pub allow_net: PermissionState,
   pub net_whitelist: HashSet<String>,
   pub allow_env: PermissionState,
@@ -349,10 +349,10 @@ fn log_perm_access(message: &str) {
   }
 }
 
-fn check_path_white_list(path: &Path, white_list: &HashSet<PathBuf>) -> bool {
+fn check_path_white_list(path: &Path, white_list: &HashSet<String>) -> bool {
   let mut path_buf = PathBuf::from(path);
   loop {
-    if white_list.contains(&path_buf) {
+    if white_list.contains(path_buf.to_str().unwrap()) {
       return true;
     }
     if !path_buf.pop() {
@@ -383,11 +383,7 @@ mod tests {
 
   #[test]
   fn check_paths() {
-    let whitelist = vec![
-      PathBuf::from("/a/specific/dir/name"),
-      PathBuf::from("/a/specific"),
-      PathBuf::from("/b/c"),
-    ];
+    let whitelist = svec!["/a/specific/dir/name", "/a/specific", "/b/c"];
 
     let perms = DenoPermissions::from_flags(&DenoFlags {
       read_whitelist: whitelist.clone(),
@@ -534,7 +530,7 @@ mod tests {
 
   #[test]
   fn test_permissions_request_read() {
-    let whitelist = vec![PathBuf::from("/foo/bar")];
+    let whitelist = svec!["/foo/bar"];
     let mut perms0 = DenoPermissions::from_flags(&DenoFlags {
       read_whitelist: whitelist.clone(),
       ..Default::default()
@@ -570,7 +566,7 @@ mod tests {
 
   #[test]
   fn test_permissions_request_write() {
-    let whitelist = vec![PathBuf::from("/foo/bar")];
+    let whitelist = svec!["/foo/bar"];
     let mut perms0 = DenoPermissions::from_flags(&DenoFlags {
       write_whitelist: whitelist.clone(),
       ..Default::default()

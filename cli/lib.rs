@@ -72,7 +72,6 @@ use log::Level;
 use log::Metadata;
 use log::Record;
 use std::env;
-use std::path::PathBuf;
 
 static LOGGER: Logger = Logger;
 
@@ -259,7 +258,7 @@ async fn info_command(flags: DenoFlags, file: Option<String>) {
 
 async fn install_command(
   flags: DenoFlags,
-  dir: Option<PathBuf>,
+  dir: Option<String>,
   exe_name: String,
   module_url: String,
   args: Vec<String>,
@@ -332,7 +331,7 @@ async fn eval_command(flags: DenoFlags, code: String) {
 async fn bundle_command(
   flags: DenoFlags,
   source_file: String,
-  out_file: Option<PathBuf>,
+  out_file: Option<String>,
 ) {
   debug!(">>>>> bundle_async START");
   let source_file_specifier =
@@ -405,7 +404,7 @@ async fn run_script(flags: DenoFlags, script: String) {
   js_check(worker.execute("window.dispatchEvent(new Event('unload'))"));
 }
 
-async fn fmt_command(files: Option<Vec<PathBuf>>, check: bool) {
+async fn fmt_command(files: Option<Vec<String>>, check: bool) {
   if let Err(err) = fmt::format_files(files, check) {
     print_err_and_exit(err);
   }

@@ -147,11 +147,11 @@ fn format_source_files(
   );
 }
 
-fn get_matching_files(glob_paths: Vec<PathBuf>) -> Vec<PathBuf> {
+fn get_matching_files(glob_paths: Vec<String>) -> Vec<PathBuf> {
   let mut target_files = Vec::with_capacity(128);
 
   for path in glob_paths {
-    let files = glob::glob(&path.to_str().unwrap())
+    let files = glob::glob(&path)
       .expect("Failed to execute glob.")
       .filter_map(Result::ok);
     target_files.extend(files);
@@ -165,14 +165,14 @@ fn get_matching_files(glob_paths: Vec<PathBuf>) -> Vec<PathBuf> {
 /// First argument supports globs, and if it is `None`
 /// then the current directory is recursively walked.
 pub fn format_files(
-  maybe_files: Option<Vec<PathBuf>>,
+  maybe_files: Option<Vec<String>>,
   check: bool,
 ) -> Result<(), ErrBox> {
   // TODO: improve glob to look for tsx?/jsx? files only
-  let glob_paths = maybe_files.unwrap_or_else(|| vec![PathBuf::from("**/*")]);
+  let glob_paths = maybe_files.unwrap_or_else(|| vec!["**/*".to_string()]);
 
   for glob_path in glob_paths.iter() {
-    if glob_path.to_str().unwrap() == "-" {
+    if glob_path == "-" {
       // If the only given path is '-', format stdin.
       if glob_paths.len() == 1 {
         format_stdin(check);
