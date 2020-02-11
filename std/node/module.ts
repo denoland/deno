@@ -389,7 +389,8 @@ class Module {
 
     Module._cache[filename] = module;
     if (parent !== undefined) {
-      relativeResolveCache[relResolveCacheIdentifier!] = filename;
+      assert(relResolveCacheIdentifier);
+      relativeResolveCache[relResolveCacheIdentifier] = filename;
     }
 
     let threw = true;
@@ -401,7 +402,8 @@ class Module {
       if (threw) {
         delete Module._cache[filename];
         if (parent !== undefined) {
-          delete relativeResolveCache[relResolveCacheIdentifier!];
+          assert(relResolveCacheIdentifier);
+          delete relativeResolveCache[relResolveCacheIdentifier];
         }
       } else if (
         module.exports &&

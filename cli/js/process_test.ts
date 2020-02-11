@@ -130,11 +130,12 @@ testPerm({ run: true }, async function runStdinPiped(): Promise<void> {
     args: ["python", "-c", "import sys; assert 'hello' == sys.stdin.read();"],
     stdin: "piped"
   });
+  assert(p.stdin);
   assert(!p.stdout);
   assert(!p.stderr);
 
   const msg = new TextEncoder().encode("hello");
-  const n = await p.stdin!.write(msg);
+  const n = await p.stdin.write(msg);
   assertEquals(n, msg.byteLength);
 
   p.stdin!.close();

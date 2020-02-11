@@ -301,7 +301,13 @@ test(function consoleTestWithVariousOrInvalidFormatSpecifier(): void {
 });
 
 test(function consoleTestCallToStringOnLabel(): void {
-  const methods = ["count", "countReset", "time", "timeLog", "timeEnd"];
+  const methods = [
+    "count",
+    "countReset",
+    "time",
+    "timeLog",
+    "timeEnd"
+  ] as const;
 
   for (const method of methods) {
     let hasCalled = false;
@@ -452,6 +458,7 @@ test(function consoleGroup(): void {
 // console.group with console.warn test
 test(function consoleGroupWarn(): void {
   mockConsole((console, _out, _err, both): void => {
+    assert(both);
     console.warn("1");
     console.group();
     console.warn("2");
@@ -465,7 +472,7 @@ test(function consoleGroupWarn(): void {
     console.warn("6");
     console.warn("7");
     assertEquals(
-      both!.toString(),
+      both.toString(),
       `1
   2
     3
@@ -695,6 +702,7 @@ test(function consoleDirXml(): void {
 test(function consoleTrace(): void {
   mockConsole((console, _out, err): void => {
     console.trace("%s", "custom message");
-    assert(err!.toString().includes("Trace: custom message"));
+    assert(err);
+    assert(err.toString().includes("Trace: custom message"));
   });
 });

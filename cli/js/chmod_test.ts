@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assertEquals } from "./test_util.ts";
+import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 const isNotWindows = Deno.build.os !== "win";
 
@@ -16,7 +16,8 @@ testPerm({ read: true, write: true }, function chmodSyncSuccess(): void {
   // Check success when not on windows
   if (isNotWindows) {
     const fileInfo = Deno.statSync(filename);
-    assertEquals(fileInfo.mode! & 0o777, 0o777);
+    assert(fileInfo.mode);
+    assertEquals(fileInfo.mode & 0o777, 0o777);
   }
 });
 
@@ -35,15 +36,18 @@ if (isNotWindows) {
       Deno.symlinkSync(filename, symlinkName);
 
       let symlinkInfo = Deno.lstatSync(symlinkName);
-      const symlinkMode = symlinkInfo.mode! & 0o777; // platform dependent
+      assert(symlinkInfo.mode);
+      const symlinkMode = symlinkInfo.mode & 0o777; // platform dependent
 
       Deno.chmodSync(symlinkName, 0o777);
 
       // Change actual file mode, not symlink
       const fileInfo = Deno.statSync(filename);
-      assertEquals(fileInfo.mode! & 0o777, 0o777);
+      assert(fileInfo.mode);
+      assertEquals(fileInfo.mode & 0o777, 0o777);
       symlinkInfo = Deno.lstatSync(symlinkName);
-      assertEquals(symlinkInfo.mode! & 0o777, symlinkMode);
+      assert(symlinkInfo.mode);
+      assertEquals(symlinkInfo.mode & 0o777, symlinkMode);
     }
   );
 }
@@ -86,7 +90,8 @@ testPerm({ read: true, write: true }, async function chmodSuccess(): Promise<
   // Check success when not on windows
   if (isNotWindows) {
     const fileInfo = Deno.statSync(filename);
-    assertEquals(fileInfo.mode! & 0o777, 0o777);
+    assert(fileInfo.mode);
+    assertEquals(fileInfo.mode & 0o777, 0o777);
   }
 });
 
@@ -105,15 +110,18 @@ if (isNotWindows) {
       Deno.symlinkSync(filename, symlinkName);
 
       let symlinkInfo = Deno.lstatSync(symlinkName);
-      const symlinkMode = symlinkInfo.mode! & 0o777; // platform dependent
+      assert(symlinkInfo.mode);
+      const symlinkMode = symlinkInfo.mode & 0o777; // platform dependent
 
       await Deno.chmod(symlinkName, 0o777);
 
       // Just change actual file mode, not symlink
       const fileInfo = Deno.statSync(filename);
-      assertEquals(fileInfo.mode! & 0o777, 0o777);
+      assert(fileInfo.mode);
+      assertEquals(fileInfo.mode & 0o777, 0o777);
       symlinkInfo = Deno.lstatSync(symlinkName);
-      assertEquals(symlinkInfo.mode! & 0o777, symlinkMode);
+      assert(symlinkInfo.mode);
+      assertEquals(symlinkInfo.mode & 0o777, symlinkMode);
     }
   );
 }

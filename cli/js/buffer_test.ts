@@ -3,7 +3,7 @@
 // This code has been ported almost directly from Go's src/bytes/buffer_test.go
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
-import { assertEquals, test } from "./test_util.ts";
+import { assert, assertEquals, test } from "./test_util.ts";
 
 const { Buffer, readAll, readAllSync, writeAll, writeAllSync } = Deno;
 type Buffer = Deno.Buffer;
@@ -78,12 +78,16 @@ function repeat(c: string, bytes: number): Uint8Array {
 
 test(function bufferNewBuffer(): void {
   init();
-  const buf = new Buffer(testBytes!.buffer as ArrayBuffer);
-  check(buf, testString!);
+  assert(testBytes);
+  assert(testString);
+  const buf = new Buffer(testBytes.buffer as ArrayBuffer);
+  check(buf, testString);
 });
 
 test(async function bufferBasicOperations(): Promise<void> {
   init();
+  assert(testBytes);
+  assert(testString);
   const buf = new Buffer();
   for (let i = 0; i < 5; i++) {
     check(buf, "");
@@ -94,25 +98,25 @@ test(async function bufferBasicOperations(): Promise<void> {
     buf.truncate(0);
     check(buf, "");
 
-    let n = await buf.write(testBytes!.subarray(0, 1));
+    let n = await buf.write(testBytes.subarray(0, 1));
     assertEquals(n, 1);
     check(buf, "a");
 
-    n = await buf.write(testBytes!.subarray(1, 2));
+    n = await buf.write(testBytes.subarray(1, 2));
     assertEquals(n, 1);
     check(buf, "ab");
 
-    n = await buf.write(testBytes!.subarray(2, 26));
+    n = await buf.write(testBytes.subarray(2, 26));
     assertEquals(n, 24);
-    check(buf, testString!.slice(0, 26));
+    check(buf, testString.slice(0, 26));
 
     buf.truncate(26);
-    check(buf, testString!.slice(0, 26));
+    check(buf, testString.slice(0, 26));
 
     buf.truncate(20);
-    check(buf, testString!.slice(0, 20));
+    check(buf, testString.slice(0, 20));
 
-    await empty(buf, testString!.slice(0, 20), new Uint8Array(5));
+    await empty(buf, testString.slice(0, 20), new Uint8Array(5));
     await empty(buf, "", new Uint8Array(100));
 
     // TODO buf.writeByte()
@@ -161,11 +165,13 @@ test(async function bufferTooLargeByteWrites(): Promise<void> {
 
 test(async function bufferLargeByteReads(): Promise<void> {
   init();
+  assert(testBytes);
+  assert(testString);
   const buf = new Buffer();
   for (let i = 3; i < 30; i += 3) {
-    const n = Math.floor(testBytes!.byteLength / i);
-    const s = await fillBytes(buf, "", 5, testBytes!.subarray(0, n));
-    await empty(buf, s, new Uint8Array(testString!.length));
+    const n = Math.floor(testBytes.byteLength / i);
+    const s = await fillBytes(buf, "", 5, testBytes.subarray(0, n));
+    await empty(buf, s, new Uint8Array(testString.length));
   }
   check(buf, "");
 });
@@ -177,34 +183,38 @@ test(function bufferCapWithPreallocatedSlice(): void {
 
 test(async function bufferReadFrom(): Promise<void> {
   init();
+  assert(testBytes);
+  assert(testString);
   const buf = new Buffer();
   for (let i = 3; i < 30; i += 3) {
     const s = await fillBytes(
       buf,
       "",
       5,
-      testBytes!.subarray(0, Math.floor(testBytes!.byteLength / i))
+      testBytes.subarray(0, Math.floor(testBytes.byteLength / i))
     );
     const b = new Buffer();
     await b.readFrom(buf);
-    const fub = new Uint8Array(testString!.length);
+    const fub = new Uint8Array(testString.length);
     await empty(b, s, fub);
   }
 });
 
 test(async function bufferReadFromSync(): Promise<void> {
   init();
+  assert(testBytes);
+  assert(testString);
   const buf = new Buffer();
   for (let i = 3; i < 30; i += 3) {
     const s = await fillBytes(
       buf,
       "",
       5,
-      testBytes!.subarray(0, Math.floor(testBytes!.byteLength / i))
+      testBytes.subarray(0, Math.floor(testBytes.byteLength / i))
     );
     const b = new Buffer();
     b.readFromSync(buf);
-    const fub = new Uint8Array(testString!.length);
+    const fub = new Uint8Array(testString.length);
     await empty(b, s, fub);
   }
 });
@@ -236,42 +246,46 @@ test(async function bufferTestGrow(): Promise<void> {
 
 test(async function testReadAll(): Promise<void> {
   init();
-  const reader = new Buffer(testBytes!.buffer as ArrayBuffer);
+  assert(testBytes);
+  const reader = new Buffer(testBytes.buffer as ArrayBuffer);
   const actualBytes = await readAll(reader);
-  assertEquals(testBytes!.byteLength, actualBytes.byteLength);
-  for (let i = 0; i < testBytes!.length; ++i) {
-    assertEquals(testBytes![i], actualBytes[i]);
+  assertEquals(testBytes.byteLength, actualBytes.byteLength);
+  for (let i = 0; i < testBytes.length; ++i) {
+    assertEquals(testBytes[i], actualBytes[i]);
   }
 });
 
 test(function testReadAllSync(): void {
   init();
-  const reader = new Buffer(testBytes!.buffer as ArrayBuffer);
+  assert(testBytes);
+  const reader = new Buffer(testBytes.buffer as ArrayBuffer);
   const actualBytes = readAllSync(reader);
-  assertEquals(testBytes!.byteLength, actualBytes.byteLength);
-  for (let i = 0; i < testBytes!.length; ++i) {
-    assertEquals(testBytes![i], actualBytes[i]);
+  assertEquals(testBytes.byteLength, actualBytes.byteLength);
+  for (let i = 0; i < testBytes.length; ++i) {
+    assertEquals(testBytes[i], actualBytes[i]);
   }
 });
 
 test(async function testWriteAll(): Promise<void> {
   init();
+  assert(testBytes);
   const writer = new Buffer();
-  await writeAll(writer, testBytes!);
+  await writeAll(writer, testBytes);
   const actualBytes = writer.bytes();
-  assertEquals(testBytes!.byteLength, actualBytes.byteLength);
-  for (let i = 0; i < testBytes!.length; ++i) {
-    assertEquals(testBytes![i], actualBytes[i]);
+  assertEquals(testBytes.byteLength, actualBytes.byteLength);
+  for (let i = 0; i < testBytes.length; ++i) {
+    assertEquals(testBytes[i], actualBytes[i]);
   }
 });
 
 test(function testWriteAllSync(): void {
   init();
+  assert(testBytes);
   const writer = new Buffer();
-  writeAllSync(writer, testBytes!);
+  writeAllSync(writer, testBytes);
   const actualBytes = writer.bytes();
-  assertEquals(testBytes!.byteLength, actualBytes.byteLength);
-  for (let i = 0; i < testBytes!.length; ++i) {
-    assertEquals(testBytes![i], actualBytes[i]);
+  assertEquals(testBytes.byteLength, actualBytes.byteLength);
+  for (let i = 0; i < testBytes.length; ++i) {
+    assertEquals(testBytes[i], actualBytes[i]);
   }
 });

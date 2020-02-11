@@ -93,11 +93,10 @@ testPerm({ net: true }, async function responseClone(): Promise<void> {
   assert(response !== response1);
   assertEquals(response.status, response1.status);
   assertEquals(response.statusText, response1.statusText);
-  const ab = await response.arrayBuffer();
-  const ab1 = await response1.arrayBuffer();
-  for (let i = 0; i < ab.byteLength; i++) {
-    // @ts-ignore
-    assertEquals(ab[i], ab1[i]);
+  const u8a = new Uint8Array(await response.arrayBuffer());
+  const u8a1 = new Uint8Array(await response1.arrayBuffer());
+  for (let i = 0; i < u8a.byteLength; i++) {
+    assertEquals(u8a[i], u8a1[i]);
   }
 });
 

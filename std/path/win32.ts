@@ -331,14 +331,14 @@ export function join(...paths: string[]): string {
   let needsReplace = true;
   let slashCount = 0;
   assert(firstPart != null);
-  if (isPathSeparator(firstPart!.charCodeAt(0))) {
+  if (isPathSeparator(firstPart.charCodeAt(0))) {
     ++slashCount;
-    const firstLen = firstPart!.length;
+    const firstLen = firstPart.length;
     if (firstLen > 1) {
-      if (isPathSeparator(firstPart!.charCodeAt(1))) {
+      if (isPathSeparator(firstPart.charCodeAt(1))) {
         ++slashCount;
         if (firstLen > 2) {
-          if (isPathSeparator(firstPart!.charCodeAt(2))) ++slashCount;
+          if (isPathSeparator(firstPart.charCodeAt(2))) ++slashCount;
           else {
             // We matched a UNC path in the first part
             needsReplace = false;

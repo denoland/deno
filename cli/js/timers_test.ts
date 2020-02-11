@@ -7,7 +7,7 @@ function deferred(): {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   reject: (reason?: any) => void;
 } {
-  let resolve: ((value?: {} | PromiseLike<{}>) => void) | undefined = undefined;
+  let resolve: (value?: {} | PromiseLike<{}>) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let reject: ((reason?: any) => void) | undefined = undefined;
   const promise = new Promise<{}>((res, rej): void => {

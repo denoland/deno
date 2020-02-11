@@ -105,9 +105,15 @@ test(function formDataParamsForEachSuccess(): void {
 });
 
 test(function formDataParamsArgumentsCheck(): void {
-  const methodRequireOneParam = ["delete", "getAll", "get", "has", "forEach"];
+  const methodRequireOneParam = [
+    "delete",
+    "getAll",
+    "get",
+    "has",
+    "forEach"
+  ] as const;
 
-  const methodRequireTwoParams = ["append", "set"];
+  const methodRequireTwoParams = ["append", "set"] as const;
 
   methodRequireOneParam.forEach((method): void => {
     const formData = new FormData();

@@ -559,10 +559,10 @@ test(async function testReadRequestError(): Promise<void> {
       assert(err instanceof (test.err as typeof UnexpectedEOFError));
     } else {
       assert(req instanceof ServerRequest);
-      assert(test.headers != null);
+      assert(test.headers);
       assertEquals(err, undefined);
       assertNotEquals(req, Deno.EOF);
-      for (const h of test.headers!) {
+      for (const h of test.headers) {
         assertEquals(req.headers.get(h.key), h.value);
       }
     }
