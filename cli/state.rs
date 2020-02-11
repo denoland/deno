@@ -32,6 +32,7 @@ use std::rc::Rc;
 use std::str;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::thread::JoinHandle;
 use std::time::Instant;
 
 #[derive(Clone)]
@@ -54,7 +55,7 @@ pub struct StateInner {
   pub import_map: Option<ImportMap>,
   pub metrics: Metrics,
   pub global_timer: GlobalTimer,
-  pub workers: HashMap<u32, WorkerHandle>,
+  pub workers: HashMap<u32, (JoinHandle<()>, WorkerHandle)>,
   pub next_worker_id: AtomicUsize,
   pub start_time: Instant,
   pub seeded_rng: Option<StdRng>,
@@ -278,11 +279,15 @@ impl State {
     Ok(Self(state))
   }
 
-  pub fn add_child_worker(&self, handle: WorkerHandle) -> u32 {
+  pub fn add_child_worker(
+    &self,
+    join_handle: JoinHandle<()>,
+    handle: WorkerHandle,
+  ) -> u32 {
     let mut inner_state = self.borrow_mut();
     let worker_id =
       inner_state.next_worker_id.fetch_add(1, Ordering::Relaxed) as u32;
-    inner_state.workers.insert(worker_id, handle);
+    inner_state.workers.insert(worker_id, (join_handle, handle));
     worker_id
   }
 
