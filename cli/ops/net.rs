@@ -156,15 +156,12 @@ fn op_receive(
 
   let op = async move {
     let mut state = state_.borrow_mut();
-
     let resource = state
       .resource_table
       .get_mut::<UdpSocketResource>(rid)
       .ok_or_else(bad_resource)?;
-
     let socket = &mut resource.socket;
-    let mut buf = vec![0; 8192];
-
+    let mut buf = vec![0; 1024];
     let (_size, remote_addr) = socket.recv_from(&mut buf).await?;
 
     Ok(json!({
@@ -202,12 +199,10 @@ fn op_send(
 
   let op = async move {
     let mut state = state_.borrow_mut();
-
     let resource = state
       .resource_table
       .get_mut::<UdpSocketResource>(rid)
       .ok_or_else(bad_resource)?;
-
     let socket = &mut resource.socket;
     let addr = resolve_addr(&args.hostname, args.port).await?;
     socket.send_to(&mut args.buffer, addr).await?;

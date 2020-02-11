@@ -225,6 +225,8 @@ export interface ListenOptions {
   transport?: Transport;
 }
 
+const listenDefaults = { hostname: "0.0.0.0", port: 80, transport: "tcp" };
+
 /** Listen announces on the local transport address.
  *
  * @param options
@@ -242,8 +244,10 @@ export interface ListenOptions {
  *     listen({ hostname: "[2001:db8::1]", port: 80 });
  *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
+export function listen(options: ListenOptions & { transport: "tcp" }): Listener;
+export function listen(options: ListenOptions & { transport: "udp" }): Socket;
 export function listen(options: ListenOptions): Listener | Socket {
-  const res = sendSync(dispatch.OP_LISTEN, { hostname: "0.0.0.0", ...options });
+  const res = sendSync(dispatch.OP_LISTEN, { ...listenDefaults, ...options });
 
   if (options.transport === "tcp") {
     return new ListenerImpl(res.rid, res.localAddr);
