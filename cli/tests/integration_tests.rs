@@ -112,7 +112,6 @@ fn installer_test_local_module_run() {
     "echo_test",
     &local_module_str,
     vec!["hello".to_string()],
-    false,
   )
   .expect("Failed to install");
   let mut file_path = temp_dir.path().join("echo_test");
@@ -160,7 +159,6 @@ fn installer_test_remote_module_run() {
     "echo_test",
     "http://localhost:4545/cli/tests/echo.ts",
     vec!["hello".to_string()],
-    false,
   )
   .expect("Failed to install");
   let mut file_path = temp_dir.path().join("echo_test");
