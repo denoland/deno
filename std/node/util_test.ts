@@ -1,4 +1,4 @@
-import { test } from "../testing/mod.ts";
+const { test } = Deno;
 import { assert } from "../testing/asserts.ts";
 import * as util from "./util.ts";
 

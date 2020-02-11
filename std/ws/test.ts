@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
-import { runIfMain, test } from "../testing/mod.ts";
+const { test } = Deno;
 import { TextProtoReader } from "../textproto/mod.ts";
 import * as bytes from "../bytes/mod.ts";
 import {
@@ -326,5 +326,3 @@ test("WebSocket.send(), WebSocket.ping() should be exclusive", async (): Promise
   assertEquals(third.opcode, OpCode.BinaryFrame);
   assertEquals(bytes.equal(third.payload, new Uint8Array([3])), true);
 });
-
-runIfMain(import.meta);

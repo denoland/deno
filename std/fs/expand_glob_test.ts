@@ -1,6 +1,5 @@
 const { cwd, execPath, run } = Deno;
 import { decode } from "../strings/mod.ts";
-import { test, runIfMain } from "../testing/mod.ts";
 import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
 import {
   isWindows,
@@ -52,7 +51,7 @@ const EG_OPTIONS: ExpandGlobOptions = {
   globstar: false
 };
 
-test(async function expandGlobWildcard(): Promise<void> {
+Deno.test(async function expandGlobWildcard(): Promise<void> {
   const options = EG_OPTIONS;
   assertEquals(await expandGlobArray("*", options), [
     "abc",
@@ -62,12 +61,12 @@ test(async function expandGlobWildcard(): Promise<void> {
   ]);
 });
 
-test(async function expandGlobTrailingSeparator(): Promise<void> {
+Deno.test(async function expandGlobTrailingSeparator(): Promise<void> {
   const options = EG_OPTIONS;
   assertEquals(await expandGlobArray("*/", options), ["subdir"]);
 });
 
-test(async function expandGlobParent(): Promise<void> {
+Deno.test(async function expandGlobParent(): Promise<void> {
   const options = EG_OPTIONS;
   assertEquals(await expandGlobArray("subdir/../*", options), [
     "abc",
@@ -77,7 +76,7 @@ test(async function expandGlobParent(): Promise<void> {
   ]);
 });
 
-test(async function expandGlobExt(): Promise<void> {
+Deno.test(async function expandGlobExt(): Promise<void> {
   const options = { ...EG_OPTIONS, extended: true };
   assertEquals(await expandGlobArray("abc?(def|ghi)", options), [
     "abc",
@@ -97,7 +96,7 @@ test(async function expandGlobExt(): Promise<void> {
   assertEquals(await expandGlobArray("abc!(def|ghi)", options), ["abc"]);
 });
 
-test(async function expandGlobGlobstar(): Promise<void> {
+Deno.test(async function expandGlobGlobstar(): Promise<void> {
   const options = { ...EG_OPTIONS, globstar: true };
   assertEquals(
     await expandGlobArray(joinGlobs(["**", "abc"], options), options),
@@ -105,7 +104,7 @@ test(async function expandGlobGlobstar(): Promise<void> {
   );
 });
 
-test(async function expandGlobGlobstarParent(): Promise<void> {
+Deno.test(async function expandGlobGlobstarParent(): Promise<void> {
   const options = { ...EG_OPTIONS, globstar: true };
   assertEquals(
     await expandGlobArray(joinGlobs(["subdir", "**", ".."], options), options),
@@ -113,12 +112,12 @@ test(async function expandGlobGlobstarParent(): Promise<void> {
   );
 });
 
-test(async function expandGlobIncludeDirs(): Promise<void> {
+Deno.test(async function expandGlobIncludeDirs(): Promise<void> {
   const options = { ...EG_OPTIONS, includeDirs: false };
   assertEquals(await expandGlobArray("subdir", options), []);
 });
 
-test(async function expandGlobPermError(): Promise<void> {
+Deno.test(async function expandGlobPermError(): Promise<void> {
   const exampleUrl = new URL("testdata/expand_wildcard.js", import.meta.url);
   const p = run({
     args: [execPath(), exampleUrl.toString()],
@@ -133,5 +132,3 @@ test(async function expandGlobPermError(): Promise<void> {
     "Uncaught PermissionDenied"
   );
 });
-
-runIfMain(import.meta);
