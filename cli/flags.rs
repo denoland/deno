@@ -59,6 +59,7 @@ pub enum DenoSubcommand {
   Test {
     fail_fast: bool,
     quiet: bool,
+    allow_none: bool,
     include: Option<Vec<String>>,
   },
   Types,
@@ -497,14 +498,7 @@ fn test_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 
   let quiet = matches.is_present("quiet");
   let failfast = matches.is_present("failfast");
-
-  if matches.is_present("quiet") {
-    flags.argv.push("--quiet".to_string());
-  }
-
-  if matches.is_present("failfast") {
-    flags.argv.push("--failfast".to_string());
-  }
+  let allow_none = matches.is_present("allow_none");
 
   let include = if matches.is_present("files") {
     let files: Vec<String> = matches
@@ -521,6 +515,7 @@ fn test_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
     quiet,
     fail_fast: failfast,
     include,
+    allow_none,
   };
 }
 
@@ -847,6 +842,12 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .short("q")
         .long("quiet")
         .help("Don't show output from test cases")
+        .takes_value(false),
+    )
+    .arg(
+      Arg::with_name("allow_none")
+        .long("allow-none")
+        .help("Don't return error code if no test files are found")
         .takes_value(false),
     )
     .arg(
@@ -2033,6 +2034,7 @@ mod tests {
       "deno",
       "test",
       "--allow-net",
+      "--allow-none",
       "dir1/",
       "dir2/"
     ]);
@@ -2042,6 +2044,7 @@ mod tests {
         subcommand: DenoSubcommand::Test {
           fail_fast: false,
           quiet: false,
+          allow_none: true,
           include: Some(svec!["dir1/", "dir2/"]),
         },
         allow_read: true,
