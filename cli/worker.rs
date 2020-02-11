@@ -265,11 +265,10 @@ mod tests {
         panic!("Future got unexpected error: {:?}", e);
       }
     });
-    let mut state = state_.borrow_mut();
-    let metrics = &mut state.metrics;
-    assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
+    let state = state_.borrow();
+    assert_eq!(state.metrics.resolve_count, 2);
     // Check that we didn't start the compiler.
-    assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 0);
+    assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 0);
   }
 
   #[test]
@@ -298,11 +297,10 @@ mod tests {
       }
     });
 
-    let mut state = state_.borrow_mut();
-    let metrics = &mut state.metrics;
-    // TODO  assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
+    let state = state_.borrow();
+    assert_eq!(state.metrics.resolve_count, 1);
     // Check that we didn't start the compiler.
-    assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 0);
+    assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 0);
   }
 
   #[tokio::test]
@@ -339,13 +337,10 @@ mod tests {
     if let Err(e) = (&mut *worker).await {
       panic!("Future got unexpected error: {:?}", e);
     }
-    let state = state.borrow_mut();
-    assert_eq!(state.metrics.resolve_count.load(Ordering::SeqCst), 3);
+    let state = state.borrow();
+    assert_eq!(state.metrics.resolve_count, 3);
     // Check that we've only invoked the compiler once.
-    assert_eq!(
-      global_state.metrics.compiler_starts.load(Ordering::SeqCst),
-      1
-    );
+    assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 1);
     drop(http_server_guard);
   }
 
