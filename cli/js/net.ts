@@ -25,7 +25,7 @@ export interface Socket extends AsyncIterator<Message> {
   receive(): Promise<Message>;
 
   /** Sends a message to the target. */
-  send(message: Message): Promise<void>;
+  send(options: SendOptions): Promise<void>;
 
   /** Close closes the socket. Any pending message promises will be rejected
    * with errors.
