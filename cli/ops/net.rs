@@ -168,7 +168,7 @@ fn op_receive(
     let (_size, remote_addr) = socket.recv_from(&mut buf).await?;
 
     Ok(json!({
-      "payload": buf,
+      "buffer": buf,
       "remoteAddr": {
         "hostname": remote_addr.ip().to_string(),
         "port": remote_addr.port(),
@@ -186,6 +186,7 @@ struct SendArgs {
   buffer: [u8],
   hostname: String,
   port: u16,
+  transport: String,
 }
 
 fn op_send(
@@ -194,6 +195,7 @@ fn op_send(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: SendArgs = serde_json::from_value(args)?;
+  assert_eq!(args.transport, "udp");
   let rid = args.rid as u32;
   let state_ = state.clone();
   state.check_net(&args.hostname, args.port)?;

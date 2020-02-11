@@ -15,24 +15,24 @@ export interface Addr {
 }
 
 export interface Message {
-  payload: Uint8Array;
+  buffer: Uint8Array;
   remote: Addr;
 }
 
-/** A receiver is a generic transport listener for message-oriented protocols */
-export interface Receiver extends AsyncIterator<Message> {
-  /** Waits for and resolves to the next message to the `Receiver`. */
+/** A socket is a generic transport listener for message-oriented protocols */
+export interface Socket extends AsyncIterator<Message> {
+  /** Waits for and resolves to the next message to the `Socket`. */
   receive(): Promise<Message>;
 
   /** Sends a message to the target. */
-  send(buffer: Uint8Array, target: Addr): Promise<void>;
+  send(message: Message): Promise<void>;
 
-  /** Close closes the receiver. Any pending message promises will be rejected
+  /** Close closes the socket. Any pending message promises will be rejected
    * with errors.
    */
   close(): void;
 
-  /** Return the address of the `Receiver`. */
+  /** Return the address of the `Socket`. */
   addr: Addr;
 
   [Symbol.asyncIterator](): AsyncIterator<Message>;
@@ -147,7 +147,16 @@ export class ListenerImpl implements Listener {
   }
 }
 
-export class ReceiverImpl implements Receiver {
+interface SendOptions {
+  buffer: Uint8Array;
+  hostname: string;
+  port: number;
+  transport: Transport;
+}
+
+const sendDefaults = { hostname: "127.0.0.1", transport: "udp" };
+
+export class SocketImpl implements Socket {
   constructor(
     readonly rid: number,
     public addr: Addr,
@@ -156,11 +165,12 @@ export class ReceiverImpl implements Receiver {
 
   async receive(): Promise<Message> {
     const res = await sendAsync(dispatch.OP_RECEIVE, { rid: this.rid });
-    return { payload: res.payload, remote: res.remoteAddr };
+    return { buffer: res.buffer, remote: res.remoteAddr };
   }
 
-  async send(buffer: Uint8Array, target: Addr): Promise<void> {
-    await sendAsync(dispatch.OP_SEND, { rid: this.rid, buffer, target });
+  async send(options: SendOptions): Promise<void> {
+    options = Object.assign(sendDefaults, options);
+    await sendAsync(dispatch.OP_SEND, { rid: this.rid, ...options });
   }
 
   close(): void {
@@ -178,7 +188,7 @@ export class ReceiverImpl implements Receiver {
         // It wouldn't be correct to simply check this.closing here.
         // TODO: Get a proper error kind for this case, don't check the message.
         // The current error kind is Other.
-        if (e.message == "Receiver has been closed") {
+        if (e.message == "Socket has been closed") {
           return { value: undefined, done: true };
         }
         throw e;
@@ -230,18 +240,14 @@ export interface ListenOptions {
  *     listen({ hostname: "[2001:db8::1]", port: 80 });
  *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
-export function listen(
-  options: ListenOptions & { transport: "tcp" }
-): Listener {
+export function listen(options: ListenOptions): Listener | Socket {
   const res = sendSync(dispatch.OP_LISTEN, { hostname: "0.0.0.0", ...options });
-  return new ListenerImpl(res.id, res.localAddr);
-}
 
-export function listen(
-  options: ListenOptions & { transport: "udp" }
-): Receiver {
-  const res = sendSync(dispatch.OP_LISTEN, { hostname: "0.0.0.0", ...options });
-  return new ReceiverImpl(res.id, res.localAddr);
+  if (options.transport === "tcp") {
+    return new ListenerImpl(res.id, res.localAddr);
+  } else {
+    return new SocketImpl(res.id, res.localAddr);
+  }
 }
 
 export interface ConnectOptions {
