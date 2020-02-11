@@ -328,6 +328,8 @@ export default class EventEmitter {
   }
 }
 
+export { EventEmitter };
+
 /**
  * Creates a Promise that is fulfilled when the EventEmitter emits the given
  * event or that is rejected when the EventEmitter emits 'error'. The Promise
