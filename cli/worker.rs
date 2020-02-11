@@ -265,11 +265,10 @@ mod tests {
         panic!("Future got unexpected error: {:?}", e);
       }
     });
-    let mut state = state_.borrow_mut();
-    let metrics = &mut state.metrics;
-    assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
+    let state = state_.borrow();
+    assert_eq!(state.metrics.resolve_count, 2);
     // Check that we didn't start the compiler.
-    assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 0);
+    assert_eq!(state.metrics.compiler_starts, 0);
   }
 
   #[test]

@@ -15,7 +15,6 @@ use deno_core::ModuleSpecifier;
 use serde_derive::Deserialize;
 use serde_json;
 use std::collections::HashMap;
-use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use url::Url;
 
@@ -63,8 +62,7 @@ impl WasmCompiler {
     // Count how many times we start the compiler worker.
     global_state
       .metrics
-      .compiler_starts
-      .fetch_add(1, Ordering::SeqCst);
+      .compiler_starts += 1;
 
     let mut worker = CompilerWorker::new(
       "WASM".to_string(),

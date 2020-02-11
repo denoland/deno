@@ -32,7 +32,6 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::str;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use url::Url;
@@ -259,8 +258,7 @@ impl TsCompiler {
     // Count how many times we start the compiler worker.
     global_state
       .metrics
-      .compiler_starts
-      .fetch_add(1, Ordering::SeqCst);
+      .compiler_starts += 1;
 
     let mut worker = CompilerWorker::new(
       "TS".to_string(),
