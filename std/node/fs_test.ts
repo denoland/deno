@@ -1,9 +1,12 @@
-import { readFile, readFileSync } from "./fs.ts";
+import { readFile, readFileSync, readlink, readlinkSync } from "./fs.ts";
 import { test } from "../testing/mod.ts";
 import * as path from "../path/mod.ts";
 import { assertEquals, assert } from "../testing/asserts.ts";
 
 const testData = path.resolve(path.join("node", "testdata", "hello.txt"));
+const testDir = Deno.makeTempDirSync();
+const oldname = testDir + "/oldname";
+const newname = testDir + "/newname";
 
 // Need to convert to promises, otherwise test() won't report error correctly.
 test(async function readFileSuccess() {
@@ -45,3 +48,47 @@ test(function readFileEncodeUtf8Success() {
   assertEquals(typeof data, "string");
   assertEquals(data as string, "hello world");
 });
+
+// Just for now, until we implement symlink for Windows.
+if (Deno.build.os !== "win") {
+  Deno.symlinkSync(oldname, newname);
+  test(async function readlinkSuccess() {
+    const data = await new Promise((res, rej) => {
+      readlink(newname, (err, data) => {
+        if (err) {
+          rej(err);
+        }
+        res(data);
+      });
+    });
+
+    assertEquals(typeof data, "string");
+    assertEquals(data as string, oldname);
+  });
+
+  test(async function readlinkEncodeBufferSuccess() {
+    const data = await new Promise((res, rej) => {
+      readlink(newname, { encoding: "buffer" }, (err, data) => {
+        if (err) {
+          rej(err);
+        }
+        res(data);
+      });
+    });
+
+    assert(data instanceof Uint8Array);
+    assertEquals(new TextDecoder().decode(data as Uint8Array), oldname);
+  });
+
+  test(function readlinkSyncSuccess() {
+    const data = readlinkSync(newname);
+    assertEquals(typeof data, "string");
+    assertEquals(data as string, oldname);
+  });
+
+  test(function readlinkEncodeBufferSuccess() {
+    const data = readlinkSync(newname, { encoding: "buffer" });
+    assert(data instanceof Uint8Array);
+    assertEquals(new TextDecoder().decode(data as Uint8Array), oldname);
+  });
+}
