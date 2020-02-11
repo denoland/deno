@@ -465,24 +465,20 @@ The above for-await loop exits after 5 seconds when sig.dispose() is called.
 
 In the above examples, we saw that Deno could execute scripts from URLs. Like
 browser JavaScript, Deno can import libraries directly from URLs. This example
-uses a URL to import a test runner library:
+uses a URL to import an assertion library:
 
 ```ts
-import {
-  assertEquals,
-  runIfMain,
-  test
-} from "https://deno.land/std/testing/mod.ts";
+import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 
-test(function t1() {
+Deno.test(function t1() {
   assertEquals("hello", "hello");
 });
 
-test(function t2() {
+Deno.test(function t2() {
   assertEquals("world", "world");
 });
 
-runIfMain(import.meta);
+await Deno.runTests();
 ```
 
 Try running this:
@@ -534,16 +530,16 @@ a subtly different version of a library? Isn't it error prone to maintain URLs
 everywhere in a large project?** The solution is to import and re-export your
 external libraries in a central `deps.ts` file (which serves the same purpose as
 Node's `package.json` file). For example, let's say you were using the above
-testing library across a large project. Rather than importing
-`"https://deno.land/std/testing/mod.ts"` everywhere, you could create a
+assertion library across a large project. Rather than importing
+`"https://deno.land/std/testing/asserts.ts"` everywhere, you could create a
 `deps.ts` file that exports the third-party code:
 
 ```ts
 export {
+  assert,
   assertEquals,
-  runTests,
-  test
-} from "https://deno.land/std/testing/mod.ts";
+  assertStrContains
+} from "https://deno.land/std/testing/asserts.ts";
 ```
 
 And throughout the same project, you can import from the `deps.ts` and avoid
