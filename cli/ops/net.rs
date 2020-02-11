@@ -140,6 +140,29 @@ fn op_accept(
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
+pub struct Receive<'a> {
+  buf: &'a mut Buf,
+  rid: ResourceId,
+  state: &'a State,
+}
+
+impl Future for Receive<'_> {
+  type Output = Result<(usize, SocketAddr), ErrBox>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+    let mut state = inner.state.borrow_mut();
+    let resource = state
+      .resource_table
+      .get_mut::<UdpSocketResource>(inner.rid)
+      .ok_or_else(bad_resource)?;
+
+    let socket = &mut resource.socket;
+
+    socket.poll_recv_from(cx, inner.buf).map_err(ErrBox::from)
+  }
+}
+
 #[derive(Deserialize)]
 struct ReceiveArgs {
   rid: i32,
@@ -155,14 +178,13 @@ fn op_receive(
   let state_ = state.clone();
 
   let op = async move {
-    let mut state = state_.borrow_mut();
-    let resource = state
-      .resource_table
-      .get_mut::<UdpSocketResource>(rid)
-      .ok_or_else(bad_resource)?;
-    let socket = &mut resource.socket;
-    let mut buf = vec![0; 1024];
-    let (_size, remote_addr) = socket.recv_from(&mut buf).await?;
+    let mut buf = vec![0u8; 1024].into_boxed_slice();
+    let (_size, remote_addr) = Receive {
+      buf: &mut buf,
+      state: &state_,
+      rid,
+    }
+    .await?;
 
     Ok(json!({
       "buffer": buf,
