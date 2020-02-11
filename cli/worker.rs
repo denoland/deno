@@ -93,7 +93,7 @@ pub struct Worker {
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
-  // TODO: replace with an enum describing current stage of
+  // TODO(bartlomieju): replace with an enum describing current stage of
   // worker lifecycle?
   is_ready: bool,
 }
@@ -159,8 +159,6 @@ impl Worker {
     self.external_channels.clone()
   }
 
-  // TODO(bartlomieju): I don't like that it's defined on Worker
-  // MainWorker will not use this method - it will be controlled directly
   pub async fn run_event_loop(&mut self) -> Result<(), ErrBox> {
     poll_fn(|cx| -> Poll<Result<(), ErrBox>> {
       self.waker.register(cx.waker());
@@ -250,7 +248,6 @@ impl MainWorker {
     Self(worker)
   }
 
-  // TODO(bartlomieju): just so it's not run by accident - this should probably just poll isolate /shrug
   pub async fn run_event_loop(&mut self) -> Result<(), ErrBox> {
     poll_fn(|cx| -> Poll<Result<(), ErrBox>> {
       self.waker.register(cx.waker());

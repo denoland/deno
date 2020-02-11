@@ -90,10 +90,6 @@ pub fn run_in_thread(
   let builder =
     std::thread::Builder::new().name(format!("deno-worker-{}", name));
   let join_handle = builder.spawn(move || {
-    // Any error inside this block is terminal:
-    // - JS worker is useless - meaning it throws an exception and can't do anything else,
-    //  all action done upon it should be noops
-    // - newly spawned thread exits
     let result =
       create_web_worker(name, global_state, permissions, specifier.clone());
 
@@ -130,7 +126,6 @@ pub fn run_in_thread(
       let load_future = worker
         .execute_mod_async(&specifier, None, false)
         .boxed_local();
-
       rt.block_on(load_future)
     };
 
@@ -138,7 +133,6 @@ pub fn run_in_thread(
       let mut sender = worker.internal_channels.sender.clone();
       futures::executor::block_on(sender.send(WorkerEvent::Error(e)))
         .expect("Failed to post message to host");
-
       // Failure to execute script is a terminal error, bye, bye.
       return;
     }

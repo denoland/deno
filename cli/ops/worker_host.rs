@@ -79,7 +79,10 @@ fn op_create_worker(
   )?;
   // At this point all interactions with worker happen using thread
   // safe handler returned from previous function call
-  let worker_id = parent_state.add_child_worker(join_handle, worker_handle);
+  let mut parent_state = parent_state.borrow_mut();
+  let worker_id = parent_state.next_worker_id;
+  parent_state.next_worker_id += 1;
+  parent_state.workers.insert(worker_id, (join_handle, worker_handle));
 
   Ok(JsonOp::Sync(json!({ "id": worker_id })))
 }
