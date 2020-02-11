@@ -257,10 +257,7 @@ impl TsCompiler {
       .expect("Unable to create worker state");
 
     // Count how many times we start the compiler worker.
-    global_state
-      .metrics
-      .compiler_starts
-      .fetch_add(1, Ordering::SeqCst);
+    global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
 
     let mut worker = CompilerWorker::new(
       "TS".to_string(),

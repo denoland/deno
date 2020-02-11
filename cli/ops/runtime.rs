@@ -8,7 +8,6 @@ use crate::version;
 use crate::DenoSubcommand;
 use deno_core::*;
 use std::env;
-use std::sync::atomic::Ordering;
 
 /// BUILD_OS and BUILD_ARCH match the values in Deno.build. See js/build.ts.
 #[cfg(target_os = "macos")]
@@ -59,10 +58,10 @@ fn op_metrics(
   let m = &state.metrics;
 
   Ok(JsonOp::Sync(json!({
-    "opsDispatched": m.ops_dispatched.load(Ordering::SeqCst) as u64,
-    "opsCompleted": m.ops_completed.load(Ordering::SeqCst) as u64,
-    "bytesSentControl": m.bytes_sent_control.load(Ordering::SeqCst) as u64,
-    "bytesSentData": m.bytes_sent_data.load(Ordering::SeqCst) as u64,
-    "bytesReceived": m.bytes_received.load(Ordering::SeqCst) as u64
+    "opsDispatched": m.ops_dispatched,
+    "opsCompleted": m.ops_completed,
+    "bytesSentControl": m.bytes_sent_control,
+    "bytesSentData": m.bytes_sent_data,
+    "bytesReceived": m.bytes_received
   })))
 }
