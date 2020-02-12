@@ -245,7 +245,7 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
     };
   }
   match name {
-    "bundle_loader.js" => Some(include_str!("bundle_loader.js")),
+    "system_loader.js" => Some(include_str!("system_loader.js")),
     "bootstrap.ts" => Some("console.log(\"hello deno\");"),
     "typescript.d.ts" => inc!("typescript.d.ts"),
     "lib.esnext.d.ts" => inc!("lib.esnext.d.ts"),
