@@ -247,9 +247,10 @@ const listenDefaults = { hostname: "0.0.0.0", port: 80, transport: "tcp" };
 export function listen(options: ListenOptions & { transport: "tcp" }): Listener;
 export function listen(options: ListenOptions & { transport: "udp" }): Socket;
 export function listen(options: ListenOptions): Listener | Socket {
-  const res = sendSync(dispatch.OP_LISTEN, { ...listenDefaults, ...options });
+  const args = { ...listenDefaults, ...options };
+  const res = sendSync(dispatch.OP_LISTEN, args);
 
-  if (options.transport === "tcp") {
+  if (args.transport === "tcp") {
     return new ListenerImpl(res.rid, res.localAddr);
   } else {
     return new SocketImpl(res.rid, res.localAddr);
