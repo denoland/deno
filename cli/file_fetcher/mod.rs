@@ -11,25 +11,61 @@ use crate::msg;
 use crate::progress::Progress;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
+use futures::future::Future;
 use futures::future::FutureExt;
 use reqwest;
 use std;
+use std::collections::HashMap;
 use std::fs;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::result::Result;
 use std::str;
+use std::sync::Arc;
+use std::sync::Mutex;
 use url;
 use url::Url;
 
 mod util;
-pub use util::{SourceCodeHeaders, SourceFile, SourceFileFuture};
-
 use util::{
   check_cache_blacklist, filter_shebang, get_types_url, map_content_type,
-  SourceFileCache,
+  SourceCodeHeaders,
 };
 
 const SUPPORTED_URL_SCHEMES: [&str; 3] = ["http", "https", "file"];
+
+/// Structure representing local or remote file.
+///
+/// In case of remote file `url` might be different than originally requested URL, if so
+/// `redirect_source_url` will contain original URL and `url` will be equal to final location.
+#[derive(Debug, Clone)]
+pub struct SourceFile {
+  pub url: Url,
+  pub filename: PathBuf,
+  pub types_url: Option<Url>,
+  pub media_type: msg::MediaType,
+  pub source_code: Vec<u8>,
+}
+
+/// Simple struct implementing in-process caching to prevent multiple
+/// fs reads/net fetches for same file.
+#[derive(Clone, Default)]
+pub struct SourceFileCache(Arc<Mutex<HashMap<String, SourceFile>>>);
+
+impl SourceFileCache {
+  pub fn set(&self, key: String, source_file: SourceFile) {
+    let mut c = self.0.lock().unwrap();
+    c.insert(key, source_file);
+  }
+
+  pub fn get(&self, key: String) -> Option<SourceFile> {
+    let c = self.0.lock().unwrap();
+    match c.get(&key) {
+      Some(source_file) => Some(source_file.clone()),
+      None => None,
+    }
+  }
+}
 
 /// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them
 /// in single directory that can be controlled with `$DENO_DIR` env variable.
@@ -317,18 +353,16 @@ impl SourceFileFetcher {
     }))
   }
 
-  // TODO(bartlomieju): note that this function is recursive so it needs to return
-  // Pin<Box<..>>
-  // Try to split it into 2 distinct functions
-  //
   /// Asynchronously fetch remote source file specified by the URL following redirects.
+  ///
+  /// Note this is a recursive function, so it needs to be boxed.
   fn fetch_remote_source_async(
     &self,
     module_url: &Url,
     use_disk_cache: bool,
     cached_only: bool,
     redirect_limit: i64,
-  ) -> Pin<Box<SourceFileFuture>> {
+  ) -> Pin<Box<dyn Future<Output = Result<SourceFile, ErrBox>>>> {
     if redirect_limit < 0 {
       let e = DenoError::new(ErrorKind::Http, "too many redirects".to_string());
       return futures::future::err(e.into()).boxed();

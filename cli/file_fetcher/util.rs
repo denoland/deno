@@ -1,54 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::msg;
-use deno_core::ErrBox;
 use regex::Regex;
 use serde_json;
 use std;
-use std::collections::HashMap;
-use std::future::Future;
 use std::path::Path;
 use std::path::PathBuf;
 use std::result::Result;
 use std::str;
-use std::sync::Arc;
-use std::sync::Mutex;
 use url;
 use url::Url;
-
-/// Structure representing local or remote file.
-///
-/// In case of remote file `url` might be different than originally requested URL, if so
-/// `redirect_source_url` will contain original URL and `url` will be equal to final location.
-#[derive(Debug, Clone)]
-pub struct SourceFile {
-  pub url: Url,
-  pub filename: PathBuf,
-  pub types_url: Option<Url>,
-  pub media_type: msg::MediaType,
-  pub source_code: Vec<u8>,
-}
-
-pub type SourceFileFuture = dyn Future<Output = Result<SourceFile, ErrBox>>;
-
-/// Simple struct implementing in-process caching to prevent multiple
-/// fs reads/net fetches for same file.
-#[derive(Clone, Default)]
-pub struct SourceFileCache(Arc<Mutex<HashMap<String, SourceFile>>>);
-
-impl SourceFileCache {
-  pub fn set(&self, key: String, source_file: SourceFile) {
-    let mut c = self.0.lock().unwrap();
-    c.insert(key, source_file);
-  }
-
-  pub fn get(&self, key: String) -> Option<SourceFile> {
-    let c = self.0.lock().unwrap();
-    match c.get(&key) {
-      Some(source_file) => Some(source_file.clone()),
-      None => None,
-    }
-  }
-}
 
 pub fn map_file_extension(path: &Path) -> msg::MediaType {
   match path.extension() {
