@@ -9,15 +9,12 @@ export type Transport = "tcp" | "udp";
 // export type Transport = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
 
 export interface Addr {
-  transport: Transport;
+  transport?: Transport;
   hostname: string;
   port: number;
 }
 
-export interface Message {
-  buffer: Uint8Array;
-  remote: Addr;
-}
+export type Message = [Uint8Array, Addr];
 
 /** A socket is a generic transport listener for message-oriented protocols */
 export interface Socket extends AsyncIterator<Message> {
@@ -25,7 +22,7 @@ export interface Socket extends AsyncIterator<Message> {
   receive(): Promise<Message>;
 
   /** Sends a message to the target. */
-  send(options: SendOptions): Promise<void>;
+  send(buffer: Uint8Array, remote: Addr): Promise<void>;
 
   /** Close closes the socket. Any pending message promises will be rejected
    * with errors.
@@ -147,15 +144,6 @@ export class ListenerImpl implements Listener {
   }
 }
 
-export interface SendOptions {
-  buffer: Uint8Array;
-  hostname: string;
-  port: number;
-  transport: Transport;
-}
-
-const sendDefaults = { hostname: "127.0.0.1", transport: "udp" };
-
 export class SocketImpl implements Socket {
   constructor(
     readonly rid: number,
@@ -166,12 +154,13 @@ export class SocketImpl implements Socket {
   async receive(): Promise<Message> {
     const res = await sendAsync(dispatch.OP_RECEIVE, { rid: this.rid });
     const buffer = new Uint8Array(res.buffer);
-    return { buffer, remote: res.remoteAddr };
+    return [buffer, res.remoteAddr];
   }
 
-  async send(options: SendOptions): Promise<void> {
-    const buffer = Array.from(options.buffer);
-    const args = { ...sendDefaults, ...options, rid: this.rid, buffer };
+  async send(buffer: Uint8Array, rem: Addr): Promise<void> {
+    const remote = { hostname: "127.0.0.1", transport: "udp", ...rem };
+    if (remote.transport !== "udp") throw Error("Remote transport must be UDP");
+    const args = { ...remote, rid: this.rid, buffer: Array.from(buffer) };
     await sendAsync(dispatch.OP_SEND, args);
   }
 
@@ -184,17 +173,8 @@ export class SocketImpl implements Socket {
     if (this.closing) {
       return { value: undefined, done: true };
     }
-    return await this.receive()
-      .then(value => ({ value, done: false }))
-      .catch(e => {
-        // It wouldn't be correct to simply check this.closing here.
-        // TODO: Get a proper error kind for this case, don't check the message.
-        // The current error kind is Other.
-        if (e.message == "Socket has been closed") {
-          return { value: undefined, done: true };
-        }
-        throw e;
-      });
+    const value = await this.receive();
+    return { value, done: false };
   }
 
   [Symbol.asyncIterator](): AsyncIterator<Message> {

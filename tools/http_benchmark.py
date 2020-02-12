@@ -42,6 +42,16 @@ def deno_tcp(deno_exe):
     return run(deno_cmd, port)
 
 
+def deno_udp(deno_exe):
+    port = get_port()
+    deno_cmd = [
+        deno_exe, "run", "--allow-net", "tools/deno_udp.ts",
+        server_addr(port)
+    ]
+    print "http_benchmark testing DENO udp."
+    return run(deno_cmd, port)
+
+
 def deno_http(deno_exe):
     port = get_port()
     deno_cmd = [
