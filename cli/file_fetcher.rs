@@ -205,18 +205,20 @@ impl SourceFileFetcher {
           } else {
             "".to_owned()
           };
-          let err = if err_kind == ErrorKind::NotFound {
+          // Hack: Check error message for "--cached-only" because the kind
+          // conflicts with other errors.
+          let err = if err.to_string().contains("--cached-only") {
+            let msg = format!(
+              r#"Cannot find module "{}"{} in cache, --cached-only is specified"#,
+              module_url, referrer_suffix
+            );
+            DenoError::new(ErrorKind::NotFound, msg).into()
+          } else if err_kind == ErrorKind::NotFound {
             let msg = format!(
               r#"Cannot resolve module "{}"{}"#,
               module_url, referrer_suffix
             );
             DenoError::new(ErrorKind::NotFound, msg).into()
-          } else if err_kind == ErrorKind::PermissionDenied {
-            let msg = format!(
-              r#"Cannot find module "{}"{} in cache, --cached-only is specified"#,
-              module_url, referrer_suffix
-            );
-            DenoError::new(ErrorKind::PermissionDenied, msg).into()
           } else {
             err
           };
@@ -427,9 +429,9 @@ impl SourceFileFetcher {
       // We can't fetch remote file - bail out
       return futures::future::err(
         std::io::Error::new(
-          std::io::ErrorKind::PermissionDenied,
+          std::io::ErrorKind::NotFound,
           format!(
-            "cannot find remote file '{}' in cache",
+            "Cannot find remote file '{}' in cache, --cached-only is specified",
             module_url.to_string()
           ),
         )
@@ -1449,7 +1451,7 @@ mod tests {
       .await;
     assert!(result.is_err());
     let err = result.err().unwrap();
-    assert_eq!(err.kind(), ErrorKind::PermissionDenied);
+    assert_eq!(err.kind(), ErrorKind::NotFound);
 
     // download and cache file
     let result = fetcher_1
