@@ -213,7 +213,7 @@ fn op_send(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let mut args: SendArgs = serde_json::from_value(args)?;
+  let args: SendArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "udp");
   let rid = args.rid as u32;
   let state_ = state.clone();
@@ -227,7 +227,7 @@ fn op_send(
       .ok_or_else(bad_resource)?;
     let socket = &mut resource.socket;
     let addr = resolve_addr(&args.hostname, args.port).await?;
-    socket.send_to(&mut args.buffer, addr).await?;
+    socket.send_to(&args.buffer, addr).await?;
 
     Ok(json!({}))
   };
