@@ -1,6 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error::DenoError;
-use crate::deno_error::ErrorKind;
 use crate::msg;
 use deno_core::ErrBox;
 use regex::Regex;
@@ -17,28 +15,6 @@ use std::sync::Mutex;
 use url;
 use url::Url;
 
-pub fn source_header_cache_failed_error(
-  module_name: &str,
-  reason: &str,
-) -> ErrBox {
-  DenoError::new(
-    ErrorKind::Other,
-    format!(
-      "Source code header cache failed for '{}': {}",
-      module_name, reason
-    ),
-  )
-  .into()
-}
-
-pub fn source_cache_failed_error(module_name: &str, reason: &str) -> ErrBox {
-  DenoError::new(
-    ErrorKind::Other,
-    format!("Source code cache failed for '{}': {}", module_name, reason),
-  )
-  .into()
-}
-
 /// Structure representing local or remote file.
 ///
 /// In case of remote file `url` might be different than originally requested URL, if so
@@ -52,8 +28,7 @@ pub struct SourceFile {
   pub source_code: Vec<u8>,
 }
 
-pub type SourceFileFuture =
-  dyn Future<Output = Result<SourceFile, ErrBox>> + Send;
+pub type SourceFileFuture = dyn Future<Output = Result<SourceFile, ErrBox>>;
 
 /// Simple struct implementing in-process caching to prevent multiple
 /// fs reads/net fetches for same file.
@@ -92,7 +67,10 @@ pub fn map_file_extension(path: &Path) -> msg::MediaType {
 }
 
 // convert a ContentType string into a enumerated MediaType
-pub fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
+pub fn map_content_type(
+  path: &Path,
+  content_type: Option<&str>,
+) -> msg::MediaType {
   match content_type {
     Some(content_type) => {
       // sometimes there is additional data after the media type in
@@ -300,9 +278,6 @@ impl SourceCodeHeaders {
       .and_then(|serialized| Ok(Some(serialized)))
   }
 }
-
-
-
 
 #[cfg(test)]
 mod tests {

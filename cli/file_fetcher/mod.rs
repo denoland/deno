@@ -11,12 +11,10 @@ use crate::msg;
 use crate::progress::Progress;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use futures::future::Either;
 use futures::future::FutureExt;
 use reqwest;
 use std;
 use std::fs;
-use std::future::Future;
 use std::pin::Pin;
 use std::result::Result;
 use std::str;
@@ -24,12 +22,11 @@ use url;
 use url::Url;
 
 mod util;
-pub use util::{SourceFile, SourceFileFuture, SourceCodeHeaders};
+pub use util::{SourceCodeHeaders, SourceFile, SourceFileFuture};
 
 use util::{
   check_cache_blacklist, filter_shebang, get_types_url, map_content_type,
-  source_cache_failed_error, 
-  source_header_cache_failed_error, SourceFileCache,
+  SourceFileCache,
 };
 
 const SUPPORTED_URL_SCHEMES: [&str; 3] = ["http", "https", "file"];
@@ -105,69 +102,69 @@ impl SourceFileFetcher {
     futures::executor::block_on(fut).ok()
   }
 
-  pub fn fetch_source_file_async(
+  pub async fn fetch_source_file_async(
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
-  ) -> Pin<Box<SourceFileFuture>> {
+  ) -> Result<SourceFile, ErrBox> {
     let module_url = specifier.as_url().to_owned();
     debug!("fetch_source_file. specifier {} ", &module_url);
 
     // Check if this file was already fetched and can be retrieved from in-process cache.
-    if let Some(source_file) = self.source_file_cache.get(specifier.to_string())
-    {
-      return Box::pin(async { Ok(source_file) });
+    let maybe_cached_file = self.source_file_cache.get(specifier.to_string());
+    if let Some(source_file) = maybe_cached_file {
+      return Ok(source_file);
     }
 
     let source_file_cache = self.source_file_cache.clone();
     let specifier_ = specifier.clone();
 
-    let source_file = self.get_source_file_async(
-      &module_url,
-      self.use_disk_cache,
-      self.no_remote,
-      self.cached_only,
-    );
+    let result = self
+      .get_source_file_async(
+        &module_url,
+        self.use_disk_cache,
+        self.no_remote,
+        self.cached_only,
+      )
+      .await;
 
-    Box::pin(async move {
-      match source_file.await {
-        Ok(mut file) => {
-          // TODO: move somewhere?
-          if file.source_code.starts_with(b"#!") {
-            file.source_code = filter_shebang(file.source_code);
-          }
-
-          // Cache in-process for subsequent access.
-          source_file_cache.set(specifier_.to_string(), file.clone());
-
-          Ok(file)
+    match result {
+      Ok(mut file) => {
+        // TODO: move somewhere?
+        if file.source_code.starts_with(b"#!") {
+          file.source_code = filter_shebang(file.source_code);
         }
-        Err(err) => {
-          let err_kind = err.kind();
-          let referrer_suffix = if let Some(referrer) = maybe_referrer {
-            format!(r#" from "{}""#, referrer)
-          } else {
-            "".to_owned()
-          };
-          let err = if err_kind == ErrorKind::NotFound {
-            let msg = format!(
-              r#"Cannot resolve module "{}"{}"#,
-              module_url, referrer_suffix
-            );
-            DenoError::new(ErrorKind::NotFound, msg).into()
-          } else if err_kind == ErrorKind::PermissionDenied {
-            let msg = format!(
-              r#"Cannot find module "{}"{} in cache, --cached-only is specified"#,
-              module_url, referrer_suffix
-            );
-            DenoError::new(ErrorKind::PermissionDenied, msg).into()
-          } else {
-            err
-          };
-          Err(err)
-        }
+
+        // Cache in-process for subsequent access.
+        source_file_cache.set(specifier_.to_string(), file.clone());
+
+        Ok(file)
       }
-    })
+      Err(err) => {
+        let err_kind = err.kind();
+        let referrer_suffix = if let Some(referrer) = maybe_referrer {
+          format!(r#" from "{}""#, referrer)
+        } else {
+          "".to_owned()
+        };
+        let err = if err_kind == ErrorKind::NotFound {
+          let msg = format!(
+            r#"Cannot resolve module "{}"{}"#,
+            module_url, referrer_suffix
+          );
+          DenoError::new(ErrorKind::NotFound, msg).into()
+        } else if err_kind == ErrorKind::PermissionDenied {
+          let msg = format!(
+            r#"Cannot find module "{}"{} in cache, --cached-only is specified"#,
+            module_url, referrer_suffix
+          );
+          DenoError::new(ErrorKind::PermissionDenied, msg).into()
+        } else {
+          err
+        };
+        Err(err)
+      }
+    }
   }
 
   /// This is main method that is responsible for fetching local or remote files.
@@ -181,54 +178,38 @@ impl SourceFileFetcher {
   ///
   /// If `cached_only` is true then this method will fail for remote files
   /// not already cached.
-  fn get_source_file_async(
+  async fn get_source_file_async(
     &self,
     module_url: &Url,
     use_disk_cache: bool,
     no_remote: bool,
     cached_only: bool,
-  ) -> impl Future<Output = Result<SourceFile, ErrBox>> {
+  ) -> Result<SourceFile, ErrBox> {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
-
-    if let Err(err) = SourceFileFetcher::check_if_supported_scheme(&module_url)
-    {
-      return Either::Left(futures::future::err(err));
-    }
+    SourceFileFetcher::check_if_supported_scheme(&module_url)?;
 
     // Local files are always fetched from disk bypassing cache entirely.
     if is_local_file {
-      match self.fetch_local_file(&module_url) {
-        Ok(source_file) => {
-          return Either::Left(futures::future::ok(source_file));
-        }
-        Err(err) => {
-          return Either::Left(futures::future::err(err));
-        }
-      }
+      return self.fetch_local_file(&module_url);
     }
 
     // The file is remote, fail if `no_remote` is true.
     if no_remote {
-      return Either::Left(futures::future::err(
-        std::io::Error::new(
-          std::io::ErrorKind::NotFound,
-          format!(
-            "Not allowed to get remote file '{}'",
-            module_url.to_string()
-          ),
-        )
-        .into(),
-      ));
+      let e = std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!(
+          "Not allowed to get remote file '{}'",
+          module_url.to_string()
+        ),
+      );
+      return Err(e.into());
     }
 
     // Fetch remote file and cache on-disk for subsequent access
-    Either::Right(self.fetch_remote_source_async(
-      &module_url,
-      use_disk_cache,
-      cached_only,
-      10,
-    ))
+    self
+      .fetch_remote_source_async(&module_url, use_disk_cache, cached_only, 10)
+      .await
   }
 
   /// Fetch local source file.
@@ -336,6 +317,10 @@ impl SourceFileFetcher {
     }))
   }
 
+  // TODO(bartlomieju): note that this function is recursive so it needs to return
+  // Pin<Box<..>>
+  // Try to split it into 2 distinct functions
+  //
   /// Asynchronously fetch remote source file specified by the URL following redirects.
   fn fetch_remote_source_async(
     &self,
@@ -403,18 +388,13 @@ impl SourceFileFetcher {
         }
         FetchOnceResult::Redirect(new_module_url) => {
           // If redirects, update module_name and filename for next looped call.
-          if let Err(e) = dir.save_source_code_headers(
+          dir.save_source_code_headers(
             &module_url,
             None,
             Some(new_module_url.to_string()),
             None,
             None,
-          ) {
-            return Err(source_header_cache_failed_error(
-              module_url.as_str(),
-              &e.to_string(),
-            ));
-          }
+          )?;
 
           // Explicit drop to keep reference alive until future completes.
           drop(download_job);
@@ -436,25 +416,14 @@ impl SourceFileFetcher {
           x_typescript_types,
         }) => {
           // We land on the code.
-          if let Err(e) = dir.save_source_code_headers(
+          dir.save_source_code_headers(
             &module_url,
             maybe_content_type.clone(),
             None,
             etag,
             x_typescript_types.clone(),
-          ) {
-            return Err(source_header_cache_failed_error(
-              module_url.as_str(),
-              &e.to_string(),
-            ));
-          }
-
-          if let Err(e) = dir.save_source_code(&module_url, &source) {
-            return Err(source_cache_failed_error(
-              module_url.as_str(),
-              &e.to_string(),
-            ));
-          }
+          )?;
+          dir.save_source_code(&module_url, &source)?;
 
           let filepath = dir
             .deps_cache
@@ -491,7 +460,7 @@ impl SourceFileFetcher {
       }
     };
 
-    f.boxed()
+    f.boxed_local()
   }
 
   /// Get header metadata associated with a remote file.
@@ -514,13 +483,23 @@ impl SourceFileFetcher {
   }
 
   /// Save contents of downloaded remote file in on-disk cache for subsequent access.
-  fn save_source_code(&self, url: &Url, source: &[u8]) -> std::io::Result<()> {
+  fn save_source_code(&self, url: &Url, source: &[u8]) -> Result<(), ErrBox> {
     let cache_key = self.deps_cache.get_cache_filename(url);
 
     // May not exist. DON'T unwrap.
     let _ = self.deps_cache.remove(&cache_key);
 
-    self.deps_cache.set(&cache_key, source)
+    self.deps_cache.set(&cache_key, source).map_err(|e| {
+      DenoError::new(
+        ErrorKind::Other,
+        format!(
+          "Source code cache failed for '{}': {}",
+          url.to_string(),
+          e.to_string()
+        ),
+      )
+      .into()
+    })
   }
 
   /// Save headers related to source file to {filename}.headers.json file,
@@ -537,7 +516,7 @@ impl SourceFileFetcher {
     redirect_to: Option<String>,
     etag: Option<String>,
     x_typescript_types: Option<String>,
-  ) -> std::io::Result<()> {
+  ) -> Result<(), ErrBox> {
     let cache_key = self
       .deps_cache
       .get_cache_filename_with_extension(url, "headers.json");
@@ -556,7 +535,20 @@ impl SourceFileFetcher {
     let cache_filename = self.deps_cache.get_cache_filename(url);
     if let Ok(maybe_json_string) = headers.to_json_string(&cache_filename) {
       if let Some(json_string) = maybe_json_string {
-        return self.deps_cache.set(&cache_key, json_string.as_bytes());
+        return self
+          .deps_cache
+          .set(&cache_key, json_string.as_bytes())
+          .map_err(|e| {
+            DenoError::new(
+              ErrorKind::Other,
+              format!(
+                "Source code header cache failed for '{}': {}",
+                url.to_string(),
+                e.to_string()
+              ),
+            )
+            .into()
+          });
       }
     }
 
@@ -568,8 +560,8 @@ impl SourceFileFetcher {
 mod tests {
   use super::*;
   use crate::fs as deno_fs;
-  use tempfile::TempDir;
   use std::path::Path;
+  use tempfile::TempDir;
 
   fn setup_file_fetcher(dir_path: &Path) -> SourceFileFetcher {
     SourceFileFetcher::new(
@@ -599,7 +591,6 @@ mod tests {
     };
   }
 
-  
   #[test]
   fn test_source_code_headers_get_and_save() {
     let (_temp_dir, fetcher) = test_setup();
