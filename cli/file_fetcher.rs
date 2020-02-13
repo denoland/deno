@@ -113,7 +113,7 @@ impl SourceFileFetcher {
     no_remote: bool,
     cached_only: bool,
     ca_file: Option<String>,
-  ) -> std::io::Result<Self> {
+  ) -> Result<Self, ErrBox> {
     let file_fetcher = Self {
       deps_cache,
       progress,
@@ -122,7 +122,7 @@ impl SourceFileFetcher {
       use_disk_cache,
       no_remote,
       cached_only,
-      http_client: create_http_client(ca_file),
+      http_client: create_http_client(ca_file)?,
     };
 
     Ok(file_fetcher)

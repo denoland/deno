@@ -302,8 +302,6 @@ fn types_parse(flags: &mut DenoFlags, _matches: &clap::ArgMatches) {
 }
 
 fn fmt_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
-  ca_file_arg_parse(flags, matches);
-
   let maybe_files = match matches.values_of("files") {
     Some(f) => {
       let files: Vec<PathBuf> = f.map(PathBuf::from).collect();
@@ -570,7 +568,6 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
         .multiple(true)
         .required(false),
     )
-    .arg(ca_file_arg())
 }
 
 fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -926,7 +923,7 @@ fn ca_file_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("cert")
     .long("cert")
     .value_name("FILE")
-    .help("Load certificate authority from DER encoded file")
+    .help("Load certificate authority from PEM encoded file")
     .takes_value(true)
 }
 fn ca_file_arg_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
@@ -2172,22 +2169,6 @@ fn fetch_with_cafile() {
     DenoFlags {
       subcommand: DenoSubcommand::Fetch {
         files: svec!["script.ts", "script_two.ts"],
-      },
-      ca_file: Some("example.crt".to_owned()),
-      ..DenoFlags::default()
-    }
-  );
-}
-
-#[test]
-fn fmt_with_cafile() {
-  let r = flags_from_vec_safe(svec!["deno", "fmt", "--cert", "example.crt"]);
-  assert_eq!(
-    r.unwrap(),
-    DenoFlags {
-      subcommand: DenoSubcommand::Format {
-        check: false,
-        files: None
       },
       ca_file: Some("example.crt".to_owned()),
       ..DenoFlags::default()

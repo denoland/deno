@@ -12,6 +12,8 @@ import sys
 from time import sleep
 from threading import Thread
 from util import root_path
+import ssl
+import getopt
 
 PORT = 4545
 REDIRECT_PORT = 4546
@@ -20,6 +22,53 @@ DOUBLE_REDIRECTS_PORT = 4548
 INF_REDIRECTS_PORT = 4549
 
 QUIET = '-v' not in sys.argv and '--verbose' not in sys.argv
+USE_HTTPS = '--use-https' in sys.argv
+PROTOCOL = 'https:' if USE_HTTPS else 'http:'
+
+CERT_FILE = ""
+KEY_FILE = ""
+try:
+    unixOptions = "v"
+    gnuOptions = ["verbose", "use-https", "certfile=", "keyfile="]
+    arguments, values = getopt.getopt(sys.argv[1:], unixOptions, gnuOptions)
+
+    for currentArgument, currentValue in arguments:
+        if currentArgument in ("--certfile"):
+            CERT_FILE = currentValue
+        if currentArgument in ("--keyfile"):
+            KEY_FILE = currentValue
+
+except getopt.error as err:
+    print(str(err))
+    sys.exit(2)
+
+
+class SSLTCPServer(SocketServer.TCPServer):
+    def __init__(self,
+                 server_address,
+                 request_handler,
+                 certfile,
+                 keyfile,
+                 ssl_version=ssl.PROTOCOL_TLSv1_2,
+                 bind_and_activate=True):
+        SocketServer.TCPServer.__init__(self, server_address, request_handler,
+                                        bind_and_activate)
+        self.certfile = certfile
+        self.keyfile = keyfile
+        self.ssl_version = ssl_version
+
+    def get_request(self):
+        newsocket, fromaddr = self.socket.accept()
+        connstream = ssl.wrap_socket(newsocket,
+                                     server_side=True,
+                                     certfile=self.certfile,
+                                     keyfile=self.keyfile,
+                                     ssl_version=self.ssl_version)
+        return connstream, fromaddr
+
+
+class SSLThreadingTCPServer(SocketServer.ThreadingMixIn, SSLTCPServer):
+    pass
 
 
 class QuietSimpleHTTPRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
@@ -177,6 +226,9 @@ def get_socket(port, handler):
         # flaky tests, but it does appear to...
         # See https://github.com/denoland/deno/issues/3332
         SocketServer.TCPServer.address_family = socket.AF_INET6
+
+    if USE_HTTPS:
+        return SSLThreadingTCPServer(("", port), handler, CERT_FILE, KEY_FILE)
     return SocketServer.TCPServer(("", port), handler)
 
 
@@ -192,13 +244,13 @@ def server():
     })
     s = get_socket(PORT, Handler)
     if not QUIET:
-        print "Deno test server http://localhost:%d/" % PORT
+        print "Deno test server %s//localhost:%d/" % (PROTOCOL, PORT)
     return RunningServer(s, start(s))
 
 
 def base_redirect_server(host_port, target_port, extra_path_segment=""):
     os.chdir(root_path)
-    target_host = "http://localhost:%d" % target_port
+    target_host = "%s//localhost:%d" % (PROTOCOL, target_port)
 
     class RedirectHandler(QuietSimpleHTTPRequestHandler):
         def do_GET(self):
@@ -209,8 +261,8 @@ def base_redirect_server(host_port, target_port, extra_path_segment=""):
 
     s = get_socket(host_port, RedirectHandler)
     if not QUIET:
-        print "redirect server http://localhost:%d/ -> http://localhost:%d/" % (
-            host_port, target_port)
+        print "redirect server %s//localhost:%d/ -> %s//localhost:%d/" % (
+            PROTOCOL, host_port, PROTOCOL, target_port)
     return RunningServer(s, start(s))
 
 
@@ -222,8 +274,9 @@ def redirect_server():
 # another redirect server pointing to the same port as the one above
 # BUT with an extra subdir path
 def another_redirect_server():
-    return base_redirect_server(
-        ANOTHER_REDIRECT_PORT, PORT, extra_path_segment="/cli/tests/subdir")
+    return base_redirect_server(ANOTHER_REDIRECT_PORT,
+                                PORT,
+                                extra_path_segment="/cli/tests/subdir")
 
 
 # redirect server that points to another redirect server
