@@ -7,8 +7,6 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
-use crate::deno_error::DenoError;
-use crate::deno_error::ErrorKind;
 use deno_core::ErrBox;
 use dprint_plugin_typescript as dprint;
 use glob;
@@ -147,48 +145,34 @@ fn format_source_files(
   );
 }
 
-fn get_matching_files(glob_paths: Vec<PathBuf>) -> Vec<PathBuf> {
-  let mut target_files = Vec::with_capacity(128);
-
-  for path in glob_paths {
-    let files = glob::glob(&path.to_str().unwrap())
-      .expect("Failed to execute glob.")
-      .filter_map(Result::ok);
-    target_files.extend(files);
-  }
-
-  target_files
-}
-
 /// Format JavaScript/TypeScript files.
 ///
 /// First argument supports globs, and if it is `None`
 /// then the current directory is recursively walked.
-pub fn format_files(
-  maybe_files: Option<Vec<PathBuf>>,
-  check: bool,
-) -> Result<(), ErrBox> {
-  // TODO: improve glob to look for tsx?/jsx? files only
-  let glob_paths = maybe_files.unwrap_or_else(|| vec![PathBuf::from("**/*")]);
-
-  for glob_path in glob_paths.iter() {
-    if glob_path.to_str().unwrap() == "-" {
-      // If the only given path is '-', format stdin.
-      if glob_paths.len() == 1 {
-        format_stdin(check);
-      } else {
-        // Otherwise it is an error
-        return Err(ErrBox::from(DenoError::new(
-          ErrorKind::Other,
-          "Ambiguous filename input. To format stdin, provide a single '-' instead.".to_owned()
-        )));
-      }
-      return Ok(());
-    }
+pub fn format_files(mut files: Vec<String>, check: bool) -> Result<(), ErrBox> {
+  if files.len() == 1 && files[0] == "-" {
+    format_stdin(check);
+    return Ok(());
   }
 
-  let matching_files = get_matching_files(glob_paths);
-  let matching_files = get_supported_files(matching_files);
+  if files.is_empty() {
+    files.push("**/*".to_string());
+  }
+
+  let mut target_files: Vec<PathBuf> = Vec::new();
+
+  for f in files {
+    let files: Vec<PathBuf> = glob::glob(&f)
+      .expect("Failed to execute glob.")
+      .filter_map(Result::ok)
+      .collect();
+    if files.is_empty() {
+      eprintln!("Warning: '{}' does not match any files", f);
+    }
+    target_files.extend(files);
+  }
+
+  let matching_files = get_supported_files(target_files);
   let config = get_config();
 
   if check {
@@ -211,10 +195,7 @@ fn format_stdin(check: bool) {
   let config = get_config();
 
   match dprint::format_text("_stdin.ts", &source, &config) {
-    Ok(None) => {
-      // Should not happen.
-      unreachable!();
-    }
+    Ok(None) => unreachable!(),
     Ok(Some(formatted_text)) => {
       if check {
         if formatted_text != source {
