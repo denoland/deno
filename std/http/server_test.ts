@@ -24,7 +24,7 @@ import {
 } from "../io/bufio.ts";
 import { delay, deferred } from "../util/async.ts";
 import { StringReader } from "../io/readers.ts";
-import { encode, decode } from "../strings/mod.ts";
+import { encode } from "../strings/mod.ts";
 
 function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
   assertNotEquals(val, Deno.EOF);
@@ -154,7 +154,7 @@ function totalReader(r: Deno.Reader): TotalReader {
   }
   return {
     read,
-    get total() {
+    get total(): number {
       return _total;
     }
   };
