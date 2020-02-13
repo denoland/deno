@@ -13,7 +13,8 @@ import {
   bodyReader,
   chunkedBodyReader,
   writeChunkedBody,
-  writeTrailers
+  writeTrailers,
+  emptyReader
 } from "./http_io.ts";
 
 const encoder = new TextEncoder();
@@ -137,12 +138,10 @@ export class ServerRequest {
    *       bufSlice = bufSlice.subarray(nread);
    *     }
    */
-  get body(): Deno.Reader | null {
+  get body(): Deno.Reader {
     if (!this._body) {
-      if (this.headers.has("content-length")) {
-        const len = this.contentLength;
-        assert(typeof len === "number", "content-legnth must be number");
-        this._body = bodyReader(len, this.r);
+      if (this.contentLength != null) {
+        this._body = bodyReader(this.contentLength, this.r);
       } else {
         const transferEncoding = this.headers.get("transfer-encoding");
         if (transferEncoding != null) {
@@ -151,9 +150,12 @@ export class ServerRequest {
             .map((e): string => e.trim().toLowerCase());
           assert(
             parts.includes("chunked"),
-            "transfer-encoding must be chunked if content-length is not set"
+            'transfer-encoding must include "chunked" if content-length is not set'
           );
           this._body = chunkedBodyReader(this.headers, this.r);
+        } else {
+          // Neither content-length nor transfer-encoding: chunked
+          this._body = emptyReader();
         }
       }
     }

@@ -3,6 +3,14 @@ import { TextProtoReader } from "../textproto/mod.ts";
 import { assert } from "../testing/asserts.ts";
 import { encoder } from "../strings/mod.ts";
 
+export function emptyReader(): Deno.Reader {
+  return {
+    async read(_: Uint8Array): Promise<number|Deno.EOF> {
+      return Deno.EOF;
+    }
+  };
+}
+
 export function bodyReader(contentLength: number, r: BufReader): Deno.Reader {
   let totalRead = 0;
   let finished = false;

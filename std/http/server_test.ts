@@ -7,11 +7,7 @@
 
 const { Buffer, test } = Deno;
 import { TextProtoReader } from "../textproto/mod.ts";
-import {
-  assert,
-  assertEquals,
-  assertNotEquals,
-} from "../testing/asserts.ts";
+import { assert, assertEquals, assertNotEquals } from "../testing/asserts.ts";
 import {
   Response,
   ServerRequest,
