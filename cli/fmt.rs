@@ -21,7 +21,15 @@ use std::time::Instant;
 
 fn is_supported(path: &Path) -> bool {
   if let Some(ext) = path.extension() {
-    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx"
+    if ext == "tsx" || ext == "js" || ext == "jsx" {
+      true
+    } else if ext == "ts" {
+      // Currently dprint does not support d.ts files.
+      // https://github.com/dsherret/dprint/issues/100
+      !path.as_os_str().to_string_lossy().ends_with(".d.ts")
+    } else {
+      false
+    }
   } else {
     false
   }
@@ -213,13 +221,12 @@ fn format_stdin(check: bool) {
 #[test]
 fn test_is_supported() {
   assert!(!is_supported(Path::new("tests/subdir/redirects")));
+  assert!(!is_supported(Path::new("README.md")));
+  assert!(!is_supported(Path::new("lib/typescript.d.ts")));
   assert!(is_supported(Path::new("cli/tests/001_hello.js")));
   assert!(is_supported(Path::new("cli/tests/002_hello.ts")));
-  assert!(is_supported(Path::new("cli/tests/001_hello.jsx")));
-  assert!(is_supported(Path::new("cli/tests/002_hello.tsx")));
-  assert!(is_supported(Path::new(
-    "deno_typescript/typescript/lib/typescript.d.ts"
-  )));
+  assert!(is_supported(Path::new("foo.jsx")));
+  assert!(is_supported(Path::new("foo.tsx")));
 }
 
 #[test]
