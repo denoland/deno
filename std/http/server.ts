@@ -13,8 +13,7 @@ import {
   bodyReader,
   chunkedBodyReader,
   writeChunkedBody,
-  writeTrailers,
-  readTrailers
+  writeTrailers
 } from "./http_io.ts";
 
 const encoder = new TextEncoder();
@@ -94,7 +93,6 @@ export class ServerRequest {
   protoMinor!: number;
   protoMajor!: number;
   headers!: Headers;
-  trailers?: Headers;
   conn!: Conn;
   r!: BufReader;
   w!: BufWriter;
@@ -155,7 +153,7 @@ export class ServerRequest {
             parts.includes("chunked"),
             "transfer-encoding must be chunked if content-length is not set"
           );
-          this._body = chunkedBodyReader(this.r);
+          this._body = chunkedBodyReader(this.headers, this.r);
         }
       }
     }
@@ -192,7 +190,6 @@ export class ServerRequest {
       const buf = new Uint8Array(1024);
       while ((await body.read(buf)) !== Deno.EOF) {}
     }
-    this.trailers = await readTrailers(this.headers, this.r);
     this.finalized = true;
   }
 }

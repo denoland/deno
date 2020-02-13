@@ -25,7 +25,7 @@ export function bodyReader(contentLength: number, r: BufReader): Deno.Reader {
   return { read };
 }
 
-export function chunkedBodyReader(r: BufReader): Deno.Reader {
+export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
   let finished = false;
@@ -98,6 +98,7 @@ export function chunkedBodyReader(r: BufReader): Deno.Reader {
       if ((await r.readLine()) === Deno.EOF) {
         throw new UnexpectedEOFError();
       }
+      await readTrailers(h, r);
       finished = true;
       return Deno.EOF;
     }
@@ -111,23 +112,28 @@ const kProhibitedTrailerHeaders = [
   "trailer"
 ];
 
+/**
+ * Read trailer headers from reader and append values to headers.
+ * "trailer" field will be deleted.
+ * */
 export async function readTrailers(
   headers: Headers,
   r: BufReader
-): Promise<Headers | undefined> {
+): Promise<void> {
   const keys = parseTrailer(headers.get("trailer"));
-  if (!keys) return undefined;
+  if (!keys) return;
   const tp = new TextProtoReader(r);
   const result = await tp.readMIMEHeader();
   assert(result != Deno.EOF, "trailer must be set");
-  for (const [k] of result) {
+  for (const [k, v] of result) {
     if (!keys.has(k)) {
       throw new Error("Undeclared trailer field");
     }
     keys.delete(k);
+    headers.append(k, v);
   }
   assert(keys.size === 0, "Missing trailers");
-  return result;
+  headers.delete("trailer");
 }
 
 function parseTrailer(field: string | null): Set<string> | undefined {

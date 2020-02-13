@@ -7,7 +7,11 @@
 
 const { Buffer, test } = Deno;
 import { TextProtoReader } from "../textproto/mod.ts";
-import { assert, assertEquals, assertNotEquals } from "../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertNotEquals,
+} from "../testing/asserts.ts";
 import {
   Response,
   ServerRequest,
@@ -219,12 +223,14 @@ test("ServerRequest.finalize() should consume unread body / chunked, trailers", 
   req.w = new BufWriter(new Buffer());
   await req.respond({ status: 200, body: "ok" });
   assertEquals(tr.total, 0);
-  assertEquals(req.trailers, undefined);
+  assertEquals(req.headers.has("trailer"), true);
+  assertEquals(req.headers.has("deno"), false);
+  assertEquals(req.headers.has("node"), false);
   await req.finalize();
   assertEquals(tr.total, body.byteLength);
-  assert(req.trailers != null, "trailers must be read");
-  assertEquals(req.trailers.get("deno"), "land");
-  assertEquals(req.trailers.get("node"), "js");
+  assertEquals(req.headers.has("trailer"), false);
+  assertEquals(req.headers.get("deno"), "land");
+  assertEquals(req.headers.get("node"), "js");
 });
 test(async function requestBodyWithTransferEncoding(): Promise<void> {
   {
