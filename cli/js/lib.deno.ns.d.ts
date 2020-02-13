@@ -1462,7 +1462,9 @@ declare namespace Deno {
   export function listen(
     options: ListenOptions & { transport: "tcp" | undefined }
   ): Listener;
-  export function listen(options: ListenOptions & { transport: "udp" }): UDPConn;
+  export function listen(
+    options: ListenOptions & { transport: "udp" }
+  ): UDPConn;
   export function listen(options: ListenOptions): Listener | UDPConn;
 
   export interface ListenTLSOptions {
