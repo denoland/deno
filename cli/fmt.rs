@@ -145,47 +145,39 @@ fn format_source_files(
   );
 }
 
+pub fn source_files_in_subtree(root: PathBuf) -> Vec<PathBuf> {
+  assert!(root.is_dir());
+  let g = root.join("**/*");
+  glob::glob(&g.into_os_string().into_string().unwrap())
+    .expect("Failed to execute glob.")
+    .filter_map(Result::ok)
+    .collect()
+}
+
 /// Format JavaScript/TypeScript files.
 ///
 /// First argument supports globs, and if it is `None`
 /// then the current directory is recursively walked.
-pub fn format_files(mut files: Vec<String>, check: bool) -> Result<(), ErrBox> {
+pub fn format_files(files: Vec<String>, check: bool) -> Result<(), ErrBox> {
   if files.len() == 1 && files[0] == "-" {
     format_stdin(check);
     return Ok(());
   }
 
-  if files.is_empty() {
-    files.push("**/*".to_string());
-  }
-
-  let mut target_files: Vec<PathBuf> = Vec::new();
+  let mut target_files: Vec<PathBuf> = vec![];
 
   if files.is_empty() {
-    target_files.extend(
-      glob::glob("**/*")
-        .expect("Failed to execute glob.")
-        .filter_map(Result::ok)
-        .collect::<Vec<PathBuf>>(),
-    );
-  }
-
-  for f in files {
-    let p = PathBuf::from(f.clone());
-    if !p.is_dir() {
-      target_files.push(p);
-    } else {
-      let g = p.join("**").join("*");
-      let files_: Vec<PathBuf> =
-        glob::glob(&g.into_os_string().into_string().unwrap())
-          .expect("Failed to execute glob.")
-          .filter_map(Result::ok)
-          .collect();
-      if files_.is_empty() {
-        eprintln!("Warning: '{}' does not match any files", f);
-      }
-      target_files.extend(files_);
-    };
+    target_files
+      .extend(source_files_in_subtree(std::env::current_dir().unwrap()));
+  } else {
+    for f in files {
+      let p = PathBuf::from(f);
+      if !p.is_dir() {
+        target_files.push(p);
+      } else {
+        target_files.extend(source_files_in_subtree(p));
+      };
+    }
   }
 
   let matching_files = get_supported_files(target_files);
