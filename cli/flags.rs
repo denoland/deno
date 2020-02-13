@@ -527,7 +527,7 @@ The declaration file could be saved and used for typing information.",
 
 fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("fmt")
-    .about("Fmt files")
+    .about("Format source files")
     .long_about(
       "Auto-format JavaScript/TypeScript source code
 
@@ -537,7 +537,7 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
 
   deno fmt --check
 
-  # Fmt stdin and write to stdout
+  # Format stdin and write to stdout
   cat file.ts | deno fmt -",
     )
     .arg(
