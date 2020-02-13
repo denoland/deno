@@ -167,7 +167,7 @@ export class UDPConnImpl implements UDPConn {
     return [sub, remoteAddr];
   }
 
-  async send(p: Uint8Array, addr: PartialAddr): Promise<void> {
+  async send(p: Uint8Array, addr: UDPAddr): Promise<void> {
     const remote = { hostname: "127.0.0.1", transport: "udp", ...addr };
     if (remote.transport !== "udp") throw Error("Remote transport must be UDP");
     const args = { ...remote, rid: this.rid };
