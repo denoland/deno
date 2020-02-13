@@ -10,7 +10,6 @@
 use deno_core::ErrBox;
 use dprint_plugin_typescript as dprint;
 use glob;
-use regex::Regex;
 use std::fs;
 use std::io::stdin;
 use std::io::stdout;
@@ -20,16 +19,12 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
 
-lazy_static! {
-  static ref TYPESCRIPT_LIB: Regex = Regex::new(".d.ts$").unwrap();
-  static ref TYPESCRIPT: Regex = Regex::new(".tsx?$").unwrap();
-  static ref JAVASCRIPT: Regex = Regex::new(".jsx?$").unwrap();
-}
-
 fn is_supported(path: &Path) -> bool {
-  let path_str = path.to_string_lossy();
-  !TYPESCRIPT_LIB.is_match(&path_str)
-    && (TYPESCRIPT.is_match(&path_str) || JAVASCRIPT.is_match(&path_str))
+  if let Some(ext) = path.extension() {
+    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx"
+  } else {
+    false
+  }
 }
 
 fn get_config() -> dprint::configuration::Configuration {
@@ -45,22 +40,10 @@ fn get_config() -> dprint::configuration::Configuration {
     .build()
 }
 
-fn get_supported_files(paths: Vec<PathBuf>) -> Vec<PathBuf> {
-  let mut files_to_check = vec![];
-
-  for path in paths {
-    if is_supported(&path) {
-      files_to_check.push(path.to_owned());
-    }
-  }
-
-  files_to_check
-}
-
 fn check_source_files(
   config: dprint::configuration::Configuration,
   paths: Vec<PathBuf>,
-) {
+) -> Result<(), ErrBox> {
   let start = Instant::now();
   let mut not_formatted_files = vec![];
 
@@ -73,7 +56,6 @@ fn check_source_files(
       }
       Ok(Some(formatted_text)) => {
         if formatted_text != file_contents {
-          println!("Not formatted {}", file_path_str);
           not_formatted_files.push(file_path);
         }
       }
@@ -86,20 +68,20 @@ fn check_source_files(
 
   let duration = Instant::now() - start;
 
-  if !not_formatted_files.is_empty() {
+  if not_formatted_files.is_empty() {
+    Ok(())
+  } else {
     let f = if not_formatted_files.len() == 1 {
       "file"
     } else {
       "files"
     };
-
-    eprintln!(
+    Err(crate::deno_error::other_error(format!(
       "Found {} not formatted {} in {:?}",
       not_formatted_files.len(),
       f,
       duration
-    );
-    std::process::exit(1);
+    )))
   }
 }
 
@@ -147,10 +129,21 @@ fn format_source_files(
 
 pub fn source_files_in_subtree(root: PathBuf) -> Vec<PathBuf> {
   assert!(root.is_dir());
+  // TODO(ry) Use WalkDir instead of globs.
   let g = root.join("**/*");
   glob::glob(&g.into_os_string().into_string().unwrap())
     .expect("Failed to execute glob.")
-    .filter_map(Result::ok)
+    .filter_map(|result| {
+      if let Ok(p) = result {
+        if is_supported(&p) {
+          Some(p)
+        } else {
+          None
+        }
+      } else {
+        None
+      }
+    })
     .collect()
 }
 
@@ -158,37 +151,33 @@ pub fn source_files_in_subtree(root: PathBuf) -> Vec<PathBuf> {
 ///
 /// First argument supports globs, and if it is `None`
 /// then the current directory is recursively walked.
-pub fn format_files(files: Vec<String>, check: bool) -> Result<(), ErrBox> {
-  if files.len() == 1 && files[0] == "-" {
+pub fn format_files(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
+  if args.len() == 1 && args[0] == "-" {
     format_stdin(check);
     return Ok(());
   }
 
   let mut target_files: Vec<PathBuf> = vec![];
 
-  if files.is_empty() {
+  if args.is_empty() {
     target_files
       .extend(source_files_in_subtree(std::env::current_dir().unwrap()));
   } else {
-    for f in files {
-      let p = PathBuf::from(f);
-      if !p.is_dir() {
-        target_files.push(p);
-      } else {
+    for arg in args {
+      let p = PathBuf::from(arg);
+      if p.is_dir() {
         target_files.extend(source_files_in_subtree(p));
+      } else {
+        target_files.push(p);
       };
     }
   }
-
-  let matching_files = get_supported_files(target_files);
   let config = get_config();
-
   if check {
-    check_source_files(config, matching_files);
+    check_source_files(config, target_files)?;
   } else {
-    format_source_files(config, matching_files);
+    format_source_files(config, target_files);
   }
-
   Ok(())
 }
 
@@ -219,4 +208,24 @@ fn format_stdin(check: bool) {
       eprintln!("   {}", e);
     }
   }
+}
+
+#[test]
+fn test_is_supported() {
+  assert!(!is_supported(Path::new("tests/subdir/redirects")));
+  assert!(is_supported(Path::new("cli/tests/001_hello.js")));
+  assert!(is_supported(Path::new("cli/tests/002_hello.ts")));
+  assert!(is_supported(Path::new("cli/tests/001_hello.jsx")));
+  assert!(is_supported(Path::new("cli/tests/002_hello.tsx")));
+  assert!(is_supported(Path::new(
+    "deno_typescript/typescript/lib/typescript.d.ts"
+  )));
+}
+
+#[test]
+fn check_tests_dir() {
+  // Because of cli/tests/error_syntax.js the following should fail but not
+  // crash.
+  let r = format_files(vec!["./tests".to_string()], true);
+  assert!(r.is_err());
 }
