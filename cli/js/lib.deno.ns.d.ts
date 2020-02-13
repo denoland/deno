@@ -1374,15 +1374,20 @@ declare namespace Deno {
    */
   export function shutdown(rid: number, how: ShutdownMode): void;
 
-  /** A socket is a generic transport listener for message-oriented protocols */
+  /** UNSTABLE: new API
+   * A socket is a generic transport listener for message-oriented protocols
+   */
   export interface Socket extends AsyncIterator<[Uint8Array, Addr]> {
-    /** Waits for and resolves to the next message to the `Socket`. */
+    /** UNSTABLE: new API
+     * Waits for and resolves to the next message to the `Socket`. */
     receive(): Promise<[Uint8Array, Addr]>;
 
-    /** Sends a message to the target. */
+    /** UNSTABLE: new API
+     * Sends a message to the target. */
     send(p: Uint8Array, addr: PartialAddr): Promise<void>;
 
-    /** Close closes the socket. Any pending message promises will be rejected
+    /** UNSTABLE: new API
+     * Close closes the socket. Any pending message promises will be rejected
      * with errors.
      */
     close(): void;
@@ -1433,7 +1438,9 @@ declare namespace Deno {
     transport?: Transport;
   }
 
-  /** Listen announces on the local transport address.
+  /** UNSTABLE: new API
+   *
+   * Listen announces on the local transport address.
    *
    * Requires the allow-net permission.
    *

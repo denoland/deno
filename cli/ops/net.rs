@@ -384,7 +384,6 @@ impl TcpListenerResource {
   }
 }
 
-#[allow(dead_code)]
 struct UdpSocketResource {
   socket: UdpSocket,
   local_addr: SocketAddr,
