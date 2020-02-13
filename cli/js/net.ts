@@ -234,7 +234,7 @@ const listenDefaults = { hostname: "0.0.0.0", transport: "tcp" };
  *     listen({ hostname: "[2001:db8::1]", port: 80 });
  *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
-export function listen(options: ListenOptions & { transport: "tcp" }): Listener;
+export function listen(options: ListenOptions & { transport: "tcp" | undefined }): Listener;
 export function listen(options: ListenOptions & { transport: "udp" }): Socket;
 export function listen(options: ListenOptions): Listener | Socket {
   const args = { ...listenDefaults, ...options };

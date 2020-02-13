@@ -1453,10 +1453,10 @@ declare namespace Deno {
    *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
    */
   export function listen(
-    options: ListenOptions & { transport: "tcp" }
+    options: ListenOptions & { transport: "tcp" | undefined }
   ): Listener;
   export function listen(options: ListenOptions & { transport: "udp" }): Socket;
-  export function listen(options: ListenOptions): Listener | Socket;
+  export function listen(options: ListenOptions): Listener;
 
   export interface ListenTLSOptions {
     port: number;
