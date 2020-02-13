@@ -9,8 +9,14 @@ export type Transport = "tcp" | "udp";
 // export type Transport = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
 
 export interface Addr {
-  transport?: Transport;
+  transport: Transport;
   hostname: string;
+  port: number;
+}
+
+export interface PartialAddr {
+  transport?: Transport;
+  hostname?: string;
   port: number;
 }
 
@@ -22,7 +28,7 @@ export interface Socket extends AsyncIterator<Message> {
   receive(): Promise<Message>;
 
   /** Sends a message to the target. */
-  send(buffer: Uint8Array, remote: Addr): Promise<void>;
+  send(buffer: Uint8Array, remote: PartialAddr): Promise<void>;
 
   /** Close closes the socket. Any pending message promises will be rejected
    * with errors.
@@ -157,7 +163,7 @@ export class SocketImpl implements Socket {
     return [buffer, res.remoteAddr];
   }
 
-  async send(buffer: Uint8Array, rem: Addr): Promise<void> {
+  async send(buffer: Uint8Array, rem: PartialAddr): Promise<void> {
     const remote = { hostname: "127.0.0.1", transport: "udp", ...rem };
     if (remote.transport !== "udp") throw Error("Remote transport must be UDP");
     const args = { ...remote, rid: this.rid, buffer: Array.from(buffer) };
@@ -205,7 +211,7 @@ export interface ListenOptions {
   transport?: Transport;
 }
 
-const listenDefaults = { hostname: "0.0.0.0", port: 80, transport: "tcp" };
+const listenDefaults = { hostname: "0.0.0.0", transport: "tcp" };
 
 /** Listen announces on the local transport address.
  *

@@ -1338,13 +1338,21 @@ declare namespace Deno {
    */
   export function openPlugin(filename: string): Plugin;
 
-  type Transport = "tcp";
+  export type Transport = "tcp" | "udp";
 
-  interface Addr {
+  export interface Addr {
     transport: Transport;
     hostname: string;
     port: number;
   }
+
+  export interface PartialAddr {
+    transport?: Transport;
+    hostname?: string;
+    port: number;
+  }
+
+  export type Message = [Uint8Array, Addr];
 
   /** UNSTABLE: Maybe remove ShutdownMode entirely. */
   export enum ShutdownMode {
@@ -1367,6 +1375,25 @@ declare namespace Deno {
    *       Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
    */
   export function shutdown(rid: number, how: ShutdownMode): void;
+
+  /** A socket is a generic transport listener for message-oriented protocols */
+  export interface Socket extends AsyncIterator<Message> {
+    /** Waits for and resolves to the next message to the `Socket`. */
+    receive(): Promise<Message>;
+
+    /** Sends a message to the target. */
+    send(buffer: Uint8Array, remote: PartialAddr): Promise<void>;
+
+    /** Close closes the socket. Any pending message promises will be rejected
+     * with errors.
+     */
+    close(): void;
+
+    /** Return the address of the `Socket`. */
+    addr: Addr;
+
+    [Symbol.asyncIterator](): AsyncIterator<Message>;
+  }
 
   /** A Listener is a generic network listener for stream-oriented protocols. */
   export interface Listener extends AsyncIterator<Conn> {
@@ -1427,7 +1454,11 @@ declare namespace Deno {
    *     listen({ hostname: "[2001:db8::1]", port: 80 });
    *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
    */
-  export function listen(options: ListenOptions): Listener;
+  export function listen(
+    options: ListenOptions & { transport: "tcp" }
+  ): Listener;
+  export function listen(options: ListenOptions & { transport: "udp" }): Socket;
+  export function listen(options: ListenOptions): Listener | Receiver;
 
   export interface ListenTLSOptions {
     port: number;
