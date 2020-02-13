@@ -7,21 +7,14 @@
 
 const { Buffer, test } = Deno;
 import { TextProtoReader } from "../textproto/mod.ts";
-import {
-  assert,
-  assertEquals,
-  assertNotEquals,
-  assertThrowsAsync,
-  AssertionError
-} from "../testing/asserts.ts";
+import { assert, assertEquals, assertNotEquals } from "../testing/asserts.ts";
 import {
   Response,
   ServerRequest,
   writeResponse,
   serve,
   readRequest,
-  parseHTTPVersion,
-  writeTrailers
+  parseHTTPVersion
 } from "./server.ts";
 import {
   BufReader,
@@ -602,12 +595,16 @@ test({
   }
 });
 
+function _(filepath: string): string {
+  return new URL(filepath, import.meta.url).pathname;
+}
+
 test({
   name: "[http] destroyed connection",
   async fn(): Promise<void> {
     // Runs a simple server as another process
     const p = Deno.run({
-      args: [Deno.execPath(), "--allow-net", "http/testdata/simple_server.ts"],
+      args: [Deno.execPath(), "--allow-net", _("./testdata/simple_server.ts")],
       stdout: "piped"
     });
 
@@ -650,7 +647,7 @@ test({
         Deno.execPath(),
         "--allow-net",
         "--allow-read",
-        "http/testdata/simple_https_server.ts"
+        _("./testdata/simple_https_server.ts")
       ],
       stdout: "piped"
     });
@@ -658,7 +655,10 @@ test({
     try {
       const r = new TextProtoReader(new BufReader(p.stdout!));
       const s = await r.readLine();
-      assert(s !== Deno.EOF && s.includes("server listening"));
+      assert(
+        s !== Deno.EOF && s.includes("server listening"),
+        "server must be started"
+      );
 
       let serverIsRunning = true;
       p.status()
@@ -671,7 +671,7 @@ test({
       const conn = await Deno.connectTLS({
         hostname: "localhost",
         port: 4503,
-        certFile: "http/testdata/tls/RootCA.pem"
+        certFile: _("./testdata/tls/RootCA.pem")
       });
       await Deno.writeAll(
         conn,
@@ -768,54 +768,6 @@ if (Deno.build.os !== "win") {
   });
 }
 
-test("writeTrailer", async () => {
-  const w = new Buffer();
-  await writeTrailers(
-    w,
-    new Headers({ "transfer-encoding": "chunked", trailer: "deno,node" }),
-    new Headers({ deno: "land", node: "js" })
-  );
-  assertEquals(w.toString(), "deno: land\r\nnode: js\r\n");
-});
-
-test("writeTrailer should throw", async () => {
-  const w = new Buffer();
-  await assertThrowsAsync(
-    () => {
-      return writeTrailers(w, new Headers(), new Headers());
-    },
-    Error,
-    'must have "trailer"'
-  );
-  await assertThrowsAsync(
-    () => {
-      return writeTrailers(w, new Headers({ trailer: "deno" }), new Headers());
-    },
-    Error,
-    "only allowed"
-  );
-  for (const f of ["content-length", "trailer", "transfer-encoding"]) {
-    await assertThrowsAsync(
-      () => {
-        return writeTrailers(
-          w,
-          new Headers({ "transfer-encoding": "chunked", trailer: f }),
-          new Headers({ [f]: "1" })
-        );
-      },
-      AssertionError,
-      "prohibited"
-    );
-  }
-  await assertThrowsAsync(
-    () => {
-      return writeTrailers(
-        w,
-        new Headers({ "transfer-encoding": "chunked", trailer: "deno" }),
-        new Headers({ node: "js" })
-      );
-    },
-    AssertionError,
-    "Not trailer"
-  );
-});
+if (import.meta.main) {
+  Deno.runTests();
+}
