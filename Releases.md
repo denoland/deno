@@ -16,7 +16,7 @@ https://github.com/denoland/deno_install
 - feat: `deno fmt -` formats stdin and print to stdout (#3920)
 - feat: add std/signal (#3913)
 - feat: make testing API built-in Deno.test() (#3865, #3930, #3973)
-- fix(std/http): align server and serveTLS APIs (#3881)
+- fix(std/http): align serve and serveTLS APIs (#3881)
 - fix(std/http/file_server): don't crash on "%" pathname (#3953)
 - fix(std/path): Use non-capturing groups in globrex() (#3898)
 - fix(deno types): don't panic when piped to head (#3910)
