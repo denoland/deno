@@ -512,6 +512,7 @@ test("writeResponse with trailer", async () => {
     "",
     "deno: land",
     "node: js",
+    "",
     ""
   ].join("\r\n");
   assertEquals(ret, exp);

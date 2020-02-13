@@ -197,5 +197,6 @@ export async function writeTrailers(
     );
     await writer.write(encoder.encode(`${key}: ${value}\r\n`));
   }
+  await writer.write(encoder.encode("\r\n"));
   await writer.flush();
 }
