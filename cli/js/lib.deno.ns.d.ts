@@ -1384,7 +1384,7 @@ declare namespace Deno {
 
     /** UNSTABLE: new API
      * Sends a message to the target. */
-    send(p: Uint8Array, addr: PartialAddr): Promise<void>;
+    send(p: Uint8Array, addr: UDPAddr): Promise<void>;
 
     /** UNSTABLE: new API
      * Close closes the socket. Any pending message promises will be rejected
