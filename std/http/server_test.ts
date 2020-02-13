@@ -24,6 +24,7 @@ import {
 } from "../io/bufio.ts";
 import { delay, deferred } from "../util/async.ts";
 import { StringReader } from "../io/readers.ts";
+import { encode, decode } from "../strings/mod.ts";
 
 function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
   assertNotEquals(val, Deno.EOF);
@@ -139,6 +140,25 @@ test(async function requestContentLength(): Promise<void> {
   }
 });
 
+interface TotalReader extends Deno.Reader {
+  total: number;
+}
+function totalReader(r: Deno.Reader): TotalReader {
+  let _total = 0;
+  async function read(p: Uint8Array): Promise<number | Deno.EOF> {
+    const result = await r.read(p);
+    if (typeof result === "number") {
+      _total += result;
+    }
+    return result;
+  }
+  return {
+    read,
+    get total() {
+      return _total;
+    }
+  };
+}
 test(async function requestBodyWithContentLength(): Promise<void> {
   {
     const req = new ServerRequest();
@@ -161,8 +181,51 @@ test(async function requestBodyWithContentLength(): Promise<void> {
     const body = dec.decode(await Deno.readAll(req.body));
     assertEquals(body, longText);
   }
+  // Handler ignored to consume body
 });
-
+test("ServerRequest.finalize() should consume unread body / content-length", async () => {
+  const text = "deno.land";
+  const req = new ServerRequest();
+  req.headers = new Headers();
+  req.headers.set("content-length", "" + text.length);
+  const tr = totalReader(new Buffer(encode(text)));
+  req.r = new BufReader(tr);
+  req.w = new BufWriter(new Buffer());
+  await req.respond({ status: 200, body: "ok" });
+  assertEquals(tr.total, 0);
+  await req.finalize();
+  assertEquals(tr.total, text.length);
+});
+test("ServerRequest.finalize() should consume unread body / chunked, trailers", async () => {
+  const text = [
+    "5",
+    "Hello",
+    "4",
+    "Deno",
+    "0",
+    "",
+    "deno: land",
+    "node: js",
+    "",
+    ""
+  ].join("\r\n");
+  const req = new ServerRequest();
+  req.headers = new Headers();
+  req.headers.set("transfer-encoding", "chunked");
+  req.headers.set("trailer", "deno,node");
+  const body = encode(text);
+  const tr = totalReader(new Buffer(body));
+  req.r = new BufReader(tr);
+  req.w = new BufWriter(new Buffer());
+  await req.respond({ status: 200, body: "ok" });
+  assertEquals(tr.total, 0);
+  assertEquals(req.trailers, undefined);
+  await req.finalize();
+  assertEquals(tr.total, body.byteLength);
+  assert(req.trailers != null, "trailers must be read");
+  assertEquals(req.trailers.get("deno"), "land");
+  assertEquals(req.trailers.get("node"), "js");
+});
 test(async function requestBodyWithTransferEncoding(): Promise<void> {
   {
     const shortText = "Hello";

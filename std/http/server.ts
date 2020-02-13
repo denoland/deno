@@ -187,9 +187,9 @@ export class ServerRequest {
   async finalize(): Promise<void> {
     if (this.finalized) return;
     // Consume unread body
-    const buf = new Uint8Array(1024);
     const body = this.body;
     if (body) {
+      const buf = new Uint8Array(1024);
       while ((await body.read(buf)) !== Deno.EOF) {}
     }
     this.trailers = await readTrailers(this.headers, this.r);
