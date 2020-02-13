@@ -413,7 +413,7 @@ async fn run_script(
   Ok(())
 }
 
-async fn fmt_command(files: Option<Vec<PathBuf>>, check: bool) {
+async fn fmt_command(files: Vec<String>, check: bool) {
   if let Err(err) = fmt::format_files(files, check) {
     print_err_and_exit(err);
   }
@@ -493,9 +493,7 @@ pub fn main() {
       }
       DenoSubcommand::Eval { code } => eval_command(flags, code).await,
       DenoSubcommand::Fetch { files } => fetch_command(flags, files).await,
-      DenoSubcommand::Format { check, files } => {
-        fmt_command(files, check).await
-      }
+      DenoSubcommand::Fmt { check, files } => fmt_command(files, check).await,
       DenoSubcommand::Info { file } => info_command(flags, file).await,
       DenoSubcommand::Install {
         dir,
