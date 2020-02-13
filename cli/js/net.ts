@@ -14,19 +14,19 @@ export interface Addr {
   port: number;
 }
 
-export interface PartialAddr {
+export interface UDPAddr {
   transport?: Transport;
   hostname?: string;
   port: number;
 }
 
 /** A socket is a generic transport listener for message-oriented protocols */
-export interface Socket extends AsyncIterator<[Uint8Array, Addr]> {
+export interface UDPConn extends AsyncIterator<[Uint8Array, Addr]> {
   /** Waits for and resolves to the next message to the `Socket`. */
   receive(): Promise<[Uint8Array, Addr]>;
 
   /** Sends a message to the target. */
-  send(p: Uint8Array, addr: PartialAddr): Promise<void>;
+  send(p: Uint8Array, addr: UDPAddr): Promise<void>;
 
   /** Close closes the socket. Any pending message promises will be rejected
    * with errors.
@@ -148,7 +148,7 @@ export class ListenerImpl implements Listener {
   }
 }
 
-export class SocketImpl implements Socket {
+export class UDPConnImpl implements UDPConn {
   constructor(
     readonly rid: number,
     readonly addr: Addr,
@@ -237,15 +237,15 @@ const listenDefaults = { hostname: "0.0.0.0", transport: "tcp" };
 export function listen(
   options: ListenOptions & { transport: "tcp" | undefined }
 ): Listener;
-export function listen(options: ListenOptions & { transport: "udp" }): Socket;
-export function listen(options: ListenOptions): Listener | Socket {
+export function listen(options: ListenOptions & { transport: "udp" }): UDPConn;
+export function listen(options: ListenOptions): Listener | UDPConn {
   const args = { ...listenDefaults, ...options };
   const res = sendSync(dispatch.OP_LISTEN, args);
 
   if (args.transport === "tcp") {
     return new ListenerImpl(res.rid, res.localAddr);
   } else {
-    return new SocketImpl(res.rid, res.localAddr);
+    return new UDPConnImpl(res.rid, res.localAddr);
   }
 }
 

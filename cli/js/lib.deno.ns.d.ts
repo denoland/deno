@@ -1346,7 +1346,7 @@ declare namespace Deno {
     port: number;
   }
 
-  export interface PartialAddr {
+  export interface UDPAddr {
     transport?: Transport;
     hostname?: string;
     port: number;
@@ -1377,7 +1377,7 @@ declare namespace Deno {
   /** UNSTABLE: new API
    * A socket is a generic transport listener for message-oriented protocols
    */
-  export interface Socket extends AsyncIterator<[Uint8Array, Addr]> {
+  export interface UDPConn extends AsyncIterator<[Uint8Array, Addr]> {
     /** UNSTABLE: new API
      * Waits for and resolves to the next message to the `Socket`. */
     receive(): Promise<[Uint8Array, Addr]>;
@@ -1462,8 +1462,8 @@ declare namespace Deno {
   export function listen(
     options: ListenOptions & { transport: "tcp" | undefined }
   ): Listener;
-  export function listen(options: ListenOptions & { transport: "udp" }): Socket;
-  export function listen(options: ListenOptions): Listener;
+  export function listen(options: ListenOptions & { transport: "udp" }): UDPConn;
+  export function listen(options: ListenOptions): Listener | UDPConn;
 
   export interface ListenTLSOptions {
     port: number;
