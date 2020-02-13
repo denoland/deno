@@ -118,7 +118,7 @@ impl SourceFileFetcher {
   }
 
   /// Required for TS compiler and source maps.
-  pub fn fetch_cached_source_file(
+  pub async fn fetch_cached_source_file(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<SourceFile> {
@@ -133,9 +133,10 @@ impl SourceFileFetcher {
     // using "--cached-only" flag. We can safely block on this
     // future, because it doesn't do any asynchronous action
     // it that path.
-    let fut = self.get_source_file_async(specifier.as_url(), true, false, true);
-
-    futures::executor::block_on(fut).ok()
+    self
+      .get_source_file_async(specifier.as_url(), true, false, true)
+      .await
+      .ok()
   }
 
   pub async fn fetch_source_file_async(
