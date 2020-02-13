@@ -74,7 +74,6 @@ export {
   connect,
   listen,
   Socket,
-  Message,
   Listener,
   Conn,
   ShutdownMode,

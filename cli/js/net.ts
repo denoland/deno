@@ -20,15 +20,13 @@ export interface PartialAddr {
   port: number;
 }
 
-export type Message = [Uint8Array, Addr];
-
 /** A socket is a generic transport listener for message-oriented protocols */
-export interface Socket extends AsyncIterator<Message> {
+export interface Socket extends AsyncIterator<[Uint8Array, Addr]> {
   /** Waits for and resolves to the next message to the `Socket`. */
-  receive(): Promise<Message>;
+  receive(): Promise<[Uint8Array, Addr]>;
 
   /** Sends a message to the target. */
-  send(buffer: Uint8Array, remote: PartialAddr): Promise<void>;
+  send(p: Uint8Array, addr: PartialAddr): Promise<void>;
 
   /** Close closes the socket. Any pending message promises will be rejected
    * with errors.
@@ -38,7 +36,7 @@ export interface Socket extends AsyncIterator<Message> {
   /** Return the address of the `Socket`. */
   addr: Addr;
 
-  [Symbol.asyncIterator](): AsyncIterator<Message>;
+  [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]>;
 }
 
 /** A Listener is a generic transport listener for stream-oriented protocols. */
@@ -114,7 +112,7 @@ export class ConnImpl implements Conn {
 export class ListenerImpl implements Listener {
   constructor(
     readonly rid: number,
-    public addr: Addr,
+    readonly addr: Addr,
     private closing: boolean = false
   ) {}
 
@@ -153,21 +151,27 @@ export class ListenerImpl implements Listener {
 export class SocketImpl implements Socket {
   constructor(
     readonly rid: number,
-    public addr: Addr,
+    readonly addr: Addr,
+    public bufSize: number = 1024,
     private closing: boolean = false
   ) {}
 
-  async receive(): Promise<Message> {
-    const res = await sendAsync(dispatch.OP_RECEIVE, { rid: this.rid });
-    const buffer = new Uint8Array(res.buffer);
-    return [buffer, res.remoteAddr];
+  async receive(): Promise<[Uint8Array, Addr]> {
+    const p = new Uint8Array(this.bufSize);
+    const { size, remoteAddr } = await sendAsync(
+      dispatch.OP_RECEIVE,
+      { rid: this.rid },
+      p
+    );
+    const sub = p.subarray(0, size);
+    return [sub, remoteAddr];
   }
 
-  async send(buffer: Uint8Array, rem: PartialAddr): Promise<void> {
-    const remote = { hostname: "127.0.0.1", transport: "udp", ...rem };
+  async send(p: Uint8Array, addr: PartialAddr): Promise<void> {
+    const remote = { hostname: "127.0.0.1", transport: "udp", ...addr };
     if (remote.transport !== "udp") throw Error("Remote transport must be UDP");
-    const args = { ...remote, rid: this.rid, buffer: Array.from(buffer) };
-    await sendAsync(dispatch.OP_SEND, args);
+    const args = { ...remote, rid: this.rid };
+    await sendAsync(dispatch.OP_SEND, args, p);
   }
 
   close(): void {
@@ -175,7 +179,7 @@ export class SocketImpl implements Socket {
     close(this.rid);
   }
 
-  async next(): Promise<IteratorResult<Message>> {
+  async next(): Promise<IteratorResult<[Uint8Array, Addr]>> {
     if (this.closing) {
       return { value: undefined, done: true };
     }
@@ -183,7 +187,7 @@ export class SocketImpl implements Socket {
     return { value, done: false };
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<Message> {
+  [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]> {
     return this;
   }
 }

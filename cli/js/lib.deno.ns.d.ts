@@ -1352,8 +1352,6 @@ declare namespace Deno {
     port: number;
   }
 
-  export type Message = [Uint8Array, Addr];
-
   /** UNSTABLE: Maybe remove ShutdownMode entirely. */
   export enum ShutdownMode {
     // See http://man7.org/linux/man-pages/man2/shutdown.2.html
@@ -1377,12 +1375,12 @@ declare namespace Deno {
   export function shutdown(rid: number, how: ShutdownMode): void;
 
   /** A socket is a generic transport listener for message-oriented protocols */
-  export interface Socket extends AsyncIterator<Message> {
+  export interface Socket extends AsyncIterator<[Uint8Array, Addr]> {
     /** Waits for and resolves to the next message to the `Socket`. */
-    receive(): Promise<Message>;
+    receive(): Promise<[Uint8Array, Addr]>;
 
     /** Sends a message to the target. */
-    send(buffer: Uint8Array, remote: PartialAddr): Promise<void>;
+    send(p: Uint8Array, addr: PartialAddr): Promise<void>;
 
     /** Close closes the socket. Any pending message promises will be rejected
      * with errors.
@@ -1392,7 +1390,7 @@ declare namespace Deno {
     /** Return the address of the `Socket`. */
     addr: Addr;
 
-    [Symbol.asyncIterator](): AsyncIterator<Message>;
+    [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]>;
   }
 
   /** A Listener is a generic network listener for stream-oriented protocols. */

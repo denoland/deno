@@ -141,9 +141,9 @@ fn op_accept(
 }
 
 pub struct Receive<'a> {
-  buf: &'a mut Buf,
-  rid: ResourceId,
   state: &'a State,
+  rid: ResourceId,
+  buf: ZeroCopyBuf,
 }
 
 impl Future for Receive<'_> {
@@ -159,7 +159,9 @@ impl Future for Receive<'_> {
 
     let socket = &mut resource.socket;
 
-    socket.poll_recv_from(cx, inner.buf).map_err(ErrBox::from)
+    socket
+      .poll_recv_from(cx, &mut inner.buf)
+      .map_err(ErrBox::from)
   }
 }
 
@@ -168,26 +170,28 @@ struct ReceiveArgs {
   rid: i32,
 }
 
+fn receive(state: &State, rid: ResourceId, buf: ZeroCopyBuf) -> Receive {
+  Receive { state, rid, buf }
+}
+
 fn op_receive(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
+  assert!(zero_copy.is_some());
+  let buf = zero_copy.unwrap();
+
   let args: ReceiveArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
+
   let state_ = state.clone();
 
   let op = async move {
-    let mut buf = vec![0u8; 1024].into_boxed_slice();
-    let (_size, remote_addr) = Receive {
-      buf: &mut buf,
-      state: &state_,
-      rid,
-    }
-    .await?;
+    let (size, remote_addr) = receive(&state_, rid, buf).await?;
 
     Ok(json!({
-      "buffer": buf,
+      "size": size,
       "remoteAddr": {
         "hostname": remote_addr.ip().to_string(),
         "port": remote_addr.port(),
@@ -202,7 +206,6 @@ fn op_receive(
 #[derive(Deserialize)]
 struct SendArgs {
   rid: i32,
-  buffer: Vec<u8>,
   hostname: String,
   port: u16,
   transport: String,
@@ -211,11 +214,15 @@ struct SendArgs {
 fn op_send(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
+  assert!(zero_copy.is_some());
+  let buf = zero_copy.unwrap();
+
   let args: SendArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "udp");
   let rid = args.rid as u32;
+
   let state_ = state.clone();
   state.check_net(&args.hostname, args.port)?;
 
@@ -225,9 +232,10 @@ fn op_send(
       .resource_table
       .get_mut::<UdpSocketResource>(rid)
       .ok_or_else(bad_resource)?;
+
     let socket = &mut resource.socket;
     let addr = resolve_addr(&args.hostname, args.port).await?;
-    socket.send_to(&args.buffer, addr).await?;
+    socket.send_to(&buf, addr).await?;
 
     Ok(json!({}))
   };
