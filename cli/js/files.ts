@@ -256,6 +256,13 @@ export class File
   }
 }
 
+/** An instance of `File` for stdin. */
+export const stdin = new File(0);
+/** An instance of `File` for stdout. */
+export const stdout = new File(1);
+/** An instance of `File` for stderr. */
+export const stderr = new File(2);
+
 export interface OpenOptions {
   /** Sets the option for read access. This option, when true, will indicate that the file should be read-able if opened. */
   read?: boolean;

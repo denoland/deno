@@ -487,6 +487,13 @@ declare namespace Deno {
     close(): void;
   }
 
+  /** An instance of `File` for stdin. */
+  export const stdin: File;
+  /** An instance of `File` for stdout. */
+  export const stdout: File;
+  /** An instance of `File` for stderr. */
+  export const stderr: File;
+
   export interface OpenOptions {
     /** Sets the option for read access. This option, when true, will indicate that the file should be read-able if opened. */
     read?: boolean;
@@ -545,21 +552,17 @@ declare namespace Deno {
 
   // @url js/tty.d.ts
 
-  /** Check if a given resource is TTY. */
+  /** UNSTABLE: newly added API
+   *
+   *  Check if a given resource is TTY
+   */
   export function isatty(rid: number): boolean;
-  /** Extended file abstraction for TTY input */
-  export class TTYInput extends File {
-    /** Is TTY under raw mode. */
-    get isRaw(): boolean;
-    /** Set TTY to be under raw mode. */
-    setRaw(mode: boolean): void;
-  }
-  /** An instance of `TTYInput` for stdin. */
-  export const stdin: TTYInput;
-  /** An instance of `File` for stdout. */
-  export const stdout: File;
-  /** An instance of `File` for stderr. */
-  export const stderr: File;
+
+  /** UNSTABLE: newly added API
+   *
+   *  Set TTY to be under raw mode or not.
+   */
+  export function setRaw(rid: number, mode: boolean): void;
 
   // @url js/buffer.d.ts
 

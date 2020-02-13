@@ -9,8 +9,6 @@ use deno_core::*;
 #[cfg(unix)]
 use nix::sys::termios;
 use serde_derive::Deserialize;
-#[cfg(unix)]
-use serde_derive::Serialize;
 use serde_json::Value;
 
 #[cfg(windows)]
@@ -53,51 +51,10 @@ macro_rules! wincheck {
   }};
 }
 
-// libc::termios cannot be serialized.
-// Create a similar one for our use.
-#[cfg(unix)]
-#[derive(Serialize, Deserialize)]
-struct SerializedTermios {
-  iflags: libc::tcflag_t,
-  oflags: libc::tcflag_t,
-  cflags: libc::tcflag_t,
-  lflags: libc::tcflag_t,
-  cc: [libc::cc_t; libc::NCCS],
-}
-
-#[cfg(unix)]
-impl From<termios::Termios> for SerializedTermios {
-  fn from(t: termios::Termios) -> Self {
-    Self {
-      iflags: t.input_flags.bits(),
-      oflags: t.output_flags.bits(),
-      cflags: t.control_flags.bits(),
-      lflags: t.local_flags.bits(),
-      cc: t.control_chars,
-    }
-  }
-}
-
-#[cfg(unix)]
-impl Into<termios::Termios> for SerializedTermios {
-  fn into(self) -> termios::Termios {
-    let mut t = unsafe { termios::Termios::default_uninit() };
-    t.input_flags = termios::InputFlags::from_bits_truncate(self.iflags);
-    t.output_flags = termios::OutputFlags::from_bits_truncate(self.oflags);
-    t.control_flags = termios::ControlFlags::from_bits_truncate(self.cflags);
-    t.local_flags = termios::LocalFlags::from_bits_truncate(self.lflags);
-    t.control_chars = self.cc;
-    t
-  }
-}
-
 #[derive(Deserialize)]
 struct SetRawArgs {
   rid: u32,
-  raw: bool,
-  #[cfg(unix)]
-  restore: Option<String>, // Only used for *nix
-                           // Saved as string in case of u64 problem in JS
+  mode: bool,
 }
 
 pub fn op_set_raw(
@@ -107,13 +64,7 @@ pub fn op_set_raw(
 ) -> Result<JsonOp, ErrBox> {
   let args: SetRawArgs = serde_json::from_value(args)?;
   let rid = args.rid;
-  let is_raw = args.raw;
-
-  let state = state_.borrow_mut();
-  let resource = state.resource_table.get::<StreamResource>(rid);
-  if resource.is_none() {
-    return Err(bad_resource());
-  }
+  let is_raw = args.mode;
 
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs
   // and https://github.com/kkawakam/rustyline/blob/master/src/tty/unix.rs
@@ -125,16 +76,22 @@ pub fn op_set_raw(
     use std::os::windows::io::AsRawHandle;
     use winapi::um::{consoleapi, handleapi};
 
+    let state = state_.borrow_mut();
+    let resource = state.resource_table.get::<StreamResource>(rid);
+    if resource.is_none() {
+      return Err(bad_resource());
+    }
+
     // For now, only stdin.
     let handle = match resource.unwrap() {
-      StreamResource::Stdin(_) => std::io::stdin().as_raw_handle(),
-      StreamResource::FsFile(f) => {
+      StreamResource::Stdin(_, _) => std::io::stdin().as_raw_handle(),
+      StreamResource::FsFile(f, _) => {
         let tokio_file = futures::executor::block_on(f.try_clone())?;
         let std_file = futures::executor::block_on(tokio_file.into_std());
         std_file.as_raw_handle()
       }
       _ => {
-        return Err(other_error("Not implemented".to_owned()));
+        return Err(other_error("Not supported".to_owned()));
       }
     };
 
@@ -157,21 +114,37 @@ pub fn op_set_raw(
   #[cfg(unix)]
   {
     use std::os::unix::io::AsRawFd;
-    let raw_fd = match resource.unwrap() {
-      StreamResource::Stdin(_) => std::io::stdin().as_raw_fd(),
-      StreamResource::FsFile(f) => {
-        let tokio_file = futures::executor::block_on(f.try_clone())?;
-        let std_file = futures::executor::block_on(tokio_file.into_std());
-        std_file.as_raw_fd()
-      }
-      _ => {
-        return Err(other_error("Not implemented".to_owned()));
-      }
-    };
+
+    let mut state = state_.borrow_mut();
+    let resource = state.resource_table.get_mut::<StreamResource>(rid);
+    if resource.is_none() {
+      return Err(bad_resource());
+    }
 
     if is_raw {
+      let (raw_fd, maybe_tty_mode) = match resource.unwrap() {
+        StreamResource::Stdin(_, ref mut metadata) => {
+          (std::io::stdin().as_raw_fd(), &mut metadata.mode)
+        }
+        StreamResource::FsFile(f, ref mut metadata) => {
+          let tokio_file = futures::executor::block_on(f.try_clone())?;
+          let std_file = futures::executor::block_on(tokio_file.into_std());
+          (std_file.as_raw_fd(), &mut metadata.tty.mode)
+        }
+        _ => {
+          return Err(other_error("Not supported".to_owned()));
+        }
+      };
+
+      if maybe_tty_mode.is_some() {
+        // Already raw. Skip.
+        return Ok(JsonOp::Sync(json!({})));
+      }
+
       let original_mode = termios::tcgetattr(raw_fd)?;
       let mut raw = original_mode.clone();
+      // Save original mode.
+      maybe_tty_mode.replace(original_mode);
 
       raw.input_flags &= !(termios::InputFlags::BRKINT
         | termios::InputFlags::ICRNL
@@ -188,26 +161,27 @@ pub fn op_set_raw(
       raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
       raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
       termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
-      Ok(JsonOp::Sync(json!({
-        "restore":
-          serde_json::to_string(&SerializedTermios::from(original_mode)).unwrap(),
-      })))
+      Ok(JsonOp::Sync(json!({})))
     } else {
-      // Restore old mode.
-      if args.restore.is_none() {
-        return Err(other_error("no termios to restore".to_owned()));
+      // Try restore saved mode.
+      let (raw_fd, maybe_tty_mode) = match resource.unwrap() {
+        StreamResource::Stdin(_, ref mut metadata) => {
+          (std::io::stdin().as_raw_fd(), &mut metadata.mode)
+        }
+        StreamResource::FsFile(f, ref mut metadata) => {
+          let tokio_file = futures::executor::block_on(f.try_clone())?;
+          let std_file = futures::executor::block_on(tokio_file.into_std());
+          (std_file.as_raw_fd(), &mut metadata.tty.mode)
+        }
+        _ => {
+          return Err(other_error("Not supported".to_owned()));
+        }
+      };
+
+      if let Some(mode) = maybe_tty_mode.take() {
+        termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
       }
-      let old_termios =
-        serde_json::from_str::<SerializedTermios>(&args.restore.unwrap());
-      if old_termios.is_err() {
-        return Err(other_error("bad termios to restore".to_owned()));
-      }
-      let old_termios = old_termios.unwrap();
-      termios::tcsetattr(
-        raw_fd,
-        termios::SetArg::TCSADRAIN,
-        &old_termios.into(),
-      )?;
+
       Ok(JsonOp::Sync(json!({})))
     }
   }
@@ -237,7 +211,7 @@ pub fn op_isatty(
   }
 
   match resource.unwrap() {
-    StreamResource::Stdin(_) => {
+    StreamResource::Stdin(_, _) => {
       Ok(JsonOp::Sync(json!(atty::is(atty::Stream::Stdin))))
     }
     StreamResource::Stdout(_) => {
@@ -246,7 +220,7 @@ pub fn op_isatty(
     StreamResource::Stderr(_) => {
       Ok(JsonOp::Sync(json!(atty::is(atty::Stream::Stderr))))
     }
-    StreamResource::FsFile(f) => {
+    StreamResource::FsFile(f, _) => {
       let tokio_file = futures::executor::block_on(f.try_clone())?;
       let std_file = futures::executor::block_on(tokio_file.into_std());
       #[cfg(windows)]
