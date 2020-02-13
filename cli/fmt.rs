@@ -161,15 +161,31 @@ pub fn format_files(mut files: Vec<String>, check: bool) -> Result<(), ErrBox> {
 
   let mut target_files: Vec<PathBuf> = Vec::new();
 
+  if files.is_empty() {
+    target_files.extend(
+      glob::glob("**/*")
+        .expect("Failed to execute glob.")
+        .filter_map(Result::ok)
+        .collect::<Vec<PathBuf>>(),
+    );
+  }
+
   for f in files {
-    let files: Vec<PathBuf> = glob::glob(&f)
-      .expect("Failed to execute glob.")
-      .filter_map(Result::ok)
-      .collect();
-    if files.is_empty() {
-      eprintln!("Warning: '{}' does not match any files", f);
-    }
-    target_files.extend(files);
+    let p = PathBuf::from(f.clone());
+    if !p.is_dir() {
+      target_files.push(p);
+    } else {
+      let g = p.join("**").join("*");
+      let files_: Vec<PathBuf> =
+        glob::glob(&g.into_os_string().into_string().unwrap())
+          .expect("Failed to execute glob.")
+          .filter_map(Result::ok)
+          .collect();
+      if files_.is_empty() {
+        eprintln!("Warning: '{}' does not match any files", f);
+      }
+      target_files.extend(files_);
+    };
   }
 
   let matching_files = get_supported_files(target_files);
