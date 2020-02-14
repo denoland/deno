@@ -32,9 +32,14 @@ pub fn prepare_test_modules_urls(
   let mut prepared = vec![];
 
   for path in include_paths {
-    let p = root_path.join(path).canonicalize()?;
+    let q = root_path.join(path);
+    println!("before canonicalize {:?}", q);
+    let p = q.canonicalize()?;
+    println!("root_path.join(path).canonicalize {:?}", p);
     if p.is_dir() {
+      println!("is_dir");
       let test_files = crate::fs::files_in_subtree(p, is_supported);
+      println!("test_files {:?}", test_files);
       let test_files_as_urls = test_files
         .iter()
         .map(|f| Url::from_file_path(f).unwrap())
@@ -42,6 +47,7 @@ pub fn prepare_test_modules_urls(
       prepared.extend(test_files_as_urls);
     } else {
       let url = Url::from_file_path(p).unwrap();
+      println!("not dir, {:?}", url);
       prepared.push(url);
     }
   }
@@ -121,10 +127,12 @@ mod tests {
   #[test]
   fn supports_dirs() {
     let root = test_util::root_path().join("std").join("http");
+    println!("root {:?}", root);
     let mut matched_urls =
       prepare_test_modules_urls(vec![".".to_string()], &root).unwrap();
     matched_urls.sort();
     let root_url = Url::from_file_path(root).unwrap().to_string();
+    println!("root_url {}", root_url);
     let expected: Vec<Url> = vec![
       format!("{}/cookie_test.ts", root_url),
       format!("{}/file_server_test.ts", root_url),
