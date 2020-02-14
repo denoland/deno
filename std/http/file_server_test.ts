@@ -2,8 +2,9 @@
 import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
+import { relativeResolver } from "./testdata/util.ts";
 const { test } = Deno;
-
+const _ = relativeResolver(import.meta);
 let fileServer: Deno.Process;
 
 async function startFileServer(): Promise<void> {
@@ -13,7 +14,7 @@ async function startFileServer(): Promise<void> {
       "run",
       "--allow-read",
       "--allow-net",
-      "http/file_server.ts",
+      _("./file_server.ts"),
       ".",
       "--cors"
     ],
@@ -86,12 +87,12 @@ test(async function serveFallback(): Promise<void> {
 test(async function serveWithUnorthodoxFilename(): Promise<void> {
   await startFileServer();
   try {
-    let res = await fetch("http://localhost:4500/http/testdata/%");
+    let res = await fetch("http://localhost:4500/testdata/%");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 200);
 
-    res = await fetch("http://localhost:4500/http/testdata/test%20file.txt");
+    res = await fetch("http://localhost:4500/testdata/test%20file.txt");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 200);
@@ -102,7 +103,7 @@ test(async function serveWithUnorthodoxFilename(): Promise<void> {
 
 test(async function servePermissionDenied(): Promise<void> {
   const deniedServer = Deno.run({
-    args: [Deno.execPath(), "run", "--allow-net", "http/file_server.ts"],
+    args: [Deno.execPath(), "run", "--allow-net", _("./file_server.ts")],
     stdout: "piped",
     stderr: "piped"
   });
@@ -128,7 +129,7 @@ test(async function servePermissionDenied(): Promise<void> {
 
 test(async function printHelp(): Promise<void> {
   const helpProcess = Deno.run({
-    args: [Deno.execPath(), "run", "http/file_server.ts", "--help"],
+    args: [Deno.execPath(), "run", _("./file_server.ts"), "--help"],
     stdout: "piped"
   });
   assert(helpProcess.stdout != null);

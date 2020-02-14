@@ -188,10 +188,8 @@ export class ServerRequest {
     if (this.finalized) return;
     // Consume unread body
     const body = this.body;
-    if (body) {
-      const buf = new Uint8Array(1024);
-      while ((await body.read(buf)) !== Deno.EOF) {}
-    }
+    const buf = new Uint8Array(1024);
+    while ((await body.read(buf)) !== Deno.EOF) {}
     this.finalized = true;
   }
 }

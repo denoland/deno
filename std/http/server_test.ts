@@ -26,6 +26,9 @@ import {
 import { delay, deferred } from "../util/async.ts";
 import { StringReader } from "../io/readers.ts";
 import { encode } from "../strings/mod.ts";
+import { relativeResolver } from "./testdata/util.ts";
+
+const _ = relativeResolver(import.meta);
 
 function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
   assertNotEquals(val, Deno.EOF);
@@ -662,10 +665,6 @@ test({
   }
 });
 
-function _(filepath: string): string {
-  return new URL(filepath, import.meta.url).pathname;
-}
-
 test({
   name: "[http] destroyed connection",
   async fn(): Promise<void> {
@@ -909,6 +908,7 @@ test("Server should correctly process requests from same connection if handler d
     });
     if (i === 5) break;
   }
+  server.close();
   const exp = [
     ["HTTP/1.1 200 OK", "x-resp-index: 1", "content-length: 1", "", "1"],
     ["HTTP/1.1 200 OK", "x-resp-index: 2", "content-length: 1", "", "2"],
@@ -920,7 +920,3 @@ test("Server should correctly process requests from same connection if handler d
     .join("");
   assertEquals(dest.toString(), exp);
 });
-
-if (import.meta.main) {
-  Deno.runTests();
-}

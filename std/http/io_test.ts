@@ -165,7 +165,3 @@ test("writeTrailer should throw", async () => {
     "Not trailer"
   );
 });
-
-if (import.meta.main) {
-  Deno.runTests();
-}

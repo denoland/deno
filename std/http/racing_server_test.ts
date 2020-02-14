@@ -3,11 +3,13 @@ const { connect, run } = Deno;
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
+import { relativeResolver } from "./testdata/util.ts";
+const _ = relativeResolver(import.meta);
 
 let server: Deno.Process;
 async function startServer(): Promise<void> {
   server = run({
-    args: [Deno.execPath(), "run", "-A", "http/racing_server.ts"],
+    args: [Deno.execPath(), "run", "-A", _("./racing_server.ts")],
     stdout: "piped"
   });
   // Once racing server is ready it will write to its stdout.

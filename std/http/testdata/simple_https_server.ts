@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // This is an example of a https server
 import { serveTLS } from "../server.ts";
-function _(s: string): string {
-  return new URL(s, import.meta.url).pathname;
-}
+import { relativeResolver } from "./util.ts";
+const _ = relativeResolver(import.meta);
+
 const tlsOptions = {
   hostname: "localhost",
   port: 4503,
