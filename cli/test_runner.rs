@@ -8,8 +8,18 @@ use std::path::PathBuf;
 use url::Url;
 
 fn is_supported(p: &Path) -> bool {
-  let s = p.as_os_str().to_string_lossy();
-  s.ends_with("test.ts") || s.ends_with("test.js")
+  use std::path::Component;
+  if let Some(Component::Normal(basename_os_str)) = p.components().next_back() {
+    let basename = basename_os_str.to_string_lossy();
+    basename.ends_with("_test.ts")
+      || basename.ends_with("_test.js")
+      || basename.ends_with(".test.ts")
+      || basename.ends_with(".test.js")
+      || basename == "test.ts"
+      || basename == "test.js"
+  } else {
+    false
+  }
 }
 
 pub fn prepare_test_modules_urls(
@@ -98,15 +108,19 @@ mod tests {
   fn test_is_supported() {
     assert!(is_supported(Path::new("tests/subdir/foo_test.ts")));
     assert!(is_supported(Path::new("tests/subdir/foo_test.js")));
+    assert!(is_supported(Path::new("bar/foo.test.ts")));
+    assert!(is_supported(Path::new("bar/foo.test.js")));
     assert!(is_supported(Path::new("foo/bar/test.js")));
     assert!(is_supported(Path::new("foo/bar/test.ts")));
     assert!(!is_supported(Path::new("README.md")));
     assert!(!is_supported(Path::new("lib/typescript.d.ts")));
+    assert!(!is_supported(Path::new("notatest.js")));
+    assert!(!is_supported(Path::new("NotAtest.ts")));
   }
 
   #[test]
   fn supports_dirs() {
-    let root = test_util::root_path().join("std/http");
+    let root = test_util::root_path().join("std").join("http");
     let mut matched_urls =
       prepare_test_modules_urls(vec![".".to_string()], &root).unwrap();
     matched_urls.sort();
