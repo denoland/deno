@@ -188,3 +188,26 @@ mod tests {
     assert_eq!(resolve_from_cwd(expected).unwrap(), expected);
   }
 }
+
+pub fn files_in_subtree<F>(root: PathBuf, filter: F) -> Vec<PathBuf>
+where
+  F: Fn(&Path) -> bool,
+{
+  // TODO(ry) Use WalkDir instead of globs.
+  assert!(root.is_dir());
+  let g = root.join("**/*");
+  glob::glob(&g.into_os_string().into_string().unwrap())
+    .expect("Failed to execute glob.")
+    .filter_map(|result| {
+      if let Ok(p) = result {
+        if filter(&p) {
+          Some(p)
+        } else {
+          None
+        }
+      } else {
+        None
+      }
+    })
+    .collect()
+}

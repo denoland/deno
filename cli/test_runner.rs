@@ -3,12 +3,21 @@
 use crate::installer::is_remote_url;
 use deno_core::ErrBox;
 use std;
+use std::path::Path;
 use std::path::PathBuf;
 use url::Url;
 
+fn test_file_filter(p: &Path) -> bool {
+  let s = p.as_os_str().to_string_lossy();
+  s.ends_with("_test.ts")
+    || s.ends_with("_test.js")
+    || s.ends_with(".test.ts")
+    || s.ends_with(".test.js")
+}
+
 pub fn prepare_test_modules_urls(
   include: Vec<String>,
-  root_path: PathBuf,
+  root_path: &PathBuf,
 ) -> Result<Vec<Url>, ErrBox> {
   let (include_paths, include_urls): (Vec<String>, Vec<String>) =
     include.into_iter().partition(|n| !is_remote_url(n));
@@ -17,8 +26,17 @@ pub fn prepare_test_modules_urls(
 
   for path in include_paths {
     let p = root_path.join(path).canonicalize()?;
-    let url = Url::from_file_path(p).unwrap();
-    prepared.push(url);
+    if p.is_dir() {
+      let test_files = crate::fs::files_in_subtree(p, test_file_filter);
+      let test_files_as_urls = test_files
+        .iter()
+        .map(|f| Url::from_file_path(f).unwrap())
+        .collect::<Vec<Url>>();
+      prepared.extend(test_files_as_urls);
+    } else {
+      let url = Url::from_file_path(p).unwrap();
+      prepared.push(url);
+    }
   }
 
   for remote_url in include_urls {
@@ -59,7 +77,7 @@ mod tests {
         "subdir2/mod2.ts".to_string(),
         "http://example.com/printf_test.ts".to_string(),
       ],
-      test_data_path.clone(),
+      &test_data_path,
     )
     .unwrap();
     let test_data_url =
@@ -76,6 +94,25 @@ mod tests {
     .map(|f| Url::parse(&f).unwrap())
     .collect();
     matched_urls.sort();
+    assert_eq!(matched_urls, expected);
+  }
+
+  #[test]
+  fn supports_dirs() {
+    let root = test_util::root_path();
+    let mut matched_urls =
+      prepare_test_modules_urls(vec!["std/http".to_string()], &root).unwrap();
+    matched_urls.sort();
+    let root_url = Url::from_file_path(root).unwrap().to_string();
+    let expected: Vec<Url> = vec![
+      format!("{}/std/http/cookie_test.ts", root_url),
+      format!("{}/std/http/file_server_test.ts", root_url),
+      format!("{}/std/http/racing_server_test.ts", root_url),
+      format!("{}/std/http/server_test.ts", root_url),
+    ]
+    .into_iter()
+    .map(|f| Url::parse(&f).unwrap())
+    .collect();
     assert_eq!(matched_urls, expected);
   }
 }
