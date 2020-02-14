@@ -14,6 +14,7 @@ from threading import Thread
 from util import root_path
 import ssl
 import getopt
+import argparse
 
 PORT = 4545
 REDIRECT_PORT = 4546
@@ -23,24 +24,21 @@ INF_REDIRECTS_PORT = 4549
 
 HTTPS_PORT = 5545
 
-QUIET = '-v' not in sys.argv and '--verbose' not in sys.argv
 
-CERT_FILE = ""
-KEY_FILE = ""
-try:
-    unixOptions = "v"
-    gnuOptions = ["verbose", "certfile=", "keyfile="]
-    arguments, values = getopt.getopt(sys.argv[1:], unixOptions, gnuOptions)
+def create_http_arg_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--certfile')
+    parser.add_argument('--keyfile')
+    parser.add_argument('--verbose', '-v', action='store_true')
+    return parser
 
-    for currentArgument, currentValue in arguments:
-        if currentArgument in ("--certfile"):
-            CERT_FILE = currentValue
-        if currentArgument in ("--keyfile"):
-            KEY_FILE = currentValue
 
-except getopt.error as err:
-    print(str(err))
-    sys.exit(2)
+HttpArgParser = create_http_arg_parser()
+
+args, unknown = HttpArgParser.parse_known_args(sys.argv[1:])
+CERT_FILE = args.certfile
+KEY_FILE = args.keyfile
+QUIET = not args.verbose
 
 
 class SSLTCPServer(SocketServer.TCPServer):
