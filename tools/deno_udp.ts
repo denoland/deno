@@ -6,6 +6,5 @@ const response = new TextEncoder().encode("Hello World");
 console.log("Listening on", addr);
 for await (const message of socket) {
   const [buffer, remote] = message;
-  console.log("Received", buffer.length, "bytes");
   await socket.send(response, remote);
 }
