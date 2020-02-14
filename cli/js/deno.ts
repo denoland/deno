@@ -71,9 +71,11 @@ export {
 export { metrics, Metrics } from "./metrics.ts";
 export { mkdirSync, mkdir } from "./mkdir.ts";
 export {
+  Addr,
   connect,
   listen,
-  Socket,
+  UDPConn,
+  UDPAddr
   Listener,
   Conn,
   ShutdownMode,
