@@ -59,11 +59,12 @@ class SSLTCPServer(SocketServer.TCPServer):
 
     def get_request(self):
         newsocket, fromaddr = self.socket.accept()
-        connstream = ssl.wrap_socket(newsocket,
-                                     server_side=True,
-                                     certfile=self.certfile,
-                                     keyfile=self.keyfile,
-                                     ssl_version=self.ssl_version)
+        connstream = ssl.wrap_socket(
+            newsocket,
+            server_side=True,
+            certfile=self.certfile,
+            keyfile=self.keyfile,
+            ssl_version=self.ssl_version)
         return connstream, fromaddr
 
 
@@ -274,9 +275,8 @@ def redirect_server():
 # another redirect server pointing to the same port as the one above
 # BUT with an extra subdir path
 def another_redirect_server():
-    return base_redirect_server(ANOTHER_REDIRECT_PORT,
-                                PORT,
-                                extra_path_segment="/cli/tests/subdir")
+    return base_redirect_server(
+        ANOTHER_REDIRECT_PORT, PORT, extra_path_segment="/cli/tests/subdir")
 
 
 # redirect server that points to another redirect server
