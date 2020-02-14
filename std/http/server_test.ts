@@ -870,7 +870,7 @@ test("Server should correctly process requests from same connection if handler d
     .map(r => r.join("\r\n"))
     .join("");
   const buf = new Buffer(encode(keepAliveRequests));
-  conn.read = (p): Promise<number|Deno.EOF> => buf.read(p);
+  conn.read = (p): Promise<number | Deno.EOF> => buf.read(p);
   const dest = new Buffer();
   conn.write = (p): Promise<number> => dest.write(p);
   let i = 0;
