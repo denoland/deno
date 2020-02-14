@@ -7,12 +7,9 @@ use std::path::Path;
 use std::path::PathBuf;
 use url::Url;
 
-fn test_file_filter(p: &Path) -> bool {
+fn is_supported(p: &Path) -> bool {
   let s = p.as_os_str().to_string_lossy();
-  s.ends_with("_test.ts")
-    || s.ends_with("_test.js")
-    || s.ends_with(".test.ts")
-    || s.ends_with(".test.js")
+  s.ends_with("test.ts") || s.ends_with("test.js")
 }
 
 pub fn prepare_test_modules_urls(
@@ -27,7 +24,7 @@ pub fn prepare_test_modules_urls(
   for path in include_paths {
     let p = root_path.join(path).canonicalize()?;
     if p.is_dir() {
-      let test_files = crate::fs::files_in_subtree(p, test_file_filter);
+      let test_files = crate::fs::files_in_subtree(p, is_supported);
       let test_files_as_urls = test_files
         .iter()
         .map(|f| Url::from_file_path(f).unwrap())
@@ -98,17 +95,27 @@ mod tests {
   }
 
   #[test]
+  fn test_is_supported() {
+    assert!(is_supported(Path::new("tests/subdir/foo_test.ts")));
+    assert!(is_supported(Path::new("tests/subdir/foo_test.js")));
+    assert!(is_supported(Path::new("foo/bar/test.js")));
+    assert!(is_supported(Path::new("foo/bar/test.ts")));
+    assert!(!is_supported(Path::new("README.md")));
+    assert!(!is_supported(Path::new("lib/typescript.d.ts")));
+  }
+
+  #[test]
   fn supports_dirs() {
-    let root = test_util::root_path();
+    let root = test_util::root_path().join("std/http");
     let mut matched_urls =
-      prepare_test_modules_urls(vec!["std/http".to_string()], &root).unwrap();
+      prepare_test_modules_urls(vec![".".to_string()], &root).unwrap();
     matched_urls.sort();
     let root_url = Url::from_file_path(root).unwrap().to_string();
     let expected: Vec<Url> = vec![
-      format!("{}/std/http/cookie_test.ts", root_url),
-      format!("{}/std/http/file_server_test.ts", root_url),
-      format!("{}/std/http/racing_server_test.ts", root_url),
-      format!("{}/std/http/server_test.ts", root_url),
+      format!("{}/cookie_test.ts", root_url),
+      format!("{}/file_server_test.ts", root_url),
+      format!("{}/racing_server_test.ts", root_url),
+      format!("{}/server_test.ts", root_url),
     ]
     .into_iter()
     .map(|f| Url::parse(&f).unwrap())
