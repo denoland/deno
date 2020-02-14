@@ -195,7 +195,7 @@ where
 {
   // TODO(ry) Use WalkDir instead of globs.
   assert!(root.is_dir());
-  let g = root.join("**/*");
+  let g = root.join("**").join("*");
   glob::glob(&g.into_os_string().into_string().unwrap())
     .expect("Failed to execute glob.")
     .filter_map(|result| {
