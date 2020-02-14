@@ -26,9 +26,6 @@ import {
 import { delay, deferred } from "../util/async.ts";
 import { StringReader } from "../io/readers.ts";
 import { encode } from "../strings/mod.ts";
-import { relativeResolver } from "./testdata/util.ts";
-
-const _ = relativeResolver(import.meta);
 
 function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
   assertNotEquals(val, Deno.EOF);
@@ -670,7 +667,7 @@ test({
   async fn(): Promise<void> {
     // Runs a simple server as another process
     const p = Deno.run({
-      args: [Deno.execPath(), "--allow-net", _("./testdata/simple_server.ts")],
+      args: [Deno.execPath(), "--allow-net", "http/testdata/simple_server.ts"],
       stdout: "piped"
     });
 
@@ -713,7 +710,7 @@ test({
         Deno.execPath(),
         "--allow-net",
         "--allow-read",
-        _("./testdata/simple_https_server.ts")
+        "http/testdata/simple_https_server.ts"
       ],
       stdout: "piped"
     });
@@ -737,7 +734,7 @@ test({
       const conn = await Deno.connectTLS({
         hostname: "localhost",
         port: 4503,
-        certFile: _("./testdata/tls/RootCA.pem")
+        certFile: "http/testdata/tls/RootCA.pem"
       });
       await Deno.writeAll(
         conn,
