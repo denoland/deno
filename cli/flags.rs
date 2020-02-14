@@ -37,9 +37,9 @@ pub enum DenoSubcommand {
   Fetch {
     files: Vec<String>,
   },
-  Format {
+  Fmt {
     check: bool,
-    files: Option<Vec<PathBuf>>,
+    files: Vec<String>,
   },
   Help,
   Info {
@@ -301,19 +301,13 @@ fn types_parse(flags: &mut DenoFlags, _matches: &clap::ArgMatches) {
 }
 
 fn fmt_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
-  let maybe_files = match matches.values_of("files") {
-    Some(f) => {
-      let files: Vec<PathBuf> = f.map(PathBuf::from).collect();
-      Some(files)
-    }
-    None => None,
+  let files = match matches.values_of("files") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
   };
-
-  let check = matches.is_present("check");
-
-  flags.subcommand = DenoSubcommand::Format {
-    check,
-    files: maybe_files,
+  flags.subcommand = DenoSubcommand::Fmt {
+    check: matches.is_present("check"),
+    files,
   }
 }
 
@@ -533,7 +527,7 @@ The declaration file could be saved and used for typing information.",
 
 fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("fmt")
-    .about("Format files")
+    .about("Format source files")
     .long_about(
       "Auto-format JavaScript/TypeScript source code
 
@@ -1363,12 +1357,9 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       DenoFlags {
-        subcommand: DenoSubcommand::Format {
+        subcommand: DenoSubcommand::Fmt {
           check: false,
-          files: Some(vec![
-            PathBuf::from("script_1.ts"),
-            PathBuf::from("script_2.ts")
-          ])
+          files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()]
         },
         ..DenoFlags::default()
       }
@@ -1378,9 +1369,9 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       DenoFlags {
-        subcommand: DenoSubcommand::Format {
+        subcommand: DenoSubcommand::Fmt {
           check: true,
-          files: None
+          files: vec![],
         },
         ..DenoFlags::default()
       }
@@ -1390,9 +1381,9 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       DenoFlags {
-        subcommand: DenoSubcommand::Format {
+        subcommand: DenoSubcommand::Fmt {
           check: false,
-          files: None
+          files: vec![],
         },
         ..DenoFlags::default()
       }
