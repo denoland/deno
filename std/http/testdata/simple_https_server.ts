@@ -5,8 +5,8 @@ import { serveTLS } from "../server.ts";
 const tlsOptions = {
   hostname: "localhost",
   port: 4503,
-  certFile: "http/testdata/tls/localhost.crt",
-  keyFile: "http/testdata/tls/localhost.key"
+  certFile: "./http/testdata/tls/localhost.crt",
+  keyFile: "./http/testdata/tls/localhost.key"
 };
 const s = serveTLS(tlsOptions);
 console.log(
