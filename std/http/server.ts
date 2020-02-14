@@ -15,7 +15,7 @@ import {
   writeChunkedBody,
   writeTrailers,
   emptyReader
-} from "./http_io.ts";
+} from "./io.ts";
 
 const encoder = new TextEncoder();
 

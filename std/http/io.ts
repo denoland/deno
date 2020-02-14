@@ -51,8 +51,12 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
         buf[i] = chunk.data[chunk.offset + i];
       }
       chunk.offset += readLength;
-      if (chunk.offset >= chunk.data.byteLength) {
+      if (chunk.offset === chunk.data.byteLength) {
         chunks.shift();
+        // Consume \r\n;
+        if ((await tp.readLine()) === Deno.EOF) {
+          throw new UnexpectedEOFError();
+        }
       }
       return readLength;
     }
@@ -65,41 +69,34 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
       throw new Error("Invalid chunk size");
     }
     if (chunkSize > 0) {
-      let result: Deno.EOF | number;
       if (chunkSize > buf.byteLength) {
         let eof = await r.readFull(buf);
         if (eof === Deno.EOF) {
-          result = eof;
-        } else {
-          result = buf.byteLength;
+          throw new UnexpectedEOFError();
         }
         const restChunk = new Uint8Array(chunkSize - buf.byteLength);
         eof = await r.readFull(restChunk);
         if (eof === Deno.EOF) {
-          result = eof;
+          throw new UnexpectedEOFError();
         } else {
           chunks.push({
             offset: 0,
             data: restChunk
           });
         }
+        return buf.byteLength;
       } else {
         const bufToFill = buf.subarray(0, chunkSize);
         const eof = await r.readFull(bufToFill);
         if (eof === Deno.EOF) {
-          result = eof;
-        } else {
-          result = chunkSize;
+          throw new UnexpectedEOFError();
         }
+        // Consume \r\n
+        if ((await tp.readLine()) === Deno.EOF) {
+          throw new UnexpectedEOFError();
+        }
+        return chunkSize;
       }
-      if (result === Deno.EOF) {
-        throw new UnexpectedEOFError();
-      }
-      // Consume \r\n
-      if ((await tp.readLine()) === Deno.EOF) {
-        throw new UnexpectedEOFError();
-      }
-      return result;
     } else {
       assert(chunkSize === 0);
       // Consume \r\n
@@ -154,7 +151,7 @@ function parseTrailer(field: string | null): Set<string> | undefined {
   }
   for (const invalid of kProhibitedTrailerHeaders) {
     if (keys.includes(invalid)) {
-      throw new Error(`"${invalid}" is prohibited for trailer`);
+      throw new Error(`Prohibited field for trailer`);
     }
   }
   return new Set(keys);
