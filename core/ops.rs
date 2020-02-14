@@ -34,7 +34,7 @@ pub type OpDispatcher = dyn Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + 'static;
 
 #[derive(Default)]
 pub struct OpRegistry {
-  dispatchers: RwLock<Vec<Arc<Box<OpDispatcher>>>>,
+  dispatchers: RwLock<Vec<Arc<OpDispatcher>>>,
   name_to_id: RwLock<HashMap<String, OpId>>,
 }
 
@@ -63,7 +63,7 @@ impl OpRegistry {
       format!("Op already registered: {}", name)
     );
 
-    lock.push(Arc::new(Box::new(op)));
+    lock.push(Arc::new(op));
     drop(name_lock);
     drop(lock);
     op_id
