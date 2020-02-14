@@ -445,10 +445,10 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_with_cafile_sync_string() {
-    let http_server_guard = crate::test_util::https_server();
+    let http_server_guard = crate::test_util::http_server();
     // Relies on external http server. See tools/http_server.py
     let url =
-      Url::parse("https://localhost:4545/cli/tests/fixture.json").unwrap();
+      Url::parse("https://localhost:5545/cli/tests/fixture.json").unwrap();
 
     let client = create_http_client(Some(String::from(
       crate::test_util::root_path()
@@ -472,10 +472,10 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_with_cafile_gzip() {
-    let http_server_guard = crate::test_util::https_server();
+    let http_server_guard = crate::test_util::http_server();
     // Relies on external http server. See tools/http_server.py
     let url = Url::parse(
-      "https://localhost:4545/cli/tests/053_import_compression/gziped",
+      "https://localhost:5545/cli/tests/053_import_compression/gziped",
     )
     .unwrap();
     let client = create_http_client(Some(String::from(
@@ -505,8 +505,8 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_with_cafile_with_etag() {
-    let http_server_guard = crate::test_util::https_server();
-    let url = Url::parse("https://localhost:4545/etag_script.ts").unwrap();
+    let http_server_guard = crate::test_util::http_server();
+    let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
     let client = create_http_client(Some(String::from(
       crate::test_util::root_path()
         .join("std/http/testdata/tls/RootCA.pem")
@@ -540,10 +540,10 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_with_cafile_brotli() {
-    let http_server_guard = crate::test_util::https_server();
+    let http_server_guard = crate::test_util::http_server();
     // Relies on external http server. See tools/http_server.py
     let url = Url::parse(
-      "https://localhost:4545/cli/tests/053_import_compression/brotli",
+      "https://localhost:5545/cli/tests/053_import_compression/brotli",
     )
     .unwrap();
     let client = create_http_client(Some(String::from(
@@ -566,31 +566,6 @@ mod tests {
       );
       assert_eq!(payload.etag, None);
       assert_eq!(payload.x_typescript_types, None);
-    } else {
-      panic!();
-    }
-    drop(http_server_guard);
-  }
-
-  #[tokio::test]
-  async fn test_fetch_with_cafile_once_with_redirect() {
-    let http_server_guard = crate::test_util::https_server();
-    // Relies on external http server. See tools/http_server.py
-    let url =
-      Url::parse("https://localhost:4546/cli/tests/fixture.json").unwrap();
-    // Dns resolver substitutes `127.0.0.1` with `localhost`
-    let target_url =
-      Url::parse("https://localhost:4545/cli/tests/fixture.json").unwrap();
-    let client = create_http_client(Some(String::from(
-      crate::test_util::root_path()
-        .join("std/http/testdata/tls/RootCA.pem")
-        .to_str()
-        .unwrap(),
-    )))
-    .unwrap();
-    let result = fetch_once(client, &url, None).await;
-    if let Ok(FetchOnceResult::Redirect(url)) = result {
-      assert_eq!(url, target_url);
     } else {
       panic!();
     }

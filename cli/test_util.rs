@@ -74,7 +74,20 @@ pub fn http_server() -> HttpServerGuard {
       println!("tools/http_server.py starting...");
       let mut child = Command::new("python")
         .current_dir(root_path())
-        .args(&["-u", "tools/http_server.py"])
+        .args(&[
+          "-u",
+          "tools/http_server.py",
+          "--certfile",
+          root_path()
+            .join("std/http/testdata/tls/localhost.crt")
+            .to_str()
+            .unwrap(),
+          "--keyfile",
+          root_path()
+            .join("std/http/testdata/tls/localhost.key")
+            .to_str()
+            .unwrap(),
+        ])
         .stdout(Stdio::piped())
         .spawn()
         .expect("failed to execute child");
@@ -89,39 +102,4 @@ pub fn http_server() -> HttpServerGuard {
   }
 
   HttpServerGuard {}
-}
-
-pub fn https_server<'a>() -> HttpServerGuard<'a> {
-  // TODO(ry) Allow tests to use the http server in parallel.
-  let g = GUARD.lock().unwrap();
-
-  println!("tools/http_server.py starting...");
-  let mut child = Command::new("python")
-    .current_dir(root_path())
-    .args(&[
-      "-u",
-      "tools/http_server.py",
-      "--use-https",
-      "--certfile",
-      root_path()
-        .join("std/http/testdata/tls/localhost.crt")
-        .to_str()
-        .unwrap(),
-      "--keyfile",
-      root_path()
-        .join("std/http/testdata/tls/localhost.key")
-        .to_str()
-        .unwrap(),
-    ])
-    .stdout(Stdio::piped())
-    .spawn()
-    .expect("failed to execute child");
-
-  let stdout = child.stdout.as_mut().unwrap();
-  use std::io::{BufRead, BufReader};
-  let mut lines = BufReader::new(stdout).lines();
-  let line = lines.next().unwrap().unwrap();
-  assert!(line.starts_with("ready"));
-
-  HttpServerGuard { child, g }
 }

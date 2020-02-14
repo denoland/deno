@@ -21,15 +21,15 @@ ANOTHER_REDIRECT_PORT = 4547
 DOUBLE_REDIRECTS_PORT = 4548
 INF_REDIRECTS_PORT = 4549
 
+HTTPS_PORT = 5545
+
 QUIET = '-v' not in sys.argv and '--verbose' not in sys.argv
-USE_HTTPS = '--use-https' in sys.argv
-PROTOCOL = 'https:' if USE_HTTPS else 'http:'
 
 CERT_FILE = ""
 KEY_FILE = ""
 try:
     unixOptions = "v"
-    gnuOptions = ["verbose", "use-https", "certfile=", "keyfile="]
+    gnuOptions = ["verbose", "certfile=", "keyfile="]
     arguments, values = getopt.getopt(sys.argv[1:], unixOptions, gnuOptions)
 
     for currentArgument, currentValue in arguments:
@@ -219,7 +219,7 @@ class ContentTypeHandler(QuietSimpleHTTPRequestHandler):
 RunningServer = namedtuple("RunningServer", ["server", "thread"])
 
 
-def get_socket(port, handler):
+def get_socket(port, handler, use_https):
     SocketServer.TCPServer.allow_reuse_address = True
     if os.name != "nt":
         # We use AF_INET6 to avoid flaky test issue, particularly with
@@ -228,7 +228,7 @@ def get_socket(port, handler):
         # See https://github.com/denoland/deno/issues/3332
         SocketServer.TCPServer.address_family = socket.AF_INET6
 
-    if USE_HTTPS:
+    if use_https:
         return SSLThreadingTCPServer(("", port), handler, CERT_FILE, KEY_FILE)
     return SocketServer.TCPServer(("", port), handler)
 
@@ -243,15 +243,15 @@ def server():
         ".jsx": "application/javascript",
         ".json": "application/json",
     })
-    s = get_socket(PORT, Handler)
+    s = get_socket(PORT, Handler, False)
     if not QUIET:
-        print "Deno test server %s//localhost:%d/" % (PROTOCOL, PORT)
+        print "Deno test server http://localhost:%d/" % PORT
     return RunningServer(s, start(s))
 
 
 def base_redirect_server(host_port, target_port, extra_path_segment=""):
     os.chdir(root_path)
-    target_host = "%s//localhost:%d" % (PROTOCOL, target_port)
+    target_host = "http://localhost:%d" % target_port
 
     class RedirectHandler(QuietSimpleHTTPRequestHandler):
         def do_GET(self):
@@ -260,10 +260,10 @@ def base_redirect_server(host_port, target_port, extra_path_segment=""):
                              target_host + extra_path_segment + self.path)
             self.end_headers()
 
-    s = get_socket(host_port, RedirectHandler)
+    s = get_socket(host_port, RedirectHandler, False)
     if not QUIET:
-        print "redirect server %s//localhost:%d/ -> %s//localhost:%d/" % (
-            PROTOCOL, host_port, PROTOCOL, target_port)
+        print "redirect server http://localhost:%d/ -> http://localhost:%d/" % (
+            host_port, target_port)
     return RunningServer(s, start(s))
 
 
@@ -289,6 +289,22 @@ def inf_redirects_server():
     return base_redirect_server(INF_REDIRECTS_PORT, INF_REDIRECTS_PORT)
 
 
+def https_server():
+    os.chdir(root_path)  # Hopefully the main thread doesn't also chdir.
+    Handler = ContentTypeHandler
+    Handler.extensions_map.update({
+        ".ts": "application/typescript",
+        ".js": "application/javascript",
+        ".tsx": "application/typescript",
+        ".jsx": "application/javascript",
+        ".json": "application/json",
+    })
+    s = get_socket(HTTPS_PORT, Handler, True)
+    if not QUIET:
+        print "Deno https test server https://localhost:%d/" % HTTPS_PORT
+    return RunningServer(s, start(s))
+
+
 def start(s):
     thread = Thread(target=s.serve_forever, kwargs={"poll_interval": 0.05})
     thread.daemon = True
@@ -299,7 +315,7 @@ def start(s):
 @contextmanager
 def spawn():
     servers = (server(), redirect_server(), another_redirect_server(),
-               double_redirects_server())
+               double_redirects_server(), https_server())
     while any(not s.thread.is_alive() for s in servers):
         sleep(0.01)
     try:
