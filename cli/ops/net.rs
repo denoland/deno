@@ -413,6 +413,7 @@ fn listen_udp(
 ) -> Result<(u32, SocketAddr), ErrBox> {
   let mut state = state.borrow_mut();
   let socket = futures::executor::block_on(UdpSocket::bind(&addr))?;
+  let local_addr = socket.local_addr()?;
   let socket_resource = UdpSocketResource { socket };
   let rid = state
     .resource_table
