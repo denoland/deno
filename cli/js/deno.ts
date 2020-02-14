@@ -75,7 +75,7 @@ export {
   connect,
   listen,
   UDPConn,
-  UDPAddr
+  UDPAddr,
   Listener,
   Conn,
   ShutdownMode,
