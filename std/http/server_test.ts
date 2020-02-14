@@ -14,7 +14,8 @@ import {
   writeResponse,
   serve,
   readRequest,
-  parseHTTPVersion
+  parseHTTPVersion,
+  Server
 } from "./server.ts";
 import {
   BufReader,
@@ -41,7 +42,7 @@ const dec = new TextDecoder();
 
 type Handler = () => void;
 
-const mockConn = {
+const mockConn = (): Deno.Conn => ({
   localAddr: {
     transport: "tcp",
     hostname: "",
@@ -62,7 +63,7 @@ const mockConn = {
     return -1;
   },
   close: (): void => {}
-};
+});
 
 const responseTests: ResponseTest[] = [
   // Default response
@@ -98,7 +99,7 @@ test(async function responseWrite(): Promise<void> {
     const request = new ServerRequest();
     request.w = bufw;
 
-    request.conn = mockConn as Deno.Conn;
+    request.conn = mockConn();
 
     await request.respond(testCase.response);
     assertEquals(buf.toString(), testCase.raw);
@@ -527,7 +528,7 @@ malformedHeader
   const reader = new BufReader(new StringReader(input));
   let err;
   try {
-    await readRequest(mockConn as Deno.Conn, reader);
+    await readRequest(mockConn(), reader);
   } catch (e) {
     err = e;
   }
@@ -605,7 +606,7 @@ test(async function testReadRequestError(): Promise<void> {
     let err;
     let req: ServerRequest | Deno.EOF;
     try {
-      req = await readRequest(mockConn as Deno.Conn, reader);
+      req = await readRequest(mockConn(), reader);
     } catch (e) {
       err = e;
     }
@@ -833,6 +834,92 @@ if (Deno.build.os !== "win") {
     }
   });
 }
+
+test("Server should correctly process requests from same connection if handler didn't consume body stream", async () => {
+  const conn = mockConn();
+  const keepAliveRequests = [
+    ["POST / HTTP/1.1", "content-length: 5", "x-index: 1", "", "First"],
+    [
+      "POST / HTTP/1.1",
+      "transfer-encoding: chunked",
+      "x-index: 2",
+      "",
+      "6",
+      "Second",
+      "0",
+      "",
+      ""
+    ],
+    ["POST / HTTP/1.1", "content-length: 6", "x-index: 3", "", "Third"],
+    [
+      "POST / HTTP/1.1",
+      "transfer-encoding: chunked",
+      "trailer: deno",
+      "x-index: 4",
+      "",
+      "6",
+      "Fourth",
+      "0",
+      "",
+      "deno: land",
+      "",
+      ""
+    ],
+    ["POST / HTTP/1.1", "content-length: 5", "x-index: 5", "", "Fifth"]
+  ]
+    .map(r => r.join("\r\n"))
+    .join("");
+  const buf = new Buffer(encode(keepAliveRequests));
+  conn.read = (p): Promise<number|Deno.EOF> => buf.read(p);
+  const dest = new Buffer();
+  conn.write = (p): Promise<number> => dest.write(p);
+  let i = 0;
+  const dummyListener: Deno.Listener = {
+    async accept(): Promise<Deno.Conn> {
+      return conn;
+    },
+    close() {},
+    async next() {
+      return { value: conn, done: false };
+    },
+    async throw() {
+      return { value: undefined, done: false };
+    },
+    async return(value?: Deno.Conn) {
+      return { value, done: false };
+    },
+    async *[Symbol.asyncIterator]() {
+      yield conn;
+    },
+    addr: { hostname: "0.0.0.0", port: 0, transport: "tcp" }
+  };
+  const server = new Server(dummyListener);
+  for await (const req of server) {
+    // Randomly ignore to read body
+    if (i++ % 2 === 0) {
+      await Deno.readAll(req.body);
+    }
+    const index = req.headers.get("x-index");
+    await req.respond({
+      status: 200,
+      headers: new Headers({
+        "x-resp-index": i + ""
+      }),
+      body: index
+    });
+    if (i === 5) break;
+  }
+  const exp = [
+    ["HTTP/1.1 200 OK", "x-resp-index: 1", "content-length: 1", "", "1"],
+    ["HTTP/1.1 200 OK", "x-resp-index: 2", "content-length: 1", "", "2"],
+    ["HTTP/1.1 200 OK", "x-resp-index: 3", "content-length: 1", "", "3"],
+    ["HTTP/1.1 200 OK", "x-resp-index: 4", "content-length: 1", "", "4"],
+    ["HTTP/1.1 200 OK", "x-resp-index: 5", "content-length: 1", "", "5"]
+  ]
+    .map(v => v.join("\r\n"))
+    .join("");
+  assertEquals(dest.toString(), exp);
+});
 
 if (import.meta.main) {
   Deno.runTests();
