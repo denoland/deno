@@ -5,7 +5,7 @@ import { encoder } from "../strings/mod.ts";
 
 export function emptyReader(): Deno.Reader {
   return {
-    async read(_: Uint8Array): Promise<number|Deno.EOF> {
+    async read(_: Uint8Array): Promise<number | Deno.EOF> {
       return Deno.EOF;
     }
   };
