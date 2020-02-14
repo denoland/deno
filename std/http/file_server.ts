@@ -301,9 +301,15 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): string {
 listenAndServe(
   addr,
   async (req): Promise<void> => {
-    const normalizedUrl = posix.normalize(req.url);
-    const decodedUrl = decodeURIComponent(normalizedUrl);
-    const fsPath = posix.join(target, decodedUrl);
+    let normalizedUrl = posix.normalize(req.url);
+    try {
+      normalizedUrl = decodeURIComponent(normalizedUrl);
+    } catch (e) {
+      if (!(e instanceof URIError)) {
+        throw e;
+      }
+    }
+    const fsPath = posix.join(target, normalizedUrl);
 
     let response: Response;
     try {
