@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
@@ -56,7 +56,7 @@ pub struct SourceCodeInfo {
 /// loading of modules can be customized by the implementor.
 pub struct EsIsolate {
   core_isolate: Box<Isolate>,
-  loader: Arc<Box<dyn Loader + Unpin>>,
+  loader: Rc<dyn Loader + Unpin>,
   pub modules: Modules,
   pub(crate) next_dyn_import_id: DynImportId,
   pub(crate) dyn_import_map:
@@ -101,7 +101,7 @@ impl Drop for EsIsolate {
 
 impl EsIsolate {
   pub fn new(
-    loader: Box<dyn Loader + Unpin>,
+    loader: Rc<dyn Loader + Unpin>,
     startup_data: StartupData,
     will_snapshot: bool,
   ) -> Box<Self> {
@@ -118,7 +118,7 @@ impl EsIsolate {
 
     let es_isolate = Self {
       modules: Modules::new(),
-      loader: Arc::new(loader),
+      loader,
       core_isolate,
       next_dyn_import_id: 0,
       dyn_import_map: HashMap::new(),
@@ -606,6 +606,7 @@ pub mod tests {
   use crate::ops::*;
   use std::io;
   use std::sync::atomic::{AtomicUsize, Ordering};
+  use std::sync::Arc;
 
   #[test]
   fn test_mods() {
@@ -638,7 +639,7 @@ pub mod tests {
       }
     }
 
-    let loader = Box::new(ModsLoader::default());
+    let loader = Rc::new(ModsLoader::default());
     let resolve_count = loader.count.clone();
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
@@ -740,7 +741,7 @@ pub mod tests {
 
     // Test an erroneous dynamic import where the specified module isn't found.
     run_in_task(|cx| {
-      let loader = Box::new(DynImportErrLoader::default());
+      let loader = Rc::new(DynImportErrLoader::default());
       let count = loader.count.clone();
       let mut isolate = EsIsolate::new(loader, StartupData::None, false);
 
@@ -894,7 +895,7 @@ pub mod tests {
     }
 
     run_in_task(|cx| {
-      let loader = Box::new(DynImportOkLoader::default());
+      let loader = Rc::new(DynImportOkLoader::default());
       let resolve_count = loader.resolve_count.clone();
       let load_count = loader.load_count.clone();
       let mut isolate = EsIsolate::new(loader, StartupData::None, false);

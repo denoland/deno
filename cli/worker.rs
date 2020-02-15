@@ -18,6 +18,7 @@ use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
@@ -99,8 +100,8 @@ pub struct Worker {
 
 impl Worker {
   pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
-    let mut isolate =
-      deno_core::EsIsolate::new(Box::new(state.clone()), startup_data, false);
+    let loader = Rc::new(state.clone());
+    let mut isolate = deno_core::EsIsolate::new(loader, startup_data, false);
 
     let global_state_ = state.borrow().global_state.clone();
     isolate.set_js_error_create(move |v8_exception| {
