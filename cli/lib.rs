@@ -58,7 +58,6 @@ mod web_worker;
 pub mod worker;
 
 use crate::compilers::TargetLib;
-use crate::deno_error::js_check;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::ops::io::get_stdio;
@@ -75,7 +74,9 @@ use log::Metadata;
 use log::Record;
 use std::env;
 use std::fs as std_fs;
+use std::io::Write;
 use std::path::PathBuf;
+use url::Url;
 
 static LOGGER: Logger = Logger;
 
@@ -104,18 +105,15 @@ impl log::Log for Logger {
 fn create_main_worker(
   global_state: GlobalState,
   main_module: ModuleSpecifier,
-) -> MainWorker {
-  let state = State::new(global_state, None, main_module)
-    .map_err(deno_error::print_err_and_exit)
-    .unwrap();
+) -> Result<MainWorker, ErrBox> {
+  let state = State::new(global_state, None, main_module)?;
 
-  let state_ = state.clone();
   {
-    let mut state = state_.borrow_mut();
+    let mut s = state.borrow_mut();
     let (stdin, stdout, stderr) = get_stdio();
-    state.resource_table.add("stdin", Box::new(stdin));
-    state.resource_table.add("stdout", Box::new(stdout));
-    state.resource_table.add("stderr", Box::new(stderr));
+    s.resource_table.add("stdin", Box::new(stdin));
+    s.resource_table.add("stdout", Box::new(stdout));
+    s.resource_table.add("stderr", Box::new(stderr));
   }
 
   let mut worker = MainWorker::new(
@@ -123,20 +121,8 @@ fn create_main_worker(
     startup_data::deno_isolate_init(),
     state,
   );
-  js_check(worker.execute("bootstrapMainRuntime()"));
-  worker
-}
-
-fn types_command() {
-  let types = format!(
-    "{}\n{}\n{}",
-    crate::js::DENO_NS_LIB,
-    crate::js::SHARED_GLOBALS_LIB,
-    crate::js::WINDOW_LIB
-  );
-  use std::io::Write;
-  let _r = std::io::stdout().write_all(types.as_bytes());
-  // TODO(ry) Only ignore SIGPIPE. Currently ignoring all errors.
+  worker.execute("bootstrapMainRuntime()")?;
+  Ok(worker)
 }
 
 fn print_cache_info(state: &GlobalState) {
@@ -157,6 +143,8 @@ fn print_cache_info(state: &GlobalState) {
   );
 }
 
+// TODO(bartlomieju): this function de facto repeats
+// whole compilation stack. Can this be done better somehow?
 async fn print_file_info(
   worker: &MainWorker,
   module_specifier: ModuleSpecifier,
@@ -243,10 +231,9 @@ async fn info_command(
   }
 
   let main_module = ModuleSpecifier::resolve_url_or_path(&file.unwrap())?;
-  let mut worker = create_main_worker(global_state, main_module.clone());
+  let mut worker = create_main_worker(global_state, main_module.clone())?;
   worker.preload_module(&main_module).await?;
-  print_file_info(&worker, main_module.clone()).await?;
-  (&mut *worker).await
+  print_file_info(&worker, main_module.clone()).await
 }
 
 async fn install_command(
@@ -257,11 +244,13 @@ async fn install_command(
   args: Vec<String>,
   force: bool,
 ) -> Result<(), ErrBox> {
-  // Firstly fetch and compile module, this
-  // ensures the module exists.
+  // Firstly fetch and compile module, this step ensures that module exists.
   let mut fetch_flags = flags.clone();
   fetch_flags.reload = true;
-  fetch_command(fetch_flags, vec![module_url.to_string()]).await?;
+  let global_state = GlobalState::new(fetch_flags)?;
+  let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
+  let mut worker = create_main_worker(global_state, main_module.clone())?;
+  worker.preload_module(&main_module).await?;
   installer::install(flags, dir, &exe_name, &module_url, args, force)
     .map_err(ErrBox::from)
 }
@@ -274,7 +263,7 @@ async fn fetch_command(
     ModuleSpecifier::resolve_url_or_path("./__$deno$fetch.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
   let mut worker =
-    create_main_worker(global_state.clone(), main_module.clone());
+    create_main_worker(global_state.clone(), main_module.clone())?;
 
   for file in files {
     let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
@@ -299,10 +288,8 @@ async fn eval_command(flags: DenoFlags, code: String) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker = create_main_worker(global_state, main_module.clone());
-
+  let mut worker = create_main_worker(global_state, main_module.clone())?;
   debug!("main_module {}", &main_module);
-
   worker.execute_module_from_code(&main_module, code).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   (&mut *worker).await?;
@@ -315,24 +302,12 @@ async fn bundle_command(
   source_file: String,
   out_file: Option<PathBuf>,
 ) -> Result<(), ErrBox> {
-  let source_file_specifier =
-    ModuleSpecifier::resolve_url_or_path(&source_file)?;
+  let module_name = ModuleSpecifier::resolve_url_or_path(&source_file)?;
   let global_state = GlobalState::new(flags)?;
-  let mut worker =
-    create_main_worker(global_state.clone(), source_file_specifier.clone());
-
-  // TODO(bartlomieju): no longer true?
-  // NOTE: we need to poll `worker` otherwise TS compiler worker won't run properly
-  (&mut *worker).await?;
-
   debug!(">>>>> bundle_async START");
   let bundle_result = global_state
     .ts_compiler
-    .bundle_async(
-      global_state.clone(),
-      source_file_specifier.to_string(),
-      out_file,
-    )
+    .bundle_async(global_state.clone(), module_name.to_string(), out_file)
     .await;
   debug!(">>>>> bundle_async END");
   bundle_result
@@ -342,7 +317,7 @@ async fn run_repl(flags: DenoFlags) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$repl.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker = create_main_worker(global_state, main_module);
+  let mut worker = create_main_worker(global_state, main_module)?;
   loop {
     (&mut *worker).await?;
   }
@@ -350,7 +325,14 @@ async fn run_repl(flags: DenoFlags) -> Result<(), ErrBox> {
 
 async fn run_command(flags: DenoFlags, script: String) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
-  run_script(global_state.clone(), script).await?;
+  let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
+  let mut worker =
+    create_main_worker(global_state.clone(), main_module.clone())?;
+  debug!("main_module {}", main_module);
+  worker.execute_module(&main_module).await?;
+  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  (&mut *worker).await?;
+  worker.execute("window.dispatchEvent(new Event('unload'))")?;
   if global_state.flags.lock_write {
     if let Some(ref lockfile) = global_state.lockfile {
       let g = lockfile.lock().unwrap();
@@ -361,25 +343,6 @@ async fn run_command(flags: DenoFlags, script: String) -> Result<(), ErrBox> {
     }
   }
   Ok(())
-}
-
-async fn run_script(
-  global_state: GlobalState,
-  script: String,
-) -> Result<(), ErrBox> {
-  let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
-  let mut worker =
-    create_main_worker(global_state.clone(), main_module.clone());
-  debug!("main_module {}", main_module);
-  worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
-  (&mut *worker).await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
-  Ok(())
-}
-
-async fn fmt_command(files: Vec<String>, check: bool) -> Result<(), ErrBox> {
-  fmt::format_files(files, check)
 }
 
 async fn test_command(
@@ -397,7 +360,6 @@ async fn test_command(
 
   if test_modules.is_empty() {
     println!("No matching test modules found");
-    // TODO(bartlomieju): replace with StaticError?
     if !allow_none {
       std::process::exit(1);
     }
@@ -406,19 +368,25 @@ async fn test_command(
 
   let test_file = test_runner::render_test_file(test_modules, fail_fast);
   let test_file_path = cwd.join(".deno.test.ts");
+  let test_file_url =
+    Url::from_file_path(&test_file_path).expect("Should be valid file url");
+  let main_module =
+    ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
+  // First create worker with specified test file and only then write
+  // file to disk. Then test file will be executed and removed
+  // immediately after. That way even if compilation/tests fail test
+  // file can be cleaned up.
+  let mut worker =
+    create_main_worker(global_state.clone(), main_module.clone())?;
   deno_fs::write_file(&test_file_path, test_file.as_bytes(), 0o666)
     .expect("Can't write test file");
-
-  let mut flags = flags.clone();
-  flags
-    .argv
-    .push(test_file_path.to_string_lossy().to_string());
-  // TODO: call execute module manually here and delete test file immediately after?
-  let result =
-    run_script(global_state, test_file_path.to_string_lossy().to_string())
-      .await;
+  let execute_result = worker.execute_module(&main_module).await;
+  // Remove temporary test file
   std_fs::remove_file(&test_file_path).expect("Failed to remove temp file");
-  result
+  execute_result?;
+  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  (&mut *worker).await?;
+  worker.execute("window.dispatchEvent(new Event('unload'))")
 }
 
 pub fn main() {
@@ -451,7 +419,7 @@ pub fn main() {
       fetch_command(flags, files).boxed_local()
     }
     DenoSubcommand::Fmt { check, files } => {
-      fmt_command(files, check).boxed_local()
+      async move { fmt::format_files(files, check) }.boxed_local()
     }
     DenoSubcommand::Info { file } => info_command(flags, file).boxed_local(),
     DenoSubcommand::Install {
@@ -477,7 +445,14 @@ pub fn main() {
       return;
     }
     DenoSubcommand::Types => {
-      types_command();
+      let types = format!(
+        "{}\n{}\n{}",
+        crate::js::DENO_NS_LIB,
+        crate::js::SHARED_GLOBALS_LIB,
+        crate::js::WINDOW_LIB
+      );
+      // TODO(ry) Only ignore SIGPIPE. Currently ignoring all errors.
+      let _r = std::io::stdout().write_all(types.as_bytes());
       return;
     }
     _ => unreachable!(),
