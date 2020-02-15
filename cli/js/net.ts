@@ -148,7 +148,10 @@ export class ListenerImpl implements Listener {
   }
 }
 
-export async function recvfrom(rid: number, p: Uint8Array): Promise<[number, Addr]> {
+export async function recvfrom(
+  rid: number,
+  p: Uint8Array
+): Promise<[number, Addr]> {
   const { size, remoteAddr } = await sendAsync(dispatch.OP_RECEIVE, { rid }, p);
   return [size, remoteAddr];
 }
