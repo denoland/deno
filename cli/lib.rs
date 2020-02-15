@@ -124,7 +124,13 @@ fn create_main_worker(
     state.resource_table.add("stderr", Box::new(stderr));
   }
 
-  MainWorker::new("main".to_string(), startup_data::deno_isolate_init(), state)
+  let mut worker = MainWorker::new(
+    "main".to_string(),
+    startup_data::deno_isolate_init(),
+    state,
+  );
+  js_check(worker.execute("bootstrapMainRuntime()"));
+  worker
 }
 
 fn types_command() {
@@ -248,10 +254,7 @@ async fn info_command(flags: DenoFlags, file: Option<String>) {
     .expect("Bad specifier");
   let mut worker = create_main_worker(global_state, main_module.clone());
 
-  // TODO(bartlomieju): not needed?
-  js_check(worker.execute("bootstrapMainRuntime()"));
-
-  let main_result = worker.execute_mod_async(&main_module, None, true).await;
+  let main_result = worker.preload_module(&main_module).await;
   if let Err(e) = main_result {
     print_err_and_exit(e);
   }
@@ -288,12 +291,9 @@ async fn fetch_command(flags: DenoFlags, files: Vec<String>) {
   let mut worker =
     create_main_worker(global_state.clone(), main_module.clone());
 
-  // TODO(bartlomieju): not needed?
-  js_check(worker.execute("bootstrapMainRuntime()"));
-
   for file in files {
     let specifier = ModuleSpecifier::resolve_url_or_path(&file).unwrap();
-    let result = worker.execute_mod_async(&specifier, None, true).await;
+    let result = worker.preload_module(&specifier).await.map(|_| ());
     js_check(result);
   }
 
@@ -317,12 +317,9 @@ async fn eval_command(flags: DenoFlags, code: String) {
   let global_state = create_global_state(flags);
   let mut worker = create_main_worker(global_state, main_module.clone());
 
-  js_check(worker.execute("bootstrapMainRuntime()"));
   debug!("main_module {}", &main_module);
 
-  let exec_result = worker
-    .execute_mod_async(&main_module, Some(code), false)
-    .await;
+  let exec_result = worker.execute_module_from_code(&main_module, code).await;
   if let Err(e) = exec_result {
     print_err_and_exit(e);
   }
@@ -368,7 +365,6 @@ async fn run_repl(flags: DenoFlags) {
     ModuleSpecifier::resolve_url_or_path("./__$deno$repl.ts").unwrap();
   let global_state = create_global_state(flags);
   let mut worker = create_main_worker(global_state, main_module);
-  js_check(worker.execute("bootstrapMainRuntime()"));
   loop {
     let result = (&mut *worker).await;
     if let Err(err) = result {
@@ -403,10 +399,8 @@ async fn run_script(
   let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
   let mut worker =
     create_main_worker(global_state.clone(), main_module.clone());
-  // Setup runtime.
-  worker.execute("bootstrapMainRuntime()")?;
   debug!("main_module {}", main_module);
-  worker.execute_mod_async(&main_module, None, false).await?;
+  worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   (&mut *worker).await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;

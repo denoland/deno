@@ -5,6 +5,7 @@ use crate::state::State;
 use deno_core;
 use deno_core::Buf;
 use deno_core::ErrBox;
+use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
 use deno_core::StartupData;
 use futures::channel::mpsc;
@@ -137,20 +138,38 @@ impl Worker {
     self.isolate.execute(js_filename, js_source)
   }
 
-  /// Executes the provided JavaScript module.
-  pub async fn execute_mod_async(
+  /// Loads and instantiates specified JavaScript module.
+  pub async fn preload_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-    maybe_code: Option<String>,
-    is_prefetch: bool,
-  ) -> Result<(), ErrBox> {
-    let specifier = module_specifier.to_string();
-    let id = self.isolate.load_module(&specifier, maybe_code).await?;
+  ) -> Result<ModuleId, ErrBox> {
+    let id = self.isolate.load_module(module_specifier, None).await?;
     self.state.borrow().global_state.progress.done();
-    if !is_prefetch {
-      return self.isolate.mod_evaluate(id);
-    }
-    Ok(())
+    Ok(id)
+  }
+
+  /// Loads, instantiates and executes specified JavaScript module.
+  pub async fn execute_module(
+    &mut self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Result<(), ErrBox> {
+    let id = self.preload_module(module_specifier).await?;
+    self.isolate.mod_evaluate(id)
+  }
+
+  /// Loads, instantiates and executes provided source code
+  /// as module.
+  pub async fn execute_module_from_code(
+    &mut self,
+    module_specifier: &ModuleSpecifier,
+    code: String,
+  ) -> Result<(), ErrBox> {
+    let id = self
+      .isolate
+      .load_module(module_specifier, Some(code))
+      .await?;
+    self.state.borrow().global_state.progress.done();
+    self.isolate.mod_evaluate(id)
   }
 
   /// Returns a way to communicate with the Worker from other threads.
@@ -256,9 +275,7 @@ mod tests {
     tokio_util::run_basic(async move {
       let mut worker =
         MainWorker::new("TEST".to_string(), StartupData::None, state);
-      let result = worker
-        .execute_mod_async(&module_specifier, None, false)
-        .await;
+      let result = worker.execute_module(&module_specifier).await;
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
       }
@@ -287,9 +304,7 @@ mod tests {
     tokio_util::run_basic(async move {
       let mut worker =
         MainWorker::new("TEST".to_string(), StartupData::None, state);
-      let result = worker
-        .execute_mod_async(&module_specifier, None, false)
-        .await;
+      let result = worker.execute_module(&module_specifier).await;
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
       }
@@ -329,9 +344,7 @@ mod tests {
       state.clone(),
     );
     worker.execute("bootstrapMainRuntime()").unwrap();
-    let result = worker
-      .execute_mod_async(&module_specifier, None, false)
-      .await;
+    let result = worker.execute_module(&module_specifier).await;
     if let Err(err) = result {
       eprintln!("execute_mod err {:?}", err);
     }
@@ -363,8 +376,7 @@ mod tests {
       let mut worker = create_test_worker();
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path("does-not-exist").unwrap();
-      let result =
-        block_on(worker.execute_mod_async(&module_specifier, None, false));
+      let result = block_on(worker.execute_module(&module_specifier));
       assert!(result.is_err());
     })
   }
@@ -381,8 +393,7 @@ mod tests {
         .join("cli/tests/002_hello.ts");
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-      let result =
-        block_on(worker.execute_mod_async(&module_specifier, None, false));
+      let result = block_on(worker.execute_module(&module_specifier));
       assert!(result.is_ok());
     })
   }
