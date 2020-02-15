@@ -556,7 +556,6 @@ impl EsIsolate {
     specifier: &ModuleSpecifier,
     code: Option<String>,
   ) -> Result<ModuleId, ErrBox> {
-    // TODO: remove .to_string() call
     let mut load = RecursiveModuleLoad::main(
       &specifier.to_string(),
       code,
