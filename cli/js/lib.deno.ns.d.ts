@@ -1380,7 +1380,7 @@ declare namespace Deno {
   export interface UDPConn extends AsyncIterator<[Uint8Array, Addr]> {
     /** UNSTABLE: new API
      * Waits for and resolves to the next message to the `Socket`. */
-    receive(): Promise<[Uint8Array, Addr]>;
+    receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
 
     /** UNSTABLE: new API
      * Sends a message to the target. */

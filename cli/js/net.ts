@@ -23,7 +23,7 @@ export interface UDPAddr {
 /** A socket is a generic transport listener for message-oriented protocols */
 export interface UDPConn extends AsyncIterator<[Uint8Array, Addr]> {
   /** Waits for and resolves to the next message to the `Socket`. */
-  receive(): Promise<[Uint8Array, Addr]>;
+  receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
 
   /** Sends a message to the target. */
   send(p: Uint8Array, addr: UDPAddr): Promise<void>;
@@ -156,14 +156,14 @@ export class UDPConnImpl implements UDPConn {
     private closing: boolean = false
   ) {}
 
-  async receive(): Promise<[Uint8Array, Addr]> {
-    const p = new Uint8Array(this.bufSize);
+  async receive(p?: Uint8Array): Promise<[Uint8Array, Addr]> {
+    const buf = p || new Uint8Array(this.bufSize);
     const { size, remoteAddr } = await sendAsync(
       dispatch.OP_RECEIVE,
       { rid: this.rid },
-      p
+      buf
     );
-    const sub = p.subarray(0, size);
+    const sub = buf.subarray(0, size);
     return [sub, remoteAddr];
   }
 
