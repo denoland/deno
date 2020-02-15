@@ -90,32 +90,29 @@ testPerm({ net: true }, async function netTcpDialListen(): Promise<void> {
   conn.close();
 });
 
-testPerm(
-  { net: true },
-  async function netUdpSendReceive(): Promise<void> {
-    const alice = Deno.listen({ port: 4500, transport: "udp" });
-    assert(alice.rid > 0);
-    assertEquals(alice.localAddr.port, 4500);
-    assertEquals(alice.localAddr.hostname, "0.0.0.0");
-    assertEquals(alice.localAddr.transport, "udp");
+testPerm({ net: true }, async function netUdpSendReceive(): Promise<void> {
+  const alice = Deno.listen({ port: 4500, transport: "udp" });
+  assert(alice.rid > 0);
+  assertEquals(alice.localAddr.port, 4500);
+  assertEquals(alice.localAddr.hostname, "0.0.0.0");
+  assertEquals(alice.localAddr.transport, "udp");
 
-    const bob = Deno.listen({ port: 4501, transport: "udp" });
-    assert(bob.rid > 0 && bob.rid !== alice.rid);
-    assertEquals(bob.localAddr.port, 4501);
-    assertEquals(bob.localAddr.hostname, "0.0.0.0");
-    assertEquals(bob.localAddr.transport, "udp");
+  const bob = Deno.listen({ port: 4501, transport: "udp" });
+  assert(bob.rid > 0 && bob.rid !== alice.rid);
+  assertEquals(bob.localAddr.port, 4501);
+  assertEquals(bob.localAddr.hostname, "0.0.0.0");
+  assertEquals(bob.localAddr.transport, "udp");
 
-    const sent = new Uint8Array([1,2,3])
-    await alice.send(sent, bob.localAddr);
+  const sent = new Uint8Array([1, 2, 3]);
+  await alice.send(sent, bob.localAddr);
 
-    const [recvd, remote] = await bob.receive()
-    assertEquals(remote.port, 4500);
-    assertEquals(recvd.length, 3);
-    assertEquals(1, recvd[0]);
-    assertEquals(2, recvd[1]);
-    assertEquals(3, recvd[2]);
-  }
-)
+  const [recvd, remote] = await bob.receive();
+  assertEquals(remote.port, 4500);
+  assertEquals(recvd.length, 3);
+  assertEquals(1, recvd[0]);
+  assertEquals(2, recvd[1]);
+  assertEquals(3, recvd[2]);
+});
 
 testPerm(
   { net: true },
