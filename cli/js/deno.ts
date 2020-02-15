@@ -74,6 +74,7 @@ export {
   Addr,
   connect,
   listen,
+  recvfrom,
   UDPConn,
   UDPAddr,
   Listener,

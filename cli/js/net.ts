@@ -148,6 +148,16 @@ export class ListenerImpl implements Listener {
   }
 }
 
+export async function recvfrom(rid: number, p: Uint8Array): [number, Addr]{
+  const { size, remoteAddr } = await sendAsync(
+    dispatch.OP_RECEIVE,
+    { rid },
+    p
+  );
+
+  return [size, remoteAddr];
+}
+
 export class UDPConnImpl implements UDPConn {
   constructor(
     readonly rid: number,
@@ -158,11 +168,7 @@ export class UDPConnImpl implements UDPConn {
 
   async receive(p?: Uint8Array): Promise<[Uint8Array, Addr]> {
     const buf = p || new Uint8Array(this.bufSize);
-    const { size, remoteAddr } = await sendAsync(
-      dispatch.OP_RECEIVE,
-      { rid: this.rid },
-      buf
-    );
+    const [size, remoteAddr] = await recvfrom(this.rid, buf);
     const sub = buf.subarray(0, size);
     return [sub, remoteAddr];
   }

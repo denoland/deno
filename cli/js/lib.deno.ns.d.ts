@@ -1375,6 +1375,12 @@ declare namespace Deno {
   export function shutdown(rid: number, how: ShutdownMode): void;
 
   /** UNSTABLE: new API
+   * Waits for the next message to the passed rid and writes it on the passed buffer.
+   * Returns the number of bytes written and the remote address.
+   */
+  export async function recvfrom(rid: number, p: Uint8Array): [number, Addr]
+
+  /** UNSTABLE: new API
    * A socket is a generic transport listener for message-oriented protocols
    */
   export interface UDPConn extends AsyncIterator<[Uint8Array, Addr]> {
