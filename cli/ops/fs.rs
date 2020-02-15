@@ -365,14 +365,16 @@ fn op_read_dir(
   blocking_json(is_sync, move || {
     debug!("op_read_dir {}", path.display());
     let entries: Vec<_> = fs::read_dir(path)?
-      .map(|entry| {
+      .filter_map(|entry| {
         let entry = entry.unwrap();
         let metadata = entry.metadata().unwrap();
-        get_stat_json(
-          metadata,
-          Some(entry.file_name().to_str().unwrap().to_owned()),
-        )
-        .unwrap()
+        // Not all filenames can be encoded as UTF-8. Skip those for now.
+        if let Some(filename) = entry.file_name().to_str() {
+          let filename = Some(filename.to_owned());
+          Some(get_stat_json(metadata, filename).unwrap())
+        } else {
+          None
+        }
       })
       .collect();
 
