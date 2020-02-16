@@ -588,6 +588,12 @@ itest!(_054_info_local_imports {
   exit_code: 0,
 });
 
+itest!(js_import_detect {
+  args: "run --reload js_import_detect.ts",
+  output: "js_import_detect.ts.out",
+  exit_code: 0,
+});
+
 itest!(lock_write_fetch {
   args:
     "run --allow-read --allow-write --allow-env --allow-run lock_write_fetch.ts",

@@ -100,7 +100,12 @@ export class SourceFile {
       log(`Skipping imports for "${this.filename}"`);
       return [];
     }
-    const preProcessedFileInfo = ts.preProcessFile(this.sourceCode, true, true);
+    const preProcessedFileInfo = ts.preProcessFile(
+      this.sourceCode,
+      true,
+      this.mediaType === MediaType.JavaScript ||
+        this.mediaType === MediaType.JSX
+    );
     this.processed = true;
     const files = (this.importedFiles = [] as Array<[string, string]>);
 
