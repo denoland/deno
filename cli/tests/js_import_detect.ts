@@ -1,3 +1,2 @@
-function define(_foo: string[]): void {}
-define(["long"]);
+import "./js_import_detect2.js";
 console.log("ok");

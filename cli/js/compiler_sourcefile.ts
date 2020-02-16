@@ -103,8 +103,7 @@ export class SourceFile {
     const preProcessedFileInfo = ts.preProcessFile(
       this.sourceCode,
       true,
-      this.mediaType === MediaType.JavaScript ||
-        this.mediaType === MediaType.JSX
+      false
     );
     this.processed = true;
     const files = (this.importedFiles = [] as Array<[string, string]>);
