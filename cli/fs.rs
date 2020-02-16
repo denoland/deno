@@ -9,6 +9,7 @@ use deno_core::ErrBox;
 use rand;
 use rand::Rng;
 use url::Url;
+use walkdir::WalkDir;
 
 #[cfg(unix)]
 use nix::unistd::{chown as unix_chown, Gid, Uid};
@@ -193,21 +194,12 @@ pub fn files_in_subtree<F>(root: PathBuf, filter: F) -> Vec<PathBuf>
 where
   F: Fn(&Path) -> bool,
 {
-  // TODO(ry) Use WalkDir instead of globs.
   assert!(root.is_dir());
-  let g = root.join("**").join("*");
-  glob::glob(&g.into_os_string().into_string().unwrap())
-    .expect("Failed to execute glob.")
-    .filter_map(|result| {
-      if let Ok(p) = result {
-        if filter(&p) {
-          Some(p)
-        } else {
-          None
-        }
-      } else {
-        None
-      }
-    })
+
+  WalkDir::new(root)
+    .into_iter()
+    .filter_map(|e| e.ok())
+    .map(|e| e.path().to_owned())
+    .filter(|p| if p.is_dir() { false } else { filter(&p) })
     .collect()
 }
