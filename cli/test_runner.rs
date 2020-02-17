@@ -126,7 +126,11 @@ mod tests {
 
   #[test]
   fn supports_dirs() {
-    let root = test_util::root_path().join("std").join("http");
+    let root = test_util::root_path()
+      .join("std")
+      .join("http")
+      .canonicalize()
+      .unwrap();
     println!("root {:?}", root);
     let mut matched_urls =
       prepare_test_modules_urls(vec![".".to_string()], &root).unwrap();
