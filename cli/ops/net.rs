@@ -155,7 +155,13 @@ impl Future for Receive<'_> {
     let resource = state
       .resource_table
       .get_mut::<UdpSocketResource>(inner.rid)
-      .ok_or_else(bad_resource)?;
+      .ok_or_else(|| {
+        let e = std::io::Error::new(
+          std::io::ErrorKind::Other,
+          "Socket has been closed",
+        );
+        ErrBox::from(e)
+      })?;
 
     let socket = &mut resource.socket;
 
@@ -231,7 +237,13 @@ fn op_send(
     let resource = state
       .resource_table
       .get_mut::<UdpSocketResource>(rid)
-      .ok_or_else(bad_resource)?;
+      .ok_or_else(|| {
+        let e = std::io::Error::new(
+          std::io::ErrorKind::Other,
+          "Socket has been closed",
+        );
+        ErrBox::from(e)
+      })?;
 
     let socket = &mut resource.socket;
     let addr = resolve_addr(&args.hostname, args.port).await?;
