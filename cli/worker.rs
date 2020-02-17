@@ -143,9 +143,7 @@ impl Worker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, ErrBox> {
-    let id = self.isolate.load_module(module_specifier, None).await?;
-    self.state.borrow().global_state.progress.done();
-    Ok(id)
+    self.isolate.load_module(module_specifier, None).await
   }
 
   /// Loads, instantiates and executes specified JavaScript module.
@@ -168,7 +166,6 @@ impl Worker {
       .isolate
       .load_module(module_specifier, Some(code))
       .await?;
-    self.state.borrow().global_state.progress.done();
     self.isolate.mod_evaluate(id)
   }
 
