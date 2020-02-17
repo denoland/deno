@@ -74,7 +74,20 @@ pub fn http_server() -> HttpServerGuard {
       println!("tools/http_server.py starting...");
       let mut child = Command::new("python")
         .current_dir(root_path())
-        .args(&["-u", "tools/http_server.py"])
+        .args(&[
+          "-u",
+          "tools/http_server.py",
+          "--certfile",
+          root_path()
+            .join("std/http/testdata/tls/localhost.crt")
+            .to_str()
+            .unwrap(),
+          "--keyfile",
+          root_path()
+            .join("std/http/testdata/tls/localhost.key")
+            .to_str()
+            .unwrap(),
+        ])
         .stdout(Stdio::piped())
         .spawn()
         .expect("failed to execute child");
