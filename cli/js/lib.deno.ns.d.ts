@@ -1378,10 +1378,7 @@ declare namespace Deno {
    * Waits for the next message to the passed rid and writes it on the passed buffer.
    * Returns the number of bytes written and the remote address.
    */
-  export async function recvfrom(
-    rid: number,
-    p: Uint8Array
-  ): Promise<[number, Addr]>;
+  export function recvfrom(rid: number, p: Uint8Array): Promise<[number, Addr]>;
 
   /** UNSTABLE: new API
    * A socket is a generic transport listener for message-oriented protocols
