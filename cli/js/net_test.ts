@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assert, assertEquals } from "./test_util.ts";
-import { runIfMain } from "../../std/testing/mod.ts";
 
 testPerm({ net: true }, function netTcpListenClose(): void {
   const listener = Deno.listen({ hostname: "127.0.0.1", port: 4500 });
@@ -288,5 +287,3 @@ testPerm({ net: true }, async function netDoubleCloseWrite() {
   conn.close();
 });
 */
-
-runIfMain(import.meta);

@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // TODO(axetroy): Add test for Windows once symlink is implemented for Windows.
-import { test } from "../testing/mod.ts";
 import {
   assertEquals,
   assertThrows,
@@ -11,7 +10,7 @@ import { ensureLink, ensureLinkSync } from "./ensure_link.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-test(async function ensureLinkIfItNotExist(): Promise<void> {
+Deno.test(async function ensureLinkIfItNotExist(): Promise<void> {
   const srcDir = path.join(testdataDir, "ensure_link_1");
   const destDir = path.join(testdataDir, "ensure_link_1_2");
   const testFile = path.join(srcDir, "test.txt");
@@ -26,7 +25,7 @@ test(async function ensureLinkIfItNotExist(): Promise<void> {
   await Deno.remove(destDir, { recursive: true });
 });
 
-test(function ensureLinkSyncIfItNotExist(): void {
+Deno.test(function ensureLinkSyncIfItNotExist(): void {
   const testDir = path.join(testdataDir, "ensure_link_2");
   const testFile = path.join(testDir, "test.txt");
   const linkFile = path.join(testDir, "link.txt");
@@ -38,7 +37,7 @@ test(function ensureLinkSyncIfItNotExist(): void {
   Deno.removeSync(testDir, { recursive: true });
 });
 
-test(async function ensureLinkIfItExist(): Promise<void> {
+Deno.test(async function ensureLinkIfItExist(): Promise<void> {
   const testDir = path.join(testdataDir, "ensure_link_3");
   const testFile = path.join(testDir, "test.txt");
   const linkFile = path.join(testDir, "link.txt");
@@ -85,7 +84,7 @@ test(async function ensureLinkIfItExist(): Promise<void> {
   await Deno.remove(testDir, { recursive: true });
 });
 
-test(function ensureLinkSyncIfItExist(): void {
+Deno.test(function ensureLinkSyncIfItExist(): void {
   const testDir = path.join(testdataDir, "ensure_link_4");
   const testFile = path.join(testDir, "test.txt");
   const linkFile = path.join(testDir, "link.txt");
@@ -133,7 +132,7 @@ test(function ensureLinkSyncIfItExist(): void {
   Deno.removeSync(testDir, { recursive: true });
 });
 
-test(async function ensureLinkDirectoryIfItExist(): Promise<void> {
+Deno.test(async function ensureLinkDirectoryIfItExist(): Promise<void> {
   const testDir = path.join(testdataDir, "ensure_link_origin_3");
   const linkDir = path.join(testdataDir, "ensure_link_link_3");
   const testFile = path.join(testDir, "test.txt");
@@ -153,7 +152,7 @@ test(async function ensureLinkDirectoryIfItExist(): Promise<void> {
   Deno.removeSync(testDir, { recursive: true });
 });
 
-test(function ensureLinkSyncDirectoryIfItExist(): void {
+Deno.test(function ensureLinkSyncDirectoryIfItExist(): void {
   const testDir = path.join(testdataDir, "ensure_link_origin_3");
   const linkDir = path.join(testdataDir, "ensure_link_link_3");
   const testFile = path.join(testDir, "test.txt");

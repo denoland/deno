@@ -29,6 +29,7 @@ use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex, Once};
 use std::task::Context;
 use std::task::Poll;
@@ -175,7 +176,7 @@ pub struct Isolate {
   pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
-  pub op_registry: Arc<OpRegistry>,
+  pub op_registry: Rc<OpRegistry>,
   waker: AtomicWaker,
   error_handler: Option<Box<IsolateErrorHandleFn>>,
 }
@@ -335,7 +336,7 @@ impl Isolate {
       pending_unref_ops: FuturesUnordered::new(),
       have_unpolled_ops: false,
       startup_script,
-      op_registry: Arc::new(OpRegistry::new()),
+      op_registry: Rc::new(OpRegistry::new()),
       waker: AtomicWaker::new(),
       error_handler: None,
     };

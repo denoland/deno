@@ -2,7 +2,7 @@
 // MIT License
 // Copyright (c) 2018 Terkel Gjervig Nielsen
 
-import { test } from "../testing/mod.ts";
+const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import { GlobrexOptions, globrex } from "./globrex.ts";
 

@@ -2,7 +2,6 @@
 import { test, testPerm, assert, assertEquals } from "./test_util.ts";
 import { BufWriter, BufReader } from "../../std/io/bufio.ts";
 import { TextProtoReader } from "../../std/textproto/mod.ts";
-import { runIfMain } from "../../std/testing/mod.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -202,5 +201,3 @@ testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
   assertEquals(decoder.decode(bodyBuf), "Hello World\n");
   conn.close();
 });
-
-runIfMain(import.meta);
