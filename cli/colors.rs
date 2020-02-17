@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use ansi_term::Color::Black;
 use ansi_term::Color::Fixed;
+use ansi_term::Color::Green;
 use ansi_term::Color::Red;
 use ansi_term::Color::White;
 use ansi_term::Style;
@@ -74,6 +75,14 @@ pub fn red(s: String) -> impl fmt::Display {
   let mut style = Style::new();
   if use_color() {
     style = style.fg(Red);
+  }
+  style.paint(s)
+}
+
+pub fn green(s: String) -> impl fmt::Display {
+  let mut style = Style::new();
+  if use_color() {
+    style = style.fg(Green);
   }
   style.paint(s)
 }
