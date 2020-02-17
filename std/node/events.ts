@@ -393,3 +393,121 @@ export function once(
     }
   });
 }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function createIterResult(value: any, done: boolean): IteratorResult<any> {
+  return { value, done };
+}
+
+interface AsyncInterable {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  next(): Promise<IteratorResult<any, any>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return(): Promise<IteratorResult<any, any>>;
+  throw(err: Error): void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [Symbol.asyncIterator](): any;
+}
+
+/**
+ * Returns an AsyncIterator that iterates eventName events. It will throw if
+ * the EventEmitter emits 'error'. It removes all listeners when exiting the
+ * loop. The value returned by each iteration is an array composed of the
+ * emitted event arguments.
+ */
+export function on(
+  emitter: EventEmitter,
+  event: string | symbol
+): AsyncInterable {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const unconsumedEventValues: any[] = [];
+  const unconsumedPromises = [];
+  let error = null;
+  let finished = false;
+
+  const iterator = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    next(): Promise<IteratorResult<any>> {
+      // First, we consume all unread events
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const value: any = unconsumedEventValues.shift();
+      if (value) {
+        return Promise.resolve(createIterResult(value, false));
+      }
+
+      // Then we error, if an error happened
+      // This happens one time if at all, because after 'error'
+      // we stop listening
+      if (error) {
+        const p: Promise<never> = Promise.reject(error);
+        // Only the first element errors
+        error = null;
+        return p;
+      }
+
+      // If the iterator is finished, resolve to done
+      if (finished) {
+        return Promise.resolve(createIterResult(undefined, true));
+      }
+
+      // Wait until an event happens
+      return new Promise(function(resolve, reject) {
+        unconsumedPromises.push({ resolve, reject });
+      });
+    },
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return(): Promise<IteratorResult<any>> {
+      emitter.removeListener(event, eventHandler);
+      emitter.removeListener("error", errorHandler);
+      finished = true;
+
+      for (const promise of unconsumedPromises) {
+        promise.resolve(createIterResult(undefined, true));
+      }
+
+      return Promise.resolve(createIterResult(undefined, true));
+    },
+
+    throw(err: Error): void {
+      error = err;
+      emitter.removeListener(event, eventHandler);
+      emitter.removeListener("error", errorHandler);
+    },
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    [Symbol.asyncIterator](): AsyncIterable<any> {
+      return this;
+    }
+  };
+
+  emitter.on(event, eventHandler);
+  emitter.on("error", errorHandler);
+
+  return iterator;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function eventHandler(...args: any[]): void {
+    const promise = unconsumedPromises.shift();
+    if (promise) {
+      promise.resolve(createIterResult(args, false));
+    } else {
+      unconsumedEventValues.push(args);
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function errorHandler(err: any): void {
+    finished = true;
+
+    const toError = unconsumedPromises.shift();
+    if (toError) {
+      toError.reject(err);
+    } else {
+      // The next time we call next()
+      error = err;
+    }
+
+    iterator.return();
+  }
+}
