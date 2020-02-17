@@ -429,7 +429,7 @@ async fn test_command(
   let global_state = create_global_state(flags.clone());
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let res = test_runner::prepare_test_modules_urls(include, cwd.clone());
+  let res = test_runner::prepare_test_modules_urls(include, &cwd);
 
   let test_modules = match res {
     Ok(modules) => modules,
