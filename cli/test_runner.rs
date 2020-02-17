@@ -33,13 +33,9 @@ pub fn prepare_test_modules_urls(
 
   for path in include_paths {
     let q = root_path.join(path);
-    println!("before canonicalize {}", q.display());
     let p = q.canonicalize()?;
-    println!("root_path.join(path).canonicalize {}", p.display());
     if p.is_dir() {
-      println!("is_dir");
       let test_files = crate::fs::files_in_subtree(p, is_supported);
-      println!("test_files {:?}", test_files);
       let test_files_as_urls = test_files
         .iter()
         .map(|f| Url::from_file_path(f).unwrap())
@@ -47,7 +43,6 @@ pub fn prepare_test_modules_urls(
       prepared.extend(test_files_as_urls);
     } else {
       let url = Url::from_file_path(p).unwrap();
-      println!("not dir, {:?}", url);
       prepared.push(url);
     }
   }
