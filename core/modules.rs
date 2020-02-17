@@ -16,7 +16,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
@@ -74,7 +74,7 @@ pub struct RecursiveModuleLoad {
   // Kind::Main
   pub dyn_import_id: Option<DynImportId>,
   pub state: LoadState,
-  pub loader: Arc<Box<dyn Loader + Unpin>>,
+  pub loader: Rc<dyn Loader + Unpin>,
   pub pending: FuturesUnordered<Pin<Box<SourceCodeInfoFuture>>>,
   pub is_pending: HashSet<ModuleSpecifier>,
 }
@@ -84,7 +84,7 @@ impl RecursiveModuleLoad {
   pub fn main(
     specifier: &str,
     code: Option<String>,
-    loader: Arc<Box<dyn Loader + Unpin>>,
+    loader: Rc<dyn Loader + Unpin>,
   ) -> Self {
     let kind = Kind::Main;
     let state = LoadState::ResolveMain(specifier.to_owned(), code);
@@ -95,7 +95,7 @@ impl RecursiveModuleLoad {
     id: DynImportId,
     specifier: &str,
     referrer: &str,
-    loader: Arc<Box<dyn Loader + Unpin>>,
+    loader: Rc<dyn Loader + Unpin>,
   ) -> Self {
     let kind = Kind::DynamicImport;
     let state =
@@ -110,7 +110,7 @@ impl RecursiveModuleLoad {
   fn new(
     kind: Kind,
     state: LoadState,
-    loader: Arc<Box<dyn Loader + Unpin>>,
+    loader: Rc<dyn Loader + Unpin>,
     dyn_import_id: Option<DynImportId>,
   ) -> Self {
     Self {
@@ -478,6 +478,7 @@ mod tests {
   use std::error::Error;
   use std::fmt;
   use std::future::Future;
+  use std::sync::Arc;
   use std::sync::Mutex;
 
   struct MockLoader {
@@ -651,8 +652,7 @@ mod tests {
   fn test_recursive_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate =
-      EsIsolate::new(Box::new(loader), StartupData::None, false);
+    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
     let a_id_fut = isolate.load_module("/a.js", None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
@@ -711,8 +711,7 @@ mod tests {
   fn test_circular_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate =
-      EsIsolate::new(Box::new(loader), StartupData::None, false);
+    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
 
     let fut = async move {
       let result = isolate.load_module("/circular1.js", None).await;
@@ -782,8 +781,7 @@ mod tests {
   fn test_redirect_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate =
-      EsIsolate::new(Box::new(loader), StartupData::None, false);
+    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
 
     let fut = async move {
       let result = isolate.load_module("/redirect1.js", None).await;
@@ -845,7 +843,7 @@ mod tests {
       let loader = MockLoader::new();
       let loads = loader.loads.clone();
       let mut isolate =
-        EsIsolate::new(Box::new(loader), StartupData::None, false);
+        EsIsolate::new(Rc::new(loader), StartupData::None, false);
       let mut recursive_load =
         isolate.load_module("/main.js", None).boxed_local();
 
@@ -891,7 +889,7 @@ mod tests {
     run_in_task(|mut cx| {
       let loader = MockLoader::new();
       let mut isolate =
-        EsIsolate::new(Box::new(loader), StartupData::None, false);
+        EsIsolate::new(Rc::new(loader), StartupData::None, false);
       let mut load_fut =
         isolate.load_module("/bad_import.js", None).boxed_local();
       let result = load_fut.poll_unpin(&mut cx);
@@ -919,8 +917,7 @@ mod tests {
   fn recursive_load_main_with_code() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate =
-      EsIsolate::new(Box::new(loader), StartupData::None, false);
+    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
     // In default resolution code should be empty.
     // Instead we explicitly pass in our own code.
     // The behavior should be very similar to /a.js.

@@ -19,6 +19,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 import { notImplemented } from "./_utils.ts";
+import { validateIntegerRange } from "./util.ts";
 import { EOL as fsEOL } from "../fs/eol.ts";
 
 const SEE_GITHUB_ISSUE = "See https://github.com/denoland/deno/issues/3802";
@@ -117,7 +118,7 @@ export function freemem(): number {
 
 /** Not yet implemented */
 export function getPriority(pid = 0): number {
-  validateInt32(pid, "pid");
+  validateIntegerRange(pid, "pid");
   notImplemented(SEE_GITHUB_ISSUE);
 }
 
@@ -162,8 +163,8 @@ export function setPriority(pid: number, priority?: number): void {
     priority = pid;
     pid = 0;
   }
-  validateInt32(pid, "pid");
-  validateInt32(priority, "priority", -20, 19);
+  validateIntegerRange(pid, "pid");
+  validateIntegerRange(priority, "priority", -20, 19);
 
   notImplemented(SEE_GITHUB_ISSUE);
 }
@@ -211,20 +212,3 @@ export const constants = {
 };
 
 export const EOL = Deno.build.os == "win" ? fsEOL.CRLF : fsEOL.LF;
-
-const validateInt32 = (
-  value: number,
-  name: string,
-  min = -2147483648,
-  max = 2147483647
-): void => {
-  // The defaults for min and max correspond to the limits of 32-bit integers.
-  if (!Number.isInteger(value)) {
-    throw new Error(`${name} must be 'an integer' but was ${value}`);
-  }
-  if (value < min || value > max) {
-    throw new Error(
-      `${name} must be >= ${min} && <= ${max}.  Value was ${value}`
-    );
-  }
-};

@@ -3,7 +3,7 @@ use crate::ZeroCopyBuf;
 use futures::Future;
 use std::collections::HashMap;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::rc::Rc;
 use std::sync::RwLock;
 
 pub type OpId = u32;
@@ -34,7 +34,7 @@ pub type OpDispatcher = dyn Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + 'static;
 
 #[derive(Default)]
 pub struct OpRegistry {
-  dispatchers: RwLock<Vec<Arc<Box<OpDispatcher>>>>,
+  dispatchers: RwLock<Vec<Rc<OpDispatcher>>>,
   name_to_id: RwLock<HashMap<String, OpId>>,
 }
 
@@ -63,7 +63,7 @@ impl OpRegistry {
       format!("Op already registered: {}", name)
     );
 
-    lock.push(Arc::new(Box::new(op)));
+    lock.push(Rc::new(op));
     drop(name_lock);
     drop(lock);
     op_id
@@ -90,7 +90,7 @@ impl OpRegistry {
     }
     let lock = self.dispatchers.read().unwrap();
     if let Some(op) = lock.get(op_id as usize) {
-      let op_ = Arc::clone(&op);
+      let op_ = Rc::clone(&op);
       // This should allow for changes to the dispatcher list during a call.
       drop(lock);
       Some(op_(control, zero_copy_buf))

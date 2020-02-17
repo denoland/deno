@@ -8,8 +8,7 @@ use crate::metrics::Metrics;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
 use crate::permissions::DenoPermissions;
-use crate::worker::WorkerChannelsExternal;
-use crate::worker::WorkerChannelsInternal;
+use crate::worker::WorkerHandle;
 use deno_core::Buf;
 use deno_core::CoreOp;
 use deno_core::ErrBox;
@@ -55,8 +54,7 @@ pub struct StateInner {
   pub import_map: Option<ImportMap>,
   pub metrics: Metrics,
   pub global_timer: GlobalTimer,
-  pub workers: HashMap<u32, WorkerChannelsExternal>,
-  pub worker_channels_internal: Option<WorkerChannelsInternal>,
+  pub workers: HashMap<u32, WorkerHandle>,
   pub next_worker_id: AtomicUsize,
   pub start_time: Instant,
   pub seeded_rng: Option<StdRng>,
@@ -76,22 +74,22 @@ impl State {
     let state = self.clone();
 
     move |control: &[u8], zero_copy: Option<ZeroCopyBuf>| -> CoreOp {
-      let bytes_sent_control = control.len();
+      let bytes_sent_control = control.len() as u64;
       let bytes_sent_zero_copy =
-        zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
+        zero_copy.as_ref().map(|b| b.len()).unwrap_or(0) as u64;
 
       let op = dispatcher(control, zero_copy);
       state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
 
       match op {
         Op::Sync(buf) => {
-          state.metrics_op_completed(buf.len());
+          state.metrics_op_completed(buf.len() as u64);
           Op::Sync(buf)
         }
         Op::Async(fut) => {
           let state = state.clone();
           let result_fut = fut.map_ok(move |buf: Buf| {
-            state.metrics_op_completed(buf.len());
+            state.metrics_op_completed(buf.len() as u64);
             buf
           });
           Op::Async(result_fut.boxed_local())
@@ -99,7 +97,7 @@ impl State {
         Op::AsyncUnref(fut) => {
           let state = state.clone();
           let result_fut = fut.map_ok(move |buf: Buf| {
-            state.metrics_op_completed(buf.len());
+            state.metrics_op_completed(buf.len() as u64);
             buf
           });
           Op::AsyncUnref(result_fut.boxed_local())
@@ -178,9 +176,9 @@ impl Loader for State {
       }
     }
 
-    let state = self.borrow();
+    let mut state = self.borrow_mut();
     // TODO(bartlomieju): incrementing resolve_count here has no sense...
-    state.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
+    state.metrics.resolve_count += 1;
     let module_url_specified = module_specifier.to_string();
     let global_state = state.global_state.clone();
     let target_lib = state.target_lib.clone();
@@ -232,7 +230,6 @@ impl State {
       import_map,
       metrics: Metrics::default(),
       global_timer: GlobalTimer::new(),
-      worker_channels_internal: None,
       workers: HashMap::new(),
       next_worker_id: AtomicUsize::new(0),
       start_time: Instant::now(),
@@ -269,7 +266,6 @@ impl State {
       import_map: None,
       metrics: Metrics::default(),
       global_timer: GlobalTimer::new(),
-      worker_channels_internal: None,
       workers: HashMap::new(),
       next_worker_id: AtomicUsize::new(0),
       start_time: Instant::now(),
@@ -282,7 +278,7 @@ impl State {
     Ok(Self(state))
   }
 
-  pub fn add_child_worker(&self, handle: WorkerChannelsExternal) -> u32 {
+  pub fn add_child_worker(&self, handle: WorkerHandle) -> u32 {
     let mut inner_state = self.borrow_mut();
     let worker_id =
       inner_state.next_worker_id.fetch_add(1, Ordering::Relaxed) as u32;
@@ -363,27 +359,18 @@ impl State {
 
   pub fn metrics_op_dispatched(
     &self,
-    bytes_sent_control: usize,
-    bytes_sent_data: usize,
+    bytes_sent_control: u64,
+    bytes_sent_data: u64,
   ) {
-    let state = self.borrow();
-    state.metrics.ops_dispatched.fetch_add(1, Ordering::SeqCst);
-    state
-      .metrics
-      .bytes_sent_control
-      .fetch_add(bytes_sent_control, Ordering::SeqCst);
-    state
-      .metrics
-      .bytes_sent_data
-      .fetch_add(bytes_sent_data, Ordering::SeqCst);
+    let mut state = self.borrow_mut();
+    state.metrics.ops_dispatched += 1;
+    state.metrics.bytes_sent_control += bytes_sent_control;
+    state.metrics.bytes_sent_data += bytes_sent_data;
   }
 
-  pub fn metrics_op_completed(&self, bytes_received: usize) {
-    let state = self.borrow();
-    state.metrics.ops_completed.fetch_add(1, Ordering::SeqCst);
-    state
-      .metrics
-      .bytes_received
-      .fetch_add(bytes_received, Ordering::SeqCst);
+  pub fn metrics_op_completed(&self, bytes_received: u64) {
+    let mut state = self.borrow_mut();
+    state.metrics.ops_completed += 1;
+    state.metrics.bytes_received += bytes_received;
   }
 }

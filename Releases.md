@@ -6,6 +6,34 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.33.0 / 2020.02.13
+
+- feat(std/http): support trailer headers (#3938, #3989)
+- feat(std/node): Add readlink, readlinkSync (#3926)
+- feat(std/node): Event emitter node polyfill (#3944, #3959, #3960)
+- feat(deno install): add --force flag and remove yes/no prompt (#3917)
+- feat: Improve support for diagnostics from runtime compiler APIs (#3911)
+- feat: `deno fmt -` formats stdin and print to stdout (#3920)
+- feat: add std/signal (#3913)
+- feat: make testing API built-in Deno.test() (#3865, #3930, #3973)
+- fix(std/http): align serve and serveTLS APIs (#3881)
+- fix(std/http/file_server): don't crash on "%" pathname (#3953)
+- fix(std/path): Use non-capturing groups in globrex() (#3898)
+- fix(deno types): don't panic when piped to head (#3910)
+- fix(deno fmt): support top-level await (#3952)
+- fix: Correctly determine a --cached-only error (#3979)
+- fix: No longer require aligned buffer for shared queue (#3935)
+- fix: Prevent providing --allow-env flag twice (#3906)
+- fix: Remove unnecessary EOF check in Deno.toAsyncIterable (#3914)
+- fix: WASM imports loaded HTTP (#3856)
+- fix: better WebWorker API compatibility (#3828 )
+- fix: deno fmt improvements (#3988)
+- fix: make WebSocket.send() exclusive (#3885)
+- refactor: Improve `deno bundle` by using System instead of AMD (#3965)
+- refactor: Remove conditionals from installer (#3909)
+- refactor: peg workers to a single thread (#3844, #3968, #3931, #3903, #3912,
+  #3907, #3904)
+
 ### v0.32.0 / 2020.02.03
 
 - BREAKING CHANGE: Replace formatter for "deno fmt", use dprint (#3820, #3824,

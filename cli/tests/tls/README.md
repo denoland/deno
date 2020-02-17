@@ -5,7 +5,7 @@ https://gist.github.com/cecilemuller/9492b848eb8fe46d462abeb26656c4f8
 
 ## Certificate authority (CA)
 
-Generate RootCA.pem, RootCA.key & RootCA.crt:
+Generate RootCA.pem, RootCA.key, RootCA.crt:
 
 ```shell
 openssl req -x509 -nodes -new -sha256 -days 36135 -newkey rsa:2048 -keyout RootCA.key -out RootCA.pem -subj "/C=US/CN=Example-Root-CA"

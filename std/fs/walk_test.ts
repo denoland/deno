@@ -3,12 +3,11 @@ const { remove } = Deno;
 type ErrorKind = Deno.ErrorKind;
 type DenoError = Deno.DenoError<ErrorKind>;
 import { walk, walkSync, WalkOptions, WalkInfo } from "./walk.ts";
-import { test, TestFunction, runIfMain } from "../testing/mod.ts";
 import { assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 
 export async function testWalk(
   setup: (arg0: string) => void | Promise<void>,
-  t: TestFunction
+  t: Deno.TestFunction
 ): Promise<void> {
   const name = t.name;
   async function fn(): Promise<void> {
@@ -23,7 +22,7 @@ export async function testWalk(
       remove(d, { recursive: true });
     }
   }
-  test({ name, fn });
+  Deno.test({ name, fn });
 }
 
 function normalize({ filename }: WalkInfo): string {
@@ -275,5 +274,3 @@ testWalk(
   }
 );
 */
-
-runIfMain(import.meta);

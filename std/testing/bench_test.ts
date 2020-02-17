@@ -1,4 +1,4 @@
-import { test, runIfMain } from "./mod.ts";
+const { test } = Deno;
 import { bench, runBenchmarks } from "./bench.ts";
 
 import "./bench_example.ts";
@@ -56,5 +56,3 @@ test(async function benching(): Promise<void> {
 
   await runBenchmarks({ skip: /throw/ });
 });
-
-runIfMain(import.meta);

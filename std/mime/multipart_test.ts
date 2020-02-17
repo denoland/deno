@@ -7,7 +7,7 @@ import {
   assertThrows,
   assertThrowsAsync
 } from "../testing/asserts.ts";
-import { test, runIfMain } from "../testing/mod.ts";
+const { test } = Deno;
 import * as path from "../path/mod.ts";
 import {
   FormFile,
@@ -213,5 +213,3 @@ test(async function multipartMultipartReader2(): Promise<void> {
     }
   }
 });
-
-runIfMain(import.meta);

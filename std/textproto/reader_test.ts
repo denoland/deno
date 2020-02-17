@@ -12,7 +12,7 @@ import {
   assertNotEquals,
   assertThrows
 } from "../testing/asserts.ts";
-import { test, runIfMain } from "../testing/mod.ts";
+const { test } = Deno;
 
 function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
   assertNotEquals(val, Deno.EOF);
@@ -180,5 +180,3 @@ test({
     assertEquals(m.get("Content-Disposition"), 'form-data; name="test"');
   }
 });
-
-runIfMain(import.meta);

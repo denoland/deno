@@ -10,6 +10,26 @@ declare namespace Deno {
   /** Reflects the NO_COLOR environment variable: https://no-color.org/ */
   export let noColor: boolean;
 
+  export type TestFunction = () => void | Promise<void>;
+
+  export interface TestDefinition {
+    fn: TestFunction;
+    name: string;
+  }
+
+  export function test(t: TestDefinition): void;
+  export function test(fn: TestFunction): void;
+  export function test(name: string, fn: TestFunction): void;
+
+  export interface RunTestsOptions {
+    exitOnFail?: boolean;
+    only?: RegExp;
+    skip?: RegExp;
+    disableLog?: boolean;
+  }
+
+  export function runTests(opts?: RunTestsOptions): Promise<void>;
+
   /** Check if running in terminal.
    *
    *       console.log(Deno.isTTY().stdout);
