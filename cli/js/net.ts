@@ -187,8 +187,17 @@ export class UDPConnImpl implements UDPConn {
     if (this.closing) {
       return { value: undefined, done: true };
     }
-    const value = await this.receive();
-    return { value, done: false };
+    return await this.receive()
+      .then(value => ({ value, done: false }))
+      .catch(e => {
+        // It wouldn't be correct to simply check this.closing here.
+        // TODO: Get a proper error kind for this case, don't check the message.
+        // The current error kind is Other.
+        if (e.message == "Socket has been closed") {
+          return { value: undefined, done: true };
+        }
+        throw e;
+      });
   }
 
   [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]> {
