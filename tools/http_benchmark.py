@@ -42,16 +42,6 @@ def deno_tcp(deno_exe):
     return run(deno_cmd, port)
 
 
-def deno_udp(deno_exe):
-    port = get_port()
-    deno_cmd = [
-        deno_exe, "run", "--allow-net", "tools/deno_udp.ts",
-        server_addr(port)
-    ]
-    print "http_benchmark testing DENO udp."
-    return run(deno_cmd, port)
-
-
 def deno_http(deno_exe):
     port = get_port()
     deno_cmd = [
@@ -149,7 +139,6 @@ def http_benchmark(build_dir):
         # "deno_tcp" was once called "deno"
         "deno_tcp": deno_tcp(deno_exe),
         # "deno_udp": deno_udp(deno_exe),
-        # "deno_http" was once called "deno_net_http"
         "deno_http": deno_http(deno_exe),
         "deno_proxy": deno_http_proxy(deno_exe, hyper_hello_exe),
         "deno_proxy_tcp": deno_tcp_proxy(deno_exe, hyper_hello_exe),
