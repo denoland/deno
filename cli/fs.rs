@@ -9,6 +9,7 @@ use deno_core::ErrBox;
 use rand;
 use rand::Rng;
 use url::Url;
+use walkdir::WalkDir;
 
 #[cfg(unix)]
 use nix::unistd::{chown as unix_chown, Gid, Uid};
@@ -187,4 +188,18 @@ mod tests {
     let expected = Path::new("/a");
     assert_eq!(resolve_from_cwd(expected).unwrap(), expected);
   }
+}
+
+pub fn files_in_subtree<F>(root: PathBuf, filter: F) -> Vec<PathBuf>
+where
+  F: Fn(&Path) -> bool,
+{
+  assert!(root.is_dir());
+
+  WalkDir::new(root)
+    .into_iter()
+    .filter_map(|e| e.ok())
+    .map(|e| e.path().to_owned())
+    .filter(|p| if p.is_dir() { false } else { filter(&p) })
+    .collect()
 }
