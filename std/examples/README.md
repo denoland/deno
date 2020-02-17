@@ -10,7 +10,7 @@ bookmark to a program.)
 ### A TCP echo server
 
 ```shell
-deno https://deno.land/std/examples/echo_server.ts --allow-net
+deno  --allow-net https://deno.land/std/examples/echo_server.ts
 ```
 
 Or
@@ -51,3 +51,11 @@ deno install --allow-net --allow-env gist https://deno.land/std/examples/gist.ts
 gist --title "Example gist 1" script.ts
 gist --t "Example gist 2" script2.ts
 ```
+
+### chat - WebSocket chat server and browser client
+
+```shell
+deno --allow-net --allow-read https://deno.land/std/examples/chat/server.ts
+```
+
+Open http://localhost:8080 on the browser.
