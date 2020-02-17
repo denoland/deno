@@ -5,7 +5,7 @@ import {
   fail,
   assertThrows
 } from "../testing/asserts.ts";
-import EventEmitter, { WrappedFunction, once } from "./events.ts";
+import EventEmitter, { WrappedFunction, once, on } from "./events.ts";
 
 const shouldNeverBeEmitted: Function = () => {
   fail("Should never be called");
@@ -437,5 +437,185 @@ test({
     });
     ee.emit("error");
     assertEquals(events, ["errorMonitor event", "error"]);
+  }
+});
+
+test({
+  name: "asyncronous iteration of events are handled as expected",
+  async fn() {
+    const ee = new EventEmitter();
+    setTimeout(() => {
+      ee.emit("foo", "bar");
+      ee.emit("bar", 24);
+      ee.emit("foo", 42);
+    }, 0);
+
+    const iterable = on(ee, "foo");
+
+    const expected = [["bar"], [42]];
+
+    for await (const event of iterable) {
+      const current = expected.shift();
+
+      assertEquals(current, event);
+
+      if (expected.length === 0) {
+        break;
+      }
+    }
+    assertEquals(ee.listenerCount("foo"), 0);
+    assertEquals(ee.listenerCount("error"), 0);
+  }
+});
+
+test({
+  name: "asyncronous error handling of emitted events works as expected",
+  async fn() {
+    const ee = new EventEmitter();
+    const _err = new Error("kaboom");
+    setTimeout(() => {
+      ee.emit("error", _err);
+    }, 0);
+
+    const iterable = on(ee, "foo");
+    let thrown = false;
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const event of iterable) {
+        fail("no events should be processed due to the error thrown");
+      }
+    } catch (err) {
+      thrown = true;
+      assertEquals(err, _err);
+    }
+    assertEquals(thrown, true);
+  }
+});
+
+test({
+  name: "error thrown during asyncronous processing of events is handled",
+  async fn() {
+    const ee = new EventEmitter();
+    const _err = new Error("kaboom");
+    setTimeout(() => {
+      ee.emit("foo", 42);
+      ee.emit("error", _err);
+    }, 0);
+
+    const iterable = on(ee, "foo");
+    const expected = [[42]];
+    let thrown = false;
+
+    try {
+      for await (const event of iterable) {
+        const current = expected.shift();
+        assertEquals(current, event);
+      }
+    } catch (err) {
+      thrown = true;
+      assertEquals(err, _err);
+    }
+    assertEquals(thrown, true);
+    assertEquals(ee.listenerCount("foo"), 0);
+    assertEquals(ee.listenerCount("error"), 0);
+  }
+});
+
+test({
+  name:
+    "error thrown in processing loop of asyncronous event prevents processing of additional events",
+  async fn() {
+    const ee = new EventEmitter();
+    const _err = new Error("kaboom");
+
+    setTimeout(() => {
+      ee.emit("foo", 42);
+      ee.emit("foo", 999);
+    }, 0);
+
+    try {
+      for await (const event of on(ee, "foo")) {
+        assertEquals(event, [42]);
+        throw _err;
+      }
+    } catch (err) {
+      assertEquals(err, _err);
+    }
+
+    assertEquals(ee.listenerCount("foo"), 0);
+    assertEquals(ee.listenerCount("error"), 0);
+  }
+});
+
+test({
+  name: "asyncronous iterator next() works as expected",
+  async fn() {
+    const ee = new EventEmitter();
+    const iterable = on(ee, "foo");
+
+    setTimeout(function() {
+      ee.emit("foo", "bar");
+      ee.emit("foo", 42);
+      iterable.return();
+    }, 0);
+
+    const results = await Promise.all([
+      iterable.next(),
+      iterable.next(),
+      iterable.next()
+    ]);
+
+    assertEquals(results, [
+      {
+        value: ["bar"],
+        done: false
+      },
+      {
+        value: [42],
+        done: false
+      },
+      {
+        value: undefined,
+        done: true
+      }
+    ]);
+
+    assertEquals(await iterable.next(), {
+      value: undefined,
+      done: true
+    });
+  }
+});
+
+test({
+  name: "async iterable throw handles various scenarios",
+  async fn() {
+    const ee = new EventEmitter();
+    const iterable = on(ee, "foo");
+
+    setTimeout(() => {
+      ee.emit("foo", "bar");
+      ee.emit("foo", 42); // lost in the queue
+      iterable.throw(_err);
+    }, 0);
+
+    const _err = new Error("kaboom");
+    let thrown = false;
+
+    const expected = [["bar"], [42]];
+
+    try {
+      for await (const event of iterable) {
+        assertEquals(event, expected.shift());
+      }
+    } catch (err) {
+      thrown = true;
+      assertEquals(err, _err);
+    }
+    assertEquals(thrown, true);
+    assertEquals(expected.length, 0);
+    assertEquals(ee.listenerCount("foo"), 0);
+    assertEquals(ee.listenerCount("error"), 0);
   }
 });
