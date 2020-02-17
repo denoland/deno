@@ -530,8 +530,8 @@ function createLPS(pat: Uint8Array): Uint8Array {
   return lps;
 }
 
-/** Read from reader until EOF and emit string chunks separated */
-export async function* chunks(
+/** Read delimited string chunks from a Reader.  */
+export async function* readStringDelim(
   reader: Reader,
   delim: string
 ): AsyncIterableIterator<string> {
@@ -595,6 +595,8 @@ export async function* chunks(
 }
 
 /** Read from reader until EOF and emit lines */
-export async function* lines(reader: Reader): AsyncIterableIterator<string> {
-  yield* chunks(reader, "\n");
+export async function* readLines(
+  reader: Reader
+): AsyncIterableIterator<string> {
+  yield* readStringDelim(reader, "\n");
 }

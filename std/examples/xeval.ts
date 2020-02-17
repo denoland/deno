@@ -1,5 +1,5 @@
 import { parse } from "../flags/mod.ts";
-import { chunks } from "../io/bufio.ts";
+import { readStringDelim } from "../io/bufio.ts";
 const { args, exit, stdin } = Deno;
 type Reader = Deno.Reader;
 
@@ -11,9 +11,7 @@ const AsyncFunction = Object.getPrototypeOf(async function(): Promise<void> {})
 /* eslint-disable max-len */
 const HELP_MSG = `xeval
 
-Eval a script on lines from stdin.
-Read from standard input and eval code on each whitespace-delimited
-string chunks.
+Run a script for each new-line or otherwise delimited chunk of standard input.
 
 Print all the usernames in /etc/passwd:
   cat /etc/passwd | deno -A https://deno.land/std/examples/xeval.ts "a = $.split(':'); if (a) console.log(a[0])"
@@ -46,7 +44,7 @@ export async function xeval(
   xevalFunc: XevalFunc,
   { delimiter = DEFAULT_DELIMITER }: XevalOptions = {}
 ): Promise<void> {
-  for await (const chunk of chunks(reader, delimiter)) {
+  for await (const chunk of readStringDelim(reader, delimiter)) {
     // Ignore empty chunks.
     if (chunk.length > 0) {
       await xevalFunc(chunk);
