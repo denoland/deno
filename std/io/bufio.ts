@@ -530,17 +530,14 @@ function createLPS(pat: Uint8Array): Uint8Array {
   return lps;
 }
 
-/** Read delimited string chunks from a Reader.  */
-export async function* readStringDelim(
+/** Read delimited chunks from a Reader.  */
+export async function* readDelim(
   reader: Reader,
-  delim: string
-): AsyncIterableIterator<string> {
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
+  delim: Uint8Array
+): AsyncIterableIterator<Uint8Array> {
   // Avoid unicode problems
-  const delimArr = encoder.encode(delim);
-  const delimLen = delimArr.length;
-  const delimLPS = createLPS(delimArr);
+  const delimLen = delim.length;
+  const delimLPS = createLPS(delim);
 
   let inputBuffer = new Deno.Buffer();
   const inspectArr = new Uint8Array(Math.max(1024, delimLen + 1));
@@ -552,8 +549,7 @@ export async function* readStringDelim(
     const result = await reader.read(inspectArr);
     if (result === Deno.EOF) {
       // Yield last chunk.
-      const lastChunk = inputBuffer.toString();
-      yield lastChunk;
+      yield inputBuffer.bytes();
       return;
     }
     if ((result as number) < 0) {
@@ -565,7 +561,7 @@ export async function* readStringDelim(
 
     let sliceToProcess = inputBuffer.bytes();
     while (inspectIndex < sliceToProcess.length) {
-      if (sliceToProcess[inspectIndex] === delimArr[matchIndex]) {
+      if (sliceToProcess[inspectIndex] === delim[matchIndex]) {
         inspectIndex++;
         matchIndex++;
         if (matchIndex === delimLen) {
@@ -574,8 +570,7 @@ export async function* readStringDelim(
           const readyBytes = sliceToProcess.subarray(0, matchEnd);
           // Copy
           const pendingBytes = sliceToProcess.slice(inspectIndex);
-          const readyChunk = decoder.decode(readyBytes);
-          yield readyChunk;
+          yield readyBytes;
           // Reset match, different from KMP.
           sliceToProcess = pendingBytes;
           inspectIndex = 0;
@@ -594,7 +589,19 @@ export async function* readStringDelim(
   }
 }
 
-/** Read from reader until EOF and emit lines */
+/** Read delimited string chunks from a Reader.  */
+export async function* readStringDelim(
+  reader: Reader,
+  delim: string
+): AsyncIterableIterator<string> {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  for await (const chunk of readDelim(reader, encoder.encode(delim))) {
+    yield decoder.decode(chunk);
+  }
+}
+
+/** Read strings line-by-line from a Reader. */
 export async function* readLines(
   reader: Reader
 ): AsyncIterableIterator<string> {
