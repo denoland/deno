@@ -102,6 +102,7 @@ pub struct DenoFlags {
 
   pub lock: Option<String>,
   pub lock_write: bool,
+  pub ca_file: Option<String>,
 }
 
 fn join_paths(whitelist: &[PathBuf], d: &str) -> String {
@@ -313,6 +314,7 @@ fn fmt_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 
 fn install_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   permission_args_parse(flags, matches);
+  ca_file_arg_parse(flags, matches);
 
   let dir = if matches.is_present("dir") {
     let install_dir = matches.value_of("dir").unwrap();
@@ -343,6 +345,8 @@ fn install_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 }
 
 fn bundle_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
+  ca_file_arg_parse(flags, matches);
+
   let source_file = matches.value_of("source_file").unwrap().to_string();
 
   let out_file = if let Some(out_file) = matches.value_of("out_file") {
@@ -375,6 +379,7 @@ fn completions_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 
 fn repl_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   v8_flags_arg_parse(flags, matches);
+  ca_file_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Repl;
   flags.allow_net = true;
   flags.allow_env = true;
@@ -387,6 +392,7 @@ fn repl_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 
 fn eval_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   v8_flags_arg_parse(flags, matches);
+  ca_file_arg_parse(flags, matches);
   flags.allow_net = true;
   flags.allow_env = true;
   flags.allow_run = true;
@@ -399,6 +405,8 @@ fn eval_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 }
 
 fn info_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
+  ca_file_arg_parse(flags, matches);
+
   flags.subcommand = DenoSubcommand::Info {
     file: matches.value_of("file").map(|f| f.to_string()),
   };
@@ -410,6 +418,7 @@ fn fetch_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   importmap_arg_parse(flags, matches);
   config_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
+  ca_file_arg_parse(flags, matches);
   let files = matches
     .values_of("file")
     .unwrap()
@@ -444,6 +453,7 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   v8_flags_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   permission_args_parse(flags, matches);
+  ca_file_arg_parse(flags, matches);
 
   if matches.is_present("cached-only") {
     flags.cached_only = true;
@@ -558,6 +568,7 @@ fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("repl")
     .about("Read Eval Print Loop")
     .arg(v8_flags_arg())
+    .arg(ca_file_arg())
 }
 
 fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -586,6 +597,7 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
             .multiple(true)
             .allow_hyphen_values(true)
         )
+        .arg(ca_file_arg())
         .about("Install script as executable")
         .long_about(
 "Installs a script as executable. The default installation directory is
@@ -608,6 +620,7 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
         .required(true),
     )
     .arg(Arg::with_name("out_file").takes_value(true).required(false))
+    .arg(ca_file_arg())
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
@@ -642,6 +655,7 @@ Example:
 
 fn eval_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("eval")
+    .arg(ca_file_arg())
     .about("Eval script")
     .long_about(
       "Evaluate JavaScript from command-line
@@ -677,6 +691,7 @@ Remote modules cache: directory containing remote modules
 TypeScript compiler cache: directory containing TS compiler output",
     )
     .arg(Arg::with_name("file").takes_value(true).required(false))
+    .arg(ca_file_arg())
 }
 
 fn fetch_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -693,6 +708,7 @@ fn fetch_subcommand<'a, 'b>() -> App<'a, 'b> {
         .required(true)
         .min_values(1),
     )
+    .arg(ca_file_arg())
     .about("Fetch the dependencies")
     .long_about(
       "Fetch and compile remote dependencies recursively.
@@ -777,6 +793,7 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
     .arg(lock_write_arg())
     .arg(no_remote_arg())
     .arg(v8_flags_arg())
+    .arg(ca_file_arg())
     .arg(
       Arg::with_name("cached-only")
         .long("cached-only")
@@ -894,6 +911,17 @@ fn config_arg<'a, 'b>() -> Arg<'a, 'b> {
 
 fn config_arg_parse(flags: &mut DenoFlags, matches: &ArgMatches) {
   flags.config_path = matches.value_of("config").map(ToOwned::to_owned);
+}
+
+fn ca_file_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("cert")
+    .long("cert")
+    .value_name("FILE")
+    .help("Load certificate authority from PEM encoded file")
+    .takes_value(true)
+}
+fn ca_file_arg_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
+  flags.ca_file = matches.value_of("cert").map(ToOwned::to_owned);
 }
 
 fn reload_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -2044,4 +2072,164 @@ mod tests {
       }
     );
   }
+}
+
+#[test]
+fn run_with_cafile() {
+  let r = flags_from_vec_safe(svec![
+    "deno",
+    "run",
+    "--cert",
+    "example.crt",
+    "script.ts"
+  ]);
+  assert_eq!(
+    r.unwrap(),
+    DenoFlags {
+      subcommand: DenoSubcommand::Run {
+        script: "script.ts".to_string(),
+      },
+      ca_file: Some("example.crt".to_owned()),
+      ..DenoFlags::default()
+    }
+  );
+}
+
+#[test]
+fn bundle_with_cafile() {
+  let r = flags_from_vec_safe(svec![
+    "deno",
+    "bundle",
+    "--cert",
+    "example.crt",
+    "source.ts"
+  ]);
+  assert_eq!(
+    r.unwrap(),
+    DenoFlags {
+      subcommand: DenoSubcommand::Bundle {
+        source_file: "source.ts".to_string(),
+        out_file: None,
+      },
+      ca_file: Some("example.crt".to_owned()),
+      ..DenoFlags::default()
+    }
+  );
+}
+
+#[test]
+fn eval_with_cafile() {
+  let r = flags_from_vec_safe(svec![
+    "deno",
+    "eval",
+    "--cert",
+    "example.crt",
+    "console.log('hello world')"
+  ]);
+  assert_eq!(
+    r.unwrap(),
+    DenoFlags {
+      subcommand: DenoSubcommand::Eval {
+        code: "console.log('hello world')".to_string(),
+      },
+      ca_file: Some("example.crt".to_owned()),
+      allow_net: true,
+      allow_env: true,
+      allow_run: true,
+      allow_read: true,
+      allow_write: true,
+      allow_plugin: true,
+      allow_hrtime: true,
+      ..DenoFlags::default()
+    }
+  );
+}
+
+#[test]
+fn fetch_with_cafile() {
+  let r = flags_from_vec_safe(svec![
+    "deno",
+    "fetch",
+    "--cert",
+    "example.crt",
+    "script.ts",
+    "script_two.ts"
+  ]);
+  assert_eq!(
+    r.unwrap(),
+    DenoFlags {
+      subcommand: DenoSubcommand::Fetch {
+        files: svec!["script.ts", "script_two.ts"],
+      },
+      ca_file: Some("example.crt".to_owned()),
+      ..DenoFlags::default()
+    }
+  );
+}
+
+#[test]
+fn info_with_cafile() {
+  let r = flags_from_vec_safe(svec![
+    "deno",
+    "info",
+    "--cert",
+    "example.crt",
+    "https://example.com"
+  ]);
+  assert_eq!(
+    r.unwrap(),
+    DenoFlags {
+      subcommand: DenoSubcommand::Info {
+        file: Some("https://example.com".to_string()),
+      },
+      ca_file: Some("example.crt".to_owned()),
+      ..DenoFlags::default()
+    }
+  );
+}
+
+#[test]
+fn install_with_cafile() {
+  let r = flags_from_vec_safe(svec![
+    "deno",
+    "install",
+    "--cert",
+    "example.crt",
+    "deno_colors",
+    "https://deno.land/std/examples/colors.ts"
+  ]);
+  assert_eq!(
+    r.unwrap(),
+    DenoFlags {
+      subcommand: DenoSubcommand::Install {
+        dir: None,
+        exe_name: "deno_colors".to_string(),
+        module_url: "https://deno.land/std/examples/colors.ts".to_string(),
+        args: vec![],
+        force: false,
+      },
+      ca_file: Some("example.crt".to_owned()),
+      ..DenoFlags::default()
+    }
+  );
+}
+
+#[test]
+fn repl_with_cafile() {
+  let r = flags_from_vec_safe(svec!["deno", "repl", "--cert", "example.crt"]);
+  assert_eq!(
+    r.unwrap(),
+    DenoFlags {
+      subcommand: DenoSubcommand::Repl {},
+      ca_file: Some("example.crt".to_owned()),
+      allow_read: true,
+      allow_write: true,
+      allow_net: true,
+      allow_env: true,
+      allow_run: true,
+      allow_plugin: true,
+      allow_hrtime: true,
+      ..DenoFlags::default()
+    }
+  );
 }

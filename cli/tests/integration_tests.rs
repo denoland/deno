@@ -929,6 +929,174 @@ itest!(import_wasm_via_network {
   http_server: true,
 });
 
+itest!(cafile_url_imports {
+  args: "run --reload --cert tls/RootCA.pem cafile_url_imports.ts",
+  output: "cafile_url_imports.ts.out",
+  http_server: true,
+});
+
+itest!(cafile_ts_fetch {
+  args: "run --reload --allow-net --cert tls/RootCA.pem cafile_ts_fetch.ts",
+  output: "cafile_ts_fetch.ts.out",
+  http_server: true,
+});
+
+itest!(cafile_eval {
+  args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cli/tests/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
+  output: "cafile_ts_fetch.ts.out",
+  http_server: true,
+});
+
+itest!(cafile_info {
+  args:
+    "info --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
+  output: "cafile_info.ts.out",
+  http_server: true,
+});
+
+#[test]
+fn cafile_fetch() {
+  pub use deno::test_util::*;
+  use std::process::Command;
+  use tempfile::TempDir;
+
+  let g = util::http_server();
+
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let t = util::root_path().join("cli/tests/cafile_url_imports.ts");
+  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+  let output = Command::new(deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("fetch")
+    .arg("--cert")
+    .arg(cafile)
+    .arg(t)
+    .output()
+    .expect("Failed to spawn script");
+
+  let code = output.status.code();
+  let out = std::str::from_utf8(&output.stdout).unwrap();
+
+  assert_eq!(Some(0), code);
+  assert_eq!(out, "");
+
+  let expected_path = deno_dir
+    .path()
+    .join("deps/https/localhost_PORT5545/cli/tests/subdir/mod2.ts");
+  assert_eq!(expected_path.exists(), true);
+
+  drop(g);
+}
+
+#[test]
+fn cafile_install_remote_module() {
+  pub use deno::test_util::*;
+  use std::env;
+  use std::path::PathBuf;
+  use std::process::Command;
+  use tempfile::TempDir;
+
+  let g = util::http_server();
+  let temp_dir = TempDir::new().expect("tempdir fail");
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+
+  let install_output = Command::new(deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("install")
+    .arg("--cert")
+    .arg(cafile)
+    .arg("--dir")
+    .arg(temp_dir.path())
+    .arg("echo_test")
+    .arg("https://localhost:5545/cli/tests/echo.ts")
+    .output()
+    .expect("Failed to spawn script");
+
+  let code = install_output.status.code();
+  assert_eq!(Some(0), code);
+
+  let mut file_path = temp_dir.path().join("echo_test");
+  if cfg!(windows) {
+    file_path = file_path.with_extension(".cmd");
+  }
+  assert!(file_path.exists());
+
+  let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
+  let paths_var = env::var_os(path_var_name).expect("PATH not set");
+  let mut paths: Vec<PathBuf> = env::split_paths(&paths_var).collect();
+  paths.push(temp_dir.path().to_owned());
+  paths.push(util::target_dir());
+  let path_var_value = env::join_paths(paths).expect("Can't create PATH");
+
+  let output = Command::new(file_path)
+    .current_dir(temp_dir.path())
+    .arg("foo")
+    .env(path_var_name, path_var_value)
+    .output()
+    .expect("failed to spawn script");
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("foo"));
+
+  drop(deno_dir);
+  drop(temp_dir);
+  drop(g)
+}
+
+#[test]
+fn cafile_bundle_remote_exports() {
+  use tempfile::TempDir;
+
+  let g = util::http_server();
+
+  // First we have to generate a bundle of some remote module that has exports.
+  let mod1 = "https://localhost:5545/cli/tests/subdir/mod1.ts";
+  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("mod1.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg("--cert")
+    .arg(cafile)
+    .arg(mod1)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  // Now we try to use that bundle from another module.
+  let test = t.path().join("test.js");
+  std::fs::write(
+    &test,
+    "
+      import { printHello3 } from \"./mod1.bundle.js\";
+      printHello3(); ",
+  )
+  .expect("error writing file");
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&test)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the test.ts program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello"));
+  assert_eq!(output.stderr, b"");
+
+  drop(g)
+}
+
 mod util {
   use deno::colors::strip_ansi_codes;
   pub use deno::test_util::*;
