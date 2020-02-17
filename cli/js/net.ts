@@ -239,7 +239,7 @@ const listenDefaults = { hostname: "0.0.0.0", transport: "tcp" };
  *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
 export function listen(
-  options: ListenOptions & { transport: "tcp" | undefined }
+  options: ListenOptions & { transport?: "tcp" }
 ): Listener;
 export function listen(options: ListenOptions & { transport: "udp" }): UDPConn;
 export function listen(options: ListenOptions): Listener | UDPConn {
