@@ -530,7 +530,7 @@ function createLPS(pat: Uint8Array): Uint8Array {
   return lps;
 }
 
-/** Read delimited chunks from a Reader.  */
+/** Read delimited bytes from a Reader. */
 export async function* readDelim(
   reader: Reader,
   delim: Uint8Array
@@ -589,7 +589,7 @@ export async function* readDelim(
   }
 }
 
-/** Read delimited string chunks from a Reader.  */
+/** Read delimited strings from a Reader. */
 export async function* readStringDelim(
   reader: Reader,
   delim: string
