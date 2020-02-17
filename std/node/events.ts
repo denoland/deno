@@ -404,12 +404,17 @@ interface AsyncInterable {
   next(): Promise<IteratorResult<any, any>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return(): Promise<IteratorResult<any, any>>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  throw(err: any): void;
+  throw(err: Error): void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [Symbol.asyncIterator](): any;
 }
 
+/**
+ * Returns an AsyncIterator that iterates eventName events. It will throw if
+ * the EventEmitter emits 'error'. It removes all listeners when exiting the
+ * loop. The value returned by each iteration is an array composed of the
+ * emitted event arguments.
+ */
 export function on(
   emitter: EventEmitter,
   event: string | symbol
@@ -464,13 +469,7 @@ export function on(
       return Promise.resolve(createIterResult(undefined, true));
     },
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    throw(err: any): void {
-      if (!err || !(err instanceof Error)) {
-        throw new Error(
-          "EventEmitter.AsyncIterator.Error: Error expected, but got: " + err
-        );
-      }
+    throw(err: Error): void {
       error = err;
       emitter.removeListener(event, eventHandler);
       emitter.removeListener("error", errorHandler);

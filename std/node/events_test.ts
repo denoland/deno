@@ -603,14 +603,6 @@ test({
     const _err = new Error("kaboom");
     let thrown = false;
 
-    assertThrows(
-      () => {
-        iterable.throw(42); //i.e. not of type Error
-      },
-      Error,
-      "EventEmitter.AsyncIterator.Error: "
-    );
-
     const expected = [["bar"], [42]];
 
     try {
