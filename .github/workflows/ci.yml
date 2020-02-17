@@ -127,10 +127,6 @@ jobs:
         if: matrix.kind == 'test_release' || matrix.kind == 'bench'
         run: cargo build --release --locked --all-targets
 
-      - name: windows test_runner debug
-        if: startsWith(matrix.os, 'windows') && matrix.kind == 'test_release'
-        run: cargo test --release test_runner -- --nocapture --test-threads=1
-
       - name: Test release
         if: matrix.kind == 'test_release'
         run: cargo test --release --locked --all-targets
