@@ -680,9 +680,9 @@ declare namespace Deno {
     mode?: number
   ): Promise<void>;
 
-  // @url js/make_temp_dir.d.ts
+  // @url js/make_temp.d.ts
 
-  export interface MakeTempDirOptions {
+  export interface MakeTempOptions {
     dir?: string;
     prefix?: string;
     suffix?: string;
@@ -696,7 +696,7 @@ declare namespace Deno {
    * Requires allow-write.
    */
   // TODO(ry) Doesn't check permissions.
-  export function makeTempDirSync(options?: MakeTempDirOptions): string;
+  export function makeTempDirSync(options?: MakeTempOptions): string;
 
   /** makeTempDir creates a new temporary directory in the directory `dir`, its
    * name beginning with `prefix` and ending with `suffix`.
@@ -712,7 +712,27 @@ declare namespace Deno {
    * Requires allow-write.
    */
   // TODO(ry) Doesn't check permissions.
-  export function makeTempDir(options?: MakeTempDirOptions): Promise<string>;
+  export function makeTempDir(options?: MakeTempOptions): Promise<string>;
+
+  /** makeTempFileSync is the synchronous version of `makeTempFile`.
+   *
+   *       const tempFileName0 = Deno.makeTempFileSync();
+   *       const tempFileName1 = Deno.makeTempFileSync({ prefix: 'my_temp' });
+   */
+  export function makeTempFileSync(options?: MakeTempOptions): string;
+
+  /** makeTempFile creates a new temporary file in the directory `dir`, its
+   * name beginning with `prefix` and ending with `suffix`.
+   * It returns the full path to the newly created file.
+   * If `dir` is unspecified, tempFile uses the default directory for temporary
+   * files. Multiple programs calling tempFile simultaneously will not choose the
+   * same directory. It is the caller's responsibility to remove the file
+   * when no longer needed.
+   *
+   *       const tempFileName0 = await Deno.makeTempFile();
+   *       const tempFileName1 = await Deno.makeTempFile({ prefix: 'my_temp' });
+   */
+  export function makeTempFile(options?: MakeTempOptions): Promise<string>;
 
   /** Changes the permission of a specific file/directory of specified path
    * synchronously.

@@ -60,10 +60,11 @@ fn set_permissions(_file: &mut File, _perm: u32) -> std::io::Result<()> {
   Ok(())
 }
 
-pub fn make_temp_dir(
+pub fn make_temp(
   dir: Option<&Path>,
   prefix: Option<&str>,
   suffix: Option<&str>,
+  is_dir: bool,
 ) -> std::io::Result<PathBuf> {
   let prefix_ = prefix.unwrap_or("");
   let suffix_ = suffix.unwrap_or("");
@@ -77,7 +78,15 @@ pub fn make_temp_dir(
     let unique = rng.gen::<u32>();
     buf.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
     // TODO: on posix, set mode flags to 0o700.
-    let r = create_dir(buf.as_path());
+    let r = if is_dir {
+      create_dir(buf.as_path())
+    } else {
+      OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(buf.as_path())
+        .map(|_| ())
+    };
     match r {
       Err(ref e) if e.kind() == ErrorKind::AlreadyExists => continue,
       Ok(_) => return Ok(buf),

@@ -38,6 +38,10 @@ pub fn init(i: &mut Isolate, s: &State) {
     "make_temp_dir",
     s.core_op(json_op(s.stateful_op(op_make_temp_dir))),
   );
+  i.register_op(
+    "make_temp_file",
+    s.core_op(json_op(s.stateful_op(op_make_temp_file))),
+  );
   i.register_op("cwd", s.core_op(json_op(s.stateful_op(op_cwd))));
   i.register_op("utime", s.core_op(json_op(s.stateful_op(op_utime))));
 }
@@ -529,7 +533,7 @@ fn op_truncate(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct MakeTempDirArgs {
+struct MakeTempArgs {
   promise_id: Option<u64>,
   dir: Option<String>,
   prefix: Option<String>,
@@ -541,7 +545,7 @@ fn op_make_temp_dir(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: MakeTempDirArgs = serde_json::from_value(args)?;
+  let args: MakeTempArgs = serde_json::from_value(args)?;
 
   let dir = args.dir.map(PathBuf::from);
   let prefix = args.prefix.map(String::from);
@@ -555,11 +559,44 @@ fn op_make_temp_dir(
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
     // We can't assume that paths are always valid utf8 strings.
-    let path = deno_fs::make_temp_dir(
+    let path = deno_fs::make_temp(
       // Converting Option<String> to Option<&str>
       dir.as_ref().map(|x| &**x),
       prefix.as_ref().map(|x| &**x),
       suffix.as_ref().map(|x| &**x),
+      true,
+    )?;
+    let path_str = path.to_str().unwrap();
+
+    Ok(json!(path_str))
+  })
+}
+
+fn op_make_temp_file(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: MakeTempArgs = serde_json::from_value(args)?;
+
+  let dir = args.dir.map(PathBuf::from);
+  let prefix = args.prefix.map(String::from);
+  let suffix = args.suffix.map(String::from);
+
+  state
+    .check_write(dir.clone().unwrap_or_else(std::env::temp_dir).as_path())?;
+
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
+    // TODO(piscisaureus): use byte vector for paths, not a string.
+    // See https://github.com/denoland/deno/issues/627.
+    // We can't assume that paths are always valid utf8 strings.
+    let path = deno_fs::make_temp(
+      // Converting Option<String> to Option<&str>
+      dir.as_ref().map(|x| &**x),
+      prefix.as_ref().map(|x| &**x),
+      suffix.as_ref().map(|x| &**x),
+      false,
     )?;
     let path_str = path.to_str().unwrap();
 

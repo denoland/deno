@@ -66,8 +66,10 @@ export { linkSync, link } from "./link.ts";
 export {
   makeTempDirSync,
   makeTempDir,
-  MakeTempDirOptions
-} from "./make_temp_dir.ts";
+  makeTempFileSync,
+  makeTempFile,
+  MakeTempOptions
+} from "./make_temp.ts";
 export { metrics, Metrics } from "./metrics.ts";
 export { mkdirSync, mkdir } from "./mkdir.ts";
 export {
