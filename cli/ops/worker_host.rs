@@ -12,18 +12,14 @@ use crate::startup_data;
 use crate::state::State;
 use crate::tokio_util::create_basic_runtime;
 use crate::web_worker::WebWorker;
-use crate::worker::Worker;
 use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
 use deno_core::*;
 use futures;
-use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
-use futures::stream::StreamExt;
 use std;
 use std::convert::From;
-use std::task::Poll;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
@@ -59,63 +55,6 @@ fn create_web_worker(
   worker.execute(&script)?;
 
   Ok(worker)
-}
-
-// TODO(bartlomieju): this function should probably live in `cli/web_worker.rs`
-pub fn run_worker_loop(
-  rt: &mut tokio::runtime::Runtime,
-  worker: &mut Worker,
-) -> Result<(), ErrBox> {
-  let mut worker_is_ready = false;
-
-  let fut = poll_fn(|cx| -> Poll<Result<(), ErrBox>> {
-    if !worker_is_ready {
-      match worker.poll_unpin(cx) {
-        Poll::Ready(r) => {
-          if let Err(e) = r {
-            let mut sender = worker.internal_channels.sender.clone();
-            futures::executor::block_on(sender.send(WorkerEvent::Error(e)))
-              .expect("Failed to post message to host");
-          }
-          worker_is_ready = true;
-        }
-        Poll::Pending => {}
-      }
-    }
-
-    let maybe_msg = {
-      match worker.internal_channels.receiver.poll_next_unpin(cx) {
-        Poll::Ready(r) => match r {
-          Some(msg) => {
-            let msg_str = String::from_utf8(msg.to_vec()).unwrap();
-            debug!("received message from host: {}", msg_str);
-            Some(msg_str)
-          }
-          None => {
-            debug!("channel closed by host, worker event loop shuts down");
-            return Poll::Ready(Ok(()));
-          }
-        },
-        Poll::Pending => None,
-      }
-    };
-
-    if let Some(msg) = maybe_msg {
-      // TODO: just add second value and then bind using rusty_v8
-      // to get structured clone/transfer working
-      let script = format!("workerMessageRecvCallback({})", msg);
-      worker
-        .execute(&script)
-        .expect("Failed to execute message cb");
-      // Let worker be polled again
-      worker_is_ready = false;
-      worker.waker.wake();
-    }
-
-    Poll::Pending
-  });
-
-  rt.block_on(fut)
 }
 
 // TODO(bartlomieju): this function should probably live in `cli/web_worker.rs`
@@ -189,7 +128,7 @@ fn run_worker_thread(
     // TODO(bartlomieju): this thread should return result of event loop
     // that means that we should store JoinHandle to thread to ensure
     // that it actually terminates.
-    run_worker_loop(&mut rt, &mut worker).expect("Panic in event loop");
+    rt.block_on(worker).expect("Panic in event loop");
   })?;
 
   handle_receiver.recv().unwrap()
