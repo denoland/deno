@@ -13,7 +13,7 @@ function assertSameContent(files: FileInfo[]): void {
     }
 
     if (file.name === "002_hello.ts") {
-      assertEquals(file.mode!, Deno.statSync(`tests/${file.name}`).mode!);
+      assertEquals(file.mode!, Deno.statSync(`cli/tests/${file.name}`).mode!);
       counter++;
     }
   }
@@ -22,7 +22,7 @@ function assertSameContent(files: FileInfo[]): void {
 }
 
 testPerm({ read: true }, function readDirSyncSuccess(): void {
-  const files = Deno.readDirSync("tests/");
+  const files = Deno.readDirSync("cli/tests/");
   assertSameContent(files);
 });
 
@@ -67,7 +67,7 @@ testPerm({ read: true }, function readDirSyncNotFound(): void {
 });
 
 testPerm({ read: true }, async function readDirSuccess(): Promise<void> {
-  const files = await Deno.readDir("tests/");
+  const files = await Deno.readDir("cli/tests/");
   assertSameContent(files);
 });
 

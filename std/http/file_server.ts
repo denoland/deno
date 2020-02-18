@@ -48,7 +48,7 @@ if (serverArgs.h || serverArgs.help) {
   Serves a local directory in HTTP.
 
 INSTALL:
-  deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
+  deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
 
 USAGE:
   file_server [path] [options]
@@ -66,7 +66,7 @@ function modeToString(isDir: boolean, maybeMode: number | null): string {
   if (maybeMode === null) {
     return "(unknown mode)";
   }
-  const mode = maybeMode!.toString(8);
+  const mode = maybeMode.toString(8);
   if (mode.length < 3) {
     return "(unknown mode)";
   }
@@ -186,8 +186,8 @@ function setCORS(res: Response): void {
   if (!res.headers) {
     res.headers = new Headers();
   }
-  res.headers!.append("access-control-allow-origin", "*");
-  res.headers!.append(
+  res.headers.append("access-control-allow-origin", "*");
+  res.headers.append(
     "access-control-allow-headers",
     "Origin, X-Requested-With, Content-Type, Accept, Range"
   );
@@ -301,9 +301,15 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): string {
 listenAndServe(
   addr,
   async (req): Promise<void> => {
-    const normalizedUrl = posix.normalize(req.url);
-    const decodedUrl = decodeURIComponent(normalizedUrl);
-    const fsPath = posix.join(target, decodedUrl);
+    let normalizedUrl = posix.normalize(req.url);
+    try {
+      normalizedUrl = decodeURIComponent(normalizedUrl);
+    } catch (e) {
+      if (!(e instanceof URIError)) {
+        throw e;
+      }
+    }
+    const fsPath = posix.join(target, normalizedUrl);
 
     let response: Response;
     try {

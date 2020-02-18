@@ -2,7 +2,6 @@
 import { URL } from "./url.ts";
 import { notImplemented } from "./util.ts";
 import { Location } from "./dom_types.ts";
-import { window } from "./window.ts";
 
 export class LocationImpl implements Location {
   constructor(url: string) {
@@ -47,6 +46,6 @@ export class LocationImpl implements Location {
 }
 
 export function setLocation(url: string): void {
-  window.location = new LocationImpl(url);
-  Object.freeze(window.location);
+  globalThis.location = new LocationImpl(url);
+  Object.freeze(globalThis.location);
 }

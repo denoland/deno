@@ -1,26 +1,28 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::PinnedBuf;
+use crate::ZeroCopyBuf;
 use futures::Future;
 use std::collections::HashMap;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::rc::Rc;
 use std::sync::RwLock;
 
 pub type OpId = u32;
 
 pub type Buf = Box<[u8]>;
 
-pub type OpAsyncFuture<E> =
-  Pin<Box<dyn Future<Output = Result<Buf, E>> + Send>>;
+pub type OpAsyncFuture<E> = Pin<Box<dyn Future<Output = Result<Buf, E>>>>;
 
 pub(crate) type PendingOpFuture =
-  Pin<Box<dyn Future<Output = Result<(OpId, Buf), CoreError>> + Send>>;
+  Pin<Box<dyn Future<Output = Result<(OpId, Buf), CoreError>>>>;
 
 pub type OpResult<E> = Result<Op<E>, E>;
 
 pub enum Op<E> {
   Sync(Buf),
   Async(OpAsyncFuture<E>),
+  /// AsyncUnref is the variation of Async, which doesn't block the program
+  /// exiting.
+  AsyncUnref(OpAsyncFuture<E>),
 }
 
 pub type CoreError = ();
@@ -28,12 +30,11 @@ pub type CoreError = ();
 pub type CoreOp = Op<CoreError>;
 
 /// Main type describing op
-pub type OpDispatcher =
-  dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static;
+pub type OpDispatcher = dyn Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + 'static;
 
 #[derive(Default)]
 pub struct OpRegistry {
-  dispatchers: RwLock<Vec<Arc<Box<OpDispatcher>>>>,
+  dispatchers: RwLock<Vec<Rc<OpDispatcher>>>,
   name_to_id: RwLock<HashMap<String, OpId>>,
 }
 
@@ -50,7 +51,7 @@ impl OpRegistry {
 
   pub fn register<F>(&self, name: &str, op: F) -> OpId
   where
-    F: Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
+    F: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + 'static,
   {
     let mut lock = self.dispatchers.write().unwrap();
     let op_id = lock.len() as u32;
@@ -62,7 +63,7 @@ impl OpRegistry {
       format!("Op already registered: {}", name)
     );
 
-    lock.push(Arc::new(Box::new(op)));
+    lock.push(Rc::new(op));
     drop(name_lock);
     drop(lock);
     op_id
@@ -79,7 +80,7 @@ impl OpRegistry {
     &self,
     op_id: OpId,
     control: &[u8],
-    zero_copy_buf: Option<PinnedBuf>,
+    zero_copy_buf: Option<ZeroCopyBuf>,
   ) -> Option<CoreOp> {
     // Op with id 0 has special meaning - it's a special op that is always
     // provided to retrieve op id map. The map consists of name to `OpId`
@@ -89,7 +90,7 @@ impl OpRegistry {
     }
     let lock = self.dispatchers.read().unwrap();
     if let Some(op) = lock.get(op_id as usize) {
-      let op_ = Arc::clone(&op);
+      let op_ = Rc::clone(&op);
       // This should allow for changes to the dispatcher list during a call.
       drop(lock);
       Some(op_(control, zero_copy_buf))

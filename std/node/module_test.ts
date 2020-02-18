@@ -1,4 +1,4 @@
-import { test } from "../testing/mod.ts";
+const { test } = Deno;
 import { assertEquals, assert } from "../testing/asserts.ts";
 import { createRequire } from "./module.ts";
 
@@ -41,4 +41,10 @@ test(function requireBuiltin() {
 test(function requireIndexJS() {
   const { isIndex } = require_("./tests/cjs");
   assert(isIndex);
+});
+
+test(function requireNodeOs() {
+  const os = require_("os");
+  assert(os.arch);
+  assert(typeof os.arch() == "string");
 });

@@ -1,4 +1,4 @@
-import { test } from "../testing/mod.ts";
+const { test } = Deno;
 import { assert } from "../testing/asserts.ts";
 import * as util from "./util.ts";
 
@@ -57,7 +57,11 @@ test({
 
 test({
   name: "[util] isSymbol",
-  fn() {}
+  fn() {
+    assert(util.isSymbol(Symbol()));
+    assert(!util.isSymbol(123));
+    assert(!util.isSymbol("string"));
+  }
 });
 
 test({

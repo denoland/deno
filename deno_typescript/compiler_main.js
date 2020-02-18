@@ -144,7 +144,7 @@ class Host {
    * @param {ts.CompilerOptions} _options
    */
   getDefaultLibFileName(_options) {
-    return "lib.deno_core.d.ts";
+    return "lib.esnext.d.ts";
   }
 
   getDefaultLibLocation() {
@@ -184,8 +184,8 @@ class Host {
       fileName = moduleMap.get(fileName);
     }
 
-    const { sourceCode, moduleName } = dispatch("readFile", {
-      fileName,
+    const { sourceCode, moduleName } = dispatch("loadModule", {
+      moduleUrl: fileName,
       languageVersion,
       shouldCreateNewSourceFile
     });

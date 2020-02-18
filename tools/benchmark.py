@@ -20,13 +20,13 @@ import http_server
 
 # The list of the tuples of the benchmark name and arguments
 exec_time_benchmarks = [
-    ("hello", ["tests/002_hello.ts"]),
-    ("relative_import", ["tests/003_relative_import.ts"]),
-    ("error_001", ["tests/error_001.ts"]),
-    ("cold_hello", ["--reload", "tests/002_hello.ts"]),
-    ("cold_relative_import", ["--reload", "tests/003_relative_import.ts"]),
-    ("workers_startup", ["tests/workers_startup_bench.ts"]),
-    ("workers_round_robin", ["tests/workers_round_robin_bench.ts"]),
+    ("hello", ["cli/tests/002_hello.ts"]),
+    ("relative_import", ["cli/tests/003_relative_import.ts"]),
+    ("error_001", ["cli/tests/error_001.ts"]),
+    ("cold_hello", ["--reload", "cli/tests/002_hello.ts"]),
+    ("cold_relative_import", ["--reload", "cli/tests/003_relative_import.ts"]),
+    ("workers_startup", ["cli/tests/workers_startup_bench.ts"]),
+    ("workers_round_robin", ["cli/tests/workers_round_robin_bench.ts"]),
     ("text_decoder", ["cli/tests/text_decoder_perf.js"]),
     ("text_encoder", ["cli/tests/text_encoder_perf.js"]),
 ]
@@ -85,6 +85,10 @@ def strace_parse(summary_text):
     summary = {}
     # clear empty lines
     lines = list(filter(lambda x: x and x != "\n", summary_text.split("\n")))
+    # Filter out non-relevant lines. See the error log at
+    # https://github.com/denoland/deno/pull/3715/checks?check_run_id=397365887
+    # This is checked in tools/testdata/strace_summary2.out
+    lines = [x for x in lines if x.find("detached ...") == -1]
     if len(lines) < 4:
         return {}  # malformed summary
     lines, total_line = lines[2:-2], lines[-1]
@@ -115,7 +119,14 @@ def strace_parse(summary_text):
 
 
 def get_strace_summary(test_args):
-    return strace_parse(get_strace_summary_text(test_args))
+    s = get_strace_summary_text(test_args)
+    try:
+        return strace_parse(s)
+    except ValueError:
+        print "error parsing strace"
+        print "----- <strace> -------"
+        print s
+        print "----- </strace> ------"
 
 
 def run_throughput(deno_exe):
@@ -132,7 +143,7 @@ def run_strace_benchmarks(deno_exe, new_data):
     thread_count = {}
     syscall_count = {}
     for (name, args) in exec_time_benchmarks:
-        s = get_strace_summary([deno_exe, "run"] + args)
+        s = get_strace_summary([deno_exe] + args)
         thread_count[name] = s["clone"]["calls"] + 1
         syscall_count[name] = s["total"]["calls"]
     new_data["thread_count"] = thread_count
@@ -151,7 +162,7 @@ def find_max_mem_in_bytes(time_v_output):
 def run_max_mem_benchmark(deno_exe):
     results = {}
     for (name, args) in exec_time_benchmarks:
-        cmd = ["/usr/bin/time", "-v", deno_exe, "run"] + args
+        cmd = ["/usr/bin/time", "-v", deno_exe] + args
         try:
             out = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError:
@@ -168,8 +179,7 @@ def run_exec_time(deno_exe, build_dir):
         hyperfine_exe, "--ignore-failure", "--export-json", benchmark_file,
         "--warmup", "3"
     ] + [
-        deno_exe + " run " + " ".join(args)
-        for [_, args] in exec_time_benchmarks
+        deno_exe + " " + " ".join(args) for [_, args] in exec_time_benchmarks
     ])
     hyperfine_results = read_json(benchmark_file)
     results = {}

@@ -1,18 +1,15 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::fs as deno_fs;
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::*;
 use dlopen::symbor::Library;
 use std::collections::HashMap;
 use std::ffi::OsStr;
-use std::sync::Arc;
+use std::path::Path;
+use std::rc::Rc;
 
-pub fn init(
-  i: &mut Isolate,
-  s: &ThreadSafeState,
-  r: Arc<deno_core::OpRegistry>,
-) {
+pub fn init(i: &mut Isolate, s: &State, r: Rc<deno_core::OpRegistry>) {
   let r_ = r;
   i.register_op(
     "open_plugin",
@@ -32,8 +29,6 @@ struct PluginResource {
   lib: Library,
   ops: HashMap<String, OpId>,
 }
-
-impl Resource for PluginResource {}
 
 struct InitContext {
   ops: HashMap<String, Box<OpDispatcher>>,
@@ -56,24 +51,29 @@ struct OpenPluginArgs {
 }
 
 pub fn op_open_plugin(
-  registry: &Arc<deno_core::OpRegistry>,
-  state: &ThreadSafeState,
+  registry: &Rc<deno_core::OpRegistry>,
+  state: &State,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: OpenPluginArgs = serde_json::from_value(args)?;
-  let (filename, filename_) = deno_fs::resolve_from_cwd(&args.filename)?;
+  let filename = deno_fs::resolve_from_cwd(Path::new(&args.filename))?;
 
-  state.check_plugin(&filename_)?;
+  state.check_plugin(&filename)?;
 
   let lib = open_plugin(filename)?;
   let plugin_resource = PluginResource {
     lib,
     ops: HashMap::new(),
   };
-  let mut table = state.lock_resource_table();
-  let rid = table.add("plugin", Box::new(plugin_resource));
-  let plugin_resource = table.get_mut::<PluginResource>(rid).unwrap();
+  let mut state_ = state.borrow_mut();
+  let rid = state_
+    .resource_table
+    .add("plugin", Box::new(plugin_resource));
+  let plugin_resource = state_
+    .resource_table
+    .get_mut::<PluginResource>(rid)
+    .unwrap();
 
   let init_fn = *unsafe {
     plugin_resource

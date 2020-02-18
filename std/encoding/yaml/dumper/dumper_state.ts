@@ -1,7 +1,7 @@
 // Ported from js-yaml v3.13.1:
 // https://github.com/nodeca/js-yaml/commit/665aadda42349dcae869f12040d9b10ef18d12da
 // Copyright 2011-2015 by Vitaly Puzrin. All rights reserved. MIT license.
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { Schema, SchemaDefinition } from "../schema.ts";
 import { State } from "../state.ts";
@@ -62,10 +62,13 @@ export interface DumperStateOptions {
   /** specifies a schema to use. */
   schema?: SchemaDefinition;
   /**
-   * if true, sort keys when dumping YAML.
+   * If true, sort keys when dumping YAML in ascending, ASCII character order.
    * If a function, use the function to sort the keys. (default: false)
+   * If a function is specified, the function must return a negative value
+   * if first argument is less than second argument, zero if they're equal
+   * and a positive value otherwise.
    */
-  sortKeys?: boolean | ((a: Any, b: Any) => number);
+  sortKeys?: boolean | ((a: string, b: string) => number);
   /** set max line width. (default: 80) */
   lineWidth?: number;
   /**

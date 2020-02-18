@@ -9,6 +9,7 @@ use deno_core::ErrBox;
 use rand;
 use rand::Rng;
 use url::Url;
+use walkdir::WalkDir;
 
 #[cfg(unix)]
 use nix::unistd::{chown as unix_chown, Gid, Uid};
@@ -126,14 +127,14 @@ pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), ErrBox> {
 pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), ErrBox> {
   // Noop
   // TODO: implement chown for Windows
-  Err(crate::deno_error::op_not_implemented())
+  Err(crate::deno_error::other_error(
+    "Op not implemented".to_string(),
+  ))
 }
 
-pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), ErrBox> {
-  let candidate_path = Path::new(path);
-
-  let resolved_path = if candidate_path.is_absolute() {
-    candidate_path.to_owned()
+pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, ErrBox> {
+  let resolved_path = if path.is_absolute() {
+    path.to_owned()
   } else {
     let cwd = std::env::current_dir().unwrap();
     cwd.join(path)
@@ -155,9 +156,7 @@ pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), ErrBox> {
     .to_file_path()
     .expect("URL from a path should contain a valid path");
 
-  let path_string = normalized_path.to_str().unwrap().to_string();
-
-  Ok((normalized_path, path_string))
+  Ok(normalized_path)
 }
 
 #[cfg(test)]
@@ -167,19 +166,19 @@ mod tests {
   #[test]
   fn resolve_from_cwd_child() {
     let cwd = std::env::current_dir().unwrap();
-    assert_eq!(resolve_from_cwd("a").unwrap().0, cwd.join("a"));
+    assert_eq!(resolve_from_cwd(Path::new("a")).unwrap(), cwd.join("a"));
   }
 
   #[test]
   fn resolve_from_cwd_dot() {
     let cwd = std::env::current_dir().unwrap();
-    assert_eq!(resolve_from_cwd(".").unwrap().0, cwd);
+    assert_eq!(resolve_from_cwd(Path::new(".")).unwrap(), cwd);
   }
 
   #[test]
   fn resolve_from_cwd_parent() {
     let cwd = std::env::current_dir().unwrap();
-    assert_eq!(resolve_from_cwd("a/..").unwrap().0, cwd);
+    assert_eq!(resolve_from_cwd(Path::new("a/..")).unwrap(), cwd);
   }
 
   // TODO: Get a good expected value here for Windows.
@@ -187,6 +186,20 @@ mod tests {
   #[test]
   fn resolve_from_cwd_absolute() {
     let expected = Path::new("/a");
-    assert_eq!(resolve_from_cwd("/a").unwrap().0, expected);
+    assert_eq!(resolve_from_cwd(expected).unwrap(), expected);
   }
+}
+
+pub fn files_in_subtree<F>(root: PathBuf, filter: F) -> Vec<PathBuf>
+where
+  F: Fn(&Path) -> bool,
+{
+  assert!(root.is_dir());
+
+  WalkDir::new(root)
+    .into_iter()
+    .filter_map(|e| e.ok())
+    .map(|e| e.path().to_owned())
+    .filter(|p| if p.is_dir() { false } else { filter(&p) })
+    .collect()
 }

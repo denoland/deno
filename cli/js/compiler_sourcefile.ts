@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import {
   getMappedModuleName,
@@ -44,7 +44,9 @@ function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
       return ts.Extension.Js;
     case MediaType.Unknown:
     default:
-      throw TypeError("Cannot resolve extension.");
+      throw TypeError(
+        `Cannot resolve extension for "${fileName}" with mediaType "${MediaType[mediaType]}".`
+      );
   }
 }
 
@@ -61,7 +63,7 @@ export class SourceFile {
 
   mediaType!: MediaType;
   processed = false;
-  sourceCode!: string;
+  sourceCode?: string;
   tsSourceFile?: ts.SourceFile;
   url!: string;
 
@@ -98,7 +100,12 @@ export class SourceFile {
       log(`Skipping imports for "${this.filename}"`);
       return [];
     }
-    const preProcessedFileInfo = ts.preProcessFile(this.sourceCode, true, true);
+    const preProcessedFileInfo = ts.preProcessFile(
+      this.sourceCode,
+      true,
+      this.mediaType === MediaType.JavaScript ||
+        this.mediaType === MediaType.JSX
+    );
     this.processed = true;
     const files = (this.importedFiles = [] as Array<[string, string]>);
 

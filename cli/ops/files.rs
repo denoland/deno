@@ -6,15 +6,16 @@ use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::*;
 use futures::future::FutureExt;
 use std;
 use std::convert::From;
 use std::io::SeekFrom;
+use std::path::Path;
 use tokio;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("open", s.core_op(json_op(s.stateful_op(op_open))));
   i.register_op("close", s.core_op(json_op(s.stateful_op(op_close))));
   i.register_op("seek", s.core_op(json_op(s.stateful_op(op_seek))));
@@ -25,73 +26,114 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 struct OpenArgs {
   promise_id: Option<u64>,
   filename: String,
-  mode: String,
+  options: Option<OpenOptions>,
+  mode: Option<String>,
+}
+
+#[derive(Deserialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+struct OpenOptions {
+  read: bool,
+  write: bool,
+  create: bool,
+  truncate: bool,
+  append: bool,
+  create_new: bool,
 }
 
 fn op_open(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: OpenArgs = serde_json::from_value(args)?;
-  let (filename, filename_) = deno_fs::resolve_from_cwd(&args.filename)?;
-  let mode = args.mode.as_ref();
+  let filename = deno_fs::resolve_from_cwd(Path::new(&args.filename))?;
   let state_ = state.clone();
   let mut open_options = tokio::fs::OpenOptions::new();
 
-  match mode {
-    "r" => {
-      open_options.read(true);
+  if let Some(options) = args.options {
+    if options.read {
+      state.check_read(&filename)?;
     }
-    "r+" => {
-      open_options.read(true).write(true);
-    }
-    "w" => {
-      open_options.create(true).write(true).truncate(true);
-    }
-    "w+" => {
-      open_options
-        .read(true)
-        .create(true)
-        .write(true)
-        .truncate(true);
-    }
-    "a" => {
-      open_options.create(true).append(true);
-    }
-    "a+" => {
-      open_options.read(true).create(true).append(true);
-    }
-    "x" => {
-      open_options.create_new(true).write(true);
-    }
-    "x+" => {
-      open_options.create_new(true).read(true).write(true);
-    }
-    &_ => {
-      panic!("Unknown file open mode.");
-    }
-  }
 
-  match mode {
-    "r" => {
-      state.check_read(&filename_)?;
+    if options.write || options.append {
+      state.check_write(&filename)?;
     }
-    "w" | "a" | "x" => {
-      state.check_write(&filename_)?;
+
+    open_options
+      .read(options.read)
+      .create(options.create)
+      .write(options.write)
+      .truncate(options.truncate)
+      .append(options.append)
+      .create_new(options.create_new);
+  } else if let Some(mode) = args.mode {
+    let mode = mode.as_ref();
+    match mode {
+      "r" => {
+        state.check_read(&filename)?;
+      }
+      "w" | "a" | "x" => {
+        state.check_write(&filename)?;
+      }
+      &_ => {
+        state.check_read(&filename)?;
+        state.check_write(&filename)?;
+      }
+    };
+
+    match mode {
+      "r" => {
+        open_options.read(true);
+      }
+      "r+" => {
+        open_options.read(true).write(true);
+      }
+      "w" => {
+        open_options.create(true).write(true).truncate(true);
+      }
+      "w+" => {
+        open_options
+          .read(true)
+          .create(true)
+          .write(true)
+          .truncate(true);
+      }
+      "a" => {
+        open_options.create(true).append(true);
+      }
+      "a+" => {
+        open_options.read(true).create(true).append(true);
+      }
+      "x" => {
+        open_options.create_new(true).write(true);
+      }
+      "x+" => {
+        open_options.create_new(true).read(true).write(true);
+      }
+      &_ => {
+        return Err(ErrBox::from(DenoError::new(
+          ErrorKind::Other,
+          "Unknown open mode.".to_string(),
+        )));
+      }
     }
-    &_ => {
-      state.check_read(&filename_)?;
-      state.check_write(&filename_)?;
-    }
-  }
+  } else {
+    return Err(ErrBox::from(DenoError::new(
+      ErrorKind::Other,
+      "Open requires either mode or options.".to_string(),
+    )));
+  };
 
   let is_sync = args.promise_id.is_none();
 
   let fut = async move {
     let fs_file = open_options.open(filename).await?;
-    let mut table = state_.lock_resource_table();
-    let rid = table.add("fsFile", Box::new(StreamResource::FsFile(fs_file)));
+    let mut state = state_.borrow_mut();
+    let rid = state
+      .resource_table
+      .add("fsFile", Box::new(StreamResource::FsFile(fs_file)));
     Ok(json!(rid))
   };
 
@@ -99,7 +141,7 @@ fn op_open(
     let buf = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(buf))
   } else {
-    Ok(JsonOp::Async(fut.boxed()))
+    Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
 
@@ -109,14 +151,17 @@ struct CloseArgs {
 }
 
 fn op_close(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: CloseArgs = serde_json::from_value(args)?;
 
-  let mut table = state.lock_resource_table();
-  table.close(args.rid as u32).ok_or_else(bad_resource)?;
+  let mut state = state.borrow_mut();
+  state
+    .resource_table
+    .close(args.rid as u32)
+    .ok_or_else(bad_resource)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -130,9 +175,9 @@ struct SeekArgs {
 }
 
 fn op_seek(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: SeekArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -151,13 +196,14 @@ fn op_seek(
     }
   };
 
-  let mut table = state.lock_resource_table();
-  let resource = table
-    .get_mut::<StreamResource>(rid)
+  let state = state.borrow();
+  let resource = state
+    .resource_table
+    .get::<StreamResource>(rid)
     .ok_or_else(bad_resource)?;
 
   let tokio_file = match resource {
-    StreamResource::FsFile(ref mut file) => file,
+    StreamResource::FsFile(ref file) => file,
     _ => return Err(bad_resource()),
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
@@ -171,6 +217,6 @@ fn op_seek(
     let buf = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(buf))
   } else {
-    Ok(JsonOp::Async(fut.boxed()))
+    Ok(JsonOp::Async(fut.boxed_local()))
   }
 }

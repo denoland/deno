@@ -13,7 +13,7 @@ import third_party
 #   "deno_tcp" was once called "deno"
 #   "deno_http" was once called "deno_net_http"
 
-DURATION = "10s"
+DURATION = "20s"
 
 LAST_PORT = 4544
 
@@ -35,28 +35,17 @@ def get_port(port=None):
 def deno_tcp(deno_exe):
     port = get_port()
     deno_cmd = [
-        deno_exe, "run", "--allow-net", "tools/deno_tcp.ts", "--",
+        deno_exe, "run", "--allow-net", "tools/deno_tcp.ts",
         server_addr(port)
     ]
     print "http_benchmark testing DENO tcp."
     return run(deno_cmd, port)
 
 
-def deno_tcp_current_thread(deno_exe):
-    port = get_port()
-    deno_cmd = [
-        deno_exe, "run", "--current-thread", "--allow-net",
-        "tools/deno_tcp.ts", "--",
-        server_addr(port)
-    ]
-    print "http_benchmark testing DENO tcp (single-thread)."
-    return run(deno_cmd, port)
-
-
 def deno_http(deno_exe):
     port = get_port()
     deno_cmd = [
-        deno_exe, "run", "--allow-net", "std/http/http_bench.ts", "--",
+        deno_exe, "run", "--allow-net", "std/http/http_bench.ts",
         server_addr(port)
     ]
     print "http_benchmark testing DENO using net/http."
@@ -67,7 +56,7 @@ def deno_tcp_proxy(deno_exe, hyper_hello_exe):
     port = get_port()
     origin_port = get_port()
     deno_cmd = [
-        deno_exe, "run", "--allow-net", "tools/deno_tcp_proxy.ts", "--",
+        deno_exe, "run", "--allow-net", "tools/deno_tcp_proxy.ts",
         server_addr(port),
         server_addr(origin_port)
     ]
@@ -82,7 +71,7 @@ def deno_http_proxy(deno_exe, hyper_hello_exe):
     port = get_port()
     origin_port = get_port()
     deno_cmd = [
-        deno_exe, "run", "--allow-net", "tools/deno_http_proxy.ts", "--",
+        deno_exe, "run", "--allow-net", "tools/deno_http_proxy.ts",
         server_addr(port),
         server_addr(origin_port)
     ]
@@ -93,14 +82,9 @@ def deno_http_proxy(deno_exe, hyper_hello_exe):
         origin_cmd=http_proxy_origin(hyper_hello_exe, origin_port))
 
 
-def deno_core_single(exe):
-    print "http_benchmark testing deno_core_single"
-    return run([exe, "--single-thread"], 4544)
-
-
-def deno_core_multi(exe):
-    print "http_benchmark testing deno_core_multi"
-    return run([exe, "--multi-thread"], 4544)
+def deno_core_http_bench(exe):
+    print "http_benchmark testing deno_core_http_bench"
+    return run([exe], 4544)
 
 
 def node_http():
@@ -148,19 +132,18 @@ def hyper_http(hyper_hello_exe):
 
 def http_benchmark(build_dir):
     hyper_hello_exe = os.path.join(build_dir, "hyper_hello")
-    core_http_bench_exe = os.path.join(build_dir,
-                                       "examples/deno_core_http_bench")
+    deno_core_http_bench_exe = os.path.join(build_dir,
+                                            "examples/deno_core_http_bench")
     deno_exe = os.path.join(build_dir, "deno")
     return {
         # "deno_tcp" was once called "deno"
         "deno_tcp": deno_tcp(deno_exe),
-        "deno_tcp_current_thread": deno_tcp_current_thread(deno_exe),
         # "deno_http" was once called "deno_net_http"
         "deno_http": deno_http(deno_exe),
         "deno_proxy": deno_http_proxy(deno_exe, hyper_hello_exe),
         "deno_proxy_tcp": deno_tcp_proxy(deno_exe, hyper_hello_exe),
-        "deno_core_single": deno_core_single(core_http_bench_exe),
-        "deno_core_multi": deno_core_multi(core_http_bench_exe),
+        # "deno_core_http_bench" was once called "deno_core_single"
+        "deno_core_http_bench": deno_core_http_bench(deno_core_http_bench_exe),
         # "node_http" was once called "node"
         "node_http": node_http(),
         "node_proxy": node_http_proxy(hyper_hello_exe),

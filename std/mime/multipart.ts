@@ -8,13 +8,35 @@ type Writer = Deno.Writer;
 import { equal, findIndex, findLastIndex, hasPrefix } from "../bytes/mod.ts";
 import { copyN } from "../io/ioutil.ts";
 import { MultiReader } from "../io/readers.ts";
-import { FormFile } from "../multipart/formfile.ts";
 import { extname } from "../path/mod.ts";
 import { tempFile } from "../io/util.ts";
 import { BufReader, BufWriter, UnexpectedEOFError } from "../io/bufio.ts";
 import { encoder } from "../strings/mod.ts";
-import { assertStrictEq } from "../testing/asserts.ts";
+import { assertStrictEq, assert } from "../testing/asserts.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
+import { hasOwnProperty } from "../util/has_own_property.ts";
+
+/** FormFile object */
+export interface FormFile {
+  /** filename  */
+  filename: string;
+  /** content-type header value of file */
+  type: string;
+  /** byte size of file */
+  size: number;
+  /** in-memory content of file. Either content or tempfile is set  */
+  content?: Uint8Array;
+  /** temporal file path.
+   * Set if file size is bigger than specified max-memory size at reading form
+   * */
+  tempfile?: string;
+}
+
+/** Type guard for FormFile */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function isFormFile(x: any): x is FormFile {
+  return hasOwnProperty(x, "filename") && hasOwnProperty(x, "type");
+}
 
 function randomBoundary(): string {
   let boundary = "--------------------------";
@@ -183,7 +205,8 @@ class PartReader implements Reader, Closer {
     if (this.contentDispositionParams) return this.contentDispositionParams;
     const cd = this.headers.get("content-disposition");
     const params: { [key: string]: string } = {};
-    const comps = cd!.split(";");
+    assert(cd != null, "content-disposition must be set");
+    const comps = cd.split(";");
     this.contentDisposition = comps[0];
     comps
       .slice(1)
@@ -243,10 +266,12 @@ export class MultipartReader {
   /** Read all form data from stream.
    * If total size of stored data in memory exceed maxMemory,
    * overflowed file data will be written to temporal files.
-   * String field values are never written to files */
+   * String field values are never written to files.
+   * null value means parsing or writing to file was failed in some reason.
+   *  */
   async readForm(
     maxMemory: number
-  ): Promise<{ [key: string]: string | FormFile }> {
+  ): Promise<{ [key: string]: null | string | FormFile }> {
     const result = Object.create(null);
     let maxValueBytes = maxMemory + (10 << 20);
     const buf = new Buffer(new Uint8Array(maxValueBytes));
@@ -271,8 +296,10 @@ export class MultipartReader {
         continue;
       }
       // file
-      let formFile: FormFile;
+      let formFile: FormFile | null = null;
       const n = await copy(buf, p);
+      const contentType = p.headers.get("content-type");
+      assert(contentType != null, "content-type must be set");
       if (n > maxMemory) {
         // too big, write to disk and flush buffer
         const ext = extname(p.fileName);
@@ -289,7 +316,7 @@ export class MultipartReader {
           file.close();
           formFile = {
             filename: p.fileName,
-            type: p.headers.get("content-type")!,
+            type: contentType,
             tempfile: filepath,
             size
           };
@@ -299,14 +326,14 @@ export class MultipartReader {
       } else {
         formFile = {
           filename: p.fileName,
-          type: p.headers.get("content-type")!,
+          type: contentType,
           content: buf.bytes(),
           size: buf.length
         };
         maxMemory -= n;
         maxValueBytes -= n;
       }
-      result[p.formName] = formFile!;
+      result[p.formName] = formFile;
     }
     return result;
   }

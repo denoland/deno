@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { assert, assertEquals, test } from "./test_util.ts";
 
@@ -78,15 +78,15 @@ test(async function bundleApiSources() {
     "/bar.ts": `export const bar = "bar";\n`
   });
   assert(diagnostics == null);
-  assert(actual.includes(`instantiate("foo")`));
-  assert(actual.includes(`__rootExports["bar"]`));
+  assert(actual.includes(`__inst("foo")`));
+  assert(actual.includes(`__exp["bar"]`));
 });
 
 test(async function bundleApiNoSources() {
   const [diagnostics, actual] = await bundle("./cli/tests/subdir/mod1.ts");
   assert(diagnostics == null);
-  assert(actual.includes(`instantiate("mod1")`));
-  assert(actual.includes(`__rootExports["printHello3"]`));
+  assert(actual.includes(`__inst("mod1")`));
+  assert(actual.includes(`__exp["printHello3"]`));
 });
 
 test(async function bundleApiConfig() {
@@ -102,4 +102,12 @@ test(async function bundleApiConfig() {
   );
   assert(diagnostics == null);
   assert(!actual.includes(`random`));
+});
+
+test(async function diagnosticsTest() {
+  const [diagnostics] = await compile("/foo.ts", {
+    "/foo.ts": `document.getElementById("foo");`
+  });
+  assert(Array.isArray(diagnostics));
+  assert(diagnostics.length === 1);
 });

@@ -5,14 +5,9 @@ in Deno.
 
 ## Usage
 
-The module exports a `test` function which is the test harness in Deno. It
-accepts either a function (including async functions) or an object which
-contains a `name` property and a `fn` property. When running tests and
-outputting the results, the name of the past function is used, or if the object
-is passed, the `name` property is used to identify the test. If the assertion is
-false an `AssertionError` will be thrown.
-
-Asserts are exposed in `testing/asserts.ts` module.
+`testing/asserts.ts` module provides range of assertion helpers. If the
+assertion is false an `AssertionError` will be thrown which will result in
+pretty-printed diff of failing assertion.
 
 - `equal()` - Deep comparison function, where `actual` and `expected` are
   compared deeply, and if they vary, `equal` returns `false`.
@@ -39,22 +34,12 @@ Asserts are exposed in `testing/asserts.ts` module.
 - `unimplemented()` - Use this to stub out methods that will throw when invoked
 - `unreachable()` - Used to assert unreachable code
 
-`runTests()` executes the declared tests. It accepts a `RunOptions` parameter:
-
-- parallel : Execute tests in a parallel way.
-- exitOnFail : if one test fails, test will throw an error and stop the tests.
-  If not all tests will be processed.
-
 Basic usage:
 
 ```ts
-import {
-  assertEquals,
-  runTests,
-  test
-} from "https://deno.land/std/testing/mod.ts";
+import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 
-test({
+Deno.test({
   name: "testing example",
   fn(): void {
     assertEquals("world", "world");
@@ -62,13 +47,13 @@ test({
   }
 });
 
-runTests();
+await Deno.runTests();
 ```
 
 Short syntax (named function instead of object):
 
 ```ts
-test(function example(): void {
+Deno.test(function example(): void {
   assertEquals("world", "world");
   assertEquals({ hello: "world" }, { hello: "world" });
 });
@@ -77,14 +62,14 @@ test(function example(): void {
 Using `assertStrictEq()`:
 
 ```ts
-test(function isStrictlyEqual(): void {
+Deno.test(function isStrictlyEqual(): void {
   const a = {};
   const b = a;
   assertStrictEq(a, b);
 });
 
 // This test fails
-test(function isNotStrictlyEqual(): void {
+Deno.test(function isNotStrictlyEqual(): void {
   const a = {};
   const b = {};
   assertStrictEq(a, b);
@@ -94,7 +79,7 @@ test(function isNotStrictlyEqual(): void {
 Using `assertThrows()`:
 
 ```ts
-test(function doesThrow(): void {
+Deno.test(function doesThrow(): void {
   assertThrows((): void => {
     throw new TypeError("hello world!");
   });
@@ -111,7 +96,7 @@ test(function doesThrow(): void {
 });
 
 // This test will not pass
-test(function fails(): void {
+Deno.test(function fails(): void {
   assertThrows((): void => {
     console.log("Hello world");
   });
@@ -121,7 +106,7 @@ test(function fails(): void {
 Using `assertThrowsAsync()`:
 
 ```ts
-test(async function doesThrow(): Promise<void> {
+Deno.test(async function doesThrow(): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       throw new TypeError("hello world!");
@@ -145,7 +130,7 @@ test(async function doesThrow(): Promise<void> {
 });
 
 // This test will not pass
-test(async function fails(): Promise<void> {
+Deno.test(async function fails(): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       console.log("Hello world");

@@ -1,18 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import * as dispatch from "./dispatch.ts";
-import { sendSync } from "./dispatch_json.ts";
+import { SYSTEM_LOADER } from "./compiler_bootstrap.ts";
 import {
   assert,
   commonPath,
   normalizeString,
   CHAR_FORWARD_SLASH
 } from "./util.ts";
-
-const BUNDLE_LOADER = "bundle_loader.js";
-
-/** A loader of bundled modules that we will inline into any bundle outputs. */
-let bundleLoader: string;
 
 /** Local state of what the root exports are of a root module. */
 let rootExports: string[] | undefined;
@@ -40,12 +34,6 @@ export function buildBundle(
   data: string,
   sourceFiles: readonly ts.SourceFile[]
 ): string {
-  // we can only do this once we are bootstrapped and easiest way to do it is
-  // inline here
-  if (!bundleLoader) {
-    bundleLoader = sendSync(dispatch.OP_FETCH_ASSET, { name: BUNDLE_LOADER });
-  }
-
   // when outputting to AMD and a single outfile, TypeScript makes up the module
   // specifiers which are used to define the modules, and doesn't expose them
   // publicly, so we have to try to replicate
@@ -56,18 +44,18 @@ export function buildBundle(
     .replace(/\.\w+$/i, "");
   let instantiate: string;
   if (rootExports && rootExports.length) {
-    instantiate = `const __rootExports = instantiate("${rootName}");\n`;
+    instantiate = `const __exp = await __inst("${rootName}");\n`;
     for (const rootExport of rootExports) {
       if (rootExport === "default") {
-        instantiate += `export default __rootExports["${rootExport}"];\n`;
+        instantiate += `export default __exp["${rootExport}"];\n`;
       } else {
-        instantiate += `export const ${rootExport} = __rootExports["${rootExport}"];\n`;
+        instantiate += `export const ${rootExport} = __exp["${rootExport}"];\n`;
       }
     }
   } else {
-    instantiate = `instantiate("${rootName}");\n`;
+    instantiate = `await __inst("${rootName}");\n`;
   }
-  return `${bundleLoader}\n${data}\n${instantiate}`;
+  return `${SYSTEM_LOADER}\n${data}\n${instantiate}`;
 }
 
 /** Set the rootExports which will by the `emitBundle()` */
@@ -92,6 +80,7 @@ export function setRootExports(program: ts.Program, rootModule: string): void {
     // out, so inspecting SymbolFlags that might be present that are type only
     .filter(
       sym =>
+        sym.flags & ts.SymbolFlags.Class ||
         !(
           sym.flags & ts.SymbolFlags.Interface ||
           sym.flags & ts.SymbolFlags.TypeLiteral ||

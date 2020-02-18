@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test } from "../testing/mod.ts";
 import {
   assertEquals,
   assertThrowsAsync,
@@ -10,7 +9,7 @@ import { readJson, readJsonSync } from "./read_json.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-test(async function readJsonFileNotExists(): Promise<void> {
+Deno.test(async function readJsonFileNotExists(): Promise<void> {
   const emptyJsonFile = path.join(testdataDir, "json_not_exists.json");
 
   await assertThrowsAsync(
@@ -20,7 +19,7 @@ test(async function readJsonFileNotExists(): Promise<void> {
   );
 });
 
-test(async function readEmptyJsonFile(): Promise<void> {
+Deno.test(async function readEmptyJsonFile(): Promise<void> {
   const emptyJsonFile = path.join(testdataDir, "json_empty.json");
 
   await assertThrowsAsync(
@@ -30,7 +29,7 @@ test(async function readEmptyJsonFile(): Promise<void> {
   );
 });
 
-test(async function readInvalidJsonFile(): Promise<void> {
+Deno.test(async function readInvalidJsonFile(): Promise<void> {
   const invalidJsonFile = path.join(testdataDir, "json_invalid.json");
 
   await assertThrowsAsync(
@@ -40,7 +39,7 @@ test(async function readInvalidJsonFile(): Promise<void> {
   );
 });
 
-test(async function readValidArrayJsonFile(): Promise<void> {
+Deno.test(async function readValidArrayJsonFile(): Promise<void> {
   const invalidJsonFile = path.join(testdataDir, "json_valid_array.json");
 
   const json = await readJson(invalidJsonFile);
@@ -48,7 +47,7 @@ test(async function readValidArrayJsonFile(): Promise<void> {
   assertEquals(json, ["1", "2", "3"]);
 });
 
-test(async function readValidObjJsonFile(): Promise<void> {
+Deno.test(async function readValidObjJsonFile(): Promise<void> {
   const invalidJsonFile = path.join(testdataDir, "json_valid_obj.json");
 
   const json = await readJson(invalidJsonFile);
@@ -56,13 +55,13 @@ test(async function readValidObjJsonFile(): Promise<void> {
   assertEquals(json, { key1: "value1", key2: "value2" });
 });
 
-test(async function readValidObjJsonFileWithRelativePath(): Promise<void> {
+Deno.test(async function readValidObjJsonFileWithRelativePath(): Promise<void> {
   const json = await readJson("./fs/testdata/json_valid_obj.json");
 
   assertEquals(json, { key1: "value1", key2: "value2" });
 });
 
-test(function readJsonFileNotExistsSync(): void {
+Deno.test(function readJsonFileNotExistsSync(): void {
   const emptyJsonFile = path.join(testdataDir, "json_not_exists.json");
 
   assertThrows((): void => {
@@ -70,7 +69,7 @@ test(function readJsonFileNotExistsSync(): void {
   });
 });
 
-test(function readEmptyJsonFileSync(): void {
+Deno.test(function readEmptyJsonFileSync(): void {
   const emptyJsonFile = path.join(testdataDir, "json_empty.json");
 
   assertThrows((): void => {
@@ -78,7 +77,7 @@ test(function readEmptyJsonFileSync(): void {
   });
 });
 
-test(function readInvalidJsonFile(): void {
+Deno.test(function readInvalidJsonFile(): void {
   const invalidJsonFile = path.join(testdataDir, "json_invalid.json");
 
   assertThrows((): void => {
@@ -86,7 +85,7 @@ test(function readInvalidJsonFile(): void {
   });
 });
 
-test(function readValidArrayJsonFileSync(): void {
+Deno.test(function readValidArrayJsonFileSync(): void {
   const invalidJsonFile = path.join(testdataDir, "json_valid_array.json");
 
   const json = readJsonSync(invalidJsonFile);
@@ -94,7 +93,7 @@ test(function readValidArrayJsonFileSync(): void {
   assertEquals(json, ["1", "2", "3"]);
 });
 
-test(function readValidObjJsonFileSync(): void {
+Deno.test(function readValidObjJsonFileSync(): void {
   const invalidJsonFile = path.join(testdataDir, "json_valid_obj.json");
 
   const json = readJsonSync(invalidJsonFile);
@@ -102,7 +101,7 @@ test(function readValidObjJsonFileSync(): void {
   assertEquals(json, { key1: "value1", key2: "value2" });
 });
 
-test(function readValidObjJsonFileSyncWithRelativePath(): void {
+Deno.test(function readValidObjJsonFileSyncWithRelativePath(): void {
   const json = readJsonSync("./fs/testdata/json_valid_obj.json");
 
   assertEquals(json, { key1: "value1", key2: "value2" });

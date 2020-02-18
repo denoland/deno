@@ -2,15 +2,14 @@
 import { test, testPerm, assert, assertEquals } from "./test_util.ts";
 import { BufWriter, BufReader } from "../../std/io/bufio.ts";
 import { TextProtoReader } from "../../std/textproto/mod.ts";
-import { runIfMain } from "../../std/testing/mod.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-test(async function dialTLSNoPerm(): Promise<void> {
+test(async function connectTLSNoPerm(): Promise<void> {
   let err;
   try {
-    await Deno.dialTLS({ hostname: "github.com", port: 443 });
+    await Deno.connectTLS({ hostname: "github.com", port: 443 });
   } catch (e) {
     err = e;
   }
@@ -18,10 +17,10 @@ test(async function dialTLSNoPerm(): Promise<void> {
   assertEquals(err.name, "PermissionDenied");
 });
 
-test(async function dialTLSCertFileNoReadPerm(): Promise<void> {
+test(async function connectTLSCertFileNoReadPerm(): Promise<void> {
   let err;
   try {
-    await Deno.dialTLS({
+    await Deno.connectTLS({
       hostname: "github.com",
       port: 443,
       certFile: "cli/tests/tls/RootCA.crt"
@@ -173,7 +172,7 @@ testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
     }
   );
 
-  const conn = await Deno.dialTLS({
+  const conn = await Deno.connectTLS({
     hostname,
     port,
     certFile: "cli/tests/tls/RootCA.pem"
@@ -202,5 +201,3 @@ testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
   assertEquals(decoder.decode(bodyBuf), "Hello World\n");
   conn.close();
 });
-
-runIfMain(import.meta);

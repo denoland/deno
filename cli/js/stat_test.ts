@@ -12,7 +12,7 @@ testPerm({ read: true }, async function statSyncSuccess(): Promise<void> {
   assert(modulesInfo.isDirectory());
   assert(!modulesInfo.isSymlink());
 
-  const testsInfo = Deno.statSync("tests");
+  const testsInfo = Deno.statSync("cli/tests");
   assert(testsInfo.isDirectory());
   assert(!testsInfo.isSymlink());
 });
@@ -96,7 +96,7 @@ testPerm({ read: true }, async function statSuccess(): Promise<void> {
   assert(modulesInfo.isDirectory());
   assert(!modulesInfo.isSymlink());
 
-  const i = await Deno.stat("tests");
+  const i = await Deno.stat("cli/tests");
   assert(i.isDirectory());
   assert(!i.isSymlink());
 });
@@ -170,3 +170,53 @@ testPerm({ read: true }, async function lstatNotFound(): Promise<void> {
   assert(caughtError);
   assertEquals(badInfo, undefined);
 });
+
+const isWindows = Deno.build.os === "win";
+
+// OS dependent tests
+if (isWindows) {
+  testPerm(
+    { read: true, write: true },
+    async function statNoUnixFields(): Promise<void> {
+      const enc = new TextEncoder();
+      const data = enc.encode("Hello");
+      const tempDir = Deno.makeTempDirSync();
+      const filename = tempDir + "/test.txt";
+      Deno.writeFileSync(filename, data, { perm: 0o666 });
+      const s = Deno.statSync(filename);
+      assert(s.dev === null);
+      assert(s.ino === null);
+      assert(s.mode === null);
+      assert(s.nlink === null);
+      assert(s.uid === null);
+      assert(s.gid === null);
+      assert(s.rdev === null);
+      assert(s.blksize === null);
+      assert(s.blocks === null);
+    }
+  );
+} else {
+  testPerm(
+    { read: true, write: true },
+    async function statUnixFields(): Promise<void> {
+      const enc = new TextEncoder();
+      const data = enc.encode("Hello");
+      const tempDir = Deno.makeTempDirSync();
+      const filename = tempDir + "/test.txt";
+      const filename2 = tempDir + "/test2.txt";
+      Deno.writeFileSync(filename, data, { perm: 0o666 });
+      // Create a link
+      Deno.linkSync(filename, filename2);
+      const s = Deno.statSync(filename);
+      assert(s.dev !== null);
+      assert(s.ino !== null);
+      assertEquals(s.mode & 0o666, 0o666);
+      assertEquals(s.nlink, 2);
+      assert(s.uid !== null);
+      assert(s.gid !== null);
+      assert(s.rdev !== null);
+      assert(s.blksize !== null);
+      assert(s.blocks !== null);
+    }
+  );
+}

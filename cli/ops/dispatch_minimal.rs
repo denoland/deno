@@ -11,12 +11,12 @@ use deno_core::Buf;
 use deno_core::CoreOp;
 use deno_core::ErrBox;
 use deno_core::Op;
-use deno_core::PinnedBuf;
+use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::future::Future;
 use std::pin::Pin;
 
-pub type MinimalOp = dyn Future<Output = Result<i32, ErrBox>> + Send;
+pub type MinimalOp = dyn Future<Output = Result<i32, ErrBox>>;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 // This corresponds to RecordMinimal on the TS side.
@@ -113,11 +113,11 @@ fn test_parse_min_record() {
   assert_eq!(parse_min_record(&buf), None);
 }
 
-pub fn minimal_op<D>(d: D) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp
+pub fn minimal_op<D>(d: D) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp
 where
-  D: Fn(i32, Option<PinnedBuf>) -> Pin<Box<MinimalOp>>,
+  D: Fn(i32, Option<ZeroCopyBuf>) -> Pin<Box<MinimalOp>>,
 {
-  move |control: &[u8], zero_copy: Option<PinnedBuf>| {
+  move |control: &[u8], zero_copy: Option<ZeroCopyBuf>| {
     let mut record = match parse_min_record(control) {
       Some(r) => r,
       None => {
@@ -164,7 +164,7 @@ where
       // works since they're simple polling futures.
       Op::Sync(futures::executor::block_on(fut).unwrap())
     } else {
-      Op::Async(fut.boxed())
+      Op::Async(fut.boxed_local())
     }
   }
 }

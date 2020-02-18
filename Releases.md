@@ -6,6 +6,119 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.33.0 / 2020.02.13
+
+- feat(std/http): support trailer headers (#3938, #3989)
+- feat(std/node): Add readlink, readlinkSync (#3926)
+- feat(std/node): Event emitter node polyfill (#3944, #3959, #3960)
+- feat(deno install): add --force flag and remove yes/no prompt (#3917)
+- feat: Improve support for diagnostics from runtime compiler APIs (#3911)
+- feat: `deno fmt -` formats stdin and print to stdout (#3920)
+- feat: add std/signal (#3913)
+- feat: make testing API built-in Deno.test() (#3865, #3930, #3973)
+- fix(std/http): align serve and serveTLS APIs (#3881)
+- fix(std/http/file_server): don't crash on "%" pathname (#3953)
+- fix(std/path): Use non-capturing groups in globrex() (#3898)
+- fix(deno types): don't panic when piped to head (#3910)
+- fix(deno fmt): support top-level await (#3952)
+- fix: Correctly determine a --cached-only error (#3979)
+- fix: No longer require aligned buffer for shared queue (#3935)
+- fix: Prevent providing --allow-env flag twice (#3906)
+- fix: Remove unnecessary EOF check in Deno.toAsyncIterable (#3914)
+- fix: WASM imports loaded HTTP (#3856)
+- fix: better WebWorker API compatibility (#3828 )
+- fix: deno fmt improvements (#3988)
+- fix: make WebSocket.send() exclusive (#3885)
+- refactor: Improve `deno bundle` by using System instead of AMD (#3965)
+- refactor: Remove conditionals from installer (#3909)
+- refactor: peg workers to a single thread (#3844, #3968, #3931, #3903, #3912,
+  #3907, #3904)
+
+### v0.32.0 / 2020.02.03
+
+- BREAKING CHANGE: Replace formatter for "deno fmt", use dprint (#3820, #3824,
+  #3842)
+- BREAKING CHANGE: Remove std/prettier (#3820)
+- BREAKING CHANGE: Remove std/installer (#3843)
+- BREAKING CHANGE: Remove --current-thread flag (#3830)
+- BREAKING CHANGE: Deno.makeTempDir() checks permissions (#3810)
+- feat: deno install in Rust (#3806)
+- feat: Improve support of type definitions (#3755)
+- feat: deno fetch supports --lock-write (#3787)
+- feat: deno eval supports --v8-flags=... (#3797)
+- feat: descriptive permission errors (#3808)
+- feat: Make fetch API more standards compliant (#3667)
+- feat: deno fetch supports multiple files (#3845)
+- feat(std/node): Endianness (#3833)
+- feat(std/node): Partial os polyfill (#3821)
+- feat(std/examples): Bring back xeval (#3822)
+- feat(std/encoding): Add base32 support (#3855)
+- feat(deno_typescript): Support crate imports (#3814)
+- fix: Panic on cache miss (#3784)
+- fix: Deno.remove() to properly remove dangling symlinks (#3860)
+- refactor: Use tokio::main attribute in lib.rs (#3831)
+- refactor: Provide TS libraries for window and worker scope (#3771, #3812,
+  #3728)
+- refactor(deno_core): Error tracking and scope passing (#3783)
+- refactor(deno_core): Rename PinnedBuf to ZeroCopyBuf (#3782)
+- refactor(deno_core): Change Loader trait (#3791)
+- upgrade: Rust 1.41.0 (#3838)
+- upgrade: Rust crates (#3829)
+
+### v0.31.0 / 2020.01.24
+
+- BREAKING CHANGE: remove support for blob: URL in Worker (#3722)
+- BREAKING CHANGE: remove Deno namespace support and noDenoNamespace option in
+  Worker constructor (#3722)
+- BREAKING CHANGE: rename dial to connect and dialTLS to connectTLS (#3710)
+- feat: Add signal handlers (#3757)
+- feat: Implemented alternative open mode in files (#3119)
+- feat: Use globalThis to reference global scope (#3719)
+- feat: add AsyncUnref ops (#3721)
+- feat: stabilize net Addr (#3709)
+- fix: correct yaml's sortKeys type (#3708)
+- refactor: Improve path handling in permission checks (#3714)
+- refactor: Improve web workers (#3722, #3732, #3730, #3735)
+- refactor: Reduce number of ErrorKind variants (#3662)
+- refactor: Remove Isolate.shared_response_buf optimization (#3759)
+- upgrade: rusty_v8 (#3764, #3769, #3741)
+
+### v0.30.0 / 2020.01.17
+
+- BREAKING CHANGE Revert "feat(flags): script arguments come after '--'" (#3681)
+- feat(fs): add more unix-only fields to FileInfo (#3680)
+- feat(http): allow response body to be string (#3705)
+- feat(std/node): Added node timers builtin (#3634)
+- feat: Add Deno.symbols and move internal fields for test (#3693)
+- feat: Add gzip, brotli and ETag support for file fetcher (#3597)
+- feat: support individual async handler for each op (#3690)
+- fix(workers): minimal error handling and async module loading (#3665)
+- fix: Remove std/multipart (#3647)
+- fix: Resolve read/write whitelists from CWD (#3684)
+- fix: process hangs when fetch called (#3657)
+- perf: Create an old program to be used in snapshot (#3644, #3661)
+- perf: share http client in file fetcher (#3683)
+- refactor: remove Isolate.current_send_cb_info and DenoBuf, port
+  Isolate.shared_response_buf (#3643)
+
+### v0.29.0 / 2020.01.09
+
+- BREAKING CHANGE Remove xeval subcommand (#3630)
+- BREAKING CHANGE script arguments should come after '--' (#3621)
+- BREAKING CHANGE Deno.mkdir should conform to style guide BREAKING CHANGE
+  (#3617)
+- BREAKING CHANGE Deno.args only includes script args (#3628)
+- BREAKING CHANGE Rename crates: 'deno' to 'deno_core' and 'deno_cli' to 'deno'
+  (#3600)
+- feat: Add Deno.create (#3629)
+- feat: Add compiler API (#3442)
+- fix(ws): Handshake with correctly empty search string (#3587)
+- fix(yaml): Export parseAll (#3592)
+- perf: TextEncoder.encode improvement (#3596, #3589)
+- refactor: Replace libdeno with rusty_v8 (#3556, #3601, #3602, #3605, #3611,
+  #3613, #3615)
+- upgrade: V8 8.1.108 (#3623)
+
 ### v0.28.1 / 2020.01.03
 
 - feat(http): make req.body a Reader (#3575)

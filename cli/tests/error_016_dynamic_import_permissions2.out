@@ -1,2 +1,2 @@
 [WILDCARD]
-error: Uncaught TypeError: run again with the --allow-read flag
+error: Uncaught TypeError: read access to "[WILDCARD]passwd", run again with the --allow-read flag

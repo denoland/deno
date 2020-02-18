@@ -23,7 +23,6 @@ mod tests {
       .arg("-A")
       // .arg("-Ldebug")
       .arg("./testing/runner.ts")
-      .arg("--")
       .arg("--exclude=testing/testdata")
       .spawn()
       .expect("failed to spawn script");

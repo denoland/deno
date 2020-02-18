@@ -1,9 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "../testing/asserts.ts";
 import { isWindows } from "../path/mod.ts";
-import { test } from "./mod.ts";
 import { findTestModules } from "./runner.ts";
-const { cwd } = Deno;
+const { cwd, test } = Deno;
 
 function urlToFilePath(url: URL): string {
   // Since `new URL('file:///C:/a').pathname` is `/C:/a`, remove leading slash.

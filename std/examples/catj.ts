@@ -4,7 +4,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Install using `deno install`
-// $ deno install catj https://deno.land/std/examples/catj.ts --allow-read
+// $ deno install --allow-read catj https://deno.land/std/examples/catj.ts
 
 /* eslint-disable @typescript-eslint/no-use-before-define */
 import { parse } from "../flags/mod.ts";
@@ -79,7 +79,7 @@ function print(data: any): void {
   }
 }
 
-const parsedArgs = parse(Deno.args.slice(1));
+const parsedArgs = parse(Deno.args);
 
 if (parsedArgs.h || parsedArgs.help || parsedArgs._.length === 0) {
   console.log("Usage: catj [-h|--help] [file...]");

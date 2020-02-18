@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 /* eslint-disable @typescript-eslint/explicit-function-return-type */
 
 import { parse } from "../../yaml.ts";

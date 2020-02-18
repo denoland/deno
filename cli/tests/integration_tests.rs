@@ -21,20 +21,173 @@ fn deno_dir_test() {
   drop(g);
 }
 
-// TODO(#2933): Rewrite this test in rust.
 #[test]
 fn fetch_test() {
+  pub use deno::test_util::*;
+  use std::process::Command;
+  use tempfile::TempDir;
+
   let g = util::http_server();
-  util::run_python_script("tools/fetch_test.py");
+
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let t = util::root_path().join("cli/tests/006_url_imports.ts");
+
+  let output = Command::new(deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("fetch")
+    .arg(t)
+    .output()
+    .expect("Failed to spawn script");
+
+  let code = output.status.code();
+  let out = std::str::from_utf8(&output.stdout).unwrap();
+
+  assert_eq!(Some(0), code);
+  assert_eq!(out, "");
+
+  let expected_path = deno_dir
+    .path()
+    .join("deps/http/localhost_PORT4545/cli/tests/subdir/mod2.ts");
+  assert_eq!(expected_path.exists(), true);
+
   drop(g);
 }
 
-// TODO(#2933): Rewrite this test in rust.
 #[test]
 fn fmt_test() {
+  use tempfile::TempDir;
+
+  let t = TempDir::new().expect("tempdir fail");
+  let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
+  let badly_formatted_original =
+    util::root_path().join("cli/tests/badly_formatted.js");
+  let badly_formatted = t.path().join("badly_formatted.js");
+  let badly_formatted_str = badly_formatted.to_str().unwrap();
+  std::fs::copy(&badly_formatted_original, &badly_formatted)
+    .expect("Failed to copy file");
+
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg("--check")
+    .arg(badly_formatted_str)
+    .spawn()
+    .expect("Failed to spawn script")
+    .wait()
+    .expect("Failed to wait for child process");
+
+  assert_eq!(Some(1), status.code());
+
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg(badly_formatted_str)
+    .spawn()
+    .expect("Failed to spawn script")
+    .wait()
+    .expect("Failed to wait for child process");
+
+  assert_eq!(Some(0), status.code());
+  let expected = std::fs::read_to_string(fixed).unwrap();
+  let actual = std::fs::read_to_string(badly_formatted).unwrap();
+  assert_eq!(expected, actual);
+}
+
+#[test]
+fn installer_test_local_module_run() {
+  use deno::flags::DenoFlags;
+  use deno::installer;
+  use std::env;
+  use std::path::PathBuf;
+  use std::process::Command;
+  use tempfile::TempDir;
+
+  let temp_dir = TempDir::new().expect("tempdir fail");
+  let local_module = env::current_dir().unwrap().join("tests/echo.ts");
+  let local_module_str = local_module.to_string_lossy();
+  installer::install(
+    DenoFlags::default(),
+    Some(temp_dir.path().to_path_buf()),
+    "echo_test",
+    &local_module_str,
+    vec!["hello".to_string()],
+    false,
+  )
+  .expect("Failed to install");
+  let mut file_path = temp_dir.path().join("echo_test");
+  if cfg!(windows) {
+    file_path = file_path.with_extension(".cmd");
+  }
+  assert!(file_path.exists());
+  let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
+  let paths_var = env::var_os(path_var_name).expect("PATH not set");
+  let mut paths: Vec<PathBuf> = env::split_paths(&paths_var).collect();
+  paths.push(temp_dir.path().to_owned());
+  paths.push(util::target_dir());
+  let path_var_value = env::join_paths(paths).expect("Can't create PATH");
+  // NOTE: using file_path here instead of exec_name, because tests
+  // shouldn't mess with user's PATH env variable
+  let output = Command::new(file_path)
+    .current_dir(temp_dir.path())
+    .arg("foo")
+    .env(path_var_name, path_var_value)
+    .output()
+    .expect("failed to spawn script");
+
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
+  println!("Got stdout: {:?}", stdout_str);
+  println!("Got stderr: {:?}", stderr_str);
+  assert!(stdout_str.ends_with("hello, foo"));
+  drop(temp_dir);
+}
+
+#[test]
+fn installer_test_remote_module_run() {
+  use deno::flags::DenoFlags;
+  use deno::installer;
+  use std::env;
+  use std::path::PathBuf;
+  use std::process::Command;
+  use tempfile::TempDir;
+
   let g = util::http_server();
-  util::run_python_script("tools/fmt_test.py");
-  drop(g);
+  let temp_dir = TempDir::new().expect("tempdir fail");
+  installer::install(
+    DenoFlags::default(),
+    Some(temp_dir.path().to_path_buf()),
+    "echo_test",
+    "http://localhost:4545/cli/tests/echo.ts",
+    vec!["hello".to_string()],
+    false,
+  )
+  .expect("Failed to install");
+  let mut file_path = temp_dir.path().join("echo_test");
+  if cfg!(windows) {
+    file_path = file_path.with_extension(".cmd");
+  }
+  assert!(file_path.exists());
+  let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
+  let paths_var = env::var_os(path_var_name).expect("PATH not set");
+  let mut paths: Vec<PathBuf> = env::split_paths(&paths_var).collect();
+  paths.push(temp_dir.path().to_owned());
+  paths.push(util::target_dir());
+  let path_var_value = env::join_paths(paths).expect("Can't create PATH");
+  // NOTE: using file_path here instead of exec_name, because tests
+  // shouldn't mess with user's PATH env variable
+  let output = Command::new(file_path)
+    .current_dir(temp_dir.path())
+    .arg("foo")
+    .env(path_var_name, path_var_value)
+    .output()
+    .expect("failed to spawn script");
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("hello, foo"));
+  drop(temp_dir);
+  drop(g)
 }
 
 #[test]
@@ -92,7 +245,44 @@ fn bundle_exports() {
     .output()
     .expect("failed to spawn script");
   // check the output of the test.ts program.
-  assert_eq!(std::str::from_utf8(&output.stdout).unwrap().trim(), "Hello");
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello"));
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
+fn bundle_circular() {
+  use tempfile::TempDir;
+
+  // First we have to generate a bundle of some module that has exports.
+  let circular1 = util::root_path().join("cli/tests/subdir/circular1.ts");
+  assert!(circular1.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("circular1.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(circular1)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&bundle)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the the bundle program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("f1\nf2"));
   assert_eq!(output.stderr, b"");
 }
 
@@ -246,6 +436,11 @@ itest!(_026_workers {
   output: "026_workers.ts.out",
 });
 
+itest!(workers_basic {
+  args: "run --reload workers_basic.ts",
+  output: "workers_basic.out",
+});
+
 itest!(_027_redirect_typescript {
   args: "run --reload 027_redirect_typescript.ts",
   output: "027_redirect_typescript.ts.out",
@@ -253,7 +448,7 @@ itest!(_027_redirect_typescript {
 });
 
 itest!(_028_args {
-  args: "run --reload 028_args.ts -- --arg1 val1 --arg2=val2 -- arg3 arg4",
+  args: "run --reload 028_args.ts --arg1 val1 --arg2=val2 -- arg3 arg4",
   output: "028_args.ts.out",
 });
 
@@ -288,9 +483,11 @@ itest!(_036_import_map_fetch {
   output: "036_import_map_fetch.out",
 });
 
-itest!(_037_current_thread {
-  args: "run --current-thread --reload 034_onload/main.ts",
-  output: "034_onload.out",
+itest!(_037_fetch_multiple {
+  args: "fetch --reload fetch/test.ts fetch/other.ts",
+  check_stderr: true,
+  http_server: true,
+  output: "037_fetch_multiple.out",
 });
 
 itest!(_038_checkjs {
@@ -301,6 +498,7 @@ itest!(_038_checkjs {
   output: "038_checkjs.js.out",
 });
 
+/* TODO(bartlomieju):
 itest!(_039_worker_deno_ns {
   args: "run --reload 039_worker_deno_ns.ts",
   output: "039_worker_deno_ns.ts.out",
@@ -310,6 +508,7 @@ itest!(_040_worker_blob {
   args: "run --reload 040_worker_blob.ts",
   output: "040_worker_blob.ts.out",
 });
+*/
 
 itest!(_041_dyn_import_eval {
   args: "eval import('./subdir/mod4.js').then(console.log)",
@@ -383,6 +582,25 @@ itest!(_052_no_remote_flag {
   http_server: true,
 });
 
+itest!(_054_info_local_imports {
+  args: "info 005_more_imports.ts",
+  output: "054_info_local_imports.out",
+  exit_code: 0,
+});
+
+itest!(js_import_detect {
+  args: "run --reload js_import_detect.ts",
+  output: "js_import_detect.ts.out",
+  exit_code: 0,
+});
+
+itest!(lock_write_fetch {
+  args:
+    "run --allow-read --allow-write --allow-env --allow-run lock_write_fetch.ts",
+  output: "lock_write_fetch.ts.out",
+  exit_code: 0,
+});
+
 itest!(lock_check_ok {
   args: "run --lock=lock_check_ok.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
   output: "003_relative_import.ts.out",
@@ -421,6 +639,24 @@ itest!(async_error {
 itest!(bundle {
   args: "bundle subdir/mod1.ts",
   output: "bundle.test.out",
+});
+
+itest!(fmt_stdin {
+  args: "fmt -",
+  input: Some("const a = 1\n"),
+  output_str: Some("const a = 1;\n"),
+});
+
+itest!(fmt_stdin_check_formatted {
+  args: "fmt --check -",
+  input: Some("const a = 1;\n"),
+  output_str: Some(""),
+});
+
+itest!(fmt_stdin_check_not_formatted {
+  args: "fmt --check -",
+  input: Some("const a = 1\n"),
+  output_str: Some("Not formatted stdin\n"),
 });
 
 itest!(circular1 {
@@ -567,12 +803,14 @@ itest!(error_type_definitions {
   output: "error_type_definitions.ts.out",
 });
 
+/* TODO(bartlomieju)
 itest!(error_worker_dynamic {
   args: "run --reload error_worker_dynamic.ts",
   check_stderr: true,
   exit_code: 1,
   output: "error_worker_dynamic.ts.out",
 });
+*/
 
 itest!(exit_error42 {
   exit_code: 42,
@@ -605,6 +843,17 @@ itest!(type_definitions {
   output: "type_definitions.ts.out",
 });
 
+itest!(type_directives_01 {
+  args: "run --reload -L debug type_directives_01.ts",
+  output: "type_directives_01.ts.out",
+  http_server: true,
+});
+
+itest!(type_directives_02 {
+  args: "run --reload -L debug type_directives_02.ts",
+  output: "type_directives_02.ts.out",
+});
+
 itest!(types {
   args: "types",
   output: "types.out",
@@ -621,13 +870,20 @@ itest!(unbuffered_stdout {
   output: "unbuffered_stdout.ts.out",
 });
 
-itest!(v8_flags {
+// Cannot write the expression to evaluate as "console.log(typeof gc)"
+// because itest! splits args on whitespace.
+itest!(eval_v8_flags {
+  args: "eval --v8-flags=--expose-gc console.log(typeof(gc))",
+  output: "v8_flags.js.out",
+});
+
+itest!(run_v8_flags {
   args: "run --v8-flags=--expose-gc v8_flags.js",
   output: "v8_flags.js.out",
 });
 
-itest!(v8_help {
-  args: "run --v8-flags=--help",
+itest!(run_v8_help {
+  args: "--v8-flags=--help",
   output: "v8_help.out",
 });
 
@@ -660,6 +916,186 @@ itest!(top_level_for_await_ts {
   args: "top_level_for_await.ts",
   output: "top_level_for_await.out",
 });
+
+itest!(_053_import_compression {
+  args: "run --reload --allow-net 053_import_compression/main.ts",
+  output: "053_import_compression.out",
+  http_server: true,
+});
+
+itest!(import_wasm_via_network {
+  args: "run --reload http://127.0.0.1:4545/cli/tests/055_import_wasm_via_network.ts",
+  output: "055_import_wasm_via_network.ts.out",
+  http_server: true,
+});
+
+itest!(cafile_url_imports {
+  args: "run --reload --cert tls/RootCA.pem cafile_url_imports.ts",
+  output: "cafile_url_imports.ts.out",
+  http_server: true,
+});
+
+itest!(cafile_ts_fetch {
+  args: "run --reload --allow-net --cert tls/RootCA.pem cafile_ts_fetch.ts",
+  output: "cafile_ts_fetch.ts.out",
+  http_server: true,
+});
+
+itest!(cafile_eval {
+  args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cli/tests/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
+  output: "cafile_ts_fetch.ts.out",
+  http_server: true,
+});
+
+itest!(cafile_info {
+  args:
+    "info --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
+  output: "cafile_info.ts.out",
+  http_server: true,
+});
+
+#[test]
+fn cafile_fetch() {
+  pub use deno::test_util::*;
+  use std::process::Command;
+  use tempfile::TempDir;
+
+  let g = util::http_server();
+
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let t = util::root_path().join("cli/tests/cafile_url_imports.ts");
+  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+  let output = Command::new(deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("fetch")
+    .arg("--cert")
+    .arg(cafile)
+    .arg(t)
+    .output()
+    .expect("Failed to spawn script");
+
+  let code = output.status.code();
+  let out = std::str::from_utf8(&output.stdout).unwrap();
+
+  assert_eq!(Some(0), code);
+  assert_eq!(out, "");
+
+  let expected_path = deno_dir
+    .path()
+    .join("deps/https/localhost_PORT5545/cli/tests/subdir/mod2.ts");
+  assert_eq!(expected_path.exists(), true);
+
+  drop(g);
+}
+
+#[test]
+fn cafile_install_remote_module() {
+  pub use deno::test_util::*;
+  use std::env;
+  use std::path::PathBuf;
+  use std::process::Command;
+  use tempfile::TempDir;
+
+  let g = util::http_server();
+  let temp_dir = TempDir::new().expect("tempdir fail");
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+
+  let install_output = Command::new(deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("install")
+    .arg("--cert")
+    .arg(cafile)
+    .arg("--dir")
+    .arg(temp_dir.path())
+    .arg("echo_test")
+    .arg("https://localhost:5545/cli/tests/echo.ts")
+    .output()
+    .expect("Failed to spawn script");
+
+  let code = install_output.status.code();
+  assert_eq!(Some(0), code);
+
+  let mut file_path = temp_dir.path().join("echo_test");
+  if cfg!(windows) {
+    file_path = file_path.with_extension(".cmd");
+  }
+  assert!(file_path.exists());
+
+  let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
+  let paths_var = env::var_os(path_var_name).expect("PATH not set");
+  let mut paths: Vec<PathBuf> = env::split_paths(&paths_var).collect();
+  paths.push(temp_dir.path().to_owned());
+  paths.push(util::target_dir());
+  let path_var_value = env::join_paths(paths).expect("Can't create PATH");
+
+  let output = Command::new(file_path)
+    .current_dir(temp_dir.path())
+    .arg("foo")
+    .env(path_var_name, path_var_value)
+    .output()
+    .expect("failed to spawn script");
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("foo"));
+
+  drop(deno_dir);
+  drop(temp_dir);
+  drop(g)
+}
+
+#[test]
+fn cafile_bundle_remote_exports() {
+  use tempfile::TempDir;
+
+  let g = util::http_server();
+
+  // First we have to generate a bundle of some remote module that has exports.
+  let mod1 = "https://localhost:5545/cli/tests/subdir/mod1.ts";
+  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("mod1.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg("--cert")
+    .arg(cafile)
+    .arg(mod1)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  // Now we try to use that bundle from another module.
+  let test = t.path().join("test.js");
+  std::fs::write(
+    &test,
+    "
+      import { printHello3 } from \"./mod1.bundle.js\";
+      printHello3(); ",
+  )
+  .expect("error writing file");
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&test)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the test.ts program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello"));
+  assert_eq!(output.stderr, b"");
+
+  drop(g)
+}
 
 mod util {
   use deno::colors::strip_ansi_codes;
@@ -705,6 +1141,7 @@ mod util {
     pub args: &'static str,
     pub output: &'static str,
     pub input: Option<&'static str>,
+    pub output_str: Option<&'static str>,
     pub exit_code: i32,
     pub check_stderr: bool,
     pub http_server: bool,
@@ -770,10 +1207,13 @@ mod util {
         );
       }
 
-      let output_path = tests_dir.join(self.output);
-      println!("output path {}", output_path.display());
-      let expected =
-        std::fs::read_to_string(output_path).expect("cannot read output");
+      let expected = if let Some(s) = self.output_str {
+        s.to_owned()
+      } else {
+        let output_path = tests_dir.join(self.output);
+        println!("output path {}", output_path.display());
+        std::fs::read_to_string(output_path).expect("cannot read output")
+      };
 
       if !wildcard_match(&expected, &actual) {
         println!("OUTPUT\n{}\nOUTPUT", actual);

@@ -1,6 +1,5 @@
-const { dial, run } = Deno;
+const { connect, run } = Deno;
 
-import { test, runIfMain } from "../testing/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
@@ -12,13 +11,14 @@ async function startServer(): Promise<void> {
     stdout: "piped"
   });
   // Once racing server is ready it will write to its stdout.
-  const r = new TextProtoReader(new BufReader(server.stdout!));
+  assert(server.stdout != null);
+  const r = new TextProtoReader(new BufReader(server.stdout));
   const s = await r.readLine();
   assert(s !== Deno.EOF && s.includes("Racing server listening..."));
 }
 function killServer(): void {
   server.close();
-  server.stdout!.close();
+  server.stdout?.close();
 }
 
 const input = `GET / HTTP/1.1
@@ -47,10 +47,10 @@ content-length: 8
 World 4
 `;
 
-test(async function serverPipelineRace(): Promise<void> {
+Deno.test(async function serverPipelineRace(): Promise<void> {
   await startServer();
 
-  const conn = await dial({ port: 4501 });
+  const conn = await connect({ port: 4501 });
   const r = new TextProtoReader(new BufReader(conn));
   await conn.write(new TextEncoder().encode(input));
   const outLines = output.split("\n");
@@ -61,5 +61,3 @@ test(async function serverPipelineRace(): Promise<void> {
   }
   killServer();
 });
-
-runIfMain(import.meta);

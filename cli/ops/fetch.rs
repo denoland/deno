@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
-use crate::http_util::{get_client, HttpBody};
+use crate::http_util::{create_http_client, HttpBody};
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::*;
 use futures::future::FutureExt;
 use http::header::HeaderName;
@@ -12,7 +12,7 @@ use http::Method;
 use std;
 use std::convert::From;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("fetch", s.core_op(json_op(s.stateful_op(op_fetch))));
 }
 
@@ -24,14 +24,15 @@ struct FetchArgs {
 }
 
 pub fn op_fetch(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
-  data: Option<PinnedBuf>,
+  data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
 
-  let client = get_client();
+  let client =
+    create_http_client(state.borrow().global_state.flags.ca_file.clone())?;
 
   let method = match args.method {
     Some(method_str) => Method::from_bytes(method_str.as_bytes())?,
@@ -65,8 +66,8 @@ pub fn op_fetch(
     }
 
     let body = HttpBody::from(res);
-    let mut table = state_.lock_resource_table();
-    let rid = table.add(
+    let mut state = state_.borrow_mut();
+    let rid = state.resource_table.add(
       "httpBody",
       Box::new(StreamResource::HttpBody(Box::new(body))),
     );
@@ -81,5 +82,5 @@ pub fn op_fetch(
     Ok(json_res)
   };
 
-  Ok(JsonOp::Async(future.boxed()))
+  Ok(JsonOp::Async(future.boxed_local()))
 }

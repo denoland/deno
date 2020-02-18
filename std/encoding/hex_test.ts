@@ -4,7 +4,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, runIfMain } from "../testing/mod.ts";
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
 
 import {
@@ -46,7 +45,7 @@ const errCases = [
   ["ffeed", "\xff\xee", errLength()]
 ];
 
-test({
+Deno.test({
   name: "[encoding.hex] encodedLen",
   fn(): void {
     assertEquals(encodedLen(0), 0);
@@ -57,7 +56,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[encoding.hex] encode",
   fn(): void {
     {
@@ -92,7 +91,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[encoding.hex] encodeToString",
   fn(): void {
     for (const [enc, dec] of testCases) {
@@ -101,7 +100,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[encoding.hex] decodedLen",
   fn(): void {
     assertEquals(decodedLen(0), 0);
@@ -112,7 +111,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[encoding.hex] decode",
   fn(): void {
     // Case for decoding uppercase hex characters, since
@@ -133,7 +132,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[encoding.hex] decodeString",
   fn(): void {
     for (const [enc, dec] of testCases) {
@@ -144,7 +143,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[encoding.hex] decode error",
   fn(): void {
     for (const [input, output, expectedErr] of errCases) {
@@ -159,7 +158,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[encoding.hex] decodeString error",
   fn(): void {
     for (const [input, output, expectedErr] of errCases) {
@@ -178,5 +177,3 @@ test({
     }
   }
 });
-
-runIfMain(import.meta);

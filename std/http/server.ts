@@ -10,13 +10,7 @@ import { STATUS_TEXT } from "./http_status.ts";
 import { assert } from "../testing/asserts.ts";
 import { deferred, Deferred, MuxAsyncIterator } from "../util/async.ts";
 
-function bufWriter(w: Writer): BufWriter {
-  if (w instanceof BufWriter) {
-    return w;
-  } else {
-    return new BufWriter(w);
-  }
-}
+const encoder = new TextEncoder();
 
 export function setContentLength(r: Response): void {
   if (!r.headers) {
@@ -25,19 +19,19 @@ export function setContentLength(r: Response): void {
 
   if (r.body) {
     if (!r.headers.has("content-length")) {
+      // typeof r.body === "string" handled in writeResponse.
       if (r.body instanceof Uint8Array) {
         const bodyLength = r.body.byteLength;
-        r.headers.append("Content-Length", bodyLength.toString());
+        r.headers.set("content-length", bodyLength.toString());
       } else {
-        r.headers.append("Transfer-Encoding", "chunked");
+        r.headers.set("transfer-encoding", "chunked");
       }
     }
   }
 }
 
 async function writeChunkedBody(w: Writer, r: Reader): Promise<void> {
-  const writer = bufWriter(w);
-  const encoder = new TextEncoder();
+  const writer = BufWriter.create(w);
 
   for await (const chunk of toAsyncIterator(r)) {
     if (chunk.byteLength <= 0) continue;
@@ -51,31 +45,77 @@ async function writeChunkedBody(w: Writer, r: Reader): Promise<void> {
   const endChunk = encoder.encode("0\r\n\r\n");
   await writer.write(endChunk);
 }
+const kProhibitedTrailerHeaders = [
+  "transfer-encoding",
+  "content-length",
+  "trailer"
+];
+
+/** write trailer headers to writer. it mostly should be called after writeResponse */
+export async function writeTrailers(
+  w: Writer,
+  headers: Headers,
+  trailers: Headers
+): Promise<void> {
+  const trailer = headers.get("trailer");
+  if (trailer === null) {
+    throw new Error('response headers must have "trailer" header field');
+  }
+  const transferEncoding = headers.get("transfer-encoding");
+  if (transferEncoding === null || !transferEncoding.match(/^chunked/)) {
+    throw new Error(
+      `trailer headers is only allowed for "transfer-encoding: chunked": got "${transferEncoding}"`
+    );
+  }
+  const writer = BufWriter.create(w);
+  const trailerHeaderFields = trailer
+    .split(",")
+    .map(s => s.trim().toLowerCase());
+  for (const f of trailerHeaderFields) {
+    assert(
+      !kProhibitedTrailerHeaders.includes(f),
+      `"${f}" is prohibited for trailer header`
+    );
+  }
+  for (const [key, value] of trailers) {
+    assert(
+      trailerHeaderFields.includes(key),
+      `Not trailer header field: ${key}`
+    );
+    await writer.write(encoder.encode(`${key}: ${value}\r\n`));
+  }
+  await writer.write(encoder.encode("\r\n"));
+  await writer.flush();
+}
 
 export async function writeResponse(w: Writer, r: Response): Promise<void> {
   const protoMajor = 1;
   const protoMinor = 1;
   const statusCode = r.status || 200;
   const statusText = STATUS_TEXT.get(statusCode);
-  const writer = bufWriter(w);
+  const writer = BufWriter.create(w);
   if (!statusText) {
     throw Error("bad status code");
   }
   if (!r.body) {
     r.body = new Uint8Array();
   }
+  if (typeof r.body === "string") {
+    r.body = encoder.encode(r.body);
+  }
 
   let out = `HTTP/${protoMajor}.${protoMinor} ${statusCode} ${statusText}\r\n`;
 
   setContentLength(r);
-  const headers = r.headers!;
+  assert(r.headers != null);
+  const headers = r.headers;
 
-  for (const [key, value] of headers!) {
+  for (const [key, value] of headers) {
     out += `${key}: ${value}\r\n`;
   }
   out += "\r\n";
 
-  const header = new TextEncoder().encode(out);
+  const header = encoder.encode(out);
   const n = await writer.write(header);
   assert(n === header.byteLength);
 
@@ -83,11 +123,17 @@ export async function writeResponse(w: Writer, r: Response): Promise<void> {
     const n = await writer.write(r.body);
     assert(n === r.body.byteLength);
   } else if (headers.has("content-length")) {
-    const bodyLength = parseInt(headers.get("content-length")!);
+    const contentLength = headers.get("content-length");
+    assert(contentLength != null);
+    const bodyLength = parseInt(contentLength);
     const n = await copy(writer, r.body);
     assert(n === bodyLength);
   } else {
     await writeChunkedBody(writer, r.body);
+  }
+  if (r.trailers) {
+    const t = await r.trailers();
+    await writeTrailers(writer, headers, t);
   }
   await writer.flush();
 }
@@ -124,8 +170,9 @@ export class ServerRequest {
     // undefined means not cached.
     // null means invalid or not provided.
     if (this._contentLength === undefined) {
-      if (this.headers.has("content-length")) {
-        this._contentLength = +this.headers.get("content-length")!;
+      const cl = this.headers.get("content-length");
+      if (cl) {
+        this._contentLength = parseInt(cl);
         // Convert NaN to null (as NaN harder to test)
         if (Number.isNaN(this._contentLength)) {
           this._contentLength = null;
@@ -185,12 +232,12 @@ export class ServerRequest {
       }
       yield nread;
     } else {
-      if (this.headers.has("transfer-encoding")) {
-        const transferEncodings = this.headers
-          .get("transfer-encoding")!
+      const transferEncoding = this.headers.get("transfer-encoding");
+      if (transferEncoding) {
+        const parts = transferEncoding
           .split(",")
           .map((e): string => e.trim().toLowerCase());
-        if (transferEncodings.includes("chunked")) {
+        if (parts.includes("chunked")) {
           // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
           const tp = new TextProtoReader(this.r);
           let line = await tp.readLine();
@@ -408,7 +455,7 @@ export class Server implements AsyncIterable<ServerRequest> {
 
       // Wait for the request to be processed before we accept a new request on
       // this connection.
-      const procError = await req!.done;
+      const procError = await req.done;
       if (procError) {
         // Something bad happened during response.
         // (likely other side closed during pipelined req)
@@ -417,14 +464,14 @@ export class Server implements AsyncIterable<ServerRequest> {
       }
     }
 
-    if (req! === Deno.EOF) {
+    if (req === Deno.EOF) {
       // The connection was gracefully closed.
-    } else if (err) {
+    } else if (err && req) {
       // An error was thrown while parsing request headers.
       try {
-        await writeResponse(req!.w, {
+        await writeResponse(req.w, {
           status: 400,
-          body: new TextEncoder().encode(`${err.message}\r\n\r\n`)
+          body: encoder.encode(`${err.message}\r\n\r\n`)
         });
       } catch (_) {
         // The connection is destroyed.
@@ -463,22 +510,20 @@ export class Server implements AsyncIterable<ServerRequest> {
   }
 }
 
-interface ServerConfig {
-  port: number;
-  hostname?: string;
-}
+/** Options for creating an HTTP server. */
+export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
 
 /**
  * Start a HTTP server
  *
  *     import { serve } from "https://deno.land/std/http/server.ts";
- *     const body = new TextEncoder().encode("Hello World\n");
+ *     const body = "Hello World\n";
  *     const s = serve({ port: 8000 });
  *     for await (const req of s) {
  *       req.respond({ body });
  *     }
  */
-export function serve(addr: string | ServerConfig): Server {
+export function serve(addr: string | HTTPOptions): Server {
   if (typeof addr === "string") {
     const [hostname, port] = addr.split(":");
     addr = { hostname, port: Number(port) };
@@ -489,7 +534,7 @@ export function serve(addr: string | ServerConfig): Server {
 }
 
 export async function listenAndServe(
-  addr: string,
+  addr: string | HTTPOptions,
   handler: (req: ServerRequest) => void
 ): Promise<void> {
   const server = serve(addr);
@@ -505,7 +550,7 @@ export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
 /**
  * Create an HTTPS server with given options
  *
- *     const body = new TextEncoder().encode("Hello HTTPS");
+ *     const body = "Hello HTTPS";
  *     const options = {
  *       hostname: "localhost",
  *       port: 443,
@@ -531,7 +576,7 @@ export function serveTLS(options: HTTPSOptions): Server {
 /**
  * Create an HTTPS server with given options and request handler
  *
- *     const body = new TextEncoder().encode("Hello HTTPS");
+ *     const body = "Hello HTTPS";
  *     const options = {
  *       hostname: "localhost",
  *       port: 443,
@@ -556,8 +601,14 @@ export async function listenAndServeTLS(
   }
 }
 
+/**
+ * Interface of HTTP server response.
+ * If body is a Reader, response would be chunked.
+ * If body is a string, it would be UTF-8 encoded by default.
+ */
 export interface Response {
   status?: number;
   headers?: Headers;
-  body?: Uint8Array | Reader;
+  body?: Uint8Array | Reader | string;
+  trailers?: () => Promise<Headers> | Headers;
 }

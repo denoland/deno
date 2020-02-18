@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_core"
-version = "0.28.1"
+version = "0.33.0"
 edition = "2018"
 description = "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio"
 authors = ["the Deno authors"]
@@ -21,13 +21,13 @@ libc = "0.2.66"
 log = "0.4.8"
 serde_json = "1.0.44"
 url = "2.1.0"
-rusty_v8 = "0.0.24"
+rusty_v8 = "0.2.1"
 
 [[example]]
 name = "deno_core_http_bench"
 path = "examples/http_bench.rs"
 
-# tokio is only used for deno_core_http_bench
-[dev_dependencies]
-tokio = { version = "0.2", features = ["full"] }
-num_cpus = "1.11.1"
+# These dependendencies are only used for deno_core_http_bench.
+[dev-dependencies]
+derive_deref = "1.1.0"
+tokio = { version = "0.2", features = ["rt-core", "tcp"] }

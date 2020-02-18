@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 # Performs benchmark and append data to //website/data.json.
 # If //website/data.json doesn't exist, this script tries to import it from
 # gh-pages branch.
@@ -21,7 +21,7 @@ def cat(deno_exe, megs):
     size = megs * MB
     start = time.time()
     cmd = deno_exe + " run --allow-read "
-    cmd += "tests/cat.ts -- /dev/zero | head -c %s " % size
+    cmd += "cli/tests/cat.ts /dev/zero | head -c %s " % size
     print cmd
     subprocess.check_output(cmd, shell=True)
     end = time.time()
@@ -32,8 +32,7 @@ def tcp(deno_exe, megs):
     size = megs * MB
     # Run deno echo server in the background.
     args = [
-        deno_exe, "run", "--allow-net", "tests/echo_server.ts", "--",
-        SERVER_ADDR
+        deno_exe, "run", "--allow-net", "cli/tests/echo_server.ts", SERVER_ADDR
     ]
     print args
     echo_server = subprocess.Popen(args)

@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { atob } from "./text_encoding.ts";
 import { TypedArray } from "./types.ts";
-import { window } from "./window.ts";
 
 let logDebug = false;
 let logSource = "JS";
@@ -19,9 +19,9 @@ export function setLogDebug(debug: boolean, source?: string): void {
  */
 export function log(...args: unknown[]): void {
   if (logDebug) {
-    // if we destructure `console` off `window` too early, we don't bind to
+    // if we destructure `console` off `globalThis` too early, we don't bind to
     // the right console, therefore we don't log anything out.
-    window.console.log(`DEBUG ${logSource} -`, ...args);
+    globalThis.console.log(`DEBUG ${logSource} -`, ...args);
   }
 }
 
@@ -345,7 +345,7 @@ export function humanFileSize(bytes: number): string {
 
 // @internal
 export function base64ToUint8Array(data: string): Uint8Array {
-  const binString = window.atob(data);
+  const binString = atob(data);
   const size = binString.length;
   const bytes = new Uint8Array(size);
   for (let i = 0; i < size; i++) {

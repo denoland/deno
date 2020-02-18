@@ -1,12 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::compilers::CompiledModule;
-use crate::compilers::CompiledModuleFuture;
 use crate::file_fetcher::SourceFile;
-use crate::futures::future::FutureExt;
 use deno_core::ErrBox;
 use regex::Regex;
-use std::pin::Pin;
-use std::str;
 
 // From https://github.com/mathiasbynens/mothereff.in/blob/master/js-variables/eff.js
 static JS_RESERVED_WORDS: &str = r"^(?:do|if|in|for|let|new|try|var|case|else|enum|eval|false|null|this|true|void|with|await|break|catch|class|const|super|throw|while|yield|delete|export|import|public|return|static|switch|typeof|default|extends|finally|package|private|continue|debugger|function|arguments|interface|protected|implements|instanceof)$";
@@ -14,19 +10,18 @@ static JS_RESERVED_WORDS: &str = r"^(?:do|if|in|for|let|new|try|var|case|else|en
 pub struct JsonCompiler {}
 
 impl JsonCompiler {
-  pub fn compile_async(
+  pub async fn compile_async(
     &self,
     source_file: &SourceFile,
-  ) -> Pin<Box<CompiledModuleFuture>> {
-    let maybe_json_value: serde_json::Result<serde_json::Value> =
-      serde_json::from_str(&str::from_utf8(&source_file.source_code).unwrap());
+  ) -> Result<CompiledModule, ErrBox> {
+    let maybe_json_value = serde_json::from_slice(&source_file.source_code);
     if let Err(err) = maybe_json_value {
-      return futures::future::err(ErrBox::from(err)).boxed();
+      return Err(ErrBox::from(err));
     }
 
     let mut code = format!(
       "export default {};\n",
-      str::from_utf8(&source_file.source_code).unwrap()
+      std::str::from_utf8(&source_file.source_code).unwrap()
     );
 
     if let serde_json::Value::Object(m) = maybe_json_value.unwrap() {
@@ -47,11 +42,9 @@ impl JsonCompiler {
       }
     }
 
-    let module = CompiledModule {
+    Ok(CompiledModule {
       code,
       name: source_file.url.to_string(),
-    };
-
-    futures::future::ok(module).boxed()
+    })
   }
 }

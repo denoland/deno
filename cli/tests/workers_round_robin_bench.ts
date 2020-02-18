@@ -37,12 +37,11 @@ function handleAsyncMsgFromWorker(
 async function main(): Promise<void> {
   const workers: Array<[Map<number, Resolvable<string>>, Worker]> = [];
   for (let i = 1; i <= workerCount; ++i) {
-    const worker = new Worker("./subdir/bench_worker.ts");
-    const promise = new Promise((resolve): void => {
-      worker.onmessage = (e): void => {
-        if (e.data.cmdId === 0) resolve();
-      };
-    });
+    const worker = new Worker("./subdir/bench_worker.ts", { type: "module" });
+    const promise = createResolvable<void>();
+    worker.onmessage = (e): void => {
+      if (e.data.cmdId === 0) promise.resolve();
+    };
     worker.postMessage({ cmdId: 0, action: 2 });
     await promise;
     workers.push([new Map(), worker]);
@@ -66,8 +65,12 @@ async function main(): Promise<void> {
     }
   }
   for (const [, worker] of workers) {
+    const promise = createResolvable<void>();
+    worker.onmessage = (e): void => {
+      if (e.data.cmdId === 3) promise.resolve();
+    };
     worker.postMessage({ action: 3 });
-    await worker.closed; // Required to avoid a cmdId not in table error.
+    await promise;
   }
   console.log("Finished!");
 }

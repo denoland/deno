@@ -16,8 +16,8 @@ SharedQueue Binary Layout
 +---------------------------------------------------------------+
  */
 
-use crate::isolate::DenoBuf;
 use crate::ops::OpId;
+use rusty_v8 as v8;
 
 const MAX_RECORDS: usize = 100;
 /// Total number of records added.
@@ -35,22 +35,32 @@ const HEAD_INIT: usize = 4 * INDEX_RECORDS;
 pub const RECOMMENDED_SIZE: usize = 128 * MAX_RECORDS;
 
 pub struct SharedQueue {
-  bytes: Vec<u8>,
+  buf: v8::SharedRef<v8::BackingStore>,
 }
 
 impl SharedQueue {
   pub fn new(len: usize) -> Self {
-    let mut bytes = Vec::new();
-    bytes.resize(HEAD_INIT + len, 0);
-    let mut q = Self { bytes };
+    let mut buf = Vec::new();
+    buf.resize(HEAD_INIT + len, 0);
+    let buf = buf.into_boxed_slice();
+    let buf = v8::SharedArrayBuffer::new_backing_store_from_boxed_slice(buf);
+    let mut q = Self {
+      buf: buf.make_shared(),
+    };
     q.reset();
     q
   }
 
-  pub fn as_deno_buf(&self) -> DenoBuf {
-    let ptr = self.bytes.as_ptr();
-    let len = self.bytes.len();
-    unsafe { DenoBuf::from_raw_parts(ptr, len) }
+  pub fn get_backing_store(&mut self) -> &mut v8::SharedRef<v8::BackingStore> {
+    &mut self.buf
+  }
+
+  pub fn bytes(&self) -> &[u8] {
+    unsafe { &*self.buf.get() }
+  }
+
+  pub fn bytes_mut(&mut self) -> &mut [u8] {
+    unsafe { &mut *self.buf.get() }
   }
 
   fn reset(&mut self) {
@@ -62,21 +72,21 @@ impl SharedQueue {
   }
 
   fn as_u32_slice(&self) -> &[u32] {
-    let p = self.bytes.as_ptr();
+    let p = self.bytes().as_ptr();
     // Assert pointer is 32 bit aligned before casting.
     assert_eq!((p as usize) % std::mem::align_of::<u32>(), 0);
     #[allow(clippy::cast_ptr_alignment)]
     let p32 = p as *const u32;
-    unsafe { std::slice::from_raw_parts(p32, self.bytes.len() / 4) }
+    unsafe { std::slice::from_raw_parts(p32, self.bytes().len() / 4) }
   }
 
   fn as_u32_slice_mut(&mut self) -> &mut [u32] {
-    let p = self.bytes.as_mut_ptr();
+    let p = self.bytes_mut().as_mut_ptr();
     // Assert pointer is 32 bit aligned before casting.
     assert_eq!((p as usize) % std::mem::align_of::<u32>(), 0);
     #[allow(clippy::cast_ptr_alignment)]
     let p32 = p as *mut u32;
-    unsafe { std::slice::from_raw_parts_mut(p32, self.bytes.len() / 4) }
+    unsafe { std::slice::from_raw_parts_mut(p32, self.bytes().len() / 4) }
   }
 
   pub fn size(&self) -> usize {
@@ -156,7 +166,7 @@ impl SharedQueue {
       self.num_shifted_off(),
       self.head()
     );
-    Some((op_id, &self.bytes[off..end]))
+    Some((op_id, &self.bytes()[off..end]))
   }
 
   /// Because JS-side may cast `record` to Int32Array it is required
@@ -171,15 +181,14 @@ impl SharedQueue {
       end,
       record.len()
     );
-    assert_eq!(record.len() % 4, 0);
     let index = self.num_records();
-    if end > self.bytes.len() || index >= MAX_RECORDS {
+    if end > self.bytes().len() || index >= MAX_RECORDS {
       debug!("WARNING the sharedQueue overflowed");
       return false;
     }
     self.set_meta(index, end, op_id);
     assert_eq!(end - off, record.len());
-    self.bytes[off..end].copy_from_slice(record);
+    self.bytes_mut()[off..end].copy_from_slice(record);
     let u32_slice = self.as_u32_slice_mut();
     u32_slice[INDEX_NUM_RECORDS] += 1;
     u32_slice[INDEX_HEAD] = end as u32;
@@ -249,21 +258,21 @@ mod tests {
   #[test]
   fn overflow() {
     let mut q = SharedQueue::new(RECOMMENDED_SIZE);
-    assert!(q.push(0, &alloc_buf(RECOMMENDED_SIZE - 4)));
+    assert!(q.push(0, &alloc_buf(RECOMMENDED_SIZE - 1)));
     assert_eq!(q.size(), 1);
-    assert!(!q.push(0, &alloc_buf(8)));
+    assert!(!q.push(0, &alloc_buf(2)));
     assert_eq!(q.size(), 1);
-    assert!(q.push(0, &alloc_buf(4)));
+    assert!(q.push(0, &alloc_buf(1)));
     assert_eq!(q.size(), 2);
 
     let (_op_id, buf) = q.shift().unwrap();
-    assert_eq!(buf.len(), RECOMMENDED_SIZE - 4);
+    assert_eq!(buf.len(), RECOMMENDED_SIZE - 1);
     assert_eq!(q.size(), 1);
 
-    assert!(!q.push(0, &alloc_buf(4)));
+    assert!(!q.push(0, &alloc_buf(1)));
 
     let (_op_id, buf) = q.shift().unwrap();
-    assert_eq!(buf.len(), 4);
+    assert_eq!(buf.len(), 1);
     assert_eq!(q.size(), 0);
   }
 
@@ -271,19 +280,25 @@ mod tests {
   fn full_records() {
     let mut q = SharedQueue::new(RECOMMENDED_SIZE);
     for _ in 0..MAX_RECORDS {
-      assert!(q.push(0, &alloc_buf(4)))
+      assert!(q.push(0, &alloc_buf(1)))
     }
-    assert_eq!(q.push(0, &alloc_buf(4)), false);
+    assert_eq!(q.push(0, &alloc_buf(1)), false);
     // Even if we shift one off, we still cannot push a new record.
     let _ignored = q.shift().unwrap();
-    assert_eq!(q.push(0, &alloc_buf(4)), false);
+    assert_eq!(q.push(0, &alloc_buf(1)), false);
   }
 
   #[test]
-  #[should_panic]
-  fn bad_buf_length() {
+  fn allow_any_buf_length() {
     let mut q = SharedQueue::new(RECOMMENDED_SIZE);
     // check that `record` that has length not a multiple of 4 will cause panic
+    q.push(0, &alloc_buf(1));
+    q.push(0, &alloc_buf(2));
     q.push(0, &alloc_buf(3));
+    q.push(0, &alloc_buf(4));
+    q.push(0, &alloc_buf(5));
+    q.push(0, &alloc_buf(6));
+    q.push(0, &alloc_buf(7));
+    q.push(0, &alloc_buf(8));
   }
 }
