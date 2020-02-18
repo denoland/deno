@@ -15,7 +15,9 @@ import {
   BufReader,
   BufWriter,
   BufferFullError,
-  UnexpectedEOFError
+  UnexpectedEOFError,
+  readStringDelim,
+  readLines
 } from "./bufio.ts";
 import * as iotest from "./iotest.ts";
 import { charCode, copyBytes, stringsReader } from "./util.ts";
@@ -380,4 +382,29 @@ Deno.test(async function bufReaderReadFull(): Promise<void> {
       assertEquals(dec.decode(buf.subarray(0, 5)), "World");
     }
   }
+});
+
+Deno.test(async function readStringDelimAndLines(): Promise<void> {
+  const enc = new TextEncoder();
+  const data = new Buffer(
+    enc.encode("Hello World\tHello World 2\tHello World 3")
+  );
+  const chunks_ = [];
+
+  for await (const c of readStringDelim(data, "\t")) {
+    chunks_.push(c);
+  }
+
+  assertEquals(chunks_.length, 3);
+  assertEquals(chunks_, ["Hello World", "Hello World 2", "Hello World 3"]);
+
+  const linesData = new Buffer(enc.encode("0\n1\n2\n3\n4\n5\n6\n7\n8\n9"));
+  const lines_ = [];
+
+  for await (const l of readLines(linesData)) {
+    lines_.push(l);
+  }
+
+  assertEquals(lines_.length, 10);
+  assertEquals(lines_, ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
 });

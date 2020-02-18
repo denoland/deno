@@ -1,11 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::ops;
 use crate::state::State;
-use crate::worker::Worker;
+use crate::web_worker::WebWorker;
+use core::task::Context;
 use deno_core;
+use deno_core::ErrBox;
 use deno_core::StartupData;
+use futures::future::Future;
+use futures::future::FutureExt;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::pin::Pin;
+use std::task::Poll;
 
 /// This worker is used to host TypeScript and WASM compilers.
 ///
@@ -20,22 +26,15 @@ use std::ops::DerefMut;
 ///
 /// TODO(bartlomieju): add support to reuse the worker - or in other
 /// words support stateful TS compiler
-pub struct CompilerWorker(Worker);
+pub struct CompilerWorker(WebWorker);
 
 impl CompilerWorker {
   pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let state_ = state.clone();
-    let mut worker = Worker::new(name, startup_data, state_);
+    let mut worker = WebWorker::new(name, startup_data, state_);
     {
       let isolate = &mut worker.isolate;
-      ops::runtime::init(isolate, &state);
       ops::compiler::init(isolate, &state);
-      ops::web_worker::init(isolate, &state, &worker.internal_channels.sender);
-      ops::errors::init(isolate, &state);
-      // for compatibility with Worker scope, though unused at
-      // the moment
-      ops::timers::init(isolate, &state);
-      ops::fetch::init(isolate, &state);
       // TODO(bartlomieju): CompilerWorker should not
       // depend on those ops
       ops::os::init(isolate, &state);
@@ -48,7 +47,7 @@ impl CompilerWorker {
 }
 
 impl Deref for CompilerWorker {
-  type Target = Worker;
+  type Target = WebWorker;
   fn deref(&self) -> &Self::Target {
     &self.0
   }
@@ -57,5 +56,14 @@ impl Deref for CompilerWorker {
 impl DerefMut for CompilerWorker {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.0
+  }
+}
+
+impl Future for CompilerWorker {
+  type Output = Result<(), ErrBox>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+    inner.0.poll_unpin(cx)
   }
 }

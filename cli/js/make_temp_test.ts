@@ -64,3 +64,69 @@ testPerm({ write: true }, async function makeTempDirSuccess(): Promise<void> {
   assertEquals(err.kind, Deno.ErrorKind.NotFound);
   assertEquals(err.name, "NotFound");
 });
+
+testPerm({ write: true }, function makeTempFileSyncSuccess(): void {
+  const file1 = Deno.makeTempFileSync({ prefix: "hello", suffix: "world" });
+  const file2 = Deno.makeTempFileSync({ prefix: "hello", suffix: "world" });
+  // Check that both dirs are different.
+  assert(file1 !== file2);
+  for (const dir of [file1, file2]) {
+    // Check that the prefix and suffix are applied.
+    const lastPart = dir.replace(/^.*[\\\/]/, "");
+    assert(lastPart.startsWith("hello"));
+    assert(lastPart.endsWith("world"));
+  }
+  // Check that the `dir` option works.
+  const dir = Deno.makeTempDirSync({ prefix: "tempdir" });
+  const file3 = Deno.makeTempFileSync({ dir });
+  assert(file3.startsWith(dir));
+  assert(/^[\\\/]/.test(file3.slice(dir.length)));
+  // Check that creating a temp file inside a nonexisting directory fails.
+  let err;
+  try {
+    Deno.makeTempFileSync({ dir: "/baddir" });
+  } catch (err_) {
+    err = err_;
+  }
+  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.name, "NotFound");
+});
+
+test(function makeTempFileSyncPerm(): void {
+  // makeTempFileSync should require write permissions (for now).
+  let err;
+  try {
+    Deno.makeTempFileSync({ dir: "/baddir" });
+  } catch (err_) {
+    err = err_;
+  }
+  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
+});
+
+testPerm({ write: true }, async function makeTempFileSuccess(): Promise<void> {
+  const file1 = await Deno.makeTempFile({ prefix: "hello", suffix: "world" });
+  const file2 = await Deno.makeTempFile({ prefix: "hello", suffix: "world" });
+  // Check that both dirs are different.
+  assert(file1 !== file2);
+  for (const dir of [file1, file2]) {
+    // Check that the prefix and suffix are applied.
+    const lastPart = dir.replace(/^.*[\\\/]/, "");
+    assert(lastPart.startsWith("hello"));
+    assert(lastPart.endsWith("world"));
+  }
+  // Check that the `dir` option works.
+  const dir = Deno.makeTempDirSync({ prefix: "tempdir" });
+  const file3 = await Deno.makeTempFile({ dir });
+  assert(file3.startsWith(dir));
+  assert(/^[\\\/]/.test(file3.slice(dir.length)));
+  // Check that creating a temp file inside a nonexisting directory fails.
+  let err;
+  try {
+    await Deno.makeTempFile({ dir: "/baddir" });
+  } catch (err_) {
+    err = err_;
+  }
+  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.name, "NotFound");
+});

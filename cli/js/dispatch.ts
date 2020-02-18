@@ -65,6 +65,7 @@ export let OP_SYMLINK: number;
 export let OP_READ_LINK: number;
 export let OP_TRUNCATE: number;
 export let OP_MAKE_TEMP_DIR: number;
+export let OP_MAKE_TEMP_FILE: number;
 export let OP_CWD: number;
 export let OP_CONNECT_TLS: number;
 export let OP_HOSTNAME: number;

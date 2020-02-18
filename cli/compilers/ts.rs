@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::compiler_worker::CompilerWorker;
+use crate::colors;
 use crate::compilers::CompilationResultFuture;
 use crate::compilers::CompiledModule;
 use crate::diagnostics::Diagnostic;
@@ -8,12 +9,11 @@ use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::msg;
-use crate::ops::worker_host::run_worker_loop;
 use crate::ops::JsonResult;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::*;
-use crate::tokio_util::create_basic_runtime;
+use crate::tokio_util;
 use crate::version;
 use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
@@ -372,18 +372,18 @@ impl TsCompiler {
 
     let ts_compiler = self.clone();
 
-    let compiling_job = global_state
-      .progress
-      .add("Compile", &module_url.to_string());
+    eprintln!(
+      "{} {}",
+      colors::green("Compile".to_string()),
+      module_url.to_string()
+    );
     let msg = execute_in_thread(global_state.clone(), req_msg).await?;
 
     let json_str = std::str::from_utf8(&msg).unwrap();
     if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
       return Err(ErrBox::from(diagnostics));
     }
-    let compiled_module = ts_compiler.get_compiled_module(&source_file_.url)?;
-    drop(compiling_job);
-    Ok(compiled_module)
+    ts_compiler.get_compiled_module(&source_file_.url)
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
@@ -610,11 +610,10 @@ async fn execute_in_thread(
   let builder =
     std::thread::Builder::new().name("deno-ts-compiler".to_string());
   let join_handle = builder.spawn(move || {
-    let mut worker = TsCompiler::setup_worker(global_state.clone());
+    let worker = TsCompiler::setup_worker(global_state.clone());
     handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
     drop(handle_sender);
-    let mut rt = create_basic_runtime();
-    run_worker_loop(&mut rt, &mut worker).expect("Panic in event loop");
+    tokio_util::run_basic(worker).expect("Panic in event loop");
   })?;
   let mut handle = handle_receiver.recv().unwrap()?;
   handle.post_message(req).await?;

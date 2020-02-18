@@ -78,6 +78,14 @@ pub fn red(s: String) -> impl fmt::Display {
   style.paint(s)
 }
 
+pub fn green(s: String) -> impl fmt::Display {
+  let mut style = Style::new();
+  if use_color() {
+    style = style.fg(Fixed(10)).bold();
+  }
+  style.paint(s)
+}
+
 pub fn bold(s: String) -> impl fmt::Display {
   let mut style = Style::new();
   if use_color() {
