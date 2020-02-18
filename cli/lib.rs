@@ -133,7 +133,7 @@ fn print_cache_info(state: &GlobalState) {
   println!(
     "{} {:?}",
     colors::bold("Remote modules cache:".to_string()),
-    state.dir.deps_cache.location
+    state.file_fetcher.http_cache.location
   );
   println!(
     "{} {:?}",

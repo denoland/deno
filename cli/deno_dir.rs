@@ -10,8 +10,6 @@ use std::path::PathBuf;
 pub struct DenoDir {
   // Example: /Users/rld/.deno/
   pub root: PathBuf,
-  /// Used by SourceFileFetcher to cache remote modules.
-  pub deps_cache: DiskCache,
   /// Used by TsCompiler to cache compiler output.
   pub gen_cache: DiskCache,
 }
@@ -29,12 +27,10 @@ impl DenoDir {
       .unwrap_or(fallback);
 
     let root: PathBuf = custom_root.unwrap_or(default);
-    let deps_path = root.join("deps");
     let gen_path = root.join("gen");
 
     let deno_dir = Self {
       root,
-      deps_cache: DiskCache::new(&deps_path),
       gen_cache: DiskCache::new(&gen_path),
     };
 

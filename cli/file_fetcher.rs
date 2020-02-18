@@ -3,7 +3,6 @@ use crate::colors;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::deno_error::GetErrorKind;
-use crate::disk_cache::DiskCache;
 use crate::http_cache::HttpCache;
 use crate::http_util;
 use crate::http_util::create_http_client;
@@ -68,23 +67,20 @@ impl SourceFileCache {
 
 const SUPPORTED_URL_SCHEMES: [&str; 3] = ["http", "https", "file"];
 
-/// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them
-/// in single directory that can be controlled with `$DENO_DIR` env variable.
 #[derive(Clone)]
 pub struct SourceFileFetcher {
-  deps_cache: DiskCache,
   source_file_cache: SourceFileCache,
   cache_blacklist: Vec<String>,
   use_disk_cache: bool,
   no_remote: bool,
   cached_only: bool,
   http_client: reqwest::Client,
-  http_cache: HttpCache,
+  // This field is public only to expose it's location
+  pub http_cache: HttpCache,
 }
 
 impl SourceFileFetcher {
   pub fn new(
-    deps_cache: DiskCache,
     http_cache: HttpCache,
     use_disk_cache: bool,
     cache_blacklist: Vec<String>,
@@ -93,7 +89,6 @@ impl SourceFileFetcher {
     ca_file: Option<String>,
   ) -> Result<Self, ErrBox> {
     let file_fetcher = Self {
-      deps_cache,
       http_cache,
       source_file_cache: SourceFileCache::default(),
       cache_blacklist,
@@ -635,7 +630,6 @@ mod tests {
 
   fn setup_file_fetcher(dir_path: &Path) -> SourceFileFetcher {
     SourceFileFetcher::new(
-      DiskCache::new(&dir_path.to_path_buf().join("deps")),
       HttpCache::new(&dir_path.to_path_buf().join("deps")).unwrap(),
       true,
       vec![],
