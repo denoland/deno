@@ -114,8 +114,8 @@ impl HttpCache {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use tempfile::TempDir;
   use std::io::Read;
+  use tempfile::TempDir;
 
   #[test]
   fn test_create_cache() {
