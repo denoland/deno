@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::colors;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::deno_error::GetErrorKind;
@@ -8,7 +9,6 @@ use crate::http_util::create_http_client;
 use crate::http_util::FetchOnceResult;
 use crate::http_util::ResultPayload;
 use crate::msg;
-use crate::progress::Progress;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::Either;
@@ -95,7 +95,6 @@ const SUPPORTED_URL_SCHEMES: [&str; 3] = ["http", "https", "file"];
 #[derive(Clone)]
 pub struct SourceFileFetcher {
   deps_cache: DiskCache,
-  progress: Progress,
   source_file_cache: SourceFileCache,
   cache_blacklist: Vec<String>,
   use_disk_cache: bool,
@@ -107,7 +106,6 @@ pub struct SourceFileFetcher {
 impl SourceFileFetcher {
   pub fn new(
     deps_cache: DiskCache,
-    progress: Progress,
     use_disk_cache: bool,
     cache_blacklist: Vec<String>,
     no_remote: bool,
@@ -116,7 +114,6 @@ impl SourceFileFetcher {
   ) -> Result<Self, ErrBox> {
     let file_fetcher = Self {
       deps_cache,
-      progress,
       source_file_cache: SourceFileCache::default(),
       cache_blacklist,
       use_disk_cache,
@@ -441,7 +438,11 @@ impl SourceFileFetcher {
       .boxed();
     }
 
-    let download_job = self.progress.add("Download", &module_url.to_string());
+    eprintln!(
+      "{} {}",
+      colors::green("Download".to_string()),
+      module_url.to_string()
+    );
     let dir = self.clone();
     let module_url = module_url.clone();
     let headers = self.get_source_code_headers(&module_url);
@@ -454,9 +455,6 @@ impl SourceFileFetcher {
         FetchOnceResult::NotModified => {
           let source_file =
             dir.fetch_cached_remote_source(&module_url)?.unwrap();
-
-          // Explicit drop to keep reference alive until future completes.
-          drop(download_job);
 
           Ok(source_file)
         }
@@ -474,9 +472,6 @@ impl SourceFileFetcher {
               &e.to_string(),
             ));
           }
-
-          // Explicit drop to keep reference alive until future completes.
-          drop(download_job);
 
           // Recurse
           dir
@@ -541,9 +536,6 @@ impl SourceFileFetcher {
             source_code: source,
             types_url,
           };
-
-          // Explicit drop to keep reference alive until future completes.
-          drop(download_job);
 
           Ok(source_file)
         }
@@ -858,7 +850,6 @@ mod tests {
   fn setup_file_fetcher(dir_path: &Path) -> SourceFileFetcher {
     SourceFileFetcher::new(
       DiskCache::new(&dir_path.to_path_buf().join("deps")),
-      Progress::new(),
       true,
       vec![],
       false,

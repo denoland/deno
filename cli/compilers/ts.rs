@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::compiler_worker::CompilerWorker;
+use crate::colors;
 use crate::compilers::CompilationResultFuture;
 use crate::compilers::CompiledModule;
 use crate::diagnostics::Diagnostic;
@@ -372,18 +373,18 @@ impl TsCompiler {
 
     let ts_compiler = self.clone();
 
-    let compiling_job = global_state
-      .progress
-      .add("Compile", &module_url.to_string());
+    eprintln!(
+      "{} {}",
+      colors::green("Compile".to_string()),
+      module_url.to_string()
+    );
     let msg = execute_in_thread(global_state.clone(), req_msg).await?;
 
     let json_str = std::str::from_utf8(&msg).unwrap();
     if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
       return Err(ErrBox::from(diagnostics));
     }
-    let compiled_module = ts_compiler.get_compiled_module(&source_file_.url)?;
-    drop(compiling_job);
-    Ok(compiled_module)
+    ts_compiler.get_compiled_module(&source_file_.url)
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.

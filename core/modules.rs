@@ -653,7 +653,8 @@ mod tests {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
     let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
-    let a_id_fut = isolate.load_module("/a.js", None);
+    let spec = ModuleSpecifier::resolve_url("file:///a.js").unwrap();
+    let a_id_fut = isolate.load_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
     js_check(isolate.mod_evaluate(a_id));
@@ -714,7 +715,8 @@ mod tests {
     let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
 
     let fut = async move {
-      let result = isolate.load_module("/circular1.js", None).await;
+      let spec = ModuleSpecifier::resolve_url("file:///circular1.js").unwrap();
+      let result = isolate.load_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
       js_check(isolate.mod_evaluate(circular1_id));
@@ -784,7 +786,8 @@ mod tests {
     let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
 
     let fut = async move {
-      let result = isolate.load_module("/redirect1.js", None).await;
+      let spec = ModuleSpecifier::resolve_url("file:///redirect1.js").unwrap();
+      let result = isolate.load_module(&spec, None).await;
       println!(">> result {:?}", result);
       assert!(result.is_ok());
       let redirect1_id = result.unwrap();
@@ -844,8 +847,8 @@ mod tests {
       let loads = loader.loads.clone();
       let mut isolate =
         EsIsolate::new(Rc::new(loader), StartupData::None, false);
-      let mut recursive_load =
-        isolate.load_module("/main.js", None).boxed_local();
+      let spec = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
+      let mut recursive_load = isolate.load_module(&spec, None).boxed_local();
 
       let result = recursive_load.poll_unpin(&mut cx);
       assert!(result.is_pending());
@@ -890,8 +893,8 @@ mod tests {
       let loader = MockLoader::new();
       let mut isolate =
         EsIsolate::new(Rc::new(loader), StartupData::None, false);
-      let mut load_fut =
-        isolate.load_module("/bad_import.js", None).boxed_local();
+      let spec = ModuleSpecifier::resolve_url("file:///bad_import.js").unwrap();
+      let mut load_fut = isolate.load_module(&spec, None).boxed_local();
       let result = load_fut.poll_unpin(&mut cx);
       if let Poll::Ready(Err(err)) = result {
         assert_eq!(
@@ -921,8 +924,10 @@ mod tests {
     // In default resolution code should be empty.
     // Instead we explicitly pass in our own code.
     // The behavior should be very similar to /a.js.
+    let spec =
+      ModuleSpecifier::resolve_url("file:///main_with_code.js").unwrap();
     let main_id_fut = isolate
-      .load_module("/main_with_code.js", Some(MAIN_WITH_CODE_SRC.to_owned()))
+      .load_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
       .boxed_local();
     let main_id =
       futures::executor::block_on(main_id_fut).expect("Failed to load");

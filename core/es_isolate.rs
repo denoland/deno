@@ -553,11 +553,14 @@ impl EsIsolate {
   /// manually after load is finished.
   pub async fn load_module(
     &mut self,
-    specifier: &str,
+    specifier: &ModuleSpecifier,
     code: Option<String>,
   ) -> Result<ModuleId, ErrBox> {
-    let mut load =
-      RecursiveModuleLoad::main(specifier, code, self.loader.clone());
+    let mut load = RecursiveModuleLoad::main(
+      &specifier.to_string(),
+      code,
+      self.loader.clone(),
+    );
 
     while let Some(info_result) = load.next().await {
       let info = info_result?;

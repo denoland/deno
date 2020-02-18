@@ -172,9 +172,7 @@ fn run_worker_thread(
     } else {
       // TODO(bartlomieju): add "type": "classic", ie. ability to load
       // script instead of module
-      let load_future = worker
-        .execute_mod_async(&specifier, None, false)
-        .boxed_local();
+      let load_future = worker.execute_module(&specifier).boxed_local();
 
       rt.block_on(load_future)
     };
