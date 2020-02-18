@@ -1,4 +1,4 @@
-import { serve } from "../../http/server.ts";
+import { listenAndServe } from "../../http/server.ts";
 import {
   acceptWebSocket,
   acceptable,
@@ -29,32 +29,29 @@ async function wsHandler(ws: WebSocket): Promise<void> {
   }
 }
 
-async function main(): Promise<void> {
-  console.log("chat server starting on :8080....");
-  for await (const req of serve({ port: 8080 })) {
-    if (req.method === "GET" && req.url === "/") {
-      Deno.open("./index.html").then(file => {
-        req
-          .respond({
-            status: 200,
-            headers: new Headers({
-              "content-type": "text/html"
-            }),
-            body: file
-          })
-          .finally(() => file.close());
-      });
-    }
-    if (req.method === "GET" && req.url === "/ws") {
-      if (acceptable(req)) {
-        acceptWebSocket({
-          conn: req.conn,
-          bufReader: req.r,
-          bufWriter: req.w,
-          headers: req.headers
-        }).then(wsHandler);
-      }
+listenAndServe({ port: 8080 }, async req => {
+  if (req.method === "GET" && req.url === "/") {
+    Deno.open("./index.html").then(file => {
+      req
+        .respond({
+          status: 200,
+          headers: new Headers({
+            "content-type": "text/html"
+          }),
+          body: file
+        })
+        .finally(() => file.close());
+    });
+  }
+  if (req.method === "GET" && req.url === "/ws") {
+    if (acceptable(req)) {
+      acceptWebSocket({
+        conn: req.conn,
+        bufReader: req.r,
+        bufWriter: req.w,
+        headers: req.headers
+      }).then(wsHandler);
     }
   }
-}
-main();
+});
+console.log("chat server starting on :8080....");

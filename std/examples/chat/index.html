@@ -1,7 +1,9 @@
 <html>
-  <head></head>
+  <head>
+    <title>ws chat example</title>
+  </head>
   <body>
-    <div class="">
+    <div>
       <input type="text" id="input" />
       <button id="sendButton" disabled>send</button>
       <button id="connectButton" disabled>connect</button>
@@ -33,7 +35,7 @@
       }
       function connect() {
         if (ws) ws.close();
-        ws = new WebSocket("ws://localhost:8080/ws");
+        ws = new WebSocket("ws://0.0.0.0:8080/ws");
         ws.addEventListener("open", () => {
           console.log("open", ws);
           applyState({connected: true});
