@@ -31,6 +31,7 @@ use std::task::Context;
 use std::task::Poll;
 use tokio::io::AsyncRead;
 use url::Url;
+use std::collections::HashMap;
 
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
@@ -92,13 +93,14 @@ pub struct ResultPayload {
   pub content_type: Option<String>,
   pub etag: Option<String>,
   pub x_typescript_types: Option<String>,
+  pub headers: HashMap<String, String>
 }
 
 #[derive(Debug, PartialEq)]
 pub enum FetchOnceResult {
   Code(ResultPayload),
   NotModified,
-  Redirect(Url),
+  Redirect(Url, HashMap<String, String>),
 }
 
 /// Asynchronously fetches the given HTTP URL one pass only.
@@ -128,6 +130,17 @@ pub fn fetch_once(
       return Ok(FetchOnceResult::NotModified);
     }
 
+    let mut headers_: HashMap<String, String> = HashMap::new();
+    let headers = response.headers();
+    for key in headers.keys() {
+      let key_str = key.to_string();
+      let values = headers.get_all(key);
+      let values_str = values.iter().map(|e| {
+        e.to_str().unwrap().to_string()
+      }).collect::<Vec<String>>().join(",");
+      headers_.insert(key_str, values_str);
+    }
+
     if response.status().is_redirection() {
       let location_string = response
         .headers()
@@ -138,7 +151,7 @@ pub fn fetch_once(
 
       debug!("Redirecting to {:?}...", &location_string);
       let new_url = resolve_url_from_location(&url, location_string);
-      return Ok(FetchOnceResult::Redirect(new_url));
+      return Ok(FetchOnceResult::Redirect(new_url, headers_));
     }
 
     if response.status().is_client_error()
@@ -197,6 +210,7 @@ pub fn fetch_once(
       content_type,
       etag,
       x_typescript_types,
+      headers: headers_,
     }));
   };
 
@@ -340,6 +354,7 @@ mod tests {
       content_type,
       etag,
       x_typescript_types,
+      headers: _,
     })) = result
     {
       assert!(!body.is_empty());
@@ -397,7 +412,7 @@ mod tests {
       Url::parse("http://localhost:4545/cli/tests/fixture.json").unwrap();
     let client = create_http_client(None).unwrap();
     let result = fetch_once(client, &url, None).await;
-    if let Ok(FetchOnceResult::Redirect(url)) = result {
+    if let Ok(FetchOnceResult::Redirect(url, _)) = result {
       assert_eq!(url, target_url);
     } else {
       panic!();
@@ -520,6 +535,7 @@ mod tests {
       content_type,
       etag,
       x_typescript_types,
+      headers: _,
     })) = result
     {
       assert!(!body.is_empty());

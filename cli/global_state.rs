@@ -6,6 +6,7 @@ use crate::compilers::TargetLib;
 use crate::compilers::TsCompiler;
 use crate::compilers::WasmCompiler;
 use crate::deno_dir;
+use crate::http_cache;
 use crate::deno_error::permission_denied;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
@@ -58,9 +59,11 @@ impl GlobalState {
   pub fn new(flags: flags::DenoFlags) -> Result<Self, ErrBox> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
+    let http_cache = http_cache::HttpCache::new(&dir.deps_cache.location)?;
 
     let file_fetcher = SourceFileFetcher::new(
       dir.deps_cache.clone(),
+      http_cache,
       !flags.reload,
       flags.cache_blacklist.clone(),
       flags.no_remote,

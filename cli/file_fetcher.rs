@@ -9,6 +9,8 @@ use crate::http_util::create_http_client;
 use crate::http_util::FetchOnceResult;
 use crate::http_util::ResultPayload;
 use crate::msg;
+use crate::http_cache::HttpCache;
+use std::io::Read;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::Either;
@@ -101,11 +103,13 @@ pub struct SourceFileFetcher {
   no_remote: bool,
   cached_only: bool,
   http_client: reqwest::Client,
+  http_cache: HttpCache,
 }
 
 impl SourceFileFetcher {
   pub fn new(
     deps_cache: DiskCache,
+    http_cache: HttpCache,
     use_disk_cache: bool,
     cache_blacklist: Vec<String>,
     no_remote: bool,
@@ -114,6 +118,7 @@ impl SourceFileFetcher {
   ) -> Result<Self, ErrBox> {
     let file_fetcher = Self {
       deps_cache,
+      http_cache,
       source_file_cache: SourceFileCache::default(),
       cache_blacklist,
       use_disk_cache,
@@ -333,59 +338,46 @@ impl SourceFileFetcher {
     &self,
     module_url: &Url,
   ) -> Result<Option<SourceFile>, ErrBox> {
-    let source_code_headers = self.get_source_code_headers(&module_url);
-    // If source code headers says that it would redirect elsewhere,
-    // (meaning that the source file might not exist; only .headers.json is present)
-    // Abort reading attempts to the cached source file and and follow the redirect.
-    if let Some(redirect_to) = source_code_headers.redirect_to {
-      // E.g.
-      // module_name https://import-meta.now.sh/redirect.js
-      // filename /Users/kun/Library/Caches/deno/deps/https/import-meta.now.sh/redirect.js
-      // redirect_to https://import-meta.now.sh/sub/final1.js
-      // real_filename /Users/kun/Library/Caches/deno/deps/https/import-meta.now.sh/sub/final1.js
-      // real_module_name = https://import-meta.now.sh/sub/final1.js
-      let redirect_url = Url::parse(&redirect_to).expect("Should be valid URL");
-
-      // Recurse.
-      // TODO(bartlomieju): I'm pretty sure we should call `fetch_remote_source_async` here.
-      // Should we expect that all redirects are cached?
-      return self.fetch_cached_remote_source(&redirect_url);
-    }
-
-    // No redirect needed or end of redirects.
-    // We can try read the file
-    let filepath = self
-      .deps_cache
-      .location
-      .join(self.deps_cache.get_cache_filename(&module_url));
-    let source_code = match fs::read(filepath.clone()) {
+    let result = self.http_cache.get(&module_url);
+    let result = match result {
       Err(e) => {
-        if e.kind() == std::io::ErrorKind::NotFound {
-          return Ok(None);
-        } else {
-          return Err(e.into());
+        if let Some(e) = e.downcast_ref::<std::io::Error>() {
+          if e.kind() == std::io::ErrorKind::NotFound {
+            return Ok(None);
+          }  
         }
+        
+        return Err(e.into());
       }
       Ok(c) => c,
     };
+
+    let (mut source_file, headers) = result;
+    if let Some(redirect_to) = headers.get("location") {
+      let redirect_url = Url::parse(redirect_to).expect("Should be valid URL");
+      return self.fetch_cached_remote_source(&redirect_url);
+    }
+
+    let mut source_code = Vec::new();
+    source_file.read_to_end(&mut source_code)?;
+
+    let cache_filename = self.http_cache.get_cache_filename(module_url);
+    let fake_filepath = PathBuf::from(module_url.path());
     let media_type = map_content_type(
-      &filepath,
-      source_code_headers.mime_type.as_ref().map(String::as_str),
+      &fake_filepath,
+      headers.get("content-type").map(|e| e.as_str()),
     );
     let types_url = match media_type {
       msg::MediaType::JavaScript | msg::MediaType::JSX => get_types_url(
         &module_url,
         &source_code,
-        source_code_headers
-          .x_typescript_types
-          .as_ref()
-          .map(String::as_str),
+        headers.get("x-typescript-types").map(|e| e.as_str())
       ),
       _ => None,
     };
     Ok(Some(SourceFile {
       url: module_url.clone(),
-      filename: filepath,
+      filename: cache_filename,
       media_type,
       source_code,
       types_url,
@@ -458,8 +450,14 @@ impl SourceFileFetcher {
 
           Ok(source_file)
         }
-        FetchOnceResult::Redirect(new_module_url) => {
+        FetchOnceResult::Redirect(new_module_url, headers) => {
           // If redirects, update module_name and filename for next looped call.
+          dir.http_cache.set(
+            &module_url,
+            headers,
+            &[]
+          )?;
+
           if let Err(e) = dir.save_source_code_headers(
             &module_url,
             None,
@@ -488,8 +486,14 @@ impl SourceFileFetcher {
           content_type: maybe_content_type,
           etag,
           x_typescript_types,
+          headers,
         }) => {
           // We land on the code.
+          dir.http_cache.set(
+            &module_url,
+            headers,
+            &source,
+          )?;
           if let Err(e) = dir.save_source_code_headers(
             &module_url,
             maybe_content_type.clone(),
@@ -510,13 +514,11 @@ impl SourceFileFetcher {
             ));
           }
 
-          let filepath = dir
-            .deps_cache
-            .location
-            .join(dir.deps_cache.get_cache_filename(&module_url));
-
+          let cache_filepath = dir.http_cache.get_cache_filename(&module_url);
+          // Used to sniff out content type from file extension - probably to be removed
+          let fake_filepath = PathBuf::from(module_url.path());
           let media_type = map_content_type(
-            &filepath,
+            &fake_filepath,
             maybe_content_type.as_ref().map(String::as_str),
           );
 
@@ -531,7 +533,7 @@ impl SourceFileFetcher {
 
           let source_file = SourceFile {
             url: module_url.clone(),
-            filename: filepath,
+            filename: cache_filepath,
             media_type,
             source_code: source,
             types_url,
@@ -844,12 +846,12 @@ impl SourceCodeHeaders {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::fs as deno_fs;
   use tempfile::TempDir;
 
   fn setup_file_fetcher(dir_path: &Path) -> SourceFileFetcher {
     SourceFileFetcher::new(
       DiskCache::new(&dir_path.to_path_buf().join("deps")),
+      HttpCache::new(&dir_path.to_path_buf().join("deps")).unwrap(),
       true,
       vec![],
       false,
@@ -935,49 +937,6 @@ mod tests {
   }
 
   #[test]
-  fn test_source_code_headers_get_and_save() {
-    let (_temp_dir, fetcher) = test_setup();
-    let url = Url::parse("http://example.com/f.js").unwrap();
-    let headers_filepath = fetcher.deps_cache.location.join(
-      fetcher
-        .deps_cache
-        .get_cache_filename_with_extension(&url, "headers.json"),
-    );
-
-    if let Some(ref parent) = headers_filepath.parent() {
-      fs::create_dir_all(parent).unwrap();
-    };
-
-    let _ = deno_fs::write_file(
-      headers_filepath.as_path(),
-      "{\"mime_type\":\"text/javascript\",\"redirect_to\":\"http://example.com/a.js\"}",
-      0o666,
-    );
-    let headers = fetcher.get_source_code_headers(&url);
-
-    assert_eq!(headers.mime_type.clone().unwrap(), "text/javascript");
-    assert_eq!(headers.redirect_to.unwrap(), "http://example.com/a.js");
-    assert_eq!(headers.etag, None);
-    assert_eq!(headers.x_typescript_types, None);
-
-    let _ = fetcher.save_source_code_headers(
-      &url,
-      Some("text/typescript".to_owned()),
-      Some("http://deno.land/a.js".to_owned()),
-      Some("W/\"04572f4749af993f4961a7e5daa1e4d5\"".to_owned()),
-      Some("./a.d.ts".to_owned()),
-    );
-    let headers2 = fetcher.get_source_code_headers(&url);
-    assert_eq!(headers2.mime_type.clone().unwrap(), "text/typescript");
-    assert_eq!(headers2.redirect_to.unwrap(), "http://deno.land/a.js");
-    assert_eq!(
-      headers2.etag.unwrap(),
-      "W/\"04572f4749af993f4961a7e5daa1e4d5\""
-    );
-    assert_eq!(headers2.x_typescript_types.unwrap(), "./a.d.ts")
-  }
-
-  #[test]
   fn test_fetch_local_file_no_panic() {
     let (_temp_dir, fetcher) = test_setup();
     if cfg!(windows) {
@@ -1001,14 +960,11 @@ mod tests {
       Url::parse("http://localhost:4545/cli/tests/subdir/mod2.ts").unwrap();
     let module_url_1 = module_url.clone();
     let module_url_2 = module_url.clone();
-    let headers_file_name = fetcher.deps_cache.location.join(
-      fetcher
-        .deps_cache
-        .get_cache_filename_with_extension(&module_url, "headers.json"),
-    );
+    let headers_file_name = fetcher
+      .http_cache
+      .get_cache_filename(&module_url).with_extension("headers.json");
     let headers_file_name_1 = headers_file_name.clone();
     let headers_file_name_2 = headers_file_name.clone();
-    let headers_file_name_3 = headers_file_name;
 
     let result = fetcher
       .get_source_file_async(&module_url, true, false, false)
@@ -1020,13 +976,12 @@ mod tests {
       &b"export { printHello } from \"./print_hello.ts\";\n"[..]
     );
     assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-    // Should not create .headers.json file due to matching ext
-    assert!(fs::read_to_string(&headers_file_name_1).is_err());
+    assert!(fs::read_to_string(&headers_file_name_1).is_ok());
 
     // Modify .headers.json, write using fs write and read using save_source_code_headers
     let _ = fs::write(
       &headers_file_name_1,
-      "{ \"mime_type\": \"text/javascript\" }",
+      "{ \"content-type\": \"text/javascript\" }",
     );
     let result2 = fetcher_1
       .get_source_file_async(&module_url, true, false, false)
@@ -1040,21 +995,17 @@ mod tests {
     // If get_source_file_async does not call remote, this should be JavaScript
     // as we modified before! (we do not overwrite .headers.json due to no http fetch)
     assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
+    let (_, headers) = fetcher_2.http_cache.get(&module_url_1).unwrap();
+
     assert_eq!(
-      fetcher_2
-        .get_source_code_headers(&module_url_1)
-        .mime_type
-        .unwrap(),
+      headers.get("content-type").unwrap(),
       "text/javascript"
     );
 
     // Modify .headers.json again, but the other way around
-    let _ = fetcher_2.save_source_code_headers(
-      &module_url_1,
-      Some("application/json".to_owned()),
-      None,
-      None,
-      None,
+    let _ = fs::write(
+      &headers_file_name_1,
+      "{ \"content-type\": \"application/json\" }",
     );
     let result3 = fetcher_2
       .get_source_file_async(&module_url_1, true, false, false)
@@ -1082,9 +1033,8 @@ mod tests {
     let r4 = result4.unwrap();
     let expected4 = &b"export { printHello } from \"./print_hello.ts\";\n"[..];
     assert_eq!(r4.source_code, expected4);
-    // Now the old .headers.json file should have gone! Resolved back to TypeScript
+    // Resolved back to TypeScript
     assert_eq!(&(r4.media_type), &msg::MediaType::TypeScript);
-    assert!(fs::read_to_string(&headers_file_name_3).is_err());
 
     drop(http_server_guard);
   }

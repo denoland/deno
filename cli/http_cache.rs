@@ -1,12 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-#![allow(unused)]
 
 use crate::fs as deno_fs;
 use deno_core::ErrBox;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
-use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use url::Url;
@@ -63,6 +61,7 @@ fn url_to_filename(url: &Url) -> PathBuf {
 
 pub type HeadersMap = HashMap<String, String>;
 
+#[derive(Clone)]
 pub struct HttpCache {
   pub location: PathBuf,
 }
@@ -77,10 +76,13 @@ impl HttpCache {
     })
   }
 
+  pub fn get_cache_filename(&self, url: &Url) -> PathBuf {
+    self.location.join(url_to_filename(url))
+  }
+
   pub fn get(&self, url: &Url) -> Result<(File, HeadersMap), ErrBox> {
     let cache_filename = self.location.join(url_to_filename(url));
     let headers_filename = cache_filename.with_extension("headers.json");
-    eprintln!("{:?} {:?}", cache_filename, headers_filename);
     let file = File::open(cache_filename)?;
     let headers_json = fs::read_to_string(headers_filename)?;
     let headers_map: HeadersMap = serde_json::from_str(&headers_json)?;
@@ -113,6 +115,7 @@ impl HttpCache {
 mod tests {
   use super::*;
   use tempfile::TempDir;
+  use std::io::Read;
 
   #[test]
   fn test_create_cache() {
