@@ -30,8 +30,7 @@ use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
+use std::thread::JoinHandle;
 use std::time::Instant;
 
 #[derive(Clone)]
@@ -54,8 +53,8 @@ pub struct StateInner {
   pub import_map: Option<ImportMap>,
   pub metrics: Metrics,
   pub global_timer: GlobalTimer,
-  pub workers: HashMap<u32, WorkerHandle>,
-  pub next_worker_id: AtomicUsize,
+  pub workers: HashMap<u32, (JoinHandle<()>, WorkerHandle)>,
+  pub next_worker_id: u32,
   pub start_time: Instant,
   pub seeded_rng: Option<StdRng>,
   pub resource_table: ResourceTable,
@@ -231,7 +230,7 @@ impl State {
       metrics: Metrics::default(),
       global_timer: GlobalTimer::new(),
       workers: HashMap::new(),
-      next_worker_id: AtomicUsize::new(0),
+      next_worker_id: 0,
       start_time: Instant::now(),
       seeded_rng,
 
@@ -267,7 +266,7 @@ impl State {
       metrics: Metrics::default(),
       global_timer: GlobalTimer::new(),
       workers: HashMap::new(),
-      next_worker_id: AtomicUsize::new(0),
+      next_worker_id: 0,
       start_time: Instant::now(),
       seeded_rng,
 
@@ -276,14 +275,6 @@ impl State {
     }));
 
     Ok(Self(state))
-  }
-
-  pub fn add_child_worker(&self, handle: WorkerHandle) -> u32 {
-    let mut inner_state = self.borrow_mut();
-    let worker_id =
-      inner_state.next_worker_id.fetch_add(1, Ordering::Relaxed) as u32;
-    inner_state.workers.insert(worker_id, handle);
-    worker_id
   }
 
   #[inline]
