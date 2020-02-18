@@ -1,8 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+/// This module is meant to eventually implement HTTP cache
+/// as defined in RFC 7234 (https://tools.ietf.org/html/rfc7234).
+/// Currently it's a very simplified version to fulfill Deno needs
+/// at hand.
 use crate::fs as deno_fs;
+use crate::http_util::HeadersMap;
 use deno_core::ErrBox;
-use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::path::Path;
@@ -43,7 +47,9 @@ pub fn base_url_to_filename(url: &Url) -> PathBuf {
 /// in filenames (like "?", "#", ":"), so in order to cache
 /// them properly they are deterministically hashed into ASCII
 /// strings.
-fn url_to_filename(url: &Url) -> PathBuf {
+///
+/// NOTE: this method is `pub` because it's used in integration_tests
+pub fn url_to_filename(url: &Url) -> PathBuf {
   let mut cache_filename = base_url_to_filename(url);
 
   let mut rest_str = url.path().to_string();
@@ -58,8 +64,6 @@ fn url_to_filename(url: &Url) -> PathBuf {
   cache_filename.push(hashed_filename);
   cache_filename
 }
-
-pub type HeadersMap = HashMap<String, String>;
 
 #[derive(Clone)]
 pub struct HttpCache {
@@ -76,7 +80,7 @@ impl HttpCache {
     })
   }
 
-  pub fn get_cache_filename(&self, url: &Url) -> PathBuf {
+  pub(crate) fn get_cache_filename(&self, url: &Url) -> PathBuf {
     self.location.join(url_to_filename(url))
   }
 
@@ -114,6 +118,7 @@ impl HttpCache {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::collections::HashMap;
   use std::io::Read;
   use tempfile::TempDir;
 

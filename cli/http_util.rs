@@ -85,20 +85,13 @@ fn resolve_url_from_location(base_url: &Url, location: &str) -> Url {
   }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct ResultPayload {
-  pub body: Vec<u8>,
-  pub content_type: Option<String>,
-  pub etag: Option<String>,
-  pub x_typescript_types: Option<String>,
-  pub headers: HashMap<String, String>,
-}
+pub type HeadersMap = HashMap<String, String>;
 
 #[derive(Debug, PartialEq)]
 pub enum FetchOnceResult {
-  Code(Vec<u8>, HashMap<String, String>),
+  Code(Vec<u8>, HeadersMap),
   NotModified,
-  Redirect(Url, HashMap<String, String>),
+  Redirect(Url, HeadersMap),
 }
 
 /// Asynchronously fetches the given HTTP URL one pass only.
