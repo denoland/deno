@@ -7,9 +7,9 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
+use crate::fs::files_in_subtree;
 use deno_core::ErrBox;
 use dprint_plugin_typescript as dprint;
-use glob;
 use std::fs;
 use std::io::stdin;
 use std::io::stdout;
@@ -135,26 +135,6 @@ fn format_source_files(
   );
 }
 
-pub fn source_files_in_subtree(root: PathBuf) -> Vec<PathBuf> {
-  assert!(root.is_dir());
-  // TODO(ry) Use WalkDir instead of globs.
-  let g = root.join("**/*");
-  glob::glob(&g.into_os_string().into_string().unwrap())
-    .expect("Failed to execute glob.")
-    .filter_map(|result| {
-      if let Ok(p) = result {
-        if is_supported(&p) {
-          Some(p)
-        } else {
-          None
-        }
-      } else {
-        None
-      }
-    })
-    .collect()
-}
-
 /// Format JavaScript/TypeScript files.
 ///
 /// First argument supports globs, and if it is `None`
@@ -168,13 +148,15 @@ pub fn format_files(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
   let mut target_files: Vec<PathBuf> = vec![];
 
   if args.is_empty() {
-    target_files
-      .extend(source_files_in_subtree(std::env::current_dir().unwrap()));
+    target_files.extend(files_in_subtree(
+      std::env::current_dir().unwrap(),
+      is_supported,
+    ));
   } else {
     for arg in args {
       let p = PathBuf::from(arg);
       if p.is_dir() {
-        target_files.extend(source_files_in_subtree(p));
+        target_files.extend(files_in_subtree(p, is_supported));
       } else {
         target_files.push(p);
       };

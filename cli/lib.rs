@@ -353,8 +353,7 @@ async fn test_command(
   let global_state = GlobalState::new(flags.clone())?;
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let test_modules =
-    test_runner::prepare_test_modules_urls(include, cwd.clone())?;
+  let test_modules = test_runner::prepare_test_modules_urls(include, &cwd)?;
 
   if test_modules.is_empty() {
     println!("No matching test modules found");

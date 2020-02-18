@@ -65,6 +65,7 @@ impl GlobalState {
       flags.cache_blacklist.clone(),
       flags.no_remote,
       flags.cached_only,
+      flags.ca_file.clone(),
     )?;
 
     let ts_compiler = TsCompiler::new(
