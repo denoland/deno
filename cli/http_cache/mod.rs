@@ -1,12 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #![allow(unused)]
 
+use crate::fs as deno_fs;
 use deno_core::ErrBox;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
-use std::path::PathBuf;
+use std::io::Read;
 use std::path::Path;
+use std::path::PathBuf;
 use url::Url;
 
 /// Turn base of url (scheme, hostname, port) into a valid filename.
@@ -39,12 +41,12 @@ pub fn base_url_to_filename(url: &Url) -> PathBuf {
 }
 
 /// Turn provided `url` into a hashed filename.
-/// URLs can contain a lot of characters that cannot be used 
+/// URLs can contain a lot of characters that cannot be used
 /// in filenames (like "?", "#", ":"), so in order to cache
 /// them properly they are deterministically hashed into ASCII
 /// strings.
 fn url_to_filename(url: &Url) -> PathBuf {
-  let hostname_filename = base_url_to_filename(url);
+  let mut cache_filename = base_url_to_filename(url);
 
   let mut rest_str = url.path().to_string();
   if let Some(query) = url.query() {
@@ -55,7 +57,6 @@ fn url_to_filename(url: &Url) -> PathBuf {
   // account when caching - it denotes parts of webpage, which
   // in case of static resources doesn't make much sense
   let hashed_filename = crate::checksum::gen(vec![rest_str.as_bytes()]);
-  let mut cache_filename = PathBuf::from(hostname_filename);
   cache_filename.push(hashed_filename);
   cache_filename
 }
@@ -67,17 +68,23 @@ pub struct HttpCache {
 }
 
 impl HttpCache {
-  /// Returns error if unable to create directory 
+  /// Returns error if unable to create directory
   /// at specified location.
   pub fn new(location: &Path) -> Result<Self, ErrBox> {
     fs::create_dir_all(&location)?;
     Ok(Self {
-      location: location.to_owned()
+      location: location.to_owned(),
     })
   }
 
-  pub fn get(&self, url: &Url) -> Option<(File, HeadersMap)> {
-    todo!()
+  pub fn get(&self, url: &Url) -> Result<(File, HeadersMap), ErrBox> {
+    let cache_filename = self.location.join(url_to_filename(url));
+    let headers_filename = cache_filename.with_extension("headers.json");
+    eprintln!("{:?} {:?}", cache_filename, headers_filename);
+    let file = File::open(cache_filename)?;
+    let headers_json = fs::read_to_string(headers_filename)?;
+    let headers_map: HeadersMap = serde_json::from_str(&headers_json)?;
+    Ok((file, headers_map))
   }
 
   pub fn set(
@@ -86,7 +93,19 @@ impl HttpCache {
     headers_map: HeadersMap,
     content: &[u8],
   ) -> Result<(), ErrBox> {
-    todo!()
+    let cache_filename = self.location.join(url_to_filename(url));
+    let headers_filename = cache_filename.with_extension("headers.json");
+    // Create parent directory
+    let parent_filename = cache_filename
+      .parent()
+      .expect("Cache filename should have a parent dir");
+    fs::create_dir_all(parent_filename)?;
+    // Cache content
+    deno_fs::write_file(&cache_filename, content, 0o666)?;
+    let serialized_headers = serde_json::to_string(&headers_map)?;
+    // Cache headers
+    deno_fs::write_file(&headers_filename, serialized_headers, 0o666)?;
+    Ok(())
   }
 }
 
@@ -103,6 +122,36 @@ mod tests {
     let r = HttpCache::new(&cache_path);
     assert!(r.is_ok());
     assert!(cache_path.is_dir());
+  }
+
+  #[test]
+  fn test_get_set() {
+    let dir = TempDir::new().unwrap();
+    let cache = HttpCache::new(dir.path()).unwrap();
+    let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
+    let mut headers = HashMap::new();
+    headers.insert(
+      "content-type".to_string(),
+      "application/javascript".to_string(),
+    );
+    headers.insert("etag".to_string(), "as5625rqdsfb".to_string());
+    let content = b"Hello world";
+    let r = cache.set(&url, headers, content);
+    eprintln!("result {:?}", r);
+    assert!(r.is_ok());
+    let r = cache.get(&url);
+    assert!(r.is_ok());
+    let (mut file, headers) = r.unwrap();
+    let mut content = String::new();
+    file.read_to_string(&mut content).unwrap();
+    assert_eq!(content, "Hello world");
+    assert_eq!(
+      headers.get("content-type").unwrap(),
+      "application/javascript"
+    );
+    assert_eq!(headers.get("etag").unwrap(), "as5625rqdsfb");
+    assert_eq!(headers.get("foobar"), None);
+    drop(dir);
   }
 
   #[test]
