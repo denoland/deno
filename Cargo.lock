@@ -357,7 +357,7 @@ dependencies = [
  "deno_typescript 0.33.0",
  "dirs 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "dlopen 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "dprint-plugin-typescript 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "dprint-plugin-typescript 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "fwdansi 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "glob 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -482,14 +482,14 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "dprint-core 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.104 (registry+https://github.com/rust-lang/crates.io-index)",
  "swc_common 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "swc_ecma_ast 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "swc_ecma_parser 0.18.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "swc_ecma_ast 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "swc_ecma_parser 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1810,7 +1810,7 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_ast"
-version = "0.16.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "enum_kind 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1823,7 +1823,7 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_parser"
-version = "0.18.1"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "either 1.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1836,7 +1836,7 @@ dependencies = [
  "smallvec 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "swc_atoms 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "swc_common 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "swc_ecma_ast 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "swc_ecma_ast 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "swc_ecma_parser_macros 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "unicode-xid 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -2378,7 +2378,7 @@ dependencies = [
 "checksum dlopen_derive 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "f236d9e1b1fbd81cea0f9cbdc8dcc7e8ebcd80e6659cd7cb2ad5f6c05946c581"
 "checksum downcast-rs 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "52ba6eb47c2131e784a38b726eb54c1e1484904f013e576a25354d0124161af6"
 "checksum dprint-core 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)" = "1571f0f9a597eab84bb34b9e1caad52f1482661c8d5f191632524355a560f30f"
-"checksum dprint-plugin-typescript 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "c8c2d6cf5d1a254d3ed1035848174de2898b6e7cbaf0cf729e3a8fbbcd9c8228"
+"checksum dprint-plugin-typescript 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)" = "8ff414c104954177b7c98a5ce879f270165b5984a8224cb4055d9454c03b2a53"
 "checksum dtoa 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)" = "4358a9e11b9a09cf52383b451b49a169e8d797b68aa02301ff586d70d9661ea3"
 "checksum either 1.5.3 (registry+https://github.com/rust-lang/crates.io-index)" = "bb1f6b1ce1c140482ea30ddd3335fc0024ac7ee112895426e0a629a6c20adfe3"
 "checksum encoding_rs 0.8.22 (registry+https://github.com/rust-lang/crates.io-index)" = "cd8d03faa7fe0c1431609dfad7bbe827af30f82e1e2ae6f7ee4fca6bd764bc28"
@@ -2527,8 +2527,8 @@ dependencies = [
 "checksum strsim 0.9.3 (registry+https://github.com/rust-lang/crates.io-index)" = "6446ced80d6c486436db5c078dde11a9f73d42b57fb273121e160b84f63d894c"
 "checksum swc_atoms 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "46682d5a27e12d8b86168ea2fcb3aae2e0625f24bf109dee4bca24b2b51e03ce"
 "checksum swc_common 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ce77893c12a6d08462ff58595614c3da9e41126263a7209df50ea311e73a687c"
-"checksum swc_ecma_ast 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)" = "47f827ee34c07c8134cfd6c5428221babf09e0d9d9ea20ee02ab8f92d3b000c9"
-"checksum swc_ecma_parser 0.18.1 (registry+https://github.com/rust-lang/crates.io-index)" = "2000932472c651f15fefe43a7b3c8205dcc0bca52c109225e95f11cb7c34dc92"
+"checksum swc_ecma_ast 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)" = "9702641d277f6304ec52a1a84e3bb31218ade02f7d863cf2e40912765be0b9dc"
+"checksum swc_ecma_parser 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)" = "36bccb1fad2cec9c865dd7e2894f2713e6e8da84858720a26de630c2f8cd20e3"
 "checksum swc_ecma_parser_macros 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "7b3ae6f346378d597ff91095bb1b926e3e1f3504babd30968b939c96d2529b2a"
 "checksum swc_macros_common 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d1638e13581d32a5ef0ea74fadb9d2325b30f3fdb17ac8d38cb6da5f83f1b92b"
 "checksum syn 0.15.44 (registry+https://github.com/rust-lang/crates.io-index)" = "9ca4b3b69a77cbe1ffc9e198781b7acb0c7365a883670e8f1c1bc66fba79a5c5"
