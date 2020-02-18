@@ -430,8 +430,10 @@ export function on(
 ): AsyncInterable {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const unconsumedEventValues: any[] = [];
-  const unconsumedPromises = [];
-  let error = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const unconsumedPromises: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let error: Error | null = null;
   let finished = false;
 
   const iterator = {
@@ -485,7 +487,7 @@ export function on(
     },
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    [Symbol.asyncIterator](): AsyncIterable<any> {
+    [Symbol.asyncIterator](): any {
       return this;
     }
   };
