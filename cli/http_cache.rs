@@ -84,8 +84,8 @@ impl HttpCache {
     self.location.join(url_to_filename(url))
   }
 
-  // TODO(bartlomieju): this method should check headers file 
-  // and validate against ETAG/Last-modified-as headers. 
+  // TODO(bartlomieju): this method should check headers file
+  // and validate against ETAG/Last-modified-as headers.
   // ETAG check is currently done in `cli/file_fetcher.rs`.
   pub fn get(&self, url: &Url) -> Result<(File, HeadersMap), ErrBox> {
     let cache_filename = self.location.join(url_to_filename(url));
