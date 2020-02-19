@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::dispatch_json::Deserialize;
+use super::dispatch_json::JsonOp;
+use super::dispatch_json::Value;
 use crate::futures::future::try_join_all;
 use crate::msg;
 use crate::ops::json_op;
@@ -16,6 +18,10 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "fetch_source_files",
     s.core_op(json_op(s.stateful_op(op_fetch_source_files))),
+  );
+  i.register_op(
+    "fetch_asset",
+    s.core_op(json_op(s.stateful_op(op_fetch_asset))),
   );
 }
 
@@ -153,4 +159,27 @@ fn op_fetch_source_files(
   });
 
   Ok(JsonOp::Async(future))
+}
+
+#[derive(Deserialize, Debug)]
+struct FetchRemoteAssetArgs {
+  name: String,
+}
+
+fn op_fetch_asset(
+  _state: &State,
+  args: Value,
+  _data: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: FetchRemoteAssetArgs = serde_json::from_value(args)?;
+  debug!("args.name: {}", args.name);
+
+  let source_code =
+    if let Some(source_code) = deno_typescript::get_asset(&args.name) {
+      source_code.to_string()
+    } else {
+      panic!("Asset not found: \"{}\"", args.name)
+    };
+
+  Ok(JsonOp::Sync(json!({ "sourceCode": source_code })))
 }
