@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
+  assert,
   assertEquals,
   assertStrContains,
   assertThrows,
@@ -224,6 +225,8 @@ Deno.test(async function emptyDirPermission(): Promise<void> {
         cwd: testdataDir,
         args: args
       });
+
+      assert(stdout);
 
       const output = await Deno.readAll(stdout);
 

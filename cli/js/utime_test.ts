@@ -3,7 +3,9 @@ import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 // Allow 10 second difference.
 // Note this might not be enough for FAT (but we are not testing on such fs).
-function assertFuzzyTimestampEquals(t1: number, t2: number): void {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function assertFuzzyTimestampEquals(t1: any, t2: number): void {
+  assert(typeof t1 === "number");
   assert(Math.abs(t1 - t2) < 10);
 }
 

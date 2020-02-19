@@ -311,7 +311,7 @@ export class BufReader implements Reader {
    */
   async readSlice(delim: number): Promise<Uint8Array | Deno.EOF> {
     let s = 0; // search start index
-    let slice: Uint8Array;
+    let slice: Uint8Array | undefined;
 
     while (true) {
       // Search buffer.

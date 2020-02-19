@@ -56,7 +56,10 @@ if (Deno.build.os === "win") {
     // specified in `inputEnv`. The subprocess reads the environment variables
     // which are in the keys of `expectedEnv` and writes them to stdout as JSON.
     // It is then verified that these match with the values of `expectedEnv`.
-    const checkChildEnv = async (inputEnv, expectedEnv): Promise<void> => {
+    const checkChildEnv = async (
+      inputEnv: Record<string, string>,
+      expectedEnv: Record<string, string>
+    ): Promise<void> => {
       const src = `
         console.log(
           ${JSON.stringify(Object.keys(expectedEnv))}.map(k => Deno.env(k))
@@ -249,6 +252,7 @@ testPerm({ env: true }, function getDir(): void {
       if (Deno.build.os !== r.os) continue;
       if (r.shouldHaveValue) {
         const d = Deno.dir(s.kind);
+        assert(d);
         assert(d.length > 0);
       }
     }
