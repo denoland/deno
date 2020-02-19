@@ -2,6 +2,8 @@
 
 export function constructError(kind: ErrorKind, msg: string): Error {
   switch (kind) {
+    case ErrorKind.TypeError:
+      return new TypeError(msg);
     case ErrorKind.Other:
       return new Error(msg);
     case ErrorKind.UrlError:

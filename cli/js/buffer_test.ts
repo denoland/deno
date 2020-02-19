@@ -156,7 +156,7 @@ test(async function bufferTooLargeByteWrites(): Promise<void> {
   }
 
   assert(err instanceof Error);
-  assertStrContains(err.message, "Too large");
+  assertStrContains(err.message, "grown beyond the maximum size");
 });
 
 test(async function bufferLargeByteReads(): Promise<void> {

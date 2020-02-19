@@ -9,13 +9,11 @@
 ///
 /// TODO:
 ///  - rename ErrorKind::Other to WindowError/GenericError
-///  - remove ErrorKind::Diagnostic
 ///  - remove ErrorKind::JSError
 ///  - remove ErrorKind::WouldBlock
 ///  - possibly rename "GetErrorKind" to "RuntimeError" - it will allow
 ///    better semantic separation of errors which can be sent to JS runtime
 ///    eg. each RuntimeError is ErrBox, but not every ErrBox is RuntimeError
-use crate::diagnostics::Diagnostic;
 use crate::fmt_errors::JSError;
 use crate::import_map::ImportMapError;
 pub use crate::msg::ErrorKind;
@@ -122,12 +120,6 @@ impl GetErrorKind for StaticError {
 impl GetErrorKind for JSError {
   fn kind(&self) -> ErrorKind {
     ErrorKind::JSError
-  }
-}
-
-impl GetErrorKind for Diagnostic {
-  fn kind(&self) -> ErrorKind {
-    ErrorKind::Diagnostic
   }
 }
 
@@ -281,7 +273,6 @@ impl GetErrorKind for dyn AnyError {
 
     None
       .or_else(|| self.downcast_ref::<DenoError>().map(Get::kind))
-      .or_else(|| self.downcast_ref::<Diagnostic>().map(Get::kind))
       .or_else(|| self.downcast_ref::<reqwest::Error>().map(Get::kind))
       .or_else(|| self.downcast_ref::<ImportMapError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<io::Error>().map(Get::kind))
@@ -308,9 +299,6 @@ impl GetErrorKind for dyn AnyError {
 mod tests {
   use super::*;
   use crate::colors::strip_ansi_codes;
-  use crate::diagnostics::Diagnostic;
-  use crate::diagnostics::DiagnosticCategory;
-  use crate::diagnostics::DiagnosticItem;
   use deno_core::ErrBox;
   use deno_core::StackFrame;
   use deno_core::V8Exception;
@@ -358,43 +346,6 @@ mod tests {
     })
   }
 
-  fn diagnostic() -> Diagnostic {
-    Diagnostic {
-      items: vec![
-        DiagnosticItem {
-          message: "Example 1".to_string(),
-          message_chain: None,
-          code: 2322,
-          category: DiagnosticCategory::Error,
-          start_position: Some(267),
-          end_position: Some(273),
-          source_line: Some("  values: o => [".to_string()),
-          line_number: Some(18),
-          script_resource_name: Some(
-            "deno/tests/complex_diagnostics.ts".to_string(),
-          ),
-          start_column: Some(2),
-          end_column: Some(8),
-          related_information: None,
-        },
-        DiagnosticItem {
-          message: "Example 2".to_string(),
-          message_chain: None,
-          code: 2000,
-          category: DiagnosticCategory::Error,
-          start_position: Some(2),
-          end_position: Some(2),
-          source_line: Some("  values: undefined,".to_string()),
-          line_number: Some(128),
-          script_resource_name: Some("/foo/bar.ts".to_string()),
-          start_column: Some(2),
-          end_column: Some(8),
-          related_information: None,
-        },
-      ],
-    }
-  }
-
   fn io_error() -> io::Error {
     io::Error::from(io::ErrorKind::NotFound)
   }
@@ -432,13 +383,6 @@ mod tests {
   }
 
   // TODO find a way to easily test tokio errors and unix errors
-
-  #[test]
-  fn test_diagnostic() {
-    let err = ErrBox::from(diagnostic());
-    assert_eq!(err.kind(), ErrorKind::Diagnostic);
-    assert_eq!(strip_ansi_codes(&err.to_string()), "error TS2322: Example 1\n\n► deno/tests/complex_diagnostics.ts:19:3\n\n19   values: o => [\n     ~~~~~~\n\nerror TS2000: Example 2\n\n► /foo/bar.ts:129:3\n\n129   values: undefined,\n      ~~~~~~\n\n\nFound 2 errors.\n");
-  }
 
   #[test]
   fn test_js_error() {
