@@ -43,6 +43,37 @@ use std::fmt;
 use std::io;
 use url;
 
+// Warning! The values in this enum are duplicated in js/errors.ts
+// Update carefully!
+#[allow(non_camel_case_types)]
+#[repr(i8)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum ErrorKind {
+  NotFound = 1,
+  PermissionDenied = 2,
+  ConnectionRefused = 3,
+  ConnectionReset = 4,
+  ConnectionAborted = 5,
+  NotConnected = 6,
+  AddrInUse = 7,
+  AddrNotAvailable = 8,
+  BrokenPipe = 9,
+  AlreadyExists = 10,
+  WouldBlock = 11,
+  InvalidInput = 12,
+  InvalidData = 13,
+  TimedOut = 14,
+  Interrupted = 15,
+  WriteZero = 16,
+  Other = 17,
+  UnexpectedEof = 18,
+  BadResource = 19,
+  Http = 21,
+  UnixError = 24,
+  UrlError = 100,
+  TypeError = 101,
+}
+
 #[derive(Debug)]
 pub struct DenoError {
   kind: ErrorKind,
