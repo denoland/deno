@@ -1,15 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-export function constructError(kind: ErrorKind, msg: string): Error {
+export function constructError(kind: ErrorKind, msg: string): never {
   switch (kind) {
     case ErrorKind.TypeError:
-      return new TypeError(msg);
+      throw new TypeError(msg);
     case ErrorKind.Other:
-      return new Error(msg);
+      throw new Error(msg);
     case ErrorKind.UrlError:
-      return new URIError(msg);
+      throw new URIError(msg);
     default:
-      return new DenoError(kind, msg);
+      throw new DenoError(kind, msg);
   }
 }
 
@@ -59,7 +59,6 @@ export enum ErrorKind {
   BadResource = 19,
   Http = 21,
   UnixError = 24,
-  Diagnostic = 27,
   JSError = 28,
 
   TypeError = 101,

@@ -1244,9 +1244,7 @@ declare namespace Deno {
     UnexpectedEof = 18,
     BadResource = 19,
     Http = 21,
-
     UnixError = 24,
-    Diagnostic = 27,
     JSError = 28,
     TypeError = 101,
     UrlError = 100

@@ -27,7 +27,6 @@ pub enum ErrorKind {
   BadResource = 19,
   Http = 21,
   UnixError = 24,
-  Diagnostic = 27,
   JSError = 28,
 
   UrlError = 100,

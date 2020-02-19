@@ -56,7 +56,7 @@ export function recordFromBufMinimal(ui8: Uint8Array): RecordMinimal {
 
 function unwrapResponse(res: RecordMinimal): number {
   if (res.err != null) {
-    throw constructError(res.err!.kind, res.err!.message);
+    return constructError(res.err!.kind, res.err!.message);
   }
   return res.result;
 }
