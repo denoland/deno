@@ -33,6 +33,7 @@ pub mod fmt_errors;
 mod fs;
 mod global_state;
 mod global_timer;
+pub mod http_cache;
 mod http_util;
 mod import_map;
 pub mod installer;
@@ -132,7 +133,7 @@ fn print_cache_info(state: &GlobalState) {
   println!(
     "{} {:?}",
     colors::bold("Remote modules cache:".to_string()),
-    state.dir.deps_cache.location
+    state.file_fetcher.http_cache.location
   );
   println!(
     "{} {:?}",
