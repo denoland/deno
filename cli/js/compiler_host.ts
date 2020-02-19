@@ -49,8 +49,7 @@ export const defaultBundlerOptions: ts.CompilerOptions = {
 export const defaultCompileOptions: ts.CompilerOptions = {
   allowJs: true,
   allowNonTsExtensions: true,
-  // TODO(#3324) Enable strict mode for user code.
-  // strict: true,
+  strict: true,
   checkJs: false,
   esModuleInterop: true,
   module: ts.ModuleKind.ESNext,

@@ -62,7 +62,10 @@ function permissionsMatch(
   requiredPerms: Permissions
 ): boolean {
   for (const permName in processPerms) {
-    if (processPerms[permName] !== requiredPerms[permName]) {
+    if (
+      processPerms[permName as keyof Permissions] !==
+      requiredPerms[permName as keyof Permissions]
+    ) {
       return false;
     }
   }
@@ -302,7 +305,7 @@ testPerm(
   async function assertAllUnitTestFilesImported(): Promise<void> {
     const directoryTestFiles = Deno.readDirSync("./cli/js")
       .map(k => k.name)
-      .filter(file => file.endsWith("_test.ts"));
+      .filter(file => file!.endsWith("_test.ts"));
     const unitTestsFile: Uint8Array = Deno.readFileSync(
       "./cli/js/unit_tests.ts"
     );
@@ -311,11 +314,11 @@ testPerm(
       .split("\n")
       .filter(line => line.startsWith("import") && line.includes("_test.ts"));
     const importedTestFiles = importLines.map(
-      relativeFilePath => relativeFilePath.match(/\/([^\/]+)";/)[1]
+      relativeFilePath => relativeFilePath.match(/\/([^\/]+)";/)![1]
     );
 
     directoryTestFiles.forEach(dirFile => {
-      if (!importedTestFiles.includes(dirFile)) {
+      if (!importedTestFiles.includes(dirFile!)) {
         throw new Error(
           "cil/js/unit_tests.ts is missing import of test file: cli/js/" +
             dirFile

@@ -14,8 +14,8 @@ const customInspect = Deno.symbols.customInspect;
 const {
   Console,
   stringifyArgs
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} = Deno[Deno.symbols.internal] as any;
+  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+} = Deno[Deno.symbols.internal];
 
 function stringify(...args: unknown[]): string {
   return stringifyArgs(args).replace(/\n$/, "");
@@ -306,6 +306,7 @@ test(function consoleTestCallToStringOnLabel(): void {
   for (const method of methods) {
     let hasCalled = false;
 
+    // @ts-ignore
     console[method]({
       toString(): void {
         hasCalled = true;
@@ -451,6 +452,7 @@ test(function consoleGroup(): void {
 // console.group with console.warn test
 test(function consoleGroupWarn(): void {
   mockConsole((console, _out, _err, both): void => {
+    assert(both);
     console.warn("1");
     console.group();
     console.warn("2");
@@ -694,6 +696,7 @@ test(function consoleDirXml(): void {
 test(function consoleTrace(): void {
   mockConsole((console, _out, err): void => {
     console.trace("%s", "custom message");
+    assert(err);
     assert(err.toString().includes("Trace: custom message"));
   });
 });

@@ -714,7 +714,7 @@ mod tests {
       .unwrap()
       .code
       .as_bytes()
-      .starts_with(b"console.log(\"Hello World\");"));
+      .starts_with(b"\"use strict\";\nconsole.log(\"Hello World\");"));
   }
 
   #[tokio::test]

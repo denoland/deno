@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test, assert } from "./test_util.ts";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const { setPrepareStackTrace } = Deno[Deno.symbols.internal] as any;
+// @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+const { setPrepareStackTrace } = Deno[Deno.symbols.internal];
 
 interface CallSite {
   getThis(): unknown;

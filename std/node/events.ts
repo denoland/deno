@@ -22,6 +22,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import { validateIntegerRange } from "./util.ts";
+import { assert } from "../testing/asserts.ts";
 
 export interface WrappedFunction extends Function {
   listener: Function;
@@ -163,7 +164,8 @@ export default class EventEmitter {
   private unwrapListeners(arr: Function[]): Function[] {
     const unwrappedListeners: Function[] = new Array(arr.length) as Function[];
     for (let i = 0; i < arr.length; i++) {
-      unwrappedListeners[i] = arr[i]["listener"] || arr[i];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      unwrappedListeners[i] = (arr[i] as any)["listener"] || arr[i];
     }
     return unwrappedListeners;
   }
@@ -232,10 +234,12 @@ export default class EventEmitter {
     const wrapperContext = {
       eventName: eventName,
       listener: listener,
-      rawListener: wrapper,
+      rawListener: (wrapper as unknown) as WrappedFunction,
       context: this
     };
-    const wrapped = wrapper.bind(wrapperContext);
+    const wrapped = (wrapper.bind(
+      wrapperContext
+    ) as unknown) as WrappedFunction;
     wrapperContext.rawListener = wrapped;
     wrapped.listener = listener;
     return wrapped as WrappedFunction;
@@ -275,7 +279,7 @@ export default class EventEmitter {
       return this;
     }
 
-    if (this._events.has(eventName)) {
+    if (eventName && this._events.has(eventName)) {
       const listeners = (this._events.get(eventName) as Array<
         Function | WrappedFunction
       >).slice(); // Create a copy; We use it AFTER it's deleted.
@@ -299,14 +303,19 @@ export default class EventEmitter {
    */
   public removeListener(eventName: string | symbol, listener: Function): this {
     if (this._events.has(eventName)) {
-      const arr: Array<Function | WrappedFunction> = this._events.get(
-        eventName
-      );
+      const arr:
+        | Array<Function | WrappedFunction>
+        | undefined = this._events.get(eventName);
+
+      assert(arr);
 
       let listenerIndex = -1;
       for (let i = arr.length - 1; i >= 0; i--) {
         // arr[i]["listener"] is the reference to the listener inside a bound 'once' wrapper
-        if (arr[i] == listener || arr[i]["listener"] == listener) {
+        if (
+          arr[i] == listener ||
+          (arr[i] && (arr[i] as WrappedFunction)["listener"] == listener)
+        ) {
           listenerIndex = i;
           break;
         }
@@ -421,8 +430,10 @@ export function on(
 ): AsyncInterable {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const unconsumedEventValues: any[] = [];
-  const unconsumedPromises = [];
-  let error = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const unconsumedPromises: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let error: Error | null = null;
   let finished = false;
 
   const iterator = {
@@ -476,7 +487,7 @@ export function on(
     },
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    [Symbol.asyncIterator](): AsyncIterable<any> {
+    [Symbol.asyncIterator](): any {
       return this;
     }
   };

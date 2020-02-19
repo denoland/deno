@@ -85,6 +85,8 @@ async function copyFile(
   await Deno.copyFile(src, dest);
   if (options.preserveTimestamps) {
     const statInfo = await Deno.stat(src);
+    assert(statInfo.accessed != null, `statInfo.accessed is unavailable`);
+    assert(statInfo.modified != null, `statInfo.modified is unavailable`);
     await Deno.utime(dest, statInfo.accessed, statInfo.modified);
   }
 }
