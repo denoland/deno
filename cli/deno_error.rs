@@ -123,7 +123,7 @@ impl GetErrorKind for ImportMapError {
 
 impl GetErrorKind for ModuleResolutionError {
   fn kind(&self) -> ErrorKind {
-    ErrorKind::UrlError
+    ErrorKind::URIError
   }
 }
 
@@ -165,7 +165,7 @@ impl GetErrorKind for io::Error {
 
 impl GetErrorKind for url::ParseError {
   fn kind(&self) -> ErrorKind {
-    ErrorKind::UrlError
+    ErrorKind::URIError
   }
 }
 
@@ -323,7 +323,7 @@ mod tests {
   #[test]
   fn test_url_error() {
     let err = ErrBox::from(url_error());
-    assert_eq!(err.kind(), ErrorKind::UrlError);
+    assert_eq!(err.kind(), ErrorKind::URIError);
     assert_eq!(err.to_string(), "empty host");
   }
 
