@@ -4,7 +4,7 @@ import { test, assertEquals } from "./test_util.ts";
 test(function addEventListenerTest(): void {
   const document = new EventTarget();
 
-  // @ts-ignore
+  // @ts-ignore tests ignoring the type system for resilience
   assertEquals(document.addEventListener("x", null, false), undefined);
   // @ts-ignore
   assertEquals(document.addEventListener("x", null, true), undefined);
@@ -39,7 +39,7 @@ test(function anEventTargetCanBeSubclassed(): void {
   class NicerEventTarget extends EventTarget {
     on(
       type: string,
-      callback: (e: Event) => void,
+      callback: (e: Event) => void | null,
       options?: __domTypes.AddEventListenerOptions
     ): void {
       this.addEventListener(type, callback, options);
@@ -47,7 +47,7 @@ test(function anEventTargetCanBeSubclassed(): void {
 
     off(
       type: string,
-      callback: (e: Event) => void,
+      callback: (e: Event) => void | null,
       options?: __domTypes.EventListenerOptions
     ): void {
       this.removeEventListener(type, callback, options);

@@ -14,7 +14,7 @@ const customInspect = Deno.symbols.customInspect;
 const {
   Console,
   stringifyArgs
-  // @ts-ignore
+  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.symbols.internal];
 
 function stringify(...args: unknown[]): string {
@@ -301,13 +301,7 @@ test(function consoleTestWithVariousOrInvalidFormatSpecifier(): void {
 });
 
 test(function consoleTestCallToStringOnLabel(): void {
-  const methods = [
-    "count",
-    "countReset",
-    "time",
-    "timeLog",
-    "timeEnd"
-  ] as const;
+  const methods = ["count", "countReset", "time", "timeLog", "timeEnd"];
 
   for (const method of methods) {
     let hasCalled = false;

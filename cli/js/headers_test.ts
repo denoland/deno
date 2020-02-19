@@ -2,7 +2,7 @@
 import { test, assert, assertEquals } from "./test_util.ts";
 const {
   stringifyArgs
-  // @ts-ignore
+  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.symbols.internal];
 
 // Logic heavily copied from web-platform-tests, make

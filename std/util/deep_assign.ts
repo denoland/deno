@@ -27,7 +27,7 @@ export function deepAssign(
         target[key] = {};
       }
       assert(value);
-      deepAssign(target[key] as Record<string, unknown>, value!);
+      deepAssign(target[key] as Record<string, unknown>, value);
     });
   }
   return target;
