@@ -22,11 +22,12 @@
 //!   But Diagnostics are compile-time type errors, whereas JSErrors are runtime exceptions.
 //!
 //! TODO:
-//!  - rename ErrorKind::Other to WindowError/GenericError
-//!  - remove ErrorKind::WouldBlock
-//!  - possibly rename "GetErrorKind" to "RuntimeError" - it will allow
-//!    better semantic separation of errors which can be sent to JS runtime
-//!    eg. each RuntimeError is ErrBox, but not every ErrBox is RuntimeError
+//! - rename DenoError to OpError?
+//! - rename JSError to RuntimeException. merge V8Exception?
+//! - remove ErrorKind::WouldBlock
+//! - rename ErrorKind::Other. This corresponds to a generic exception thrown as the
+//!   global `Error` in JS:
+//!   https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error
 
 use crate::import_map::ImportMapError;
 pub use crate::msg::ErrorKind;
@@ -70,6 +71,7 @@ pub enum ErrorKind {
   BadResource = 19,
   Http = 21,
   UnixError = 24,
+
   UrlError = 100,
   TypeError = 101,
 }
