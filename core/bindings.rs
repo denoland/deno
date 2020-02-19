@@ -96,11 +96,9 @@ pub fn initialize_context<'s>(
   let mut hs = v8::EscapableHandleScope::new(scope);
   let scope = hs.enter();
 
-  let context = v8::Context::new(scope);
+  let mut context = v8::Context::new(scope);
+  context.enter();
   let global = context.global(scope);
-
-  let mut cs = v8::ContextScope::new(scope, context);
-  let scope = cs.enter();
 
   let deno_val = v8::Object::new(scope);
   global.set(
@@ -199,7 +197,6 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let mut cbs = v8::CallbackScope::new_escapable(context);
   let mut hs = v8::EscapableHandleScope::new(cbs.enter());
   let scope = hs.enter();
-  let isolate = scope.isolate();
 
   let state = scope.isolate().state_get::<EsState>();
   let mut state = state.borrow_mut();
@@ -244,7 +241,6 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let mut cbs = v8::CallbackScope::new(context);
   let mut hs = v8::HandleScope::new(cbs.enter());
   let scope = hs.enter();
-  let isolate = scope.isolate();
 
   let id = module.get_identity_hash();
   assert_ne!(id, 0);
@@ -429,9 +425,6 @@ fn eval_context(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let state = scope.isolate().state_get::<IsolateState>();
-  let state = state.borrow_mut();
-
   let context = scope.get_current_context().unwrap();
 
   let source = match v8::Local::<v8::String>::try_from(args.get(0)) {
@@ -560,9 +553,6 @@ fn error_to_json(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let state = scope.isolate().state_get::<IsolateState>();
-  let state = state.borrow_mut();
-
   let context = scope.get_current_context().unwrap();
 
   let message = v8::Exception::create_message(scope, args.get(0));

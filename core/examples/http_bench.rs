@@ -78,7 +78,7 @@ impl From<Record> for RecordBuf {
 }
 
 struct Isolate {
-  core_isolate: Box<CoreIsolate>, // Unclear why CoreIsolate::new() returns a box.
+  core_isolate: CoreIsolate,
   state: State,
 }
 

@@ -473,6 +473,7 @@ macro_rules! include_crate_modules {
 mod tests {
   use super::*;
   use crate::es_isolate::EsIsolate;
+  use crate::es_isolate::EsState;
   use crate::isolate::js_check;
   use futures::future::FutureExt;
   use std::error::Error;
@@ -669,7 +670,10 @@ mod tests {
       ]
     );
 
-    let modules = &isolate.modules;
+    let state = isolate.core_isolate.v8_isolate.state_get::<EsState>();
+    let state = state.borrow();
+
+    let modules = &state.modules;
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
     let c_id = modules.get_id("file:///c.js").unwrap();
@@ -731,7 +735,10 @@ mod tests {
         ]
       );
 
-      let modules = &isolate.modules;
+      let state = isolate.core_isolate.v8_isolate.state_get::<EsState>();
+      let state = state.borrow();
+
+      let modules = &state.modules;
 
       assert_eq!(modules.get_id("file:///circular1.js"), Some(circular1_id));
       let circular2_id = modules.get_id("file:///circular2.js").unwrap();
@@ -802,7 +809,10 @@ mod tests {
         ]
       );
 
-      let modules = &isolate.modules;
+      let state = isolate.core_isolate.v8_isolate.state_get::<EsState>();
+      let state = state.borrow();
+
+      let modules = &state.modules;
 
       assert_eq!(modules.get_id("file:///redirect1.js"), Some(redirect1_id));
 
@@ -940,7 +950,10 @@ mod tests {
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let modules = &isolate.modules;
+    let state = isolate.core_isolate.v8_isolate.state_get::<EsState>();
+    let state = state.borrow();
+
+    let modules = &state.modules;
 
     assert_eq!(modules.get_id("file:///main_with_code.js"), Some(main_id));
     let b_id = modules.get_id("file:///b.js").unwrap();

@@ -55,7 +55,7 @@ pub struct SourceCodeInfo {
 /// that implements `Loader` trait - that way actual resolution and
 /// loading of modules can be customized by the implementor.
 pub struct EsIsolate {
-  core_isolate: Isolate,
+  pub core_isolate: Isolate,
 }
 
 pub struct EsState {
@@ -686,7 +686,10 @@ pub mod tests {
       .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    let imports = isolate.modules.get_children(mod_a);
+    let state = isolate.core_isolate.v8_isolate.state_get::<EsState>();
+    let state = state.borrow();
+
+    let imports = state.modules.get_children(mod_a);
     assert_eq!(
       imports,
       Some(&vec![ModuleSpecifier::resolve_url("file:///b.js").unwrap()])
@@ -694,7 +697,8 @@ pub mod tests {
     let mod_b = isolate
       .mod_new(false, "file:///b.js", "export function b() { return 'b' }")
       .unwrap();
-    let imports = isolate.modules.get_children(mod_b).unwrap();
+
+    let imports = state.modules.get_children(mod_b).unwrap();
     assert_eq!(imports.len(), 0);
 
     js_check(isolate.mod_instantiate(mod_b));

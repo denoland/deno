@@ -445,7 +445,7 @@ impl Isolate {
       let mut hs = v8::HandleScope::new(&mut isolate);
       let scope = hs.enter();
 
-      let context = match load_snapshot {
+      let mut context = match load_snapshot {
         Some(_) => v8::Context::new(scope),
         None => {
           // If no snapshot is provided, we initialize the context with empty
@@ -453,6 +453,7 @@ impl Isolate {
           bindings::initialize_context(scope)
         }
       };
+      context.enter();
       global_context.set(scope, context);
 
       (isolate, None)
@@ -521,15 +522,27 @@ impl Isolate {
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
   pub(crate) fn shared_init(&mut self) {
-    let state = self.v8_isolate.state_get::<IsolateState>();
-    let mut state = state.borrow_mut();
-    if state.needs_init {
+    {
+      let state = self.v8_isolate.state_get::<IsolateState>();
+      let state = state.borrow();
+      if !state.needs_init {
+        return;
+      }
+    }
+
+    {
+      let state = self.v8_isolate.state_get::<IsolateState>();
+      let mut state = state.borrow_mut();
       state.needs_init = false;
-      js_check(
-        self.execute("shared_queue.js", include_str!("shared_queue.js")),
-      );
-      // Maybe execute the startup script.
+    }
+    js_check(self.execute("shared_queue.js", include_str!("shared_queue.js")));
+    // Maybe execute the startup script.
+    {
+      let state = self.v8_isolate.state_get::<IsolateState>();
+      let mut state = state.borrow_mut();
+      state.needs_init = false;
       if let Some(s) = state.startup_script.take() {
+        drop(state);
         self.execute(&s.filename, &s.source).unwrap()
       }
     }
@@ -611,10 +624,11 @@ impl Future for Isolate {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
+    inner.shared_init();
+
     let state = inner.v8_isolate.state_get::<IsolateState>();
     let mut state = state.borrow_mut();
     state.waker.register(cx.waker());
-    inner.shared_init();
 
     let mut hs = v8::HandleScope::new(&mut inner.v8_isolate);
     let scope = hs.enter();
@@ -723,7 +737,7 @@ pub mod tests {
     OverflowResAsync,
   }
 
-  pub fn setup(mode: Mode) -> (Box<Isolate>, Arc<AtomicUsize>) {
+  pub fn setup(mode: Mode) -> (Isolate, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
