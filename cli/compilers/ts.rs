@@ -451,7 +451,7 @@ impl TsCompiler {
   ///
   /// Along compiled file a special metadata file is saved as well containing
   /// hash that can be validated to avoid unnecessary recompilation.
-  fn cache_compiled_file(
+  async fn cache_compiled_file(
     &self,
     module_specifier: &ModuleSpecifier,
     contents: &str,
@@ -459,35 +459,31 @@ impl TsCompiler {
     let js_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js");
-    self
+    self.disk_cache.set(&js_key, contents.as_bytes())?;
+    self.mark_compiled(module_specifier.as_url());
+    let source_file = self
+      .file_fetcher
+      .fetch_cached_source_file(&module_specifier)
+      .await
+      .expect("Source file not found");
+
+    let version_hash = source_code_version_hash(
+      &source_file.source_code,
+      version::DENO,
+      &self.config.hash,
+    );
+
+    let compiled_file_metadata = CompiledFileMetadata {
+      source_path: source_file.filename,
+      version_hash,
+    };
+    let meta_key = self
       .disk_cache
-      .set(&js_key, contents.as_bytes())
-      .and_then(|_| {
-        self.mark_compiled(module_specifier.as_url());
-
-        let source_file = self
-          .file_fetcher
-          .fetch_cached_source_file(&module_specifier)
-          .expect("Source file not found");
-
-        let version_hash = source_code_version_hash(
-          &source_file.source_code,
-          version::DENO,
-          &self.config.hash,
-        );
-
-        let compiled_file_metadata = CompiledFileMetadata {
-          source_path: source_file.filename,
-          version_hash,
-        };
-        let meta_key = self
-          .disk_cache
-          .get_cache_filename_with_extension(module_specifier.as_url(), "meta");
-        self.disk_cache.set(
-          &meta_key,
-          compiled_file_metadata.to_json_string()?.as_bytes(),
-        )
-      })
+      .get_cache_filename_with_extension(module_specifier.as_url(), "meta");
+    self.disk_cache.set(
+      &meta_key,
+      compiled_file_metadata.to_json_string()?.as_bytes(),
+    )
   }
 
   /// Return associated source map file for given TS module.
@@ -528,7 +524,7 @@ impl TsCompiler {
   }
 
   /// This method is called by TS compiler via an "op".
-  pub fn cache_compiler_output(
+  pub async fn cache_compiler_output(
     &self,
     module_specifier: &ModuleSpecifier,
     extension: &str,
@@ -536,7 +532,7 @@ impl TsCompiler {
   ) -> std::io::Result<()> {
     match extension {
       ".map" => self.cache_source_map(module_specifier, contents),
-      ".js" => self.cache_compiled_file(module_specifier, contents),
+      ".js" => self.cache_compiled_file(module_specifier, contents).await,
       _ => unreachable!(),
     }
   }
@@ -576,9 +572,10 @@ impl TsCompiler {
     script_name: &str,
   ) -> Option<SourceFile> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
-      return self
+      let fut = self
         .file_fetcher
         .fetch_cached_source_file(&module_specifier);
+      return futures::executor::block_on(fut);
     }
 
     None
