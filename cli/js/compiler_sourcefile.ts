@@ -26,6 +26,8 @@ export interface SourceFileJson {
   sourceCode: string;
 }
 
+export const ASSETS = "$asset$";
+
 /** Returns the TypeScript Extension enum for a given media type. */
 function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
   switch (mediaType) {
@@ -109,7 +111,7 @@ export class SourceFile {
     this.processed = true;
     const files = (this.importedFiles = [] as Array<[string, string]>);
 
-    function process(references: ts.FileReference[]): void {
+    function process(references: Array<{ fileName: string }>): void {
       for (const { fileName } of references) {
         files.push([fileName, fileName]);
       }
@@ -133,7 +135,15 @@ export class SourceFile {
       process(importedFiles);
     }
     process(referencedFiles);
-    process(libReferenceDirectives);
+    // built in libs comes across as `"dom"` for example, and should be filtered
+    // out during pre-processing as they are either already cached or they will
+    // be lazily fetched by the compiler host.  Ones that contain full files are
+    // not filtered out and will be fetched as normal.
+    process(
+      libReferenceDirectives.filter(
+        ({ fileName }) => !ts.libMap.has(fileName.toLowerCase())
+      )
+    );
     process(typeReferenceDirectives);
     return files;
   }

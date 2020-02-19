@@ -141,7 +141,7 @@ impl SourceFileFetcher {
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Pin<Box<SourceFileFuture>> {
     let module_url = specifier.as_url().to_owned();
-    debug!("fetch_source_file. specifier {} ", &module_url);
+    debug!("fetch_source_file_async specifier: {} ", &module_url);
 
     // Check if this file was already fetched and can be retrieved from in-process cache.
     if let Some(source_file) = self.source_file_cache.get(specifier.to_string())

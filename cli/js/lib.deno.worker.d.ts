@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-interface, @typescript-eslint/no-explicit-any */
 
 /// <reference no-default-lib="true" />
-/// <reference lib="deno_shared_globals" />
+/// <reference lib="deno.shared_globals" />
 /// <reference lib="esnext" />
 
 declare interface DedicatedWorkerGlobalScope extends WindowOrWorkerGlobalScope {

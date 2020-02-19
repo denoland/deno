@@ -3,10 +3,9 @@ use super::compiler_worker::CompilerWorker;
 use crate::compilers::CompiledModule;
 use crate::file_fetcher::SourceFile;
 use crate::global_state::GlobalState;
-use crate::ops::worker_host::run_worker_loop;
 use crate::startup_data;
 use crate::state::*;
-use crate::tokio_util::create_basic_runtime;
+use crate::tokio_util;
 use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
 use deno_core::Buf;
@@ -123,11 +122,10 @@ async fn execute_in_thread(
   let builder =
     std::thread::Builder::new().name("deno-wasm-compiler".to_string());
   let join_handle = builder.spawn(move || {
-    let mut worker = WasmCompiler::setup_worker(global_state);
+    let worker = WasmCompiler::setup_worker(global_state);
     handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
     drop(handle_sender);
-    let mut rt = create_basic_runtime();
-    run_worker_loop(&mut rt, &mut worker).expect("Panic in event loop");
+    tokio_util::run_basic(worker).expect("Panic in event loop");
   })?;
   let mut handle = handle_receiver.recv().unwrap()?;
   handle.post_message(req).await?;

@@ -19,6 +19,7 @@ export let OP_APPLY_SOURCE_MAP: number;
 export let OP_FORMAT_ERROR: number;
 export let OP_CACHE: number;
 export let OP_RESOLVE_MODULES: number;
+export let OP_FETCH_ASSET: number;
 export let OP_FETCH_SOURCE_FILES: number;
 export let OP_OPEN: number;
 export let OP_CLOSE: number;
@@ -65,6 +66,7 @@ export let OP_SYMLINK: number;
 export let OP_READ_LINK: number;
 export let OP_TRUNCATE: number;
 export let OP_MAKE_TEMP_DIR: number;
+export let OP_MAKE_TEMP_FILE: number;
 export let OP_CWD: number;
 export let OP_CONNECT_TLS: number;
 export let OP_HOSTNAME: number;
@@ -74,10 +76,6 @@ export let OP_TRANSPILE: number;
 export let OP_SIGNAL_BIND: number;
 export let OP_SIGNAL_UNBIND: number;
 export let OP_SIGNAL_POLL: number;
-
-/** **WARNING:** This is only available during the snapshotting process and is
- * unavailable at runtime. */
-export let OP_FETCH_ASSET: number;
 
 const PLUGIN_ASYNC_HANDLER_MAP: Map<number, AsyncHandler> = new Map();
 
