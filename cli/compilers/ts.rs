@@ -710,6 +710,7 @@ mod tests {
       .compile_async(mock_state.clone(), &out, TargetLib::Main)
       .await;
     assert!(result.is_ok());
+    eprintln!("asdf {}", result.as_ref().unwrap().code);
     assert!(result
       .unwrap()
       .code

@@ -48,7 +48,6 @@ export enum ErrorKind {
   AddrNotAvailable = 8,
   BrokenPipe = 9,
   AlreadyExists = 10,
-  WouldBlock = 11,
   InvalidInput = 12,
   InvalidData = 13,
   TimedOut = 14,

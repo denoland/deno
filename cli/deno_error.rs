@@ -24,7 +24,6 @@
 //! TODO:
 //! - rename DenoError to OpError?
 //! - rename JSError to RuntimeException. merge V8Exception?
-//! - remove ErrorKind::WouldBlock
 //! - rename ErrorKind::Other. This corresponds to a generic exception thrown as the
 //!   global `Error` in JS:
 //!   https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error
@@ -59,7 +58,6 @@ pub enum ErrorKind {
   AddrNotAvailable = 8,
   BrokenPipe = 9,
   AlreadyExists = 10,
-  WouldBlock = 11,
   InvalidInput = 12,
   InvalidData = 13,
   TimedOut = 14,
@@ -198,13 +196,13 @@ impl GetErrorKind for io::Error {
       AddrNotAvailable => ErrorKind::AddrNotAvailable,
       BrokenPipe => ErrorKind::BrokenPipe,
       AlreadyExists => ErrorKind::AlreadyExists,
-      WouldBlock => ErrorKind::WouldBlock,
       InvalidInput => ErrorKind::InvalidInput,
       InvalidData => ErrorKind::InvalidData,
       TimedOut => ErrorKind::TimedOut,
       Interrupted => ErrorKind::Interrupted,
       WriteZero => ErrorKind::WriteZero,
       UnexpectedEof => ErrorKind::UnexpectedEof,
+      WouldBlock => unreachable!(),
       _ => ErrorKind::Other,
     }
   }
