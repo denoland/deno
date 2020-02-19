@@ -8,6 +8,7 @@ use crate::ops::json_op;
 use crate::state::State;
 use deno_core::Loader;
 use deno_core::*;
+use futures::future::FutureExt;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("cache", s.core_op(json_op(s.stateful_op(op_cache))));
@@ -43,16 +44,15 @@ fn op_cache(
   let module_specifier = ModuleSpecifier::resolve_url(&args.module_id)
     .expect("Should be valid module specifier");
 
-  state
-    .borrow()
-    .global_state
-    .ts_compiler
-    .cache_compiler_output(
-      &module_specifier,
-      &args.extension,
-      &args.contents,
-    )?;
+  let state_ = &state.borrow().global_state;
+  let ts_compiler = state_.ts_compiler.clone();
+  let fut = ts_compiler.cache_compiler_output(
+    &module_specifier,
+    &args.extension,
+    &args.contents,
+  );
 
+  futures::executor::block_on(fut)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -102,21 +102,27 @@ fn op_fetch_source_files(
     None
   };
 
-  let mut futures = vec![];
   let global_state = state.borrow().global_state.clone();
+  let file_fetcher = global_state.file_fetcher.clone();
+  let specifiers = args.specifiers.clone();
+  let future = async move {
+    let file_futures: Vec<_> = specifiers
+      .into_iter()
+      .map(|specifier| {
+        let file_fetcher_ = file_fetcher.clone();
+        let ref_specifier_ = ref_specifier.clone();
+        async move {
+          let resolved_specifier = ModuleSpecifier::resolve_url(&specifier)
+            .expect("Invalid specifier");
+          file_fetcher_
+            .fetch_source_file_async(&resolved_specifier, ref_specifier_)
+            .await
+        }
+        .boxed_local()
+      })
+      .collect();
 
-  for specifier in &args.specifiers {
-    let resolved_specifier =
-      ModuleSpecifier::resolve_url(&specifier).expect("Invalid specifier");
-    let fut = global_state
-      .file_fetcher
-      .fetch_source_file_async(&resolved_specifier, ref_specifier.clone());
-    futures.push(fut);
-  }
-
-  let future = Box::pin(async move {
-    let files = try_join_all(futures).await?;
-
+    let files = try_join_all(file_futures).await?;
     // We want to get an array of futures that resolves to
     let v = files.into_iter().map(|f| {
       async {
@@ -156,7 +162,8 @@ fn op_fetch_source_files(
 
     let v = try_join_all(v).await?;
     Ok(v.into())
-  });
+  }
+  .boxed_local();
 
   Ok(JsonOp::Async(future))
 }
