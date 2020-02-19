@@ -30,7 +30,6 @@
 //!   https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error
 
 use crate::import_map::ImportMapError;
-pub use crate::msg::ErrorKind;
 use deno_core::AnyError;
 use deno_core::ErrBox;
 use deno_core::ModuleResolutionError;
@@ -72,7 +71,7 @@ pub enum ErrorKind {
   Http = 21,
   UnixError = 24,
 
-  UrlError = 100,
+  URIError = 100,
   TypeError = 101,
 }
 

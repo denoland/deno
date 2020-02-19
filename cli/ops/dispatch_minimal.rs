@@ -4,8 +4,8 @@
 //! alternative to flatbuffers using a very simple list of int32s to lay out
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
+use crate::deno_error::ErrorKind;
 use crate::deno_error::GetErrorKind;
-use crate::msg::ErrorKind;
 use byteorder::{LittleEndian, WriteBytesExt};
 use deno_core::Buf;
 use deno_core::CoreOp;
