@@ -110,6 +110,8 @@ impl SourceFileFetcher {
     Ok(())
   }
 
+  // TODO(bartlomieju): fetching cached resources should be done
+  // using blocking fs syscalls
   /// Required for TS compiler and source maps.
   pub async fn fetch_cached_source_file(
     &self,
