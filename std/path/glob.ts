@@ -3,8 +3,6 @@ import { globrex } from "./globrex.ts";
 import { join, normalize } from "./mod.ts";
 import { assert } from "../testing/asserts.ts";
 
-const { DenoError, ErrorKind } = Deno;
-
 export interface GlobOptions {
   extended?: boolean;
   globstar?: boolean;
