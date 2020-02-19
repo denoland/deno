@@ -1,18 +1,33 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-/// This module implements error serialization; it
-/// allows to serialize Rust errors to be sent to JS runtime.
-///
-/// Currently it is deeply intertwined with `ErrBox` which is
-/// not optimal since not every ErrBox can be "JS runtime error";
-/// eg. there's no way to throw JSError/Diagnostic from within JS runtime
-///
-/// TODO:
-///  - rename ErrorKind::Other to WindowError/GenericError
-///  - remove ErrorKind::WouldBlock
-///  - possibly rename "GetErrorKind" to "RuntimeError" - it will allow
-///    better semantic separation of errors which can be sent to JS runtime
-///    eg. each RuntimeError is ErrBox, but not every ErrBox is RuntimeError
+//! This module implements error serialization; it
+//! allows to serialize Rust errors to be sent to JS runtime.
+//!
+//! Currently it is deeply intertwined with `ErrBox` which is
+//! not optimal since not every ErrBox can be "JS runtime error";
+//! eg. there's no way to throw JSError/Diagnostic from within JS runtime
+//!
+//! There are many types of errors in Deno:
+//! - ErrBox: a generic boxed object. This is the super type of all
+//!   errors handled in Rust.
+//! - JSError: exceptions thrown from V8 into Rust. Usually a user exception.
+//!   These are basically a big JSON structure which holds information about
+//!   line numbers. We use this to pretty-print stack traces. These are
+//!   never passed back into the runtime.
+//! - DenoError: these are errors that happen during ops, which are passed
+//!   back into the runtime, where an exception object is created and thrown.
+//!   DenoErrors have an integer code associated with them - access this via the kind() method.
+//! - Diagnostic: these are errors that originate in TypeScript's compiler.
+//!   They're similar to JSError, in that they have line numbers.
+//!   But Diagnostics are compile-time type errors, whereas JSErrors are runtime exceptions.
+//!
+//! TODO:
+//!  - rename ErrorKind::Other to WindowError/GenericError
+//!  - remove ErrorKind::WouldBlock
+//!  - possibly rename "GetErrorKind" to "RuntimeError" - it will allow
+//!    better semantic separation of errors which can be sent to JS runtime
+//!    eg. each RuntimeError is ErrBox, but not every ErrBox is RuntimeError
+
 use crate::import_map::ImportMapError;
 pub use crate::msg::ErrorKind;
 use deno_core::AnyError;
