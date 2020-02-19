@@ -10,7 +10,6 @@ use crate::http_util::FetchOnceResult;
 use crate::msg;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use futures::future::Either;
 use futures::future::FutureExt;
 use regex::Regex;
 use reqwest;
@@ -41,9 +40,6 @@ pub struct SourceFile {
   pub media_type: msg::MediaType,
   pub source_code: Vec<u8>,
 }
-
-pub type SourceFileFuture =
-  dyn Future<Output = Result<SourceFile, ErrBox>> + Send;
 
 /// Simple struct implementing in-process caching to prevent multiple
 /// fs reads/net fetches for same file.
@@ -114,8 +110,10 @@ impl SourceFileFetcher {
     Ok(())
   }
 
+  // TODO(bartlomieju): fetching cached resources should be done
+  // using blocking fs syscalls
   /// Required for TS compiler and source maps.
-  pub fn fetch_cached_source_file(
+  pub async fn fetch_cached_source_file(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<SourceFile> {
@@ -127,79 +125,81 @@ impl SourceFileFetcher {
 
     // If file is not in memory cache check if it can be found
     // in local cache - which effectively means trying to fetch
-    // using "--cached-only" flag. We can safely block on this
-    // future, because it doesn't do any asynchronous action
-    // it that path.
-    let fut = self.get_source_file_async(specifier.as_url(), true, false, true);
-
-    futures::executor::block_on(fut).ok()
+    // using "--cached-only" flag.
+    // It should be safe to for caller block on this
+    // future, because it doesn't actually do any asynchronous
+    // action in that path.
+    self
+      .get_source_file_async(specifier.as_url(), true, false, true)
+      .await
+      .ok()
   }
 
-  pub fn fetch_source_file_async(
+  pub async fn fetch_source_file_async(
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
-  ) -> Pin<Box<SourceFileFuture>> {
+  ) -> Result<SourceFile, ErrBox> {
     let module_url = specifier.as_url().to_owned();
     debug!("fetch_source_file_async specifier: {} ", &module_url);
 
     // Check if this file was already fetched and can be retrieved from in-process cache.
-    if let Some(source_file) = self.source_file_cache.get(specifier.to_string())
-    {
-      return Box::pin(async { Ok(source_file) });
+    let maybe_cached_file = self.source_file_cache.get(specifier.to_string());
+    if let Some(source_file) = maybe_cached_file {
+      return Ok(source_file);
     }
 
     let source_file_cache = self.source_file_cache.clone();
     let specifier_ = specifier.clone();
 
-    let source_file = self.get_source_file_async(
-      &module_url,
-      self.use_disk_cache,
-      self.no_remote,
-      self.cached_only,
-    );
+    let result = self
+      .get_source_file_async(
+        &module_url,
+        self.use_disk_cache,
+        self.no_remote,
+        self.cached_only,
+      )
+      .await;
 
-    Box::pin(async move {
-      match source_file.await {
-        Ok(mut file) => {
-          // TODO: move somewhere?
-          if file.source_code.starts_with(b"#!") {
-            file.source_code = filter_shebang(file.source_code);
-          }
-
-          // Cache in-process for subsequent access.
-          source_file_cache.set(specifier_.to_string(), file.clone());
-
-          Ok(file)
+    match result {
+      Ok(mut file) => {
+        // TODO: move somewhere?
+        if file.source_code.starts_with(b"#!") {
+          file.source_code = filter_shebang(file.source_code);
         }
-        Err(err) => {
-          let err_kind = err.kind();
-          let referrer_suffix = if let Some(referrer) = maybe_referrer {
-            format!(r#" from "{}""#, referrer)
-          } else {
-            "".to_owned()
-          };
-          // Hack: Check error message for "--cached-only" because the kind
-          // conflicts with other errors.
-          let err = if err.to_string().contains("--cached-only") {
-            let msg = format!(
-              r#"Cannot find module "{}"{} in cache, --cached-only is specified"#,
-              module_url, referrer_suffix
-            );
-            DenoError::new(ErrorKind::NotFound, msg).into()
-          } else if err_kind == ErrorKind::NotFound {
-            let msg = format!(
-              r#"Cannot resolve module "{}"{}"#,
-              module_url, referrer_suffix
-            );
-            DenoError::new(ErrorKind::NotFound, msg).into()
-          } else {
-            err
-          };
-          Err(err)
-        }
+
+        // Cache in-process for subsequent access.
+        source_file_cache.set(specifier_.to_string(), file.clone());
+
+        Ok(file)
       }
-    })
+      Err(err) => {
+        let err_kind = err.kind();
+        let referrer_suffix = if let Some(referrer) = maybe_referrer {
+          format!(r#" from "{}""#, referrer)
+        } else {
+          "".to_owned()
+        };
+        // Hack: Check error message for "--cached-only" because the kind
+        // conflicts with other errors.
+        let err = if err.to_string().contains("--cached-only") {
+          let msg = format!(
+            r#"Cannot find module "{}"{} in cache, --cached-only is specified"#,
+            module_url, referrer_suffix
+          );
+          DenoError::new(ErrorKind::NotFound, msg).into()
+        } else if err_kind == ErrorKind::NotFound {
+          let msg = format!(
+            r#"Cannot resolve module "{}"{}"#,
+            module_url, referrer_suffix
+          );
+          DenoError::new(ErrorKind::NotFound, msg).into()
+        } else {
+          err
+        };
+        Err(err)
+      }
+    }
   }
 
   /// This is main method that is responsible for fetching local or remote files.
@@ -213,54 +213,38 @@ impl SourceFileFetcher {
   ///
   /// If `cached_only` is true then this method will fail for remote files
   /// not already cached.
-  fn get_source_file_async(
+  async fn get_source_file_async(
     &self,
     module_url: &Url,
     use_disk_cache: bool,
     no_remote: bool,
     cached_only: bool,
-  ) -> impl Future<Output = Result<SourceFile, ErrBox>> {
+  ) -> Result<SourceFile, ErrBox> {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
-
-    if let Err(err) = SourceFileFetcher::check_if_supported_scheme(&module_url)
-    {
-      return Either::Left(futures::future::err(err));
-    }
+    SourceFileFetcher::check_if_supported_scheme(&module_url)?;
 
     // Local files are always fetched from disk bypassing cache entirely.
     if is_local_file {
-      match self.fetch_local_file(&module_url) {
-        Ok(source_file) => {
-          return Either::Left(futures::future::ok(source_file));
-        }
-        Err(err) => {
-          return Either::Left(futures::future::err(err));
-        }
-      }
+      return self.fetch_local_file(&module_url);
     }
 
     // The file is remote, fail if `no_remote` is true.
     if no_remote {
-      return Either::Left(futures::future::err(
-        std::io::Error::new(
-          std::io::ErrorKind::NotFound,
-          format!(
-            "Not allowed to get remote file '{}'",
-            module_url.to_string()
-          ),
-        )
-        .into(),
-      ));
+      let e = std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!(
+          "Not allowed to get remote file '{}'",
+          module_url.to_string()
+        ),
+      );
+      return Err(e.into());
     }
 
     // Fetch remote file and cache on-disk for subsequent access
-    Either::Right(self.fetch_remote_source_async(
-      &module_url,
-      use_disk_cache,
-      cached_only,
-      10,
-    ))
+    self
+      .fetch_remote_source_async(&module_url, use_disk_cache, cached_only, 10)
+      .await
   }
 
   /// Fetch local source file.
@@ -355,16 +339,19 @@ impl SourceFileFetcher {
   }
 
   /// Asynchronously fetch remote source file specified by the URL following redirects.
+  ///
+  /// Note that this is a recursive method so it can't be "async", but rather return
+  /// Pin<Box<..>>.
   fn fetch_remote_source_async(
     &self,
     module_url: &Url,
     use_disk_cache: bool,
     cached_only: bool,
     redirect_limit: i64,
-  ) -> Pin<Box<SourceFileFuture>> {
+  ) -> Pin<Box<dyn Future<Output = Result<SourceFile, ErrBox>>>> {
     if redirect_limit < 0 {
       let e = DenoError::new(ErrorKind::Http, "too many redirects".to_string());
-      return futures::future::err(e.into()).boxed();
+      return futures::future::err(e.into()).boxed_local();
     }
 
     let is_blacklisted =
@@ -373,13 +360,13 @@ impl SourceFileFetcher {
     if use_disk_cache && !is_blacklisted {
       match self.fetch_cached_remote_source(&module_url) {
         Ok(Some(source_file)) => {
-          return futures::future::ok(source_file).boxed();
+          return futures::future::ok(source_file).boxed_local();
         }
         Ok(None) => {
           // there's no cached version
         }
         Err(err) => {
-          return futures::future::err(err).boxed();
+          return futures::future::err(err).boxed_local();
         }
       }
     }
@@ -397,7 +384,7 @@ impl SourceFileFetcher {
         )
         .into(),
       )
-      .boxed();
+      .boxed_local();
     }
 
     eprintln!(
@@ -470,7 +457,7 @@ impl SourceFileFetcher {
       }
     };
 
-    f.boxed()
+    f.boxed_local()
   }
 }
 
