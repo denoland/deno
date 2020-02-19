@@ -157,6 +157,7 @@ testPerm({ write: true }, async function writeNullBufferFailure(): Promise<
   // writing null should throw an error
   let err;
   try {
+    // @ts-ignore
     await file.write(null);
   } catch (e) {
     err = e;
@@ -182,6 +183,7 @@ testPerm(
     // reading file into null buffer should throw an error
     let err;
     try {
+      // @ts-ignore
       await file.read(null);
     } catch (e) {
       err = e;

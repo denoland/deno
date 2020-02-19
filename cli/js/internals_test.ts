@@ -4,7 +4,7 @@ import { test, assert } from "./test_util.ts";
 test(function internalsExists(): void {
   const {
     stringifyArgs
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } = Deno[Deno.symbols.internal] as any;
+    // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+  } = Deno[Deno.symbols.internal];
   assert(!!stringifyArgs);
 });

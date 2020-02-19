@@ -545,7 +545,7 @@ test(async function testReadRequestError(): Promise<void> {
   for (const test of testCases) {
     const reader = new BufReader(new StringReader(test.in));
     let err;
-    let req: ServerRequest | Deno.EOF;
+    let req: ServerRequest | Deno.EOF | undefined;
     try {
       req = await readRequest(mockConn as Deno.Conn, reader);
     } catch (e) {
@@ -559,7 +559,7 @@ test(async function testReadRequestError(): Promise<void> {
       assert(err instanceof (test.err as typeof UnexpectedEOFError));
     } else {
       assert(req instanceof ServerRequest);
-      assert(test.headers != null);
+      assert(test.headers);
       assertEquals(err, undefined);
       assertNotEquals(req, Deno.EOF);
       for (const h of test.headers) {
@@ -719,6 +719,7 @@ if (Deno.build.os !== "win") {
       const serverRoutine = async (): Promise<void> => {
         let reqCount = 0;
         const server = serve(":8124");
+        // @ts-ignore
         const serverRid = server.listener["rid"];
         let connRid = -1;
         for await (const req of server) {

@@ -40,7 +40,7 @@ const isWindows = path.isWindows;
 const relativeResolveCache = Object.create(null);
 
 let requireDepth = 0;
-let statCache = null;
+let statCache: Map<string, StatResult> | null = null;
 
 type StatResult = -1 | 0 | 1;
 // Returns 0 if the path refers to
@@ -64,7 +64,11 @@ function stat(filename: string): StatResult {
   }
 }
 
-function updateChildren(parent: Module, child: Module, scan: boolean): void {
+function updateChildren(
+  parent: Module | null,
+  child: Module,
+  scan: boolean
+): void {
   const children = parent && parent.children;
   if (children && !(scan && children.includes(child))) {
     children.push(child);
@@ -75,17 +79,17 @@ class Module {
   id: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   exports: any;
-  parent?: Module;
-  filename: string;
+  parent: Module | null;
+  filename: string | null;
   loaded: boolean;
   children: Module[];
   paths: string[];
   path: string;
-  constructor(id = "", parent?: Module) {
+  constructor(id = "", parent?: Module | null) {
     this.id = id;
     this.exports = {};
-    this.parent = parent;
-    updateChildren(parent, this, false);
+    this.parent = parent || null;
+    updateChildren(parent || null, this, false);
     this.filename = null;
     this.loaded = false;
     this.children = [];
@@ -229,25 +233,25 @@ class Module {
             fakeParent.paths = Module._nodeModulePaths(path);
             const lookupPaths = Module._resolveLookupPaths(request, fakeParent);
 
-            for (let j = 0; j < lookupPaths.length; j++) {
-              if (!paths.includes(lookupPaths[j])) paths.push(lookupPaths[j]);
+            for (let j = 0; j < lookupPaths!.length; j++) {
+              if (!paths.includes(lookupPaths![j])) paths.push(lookupPaths![j]);
             }
           }
         }
       } else if (options.paths === undefined) {
-        paths = Module._resolveLookupPaths(request, parent);
+        paths = Module._resolveLookupPaths(request, parent)!;
       } else {
         throw new Error("options.paths is invalid");
       }
     } else {
-      paths = Module._resolveLookupPaths(request, parent);
+      paths = Module._resolveLookupPaths(request, parent)!;
     }
 
     // Look up the filename first, since that's the cache key.
     const filename = Module._findPath(request, paths, isMain);
     if (!filename) {
       const requireStack = [];
-      for (let cursor = parent; cursor; cursor = cursor.parent) {
+      for (let cursor: Module | null = parent; cursor; cursor = cursor.parent) {
         requireStack.push(cursor.filename || cursor.id);
       }
       let message = `Cannot find module '${request}'`;
@@ -341,7 +345,7 @@ class Module {
   //    object.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static _load(request: string, parent: Module, isMain: boolean): any {
-    let relResolveCacheIdentifier;
+    let relResolveCacheIdentifier: string | undefined;
     if (parent) {
       // Fast path for (lazy loaded) modules in the same directory. The indirect
       // caching is required to allow cache invalidation without changing the old
@@ -385,6 +389,7 @@ class Module {
 
     Module._cache[filename] = module;
     if (parent !== undefined) {
+      assert(relResolveCacheIdentifier);
       relativeResolveCache[relResolveCacheIdentifier] = filename;
     }
 
@@ -397,6 +402,7 @@ class Module {
       if (threw) {
         delete Module._cache[filename];
         if (parent !== undefined) {
+          assert(relResolveCacheIdentifier);
           delete relativeResolveCache[relResolveCacheIdentifier];
         }
       } else if (
@@ -602,7 +608,7 @@ for (const id of nativeModulePolyfill.keys()) {
   Module.builtinModules.push(id);
 }
 
-let modulePaths = [];
+let modulePaths: string[] = [];
 
 // Given a module name, and a list of paths to test, returns the first
 // matching file in the following precedence.
@@ -664,7 +670,7 @@ function readPackage(requestPath: string): PackageInfo | null {
 }
 
 function readPackageScope(
-  checkPath
+  checkPath: string
 ): { path: string; data: PackageInfo } | false {
   const rootSeparatorIndex = checkPath.indexOf(path.sep);
   let separatorIndex;
@@ -987,6 +993,7 @@ const CircularRequirePrototypeWarningProxy = new Proxy(
   {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     get(target, prop): any {
+      // @ts-ignore
       if (prop in target) return target[prop];
       emitCircularRequireWarning(prop);
       return undefined;
@@ -1150,7 +1157,7 @@ function getPathFromURLWin32(url: URL): string {
   let pathname = url.pathname;
   for (let n = 0; n < pathname.length; n++) {
     if (pathname[n] === "%") {
-      const third = pathname.codePointAt(n + 2) | 0x20;
+      const third = pathname.codePointAt(n + 2)! | 0x20;
       if (
         (pathname[n + 1] === "2" && third === 102) || // 2f 2F /
         (pathname[n + 1] === "5" && third === 99)
@@ -1165,7 +1172,7 @@ function getPathFromURLWin32(url: URL): string {
   pathname = pathname.replace(forwardSlashRegEx, "\\");
   pathname = decodeURIComponent(pathname);
   // TODO: handle windows hostname case (needs bindings)
-  const letter = pathname.codePointAt(1) | 0x20;
+  const letter = pathname.codePointAt(1)! | 0x20;
   const sep = pathname[2];
   if (
     letter < CHAR_LOWERCASE_A ||
@@ -1184,7 +1191,7 @@ function getPathFromURLPosix(url: URL): string {
   const pathname = url.pathname;
   for (let n = 0; n < pathname.length; n++) {
     if (pathname[n] === "%") {
-      const third = pathname.codePointAt(n + 2) | 0x20;
+      const third = pathname.codePointAt(n + 2)! | 0x20;
       if (pathname[n + 1] === "2" && third === 102) {
         throw new Error(
           "Invalid file URL path: must not include encoded / characters"

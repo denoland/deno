@@ -15,6 +15,7 @@ import {
   Response
 } from "./server.ts";
 import { parse } from "../flags/mod.ts";
+import { assert } from "../testing/asserts.ts";
 
 interface EntryInfo {
   mode: string;
@@ -40,10 +41,10 @@ const encoder = new TextEncoder();
 const serverArgs = parse(args) as FileServerArgs;
 
 const CORSEnabled = serverArgs.cors ? true : false;
-const target = posix.resolve(serverArgs._[1] || "");
-const addr = `0.0.0.0:${serverArgs.port || serverArgs.p || 4500}`;
+const target = posix.resolve(serverArgs._[1] ?? "");
+const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4500}`;
 
-if (serverArgs.h || serverArgs.help) {
+if (serverArgs.h ?? serverArgs.help) {
   console.log(`Deno File Server
   Serves a local directory in HTTP.
 
@@ -125,8 +126,8 @@ async function serveDir(
   const listEntry: EntryInfo[] = [];
   const fileInfos = await readDir(dirPath);
   for (const fileInfo of fileInfos) {
-    const filePath = posix.join(dirPath, fileInfo.name);
-    const fileUrl = posix.join(dirUrl, fileInfo.name);
+    const filePath = posix.join(dirPath, fileInfo.name ?? "");
+    const fileUrl = posix.join(dirUrl, fileInfo.name ?? "");
     if (fileInfo.name === "index.html" && fileInfo.isFile()) {
       // in case index.html as dir...
       return await serveFile(req, filePath);
@@ -139,7 +140,7 @@ async function serveDir(
     listEntry.push({
       mode: modeToString(fileInfo.isDirectory(), mode),
       size: fileInfo.isFile() ? fileLenToString(fileInfo.len) : "",
-      name: fileInfo.name,
+      name: fileInfo.name ?? "",
       url: fileUrl
     });
   }
@@ -311,7 +312,7 @@ listenAndServe(
     }
     const fsPath = posix.join(target, normalizedUrl);
 
-    let response: Response;
+    let response: Response | undefined;
     try {
       const info = await stat(fsPath);
       if (info.isDirectory()) {
@@ -324,10 +325,11 @@ listenAndServe(
       response = await serveFallback(req, e);
     } finally {
       if (CORSEnabled) {
+        assert(response);
         setCORS(response);
       }
-      serverLog(req, response);
-      req.respond(response);
+      serverLog(req, response!);
+      req.respond(response!);
     }
   }
 );
