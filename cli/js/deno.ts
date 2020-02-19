@@ -66,8 +66,10 @@ export { linkSync, link } from "./link.ts";
 export {
   makeTempDirSync,
   makeTempDir,
-  MakeTempDirOptions
-} from "./make_temp_dir.ts";
+  makeTempFileSync,
+  makeTempFile,
+  MakeTempOptions
+} from "./make_temp.ts";
 export { metrics, Metrics } from "./metrics.ts";
 export { mkdirSync, mkdir } from "./mkdir.ts";
 export {
@@ -111,6 +113,7 @@ export { utimeSync, utime } from "./utime.ts";
 export { version } from "./version.ts";
 export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";
 export const args: string[] = [];
+export { test, runTests } from "./testing.ts";
 
 // These are internal Deno APIs.  We are marking them as internal so they do not
 // appear in the runtime type library.

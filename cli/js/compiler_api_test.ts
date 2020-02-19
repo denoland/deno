@@ -46,6 +46,22 @@ test(async function compilerApiCompileOptions() {
   assert(actual["/foo.js"].startsWith("define("));
 });
 
+test(async function compilerApiCompileLib() {
+  const [diagnostics, actual] = await compile(
+    "/foo.ts",
+    {
+      "/foo.ts": `console.log(document.getElementById("foo"));
+        console.log(Deno.args);`
+    },
+    {
+      lib: ["dom", "es2018", "deno.ns"]
+    }
+  );
+  assert(diagnostics == null);
+  assert(actual);
+  assertEquals(Object.keys(actual), ["/foo.js.map", "/foo.js"]);
+});
+
 test(async function transpileOnlyApi() {
   const actual = await transpileOnly({
     "foo.ts": `export enum Foo { Foo, Bar, Baz };\n`
@@ -78,15 +94,15 @@ test(async function bundleApiSources() {
     "/bar.ts": `export const bar = "bar";\n`
   });
   assert(diagnostics == null);
-  assert(actual.includes(`instantiate("foo")`));
-  assert(actual.includes(`__rootExports["bar"]`));
+  assert(actual.includes(`__inst("foo")`));
+  assert(actual.includes(`__exp["bar"]`));
 });
 
 test(async function bundleApiNoSources() {
   const [diagnostics, actual] = await bundle("./cli/tests/subdir/mod1.ts");
   assert(diagnostics == null);
-  assert(actual.includes(`instantiate("mod1")`));
-  assert(actual.includes(`__rootExports["printHello3"]`));
+  assert(actual.includes(`__inst("mod1")`));
+  assert(actual.includes(`__exp["printHello3"]`));
 });
 
 test(async function bundleApiConfig() {

@@ -1,4 +1,5 @@
-import { test, assertEquals, assertThrows } from "../testing/mod.ts";
+const { test } = Deno;
+import { assertEquals, assertThrows } from "../testing/asserts.ts";
 import { delay } from "../util/async.ts";
 import { signal } from "./mod.ts";
 

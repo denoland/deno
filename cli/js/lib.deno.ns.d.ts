@@ -10,6 +10,26 @@ declare namespace Deno {
   /** Reflects the NO_COLOR environment variable: https://no-color.org/ */
   export let noColor: boolean;
 
+  export type TestFunction = () => void | Promise<void>;
+
+  export interface TestDefinition {
+    fn: TestFunction;
+    name: string;
+  }
+
+  export function test(t: TestDefinition): void;
+  export function test(fn: TestFunction): void;
+  export function test(name: string, fn: TestFunction): void;
+
+  export interface RunTestsOptions {
+    exitOnFail?: boolean;
+    only?: RegExp;
+    skip?: RegExp;
+    disableLog?: boolean;
+  }
+
+  export function runTests(opts?: RunTestsOptions): Promise<void>;
+
   /** Check if running in terminal.
    *
    *       console.log(Deno.isTTY().stdout);
@@ -228,7 +248,7 @@ declare namespace Deno {
   /** UNSTABLE: might move to Deno.symbols */
   export const EOF: unique symbol;
 
-  /** UNSTABLE: might move to Deno.symbols */
+  /** UNSTABLE: might move to Deno.symbols  */
   export type EOF = typeof EOF;
 
   /** UNSTABLE: maybe remove "SEEK_" prefix. Maybe capitalization wrong. */
@@ -660,9 +680,9 @@ declare namespace Deno {
     mode?: number
   ): Promise<void>;
 
-  // @url js/make_temp_dir.d.ts
+  // @url js/make_temp.d.ts
 
-  export interface MakeTempDirOptions {
+  export interface MakeTempOptions {
     dir?: string;
     prefix?: string;
     suffix?: string;
@@ -676,7 +696,7 @@ declare namespace Deno {
    * Requires allow-write.
    */
   // TODO(ry) Doesn't check permissions.
-  export function makeTempDirSync(options?: MakeTempDirOptions): string;
+  export function makeTempDirSync(options?: MakeTempOptions): string;
 
   /** makeTempDir creates a new temporary directory in the directory `dir`, its
    * name beginning with `prefix` and ending with `suffix`.
@@ -692,7 +712,27 @@ declare namespace Deno {
    * Requires allow-write.
    */
   // TODO(ry) Doesn't check permissions.
-  export function makeTempDir(options?: MakeTempDirOptions): Promise<string>;
+  export function makeTempDir(options?: MakeTempOptions): Promise<string>;
+
+  /** makeTempFileSync is the synchronous version of `makeTempFile`.
+   *
+   *       const tempFileName0 = Deno.makeTempFileSync();
+   *       const tempFileName1 = Deno.makeTempFileSync({ prefix: 'my_temp' });
+   */
+  export function makeTempFileSync(options?: MakeTempOptions): string;
+
+  /** makeTempFile creates a new temporary file in the directory `dir`, its
+   * name beginning with `prefix` and ending with `suffix`.
+   * It returns the full path to the newly created file.
+   * If `dir` is unspecified, tempFile uses the default directory for temporary
+   * files. Multiple programs calling tempFile simultaneously will not choose the
+   * same directory. It is the caller's responsibility to remove the file
+   * when no longer needed.
+   *
+   *       const tempFileName0 = await Deno.makeTempFile();
+   *       const tempFileName1 = await Deno.makeTempFile({ prefix: 'my_temp' });
+   */
+  export function makeTempFile(options?: MakeTempOptions): Promise<string>;
 
   /** Changes the permission of a specific file/directory of specified path
    * synchronously.
@@ -1876,6 +1916,10 @@ declare namespace Deno {
     /** Emit class fields with ECMAScript-standard semantics. Defaults to `false`.
      * Does not apply to `"esnext"` target. */
     useDefineForClassFields?: boolean;
+
+    /** List of library files to be included in the compilation.  If omitted,
+     * then the Deno main runtime libs are used. */
+    lib?: string[];
 
     /** The locale to use to show error messages. */
     locale?: string;

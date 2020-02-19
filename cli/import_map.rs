@@ -147,7 +147,7 @@ impl ImportMap {
 
   /// Parse provided key as import map specifier.
   ///
-  /// Specifiers must be valid URLs (eg. "https://deno.land/x/std/testing/mod.ts")
+  /// Specifiers must be valid URLs (eg. "https://deno.land/x/std/testing/asserts.ts")
   /// or "bare" specifiers (eg. "moment").
   // TODO: add proper error handling: https://github.com/WICG/import-maps/issues/100
   fn normalize_specifier_key(

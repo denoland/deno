@@ -174,6 +174,12 @@ command line:
 $ deno types
 ```
 
+The output is the concatenation of three library files that are built into Deno:
+
+- [lib.deno.ns.d.ts](https://github.com/denoland/deno/blob/master/cli/js/lib.deno.ns.d.ts)
+- [lib.deno.shared_globals.d.ts](https://github.com/denoland/deno/blob/master/cli/js/lib.deno.shared_globals.d.ts)
+- [lib.deno.window.d.ts](https://github.com/denoland/deno/blob/master/cli/js/lib.deno.window.d.ts)
+
 [This is what the output looks like.](https://github.com/denoland/deno/blob/master/cli/js/lib.deno_runtime.d.ts)
 
 ### Reference websites
@@ -465,24 +471,20 @@ The above for-await loop exits after 5 seconds when sig.dispose() is called.
 
 In the above examples, we saw that Deno could execute scripts from URLs. Like
 browser JavaScript, Deno can import libraries directly from URLs. This example
-uses a URL to import a test runner library:
+uses a URL to import an assertion library:
 
 ```ts
-import {
-  assertEquals,
-  runIfMain,
-  test
-} from "https://deno.land/std/testing/mod.ts";
+import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 
-test(function t1() {
+Deno.test(function t1() {
   assertEquals("hello", "hello");
 });
 
-test(function t2() {
+Deno.test(function t2() {
   assertEquals("world", "world");
 });
 
-runIfMain(import.meta);
+await Deno.runTests();
 ```
 
 Try running this:
@@ -534,16 +536,16 @@ a subtly different version of a library? Isn't it error prone to maintain URLs
 everywhere in a large project?** The solution is to import and re-export your
 external libraries in a central `deps.ts` file (which serves the same purpose as
 Node's `package.json` file). For example, let's say you were using the above
-testing library across a large project. Rather than importing
-`"https://deno.land/std/testing/mod.ts"` everywhere, you could create a
+assertion library across a large project. Rather than importing
+`"https://deno.land/std/testing/asserts.ts"` everywhere, you could create a
 `deps.ts` file that exports the third-party code:
 
 ```ts
 export {
+  assert,
   assertEquals,
-  runTests,
-  test
-} from "https://deno.land/std/testing/mod.ts";
+  assertStrContains
+} from "https://deno.land/std/testing/asserts.ts";
 ```
 
 And throughout the same project, you can import from the `deps.ts` and avoid
@@ -643,6 +645,100 @@ The TypeScript compiler supports triple-slash directives, including a type
 reference directive. If Deno used this, it would interfere with the behavior of
 the TypeScript compiler. Deno only looks for the directive in JavaScript (and
 JSX) files.
+
+### Referencing TypeScript library files
+
+When you use `deno run`, or other Deno commands which type check TypeScript,
+that code is evaluated against custom libraries which describe the environment
+that Deno supports. By default, the compiler runtime APIs which type check
+TypeScript also use these libraries (`Deno.compile()` and `Deno.bundle()`).
+
+But if you want to compile or bundle TypeScript for some other runtime, you may
+want to override the default libraries. In order to do this, the runtime APIs
+support the `lib` property in the compiler options. For example, if you had
+TypeScript code that is destined for the browser, you would want to use the
+TypeScript `"dom"` library:
+
+```ts
+const [errors, emitted] = Deno.compile(
+  "main.ts",
+  {
+    "main.ts": `document.getElementById("foo");\n`
+  },
+  {
+    lib: ["dom", "esnext"]
+  }
+);
+```
+
+For a list of all the libraries that TypeScript supports, see the
+[`lib` compiler option](https://www.typescriptlang.org/docs/handbook/compiler-options.html)
+documentation.
+
+**Don't forget to include the JavaScript library**
+
+Just like `tsc`, when you supply a `lib` compiler option, it overrides the
+default ones, which means that the basic JavaScript library won't be included
+and you should include the one that best represents your target runtime (e.g.
+`es5`, `es2015`, `es2016`, `es2017`, `es2018`, `es2019`, `es2020` or `esnext`).
+
+#### Including the `Deno` namespace
+
+In addition to the libraries that are provided by TypeScript, there are four
+libraries that are built into Deno that can be referenced:
+
+- `deno.ns` - Provides the `Deno` namespace.
+- `deno.shared_globals` - Provides global interfaces and variables which Deno
+  supports at runtime that are then exposed by the final runtime library.
+- `deno.window` - Exposes the global variables plus the Deno namespace that are
+  available in the Deno main worker and is the default for the runtime compiler
+  APIs.
+- `deno.worker` - Exposes the global variables that are available in workers
+  under Deno.
+
+So to add the Deno namespace to a compilation, you would include the `deno.ns`
+lib in the array. For example:
+
+```ts
+const [errors, emitted] = Deno.compile(
+  "main.ts",
+  {
+    "main.ts": `document.getElementById("foo");\n`
+  },
+  {
+    lib: ["dom", "esnext", "deno.ns"]
+  }
+);
+```
+
+**Note** that the Deno namespace expects a runtime environment that is at least
+ES2018 or later. This means if you use a lib "lower" than ES2018 you will get
+errors logged as part of the compilation.
+
+#### Using the triple slash reference
+
+You do not have to specify the `lib` in just the compiler options. Deno supports
+[the triple-slash reference to a lib](https://www.typescriptlang.org/docs/handbook/triple-slash-directives.html#-reference-lib-).
+and could be embedded in the contents of the file. For example of you have a
+`main.ts` like:
+
+```ts
+/// <reference lib="dom" />
+
+document.getElementById("foo");
+```
+
+It would compiler without errors like this:
+
+```ts
+const [errors, emitted] = Deno.compile("./main.ts", undefined, {
+  lib: ["esnext"]
+});
+```
+
+**Note** that the `dom` library conflicts with some of the default globals that
+are defined in the default type library for Deno. To avoid this, you need to
+specify a `lib` option in the compiler options to the runtime compiler APIs.
 
 ### Testing if current file is the main program
 
@@ -1419,7 +1515,7 @@ Extra steps for Mac users:
 
 Extra steps for Windows users:
 
-1. Get [VS Community 2017](https://www.visualstudio.com/downloads/) with
+1. Get [VS Community 2019](https://www.visualstudio.com/downloads/) with
    "Desktop development with C++" toolkit and make sure to select the following
    required tools listed below along with all C++ tools.
     - Windows 10 SDK >= 10.0.17134

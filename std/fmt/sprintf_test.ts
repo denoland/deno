@@ -1,21 +1,20 @@
 import { sprintf } from "./sprintf.ts";
 
 import { assertEquals } from "../testing/asserts.ts";
-import { test, runIfMain } from "../testing/mod.ts";
 
 const S = sprintf;
 
-test(function noVerb(): void {
+Deno.test(function noVerb(): void {
   assertEquals(sprintf("bla"), "bla");
 });
 
-test(function percent(): void {
+Deno.test(function percent(): void {
   assertEquals(sprintf("%%"), "%");
   assertEquals(sprintf("!%%!"), "!%!");
   assertEquals(sprintf("!%%"), "!%");
   assertEquals(sprintf("%%!"), "%!");
 });
-test(function testBoolean(): void {
+Deno.test(function testBoolean(): void {
   assertEquals(sprintf("%t", true), "true");
   assertEquals(sprintf("%10t", true), "      true");
   assertEquals(sprintf("%-10t", false), "false     ");
@@ -24,7 +23,7 @@ test(function testBoolean(): void {
   assertEquals(sprintf("%tbla", false), "falsebla");
 });
 
-test(function testIntegerB(): void {
+Deno.test(function testIntegerB(): void {
   assertEquals(S("%b", 4), "100");
   assertEquals(S("%b", -4), "-100");
   assertEquals(
@@ -48,7 +47,7 @@ test(function testIntegerB(): void {
   assertEquals(S("%4b", 4), " 100");
 });
 
-test(function testIntegerC(): void {
+Deno.test(function testIntegerC(): void {
   assertEquals(S("%c", 0x31), "1");
   assertEquals(S("%c%b", 0x31, 1), "11");
   assertEquals(S("%c", 0x1f4a9), "💩");
@@ -56,14 +55,14 @@ test(function testIntegerC(): void {
   assertEquals(S("%4c", 0x31), "   1");
 });
 
-test(function testIntegerD(): void {
+Deno.test(function testIntegerD(): void {
   assertEquals(S("%d", 4), "4");
   assertEquals(S("%d", -4), "-4");
   assertEquals(S("%d", Number.MAX_SAFE_INTEGER), "9007199254740991");
   assertEquals(S("%d", Number.MIN_SAFE_INTEGER), "-9007199254740991");
 });
 
-test(function testIntegerO(): void {
+Deno.test(function testIntegerO(): void {
   assertEquals(S("%o", 4), "4");
   assertEquals(S("%o", -4), "-4");
   assertEquals(S("%o", 9), "11");
@@ -73,7 +72,7 @@ test(function testIntegerO(): void {
   // width
   assertEquals(S("%4o", 4), "   4");
 });
-test(function testIntegerx(): void {
+Deno.test(function testIntegerx(): void {
   assertEquals(S("%x", 4), "4");
   assertEquals(S("%x", -4), "-4");
   assertEquals(S("%x", 9), "9");
@@ -87,7 +86,7 @@ test(function testIntegerx(): void {
   assertEquals(S("%+4x", 4), "  +4");
   assertEquals(S("%-+4x", 4), "+4  ");
 });
-test(function testIntegerX(): void {
+Deno.test(function testIntegerX(): void {
   assertEquals(S("%X", 4), "4");
   assertEquals(S("%X", -4), "-4");
   assertEquals(S("%X", 9), "9");
@@ -96,7 +95,7 @@ test(function testIntegerX(): void {
   assertEquals(S("%X", Number.MIN_SAFE_INTEGER), "-1FFFFFFFFFFFFF");
 });
 
-test(function testFloate(): void {
+Deno.test(function testFloate(): void {
   assertEquals(S("%e", 4), "4.000000e+00");
   assertEquals(S("%e", -4), "-4.000000e+00");
   assertEquals(S("%e", 4.1), "4.100000e+00");
@@ -104,7 +103,7 @@ test(function testFloate(): void {
   assertEquals(S("%e", Number.MAX_SAFE_INTEGER), "9.007199e+15");
   assertEquals(S("%e", Number.MIN_SAFE_INTEGER), "-9.007199e+15");
 });
-test(function testFloatE(): void {
+Deno.test(function testFloatE(): void {
   assertEquals(S("%E", 4), "4.000000E+00");
   assertEquals(S("%E", -4), "-4.000000E+00");
   assertEquals(S("%E", 4.1), "4.100000E+00");
@@ -114,7 +113,7 @@ test(function testFloatE(): void {
   assertEquals(S("%E", Number.MIN_VALUE), "5.000000E-324");
   assertEquals(S("%E", Number.MAX_VALUE), "1.797693E+308");
 });
-test(function testFloatfF(): void {
+Deno.test(function testFloatfF(): void {
   assertEquals(S("%f", 4), "4.000000");
   assertEquals(S("%F", 4), "4.000000");
   assertEquals(S("%f", -4), "-4.000000");
@@ -146,32 +145,32 @@ test(function testFloatfF(): void {
   );
 });
 
-test(function testString(): void {
+Deno.test(function testString(): void {
   assertEquals(S("%s World%s", "Hello", "!"), "Hello World!");
 });
 
-test(function testHex(): void {
+Deno.test(function testHex(): void {
   assertEquals(S("%x", "123"), "313233");
   assertEquals(S("%x", "n"), "6e");
 });
-test(function testHeX(): void {
+Deno.test(function testHeX(): void {
   assertEquals(S("%X", "123"), "313233");
   assertEquals(S("%X", "n"), "6E");
 });
 
-test(function testType(): void {
+Deno.test(function testType(): void {
   assertEquals(S("%T", new Date()), "object");
   assertEquals(S("%T", 123), "number");
   assertEquals(S("%T", "123"), "string");
   assertEquals(S("%.3T", "123"), "str");
 });
 
-test(function testPositional(): void {
+Deno.test(function testPositional(): void {
   assertEquals(S("%[1]d%[2]d", 1, 2), "12");
   assertEquals(S("%[2]d%[1]d", 1, 2), "21");
 });
 
-test(function testSharp(): void {
+Deno.test(function testSharp(): void {
   assertEquals(S("%#x", "123"), "0x313233");
   assertEquals(S("%#X", "123"), "0X313233");
   assertEquals(S("%#x", 123), "0x7b");
@@ -180,7 +179,7 @@ test(function testSharp(): void {
   assertEquals(S("%#b", 4), "0b100");
 });
 
-test(function testWidthAndPrecision(): void {
+Deno.test(function testWidthAndPrecision(): void {
   assertEquals(
     S("%9.99d", 9),
     // eslint-disable-next-line max-len
@@ -206,21 +205,21 @@ test(function testWidthAndPrecision(): void {
   assertEquals(S("%#*x", 4, 1), " 0x1");
 });
 
-test(function testDash(): void {
+Deno.test(function testDash(): void {
   assertEquals(S("%-2s", "a"), "a ");
   assertEquals(S("%-2d", 1), "1 ");
 });
-test(function testPlus(): void {
+Deno.test(function testPlus(): void {
   assertEquals(S("%-+3d", 1), "+1 ");
   assertEquals(S("%+3d", 1), " +1");
   assertEquals(S("%+3d", -1), " -1");
 });
 
-test(function testSpace(): void {
+Deno.test(function testSpace(): void {
   assertEquals(S("% -3d", 3), " 3 ");
 });
 
-test(function testZero(): void {
+Deno.test(function testZero(): void {
   assertEquals(S("%04s", "a"), "000a");
 });
 
@@ -586,7 +585,7 @@ const tests: Array<[string, any, string]> = [
   ["% +07.2f", -1.0, "-001.00"]
 ];
 
-test(function testThorough(): void {
+Deno.test(function testThorough(): void {
   tests.forEach((t, i): void => {
     //            p(t)
     const is = S(t[0], t[1]);
@@ -599,7 +598,7 @@ test(function testThorough(): void {
   });
 });
 
-test(function testWeirdos(): void {
+Deno.test(function testWeirdos(): void {
   assertEquals(S("%.d", 9), "9");
   assertEquals(
     S("dec[%d]=%d hex[%[1]d]=%#x oct[%[1]d]=%#o %s", 1, 255, "Third"),
@@ -607,7 +606,7 @@ test(function testWeirdos(): void {
   );
 });
 
-test(function formatV(): void {
+Deno.test(function formatV(): void {
   const a = { a: { a: { a: { a: { a: { a: { a: {} } } } } } } };
   assertEquals(S("%v", a), "[object Object]");
   assertEquals(S("%#v", a), "{ a: { a: { a: { a: [Object] } } } }");
@@ -618,12 +617,12 @@ test(function formatV(): void {
   assertEquals(S("%#.1v", a), "{ a: [Object] }");
 });
 
-test(function formatJ(): void {
+Deno.test(function formatJ(): void {
   const a = { a: { a: { a: { a: { a: { a: { a: {} } } } } } } };
   assertEquals(S("%j", a), `{"a":{"a":{"a":{"a":{"a":{"a":{"a":{}}}}}}}}`);
 });
 
-test(function flagLessThan(): void {
+Deno.test(function flagLessThan(): void {
   const a = { a: { a: { a: { a: { a: { a: { a: {} } } } } } } };
   const aArray = [a, a, a];
   assertEquals(
@@ -634,7 +633,7 @@ test(function flagLessThan(): void {
   assertEquals(S("%<.2f", fArray), "[ 1.23, 0.99, 123456789.57 ]");
 });
 
-test(function testErrors(): void {
+Deno.test(function testErrors(): void {
   // wrong type : TODO strict mode ...
   //assertEquals(S("%f", "not a number"), "%!(BADTYPE flag=f type=string)")
   assertEquals(S("A %h", ""), "A %!(BAD VERB 'h')");
@@ -664,5 +663,3 @@ test(function testErrors(): void {
   assertEquals(S("%.[5]f"), "%!(BAD INDEX)");
   assertEquals(S("%.[5]*f"), "%!(BAD INDEX)");
 });
-
-runIfMain(import.meta);

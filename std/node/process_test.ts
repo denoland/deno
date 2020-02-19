@@ -1,4 +1,4 @@
-import { test } from "../testing/mod.ts";
+const { test } = Deno;
 import { assert, assertThrows, assertEquals } from "../testing/asserts.ts";
 import { process } from "./process.ts";
 

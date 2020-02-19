@@ -29,7 +29,7 @@ import "./headers_test.ts";
 import "./internals_test.ts";
 import "./link_test.ts";
 import "./location_test.ts";
-import "./make_temp_dir_test.ts";
+import "./make_temp_test.ts";
 import "./metrics_test.ts";
 import "./mixins/dom_iterable_test.ts";
 import "./mkdir_test.ts";
@@ -59,12 +59,8 @@ import "./write_file_test.ts";
 import "./performance_test.ts";
 import "./permissions_test.ts";
 import "./version_test.ts";
+import "./workers_test.ts";
 
-import { runIfMain } from "../../std/testing/mod.ts";
-
-async function main(): Promise<void> {
-  // Testing entire test suite serially
-  runIfMain(import.meta);
+if (import.meta.main) {
+  await Deno.runTests();
 }
-
-main();

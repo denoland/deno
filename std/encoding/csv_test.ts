@@ -1,6 +1,5 @@
 // Test ported from Golang
 // https://github.com/golang/go/blob/2cc15b1/src/encoding/csv/reader_test.go
-import { test, runIfMain } from "../testing/mod.ts";
 import { assertEquals, assert } from "../testing/asserts.ts";
 import { readMatrix, parse } from "./csv.ts";
 import { StringReader } from "../io/readers.ts";
@@ -450,7 +449,7 @@ x,,,
   }
 ];
 for (const t of testCases) {
-  test({
+  Deno.test({
     name: `[CSV] ${t.Name}`,
     async fn(): Promise<void> {
       let comma = ",";
@@ -605,7 +604,7 @@ const parseTestCases = [
 ];
 
 for (const testCase of parseTestCases) {
-  test({
+  Deno.test({
     name: `[CSV] Parse ${testCase.name}`,
     async fn(): Promise<void> {
       const r = await parse(testCase.in, {
@@ -616,5 +615,3 @@ for (const testCase of parseTestCases) {
     }
   });
 }
-
-runIfMain(import.meta);

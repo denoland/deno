@@ -21,6 +21,7 @@ static BUILD_ARCH: &str = "x64";
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("start", s.core_op(json_op(s.stateful_op(op_start))));
+  i.register_op("metrics", s.core_op(json_op(s.stateful_op(op_metrics))));
 }
 
 fn op_start(
@@ -45,5 +46,22 @@ fn op_start(
     "noColor": !colors::use_color(),
     "os": BUILD_OS,
     "arch": BUILD_ARCH,
+  })))
+}
+
+fn op_metrics(
+  state: &State,
+  _args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let state = state.borrow();
+  let m = &state.metrics;
+
+  Ok(JsonOp::Sync(json!({
+    "opsDispatched": m.ops_dispatched,
+    "opsCompleted": m.ops_completed,
+    "bytesSentControl": m.bytes_sent_control,
+    "bytesSentData": m.bytes_sent_data,
+    "bytesReceived": m.bytes_received
   })))
 }

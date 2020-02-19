@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { BUNDLE_LOADER } from "./compiler_bootstrap.ts";
+import { SYSTEM_LOADER } from "./compiler_bootstrap.ts";
 import {
   assert,
   commonPath,
@@ -44,18 +44,18 @@ export function buildBundle(
     .replace(/\.\w+$/i, "");
   let instantiate: string;
   if (rootExports && rootExports.length) {
-    instantiate = `const __rootExports = instantiate("${rootName}");\n`;
+    instantiate = `const __exp = await __inst("${rootName}");\n`;
     for (const rootExport of rootExports) {
       if (rootExport === "default") {
-        instantiate += `export default __rootExports["${rootExport}"];\n`;
+        instantiate += `export default __exp["${rootExport}"];\n`;
       } else {
-        instantiate += `export const ${rootExport} = __rootExports["${rootExport}"];\n`;
+        instantiate += `export const ${rootExport} = __exp["${rootExport}"];\n`;
       }
     }
   } else {
-    instantiate = `instantiate("${rootName}");\n`;
+    instantiate = `await __inst("${rootName}");\n`;
   }
-  return `${BUNDLE_LOADER}\n${data}\n${instantiate}`;
+  return `${SYSTEM_LOADER}\n${data}\n${instantiate}`;
 }
 
 /** Set the rootExports which will by the `emitBundle()` */
@@ -80,6 +80,7 @@ export function setRootExports(program: ts.Program, rootModule: string): void {
     // out, so inspecting SymbolFlags that might be present that are type only
     .filter(
       sym =>
+        sym.flags & ts.SymbolFlags.Class ||
         !(
           sym.flags & ts.SymbolFlags.Interface ||
           sym.flags & ts.SymbolFlags.TypeLiteral ||

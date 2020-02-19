@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "0.32.0"
+version = "0.33.0"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -19,12 +19,12 @@ name = "deno"
 path = "main.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.32.0" }
-deno_typescript = { path = "../deno_typescript", version = "0.32.0" }
+deno_core = { path = "../core", version = "0.33.0" }
+deno_typescript = { path = "../deno_typescript", version = "0.33.0" }
 
 [dependencies]
-deno_core = { path = "../core", version = "0.32.0" }
-deno_typescript = { path = "../deno_typescript", version = "0.32.0" }
+deno_core = { path = "../core", version = "0.33.0" }
+deno_typescript = { path = "../deno_typescript", version = "0.33.0" }
 
 ansi_term = "0.11.0"
 atty = "0.2.13"
@@ -35,7 +35,7 @@ brotli2 = "0.3.2"
 clap = "2.33.0"
 dirs = "2.0.2"
 dlopen = "0.1.8"
-dprint-plugin-typescript = "=0.3.0-alpha.6"
+dprint-plugin-typescript = "0.6.0"
 futures = { version = "0.3.1", features = [ "compat", "io-compat" ] }
 glob = "0.3.0"
 http = "0.2.0"
@@ -62,6 +62,7 @@ url = "2.1.0"
 utime = "0.2.1"
 webpki = "0.21.0"
 webpki-roots = "0.17.0"
+walkdir = "2.3.1"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.8"

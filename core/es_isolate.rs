@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
@@ -56,7 +56,7 @@ pub struct SourceCodeInfo {
 /// loading of modules can be customized by the implementor.
 pub struct EsIsolate {
   core_isolate: Box<Isolate>,
-  loader: Arc<Box<dyn Loader + Unpin>>,
+  loader: Rc<dyn Loader + Unpin>,
   pub modules: Modules,
   pub(crate) next_dyn_import_id: DynImportId,
   pub(crate) dyn_import_map:
@@ -101,7 +101,7 @@ impl Drop for EsIsolate {
 
 impl EsIsolate {
   pub fn new(
-    loader: Box<dyn Loader + Unpin>,
+    loader: Rc<dyn Loader + Unpin>,
     startup_data: StartupData,
     will_snapshot: bool,
   ) -> Box<Self> {
@@ -118,7 +118,7 @@ impl EsIsolate {
 
     let es_isolate = Self {
       modules: Modules::new(),
-      loader: Arc::new(loader),
+      loader,
       core_isolate,
       next_dyn_import_id: 0,
       dyn_import_map: HashMap::new(),
@@ -235,6 +235,51 @@ impl EsIsolate {
     }
   }
 
+  /// TODO(bartlomieju): copy-pasta to avoid problem with global handle attached
+  /// to ErrBox
+  pub fn mod_evaluate_dyn_import(
+    &mut self,
+    id: ModuleId,
+  ) -> Result<(), ErrBox> {
+    let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
+    let mut locker = v8::Locker::new(isolate);
+    let mut hs = v8::HandleScope::new(locker.enter());
+    let scope = hs.enter();
+    assert!(!self.core_isolate.global_context.is_empty());
+    let context = self.core_isolate.global_context.get(scope).unwrap();
+    let mut cs = v8::ContextScope::new(scope, context);
+    let scope = cs.enter();
+
+    let info = self.modules.get_info(id).expect("ModuleInfo not found");
+    let mut module = info.handle.get(scope).expect("Empty module handle");
+    let mut status = module.get_status();
+
+    if status == v8::ModuleStatus::Instantiated {
+      let ok = module.evaluate(scope, context).is_some();
+      // Update status after evaluating.
+      status = module.get_status();
+      if ok {
+        assert!(
+          status == v8::ModuleStatus::Evaluated
+            || status == v8::ModuleStatus::Errored
+        );
+      } else {
+        assert!(status == v8::ModuleStatus::Errored);
+      }
+    }
+
+    match status {
+      v8::ModuleStatus::Evaluated => Ok(()),
+      v8::ModuleStatus::Errored => {
+        let i = &mut self.core_isolate;
+        let exception = module.get_exception();
+        i.exception_to_err_result(scope, exception)
+          .map_err(|err| i.attach_handle_to_error(scope, err, exception))
+      }
+      other => panic!("Unexpected module status {:?}", other),
+    }
+  }
+
   /// Evaluates an already instantiated ES module.
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
@@ -274,7 +319,6 @@ impl EsIsolate {
         let i = &mut self.core_isolate;
         let exception = module.get_exception();
         i.exception_to_err_result(scope, exception)
-          .map_err(|err| i.attach_handle_to_error(scope, err, exception))
       }
       other => panic!("Unexpected module status {:?}", other),
     }
@@ -425,7 +469,7 @@ impl EsIsolate {
             // Load is done.
             let module_id = load.root_module_id.unwrap();
             self.mod_instantiate(module_id)?;
-            match self.mod_evaluate(module_id) {
+            match self.mod_evaluate_dyn_import(module_id) {
               Ok(()) => self.dyn_import_done(dyn_import_id, module_id)?,
               Err(err) => self.dyn_import_error(dyn_import_id, err)?,
             };
@@ -509,11 +553,14 @@ impl EsIsolate {
   /// manually after load is finished.
   pub async fn load_module(
     &mut self,
-    specifier: &str,
+    specifier: &ModuleSpecifier,
     code: Option<String>,
   ) -> Result<ModuleId, ErrBox> {
-    let mut load =
-      RecursiveModuleLoad::main(specifier, code, self.loader.clone());
+    let mut load = RecursiveModuleLoad::main(
+      &specifier.to_string(),
+      code,
+      self.loader.clone(),
+    );
 
     while let Some(info_result) = load.next().await {
       let info = info_result?;
@@ -562,6 +609,7 @@ pub mod tests {
   use crate::ops::*;
   use std::io;
   use std::sync::atomic::{AtomicUsize, Ordering};
+  use std::sync::Arc;
 
   #[test]
   fn test_mods() {
@@ -594,7 +642,7 @@ pub mod tests {
       }
     }
 
-    let loader = Box::new(ModsLoader::default());
+    let loader = Rc::new(ModsLoader::default());
     let resolve_count = loader.count.clone();
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
@@ -696,7 +744,7 @@ pub mod tests {
 
     // Test an erroneous dynamic import where the specified module isn't found.
     run_in_task(|cx| {
-      let loader = Box::new(DynImportErrLoader::default());
+      let loader = Rc::new(DynImportErrLoader::default());
       let count = loader.count.clone();
       let mut isolate = EsIsolate::new(loader, StartupData::None, false);
 
@@ -850,7 +898,7 @@ pub mod tests {
     }
 
     run_in_task(|cx| {
-      let loader = Box::new(DynImportOkLoader::default());
+      let loader = Rc::new(DynImportOkLoader::default());
       let resolve_count = loader.resolve_count.clone();
       let load_count = loader.load_count.clone();
       let mut isolate = EsIsolate::new(loader, StartupData::None, false);

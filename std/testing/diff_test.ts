@@ -1,6 +1,6 @@
 import diff from "./diff.ts";
 import { assertEquals } from "../testing/asserts.ts";
-import { test } from "./mod.ts";
+const { test } = Deno;
 
 test({
   name: "empty",
