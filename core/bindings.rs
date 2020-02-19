@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::es_isolate::EsIsolate;
-use crate::isolate::Isolate;
+use crate::es_isolate::EsState;
+use crate::isolate::IsolateState;
 use crate::isolate::ZeroCopyBuf;
 
 use rusty_v8 as v8;
@@ -200,8 +200,9 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let mut hs = v8::EscapableHandleScope::new(cbs.enter());
   let scope = hs.enter();
   let isolate = scope.isolate();
-  let deno_isolate: &mut EsIsolate =
-    unsafe { &mut *(isolate.get_data(1) as *mut EsIsolate) };
+
+  let state = scope.isolate().state_get::<EsState>();
+  let mut state = state.borrow_mut();
 
   // NOTE(bartlomieju): will crash for non-UTF-8 specifier
   let specifier_str = specifier
@@ -226,13 +227,11 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let mut resolver_handle = v8::Global::new();
   resolver_handle.set(scope, resolver);
 
-  let import_id = deno_isolate.next_dyn_import_id;
-  deno_isolate.next_dyn_import_id += 1;
-  deno_isolate
-    .dyn_import_map
-    .insert(import_id, resolver_handle);
+  let import_id = state.next_dyn_import_id;
+  state.next_dyn_import_id += 1;
+  state.dyn_import_map.insert(import_id, resolver_handle);
 
-  deno_isolate.dyn_import_cb(&specifier_str, &referrer_name_str, import_id);
+  state.dyn_import_cb(&specifier_str, &referrer_name_str, import_id);
 
   &mut *scope.escape(promise)
 }
@@ -246,13 +245,13 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let mut hs = v8::HandleScope::new(cbs.enter());
   let scope = hs.enter();
   let isolate = scope.isolate();
-  let deno_isolate: &mut EsIsolate =
-    unsafe { &mut *(isolate.get_data(1) as *mut EsIsolate) };
 
   let id = module.get_identity_hash();
   assert_ne!(id, 0);
 
-  let info = deno_isolate.modules.get_info(id).expect("Module not found");
+  let state = scope.isolate().state_get::<EsState>();
+  let state = state.borrow_mut();
+  let info = state.modules.get_info(id).expect("Module not found");
 
   meta.create_data_property(
     context,
@@ -274,18 +273,22 @@ pub extern "C" fn message_callback(
   let mut hs = v8::HandleScope::new(cbs.enter());
   let scope = hs.enter();
 
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
+  let state = scope.isolate().state_get::<IsolateState>();
+  let mut state = state.borrow_mut();
 
   // TerminateExecution was called
-  if scope.isolate().is_execution_terminating() {
+  if scope
+    .isolate()
+    .thread_safe_handle()
+    .is_execution_terminating()
+  {
     let undefined = v8::undefined(scope).into();
-    deno_isolate.handle_exception(scope, undefined);
+    state.handle_exception(scope, undefined);
     return;
   }
 
-  let json_str = deno_isolate.encode_message_as_json(scope, message);
-  deno_isolate.last_exception = Some(json_str);
+  let json_str = state.encode_message_as_json(scope, message);
+  state.last_exception = Some(json_str);
 }
 
 pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
@@ -293,10 +296,10 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   let mut hs = v8::HandleScope::new(cbs.enter());
   let scope = hs.enter();
 
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
+  let state = scope.isolate().state_get::<IsolateState>();
+  let mut state = state.borrow_mut();
 
-  let context = deno_isolate.global_context.get(scope).unwrap();
+  let context = scope.get_current_context().unwrap();
   let mut cs = v8::ContextScope::new(scope, context);
   let scope = cs.enter();
 
@@ -308,13 +311,13 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       let error = message.get_value();
       let mut error_global = v8::Global::<v8::Value>::new();
       error_global.set(scope, error);
-      deno_isolate
+      state
         .pending_promise_exceptions
         .insert(promise_id, error_global);
     }
     v8::PromiseRejectEvent::PromiseHandlerAddedAfterReject => {
       if let Some(mut handle) =
-        deno_isolate.pending_promise_exceptions.remove(&promise_id)
+        state.pending_promise_exceptions.remove(&promise_id)
       {
         handle.reset(scope);
       }
@@ -365,17 +368,17 @@ fn recv(
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
+  let state = scope.isolate().state_get::<IsolateState>();
+  let mut state = state.borrow_mut();
 
-  if !deno_isolate.js_recv_cb.is_empty() {
+  if !state.js_recv_cb.is_empty() {
     let msg = v8::String::new(scope, "Deno.core.recv already called.").unwrap();
     scope.isolate().throw_exception(msg.into());
     return;
   }
 
   let recv_fn = v8::Local::<v8::Function>::try_from(args.get(0)).unwrap();
-  deno_isolate.js_recv_cb.set(scope, recv_fn);
+  state.js_recv_cb.set(scope, recv_fn);
 }
 
 fn send(
@@ -383,9 +386,8 @@ fn send(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
-  assert!(!deno_isolate.global_context.is_empty());
+  let state = scope.isolate().state_get::<IsolateState>();
+  let mut state = state.borrow_mut();
 
   let op_id = v8::Local::<v8::Uint32>::try_from(args.get(0))
     .unwrap()
@@ -408,8 +410,7 @@ fn send(
       .ok();
 
   // If response is empty then it's either async op or exception was thrown
-  let maybe_response =
-    deno_isolate.dispatch_op(scope, op_id, control, zero_copy);
+  let maybe_response = state.dispatch_op(scope, op_id, control, zero_copy);
 
   if let Some(response) = maybe_response {
     // Synchronous response.
@@ -428,10 +429,10 @@ fn eval_context(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
-  assert!(!deno_isolate.global_context.is_empty());
-  let context = deno_isolate.global_context.get(scope).unwrap();
+  let state = scope.isolate().state_get::<IsolateState>();
+  let state = state.borrow_mut();
+
+  let context = scope.get_current_context().unwrap();
 
   let source = match v8::Local::<v8::String>::try_from(args.get(0)) {
     Ok(s) => s,
@@ -559,9 +560,10 @@ fn error_to_json(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
-  let context = deno_isolate.global_context.get(scope).unwrap();
+  let state = scope.isolate().state_get::<IsolateState>();
+  let state = state.borrow_mut();
+
+  let context = scope.get_current_context().unwrap();
 
   let message = v8::Exception::create_message(scope, args.get(0));
   let json_obj = encode_message_as_object(scope, message);
@@ -591,19 +593,19 @@ fn shared_getter(
   _args: v8::PropertyCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
+  let state = scope.isolate().state_get::<IsolateState>();
+  let mut state = state.borrow_mut();
 
   // Lazily initialize the persistent external ArrayBuffer.
-  if deno_isolate.shared_ab.is_empty() {
+  if state.shared_ab.is_empty() {
     let ab = v8::SharedArrayBuffer::with_backing_store(
       scope,
-      deno_isolate.shared.get_backing_store(),
+      state.shared.get_backing_store(),
     );
-    deno_isolate.shared_ab.set(scope, ab);
+    state.shared_ab.set(scope, ab);
   }
 
-  let shared_ab = deno_isolate.shared_ab.get(scope).unwrap();
+  let shared_ab = state.shared_ab.get(scope).unwrap();
   rv.set(shared_ab.into());
 }
 
@@ -616,11 +618,11 @@ pub fn module_resolve_callback<'s>(
   let mut scope = v8::EscapableHandleScope::new(scope.enter());
   let scope = scope.enter();
 
-  let deno_isolate: &mut EsIsolate =
-    unsafe { &mut *(scope.isolate().get_data(1) as *mut EsIsolate) };
+  let state = scope.isolate().state_get::<EsState>();
+  let mut state = state.borrow_mut();
 
   let referrer_id = referrer.get_identity_hash();
-  let referrer_name = deno_isolate
+  let referrer_name = state
     .modules
     .get_info(referrer_id)
     .expect("ModuleInfo not found")
@@ -635,8 +637,9 @@ pub fn module_resolve_callback<'s>(
     let req_str = req.to_rust_string_lossy(scope);
 
     if req_str == specifier_str {
-      let id = deno_isolate.module_resolve_cb(&req_str, referrer_id);
-      let maybe_info = deno_isolate.modules.get_info(id);
+      let id = state.module_resolve_cb(&req_str, referrer_id);
+
+      let maybe_info = state.modules.get_info(id);
 
       if maybe_info.is_none() {
         let msg = format!(
@@ -661,7 +664,7 @@ pub fn encode_message_as_object<'a>(
   s: &mut impl v8::ToLocal<'a>,
   message: v8::Local<v8::Message>,
 ) -> v8::Local<'a, v8::Object> {
-  let context = s.isolate().get_current_context();
+  let context = s.get_current_context().unwrap();
   let json_obj = v8::Object::new(s);
 
   let exception_str = message.get(s);
