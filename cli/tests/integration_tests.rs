@@ -23,20 +23,23 @@ fn deno_dir_test() {
 
 #[test]
 fn fetch_test() {
+  use deno::http_cache::url_to_filename;
   pub use deno::test_util::*;
   use std::process::Command;
   use tempfile::TempDir;
+  use url::Url;
 
   let g = util::http_server();
 
   let deno_dir = TempDir::new().expect("tempdir fail");
-  let t = util::root_path().join("cli/tests/006_url_imports.ts");
+  let module_url =
+    Url::parse("http://localhost:4545/cli/tests/006_url_imports.ts").unwrap();
 
   let output = Command::new(deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
     .arg("fetch")
-    .arg(t)
+    .arg(module_url.to_string())
     .output()
     .expect("Failed to spawn script");
 
@@ -48,7 +51,8 @@ fn fetch_test() {
 
   let expected_path = deno_dir
     .path()
-    .join("deps/http/localhost_PORT4545/cli/tests/subdir/mod2.ts");
+    .join("deps")
+    .join(url_to_filename(&module_url));
   assert_eq!(expected_path.exists(), true);
 
   drop(g);
@@ -966,14 +970,18 @@ itest!(cafile_info {
 
 #[test]
 fn cafile_fetch() {
+  use deno::http_cache::url_to_filename;
   pub use deno::test_util::*;
   use std::process::Command;
   use tempfile::TempDir;
+  use url::Url;
 
   let g = util::http_server();
 
   let deno_dir = TempDir::new().expect("tempdir fail");
-  let t = util::root_path().join("cli/tests/cafile_url_imports.ts");
+  let module_url =
+    Url::parse("http://localhost:4545/cli/tests/cafile_url_imports.ts")
+      .unwrap();
   let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
   let output = Command::new(deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
@@ -981,7 +989,7 @@ fn cafile_fetch() {
     .arg("fetch")
     .arg("--cert")
     .arg(cafile)
-    .arg(t)
+    .arg(module_url.to_string())
     .output()
     .expect("Failed to spawn script");
 
@@ -993,7 +1001,8 @@ fn cafile_fetch() {
 
   let expected_path = deno_dir
     .path()
-    .join("deps/https/localhost_PORT5545/cli/tests/subdir/mod2.ts");
+    .join("deps")
+    .join(url_to_filename(&module_url));
   assert_eq!(expected_path.exists(), true);
 
   drop(g);
