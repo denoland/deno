@@ -833,6 +833,16 @@ itest!(import_meta {
   output: "import_meta.ts.out",
 });
 
+itest!(lib_ref {
+  args: "run --reload lib_ref.ts",
+  output: "lib_ref.ts.out",
+});
+
+itest!(lib_runtime_api {
+  args: "run --reload lib_runtime_api.ts",
+  output: "lib_runtime_api.ts.out",
+});
+
 itest!(seed_random {
   args: "run --seed=100 seed_random.js",
   output: "seed_random.js.out",

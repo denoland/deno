@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { ASSETS, CompilerHostTarget, Host } from "./compiler_host.ts";
+import { CompilerHostTarget, Host } from "./compiler_host.ts";
+import { ASSETS } from "./compiler_sourcefile.ts";
 import { getAsset } from "./compiler_util.ts";
 
 // NOTE: target doesn't really matter here,
@@ -14,18 +15,11 @@ const options = host.getCompilationSettings();
 
 // This is a hacky way of adding our libs to the libs available in TypeScript()
 // as these are internal APIs of TypeScript which maintain valid libs
-/* eslint-disable @typescript-eslint/no-explicit-any */
-(ts as any).libs.push(
-  "deno_ns",
-  "deno_window",
-  "deno_worker",
-  "deno_shared_globals"
-);
-(ts as any).libMap.set("deno_ns", "lib.deno.ns.d.ts");
-(ts as any).libMap.set("deno_window", "lib.deno.window.d.ts");
-(ts as any).libMap.set("deno_worker", "lib.deno.worker.d.ts");
-(ts as any).libMap.set("deno_shared_globals", "lib.deno.shared_globals.d.ts");
-/* eslint-enable @typescript-eslint/no-explicit-any */
+ts.libs.push("deno.ns", "deno.window", "deno.worker", "deno.shared_globals");
+ts.libMap.set("deno.ns", "lib.deno.ns.d.ts");
+ts.libMap.set("deno.window", "lib.deno.window.d.ts");
+ts.libMap.set("deno.worker", "lib.deno.worker.d.ts");
+ts.libMap.set("deno.shared_globals", "lib.deno.shared_globals.d.ts");
 
 // this pre-populates the cache at snapshot time of our library files, so they
 // are available in the future when needed.
