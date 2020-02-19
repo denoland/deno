@@ -1,4 +1,20 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+/// This module implements error serialization; it
+/// allows to serialize Rust errors to be sent to JS runtime.
+///
+/// Currently it is deeply intertwined with `ErrBox` which is
+/// not optimal since not every ErrBox can be "JS runtime error";
+/// eg. there's no way to throw JSError/Diagnostic from within JS runtime
+///
+/// TODO:
+///  - rename ErrorKind::Other to WindowError/GenericError
+///  - remove ErrorKind::Diagnostic
+///  - remove ErrorKind::JSError
+///  - remove ErrorKind::WouldBlock
+///  - possibly rename "GetErrorKind" to "RuntimeError" - it will allow
+///    better semantic separation of errors which can be sent to JS runtime
+///    eg. each RuntimeError is ErrBox, but not every ErrBox is RuntimeError
 use crate::diagnostics::Diagnostic;
 use crate::fmt_errors::JSError;
 use crate::import_map::ImportMapError;
@@ -123,12 +139,7 @@ impl GetErrorKind for ImportMapError {
 
 impl GetErrorKind for ModuleResolutionError {
   fn kind(&self) -> ErrorKind {
-    use ModuleResolutionError::*;
-    match self {
-      InvalidUrl(ref err) | InvalidBaseUrl(ref err) => err.kind(),
-      InvalidPath(_) => ErrorKind::InvalidPath,
-      ImportPrefixMissing(_, _) => ErrorKind::ImportPrefixMissing,
-    }
+    ErrorKind::UrlError
   }
 }
 
@@ -170,7 +181,7 @@ impl GetErrorKind for io::Error {
 
 impl GetErrorKind for url::ParseError {
   fn kind(&self) -> ErrorKind {
-    ErrorKind::UrlParse
+    ErrorKind::UrlError
   }
 }
 
@@ -252,6 +263,8 @@ impl GetErrorKind for DlopenError {
   }
 }
 
+// NOTE(bartlomieju): seems this is necessary - can't use ErrBox here
+// TODO(bartlomieju): ultimately this should be rewritten to `RuntimeError`?
 impl GetErrorKind for dyn AnyError {
   fn kind(&self) -> ErrorKind {
     use self::GetErrorKind as Get;
@@ -414,7 +427,7 @@ mod tests {
   #[test]
   fn test_url_error() {
     let err = ErrBox::from(url_error());
-    assert_eq!(err.kind(), ErrorKind::UrlParse);
+    assert_eq!(err.kind(), ErrorKind::UrlError);
     assert_eq!(err.to_string(), "empty host");
   }
 

@@ -1,12 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-export function deserializeError(kind: ErrorKind, msg: string): Error {
+export function constructError(kind: ErrorKind, msg: string): Error {
   switch (kind) {
     case ErrorKind.Other:
       return new Error(msg);
-    case ErrorKind.UrlParse:
-    case ErrorKind.InvalidPath:
-    case ErrorKind.ImportPrefixMissing:
+    case ErrorKind.UrlError:
       return new URIError(msg);
     default:
       return new DenoError(kind, msg);
@@ -57,13 +55,11 @@ export enum ErrorKind {
   Other = 17,
   UnexpectedEof = 18,
   BadResource = 19,
-  UrlParse = 20,
   Http = 21,
-  TooLarge = 22,
-  InvalidSeekMode = 23,
   UnixError = 24,
-  InvalidPath = 25,
-  ImportPrefixMissing = 26,
   Diagnostic = 27,
-  JSError = 28
+  JSError = 28,
+
+  TypeError = 101,
+  UrlError = 100
 }

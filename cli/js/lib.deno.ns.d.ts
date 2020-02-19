@@ -602,19 +602,19 @@ declare namespace Deno {
     write(p: Uint8Array): Promise<number>;
     /** _grow() grows the buffer to guarantee space for n more bytes.
      * It returns the index where bytes should be written.
-     * If the buffer can't grow it will throw with ErrTooLarge.
+     * If the buffer can't grow it will throw with Error.
      */
     private _grow;
     /** grow() grows the buffer's capacity, if necessary, to guarantee space for
      * another n bytes. After grow(n), at least n bytes can be written to the
      * buffer without another allocation. If n is negative, grow() will panic. If
-     * the buffer can't grow it will throw ErrTooLarge.
+     * the buffer can't grow it will throw Error.
      * Based on https://golang.org/pkg/bytes/#Buffer.Grow
      */
     grow(n: number): void;
     /** readFrom() reads data from r until EOF and appends it to the buffer,
      * growing the buffer as needed. It returns the number of bytes read. If the
-     * buffer becomes too large, readFrom will panic with ErrTooLarge.
+     * buffer becomes too large, readFrom will panic with Error.
      * Based on https://golang.org/pkg/bytes/#Buffer.ReadFrom
      */
     readFrom(r: Reader): Promise<number>;
@@ -1243,15 +1243,13 @@ declare namespace Deno {
     Other = 17,
     UnexpectedEof = 18,
     BadResource = 19,
-    UrlParse = 20,
     Http = 21,
-    TooLarge = 22,
-    InvalidSeekMode = 23,
+
     UnixError = 24,
-    InvalidPath = 25,
-    ImportPrefixMissing = 26,
     Diagnostic = 27,
-    JSError = 28
+    JSError = 28,
+    TypeError = 101,
+    UrlError = 100
   }
 
   /** UNSTABLE: potentially want names to overlap more with browser.

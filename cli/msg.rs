@@ -25,15 +25,13 @@ pub enum ErrorKind {
   Other = 17,
   UnexpectedEof = 18,
   BadResource = 19,
-  UrlParse = 20,
   Http = 21,
-  TooLarge = 22,
-  InvalidSeekMode = 23,
   UnixError = 24,
-  InvalidPath = 25,
-  ImportPrefixMissing = 26,
   Diagnostic = 27,
   JSError = 28,
+
+  UrlError = 100,
+  TypeError = 101,
 }
 
 // Warning! The values in this enum are duplicated in js/compiler.ts

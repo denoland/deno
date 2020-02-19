@@ -91,10 +91,7 @@ export function normalizeGlob(
   { globstar = false }: GlobOptions = {}
 ): string {
   if (!!glob.match(/\0/g)) {
-    throw new DenoError(
-      ErrorKind.InvalidPath,
-      `Glob contains invalid characters: "${glob}"`
-    );
+    throw new Error(`Glob contains invalid characters: "${glob}"`);
   }
   if (!globstar) {
     return normalize(glob);

@@ -378,8 +378,8 @@ testPerm({ read: true }, async function seekMode(): Promise<void> {
     err = e;
   }
   assert(!!err);
-  assertEquals(err.kind, Deno.ErrorKind.InvalidSeekMode);
-  assertEquals(err.name, "InvalidSeekMode");
+  assert(err instanceof TypeError);
+  assertStrContains(err.message, "Invalid seek mode");
 
   // We should still be able to read the file
   // since it is still open.

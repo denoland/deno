@@ -267,7 +267,7 @@ impl SourceFileFetcher {
   fn fetch_local_file(&self, module_url: &Url) -> Result<SourceFile, ErrBox> {
     let filepath = module_url.to_file_path().map_err(|()| {
       ErrBox::from(DenoError::new(
-        ErrorKind::InvalidPath,
+        ErrorKind::UrlError,
         "File URL contains invalid path".to_owned(),
       ))
     })?;
