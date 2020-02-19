@@ -464,8 +464,9 @@ fn eval_context(
   */
   let mut try_catch = v8::TryCatch::new(scope);
   let tc = try_catch.enter();
-  let name = v8::String::new(scope, url.as_ref()
-    .map_or("<unknown>", Url::as_str)).unwrap();
+  let name =
+    v8::String::new(scope, url.as_ref().map_or("<unknown>", Url::as_str))
+      .unwrap();
   let origin = script_origin(scope, name);
   let maybe_script = v8::Script::compile(scope, context, source, Some(&origin));
 
