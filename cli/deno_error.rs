@@ -9,12 +9,10 @@
 ///
 /// TODO:
 ///  - rename ErrorKind::Other to WindowError/GenericError
-///  - remove ErrorKind::JSError
 ///  - remove ErrorKind::WouldBlock
 ///  - possibly rename "GetErrorKind" to "RuntimeError" - it will allow
 ///    better semantic separation of errors which can be sent to JS runtime
 ///    eg. each RuntimeError is ErrBox, but not every ErrBox is RuntimeError
-use crate::fmt_errors::JSError;
 use crate::import_map::ImportMapError;
 pub use crate::msg::ErrorKind;
 use deno_core::AnyError;
@@ -114,12 +112,6 @@ impl GetErrorKind for DenoError {
 impl GetErrorKind for StaticError {
   fn kind(&self) -> ErrorKind {
     self.0
-  }
-}
-
-impl GetErrorKind for JSError {
-  fn kind(&self) -> ErrorKind {
-    ErrorKind::JSError
   }
 }
 
@@ -276,7 +268,6 @@ impl GetErrorKind for dyn AnyError {
       .or_else(|| self.downcast_ref::<reqwest::Error>().map(Get::kind))
       .or_else(|| self.downcast_ref::<ImportMapError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<io::Error>().map(Get::kind))
-      .or_else(|| self.downcast_ref::<JSError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<ModuleResolutionError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<StaticError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<url::ParseError>().map(Get::kind))
@@ -298,53 +289,7 @@ impl GetErrorKind for dyn AnyError {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::colors::strip_ansi_codes;
   use deno_core::ErrBox;
-  use deno_core::StackFrame;
-  use deno_core::V8Exception;
-
-  fn js_error() -> JSError {
-    JSError::new(V8Exception {
-      message: "Error: foo bar".to_string(),
-      source_line: None,
-      script_resource_name: None,
-      line_number: None,
-      start_position: None,
-      end_position: None,
-      error_level: None,
-      start_column: None,
-      end_column: None,
-      frames: vec![
-        StackFrame {
-          line: 4,
-          column: 16,
-          script_name: "foo_bar.ts".to_string(),
-          function_name: "foo".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_wasm: false,
-        },
-        StackFrame {
-          line: 5,
-          column: 20,
-          script_name: "bar_baz.ts".to_string(),
-          function_name: "qat".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_wasm: false,
-        },
-        StackFrame {
-          line: 1,
-          column: 1,
-          script_name: "deno_main.js".to_string(),
-          function_name: "".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_wasm: false,
-        },
-      ],
-    })
-  }
 
   fn io_error() -> io::Error {
     io::Error::from(io::ErrorKind::NotFound)
@@ -383,13 +328,6 @@ mod tests {
   }
 
   // TODO find a way to easily test tokio errors and unix errors
-
-  #[test]
-  fn test_js_error() {
-    let err = ErrBox::from(js_error());
-    assert_eq!(err.kind(), ErrorKind::JSError);
-    assert_eq!(strip_ansi_codes(&err.to_string()), "error: Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2");
-  }
 
   #[test]
   fn test_import_map_error() {

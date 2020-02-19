@@ -59,7 +59,6 @@ export enum ErrorKind {
   BadResource = 19,
   Http = 21,
   UnixError = 24,
-  JSError = 28,
 
   TypeError = 101,
   UrlError = 100
