@@ -40,7 +40,6 @@ impl CompilerWorker {
       ops::os::init(isolate, &state);
       ops::files::init(isolate, &state);
       ops::fs::init(isolate, &state);
-      ops::io::init(isolate, &state);
     }
     Self(worker)
   }
