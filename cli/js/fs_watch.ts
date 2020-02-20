@@ -30,14 +30,9 @@ class FsWatcherImpl implements FsWatcher {
     }
 
     try {
-      const value = await sendAsync(dispatch.OP_FS_WATCH_POLL, {
+      return await sendAsync(dispatch.OP_FS_WATCH_POLL, {
         rid: this.rid
       });
-      // If empty value is returned that means that watcher was closed
-      if (!value.event) {
-        return { value: undefined, done: true };
-      }
-      return { value: value.event as FsEvent, done: false };
     } catch (e) {
       if (e instanceof DenoError && e.kind == ErrorKind.BadResource) {
         return { value: undefined, done: true };
