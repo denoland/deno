@@ -107,7 +107,7 @@ async function serveFile(
   const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
   const headers = new Headers();
   headers.set("content-length", fileInfo.len.toString());
-  headers.set("content-type", "text/plain; charset=utf-8");
+  headers.set("content-type", "text/html; charset=utf-8");
 
   const res = {
     status: 200,
