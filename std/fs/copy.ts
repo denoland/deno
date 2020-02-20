@@ -29,7 +29,7 @@ async function ensureValidCopy(
   try {
     destStat = await Deno.lstat(dest);
   } catch (err) {
-    if (err instanceof Deno.DenoError && err.kind == Deno.ErrorKind.NotFound) {
+    if (err instanceof Deno.Err.NotFound) {
       return;
     }
     throw err;
@@ -57,7 +57,7 @@ function ensureValidCopySync(
   try {
     destStat = Deno.lstatSync(dest);
   } catch (err) {
-    if (err instanceof Deno.DenoError && err.kind == Deno.ErrorKind.NotFound) {
+    if (err instanceof Deno.Err.NotFound) {
       return;
     }
     throw err;

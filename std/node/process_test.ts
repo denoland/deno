@@ -24,13 +24,11 @@ test({
       () => {
         process.chdir("non-existent-directory-name");
       },
-      Deno.DenoError,
+      Deno.Err.NotFound,
       "file"
       // On every OS Deno returns: "No such file" except for Windows, where it's:
       // "The system cannot find the file specified. (os error 2)" so "file" is
       // the only common string here.
-      // TODO(rsp): Crazy idea: 404 for things like this?
-      // It would be nice to have error codes like 404 or 403 in addition to strings.
     );
   }
 });

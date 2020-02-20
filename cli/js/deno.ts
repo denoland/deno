@@ -22,7 +22,7 @@ export {
 } from "./diagnostics.ts";
 export { chdir, cwd } from "./dir.ts";
 export { applySourceMap } from "./error_stack.ts";
-export { ErrorKind, DenoError } from "./errors.ts";
+export { Err } from "./errors.ts";
 export { FileInfo } from "./file_info.ts";
 export {
   File,

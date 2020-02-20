@@ -1,14 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { join } from "../path/mod.ts";
-const {
-  readDir,
-  readDirSync,
-  mkdir,
-  mkdirSync,
-  remove,
-  removeSync,
-  ErrorKind
-} = Deno;
+const { readDir, readDirSync, mkdir, mkdirSync, remove, removeSync } = Deno;
 /**
  * Ensures that a directory is empty.
  * Deletes directory contents if the directory is not empty.
@@ -28,7 +20,7 @@ export async function emptyDir(dir: string): Promise<void> {
       }
     }
   } catch (err) {
-    if ((err as Deno.DenoError<Deno.ErrorKind>).kind !== ErrorKind.NotFound) {
+    if (!(err instanceof Deno.Err.NotFound)) {
       throw err;
     }
 
@@ -57,7 +49,7 @@ export function emptyDirSync(dir: string): void {
       }
     }
   } catch (err) {
-    if ((err as Deno.DenoError<Deno.ErrorKind>).kind !== ErrorKind.NotFound) {
+    if (!(err instanceof Deno.Err.NotFound)) {
       throw err;
     }
     // if not exist. then create it

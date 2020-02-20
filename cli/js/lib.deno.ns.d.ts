@@ -1204,47 +1204,81 @@ declare namespace Deno {
    */
   export function applySourceMap(location: Location): Location;
 
-  /** A Deno specific error.  The `kind` property is set to a specific error code
-   * which can be used to in application logic.
-   *
-   *       try {
-   *         somethingThatMightThrow();
-   *       } catch (e) {
-   *         if (
-   *           e instanceof Deno.DenoError &&
-   *           e.kind === Deno.ErrorKind.NotFound
-   *         ) {
-   *           console.error("NotFound error!");
-   *         }
-   *       }
-   *
-   */
-  export class DenoError<T extends ErrorKind> extends Error {
-    readonly kind: T;
-    constructor(kind: T, msg: string);
+  class NotFound extends Error {
+    constructor(msg: string);
   }
-  export enum ErrorKind {
-    NotFound = 1,
-    PermissionDenied = 2,
-    ConnectionRefused = 3,
-    ConnectionReset = 4,
-    ConnectionAborted = 5,
-    NotConnected = 6,
-    AddrInUse = 7,
-    AddrNotAvailable = 8,
-    BrokenPipe = 9,
-    AlreadyExists = 10,
-    InvalidData = 13,
-    TimedOut = 14,
-    Interrupted = 15,
-    WriteZero = 16,
-    Other = 17,
-    UnexpectedEof = 18,
-    BadResource = 19,
-    Http = 21,
-    TypeError = 101,
-    UrlError = 100
+  class PermissionDenied extends Error {
+    constructor(msg: string);
   }
+  class ConnectionRefused extends Error {
+    constructor(msg: string);
+  }
+  class ConnectionReset extends Error {
+    constructor(msg: string);
+  }
+  class ConnectionAborted extends Error {
+    constructor(msg: string);
+  }
+  class NotConnected extends Error {
+    constructor(msg: string);
+  }
+  class AddrInUse extends Error {
+    constructor(msg: string);
+  }
+  class AddrNotAvailable extends Error {
+    constructor(msg: string);
+  }
+  class BrokenPipe extends Error {
+    constructor(msg: string);
+  }
+  class AlreadyExists extends Error {
+    constructor(msg: string);
+  }
+  class InvalidData extends Error {
+    constructor(msg: string);
+  }
+  class TimedOut extends Error {
+    constructor(msg: string);
+  }
+  class Interrupted extends Error {
+    constructor(msg: string);
+  }
+  class WriteZero extends Error {
+    constructor(msg: string);
+  }
+  class Other extends Error {
+    constructor(msg: string);
+  }
+  class UnexpectedEof extends Error {
+    constructor(msg: string);
+  }
+  class BadResource extends Error {
+    constructor(msg: string);
+  }
+  class Http extends Error {
+    constructor(msg: string);
+  }
+
+  export const Err: {
+    NotFound: NotFound;
+    PermissionDenied: PermissionDenied;
+    ConnectionRefused: ConnectionRefused;
+    ConnectionReset: ConnectionReset;
+    ConnectionAborted: ConnectionAborted;
+    NotConnected: NotConnected;
+    AddrInUse: AddrInUse;
+    AddrNotAvailable: AddrNotAvailable;
+    BrokenPipe: BrokenPipe;
+    AlreadyExists: AlreadyExists;
+    InvalidData: InvalidData;
+    TimedOut: TimedOut;
+    Interrupted: Interrupted;
+    WriteZero: WriteZero;
+    Other: Other;
+    UnexpectedEof: UnexpectedEof;
+    BadResource: BadResource;
+    Http: Http;
+  };
 
   /** UNSTABLE: potentially want names to overlap more with browser.
    *

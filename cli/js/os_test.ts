@@ -262,7 +262,7 @@ testPerm({ env: true }, function getDir(): void {
 testPerm({}, function getDirWithoutPermission(): void {
   assertThrows(
     () => Deno.dir("home"),
-    Deno.DenoError,
+    Deno.Err.PermissionDenied,
     `run again with the --allow-env flag`
   );
 });

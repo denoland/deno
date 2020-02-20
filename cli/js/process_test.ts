@@ -6,16 +6,7 @@ import {
   assertEquals,
   assertStrContains
 } from "./test_util.ts";
-const {
-  kill,
-  run,
-  DenoError,
-  ErrorKind,
-  readFile,
-  open,
-  makeTempDir,
-  writeFile
-} = Deno;
+const { kill, run, readFile, open, makeTempDir, writeFile } = Deno;
 
 test(function runPermissions(): void {
   let caughtError = false;
@@ -78,8 +69,7 @@ testPerm({ run: true }, function runNotFound(): void {
     error = e;
   }
   assert(error !== undefined);
-  assert(error instanceof DenoError);
-  assertEquals(error.kind, ErrorKind.NotFound);
+  assert(error instanceof Deno.Err.NotFound);
 });
 
 testPerm(
