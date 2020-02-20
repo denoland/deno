@@ -55,7 +55,7 @@ pub struct SourceCodeInfo {
 /// that implements `Loader` trait - that way actual resolution and
 /// loading of modules can be customized by the implementor.
 pub struct EsIsolate {
-  core_isolate: Box<Isolate>,
+  core_isolate: Isolate,
   loader: Rc<dyn Loader + Unpin>,
   pub modules: Modules,
   pub(crate) next_dyn_import_id: DynImportId,
@@ -88,7 +88,7 @@ impl EsIsolate {
   ) -> Box<Self> {
     let mut core_isolate = Isolate::new(startup_data, will_snapshot);
     {
-      let isolate = core_isolate.v8_isolate.as_mut().unwrap();
+      let isolate = core_isolate.v8_isolate();
       isolate.set_host_initialize_import_meta_object_callback(
         bindings::host_initialize_import_meta_object_callback,
       );
@@ -112,7 +112,7 @@ impl EsIsolate {
       let es_isolate_ptr: *mut Self = Box::into_raw(boxed_es_isolate);
       boxed_es_isolate = unsafe { Box::from_raw(es_isolate_ptr) };
       unsafe {
-        let v8_isolate = boxed_es_isolate.v8_isolate.as_mut().unwrap();
+        let v8_isolate = boxed_es_isolate.v8_isolate();
         v8_isolate.set_data(1, es_isolate_ptr as *mut c_void);
       };
     }
@@ -128,11 +128,10 @@ impl EsIsolate {
     name: &str,
     source: &str,
   ) -> Result<ModuleId, ErrBox> {
-    let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
+    let isolate = self.core_isolate.v8_isolate();
     let mut hs = v8::HandleScope::new2(&isolate);
     let scope = hs.enter();
-    assert!(!self.core_isolate.global_context.is_empty());
-    let context = self.core_isolate.global_context.get(scope).unwrap();
+    let context = self.core_isolate.global_context(scope);
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
@@ -180,11 +179,10 @@ impl EsIsolate {
   /// the V8 exception. By default this type is CoreJSError, however it may be a
   /// different type if Isolate::set_js_error_create() has been used.
   fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
-    let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
+    let isolate = self.core_isolate.v8_isolate();
     let mut hs = v8::HandleScope::new2(isolate);
     let scope = hs.enter();
-    assert!(!self.core_isolate.global_context.is_empty());
-    let context = self.core_isolate.global_context.get(scope).unwrap();
+    let context = self.core_isolate.global_context(scope);
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
@@ -219,11 +217,10 @@ impl EsIsolate {
     &mut self,
     id: ModuleId,
   ) -> Result<(), ErrBox> {
-    let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
+    let isolate = self.core_isolate.v8_isolate();
     let mut hs = v8::HandleScope::new2(isolate);
     let scope = hs.enter();
-    assert!(!self.core_isolate.global_context.is_empty());
-    let context = self.core_isolate.global_context.get(scope).unwrap();
+    let context = self.core_isolate.global_context(scope);
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
@@ -263,11 +260,10 @@ impl EsIsolate {
   /// the V8 exception. By default this type is CoreJSError, however it may be a
   /// different type if Isolate::set_js_error_create() has been used.
   pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
-    let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
+    let isolate = self.core_isolate.v8_isolate();
     let mut hs = v8::HandleScope::new2(isolate);
     let scope = hs.enter();
-    assert!(!self.core_isolate.global_context.is_empty());
-    let context = self.core_isolate.global_context.get(scope).unwrap();
+    let context = self.core_isolate.global_context(scope);
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
@@ -338,10 +334,10 @@ impl EsIsolate {
     id: DynImportId,
     err: ErrBox,
   ) -> Result<(), ErrBox> {
-    let isolate = self.core_isolate.v8_isolate.as_mut().unwrap();
+    let isolate = self.core_isolate.v8_isolate();
     let mut hs = v8::HandleScope::new2(isolate);
     let scope = hs.enter();
-    let context = self.core_isolate.global_context.get(scope).unwrap();
+    let context = self.global_context(scope);
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
@@ -378,11 +374,9 @@ impl EsIsolate {
   ) -> Result<(), ErrBox> {
     debug!("dyn_import_done {} {:?}", id, mod_id);
     assert!(mod_id != 0);
-    let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
-    let mut hs = v8::HandleScope::new2(isolate);
+    let mut hs = v8::HandleScope::new2(self.core_isolate.v8_isolate());
     let scope = hs.enter();
-    assert!(!self.core_isolate.global_context.is_empty());
-    let context = self.core_isolate.global_context.get(scope).unwrap();
+    let context = self.global_context(scope);
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 

@@ -274,8 +274,7 @@ pub extern "C" fn message_callback(
   let mut hs = v8::HandleScope::new(cbs.enter());
   let scope = hs.enter();
 
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
+  let deno_isolate = Isolate::from_v8(scope.isolate());
 
   let handle = scope.isolate().thread_safe_handle();
 
@@ -287,7 +286,7 @@ pub extern "C" fn message_callback(
   }
 
   let json_str = deno_isolate.encode_message_as_json(scope, message);
-  deno_isolate.last_exception = Some(json_str);
+  deno_isolate.0.borrow_mut().last_exception = Some(json_str);
 }
 
 pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
@@ -295,28 +294,29 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   let mut hs = v8::HandleScope::new(cbs.enter());
   let scope = hs.enter();
 
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
+  let deno_isolate = Isolate::from_v8(scope.isolate());
 
-  let context = deno_isolate.global_context.get(scope).unwrap();
+  let context = deno_isolate.global_context(scope);
   let mut cs = v8::ContextScope::new(scope, context);
   let scope = cs.enter();
 
   let promise = message.get_promise();
   let promise_id = promise.get_identity_hash();
 
+  let inner = deno_isolate.0.borrow_mut();
+
   match message.get_event() {
     v8::PromiseRejectEvent::PromiseRejectWithNoHandler => {
       let error = message.get_value();
       let mut error_global = v8::Global::<v8::Value>::new();
       error_global.set(scope, error);
-      deno_isolate
+      inner
         .pending_promise_exceptions
         .insert(promise_id, error_global);
     }
     v8::PromiseRejectEvent::PromiseHandlerAddedAfterReject => {
       if let Some(mut handle) =
-        deno_isolate.pending_promise_exceptions.remove(&promise_id)
+        inner.pending_promise_exceptions.remove(&promise_id)
       {
         handle.reset(scope);
       }
@@ -369,15 +369,16 @@ fn recv(
 ) {
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
+  let inner = deno_isolate.0.borrow_mut();
 
-  if !deno_isolate.js_recv_cb.is_empty() {
+  if !inner.js_recv_cb.is_empty() {
     let msg = v8::String::new(scope, "Deno.core.recv already called.").unwrap();
     scope.isolate().throw_exception(msg.into());
     return;
   }
 
   let recv_fn = v8::Local::<v8::Function>::try_from(args.get(0)).unwrap();
-  deno_isolate.js_recv_cb.set(scope, recv_fn);
+  inner.js_recv_cb.set(scope, recv_fn);
 }
 
 fn send(
@@ -385,9 +386,7 @@ fn send(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
-  assert!(!deno_isolate.global_context.is_empty());
+  let deno_isolate = Isolate::from_v8(scope.isolate());
 
   let op_id = v8::Local::<v8::Uint32>::try_from(args.get(0))
     .unwrap()
@@ -430,10 +429,8 @@ fn eval_context(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
-  assert!(!deno_isolate.global_context.is_empty());
-  let context = deno_isolate.global_context.get(scope).unwrap();
+  let deno_isolate = Isolate::from_v8(scope.isolate());
+  let context = deno_isolate.global_context(scope);
 
   let source = match v8::Local::<v8::String>::try_from(args.get(0)) {
     Ok(s) => s,
@@ -561,9 +558,8 @@ fn error_to_json(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
-  let context = deno_isolate.global_context.get(scope).unwrap();
+  let isolate = Isolate::from_v8(scope.isolate());
+  let context = isolate.global_context(scope);
 
   let message = v8::Exception::create_message(scope, args.get(0));
   let json_obj = encode_message_as_object(scope, message);
@@ -593,8 +589,8 @@ fn shared_getter(
   _args: v8::PropertyCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
+  let isolate = Isolate::from_v8(scope.isolate());
+  let deno_isolate = isolate.0.borrow_mut();
 
   // Lazily initialize the persistent external ArrayBuffer.
   if deno_isolate.shared_ab.is_empty() {

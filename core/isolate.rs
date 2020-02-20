@@ -22,6 +22,7 @@ use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use futures::Future;
 use libc::c_void;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::From;
 use std::error::Error;
@@ -158,7 +159,7 @@ type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 /// by implementing dispatcher function that takes control buffer and optional zero copy buffer
 /// as arguments. An async Op corresponds exactly to a Promise in JavaScript.
 #[allow(unused)]
-pub struct Isolate {
+pub struct IsolateInner {
   pub(crate) v8_isolate: Option<v8::OwnedIsolate>,
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
@@ -180,19 +181,21 @@ pub struct Isolate {
   error_handler: Option<Box<IsolateErrorHandleFn>>,
 }
 
+pub struct Isolate(pub Rc<RefCell<IsolateInner>>);
+
 impl Drop for Isolate {
   fn drop(&mut self) {
     // TODO Too much boiler plate.
     // <Boilerplate>
-    let isolate = self.v8_isolate.take().unwrap();
-    if let Some(creator) = self.snapshot_creator.take() {
+    let isolate = self.0.borrow_mut().v8_isolate.take().unwrap();
+    if let Some(creator) = self.0.borrow_mut().snapshot_creator.take() {
       // TODO(ry) V8 has a strange assert which prevents a SnapshotCreator from
       // being deallocated if it hasn't created a snapshot yet.
       // https://github.com/v8/v8/blob/73212783fbd534fac76cc4b66aac899c13f71fc8/src/api.cc#L603
       // If that assert is removed, this if guard could be removed.
       // WARNING: There may be false positive LSAN errors here.
       std::mem::forget(isolate);
-      if self.has_snapshotted {
+      if self.0.borrow().has_snapshotted {
         drop(creator);
       }
     } else {
@@ -221,9 +224,17 @@ pub unsafe fn v8_init() {
 }
 
 impl Isolate {
+  pub fn from_v8(isolate: &v8::Isolate) -> Isolate {
+    let ptr = isolate.get_data(0) as *const RefCell<IsolateInner>;
+    let isolate_rc = unsafe { Rc::from_raw(ptr) };
+    let ptr2 = Rc::into_raw(isolate_rc.clone());
+    assert_eq!(ptr, ptr2);
+    Isolate(isolate_rc)
+  }
+
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
-  pub fn new(startup_data: StartupData, will_snapshot: bool) -> Box<Self> {
+  pub fn new(startup_data: StartupData, will_snapshot: bool) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { v8_init() };
     });
@@ -292,7 +303,7 @@ impl Isolate {
     let shared = SharedQueue::new(RECOMMENDED_SIZE);
     let needs_init = true;
 
-    let core_isolate = Self {
+    let inner = IsolateInner {
       v8_isolate: None,
       last_exception: None,
       global_context,
@@ -314,15 +325,35 @@ impl Isolate {
       error_handler: None,
     };
 
-    let mut boxed_isolate = Box::new(core_isolate);
+    let isolate_rc = Rc::new(RefCell::new(inner));
     {
-      let core_isolate_ptr: *mut Self = Box::into_raw(boxed_isolate);
-      unsafe { isolate.set_data(0, core_isolate_ptr as *mut c_void) };
-      boxed_isolate = unsafe { Box::from_raw(core_isolate_ptr) };
-      boxed_isolate.v8_isolate = Some(isolate);
+      let ptr = Rc::into_raw(isolate_rc.clone());
+      unsafe { isolate.set_data(0, ptr as *mut c_void) };
+
+      let mut inner = isolate_rc.borrow_mut();
+      inner.v8_isolate = Some(isolate);
     }
 
-    boxed_isolate
+    Isolate(isolate_rc)
+  }
+
+  // This is a terrible hack.
+  pub fn v8_isolate(&self) -> &v8::Isolate {
+    let inner = self.0.borrow();
+    let ref_owned = inner.v8_isolate.as_ref().unwrap();
+    let ref_isolate: &v8::Isolate = &ref_owned;
+    let ptr: *const v8::Isolate = ref_isolate;
+    unsafe { &*ptr }
+  }
+
+  pub fn global_context<'a>(
+    &self,
+    scope: &mut impl v8::ToLocal<'a>,
+  ) -> v8::Local<'a, v8::Context> {
+    let mut hs = v8::EscapableHandleScope::new(scope);
+    let scope = hs.enter();
+    let c = self.0.borrow().global_context.get(scope).unwrap();
+    scope.escape(c)
   }
 
   pub fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
@@ -371,7 +402,7 @@ impl Isolate {
 
     let message = v8::Exception::create_message(scope, exception);
     let json_str = self.encode_message_as_json(scope, message);
-    self.last_exception = Some(json_str);
+    self.0.borrow_mut().last_exception = Some(json_str);
 
     if is_terminating_exception {
       // Re-enable exception termination.
@@ -399,7 +430,7 @@ impl Isolate {
   where
     F: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + 'static,
   {
-    self.op_registry.register(name, op)
+    self.0.borrow().op_registry.register(name, op)
   }
 
   /// Allows a callback to be set whenever a V8 exception is made. This allows
@@ -409,23 +440,27 @@ impl Isolate {
   where
     F: Fn(V8Exception) -> ErrBox + 'static,
   {
-    self.js_error_create = Arc::new(f);
+    let mut inner = self.0.borrow_mut();
+    inner.js_error_create = Arc::new(f);
   }
 
   /// Get a thread safe handle on the isolate.
   pub fn shared_isolate_handle(&mut self) -> v8::IsolateHandle {
-    self.v8_isolate.as_mut().unwrap().thread_safe_handle()
+    let mut inner = self.0.borrow_mut();
+    inner.v8_isolate.as_mut().unwrap().thread_safe_handle()
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
   pub(crate) fn shared_init(&mut self) {
-    if self.needs_init {
-      self.needs_init = false;
+    if self.0.borrow().needs_init {
+      self.0.borrow_mut().needs_init = false;
       js_check(
         self.execute("shared_queue.js", include_str!("shared_queue.js")),
       );
       // Maybe execute the startup script.
-      if let Some(s) = self.startup_script.take() {
+      let mut inner = self.0.borrow_mut();
+      if let Some(s) = inner.startup_script.take() {
+        drop(inner);
         self.execute(&s.filename, &s.source).unwrap()
       }
     }
@@ -438,7 +473,8 @@ impl Isolate {
     control_buf: &[u8],
     zero_copy_buf: Option<ZeroCopyBuf>,
   ) -> Option<(OpId, Box<[u8]>)> {
-    let maybe_op = self.op_registry.call(op_id, control_buf, zero_copy_buf);
+    let mut inner = self.0.borrow_mut();
+    let maybe_op = inner.op_registry.call(op_id, control_buf, zero_copy_buf);
 
     let op = match maybe_op {
       Some(op) => op,
@@ -451,7 +487,7 @@ impl Isolate {
       }
     };
 
-    debug_assert_eq!(self.shared.size(), 0);
+    debug_assert_eq!(inner.shared.size(), 0);
     match op {
       Op::Sync(buf) => {
         // For sync messages, we always return the response via Deno.core.send's
@@ -461,14 +497,14 @@ impl Isolate {
       }
       Op::Async(fut) => {
         let fut2 = fut.map_ok(move |buf| (op_id, buf));
-        self.pending_ops.push(fut2.boxed_local());
-        self.have_unpolled_ops = true;
+        inner.pending_ops.push(fut2.boxed_local());
+        inner.have_unpolled_ops = true;
         None
       }
       Op::AsyncUnref(fut) => {
         let fut2 = fut.map_ok(move |buf| (op_id, buf));
-        self.pending_unref_ops.push(fut2.boxed_local());
-        self.have_unpolled_ops = true;
+        inner.pending_unref_ops.push(fut2.boxed_local());
+        inner.have_unpolled_ops = true;
         None
       }
     }
@@ -486,11 +522,9 @@ impl Isolate {
   ) -> Result<(), ErrBox> {
     self.shared_init();
 
-    let isolate = self.v8_isolate.as_ref().unwrap();
-    assert!(!self.global_context.is_empty());
-    let mut hs = v8::HandleScope::new2(isolate);
+    let mut hs = v8::HandleScope::new2(self.v8_isolate());
     let scope = hs.enter();
-    let context = self.global_context.get(scope).unwrap();
+    let context = self.global_context(scope);
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
@@ -514,11 +548,11 @@ impl Isolate {
   }
 
   pub(crate) fn check_last_exception(&mut self) -> Result<(), ErrBox> {
-    match self.last_exception.take() {
+    match self.0.borrow_mut().last_exception.take() {
       None => Ok(()),
       Some(json_str) => {
         let v8_exception = V8Exception::from_json(&json_str).unwrap();
-        let js_error = (self.js_error_create)(v8_exception);
+        let js_error = (self.0.borrow().js_error_create)(v8_exception);
         Err(js_error)
       }
     }
@@ -537,10 +571,12 @@ impl Isolate {
     &mut self,
     scope: &mut impl v8::ToLocal<'s>,
   ) -> Result<(), ErrBox> {
-    if let Some(&key) = self.pending_promise_exceptions.keys().next() {
-      let mut handle = self.pending_promise_exceptions.remove(&key).unwrap();
+    let mut inner = self.0.borrow_mut();
+    if let Some(&key) = inner.pending_promise_exceptions.keys().next() {
+      let mut handle = inner.pending_promise_exceptions.remove(&key).unwrap();
       let exception = handle.get(scope).expect("empty error handle");
       handle.reset(scope);
+      drop(inner);
       self.exception_to_err_result(scope, exception)
     } else {
       Ok(())
@@ -555,6 +591,8 @@ impl Isolate {
     let context = scope.get_current_context().unwrap();
     let global: v8::Local<v8::Value> = context.global(scope).into();
     let js_recv_cb = self
+      .0
+      .borrow()
       .js_recv_cb
       .get(scope)
       .expect("Deno.core.recv has not been called.");
@@ -587,18 +625,20 @@ impl Isolate {
   /// the V8 exception. By default this type is CoreJSError, however it may be a
   /// different type if Isolate::set_js_error_create() has been used.
   pub fn snapshot(&mut self) -> Result<v8::OwnedStartupData, ErrBox> {
-    assert!(self.snapshot_creator.is_some());
+    assert!(self.0.borrow().snapshot_creator.is_some());
 
-    let isolate = self.v8_isolate.as_ref().unwrap();
-    let mut hs = v8::HandleScope::new2(isolate);
+    let mut hs = v8::HandleScope::new2(self.v8_isolate());
     let scope = hs.enter();
-    self.global_context.reset(scope);
+    self.0.borrow_mut().global_context.reset(scope);
 
-    let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
+    let mut snapshot_creator =
+      self.0.borrow_mut().snapshot_creator.take().unwrap();
     let snapshot = snapshot_creator
       .create_blob(v8::FunctionCodeHandling::Keep)
       .unwrap();
-    self.has_snapshotted = true;
+    self.0.borrow_mut().has_snapshotted = true;
+    self.0.borrow_mut().snapshot_creator = Some(snapshot_creator);
+
     self.check_last_exception().map(|_| snapshot)
   }
 }
@@ -607,32 +647,35 @@ impl Future for Isolate {
   type Output = Result<(), ErrBox>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    inner.waker.register(cx.waker());
-    inner.shared_init();
+    let isolate = self.get_mut();
+    isolate.0.borrow().waker.register(cx.waker());
+    isolate.shared_init();
 
-    let mut hs = v8::HandleScope::new2(inner.v8_isolate.as_ref().unwrap());
+    let mut hs = v8::HandleScope::new2(isolate.v8_isolate());
     let scope = hs.enter();
-    let context = inner.global_context.get(scope).unwrap();
+    let context = isolate.global_context(scope);
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
-    inner.check_promise_exceptions(scope)?;
+    isolate.check_promise_exceptions(scope)?;
 
     let mut overflow_response: Option<(OpId, Buf)> = None;
 
     loop {
       // Now handle actual ops.
-      inner.have_unpolled_ops = false;
+      isolate.0.borrow_mut().have_unpolled_ops = false;
       #[allow(clippy::match_wild_err_arm)]
-      match select(&mut inner.pending_ops, &mut inner.pending_unref_ops)
-        .poll_next_unpin(cx)
+      match select(
+        &mut isolate.0.borrow_mut().pending_ops,
+        &mut isolate.0.borrow_mut().pending_unref_ops,
+      )
+      .poll_next_unpin(cx)
       {
         Poll::Ready(Some(Err(_))) => panic!("unexpected op error"),
         Poll::Ready(None) => break,
         Poll::Pending => break,
         Poll::Ready(Some(Ok((op_id, buf)))) => {
-          let successful_push = inner.shared.push(op_id, &buf);
+          let successful_push = isolate.0.borrow_mut().shared.push(op_id, &buf);
           if !successful_push {
             // If we couldn't push the response to the shared queue, because
             // there wasn't enough size, we will return the buffer via the
@@ -644,25 +687,25 @@ impl Future for Isolate {
       }
     }
 
-    if inner.shared.size() > 0 {
-      inner.async_op_response(scope, None)?;
+    if isolate.0.borrow().shared.size() > 0 {
+      isolate.async_op_response(scope, None)?;
       // The other side should have shifted off all the messages.
-      assert_eq!(inner.shared.size(), 0);
+      assert_eq!(isolate.0.borrow().shared.size(), 0);
     }
 
     if overflow_response.is_some() {
       let (op_id, buf) = overflow_response.take().unwrap();
-      inner.async_op_response(scope, Some((op_id, buf)))?;
+      isolate.async_op_response(scope, Some((op_id, buf)))?;
     }
 
-    inner.check_promise_exceptions(scope)?;
+    isolate.check_promise_exceptions(scope)?;
 
     // We're idle if pending_ops is empty.
-    if inner.pending_ops.is_empty() {
+    if isolate.0.borrow().pending_ops.is_empty() {
       Poll::Ready(Ok(()))
     } else {
-      if inner.have_unpolled_ops {
-        inner.waker.wake();
+      if isolate.0.borrow().have_unpolled_ops {
+        isolate.0.borrow().waker.wake();
       }
       Poll::Pending
     }
@@ -716,7 +759,7 @@ pub mod tests {
     OverflowResAsync,
   }
 
-  pub fn setup(mode: Mode) -> (Box<Isolate>, Arc<AtomicUsize>) {
+  pub fn setup(mode: Mode) -> (Isolate, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
