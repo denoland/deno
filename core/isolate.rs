@@ -179,14 +179,13 @@ pub struct IsolateInner {
   pub op_registry: Rc<OpRegistry>,
   waker: AtomicWaker,
   error_handler: Option<Box<IsolateErrorHandleFn>>,
+  magic_number: usize,
 }
 
 pub struct Isolate(pub Rc<RefCell<IsolateInner>>);
 
 impl Drop for Isolate {
   fn drop(&mut self) {
-    // TODO Too much boiler plate.
-    // <Boilerplate>
     let isolate = self.0.borrow_mut().v8_isolate.take().unwrap();
     if let Some(creator) = self.0.borrow_mut().snapshot_creator.take() {
       // TODO(ry) V8 has a strange assert which prevents a SnapshotCreator from
@@ -227,8 +226,9 @@ impl Isolate {
   pub fn from_v8(isolate: &v8::Isolate) -> Isolate {
     let ptr = isolate.get_data(0) as *const RefCell<IsolateInner>;
     let isolate_rc = unsafe { Rc::from_raw(ptr) };
-    let ptr2 = Rc::into_raw(isolate_rc.clone());
+    let ptr2 = Rc::into_raw(Rc::clone(&isolate_rc));
     assert_eq!(ptr, ptr2);
+    assert_eq!(isolate_rc.borrow().magic_number, 0xCAFE_BABE);
     Isolate(isolate_rc)
   }
 
@@ -323,15 +323,15 @@ impl Isolate {
       op_registry: Rc::new(OpRegistry::new()),
       waker: AtomicWaker::new(),
       error_handler: None,
+      magic_number: 0xCAFE_BABE,
     };
 
     let isolate_rc = Rc::new(RefCell::new(inner));
     {
-      let ptr = Rc::into_raw(isolate_rc.clone());
+      let ptr = Rc::into_raw(Rc::clone(&isolate_rc));
+      assert_eq!(isolate.get_data(0), std::ptr::null_mut());
       unsafe { isolate.set_data(0, ptr as *mut c_void) };
-
-      let mut inner = isolate_rc.borrow_mut();
-      inner.v8_isolate = Some(isolate);
+      isolate_rc.borrow_mut().v8_isolate = Some(isolate);
     }
 
     Isolate(isolate_rc)
@@ -522,7 +522,8 @@ impl Isolate {
   ) -> Result<(), ErrBox> {
     self.shared_init();
 
-    let mut hs = v8::HandleScope::new2(self.v8_isolate());
+    let mut hs =
+      v8::HandleScope::new2(self.0.borrow_mut().v8_isolate.as_mut().unwrap());
     let scope = hs.enter();
     let context = self.global_context(scope);
     let mut cs = v8::ContextScope::new(scope, context);
@@ -548,10 +549,12 @@ impl Isolate {
   }
 
   pub(crate) fn check_last_exception(&mut self) -> Result<(), ErrBox> {
-    match self.0.borrow_mut().last_exception.take() {
+    let mut inner = self.0.borrow_mut();
+    match inner.last_exception.take() {
       None => Ok(()),
       Some(json_str) => {
         let v8_exception = V8Exception::from_json(&json_str).unwrap();
+        drop(inner);
         let js_error = (self.0.borrow().js_error_create)(v8_exception);
         Err(js_error)
       }
