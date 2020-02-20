@@ -1203,7 +1203,8 @@ declare namespace Deno {
    *
    */
   export function applySourceMap(location: Location): Location;
-
+  
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   namespace Err {
     class NotFound extends Error {
       constructor(msg: string);
@@ -1260,6 +1261,8 @@ declare namespace Deno {
       constructor(msg: string);
     }
   }
+  /* eslint-enable @typescript-eslint/no-unused-vars */
+
   /** UNSTABLE: potentially want names to overlap more with browser.
    *
    * Permissions as granted by the caller
