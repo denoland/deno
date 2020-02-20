@@ -955,7 +955,7 @@ itest!(cafile_info {
 });
 
 itest!(fix_js_imports {
-  args: "run --reoad fix_js_imports.ts",
+  args: "run --reload fix_js_imports.ts",
   output: "fix_js_imports.ts.out",
 });
 
