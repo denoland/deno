@@ -245,7 +245,6 @@ fn bundle_exports() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
-    .arg("--reload")
     .arg(&test)
     .output()
     .expect("failed to spawn script");
@@ -280,7 +279,6 @@ fn bundle_circular() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
-    .arg("--reload")
     .arg(&bundle)
     .output()
     .expect("failed to spawn script");

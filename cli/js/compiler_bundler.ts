@@ -38,10 +38,7 @@ export function buildBundle(
   // specifiers which are used to define the modules, and doesn't expose them
   // publicly, so we have to try to replicate
   const sources = sourceFiles.map(sf => sf.fileName);
-  const sharedPath =
-    sources.length > 1
-      ? commonPath(sources)
-      : rootName.substring(0, rootName.lastIndexOf("/") + 1);
+  const sharedPath = commonPath(sources);
   rootName = normalizeUrl(rootName)
     .replace(sharedPath, "")
     .replace(/\.\w+$/i, "");

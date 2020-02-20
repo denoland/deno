@@ -306,7 +306,7 @@ export function normalizeString(
 export function commonPath(paths: string[], sep = "/"): string {
   const [first = "", ...remaining] = paths;
   if (first === "" || remaining.length === 0) {
-    return "";
+    return first.substring(0, first.lastIndexOf(sep) + 1);
   }
   const parts = first.split(sep);
 
