@@ -1004,6 +1004,11 @@ itest!(cafile_info {
   http_server: true,
 });
 
+itest!(fix_js_imports {
+  args: "run --reload fix_js_imports.ts",
+  output: "fix_js_imports.ts.out",
+});
+
 #[test]
 fn cafile_fetch() {
   use deno::http_cache::url_to_filename;
