@@ -105,9 +105,7 @@ export function atob(s: string): string {
   const rem = s.length % 4;
   if (rem === 1 || /[^+/0-9A-Za-z]/.test(s)) {
     // TODO: throw `DOMException`
-    throw new TypeError(
-      "The string to be decoded is not correctly encoded"
-    );
+    throw new TypeError("The string to be decoded is not correctly encoded");
   }
 
   // base64-js requires length exactly times of 4
