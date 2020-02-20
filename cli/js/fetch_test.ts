@@ -16,8 +16,7 @@ testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assertEquals(err.kind, Deno.ErrorKind.Http);
-  assertEquals(err.name, "Http");
+  assert(err instanceof Deno.Err.Http);
   assertStrContains(err.message, "error trying to connect");
 });
 
@@ -34,7 +33,7 @@ test(async function fetchPerm(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assert(err instanceof Deno.Err.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 

@@ -39,6 +39,5 @@ test(async function malformedMinimalControlBuffer(): Promise<void> {
   const result = buf32[2];
   const message = new TextDecoder().decode(res.slice(12)).trim();
   assert(arg < 0);
-  assertEquals(result, Deno.ErrorKind.TypeError);
   assertEquals(message, "Unparsable control buffer");
 });

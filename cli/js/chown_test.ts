@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assertEquals } from "./test_util.ts";
+import { testPerm, assertEquals, assert } from "./test_util.ts";
 
 // chown on Windows is noop for now, so ignore its testing on Windows
 if (Deno.build.os !== "win") {
@@ -31,8 +31,7 @@ if (Deno.build.os !== "win") {
     try {
       await Deno.chown(filePath, 1000, 1000);
     } catch (e) {
-      assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-      assertEquals(e.name, "PermissionDenied");
+      assert(e instanceof Deno.Err.PermissionDenied);
     }
   });
 
@@ -45,7 +44,7 @@ if (Deno.build.os !== "win") {
       try {
         Deno.chownSync(filePath, uid, gid);
       } catch (e) {
-        assertEquals(e.kind, Deno.ErrorKind.NotFound);
+        assert(e instanceof Deno.Err.NotFound);
         assertEquals(e.name, "NotFound");
       }
     }
@@ -60,7 +59,7 @@ if (Deno.build.os !== "win") {
       try {
         await Deno.chown(filePath, uid, gid);
       } catch (e) {
-        assertEquals(e.kind, Deno.ErrorKind.NotFound);
+        assert(e instanceof Deno.Err.NotFound);
         assertEquals(e.name, "NotFound");
       }
     }
@@ -77,8 +76,7 @@ if (Deno.build.os !== "win") {
       // try changing the file's owner to root
       Deno.chownSync(filePath, 0, 0);
     } catch (e) {
-      assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-      assertEquals(e.name, "PermissionDenied");
+      assert(e instanceof Deno.Err.PermissionDenied);
     }
     Deno.removeSync(dirPath, { recursive: true });
   });
@@ -96,8 +94,7 @@ if (Deno.build.os !== "win") {
       // try changing the file's owner to root
       await Deno.chown(filePath, 0, 0);
     } catch (e) {
-      assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-      assertEquals(e.name, "PermissionDenied");
+      assert(e instanceof Deno.Err.PermissionDenied);
     }
     await Deno.remove(dirPath, { recursive: true });
   });

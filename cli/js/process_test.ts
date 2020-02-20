@@ -14,8 +14,7 @@ test(function runPermissions(): void {
     Deno.run({ args: ["python", "-c", "print('hello world')"] });
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(e.name, "PermissionDenied");
+    assert(e instanceof Deno.Err.PermissionDenied);
   }
   assert(caughtError);
 });
@@ -322,8 +321,7 @@ if (Deno.build.os !== "win") {
       Deno.kill(Deno.pid, Deno.Signal.SIGCONT);
     } catch (e) {
       caughtError = true;
-      assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-      assertEquals(e.name, "PermissionDenied");
+      assert(e instanceof Deno.Err.PermissionDenied);
     }
     assert(caughtError);
   });

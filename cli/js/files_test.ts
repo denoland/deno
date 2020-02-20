@@ -79,7 +79,7 @@ testPerm({ write: false }, async function writePermFailure(): Promise<void> {
       err = e;
     }
     assert(!!err);
-    assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+    assert(err instanceof Deno.Err.PermissionDenied);
     assertEquals(err.name, "PermissionDenied");
   }
 });
@@ -136,8 +136,7 @@ testPerm({ read: false }, async function readPermFailure(): Promise<void> {
     await Deno.open("cli/tests/fixture.json", "r");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(e.name, "PermissionDenied");
+    assert(e instanceof Deno.Err.PermissionDenied);
   }
   assert(caughtError);
 });
@@ -209,7 +208,7 @@ testPerm(
         err = e;
       }
       assert(!!err);
-      assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+      assert(err instanceof Deno.Err.PermissionDenied);
       assertEquals(err.name, "PermissionDenied");
     }
   }
