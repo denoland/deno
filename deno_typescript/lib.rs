@@ -16,6 +16,7 @@ use deno_core::StartupData;
 use deno_core::ZeroCopyBuf;
 pub use ops::EmitResult;
 use ops::WrittenFile;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -32,6 +33,8 @@ pub fn ts_version() -> String {
   pkg["version"].as_str().unwrap().to_string()
 }
 
+type ExternCrateModules = HashMap<String, String>;
+
 #[derive(Debug)]
 pub struct TSState {
   bundle: bool,
@@ -40,6 +43,7 @@ pub struct TSState {
   /// A list of files emitted by typescript. WrittenFile is tuple of the form
   /// (url, corresponding_module, source_code)
   written_files: Vec<WrittenFile>,
+  extern_crate_modules: ExternCrateModules,
 }
 
 fn compiler_op<D>(
@@ -62,21 +66,27 @@ pub struct TSIsolate {
 }
 
 impl TSIsolate {
-  fn new(bundle: bool) -> TSIsolate {
+  fn new(
+    bundle: bool,
+    maybe_extern_crate_modules: Option<ExternCrateModules>,
+  ) -> TSIsolate {
     let mut isolate = Isolate::new(StartupData::None, false);
     js_check(isolate.execute("assets/typescript.js", TYPESCRIPT_CODE));
     js_check(isolate.execute("compiler_main.js", COMPILER_CODE));
+
+    let extern_crate_modules = maybe_extern_crate_modules.unwrap_or_default();
 
     let state = Arc::new(Mutex::new(TSState {
       bundle,
       exit_code: 0,
       emit_result: None,
       written_files: Vec::new(),
+      extern_crate_modules,
     }));
 
     isolate.register_op(
-      "readFile",
-      compiler_op(state.clone(), ops::json_op(ops::read_file)),
+      "loadModule",
+      compiler_op(state.clone(), ops::json_op(ops::load_module)),
     );
     isolate
       .register_op("exit", compiler_op(state.clone(), ops::json_op(ops::exit)));
@@ -125,8 +135,9 @@ impl TSIsolate {
 pub fn compile_bundle(
   bundle_filename: &Path,
   root_names: Vec<PathBuf>,
+  extern_crate_modules: Option<ExternCrateModules>,
 ) -> Result<String, ErrBox> {
-  let ts_isolate = TSIsolate::new(true);
+  let ts_isolate = TSIsolate::new(true, extern_crate_modules);
 
   let config_json = serde_json::json!({
     "compilerOptions": {
@@ -234,39 +245,47 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
     };
   }
   match name {
-    "bundle_loader.js" => Some(include_str!("bundle_loader.js")),
+    "system_loader.js" => Some(include_str!("system_loader.js")),
     "bootstrap.ts" => Some("console.log(\"hello deno\");"),
     "typescript.d.ts" => inc!("typescript.d.ts"),
+    "lib.dom.d.ts" => inc!("lib.dom.d.ts"),
+    "lib.dom.iterable.d.ts" => inc!("lib.dom.d.ts"),
+    "lib.es5.d.ts" => inc!("lib.es5.d.ts"),
+    "lib.es6.d.ts" => inc!("lib.es6.d.ts"),
     "lib.esnext.d.ts" => inc!("lib.esnext.d.ts"),
     "lib.es2020.d.ts" => inc!("lib.es2020.d.ts"),
+    "lib.es2020.full.d.ts" => inc!("lib.es2020.full.d.ts"),
     "lib.es2019.d.ts" => inc!("lib.es2019.d.ts"),
+    "lib.es2019.full.d.ts" => inc!("lib.es2019.full.d.ts"),
     "lib.es2018.d.ts" => inc!("lib.es2018.d.ts"),
+    "lib.es2018.full.d.ts" => inc!("lib.es2018.full.d.ts"),
     "lib.es2017.d.ts" => inc!("lib.es2017.d.ts"),
+    "lib.es2017.full.d.ts" => inc!("lib.es2017.full.d.ts"),
     "lib.es2016.d.ts" => inc!("lib.es2016.d.ts"),
-    "lib.es5.d.ts" => inc!("lib.es5.d.ts"),
+    "lib.es2016.full.d.ts" => inc!("lib.es2016.full.d.ts"),
     "lib.es2015.d.ts" => inc!("lib.es2015.d.ts"),
-    "lib.es2015.core.d.ts" => inc!("lib.es2015.core.d.ts"),
     "lib.es2015.collection.d.ts" => inc!("lib.es2015.collection.d.ts"),
+    "lib.es2015.core.d.ts" => inc!("lib.es2015.core.d.ts"),
     "lib.es2015.generator.d.ts" => inc!("lib.es2015.generator.d.ts"),
     "lib.es2015.iterable.d.ts" => inc!("lib.es2015.iterable.d.ts"),
     "lib.es2015.promise.d.ts" => inc!("lib.es2015.promise.d.ts"),
-    "lib.es2015.symbol.d.ts" => inc!("lib.es2015.symbol.d.ts"),
     "lib.es2015.proxy.d.ts" => inc!("lib.es2015.proxy.d.ts"),
+    "lib.es2015.reflect.d.ts" => inc!("lib.es2015.reflect.d.ts"),
+    "lib.es2015.symbol.d.ts" => inc!("lib.es2015.symbol.d.ts"),
     "lib.es2015.symbol.wellknown.d.ts" => {
       inc!("lib.es2015.symbol.wellknown.d.ts")
     }
-    "lib.es2015.reflect.d.ts" => inc!("lib.es2015.reflect.d.ts"),
     "lib.es2016.array.include.d.ts" => inc!("lib.es2016.array.include.d.ts"),
+    "lib.es2017.intl.d.ts" => inc!("lib.es2017.intl.d.ts"),
     "lib.es2017.object.d.ts" => inc!("lib.es2017.object.d.ts"),
     "lib.es2017.sharedmemory.d.ts" => inc!("lib.es2017.sharedmemory.d.ts"),
     "lib.es2017.string.d.ts" => inc!("lib.es2017.string.d.ts"),
-    "lib.es2017.intl.d.ts" => inc!("lib.es2017.intl.d.ts"),
     "lib.es2017.typedarrays.d.ts" => inc!("lib.es2017.typedarrays.d.ts"),
     "lib.es2018.asyncgenerator.d.ts" => inc!("lib.es2018.asyncgenerator.d.ts"),
     "lib.es2018.asynciterable.d.ts" => inc!("lib.es2018.asynciterable.d.ts"),
+    "lib.es2018.intl.d.ts" => inc!("lib.es2018.intl.d.ts"),
     "lib.es2018.promise.d.ts" => inc!("lib.es2018.promise.d.ts"),
     "lib.es2018.regexp.d.ts" => inc!("lib.es2018.regexp.d.ts"),
-    "lib.es2018.intl.d.ts" => inc!("lib.es2018.intl.d.ts"),
     "lib.es2019.array.d.ts" => inc!("lib.es2019.array.d.ts"),
     "lib.es2019.object.d.ts" => inc!("lib.es2019.object.d.ts"),
     "lib.es2019.string.d.ts" => inc!("lib.es2019.string.d.ts"),
@@ -280,6 +299,11 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
     "lib.esnext.bigint.d.ts" => inc!("lib.esnext.bigint.d.ts"),
     "lib.esnext.intl.d.ts" => inc!("lib.esnext.intl.d.ts"),
     "lib.esnext.symbol.d.ts" => inc!("lib.esnext.symbol.d.ts"),
+    "lib.scripthost.d.ts" => inc!("lib.scripthost.d.ts"),
+    "lib.webworker.d.ts" => inc!("lib.webworker.d.ts"),
+    "lib.webworker.importscripts.d.ts" => {
+      inc!("lib.webworker.importscripts.d.ts")
+    }
     _ => None,
   }
 }

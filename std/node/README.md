@@ -16,14 +16,14 @@ deno standard library as it's a compatiblity module.
 - [ ] crypto
 - [ ] dgram
 - [ ] dns
-- [ ] events
+- [x] events
 - [x] fs _partly_
 - [ ] http
 - [ ] http2
 - [ ] https
 - [x] module
 - [ ] net
-- [ ] os
+- [x] os _partly_
 - [x] path
 - [ ] perf_hooks
 - [x] process _partly_

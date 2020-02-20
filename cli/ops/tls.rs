@@ -6,8 +6,7 @@ use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
-use crate::state::ThreadSafeState;
-use deno_core::Resource;
+use crate::state::State;
 use deno_core::*;
 use futures::future::FutureExt;
 use std;
@@ -36,7 +35,7 @@ use webpki;
 use webpki::DNSNameRef;
 use webpki_roots;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "connect_tls",
     s.core_op(json_op(s.stateful_op(op_connect_tls))),
@@ -61,7 +60,7 @@ struct ConnectTLSArgs {
 }
 
 pub fn op_connect_tls(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -96,8 +95,8 @@ pub fn op_connect_tls(
     let dnsname =
       DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
     let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
-    let mut table = state_.lock_resource_table();
-    let rid = table.add(
+    let mut state = state_.borrow_mut();
+    let rid = state.resource_table.add(
       "clientTlsStream",
       Box::new(StreamResource::ClientTlsStream(Box::new(tls_stream))),
     );
@@ -116,7 +115,7 @@ pub fn op_connect_tls(
     }))
   };
 
-  Ok(JsonOp::Async(op.boxed()))
+  Ok(JsonOp::Async(op.boxed_local()))
 }
 
 fn load_certs(path: &str) -> Result<Vec<Certificate>, ErrBox> {
@@ -185,8 +184,6 @@ pub struct TlsListenerResource {
   local_addr: SocketAddr,
 }
 
-impl Resource for TlsListenerResource {}
-
 impl Drop for TlsListenerResource {
   fn drop(&mut self) {
     self.wake_task();
@@ -244,7 +241,7 @@ struct ListenTlsArgs {
 }
 
 fn op_listen_tls(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -273,8 +270,10 @@ fn op_listen_tls(
     waker: None,
     local_addr,
   };
-  let mut table = state.lock_resource_table();
-  let rid = table.add("tlsListener", Box::new(tls_listener_resource));
+  let mut state = state.borrow_mut();
+  let rid = state
+    .resource_table
+    .add("tlsListener", Box::new(tls_listener_resource));
 
   Ok(JsonOp::Sync(json!({
     "rid": rid,
@@ -293,7 +292,7 @@ enum AcceptTlsState {
 }
 
 /// Simply accepts a TLS connection.
-pub fn accept_tls(state: &ThreadSafeState, rid: ResourceId) -> AcceptTls {
+pub fn accept_tls(state: &State, rid: ResourceId) -> AcceptTls {
   AcceptTls {
     accept_state: AcceptTlsState::Pending,
     rid,
@@ -305,7 +304,7 @@ pub fn accept_tls(state: &ThreadSafeState, rid: ResourceId) -> AcceptTls {
 pub struct AcceptTls {
   accept_state: AcceptTlsState,
   rid: ResourceId,
-  state: ThreadSafeState,
+  state: State,
 }
 
 impl Future for AcceptTls {
@@ -317,8 +316,9 @@ impl Future for AcceptTls {
       panic!("poll AcceptTls after it's done");
     }
 
-    let mut table = inner.state.lock_resource_table();
-    let listener_resource = table
+    let mut state = inner.state.borrow_mut();
+    let listener_resource = state
+      .resource_table
       .get_mut::<TlsListenerResource>(inner.rid)
       .ok_or_else(|| {
         let e = std::io::Error::new(
@@ -355,7 +355,7 @@ struct AcceptTlsArgs {
 }
 
 fn op_accept_tls(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -367,8 +367,9 @@ fn op_accept_tls(
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
     let tls_acceptor = {
-      let table = state.lock_resource_table();
-      let resource = table
+      let state = state.borrow();
+      let resource = state
+        .resource_table
         .get::<TlsListenerResource>(rid)
         .ok_or_else(bad_resource)
         .expect("Can't find tls listener");
@@ -376,8 +377,8 @@ fn op_accept_tls(
     };
     let tls_stream = tls_acceptor.accept(tcp_stream).await?;
     let rid = {
-      let mut table = state.lock_resource_table();
-      table.add(
+      let mut state = state.borrow_mut();
+      state.resource_table.add(
         "serverTlsStream",
         Box::new(StreamResource::ServerTlsStream(Box::new(tls_stream))),
       )
@@ -397,5 +398,5 @@ fn op_accept_tls(
     }))
   };
 
-  Ok(JsonOp::Async(op.boxed()))
+  Ok(JsonOp::Async(op.boxed_local()))
 }

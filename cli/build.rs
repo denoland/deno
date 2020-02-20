@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use deno_core::include_crate_modules;
 use deno_core::CoreOp;
 use deno_core::Isolate;
 use deno_core::Op;
@@ -13,13 +14,12 @@ fn op_fetch_asset(
 ) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp {
   move |control: &[u8], zero_copy_buf: Option<ZeroCopyBuf>| -> CoreOp {
     assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in this op.
-    let custom_assets = custom_assets.clone();
     let name = std::str::from_utf8(control).unwrap();
 
     let asset_code = if let Some(source_code) = deno_typescript::get_asset(name)
     {
       source_code.to_string()
-    } else if let Some(asset_path) = custom_assets.get(name) {
+    } else if let Some(asset_path) = custom_assets.clone().get(name) {
       let source_code_vec =
         std::fs::read(&asset_path).expect("Asset not found");
       let source_code = std::str::from_utf8(&source_code_vec).unwrap();
@@ -34,6 +34,11 @@ fn op_fetch_asset(
 }
 
 fn main() {
+  // Don't build V8 if "cargo doc" is being run. This is to support docs.rs.
+  if env::var_os("RUSTDOCFLAGS").is_some() {
+    return;
+  }
+
   // To debug snapshot issues uncomment:
   // deno_typescript::trace_serializer();
 
@@ -41,6 +46,18 @@ fn main() {
     "cargo:rustc-env=TS_VERSION={}",
     deno_typescript::ts_version()
   );
+
+  let extern_crate_modules = include_crate_modules![deno_core];
+
+  // The generation of snapshots is slow and often unnecessary. Until we figure
+  // out how to speed it up, or avoid it when unnecessary, this env var provides
+  // an escape hatch for the impatient hacker in need of faster incremental
+  // builds.
+  // USE WITH EXTREME CAUTION
+  if env::var_os("NO_BUILD_SNAPSHOTS").is_some() {
+    println!("NO_BUILD_SNAPSHOTS is set, skipping snapshot building.");
+    return;
+  }
 
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
@@ -50,9 +67,12 @@ fn main() {
   let bundle_path = o.join("CLI_SNAPSHOT.js");
   let snapshot_path = o.join("CLI_SNAPSHOT.bin");
 
-  let main_module_name =
-    deno_typescript::compile_bundle(&bundle_path, root_names)
-      .expect("Bundle compilation failed");
+  let main_module_name = deno_typescript::compile_bundle(
+    &bundle_path,
+    root_names,
+    Some(extern_crate_modules.clone()),
+  )
+  .expect("Bundle compilation failed");
   assert!(bundle_path.exists());
 
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
@@ -71,18 +91,28 @@ fn main() {
   let snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
   let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
   custom_libs.insert(
-    "lib.deno_main.d.ts".to_string(),
-    c.join("js/lib.deno_main.d.ts"),
+    "lib.deno.window.d.ts".to_string(),
+    c.join("js/lib.deno.window.d.ts"),
   );
   custom_libs.insert(
-    "lib.deno_worker.d.ts".to_string(),
-    c.join("js/lib.deno_worker.d.ts"),
+    "lib.deno.worker.d.ts".to_string(),
+    c.join("js/lib.deno.worker.d.ts"),
   );
-  custom_libs.insert("lib.deno.d.ts".to_string(), c.join("js/lib.deno.d.ts"));
+  custom_libs.insert(
+    "lib.deno.shared_globals.d.ts".to_string(),
+    c.join("js/lib.deno.shared_globals.d.ts"),
+  );
+  custom_libs.insert(
+    "lib.deno.ns.d.ts".to_string(),
+    c.join("js/lib.deno.ns.d.ts"),
+  );
 
-  let main_module_name =
-    deno_typescript::compile_bundle(&bundle_path, root_names)
-      .expect("Bundle compilation failed");
+  let main_module_name = deno_typescript::compile_bundle(
+    &bundle_path,
+    root_names,
+    Some(extern_crate_modules),
+  )
+  .expect("Bundle compilation failed");
   assert!(bundle_path.exists());
 
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);

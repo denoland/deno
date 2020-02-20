@@ -174,6 +174,12 @@ command line:
 $ deno types
 ```
 
+The output is the concatenation of three library files that are built into Deno:
+
+- [lib.deno.ns.d.ts](https://github.com/denoland/deno/blob/master/cli/js/lib.deno.ns.d.ts)
+- [lib.deno.shared_globals.d.ts](https://github.com/denoland/deno/blob/master/cli/js/lib.deno.shared_globals.d.ts)
+- [lib.deno.window.d.ts](https://github.com/denoland/deno/blob/master/cli/js/lib.deno.window.d.ts)
+
 [This is what the output looks like.](https://github.com/denoland/deno/blob/master/cli/js/lib.deno_runtime.d.ts)
 
 ### Reference websites
@@ -285,7 +291,7 @@ await Deno.remove("request.log");
 This one serves a local directory in HTTP.
 
 ```bash
-deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
+deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
 ```
 
 Run it:
@@ -465,24 +471,20 @@ The above for-await loop exits after 5 seconds when sig.dispose() is called.
 
 In the above examples, we saw that Deno could execute scripts from URLs. Like
 browser JavaScript, Deno can import libraries directly from URLs. This example
-uses a URL to import a test runner library:
+uses a URL to import an assertion library:
 
 ```ts
-import {
-  assertEquals,
-  runIfMain,
-  test
-} from "https://deno.land/std/testing/mod.ts";
+import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 
-test(function t1() {
+Deno.test(function t1() {
   assertEquals("hello", "hello");
 });
 
-test(function t2() {
+Deno.test(function t2() {
   assertEquals("world", "world");
 });
 
-runIfMain(import.meta);
+await Deno.runTests();
 ```
 
 Try running this:
@@ -534,16 +536,16 @@ a subtly different version of a library? Isn't it error prone to maintain URLs
 everywhere in a large project?** The solution is to import and re-export your
 external libraries in a central `deps.ts` file (which serves the same purpose as
 Node's `package.json` file). For example, let's say you were using the above
-testing library across a large project. Rather than importing
-`"https://deno.land/std/testing/mod.ts"` everywhere, you could create a
+assertion library across a large project. Rather than importing
+`"https://deno.land/std/testing/asserts.ts"` everywhere, you could create a
 `deps.ts` file that exports the third-party code:
 
 ```ts
 export {
+  assert,
   assertEquals,
-  runTests,
-  test
-} from "https://deno.land/std/testing/mod.ts";
+  assertStrContains
+} from "https://deno.land/std/testing/asserts.ts";
 ```
 
 And throughout the same project, you can import from the `deps.ts` and avoid
@@ -643,6 +645,100 @@ The TypeScript compiler supports triple-slash directives, including a type
 reference directive. If Deno used this, it would interfere with the behavior of
 the TypeScript compiler. Deno only looks for the directive in JavaScript (and
 JSX) files.
+
+### Referencing TypeScript library files
+
+When you use `deno run`, or other Deno commands which type check TypeScript,
+that code is evaluated against custom libraries which describe the environment
+that Deno supports. By default, the compiler runtime APIs which type check
+TypeScript also use these libraries (`Deno.compile()` and `Deno.bundle()`).
+
+But if you want to compile or bundle TypeScript for some other runtime, you may
+want to override the default libraries. In order to do this, the runtime APIs
+support the `lib` property in the compiler options. For example, if you had
+TypeScript code that is destined for the browser, you would want to use the
+TypeScript `"dom"` library:
+
+```ts
+const [errors, emitted] = Deno.compile(
+  "main.ts",
+  {
+    "main.ts": `document.getElementById("foo");\n`
+  },
+  {
+    lib: ["dom", "esnext"]
+  }
+);
+```
+
+For a list of all the libraries that TypeScript supports, see the
+[`lib` compiler option](https://www.typescriptlang.org/docs/handbook/compiler-options.html)
+documentation.
+
+**Don't forget to include the JavaScript library**
+
+Just like `tsc`, when you supply a `lib` compiler option, it overrides the
+default ones, which means that the basic JavaScript library won't be included
+and you should include the one that best represents your target runtime (e.g.
+`es5`, `es2015`, `es2016`, `es2017`, `es2018`, `es2019`, `es2020` or `esnext`).
+
+#### Including the `Deno` namespace
+
+In addition to the libraries that are provided by TypeScript, there are four
+libraries that are built into Deno that can be referenced:
+
+- `deno.ns` - Provides the `Deno` namespace.
+- `deno.shared_globals` - Provides global interfaces and variables which Deno
+  supports at runtime that are then exposed by the final runtime library.
+- `deno.window` - Exposes the global variables plus the Deno namespace that are
+  available in the Deno main worker and is the default for the runtime compiler
+  APIs.
+- `deno.worker` - Exposes the global variables that are available in workers
+  under Deno.
+
+So to add the Deno namespace to a compilation, you would include the `deno.ns`
+lib in the array. For example:
+
+```ts
+const [errors, emitted] = Deno.compile(
+  "main.ts",
+  {
+    "main.ts": `document.getElementById("foo");\n`
+  },
+  {
+    lib: ["dom", "esnext", "deno.ns"]
+  }
+);
+```
+
+**Note** that the Deno namespace expects a runtime environment that is at least
+ES2018 or later. This means if you use a lib "lower" than ES2018 you will get
+errors logged as part of the compilation.
+
+#### Using the triple slash reference
+
+You do not have to specify the `lib` in just the compiler options. Deno supports
+[the triple-slash reference to a lib](https://www.typescriptlang.org/docs/handbook/triple-slash-directives.html#-reference-lib-).
+and could be embedded in the contents of the file. For example of you have a
+`main.ts` like:
+
+```ts
+/// <reference lib="dom" />
+
+document.getElementById("foo");
+```
+
+It would compiler without errors like this:
+
+```ts
+const [errors, emitted] = Deno.compile("./main.ts", undefined, {
+  lib: ["esnext"]
+});
+```
+
+**Note** that the `dom` library conflicts with some of the default globals that
+are defined in the default type library for Deno. To avoid this, you need to
+specify a `lib` option in the compiler options to the runtime compiler APIs.
 
 ### Testing if current file is the main program
 
@@ -821,8 +917,8 @@ Or you could import it into another ES module to consume:
 Deno provides ability to easily install and distribute executable code via
 `deno install` command.
 
-`deno install [EXE_NAME] [URL] [FLAGS...]` will install script available at
-`URL` with name `EXE_NAME`.
+`deno install [FLAGS...] [EXE_NAME] [URL] [SCRIPT_ARGS...]` will install script
+available at `URL` with name `EXE_NAME`.
 
 This command is a thin wrapper that creates executable shell scripts which
 invoke `deno` with specified permissions and CLI flags.
@@ -830,15 +926,16 @@ invoke `deno` with specified permissions and CLI flags.
 Example:
 
 ```shell
-$ deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
+$ deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
 [1/1] Compiling https://deno.land/std/http/file_server.ts
 
 ✅ Successfully installed file_server.
 /Users/deno/.deno/bin/file_server
 ```
 
-By default scripts are installed at `$HOME/.deno/bin` and that directory must be
-added to the path manually.
+By default scripts are installed at `$HOME/.deno/bin` or
+`$USERPROFILE/.deno/bin` and one of that directories must be added to the path
+manually.
 
 ```shell
 $ echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc
@@ -847,23 +944,20 @@ $ echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc
 Installation directory can be changed using `-d/--dir` flag:
 
 ```shell
-$ deno install --dir /usr/local/bin prettier https://deno.land/std/prettier/main.ts --allow-write --allow-read
+$ deno install --allow-net --allow-read --dir /usr/local/bin file_server https://deno.land/std/http/file_server.ts
 ```
 
 When installing a script you can specify permissions that will be used to run
-the script. They are placed after the script URL and can be mixed with any
-additional CLI flags you want to pass to the script.
+the script.
 
 Example:
 
 ```shell
-$ deno install format_check https://deno.land/std/prettier/main.ts --allow-write --allow-read --check --print-width 88 --tab-width 2
+$ deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts 8080
 ```
 
-Above command creates an executable called `format_check` that runs `prettier`
-with write and read permissions. When you run `format_check` deno will run
-prettier in `check` mode and configured to use `88` column width with `2` column
-tabs.
+Above command creates an executable called `file_server` that runs with write
+and read permissions and binds to port 8080.
 
 It is a good practice to use `import.meta.main` idiom for an entry point for
 executable file. See
@@ -1269,9 +1363,6 @@ Useful V8 flags during profiling:
 - --log-source-code
 - --track-gc-object-stats
 
-Note that you might need to run Deno with `--current-thread` flag to capture
-full V8 profiling output.
-
 To learn more about `d8` and profiling, check out the following links:
 
 - [https://v8.dev/docs/d8](https://v8.dev/docs/d8)
@@ -1424,7 +1515,7 @@ Extra steps for Mac users:
 
 Extra steps for Windows users:
 
-1. Get [VS Community 2017](https://www.visualstudio.com/downloads/) with
+1. Get [VS Community 2019](https://www.visualstudio.com/downloads/) with
    "Desktop development with C++" toolkit and make sure to select the following
    required tools listed below along with all C++ tools.
     - Windows 10 SDK >= 10.0.17134
@@ -1447,7 +1538,7 @@ Build with Cargo:
 cargo build -vv
 
 # Run:
-./target/debug/deno tests/002_hello.ts
+./target/debug/deno cli/tests/002_hello.ts
 ```
 
 #### Testing and Tools

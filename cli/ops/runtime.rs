@@ -3,8 +3,9 @@ use super::dispatch_json::{JsonOp, Value};
 use crate::colors;
 use crate::fs as deno_fs;
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use crate::version;
+use crate::DenoSubcommand;
 use deno_core::*;
 use std::env;
 
@@ -18,26 +19,25 @@ static BUILD_OS: &str = "win";
 #[cfg(target_arch = "x86_64")]
 static BUILD_ARCH: &str = "x64";
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("start", s.core_op(json_op(s.stateful_op(op_start))));
+  i.register_op("metrics", s.core_op(json_op(s.stateful_op(op_metrics))));
 }
 
 fn op_start(
-  state: &ThreadSafeState,
+  state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
+  let state = state.borrow();
   let gs = &state.global_state;
-  let script_args = if gs.flags.argv.len() >= 2 {
-    gs.flags.argv.clone().split_off(2)
-  } else {
-    vec![]
-  };
+
   Ok(JsonOp::Sync(json!({
     "cwd": deno_fs::normalize_path(&env::current_dir().unwrap()),
     "pid": std::process::id(),
-    "argv": script_args,
-    "mainModule": gs.main_module.as_ref().map(|x| x.to_string()),
+    "args": gs.flags.argv.clone(),
+    "repl": gs.flags.subcommand == DenoSubcommand::Repl,
+    "location": state.main_module.to_string(),
     "debugFlag": gs.flags.log_level.map_or(false, |l| l == log::Level::Debug),
     "versionFlag": gs.flags.version,
     "v8Version": version::v8(),
@@ -46,5 +46,22 @@ fn op_start(
     "noColor": !colors::use_color(),
     "os": BUILD_OS,
     "arch": BUILD_ARCH,
+  })))
+}
+
+fn op_metrics(
+  state: &State,
+  _args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let state = state.borrow();
+  let m = &state.metrics;
+
+  Ok(JsonOp::Sync(json!({
+    "opsDispatched": m.ops_dispatched,
+    "opsCompleted": m.ops_completed,
+    "bytesSentControl": m.bytes_sent_control,
+    "bytesSentData": m.bytes_sent_data,
+    "bytesReceived": m.bytes_received
   })))
 }

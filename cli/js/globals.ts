@@ -59,6 +59,11 @@ declare global {
     thrown: any;
   }
 
+  interface ImportMeta {
+    url: string;
+    main: boolean;
+  }
+
   interface DenoCore {
     print(s: string, isErr?: boolean): void;
     dispatch(
@@ -118,7 +123,6 @@ declare global {
   var bootstrapWorkerRuntime:
     | ((name: string) => Promise<void> | void)
     | undefined;
-  var runWorkerMessageLoop: (() => Promise<void> | void) | undefined;
   var onerror:
     | ((
         msg: string,
@@ -132,12 +136,15 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   var onmessage: ((e: { data: any }) => Promise<void> | void) | undefined;
   // Called in compiler
-  var workerClose: () => void;
+  var close: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   var postMessage: (msg: any) => void;
   // Assigned to `self` global - compiler
   var bootstrapTsCompilerRuntime: (() => void) | undefined;
   var bootstrapWasmCompilerRuntime: (() => void) | undefined;
+
+  var performance: performanceUtil.Performance;
+  var setTimeout: typeof timers.setTimeout;
   /* eslint-enable */
 }
 

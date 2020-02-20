@@ -1,15 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::*;
 
 #[cfg(unix)]
 use super::dispatch_json::Deserialize;
 #[cfg(unix)]
 use crate::deno_error::bad_resource;
-#[cfg(unix)]
-use deno_core::Resource;
 #[cfg(unix)]
 use futures::future::{poll_fn, FutureExt};
 #[cfg(unix)]
@@ -19,7 +17,7 @@ use std::task::Waker;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "signal_bind",
     s.core_op(json_op(s.stateful_op(op_signal_bind))),
@@ -40,9 +38,6 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 pub struct SignalStreamResource(pub Signal, pub Option<Waker>);
 
 #[cfg(unix)]
-impl Resource for SignalStreamResource {}
-
-#[cfg(unix)]
 #[derive(Deserialize)]
 struct BindSignalArgs {
   signo: i32,
@@ -56,13 +51,13 @@ struct SignalArgs {
 
 #[cfg(unix)]
 fn op_signal_bind(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: BindSignalArgs = serde_json::from_value(args)?;
-  let mut table = state.lock_resource_table();
-  let rid = table.add(
+  let mut state = state.borrow_mut();
+  let rid = state.resource_table.add(
     "signal",
     Box::new(SignalStreamResource(
       signal(SignalKind::from_raw(args.signo)).expect(""),
@@ -76,7 +71,7 @@ fn op_signal_bind(
 
 #[cfg(unix)]
 fn op_signal_poll(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -85,8 +80,10 @@ fn op_signal_poll(
   let state_ = state.clone();
 
   let future = poll_fn(move |cx| {
-    let mut table = state_.lock_resource_table();
-    if let Some(mut signal) = table.get_mut::<SignalStreamResource>(rid) {
+    let mut state = state_.borrow_mut();
+    if let Some(mut signal) =
+      state.resource_table.get_mut::<SignalStreamResource>(rid)
+    {
       signal.1 = Some(cx.waker().clone());
       return signal.0.poll_recv(cx);
     }
@@ -94,19 +91,19 @@ fn op_signal_poll(
   })
   .then(|result| async move { Ok(json!({ "done": result.is_none() })) });
 
-  Ok(JsonOp::AsyncUnref(future.boxed()))
+  Ok(JsonOp::AsyncUnref(future.boxed_local()))
 }
 
 #[cfg(unix)]
 pub fn op_signal_unbind(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let mut table = state.lock_resource_table();
-  let resource = table.get::<SignalStreamResource>(rid);
+  let mut state = state.borrow_mut();
+  let resource = state.resource_table.get::<SignalStreamResource>(rid);
   if let Some(signal) = resource {
     if let Some(waker) = &signal.1 {
       // Wakes up the pending poll if exists.
@@ -114,13 +111,13 @@ pub fn op_signal_unbind(
       waker.clone().wake();
     }
   }
-  table.close(rid).ok_or_else(bad_resource)?;
+  state.resource_table.close(rid).ok_or_else(bad_resource)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
 #[cfg(not(unix))]
 pub fn op_signal_bind(
-  _state: &ThreadSafeState,
+  _state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -129,7 +126,7 @@ pub fn op_signal_bind(
 
 #[cfg(not(unix))]
 fn op_signal_unbind(
-  _state: &ThreadSafeState,
+  _state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -138,7 +135,7 @@ fn op_signal_unbind(
 
 #[cfg(not(unix))]
 fn op_signal_poll(
-  _state: &ThreadSafeState,
+  _state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {

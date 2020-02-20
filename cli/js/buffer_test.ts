@@ -3,7 +3,7 @@
 // This code has been ported almost directly from Go's src/bytes/buffer_test.go
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
-import { assertEquals, test } from "./test_util.ts";
+import { assert, assertEquals, test } from "./test_util.ts";
 
 const { Buffer, readAll, readAllSync, writeAll, writeAllSync } = Deno;
 type Buffer = Deno.Buffer;
@@ -78,12 +78,16 @@ function repeat(c: string, bytes: number): Uint8Array {
 
 test(function bufferNewBuffer(): void {
   init();
+  assert(testBytes);
+  assert(testString);
   const buf = new Buffer(testBytes.buffer as ArrayBuffer);
   check(buf, testString);
 });
 
 test(async function bufferBasicOperations(): Promise<void> {
   init();
+  assert(testBytes);
+  assert(testString);
   const buf = new Buffer();
   for (let i = 0; i < 5; i++) {
     check(buf, "");
@@ -134,8 +138,8 @@ test(async function bufferLargeByteWrites(): Promise<void> {
   const buf = new Buffer();
   const limit = 9;
   for (let i = 3; i < limit; i += 3) {
-    const s = await fillBytes(buf, "", 5, testBytes);
-    await empty(buf, s, new Uint8Array(Math.floor(testString.length / i)));
+    const s = await fillBytes(buf, "", 5, testBytes!);
+    await empty(buf, s, new Uint8Array(Math.floor(testString!.length / i)));
   }
   check(buf, "");
 });
@@ -161,6 +165,8 @@ test(async function bufferTooLargeByteWrites(): Promise<void> {
 
 test(async function bufferLargeByteReads(): Promise<void> {
   init();
+  assert(testBytes);
+  assert(testString);
   const buf = new Buffer();
   for (let i = 3; i < 30; i += 3) {
     const n = Math.floor(testBytes.byteLength / i);
@@ -177,6 +183,8 @@ test(function bufferCapWithPreallocatedSlice(): void {
 
 test(async function bufferReadFrom(): Promise<void> {
   init();
+  assert(testBytes);
+  assert(testString);
   const buf = new Buffer();
   for (let i = 3; i < 30; i += 3) {
     const s = await fillBytes(
@@ -194,6 +202,8 @@ test(async function bufferReadFrom(): Promise<void> {
 
 test(async function bufferReadFromSync(): Promise<void> {
   init();
+  assert(testBytes);
+  assert(testString);
   const buf = new Buffer();
   for (let i = 3; i < 30; i += 3) {
     const s = await fillBytes(
@@ -236,6 +246,7 @@ test(async function bufferTestGrow(): Promise<void> {
 
 test(async function testReadAll(): Promise<void> {
   init();
+  assert(testBytes);
   const reader = new Buffer(testBytes.buffer as ArrayBuffer);
   const actualBytes = await readAll(reader);
   assertEquals(testBytes.byteLength, actualBytes.byteLength);
@@ -246,6 +257,7 @@ test(async function testReadAll(): Promise<void> {
 
 test(function testReadAllSync(): void {
   init();
+  assert(testBytes);
   const reader = new Buffer(testBytes.buffer as ArrayBuffer);
   const actualBytes = readAllSync(reader);
   assertEquals(testBytes.byteLength, actualBytes.byteLength);
@@ -256,6 +268,7 @@ test(function testReadAllSync(): void {
 
 test(async function testWriteAll(): Promise<void> {
   init();
+  assert(testBytes);
   const writer = new Buffer();
   await writeAll(writer, testBytes);
   const actualBytes = writer.bytes();
@@ -267,6 +280,7 @@ test(async function testWriteAll(): Promise<void> {
 
 test(function testWriteAllSync(): void {
   init();
+  assert(testBytes);
   const writer = new Buffer();
   writeAllSync(writer, testBytes);
   const actualBytes = writer.bytes();

@@ -19,6 +19,7 @@ export let OP_APPLY_SOURCE_MAP: number;
 export let OP_FORMAT_ERROR: number;
 export let OP_CACHE: number;
 export let OP_RESOLVE_MODULES: number;
+export let OP_FETCH_ASSET: number;
 export let OP_FETCH_SOURCE_FILES: number;
 export let OP_OPEN: number;
 export let OP_CLOSE: number;
@@ -42,14 +43,11 @@ export let OP_QUERY_PERMISSION: number;
 export let OP_REVOKE_PERMISSION: number;
 export let OP_REQUEST_PERMISSION: number;
 export let OP_CREATE_WORKER: number;
-export let OP_HOST_GET_WORKER_LOADED: number;
 export let OP_HOST_POST_MESSAGE: number;
-export let OP_HOST_POLL_WORKER: number;
-export let OP_HOST_CLOSE_WORKER: number;
-export let OP_HOST_RESUME_WORKER: number;
+export let OP_HOST_TERMINATE_WORKER: number;
 export let OP_HOST_GET_MESSAGE: number;
 export let OP_WORKER_POST_MESSAGE: number;
-export let OP_WORKER_GET_MESSAGE: number;
+export let OP_WORKER_CLOSE: number;
 export let OP_RUN: number;
 export let OP_RUN_STATUS: number;
 export let OP_KILL: number;
@@ -68,6 +66,7 @@ export let OP_SYMLINK: number;
 export let OP_READ_LINK: number;
 export let OP_TRUNCATE: number;
 export let OP_MAKE_TEMP_DIR: number;
+export let OP_MAKE_TEMP_FILE: number;
 export let OP_CWD: number;
 export let OP_CONNECT_TLS: number;
 export let OP_HOSTNAME: number;
@@ -79,10 +78,6 @@ export let OP_TRANSPILE: number;
 export let OP_SIGNAL_BIND: number;
 export let OP_SIGNAL_UNBIND: number;
 export let OP_SIGNAL_POLL: number;
-
-/** **WARNING:** This is only available during the snapshotting process and is
- * unavailable at runtime. */
-export let OP_FETCH_ASSET: number;
 
 const PLUGIN_ASYNC_HANDLER_MAP: Map<number, AsyncHandler> = new Map();
 

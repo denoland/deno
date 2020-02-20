@@ -1,19 +1,15 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::fs as deno_fs;
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::*;
 use dlopen::symbor::Library;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::Path;
-use std::sync::Arc;
+use std::rc::Rc;
 
-pub fn init(
-  i: &mut Isolate,
-  s: &ThreadSafeState,
-  r: Arc<deno_core::OpRegistry>,
-) {
+pub fn init(i: &mut Isolate, s: &State, r: Rc<deno_core::OpRegistry>) {
   let r_ = r;
   i.register_op(
     "open_plugin",
@@ -33,8 +29,6 @@ struct PluginResource {
   lib: Library,
   ops: HashMap<String, OpId>,
 }
-
-impl Resource for PluginResource {}
 
 struct InitContext {
   ops: HashMap<String, Box<OpDispatcher>>,
@@ -57,8 +51,8 @@ struct OpenPluginArgs {
 }
 
 pub fn op_open_plugin(
-  registry: &Arc<deno_core::OpRegistry>,
-  state: &ThreadSafeState,
+  registry: &Rc<deno_core::OpRegistry>,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -72,9 +66,14 @@ pub fn op_open_plugin(
     lib,
     ops: HashMap::new(),
   };
-  let mut table = state.lock_resource_table();
-  let rid = table.add("plugin", Box::new(plugin_resource));
-  let plugin_resource = table.get_mut::<PluginResource>(rid).unwrap();
+  let mut state_ = state.borrow_mut();
+  let rid = state_
+    .resource_table
+    .add("plugin", Box::new(plugin_resource));
+  let plugin_resource = state_
+    .resource_table
+    .get_mut::<PluginResource>(rid)
+    .unwrap();
 
   let init_fn = *unsafe {
     plugin_resource

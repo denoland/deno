@@ -5,7 +5,8 @@ import {
   assert,
   assertEquals,
   assertStrContains,
-  assertThrows
+  assertThrows,
+  fail
 } from "./test_util.ts";
 
 testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
@@ -53,7 +54,7 @@ testPerm({ net: true }, async function fetchHeaders(): Promise<void> {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;
   assertEquals(headers.get("Content-Type"), "application/json");
-  assert(headers.get("Server").startsWith("SimpleHTTP"));
+  assert(headers.get("Server")!.startsWith("SimpleHTTP"));
 });
 
 testPerm({ net: true }, async function fetchBlob(): Promise<void> {
@@ -92,10 +93,10 @@ testPerm({ net: true }, async function responseClone(): Promise<void> {
   assert(response !== response1);
   assertEquals(response.status, response1.status);
   assertEquals(response.statusText, response1.statusText);
-  const ab = await response.arrayBuffer();
-  const ab1 = await response1.arrayBuffer();
-  for (let i = 0; i < ab.byteLength; i++) {
-    assertEquals(ab[i], ab1[i]);
+  const u8a = new Uint8Array(await response.arrayBuffer());
+  const u8a1 = new Uint8Array(await response1.arrayBuffer());
+  for (let i = 0; i < u8a.byteLength; i++) {
+    assertEquals(u8a[i], u8a1[i]);
   }
 });
 
@@ -114,11 +115,11 @@ testPerm({ net: true }, async function fetchMultipartFormDataSuccess(): Promise<
   void
 > {
   const response = await fetch(
-    "http://localhost:4545/tests/subdir/multipart_form_data.txt"
+    "http://localhost:4545/cli/tests/subdir/multipart_form_data.txt"
   );
   const formData = await response.formData();
   assert(formData.has("field_1"));
-  assertEquals(formData.get("field_1").toString(), "value_1 \r\n");
+  assertEquals(formData.get("field_1")!.toString(), "value_1 \r\n");
   assert(formData.has("field_2"));
   /* TODO(ry) Re-enable this test once we bring back the global File type.
   const file = formData.get("field_2") as File;
@@ -131,13 +132,13 @@ testPerm(
   { net: true },
   async function fetchURLEncodedFormDataSuccess(): Promise<void> {
     const response = await fetch(
-      "http://localhost:4545/tests/subdir/form_urlencoded.txt"
+      "http://localhost:4545/cli/tests/subdir/form_urlencoded.txt"
     );
     const formData = await response.formData();
     assert(formData.has("field_1"));
-    assertEquals(formData.get("field_1").toString(), "Hi");
+    assertEquals(formData.get("field_1")!.toString(), "Hi");
     assert(formData.has("field_2"));
-    assertEquals(formData.get("field_2").toString(), "<Deno>");
+    assertEquals(formData.get("field_2")!.toString(), "<Deno>");
   }
 );
 
@@ -153,11 +154,11 @@ testPerm({ net: true }, async function fetchWithRedirection(): Promise<void> {
 testPerm({ net: true }, async function fetchWithRelativeRedirection(): Promise<
   void
 > {
-  const response = await fetch("http://localhost:4545/tests"); // will redirect to /tests/
+  const response = await fetch("http://localhost:4545/cli/tests"); // will redirect to /cli/tests/
   assertEquals(response.status, 200);
   assertEquals(response.statusText, "OK");
   const body = await response.text();
-  assert(body.includes("<title>Directory listing for /tests/</title>"));
+  assert(body.includes("<title>Directory listing for /cli/tests/</title>"));
 });
 
 // The feature below is not implemented, but the test should work after implementation
@@ -165,7 +166,7 @@ testPerm({ net: true }, async function fetchWithRelativeRedirection(): Promise<
 testPerm({ net: true }, async function fetchWithInfRedirection(): Promise<
   void
 > {
-  const response = await fetch("http://localhost:4549/tests"); // will redirect to the same place
+  const response = await fetch("http://localhost:4549/cli/tests"); // will redirect to the same place
   assertEquals(response.status, 0); // network error
 });
 */
@@ -178,7 +179,7 @@ testPerm({ net: true }, async function fetchInitStringBody(): Promise<void> {
   });
   const text = await response.text();
   assertEquals(text, data);
-  assert(response.headers.get("content-type").startsWith("text/plain"));
+  assert(response.headers.get("content-type")!.startsWith("text/plain"));
 });
 
 testPerm({ net: true }, async function fetchRequestInitStringBody(): Promise<
@@ -219,7 +220,7 @@ testPerm({ net: true }, async function fetchInitURLSearchParamsBody(): Promise<
   assertEquals(text, data);
   assert(
     response.headers
-      .get("content-type")
+      .get("content-type")!
       .startsWith("application/x-www-form-urlencoded")
   );
 });
@@ -235,7 +236,7 @@ testPerm({ net: true }, async function fetchInitBlobBody(): Promise<void> {
   });
   const text = await response.text();
   assertEquals(text, data);
-  assert(response.headers.get("content-type").startsWith("text/javascript"));
+  assert(response.headers.get("content-type")!.startsWith("text/javascript"));
 });
 
 testPerm({ net: true }, async function fetchUserAgent(): Promise<void> {
@@ -360,3 +361,75 @@ testPerm({ net: true }, async function fetchPostBodyTypedArray():Promise<void> {
   assertEquals(actual, expected);
 });
 */
+
+testPerm({ net: true }, async function fetchWithManualRedirection(): Promise<
+  void
+> {
+  const response = await fetch("http://localhost:4546/", {
+    redirect: "manual"
+  }); // will redirect to http://localhost:4545/
+  assertEquals(response.status, 0);
+  assertEquals(response.statusText, "");
+  assertEquals(response.url, "");
+  assertEquals(response.type, "opaqueredirect");
+  try {
+    await response.text();
+    fail(
+      "Reponse.text() didn't throw on a filtered response without a body (type opaqueredirect)"
+    );
+  } catch (e) {
+    return;
+  }
+});
+
+testPerm({ net: true }, async function fetchWithErrorRedirection(): Promise<
+  void
+> {
+  const response = await fetch("http://localhost:4546/", {
+    redirect: "error"
+  }); // will redirect to http://localhost:4545/
+  assertEquals(response.status, 0);
+  assertEquals(response.statusText, "");
+  assertEquals(response.url, "");
+  assertEquals(response.type, "error");
+  try {
+    await response.text();
+    fail(
+      "Reponse.text() didn't throw on a filtered response without a body (type error)"
+    );
+  } catch (e) {
+    return;
+  }
+});
+
+test(function responseRedirect(): void {
+  const response = new Response(
+    "example.com/beforeredirect",
+    200,
+    "OK",
+    [["This-Should", "Disappear"]],
+    -1,
+    false,
+    null
+  );
+  const redir = response.redirect("example.com/newLocation", 301);
+  assertEquals(redir.status, 301);
+  assertEquals(redir.statusText, "");
+  assertEquals(redir.url, "");
+  assertEquals(redir.headers.get("Location"), "example.com/newLocation");
+  assertEquals(redir.type, "default");
+});
+
+test(function responseConstructionHeaderRemoval(): void {
+  const res = new Response(
+    "example.com",
+    200,
+    "OK",
+    [["Set-Cookie", "mysessionid"]],
+    -1,
+    false,
+    "basic",
+    null
+  );
+  assert(res.headers.get("Set-Cookie") != "mysessionid");
+});

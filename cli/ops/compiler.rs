@@ -1,13 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::dispatch_json::Deserialize;
+use super::dispatch_json::JsonOp;
+use super::dispatch_json::Value;
 use crate::futures::future::try_join_all;
 use crate::msg;
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::Loader;
 use deno_core::*;
+use futures::future::FutureExt;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("cache", s.core_op(json_op(s.stateful_op(op_cache))));
   i.register_op(
     "resolve_modules",
@@ -16,6 +19,10 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op(
     "fetch_source_files",
     s.core_op(json_op(s.stateful_op(op_fetch_source_files))),
+  );
+  i.register_op(
+    "fetch_asset",
+    s.core_op(json_op(s.stateful_op(op_fetch_asset))),
   );
 }
 
@@ -28,7 +35,7 @@ struct CacheArgs {
 }
 
 fn op_cache(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -37,12 +44,15 @@ fn op_cache(
   let module_specifier = ModuleSpecifier::resolve_url(&args.module_id)
     .expect("Should be valid module specifier");
 
-  state.global_state.ts_compiler.cache_compiler_output(
+  let state_ = &state.borrow().global_state;
+  let ts_compiler = state_.ts_compiler.clone();
+  let fut = ts_compiler.cache_compiler_output(
     &module_specifier,
     &args.extension,
     &args.contents,
-  )?;
+  );
 
+  futures::executor::block_on(fut)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -53,7 +63,7 @@ struct SpecifiersReferrerArgs {
 }
 
 fn op_resolve_modules(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -78,7 +88,7 @@ fn op_resolve_modules(
 }
 
 fn op_fetch_source_files(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -92,22 +102,27 @@ fn op_fetch_source_files(
     None
   };
 
-  let mut futures = vec![];
-  for specifier in &args.specifiers {
-    let resolved_specifier =
-      ModuleSpecifier::resolve_url(&specifier).expect("Invalid specifier");
-    let fut = state
-      .global_state
-      .file_fetcher
-      .fetch_source_file_async(&resolved_specifier, ref_specifier.clone());
-    futures.push(fut);
-  }
+  let global_state = state.borrow().global_state.clone();
+  let file_fetcher = global_state.file_fetcher.clone();
+  let specifiers = args.specifiers.clone();
+  let future = async move {
+    let file_futures: Vec<_> = specifiers
+      .into_iter()
+      .map(|specifier| {
+        let file_fetcher_ = file_fetcher.clone();
+        let ref_specifier_ = ref_specifier.clone();
+        async move {
+          let resolved_specifier = ModuleSpecifier::resolve_url(&specifier)
+            .expect("Invalid specifier");
+          file_fetcher_
+            .fetch_source_file_async(&resolved_specifier, ref_specifier_)
+            .await
+        }
+        .boxed_local()
+      })
+      .collect();
 
-  let global_state = state.global_state.clone();
-
-  let future = Box::pin(async move {
-    let files = try_join_all(futures).await?;
-
+    let files = try_join_all(file_futures).await?;
     // We want to get an array of futures that resolves to
     let v = files.into_iter().map(|f| {
       async {
@@ -147,7 +162,31 @@ fn op_fetch_source_files(
 
     let v = try_join_all(v).await?;
     Ok(v.into())
-  });
+  }
+  .boxed_local();
 
   Ok(JsonOp::Async(future))
+}
+
+#[derive(Deserialize, Debug)]
+struct FetchRemoteAssetArgs {
+  name: String,
+}
+
+fn op_fetch_asset(
+  _state: &State,
+  args: Value,
+  _data: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: FetchRemoteAssetArgs = serde_json::from_value(args)?;
+  debug!("args.name: {}", args.name);
+
+  let source_code =
+    if let Some(source_code) = deno_typescript::get_asset(&args.name) {
+      source_code.to_string()
+    } else {
+      panic!("Asset not found: \"{}\"", args.name)
+    };
+
+  Ok(JsonOp::Sync(json!({ "sourceCode": source_code })))
 }

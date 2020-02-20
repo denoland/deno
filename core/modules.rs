@@ -16,14 +16,14 @@ use std::collections::HashSet;
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
 pub type SourceCodeInfoFuture =
-  dyn Future<Output = Result<SourceCodeInfo, ErrBox>> + Send;
+  dyn Future<Output = Result<SourceCodeInfo, ErrBox>>;
 
-pub trait Loader: Send + Sync {
+pub trait Loader {
   /// Returns an absolute URL.
   /// When implementing an spec-complaint VM, this should be exactly the
   /// algorithm described here:
@@ -74,7 +74,7 @@ pub struct RecursiveModuleLoad {
   // Kind::Main
   pub dyn_import_id: Option<DynImportId>,
   pub state: LoadState,
-  pub loader: Arc<Box<dyn Loader + Unpin>>,
+  pub loader: Rc<dyn Loader + Unpin>,
   pub pending: FuturesUnordered<Pin<Box<SourceCodeInfoFuture>>>,
   pub is_pending: HashSet<ModuleSpecifier>,
 }
@@ -84,7 +84,7 @@ impl RecursiveModuleLoad {
   pub fn main(
     specifier: &str,
     code: Option<String>,
-    loader: Arc<Box<dyn Loader + Unpin>>,
+    loader: Rc<dyn Loader + Unpin>,
   ) -> Self {
     let kind = Kind::Main;
     let state = LoadState::ResolveMain(specifier.to_owned(), code);
@@ -95,7 +95,7 @@ impl RecursiveModuleLoad {
     id: DynImportId,
     specifier: &str,
     referrer: &str,
-    loader: Arc<Box<dyn Loader + Unpin>>,
+    loader: Rc<dyn Loader + Unpin>,
   ) -> Self {
     let kind = Kind::DynamicImport;
     let state =
@@ -110,7 +110,7 @@ impl RecursiveModuleLoad {
   fn new(
     kind: Kind,
     state: LoadState,
-    loader: Arc<Box<dyn Loader + Unpin>>,
+    loader: Rc<dyn Loader + Unpin>,
     dyn_import_id: Option<DynImportId>,
   ) -> Self {
     Self {
@@ -148,7 +148,7 @@ impl RecursiveModuleLoad {
       _ => self
         .loader
         .load(&module_specifier, None, self.is_dynamic_import())
-        .boxed(),
+        .boxed_local(),
     };
 
     self.pending.push(load_fut);
@@ -167,7 +167,7 @@ impl RecursiveModuleLoad {
         self
           .loader
           .load(&specifier, Some(referrer), self.is_dynamic_import());
-      self.pending.push(fut.boxed());
+      self.pending.push(fut.boxed_local());
       self.is_pending.insert(specifier);
     }
   }
@@ -449,6 +449,26 @@ impl fmt::Display for Deps {
   }
 }
 
+#[macro_export]
+macro_rules! crate_modules {
+  () => {
+    pub const DENO_CRATE_PATH: &'static str = env!("CARGO_MANIFEST_DIR");
+  };
+}
+
+#[macro_export]
+macro_rules! include_crate_modules {
+  ( $( $x:ident ),* ) => {
+    {
+      let mut temp: HashMap<String, String> = HashMap::new();
+      $(
+        temp.insert(stringify!($x).to_string(), $x::DENO_CRATE_PATH.to_string());
+      )*
+      temp
+    }
+  };
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -458,6 +478,7 @@ mod tests {
   use std::error::Error;
   use std::fmt;
   use std::future::Future;
+  use std::sync::Arc;
   use std::sync::Mutex;
 
   struct MockLoader {
@@ -631,9 +652,9 @@ mod tests {
   fn test_recursive_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate =
-      EsIsolate::new(Box::new(loader), StartupData::None, false);
-    let a_id_fut = isolate.load_module("/a.js", None);
+    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
+    let spec = ModuleSpecifier::resolve_url("file:///a.js").unwrap();
+    let a_id_fut = isolate.load_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
     js_check(isolate.mod_evaluate(a_id));
@@ -691,11 +712,11 @@ mod tests {
   fn test_circular_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate =
-      EsIsolate::new(Box::new(loader), StartupData::None, false);
+    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
 
     let fut = async move {
-      let result = isolate.load_module("/circular1.js", None).await;
+      let spec = ModuleSpecifier::resolve_url("file:///circular1.js").unwrap();
+      let result = isolate.load_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
       js_check(isolate.mod_evaluate(circular1_id));
@@ -739,7 +760,7 @@ mod tests {
         ])
       );
     }
-    .boxed();
+    .boxed_local();
 
     futures::executor::block_on(fut);
   }
@@ -762,11 +783,11 @@ mod tests {
   fn test_redirect_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate =
-      EsIsolate::new(Box::new(loader), StartupData::None, false);
+    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
 
     let fut = async move {
-      let result = isolate.load_module("/redirect1.js", None).await;
+      let spec = ModuleSpecifier::resolve_url("file:///redirect1.js").unwrap();
+      let result = isolate.load_module(&spec, None).await;
       println!(">> result {:?}", result);
       assert!(result.is_ok());
       let redirect1_id = result.unwrap();
@@ -798,7 +819,7 @@ mod tests {
         Some(redirect3_id)
       );
     }
-    .boxed();
+    .boxed_local();
 
     futures::executor::block_on(fut);
   }
@@ -825,8 +846,9 @@ mod tests {
       let loader = MockLoader::new();
       let loads = loader.loads.clone();
       let mut isolate =
-        EsIsolate::new(Box::new(loader), StartupData::None, false);
-      let mut recursive_load = isolate.load_module("/main.js", None).boxed();
+        EsIsolate::new(Rc::new(loader), StartupData::None, false);
+      let spec = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
+      let mut recursive_load = isolate.load_module(&spec, None).boxed_local();
 
       let result = recursive_load.poll_unpin(&mut cx);
       assert!(result.is_pending());
@@ -870,8 +892,9 @@ mod tests {
     run_in_task(|mut cx| {
       let loader = MockLoader::new();
       let mut isolate =
-        EsIsolate::new(Box::new(loader), StartupData::None, false);
-      let mut load_fut = isolate.load_module("/bad_import.js", None).boxed();
+        EsIsolate::new(Rc::new(loader), StartupData::None, false);
+      let spec = ModuleSpecifier::resolve_url("file:///bad_import.js").unwrap();
+      let mut load_fut = isolate.load_module(&spec, None).boxed_local();
       let result = load_fut.poll_unpin(&mut cx);
       if let Poll::Ready(Err(err)) = result {
         assert_eq!(
@@ -897,14 +920,15 @@ mod tests {
   fn recursive_load_main_with_code() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate =
-      EsIsolate::new(Box::new(loader), StartupData::None, false);
+    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
     // In default resolution code should be empty.
     // Instead we explicitly pass in our own code.
     // The behavior should be very similar to /a.js.
+    let spec =
+      ModuleSpecifier::resolve_url("file:///main_with_code.js").unwrap();
     let main_id_fut = isolate
-      .load_module("/main_with_code.js", Some(MAIN_WITH_CODE_SRC.to_owned()))
-      .boxed();
+      .load_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
+      .boxed_local();
     let main_id =
       futures::executor::block_on(main_id_fut).expect("Failed to load");
 

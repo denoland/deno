@@ -1,55 +1,65 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
-use crate::deno_error::DenoError;
-use crate::deno_error::ErrorKind;
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
+use crate::worker::WorkerEvent;
 use deno_core::*;
 use futures;
-use futures::future::FutureExt;
+use futures::channel::mpsc;
 use futures::sink::SinkExt;
-use futures::stream::StreamExt;
 use std;
 use std::convert::From;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
-  i.register_op(
-    "worker_post_message",
-    s.core_op(json_op(s.stateful_op(op_worker_post_message))),
-  );
-  i.register_op(
-    "worker_get_message",
-    s.core_op(json_op(s.stateful_op(op_worker_get_message))),
-  );
+pub fn web_worker_op<D>(
+  sender: mpsc::Sender<WorkerEvent>,
+  dispatcher: D,
+) -> impl Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, ErrBox>
+where
+  D: Fn(
+    &mpsc::Sender<WorkerEvent>,
+    Value,
+    Option<ZeroCopyBuf>,
+  ) -> Result<JsonOp, ErrBox>,
+{
+  move |args: Value, zero_copy: Option<ZeroCopyBuf>| -> Result<JsonOp, ErrBox> {
+    dispatcher(&sender, args, zero_copy)
+  }
 }
 
-/// Get message from host as guest worker
-fn op_worker_get_message(
-  state: &ThreadSafeState,
-  _args: Value,
-  _data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
-  let state_ = state.clone();
-  let op = async move {
-    let mut receiver = state_.worker_channels.receiver.lock().await;
-    let maybe_buf = receiver.next().await;
-    debug!("op_worker_get_message");
-    Ok(json!({ "data": maybe_buf }))
-  };
-
-  Ok(JsonOp::Async(op.boxed()))
+pub fn init(i: &mut Isolate, s: &State, sender: &mpsc::Sender<WorkerEvent>) {
+  i.register_op(
+    "worker_post_message",
+    s.core_op(json_op(web_worker_op(
+      sender.clone(),
+      op_worker_post_message,
+    ))),
+  );
+  i.register_op(
+    "worker_close",
+    s.core_op(json_op(web_worker_op(sender.clone(), op_worker_close))),
+  );
 }
 
 /// Post message to host as guest worker
 fn op_worker_post_message(
-  state: &ThreadSafeState,
+  sender: &mpsc::Sender<WorkerEvent>,
   _args: Value,
   data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
-  let mut sender = state.worker_channels.sender.clone();
-  futures::executor::block_on(sender.send(d))
-    .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
+  let mut sender = sender.clone();
+  let fut = sender.send(WorkerEvent::Message(d));
+  futures::executor::block_on(fut).expect("Failed to post message to host");
+  Ok(JsonOp::Sync(json!({})))
+}
 
+/// Notify host that guest worker closes
+fn op_worker_close(
+  sender: &mpsc::Sender<WorkerEvent>,
+  _args: Value,
+  _data: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let mut sender = sender.clone();
+  sender.close_channel();
   Ok(JsonOp::Sync(json!({})))
 }

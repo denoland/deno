@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test } from "../testing/mod.ts";
+const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import { Sha1 } from "./sha1.ts";
 

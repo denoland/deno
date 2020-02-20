@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { MediaType, SourceFile } from "./compiler_sourcefile.ts";
+import { ASSETS, MediaType, SourceFile } from "./compiler_sourcefile.ts";
 import { OUT_DIR, WriteFileCallback, getAsset } from "./compiler_util.ts";
 import { cwd } from "./dir.ts";
 import { assert, notImplemented } from "./util.ts";
@@ -18,8 +18,14 @@ export enum CompilerHostTarget {
 }
 
 export interface CompilerHostOptions {
+  /** Flag determines if the host should assume a single bundle output. */
   bundle?: boolean;
+
+  /** Determines what the default library that should be used when type checking
+   * TS code. */
   target: CompilerHostTarget;
+
+  /** A function to be used when the program emit occurs to write out files. */
   writeFile: WriteFileCallback;
 }
 
@@ -28,13 +34,11 @@ export interface ConfigureResponse {
   diagnostics?: ts.Diagnostic[];
 }
 
-export const ASSETS = "$asset$";
-
 /** Options that need to be used when generating a bundle (either trusted or
  * runtime). */
 export const defaultBundlerOptions: ts.CompilerOptions = {
   inlineSourceMap: false,
-  module: ts.ModuleKind.AMD,
+  module: ts.ModuleKind.System,
   outDir: undefined,
   outFile: `${OUT_DIR}/bundle.js`,
   // disabled until we have effective way to modify source maps
@@ -45,8 +49,7 @@ export const defaultBundlerOptions: ts.CompilerOptions = {
 export const defaultCompileOptions: ts.CompilerOptions = {
   allowJs: true,
   allowNonTsExtensions: true,
-  // TODO(#3324) Enable strict mode for user code.
-  // strict: true,
+  strict: true,
   checkJs: false,
   esModuleInterop: true,
   module: ts.ModuleKind.ESNext,
@@ -96,7 +99,6 @@ const ignoredCompilerOptions: readonly string[] = [
   "inlineSources",
   "init",
   "isolatedModules",
-  "lib",
   "listEmittedFiles",
   "listFiles",
   "mapRoot",
@@ -141,7 +143,10 @@ export class Host implements ts.CompilerHost {
   private _writeFile: WriteFileCallback;
 
   private _getAsset(filename: string): SourceFile {
-    const url = filename.split("/").pop()!;
+    const lastSegment = filename.split("/").pop()!;
+    const url = ts.libMap.has(lastSegment)
+      ? ts.libMap.get(lastSegment)!
+      : lastSegment;
     const sourceFile = SourceFile.get(url);
     if (sourceFile) {
       return sourceFile;
@@ -150,7 +155,7 @@ export class Host implements ts.CompilerHost {
     const sourceCode = getAsset(name);
     return new SourceFile({
       url,
-      filename,
+      filename: `${ASSETS}/${name}`,
       mediaType: MediaType.TypeScript,
       sourceCode
     });
@@ -230,12 +235,13 @@ export class Host implements ts.CompilerHost {
   }
 
   getDefaultLibFileName(_options: ts.CompilerOptions): string {
+    util.log("compiler::host.getDefaultLibFileName()");
     switch (this._target) {
       case CompilerHostTarget.Main:
       case CompilerHostTarget.Runtime:
-        return `${ASSETS}/lib.deno_main.d.ts`;
+        return `${ASSETS}/lib.deno.window.d.ts`;
       case CompilerHostTarget.Worker:
-        return `${ASSETS}/lib.deno_worker.d.ts`;
+        return `${ASSETS}/lib.deno.worker.d.ts`;
     }
   }
 
@@ -259,7 +265,7 @@ export class Host implements ts.CompilerHost {
       if (!sourceFile.tsSourceFile) {
         assert(sourceFile.sourceCode != null);
         sourceFile.tsSourceFile = ts.createSourceFile(
-          fileName,
+          fileName.startsWith(ASSETS) ? sourceFile.filename : fileName,
           sourceFile.sourceCode,
           languageVersion
         );

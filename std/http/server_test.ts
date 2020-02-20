@@ -5,25 +5,31 @@
 // Ported from
 // https://github.com/golang/go/blob/master/src/net/http/responsewrite_test.go
 
-const { Buffer } = Deno;
+const { Buffer, test } = Deno;
 import { TextProtoReader } from "../textproto/mod.ts";
-import { test, runIfMain } from "../testing/mod.ts";
-import { assert, assertEquals, assertNotEquals } from "../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertNotEquals,
+  assertThrowsAsync,
+  AssertionError
+} from "../testing/asserts.ts";
 import {
   Response,
   ServerRequest,
-  serve,
   writeResponse,
+  serve,
   readRequest,
-  parseHTTPVersion
+  parseHTTPVersion,
+  writeTrailers
 } from "./server.ts";
-import { delay, deferred } from "../util/async.ts";
 import {
   BufReader,
   BufWriter,
   ReadLineResult,
   UnexpectedEOFError
 } from "../io/bufio.ts";
+import { delay, deferred } from "../util/async.ts";
 import { StringReader } from "../io/readers.ts";
 
 function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
@@ -426,6 +432,36 @@ test(async function writeStringReaderResponse(): Promise<void> {
   assertEquals(r.more, false);
 });
 
+test("writeResponse with trailer", async () => {
+  const w = new Buffer();
+  const body = new StringReader("Hello");
+  await writeResponse(w, {
+    status: 200,
+    headers: new Headers({
+      "transfer-encoding": "chunked",
+      trailer: "deno,node"
+    }),
+    body,
+    trailers: () => new Headers({ deno: "land", node: "js" })
+  });
+  const ret = w.toString();
+  const exp = [
+    "HTTP/1.1 200 OK",
+    "transfer-encoding: chunked",
+    "trailer: deno,node",
+    "",
+    "5",
+    "Hello",
+    "0",
+    "",
+    "deno: land",
+    "node: js",
+    "",
+    ""
+  ].join("\r\n");
+  assertEquals(ret, exp);
+});
+
 test(async function readRequestError(): Promise<void> {
   const input = `GET / HTTP/1.1
 malformedHeader
@@ -509,8 +545,7 @@ test(async function testReadRequestError(): Promise<void> {
   for (const test of testCases) {
     const reader = new BufReader(new StringReader(test.in));
     let err;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let req: any;
+    let req: ServerRequest | Deno.EOF | undefined;
     try {
       req = await readRequest(mockConn as Deno.Conn, reader);
     } catch (e) {
@@ -523,10 +558,12 @@ test(async function testReadRequestError(): Promise<void> {
     } else if (test.err) {
       assert(err instanceof (test.err as typeof UnexpectedEOFError));
     } else {
+      assert(req instanceof ServerRequest);
+      assert(test.headers);
       assertEquals(err, undefined);
       assertNotEquals(req, Deno.EOF);
-      for (const h of test.headers!) {
-        assertEquals((req! as ServerRequest).headers.get(h.key), h.value);
+      for (const h of test.headers) {
+        assertEquals(req.headers.get(h.key), h.value);
       }
     }
   }
@@ -682,6 +719,7 @@ if (Deno.build.os !== "win") {
       const serverRoutine = async (): Promise<void> => {
         let reqCount = 0;
         const server = serve(":8124");
+        // @ts-ignore
         const serverRid = server.listener["rid"];
         let connRid = -1;
         for await (const req of server) {
@@ -732,4 +770,54 @@ if (Deno.build.os !== "win") {
   });
 }
 
-runIfMain(import.meta);
+test("writeTrailer", async () => {
+  const w = new Buffer();
+  await writeTrailers(
+    w,
+    new Headers({ "transfer-encoding": "chunked", trailer: "deno,node" }),
+    new Headers({ deno: "land", node: "js" })
+  );
+  assertEquals(w.toString(), "deno: land\r\nnode: js\r\n\r\n");
+});
+
+test("writeTrailer should throw", async () => {
+  const w = new Buffer();
+  await assertThrowsAsync(
+    () => {
+      return writeTrailers(w, new Headers(), new Headers());
+    },
+    Error,
+    'must have "trailer"'
+  );
+  await assertThrowsAsync(
+    () => {
+      return writeTrailers(w, new Headers({ trailer: "deno" }), new Headers());
+    },
+    Error,
+    "only allowed"
+  );
+  for (const f of ["content-length", "trailer", "transfer-encoding"]) {
+    await assertThrowsAsync(
+      () => {
+        return writeTrailers(
+          w,
+          new Headers({ "transfer-encoding": "chunked", trailer: f }),
+          new Headers({ [f]: "1" })
+        );
+      },
+      AssertionError,
+      "prohibited"
+    );
+  }
+  await assertThrowsAsync(
+    () => {
+      return writeTrailers(
+        w,
+        new Headers({ "transfer-encoding": "chunked", trailer: "deno" }),
+        new Headers({ node: "js" })
+      );
+    },
+    AssertionError,
+    "Not trailer"
+  );
+});

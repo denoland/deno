@@ -40,10 +40,7 @@ import { Diagnostic } from "./diagnostics.ts";
 import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
-import {
-  bootstrapWorkerRuntime,
-  runWorkerMessageLoop
-} from "./runtime_worker.ts";
+import { bootstrapWorkerRuntime } from "./runtime_worker.ts";
 
 interface CompilerRequestCompile {
   type: CompilerRequestType.Compile;
@@ -108,13 +105,6 @@ async function tsCompilerOnMessage({
         type: CompilerRequestType[request.type]
       });
 
-      // This will recursively analyse all the code for other imports,
-      // requesting those from the privileged side, populating the in memory
-      // cache which will be used by the host, before resolving.
-      const resolvedRootModules = await processImports(
-        rootNames.map(rootName => [rootName, rootName])
-      );
-
       // When a programme is emitted, TypeScript will call `writeFile` with
       // each file that needs to be emitted.  The Deno compiler host delegates
       // this, to make it easier to perform the right actions, which vary
@@ -143,6 +133,15 @@ async function tsCompilerOnMessage({
         const configResult = host.configure(configPath, config);
         diagnostics = processConfigureResponse(configResult, configPath);
       }
+
+      // This will recursively analyse all the code for other imports,
+      // requesting those from the privileged side, populating the in memory
+      // cache which will be used by the host, before resolving.
+      const resolvedRootModules = await processImports(
+        rootNames.map(rootName => [rootName, rootName]),
+        undefined,
+        host.getCompilationSettings().checkJs
+      );
 
       let emitSkipped = true;
       // if there was a configuration and no diagnostics with it, we will continue
@@ -255,7 +254,9 @@ async function tsCompilerOnMessage({
 
       assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
       const result = [
-        diagnostics.length ? fromTypeScriptDiagnostic(diagnostics) : undefined,
+        diagnostics.length
+          ? fromTypeScriptDiagnostic(diagnostics).items
+          : undefined,
         bundle ? state.emitBundle : state.emitMap
       ];
       globalThis.postMessage(result);
@@ -304,7 +305,7 @@ async function tsCompilerOnMessage({
   }
 
   // The compiler isolate exits after a single message.
-  globalThis.workerClose();
+  globalThis.close();
 }
 
 async function wasmCompilerOnMessage({
@@ -332,19 +333,17 @@ async function wasmCompilerOnMessage({
   util.log("<<< WASM compile end");
 
   // The compiler isolate exits after a single message.
-  globalThis.workerClose();
+  globalThis.close();
 }
 
 function bootstrapTsCompilerRuntime(): void {
   bootstrapWorkerRuntime("TS");
   globalThis.onmessage = tsCompilerOnMessage;
-  runWorkerMessageLoop();
 }
 
 function bootstrapWasmCompilerRuntime(): void {
   bootstrapWorkerRuntime("WASM");
   globalThis.onmessage = wasmCompilerOnMessage;
-  runWorkerMessageLoop();
 }
 
 Object.defineProperties(globalThis, {

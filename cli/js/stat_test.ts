@@ -12,7 +12,7 @@ testPerm({ read: true }, async function statSyncSuccess(): Promise<void> {
   assert(modulesInfo.isDirectory());
   assert(!modulesInfo.isSymlink());
 
-  const testsInfo = Deno.statSync("tests");
+  const testsInfo = Deno.statSync("cli/tests");
   assert(testsInfo.isDirectory());
   assert(!testsInfo.isSymlink());
 });
@@ -96,7 +96,7 @@ testPerm({ read: true }, async function statSuccess(): Promise<void> {
   assert(modulesInfo.isDirectory());
   assert(!modulesInfo.isSymlink());
 
-  const i = await Deno.stat("tests");
+  const i = await Deno.stat("cli/tests");
   assert(i.isDirectory());
   assert(!i.isSymlink());
 });
@@ -210,7 +210,7 @@ if (isWindows) {
       const s = Deno.statSync(filename);
       assert(s.dev !== null);
       assert(s.ino !== null);
-      assertEquals(s.mode & 0o666, 0o666);
+      assertEquals(s.mode! & 0o666, 0o666);
       assertEquals(s.nlink, 2);
       assert(s.uid !== null);
       assert(s.gid !== null);

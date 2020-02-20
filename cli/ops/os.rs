@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::ops::json_op;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use atty;
 use deno_core::*;
 use std::collections::HashMap;
@@ -10,7 +10,7 @@ use std::io::{Error, ErrorKind};
 use sys_info;
 use url::Url;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("exit", s.core_op(json_op(s.stateful_op(op_exit))));
   i.register_op("is_tty", s.core_op(json_op(s.stateful_op(op_is_tty))));
   i.register_op("env", s.core_op(json_op(s.stateful_op(op_env))));
@@ -27,7 +27,7 @@ struct GetDirArgs {
 }
 
 fn op_get_dir(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -73,7 +73,7 @@ fn op_get_dir(
 }
 
 fn op_exec_path(
-  state: &ThreadSafeState,
+  state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -93,7 +93,7 @@ struct SetEnv {
 }
 
 fn op_set_env(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -104,7 +104,7 @@ fn op_set_env(
 }
 
 fn op_env(
-  state: &ThreadSafeState,
+  state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -119,7 +119,7 @@ struct GetEnv {
 }
 
 fn op_get_env(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -138,7 +138,7 @@ struct Exit {
 }
 
 fn op_exit(
-  _s: &ThreadSafeState,
+  _s: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -147,7 +147,7 @@ fn op_exit(
 }
 
 fn op_is_tty(
-  _s: &ThreadSafeState,
+  _s: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -159,7 +159,7 @@ fn op_is_tty(
 }
 
 fn op_hostname(
-  state: &ThreadSafeState,
+  state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {

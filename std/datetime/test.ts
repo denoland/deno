@@ -1,9 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test } from "../testing/mod.ts";
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
 import * as datetime from "./mod.ts";
 
-test(function parseDateTime(): void {
+Deno.test(function parseDateTime(): void {
   assertEquals(
     datetime.parseDateTime("01-03-2019 16:30", "mm-dd-yyyy hh:mm"),
     new Date(2019, 0, 3, 16, 30)
@@ -30,7 +29,7 @@ test(function parseDateTime(): void {
   );
 });
 
-test(function invalidParseDateTimeFormatThrows(): void {
+Deno.test(function invalidParseDateTimeFormatThrows(): void {
   assertThrows(
     (): void => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -41,7 +40,7 @@ test(function invalidParseDateTimeFormatThrows(): void {
   );
 });
 
-test(function parseDate(): void {
+Deno.test(function parseDate(): void {
   assertEquals(
     datetime.parseDate("01-03-2019", "mm-dd-yyyy"),
     new Date(2019, 0, 3)
@@ -56,7 +55,7 @@ test(function parseDate(): void {
   );
 });
 
-test(function invalidParseDateFormatThrows(): void {
+Deno.test(function invalidParseDateFormatThrows(): void {
   assertThrows(
     (): void => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -67,17 +66,17 @@ test(function invalidParseDateFormatThrows(): void {
   );
 });
 
-test(function DayOfYear(): void {
+Deno.test(function DayOfYear(): void {
   assertEquals(1, datetime.dayOfYear(new Date("2019-01-01T03:24:00")));
   assertEquals(70, datetime.dayOfYear(new Date("2019-03-11T03:24:00")));
   assertEquals(365, datetime.dayOfYear(new Date("2019-12-31T03:24:00")));
 });
 
-test(function currentDayOfYear(): void {
+Deno.test(function currentDayOfYear(): void {
   assertEquals(datetime.currentDayOfYear(), datetime.dayOfYear(new Date()));
 });
 
-test({
+Deno.test({
   name: "[DateTime] to IMF",
   fn(): void {
     const actual = datetime.toIMF(new Date(Date.UTC(1994, 3, 5, 15, 32)));
@@ -86,7 +85,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[DateTime] to IMF 0",
   fn(): void {
     const actual = datetime.toIMF(new Date(0));

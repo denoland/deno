@@ -1,6 +1,5 @@
 // Test ported from Golang
 // https://github.com/golang/go/blob/2cc15b1/src/encoding/csv/reader_test.go
-import { test, runIfMain } from "../testing/mod.ts";
 import { assertEquals, assert } from "../testing/asserts.ts";
 import { readMatrix, parse } from "./csv.ts";
 import { StringReader } from "../io/readers.ts";
@@ -450,7 +449,7 @@ x,,,
   }
 ];
 for (const t of testCases) {
-  test({
+  Deno.test({
     name: `[CSV] ${t.Name}`,
     async fn(): Promise<void> {
       let comma = ",";
@@ -477,26 +476,32 @@ for (const t of testCases) {
       if (t.Error) {
         let err;
         try {
-          actual = await readMatrix(new BufReader(new StringReader(t.Input!)), {
-            comma: comma,
-            comment: comment,
-            trimLeadingSpace: trim,
-            fieldsPerRecord: fieldsPerRec,
-            lazyQuotes: lazyquote
-          });
+          actual = await readMatrix(
+            new BufReader(new StringReader(t.Input ?? "")),
+            {
+              comma: comma,
+              comment: comment,
+              trimLeadingSpace: trim,
+              fieldsPerRecord: fieldsPerRec,
+              lazyQuotes: lazyquote
+            }
+          );
         } catch (e) {
           err = e;
         }
         assert(err);
         assertEquals(err.message, t.Error);
       } else {
-        actual = await readMatrix(new BufReader(new StringReader(t.Input!)), {
-          comma: comma,
-          comment: comment,
-          trimLeadingSpace: trim,
-          fieldsPerRecord: fieldsPerRec,
-          lazyQuotes: lazyquote
-        });
+        actual = await readMatrix(
+          new BufReader(new StringReader(t.Input ?? "")),
+          {
+            comma: comma,
+            comment: comment,
+            trimLeadingSpace: trim,
+            fieldsPerRecord: fieldsPerRec,
+            lazyQuotes: lazyquote
+          }
+        );
         const expected = t.Output;
         assertEquals(actual, expected);
       }
@@ -605,7 +610,7 @@ const parseTestCases = [
 ];
 
 for (const testCase of parseTestCases) {
-  test({
+  Deno.test({
     name: `[CSV] Parse ${testCase.name}`,
     async fn(): Promise<void> {
       const r = await parse(testCase.in, {
@@ -616,5 +621,3 @@ for (const testCase of parseTestCases) {
     }
   });
 }
-
-runIfMain(import.meta);

@@ -120,7 +120,8 @@ function getMediaType(filename: string): MediaType {
 export function processLocalImports(
   sources: Record<string, string>,
   specifiers: Array<[string, string]>,
-  referrer?: string
+  referrer?: string,
+  checkJs = false
 ): string[] {
   if (!specifiers.length) {
     return [];
@@ -143,7 +144,12 @@ export function processLocalImports(
       });
     sourceFile.cache(specifiers[i][0], referrer);
     if (!sourceFile.processed) {
-      processLocalImports(sources, sourceFile.imports(), sourceFile.url);
+      processLocalImports(
+        sources,
+        sourceFile.imports(checkJs),
+        sourceFile.url,
+        checkJs
+      );
     }
   }
   return moduleNames;
@@ -157,7 +163,8 @@ export function processLocalImports(
  * that should be actually resolved. */
 export async function processImports(
   specifiers: Array<[string, string]>,
-  referrer?: string
+  referrer?: string,
+  checkJs = false
 ): Promise<string[]> {
   if (!specifiers.length) {
     return [];
@@ -172,7 +179,11 @@ export async function processImports(
       SourceFile.get(sourceFileJson.url) || new SourceFile(sourceFileJson);
     sourceFile.cache(specifiers[i][0], referrer);
     if (!sourceFile.processed) {
-      await processImports(sourceFile.imports(), sourceFile.url);
+      await processImports(
+        sourceFile.imports(checkJs),
+        sourceFile.url,
+        checkJs
+      );
     }
   }
   return resolvedSources;

@@ -135,28 +135,14 @@ export async function copy(dst: Writer, src: Reader): Promise<number> {
  */
 export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array> {
   const b = new Uint8Array(1024);
-  // Keep track if end-of-file has been reached, then
-  // signal that iterator is done during subsequent next()
-  // call. This is required because `r` can return a `number | EOF`
-  // with data read and EOF reached. But if iterator returns
-  // `done` then `value` is discarded.
-  //
-  // See https://github.com/denoland/deno/issues/2330 for reference.
-  let sawEof = false;
-
   return {
     [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
       return this;
     },
 
     async next(): Promise<IteratorResult<Uint8Array>> {
-      if (sawEof) {
-        return { value: new Uint8Array(), done: true };
-      }
-
       const result = await r.read(b);
       if (result === EOF) {
-        sawEof = true;
         return { value: new Uint8Array(), done: true };
       }
 

@@ -7,7 +7,6 @@
 // tests by the special string. permW1N0 means allow-write but not allow-net.
 // See tools/unit_tests.py for more details.
 
-import * as testing from "../../std/testing/mod.ts";
 import { assert, assertEquals } from "../../std/testing/asserts.ts";
 export {
   assert,
@@ -17,7 +16,8 @@ export {
   assertNotEquals,
   assertStrictEq,
   assertStrContains,
-  unreachable
+  unreachable,
+  fail
 } from "../../std/testing/asserts.ts";
 
 interface TestPermissions {
@@ -62,7 +62,10 @@ function permissionsMatch(
   requiredPerms: Permissions
 ): boolean {
   for (const permName in processPerms) {
-    if (processPerms[permName] !== requiredPerms[permName]) {
+    if (
+      processPerms[permName as keyof Permissions] !==
+      requiredPerms[permName as keyof Permissions]
+    ) {
       return false;
     }
   }
@@ -102,10 +105,7 @@ function normalizeTestPermissions(perms: TestPermissions): Permissions {
   };
 }
 
-export function testPerm(
-  perms: TestPermissions,
-  fn: testing.TestFunction
-): void {
+export function testPerm(perms: TestPermissions, fn: Deno.TestFunction): void {
   const normalizedPerms = normalizeTestPermissions(perms);
 
   registerPermCombination(normalizedPerms);
@@ -114,10 +114,10 @@ export function testPerm(
     return;
   }
 
-  testing.test(fn);
+  Deno.test(fn);
 }
 
-export function test(fn: testing.TestFunction): void {
+export function test(fn: Deno.TestFunction): void {
   testPerm(
     {
       read: false,
@@ -295,3 +295,35 @@ testPerm({ read: true }, async function parsingUnitTestOutput(): Promise<void> {
   assertEquals(result.actual, undefined);
   assertEquals(result.expected, undefined);
 });
+
+/*
+ * Ensure all unit test files (e.g. xxx_test.ts) are present as imports in
+ * cli/js/unit_tests.ts as it is easy to miss this out
+ */
+testPerm(
+  { read: true },
+  async function assertAllUnitTestFilesImported(): Promise<void> {
+    const directoryTestFiles = Deno.readDirSync("./cli/js")
+      .map(k => k.name)
+      .filter(file => file!.endsWith("_test.ts"));
+    const unitTestsFile: Uint8Array = Deno.readFileSync(
+      "./cli/js/unit_tests.ts"
+    );
+    const importLines = new TextDecoder("utf-8")
+      .decode(unitTestsFile)
+      .split("\n")
+      .filter(line => line.startsWith("import") && line.includes("_test.ts"));
+    const importedTestFiles = importLines.map(
+      relativeFilePath => relativeFilePath.match(/\/([^\/]+)";/)![1]
+    );
+
+    directoryTestFiles.forEach(dirFile => {
+      if (!importedTestFiles.includes(dirFile!)) {
+        throw new Error(
+          "cil/js/unit_tests.ts is missing import of test file: cli/js/" +
+            dirFile
+        );
+      }
+    });
+  }
+);

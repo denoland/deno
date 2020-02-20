@@ -1,50 +1,35 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::deno_error::bad_resource;
-use crate::deno_error::js_check;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::deno_error::GetErrorKind;
 use crate::fmt_errors::JSError;
+use crate::futures::SinkExt;
+use crate::global_state::GlobalState;
 use crate::ops::json_op;
+use crate::permissions::DenoPermissions;
 use crate::startup_data;
-use crate::state::ThreadSafeState;
+use crate::state::State;
+use crate::tokio_util::create_basic_runtime;
 use crate::web_worker::WebWorker;
+use crate::worker::WorkerEvent;
+use crate::worker::WorkerHandle;
 use deno_core::*;
 use futures;
-use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
-use futures::sink::SinkExt;
-use futures::stream::StreamExt;
 use std;
 use std::convert::From;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::atomic::Ordering;
-use std::task::Context;
-use std::task::Poll;
+use std::thread::JoinHandle;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "create_worker",
     s.core_op(json_op(s.stateful_op(op_create_worker))),
   );
   i.register_op(
-    "host_get_worker_loaded",
-    s.core_op(json_op(s.stateful_op(op_host_get_worker_loaded))),
-  );
-  i.register_op(
-    "host_poll_worker",
-    s.core_op(json_op(s.stateful_op(op_host_poll_worker))),
-  );
-  i.register_op(
-    "host_close_worker",
-    s.core_op(json_op(s.stateful_op(op_host_close_worker))),
-  );
-  i.register_op(
-    "host_resume_worker",
-    s.core_op(json_op(s.stateful_op(op_host_resume_worker))),
+    "host_terminate_worker",
+    s.core_op(json_op(s.stateful_op(op_host_terminate_worker))),
   );
   i.register_op(
     "host_post_message",
@@ -54,12 +39,105 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
     "host_get_message",
     s.core_op(json_op(s.stateful_op(op_host_get_message))),
   );
-  i.register_op("metrics", s.core_op(json_op(s.stateful_op(op_metrics))));
+}
+
+fn create_web_worker(
+  name: String,
+  global_state: GlobalState,
+  permissions: DenoPermissions,
+  specifier: ModuleSpecifier,
+) -> Result<WebWorker, ErrBox> {
+  let state =
+    State::new_for_worker(global_state, Some(permissions), specifier)?;
+
+  let mut worker =
+    WebWorker::new(name.to_string(), startup_data::deno_isolate_init(), state);
+  let script = format!("bootstrapWorkerRuntime(\"{}\")", name);
+  worker.execute(&script)?;
+
+  Ok(worker)
+}
+
+// TODO(bartlomieju): check if order of actions is aligned to Worker spec
+fn run_worker_thread(
+  name: String,
+  global_state: GlobalState,
+  permissions: DenoPermissions,
+  specifier: ModuleSpecifier,
+  has_source_code: bool,
+  source_code: String,
+) -> Result<(JoinHandle<()>, WorkerHandle), ErrBox> {
+  let (handle_sender, handle_receiver) =
+    std::sync::mpsc::sync_channel::<Result<WorkerHandle, ErrBox>>(1);
+
+  let builder =
+    std::thread::Builder::new().name(format!("deno-worker-{}", name));
+  let join_handle = builder.spawn(move || {
+    // Any error inside this block is terminal:
+    // - JS worker is useless - meaning it throws an exception and can't do anything else,
+    //  all action done upon it should be noops
+    // - newly spawned thread exits
+    let result =
+      create_web_worker(name, global_state, permissions, specifier.clone());
+
+    if let Err(err) = result {
+      handle_sender.send(Err(err)).unwrap();
+      return;
+    }
+
+    let mut worker = result.unwrap();
+    // Send thread safe handle to newly created worker to host thread
+    handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
+    drop(handle_sender);
+
+    // At this point the only method of communication with host
+    // is using `worker.internal_channels`.
+    //
+    // Host can already push messages and interact with worker.
+    //
+    // Next steps:
+    // - create tokio runtime
+    // - load provided module or code
+    // - start driving worker's event loop
+
+    let mut rt = create_basic_runtime();
+
+    // TODO: run with using select with terminate
+
+    // Execute provided source code immediately
+    let result = if has_source_code {
+      worker.execute(&source_code)
+    } else {
+      // TODO(bartlomieju): add "type": "classic", ie. ability to load
+      // script instead of module
+      let load_future = worker.execute_module(&specifier).boxed_local();
+
+      rt.block_on(load_future)
+    };
+
+    if let Err(e) = result {
+      let mut sender = worker.internal_channels.sender.clone();
+      futures::executor::block_on(sender.send(WorkerEvent::Error(e)))
+        .expect("Failed to post message to host");
+
+      // Failure to execute script is a terminal error, bye, bye.
+      return;
+    }
+
+    // TODO(bartlomieju): this thread should return result of event loop
+    // that means that we should store JoinHandle to thread to ensure
+    // that it actually terminates.
+    rt.block_on(worker).expect("Panic in event loop");
+  })?;
+
+  let worker_handle = handle_receiver.recv().unwrap()?;
+  Ok((join_handle, worker_handle))
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateWorkerArgs {
+  name: Option<String>,
   specifier: String,
   has_source_code: bool,
   source_code: String,
@@ -67,116 +145,48 @@ struct CreateWorkerArgs {
 
 /// Create worker as the host
 fn op_create_worker(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
-  let specifier = args.specifier.as_ref();
+  let specifier = args.specifier.clone();
   let has_source_code = args.has_source_code;
-  let source_code = args.source_code;
-
+  let source_code = args.source_code.clone();
+  let args_name = args.name;
   let parent_state = state.clone();
+  let state = state.borrow();
+  let global_state = state.global_state.clone();
+  let permissions = state.permissions.clone();
+  let referrer = state.main_module.to_string();
+  drop(state);
 
-  // TODO(bartlomieju): Isn't this wrong?
-  let mut module_specifier = ModuleSpecifier::resolve_url_or_path(specifier)?;
-  if !has_source_code {
-    if let Some(referrer) = parent_state.main_module.as_ref() {
-      let referrer = referrer.clone().to_string();
-      module_specifier = ModuleSpecifier::resolve_import(specifier, &referrer)?;
-    }
-  }
+  let module_specifier =
+    ModuleSpecifier::resolve_import(&specifier, &referrer)?;
+  let worker_name = args_name.unwrap_or_else(|| {
+    // TODO(bartlomieju): change it to something more descriptive
+    format!("USER-WORKER-{}", specifier)
+  });
 
-  let (int, ext) = ThreadSafeState::create_channels();
-  let child_state = ThreadSafeState::new(
-    state.global_state.clone(),
-    Some(parent_state.permissions.clone()), // by default share with parent
-    Some(module_specifier.clone()),
-    int,
+  let (join_handle, worker_handle) = run_worker_thread(
+    worker_name,
+    global_state,
+    permissions,
+    module_specifier,
+    has_source_code,
+    source_code,
   )?;
-  // TODO: add a new option to make child worker not sharing permissions
-  // with parent (aka .clone(), requests from child won't reflect in parent)
-  // TODO(bartlomieju): get it from "name" argument when creating worker
-  let name = format!("USER-WORKER-{}", specifier);
-  let mut worker = WebWorker::new(
-    name.to_string(),
-    startup_data::deno_isolate_init(),
-    child_state,
-    ext,
-  );
-  let script = format!("bootstrapWorkerRuntime(\"{}\")", name);
-  js_check(worker.execute(&script));
-  js_check(worker.execute("runWorkerMessageLoop()"));
+  // At this point all interactions with worker happen using thread
+  // safe handler returned from previous function call
+  let mut parent_state = parent_state.borrow_mut();
+  let worker_id = parent_state.next_worker_id;
+  parent_state.next_worker_id += 1;
+  parent_state
+    .workers
+    .insert(worker_id, (join_handle, worker_handle));
 
-  let worker_id = parent_state.add_child_worker(worker.clone());
-
-  // Has provided source code, execute immediately.
-  if has_source_code {
-    js_check(worker.execute(&source_code));
-    return Ok(JsonOp::Sync(json!({"id": worker_id, "loaded": true})));
-  }
-
-  let (mut sender, receiver) = mpsc::channel::<Result<(), ErrBox>>(1);
-
-  // TODO(bartlomieju): this future should be spawned on the separate thread,
-  // dedicated to that worker
-  let fut = async move {
-    let result = worker
-      .execute_mod_async(&module_specifier, None, false)
-      .await;
-    sender.send(result).await.expect("Failed to send message");
-  }
-  .boxed();
-  tokio::spawn(fut);
-  let mut table = state.loading_workers.lock().unwrap();
-  table.insert(worker_id, receiver);
-  Ok(JsonOp::Sync(json!({"id": worker_id, "loaded": false})))
-}
-
-struct WorkerPollFuture {
-  state: ThreadSafeState,
-  rid: ResourceId,
-}
-
-impl Future for WorkerPollFuture {
-  type Output = Result<(), ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    let mut workers_table = inner.state.workers.lock().unwrap();
-    let maybe_worker = workers_table.get_mut(&inner.rid);
-    if maybe_worker.is_none() {
-      return Poll::Ready(Ok(()));
-    }
-    match maybe_worker.unwrap().poll_unpin(cx) {
-      Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
-      Poll::Ready(Ok(_)) => Poll::Ready(Ok(())),
-      Poll::Pending => Poll::Pending,
-    }
-  }
-}
-
-fn serialize_worker_result(result: Result<(), ErrBox>) -> Value {
-  if let Err(error) = result {
-    match error.kind() {
-      ErrorKind::JSError => {
-        let error = error.downcast::<JSError>().unwrap();
-        let exception: V8Exception = error.into();
-        json!({"error": {
-          "message": exception.message,
-          "fileName": exception.script_resource_name,
-          "lineNumber": exception.line_number,
-          "columnNumber": exception.start_column,
-        }})
-      }
-      _ => json!({"error": {
-        "message": error.to_string(),
-      }}),
-    }
-  } else {
-    json!({"ok": true})
-  }
+  Ok(JsonOp::Sync(json!({ "id": worker_id })))
 }
 
 #[derive(Deserialize)]
@@ -184,147 +194,97 @@ struct WorkerArgs {
   id: i32,
 }
 
-fn op_host_get_worker_loaded(
-  state: &ThreadSafeState,
+fn op_host_terminate_worker(
+  state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
-  let mut table = state.loading_workers.lock().unwrap();
-  let mut receiver = table.remove(&id).unwrap();
-
-  let op = async move {
-    let result = receiver.next().await.unwrap();
-    Ok(serialize_worker_result(result))
-  };
-
-  Ok(JsonOp::Async(op.boxed()))
-}
-
-fn op_host_poll_worker(
-  state: &ThreadSafeState,
-  args: Value,
-  _data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
-  let args: WorkerArgs = serde_json::from_value(args)?;
-  let id = args.id as u32;
-
-  let future = WorkerPollFuture {
-    state: state.clone(),
-    rid: id,
-  };
-
-  let op = async move {
-    let result = future.await;
-    Ok(serialize_worker_result(result))
-  };
-  Ok(JsonOp::Async(op.boxed()))
-}
-
-fn op_host_close_worker(
-  state: &ThreadSafeState,
-  args: Value,
-  _data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
-  let args: WorkerArgs = serde_json::from_value(args)?;
-  let id = args.id as u32;
-  let state_ = state.clone();
-
-  let mut workers_table = state_.workers.lock().unwrap();
-  let maybe_worker = workers_table.remove(&id);
-  if let Some(worker) = maybe_worker {
-    let channels = worker.state.worker_channels.clone();
-    let mut sender = channels.sender.clone();
-    sender.close_channel();
-
-    let mut receiver = futures::executor::block_on(channels.receiver.lock());
-    receiver.close();
-  };
-
+  let mut state = state.borrow_mut();
+  let (join_handle, worker_handle) =
+    state.workers.remove(&id).expect("No worker handle found");
+  worker_handle.terminate();
+  join_handle.join().expect("Panic in worker thread");
   Ok(JsonOp::Sync(json!({})))
 }
 
-fn op_host_resume_worker(
-  state: &ThreadSafeState,
-  args: Value,
-  _data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
-  let args: WorkerArgs = serde_json::from_value(args)?;
-  let id = args.id as u32;
-  let state_ = state.clone();
-
-  let mut workers_table = state_.workers.lock().unwrap();
-  let worker = workers_table.get_mut(&id).unwrap();
-  js_check(worker.execute("runWorkerMessageLoop()"));
-  Ok(JsonOp::Sync(json!({})))
-}
-
-#[derive(Deserialize)]
-struct HostGetMessageArgs {
-  id: i32,
+fn serialize_worker_event(event: WorkerEvent) -> Value {
+  match event {
+    WorkerEvent::Message(buf) => json!({ "type": "msg", "data": buf }),
+    WorkerEvent::Error(error) => match error.kind() {
+      ErrorKind::JSError => {
+        let error = error.downcast::<JSError>().unwrap();
+        let exception: V8Exception = error.into();
+        json!({
+          "type": "error",
+          "error": {
+            "message": exception.message,
+            "fileName": exception.script_resource_name,
+            "lineNumber": exception.line_number,
+            "columnNumber": exception.start_column,
+          }
+        })
+      }
+      _ => json!({
+        "type": "error",
+        "error": {
+          "message": error.to_string(),
+        }
+      }),
+    },
+  }
 }
 
 /// Get message from guest worker as host
 fn op_host_get_message(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: HostGetMessageArgs = serde_json::from_value(args)?;
-  let state_ = state.clone();
+  let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
-  let mut table = state_.workers.lock().unwrap();
-  // TODO: don't return bad resource anymore
-  let worker = table.get_mut(&id).ok_or_else(bad_resource)?;
-  let fut = worker.get_message();
-
-  let op = async move {
-    let maybe_buf = fut.await.unwrap();
-    Ok(json!({ "data": maybe_buf }))
+  let worker_handle = {
+    let state_ = state.borrow();
+    let (_join_handle, worker_handle) =
+      state_.workers.get(&id).expect("No worker handle found");
+    worker_handle.clone()
   };
-
-  Ok(JsonOp::Async(op.boxed()))
-}
-
-#[derive(Deserialize)]
-struct HostPostMessageArgs {
-  id: i32,
+  let state_ = state.clone();
+  let op = async move {
+    let response = match worker_handle.get_event().await {
+      Some(event) => serialize_worker_event(event),
+      None => {
+        let mut state_ = state_.borrow_mut();
+        let (join_handle, mut worker_handle) =
+          state_.workers.remove(&id).expect("No worker handle found");
+        worker_handle.sender.close_channel();
+        join_handle.join().expect("Worker thread panicked");
+        json!({ "type": "close" })
+      }
+    };
+    Ok(response)
+  };
+  Ok(JsonOp::Async(op.boxed_local()))
 }
 
 /// Post message to guest worker as host
 fn op_host_post_message(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: HostPostMessageArgs = serde_json::from_value(args)?;
+  let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let msg = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
 
   debug!("post message to worker {}", id);
-  let mut table = state.workers.lock().unwrap();
-  // TODO: don't return bad resource anymore
-  let worker = table.get_mut(&id).ok_or_else(bad_resource)?;
-  let fut = worker
+  let state = state.borrow();
+  let (_, worker_handle) =
+    state.workers.get(&id).expect("No worker handle found");
+  let fut = worker_handle
     .post_message(msg)
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()));
   futures::executor::block_on(fut)?;
   Ok(JsonOp::Sync(json!({})))
-}
-
-fn op_metrics(
-  state: &ThreadSafeState,
-  _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
-  let m = &state.metrics;
-
-  Ok(JsonOp::Sync(json!({
-    "opsDispatched": m.ops_dispatched.load(Ordering::SeqCst) as u64,
-    "opsCompleted": m.ops_completed.load(Ordering::SeqCst) as u64,
-    "bytesSentControl": m.bytes_sent_control.load(Ordering::SeqCst) as u64,
-    "bytesSentData": m.bytes_sent_data.load(Ordering::SeqCst) as u64,
-    "bytesReceived": m.bytes_received.load(Ordering::SeqCst) as u64
-  })))
 }

@@ -12,14 +12,6 @@ import { deferred, Deferred, MuxAsyncIterator } from "../util/async.ts";
 
 const encoder = new TextEncoder();
 
-function bufWriter(w: Writer): BufWriter {
-  if (w instanceof BufWriter) {
-    return w;
-  } else {
-    return new BufWriter(w);
-  }
-}
-
 export function setContentLength(r: Response): void {
   if (!r.headers) {
     r.headers = new Headers();
@@ -30,16 +22,16 @@ export function setContentLength(r: Response): void {
       // typeof r.body === "string" handled in writeResponse.
       if (r.body instanceof Uint8Array) {
         const bodyLength = r.body.byteLength;
-        r.headers.append("Content-Length", bodyLength.toString());
+        r.headers.set("content-length", bodyLength.toString());
       } else {
-        r.headers.append("Transfer-Encoding", "chunked");
+        r.headers.set("transfer-encoding", "chunked");
       }
     }
   }
 }
 
 async function writeChunkedBody(w: Writer, r: Reader): Promise<void> {
-  const writer = bufWriter(w);
+  const writer = BufWriter.create(w);
 
   for await (const chunk of toAsyncIterator(r)) {
     if (chunk.byteLength <= 0) continue;
@@ -53,13 +45,55 @@ async function writeChunkedBody(w: Writer, r: Reader): Promise<void> {
   const endChunk = encoder.encode("0\r\n\r\n");
   await writer.write(endChunk);
 }
+const kProhibitedTrailerHeaders = [
+  "transfer-encoding",
+  "content-length",
+  "trailer"
+];
+
+/** write trailer headers to writer. it mostly should be called after writeResponse */
+export async function writeTrailers(
+  w: Writer,
+  headers: Headers,
+  trailers: Headers
+): Promise<void> {
+  const trailer = headers.get("trailer");
+  if (trailer === null) {
+    throw new Error('response headers must have "trailer" header field');
+  }
+  const transferEncoding = headers.get("transfer-encoding");
+  if (transferEncoding === null || !transferEncoding.match(/^chunked/)) {
+    throw new Error(
+      `trailer headers is only allowed for "transfer-encoding: chunked": got "${transferEncoding}"`
+    );
+  }
+  const writer = BufWriter.create(w);
+  const trailerHeaderFields = trailer
+    .split(",")
+    .map(s => s.trim().toLowerCase());
+  for (const f of trailerHeaderFields) {
+    assert(
+      !kProhibitedTrailerHeaders.includes(f),
+      `"${f}" is prohibited for trailer header`
+    );
+  }
+  for (const [key, value] of trailers) {
+    assert(
+      trailerHeaderFields.includes(key),
+      `Not trailer header field: ${key}`
+    );
+    await writer.write(encoder.encode(`${key}: ${value}\r\n`));
+  }
+  await writer.write(encoder.encode("\r\n"));
+  await writer.flush();
+}
 
 export async function writeResponse(w: Writer, r: Response): Promise<void> {
   const protoMajor = 1;
   const protoMinor = 1;
   const statusCode = r.status || 200;
   const statusText = STATUS_TEXT.get(statusCode);
-  const writer = bufWriter(w);
+  const writer = BufWriter.create(w);
   if (!statusText) {
     throw Error("bad status code");
   }
@@ -73,9 +107,10 @@ export async function writeResponse(w: Writer, r: Response): Promise<void> {
   let out = `HTTP/${protoMajor}.${protoMinor} ${statusCode} ${statusText}\r\n`;
 
   setContentLength(r);
-  const headers = r.headers!;
+  assert(r.headers != null);
+  const headers = r.headers;
 
-  for (const [key, value] of headers!) {
+  for (const [key, value] of headers) {
     out += `${key}: ${value}\r\n`;
   }
   out += "\r\n";
@@ -88,11 +123,17 @@ export async function writeResponse(w: Writer, r: Response): Promise<void> {
     const n = await writer.write(r.body);
     assert(n === r.body.byteLength);
   } else if (headers.has("content-length")) {
-    const bodyLength = parseInt(headers.get("content-length")!);
+    const contentLength = headers.get("content-length");
+    assert(contentLength != null);
+    const bodyLength = parseInt(contentLength);
     const n = await copy(writer, r.body);
     assert(n === bodyLength);
   } else {
     await writeChunkedBody(writer, r.body);
+  }
+  if (r.trailers) {
+    const t = await r.trailers();
+    await writeTrailers(writer, headers, t);
   }
   await writer.flush();
 }
@@ -129,8 +170,9 @@ export class ServerRequest {
     // undefined means not cached.
     // null means invalid or not provided.
     if (this._contentLength === undefined) {
-      if (this.headers.has("content-length")) {
-        this._contentLength = +this.headers.get("content-length")!;
+      const cl = this.headers.get("content-length");
+      if (cl) {
+        this._contentLength = parseInt(cl);
         // Convert NaN to null (as NaN harder to test)
         if (Number.isNaN(this._contentLength)) {
           this._contentLength = null;
@@ -190,12 +232,12 @@ export class ServerRequest {
       }
       yield nread;
     } else {
-      if (this.headers.has("transfer-encoding")) {
-        const transferEncodings = this.headers
-          .get("transfer-encoding")!
+      const transferEncoding = this.headers.get("transfer-encoding");
+      if (transferEncoding) {
+        const parts = transferEncoding
           .split(",")
           .map((e): string => e.trim().toLowerCase());
-        if (transferEncodings.includes("chunked")) {
+        if (parts.includes("chunked")) {
           // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
           const tp = new TextProtoReader(this.r);
           let line = await tp.readLine();
@@ -394,7 +436,7 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     const bufr = new BufReader(conn);
     const w = new BufWriter(conn);
-    let req: ServerRequest | Deno.EOF;
+    let req: ServerRequest | Deno.EOF | undefined;
     let err: Error | undefined;
 
     while (!this.closing) {
@@ -413,7 +455,7 @@ export class Server implements AsyncIterable<ServerRequest> {
 
       // Wait for the request to be processed before we accept a new request on
       // this connection.
-      const procError = await req!.done;
+      const procError = await req.done;
       if (procError) {
         // Something bad happened during response.
         // (likely other side closed during pipelined req)
@@ -422,12 +464,12 @@ export class Server implements AsyncIterable<ServerRequest> {
       }
     }
 
-    if (req! === Deno.EOF) {
+    if (req === Deno.EOF) {
       // The connection was gracefully closed.
-    } else if (err) {
+    } else if (err && req) {
       // An error was thrown while parsing request headers.
       try {
-        await writeResponse(req!.w, {
+        await writeResponse(req.w, {
           status: 400,
           body: encoder.encode(`${err.message}\r\n\r\n`)
         });
@@ -468,10 +510,8 @@ export class Server implements AsyncIterable<ServerRequest> {
   }
 }
 
-interface ServerConfig {
-  port: number;
-  hostname?: string;
-}
+/** Options for creating an HTTP server. */
+export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
 
 /**
  * Start a HTTP server
@@ -483,7 +523,7 @@ interface ServerConfig {
  *       req.respond({ body });
  *     }
  */
-export function serve(addr: string | ServerConfig): Server {
+export function serve(addr: string | HTTPOptions): Server {
   if (typeof addr === "string") {
     const [hostname, port] = addr.split(":");
     addr = { hostname, port: Number(port) };
@@ -494,7 +534,7 @@ export function serve(addr: string | ServerConfig): Server {
 }
 
 export async function listenAndServe(
-  addr: string | ServerConfig,
+  addr: string | HTTPOptions,
   handler: (req: ServerRequest) => void
 ): Promise<void> {
   const server = serve(addr);
@@ -570,4 +610,5 @@ export interface Response {
   status?: number;
   headers?: Headers;
   body?: Uint8Array | Reader | string;
+  trailers?: () => Promise<Headers> | Headers;
 }

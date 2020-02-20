@@ -6,6 +6,65 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.33.0 / 2020.02.13
+
+- feat(std/http): support trailer headers (#3938, #3989)
+- feat(std/node): Add readlink, readlinkSync (#3926)
+- feat(std/node): Event emitter node polyfill (#3944, #3959, #3960)
+- feat(deno install): add --force flag and remove yes/no prompt (#3917)
+- feat: Improve support for diagnostics from runtime compiler APIs (#3911)
+- feat: `deno fmt -` formats stdin and print to stdout (#3920)
+- feat: add std/signal (#3913)
+- feat: make testing API built-in Deno.test() (#3865, #3930, #3973)
+- fix(std/http): align serve and serveTLS APIs (#3881)
+- fix(std/http/file_server): don't crash on "%" pathname (#3953)
+- fix(std/path): Use non-capturing groups in globrex() (#3898)
+- fix(deno types): don't panic when piped to head (#3910)
+- fix(deno fmt): support top-level await (#3952)
+- fix: Correctly determine a --cached-only error (#3979)
+- fix: No longer require aligned buffer for shared queue (#3935)
+- fix: Prevent providing --allow-env flag twice (#3906)
+- fix: Remove unnecessary EOF check in Deno.toAsyncIterable (#3914)
+- fix: WASM imports loaded HTTP (#3856)
+- fix: better WebWorker API compatibility (#3828 )
+- fix: deno fmt improvements (#3988)
+- fix: make WebSocket.send() exclusive (#3885)
+- refactor: Improve `deno bundle` by using System instead of AMD (#3965)
+- refactor: Remove conditionals from installer (#3909)
+- refactor: peg workers to a single thread (#3844, #3968, #3931, #3903, #3912,
+  #3907, #3904)
+
+### v0.32.0 / 2020.02.03
+
+- BREAKING CHANGE: Replace formatter for "deno fmt", use dprint (#3820, #3824,
+  #3842)
+- BREAKING CHANGE: Remove std/prettier (#3820)
+- BREAKING CHANGE: Remove std/installer (#3843)
+- BREAKING CHANGE: Remove --current-thread flag (#3830)
+- BREAKING CHANGE: Deno.makeTempDir() checks permissions (#3810)
+- feat: deno install in Rust (#3806)
+- feat: Improve support of type definitions (#3755)
+- feat: deno fetch supports --lock-write (#3787)
+- feat: deno eval supports --v8-flags=... (#3797)
+- feat: descriptive permission errors (#3808)
+- feat: Make fetch API more standards compliant (#3667)
+- feat: deno fetch supports multiple files (#3845)
+- feat(std/node): Endianness (#3833)
+- feat(std/node): Partial os polyfill (#3821)
+- feat(std/examples): Bring back xeval (#3822)
+- feat(std/encoding): Add base32 support (#3855)
+- feat(deno_typescript): Support crate imports (#3814)
+- fix: Panic on cache miss (#3784)
+- fix: Deno.remove() to properly remove dangling symlinks (#3860)
+- refactor: Use tokio::main attribute in lib.rs (#3831)
+- refactor: Provide TS libraries for window and worker scope (#3771, #3812,
+  #3728)
+- refactor(deno_core): Error tracking and scope passing (#3783)
+- refactor(deno_core): Rename PinnedBuf to ZeroCopyBuf (#3782)
+- refactor(deno_core): Change Loader trait (#3791)
+- upgrade: Rust 1.41.0 (#3838)
+- upgrade: Rust crates (#3829)
+
 ### v0.31.0 / 2020.01.24
 
 - BREAKING CHANGE: remove support for blob: URL in Worker (#3722)
