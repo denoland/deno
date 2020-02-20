@@ -1248,7 +1248,6 @@ dependencies = [
  "libc",
  "mio",
  "mio-extras",
- "serde",
  "walkdir",
  "winapi 0.3.8",
 ]

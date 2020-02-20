@@ -1,29 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
+use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
-use crate::deno_error::{bad_resource, DenoError};
 use crate::fs as deno_fs;
 use crate::ops::dispatch_json::JsonResult;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
-use futures::channel::mpsc;
-use futures::future::FutureExt;
-use futures::stream::StreamExt;
-use notify;
-use notify::RecommendedWatcher;
-use notify::RecursiveMode;
-use notify::Watcher;
 use remove_dir_all::remove_dir_all;
 use std::convert::From;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::channel as sync_channel;
-use std::sync::Arc;
-use std::thread;
 use std::time::UNIX_EPOCH;
-use tokio::sync::Mutex as AsyncMutex;
 
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
@@ -45,14 +34,6 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("symlink", s.core_op(json_op(s.stateful_op(op_symlink))));
   i.register_op("read_link", s.core_op(json_op(s.stateful_op(op_read_link))));
   i.register_op("truncate", s.core_op(json_op(s.stateful_op(op_truncate))));
-  i.register_op(
-    "fs_watch_open",
-    s.core_op(json_op(s.stateful_op(op_fs_watch_open))),
-  );
-  i.register_op(
-    "fs_watch_poll",
-    s.core_op(json_op(s.stateful_op(op_fs_watch_poll))),
-  );
   i.register_op(
     "make_temp_dir",
     s.core_op(json_op(s.stateful_op(op_make_temp_dir))),
@@ -655,109 +636,4 @@ fn op_cwd(
   let path = std::env::current_dir()?;
   let path_str = path.into_os_string().into_string().unwrap();
   Ok(JsonOp::Sync(json!(path_str)))
-}
-
-type FsWatcherReceiver =
-  mpsc::Receiver<Result<notify::event::Event, notify::Error>>;
-
-struct FsWatcher {
-  #[allow(unused)]
-  watcher: RecommendedWatcher,
-  receiver: Arc<AsyncMutex<FsWatcherReceiver>>,
-}
-
-#[derive(Deserialize)]
-struct FsWatchOpenArgs {
-  recursive: bool,
-  paths: Vec<String>,
-}
-
-pub fn op_fs_watch_open(
-  state: &State,
-  args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
-  let args: FsWatchOpenArgs = serde_json::from_value(args)?;
-  let (mut tx, rx) =
-    mpsc::channel::<Result<notify::event::Event, notify::Error>>(100);
-  let (sync_tx, sync_rx) =
-    sync_channel::<Result<notify::event::Event, notify::Error>>();
-  // TODO(bartlomieju): this is bad, but `Watcher::new_immediate` takes `Fn` and not `FnMut`
-  // so now way to use async channel there
-  thread::spawn(move || {
-    for msg in sync_rx {
-      tx.try_send(msg).expect("Failed to pump message");
-    }
-  });
-
-  let mut watcher: RecommendedWatcher =
-    Watcher::new_immediate(move |res| sync_tx.send(res).unwrap())?;
-
-  let recursive_mode: RecursiveMode = if args.recursive {
-    RecursiveMode::Recursive
-  } else {
-    RecursiveMode::NonRecursive
-  };
-  for path in &args.paths {
-    state.check_read(&PathBuf::from(path))?;
-    watcher.watch(path, recursive_mode)?;
-  }
-
-  let watcher_resource = FsWatcher {
-    watcher,
-    receiver: Arc::new(AsyncMutex::new(rx)),
-  };
-  let table = &mut state.borrow_mut().resource_table;
-  let rid = table.add("fsWatcher", Box::new(watcher_resource));
-  Ok(JsonOp::Sync(json!(rid)))
-}
-
-#[derive(Deserialize)]
-struct FsWatchPollArgs {
-  rid: i32,
-}
-
-pub fn op_fs_watch_poll(
-  state: &State,
-  args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
-  let args: FsWatchPollArgs = serde_json::from_value(args)?;
-  let receiver_mutex = {
-    let table = &mut state.borrow_mut().resource_table;
-    let resource = table
-      .get_mut::<FsWatcher>(args.rid as u32)
-      .ok_or_else(bad_resource)?;
-    resource.receiver.clone()
-  };
-
-  let f = async move {
-    let mut receiver = receiver_mutex.lock().await;
-    if let Some(result) = receiver.next().await {
-      let event = result.map_err(ErrBox::from)?;
-
-      // TODO(ry) For now we're flattening the event structure from the notify
-      // crate to keep things simple. As users find they need more explicit
-      // events, we can improve this as long as there are tests.
-
-      use notify::EventKind;
-      let kind = match event.kind {
-        EventKind::Any => "any",
-        EventKind::Access(_) => "access",
-        EventKind::Create(_) => "create",
-        EventKind::Modify(_) => "modify",
-        EventKind::Remove(_) => "remove",
-        EventKind::Other => todo!(),
-      };
-
-      Ok(json!({
-        "paths": event.paths,
-        "kind":  kind
-      }))
-    } else {
-      Ok(json!({})) // When closed
-    }
-  };
-
-  Ok(JsonOp::Async(f.boxed()))
 }
