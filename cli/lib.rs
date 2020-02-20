@@ -108,11 +108,12 @@ fn create_main_worker(
   let state = State::new(global_state, None, main_module)?;
 
   {
-    let mut s = state.borrow_mut();
     let (stdin, stdout, stderr) = get_stdio();
-    s.resource_table.add("stdin", Box::new(stdin));
-    s.resource_table.add("stdout", Box::new(stdout));
-    s.resource_table.add("stderr", Box::new(stderr));
+    let _table = state.resource_table();
+    let mut table = _table.borrow_mut();
+    table.add("stdout", Box::new(stdout));
+    table.add("stderr", Box::new(stderr));
+    table.add("stdin", Box::new(stdin));
   }
 
   let mut worker = MainWorker::new(

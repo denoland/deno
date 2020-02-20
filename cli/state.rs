@@ -57,7 +57,7 @@ pub struct StateInner {
   pub next_worker_id: u32,
   pub start_time: Instant,
   pub seeded_rng: Option<StdRng>,
-  pub resource_table: ResourceTable,
+  pub resource_table: Rc<RefCell<ResourceTable>>,
   pub target_lib: TargetLib,
 }
 
@@ -137,6 +137,10 @@ impl State {
     move |args: Value,
           zero_copy: Option<ZeroCopyBuf>|
           -> Result<JsonOp, ErrBox> { dispatcher(&state, args, zero_copy) }
+  }
+
+  pub fn resource_table(&self) -> Rc<RefCell<ResourceTable>> {
+    self.borrow().resource_table.clone()
   }
 }
 
@@ -234,7 +238,7 @@ impl State {
       start_time: Instant::now(),
       seeded_rng,
 
-      resource_table: ResourceTable::default(),
+      resource_table: Rc::new(RefCell::new(ResourceTable::default())),
       target_lib: TargetLib::Main,
     }));
 
@@ -270,7 +274,7 @@ impl State {
       start_time: Instant::now(),
       seeded_rng,
 
-      resource_table: ResourceTable::default(),
+      resource_table: Rc::new(RefCell::new(ResourceTable::default())),
       target_lib: TargetLib::Worker,
     }));
 

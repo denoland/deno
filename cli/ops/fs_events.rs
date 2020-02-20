@@ -95,8 +95,10 @@ pub fn op_fs_events_open(
     watcher.watch(path, recursive_mode)?;
   }
   let resource = FsEventsResource { watcher, receiver };
-  let table = &mut state.borrow_mut().resource_table;
-  let rid = table.add("fsEvents", Box::new(resource));
+  let rid = state
+    .resource_table()
+    .borrow_mut()
+    .add("fsEvents", Box::new(resource));
   Ok(JsonOp::Sync(json!(rid)))
 }
 
@@ -112,8 +114,9 @@ pub fn op_fs_events_poll(
   let PollArgs { rid } = serde_json::from_value(args)?;
   let state = state.clone();
   let f = poll_fn(move |cx| {
-    let resource_table = &mut state.borrow_mut().resource_table;
-    let watcher = resource_table
+    let _table = state.resource_table();
+    let mut table = _table.borrow_mut();
+    let watcher = table
       .get_mut::<FsEventsResource>(rid)
       .ok_or_else(bad_resource)?;
     watcher

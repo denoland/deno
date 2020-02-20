@@ -66,14 +66,10 @@ pub fn op_open_plugin(
     lib,
     ops: HashMap::new(),
   };
-  let mut state_ = state.borrow_mut();
-  let rid = state_
-    .resource_table
-    .add("plugin", Box::new(plugin_resource));
-  let plugin_resource = state_
-    .resource_table
-    .get_mut::<PluginResource>(rid)
-    .unwrap();
+  let _table = state.resource_table();
+  let mut table = _table.borrow_mut();
+  let rid = table.add("plugin", Box::new(plugin_resource));
+  let plugin_resource = table.get_mut::<PluginResource>(rid).unwrap();
 
   let init_fn = *unsafe {
     plugin_resource

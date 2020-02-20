@@ -95,8 +95,7 @@ pub fn op_connect_tls(
     let dnsname =
       DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
     let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
-    let mut state = state_.borrow_mut();
-    let rid = state.resource_table.add(
+    let rid = state_.resource_table().borrow_mut().add(
       "clientTlsStream",
       Box::new(StreamResource::ClientTlsStream(Box::new(tls_stream))),
     );
@@ -270,9 +269,9 @@ fn op_listen_tls(
     waker: None,
     local_addr,
   };
-  let mut state = state.borrow_mut();
   let rid = state
-    .resource_table
+    .resource_table()
+    .borrow_mut()
     .add("tlsListener", Box::new(tls_listener_resource));
 
   Ok(JsonOp::Sync(json!({
@@ -316,9 +315,9 @@ impl Future for AcceptTls {
       panic!("poll AcceptTls after it's done");
     }
 
-    let mut state = inner.state.borrow_mut();
-    let listener_resource = state
-      .resource_table
+    let _table = inner.state.resource_table();
+    let mut table = _table.borrow_mut();
+    let listener_resource = table
       .get_mut::<TlsListenerResource>(inner.rid)
       .ok_or_else(|| {
         let e = std::io::Error::new(
@@ -366,10 +365,10 @@ fn op_accept_tls(
     let (tcp_stream, _socket_addr) = accept_tls(&state.clone(), rid).await?;
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
+    let _table = state.resource_table();
+    let mut table = _table.borrow_mut();
     let tls_acceptor = {
-      let state = state.borrow();
-      let resource = state
-        .resource_table
+      let resource = table
         .get::<TlsListenerResource>(rid)
         .ok_or_else(bad_resource)
         .expect("Can't find tls listener");
@@ -377,8 +376,7 @@ fn op_accept_tls(
     };
     let tls_stream = tls_acceptor.accept(tcp_stream).await?;
     let rid = {
-      let mut state = state.borrow_mut();
-      state.resource_table.add(
+      table.add(
         "serverTlsStream",
         Box::new(StreamResource::ServerTlsStream(Box::new(tls_stream))),
       )

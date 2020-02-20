@@ -60,9 +60,9 @@ impl Future for Accept<'_> {
       panic!("poll Accept after it's done");
     }
 
-    let mut state = inner.state.borrow_mut();
-    let listener_resource = state
-      .resource_table
+    let _table = inner.state.resource_table();
+    let mut table = _table.borrow_mut();
+    let listener_resource = table
       .get_mut::<TcpListenerResource>(inner.rid)
       .ok_or_else(|| {
         let e = std::io::Error::new(
@@ -107,9 +107,9 @@ fn op_accept(
   let rid = args.rid as u32;
   let state_ = state.clone();
   {
-    let state = state.borrow();
     state
-      .resource_table
+      .resource_table()
+      .borrow()
       .get::<TcpListenerResource>(rid)
       .ok_or_else(bad_resource)?;
   }
@@ -118,10 +118,10 @@ fn op_accept(
     let (tcp_stream, _socket_addr) = accept(&state_, rid).await?;
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
-    let mut state = state_.borrow_mut();
-    let rid = state
-      .resource_table
-      .add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
+    let _table = state_.resource_table();
+    let mut table = _table.borrow_mut();
+    let rid =
+      table.add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
     Ok(json!({
       "rid": rid,
       "localAddr": {
@@ -151,17 +151,18 @@ impl Future for Receive<'_> {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
-    let mut state = inner.state.borrow_mut();
-    let resource = state
-      .resource_table
-      .get_mut::<UdpSocketResource>(inner.rid)
-      .ok_or_else(|| {
-        let e = std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "Socket has been closed",
-        );
-        ErrBox::from(e)
-      })?;
+    let _table = inner.state.resource_table();
+    let mut table = _table.borrow_mut();
+    let resource =
+      table
+        .get_mut::<UdpSocketResource>(inner.rid)
+        .ok_or_else(|| {
+          let e = std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Socket has been closed",
+          );
+          ErrBox::from(e)
+        })?;
 
     let socket = &mut resource.socket;
 
@@ -233,11 +234,10 @@ fn op_send(
   state.check_net(&args.hostname, args.port)?;
 
   let op = async move {
-    let mut state = state_.borrow_mut();
-    let resource = state
-      .resource_table
-      .get_mut::<UdpSocketResource>(rid)
-      .ok_or_else(|| {
+    let _table = state_.resource_table();
+    let mut table = _table.borrow_mut();
+    let resource =
+      table.get_mut::<UdpSocketResource>(rid).ok_or_else(|| {
         let e = std::io::Error::new(
           std::io::ErrorKind::Other,
           "Socket has been closed",
@@ -277,9 +277,9 @@ fn op_connect(
     let tcp_stream = TcpStream::connect(&addr).await?;
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
-    let mut state = state_.borrow_mut();
-    let rid = state
-      .resource_table
+    let rid = state_
+      .resource_table()
+      .borrow_mut()
       .add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
     Ok(json!({
       "rid": rid,
@@ -321,9 +321,9 @@ fn op_shutdown(
     _ => unimplemented!(),
   };
 
-  let mut state = state.borrow_mut();
-  let resource = state
-    .resource_table
+  let _table = state.resource_table();
+  let mut table = _table.borrow_mut();
+  let resource = table
     .get_mut::<StreamResource>(rid)
     .ok_or_else(bad_resource)?;
   match resource {
@@ -404,7 +404,6 @@ fn listen_tcp(
   state: &State,
   addr: SocketAddr,
 ) -> Result<(u32, SocketAddr), ErrBox> {
-  let mut state = state.borrow_mut();
   let listener = futures::executor::block_on(TcpListener::bind(&addr))?;
   let local_addr = listener.local_addr()?;
   let listener_resource = TcpListenerResource {
@@ -413,7 +412,8 @@ fn listen_tcp(
     local_addr,
   };
   let rid = state
-    .resource_table
+    .resource_table()
+    .borrow_mut()
     .add("tcpListener", Box::new(listener_resource));
 
   Ok((rid, local_addr))
@@ -423,12 +423,12 @@ fn listen_udp(
   state: &State,
   addr: SocketAddr,
 ) -> Result<(u32, SocketAddr), ErrBox> {
-  let mut state = state.borrow_mut();
   let socket = futures::executor::block_on(UdpSocket::bind(&addr))?;
   let local_addr = socket.local_addr()?;
   let socket_resource = UdpSocketResource { socket };
   let rid = state
-    .resource_table
+    .resource_table()
+    .borrow_mut()
     .add("udpSocket", Box::new(socket_resource));
 
   Ok((rid, local_addr))

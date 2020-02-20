@@ -130,9 +130,9 @@ fn op_open(
 
   let fut = async move {
     let fs_file = open_options.open(filename).await?;
-    let mut state = state_.borrow_mut();
-    let rid = state
-      .resource_table
+    let rid = state_
+      .resource_table()
+      .borrow_mut()
       .add("fsFile", Box::new(StreamResource::FsFile(fs_file)));
     Ok(json!(rid))
   };
@@ -157,9 +157,9 @@ fn op_close(
 ) -> Result<JsonOp, ErrBox> {
   let args: CloseArgs = serde_json::from_value(args)?;
 
-  let mut state = state.borrow_mut();
   state
-    .resource_table
+    .resource_table()
+    .borrow_mut()
     .close(args.rid as u32)
     .ok_or_else(bad_resource)?;
   Ok(JsonOp::Sync(json!({})))
@@ -196,11 +196,9 @@ fn op_seek(
     }
   };
 
-  let state = state.borrow();
-  let resource = state
-    .resource_table
-    .get::<StreamResource>(rid)
-    .ok_or_else(bad_resource)?;
+  let _table = state.resource_table();
+  let table = _table.borrow();
+  let resource = table.get::<StreamResource>(rid).ok_or_else(bad_resource)?;
 
   let tokio_file = match resource {
     StreamResource::FsFile(ref file) => file,
