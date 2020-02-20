@@ -1243,7 +1243,6 @@ declare namespace Deno {
     UnexpectedEof = 18,
     BadResource = 19,
     Http = 21,
-    UnixError = 24,
     TypeError = 101,
     UrlError = 100
   }

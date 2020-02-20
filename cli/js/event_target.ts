@@ -418,6 +418,7 @@ const eventTargetHelpers = {
       try {
         listener.handleEvent(eventImpl);
       } catch (error) {
+        // TODO: remove this
         throw new DenoError(ErrorKind.Interrupted, error.message);
       }
 
