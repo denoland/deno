@@ -655,13 +655,11 @@ fn op_cwd(
 type FsWatcherReceiver =
   mpsc::Receiver<Result<notify::event::Event, notify::Error>>;
 
-#[allow(dead_code)]
 struct FsWatcher {
+  #[allow(unused)]
   watcher: RecommendedWatcher,
   receiver: Arc<AsyncMutex<FsWatcherReceiver>>,
 }
-
-impl Resource for FsWatcher {}
 
 #[derive(Deserialize)]
 struct OpenWatcherArgs {
@@ -670,9 +668,9 @@ struct OpenWatcherArgs {
 }
 
 pub fn op_watch(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: OpenWatcherArgs = serde_json::from_value(args)?;
   let (mut tx, rx) =
@@ -704,7 +702,7 @@ pub fn op_watch(
     watcher,
     receiver: Arc::new(AsyncMutex::new(rx)),
   };
-  let mut table = state.lock_resource_table();
+  let table = &mut state.borrow_mut().resource_table;
   let rid = table.add("fsWatcher", Box::new(watcher_resource));
   Ok(JsonOp::Sync(json!(rid)))
 }
@@ -715,13 +713,13 @@ struct PollWatcherArgs {
 }
 
 pub fn op_fs_poll_watcher(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: PollWatcherArgs = serde_json::from_value(args)?;
   let receiver_mutex = {
-    let mut table = state.lock_resource_table();
+    let table = &mut state.borrow_mut().resource_table;
     let resource = table
       .get_mut::<FsWatcher>(args.rid as u32)
       .ok_or_else(bad_resource)?;
