@@ -43,6 +43,7 @@ export {
   OpenOptions,
   OpenMode
 } from "./files.ts";
+export { formatDiagnostics } from "./format_error.ts";
 export { FsEvent, fsEvents } from "./fs_events.ts";
 export {
   EOF,

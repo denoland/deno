@@ -1,11 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { setColorEnabled } from "./colors.ts";
-import { formatDiagnostic } from "./diagnostics.ts";
-import { assertEquals } from "../testing/asserts.ts";
 
-const { test } = Deno;
+import { assertEquals, test } from "./test_util.ts";
 
-const fixture_01: Deno.DiagnosticItem[] = [
+const { formatDiagnostics } = Deno;
+
+const fixture01: Deno.DiagnosticItem[] = [
   {
     message: "Example error",
     category: Deno.DiagnosticCategory.Error,
@@ -18,15 +17,15 @@ const fixture_01: Deno.DiagnosticItem[] = [
   }
 ];
 
-const expected_01 = `error TS4000: Example error
+const expected01 = `[1;31merror[0m[1m TS4000[0m: Example error
 
-► foo.ts:1001:2
+► [38;5;14mfoo.ts[0m:[38;5;11m1001[0m:[38;5;11m2[0m
 
-1001 abcdefghijklmnopqrstuv
-      ^
+[47;30m1001[0m abcdefghijklmnopqrstuv
+[47;30m    [0m [31m ^[0m
 `;
 
-const fixture_02: Deno.DiagnosticItem[] = [
+const fixture02: Deno.DiagnosticItem[] = [
   {
     message: "Example error",
     category: Deno.DiagnosticCategory.Error,
@@ -39,15 +38,15 @@ const fixture_02: Deno.DiagnosticItem[] = [
   }
 ];
 
-const expected_02 = `error TS4000: Example error
+const expected02 = `[1;31merror[0m[1m TS4000[0m: Example error
 
-► foo.ts:1001:2
+► [38;5;14mfoo.ts[0m:[38;5;11m1001[0m:[38;5;11m2[0m
 
-1001 abcdefghijklmnopqrstuv
-      ~~~~
+[47;30m1001[0m abcdefghijklmnopqrstuv
+[47;30m    [0m [31m ~~~~[0m
 `;
 
-const fixture_03: Deno.DiagnosticItem[] = [
+const fixture03: Deno.DiagnosticItem[] = [
   {
     message: "Example error",
     messageChain: {
@@ -84,18 +83,18 @@ const fixture_03: Deno.DiagnosticItem[] = [
   }
 ];
 
-const expected_03 = `error TS4000: First level
+const expected03 = `[1;31merror[0m[1m TS4000[0m: First level
   Level 2 01
   Level 2 02
     Level 3 01
 
-► foo.ts:1001:2
+► [38;5;14mfoo.ts[0m:[38;5;11m1001[0m:[38;5;11m2[0m
 
-1001 abcdefghijklmnopqrstuv
-      ~~~~
+[47;30m1001[0m abcdefghijklmnopqrstuv
+[47;30m    [0m [31m ~~~~[0m
 `;
 
-const fixture_04: Deno.DiagnosticItem[] = [
+const fixture04: Deno.DiagnosticItem[] = [
   {
     message: "Example error",
     relatedInformation: [
@@ -120,23 +119,23 @@ const fixture_04: Deno.DiagnosticItem[] = [
   }
 ];
 
-const expected_04 = `error TS4000: Example error
+const expected04 = `[1;31merror[0m[1m TS4000[0m: Example error
 
-► foo.ts:1001:2
+► [38;5;14mfoo.ts[0m:[38;5;11m1001[0m:[38;5;11m2[0m
 
-1001 abcdefghijklmnopqrstuv
-      ~~~~
+[47;30m1001[0m abcdefghijklmnopqrstuv
+[47;30m    [0m [31m ~~~~[0m
 
   Related information
 
-    ► foo.ts:100:4
+    ► [38;5;14mfoo.ts[0m:[38;5;11m100[0m:[38;5;11m4[0m
 
-    100 1234567890
-           ~~~~
+    [47;30m100[0m 1234567890
+    [47;30m   [0m [38;5;14m   ~~~~[0m
 
 `;
 
-const fixture_05: Deno.DiagnosticItem[] = [
+const fixture05: Deno.DiagnosticItem[] = [
   {
     message: "Error 001",
     category: Deno.DiagnosticCategory.Error,
@@ -179,77 +178,59 @@ const fixture_05: Deno.DiagnosticItem[] = [
   }
 ];
 
-const expected_05 = `error TS4000: Error 001
+const expected05 = `[1;31merror[0m[1m TS4000[0m: Error 001
 
-► foo.ts:1001:2
+► [38;5;14mfoo.ts[0m:[38;5;11m1001[0m:[38;5;11m2[0m
 
-1001 abcdefghijklmnopqrstuv
-      ~~~~
-error TS4001: Error 002
+[47;30m1001[0m abcdefghijklmnopqrstuv
+[47;30m    [0m [31m ~~~~[0m
 
-► foo.ts:1001:2
+[1;31merror[0m[1m TS4001[0m: Error 002
 
-1001 abcdefghijklmnopqrstuv
-      ~~~~
-error TS4002: Error 003
+► [38;5;14mfoo.ts[0m:[38;5;11m1001[0m:[38;5;11m2[0m
 
-► foo.ts:1001:2
+[47;30m1001[0m abcdefghijklmnopqrstuv
+[47;30m    [0m [31m ~~~~[0m
 
-1001 abcdefghijklmnopqrstuv
-      ~~~~
-error TS4003: Error 004
+[1;31merror[0m[1m TS4002[0m: Error 003
 
-► foo.ts:1001:2
+► [38;5;14mfoo.ts[0m:[38;5;11m1001[0m:[38;5;11m2[0m
 
-1001 abcdefghijklmnopqrstuv
-      ~~~~
+[47;30m1001[0m abcdefghijklmnopqrstuv
+[47;30m    [0m [31m ~~~~[0m
+
+[1;31merror[0m[1m TS4003[0m: Error 004
+
+► [38;5;14mfoo.ts[0m:[38;5;11m1001[0m:[38;5;11m2[0m
+
+[47;30m1001[0m abcdefghijklmnopqrstuv
+[47;30m    [0m [31m ~~~~[0m
+
+
+Found 4 errors.
 `;
 
-const expected_05_limit = `error TS4000: Error 001
-
-► foo.ts:1001:2
-
-1001 abcdefghijklmnopqrstuv
-      ~~~~
-error TS4001: Error 002
-
-► foo.ts:1001:2
-
-1001 abcdefghijklmnopqrstuv
-      ~~~~
-
-
-Additional 2 item(s) found.
-`;
-
-setColorEnabled(false);
-
-test(function diagnosticsBasic() {
-  const actual = formatDiagnostic(fixture_01);
-  assertEquals(actual, expected_01);
+test(function formatDiagnosticBasic() {
+  const actual = formatDiagnostics(fixture01);
+  assertEquals(actual, expected01);
 });
 
-test(function diagnosticsColumnSpan() {
-  const actual = formatDiagnostic(fixture_02);
-  assertEquals(actual, expected_02);
+test(function formatDiagnosticColSpan() {
+  const actual = formatDiagnostics(fixture02);
+  assertEquals(actual, expected02);
 });
 
-test(function diagnosticsMessageChain() {
-  const actual = formatDiagnostic(fixture_03);
-  assertEquals(actual, expected_03);
+test(function formatDiagnosticMessageChain() {
+  const actual = formatDiagnostics(fixture03);
+  assertEquals(actual, expected03);
 });
 
-test(function diagnosticsRelatedInfo() {
-  const actual = formatDiagnostic(fixture_04);
-  assertEquals(actual, expected_04);
+test(function formatDiagnosticRelatedInfo() {
+  const actual = formatDiagnostics(fixture04);
+  assertEquals(actual, expected04);
 });
 
-test(function diagnosticsMultiple() {
-  const actual = formatDiagnostic(fixture_05);
-  assertEquals(actual, expected_05);
-});
-
-test(function diagnosticsLimit() {
-  const actual = formatDiagnostic(fixture_05, { limit: 2 });
-  assertEquals(actual, expected_05_limit);
+test(function formatDiagnosticRelatedInfo() {
+  const actual = formatDiagnostics(fixture05);
+  assertEquals(actual, expected05);
 });

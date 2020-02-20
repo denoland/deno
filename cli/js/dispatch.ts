@@ -17,6 +17,7 @@ export let OP_GET_DIR: number;
 export let OP_START: number;
 export let OP_APPLY_SOURCE_MAP: number;
 export let OP_FORMAT_ERROR: number;
+export let OP_FORMAT_DIAGNOSTIC: number;
 export let OP_CACHE: number;
 export let OP_RESOLVE_MODULES: number;
 export let OP_FETCH_ASSET: number;
