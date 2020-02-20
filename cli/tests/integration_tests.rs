@@ -290,6 +290,42 @@ fn bundle_circular() {
   assert_eq!(output.stderr, b"");
 }
 
+#[test]
+fn bundle_single_module() {
+  use tempfile::TempDir;
+
+  // First we have to generate a bundle of some module that has exports.
+  let single_module =
+    util::root_path().join("cli/tests/subdir/single_module.ts");
+  assert!(single_module.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("single_module.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(single_module)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--reload")
+    .arg(&bundle)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the the bundle program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello world!"));
+  assert_eq!(output.stderr, b"");
+}
+
 // TODO(#2933): Rewrite this test in rust.
 #[test]
 fn repl_test() {
