@@ -194,8 +194,7 @@ impl Drop for Isolate {
     let isolate = self.v8_isolate.take().unwrap();
     // Clear persistent handles we own.
     {
-      let mut locker = v8::Locker::new(&isolate);
-      let mut hs = v8::HandleScope::new(locker.enter());
+      let mut hs = v8::HandleScope::new2(&isolate);
       let scope = hs.enter();
       // </Boilerplate>
       self.global_context.reset(scope);
@@ -274,10 +273,7 @@ impl Isolate {
       let isolate = unsafe { creator.get_owned_isolate() };
       let isolate = Isolate::setup_isolate(isolate);
 
-      let mut locker = v8::Locker::new(&isolate);
-      let scope = locker.enter();
-
-      let mut hs = v8::HandleScope::new(scope);
+      let mut hs = v8::HandleScope::new2(&isolate);
       let scope = hs.enter();
 
       let context = bindings::initialize_context(scope);
@@ -296,10 +292,7 @@ impl Isolate {
       let isolate = v8::Isolate::new(params);
       let isolate = Isolate::setup_isolate(isolate);
 
-      let mut locker = v8::Locker::new(&isolate);
-      let scope = locker.enter();
-
-      let mut hs = v8::HandleScope::new(scope);
+      let mut hs = v8::HandleScope::new2(&isolate);
       let scope = hs.enter();
 
       let context = match load_snapshot {
@@ -364,7 +357,7 @@ impl Isolate {
 
   pub fn exception_to_err_result<'a, T>(
     &mut self,
-    scope: &mut (impl v8::ToLocal<'a> + v8::InContext),
+    scope: &mut impl v8::ToLocal<'a>,
     exception: v8::Local<v8::Value>,
   ) -> Result<T, ErrBox> {
     self.handle_exception(scope, exception);
@@ -373,7 +366,7 @@ impl Isolate {
 
   pub fn handle_exception<'a>(
     &mut self,
-    scope: &mut (impl v8::ToLocal<'a> + v8::InContext),
+    scope: &mut impl v8::ToLocal<'a>,
     exception: v8::Local<v8::Value>,
   ) {
     // Use a HandleScope because the  functions below create a lot of
@@ -381,13 +374,15 @@ impl Isolate {
     let mut hs = v8::HandleScope::new(scope);
     let scope = hs.enter();
 
-    let is_terminating_exception = scope.isolate().is_execution_terminating();
+    let handle = scope.isolate().thread_safe_handle();
+
+    let is_terminating_exception = handle.is_execution_terminating();
     let mut exception = exception;
 
     if is_terminating_exception {
       // TerminateExecution was called. Cancel exception termination so that the
       // exception can be created..
-      scope.isolate().cancel_terminate_execution();
+      handle.cancel_terminate_execution();
 
       // Maybe make a new exception object.
       if exception.is_null_or_undefined() {
@@ -403,16 +398,16 @@ impl Isolate {
 
     if is_terminating_exception {
       // Re-enable exception termination.
-      scope.isolate().terminate_execution();
+      handle.terminate_execution();
     }
   }
 
   pub fn encode_message_as_json<'a>(
     &mut self,
-    scope: &mut (impl v8::ToLocal<'a> + v8::InContext),
+    scope: &mut impl v8::ToLocal<'a>,
     message: v8::Local<v8::Message>,
   ) -> String {
-    let context = scope.isolate().get_current_context();
+    let context = scope.get_current_context().unwrap();
     let json_obj = bindings::encode_message_as_object(scope, message);
     let json_string = v8::json::stringify(context, json_obj.into()).unwrap();
     json_string.to_rust_string_lossy(scope)
@@ -441,10 +436,8 @@ impl Isolate {
   }
 
   /// Get a thread safe handle on the isolate.
-  pub fn shared_isolate_handle(&mut self) -> IsolateHandle {
-    IsolateHandle {
-      shared_isolate: self.shared_isolate_handle.clone(),
-    }
+  pub fn shared_isolate_handle(&mut self) -> v8::IsolateHandle {
+    self.v8_isolate.as_mut().unwrap().thread_safe_handle()
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
@@ -463,7 +456,7 @@ impl Isolate {
 
   pub fn dispatch_op<'s>(
     &mut self,
-    scope: &mut (impl v8::ToLocal<'s> + v8::InContext),
+    scope: &mut impl v8::ToLocal<'s>,
     op_id: OpId,
     control_buf: &[u8],
     zero_copy_buf: Option<ZeroCopyBuf>,
@@ -517,9 +510,8 @@ impl Isolate {
     self.shared_init();
 
     let isolate = self.v8_isolate.as_ref().unwrap();
-    let mut locker = v8::Locker::new(isolate);
     assert!(!self.global_context.is_empty());
-    let mut hs = v8::HandleScope::new(locker.enter());
+    let mut hs = v8::HandleScope::new2(isolate);
     let scope = hs.enter();
     let context = self.global_context.get(scope).unwrap();
     let mut cs = v8::ContextScope::new(scope, context);
@@ -566,7 +558,7 @@ impl Isolate {
 
   fn check_promise_exceptions<'s>(
     &mut self,
-    scope: &mut (impl v8::ToLocal<'s> + v8::InContext),
+    scope: &mut impl v8::ToLocal<'s>,
   ) -> Result<(), ErrBox> {
     if let Some(&key) = self.pending_promise_exceptions.keys().next() {
       let mut handle = self.pending_promise_exceptions.remove(&key).unwrap();
@@ -580,10 +572,10 @@ impl Isolate {
 
   fn async_op_response<'s>(
     &mut self,
-    scope: &mut (impl v8::ToLocal<'s> + v8::InContext),
+    scope: &mut impl v8::ToLocal<'s>,
     maybe_buf: Option<(OpId, Box<[u8]>)>,
   ) -> Result<(), ErrBox> {
-    let context = scope.isolate().get_current_context();
+    let context = scope.get_current_context().unwrap();
     let global: v8::Local<v8::Value> = context.global(scope).into();
     let js_recv_cb = self
       .js_recv_cb
@@ -621,8 +613,7 @@ impl Isolate {
     assert!(self.snapshot_creator.is_some());
 
     let isolate = self.v8_isolate.as_ref().unwrap();
-    let mut locker = v8::Locker::new(isolate);
-    let mut hs = v8::HandleScope::new(locker.enter());
+    let mut hs = v8::HandleScope::new2(isolate);
     let scope = hs.enter();
     self.global_context.reset(scope);
 
@@ -643,8 +634,7 @@ impl Future for Isolate {
     inner.waker.register(cx.waker());
     inner.shared_init();
 
-    let mut locker = v8::Locker::new(&*inner.v8_isolate.as_mut().unwrap());
-    let mut hs = v8::HandleScope::new(locker.enter());
+    let mut hs = v8::HandleScope::new2(inner.v8_isolate.as_ref().unwrap());
     let scope = hs.enter();
     let context = inner.global_context.get(scope).unwrap();
     let mut cs = v8::ContextScope::new(scope, context);
@@ -698,26 +688,6 @@ impl Future for Isolate {
         inner.waker.wake();
       }
       Poll::Pending
-    }
-  }
-}
-
-/// IsolateHandle is a thread safe handle on an Isolate. It exposed thread safe V8 functions.
-#[derive(Clone)]
-pub struct IsolateHandle {
-  shared_isolate: Arc<Mutex<Option<*mut v8::Isolate>>>,
-}
-
-unsafe impl Send for IsolateHandle {}
-
-impl IsolateHandle {
-  /// Terminate the execution of any currently running javascript.
-  /// After terminating execution it is probably not wise to continue using
-  /// the isolate.
-  pub fn terminate_execution(&self) {
-    if let Some(isolate) = *self.shared_isolate.lock().unwrap() {
-      let isolate = unsafe { &mut *isolate };
-      isolate.terminate_execution();
     }
   }
 }

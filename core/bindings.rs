@@ -277,8 +277,10 @@ pub extern "C" fn message_callback(
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
 
+  let handle = scope.isolate().thread_safe_handle();
+
   // TerminateExecution was called
-  if scope.isolate().is_execution_terminating() {
+  if handle.is_execution_terminating() {
     let undefined = v8::undefined(scope).into();
     deno_isolate.handle_exception(scope, undefined);
     return;
@@ -661,7 +663,7 @@ pub fn encode_message_as_object<'a>(
   s: &mut impl v8::ToLocal<'a>,
   message: v8::Local<v8::Message>,
 ) -> v8::Local<'a, v8::Object> {
-  let context = s.isolate().get_current_context();
+  let context = s.get_current_context().unwrap();
   let json_obj = v8::Object::new(s);
 
   let exception_str = message.get(s);
