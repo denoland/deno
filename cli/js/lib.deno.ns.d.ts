@@ -1234,7 +1234,6 @@ declare namespace Deno {
     AddrNotAvailable = 8,
     BrokenPipe = 9,
     AlreadyExists = 10,
-    InvalidInput = 12,
     InvalidData = 13,
     TimedOut = 14,
     Interrupted = 15,

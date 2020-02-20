@@ -58,7 +58,6 @@ pub enum ErrorKind {
   AddrNotAvailable = 8,
   BrokenPipe = 9,
   AlreadyExists = 10,
-  InvalidInput = 12,
   InvalidData = 13,
   TimedOut = 14,
   Interrupted = 15,
@@ -132,11 +131,11 @@ pub fn permission_denied_msg(msg: String) -> ErrBox {
 }
 
 pub fn no_buffer_specified() -> ErrBox {
-  StaticError(ErrorKind::InvalidInput, "no buffer specified").into()
+  StaticError(ErrorKind::TypeError, "no buffer specified").into()
 }
 
 pub fn invalid_address_syntax() -> ErrBox {
-  StaticError(ErrorKind::InvalidInput, "invalid address syntax").into()
+  StaticError(ErrorKind::TypeError, "invalid address syntax").into()
 }
 
 pub fn other_error(msg: String) -> ErrBox {
@@ -195,7 +194,7 @@ impl GetErrorKind for io::Error {
       AddrNotAvailable => ErrorKind::AddrNotAvailable,
       BrokenPipe => ErrorKind::BrokenPipe,
       AlreadyExists => ErrorKind::AlreadyExists,
-      InvalidInput => ErrorKind::InvalidInput,
+      InvalidInput => ErrorKind::TypeError,
       InvalidData => ErrorKind::InvalidData,
       TimedOut => ErrorKind::TimedOut,
       Interrupted => ErrorKind::Interrupted,
@@ -250,8 +249,8 @@ impl GetErrorKind for serde_json::error::Error {
   fn kind(&self) -> ErrorKind {
     use serde_json::error::*;
     match self.classify() {
-      Category::Io => ErrorKind::InvalidInput,
-      Category::Syntax => ErrorKind::InvalidInput,
+      Category::Io => ErrorKind::TypeError,
+      Category::Syntax => ErrorKind::TypeError,
       Category::Data => ErrorKind::InvalidData,
       Category::Eof => ErrorKind::UnexpectedEof,
     }
@@ -269,7 +268,7 @@ mod unix {
     fn kind(&self) -> ErrorKind {
       match self {
         Sys(EPERM) => ErrorKind::PermissionDenied,
-        Sys(EINVAL) => ErrorKind::InvalidInput,
+        Sys(EINVAL) => ErrorKind::TypeError,
         Sys(ENOENT) => ErrorKind::NotFound,
         Sys(UnknownErrno) => unreachable!(),
         Sys(ESRCH) => unreachable!(),
@@ -375,7 +374,6 @@ mod unix {
         Sys(ENOTRECOVERABLE) => unreachable!(),
         Sys(EOWNERDEAD) => unreachable!(),
         Sys(EQFULL) => unreachable!(),
-        Sys(_) => unreachable!(),
         Error::InvalidPath => ErrorKind::TypeError,
         Error::InvalidUtf8 => ErrorKind::InvalidData,
         Error::UnsupportedOperation => unreachable!(),
@@ -511,7 +509,7 @@ mod tests {
   #[test]
   fn test_no_buffer_specified() {
     let err = no_buffer_specified();
-    assert_eq!(err.kind(), ErrorKind::InvalidInput);
+    assert_eq!(err.kind(), ErrorKind::TypeError);
     assert_eq!(err.to_string(), "no buffer specified");
   }
 }

@@ -370,8 +370,7 @@ if (Deno.build.os !== "win") {
     }
 
     assert(!!err);
-    assertEquals(err.kind, Deno.ErrorKind.InvalidInput);
-    assertEquals(err.name, "InvalidInput");
+    assert(err instanceof TypeError);
 
     p.close();
   });

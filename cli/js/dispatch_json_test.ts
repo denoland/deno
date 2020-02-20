@@ -31,5 +31,5 @@ test(async function malformedJsonControlBuffer(): Promise<void> {
   const resJson = JSON.parse(resText) as any;
   assert(!resJson.ok);
   assert(resJson.err);
-  assertEquals(resJson.err!.kind, Deno.ErrorKind.InvalidInput);
+  assertEquals(resJson.err!.kind, Deno.ErrorKind.TypeError);
 });

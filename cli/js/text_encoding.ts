@@ -105,8 +105,7 @@ export function atob(s: string): string {
   const rem = s.length % 4;
   if (rem === 1 || /[^+/0-9A-Za-z]/.test(s)) {
     // TODO: throw `DOMException`
-    throw new DenoError(
-      ErrorKind.InvalidInput,
+    throw new TypeError(
       "The string to be decoded is not correctly encoded"
     );
   }
@@ -130,8 +129,7 @@ export function btoa(s: string): string {
   for (let i = 0; i < s.length; i++) {
     const charCode = s[i].charCodeAt(0);
     if (charCode > 0xff) {
-      throw new DenoError(
-        ErrorKind.InvalidInput,
+      throw new TypeError(
         "The string to be encoded contains characters " +
           "outside of the Latin1 range."
       );
