@@ -23,7 +23,6 @@ function delay(ms: number): Promise<void> {
 testPerm({ read: true, write: true }, async function fsWatcherBasic(): Promise<
   void
 > {
-
   const testDir = await Deno.makeTempDir();
   const file1 = testDir + "/file1.txt";
   const file2 = testDir + "/file2.txt";
@@ -35,7 +34,7 @@ testPerm({ read: true, write: true }, async function fsWatcherBasic(): Promise<
       console.log(">>>> event", event);
       events.push(event);
     }
-	})();
+  })();
 
   Deno.writeFileSync(file1, new Uint8Array([0, 1, 2]));
   Deno.writeFileSync(file2, new Uint8Array([0, 1, 2]));
