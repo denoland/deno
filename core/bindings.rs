@@ -274,7 +274,7 @@ pub extern "C" fn message_callback(
   let mut hs = v8::HandleScope::new(cbs.enter());
   let scope = hs.enter();
 
-  let deno_isolate = Isolate::from_v8(scope.isolate());
+  let mut deno_isolate = Isolate::from_v8(scope.isolate());
 
   let handle = scope.isolate().thread_safe_handle();
 
@@ -303,7 +303,7 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   let promise = message.get_promise();
   let promise_id = promise.get_identity_hash();
 
-  let inner = deno_isolate.0.borrow_mut();
+  let mut inner = deno_isolate.0.borrow_mut();
 
   match message.get_event() {
     v8::PromiseRejectEvent::PromiseRejectWithNoHandler => {
@@ -369,7 +369,7 @@ fn recv(
 ) {
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
-  let inner = deno_isolate.0.borrow_mut();
+  let mut inner = deno_isolate.0.borrow_mut();
 
   if !inner.js_recv_cb.is_empty() {
     let msg = v8::String::new(scope, "Deno.core.recv already called.").unwrap();
@@ -386,7 +386,7 @@ fn send(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let deno_isolate = Isolate::from_v8(scope.isolate());
+  let mut deno_isolate = Isolate::from_v8(scope.isolate());
 
   let op_id = v8::Local::<v8::Uint32>::try_from(args.get(0))
     .unwrap()
@@ -590,18 +590,17 @@ fn shared_getter(
   mut rv: v8::ReturnValue,
 ) {
   let isolate = Isolate::from_v8(scope.isolate());
-  let deno_isolate = isolate.0.borrow_mut();
 
   // Lazily initialize the persistent external ArrayBuffer.
-  if deno_isolate.shared_ab.is_empty() {
+  if isolate.0.borrow().shared_ab.is_empty() {
     let ab = v8::SharedArrayBuffer::with_backing_store(
       scope,
-      deno_isolate.shared.get_backing_store(),
+      isolate.0.borrow_mut().shared.get_backing_store(),
     );
-    deno_isolate.shared_ab.set(scope, ab);
+    isolate.0.borrow_mut().shared_ab.set(scope, ab);
   }
 
-  let shared_ab = deno_isolate.shared_ab.get(scope).unwrap();
+  let shared_ab = isolate.0.borrow().shared_ab.get(scope).unwrap();
   rv.set(shared_ab.into());
 }
 

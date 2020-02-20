@@ -86,13 +86,14 @@ impl EsIsolate {
     startup_data: StartupData,
     will_snapshot: bool,
   ) -> Box<Self> {
-    let mut core_isolate = Isolate::new(startup_data, will_snapshot);
+    let core_isolate = Isolate::new(startup_data, will_snapshot);
     {
-      let isolate = core_isolate.v8_isolate();
-      isolate.set_host_initialize_import_meta_object_callback(
+      let mut inner = core_isolate.0.borrow_mut();
+      let v8_isolate = inner.v8_isolate.as_mut().unwrap();
+      v8_isolate.set_host_initialize_import_meta_object_callback(
         bindings::host_initialize_import_meta_object_callback,
       );
-      isolate.set_host_import_module_dynamically_callback(
+      v8_isolate.set_host_import_module_dynamically_callback(
         bindings::host_import_module_dynamically_callback,
       );
     }
@@ -112,7 +113,8 @@ impl EsIsolate {
       let es_isolate_ptr: *mut Self = Box::into_raw(boxed_es_isolate);
       boxed_es_isolate = unsafe { Box::from_raw(es_isolate_ptr) };
       unsafe {
-        let v8_isolate = boxed_es_isolate.v8_isolate();
+        let mut inner = boxed_es_isolate.core_isolate.0.borrow_mut();
+        let v8_isolate = inner.v8_isolate.as_mut().unwrap();
         v8_isolate.set_data(1, es_isolate_ptr as *mut c_void);
       };
     }
