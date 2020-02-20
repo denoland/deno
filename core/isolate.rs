@@ -30,7 +30,7 @@ use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex, Once};
+use std::sync::{Arc, Once};
 use std::task::Context;
 use std::task::Poll;
 
@@ -168,7 +168,6 @@ pub struct Isolate {
   pub(crate) shared_ab: v8::Global<v8::SharedArrayBuffer>,
   pub(crate) js_recv_cb: v8::Global<v8::Function>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
-  shared_isolate_handle: Arc<Mutex<Option<*mut v8::Isolate>>>,
   js_error_create: Arc<JSErrorCreateFn>,
   needs_init: bool,
   pub(crate) shared: SharedQueue,
@@ -181,29 +180,11 @@ pub struct Isolate {
   error_handler: Option<Box<IsolateErrorHandleFn>>,
 }
 
-// TODO(ry) this shouldn't be necessary, v8::OwnedIsolate should impl Send.
-unsafe impl Send for Isolate {}
-
 impl Drop for Isolate {
   fn drop(&mut self) {
-    // remove shared_libdeno_isolate reference
-    *self.shared_isolate_handle.lock().unwrap() = None;
-
     // TODO Too much boiler plate.
     // <Boilerplate>
     let isolate = self.v8_isolate.take().unwrap();
-    // Clear persistent handles we own.
-    {
-      let mut hs = v8::HandleScope::new2(&isolate);
-      let scope = hs.enter();
-      // </Boilerplate>
-      self.global_context.reset(scope);
-      self.shared_ab.reset(scope);
-      self.js_recv_cb.reset(scope);
-      for (_key, handle) in self.pending_promise_exceptions.iter_mut() {
-        handle.reset(scope);
-      }
-    }
     if let Some(creator) = self.snapshot_creator.take() {
       // TODO(ry) V8 has a strange assert which prevents a SnapshotCreator from
       // being deallocated if it hasn't created a snapshot yet.
@@ -321,7 +302,6 @@ impl Isolate {
       snapshot_creator: maybe_snapshot_creator,
       snapshot: load_snapshot,
       has_snapshotted: false,
-      shared_isolate_handle: Arc::new(Mutex::new(None)),
       js_error_create: Arc::new(CoreJSError::from_v8_exception),
       shared,
       needs_init,
@@ -339,9 +319,6 @@ impl Isolate {
       let core_isolate_ptr: *mut Self = Box::into_raw(boxed_isolate);
       unsafe { isolate.set_data(0, core_isolate_ptr as *mut c_void) };
       boxed_isolate = unsafe { Box::from_raw(core_isolate_ptr) };
-      let shared_handle_ptr = &mut *isolate;
-      *boxed_isolate.shared_isolate_handle.lock().unwrap() =
-        Some(shared_handle_ptr);
       boxed_isolate.v8_isolate = Some(isolate);
     }
 
@@ -906,52 +883,6 @@ pub mod tests {
         _ => false,
       });
     })
-  }
-
-  #[test]
-  fn terminate_execution() {
-    let (tx, rx) = std::sync::mpsc::channel::<bool>();
-    let tx_clone = tx.clone();
-
-    let (mut isolate, _dispatch_count) = setup(Mode::Async);
-    let shared = isolate.shared_isolate_handle();
-
-    let t1 = std::thread::spawn(move || {
-      // allow deno to boot and run
-      std::thread::sleep(std::time::Duration::from_millis(100));
-
-      // terminate execution
-      shared.terminate_execution();
-
-      // allow shutdown
-      std::thread::sleep(std::time::Duration::from_millis(200));
-
-      // unless reported otherwise the test should fail after this point
-      tx_clone.send(false).ok();
-    });
-
-    let t2 = std::thread::spawn(move || {
-      // Rn an infinite loop, which should be terminated.
-      match isolate.execute("infinite_loop.js", "for(;;) {}") {
-        Ok(_) => panic!("execution should be terminated"),
-        Err(e) => {
-          assert_eq!(e.to_string(), "Uncaught Error: execution terminated")
-        }
-      };
-
-      // `execute()` returned, which means `terminate_execution()` worked.
-      tx.send(true).ok();
-
-      // Make sure the isolate unusable again.
-      isolate
-        .execute("simple.js", "1 + 1")
-        .expect("execution should be possible again");
-    });
-
-    rx.recv().expect("execution should be terminated");
-
-    t1.join().unwrap();
-    t2.join().unwrap();
   }
 
   #[test]
