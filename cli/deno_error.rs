@@ -1,12 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-//! This module implements error serialization; it
-//! allows to serialize Rust errors to be sent to JS runtime.
-//!
-//! Currently it is deeply intertwined with `ErrBox` which is
-//! not optimal since not every ErrBox can be "JS runtime error";
-//! eg. there's no way to throw JSError/Diagnostic from within JS runtime
-//!
 //! There are many types of errors in Deno:
 //! - ErrBox: a generic boxed object. This is the super type of all
 //!   errors handled in Rust.
@@ -22,11 +15,8 @@
 //!   But Diagnostics are compile-time type errors, whereas JSErrors are runtime exceptions.
 //!
 //! TODO:
-//! - rename DenoError to OpError?
-//! - rename JSError to RuntimeException. merge V8Exception?
-//! - rename ErrorKind::Other. This corresponds to a generic exception thrown as the
-//!   global `Error` in JS:
-//!   https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error
+//! - rename DenoError to OpError or RuntimeError?
+//! - rename/merge JSError with V8Exception?
 
 use crate::import_map::ImportMapError;
 use deno_core::AnyError;
@@ -67,6 +57,9 @@ pub enum ErrorKind {
   Http = 19,
   URIError = 20,
   TypeError = 21,
+  /// This maps to window.Error - ie. a generic error type
+  /// if no better context is available.
+  /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error
   Other = 22,
 }
 
@@ -107,22 +100,22 @@ impl fmt::Display for DenoError {
 }
 
 #[derive(Debug)]
-struct StaticError(ErrorKind, &'static str);
+struct StaticDenoError(ErrorKind, &'static str);
 
-impl Error for StaticError {}
+impl Error for StaticDenoError {}
 
-impl fmt::Display for StaticError {
+impl fmt::Display for StaticDenoError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.pad(self.1)
   }
 }
 
 pub fn bad_resource() -> ErrBox {
-  StaticError(ErrorKind::BadResource, "bad resource id").into()
+  StaticDenoError(ErrorKind::BadResource, "bad resource id").into()
 }
 
 pub fn permission_denied() -> ErrBox {
-  StaticError(ErrorKind::PermissionDenied, "permission denied").into()
+  StaticDenoError(ErrorKind::PermissionDenied, "permission denied").into()
 }
 
 pub fn permission_denied_msg(msg: String) -> ErrBox {
@@ -130,17 +123,19 @@ pub fn permission_denied_msg(msg: String) -> ErrBox {
 }
 
 pub fn no_buffer_specified() -> ErrBox {
-  StaticError(ErrorKind::TypeError, "no buffer specified").into()
+  StaticDenoError(ErrorKind::TypeError, "no buffer specified").into()
 }
 
 pub fn invalid_address_syntax() -> ErrBox {
-  StaticError(ErrorKind::TypeError, "invalid address syntax").into()
+  StaticDenoError(ErrorKind::TypeError, "invalid address syntax").into()
 }
 
 pub fn other_error(msg: String) -> ErrBox {
   DenoError::new(ErrorKind::Other, msg).into()
 }
 
+// TODO: remove this trait and replace it with
+// From<T> for DenoError
 pub trait GetErrorKind {
   fn kind(&self) -> ErrorKind;
 }
@@ -151,9 +146,27 @@ impl GetErrorKind for DenoError {
   }
 }
 
-impl GetErrorKind for StaticError {
+impl From<StaticDenoError> for DenoError {
+  fn from(error: StaticDenoError) -> Self {
+    Self {
+      kind: error.0,
+      msg: error.1.to_string(),
+    }
+  }
+}
+
+impl GetErrorKind for StaticDenoError {
   fn kind(&self) -> ErrorKind {
     self.0
+  }
+}
+
+impl From<ImportMapError> for DenoError {
+  fn from(error: ImportMapError) -> Self {
+    Self {
+      kind: ErrorKind::Other,
+      msg: error.to_string(),
+    }
   }
 }
 
@@ -163,9 +176,33 @@ impl GetErrorKind for ImportMapError {
   }
 }
 
+impl From<ModuleResolutionError> for DenoError {
+  fn from(error: ModuleResolutionError) -> Self {
+    Self {
+      kind: ErrorKind::URIError,
+      msg: error.to_string(),
+    }
+  }
+}
+
 impl GetErrorKind for ModuleResolutionError {
   fn kind(&self) -> ErrorKind {
     ErrorKind::URIError
+  }
+}
+
+impl From<VarError> for DenoError {
+  fn from(error: VarError) -> Self {
+    use VarError::*;
+    let kind = match error {
+      NotPresent => ErrorKind::NotFound,
+      NotUnicode(..) => ErrorKind::InvalidData,
+    };
+
+    Self {
+      kind,
+      msg: error.to_string(),
+    }
   }
 }
 
@@ -175,6 +212,37 @@ impl GetErrorKind for VarError {
     match self {
       NotPresent => ErrorKind::NotFound,
       NotUnicode(..) => ErrorKind::InvalidData,
+    }
+  }
+}
+
+impl From<io::Error> for DenoError {
+  fn from(error: io::Error) -> Self {
+    use io::ErrorKind::*;
+    let kind = match error.kind() {
+      NotFound => ErrorKind::NotFound,
+      PermissionDenied => ErrorKind::PermissionDenied,
+      ConnectionRefused => ErrorKind::ConnectionRefused,
+      ConnectionReset => ErrorKind::ConnectionReset,
+      ConnectionAborted => ErrorKind::ConnectionAborted,
+      NotConnected => ErrorKind::NotConnected,
+      AddrInUse => ErrorKind::AddrInUse,
+      AddrNotAvailable => ErrorKind::AddrNotAvailable,
+      BrokenPipe => ErrorKind::BrokenPipe,
+      AlreadyExists => ErrorKind::AlreadyExists,
+      InvalidInput => ErrorKind::TypeError,
+      InvalidData => ErrorKind::InvalidData,
+      TimedOut => ErrorKind::TimedOut,
+      Interrupted => ErrorKind::Interrupted,
+      WriteZero => ErrorKind::WriteZero,
+      UnexpectedEof => ErrorKind::UnexpectedEof,
+      WouldBlock => unreachable!(),
+      _ => ErrorKind::Other,
+    };
+
+    Self {
+      kind,
+      msg: error.to_string(),
     }
   }
 }
@@ -205,9 +273,28 @@ impl GetErrorKind for io::Error {
   }
 }
 
+impl From<url::ParseError> for DenoError {
+  fn from(error: url::ParseError) -> Self {
+    Self {
+      kind: ErrorKind::URIError,
+      msg: error.to_string(),
+    }
+  }
+}
+
 impl GetErrorKind for url::ParseError {
   fn kind(&self) -> ErrorKind {
     ErrorKind::URIError
+  }
+}
+
+impl From<reqwest::Error> for DenoError {
+  fn from(error: reqwest::Error) -> Self {
+    // TODO(bartlomieju): try to use source to get actual error
+    Self {
+      kind: ErrorKind::Http,
+      msg: error.to_string(),
+    }
   }
 }
 
@@ -230,6 +317,25 @@ impl GetErrorKind for reqwest::Error {
   }
 }
 
+impl From<ReadlineError> for DenoError {
+  fn from(error: ReadlineError) -> Self {
+    use ReadlineError::*;
+    let kind = match error {
+      Io(err) => return err.into(),
+      Eof => ErrorKind::UnexpectedEof,
+      Interrupted => ErrorKind::Interrupted,
+      #[cfg(unix)]
+      Errno(err) => return err.into(),
+      _ => unimplemented!(),
+    };
+
+    Self {
+      kind,
+      msg: error.to_string(),
+    }
+  }
+}
+
 impl GetErrorKind for ReadlineError {
   fn kind(&self) -> ErrorKind {
     use ReadlineError::*;
@@ -240,6 +346,23 @@ impl GetErrorKind for ReadlineError {
       #[cfg(unix)]
       Errno(err) => err.kind(),
       _ => unimplemented!(),
+    }
+  }
+}
+
+impl From<serde_json::error::Error> for DenoError {
+  fn from(error: serde_json::error::Error) -> Self {
+    use serde_json::error::*;
+    let kind = match error.classify() {
+      Category::Io => ErrorKind::TypeError,
+      Category::Syntax => ErrorKind::TypeError,
+      Category::Data => ErrorKind::InvalidData,
+      Category::Eof => ErrorKind::UnexpectedEof,
+    };
+
+    Self {
+      kind,
+      msg: error.to_string(),
     }
   }
 }
@@ -258,10 +381,30 @@ impl GetErrorKind for serde_json::error::Error {
 
 #[cfg(unix)]
 mod unix {
-  use super::{ErrorKind, GetErrorKind};
+  use super::{DenoError, ErrorKind, GetErrorKind};
   use nix::errno::Errno::*;
   pub use nix::Error;
   use nix::Error::Sys;
+
+  impl From<Error> for DenoError {
+    fn from(error: Error) -> Self {
+      let kind = match error {
+        Sys(EPERM) => ErrorKind::PermissionDenied,
+        Sys(EINVAL) => ErrorKind::TypeError,
+        Sys(ENOENT) => ErrorKind::NotFound,
+        Sys(UnknownErrno) => unreachable!(),
+        Sys(_) => unreachable!(),
+        Error::InvalidPath => ErrorKind::TypeError,
+        Error::InvalidUtf8 => ErrorKind::InvalidData,
+        Error::UnsupportedOperation => unreachable!(),
+      };
+
+      Self {
+        kind,
+        msg: error.to_string(),
+      }
+    }
+  }
 
   impl GetErrorKind for Error {
     fn kind(&self) -> ErrorKind {
@@ -275,6 +418,24 @@ mod unix {
         Error::InvalidUtf8 => ErrorKind::InvalidData,
         Error::UnsupportedOperation => unreachable!(),
       }
+    }
+  }
+}
+
+impl From<DlopenError> for DenoError {
+  fn from(error: DlopenError) -> Self {
+    use dlopen::Error::*;
+    let kind = match error {
+      NullCharacter(_) => ErrorKind::Other,
+      OpeningLibraryError(e) => return e.into(),
+      SymbolGettingError(e) => return e.into(),
+      AddrNotMatchingDll(e) => return e.into(),
+      NullSymbol => ErrorKind::Other,
+    };
+
+    Self {
+      kind,
+      msg: error.to_string(),
     }
   }
 }
@@ -312,7 +473,7 @@ impl GetErrorKind for dyn AnyError {
       .or_else(|| self.downcast_ref::<ImportMapError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<io::Error>().map(Get::kind))
       .or_else(|| self.downcast_ref::<ModuleResolutionError>().map(Get::kind))
-      .or_else(|| self.downcast_ref::<StaticError>().map(Get::kind))
+      .or_else(|| self.downcast_ref::<StaticDenoError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<url::ParseError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<VarError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<ReadlineError>().map(Get::kind))
