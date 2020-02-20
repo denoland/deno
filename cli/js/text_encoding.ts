@@ -27,7 +27,6 @@ import * as base64 from "./base64.ts";
 import { decodeUtf8 } from "./decode_utf8.ts";
 import * as domTypes from "./dom_types.ts";
 import { encodeUtf8 } from "./encode_utf8.ts";
-import { DenoError, ErrorKind } from "./errors.ts";
 
 const CONTINUE = null;
 const END_OF_STREAM = -1;
