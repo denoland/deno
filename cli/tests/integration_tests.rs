@@ -297,7 +297,8 @@ fn bundle_single_module() {
   use tempfile::TempDir;
 
   // First we have to generate a bundle of some module that has exports.
-  let single_module = util::root_path().join("cli/tests/subdir/single_module.ts");
+  let single_module =
+    util::root_path().join("cli/tests/subdir/single_module.ts");
   assert!(single_module.is_file());
   let t = TempDir::new().expect("tempdir fail");
   let bundle = t.path().join("single_module.bundle.js");
@@ -319,7 +320,7 @@ fn bundle_single_module() {
     .arg(&bundle)
     .output()
     .expect("failed to spawn script");
-  check the output of the the bundle program.
+  // check the output of the the bundle program.
   assert!(std::str::from_utf8(&output.stdout)
     .unwrap()
     .trim()
