@@ -62,13 +62,12 @@ pub enum ErrorKind {
   TimedOut = 14,
   Interrupted = 15,
   WriteZero = 16,
-  Other = 17,
-  UnexpectedEof = 18,
-  BadResource = 19,
-  Http = 21,
-
-  URIError = 100,
-  TypeError = 101,
+  UnexpectedEof = 17,
+  BadResource = 18,
+  Http = 19,
+  URIError = 20,
+  TypeError = 21,
+  Other = 22,
 }
 
 #[derive(Debug)]
@@ -293,8 +292,6 @@ impl GetErrorKind for DlopenError {
   }
 }
 
-// NOTE(bartlomieju): seems this is necessary - can't use ErrBox here
-// TODO(bartlomieju): ultimately this should be rewritten to `RuntimeError`?
 impl GetErrorKind for dyn AnyError {
   fn kind(&self) -> ErrorKind {
     use self::GetErrorKind as Get;

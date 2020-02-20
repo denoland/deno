@@ -17,12 +17,12 @@ export enum ErrorKind {
   TimedOut = 14,
   Interrupted = 15,
   WriteZero = 16,
-  Other = 17,
-  UnexpectedEof = 18,
-  BadResource = 19,
-  Http = 21,
-  TypeError = 101,
-  UrlError = 100
+  UnexpectedEof = 17,
+  BadResource = 18,
+  Http = 19,
+  URIError = 20,
+  TypeError = 21,
+  Other = 22
 }
 
 export function constructError(kind: ErrorKind, msg: string): never {
@@ -31,7 +31,7 @@ export function constructError(kind: ErrorKind, msg: string): never {
       throw new TypeError(msg);
     case ErrorKind.Other:
       throw new Error(msg);
-    case ErrorKind.UrlError:
+    case ErrorKind.URIError:
       throw new URIError(msg);
     case ErrorKind.NotFound:
       throw new NotFound(msg);
