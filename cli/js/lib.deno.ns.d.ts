@@ -1567,18 +1567,20 @@ declare namespace Deno {
    */
   export function resources(): ResourceMap;
 
-  // @url js/fs_watch.d.ts
+  export interface FsEvent {
+    kind: "any" | "access" | "create" | "modify" | "remove";
+    paths: string[];
+  }
 
-  export type FsWatcher = AsyncIterableIterator<unknown> & Closer;
+  export type FsWatcher = AsyncIterableIterator<FsEvent> & Closer;
 
-  export interface WatchOptions {
+  export interface FsWatchOptions {
     recursive?: boolean;
-    debounce?: number;
   }
 
   export function watch(
     paths: string | string[],
-    options?: WatchOptions
+    options?: FsWatchOptions
   ): FsWatcher;
 
   // @url js/process.d.ts

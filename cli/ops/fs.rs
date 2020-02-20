@@ -12,7 +12,9 @@ use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
 use notify;
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use notify::RecommendedWatcher;
+use notify::RecursiveMode;
+use notify::Watcher;
 use remove_dir_all::remove_dir_all;
 use std::convert::From;
 use std::fs;
@@ -43,10 +45,13 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("symlink", s.core_op(json_op(s.stateful_op(op_symlink))));
   i.register_op("read_link", s.core_op(json_op(s.stateful_op(op_read_link))));
   i.register_op("truncate", s.core_op(json_op(s.stateful_op(op_truncate))));
-  i.register_op("watch", s.core_op(json_op(s.stateful_op(op_watch))));
   i.register_op(
-    "poll_watch",
-    s.core_op(json_op(s.stateful_op(op_fs_poll_watcher))),
+    "fs_watch_open",
+    s.core_op(json_op(s.stateful_op(op_fs_watch_open))),
+  );
+  i.register_op(
+    "fs_watch_poll",
+    s.core_op(json_op(s.stateful_op(op_fs_watch_poll))),
   );
   i.register_op(
     "make_temp_dir",
@@ -662,17 +667,17 @@ struct FsWatcher {
 }
 
 #[derive(Deserialize)]
-struct OpenWatcherArgs {
+struct FsWatchOpenArgs {
   recursive: bool,
   paths: Vec<String>,
 }
 
-pub fn op_watch(
+pub fn op_fs_watch_open(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: OpenWatcherArgs = serde_json::from_value(args)?;
+  let args: FsWatchOpenArgs = serde_json::from_value(args)?;
   let (mut tx, rx) =
     mpsc::channel::<Result<notify::event::Event, notify::Error>>(100);
   let (sync_tx, sync_rx) =
@@ -708,16 +713,16 @@ pub fn op_watch(
 }
 
 #[derive(Deserialize)]
-struct PollWatcherArgs {
+struct FsWatchPollArgs {
   rid: i32,
 }
 
-pub fn op_fs_poll_watcher(
+pub fn op_fs_watch_poll(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: PollWatcherArgs = serde_json::from_value(args)?;
+  let args: FsWatchPollArgs = serde_json::from_value(args)?;
   let receiver_mutex = {
     let table = &mut state.borrow_mut().resource_table;
     let resource = table
@@ -730,10 +735,27 @@ pub fn op_fs_poll_watcher(
     let mut receiver = receiver_mutex.lock().await;
     if let Some(result) = receiver.next().await {
       let event = result.map_err(ErrBox::from)?;
-      let serialized = serde_json::to_string(&event)?;
-      Ok(json!({ "event": serialized }))
+
+      // TODO(ry) For now we're flattening the event structure from the notify
+      // crate to keep things simple. As users find they need more explicit
+      // events, we can improve this as long as there are tests.
+
+      use notify::EventKind;
+      let kind = match event.kind {
+        EventKind::Any => "any",
+        EventKind::Access(_) => "access",
+        EventKind::Create(_) => "create",
+        EventKind::Modify(_) => "modify",
+        EventKind::Remove(_) => "remove",
+        EventKind::Other => todo!(),
+      };
+
+      Ok(json!({
+        "paths": event.paths,
+        "kind":  kind
+      }))
     } else {
-      Ok(json!({}))
+      Ok(json!({})) // When closed
     }
   };
 

@@ -1,40 +1,52 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { testPerm } from "./test_util.ts";
-import { runIfMain } from "../../std/testing/mod.ts";
+import { testPerm, assert } from "./test_util.ts";
 
-async function captureEvents(
-  watcher: Deno.FsWatcher,
-  _expectedLength: number
-): Promise<void> {
-  const events = [];
-  for await (const event of watcher) {
-    events.push(event);
-    console.error("got event!", event);
+// TODO(ry) Add more tests to specify format.
+
+testPerm({ read: false, write: false }, function fsWatchPermissions() {
+  let thrown = false;
+  try {
+    Deno.watch(".");
+  } catch (e) {
+    assert(e.kind == Deno.ErrorKind.PermissionDenied);
+    thrown = true;
   }
-  // assertEquals(events.length, expectedLength);
+  assert(thrown);
+});
+
+function delay(ms: number): Promise<void> {
+  return new Promise(r => {
+    setTimeout(() => r(), ms);
+  });
 }
 
-testPerm({ read: true, write: true }, async function fsWatcher(): Promise<
+testPerm({ read: true, write: true }, async function fsWatcherBasic(): Promise<
   void
 > {
+  const events: Deno.FsEvent[] = [];
+  async function captureEvents(watcher: Deno.FsWatcher): Promise<void> {
+    for await (const event of watcher) {
+      console.log("event", event);
+      events.push(event);
+      console.error("got event!", event);
+    }
+  }
+
   const testDir = await Deno.makeTempDir();
   const file1 = testDir + "/file1.txt";
   const file2 = testDir + "/file2.txt";
 
   const watcher = Deno.watch(testDir, { recursive: true });
-  // start capturing events in the background
-  await Deno.writeFile(file1, new Uint8Array([0, 1, 2]));
-  await Deno.writeFile(file2, new Uint8Array([0, 1, 2]));
-  await Deno.remove(file1);
-  await Deno.rename(file2, file1);
-  await Deno.chmod(file1, 0o666);
-  const f = await Deno.open(file1);
-  f.close();
+  captureEvents(watcher);
 
-  setTimeout(() => {
-    watcher.close();
-  }, 750);
-  await captureEvents(watcher, 6);
+  Deno.writeFileSync(file1, new Uint8Array([0, 1, 2]));
+  Deno.writeFileSync(file2, new Uint8Array([0, 1, 2]));
+
+  await delay(1000);
+
+  console.log("events", events);
+  assert(events.length >= 2);
+  watcher.close();
 });
 
-runIfMain(import.meta);
+Deno.runTests();
