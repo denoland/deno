@@ -90,6 +90,7 @@ testPerm({ net: true }, async function workerCanUseFetch(): Promise<void> {
     type: "module"
   });
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   fetchingWorker.onerror = (e: any): void => {
     e.preventDefault();
     promise.reject(e.message);
