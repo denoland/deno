@@ -131,7 +131,7 @@ impl EsIsolate {
     source: &str,
   ) -> Result<ModuleId, ErrBox> {
     let isolate = self.core_isolate.v8_isolate();
-    let mut hs = v8::HandleScope::new2(&isolate);
+    let mut hs = unsafe { v8::HandleScope::new2(&isolate) };
     let scope = hs.enter();
     let context = self.core_isolate.global_context(scope);
     let mut cs = v8::ContextScope::new(scope, context);
@@ -182,7 +182,7 @@ impl EsIsolate {
   /// different type if Isolate::set_js_error_create() has been used.
   fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     let isolate = self.core_isolate.v8_isolate();
-    let mut hs = v8::HandleScope::new2(isolate);
+    let mut hs = unsafe { v8::HandleScope::new2(isolate) };
     let scope = hs.enter();
     let context = self.core_isolate.global_context(scope);
     let mut cs = v8::ContextScope::new(scope, context);
@@ -220,7 +220,7 @@ impl EsIsolate {
     id: ModuleId,
   ) -> Result<(), ErrBox> {
     let isolate = self.core_isolate.v8_isolate();
-    let mut hs = v8::HandleScope::new2(isolate);
+    let mut hs = unsafe { v8::HandleScope::new2(isolate) };
     let scope = hs.enter();
     let context = self.core_isolate.global_context(scope);
     let mut cs = v8::ContextScope::new(scope, context);
@@ -263,7 +263,7 @@ impl EsIsolate {
   /// different type if Isolate::set_js_error_create() has been used.
   pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     let isolate = self.core_isolate.v8_isolate();
-    let mut hs = v8::HandleScope::new2(isolate);
+    let mut hs = unsafe { v8::HandleScope::new2(isolate) };
     let scope = hs.enter();
     let context = self.core_isolate.global_context(scope);
     let mut cs = v8::ContextScope::new(scope, context);
@@ -337,7 +337,7 @@ impl EsIsolate {
     err: ErrBox,
   ) -> Result<(), ErrBox> {
     let isolate = self.core_isolate.v8_isolate();
-    let mut hs = v8::HandleScope::new2(isolate);
+    let mut hs = unsafe { v8::HandleScope::new2(isolate) };
     let scope = hs.enter();
     let context = self.global_context(scope);
     let mut cs = v8::ContextScope::new(scope, context);
@@ -376,7 +376,8 @@ impl EsIsolate {
   ) -> Result<(), ErrBox> {
     debug!("dyn_import_done {} {:?}", id, mod_id);
     assert!(mod_id != 0);
-    let mut hs = v8::HandleScope::new2(self.core_isolate.v8_isolate());
+    let mut hs =
+      unsafe { v8::HandleScope::new2(self.core_isolate.v8_isolate()) };
     let scope = hs.enter();
     let context = self.global_context(scope);
     let mut cs = v8::ContextScope::new(scope, context);

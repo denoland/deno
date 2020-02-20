@@ -265,7 +265,7 @@ impl Isolate {
       let isolate = unsafe { creator.get_owned_isolate() };
       let isolate = Isolate::setup_isolate(isolate);
 
-      let mut hs = v8::HandleScope::new2(&isolate);
+      let mut hs = unsafe { v8::HandleScope::new2(&isolate) };
       let scope = hs.enter();
 
       let context = bindings::initialize_context(scope);
@@ -284,7 +284,7 @@ impl Isolate {
       let isolate = v8::Isolate::new(params);
       let isolate = Isolate::setup_isolate(isolate);
 
-      let mut hs = v8::HandleScope::new2(&isolate);
+      let mut hs = unsafe { v8::HandleScope::new2(&isolate) };
       let scope = hs.enter();
 
       let context = match load_snapshot {
@@ -530,8 +530,9 @@ impl Isolate {
   ) -> Result<(), ErrBox> {
     self.shared_init();
 
-    let mut hs =
-      v8::HandleScope::new2(self.0.borrow_mut().v8_isolate.as_mut().unwrap());
+    let mut hs = unsafe {
+      v8::HandleScope::new2(self.0.borrow_mut().v8_isolate.as_mut().unwrap())
+    };
     let scope = hs.enter();
     let context = self.global_context(scope);
     let mut cs = v8::ContextScope::new(scope, context);
@@ -638,7 +639,7 @@ impl Isolate {
   pub fn snapshot(&mut self) -> Result<v8::OwnedStartupData, ErrBox> {
     assert!(self.0.borrow().snapshot_creator.is_some());
 
-    let mut hs = v8::HandleScope::new2(self.v8_isolate());
+    let mut hs = unsafe { v8::HandleScope::new2(self.v8_isolate()) };
     let scope = hs.enter();
     self.0.borrow_mut().global_context.reset(scope);
 
@@ -663,7 +664,7 @@ impl Future for Isolate {
     isolate.0.borrow().waker.register(cx.waker());
     isolate.shared_init();
 
-    let mut hs = v8::HandleScope::new2(isolate.v8_isolate());
+    let mut hs = unsafe { v8::HandleScope::new2(isolate.v8_isolate()) };
     let scope = hs.enter();
     let context = isolate.global_context(scope);
     let mut cs = v8::ContextScope::new(scope, context);
