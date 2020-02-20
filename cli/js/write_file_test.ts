@@ -23,7 +23,6 @@ testPerm({ write: true }, function writeFileSyncFail(): void {
   } catch (e) {
     caughtError = true;
     assert(e instanceof Deno.Err.NotFound);
-    assertEquals(e.name, "NotFound");
   }
   assert(caughtError);
 });
@@ -66,7 +65,6 @@ testPerm({ read: true, write: true }, function writeFileSyncCreate(): void {
   } catch (e) {
     caughtError = true;
     assert(e instanceof Deno.Err.NotFound);
-    assertEquals(e.name, "NotFound");
   }
   assert(caughtError);
 
@@ -128,7 +126,6 @@ testPerm(
     } catch (e) {
       caughtError = true;
       assert(e instanceof Deno.Err.NotFound);
-      assertEquals(e.name, "NotFound");
     }
     assert(caughtError);
   }
@@ -179,7 +176,6 @@ testPerm({ read: true, write: true }, async function writeFileCreate(): Promise<
   } catch (e) {
     caughtError = true;
     assert(e instanceof Deno.Err.NotFound);
-    assertEquals(e.name, "NotFound");
   }
   assert(caughtError);
 

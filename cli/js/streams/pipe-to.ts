@@ -19,7 +19,7 @@
 // import { ReadableStreamDefaultReader } from "./readable-stream-default-reader.ts";
 // import { WritableStreamDefaultWriter } from "./writable-stream-default-writer.ts";
 // import { PipeOptions } from "../dom_types.ts";
-// import { DenoError, ErrorKind } from "../errors.ts";
+// import { Err } from "../errors.ts";
 
 // // add a wrapper to handle falsy rejections
 // interface ErrorWrapper {
@@ -50,7 +50,7 @@
 //     abortAlgorithm = (): void => {
 //       // TODO this should be a DOMException,
 //       // https://github.com/stardazed/sd-streams/blob/master/packages/streams/src/pipe-to.ts#L38
-//       const error = new DenoError(ErrorKind.AbortError, "Aborted");
+//       const error = new Err.Aborted("Aborted");
 //       const actions: Array<() => Promise<void>> = [];
 //       if (preventAbort === false) {
 //         actions.push(() => {

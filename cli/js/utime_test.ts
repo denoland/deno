@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { testPerm, assert } from "./test_util.ts";
 
 // Allow 10 second difference.
 // Note this might not be enough for FAT (but we are not testing on such fs).
@@ -79,7 +79,6 @@ testPerm({ read: true, write: true }, function utimeSyncNotFound(): void {
   } catch (e) {
     caughtError = true;
     assert(e instanceof Deno.Err.NotFound);
-    assertEquals(e.name, "NotFound");
   }
   assert(caughtError);
 });
@@ -159,7 +158,6 @@ testPerm({ read: true, write: true }, async function utimeNotFound(): Promise<
   } catch (e) {
     caughtError = true;
     assert(e instanceof Deno.Err.NotFound);
-    assertEquals(e.name, "NotFound");
   }
   assert(caughtError);
 });

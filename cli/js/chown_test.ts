@@ -45,7 +45,6 @@ if (Deno.build.os !== "win") {
         Deno.chownSync(filePath, uid, gid);
       } catch (e) {
         assert(e instanceof Deno.Err.NotFound);
-        assertEquals(e.name, "NotFound");
       }
     }
   );
@@ -60,7 +59,6 @@ if (Deno.build.os !== "win") {
         await Deno.chown(filePath, uid, gid);
       } catch (e) {
         assert(e instanceof Deno.Err.NotFound);
-        assertEquals(e.name, "NotFound");
       }
     }
   );
