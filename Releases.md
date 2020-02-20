@@ -6,6 +6,24 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.34.0 / 2020.02.20
+
+- feat: Asynchronous event iteration node polyfill (#4016)
+- feat: Deno.makeTempFile (#4024)
+- feat: Support loading additional TS lib files (#3863)
+- feat: add --cert flag for http client (#3972)
+- feat(std/io): Export readDelim(), readStringDelim() and readLines() from
+  bufio.ts (#4019)
+- fix(deno test): support directories as arguments (#4011)
+- fix: Enable TS strict mode by default (#3899)
+- fix: detecting AMD like imports (#4009)
+- fix: emit when bundle contains single module (#4042)
+- fix: mis-detecting imports on JavaScript when there is no checkJs (#4040)
+- fix: skip non-UTF-8 dir entries in Deno.readDir() (#4004)
+- refactor: remove run_worker_loop (#4028)
+- refactor: rewrite file_fetcher (#4037, #4030)
+- upgrade: dprint 0.6.0 (#4026)
+
 ### v0.33.0 / 2020.02.13
 
 - feat(std/http): support trailer headers (#3938, #3989)
