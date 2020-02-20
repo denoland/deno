@@ -473,8 +473,12 @@ impl Isolate {
     control_buf: &[u8],
     zero_copy_buf: Option<ZeroCopyBuf>,
   ) -> Option<(OpId, Box<[u8]>)> {
-    let mut inner = self.0.borrow_mut();
-    let maybe_op = inner.op_registry.call(op_id, control_buf, zero_copy_buf);
+    let maybe_op =
+      self
+        .0
+        .borrow_mut()
+        .op_registry
+        .call(op_id, control_buf, zero_copy_buf);
 
     let op = match maybe_op {
       Some(op) => op,
@@ -487,7 +491,7 @@ impl Isolate {
       }
     };
 
-    debug_assert_eq!(inner.shared.size(), 0);
+    debug_assert_eq!(self.0.borrow().shared.size(), 0);
     match op {
       Op::Sync(buf) => {
         // For sync messages, we always return the response via Deno.core.send's
@@ -497,14 +501,18 @@ impl Isolate {
       }
       Op::Async(fut) => {
         let fut2 = fut.map_ok(move |buf| (op_id, buf));
-        inner.pending_ops.push(fut2.boxed_local());
-        inner.have_unpolled_ops = true;
+        self.0.borrow_mut().pending_ops.push(fut2.boxed_local());
+        self.0.borrow_mut().have_unpolled_ops = true;
         None
       }
       Op::AsyncUnref(fut) => {
         let fut2 = fut.map_ok(move |buf| (op_id, buf));
-        inner.pending_unref_ops.push(fut2.boxed_local());
-        inner.have_unpolled_ops = true;
+        self
+          .0
+          .borrow_mut()
+          .pending_unref_ops
+          .push(fut2.boxed_local());
+        self.0.borrow_mut().have_unpolled_ops = true;
         None
       }
     }
@@ -649,8 +657,9 @@ impl Isolate {
 impl Future for Isolate {
   type Output = Result<(), ErrBox>;
 
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let isolate = self.get_mut();
+  fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let isolate = &mut self;
+    //let isolate = self.get_mut();
     isolate.0.borrow().waker.register(cx.waker());
     isolate.shared_init();
 
@@ -667,13 +676,14 @@ impl Future for Isolate {
     loop {
       // Now handle actual ops.
       isolate.0.borrow_mut().have_unpolled_ops = false;
-      #[allow(clippy::match_wild_err_arm)]
+      /*
       match select(
         &mut isolate.0.borrow_mut().pending_ops,
         &mut isolate.0.borrow_mut().pending_unref_ops,
       )
-      .poll_next_unpin(cx)
-      {
+      */
+      #[allow(clippy::match_wild_err_arm)]
+      match isolate.0.borrow_mut().pending_ops.poll_next_unpin(cx) {
         Poll::Ready(Some(Err(_))) => panic!("unexpected op error"),
         Poll::Ready(None) => break,
         Poll::Pending => break,
@@ -843,9 +853,10 @@ pub mod tests {
       "filename.js",
       r#"
         let control = new Uint8Array([42]);
+        Deno.core.print("Deno.core.print hello\n");
         Deno.core.send(1, control);
         async function main() {
-          Deno.core.send(1, control);
+          //Deno.core.send(1, control);
         }
         main();
         "#,
