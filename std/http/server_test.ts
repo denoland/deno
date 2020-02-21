@@ -876,13 +876,13 @@ test("Server should correctly process requests from same connection if handler d
       return conn;
     },
     close() {},
-    async next() {
+    async next(_?: [Deno.Conn]) {
       return { value: conn, done: false };
     },
-    async throw() {
-      return { value: undefined, done: false };
+    async throw(e?: unknown) {
+      throw e;
     },
-    async return(value?: Deno.Conn) {
+    async return(value: Deno.Conn) {
       return { value, done: false };
     },
     async *[Symbol.asyncIterator]() {
@@ -897,6 +897,7 @@ test("Server should correctly process requests from same connection if handler d
       await Deno.readAll(req.body);
     }
     const index = req.headers.get("x-index");
+    assert(index != null);
     await req.respond({
       status: 200,
       headers: new Headers({
