@@ -22,7 +22,7 @@ export {
 } from "./diagnostics.ts";
 export { chdir, cwd } from "./dir.ts";
 export { applySourceMap } from "./error_stack.ts";
-export { ErrorKind, DenoError } from "./errors.ts";
+export { Err } from "./errors.ts";
 export { FileInfo } from "./file_info.ts";
 export {
   File,
@@ -66,13 +66,19 @@ export { linkSync, link } from "./link.ts";
 export {
   makeTempDirSync,
   makeTempDir,
-  MakeTempDirOptions
-} from "./make_temp_dir.ts";
+  makeTempFileSync,
+  makeTempFile,
+  MakeTempOptions
+} from "./make_temp.ts";
 export { metrics, Metrics } from "./metrics.ts";
 export { mkdirSync, mkdir } from "./mkdir.ts";
 export {
+  Addr,
   connect,
   listen,
+  recvfrom,
+  UDPConn,
+  UDPAddr,
   Listener,
   Conn,
   ShutdownMode,

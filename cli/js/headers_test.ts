@@ -2,8 +2,8 @@
 import { test, assert, assertEquals } from "./test_util.ts";
 const {
   stringifyArgs
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} = Deno[Deno.symbols.internal] as any;
+  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+} = Deno[Deno.symbols.internal];
 
 // Logic heavily copied from web-platform-tests, make
 // sure pass mostly header basic test
@@ -13,6 +13,7 @@ test(function newHeaderTest(): void {
   new Headers(undefined);
   new Headers({});
   try {
+    // @ts-ignore
     new Headers(null);
   } catch (e) {
     assertEquals(
@@ -22,14 +23,16 @@ test(function newHeaderTest(): void {
   }
 });
 
-const headerDict = {
+const headerDict: Record<string, string> = {
   name1: "value1",
   name2: "value2",
   name3: "value3",
+  // @ts-ignore
   name4: undefined,
   "Content-Type": "value4"
 };
-const headerSeq = [];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const headerSeq: any[] = [];
 for (const name in headerDict) {
   headerSeq.push([name, headerDict[name]]);
 }
@@ -133,7 +136,7 @@ test(function headerValuesSuccess(): void {
   }
 });
 
-const headerEntriesDict = {
+const headerEntriesDict: Record<string, string> = {
   name1: "value1",
   Name2: "value2",
   name: "value3",
@@ -261,6 +264,7 @@ test(function headerParamsArgumentsCheck(): void {
     let hasThrown = 0;
     let errMsg = "";
     try {
+      // @ts-ignore
       headers[method]();
       hasThrown = 1;
     } catch (err) {
@@ -284,6 +288,7 @@ test(function headerParamsArgumentsCheck(): void {
     let errMsg = "";
 
     try {
+      // @ts-ignore
       headers[method]();
       hasThrown = 1;
     } catch (err) {
@@ -303,6 +308,7 @@ test(function headerParamsArgumentsCheck(): void {
     hasThrown = 0;
     errMsg = "";
     try {
+      // @ts-ignore
       headers[method]("foo");
       hasThrown = 1;
     } catch (err) {

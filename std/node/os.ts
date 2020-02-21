@@ -123,7 +123,7 @@ export function getPriority(pid = 0): number {
 }
 
 /** Returns the string path of the current user's home directory. */
-export function homedir(): string {
+export function homedir(): string | null {
   return Deno.dir("home");
 }
 
@@ -157,7 +157,7 @@ export function release(): string {
 
 /** Not yet implemented */
 export function setPriority(pid: number, priority?: number): void {
-  /* The node API has the 'pid' as the first parameter and as optional.  
+  /* The node API has the 'pid' as the first parameter and as optional.
        This makes for a problematic implementation in Typescript. */
   if (priority === undefined) {
     priority = pid;

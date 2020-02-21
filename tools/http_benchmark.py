@@ -138,7 +138,7 @@ def http_benchmark(build_dir):
     return {
         # "deno_tcp" was once called "deno"
         "deno_tcp": deno_tcp(deno_exe),
-        # "deno_http" was once called "deno_net_http"
+        # "deno_udp": deno_udp(deno_exe),
         "deno_http": deno_http(deno_exe),
         "deno_proxy": deno_http_proxy(deno_exe, hyper_hello_exe),
         "deno_proxy_tcp": deno_tcp_proxy(deno_exe, hyper_hello_exe),

@@ -3,8 +3,6 @@ import { globrex } from "./globrex.ts";
 import { join, normalize } from "./mod.ts";
 import { assert } from "../testing/asserts.ts";
 
-const { DenoError, ErrorKind } = Deno;
-
 export interface GlobOptions {
   extended?: boolean;
   globstar?: boolean;
@@ -91,10 +89,7 @@ export function normalizeGlob(
   { globstar = false }: GlobOptions = {}
 ): string {
   if (!!glob.match(/\0/g)) {
-    throw new DenoError(
-      ErrorKind.InvalidPath,
-      `Glob contains invalid characters: "${glob}"`
-    );
+    throw new Error(`Glob contains invalid characters: "${glob}"`);
   }
   if (!globstar) {
     return normalize(glob);

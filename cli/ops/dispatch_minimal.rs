@@ -4,8 +4,8 @@
 //! alternative to flatbuffers using a very simple list of int32s to lay out
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
+use crate::deno_error::ErrorKind;
 use crate::deno_error::GetErrorKind;
-use crate::msg::ErrorKind;
 use byteorder::{LittleEndian, WriteBytesExt};
 use deno_core::Buf;
 use deno_core::CoreOp;
@@ -124,7 +124,7 @@ where
         let error_record = ErrorRecord {
           promise_id: 0,
           arg: -1,
-          error_code: ErrorKind::InvalidInput as i32,
+          error_code: ErrorKind::TypeError as i32,
           error_message: "Unparsable control buffer"
             .to_string()
             .as_bytes()

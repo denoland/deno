@@ -31,7 +31,8 @@ pub fn op_fetch(
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
 
-  let client = create_http_client();
+  let client =
+    create_http_client(state.borrow().global_state.flags.ca_file.clone())?;
 
   let method = match args.method {
     Some(method_str) => Method::from_bytes(method_str.as_bytes())?,

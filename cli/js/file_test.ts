@@ -1,7 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEquals } from "./test_util.ts";
 
-function testFirstArgument(arg1, expectedSize): void {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function testFirstArgument(arg1: any[], expectedSize: number): void {
   const file = new File(arg1, "name");
   assert(file instanceof File);
   assertEquals(file.name, "name");
@@ -76,7 +77,8 @@ test(function fileObjectInFileBits(): void {
   testFirstArgument([{}], 15);
 });
 
-function testSecondArgument(arg2, expectedFileName): void {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function testSecondArgument(arg2: any, expectedFileName: string): void {
   const file = new File(["bits"], arg2);
   assert(file instanceof File);
   assertEquals(file.name, expectedFileName);

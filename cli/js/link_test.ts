@@ -43,8 +43,7 @@ testPerm({ read: true, write: true }, function linkSyncExists(): void {
     err = e;
   }
   assert(!!err);
-  assertEquals(err.kind, Deno.ErrorKind.AlreadyExists);
-  assertEquals(err.name, "AlreadyExists");
+  assert(err instanceof Deno.Err.AlreadyExists);
 });
 
 testPerm({ read: true, write: true }, function linkSyncNotFound(): void {
@@ -59,8 +58,7 @@ testPerm({ read: true, write: true }, function linkSyncNotFound(): void {
     err = e;
   }
   assert(!!err);
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
-  assertEquals(err.name, "NotFound");
+  assert(err instanceof Deno.Err.NotFound);
 });
 
 testPerm({ read: false, write: true }, function linkSyncReadPerm(): void {
@@ -70,7 +68,7 @@ testPerm({ read: false, write: true }, function linkSyncReadPerm(): void {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assert(err instanceof Deno.Err.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -81,7 +79,7 @@ testPerm({ read: true, write: false }, function linkSyncWritePerm(): void {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assert(err instanceof Deno.Err.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 

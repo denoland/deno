@@ -46,7 +46,7 @@ function chkOptions(opt: ReadOptions): void {
   }
   if (
     INVALID_RUNE.includes(opt.comma) ||
-    INVALID_RUNE.includes(opt.comment) ||
+    (typeof opt.comment === "string" && INVALID_RUNE.includes(opt.comment)) ||
     opt.comma === opt.comment
   ) {
     throw new Error("Invalid Delimiter");
@@ -122,7 +122,7 @@ export async function readMatrix(
   }
 ): Promise<string[][]> {
   const result: string[][] = [];
-  let _nbFields: number;
+  let _nbFields: number | undefined;
   let lineResult: string[];
   let first = true;
   let lineIndex = 0;
@@ -253,8 +253,10 @@ export async function parse(
     });
   }
   if (opt.parse) {
-    assert(opt.parse != null, "opt.parse must be set");
-    return r.map((e: string[]): unknown => opt.parse(e));
+    return r.map((e: string[]): unknown => {
+      assert(opt.parse, "opt.parse must be set");
+      return opt.parse(e);
+    });
   }
   return r;
 }

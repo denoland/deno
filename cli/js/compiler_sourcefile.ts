@@ -26,6 +26,8 @@ export interface SourceFileJson {
   sourceCode: string;
 }
 
+export const ASSETS = "$asset$";
+
 /** Returns the TypeScript Extension enum for a given media type. */
 function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
   switch (mediaType) {
@@ -89,7 +91,7 @@ export class SourceFile {
   }
 
   /** Process the imports for the file and return them. */
-  imports(): Array<[string, string]> {
+  imports(checkJs: boolean): Array<[string, string]> {
     if (this.processed) {
       throw new Error("SourceFile has already been processed.");
     }
@@ -100,11 +102,17 @@ export class SourceFile {
       log(`Skipping imports for "${this.filename}"`);
       return [];
     }
-    const preProcessedFileInfo = ts.preProcessFile(this.sourceCode, true, true);
+
+    const preProcessedFileInfo = ts.preProcessFile(
+      this.sourceCode,
+      true,
+      this.mediaType === MediaType.JavaScript ||
+        this.mediaType === MediaType.JSX
+    );
     this.processed = true;
     const files = (this.importedFiles = [] as Array<[string, string]>);
 
-    function process(references: ts.FileReference[]): void {
+    function process(references: Array<{ fileName: string }>): void {
       for (const { fileName } of references) {
         files.push([fileName, fileName]);
       }
@@ -124,11 +132,25 @@ export class SourceFile {
           getMappedModuleName(importedFile, typeDirectives)
         ]);
       }
-    } else {
+    } else if (
+      !(
+        !checkJs &&
+        (this.mediaType === MediaType.JavaScript ||
+          this.mediaType === MediaType.JSX)
+      )
+    ) {
       process(importedFiles);
     }
     process(referencedFiles);
-    process(libReferenceDirectives);
+    // built in libs comes across as `"dom"` for example, and should be filtered
+    // out during pre-processing as they are either already cached or they will
+    // be lazily fetched by the compiler host.  Ones that contain full files are
+    // not filtered out and will be fetched as normal.
+    process(
+      libReferenceDirectives.filter(
+        ({ fileName }) => !ts.libMap.has(fileName.toLowerCase())
+      )
+    );
     process(typeReferenceDirectives);
     return files;
   }

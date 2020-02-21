@@ -29,7 +29,7 @@ import "./headers_test.ts";
 import "./internals_test.ts";
 import "./link_test.ts";
 import "./location_test.ts";
-import "./make_temp_dir_test.ts";
+import "./make_temp_test.ts";
 import "./metrics_test.ts";
 import "./mixins/dom_iterable_test.ts";
 import "./mkdir_test.ts";
@@ -57,9 +57,13 @@ import "./url_search_params_test.ts";
 import "./utime_test.ts";
 import "./write_file_test.ts";
 import "./performance_test.ts";
-import "./permissions_test.ts";
 import "./version_test.ts";
 import "./workers_test.ts";
+
+// FIXME(bartlomieju):
+// This test file revokes permissions, it must be run last,
+// otherwise it might revoke permission for tests that need them.
+import "./permissions_test.ts";
 
 if (import.meta.main) {
   await Deno.runTests();

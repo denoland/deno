@@ -101,6 +101,10 @@ export interface CompilerOptions {
    * Does not apply to `"esnext"` target. */
   useDefineForClassFields?: boolean;
 
+  /** List of library files to be included in the compilation.  If omitted,
+   * then the Deno main runtime libs are used. */
+  lib?: string[];
+
   /** The locale to use to show error messages. */
   locale?: string;
 

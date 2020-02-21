@@ -38,7 +38,7 @@ test(async function serveFile(): Promise<void> {
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assert(res.headers.has("content-type"));
-    assert(res.headers.get("content-type").includes("charset=utf-8"));
+    assert(res.headers.get("content-type")!.includes("charset=utf-8"));
     const downloadedFile = await res.text();
     const localFile = new TextDecoder().decode(
       await Deno.readFile("README.md")

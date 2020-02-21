@@ -2,7 +2,7 @@
 import * as util from "./util.ts";
 import { TextEncoder, TextDecoder } from "./text_encoding.ts";
 import { core } from "./core.ts";
-import { ErrorKind, DenoError } from "./errors.ts";
+import { ErrorKind, constructError } from "./errors.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Ok = any;
@@ -37,7 +37,7 @@ function encode(args: object): Uint8Array {
 
 function unwrapResponse(res: JsonResponse): Ok {
   if (res.err != null) {
-    throw new DenoError(res.err!.kind, res.err!.message);
+    return constructError(res.err!.kind, res.err!.message);
   }
   util.assert(res.ok != null);
   return res.ok;

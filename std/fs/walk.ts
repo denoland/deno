@@ -65,9 +65,9 @@ export async function* walk(
     includeFiles = true,
     includeDirs = true,
     followSymlinks = false,
-    exts = null,
-    match = null,
-    skip = null
+    exts = undefined,
+    match = undefined,
+    skip = undefined
   }: WalkOptions = {}
 ): AsyncIterableIterator<WalkInfo> {
   if (maxDepth < 0) {
@@ -76,7 +76,7 @@ export async function* walk(
   if (includeDirs && include(root, exts, match, skip)) {
     yield { filename: root, info: await stat(root) };
   }
-  if (maxDepth < 1 || !include(root, null, null, skip)) {
+  if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
   const ls: FileInfo[] = await readDir(root);
@@ -119,9 +119,9 @@ export function* walkSync(
     includeFiles = true,
     includeDirs = true,
     followSymlinks = false,
-    exts = null,
-    match = null,
-    skip = null
+    exts = undefined,
+    match = undefined,
+    skip = undefined
   }: WalkOptions = {}
 ): IterableIterator<WalkInfo> {
   if (maxDepth < 0) {
@@ -130,7 +130,7 @@ export function* walkSync(
   if (includeDirs && include(root, exts, match, skip)) {
     yield { filename: root, info: statSync(root) };
   }
-  if (maxDepth < 1 || !include(root, null, null, skip)) {
+  if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
   const ls: FileInfo[] = readDirSync(root);
