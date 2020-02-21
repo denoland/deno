@@ -145,7 +145,7 @@ fn op_chown(
     debug!("op_chown {}", path.display());
     match deno_fs::chown(args.path.as_ref(), args.uid, args.gid) {
       Ok(_) => Ok(json!({})),
-      Err(e) => Err(e),
+      Err(e) => Err(OpError::from(e)),
     }
   })
 }

@@ -184,8 +184,11 @@ impl From<&io::Error> for OpError {
       Interrupted => ErrorKind::Interrupted,
       WriteZero => ErrorKind::WriteZero,
       UnexpectedEof => ErrorKind::UnexpectedEof,
+      Other => ErrorKind::Other,
       WouldBlock => unreachable!(),
-      _ => ErrorKind::Other,
+      // Non-exhaustive enum - might add new variants
+      // in the future
+      _ => unreachable!(),
     };
 
     Self {

@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::op_error::OpError;
 use crate::version;
 use brotli2::read::BrotliDecoder;
 use bytes::Bytes;
@@ -31,7 +30,7 @@ use url::Url;
 
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
-pub fn create_http_client(ca_file: Option<String>) -> Result<Client, OpError> {
+pub fn create_http_client(ca_file: Option<String>) -> Result<Client, ErrBox> {
   let mut headers = HeaderMap::new();
   headers.insert(
     USER_AGENT,
@@ -49,9 +48,12 @@ pub fn create_http_client(ca_file: Option<String>) -> Result<Client, OpError> {
     builder = builder.add_root_certificate(cert);
   }
 
-  builder
-    .build()
-    .map_err(|_| OpError::other("Unable to build http client".to_string()))
+  builder.build().map_err(|_| {
+    ErrBox::from(io::Error::new(
+      io::ErrorKind::Other,
+      "Unable to build http client".to_string(),
+    ))
+  })
 }
 /// Construct the next uri based on base uri and location header fragment
 /// See <https://tools.ietf.org/html/rfc3986#section-4.2>
@@ -145,11 +147,10 @@ pub fn fetch_once(
     if response.status().is_client_error()
       || response.status().is_server_error()
     {
-      let err = OpError::other(format!(
-        "Import '{}' failed: {}",
-        &url,
-        response.status()
-      ));
+      let err = io::Error::new(
+        io::ErrorKind::Other,
+        format!("Import '{}' failed: {}", &url, response.status()),
+      );
       return Err(err.into());
     }
 

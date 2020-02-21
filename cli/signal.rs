@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-#[cfg(unix)]
 use crate::op_error::OpError;
 
 #[cfg(unix)]
@@ -11,7 +10,7 @@ pub fn kill(pid: i32, signo: i32) -> Result<(), OpError> {
 }
 
 #[cfg(not(unix))]
-pub fn kill(_pid: i32, _signal: i32) -> Result<(), ErrBox> {
+pub fn kill(_pid: i32, _signal: i32) -> Result<(), OpError> {
   // NOOP
   // TODO: implement this for windows
   Ok(())
