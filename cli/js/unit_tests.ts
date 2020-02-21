@@ -57,9 +57,13 @@ import "./url_search_params_test.ts";
 import "./utime_test.ts";
 import "./write_file_test.ts";
 import "./performance_test.ts";
-import "./permissions_test.ts";
 import "./version_test.ts";
 import "./workers_test.ts";
+
+// FIXME(bartlomieju):
+// This test file revokes permissions, it must be run last,
+// otherwise it might revoke permission for tests that need them.
+import "./permissions_test.ts";
 
 if (import.meta.main) {
   await Deno.runTests();
