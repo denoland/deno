@@ -29,6 +29,13 @@ test({
 });
 
 test({
+  name: "platform is a string",
+  fn() {
+    assertEquals(typeof os.platform(), "string");
+  }
+});
+
+test({
   name: "getPriority(): PID must be a 32 bit integer",
   fn() {
     assertThrows(
@@ -211,13 +218,6 @@ test({
     assertThrows(
       () => {
         os.networkInterfaces();
-      },
-      Error,
-      "Not implemented"
-    );
-    assertThrows(
-      () => {
-        os.platform();
       },
       Error,
       "Not implemented"
