@@ -3,13 +3,11 @@ use super::dispatch_json::Deserialize;
 use super::dispatch_json::JsonOp;
 use super::dispatch_json::Value;
 use crate::futures::future::try_join_all;
-use crate::import_map::ImportMapError;
 use crate::msg;
 use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::Loader;
-use deno_core::ModuleResolutionError;
 use deno_core::*;
 use futures::future::FutureExt;
 
@@ -80,21 +78,10 @@ fn op_resolve_modules(
   let mut specifiers = vec![];
 
   for specifier in &args.specifiers {
-    let resolved_specifier = state.resolve(specifier, &referrer, is_main);
-    match resolved_specifier {
-      Ok(ms) => specifiers.push(ms.as_str().to_owned()),
-      Err(err) => {
-        // FIXME(bartlomieju): not very elegant - refactor `Loader` trait
-        // to get rid of this cruft
-        if let Some(e) = err.downcast_ref::<ModuleResolutionError>() {
-          return Err(e.to_owned().into());
-        } else if let Some(e) = err.downcast_ref::<ImportMapError>() {
-          return Err(e.into());
-        } else {
-          return Err(OpError::other(err.to_string()));
-        }
-      }
-    }
+    let specifier = state
+      .resolve(specifier, &referrer, is_main)
+      .map_err(OpError::from)?;
+    specifiers.push(specifier.as_str().to_owned());
   }
 
   Ok(JsonOp::Sync(json!(specifiers)))
@@ -135,15 +122,7 @@ fn op_fetch_source_files(
       })
       .collect();
 
-    let files = try_join_all(file_futures).await.map_err(|err| {
-      // FIXME(bartlomieju): not very elegant - refactor `file_fetcher`
-      // to use only std::io::Error to get rid of this cruft
-      if let Some(e) = err.downcast_ref::<OpError>() {
-        OpError::new(e.kind, e.msg.to_string())
-      } else {
-        OpError::other(err.to_string())
-      }
-    })?;
+    let files = try_join_all(file_futures).await.map_err(OpError::from)?;
     // We want to get an array of futures that resolves to
     let v = files.into_iter().map(|f| {
       async {
@@ -156,7 +135,7 @@ fn op_fetch_source_files(
               .file_fetcher
               .fetch_source_file_async(&types_specifier, ref_specifier.clone())
               .await
-              .map_err(|e| OpError::other(e.to_string()))?
+              .map_err(OpError::from)?
           }
           _ => f,
         };

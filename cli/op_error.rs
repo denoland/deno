@@ -18,6 +18,7 @@
 //! - rename/merge JSError with V8Exception?
 
 use crate::import_map::ImportMapError;
+use deno_core::ErrBox;
 use deno_core::ModuleResolutionError;
 use dlopen;
 use reqwest;
@@ -65,7 +66,7 @@ pub struct OpError {
 }
 
 impl OpError {
-  pub fn new(kind: ErrorKind, msg: String) -> Self {
+  fn new(kind: ErrorKind, msg: String) -> Self {
     Self { kind, msg }
   }
 
@@ -123,6 +124,12 @@ impl From<&ImportMapError> for OpError {
 
 impl From<ModuleResolutionError> for OpError {
   fn from(error: ModuleResolutionError) -> Self {
+    OpError::from(&error)
+  }
+}
+
+impl From<&ModuleResolutionError> for OpError {
+  fn from(error: &ModuleResolutionError) -> Self {
     Self {
       kind: ErrorKind::URIError,
       msg: error.to_string(),
@@ -132,6 +139,12 @@ impl From<ModuleResolutionError> for OpError {
 
 impl From<VarError> for OpError {
   fn from(error: VarError) -> Self {
+    OpError::from(&error)
+  }
+}
+
+impl From<&VarError> for OpError {
+  fn from(error: &VarError) -> Self {
     use VarError::*;
     let kind = match error {
       NotPresent => ErrorKind::NotFound,
@@ -184,15 +197,26 @@ impl From<&io::Error> for OpError {
 
 impl From<url::ParseError> for OpError {
   fn from(error: url::ParseError) -> Self {
+    OpError::from(&error)
+  }
+}
+
+impl From<&url::ParseError> for OpError {
+  fn from(error: &url::ParseError) -> Self {
     Self {
       kind: ErrorKind::URIError,
       msg: error.to_string(),
     }
   }
 }
-
 impl From<reqwest::Error> for OpError {
   fn from(error: reqwest::Error) -> Self {
+    OpError::from(&error)
+  }
+}
+
+impl From<&reqwest::Error> for OpError {
+  fn from(error: &reqwest::Error) -> Self {
     match error.source() {
       Some(err_ref) => None
         .or_else(|| {
@@ -224,6 +248,12 @@ impl From<reqwest::Error> for OpError {
 
 impl From<ReadlineError> for OpError {
   fn from(error: ReadlineError) -> Self {
+    OpError::from(&error)
+  }
+}
+
+impl From<&ReadlineError> for OpError {
+  fn from(error: &ReadlineError) -> Self {
     use ReadlineError::*;
     let kind = match error {
       Io(err) => return err.into(),
@@ -273,6 +303,12 @@ mod unix {
 
   impl From<Error> for OpError {
     fn from(error: Error) -> Self {
+      OpError::from(&error)
+    }
+  }
+
+  impl From<&Error> for OpError {
+    fn from(error: &Error) -> Self {
       let kind = match error {
         Sys(EPERM) => ErrorKind::PermissionDenied,
         Sys(EINVAL) => ErrorKind::TypeError,
@@ -294,6 +330,12 @@ mod unix {
 
 impl From<dlopen::Error> for OpError {
   fn from(error: dlopen::Error) -> Self {
+    OpError::from(&error)
+  }
+}
+
+impl From<&dlopen::Error> for OpError {
+  fn from(error: &dlopen::Error) -> Self {
     use dlopen::Error::*;
     let kind = match error {
       NullCharacter(_) => ErrorKind::Other,
@@ -307,6 +349,48 @@ impl From<dlopen::Error> for OpError {
       kind,
       msg: error.to_string(),
     }
+  }
+}
+
+impl From<ErrBox> for OpError {
+  fn from(error: ErrBox) -> Self {
+    #[cfg(unix)]
+    fn unix_error_kind(err: &ErrBox) -> Option<OpError> {
+      err.downcast_ref::<unix::Error>().map(|e| e.into())
+    }
+
+    #[cfg(not(unix))]
+    fn unix_error_kind(_: &ErrBox) -> Option<OpError> {
+      None
+    }
+
+    None
+      .or_else(|| {
+        error
+          .downcast_ref::<OpError>()
+          .map(|e| OpError::new(e.kind, e.msg.to_string()))
+      })
+      .or_else(|| error.downcast_ref::<reqwest::Error>().map(|e| e.into()))
+      .or_else(|| error.downcast_ref::<ImportMapError>().map(|e| e.into()))
+      .or_else(|| error.downcast_ref::<io::Error>().map(|e| e.into()))
+      .or_else(|| {
+        error
+          .downcast_ref::<ModuleResolutionError>()
+          .map(|e| e.into())
+      })
+      .or_else(|| error.downcast_ref::<url::ParseError>().map(|e| e.into()))
+      .or_else(|| error.downcast_ref::<VarError>().map(|e| e.into()))
+      .or_else(|| error.downcast_ref::<ReadlineError>().map(|e| e.into()))
+      .or_else(|| {
+        error
+          .downcast_ref::<serde_json::error::Error>()
+          .map(|e| e.into())
+      })
+      .or_else(|| error.downcast_ref::<dlopen::Error>().map(|e| e.into()))
+      .or_else(|| unix_error_kind(&error))
+      .unwrap_or_else(|| {
+        panic!("Can't downcast {:?} to OpError", error);
+      })
   }
 }
 
@@ -330,7 +414,7 @@ mod tests {
 
   #[test]
   fn test_simple_error() {
-    let err = OpError::new(ErrorKind::NotFound, "foo".to_string());
+    let err = OpError::not_found("foo".to_string());
     assert_eq!(err.kind, ErrorKind::NotFound);
     assert_eq!(err.to_string(), "foo");
   }
