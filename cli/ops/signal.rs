@@ -103,7 +103,7 @@ pub fn op_signal_unbind(
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let _table = state.resource_table();
-  let table = _table.borrow();
+  let mut table = _table.borrow_mut();
   let resource = table.get::<SignalStreamResource>(rid);
   if let Some(signal) = resource {
     if let Some(waker) = &signal.1 {
@@ -112,11 +112,7 @@ pub fn op_signal_unbind(
       waker.clone().wake();
     }
   }
-  state
-    .resource_table()
-    .borrow_mut()
-    .close(rid)
-    .ok_or_else(bad_resource)?;
+  table.close(rid).ok_or_else(bad_resource)?;
   Ok(JsonOp::Sync(json!({})))
 }
 

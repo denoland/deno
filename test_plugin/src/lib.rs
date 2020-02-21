@@ -1,17 +1,17 @@
-#[macro_use]
-extern crate deno_core;
 extern crate futures;
 
-use deno_core::CoreOp;
-use deno_core::Op;
-use deno_core::PluginInitContext;
-use deno_core::{Buf, ZeroCopyBuf};
+use deno_core::*;
 use futures::future::FutureExt;
 
 fn init(context: &mut dyn PluginInitContext) {
   context.register_op("testSync", Box::new(op_test_sync));
   context.register_op("testAsync", Box::new(op_test_async));
+  context.register_op(
+    "createResource",
+    context.stateful_op(Box::new(op_create_resource)),
+  );
 }
+
 init_fn!(init);
 
 pub fn op_test_sync(data: &[u8], zero_copy: Option<ZeroCopyBuf>) -> CoreOp {
@@ -50,4 +50,27 @@ pub fn op_test_async(data: &[u8], zero_copy: Option<ZeroCopyBuf>) -> CoreOp {
   };
 
   Op::Async(fut.boxed())
+}
+
+struct TestResource {
+  pub name: String,
+}
+
+impl Drop for TestResource {
+  fn drop(&mut self) {
+    println!("Dropped resource: {}", self.name)
+  }
+}
+
+pub fn op_create_resource(
+  state: &PluginState,
+  data: &[u8],
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> CoreOp {
+  let name = std::str::from_utf8(&data[..]).unwrap().to_string();
+  let _table = state.resource_table();
+  let mut table = _table.borrow_mut();
+  let resource = TestResource { name };
+  let rid = table.add("testResource", Box::new(resource));
+  Op::Sync(Box::new(rid.to_be_bytes()))
 }

@@ -32,6 +32,16 @@ struct PluginResource {
 
 struct InitContext {
   ops: HashMap<String, Box<OpDispatcher>>,
+  state: PluginState,
+}
+
+impl InitContext {
+  fn new(state: State) -> Self {
+    Self {
+      ops: HashMap::new(),
+      state: PluginState::new(state.resource_table()),
+    }
+  }
 }
 
 impl PluginInitContext for InitContext {
@@ -41,6 +51,10 @@ impl PluginInitContext for InitContext {
       existing.is_none(),
       format!("Op already registered: {}", name)
     );
+  }
+
+  fn state(&self) -> PluginState {
+    self.state.clone()
   }
 }
 
@@ -76,9 +90,7 @@ pub fn op_open_plugin(
       .lib
       .symbol::<PluginInitFn>("deno_plugin_init")
   }?;
-  let mut init_context = InitContext {
-    ops: HashMap::new(),
-  };
+  let mut init_context = InitContext::new(state.clone());
   init_fn(&mut init_context);
   for op in init_context.ops {
     // Register each plugin op in the `OpRegistry` with the name
