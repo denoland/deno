@@ -63,7 +63,7 @@ pub fn op_connect_tls(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: ConnectTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file.clone();
   let state_ = state.clone();
@@ -118,7 +118,7 @@ pub fn op_connect_tls(
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
-fn load_certs(path: &str) -> Result<Vec<Certificate>, ErrBox> {
+fn load_certs(path: &str) -> Result<Vec<Certificate>, DenoError> {
   let cert_file = File::open(path)?;
   let reader = &mut BufReader::new(cert_file);
 
@@ -131,7 +131,7 @@ fn load_certs(path: &str) -> Result<Vec<Certificate>, ErrBox> {
       ErrorKind::Other,
       "No certificates found in cert file".to_string(),
     );
-    return Err(ErrBox::from(e));
+    return Err(e);
   }
 
   Ok(certs)
@@ -146,7 +146,7 @@ fn key_not_found_err() -> DenoError {
 }
 
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
-fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
+fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, DenoError> {
   let key_file = File::open(path)?;
   let reader = &mut BufReader::new(key_file);
   let keys = rsa_private_keys(reader).map_err(|_| key_decode_err())?;
@@ -154,14 +154,14 @@ fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
 }
 
 /// Starts with -----BEGIN PRIVATE KEY-----
-fn load_pkcs8_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
+fn load_pkcs8_keys(path: &str) -> Result<Vec<PrivateKey>, DenoError> {
   let key_file = File::open(path)?;
   let reader = &mut BufReader::new(key_file);
   let keys = pkcs8_private_keys(reader).map_err(|_| key_decode_err())?;
   Ok(keys)
 }
 
-fn load_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
+fn load_keys(path: &str) -> Result<Vec<PrivateKey>, DenoError> {
   let path = path.to_string();
   let mut keys = load_rsa_keys(&path)?;
 
@@ -170,7 +170,7 @@ fn load_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
   }
 
   if keys.is_empty() {
-    return Err(ErrBox::from(key_not_found_err()));
+    return Err(key_not_found_err());
   }
 
   Ok(keys)
@@ -195,7 +195,7 @@ impl TlsListenerResource {
   /// can be notified when listener is closed.
   ///
   /// Throws an error if another task is already tracked.
-  pub fn track_task(&mut self, cx: &Context) -> Result<(), ErrBox> {
+  pub fn track_task(&mut self, cx: &Context) -> Result<(), DenoError> {
     // Currently, we only allow tracking a single accept task for a listener.
     // This might be changed in the future with multiple workers.
     // Caveat: TcpListener by itself also only tracks an accept task at a time.
@@ -205,7 +205,7 @@ impl TlsListenerResource {
         std::io::ErrorKind::Other,
         "Another accept task is ongoing",
       );
-      return Err(ErrBox::from(e));
+      return Err(DenoError::from(e));
     }
 
     let waker = futures::task::AtomicWaker::new();
@@ -244,7 +244,7 @@ fn op_listen_tls(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: ListenTlsArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp");
 
@@ -308,7 +308,7 @@ pub struct AcceptTls {
 }
 
 impl Future for AcceptTls {
-  type Output = Result<(TcpStream, SocketAddr), ErrBox>;
+  type Output = Result<(TcpStream, SocketAddr), DenoError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -325,12 +325,12 @@ impl Future for AcceptTls {
           std::io::ErrorKind::Other,
           "Listener has been closed",
         );
-        ErrBox::from(e)
+        DenoError::from(e)
       })?;
 
     let listener = &mut listener_resource.listener;
 
-    match listener.poll_accept(cx).map_err(ErrBox::from) {
+    match listener.poll_accept(cx).map_err(DenoError::from) {
       Poll::Ready(Ok((stream, addr))) => {
         listener_resource.untrack_task();
         inner.accept_state = AcceptTlsState::Done;
@@ -358,7 +358,7 @@ fn op_accept_tls(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: AcceptTlsArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let state = state.clone();

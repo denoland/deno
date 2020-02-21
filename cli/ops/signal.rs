@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
+use crate::deno_error::DenoError;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
@@ -54,7 +55,7 @@ fn op_signal_bind(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: BindSignalArgs = serde_json::from_value(args)?;
   let mut state = state.borrow_mut();
   let rid = state.resource_table.add(
@@ -74,7 +75,7 @@ fn op_signal_poll(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let state_ = state.clone();
@@ -99,7 +100,7 @@ pub fn op_signal_unbind(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let mut state = state.borrow_mut();
@@ -120,7 +121,7 @@ pub fn op_signal_bind(
   _state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   unimplemented!();
 }
 
@@ -129,7 +130,7 @@ fn op_signal_unbind(
   _state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   unimplemented!();
 }
 
@@ -138,6 +139,6 @@ fn op_signal_poll(
   _state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   unimplemented!();
 }

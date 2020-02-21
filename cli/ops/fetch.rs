@@ -1,6 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
+use crate::deno_error::other_error;
+use crate::deno_error::DenoError;
 use crate::http_util::{create_http_client, HttpBody};
 use crate::ops::json_op;
 use crate::state::State;
@@ -27,7 +29,7 @@ pub fn op_fetch(
   state: &State,
   args: Value,
   data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
 
@@ -35,11 +37,12 @@ pub fn op_fetch(
     create_http_client(state.borrow().global_state.flags.ca_file.clone())?;
 
   let method = match args.method {
-    Some(method_str) => Method::from_bytes(method_str.as_bytes())?,
+    Some(method_str) => Method::from_bytes(method_str.as_bytes())
+      .map_err(|e| other_error(e.to_string()))?,
     None => Method::GET,
   };
 
-  let url_ = url::Url::parse(&url).map_err(ErrBox::from)?;
+  let url_ = url::Url::parse(&url).map_err(DenoError::from)?;
   state.check_net_url(&url_)?;
 
   let mut request = client.request(method, url_);

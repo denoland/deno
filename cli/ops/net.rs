@@ -2,6 +2,7 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
 use crate::deno_error::bad_resource;
+use crate::deno_error::DenoError;
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
@@ -49,7 +50,7 @@ pub struct Accept<'a> {
 }
 
 impl Future for Accept<'_> {
-  type Output = Result<(TcpStream, SocketAddr), ErrBox>;
+  type Output = Result<(TcpStream, SocketAddr), DenoError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -66,12 +67,12 @@ impl Future for Accept<'_> {
           std::io::ErrorKind::Other,
           "Listener has been closed",
         );
-        ErrBox::from(e)
+        DenoError::from(e)
       })?;
 
     let listener = &mut listener_resource.listener;
 
-    match listener.poll_accept(cx).map_err(ErrBox::from) {
+    match listener.poll_accept(cx).map_err(DenoError::from) {
       Poll::Ready(Ok((stream, addr))) => {
         listener_resource.untrack_task();
         inner.accept_state = AcceptState::Done;
@@ -99,7 +100,7 @@ fn op_accept(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: AcceptArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let state_ = state.clone();
@@ -148,7 +149,7 @@ fn op_connect(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: ConnectArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp"); // TODO Support others.
   let state_ = state.clone();
@@ -191,7 +192,7 @@ fn op_shutdown(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: ShutdownArgs = serde_json::from_value(args)?;
 
   let rid = args.rid as u32;
@@ -210,7 +211,7 @@ fn op_shutdown(
     .ok_or_else(bad_resource)?;
   match resource {
     StreamResource::TcpStream(ref mut stream) => {
-      TcpStream::shutdown(stream, shutdown_mode).map_err(ErrBox::from)?;
+      TcpStream::shutdown(stream, shutdown_mode).map_err(DenoError::from)?;
     }
     _ => return Err(bad_resource()),
   }
@@ -243,7 +244,7 @@ impl TcpListenerResource {
   /// can be notified when listener is closed.
   ///
   /// Throws an error if another task is already tracked.
-  pub fn track_task(&mut self, cx: &Context) -> Result<(), ErrBox> {
+  pub fn track_task(&mut self, cx: &Context) -> Result<(), DenoError> {
     // Currently, we only allow tracking a single accept task for a listener.
     // This might be changed in the future with multiple workers.
     // Caveat: TcpListener by itself also only tracks an accept task at a time.
@@ -253,7 +254,7 @@ impl TcpListenerResource {
         std::io::ErrorKind::Other,
         "Another accept task is ongoing",
       );
-      return Err(ErrBox::from(e));
+      return Err(DenoError::from(e));
     }
 
     let waker = futures::task::AtomicWaker::new();
@@ -282,7 +283,7 @@ fn op_listen(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: ListenArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp");
 

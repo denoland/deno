@@ -46,7 +46,7 @@ fn op_open(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: OpenArgs = serde_json::from_value(args)?;
   let filename = deno_fs::resolve_from_cwd(Path::new(&args.filename))?;
   let state_ = state.clone();
@@ -113,17 +113,17 @@ fn op_open(
         open_options.create_new(true).read(true).write(true);
       }
       &_ => {
-        return Err(ErrBox::from(DenoError::new(
+        return Err(DenoError::new(
           ErrorKind::Other,
           "Unknown open mode.".to_string(),
-        )));
+        ));
       }
     }
   } else {
-    return Err(ErrBox::from(DenoError::new(
+    return Err(DenoError::new(
       ErrorKind::Other,
       "Open requires either mode or options.".to_string(),
-    )));
+    ));
   };
 
   let is_sync = args.promise_id.is_none();
@@ -154,7 +154,7 @@ fn op_close(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: CloseArgs = serde_json::from_value(args)?;
 
   let mut state = state.borrow_mut();
@@ -178,7 +178,7 @@ fn op_seek(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: SeekArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let offset = args.offset;
@@ -189,10 +189,10 @@ fn op_seek(
     1 => SeekFrom::Current(i64::from(offset)),
     2 => SeekFrom::End(i64::from(offset)),
     _ => {
-      return Err(ErrBox::from(DenoError::new(
+      return Err(DenoError::new(
         ErrorKind::TypeError,
         format!("Invalid seek mode: {}", whence),
-      )));
+      ));
     }
   };
 

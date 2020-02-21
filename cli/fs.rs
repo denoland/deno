@@ -5,7 +5,7 @@ use std::io::ErrorKind;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use deno_core::ErrBox;
+use crate::deno_error::DenoError;
 use rand;
 use rand::Rng;
 use url::Url;
@@ -125,15 +125,15 @@ pub fn normalize_path(path: &Path) -> String {
 }
 
 #[cfg(unix)]
-pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), ErrBox> {
+pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), DenoError> {
   let nix_uid = Uid::from_raw(uid);
   let nix_gid = Gid::from_raw(gid);
   unix_chown(path, Option::Some(nix_uid), Option::Some(nix_gid))
-    .map_err(ErrBox::from)
+    .map_err(DenoError::from)
 }
 
 #[cfg(not(unix))]
-pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), ErrBox> {
+pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), DenoError> {
   // Noop
   // TODO: implement chown for Windows
   Err(crate::deno_error::other_error(
@@ -141,7 +141,7 @@ pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), ErrBox> {
   ))
 }
 
-pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, ErrBox> {
+pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, DenoError> {
   let resolved_path = if path.is_absolute() {
     path.to_owned()
   } else {

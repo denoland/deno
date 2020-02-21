@@ -4,19 +4,19 @@
 //! alternative to flatbuffers using a very simple list of int32s to lay out
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
+use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::deno_error::GetErrorKind;
 use byteorder::{LittleEndian, WriteBytesExt};
 use deno_core::Buf;
 use deno_core::CoreOp;
-use deno_core::ErrBox;
 use deno_core::Op;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::future::Future;
 use std::pin::Pin;
 
-pub type MinimalOp = dyn Future<Output = Result<i32, ErrBox>>;
+pub type MinimalOp = dyn Future<Output = Result<i32, DenoError>>;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 // This corresponds to RecordMinimal on the TS side.

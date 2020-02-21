@@ -1,10 +1,10 @@
 use super::dispatch_minimal::MinimalOp;
 use crate::deno_error;
 use crate::deno_error::bad_resource;
+use crate::deno_error::DenoError;
 use crate::http_util::HttpBody;
 use crate::ops::minimal_op;
 use crate::state::State;
-use deno_core::ErrBox;
 use deno_core::*;
 use futures::future::FutureExt;
 use futures::ready;
@@ -86,13 +86,13 @@ pub enum StreamResource {
 }
 
 /// `DenoAsyncRead` is the same as the `tokio_io::AsyncRead` trait
-/// but uses an `ErrBox` error instead of `std::io:Error`
+/// but uses an `DenoError` error instead of `std::io:Error`
 pub trait DenoAsyncRead {
   fn poll_read(
     &mut self,
     cx: &mut Context,
     buf: &mut [u8],
-  ) -> Poll<Result<usize, ErrBox>>;
+  ) -> Poll<Result<usize, DenoError>>;
 }
 
 impl DenoAsyncRead for StreamResource {
@@ -100,7 +100,7 @@ impl DenoAsyncRead for StreamResource {
     &mut self,
     cx: &mut Context,
     buf: &mut [u8],
-  ) -> Poll<Result<usize, ErrBox>> {
+  ) -> Poll<Result<usize, DenoError>> {
     use StreamResource::*;
     let mut f: Pin<Box<dyn AsyncRead>> = match self {
       FsFile(f) => Box::pin(f),
@@ -158,7 +158,7 @@ impl<T> Future for Read<T>
 where
   T: AsMut<[u8]> + Unpin,
 {
-  type Output = Result<i32, ErrBox>;
+  type Output = Result<i32, DenoError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -196,17 +196,17 @@ pub fn op_read(
 }
 
 /// `DenoAsyncWrite` is the same as the `tokio_io::AsyncWrite` trait
-/// but uses an `ErrBox` error instead of `std::io:Error`
+/// but uses an `DenoError` error instead of `std::io:Error`
 pub trait DenoAsyncWrite {
   fn poll_write(
     &mut self,
     cx: &mut Context,
     buf: &[u8],
-  ) -> Poll<Result<usize, ErrBox>>;
+  ) -> Poll<Result<usize, DenoError>>;
 
-  fn poll_close(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>>;
+  fn poll_close(&mut self, cx: &mut Context) -> Poll<Result<(), DenoError>>;
 
-  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>>;
+  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), DenoError>>;
 }
 
 impl DenoAsyncWrite for StreamResource {
@@ -214,7 +214,7 @@ impl DenoAsyncWrite for StreamResource {
     &mut self,
     cx: &mut Context,
     buf: &[u8],
-  ) -> Poll<Result<usize, ErrBox>> {
+  ) -> Poll<Result<usize, DenoError>> {
     use StreamResource::*;
     let mut f: Pin<Box<dyn AsyncWrite>> = match self {
       FsFile(f) => Box::pin(f),
@@ -231,7 +231,7 @@ impl DenoAsyncWrite for StreamResource {
     Ok(v).into()
   }
 
-  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
+  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), DenoError>> {
     use StreamResource::*;
     let mut f: Pin<Box<dyn AsyncWrite>> = match self {
       FsFile(f) => Box::pin(f),
@@ -248,7 +248,7 @@ impl DenoAsyncWrite for StreamResource {
     Ok(()).into()
   }
 
-  fn poll_close(&mut self, _cx: &mut Context) -> Poll<Result<(), ErrBox>> {
+  fn poll_close(&mut self, _cx: &mut Context) -> Poll<Result<(), DenoError>> {
     unimplemented!()
   }
 }
@@ -281,12 +281,12 @@ where
 }
 
 /// This is almost the same implementation as in tokio, difference is
-/// that error type is `ErrBox` instead of `std::io::Error`.
+/// that error type is `DenoError` instead of `std::io::Error`.
 impl<T> Future for Write<T>
 where
   T: AsRef<[u8]> + Unpin,
 {
-  type Output = Result<i32, ErrBox>;
+  type Output = Result<i32, DenoError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();

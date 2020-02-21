@@ -65,8 +65,8 @@ pub enum ErrorKind {
 
 #[derive(Debug)]
 pub struct DenoError {
-  kind: ErrorKind,
-  msg: String,
+  pub kind: ErrorKind,
+  pub msg: String,
 }
 
 pub fn print_msg_and_exit(msg: &str) {
@@ -110,28 +110,28 @@ impl fmt::Display for StaticDenoError {
   }
 }
 
-pub fn bad_resource() -> ErrBox {
+pub fn bad_resource() -> DenoError {
   StaticDenoError(ErrorKind::BadResource, "bad resource id").into()
 }
 
-pub fn permission_denied() -> ErrBox {
+pub fn permission_denied() -> DenoError {
   StaticDenoError(ErrorKind::PermissionDenied, "permission denied").into()
 }
 
-pub fn permission_denied_msg(msg: String) -> ErrBox {
-  DenoError::new(ErrorKind::PermissionDenied, msg).into()
+pub fn permission_denied_msg(msg: String) -> DenoError {
+  DenoError::new(ErrorKind::PermissionDenied, msg)
 }
 
-pub fn no_buffer_specified() -> ErrBox {
+pub fn no_buffer_specified() -> DenoError {
   StaticDenoError(ErrorKind::TypeError, "no buffer specified").into()
 }
 
-pub fn invalid_address_syntax() -> ErrBox {
+pub fn invalid_address_syntax() -> DenoError {
   StaticDenoError(ErrorKind::TypeError, "invalid address syntax").into()
 }
 
-pub fn other_error(msg: String) -> ErrBox {
-  DenoError::new(ErrorKind::Other, msg).into()
+pub fn other_error(msg: String) -> DenoError {
+  DenoError::new(ErrorKind::Other, msg)
 }
 
 // TODO: remove this trait and replace it with
@@ -218,6 +218,12 @@ impl GetErrorKind for VarError {
 
 impl From<io::Error> for DenoError {
   fn from(error: io::Error) -> Self {
+    error.into()
+  }
+}
+
+impl From<&io::Error> for DenoError {
+  fn from(error: &io::Error) -> Self {
     use io::ErrorKind::*;
     let kind = match error.kind() {
       NotFound => ErrorKind::NotFound,
@@ -290,10 +296,31 @@ impl GetErrorKind for url::ParseError {
 
 impl From<reqwest::Error> for DenoError {
   fn from(error: reqwest::Error) -> Self {
-    // TODO(bartlomieju): try to use source to get actual error
-    Self {
-      kind: ErrorKind::Http,
-      msg: error.to_string(),
+    match error.source() {
+      Some(err_ref) => None
+        .or_else(|| {
+          err_ref
+            .downcast_ref::<url::ParseError>()
+            .map(|e| e.clone().into())
+        })
+        .or_else(|| {
+          err_ref
+            .downcast_ref::<io::Error>()
+            .map(|e| e.to_owned().into())
+        })
+        .or_else(|| {
+          err_ref
+            .downcast_ref::<serde_json::error::Error>()
+            .map(|e| e.into())
+        })
+        .unwrap_or_else(|| Self {
+          kind: ErrorKind::Http,
+          msg: error.to_string(),
+        }),
+      None => Self {
+        kind: ErrorKind::Http,
+        msg: error.to_string(),
+      },
     }
   }
 }
@@ -352,6 +379,12 @@ impl GetErrorKind for ReadlineError {
 
 impl From<serde_json::error::Error> for DenoError {
   fn from(error: serde_json::error::Error) -> Self {
+    error.into()
+  }
+}
+
+impl From<&serde_json::error::Error> for DenoError {
+  fn from(error: &serde_json::error::Error) -> Self {
     use serde_json::error::*;
     let kind = match error.classify() {
       Category::Io => ErrorKind::TypeError,

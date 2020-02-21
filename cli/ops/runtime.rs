@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
 use crate::colors;
+use crate::deno_error::DenoError;
 use crate::fs as deno_fs;
 use crate::ops::json_op;
 use crate::state::State;
@@ -28,7 +29,7 @@ fn op_start(
   state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let state = state.borrow();
   let gs = &state.global_state;
 
@@ -53,7 +54,7 @@ fn op_metrics(
   state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let state = state.borrow();
   let m = &state.metrics;
 

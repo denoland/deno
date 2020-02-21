@@ -3,6 +3,7 @@ use super::compiler_worker::CompilerWorker;
 use crate::colors;
 use crate::compilers::CompilationResultFuture;
 use crate::compilers::CompiledModule;
+use crate::deno_error::other_error;
 use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
@@ -636,7 +637,9 @@ async fn execute_in_thread_json(
   req_msg: Buf,
   global_state: GlobalState,
 ) -> JsonResult {
-  let msg = execute_in_thread(global_state, req_msg).await?;
+  let msg = execute_in_thread(global_state, req_msg)
+    .await
+    .map_err(|e| other_error(e.to_string()))?;
   let json_str = std::str::from_utf8(&msg).unwrap();
   Ok(json!(json_str))
 }

@@ -1,4 +1,5 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::deno_error::DenoError;
 use crate::fs as deno_fs;
 use crate::ops::json_op;
 use crate::state::State;
@@ -19,10 +20,10 @@ pub fn init(i: &mut Isolate, s: &State, r: Rc<deno_core::OpRegistry>) {
   );
 }
 
-fn open_plugin<P: AsRef<OsStr>>(lib_path: P) -> Result<Library, ErrBox> {
+fn open_plugin<P: AsRef<OsStr>>(lib_path: P) -> Result<Library, DenoError> {
   debug!("Loading Plugin: {:#?}", lib_path.as_ref());
 
-  Library::open(lib_path).map_err(ErrBox::from)
+  Library::open(lib_path).map_err(DenoError::from)
 }
 
 struct PluginResource {
@@ -55,7 +56,7 @@ pub fn op_open_plugin(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: OpenPluginArgs = serde_json::from_value(args)?;
   let filename = deno_fs::resolve_from_cwd(Path::new(&args.filename))?;
 

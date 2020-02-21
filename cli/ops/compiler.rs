@@ -2,6 +2,8 @@
 use super::dispatch_json::Deserialize;
 use super::dispatch_json::JsonOp;
 use super::dispatch_json::Value;
+use crate::deno_error::other_error;
+use crate::deno_error::DenoError;
 use crate::futures::future::try_join_all;
 use crate::msg;
 use crate::ops::json_op;
@@ -37,7 +39,7 @@ fn op_cache(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: CacheArgs = serde_json::from_value(args)?;
 
   let module_specifier = ModuleSpecifier::resolve_url(&args.module_id)
@@ -66,7 +68,7 @@ fn op_resolve_modules(
   state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: SpecifiersReferrerArgs = serde_json::from_value(args)?;
   let (referrer, is_main) = if let Some(referrer) = args.referrer {
     (referrer, false)
@@ -80,7 +82,7 @@ fn op_resolve_modules(
     let resolved_specifier = state.resolve(specifier, &referrer, is_main);
     match resolved_specifier {
       Ok(ms) => specifiers.push(ms.as_str().to_owned()),
-      Err(err) => return Err(err),
+      Err(err) => return Err(other_error(err.to_string())),
     }
   }
 
@@ -91,7 +93,7 @@ fn op_fetch_source_files(
   state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: SpecifiersReferrerArgs = serde_json::from_value(args)?;
 
   let ref_specifier = if let Some(referrer) = args.referrer {
@@ -115,7 +117,9 @@ fn op_fetch_source_files(
   }
 
   let future = Box::pin(async move {
-    let files = try_join_all(futures).await?;
+    let files = try_join_all(futures)
+      .await
+      .map_err(|e| other_error(e.to_string()))?;
 
     // We want to get an array of futures that resolves to
     let v = files.into_iter().map(|f| {
@@ -128,7 +132,8 @@ fn op_fetch_source_files(
             global_state
               .file_fetcher
               .fetch_source_file_async(&types_specifier, ref_specifier.clone())
-              .await?
+              .await
+              .map_err(|e| other_error(e.to_string()))?
           }
           _ => f,
         };
@@ -140,12 +145,13 @@ fn op_fetch_source_files(
             global_state
               .wasm_compiler
               .compile_async(global_state.clone(), &file)
-              .await?
+              .await
+              .map_err(|e| other_error(e.to_string()))?
               .code
           }
           _ => String::from_utf8(file.source_code).unwrap(),
         };
-        Ok::<_, ErrBox>(json!({
+        Ok::<_, DenoError>(json!({
           "url": file.url.to_string(),
           "filename": file.filename.to_str().unwrap(),
           "mediaType": file.media_type as i32,
@@ -170,7 +176,7 @@ fn op_fetch_asset(
   _state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, DenoError> {
   let args: FetchRemoteAssetArgs = serde_json::from_value(args)?;
   debug!("args.name: {}", args.name);
 

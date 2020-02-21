@@ -33,7 +33,9 @@ use url::Url;
 
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
-pub fn create_http_client(ca_file: Option<String>) -> Result<Client, ErrBox> {
+pub fn create_http_client(
+  ca_file: Option<String>,
+) -> Result<Client, DenoError> {
   let mut headers = HeaderMap::new();
   headers.insert(
     USER_AGENT,
@@ -52,10 +54,7 @@ pub fn create_http_client(ca_file: Option<String>) -> Result<Client, ErrBox> {
   }
 
   builder.build().map_err(|_| {
-    ErrBox::from(DenoError::new(
-      ErrorKind::Other,
-      "Unable to build http client".to_string(),
-    ))
+    DenoError::new(ErrorKind::Other, "Unable to build http client".to_string())
   })
 }
 /// Construct the next uri based on base uri and location header fragment
