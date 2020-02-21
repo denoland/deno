@@ -1620,6 +1620,21 @@ declare namespace Deno {
    */
   export function resources(): ResourceMap;
 
+  /** UNSTABLE: new API. Needs docs. */
+  export interface FsEvent {
+    kind: "any" | "access" | "create" | "modify" | "remove";
+    paths: string[];
+  }
+
+  /** UNSTABLE: new API. Needs docs.
+   *
+   * recursive option is true by default.
+   */
+  export function fsEvents(
+    paths: string | string[],
+    options?: { recursive: boolean }
+  ): AsyncIterableIterator<FsEvent>;
+
   /** How to handle subprocess stdio.
    *
    * "inherit" The default if unspecified. The child inherits from the
