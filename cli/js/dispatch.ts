@@ -30,6 +30,8 @@ export let OP_REPL_START: number;
 export let OP_REPL_READLINE: number;
 export let OP_ACCEPT: number;
 export let OP_ACCEPT_TLS: number;
+export let OP_RECEIVE: number;
+export let OP_SEND: number;
 export let OP_CONNECT: number;
 export let OP_SHUTDOWN: number;
 export let OP_LISTEN: number;

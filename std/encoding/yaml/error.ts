@@ -5,14 +5,12 @@
 
 import { Mark } from "./mark.ts";
 
-const { DenoError, ErrorKind } = Deno;
-
-export class YAMLError extends DenoError<typeof ErrorKind.Other> {
+export class YAMLError extends Error {
   constructor(
     message = "(unknown reason)",
     protected mark: Mark | string = ""
   ) {
-    super(ErrorKind.Other, `${message} ${mark}`);
+    super(`${message} ${mark}`);
     this.name = this.constructor.name;
   }
 

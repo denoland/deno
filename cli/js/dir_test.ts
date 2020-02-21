@@ -29,7 +29,7 @@ testPerm({ write: true }, function dirCwdError(): void {
       Deno.cwd();
       throw Error("current directory removed, should throw error");
     } catch (err) {
-      if (err instanceof Deno.DenoError) {
+      if (err instanceof Deno.Err.NotFound) {
         console.log(err.name === "NotFound");
       } else {
         throw Error("raised different exception");
@@ -45,7 +45,7 @@ testPerm({ write: true }, function dirChdirError(): void {
     Deno.chdir(path);
     throw Error("directory not available, should throw error");
   } catch (err) {
-    if (err instanceof Deno.DenoError) {
+    if (err instanceof Deno.Err.NotFound) {
       console.log(err.name === "NotFound");
     } else {
       throw Error("raised different exception");

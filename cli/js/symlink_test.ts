@@ -15,7 +15,6 @@ testPerm({ read: true, write: true }, function symlinkSyncSuccess(): void {
   }
   if (errOnWindows) {
     assertEquals(Deno.build.os, "win");
-    assertEquals(errOnWindows.kind, Deno.ErrorKind.Other);
     assertEquals(errOnWindows.message, "Not implemented");
   } else {
     const newNameInfoLStat = Deno.lstatSync(newname);
@@ -32,7 +31,7 @@ test(function symlinkSyncPerm(): void {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assert(err instanceof Deno.Err.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -69,7 +68,6 @@ testPerm({ read: true, write: true }, async function symlinkSuccess(): Promise<
     errOnWindows = e;
   }
   if (errOnWindows) {
-    assertEquals(errOnWindows.kind, Deno.ErrorKind.Other);
     assertEquals(errOnWindows.message, "Not implemented");
   } else {
     const newNameInfoLStat = Deno.lstatSync(newname);
