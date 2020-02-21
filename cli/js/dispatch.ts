@@ -73,6 +73,8 @@ export let OP_CWD: number;
 export let OP_CONNECT_TLS: number;
 export let OP_HOSTNAME: number;
 export let OP_OPEN_PLUGIN: number;
+export let OP_FS_EVENTS_OPEN: number;
+export let OP_FS_EVENTS_POLL: number;
 export let OP_COMPILE: number;
 export let OP_TRANSPILE: number;
 export let OP_SIGNAL_BIND: number;
