@@ -602,19 +602,19 @@ declare namespace Deno {
     write(p: Uint8Array): Promise<number>;
     /** _grow() grows the buffer to guarantee space for n more bytes.
      * It returns the index where bytes should be written.
-     * If the buffer can't grow it will throw with ErrTooLarge.
+     * If the buffer can't grow it will throw with Error.
      */
     private _grow;
     /** grow() grows the buffer's capacity, if necessary, to guarantee space for
      * another n bytes. After grow(n), at least n bytes can be written to the
      * buffer without another allocation. If n is negative, grow() will panic. If
-     * the buffer can't grow it will throw ErrTooLarge.
+     * the buffer can't grow it will throw Error.
      * Based on https://golang.org/pkg/bytes/#Buffer.Grow
      */
     grow(n: number): void;
     /** readFrom() reads data from r until EOF and appends it to the buffer,
      * growing the buffer as needed. It returns the number of bytes read. If the
-     * buffer becomes too large, readFrom will panic with ErrTooLarge.
+     * buffer becomes too large, readFrom will panic with Error.
      * Based on https://golang.org/pkg/bytes/#Buffer.ReadFrom
      */
     readFrom(r: Reader): Promise<number>;
@@ -1204,55 +1204,64 @@ declare namespace Deno {
    */
   export function applySourceMap(location: Location): Location;
 
-  /** A Deno specific error.  The `kind` property is set to a specific error code
-   * which can be used to in application logic.
-   *
-   *       try {
-   *         somethingThatMightThrow();
-   *       } catch (e) {
-   *         if (
-   *           e instanceof Deno.DenoError &&
-   *           e.kind === Deno.ErrorKind.NotFound
-   *         ) {
-   *           console.error("NotFound error!");
-   *         }
-   *       }
-   *
-   */
-  export class DenoError<T extends ErrorKind> extends Error {
-    readonly kind: T;
-    constructor(kind: T, msg: string);
+  /* eslint-disable @typescript-eslint/no-unused-vars */
+  namespace Err {
+    class NotFound extends Error {
+      constructor(msg: string);
+    }
+    class PermissionDenied extends Error {
+      constructor(msg: string);
+    }
+    class ConnectionRefused extends Error {
+      constructor(msg: string);
+    }
+    class ConnectionReset extends Error {
+      constructor(msg: string);
+    }
+    class ConnectionAborted extends Error {
+      constructor(msg: string);
+    }
+    class NotConnected extends Error {
+      constructor(msg: string);
+    }
+    class AddrInUse extends Error {
+      constructor(msg: string);
+    }
+    class AddrNotAvailable extends Error {
+      constructor(msg: string);
+    }
+    class BrokenPipe extends Error {
+      constructor(msg: string);
+    }
+    class AlreadyExists extends Error {
+      constructor(msg: string);
+    }
+    class InvalidData extends Error {
+      constructor(msg: string);
+    }
+    class TimedOut extends Error {
+      constructor(msg: string);
+    }
+    class Interrupted extends Error {
+      constructor(msg: string);
+    }
+    class WriteZero extends Error {
+      constructor(msg: string);
+    }
+    class Other extends Error {
+      constructor(msg: string);
+    }
+    class UnexpectedEof extends Error {
+      constructor(msg: string);
+    }
+    class BadResource extends Error {
+      constructor(msg: string);
+    }
+    class Http extends Error {
+      constructor(msg: string);
+    }
   }
-  export enum ErrorKind {
-    NotFound = 1,
-    PermissionDenied = 2,
-    ConnectionRefused = 3,
-    ConnectionReset = 4,
-    ConnectionAborted = 5,
-    NotConnected = 6,
-    AddrInUse = 7,
-    AddrNotAvailable = 8,
-    BrokenPipe = 9,
-    AlreadyExists = 10,
-    WouldBlock = 11,
-    InvalidInput = 12,
-    InvalidData = 13,
-    TimedOut = 14,
-    Interrupted = 15,
-    WriteZero = 16,
-    Other = 17,
-    UnexpectedEof = 18,
-    BadResource = 19,
-    UrlParse = 20,
-    Http = 21,
-    TooLarge = 22,
-    InvalidSeekMode = 23,
-    UnixError = 24,
-    InvalidPath = 25,
-    ImportPrefixMissing = 26,
-    Diagnostic = 27,
-    JSError = 28
-  }
+  /* eslint-enable @typescript-eslint/no-unused-vars */
 
   /** UNSTABLE: potentially want names to overlap more with browser.
    *

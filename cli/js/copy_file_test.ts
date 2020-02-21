@@ -43,8 +43,7 @@ testPerm({ write: true, read: true }, function copyFileSyncFailure(): void {
     err = e;
   }
   assert(!!err);
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
-  assertEquals(err.name, "NotFound");
+  assert(err instanceof Deno.Err.NotFound);
 });
 
 testPerm({ write: true, read: false }, function copyFileSyncPerm1(): void {
@@ -53,8 +52,7 @@ testPerm({ write: true, read: false }, function copyFileSyncPerm1(): void {
     Deno.copyFileSync("/from.txt", "/to.txt");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(e.name, "PermissionDenied");
+    assert(e instanceof Deno.Err.PermissionDenied);
   }
   assert(caughtError);
 });
@@ -65,8 +63,7 @@ testPerm({ write: false, read: true }, function copyFileSyncPerm2(): void {
     Deno.copyFileSync("/from.txt", "/to.txt");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(e.name, "PermissionDenied");
+    assert(e instanceof Deno.Err.PermissionDenied);
   }
   assert(caughtError);
 });
@@ -113,8 +110,7 @@ testPerm({ read: true, write: true }, async function copyFileFailure(): Promise<
     err = e;
   }
   assert(!!err);
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
-  assertEquals(err.name, "NotFound");
+  assert(err instanceof Deno.Err.NotFound);
 });
 
 testPerm(
@@ -142,8 +138,7 @@ testPerm({ read: false, write: true }, async function copyFilePerm1(): Promise<
     await Deno.copyFile("/from.txt", "/to.txt");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(e.name, "PermissionDenied");
+    assert(e instanceof Deno.Err.PermissionDenied);
   }
   assert(caughtError);
 });
@@ -156,8 +151,7 @@ testPerm({ read: true, write: false }, async function copyFilePerm2(): Promise<
     await Deno.copyFile("/from.txt", "/to.txt");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(e.name, "PermissionDenied");
+    assert(e instanceof Deno.Err.PermissionDenied);
   }
   assert(caughtError);
 });

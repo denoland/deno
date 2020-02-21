@@ -6,16 +6,7 @@ import {
   assertEquals,
   assertStrContains
 } from "./test_util.ts";
-const {
-  kill,
-  run,
-  DenoError,
-  ErrorKind,
-  readFile,
-  open,
-  makeTempDir,
-  writeFile
-} = Deno;
+const { kill, run, readFile, open, makeTempDir, writeFile } = Deno;
 
 test(function runPermissions(): void {
   let caughtError = false;
@@ -23,8 +14,7 @@ test(function runPermissions(): void {
     Deno.run({ args: ["python", "-c", "print('hello world')"] });
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(e.name, "PermissionDenied");
+    assert(e instanceof Deno.Err.PermissionDenied);
   }
   assert(caughtError);
 });
@@ -78,8 +68,7 @@ testPerm({ run: true }, function runNotFound(): void {
     error = e;
   }
   assert(error !== undefined);
-  assert(error instanceof DenoError);
-  assertEquals(error.kind, ErrorKind.NotFound);
+  assert(error instanceof Deno.Err.NotFound);
 });
 
 testPerm(
@@ -332,8 +321,7 @@ if (Deno.build.os !== "win") {
       Deno.kill(Deno.pid, Deno.Signal.SIGCONT);
     } catch (e) {
       caughtError = true;
-      assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-      assertEquals(e.name, "PermissionDenied");
+      assert(e instanceof Deno.Err.PermissionDenied);
     }
     assert(caughtError);
   });
@@ -370,8 +358,7 @@ if (Deno.build.os !== "win") {
     }
 
     assert(!!err);
-    assertEquals(err.kind, Deno.ErrorKind.InvalidInput);
-    assertEquals(err.name, "InvalidInput");
+    assert(err instanceof TypeError);
 
     p.close();
   });

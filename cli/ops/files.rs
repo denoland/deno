@@ -190,7 +190,7 @@ fn op_seek(
     2 => SeekFrom::End(i64::from(offset)),
     _ => {
       return Err(ErrBox::from(DenoError::new(
-        ErrorKind::InvalidSeekMode,
+        ErrorKind::TypeError,
         format!("Invalid seek mode: {}", whence),
       )));
     }

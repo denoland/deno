@@ -2,7 +2,6 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
-use crate::deno_error::GetErrorKind;
 use crate::fmt_errors::JSError;
 use crate::futures::SinkExt;
 use crate::global_state::GlobalState;
@@ -212,11 +211,17 @@ fn op_host_terminate_worker(
 fn serialize_worker_event(event: WorkerEvent) -> Value {
   match event {
     WorkerEvent::Message(buf) => json!({ "type": "msg", "data": buf }),
-    WorkerEvent::Error(error) => match error.kind() {
-      ErrorKind::JSError => {
-        let error = error.downcast::<JSError>().unwrap();
-        let exception: V8Exception = error.into();
-        json!({
+    WorkerEvent::Error(error) => {
+      let mut serialized_error = json!({
+        "type": "error",
+        "error": {
+          "message": error.to_string(),
+        }
+      });
+
+      if let Ok(err) = error.downcast::<JSError>() {
+        let exception: V8Exception = err.into();
+        serialized_error = json!({
           "type": "error",
           "error": {
             "message": exception.message,
@@ -224,15 +229,11 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
             "lineNumber": exception.line_number,
             "columnNumber": exception.start_column,
           }
-        })
+        });
       }
-      _ => json!({
-        "type": "error",
-        "error": {
-          "message": error.to_string(),
-        }
-      }),
-    },
+
+      serialized_error
+    }
   }
 }
 

@@ -13,7 +13,7 @@ test(async function connectTLSNoPerm(): Promise<void> {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assert(err instanceof Deno.Err.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -28,7 +28,7 @@ test(async function connectTLSCertFileNoReadPerm(): Promise<void> {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assert(err instanceof Deno.Err.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -51,8 +51,7 @@ testPerm(
     } catch (e) {
       err = e;
     }
-    assertEquals(err.kind, Deno.ErrorKind.NotFound);
-    assertEquals(err.name, "NotFound");
+    assert(err instanceof Deno.Err.NotFound);
 
     try {
       Deno.listenTLS({
@@ -62,8 +61,7 @@ testPerm(
     } catch (e) {
       err = e;
     }
-    assertEquals(err.kind, Deno.ErrorKind.NotFound);
-    assertEquals(err.name, "NotFound");
+    assert(err instanceof Deno.Err.NotFound);
   }
 );
 
@@ -79,7 +77,7 @@ testPerm({ net: true }, async function listenTLSNoReadPerm(): Promise<void> {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assert(err instanceof Deno.Err.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -108,8 +106,7 @@ testPerm(
     } catch (e) {
       err = e;
     }
-    assertEquals(err.kind, Deno.ErrorKind.Other);
-    assertEquals(err.name, "Other");
+    assert(err instanceof Error);
   }
 );
 
@@ -138,8 +135,7 @@ testPerm(
     } catch (e) {
       err = e;
     }
-    assertEquals(err.kind, Deno.ErrorKind.Other);
-    assertEquals(err.name, "Other");
+    assert(err instanceof Error);
   }
 );
 

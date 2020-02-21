@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assertEquals } from "./test_util.ts";
+import { testPerm, assertEquals, assert } from "./test_util.ts";
 
 function readDataSync(name: string): string {
   const data = Deno.readFileSync(name);
@@ -58,7 +58,7 @@ testPerm({ write: false }, function truncateSyncPerm(): void {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assert(err instanceof Deno.Err.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -69,6 +69,6 @@ testPerm({ write: false }, async function truncatePerm(): Promise<void> {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assert(err instanceof Deno.Err.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
