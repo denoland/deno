@@ -50,5 +50,3 @@ testPerm({ read: true, write: true }, async function fsEventsBasic(): Promise<
   assert(events[1].kind == "create" || events[1].kind == "modify");
   assert(events[1].paths[0].includes(testDir));
 });
-
-Deno.runTests();
