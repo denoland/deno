@@ -121,14 +121,8 @@ pub fn op_fs_events_poll(
       .poll_recv(cx)
       .map(|maybe_result| match maybe_result {
         Some(Ok(value)) => Ok(json!({ "value": value, "done": false })),
-        Some(Err(err)) => {
-          resource_table.close(rid);
-          Err(err)
-        }
-        None => {
-          resource_table.close(rid);
-          Ok(json!({ "done": true }))
-        }
+        Some(Err(err)) => Err(err),
+        None => Ok(json!({ "done": true })),
       })
   });
   Ok(JsonOp::Async(f.boxed_local()))
