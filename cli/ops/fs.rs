@@ -1,9 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
-use crate::deno_error::ErrorKind;
-use crate::deno_error::OpError;
 use crate::fs as deno_fs;
+use crate::op_error::OpError;
 use crate::ops::dispatch_json::JsonResult;
 use crate::ops::json_op;
 use crate::state::State;
@@ -213,10 +212,7 @@ fn op_copy_file(
     // See https://github.com/rust-lang/rust/issues/54800
     // Once the issue is reolved, we should remove this workaround.
     if cfg!(unix) && !from.is_file() {
-      return Err(OpError::new(
-        ErrorKind::NotFound,
-        "File not found".to_string(),
-      ));
+      return Err(OpError::not_found("File not found".to_string()));
     }
 
     fs::copy(&from, &to)?;
@@ -463,10 +459,7 @@ fn op_symlink(
   state.check_write(&newname)?;
   // TODO Use type for Windows.
   if cfg!(windows) {
-    return Err(OpError::new(
-      ErrorKind::Other,
-      "Not implemented".to_string(),
-    ));
+    return Err(OpError::other("Not implemented".to_string()));
   }
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {

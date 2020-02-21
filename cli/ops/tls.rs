@@ -1,9 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
-use crate::deno_error::bad_resource;
-use crate::deno_error::ErrorKind;
-use crate::deno_error::OpError;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
@@ -122,15 +120,11 @@ fn load_certs(path: &str) -> Result<Vec<Certificate>, OpError> {
   let cert_file = File::open(path)?;
   let reader = &mut BufReader::new(cert_file);
 
-  let certs = certs(reader).map_err(|_| {
-    OpError::new(ErrorKind::Other, "Unable to decode certificate".to_string())
-  })?;
+  let certs = certs(reader)
+    .map_err(|_| OpError::other("Unable to decode certificate".to_string()))?;
 
   if certs.is_empty() {
-    let e = OpError::new(
-      ErrorKind::Other,
-      "No certificates found in cert file".to_string(),
-    );
+    let e = OpError::other("No certificates found in cert file".to_string());
     return Err(e);
   }
 
@@ -138,11 +132,11 @@ fn load_certs(path: &str) -> Result<Vec<Certificate>, OpError> {
 }
 
 fn key_decode_err() -> OpError {
-  OpError::new(ErrorKind::Other, "Unable to decode key".to_string())
+  OpError::other("Unable to decode key".to_string())
 }
 
 fn key_not_found_err() -> OpError {
-  OpError::new(ErrorKind::Other, "No keys found in key file".to_string())
+  OpError::other("No keys found in key file".to_string())
 }
 
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
@@ -201,11 +195,7 @@ impl TlsListenerResource {
     // Caveat: TcpListener by itself also only tracks an accept task at a time.
     // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
     if self.waker.is_some() {
-      let e = std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "Another accept task is ongoing",
-      );
-      return Err(OpError::from(e));
+      return Err(OpError::other("Another accept task is ongoing".to_string()));
     }
 
     let waker = futures::task::AtomicWaker::new();
@@ -320,13 +310,7 @@ impl Future for AcceptTls {
     let listener_resource = state
       .resource_table
       .get_mut::<TlsListenerResource>(inner.rid)
-      .ok_or_else(|| {
-        let e = std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "Listener has been closed",
-        );
-        OpError::from(e)
-      })?;
+      .ok_or_else(|| OpError::other("Listener has been closed".to_string()))?;
 
     let listener = &mut listener_resource.listener;
 
@@ -371,7 +355,7 @@ fn op_accept_tls(
       let resource = state
         .resource_table
         .get::<TlsListenerResource>(rid)
-        .ok_or_else(bad_resource)
+        .ok_or_else(OpError::bad_resource)
         .expect("Can't find tls listener");
       resource.tls_acceptor.clone()
     };

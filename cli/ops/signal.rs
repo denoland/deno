@@ -1,14 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
-use crate::deno_error::OpError;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
 
 #[cfg(unix)]
 use super::dispatch_json::Deserialize;
-#[cfg(unix)]
-use crate::deno_error::bad_resource;
 #[cfg(unix)]
 use futures::future::{poll_fn, FutureExt};
 #[cfg(unix)]
@@ -112,7 +110,10 @@ pub fn op_signal_unbind(
       waker.clone().wake();
     }
   }
-  state.resource_table.close(rid).ok_or_else(bad_resource)?;
+  state
+    .resource_table
+    .close(rid)
+    .ok_or_else(OpError::bad_resource)?;
   Ok(JsonOp::Sync(json!({})))
 }
 

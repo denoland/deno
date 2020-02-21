@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::deno_error::OpError;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use atty;
@@ -63,13 +63,10 @@ fn op_get_dir(
   };
 
   if path == None {
-    Err(
-      Error::new(
-        ErrorKind::NotFound,
-        format!("Could not get user {} directory.", args.kind.as_str()),
-      )
-      .into(),
-    )
+    Err(OpError::not_found(format!(
+      "Could not get user {} directory.",
+      args.kind.as_str()
+    )))
   } else {
     Ok(JsonOp::Sync(json!(path
       .unwrap_or_default()

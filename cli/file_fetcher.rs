@@ -1,12 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
-use crate::deno_error::ErrorKind;
-use crate::deno_error::OpError;
 use crate::http_cache::HttpCache;
 use crate::http_util;
 use crate::http_util::create_http_client;
 use crate::http_util::FetchOnceResult;
 use crate::msg;
+use crate::op_error::OpError;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
@@ -99,8 +98,7 @@ impl SourceFileFetcher {
   fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox> {
     if !SUPPORTED_URL_SCHEMES.contains(&url.scheme()) {
       return Err(
-        OpError::new(
-          ErrorKind::Other,
+        OpError::other(
           format!("Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}", url.scheme(), url, SUPPORTED_URL_SCHEMES),
         ).into()
       );
@@ -194,13 +192,13 @@ impl SourceFileFetcher {
             r#"Cannot find module "{}"{} in cache, --cached-only is specified"#,
             module_url, referrer_suffix
           );
-          OpError::new(ErrorKind::NotFound, msg).into()
+          OpError::not_found(msg).into()
         } else if is_not_found {
           let msg = format!(
             r#"Cannot resolve module "{}"{}"#,
             module_url, referrer_suffix
           );
-          OpError::new(ErrorKind::NotFound, msg).into()
+          OpError::not_found(msg).into()
         } else {
           err
         };
@@ -257,8 +255,7 @@ impl SourceFileFetcher {
   /// Fetch local source file.
   fn fetch_local_file(&self, module_url: &Url) -> Result<SourceFile, ErrBox> {
     let filepath = module_url.to_file_path().map_err(|()| {
-      ErrBox::from(OpError::new(
-        ErrorKind::URIError,
+      ErrBox::from(OpError::uri_error(
         "File URL contains invalid path".to_owned(),
       ))
     })?;
@@ -357,7 +354,7 @@ impl SourceFileFetcher {
     redirect_limit: i64,
   ) -> Pin<Box<dyn Future<Output = Result<SourceFile, ErrBox>>>> {
     if redirect_limit < 0 {
-      let e = OpError::new(ErrorKind::Http, "too many redirects".to_string());
+      let e = OpError::http("too many redirects".to_string());
       return futures::future::err(e.into()).boxed_local();
     }
 

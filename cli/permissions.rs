@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error::OpError;
-use crate::deno_error::{other_error, permission_denied_msg};
 use crate::flags::DenoFlags;
+use crate::op_error::OpError;
 use ansi_term::Style;
 #[cfg(not(test))]
 use atty;
@@ -35,7 +34,7 @@ impl PermissionState {
       return Ok(());
     }
     let m = format!("{}, run again with the {} flag", msg, flag_name);
-    Err(permission_denied_msg(m))
+    Err(OpError::permission_denied(m))
   }
   pub fn is_allow(self) -> bool {
     self == PermissionState::Allow
@@ -284,7 +283,7 @@ impl DenoPermissions {
       "env" => Ok(self.allow_env),
       "plugin" => Ok(self.allow_plugin),
       "hrtime" => Ok(self.allow_hrtime),
-      n => Err(other_error(format!("No such permission name: {}", n))),
+      n => Err(OpError::other(format!("No such permission name: {}", n))),
     }
   }
 }

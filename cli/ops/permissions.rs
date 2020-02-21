@@ -1,8 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::deno_error::other_error;
-use crate::deno_error::OpError;
 use crate::fs as deno_fs;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
@@ -102,7 +101,7 @@ pub fn op_request_permission(
     "env" => Ok(permissions.request_env()),
     "plugin" => Ok(permissions.request_plugin()),
     "hrtime" => Ok(permissions.request_hrtime()),
-    n => Err(other_error(format!("No such permission name: {}", n))),
+    n => Err(OpError::other(format!("No such permission name: {}", n))),
   }?;
   Ok(JsonOp::Sync(json!({ "state": perm.to_string() })))
 }

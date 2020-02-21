@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
-use crate::deno_error::bad_resource;
-use crate::deno_error::OpError;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::repl;
 use crate::repl::Repl;
@@ -65,7 +64,7 @@ fn op_repl_readline(
   let resource = state
     .resource_table
     .get::<ReplResource>(rid)
-    .ok_or_else(bad_resource)?;
+    .ok_or_else(OpError::bad_resource)?;
   let repl = resource.0.clone();
 
   blocking_json(false, move || {

@@ -1,8 +1,6 @@
 use super::dispatch_minimal::MinimalOp;
-use crate::deno_error;
-use crate::deno_error::bad_resource;
-use crate::deno_error::OpError;
 use crate::http_util::HttpBody;
+use crate::op_error::OpError;
 use crate::ops::minimal_op;
 use crate::state::State;
 use deno_core::*;
@@ -111,7 +109,7 @@ impl DenoAsyncRead for StreamResource {
       ChildStdout(f) => Box::pin(f),
       ChildStderr(f) => Box::pin(f),
       HttpBody(f) => Box::pin(f),
-      _ => return Err(bad_resource()).into(),
+      _ => return Err(OpError::bad_resource()).into(),
     };
 
     let v = ready!(f.as_mut().poll_read(cx, buf))?;
@@ -170,11 +168,15 @@ where
     let resource = state
       .resource_table
       .get_mut::<StreamResource>(inner.rid)
-      .ok_or_else(bad_resource)?;
+      .ok_or_else(OpError::bad_resource)?;
     let nread = ready!(resource.poll_read(cx, &mut inner.buf.as_mut()[..]))?;
     inner.io_state = IoState::Done;
     Poll::Ready(Ok(nread as i32))
   }
+}
+
+fn no_buffer_specified() -> OpError {
+  OpError::type_error("no buffer specified".to_string())
 }
 
 pub fn op_read(
@@ -184,10 +186,7 @@ pub fn op_read(
 ) -> Pin<Box<MinimalOp>> {
   debug!("read rid={}", rid);
   let zero_copy = match zero_copy {
-    None => {
-      return futures::future::err(deno_error::no_buffer_specified())
-        .boxed_local()
-    }
+    None => return futures::future::err(no_buffer_specified()).boxed_local(),
     Some(buf) => buf,
   };
 
@@ -224,7 +223,7 @@ impl DenoAsyncWrite for StreamResource {
       ClientTlsStream(f) => Box::pin(f),
       ServerTlsStream(f) => Box::pin(f),
       ChildStdin(f) => Box::pin(f),
-      _ => return Err(bad_resource()).into(),
+      _ => return Err(OpError::bad_resource()).into(),
     };
 
     let v = ready!(f.as_mut().poll_write(cx, buf))?;
@@ -241,7 +240,7 @@ impl DenoAsyncWrite for StreamResource {
       ClientTlsStream(f) => Box::pin(f),
       ServerTlsStream(f) => Box::pin(f),
       ChildStdin(f) => Box::pin(f),
-      _ => return Err(bad_resource()).into(),
+      _ => return Err(OpError::bad_resource()).into(),
     };
 
     ready!(f.as_mut().poll_flush(cx))?;
@@ -299,7 +298,7 @@ where
       let resource = state
         .resource_table
         .get_mut::<StreamResource>(inner.rid)
-        .ok_or_else(bad_resource)?;
+        .ok_or_else(OpError::bad_resource)?;
 
       let nwritten = ready!(resource.poll_write(cx, inner.buf.as_ref()))?;
       inner.io_state = IoState::Flush;
@@ -315,7 +314,7 @@ where
       let resource = state
         .resource_table
         .get_mut::<StreamResource>(inner.rid)
-        .ok_or_else(bad_resource)?;
+        .ok_or_else(OpError::bad_resource)?;
       ready!(resource.poll_flush(cx))?;
       inner.io_state = IoState::Done;
     }
@@ -331,10 +330,7 @@ pub fn op_write(
 ) -> Pin<Box<MinimalOp>> {
   debug!("write rid={}", rid);
   let zero_copy = match zero_copy {
-    None => {
-      return futures::future::err(deno_error::no_buffer_specified())
-        .boxed_local()
-    }
+    None => return futures::future::err(no_buffer_specified()).boxed_local(),
     Some(buf) => buf,
   };
 

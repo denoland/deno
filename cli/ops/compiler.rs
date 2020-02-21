@@ -2,11 +2,10 @@
 use super::dispatch_json::Deserialize;
 use super::dispatch_json::JsonOp;
 use super::dispatch_json::Value;
-use crate::deno_error::other_error;
-use crate::deno_error::OpError;
 use crate::futures::future::try_join_all;
 use crate::import_map::ImportMapError;
 use crate::msg;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::Loader;
@@ -92,7 +91,7 @@ fn op_resolve_modules(
         } else if let Some(e) = err.downcast_ref::<ImportMapError>() {
           return Err(e.into());
         } else {
-          return Err(other_error(err.to_string()));
+          return Err(OpError::other(err.to_string()));
         }
       }
     }
@@ -137,13 +136,12 @@ fn op_fetch_source_files(
       .collect();
 
     let files = try_join_all(file_futures).await.map_err(|err| {
-      eprintln!("future failed {:?}", err);
       // FIXME(bartlomieju): not very elegant - refactor `file_fetcher`
       // to use only std::io::Error to get rid of this cruft
       if let Some(e) = err.downcast_ref::<OpError>() {
         OpError::new(e.kind, e.msg.to_string())
       } else {
-        other_error(err.to_string())
+        OpError::other(err.to_string())
       }
     })?;
     // We want to get an array of futures that resolves to
@@ -158,7 +156,7 @@ fn op_fetch_source_files(
               .file_fetcher
               .fetch_source_file_async(&types_specifier, ref_specifier.clone())
               .await
-              .map_err(|e| other_error(e.to_string()))?
+              .map_err(|e| OpError::other(e.to_string()))?
           }
           _ => f,
         };
@@ -171,7 +169,7 @@ fn op_fetch_source_files(
               .wasm_compiler
               .compile_async(global_state.clone(), &file)
               .await
-              .map_err(|e| other_error(e.to_string()))?
+              .map_err(|e| OpError::other(e.to_string()))?
               .code
           }
           _ => String::from_utf8(file.source_code).unwrap(),

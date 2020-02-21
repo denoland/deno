@@ -5,7 +5,7 @@ use std::io::ErrorKind;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::deno_error::OpError;
+use crate::op_error::OpError;
 use rand;
 use rand::Rng;
 use url::Url;
@@ -136,9 +136,7 @@ pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), OpError> {
 pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), OpError> {
   // Noop
   // TODO: implement chown for Windows
-  Err(crate::deno_error::other_error(
-    "Op not implemented".to_string(),
-  ))
+  Err(OpError::other("Op not implemented".to_string()))
 }
 
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, OpError> {

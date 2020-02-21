@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::deno_dir::DenoDir;
-use crate::deno_error::OpError;
+use crate::op_error::OpError;
 use deno_core::ErrBox;
 use rustyline;
 use std::fs;

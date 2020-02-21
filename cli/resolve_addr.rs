@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error::OpError;
+use crate::op_error::OpError;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;

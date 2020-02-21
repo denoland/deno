@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error::OpError;
+use crate::op_error::OpError;
 use deno_core::*;
 use futures::future::FutureExt;
 pub use serde_derive::Deserialize;

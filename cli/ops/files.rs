@@ -1,10 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
-use crate::deno_error::bad_resource;
-use crate::deno_error::ErrorKind;
-use crate::deno_error::OpError;
 use crate::fs as deno_fs;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
@@ -113,15 +111,12 @@ fn op_open(
         open_options.create_new(true).read(true).write(true);
       }
       &_ => {
-        return Err(OpError::new(
-          ErrorKind::Other,
-          "Unknown open mode.".to_string(),
-        ));
+        // TODO: this should be type error
+        return Err(OpError::other("Unknown open mode.".to_string()));
       }
     }
   } else {
-    return Err(OpError::new(
-      ErrorKind::Other,
+    return Err(OpError::other(
       "Open requires either mode or options.".to_string(),
     ));
   };
@@ -161,7 +156,7 @@ fn op_close(
   state
     .resource_table
     .close(args.rid as u32)
-    .ok_or_else(bad_resource)?;
+    .ok_or_else(OpError::bad_resource)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -189,10 +184,10 @@ fn op_seek(
     1 => SeekFrom::Current(i64::from(offset)),
     2 => SeekFrom::End(i64::from(offset)),
     _ => {
-      return Err(OpError::new(
-        ErrorKind::TypeError,
-        format!("Invalid seek mode: {}", whence),
-      ));
+      return Err(OpError::type_error(format!(
+        "Invalid seek mode: {}",
+        whence
+      )));
     }
   };
 
@@ -200,11 +195,11 @@ fn op_seek(
   let resource = state
     .resource_table
     .get::<StreamResource>(rid)
-    .ok_or_else(bad_resource)?;
+    .ok_or_else(OpError::bad_resource)?;
 
   let tokio_file = match resource {
     StreamResource::FsFile(ref file) => file,
-    _ => return Err(bad_resource()),
+    _ => return Err(OpError::bad_resource()),
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 

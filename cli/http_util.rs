@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error;
-use crate::deno_error::ErrorKind;
-use crate::deno_error::OpError;
+use crate::op_error::OpError;
 use crate::version;
 use brotli2::read::BrotliDecoder;
 use bytes::Bytes;
@@ -51,9 +49,9 @@ pub fn create_http_client(ca_file: Option<String>) -> Result<Client, OpError> {
     builder = builder.add_root_certificate(cert);
   }
 
-  builder.build().map_err(|_| {
-    OpError::new(ErrorKind::Other, "Unable to build http client".to_string())
-  })
+  builder
+    .build()
+    .map_err(|_| OpError::other("Unable to build http client".to_string()))
 }
 /// Construct the next uri based on base uri and location header fragment
 /// See <https://tools.ietf.org/html/rfc3986#section-4.2>
@@ -147,10 +145,11 @@ pub fn fetch_once(
     if response.status().is_client_error()
       || response.status().is_server_error()
     {
-      let err = OpError::new(
-        deno_error::ErrorKind::Other,
-        format!("Import '{}' failed: {}", &url, response.status()),
-      );
+      let err = OpError::other(format!(
+        "Import '{}' failed: {}",
+        &url,
+        response.status()
+      ));
       return Err(err.into());
     }
 

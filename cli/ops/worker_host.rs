@@ -1,11 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::deno_error::other_error;
-use crate::deno_error::ErrorKind;
-use crate::deno_error::OpError;
 use crate::fmt_errors::JSError;
 use crate::futures::SinkExt;
 use crate::global_state::GlobalState;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::permissions::DenoPermissions;
 use crate::startup_data;
@@ -177,7 +175,7 @@ fn op_create_worker(
     has_source_code,
     source_code,
   )
-  .map_err(|e| other_error(e.to_string()))?;
+  .map_err(|e| OpError::other(e.to_string()))?;
   // At this point all interactions with worker happen using thread
   // safe handler returned from previous function call
   let mut parent_state = parent_state.borrow_mut();
@@ -287,7 +285,7 @@ fn op_host_post_message(
     state.workers.get(&id).expect("No worker handle found");
   let fut = worker_handle
     .post_message(msg)
-    .map_err(|e| OpError::new(ErrorKind::Other, e.to_string()));
+    .map_err(|e| OpError::other(e.to_string()));
   futures::executor::block_on(fut)?;
   Ok(JsonOp::Sync(json!({})))
 }

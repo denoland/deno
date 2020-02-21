@@ -85,7 +85,7 @@ fn check_source_files(
       "files"
     };
     Err(
-      crate::deno_error::other_error(format!(
+      crate::op_error::OpError::other(format!(
         "Found {} not formatted {} in {:?}",
         not_formatted_files.len(),
         f,

@@ -1,9 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
-use crate::deno_error::other_error;
-use crate::deno_error::OpError;
 use crate::http_util::{create_http_client, HttpBody};
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
@@ -38,7 +37,7 @@ pub fn op_fetch(
 
   let method = match args.method {
     Some(method_str) => Method::from_bytes(method_str.as_bytes())
-      .map_err(|e| other_error(e.to_string()))?,
+      .map_err(|e| OpError::other(e.to_string()))?,
     None => Method::GET,
   };
 

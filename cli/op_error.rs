@@ -68,6 +68,34 @@ impl OpError {
   pub fn new(kind: ErrorKind, msg: String) -> Self {
     Self { kind, msg }
   }
+
+  pub fn not_found(msg: String) -> Self {
+    Self::new(ErrorKind::NotFound, msg)
+  }
+
+  pub fn other(msg: String) -> Self {
+    Self::new(ErrorKind::Other, msg)
+  }
+
+  pub fn type_error(msg: String) -> Self {
+    Self::new(ErrorKind::TypeError, msg)
+  }
+
+  pub fn http(msg: String) -> Self {
+    Self::new(ErrorKind::Http, msg)
+  }
+
+  pub fn uri_error(msg: String) -> Self {
+    Self::new(ErrorKind::URIError, msg)
+  }
+
+  pub fn permission_denied(msg: String) -> OpError {
+    Self::new(ErrorKind::PermissionDenied, msg)
+  }
+
+  pub fn bad_resource() -> OpError {
+    Self::new(ErrorKind::BadResource, "bad resource id".to_string())
+  }
 }
 
 impl Error for OpError {}
@@ -75,50 +103,6 @@ impl Error for OpError {}
 impl fmt::Display for OpError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.pad(self.msg.as_str())
-  }
-}
-
-#[derive(Debug)]
-struct StaticDenoError(ErrorKind, &'static str);
-
-impl Error for StaticDenoError {}
-
-impl fmt::Display for StaticDenoError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.pad(self.1)
-  }
-}
-
-pub fn bad_resource() -> OpError {
-  StaticDenoError(ErrorKind::BadResource, "bad resource id").into()
-}
-
-pub fn permission_denied() -> OpError {
-  StaticDenoError(ErrorKind::PermissionDenied, "permission denied").into()
-}
-
-pub fn permission_denied_msg(msg: String) -> OpError {
-  OpError::new(ErrorKind::PermissionDenied, msg)
-}
-
-pub fn no_buffer_specified() -> OpError {
-  StaticDenoError(ErrorKind::TypeError, "no buffer specified").into()
-}
-
-pub fn invalid_address_syntax() -> OpError {
-  StaticDenoError(ErrorKind::TypeError, "invalid address syntax").into()
-}
-
-pub fn other_error(msg: String) -> OpError {
-  OpError::new(ErrorKind::Other, msg)
-}
-
-impl From<StaticDenoError> for OpError {
-  fn from(error: StaticDenoError) -> Self {
-    Self {
-      kind: error.0,
-      msg: error.1.to_string(),
-    }
   }
 }
 
@@ -376,30 +360,16 @@ mod tests {
 
   #[test]
   fn test_bad_resource() {
-    let err = bad_resource();
+    let err = OpError::bad_resource();
     assert_eq!(err.kind, ErrorKind::BadResource);
     assert_eq!(err.to_string(), "bad resource id");
   }
-
   #[test]
   fn test_permission_denied() {
-    let err = permission_denied();
-    assert_eq!(err.kind, ErrorKind::PermissionDenied);
-    assert_eq!(err.to_string(), "permission denied");
-  }
-
-  #[test]
-  fn test_permission_denied_msg() {
-    let err =
-      permission_denied_msg("run again with the --allow-net flag".to_string());
+    let err = OpError::permission_denied(
+      "run again with the --allow-net flag".to_string(),
+    );
     assert_eq!(err.kind, ErrorKind::PermissionDenied);
     assert_eq!(err.to_string(), "run again with the --allow-net flag");
-  }
-
-  #[test]
-  fn test_no_buffer_specified() {
-    let err = no_buffer_specified();
-    assert_eq!(err.kind, ErrorKind::TypeError);
-    assert_eq!(err.to_string(), "no buffer specified");
   }
 }

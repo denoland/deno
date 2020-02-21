@@ -1,6 +1,6 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::deno_error::OpError;
 use crate::fs as deno_fs;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
