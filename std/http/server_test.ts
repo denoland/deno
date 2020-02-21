@@ -15,7 +15,6 @@ import {
   serve,
   readRequest,
   parseHTTPVersion,
-  Server
 } from "./server.ts";
 import {
   BufReader,
