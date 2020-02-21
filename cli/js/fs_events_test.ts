@@ -42,8 +42,14 @@ testPerm({ read: true, write: true }, async function fsEventsBasic(): Promise<
   await delay(100);
   console.log("events", events);
   assert(events.length >= 2);
-  const { kind: kind0, paths: [ p0 ] }  = events[0];
-  const { kind: kind1, paths: [ p1 ] }  = events[1];
+  const {
+    kind: kind0,
+    paths: [p0]
+  } = events[0];
+  const {
+    kind: kind1,
+    paths: [p1]
+  } = events[1];
   assert(kind0 == "create");
   assert(p0.includes(testDir));
   assert(kind1 == "create" || kind1 == "modify");
