@@ -4,7 +4,7 @@ import { read, write, close } from "./files.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
-export type Transport = "tcp";
+export type Transport = "tcp" | "udp";
 // TODO support other types:
 // export type Transport = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
 
@@ -12,6 +12,31 @@ export interface Addr {
   transport: Transport;
   hostname: string;
   port: number;
+}
+
+export interface UDPAddr {
+  transport?: Transport;
+  hostname?: string;
+  port: number;
+}
+
+/** A socket is a generic transport listener for message-oriented protocols */
+export interface UDPConn extends AsyncIterator<[Uint8Array, Addr]> {
+  /** Waits for and resolves to the next message to the `Socket`. */
+  receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
+
+  /** Sends a message to the target. */
+  send(p: Uint8Array, addr: UDPAddr): Promise<void>;
+
+  /** Close closes the socket. Any pending message promises will be rejected
+   * with errors.
+   */
+  close(): void;
+
+  /** Return the address of the `Socket`. */
+  addr: Addr;
+
+  [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]>;
 }
 
 /** A Listener is a generic transport listener for stream-oriented protocols. */
@@ -87,7 +112,7 @@ export class ConnImpl implements Conn {
 export class ListenerImpl implements Listener {
   constructor(
     readonly rid: number,
-    public addr: Addr,
+    readonly addr: Addr,
     private closing: boolean = false
   ) {}
 
@@ -123,6 +148,63 @@ export class ListenerImpl implements Listener {
   }
 }
 
+export async function recvfrom(
+  rid: number,
+  p: Uint8Array
+): Promise<[number, Addr]> {
+  const { size, remoteAddr } = await sendAsync(dispatch.OP_RECEIVE, { rid }, p);
+  return [size, remoteAddr];
+}
+
+export class UDPConnImpl implements UDPConn {
+  constructor(
+    readonly rid: number,
+    readonly addr: Addr,
+    public bufSize: number = 1024,
+    private closing: boolean = false
+  ) {}
+
+  async receive(p?: Uint8Array): Promise<[Uint8Array, Addr]> {
+    const buf = p || new Uint8Array(this.bufSize);
+    const [size, remoteAddr] = await recvfrom(this.rid, buf);
+    const sub = buf.subarray(0, size);
+    return [sub, remoteAddr];
+  }
+
+  async send(p: Uint8Array, addr: UDPAddr): Promise<void> {
+    const remote = { hostname: "127.0.0.1", transport: "udp", ...addr };
+    if (remote.transport !== "udp") throw Error("Remote transport must be UDP");
+    const args = { ...remote, rid: this.rid };
+    await sendAsync(dispatch.OP_SEND, args, p);
+  }
+
+  close(): void {
+    this.closing = true;
+    close(this.rid);
+  }
+
+  async next(): Promise<IteratorResult<[Uint8Array, Addr]>> {
+    if (this.closing) {
+      return { value: undefined, done: true };
+    }
+    return await this.receive()
+      .then(value => ({ value, done: false }))
+      .catch(e => {
+        // It wouldn't be correct to simply check this.closing here.
+        // TODO: Get a proper error kind for this case, don't check the message.
+        // The current error kind is Other.
+        if (e.message == "Socket has been closed") {
+          return { value: undefined, done: true };
+        }
+        throw e;
+      });
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]> {
+    return this;
+  }
+}
+
 export interface Conn extends Reader, Writer, Closer {
   /** The local address of the connection. */
   localAddr: Addr;
@@ -146,14 +228,16 @@ export interface ListenOptions {
   transport?: Transport;
 }
 
+const listenDefaults = { hostname: "0.0.0.0", transport: "tcp" };
+
 /** Listen announces on the local transport address.
  *
  * @param options
  * @param options.port The port to connect to. (Required.)
  * @param options.hostname A literal IP address or host name that can be
  *   resolved to an IP address. If not specified, defaults to 0.0.0.0
- * @param options.transport Defaults to "tcp". Later we plan to add "tcp4",
- *   "tcp6", "udp", "udp4", "udp6", "ip", "ip4", "ip6", "unix", "unixgram" and
+ * @param options.transport Must be "tcp" or "udp". Defaults to "tcp". Later we plan to add "tcp4",
+ *   "tcp6", "udp4", "udp6", "ip", "ip4", "ip6", "unix", "unixgram" and
  *   "unixpacket".
  *
  * Examples:
@@ -163,16 +247,19 @@ export interface ListenOptions {
  *     listen({ hostname: "[2001:db8::1]", port: 80 });
  *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
-export function listen(options: ListenOptions): Listener {
-  const hostname = options.hostname || "0.0.0.0";
-  const transport = options.transport || "tcp";
+export function listen(
+  options: ListenOptions & { transport?: "tcp" }
+): Listener;
+export function listen(options: ListenOptions & { transport: "udp" }): UDPConn;
+export function listen(options: ListenOptions): Listener | UDPConn {
+  const args = { ...listenDefaults, ...options };
+  const res = sendSync(dispatch.OP_LISTEN, args);
 
-  const res = sendSync(dispatch.OP_LISTEN, {
-    hostname,
-    port: options.port,
-    transport
-  });
-  return new ListenerImpl(res.rid, res.localAddr);
+  if (args.transport === "tcp") {
+    return new ListenerImpl(res.rid, res.localAddr);
+  } else {
+    return new UDPConnImpl(res.rid, res.localAddr);
+  }
 }
 
 export interface ConnectOptions {
@@ -189,8 +276,8 @@ const connectDefaults = { hostname: "127.0.0.1", transport: "tcp" };
  * @param options.port The port to connect to. (Required.)
  * @param options.hostname A literal IP address or host name that can be
  *   resolved to an IP address. If not specified, defaults to 127.0.0.1
- * @param options.transport Defaults to "tcp". Later we plan to add "tcp4",
- *   "tcp6", "udp", "udp4", "udp6", "ip", "ip4", "ip6", "unix", "unixgram" and
+ * @param options.transport Must be "tcp" or "udp". Defaults to "tcp". Later we plan to add "tcp4",
+ *   "tcp6", "udp4", "udp6", "ip", "ip4", "ip6", "unix", "unixgram" and
  *   "unixpacket".
  *
  * Examples:
