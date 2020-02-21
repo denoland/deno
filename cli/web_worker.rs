@@ -40,6 +40,9 @@ impl WebWorker {
       ops::errors::init(isolate, &state);
       ops::timers::init(isolate, &state);
       ops::fetch::init(isolate, &state);
+      // FIXME(bartlomieju): this is added only to provide "close"
+      // op - it should be moved to `ops::io`
+      ops::files::init(isolate, &state);
     }
 
     Self {
