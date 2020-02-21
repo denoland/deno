@@ -6,7 +6,6 @@
 //! message or a "minimal" message.
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
-use crate::deno_error::GetErrorKind;
 use byteorder::{LittleEndian, WriteBytesExt};
 use deno_core::Buf;
 use deno_core::CoreOp;
@@ -148,8 +147,8 @@ where
           let error_record = ErrorRecord {
             promise_id: record.promise_id,
             arg: -1,
-            error_code: err.kind() as i32,
-            error_message: err.to_string().as_bytes().to_owned(),
+            error_code: err.kind as i32,
+            error_message: err.msg.as_bytes().to_owned(),
           };
           Ok(error_record.into())
         }
