@@ -176,7 +176,7 @@ impl From<VarError> for OpError {
 
 impl From<io::Error> for OpError {
   fn from(error: io::Error) -> Self {
-    error.into()
+    OpError::from(&error)
   }
 }
 
@@ -272,7 +272,7 @@ impl From<ReadlineError> for OpError {
 
 impl From<serde_json::error::Error> for OpError {
   fn from(error: serde_json::error::Error) -> Self {
-    error.into()
+    OpError::from(&error)
   }
 }
 
