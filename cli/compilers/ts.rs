@@ -636,7 +636,9 @@ async fn execute_in_thread_json(
 ) -> JsonResult {
   let msg = execute_in_thread(global_state, req_msg)
     .await
-    .map_err(|e| other_error(e.to_string()))?;
+    .map_err(|e| {
+      other_error(e.to_string())
+    })?;
   let json_str = std::str::from_utf8(&msg).unwrap();
   Ok(json!(json_str))
 }

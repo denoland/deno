@@ -5,10 +5,12 @@ use super::dispatch_json::Value;
 use crate::deno_error::other_error;
 use crate::deno_error::OpError;
 use crate::futures::future::try_join_all;
+use crate::import_map::ImportMapError;
 use crate::msg;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::Loader;
+use deno_core::ModuleResolutionError;
 use deno_core::*;
 use futures::future::FutureExt;
 
@@ -82,7 +84,17 @@ fn op_resolve_modules(
     let resolved_specifier = state.resolve(specifier, &referrer, is_main);
     match resolved_specifier {
       Ok(ms) => specifiers.push(ms.as_str().to_owned()),
-      Err(err) => return Err(other_error(err.to_string())),
+      Err(err) => {
+        // FIXME(bartlomieju): not very elegant - refactor `Loader` trait
+        // to get rid of this cruft
+        if let Some(e) = err.downcast_ref::<ModuleResolutionError>() {
+          return Err(e.to_owned().into());
+        } else if let Some(e) = err.downcast_ref::<ImportMapError>() {
+          return Err(e.into());
+        } else {
+          return Err(other_error(err.to_string()));
+        }
+      }
     }
   }
 
@@ -124,9 +136,16 @@ fn op_fetch_source_files(
       })
       .collect();
 
-    let files = try_join_all(file_futures)
-      .await
-      .map_err(|e| other_error(e.to_string()))?;
+    let files = try_join_all(file_futures).await.map_err(|err| {
+      eprintln!("future failed {:?}", err);
+      // FIXME(bartlomieju): not very elegant - refactor `file_fetcher`
+      // to use only std::io::Error to get rid of this cruft
+      if let Some(e) = err.downcast_ref::<OpError>() {
+        OpError::new(e.kind, e.msg.to_string())
+      } else {
+        other_error(err.to_string())
+      }
+    })?;
     // We want to get an array of futures that resolves to
     let v = files.into_iter().map(|f| {
       async {

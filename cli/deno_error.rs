@@ -124,6 +124,12 @@ impl From<StaticDenoError> for OpError {
 
 impl From<ImportMapError> for OpError {
   fn from(error: ImportMapError) -> Self {
+    OpError::from(&error)
+  }
+}
+
+impl From<&ImportMapError> for OpError {
+  fn from(error: &ImportMapError) -> Self {
     Self {
       kind: ErrorKind::Other,
       msg: error.to_string(),
