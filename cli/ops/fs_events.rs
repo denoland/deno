@@ -6,8 +6,8 @@ use crate::state::State;
 use deno_core::*;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
-use notify;
-use notify::event::Event;
+use notify::event::Event as NotifyEvent;
+use notify::Error as NotifyError;
 use notify::EventKind;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
@@ -48,8 +48,8 @@ struct FsEvent {
   paths: Vec<PathBuf>,
 }
 
-impl From<Event> for FsEvent {
-  fn from(e: Event) -> Self {
+impl From<NotifyEvent> for FsEvent {
+  fn from(e: NotifyEvent) -> Self {
     let kind = match e.kind {
       EventKind::Any => "any",
       EventKind::Access(_) => "access",
@@ -80,7 +80,7 @@ pub fn op_fs_events_open(
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, ErrBox>>(16);
   let sender = std::sync::Mutex::new(sender);
   let mut watcher: RecommendedWatcher =
-    Watcher::new_immediate(move |res: Result<Event, notify::Error>| {
+    Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
       let res2 = res.map(FsEvent::from).map_err(ErrBox::from);
       let mut sender = sender.lock().unwrap();
       futures::executor::block_on(sender.send(res2)).expect("fs events error");
