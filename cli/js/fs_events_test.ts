@@ -26,7 +26,7 @@ testPerm({ read: true, write: true }, async function fsEventsBasic(): Promise<
   const testDir = await Deno.makeTempDir();
   const events: Deno.FsEvent[] = [];
   const iter = Deno.fsEvents(testDir);
-  (async () => {
+  (async (): Promise<void> => {
     for await (const event of iter) {
       console.log(">>>> event", event);
       events.push(event);
