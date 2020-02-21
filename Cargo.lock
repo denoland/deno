@@ -357,7 +357,7 @@ dependencies = [
  "deno_typescript 0.34.0",
  "dirs 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "dlopen 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "dprint-plugin-typescript 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "dprint-plugin-typescript 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "fwdansi 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "glob 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
