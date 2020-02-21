@@ -25,7 +25,7 @@ testPerm({ read: true, write: true }, async function fsEventsBasic(): Promise<
 > {
   const testDir = await Deno.makeTempDir();
   const events: Deno.FsEvent[] = [];
-  const iter = Deno.fsEvents(testDir, { recursive: true });
+  const iter = Deno.fsEvents(testDir);
   (async () => {
     for await (const event of iter) {
       console.log(">>>> event", event);
@@ -45,8 +45,6 @@ testPerm({ read: true, write: true }, async function fsEventsBasic(): Promise<
   const { kind: kind0, paths: [ p0 ] }  = events[0];
   const { kind: kind1, paths: [ p1 ] }  = events[1];
   assert(kind0 == "create");
-  console.log("p0", p0);
-  console.log("testDir", testDir);
   assert(p0.includes(testDir));
   assert(kind1 == "create" || kind1 == "modify");
   assert(p1.includes(testDir));
