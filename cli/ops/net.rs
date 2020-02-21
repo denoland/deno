@@ -141,7 +141,7 @@ pub struct Receive<'a> {
 }
 
 impl Future for Receive<'_> {
-  type Output = Result<(usize, SocketAddr), ErrBox>;
+  type Output = Result<(usize, SocketAddr), OpError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -149,19 +149,13 @@ impl Future for Receive<'_> {
     let resource = state
       .resource_table
       .get_mut::<UdpSocketResource>(inner.rid)
-      .ok_or_else(|| {
-        let e = std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "Socket has been closed",
-        );
-        ErrBox::from(e)
-      })?;
+      .ok_or_else(|| OpError::other("Socket has been closed".to_string()))?;
 
     let socket = &mut resource.socket;
 
     socket
       .poll_recv_from(cx, &mut inner.buf)
-      .map_err(ErrBox::from)
+      .map_err(OpError::from)
   }
 }
 
@@ -178,7 +172,7 @@ fn op_receive(
   state: &State,
   args: Value,
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   assert!(zero_copy.is_some());
   let buf = zero_copy.unwrap();
 
@@ -215,7 +209,7 @@ fn op_send(
   state: &State,
   args: Value,
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   assert!(zero_copy.is_some());
   let buf = zero_copy.unwrap();
 
@@ -231,13 +225,7 @@ fn op_send(
     let resource = state
       .resource_table
       .get_mut::<UdpSocketResource>(rid)
-      .ok_or_else(|| {
-        let e = std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "Socket has been closed",
-        );
-        ErrBox::from(e)
-      })?;
+      .ok_or_else(|| OpError::other("Socket has been closed".to_string()))?;
 
     let socket = &mut resource.socket;
     let addr = resolve_addr(&args.hostname, args.port).await?;
@@ -393,7 +381,7 @@ struct UdpSocketResource {
 fn listen_tcp(
   state: &State,
   addr: SocketAddr,
-) -> Result<(u32, SocketAddr), ErrBox> {
+) -> Result<(u32, SocketAddr), OpError> {
   let mut state = state.borrow_mut();
   let listener = futures::executor::block_on(TcpListener::bind(&addr))?;
   let local_addr = listener.local_addr()?;
@@ -412,7 +400,7 @@ fn listen_tcp(
 fn listen_udp(
   state: &State,
   addr: SocketAddr,
-) -> Result<(u32, SocketAddr), ErrBox> {
+) -> Result<(u32, SocketAddr), OpError> {
   let mut state = state.borrow_mut();
   let socket = futures::executor::block_on(UdpSocket::bind(&addr))?;
   let local_addr = socket.local_addr()?;
