@@ -91,7 +91,7 @@ export class SourceFile {
   }
 
   /** Process the imports for the file and return them. */
-  imports(): Array<[string, string]> {
+  imports(checkJs: boolean): Array<[string, string]> {
     if (this.processed) {
       throw new Error("SourceFile has already been processed.");
     }
@@ -102,6 +102,7 @@ export class SourceFile {
       log(`Skipping imports for "${this.filename}"`);
       return [];
     }
+
     const preProcessedFileInfo = ts.preProcessFile(
       this.sourceCode,
       true,
@@ -131,7 +132,13 @@ export class SourceFile {
           getMappedModuleName(importedFile, typeDirectives)
         ]);
       }
-    } else {
+    } else if (
+      !(
+        !checkJs &&
+        (this.mediaType === MediaType.JavaScript ||
+          this.mediaType === MediaType.JSX)
+      )
+    ) {
       process(importedFiles);
     }
     process(referencedFiles);

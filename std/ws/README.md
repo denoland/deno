@@ -16,7 +16,7 @@ import {
 } from "https://deno.land/std/ws/mod.ts";
 
 /** websocket echo server */
-const port = Deno.args[1] || "8080";
+const port = Deno.args[0] || "8080";
 console.log(`websocket server is running on :${port}`);
 for await (const req of serve(`:${port}`)) {
   const { headers, conn } = req;
@@ -80,7 +80,7 @@ import { BufReader } from "https://deno.land/std/io/bufio.ts";
 import { TextProtoReader } from "https://deno.land/std/textproto/mod.ts";
 import { blue, green, red, yellow } from "https://deno.land/std/fmt/colors.ts";
 
-const endpoint = Deno.args[1] || "ws://127.0.0.1:8080";
+const endpoint = Deno.args[0] || "ws://127.0.0.1:8080";
 /** simple websocket cli */
 const sock = await connectWebSocket(endpoint);
 console.log(green("ws connected! (type 'close' to quit)"));
