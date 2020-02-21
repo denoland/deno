@@ -21,6 +21,10 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("get_dir", s.core_op(json_op(s.stateful_op(op_get_dir))));
   i.register_op("hostname", s.core_op(json_op(s.stateful_op(op_hostname))));
   i.register_op("loadavg", s.core_op(json_op(s.stateful_op(op_loadavg))));
+  i.register_op(
+    "os_release",
+    s.core_op(json_op(s.stateful_op(op_os_release))),
+  );
 }
 
 #[derive(Deserialize)]
@@ -187,4 +191,14 @@ fn op_hostname(
   state.check_env()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_owned());
   Ok(JsonOp::Sync(json!(hostname)))
+}
+
+fn op_os_release(
+  state: &State,
+  _args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, ErrBox> {
+  state.check_env()?;
+  let release = sys_info::os_release().unwrap_or_else(|_| "".to_owned());
+  Ok(JsonOp::Sync(json!(release)))
 }
