@@ -97,7 +97,7 @@ testPerm({ net: true }, async function workerCanUseFetch(): Promise<void> {
   };
 
   fetchingWorker.onmessage = (e): void => {
-    assert(e.data.type !== "error");
+    assert(e.data === "Done!");
     promise.resolve();
   };
 
