@@ -136,8 +136,10 @@ pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), ErrBox> {
 pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), ErrBox> {
   // Noop
   // TODO: implement chown for Windows
-  let e =
-    io::Error::new(io::ErrorKind::Other, "Op not implemented".to_string());
+  let e = std::io::Error::new(
+    std::io::ErrorKind::Other,
+    "Op not implemented".to_string(),
+  );
   Err(ErrBox::from(e))
 }
 
