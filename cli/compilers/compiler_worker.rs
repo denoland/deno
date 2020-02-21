@@ -38,9 +38,7 @@ impl CompilerWorker {
       // TODO(bartlomieju): CompilerWorker should not
       // depend on those ops
       ops::os::init(isolate, &state);
-      ops::files::init(isolate, &state);
       ops::fs::init(isolate, &state);
-      ops::io::init(isolate, &state);
     }
     Self(worker)
   }
