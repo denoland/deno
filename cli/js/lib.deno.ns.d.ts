@@ -54,7 +54,7 @@ declare namespace Deno {
 
   /** Get the OS release. Requires the `--allow-env` flag.
    *
-   *       console.log(Deno.op_release());
+   *       console.log(Deno.osRelease());
    */
   export function osRelease(): string;
 
