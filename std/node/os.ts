@@ -21,6 +21,7 @@
 import { notImplemented } from "./_utils.ts";
 import { validateIntegerRange } from "./util.ts";
 import { EOL as fsEOL } from "../fs/eol.ts";
+import { process } from "./process.ts";
 
 const SEE_GITHUB_ISSUE = "See https://github.com/denoland/deno/issues/3802";
 
@@ -144,10 +145,9 @@ export function loadavg(): number[] {
 export function networkInterfaces(): NetworkInterfaces {
   notImplemented(SEE_GITHUB_ISSUE);
 }
-
-/** Not yet implemented */
+/** Returns the a string identifying the operating system platform. The value is set at compile time. Possible values are 'darwin', 'linux', and 'win32'. */
 export function platform(): string {
-  notImplemented(SEE_GITHUB_ISSUE);
+  return process.platform;
 }
 
 /** Not yet implemented */
