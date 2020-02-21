@@ -1,17 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-#![allow(warnings)]
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::deno_error::bad_resource;
 use crate::ops::json_op;
 use crate::state::State;
-use core::future::Future;
-use core::pin::Pin;
-use core::task::Context;
-use core::task::Poll;
 use deno_core::*;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
-use futures::stream::StreamExt;
 use notify;
 use notify::event::Event;
 use notify::EventKind;
@@ -25,25 +19,19 @@ use tokio::sync::mpsc;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
-    "fs_watch_open",
-    s.core_op(json_op(s.stateful_op(op_fs_watch_open))),
+    "fs_events_open",
+    s.core_op(json_op(s.stateful_op(op_fs_events_open))),
   );
   i.register_op(
-    "fs_watch_poll",
-    s.core_op(json_op(s.stateful_op(op_fs_watch_poll))),
+    "fs_events_poll",
+    s.core_op(json_op(s.stateful_op(op_fs_events_poll))),
   );
 }
 
-struct FsWatcher {
+struct FsEventsResource {
   #[allow(unused)]
   watcher: RecommendedWatcher,
   receiver: mpsc::Receiver<Result<FsEvent, ErrBox>>,
-}
-
-#[derive(Deserialize)]
-struct FsWatchOpenArgs {
-  recursive: bool,
-  paths: Vec<String>,
 }
 
 /// Represents a file system event.
@@ -78,19 +66,24 @@ impl From<Event> for FsEvent {
   }
 }
 
-pub fn op_fs_watch_open(
+pub fn op_fs_events_open(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: FsWatchOpenArgs = serde_json::from_value(args)?;
+  #[derive(Deserialize)]
+  struct OpenArgs {
+    recursive: bool,
+    paths: Vec<String>,
+  }
+  let args: OpenArgs = serde_json::from_value(args)?;
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, ErrBox>>(16);
   let sender = std::sync::Mutex::new(sender);
   let mut watcher: RecommendedWatcher =
     Watcher::new_immediate(move |res: Result<Event, notify::Error>| {
       let res2 = res.map(FsEvent::from).map_err(ErrBox::from);
       let mut sender = sender.lock().unwrap();
-      futures::executor::block_on(sender.send(res2));
+      futures::executor::block_on(sender.send(res2)).expect("fs events error");
     })?;
   let recursive_mode = if args.recursive {
     RecursiveMode::Recursive
@@ -101,37 +94,42 @@ pub fn op_fs_watch_open(
     state.check_read(&PathBuf::from(path))?;
     watcher.watch(path, recursive_mode)?;
   }
-  let watcher_resource = FsWatcher { watcher, receiver };
+  let resource = FsEventsResource { watcher, receiver };
   let table = &mut state.borrow_mut().resource_table;
-  let rid = table.add("fsWatcher", Box::new(watcher_resource));
+  let rid = table.add("fsWatcher", Box::new(resource));
   Ok(JsonOp::Sync(json!(rid)))
 }
 
-#[derive(Deserialize)]
-struct PollArgs {
-  rid: u32,
-}
-
-pub fn op_fs_watch_poll(
+pub fn op_fs_events_poll(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
+  #[derive(Deserialize)]
+  struct PollArgs {
+    rid: u32,
+  }
   let PollArgs { rid } = serde_json::from_value(args)?;
   let state = state.clone();
   let f = poll_fn(move |cx| {
     let resource_table = &mut state.borrow_mut().resource_table;
     let watcher = resource_table
-      .get_mut::<FsWatcher>(rid)
+      .get_mut::<FsEventsResource>(rid)
       .ok_or_else(bad_resource)?;
-    watcher.receiver.poll_recv(cx).map(|maybe_result| {
-      Ok(if let Some(result) = maybe_result {
-        let value = result?;
-        json!({ "value": value, "done": false })
-      } else {
-        json!({ "done": true })
+    watcher
+      .receiver
+      .poll_recv(cx)
+      .map(|maybe_result| match maybe_result {
+        Some(Ok(value)) => Ok(json!({ "value": value, "done": false })),
+        Some(Err(err)) => {
+          resource_table.close(rid);
+          Err(err)
+        }
+        None => {
+          resource_table.close(rid);
+          Ok(json!({ "done": true }))
+        }
       })
-    })
   });
   Ok(JsonOp::Async(f.boxed_local()))
 }

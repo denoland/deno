@@ -43,7 +43,7 @@ export {
   OpenOptions,
   OpenMode
 } from "./files.ts";
-export { FsWatcher, FsEvent, FsWatchOptions, watch } from "./fs_watch.ts";
+export { FsEvent, fsEvents } from "./fs_events.ts";
 export {
   EOF,
   copy,

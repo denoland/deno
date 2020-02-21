@@ -3,10 +3,10 @@ import { testPerm, assert } from "./test_util.ts";
 
 // TODO(ry) Add more tests to specify format.
 
-testPerm({ read: false }, function fsWatchPermissions() {
+testPerm({ read: false }, function fsEventsPermissions() {
   let thrown = false;
   try {
-    Deno.watch(".");
+    Deno.fsEvents(".");
   } catch (e) {
     assert(e.kind == Deno.ErrorKind.PermissionDenied);
     thrown = true;
@@ -20,27 +20,25 @@ function delay(ms: number): Promise<void> {
   });
 }
 
-testPerm({ read: true, write: true }, async function fsWatcherBasic(): Promise<
+testPerm({ read: true, write: true }, async function fsEventsBasic(): Promise<
   void
 > {
   const testDir = await Deno.makeTempDir();
-  const file1 = testDir + "/file1.txt";
-  const file2 = testDir + "/file2.txt";
-
-  const watcher = Deno.watch(testDir, { recursive: true });
   const events: Deno.FsEvent[] = [];
+  const iter = Deno.fsEvents(testDir, { recursive: true });
   (async () => {
-    for await (const event of watcher) {
+    for await (const event of iter) {
       console.log(">>>> event", event);
       events.push(event);
     }
   })();
 
+  const file1 = testDir + "/file1.txt";
+  const file2 = testDir + "/file2.txt";
+
   Deno.writeFileSync(file1, new Uint8Array([0, 1, 2]));
   Deno.writeFileSync(file2, new Uint8Array([0, 1, 2]));
-
   await delay(1000);
-
   console.log("events", events);
   assert(events.length >= 2);
   watcher.close();

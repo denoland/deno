@@ -1567,23 +1567,20 @@ declare namespace Deno {
    */
   export function resources(): ResourceMap;
 
+  /** UNSTABLE: new API. Needs docs. */
   export interface FsEvent {
     kind: "any" | "access" | "create" | "modify" | "remove";
     paths: string[];
   }
 
-  export type FsWatcher = AsyncIterableIterator<FsEvent> & Closer;
-
-  export interface FsWatchOptions {
-    recursive?: boolean;
-  }
-
-  export function watch(
+  /** UNSTABLE: new API. Needs docs.
+   *
+   * recursive option is true by default.
+   */
+  export function fsEvents(
     paths: string | string[],
-    options?: FsWatchOptions
-  ): FsWatcher;
-
-  // @url js/process.d.ts
+    options?: { recursive: boolean }
+  ): AsyncIterableIterator<FsEvent>;
 
   /** How to handle subprocess stdio.
    *
