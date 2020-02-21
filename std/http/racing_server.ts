@@ -5,18 +5,28 @@ import { delay } from "../util/async.ts";
 const addr = Deno.args[1] || "127.0.0.1:4501";
 const server = serve(addr);
 
-const body = new TextEncoder().encode("Hello 1\n");
-const body4 = new TextEncoder().encode("World 4\n");
-
-async function delayedRespond(request: ServerRequest): Promise<void> {
+function body(i: number): string {
+  return `Step${i}\n`;
+}
+async function delayedRespond(
+  request: ServerRequest,
+  step: number
+): Promise<void> {
   await delay(3000);
-  await request.respond({ status: 200, body });
+  await request.respond({ status: 200, body: body(step) });
 }
 
 async function largeRespond(request: ServerRequest, c: string): Promise<void> {
   const b = new Uint8Array(1024 * 1024);
   b.fill(c.charCodeAt(0));
   await request.respond({ status: 200, body: b });
+}
+
+async function ignoreToConsume(
+  request: ServerRequest,
+  step: number
+): Promise<void> {
+  await request.respond({ status: 200, body: body(step) });
 }
 
 console.log("Racing server listening...\n");
@@ -28,7 +38,7 @@ for await (const request of server) {
       // Try to wait long enough.
       // For pipelining, this should cause all the following response
       // to block.
-      delayedRespond(request);
+      delayedRespond(request, step);
       break;
     case 2:
       // HUGE body.
@@ -38,8 +48,20 @@ for await (const request of server) {
       // HUGE body.
       largeRespond(request, "b");
       break;
+    case 4:
+      // Ignore to consume body (content-length)
+      ignoreToConsume(request, step);
+      break;
+    case 5:
+      // Ignore to consume body (chunked)
+      ignoreToConsume(request, step);
+      break;
+    case 6:
+      // Ignore to consume body (chunked + trailers)
+      ignoreToConsume(request, step);
+      break;
     default:
-      request.respond({ status: 200, body: body4 });
+      request.respond({ status: 200, body: body(step) });
       break;
   }
   step++;
