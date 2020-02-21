@@ -2,7 +2,7 @@
 import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { getFileInfoType } from "./utils.ts";
-const { lstat, lstatSync, writeFile, writeFileSync, ErrorKind } = Deno;
+const { lstat, lstatSync, writeFile, writeFileSync } = Deno;
 
 /**
  * Ensures that the file exists.
@@ -23,7 +23,7 @@ export async function ensureFile(filePath: string): Promise<void> {
     }
   } catch (err) {
     // if file not exists
-    if (err instanceof Deno.DenoError && err.kind === ErrorKind.NotFound) {
+    if (err instanceof Deno.Err.NotFound) {
       // ensure dir exists
       await ensureDir(path.dirname(filePath));
       // create file
@@ -54,7 +54,7 @@ export function ensureFileSync(filePath: string): void {
     }
   } catch (err) {
     // if file not exists
-    if (err instanceof Deno.DenoError && err.kind === ErrorKind.NotFound) {
+    if (err instanceof Deno.Err.NotFound) {
       // ensure dir exists
       ensureDirSync(path.dirname(filePath));
       // create file

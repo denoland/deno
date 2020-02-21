@@ -31,7 +31,7 @@ test(function envPermissionDenied1(): void {
     err = e;
   }
   assertNotEquals(err, undefined);
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assert(err instanceof Deno.Err.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -43,7 +43,7 @@ test(function envPermissionDenied2(): void {
     err = e;
   }
   assertNotEquals(err, undefined);
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assert(err instanceof Deno.Err.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -262,7 +262,7 @@ testPerm({ env: true }, function getDir(): void {
 testPerm({}, function getDirWithoutPermission(): void {
   assertThrows(
     () => Deno.dir("home"),
-    Deno.DenoError,
+    Deno.Err.PermissionDenied,
     `run again with the --allow-env flag`
   );
 });
@@ -277,7 +277,7 @@ testPerm({ env: false }, function execPathPerm(): void {
     Deno.execPath();
   } catch (err) {
     caughtError = true;
-    assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+    assert(err instanceof Deno.Err.PermissionDenied);
     assertEquals(err.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -293,7 +293,7 @@ testPerm({ env: false }, function hostnamePerm(): void {
     Deno.hostname();
   } catch (err) {
     caughtError = true;
-    assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+    assert(err instanceof Deno.Err.PermissionDenied);
     assertEquals(err.name, "PermissionDenied");
   }
   assert(caughtError);

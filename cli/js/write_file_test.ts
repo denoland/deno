@@ -22,8 +22,7 @@ testPerm({ write: true }, function writeFileSyncFail(): void {
     Deno.writeFileSync(filename, data);
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.NotFound);
-    assertEquals(e.name, "NotFound");
+    assert(e instanceof Deno.Err.NotFound);
   }
   assert(caughtError);
 });
@@ -38,8 +37,7 @@ testPerm({ write: false }, function writeFileSyncPerm(): void {
     Deno.writeFileSync(filename, data);
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(e.name, "PermissionDenied");
+    assert(e instanceof Deno.Err.PermissionDenied);
   }
   assert(caughtError);
 });
@@ -66,8 +64,7 @@ testPerm({ read: true, write: true }, function writeFileSyncCreate(): void {
     Deno.writeFileSync(filename, data, { create: false });
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.NotFound);
-    assertEquals(e.name, "NotFound");
+    assert(e instanceof Deno.Err.NotFound);
   }
   assert(caughtError);
 
@@ -128,8 +125,7 @@ testPerm(
       await Deno.writeFile(filename, data);
     } catch (e) {
       caughtError = true;
-      assertEquals(e.kind, Deno.ErrorKind.NotFound);
-      assertEquals(e.name, "NotFound");
+      assert(e instanceof Deno.Err.NotFound);
     }
     assert(caughtError);
   }
@@ -147,8 +143,7 @@ testPerm({ read: true, write: false }, async function writeFilePerm(): Promise<
     await Deno.writeFile(filename, data);
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(e.name, "PermissionDenied");
+    assert(e instanceof Deno.Err.PermissionDenied);
   }
   assert(caughtError);
 });
@@ -180,8 +175,7 @@ testPerm({ read: true, write: true }, async function writeFileCreate(): Promise<
     await Deno.writeFile(filename, data, { create: false });
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.NotFound);
-    assertEquals(e.name, "NotFound");
+    assert(e instanceof Deno.Err.NotFound);
   }
   assert(caughtError);
 

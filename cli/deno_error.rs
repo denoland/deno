@@ -1,8 +1,34 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::diagnostics::Diagnostic;
-use crate::fmt_errors::JSError;
+
+//! This module implements error serialization; it
+//! allows to serialize Rust errors to be sent to JS runtime.
+//!
+//! Currently it is deeply intertwined with `ErrBox` which is
+//! not optimal since not every ErrBox can be "JS runtime error";
+//! eg. there's no way to throw JSError/Diagnostic from within JS runtime
+//!
+//! There are many types of errors in Deno:
+//! - ErrBox: a generic boxed object. This is the super type of all
+//!   errors handled in Rust.
+//! - JSError: exceptions thrown from V8 into Rust. Usually a user exception.
+//!   These are basically a big JSON structure which holds information about
+//!   line numbers. We use this to pretty-print stack traces. These are
+//!   never passed back into the runtime.
+//! - DenoError: these are errors that happen during ops, which are passed
+//!   back into the runtime, where an exception object is created and thrown.
+//!   DenoErrors have an integer code associated with them - access this via the kind() method.
+//! - Diagnostic: these are errors that originate in TypeScript's compiler.
+//!   They're similar to JSError, in that they have line numbers.
+//!   But Diagnostics are compile-time type errors, whereas JSErrors are runtime exceptions.
+//!
+//! TODO:
+//! - rename DenoError to OpError?
+//! - rename JSError to RuntimeException. merge V8Exception?
+//! - rename ErrorKind::Other. This corresponds to a generic exception thrown as the
+//!   global `Error` in JS:
+//!   https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error
+
 use crate::import_map::ImportMapError;
-pub use crate::msg::ErrorKind;
 use deno_core::AnyError;
 use deno_core::ErrBox;
 use deno_core::ModuleResolutionError;
@@ -15,6 +41,34 @@ use std::error::Error;
 use std::fmt;
 use std::io;
 use url;
+
+// Warning! The values in this enum are duplicated in js/errors.ts
+// Update carefully!
+#[allow(non_camel_case_types)]
+#[repr(i8)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum ErrorKind {
+  NotFound = 1,
+  PermissionDenied = 2,
+  ConnectionRefused = 3,
+  ConnectionReset = 4,
+  ConnectionAborted = 5,
+  NotConnected = 6,
+  AddrInUse = 7,
+  AddrNotAvailable = 8,
+  BrokenPipe = 9,
+  AlreadyExists = 10,
+  InvalidData = 13,
+  TimedOut = 14,
+  Interrupted = 15,
+  WriteZero = 16,
+  UnexpectedEof = 17,
+  BadResource = 18,
+  Http = 19,
+  URIError = 20,
+  TypeError = 21,
+  Other = 22,
+}
 
 #[derive(Debug)]
 pub struct DenoError {
@@ -76,11 +130,11 @@ pub fn permission_denied_msg(msg: String) -> ErrBox {
 }
 
 pub fn no_buffer_specified() -> ErrBox {
-  StaticError(ErrorKind::InvalidInput, "no buffer specified").into()
+  StaticError(ErrorKind::TypeError, "no buffer specified").into()
 }
 
 pub fn invalid_address_syntax() -> ErrBox {
-  StaticError(ErrorKind::InvalidInput, "invalid address syntax").into()
+  StaticError(ErrorKind::TypeError, "invalid address syntax").into()
 }
 
 pub fn other_error(msg: String) -> ErrBox {
@@ -103,18 +157,6 @@ impl GetErrorKind for StaticError {
   }
 }
 
-impl GetErrorKind for JSError {
-  fn kind(&self) -> ErrorKind {
-    ErrorKind::JSError
-  }
-}
-
-impl GetErrorKind for Diagnostic {
-  fn kind(&self) -> ErrorKind {
-    ErrorKind::Diagnostic
-  }
-}
-
 impl GetErrorKind for ImportMapError {
   fn kind(&self) -> ErrorKind {
     ErrorKind::Other
@@ -123,12 +165,7 @@ impl GetErrorKind for ImportMapError {
 
 impl GetErrorKind for ModuleResolutionError {
   fn kind(&self) -> ErrorKind {
-    use ModuleResolutionError::*;
-    match self {
-      InvalidUrl(ref err) | InvalidBaseUrl(ref err) => err.kind(),
-      InvalidPath(_) => ErrorKind::InvalidPath,
-      ImportPrefixMissing(_, _) => ErrorKind::ImportPrefixMissing,
-    }
+    ErrorKind::URIError
   }
 }
 
@@ -156,13 +193,13 @@ impl GetErrorKind for io::Error {
       AddrNotAvailable => ErrorKind::AddrNotAvailable,
       BrokenPipe => ErrorKind::BrokenPipe,
       AlreadyExists => ErrorKind::AlreadyExists,
-      WouldBlock => ErrorKind::WouldBlock,
-      InvalidInput => ErrorKind::InvalidInput,
+      InvalidInput => ErrorKind::TypeError,
       InvalidData => ErrorKind::InvalidData,
       TimedOut => ErrorKind::TimedOut,
       Interrupted => ErrorKind::Interrupted,
       WriteZero => ErrorKind::WriteZero,
       UnexpectedEof => ErrorKind::UnexpectedEof,
+      WouldBlock => unreachable!(),
       _ => ErrorKind::Other,
     }
   }
@@ -170,7 +207,7 @@ impl GetErrorKind for io::Error {
 
 impl GetErrorKind for url::ParseError {
   fn kind(&self) -> ErrorKind {
-    ErrorKind::UrlParse
+    ErrorKind::URIError
   }
 }
 
@@ -211,8 +248,8 @@ impl GetErrorKind for serde_json::error::Error {
   fn kind(&self) -> ErrorKind {
     use serde_json::error::*;
     match self.classify() {
-      Category::Io => ErrorKind::InvalidInput,
-      Category::Syntax => ErrorKind::InvalidInput,
+      Category::Io => ErrorKind::TypeError,
+      Category::Syntax => ErrorKind::TypeError,
       Category::Data => ErrorKind::InvalidData,
       Category::Eof => ErrorKind::UnexpectedEof,
     }
@@ -230,10 +267,13 @@ mod unix {
     fn kind(&self) -> ErrorKind {
       match self {
         Sys(EPERM) => ErrorKind::PermissionDenied,
-        Sys(EINVAL) => ErrorKind::InvalidInput,
+        Sys(EINVAL) => ErrorKind::TypeError,
         Sys(ENOENT) => ErrorKind::NotFound,
-        Sys(_) => ErrorKind::UnixError,
-        _ => ErrorKind::Other,
+        Sys(UnknownErrno) => unreachable!(),
+        Sys(_) => unreachable!(),
+        Error::InvalidPath => ErrorKind::TypeError,
+        Error::InvalidUtf8 => ErrorKind::InvalidData,
+        Error::UnsupportedOperation => unreachable!(),
       }
     }
   }
@@ -268,11 +308,9 @@ impl GetErrorKind for dyn AnyError {
 
     None
       .or_else(|| self.downcast_ref::<DenoError>().map(Get::kind))
-      .or_else(|| self.downcast_ref::<Diagnostic>().map(Get::kind))
       .or_else(|| self.downcast_ref::<reqwest::Error>().map(Get::kind))
       .or_else(|| self.downcast_ref::<ImportMapError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<io::Error>().map(Get::kind))
-      .or_else(|| self.downcast_ref::<JSError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<ModuleResolutionError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<StaticError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<url::ParseError>().map(Get::kind))
@@ -294,93 +332,7 @@ impl GetErrorKind for dyn AnyError {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::colors::strip_ansi_codes;
-  use crate::diagnostics::Diagnostic;
-  use crate::diagnostics::DiagnosticCategory;
-  use crate::diagnostics::DiagnosticItem;
   use deno_core::ErrBox;
-  use deno_core::StackFrame;
-  use deno_core::V8Exception;
-
-  fn js_error() -> JSError {
-    JSError::new(V8Exception {
-      message: "Error: foo bar".to_string(),
-      source_line: None,
-      script_resource_name: None,
-      line_number: None,
-      start_position: None,
-      end_position: None,
-      error_level: None,
-      start_column: None,
-      end_column: None,
-      frames: vec![
-        StackFrame {
-          line: 4,
-          column: 16,
-          script_name: "foo_bar.ts".to_string(),
-          function_name: "foo".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_wasm: false,
-        },
-        StackFrame {
-          line: 5,
-          column: 20,
-          script_name: "bar_baz.ts".to_string(),
-          function_name: "qat".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_wasm: false,
-        },
-        StackFrame {
-          line: 1,
-          column: 1,
-          script_name: "deno_main.js".to_string(),
-          function_name: "".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_wasm: false,
-        },
-      ],
-    })
-  }
-
-  fn diagnostic() -> Diagnostic {
-    Diagnostic {
-      items: vec![
-        DiagnosticItem {
-          message: "Example 1".to_string(),
-          message_chain: None,
-          code: 2322,
-          category: DiagnosticCategory::Error,
-          start_position: Some(267),
-          end_position: Some(273),
-          source_line: Some("  values: o => [".to_string()),
-          line_number: Some(18),
-          script_resource_name: Some(
-            "deno/tests/complex_diagnostics.ts".to_string(),
-          ),
-          start_column: Some(2),
-          end_column: Some(8),
-          related_information: None,
-        },
-        DiagnosticItem {
-          message: "Example 2".to_string(),
-          message_chain: None,
-          code: 2000,
-          category: DiagnosticCategory::Error,
-          start_position: Some(2),
-          end_position: Some(2),
-          source_line: Some("  values: undefined,".to_string()),
-          line_number: Some(128),
-          script_resource_name: Some("/foo/bar.ts".to_string()),
-          start_column: Some(2),
-          end_column: Some(8),
-          related_information: None,
-        },
-      ],
-    }
-  }
 
   fn io_error() -> io::Error {
     io::Error::from(io::ErrorKind::NotFound)
@@ -414,25 +366,11 @@ mod tests {
   #[test]
   fn test_url_error() {
     let err = ErrBox::from(url_error());
-    assert_eq!(err.kind(), ErrorKind::UrlParse);
+    assert_eq!(err.kind(), ErrorKind::URIError);
     assert_eq!(err.to_string(), "empty host");
   }
 
   // TODO find a way to easily test tokio errors and unix errors
-
-  #[test]
-  fn test_diagnostic() {
-    let err = ErrBox::from(diagnostic());
-    assert_eq!(err.kind(), ErrorKind::Diagnostic);
-    assert_eq!(strip_ansi_codes(&err.to_string()), "error TS2322: Example 1\n\n► deno/tests/complex_diagnostics.ts:19:3\n\n19   values: o => [\n     ~~~~~~\n\nerror TS2000: Example 2\n\n► /foo/bar.ts:129:3\n\n129   values: undefined,\n      ~~~~~~\n\n\nFound 2 errors.\n");
-  }
-
-  #[test]
-  fn test_js_error() {
-    let err = ErrBox::from(js_error());
-    assert_eq!(err.kind(), ErrorKind::JSError);
-    assert_eq!(strip_ansi_codes(&err.to_string()), "error: Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2");
-  }
 
   #[test]
   fn test_import_map_error() {
@@ -466,7 +404,7 @@ mod tests {
   #[test]
   fn test_no_buffer_specified() {
     let err = no_buffer_specified();
-    assert_eq!(err.kind(), ErrorKind::InvalidInput);
+    assert_eq!(err.kind(), ErrorKind::TypeError);
     assert_eq!(err.to_string(), "no buffer specified");
   }
 }
