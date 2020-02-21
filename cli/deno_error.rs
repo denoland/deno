@@ -18,9 +18,8 @@
 //! - rename/merge JSError with V8Exception?
 
 use crate::import_map::ImportMapError;
-use deno_core::ErrBox;
 use deno_core::ModuleResolutionError;
-use dlopen::Error as DlopenError;
+use dlopen;
 use reqwest;
 use rustyline::error::ReadlineError;
 use std;
@@ -32,8 +31,6 @@ use url;
 
 // Warning! The values in this enum are duplicated in js/errors.ts
 // Update carefully!
-#[allow(non_camel_case_types)]
-#[repr(i8)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ErrorKind {
   NotFound = 1,
@@ -65,22 +62,6 @@ pub enum ErrorKind {
 pub struct OpError {
   pub kind: ErrorKind,
   pub msg: String,
-}
-
-pub fn print_msg_and_exit(msg: &str) {
-  eprintln!("{}", msg);
-  std::process::exit(1);
-}
-
-pub fn print_err_and_exit(err: ErrBox) {
-  eprintln!("{}", err.to_string());
-  std::process::exit(1);
-}
-
-pub fn js_check(r: Result<(), ErrBox>) {
-  if let Err(err) = r {
-    print_err_and_exit(err);
-  }
 }
 
 impl OpError {
@@ -321,8 +302,8 @@ mod unix {
   }
 }
 
-impl From<DlopenError> for OpError {
-  fn from(error: DlopenError) -> Self {
+impl From<dlopen::Error> for OpError {
+  fn from(error: dlopen::Error) -> Self {
     use dlopen::Error::*;
     let kind = match error {
       NullCharacter(_) => ErrorKind::Other,
