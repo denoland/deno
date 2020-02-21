@@ -38,10 +38,9 @@ testPerm({ read: true, write: true }, async function fsEventsBasic(): Promise<
 
   Deno.writeFileSync(file1, new Uint8Array([0, 1, 2]));
   Deno.writeFileSync(file2, new Uint8Array([0, 1, 2]));
-  await delay(1000);
+  await delay(100);
   console.log("events", events);
   assert(events.length >= 2);
-  watcher.close();
 });
 
 Deno.runTests();
