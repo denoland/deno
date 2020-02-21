@@ -1387,11 +1387,17 @@ declare namespace Deno {
    */
   export function openPlugin(filename: string): Plugin;
 
-  type Transport = "tcp";
+  export type Transport = "tcp" | "udp";
 
-  interface Addr {
+  export interface Addr {
     transport: Transport;
     hostname: string;
+    port: number;
+  }
+
+  export interface UDPAddr {
+    transport?: Transport;
+    hostname?: string;
     port: number;
   }
 
@@ -1416,6 +1422,36 @@ declare namespace Deno {
    *       Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
    */
   export function shutdown(rid: number, how: ShutdownMode): void;
+
+  /** UNSTABLE: new API
+   * Waits for the next message to the passed rid and writes it on the passed buffer.
+   * Returns the number of bytes written and the remote address.
+   */
+  export function recvfrom(rid: number, p: Uint8Array): Promise<[number, Addr]>;
+
+  /** UNSTABLE: new API
+   * A socket is a generic transport listener for message-oriented protocols
+   */
+  export interface UDPConn extends AsyncIterator<[Uint8Array, Addr]> {
+    /** UNSTABLE: new API
+     * Waits for and resolves to the next message to the `Socket`. */
+    receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
+
+    /** UNSTABLE: new API
+     * Sends a message to the target. */
+    send(p: Uint8Array, addr: UDPAddr): Promise<void>;
+
+    /** UNSTABLE: new API
+     * Close closes the socket. Any pending message promises will be rejected
+     * with errors.
+     */
+    close(): void;
+
+    /** Return the address of the `Socket`. */
+    addr: Addr;
+
+    [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]>;
+  }
 
   /** A Listener is a generic network listener for stream-oriented protocols. */
   export interface Listener extends AsyncIterator<Conn> {
@@ -1457,7 +1493,9 @@ declare namespace Deno {
     transport?: Transport;
   }
 
-  /** Listen announces on the local transport address.
+  /** UNSTABLE: new API
+   *
+   * Listen announces on the local transport address.
    *
    * Requires the allow-net permission.
    *
@@ -1476,7 +1514,13 @@ declare namespace Deno {
    *     listen({ hostname: "[2001:db8::1]", port: 80 });
    *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
    */
-  export function listen(options: ListenOptions): Listener;
+  export function listen(
+    options: ListenOptions & { transport?: "tcp" }
+  ): Listener;
+  export function listen(
+    options: ListenOptions & { transport: "udp" }
+  ): UDPConn;
+  export function listen(options: ListenOptions): Listener | UDPConn;
 
   export interface ListenTLSOptions {
     port: number;

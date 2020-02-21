@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ net: true }, function netListenClose(): void {
+testPerm({ net: true }, function netTcpListenClose(): void {
   const listener = Deno.listen({ hostname: "127.0.0.1", port: 4500 });
   assertEquals(listener.addr.transport, "tcp");
   assertEquals(listener.addr.hostname, "127.0.0.1");
@@ -9,7 +9,21 @@ testPerm({ net: true }, function netListenClose(): void {
   listener.close();
 });
 
-testPerm({ net: true }, async function netCloseWhileAccept(): Promise<void> {
+testPerm({ net: true }, function netUdpListenClose(): void {
+  if (Deno.build.os === "win") return; // TODO
+
+  const socket = Deno.listen({
+    hostname: "127.0.0.1",
+    port: 4500,
+    transport: "udp"
+  });
+  assertEquals(socket.addr.transport, "udp");
+  assertEquals(socket.addr.hostname, "127.0.0.1");
+  assertEquals(socket.addr.port, 4500);
+  socket.close();
+});
+
+testPerm({ net: true }, async function netTcpCloseWhileAccept(): Promise<void> {
   const listener = Deno.listen({ port: 4501 });
   const p = listener.accept();
   listener.close();
@@ -24,7 +38,7 @@ testPerm({ net: true }, async function netCloseWhileAccept(): Promise<void> {
   assertEquals(err.message, "Listener has been closed");
 });
 
-testPerm({ net: true }, async function netConcurrentAccept(): Promise<void> {
+testPerm({ net: true }, async function netTcpConcurrentAccept(): Promise<void> {
   const listener = Deno.listen({ port: 4502 });
   let acceptErrCount = 0;
   const checkErr = (e: Error): void => {
@@ -44,7 +58,7 @@ testPerm({ net: true }, async function netConcurrentAccept(): Promise<void> {
   assertEquals(acceptErrCount, 1);
 });
 
-testPerm({ net: true }, async function netDialListen(): Promise<void> {
+testPerm({ net: true }, async function netTcpDialListen(): Promise<void> {
   const listener = Deno.listen({ port: 4500 });
   listener.accept().then(
     async (conn): Promise<void> => {
@@ -76,17 +90,57 @@ testPerm({ net: true }, async function netDialListen(): Promise<void> {
   conn.close();
 });
 
-testPerm({ net: true }, async function netListenCloseWhileIterating(): Promise<
-  void
-> {
-  const listener = Deno.listen({ port: 8000 });
-  const nextWhileClosing = listener[Symbol.asyncIterator]().next();
-  listener.close();
-  assertEquals(await nextWhileClosing, { value: undefined, done: true });
+testPerm({ net: true }, async function netUdpSendReceive(): Promise<void> {
+  if (Deno.build.os === "win") return; // TODO
 
-  const nextAfterClosing = listener[Symbol.asyncIterator]().next();
-  assertEquals(await nextAfterClosing, { value: undefined, done: true });
+  const alice = Deno.listen({ port: 4500, transport: "udp" });
+  assertEquals(alice.addr.port, 4500);
+  assertEquals(alice.addr.hostname, "0.0.0.0");
+  assertEquals(alice.addr.transport, "udp");
+
+  const bob = Deno.listen({ port: 4501, transport: "udp" });
+  assertEquals(bob.addr.port, 4501);
+  assertEquals(bob.addr.hostname, "0.0.0.0");
+  assertEquals(bob.addr.transport, "udp");
+
+  const sent = new Uint8Array([1, 2, 3]);
+  await alice.send(sent, bob.addr);
+
+  const [recvd, remote] = await bob.receive();
+  assertEquals(remote.port, 4500);
+  assertEquals(recvd.length, 3);
+  assertEquals(1, recvd[0]);
+  assertEquals(2, recvd[1]);
+  assertEquals(3, recvd[2]);
 });
+
+testPerm(
+  { net: true },
+  async function netTcpListenCloseWhileIterating(): Promise<void> {
+    const listener = Deno.listen({ port: 8000 });
+    const nextWhileClosing = listener[Symbol.asyncIterator]().next();
+    listener.close();
+    assertEquals(await nextWhileClosing, { value: undefined, done: true });
+
+    const nextAfterClosing = listener[Symbol.asyncIterator]().next();
+    assertEquals(await nextAfterClosing, { value: undefined, done: true });
+  }
+);
+
+testPerm(
+  { net: true },
+  async function netUdpListenCloseWhileIterating(): Promise<void> {
+    if (Deno.build.os === "win") return; // TODO
+
+    const socket = Deno.listen({ port: 8000, transport: "udp" });
+    const nextWhileClosing = socket[Symbol.asyncIterator]().next();
+    socket.close();
+    assertEquals(await nextWhileClosing, { value: undefined, done: true });
+
+    const nextAfterClosing = socket[Symbol.asyncIterator]().next();
+    assertEquals(await nextAfterClosing, { value: undefined, done: true });
+  }
+);
 
 /* TODO(ry) Re-enable this test.
 testPerm({ net: true }, async function netListenAsyncIterator(): Promise<void> {
