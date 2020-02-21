@@ -54,7 +54,7 @@ serde = { version = "1.0.104", features = ["derive"] }
 serde_derive = "1.0.104"
 serde_json = { version = "1.0.44", features = [ "preserve_order" ] }
 source-map-mappings = "0.5.0"
-sys-info = "0.5.8"
+sys-info = "=0.5.8" # 0.5.9 seems to be broken on windows.
 tempfile = "3.1.0"
 termcolor = "1.0.5"
 tokio = { version = "0.2", features = ["rt-core", "tcp", "process", "fs", "blocking", "sync", "io-std", "macros", "time"] }
