@@ -467,6 +467,23 @@ for await (const _ of sig) {
 
 The above for-await loop exits after 5 seconds when sig.dispose() is called.
 
+### File system events
+
+To poll for file system events:
+
+```ts
+const iter = Deno.fsEvents("/");
+for await (const event of iter) {
+  console.log(">>>> event", event);
+  // { kind: "create", paths: [ "/foo.txt" ] }
+}
+```
+
+Note that the exact ordering of the events can vary between operating systems.
+This feature uses different syscalls depending on the platform:
+
+Linux: inotify macOS: FSEvents Windows: ReadDirectoryChangesW
+
 ### Linking to third party code
 
 In the above examples, we saw that Deno could execute scripts from URLs. Like
