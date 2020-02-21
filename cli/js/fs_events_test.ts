@@ -7,8 +7,8 @@ testPerm({ read: false }, function fsEventsPermissions() {
   let thrown = false;
   try {
     Deno.fsEvents(".");
-  } catch (e) {
-    assert(e.kind == Deno.ErrorKind.PermissionDenied);
+  } catch (err) {
+    assert(err instanceof Deno.Err.PermissionDenied)
     thrown = true;
   }
   assert(thrown);
