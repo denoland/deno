@@ -96,7 +96,7 @@ pub fn op_fs_events_open(
   }
   let resource = FsEventsResource { watcher, receiver };
   let table = &mut state.borrow_mut().resource_table;
-  let rid = table.add("fsWatcher", Box::new(resource));
+  let rid = table.add("fsEvents", Box::new(resource));
   Ok(JsonOp::Sync(json!(rid)))
 }
 
