@@ -7,15 +7,14 @@
 //!   These are basically a big JSON structure which holds information about
 //!   line numbers. We use this to pretty-print stack traces. These are
 //!   never passed back into the runtime.
-//! - DenoError: these are errors that happen during ops, which are passed
+//! - OpError: these are errors that happen during ops, which are passed
 //!   back into the runtime, where an exception object is created and thrown.
-//!   DenoErrors have an integer code associated with them - access this via the `kind` field.
+//!   OpErrors have an integer code associated with them - access this via the `kind` field.
 //! - Diagnostic: these are errors that originate in TypeScript's compiler.
 //!   They're similar to JSError, in that they have line numbers.
 //!   But Diagnostics are compile-time type errors, whereas JSErrors are runtime exceptions.
 //!
 //! TODO:
-//! - rename DenoError to OpError or RuntimeError?
 //! - rename/merge JSError with V8Exception?
 
 use crate::import_map::ImportMapError;
@@ -63,7 +62,7 @@ pub enum ErrorKind {
 }
 
 #[derive(Debug)]
-pub struct DenoError {
+pub struct OpError {
   pub kind: ErrorKind,
   pub msg: String,
 }
@@ -84,15 +83,15 @@ pub fn js_check(r: Result<(), ErrBox>) {
   }
 }
 
-impl DenoError {
+impl OpError {
   pub fn new(kind: ErrorKind, msg: String) -> Self {
     Self { kind, msg }
   }
 }
 
-impl Error for DenoError {}
+impl Error for OpError {}
 
-impl fmt::Display for DenoError {
+impl fmt::Display for OpError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.pad(self.msg.as_str())
   }
@@ -109,31 +108,31 @@ impl fmt::Display for StaticDenoError {
   }
 }
 
-pub fn bad_resource() -> DenoError {
+pub fn bad_resource() -> OpError {
   StaticDenoError(ErrorKind::BadResource, "bad resource id").into()
 }
 
-pub fn permission_denied() -> DenoError {
+pub fn permission_denied() -> OpError {
   StaticDenoError(ErrorKind::PermissionDenied, "permission denied").into()
 }
 
-pub fn permission_denied_msg(msg: String) -> DenoError {
-  DenoError::new(ErrorKind::PermissionDenied, msg)
+pub fn permission_denied_msg(msg: String) -> OpError {
+  OpError::new(ErrorKind::PermissionDenied, msg)
 }
 
-pub fn no_buffer_specified() -> DenoError {
+pub fn no_buffer_specified() -> OpError {
   StaticDenoError(ErrorKind::TypeError, "no buffer specified").into()
 }
 
-pub fn invalid_address_syntax() -> DenoError {
+pub fn invalid_address_syntax() -> OpError {
   StaticDenoError(ErrorKind::TypeError, "invalid address syntax").into()
 }
 
-pub fn other_error(msg: String) -> DenoError {
-  DenoError::new(ErrorKind::Other, msg)
+pub fn other_error(msg: String) -> OpError {
+  OpError::new(ErrorKind::Other, msg)
 }
 
-impl From<StaticDenoError> for DenoError {
+impl From<StaticDenoError> for OpError {
   fn from(error: StaticDenoError) -> Self {
     Self {
       kind: error.0,
@@ -142,7 +141,7 @@ impl From<StaticDenoError> for DenoError {
   }
 }
 
-impl From<ImportMapError> for DenoError {
+impl From<ImportMapError> for OpError {
   fn from(error: ImportMapError) -> Self {
     Self {
       kind: ErrorKind::Other,
@@ -151,7 +150,7 @@ impl From<ImportMapError> for DenoError {
   }
 }
 
-impl From<ModuleResolutionError> for DenoError {
+impl From<ModuleResolutionError> for OpError {
   fn from(error: ModuleResolutionError) -> Self {
     Self {
       kind: ErrorKind::URIError,
@@ -160,7 +159,7 @@ impl From<ModuleResolutionError> for DenoError {
   }
 }
 
-impl From<VarError> for DenoError {
+impl From<VarError> for OpError {
   fn from(error: VarError) -> Self {
     use VarError::*;
     let kind = match error {
@@ -175,13 +174,13 @@ impl From<VarError> for DenoError {
   }
 }
 
-impl From<io::Error> for DenoError {
+impl From<io::Error> for OpError {
   fn from(error: io::Error) -> Self {
     error.into()
   }
 }
 
-impl From<&io::Error> for DenoError {
+impl From<&io::Error> for OpError {
   fn from(error: &io::Error) -> Self {
     use io::ErrorKind::*;
     let kind = match error.kind() {
@@ -212,7 +211,7 @@ impl From<&io::Error> for DenoError {
   }
 }
 
-impl From<url::ParseError> for DenoError {
+impl From<url::ParseError> for OpError {
   fn from(error: url::ParseError) -> Self {
     Self {
       kind: ErrorKind::URIError,
@@ -221,7 +220,7 @@ impl From<url::ParseError> for DenoError {
   }
 }
 
-impl From<reqwest::Error> for DenoError {
+impl From<reqwest::Error> for OpError {
   fn from(error: reqwest::Error) -> Self {
     match error.source() {
       Some(err_ref) => None
@@ -252,7 +251,7 @@ impl From<reqwest::Error> for DenoError {
   }
 }
 
-impl From<ReadlineError> for DenoError {
+impl From<ReadlineError> for OpError {
   fn from(error: ReadlineError) -> Self {
     use ReadlineError::*;
     let kind = match error {
@@ -271,13 +270,13 @@ impl From<ReadlineError> for DenoError {
   }
 }
 
-impl From<serde_json::error::Error> for DenoError {
+impl From<serde_json::error::Error> for OpError {
   fn from(error: serde_json::error::Error) -> Self {
     error.into()
   }
 }
 
-impl From<&serde_json::error::Error> for DenoError {
+impl From<&serde_json::error::Error> for OpError {
   fn from(error: &serde_json::error::Error) -> Self {
     use serde_json::error::*;
     let kind = match error.classify() {
@@ -296,12 +295,12 @@ impl From<&serde_json::error::Error> for DenoError {
 
 #[cfg(unix)]
 mod unix {
-  use super::{DenoError, ErrorKind};
+  use super::{ErrorKind, OpError};
   use nix::errno::Errno::*;
   pub use nix::Error;
   use nix::Error::Sys;
 
-  impl From<Error> for DenoError {
+  impl From<Error> for OpError {
     fn from(error: Error) -> Self {
       let kind = match error {
         Sys(EPERM) => ErrorKind::PermissionDenied,
@@ -322,7 +321,7 @@ mod unix {
   }
 }
 
-impl From<DlopenError> for DenoError {
+impl From<DlopenError> for OpError {
   fn from(error: DlopenError) -> Self {
     use dlopen::Error::*;
     let kind = match error {
@@ -360,21 +359,21 @@ mod tests {
 
   #[test]
   fn test_simple_error() {
-    let err = DenoError::new(ErrorKind::NotFound, "foo".to_string());
+    let err = OpError::new(ErrorKind::NotFound, "foo".to_string());
     assert_eq!(err.kind, ErrorKind::NotFound);
     assert_eq!(err.to_string(), "foo");
   }
 
   #[test]
   fn test_io_error() {
-    let err = DenoError::from(io_error());
+    let err = OpError::from(io_error());
     assert_eq!(err.kind, ErrorKind::NotFound);
     assert_eq!(err.to_string(), "entity not found");
   }
 
   #[test]
   fn test_url_error() {
-    let err = DenoError::from(url_error());
+    let err = OpError::from(url_error());
     assert_eq!(err.kind, ErrorKind::URIError);
     assert_eq!(err.to_string(), "empty host");
   }
@@ -383,7 +382,7 @@ mod tests {
 
   #[test]
   fn test_import_map_error() {
-    let err = DenoError::from(import_map_error());
+    let err = OpError::from(import_map_error());
     assert_eq!(err.kind, ErrorKind::Other);
     assert_eq!(err.to_string(), "an import map error");
   }

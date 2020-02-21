@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
-use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
+use crate::deno_error::OpError;
 use crate::fs as deno_fs;
 use crate::ops::dispatch_json::JsonResult;
 use crate::ops::json_op;
@@ -55,7 +55,7 @@ fn op_chdir(
   _state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: ChdirArgs = serde_json::from_value(args)?;
   std::env::set_current_dir(&args.directory)?;
   Ok(JsonOp::Sync(json!({})))
@@ -74,7 +74,7 @@ fn op_mkdir(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
 
@@ -101,7 +101,7 @@ fn op_chmod(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: ChmodArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
 
@@ -135,7 +135,7 @@ fn op_chown(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: ChownArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
 
@@ -163,7 +163,7 @@ fn op_remove(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: RemoveArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
   let recursive = args.recursive;
@@ -198,7 +198,7 @@ fn op_copy_file(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: CopyFileArgs = serde_json::from_value(args)?;
   let from = deno_fs::resolve_from_cwd(Path::new(&args.from))?;
   let to = deno_fs::resolve_from_cwd(Path::new(&args.to))?;
@@ -213,7 +213,7 @@ fn op_copy_file(
     // See https://github.com/rust-lang/rust/issues/54800
     // Once the issue is reolved, we should remove this workaround.
     if cfg!(unix) && !from.is_file() {
-      return Err(DenoError::new(
+      return Err(OpError::new(
         ErrorKind::NotFound,
         "File not found".to_string(),
       ));
@@ -297,7 +297,7 @@ fn op_stat(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: StatArgs = serde_json::from_value(args)?;
   let filename = deno_fs::resolve_from_cwd(Path::new(&args.filename))?;
   let lstat = args.lstat;
@@ -327,7 +327,7 @@ fn op_realpath(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: RealpathArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
 
@@ -359,7 +359,7 @@ fn op_read_dir(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: ReadDirArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
 
@@ -398,7 +398,7 @@ fn op_rename(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: RenameArgs = serde_json::from_value(args)?;
   let oldpath = deno_fs::resolve_from_cwd(Path::new(&args.oldpath))?;
   let newpath = deno_fs::resolve_from_cwd(Path::new(&args.newpath))?;
@@ -427,7 +427,7 @@ fn op_link(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldname = deno_fs::resolve_from_cwd(Path::new(&args.oldname))?;
   let newname = deno_fs::resolve_from_cwd(Path::new(&args.newname))?;
@@ -455,7 +455,7 @@ fn op_symlink(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldname = deno_fs::resolve_from_cwd(Path::new(&args.oldname))?;
   let newname = deno_fs::resolve_from_cwd(Path::new(&args.newname))?;
@@ -463,7 +463,7 @@ fn op_symlink(
   state.check_write(&newname)?;
   // TODO Use type for Windows.
   if cfg!(windows) {
-    return Err(DenoError::new(
+    return Err(OpError::new(
       ErrorKind::Other,
       "Not implemented".to_string(),
     ));
@@ -488,7 +488,7 @@ fn op_read_link(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: ReadLinkArgs = serde_json::from_value(args)?;
   let name = deno_fs::resolve_from_cwd(Path::new(&args.name))?;
 
@@ -516,7 +516,7 @@ fn op_truncate(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: TruncateArgs = serde_json::from_value(args)?;
   let filename = deno_fs::resolve_from_cwd(Path::new(&args.name))?;
   let len = args.len;
@@ -545,7 +545,7 @@ fn op_make_temp_dir(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: MakeTempArgs = serde_json::from_value(args)?;
 
   let dir = args.dir.map(PathBuf::from);
@@ -577,7 +577,7 @@ fn op_make_temp_file(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: MakeTempArgs = serde_json::from_value(args)?;
 
   let dir = args.dir.map(PathBuf::from);
@@ -618,7 +618,7 @@ fn op_utime(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: Utime = serde_json::from_value(args)?;
   state.check_write(Path::new(&args.filename))?;
   let is_sync = args.promise_id.is_none();
@@ -633,7 +633,7 @@ fn op_cwd(
   _state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let path = std::env::current_dir()?;
   let path_str = path.into_os_string().into_string().unwrap();
   Ok(JsonOp::Sync(json!(path_str)))

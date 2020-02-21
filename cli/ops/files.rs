@@ -2,8 +2,8 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
 use crate::deno_error::bad_resource;
-use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
+use crate::deno_error::OpError;
 use crate::fs as deno_fs;
 use crate::ops::json_op;
 use crate::state::State;
@@ -46,7 +46,7 @@ fn op_open(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: OpenArgs = serde_json::from_value(args)?;
   let filename = deno_fs::resolve_from_cwd(Path::new(&args.filename))?;
   let state_ = state.clone();
@@ -113,14 +113,14 @@ fn op_open(
         open_options.create_new(true).read(true).write(true);
       }
       &_ => {
-        return Err(DenoError::new(
+        return Err(OpError::new(
           ErrorKind::Other,
           "Unknown open mode.".to_string(),
         ));
       }
     }
   } else {
-    return Err(DenoError::new(
+    return Err(OpError::new(
       ErrorKind::Other,
       "Open requires either mode or options.".to_string(),
     ));
@@ -154,7 +154,7 @@ fn op_close(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: CloseArgs = serde_json::from_value(args)?;
 
   let mut state = state.borrow_mut();
@@ -178,7 +178,7 @@ fn op_seek(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: SeekArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let offset = args.offset;
@@ -189,7 +189,7 @@ fn op_seek(
     1 => SeekFrom::Current(i64::from(offset)),
     2 => SeekFrom::End(i64::from(offset)),
     _ => {
-      return Err(DenoError::new(
+      return Err(OpError::new(
         ErrorKind::TypeError,
         format!("Invalid seek mode: {}", whence),
       ));

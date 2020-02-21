@@ -2,8 +2,8 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
 use crate::deno_error::bad_resource;
-use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
+use crate::deno_error::OpError;
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
@@ -63,7 +63,7 @@ pub fn op_connect_tls(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: ConnectTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file.clone();
   let state_ = state.clone();
@@ -118,16 +118,16 @@ pub fn op_connect_tls(
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
-fn load_certs(path: &str) -> Result<Vec<Certificate>, DenoError> {
+fn load_certs(path: &str) -> Result<Vec<Certificate>, OpError> {
   let cert_file = File::open(path)?;
   let reader = &mut BufReader::new(cert_file);
 
   let certs = certs(reader).map_err(|_| {
-    DenoError::new(ErrorKind::Other, "Unable to decode certificate".to_string())
+    OpError::new(ErrorKind::Other, "Unable to decode certificate".to_string())
   })?;
 
   if certs.is_empty() {
-    let e = DenoError::new(
+    let e = OpError::new(
       ErrorKind::Other,
       "No certificates found in cert file".to_string(),
     );
@@ -137,16 +137,16 @@ fn load_certs(path: &str) -> Result<Vec<Certificate>, DenoError> {
   Ok(certs)
 }
 
-fn key_decode_err() -> DenoError {
-  DenoError::new(ErrorKind::Other, "Unable to decode key".to_string())
+fn key_decode_err() -> OpError {
+  OpError::new(ErrorKind::Other, "Unable to decode key".to_string())
 }
 
-fn key_not_found_err() -> DenoError {
-  DenoError::new(ErrorKind::Other, "No keys found in key file".to_string())
+fn key_not_found_err() -> OpError {
+  OpError::new(ErrorKind::Other, "No keys found in key file".to_string())
 }
 
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
-fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, DenoError> {
+fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, OpError> {
   let key_file = File::open(path)?;
   let reader = &mut BufReader::new(key_file);
   let keys = rsa_private_keys(reader).map_err(|_| key_decode_err())?;
@@ -154,14 +154,14 @@ fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, DenoError> {
 }
 
 /// Starts with -----BEGIN PRIVATE KEY-----
-fn load_pkcs8_keys(path: &str) -> Result<Vec<PrivateKey>, DenoError> {
+fn load_pkcs8_keys(path: &str) -> Result<Vec<PrivateKey>, OpError> {
   let key_file = File::open(path)?;
   let reader = &mut BufReader::new(key_file);
   let keys = pkcs8_private_keys(reader).map_err(|_| key_decode_err())?;
   Ok(keys)
 }
 
-fn load_keys(path: &str) -> Result<Vec<PrivateKey>, DenoError> {
+fn load_keys(path: &str) -> Result<Vec<PrivateKey>, OpError> {
   let path = path.to_string();
   let mut keys = load_rsa_keys(&path)?;
 
@@ -195,7 +195,7 @@ impl TlsListenerResource {
   /// can be notified when listener is closed.
   ///
   /// Throws an error if another task is already tracked.
-  pub fn track_task(&mut self, cx: &Context) -> Result<(), DenoError> {
+  pub fn track_task(&mut self, cx: &Context) -> Result<(), OpError> {
     // Currently, we only allow tracking a single accept task for a listener.
     // This might be changed in the future with multiple workers.
     // Caveat: TcpListener by itself also only tracks an accept task at a time.
@@ -205,7 +205,7 @@ impl TlsListenerResource {
         std::io::ErrorKind::Other,
         "Another accept task is ongoing",
       );
-      return Err(DenoError::from(e));
+      return Err(OpError::from(e));
     }
 
     let waker = futures::task::AtomicWaker::new();
@@ -244,7 +244,7 @@ fn op_listen_tls(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: ListenTlsArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp");
 
@@ -308,7 +308,7 @@ pub struct AcceptTls {
 }
 
 impl Future for AcceptTls {
-  type Output = Result<(TcpStream, SocketAddr), DenoError>;
+  type Output = Result<(TcpStream, SocketAddr), OpError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -325,12 +325,12 @@ impl Future for AcceptTls {
           std::io::ErrorKind::Other,
           "Listener has been closed",
         );
-        DenoError::from(e)
+        OpError::from(e)
       })?;
 
     let listener = &mut listener_resource.listener;
 
-    match listener.poll_accept(cx).map_err(DenoError::from) {
+    match listener.poll_accept(cx).map_err(OpError::from) {
       Poll::Ready(Ok((stream, addr))) => {
         listener_resource.untrack_task();
         inner.accept_state = AcceptTlsState::Done;
@@ -358,7 +358,7 @@ fn op_accept_tls(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: AcceptTlsArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let state = state.clone();

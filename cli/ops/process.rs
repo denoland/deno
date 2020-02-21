@@ -2,7 +2,7 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
 use crate::deno_error::bad_resource;
-use crate::deno_error::DenoError;
+use crate::deno_error::OpError;
 use crate::ops::json_op;
 use crate::signal::kill;
 use crate::state::State;
@@ -31,7 +31,7 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("kill", s.core_op(json_op(s.stateful_op(op_kill))));
 }
 
-fn clone_file(rid: u32, state: &State) -> Result<std::fs::File, DenoError> {
+fn clone_file(rid: u32, state: &State) -> Result<std::fs::File, OpError> {
   let mut state = state.borrow_mut();
   let repr = state
     .resource_table
@@ -77,7 +77,7 @@ fn op_run(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let run_args: RunArgs = serde_json::from_value(args)?;
 
   state.check_run()?;
@@ -183,7 +183,7 @@ pub struct ChildStatus {
 }
 
 impl Future for ChildStatus {
-  type Output = Result<ExitStatus, DenoError>;
+  type Output = Result<ExitStatus, OpError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -193,7 +193,7 @@ impl Future for ChildStatus {
       .get_mut::<ChildResource>(inner.rid)
       .ok_or_else(bad_resource)?;
     let child = &mut child_resource.child;
-    child.map_err(DenoError::from).poll_unpin(cx)
+    child.map_err(OpError::from).poll_unpin(cx)
   }
 }
 
@@ -207,7 +207,7 @@ fn op_run_status(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: RunStatusArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
@@ -252,7 +252,7 @@ fn op_kill(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   state.check_run()?;
 
   let args: KillArgs = serde_json::from_value(args)?;

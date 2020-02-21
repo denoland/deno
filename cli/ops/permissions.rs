@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::deno_error::other_error;
-use crate::deno_error::DenoError;
+use crate::deno_error::OpError;
 use crate::fs as deno_fs;
 use crate::ops::json_op;
 use crate::state::State;
@@ -42,7 +42,7 @@ pub fn op_query_permission(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
   let state = state.borrow();
   let resolved_path = args.path.as_ref().map(String::as_str).map(resolve_path);
@@ -58,7 +58,7 @@ pub fn op_revoke_permission(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
   let mut state = state.borrow_mut();
   let permissions = &mut state.permissions;
@@ -85,7 +85,7 @@ pub fn op_request_permission(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
   let mut state = state.borrow_mut();
   let permissions = &mut state.permissions;

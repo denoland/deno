@@ -2,7 +2,7 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
 use crate::deno_error::other_error;
-use crate::deno_error::DenoError;
+use crate::deno_error::OpError;
 use crate::http_util::{create_http_client, HttpBody};
 use crate::ops::json_op;
 use crate::state::State;
@@ -29,7 +29,7 @@ pub fn op_fetch(
   state: &State,
   args: Value,
   data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, DenoError> {
+) -> Result<JsonOp, OpError> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
 
@@ -42,7 +42,7 @@ pub fn op_fetch(
     None => Method::GET,
   };
 
-  let url_ = url::Url::parse(&url).map_err(DenoError::from)?;
+  let url_ = url::Url::parse(&url).map_err(OpError::from)?;
   state.check_net_url(&url_)?;
 
   let mut request = client.request(method, url_);

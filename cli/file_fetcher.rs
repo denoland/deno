@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
-use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
+use crate::deno_error::OpError;
 use crate::http_cache::HttpCache;
 use crate::http_util;
 use crate::http_util::create_http_client;
@@ -99,7 +99,7 @@ impl SourceFileFetcher {
   fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox> {
     if !SUPPORTED_URL_SCHEMES.contains(&url.scheme()) {
       return Err(
-        DenoError::new(
+        OpError::new(
           ErrorKind::Other,
           format!("Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}", url.scheme(), url, SUPPORTED_URL_SCHEMES),
         ).into()
@@ -194,13 +194,13 @@ impl SourceFileFetcher {
             r#"Cannot find module "{}"{} in cache, --cached-only is specified"#,
             module_url, referrer_suffix
           );
-          DenoError::new(ErrorKind::NotFound, msg).into()
+          OpError::new(ErrorKind::NotFound, msg).into()
         } else if is_not_found {
           let msg = format!(
             r#"Cannot resolve module "{}"{}"#,
             module_url, referrer_suffix
           );
-          DenoError::new(ErrorKind::NotFound, msg).into()
+          OpError::new(ErrorKind::NotFound, msg).into()
         } else {
           err
         };
@@ -257,7 +257,7 @@ impl SourceFileFetcher {
   /// Fetch local source file.
   fn fetch_local_file(&self, module_url: &Url) -> Result<SourceFile, ErrBox> {
     let filepath = module_url.to_file_path().map_err(|()| {
-      ErrBox::from(DenoError::new(
+      ErrBox::from(OpError::new(
         ErrorKind::URIError,
         "File URL contains invalid path".to_owned(),
       ))
@@ -357,7 +357,7 @@ impl SourceFileFetcher {
     redirect_limit: i64,
   ) -> Pin<Box<dyn Future<Output = Result<SourceFile, ErrBox>>>> {
     if redirect_limit < 0 {
-      let e = DenoError::new(ErrorKind::Http, "too many redirects".to_string());
+      let e = OpError::new(ErrorKind::Http, "too many redirects".to_string());
       return futures::future::err(e.into()).boxed_local();
     }
 

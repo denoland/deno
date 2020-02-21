@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::deno_dir::DenoDir;
-use crate::deno_error::DenoError;
+use crate::deno_error::OpError;
 use deno_core::ErrBox;
 use rustyline;
 use std::fs;
@@ -89,7 +89,7 @@ impl Repl {
       })
   }
 
-  pub fn readline(&mut self, prompt: &str) -> Result<String, DenoError> {
+  pub fn readline(&mut self, prompt: &str) -> Result<String, OpError> {
     self
       .editor
       .readline(&prompt)
@@ -97,7 +97,7 @@ impl Repl {
         self.editor.add_history_entry(line.clone());
         line
       })
-      .map_err(DenoError::from)
+      .map_err(OpError::from)
     // Forward error to TS side for processing
   }
 }
