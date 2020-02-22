@@ -283,6 +283,23 @@ testPerm({ env: false }, function execPathPerm(): void {
   assert(caughtError);
 });
 
+testPerm({ env: true }, function loadavgSuccess(): void {
+  const load = Deno.loadavg();
+  assertEquals(load.length, 3);
+});
+
+testPerm({ env: false }, function loadavgPerm(): void {
+  let caughtError = false;
+  try {
+    Deno.loadavg();
+  } catch (err) {
+    caughtError = true;
+    assert(err instanceof Deno.Err.PermissionDenied);
+    assertEquals(err.name, "PermissionDenied");
+  }
+  assert(caughtError);
+});
+
 testPerm({ env: true }, function hostnameDir(): void {
   assertNotEquals(Deno.hostname(), "");
 });

@@ -11,6 +11,14 @@ import * as util from "./util.ts";
 export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
   return sendSync(dispatch.OP_IS_TTY);
 }
+/** Get the loadavg.
+ * Requires the `--allow-env` flag.
+ *
+ *       console.log(Deno.loadavg());
+ */
+export function loadavg(): number[] {
+  return sendSync(dispatch.OP_LOADAVG);
+}
 
 /** Get the hostname.
  * Requires the `--allow-env` flag.

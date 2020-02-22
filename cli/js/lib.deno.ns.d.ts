@@ -40,6 +40,12 @@ declare namespace Deno {
     stderr: boolean;
   };
 
+  /** Get the loadavg. Requires the `--allow-env` flag.
+   *
+   *       console.log(Deno.loadavg());
+   */
+  export function loadavg(): number[];
+
   /** Get the hostname. Requires the `--allow-env` flag.
    *
    *       console.log(Deno.hostname());
