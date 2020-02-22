@@ -19,6 +19,7 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("get_env", s.core_op(json_op(s.stateful_op(op_get_env))));
   i.register_op("get_dir", s.core_op(json_op(s.stateful_op(op_get_dir))));
   i.register_op("hostname", s.core_op(json_op(s.stateful_op(op_hostname))));
+  i.register_op("loadavg", s.core_op(json_op(s.stateful_op(op_loadavg))));
 }
 
 #[derive(Deserialize)]
@@ -156,6 +157,22 @@ fn op_is_tty(
     "stdout": atty::is(atty::Stream::Stdout),
     "stderr": atty::is(atty::Stream::Stderr),
   })))
+}
+
+fn op_loadavg(
+  state: &State,
+  _args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, ErrBox> {
+  state.check_env()?;
+  match sys_info::loadavg() {
+    Ok(loadavg) => Ok(JsonOp::Sync(json!([
+      loadavg.one,
+      loadavg.five,
+      loadavg.fifteen
+    ]))),
+    Err(_) => Ok(JsonOp::Sync(json!([0f64, 0f64, 0f64]))),
+  }
 }
 
 fn op_hostname(
