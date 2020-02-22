@@ -3,7 +3,10 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-interface, @typescript-eslint/no-explicit-any */
 
 /// <reference no-default-lib="true" />
-/// <reference lib="deno_ns" />
+// TODO: we need to remove this, but Fetch::Response::Body implements Reader
+// which requires Deno.EOF, and we shouldn't be leaking that, but https_proxy
+// at the least requires the Reader interface on Body, which it shouldn't
+/// <reference lib="deno.ns" />
 /// <reference lib="esnext" />
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope

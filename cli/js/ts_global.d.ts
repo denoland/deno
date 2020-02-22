@@ -16,4 +16,11 @@ declare global {
   namespace ts {
     export = ts_;
   }
+
+  namespace ts {
+    // this are marked @internal in TypeScript, but we need to access them,
+    // there is a risk these could change in future versions of TypeScript
+    export const libs: string[];
+    export const libMap: Map<string, string>;
+  }
 }

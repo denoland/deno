@@ -29,7 +29,7 @@ async function ensureValidCopy(
   try {
     destStat = await Deno.lstat(dest);
   } catch (err) {
-    if (err instanceof Deno.DenoError && err.kind == Deno.ErrorKind.NotFound) {
+    if (err instanceof Deno.Err.NotFound) {
       return;
     }
     throw err;
@@ -57,7 +57,7 @@ function ensureValidCopySync(
   try {
     destStat = Deno.lstatSync(dest);
   } catch (err) {
-    if (err instanceof Deno.DenoError && err.kind == Deno.ErrorKind.NotFound) {
+    if (err instanceof Deno.Err.NotFound) {
       return;
     }
     throw err;
@@ -85,6 +85,8 @@ async function copyFile(
   await Deno.copyFile(src, dest);
   if (options.preserveTimestamps) {
     const statInfo = await Deno.stat(src);
+    assert(statInfo.accessed != null, `statInfo.accessed is unavailable`);
+    assert(statInfo.modified != null, `statInfo.modified is unavailable`);
     await Deno.utime(dest, statInfo.accessed, statInfo.modified);
   }
 }

@@ -476,26 +476,32 @@ for (const t of testCases) {
       if (t.Error) {
         let err;
         try {
-          actual = await readMatrix(new BufReader(new StringReader(t.Input)), {
-            comma: comma,
-            comment: comment,
-            trimLeadingSpace: trim,
-            fieldsPerRecord: fieldsPerRec,
-            lazyQuotes: lazyquote
-          });
+          actual = await readMatrix(
+            new BufReader(new StringReader(t.Input ?? "")),
+            {
+              comma: comma,
+              comment: comment,
+              trimLeadingSpace: trim,
+              fieldsPerRecord: fieldsPerRec,
+              lazyQuotes: lazyquote
+            }
+          );
         } catch (e) {
           err = e;
         }
         assert(err);
         assertEquals(err.message, t.Error);
       } else {
-        actual = await readMatrix(new BufReader(new StringReader(t.Input)), {
-          comma: comma,
-          comment: comment,
-          trimLeadingSpace: trim,
-          fieldsPerRecord: fieldsPerRec,
-          lazyQuotes: lazyquote
-        });
+        actual = await readMatrix(
+          new BufReader(new StringReader(t.Input ?? "")),
+          {
+            comma: comma,
+            comment: comment,
+            trimLeadingSpace: trim,
+            fieldsPerRecord: fieldsPerRec,
+            lazyQuotes: lazyquote
+          }
+        );
         const expected = t.Output;
         assertEquals(actual, expected);
       }

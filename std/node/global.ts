@@ -1,1 +1,2 @@
-window["global"] = window;
+// @ts-ignore
+globalThis["global"] = globalThis;

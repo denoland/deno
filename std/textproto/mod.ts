@@ -67,7 +67,7 @@ export class TextProtoReader {
    */
   async readMIMEHeader(): Promise<Headers | Deno.EOF> {
     const m = new Headers();
-    let line: Uint8Array;
+    let line: Uint8Array | undefined;
 
     // The first line cannot start with a leading space.
     let buf = await this.r.peek(1);
@@ -135,7 +135,7 @@ export class TextProtoReader {
 
   async readLineSlice(): Promise<Uint8Array | Deno.EOF> {
     // this.closeDot();
-    let line: Uint8Array;
+    let line: Uint8Array | undefined;
     while (true) {
       const r = await this.r.readLine();
       if (r === Deno.EOF) return Deno.EOF;

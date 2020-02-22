@@ -27,7 +27,6 @@ import * as base64 from "./base64.ts";
 import { decodeUtf8 } from "./decode_utf8.ts";
 import * as domTypes from "./dom_types.ts";
 import { encodeUtf8 } from "./encode_utf8.ts";
-import { DenoError, ErrorKind } from "./errors.ts";
 
 const CONTINUE = null;
 const END_OF_STREAM = -1;
@@ -105,10 +104,7 @@ export function atob(s: string): string {
   const rem = s.length % 4;
   if (rem === 1 || /[^+/0-9A-Za-z]/.test(s)) {
     // TODO: throw `DOMException`
-    throw new DenoError(
-      ErrorKind.InvalidInput,
-      "The string to be decoded is not correctly encoded"
-    );
+    throw new TypeError("The string to be decoded is not correctly encoded");
   }
 
   // base64-js requires length exactly times of 4
@@ -130,8 +126,7 @@ export function btoa(s: string): string {
   for (let i = 0; i < s.length; i++) {
     const charCode = s[i].charCodeAt(0);
     if (charCode > 0xff) {
-      throw new DenoError(
-        ErrorKind.InvalidInput,
+      throw new TypeError(
         "The string to be encoded contains characters " +
           "outside of the Latin1 range."
       );

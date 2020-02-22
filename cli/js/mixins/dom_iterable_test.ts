@@ -20,11 +20,8 @@ function setup() {
     Base,
     // This is using an internal API we don't want published as types, so having
     // to cast to any to "trick" TypeScript
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    DomIterable: (Deno[Deno.symbols.internal] as any).DomIterableMixin(
-      Base,
-      dataSymbol
-    )
+    // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+    DomIterable: Deno[Deno.symbols.internal].DomIterableMixin(Base, dataSymbol)
   };
 }
 
@@ -52,7 +49,12 @@ test(function testDomIterable(): void {
 
   result = [];
   const scope = {};
-  function callback(value, key, parent): void {
+  function callback(
+    this: typeof scope,
+    value: number,
+    key: string,
+    parent: typeof domIterable
+  ): void {
     assertEquals(parent, domIterable);
     assert(key != null);
     assert(value != null);
@@ -72,7 +74,7 @@ test(function testDomIterableScope(): void {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function checkScope(thisArg: any, expected: any): void {
-    function callback(): void {
+    function callback(this: typeof thisArg): void {
       assertEquals(this, expected);
     }
     domIterable.forEach(callback, thisArg);
