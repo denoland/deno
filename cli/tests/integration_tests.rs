@@ -18,25 +18,16 @@ pub fn test_raw_tty() {
   if let Ok(mut master) = fork.is_parent() {
     let mut obytes: [u8; 100] = [0; 100];
     let mut nread = master.read(&mut obytes).unwrap();
-    assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "BEGIN\r\n");
+    assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "S");
     master.write_all(b"a").unwrap();
     nread = master.read(&mut obytes).unwrap();
-    assert_eq!(
-      String::from_utf8_lossy(&obytes[0..nread]),
-      "READ 1 byte: a\r\n"
-    );
+    assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "A");
     master.write_all(b"b").unwrap();
     nread = master.read(&mut obytes).unwrap();
-    assert_eq!(
-      String::from_utf8_lossy(&obytes[0..nread]),
-      "READ 1 byte: b\r\n"
-    );
+    assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "B");
     master.write_all(b"c").unwrap();
     nread = master.read(&mut obytes).unwrap();
-    assert_eq!(
-      String::from_utf8_lossy(&obytes[0..nread]),
-      "READ 1 byte: c\r\n"
-    );
+    assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "C");
   } else {
     use deno::test_util::*;
     use nix::sys::termios;
