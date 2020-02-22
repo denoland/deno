@@ -93,3 +93,67 @@ impl ResourceTable {
 pub trait Resource: Downcast + Any + Send {}
 impl<T> Resource for T where T: Downcast + Any + Send {}
 impl_downcast!(Resource);
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  struct FakeResource {
+    not_empty: u128,
+  }
+
+  #[test]
+  fn test_create_resource_table_default() {
+    let table = ResourceTable::default();
+    assert_eq!(table.map.len(), 0);
+  }
+
+  #[test]
+  fn test_add_to_resource_table_not_empty() {
+    let mut table = ResourceTable::default();
+    table.add("fake1", Box::new(FakeResource { not_empty: 1 }));
+    table.add("fake2", Box::new(FakeResource { not_empty: 2 }));
+    assert_eq!(table.map.len(), 2);
+  }
+
+  // Do 4 of contiguous add to check randomness
+  // this makes it less likely that random numbers are made continuous
+  #[test]
+  fn test_add_to_resource_table_is_random() {
+    let mut table = ResourceTable::default();
+    let rid1 = table.add("fake1", Box::new(FakeResource { not_empty: 1 }));
+    let rid2 = table.add("fake2", Box::new(FakeResource { not_empty: 2 }));
+    let rid3 = table.add("fake3", Box::new(FakeResource { not_empty: 3 }));
+    let rid4 = table.add("fake4", Box::new(FakeResource { not_empty: 4 }));
+    assert!((rid1 + 1 != rid2) || (rid2 + 1 != rid3) || (rid3 + 1 != rid4));
+  }
+
+  #[test]
+  fn test_placement_add_to_resource_table_is_not_random() {
+    let mut table = ResourceTable::default();
+    table.placement_add(5, "fake", Box::new(FakeResource { not_empty: 9 }));
+    let resource = table.get::<FakeResource>(5);
+    assert_eq!(resource.is_none(), false);
+    assert_eq!(resource.unwrap().not_empty, 9);
+  }
+
+  #[test]
+  fn test_get_from_resource_table_is_what_was_given() {
+    let mut table = ResourceTable::default();
+    let rid = table.add("fake", Box::new(FakeResource { not_empty: 7 }));
+    let resource = table.get::<FakeResource>(rid);
+    assert_eq!(resource.unwrap().not_empty, 7);
+  }
+
+  #[test]
+  fn test_remove_from_resource_table() {
+    let mut table = ResourceTable::default();
+    let rid1 = table.add("fake1", Box::new(FakeResource { not_empty: 1 }));
+    let rid2 = table.add("fake2", Box::new(FakeResource { not_empty: 2 }));
+    assert_eq!(table.map.len(), 2);
+    table.close(rid1);
+    assert_eq!(table.map.len(), 1);
+    table.close(rid2);
+    assert_eq!(table.map.len(), 0);
+  }
+}
