@@ -46,9 +46,9 @@ impl ResourceTable {
   // resource id allocation are randomized for security.
   fn next_rid(&mut self) -> ResourceId {
     let mut rng = rand::thread_rng();
-    let mut next_rid = rng.gen::<u32>();
+    let mut next_rid = rng.gen::<u32>() & 0x7FFF_FFFF;
     while self.map.contains_key(&next_rid) {
-      next_rid = rng.gen::<u32>();
+      next_rid = rng.gen::<u32>() & 0x7FFF_FFFF;
     }
     next_rid
   }
