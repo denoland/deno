@@ -60,6 +60,16 @@ impl ResourceTable {
     rid
   }
 
+  pub fn placement_add(
+    &mut self,
+    rid: ResourceId,
+    name: &str,
+    resource: Box<dyn Resource>,
+  ) {
+    let r = self.map.insert(rid, (name.to_string(), resource));
+    assert!(r.is_none());
+  }
+
   pub fn entries(&self) -> Vec<(ResourceId, String)> {
     self
       .map
