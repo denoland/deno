@@ -1,10 +1,5 @@
 const { test } = Deno;
-import {
-  assert,
-  assertThrows,
-  assertEquals,
-  AssertionError
-} from "../testing/asserts.ts";
+import { assert, assertThrows, assertEquals } from "../testing/asserts.ts";
 import * as os from "./os.ts";
 
 test({
@@ -168,26 +163,14 @@ test({
   }
 });
 
-// Method is currently implemented correctly for windows but not for any other os
 test({
   name: "Load average is an array of 3 numbers",
   fn() {
-    try {
-      const result = os.loadavg();
-      assert(result.length == 3);
-      assertEquals(typeof result[0], "number");
-      assertEquals(typeof result[1], "number");
-      assertEquals(typeof result[2], "number");
-    } catch (error) {
-      if (!(Object.getPrototypeOf(error) === Error.prototype)) {
-        const errMsg = `Unexpected error class: ${error.name}`;
-        throw new AssertionError(errMsg);
-      } else if (!error.message.includes("Not implemented")) {
-        throw new AssertionError(
-          "Expected this error to contain 'Not implemented'"
-        );
-      }
-    }
+    const result = os.loadavg();
+    assert(result.length == 3);
+    assertEquals(typeof result[0], "number");
+    assertEquals(typeof result[1], "number");
+    assertEquals(typeof result[2], "number");
   }
 });
 
