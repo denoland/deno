@@ -31,17 +31,25 @@ async function wsHandler(ws: WebSocket): Promise<void> {
 
 listenAndServe({ port: 8080 }, async req => {
   if (req.method === "GET" && req.url === "/") {
-    Deno.open("./index.html").then(file => {
-      req
-        .respond({
-          status: 200,
-          headers: new Headers({
-            "content-type": "text/html"
-          }),
-          body: file
-        })
-        .finally(() => file.close());
-    });
+    //Serve with hack
+    const u = new URL("./index.html", import.meta.url);
+    if (u.protocol.startsWith("http")) {
+      // server launched by deno run http(s)://.../server.ts,
+      fetch(u.href).then(resp => {
+        resp.headers.set("content-type", "text/html");
+        return req.respond(resp);
+      });
+    } else {
+      // server launched by deno run ./server.ts
+      const file = await Deno.open("./index.html");
+      req.respond({
+        status: 200,
+        headers: new Headers({
+          "content-type": "text/html"
+        }),
+        body: file
+      });
+    }
   }
   if (req.method === "GET" && req.url === "/ws") {
     if (acceptable(req)) {
