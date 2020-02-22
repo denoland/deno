@@ -63,7 +63,6 @@ utime = "0.2.1"
 webpki = "0.21.0"
 webpki-roots = "0.17.0"
 walkdir = "2.3.1"
-pty = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.8"
@@ -74,3 +73,6 @@ nix = "0.14.1"
 
 [dev-dependencies]
 os_pipe = "0.9.1"
+
+[target.'cfg(unix)'.dev-dependencies]
+pty = "0.2"

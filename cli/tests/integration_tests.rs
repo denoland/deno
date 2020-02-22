@@ -3,6 +3,7 @@
 extern crate lazy_static;
 #[cfg(unix)]
 extern crate nix;
+#[cfg(unix)]
 extern crate pty;
 extern crate tempfile;
 
