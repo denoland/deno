@@ -7,6 +7,7 @@
 use crate::fs as deno_fs;
 use crate::http_util::HeadersMap;
 use deno_core::ErrBox;
+use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::path::Path;
@@ -42,6 +43,18 @@ pub fn base_url_to_filename(url: &Url) -> PathBuf {
   out
 }
 
+// NOTE: fragment is omitted on purpose - it's not taken into
+// account when caching - it denotes parts of webpage, which
+// in case of static resources doesn't make much sense
+fn get_url_path_and_query(url: &Url) -> String {
+  let mut p = url.path().to_string();
+  if let Some(query) = url.query() {
+    p.push_str("?");
+    p.push_str(query);
+  }
+  p
+}
+
 /// Turn provided `url` into a hashed filename.
 /// URLs can contain a lot of characters that cannot be used
 /// in filenames (like "?", "#", ":"), so in order to cache
@@ -51,15 +64,7 @@ pub fn base_url_to_filename(url: &Url) -> PathBuf {
 /// NOTE: this method is `pub` because it's used in integration_tests
 pub fn url_to_filename(url: &Url) -> PathBuf {
   let mut cache_filename = base_url_to_filename(url);
-
-  let mut rest_str = url.path().to_string();
-  if let Some(query) = url.query() {
-    rest_str.push_str("?");
-    rest_str.push_str(query);
-  }
-  // NOTE: fragment is omitted on purpose - it's not taken into
-  // account when caching - it denotes parts of webpage, which
-  // in case of static resources doesn't make much sense
+  let rest_str = get_url_path_and_query(url);
   let hashed_filename = crate::checksum::gen(vec![rest_str.as_bytes()]);
   cache_filename.push(hashed_filename);
   cache_filename
@@ -85,10 +90,10 @@ impl HttpCache {
   }
 
   // TODO(bartlomieju): this method should check headers file
-  // and validate against ETAG/Last-modified-as headers.
-  // ETAG check is currently done in `cli/file_fetcher.rs`.
+  // and validate against Etag/Last-modified headers.
+  // Etag check is currently done in `cli/file_fetcher.rs`.
   pub fn get(&self, url: &Url) -> Result<(File, HeadersMap), ErrBox> {
-    let cache_filename = self.location.join(url_to_filename(url));
+    let cache_filename = self.get_cache_filename(url);
     let headers_filename = cache_filename.with_extension("headers.json");
     let file = File::open(cache_filename)?;
     let headers_json = fs::read_to_string(headers_filename)?;
@@ -102,7 +107,7 @@ impl HttpCache {
     headers_map: HeadersMap,
     content: &[u8],
   ) -> Result<(), ErrBox> {
-    let cache_filename = self.location.join(url_to_filename(url));
+    let cache_filename = self.get_cache_filename(url);
     let headers_filename = cache_filename.with_extension("headers.json");
     // Create parent directory
     let parent_filename = cache_filename
@@ -114,6 +119,30 @@ impl HttpCache {
     let serialized_headers = serde_json::to_string(&headers_map)?;
     // Cache headers
     deno_fs::write_file(&headers_filename, serialized_headers, 0o666)?;
+    self.update_manifest(url)?;
+    Ok(())
+  }
+
+  // TODO(bartlomieju): probably won't work properly when
+  // used concurrently
+  fn update_manifest(&self, url: &Url) -> Result<(), ErrBox> {
+    let manifest_filename = self
+      .location
+      .join(base_url_to_filename(url))
+      .join("manifest.json");
+    let mut manifest_map = if manifest_filename.exists() {
+      let manifest_json = fs::read_to_string(&manifest_filename)?;
+      let manifest_map: HashMap<String, String> =
+        serde_json::from_str(&manifest_json)?;
+      manifest_map
+    } else {
+      HashMap::new()
+    };
+    let path_part = get_url_path_and_query(url);
+    let hashed_filename = crate::checksum::gen(vec![path_part.as_bytes()]);
+    manifest_map.insert(path_part, hashed_filename);
+    let serialized_manifest = serde_json::to_string(&manifest_map)?;
+    deno_fs::write_file(&manifest_filename, serialized_manifest, 0o666)?;
     Ok(())
   }
 }
@@ -148,8 +177,18 @@ mod tests {
     headers.insert("etag".to_string(), "as5625rqdsfb".to_string());
     let content = b"Hello world";
     let r = cache.set(&url, headers, content);
-    eprintln!("result {:?}", r);
     assert!(r.is_ok());
+    // check that manifest file is created
+    let manifest_filename = dir
+      .path()
+      .join(base_url_to_filename(&url))
+      .join("manifest.json");
+    let manifest_json = fs::read_to_string(&manifest_filename).unwrap();
+    let manifest_map: HashMap<String, String> =
+      serde_json::from_str(&manifest_json).unwrap();
+    let path_part = get_url_path_and_query(&url);
+    assert_eq!(manifest_map.len(), 1);
+    assert!(manifest_map.get(&path_part).is_some());
     let r = cache.get(&url);
     assert!(r.is_ok());
     let (mut file, headers) = r.unwrap();
