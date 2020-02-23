@@ -8,8 +8,8 @@ type Reader = Deno.Reader;
 import {
   assert,
   assertEquals,
-  assertNotEquals,
-  fail
+  fail,
+  assertNotEOF
 } from "../testing/asserts.ts";
 import {
   BufReader,
@@ -23,11 +23,6 @@ import * as iotest from "./iotest.ts";
 import { charCode, copyBytes, stringsReader } from "./util.ts";
 
 const encoder = new TextEncoder();
-
-function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
-  assertNotEquals(val, Deno.EOF);
-  return val as T;
-}
 
 async function readBytes(buf: BufReader): Promise<string> {
   const b = new Uint8Array(1000);
