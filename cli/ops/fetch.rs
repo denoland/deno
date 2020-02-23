@@ -1,6 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
+use crate::deno_error::DenoError;
+use crate::deno_error::ErrorKind;
 use crate::http_util::{create_http_client, HttpBody};
 use crate::ops::json_op;
 use crate::state::State;
@@ -40,6 +42,19 @@ pub fn op_fetch(
   };
 
   let url_ = url::Url::parse(&url).map_err(ErrBox::from)?;
+
+  // Check scheme before asking for net permission
+  let scheme = url_.scheme();
+  if scheme != "http" && scheme != "https" {
+    return Err(
+      DenoError::new(
+        ErrorKind::TypeError,
+        format!("scheme '{}' not supported", scheme),
+      )
+      .into(),
+    );
+  }
+
   state.check_net_url(&url_)?;
 
   let mut request = client.request(method, url_);
