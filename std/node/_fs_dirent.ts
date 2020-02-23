@@ -35,7 +35,7 @@ export default class Dirent {
     return this.entry.isSymlink();
   }
 
-  get name(): string {
+  get name(): string | null {
     return this.entry.name;
   }
 }

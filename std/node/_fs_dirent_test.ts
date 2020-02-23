@@ -1,28 +1,26 @@
-"use strict";
-
 const { test } = Deno;
 import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import Dirent from "./_fs_dirent.ts";
 
 class FileInfoMock implements Deno.FileInfo {
-  len: number;
-  modified: number;
-  accessed: number;
-  created: number;
-  name: string;
-  dev: number;
-  ino: number;
-  mode: number;
-  nlink: number;
-  uid: number;
-  gid: number;
-  rdev: number;
-  blksize: number;
-  blocks: number;
+  len = -1;
+  modified = -1;
+  accessed = -1;
+  created = -1;
+  name = "";
+  dev = -1;
+  ino = -1;
+  mode = -1;
+  nlink = -1;
+  uid = -1;
+  gid = -1;
+  rdev = -1;
+  blksize = -1;
+  blocks = -1;
 
-  isFileMock: boolean;
-  isDirectoryMock: boolean;
-  isSymlinkMock: boolean;
+  isFileMock = false;
+  isDirectoryMock = false;
+  isSymlinkMock = false;
 
   isFile(): boolean {
     return this.isFileMock;
@@ -49,7 +47,7 @@ test({
   name: "Character devices are correctly identified",
   fn() {
     const fileInfo: FileInfoMock = new FileInfoMock();
-    fileInfo.blocks = null;
+    fileInfo.blocks = -1;
     assert(new Dirent(fileInfo).isCharacterDevice());
     assert(!new Dirent(fileInfo).isBlockDevice());
   }

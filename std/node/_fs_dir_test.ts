@@ -1,5 +1,3 @@
-"use strict";
-
 const { test } = Deno;
 import {
   assert,
