@@ -27,7 +27,7 @@ test("beforeAll", async () => {
 });
 
 test("GET / should serve html", async () => {
-  const resp = await fetch("http://0.0.0.0:8080/");
+  const resp = await fetch("http://127.0.0.1:8080/");
   assertEquals(resp.status, 200);
   assertEquals(resp.headers.get("content-type"), "text/html");
   const html = await resp.body.text();
@@ -36,7 +36,7 @@ test("GET / should serve html", async () => {
 
 let ws: WebSocket | undefined;
 test("GET /ws should upgrade conn to ws", async () => {
-  ws = await connectWebSocket("http://0.0.0.0:8080/ws");
+  ws = await connectWebSocket("http://127.0.0.1:8080/ws");
   const it = ws.receive();
   assertEquals((await it.next()).value, "Connected: [1]");
   ws.send("Hello");
