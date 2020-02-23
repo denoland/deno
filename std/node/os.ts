@@ -89,6 +89,17 @@ interface UserInfo {
   homedir: string;
 }
 
+arch[Symbol.toPrimitive] = (): string => arch();
+endianness[Symbol.toPrimitive] = (): string => endianness();
+freemem[Symbol.toPrimitive] = (): number => freemem();
+homedir[Symbol.toPrimitive] = (): string | null => homedir();
+hostname[Symbol.toPrimitive] = (): string | null => hostname();
+platform[Symbol.toPrimitive] = (): string => platform();
+release[Symbol.toPrimitive] = (): string => release();
+totalmem[Symbol.toPrimitive] = (): number => totalmem();
+type[Symbol.toPrimitive] = (): string => type();
+uptime[Symbol.toPrimitive] = (): number => uptime();
+
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {
   return Deno.build.arch;
