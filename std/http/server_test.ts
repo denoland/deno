@@ -12,7 +12,8 @@ import {
   assertEquals,
   assertNotEquals,
   assertThrowsAsync,
-  AssertionError
+  AssertionError,
+  assertNotEOF
 } from "../testing/asserts.ts";
 import {
   Response,
@@ -31,11 +32,6 @@ import {
 } from "../io/bufio.ts";
 import { delay, deferred } from "../util/async.ts";
 import { StringReader } from "../io/readers.ts";
-
-function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
-  assertNotEquals(val, Deno.EOF);
-  return val as T;
-}
 
 interface ResponseTest {
   response: Response;

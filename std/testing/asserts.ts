@@ -378,3 +378,8 @@ export function unimplemented(msg?: string): never {
 export function unreachable(): never {
   throw new AssertionError("unreachable");
 }
+
+export function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
+  assertNotEquals(val, Deno.EOF);
+  return val as T;
+}
