@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::deno_error::{other_error, permission_denied_msg};
+use crate::deno_error::{DenoError, ErrorKind};
 use crate::flags::DenoFlags;
 use ansi_term::Style;
 #[cfg(not(test))]
@@ -193,8 +194,11 @@ impl DenoPermissions {
   }
 
   pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
+    let host = url.host_str().ok_or_else(|| {
+      DenoError::new(ErrorKind::URIError, "missing host".to_owned())
+    })?;
     self
-      .get_state_net(&format!("{}", url.host().unwrap()), url.port())
+      .get_state_net(host, url.port())
       .check(&format!("network access to \"{}\"", url), "--allow-net")
   }
 
