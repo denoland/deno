@@ -2,6 +2,7 @@
 use super::dispatch_json::{JsonOp, Value};
 use crate::colors;
 use crate::fs as deno_fs;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use crate::version;
@@ -28,7 +29,7 @@ fn op_start(
   state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let state = state.borrow();
   let gs = &state.global_state;
 
@@ -53,7 +54,7 @@ fn op_metrics(
   state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let state = state.borrow();
   let m = &state.metrics;
 

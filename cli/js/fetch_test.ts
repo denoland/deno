@@ -9,6 +9,17 @@ import {
   fail
 } from "./test_util.ts";
 
+testPerm({ net: true }, async function fetchProtocolError(): Promise<void> {
+  let err;
+  try {
+    await fetch("file:///");
+  } catch (err_) {
+    err = err_;
+  }
+  assert(err instanceof TypeError);
+  assertStrContains(err.message, "not supported");
+});
+
 testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
   let err;
   try {

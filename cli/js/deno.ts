@@ -43,6 +43,7 @@ export {
   OpenOptions,
   OpenMode
 } from "./files.ts";
+export { FsEvent, fsEvents } from "./fs_events.ts";
 export {
   EOF,
   copy,
@@ -84,7 +85,7 @@ export {
   ShutdownMode,
   shutdown
 } from "./net.ts";
-export { dir, env, exit, isTTY, execPath, hostname } from "./os.ts";
+export { dir, env, exit, isTTY, execPath, hostname, loadavg } from "./os.ts";
 export {
   permissions,
   PermissionName,

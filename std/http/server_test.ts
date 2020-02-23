@@ -7,7 +7,12 @@
 
 const { Buffer, test } = Deno;
 import { TextProtoReader } from "../textproto/mod.ts";
-import { assert, assertEquals, assertNotEquals } from "../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertNotEquals,
+  assertNotEOF
+} from "../testing/asserts.ts";
 import {
   Response,
   ServerRequest,
@@ -25,11 +30,6 @@ import {
 import { delay, deferred } from "../util/async.ts";
 import { StringReader } from "../io/readers.ts";
 import { encode } from "../strings/mod.ts";
-
-function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
-  assertNotEquals(val, Deno.EOF);
-  return val as T;
-}
 
 interface ResponseTest {
   response: Response;
