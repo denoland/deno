@@ -34,6 +34,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "alloc-no-stdlib"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5192ec435945d87bc2f70992b4d818154b5feede43c09fb7592146374eac90a6"
+
+[[package]]
+name = "alloc-stdlib"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "697ed7edc0f1711de49ce108c541623a0af97c6c60b2f6e2b65229847ac843c2"
+dependencies = [
+ "alloc-no-stdlib",
+]
+
+[[package]]
 name = "ansi_term"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -88,10 +103,11 @@ dependencies = [
 
 [[package]]
 name = "async-compression"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c5c52622726d68ec35fec88edfb4ccb862d4f3b3bfa4af2f45142e69ef9b220"
+checksum = "670843da104a1339d46c967382f78d9debb1713aee20e09ba1b25445076f40f4"
 dependencies = [
+ "brotli",
  "bytes 0.5.4",
  "flate2",
  "futures-core",
@@ -177,23 +193,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "brotli-sys"
-version = "0.3.2"
+name = "brotli"
+version = "3.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4445dea95f4c2b41cde57cc9fee236ae4dbae88d8fcbdb4750fc1bb5d86aaecd"
+checksum = "7f29919120f08613aadcd4383764e00526fc9f18b6c0895814faeed0dd78613e"
 dependencies = [
- "cc",
- "libc",
+ "alloc-no-stdlib",
+ "alloc-stdlib",
+ "brotli-decompressor",
 ]
 
 [[package]]
-name = "brotli2"
-version = "0.3.2"
+name = "brotli-decompressor"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cb036c3eade309815c15ddbacec5b22c4d1f3983a774ab2eac2e3e9ea85568e"
+checksum = "2a9f2b517b96b19d8f91c1ff5b1cf498e688850b32eae5d58e02d15c4d4fdc0c"
 dependencies = [
- "brotli-sys",
- "libc",
+ "alloc-no-stdlib",
+ "alloc-stdlib",
 ]
 
 [[package]]
@@ -419,7 +436,6 @@ dependencies = [
  "ansi_term",
  "atty",
  "base64 0.11.0",
- "brotli2",
  "byteorder",
  "bytes 0.5.4",
  "clap",
@@ -1742,9 +1758,9 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
-version = "0.10.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0e798e19e258bf6c30a304622e3e9ac820e483b06a1857a026e1f109b113fe4"
+checksum = "bae3fc32eacd4a5200c6b34bd6c057b07fb64f5a1e55bb67d624cc1393354621"
 dependencies = [
  "async-compression",
  "base64 0.11.0",
