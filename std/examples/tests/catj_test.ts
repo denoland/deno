@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertStrictEq } from "../../testing/asserts.ts";
 
 Deno.test("[examples/catj] print an array", async () => {

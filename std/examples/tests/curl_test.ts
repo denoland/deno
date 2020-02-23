@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { Server, serve } from "../../http/server.ts";
 import { assertStrictEq } from "../../testing/asserts.ts";
 
