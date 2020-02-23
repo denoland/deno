@@ -16,8 +16,8 @@ Deno.test("[examples/cat] print multiple files", async () => {
 
   try {
     const output = await Deno.readAll(process.stdout!);
-    const expected = decoder.decode(output).trim();
-    assertStrictEq(expected, "Hello\nWorld");
+    const actual = decoder.decode(output).trim();
+    assertStrictEq(actual, "Hello\nWorld");
   } finally {
     process.close();
   }
