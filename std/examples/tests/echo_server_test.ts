@@ -29,10 +29,10 @@ Deno.test("[examples/echo_server]", async () => {
 
     assertNotEquals(result, Deno.EOF);
 
-    const expectedResponse = decoder
+    const actualResponse = decoder
       .decode((result as ReadLineResult).line)
       .trim();
-    const actualResponse = "Hello echo_server";
+    const expectedResponse = "Hello echo_server";
 
     assertStrictEq(actualResponse, expectedResponse);
   } finally {
