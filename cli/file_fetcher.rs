@@ -312,7 +312,17 @@ impl SourceFileFetcher {
 
     let (mut source_file, headers) = result;
     if let Some(redirect_to) = headers.get("location") {
-      let redirect_url = Url::parse(redirect_to).expect("Should be valid URL");
+      let redirect_url = match Url::parse(redirect_to) {
+        Ok(redirect_url) => redirect_url,
+        Err(url::ParseError::RelativeUrlWithoutBase) => {
+          let mut url = module_url.clone();
+          url.set_path(redirect_to);
+          url
+        }
+        Err(e) => {
+          return Err(e.into());
+        }
+      };
       return self.fetch_cached_remote_source(&redirect_url);
     }
 
