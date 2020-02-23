@@ -57,7 +57,7 @@ function stat(filename: string): StatResult {
     if (statCache !== null) statCache.set(filename, result);
     return result;
   } catch (e) {
-    if (e instanceof Deno.Err.PermissionDenied) {
+    if (e instanceof Deno.errors.PermissionDenied) {
       throw new Error("CJS loader requires --allow-read.");
     }
     return -1;

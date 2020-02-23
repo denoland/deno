@@ -32,7 +32,7 @@ testPerm({ read: false }, function readDirSyncPerm(): void {
     Deno.readDirSync("tests/");
   } catch (e) {
     caughtError = true;
-    assert(e instanceof Deno.Err.PermissionDenied);
+    assert(e instanceof Deno.errors.PermissionDenied);
   }
   assert(caughtError);
 });
@@ -59,7 +59,7 @@ testPerm({ read: true }, function readDirSyncNotFound(): void {
     src = Deno.readDirSync("bad_dir_name");
   } catch (err) {
     caughtError = true;
-    assert(err instanceof Deno.Err.NotFound);
+    assert(err instanceof Deno.errors.NotFound);
   }
   assert(caughtError);
   assertEquals(src, undefined);
@@ -76,7 +76,7 @@ testPerm({ read: false }, async function readDirPerm(): Promise<void> {
     await Deno.readDir("tests/");
   } catch (e) {
     caughtError = true;
-    assert(e instanceof Deno.Err.PermissionDenied);
+    assert(e instanceof Deno.errors.PermissionDenied);
   }
   assert(caughtError);
 });

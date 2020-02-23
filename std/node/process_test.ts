@@ -24,7 +24,7 @@ test({
       () => {
         process.chdir("non-existent-directory-name");
       },
-      Deno.Err.NotFound,
+      Deno.errors.NotFound,
       "file"
       // On every OS Deno returns: "No such file" except for Windows, where it's:
       // "The system cannot find the file specified. (os error 2)" so "file" is

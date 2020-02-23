@@ -43,7 +43,7 @@ function split(path: string): SplitPath {
 }
 
 function throwUnlessNotFound(error: Error): void {
-  if (!(error instanceof Deno.Err.NotFound)) {
+  if (!(error instanceof Deno.errors.NotFound)) {
     throw error;
   }
 }

@@ -23,7 +23,7 @@ export async function ensureFile(filePath: string): Promise<void> {
     }
   } catch (err) {
     // if file not exists
-    if (err instanceof Deno.Err.NotFound) {
+    if (err instanceof Deno.errors.NotFound) {
       // ensure dir exists
       await ensureDir(path.dirname(filePath));
       // create file
@@ -54,7 +54,7 @@ export function ensureFileSync(filePath: string): void {
     }
   } catch (err) {
     // if file not exists
-    if (err instanceof Deno.Err.NotFound) {
+    if (err instanceof Deno.errors.NotFound) {
       // ensure dir exists
       ensureDirSync(path.dirname(filePath));
       // create file
