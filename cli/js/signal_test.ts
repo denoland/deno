@@ -8,7 +8,7 @@ import {
 } from "./test_util.ts";
 
 function defer(n: number): Promise<void> {
-  return new Promise((resolve, _) => {
+  return new Promise((resolve: () => void, _) => {
     setTimeout(resolve, n);
   });
 }

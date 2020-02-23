@@ -12,8 +12,6 @@ use reqwest::header::HeaderMap;
 use reqwest::header::HeaderValue;
 use reqwest::header::ACCEPT_ENCODING;
 use reqwest::header::CONTENT_ENCODING;
-use reqwest::header::CONTENT_TYPE;
-use reqwest::header::ETAG;
 use reqwest::header::IF_NONE_MATCH;
 use reqwest::header::LOCATION;
 use reqwest::header::USER_AGENT;
@@ -22,6 +20,7 @@ use reqwest::Client;
 use reqwest::Response;
 use reqwest::StatusCode;
 use std::cmp::min;
+use std::collections::HashMap;
 use std::fs::File;
 use std::future::Future;
 use std::io;
@@ -86,19 +85,13 @@ fn resolve_url_from_location(base_url: &Url, location: &str) -> Url {
   }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct ResultPayload {
-  pub body: Vec<u8>,
-  pub content_type: Option<String>,
-  pub etag: Option<String>,
-  pub x_typescript_types: Option<String>,
-}
+pub type HeadersMap = HashMap<String, String>;
 
 #[derive(Debug, PartialEq)]
 pub enum FetchOnceResult {
-  Code(ResultPayload),
+  Code(Vec<u8>, HeadersMap),
   NotModified,
-  Redirect(Url),
+  Redirect(Url, HeadersMap),
 }
 
 /// Asynchronously fetches the given HTTP URL one pass only.
@@ -128,6 +121,19 @@ pub fn fetch_once(
       return Ok(FetchOnceResult::NotModified);
     }
 
+    let mut headers_: HashMap<String, String> = HashMap::new();
+    let headers = response.headers();
+    for key in headers.keys() {
+      let key_str = key.to_string();
+      let values = headers.get_all(key);
+      let values_str = values
+        .iter()
+        .map(|e| e.to_str().unwrap().to_string())
+        .collect::<Vec<String>>()
+        .join(",");
+      headers_.insert(key_str, values_str);
+    }
+
     if response.status().is_redirection() {
       let location_string = response
         .headers()
@@ -138,7 +144,7 @@ pub fn fetch_once(
 
       debug!("Redirecting to {:?}...", &location_string);
       let new_url = resolve_url_from_location(&url, location_string);
-      return Ok(FetchOnceResult::Redirect(new_url));
+      return Ok(FetchOnceResult::Redirect(new_url, headers_));
     }
 
     if response.status().is_client_error()
@@ -151,30 +157,10 @@ pub fn fetch_once(
       return Err(err.into());
     }
 
-    let content_type = response
-      .headers()
-      .get(CONTENT_TYPE)
-      .map(|content_type| content_type.to_str().unwrap().to_owned());
-
-    let etag = response
-      .headers()
-      .get(ETAG)
-      .map(|etag| etag.to_str().unwrap().to_owned());
-
     let content_encoding = response
       .headers()
       .get(CONTENT_ENCODING)
       .map(|content_encoding| content_encoding.to_str().unwrap().to_owned());
-
-    const X_TYPESCRIPT_TYPES: &str = "X-TypeScript-Types";
-
-    let x_typescript_types =
-      response
-        .headers()
-        .get(X_TYPESCRIPT_TYPES)
-        .map(|x_typescript_types| {
-          x_typescript_types.to_str().unwrap().to_owned()
-        });
 
     let body;
     if let Some(content_encoding) = content_encoding {
@@ -192,12 +178,7 @@ pub fn fetch_once(
       body = response.bytes().await?.to_vec();
     }
 
-    return Ok(FetchOnceResult::Code(ResultPayload {
-      body,
-      content_type,
-      etag,
-      x_typescript_types,
-    }));
+    return Ok(FetchOnceResult::Code(body, headers_));
   };
 
   fut.boxed()
@@ -291,11 +272,11 @@ mod tests {
       Url::parse("http://127.0.0.1:4545/cli/tests/fixture.json").unwrap();
     let client = create_http_client(None).unwrap();
     let result = fetch_once(client, &url, None).await;
-    if let Ok(FetchOnceResult::Code(payload)) = result {
-      assert!(!payload.body.is_empty());
-      assert_eq!(payload.content_type, Some("application/json".to_string()));
-      assert_eq!(payload.etag, None);
-      assert_eq!(payload.x_typescript_types, None);
+    if let Ok(FetchOnceResult::Code(body, headers)) = result {
+      assert!(!body.is_empty());
+      assert_eq!(headers.get("content-type").unwrap(), "application/json");
+      assert_eq!(headers.get("etag"), None);
+      assert_eq!(headers.get("x-typescript-types"), None);
     } else {
       panic!();
     }
@@ -312,17 +293,14 @@ mod tests {
     .unwrap();
     let client = create_http_client(None).unwrap();
     let result = fetch_once(client, &url, None).await;
-    if let Ok(FetchOnceResult::Code(payload)) = result {
+    if let Ok(FetchOnceResult::Code(body, headers)) = result {
+      assert_eq!(String::from_utf8(body).unwrap(), "console.log('gzip')");
       assert_eq!(
-        String::from_utf8(payload.body).unwrap(),
-        "console.log('gzip')"
+        headers.get("content-type").unwrap(),
+        "application/javascript"
       );
-      assert_eq!(
-        payload.content_type,
-        Some("application/javascript".to_string())
-      );
-      assert_eq!(payload.etag, None);
-      assert_eq!(payload.x_typescript_types, None);
+      assert_eq!(headers.get("etag"), None);
+      assert_eq!(headers.get("x-typescript-types"), None);
     } else {
       panic!();
     }
@@ -335,18 +313,14 @@ mod tests {
     let url = Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
     let client = create_http_client(None).unwrap();
     let result = fetch_once(client.clone(), &url, None).await;
-    if let Ok(FetchOnceResult::Code(ResultPayload {
-      body,
-      content_type,
-      etag,
-      x_typescript_types,
-    })) = result
-    {
+    if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('etag')");
-      assert_eq!(content_type, Some("application/typescript".to_string()));
-      assert_eq!(etag, Some("33a64df551425fcc55e".to_string()));
-      assert_eq!(x_typescript_types, None);
+      assert_eq!(
+        headers.get("content-type").unwrap(),
+        "application/typescript"
+      );
+      assert_eq!(headers.get("etag").unwrap(), "33a64df551425fcc55e");
     } else {
       panic!();
     }
@@ -368,18 +342,15 @@ mod tests {
     .unwrap();
     let client = create_http_client(None).unwrap();
     let result = fetch_once(client, &url, None).await;
-    if let Ok(FetchOnceResult::Code(payload)) = result {
-      assert!(!payload.body.is_empty());
+    if let Ok(FetchOnceResult::Code(body, headers)) = result {
+      assert!(!body.is_empty());
+      assert_eq!(String::from_utf8(body).unwrap(), "console.log('brotli');");
       assert_eq!(
-        String::from_utf8(payload.body).unwrap(),
-        "console.log('brotli');"
+        headers.get("content-type").unwrap(),
+        "application/javascript"
       );
-      assert_eq!(
-        payload.content_type,
-        Some("application/javascript".to_string())
-      );
-      assert_eq!(payload.etag, None);
-      assert_eq!(payload.x_typescript_types, None);
+      assert_eq!(headers.get("etag"), None);
+      assert_eq!(headers.get("x-typescript-types"), None);
     } else {
       panic!();
     }
@@ -397,7 +368,7 @@ mod tests {
       Url::parse("http://localhost:4545/cli/tests/fixture.json").unwrap();
     let client = create_http_client(None).unwrap();
     let result = fetch_once(client, &url, None).await;
-    if let Ok(FetchOnceResult::Redirect(url)) = result {
+    if let Ok(FetchOnceResult::Redirect(url, _)) = result {
       assert_eq!(url, target_url);
     } else {
       panic!();
@@ -459,11 +430,11 @@ mod tests {
     .unwrap();
     let result = fetch_once(client, &url, None).await;
 
-    if let Ok(FetchOnceResult::Code(payload)) = result {
-      assert!(!payload.body.is_empty());
-      assert_eq!(payload.content_type, Some("application/json".to_string()));
-      assert_eq!(payload.etag, None);
-      assert_eq!(payload.x_typescript_types, None);
+    if let Ok(FetchOnceResult::Code(body, headers)) = result {
+      assert!(!body.is_empty());
+      assert_eq!(headers.get("content-type").unwrap(), "application/json");
+      assert_eq!(headers.get("etag"), None);
+      assert_eq!(headers.get("x-typescript-types"), None);
     } else {
       panic!();
     }
@@ -486,17 +457,14 @@ mod tests {
     )))
     .unwrap();
     let result = fetch_once(client, &url, None).await;
-    if let Ok(FetchOnceResult::Code(payload)) = result {
+    if let Ok(FetchOnceResult::Code(body, headers)) = result {
+      assert_eq!(String::from_utf8(body).unwrap(), "console.log('gzip')");
       assert_eq!(
-        String::from_utf8(payload.body).unwrap(),
-        "console.log('gzip')"
+        headers.get("content-type").unwrap(),
+        "application/javascript"
       );
-      assert_eq!(
-        payload.content_type,
-        Some("application/javascript".to_string())
-      );
-      assert_eq!(payload.etag, None);
-      assert_eq!(payload.x_typescript_types, None);
+      assert_eq!(headers.get("etag"), None);
+      assert_eq!(headers.get("x-typescript-types"), None);
     } else {
       panic!();
     }
@@ -515,18 +483,15 @@ mod tests {
     )))
     .unwrap();
     let result = fetch_once(client.clone(), &url, None).await;
-    if let Ok(FetchOnceResult::Code(ResultPayload {
-      body,
-      content_type,
-      etag,
-      x_typescript_types,
-    })) = result
-    {
+    if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('etag')");
-      assert_eq!(content_type, Some("application/typescript".to_string()));
-      assert_eq!(etag, Some("33a64df551425fcc55e".to_string()));
-      assert_eq!(x_typescript_types, None);
+      assert_eq!(
+        headers.get("content-type").unwrap(),
+        "application/typescript"
+      );
+      assert_eq!(headers.get("etag").unwrap(), "33a64df551425fcc55e");
+      assert_eq!(headers.get("x-typescript-types"), None);
     } else {
       panic!();
     }
@@ -554,18 +519,15 @@ mod tests {
     )))
     .unwrap();
     let result = fetch_once(client, &url, None).await;
-    if let Ok(FetchOnceResult::Code(payload)) = result {
-      assert!(!payload.body.is_empty());
+    if let Ok(FetchOnceResult::Code(body, headers)) = result {
+      assert!(!body.is_empty());
+      assert_eq!(String::from_utf8(body).unwrap(), "console.log('brotli');");
       assert_eq!(
-        String::from_utf8(payload.body).unwrap(),
-        "console.log('brotli');"
+        headers.get("content-type").unwrap(),
+        "application/javascript"
       );
-      assert_eq!(
-        payload.content_type,
-        Some("application/javascript".to_string())
-      );
-      assert_eq!(payload.etag, None);
-      assert_eq!(payload.x_typescript_types, None);
+      assert_eq!(headers.get("etag"), None);
+      assert_eq!(headers.get("x-typescript-types"), None);
     } else {
       panic!();
     }

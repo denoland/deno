@@ -7,21 +7,22 @@ function deferred(): {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   reject: (reason?: any) => void;
 } {
-  let resolve;
-  let reject;
-  const promise = new Promise((res, rej): void => {
+  let resolve: (value?: {} | PromiseLike<{}>) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let reject: ((reason?: any) => void) | undefined = undefined;
+  const promise = new Promise<{}>((res, rej): void => {
     resolve = res;
     reject = rej;
   });
   return {
     promise,
-    resolve,
-    reject
+    resolve: resolve!,
+    reject: reject!
   };
 }
 
-async function waitForMs(ms): Promise<number> {
-  return new Promise((resolve): number => setTimeout(resolve, ms));
+async function waitForMs(ms: number): Promise<number> {
+  return new Promise((resolve: () => void): number => setTimeout(resolve, ms));
 }
 
 test(async function timeoutSuccess(): Promise<void> {
@@ -133,7 +134,7 @@ test(async function intervalCancelSuccess(): Promise<void> {
 });
 
 test(async function intervalOrdering(): Promise<void> {
-  const timers = [];
+  const timers: number[] = [];
   let timeouts = 0;
   function onTimeout(): void {
     ++timeouts;

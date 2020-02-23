@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { testPerm, assert } from "./test_util.ts";
 
 testPerm({ read: true }, function realpathSyncSuccess(): void {
   const incompletePath = "cli/tests/fixture.json";
@@ -31,8 +31,7 @@ testPerm({ read: false }, function realpathSyncPerm(): void {
     Deno.realpathSync("some_file");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(e.name, "PermissionDenied");
+    assert(e instanceof Deno.Err.PermissionDenied);
   }
   assert(caughtError);
 });
@@ -43,7 +42,7 @@ testPerm({ read: true }, function realpathSyncNotFound(): void {
     Deno.realpathSync("bad_filename");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.NotFound);
+    assert(e instanceof Deno.Err.NotFound);
   }
   assert(caughtError);
 });
@@ -81,8 +80,7 @@ testPerm({ read: false }, async function realpathPerm(): Promise<void> {
     await Deno.realpath("some_file");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(e.name, "PermissionDenied");
+    assert(e instanceof Deno.Err.PermissionDenied);
   }
   assert(caughtError);
 });
@@ -93,7 +91,7 @@ testPerm({ read: true }, async function realpathNotFound(): Promise<void> {
     await Deno.realpath("bad_filename");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.NotFound);
+    assert(e instanceof Deno.Err.NotFound);
   }
   assert(caughtError);
 });

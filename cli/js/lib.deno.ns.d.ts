@@ -40,6 +40,12 @@ declare namespace Deno {
     stderr: boolean;
   };
 
+  /** Get the loadavg. Requires the `--allow-env` flag.
+   *
+   *       console.log(Deno.loadavg());
+   */
+  export function loadavg(): number[];
+
   /** Get the hostname. Requires the `--allow-env` flag.
    *
    *       console.log(Deno.hostname());
@@ -248,7 +254,7 @@ declare namespace Deno {
   /** UNSTABLE: might move to Deno.symbols */
   export const EOF: unique symbol;
 
-  /** UNSTABLE: might move to Deno.symbols */
+  /** UNSTABLE: might move to Deno.symbols  */
   export type EOF = typeof EOF;
 
   /** UNSTABLE: maybe remove "SEEK_" prefix. Maybe capitalization wrong. */
@@ -602,19 +608,19 @@ declare namespace Deno {
     write(p: Uint8Array): Promise<number>;
     /** _grow() grows the buffer to guarantee space for n more bytes.
      * It returns the index where bytes should be written.
-     * If the buffer can't grow it will throw with ErrTooLarge.
+     * If the buffer can't grow it will throw with Error.
      */
     private _grow;
     /** grow() grows the buffer's capacity, if necessary, to guarantee space for
      * another n bytes. After grow(n), at least n bytes can be written to the
      * buffer without another allocation. If n is negative, grow() will panic. If
-     * the buffer can't grow it will throw ErrTooLarge.
+     * the buffer can't grow it will throw Error.
      * Based on https://golang.org/pkg/bytes/#Buffer.Grow
      */
     grow(n: number): void;
     /** readFrom() reads data from r until EOF and appends it to the buffer,
      * growing the buffer as needed. It returns the number of bytes read. If the
-     * buffer becomes too large, readFrom will panic with ErrTooLarge.
+     * buffer becomes too large, readFrom will panic with Error.
      * Based on https://golang.org/pkg/bytes/#Buffer.ReadFrom
      */
     readFrom(r: Reader): Promise<number>;
@@ -680,9 +686,9 @@ declare namespace Deno {
     mode?: number
   ): Promise<void>;
 
-  // @url js/make_temp_dir.d.ts
+  // @url js/make_temp.d.ts
 
-  export interface MakeTempDirOptions {
+  export interface MakeTempOptions {
     dir?: string;
     prefix?: string;
     suffix?: string;
@@ -696,7 +702,7 @@ declare namespace Deno {
    * Requires allow-write.
    */
   // TODO(ry) Doesn't check permissions.
-  export function makeTempDirSync(options?: MakeTempDirOptions): string;
+  export function makeTempDirSync(options?: MakeTempOptions): string;
 
   /** makeTempDir creates a new temporary directory in the directory `dir`, its
    * name beginning with `prefix` and ending with `suffix`.
@@ -712,7 +718,27 @@ declare namespace Deno {
    * Requires allow-write.
    */
   // TODO(ry) Doesn't check permissions.
-  export function makeTempDir(options?: MakeTempDirOptions): Promise<string>;
+  export function makeTempDir(options?: MakeTempOptions): Promise<string>;
+
+  /** makeTempFileSync is the synchronous version of `makeTempFile`.
+   *
+   *       const tempFileName0 = Deno.makeTempFileSync();
+   *       const tempFileName1 = Deno.makeTempFileSync({ prefix: 'my_temp' });
+   */
+  export function makeTempFileSync(options?: MakeTempOptions): string;
+
+  /** makeTempFile creates a new temporary file in the directory `dir`, its
+   * name beginning with `prefix` and ending with `suffix`.
+   * It returns the full path to the newly created file.
+   * If `dir` is unspecified, tempFile uses the default directory for temporary
+   * files. Multiple programs calling tempFile simultaneously will not choose the
+   * same directory. It is the caller's responsibility to remove the file
+   * when no longer needed.
+   *
+   *       const tempFileName0 = await Deno.makeTempFile();
+   *       const tempFileName1 = await Deno.makeTempFile({ prefix: 'my_temp' });
+   */
+  export function makeTempFile(options?: MakeTempOptions): Promise<string>;
 
   /** Changes the permission of a specific file/directory of specified path
    * synchronously.
@@ -1184,55 +1210,64 @@ declare namespace Deno {
    */
   export function applySourceMap(location: Location): Location;
 
-  /** A Deno specific error.  The `kind` property is set to a specific error code
-   * which can be used to in application logic.
-   *
-   *       try {
-   *         somethingThatMightThrow();
-   *       } catch (e) {
-   *         if (
-   *           e instanceof Deno.DenoError &&
-   *           e.kind === Deno.ErrorKind.NotFound
-   *         ) {
-   *           console.error("NotFound error!");
-   *         }
-   *       }
-   *
-   */
-  export class DenoError<T extends ErrorKind> extends Error {
-    readonly kind: T;
-    constructor(kind: T, msg: string);
+  /* eslint-disable @typescript-eslint/no-unused-vars */
+  namespace Err {
+    class NotFound extends Error {
+      constructor(msg: string);
+    }
+    class PermissionDenied extends Error {
+      constructor(msg: string);
+    }
+    class ConnectionRefused extends Error {
+      constructor(msg: string);
+    }
+    class ConnectionReset extends Error {
+      constructor(msg: string);
+    }
+    class ConnectionAborted extends Error {
+      constructor(msg: string);
+    }
+    class NotConnected extends Error {
+      constructor(msg: string);
+    }
+    class AddrInUse extends Error {
+      constructor(msg: string);
+    }
+    class AddrNotAvailable extends Error {
+      constructor(msg: string);
+    }
+    class BrokenPipe extends Error {
+      constructor(msg: string);
+    }
+    class AlreadyExists extends Error {
+      constructor(msg: string);
+    }
+    class InvalidData extends Error {
+      constructor(msg: string);
+    }
+    class TimedOut extends Error {
+      constructor(msg: string);
+    }
+    class Interrupted extends Error {
+      constructor(msg: string);
+    }
+    class WriteZero extends Error {
+      constructor(msg: string);
+    }
+    class Other extends Error {
+      constructor(msg: string);
+    }
+    class UnexpectedEof extends Error {
+      constructor(msg: string);
+    }
+    class BadResource extends Error {
+      constructor(msg: string);
+    }
+    class Http extends Error {
+      constructor(msg: string);
+    }
   }
-  export enum ErrorKind {
-    NotFound = 1,
-    PermissionDenied = 2,
-    ConnectionRefused = 3,
-    ConnectionReset = 4,
-    ConnectionAborted = 5,
-    NotConnected = 6,
-    AddrInUse = 7,
-    AddrNotAvailable = 8,
-    BrokenPipe = 9,
-    AlreadyExists = 10,
-    WouldBlock = 11,
-    InvalidInput = 12,
-    InvalidData = 13,
-    TimedOut = 14,
-    Interrupted = 15,
-    WriteZero = 16,
-    Other = 17,
-    UnexpectedEof = 18,
-    BadResource = 19,
-    UrlParse = 20,
-    Http = 21,
-    TooLarge = 22,
-    InvalidSeekMode = 23,
-    UnixError = 24,
-    InvalidPath = 25,
-    ImportPrefixMissing = 26,
-    Diagnostic = 27,
-    JSError = 28
-  }
+  /* eslint-enable @typescript-eslint/no-unused-vars */
 
   /** UNSTABLE: potentially want names to overlap more with browser.
    *
@@ -1358,11 +1393,17 @@ declare namespace Deno {
    */
   export function openPlugin(filename: string): Plugin;
 
-  type Transport = "tcp";
+  export type Transport = "tcp" | "udp";
 
-  interface Addr {
+  export interface Addr {
     transport: Transport;
     hostname: string;
+    port: number;
+  }
+
+  export interface UDPAddr {
+    transport?: Transport;
+    hostname?: string;
     port: number;
   }
 
@@ -1387,6 +1428,36 @@ declare namespace Deno {
    *       Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
    */
   export function shutdown(rid: number, how: ShutdownMode): void;
+
+  /** UNSTABLE: new API
+   * Waits for the next message to the passed rid and writes it on the passed buffer.
+   * Returns the number of bytes written and the remote address.
+   */
+  export function recvfrom(rid: number, p: Uint8Array): Promise<[number, Addr]>;
+
+  /** UNSTABLE: new API
+   * A socket is a generic transport listener for message-oriented protocols
+   */
+  export interface UDPConn extends AsyncIterator<[Uint8Array, Addr]> {
+    /** UNSTABLE: new API
+     * Waits for and resolves to the next message to the `Socket`. */
+    receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
+
+    /** UNSTABLE: new API
+     * Sends a message to the target. */
+    send(p: Uint8Array, addr: UDPAddr): Promise<void>;
+
+    /** UNSTABLE: new API
+     * Close closes the socket. Any pending message promises will be rejected
+     * with errors.
+     */
+    close(): void;
+
+    /** Return the address of the `Socket`. */
+    addr: Addr;
+
+    [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]>;
+  }
 
   /** A Listener is a generic network listener for stream-oriented protocols. */
   export interface Listener extends AsyncIterator<Conn> {
@@ -1428,7 +1499,9 @@ declare namespace Deno {
     transport?: Transport;
   }
 
-  /** Listen announces on the local transport address.
+  /** UNSTABLE: new API
+   *
+   * Listen announces on the local transport address.
    *
    * Requires the allow-net permission.
    *
@@ -1447,7 +1520,13 @@ declare namespace Deno {
    *     listen({ hostname: "[2001:db8::1]", port: 80 });
    *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
    */
-  export function listen(options: ListenOptions): Listener;
+  export function listen(
+    options: ListenOptions & { transport?: "tcp" }
+  ): Listener;
+  export function listen(
+    options: ListenOptions & { transport: "udp" }
+  ): UDPConn;
+  export function listen(options: ListenOptions): Listener | UDPConn;
 
   export interface ListenTLSOptions {
     port: number;
@@ -1546,6 +1625,21 @@ declare namespace Deno {
    * representation.
    */
   export function resources(): ResourceMap;
+
+  /** UNSTABLE: new API. Needs docs. */
+  export interface FsEvent {
+    kind: "any" | "access" | "create" | "modify" | "remove";
+    paths: string[];
+  }
+
+  /** UNSTABLE: new API. Needs docs.
+   *
+   * recursive option is true by default.
+   */
+  export function fsEvents(
+    paths: string | string[],
+    options?: { recursive: boolean }
+  ): AsyncIterableIterator<FsEvent>;
 
   /** How to handle subprocess stdio.
    *
@@ -1896,6 +1990,10 @@ declare namespace Deno {
     /** Emit class fields with ECMAScript-standard semantics. Defaults to `false`.
      * Does not apply to `"esnext"` target. */
     useDefineForClassFields?: boolean;
+
+    /** List of library files to be included in the compilation.  If omitted,
+     * then the Deno main runtime libs are used. */
+    lib?: string[];
 
     /** The locale to use to show error messages. */
     locale?: string;

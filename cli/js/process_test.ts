@@ -6,16 +6,7 @@ import {
   assertEquals,
   assertStrContains
 } from "./test_util.ts";
-const {
-  kill,
-  run,
-  DenoError,
-  ErrorKind,
-  readFile,
-  open,
-  makeTempDir,
-  writeFile
-} = Deno;
+const { kill, run, readFile, open, makeTempDir, writeFile } = Deno;
 
 test(function runPermissions(): void {
   let caughtError = false;
@@ -23,8 +14,7 @@ test(function runPermissions(): void {
     Deno.run({ args: ["python", "-c", "print('hello world')"] });
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(e.name, "PermissionDenied");
+    assert(e instanceof Deno.Err.PermissionDenied);
   }
   assert(caughtError);
 });
@@ -78,8 +68,7 @@ testPerm({ run: true }, function runNotFound(): void {
     error = e;
   }
   assert(error !== undefined);
-  assert(error instanceof DenoError);
-  assertEquals(error.kind, ErrorKind.NotFound);
+  assert(error instanceof Deno.Err.NotFound);
 });
 
 testPerm(
@@ -130,6 +119,7 @@ testPerm({ run: true }, async function runStdinPiped(): Promise<void> {
     args: ["python", "-c", "import sys; assert 'hello' == sys.stdin.read();"],
     stdin: "piped"
   });
+  assert(p.stdin);
   assert(!p.stdout);
   assert(!p.stderr);
 
@@ -137,7 +127,7 @@ testPerm({ run: true }, async function runStdinPiped(): Promise<void> {
   const n = await p.stdin.write(msg);
   assertEquals(n, msg.byteLength);
 
-  p.stdin.close();
+  p.stdin!.close();
 
   const status = await p.status();
   assertEquals(status.success, true);
@@ -155,16 +145,16 @@ testPerm({ run: true }, async function runStdoutPiped(): Promise<void> {
   assert(!p.stderr);
 
   const data = new Uint8Array(10);
-  let r = await p.stdout.read(data);
+  let r = await p.stdout!.read(data);
   if (r === Deno.EOF) {
     throw new Error("p.stdout.read(...) should not be EOF");
   }
   assertEquals(r, 5);
   const s = new TextDecoder().decode(data.subarray(0, r));
   assertEquals(s, "hello");
-  r = await p.stdout.read(data);
+  r = await p.stdout!.read(data);
   assertEquals(r, Deno.EOF);
-  p.stdout.close();
+  p.stdout!.close();
 
   const status = await p.status();
   assertEquals(status.success, true);
@@ -182,16 +172,16 @@ testPerm({ run: true }, async function runStderrPiped(): Promise<void> {
   assert(!p.stdout);
 
   const data = new Uint8Array(10);
-  let r = await p.stderr.read(data);
+  let r = await p.stderr!.read(data);
   if (r === Deno.EOF) {
     throw new Error("p.stderr.read should not return EOF here");
   }
   assertEquals(r, 5);
   const s = new TextDecoder().decode(data.subarray(0, r));
   assertEquals(s, "hello");
-  r = await p.stderr.read(data);
+  r = await p.stderr!.read(data);
   assertEquals(r, Deno.EOF);
-  p.stderr.close();
+  p.stderr!.close();
 
   const status = await p.status();
   assertEquals(status.success, true);
@@ -307,7 +297,7 @@ testPerm({ run: true }, async function runClose(): Promise<void> {
   p.close();
 
   const data = new Uint8Array(10);
-  const r = await p.stderr.read(data);
+  const r = await p.stderr!.read(data);
   assertEquals(r, Deno.EOF);
 });
 
@@ -331,8 +321,7 @@ if (Deno.build.os !== "win") {
       Deno.kill(Deno.pid, Deno.Signal.SIGCONT);
     } catch (e) {
       caughtError = true;
-      assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-      assertEquals(e.name, "PermissionDenied");
+      assert(e instanceof Deno.Err.PermissionDenied);
     }
     assert(caughtError);
   });
@@ -369,8 +358,7 @@ if (Deno.build.os !== "win") {
     }
 
     assert(!!err);
-    assertEquals(err.kind, Deno.ErrorKind.InvalidInput);
-    assertEquals(err.name, "InvalidInput");
+    assert(err instanceof TypeError);
 
     p.close();
   });

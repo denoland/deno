@@ -17,7 +17,7 @@ test({
   fn() {
     let eventsFired: string[] = [];
     const testEmitter = new EventEmitter();
-    testEmitter.on("newListener", event => {
+    testEmitter.on("newListener", (event: string) => {
       if (event !== "newListener") {
         eventsFired.push("newListener");
       }
@@ -81,20 +81,23 @@ test({
   fn() {
     const testEmitter = new EventEmitter();
     const eventsFired: string[] = [];
-    testEmitter.on("event", oneArg => {
+    testEmitter.on("event", (oneArg: string) => {
       eventsFired.push("event(" + oneArg + ")");
     });
-    testEmitter.on("event", (oneArg, twoArg) => {
+    testEmitter.on("event", (oneArg: string, twoArg: string) => {
       eventsFired.push("event(" + oneArg + ", " + twoArg + ")");
     });
 
     testEmitter.on("non-event", shouldNeverBeEmitted);
 
-    testEmitter.on("event", (oneArg, twoArg, threeArg) => {
-      eventsFired.push(
-        "event(" + oneArg + ", " + twoArg + ", " + threeArg + ")"
-      );
-    });
+    testEmitter.on(
+      "event",
+      (oneArg: string, twoArg: string, threeArg: string) => {
+        eventsFired.push(
+          "event(" + oneArg + ", " + twoArg + ", " + threeArg + ")"
+        );
+      }
+    );
     testEmitter.emit("event", 1, 2, 3);
     assertEquals(eventsFired, ["event(1)", "event(1, 2)", "event(1, 2, 3)"]);
   }

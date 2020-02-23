@@ -9,11 +9,10 @@ use crate::deno_dir;
 use crate::deno_error::permission_denied;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
+use crate::http_cache;
 use crate::lockfile::Lockfile;
 use crate::msg;
 use crate::permissions::DenoPermissions;
-use crate::progress::Progress;
-use crate::shell::Shell;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use std;
@@ -39,7 +38,6 @@ pub struct GlobalStateInner {
   /// Permissions parsed from `flags`.
   pub permissions: DenoPermissions,
   pub dir: deno_dir::DenoDir,
-  pub progress: Progress,
   pub file_fetcher: SourceFileFetcher,
   pub js_compiler: JsCompiler,
   pub json_compiler: JsonCompiler,
@@ -61,22 +59,11 @@ impl GlobalState {
   pub fn new(flags: flags::DenoFlags) -> Result<Self, ErrBox> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
-
-    // TODO(ry) Shell is a useless abstraction and should be removed at
-    // some point.
-    let shell = Arc::new(Mutex::new(Shell::new()));
-
-    let progress = Progress::new();
-    progress.set_callback(move |_done, _completed, _total, status, msg| {
-      if !status.is_empty() {
-        let mut s = shell.lock().unwrap();
-        s.status(status, msg).expect("shell problem");
-      }
-    });
+    let deps_cache_location = dir.root.join("deps");
+    let http_cache = http_cache::HttpCache::new(&deps_cache_location)?;
 
     let file_fetcher = SourceFileFetcher::new(
-      dir.deps_cache.clone(),
-      progress.clone(),
+      http_cache,
       !flags.reload,
       flags.cache_blacklist.clone(),
       flags.no_remote,
@@ -102,7 +89,6 @@ impl GlobalState {
       dir,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
-      progress,
       file_fetcher,
       ts_compiler,
       js_compiler: JsCompiler {},

@@ -59,7 +59,7 @@ test(function btoaFailed(): void {
     err = e;
   }
   assert(!!err);
-  assertEquals(err.name, "InvalidInput");
+  assert(err instanceof TypeError);
 });
 
 test(function textDecoder2(): void {

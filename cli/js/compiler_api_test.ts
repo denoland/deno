@@ -46,6 +46,22 @@ test(async function compilerApiCompileOptions() {
   assert(actual["/foo.js"].startsWith("define("));
 });
 
+test(async function compilerApiCompileLib() {
+  const [diagnostics, actual] = await compile(
+    "/foo.ts",
+    {
+      "/foo.ts": `console.log(document.getElementById("foo"));
+        console.log(Deno.args);`
+    },
+    {
+      lib: ["dom", "es2018", "deno.ns"]
+    }
+  );
+  assert(diagnostics == null);
+  assert(actual);
+  assertEquals(Object.keys(actual), ["/foo.js.map", "/foo.js"]);
+});
+
 test(async function transpileOnlyApi() {
   const actual = await transpileOnly({
     "foo.ts": `export enum Foo { Foo, Bar, Baz };\n`
