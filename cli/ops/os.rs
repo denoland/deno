@@ -189,7 +189,7 @@ fn op_hostname(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   state.check_env()?;
-  let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_owned());
+  let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
   Ok(JsonOp::Sync(json!(hostname)))
 }
 
@@ -199,6 +199,6 @@ fn op_os_release(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   state.check_env()?;
-  let release = sys_info::os_release().unwrap_or_else(|_| "".to_owned());
+  let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(JsonOp::Sync(json!(release)))
 }
