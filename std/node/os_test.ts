@@ -175,6 +175,17 @@ test({
 });
 
 test({
+  name: "Primitive coercion works as expected",
+  fn() {
+    assertEquals(`${os.arch}`, os.arch());
+    assertEquals(`${os.endianness}`, os.endianness());
+    assertEquals(`${os.homedir}`, os.homedir());
+    assertEquals(`${os.hostname}`, os.hostname());
+    assertEquals(`${os.platform}`, os.platform());
+  }
+});
+
+test({
   name: "APIs not yet implemented",
   fn() {
     assertThrows(

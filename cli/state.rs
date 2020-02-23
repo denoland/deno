@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::compilers::TargetLib;
-use crate::deno_error::permission_denied;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
+use crate::op_error::OpError;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
 use crate::permissions::DenoPermissions;
@@ -128,15 +128,15 @@ impl State {
   pub fn stateful_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, ErrBox>
+  ) -> impl Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>
   where
-    D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, ErrBox>,
+    D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
   {
     let state = self.clone();
 
     move |args: Value,
           zero_copy: Option<ZeroCopyBuf>|
-          -> Result<JsonOp, ErrBox> { dispatcher(&state, args, zero_copy) }
+          -> Result<JsonOp, OpError> { dispatcher(&state, args, zero_copy) }
   }
 }
 
@@ -171,7 +171,7 @@ impl Loader for State {
     let module_specifier = module_specifier.clone();
     if is_dyn_import {
       if let Err(e) = self.check_dyn_import(&module_specifier) {
-        return async move { Err(e) }.boxed_local();
+        return async move { Err(e.into()) }.boxed_local();
       }
     }
 
@@ -278,44 +278,44 @@ impl State {
   }
 
   #[inline]
-  pub fn check_read(&self, path: &Path) -> Result<(), ErrBox> {
+  pub fn check_read(&self, path: &Path) -> Result<(), OpError> {
     self.borrow().permissions.check_read(path)
   }
 
   #[inline]
-  pub fn check_write(&self, path: &Path) -> Result<(), ErrBox> {
+  pub fn check_write(&self, path: &Path) -> Result<(), OpError> {
     self.borrow().permissions.check_write(path)
   }
 
   #[inline]
-  pub fn check_env(&self) -> Result<(), ErrBox> {
+  pub fn check_env(&self) -> Result<(), OpError> {
     self.borrow().permissions.check_env()
   }
 
   #[inline]
-  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
+  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), OpError> {
     self.borrow().permissions.check_net(hostname, port)
   }
 
   #[inline]
-  pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
+  pub fn check_net_url(&self, url: &url::Url) -> Result<(), OpError> {
     self.borrow().permissions.check_net_url(url)
   }
 
   #[inline]
-  pub fn check_run(&self) -> Result<(), ErrBox> {
+  pub fn check_run(&self) -> Result<(), OpError> {
     self.borrow().permissions.check_run()
   }
 
   #[inline]
-  pub fn check_plugin(&self, filename: &Path) -> Result<(), ErrBox> {
+  pub fn check_plugin(&self, filename: &Path) -> Result<(), OpError> {
     self.borrow().permissions.check_plugin(filename)
   }
 
   pub fn check_dyn_import(
     &self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), OpError> {
     let u = module_specifier.as_url();
     match u.scheme() {
       "http" | "https" => {
@@ -332,7 +332,7 @@ impl State {
         self.check_read(Path::new(&path))?;
         Ok(())
       }
-      _ => Err(permission_denied()),
+      _ => unreachable!(),
     }
   }
 

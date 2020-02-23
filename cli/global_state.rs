@@ -6,7 +6,6 @@ use crate::compilers::TargetLib;
 use crate::compilers::TsCompiler;
 use crate::compilers::WasmCompiler;
 use crate::deno_dir;
-use crate::deno_error::permission_denied;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
 use crate::http_cache;
@@ -18,8 +17,6 @@ use deno_core::ModuleSpecifier;
 use std;
 use std::env;
 use std::ops::Deref;
-use std::path::Path;
-use std::str;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -170,60 +167,6 @@ impl GlobalState {
       }
     }
     Ok(compiled_module)
-  }
-
-  #[inline]
-  pub fn check_read(&self, filename: &Path) -> Result<(), ErrBox> {
-    self.permissions.check_read(filename)
-  }
-
-  #[inline]
-  pub fn check_write(&self, filename: &Path) -> Result<(), ErrBox> {
-    self.permissions.check_write(filename)
-  }
-
-  #[inline]
-  pub fn check_env(&self) -> Result<(), ErrBox> {
-    self.permissions.check_env()
-  }
-
-  #[inline]
-  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
-    self.permissions.check_net(hostname, port)
-  }
-
-  #[inline]
-  pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
-    self.permissions.check_net_url(url)
-  }
-
-  #[inline]
-  pub fn check_run(&self) -> Result<(), ErrBox> {
-    self.permissions.check_run()
-  }
-
-  pub fn check_dyn_import(
-    &self,
-    module_specifier: &ModuleSpecifier,
-  ) -> Result<(), ErrBox> {
-    let u = module_specifier.as_url();
-    match u.scheme() {
-      "http" | "https" => {
-        self.check_net_url(u)?;
-        Ok(())
-      }
-      "file" => {
-        let filename = u
-          .to_file_path()
-          .unwrap()
-          .into_os_string()
-          .into_string()
-          .unwrap();
-        self.check_read(Path::new(&filename))?;
-        Ok(())
-      }
-      _ => Err(permission_denied()),
-    }
   }
 
   #[cfg(test)]
