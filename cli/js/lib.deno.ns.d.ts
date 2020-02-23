@@ -30,16 +30,6 @@ declare namespace Deno {
 
   export function runTests(opts?: RunTestsOptions): Promise<void>;
 
-  /** Check if running in terminal.
-   *
-   *       console.log(Deno.isTTY().stdout);
-   */
-  export function isTTY(): {
-    stdin: boolean;
-    stdout: boolean;
-    stderr: boolean;
-  };
-
   /** Get the loadavg. Requires the `--allow-env` flag.
    *
    *       console.log(Deno.loadavg());
@@ -563,6 +553,16 @@ declare namespace Deno {
    *  Set TTY to be under raw mode or not.
    */
   export function setRaw(rid: number, mode: boolean): void;
+
+  /** Check if running in terminal.
+   *
+   *       console.log(Deno.isTTY().stdout);
+   */
+  export function isTTY(): {
+    stdin: boolean;
+    stdout: boolean;
+    stderr: boolean;
+  };
 
   // @url js/buffer.d.ts
 

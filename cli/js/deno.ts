@@ -85,7 +85,7 @@ export {
   ShutdownMode,
   shutdown
 } from "./net.ts";
-export { dir, env, exit, isTTY, execPath, hostname, loadavg } from "./os.ts";
+export { dir, env, exit, execPath, hostname, loadavg } from "./os.ts";
 export {
   permissions,
   PermissionName,
@@ -114,7 +114,7 @@ export { statSync, lstatSync, stat, lstat } from "./stat.ts";
 export { symlinkSync, symlink } from "./symlink.ts";
 export { connectTLS, listenTLS } from "./tls.ts";
 export { truncateSync, truncate } from "./truncate.ts";
-export { isatty, setRaw } from "./tty.ts";
+export { isatty, isTTY, setRaw } from "./tty.ts";
 export { utimeSync, utime } from "./utime.ts";
 export { version } from "./version.ts";
 export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";

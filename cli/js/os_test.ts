@@ -115,10 +115,6 @@ test(function osPid(): void {
   assert(Deno.pid > 0);
 });
 
-test(function osIsTTYSmoke(): void {
-  console.log(Deno.isTTY());
-});
-
 testPerm({ env: true }, function getDir(): void {
   type supportOS = "mac" | "win" | "linux";
 

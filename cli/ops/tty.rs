@@ -1,7 +1,6 @@
 use super::dispatch_json::JsonOp;
 use super::io::StreamResource;
-use crate::deno_error::bad_resource;
-use crate::deno_error::other_error;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use atty;
@@ -22,15 +21,15 @@ const RAW_MODE_MASK: DWORD = wincon::ENABLE_LINE_INPUT
 #[cfg(windows)]
 fn get_windows_handle(
   f: &std::fs::File,
-) -> Result<std::os::windows::io::RawHandle, ErrBox> {
+) -> Result<std::os::windows::io::RawHandle, OpError> {
   use std::os::windows::io::AsRawHandle;
   use winapi::um::handleapi;
 
   let handle = f.as_raw_handle();
   if handle == handleapi::INVALID_HANDLE_VALUE {
-    return Err(ErrBox::from(std::io::Error::last_os_error()));
+    return Err(OpError::from(std::io::Error::last_os_error()));
   } else if handle.is_null() {
-    return Err(ErrBox::from(other_error("null handle".to_owned())));
+    return Err(OpError::other("null handle".to_owned()));
   }
   Ok(handle)
 }
@@ -45,7 +44,7 @@ macro_rules! wincheck {
   ($funcall:expr) => {{
     let rc = unsafe { $funcall };
     if rc == 0 {
-      Err(ErrBox::from(std::io::Error::last_os_error()))?;
+      Err(OpError::from(std::io::Error::last_os_error()))?;
     }
     rc
   }};
@@ -61,7 +60,7 @@ pub fn op_set_raw(
   state_: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: SetRawArgs = serde_json::from_value(args)?;
   let rid = args.rid;
   let is_raw = args.mode;
@@ -79,7 +78,7 @@ pub fn op_set_raw(
     let state = state_.borrow_mut();
     let resource = state.resource_table.get::<StreamResource>(rid);
     if resource.is_none() {
-      return Err(bad_resource());
+      return Err(OpError::bad_resource());
     }
 
     // For now, only stdin.
@@ -91,14 +90,14 @@ pub fn op_set_raw(
         std_file.as_raw_handle()
       }
       _ => {
-        return Err(other_error("Not supported".to_owned()));
+        return Err(OpError::other("Not supported".to_owned()));
       }
     };
 
     if handle == handleapi::INVALID_HANDLE_VALUE {
-      return Err(ErrBox::from(std::io::Error::last_os_error()));
+      return Err(OpError::from(std::io::Error::last_os_error()));
     } else if handle.is_null() {
-      return Err(ErrBox::from(other_error("null handle".to_owned())));
+      return Err(OpError::other("null handle".to_owned()));
     }
     let mut original_mode: DWORD = 0;
     wincheck!(consoleapi::GetConsoleMode(handle, &mut original_mode));
@@ -118,7 +117,7 @@ pub fn op_set_raw(
     let mut state = state_.borrow_mut();
     let resource = state.resource_table.get_mut::<StreamResource>(rid);
     if resource.is_none() {
-      return Err(bad_resource());
+      return Err(OpError::bad_resource());
     }
 
     if is_raw {
@@ -132,7 +131,7 @@ pub fn op_set_raw(
           (std_file.as_raw_fd(), &mut metadata.tty.mode)
         }
         _ => {
-          return Err(other_error("Not supported".to_owned()));
+          return Err(OpError::other("Not supported".to_owned()));
         }
       };
 
@@ -174,7 +173,7 @@ pub fn op_set_raw(
           (std_file.as_raw_fd(), &mut metadata.tty.mode)
         }
         _ => {
-          return Err(other_error("Not supported".to_owned()));
+          return Err(OpError::other("Not supported".to_owned()));
         }
       };
 
@@ -196,13 +195,13 @@ pub fn op_isatty(
   state_: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: IsattyArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
   let state = state_.borrow_mut();
   if !state.resource_table.has(rid) {
-    return Err(bad_resource());
+    return Err(OpError::bad_resource());
   }
 
   let resource = state.resource_table.get::<StreamResource>(rid);

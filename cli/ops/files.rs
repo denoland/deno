@@ -1,8 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{FileMetadata, StreamResource};
-use crate::deno_error::DenoError;
-use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
 use crate::op_error::OpError;
 use crate::ops::json_op;

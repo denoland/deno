@@ -3,7 +3,6 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
-use atty;
 use deno_core::*;
 use std::collections::HashMap;
 use std::env;
@@ -13,7 +12,6 @@ use url::Url;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("exit", s.core_op(json_op(s.stateful_op(op_exit))));
-  i.register_op("is_tty", s.core_op(json_op(s.stateful_op(op_is_tty))));
   i.register_op("env", s.core_op(json_op(s.stateful_op(op_env))));
   i.register_op("exec_path", s.core_op(json_op(s.stateful_op(op_exec_path))));
   i.register_op("set_env", s.core_op(json_op(s.stateful_op(op_set_env))));
@@ -149,18 +147,6 @@ fn op_exit(
 ) -> Result<JsonOp, OpError> {
   let args: Exit = serde_json::from_value(args)?;
   std::process::exit(args.code)
-}
-
-fn op_is_tty(
-  _s: &State,
-  _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, OpError> {
-  Ok(JsonOp::Sync(json!({
-    "stdin": atty::is(atty::Stream::Stdin),
-    "stdout": atty::is(atty::Stream::Stdout),
-    "stderr": atty::is(atty::Stream::Stderr),
-  })))
 }
 
 fn op_loadavg(
