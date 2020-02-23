@@ -1,0 +1,42 @@
+import { assertStrictEq, assertNotEquals } from "../../testing/asserts.ts";
+import { BufReader, ReadLineResult } from "../../io/bufio.ts";
+
+Deno.test("[examples/echo_server]", async () => {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const process = Deno.run({
+    args: [Deno.execPath(), "--allow-net", "echo_server.ts"],
+    cwd: "examples",
+    stdout: "piped"
+  });
+
+  let conn: Deno.Conn | undefined;
+  try {
+    const processReader = new BufReader(process.stdout!);
+    const message = await processReader.readLine();
+
+    assertNotEquals(message, Deno.EOF);
+    assertStrictEq(
+      decoder.decode((message as ReadLineResult).line).trim(),
+      "Listening on 0.0.0.0:8080"
+    );
+
+    conn = await Deno.connect({ hostname: "127.0.0.1", port: 8080 });
+    const connReader = new BufReader(conn);
+
+    await conn.write(encoder.encode("Hello echo_server\n"));
+    const result = await connReader.readLine();
+
+    assertNotEquals(result, Deno.EOF);
+
+    const expectedResponse = decoder
+      .decode((result as ReadLineResult).line)
+      .trim();
+    const actualResponse = "Hello echo_server";
+
+    assertStrictEq(actualResponse, expectedResponse);
+  } finally {
+    conn?.close();
+    process.close();
+  }
+});

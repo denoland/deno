@@ -12,7 +12,8 @@ import * as colors from "../fmt/colors.ts";
 
 const decoder = new TextDecoder();
 
-function isObject(arg): arg is object {
+function isObject(arg: any): arg is object {
+  // eslint-disable-line @typescript-eslint/no-explicit-any
   return !!arg && arg.constructor === Object;
 }
 
@@ -35,7 +36,8 @@ function printValue(value: unknown, path: string): void {
   console.log(path + " = " + value);
 }
 
-function printObject(obj: object, path: string): void {
+function printObject(obj: { [key: string]: any }, path: string): void {
+  // eslint-disable-line @typescript-eslint/no-explicit-any
   for (const key of Object.keys(obj)) {
     const value = obj[key];
     let nodePath = path + colors.cyan(".") + key;

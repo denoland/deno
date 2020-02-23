@@ -22,7 +22,9 @@ async function startServer(): Promise<void> {
 
 const { test } = Deno;
 
-await startServer();
+test("beforeAll", async () => {
+  await startServer();
+});
 
 test("GET / should serve html", async () => {
   const resp = await fetch("http://0.0.0.0:8080/");
