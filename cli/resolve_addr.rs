@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use deno_core::ErrBox;
+use crate::op_error::OpError;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
@@ -21,7 +21,7 @@ pub struct ResolveAddrFuture {
 }
 
 impl Future for ResolveAddrFuture {
-  type Output = Result<SocketAddr, ErrBox>;
+  type Output = Result<SocketAddr, OpError>;
 
   fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -45,7 +45,7 @@ impl Future for ResolveAddrFuture {
       addr
     };
     let addr_port_pair = (addr, inner.port);
-    let r = addr_port_pair.to_socket_addrs().map_err(ErrBox::from);
+    let r = addr_port_pair.to_socket_addrs().map_err(OpError::from);
 
     Poll::Ready(r.and_then(|mut iter| match iter.next() {
       Some(a) => Ok(a),

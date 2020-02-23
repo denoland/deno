@@ -1,10 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
-use crate::deno_error::bad_resource;
-use crate::deno_error::DenoError;
-use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
@@ -46,7 +44,7 @@ fn op_open(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: OpenArgs = serde_json::from_value(args)?;
   let filename = deno_fs::resolve_from_cwd(Path::new(&args.filename))?;
   let state_ = state.clone();
@@ -113,17 +111,14 @@ fn op_open(
         open_options.create_new(true).read(true).write(true);
       }
       &_ => {
-        return Err(ErrBox::from(DenoError::new(
-          ErrorKind::Other,
-          "Unknown open mode.".to_string(),
-        )));
+        // TODO: this should be type error
+        return Err(OpError::other("Unknown open mode.".to_string()));
       }
     }
   } else {
-    return Err(ErrBox::from(DenoError::new(
-      ErrorKind::Other,
+    return Err(OpError::other(
       "Open requires either mode or options.".to_string(),
-    )));
+    ));
   };
 
   let is_sync = args.promise_id.is_none();
@@ -154,14 +149,14 @@ fn op_close(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: CloseArgs = serde_json::from_value(args)?;
 
   let mut state = state.borrow_mut();
   state
     .resource_table
     .close(args.rid as u32)
-    .ok_or_else(bad_resource)?;
+    .ok_or_else(OpError::bad_resource)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -178,7 +173,7 @@ fn op_seek(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: SeekArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let offset = args.offset;
@@ -189,9 +184,9 @@ fn op_seek(
     1 => SeekFrom::Current(i64::from(offset)),
     2 => SeekFrom::End(i64::from(offset)),
     _ => {
-      return Err(ErrBox::from(DenoError::new(
-        ErrorKind::TypeError,
-        format!("Invalid seek mode: {}", whence),
+      return Err(OpError::type_error(format!(
+        "Invalid seek mode: {}",
+        whence
       )));
     }
   };
@@ -200,11 +195,11 @@ fn op_seek(
   let resource = state
     .resource_table
     .get::<StreamResource>(rid)
-    .ok_or_else(bad_resource)?;
+    .ok_or_else(OpError::bad_resource)?;
 
   let tokio_file = match resource {
     StreamResource::FsFile(ref file) => file,
-    _ => return Err(bad_resource()),
+    _ => return Err(OpError::bad_resource()),
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 

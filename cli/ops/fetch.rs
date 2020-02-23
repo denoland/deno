@@ -1,9 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
-use crate::deno_error::DenoError;
-use crate::deno_error::ErrorKind;
 use crate::http_util::{create_http_client, HttpBody};
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
@@ -29,7 +28,7 @@ pub fn op_fetch(
   state: &State,
   args: Value,
   data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
 
@@ -37,22 +36,20 @@ pub fn op_fetch(
     create_http_client(state.borrow().global_state.flags.ca_file.clone())?;
 
   let method = match args.method {
-    Some(method_str) => Method::from_bytes(method_str.as_bytes())?,
+    Some(method_str) => Method::from_bytes(method_str.as_bytes())
+      .map_err(|e| OpError::other(e.to_string()))?,
     None => Method::GET,
   };
 
-  let url_ = url::Url::parse(&url).map_err(ErrBox::from)?;
+  let url_ = url::Url::parse(&url).map_err(OpError::from)?;
 
   // Check scheme before asking for net permission
   let scheme = url_.scheme();
   if scheme != "http" && scheme != "https" {
-    return Err(
-      DenoError::new(
-        ErrorKind::TypeError,
-        format!("scheme '{}' not supported", scheme),
-      )
-      .into(),
-    );
+    return Err(OpError::type_error(format!(
+      "scheme '{}' not supported",
+      scheme
+    )));
   }
 
   state.check_net_url(&url_)?;
