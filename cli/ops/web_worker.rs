@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use crate::worker::WorkerEvent;
@@ -13,17 +14,17 @@ use std::convert::From;
 pub fn web_worker_op<D>(
   sender: mpsc::Sender<WorkerEvent>,
   dispatcher: D,
-) -> impl Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, ErrBox>
+) -> impl Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>
 where
   D: Fn(
     &mpsc::Sender<WorkerEvent>,
     Value,
     Option<ZeroCopyBuf>,
-  ) -> Result<JsonOp, ErrBox>,
+  ) -> Result<JsonOp, OpError>,
 {
-  move |args: Value, zero_copy: Option<ZeroCopyBuf>| -> Result<JsonOp, ErrBox> {
-    dispatcher(&sender, args, zero_copy)
-  }
+  move |args: Value,
+        zero_copy: Option<ZeroCopyBuf>|
+        -> Result<JsonOp, OpError> { dispatcher(&sender, args, zero_copy) }
 }
 
 pub fn init(i: &mut Isolate, s: &State, sender: &mpsc::Sender<WorkerEvent>) {
@@ -45,7 +46,7 @@ fn op_worker_post_message(
   sender: &mpsc::Sender<WorkerEvent>,
   _args: Value,
   data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
   let mut sender = sender.clone();
   let fut = sender.send(WorkerEvent::Message(d));
@@ -58,7 +59,7 @@ fn op_worker_close(
   sender: &mpsc::Sender<WorkerEvent>,
   _args: Value,
   _data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let mut sender = sender.clone();
   sender.close_channel();
   Ok(JsonOp::Sync(json!({})))

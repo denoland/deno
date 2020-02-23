@@ -4,19 +4,17 @@
 //! alternative to flatbuffers using a very simple list of int32s to lay out
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
-use crate::deno_error::ErrorKind;
-use crate::deno_error::GetErrorKind;
+use crate::op_error::OpError;
 use byteorder::{LittleEndian, WriteBytesExt};
 use deno_core::Buf;
 use deno_core::CoreOp;
-use deno_core::ErrBox;
 use deno_core::Op;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::future::Future;
 use std::pin::Pin;
 
-pub type MinimalOp = dyn Future<Output = Result<i32, ErrBox>>;
+pub type MinimalOp = dyn Future<Output = Result<i32, OpError>>;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 // This corresponds to RecordMinimal on the TS side.
@@ -121,14 +119,12 @@ where
     let mut record = match parse_min_record(control) {
       Some(r) => r,
       None => {
+        let e = OpError::type_error("Unparsable control buffer".to_string());
         let error_record = ErrorRecord {
           promise_id: 0,
           arg: -1,
-          error_code: ErrorKind::TypeError as i32,
-          error_message: "Unparsable control buffer"
-            .to_string()
-            .as_bytes()
-            .to_owned(),
+          error_code: e.kind as i32,
+          error_message: e.msg.as_bytes().to_owned(),
         };
         return Op::Sync(error_record.into());
       }
@@ -148,8 +144,8 @@ where
           let error_record = ErrorRecord {
             promise_id: record.promise_id,
             arg: -1,
-            error_code: err.kind() as i32,
-            error_message: err.to_string().as_bytes().to_owned(),
+            error_code: err.kind as i32,
+            error_message: err.msg.as_bytes().to_owned(),
           };
           Ok(error_record.into())
         }

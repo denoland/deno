@@ -1,7 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error;
-use crate::deno_error::DenoError;
-use crate::deno_error::ErrorKind;
 use crate::version;
 use bytes::Bytes;
 use deno_core::ErrBox;
@@ -49,8 +46,8 @@ pub fn create_http_client(ca_file: Option<String>) -> Result<Client, ErrBox> {
   }
 
   builder.build().map_err(|_| {
-    ErrBox::from(DenoError::new(
-      ErrorKind::Other,
+    ErrBox::from(io::Error::new(
+      io::ErrorKind::Other,
       "Unable to build http client".to_string(),
     ))
   })
@@ -145,8 +142,8 @@ pub fn fetch_once(
     if response.status().is_client_error()
       || response.status().is_server_error()
     {
-      let err = DenoError::new(
-        deno_error::ErrorKind::Other,
+      let err = io::Error::new(
+        io::ErrorKind::Other,
         format!("Import '{}' failed: {}", &url, response.status()),
       );
       return Err(err.into());

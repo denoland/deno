@@ -1,11 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error::{other_error, permission_denied_msg};
-use crate::deno_error::{DenoError, ErrorKind};
 use crate::flags::DenoFlags;
+use crate::op_error::OpError;
 use ansi_term::Style;
 #[cfg(not(test))]
 use atty;
-use deno_core::ErrBox;
 use log;
 use std::collections::HashSet;
 use std::fmt;
@@ -30,13 +28,13 @@ pub enum PermissionState {
 
 impl PermissionState {
   /// Checks the permission state and returns the result.
-  pub fn check(self, msg: &str, flag_name: &str) -> Result<(), ErrBox> {
+  pub fn check(self, msg: &str, flag_name: &str) -> Result<(), OpError> {
     if self == PermissionState::Allow {
       log_perm_access(msg);
       return Ok(());
     }
     let m = format!("{}, run again with the {} flag", msg, flag_name);
-    Err(permission_denied_msg(m))
+    Err(OpError::permission_denied(m))
   }
   pub fn is_allow(self) -> bool {
     self == PermissionState::Allow
@@ -130,7 +128,7 @@ impl DenoPermissions {
     }
   }
 
-  pub fn check_run(&self) -> Result<(), ErrBox> {
+  pub fn check_run(&self) -> Result<(), OpError> {
     self
       .allow_run
       .check("access to run a subprocess", "--allow-run")
@@ -143,7 +141,7 @@ impl DenoPermissions {
     self.allow_read
   }
 
-  pub fn check_read(&self, path: &Path) -> Result<(), ErrBox> {
+  pub fn check_read(&self, path: &Path) -> Result<(), OpError> {
     self.get_state_read(&Some(path)).check(
       &format!("read access to \"{}\"", path.display()),
       "--allow-read",
@@ -157,7 +155,7 @@ impl DenoPermissions {
     self.allow_write
   }
 
-  pub fn check_write(&self, path: &Path) -> Result<(), ErrBox> {
+  pub fn check_write(&self, path: &Path) -> Result<(), OpError> {
     self.get_state_write(&Some(path)).check(
       &format!("write access to \"{}\"", path.display()),
       "--allow-write",
@@ -174,41 +172,41 @@ impl DenoPermissions {
   fn get_state_net_url(
     &self,
     url: &Option<&str>,
-  ) -> Result<PermissionState, ErrBox> {
+  ) -> Result<PermissionState, OpError> {
     if url.is_none() {
       return Ok(self.allow_net);
     }
     let url: &str = url.unwrap();
     // If url is invalid, then throw a TypeError.
-    let parsed = Url::parse(url).map_err(ErrBox::from)?;
+    let parsed = Url::parse(url).map_err(OpError::from)?;
     Ok(
       self.get_state_net(&format!("{}", parsed.host().unwrap()), parsed.port()),
     )
   }
 
-  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
+  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), OpError> {
     self.get_state_net(hostname, Some(port)).check(
       &format!("network access to \"{}:{}\"", hostname, port),
       "--allow-net",
     )
   }
 
-  pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
-    let host = url.host_str().ok_or_else(|| {
-      DenoError::new(ErrorKind::URIError, "missing host".to_owned())
-    })?;
+  pub fn check_net_url(&self, url: &url::Url) -> Result<(), OpError> {
+    let host = url
+      .host_str()
+      .ok_or_else(|| OpError::uri_error("missing host".to_owned()))?;
     self
       .get_state_net(host, url.port())
       .check(&format!("network access to \"{}\"", url), "--allow-net")
   }
 
-  pub fn check_env(&self) -> Result<(), ErrBox> {
+  pub fn check_env(&self) -> Result<(), OpError> {
     self
       .allow_env
       .check("access to environment variables", "--allow-env")
   }
 
-  pub fn check_plugin(&self, path: &Path) -> Result<(), ErrBox> {
+  pub fn check_plugin(&self, path: &Path) -> Result<(), OpError> {
     self.allow_plugin.check(
       &format!("access to open a plugin: {}", path.display()),
       "--allow-plugin",
@@ -248,7 +246,7 @@ impl DenoPermissions {
   pub fn request_net(
     &mut self,
     url: &Option<&str>,
-  ) -> Result<PermissionState, ErrBox> {
+  ) -> Result<PermissionState, OpError> {
     if self.get_state_net_url(url)? == PermissionState::Ask {
       return Ok(self.allow_net.request(&match url {
         None => "Deno requests network access.".to_string(),
@@ -279,7 +277,7 @@ impl DenoPermissions {
     name: &str,
     url: &Option<&str>,
     path: &Option<&Path>,
-  ) -> Result<PermissionState, ErrBox> {
+  ) -> Result<PermissionState, OpError> {
     match name {
       "run" => Ok(self.allow_run),
       "read" => Ok(self.get_state_read(path)),
@@ -288,7 +286,7 @@ impl DenoPermissions {
       "env" => Ok(self.allow_env),
       "plugin" => Ok(self.allow_plugin),
       "hrtime" => Ok(self.allow_hrtime),
-      n => Err(other_error(format!("No such permission name: {}", n))),
+      n => Err(OpError::other(format!("No such permission name: {}", n))),
     }
   }
 }
