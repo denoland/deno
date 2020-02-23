@@ -46,11 +46,10 @@ pub fn op_fetch(
   // Check scheme before asking for net permission
   let scheme = url_.scheme();
   if scheme != "http" && scheme != "https" {
-    return Err(
-      OpError::type_error(
-        format!("scheme '{}' not supported", scheme),
-      )
-    );
+    return Err(OpError::type_error(format!(
+      "scheme '{}' not supported",
+      scheme
+    )));
   }
 
   state.check_net_url(&url_)?;

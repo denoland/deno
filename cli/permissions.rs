@@ -192,9 +192,9 @@ impl DenoPermissions {
   }
 
   pub fn check_net_url(&self, url: &url::Url) -> Result<(), OpError> {
-    let host = url.host_str().ok_or_else(|| {
-      OpError::uri_error("missing host".to_owned())
-    })?;
+    let host = url
+      .host_str()
+      .ok_or_else(|| OpError::uri_error("missing host".to_owned()))?;
     self
       .get_state_net(host, url.port())
       .check(&format!("network access to \"{}\"", url), "--allow-net")

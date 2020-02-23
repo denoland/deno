@@ -167,7 +167,7 @@ fn op_loadavg(
   state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   state.check_env()?;
   match sys_info::loadavg() {
     Ok(loadavg) => Ok(JsonOp::Sync(json!([
