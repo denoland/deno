@@ -80,6 +80,7 @@ export let OP_TRANSPILE: number;
 export let OP_SIGNAL_BIND: number;
 export let OP_SIGNAL_UNBIND: number;
 export let OP_SIGNAL_POLL: number;
+export let OP_LOADAVG: number;
 
 const PLUGIN_ASYNC_HANDLER_MAP: Map<number, AsyncHandler> = new Map();
 

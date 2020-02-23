@@ -133,12 +133,12 @@ export function hostname(): string {
   return Deno.hostname();
 }
 
-/** Not yet implemented */
+/** Returns an array containing the 1, 5, and 15 minute load averages */
 export function loadavg(): number[] {
   if (Deno.build.os == "win") {
     return [0, 0, 0];
   }
-  notImplemented(SEE_GITHUB_ISSUE);
+  return Deno.loadavg();
 }
 
 /** Not yet implemented */

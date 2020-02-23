@@ -42,6 +42,17 @@ pub fn op_fetch(
   };
 
   let url_ = url::Url::parse(&url).map_err(OpError::from)?;
+
+  // Check scheme before asking for net permission
+  let scheme = url_.scheme();
+  if scheme != "http" && scheme != "https" {
+    return Err(
+      OpError::type_error(
+        format!("scheme '{}' not supported", scheme),
+      )
+    );
+  }
+
   state.check_net_url(&url_)?;
 
   let mut request = client.request(method, url_);
