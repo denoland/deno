@@ -19,6 +19,7 @@ export default class Dirent {
     notImplemented(
       "Deno does not yet support identification of FIFO named pipes"
     );
+    return false;
   }
 
   isFile(): boolean {
@@ -27,6 +28,7 @@ export default class Dirent {
 
   isSocket(): boolean {
     notImplemented("Deno does not yet support identification of sockets");
+    return false;
   }
 
   isSymbolicLink(): boolean {

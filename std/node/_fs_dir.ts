@@ -65,12 +65,14 @@ export default class Dir {
     });
   }
 
-  readSync(): Dirent {
+  readSync(): Dirent | null {
     this.validateDirectoryOpen();
     if (this.initializationOfDirectoryFilesIsRequired()) {
-      this.files = Deno.readDirSync(this.path).map(file => new Dirent(file));
+      this.files.push(
+        ...Deno.readDirSync(this.path).map(file => new Dirent(file))
+      );
     }
-    const dirent: Dirent = this.files.pop();
+    const dirent: Dirent | undefined = this.files.pop();
     this.filesReadComplete = this.files.length === 0;
 
     return !dirent ? null : dirent;
@@ -107,7 +109,7 @@ export default class Dir {
   async *entries(): AsyncIterableIterator<Dirent> {
     try {
       while (true) {
-        const dirent: Dirent = await this.read();
+        const dirent: Dirent | null = await this.read();
         if (dirent === null) {
           break;
         }

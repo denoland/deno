@@ -1,3 +1,5 @@
+"use strict";
+
 const { test } = Deno;
 import {
   assert,
@@ -31,7 +33,8 @@ test({
     const fileInfo: Deno.File = await Deno.open(".");
     assert(Deno.resources()[fileInfo.rid]);
     let calledBack = false;
-    new Dir(fileInfo.rid, ".").close(valOrErr => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    new Dir(fileInfo.rid, ".").close((valOrErr: any) => {
       assert(!valOrErr);
       calledBack = true;
     });
@@ -102,11 +105,11 @@ test({
     const testDir: string = Deno.makeTempDirSync();
     try {
       const fileInfo: Deno.File = await Deno.open(testDir);
-      const file: Dirent = await new Dir(fileInfo.rid, testDir).read();
+      const file: Dirent | null = await new Dir(fileInfo.rid, testDir).read();
       assert(file === null);
 
       let calledBack = false;
-      const fileFromCallback: Dirent = await new Dir(
+      const fileFromCallback: Dirent | null = await new Dir(
         fileInfo.rid,
         testDir
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -136,8 +139,8 @@ test({
       let secondCallback = false;
       const fileInfo: Deno.File = await Deno.open(testDir);
       const dir: Dir = new Dir(fileInfo.rid, testDir);
-      const firstRead: Dirent = await dir.read();
-      const secondRead: Dirent = await dir.read(
+      const firstRead: Dirent | null = await dir.read();
+      const secondRead: Dirent | null = await dir.read(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (err: any, secondResult: Dirent) => {
           assert(
@@ -146,12 +149,12 @@ test({
           secondCallback = true;
         }
       );
-      const thirdRead: Dirent = await dir.read();
+      const thirdRead: Dirent | null = await dir.read();
 
-      if (firstRead.name === "foo.txt") {
-        assertEquals(secondRead.name, "bar.txt");
-      } else if (firstRead.name === "bar.txt") {
-        assertEquals(secondRead.name, "foo.txt");
+      if (firstRead?.name === "foo.txt") {
+        assertEquals(secondRead?.name, "bar.txt");
+      } else if (firstRead?.name === "bar.txt") {
+        assertEquals(secondRead?.name, "foo.txt");
       } else {
         fail("File not found during read");
       }
@@ -173,14 +176,14 @@ test({
     try {
       const fileInfo: Deno.File = Deno.openSync(testDir);
       const dir: Dir = new Dir(fileInfo.rid, testDir);
-      const firstRead: Dirent = dir.readSync();
-      const secondRead: Dirent = dir.readSync();
-      const thirdRead: Dirent = dir.readSync();
+      const firstRead: Dirent | null = dir.readSync();
+      const secondRead: Dirent | null = dir.readSync();
+      const thirdRead: Dirent | null = dir.readSync();
 
-      if (firstRead.name === "foo.txt") {
-        assertEquals(secondRead.name, "bar.txt");
-      } else if (firstRead.name === "bar.txt") {
-        assertEquals(secondRead.name, "foo.txt");
+      if (firstRead?.name === "foo.txt") {
+        assertEquals(secondRead?.name, "bar.txt");
+      } else if (firstRead?.name === "bar.txt") {
+        assertEquals(secondRead?.name, "foo.txt");
       } else {
         fail("File not found during read");
       }
