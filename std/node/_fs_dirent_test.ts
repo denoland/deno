@@ -16,7 +16,7 @@ class FileInfoMock implements Deno.FileInfo {
   gid = -1;
   rdev = -1;
   blksize = -1;
-  blocks = -1;
+  blocks: number|null = null;
 
   isFileMock = false;
   isDirectoryMock = false;
@@ -47,7 +47,7 @@ test({
   name: "Character devices are correctly identified",
   fn() {
     const fileInfo: FileInfoMock = new FileInfoMock();
-    fileInfo.blocks = -1;
+    fileInfo.blocks = null;
     assert(new Dirent(fileInfo).isCharacterDevice());
     assert(!new Dirent(fileInfo).isBlockDevice());
   }
