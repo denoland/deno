@@ -202,7 +202,7 @@ test({
     try {
       const fileInfo: Deno.File = Deno.openSync(testDir);
       const dir: Dir = new Dir(fileInfo.rid, testDir);
-      const results: (string|null)[] = [];
+      const results: Array<string | null> = [];
 
       for await (const file of dir.entries()) {
         results.push(file.name);

@@ -16,7 +16,7 @@ class FileInfoMock implements Deno.FileInfo {
   gid = -1;
   rdev = -1;
   blksize = -1;
-  blocks: number|null = null;
+  blocks: number | null = null;
 
   isFileMock = false;
   isDirectoryMock = false;
