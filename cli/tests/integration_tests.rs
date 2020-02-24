@@ -443,7 +443,7 @@ fn repl_test_missing_deno_dir() {
     Some(vec![("DENO_DIR".to_owned(), DENO_DIR.to_owned())]),
   );
   assert!(read_dir(DENO_DIR).is_ok());
-  remove_dir_all(DENO_DIR).is_ok();
+  remove_dir_all(DENO_DIR).unwrap();
   assert_eq!(out, "1\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
