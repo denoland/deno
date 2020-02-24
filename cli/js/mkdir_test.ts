@@ -25,7 +25,7 @@ testPerm({ write: false }, function mkdirSyncPerm(): void {
   } catch (e) {
     err = e;
   }
-  assert(err instanceof Deno.Err.PermissionDenied);
+  assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -45,7 +45,7 @@ testPerm({ write: true }, function mkdirErrIfExists(): void {
   } catch (e) {
     err = e;
   }
-  assert(err instanceof Deno.Err.AlreadyExists);
+  assert(err instanceof Deno.errors.AlreadyExists);
 });
 
 testPerm({ read: true, write: true }, function mkdirSyncRecursive(): void {

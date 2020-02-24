@@ -163,7 +163,7 @@ async function serveDir(
 }
 
 async function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
-  if (e instanceof Deno.Err.NotFound) {
+  if (e instanceof Deno.errors.NotFound) {
     return {
       status: 404,
       body: encoder.encode("Not found")
