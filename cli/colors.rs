@@ -1,20 +1,22 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use ansi_term::Color::Black;
+use ansi_term::Color::Fixed;
+use ansi_term::Color::Red;
+use ansi_term::Color::White;
+use ansi_term::Style;
 use regex::Regex;
 use std::env;
 use std::fmt;
-use std::io::Write;
-use termcolor::Color::{Ansi256, Black, Red, White};
-use termcolor::{Ansi, ColorSpec, WriteColor};
 
 lazy_static! {
-        // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
-        // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.
-        static ref STRIP_ANSI_RE: Regex = Regex::new(
-                r"[\x1b\x9b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]"
-        ).unwrap();
-        static ref NO_COLOR: bool = {
-                env::var_os("NO_COLOR").is_some()
-        };
+  // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
+  // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.
+  static ref STRIP_ANSI_RE: Regex = Regex::new(
+    r"[\x1b\x9b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]"
+  ).unwrap();
+  static ref NO_COLOR: bool = {
+    env::var_os("NO_COLOR").is_some()
+  };
 }
 
 /// Helper function to strip ansi codes.
@@ -26,60 +28,68 @@ pub fn use_color() -> bool {
   !(*NO_COLOR)
 }
 
-fn style(s: &str, colorspec: ColorSpec) -> impl fmt::Display {
-  let mut v = Vec::new();
-  let mut ansi_writer = Ansi::new(&mut v);
-  if use_color() {
-    ansi_writer.set_color(&colorspec).unwrap();
-  }
-  ansi_writer.write_all(s.as_bytes()).unwrap();
-  String::from_utf8_lossy(&v).into_owned()
-}
-
 pub fn red_bold(s: String) -> impl fmt::Display {
-  let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Red)).set_bold(true);
-  style(&s, style_spec)
+  let mut style = Style::new();
+  if use_color() {
+    style = style.bold().fg(Red);
+  }
+  style.paint(s)
 }
 
 pub fn italic_bold(s: String) -> impl fmt::Display {
-  let mut style_spec = ColorSpec::new();
-  style_spec.set_bold(true).set_italic(true);
-  style(&s, style_spec)
+  let mut style = Style::new();
+  if use_color() {
+    style = style.italic().bold();
+  }
+  style.paint(s)
 }
 
 pub fn black_on_white(s: String) -> impl fmt::Display {
-  let mut style_spec = ColorSpec::new();
-  style_spec.set_bg(Some(White)).set_fg(Some(Black));
-  style(&s, style_spec)
+  let mut style = Style::new();
+  if use_color() {
+    style = style.on(White).fg(Black);
+  }
+  style.paint(s)
 }
 
 pub fn yellow(s: String) -> impl fmt::Display {
-  let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Ansi256(11)));
-  style(&s, style_spec)
+  let mut style = Style::new();
+  if use_color() {
+    // matches TypeScript's ForegroundColorEscapeSequences.Yellow
+    style = style.fg(Fixed(11));
+  }
+  style.paint(s)
 }
 
 pub fn cyan(s: String) -> impl fmt::Display {
-  let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Ansi256(14)));
-  style(&s, style_spec)
+  let mut style = Style::new();
+  if use_color() {
+    // matches TypeScript's ForegroundColorEscapeSequences.Cyan
+    style = style.fg(Fixed(14));
+  }
+  style.paint(s)
 }
 
 pub fn red(s: String) -> impl fmt::Display {
-  let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Red));
-  style(&s, style_spec)
+  let mut style = Style::new();
+  if use_color() {
+    style = style.fg(Red);
+  }
+  style.paint(s)
 }
 
 pub fn green(s: String) -> impl fmt::Display {
-  let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Ansi256(10)));
-  style(&s, style_spec)
+  let mut style = Style::new();
+  if use_color() {
+    style = style.fg(Fixed(10)).bold();
+  }
+  style.paint(s)
 }
 
 pub fn bold(s: String) -> impl fmt::Display {
-  let mut style_spec = ColorSpec::new();
-  style_spec.set_bold(true);
-  style(&s, style_spec)
+  let mut style = Style::new();
+  if use_color() {
+    style = style.bold();
+  }
+  style.paint(s)
 }

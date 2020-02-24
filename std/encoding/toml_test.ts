@@ -260,6 +260,7 @@ Deno.test({
       package: { name: "deno", version: "0.3.4", edition: "2018" },
       dependencies: {
         deno_core: { path: "./core" },
+        ansi_term: "0.11.0",
         atty: "0.2.11",
         dirs: "1.0.5",
         flatbuffers: "0.5.0",
