@@ -46,6 +46,9 @@ impl ResourceTable {
   // resource id allocation are randomized for security.
   fn next_rid(&mut self) -> ResourceId {
     let mut rng = rand::thread_rng();
+    // rid's are cast into i32 then interpreted as unsigned number on typescript side.
+    // then when sending rid's back to Rust the cast back to i32 fails as it overflows.
+    // here we make the generated rid a valid positive i32 to prevent overflow
     let mut next_rid = rng.gen::<u32>() & 0x7FFF_FFFF;
     while self.map.contains_key(&next_rid) {
       next_rid = rng.gen::<u32>() & 0x7FFF_FFFF;
@@ -60,6 +63,9 @@ impl ResourceTable {
     rid
   }
 
+  /// Placement add is used to add stdin/stdout/stderr
+  /// indeed, on typescript side we expect them to be
+  /// allocated with rid number 0,1 and 2 respectively
   pub fn placement_add(
     &mut self,
     rid: ResourceId,
