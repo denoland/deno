@@ -1,5 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-export function pluginFilename(filenameBase: string, os?: Deno.OperatingSystem): string {
+export function pluginFilename(
+  filenameBase: string,
+  os?: Deno.OperatingSystem
+): string {
   os = os || Deno.build.os;
 
   let prefix = "";
