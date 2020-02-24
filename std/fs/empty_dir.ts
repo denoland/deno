@@ -20,7 +20,7 @@ export async function emptyDir(dir: string): Promise<void> {
       }
     }
   } catch (err) {
-    if (!(err instanceof Deno.Err.NotFound)) {
+    if (!(err instanceof Deno.errors.NotFound)) {
       throw err;
     }
 
@@ -49,7 +49,7 @@ export function emptyDirSync(dir: string): void {
       }
     }
   } catch (err) {
-    if (!(err instanceof Deno.Err.NotFound)) {
+    if (!(err instanceof Deno.errors.NotFound)) {
       throw err;
     }
     // if not exist. then create it

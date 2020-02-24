@@ -1,6 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 //! This module encodes TypeScript errors (diagnostics) into Rust structs and
 //! contains code for printing them to the console.
+
+// TODO(ry) This module does a lot of JSON parsing manually. It should use
+// serde_json.
+
 use crate::colors;
 use crate::fmt_errors::format_maybe_source_line;
 use crate::fmt_errors::format_maybe_source_name;
@@ -29,7 +33,7 @@ impl Diagnostic {
       let items_values = items_v.as_array().unwrap();
 
       for item_v in items_values {
-        items.push(DiagnosticItem::from_json_value(item_v));
+        items.push(DiagnosticItem::from_json_value(item_v)?);
       }
     }
 
@@ -114,14 +118,13 @@ pub struct DiagnosticItem {
 }
 
 impl DiagnosticItem {
-  pub fn from_json_value(v: &serde_json::Value) -> Self {
+  pub fn from_json_value(v: &serde_json::Value) -> Option<Self> {
     let obj = v.as_object().unwrap();
 
     // required attributes
     let message = obj
       .get("message")
-      .and_then(|v| v.as_str().map(String::from))
-      .unwrap();
+      .and_then(|v| v.as_str().map(String::from))?;
     let category = DiagnosticCategory::from(
       obj.get("category").and_then(Value::as_i64).unwrap(),
     );
@@ -154,7 +157,7 @@ impl DiagnosticItem {
 
         for related_info_v in related_info_values {
           related_information
-            .push(DiagnosticItem::from_json_value(related_info_v));
+            .push(DiagnosticItem::from_json_value(related_info_v)?);
         }
 
         Some(related_information)
@@ -162,7 +165,7 @@ impl DiagnosticItem {
       _ => None,
     };
 
-    Self {
+    Some(Self {
       message,
       message_chain,
       related_information,
@@ -175,7 +178,7 @@ impl DiagnosticItem {
       category,
       start_column,
       end_column,
-    }
+    })
   }
 }
 

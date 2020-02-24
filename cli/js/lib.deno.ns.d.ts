@@ -1222,7 +1222,7 @@ declare namespace Deno {
   export function applySourceMap(location: Location): Location;
 
   /* eslint-disable @typescript-eslint/no-unused-vars */
-  namespace Err {
+  namespace errors {
     class NotFound extends Error {
       constructor(msg: string);
     }
@@ -1905,6 +1905,13 @@ declare namespace Deno {
     /** An array of diagnostic items. */
     items: DiagnosticItem[];
   }
+
+  /** UNSTABLE: new API, yet to be vetted.
+   *
+   * Format an array of diagnostic items and return them as a single string.
+   * @param items An array of diagnostic items to format
+   */
+  export function formatDiagnostics(items: DiagnosticItem[]): string;
 
   /** UNSTABLE: new API, yet to be vetted.
    *

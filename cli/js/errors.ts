@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// Warning! The values in this enum are duplicated in cli/msg.rs
+// Warning! The values in this enum are duplicated in cli/op_error.rs
 // Update carefully!
 export enum ErrorKind {
   NotFound = 1,
@@ -179,7 +179,7 @@ class Http extends Error {
   }
 }
 
-export const Err = {
+export const errors = {
   NotFound: NotFound,
   PermissionDenied: PermissionDenied,
   ConnectionRefused: ConnectionRefused,
