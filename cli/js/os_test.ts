@@ -315,3 +315,19 @@ testPerm({ env: false }, function hostnamePerm(): void {
   }
   assert(caughtError);
 });
+
+testPerm({ env: true }, function releaseDir(): void {
+  assertNotEquals(Deno.osRelease(), "");
+});
+
+testPerm({ env: false }, function releasePerm(): void {
+  let caughtError = false;
+  try {
+    Deno.osRelease();
+  } catch (err) {
+    caughtError = true;
+    assert(err instanceof Deno.Err.PermissionDenied);
+    assertEquals(err.name, "PermissionDenied");
+  }
+  assert(caughtError);
+});

@@ -36,12 +36,17 @@ listenAndServe({ port: 8080 }, async req => {
     if (u.protocol.startsWith("http")) {
       // server launched by deno run http(s)://.../server.ts,
       fetch(u.href).then(resp => {
-        resp.headers.set("content-type", "text/html");
-        return req.respond(resp);
+        return req.respond({
+          status: resp.status,
+          headers: new Headers({
+            "content-type": "text/html"
+          }),
+          body: resp.body
+        });
       });
     } else {
       // server launched by deno run ./server.ts
-      const file = await Deno.open("./index.html");
+      const file = await Deno.open(u.pathname);
       req.respond({
         status: 200,
         headers: new Headers({
@@ -50,6 +55,14 @@ listenAndServe({ port: 8080 }, async req => {
         body: file
       });
     }
+  }
+  if (req.method === "GET" && req.url === "/favicon.ico") {
+    req.respond({
+      status: 302,
+      headers: new Headers({
+        location: "https://deno.land/favicon.ico"
+      })
+    });
   }
   if (req.method === "GET" && req.url === "/ws") {
     if (acceptable(req)) {

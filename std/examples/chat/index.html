@@ -1,5 +1,6 @@
-<html>
+<html lang="en">
   <head>
+    <meta charset="UTF-8" />
     <title>ws chat example</title>
   </head>
   <body>
@@ -10,7 +11,7 @@
       <button id="closeButton" disabled>close</button>
     </div>
     <div id="status"></div>
-    <ul id="timeline"></div>
+    <ul id="timeline"></ul>
     <script>
       let ws;
       function messageDom(msg) {
@@ -35,7 +36,7 @@
       }
       function connect() {
         if (ws) ws.close();
-        ws = new WebSocket("ws://0.0.0.0:8080/ws");
+        ws = new WebSocket(`ws://${location.host}/ws`);
         ws.addEventListener("open", () => {
           console.log("open", ws);
           applyState({connected: true});
