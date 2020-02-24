@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as dispatch from "./dispatch.ts";
 import { sendSync } from "./dispatch_json.ts";
-import { Err } from "./errors.ts";
+import { errors } from "./errors.ts";
 import * as util from "./util.ts";
 
 /** Check if running in terminal.
@@ -210,7 +210,7 @@ export function dir(kind: DirKind): string | null {
   try {
     return sendSync(dispatch.OP_GET_DIR, { kind });
   } catch (error) {
-    if (error instanceof Err.PermissionDenied) {
+    if (error instanceof errors.PermissionDenied) {
       throw error;
     }
     return null;

@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::diagnostics::Diagnostic;
 use crate::fmt_errors::JSError;
 use crate::op_error::OpError;
 use crate::ops::json_op;
@@ -17,6 +18,10 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "format_error",
     s.core_op(json_op(s.stateful_op(op_format_error))),
+  );
+  i.register_op(
+    "format_diagnostic",
+    s.core_op(json_op(s.stateful_op(op_format_diagnostic))),
   );
 }
 
@@ -67,4 +72,16 @@ fn op_apply_source_map(
     "line": orig_line as u32,
     "column": orig_column as u32,
   })))
+}
+
+fn op_format_diagnostic(
+  _state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  if let Some(diagnostic) = Diagnostic::from_json_value(&args) {
+    Ok(JsonOp::Sync(json!(diagnostic.to_string())))
+  } else {
+    Err(OpError::type_error("bad diagnostic".to_string()))
+  }
 }

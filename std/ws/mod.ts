@@ -457,7 +457,7 @@ const kSecChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-.~_";
 export function createSecKey(): string {
   let key = "";
   for (let i = 0; i < 16; i++) {
-    const j = Math.round(Math.random() * kSecChars.length);
+    const j = Math.floor(Math.random() * kSecChars.length);
     key += kSecChars[j];
   }
   return btoa(key);
