@@ -1,9 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test } from "../testing/mod.ts";
 import { assertEquals, assert } from "../testing/asserts.ts";
-import { pluginFilename } from "./plugin_filename.ts";
+import { pluginFilename } from "./filename.ts";
 
-test(function filename() {
+Deno.test(function filenameWithoutOs() {
   const filename = pluginFilename("someLib_Name");
   switch (Deno.build.os) {
     case "linux":
@@ -19,4 +18,11 @@ test(function filename() {
       assert(false);
       break;
   }
+});
+
+Deno.test(function filenameWithOs() {
+  const filename = "someLib_Name";
+  assertEquals(pluginFilename(filename, "linux"), "libsomeLib_Name.so");
+  assertEquals(pluginFilename(filename, "mac"), "libsomeLib_Name.dylib");
+  assertEquals(pluginFilename(filename, "win"), "someLib_Name.dll");
 });
