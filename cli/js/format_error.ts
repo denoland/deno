@@ -14,6 +14,5 @@ export function formatError(errString: string): string {
  * @param items An array of diagnostic items to format
  */
 export function formatDiagnostics(items: DiagnosticItem[]): string {
-  const res = sendSync(dispatch.OP_FORMAT_DIAGNOSTIC, { items });
-  return res.result;
+  return sendSync(dispatch.OP_FORMAT_DIAGNOSTIC, { items });
 }
