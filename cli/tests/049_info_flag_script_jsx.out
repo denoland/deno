@@ -1,4 +1,4 @@
-local: [WILDCARD]048_media_types_jsx.ts
+local: [WILDCARD]http[WILDCARD]127.0.0.1_PORT4545[WILDCARD]
 type: TypeScript
 compiled: [WILDCARD]048_media_types_jsx.ts.js
 map: [WILDCARD]048_media_types_jsx.ts.js.map

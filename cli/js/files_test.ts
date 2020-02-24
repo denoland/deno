@@ -79,7 +79,7 @@ testPerm({ write: false }, async function writePermFailure(): Promise<void> {
       err = e;
     }
     assert(!!err);
-    assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+    assert(err instanceof Deno.Err.PermissionDenied);
     assertEquals(err.name, "PermissionDenied");
   }
 });
@@ -136,8 +136,7 @@ testPerm({ read: false }, async function readPermFailure(): Promise<void> {
     await Deno.open("cli/tests/fixture.json", "r");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(e.name, "PermissionDenied");
+    assert(e instanceof Deno.Err.PermissionDenied);
   }
   assert(caughtError);
 });
@@ -157,6 +156,7 @@ testPerm({ write: true }, async function writeNullBufferFailure(): Promise<
   // writing null should throw an error
   let err;
   try {
+    // @ts-ignore
     await file.write(null);
   } catch (e) {
     err = e;
@@ -182,6 +182,7 @@ testPerm(
     // reading file into null buffer should throw an error
     let err;
     try {
+      // @ts-ignore
       await file.read(null);
     } catch (e) {
       err = e;
@@ -207,7 +208,7 @@ testPerm(
         err = e;
       }
       assert(!!err);
-      assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+      assert(err instanceof Deno.Err.PermissionDenied);
       assertEquals(err.name, "PermissionDenied");
     }
   }
@@ -378,8 +379,8 @@ testPerm({ read: true }, async function seekMode(): Promise<void> {
     err = e;
   }
   assert(!!err);
-  assertEquals(err.kind, Deno.ErrorKind.InvalidSeekMode);
-  assertEquals(err.name, "InvalidSeekMode");
+  assert(err instanceof TypeError);
+  assertStrContains(err.message, "Invalid seek mode");
 
   // We should still be able to read the file
   // since it is still open.

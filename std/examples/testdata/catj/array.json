@@ -1,0 +1,5 @@
+[
+  "string",
+  100,
+  { "key": "value", "array": ["foo", "bar"] }
+]

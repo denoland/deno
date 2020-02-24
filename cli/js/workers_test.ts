@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEquals } from "./test_util.ts";
+import { test, testPerm, assert, assertEquals } from "./test_util.ts";
 
 export interface ResolvableMethods<T> {
   resolve: (value?: T | PromiseLike<T>) => void;
@@ -77,6 +77,27 @@ test(async function workerThrowsWhenExecuting(): Promise<void> {
   throwingWorker.onerror = (e: any): void => {
     e.preventDefault();
     assertEquals(e.message, "Uncaught Error: Thrown error");
+    promise.resolve();
+  };
+
+  await promise;
+});
+
+testPerm({ net: true }, async function workerCanUseFetch(): Promise<void> {
+  const promise = createResolvable();
+
+  const fetchingWorker = new Worker("../tests/subdir/fetching_worker.js", {
+    type: "module"
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  fetchingWorker.onerror = (e: any): void => {
+    e.preventDefault();
+    promise.reject(e.message);
+  };
+
+  fetchingWorker.onmessage = (e): void => {
+    assert(e.data === "Done!");
     promise.resolve();
   };
 

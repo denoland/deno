@@ -14,13 +14,12 @@ fn op_fetch_asset(
 ) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp {
   move |control: &[u8], zero_copy_buf: Option<ZeroCopyBuf>| -> CoreOp {
     assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in this op.
-    let custom_assets = custom_assets.clone();
     let name = std::str::from_utf8(control).unwrap();
 
     let asset_code = if let Some(source_code) = deno_typescript::get_asset(name)
     {
       source_code.to_string()
-    } else if let Some(asset_path) = custom_assets.get(name) {
+    } else if let Some(asset_path) = custom_assets.clone().get(name) {
       let source_code_vec =
         std::fs::read(&asset_path).expect("Asset not found");
       let source_code = std::str::from_utf8(&source_code_vec).unwrap();

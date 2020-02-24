@@ -23,20 +23,23 @@ fn deno_dir_test() {
 
 #[test]
 fn fetch_test() {
+  use deno::http_cache::url_to_filename;
   pub use deno::test_util::*;
   use std::process::Command;
   use tempfile::TempDir;
+  use url::Url;
 
   let g = util::http_server();
 
   let deno_dir = TempDir::new().expect("tempdir fail");
-  let t = util::root_path().join("cli/tests/006_url_imports.ts");
+  let module_url =
+    Url::parse("http://localhost:4545/cli/tests/006_url_imports.ts").unwrap();
 
   let output = Command::new(deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
     .arg("fetch")
-    .arg(t)
+    .arg(module_url.to_string())
     .output()
     .expect("Failed to spawn script");
 
@@ -48,7 +51,8 @@ fn fetch_test() {
 
   let expected_path = deno_dir
     .path()
-    .join("deps/http/localhost_PORT4545/cli/tests/subdir/mod2.ts");
+    .join("deps")
+    .join(url_to_filename(&module_url));
   assert_eq!(expected_path.exists(), true);
 
   drop(g);
@@ -283,6 +287,42 @@ fn bundle_circular() {
     .unwrap()
     .trim()
     .ends_with("f1\nf2"));
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
+fn bundle_single_module() {
+  use tempfile::TempDir;
+
+  // First we have to generate a bundle of some module that has exports.
+  let single_module =
+    util::root_path().join("cli/tests/subdir/single_module.ts");
+  assert!(single_module.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("single_module.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(single_module)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--reload")
+    .arg(&bundle)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the the bundle program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello world!"));
   assert_eq!(output.stderr, b"");
 }
 
@@ -833,6 +873,16 @@ itest!(import_meta {
   output: "import_meta.ts.out",
 });
 
+itest!(lib_ref {
+  args: "run --reload lib_ref.ts",
+  output: "lib_ref.ts.out",
+});
+
+itest!(lib_runtime_api {
+  args: "run --reload lib_runtime_api.ts",
+  output: "lib_runtime_api.ts.out",
+});
+
 itest!(seed_random {
   args: "run --seed=100 seed_random.js",
   output: "seed_random.js.out",
@@ -954,16 +1004,25 @@ itest!(cafile_info {
   http_server: true,
 });
 
+itest!(fix_js_imports {
+  args: "run --reload fix_js_imports.ts",
+  output: "fix_js_imports.ts.out",
+});
+
 #[test]
 fn cafile_fetch() {
+  use deno::http_cache::url_to_filename;
   pub use deno::test_util::*;
   use std::process::Command;
   use tempfile::TempDir;
+  use url::Url;
 
   let g = util::http_server();
 
   let deno_dir = TempDir::new().expect("tempdir fail");
-  let t = util::root_path().join("cli/tests/cafile_url_imports.ts");
+  let module_url =
+    Url::parse("http://localhost:4545/cli/tests/cafile_url_imports.ts")
+      .unwrap();
   let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
   let output = Command::new(deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
@@ -971,7 +1030,7 @@ fn cafile_fetch() {
     .arg("fetch")
     .arg("--cert")
     .arg(cafile)
-    .arg(t)
+    .arg(module_url.to_string())
     .output()
     .expect("Failed to spawn script");
 
@@ -983,7 +1042,8 @@ fn cafile_fetch() {
 
   let expected_path = deno_dir
     .path()
-    .join("deps/https/localhost_PORT5545/cli/tests/subdir/mod2.ts");
+    .join("deps")
+    .join(url_to_filename(&module_url));
   assert_eq!(expected_path.exists(), true);
 
   drop(g);

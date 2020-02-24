@@ -1,3 +1,4 @@
+// @ts-nocheck
 const importObject = Object.create(null);
 //IMPORTS
 

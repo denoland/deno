@@ -1,10 +1,8 @@
 use super::dispatch_minimal::MinimalOp;
-use crate::deno_error;
-use crate::deno_error::bad_resource;
 use crate::http_util::HttpBody;
+use crate::op_error::OpError;
 use crate::ops::minimal_op;
 use crate::state::State;
-use deno_core::ErrBox;
 use deno_core::*;
 use futures::future::FutureExt;
 use futures::ready;
@@ -86,13 +84,13 @@ pub enum StreamResource {
 }
 
 /// `DenoAsyncRead` is the same as the `tokio_io::AsyncRead` trait
-/// but uses an `ErrBox` error instead of `std::io:Error`
+/// but uses an `OpError` error instead of `std::io:Error`
 pub trait DenoAsyncRead {
   fn poll_read(
     &mut self,
     cx: &mut Context,
     buf: &mut [u8],
-  ) -> Poll<Result<usize, ErrBox>>;
+  ) -> Poll<Result<usize, OpError>>;
 }
 
 impl DenoAsyncRead for StreamResource {
@@ -100,7 +98,7 @@ impl DenoAsyncRead for StreamResource {
     &mut self,
     cx: &mut Context,
     buf: &mut [u8],
-  ) -> Poll<Result<usize, ErrBox>> {
+  ) -> Poll<Result<usize, OpError>> {
     use StreamResource::*;
     let mut f: Pin<Box<dyn AsyncRead>> = match self {
       FsFile(f) => Box::pin(f),
@@ -111,7 +109,7 @@ impl DenoAsyncRead for StreamResource {
       ChildStdout(f) => Box::pin(f),
       ChildStderr(f) => Box::pin(f),
       HttpBody(f) => Box::pin(f),
-      _ => return Err(bad_resource()).into(),
+      _ => return Err(OpError::bad_resource()).into(),
     };
 
     let v = ready!(f.as_mut().poll_read(cx, buf))?;
@@ -158,7 +156,7 @@ impl<T> Future for Read<T>
 where
   T: AsMut<[u8]> + Unpin,
 {
-  type Output = Result<i32, ErrBox>;
+  type Output = Result<i32, OpError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -170,11 +168,15 @@ where
     let resource = state
       .resource_table
       .get_mut::<StreamResource>(inner.rid)
-      .ok_or_else(bad_resource)?;
+      .ok_or_else(OpError::bad_resource)?;
     let nread = ready!(resource.poll_read(cx, &mut inner.buf.as_mut()[..]))?;
     inner.io_state = IoState::Done;
     Poll::Ready(Ok(nread as i32))
   }
+}
+
+fn no_buffer_specified() -> OpError {
+  OpError::type_error("no buffer specified".to_string())
 }
 
 pub fn op_read(
@@ -184,10 +186,7 @@ pub fn op_read(
 ) -> Pin<Box<MinimalOp>> {
   debug!("read rid={}", rid);
   let zero_copy = match zero_copy {
-    None => {
-      return futures::future::err(deno_error::no_buffer_specified())
-        .boxed_local()
-    }
+    None => return futures::future::err(no_buffer_specified()).boxed_local(),
     Some(buf) => buf,
   };
 
@@ -196,17 +195,17 @@ pub fn op_read(
 }
 
 /// `DenoAsyncWrite` is the same as the `tokio_io::AsyncWrite` trait
-/// but uses an `ErrBox` error instead of `std::io:Error`
+/// but uses an `OpError` error instead of `std::io:Error`
 pub trait DenoAsyncWrite {
   fn poll_write(
     &mut self,
     cx: &mut Context,
     buf: &[u8],
-  ) -> Poll<Result<usize, ErrBox>>;
+  ) -> Poll<Result<usize, OpError>>;
 
-  fn poll_close(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>>;
+  fn poll_close(&mut self, cx: &mut Context) -> Poll<Result<(), OpError>>;
 
-  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>>;
+  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), OpError>>;
 }
 
 impl DenoAsyncWrite for StreamResource {
@@ -214,7 +213,7 @@ impl DenoAsyncWrite for StreamResource {
     &mut self,
     cx: &mut Context,
     buf: &[u8],
-  ) -> Poll<Result<usize, ErrBox>> {
+  ) -> Poll<Result<usize, OpError>> {
     use StreamResource::*;
     let mut f: Pin<Box<dyn AsyncWrite>> = match self {
       FsFile(f) => Box::pin(f),
@@ -224,14 +223,14 @@ impl DenoAsyncWrite for StreamResource {
       ClientTlsStream(f) => Box::pin(f),
       ServerTlsStream(f) => Box::pin(f),
       ChildStdin(f) => Box::pin(f),
-      _ => return Err(bad_resource()).into(),
+      _ => return Err(OpError::bad_resource()).into(),
     };
 
     let v = ready!(f.as_mut().poll_write(cx, buf))?;
     Ok(v).into()
   }
 
-  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
+  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), OpError>> {
     use StreamResource::*;
     let mut f: Pin<Box<dyn AsyncWrite>> = match self {
       FsFile(f) => Box::pin(f),
@@ -241,14 +240,14 @@ impl DenoAsyncWrite for StreamResource {
       ClientTlsStream(f) => Box::pin(f),
       ServerTlsStream(f) => Box::pin(f),
       ChildStdin(f) => Box::pin(f),
-      _ => return Err(bad_resource()).into(),
+      _ => return Err(OpError::bad_resource()).into(),
     };
 
     ready!(f.as_mut().poll_flush(cx))?;
     Ok(()).into()
   }
 
-  fn poll_close(&mut self, _cx: &mut Context) -> Poll<Result<(), ErrBox>> {
+  fn poll_close(&mut self, _cx: &mut Context) -> Poll<Result<(), OpError>> {
     unimplemented!()
   }
 }
@@ -281,12 +280,12 @@ where
 }
 
 /// This is almost the same implementation as in tokio, difference is
-/// that error type is `ErrBox` instead of `std::io::Error`.
+/// that error type is `OpError` instead of `std::io::Error`.
 impl<T> Future for Write<T>
 where
   T: AsRef<[u8]> + Unpin,
 {
-  type Output = Result<i32, ErrBox>;
+  type Output = Result<i32, OpError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -299,7 +298,7 @@ where
       let resource = state
         .resource_table
         .get_mut::<StreamResource>(inner.rid)
-        .ok_or_else(bad_resource)?;
+        .ok_or_else(OpError::bad_resource)?;
 
       let nwritten = ready!(resource.poll_write(cx, inner.buf.as_ref()))?;
       inner.io_state = IoState::Flush;
@@ -315,7 +314,7 @@ where
       let resource = state
         .resource_table
         .get_mut::<StreamResource>(inner.rid)
-        .ok_or_else(bad_resource)?;
+        .ok_or_else(OpError::bad_resource)?;
       ready!(resource.poll_flush(cx))?;
       inner.io_state = IoState::Done;
     }
@@ -331,10 +330,7 @@ pub fn op_write(
 ) -> Pin<Box<MinimalOp>> {
   debug!("write rid={}", rid);
   let zero_copy = match zero_copy {
-    None => {
-      return futures::future::err(deno_error::no_buffer_specified())
-        .boxed_local()
-    }
+    None => return futures::future::err(no_buffer_specified()).boxed_local(),
     Some(buf) => buf,
   };
 

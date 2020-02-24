@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::compiler_worker::CompilerWorker;
+use crate::colors;
 use crate::compilers::CompilationResultFuture;
 use crate::compilers::CompiledModule;
 use crate::diagnostics::Diagnostic;
@@ -8,12 +9,12 @@ use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::msg;
-use crate::ops::worker_host::run_worker_loop;
+use crate::op_error::OpError;
 use crate::ops::JsonResult;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::*;
-use crate::tokio_util::create_basic_runtime;
+use crate::tokio_util;
 use crate::version;
 use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
@@ -372,18 +373,18 @@ impl TsCompiler {
 
     let ts_compiler = self.clone();
 
-    let compiling_job = global_state
-      .progress
-      .add("Compile", &module_url.to_string());
+    eprintln!(
+      "{} {}",
+      colors::green("Compile".to_string()),
+      module_url.to_string()
+    );
     let msg = execute_in_thread(global_state.clone(), req_msg).await?;
 
     let json_str = std::str::from_utf8(&msg).unwrap();
     if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
       return Err(ErrBox::from(diagnostics));
     }
-    let compiled_module = ts_compiler.get_compiled_module(&source_file_.url)?;
-    drop(compiling_job);
-    Ok(compiled_module)
+    ts_compiler.get_compiled_module(&source_file_.url)
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
@@ -451,7 +452,7 @@ impl TsCompiler {
   ///
   /// Along compiled file a special metadata file is saved as well containing
   /// hash that can be validated to avoid unnecessary recompilation.
-  fn cache_compiled_file(
+  async fn cache_compiled_file(
     &self,
     module_specifier: &ModuleSpecifier,
     contents: &str,
@@ -459,35 +460,31 @@ impl TsCompiler {
     let js_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js");
-    self
+    self.disk_cache.set(&js_key, contents.as_bytes())?;
+    self.mark_compiled(module_specifier.as_url());
+    let source_file = self
+      .file_fetcher
+      .fetch_cached_source_file(&module_specifier)
+      .await
+      .expect("Source file not found");
+
+    let version_hash = source_code_version_hash(
+      &source_file.source_code,
+      version::DENO,
+      &self.config.hash,
+    );
+
+    let compiled_file_metadata = CompiledFileMetadata {
+      source_path: source_file.filename,
+      version_hash,
+    };
+    let meta_key = self
       .disk_cache
-      .set(&js_key, contents.as_bytes())
-      .and_then(|_| {
-        self.mark_compiled(module_specifier.as_url());
-
-        let source_file = self
-          .file_fetcher
-          .fetch_cached_source_file(&module_specifier)
-          .expect("Source file not found");
-
-        let version_hash = source_code_version_hash(
-          &source_file.source_code,
-          version::DENO,
-          &self.config.hash,
-        );
-
-        let compiled_file_metadata = CompiledFileMetadata {
-          source_path: source_file.filename,
-          version_hash,
-        };
-        let meta_key = self
-          .disk_cache
-          .get_cache_filename_with_extension(module_specifier.as_url(), "meta");
-        self.disk_cache.set(
-          &meta_key,
-          compiled_file_metadata.to_json_string()?.as_bytes(),
-        )
-      })
+      .get_cache_filename_with_extension(module_specifier.as_url(), "meta");
+    self.disk_cache.set(
+      &meta_key,
+      compiled_file_metadata.to_json_string()?.as_bytes(),
+    )
   }
 
   /// Return associated source map file for given TS module.
@@ -528,7 +525,7 @@ impl TsCompiler {
   }
 
   /// This method is called by TS compiler via an "op".
-  pub fn cache_compiler_output(
+  pub async fn cache_compiler_output(
     &self,
     module_specifier: &ModuleSpecifier,
     extension: &str,
@@ -536,7 +533,7 @@ impl TsCompiler {
   ) -> std::io::Result<()> {
     match extension {
       ".map" => self.cache_source_map(module_specifier, contents),
-      ".js" => self.cache_compiled_file(module_specifier, contents),
+      ".js" => self.cache_compiled_file(module_specifier, contents).await,
       _ => unreachable!(),
     }
   }
@@ -576,9 +573,10 @@ impl TsCompiler {
     script_name: &str,
   ) -> Option<SourceFile> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
-      return self
+      let fut = self
         .file_fetcher
         .fetch_cached_source_file(&module_specifier);
+      return futures::executor::block_on(fut);
     }
 
     None
@@ -610,11 +608,10 @@ async fn execute_in_thread(
   let builder =
     std::thread::Builder::new().name("deno-ts-compiler".to_string());
   let join_handle = builder.spawn(move || {
-    let mut worker = TsCompiler::setup_worker(global_state.clone());
+    let worker = TsCompiler::setup_worker(global_state.clone());
     handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
     drop(handle_sender);
-    let mut rt = create_basic_runtime();
-    run_worker_loop(&mut rt, &mut worker).expect("Panic in event loop");
+    tokio_util::run_basic(worker).expect("Panic in event loop");
   })?;
   let mut handle = handle_receiver.recv().unwrap()?;
   handle.post_message(req).await?;
@@ -637,7 +634,9 @@ async fn execute_in_thread_json(
   req_msg: Buf,
   global_state: GlobalState,
 ) -> JsonResult {
-  let msg = execute_in_thread(global_state, req_msg).await?;
+  let msg = execute_in_thread(global_state, req_msg)
+    .await
+    .map_err(|e| OpError::other(e.to_string()))?;
   let json_str = std::str::from_utf8(&msg).unwrap();
   Ok(json!(json_str))
 }
@@ -715,7 +714,7 @@ mod tests {
       .unwrap()
       .code
       .as_bytes()
-      .starts_with(b"console.log(\"Hello World\");"));
+      .starts_with(b"\"use strict\";\nconsole.log(\"Hello World\");"));
   }
 
   #[tokio::test]

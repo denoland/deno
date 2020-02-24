@@ -4,8 +4,11 @@ import { test, assertEquals } from "./test_util.ts";
 test(function addEventListenerTest(): void {
   const document = new EventTarget();
 
+  // @ts-ignore tests ignoring the type system for resilience
   assertEquals(document.addEventListener("x", null, false), undefined);
+  // @ts-ignore
   assertEquals(document.addEventListener("x", null, true), undefined);
+  // @ts-ignore
   assertEquals(document.addEventListener("x", null), undefined);
 });
 
@@ -14,7 +17,7 @@ test(function constructedEventTargetCanBeUsedAsExpected(): void {
   const event = new Event("foo", { bubbles: true, cancelable: false });
   let callCount = 0;
 
-  const listener = (e): void => {
+  const listener = (e: Event): void => {
     assertEquals(e, event);
     ++callCount;
   };
@@ -34,11 +37,19 @@ test(function constructedEventTargetCanBeUsedAsExpected(): void {
 
 test(function anEventTargetCanBeSubclassed(): void {
   class NicerEventTarget extends EventTarget {
-    on(type, callback?, options?): void {
+    on(
+      type: string,
+      callback: (e: Event) => void | null,
+      options?: __domTypes.AddEventListenerOptions
+    ): void {
       this.addEventListener(type, callback, options);
     }
 
-    off(type, callback?, options?): void {
+    off(
+      type: string,
+      callback: (e: Event) => void | null,
+      options?: __domTypes.EventListenerOptions
+    ): void {
       this.removeEventListener(type, callback, options);
     }
   }
@@ -60,8 +71,11 @@ test(function anEventTargetCanBeSubclassed(): void {
 
 test(function removingNullEventListenerShouldSucceed(): void {
   const document = new EventTarget();
+  // @ts-ignore
   assertEquals(document.removeEventListener("x", null, false), undefined);
+  // @ts-ignore
   assertEquals(document.removeEventListener("x", null, true), undefined);
+  // @ts-ignore
   assertEquals(document.removeEventListener("x", null), undefined);
 });
 
@@ -70,7 +84,7 @@ test(function constructedEventTargetUseObjectPrototype(): void {
   const event = new Event("toString", { bubbles: true, cancelable: false });
   let callCount = 0;
 
-  const listener = (e): void => {
+  const listener = (e: Event): void => {
     assertEquals(e, event);
     ++callCount;
   };

@@ -9,7 +9,7 @@ import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { blue, green, red, yellow } from "../fmt/colors.ts";
 
-const endpoint = Deno.args[1] || "ws://127.0.0.1:8080";
+const endpoint = Deno.args[0] || "ws://127.0.0.1:8080";
 /** simple websocket cli */
 const sock = await connectWebSocket(endpoint);
 console.log(green("ws connected! (type 'close' to quit)"));

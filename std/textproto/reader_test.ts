@@ -9,15 +9,10 @@ import { stringsReader } from "../io/util.ts";
 import {
   assert,
   assertEquals,
-  assertNotEquals,
-  assertThrows
+  assertThrows,
+  assertNotEOF
 } from "../testing/asserts.ts";
 const { test } = Deno;
-
-function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
-  assertNotEquals(val, Deno.EOF);
-  return val as T;
-}
 
 function reader(s: string): TextProtoReader {
   return new TextProtoReader(new BufReader(stringsReader(s)));

@@ -1,11 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::dispatch_json::Deserialize;
+use super::dispatch_json::JsonOp;
+use super::dispatch_json::Value;
 use crate::futures::future::try_join_all;
 use crate::msg;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::Loader;
 use deno_core::*;
+use futures::future::FutureExt;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("cache", s.core_op(json_op(s.stateful_op(op_cache))));
@@ -16,6 +20,10 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "fetch_source_files",
     s.core_op(json_op(s.stateful_op(op_fetch_source_files))),
+  );
+  i.register_op(
+    "fetch_asset",
+    s.core_op(json_op(s.stateful_op(op_fetch_asset))),
   );
 }
 
@@ -31,22 +39,21 @@ fn op_cache(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: CacheArgs = serde_json::from_value(args)?;
 
   let module_specifier = ModuleSpecifier::resolve_url(&args.module_id)
     .expect("Should be valid module specifier");
 
-  state
-    .borrow()
-    .global_state
-    .ts_compiler
-    .cache_compiler_output(
-      &module_specifier,
-      &args.extension,
-      &args.contents,
-    )?;
+  let state_ = &state.borrow().global_state;
+  let ts_compiler = state_.ts_compiler.clone();
+  let fut = ts_compiler.cache_compiler_output(
+    &module_specifier,
+    &args.extension,
+    &args.contents,
+  );
 
+  futures::executor::block_on(fut)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -60,7 +67,7 @@ fn op_resolve_modules(
   state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: SpecifiersReferrerArgs = serde_json::from_value(args)?;
   let (referrer, is_main) = if let Some(referrer) = args.referrer {
     (referrer, false)
@@ -71,11 +78,10 @@ fn op_resolve_modules(
   let mut specifiers = vec![];
 
   for specifier in &args.specifiers {
-    let resolved_specifier = state.resolve(specifier, &referrer, is_main);
-    match resolved_specifier {
-      Ok(ms) => specifiers.push(ms.as_str().to_owned()),
-      Err(err) => return Err(err),
-    }
+    let specifier = state
+      .resolve(specifier, &referrer, is_main)
+      .map_err(OpError::from)?;
+    specifiers.push(specifier.as_str().to_owned());
   }
 
   Ok(JsonOp::Sync(json!(specifiers)))
@@ -85,7 +91,7 @@ fn op_fetch_source_files(
   state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: SpecifiersReferrerArgs = serde_json::from_value(args)?;
 
   let ref_specifier = if let Some(referrer) = args.referrer {
@@ -96,21 +102,27 @@ fn op_fetch_source_files(
     None
   };
 
-  let mut futures = vec![];
   let global_state = state.borrow().global_state.clone();
+  let file_fetcher = global_state.file_fetcher.clone();
+  let specifiers = args.specifiers.clone();
+  let future = async move {
+    let file_futures: Vec<_> = specifiers
+      .into_iter()
+      .map(|specifier| {
+        let file_fetcher_ = file_fetcher.clone();
+        let ref_specifier_ = ref_specifier.clone();
+        async move {
+          let resolved_specifier = ModuleSpecifier::resolve_url(&specifier)
+            .expect("Invalid specifier");
+          file_fetcher_
+            .fetch_source_file_async(&resolved_specifier, ref_specifier_)
+            .await
+        }
+        .boxed_local()
+      })
+      .collect();
 
-  for specifier in &args.specifiers {
-    let resolved_specifier =
-      ModuleSpecifier::resolve_url(&specifier).expect("Invalid specifier");
-    let fut = global_state
-      .file_fetcher
-      .fetch_source_file_async(&resolved_specifier, ref_specifier.clone());
-    futures.push(fut);
-  }
-
-  let future = Box::pin(async move {
-    let files = try_join_all(futures).await?;
-
+    let files = try_join_all(file_futures).await.map_err(OpError::from)?;
     // We want to get an array of futures that resolves to
     let v = files.into_iter().map(|f| {
       async {
@@ -122,7 +134,8 @@ fn op_fetch_source_files(
             global_state
               .file_fetcher
               .fetch_source_file_async(&types_specifier, ref_specifier.clone())
-              .await?
+              .await
+              .map_err(OpError::from)?
           }
           _ => f,
         };
@@ -134,12 +147,13 @@ fn op_fetch_source_files(
             global_state
               .wasm_compiler
               .compile_async(global_state.clone(), &file)
-              .await?
+              .await
+              .map_err(|e| OpError::other(e.to_string()))?
               .code
           }
           _ => String::from_utf8(file.source_code).unwrap(),
         };
-        Ok::<_, ErrBox>(json!({
+        Ok::<_, OpError>(json!({
           "url": file.url.to_string(),
           "filename": file.filename.to_str().unwrap(),
           "mediaType": file.media_type as i32,
@@ -150,7 +164,31 @@ fn op_fetch_source_files(
 
     let v = try_join_all(v).await?;
     Ok(v.into())
-  });
+  }
+  .boxed_local();
 
   Ok(JsonOp::Async(future))
+}
+
+#[derive(Deserialize, Debug)]
+struct FetchRemoteAssetArgs {
+  name: String,
+}
+
+fn op_fetch_asset(
+  _state: &State,
+  args: Value,
+  _data: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  let args: FetchRemoteAssetArgs = serde_json::from_value(args)?;
+  debug!("args.name: {}", args.name);
+
+  let source_code =
+    if let Some(source_code) = deno_typescript::get_asset(&args.name) {
+      source_code.to_string()
+    } else {
+      panic!("Asset not found: \"{}\"", args.name)
+    };
+
+  Ok(JsonOp::Sync(json!({ "sourceCode": source_code })))
 }

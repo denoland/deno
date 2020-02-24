@@ -1,9 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { testPerm, assert } from "./test_util.ts";
 
 // Allow 10 second difference.
 // Note this might not be enough for FAT (but we are not testing on such fs).
-function assertFuzzyTimestampEquals(t1: number, t2: number): void {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function assertFuzzyTimestampEquals(t1: any, t2: number): void {
+  assert(typeof t1 === "number");
   assert(Math.abs(t1 - t2) < 10);
 }
 
@@ -76,8 +78,7 @@ testPerm({ read: true, write: true }, function utimeSyncNotFound(): void {
     Deno.utimeSync("/baddir", atime, mtime);
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.NotFound);
-    assertEquals(e.name, "NotFound");
+    assert(e instanceof Deno.Err.NotFound);
   }
   assert(caughtError);
 });
@@ -91,8 +92,7 @@ testPerm({ read: true, write: false }, function utimeSyncPerm(): void {
     Deno.utimeSync("/some_dir", atime, mtime);
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(e.name, "PermissionDenied");
+    assert(e instanceof Deno.Err.PermissionDenied);
   }
   assert(caughtError);
 });
@@ -157,8 +157,7 @@ testPerm({ read: true, write: true }, async function utimeNotFound(): Promise<
     await Deno.utime("/baddir", atime, mtime);
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.NotFound);
-    assertEquals(e.name, "NotFound");
+    assert(e instanceof Deno.Err.NotFound);
   }
   assert(caughtError);
 });
@@ -174,8 +173,7 @@ testPerm({ read: true, write: false }, async function utimeSyncPerm(): Promise<
     await Deno.utime("/some_dir", atime, mtime);
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(e.name, "PermissionDenied");
+    assert(e instanceof Deno.Err.PermissionDenied);
   }
   assert(caughtError);
 });

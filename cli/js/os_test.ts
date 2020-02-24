@@ -31,7 +31,7 @@ test(function envPermissionDenied1(): void {
     err = e;
   }
   assertNotEquals(err, undefined);
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assert(err instanceof Deno.Err.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -43,7 +43,7 @@ test(function envPermissionDenied2(): void {
     err = e;
   }
   assertNotEquals(err, undefined);
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assert(err instanceof Deno.Err.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -56,7 +56,10 @@ if (Deno.build.os === "win") {
     // specified in `inputEnv`. The subprocess reads the environment variables
     // which are in the keys of `expectedEnv` and writes them to stdout as JSON.
     // It is then verified that these match with the values of `expectedEnv`.
-    const checkChildEnv = async (inputEnv, expectedEnv): Promise<void> => {
+    const checkChildEnv = async (
+      inputEnv: Record<string, string>,
+      expectedEnv: Record<string, string>
+    ): Promise<void> => {
       const src = `
         console.log(
           ${JSON.stringify(Object.keys(expectedEnv))}.map(k => Deno.env(k))
@@ -249,6 +252,7 @@ testPerm({ env: true }, function getDir(): void {
       if (Deno.build.os !== r.os) continue;
       if (r.shouldHaveValue) {
         const d = Deno.dir(s.kind);
+        assert(d);
         assert(d.length > 0);
       }
     }
@@ -258,7 +262,7 @@ testPerm({ env: true }, function getDir(): void {
 testPerm({}, function getDirWithoutPermission(): void {
   assertThrows(
     () => Deno.dir("home"),
-    Deno.DenoError,
+    Deno.Err.PermissionDenied,
     `run again with the --allow-env flag`
   );
 });
@@ -273,7 +277,24 @@ testPerm({ env: false }, function execPathPerm(): void {
     Deno.execPath();
   } catch (err) {
     caughtError = true;
-    assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+    assert(err instanceof Deno.Err.PermissionDenied);
+    assertEquals(err.name, "PermissionDenied");
+  }
+  assert(caughtError);
+});
+
+testPerm({ env: true }, function loadavgSuccess(): void {
+  const load = Deno.loadavg();
+  assertEquals(load.length, 3);
+});
+
+testPerm({ env: false }, function loadavgPerm(): void {
+  let caughtError = false;
+  try {
+    Deno.loadavg();
+  } catch (err) {
+    caughtError = true;
+    assert(err instanceof Deno.Err.PermissionDenied);
     assertEquals(err.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -289,7 +310,23 @@ testPerm({ env: false }, function hostnamePerm(): void {
     Deno.hostname();
   } catch (err) {
     caughtError = true;
-    assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+    assert(err instanceof Deno.Err.PermissionDenied);
+    assertEquals(err.name, "PermissionDenied");
+  }
+  assert(caughtError);
+});
+
+testPerm({ env: true }, function releaseDir(): void {
+  assertNotEquals(Deno.osRelease(), "");
+});
+
+testPerm({ env: false }, function releasePerm(): void {
+  let caughtError = false;
+  try {
+    Deno.osRelease();
+  } catch (err) {
+    caughtError = true;
+    assert(err instanceof Deno.Err.PermissionDenied);
     assertEquals(err.name, "PermissionDenied");
   }
   assert(caughtError);

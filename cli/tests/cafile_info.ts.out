@@ -1,4 +1,4 @@
-local: [WILDCARD]cafile_info.ts
+local: [WILDCARD]https[WILDCARD]localhost_PORT5545[WILDCARD]
 type: TypeScript
 compiled: [WILDCARD].js
 map: [WILDCARD].js.map

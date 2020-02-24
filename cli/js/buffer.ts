@@ -7,7 +7,6 @@
 import { Reader, Writer, EOF, SyncReader, SyncWriter } from "./io.ts";
 import { assert } from "./util.ts";
 import { TextDecoder } from "./text_encoding.ts";
-import { DenoError, ErrorKind } from "./errors.ts";
 
 // MIN_READ is the minimum ArrayBuffer size passed to a read call by
 // buffer.ReadFrom. As long as the Buffer has at least MIN_READ bytes beyond
@@ -162,7 +161,7 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
 
   /** _grow() grows the buffer to guarantee space for n more bytes.
    * It returns the index where bytes should be written.
-   * If the buffer can't grow it will throw with ErrTooLarge.
+   * If the buffer can't grow it will throw with Error.
    */
   private _grow(n: number): number {
     const m = this.length;
@@ -183,10 +182,7 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
       // don't spend all our time copying.
       copyBytes(this.buf, this.buf.subarray(this.off));
     } else if (c > MAX_SIZE - c - n) {
-      throw new DenoError(
-        ErrorKind.TooLarge,
-        "The buffer cannot be grown beyond the maximum size."
-      );
+      throw new Error("The buffer cannot be grown beyond the maximum size.");
     } else {
       // Not enough space anywhere, we need to allocate.
       const buf = new Uint8Array(2 * c + n);
@@ -202,7 +198,7 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
   /** grow() grows the buffer's capacity, if necessary, to guarantee space for
    * another n bytes. After grow(n), at least n bytes can be written to the
    * buffer without another allocation. If n is negative, grow() will panic. If
-   * the buffer can't grow it will throw ErrTooLarge.
+   * the buffer can't grow it will throw Error.
    * Based on https://golang.org/pkg/bytes/#Buffer.Grow
    */
   grow(n: number): void {
@@ -215,7 +211,7 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
 
   /** readFrom() reads data from r until EOF and appends it to the buffer,
    * growing the buffer as needed. It returns the number of bytes read. If the
-   * buffer becomes too large, readFrom will panic with ErrTooLarge.
+   * buffer becomes too large, readFrom will panic with Error.
    * Based on https://golang.org/pkg/bytes/#Buffer.ReadFrom
    */
   async readFrom(r: Reader): Promise<number> {
