@@ -1903,6 +1903,13 @@ declare namespace Deno {
 
   /** UNSTABLE: new API, yet to be vetted.
    *
+   * Format an array of diagnostic items and return them as a single string.
+   * @param items An array of diagnostic items to format
+   */
+  export function formatDiagnostics(items: DiagnosticItem[]): string;
+
+  /** UNSTABLE: new API, yet to be vetted.
+   *
    * A specific subset TypeScript compiler options that can be supported by
    * the Deno TypeScript compiler.
    */
