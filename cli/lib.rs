@@ -389,7 +389,7 @@ async fn test_command(
 
 pub fn main() {
   #[cfg(windows)]
-  colors::enable_ansi();
+  colors::enable_ansi(); // For Windows 10
 
   log::set_logger(&LOGGER).unwrap();
   let args: Vec<String> = env::args().collect();
