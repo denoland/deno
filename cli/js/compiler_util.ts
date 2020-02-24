@@ -289,8 +289,6 @@ export const ignoredDiagnostics = [
   // TS1103: 'for-await-of' statement is only allowed within an async function
   // or async generator.
   1103,
-  // TS1308: 'await' expression is only allowed within an async function.
-  1308,
   // TS2691: An import path cannot end with a '.ts' extension. Consider
   // importing 'bad-module' instead.
   2691,

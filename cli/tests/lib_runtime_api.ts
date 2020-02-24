@@ -10,3 +10,5 @@ const [errors, program] = await Deno.compile(
 
 console.log(errors);
 console.log(Object.keys(program));
+
+export {};
