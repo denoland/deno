@@ -78,7 +78,7 @@ fn op_format_diagnostic(
   _state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let diagnostic = Diagnostic::from_json_value(&args);
   let result = format!("{}", diagnostic.unwrap());
   Ok(JsonOp::Sync(json!({ "result": result })))

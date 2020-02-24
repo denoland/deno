@@ -58,8 +58,6 @@ import "./url_test.ts";
 import "./url_search_params_test.ts";
 import "./utime_test.ts";
 import "./write_file_test.ts";
-
-// The ordering of these cannot be alphabetical
 import "./performance_test.ts";
 import "./version_test.ts";
 import "./workers_test.ts";

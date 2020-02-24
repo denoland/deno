@@ -1895,7 +1895,8 @@ declare namespace Deno {
     items: DiagnosticItem[];
   }
 
-  /**
+  /** UNSTABLE: new API, yet to be vetted.
+   *
    * Format an array of diagnostic items and return them as a single string.
    * @param items An array of diagnostic items to format
    */

@@ -28,6 +28,7 @@ use std::env::VarError;
 use std::error::Error;
 use std::fmt;
 use std::io;
+use std::option::NoneError;
 use url;
 
 // Warning! The values in this enum are duplicated in js/errors.ts
@@ -133,6 +134,15 @@ impl From<&ModuleResolutionError> for OpError {
     Self {
       kind: ErrorKind::URIError,
       msg: error.to_string(),
+    }
+  }
+}
+
+impl From<NoneError> for OpError {
+  fn from(_error: NoneError) -> Self {
+    Self {
+      kind: ErrorKind::NotFound,
+      msg: "NoneError".to_string(),
     }
   }
 }

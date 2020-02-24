@@ -17,12 +17,26 @@ const fixture01: Deno.DiagnosticItem[] = [
   }
 ];
 
-const expected01 = `[1;31merror[0m[1m TS4000[0m: Example error
+function ansiRegex(): RegExp {
+  return new RegExp(
+    [
+      "[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)",
+      "(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))"
+    ].join("|"),
+    "g"
+  );
+}
 
-► [38;5;14mfoo.ts[0m:[38;5;11m1001[0m:[38;5;11m2[0m
+function stripAnsi(input: string): string {
+  return input.replace(ansiRegex(), "");
+}
 
-[47;30m1001[0m abcdefghijklmnopqrstuv
-[47;30m    [0m [31m ^[0m
+const expected01 = `error TS4000: Example error
+
+► foo.ts:1001:2
+
+1001 abcdefghijklmnopqrstuv
+      ^
 `;
 
 const fixture02: Deno.DiagnosticItem[] = [
@@ -38,12 +52,12 @@ const fixture02: Deno.DiagnosticItem[] = [
   }
 ];
 
-const expected02 = `[1;31merror[0m[1m TS4000[0m: Example error
+const expected02 = `error TS4000: Example error
 
-► [38;5;14mfoo.ts[0m:[38;5;11m1001[0m:[38;5;11m2[0m
+► foo.ts:1001:2
 
-[47;30m1001[0m abcdefghijklmnopqrstuv
-[47;30m    [0m [31m ~~~~[0m
+1001 abcdefghijklmnopqrstuv
+      ~~~~
 `;
 
 const fixture03: Deno.DiagnosticItem[] = [
@@ -83,15 +97,15 @@ const fixture03: Deno.DiagnosticItem[] = [
   }
 ];
 
-const expected03 = `[1;31merror[0m[1m TS4000[0m: First level
-  Level 2 01
-  Level 2 02
-    Level 3 01
+const expected03 = `error TS4000: First level
+Level 2 01
+Level 2 02
+  Level 3 01
 
-► [38;5;14mfoo.ts[0m:[38;5;11m1001[0m:[38;5;11m2[0m
+► foo.ts:1001:2
 
-[47;30m1001[0m abcdefghijklmnopqrstuv
-[47;30m    [0m [31m ~~~~[0m
+1001 abcdefghijklmnopqrstuv
+    ~~~~
 `;
 
 const fixture04: Deno.DiagnosticItem[] = [
@@ -119,20 +133,19 @@ const fixture04: Deno.DiagnosticItem[] = [
   }
 ];
 
-const expected04 = `[1;31merror[0m[1m TS4000[0m: Example error
+const expected04 = `error TS4000: Example error
 
-► [38;5;14mfoo.ts[0m:[38;5;11m1001[0m:[38;5;11m2[0m
+► foo.ts:1001:2
 
-[47;30m1001[0m abcdefghijklmnopqrstuv
-[47;30m    [0m [31m ~~~~[0m
+1001 abcdefghijklmnopqrstuv
+      ~~~~
 
   Related information
 
-    ► [38;5;14mfoo.ts[0m:[38;5;11m100[0m:[38;5;11m4[0m
+    ► foo.ts:100:4
 
-    [47;30m100[0m 1234567890
-    [47;30m   [0m [38;5;14m   ~~~~[0m
-
+    100 1234567890
+           ~~~~
 `;
 
 const fixture05: Deno.DiagnosticItem[] = [
@@ -178,33 +191,33 @@ const fixture05: Deno.DiagnosticItem[] = [
   }
 ];
 
-const expected05 = `[1;31merror[0m[1m TS4000[0m: Error 001
+const expected05 = `error TS4000: Error 001
 
-► [38;5;14mfoo.ts[0m:[38;5;11m1001[0m:[38;5;11m2[0m
+► foo.ts:1001:2
 
-[47;30m1001[0m abcdefghijklmnopqrstuv
-[47;30m    [0m [31m ~~~~[0m
+1001 abcdefghijklmnopqrstuv
+      ~~~~
 
-[1;31merror[0m[1m TS4001[0m: Error 002
+error TS4001: Error 002
 
-► [38;5;14mfoo.ts[0m:[38;5;11m1001[0m:[38;5;11m2[0m
+► foo.ts:1001:2
 
-[47;30m1001[0m abcdefghijklmnopqrstuv
-[47;30m    [0m [31m ~~~~[0m
+1001 abcdefghijklmnopqrstuv
+      ~~~~
 
-[1;31merror[0m[1m TS4002[0m: Error 003
+error TS4002: Error 003
 
-► [38;5;14mfoo.ts[0m:[38;5;11m1001[0m:[38;5;11m2[0m
+► foo.ts:1001:2
 
-[47;30m1001[0m abcdefghijklmnopqrstuv
-[47;30m    [0m [31m ~~~~[0m
+1001 abcdefghijklmnopqrstuv
+      ~~~~
 
-[1;31merror[0m[1m TS4003[0m: Error 004
+error TS4003: Error 004
 
-► [38;5;14mfoo.ts[0m:[38;5;11m1001[0m:[38;5;11m2[0m
+► foo.ts:1001:2
 
-[47;30m1001[0m abcdefghijklmnopqrstuv
-[47;30m    [0m [31m ~~~~[0m
+1001 abcdefghijklmnopqrstuv
+      ~~~~
 
 
 Found 4 errors.
@@ -212,25 +225,25 @@ Found 4 errors.
 
 test(function formatDiagnosticBasic() {
   const actual = formatDiagnostics(fixture01);
-  assertEquals(actual, expected01);
+  assertEquals(stripAnsi(actual), expected01);
 });
 
 test(function formatDiagnosticColSpan() {
   const actual = formatDiagnostics(fixture02);
-  assertEquals(actual, expected02);
+  assertEquals(stripAnsi(actual), expected02);
 });
 
 test(function formatDiagnosticMessageChain() {
   const actual = formatDiagnostics(fixture03);
-  assertEquals(actual, expected03);
+  assertEquals(stripAnsi(actual), expected03);
 });
 
 test(function formatDiagnosticRelatedInfo() {
   const actual = formatDiagnostics(fixture04);
-  assertEquals(actual, expected04);
+  assertEquals(stripAnsi(actual), expected04);
 });
 
 test(function formatDiagnosticRelatedInfo() {
   const actual = formatDiagnostics(fixture05);
-  assertEquals(actual, expected05);
+  assertEquals(stripAnsi(actual), expected05);
 });
