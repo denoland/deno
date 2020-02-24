@@ -42,5 +42,3 @@ const runCode = (await runProc.status()).code;
 console.log(`run code: ${runCode}`);
 
 Deno.removeSync("./lock_write_fetch.json");
-
-export {};

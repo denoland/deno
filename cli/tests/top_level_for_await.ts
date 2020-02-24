@@ -8,5 +8,3 @@ async function* asyncGenerator(): AsyncIterableIterator<number> {
 for await (const num of asyncGenerator()) {
   console.log(num);
 }
-
-export {};
