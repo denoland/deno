@@ -204,7 +204,7 @@ test({
       const dir: Dir = new Dir(fileInfo.rid, testDir);
       const results: Array<string | null> = [];
 
-      for await (const file of dir.entries()) {
+      for await (const file of dir[Symbol.asyncIterator]()) {
         results.push(file.name);
       }
 

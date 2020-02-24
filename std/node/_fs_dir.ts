@@ -106,7 +106,7 @@ export default class Dir {
     Deno.close(this.resourceId);
   }
 
-  async *entries(): AsyncIterableIterator<Dirent> {
+  async *[Symbol.asyncIterator](): AsyncIterableIterator<Dirent> {
     try {
       while (true) {
         const dirent: Dirent | null = await this.read();
