@@ -80,6 +80,7 @@ export let OP_SIGNAL_BIND: number;
 export let OP_SIGNAL_UNBIND: number;
 export let OP_SIGNAL_POLL: number;
 export let OP_LOADAVG: number;
+export let OP_ISATTY: number;
 export let OP_SET_RAW: number;
 export let OP_OS_RELEASE: number;
 
