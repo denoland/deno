@@ -80,10 +80,8 @@ fn op_format_diagnostic(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   if let Some(diagnostic) = Diagnostic::from_json_value(&args) {
-    println!("format ok");
     Ok(JsonOp::Sync(json!(diagnostic.to_string())))
   } else {
-    println!("format bad");
     Err(OpError::type_error("bad diagnostic".to_string()))
   }
 }
