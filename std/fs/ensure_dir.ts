@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { getFileInfoType } from "./utils.ts";
-const { lstat, lstatSync, mkdir, mkdirSync, ErrorKind } = Deno;
+const { lstat, lstatSync, mkdir, mkdirSync } = Deno;
 
 /**
  * Ensures that the directory exists.
@@ -16,7 +16,7 @@ export async function ensureDir(dir: string): Promise<void> {
       );
     }
   } catch (err) {
-    if (err instanceof Deno.DenoError && err.kind === ErrorKind.NotFound) {
+    if (err instanceof Deno.Err.NotFound) {
       // if dir not exists. then create it.
       await mkdir(dir, { recursive: true });
       return;
@@ -39,7 +39,7 @@ export function ensureDirSync(dir: string): void {
       );
     }
   } catch (err) {
-    if (err instanceof Deno.DenoError && err.kind == ErrorKind.NotFound) {
+    if (err instanceof Deno.Err.NotFound) {
       // if dir not exists. then create it.
       mkdirSync(dir, { recursive: true });
       return;

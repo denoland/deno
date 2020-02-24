@@ -60,8 +60,7 @@ testPerm({ write: true }, function chmodSyncFailure(): void {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
-  assertEquals(err.name, "NotFound");
+  assert(err instanceof Deno.Err.NotFound);
 });
 
 testPerm({ write: false }, function chmodSyncPerm(): void {
@@ -71,7 +70,7 @@ testPerm({ write: false }, function chmodSyncPerm(): void {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assert(err instanceof Deno.Err.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -134,8 +133,7 @@ testPerm({ write: true }, async function chmodFailure(): Promise<void> {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
-  assertEquals(err.name, "NotFound");
+  assert(err instanceof Deno.Err.NotFound);
 });
 
 testPerm({ write: false }, async function chmodPerm(): Promise<void> {
@@ -145,6 +143,6 @@ testPerm({ write: false }, async function chmodPerm(): Promise<void> {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assert(err instanceof Deno.Err.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });

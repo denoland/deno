@@ -9,6 +9,17 @@ import {
   fail
 } from "./test_util.ts";
 
+testPerm({ net: true }, async function fetchProtocolError(): Promise<void> {
+  let err;
+  try {
+    await fetch("file:///");
+  } catch (err_) {
+    err = err_;
+  }
+  assert(err instanceof TypeError);
+  assertStrContains(err.message, "not supported");
+});
+
 testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
   let err;
   try {
@@ -16,8 +27,7 @@ testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assertEquals(err.kind, Deno.ErrorKind.Http);
-  assertEquals(err.name, "Http");
+  assert(err instanceof Deno.Err.Http);
   assertStrContains(err.message, "error trying to connect");
 });
 
@@ -34,7 +44,7 @@ test(async function fetchPerm(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assert(err instanceof Deno.Err.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -107,8 +117,7 @@ testPerm({ net: true }, async function fetchEmptyInvalid(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assertEquals(err.kind, Deno.ErrorKind.UrlParse);
-  assertEquals(err.name, "UrlParse");
+  assert(err instanceof URIError);
 });
 
 testPerm({ net: true }, async function fetchMultipartFormDataSuccess(): Promise<

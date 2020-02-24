@@ -13,6 +13,7 @@ pub mod errors;
 pub mod fetch;
 pub mod files;
 pub mod fs;
+pub mod fs_events;
 pub mod io;
 pub mod net;
 pub mod os;

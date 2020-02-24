@@ -31,18 +31,26 @@ for (const grant of knownPermissions) {
 }
 
 test(async function permissionInvalidName(): Promise<void> {
+  let thrown = false;
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await Deno.permissions.query({ name: "foo" as any });
   } catch (e) {
-    assert(e.name === "Other");
+    thrown = true;
+    assert(e instanceof Error);
+  } finally {
+    assert(thrown);
   }
 });
 
 test(async function permissionNetInvalidUrl(): Promise<void> {
+  let thrown = false;
   try {
     await Deno.permissions.query({ name: "net", url: ":" });
   } catch (e) {
-    assert(e.name === "UrlParse");
+    thrown = true;
+    assert(e instanceof URIError);
+  } finally {
+    assert(thrown);
   }
 });

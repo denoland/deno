@@ -14,13 +14,14 @@ import {
   readFrame,
   unmask,
   writeFrame,
-  createWebSocket
+  createWebSocket,
+  SocketClosedError
 } from "./mod.ts";
 import { encode, decode } from "../strings/mod.ts";
-type Writer = Deno.Writer;
-type Reader = Deno.Reader;
-type Conn = Deno.Conn;
-const { Buffer } = Deno;
+import Writer = Deno.Writer;
+import Reader = Deno.Reader;
+import Conn = Deno.Conn;
+import Buffer = Deno.Buffer;
 
 test(async function wsReadUnmaskedTextFrame(): Promise<void> {
   // unmasked single text frame with payload "Hello"
@@ -332,4 +333,61 @@ test("WebSocket.send(), WebSocket.ping() should be exclusive", async (): Promise
 test(function testCreateSecKey(): void {
   const secKey = createSecKey();
   assertEquals(atob(secKey).length, 16);
+});
+
+test("WebSocket should throw SocketClosedError when peer closed connection without close frame", async () => {
+  const buf = new Buffer();
+  const eofReader: Deno.Reader = {
+    async read(_: Uint8Array): Promise<number | Deno.EOF> {
+      return Deno.EOF;
+    }
+  };
+  const conn = dummyConn(eofReader, buf);
+  const sock = createWebSocket({ conn });
+  sock.closeForce();
+  await assertThrowsAsync(() => sock.send("hello"), SocketClosedError);
+  await assertThrowsAsync(() => sock.ping(), SocketClosedError);
+  await assertThrowsAsync(() => sock.close(0), SocketClosedError);
+});
+
+test("WebSocket shouldn't throw UnexpectedEOFError on recive()", async () => {
+  const buf = new Buffer();
+  const eofReader: Deno.Reader = {
+    async read(_: Uint8Array): Promise<number | Deno.EOF> {
+      return Deno.EOF;
+    }
+  };
+  const conn = dummyConn(eofReader, buf);
+  const sock = createWebSocket({ conn });
+  const it = sock.receive();
+  const { value, done } = await it.next();
+  assertEquals(value, undefined);
+  assertEquals(done, true);
+});
+
+test("WebSocket should reject sending promise when connection reset forcely", async () => {
+  const buf = new Buffer();
+  let timer: number | undefined;
+  const lazyWriter: Deno.Writer = {
+    async write(_: Uint8Array): Promise<number> {
+      return new Promise(resolve => {
+        timer = setTimeout(() => resolve(0), 1000);
+      });
+    }
+  };
+  const conn = dummyConn(buf, lazyWriter);
+  const sock = createWebSocket({ conn });
+  const onError = (e: unknown): unknown => e;
+  const p = Promise.all([
+    sock.send("hello").catch(onError),
+    sock.send(new Uint8Array([1, 2])).catch(onError),
+    sock.ping().catch(onError)
+  ]);
+  sock.closeForce();
+  assertEquals(sock.isClosed, true);
+  const [a, b, c] = await p;
+  assert(a instanceof SocketClosedError);
+  assert(b instanceof SocketClosedError);
+  assert(c instanceof SocketClosedError);
+  clearTimeout(timer);
 });

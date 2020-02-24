@@ -9,6 +9,7 @@ use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::msg;
+use crate::op_error::OpError;
 use crate::ops::JsonResult;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
@@ -633,7 +634,9 @@ async fn execute_in_thread_json(
   req_msg: Buf,
   global_state: GlobalState,
 ) -> JsonResult {
-  let msg = execute_in_thread(global_state, req_msg).await?;
+  let msg = execute_in_thread(global_state, req_msg)
+    .await
+    .map_err(|e| OpError::other(e.to_string()))?;
   let json_str = std::str::from_utf8(&msg).unwrap();
   Ok(json!(json_str))
 }

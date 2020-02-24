@@ -1,17 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error;
-use crate::deno_error::DenoError;
-use crate::deno_error::ErrorKind;
 use crate::version;
-use brotli2::read::BrotliDecoder;
 use bytes::Bytes;
 use deno_core::ErrBox;
 use futures::future::FutureExt;
 use reqwest;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderValue;
-use reqwest::header::ACCEPT_ENCODING;
-use reqwest::header::CONTENT_ENCODING;
 use reqwest::header::IF_NONE_MATCH;
 use reqwest::header::LOCATION;
 use reqwest::header::USER_AGENT;
@@ -52,8 +46,8 @@ pub fn create_http_client(ca_file: Option<String>) -> Result<Client, ErrBox> {
   }
 
   builder.build().map_err(|_| {
-    ErrBox::from(DenoError::new(
-      ErrorKind::Other,
+    ErrBox::from(io::Error::new(
+      io::ErrorKind::Other,
       "Unable to build http client".to_string(),
     ))
   })
@@ -107,9 +101,7 @@ pub fn fetch_once(
   let url = url.clone();
 
   let fut = async move {
-    let mut request = client
-      .get(url.clone())
-      .header(ACCEPT_ENCODING, HeaderValue::from_static("gzip, br"));
+    let mut request = client.get(url.clone());
 
     if let Some(etag) = cached_etag {
       let if_none_match_val = HeaderValue::from_str(&etag).unwrap();
@@ -150,33 +142,14 @@ pub fn fetch_once(
     if response.status().is_client_error()
       || response.status().is_server_error()
     {
-      let err = DenoError::new(
-        deno_error::ErrorKind::Other,
+      let err = io::Error::new(
+        io::ErrorKind::Other,
         format!("Import '{}' failed: {}", &url, response.status()),
       );
       return Err(err.into());
     }
 
-    let content_encoding = response
-      .headers()
-      .get(CONTENT_ENCODING)
-      .map(|content_encoding| content_encoding.to_str().unwrap().to_owned());
-
-    let body;
-    if let Some(content_encoding) = content_encoding {
-      body = match content_encoding {
-        _ if content_encoding == "br" => {
-          let full_bytes = response.bytes().await?;
-          let mut decoder = BrotliDecoder::new(full_bytes.as_ref());
-          let mut body = vec![];
-          decoder.read_to_end(&mut body)?;
-          body
-        }
-        _ => response.bytes().await?.to_vec(),
-      }
-    } else {
-      body = response.bytes().await?.to_vec();
-    }
+    let body = response.bytes().await?.to_vec();
 
     return Ok(FetchOnceResult::Code(body, headers_));
   };

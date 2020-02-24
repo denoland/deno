@@ -23,7 +23,6 @@ mod checksum;
 pub mod colors;
 pub mod compilers;
 pub mod deno_dir;
-pub mod deno_error;
 pub mod diagnostics;
 mod disk_cache;
 mod file_fetcher;
@@ -41,6 +40,7 @@ mod js;
 mod lockfile;
 mod metrics;
 pub mod msg;
+pub mod op_error;
 pub mod ops;
 pub mod permissions;
 mod repl;
@@ -388,9 +388,6 @@ async fn test_command(
 }
 
 pub fn main() {
-  #[cfg(windows)]
-  ansi_term::enable_ansi_support().ok(); // For Windows 10
-
   log::set_logger(&LOGGER).unwrap();
   let args: Vec<String> = env::args().collect();
   let flags = flags::flags_from_vec(args);

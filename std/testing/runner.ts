@@ -3,7 +3,7 @@
 import { parse } from "../flags/mod.ts";
 import { ExpandGlobOptions, expandGlob } from "../fs/mod.ts";
 import { isWindows, join } from "../path/mod.ts";
-const { DenoError, ErrorKind, args, cwd, exit } = Deno;
+const { args, cwd, exit } = Deno;
 
 const DIR_GLOBS = [join("**", "?(*_)test.{js,ts}")];
 
@@ -182,7 +182,7 @@ export async function runTestModules({
   if (moduleCount == 0) {
     const noneFoundMessage = "No matching test modules found.";
     if (!allowNone) {
-      throw new DenoError(ErrorKind.NotFound, noneFoundMessage);
+      throw new Deno.Err.NotFound(noneFoundMessage);
     } else if (!disableLog) {
       console.log(noneFoundMessage);
     }

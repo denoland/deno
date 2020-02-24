@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as dispatch from "./dispatch.ts";
 import { sendSync } from "./dispatch_json.ts";
-import { ErrorKind } from "./errors.ts";
+import { Err } from "./errors.ts";
 import * as util from "./util.ts";
 
 /** Check if running in terminal.
@@ -11,6 +11,14 @@ import * as util from "./util.ts";
 export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
   return sendSync(dispatch.OP_IS_TTY);
 }
+/** Get the loadavg.
+ * Requires the `--allow-env` flag.
+ *
+ *       console.log(Deno.loadavg());
+ */
+export function loadavg(): number[] {
+  return sendSync(dispatch.OP_LOADAVG);
+}
 
 /** Get the hostname.
  * Requires the `--allow-env` flag.
@@ -19,6 +27,15 @@ export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
  */
 export function hostname(): string {
   return sendSync(dispatch.OP_HOSTNAME);
+}
+
+/** Get OS release.
+ * Requires the `--allow-env` flag.
+ *
+ *       console.log(Deno.osRelease());
+ */
+export function osRelease(): string {
+  return sendSync(dispatch.OP_OS_RELEASE);
 }
 
 /** Exit the Deno process with optional exit code. */
@@ -193,7 +210,7 @@ export function dir(kind: DirKind): string | null {
   try {
     return sendSync(dispatch.OP_GET_DIR, { kind });
   } catch (error) {
-    if (error.kind == ErrorKind.PermissionDenied) {
+    if (error instanceof Err.PermissionDenied) {
       throw error;
     }
     return null;

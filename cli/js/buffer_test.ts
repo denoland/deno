@@ -3,7 +3,7 @@
 // This code has been ported almost directly from Go's src/bytes/buffer_test.go
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
-import { assert, assertEquals, test } from "./test_util.ts";
+import { assertEquals, assert, assertStrContains, test } from "./test_util.ts";
 
 const { Buffer, readAll, readAllSync, writeAll, writeAllSync } = Deno;
 type Buffer = Deno.Buffer;
@@ -159,8 +159,8 @@ test(async function bufferTooLargeByteWrites(): Promise<void> {
     err = e;
   }
 
-  assertEquals(err.kind, Deno.ErrorKind.TooLarge);
-  assertEquals(err.name, "TooLarge");
+  assert(err instanceof Error);
+  assertStrContains(err.message, "grown beyond the maximum size");
 });
 
 test(async function bufferLargeByteReads(): Promise<void> {

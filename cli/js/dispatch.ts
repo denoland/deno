@@ -30,6 +30,8 @@ export let OP_REPL_START: number;
 export let OP_REPL_READLINE: number;
 export let OP_ACCEPT: number;
 export let OP_ACCEPT_TLS: number;
+export let OP_RECEIVE: number;
+export let OP_SEND: number;
 export let OP_CONNECT: number;
 export let OP_SHUTDOWN: number;
 export let OP_LISTEN: number;
@@ -71,11 +73,15 @@ export let OP_CWD: number;
 export let OP_CONNECT_TLS: number;
 export let OP_HOSTNAME: number;
 export let OP_OPEN_PLUGIN: number;
+export let OP_FS_EVENTS_OPEN: number;
+export let OP_FS_EVENTS_POLL: number;
 export let OP_COMPILE: number;
 export let OP_TRANSPILE: number;
 export let OP_SIGNAL_BIND: number;
 export let OP_SIGNAL_UNBIND: number;
 export let OP_SIGNAL_POLL: number;
+export let OP_LOADAVG: number;
+export let OP_OS_RELEASE: number;
 
 const PLUGIN_ASYNC_HANDLER_MAP: Map<number, AsyncHandler> = new Map();
 

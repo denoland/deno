@@ -1,11 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::deno_error::DenoError;
-use crate::deno_error::ErrorKind;
-use crate::deno_error::GetErrorKind;
 use crate::fmt_errors::JSError;
 use crate::futures::SinkExt;
 use crate::global_state::GlobalState;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::permissions::DenoPermissions;
 use crate::startup_data;
@@ -148,7 +146,7 @@ fn op_create_worker(
   state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
   let specifier = args.specifier.clone();
@@ -176,7 +174,8 @@ fn op_create_worker(
     module_specifier,
     has_source_code,
     source_code,
-  )?;
+  )
+  .map_err(|e| OpError::other(e.to_string()))?;
   // At this point all interactions with worker happen using thread
   // safe handler returned from previous function call
   let mut parent_state = parent_state.borrow_mut();
@@ -198,7 +197,7 @@ fn op_host_terminate_worker(
   state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let mut state = state.borrow_mut();
@@ -212,11 +211,17 @@ fn op_host_terminate_worker(
 fn serialize_worker_event(event: WorkerEvent) -> Value {
   match event {
     WorkerEvent::Message(buf) => json!({ "type": "msg", "data": buf }),
-    WorkerEvent::Error(error) => match error.kind() {
-      ErrorKind::JSError => {
-        let error = error.downcast::<JSError>().unwrap();
-        let exception: V8Exception = error.into();
-        json!({
+    WorkerEvent::Error(error) => {
+      let mut serialized_error = json!({
+        "type": "error",
+        "error": {
+          "message": error.to_string(),
+        }
+      });
+
+      if let Ok(err) = error.downcast::<JSError>() {
+        let exception: V8Exception = err.into();
+        serialized_error = json!({
           "type": "error",
           "error": {
             "message": exception.message,
@@ -224,15 +229,11 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
             "lineNumber": exception.line_number,
             "columnNumber": exception.start_column,
           }
-        })
+        });
       }
-      _ => json!({
-        "type": "error",
-        "error": {
-          "message": error.to_string(),
-        }
-      }),
-    },
+
+      serialized_error
+    }
   }
 }
 
@@ -241,7 +242,7 @@ fn op_host_get_message(
   state: &State,
   args: Value,
   _data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let worker_handle = {
@@ -273,7 +274,7 @@ fn op_host_post_message(
   state: &State,
   args: Value,
   data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let msg = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
@@ -284,7 +285,7 @@ fn op_host_post_message(
     state.workers.get(&id).expect("No worker handle found");
   let fut = worker_handle
     .post_message(msg)
-    .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()));
+    .map_err(|e| OpError::other(e.to_string()));
   futures::executor::block_on(fut)?;
   Ok(JsonOp::Sync(json!({})))
 }

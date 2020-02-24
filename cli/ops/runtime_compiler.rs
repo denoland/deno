@@ -2,6 +2,7 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::compilers::runtime_compile_async;
 use crate::compilers::runtime_transpile_async;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
@@ -25,7 +26,7 @@ fn op_compile(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: CompileArgs = serde_json::from_value(args)?;
   Ok(JsonOp::Async(runtime_compile_async(
     state.borrow().global_state.clone(),
@@ -46,7 +47,7 @@ fn op_transpile(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: TranspileArgs = serde_json::from_value(args)?;
   Ok(JsonOp::Async(runtime_transpile_async(
     state.borrow().global_state.clone(),

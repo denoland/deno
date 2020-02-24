@@ -10,9 +10,7 @@ import {
 } from "../path/mod.ts";
 import { WalkInfo, walk, walkSync } from "./walk.ts";
 import { assert } from "../testing/asserts.ts";
-const { ErrorKind, cwd, stat, statSync } = Deno;
-type ErrorKind = Deno.ErrorKind;
-type DenoError = Deno.DenoError<ErrorKind>;
+const { cwd, stat, statSync } = Deno;
 type FileInfo = Deno.FileInfo;
 
 export interface ExpandGlobOptions extends GlobOptions {
@@ -45,7 +43,7 @@ function split(path: string): SplitPath {
 }
 
 function throwUnlessNotFound(error: Error): void {
-  if ((error as DenoError).kind != ErrorKind.NotFound) {
+  if (!(error instanceof Deno.Err.NotFound)) {
     throw error;
   }
 }
