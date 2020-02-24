@@ -102,6 +102,12 @@ mod tests {
     not_empty: u128,
   }
 
+  impl FakeResource {
+    fn new(value: u128) -> FakeResource {
+      FakeResource { not_empty: value }
+    }
+  }
+
   #[test]
   fn test_create_resource_table_default() {
     let table = ResourceTable::default();
@@ -111,8 +117,8 @@ mod tests {
   #[test]
   fn test_add_to_resource_table_not_empty() {
     let mut table = ResourceTable::default();
-    table.add("fake1", Box::new(FakeResource { not_empty: 1 }));
-    table.add("fake2", Box::new(FakeResource { not_empty: 2 }));
+    table.add("fake1", Box::new(FakeResource::new(1)));
+    table.add("fake2", Box::new(FakeResource::new(2)));
     assert_eq!(table.map.len(), 2);
   }
 
@@ -121,17 +127,17 @@ mod tests {
   #[test]
   fn test_add_to_resource_table_is_random() {
     let mut table = ResourceTable::default();
-    let rid1 = table.add("fake1", Box::new(FakeResource { not_empty: 1 }));
-    let rid2 = table.add("fake2", Box::new(FakeResource { not_empty: 2 }));
-    let rid3 = table.add("fake3", Box::new(FakeResource { not_empty: 3 }));
-    let rid4 = table.add("fake4", Box::new(FakeResource { not_empty: 4 }));
+    let rid1 = table.add("fake1", Box::new(FakeResource::new(1)));
+    let rid2 = table.add("fake2", Box::new(FakeResource::new(2)));
+    let rid3 = table.add("fake3", Box::new(FakeResource::new(3)));
+    let rid4 = table.add("fake4", Box::new(FakeResource::new(4)));
     assert!((rid1 + 1 != rid2) || (rid2 + 1 != rid3) || (rid3 + 1 != rid4));
   }
 
   #[test]
   fn test_placement_add_to_resource_table_is_not_random() {
     let mut table = ResourceTable::default();
-    table.placement_add(5, "fake", Box::new(FakeResource { not_empty: 9 }));
+    table.placement_add(5, "fake", Box::new(FakeResource::new(9)));
     let resource = table.get::<FakeResource>(5);
     assert_eq!(resource.is_none(), false);
     assert_eq!(resource.unwrap().not_empty, 9);
@@ -140,7 +146,7 @@ mod tests {
   #[test]
   fn test_get_from_resource_table_is_what_was_given() {
     let mut table = ResourceTable::default();
-    let rid = table.add("fake", Box::new(FakeResource { not_empty: 7 }));
+    let rid = table.add("fake", Box::new(FakeResource::new(7)));
     let resource = table.get::<FakeResource>(rid);
     assert_eq!(resource.unwrap().not_empty, 7);
   }
@@ -148,8 +154,8 @@ mod tests {
   #[test]
   fn test_remove_from_resource_table() {
     let mut table = ResourceTable::default();
-    let rid1 = table.add("fake1", Box::new(FakeResource { not_empty: 1 }));
-    let rid2 = table.add("fake2", Box::new(FakeResource { not_empty: 2 }));
+    let rid1 = table.add("fake1", Box::new(FakeResource::new(1)));
+    let rid2 = table.add("fake2", Box::new(FakeResource::new(2)));
     assert_eq!(table.map.len(), 2);
     table.close(rid1);
     assert_eq!(table.map.len(), 1);
