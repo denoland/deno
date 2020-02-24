@@ -8,6 +8,7 @@ import {
   acceptable,
   connectWebSocket,
   createSecAccept,
+  createSecKey,
   handshake,
   OpCode,
   readFrame,
@@ -325,4 +326,10 @@ test("WebSocket.send(), WebSocket.ping() should be exclusive", async (): Promise
   assertEquals(ping.opcode, OpCode.Ping);
   assertEquals(third.opcode, OpCode.BinaryFrame);
   assertEquals(bytes.equal(third.payload, new Uint8Array([3])), true);
+});
+
+// Note: relies on --seed=86 being passed to deno.
+test(function testCreateSecKey(): void {
+  const secKey = createSecKey();
+  assertEquals(atob(secKey).length, 16);
 });
