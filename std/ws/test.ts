@@ -8,6 +8,7 @@ import {
   acceptable,
   connectWebSocket,
   createSecAccept,
+  createSecKey,
   handshake,
   OpCode,
   readFrame,
@@ -326,6 +327,13 @@ test("WebSocket.send(), WebSocket.ping() should be exclusive", async (): Promise
   assertEquals(ping.opcode, OpCode.Ping);
   assertEquals(third.opcode, OpCode.BinaryFrame);
   assertEquals(bytes.equal(third.payload, new Uint8Array([3])), true);
+});
+
+test(function createSecKeyHasCorrectLength(): void {
+  // Note: relies on --seed=86 being passed to deno to reproduce failure in
+  // #4063.
+  const secKey = createSecKey();
+  assertEquals(atob(secKey).length, 16);
 });
 
 test("WebSocket should throw SocketClosedError when peer closed connection without close frame", async () => {

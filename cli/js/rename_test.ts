@@ -17,7 +17,7 @@ testPerm({ read: true, write: true }, function renameSyncSuccess(): void {
     oldPathInfo = Deno.statSync(oldpath);
   } catch (e) {
     caughtErr = true;
-    assert(e instanceof Deno.Err.NotFound);
+    assert(e instanceof Deno.errors.NotFound);
   }
   assert(caughtErr);
   assertEquals(oldPathInfo, undefined);
@@ -32,7 +32,7 @@ testPerm({ read: false, write: true }, function renameSyncReadPerm(): void {
   } catch (e) {
     err = e;
   }
-  assert(err instanceof Deno.Err.PermissionDenied);
+  assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -45,7 +45,7 @@ testPerm({ read: true, write: false }, function renameSyncWritePerm(): void {
   } catch (e) {
     err = e;
   }
-  assert(err instanceof Deno.Err.PermissionDenied);
+  assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -67,7 +67,7 @@ testPerm({ read: true, write: true }, async function renameSuccess(): Promise<
     oldPathInfo = Deno.statSync(oldpath);
   } catch (e) {
     caughtErr = true;
-    assert(e instanceof Deno.Err.NotFound);
+    assert(e instanceof Deno.errors.NotFound);
   }
   assert(caughtErr);
   assertEquals(oldPathInfo, undefined);

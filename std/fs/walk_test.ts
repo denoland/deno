@@ -235,7 +235,7 @@ testWalk(
   async function nonexistentRoot(): Promise<void> {
     await assertThrowsAsync(async () => {
       await walkArray("nonexistent");
-    }, Deno.Err.NotFound);
+    }, Deno.errors.NotFound);
   }
 );
 

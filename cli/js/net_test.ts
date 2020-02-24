@@ -223,7 +223,7 @@ testPerm({ net: true }, async function netDoubleCloseRead() {
     err = e;
   }
   assert(!!err);
-  assert(err instanceof Deno.Err.NotConnected);
+  assert(err instanceof Deno.errors.NotConnected);
   closeDeferred.resolve();
   listener.close();
   conn.close();
@@ -257,7 +257,7 @@ testPerm({ net: true }, async function netCloseWriteSuccess() {
     err = e;
   }
   assert(!!err);
-  assert(err instanceof Deno.Err.BrokenPipe);
+  assert(err instanceof Deno.errors.BrokenPipe);
   closeDeferred.resolve();
   listener.close();
   conn.close();
@@ -283,7 +283,7 @@ testPerm({ net: true }, async function netDoubleCloseWrite() {
     err = e;
   }
   assert(!!err);
-  assert(err instanceof Deno.Err.NotConnected);
+  assert(err instanceof Deno.errors.NotConnected);
   closeDeferred.resolve();
   listener.close();
   conn.close();

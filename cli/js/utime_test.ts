@@ -78,7 +78,7 @@ testPerm({ read: true, write: true }, function utimeSyncNotFound(): void {
     Deno.utimeSync("/baddir", atime, mtime);
   } catch (e) {
     caughtError = true;
-    assert(e instanceof Deno.Err.NotFound);
+    assert(e instanceof Deno.errors.NotFound);
   }
   assert(caughtError);
 });
@@ -92,7 +92,7 @@ testPerm({ read: true, write: false }, function utimeSyncPerm(): void {
     Deno.utimeSync("/some_dir", atime, mtime);
   } catch (e) {
     caughtError = true;
-    assert(e instanceof Deno.Err.PermissionDenied);
+    assert(e instanceof Deno.errors.PermissionDenied);
   }
   assert(caughtError);
 });
@@ -157,7 +157,7 @@ testPerm({ read: true, write: true }, async function utimeNotFound(): Promise<
     await Deno.utime("/baddir", atime, mtime);
   } catch (e) {
     caughtError = true;
-    assert(e instanceof Deno.Err.NotFound);
+    assert(e instanceof Deno.errors.NotFound);
   }
   assert(caughtError);
 });
@@ -173,7 +173,7 @@ testPerm({ read: true, write: false }, async function utimeSyncPerm(): Promise<
     await Deno.utime("/some_dir", atime, mtime);
   } catch (e) {
     caughtError = true;
-    assert(e instanceof Deno.Err.PermissionDenied);
+    assert(e instanceof Deno.errors.PermissionDenied);
   }
   assert(caughtError);
 });

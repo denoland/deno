@@ -182,7 +182,7 @@ export async function runTestModules({
   if (moduleCount == 0) {
     const noneFoundMessage = "No matching test modules found.";
     if (!allowNone) {
-      throw new Deno.Err.NotFound(noneFoundMessage);
+      throw new Deno.errors.NotFound(noneFoundMessage);
     } else if (!disableLog) {
       console.log(noneFoundMessage);
     }
