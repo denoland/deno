@@ -2,9 +2,6 @@
 *.pyc
 *.swp
 
-# TODO(ry) The following is erroneously created by repl_test
-cli/nonexistent/deno_history.txt
-
 /.idea/
 /.vscode/
 gclient_config.py_entries

@@ -436,10 +436,14 @@ fn repl_test_lexical_scoped_variable() {
 
 #[test]
 fn repl_test_missing_deno_dir() {
+  use std::fs::{read_dir, remove_dir_all};
+  const DENO_DIR: &str = "nonexistent";
   let (out, err, code) = util::repl_process(
     vec!["1"],
-    Some(vec![("DENO_DIR".to_owned(), "nonexistent".to_owned())]),
+    Some(vec![("DENO_DIR".to_owned(), DENO_DIR.to_owned())]),
   );
+  assert!(read_dir(DENO_DIR).is_ok());
+  remove_dir_all(DENO_DIR).is_ok();
   assert_eq!(out, "1\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
