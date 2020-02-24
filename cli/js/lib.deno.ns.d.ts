@@ -554,16 +554,6 @@ declare namespace Deno {
    */
   export function setRaw(rid: number, mode: boolean): void;
 
-  /** Check if running in terminal.
-   *
-   *       console.log(Deno.isTTY().stdout);
-   */
-  export function isTTY(): {
-    stdin: boolean;
-    stdout: boolean;
-    stderr: boolean;
-  };
-
   // @url js/buffer.d.ts
 
   /** A Buffer is a variable-sized buffer of bytes with read() and write()

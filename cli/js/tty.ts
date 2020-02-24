@@ -13,15 +13,3 @@ export function setRaw(rid: number, mode: boolean): void {
     mode
   });
 }
-
-/** Check if running in terminal.
- *
- *       console.log(Deno.isTTY().stdout);
- */
-export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
-  return {
-    stdin: isatty(0),
-    stdout: isatty(1),
-    stderr: isatty(2)
-  };
-}
