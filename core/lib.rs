@@ -10,6 +10,8 @@ extern crate log;
 
 mod any_error;
 mod bindings;
+#[cfg(feature = "dispatch_json")]
+mod dispatch_json;
 mod es_isolate;
 mod flags;
 mod isolate;
@@ -24,6 +26,8 @@ mod shared_queue;
 use rusty_v8 as v8;
 
 pub use crate::any_error::*;
+#[cfg(feature = "dispatch_json")]
+pub use crate::dispatch_json::*;
 pub use crate::es_isolate::*;
 pub use crate::flags::v8_set_flags;
 pub use crate::isolate::*;

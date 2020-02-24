@@ -483,6 +483,8 @@ dependencies = [
  "libc",
  "log",
  "rusty_v8",
+ "serde",
+ "serde_derive",
  "serde_json",
  "tokio",
  "url 2.1.1",
@@ -2316,6 +2318,9 @@ dependencies = [
  "deno",
  "deno_core",
  "futures 0.3.4",
+ "serde",
+ "serde_derive",
+ "serde_json",
 ]
 
 [[package]]
