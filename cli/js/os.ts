@@ -29,6 +29,15 @@ export function hostname(): string {
   return sendSync(dispatch.OP_HOSTNAME);
 }
 
+/** Get OS release.
+ * Requires the `--allow-env` flag.
+ *
+ *       console.log(Deno.osRelease());
+ */
+export function osRelease(): string {
+  return sendSync(dispatch.OP_OS_RELEASE);
+}
+
 /** Exit the Deno process with optional exit code. */
 export function exit(code = 0): never {
   sendSync(dispatch.OP_EXIT, { code });
