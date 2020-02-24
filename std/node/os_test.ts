@@ -31,6 +31,13 @@ test({
 });
 
 test({
+  name: "release is a string",
+  fn() {
+    assertEquals(typeof os.release(), "string");
+  }
+});
+
+test({
   name: "getPriority(): PID must be a 32 bit integer",
   fn() {
     assertThrows(
@@ -212,13 +219,6 @@ test({
     assertThrows(
       () => {
         os.networkInterfaces();
-      },
-      Error,
-      "Not implemented"
-    );
-    assertThrows(
-      () => {
-        os.release();
       },
       Error,
       "Not implemented"
