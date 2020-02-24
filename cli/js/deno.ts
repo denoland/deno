@@ -85,7 +85,15 @@ export {
   ShutdownMode,
   shutdown
 } from "./net.ts";
-export { dir, env, exit, execPath, hostname, loadavg } from "./os.ts";
+export {
+  dir,
+  env,
+  exit,
+  execPath,
+  hostname,
+  loadavg,
+  osRelease
+} from "./os.ts";
 export {
   permissions,
   PermissionName,
