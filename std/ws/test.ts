@@ -329,8 +329,9 @@ test("WebSocket.send(), WebSocket.ping() should be exclusive", async (): Promise
   assertEquals(bytes.equal(third.payload, new Uint8Array([3])), true);
 });
 
-// Note: relies on --seed=86 being passed to deno.
-test(function testCreateSecKey(): void {
+test(function createSecKeyHasCorrectLength(): void {
+  // Note: relies on --seed=86 being passed to deno to reproduce failure in
+  // #4063.
   const secKey = createSecKey();
   assertEquals(atob(secKey).length, 16);
 });
