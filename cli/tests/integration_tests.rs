@@ -397,11 +397,6 @@ fn repl_test() {
 		(vec!["_ = 1", "2", "_"], None, "Last evaluation result is no longer saved to _.\n1\n2\n1\n", "", 0),
 		(vec!["_error = 1", "throw 2", "_error"], None, "Last thrown error is no longer saved to _error.\n1\n1\n", "Thrown: 2\n", 0),
 	];
-  //   // test_missing_deno_dir
-  //   let (out, err, code) = repl_process(vec!["1"], Some(envs));
-  //   assert_eq!(out, "1\n");
-  //   assert!(err.is_empty());
-  //   assert_eq!(code, 0);
   for (input, env_overide, stdout_str, stderr_str, exit_code) in &test_cases {
     repl_process(
       input,
