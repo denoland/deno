@@ -13,7 +13,7 @@ test(async function connectTLSNoPerm(): Promise<void> {
   } catch (e) {
     err = e;
   }
-  assert(err instanceof Deno.Err.PermissionDenied);
+  assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -28,7 +28,7 @@ test(async function connectTLSCertFileNoReadPerm(): Promise<void> {
   } catch (e) {
     err = e;
   }
-  assert(err instanceof Deno.Err.PermissionDenied);
+  assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -51,7 +51,7 @@ testPerm(
     } catch (e) {
       err = e;
     }
-    assert(err instanceof Deno.Err.NotFound);
+    assert(err instanceof Deno.errors.NotFound);
 
     try {
       Deno.listenTLS({
@@ -61,7 +61,7 @@ testPerm(
     } catch (e) {
       err = e;
     }
-    assert(err instanceof Deno.Err.NotFound);
+    assert(err instanceof Deno.errors.NotFound);
   }
 );
 
@@ -77,7 +77,7 @@ testPerm({ net: true }, async function listenTLSNoReadPerm(): Promise<void> {
   } catch (e) {
     err = e;
   }
-  assert(err instanceof Deno.Err.PermissionDenied);
+  assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
