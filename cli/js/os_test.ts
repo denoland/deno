@@ -31,7 +31,7 @@ test(function envPermissionDenied1(): void {
     err = e;
   }
   assertNotEquals(err, undefined);
-  assert(err instanceof Deno.Err.PermissionDenied);
+  assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -43,7 +43,7 @@ test(function envPermissionDenied2(): void {
     err = e;
   }
   assertNotEquals(err, undefined);
-  assert(err instanceof Deno.Err.PermissionDenied);
+  assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -262,7 +262,7 @@ testPerm({ env: true }, function getDir(): void {
 testPerm({}, function getDirWithoutPermission(): void {
   assertThrows(
     () => Deno.dir("home"),
-    Deno.Err.PermissionDenied,
+    Deno.errors.PermissionDenied,
     `run again with the --allow-env flag`
   );
 });
@@ -277,7 +277,24 @@ testPerm({ env: false }, function execPathPerm(): void {
     Deno.execPath();
   } catch (err) {
     caughtError = true;
-    assert(err instanceof Deno.Err.PermissionDenied);
+    assert(err instanceof Deno.errors.PermissionDenied);
+    assertEquals(err.name, "PermissionDenied");
+  }
+  assert(caughtError);
+});
+
+testPerm({ env: true }, function loadavgSuccess(): void {
+  const load = Deno.loadavg();
+  assertEquals(load.length, 3);
+});
+
+testPerm({ env: false }, function loadavgPerm(): void {
+  let caughtError = false;
+  try {
+    Deno.loadavg();
+  } catch (err) {
+    caughtError = true;
+    assert(err instanceof Deno.errors.PermissionDenied);
     assertEquals(err.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -291,6 +308,22 @@ testPerm({ env: false }, function hostnamePerm(): void {
   let caughtError = false;
   try {
     Deno.hostname();
+  } catch (err) {
+    caughtError = true;
+    assert(err instanceof Deno.errors.PermissionDenied);
+    assertEquals(err.name, "PermissionDenied");
+  }
+  assert(caughtError);
+});
+
+testPerm({ env: true }, function releaseDir(): void {
+  assertNotEquals(Deno.osRelease(), "");
+});
+
+testPerm({ env: false }, function releasePerm(): void {
+  let caughtError = false;
+  try {
+    Deno.osRelease();
   } catch (err) {
     caughtError = true;
     assert(err instanceof Deno.Err.PermissionDenied);

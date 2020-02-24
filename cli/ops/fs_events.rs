@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::deno_error::bad_resource;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
@@ -70,7 +70,7 @@ pub fn op_fs_events_open(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   #[derive(Deserialize)]
   struct OpenArgs {
     recursive: bool,
@@ -84,7 +84,8 @@ pub fn op_fs_events_open(
       let res2 = res.map(FsEvent::from).map_err(ErrBox::from);
       let mut sender = sender.lock().unwrap();
       futures::executor::block_on(sender.send(res2)).expect("fs events error");
-    })?;
+    })
+    .map_err(ErrBox::from)?;
   let recursive_mode = if args.recursive {
     RecursiveMode::Recursive
   } else {
@@ -92,7 +93,7 @@ pub fn op_fs_events_open(
   };
   for path in &args.paths {
     state.check_read(&PathBuf::from(path))?;
-    watcher.watch(path, recursive_mode)?;
+    watcher.watch(path, recursive_mode).map_err(ErrBox::from)?;
   }
   let resource = FsEventsResource { watcher, receiver };
   let table = &mut state.borrow_mut().resource_table;
@@ -104,7 +105,7 @@ pub fn op_fs_events_poll(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   #[derive(Deserialize)]
   struct PollArgs {
     rid: u32,
@@ -115,13 +116,13 @@ pub fn op_fs_events_poll(
     let resource_table = &mut state.borrow_mut().resource_table;
     let watcher = resource_table
       .get_mut::<FsEventsResource>(rid)
-      .ok_or_else(bad_resource)?;
+      .ok_or_else(OpError::bad_resource)?;
     watcher
       .receiver
       .poll_recv(cx)
       .map(|maybe_result| match maybe_result {
         Some(Ok(value)) => Ok(json!({ "value": value, "done": false })),
-        Some(Err(err)) => Err(err),
+        Some(Err(err)) => Err(OpError::from(err)),
         None => Ok(json!({ "done": true })),
       })
   });

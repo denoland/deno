@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
-use crate::deno_error::bad_resource;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
@@ -52,7 +52,7 @@ pub struct Accept<'a> {
 }
 
 impl Future for Accept<'_> {
-  type Output = Result<(TcpStream, SocketAddr), ErrBox>;
+  type Output = Result<(TcpStream, SocketAddr), OpError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -64,17 +64,11 @@ impl Future for Accept<'_> {
     let listener_resource = state
       .resource_table
       .get_mut::<TcpListenerResource>(inner.rid)
-      .ok_or_else(|| {
-        let e = std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "Listener has been closed",
-        );
-        ErrBox::from(e)
-      })?;
+      .ok_or_else(|| OpError::other("Listener has been closed".to_string()))?;
 
     let listener = &mut listener_resource.listener;
 
-    match listener.poll_accept(cx).map_err(ErrBox::from) {
+    match listener.poll_accept(cx).map_err(OpError::from) {
       Poll::Ready(Ok((stream, addr))) => {
         listener_resource.untrack_task();
         inner.accept_state = AcceptState::Done;
@@ -102,7 +96,7 @@ fn op_accept(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: AcceptArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let state_ = state.clone();
@@ -111,7 +105,7 @@ fn op_accept(
     state
       .resource_table
       .get::<TcpListenerResource>(rid)
-      .ok_or_else(bad_resource)?;
+      .ok_or_else(OpError::bad_resource)?;
   }
 
   let op = async move {
@@ -147,7 +141,7 @@ pub struct Receive<'a> {
 }
 
 impl Future for Receive<'_> {
-  type Output = Result<(usize, SocketAddr), ErrBox>;
+  type Output = Result<(usize, SocketAddr), OpError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -155,19 +149,13 @@ impl Future for Receive<'_> {
     let resource = state
       .resource_table
       .get_mut::<UdpSocketResource>(inner.rid)
-      .ok_or_else(|| {
-        let e = std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "Socket has been closed",
-        );
-        ErrBox::from(e)
-      })?;
+      .ok_or_else(|| OpError::other("Socket has been closed".to_string()))?;
 
     let socket = &mut resource.socket;
 
     socket
       .poll_recv_from(cx, &mut inner.buf)
-      .map_err(ErrBox::from)
+      .map_err(OpError::from)
   }
 }
 
@@ -184,7 +172,7 @@ fn op_receive(
   state: &State,
   args: Value,
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   assert!(zero_copy.is_some());
   let buf = zero_copy.unwrap();
 
@@ -221,7 +209,7 @@ fn op_send(
   state: &State,
   args: Value,
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   assert!(zero_copy.is_some());
   let buf = zero_copy.unwrap();
 
@@ -237,13 +225,7 @@ fn op_send(
     let resource = state
       .resource_table
       .get_mut::<UdpSocketResource>(rid)
-      .ok_or_else(|| {
-        let e = std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "Socket has been closed",
-        );
-        ErrBox::from(e)
-      })?;
+      .ok_or_else(|| OpError::other("Socket has been closed".to_string()))?;
 
     let socket = &mut resource.socket;
     let addr = resolve_addr(&args.hostname, args.port).await?;
@@ -266,7 +248,7 @@ fn op_connect(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: ConnectArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp"); // TODO Support others.
   let state_ = state.clone();
@@ -309,7 +291,7 @@ fn op_shutdown(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: ShutdownArgs = serde_json::from_value(args)?;
 
   let rid = args.rid as u32;
@@ -325,12 +307,12 @@ fn op_shutdown(
   let resource = state
     .resource_table
     .get_mut::<StreamResource>(rid)
-    .ok_or_else(bad_resource)?;
+    .ok_or_else(OpError::bad_resource)?;
   match resource {
     StreamResource::TcpStream(ref mut stream) => {
-      TcpStream::shutdown(stream, shutdown_mode).map_err(ErrBox::from)?;
+      TcpStream::shutdown(stream, shutdown_mode).map_err(OpError::from)?;
     }
-    _ => return Err(bad_resource()),
+    _ => return Err(OpError::bad_resource()),
   }
 
   Ok(JsonOp::Sync(json!({})))
@@ -361,17 +343,13 @@ impl TcpListenerResource {
   /// can be notified when listener is closed.
   ///
   /// Throws an error if another task is already tracked.
-  pub fn track_task(&mut self, cx: &Context) -> Result<(), ErrBox> {
+  pub fn track_task(&mut self, cx: &Context) -> Result<(), OpError> {
     // Currently, we only allow tracking a single accept task for a listener.
     // This might be changed in the future with multiple workers.
     // Caveat: TcpListener by itself also only tracks an accept task at a time.
     // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
     if self.waker.is_some() {
-      let e = std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "Another accept task is ongoing",
-      );
-      return Err(ErrBox::from(e));
+      return Err(OpError::other("Another accept task is ongoing".to_string()));
     }
 
     let waker = futures::task::AtomicWaker::new();
@@ -403,7 +381,7 @@ struct UdpSocketResource {
 fn listen_tcp(
   state: &State,
   addr: SocketAddr,
-) -> Result<(u32, SocketAddr), ErrBox> {
+) -> Result<(u32, SocketAddr), OpError> {
   let mut state = state.borrow_mut();
   let listener = futures::executor::block_on(TcpListener::bind(&addr))?;
   let local_addr = listener.local_addr()?;
@@ -422,7 +400,7 @@ fn listen_tcp(
 fn listen_udp(
   state: &State,
   addr: SocketAddr,
-) -> Result<(u32, SocketAddr), ErrBox> {
+) -> Result<(u32, SocketAddr), OpError> {
   let mut state = state.borrow_mut();
   let socket = futures::executor::block_on(UdpSocket::bind(&addr))?;
   let local_addr = socket.local_addr()?;
@@ -438,7 +416,7 @@ fn op_listen(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: ListenArgs = serde_json::from_value(args)?;
   assert!(args.transport == "tcp" || args.transport == "udp");
 

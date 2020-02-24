@@ -9,6 +9,17 @@ import {
   fail
 } from "./test_util.ts";
 
+testPerm({ net: true }, async function fetchProtocolError(): Promise<void> {
+  let err;
+  try {
+    await fetch("file:///");
+  } catch (err_) {
+    err = err_;
+  }
+  assert(err instanceof TypeError);
+  assertStrContains(err.message, "not supported");
+});
+
 testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
   let err;
   try {
@@ -16,7 +27,7 @@ testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assert(err instanceof Deno.Err.Http);
+  assert(err instanceof Deno.errors.Http);
   assertStrContains(err.message, "error trying to connect");
 });
 
@@ -33,7 +44,7 @@ test(async function fetchPerm(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assert(err instanceof Deno.Err.PermissionDenied);
+  assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 

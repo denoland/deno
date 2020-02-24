@@ -1,6 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::diagnostics::Diagnostic;
 use crate::fmt_errors::JSError;
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
@@ -17,6 +19,10 @@ pub fn init(i: &mut Isolate, s: &State) {
     "format_error",
     s.core_op(json_op(s.stateful_op(op_format_error))),
   );
+  i.register_op(
+    "format_diagnostic",
+    s.core_op(json_op(s.stateful_op(op_format_diagnostic))),
+  );
 }
 
 #[derive(Deserialize)]
@@ -28,7 +34,7 @@ fn op_format_error(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: FormatErrorArgs = serde_json::from_value(args)?;
   let error =
     JSError::from_json(&args.error, &state.borrow().global_state.ts_compiler);
@@ -49,7 +55,7 @@ fn op_apply_source_map(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: ApplySourceMap = serde_json::from_value(args)?;
 
   let mut mappings_map: CachedMaps = HashMap::new();
@@ -66,4 +72,16 @@ fn op_apply_source_map(
     "line": orig_line as u32,
     "column": orig_column as u32,
   })))
+}
+
+fn op_format_diagnostic(
+  _state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  if let Some(diagnostic) = Diagnostic::from_json_value(&args) {
+    Ok(JsonOp::Sync(json!(diagnostic.to_string())))
+  } else {
+    Err(OpError::type_error("bad diagnostic".to_string()))
+  }
 }

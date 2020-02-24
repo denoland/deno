@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
+use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
@@ -12,7 +13,7 @@ fn op_resources(
   state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let state = state.borrow();
   let serialized_resources = state.resource_table.entries();
   Ok(JsonOp::Sync(json!(serialized_resources)))

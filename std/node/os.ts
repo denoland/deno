@@ -89,6 +89,17 @@ interface UserInfo {
   homedir: string;
 }
 
+arch[Symbol.toPrimitive] = (): string => arch();
+endianness[Symbol.toPrimitive] = (): string => endianness();
+freemem[Symbol.toPrimitive] = (): number => freemem();
+homedir[Symbol.toPrimitive] = (): string | null => homedir();
+hostname[Symbol.toPrimitive] = (): string | null => hostname();
+platform[Symbol.toPrimitive] = (): string => platform();
+release[Symbol.toPrimitive] = (): string => release();
+totalmem[Symbol.toPrimitive] = (): number => totalmem();
+type[Symbol.toPrimitive] = (): string => type();
+uptime[Symbol.toPrimitive] = (): number => uptime();
+
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {
   return Deno.build.arch;
@@ -133,12 +144,12 @@ export function hostname(): string {
   return Deno.hostname();
 }
 
-/** Not yet implemented */
+/** Returns an array containing the 1, 5, and 15 minute load averages */
 export function loadavg(): number[] {
   if (Deno.build.os == "win") {
     return [0, 0, 0];
   }
-  notImplemented(SEE_GITHUB_ISSUE);
+  return Deno.loadavg();
 }
 
 /** Not yet implemented */
@@ -150,9 +161,9 @@ export function platform(): string {
   return process.platform;
 }
 
-/** Not yet implemented */
+/** Returns the operating system as a string */
 export function release(): string {
-  notImplemented(SEE_GITHUB_ISSUE);
+  return Deno.osRelease();
 }
 
 /** Not yet implemented */

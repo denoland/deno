@@ -31,7 +31,7 @@ testPerm({ read: false }, function realpathSyncPerm(): void {
     Deno.realpathSync("some_file");
   } catch (e) {
     caughtError = true;
-    assert(e instanceof Deno.Err.PermissionDenied);
+    assert(e instanceof Deno.errors.PermissionDenied);
   }
   assert(caughtError);
 });
@@ -42,7 +42,7 @@ testPerm({ read: true }, function realpathSyncNotFound(): void {
     Deno.realpathSync("bad_filename");
   } catch (e) {
     caughtError = true;
-    assert(e instanceof Deno.Err.NotFound);
+    assert(e instanceof Deno.errors.NotFound);
   }
   assert(caughtError);
 });
@@ -80,7 +80,7 @@ testPerm({ read: false }, async function realpathPerm(): Promise<void> {
     await Deno.realpath("some_file");
   } catch (e) {
     caughtError = true;
-    assert(e instanceof Deno.Err.PermissionDenied);
+    assert(e instanceof Deno.errors.PermissionDenied);
   }
   assert(caughtError);
 });
@@ -91,7 +91,7 @@ testPerm({ read: true }, async function realpathNotFound(): Promise<void> {
     await Deno.realpath("bad_filename");
   } catch (e) {
     caughtError = true;
-    assert(e instanceof Deno.Err.NotFound);
+    assert(e instanceof Deno.errors.NotFound);
   }
   assert(caughtError);
 });

@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { xeval } from "../xeval.ts";
 import { stringsReader } from "../../io/util.ts";
 import { decode, encode } from "../../strings/mod.ts";

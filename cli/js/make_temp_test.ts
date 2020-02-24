@@ -23,7 +23,7 @@ testPerm({ write: true }, function makeTempDirSyncSuccess(): void {
   } catch (err_) {
     err = err_;
   }
-  assert(err instanceof Deno.Err.NotFound);
+  assert(err instanceof Deno.errors.NotFound);
 });
 
 test(function makeTempDirSyncPerm(): void {
@@ -34,7 +34,7 @@ test(function makeTempDirSyncPerm(): void {
   } catch (err_) {
     err = err_;
   }
-  assert(err instanceof Deno.Err.PermissionDenied);
+  assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -60,7 +60,7 @@ testPerm({ write: true }, async function makeTempDirSuccess(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assert(err instanceof Deno.Err.NotFound);
+  assert(err instanceof Deno.errors.NotFound);
 });
 
 testPerm({ write: true }, function makeTempFileSyncSuccess(): void {
@@ -86,7 +86,7 @@ testPerm({ write: true }, function makeTempFileSyncSuccess(): void {
   } catch (err_) {
     err = err_;
   }
-  assert(err instanceof Deno.Err.NotFound);
+  assert(err instanceof Deno.errors.NotFound);
 });
 
 test(function makeTempFileSyncPerm(): void {
@@ -97,7 +97,7 @@ test(function makeTempFileSyncPerm(): void {
   } catch (err_) {
     err = err_;
   }
-  assert(err instanceof Deno.Err.PermissionDenied);
+  assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -124,5 +124,5 @@ testPerm({ write: true }, async function makeTempFileSuccess(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assert(err instanceof Deno.Err.NotFound);
+  assert(err instanceof Deno.errors.NotFound);
 });
