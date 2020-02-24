@@ -98,14 +98,14 @@ const fixture03: Deno.DiagnosticItem[] = [
 ];
 
 const expected03 = `error TS4000: First level
-Level 2 01
-Level 2 02
-  Level 3 01
+  Level 2 01
+  Level 2 02
+    Level 3 01
 
 ► foo.ts:1001:2
 
 1001 abcdefghijklmnopqrstuv
-    ~~~~
+      ~~~~
 `;
 
 const fixture04: Deno.DiagnosticItem[] = [
@@ -146,6 +146,7 @@ const expected04 = `error TS4000: Example error
 
     100 1234567890
            ~~~~
+
 `;
 
 const fixture05: Deno.DiagnosticItem[] = [
