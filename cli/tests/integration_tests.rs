@@ -628,6 +628,11 @@ itest!(_054_info_local_imports {
   exit_code: 0,
 });
 
+itest!(_055_make_temp_file_write_perm {
+  args: "run --allow-write=. 055_make_temp_file_write_perm.ts",
+  output: "055_make_temp_file_write_perm.ts.out",
+});
+
 itest!(js_import_detect {
   args: "run --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
