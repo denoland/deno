@@ -86,7 +86,16 @@ export {
   ShutdownMode,
   shutdown
 } from "./net.ts";
-export { dir, env, exit, isTTY, execPath, hostname, loadavg } from "./os.ts";
+export {
+  dir,
+  env,
+  exit,
+  isTTY,
+  execPath,
+  hostname,
+  loadavg,
+  osRelease
+} from "./os.ts";
 export {
   permissions,
   PermissionName,

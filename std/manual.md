@@ -1535,14 +1535,20 @@ Extra steps for Windows users:
 1. Get [VS Community 2019](https://www.visualstudio.com/downloads/) with
    "Desktop development with C++" toolkit and make sure to select the following
    required tools listed below along with all C++ tools.
-    - Windows 10 SDK >= 10.0.17134
+    - Visual C++ tools for CMake
+    - Windows 10 SDK (10.0.17763.0)
+    - Testing tools core features - Build Tools
     - Visual C++ ATL for x86 and x64
     - Visual C++ MFC for x86 and x64
-    - C++ profiling tools
+    - C++/CLI support
+    - VC++ 2015.3 v14.00 (v140) toolset for desktop
+
 2. Enable "Debugging Tools for Windows". Go to "Control Panel" → "Programs" →
    "Programs and Features" → Select "Windows Software Development Kit - Windows
    10" → "Change" → "Change" → Check "Debugging Tools For Windows" → "Change" ->
    "Finish".
+   Or use:
+   [Debugging Tools for Windows](https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/) (Notice: it will download the files, you should install `X64 Debuggers And Tools-x64_en-us.msi` file manually.)
 
 <!-- prettier-ignore-end -->
 

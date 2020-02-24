@@ -161,9 +161,9 @@ export function platform(): string {
   return process.platform;
 }
 
-/** Not yet implemented */
+/** Returns the operating system as a string */
 export function release(): string {
-  notImplemented(SEE_GITHUB_ISSUE);
+  return Deno.osRelease();
 }
 
 /** Not yet implemented */

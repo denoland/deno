@@ -52,6 +52,12 @@ declare namespace Deno {
    */
   export function hostname(): string;
 
+  /** Get the OS release. Requires the `--allow-env` flag.
+   *
+   *       console.log(Deno.osRelease());
+   */
+  export function osRelease(): string;
+
   /** Exit the Deno process with optional exit code. */
   export function exit(code?: number): never;
 
