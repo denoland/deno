@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::colors;
 use crate::flags::DenoFlags;
 use crate::op_error::OpError;
-use ansi_term::Style;
 #[cfg(not(test))]
 use atty;
 use log;
@@ -305,7 +305,7 @@ fn permission_prompt(message: &str) -> bool {
     PERMISSION_EMOJI, message
   );
   // print to stderr so that if deno is > to a file this is still displayed.
-  eprint!("{}", Style::new().bold().paint(msg));
+  eprint!("{}", colors::bold(msg));
   loop {
     let mut input = String::new();
     let stdin = io::stdin();
@@ -321,7 +321,7 @@ fn permission_prompt(message: &str) -> bool {
         // If we don't get a recognized option try again.
         let msg_again =
           format!("Unrecognized option '{}' [g/d (g = grant, d = deny)] ", ch);
-        eprint!("{}", Style::new().bold().paint(msg_again));
+        eprint!("{}", colors::bold(msg_again));
       }
     };
   }
@@ -352,9 +352,7 @@ fn log_perm_access(message: &str) {
   if log_enabled!(log::Level::Info) {
     eprintln!(
       "{}",
-      Style::new()
-        .bold()
-        .paint(format!("{}️  Granted {}", PERMISSION_EMOJI, message))
+      colors::bold(format!("{}️  Granted {}", PERMISSION_EMOJI, message))
     );
   }
 }
