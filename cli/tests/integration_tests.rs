@@ -326,14 +326,12 @@ fn bundle_single_module() {
   assert_eq!(output.stderr, b"");
 }
 
-
 #[test]
 fn bundle_tla() {
   use tempfile::TempDir;
 
   // First we have to generate a bundle of some module that has exports.
-  let tla_import =
-    util::root_path().join("cli/tests/subdir/tla.ts");
+  let tla_import = util::root_path().join("cli/tests/subdir/tla.ts");
   assert!(tla_import.is_file());
   let t = TempDir::new().expect("tempdir fail");
   let bundle = t.path().join("tla.bundle.js");
