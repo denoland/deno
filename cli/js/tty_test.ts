@@ -16,7 +16,7 @@ test(function isattyError(): void {
     Deno.isatty(0x7fffffff);
   } catch (e) {
     caught = true;
-    assert(e instanceof Deno.Err.BadResource);
+    assert(e instanceof Deno.errors.BadResource);
   }
   assert(caught);
 });
