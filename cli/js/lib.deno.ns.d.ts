@@ -1217,7 +1217,7 @@ declare namespace Deno {
   export function applySourceMap(location: Location): Location;
 
   /* eslint-disable @typescript-eslint/no-unused-vars */
-  namespace Err {
+  namespace errors {
     class NotFound extends Error {
       constructor(msg: string);
     }
