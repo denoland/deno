@@ -6,6 +6,9 @@ use std::io::Write;
 use termcolor::Color::{Ansi256, Black, Red, White};
 use termcolor::{Ansi, ColorSpec, WriteColor};
 
+#[cfg(windows)]
+use termcolor::{BufferWriter, ColorChoice};
+
 lazy_static! {
         // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
         // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.
@@ -24,6 +27,11 @@ pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<str> {
 
 pub fn use_color() -> bool {
   !(*NO_COLOR)
+}
+
+#[cfg(windows)]
+pub fn enable_ansi() {
+  BufferWriter::stdout(ColorChoice::AlwaysAnsi);
 }
 
 fn style(s: &str, colorspec: ColorSpec) -> impl fmt::Display {

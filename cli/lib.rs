@@ -388,6 +388,9 @@ async fn test_command(
 }
 
 pub fn main() {
+  #[cfg(windows)]
+  colors::enable_ansi();
+
   log::set_logger(&LOGGER).unwrap();
   let args: Vec<String> = env::args().collect();
   let flags = flags::flags_from_vec(args);

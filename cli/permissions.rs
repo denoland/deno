@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::colors;
 use crate::flags::DenoFlags;
 use crate::op_error::OpError;
-use crate::colors;
 #[cfg(not(test))]
 use atty;
 use log;
