@@ -326,7 +326,7 @@ testPerm({ env: false }, function releasePerm(): void {
     Deno.osRelease();
   } catch (err) {
     caughtError = true;
-    assert(err instanceof Deno.Err.PermissionDenied);
+    assert(err instanceof Deno.errors.PermissionDenied);
     assertEquals(err.name, "PermissionDenied");
   }
   assert(caughtError);
