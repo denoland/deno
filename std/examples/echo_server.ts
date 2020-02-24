@@ -6,3 +6,4 @@ console.log(`Listening on ${hostname}:${port}`);
 for await (const conn of listener) {
   Deno.copy(conn, conn);
 }
+export {};

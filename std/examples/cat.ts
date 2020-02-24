@@ -5,3 +5,4 @@ for (const filename of filenames) {
   await Deno.copy(Deno.stdout, file);
   file.close();
 }
+export {};
