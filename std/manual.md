@@ -180,8 +180,6 @@ The output is the concatenation of three library files that are built into Deno:
 - [lib.deno.shared_globals.d.ts](https://github.com/denoland/deno/blob/master/cli/js/lib.deno.shared_globals.d.ts)
 - [lib.deno.window.d.ts](https://github.com/denoland/deno/blob/master/cli/js/lib.deno.window.d.ts)
 
-[This is what the output looks like.](https://github.com/denoland/deno/blob/master/cli/js/lib.deno_runtime.d.ts)
-
 ### Reference websites
 
 [TypeScript Deno API](https://deno.land/typedoc/index.html).
