@@ -18,8 +18,8 @@ import {
 import { OPS_CACHE } from "./runtime.ts";
 
 // This is done because read/write are extremely performance sensitive.
-let OP_READ: number;
-let OP_WRITE: number;
+let OP_READ: number = -1;
+let OP_WRITE: number = -1;
 
 /** Open a file and return an instance of the `File` object
  *  synchronously.
@@ -122,7 +122,7 @@ export function readSync(rid: number, p: Uint8Array): number | EOF {
   if (p.length == 0) {
     return 0;
   }
-  if (!OP_READ) {
+  if (OP_READ < 0) {
     OP_READ = OPS_CACHE["op_read"];
   }
   const nread = sendSyncMinimal(OP_READ, rid, p);
@@ -148,7 +148,7 @@ export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
   if (p.length == 0) {
     return 0;
   }
-  if (!OP_READ) {
+  if (OP_READ < 0) {
     OP_READ = OPS_CACHE["op_read"];
   }
   const nread = await sendAsyncMinimal(OP_READ, rid, p);
@@ -171,7 +171,7 @@ export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
  *       Deno.writeSync(file.rid, data);
  */
 export function writeSync(rid: number, p: Uint8Array): number {
-  if (!OP_WRITE) {
+  if (OP_WRITE < 0) {
     OP_WRITE = OPS_CACHE["op_write"];
   }
   const result = sendSyncMinimal(OP_WRITE, rid, p);
@@ -193,7 +193,7 @@ export function writeSync(rid: number, p: Uint8Array): number {
  *
  */
 export async function write(rid: number, p: Uint8Array): Promise<number> {
-  if (!OP_WRITE) {
+  if (OP_WRITE < 0) {
     OP_WRITE = OPS_CACHE["op_write"];
   }
   const result = await sendAsyncMinimal(OP_WRITE, rid, p);

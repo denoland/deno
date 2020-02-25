@@ -387,9 +387,16 @@ fn send(
     unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
   assert!(!deno_isolate.global_context.is_empty());
 
-  let op_id = v8::Local::<v8::Uint32>::try_from(args.get(0))
-    .unwrap()
-    .value() as u32;
+  let r = v8::Local::<v8::Uint32>::try_from(args.get(0));
+
+  if let Err(err) = r {
+    let s = format!("bad op id {}", err);
+    let msg = v8::String::new(scope, &s).unwrap();
+    scope.isolate().throw_exception(msg.into());
+    return;
+  }
+
+  let op_id = r.unwrap().value() as u32;
 
   let control = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(1)) {
     Ok(view) => {
