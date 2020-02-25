@@ -6,7 +6,6 @@ import { buildBundle } from "./compiler_bundler.ts";
 import { ConfigureResponse, Host } from "./compiler_host.ts";
 import { SourceFile } from "./compiler_sourcefile.ts";
 import { sendSync } from "./dispatch_json.ts";
-import * as dispatch from "./dispatch.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { core } from "./core.ts";
 import * as util from "./util.ts";
@@ -71,7 +70,7 @@ function cache(
 
   if (emittedFileName.endsWith(".map")) {
     // Source Map
-    sendSync(dispatch.OP_CACHE, {
+    sendSync("op_cache", {
       extension: ".map",
       moduleId,
       contents
@@ -81,7 +80,7 @@ function cache(
     emittedFileName.endsWith(".json")
   ) {
     // Compiled JavaScript
-    sendSync(dispatch.OP_CACHE, {
+    sendSync("op_cache", {
       extension: ".js",
       moduleId,
       contents
@@ -91,30 +90,15 @@ function cache(
   }
 }
 
-let OP_FETCH_ASSET: number;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 /** Retrieve an asset from Rust. */
 export function getAsset(name: string): string {
-  // this path should only be called for assets that are lazily loaded at
-  // runtime
-  if (dispatch.OP_FETCH_ASSET) {
-    util.log("compiler_util::getAsset", name);
-    return sendSync(dispatch.OP_FETCH_ASSET, { name }).sourceCode;
-  }
-
-  // this path should only be taken during snapshotting
-  if (!OP_FETCH_ASSET) {
-    const ops = core.ops();
-    const opFetchAsset = ops["fetch_asset"];
-    assert(opFetchAsset, "OP_FETCH_ASSET is not registered");
-    OP_FETCH_ASSET = opFetchAsset;
-  }
-
+  const opId = core.ops()["op_fetch_asset"];
   // We really don't want to depend on JSON dispatch during snapshotting, so
   // this op exchanges strings with Rust as raw byte arrays.
-  const sourceCodeBytes = core.dispatch(OP_FETCH_ASSET, encoder.encode(name));
+  const sourceCodeBytes = core.dispatch(opId, encoder.encode(name));
   return decoder.decode(sourceCodeBytes!);
 }
 
@@ -286,11 +270,16 @@ export function convertCompilerOptions(str: string): ts.CompilerOptions {
 
 /** An array of TypeScript diagnostic types we ignore. */
 export const ignoredDiagnostics = [
+  // TS2306: File 'file:///Users/rld/src/deno/cli/tests/subdir/amd_like.js' is
+  // not a module.
+  2306,
+  // TS1375: 'await' expressions are only allowed at the top level of a file
+  // when that file is a module, but this file has no imports or exports.
+  // Consider adding an empty 'export {}' to make this file a module.
+  1375,
   // TS1103: 'for-await-of' statement is only allowed within an async function
   // or async generator.
   1103,
-  // TS1308: 'await' expression is only allowed within an async function.
-  1308,
   // TS2691: An import path cannot end with a '.ts' extension. Consider
   // importing 'bad-module' instead.
   2691,
@@ -304,7 +293,11 @@ export const ignoredDiagnostics = [
   // support JSON imports.  Allegedly this was fixed in
   // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
   // so we will ignore complaints about this compiler setting.
-  5070
+  5070,
+  // TS7016: Could not find a declaration file for module '...'. '...'
+  // implicitly has an 'any' type.  This is due to `allowJs` being off by
+  // default but importing of a JavaScript module.
+  7016
 ];
 
 /** When doing a host configuration, processing the response and logging out

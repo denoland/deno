@@ -71,7 +71,7 @@ impl WasmCompiler {
     worker
   }
 
-  pub async fn compile_async(
+  pub async fn compile(
     &self,
     global_state: GlobalState,
     source_file: &SourceFile,
@@ -84,7 +84,7 @@ impl WasmCompiler {
     if let Some(m) = maybe_cached {
       return Ok(m);
     }
-    debug!(">>>>> wasm_compile_async START");
+    debug!(">>>>> wasm_compile START");
     let base64_data = base64::encode(&source_file.source_code);
     let url = source_file.url.clone();
     let req_msg = serde_json::to_string(&base64_data)
@@ -108,7 +108,7 @@ impl WasmCompiler {
     {
       cache_.lock().unwrap().insert(url.clone(), module.clone());
     }
-    debug!("<<<<< wasm_compile_async END");
+    debug!("<<<<< wasm_compile END");
     Ok(module)
   }
 }

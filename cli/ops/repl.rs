@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::repl;
 use crate::repl::Repl;
 use crate::state::State;
@@ -10,14 +9,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op(
-    "repl_start",
-    s.core_op(json_op(s.stateful_op(op_repl_start))),
-  );
-  i.register_op(
-    "repl_readline",
-    s.core_op(json_op(s.stateful_op(op_repl_readline))),
-  );
+  i.register_op("op_repl_start", s.stateful_json_op(op_repl_start));
+  i.register_op("op_repl_readline", s.stateful_json_op(op_repl_readline));
 }
 
 struct ReplResource(Arc<Mutex<Repl>>);

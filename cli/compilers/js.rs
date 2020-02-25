@@ -7,7 +7,7 @@ use std::str;
 pub struct JsCompiler {}
 
 impl JsCompiler {
-  pub async fn compile_async(
+  pub async fn compile(
     &self,
     source_file: SourceFile,
   ) -> Result<CompiledModule, ErrBox> {

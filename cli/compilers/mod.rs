@@ -11,8 +11,8 @@ mod wasm;
 
 pub use js::JsCompiler;
 pub use json::JsonCompiler;
-pub use ts::runtime_compile_async;
-pub use ts::runtime_transpile_async;
+pub use ts::runtime_compile;
+pub use ts::runtime_transpile;
 pub use ts::TargetLib;
 pub use ts::TsCompiler;
 pub use wasm::WasmCompiler;

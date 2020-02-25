@@ -29,8 +29,12 @@ def eslint():
     # Within the source dirs, eslint does its own globbing, taking into account
     # the exclusion rules listed in '.eslintignore'.
     source_globs = ["%s/*.{js,ts}" % d for d in source_dirs]
+    # Set NODE_PATH so we don't have to maintain a symlink in root_path.
+    env = os.environ.copy()
+    env["NODE_PATH"] = os.path.join(root_path, "third_party", "node_modules")
     run(["node", script, "--max-warnings=0", "--"] + source_globs,
         shell=False,
+        env=env,
         quiet=True)
 
 

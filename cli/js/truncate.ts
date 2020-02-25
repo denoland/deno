@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "./dispatch_json.ts";
-import * as dispatch from "./dispatch.ts";
 
 function coerceLen(len?: number): number {
   if (!len) {
@@ -20,7 +19,7 @@ function coerceLen(len?: number): number {
  *       Deno.truncateSync("hello.txt", 10);
  */
 export function truncateSync(name: string, len?: number): void {
-  sendSync(dispatch.OP_TRUNCATE, { name, len: coerceLen(len) });
+  sendSync("op_truncate", { name, len: coerceLen(len) });
 }
 
 /**
@@ -30,5 +29,5 @@ export function truncateSync(name: string, len?: number): void {
  *       await Deno.truncate("hello.txt", 10);
  */
 export async function truncate(name: string, len?: number): Promise<void> {
-  await sendAsync(dispatch.OP_TRUNCATE, { name, len: coerceLen(len) });
+  await sendAsync("op_truncate", { name, len: coerceLen(len) });
 }

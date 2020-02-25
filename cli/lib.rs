@@ -152,7 +152,7 @@ async fn print_file_info(
 
   let out = global_state
     .file_fetcher
-    .fetch_source_file_async(&module_specifier, None)
+    .fetch_source_file(&module_specifier, None)
     .await?;
 
   println!(
@@ -303,12 +303,12 @@ async fn bundle_command(
 ) -> Result<(), ErrBox> {
   let module_name = ModuleSpecifier::resolve_url_or_path(&source_file)?;
   let global_state = GlobalState::new(flags)?;
-  debug!(">>>>> bundle_async START");
+  debug!(">>>>> bundle START");
   let bundle_result = global_state
     .ts_compiler
-    .bundle_async(global_state.clone(), module_name.to_string(), out_file)
+    .bundle(global_state.clone(), module_name.to_string(), out_file)
     .await;
-  debug!(">>>>> bundle_async END");
+  debug!(">>>>> bundle END");
   bundle_result
 }
 

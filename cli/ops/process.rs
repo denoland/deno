@@ -2,7 +2,6 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::signal::kill;
 use crate::state::State;
 use deno_core::*;
@@ -22,12 +21,9 @@ use tokio::process::Command;
 use std::os::unix::process::ExitStatusExt;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("run", s.core_op(json_op(s.stateful_op(op_run))));
-  i.register_op(
-    "run_status",
-    s.core_op(json_op(s.stateful_op(op_run_status))),
-  );
-  i.register_op("kill", s.core_op(json_op(s.stateful_op(op_kill))));
+  i.register_op("op_run", s.stateful_json_op(op_run));
+  i.register_op("op_run_status", s.stateful_json_op(op_run_status));
+  i.register_op("op_kill", s.stateful_json_op(op_kill));
 }
 
 fn clone_file(rid: u32, state: &State) -> Result<std::fs::File, OpError> {
