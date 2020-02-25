@@ -82,7 +82,7 @@ fn check_source_files(
     };
     Err(
       crate::op_error::OpError::other(format!(
-        "Found {} not formatted in {}",
+        "Found {} not formatted {}",
         not_formatted_files.len(),
         f,
       ))
