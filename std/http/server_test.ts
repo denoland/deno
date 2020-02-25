@@ -11,8 +11,6 @@ import {
   assert,
   assertEquals,
   assertNotEquals,
-  assertThrowsAsync,
-  AssertionError,
   assertNotEOF
 } from "../testing/asserts.ts";
 import {
@@ -21,8 +19,7 @@ import {
   writeResponse,
   serve,
   readRequest,
-  parseHTTPVersion,
-  writeTrailers
+  parseHTTPVersion
 } from "./server.ts";
 import {
   BufReader,
@@ -32,6 +29,7 @@ import {
 } from "../io/bufio.ts";
 import { delay, deferred } from "../util/async.ts";
 import { StringReader } from "../io/readers.ts";
+import { encode } from "../strings/mod.ts";
 
 interface ResponseTest {
   response: Response;
@@ -43,7 +41,7 @@ const dec = new TextDecoder();
 
 type Handler = () => void;
 
-const mockConn = {
+const mockConn = (): Deno.Conn => ({
   localAddr: {
     transport: "tcp",
     hostname: "",
@@ -64,7 +62,7 @@ const mockConn = {
     return -1;
   },
   close: (): void => {}
-};
+});
 
 const responseTests: ResponseTest[] = [
   // Default response
@@ -100,7 +98,7 @@ test(async function responseWrite(): Promise<void> {
     const request = new ServerRequest();
     request.w = bufw;
 
-    request.conn = mockConn as Deno.Conn;
+    request.conn = mockConn();
 
     await request.respond(testCase.response);
     assertEquals(buf.toString(), testCase.raw);
@@ -142,6 +140,25 @@ test(async function requestContentLength(): Promise<void> {
   }
 });
 
+interface TotalReader extends Deno.Reader {
+  total: number;
+}
+function totalReader(r: Deno.Reader): TotalReader {
+  let _total = 0;
+  async function read(p: Uint8Array): Promise<number | Deno.EOF> {
+    const result = await r.read(p);
+    if (typeof result === "number") {
+      _total += result;
+    }
+    return result;
+  }
+  return {
+    read,
+    get total(): number {
+      return _total;
+    }
+  };
+}
 test(async function requestBodyWithContentLength(): Promise<void> {
   {
     const req = new ServerRequest();
@@ -164,8 +181,53 @@ test(async function requestBodyWithContentLength(): Promise<void> {
     const body = dec.decode(await Deno.readAll(req.body));
     assertEquals(body, longText);
   }
+  // Handler ignored to consume body
 });
-
+test("ServerRequest.finalize() should consume unread body / content-length", async () => {
+  const text = "deno.land";
+  const req = new ServerRequest();
+  req.headers = new Headers();
+  req.headers.set("content-length", "" + text.length);
+  const tr = totalReader(new Buffer(encode(text)));
+  req.r = new BufReader(tr);
+  req.w = new BufWriter(new Buffer());
+  await req.respond({ status: 200, body: "ok" });
+  assertEquals(tr.total, 0);
+  await req.finalize();
+  assertEquals(tr.total, text.length);
+});
+test("ServerRequest.finalize() should consume unread body / chunked, trailers", async () => {
+  const text = [
+    "5",
+    "Hello",
+    "4",
+    "Deno",
+    "0",
+    "",
+    "deno: land",
+    "node: js",
+    "",
+    ""
+  ].join("\r\n");
+  const req = new ServerRequest();
+  req.headers = new Headers();
+  req.headers.set("transfer-encoding", "chunked");
+  req.headers.set("trailer", "deno,node");
+  const body = encode(text);
+  const tr = totalReader(new Buffer(body));
+  req.r = new BufReader(tr);
+  req.w = new BufWriter(new Buffer());
+  await req.respond({ status: 200, body: "ok" });
+  assertEquals(tr.total, 0);
+  assertEquals(req.headers.has("trailer"), true);
+  assertEquals(req.headers.has("deno"), false);
+  assertEquals(req.headers.has("node"), false);
+  await req.finalize();
+  assertEquals(tr.total, body.byteLength);
+  assertEquals(req.headers.has("trailer"), false);
+  assertEquals(req.headers.get("deno"), "land");
+  assertEquals(req.headers.get("node"), "js");
+});
 test(async function requestBodyWithTransferEncoding(): Promise<void> {
   {
     const shortText = "Hello";
@@ -465,7 +527,7 @@ malformedHeader
   const reader = new BufReader(new StringReader(input));
   let err;
   try {
-    await readRequest(mockConn as Deno.Conn, reader);
+    await readRequest(mockConn(), reader);
   } catch (e) {
     err = e;
   }
@@ -543,7 +605,7 @@ test(async function testReadRequestError(): Promise<void> {
     let err;
     let req: ServerRequest | Deno.EOF | undefined;
     try {
-      req = await readRequest(mockConn as Deno.Conn, reader);
+      req = await readRequest(mockConn(), reader);
     } catch (e) {
       err = e;
     }
@@ -655,7 +717,10 @@ test({
     try {
       const r = new TextProtoReader(new BufReader(p.stdout!));
       const s = await r.readLine();
-      assert(s !== Deno.EOF && s.includes("server listening"));
+      assert(
+        s !== Deno.EOF && s.includes("server listening"),
+        "server must be started"
+      );
 
       let serverIsRunning = true;
       p.status()
@@ -765,55 +830,3 @@ if (Deno.build.os !== "win") {
     }
   });
 }
-
-test("writeTrailer", async () => {
-  const w = new Buffer();
-  await writeTrailers(
-    w,
-    new Headers({ "transfer-encoding": "chunked", trailer: "deno,node" }),
-    new Headers({ deno: "land", node: "js" })
-  );
-  assertEquals(w.toString(), "deno: land\r\nnode: js\r\n\r\n");
-});
-
-test("writeTrailer should throw", async () => {
-  const w = new Buffer();
-  await assertThrowsAsync(
-    () => {
-      return writeTrailers(w, new Headers(), new Headers());
-    },
-    Error,
-    'must have "trailer"'
-  );
-  await assertThrowsAsync(
-    () => {
-      return writeTrailers(w, new Headers({ trailer: "deno" }), new Headers());
-    },
-    Error,
-    "only allowed"
-  );
-  for (const f of ["content-length", "trailer", "transfer-encoding"]) {
-    await assertThrowsAsync(
-      () => {
-        return writeTrailers(
-          w,
-          new Headers({ "transfer-encoding": "chunked", trailer: f }),
-          new Headers({ [f]: "1" })
-        );
-      },
-      AssertionError,
-      "prohibited"
-    );
-  }
-  await assertThrowsAsync(
-    () => {
-      return writeTrailers(
-        w,
-        new Headers({ "transfer-encoding": "chunked", trailer: "deno" }),
-        new Headers({ node: "js" })
-      );
-    },
-    AssertionError,
-    "Not trailer"
-  );
-});
