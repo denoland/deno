@@ -2,8 +2,7 @@
 import { ServerRequest, Response } from "./server.ts";
 import { getCookies, delCookie, setCookie } from "./cookie.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
-import { testGroup } from "../testing/group.ts";
-const test = testGroup("http/cookie");
+const { test } = Deno;
 
 test({
   name: "Cookie parser",
