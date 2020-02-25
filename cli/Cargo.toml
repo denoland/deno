@@ -26,7 +26,6 @@ deno_typescript = { path = "../deno_typescript", version = "0.34.0" }
 deno_core = { path = "../core", version = "0.34.0" }
 deno_typescript = { path = "../deno_typescript", version = "0.34.0" }
 
-ansi_term = "0.11.0"
 atty = "0.2.13"
 base64 = "0.11.0"
 bytes = "0.5.3"
