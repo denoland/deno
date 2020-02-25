@@ -296,9 +296,7 @@ export function transpileOnly(
     sources,
     options: options ? JSON.stringify(options) : undefined
   };
-  return sendAsync("op_transpile", payload).then(result =>
-    JSON.parse(result)
-  );
+  return sendAsync("op_transpile", payload).then(result => JSON.parse(result));
 }
 
 /** Takes a root module name, any optionally a record set of sources. Resolves
@@ -344,9 +342,7 @@ export function compile(
     sources: !!sources,
     options
   });
-  return sendAsync("op_compile", payload).then(result =>
-    JSON.parse(result)
-  );
+  return sendAsync("op_compile", payload).then(result => JSON.parse(result));
 }
 
 /** Takes a root module name, and optionally a record set of sources. Resolves
@@ -393,7 +389,5 @@ export function bundle(
     sources: !!sources,
     options
   });
-  return sendAsync("op_compile", payload).then(result =>
-    JSON.parse(result)
-  );
+  return sendAsync("op_compile", payload).then(result => JSON.parse(result));
 }

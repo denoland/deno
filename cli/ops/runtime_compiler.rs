@@ -10,7 +10,10 @@ use std::collections::HashMap;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_compile", s.core_op(json_op(s.stateful_op(op_compile))));
-  i.register_op("op_transpile", s.core_op(json_op(s.stateful_op(op_transpile))));
+  i.register_op(
+    "op_transpile",
+    s.core_op(json_op(s.stateful_op(op_transpile))),
+  );
 }
 
 #[derive(Deserialize, Debug)]

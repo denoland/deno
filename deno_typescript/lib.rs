@@ -85,22 +85,24 @@ impl TSIsolate {
     }));
 
     isolate.register_op(
-      "loadModule",
-      compiler_op(state.clone(), ops::json_op(ops::load_module)),
-    );
-    isolate
-      .register_op("exit", compiler_op(state.clone(), ops::json_op(ops::exit)));
-    isolate.register_op(
-      "writeFile",
-      compiler_op(state.clone(), ops::json_op(ops::write_file)),
+      "op_load_module",
+      compiler_op(state.clone(), ops::json_op(ops::op_load_module)),
     );
     isolate.register_op(
-      "resolveModuleNames",
-      compiler_op(state.clone(), ops::json_op(ops::resolve_module_names)),
+      "op_exit",
+      compiler_op(state.clone(), ops::json_op(ops::op_exit)),
     );
     isolate.register_op(
-      "setEmitResult",
-      compiler_op(state.clone(), ops::json_op(ops::set_emit_result)),
+      "op_write_file",
+      compiler_op(state.clone(), ops::json_op(ops::op_write_file)),
+    );
+    isolate.register_op(
+      "op_resolve_module_names",
+      compiler_op(state.clone(), ops::json_op(ops::op_resolve_module_names)),
+    );
+    isolate.register_op(
+      "op_set_emit_result",
+      compiler_op(state.clone(), ops::json_op(ops::op_set_emit_result)),
     );
 
     TSIsolate { isolate, state }
