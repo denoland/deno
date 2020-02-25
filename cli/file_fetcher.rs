@@ -127,18 +127,18 @@ impl SourceFileFetcher {
     // future, because it doesn't actually do any asynchronous
     // action in that path.
     self
-      .get_source_file_async(specifier.as_url(), true, false, true)
+      .get_source_file(specifier.as_url(), true, false, true)
       .await
       .ok()
   }
 
-  pub async fn fetch_source_file_async(
+  pub async fn fetch_source_file(
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<SourceFile, ErrBox> {
     let module_url = specifier.as_url().to_owned();
-    debug!("fetch_source_file_async specifier: {} ", &module_url);
+    debug!("fetch_source_file specifier: {} ", &module_url);
 
     // Check if this file was already fetched and can be retrieved from in-process cache.
     let maybe_cached_file = self.source_file_cache.get(specifier.to_string());
@@ -150,7 +150,7 @@ impl SourceFileFetcher {
     let specifier_ = specifier.clone();
 
     let result = self
-      .get_source_file_async(
+      .get_source_file(
         &module_url,
         self.use_disk_cache,
         self.no_remote,
@@ -218,7 +218,7 @@ impl SourceFileFetcher {
   ///
   /// If `cached_only` is true then this method will fail for remote files
   /// not already cached.
-  async fn get_source_file_async(
+  async fn get_source_file(
     &self,
     module_url: &Url,
     use_disk_cache: bool,
@@ -248,7 +248,7 @@ impl SourceFileFetcher {
 
     // Fetch remote file and cache on-disk for subsequent access
     self
-      .fetch_remote_source_async(&module_url, use_disk_cache, cached_only, 10)
+      .fetch_remote_source(&module_url, use_disk_cache, cached_only, 10)
       .await
   }
 
@@ -346,7 +346,7 @@ impl SourceFileFetcher {
   ///
   /// Note that this is a recursive method so it can't be "async", but rather return
   /// Pin<Box<..>>.
-  fn fetch_remote_source_async(
+  fn fetch_remote_source(
     &self,
     module_url: &Url,
     use_disk_cache: bool,
@@ -419,7 +419,7 @@ impl SourceFileFetcher {
 
           // Recurse
           dir
-            .fetch_remote_source_async(
+            .fetch_remote_source(
               &new_module_url,
               use_disk_cache,
               cached_only,
@@ -738,7 +738,7 @@ mod tests {
     let headers_file_name_2 = headers_file_name.clone();
 
     let result = fetcher
-      .get_source_file_async(&module_url, true, false, false)
+      .get_source_file(&module_url, true, false, false)
       .await;
     assert!(result.is_ok());
     let r = result.unwrap();
@@ -755,7 +755,7 @@ mod tests {
       "{ \"content-type\": \"text/javascript\" }",
     );
     let result2 = fetcher_1
-      .get_source_file_async(&module_url, true, false, false)
+      .get_source_file(&module_url, true, false, false)
       .await;
     assert!(result2.is_ok());
     let r2 = result2.unwrap();
@@ -763,7 +763,7 @@ mod tests {
       r2.source_code,
       &b"export { printHello } from \"./print_hello.ts\";\n"[..]
     );
-    // If get_source_file_async does not call remote, this should be JavaScript
+    // If get_source_file does not call remote, this should be JavaScript
     // as we modified before! (we do not overwrite .headers.json due to no http fetch)
     assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
     let (_, headers) = fetcher_2.http_cache.get(&module_url_1).unwrap();
@@ -776,7 +776,7 @@ mod tests {
       "{ \"content-type\": \"application/json\" }",
     );
     let result3 = fetcher_2
-      .get_source_file_async(&module_url_1, true, false, false)
+      .get_source_file(&module_url_1, true, false, false)
       .await;
     assert!(result3.is_ok());
     let r3 = result3.unwrap();
@@ -784,7 +784,7 @@ mod tests {
       r3.source_code,
       &b"export { printHello } from \"./print_hello.ts\";\n"[..]
     );
-    // If get_source_file_async does not call remote, this should be JavaScript
+    // If get_source_file does not call remote, this should be JavaScript
     // as we modified before! (we do not overwrite .headers.json due to no http fetch)
     assert_eq!(&(r3.media_type), &msg::MediaType::Json);
     assert!(fs::read_to_string(&headers_file_name_2)
@@ -795,7 +795,7 @@ mod tests {
     // and don't use cache
     let fetcher = setup_file_fetcher(temp_dir.path());
     let result4 = fetcher
-      .get_source_file_async(&module_url_2, false, false, false)
+      .get_source_file(&module_url_2, false, false, false)
       .await;
     assert!(result4.is_ok());
     let r4 = result4.unwrap();
@@ -821,7 +821,7 @@ mod tests {
       .with_extension("headers.json");
 
     let result = fetcher
-      .get_source_file_async(&module_url, true, false, false)
+      .get_source_file(&module_url, true, false, false)
       .await;
     assert!(result.is_ok());
     let r = result.unwrap();
@@ -837,13 +837,13 @@ mod tests {
       "{ \"content-type\": \"text/typescript\" }",
     );
     let result2 = fetcher
-      .get_source_file_async(&module_url, true, false, false)
+      .get_source_file(&module_url, true, false, false)
       .await;
     assert!(result2.is_ok());
     let r2 = result2.unwrap();
     let expected2 = b"export const loaded = true;\n";
     assert_eq!(r2.source_code, expected2);
-    // If get_source_file_async does not call remote, this should be TypeScript
+    // If get_source_file does not call remote, this should be TypeScript
     // as we modified before! (we do not overwrite .headers.json due to no http
     // fetch)
     assert_eq!(&(r2.media_type), &msg::MediaType::TypeScript);
@@ -856,7 +856,7 @@ mod tests {
     // process) and don't use cache
     let fetcher = setup_file_fetcher(temp_dir.path());
     let result3 = fetcher
-      .get_source_file_async(&module_url_1, false, false, false)
+      .get_source_file(&module_url_1, false, false, false)
       .await;
     assert!(result3.is_ok());
     let r3 = result3.unwrap();
@@ -885,7 +885,7 @@ mod tests {
       .with_extension("headers.json");
 
     // first download
-    let r = fetcher.fetch_source_file_async(&specifier, None).await;
+    let r = fetcher.fetch_source_file(&specifier, None).await;
     assert!(r.is_ok());
 
     let result = fs::File::open(&headers_file_name);
@@ -899,7 +899,7 @@ mod tests {
     // `use_disk_cache` is set to false, this can be verified using source
     // header file creation timestamp (should be the same as after first
     // download)
-    let r = fetcher.fetch_source_file_async(&specifier, None).await;
+    let r = fetcher.fetch_source_file(&specifier, None).await;
     assert!(r.is_ok());
 
     let result = fs::File::open(&headers_file_name);
@@ -937,7 +937,7 @@ mod tests {
 
     // Test basic follow and headers recording
     let result = fetcher
-      .get_source_file_async(&redirect_module_url, true, false, false)
+      .get_source_file(&redirect_module_url, true, false, false)
       .await;
     assert!(result.is_ok());
     let mod_meta = result.unwrap();
@@ -986,7 +986,7 @@ mod tests {
 
     // Test double redirects and headers recording
     let result = fetcher
-      .get_source_file_async(&double_redirect_url, true, false, false)
+      .get_source_file(&double_redirect_url, true, false, false)
       .await;
     assert!(result.is_ok());
     let mod_meta = result.unwrap();
@@ -1033,7 +1033,7 @@ mod tests {
 
     // Test that redirect target is not downloaded twice for different redirect source.
     let result = fetcher
-      .get_source_file_async(&double_redirect_url, true, false, false)
+      .get_source_file(&double_redirect_url, true, false, false)
       .await;
     assert!(result.is_ok());
     let result = fs::File::open(&target_path);
@@ -1048,7 +1048,7 @@ mod tests {
     // using source header file creation timestamp (should be the same as
     // after first `get_source_file`)
     let result = fetcher
-      .get_source_file_async(&redirect_url, true, false, false)
+      .get_source_file(&redirect_url, true, false, false)
       .await;
     assert!(result.is_ok());
     let result = fs::File::open(&target_path_);
@@ -1074,12 +1074,12 @@ mod tests {
 
     // Test that redirections can be limited
     let result = fetcher
-      .fetch_remote_source_async(&double_redirect_url, false, false, 2)
+      .fetch_remote_source(&double_redirect_url, false, false, 2)
       .await;
     assert!(result.is_ok());
 
     let result = fetcher
-      .fetch_remote_source_async(&double_redirect_url, false, false, 1)
+      .fetch_remote_source(&double_redirect_url, false, false, 1)
       .await;
     assert!(result.is_err());
     // FIXME(bartlomieju):
@@ -1097,7 +1097,7 @@ mod tests {
       Url::parse("http://localhost:4545/cli/tests/002_hello.ts").unwrap();
     // Remote modules are not allowed
     let result = fetcher
-      .get_source_file_async(&module_url, true, true, false)
+      .get_source_file(&module_url, true, true, false)
       .await;
     assert!(result.is_err());
     // FIXME(bartlomieju):
@@ -1120,7 +1120,7 @@ mod tests {
 
     // file hasn't been cached before
     let result = fetcher
-      .get_source_file_async(&module_url, true, false, true)
+      .get_source_file(&module_url, true, false, true)
       .await;
     assert!(result.is_err());
     // FIXME(bartlomieju):
@@ -1129,21 +1129,19 @@ mod tests {
 
     // download and cache file
     let result = fetcher_1
-      .get_source_file_async(&module_url_1, true, false, false)
+      .get_source_file(&module_url_1, true, false, false)
       .await;
     assert!(result.is_ok());
-
     // module is already cached, should be ok even with `cached_only`
     let result = fetcher_2
-      .get_source_file_async(&module_url_2, true, false, true)
+      .get_source_file(&module_url_2, true, false, true)
       .await;
     assert!(result.is_ok());
-
     drop(http_server_guard);
   }
 
   #[tokio::test]
-  async fn test_fetch_source_async_1() {
+  async fn test_fetch_source_0() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
@@ -1154,7 +1152,7 @@ mod tests {
       .get_cache_filename(&module_url)
       .with_extension("headers.json");
     let result = fetcher
-      .fetch_remote_source_async(&module_url, false, false, 10)
+      .fetch_remote_source(&module_url, false, false, 10)
       .await;
     assert!(result.is_ok());
     let r = result.unwrap();
@@ -1185,7 +1183,7 @@ mod tests {
         .unwrap();
 
     let result = fetcher
-      .fetch_remote_source_async(&module_url, false, false, 10)
+      .fetch_remote_source(&module_url, false, false, 10)
       .await;
     assert!(result.is_ok());
     let r = result.unwrap();
@@ -1228,7 +1226,7 @@ mod tests {
     let module_url_3_ = module_url_3.clone();
 
     let result = fetcher
-      .fetch_remote_source_async(&module_url, false, false, 10)
+      .fetch_remote_source(&module_url, false, false, 10)
       .await;
     assert!(result.is_ok());
     let r = result.unwrap();
@@ -1237,7 +1235,7 @@ mod tests {
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
     assert_eq!(headers.get("content-type").unwrap(), "text/typescript");
     let result = fetcher_1
-      .fetch_remote_source_async(&module_url_2, false, false, 10)
+      .fetch_remote_source(&module_url_2, false, false, 10)
       .await;
     assert!(result.is_ok());
     let r2 = result.unwrap();
@@ -1248,7 +1246,7 @@ mod tests {
 
     // test unknown extension
     let result = fetcher_2
-      .fetch_remote_source_async(&module_url_3, false, false, 10)
+      .fetch_remote_source(&module_url_3, false, false, 10)
       .await;
     assert!(result.is_ok());
     let r3 = result.unwrap();
@@ -1267,14 +1265,14 @@ mod tests {
     // Test failure case.
     let specifier =
       ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-    let r = fetcher.fetch_source_file_async(&specifier, None).await;
+    let r = fetcher.fetch_source_file(&specifier, None).await;
     assert!(r.is_err());
 
     let p =
       std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("js/main.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    let r = fetcher.fetch_source_file_async(&specifier, None).await;
+    let r = fetcher.fetch_source_file(&specifier, None).await;
     assert!(r.is_ok());
   }
 
@@ -1286,14 +1284,14 @@ mod tests {
     // Test failure case.
     let specifier =
       ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-    let r = fetcher.fetch_source_file_async(&specifier, None).await;
+    let r = fetcher.fetch_source_file(&specifier, None).await;
     assert!(r.is_err());
 
     let p =
       std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("js/main.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    let r = fetcher.fetch_source_file_async(&specifier, None).await;
+    let r = fetcher.fetch_source_file(&specifier, None).await;
     assert!(r.is_ok());
   }
 
@@ -1306,7 +1304,7 @@ mod tests {
       .join("tests/001_hello.js");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    let r = fetcher.fetch_source_file_async(&specifier, None).await;
+    let r = fetcher.fetch_source_file(&specifier, None).await;
     assert!(r.is_ok());
   }
 
@@ -1550,7 +1548,7 @@ mod tests {
       Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
 
     let source = fetcher
-      .fetch_remote_source_async(&module_url, false, false, 1)
+      .fetch_remote_source(&module_url, false, false, 1)
       .await;
     assert!(source.is_ok());
     let source = source.unwrap();
@@ -1573,7 +1571,7 @@ mod tests {
     let file_name = fetcher.http_cache.get_cache_filename(&module_url);
     let _ = fs::write(&file_name, "changed content");
     let cached_source = fetcher
-      .fetch_remote_source_async(&module_url, false, false, 1)
+      .fetch_remote_source(&module_url, false, false, 1)
       .await
       .unwrap();
     assert_eq!(cached_source.source_code, b"changed content");
@@ -1672,7 +1670,7 @@ mod tests {
     let module_url =
       Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.js").unwrap();
     let source = fetcher
-      .fetch_remote_source_async(&module_url, false, false, 1)
+      .fetch_remote_source(&module_url, false, false, 1)
       .await;
     assert!(source.is_ok());
     let source = source.unwrap();
@@ -1692,7 +1690,7 @@ mod tests {
     let module_url =
       Url::parse("http://127.0.0.1:4545/referenceTypes.js").unwrap();
     let source = fetcher
-      .fetch_remote_source_async(&module_url, false, false, 1)
+      .fetch_remote_source(&module_url, false, false, 1)
       .await;
     assert!(source.is_ok());
     let source = source.unwrap();
