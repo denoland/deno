@@ -33,7 +33,10 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v1
         with:
-          fetch-depth: 1
+          # Use depth > 1, because sometimes we need to rebuild master and if
+          # other commits have landed it will become impossible to rebuild if
+          # the checkout is too shallow.
+          fetch-depth: 5
           submodules: true
 
       - name: Create source tarballs (release, linux)
