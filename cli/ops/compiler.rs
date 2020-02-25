@@ -21,7 +21,7 @@ pub fn init(i: &mut Isolate, s: &State) {
     "op_fetch_source_files",
     s.core_op(json_op(s.stateful_op(op_fetch_source_files))),
   );
-  let custom_assets = HashMap::new();
+  let custom_assets = std::collections::HashMap::new(); // TODO(ry) use None.
   i.register_op(
     "op_fetch_asset",
     deno_typescript::op_fetch_asset(custom_assets),
