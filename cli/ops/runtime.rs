@@ -3,7 +3,6 @@ use super::dispatch_json::{JsonOp, Value};
 use crate::colors;
 use crate::fs as deno_fs;
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::state::State;
 use crate::version;
 use crate::DenoSubcommand;
@@ -21,8 +20,8 @@ static BUILD_OS: &str = "win";
 static BUILD_ARCH: &str = "x64";
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("start", s.core_op(json_op(s.stateful_op(op_start))));
-  i.register_op("metrics", s.core_op(json_op(s.stateful_op(op_metrics))));
+  i.register_op("op_start", s.stateful_json_op(op_start));
+  i.register_op("op_metrics", s.stateful_json_op(op_metrics));
 }
 
 fn op_start(

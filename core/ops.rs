@@ -62,7 +62,6 @@ impl OpRegistry {
       existing.is_none(),
       format!("Op already registered: {}", name)
     );
-
     lock.push(Rc::new(op));
     drop(name_lock);
     drop(lock);

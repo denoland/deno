@@ -47,11 +47,11 @@ lazy_static! {
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
-    "read",
+    "op_read",
     s.core_op(minimal_op(s.stateful_minimal_op(op_read))),
   );
   i.register_op(
-    "write",
+    "op_write",
     s.core_op(minimal_op(s.stateful_minimal_op(op_write))),
   );
 }
@@ -124,23 +124,6 @@ enum IoState {
   Done,
 }
 
-/// Tries to read some bytes directly into the given `buf` in asynchronous
-/// manner, returning a future type.
-///
-/// The returned future will resolve to both the I/O stream and the buffer
-/// as well as the number of bytes read once the read operation is completed.
-pub fn read<T>(state: &State, rid: ResourceId, buf: T) -> Read<T>
-where
-  T: AsMut<[u8]>,
-{
-  Read {
-    rid,
-    buf,
-    io_state: IoState::Pending,
-    state: state.clone(),
-  }
-}
-
 /// A future which can be used to easily read available number of bytes to fill
 /// a buffer.
 ///
@@ -185,13 +168,17 @@ pub fn op_read(
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Pin<Box<MinimalOp>> {
   debug!("read rid={}", rid);
-  let zero_copy = match zero_copy {
-    None => return futures::future::err(no_buffer_specified()).boxed_local(),
-    Some(buf) => buf,
-  };
-
-  let fut = read(state, rid as u32, zero_copy);
-  fut.boxed_local()
+  if zero_copy.is_none() {
+    return futures::future::err(no_buffer_specified()).boxed_local();
+  }
+  // TODO(ry) Probably poll_fn can be used here and the Read struct eliminated.
+  Read {
+    rid: rid as u32,
+    buf: zero_copy.unwrap(),
+    io_state: IoState::Pending,
+    state: state.clone(),
+  }
+  .boxed_local()
 }
 
 /// `DenoAsyncWrite` is the same as the `tokio_io::AsyncWrite` trait
@@ -261,24 +248,6 @@ pub struct Write<T> {
   nwritten: i32,
 }
 
-/// Creates a future that will write some of the buffer `buf` to
-/// the stream resource with `rid`.
-///
-/// Any error which happens during writing will cause both the stream and the
-/// buffer to get destroyed.
-pub fn write<T>(state: &State, rid: ResourceId, buf: T) -> Write<T>
-where
-  T: AsRef<[u8]>,
-{
-  Write {
-    rid,
-    buf,
-    io_state: IoState::Pending,
-    state: state.clone(),
-    nwritten: 0,
-  }
-}
-
 /// This is almost the same implementation as in tokio, difference is
 /// that error type is `OpError` instead of `std::io::Error`.
 impl<T> Future for Write<T>
@@ -329,12 +298,16 @@ pub fn op_write(
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Pin<Box<MinimalOp>> {
   debug!("write rid={}", rid);
-  let zero_copy = match zero_copy {
-    None => return futures::future::err(no_buffer_specified()).boxed_local(),
-    Some(buf) => buf,
-  };
-
-  let fut = write(state, rid as u32, zero_copy);
-
-  fut.boxed_local()
+  if zero_copy.is_none() {
+    return futures::future::err(no_buffer_specified()).boxed_local();
+  }
+  // TODO(ry) Probably poll_fn can be used here and the Write struct eliminated.
+  Write {
+    rid: rid as u32,
+    buf: zero_copy.unwrap(),
+    io_state: IoState::Pending,
+    state: state.clone(),
+    nwritten: 0,
+  }
+  .boxed_local()
 }

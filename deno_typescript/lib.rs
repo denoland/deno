@@ -85,22 +85,24 @@ impl TSIsolate {
     }));
 
     isolate.register_op(
-      "loadModule",
-      compiler_op(state.clone(), ops::json_op(ops::load_module)),
-    );
-    isolate
-      .register_op("exit", compiler_op(state.clone(), ops::json_op(ops::exit)));
-    isolate.register_op(
-      "writeFile",
-      compiler_op(state.clone(), ops::json_op(ops::write_file)),
+      "op_load_module",
+      compiler_op(state.clone(), ops::json_op(ops::op_load_module)),
     );
     isolate.register_op(
-      "resolveModuleNames",
-      compiler_op(state.clone(), ops::json_op(ops::resolve_module_names)),
+      "op_exit2",
+      compiler_op(state.clone(), ops::json_op(ops::op_exit2)),
     );
     isolate.register_op(
-      "setEmitResult",
-      compiler_op(state.clone(), ops::json_op(ops::set_emit_result)),
+      "op_write_file",
+      compiler_op(state.clone(), ops::json_op(ops::op_write_file)),
+    );
+    isolate.register_op(
+      "op_resolve_module_names",
+      compiler_op(state.clone(), ops::json_op(ops::op_resolve_module_names)),
+    );
+    isolate.register_op(
+      "op_set_emit_result",
+      compiler_op(state.clone(), ops::json_op(ops::op_set_emit_result)),
     );
 
     TSIsolate { isolate, state }
@@ -316,4 +318,29 @@ pub fn trace_serializer() {
     "--trace-serializer".to_string(),
   ]);
   assert_eq!(r, vec![dummy]);
+}
+
+/// Warning: Returns a non-JSON op dispatcher. Must be manually attached to
+/// Isolate.
+pub fn op_fetch_asset<S: ::std::hash::BuildHasher>(
+  custom_assets: HashMap<String, PathBuf, S>,
+) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp {
+  move |control: &[u8], zero_copy_buf: Option<ZeroCopyBuf>| -> CoreOp {
+    assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in this op.
+    let name = std::str::from_utf8(control).unwrap();
+
+    let asset_code = if let Some(source_code) = get_asset(name) {
+      source_code.to_string()
+    } else if let Some(asset_path) = custom_assets.get(name) {
+      let source_code_vec =
+        std::fs::read(&asset_path).expect("Asset not found");
+      let source_code = std::str::from_utf8(&source_code_vec).unwrap();
+      source_code.to_string()
+    } else {
+      panic!("fetch_asset bad asset {}", name)
+    };
+
+    let vec = asset_code.into_bytes();
+    deno_core::Op::Sync(vec.into_boxed_slice())
+  }
 }

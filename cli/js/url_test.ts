@@ -180,6 +180,7 @@ test(function sortingNonExistentParamRemovesQuestionMarkFromURL(): void {
   assertEquals(url.search, "");
 });
 
+/*
 test(function customInspectFunction(): void {
   const url = new URL("http://example.com/?");
   assertEquals(
@@ -187,6 +188,7 @@ test(function customInspectFunction(): void {
     'URL { href: "http://example.com/?", origin: "http://example.com", protocol: "http:", username: "", password: "", host: "example.com", hostname: "example.com", port: "", pathname: "/", hash: "", search: "?" }'
   );
 });
+*/
 
 test(function protocolNotHttpOrFile() {
   const url = new URL("about:blank");
@@ -200,3 +202,7 @@ test(function createBadUrl(): void {
     new URL("0.0.0.0:8080");
   });
 });
+
+if (import.meta.main) {
+  Deno.runTests();
+}

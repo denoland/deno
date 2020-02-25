@@ -2,7 +2,6 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::*;
@@ -34,18 +33,9 @@ use webpki::DNSNameRef;
 use webpki_roots;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op(
-    "connect_tls",
-    s.core_op(json_op(s.stateful_op(op_connect_tls))),
-  );
-  i.register_op(
-    "listen_tls",
-    s.core_op(json_op(s.stateful_op(op_listen_tls))),
-  );
-  i.register_op(
-    "accept_tls",
-    s.core_op(json_op(s.stateful_op(op_accept_tls))),
-  );
+  i.register_op("op_connect_tls", s.stateful_json_op(op_connect_tls));
+  i.register_op("op_listen_tls", s.stateful_json_op(op_listen_tls));
+  i.register_op("op_accept_tls", s.stateful_json_op(op_accept_tls));
 }
 
 #[derive(Deserialize)]
@@ -281,15 +271,6 @@ enum AcceptTlsState {
   Done,
 }
 
-/// Simply accepts a TLS connection.
-pub fn accept_tls(state: &State, rid: ResourceId) -> AcceptTls {
-  AcceptTls {
-    accept_state: AcceptTlsState::Pending,
-    rid,
-    state: state.clone(),
-  }
-}
-
 /// A future representing state of accepting a TLS connection.
 pub struct AcceptTls {
   accept_state: AcceptTlsState,
@@ -347,7 +328,12 @@ fn op_accept_tls(
   let rid = args.rid as u32;
   let state = state.clone();
   let op = async move {
-    let (tcp_stream, _socket_addr) = accept_tls(&state.clone(), rid).await?;
+    let accept_fut = AcceptTls {
+      accept_state: AcceptTlsState::Pending,
+      rid,
+      state: state.clone(),
+    };
+    let (tcp_stream, _socket_addr) = accept_fut.await?;
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
     let tls_acceptor = {

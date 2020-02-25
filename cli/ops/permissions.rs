@@ -2,23 +2,22 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::fs as deno_fs;
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
 use std::path::Path;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
-    "query_permission",
-    s.core_op(json_op(s.stateful_op(op_query_permission))),
+    "op_query_permission",
+    s.stateful_json_op(op_query_permission),
   );
   i.register_op(
-    "revoke_permission",
-    s.core_op(json_op(s.stateful_op(op_revoke_permission))),
+    "op_revoke_permission",
+    s.stateful_json_op(op_revoke_permission),
   );
   i.register_op(
-    "request_permission",
-    s.core_op(json_op(s.stateful_op(op_request_permission))),
+    "op_request_permission",
+    s.stateful_json_op(op_request_permission),
   );
 }
 

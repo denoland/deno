@@ -41,7 +41,7 @@ struct LoadModule {
   should_create_new_source_file: bool,
 }
 
-pub fn load_module(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn op_load_module(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: LoadModule = serde_json::from_value(v)?;
   let (module_name, source_code) = if v.module_url.starts_with("$asset$/") {
     let asset = v.module_url.replace("$asset$/", "");
@@ -98,7 +98,7 @@ struct WriteFile {
   module_name: String,
 }
 
-pub fn write_file(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn op_write_file(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: WriteFile = serde_json::from_value(v)?;
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&v.file_name)?;
   if s.bundle {
@@ -119,7 +119,7 @@ struct ResolveModuleNames {
   containing_file: String,
 }
 
-pub fn resolve_module_names(
+pub fn op_resolve_module_names(
   _s: &mut TSState,
   v: Value,
 ) -> Result<Value, ErrBox> {
@@ -143,7 +143,7 @@ struct Exit {
   code: i32,
 }
 
-pub fn exit(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn op_exit2(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: Exit = serde_json::from_value(v)?;
   s.exit_code = v.code;
   std::process::exit(v.code)
@@ -157,7 +157,7 @@ pub struct EmitResult {
   pub emitted_files: Vec<String>,
 }
 
-pub fn set_emit_result(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn op_set_emit_result(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: EmitResult = serde_json::from_value(v)?;
   s.emit_result = Some(v);
   Ok(json!(true))
