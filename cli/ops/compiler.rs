@@ -5,21 +5,17 @@ use super::dispatch_json::Value;
 use crate::futures::future::try_join_all;
 use crate::msg;
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::state::State;
 use deno_core::Loader;
 use deno_core::*;
 use futures::future::FutureExt;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("op_cache", s.core_op(json_op(s.stateful_op(op_cache))));
-  i.register_op(
-    "op_resolve_modules",
-    s.core_op(json_op(s.stateful_op(op_resolve_modules))),
-  );
+  i.register_op("op_cache", s.stateful_json_op(op_cache));
+  i.register_op("op_resolve_modules", s.stateful_json_op(op_resolve_modules));
   i.register_op(
     "op_fetch_source_files",
-    s.core_op(json_op(s.stateful_op(op_fetch_source_files))),
+    s.stateful_json_op(op_fetch_source_files),
   );
   let custom_assets = std::collections::HashMap::new(); // TODO(ry) use None.
   i.register_op(

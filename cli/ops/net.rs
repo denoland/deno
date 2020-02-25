@@ -2,7 +2,6 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::*;
@@ -21,15 +20,12 @@ use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("op_accept", s.core_op(json_op(s.stateful_op(op_accept))));
-  i.register_op("op_connect", s.core_op(json_op(s.stateful_op(op_connect))));
-  i.register_op(
-    "op_shutdown",
-    s.core_op(json_op(s.stateful_op(op_shutdown))),
-  );
-  i.register_op("op_listen", s.core_op(json_op(s.stateful_op(op_listen))));
-  i.register_op("op_receive", s.core_op(json_op(s.stateful_op(op_receive))));
-  i.register_op("op_send", s.core_op(json_op(s.stateful_op(op_send))));
+  i.register_op("op_accept", s.stateful_json_op(op_accept));
+  i.register_op("op_connect", s.stateful_json_op(op_connect));
+  i.register_op("op_shutdown", s.stateful_json_op(op_shutdown));
+  i.register_op("op_listen", s.stateful_json_op(op_listen));
+  i.register_op("op_receive", s.stateful_json_op(op_receive));
+  i.register_op("op_send", s.stateful_json_op(op_send));
 }
 
 #[derive(Debug, PartialEq)]

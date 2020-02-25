@@ -2,7 +2,6 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::*;
@@ -34,18 +33,9 @@ use webpki::DNSNameRef;
 use webpki_roots;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op(
-    "op_connect_tls",
-    s.core_op(json_op(s.stateful_op(op_connect_tls))),
-  );
-  i.register_op(
-    "op_listen_tls",
-    s.core_op(json_op(s.stateful_op(op_listen_tls))),
-  );
-  i.register_op(
-    "op_accept_tls",
-    s.core_op(json_op(s.stateful_op(op_accept_tls))),
-  );
+  i.register_op("op_connect_tls", s.stateful_json_op(op_connect_tls));
+  i.register_op("op_listen_tls", s.stateful_json_op(op_listen_tls));
+  i.register_op("op_accept_tls", s.stateful_json_op(op_accept_tls));
 }
 
 #[derive(Deserialize)]
