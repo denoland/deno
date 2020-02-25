@@ -11,11 +11,9 @@ import { Response, ServerRequest, serve } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay, deferred } from "../util/async.ts";
 import { encode, decode } from "../strings/mod.ts";
-import { mockConn } from "../testing/mock.ts";
-import { testGroup } from "../testing/group.ts";
+import { mockConn } from "./mock.ts";
 
-const { Buffer } = Deno;
-const test = testGroup("http/server");
+const { Buffer, test } = Deno;
 
 interface ResponseTest {
   response: Response;

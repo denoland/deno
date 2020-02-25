@@ -1,9 +1,7 @@
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { testGroup } from "../testing/group.ts";
-const { connect, run } = Deno;
-const test = testGroup("http/racing_server");
+const { connect, run, test } = Deno;
 
 let server: Deno.Process;
 async function startServer(): Promise<void> {

@@ -19,10 +19,8 @@ import { BufReader, UnexpectedEOFError, ReadLineResult } from "../io/bufio.ts";
 import { chunkedBodyReader } from "./io.ts";
 import { ServerRequest, Response } from "./server.ts";
 import { StringReader } from "../io/readers.ts";
-import { mockConn } from "../testing/mock.ts";
-import { testGroup } from "../testing/group.ts";
-const { Buffer } = Deno;
-const test = testGroup("http/io");
+import { mockConn } from "./mock.ts";
+const { Buffer, test } = Deno;
 
 test("bodyReader", async () => {
   const text = "Hello, Deno";

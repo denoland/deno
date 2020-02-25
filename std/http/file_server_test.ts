@@ -2,9 +2,7 @@
 import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { testGroup } from "../testing/group.ts";
-const test = testGroup("http/file_server");
-
+const { test } = Deno;
 let fileServer: Deno.Process;
 
 async function startFileServer(): Promise<void> {
