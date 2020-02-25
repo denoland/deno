@@ -112,7 +112,7 @@ fn op_fetch_source_files(
           let resolved_specifier = ModuleSpecifier::resolve_url(&specifier)
             .expect("Invalid specifier");
           file_fetcher_
-            .fetch_source_file_async(&resolved_specifier, ref_specifier_)
+            .fetch_source_file(&resolved_specifier, ref_specifier_)
             .await
         }
         .boxed_local()
@@ -130,7 +130,7 @@ fn op_fetch_source_files(
             let types_specifier = ModuleSpecifier::from(types_url);
             global_state
               .file_fetcher
-              .fetch_source_file_async(&types_specifier, ref_specifier.clone())
+              .fetch_source_file(&types_specifier, ref_specifier.clone())
               .await
               .map_err(OpError::from)?
           }
@@ -143,7 +143,7 @@ fn op_fetch_source_files(
           msg::MediaType::Wasm => {
             global_state
               .wasm_compiler
-              .compile_async(global_state.clone(), &file)
+              .compile(global_state.clone(), &file)
               .await
               .map_err(|e| OpError::other(e.to_string()))?
               .code

@@ -111,7 +111,7 @@ impl GlobalState {
 
     let out = self
       .file_fetcher
-      .fetch_source_file_async(&module_specifier, maybe_referrer)
+      .fetch_source_file(&module_specifier, maybe_referrer)
       .await?;
 
     // TODO(ry) Try to lift compile_lock as high up in the call stack for
@@ -119,30 +119,27 @@ impl GlobalState {
     let compile_lock = self.compile_lock.lock().await;
 
     let compiled_module = match out.media_type {
-      msg::MediaType::Unknown => state1.js_compiler.compile_async(out).await,
-      msg::MediaType::Json => state1.json_compiler.compile_async(&out).await,
+      msg::MediaType::Unknown => state1.js_compiler.compile(out).await,
+      msg::MediaType::Json => state1.json_compiler.compile(&out).await,
       msg::MediaType::Wasm => {
-        state1
-          .wasm_compiler
-          .compile_async(state1.clone(), &out)
-          .await
+        state1.wasm_compiler.compile(state1.clone(), &out).await
       }
       msg::MediaType::TypeScript
       | msg::MediaType::TSX
       | msg::MediaType::JSX => {
         state1
           .ts_compiler
-          .compile_async(state1.clone(), &out, target_lib)
+          .compile(state1.clone(), &out, target_lib)
           .await
       }
       msg::MediaType::JavaScript => {
         if state1.ts_compiler.compile_js {
           state2
             .ts_compiler
-            .compile_async(state1.clone(), &out, target_lib)
+            .compile(state1.clone(), &out, target_lib)
             .await
         } else {
-          state1.js_compiler.compile_async(out).await
+          state1.js_compiler.compile(out).await
         }
       }
     }?;
@@ -182,10 +179,7 @@ impl GlobalState {
 #[test]
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
-  f(GlobalState::mock(vec![
-    String::from("./deno"),
-    String::from("hello.js"),
-  ]));
+  f(GlobalState::mock(vec![]));
 }
 
 #[test]
