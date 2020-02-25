@@ -14,6 +14,7 @@ def main():
     os.chdir(root_path)
     eslint()
     pylint()
+    clippy()
 
 
 def eslint():
@@ -48,6 +49,20 @@ def pylint():
         shell=False,
         quiet=True)
 
+
+def clippy():
+    print "clippy"
+    run([
+        "cargo",
+        "clippy",
+        "--all-targets",
+        "--locked",
+        "--",
+        "-D",
+        "clippy::all",
+    ],
+        shell=False,
+        quiet=True)
 
 if __name__ == "__main__":
     sys.exit(main())
