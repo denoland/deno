@@ -1,4 +1,4 @@
-import { assertMatch, unreachable } from "./test_util.ts";
+import { assertMatch, test, unreachable } from "./test_util.ts";
 
 const readErrorStackPattern = new RegExp(
   `^.*
