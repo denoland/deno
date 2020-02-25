@@ -3,7 +3,6 @@
 // Copyright 2011-2015 by Vitaly Puzrin. All rights reserved. MIT license.
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-/* eslint-disable no-conditional-assignment */
 /* eslint-disable max-len */
 
 import { YAMLError } from "../error.ts";
