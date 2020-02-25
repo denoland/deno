@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
 use futures::future::poll_fn;
@@ -18,14 +17,8 @@ use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op(
-    "fs_events_open",
-    s.core_op(json_op(s.stateful_op(op_fs_events_open))),
-  );
-  i.register_op(
-    "fs_events_poll",
-    s.core_op(json_op(s.stateful_op(op_fs_events_poll))),
-  );
+  i.register_op("op_fs_events_open", s.stateful_json_op(op_fs_events_open));
+  i.register_op("op_fs_events_poll", s.stateful_json_op(op_fs_events_poll));
 }
 
 struct FsEventsResource {

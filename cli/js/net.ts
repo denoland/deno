@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { EOF, Reader, Writer, Closer } from "./io.ts";
 import { read, write, close } from "./files.ts";
-import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
 export type Transport = "tcp" | "udp";
@@ -72,7 +71,7 @@ export enum ShutdownMode {
  *       Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
  */
 export function shutdown(rid: number, how: ShutdownMode): void {
-  sendSync(dispatch.OP_SHUTDOWN, { rid, how });
+  sendSync("op_shutdown", { rid, how });
 }
 
 export class ConnImpl implements Conn {
@@ -117,7 +116,7 @@ export class ListenerImpl implements Listener {
   ) {}
 
   async accept(): Promise<Conn> {
-    const res = await sendAsync(dispatch.OP_ACCEPT, { rid: this.rid });
+    const res = await sendAsync("op_accept", { rid: this.rid });
     return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
   }
 
@@ -152,7 +151,7 @@ export async function recvfrom(
   rid: number,
   p: Uint8Array
 ): Promise<[number, Addr]> {
-  const { size, remoteAddr } = await sendAsync(dispatch.OP_RECEIVE, { rid }, p);
+  const { size, remoteAddr } = await sendAsync("op_receive", { rid }, p);
   return [size, remoteAddr];
 }
 
@@ -175,7 +174,7 @@ export class UDPConnImpl implements UDPConn {
     const remote = { hostname: "127.0.0.1", transport: "udp", ...addr };
     if (remote.transport !== "udp") throw Error("Remote transport must be UDP");
     const args = { ...remote, rid: this.rid };
-    await sendAsync(dispatch.OP_SEND, args, p);
+    await sendAsync("op_send", args, p);
   }
 
   close(): void {
@@ -253,7 +252,7 @@ export function listen(
 export function listen(options: ListenOptions & { transport: "udp" }): UDPConn;
 export function listen(options: ListenOptions): Listener | UDPConn {
   const args = { ...listenDefaults, ...options };
-  const res = sendSync(dispatch.OP_LISTEN, args);
+  const res = sendSync("op_listen", args);
 
   if (args.transport === "tcp") {
     return new ListenerImpl(res.rid, res.localAddr);
@@ -289,6 +288,6 @@ const connectDefaults = { hostname: "127.0.0.1", transport: "tcp" };
  */
 export async function connect(options: ConnectOptions): Promise<Conn> {
   options = Object.assign(connectDefaults, options);
-  const res = await sendAsync(dispatch.OP_CONNECT, options);
+  const res = await sendAsync("op_connect", options);
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }

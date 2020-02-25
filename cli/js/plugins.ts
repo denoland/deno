@@ -1,5 +1,4 @@
 import { sendSync } from "./dispatch_json.ts";
-import { OP_OPEN_PLUGIN } from "./dispatch.ts";
 import { core } from "./core.ts";
 
 export interface AsyncHandler {
@@ -59,7 +58,7 @@ interface OpenPluginResponse {
 }
 
 export function openPlugin(filename: string): Plugin {
-  const response: OpenPluginResponse = sendSync(OP_OPEN_PLUGIN, {
+  const response: OpenPluginResponse = sendSync("op_open_plugin", {
     filename
   });
   return new PluginImpl(response.rid, response.ops);

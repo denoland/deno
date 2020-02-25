@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as dispatch from "./dispatch.ts";
 import { sendSync } from "./dispatch_json.ts";
 
 export interface Metrics {
@@ -24,5 +23,5 @@ export interface Metrics {
  *      └──────────────────┴────────┘
  */
 export function metrics(): Metrics {
-  return sendSync(dispatch.OP_METRICS);
+  return sendSync("op_metrics");
 }

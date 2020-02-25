@@ -46,7 +46,7 @@ function main(configText, rootNames) {
   handleDiagnostics(host, emitResult.diagnostics);
 
   dispatch(
-    "setEmitResult",
+    "op_set_emit_result",
     Object.assign(emitResult, { tsVersion: ts.version })
   );
 }
@@ -98,7 +98,6 @@ function encode(str) {
   return ui8;
 }
 
-//
 /** **Warning!** Op ids must be acquired from Rust using `Deno.core.ops()`
  * before dispatching any action.
  * @type {Record<string, number>}
@@ -183,7 +182,7 @@ class Host {
       ? moduleMap.get(fileName)
       : fileName;
 
-    const { sourceCode } = dispatch("loadModule", {
+    const { sourceCode } = dispatch("op_load_module", {
       moduleUrl,
       languageVersion,
       shouldCreateNewSourceFile
@@ -216,7 +215,7 @@ class Host {
       return;
     }
     const moduleName = sourceFiles[sourceFiles.length - 1].moduleName;
-    return dispatch("writeFile", { fileName, moduleName, data });
+    return dispatch("op_write_file", { fileName, moduleName, data });
   }
 
   /**
@@ -259,7 +258,7 @@ class Host {
       ? moduleMap.get(containingFile)
       : containingFile;
     /** @type {string[]} */
-    const resolvedNames = dispatch("resolveModuleNames", {
+    const resolvedNames = dispatch("op_resolve_module_names", {
       moduleNames,
       containingFile
     });
@@ -330,7 +329,7 @@ function dispatch(opName, obj) {
  * @param {number} code
  */
 function exit(code) {
-  dispatch("exit", { code });
+  dispatch("op_exit2", { code });
   return unreachable();
 }
 

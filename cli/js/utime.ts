@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "./dispatch_json.ts";
-import { OP_UTIME } from "./dispatch.ts";
 
 function toSecondsFromEpoch(v: number | Date): number {
   return v instanceof Date ? v.valueOf() / 1000 : v;
@@ -17,7 +16,7 @@ export function utimeSync(
   atime: number | Date,
   mtime: number | Date
 ): void {
-  sendSync(OP_UTIME, {
+  sendSync("op_utime", {
     filename,
     // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
     atime: toSecondsFromEpoch(atime),
@@ -36,7 +35,7 @@ export async function utime(
   atime: number | Date,
   mtime: number | Date
 ): Promise<void> {
-  await sendAsync(OP_UTIME, {
+  await sendAsync("op_utime", {
     filename,
     // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
     atime: toSecondsFromEpoch(atime),

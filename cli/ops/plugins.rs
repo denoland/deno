@@ -13,7 +13,7 @@ use std::rc::Rc;
 pub fn init(i: &mut Isolate, s: &State, r: Rc<deno_core::OpRegistry>) {
   let r_ = r;
   i.register_op(
-    "open_plugin",
+    "op_open_plugin",
     s.core_op(json_op(s.stateful_op(move |state, args, zero_copy| {
       op_open_plugin(&r_, state, args, zero_copy)
     }))),
