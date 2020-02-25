@@ -1160,6 +1160,11 @@ itest!(cafile_info {
   http_server: true,
 });
 
+itest!(fix_js_import_js {
+  args: "run --reload fix_js_import_js.ts",
+  output: "fix_js_import_js.ts.out",
+});
+
 itest!(fix_js_imports {
   args: "run --reload fix_js_imports.ts",
   output: "fix_js_imports.ts.out",
