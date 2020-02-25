@@ -14,7 +14,7 @@ export interface RemoveOption {
  *       Deno.removeSync("/path/to/dir/or/file", {recursive: false});
  */
 export function removeSync(path: string, options: RemoveOption = {}): void {
-  sendSync(dispatch.OP_REMOVE, { path, recursive: !!options.recursive });
+  sendSync("op_remove", { path, recursive: !!options.recursive });
 }
 
 /** Removes the named file, directory or symlink. Would throw error if
@@ -28,5 +28,5 @@ export async function remove(
   path: string,
   options: RemoveOption = {}
 ): Promise<void> {
-  await sendAsync(dispatch.OP_REMOVE, { path, recursive: !!options.recursive });
+  await sendAsync("op_remove", { path, recursive: !!options.recursive });
 }

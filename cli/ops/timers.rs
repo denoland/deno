@@ -18,7 +18,7 @@ pub fn init(i: &mut Isolate, s: &State) {
     "global_timer",
     s.core_op(json_op(s.stateful_op(op_global_timer))),
   );
-  i.register_op("now", s.core_op(json_op(s.stateful_op(op_now))));
+  i.register_op("op_now", s.core_op(json_op(s.stateful_op(op_now))));
 }
 
 fn op_global_timer_stop(

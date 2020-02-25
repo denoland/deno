@@ -32,7 +32,7 @@ export const onerror: (e: { data: any }) => void = (): void => {};
 export function postMessage(data: any): void {
   const dataJson = JSON.stringify(data);
   const dataIntArray = encoder.encode(dataJson);
-  sendSync(dispatch.OP_WORKER_POST_MESSAGE, {}, dataIntArray);
+  sendSync("op_worker_post_message", {}, dataIntArray);
 }
 
 let isClosing = false;
@@ -44,7 +44,7 @@ export function close(): void {
   }
 
   isClosing = true;
-  sendSync(dispatch.OP_WORKER_CLOSE);
+  sendSync("op_worker_close");
 }
 
 export async function workerMessageRecvCallback(data: string): Promise<void> {

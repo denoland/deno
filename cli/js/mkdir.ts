@@ -45,7 +45,7 @@ export function mkdirSync(
   optionsOrRecursive?: MkdirOption | boolean,
   mode?: number
 ): void {
-  sendSync(dispatch.OP_MKDIR, mkdirArgs(path, optionsOrRecursive, mode));
+  sendSync("op_mkdir", mkdirArgs(path, optionsOrRecursive, mode));
 }
 
 /** Creates a new directory with the specified path.
@@ -62,5 +62,5 @@ export async function mkdir(
   optionsOrRecursive?: MkdirOption | boolean,
   mode?: number
 ): Promise<void> {
-  await sendAsync(dispatch.OP_MKDIR, mkdirArgs(path, optionsOrRecursive, mode));
+  await sendAsync("op_mkdir", mkdirArgs(path, optionsOrRecursive, mode));
 }

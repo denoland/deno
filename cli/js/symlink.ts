@@ -18,7 +18,7 @@ export function symlinkSync(
   if (build.os === "win" && type) {
     return util.notImplemented();
   }
-  sendSync(dispatch.OP_SYMLINK, { oldname, newname });
+  sendSync("op_symlink", { oldname, newname });
 }
 
 /** Creates `newname` as a symbolic link to `oldname`. The type argument can be
@@ -35,5 +35,5 @@ export async function symlink(
   if (build.os === "win" && type) {
     return util.notImplemented();
   }
-  await sendAsync(dispatch.OP_SYMLINK, { oldname, newname });
+  await sendAsync("op_symlink", { oldname, newname });
 }

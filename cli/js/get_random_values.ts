@@ -26,6 +26,6 @@ export function getRandomValues<
     typedArray.byteOffset,
     typedArray.byteLength
   );
-  sendSync(dispatch.OP_GET_RANDOM_VALUES, {}, ui8);
+  sendSync("op_get_random_values", {}, ui8);
   return typedArray;
 }

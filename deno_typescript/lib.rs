@@ -317,3 +317,28 @@ pub fn trace_serializer() {
   ]);
   assert_eq!(r, vec![dummy]);
 }
+
+/// Warning: Returns a non-JSON op dispatcher. Must be manually attached to
+/// Isolate.
+pub fn op_fetch_asset<S: ::std::hash::BuildHasher>(
+  custom_assets: HashMap<String, PathBuf, S>,
+) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp {
+  move |control: &[u8], zero_copy_buf: Option<ZeroCopyBuf>| -> CoreOp {
+    assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in this op.
+    let name = std::str::from_utf8(control).unwrap();
+
+    let asset_code = if let Some(source_code) = get_asset(name) {
+      source_code.to_string()
+    } else if let Some(asset_path) = custom_assets.get(name) {
+      let source_code_vec =
+        std::fs::read(&asset_path).expect("Asset not found");
+      let source_code = std::str::from_utf8(&source_code_vec).unwrap();
+      source_code.to_string()
+    } else {
+      panic!("fetch_asset bad asset {}", name)
+    };
+
+    let vec = asset_code.into_bytes();
+    deno_core::Op::Sync(vec.into_boxed_slice())
+  }
+}

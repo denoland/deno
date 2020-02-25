@@ -21,8 +21,8 @@ static BUILD_OS: &str = "win";
 static BUILD_ARCH: &str = "x64";
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("start", s.core_op(json_op(s.stateful_op(op_start))));
-  i.register_op("metrics", s.core_op(json_op(s.stateful_op(op_metrics))));
+  i.register_op("op_start", s.core_op(json_op(s.stateful_op(op_start))));
+  i.register_op("op_metrics", s.core_op(json_op(s.stateful_op(op_metrics))));
 }
 
 fn op_start(

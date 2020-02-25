@@ -14,7 +14,7 @@ export interface MakeTempOptions {
  *       const tempDirName1 = Deno.makeTempDirSync({ prefix: 'my_temp' });
  */
 export function makeTempDirSync(options: MakeTempOptions = {}): string {
-  return sendSync(dispatch.OP_MAKE_TEMP_DIR, options);
+  return sendSync("op_make_temp_dir", options);
 }
 
 /** makeTempDir creates a new temporary directory in the directory `dir`, its
@@ -31,7 +31,7 @@ export function makeTempDirSync(options: MakeTempOptions = {}): string {
 export async function makeTempDir(
   options: MakeTempOptions = {}
 ): Promise<string> {
-  return await sendAsync(dispatch.OP_MAKE_TEMP_DIR, options);
+  return await sendAsync("op_make_temp_dir", options);
 }
 
 /** makeTempFileSync is the synchronous version of `makeTempFile`.
@@ -40,7 +40,7 @@ export async function makeTempDir(
  *       const tempFileName1 = Deno.makeTempFileSync({ prefix: 'my_temp' });
  */
 export function makeTempFileSync(options: MakeTempOptions = {}): string {
-  return sendSync(dispatch.OP_MAKE_TEMP_FILE, options);
+  return sendSync("op_make_temp_file", options);
 }
 
 /** makeTempFile creates a new temporary file in the directory `dir`, its
@@ -57,5 +57,5 @@ export function makeTempFileSync(options: MakeTempOptions = {}): string {
 export async function makeTempFile(
   options: MakeTempOptions = {}
 ): Promise<string> {
-  return await sendAsync(dispatch.OP_MAKE_TEMP_FILE, options);
+  return await sendAsync("op_make_temp_file", options);
 }

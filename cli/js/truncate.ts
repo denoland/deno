@@ -20,7 +20,7 @@ function coerceLen(len?: number): number {
  *       Deno.truncateSync("hello.txt", 10);
  */
 export function truncateSync(name: string, len?: number): void {
-  sendSync(dispatch.OP_TRUNCATE, { name, len: coerceLen(len) });
+  sendSync("op_truncate", { name, len: coerceLen(len) });
 }
 
 /**
@@ -30,5 +30,5 @@ export function truncateSync(name: string, len?: number): void {
  *       await Deno.truncate("hello.txt", 10);
  */
 export async function truncate(name: string, len?: number): Promise<void> {
-  await sendAsync(dispatch.OP_TRUNCATE, { name, len: coerceLen(len) });
+  await sendAsync("op_truncate", { name, len: coerceLen(len) });
 }

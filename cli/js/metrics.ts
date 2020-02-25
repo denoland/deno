@@ -24,5 +24,5 @@ export interface Metrics {
  *      └──────────────────┴────────┘
  */
 export function metrics(): Metrics {
-  return sendSync(dispatch.OP_METRICS);
+  return sendSync("op_metrics");
 }

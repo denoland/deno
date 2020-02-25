@@ -6,7 +6,7 @@ use crate::state::State;
 use deno_core::*;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("resources", s.core_op(json_op(s.stateful_op(op_resources))));
+  i.register_op("op_resources", s.core_op(json_op(s.stateful_op(op_resources))));
 }
 
 fn op_resources(

@@ -13,11 +13,11 @@ class FsEvents implements AsyncIterableIterator<FsEvent> {
 
   constructor(paths: string[], options: { recursive: boolean }) {
     const { recursive } = options;
-    this.rid = sendSync(dispatch.OP_FS_EVENTS_OPEN, { recursive, paths });
+    this.rid = sendSync("op_fs_events_open", { recursive, paths });
   }
 
   async next(): Promise<IteratorResult<FsEvent>> {
-    return await sendAsync(dispatch.OP_FS_EVENTS_POLL, {
+    return await sendAsync("op_fs_events_poll", {
       rid: this.rid
     });
   }

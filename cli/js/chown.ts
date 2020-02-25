@@ -9,7 +9,7 @@ import * as dispatch from "./dispatch.ts";
  * @param gid group id of the new owner
  */
 export function chownSync(path: string, uid: number, gid: number): void {
-  sendSync(dispatch.OP_CHOWN, { path, uid, gid });
+  sendSync("op_chown", { path, uid, gid });
 }
 
 /**
@@ -23,5 +23,5 @@ export async function chown(
   uid: number,
   gid: number
 ): Promise<void> {
-  await sendAsync(dispatch.OP_CHOWN, { path, uid, gid });
+  await sendAsync("op_chown", { path, uid, gid });
 }

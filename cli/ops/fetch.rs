@@ -14,7 +14,7 @@ use std;
 use std::convert::From;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("fetch", s.core_op(json_op(s.stateful_op(op_fetch))));
+  i.register_op("op_fetch", s.core_op(json_op(s.stateful_op(op_fetch))));
 }
 
 #[derive(Deserialize)]

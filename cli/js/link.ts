@@ -7,7 +7,7 @@ import * as dispatch from "./dispatch.ts";
  *       Deno.linkSync("old/name", "new/name");
  */
 export function linkSync(oldname: string, newname: string): void {
-  sendSync(dispatch.OP_LINK, { oldname, newname });
+  sendSync("op_link", { oldname, newname });
 }
 
 /** Creates `newname` as a hard link to `oldname`.
@@ -15,5 +15,5 @@ export function linkSync(oldname: string, newname: string): void {
  *       await Deno.link("old/name", "new/name");
  */
 export async function link(oldname: string, newname: string): Promise<void> {
-  await sendAsync(dispatch.OP_LINK, { oldname, newname });
+  await sendAsync("op_link", { oldname, newname });
 }

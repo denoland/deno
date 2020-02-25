@@ -44,7 +44,7 @@ export function applySourceMap(location: Location): Location {
   const { filename, line, column } = location;
   // On this side, line/column are 1 based, but in the source maps, they are
   // 0 based, so we have to convert back and forth
-  const res = sendSync(dispatch.OP_APPLY_SOURCE_MAP, {
+  const res = sendSync("op_apply_source_map", {
     filename,
     line: line - 1,
     column: column - 1

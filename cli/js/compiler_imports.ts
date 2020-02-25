@@ -68,7 +68,7 @@ export function resolveModules(
   referrer?: string
 ): string[] {
   util.log("compiler_imports::resolveModules", { specifiers, referrer });
-  return sendSync(dispatch.OP_RESOLVE_MODULES, { specifiers, referrer });
+  return sendSync("op_resolve_modules", { specifiers, referrer });
 }
 
 /** Ops to Rust to fetch modules meta data. */
@@ -77,7 +77,7 @@ function fetchSourceFiles(
   referrer?: string
 ): Promise<SourceFileJson[]> {
   util.log("compiler_imports::fetchSourceFiles", { specifiers, referrer });
-  return sendAsync(dispatch.OP_FETCH_SOURCE_FILES, {
+  return sendAsync("op_fetch_source_files", {
     specifiers,
     referrer
   });

@@ -14,9 +14,9 @@ use std::path::Path;
 use tokio;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("open", s.core_op(json_op(s.stateful_op(op_open))));
-  i.register_op("close", s.core_op(json_op(s.stateful_op(op_close))));
-  i.register_op("seek", s.core_op(json_op(s.stateful_op(op_seek))));
+  i.register_op("op_open", s.core_op(json_op(s.stateful_op(op_open))));
+  i.register_op("op_close", s.core_op(json_op(s.stateful_op(op_close))));
+  i.register_op("op_seek", s.core_op(json_op(s.stateful_op(op_seek))));
 }
 
 #[derive(Deserialize)]

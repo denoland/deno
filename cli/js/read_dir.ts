@@ -22,7 +22,7 @@ function res(response: ReadDirResponse): FileInfo[] {
  *       const files = Deno.readDirSync("/");
  */
 export function readDirSync(path: string): FileInfo[] {
-  return res(sendSync(dispatch.OP_READ_DIR, { path }));
+  return res(sendSync("op_read_dir", { path }));
 }
 
 /** Reads the directory given by path and returns a list of file info.
@@ -30,5 +30,5 @@ export function readDirSync(path: string): FileInfo[] {
  *       const files = await Deno.readDir("/");
  */
 export async function readDir(path: string): Promise<FileInfo[]> {
-  return res(await sendAsync(dispatch.OP_READ_DIR, { path }));
+  return res(await sendAsync("op_read_dir", { path }));
 }

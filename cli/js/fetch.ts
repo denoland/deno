@@ -469,7 +469,7 @@ async function sendFetchReq(
     headers: headerArray
   };
 
-  return (await sendAsync(dispatch.OP_FETCH, args, zeroCopy)) as FetchResponse;
+  return (await sendAsync("op_fetch", args, zeroCopy)) as FetchResponse;
 }
 
 /** Fetch a resource from the network. */

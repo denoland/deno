@@ -21,12 +21,12 @@ use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("accept", s.core_op(json_op(s.stateful_op(op_accept))));
-  i.register_op("connect", s.core_op(json_op(s.stateful_op(op_connect))));
-  i.register_op("shutdown", s.core_op(json_op(s.stateful_op(op_shutdown))));
-  i.register_op("listen", s.core_op(json_op(s.stateful_op(op_listen))));
-  i.register_op("receive", s.core_op(json_op(s.stateful_op(op_receive))));
-  i.register_op("send", s.core_op(json_op(s.stateful_op(op_send))));
+  i.register_op("op_accept", s.core_op(json_op(s.stateful_op(op_accept))));
+  i.register_op("op_connect", s.core_op(json_op(s.stateful_op(op_connect))));
+  i.register_op("op_shutdown", s.core_op(json_op(s.stateful_op(op_shutdown))));
+  i.register_op("op_listen", s.core_op(json_op(s.stateful_op(op_listen))));
+  i.register_op("op_receive", s.core_op(json_op(s.stateful_op(op_receive))));
+  i.register_op("op_send", s.core_op(json_op(s.stateful_op(op_send))));
 }
 
 #[derive(Debug, PartialEq)]

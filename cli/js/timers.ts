@@ -27,7 +27,7 @@ const dueTree = new RBTree<DueNode>((a, b) => a.due - b.due);
 
 function clearGlobalTimeout(): void {
   globalTimeoutDue = null;
-  sendSync(dispatch.OP_GLOBAL_TIMER_STOP);
+  sendSync("op_global_timer_stop");
 }
 
 let pendingEvents = 0;
@@ -44,7 +44,7 @@ async function setGlobalTimeout(due: number, now: number): Promise<void> {
   // Send message to the backend.
   globalTimeoutDue = due;
   pendingEvents++;
-  await sendAsync(dispatch.OP_GLOBAL_TIMER, { timeout });
+  await sendAsync("op_global_timer", { timeout });
   pendingEvents--;
   // eslint-disable-next-line @typescript-eslint/no-use-before-define
   fireTimers();

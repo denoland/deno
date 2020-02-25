@@ -5,7 +5,7 @@ import { sendSync } from "./dispatch_json.ts";
 
 // TODO(bartlomieju): move to `repl.ts`?
 export function formatError(errString: string): string {
-  const res = sendSync(dispatch.OP_FORMAT_ERROR, { error: errString });
+  const res = sendSync("op_format_error", { error: errString });
   return res.error;
 }
 
@@ -14,5 +14,5 @@ export function formatError(errString: string): string {
  * @param items An array of diagnostic items to format
  */
 export function formatDiagnostics(items: DiagnosticItem[]): string {
-  return sendSync(dispatch.OP_FORMAT_DIAGNOSTIC, { items });
+  return sendSync("op_format_diagnostic", { items });
 }
