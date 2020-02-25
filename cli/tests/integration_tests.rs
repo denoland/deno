@@ -784,6 +784,17 @@ itest!(_054_info_local_imports {
   exit_code: 0,
 });
 
+itest!(_055_import_wasm_via_network {
+  args: "run --reload http://127.0.0.1:4545/cli/tests/055_import_wasm_via_network.ts",
+  output: "055_import_wasm_via_network.ts.out",
+  http_server: true,
+});
+
+itest!(_056_make_temp_file_write_perm {
+  args: "run --allow-write=./subdir/ 056_make_temp_file_write_perm.ts",
+  output: "056_make_temp_file_write_perm.out",
+});
+
 itest!(js_import_detect {
   args: "run --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
@@ -1126,12 +1137,6 @@ itest!(top_level_for_await_ts {
 itest!(_053_import_compression {
   args: "run --reload --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",
-  http_server: true,
-});
-
-itest!(import_wasm_via_network {
-  args: "run --reload http://127.0.0.1:4545/cli/tests/055_import_wasm_via_network.ts",
-  output: "055_import_wasm_via_network.ts.out",
   http_server: true,
 });
 

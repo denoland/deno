@@ -9,7 +9,7 @@ use deno_core::*;
 use remove_dir_all::remove_dir_all;
 use std::convert::From;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::UNIX_EPOCH;
 
 #[cfg(unix)]
@@ -534,7 +534,9 @@ fn op_make_temp_dir(
 ) -> Result<JsonOp, OpError> {
   let args: MakeTempArgs = serde_json::from_value(args)?;
 
-  let dir = args.dir.map(PathBuf::from);
+  let dir = args
+    .dir
+    .map(|s| deno_fs::resolve_from_cwd(Path::new(&s)).unwrap());
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
@@ -566,7 +568,9 @@ fn op_make_temp_file(
 ) -> Result<JsonOp, OpError> {
   let args: MakeTempArgs = serde_json::from_value(args)?;
 
-  let dir = args.dir.map(PathBuf::from);
+  let dir = args
+    .dir
+    .map(|s| deno_fs::resolve_from_cwd(Path::new(&s)).unwrap());
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
