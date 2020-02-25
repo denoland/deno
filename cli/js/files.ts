@@ -48,7 +48,7 @@ export function openSync(
     options = modeOrOptions;
   }
 
-  const rid = sendSyncJson("open", { filename, options, mode });
+  const rid = sendSyncJson("op_open", { filename, options, mode });
   return new File(rid);
 }
 
@@ -82,7 +82,7 @@ export async function open(
     options = modeOrOptions;
   }
 
-  const rid = await sendAsyncJson("open", {
+  const rid = await sendAsyncJson("op_open", {
     filename,
     options,
     mode
@@ -210,7 +210,7 @@ export async function write(rid: number, p: Uint8Array): Promise<number> {
  *       Deno.seekSync(file.rid, 0, 0);
  */
 export function seekSync(rid: number, offset: number, whence: SeekMode): void {
-  sendSyncJson("seek", { rid, offset, whence });
+  sendSyncJson("op_seek", { rid, offset, whence });
 }
 
 /** Seek a file ID to the given offset under mode given by `whence`.
@@ -223,12 +223,12 @@ export async function seek(
   offset: number,
   whence: SeekMode
 ): Promise<void> {
-  await sendAsyncJson("seek", { rid, offset, whence });
+  await sendAsyncJson("op_seek", { rid, offset, whence });
 }
 
 /** Close the file ID. */
 export function close(rid: number): void {
-  sendSyncJson("close", { rid });
+  sendSyncJson("op_close", { rid });
 }
 
 /** The Deno abstraction for reading and writing files. */
