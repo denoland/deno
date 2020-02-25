@@ -4,7 +4,6 @@ import { exit } from "./os.ts";
 import { core } from "./core.ts";
 import { formatError } from "./format_error.ts";
 import { stringifyArgs } from "./console.ts";
-import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
 /**

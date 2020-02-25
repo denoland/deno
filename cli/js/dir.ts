@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync } from "./dispatch_json.ts";
-import * as dispatch from "./dispatch.ts";
 
 /**
  * `cwd()` Return a string representing the current working directory.

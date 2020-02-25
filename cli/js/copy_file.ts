@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "./dispatch_json.ts";
-import * as dispatch from "./dispatch.ts";
 
 /** Copies the contents of a file to another by name synchronously.
  * Creates a new file if target does not exists, and if target exists,

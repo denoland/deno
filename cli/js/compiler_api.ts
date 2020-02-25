@@ -4,7 +4,6 @@
 // compiler within Deno.
 
 import { DiagnosticItem } from "./diagnostics.ts";
-import * as dispatch from "./dispatch.ts";
 import { sendAsync } from "./dispatch_json.ts";
 import * as util from "./util.ts";
 

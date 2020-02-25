@@ -15,7 +15,6 @@ import { Buffer } from "./buffer.ts";
 import { FormData } from "./form_data.ts";
 import { URL } from "./url.ts";
 import { URLSearchParams } from "./url_search_params.ts";
-import * as dispatch from "./dispatch.ts";
 import { sendAsync } from "./dispatch_json.ts";
 
 function getHeaderValueParams(value: string): Map<string, string> {

@@ -90,7 +90,6 @@ function cache(
   }
 }
 
-let OP_FETCH_ASSET: number;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 

@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { DiagnosticItem } from "./diagnostics.ts";
-import * as dispatch from "./dispatch.ts";
 import { sendSync } from "./dispatch_json.ts";
 
 // TODO(bartlomieju): move to `repl.ts`?

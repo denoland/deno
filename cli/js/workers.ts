@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import * as dispatch from "./dispatch.ts";
 import { sendAsync, sendSync } from "./dispatch_json.ts";
 import { log } from "./util.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
