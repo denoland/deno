@@ -75,7 +75,4 @@ listenAndServe({ port: 8080 }, async req => {
     }
   }
 });
-
-const conn = await Deno.connect({ port: 8080 }); // Waiting for the server to listen...
-conn.close();
 console.log("chat server starting on :8080....");
