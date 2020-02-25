@@ -47,18 +47,18 @@ export const defaultBundlerOptions: ts.CompilerOptions = {
 
 /** Default options used by the compiler Host when compiling. */
 export const defaultCompileOptions: ts.CompilerOptions = {
-  allowJs: true,
+  allowJs: false,
   allowNonTsExtensions: true,
-  strict: true,
   checkJs: false,
   esModuleInterop: true,
+  jsx: ts.JsxEmit.React,
   module: ts.ModuleKind.ESNext,
   outDir: OUT_DIR,
   resolveJsonModule: true,
   sourceMap: true,
+  strict: true,
   stripComments: true,
-  target: ts.ScriptTarget.ESNext,
-  jsx: ts.JsxEmit.React
+  target: ts.ScriptTarget.ESNext
 };
 
 /** Options that need to be used when doing a runtime (non bundled) compilation */

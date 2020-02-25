@@ -304,7 +304,11 @@ export const ignoredDiagnostics = [
   // support JSON imports.  Allegedly this was fixed in
   // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
   // so we will ignore complaints about this compiler setting.
-  5070
+  5070,
+  // TS7016: Could not find a declaration file for module '...'. '...'
+  // implicitly has an 'any' type.  This is due to `allowJs` being off by
+  // default but importing of a JavaScript module.
+  7016
 ];
 
 /** When doing a host configuration, processing the response and logging out
