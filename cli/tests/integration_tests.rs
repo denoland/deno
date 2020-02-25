@@ -370,8 +370,11 @@ fn bundle_tla() {
 
 #[test]
 fn repl_test_console_log() {
-  let (out, err, code) =
-    util::repl_process(vec!["console.log('hello')", "'world'"], None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["console.log('hello')", "'world'"]),
+    None,
+  );
   assert_eq!(out, "hello\nundefined\nworld\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -379,8 +382,8 @@ fn repl_test_console_log() {
 
 #[test]
 fn repl_test_eof() {
-  // test_eof
-  let (out, err, code) = util::repl_process(vec!["1 + 2"], None);
+  let (out, err, code) =
+    util::run_and_collect_output("repl", Some(vec!["1 + 2"]), None);
   assert_eq!(out, "3\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -388,7 +391,8 @@ fn repl_test_eof() {
 
 #[test]
 fn repl_test_exit_command() {
-  let (out, err, code) = util::repl_process(vec!["exit", "'ignored'"], None);
+  let (out, err, code) =
+    util::run_and_collect_output("repl", Some(vec!["exit", "'ignored'"]), None);
   assert!(out.is_empty());
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -396,7 +400,8 @@ fn repl_test_exit_command() {
 
 #[test]
 fn repl_test_help_command() {
-  let (out, err, code) = util::repl_process(vec!["help"], None);
+  let (out, err, code) =
+    util::run_and_collect_output("repl", Some(vec!["help"]), None);
   assert_eq!(
     out,
     vec![
@@ -414,7 +419,11 @@ fn repl_test_help_command() {
 
 #[test]
 fn repl_test_function() {
-  let (out, err, code) = util::repl_process(vec!["Deno.writeFileSync"], None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["Deno.writeFileSync"]),
+    None,
+  );
   assert_eq!(out, "[Function: writeFileSync]\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -422,7 +431,8 @@ fn repl_test_function() {
 
 #[test]
 fn repl_test_multiline() {
-  let (out, err, code) = util::repl_process(vec!["(\n1 + 2\n)"], None);
+  let (out, err, code) =
+    util::run_and_collect_output("repl", Some(vec!["(\n1 + 2\n)"]), None);
   assert_eq!(out, "3\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -430,7 +440,8 @@ fn repl_test_multiline() {
 
 #[test]
 fn repl_test_eval_unterminated() {
-  let (out, err, code) = util::repl_process(vec!["eval('{')"], None);
+  let (out, err, code) =
+    util::run_and_collect_output("repl", Some(vec!["eval('{')"]), None);
   assert!(out.is_empty());
   assert!(err.contains("Unexpected end of input"));
   assert_eq!(code, 0);
@@ -438,7 +449,8 @@ fn repl_test_eval_unterminated() {
 
 #[test]
 fn repl_test_reference_error() {
-  let (out, err, code) = util::repl_process(vec!["not_a_variable"], None);
+  let (out, err, code) =
+    util::run_and_collect_output("repl", Some(vec!["not_a_variable"]), None);
   assert!(out.is_empty());
   assert!(err.contains("not_a_variable is not defined"));
   assert_eq!(code, 0);
@@ -446,7 +458,8 @@ fn repl_test_reference_error() {
 
 #[test]
 fn repl_test_syntax_error() {
-  let (out, err, code) = util::repl_process(vec!["syntax error"], None);
+  let (out, err, code) =
+    util::run_and_collect_output("repl", Some(vec!["syntax error"]), None);
   assert!(out.is_empty());
   assert!(err.contains("Unexpected identifier"));
   assert_eq!(code, 0);
@@ -454,7 +467,8 @@ fn repl_test_syntax_error() {
 
 #[test]
 fn repl_test_type_error() {
-  let (out, err, code) = util::repl_process(vec!["console()"], None);
+  let (out, err, code) =
+    util::run_and_collect_output("repl", Some(vec!["console()"]), None);
   assert!(out.is_empty());
   assert!(err.contains("console is not a function"));
   assert_eq!(code, 0);
@@ -462,7 +476,8 @@ fn repl_test_type_error() {
 
 #[test]
 fn repl_test_variable() {
-  let (out, err, code) = util::repl_process(vec!["var a = 123;", "a"], None);
+  let (out, err, code) =
+    util::run_and_collect_output("repl", Some(vec!["var a = 123;", "a"]), None);
   assert_eq!(out, "undefined\n123\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -470,7 +485,8 @@ fn repl_test_variable() {
 
 #[test]
 fn repl_test_lexical_scoped_variable() {
-  let (out, err, code) = util::repl_process(vec!["let a = 123;", "a"], None);
+  let (out, err, code) =
+    util::run_and_collect_output("repl", Some(vec!["let a = 123;", "a"]), None);
   assert_eq!(out, "undefined\n123\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -480,12 +496,15 @@ fn repl_test_lexical_scoped_variable() {
 fn repl_test_missing_deno_dir() {
   use std::fs::{read_dir, remove_dir_all};
   const DENO_DIR: &str = "nonexistent";
-  let (out, err, code) = util::repl_process(
-    vec!["1"],
+  let test_deno_dir =
+    util::root_path().join("cli").join("tests").join(DENO_DIR);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["1"]),
     Some(vec![("DENO_DIR".to_owned(), DENO_DIR.to_owned())]),
   );
-  assert!(read_dir(DENO_DIR).is_ok());
-  remove_dir_all(DENO_DIR).unwrap();
+  assert!(read_dir(&test_deno_dir).is_ok());
+  remove_dir_all(&test_deno_dir).unwrap();
   assert_eq!(out, "1\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -493,7 +512,8 @@ fn repl_test_missing_deno_dir() {
 
 #[test]
 fn repl_test_save_last_eval() {
-  let (out, err, code) = util::repl_process(vec!["1", "_"], None);
+  let (out, err, code) =
+    util::run_and_collect_output("repl", Some(vec!["1", "_"]), None);
   assert_eq!(out, "1\n1\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -501,7 +521,8 @@ fn repl_test_save_last_eval() {
 
 #[test]
 fn repl_test_save_last_thrown() {
-  let (out, err, code) = util::repl_process(vec!["throw 1", "_error"], None);
+  let (out, err, code) =
+    util::run_and_collect_output("repl", Some(vec!["throw 1", "_error"]), None);
   assert_eq!(out, "1\n");
   assert_eq!(err, "Thrown: 1\n");
   assert_eq!(code, 0);
@@ -509,7 +530,8 @@ fn repl_test_save_last_thrown() {
 
 #[test]
 fn repl_test_assign_underscore() {
-  let (out, err, code) = util::repl_process(vec!["_ = 1", "2", "_"], None);
+  let (out, err, code) =
+    util::run_and_collect_output("repl", Some(vec!["_ = 1", "2", "_"]), None);
   assert_eq!(
     out,
     "Last evaluation result is no longer saved to _.\n1\n2\n1\n"
@@ -520,8 +542,11 @@ fn repl_test_assign_underscore() {
 
 #[test]
 fn repl_test_assign_underscore_error() {
-  let (out, err, code) =
-    util::repl_process(vec!["_error = 1", "throw 2", "_error"], None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["_error = 1", "throw 2", "_error"]),
+    None,
+  );
   assert_eq!(
     out,
     "Last thrown error is no longer saved to _error.\n1\n1\n"
@@ -1365,6 +1390,32 @@ fn cafile_bundle_remote_exports() {
   drop(g)
 }
 
+#[test]
+fn test_permissions_with_allow() {
+  for permission in &util::PERMISSION_VARIANTS {
+    let (_, err, code) = util::run_and_collect_output(
+      &format!("run --allow-{0} permission_test.ts {0}Required", permission),
+      None,
+      None,
+    );
+    assert_eq!(code, 0);
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+}
+
+#[test]
+fn test_permissions_without_allow() {
+  for permission in &util::PERMISSION_VARIANTS {
+    let (_, err, code) = util::run_and_collect_output(
+      &format!("run permission_test.ts {0}Required", permission),
+      None,
+      None,
+    );
+    assert_eq!(code, 1);
+    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+}
+
 mod util {
   use deno::colors::strip_ansi_codes;
   pub use deno::test_util::*;
@@ -1376,16 +1427,25 @@ mod util {
   use std::process::Stdio;
   use tempfile::TempDir;
 
+  pub const PERMISSION_VARIANTS: [&str; 5] =
+    ["read", "write", "env", "net", "run"];
+  pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
+
   lazy_static! {
     static ref DENO_DIR: TempDir = { TempDir::new().expect("tempdir fail") };
   }
 
-  pub fn repl_process(
-    lines: Vec<&str>,
+  pub fn run_and_collect_output(
+    args: &str,
+    input: Option<Vec<&str>>,
     envs: Option<Vec<(String, String)>>,
   ) -> (String, String, i32) {
+    let root = root_path();
+    let tests_dir = root.join("cli").join("tests");
     let mut deno_process_builder = deno_cmd();
+    deno_process_builder.args(args.split_whitespace());
     deno_process_builder
+      .current_dir(&tests_dir)
       .stdin(Stdio::piped())
       .stdout(Stdio::piped())
       .stderr(Stdio::piped());
@@ -1395,7 +1455,7 @@ mod util {
     let mut deno = deno_process_builder
       .spawn()
       .expect("failed to spawn script");
-    {
+    if let Some(lines) = input {
       let stdin = deno.stdin.as_mut().expect("failed to get stdin");
       stdin
         .write_all(lines.join("\n").as_bytes())
