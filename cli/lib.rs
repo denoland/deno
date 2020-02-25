@@ -417,7 +417,7 @@ pub fn main() {
       fetch_command(flags, files).boxed_local()
     }
     DenoSubcommand::Fmt { check, files } => {
-      async move { fmt::format_files(files, check) }.boxed_local()
+      async move { fmt::format(files, check) }.boxed_local()
     }
     DenoSubcommand::Info { file } => info_command(flags, file).boxed_local(),
     DenoSubcommand::Install {

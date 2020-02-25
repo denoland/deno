@@ -17,7 +17,6 @@ use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
-use std::time::Instant;
 
 fn is_supported(path: &Path) -> bool {
   if let Some(ext) = path.extension() {
@@ -52,7 +51,6 @@ fn check_source_files(
   config: dprint::configuration::Configuration,
   paths: Vec<PathBuf>,
 ) -> Result<(), ErrBox> {
-  let start = Instant::now();
   let mut not_formatted_files = vec![];
 
   for file_path in paths {
@@ -74,8 +72,6 @@ fn check_source_files(
     }
   }
 
-  let duration = Instant::now() - start;
-
   if not_formatted_files.is_empty() {
     Ok(())
   } else {
@@ -86,10 +82,9 @@ fn check_source_files(
     };
     Err(
       crate::op_error::OpError::other(format!(
-        "Found {} not formatted {} in {:?}",
+        "Found {} not formatted in {}",
         not_formatted_files.len(),
         f,
-        duration
       ))
       .into(),
     )
@@ -100,7 +95,6 @@ fn format_source_files(
   config: dprint::configuration::Configuration,
   paths: Vec<PathBuf>,
 ) {
-  let start = Instant::now();
   let mut not_formatted_files = vec![];
 
   for file_path in paths {
@@ -124,25 +118,19 @@ fn format_source_files(
     }
   }
 
-  let duration = Instant::now() - start;
   let f = if not_formatted_files.len() == 1 {
     "file"
   } else {
     "files"
   };
-  eprintln!(
-    "Formatted {} {} in {:?}",
-    not_formatted_files.len(),
-    f,
-    duration
-  );
+  debug!("Formatted {} {}", not_formatted_files.len(), f,);
 }
 
 /// Format JavaScript/TypeScript files.
 ///
 /// First argument supports globs, and if it is `None`
 /// then the current directory is recursively walked.
-pub fn format_files(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
+pub fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
   if args.len() == 1 && args[0] == "-" {
     format_stdin(check);
     return Ok(());
@@ -218,6 +206,6 @@ fn test_is_supported() {
 fn check_tests_dir() {
   // Because of cli/tests/error_syntax.js the following should fail but not
   // crash.
-  let r = format_files(vec!["./tests".to_string()], true);
+  let r = format(vec!["./tests".to_string()], true);
   assert!(r.is_err());
 }
