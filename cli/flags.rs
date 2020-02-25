@@ -58,7 +58,6 @@ pub enum DenoSubcommand {
   },
   Test {
     fail_fast: bool,
-    quiet: bool,
     allow_none: bool,
     include: Option<Vec<String>>,
   },
@@ -71,6 +70,18 @@ impl Default for DenoSubcommand {
   }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DenoVerbosity {
+  Quiet,
+  Normal,
+}
+
+impl Default for DenoVerbosity {
+  fn default() -> DenoVerbosity {
+    DenoVerbosity::Normal
+  }
+}
+
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct DenoFlags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
@@ -79,6 +90,7 @@ pub struct DenoFlags {
   pub subcommand: DenoSubcommand,
 
   pub log_level: Option<Level>,
+  pub verbosity: DenoVerbosity,
   pub version: bool,
   pub reload: bool,
   pub config_path: Option<String>,
@@ -231,6 +243,10 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<DenoFlags> {
     };
   }
 
+  if matches.is_present("quiet") {
+    flags.verbosity = DenoVerbosity::Quiet;
+  }
+
   if let Some(m) = matches.subcommand_matches("run") {
     run_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("fmt") {
@@ -280,6 +296,13 @@ fn clap_root<'a, 'b>() -> App<'a, 'b> {
         .help("Set log level")
         .takes_value(true)
         .possible_values(&["debug", "info"])
+        .global(true),
+    )
+    .arg(
+      Arg::with_name("quiet")
+        .short("q")
+        .long("quiet")
+        .help("Reduce verbosity")
         .global(true),
     )
     .subcommand(bundle_subcommand())
@@ -500,7 +523,6 @@ fn test_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 
   run_test_args_parse(flags, matches);
 
-  let quiet = matches.is_present("quiet");
   let failfast = matches.is_present("failfast");
   let allow_none = matches.is_present("allow_none");
 
@@ -516,7 +538,6 @@ fn test_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   };
 
   flags.subcommand = DenoSubcommand::Test {
-    quiet,
     fail_fast: failfast,
     include,
     allow_none,
@@ -846,13 +867,6 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .short("f")
         .long("failfast")
         .help("Stop on first error")
-        .takes_value(false),
-    )
-    .arg(
-      Arg::with_name("quiet")
-        .short("q")
-        .long("quiet")
-        .help("Don't show output from test cases")
         .takes_value(false),
     )
     .arg(
@@ -1901,6 +1915,21 @@ mod tests {
   }
 
   #[test]
+  fn quiet() {
+    let r = flags_from_vec_safe(svec!["deno", "-q", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      DenoFlags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        verbosity: DenoVerbosity::Quiet,
+        ..DenoFlags::default()
+      }
+    );
+  }
+
+  #[test]
   fn completions() {
     let r = flags_from_vec_safe(svec!["deno", "completions", "bash"]).unwrap();
 
@@ -2062,7 +2091,6 @@ mod tests {
       DenoFlags {
         subcommand: DenoSubcommand::Test {
           fail_fast: false,
-          quiet: false,
           allow_none: true,
           include: Some(svec!["dir1/", "dir2/"]),
         },

@@ -348,7 +348,6 @@ async fn test_command(
   flags: DenoFlags,
   include: Option<Vec<String>>,
   fail_fast: bool,
-  _quiet: bool,
   allow_none: bool,
 ) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
@@ -431,13 +430,10 @@ pub fn main() {
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
-      quiet,
       fail_fast,
       include,
       allow_none,
-    } => {
-      test_command(flags, include, fail_fast, quiet, allow_none).boxed_local()
-    }
+    } => test_command(flags, include, fail_fast, allow_none).boxed_local(),
     DenoSubcommand::Completions { buf } => {
       print!("{}", std::str::from_utf8(&buf).unwrap());
       return;

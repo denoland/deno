@@ -7,6 +7,7 @@ use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
+use crate::flags::DenoVerbosity;
 use crate::global_state::GlobalState;
 use crate::msg;
 use crate::op_error::OpError;
@@ -373,11 +374,14 @@ impl TsCompiler {
 
     let ts_compiler = self.clone();
 
-    eprintln!(
-      "{} {}",
-      colors::green("Compile".to_string()),
-      module_url.to_string()
-    );
+    if global_state.flags.verbosity >= DenoVerbosity::Normal {
+      eprintln!(
+        "{} {}",
+        colors::green("Compile".to_string()),
+        module_url.to_string()
+      );
+    }
+
     let msg = execute_in_thread(global_state.clone(), req_msg).await?;
 
     let json_str = std::str::from_utf8(&msg).unwrap();
