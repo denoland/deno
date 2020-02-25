@@ -1,6 +1,5 @@
 [WILDCARD]
-let System;
-let __inst;
+let System, __inst, __inst_s;
 [WILDCARD]
 (() => {
 [WILDCARD]
