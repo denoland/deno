@@ -89,8 +89,8 @@ impl TSIsolate {
       compiler_op(state.clone(), ops::json_op(ops::op_load_module)),
     );
     isolate.register_op(
-      "op_exit",
-      compiler_op(state.clone(), ops::json_op(ops::op_exit)),
+      "op_exit2",
+      compiler_op(state.clone(), ops::json_op(ops::op_exit2)),
     );
     isolate.register_op(
       "op_write_file",

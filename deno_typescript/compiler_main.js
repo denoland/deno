@@ -331,7 +331,7 @@ function dispatch(opName, obj) {
  * @param {number} code
  */
 function exit(code) {
-  dispatch("op_exit", { code });
+  dispatch("op_exit2", { code });
   return unreachable();
 }
 

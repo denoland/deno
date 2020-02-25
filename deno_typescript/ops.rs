@@ -143,7 +143,7 @@ struct Exit {
   code: i32,
 }
 
-pub fn op_exit(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn op_exit2(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: Exit = serde_json::from_value(v)?;
   s.exit_code = v.code;
   std::process::exit(v.code)
