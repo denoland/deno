@@ -18,8 +18,8 @@ import {
 import { OPS_CACHE } from "./runtime.ts";
 
 // This is done because read/write are extremely performance sensitive.
-let OP_READ: number = -1;
-let OP_WRITE: number = -1;
+let OP_READ = -1;
+let OP_WRITE = -1;
 
 /** Open a file and return an instance of the `File` object
  *  synchronously.

@@ -1,7 +1,5 @@
 import {
-  test,
   testPerm,
-  assert,
   assertMatch,
   unreachable
 } from "./test_util.ts";
