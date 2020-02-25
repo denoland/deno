@@ -1,4 +1,10 @@
-import { testPerm, assertMatch, unreachable } from "./test_util.ts";
+import {
+  assert,
+  test,
+  testPerm,
+  assertMatch,
+  unreachable
+} from "./test_util.ts";
 
 const openErrorStackPattern = new RegExp(
   `^.*
@@ -14,4 +20,16 @@ testPerm({ read: true }, async function sendAsyncStackTrace(): Promise<void> {
     .catch((error): void => {
       assertMatch(error.stack, openErrorStackPattern);
     });
+});
+
+test(async function malformedJsonControlBuffer(): Promise<void> {
+  // @ts-ignore
+  const opId = Deno.core.ops()["op_open"];
+  // @ts-ignore
+  const res = Deno.core.send(opId, new Uint8Array([1, 2, 3, 4, 5]));
+  const resText = new TextDecoder().decode(res);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const resJson = JSON.parse(resText) as any;
+  assert(!resJson.ok);
+  assert(resJson.err);
 });

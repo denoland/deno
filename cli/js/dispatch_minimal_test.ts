@@ -1,4 +1,10 @@
-import { assertMatch, test, unreachable } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertMatch,
+  test,
+  unreachable
+} from "./test_util.ts";
 
 const readErrorStackPattern = new RegExp(
   `^.*
@@ -17,4 +23,21 @@ test(async function sendAsyncStackTrace(): Promise<void> {
   } catch (error) {
     assertMatch(error.stack, readErrorStackPattern);
   }
+});
+
+test(async function malformedMinimalControlBuffer(): Promise<void> {
+  // @ts-ignore
+  const readOpId = Deno.core.ops()["op_read"];
+  // @ts-ignore
+  const res = Deno.core.send(readOpId, new Uint8Array([1, 2, 3, 4, 5]));
+  const header = res.slice(0, 12);
+  const buf32 = new Int32Array(
+    header.buffer,
+    header.byteOffset,
+    header.byteLength / 4
+  );
+  const arg = buf32[1];
+  const message = new TextDecoder().decode(res.slice(12)).trim();
+  assert(arg < 0);
+  assertEquals(message, "Unparsable control buffer");
 });
