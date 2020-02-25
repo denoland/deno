@@ -2,7 +2,6 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::*;
@@ -21,27 +20,18 @@ use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("accept", s.core_op(json_op(s.stateful_op(op_accept))));
-  i.register_op("connect", s.core_op(json_op(s.stateful_op(op_connect))));
-  i.register_op("shutdown", s.core_op(json_op(s.stateful_op(op_shutdown))));
-  i.register_op("listen", s.core_op(json_op(s.stateful_op(op_listen))));
-  i.register_op("receive", s.core_op(json_op(s.stateful_op(op_receive))));
-  i.register_op("send", s.core_op(json_op(s.stateful_op(op_send))));
+  i.register_op("op_accept", s.stateful_json_op(op_accept));
+  i.register_op("op_connect", s.stateful_json_op(op_connect));
+  i.register_op("op_shutdown", s.stateful_json_op(op_shutdown));
+  i.register_op("op_listen", s.stateful_json_op(op_listen));
+  i.register_op("op_receive", s.stateful_json_op(op_receive));
+  i.register_op("op_send", s.stateful_json_op(op_send));
 }
 
 #[derive(Debug, PartialEq)]
 enum AcceptState {
   Pending,
   Done,
-}
-
-/// Simply accepts a connection.
-pub fn accept(state: &State, rid: ResourceId) -> Accept {
-  Accept {
-    accept_state: AcceptState::Pending,
-    rid,
-    state,
-  }
 }
 
 /// A future representing state of accepting a TCP connection.
@@ -109,7 +99,12 @@ fn op_accept(
   }
 
   let op = async move {
-    let (tcp_stream, _socket_addr) = accept(&state_, rid).await?;
+    let accept_fut = Accept {
+      accept_state: AcceptState::Pending,
+      rid,
+      state: &state_,
+    };
+    let (tcp_stream, _socket_addr) = accept_fut.await?;
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
     let mut state = state_.borrow_mut();
@@ -164,10 +159,6 @@ struct ReceiveArgs {
   rid: i32,
 }
 
-fn receive(state: &State, rid: ResourceId, buf: ZeroCopyBuf) -> Receive {
-  Receive { state, rid, buf }
-}
-
 fn op_receive(
   state: &State,
   args: Value,
@@ -182,8 +173,12 @@ fn op_receive(
   let state_ = state.clone();
 
   let op = async move {
-    let (size, remote_addr) = receive(&state_, rid, buf).await?;
-
+    let receive_fut = Receive {
+      state: &state_,
+      rid,
+      buf,
+    };
+    let (size, remote_addr) = receive_fut.await?;
     Ok(json!({
       "size": size,
       "remoteAddr": {

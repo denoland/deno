@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as dispatch from "./dispatch.ts";
 import { sendSync } from "./dispatch_json.ts";
 import { errors } from "./errors.ts";
 import * as util from "./util.ts";
@@ -9,7 +8,7 @@ import * as util from "./util.ts";
  *       console.log(Deno.isTTY().stdout);
  */
 export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
-  return sendSync(dispatch.OP_IS_TTY);
+  return sendSync("op_is_tty");
 }
 /** Get the loadavg.
  * Requires the `--allow-env` flag.
@@ -17,7 +16,7 @@ export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
  *       console.log(Deno.loadavg());
  */
 export function loadavg(): number[] {
-  return sendSync(dispatch.OP_LOADAVG);
+  return sendSync("op_loadavg");
 }
 
 /** Get the hostname.
@@ -26,7 +25,7 @@ export function loadavg(): number[] {
  *       console.log(Deno.hostname());
  */
 export function hostname(): string {
-  return sendSync(dispatch.OP_HOSTNAME);
+  return sendSync("op_hostname");
 }
 
 /** Get OS release.
@@ -35,21 +34,21 @@ export function hostname(): string {
  *       console.log(Deno.osRelease());
  */
 export function osRelease(): string {
-  return sendSync(dispatch.OP_OS_RELEASE);
+  return sendSync("op_os_release");
 }
 
 /** Exit the Deno process with optional exit code. */
 export function exit(code = 0): never {
-  sendSync(dispatch.OP_EXIT, { code });
+  sendSync("op_exit", { code });
   return util.unreachable();
 }
 
 function setEnv(key: string, value: string): void {
-  sendSync(dispatch.OP_SET_ENV, { key, value });
+  sendSync("op_set_env", { key, value });
 }
 
 function getEnv(key: string): string | undefined {
-  return sendSync(dispatch.OP_GET_ENV, { key })[0];
+  return sendSync("op_get_env", { key })[0];
 }
 
 /** Returns a snapshot of the environment variables at invocation. Mutating a
@@ -72,7 +71,7 @@ export function env(
   if (key) {
     return getEnv(key);
   }
-  const env = sendSync(dispatch.OP_ENV);
+  const env = sendSync("op_env");
   return new Proxy(env, {
     set(obj, prop: string, value: string): boolean {
       setEnv(prop, value);
@@ -208,7 +207,7 @@ type DirKind =
  */
 export function dir(kind: DirKind): string | null {
   try {
-    return sendSync(dispatch.OP_GET_DIR, { kind });
+    return sendSync("op_get_dir", { kind });
   } catch (error) {
     if (error instanceof errors.PermissionDenied) {
       throw error;
@@ -222,5 +221,5 @@ export function dir(kind: DirKind): string | null {
  * Requires the `--allow-env` flag.
  */
 export function execPath(): string {
-  return sendSync(dispatch.OP_EXEC_PATH);
+  return sendSync("op_exec_path");
 }

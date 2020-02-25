@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::state::State;
 use atty;
 use deno_core::*;
@@ -12,19 +11,16 @@ use sys_info;
 use url::Url;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("exit", s.core_op(json_op(s.stateful_op(op_exit))));
-  i.register_op("is_tty", s.core_op(json_op(s.stateful_op(op_is_tty))));
-  i.register_op("env", s.core_op(json_op(s.stateful_op(op_env))));
-  i.register_op("exec_path", s.core_op(json_op(s.stateful_op(op_exec_path))));
-  i.register_op("set_env", s.core_op(json_op(s.stateful_op(op_set_env))));
-  i.register_op("get_env", s.core_op(json_op(s.stateful_op(op_get_env))));
-  i.register_op("get_dir", s.core_op(json_op(s.stateful_op(op_get_dir))));
-  i.register_op("hostname", s.core_op(json_op(s.stateful_op(op_hostname))));
-  i.register_op("loadavg", s.core_op(json_op(s.stateful_op(op_loadavg))));
-  i.register_op(
-    "os_release",
-    s.core_op(json_op(s.stateful_op(op_os_release))),
-  );
+  i.register_op("op_exit", s.stateful_json_op(op_exit));
+  i.register_op("op_is_tty", s.stateful_json_op(op_is_tty));
+  i.register_op("op_env", s.stateful_json_op(op_env));
+  i.register_op("op_exec_path", s.stateful_json_op(op_exec_path));
+  i.register_op("op_set_env", s.stateful_json_op(op_set_env));
+  i.register_op("op_get_env", s.stateful_json_op(op_get_env));
+  i.register_op("op_get_dir", s.stateful_json_op(op_get_dir));
+  i.register_op("op_hostname", s.stateful_json_op(op_hostname));
+  i.register_op("op_loadavg", s.stateful_json_op(op_loadavg));
+  i.register_op("op_os_release", s.stateful_json_op(op_os_release));
 }
 
 #[derive(Deserialize)]

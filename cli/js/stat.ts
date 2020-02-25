@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "./dispatch_json.ts";
-import * as dispatch from "./dispatch.ts";
 import { FileInfo, FileInfoImpl } from "./file_info.ts";
 
 export interface StatResponse {
@@ -30,7 +29,7 @@ export interface StatResponse {
  *       assert(fileInfo.isFile());
  */
 export async function lstat(filename: string): Promise<FileInfo> {
-  const res = (await sendAsync(dispatch.OP_STAT, {
+  const res = (await sendAsync("op_stat", {
     filename,
     lstat: true
   })) as StatResponse;
@@ -45,7 +44,7 @@ export async function lstat(filename: string): Promise<FileInfo> {
  *       assert(fileInfo.isFile());
  */
 export function lstatSync(filename: string): FileInfo {
-  const res = sendSync(dispatch.OP_STAT, {
+  const res = sendSync("op_stat", {
     filename,
     lstat: true
   }) as StatResponse;
@@ -59,7 +58,7 @@ export function lstatSync(filename: string): FileInfo {
  *       assert(fileInfo.isFile());
  */
 export async function stat(filename: string): Promise<FileInfo> {
-  const res = (await sendAsync(dispatch.OP_STAT, {
+  const res = (await sendAsync("op_stat", {
     filename,
     lstat: false
   })) as StatResponse;
@@ -73,7 +72,7 @@ export async function stat(filename: string): Promise<FileInfo> {
  *       assert(fileInfo.isFile());
  */
 export function statSync(filename: string): FileInfo {
-  const res = sendSync(dispatch.OP_STAT, {
+  const res = sendSync("op_stat", {
     filename,
     lstat: false
   }) as StatResponse;

@@ -3,7 +3,6 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
 use crate::fs as deno_fs;
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
 use futures::future::FutureExt;
@@ -14,9 +13,9 @@ use std::path::Path;
 use tokio;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("open", s.core_op(json_op(s.stateful_op(op_open))));
-  i.register_op("close", s.core_op(json_op(s.stateful_op(op_close))));
-  i.register_op("seek", s.core_op(json_op(s.stateful_op(op_seek))));
+  i.register_op("op_open", s.stateful_json_op(op_open));
+  i.register_op("op_close", s.stateful_json_op(op_close));
+  i.register_op("op_seek", s.stateful_json_op(op_seek));
 }
 
 #[derive(Deserialize)]

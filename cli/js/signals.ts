@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { Signal } from "./process.ts";
-import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 import { build } from "./build.ts";
 
@@ -106,13 +105,13 @@ export class SignalStream
   /** The flag, which is true when the stream is disposed. */
   private disposed = false;
   constructor(signo: number) {
-    this.rid = sendSync(dispatch.OP_SIGNAL_BIND, { signo }).rid;
+    this.rid = sendSync("op_signal_bind", { signo }).rid;
     this.loop();
   }
 
   private async pollSignal(): Promise<boolean> {
     return (
-      await sendAsync(dispatch.OP_SIGNAL_POLL, {
+      await sendAsync("op_signal_poll", {
         rid: this.rid
       })
     ).done;
@@ -144,6 +143,6 @@ export class SignalStream
       throw new Error("The stream has already been disposed.");
     }
     this.disposed = true;
-    sendSync(dispatch.OP_SIGNAL_UNBIND, { rid: this.rid });
+    sendSync("op_signal_unbind", { rid: this.rid });
   }
 }

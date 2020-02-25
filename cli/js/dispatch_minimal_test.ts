@@ -1,8 +1,8 @@
 import {
-  test,
   assert,
   assertEquals,
   assertMatch,
+  test,
   unreachable
 } from "./test_util.ts";
 
@@ -16,8 +16,9 @@ const readErrorStackPattern = new RegExp(
 
 test(async function sendAsyncStackTrace(): Promise<void> {
   const buf = new Uint8Array(10);
+  const rid = 10;
   try {
-    await Deno.read(10, buf);
+    await Deno.read(rid, buf);
     unreachable();
   } catch (error) {
     assertMatch(error.stack, readErrorStackPattern);
@@ -26,7 +27,7 @@ test(async function sendAsyncStackTrace(): Promise<void> {
 
 test(async function malformedMinimalControlBuffer(): Promise<void> {
   // @ts-ignore
-  const readOpId = Deno.core.ops()["read"];
+  const readOpId = Deno.core.ops()["op_read"];
   // @ts-ignore
   const res = Deno.core.send(readOpId, new Uint8Array([1, 2, 3, 4, 5]));
   const header = res.slice(0, 12);
