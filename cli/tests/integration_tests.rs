@@ -1285,22 +1285,24 @@ fn cafile_fetch() {
 #[test]
 fn cafile_install_remote_module() {
   pub use deno::test_util::*;
+  use std::env;
+  use std::path::PathBuf;
   use std::process::Command;
   use tempfile::TempDir;
 
   let g = util::http_server();
-  let temp_dir = std::path::PathBuf::from("/tmp/"); //TempDir::new().expect("tempdir fail");
+  let temp_dir = TempDir::new().expect("tempdir fail");
   let deno_dir = TempDir::new().expect("tempdir fail");
   let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
 
   let install_output = Command::new(deno_exe_path())
-    //.env("DENO_DIR", deno_dir.path())
+    .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
     .arg("install")
     .arg("--cert")
     .arg(cafile)
     .arg("--dir")
-    .arg(&temp_dir)
+    .arg(temp_dir.path())
     .arg("echo_test")
     .arg("https://localhost:5545/cli/tests/echo.ts")
     .output()
@@ -1309,25 +1311,32 @@ fn cafile_install_remote_module() {
   let code = install_output.status.code();
   assert_eq!(Some(0), code);
 
-  let mut file_path = temp_dir.join("echo_test");
+  let mut file_path = temp_dir.path().join("echo_test");
   if cfg!(windows) {
     file_path = file_path.with_extension(".cmd");
   }
   assert!(file_path.exists());
 
-  let output = Command::new(&file_path)
-    .current_dir(util::root_path())
+  let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
+  let paths_var = env::var_os(path_var_name).expect("PATH not set");
+  let mut paths: Vec<PathBuf> = env::split_paths(&paths_var).collect();
+  paths.push(temp_dir.path().to_owned());
+  paths.push(util::target_dir());
+  let path_var_value = env::join_paths(paths).expect("Can't create PATH");
+
+  let output = Command::new(file_path)
+    .current_dir(temp_dir.path())
     .arg("foo")
+    .env(path_var_name, path_var_value)
     .output()
     .expect("failed to spawn script");
-  let stdout = std::str::from_utf8(&output.stdout).unwrap();
-  let stderr = std::str::from_utf8(&output.stderr).unwrap();
-  println!("stdout: {}", stdout);
-  println!("stderr: {}", stderr);
-  println!("file_path: {}", file_path.display());
-  //assert!(stdout.ends_with("foo"));
-  std::thread::sleep_ms(1000);
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("foo"));
 
+  drop(deno_dir);
+  drop(temp_dir);
   drop(g)
 }
 
