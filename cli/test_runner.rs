@@ -131,6 +131,7 @@ mod tests {
     let expected: Vec<Url> = vec![
       format!("{}/cookie_test.ts", root_url),
       format!("{}/file_server_test.ts", root_url),
+      format!("{}/io_test.ts", root_url),
       format!("{}/racing_server_test.ts", root_url),
       format!("{}/server_test.ts", root_url),
     ]
