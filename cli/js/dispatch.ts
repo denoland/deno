@@ -14,8 +14,8 @@ export function setPluginAsyncHandler(
 
 export function getAsyncHandler(opName: string): (msg: Uint8Array) => void {
   switch (opName) {
-    case "write":
-    case "read":
+    case "op_write":
+    case "op_read":
       return minimal.asyncMsgFromRust;
     default:
       return json.asyncMsgFromRust;
