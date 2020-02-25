@@ -60,6 +60,7 @@ export function sendSync(
   zeroCopy?: Uint8Array
 ): Ok {
   const opId = OPS_CACHE[opName];
+  util.log("sendSync", opName, opId);
   const argsUi8 = encode(args);
   const resUi8 = core.dispatch(opId, argsUi8, zeroCopy);
   util.assert(resUi8 != null);
@@ -75,6 +76,7 @@ export async function sendAsync(
   zeroCopy?: Uint8Array
 ): Promise<Ok> {
   const opId = OPS_CACHE[opName];
+  util.log("sendAsync", opName, opId);
   const promiseId = nextPromiseId();
   args = Object.assign(args, { promiseId });
   const promise = util.createResolvable<Ok>();
