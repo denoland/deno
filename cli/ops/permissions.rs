@@ -9,15 +9,15 @@ use std::path::Path;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
-    "query_permission",
+    "op_query_permission",
     s.core_op(json_op(s.stateful_op(op_query_permission))),
   );
   i.register_op(
-    "revoke_permission",
+    "op_revoke_permission",
     s.core_op(json_op(s.stateful_op(op_revoke_permission))),
   );
   i.register_op(
-    "request_permission",
+    "op_request_permission",
     s.core_op(json_op(s.stateful_op(op_request_permission))),
   );
 }

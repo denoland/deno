@@ -15,14 +15,20 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_exit", s.core_op(json_op(s.stateful_op(op_exit))));
   i.register_op("op_is_tty", s.core_op(json_op(s.stateful_op(op_is_tty))));
   i.register_op("op_env", s.core_op(json_op(s.stateful_op(op_env))));
-  i.register_op("op_exec_path", s.core_op(json_op(s.stateful_op(op_exec_path))));
+  i.register_op(
+    "op_exec_path",
+    s.core_op(json_op(s.stateful_op(op_exec_path))),
+  );
   i.register_op("op_set_env", s.core_op(json_op(s.stateful_op(op_set_env))));
   i.register_op("op_get_env", s.core_op(json_op(s.stateful_op(op_get_env))));
   i.register_op("op_get_dir", s.core_op(json_op(s.stateful_op(op_get_dir))));
-  i.register_op("op_hostname", s.core_op(json_op(s.stateful_op(op_hostname))));
+  i.register_op(
+    "op_hostname",
+    s.core_op(json_op(s.stateful_op(op_hostname))),
+  );
   i.register_op("op_loadavg", s.core_op(json_op(s.stateful_op(op_loadavg))));
   i.register_op(
-    "os_release",
+    "op_os_release",
     s.core_op(json_op(s.stateful_op(op_os_release))),
   );
 }

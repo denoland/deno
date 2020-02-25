@@ -23,7 +23,10 @@ use tokio::net::UdpSocket;
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_accept", s.core_op(json_op(s.stateful_op(op_accept))));
   i.register_op("op_connect", s.core_op(json_op(s.stateful_op(op_connect))));
-  i.register_op("op_shutdown", s.core_op(json_op(s.stateful_op(op_shutdown))));
+  i.register_op(
+    "op_shutdown",
+    s.core_op(json_op(s.stateful_op(op_shutdown))),
+  );
   i.register_op("op_listen", s.core_op(json_op(s.stateful_op(op_listen))));
   i.register_op("op_receive", s.core_op(json_op(s.stateful_op(op_receive))));
   i.register_op("op_send", s.core_op(json_op(s.stateful_op(op_send))));
@@ -33,15 +36,6 @@ pub fn init(i: &mut Isolate, s: &State) {
 enum AcceptState {
   Pending,
   Done,
-}
-
-/// Simply accepts a connection.
-pub fn accept(state: &State, rid: ResourceId) -> Accept {
-  Accept {
-    accept_state: AcceptState::Pending,
-    rid,
-    state,
-  }
 }
 
 /// A future representing state of accepting a TCP connection.
@@ -109,7 +103,12 @@ fn op_accept(
   }
 
   let op = async move {
-    let (tcp_stream, _socket_addr) = accept(&state_, rid).await?;
+    let accept_fut = Accept {
+      accept_state: AcceptState::Pending,
+      rid,
+      state: &state_,
+    };
+    let (tcp_stream, _socket_addr) = accept_fut.await?;
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
     let mut state = state_.borrow_mut();
@@ -164,10 +163,6 @@ struct ReceiveArgs {
   rid: i32,
 }
 
-fn receive(state: &State, rid: ResourceId, buf: ZeroCopyBuf) -> Receive {
-  Receive { state, rid, buf }
-}
-
 fn op_receive(
   state: &State,
   args: Value,
@@ -182,8 +177,12 @@ fn op_receive(
   let state_ = state.clone();
 
   let op = async move {
-    let (size, remote_addr) = receive(&state_, rid, buf).await?;
-
+    let receive_fut = Receive {
+      state: &state_,
+      rid,
+      buf,
+    };
+    let (size, remote_addr) = receive_fut.await?;
     Ok(json!({
       "size": size,
       "remoteAddr": {

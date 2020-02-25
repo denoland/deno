@@ -11,11 +11,11 @@ use std::sync::Mutex;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
-    "repl_start",
+    "op_repl_start",
     s.core_op(json_op(s.stateful_op(op_repl_start))),
   );
   i.register_op(
-    "repl_readline",
+    "op_repl_readline",
     s.core_op(json_op(s.stateful_op(op_repl_readline))),
   );
 }

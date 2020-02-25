@@ -49,7 +49,7 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI
   // args and other info.
-  const s = sendSync("start");
+  const s = sendSync("op_start");
 
   setVersions(s.denoVersion, s.v8Version, s.tsVersion);
   setBuildInfo(s.os, s.arch);

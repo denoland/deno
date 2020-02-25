@@ -22,19 +22,19 @@ use std::thread::JoinHandle;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
-    "create_worker",
+    "op_create_worker",
     s.core_op(json_op(s.stateful_op(op_create_worker))),
   );
   i.register_op(
-    "host_terminate_worker",
+    "op_host_terminate_worker",
     s.core_op(json_op(s.stateful_op(op_host_terminate_worker))),
   );
   i.register_op(
-    "host_post_message",
+    "op_host_post_message",
     s.core_op(json_op(s.stateful_op(op_host_post_message))),
   );
   i.register_op(
-    "host_get_message",
+    "op_host_get_message",
     s.core_op(json_op(s.stateful_op(op_host_get_message))),
   );
 }

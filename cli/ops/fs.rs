@@ -24,21 +24,36 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_chmod", s.core_op(json_op(s.stateful_op(op_chmod))));
   i.register_op("op_chown", s.core_op(json_op(s.stateful_op(op_chown))));
   i.register_op("op_remove", s.core_op(json_op(s.stateful_op(op_remove))));
-  i.register_op("op_copy_file", s.core_op(json_op(s.stateful_op(op_copy_file))));
+  i.register_op(
+    "op_copy_file",
+    s.core_op(json_op(s.stateful_op(op_copy_file))),
+  );
   i.register_op("op_stat", s.core_op(json_op(s.stateful_op(op_stat))));
-  i.register_op("op_realpath", s.core_op(json_op(s.stateful_op(op_realpath))));
-  i.register_op("op_read_dir", s.core_op(json_op(s.stateful_op(op_read_dir))));
+  i.register_op(
+    "op_realpath",
+    s.core_op(json_op(s.stateful_op(op_realpath))),
+  );
+  i.register_op(
+    "op_read_dir",
+    s.core_op(json_op(s.stateful_op(op_read_dir))),
+  );
   i.register_op("op_rename", s.core_op(json_op(s.stateful_op(op_rename))));
   i.register_op("op_link", s.core_op(json_op(s.stateful_op(op_link))));
   i.register_op("op_symlink", s.core_op(json_op(s.stateful_op(op_symlink))));
-  i.register_op("op_read_link", s.core_op(json_op(s.stateful_op(op_read_link))));
-  i.register_op("op_truncate", s.core_op(json_op(s.stateful_op(op_truncate))));
   i.register_op(
-    "make_temp_dir",
+    "op_read_link",
+    s.core_op(json_op(s.stateful_op(op_read_link))),
+  );
+  i.register_op(
+    "op_truncate",
+    s.core_op(json_op(s.stateful_op(op_truncate))),
+  );
+  i.register_op(
+    "op_make_temp_dir",
     s.core_op(json_op(s.stateful_op(op_make_temp_dir))),
   );
   i.register_op(
-    "make_temp_file",
+    "op_make_temp_file",
     s.core_op(json_op(s.stateful_op(op_make_temp_file))),
   );
   i.register_op("op_cwd", s.core_op(json_op(s.stateful_op(op_cwd))));

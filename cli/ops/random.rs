@@ -9,7 +9,7 @@ use rand::Rng;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
-    "get_random_values",
+    "op_get_random_values",
     s.core_op(json_op(s.stateful_op(op_get_random_values))),
   );
 }

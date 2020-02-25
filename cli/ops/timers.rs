@@ -11,11 +11,11 @@ use std::time::Instant;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
-    "global_timer_stop",
+    "op_global_timer_stop",
     s.core_op(json_op(s.stateful_op(op_global_timer_stop))),
   );
   i.register_op(
-    "global_timer",
+    "op_global_timer",
     s.core_op(json_op(s.stateful_op(op_global_timer))),
   );
   i.register_op("op_now", s.core_op(json_op(s.stateful_op(op_now))));

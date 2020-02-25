@@ -19,11 +19,11 @@ use tokio::sync::mpsc;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
-    "fs_events_open",
+    "op_fs_events_open",
     s.core_op(json_op(s.stateful_op(op_fs_events_open))),
   );
   i.register_op(
-    "fs_events_poll",
+    "op_fs_events_poll",
     s.core_op(json_op(s.stateful_op(op_fs_events_poll))),
   );
 }

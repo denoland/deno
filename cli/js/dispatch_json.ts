@@ -59,6 +59,7 @@ export function sendSync(
   args: object = {},
   zeroCopy?: Uint8Array
 ): Ok {
+  console.log("sendSync", opName);
   const opId = OPS_CACHE[opName];
   const argsUi8 = encode(args);
   const resUi8 = core.dispatch(opId, argsUi8, zeroCopy);
@@ -74,6 +75,7 @@ export async function sendAsync(
   args: object = {},
   zeroCopy?: Uint8Array
 ): Promise<Ok> {
+  console.log("sendAsync", opName);
   const opId = OPS_CACHE[opName];
   const promiseId = nextPromiseId();
   args = Object.assign(args, { promiseId });

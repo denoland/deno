@@ -24,7 +24,7 @@ use std::os::unix::process::ExitStatusExt;
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_run", s.core_op(json_op(s.stateful_op(op_run))));
   i.register_op(
-    "run_status",
+    "op_run_status",
     s.core_op(json_op(s.stateful_op(op_run_status))),
   );
   i.register_op("op_kill", s.core_op(json_op(s.stateful_op(op_kill))));

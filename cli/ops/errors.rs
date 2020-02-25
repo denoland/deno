@@ -12,15 +12,15 @@ use std::collections::HashMap;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
-    "apply_source_map",
+    "op_apply_source_map",
     s.core_op(json_op(s.stateful_op(op_apply_source_map))),
   );
   i.register_op(
-    "format_error",
+    "op_format_error",
     s.core_op(json_op(s.stateful_op(op_format_error))),
   );
   i.register_op(
-    "format_diagnostic",
+    "op_format_diagnostic",
     s.core_op(json_op(s.stateful_op(op_format_diagnostic))),
   );
 }

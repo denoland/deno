@@ -18,15 +18,15 @@ use tokio::signal::unix::{signal, Signal, SignalKind};
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
-    "signal_bind",
+    "op_signal_bind",
     s.core_op(json_op(s.stateful_op(op_signal_bind))),
   );
   i.register_op(
-    "signal_unbind",
+    "op_signal_unbind",
     s.core_op(json_op(s.stateful_op(op_signal_unbind))),
   );
   i.register_op(
-    "signal_poll",
+    "op_signal_poll",
     s.core_op(json_op(s.stateful_op(op_signal_poll))),
   );
 }
