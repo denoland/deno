@@ -292,6 +292,8 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
     "lib.es2019.object.d.ts" => inc!("lib.es2019.object.d.ts"),
     "lib.es2019.string.d.ts" => inc!("lib.es2019.string.d.ts"),
     "lib.es2019.symbol.d.ts" => inc!("lib.es2019.symbol.d.ts"),
+    "lib.es2020.bigint.d.ts" => inc!("lib.es2020.bigint.d.ts"),
+    "lib.es2020.promise.d.ts" => inc!("lib.es2020.promise.d.ts"),
     "lib.es2020.string.d.ts" => inc!("lib.es2020.string.d.ts"),
     "lib.es2020.symbol.wellknown.d.ts" => {
       inc!("lib.es2020.symbol.wellknown.d.ts")

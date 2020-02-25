@@ -270,11 +270,16 @@ export function convertCompilerOptions(str: string): ts.CompilerOptions {
 
 /** An array of TypeScript diagnostic types we ignore. */
 export const ignoredDiagnostics = [
+  // TS2306: File 'file:///Users/rld/src/deno/cli/tests/subdir/amd_like.js' is
+  // not a module.
+  2306,
+  // TS1375: 'await' expressions are only allowed at the top level of a file
+  // when that file is a module, but this file has no imports or exports.
+  // Consider adding an empty 'export {}' to make this file a module.
+  1375,
   // TS1103: 'for-await-of' statement is only allowed within an async function
   // or async generator.
   1103,
-  // TS1308: 'await' expression is only allowed within an async function.
-  1308,
   // TS2691: An import path cannot end with a '.ts' extension. Consider
   // importing 'bad-module' instead.
   2691,

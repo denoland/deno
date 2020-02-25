@@ -132,7 +132,6 @@ class Host {
    */
   readFile(_fileName) {
     unreachable();
-    return undefined;
   }
 
   useCaseSensitiveFileNames() {
@@ -179,33 +178,22 @@ class Host {
     }
 
     // This looks up any modules that have been mapped to internal names
-    if (moduleMap.has(fileName)) {
-      fileName = moduleMap.get(fileName);
-    }
+    const moduleUrl = moduleMap.has(fileName)
+      ? moduleMap.get(fileName)
+      : fileName;
 
-    const { sourceCode, moduleName } = dispatch("op_load_module", {
-      moduleUrl: fileName,
+    const { sourceCode } = dispatch("op_load_module", {
+      moduleUrl,
       languageVersion,
       shouldCreateNewSourceFile
     });
 
-    // If we match the external specifier regex, we will then create an internal
-    // specifier and then use that when creating the source file
-    let internalModuleName = moduleName;
-    const result = externalSpecifierRegEx.exec(moduleName);
-    if (result) {
-      const [, specifier] = result;
-      const internalSpecifier = `$deno$${specifier}`;
-      moduleMap.set(internalSpecifier, moduleName);
-      internalModuleName = internalSpecifier;
-    }
-
     const sourceFile = ts.createSourceFile(
-      internalModuleName,
+      fileName,
       sourceCode,
       languageVersion
     );
-    sourceFile.moduleName = internalModuleName;
+    sourceFile.moduleName = fileName;
     return sourceFile;
   }
 
@@ -245,7 +233,6 @@ class Host {
     _shouldCreateNewSourceFile
   ) {
     unreachable();
-    return undefined;
   }
 
   /**
@@ -278,6 +265,17 @@ class Host {
     /** @type {ts.ResolvedModule[]} */
     const r = resolvedNames.map(resolvedFileName => {
       const extension = getExtension(resolvedFileName);
+      if (!moduleMap.has(resolvedFileName)) {
+        // If we match the external specifier regex, we will then create an internal
+        // specifier and then use that when creating the source file
+        const result = externalSpecifierRegEx.exec(resolvedFileName);
+        if (result) {
+          const [, specifier] = result;
+          const internalSpecifier = `$deno$${specifier}`;
+          moduleMap.set(internalSpecifier, resolvedFileName);
+          resolvedFileName = internalSpecifier;
+        }
+      }
       return { resolvedFileName, extension };
     });
     return r;
