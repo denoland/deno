@@ -94,20 +94,20 @@ fn check_source_files(
 fn format_source_files(
   config: dprint::configuration::Configuration,
   paths: Vec<PathBuf>,
-) {
+) -> Result<(), ErrBox> {
   let mut not_formatted_files = vec![];
 
   for file_path in paths {
     let file_path_str = file_path.to_string_lossy();
-    let file_contents = fs::read_to_string(&file_path).unwrap();
+    let file_contents = fs::read_to_string(&file_path)?;
     match dprint::format_text(&file_path_str, &file_contents, &config) {
       Ok(None) => {
         // nothing to format, pass
       }
       Ok(Some(formatted_text)) => {
         if formatted_text != file_contents {
-          println!("Formatting {}", file_path_str);
-          fs::write(&file_path, formatted_text).unwrap();
+          debug!("Formatting {}", file_path_str);
+          fs::write(&file_path, formatted_text)?;
           not_formatted_files.push(file_path);
         }
       }
@@ -124,6 +124,7 @@ fn format_source_files(
     "files"
   };
   debug!("Formatted {} {}", not_formatted_files.len(), f);
+  Ok(())
 }
 
 /// Format JavaScript/TypeScript files.
@@ -157,7 +158,7 @@ pub fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
   if check {
     check_source_files(config, target_files)?;
   } else {
-    format_source_files(config, target_files);
+    format_source_files(config, target_files)?;
   }
   Ok(())
 }
