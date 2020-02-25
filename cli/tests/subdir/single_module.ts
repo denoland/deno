@@ -1,2 +1,2 @@
 console.log("Hello world!");
-export {};
+export {}; // TODO(ry) This shouldn't be necessary.
