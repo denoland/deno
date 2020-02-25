@@ -457,7 +457,7 @@ fn repl_test_missing_deno_dir() {
   let test_deno_dir =
     util::root_path().join("cli").join("tests").join(DENO_DIR);
   let (out, err, code) = util::run_and_collect_output(
-    "",
+    "repl",
     Some(vec!["1"]),
     Some(vec![("DENO_DIR".to_owned(), DENO_DIR.to_owned())]),
   );
@@ -1344,24 +1344,34 @@ fn cafile_bundle_remote_exports() {
 }
 
 #[test]
-fn permission_test() {
+fn test_permissions_with_allow() {
   const PERMISSION_VARIANTS: [&str; 5] = ["read", "write", "env", "net", "run"];
-
-  const PROMPT_PATTERN: &str = "⚠️";
   const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied: permission denied";
 
   for permission in &PERMISSION_VARIANTS {
     let (_, err, code) = util::run_and_collect_output(
-      &format!(
-        "run --allow-{0} permission_prompt_test.ts {0}Required",
-        permission
-      ),
+      &format!("run --allow-{0} permission_test.ts {0}Required", permission),
       None,
       None,
     );
     assert_eq!(code, 0);
-    assert!(!err.contains(PROMPT_PATTERN));
     assert!(!err.contains(PERMISSION_DENIED_PATTERN));
+  }
+}
+
+#[test]
+fn test_permissions_without_allow() {
+  const PERMISSION_VARIANTS: [&str; 5] = ["read", "write", "env", "net", "run"];
+  const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
+
+  for permission in &PERMISSION_VARIANTS {
+    let (_, err, code) = util::run_and_collect_output(
+      &format!("run permission_test.ts {0}Required", permission),
+      None,
+      None,
+    );
+    assert_eq!(code, 1);
+    assert!(err.contains(PERMISSION_DENIED_PATTERN));
   }
 }
 
