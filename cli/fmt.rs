@@ -123,7 +123,7 @@ fn format_source_files(
   } else {
     "files"
   };
-  debug!("Formatted {} {}", not_formatted_files.len(), f,);
+  debug!("Formatted {} {}", not_formatted_files.len(), f);
 }
 
 /// Format JavaScript/TypeScript files.
