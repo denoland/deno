@@ -11,7 +11,6 @@ import socket
 import sys
 from time import sleep
 from threading import Thread
-from threading import Lock
 from util import root_path
 import ssl
 import getopt
