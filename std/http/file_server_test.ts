@@ -2,7 +2,8 @@
 import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-const { test } = Deno;
+import { testGroup } from "../testing/group.ts";
+const test = testGroup("http/file_server");
 
 let fileServer: Deno.Process;
 
