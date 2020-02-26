@@ -21,14 +21,11 @@ REDIRECT_PORT = 4546
 ANOTHER_REDIRECT_PORT = 4547
 DOUBLE_REDIRECTS_PORT = 4548
 INF_REDIRECTS_PORT = 4549
-
 HTTPS_PORT = 5545
 
 
 def create_http_arg_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--certfile')
-    parser.add_argument('--keyfile')
     parser.add_argument('--verbose', '-v', action='store_true')
     return parser
 
@@ -36,8 +33,8 @@ def create_http_arg_parser():
 HttpArgParser = create_http_arg_parser()
 
 args, unknown = HttpArgParser.parse_known_args(sys.argv[1:])
-CERT_FILE = args.certfile
-KEY_FILE = args.keyfile
+CERT_FILE = os.path.join(root_path, "std/http/testdata/tls/localhost.crt")
+KEY_FILE = os.path.join(root_path, "std/http/testdata/tls/localhost.key")
 QUIET = not args.verbose
 
 
@@ -314,10 +311,19 @@ def start(s):
 def spawn():
     servers = (server(), redirect_server(), another_redirect_server(),
                double_redirects_server(), https_server())
-    while any(not s.thread.is_alive() for s in servers):
-        sleep(0.01)
+    # In order to wait for each of the servers to be ready, we try connecting to
+    # them with a tcp socket.
+    for running_server in servers:
+        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        port = running_server.server.server_address[1]
+        client.connect(("127.0.0.1", port))
+        print "connected", port
+        client.close()
+        assert running_server.thread.is_alive()
+    # The following output "ready" is specificly looked for in cli/test_util.rs
+    # to prevent race conditions.
+    print "ready"
     try:
-        print "ready"
         yield servers
     finally:
         for s in servers:
