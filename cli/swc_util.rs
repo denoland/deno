@@ -1,78 +1,185 @@
+#[allow(warnings)]
 use crate::file_fetcher::SourceFile;
+use crate::msg::MediaType;
+//use deno_core::ErrBox;
 use std::sync::Arc;
-use swc_common::errors::ColorConfig;
+use std::sync::RwLock;
+// use swc_common::errors::ColorConfig;
+use swc_common::errors::Diagnostic;
+use swc_common::errors::DiagnosticBuilder;
+use swc_common::errors::Emitter;
 use swc_common::errors::Handler;
+use swc_common::errors::HandlerFlags;
+// use swc_common::errors::SourceMapperDyn;
 use swc_common::FileName;
 use swc_common::SourceMap;
 use swc_ecma_parser::lexer::Lexer;
+use swc_ecma_parser::JscTarget;
 use swc_ecma_parser::Session;
+use swc_ecma_parser::SourceFileInput;
 use swc_ecma_parser::Syntax;
 use swc_ecma_parser::TsConfig;
+
+type SwcDiagnostics = Vec<Diagnostic>;
+
+#[derive(Clone, Default)]
+pub(crate) struct BufferedError(Arc<RwLock<SwcDiagnostics>>);
+
+impl Emitter for BufferedError {
+  fn emit(&mut self, db: &DiagnosticBuilder) {
+    self.0.write().unwrap().push((**db).clone());
+  }
+}
+
+impl From<BufferedError> for Vec<Diagnostic> {
+  fn from(buf: BufferedError) -> Self {
+    let s = buf.0.read().unwrap();
+    s.clone()
+  }
+}
 
 // Parses the provided source code, and extracts all the imports. Works with JS
 // and TS. Does not preform I/O.
 #[allow(dead_code)]
-fn get_imports(source_file: SourceFile) -> Result<Vec<String>, ()> {
-  let cm: Arc<SourceMap> = Default::default();
-  let fm = cm.new_source_file(
+fn dependent_specifiers(
+  source_file: SourceFile,
+) -> Result<Vec<String>, SwcDiagnostics> {
+  let source_map = SourceMap::default();
+  let swc_source_file = source_map.new_source_file(
     FileName::Custom(source_file.url.as_str().into()),
     std::str::from_utf8(&source_file.source_code)
       .unwrap()
       .into(),
   );
-
-  let handler =
-    Handler::with_tty_emitter(ColorConfig::Auto, true, false, Some(cm.clone()));
+  let buffered_error = BufferedError::default();
+  let handler = Handler::with_emitter_and_flags(
+    Box::new(buffered_error.clone()),
+    HandlerFlags {
+      dont_buffer_diagnostics: true,
+      can_emit_warnings: true,
+      ..Default::default()
+    },
+  );
   let session = Session { handler: &handler };
 
-  let mut ts_config: TsConfig = Default::default();
-  ts_config.dynamic_import = true;
-  ts_config.decorators = true;
-
-  let lexer = Lexer::new(
-    session,
-    // Syntax::Es(Default::default()),
-    Syntax::Typescript(ts_config),
-    Default::default(),
-    swc_ecma_parser::SourceFileInput::from(&*fm),
-    None,
-  );
-
+  let syntax = match source_file.media_type {
+    MediaType::TypeScript => {
+      let mut ts_config = TsConfig::default();
+      ts_config.dynamic_import = true;
+      ts_config.decorators = true;
+      Syntax::Typescript(ts_config)
+    }
+    _ => Syntax::Es(Default::default()),
+  };
+  let target = JscTarget::Es2019;
+  let source_file_input = SourceFileInput::from(&*swc_source_file);
+  let lexer = Lexer::new(session, syntax, target, source_file_input, None);
   let mut parser = swc_ecma_parser::Parser::new_from(session, lexer);
-
-  let module = parser
-    .parse_module()
-    .map_err(|mut e| {
-      e.emit();
-      ()
-    })
-    .expect("failed to parser module");
-
+  let module =
+    parser
+      .parse_module()
+      .map_err(move |mut err: DiagnosticBuilder| {
+        err.cancel();
+        SwcDiagnostics::from(buffered_error)
+      })?;
   let mut out = Vec::<String>::new();
   for child in module.body {
     use swc_ecma_ast::ModuleDecl;
     use swc_ecma_ast::ModuleItem;
-    if let ModuleItem::ModuleDecl(ModuleDecl::Import(import_decl)) = child {
-      let atom = import_decl.src.value;
-      out.push(atom.to_string());
+    match child {
+      ModuleItem::ModuleDecl(ModuleDecl::Import(decl)) => {
+        let atom = decl.src.value;
+        out.push(atom.to_string());
+      }
+      ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(decl)) => {
+        if let Some(src) = decl.src {
+          // example: export { isMod4 } from "./mod4.js";
+          out.push(src.value.to_string());
+        }
+      }
+      _ => {} // ignored
     }
   }
+  // Make sure Swc isn't loading more files.
+  assert_eq!(source_map.files().len(), 1);
   Ok(out)
 }
 
-#[test]
-fn test_get_imports() {
-  use crate::msg::MediaType;
+#[cfg(test)]
+pub mod tests {
+  use super::*;
+  use deno_core::ModuleSpecifier;
   use std::path::PathBuf;
   use url::Url;
-  let mock_source_file = SourceFile {
-    url: Url::parse("https://deno.land/std/examples/cat.ts").unwrap(),
-    filename: PathBuf::from("/foo/bar"),
-    types_url: None,
-    media_type: MediaType::TypeScript,
-    source_code: "import { foo } from './bar.js';\n\n".as_bytes().to_vec(),
-  };
 
-  let imports = get_imports(mock_source_file).unwrap();
-  assert_eq!(imports, vec!["./bar.js".to_string()]);
+  fn rel_module_specifier(relpath: &str) -> ModuleSpecifier {
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .join(relpath)
+      .into_os_string();
+    let ps = p.to_str().unwrap();
+    // TODO(ry) Why doesn't ModuleSpecifier::resolve_path actually take a
+    // Path?!
+    ModuleSpecifier::resolve_url_or_path(ps).unwrap()
+  }
+
+  #[test]
+  fn dependent_specifiers_mock_source_file() {
+    let mock_source_file = SourceFile {
+      url: Url::parse("https://deno.land/std/examples/cat.ts").unwrap(),
+      filename: PathBuf::from("/foo/bar"),
+      types_url: None,
+      media_type: MediaType::TypeScript,
+      source_code: "import { foo } from './bar.js';\n\n".as_bytes().to_vec(),
+    };
+
+    let actual = dependent_specifiers(mock_source_file).unwrap();
+    let expected = vec!["./bar.js"];
+    assert_eq!(actual, expected);
+  }
+
+  // TODO(ry) Add simple (sync fs) way to load local SourceFile without a file
+  // fetcher.
+
+  #[tokio::test]
+  async fn dependent_specifiers_mod6() {
+    let (_temp_dir, fetcher) = crate::file_fetcher::tests::test_setup();
+    let module_specifier = rel_module_specifier("tests/subdir/mod6.js");
+    let result = fetcher.fetch_source_file(&module_specifier, None).await;
+    let source_file = result.unwrap();
+    let actual = dependent_specifiers(source_file).unwrap();
+    let expected = vec!["./mod4.js"];
+    assert_eq!(actual, expected);
+  }
+
+  #[tokio::test]
+  async fn dependent_specifiers_019_media_types() {
+    let (_temp_dir, fetcher) = crate::file_fetcher::tests::test_setup();
+    let module_specifier = rel_module_specifier("tests/019_media_types.ts");
+    let result = fetcher.fetch_source_file(&module_specifier, None).await;
+    let source_file = result.unwrap();
+    let actual = dependent_specifiers(source_file).unwrap();
+    let expected = vec![
+      "http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts",
+      "http://localhost:4545/cli/tests/subdir/mt_video_vdn.t2.ts",
+      "http://localhost:4545/cli/tests/subdir/mt_video_mp2t.t3.ts",
+      "http://localhost:4545/cli/tests/subdir/mt_application_x_typescript.t4.ts",
+      "http://localhost:4545/cli/tests/subdir/mt_text_javascript.j1.js",
+      "http://localhost:4545/cli/tests/subdir/mt_application_ecmascript.j2.js",
+      "http://localhost:4545/cli/tests/subdir/mt_text_ecmascript.j3.js",
+      "http://localhost:4545/cli/tests/subdir/mt_application_x_javascript.j4.js",
+    ];
+    assert_eq!(actual, expected);
+  }
+
+  #[tokio::test]
+  async fn dependent_specifiers_error_syntax() {
+    let (_temp_dir, fetcher) = crate::file_fetcher::tests::test_setup();
+    let module_specifier = rel_module_specifier("tests/error_syntax.js");
+    let result = fetcher.fetch_source_file(&module_specifier, None).await;
+    let source_file = result.unwrap();
+    let result = dependent_specifiers(source_file);
+    assert!(result.is_err());
+    let diagnostics = result.unwrap_err();
+    assert_eq!(diagnostics.len(), 0); // Correct?
+  }
 }

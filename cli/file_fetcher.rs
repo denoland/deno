@@ -615,7 +615,7 @@ pub struct SourceCodeHeaders {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
   use super::*;
   use tempfile::TempDir;
 
@@ -631,7 +631,7 @@ mod tests {
     .expect("setup fail")
   }
 
-  fn test_setup() -> (TempDir, SourceFileFetcher) {
+  pub fn test_setup() -> (TempDir, SourceFileFetcher) {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let fetcher = setup_file_fetcher(temp_dir.path());
     (temp_dir, fetcher)
