@@ -2,10 +2,12 @@
 import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
+import { usePort } from "./internal/test_util.ts";
 const { test } = Deno;
 
 let fileServer: Deno.Process;
 
+const port = usePort();
 async function startFileServer(): Promise<void> {
   fileServer = Deno.run({
     args: [
@@ -15,7 +17,9 @@ async function startFileServer(): Promise<void> {
       "--allow-net",
       "http/file_server.ts",
       ".",
-      "--cors"
+      "--cors",
+      "--port",
+      `${port}`
     ],
     stdout: "piped",
     stderr: "null"
@@ -53,7 +57,7 @@ test(async function serveFile(): Promise<void> {
 test(async function serveDirectory(): Promise<void> {
   await startFileServer();
   try {
-    const res = await fetch("http://localhost:4500/");
+    const res = await fetch(`http://localhost:${port}/`);
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     const page = await res.text();
@@ -75,7 +79,7 @@ test(async function serveDirectory(): Promise<void> {
 test(async function serveFallback(): Promise<void> {
   await startFileServer();
   try {
-    const res = await fetch("http://localhost:4500/badfile.txt");
+    const res = await fetch(`http://localhost:${port}/badfile.txt`);
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 404);
@@ -87,12 +91,12 @@ test(async function serveFallback(): Promise<void> {
 test(async function serveWithUnorthodoxFilename(): Promise<void> {
   await startFileServer();
   try {
-    let res = await fetch("http://localhost:4500/http/testdata/%");
+    let res = await fetch(`http://localhost:${port}/http/testdata/%`);
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 200);
 
-    res = await fetch("http://localhost:4500/http/testdata/test%20file.txt");
+    res = await fetch(`http://localhost:${port}/http/testdata/test%20file.txt`);
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 200);
@@ -115,7 +119,7 @@ test(async function servePermissionDenied(): Promise<void> {
   assert(s !== Deno.EOF && s.includes("server listening"));
 
   try {
-    await fetch("http://localhost:4500/");
+    await fetch(`http://localhost:${port}/`);
     assertStrContains(
       (await errReader.readLine()) as string,
       "run again with the --allow-read flag"

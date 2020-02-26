@@ -1,7 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { serve } from "./server.ts";
+import { usePort } from "./internal/test_util.ts";
 
-const addr = Deno.args[0] || "127.0.0.1:4500";
+const addr = Deno.args[0] || "127.0.0.1:"+usePort();
 const server = serve(addr);
 const body = new TextEncoder().encode("Hello World");
 
