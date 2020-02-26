@@ -23,6 +23,7 @@ use std::os::unix::fs::{MetadataExt, PermissionsExt};
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
   i.register_op("op_seek", s.stateful_json_op(op_seek));
+  i.register_op("op_umask", s.stateful_json_op(op_umask));
   i.register_op("op_chdir", s.stateful_json_op(op_chdir));
   i.register_op("op_mkdir", s.stateful_json_op(op_mkdir));
   i.register_op("op_chmod", s.stateful_json_op(op_chmod));
@@ -219,6 +220,21 @@ fn op_seek(
   } else {
     Ok(JsonOp::Async(fut.boxed_local()))
   }
+}
+
+#[derive(Deserialize)]
+struct UmaskArgs {
+  mask: Option<u32>,
+}
+
+fn op_umask(
+  _state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  let args: UmaskArgs = serde_json::from_value(args)?;
+  let buf = deno_fs::umask(args.mask)?;
+  Ok(JsonOp::Sync(json!(buf)))
 }
 
 #[derive(Deserialize)]

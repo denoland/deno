@@ -11,10 +11,38 @@ use rand::Rng;
 use walkdir::WalkDir;
 
 #[cfg(unix)]
+use nix::sys::stat::{mode_t, umask as unix_umask, Mode};
+
+#[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 
 #[cfg(unix)]
 use nix::unistd::{chown as unix_chown, Gid, Uid};
+
+#[cfg(unix)]
+pub fn umask(mask: Option<u32>) -> Result<u32, ErrBox> {
+  let previous: Mode = unix_umask(Mode::from_bits_truncate(
+    mask.unwrap_or(0o777) as mode_t & 0o777,
+  ));
+  if mask.is_none() {
+    unix_umask(previous);
+  }
+  Ok(previous.bits() as u32 & 0o777)
+}
+
+#[cfg(not(unix))]
+pub fn umask(mask: Option<u32>) -> Result<u32, ErrBox> {
+  match mask {
+    Some(_) => {
+      let e = std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "Not implemented".to_string(),
+      );
+      Err(ErrBox::from(e))
+    }
+    None => Ok(0),
+  }
+}
 
 pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
