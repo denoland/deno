@@ -88,8 +88,12 @@ fn op_open(
   } else {
     tokio::fs::OpenOptions::new()
   };
+  let mut create_new = false;
 
   if let Some(options) = args.options {
+    let create = options.create;
+    create_new = options.create_new;
+
     if options.read {
       state.check_read(&path)?;
     }
@@ -100,11 +104,11 @@ fn op_open(
 
     open_options
       .read(options.read)
-      .create(options.create)
+      .create(create)
       .write(options.write)
       .truncate(options.truncate)
       .append(options.append)
-      .create_new(options.create_new);
+      .create_new(create_new);
   } else if let Some(open_mode) = args.open_mode {
     let open_mode = open_mode.as_ref();
     match open_mode {
@@ -144,9 +148,11 @@ fn op_open(
         open_options.read(true).create(true).append(true);
       }
       "x" => {
+        create_new = true;
         open_options.create_new(true).write(true);
       }
       "x+" => {
+        create_new = true;
         open_options.create_new(true).read(true).write(true);
       }
       &_ => {
@@ -161,9 +167,23 @@ fn op_open(
   };
 
   let is_sync = args.promise_id.is_none();
-
   let fut = async move {
-    let fs_file = open_options.open(path).await?;
+    let fs_file = match open_options.open(&path).await {
+      Err(e)
+        if cfg!(windows)
+          && create_new
+          && e.kind() == std::io::ErrorKind::PermissionDenied
+          && tokio::fs::metadata(&path).await.is_ok() =>
+      {
+        // alternately, "The file exists. (os error 80)"
+        return Err(OpError::already_exists(
+          "Cannot create a file when that file already exists. (os error 183)"
+            .to_string(),
+        ));
+      }
+      Err(e) => return Err(OpError::from(e)),
+      Ok(f) => f,
+    };
     let mut state = state_.borrow_mut();
     let rid = state.resource_table.add(
       "fsFile",

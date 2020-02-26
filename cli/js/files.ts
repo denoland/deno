@@ -36,8 +36,7 @@ export function openSync(
   if (typeof modeOrOptions === "string") {
     openMode = modeOrOptions;
   } else {
-    checkOpenOptions(modeOrOptions);
-    options = modeOrOptions as OpenOptions;
+    options = checkOpenOptions(modeOrOptions);
   }
 
   const rid = opOpenSync(path, openMode as OpenMode, options);
@@ -58,8 +57,7 @@ export async function open(
   if (typeof modeOrOptions === "string") {
     openMode = modeOrOptions;
   } else {
-    checkOpenOptions(modeOrOptions);
-    options = modeOrOptions as OpenOptions;
+    options = checkOpenOptions(modeOrOptions);
   }
 
   const rid = await opOpen(path, openMode as OpenMode, options);
@@ -118,7 +116,7 @@ export const stdin = new File(0);
 export const stdout = new File(1);
 export const stderr = new File(2);
 
-function checkOpenOptions(options: OpenOptions): void {
+function checkOpenOptions(options: OpenOptions): OpenOptions {
   if (Object.values(options).filter((val) => val === true).length === 0) {
     throw new Error("OpenOptions requires at least one option to be true");
   }
@@ -127,12 +125,15 @@ function checkOpenOptions(options: OpenOptions): void {
     throw new Error("'truncate' option requires 'write' option");
   }
 
-  const createOrCreateNewWithoutWriteOrAppend =
-    (options.create || options.createNew) && !(options.write || options.append);
+  const createOrCreateNew = options.create || options.createNew;
 
-  if (createOrCreateNewWithoutWriteOrAppend) {
+  const writeOrAppend = options.write || options.append;
+
+  if (createOrCreateNew && !writeOrAppend) {
     throw new Error(
       "'create' or 'createNew' options require 'write' or 'append' option"
     );
   }
+
+  return options;
 }
