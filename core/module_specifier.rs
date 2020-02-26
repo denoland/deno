@@ -201,6 +201,12 @@ impl From<Url> for ModuleSpecifier {
   }
 }
 
+impl Into<Url> for ModuleSpecifier {
+  fn into(self) -> Url {
+    self.0
+  }
+}
+
 impl PartialEq<String> for ModuleSpecifier {
   fn eq(&self, other: &String) -> bool {
     &self.to_string() == other

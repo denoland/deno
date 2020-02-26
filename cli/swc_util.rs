@@ -6,6 +6,7 @@ use crate::msg::MediaType;
 use core::ops::Deref;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -23,6 +24,7 @@ use swc_ecma_parser::Session;
 use swc_ecma_parser::SourceFileInput;
 use swc_ecma_parser::Syntax;
 use swc_ecma_parser::TsConfig;
+use url::Url;
 
 type SwcDiagnostics = Vec<Diagnostic>;
 
@@ -42,19 +44,19 @@ impl From<BufferedError> for Vec<Diagnostic> {
   }
 }
 
-#[derive(Debug)]
-struct SourceGraph(HashMap<ModuleSpecifier, SourceGraphFile>);
+#[derive(Debug, Serialize)]
+struct SourceGraph(HashMap<String, SourceGraphFile>);
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct SourceGraphFile {
-  url: ModuleSpecifier,
   local: PathBuf,
+  compiled: Option<PathBuf>,
   media_type: MediaType,
-  deps: Vec<ModuleSpecifier>,
+  deps: Vec<String>,
 }
 
 impl Deref for SourceGraph {
-  type Target = HashMap<ModuleSpecifier, SourceGraphFile>;
+  type Target = HashMap<String, SourceGraphFile>;
   fn deref(&self) -> &Self::Target {
     &self.0
   }
@@ -64,10 +66,10 @@ impl Deref for SourceGraph {
 impl SourceGraph {
   pub async fn fetch(
     global_state: GlobalState,
-    root: ModuleSpecifier,
+    root: Url,
   ) -> Result<SourceGraph, ErrBox> {
     let mut sg = SourceGraph(HashMap::new());
-    let mut to_visit = vec![root];
+    let mut to_visit: Vec<String> = vec![root.as_str().to_string()];
     loop {
       if let Some(cur) = to_visit.pop() {
         sg.visit(global_state.clone(), cur.clone()).await?;
@@ -88,11 +90,14 @@ impl SourceGraph {
   async fn visit(
     &mut self,
     global_state: GlobalState,
-    module_specifier: ModuleSpecifier,
+    module_specifier_s: String,
   ) -> Result<(), ErrBox> {
-    if self.0.contains_key(&module_specifier) {
+    if self.0.contains_key(&module_specifier_s) {
       return Ok(());
     }
+
+    let module_specifier =
+      ModuleSpecifier::resolve_url(&module_specifier_s).unwrap();
 
     let source_file = global_state
       .file_fetcher
@@ -100,16 +105,31 @@ impl SourceGraph {
       .await?;
     let dep_specs = dependent_specifiers(source_file.clone()).unwrap();
 
-    let mut deps = Vec::new();
+    let mut deps = Vec::<String>::new();
     for dep in dep_specs {
-      let m = ModuleSpecifier::resolve_import(&dep, module_specifier.as_str())?;
-      deps.push(m);
+      let m = ModuleSpecifier::resolve_import(&dep, &module_specifier_s)?;
+      deps.push(m.as_str().to_string());
     }
+
+    let compiled = if source_file.media_type == MediaType::TypeScript {
+      // Assuming the following call does not launch ts_compiler.
+      if let Ok(compiled_source_file) = global_state
+        .ts_compiler
+        .get_compiled_source_file(&module_specifier.into())
+      {
+        Some(compiled_source_file.filename)
+      } else {
+        None
+      }
+    } else {
+      None
+    };
+
     self.0.insert(
-      module_specifier.clone(),
+      module_specifier_s,
       SourceGraphFile {
-        url: module_specifier,
         local: source_file.filename,
+        compiled,
         media_type: source_file.media_type,
         deps,
       },
@@ -188,7 +208,6 @@ fn dependent_specifiers(
 #[cfg(test)]
 pub mod tests {
   use super::*;
-  use url::Url;
 
   fn rel_module_specifier(relpath: &str) -> ModuleSpecifier {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -266,10 +285,16 @@ pub mod tests {
     let http_server_guard = crate::test_util::http_server();
     let global_state = GlobalState::new(Default::default()).unwrap();
     let module_specifier = rel_module_specifier("tests/019_media_types.ts");
-    let source_graph = SourceGraph::fetch(global_state, module_specifier)
+    let sg = SourceGraph::fetch(global_state, module_specifier.into())
       .await
       .unwrap();
-    println!("source_graph {:?}", source_graph);
+    assert_eq!(sg.len(), 9);
+    let r =
+      sg.get("http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts");
+    assert!(r.is_some());
+
+    println!("{}", serde_json::to_string_pretty(&sg).unwrap());
+
     drop(http_server_guard);
   }
 }
