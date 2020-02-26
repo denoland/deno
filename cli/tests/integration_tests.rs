@@ -1215,7 +1215,8 @@ itest!(unbuffered_stdout {
 // Cannot write the expression to evaluate as "console.log(typeof gc)"
 // because itest! splits args on whitespace.
 itest!(eval_v8_flags {
-  args: "eval --v8-flags=--expose-gc //@ts-ignore\nconsole.log(typeof(gc))",
+  args:
+    "eval --v8-flags=--expose-gc console.log(typeof(((window)as(any))['gc']))",
   output: "v8_flags.js.out",
 });
 

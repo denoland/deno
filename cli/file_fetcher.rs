@@ -142,9 +142,7 @@ impl SourceFileFetcher {
     specifier: ModuleSpecifier,
     file: SourceFile,
   ) {
-    self
-      .source_file_cache
-      .set(specifier.to_string(), file.clone());
+    self.source_file_cache.set(specifier.to_string(), file);
   }
 
   pub async fn fetch_source_file(
