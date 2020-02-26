@@ -1,26 +1,12 @@
 import Dirent from "./_fs_dirent.ts";
 
-export interface DirectoryOptions {
-  encoding: string | "utf-8";
-}
-
 export default class Dir {
-  private resourceId: number;
   private dirPath: string | Uint8Array;
-  private options: DirectoryOptions = { encoding: "utf-8" };
   private files: Dirent[] = [];
   private filesReadComplete = false;
 
-  constructor(
-    resourceId: number,
-    path: string | Uint8Array,
-    options?: DirectoryOptions
-  ) {
-    this.resourceId = resourceId;
+  constructor(path: string | Uint8Array) {
     this.dirPath = path;
-    if (options) {
-      this.options = options;
-    }
   }
 
   get path(): string {
@@ -31,14 +17,12 @@ export default class Dir {
   }
 
   /**
-   * NOTE: Deno doesn't currently provide an interface to the filesystem like readdir
+   * NOTE: Deno doesn't provide an interface to the filesystem like readdir
    * where each call to readdir returns the next file.  This function simulates this
    * behaviour by fetching all the entries on the first call, putting them on a stack
    * and then poping them off the stack one at a time.
    */
   read(callback?: Function): Promise<Dirent | null> {
-    this.validateDirectoryOpen();
-
     return new Promise(async (resolve, reject) => {
       try {
         if (this.initializationOfDirectoryFilesIsRequired()) {
@@ -66,7 +50,6 @@ export default class Dir {
   }
 
   readSync(): Dirent | null {
-    this.validateDirectoryOpen();
     if (this.initializationOfDirectoryFilesIsRequired()) {
       this.files.push(
         ...Deno.readDirSync(this.path).map(file => new Dirent(file))
@@ -82,12 +65,14 @@ export default class Dir {
     return this.files.length === 0 && !this.filesReadComplete;
   }
 
+  /**
+   * Unlike Node, Deno does not require managing resource ids for reading
+   * directories, and therefore does not need to close directories when
+   * finisehd reading.
+   */
   close(callback?: Function): Promise<void> {
-    this.validateDirectoryOpen();
-
     return new Promise((resolve, reject) => {
       try {
-        Deno.close(this.resourceId);
         if (callback) {
           callback(null);
         }
@@ -101,9 +86,13 @@ export default class Dir {
     });
   }
 
+  /**
+   * Unlike Node, Deno does not require managing resource ids for reading
+   * directories, and therefore does not need to close directories when
+   * finisehd reading
+   */
   closeSync(): void {
-    this.validateDirectoryOpen();
-    Deno.close(this.resourceId);
+    //No op
   }
 
   async *[Symbol.asyncIterator](): AsyncIterableIterator<Dirent> {
@@ -117,12 +106,6 @@ export default class Dir {
       }
     } finally {
       await this.close();
-    }
-  }
-
-  private validateDirectoryOpen(): void {
-    if (!this.resourceId || !Deno.resources()[this.resourceId]) {
-      throw new Error("Directory handle was closed");
     }
   }
 }
