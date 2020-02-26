@@ -7,7 +7,7 @@ import { build } from "./build.ts";
  * `readdirSync`. */
 export interface FileInfo {
   /** The size of the file, in bytes. */
-  len: number;
+  length: number;
   /** The last modification time of the file. This corresponds to the `mtime`
    * field from `stat` on Linux/Mac OS and `ftLastWriteTime` on Windows. This
    * may not be available on all platforms. */
@@ -78,7 +78,7 @@ export interface FileInfo {
 export class FileInfoImpl implements FileInfo {
   private readonly _isFile: boolean;
   private readonly _isSymlink: boolean;
-  len: number;
+  length: number;
   modified: number | null;
   anyModified: number | null;
   accessed: number | null;
@@ -118,7 +118,7 @@ export class FileInfoImpl implements FileInfo {
 
     this._isFile = this._res.isFile;
     this._isSymlink = this._res.isSymlink;
-    this.len = this._res.len;
+    this.length = this._res.size;
     this.modified = modified ? modified : null;
     this.accessed = accessed ? accessed : null;
     this.created = created ? created : null;

@@ -286,7 +286,7 @@ fn get_stat_json(
   let mut json_val = json!({
     "isFile": metadata.is_file(),
     "isSymlink": metadata.file_type().is_symlink(),
-    "len": metadata.len(),
+    "size": metadata.len(),
     // In seconds (i64). Available on both Unix or Windows.
     "accessed":to_seconds!(metadata.accessed()),
     "modified":to_seconds!(metadata.modified()), // changed when fdatasync

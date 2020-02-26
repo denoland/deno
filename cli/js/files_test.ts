@@ -18,7 +18,7 @@ testPerm({ read: true }, async function filesCopyToStdout(): Promise<void> {
   const file = await Deno.open(filename);
   assert(file.rid > 2);
   const bytesWritten = await Deno.copy(Deno.stdout, file);
-  const fileSize = Deno.statSync(filename).len;
+  const fileSize = Deno.statSync(filename).length;
   assertEquals(bytesWritten, fileSize);
   console.log("bytes written", bytesWritten);
 });
@@ -222,12 +222,12 @@ testPerm({ read: true, write: true }, async function createFile(): Promise<
   const f = await Deno.create(filename);
   let fileInfo = Deno.statSync(filename);
   assert(fileInfo.isFile());
-  assert(fileInfo.len === 0);
+  assert(fileInfo.length === 0);
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   await f.write(data);
   fileInfo = Deno.statSync(filename);
-  assert(fileInfo.len === 5);
+  assert(fileInfo.length === 5);
   f.close();
 
   // TODO: test different modes
@@ -245,11 +245,11 @@ testPerm({ read: true, write: true }, async function openModeWrite(): Promise<
   // assert file was created
   let fileInfo = Deno.statSync(filename);
   assert(fileInfo.isFile());
-  assertEquals(fileInfo.len, 0);
+  assertEquals(fileInfo.length, 0);
   // write some data
   await file.write(data);
   fileInfo = Deno.statSync(filename);
-  assertEquals(fileInfo.len, 13);
+  assertEquals(fileInfo.length, 13);
   // assert we can't read from file
   let thrown = false;
   try {
@@ -264,7 +264,7 @@ testPerm({ read: true, write: true }, async function openModeWrite(): Promise<
   // assert that existing file is truncated on open
   file = await Deno.open(filename, "w");
   file.close();
-  const fileSize = Deno.statSync(filename).len;
+  const fileSize = Deno.statSync(filename).length;
   assertEquals(fileSize, 0);
   await Deno.remove(tempDir, { recursive: true });
 });
@@ -281,11 +281,11 @@ testPerm(
     // assert file was created
     let fileInfo = Deno.statSync(filename);
     assert(fileInfo.isFile());
-    assertEquals(fileInfo.len, 0);
+    assertEquals(fileInfo.length, 0);
     // write some data
     await file.write(data);
     fileInfo = Deno.statSync(filename);
-    assertEquals(fileInfo.len, 13);
+    assertEquals(fileInfo.length, 13);
 
     const buf = new Uint8Array(20);
     await file.seek(0, Deno.SeekMode.SEEK_START);

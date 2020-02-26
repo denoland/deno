@@ -1009,16 +1009,12 @@ declare namespace Deno {
 
   // @url js/file_info.d.ts
 
-  /** UNSTABLE: 'len' maybe should be 'length' or 'size'.
-   *
-   * A FileInfo describes a file and is returned by `stat`, `lstat`,
+  /** A FileInfo describes a file and is returned by `stat`, `lstat`,
    * `statSync`, `lstatSync`. A list of FileInfo is returned by `readdir`,
    * `readdirSync`. */
   export interface FileInfo {
-    /** **UNSTABLE**: `.len` maybe should be `.length` or `.size`.
-     *
-     * The size of the file, in bytes. */
-    len: number;
+    /** The size of the file, in bytes. */
+    length: number;
     /** The last modification time of the file. This corresponds to the `mtime`
      * field from `stat` on Linux/Mac OS and `ftLastWriteTime` on Windows. This
      * may not be available on all platforms. */
