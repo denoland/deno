@@ -9,6 +9,7 @@
 
 declare interface Window extends WindowOrWorkerGlobalScope {
   window: Window & WindowOrWorkerGlobalScope & typeof globalThis;
+  self: Window & WindowOrWorkerGlobalScope & typeof globalThis;
   onload: Function | undefined;
   onunload: Function | undefined;
   crypto: Crypto;
@@ -16,6 +17,7 @@ declare interface Window extends WindowOrWorkerGlobalScope {
 }
 
 declare const window: Window & WindowOrWorkerGlobalScope & typeof globalThis;
+declare const self: Window & WindowOrWorkerGlobalScope & typeof globalThis;
 declare const onload: Function | undefined;
 declare const onunload: Function | undefined;
 declare const crypto: Crypto;
