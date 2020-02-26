@@ -38,7 +38,7 @@ function killFileServer(): void {
 test(async function serveFile(): Promise<void> {
   await startFileServer();
   try {
-    const res = await fetch("http://localhost:4500/README.md");
+    const res = await fetch(`http://localhost:${port}/README.md`);
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assert(res.headers.has("content-type"));
@@ -105,8 +105,16 @@ test(async function serveWithUnorthodoxFilename(): Promise<void> {
 });
 
 test(async function servePermissionDenied(): Promise<void> {
+  const _port = usePort();
   const deniedServer = Deno.run({
-    args: [Deno.execPath(), "run", "--allow-net", "http/file_server.ts"],
+    args: [
+      Deno.execPath(),
+      "run",
+      "--allow-net",
+      "http/file_server.ts",
+      "-p",
+      `${_port}`
+    ],
     stdout: "piped",
     stderr: "piped"
   });
@@ -118,7 +126,7 @@ test(async function servePermissionDenied(): Promise<void> {
   assert(s !== Deno.EOF && s.includes("server listening"));
 
   try {
-    await fetch(`http://localhost:${port}/`);
+    await fetch(`http://localhost:${_port}/`);
     assertStrContains(
       (await errReader.readLine()) as string,
       "run again with the --allow-read flag"
