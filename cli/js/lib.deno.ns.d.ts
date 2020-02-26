@@ -441,7 +441,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions depending on mode.
    */
-  export function openSync(path: string, mode?: OpenMode): File;
+  export function openSync(path: string, mode?: OpenMode, perm?: number): File;
 
   /** Open a file and resolve to an instance of the `File` object.
    *
@@ -457,7 +457,11 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions depending on mode.
    */
-  export function open(path: string, mode?: OpenMode): Promise<File>;
+  export function open(
+    path: string,
+    mode?: OpenMode,
+    perm?: number
+  ): Promise<File>;
 
   /** Creates a file if none exists or truncates an existing file and returns
    *  an instance of `Deno.File`.
@@ -466,7 +470,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions.
    */
-  export function createSync(path: string): File;
+  export function createSync(path: string, perm?: number): File;
 
   /** Creates a file if none exists or truncates an existing file and resolves to
    *  an instance of `Deno.File`.
@@ -475,7 +479,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions.
    */
-  export function create(path: string): Promise<File>;
+  export function create(path: string, perm?: number): Promise<File>;
 
   /** Synchronously read from a file ID into an array buffer.
    *
@@ -600,6 +604,11 @@ declare namespace Deno {
      * access to be used. When createNew is set to `true`, create and truncate
      * are ignored. */
     createNew?: boolean;
+    /** Permissions to use if creating the file (defaults to `0o666`, before
+     * the process's umask).
+     * It's an error to specify perm without also setting create or createNew to `true`.
+     * Does nothing/raises on Windows. */
+    perm?: number;
   }
 
   /** A set of string literals which specify the open mode of a file.

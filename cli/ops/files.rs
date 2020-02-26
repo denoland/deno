@@ -8,9 +8,13 @@ use deno_core::*;
 use futures::future::FutureExt;
 use std;
 use std::convert::From;
+use std::fs;
 use std::io::SeekFrom;
 use std::path::Path;
 use tokio::fs as tokio_fs;
+
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
@@ -25,6 +29,7 @@ struct OpenArgs {
   path: String,
   options: Option<OpenOptions>,
   mode: Option<String>,
+  perm: Option<u32>,
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -47,7 +52,19 @@ fn op_open(
   let args: OpenArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
   let state_ = state.clone();
-  let mut open_options = tokio_fs::OpenOptions::new();
+  let gave_perm = args.perm.is_some();
+
+  let mut open_options = if let Some(_perm) = args.perm {
+    #[allow(unused_mut)]
+    let mut std_options = fs::OpenOptions::new();
+    // perm only used if creating the file on Unix
+    // if not specified, defaults to 0o666
+    #[cfg(unix)]
+    std_options.mode(_perm & 0o777);
+    tokio_fs::OpenOptions::from(std_options)
+  } else {
+    tokio_fs::OpenOptions::new()
+  };
 
   if let Some(options) = args.options {
     if options.read {
@@ -56,6 +73,12 @@ fn op_open(
 
     if options.write || options.append {
       state.check_write(&path)?;
+    }
+
+    if gave_perm && !(options.create || options.create_new) {
+      return Err(OpError::type_error(
+        "specified perm without allowing file creation".to_string(),
+      ));
     }
 
     open_options
@@ -70,6 +93,11 @@ fn op_open(
     match mode {
       "r" => {
         state.check_read(&path)?;
+        if gave_perm {
+          return Err(OpError::type_error(
+            "specified perm for read-only open".to_string(),
+          ));
+        }
       }
       "w" | "a" | "x" => {
         state.check_write(&path)?;

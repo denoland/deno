@@ -35,12 +35,13 @@ export function openSync(path: string, mode?: OpenOptions): File;
  *
  * Requires `allow-read` and `allow-write` permissions depending on mode.
  */
-export function openSync(path: string, mode?: OpenMode): File;
+export function openSync(path: string, mode?: OpenMode, perm?: number): File;
 
 /**@internal*/
 export function openSync(
   path: string,
-  modeOrOptions: OpenOptions | OpenMode = "r"
+  modeOrOptions: OpenOptions | OpenMode = "r",
+  perm?: number
 ): File {
   let mode = null;
   let options = null;
@@ -50,9 +51,10 @@ export function openSync(
   } else {
     checkOpenOptions(modeOrOptions);
     options = modeOrOptions;
+    perm = options.perm;
   }
 
-  const rid = sendSyncJson("op_open", { path, options, mode });
+  const rid = sendSyncJson("op_open", { path, options, mode, perm });
   return new File(rid);
 }
 
@@ -70,12 +72,17 @@ export async function open(path: string, options?: OpenOptions): Promise<File>;
  *
  * Requires `allow-read` and `allow-write` permissions depending on mode.
  */
-export async function open(path: string, mode?: OpenMode): Promise<File>;
+export async function open(
+  path: string,
+  mode?: OpenMode,
+  perm?: number
+): Promise<File>;
 
 /**@internal*/
 export async function open(
   path: string,
-  modeOrOptions: OpenOptions | OpenMode = "r"
+  modeOrOptions: OpenOptions | OpenMode = "r",
+  perm?: number
 ): Promise<File> {
   let mode = null;
   let options = null;
@@ -85,12 +92,14 @@ export async function open(
   } else {
     checkOpenOptions(modeOrOptions);
     options = modeOrOptions;
+    perm = options.perm;
   }
 
   const rid = await sendAsyncJson("op_open", {
     path,
     options,
-    mode
+    mode,
+    perm
   });
   return new File(rid);
 }
@@ -102,8 +111,8 @@ export async function open(
  *
  * Requires `allow-read` and `allow-write` permissions.
  */
-export function createSync(path: string): File {
-  return openSync(path, "w+");
+export function createSync(path: string, perm?: number): File {
+  return openSync(path, "w+", perm);
 }
 
 /** Creates a file if none exists or truncates an existing file and resolves to
@@ -113,8 +122,8 @@ export function createSync(path: string): File {
  *
  * Requires `allow-read` and `allow-write` permissions.
  */
-export function create(path: string): Promise<File> {
-  return open(path, "w+");
+export function create(path: string, perm?: number): Promise<File> {
+  return open(path, "w+", perm);
 }
 
 /** Synchronously read from a file ID into an array buffer.
@@ -316,6 +325,11 @@ export interface OpenOptions {
    * access to be used. When createNew is set to `true`, create and truncate
    * are ignored. */
   createNew?: boolean;
+  /** Permissions to use if creating the file (defaults to `0o666`, before
+   * the process's umask).
+   * It's an error to specify perm without also setting create or createNew to `true`.
+   * Does nothing/raises on Windows. */
+  perm?: number;
 }
 
 /** A set of string literals which specify the open mode of a file.
