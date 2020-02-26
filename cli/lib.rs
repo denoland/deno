@@ -57,8 +57,10 @@ mod web_worker;
 pub mod worker;
 
 use crate::compilers::TargetLib;
+use crate::file_fetcher::SourceFile;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
+use crate::msg::MediaType;
 use crate::ops::io::get_stdio;
 use crate::state::State;
 use crate::worker::MainWorker;
@@ -288,8 +290,25 @@ async fn eval_command(flags: DenoFlags, code: String) -> Result<(), ErrBox> {
     ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
   let mut worker = create_main_worker(global_state, main_module.clone())?;
+  let main_module_url = main_module.as_url().to_owned();
+  // Create a dummy source file.
+  let source_file = SourceFile {
+    filename: main_module_url.to_file_path().unwrap(),
+    url: main_module_url,
+    types_url: None,
+    media_type: MediaType::TypeScript,
+    source_code: code.clone().into_bytes(),
+  };
+  // Save our fake file into file fetcher cache
+  // to allow module access by TS compiler (e.g. op_fetch_source_files)
+  worker
+    .state
+    .borrow()
+    .global_state
+    .file_fetcher
+    .save_source_file_in_cache(main_module.clone(), source_file.clone());
   debug!("main_module {}", &main_module);
-  worker.execute_module_from_code(&main_module, code).await?;
+  worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   (&mut *worker).await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;

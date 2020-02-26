@@ -773,6 +773,11 @@ itest!(_029_eval {
   output: "029_eval.out",
 });
 
+itest!(_030_eval_ts {
+  args: "eval console.log((123)as(number))", // 'as' is a TS keyword only
+  output: "030_eval_ts.out",
+});
+
 itest!(_033_import_map {
   args:
     "run --reload --importmap=importmaps/import_map.json importmaps/test.ts",
@@ -1210,7 +1215,7 @@ itest!(unbuffered_stdout {
 // Cannot write the expression to evaluate as "console.log(typeof gc)"
 // because itest! splits args on whitespace.
 itest!(eval_v8_flags {
-  args: "eval --v8-flags=--expose-gc console.log(typeof(gc))",
+  args: "eval --v8-flags=--expose-gc //@ts-ignore\nconsole.log(typeof(gc))",
   output: "v8_flags.js.out",
 });
 
