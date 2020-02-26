@@ -45,7 +45,7 @@ let ws: WebSocket | undefined;
 test("GET /ws should upgrade conn to ws", async () => {
   await startServer();
   try {
-    ws = await connectWebSocket("http://0.0.0.0:8080/ws");
+    ws = await connectWebSocket("http://127.0.0.1:8080/ws");
     const it = ws.receive();
     assertEquals((await it.next()).value, "Connected: [1]");
     ws.send("Hello");
