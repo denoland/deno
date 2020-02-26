@@ -49,8 +49,12 @@ pub fn write_file_2<T: AsRef<[u8]>>(
 
 #[cfg(unix)]
 fn set_permissions(file: &mut File, perm: u32) -> std::io::Result<()> {
-  debug!("set file perm to {}", perm);
-  file.set_permissions(PermissionsExt::from_mode(perm & 0o777))
+  let perm = perm & 0o777;
+  debug!("set file perm to {:o}", perm);
+  let metadata = file.metadata()?;
+  let mut permissions = metadata.permissions();
+  permissions.set_mode(perm);
+  file.set_permissions(permissions)
 }
 
 #[cfg(not(unix))]
