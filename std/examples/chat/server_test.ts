@@ -21,29 +21,36 @@ async function startServer(): Promise<void> {
   }
 }
 
+function killServer(): void {
+  server?.close();
+  ws?.conn.close();
+}
+
 const { test } = Deno;
 
-test("beforeAll", async () => {
-  await startServer();
-});
-
 test("GET / should serve html", async () => {
-  const resp = await fetch("http://localhost:8080/");
-  assertEquals(resp.status, 200);
-  assertEquals(resp.headers.get("content-type"), "text/html");
-  const html = await resp.body.text();
-  assert(html.includes("ws chat example"), "body is ok");
+  await startServer();
+  try {
+    const resp = await fetch("http://localhost:8080/");
+    assertEquals(resp.status, 200);
+    assertEquals(resp.headers.get("content-type"), "text/html");
+    const html = await resp.body.text();
+    assert(html.includes("ws chat example"), "body is ok");
+  } finally {
+    killServer();
+  }
 });
 
 let ws: WebSocket | undefined;
 test("GET /ws should upgrade conn to ws", async () => {
-  ws = await connectWebSocket("http://localhost:8080/ws");
-  const it = ws.receive();
-  assertEquals((await it.next()).value, "Connected: [1]");
-  ws.send("Hello");
-  assertEquals((await it.next()).value, "[1]: Hello");
-});
-test("afterAll", () => {
-  server?.close();
-  ws?.conn.close();
+  await startServer();
+  try {
+    ws = await connectWebSocket("http://localhost:8080/ws");
+    const it = ws.receive();
+    assertEquals((await it.next()).value, "Connected: [1]");
+    ws.send("Hello");
+    assertEquals((await it.next()).value, "[1]: Hello");
+  } finally {
+    killServer();
+  }
 });

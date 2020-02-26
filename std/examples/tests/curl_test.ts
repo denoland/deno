@@ -13,11 +13,12 @@ async function startTestServer(): Promise<void> {
   })();
 }
 
-Deno.test("[examples/curl] beforeAll", async () => {
-  await startTestServer();
-});
+function killTestServer(): void {
+  server?.close();
+}
 
 Deno.test("[examples/curl] send a request to a specified url", async () => {
+  await startTestServer();
   const decoder = new TextDecoder();
   const process = Deno.run({
     args: [Deno.execPath(), "--allow-net", "curl.ts", "http://localhost:8080"],
@@ -33,9 +34,6 @@ Deno.test("[examples/curl] send a request to a specified url", async () => {
     assertStrictEq(actual, expected);
   } finally {
     process.close();
+    killTestServer();
   }
-});
-
-Deno.test("[examples/curl] afterAll", () => {
-  server?.close();
 });
