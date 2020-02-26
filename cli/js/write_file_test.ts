@@ -42,15 +42,16 @@ testPerm({ write: false }, function writeFileSyncPerm(): void {
   assert(caughtError);
 });
 
-testPerm({ read: true, write: true }, function writeFileSyncUpdatePerm(): void {
+testPerm({ read: true, write: true }, function writeFileSyncFsPerm(): void {
   if (Deno.build.os !== "win") {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
-    Deno.writeFileSync(filename, data, { perm: 0o755 });
-    assertEquals(Deno.statSync(filename).perm! & 0o777, 0o755);
-    Deno.writeFileSync(filename, data, { perm: 0o666 });
-    assertEquals(Deno.statSync(filename).perm! & 0o777, 0o666);
+    Deno.writeFileSync(filename, data, { perm: 0o626 });
+    // assertEquals(Deno.statSync(filename).perm!, 0o626 & ~Deno.umask());
+    assertEquals(Deno.statSync(filename).perm! & 0o777, 0o604); // assume umask 0o022
+    Deno.writeFileSync(filename, data, { perm: 0o737 });
+    assertEquals(Deno.statSync(filename).perm! & 0o777, 0o604);
   }
 });
 
@@ -148,20 +149,20 @@ testPerm({ read: true, write: false }, async function writeFilePerm(): Promise<
   assert(caughtError);
 });
 
-testPerm(
-  { read: true, write: true },
-  async function writeFileUpdatePerm(): Promise<void> {
-    if (Deno.build.os !== "win") {
-      const enc = new TextEncoder();
-      const data = enc.encode("Hello");
-      const filename = Deno.makeTempDirSync() + "/test.txt";
-      await Deno.writeFile(filename, data, { perm: 0o755 });
-      assertEquals(Deno.statSync(filename).perm! & 0o777, 0o755);
-      await Deno.writeFile(filename, data, { perm: 0o666 });
-      assertEquals(Deno.statSync(filename).perm! & 0o777, 0o666);
-    }
+testPerm({ read: true, write: true }, async function writeFileFsPerm(): Promise<
+  void
+> {
+  if (Deno.build.os !== "win") {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    await Deno.writeFile(filename, data, { perm: 0o626 });
+    // assertEquals(Deno.statSync(filename).perm!, 0o626 & ~Deno.umask());
+    assertEquals(Deno.statSync(filename).perm! & 0o777, 0o604); // assume umask 0o022
+    await Deno.writeFile(filename, data, { perm: 0o737 });
+    assertEquals(Deno.statSync(filename).perm! & 0o777, 0o604);
   }
-);
+});
 
 testPerm({ read: true, write: true }, async function writeFileCreate(): Promise<
   void

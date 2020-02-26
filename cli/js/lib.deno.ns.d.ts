@@ -1240,10 +1240,21 @@ declare namespace Deno {
     /** Defaults to `false`. If set to `true`, will append to a file instead of
      * overwriting previous contents. */
     append?: boolean;
+    /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
+     * allowed to exist at the target location. When createNew is set to `true`,
+     * create is ignored. */
+    createNew?: boolean;
+    /** Sets the option to allow overwriting existing file (defaults to `true`).
+     * Note that setting `{ ..., clobber: false, create: true }` has the same
+     * effect as `{ ..., createNew: true }`. */
+    clobber?: boolean;
     /** Sets the option to allow creating a new file, if one doesn't already
      * exist at the specified path (defaults to `true`). */
     create?: boolean;
-    /** Permissions always applied to file. */
+    /** Permissions to use if creating the file (defaults to `0o666`, before
+     * the process's umask).
+     * It's an error to specify perm when create is set to `false`.
+     * Does nothing/raises on Windows. */
     perm?: number;
   }
 
