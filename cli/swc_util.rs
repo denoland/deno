@@ -1,16 +1,20 @@
 #[allow(warnings)]
+#[allow(dead_code)]
 use crate::file_fetcher::SourceFile;
+use crate::global_state::GlobalState;
 use crate::msg::MediaType;
-//use deno_core::ErrBox;
+use core::ops::Deref;
+use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
-// use swc_common::errors::ColorConfig;
 use swc_common::errors::Diagnostic;
 use swc_common::errors::DiagnosticBuilder;
 use swc_common::errors::Emitter;
 use swc_common::errors::Handler;
 use swc_common::errors::HandlerFlags;
-// use swc_common::errors::SourceMapperDyn;
 use swc_common::FileName;
 use swc_common::SourceMap;
 use swc_ecma_parser::lexer::Lexer;
@@ -38,8 +42,84 @@ impl From<BufferedError> for Vec<Diagnostic> {
   }
 }
 
-// Parses the provided source code, and extracts all the imports. Works with JS
-// and TS. Does not preform I/O.
+#[derive(Debug)]
+struct SourceGraph(HashMap<ModuleSpecifier, SourceGraphFile>);
+
+#[derive(Debug)]
+struct SourceGraphFile {
+  url: ModuleSpecifier,
+  local: PathBuf,
+  media_type: MediaType,
+  deps: Vec<ModuleSpecifier>,
+}
+
+impl Deref for SourceGraph {
+  type Target = HashMap<ModuleSpecifier, SourceGraphFile>;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+#[allow(dead_code)]
+impl SourceGraph {
+  pub async fn fetch(
+    global_state: GlobalState,
+    root: ModuleSpecifier,
+  ) -> Result<SourceGraph, ErrBox> {
+    let mut sg = SourceGraph(HashMap::new());
+    let mut to_visit = vec![root];
+    loop {
+      if let Some(cur) = to_visit.pop() {
+        sg.visit(global_state.clone(), cur.clone()).await?;
+        if let Some(source_graph_file) = sg.0.get(&cur) {
+          for d in &source_graph_file.deps {
+            to_visit.push(d.clone());
+          }
+        } else {
+          unreachable!()
+        }
+      } else {
+        break;
+      }
+    }
+    Ok(sg)
+  }
+
+  async fn visit(
+    &mut self,
+    global_state: GlobalState,
+    module_specifier: ModuleSpecifier,
+  ) -> Result<(), ErrBox> {
+    if self.0.contains_key(&module_specifier) {
+      return Ok(());
+    }
+
+    let source_file = global_state
+      .file_fetcher
+      .fetch_source_file(&module_specifier, None)
+      .await?;
+    let dep_specs = dependent_specifiers(source_file.clone()).unwrap();
+
+    let mut deps = Vec::new();
+    for dep in dep_specs {
+      let m = ModuleSpecifier::resolve_import(&dep, module_specifier.as_str())?;
+      deps.push(m);
+    }
+    self.0.insert(
+      module_specifier.clone(),
+      SourceGraphFile {
+        url: module_specifier,
+        local: source_file.filename,
+        media_type: source_file.media_type,
+        deps,
+      },
+    );
+    Ok(())
+  }
+}
+
+/// Parses the provided source code, and extracts all the imports. Works with JS
+/// and TS. Does not preform I/O. Does not cache results.
 #[allow(dead_code)]
 fn dependent_specifiers(
   source_file: SourceFile,
@@ -108,8 +188,6 @@ fn dependent_specifiers(
 #[cfg(test)]
 pub mod tests {
   use super::*;
-  use deno_core::ModuleSpecifier;
-  use std::path::PathBuf;
   use url::Url;
 
   fn rel_module_specifier(relpath: &str) -> ModuleSpecifier {
@@ -181,5 +259,17 @@ pub mod tests {
     assert!(result.is_err());
     let diagnostics = result.unwrap_err();
     assert_eq!(diagnostics.len(), 0); // Correct?
+  }
+
+  #[tokio::test]
+  async fn source_graph_fetch() {
+    let http_server_guard = crate::test_util::http_server();
+    let global_state = GlobalState::new(Default::default()).unwrap();
+    let module_specifier = rel_module_specifier("tests/019_media_types.ts");
+    let source_graph = SourceGraph::fetch(global_state, module_specifier)
+      .await
+      .unwrap();
+    println!("source_graph {:?}", source_graph);
+    drop(http_server_guard);
   }
 }
