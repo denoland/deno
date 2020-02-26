@@ -15,6 +15,7 @@ use std::time::UNIX_EPOCH;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
 pub fn init(i: &mut Isolate, s: &State) {
+  i.register_op("op_umask", s.stateful_json_op(op_umask));
   i.register_op("op_chdir", s.stateful_json_op(op_chdir));
   i.register_op("op_mkdir", s.stateful_json_op(op_mkdir));
   i.register_op("op_chmod", s.stateful_json_op(op_chmod));
@@ -33,6 +34,21 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_make_temp_file", s.stateful_json_op(op_make_temp_file));
   i.register_op("op_cwd", s.stateful_json_op(op_cwd));
   i.register_op("op_utime", s.stateful_json_op(op_utime));
+}
+
+#[derive(Deserialize)]
+struct UmaskArgs {
+  mask: Option<u32>,
+}
+
+fn op_umask(
+  _state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  let args: UmaskArgs = serde_json::from_value(args)?;
+  let buf = deno_fs::umask(args.mask)?;
+  Ok(JsonOp::Sync(json!(buf)))
 }
 
 #[derive(Deserialize)]
