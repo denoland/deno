@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { join } from "../path/mod.ts";
-const { readDir, readDirSync, mkdir, mkdirSync, remove, removeSync } = Deno;
+const { readdir, readdirSync, mkdir, mkdirSync, remove, removeSync } = Deno;
 /**
  * Ensures that a directory is empty.
  * Deletes directory contents if the directory is not empty.
@@ -10,7 +10,7 @@ const { readDir, readDirSync, mkdir, mkdirSync, remove, removeSync } = Deno;
  */
 export async function emptyDir(dir: string): Promise<void> {
   try {
-    const items = await readDir(dir);
+    const items = await readdir(dir);
 
     while (items.length) {
       const item = items.shift();
@@ -38,7 +38,7 @@ export async function emptyDir(dir: string): Promise<void> {
  */
 export function emptyDirSync(dir: string): void {
   try {
-    const items = readDirSync(dir);
+    const items = readdirSync(dir);
 
     // if directory already exist. then remove it's child item.
     while (items.length) {
