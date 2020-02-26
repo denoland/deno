@@ -32,6 +32,7 @@ Deno[Deno.symbols.internal] = internalObject;
 
 export const mainRuntimeGlobalProperties = {
   window: readOnly(globalThis),
+  self: readOnly(globalThis),
   Deno: readOnly(Deno),
 
   crypto: readOnly(csprng),

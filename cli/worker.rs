@@ -219,6 +219,7 @@ impl MainWorker {
       ops::resources::init(isolate, &state);
       ops::signal::init(isolate, &state);
       ops::timers::init(isolate, &state);
+      ops::tty::init(isolate, &state);
       ops::worker_host::init(isolate, &state);
       ops::web_worker::init(isolate, &state, &worker.internal_channels.sender);
     }
@@ -266,7 +267,7 @@ mod tests {
       .join("cli/tests/esm_imports_a.js");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let global_state = GlobalState::new(flags::DenoFlags::default()).unwrap();
+    let global_state = GlobalState::new(flags::Flags::default()).unwrap();
     let state =
       State::new(global_state, None, module_specifier.clone()).unwrap();
     let state_ = state.clone();
@@ -295,7 +296,7 @@ mod tests {
       .join("tests/circular1.ts");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let global_state = GlobalState::new(flags::DenoFlags::default()).unwrap();
+    let global_state = GlobalState::new(flags::Flags::default()).unwrap();
     let state =
       State::new(global_state, None, module_specifier.clone()).unwrap();
     let state_ = state.clone();
@@ -326,12 +327,12 @@ mod tests {
       .join("cli/tests/006_url_imports.ts");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let flags = flags::DenoFlags {
+    let flags = flags::Flags {
       subcommand: flags::DenoSubcommand::Run {
         script: module_specifier.to_string(),
       },
       reload: true,
-      ..flags::DenoFlags::default()
+      ..flags::Flags::default()
     };
     let global_state = GlobalState::new(flags).unwrap();
     let state =

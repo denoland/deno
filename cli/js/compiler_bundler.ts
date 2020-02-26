@@ -42,9 +42,16 @@ export function buildBundle(
   rootName = normalizeUrl(rootName)
     .replace(sharedPath, "")
     .replace(/\.\w+$/i, "");
+  // If one of the modules requires support for top-level-await, TypeScript will
+  // emit the execute function as an async function.  When this is the case we
+  // need to bubble up the TLA to the instantiation, otherwise we instantiate
+  // synchronously.
+  const hasTla = data.match(/execute:\sasync\sfunction\s/);
   let instantiate: string;
   if (rootExports && rootExports.length) {
-    instantiate = `const __exp = await __inst("${rootName}");\n`;
+    instantiate = hasTla
+      ? `const __exp = await __inst("${rootName}");\n`
+      : `const __exp = __inst_s("${rootName}");\n`;
     for (const rootExport of rootExports) {
       if (rootExport === "default") {
         instantiate += `export default __exp["${rootExport}"];\n`;
@@ -53,7 +60,9 @@ export function buildBundle(
       }
     }
   } else {
-    instantiate = `await __inst("${rootName}");\n`;
+    instantiate = hasTla
+      ? `await __inst("${rootName}");\n`
+      : `__inst_s("${rootName}");\n`;
   }
   return `${SYSTEM_LOADER}\n${data}\n${instantiate}`;
 }

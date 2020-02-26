@@ -58,7 +58,7 @@ pub fn init(i: &mut Isolate, s: &State) {
 }
 
 pub fn get_stdio() -> (StreamResource, StreamResource, StreamResource) {
-  let stdin = StreamResource::Stdin(tokio::io::stdin());
+  let stdin = StreamResource::Stdin(tokio::io::stdin(), TTYMetadata::default());
   let stdout = StreamResource::Stdout({
     let stdout = STDOUT_HANDLE
       .try_clone()
@@ -74,11 +74,25 @@ fn no_buffer_specified() -> OpError {
   OpError::type_error("no buffer specified".to_string())
 }
 
+#[cfg(unix)]
+use nix::sys::termios;
+
+#[derive(Default)]
+pub struct TTYMetadata {
+  #[cfg(unix)]
+  pub mode: Option<termios::Termios>,
+}
+
+#[derive(Default)]
+pub struct FileMetadata {
+  pub tty: TTYMetadata,
+}
+
 pub enum StreamResource {
-  Stdin(tokio::io::Stdin),
+  Stdin(tokio::io::Stdin, TTYMetadata),
   Stdout(tokio::fs::File),
   Stderr(tokio::io::Stderr),
-  FsFile(tokio::fs::File),
+  FsFile(tokio::fs::File, FileMetadata),
   TcpStream(tokio::net::TcpStream),
   ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
   ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
@@ -106,8 +120,8 @@ impl DenoAsyncRead for StreamResource {
   ) -> Poll<Result<usize, OpError>> {
     use StreamResource::*;
     let mut f: Pin<Box<dyn AsyncRead>> = match self {
-      FsFile(f) => Box::pin(f),
-      Stdin(f) => Box::pin(f),
+      FsFile(f, _) => Box::pin(f),
+      Stdin(f, _) => Box::pin(f),
       TcpStream(f) => Box::pin(f),
       ClientTlsStream(f) => Box::pin(f),
       ServerTlsStream(f) => Box::pin(f),
@@ -168,7 +182,7 @@ impl DenoAsyncWrite for StreamResource {
   ) -> Poll<Result<usize, OpError>> {
     use StreamResource::*;
     let mut f: Pin<Box<dyn AsyncWrite>> = match self {
-      FsFile(f) => Box::pin(f),
+      FsFile(f, _) => Box::pin(f),
       Stdout(f) => Box::pin(f),
       Stderr(f) => Box::pin(f),
       TcpStream(f) => Box::pin(f),
@@ -185,7 +199,7 @@ impl DenoAsyncWrite for StreamResource {
   fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), OpError>> {
     use StreamResource::*;
     let mut f: Pin<Box<dyn AsyncWrite>> = match self {
-      FsFile(f) => Box::pin(f),
+      FsFile(f, _) => Box::pin(f),
       Stdout(f) => Box::pin(f),
       Stderr(f) => Box::pin(f),
       TcpStream(f) => Box::pin(f),

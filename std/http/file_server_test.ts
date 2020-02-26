@@ -3,7 +3,6 @@ import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 const { test } = Deno;
-
 let fileServer: Deno.Process;
 
 async function startFileServer(): Promise<void> {

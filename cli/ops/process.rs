@@ -33,7 +33,7 @@ fn clone_file(rid: u32, state: &State) -> Result<std::fs::File, OpError> {
     .get_mut::<StreamResource>(rid)
     .ok_or_else(OpError::bad_resource)?;
   let file = match repr {
-    StreamResource::FsFile(ref mut file) => file,
+    StreamResource::FsFile(ref mut file, _) => file,
     _ => return Err(OpError::bad_resource()),
   };
   let tokio_file = futures::executor::block_on(file.try_clone())?;
