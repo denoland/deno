@@ -1194,10 +1194,10 @@ declare namespace __io {
      * any positive offset is legal, but the behavior of subsequent I/O
      * operations on the underlying object is implementation-dependent.
      */
-    seek(offset: number, whence: SeekMode): Promise<void>;
+    seek(offset: number, whence: SeekMode): Promise<number>;
   }
   export interface SyncSeeker {
-    seekSync(offset: number, whence: SeekMode): void;
+    seekSync(offset: number, whence: SeekMode): number;
   }
   export interface ReadCloser extends Reader, Closer {}
   export interface WriteCloser extends Writer, Closer {}

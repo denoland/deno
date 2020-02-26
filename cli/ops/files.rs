@@ -233,8 +233,8 @@ fn op_seek(
 
   let fut = async move {
     debug!("op_seek {} {} {}", rid, offset, whence);
-    file.seek(seek_from).await?;
-    Ok(json!({}))
+    let pos = file.seek(seek_from).await?;
+    Ok(json!(pos))
   };
 
   if args.promise_id.is_none() {

@@ -385,20 +385,21 @@ declare namespace Deno {
      * any positive offset is legal, but the behavior of subsequent I/O
      * operations on the underlying object is implementation-dependent.
      */
-    seek(offset: number, whence: SeekMode): Promise<void>;
+    seek(offset: number, whence: SeekMode): Promise<number>;
   }
 
   export interface SyncSeeker {
     /** Seek sets the offset for the next `readSync()` or `writeSync()` to
      * offset, interpreted according to `whence`: `SEEK_START` means relative
      * to the start of the file, `SEEK_CURRENT` means relative to the current
-     * offset, and `SEEK_END` means relative to the end.
+     * offset, and `SEEK_END` means relative to the end. Seek resolves to the
+     * new offset relative to the start of the file.
      *
      * Seeking to an offset before the start of the file is an error. Seeking to
      * any positive offset is legal, but the behavior of subsequent I/O
      * operations on the underlying object is implementation-dependent.
      */
-    seekSync(offset: number, whence: SeekMode): void;
+    seekSync(offset: number, whence: SeekMode): number;
   }
 
   export interface ReadCloser extends Reader, Closer {}
@@ -526,13 +527,19 @@ declare namespace Deno {
   export function write(rid: number, p: Uint8Array): Promise<number>;
 
   /** Synchronously seek a file ID to the given offset under mode given by `whence`.
+   * Returns the new position in the file (bytes from the start).
    *
    *       const file = Deno.openSync("/foo/bar.txt");
    *       Deno.seekSync(file.rid, 0, 0);
    */
-  export function seekSync(rid: number, offset: number, whence: SeekMode): void;
+  export function seekSync(
+    rid: number,
+    offset: number,
+    whence: SeekMode
+  ): number;
 
   /** Seek a file ID to the given offset under mode given by `whence`.
+   * Resolves to the new position in the file (bytes from the start).
    *
    *      (async () => {
    *        const file = await Deno.open("/foo/bar.txt");
@@ -543,7 +550,7 @@ declare namespace Deno {
     rid: number,
     offset: number,
     whence: SeekMode
-  ): Promise<void>;
+  ): Promise<number>;
 
   /** Close the given resource ID. */
   export function close(rid: number): void;
@@ -564,8 +571,8 @@ declare namespace Deno {
     writeSync(p: Uint8Array): number;
     read(p: Uint8Array): Promise<number | EOF>;
     readSync(p: Uint8Array): number | EOF;
-    seek(offset: number, whence: SeekMode): Promise<void>;
-    seekSync(offset: number, whence: SeekMode): void;
+    seek(offset: number, whence: SeekMode): Promise<number>;
+    seekSync(offset: number, whence: SeekMode): number;
     close(): void;
   }
 
