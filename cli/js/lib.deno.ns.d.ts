@@ -774,6 +774,10 @@ declare namespace Deno {
     /** String that should follow the random portion of the temporary
      * directory's name. */
     suffix?: string;
+    /** Permissions to use when creating the file or directory (defaults to
+     * `0o700`, before the process's umask).
+     * Does nothing/raises on Windows. */
+    perm?: number;
   }
 
   /** Synchronously creates a new temporary directory in the directory `dir`,

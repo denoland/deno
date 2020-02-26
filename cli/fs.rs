@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use std;
-use std::fs::{create_dir, DirBuilder, File, OpenOptions};
+use std::fs::{DirBuilder, File, OpenOptions};
 use std::io::ErrorKind;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
@@ -20,7 +20,7 @@ pub use std::os::unix::fs::symlink;
 use nix::sys::stat::{mode_t, umask as unix_umask, Mode};
 
 #[cfg(unix)]
-use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 
 #[cfg(unix)]
 use nix::unistd::{chown as unix_chown, Gid, Uid};
@@ -101,6 +101,7 @@ pub fn make_temp(
   dir: Option<&Path>,
   prefix: Option<&str>,
   suffix: Option<&str>,
+  perm: u32,
   is_dir: bool,
 ) -> std::io::Result<PathBuf> {
   let prefix_ = prefix.unwrap_or("");
@@ -114,15 +115,17 @@ pub fn make_temp(
   loop {
     let unique = rng.gen::<u32>();
     buf.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
-    // TODO: on posix, set mode flags to 0o700.
     let r = if is_dir {
-      create_dir(buf.as_path())
+      let mut builder = DirBuilder::new();
+      set_dir_permission(&mut builder, perm);
+      builder.create(buf.as_path())
     } else {
-      OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(buf.as_path())
-        .map(|_| ())
+      let mut open_options = OpenOptions::new();
+      open_options.write(true).create_new(true);
+      #[cfg(unix)]
+      open_options.mode(perm & 0o777);
+      open_options.open(buf.as_path())?;
+      Ok(())
     };
     match r {
       Err(ref e) if e.kind() == ErrorKind::AlreadyExists => continue,
