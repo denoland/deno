@@ -230,13 +230,30 @@ pub fn op_write(
   let state = state.clone();
   let buf = zero_copy.unwrap();
 
-  poll_fn(move |cx| {
-    let resource_table = &mut state.borrow_mut().resource_table;
-    let resource = resource_table
-      .get_mut::<StreamResource>(rid as u32)
-      .ok_or_else(OpError::bad_resource)?;
-    let nwritten = ready!(resource.poll_write(cx, &buf.as_ref()[..]))?;
-    Poll::Ready(Ok(nwritten as i32))
-  })
+  async move {
+    let nwritten = poll_fn(|cx| {
+      let resource_table = &mut state.borrow_mut().resource_table;
+      let resource = resource_table
+        .get_mut::<StreamResource>(rid as u32)
+        .ok_or_else(OpError::bad_resource)?;
+      resource.poll_write(cx, &buf.as_ref()[..])
+    })
+    .await?;
+
+    // TODO(bartlomieju): this step was added during upgrade to Tokio 0.2
+    // and the reasons for the need to explicitly flush are not fully known.
+    // Figure out why it's needed and preferably remove it.
+    // https://github.com/denoland/deno/issues/3565
+    poll_fn(|cx| {
+      let resource_table = &mut state.borrow_mut().resource_table;
+      let resource = resource_table
+        .get_mut::<StreamResource>(rid as u32)
+        .ok_or_else(OpError::bad_resource)?;
+      resource.poll_flush(cx)
+    })
+    .await?;
+
+    Ok(nwritten as i32)
+  }
   .boxed_local()
 }
