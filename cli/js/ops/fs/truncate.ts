@@ -4,6 +4,7 @@ import { sendSync, sendAsync } from "../dispatch_json.ts";
 export interface TruncateOptions {
   createNew?: boolean;
   create?: boolean;
+  mode?: number;
 }
 
 function coerceLen(len?: number): number {
@@ -21,6 +22,7 @@ function coerceLen(len?: number): number {
 interface TruncateArgs {
   createNew: boolean;
   create: boolean;
+  mode?: number;
   path?: string;
   len?: number;
 }

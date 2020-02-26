@@ -1776,6 +1776,10 @@ declare namespace Deno {
     /** Sets the option to allow creating a new file, if one doesn't already
      * exist at the specified path (defaults to `true`). */
     create?: boolean;
+    /** Permissions to use if creating the file (defaults to `0o666`, before
+     * the process's umask).
+     * Ignored on Windows. */
+    mode?: number;
   }
 
   /** Synchronously truncates or extends the specified file, to reach the

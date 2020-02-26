@@ -108,7 +108,7 @@ export { signal, signals, Signal, SignalStream } from "./signals.ts";
 export { statSync, lstatSync, stat, lstat } from "./ops/fs/stat.ts";
 export { symlinkSync, symlink } from "./ops/fs/symlink.ts";
 export { connectTLS, listenTLS } from "./tls.ts";
-export { truncateSync, truncate } from "./ops/fs/truncate.ts";
+export { truncateSync, truncate, TruncateOptions } from "./ops/fs/truncate.ts";
 export { isatty, setRaw } from "./ops/tty.ts";
 export { umask } from "./ops/fs/umask.ts";
 export { utimeSync, utime } from "./ops/fs/utime.ts";

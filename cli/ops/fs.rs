@@ -770,6 +770,7 @@ struct TruncateArgs {
   promise_id: Option<u64>,
   path: String,
   len: u64,
+  mode: Option<u32>,
   create: bool,
   create_new: bool,
 }
@@ -791,6 +792,17 @@ fn op_truncate(
   blocking_json(is_sync, move || {
     debug!("op_truncate {} {}", path.display(), len);
     let mut open_options = std::fs::OpenOptions::new();
+    if let Some(mode) = args.mode {
+      // mode only used if creating the file on Unix
+      // if not specified, defaults to 0o666
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::OpenOptionsExt;
+        open_options.mode(mode & 0o777);
+      }
+      #[cfg(not(unix))]
+      let _ = mode; // avoid unused warning
+    }
     open_options
       .create(create)
       .create_new(create_new)
