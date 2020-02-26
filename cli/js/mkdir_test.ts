@@ -15,11 +15,12 @@ unitTest(
   { perms: { read: true, write: true } },
   function mkdirSyncMode(): void {
     const path = Deno.makeTempDirSync() + "/dir";
-    Deno.mkdirSync(path, { mode: 0o755 }); // no perm for x
+    Deno.mkdirSync(path, { mode: 0o737 });
     const pathInfo = Deno.statSync(path);
     if (pathInfo.mode !== null) {
       // Skip windows
-      assertEquals(pathInfo.mode & 0o777, 0o755);
+      // assertEquals(pathInfo.mode, 0o737 & ~Deno.umask());
+      assertEquals(pathInfo.mode & 0o777, 0o715); // assume umask 0o022
     }
   }
 );
