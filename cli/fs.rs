@@ -200,7 +200,7 @@ mod tests {
 
   #[test]
   fn test_normalize_path() {
-    assert_eq!(normalize_path(Path::new("a/..b")), PathBuf::from("b"));
+    assert_eq!(normalize_path(Path::new("a/../b")), PathBuf::from("b"));
     assert_eq!(normalize_path(Path::new("a/./b/")), PathBuf::from("a/b/"));
     assert_eq!(
       normalize_path(Path::new("a/./b/../c")),
