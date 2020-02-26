@@ -1321,6 +1321,10 @@ itest!(fix_js_imports {
   output: "fix_js_imports.ts.out",
 });
 
+itest!(dynamic_circular_imports {
+  args: "run --allow-read dynamic_circular_imports/entry.js",
+});
+
 #[test]
 fn cafile_fetch() {
   use deno::http_cache::url_to_filename;
