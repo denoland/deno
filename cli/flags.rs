@@ -71,14 +71,14 @@ impl Default for DenoSubcommand {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum DenoVerbosity {
+pub enum Verbosity {
   Quiet,
   Normal,
 }
 
-impl Default for DenoVerbosity {
-  fn default() -> DenoVerbosity {
-    DenoVerbosity::Normal
+impl Default for Verbosity {
+  fn default() -> Verbosity {
+    Verbosity::Normal
   }
 }
 
@@ -90,7 +90,7 @@ pub struct DenoFlags {
   pub subcommand: DenoSubcommand,
 
   pub log_level: Option<Level>,
-  pub verbosity: DenoVerbosity,
+  pub verbosity: Verbosity,
   pub version: bool,
   pub reload: bool,
   pub config_path: Option<String>,
@@ -244,7 +244,7 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<DenoFlags> {
   }
 
   if matches.is_present("quiet") {
-    flags.verbosity = DenoVerbosity::Quiet;
+    flags.verbosity = Verbosity::Quiet;
   }
 
   if let Some(m) = matches.subcommand_matches("run") {
@@ -302,7 +302,12 @@ fn clap_root<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("quiet")
         .short("q")
         .long("quiet")
-        .help("Reduce verbosity")
+        .help("Suppress diagnostic output")
+        .long_help(
+          "Suppress diagnostic output
+By default, subcommands print human-readable diagnostic messages to stderr.
+If the flag is set, restrict the output to warnings and errors.",
+        )
         .global(true),
     )
     .subcommand(bundle_subcommand())
@@ -1923,7 +1928,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
-        verbosity: DenoVerbosity::Quiet,
+        verbosity: Verbosity::Quiet,
         ..DenoFlags::default()
       }
     );

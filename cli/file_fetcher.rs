@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
+use crate::flags::Verbosity;
 use crate::http_cache::HttpCache;
 use crate::http_util;
 use crate::http_util::create_http_client;
@@ -69,6 +70,7 @@ pub struct SourceFileFetcher {
   no_remote: bool,
   cached_only: bool,
   http_client: reqwest::Client,
+  verbosity: Verbosity,
   // This field is public only to expose it's location
   pub http_cache: HttpCache,
 }
@@ -81,6 +83,7 @@ impl SourceFileFetcher {
     no_remote: bool,
     cached_only: bool,
     ca_file: Option<String>,
+    verbosity: Verbosity,
   ) -> Result<Self, ErrBox> {
     let file_fetcher = Self {
       http_cache,
@@ -90,6 +93,7 @@ impl SourceFileFetcher {
       no_remote,
       cached_only,
       http_client: create_http_client(ca_file)?,
+      verbosity,
     };
 
     Ok(file_fetcher)
@@ -391,11 +395,14 @@ impl SourceFileFetcher {
       .boxed_local();
     }
 
-    eprintln!(
-      "{} {}",
-      colors::green("Download".to_string()),
-      module_url.to_string()
-    );
+    if self.verbosity >= Verbosity::Normal {
+      eprintln!(
+        "{} {}",
+        colors::green("Download".to_string()),
+        module_url.to_string()
+      );
+    }
+
     let dir = self.clone();
     let module_url = module_url.clone();
     let module_etag = match self.http_cache.get(&module_url) {
