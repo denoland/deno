@@ -18,7 +18,7 @@ use std::time::UNIX_EPOCH;
 use tokio;
 
 #[cfg(unix)]
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
@@ -678,6 +678,7 @@ struct TruncateArgs {
   promise_id: Option<u64>,
   path: String,
   len: u64,
+  mode: Option<u32>,
 }
 
 fn op_truncate(
@@ -694,7 +695,15 @@ fn op_truncate(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_truncate {} {}", path.display(), len);
-    let f = fs::OpenOptions::new().write(true).open(&path)?;
+    let mut open_options = fs::OpenOptions::new();
+    open_options.write(true);
+    if let Some(_mode) = args.mode {
+      // mode only used if creating the file on Unix
+      // if not specified, defaults to 0o666
+      #[cfg(unix)]
+      open_options.mode(_mode & 0o777);
+    }
+    let f = open_options.open(&path)?;
     f.set_len(len)?;
     Ok(json!({}))
   })

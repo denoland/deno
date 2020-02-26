@@ -120,7 +120,7 @@ export { signal, signals, SignalStream } from "./signals.ts";
 export { statSync, lstatSync, stat, lstat } from "./stat.ts";
 export { symlinkSync, symlink } from "./symlink.ts";
 export { connectTLS, listenTLS } from "./tls.ts";
-export { truncateSync, truncate } from "./truncate.ts";
+export { truncateSync, truncate, TruncateOptions } from "./truncate.ts";
 export { isatty, setRaw } from "./ops/tty.ts";
 export { utimeSync, utime } from "./utime.ts";
 export { version } from "./version.ts";
