@@ -98,7 +98,7 @@ fn op_chmod(
   let args: ChmodArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
   #[allow(unused)]
-  let perm = args.perm;
+  let perm = args.perm & 0o777;
 
   state.check_write(&path)?;
 
