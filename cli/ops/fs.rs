@@ -6,7 +6,6 @@ use crate::op_error::OpError;
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
 use deno_core::*;
-use remove_dir_all::remove_dir_all;
 use std::convert::From;
 use std::fs;
 use std::path::Path;
@@ -177,7 +176,7 @@ fn op_remove(
     if file_type.is_file() || file_type.is_symlink() {
       fs::remove_file(&path)?;
     } else if recursive {
-      remove_dir_all(&path)?;
+      deno_fs::remove_dir_all(&path)?;
     } else {
       fs::remove_dir(&path)?;
     }
@@ -454,6 +453,7 @@ fn op_symlink(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: SymlinkArgs = serde_json::from_value(args)?;
+  #[allow(unused)]
   let oldname = deno_fs::resolve_from_cwd(Path::new(&args.oldname))?;
   let newname = deno_fs::resolve_from_cwd(Path::new(&args.newname))?;
 
@@ -464,9 +464,11 @@ fn op_symlink(
   }
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_symlink {} {}", oldname.display(), newname.display());
     #[cfg(unix)]
-    std::os::unix::fs::symlink(&oldname, &newname)?;
+    {
+      debug!("op_symlink {} {}", oldname.display(), newname.display());
+      deno_fs::symlink(&oldname, &newname)?;
+    }
     Ok(json!({}))
   })
 }
@@ -622,7 +624,7 @@ fn op_utime(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_utime {} {} {}", args.filename, args.atime, args.mtime);
-    utime::set_file_times(args.filename, args.atime, args.mtime)?;
+    deno_fs::set_file_times(args.filename, args.atime, args.mtime)?;
     Ok(json!({}))
   })
 }
