@@ -1,6 +1,5 @@
 [WILDCARD]
-let System;
-let __inst;
+let System, __inst, __inst_s;
 [WILDCARD]
 (() => {
 [WILDCARD]
@@ -16,7 +15,7 @@ System.register("mod1", ["subdir2/mod2"], function (exports_3, context_3) {
 [WILDCARD]
 });
 
-const __exp = await __inst("mod1");
+const __exp = __inst_s("mod1");
 export const returnsHi = __exp["returnsHi"];
 export const returnsFoo2 = __exp["returnsFoo2"];
 export const printHello3 = __exp["printHello3"];
