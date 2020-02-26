@@ -449,9 +449,10 @@ test("close server while iterating", async (): Promise<void> => {
 if (Deno.build.os !== "win") {
   test("respond error handling", async (): Promise<void> => {
     const connClosedPromise = deferred();
+    const port = usePort();
     const serverRoutine = async (): Promise<void> => {
       let reqCount = 0;
-      const server = serve({ port: usePort() });
+      const server = serve({ port });
       // @ts-ignore
       const serverRid = server.listener["rid"];
       let connRid = -1;
@@ -489,7 +490,7 @@ if (Deno.build.os !== "win") {
     const p = serverRoutine();
     const conn = await Deno.connect({
       hostname: "127.0.0.1",
-      port: usePort()
+      port
     });
     await Deno.writeAll(
       conn,
