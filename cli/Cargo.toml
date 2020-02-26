@@ -63,6 +63,11 @@ webpki = "0.21.0"
 webpki-roots = "0.17.0"
 walkdir = "2.3.1"
 
+# TODO(ry) make sure these match the versions in dprint_plugin_typescript's deps
+swc_ecma_parser = "0.19"
+swc_ecma_ast = "0.17"
+swc_common = "0.5"
+
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.8"
 fwdansi = "1.1.0"
