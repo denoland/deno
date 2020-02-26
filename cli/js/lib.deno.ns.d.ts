@@ -908,8 +908,7 @@ declare namespace Deno {
 
   // @url js/remove.d.ts
 
-  /** UNSTABLE: rename to RemoveOptions */
-  export interface RemoveOption {
+  export interface RemoveOptions {
     /** Defaults to `false`. If set to `true`, path will be removed even if
      * it's a non-empty directory. */
     recursive?: boolean;
@@ -922,7 +921,7 @@ declare namespace Deno {
    *       Deno.removeSync("/path/to/dir/or/file", { recursive: false });
    *
    * Requires `allow-write` permission. */
-  export function removeSync(path: string, options?: RemoveOption): void;
+  export function removeSync(path: string, options?: RemoveOptions): void;
 
   /** Removes the named file or directory. Throws error if permission denied,
    * path not found, or path is a non-empty directory and the `recursive`
@@ -931,7 +930,7 @@ declare namespace Deno {
    *       await Deno.remove("/path/to/dir/or/file", { recursive: false });
    *
    * Requires `allow-write` permission. */
-  export function remove(path: string, options?: RemoveOption): Promise<void>;
+  export function remove(path: string, options?: RemoveOptions): Promise<void>;
 
   // @url js/rename.d.ts
 

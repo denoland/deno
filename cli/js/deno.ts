@@ -115,7 +115,7 @@ export { readdirSync, readdir } from "./read_dir.ts";
 export { readFileSync, readFile } from "./read_file.ts";
 export { readlinkSync, readlink } from "./read_link.ts";
 export { realpathSync, realpath } from "./realpath.ts";
-export { removeSync, remove, RemoveOption } from "./remove.ts";
+export { removeSync, remove, RemoveOptions } from "./remove.ts";
 export { renameSync, rename } from "./rename.ts";
 export { resources } from "./resources.ts";
 export { signal, signals, SignalStream } from "./signals.ts";
