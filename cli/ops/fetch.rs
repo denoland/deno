@@ -3,7 +3,6 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
 use crate::http_util::{create_http_client, HttpBody};
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
 use futures::future::FutureExt;
@@ -14,7 +13,7 @@ use std;
 use std::convert::From;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("fetch", s.core_op(json_op(s.stateful_op(op_fetch))));
+  i.register_op("op_fetch", s.stateful_json_op(op_fetch));
 }
 
 #[derive(Deserialize)]

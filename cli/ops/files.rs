@@ -1,9 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use super::io::StreamResource;
+use super::io::{FileMetadata, StreamResource};
 use crate::fs as deno_fs;
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
 use futures::future::FutureExt;
@@ -14,9 +13,9 @@ use std::path::Path;
 use tokio;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("open", s.core_op(json_op(s.stateful_op(op_open))));
-  i.register_op("close", s.core_op(json_op(s.stateful_op(op_close))));
-  i.register_op("seek", s.core_op(json_op(s.stateful_op(op_seek))));
+  i.register_op("op_open", s.stateful_json_op(op_open));
+  i.register_op("op_close", s.stateful_json_op(op_close));
+  i.register_op("op_seek", s.stateful_json_op(op_seek));
 }
 
 #[derive(Deserialize)]
@@ -126,9 +125,10 @@ fn op_open(
   let fut = async move {
     let fs_file = open_options.open(filename).await?;
     let mut state = state_.borrow_mut();
-    let rid = state
-      .resource_table
-      .add("fsFile", Box::new(StreamResource::FsFile(fs_file)));
+    let rid = state.resource_table.add(
+      "fsFile",
+      Box::new(StreamResource::FsFile(fs_file, FileMetadata::default())),
+    );
     Ok(json!(rid))
   };
 
@@ -198,7 +198,7 @@ fn op_seek(
     .ok_or_else(OpError::bad_resource)?;
 
   let tokio_file = match resource {
-    StreamResource::FsFile(ref file) => file,
+    StreamResource::FsFile(ref file, _) => file,
     _ => return Err(OpError::bad_resource()),
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;

@@ -62,6 +62,17 @@ pub struct StateInner {
 }
 
 impl State {
+  pub fn stateful_json_op<D>(
+    &self,
+    dispatcher: D,
+  ) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp
+  where
+    D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
+  {
+    use crate::ops::json_op;
+    self.core_op(json_op(self.stateful_op(dispatcher)))
+  }
+
   /// Wrap core `OpDispatcher` to collect metrics.
   pub fn core_op<D>(
     &self,

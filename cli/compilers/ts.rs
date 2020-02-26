@@ -269,7 +269,7 @@ impl TsCompiler {
     worker
   }
 
-  pub async fn bundle_async(
+  pub async fn bundle(
     &self,
     global_state: GlobalState,
     module_name: String,
@@ -322,7 +322,7 @@ impl TsCompiler {
   ///
   /// If compilation is required then new V8 worker is spawned with fresh TS
   /// compiler.
-  pub async fn compile_async(
+  pub async fn compile(
     &self,
     global_state: GlobalState,
     source_file: &SourceFile,
@@ -641,7 +641,7 @@ async fn execute_in_thread_json(
   Ok(json!(json_str))
 }
 
-pub fn runtime_compile_async<S: BuildHasher>(
+pub fn runtime_compile<S: BuildHasher>(
   global_state: GlobalState,
   root_name: &str,
   sources: &Option<HashMap<String, String, S>>,
@@ -663,7 +663,7 @@ pub fn runtime_compile_async<S: BuildHasher>(
   execute_in_thread_json(req_msg, global_state).boxed_local()
 }
 
-pub fn runtime_transpile_async<S: BuildHasher>(
+pub fn runtime_transpile<S: BuildHasher>(
   global_state: GlobalState,
   sources: &HashMap<String, String, S>,
   options: &Option<String>,
@@ -689,7 +689,7 @@ mod tests {
   use tempfile::TempDir;
 
   #[tokio::test]
-  async fn test_compile_async() {
+  async fn test_compile() {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
@@ -707,7 +707,7 @@ mod tests {
       GlobalState::mock(vec![String::from("deno"), String::from("hello.js")]);
     let result = mock_state
       .ts_compiler
-      .compile_async(mock_state.clone(), &out, TargetLib::Main)
+      .compile(mock_state.clone(), &out, TargetLib::Main)
       .await;
     assert!(result.is_ok());
     assert!(result
@@ -718,7 +718,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_bundle_async() {
+  async fn test_bundle() {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
@@ -736,7 +736,7 @@ mod tests {
 
     let result = state
       .ts_compiler
-      .bundle_async(
+      .bundle(
         state.clone(),
         module_name,
         Some(PathBuf::from("$deno$/bundle.js")),

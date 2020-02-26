@@ -3,12 +3,11 @@ use std;
 use std::fs::{create_dir, DirBuilder, File, OpenOptions};
 use std::io::ErrorKind;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use deno_core::ErrBox;
 use rand;
 use rand::Rng;
-use url::Url;
 use walkdir::WalkDir;
 
 #[cfg(unix)]
@@ -114,16 +113,6 @@ fn set_dir_permission(_builder: &mut DirBuilder, _perm: u32) {
   // NOOP on windows
 }
 
-pub fn normalize_path(path: &Path) -> String {
-  let s = String::from(path.to_str().unwrap());
-  if cfg!(windows) {
-    // TODO This isn't correct. Probbly should iterate over components.
-    s.replace("\\", "/")
-  } else {
-    s
-  }
-}
-
 #[cfg(unix)]
 pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), ErrBox> {
   let nix_uid = Uid::from_raw(uid);
@@ -143,6 +132,39 @@ pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), ErrBox> {
   Err(ErrBox::from(e))
 }
 
+/// Normalize all itermediate components of the path (ie. remove "./" and "../" components).
+/// Similar to `fs::canonicalize()` but doesn't resolve symlinks.
+///
+/// Taken from Cargo
+/// https://github.com/rust-lang/cargo/blob/af307a38c20a753ec60f0ad18be5abed3db3c9ac/src/cargo/util/paths.rs#L60-L85
+pub fn normalize_path(path: &Path) -> PathBuf {
+  let mut components = path.components().peekable();
+  let mut ret =
+    if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
+      components.next();
+      PathBuf::from(c.as_os_str())
+    } else {
+      PathBuf::new()
+    };
+
+  for component in components {
+    match component {
+      Component::Prefix(..) => unreachable!(),
+      Component::RootDir => {
+        ret.push(component.as_os_str());
+      }
+      Component::CurDir => {}
+      Component::ParentDir => {
+        ret.pop();
+      }
+      Component::Normal(c) => {
+        ret.push(c);
+      }
+    }
+  }
+  ret
+}
+
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, ErrBox> {
   let resolved_path = if path.is_absolute() {
     path.to_owned()
@@ -151,23 +173,7 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, ErrBox> {
     cwd.join(path)
   };
 
-  // HACK: `Url::parse` is used here because it normalizes the path.
-  // Joining `/dev/deno/" with "./tests" using `PathBuf` yields `/deno/dev/./tests/`.
-  // On the other hand joining `/dev/deno/" with "./tests" using `Url` yields "/dev/deno/tests"
-  // - and that's what we want.
-  // There exists similar method on `PathBuf` - `PathBuf.canonicalize`, but the problem
-  // is `canonicalize` resolves symlinks and we don't want that.
-  // We just want to normalize the path...
-  // This only works on absolute paths - not worth extracting as a public utility.
-  let resolved_url =
-    Url::from_file_path(resolved_path).expect("Path should be absolute");
-  let normalized_url = Url::parse(resolved_url.as_str())
-    .expect("String from a URL should parse to a URL");
-  let normalized_path = normalized_url
-    .to_file_path()
-    .expect("URL from a path should contain a valid path");
-
-  Ok(normalized_path)
+  Ok(normalize_path(&resolved_path))
 }
 
 #[cfg(test)]
@@ -190,6 +196,23 @@ mod tests {
   fn resolve_from_cwd_parent() {
     let cwd = std::env::current_dir().unwrap();
     assert_eq!(resolve_from_cwd(Path::new("a/..")).unwrap(), cwd);
+  }
+
+  #[test]
+  fn test_normalize_path() {
+    assert_eq!(normalize_path(Path::new("a/../b")), PathBuf::from("b"));
+    assert_eq!(normalize_path(Path::new("a/./b/")), PathBuf::from("a/b/"));
+    assert_eq!(
+      normalize_path(Path::new("a/./b/../c")),
+      PathBuf::from("a/c")
+    );
+
+    if cfg!(windows) {
+      assert_eq!(
+        normalize_path(Path::new("C:\\a\\.\\b\\..\\c")),
+        PathBuf::from("C:\\a\\c")
+      );
+    }
   }
 
   // TODO: Get a good expected value here for Windows.

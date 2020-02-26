@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::flags::DenoFlags;
+use crate::flags::Flags;
 use regex::{Regex, RegexBuilder};
 use std::env;
 use std::fs;
@@ -100,7 +100,7 @@ fn get_installer_dir() -> Result<PathBuf, Error> {
 }
 
 pub fn install(
-  flags: DenoFlags,
+  flags: Flags,
   installation_dir: Option<PathBuf>,
   exec_name: &str,
   module_url: &str,
@@ -218,7 +218,7 @@ mod tests {
     env::set_var("USERPROFILE", &temp_dir_str);
 
     install(
-      DenoFlags::default(),
+      Flags::default(),
       None,
       "echo_test",
       "http://localhost:4545/cli/tests/echo_server.ts",
@@ -252,7 +252,7 @@ mod tests {
   fn install_custom_dir() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     install(
-      DenoFlags::default(),
+      Flags::default(),
       Some(temp_dir.path().to_path_buf()),
       "echo_test",
       "http://localhost:4545/cli/tests/echo_server.ts",
@@ -277,10 +277,10 @@ mod tests {
     let temp_dir = TempDir::new().expect("tempdir fail");
 
     install(
-      DenoFlags {
+      Flags {
         allow_net: true,
         allow_read: true,
-        ..DenoFlags::default()
+        ..Flags::default()
       },
       Some(temp_dir.path().to_path_buf()),
       "echo_test",
@@ -308,7 +308,7 @@ mod tests {
     let local_module_str = local_module.to_string_lossy();
 
     install(
-      DenoFlags::default(),
+      Flags::default(),
       Some(temp_dir.path().to_path_buf()),
       "echo_test",
       &local_module_str,
@@ -332,7 +332,7 @@ mod tests {
     let temp_dir = TempDir::new().expect("tempdir fail");
 
     install(
-      DenoFlags::default(),
+      Flags::default(),
       Some(temp_dir.path().to_path_buf()),
       "echo_test",
       "http://localhost:4545/cli/tests/echo_server.ts",
@@ -349,7 +349,7 @@ mod tests {
 
     // No force. Install failed.
     let no_force_result = install(
-      DenoFlags::default(),
+      Flags::default(),
       Some(temp_dir.path().to_path_buf()),
       "echo_test",
       "http://localhost:4545/cli/tests/cat.ts", // using a different URL
@@ -367,7 +367,7 @@ mod tests {
 
     // Force. Install success.
     let force_result = install(
-      DenoFlags::default(),
+      Flags::default(),
       Some(temp_dir.path().to_path_buf()),
       "echo_test",
       "http://localhost:4545/cli/tests/cat.ts", // using a different URL

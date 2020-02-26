@@ -65,8 +65,8 @@ use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use flags::DenoFlags;
 use flags::DenoSubcommand;
+use flags::Flags;
 use futures::future::FutureExt;
 use log::Level;
 use log::Metadata;
@@ -152,7 +152,7 @@ async fn print_file_info(
 
   let out = global_state
     .file_fetcher
-    .fetch_source_file_async(&module_specifier, None)
+    .fetch_source_file(&module_specifier, None)
     .await?;
 
   println!(
@@ -219,7 +219,7 @@ async fn print_file_info(
 }
 
 async fn info_command(
-  flags: DenoFlags,
+  flags: Flags,
   file: Option<String>,
 ) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags)?;
@@ -236,7 +236,7 @@ async fn info_command(
 }
 
 async fn install_command(
-  flags: DenoFlags,
+  flags: Flags,
   dir: Option<PathBuf>,
   exe_name: String,
   module_url: String,
@@ -254,10 +254,7 @@ async fn install_command(
     .map_err(ErrBox::from)
 }
 
-async fn fetch_command(
-  flags: DenoFlags,
-  files: Vec<String>,
-) -> Result<(), ErrBox> {
+async fn fetch_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$fetch.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
@@ -282,7 +279,7 @@ async fn fetch_command(
   Ok(())
 }
 
-async fn eval_command(flags: DenoFlags, code: String) -> Result<(), ErrBox> {
+async fn eval_command(flags: Flags, code: String) -> Result<(), ErrBox> {
   // Force TypeScript compile.
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
@@ -297,22 +294,22 @@ async fn eval_command(flags: DenoFlags, code: String) -> Result<(), ErrBox> {
 }
 
 async fn bundle_command(
-  flags: DenoFlags,
+  flags: Flags,
   source_file: String,
   out_file: Option<PathBuf>,
 ) -> Result<(), ErrBox> {
   let module_name = ModuleSpecifier::resolve_url_or_path(&source_file)?;
   let global_state = GlobalState::new(flags)?;
-  debug!(">>>>> bundle_async START");
+  debug!(">>>>> bundle START");
   let bundle_result = global_state
     .ts_compiler
-    .bundle_async(global_state.clone(), module_name.to_string(), out_file)
+    .bundle(global_state.clone(), module_name.to_string(), out_file)
     .await;
-  debug!(">>>>> bundle_async END");
+  debug!(">>>>> bundle END");
   bundle_result
 }
 
-async fn run_repl(flags: DenoFlags) -> Result<(), ErrBox> {
+async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$repl.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
@@ -322,7 +319,7 @@ async fn run_repl(flags: DenoFlags) -> Result<(), ErrBox> {
   }
 }
 
-async fn run_command(flags: DenoFlags, script: String) -> Result<(), ErrBox> {
+async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
   let mut worker =
@@ -345,7 +342,7 @@ async fn run_command(flags: DenoFlags, script: String) -> Result<(), ErrBox> {
 }
 
 async fn test_command(
-  flags: DenoFlags,
+  flags: Flags,
   include: Option<Vec<String>>,
   fail_fast: bool,
   _quiet: bool,
@@ -417,7 +414,7 @@ pub fn main() {
       fetch_command(flags, files).boxed_local()
     }
     DenoSubcommand::Fmt { check, files } => {
-      async move { fmt::format_files(files, check) }.boxed_local()
+      async move { fmt::format(files, check) }.boxed_local()
     }
     DenoSubcommand::Info { file } => info_command(flags, file).boxed_local(),
     DenoSubcommand::Install {
