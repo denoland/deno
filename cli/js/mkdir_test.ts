@@ -10,11 +10,12 @@ testPerm({ read: true, write: true }, function mkdirSyncSuccess(): void {
 
 testPerm({ read: true, write: true }, function mkdirSyncFsPerm(): void {
   const path = Deno.makeTempDirSync() + "/dir";
-  Deno.mkdirSync(path, { perm: 0o755 }); // no perm for x
+  Deno.mkdirSync(path, { perm: 0o737 });
   const pathInfo = Deno.statSync(path);
   if (pathInfo.perm !== null) {
     // Skip windows
-    assertEquals(pathInfo.perm & 0o777, 0o755);
+    // assertEquals(pathInfo.perm, 0o737 & ~Deno.umask());
+    assertEquals(pathInfo.perm & 0o777, 0o715); // assume umask 0o022
   }
 });
 
