@@ -31,7 +31,7 @@ pub struct GlobalState(Arc<GlobalStateInner>);
 /// It is shared by all created workers (thus V8 isolates).
 pub struct GlobalStateInner {
   /// Flags parsed from `argv` contents.
-  pub flags: flags::DenoFlags,
+  pub flags: flags::Flags,
   /// Permissions parsed from `flags`.
   pub permissions: DenoPermissions,
   pub dir: deno_dir::DenoDir,
@@ -53,7 +53,7 @@ impl Deref for GlobalState {
 }
 
 impl GlobalState {
-  pub fn new(flags: flags::DenoFlags) -> Result<Self, ErrBox> {
+  pub fn new(flags: flags::Flags) -> Result<Self, ErrBox> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
@@ -168,9 +168,9 @@ impl GlobalState {
 
   #[cfg(test)]
   pub fn mock(argv: Vec<String>) -> GlobalState {
-    GlobalState::new(flags::DenoFlags {
+    GlobalState::new(flags::Flags {
       argv,
-      ..flags::DenoFlags::default()
+      ..flags::Flags::default()
     })
     .unwrap()
   }
@@ -184,8 +184,8 @@ fn thread_safe() {
 
 #[test]
 fn import_map_given_for_repl() {
-  let _result = GlobalState::new(flags::DenoFlags {
+  let _result = GlobalState::new(flags::Flags {
     import_map_path: Some("import_map.json".to_string()),
-    ..flags::DenoFlags::default()
+    ..flags::Flags::default()
   });
 }
