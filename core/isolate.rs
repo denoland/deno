@@ -46,8 +46,6 @@ pub struct ZeroCopyBuf {
   byte_length: usize,
 }
 
-unsafe impl Send for ZeroCopyBuf {}
-
 impl ZeroCopyBuf {
   pub fn new(view: v8::Local<v8::ArrayBufferView>) -> Self {
     let backing_store = view.buffer().unwrap().get_backing_store();
@@ -181,10 +179,6 @@ pub struct Isolate {
   waker: AtomicWaker,
   error_handler: Option<Box<IsolateErrorHandleFn>>,
 }
-
-// TODO(ry): a V8 Isolate cannot actually be moved between threads without the
-// use of a Locker, therefore Isolate should not implement the `Send` trait.
-unsafe impl Send for Isolate {}
 
 impl Drop for Isolate {
   fn drop(&mut self) {

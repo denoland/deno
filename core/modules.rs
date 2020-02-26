@@ -143,7 +143,7 @@ impl RecursiveModuleLoad {
           module_url_specified: module_specifier.to_string(),
           module_url_found: module_specifier.to_string(),
         })
-        .boxed()
+        .boxed_local()
       }
       _ => self
         .loader

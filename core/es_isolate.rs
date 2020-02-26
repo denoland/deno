@@ -82,10 +82,6 @@ impl DerefMut for EsIsolate {
   }
 }
 
-// TODO(ry): a V8 Isolate cannot actually be moved between threads without the
-// use of a Locker, therefore EsIsolate should not implement the `Send` trait.
-unsafe impl Send for EsIsolate {}
-
 impl EsIsolate {
   pub fn new(
     loader: Rc<dyn Loader + Unpin>,
