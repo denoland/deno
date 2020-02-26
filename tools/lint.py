@@ -6,7 +6,7 @@ import os
 import sys
 import argparse
 from util import enable_ansi_colors, git_ls_files, root_path, run
-from util import third_party_path
+from util import third_party_path, build_mode
 from third_party import python_env
 
 
@@ -72,14 +72,19 @@ def pylint():
 
 def clippy():
     print "clippy"
-    run([
+    current_build_mode = build_mode()
+    args = [
         "cargo",
         "clippy",
         "--all-targets",
-        "--locked",
+        "--locked"
+    ]
+    if current_build_mode != "debug":
+        args += ["--release"]
+    run(args + [
         "--",
         "-D",
-        "clippy::all",
+        "clippy::all"
     ],
         shell=False,
         quiet=True)
