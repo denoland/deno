@@ -268,7 +268,6 @@ fn op_mkdir(
 struct ChmodArgs {
   promise_id: Option<u64>,
   path: String,
-  #[allow(unused)]
   mode: u32,
 }
 
@@ -279,6 +278,8 @@ fn op_chmod(
 ) -> Result<JsonOp, OpError> {
   let args: ChmodArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+  #[allow(unused)]
+  let mode = args.mode & 0o777;
 
   state.check_write(&path)?;
 
@@ -288,9 +289,9 @@ fn op_chmod(
     let _metadata = fs::metadata(&path)?;
     #[cfg(unix)]
     {
-      debug!("op_chmod {} {:o}", path.display(), args.mode);
+      debug!("op_chmod {} {:o}", path.display(), mode);
       let mut permissions = _metadata.permissions();
-      permissions.set_mode(args.mode);
+      permissions.set_mode(mode);
       fs::set_permissions(&path, permissions)?;
     }
     Ok(json!({}))
