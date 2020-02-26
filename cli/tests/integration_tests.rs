@@ -153,7 +153,7 @@ fn fmt_test() {
 
 #[test]
 fn installer_test_local_module_run() {
-  use deno::flags::DenoFlags;
+  use deno::flags::Flags;
   use deno::installer;
   use std::env;
   use std::path::PathBuf;
@@ -164,7 +164,7 @@ fn installer_test_local_module_run() {
   let local_module = env::current_dir().unwrap().join("tests/echo.ts");
   let local_module_str = local_module.to_string_lossy();
   installer::install(
-    DenoFlags::default(),
+    Flags::default(),
     Some(temp_dir.path().to_path_buf()),
     "echo_test",
     &local_module_str,
@@ -202,7 +202,7 @@ fn installer_test_local_module_run() {
 
 #[test]
 fn installer_test_remote_module_run() {
-  use deno::flags::DenoFlags;
+  use deno::flags::Flags;
   use deno::installer;
   use std::env;
   use std::path::PathBuf;
@@ -212,7 +212,7 @@ fn installer_test_remote_module_run() {
   let g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
   installer::install(
-    DenoFlags::default(),
+    Flags::default(),
     Some(temp_dir.path().to_path_buf()),
     "echo_test",
     "http://localhost:4545/cli/tests/echo.ts",
