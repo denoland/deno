@@ -204,6 +204,7 @@ fn op_seek(
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
   let fut = async move {
+    debug!("op_seek {} {} {}", rid, offset, whence);
     let pos = file.seek(seek_from).await?;
     Ok(json!(pos))
   };
