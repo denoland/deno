@@ -1,6 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
+export interface TruncateOptions {
+  /** Permissions to use if creating the file (defaults to `0o666`, before
+   * the process's umask).
+   * It's an error to specify perm when create is set to `false`.
+   * Does nothing/raises on Windows. */
+  perm?: number;
+}
+
 function coerceLen(len?: number): number {
   if (!len) {
     return 0;
@@ -19,8 +27,13 @@ function coerceLen(len?: number): number {
  *       Deno.truncateSync("hello.txt", 10);
  *
  * Requires `allow-write` permission. */
-export function truncateSync(path: string, len?: number): void {
-  sendSync("op_truncate", { path, len: coerceLen(len) });
+export function truncateSync(
+  path: string,
+  len?: number,
+  options: TruncateOptions = {}
+): void {
+  const args = { path, len: coerceLen(len), perm: options.perm };
+  sendSync("op_truncate", args);
 }
 
 /** Truncates or extends the specified file, to reach the specified `len`.
@@ -28,6 +41,11 @@ export function truncateSync(path: string, len?: number): void {
  *       await Deno.truncate("hello.txt", 10);
  *
  * Requires `allow-write` permission. */
-export async function truncate(path: string, len?: number): Promise<void> {
-  await sendAsync("op_truncate", { path, len: coerceLen(len) });
+export async function truncate(
+  path: string,
+  len?: number,
+  options: TruncateOptions = {}
+): Promise<void> {
+  const args = { path, len: coerceLen(len), perm: options.perm };
+  await sendAsync("op_truncate", args);
 }

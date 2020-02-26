@@ -1419,20 +1419,36 @@ declare namespace Deno {
 
   // @url js/truncate.d.ts
 
+  export interface TruncateOptions {
+    /** Permissions to use if creating the file (defaults to `0o666`, before
+     * the process's umask).
+     * It's an error to specify perm when create is set to `false`.
+     * Does nothing/raises on Windows. */
+    perm?: number;
+  }
+
   /** Synchronously truncates or extends the specified file, to reach the
    * specified `len`.
    *
    *       Deno.truncateSync("hello.txt", 10);
    *
    * Requires `allow-write` permission. */
-  export function truncateSync(name: string, len?: number): void;
+  export function truncateSync(
+    path: string,
+    len?: number,
+    options?: TruncateOptions
+  ): void;
 
   /** Truncates or extends the specified file, to reach the specified `len`.
    *
    *       await Deno.truncate("hello.txt", 10);
    *
    * Requires `allow-write` permission. */
-  export function truncate(name: string, len?: number): Promise<void>;
+  export function truncate(
+    path: string,
+    len?: number,
+    options?: TruncateOptions
+  ): Promise<void>;
 
   export interface AsyncHandler {
     (msg: Uint8Array): void;
