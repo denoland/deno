@@ -4,7 +4,6 @@ import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { usePort } from "./internal/test_util.ts";
 const { test } = Deno;
-
 let fileServer: Deno.Process;
 
 const port = usePort();

@@ -1,10 +1,9 @@
-const { connect, run } = Deno;
-
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { usePort } from "./internal/test_util.ts";
 const port = usePort();
+const { connect, run, test } = Deno;
 
 let server: Deno.Process;
 async function startServer(): Promise<void> {
@@ -61,7 +60,7 @@ content-length: 6
 Step7
 `;
 
-Deno.test(async function serverPipelineRace(): Promise<void> {
+test(async function serverPipelineRace(): Promise<void> {
   await startServer();
 
   const conn = await connect({ port });
