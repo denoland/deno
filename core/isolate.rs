@@ -182,10 +182,6 @@ pub struct Isolate {
   error_handler: Option<Box<IsolateErrorHandleFn>>,
 }
 
-// TODO(ry): a V8 Isolate cannot actually be moved between threads without the
-// use of a Locker, therefore Isolate should not implement the `Send` trait.
-unsafe impl Send for Isolate {}
-
 impl Drop for Isolate {
   fn drop(&mut self) {
     if let Some(creator) = self.snapshot_creator.take() {
