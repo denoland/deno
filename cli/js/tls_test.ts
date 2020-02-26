@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEquals } from "./test_util.ts";
+import { test, testPerm, assert, assertEquals, usePort } from "./test_util.ts";
 import { BufWriter, BufReader } from "../../std/io/bufio.ts";
 import { TextProtoReader } from "../../std/textproto/mod.ts";
 
@@ -38,7 +38,7 @@ testPerm(
     let err;
     const options = {
       hostname: "localhost",
-      port: 4500,
+      port: usePort(),
       certFile: "cli/tests/tls/localhost.crt",
       keyFile: "cli/tests/tls/localhost.key"
     };
@@ -70,7 +70,7 @@ testPerm({ net: true }, async function listenTLSNoReadPerm(): Promise<void> {
   try {
     Deno.listenTLS({
       hostname: "localhost",
-      port: 4500,
+      port: usePort(),
       certFile: "cli/tests/tls/localhost.crt",
       keyFile: "cli/tests/tls/localhost.key"
     });
@@ -87,7 +87,7 @@ testPerm(
     let err;
     const options = {
       hostname: "localhost",
-      port: 4500,
+      port: usePort(),
       certFile: "cli/tests/tls/localhost.crt",
       keyFile: "cli/tests/tls/localhost.key"
     };
@@ -116,7 +116,7 @@ testPerm(
     let err;
     const options = {
       hostname: "localhost",
-      port: 4500,
+      port: usePort(),
       certFile: "cli/tests/tls/localhost.crt",
       keyFile: "cli/tests/tls/localhost.key"
     };
@@ -143,7 +143,7 @@ testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
   void
 > {
   const hostname = "localhost";
-  const port = 4500;
+  const port = usePort();
 
   const listener = Deno.listenTLS({
     hostname,

@@ -3,11 +3,19 @@ import { assert, assertEquals } from "../../testing/asserts.ts";
 import { TextProtoReader } from "../../textproto/mod.ts";
 import { BufReader } from "../../io/bufio.ts";
 import { connectWebSocket, WebSocket } from "../../ws/mod.ts";
+import { usePort } from "../../http/internal/test_util.ts";
 
 let server: Deno.Process | undefined;
+const port = usePort();
 async function startServer(): Promise<void> {
   server = Deno.run({
-    args: [Deno.execPath(), "--allow-net", "--allow-read", "server.ts"],
+    args: [
+      Deno.execPath(),
+      "--allow-net",
+      "--allow-read",
+      "server.ts",
+      "127.0.0.1:" + port
+    ],
     cwd: "examples/chat",
     stdout: "piped"
   });
@@ -30,7 +38,7 @@ if (build.os !== "win") {
   });
 
   test("GET / should serve html", async () => {
-    const resp = await fetch("http://127.0.0.1:8080/");
+    const resp = await fetch(`http://127.0.0.1:${port}/`);
     assertEquals(resp.status, 200);
     assertEquals(resp.headers.get("content-type"), "text/html");
     const html = await resp.body.text();
@@ -39,7 +47,7 @@ if (build.os !== "win") {
 
   let ws: WebSocket | undefined;
   test("GET /ws should upgrade conn to ws", async () => {
-    ws = await connectWebSocket("http://127.0.0.1:8080/ws");
+    ws = await connectWebSocket(`http://127.0.0.1:${port}/ws`);
     const it = ws.receive();
     assertEquals((await it.next()).value, "Connected: [1]");
     ws.send("Hello");

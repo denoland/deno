@@ -12,6 +12,7 @@ import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay, deferred } from "../util/async.ts";
 import { encode, decode } from "../strings/mod.ts";
 import { mockConn } from "./mock.ts";
+import { usePort } from "./internal/test_util.ts";
 
 const { Buffer, test } = Deno;
 
@@ -429,7 +430,7 @@ test("serveTLS", async (): Promise<void> => {
 });
 
 test("close server while iterating", async (): Promise<void> => {
-  const server = serve(":8123");
+  const server = serve({ port: usePort() });
   const nextWhileClosing = server[Symbol.asyncIterator]().next();
   server.close();
   assertEquals(await nextWhileClosing, { value: undefined, done: true });
@@ -450,7 +451,7 @@ if (Deno.build.os !== "win") {
     const connClosedPromise = deferred();
     const serverRoutine = async (): Promise<void> => {
       let reqCount = 0;
-      const server = serve(":8124");
+      const server = serve({ port: usePort() });
       // @ts-ignore
       const serverRid = server.listener["rid"];
       let connRid = -1;
@@ -488,7 +489,7 @@ if (Deno.build.os !== "win") {
     const p = serverRoutine();
     const conn = await Deno.connect({
       hostname: "127.0.0.1",
-      port: 8124
+      port: usePort()
     });
     await Deno.writeAll(
       conn,
