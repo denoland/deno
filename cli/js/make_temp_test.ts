@@ -26,6 +26,19 @@ unitTest({ perms: { write: true } }, function makeTempDirSyncSuccess(): void {
   assert(err instanceof Deno.errors.NotFound);
 });
 
+unitTest(
+  { perms: { read: true, write: true } },
+  function makeTempDirSyncMode(): void {
+    const path = Deno.makeTempDirSync({ mode: 0o737 });
+    const pathInfo = Deno.statSync(path);
+    if (pathInfo.mode !== null) {
+      // Skip windows
+      // assertEquals(pathInfo.mode, 0o737 & ~Deno.umask());
+      assertEquals(pathInfo.mode & 0o777, 0o715); // assume umask 0o022
+    }
+  }
+);
+
 unitTest(function makeTempDirSyncPerm(): void {
   // makeTempDirSync should require write permissions (for now).
   let err;
@@ -91,6 +104,19 @@ unitTest({ perms: { write: true } }, function makeTempFileSyncSuccess(): void {
   }
   assert(err instanceof Deno.errors.NotFound);
 });
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function makeTempFileSyncMode(): void {
+    const path = Deno.makeTempFileSync({ mode: 0o626 });
+    const pathInfo = Deno.statSync(path);
+    if (pathInfo.mode != null) {
+      // Skip windows
+      // assertEquals(pathInfo.mode, 0o626 & ~Deno.umask());
+      assertEquals(pathInfo.mode & 0o777, 0o604); // assume umask 0o022
+    }
+  }
+);
 
 unitTest(function makeTempFileSyncPerm(): void {
   // makeTempFileSync should require write permissions (for now).
