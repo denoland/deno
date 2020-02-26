@@ -27,7 +27,7 @@ let OP_WRITE = -1;
  *
  * Requires `allow-read` and `allow-write` permissions depending on mode.
  */
-export function openSync(filename: string, mode?: OpenOptions): File;
+export function openSync(path: string, mode?: OpenOptions): File;
 
 /** Synchronously open a file and return an instance of the `File` object.
  *
@@ -35,11 +35,11 @@ export function openSync(filename: string, mode?: OpenOptions): File;
  *
  * Requires `allow-read` and `allow-write` permissions depending on mode.
  */
-export function openSync(filename: string, mode?: OpenMode): File;
+export function openSync(path: string, mode?: OpenMode): File;
 
 /**@internal*/
 export function openSync(
-  filename: string,
+  path: string,
   modeOrOptions: OpenOptions | OpenMode = "r"
 ): File {
   let mode = null;
@@ -52,7 +52,7 @@ export function openSync(
     options = modeOrOptions;
   }
 
-  const rid = sendSyncJson("op_open", { filename, options, mode });
+  const rid = sendSyncJson("op_open", { path, options, mode });
   return new File(rid);
 }
 
@@ -62,10 +62,7 @@ export function openSync(
  *
  * Requires `allow-read` and `allow-write` permissions depending on mode.
  */
-export async function open(
-  filename: string,
-  options?: OpenOptions
-): Promise<File>;
+export async function open(path: string, options?: OpenOptions): Promise<File>;
 
 /** Open a file and resolves to an instance of `Deno.File`.
  *
@@ -73,11 +70,11 @@ export async function open(
  *
  * Requires `allow-read` and `allow-write` permissions depending on mode.
  */
-export async function open(filename: string, mode?: OpenMode): Promise<File>;
+export async function open(path: string, mode?: OpenMode): Promise<File>;
 
 /**@internal*/
 export async function open(
-  filename: string,
+  path: string,
   modeOrOptions: OpenOptions | OpenMode = "r"
 ): Promise<File> {
   let mode = null;
@@ -91,7 +88,7 @@ export async function open(
   }
 
   const rid = await sendAsyncJson("op_open", {
-    filename,
+    path,
     options,
     mode
   });
@@ -105,8 +102,8 @@ export async function open(
  *
  * Requires `allow-read` and `allow-write` permissions.
  */
-export function createSync(filename: string): File {
-  return openSync(filename, "w+");
+export function createSync(path: string): File {
+  return openSync(path, "w+");
 }
 
 /** Creates a file if none exists or truncates an existing file and resolves to
@@ -116,8 +113,8 @@ export function createSync(filename: string): File {
  *
  * Requires `allow-read` and `allow-write` permissions.
  */
-export function create(filename: string): Promise<File> {
-  return open(filename, "w+");
+export function create(path: string): Promise<File> {
+  return open(path, "w+");
 }
 
 /** Synchronously read from a file ID into an array buffer.

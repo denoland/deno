@@ -423,7 +423,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions depending on mode.
    */
-  export function openSync(filename: string, options?: OpenOptions): File;
+  export function openSync(path: string, options?: OpenOptions): File;
 
   /** Synchronously open a file and return an instance of the `File` object.
    *
@@ -431,7 +431,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions depending on mode.
    */
-  export function openSync(filename: string, mode?: OpenMode): File;
+  export function openSync(path: string, mode?: OpenMode): File;
 
   /** Open a file and resolve to an instance of the `File` object.
    *
@@ -439,7 +439,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions depending on mode.
    */
-  export function open(filename: string, options?: OpenOptions): Promise<File>;
+  export function open(path: string, options?: OpenOptions): Promise<File>;
 
   /** Open a file and resolves to an instance of `Deno.File`.
    *
@@ -447,7 +447,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions depending on mode.
    */
-  export function open(filename: string, mode?: OpenMode): Promise<File>;
+  export function open(path: string, mode?: OpenMode): Promise<File>;
 
   /** Creates a file if none exists or truncates an existing file and returns
    *  an instance of `Deno.File`.
@@ -456,7 +456,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions.
    */
-  export function createSync(filename: string): File;
+  export function createSync(path: string): File;
 
   /** Creates a file if none exists or truncates an existing file and resolves to
    *  an instance of `Deno.File`.
@@ -465,7 +465,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions.
    */
-  export function create(filename: string): Promise<File>;
+  export function create(path: string): Promise<File>;
 
   /** Synchronously read from a file ID into an array buffer.
    *
@@ -879,14 +879,14 @@ declare namespace Deno {
   /** **UNSTABLE**: needs investigation into high precision time.
    *
    * Synchronously changes the access and modification times of a file system
-   * object referenced by `filename`. Given times are either in seconds (UNIX
-   * epoch time) or as `Date` objects.
+   * object referenced by `path`. Given times are either in seconds (UNIX epoch
+   * time) or as `Date` objects.
    *
    *       Deno.utimeSync("myfile.txt", 1556495550, new Date());
    *
    * Requires `allow-write` permission. */
   export function utimeSync(
-    filename: string,
+    path: string,
     atime: number | Date,
     mtime: number | Date
   ): void;
@@ -894,14 +894,14 @@ declare namespace Deno {
   /** **UNSTABLE**: needs investigation into high precision time.
    *
    * Changes the access and modification times of a file system object
-   * referenced by `filename`. Given times are either in seconds (UNIX epoch
-   * time) or as `Date` objects.
+   * referenced by `path`. Given times are either in seconds (UNIX epoch time)
+   * or as `Date` objects.
    *
    *       await Deno.utime("myfile.txt", 1556495550, new Date());
    *
    * Requires `allow-write` permission. */
   export function utime(
-    filename: string,
+    path: string,
     atime: number | Date,
     mtime: number | Date
   ): Promise<void>;
@@ -962,7 +962,7 @@ declare namespace Deno {
    *       console.log(decoder.decode(data));
    *
    * Requires `allow-read` permission. */
-  export function readFileSync(filename: string): Uint8Array;
+  export function readFileSync(path: string): Uint8Array;
 
   /** Reads and resolves to the entire contents of a file.
    *
@@ -971,7 +971,7 @@ declare namespace Deno {
    *       console.log(decoder.decode(data));
    *
    * Requires `allow-read` permission. */
-  export function readFile(filename: string): Promise<Uint8Array>;
+  export function readFile(path: string): Promise<Uint8Array>;
 
   // @url js/file_info.d.ts
 
@@ -1111,52 +1111,52 @@ declare namespace Deno {
    *       const targetPath = Deno.readlinkSync("symlink/path");
    *
    * Requires `allow-read` permission. */
-  export function readlinkSync(name: string): string;
+  export function readlinkSync(path: string): string;
 
   /** Resolves to the destination of the named symbolic link.
    *
    *       const targetPath = await Deno.readlink("symlink/path");
    *
    * Requires `allow-read` permission. */
-  export function readlink(name: string): Promise<string>;
+  export function readlink(path: string): Promise<string>;
 
   // @url js/stat.d.ts
 
-  /** Resolves to a `Deno.FileInfo` for the specified path. If path is a
+  /** Resolves to a `Deno.FileInfo` for the specified `path`. If `path` is a
    * symlink, information for the symlink will be returned.
    *
    *       const fileInfo = await Deno.lstat("hello.txt");
    *       assert(fileInfo.isFile());
    *
    * Requires `allow-read` permission. */
-  export function lstat(filename: string): Promise<FileInfo>;
+  export function lstat(path: string): Promise<FileInfo>;
 
-  /** Synchronously returns a `Deno.FileInfo` for the specified path. If
-   * path is a symlink, information for the symlink will be returned.
+  /** Synchronously returns a `Deno.FileInfo` for the specified `path`. If
+   * `path` is a symlink, information for the symlink will be returned.
    *
    *       const fileInfo = Deno.lstatSync("hello.txt");
    *       assert(fileInfo.isFile());
    *
    * Requires `allow-read` permission. */
-  export function lstatSync(filename: string): FileInfo;
+  export function lstatSync(path: string): FileInfo;
 
-  /** Resolves to a `Deno.FileInfo` for the specified path. Will always follow
-   * symlinks.
+  /** Resolves to a `Deno.FileInfo` for the specified `path`. Will always
+   * follow symlinks.
    *
    *       const fileInfo = await Deno.stat("hello.txt");
    *       assert(fileInfo.isFile());
    *
    * Requires `allow-read` permission. */
-  export function stat(filename: string): Promise<FileInfo>;
+  export function stat(path: string): Promise<FileInfo>;
 
-  /** Synchronously returns a `Deno.FileInfo` for the specified path. Will
+  /** Synchronously returns a `Deno.FileInfo` for the specified `path`. Will
    * always follow symlinks.
    *
    *       const fileInfo = Deno.statSync("hello.txt");
    *       assert(fileInfo.isFile());
    *
    * Requires `allow-read` permission. */
-  export function statSync(filename: string): FileInfo;
+  export function statSync(path: string): FileInfo;
 
   // @url js/link.d.ts
 
@@ -1230,7 +1230,7 @@ declare namespace Deno {
    * Requires `allow-write` permission, and `allow-read` if create is `false`.
    */
   export function writeFileSync(
-    filename: string,
+    path: string,
     data: Uint8Array,
     options?: WriteFileOptions
   ): void;
@@ -1245,7 +1245,7 @@ declare namespace Deno {
    * Requires `allow-write` permission, and `allow-read` if create is `false`.
    */
   export function writeFile(
-    filename: string,
+    path: string,
     data: Uint8Array,
     options?: WriteFileOptions
   ): Promise<void>;
