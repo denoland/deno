@@ -27,7 +27,7 @@ let OP_WRITE = -1;
  *
  * Requires `allow-read` and `allow-write` permissions depending on mode.
  */
-export function openSync(filename: string, capability?: OpenOptions): File;
+export function openSync(filename: string, mode?: OpenOptions): File;
 
 /** Synchronously open a file and return an instance of the `File` object.
  *
