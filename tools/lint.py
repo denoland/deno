@@ -73,21 +73,10 @@ def pylint():
 def clippy():
     print "clippy"
     current_build_mode = build_mode()
-    args = [
-        "cargo",
-        "clippy",
-        "--all-targets",
-        "--locked"
-    ]
+    args = ["cargo", "clippy", "--all-targets", "--locked"]
     if current_build_mode != "debug":
         args += ["--release"]
-    run(args + [
-        "--",
-        "-D",
-        "clippy::all"
-    ],
-        shell=False,
-        quiet=True)
+    run(args + ["--", "-D", "clippy::all"], shell=False, quiet=True)
 
 
 if __name__ == "__main__":
