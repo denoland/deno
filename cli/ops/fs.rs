@@ -435,7 +435,7 @@ fn op_link(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_link {} {}", oldname.display(), newname.display());
-    std::fs::hard_link(&oldname, &newname)?;
+    fs::hard_link(&oldname, &newname)?;
     Ok(json!({}))
   })
 }
