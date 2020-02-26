@@ -292,17 +292,17 @@ fn get_stat_json(
     "modified":to_seconds!(metadata.modified()),
     "created":to_seconds!(metadata.created()),
     // Following are only valid under Unix.
-    "dev": usm!(dev),
-    "ino": usm!(ino),
-    "mode": usm!(mode),
-    "nlink": usm!(nlink),
-    "uid": usm!(uid),
-    "gid": usm!(gid),
-    "rdev": usm!(rdev),
+    "dev": usm!(dev), // u64
+    "ino": usm!(ino), // u64
+    "mode": usm!(mode), // usually u32, may be u16 on Mac
+    "nlink": usm!(nlink), // u64
+    "uid": usm!(uid), // u32
+    "gid": usm!(gid), // u32
+    "rdev": usm!(rdev), // u64
     // TODO(kevinkassimo): *time_nsec requires BigInt.
     // Probably should be treated as String if we need to add them.
-    "blksize": usm!(blksize),
-    "blocks": usm!(blocks),
+    "blksize": usm!(blksize) as i64, // was u64
+    "blocks": usm!(blocks) as i64, // was u64
   });
 
   // "name" is an optional field by our design.
