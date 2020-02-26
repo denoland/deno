@@ -49,8 +49,9 @@ pub fn write_file_2<T: AsRef<[u8]>>(
 
 #[cfg(unix)]
 fn set_permissions(file: &mut File, perm: u32) -> std::io::Result<()> {
-  debug!("set file perm to {}", perm);
-  file.set_permissions(PermissionsExt::from_mode(perm & 0o777))
+  let perm = perm & 0o777;
+  debug!("set file perm to {:o}", perm);
+  file.set_permissions(PermissionsExt::from_mode(perm))
 }
 
 #[cfg(not(unix))]
@@ -95,7 +96,7 @@ pub fn make_temp(
 }
 
 pub fn mkdir(path: &Path, perm: u32, recursive: bool) -> std::io::Result<()> {
-  debug!("mkdir -p {}", path.display());
+  // debug!("mkdir -p {}", path.display());
   let mut builder = DirBuilder::new();
   builder.recursive(recursive);
   set_dir_permission(&mut builder, perm);
@@ -104,8 +105,9 @@ pub fn mkdir(path: &Path, perm: u32, recursive: bool) -> std::io::Result<()> {
 
 #[cfg(unix)]
 fn set_dir_permission(builder: &mut DirBuilder, perm: u32) {
-  debug!("set dir perm to {}", perm);
-  builder.mode(perm & 0o777);
+  let perm = perm & 0o777;
+  debug!("set dir perm to {:o}", perm);
+  builder.mode(perm);
 }
 
 #[cfg(not(unix))]

@@ -72,7 +72,12 @@ fn op_mkdir(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_mkdir {}", path.display());
+    debug!(
+      "op_mkdir {} {:o} {}",
+      path.display(),
+      args.mode,
+      args.recursive
+    );
     deno_fs::mkdir(&path, args.mode, args.recursive)?;
     Ok(json!({}))
   })
@@ -99,11 +104,11 @@ fn op_chmod(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_chmod {}", path.display());
     // Still check file/dir exists on windows
     let _metadata = fs::metadata(&path)?;
     #[cfg(unix)]
     {
+      debug!("op_chmod {} {:o}", path.display(), args.mode);
       let mut permissions = _metadata.permissions();
       permissions.set_mode(args.mode);
       fs::set_permissions(&path, permissions)?;
@@ -133,7 +138,7 @@ fn op_chown(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_chown {}", path.display());
+    debug!("op_chown {} {} {}", path.display(), args.uid, args.gid);
     /*
     match deno_fs::chown(args.path.as_ref(), args.uid, args.gid) {
       Ok(_) => Ok(json!({})),
@@ -166,8 +171,8 @@ fn op_remove(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_remove {}", path.display());
     let metadata = fs::symlink_metadata(&path)?;
+    debug!("op_remove {} {}", path.display(), recursive);
     let file_type = metadata.file_type();
     if file_type.is_file() || file_type.is_symlink() {
       fs::remove_file(&path)?;
@@ -200,9 +205,9 @@ fn op_copy_file(
   state.check_read(&from)?;
   state.check_write(&to)?;
 
-  debug!("op_copy_file {} {}", from.display(), to.display());
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
+    debug!("op_copy_file {} {}", from.display(), to.display());
     // On *nix, Rust reports non-existent `from` as ErrorKind::InvalidInput
     // See https://github.com/rust-lang/rust/issues/54800
     // Once the issue is resolved, we should remove this workaround.
