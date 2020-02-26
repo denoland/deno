@@ -72,3 +72,130 @@ testPerm({ write: false }, async function truncatePerm(): Promise<void> {
   assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
+
+testPerm({ read: true, write: true }, function ftruncateSyncSuccess(): void {
+  const enc = new TextEncoder();
+  const d = enc.encode("Hello");
+  const filename = Deno.makeTempDirSync() + "/test_truncateSync.txt";
+  Deno.writeFileSync(filename, d);
+  const f1 = Deno.openSync(filename, "r+");
+  f1.truncateSync(20);
+  f1.close();
+  let data = readDataSync(filename);
+  assertEquals(data.length, 20);
+  const f2 = Deno.openSync(filename, "r+");
+  f2.truncateSync(5);
+  f2.close();
+  data = readDataSync(filename);
+  assertEquals(data.length, 5);
+  const f3 = Deno.openSync(filename, "r+");
+  f3.truncateSync(-5);
+  f3.close();
+  data = readDataSync(filename);
+  assertEquals(data.length, 0);
+  Deno.removeSync(filename);
+});
+
+testPerm(
+  { read: true, write: true },
+  async function ftruncateSuccess(): Promise<void> {
+    const enc = new TextEncoder();
+    const d = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test_truncate.txt";
+    await Deno.writeFile(filename, d);
+    const f1 = await Deno.open(filename, "r+");
+    await f1.truncate(20);
+    f1.close();
+    let data = await readData(filename);
+    assertEquals(data.length, 20);
+    const f2 = await Deno.open(filename, "r+");
+    await f2.truncate(5);
+    f2.close();
+    data = await readData(filename);
+    assertEquals(data.length, 5);
+    const f3 = await Deno.open(filename, "r+");
+    await f3.truncate(-5);
+    f3.close();
+    data = await readData(filename);
+    assertEquals(data.length, 0);
+    await Deno.remove(filename);
+  }
+);
+
+testPerm({ read: true, write: false }, function ftruncateSyncPerm(): void {
+  let err;
+  let caughtError = false;
+  const f = Deno.openSync("README.md", "r");
+  try {
+    f.truncateSync(0);
+  } catch (e) {
+    caughtError = true;
+    err = e;
+  }
+  f.close();
+  // throw if we lack --write permissions
+  assert(caughtError);
+  assert(err instanceof Deno.errors.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
+});
+
+testPerm({ read: true, write: false }, async function ftruncatePerm(): Promise<
+  void
+> {
+  let err;
+  let caughtError = false;
+  const f = await Deno.open("README.md", "r");
+  try {
+    await f.truncate(0);
+  } catch (e) {
+    caughtError = true;
+    err = e;
+  }
+  f.close();
+  // throw if we lack --write permissions
+  assert(caughtError);
+  assert(err instanceof Deno.errors.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
+});
+
+testPerm({ read: true, write: true }, function ftruncateSyncPerm2(): void {
+  let err;
+  let caughtError = false;
+  const filename = Deno.makeTempDirSync() + "/test_truncateSync.txt";
+  const f0 = Deno.openSync(filename, "w");
+  f0.close();
+  const f = Deno.openSync(filename, "r");
+  try {
+    f.truncateSync(0);
+  } catch (e) {
+    caughtError = true;
+    err = e;
+  }
+  f.close();
+  // fd is not opened for writing
+  assert(caughtError);
+  assert(err instanceof Deno.errors.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
+});
+
+testPerm({ read: true, write: true }, async function ftruncatePerm2(): Promise<
+  void
+> {
+  let err;
+  let caughtError = false;
+  const filename = (await Deno.makeTempDir()) + "/test_truncate.txt";
+  const f0 = await Deno.open(filename, "w");
+  f0.close();
+  const f = await Deno.open(filename, "r");
+  try {
+    await f.truncate(0);
+  } catch (e) {
+    caughtError = true;
+    err = e;
+  }
+  f.close();
+  // fd is not opened for writing
+  assert(caughtError);
+  assert(err instanceof Deno.errors.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
+});

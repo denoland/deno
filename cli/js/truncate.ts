@@ -40,6 +40,14 @@ interface TruncateArgs {
   len?: number;
 }
 
+export function truncateSync(
+  path: string,
+  len?: number,
+  options?: TruncateOptions
+): void;
+
+export function truncateSync(rid: number, len?: number): void;
+
 /** Synchronously truncates or extends the specified file, to reach the
  * specified `len`.
  *
@@ -47,15 +55,29 @@ interface TruncateArgs {
  *
  * Requires `allow-write` permission, and `allow-read` if create is `false`. */
 export function truncateSync(
-  path: string,
+  path: string | number,
   len?: number,
   options: TruncateOptions = {}
 ): void {
-  const args = checkOptions(options);
-  args.path = path;
-  args.len = coerceLen(len);
-  sendSync("op_truncate", args);
+  if (typeof path == "string") {
+    const args = checkOptions(options);
+    args.path = path;
+    args.len = coerceLen(len);
+    sendSync("op_truncate", args);
+  } else {
+    // for the ftruncate variant, we ignore the create option
+    const args = { rid: path, len: coerceLen(len), perm: options.perm };
+    sendSync("op_ftruncate", args);
+  }
 }
+
+export function truncate(
+  path: string,
+  len?: number,
+  options?: TruncateOptions
+): Promise<void>;
+
+export function truncate(rid: number, len?: number): Promise<void>;
 
 /** Truncates or extends the specified file, to reach the specified `len`.
  *
@@ -63,14 +85,20 @@ export function truncateSync(
  *
  * Requires `allow-write` permission, and `allow-read` if create is `false`. */
 export async function truncate(
-  path: string,
+  path: string | number,
   len?: number,
   options: TruncateOptions = {}
 ): Promise<void> {
-  const args = checkOptions(options);
-  args.path = path;
-  args.len = coerceLen(len);
-  await sendAsync("op_truncate", args);
+  if (typeof path == "string") {
+    const args = checkOptions(options);
+    args.path = path;
+    args.len = coerceLen(len);
+    await sendAsync("op_truncate", args);
+  } else {
+    // for the ftruncate variant, we ignore the create option
+    const args = { rid: path, len: coerceLen(len), perm: options.perm };
+    await sendAsync("op_ftruncate", args);
+  }
 }
 
 /** Check we have a valid combination of options.

@@ -15,16 +15,24 @@ function toSecondsFromEpoch(v: number | Date): number {
  *
  * Requires `allow-write` permission. */
 export function utimeSync(
-  path: string,
+  path: string | number,
   atime: number | Date,
   mtime: number | Date
 ): void {
-  sendSync("op_utime", {
-    path,
-    // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
-    atime: toSecondsFromEpoch(atime),
-    mtime: toSecondsFromEpoch(mtime)
-  });
+  if (typeof path == "string") {
+    sendSync("op_utime", {
+      path,
+      // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
+      atime: toSecondsFromEpoch(atime),
+      mtime: toSecondsFromEpoch(mtime)
+    });
+  } else {
+    sendSync("op_futime", {
+      rid: path,
+      atime: toSecondsFromEpoch(atime),
+      mtime: toSecondsFromEpoch(mtime)
+    });
+  }
 }
 
 /** **UNSTABLE**: needs investigation into high precision time.
@@ -37,14 +45,22 @@ export function utimeSync(
  *
  * Requires `allow-write` permission. */
 export async function utime(
-  path: string,
+  path: string | number,
   atime: number | Date,
   mtime: number | Date
 ): Promise<void> {
-  await sendAsync("op_utime", {
-    path,
-    // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
-    atime: toSecondsFromEpoch(atime),
-    mtime: toSecondsFromEpoch(mtime)
-  });
+  if (typeof path == "string") {
+    await sendAsync("op_utime", {
+      path,
+      // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
+      atime: toSecondsFromEpoch(atime),
+      mtime: toSecondsFromEpoch(mtime)
+    });
+  } else {
+    await sendAsync("op_futime", {
+      rid: path,
+      atime: toSecondsFromEpoch(atime),
+      mtime: toSecondsFromEpoch(mtime)
+    });
+  }
 }

@@ -146,3 +146,133 @@ testPerm({ write: false }, async function chmodPerm(): Promise<void> {
   assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
+
+if (isNotWindows) {
+  testPerm({ read: true, write: true }, function fchmodSyncSuccess(): void {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const tempDir = Deno.makeTempDirSync();
+    const filename = tempDir + "/test.txt";
+    Deno.writeFileSync(filename, data, { perm: 0o666 });
+
+    const f = Deno.openSync(filename, "r+");
+    // On windows no effect, but should not crash
+    f.chmodSync(0o777);
+    f.close();
+
+    // Check success when not on windows
+    if (isNotWindows) {
+      const fileInfo = Deno.statSync(filename);
+      assert(fileInfo.perm);
+      assertEquals(fileInfo.perm & 0o777, 0o777);
+    }
+  });
+
+  testPerm({ read: true, write: true }, async function fchmodSuccess(): Promise<
+    void
+  > {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const tempDir = Deno.makeTempDirSync();
+    const filename = tempDir + "/test.txt";
+    Deno.writeFileSync(filename, data, { perm: 0o666 });
+
+    const f = await Deno.open(filename, "r+");
+    // On windows no effect, but should not crash
+    await f.chmod(0o777);
+    f.close();
+
+    // Check success when not on windows
+    if (isNotWindows) {
+      const fileInfo = Deno.statSync(filename);
+      assert(fileInfo.perm);
+      assertEquals(fileInfo.perm & 0o777, 0o777);
+    }
+  });
+
+  testPerm({ read: true, write: false }, function fchmodSyncPerm(): void {
+    let err;
+    let caughtError = false;
+    const f = Deno.openSync("README.md", "r");
+    try {
+      f.chmodSync(0o600);
+    } catch (e) {
+      caughtError = true;
+      err = e;
+    }
+    f.close();
+    // throw if we lack --write permissions
+    assert(caughtError);
+    if (caughtError) {
+      assert(err instanceof Deno.errors.PermissionDenied);
+      assertEquals(err.name, "PermissionDenied");
+    }
+  });
+
+  testPerm({ read: true, write: false }, async function fchmodPerm(): Promise<
+    void
+  > {
+    let err;
+    let caughtError = false;
+    const f = await Deno.open("README.md", "r");
+    try {
+      await f.chmod(0o600);
+    } catch (e) {
+      caughtError = true;
+      err = e;
+    }
+    f.close();
+    // throw if we lack --write permissions
+    assert(caughtError);
+    if (caughtError) {
+      assert(err instanceof Deno.errors.PermissionDenied);
+      assertEquals(err.name, "PermissionDenied");
+    }
+  });
+
+  testPerm({ read: true, write: true }, function fchmodSyncPerm2(): void {
+    let err;
+    let caughtError = false;
+    const filename = Deno.makeTempDirSync() + "/test_chmodSync.txt";
+    const f0 = Deno.openSync(filename, "w");
+    f0.close();
+    const f = Deno.openSync(filename, "r");
+    try {
+      f.chmodSync(0o600);
+    } catch (e) {
+      caughtError = true;
+      err = e;
+    }
+    f.close();
+    // throw if fd is not opened for writing
+    assert(caughtError);
+    if (caughtError) {
+      assert(err instanceof Deno.errors.PermissionDenied);
+      assertEquals(err.name, "PermissionDenied");
+    }
+  });
+
+  testPerm({ read: true, write: true }, async function fchmodPerm2(): Promise<
+    void
+  > {
+    let err;
+    let caughtError = false;
+    const filename = (await Deno.makeTempDir()) + "/test_chmod.txt";
+    const f0 = await Deno.open(filename, "w");
+    f0.close();
+    const f = await Deno.open(filename, "r");
+    try {
+      await f.chmod(0o600);
+    } catch (e) {
+      caughtError = true;
+      err = e;
+    }
+    f.close();
+    // throw if fd is not opened for writing
+    assert(caughtError);
+    if (caughtError) {
+      assert(err instanceof Deno.errors.PermissionDenied);
+      assertEquals(err.name, "PermissionDenied");
+    }
+  });
+}

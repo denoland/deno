@@ -1,7 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
+use super::io::StreamResource;
 use crate::fs as deno_fs;
+use crate::futures::FutureExt;
 use crate::op_error::OpError;
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
@@ -36,6 +38,10 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_make_temp_file", s.stateful_json_op(op_make_temp_file));
   i.register_op("op_cwd", s.stateful_json_op(op_cwd));
   i.register_op("op_utime", s.stateful_json_op(op_utime));
+  i.register_op("op_ftruncate", s.stateful_json_op(op_ftruncate));
+  i.register_op("op_fchmod", s.stateful_json_op(op_fchmod));
+  i.register_op("op_futime", s.stateful_json_op(op_futime));
+  i.register_op("op_fstat", s.stateful_json_op(op_fstat));
 }
 
 #[derive(Deserialize)]
@@ -703,4 +709,242 @@ fn op_cwd(
   let path = std::env::current_dir()?;
   let path_str = path.into_os_string().into_string().unwrap();
   Ok(JsonOp::Sync(json!(path_str)))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FTruncateArgs {
+  promise_id: Option<u64>,
+  rid: i32,
+  len: i64,
+}
+
+fn op_ftruncate(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  let args: FTruncateArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  // require len to be 63 bit unsigned
+  let len: u64 = args.len.try_into()?;
+  let state = state.borrow();
+  let resource = state
+    .resource_table
+    .get::<StreamResource>(rid)
+    .ok_or_else(OpError::bad_resource)?;
+
+  let tokio_file = match resource {
+    StreamResource::FsFile(ref file, _) => file,
+    _ => return Err(OpError::bad_resource()),
+  };
+  let mut file = futures::executor::block_on(tokio_file.try_clone())?;
+
+  let fut = async move {
+    // Unix returns InvalidInput if fd was not opened for writing
+    // For consistency with Windows, we check explicitly
+    #[cfg(unix)]
+    deno_fs::check_open_for_writing(&file)?;
+    debug!("op_ftruncate {} {}", rid, len);
+    file.set_len(len).await?;
+    Ok(json!({}))
+  };
+
+  if args.promise_id.is_none() {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FChmodArgs {
+  promise_id: Option<u64>,
+  rid: i32,
+  // #[allow(unused)]
+  perm: u32,
+}
+
+fn op_fchmod(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  if cfg!(not(unix)) {
+    return Err(OpError::other("Not implemented".to_string()));
+  }
+  let args: FChmodArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  #[allow(unused)]
+  let perm = args.perm & 0o777;
+  let state = state.borrow();
+  let resource = state
+    .resource_table
+    .get::<StreamResource>(rid)
+    .ok_or_else(OpError::bad_resource)?;
+
+  let tokio_file = match resource {
+    // TODO(jp): save metadata instead of re-querying later?
+    StreamResource::FsFile(ref file, _metadata) => file,
+    _ => return Err(OpError::bad_resource()),
+  };
+  #[allow(unused)]
+  let file = futures::executor::block_on(tokio_file.try_clone())?;
+
+  let fut = async move {
+    #[cfg(unix)]
+    {
+      deno_fs::check_open_for_writing(&file)?;
+      debug!("op_fchmod {} {:o}", rid, perm);
+      let metadata = file.metadata().await?;
+      let mut permissions = metadata.permissions();
+      permissions.set_mode(perm);
+      file.set_permissions(permissions).await?;
+    }
+    Ok(json!({}))
+  };
+
+  if args.promise_id.is_none() {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FUtimeArgs {
+  promise_id: Option<u64>,
+  rid: i32,
+  atime: i64,
+  mtime: i64,
+}
+
+fn op_futime(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  if cfg!(not(unix)) {
+    return Err(OpError::other("Not implemented".to_string()));
+  }
+  let args: FUtimeArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  #[allow(unused)]
+  let atime = args.atime;
+  #[allow(unused)]
+  let mtime = args.mtime;
+  let state = state.borrow();
+  let resource = state
+    .resource_table
+    .get::<StreamResource>(rid)
+    .ok_or_else(OpError::bad_resource)?;
+
+  let tokio_file = match resource {
+    StreamResource::FsFile(ref file, _) => file,
+    _ => return Err(OpError::bad_resource()),
+  };
+  #[allow(unused)]
+  let file = futures::executor::block_on(tokio_file.try_clone())?;
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
+    #[cfg(unix)]
+    {
+      let fd = deno_fs::check_open_for_writing(&file)?;
+      // require times to be 63 bit unsigned
+      let atime: u64 = args.atime.try_into()?;
+      let mtime: u64 = args.mtime.try_into()?;
+      debug!("op_futime {} {} {}", rid, atime, mtime);
+      deno_fs::fset_file_times(fd, atime, mtime)?;
+    }
+    Ok(json!({}))
+  })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FStatArgs {
+  promise_id: Option<u64>,
+  rid: i32,
+}
+
+fn op_fstat(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  if cfg!(not(unix)) {
+    return Err(OpError::other("Not implemented".to_string()));
+  }
+  let args: FStatArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let state = state.borrow();
+  let resource = state
+    .resource_table
+    .get::<StreamResource>(rid)
+    .ok_or_else(OpError::bad_resource)?;
+
+  let tokio_file = match resource {
+    // TODO(jp): save metadata instead of re-querying later?
+    StreamResource::FsFile(ref file, _metadata) => file,
+    _ => return Err(OpError::bad_resource()),
+  };
+  #[allow(unused)]
+  let file = futures::executor::block_on(tokio_file.try_clone())?;
+
+  let fut = async move {
+    #[cfg(unix)]
+    {
+      debug!("op_fstat {}", rid);
+      #[allow(unused)]
+      let fd = deno_fs::check_open_for_reading(&file)?;
+      /*
+      let filestat: nix::sys::stat::FileStat = deno_fs::fstat(fd)?;
+      let sflag = deno_fs::SFlag::from_bits_truncate(filestat.st_mode);
+      // see https://unix.stackexchange.com/questions/91197
+      // not available on Linux, and their
+      // libc::statx(dirfd, &path, flags, mask, &statxbuf_with_stx_btime)
+      // doesn't apply to fd
+      #[cfg(target_os = "linux")]
+      let birthtime: i64 = 0;
+      #[cfg(not(target_os = "linux"))]
+      let birthtime: i64 = filestat.st_birthtime;
+      let json_val = json!({
+        "size": filestat.st_size,
+        "isFile": sflag.contains(deno_fs::SFlag::S_IFREG),
+        "isDir": sflag.contains(deno_fs::SFlag::S_IFLNK),
+        "isSymlink": sflag.contains(deno_fs::SFlag::S_IFDIR),
+        // all times are i64
+        "accessed": filestat.st_atime,
+        "modified": filestat.st_mtime, // changed when fdatasync
+        "created": birthtime,
+        "ctime": filestat.st_ctime, // changed when fdatasync or chown/chmod/rename/moved
+        "dev": filestat.st_dev, // u64
+        "ino": filestat.st_ino, // u64
+        "mode": filestat.st_mode, // usually u32, may be u16 on Mac
+        "nlink": filestat.st_nlink, // u64
+        "uid": filestat.st_uid, // u32
+        "gid": filestat.st_gid, // u32
+        "rdev": filestat.st_rdev, // u64
+        "blksize": filestat.st_blksize, // i64
+        "blocks": filestat.st_blocks, // i64
+      });
+      Ok(json_val)
+       */
+      let metadata = file.metadata().await?;
+      get_stat_json(metadata, None)
+    }
+    #[cfg(not(unix))]
+    Ok(json!({}))
+  };
+
+  if args.promise_id.is_none() {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }

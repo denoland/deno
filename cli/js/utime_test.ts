@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert } from "./test_util.ts";
+import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 // Allow 10 second difference.
 // Note this might not be enough for FAT (but we are not testing on such fs).
@@ -177,3 +177,202 @@ testPerm({ read: true, write: false }, async function utimeSyncPerm(): Promise<
   }
   assert(caughtError);
 });
+
+const isNotWindows = Deno.build.os !== "win";
+
+if (isNotWindows) {
+  testPerm({ read: true, write: true }, function futimeSyncFileSuccess(): void {
+    const testDir = Deno.makeTempDirSync();
+    const filename = testDir + "/file.txt";
+    Deno.writeFileSync(filename, new TextEncoder().encode("hello"), {
+      perm: 0o666
+    });
+
+    const atime = 1000;
+    const mtime = 50000;
+    const f = Deno.openSync(filename, "r+");
+    f.utimeSync(atime, mtime);
+    f.close();
+
+    const fileInfo = Deno.statSync(filename);
+    assertFuzzyTimestampEquals(fileInfo.accessed, atime);
+    assertFuzzyTimestampEquals(fileInfo.modified, mtime);
+  });
+
+  testPerm({ read: true, write: true }, function futimeSyncDateSuccess(): void {
+    const testDir = Deno.makeTempDirSync();
+    const filename = testDir + "/file.txt";
+    Deno.writeFileSync(filename, new TextEncoder().encode("hello"), {
+      perm: 0o666
+    });
+
+    const atime = 1000;
+    const mtime = 50000;
+    const f = Deno.openSync(filename, "r+");
+    f.utimeSync(new Date(atime * 1000), new Date(mtime * 1000));
+    f.close();
+
+    const fileInfo = Deno.statSync(filename);
+    assertFuzzyTimestampEquals(fileInfo.accessed, atime);
+    assertFuzzyTimestampEquals(fileInfo.modified, mtime);
+  });
+
+  testPerm(
+    { read: true, write: true },
+    function futimeSyncLargeNumberSuccess(): void {
+      const testDir = Deno.makeTempDirSync();
+      const filename = testDir + "/file.txt";
+      Deno.writeFileSync(filename, new TextEncoder().encode("hello"), {
+        perm: 0o666
+      });
+
+      // There are Rust side caps (might be fs relate),
+      // so JUST make them slightly larger than UINT32_MAX.
+      const atime = 0x100000001;
+      const mtime = 0x100000002;
+      const f = Deno.openSync(filename, "r+");
+      f.utimeSync(atime, mtime);
+      f.close();
+
+      const fileInfo = Deno.statSync(filename);
+      assertFuzzyTimestampEquals(fileInfo.accessed, atime);
+      assertFuzzyTimestampEquals(fileInfo.modified, mtime);
+    }
+  );
+
+  testPerm(
+    { read: true, write: true },
+    async function futimeFileSuccess(): Promise<void> {
+      const testDir = Deno.makeTempDirSync();
+      const filename = testDir + "/file.txt";
+      Deno.writeFileSync(filename, new TextEncoder().encode("hello"), {
+        perm: 0o666
+      });
+
+      const atime = 1000;
+      const mtime = 50000;
+      const f = await Deno.open(filename, "r+");
+      await f.utime(atime, mtime);
+      f.close();
+
+      const fileInfo = Deno.statSync(filename);
+      assertFuzzyTimestampEquals(fileInfo.accessed, atime);
+      assertFuzzyTimestampEquals(fileInfo.modified, mtime);
+    }
+  );
+
+  testPerm(
+    { read: true, write: true },
+    async function futimeDateSuccess(): Promise<void> {
+      const testDir = Deno.makeTempDirSync();
+      const filename = testDir + "/file.txt";
+      Deno.writeFileSync(filename, new TextEncoder().encode("hello"), {
+        perm: 0o666
+      });
+
+      const atime = 1000;
+      const mtime = 50000;
+      const f = await Deno.open(filename, "r+");
+      await f.utime(new Date(atime * 1000), new Date(mtime * 1000));
+      f.close();
+
+      const fileInfo = Deno.statSync(filename);
+      assertFuzzyTimestampEquals(fileInfo.accessed, atime);
+      assertFuzzyTimestampEquals(fileInfo.modified, mtime);
+    }
+  );
+
+  testPerm({ read: true, write: false }, function futimeSyncPerm(): void {
+    let err;
+    let caughtError = false;
+    const atime = 1000;
+    const mtime = 50000;
+    const f = Deno.openSync("README.md", "r");
+    try {
+      f.utimeSync(atime, mtime);
+    } catch (e) {
+      caughtError = true;
+      err = e;
+    }
+    f.close();
+    // throw if we lack --write permissions
+    assert(caughtError);
+    if (caughtError) {
+      assert(err instanceof Deno.errors.PermissionDenied);
+      assertEquals(err.name, "PermissionDenied");
+    }
+  });
+
+  testPerm({ read: true, write: false }, async function futimePerm(): Promise<
+    void
+  > {
+    let err;
+    let caughtError = false;
+    const atime = 1000;
+    const mtime = 50000;
+    const f = await Deno.open("README.md", "r");
+    try {
+      await f.utime(atime, mtime);
+    } catch (e) {
+      caughtError = true;
+      err = e;
+    }
+    f.close();
+    // throw if we lack --write permissions
+    assert(caughtError);
+    if (caughtError) {
+      assert(err instanceof Deno.errors.PermissionDenied);
+      assertEquals(err.name, "PermissionDenied");
+    }
+  });
+
+  testPerm({ read: true, write: true }, function futimeSyncPerm2(): void {
+    let err;
+    let caughtError = false;
+    const atime = 1000;
+    const mtime = 50000;
+    const filename = Deno.makeTempDirSync() + "/test_utimeSync.txt";
+    const f0 = Deno.openSync(filename, "w");
+    f0.close();
+    const f = Deno.openSync(filename, "r");
+    try {
+      f.utimeSync(atime, mtime);
+    } catch (e) {
+      caughtError = true;
+      err = e;
+    }
+    f.close();
+    // throw if fd is not opened for writing
+    assert(caughtError);
+    if (caughtError) {
+      assert(err instanceof Deno.errors.PermissionDenied);
+      assertEquals(err.name, "PermissionDenied");
+    }
+  });
+
+  testPerm({ read: true, write: true }, async function futimePerm2(): Promise<
+    void
+  > {
+    let err;
+    let caughtError = false;
+    const atime = 1000;
+    const mtime = 50000;
+    const filename = (await Deno.makeTempDir()) + "/test_utime.txt";
+    const f0 = await Deno.open(filename, "w");
+    f0.close();
+    const f = await Deno.open(filename, "r");
+    try {
+      await f.utime(atime, mtime);
+    } catch (e) {
+      caughtError = true;
+      err = e;
+    }
+    f.close();
+    // throw if fd is not opened for writing
+    assert(caughtError);
+    if (caughtError) {
+      assert(err instanceof Deno.errors.PermissionDenied);
+      assertEquals(err.name, "PermissionDenied");
+    }
+  });
+}
