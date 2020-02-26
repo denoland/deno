@@ -4,6 +4,7 @@
 
 import os
 import sys
+import argparse
 from util import enable_ansi_colors, git_ls_files, root_path, run
 from util import third_party_path
 from third_party import python_env
@@ -12,9 +13,28 @@ from third_party import python_env
 def main():
     enable_ansi_colors()
     os.chdir(root_path)
-    eslint()
-    pylint()
-    clippy()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--js", help="run eslint", action="store_true")
+    parser.add_argument("--py", help="run pylint", action="store_true")
+    parser.add_argument("--rs", help="run clippy", action="store_true")
+    args = parser.parse_args()
+
+    did_fmt = False
+    if args.js:
+        eslint()
+        did_fmt = True
+    if args.py:
+        pylint()
+        did_fmt = True
+    if args.rs:
+        clippy()
+        did_fmt = True
+
+    if not did_fmt:
+        eslint()
+        pylint()
+        clippy()
 
 
 def eslint():
