@@ -302,7 +302,7 @@ testPerm({ read: true }, async function parsingUnitTestOutput(): Promise<void> {
 testPerm(
   { read: true },
   async function assertAllUnitTestFilesImported(): Promise<void> {
-    const directoryTestFiles = Deno.readDirSync("./cli/js")
+    const directoryTestFiles = Deno.readdirSync("./cli/js")
       .map(k => k.name)
       .filter(file => file!.endsWith("_test.ts"));
     const unitTestsFile: Uint8Array = Deno.readFileSync(
