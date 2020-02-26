@@ -7,7 +7,6 @@ use deno_core::*;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::ready;
-use std::future::Future;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
