@@ -5,7 +5,7 @@ import { exists, existsSync } from "./exists.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-Deno.test(async function existsFile(): Promise<void> {
+Deno.test("[fs] existsFile", async function(): Promise<void> {
   assertEquals(
     await exists(path.join(testdataDir, "not_exist_file.ts")),
     false
@@ -13,12 +13,12 @@ Deno.test(async function existsFile(): Promise<void> {
   assertEquals(await existsSync(path.join(testdataDir, "0.ts")), true);
 });
 
-Deno.test(function existsFileSync(): void {
+Deno.test("[fs] existsFileSync", function(): void {
   assertEquals(existsSync(path.join(testdataDir, "not_exist_file.ts")), false);
   assertEquals(existsSync(path.join(testdataDir, "0.ts")), true);
 });
 
-Deno.test(async function existsDirectory(): Promise<void> {
+Deno.test("[fs] existsDirectory", async function(): Promise<void> {
   assertEquals(
     await exists(path.join(testdataDir, "not_exist_directory")),
     false
@@ -26,7 +26,7 @@ Deno.test(async function existsDirectory(): Promise<void> {
   assertEquals(existsSync(testdataDir), true);
 });
 
-Deno.test(function existsDirectorySync(): void {
+Deno.test("[fs] existsDirectorySync", function(): void {
   assertEquals(
     existsSync(path.join(testdataDir, "not_exist_directory")),
     false
@@ -34,88 +34,84 @@ Deno.test(function existsDirectorySync(): void {
   assertEquals(existsSync(testdataDir), true);
 });
 
-Deno.test(function existsLinkSync(): void {
+Deno.test("[fs] existsLinkSync", function(): void {
   // TODO(axetroy): generate link file use Deno api instead of set a link file
   // in repository
   assertEquals(existsSync(path.join(testdataDir, "0-link.ts")), true);
 });
 
-Deno.test(async function existsLink(): Promise<void> {
+Deno.test("[fs] existsLink", async function(): Promise<void> {
   // TODO(axetroy): generate link file use Deno api instead of set a link file
   // in repository
   assertEquals(await exists(path.join(testdataDir, "0-link.ts")), true);
 });
 
-Deno.test(async function existsPermission(): Promise<void> {
-  interface Scenes {
-    read: boolean; // --allow-read
-    async: boolean;
-    output: string;
-    file: string; // target file to run
+interface Scenes {
+  read: boolean; // --allow-read
+  async: boolean;
+  output: string;
+  file: string; // target file to run
+}
+
+const scenes: Scenes[] = [
+  // 1
+  {
+    read: false,
+    async: true,
+    output: "run again with the --allow-read flag",
+    file: "0.ts"
+  },
+  {
+    read: false,
+    async: false,
+    output: "run again with the --allow-read flag",
+    file: "0.ts"
+  },
+  // 2
+  {
+    read: true,
+    async: true,
+    output: "exist",
+    file: "0.ts"
+  },
+  {
+    read: true,
+    async: false,
+    output: "exist",
+    file: "0.ts"
+  },
+  // 3
+  {
+    read: false,
+    async: true,
+    output: "run again with the --allow-read flag",
+    file: "no_exist_file_for_test.ts"
+  },
+  {
+    read: false,
+    async: false,
+    output: "run again with the --allow-read flag",
+    file: "no_exist_file_for_test.ts"
+  },
+  // 4
+  {
+    read: true,
+    async: true,
+    output: "not exist",
+    file: "no_exist_file_for_test.ts"
+  },
+  {
+    read: true,
+    async: false,
+    output: "not exist",
+    file: "no_exist_file_for_test.ts"
   }
+];
 
-  const scenes: Scenes[] = [
-    // 1
-    {
-      read: false,
-      async: true,
-      output: "run again with the --allow-read flag",
-      file: "0.ts"
-    },
-    {
-      read: false,
-      async: false,
-      output: "run again with the --allow-read flag",
-      file: "0.ts"
-    },
-    // 2
-    {
-      read: true,
-      async: true,
-      output: "exist",
-      file: "0.ts"
-    },
-    {
-      read: true,
-      async: false,
-      output: "exist",
-      file: "0.ts"
-    },
-    // 3
-    {
-      read: false,
-      async: true,
-      output: "run again with the --allow-read flag",
-      file: "no_exist_file_for_test.ts"
-    },
-    {
-      read: false,
-      async: false,
-      output: "run again with the --allow-read flag",
-      file: "no_exist_file_for_test.ts"
-    },
-    // 4
-    {
-      read: true,
-      async: true,
-      output: "not exist",
-      file: "no_exist_file_for_test.ts"
-    },
-    {
-      read: true,
-      async: false,
-      output: "not exist",
-      file: "no_exist_file_for_test.ts"
-    }
-  ];
-
-  for (const s of scenes) {
-    console.log(
-      `test ${s.async ? "exists" : "existsSync"}("testdata/${s.file}") ${
-        s.read ? "with" : "without"
-      } --allow-read`
-    );
-
+for (const s of scenes) {
+  let title = `test ${s.async ? "exists" : "existsSync"}("testdata/${s.file}")`;
+  title += ` ${s.read ? "with" : "without"} --allow-read`;
+  Deno.test(`[fs] existsPermission ${title}`, async function(): Promise<void> {
     const args = [Deno.execPath(), "run"];
 
     if (s.read) {
@@ -134,7 +130,6 @@ Deno.test(async function existsPermission(): Promise<void> {
     const output = await Deno.readAll(stdout!);
 
     assertStrContains(new TextDecoder().decode(output), s.output);
-  }
-
+  });
   // done
-});
+}
