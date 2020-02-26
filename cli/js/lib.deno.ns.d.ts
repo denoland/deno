@@ -604,6 +604,10 @@ declare namespace Deno {
      * access to be used. When createNew is set to `true`, create and truncate
      * are ignored. */
     createNew?: boolean;
+    /** Sets the option to allow overwriting existing file (defaults to `true` when
+     * writing). Note that setting `{ ..., clobber: false, create: true }` has the
+     * same effect as `{ ..., createNew: true }`. */
+    clobber?: boolean;
     /** Permissions to use if creating the file (defaults to `0o666`, before
      * the process's umask).
      * It's an error to specify perm without also setting create or createNew to `true`.
