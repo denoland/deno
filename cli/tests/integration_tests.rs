@@ -1,7 +1,60 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #[macro_use]
 extern crate lazy_static;
+#[cfg(unix)]
+extern crate nix;
+#[cfg(unix)]
+extern crate pty;
 extern crate tempfile;
+
+#[cfg(unix)]
+#[test]
+pub fn test_raw_tty() {
+  use pty::fork::*;
+  use std::io::{Read, Write};
+
+  let fork = Fork::from_ptmx().unwrap();
+
+  if let Ok(mut master) = fork.is_parent() {
+    let mut obytes: [u8; 100] = [0; 100];
+    let mut nread = master.read(&mut obytes).unwrap();
+    assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "S");
+    master.write_all(b"a").unwrap();
+    nread = master.read(&mut obytes).unwrap();
+    assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "A");
+    master.write_all(b"b").unwrap();
+    nread = master.read(&mut obytes).unwrap();
+    assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "B");
+    master.write_all(b"c").unwrap();
+    nread = master.read(&mut obytes).unwrap();
+    assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "C");
+  } else {
+    use deno::test_util::*;
+    use nix::sys::termios;
+    use std::os::unix::io::AsRawFd;
+    use std::process::*;
+    use tempfile::TempDir;
+
+    // Turn off echo such that parent is reading works properly.
+    let stdin_fd = std::io::stdin().as_raw_fd();
+    let mut t = termios::tcgetattr(stdin_fd).unwrap();
+    t.local_flags.remove(termios::LocalFlags::ECHO);
+    termios::tcsetattr(stdin_fd, termios::SetArg::TCSANOW, &t).unwrap();
+
+    let deno_dir = TempDir::new().expect("tempdir fail");
+    let mut child = Command::new(deno_exe_path())
+      .env("DENO_DIR", deno_dir.path())
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg("cli/tests/raw_mode.ts")
+      .stdin(Stdio::inherit())
+      .stdout(Stdio::inherit())
+      .stderr(Stdio::null())
+      .spawn()
+      .expect("Failed to spawn script");
+    child.wait().unwrap();
+  }
+}
 
 #[test]
 fn test_pattern_match() {

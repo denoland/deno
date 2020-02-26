@@ -454,6 +454,7 @@ dependencies = [
  "nix",
  "notify",
  "os_pipe",
+ "pty",
  "rand 0.7.3",
  "regex",
  "remove_dir_all",
@@ -617,6 +618,17 @@ dependencies = [
  "proc-macro2 1.0.8",
  "swc_macros_common",
  "syn 1.0.14",
+]
+
+[[package]]
+name = "errno"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e2b2decb0484e15560df3210cf0d78654bb0864b2c138977c07e377a1bae0e2"
+dependencies = [
+ "kernel32-sys",
+ "libc",
+ "winapi 0.2.8",
 ]
 
 [[package]]
@@ -1506,6 +1518,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3acb317c6ff86a4e579dfa00fc5e6cca91ecbb4e7eb2df0468805b674eb88548"
 dependencies = [
  "unicode-xid 0.2.0",
+]
+
+[[package]]
+name = "pty"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f50f3d255966981eb4e4c5df3e983e6f7d163221f547406d83b6a460ff5c5ee8"
+dependencies = [
+ "errno",
+ "libc",
 ]
 
 [[package]]
