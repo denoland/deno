@@ -35,8 +35,8 @@ fn get_windows_handle(
 }
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("set_raw", s.core_op(json_op(s.stateful_op(op_set_raw))));
-  i.register_op("isatty", s.core_op(json_op(s.stateful_op(op_isatty))));
+  i.register_op("op_set_raw", s.core_op(json_op(s.stateful_op(op_set_raw))));
+  i.register_op("op_isatty", s.core_op(json_op(s.stateful_op(op_isatty))));
 }
 
 #[cfg(windows)]
