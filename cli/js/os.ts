@@ -3,13 +3,6 @@ import { sendSync } from "./dispatch_json.ts";
 import { errors } from "./errors.ts";
 import * as util from "./util.ts";
 
-/** Check if running in terminal.
- *
- *       console.log(Deno.isTTY().stdout);
- */
-export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
-  return sendSync("op_is_tty");
-}
 /** Get the loadavg.
  * Requires the `--allow-env` flag.
  *
