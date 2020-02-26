@@ -10,7 +10,7 @@ use std;
 use std::convert::From;
 use std::io::SeekFrom;
 use std::path::Path;
-use tokio;
+use tokio::fs as tokio_fs;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
@@ -47,7 +47,7 @@ fn op_open(
   let args: OpenArgs = serde_json::from_value(args)?;
   let filename = deno_fs::resolve_from_cwd(Path::new(&args.filename))?;
   let state_ = state.clone();
-  let mut open_options = tokio::fs::OpenOptions::new();
+  let mut open_options = tokio_fs::OpenOptions::new();
 
   if let Some(options) = args.options {
     if options.read {
