@@ -8,6 +8,7 @@ use deno_core::*;
 use futures::future::FutureExt;
 use std;
 use std::convert::From;
+use std::convert::TryInto;
 use std::fs;
 use std::io::SeekFrom;
 use std::path::Path;
@@ -193,7 +194,7 @@ fn op_close(
 struct SeekArgs {
   promise_id: Option<u64>,
   rid: i32,
-  offset: i32,
+  offset: i64,
   whence: i32,
 }
 
@@ -205,12 +206,16 @@ fn op_seek(
   let args: SeekArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let offset = args.offset;
-  let whence = args.whence as u32;
+  let whence = args.whence;
   // Translate seek mode to Rust repr.
   let seek_from = match whence {
-    0 => SeekFrom::Start(offset as u64),
-    1 => SeekFrom::Current(i64::from(offset)),
-    2 => SeekFrom::End(i64::from(offset)),
+    0 => {
+      // require offset to be 63 bit unsigned
+      let offset: u64 = offset.try_into()?;
+      SeekFrom::Start(offset)
+    }
+    1 => SeekFrom::Current(offset),
+    2 => SeekFrom::End(offset),
     _ => {
       return Err(OpError::type_error(format!(
         "Invalid seek mode: {}",
