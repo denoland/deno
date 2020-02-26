@@ -574,6 +574,8 @@ declare namespace Deno {
     seek(offset: number, whence: SeekMode): Promise<number>;
     seekSync(offset: number, whence: SeekMode): number;
     close(): void;
+    sync(): void;
+    datasync(): void;
   }
 
   /** An instance of `Deno.File` for `stdin`. */

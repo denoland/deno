@@ -21,6 +21,8 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
   i.register_op("op_close", s.stateful_json_op(op_close));
   i.register_op("op_seek", s.stateful_json_op(op_seek));
+  i.register_op("op_sync", s.stateful_json_op(op_sync));
+  i.register_op("op_datasync", s.stateful_json_op(op_datasync));
 }
 
 #[derive(Deserialize)]
@@ -248,4 +250,54 @@ fn op_seek(
   } else {
     Ok(JsonOp::Async(fut.boxed_local()))
   }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncArgs {
+  rid: i32,
+}
+
+fn op_sync(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  let args: SyncArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let state = state.borrow();
+  let resource = state
+    .resource_table
+    .get::<StreamResource>(rid)
+    .ok_or_else(OpError::bad_resource)?;
+  let tokio_file = match resource {
+    StreamResource::FsFile(ref file, _) => file,
+    _ => return Err(OpError::bad_resource()),
+  };
+  let mut file = futures::executor::block_on(tokio_file.try_clone())?;
+  debug!("sync {}", rid);
+  futures::executor::block_on(file.sync_all())?;
+  Ok(JsonOp::Sync(json!({})))
+}
+
+fn op_datasync(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  let args: SyncArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let state = state.borrow();
+  let resource = state
+    .resource_table
+    .get::<StreamResource>(rid)
+    .ok_or_else(OpError::bad_resource)?;
+  let tokio_file = match resource {
+    StreamResource::FsFile(ref file, _) => file,
+    _ => return Err(OpError::bad_resource()),
+  };
+  let mut file = futures::executor::block_on(tokio_file.try_clone())?;
+  debug!("datasync {}", rid);
+  futures::executor::block_on(file.sync_data())?;
+  Ok(JsonOp::Sync(json!({})))
 }

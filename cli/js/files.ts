@@ -294,6 +294,14 @@ export class File
   close(): void {
     close(this.rid);
   }
+
+  sync(): void {
+    sendSyncJson("op_sync", { rid: this.rid });
+  }
+
+  datasync(): void {
+    sendSyncJson("op_datasync", { rid: this.rid });
+  }
 }
 
 /** An instance of `Deno.File` for `stdin`. */
