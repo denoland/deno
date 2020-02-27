@@ -100,16 +100,6 @@ SharedQueue Binary Layout
     shared32[INDEX_OFFSETS + 2 * index + 1] = opId;
   }
 
-  function getMeta(index) {
-    if (index < numRecords()) {
-      const buf = shared32[INDEX_OFFSETS + 2 * index];
-      const opId = shared32[INDEX_OFFSETS + 2 * index + 1];
-      return [opId, buf];
-    } else {
-      return null;
-    }
-  }
-
   function getOffset(index) {
     if (index < numRecords()) {
       if (index == 0) {
@@ -138,18 +128,26 @@ SharedQueue Binary Layout
     return true;
   }
 
-  /// Returns null if empty.
-  function shift() {
+  function setAsyncHandler(opId, cb) {
+    maybeInit();
+    assert(opId != null);
+    asyncHandlers[opId] = cb;
+  }
+
+  function popQueue() {
     const i = shared32[INDEX_NUM_SHIFTED_OFF];
-    if (size() == 0) {
+    const size_ = size();
+    if (size_ == 0) {
       assert(i == 0);
-      return null;
+      return false;
     }
 
     const off = getOffset(i);
-    const [opId, end] = getMeta(i);
+    assert(i != numRecords());
+    const end = shared32[INDEX_OFFSETS + 2 * i];
+    const opId = shared32[INDEX_OFFSETS + 2 * i + 1];
 
-    if (size() > 1) {
+    if (size_ > 1) {
       shared32[INDEX_NUM_SHIFTED_OFF] += 1;
     } else {
       reset();
@@ -158,29 +156,20 @@ SharedQueue Binary Layout
     assert(off != null);
     assert(end != null);
     const buf = sharedBytes.subarray(off, end);
-    return [opId, buf];
-  }
-
-  function setAsyncHandler(opId, cb) {
-    maybeInit();
-    assert(opId != null);
-    asyncHandlers[opId] = cb;
+    assert(asyncHandlers[opId] != null);
+    asyncHandlers[opId](buf);
+    return true;
   }
 
   function handleAsyncMsgFromRust(opId, buf) {
-    if (buf) {
+    if (opId) {
       // This is the overflow_response case of deno::Isolate::poll().
       asyncHandlers[opId](buf);
-    } else {
-      while (true) {
-        const opIdBuf = shift();
-        if (opIdBuf == null) {
-          break;
-        }
-        assert(asyncHandlers[opIdBuf[0]] != null);
-        asyncHandlers[opIdBuf[0]](opIdBuf[1]);
-      }
+      return;
     }
+
+    // Standard return path - drain all messages from queue
+    while (popQueue()) {}
   }
 
   function dispatch(opId, control, zeroCopy = null) {
@@ -196,8 +185,7 @@ SharedQueue Binary Layout
       numRecords,
       size,
       push,
-      reset,
-      shift
+      reset
     },
     ops
   };
