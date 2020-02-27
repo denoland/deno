@@ -916,7 +916,7 @@ itest!(_056_make_temp_file_write_perm {
 });
 
 itest!(_057_revoke_permissions {
-  args: "run -A 057_revoke_permissions.ts",
+  args: "test -A 057_revoke_permissions.ts",
   output: "057_revoke_permissions.out",
 });
 

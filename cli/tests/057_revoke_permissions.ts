@@ -34,5 +34,3 @@ function genFunc(grant: Deno.PermissionName): () => Promise<void> {
 for (const grant of knownPermissions) {
   Deno.test(genFunc(grant));
 }
-
-await Deno.runTests();
