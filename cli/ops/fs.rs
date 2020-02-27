@@ -56,7 +56,7 @@ struct MkdirArgs {
   promise_id: Option<u64>,
   path: String,
   recursive: bool,
-  mode: u32,
+  perm: u32,
 }
 
 fn op_mkdir(
@@ -74,10 +74,10 @@ fn op_mkdir(
     debug!(
       "op_mkdir {} {:o} {}",
       path.display(),
-      args.mode,
+      args.perm,
       args.recursive
     );
-    deno_fs::mkdir(&path, args.mode, args.recursive)?;
+    deno_fs::mkdir(&path, args.perm, args.recursive)?;
     Ok(json!({}))
   })
 }
@@ -87,8 +87,7 @@ fn op_mkdir(
 struct ChmodArgs {
   promise_id: Option<u64>,
   path: String,
-  #[allow(unused)]
-  mode: u32,
+  perm: u32,
 }
 
 fn op_chmod(
@@ -98,6 +97,8 @@ fn op_chmod(
 ) -> Result<JsonOp, OpError> {
   let args: ChmodArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+  #[allow(unused)]
+  let perm = args.perm;
 
   state.check_write(&path)?;
 
@@ -107,9 +108,9 @@ fn op_chmod(
     let _metadata = fs::metadata(&path)?;
     #[cfg(unix)]
     {
-      debug!("op_chmod {} {:o}", path.display(), args.mode);
+      debug!("op_chmod {} {:o}", path.display(), perm);
       let mut permissions = _metadata.permissions();
-      permissions.set_mode(args.mode);
+      permissions.set_mode(perm);
       fs::set_permissions(&path, permissions)?;
     }
     Ok(json!({}))

@@ -131,7 +131,7 @@ async function serveDir(
     // Yuck!
     let mode = null;
     try {
-      mode = (await stat(filePath)).mode;
+      mode = (await stat(filePath)).perm;
     } catch (e) {}
     listEntry.push({
       mode: modeToString(fileInfo.isDirectory(), mode),

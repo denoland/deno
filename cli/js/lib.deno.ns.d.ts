@@ -719,7 +719,7 @@ declare namespace Deno {
     /** Permissions to use when creating the directory (defaults to `0o777`,
      * before the process's umask).
      * Does nothing/raises on Windows. */
-    mode?: number;
+    perm?: number;
   }
 
   /** Synchronously creates a new directory with the specified path.
@@ -734,7 +734,7 @@ declare namespace Deno {
   export function mkdirSync(
     path: string,
     recursive?: boolean,
-    mode?: number
+    perm?: number
   ): void;
 
   /** Creates a new directory with the specified path.
@@ -749,7 +749,7 @@ declare namespace Deno {
   export function mkdir(
     path: string,
     recursive?: boolean,
-    mode?: number
+    perm?: number
   ): Promise<void>;
 
   // @url js/make_temp.d.ts
@@ -840,7 +840,7 @@ declare namespace Deno {
    *       Deno.chmodSync("/path/to/file", 0o666);
    *
    * Requires `allow-write` permission. */
-  export function chmodSync(path: string, mode: number): void;
+  export function chmodSync(path: string, perm: number): void;
 
   /** Changes the permission of a specific file/directory of specified path.
    * Ignores the process's umask.
@@ -848,7 +848,7 @@ declare namespace Deno {
    *       await Deno.chmod("/path/to/file", 0o666);
    *
    * Requires `allow-write` permission. */
-  export function chmod(path: string, mode: number): Promise<void>;
+  export function chmod(path: string, perm: number): Promise<void>;
 
   // @url js/chown.d.ts
 
@@ -1007,11 +1007,11 @@ declare namespace Deno {
      *
      * _Linux/Mac OS only._ */
     ino: number | null;
-    /** **UNSTABLE**: Match behavior with Go on Windows for `mode`.
+    /** **UNSTABLE**: Match behavior with Go on windows for `perm`.
      *
-     * The underlying raw `st_mod`e bits that contain the standard Linux/Mac OS
+     * The underlying raw `st_mode` bits that contain the standard Unix
      * permissions for this file/directory. */
-    mode: number | null;
+    perm: number | null;
     /** Number of hard links pointing to this file.
      *
      * _Linux/Mac OS only._ */
