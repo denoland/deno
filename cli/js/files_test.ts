@@ -1,16 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import {
-  test,
-  testPerm,
-  assert,
-  assertEquals,
-  assertStrContains
-} from "./test_util.ts";
+import { test, testPerm, assert } from "./test_util.ts";
 
 test(function filesStdioFileDescriptors(): void {
-  assertEquals(Deno.stdin.rid, 0);
-  assertEquals(Deno.stdout.rid, 1);
-  assertEquals(Deno.stderr.rid, 2);
+  assert.equals(Deno.stdin.rid, 0);
+  assert.equals(Deno.stdout.rid, 1);
+  assert.equals(Deno.stderr.rid, 2);
 });
 
 testPerm({ read: true }, async function filesCopyToStdout(): Promise<void> {
@@ -19,7 +13,7 @@ testPerm({ read: true }, async function filesCopyToStdout(): Promise<void> {
   assert(file.rid > 2);
   const bytesWritten = await Deno.copy(Deno.stdout, file);
   const fileSize = Deno.statSync(filename).len;
-  assertEquals(bytesWritten, fileSize);
+  assert.equals(bytesWritten, fileSize);
   console.log("bytes written", bytesWritten);
 });
 
@@ -32,7 +26,7 @@ testPerm({ read: true }, async function filesToAsyncIterator(): Promise<void> {
     totalSize += buf.byteLength;
   }
 
-  assertEquals(totalSize, 12);
+  assert.equals(totalSize, 12);
 });
 
 test(async function readerToAsyncIterator(): Promise<void> {
@@ -65,7 +59,7 @@ test(async function readerToAsyncIterator(): Promise<void> {
     totalSize += buf.byteLength;
   }
 
-  assertEquals(totalSize, 12);
+  assert.equals(totalSize, 12);
 });
 
 testPerm({ write: false }, async function writePermFailure(): Promise<void> {
@@ -80,7 +74,7 @@ testPerm({ write: false }, async function writePermFailure(): Promise<void> {
     }
     assert(!!err);
     assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
+    assert.equals(err.name, "PermissionDenied");
   }
 });
 
@@ -93,7 +87,7 @@ test(async function openOptions(): Promise<void> {
     err = e;
   }
   assert(!!err);
-  assertStrContains(
+  assert.strContains(
     err.message,
     "OpenOptions requires at least one option to be true"
   );
@@ -104,7 +98,7 @@ test(async function openOptions(): Promise<void> {
     err = e;
   }
   assert(!!err);
-  assertStrContains(err.message, "'truncate' option requires 'write' option");
+  assert.strContains(err.message, "'truncate' option requires 'write' option");
 
   try {
     await Deno.open(filename, { create: true, write: false });
@@ -112,7 +106,7 @@ test(async function openOptions(): Promise<void> {
     err = e;
   }
   assert(!!err);
-  assertStrContains(
+  assert.strContains(
     err.message,
     "'create' or 'createNew' options require 'write' or 'append' option"
   );
@@ -123,7 +117,7 @@ test(async function openOptions(): Promise<void> {
     err = e;
   }
   assert(!!err);
-  assertStrContains(
+  assert.strContains(
     err.message,
     "'create' or 'createNew' options require 'write' or 'append' option"
   );
@@ -209,7 +203,7 @@ testPerm(
       }
       assert(!!err);
       assert(err instanceof Deno.errors.PermissionDenied);
-      assertEquals(err.name, "PermissionDenied");
+      assert.equals(err.name, "PermissionDenied");
     }
   }
 );
@@ -245,11 +239,11 @@ testPerm({ read: true, write: true }, async function openModeWrite(): Promise<
   // assert file was created
   let fileInfo = Deno.statSync(filename);
   assert(fileInfo.isFile());
-  assertEquals(fileInfo.len, 0);
+  assert.equals(fileInfo.len, 0);
   // write some data
   await file.write(data);
   fileInfo = Deno.statSync(filename);
-  assertEquals(fileInfo.len, 13);
+  assert.equals(fileInfo.len, 13);
   // assert we can't read from file
   let thrown = false;
   try {
@@ -265,7 +259,7 @@ testPerm({ read: true, write: true }, async function openModeWrite(): Promise<
   file = await Deno.open(filename, "w");
   file.close();
   const fileSize = Deno.statSync(filename).len;
-  assertEquals(fileSize, 0);
+  assert.equals(fileSize, 0);
   await Deno.remove(tempDir, { recursive: true });
 });
 
@@ -281,16 +275,16 @@ testPerm(
     // assert file was created
     let fileInfo = Deno.statSync(filename);
     assert(fileInfo.isFile());
-    assertEquals(fileInfo.len, 0);
+    assert.equals(fileInfo.len, 0);
     // write some data
     await file.write(data);
     fileInfo = Deno.statSync(filename);
-    assertEquals(fileInfo.len, 13);
+    assert.equals(fileInfo.len, 13);
 
     const buf = new Uint8Array(20);
     await file.seek(0, Deno.SeekMode.SEEK_START);
     const result = await file.read(buf);
-    assertEquals(result, 13);
+    assert.equals(result, 13);
     file.close();
 
     await Deno.remove(tempDir, { recursive: true });
@@ -307,7 +301,7 @@ testPerm({ read: true }, async function seekStart(): Promise<void> {
   const buf = new Uint8Array(6);
   await file.read(buf);
   const decoded = new TextDecoder().decode(buf);
-  assertEquals(decoded, "world!");
+  assert.equals(decoded, "world!");
 });
 
 testPerm({ read: true }, function seekSyncStart(): void {
@@ -320,7 +314,7 @@ testPerm({ read: true }, function seekSyncStart(): void {
   const buf = new Uint8Array(6);
   file.readSync(buf);
   const decoded = new TextDecoder().decode(buf);
-  assertEquals(decoded, "world!");
+  assert.equals(decoded, "world!");
 });
 
 testPerm({ read: true }, async function seekCurrent(): Promise<void> {
@@ -333,7 +327,7 @@ testPerm({ read: true }, async function seekCurrent(): Promise<void> {
   const buf = new Uint8Array(6);
   await file.read(buf);
   const decoded = new TextDecoder().decode(buf);
-  assertEquals(decoded, "world!");
+  assert.equals(decoded, "world!");
 });
 
 testPerm({ read: true }, function seekSyncCurrent(): void {
@@ -346,7 +340,7 @@ testPerm({ read: true }, function seekSyncCurrent(): void {
   const buf = new Uint8Array(6);
   file.readSync(buf);
   const decoded = new TextDecoder().decode(buf);
-  assertEquals(decoded, "world!");
+  assert.equals(decoded, "world!");
 });
 
 testPerm({ read: true }, async function seekEnd(): Promise<void> {
@@ -356,7 +350,7 @@ testPerm({ read: true }, async function seekEnd(): Promise<void> {
   const buf = new Uint8Array(6);
   await file.read(buf);
   const decoded = new TextDecoder().decode(buf);
-  assertEquals(decoded, "world!");
+  assert.equals(decoded, "world!");
 });
 
 testPerm({ read: true }, function seekSyncEnd(): void {
@@ -366,7 +360,7 @@ testPerm({ read: true }, function seekSyncEnd(): void {
   const buf = new Uint8Array(6);
   file.readSync(buf);
   const decoded = new TextDecoder().decode(buf);
-  assertEquals(decoded, "world!");
+  assert.equals(decoded, "world!");
 });
 
 testPerm({ read: true }, async function seekMode(): Promise<void> {
@@ -380,11 +374,11 @@ testPerm({ read: true }, async function seekMode(): Promise<void> {
   }
   assert(!!err);
   assert(err instanceof TypeError);
-  assertStrContains(err.message, "Invalid seek mode");
+  assert.strContains(err.message, "Invalid seek mode");
 
   // We should still be able to read the file
   // since it is still open.
   const buf = new Uint8Array(1);
   await file.read(buf); // "H"
-  assertEquals(new TextDecoder().decode(buf), "H");
+  assert.equals(new TextDecoder().decode(buf), "H");
 });

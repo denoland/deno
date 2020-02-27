@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assertEquals, assert } from "./test_util.ts";
+import { testPerm, assert } from "./test_util.ts";
 
 // chown on Windows is noop for now, so ignore its testing on Windows
 if (Deno.build.os !== "win") {
@@ -14,8 +14,8 @@ if (Deno.build.os !== "win") {
       args: ["python", "-c", "import os; print(os.getgid())"]
     });
 
-    assertEquals((await uidProc.status()).code, 0);
-    assertEquals((await gidProc.status()).code, 0);
+    assert.equals((await uidProc.status()).code, 0);
+    assert.equals((await gidProc.status()).code, 0);
     const uid = parseInt(
       new TextDecoder("utf-8").decode(await uidProc.output())
     );

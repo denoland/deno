@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { testPerm, assert } from "./test_util.ts";
 
 testPerm({ write: true, read: true }, function readlinkSyncSuccess(): void {
   const testDir = Deno.makeTempDirSync();
@@ -11,7 +11,7 @@ testPerm({ write: true, read: true }, function readlinkSyncSuccess(): void {
   if (Deno.build.os !== "win") {
     Deno.symlinkSync(target, symlink);
     const targetPath = Deno.readlinkSync(symlink);
-    assertEquals(targetPath, target);
+    assert.equals(targetPath, target);
   }
 });
 
@@ -36,7 +36,7 @@ testPerm({ read: true }, function readlinkSyncNotFound(): void {
     assert(e instanceof Deno.errors.NotFound);
   }
   assert(caughtError);
-  assertEquals(data, undefined);
+  assert.equals(data, undefined);
 });
 
 testPerm({ write: true, read: true }, async function readlinkSuccess(): Promise<
@@ -51,7 +51,7 @@ testPerm({ write: true, read: true }, async function readlinkSuccess(): Promise<
   if (Deno.build.os !== "win") {
     Deno.symlinkSync(target, symlink);
     const targetPath = await Deno.readlink(symlink);
-    assertEquals(targetPath, target);
+    assert.equals(targetPath, target);
   }
 });
 

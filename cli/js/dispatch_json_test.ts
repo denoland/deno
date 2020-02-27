@@ -1,10 +1,4 @@
-import {
-  assert,
-  test,
-  testPerm,
-  assertMatch,
-  unreachable
-} from "./test_util.ts";
+import { assert, test, testPerm } from "./test_util.ts";
 
 const openErrorStackPattern = new RegExp(
   `^.*
@@ -16,9 +10,11 @@ const openErrorStackPattern = new RegExp(
 
 testPerm({ read: true }, async function sendAsyncStackTrace(): Promise<void> {
   await Deno.open("nonexistent.txt")
-    .then(unreachable)
-    .catch((error): void => {
-      assertMatch(error.stack, openErrorStackPattern);
+    .then(() => {
+      assert.unreachable();
+    })
+    .catch((error: Error): void => {
+      assert.match(error.stack!, openErrorStackPattern);
     });
 });
 

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { testPerm, assert } from "./test_util.ts";
 
 testPerm({ read: true, write: true }, function linkSyncSuccess(): void {
   const testDir = Deno.makeTempDirSync();
@@ -11,21 +11,21 @@ testPerm({ read: true, write: true }, function linkSyncSuccess(): void {
   Deno.linkSync(oldName, newName);
   // We should expect reading the same content.
   const newData = new TextDecoder().decode(Deno.readFileSync(newName));
-  assertEquals(oldData, newData);
+  assert.equals(oldData, newData);
   // Writing to newname also affects oldname.
   const newData2 = "Modified";
   Deno.writeFileSync(newName, new TextEncoder().encode(newData2));
-  assertEquals(newData2, new TextDecoder().decode(Deno.readFileSync(oldName)));
+  assert.equals(newData2, new TextDecoder().decode(Deno.readFileSync(oldName)));
   // Writing to oldname also affects newname.
   const newData3 = "ModifiedAgain";
   Deno.writeFileSync(oldName, new TextEncoder().encode(newData3));
-  assertEquals(newData3, new TextDecoder().decode(Deno.readFileSync(newName)));
+  assert.equals(newData3, new TextDecoder().decode(Deno.readFileSync(newName)));
   // Remove oldname. File still accessible through newname.
   Deno.removeSync(oldName);
   const newNameStat = Deno.statSync(newName);
   assert(newNameStat.isFile());
   assert(!newNameStat.isSymlink()); // Not a symlink.
-  assertEquals(newData3, new TextDecoder().decode(Deno.readFileSync(newName)));
+  assert.equals(newData3, new TextDecoder().decode(Deno.readFileSync(newName)));
 });
 
 testPerm({ read: true, write: true }, function linkSyncExists(): void {
@@ -69,7 +69,7 @@ testPerm({ read: false, write: true }, function linkSyncReadPerm(): void {
     err = e;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });
 
 testPerm({ read: true, write: false }, function linkSyncWritePerm(): void {
@@ -80,7 +80,7 @@ testPerm({ read: true, write: false }, function linkSyncWritePerm(): void {
     err = e;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });
 
 testPerm({ read: true, write: true }, async function linkSuccess(): Promise<
@@ -95,19 +95,19 @@ testPerm({ read: true, write: true }, async function linkSuccess(): Promise<
   await Deno.link(oldName, newName);
   // We should expect reading the same content.
   const newData = new TextDecoder().decode(Deno.readFileSync(newName));
-  assertEquals(oldData, newData);
+  assert.equals(oldData, newData);
   // Writing to newname also affects oldname.
   const newData2 = "Modified";
   Deno.writeFileSync(newName, new TextEncoder().encode(newData2));
-  assertEquals(newData2, new TextDecoder().decode(Deno.readFileSync(oldName)));
+  assert.equals(newData2, new TextDecoder().decode(Deno.readFileSync(oldName)));
   // Writing to oldname also affects newname.
   const newData3 = "ModifiedAgain";
   Deno.writeFileSync(oldName, new TextEncoder().encode(newData3));
-  assertEquals(newData3, new TextDecoder().decode(Deno.readFileSync(newName)));
+  assert.equals(newData3, new TextDecoder().decode(Deno.readFileSync(newName)));
   // Remove oldname. File still accessible through newname.
   Deno.removeSync(oldName);
   const newNameStat = Deno.statSync(newName);
   assert(newNameStat.isFile());
   assert(!newNameStat.isSymlink()); // Not a symlink.
-  assertEquals(newData3, new TextDecoder().decode(Deno.readFileSync(newName)));
+  assert.equals(newData3, new TextDecoder().decode(Deno.readFileSync(newName)));
 });

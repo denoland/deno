@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEquals, assertNotEquals } from "./test_util.ts";
+import { test, assert } from "./test_util.ts";
 
 function deferred(): {
   promise: Promise<{}>;
@@ -34,7 +34,7 @@ test(async function timeoutSuccess(): Promise<void> {
   }, 500);
   await promise;
   // count should increment
-  assertEquals(count, 1);
+  assert.equals(count, 1);
 });
 
 test(async function timeoutArgs(): Promise<void> {
@@ -42,9 +42,9 @@ test(async function timeoutArgs(): Promise<void> {
   const arg = 1;
   setTimeout(
     (a, b, c): void => {
-      assertEquals(a, arg);
-      assertEquals(b, arg.toString());
-      assertEquals(c, [arg]);
+      assert.equals(a, arg);
+      assert.equals(b, arg.toString());
+      assert.equals(c, [arg]);
       resolve();
     },
     10,
@@ -63,7 +63,7 @@ test(async function timeoutCancelSuccess(): Promise<void> {
   // Cancelled, count should not increment
   clearTimeout(id);
   await waitForMs(600);
-  assertEquals(count, 0);
+  assert.equals(count, 0);
 });
 
 test(async function timeoutCancelMultiple(): Promise<void> {
@@ -102,7 +102,7 @@ test(async function timeoutCancelInvalidSilentFail(): Promise<void> {
     resolve();
   }, 500);
   await promise;
-  assertEquals(count, 1);
+  assert.equals(count, 1);
 
   // Should silently fail (no panic)
   clearTimeout(2147483647);
@@ -120,7 +120,7 @@ test(async function intervalSuccess(): Promise<void> {
   // Clear interval
   clearInterval(id);
   // count should increment twice
-  assertEquals(count, 1);
+  assert.equals(count, 1);
 });
 
 test(async function intervalCancelSuccess(): Promise<void> {
@@ -130,7 +130,7 @@ test(async function intervalCancelSuccess(): Promise<void> {
   }, 1);
   clearInterval(id);
   await waitForMs(500);
-  assertEquals(count, 0);
+  assert.equals(count, 0);
 });
 
 test(async function intervalOrdering(): Promise<void> {
@@ -146,7 +146,7 @@ test(async function intervalOrdering(): Promise<void> {
     timers[i] = setTimeout(onTimeout, 1);
   }
   await waitForMs(500);
-  assertEquals(timeouts, 1);
+  assert.equals(timeouts, 1);
 });
 
 test(async function intervalCancelInvalidSilentFail(): Promise<void> {
@@ -162,14 +162,14 @@ test(async function fireCallbackImmediatelyWhenDelayOverMaxValue(): Promise<
     count++;
   }, 2 ** 31);
   await waitForMs(1);
-  assertEquals(count, 1);
+  assert.equals(count, 1);
 });
 
 test(async function timeoutCallbackThis(): Promise<void> {
   const { promise, resolve } = deferred();
   const obj = {
     foo(): void {
-      assertEquals(this, window);
+      assert.equals(this, window);
       resolve();
     }
   };
@@ -208,7 +208,7 @@ test(async function timeoutBindThis(): Promise<void> {
           hasThrown = 3;
         }
       }
-      assertEquals(hasThrown, 1);
+      assert.equals(hasThrown, 1);
     }
   );
 
@@ -226,7 +226,7 @@ test(async function timeoutBindThis(): Promise<void> {
           hasThrown = 3;
         }
       }
-      assertEquals(hasThrown, 2);
+      assert.equals(hasThrown, 2);
     }
   );
 });
@@ -255,7 +255,7 @@ test(function setTimeoutShouldThrowWithBigint(): void {
       hasThrown = 3;
     }
   }
-  assertEquals(hasThrown, 2);
+  assert.equals(hasThrown, 2);
 });
 
 test(function clearTimeoutShouldThrowWithBigint(): void {
@@ -270,23 +270,23 @@ test(function clearTimeoutShouldThrowWithBigint(): void {
       hasThrown = 3;
     }
   }
-  assertEquals(hasThrown, 2);
+  assert.equals(hasThrown, 2);
 });
 
 test(function testFunctionName(): void {
-  assertEquals(clearTimeout.name, "clearTimeout");
-  assertEquals(clearInterval.name, "clearInterval");
+  assert.equals(clearTimeout.name, "clearTimeout");
+  assert.equals(clearInterval.name, "clearInterval");
 });
 
 test(function testFunctionParamsLength(): void {
-  assertEquals(setTimeout.length, 1);
-  assertEquals(setInterval.length, 1);
-  assertEquals(clearTimeout.length, 0);
-  assertEquals(clearInterval.length, 0);
+  assert.equals(setTimeout.length, 1);
+  assert.equals(setInterval.length, 1);
+  assert.equals(clearTimeout.length, 0);
+  assert.equals(clearInterval.length, 0);
 });
 
 test(function clearTimeoutAndClearIntervalNotBeEquals(): void {
-  assertNotEquals(clearTimeout, clearInterval);
+  assert.notEquals(clearTimeout, clearInterval);
 });
 
 test(async function timerMaxCpuBug(): Promise<void> {
@@ -322,7 +322,7 @@ test(async function timerBasicMicrotaskOrdering(): Promise<void> {
     }
   });
   await promise;
-  assertEquals(s, "deno");
+  assert.equals(s, "deno");
 });
 
 test(async function timerNestedMicrotaskOrdering(): Promise<void> {
@@ -350,5 +350,5 @@ test(async function timerNestedMicrotaskOrdering(): Promise<void> {
   Promise.resolve().then(() => Promise.resolve().then(() => (s += "3")));
   s += "1";
   await promise;
-  assertEquals(s, "0123456789");
+  assert.equals(s, "0123456789");
 });

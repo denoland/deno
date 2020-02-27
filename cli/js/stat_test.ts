@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { testPerm, assert } from "./test_util.ts";
 
 // TODO Add tests for modified, accessed, and created fields once there is a way
 // to create temp files.
@@ -40,7 +40,7 @@ testPerm({ read: true }, async function statSyncNotFound(): Promise<void> {
   }
 
   assert(caughtError);
-  assertEquals(badInfo, undefined);
+  assert.equals(badInfo, undefined);
 });
 
 testPerm({ read: true }, async function lstatSyncSuccess(): Promise<void> {
@@ -80,7 +80,7 @@ testPerm({ read: true }, async function lstatSyncNotFound(): Promise<void> {
   }
 
   assert(caughtError);
-  assertEquals(badInfo, undefined);
+  assert.equals(badInfo, undefined);
 });
 
 testPerm({ read: true }, async function statSuccess(): Promise<void> {
@@ -120,7 +120,7 @@ testPerm({ read: true }, async function statNotFound(): Promise<void> {
   }
 
   assert(caughtError);
-  assertEquals(badInfo, undefined);
+  assert.equals(badInfo, undefined);
 });
 
 testPerm({ read: true }, async function lstatSuccess(): Promise<void> {
@@ -160,7 +160,7 @@ testPerm({ read: true }, async function lstatNotFound(): Promise<void> {
   }
 
   assert(caughtError);
-  assertEquals(badInfo, undefined);
+  assert.equals(badInfo, undefined);
 });
 
 const isWindows = Deno.build.os === "win";
@@ -202,8 +202,8 @@ if (isWindows) {
       const s = Deno.statSync(filename);
       assert(s.dev !== null);
       assert(s.ino !== null);
-      assertEquals(s.mode! & 0o666, 0o666);
-      assertEquals(s.nlink, 2);
+      assert.equals(s.mode! & 0o666, 0o666);
+      assert.equals(s.nlink, 2);
       assert(s.uid !== null);
       assert(s.gid !== null);
       assert(s.rdev !== null);

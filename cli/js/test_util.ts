@@ -8,18 +8,8 @@
 // See tools/unit_tests.py for more details.
 
 import { readLines } from "../../std/io/bufio.ts";
-import { assert, assertEquals } from "../../std/testing/asserts.ts";
-export {
-  assert,
-  assertThrows,
-  assertEquals,
-  assertMatch,
-  assertNotEquals,
-  assertStrictEq,
-  assertStrContains,
-  unreachable,
-  fail
-} from "../../std/testing/asserts.ts";
+const assert: Deno.Assert = Deno.assert;
+export { assert };
 
 interface TestPermissions {
   read?: boolean;
@@ -202,7 +192,7 @@ test(function permissionsMatches(): void {
     )
   );
 
-  assertEquals(
+  assert.equals(
     permissionsMatch(
       {
         read: false,
@@ -218,7 +208,7 @@ test(function permissionsMatches(): void {
     false
   );
 
-  assertEquals(
+  assert.equals(
     permissionsMatch(
       {
         read: true,
@@ -269,30 +259,30 @@ testPerm({ read: true }, async function parsingUnitTestOutput(): Promise<void> {
     await Deno.open(`${testDataPath}/unit_test_output1.txt`),
     false
   );
-  assertEquals(result.actual, 96);
-  assertEquals(result.expected, 96);
+  assert.equals(result.actual, 96);
+  assert.equals(result.expected, 96);
 
   // This is an example of a silently dying unit test.
   result = await parseUnitTestOutput(
     await Deno.open(`${testDataPath}/unit_test_output2.txt`),
     false
   );
-  assertEquals(result.actual, undefined);
-  assertEquals(result.expected, 96);
+  assert.equals(result.actual, undefined);
+  assert.equals(result.expected, 96);
 
   // This is an example of compiling before successful unit tests.
   result = await parseUnitTestOutput(
     await Deno.open(`${testDataPath}/unit_test_output3.txt`),
     false
   );
-  assertEquals(result.actual, 96);
-  assertEquals(result.expected, 96);
+  assert.equals(result.actual, 96);
+  assert.equals(result.expected, 96);
 
   // Check what happens on empty output.
   const f = new Deno.Buffer(new TextEncoder().encode("\n\n\n"));
   result = await parseUnitTestOutput(f, false);
-  assertEquals(result.actual, undefined);
-  assertEquals(result.expected, undefined);
+  assert.equals(result.actual, undefined);
+  assert.equals(result.expected, undefined);
 });
 
 /*

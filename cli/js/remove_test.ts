@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { testPerm, assert } from "./test_util.ts";
 
 // SYNC
 
@@ -82,7 +82,7 @@ testPerm(
       errOnWindows = err;
     }
     if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.message, "Not implemented");
+      assert.equals(errOnWindows.message, "Not implemented");
     } else {
       const pathInfo = Deno.lstatSync(danglingSymlinkPath);
       assert(pathInfo.isSymlink());
@@ -115,7 +115,7 @@ testPerm(
       errOnWindows = err;
     }
     if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.message, "Not implemented");
+      assert.equals(errOnWindows.message, "Not implemented");
     } else {
       const symlinkPathInfo = Deno.statSync(validSymlinkPath);
       assert(symlinkPathInfo.isFile());
@@ -140,7 +140,7 @@ testPerm({ write: false }, function removeSyncPerm(): void {
     err = e;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });
 
 testPerm({ write: true, read: true }, function removeAllSyncDirSuccess(): void {
@@ -223,7 +223,7 @@ testPerm({ write: false }, function removeAllSyncPerm(): void {
     err = e;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });
 
 // ASYNC
@@ -314,7 +314,7 @@ testPerm(
       errOnWindows = e;
     }
     if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.message, "Not implemented");
+      assert.equals(errOnWindows.message, "Not implemented");
     } else {
       const pathInfo = Deno.lstatSync(danglingSymlinkPath);
       assert(pathInfo.isSymlink());
@@ -347,7 +347,7 @@ testPerm(
       errOnWindows = e;
     }
     if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.message, "Not implemented");
+      assert.equals(errOnWindows.message, "Not implemented");
     } else {
       const symlinkPathInfo = Deno.statSync(validSymlinkPath);
       assert(symlinkPathInfo.isFile());
@@ -372,7 +372,7 @@ testPerm({ write: false }, async function removePerm(): Promise<void> {
     err = e;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });
 
 testPerm(
@@ -458,5 +458,5 @@ testPerm({ write: false }, async function removeAllPerm(): Promise<void> {
     err = e;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });

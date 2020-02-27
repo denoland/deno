@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assertEquals } from "./test_util.ts";
+import { test, assert } from "./test_util.ts";
 
 test(function customEventInitializedWithDetail(): void {
   const type = "touchstart";
@@ -11,17 +11,17 @@ test(function customEventInitializedWithDetail(): void {
   } as CustomEventInit;
   const event = new CustomEvent(type, customEventInit);
 
-  assertEquals(event.bubbles, true);
-  assertEquals(event.cancelable, true);
-  assertEquals(event.currentTarget, null);
-  assertEquals(event.detail, detail);
-  assertEquals(event.isTrusted, false);
-  assertEquals(event.target, null);
-  assertEquals(event.type, type);
+  assert.equals(event.bubbles, true);
+  assert.equals(event.cancelable, true);
+  assert.equals(event.currentTarget, null);
+  assert.equals(event.detail, detail);
+  assert.equals(event.isTrusted, false);
+  assert.equals(event.target, null);
+  assert.equals(event.type, type);
 });
 
 test(function toStringShouldBeWebCompatibility(): void {
   const type = "touchstart";
   const event = new CustomEvent(type, {});
-  assertEquals(event.toString(), "[object CustomEvent]");
+  assert.equals(event.toString(), "[object CustomEvent]");
 });

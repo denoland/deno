@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assertEquals, assert } from "./test_util.ts";
+import { test, testPerm, assert } from "./test_util.ts";
 
 // just a hack to get a body object
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -27,7 +27,7 @@ test(async function arrayBufferFromByteArrays(): Promise<void> {
   for (const type of intArrays) {
     const body = buildBody(new type(buffer));
     const text = new TextDecoder("utf-8").decode(await body.arrayBuffer());
-    assertEquals(text, "ahoyhoy8");
+    assert.equals(text, "ahoyhoy8");
   }
 });
 
@@ -45,7 +45,7 @@ testPerm({ net: true }, async function bodyMultipartFormData(): Promise<void> {
 
   const formData = await body.formData();
   assert(formData.has("field_1"));
-  assertEquals(formData.get("field_1")!.toString(), "value_1 \r\n");
+  assert.equals(formData.get("field_1")!.toString(), "value_1 \r\n");
   assert(formData.has("field_2"));
 });
 
@@ -62,7 +62,7 @@ testPerm({ net: true }, async function bodyURLEncodedFormData(): Promise<void> {
 
   const formData = await body.formData();
   assert(formData.has("field_1"));
-  assertEquals(formData.get("field_1")!.toString(), "Hi");
+  assert.equals(formData.get("field_1")!.toString(), "Hi");
   assert(formData.has("field_2"));
-  assertEquals(formData.get("field_2")!.toString(), "<Deno>");
+  assert.equals(formData.get("field_2")!.toString(), "<Deno>");
 });

@@ -1,22 +1,16 @@
 import { add, addImported, addRemote } from "./051_wasm_import/simple.wasm";
 import { state } from "./051_wasm_import/wasm-dep.js";
 
-function assertEquals(actual: unknown, expected: unknown, msg?: string): void {
-  if (actual !== expected) {
-    throw new Error(msg);
-  }
-}
+Deno.assert.equals(state, "WASM Start Executed", "Incorrect state");
 
-assertEquals(state, "WASM Start Executed", "Incorrect state");
+Deno.assert.equals(add(10, 20), 30, "Incorrect add");
 
-assertEquals(add(10, 20), 30, "Incorrect add");
+Deno.assert.equals(addImported(0), 42, "Incorrect addImported");
 
-assertEquals(addImported(0), 42, "Incorrect addImported");
+Deno.assert.equals(state, "WASM JS Function Executed", "Incorrect state");
 
-assertEquals(state, "WASM JS Function Executed", "Incorrect state");
+Deno.assert.equals(addImported(1), 43, "Incorrect addImported");
 
-assertEquals(addImported(1), 43, "Incorrect addImported");
-
-assertEquals(addRemote(1), 2020, "Incorrect addRemote");
+Deno.assert.equals(addRemote(1), 2020, "Incorrect addRemote");
 
 console.log("Passed");

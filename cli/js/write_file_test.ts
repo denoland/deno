@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { testPerm, assert } from "./test_util.ts";
 
 testPerm({ read: true, write: true }, function writeFileSyncSuccess(): void {
   const enc = new TextEncoder();
@@ -9,7 +9,7 @@ testPerm({ read: true, write: true }, function writeFileSyncSuccess(): void {
   const dataRead = Deno.readFileSync(filename);
   const dec = new TextDecoder("utf-8");
   const actual = dec.decode(dataRead);
-  assertEquals("Hello", actual);
+  assert.equals("Hello", actual);
 });
 
 testPerm({ write: true }, function writeFileSyncFail(): void {
@@ -48,9 +48,9 @@ testPerm({ read: true, write: true }, function writeFileSyncUpdatePerm(): void {
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
     Deno.writeFileSync(filename, data, { perm: 0o755 });
-    assertEquals(Deno.statSync(filename).mode! & 0o777, 0o755);
+    assert.equals(Deno.statSync(filename).mode! & 0o777, 0o755);
     Deno.writeFileSync(filename, data, { perm: 0o666 });
-    assertEquals(Deno.statSync(filename).mode! & 0o777, 0o666);
+    assert.equals(Deno.statSync(filename).mode! & 0o777, 0o666);
   }
 });
 
@@ -74,7 +74,7 @@ testPerm({ read: true, write: true }, function writeFileSyncCreate(): void {
   const dataRead = Deno.readFileSync(filename);
   const dec = new TextDecoder("utf-8");
   const actual = dec.decode(dataRead);
-  assertEquals("Hello", actual);
+  assert.equals("Hello", actual);
 });
 
 testPerm({ read: true, write: true }, function writeFileSyncAppend(): void {
@@ -86,17 +86,17 @@ testPerm({ read: true, write: true }, function writeFileSyncAppend(): void {
   let dataRead = Deno.readFileSync(filename);
   const dec = new TextDecoder("utf-8");
   let actual = dec.decode(dataRead);
-  assertEquals("HelloHello", actual);
+  assert.equals("HelloHello", actual);
   // Now attempt overwrite
   Deno.writeFileSync(filename, data, { append: false });
   dataRead = Deno.readFileSync(filename);
   actual = dec.decode(dataRead);
-  assertEquals("Hello", actual);
+  assert.equals("Hello", actual);
   // append not set should also overwrite
   Deno.writeFileSync(filename, data);
   dataRead = Deno.readFileSync(filename);
   actual = dec.decode(dataRead);
-  assertEquals("Hello", actual);
+  assert.equals("Hello", actual);
 });
 
 testPerm(
@@ -109,7 +109,7 @@ testPerm(
     const dataRead = Deno.readFileSync(filename);
     const dec = new TextDecoder("utf-8");
     const actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
+    assert.equals("Hello", actual);
   }
 );
 
@@ -156,9 +156,9 @@ testPerm(
       const data = enc.encode("Hello");
       const filename = Deno.makeTempDirSync() + "/test.txt";
       await Deno.writeFile(filename, data, { perm: 0o755 });
-      assertEquals(Deno.statSync(filename).mode! & 0o777, 0o755);
+      assert.equals(Deno.statSync(filename).mode! & 0o777, 0o755);
       await Deno.writeFile(filename, data, { perm: 0o666 });
-      assertEquals(Deno.statSync(filename).mode! & 0o777, 0o666);
+      assert.equals(Deno.statSync(filename).mode! & 0o777, 0o666);
     }
   }
 );
@@ -185,7 +185,7 @@ testPerm({ read: true, write: true }, async function writeFileCreate(): Promise<
   const dataRead = Deno.readFileSync(filename);
   const dec = new TextDecoder("utf-8");
   const actual = dec.decode(dataRead);
-  assertEquals("Hello", actual);
+  assert.equals("Hello", actual);
 });
 
 testPerm({ read: true, write: true }, async function writeFileAppend(): Promise<
@@ -199,15 +199,15 @@ testPerm({ read: true, write: true }, async function writeFileAppend(): Promise<
   let dataRead = Deno.readFileSync(filename);
   const dec = new TextDecoder("utf-8");
   let actual = dec.decode(dataRead);
-  assertEquals("HelloHello", actual);
+  assert.equals("HelloHello", actual);
   // Now attempt overwrite
   await Deno.writeFile(filename, data, { append: false });
   dataRead = Deno.readFileSync(filename);
   actual = dec.decode(dataRead);
-  assertEquals("Hello", actual);
+  assert.equals("Hello", actual);
   // append not set should also overwrite
   await Deno.writeFile(filename, data);
   dataRead = Deno.readFileSync(filename);
   actual = dec.decode(dataRead);
-  assertEquals("Hello", actual);
+  assert.equals("Hello", actual);
 });

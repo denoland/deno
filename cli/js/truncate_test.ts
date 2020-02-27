@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assertEquals, assert } from "./test_util.ts";
+import { testPerm, assert } from "./test_util.ts";
 
 function readDataSync(name: string): string {
   const data = Deno.readFileSync(name);
@@ -22,13 +22,13 @@ testPerm({ read: true, write: true }, function truncateSyncSuccess(): void {
   Deno.writeFileSync(filename, d);
   Deno.truncateSync(filename, 20);
   let data = readDataSync(filename);
-  assertEquals(data.length, 20);
+  assert.equals(data.length, 20);
   Deno.truncateSync(filename, 5);
   data = readDataSync(filename);
-  assertEquals(data.length, 5);
+  assert.equals(data.length, 5);
   Deno.truncateSync(filename, -5);
   data = readDataSync(filename);
-  assertEquals(data.length, 0);
+  assert.equals(data.length, 0);
   Deno.removeSync(filename);
 });
 
@@ -41,13 +41,13 @@ testPerm({ read: true, write: true }, async function truncateSuccess(): Promise<
   await Deno.writeFile(filename, d);
   await Deno.truncate(filename, 20);
   let data = await readData(filename);
-  assertEquals(data.length, 20);
+  assert.equals(data.length, 20);
   await Deno.truncate(filename, 5);
   data = await readData(filename);
-  assertEquals(data.length, 5);
+  assert.equals(data.length, 5);
   await Deno.truncate(filename, -5);
   data = await readData(filename);
-  assertEquals(data.length, 0);
+  assert.equals(data.length, 0);
   await Deno.remove(filename);
 });
 
@@ -59,7 +59,7 @@ testPerm({ write: false }, function truncateSyncPerm(): void {
     err = e;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });
 
 testPerm({ write: false }, async function truncatePerm(): Promise<void> {
@@ -70,5 +70,5 @@ testPerm({ write: false }, async function truncatePerm(): Promise<void> {
     err = e;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEquals } from "./test_util.ts";
+import { test, testPerm, assert } from "./test_util.ts";
 import { BufWriter, BufReader } from "../../std/io/bufio.ts";
 import { TextProtoReader } from "../../std/textproto/mod.ts";
 
@@ -14,7 +14,7 @@ test(async function connectTLSNoPerm(): Promise<void> {
     err = e;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });
 
 test(async function connectTLSCertFileNoReadPerm(): Promise<void> {
@@ -29,7 +29,7 @@ test(async function connectTLSCertFileNoReadPerm(): Promise<void> {
     err = e;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });
 
 testPerm(
@@ -78,7 +78,7 @@ testPerm({ net: true }, async function listenTLSNoReadPerm(): Promise<void> {
     err = e;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });
 
 testPerm(
@@ -178,7 +178,7 @@ testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
   const r = new BufReader(conn);
   const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
   const writeResult = await w.write(encoder.encode(body));
-  assertEquals(body.length, writeResult);
+  assert.equals(body.length, writeResult);
   await w.flush();
   const tpr = new TextProtoReader(r);
   const statusLine = await tpr.readLine();
@@ -186,14 +186,14 @@ testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
   const m = statusLine.match(/^(.+?) (.+?) (.+?)$/);
   assert(m !== null, "must be matched");
   const [_, proto, status, ok] = m;
-  assertEquals(proto, "HTTP/1.1");
-  assertEquals(status, "200");
-  assertEquals(ok, "OK");
+  assert.equals(proto, "HTTP/1.1");
+  assert.equals(status, "200");
+  assert.equals(ok, "OK");
   const headers = await tpr.readMIMEHeader();
   assert(headers !== Deno.EOF);
   const contentLength = parseInt(headers.get("content-length")!);
   const bodyBuf = new Uint8Array(contentLength);
   await r.readFull(bodyBuf);
-  assertEquals(decoder.decode(bodyBuf), "Hello World\n");
+  assert.equals(decoder.decode(bodyBuf), "Hello World\n");
   conn.close();
 });

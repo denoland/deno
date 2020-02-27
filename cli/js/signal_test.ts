@@ -1,11 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import {
-  test,
-  testPerm,
-  assert,
-  assertEquals,
-  assertThrows
-} from "./test_util.ts";
+import { test, testPerm, assert } from "./test_util.ts";
 
 function defer(n: number): Promise<void> {
   return new Promise((resolve: () => void, _) => {
@@ -15,84 +9,84 @@ function defer(n: number): Promise<void> {
 
 if (Deno.build.os === "win") {
   test(async function signalsNotImplemented(): Promise<void> {
-    assertThrows(
+    assert.throws(
       () => {
         Deno.signal(1);
       },
       Error,
       "not implemented"
     );
-    assertThrows(
+    assert.throws(
       () => {
         Deno.signals.alarm(); // for SIGALRM
       },
       Error,
       "not implemented"
     );
-    assertThrows(
+    assert.throws(
       () => {
         Deno.signals.child(); // for SIGCHLD
       },
       Error,
       "not implemented"
     );
-    assertThrows(
+    assert.throws(
       () => {
         Deno.signals.hungup(); // for SIGHUP
       },
       Error,
       "not implemented"
     );
-    assertThrows(
+    assert.throws(
       () => {
         Deno.signals.interrupt(); // for SIGINT
       },
       Error,
       "not implemented"
     );
-    assertThrows(
+    assert.throws(
       () => {
         Deno.signals.io(); // for SIGIO
       },
       Error,
       "not implemented"
     );
-    assertThrows(
+    assert.throws(
       () => {
         Deno.signals.pipe(); // for SIGPIPE
       },
       Error,
       "not implemented"
     );
-    assertThrows(
+    assert.throws(
       () => {
         Deno.signals.quit(); // for SIGQUIT
       },
       Error,
       "not implemented"
     );
-    assertThrows(
+    assert.throws(
       () => {
         Deno.signals.terminate(); // for SIGTERM
       },
       Error,
       "not implemented"
     );
-    assertThrows(
+    assert.throws(
       () => {
         Deno.signals.userDefined1(); // for SIGUSR1
       },
       Error,
       "not implemented"
     );
-    assertThrows(
+    assert.throws(
       () => {
         Deno.signals.userDefined2(); // for SIGURS2
       },
       Error,
       "not implemented"
     );
-    assertThrows(
+    assert.throws(
       () => {
         Deno.signals.windowChange(); // for SIGWINCH
       },
@@ -124,7 +118,7 @@ if (Deno.build.os === "win") {
       c += 1;
     }
 
-    assertEquals(c, 3);
+    assert.equals(c, 3);
 
     clearTimeout(t);
   });

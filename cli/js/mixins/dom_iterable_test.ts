@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEquals } from "../test_util.ts";
+import { test, assert } from "../test_util.ts";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function setup() {
@@ -35,9 +35,9 @@ test(function testDomIterable(): void {
 
   const domIterable = new DomIterable(fixture);
 
-  assertEquals(Array.from(domIterable.entries()), fixture);
-  assertEquals(Array.from(domIterable.values()), [1, 2]);
-  assertEquals(Array.from(domIterable.keys()), ["foo", "bar"]);
+  assert.equals(Array.from(domIterable.entries()), fixture);
+  assert.equals(Array.from(domIterable.values()), [1, 2]);
+  assert.equals(Array.from(domIterable.keys()), ["foo", "bar"]);
 
   let result: Array<[string, number]> = [];
   for (const [key, value] of domIterable) {
@@ -45,7 +45,7 @@ test(function testDomIterable(): void {
     assert(value != null);
     result.push([key, value]);
   }
-  assertEquals(fixture, result);
+  assert.equals(fixture, result);
 
   result = [];
   const scope = {};
@@ -55,16 +55,16 @@ test(function testDomIterable(): void {
     key: string,
     parent: typeof domIterable
   ): void {
-    assertEquals(parent, domIterable);
+    assert.equals(parent, domIterable);
     assert(key != null);
     assert(value != null);
     assert(this === scope);
     result.push([key, value]);
   }
   domIterable.forEach(callback, scope);
-  assertEquals(fixture, result);
+  assert.equals(fixture, result);
 
-  assertEquals(DomIterable.name, Base.name);
+  assert.equals(DomIterable.name, Base.name);
 });
 
 test(function testDomIterableScope(): void {
@@ -75,7 +75,7 @@ test(function testDomIterableScope(): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function checkScope(thisArg: any, expected: any): void {
     function callback(this: typeof thisArg): void {
-      assertEquals(this, expected);
+      assert.equals(this, expected);
     }
     domIterable.forEach(callback, thisArg);
   }

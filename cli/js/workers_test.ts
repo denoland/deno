@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEquals } from "./test_util.ts";
+import { test, testPerm, assert } from "./test_util.ts";
 
 export interface ResolvableMethods<T> {
   resolve: (value?: T | PromiseLike<T>) => void;
@@ -31,12 +31,12 @@ test(async function workersBasic(): Promise<void> {
   });
 
   tsWorker.onmessage = (e): void => {
-    assertEquals(e.data, "Hello World");
+    assert.equals(e.data, "Hello World");
     promise.resolve();
   };
 
   jsWorker.onmessage = (e): void => {
-    assertEquals(e.data, "Hello World");
+    assert.equals(e.data, "Hello World");
     tsWorker.postMessage("Hello World");
   };
 
@@ -76,7 +76,7 @@ test(async function workerThrowsWhenExecuting(): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   throwingWorker.onerror = (e: any): void => {
     e.preventDefault();
-    assertEquals(e.message, "Uncaught Error: Thrown error");
+    assert.equals(e.message, "Uncaught Error: Thrown error");
     promise.resolve();
   };
 

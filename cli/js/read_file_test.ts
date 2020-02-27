@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { testPerm, assert } from "./test_util.ts";
 
 testPerm({ read: true }, function readFileSyncSuccess(): void {
   const data = Deno.readFileSync("cli/tests/fixture.json");
@@ -7,7 +7,7 @@ testPerm({ read: true }, function readFileSyncSuccess(): void {
   const decoder = new TextDecoder("utf-8");
   const json = decoder.decode(data);
   const pkg = JSON.parse(json);
-  assertEquals(pkg.name, "deno");
+  assert.equals(pkg.name, "deno");
 });
 
 testPerm({ read: false }, function readFileSyncPerm(): void {
@@ -40,7 +40,7 @@ testPerm({ read: true }, async function readFileSuccess(): Promise<void> {
   const decoder = new TextDecoder("utf-8");
   const json = decoder.decode(data);
   const pkg = JSON.parse(json);
-  assertEquals(pkg.name, "deno");
+  assert.equals(pkg.name, "deno");
 });
 
 testPerm({ read: false }, async function readFilePerm(): Promise<void> {

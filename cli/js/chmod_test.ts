@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { testPerm, assert } from "./test_util.ts";
 
 const isNotWindows = Deno.build.os !== "win";
 
@@ -17,7 +17,7 @@ testPerm({ read: true, write: true }, function chmodSyncSuccess(): void {
   if (isNotWindows) {
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.mode);
-    assertEquals(fileInfo.mode & 0o777, 0o777);
+    assert.equals(fileInfo.mode & 0o777, 0o777);
   }
 });
 
@@ -44,10 +44,10 @@ if (isNotWindows) {
       // Change actual file mode, not symlink
       const fileInfo = Deno.statSync(filename);
       assert(fileInfo.mode);
-      assertEquals(fileInfo.mode & 0o777, 0o777);
+      assert.equals(fileInfo.mode & 0o777, 0o777);
       symlinkInfo = Deno.lstatSync(symlinkName);
       assert(symlinkInfo.mode);
-      assertEquals(symlinkInfo.mode & 0o777, symlinkMode);
+      assert.equals(symlinkInfo.mode & 0o777, symlinkMode);
     }
   );
 }
@@ -71,7 +71,7 @@ testPerm({ write: false }, function chmodSyncPerm(): void {
     err = e;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });
 
 testPerm({ read: true, write: true }, async function chmodSuccess(): Promise<
@@ -90,7 +90,7 @@ testPerm({ read: true, write: true }, async function chmodSuccess(): Promise<
   if (isNotWindows) {
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.mode);
-    assertEquals(fileInfo.mode & 0o777, 0o777);
+    assert.equals(fileInfo.mode & 0o777, 0o777);
   }
 });
 
@@ -117,10 +117,10 @@ if (isNotWindows) {
       // Just change actual file mode, not symlink
       const fileInfo = Deno.statSync(filename);
       assert(fileInfo.mode);
-      assertEquals(fileInfo.mode & 0o777, 0o777);
+      assert.equals(fileInfo.mode & 0o777, 0o777);
       symlinkInfo = Deno.lstatSync(symlinkName);
       assert(symlinkInfo.mode);
-      assertEquals(symlinkInfo.mode & 0o777, symlinkMode);
+      assert.equals(symlinkInfo.mode & 0o777, symlinkMode);
     }
   );
 }
@@ -144,5 +144,5 @@ testPerm({ write: false }, async function chmodPerm(): Promise<void> {
     err = e;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });

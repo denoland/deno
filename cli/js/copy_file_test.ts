@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { testPerm, assert } from "./test_util.ts";
 
 function readFileString(filename: string): string {
   const dataRead = Deno.readFileSync(filename);
@@ -16,7 +16,7 @@ function writeFileString(filename: string, s: string): void {
 function assertSameContent(filename1: string, filename2: string): void {
   const data1 = Deno.readFileSync(filename1);
   const data2 = Deno.readFileSync(filename2);
-  assertEquals(data1, data2);
+  assert.equals(data1, data2);
 }
 
 testPerm({ read: true, write: true }, function copyFileSyncSuccess(): void {
@@ -26,7 +26,7 @@ testPerm({ read: true, write: true }, function copyFileSyncSuccess(): void {
   writeFileString(fromFilename, "Hello world!");
   Deno.copyFileSync(fromFilename, toFilename);
   // No change to original file
-  assertEquals(readFileString(fromFilename), "Hello world!");
+  assert.equals(readFileString(fromFilename), "Hello world!");
   // Original == Dest
   assertSameContent(fromFilename, toFilename);
 });
@@ -77,7 +77,7 @@ testPerm({ read: true, write: true }, function copyFileSyncOverwrite(): void {
   writeFileString(toFilename, "Goodbye!");
   Deno.copyFileSync(fromFilename, toFilename);
   // No change to original file
-  assertEquals(readFileString(fromFilename), "Hello world!");
+  assert.equals(readFileString(fromFilename), "Hello world!");
   // Original == Dest
   assertSameContent(fromFilename, toFilename);
 });
@@ -91,7 +91,7 @@ testPerm({ read: true, write: true }, async function copyFileSuccess(): Promise<
   writeFileString(fromFilename, "Hello world!");
   await Deno.copyFile(fromFilename, toFilename);
   // No change to original file
-  assertEquals(readFileString(fromFilename), "Hello world!");
+  assert.equals(readFileString(fromFilename), "Hello world!");
   // Original == Dest
   assertSameContent(fromFilename, toFilename);
 });
@@ -124,7 +124,7 @@ testPerm(
     writeFileString(toFilename, "Goodbye!");
     await Deno.copyFile(fromFilename, toFilename);
     // No change to original file
-    assertEquals(readFileString(fromFilename), "Hello world!");
+    assert.equals(readFileString(fromFilename), "Hello world!");
     // Original == Dest
     assertSameContent(fromFilename, toFilename);
   }

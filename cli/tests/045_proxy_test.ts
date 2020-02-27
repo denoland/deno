@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { serve, ServerRequest } from "../../std/http/server.ts";
-import { assertEquals } from "../../std/testing/asserts.ts";
 
 const addr = Deno.args[1] || "127.0.0.1:4555";
 
@@ -32,7 +31,7 @@ async function testFetch(): Promise<void> {
   });
 
   const status = await c.status();
-  assertEquals(status.code, 0);
+  Deno.assert.equals(status.code, 0);
   c.close();
 }
 
@@ -51,7 +50,7 @@ async function testModuleDownload(): Promise<void> {
   });
 
   const httpStatus = await http.status();
-  assertEquals(httpStatus.code, 0);
+  Deno.assert.equals(httpStatus.code, 0);
   http.close();
 }
 

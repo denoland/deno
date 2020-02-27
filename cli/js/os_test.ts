@@ -1,12 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import {
-  test,
-  testPerm,
-  assert,
-  assertEquals,
-  assertNotEquals,
-  assertThrows
-} from "./test_util.ts";
+import { test, testPerm, assert } from "./test_util.ts";
 
 testPerm({ env: true }, function envSuccess(): void {
   const env = Deno.env();
@@ -14,13 +7,13 @@ testPerm({ env: true }, function envSuccess(): void {
   // eslint-disable-next-line @typescript-eslint/camelcase
   env.test_var = "Hello World";
   const newEnv = Deno.env();
-  assertEquals(env.test_var, newEnv.test_var);
-  assertEquals(Deno.env("test_var"), env.test_var);
+  assert.equals(env.test_var, newEnv.test_var);
+  assert.equals(Deno.env("test_var"), env.test_var);
 });
 
 testPerm({ env: true }, function envNotFound(): void {
   const r = Deno.env("env_var_does_not_exist!");
-  assertEquals(r, undefined);
+  assert.equals(r, undefined);
 });
 
 test(function envPermissionDenied1(): void {
@@ -30,9 +23,9 @@ test(function envPermissionDenied1(): void {
   } catch (e) {
     err = e;
   }
-  assertNotEquals(err, undefined);
+  assert.notEquals(err, undefined);
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });
 
 test(function envPermissionDenied2(): void {
@@ -42,9 +35,9 @@ test(function envPermissionDenied2(): void {
   } catch (e) {
     err = e;
   }
-  assertNotEquals(err, undefined);
+  assert.notEquals(err, undefined);
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });
 
 if (Deno.build.os === "win") {
@@ -70,16 +63,16 @@ if (Deno.build.os === "win") {
         stdout: "piped"
       });
       const status = await proc.status();
-      assertEquals(status.success, true);
+      assert.equals(status.success, true);
       const expectedValues = Object.values(expectedEnv);
       const actualValues = JSON.parse(
         new TextDecoder().decode(await proc.output())
       );
-      assertEquals(actualValues, expectedValues);
+      assert.equals(actualValues, expectedValues);
     };
 
-    assertEquals(Deno.env("path"), Deno.env("PATH"));
-    assertEquals(Deno.env("Path"), Deno.env("PATH"));
+    assert.equals(Deno.env("path"), Deno.env("PATH"));
+    assert.equals(Deno.env("Path"), Deno.env("PATH"));
 
     // Check 'foo', 'Foo' and 'Foo' are case folded.
     await checkChildEnv({ foo: "X" }, { foo: "X", Foo: "X", FOO: "X" });
@@ -87,7 +80,7 @@ if (Deno.build.os === "win") {
     // Check that 'µ' and 'Μ' are not case folded.
     const lc1 = "µ";
     const uc1 = lc1.toUpperCase();
-    assertNotEquals(lc1, uc1);
+    assert.notEquals(lc1, uc1);
     await checkChildEnv(
       { [lc1]: "mu", [uc1]: "MU" },
       { [lc1]: "mu", [uc1]: "MU" }
@@ -97,8 +90,8 @@ if (Deno.build.os === "win") {
     const c2 = "ǅ";
     const lc2 = c2.toLowerCase();
     const uc2 = c2.toUpperCase();
-    assertNotEquals(c2, lc2);
-    assertNotEquals(c2, uc2);
+    assert.notEquals(c2, lc2);
+    assert.notEquals(c2, uc2);
     await checkChildEnv(
       { [c2]: "Dz", [lc2]: "dz" },
       { [c2]: "Dz", [lc2]: "dz", [uc2]: "dz" }
@@ -256,7 +249,7 @@ testPerm({ env: true }, function getDir(): void {
 });
 
 testPerm({}, function getDirWithoutPermission(): void {
-  assertThrows(
+  assert.throws(
     () => Deno.dir("home"),
     Deno.errors.PermissionDenied,
     `run again with the --allow-env flag`
@@ -264,7 +257,7 @@ testPerm({}, function getDirWithoutPermission(): void {
 });
 
 testPerm({ env: true }, function execPath(): void {
-  assertNotEquals(Deno.execPath(), "");
+  assert.notEquals(Deno.execPath(), "");
 });
 
 testPerm({ env: false }, function execPathPerm(): void {
@@ -274,14 +267,14 @@ testPerm({ env: false }, function execPathPerm(): void {
   } catch (err) {
     caughtError = true;
     assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
+    assert.equals(err.name, "PermissionDenied");
   }
   assert(caughtError);
 });
 
 testPerm({ env: true }, function loadavgSuccess(): void {
   const load = Deno.loadavg();
-  assertEquals(load.length, 3);
+  assert.equals(load.length, 3);
 });
 
 testPerm({ env: false }, function loadavgPerm(): void {
@@ -291,13 +284,13 @@ testPerm({ env: false }, function loadavgPerm(): void {
   } catch (err) {
     caughtError = true;
     assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
+    assert.equals(err.name, "PermissionDenied");
   }
   assert(caughtError);
 });
 
 testPerm({ env: true }, function hostnameDir(): void {
-  assertNotEquals(Deno.hostname(), "");
+  assert.notEquals(Deno.hostname(), "");
 });
 
 testPerm({ env: false }, function hostnamePerm(): void {
@@ -307,13 +300,13 @@ testPerm({ env: false }, function hostnamePerm(): void {
   } catch (err) {
     caughtError = true;
     assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
+    assert.equals(err.name, "PermissionDenied");
   }
   assert(caughtError);
 });
 
 testPerm({ env: true }, function releaseDir(): void {
-  assertNotEquals(Deno.osRelease(), "");
+  assert.notEquals(Deno.osRelease(), "");
 });
 
 testPerm({ env: false }, function releasePerm(): void {
@@ -323,7 +316,7 @@ testPerm({ env: false }, function releasePerm(): void {
   } catch (err) {
     caughtError = true;
     assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
+    assert.equals(err.name, "PermissionDenied");
   }
   assert(caughtError);
 });

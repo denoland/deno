@@ -1,15 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assertEquals } from "./test_util.ts";
+import { test, assert } from "./test_util.ts";
 
 test(function addEventListenerTest(): void {
   const document = new EventTarget();
 
   // @ts-ignore tests ignoring the type system for resilience
-  assertEquals(document.addEventListener("x", null, false), undefined);
+  assert.equals(document.addEventListener("x", null, false), undefined);
   // @ts-ignore
-  assertEquals(document.addEventListener("x", null, true), undefined);
+  assert.equals(document.addEventListener("x", null, true), undefined);
   // @ts-ignore
-  assertEquals(document.addEventListener("x", null), undefined);
+  assert.equals(document.addEventListener("x", null), undefined);
 });
 
 test(function constructedEventTargetCanBeUsedAsExpected(): void {
@@ -18,21 +18,21 @@ test(function constructedEventTargetCanBeUsedAsExpected(): void {
   let callCount = 0;
 
   const listener = (e: Event): void => {
-    assertEquals(e, event);
+    assert.equals(e, event);
     ++callCount;
   };
 
   target.addEventListener("foo", listener);
 
   target.dispatchEvent(event);
-  assertEquals(callCount, 1);
+  assert.equals(callCount, 1);
 
   target.dispatchEvent(event);
-  assertEquals(callCount, 2);
+  assert.equals(callCount, 2);
 
   target.removeEventListener("foo", listener);
   target.dispatchEvent(event);
-  assertEquals(callCount, 2);
+  assert.equals(callCount, 2);
 });
 
 test(function anEventTargetCanBeSubclassed(): void {
@@ -63,20 +63,20 @@ test(function anEventTargetCanBeSubclassed(): void {
   };
 
   target.on("foo", listener);
-  assertEquals(callCount, 0);
+  assert.equals(callCount, 0);
 
   target.off("foo", listener);
-  assertEquals(callCount, 0);
+  assert.equals(callCount, 0);
 });
 
 test(function removingNullEventListenerShouldSucceed(): void {
   const document = new EventTarget();
   // @ts-ignore
-  assertEquals(document.removeEventListener("x", null, false), undefined);
+  assert.equals(document.removeEventListener("x", null, false), undefined);
   // @ts-ignore
-  assertEquals(document.removeEventListener("x", null, true), undefined);
+  assert.equals(document.removeEventListener("x", null, true), undefined);
   // @ts-ignore
-  assertEquals(document.removeEventListener("x", null), undefined);
+  assert.equals(document.removeEventListener("x", null), undefined);
 });
 
 test(function constructedEventTargetUseObjectPrototype(): void {
@@ -85,26 +85,26 @@ test(function constructedEventTargetUseObjectPrototype(): void {
   let callCount = 0;
 
   const listener = (e: Event): void => {
-    assertEquals(e, event);
+    assert.equals(e, event);
     ++callCount;
   };
 
   target.addEventListener("toString", listener);
 
   target.dispatchEvent(event);
-  assertEquals(callCount, 1);
+  assert.equals(callCount, 1);
 
   target.dispatchEvent(event);
-  assertEquals(callCount, 2);
+  assert.equals(callCount, 2);
 
   target.removeEventListener("toString", listener);
   target.dispatchEvent(event);
-  assertEquals(callCount, 2);
+  assert.equals(callCount, 2);
 });
 
 test(function toStringShouldBeWebCompatible(): void {
   const target = new EventTarget();
-  assertEquals(target.toString(), "[object EventTarget]");
+  assert.equals(target.toString(), "[object EventTarget]");
 });
 
 test(function dispatchEventShouldNotThrowError(): void {
@@ -123,7 +123,7 @@ test(function dispatchEventShouldNotThrowError(): void {
     hasThrown = true;
   }
 
-  assertEquals(hasThrown, false);
+  assert.equals(hasThrown, false);
 });
 
 test(function eventTargetThisShouldDefaultToWindow(): void {
@@ -140,17 +140,17 @@ test(function eventTargetThisShouldDefaultToWindow(): void {
 
   addEventListener("hello", listener);
   window.dispatchEvent(event);
-  assertEquals(n, 2);
+  assert.equals(n, 2);
   n = 1;
   removeEventListener("hello", listener);
   window.dispatchEvent(event);
-  assertEquals(n, 1);
+  assert.equals(n, 1);
 
   window.addEventListener("hello", listener);
   dispatchEvent(event);
-  assertEquals(n, 2);
+  assert.equals(n, 2);
   n = 1;
   window.removeEventListener("hello", listener);
   dispatchEvent(event);
-  assertEquals(n, 1);
+  assert.equals(n, 1);
 });

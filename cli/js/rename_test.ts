@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { testPerm, assert } from "./test_util.ts";
 
 testPerm({ read: true, write: true }, function renameSyncSuccess(): void {
   const testDir = Deno.makeTempDirSync();
@@ -20,7 +20,7 @@ testPerm({ read: true, write: true }, function renameSyncSuccess(): void {
     assert(e instanceof Deno.errors.NotFound);
   }
   assert(caughtErr);
-  assertEquals(oldPathInfo, undefined);
+  assert.equals(oldPathInfo, undefined);
 });
 
 testPerm({ read: false, write: true }, function renameSyncReadPerm(): void {
@@ -33,7 +33,7 @@ testPerm({ read: false, write: true }, function renameSyncReadPerm(): void {
     err = e;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });
 
 testPerm({ read: true, write: false }, function renameSyncWritePerm(): void {
@@ -46,7 +46,7 @@ testPerm({ read: true, write: false }, function renameSyncWritePerm(): void {
     err = e;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });
 
 testPerm({ read: true, write: true }, async function renameSuccess(): Promise<
@@ -70,5 +70,5 @@ testPerm({ read: true, write: true }, async function renameSuccess(): Promise<
     assert(e instanceof Deno.errors.NotFound);
   }
   assert(caughtErr);
-  assertEquals(oldPathInfo, undefined);
+  assert.equals(oldPathInfo, undefined);
 });

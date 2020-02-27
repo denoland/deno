@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { testPerm, assert } from "./test_util.ts";
 
 type FileInfo = Deno.FileInfo;
 
@@ -13,12 +13,12 @@ function assertSameContent(files: FileInfo[]): void {
     }
 
     if (file.name === "002_hello.ts") {
-      assertEquals(file.mode!, Deno.statSync(`cli/tests/${file.name}`).mode!);
+      assert.equals(file.mode!, Deno.statSync(`cli/tests/${file.name}`).mode!);
       counter++;
     }
   }
 
-  assertEquals(counter, 2);
+  assert.equals(counter, 2);
 }
 
 testPerm({ read: true }, function readDirSyncSuccess(): void {
@@ -48,7 +48,7 @@ testPerm({ read: true }, function readDirSyncNotDir(): void {
     assert(err instanceof Error);
   }
   assert(caughtError);
-  assertEquals(src, undefined);
+  assert.equals(src, undefined);
 });
 
 testPerm({ read: true }, function readDirSyncNotFound(): void {
@@ -62,7 +62,7 @@ testPerm({ read: true }, function readDirSyncNotFound(): void {
     assert(err instanceof Deno.errors.NotFound);
   }
   assert(caughtError);
-  assertEquals(src, undefined);
+  assert.equals(src, undefined);
 });
 
 testPerm({ read: true }, async function readDirSuccess(): Promise<void> {

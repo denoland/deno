@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEquals } from "./test_util.ts";
+import { test, testPerm, assert } from "./test_util.ts";
 
 test(function dirCwdNotNull(): void {
   assert(Deno.cwd() != null);
@@ -11,9 +11,9 @@ testPerm({ write: true }, function dirCwdChdirSuccess(): void {
   Deno.chdir(path);
   const current = Deno.cwd();
   if (Deno.build.os === "mac") {
-    assertEquals(current, "/private" + path);
+    assert.equals(current, "/private" + path);
   } else {
-    assertEquals(current, path);
+    assert.equals(current, path);
   }
   Deno.chdir(initialdir);
 });

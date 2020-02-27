@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEquals } from "./test_util.ts";
+import { test, assert } from "./test_util.ts";
 
 test(function fromInit(): void {
   const req = new Request("https://example.com", {
@@ -11,9 +11,9 @@ test(function fromInit(): void {
   });
 
   // @ts-ignore
-  assertEquals("ahoyhoy", req._bodySource);
-  assertEquals(req.url, "https://example.com");
-  assertEquals(req.headers.get("test-header"), "value");
+  assert.equals("ahoyhoy", req._bodySource);
+  assert.equals(req.url, "https://example.com");
+  assert.equals(req.headers.get("test-header"), "value");
 });
 
 test(function fromRequest(): void {
@@ -25,9 +25,9 @@ test(function fromRequest(): void {
   const req = new Request(r);
 
   // @ts-ignore
-  assertEquals(req._bodySource, r._bodySource);
-  assertEquals(req.url, r.url);
-  assertEquals(req.headers.get("test-header"), r.headers.get("test-header"));
+  assert.equals(req._bodySource, r._bodySource);
+  assert.equals(req.url, r.url);
+  assert.equals(req.headers.get("test-header"), r.headers.get("test-header"));
 });
 
 test(async function cloneRequestBodyStream(): Promise<void> {
@@ -42,7 +42,7 @@ test(async function cloneRequestBodyStream(): Promise<void> {
   const b1 = await r1.text();
   const b2 = await r2.text();
 
-  assertEquals(b1, b2);
+  assert.equals(b1, b2);
 
   // @ts-ignore
   assert(r1._bodySource !== r2._bodySource);

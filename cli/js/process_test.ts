@@ -1,11 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import {
-  test,
-  testPerm,
-  assert,
-  assertEquals,
-  assertStrContains
-} from "./test_util.ts";
+import { test, testPerm, assert } from "./test_util.ts";
 const { kill, run, readFile, open, makeTempDir, writeFile } = Deno;
 
 test(function runPermissions(): void {
@@ -25,9 +19,9 @@ testPerm({ run: true }, async function runSuccess(): Promise<void> {
   });
   const status = await p.status();
   console.log("status", status);
-  assertEquals(status.success, true);
-  assertEquals(status.code, 0);
-  assertEquals(status.signal, undefined);
+  assert.equals(status.success, true);
+  assert.equals(status.code, 0);
+  assert.equals(status.signal, undefined);
   p.close();
 });
 
@@ -38,9 +32,9 @@ testPerm({ run: true }, async function runCommandFailedWithCode(): Promise<
     args: ["python", "-c", "import sys;sys.exit(41 + 1)"]
   });
   const status = await p.status();
-  assertEquals(status.success, false);
-  assertEquals(status.code, 42);
-  assertEquals(status.signal, undefined);
+  assert.equals(status.success, false);
+  assert.equals(status.code, 42);
+  assert.equals(status.signal, undefined);
   p.close();
 });
 
@@ -54,9 +48,9 @@ testPerm({ run: true }, async function runCommandFailedWithSignal(): Promise<
     args: ["python", "-c", "import os;os.kill(os.getpid(), 9)"]
   });
   const status = await p.status();
-  assertEquals(status.success, false);
-  assertEquals(status.code, undefined);
-  assertEquals(status.signal, 9);
+  assert.equals(status.success, false);
+  assert.equals(status.code, undefined);
+  assert.equals(status.signal, 9);
   p.close();
 });
 
@@ -107,9 +101,9 @@ while True:
     Deno.writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
 
     const status = await p.status();
-    assertEquals(status.success, false);
-    assertEquals(status.code, code);
-    assertEquals(status.signal, undefined);
+    assert.equals(status.success, false);
+    assert.equals(status.code, code);
+    assert.equals(status.signal, undefined);
     p.close();
   }
 );
@@ -125,14 +119,14 @@ testPerm({ run: true }, async function runStdinPiped(): Promise<void> {
 
   const msg = new TextEncoder().encode("hello");
   const n = await p.stdin.write(msg);
-  assertEquals(n, msg.byteLength);
+  assert.equals(n, msg.byteLength);
 
   p.stdin!.close();
 
   const status = await p.status();
-  assertEquals(status.success, true);
-  assertEquals(status.code, 0);
-  assertEquals(status.signal, undefined);
+  assert.equals(status.success, true);
+  assert.equals(status.code, 0);
+  assert.equals(status.signal, undefined);
   p.close();
 });
 
@@ -149,17 +143,17 @@ testPerm({ run: true }, async function runStdoutPiped(): Promise<void> {
   if (r === Deno.EOF) {
     throw new Error("p.stdout.read(...) should not be EOF");
   }
-  assertEquals(r, 5);
+  assert.equals(r, 5);
   const s = new TextDecoder().decode(data.subarray(0, r));
-  assertEquals(s, "hello");
+  assert.equals(s, "hello");
   r = await p.stdout!.read(data);
-  assertEquals(r, Deno.EOF);
+  assert.equals(r, Deno.EOF);
   p.stdout!.close();
 
   const status = await p.status();
-  assertEquals(status.success, true);
-  assertEquals(status.code, 0);
-  assertEquals(status.signal, undefined);
+  assert.equals(status.success, true);
+  assert.equals(status.code, 0);
+  assert.equals(status.signal, undefined);
   p.close();
 });
 
@@ -176,17 +170,17 @@ testPerm({ run: true }, async function runStderrPiped(): Promise<void> {
   if (r === Deno.EOF) {
     throw new Error("p.stderr.read should not return EOF here");
   }
-  assertEquals(r, 5);
+  assert.equals(r, 5);
   const s = new TextDecoder().decode(data.subarray(0, r));
-  assertEquals(s, "hello");
+  assert.equals(s, "hello");
   r = await p.stderr!.read(data);
-  assertEquals(r, Deno.EOF);
+  assert.equals(r, Deno.EOF);
   p.stderr!.close();
 
   const status = await p.status();
-  assertEquals(status.success, true);
-  assertEquals(status.code, 0);
-  assertEquals(status.signal, undefined);
+  assert.equals(status.success, true);
+  assert.equals(status.code, 0);
+  assert.equals(status.signal, undefined);
   p.close();
 });
 
@@ -197,7 +191,7 @@ testPerm({ run: true }, async function runOutput(): Promise<void> {
   });
   const output = await p.output();
   const s = new TextDecoder().decode(output);
-  assertEquals(s, "hello");
+  assert.equals(s, "hello");
   p.close();
 });
 
@@ -208,7 +202,7 @@ testPerm({ run: true }, async function runStderrOutput(): Promise<void> {
   });
   const error = await p.stderrOutput();
   const s = new TextDecoder().decode(error);
-  assertEquals(s, "error");
+  assert.equals(s, "error");
   p.close();
 });
 
@@ -237,8 +231,8 @@ testPerm(
     const decoder = new TextDecoder();
     const text = decoder.decode(fileContents);
 
-    assertStrContains(text, "error");
-    assertStrContains(text, "output");
+    assert.strContains(text, "error");
+    assert.strContains(text, "output");
   }
 );
 
@@ -257,7 +251,7 @@ testPerm(
     });
 
     const status = await p.status();
-    assertEquals(status.code, 0);
+    assert.equals(status.code, 0);
     p.close();
     file.close();
   }
@@ -278,7 +272,7 @@ testPerm({ run: true }, async function runEnv(): Promise<void> {
   });
   const output = await p.output();
   const s = new TextDecoder().decode(output);
-  assertEquals(s, "01234567");
+  assert.equals(s, "01234567");
   p.close();
 });
 
@@ -298,14 +292,14 @@ testPerm({ run: true }, async function runClose(): Promise<void> {
 
   const data = new Uint8Array(10);
   const r = await p.stderr!.read(data);
-  assertEquals(r, Deno.EOF);
+  assert.equals(r, Deno.EOF);
 });
 
 test(function signalNumbers(): void {
   if (Deno.build.os === "mac") {
-    assertEquals(Deno.Signal.SIGSTOP, 17);
+    assert.equals(Deno.Signal.SIGSTOP, 17);
   } else if (Deno.build.os === "linux") {
-    assertEquals(Deno.Signal.SIGSTOP, 19);
+    assert.equals(Deno.Signal.SIGSTOP, 19);
   }
 });
 
@@ -331,16 +325,16 @@ if (Deno.build.os !== "win") {
       args: ["python", "-c", "from time import sleep; sleep(10000)"]
     });
 
-    assertEquals(Deno.Signal.SIGINT, 2);
+    assert.equals(Deno.Signal.SIGINT, 2);
     kill(p.pid, Deno.Signal.SIGINT);
     const status = await p.status();
 
-    assertEquals(status.success, false);
+    assert.equals(status.success, false);
     // TODO(ry) On Linux, status.code is sometimes undefined and sometimes 1.
     // The following assert is causing this test to be flaky. Investigate and
     // re-enable when it can be made deterministic.
-    // assertEquals(status.code, 1);
-    // assertEquals(status.signal, Deno.Signal.SIGINT);
+    // assert.equals(status.code, 1);
+    // assert.equals(status.signal, Deno.Signal.SIGINT);
   });
 
   testPerm({ run: true }, async function killFailed(): Promise<void> {

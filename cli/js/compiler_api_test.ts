@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals, test } from "./test_util.ts";
+import { assert, test } from "./test_util.ts";
 
 const { compile, transpileOnly, bundle } = Deno;
 
@@ -11,7 +11,7 @@ test(async function compilerApiCompileSources() {
   });
   assert(diagnostics == null);
   assert(actual);
-  assertEquals(Object.keys(actual), [
+  assert.equals(Object.keys(actual), [
     "/bar.js.map",
     "/bar.js",
     "/foo.js.map",
@@ -24,7 +24,7 @@ test(async function compilerApiCompileNoSources() {
   assert(diagnostics == null);
   assert(actual);
   const keys = Object.keys(actual);
-  assertEquals(keys.length, 6);
+  assert.equals(keys.length, 6);
   assert(keys[0].endsWith("print_hello.js.map"));
   assert(keys[1].endsWith("print_hello.js"));
 });
@@ -42,7 +42,7 @@ test(async function compilerApiCompileOptions() {
   );
   assert(diagnostics == null);
   assert(actual);
-  assertEquals(Object.keys(actual), ["/foo.js"]);
+  assert.equals(Object.keys(actual), ["/foo.js"]);
   assert(actual["/foo.js"].startsWith("define("));
 });
 
@@ -59,7 +59,7 @@ test(async function compilerApiCompileLib() {
   );
   assert(diagnostics == null);
   assert(actual);
-  assertEquals(Object.keys(actual), ["/foo.js.map", "/foo.js"]);
+  assert.equals(Object.keys(actual), ["/foo.js.map", "/foo.js"]);
 });
 
 test(async function transpileOnlyApi() {
@@ -67,7 +67,7 @@ test(async function transpileOnlyApi() {
     "foo.ts": `export enum Foo { Foo, Bar, Baz };\n`
   });
   assert(actual);
-  assertEquals(Object.keys(actual), ["foo.ts"]);
+  assert.equals(Object.keys(actual), ["foo.ts"]);
   assert(actual["foo.ts"].source.startsWith("export var Foo;"));
   assert(actual["foo.ts"].map);
 });
@@ -83,7 +83,7 @@ test(async function transpileOnlyApiConfig() {
     }
   );
   assert(actual);
-  assertEquals(Object.keys(actual), ["foo.ts"]);
+  assert.equals(Object.keys(actual), ["foo.ts"]);
   assert(actual["foo.ts"].source.startsWith("define("));
   assert(actual["foo.ts"].map == null);
 });

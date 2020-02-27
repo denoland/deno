@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEquals } from "./test_util.ts";
+import { test, assert } from "./test_util.ts";
 const {
   stringifyArgs
   // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
@@ -16,7 +16,7 @@ test(function newHeaderTest(): void {
     // @ts-ignore
     new Headers(null);
   } catch (e) {
-    assertEquals(
+    assert.equals(
       e.message,
       "Failed to construct 'Headers'; The provided value was not valid"
     );
@@ -40,15 +40,15 @@ for (const name in headerDict) {
 test(function newHeaderWithSequence(): void {
   const headers = new Headers(headerSeq);
   for (const name in headerDict) {
-    assertEquals(headers.get(name), String(headerDict[name]));
+    assert.equals(headers.get(name), String(headerDict[name]));
   }
-  assertEquals(headers.get("length"), null);
+  assert.equals(headers.get("length"), null);
 });
 
 test(function newHeaderWithRecord(): void {
   const headers = new Headers(headerDict);
   for (const name in headerDict) {
-    assertEquals(headers.get(name), String(headerDict[name]));
+    assert.equals(headers.get(name), String(headerDict[name]));
   }
 });
 
@@ -56,7 +56,7 @@ test(function newHeaderWithHeadersInstance(): void {
   const headers = new Headers(headerDict);
   const headers2 = new Headers(headers);
   for (const name in headerDict) {
-    assertEquals(headers2.get(name), String(headerDict[name]));
+    assert.equals(headers2.get(name), String(headerDict[name]));
   }
 });
 
@@ -64,7 +64,7 @@ test(function headerAppendSuccess(): void {
   const headers = new Headers();
   for (const name in headerDict) {
     headers.append(name, headerDict[name]);
-    assertEquals(headers.get(name), String(headerDict[name]));
+    assert.equals(headers.get(name), String(headerDict[name]));
   }
 });
 
@@ -72,7 +72,7 @@ test(function headerSetSuccess(): void {
   const headers = new Headers();
   for (const name in headerDict) {
     headers.set(name, headerDict[name]);
-    assertEquals(headers.get(name), String(headerDict[name]));
+    assert.equals(headers.get(name), String(headerDict[name]));
   }
 });
 
@@ -99,8 +99,8 @@ test(function headerDeleteSuccess(): void {
 test(function headerGetSuccess(): void {
   const headers = new Headers(headerDict);
   for (const name in headerDict) {
-    assertEquals(headers.get(name), String(headerDict[name]));
-    assertEquals(headers.get("nameNotInHeaders"), null);
+    assert.equals(headers.get(name), String(headerDict[name]));
+    assert.equals(headers.get("nameNotInHeaders"), null);
   }
 });
 
@@ -111,7 +111,7 @@ test(function headerEntriesSuccess(): void {
     const key = it[0];
     const value = it[1];
     assert(headers.has(key));
-    assertEquals(value, headers.get(key));
+    assert.equals(value, headers.get(key));
   }
 });
 
@@ -155,11 +155,11 @@ test(function headerForEachSuccess(): void {
   });
   let callNum = 0;
   headers.forEach((value, key, container): void => {
-    assertEquals(headers, container);
-    assertEquals(value, headerEntriesDict[key]);
+    assert.equals(headers, container);
+    assert.equals(value, headerEntriesDict[key]);
     callNum++;
   });
-  assertEquals(callNum, keys.length);
+  assert.equals(callNum, keys.length);
 });
 
 test(function headerSymbolIteratorSuccess(): void {
@@ -169,7 +169,7 @@ test(function headerSymbolIteratorSuccess(): void {
     const key = header[0];
     const value = header[1];
     assert(headers.has(key));
-    assertEquals(value, headers.get(key));
+    assert.equals(value, headers.get(key));
   }
 });
 
@@ -231,7 +231,7 @@ test(function headerIllegalReject(): void {
   } catch (e) {
     errorCount++;
   }
-  assertEquals(errorCount, 9);
+  assert.equals(errorCount, 9);
   // 'o k' is valid value but invalid name
   new Headers({ "He-y": "o k" });
 });
@@ -251,7 +251,7 @@ test(function headerParamsShouldThrowTypeError(): void {
     }
   }
 
-  assertEquals(hasThrown, 2);
+  assert.equals(hasThrown, 2);
 });
 
 test(function headerParamsArgumentsCheck(): void {
@@ -275,8 +275,8 @@ test(function headerParamsArgumentsCheck(): void {
         hasThrown = 3;
       }
     }
-    assertEquals(hasThrown, 2);
-    assertEquals(
+    assert.equals(hasThrown, 2);
+    assert.equals(
       errMsg,
       `Headers.${method} requires at least 1 argument, but only 0 present`
     );
@@ -299,8 +299,8 @@ test(function headerParamsArgumentsCheck(): void {
         hasThrown = 3;
       }
     }
-    assertEquals(hasThrown, 2);
-    assertEquals(
+    assert.equals(hasThrown, 2);
+    assert.equals(
       errMsg,
       `Headers.${method} requires at least 2 arguments, but only 0 present`
     );
@@ -319,8 +319,8 @@ test(function headerParamsArgumentsCheck(): void {
         hasThrown = 3;
       }
     }
-    assertEquals(hasThrown, 2);
-    assertEquals(
+    assert.equals(hasThrown, 2);
+    assert.equals(
       errMsg,
       `Headers.${method} requires at least 2 arguments, but only 1 present`
     );
@@ -329,7 +329,7 @@ test(function headerParamsArgumentsCheck(): void {
 
 test(function toStringShouldBeWebCompatibility(): void {
   const headers = new Headers();
-  assertEquals(headers.toString(), "[object Headers]");
+  assert.equals(headers.toString(), "[object Headers]");
 });
 
 function stringify(...args: unknown[]): string {
@@ -338,9 +338,9 @@ function stringify(...args: unknown[]): string {
 
 test(function customInspectReturnsCorrectHeadersFormat(): void {
   const blankHeaders = new Headers();
-  assertEquals(stringify(blankHeaders), "Headers {}");
+  assert.equals(stringify(blankHeaders), "Headers {}");
   const singleHeader = new Headers([["Content-Type", "application/json"]]);
-  assertEquals(
+  assert.equals(
     stringify(singleHeader),
     "Headers { content-type: application/json }"
   );
@@ -348,7 +348,7 @@ test(function customInspectReturnsCorrectHeadersFormat(): void {
     ["Content-Type", "application/json"],
     ["Content-Length", "1337"]
   ]);
-  assertEquals(
+  assert.equals(
     stringify(multiParamHeader),
     "Headers { content-type: application/json, content-length: 1337 }"
   );

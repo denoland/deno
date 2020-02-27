@@ -1,10 +1,4 @@
-import {
-  assert,
-  assertEquals,
-  assertMatch,
-  test,
-  unreachable
-} from "./test_util.ts";
+import { assert, test } from "./test_util.ts";
 
 const readErrorStackPattern = new RegExp(
   `^.*
@@ -19,9 +13,9 @@ test(async function sendAsyncStackTrace(): Promise<void> {
   const rid = 10;
   try {
     await Deno.read(rid, buf);
-    unreachable();
+    assert.unreachable();
   } catch (error) {
-    assertMatch(error.stack, readErrorStackPattern);
+    assert.match(error.stack, readErrorStackPattern);
   }
 });
 
@@ -39,5 +33,5 @@ test(async function malformedMinimalControlBuffer(): Promise<void> {
   const arg = buf32[1];
   const message = new TextDecoder().decode(res.slice(12)).trim();
   assert(arg < 0);
-  assertEquals(message, "Unparsable control buffer");
+  assert.equals(message, "Unparsable control buffer");
 });

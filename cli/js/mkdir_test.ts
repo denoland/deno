@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { testPerm, assert } from "./test_util.ts";
 
 testPerm({ read: true, write: true }, function mkdirSyncSuccess(): void {
   const path = Deno.makeTempDirSync() + "/dir";
@@ -14,7 +14,7 @@ testPerm({ read: true, write: true }, function mkdirSyncMode(): void {
   const pathInfo = Deno.statSync(path);
   if (pathInfo.mode !== null) {
     // Skip windows
-    assertEquals(pathInfo.mode & 0o777, 0o755);
+    assert.equals(pathInfo.mode & 0o777, 0o755);
   }
 });
 
@@ -26,7 +26,7 @@ testPerm({ write: false }, function mkdirSyncPerm(): void {
     err = e;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });
 
 testPerm({ read: true, write: true }, async function mkdirSuccess(): Promise<

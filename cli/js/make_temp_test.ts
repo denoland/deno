@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEquals } from "./test_util.ts";
+import { test, testPerm, assert } from "./test_util.ts";
 
 testPerm({ write: true }, function makeTempDirSyncSuccess(): void {
   const dir1 = Deno.makeTempDirSync({ prefix: "hello", suffix: "world" });
@@ -35,7 +35,7 @@ test(function makeTempDirSyncPerm(): void {
     err = err_;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });
 
 testPerm({ write: true }, async function makeTempDirSuccess(): Promise<void> {
@@ -98,7 +98,7 @@ test(function makeTempFileSyncPerm(): void {
     err = err_;
   }
   assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  assert.equals(err.name, "PermissionDenied");
 });
 
 testPerm({ write: true }, async function makeTempFileSuccess(): Promise<void> {
