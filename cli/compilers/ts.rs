@@ -23,6 +23,7 @@ use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
+use log::Level;
 use regex::Regex;
 use serde_json::json;
 use std::collections::HashMap;
@@ -377,7 +378,7 @@ impl TsCompiler {
 
     let ts_compiler = self.clone();
 
-    if self.verbosity >= Verbosity::Normal {
+    if self.verbosity.includes(Level::Info) {
       eprintln!(
         "{} {}",
         colors::green("Compile".to_string()),

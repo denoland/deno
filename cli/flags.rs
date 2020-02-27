@@ -70,15 +70,24 @@ impl Default for DenoSubcommand {
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Verbosity {
-  Quiet,
-  Normal,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Verbosity {
+  pub level: Level,
 }
 
 impl Default for Verbosity {
   fn default() -> Verbosity {
-    Verbosity::Normal
+    Verbosity::new(Level::Info)
+  }
+}
+
+impl Verbosity {
+  pub const fn new(level: Level) -> Verbosity {
+    Verbosity { level }
+  }
+
+  pub fn includes(self, level: Level) -> bool {
+    self.level >= level
   }
 }
 
@@ -244,7 +253,7 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
   }
 
   if matches.is_present("quiet") {
-    flags.verbosity = Verbosity::Quiet;
+    flags.verbosity = Verbosity::new(Level::Error);
   }
 
   if let Some(m) = matches.subcommand_matches("run") {
@@ -1924,12 +1933,12 @@ mod tests {
     let r = flags_from_vec_safe(svec!["deno", "-q", "script.ts"]);
     assert_eq!(
       r.unwrap(),
-      DenoFlags {
+      Flags {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
-        verbosity: Verbosity::Quiet,
-        ..DenoFlags::default()
+        verbosity: Verbosity::new(Level::Error),
+        ..Flags::default()
       }
     );
   }

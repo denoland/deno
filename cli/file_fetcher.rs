@@ -10,6 +10,7 @@ use crate::op_error::OpError;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
+use log::Level;
 use regex::Regex;
 use reqwest;
 use std;
@@ -395,7 +396,7 @@ impl SourceFileFetcher {
       .boxed_local();
     }
 
-    if self.verbosity >= Verbosity::Normal {
+    if self.verbosity.includes(Level::Info) {
       eprintln!(
         "{} {}",
         colors::green("Download".to_string()),
@@ -634,7 +635,7 @@ mod tests {
       false,
       false,
       None,
-      Verbosity::Normal,
+      Verbosity::default(),
     )
     .expect("setup fail")
   }
