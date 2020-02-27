@@ -1768,6 +1768,16 @@ declare namespace Deno {
     constructor(state: PermissionState);
   }
 
+  export interface TruncateOptions {
+    /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
+     * allowed to exist at the target location. When createNew is set to `true`,
+     * create is ignored. */
+    createNew?: boolean;
+    /** Sets the option to allow creating a new file, if one doesn't already
+     * exist at the specified path (defaults to `true`). */
+    create?: boolean;
+  }
+
   /** Synchronously truncates or extends the specified file, to reach the
    * specified `len`.  If `len` is not specified then the entire file contents
    * are truncated.
@@ -1783,7 +1793,11 @@ declare namespace Deno {
    *       console.log(new TextDecoder().decode(data));
    *
    * Requires `allow-write` permission. */
-  export function truncateSync(name: string, len?: number): void;
+  export function truncateSync(
+    path: string,
+    len?: number,
+    options?: TruncateOptions
+  ): void;
 
   /** Truncates or extends the specified file, to reach the specified `len`. If
    * `len` is not specified then the entire file contents are truncated.
@@ -1799,7 +1813,11 @@ declare namespace Deno {
    *       console.log(new TextDecoder().decode(data));  //"Hello W"
    *
    * Requires `allow-write` permission. */
-  export function truncate(name: string, len?: number): Promise<void>;
+  export function truncate(
+    path: string,
+    len?: number,
+    options?: TruncateOptions
+  ): Promise<void>;
 
   export interface AsyncHandler {
     (msg: Uint8Array): void;

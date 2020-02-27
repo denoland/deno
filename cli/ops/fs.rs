@@ -770,6 +770,8 @@ struct TruncateArgs {
   promise_id: Option<u64>,
   path: String,
   len: u64,
+  create: bool,
+  create_new: bool,
 }
 
 fn op_truncate(
@@ -780,14 +782,36 @@ fn op_truncate(
   let args: TruncateArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
   let len = args.len;
+  let create = args.create;
+  let create_new = args.create_new;
 
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_truncate {} {}", path.display(), len);
-    let f = std::fs::OpenOptions::new().write(true).open(&path)?;
-    f.set_len(len)?;
+    let mut open_options = std::fs::OpenOptions::new();
+    open_options
+      .create(create)
+      .create_new(create_new)
+      .write(true);
+    let file = match open_options.open(&path) {
+      Err(e)
+        if cfg!(windows)
+          && create_new
+          && e.kind() == std::io::ErrorKind::PermissionDenied
+          && std::fs::metadata(&path).map_or(false, |m| m.is_dir()) =>
+      {
+        // alternately, "The file exists. (os error 80)"
+        return Err(OpError::already_exists(
+          "Cannot create a file when that file already exists. (os error 183)"
+            .to_string(),
+        ));
+      }
+      Err(e) => return Err(OpError::from(e)),
+      Ok(f) => f,
+    };
+    file.set_len(len)?;
     Ok(json!({}))
   })
 }
