@@ -12,7 +12,7 @@ export function setPluginAsyncHandler(
   PLUGIN_ASYNC_HANDLER_MAP.set(opId, handler);
 }
 
-export function getAsyncHandler(opName: string): (msg: Uint8Array) => void {
+export function getAsyncHandler(opName: string): (msg: DataView) => void {
   switch (opName) {
     case "op_write":
     case "op_read":

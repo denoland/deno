@@ -34,22 +34,24 @@ const scratchBytes = new Uint8Array(
 );
 util.assert(scratchBytes.byteLength === scratch32.length * 4);
 
-export function asyncMsgFromRust(ui8: Uint8Array): void {
-  const buf32 = new Int32Array(ui8.buffer, ui8.byteOffset, 3);
-  const promiseId = buf32[0];
+export function asyncMsgFromRust(dv: DataView): void {
+  // const buf32 = new Int32Array(ui8.buffer, ui8.byteOffset, 3);
+  const promiseId = dv.getInt32(0, true);
   const promise = promiseTableMin.get(promiseId);
   promiseTableMin.delete(promiseId);
   util.assert(promise);
-  const arg1 = buf32[1];
-  const result = buf32[2];
+  const arg1 = dv.getInt32(4, true);
+  const result = dv.getInt32(8, true);
   if (arg1 < 0) {
     const kind = result as ErrorKind;
-    const message = decoder.decode(ui8.subarray(12));
+    const message = decoder.decode(
+      new Uint8Array(dv.buffer, dv.byteOffset + 12)
+    );
     promise.reject(() => {
       constructError(kind, message);
     });
     return;
-  } else if (ui8.length != 12) {
+  } else if (dv.byteLength != 12) {
     promise.reject(() => {
       throw new errors.InvalidData("BadMessage");
     });

@@ -36,6 +36,7 @@ SharedQueue Binary Layout
   // It is possible that the Deno namespace has been deleted.
   // Use the above local Deno and core variable instead.
 
+  let sharedAb;
   let sharedBytes;
   let shared32;
 
@@ -52,6 +53,7 @@ SharedQueue Binary Layout
 
   function init() {
     const shared = Deno.core.shared;
+    sharedAb = Deno.core.shared;
     assert(shared.byteLength > 0);
     assert(sharedBytes == null);
     assert(shared32 == null);
@@ -155,7 +157,7 @@ SharedQueue Binary Layout
 
     assert(off != null);
     assert(end != null);
-    const buf = sharedBytes.subarray(off, end);
+    const buf = new DataView(sharedAb, off, end - off);
     assert(asyncHandlers[opId] != null);
     asyncHandlers[opId](buf);
     return true;

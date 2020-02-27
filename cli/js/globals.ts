@@ -71,7 +71,7 @@ declare global {
       control: Uint8Array,
       zeroCopy?: ArrayBufferView | null
     ): Uint8Array | null;
-    setAsyncHandler(opId: number, cb: (msg: Uint8Array) => void): void;
+    setAsyncHandler(opId: number, cb: (msg: DataView) => void): void;
     sharedQueue: {
       head(): number;
       numRecords(): number;

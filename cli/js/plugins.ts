@@ -2,7 +2,7 @@ import { sendSync } from "./dispatch_json.ts";
 import { core } from "./core.ts";
 
 export interface AsyncHandler {
-  (msg: Uint8Array): void;
+  (msg: DataView): void;
 }
 
 interface PluginOp {

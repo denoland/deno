@@ -44,7 +44,8 @@ function unwrapResponse(res: JsonResponse): Ok {
   return res.ok;
 }
 
-export function asyncMsgFromRust(resUi8: Uint8Array): void {
+export function asyncMsgFromRust(dv: DataView): void {
+  const resUi8 = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
   const res = decode(resUi8);
   util.assert(res.promiseId != null);
 
