@@ -6,7 +6,7 @@ import {
   assertEquals,
   assertStrContains,
   assertThrows,
-  fail
+  // fail
 } from "./test_util.ts";
 
 testPerm({ net: true }, async function fetchProtocolError(): Promise<void> {
