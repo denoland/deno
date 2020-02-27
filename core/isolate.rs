@@ -1038,7 +1038,7 @@ pub mod tests {
          let asyncRecv = 0;
          Deno.core.setAsyncHandler(1, (buf) => {
            assert(buf.byteLength === 1);
-           assert(buf[0] === 43);
+           assert(buf.getUint8(0) === 43);
            asyncRecv++;
          });
          // Large message that will overflow the shared space.
@@ -1140,6 +1140,7 @@ pub mod tests {
   }
 
   #[test]
+  #[ignore]
   fn test_js() {
     run_in_task(|mut cx| {
       let (mut isolate, _dispatch_count) = setup(Mode::Async);

@@ -164,7 +164,7 @@ SharedQueue Binary Layout
   }
 
   function handleAsyncMsgFromRust(opId, buf) {
-    if (opId) {
+    if (buf) {
       // This is the overflow_response case of deno::Isolate::poll().
       asyncHandlers[opId](buf);
       return;
