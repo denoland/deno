@@ -1,14 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "./ops/dispatch_json.ts";
 
+type MkdirArgs = { path: string; recursive: boolean; mode?: number };
+
 // TODO(ry) The complexity in argument parsing is to support deprecated forms of
 // mkdir and mkdirSync.
 function mkdirArgs(
   path: string,
   optionsOrRecursive?: MkdirOptions | boolean,
   mode?: number
-): { path: string; recursive: boolean; mode: number } {
-  const args = { path, recursive: false, mode: 0o777 };
+): MkdirArgs {
+  const args: MkdirArgs = { path, recursive: false };
   if (typeof optionsOrRecursive == "boolean") {
     args.recursive = optionsOrRecursive;
     if (mode) {
