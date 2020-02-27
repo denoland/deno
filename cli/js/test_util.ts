@@ -106,6 +106,22 @@ function normalizeTestPermissions(perms: TestPermissions): Permissions {
   };
 }
 
+// Wrap `TestFunction` in additional assertion that makes sure
+// the test case does not "leak" resources - ie. resource table after
+// the test has exactly the same contents as before the test.
+function assertResources(fn: Deno.TestFunction): Deno.TestFunction {
+  return async function(): Promise<void> {
+    const preResources = Deno.resources();
+    await fn();
+    const postResources = Deno.resources();
+    const msg = `Test case is leaking resources.
+Before: ${JSON.stringify(preResources, null, 2)}
+After: ${JSON.stringify(postResources, null, 2)}`;
+
+    assertEquals(preResources, postResources, msg);
+  };
+}
+
 export function testPerm(perms: TestPermissions, fn: Deno.TestFunction): void {
   const normalizedPerms = normalizeTestPermissions(perms);
 
@@ -115,7 +131,7 @@ export function testPerm(perms: TestPermissions, fn: Deno.TestFunction): void {
     return;
   }
 
-  Deno.test(fn);
+  Deno.test(fn.name, assertResources(fn));
 }
 
 export function test(fn: Deno.TestFunction): void {
