@@ -540,6 +540,8 @@ struct TruncateArgs {
   path: String,
   len: u64,
   perm: Option<u32>,
+  create: bool,
+  create_new: bool,
 }
 
 fn op_truncate(
@@ -550,6 +552,8 @@ fn op_truncate(
   let args: TruncateArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
   let len = args.len;
+  let create = args.create;
+  let create_new = args.create_new;
 
   state.check_write(&path)?;
 
@@ -557,13 +561,21 @@ fn op_truncate(
   blocking_json(is_sync, move || {
     debug!("op_truncate {} {}", path.display(), len);
     let mut open_options = fs::OpenOptions::new();
-    open_options.write(true);
     if let Some(_perm) = args.perm {
+      if !(create || create_new) {
+        return Err(OpError::type_error(
+          "specified perm without allowing file creation".to_string(),
+        ));
+      }
       // perm only used if creating the file on Unix
       // if not specified, defaults to 0o666
       #[cfg(unix)]
       open_options.mode(_perm & 0o777);
     }
+    open_options
+      .create(create)
+      .create_new(create_new)
+      .write(true);
     let f = open_options.open(&path)?;
     f.set_len(len)?;
     Ok(json!({}))

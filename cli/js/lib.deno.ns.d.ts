@@ -1468,6 +1468,17 @@ declare namespace Deno {
   // @url js/truncate.d.ts
 
   export interface TruncateOptions {
+    /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
+     * allowed to exist at the target location. When createNew is set to `true`,
+     * create is ignored. */
+    createNew?: boolean;
+    /** Sets the option to allow overwriting existing file. Note that setting
+     * `{ ..., clobber: false, create: true }` has the same effect as
+     * `{ ..., createNew: true }`. */
+    clobber?: boolean;
+    /** Sets the option to allow creating a new file, if one doesn't already
+     * exist at the specified path (defaults to `true`). */
+    create?: boolean;
     /** Permissions to use if creating the file (defaults to `0o666`, before
      * the process's umask).
      * It's an error to specify perm when create is set to `false`.
@@ -1480,7 +1491,7 @@ declare namespace Deno {
    *
    *       Deno.truncateSync("hello.txt", 10);
    *
-   * Requires `allow-write` permission. */
+   * Requires `allow-write` permission, and `allow-read` if create is `false`. */
   export function truncateSync(
     path: string,
     len?: number,
@@ -1491,7 +1502,7 @@ declare namespace Deno {
    *
    *       await Deno.truncate("hello.txt", 10);
    *
-   * Requires `allow-write` permission. */
+   * Requires `allow-write` permission, and `allow-read` if create is `false`. */
   export function truncate(
     path: string,
     len?: number,
