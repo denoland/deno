@@ -190,8 +190,7 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
           println!("Not formatted stdin");
         }
       } else {
-        let _r = stdout().write_all(formatted_text.as_bytes())?;
-        // TODO(ry) Only ignore SIGPIPE. Currently ignoring all errors.
+        stdout().write_all(formatted_text.as_bytes())?;
       }
     }
     Err(e) => {
