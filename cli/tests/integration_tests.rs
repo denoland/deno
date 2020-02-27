@@ -915,6 +915,11 @@ itest!(_056_make_temp_file_write_perm {
   output: "056_make_temp_file_write_perm.out",
 });
 
+itest!(_057_revoke_permissions {
+  args: "run -A 057_revoke_permissions.ts",
+  output: "057_revoke_permissions.out",
+});
+
 itest!(js_import_detect {
   args: "run --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
