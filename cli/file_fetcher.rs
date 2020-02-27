@@ -1100,6 +1100,55 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_get_source_code_7() {
+    let http_server_guard = crate::test_util::http_server();
+    let (_temp_dir, fetcher) = test_setup();
+
+    // Testing redirect with Location set to absolute url.
+    let redirect_module_url = Url::parse(
+      "http://localhost:4550/REDIRECT/cli/tests/subdir/redirects/redirect1.js",
+    )
+    .unwrap();
+    let redirect_source_filepath =
+      fetcher.http_cache.get_cache_filename(&redirect_module_url);
+    let redirect_source_filename =
+      redirect_source_filepath.to_str().unwrap().to_string();
+    let target_module_url = Url::parse(
+      "http://localhost:4550/cli/tests/subdir/redirects/redirect1.js",
+    )
+    .unwrap();
+    let redirect_target_filepath =
+      fetcher.http_cache.get_cache_filename(&target_module_url);
+    let redirect_target_filename =
+      redirect_target_filepath.to_str().unwrap().to_string();
+
+    // Test basic follow and headers recording
+    let result = fetcher
+      .get_source_file(&redirect_module_url, true, false, false)
+      .await;
+    assert!(result.is_ok());
+    let mod_meta = result.unwrap();
+    // File that requires redirection should be empty file.
+    assert_eq!(fs::read_to_string(&redirect_source_filename).unwrap(), "");
+    let (_, headers) = fetcher.http_cache.get(&redirect_module_url).unwrap();
+    assert_eq!(
+      headers.get("location").unwrap(),
+      "/cli/tests/subdir/redirects/redirect1.js"
+    );
+    // The target of redirection is downloaded instead.
+    assert_eq!(
+      fs::read_to_string(&redirect_target_filename).unwrap(),
+      "export const redirect = 1;\n"
+    );
+    let (_, headers) = fetcher.http_cache.get(&target_module_url).unwrap();
+    assert!(headers.get("location").is_none());
+    // Examine the meta result.
+    assert_eq!(mod_meta.url, target_module_url);
+
+    drop(http_server_guard);
+  }
+
+  #[tokio::test]
   async fn test_get_source_no_remote() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
