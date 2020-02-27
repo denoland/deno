@@ -38,7 +38,7 @@ function encode(args: object): Uint8Array {
 
 function unwrapResponse(res: JsonResponse): Ok {
   if (res.err != null) {
-    return constructError(res.err!.kind, res.err!.message);
+    throw constructError(res.err!.kind, res.err!.message);
   }
   util.assert(res.ok != null);
   return res.ok;

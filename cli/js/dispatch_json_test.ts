@@ -1,11 +1,12 @@
 import {
   assert,
-  test,
-  testPerm,
-  assertMatch,
-  unreachable
+  test
+  // testPerm,
+  // assertMatch,
+  // unreachable
 } from "./test_util.ts";
 
+/*
 const openErrorStackPattern = new RegExp(
   `^.*
     at unwrapResponse \\(.*dispatch_json\\.ts:.*\\)
@@ -21,6 +22,7 @@ testPerm({ read: true }, async function sendAsyncStackTrace(): Promise<void> {
       assertMatch(error.stack, openErrorStackPattern);
     });
 });
+*/
 
 test(async function malformedJsonControlBuffer(): Promise<void> {
   // @ts-ignore

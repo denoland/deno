@@ -25,48 +25,48 @@ export enum ErrorKind {
   Other = 22
 }
 
-export function constructError(kind: ErrorKind, msg: string): never {
+export function constructError(kind: ErrorKind, msg: string): Error {
   switch (kind) {
     case ErrorKind.TypeError:
-      throw new TypeError(msg);
+      return new TypeError(msg);
     case ErrorKind.Other:
-      throw new Error(msg);
+      return new Error(msg);
     case ErrorKind.URIError:
-      throw new URIError(msg);
+      return new URIError(msg);
     case ErrorKind.NotFound:
-      throw new NotFound(msg);
+      return new NotFound(msg);
     case ErrorKind.PermissionDenied:
-      throw new PermissionDenied(msg);
+      return new PermissionDenied(msg);
     case ErrorKind.ConnectionRefused:
-      throw new ConnectionRefused(msg);
+      return new ConnectionRefused(msg);
     case ErrorKind.ConnectionReset:
-      throw new ConnectionReset(msg);
+      return new ConnectionReset(msg);
     case ErrorKind.ConnectionAborted:
-      throw new ConnectionAborted(msg);
+      return new ConnectionAborted(msg);
     case ErrorKind.NotConnected:
-      throw new NotConnected(msg);
+      return new NotConnected(msg);
     case ErrorKind.AddrInUse:
-      throw new AddrInUse(msg);
+      return new AddrInUse(msg);
     case ErrorKind.AddrNotAvailable:
-      throw new AddrNotAvailable(msg);
+      return new AddrNotAvailable(msg);
     case ErrorKind.BrokenPipe:
-      throw new BrokenPipe(msg);
+      return new BrokenPipe(msg);
     case ErrorKind.AlreadyExists:
-      throw new AlreadyExists(msg);
+      return new AlreadyExists(msg);
     case ErrorKind.InvalidData:
-      throw new InvalidData(msg);
+      return new InvalidData(msg);
     case ErrorKind.TimedOut:
-      throw new TimedOut(msg);
+      return new TimedOut(msg);
     case ErrorKind.Interrupted:
-      throw new Interrupted(msg);
+      return new Interrupted(msg);
     case ErrorKind.WriteZero:
-      throw new WriteZero(msg);
+      return new WriteZero(msg);
     case ErrorKind.UnexpectedEof:
-      throw new UnexpectedEof(msg);
+      return new UnexpectedEof(msg);
     case ErrorKind.BadResource:
-      throw new BadResource(msg);
+      return new BadResource(msg);
     case ErrorKind.Http:
-      throw new Http(msg);
+      return new Http(msg);
   }
 }
 
