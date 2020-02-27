@@ -179,6 +179,17 @@ class Http extends Error {
   }
 }
 
+class AssertionError extends Error {
+  expected?: any;
+  actual?: any;
+  showDiff?: boolean;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "AssertionError";
+  }
+}
+
 export const errors = {
   NotFound: NotFound,
   PermissionDenied: PermissionDenied,
@@ -197,5 +208,6 @@ export const errors = {
   Other: Other,
   UnexpectedEof: UnexpectedEof,
   BadResource: BadResource,
-  Http: Http
+  Http: Http,
+  AssertionError: AssertionError
 };

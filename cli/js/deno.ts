@@ -128,7 +128,8 @@ export { utimeSync, utime } from "./utime.ts";
 export { version } from "./version.ts";
 export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";
 export const args: string[] = [];
-export { test, runTests } from "./testing.ts";
+export { test, runTests } from "./testing/test_definition.ts";
+export { assert } from "./testing/asserts.ts";
 
 // These are internal Deno APIs.  We are marking them as internal so they do not
 // appear in the runtime type library.

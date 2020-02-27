@@ -17,6 +17,8 @@ declare namespace Deno {
     name: string;
   }
 
+  export function assert(expr: unknown, msg?: string): asserts expr;
+
   export function test(t: TestDefinition): void;
   export function test(fn: TestFunction): void;
   export function test(name: string, fn: TestFunction): void;
@@ -1276,6 +1278,12 @@ declare namespace Deno {
     }
     class Http extends Error {
       constructor(msg: string);
+    }
+    class AssertionError extends Error {
+      expected?: any;
+      actual?: any;
+      showDiff?: boolean;
+      constructor(message: string);
     }
   }
   /* eslint-enable @typescript-eslint/no-unused-vars */

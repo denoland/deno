@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { red, green, bgRed, bold, white, gray, italic } from "./colors.ts";
-import { exit } from "./os.ts";
-import { Console } from "./console.ts";
+import { red, green, bgRed, bold, white, gray, italic } from "../colors.ts";
+import { exit } from "../os.ts";
+import { Console } from "../console.ts";
 
 function formatTestTime(time = 0): string {
   return `${time.toFixed(2)}ms`;
@@ -24,22 +24,7 @@ export interface TestDefinition {
   name: string;
 }
 
-declare global {
-  // Only `var` variables show up in the `globalThis` type when doing a global
-  // scope augmentation.
-  // eslint-disable-next-line no-var
-  var __DENO_TEST_REGISTRY: TestDefinition[];
-}
-
-let TEST_REGISTRY: TestDefinition[] = [];
-if (globalThis["__DENO_TEST_REGISTRY"]) {
-  TEST_REGISTRY = globalThis.__DENO_TEST_REGISTRY as TestDefinition[];
-} else {
-  Object.defineProperty(globalThis, "__DENO_TEST_REGISTRY", {
-    enumerable: false,
-    value: TEST_REGISTRY
-  });
-}
+const TEST_REGISTRY: TestDefinition[] = [];
 
 export function test(t: TestDefinition): void;
 export function test(fn: TestFunction): void;
