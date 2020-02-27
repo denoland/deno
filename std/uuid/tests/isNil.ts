@@ -11,6 +11,5 @@ test({
     const u = "582cbcff-dad6-4f28-888a-e062ae36bafc";
     assert(isNil(nil));
     assert(!isNil(u));
-    console.log("");
   }
 });
