@@ -284,7 +284,11 @@ async fn fetch_command(
   Ok(())
 }
 
-async fn eval_command(flags: DenoFlags, code: String) -> Result<(), ErrBox> {
+async fn eval_command(
+  flags: DenoFlags,
+  code: String,
+  as_typescript: bool,
+) -> Result<(), ErrBox> {
   // Force TypeScript compile.
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
@@ -296,7 +300,11 @@ async fn eval_command(flags: DenoFlags, code: String) -> Result<(), ErrBox> {
     filename: main_module_url.to_file_path().unwrap(),
     url: main_module_url,
     types_url: None,
-    media_type: MediaType::TypeScript,
+    media_type: if as_typescript {
+      MediaType::TypeScript
+    } else {
+      MediaType::JavaScript
+    },
     source_code: code.clone().into_bytes(),
   };
   // Save our fake file into file fetcher cache
@@ -431,7 +439,10 @@ pub fn main() {
       source_file,
       out_file,
     } => bundle_command(flags, source_file, out_file).boxed_local(),
-    DenoSubcommand::Eval { code } => eval_command(flags, code).boxed_local(),
+    DenoSubcommand::Eval {
+      code,
+      as_typescript,
+    } => eval_command(flags, code, as_typescript).boxed_local(),
     DenoSubcommand::Fetch { files } => {
       fetch_command(flags, files).boxed_local()
     }

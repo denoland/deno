@@ -773,8 +773,9 @@ itest!(_029_eval {
   output: "029_eval.out",
 });
 
+// Ugly parentheses due to whitespace delimiting problem.
 itest!(_030_eval_ts {
-  args: "eval console.log((123)as(number))", // 'as' is a TS keyword only
+  args: "eval -T console.log((123)as(number))", // 'as' is a TS keyword only
   output: "030_eval_ts.out",
 });
 
@@ -1215,8 +1216,7 @@ itest!(unbuffered_stdout {
 // Cannot write the expression to evaluate as "console.log(typeof gc)"
 // because itest! splits args on whitespace.
 itest!(eval_v8_flags {
-  args:
-    "eval --v8-flags=--expose-gc console.log(typeof(((window)as(any))['gc']))",
+  args: "eval --v8-flags=--expose-gc console.log(typeof(gc))",
   output: "v8_flags.js.out",
 });
 
