@@ -56,7 +56,6 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
       ) as ArrayBuffer;
       assert(this._data.byteLength === nread);
     } finally {
-      console.log("calling close on body");
       this.close();
     }
 
