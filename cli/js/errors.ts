@@ -180,7 +180,9 @@ class Http extends Error {
 }
 
 class AssertionError extends Error {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   expected?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   actual?: any;
   showDiff?: boolean;
 

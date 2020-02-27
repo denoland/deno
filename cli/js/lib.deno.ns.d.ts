@@ -17,6 +17,11 @@ declare namespace Deno {
     name: string;
   }
 
+  interface Constructor {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    new (...args: any[]): any;
+  }
+
   export interface Assert {
     /** Make an assertion, if not `true`, then throw. */
     (expr: unknown, msg?: string): asserts expr;
@@ -54,6 +59,23 @@ declare namespace Deno {
      * then thrown
      */
     match(actual: string, expected: RegExp, msg?: string): void;
+    /** Executes a function, expecting it to throw.  If it does not, then it
+     * throws.  An error class and a string that should be included in the
+     * error message can also be asserted.
+     */
+    throws(
+      fn: () => void,
+      ErrorClass?: Constructor,
+      msgIncludes?: string,
+      msg?: string
+    ): Error;
+    /** The same as `throws` but takes async function as parameter. */
+    throwsAsync(
+      fn: () => Promise<void>,
+      ErrorClass?: Constructor,
+      msgIncludes?: string,
+      msg?: string
+    ): Promise<Error>;
   }
 
   export const assert: Assert;
@@ -1318,7 +1340,9 @@ declare namespace Deno {
       constructor(msg: string);
     }
     class AssertionError extends Error {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       expected?: any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       actual?: any;
       showDiff?: boolean;
       constructor(message: string);

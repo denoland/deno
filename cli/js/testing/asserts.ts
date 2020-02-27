@@ -18,11 +18,13 @@ function compare(a: unknown, b: unknown, seen: Map<unknown, unknown>): boolean {
     if (a instanceof Date && b instanceof Date) {
       return String(a) === String(b);
     }
+  }
 
-    if (Object.is(a, b)) {
-      return true;
-    }
+  if (Object.is(a, b)) {
+    return true;
+  }
 
+  if (a && b) {
     if (typeof a === "object" && typeof b === "object") {
       if (seen.get(a) === b) {
         return true;
@@ -115,6 +117,23 @@ export interface Assert {
    * then thrown
    */
   match(actual: string, expected: RegExp, msg?: string): void;
+  /** Executes a function, expecting it to throw.  If it does not, then it
+   * throws.  An error class and a string that should be included in the
+   * error message can also be asserted.
+   */
+  throws(
+    fn: () => void,
+    ErrorClass?: Constructor,
+    msgIncludes?: string,
+    msg?: string
+  ): Error;
+  /** The same as `throws` but takes async function as parameter. */
+  throwsAsync(
+    fn: () => Promise<void>,
+    ErrorClass?: Constructor,
+    msgIncludes?: string,
+    msg?: string
+  ): Promise<Error>;
 }
 
 function unimplemented(msg?: string): never {
@@ -125,6 +144,7 @@ function unreachable(msg?: string): never {
   throw new AssertionError(msg || "unreachable");
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function throwAssertionError(actual: any, expected: any, msg?: string): never {
   if (!msg) {
     msg = `actual: ${inspect(actual)} expected: ${inspect(expected)}`;
@@ -214,6 +234,72 @@ function match(actual: string, expected: RegExp, msg?: string): void {
   }
 }
 
+interface Constructor {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  new (...args: any[]): any;
+}
+
+function throwsErrorAssertion(
+  e?: Error,
+  ErrorClass?: Constructor,
+  msgIncludes?: string,
+  msg?: string
+): never | void {
+  if (e) {
+    if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
+      msg = `Expected error to be instance of "${ErrorClass.name}"${
+        msg ? `: ${msg}` : "."
+      }`;
+      throw new AssertionError(msg);
+    }
+    if (msgIncludes && !e.message.includes(msgIncludes)) {
+      msg = `Expected error message to include "${msgIncludes}", but got "${
+        e.message
+      }"${msg ? `: ${msg}` : "."}`;
+      throw new AssertionError(msg);
+    }
+  } else {
+    msg = `Expected function to throw${msg ? `: ${msg}` : "."}`;
+    throw new AssertionError(msg);
+  }
+}
+
+/** Executes a function, expecting it to throw.  If it does not, then it
+ * throws.  An error class and a string that should be included in the
+ * error message can also be asserted.
+ */
+function throws(
+  fn: () => void,
+  ErrorClass?: Constructor,
+  msgIncludes = "",
+  msg?: string
+): Error {
+  let error = null;
+  try {
+    fn();
+  } catch (e) {
+    error = e;
+  }
+  throwsErrorAssertion(error, ErrorClass, msgIncludes, msg);
+  return error;
+}
+
+async function throwsAsync(
+  fn: () => Promise<void>,
+  ErrorClass?: Constructor,
+  msgIncludes = "",
+  msg?: string
+): Promise<Error> {
+  let error = null;
+  try {
+    await fn();
+  } catch (e) {
+    error = e;
+  }
+  throwsErrorAssertion(error, ErrorClass, msgIncludes, msg);
+  return error;
+}
+
 export const assert: Assert = Object.assign(
   (expr: unknown, msg = ""): asserts expr => {
     if (!expr) {
@@ -228,6 +314,8 @@ export const assert: Assert = Object.assign(
     strContains,
     strictEq,
     arrayContains,
-    match
+    match,
+    throws,
+    throwsAsync
   }
 );
