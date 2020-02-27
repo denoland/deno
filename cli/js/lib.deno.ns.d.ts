@@ -1439,6 +1439,16 @@ declare namespace Deno {
    * Requires `allow-read` permission. */
   export function readdir(path: string): Promise<FileInfo[]>;
 
+  export interface CopyFileOptions {
+    /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
+     * allowed to exist at the target location. When createNew is set to `true`,
+     * create is ignored. */
+    createNew?: boolean;
+    /** Sets the option to allow creating a new file, if one doesn't already
+     * exist at the specified path (defaults to `true`). */
+    create?: boolean;
+  }
+
   /** Synchronously copies the contents and permissions of one file to another
    * specified path, by default creating a new file if needed, else overwriting.
    * Fails if target path is a directory or is unwritable.
@@ -1447,7 +1457,11 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission on fromPath.
    * Requires `allow-write` permission on toPath. */
-  export function copyFileSync(fromPath: string, toPath: string): void;
+  export function copyFileSync(
+    fromPath: string,
+    toPath: string,
+    options?: CopyFileOptions
+  ): void;
 
   /** Copies the contents and permissions of one file to another specified path,
    * by default creating a new file if needed, else overwriting. Fails if target
@@ -1457,7 +1471,11 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission on fromPath.
    * Requires `allow-write` permission on toPath. */
-  export function copyFile(fromPath: string, toPath: string): Promise<void>;
+  export function copyFile(
+    fromPath: string,
+    toPath: string,
+    options?: CopyFileOptions
+  ): Promise<void>;
 
   /** Returns the full path destination of the named symbolic link.
    *
