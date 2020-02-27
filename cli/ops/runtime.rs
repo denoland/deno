@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
 use crate::colors;
-use crate::fs as deno_fs;
 use crate::op_error::OpError;
 use crate::state::State;
 use crate::version;
@@ -33,7 +32,8 @@ fn op_start(
   let gs = &state.global_state;
 
   Ok(JsonOp::Sync(json!({
-    "cwd": deno_fs::normalize_path(&env::current_dir().unwrap()),
+    // TODO(bartlomieju): `cwd` field is not used in JS, remove?
+    "cwd": &env::current_dir().unwrap(),
     "pid": std::process::id(),
     "args": gs.flags.argv.clone(),
     "repl": gs.flags.subcommand == DenoSubcommand::Repl,

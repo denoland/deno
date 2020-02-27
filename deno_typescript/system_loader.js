@@ -2,20 +2,16 @@
 
 // This is a specialised implementation of a System module loader.
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-let System;
-let __inst;
+// @ts-nocheck
+/* eslint-disable */
+
+let System, __inst, __inst_s;
 
 (() => {
   const mMap = new Map();
   System = {
-    register(id, deps, f) {
-      mMap.set(id, {
-        id,
-        deps,
-        f,
-        exp: {}
-      });
+    register(id, d, f) {
+      mMap.set(id, { id, d, f, exp: {} });
     }
   };
 
@@ -28,11 +24,10 @@ let __inst;
     };
   };
 
-  const gE = data => {
-    const { exp } = data;
-    return (id, value) => {
-      const values = typeof id === "string" ? { [id]: value } : id;
-      for (const [id, value] of Object.entries(values)) {
+  const gE = ({ exp }) => {
+    return (id, v) => {
+      const vs = typeof id === "string" ? { [id]: v } : id;
+      for (const [id, value] of Object.entries(vs)) {
         Object.defineProperty(exp, id, {
           value,
           writable: true,
@@ -47,39 +42,58 @@ let __inst;
   const enq = ids => {
     for (const id of ids) {
       if (!iQ.includes(id)) {
-        const { deps } = mMap.get(id);
+        const { d } = mMap.get(id);
         iQ.push(id);
-        enq(deps);
+        enq(d);
       }
     }
   };
 
-  const dr = async main => {
+  const gRQ = main => {
     const rQ = [];
     let id;
     while ((id = iQ.pop())) {
-      const m = mMap.get(id);
-      const { f } = m;
-      if (!f) {
-        return;
-      }
-      rQ.push([m.deps, f(gE(m), gC(m, id === main))]);
-      m.f = undefined;
+      const m = mMap.get(id),
+        { f } = m;
+      if (!f) return;
+      rQ.push([m.d, f(gE(m), gC(m, id === main))]);
+      delete m.f;
     }
+    return rQ;
+  };
+
+  const dr = async main => {
+    const rQ = gRQ(main);
     let r;
     while ((r = rQ.shift())) {
-      const [deps, { execute, setters }] = r;
-      for (let i = 0; i < deps.length; i++) setters[i](mMap.get(deps[i])?.exp);
+      const [d, { execute, setters }] = r;
+      for (let i = 0; i < d.length; i++) setters[i](mMap.get(d[i])?.exp);
       const e = execute();
       if (e) await e;
     }
   };
 
+  const dr_s = main => {
+    const rQ = gRQ(main);
+    let r;
+    while ((r = rQ.shift())) {
+      const [d, { execute, setters }] = r;
+      for (let i = 0; i < d.length; i++) setters[i](mMap.get(d[i])?.exp);
+      execute();
+    }
+  };
+
   __inst = async id => {
-    System = undefined;
-    __inst = undefined;
+    System = __inst = __inst_s = undefined;
     enq([id]);
     await dr(id);
+    return mMap.get(id)?.exp;
+  };
+
+  __inst_s = id => {
+    System = __inst = __inst_s = undefined;
+    enq([id]);
+    dr_s(id);
     return mMap.get(id)?.exp;
   };
 })();

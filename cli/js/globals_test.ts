@@ -9,12 +9,24 @@ test(function windowExists(): void {
   assert(window != null);
 });
 
+test(function selfExists(): void {
+  assert(self != null);
+});
+
 test(function windowWindowExists(): void {
   assert(window.window === window);
 });
 
+test(function windowSelfExists(): void {
+  assert(window.self === window);
+});
+
 test(function globalThisEqualsWindow(): void {
   assert(globalThis === window);
+});
+
+test(function globalThisEqualsSelf(): void {
+  assert(globalThis === self);
 });
 
 test(function DenoNamespaceExists(): void {

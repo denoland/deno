@@ -21,7 +21,7 @@ libc = "0.2.66"
 log = "0.4.8"
 serde_json = "1.0.44"
 url = "2.1.0"
-rusty_v8 = "0.2.1"
+rusty_v8 = "0.3.3"
 
 [[example]]
 name = "deno_core_http_bench"

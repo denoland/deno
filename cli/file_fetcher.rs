@@ -139,7 +139,7 @@ impl SourceFileFetcher {
   /// under a dummy specifier.
   pub fn save_source_file_in_cache(
     &self,
-    specifier: ModuleSpecifier,
+    specifier: &ModuleSpecifier,
     file: SourceFile,
   ) {
     self.source_file_cache.set(specifier.to_string(), file);

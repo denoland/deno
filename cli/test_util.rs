@@ -67,39 +67,32 @@ fn kill_http_server() {
 
 pub fn http_server() -> HttpServerGuard {
   SERVER_COUNT.fetch_add(1, Ordering::SeqCst);
-
   {
     let mut server_guard = SERVER.lock().unwrap();
     if server_guard.is_none() {
       println!("tools/http_server.py starting...");
       let mut child = Command::new("python")
         .current_dir(root_path())
-        .args(&[
-          "-u",
-          "tools/http_server.py",
-          "--certfile",
-          root_path()
-            .join("std/http/testdata/tls/localhost.crt")
-            .to_str()
-            .unwrap(),
-          "--keyfile",
-          root_path()
-            .join("std/http/testdata/tls/localhost.key")
-            .to_str()
-            .unwrap(),
-        ])
+        .args(&["-u", "tools/http_server.py"])
         .stdout(Stdio::piped())
         .spawn()
         .expect("failed to execute child");
 
       let stdout = child.stdout.as_mut().unwrap();
       use std::io::{BufRead, BufReader};
-      let mut lines = BufReader::new(stdout).lines();
-      let line = lines.next().unwrap().unwrap();
-      assert!(line.starts_with("ready"));
-      server_guard.replace(child);
+      let lines = BufReader::new(stdout).lines();
+      // Wait for "ready" on stdout. See tools/http_server.py
+      for maybe_line in lines {
+        if let Ok(line) = maybe_line {
+          if line.starts_with("ready") {
+            server_guard.replace(child);
+            break;
+          }
+        } else {
+          panic!(maybe_line.unwrap_err());
+        }
+      }
     }
   }
-
   HttpServerGuard {}
 }

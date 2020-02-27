@@ -5,7 +5,7 @@ import { hasOwnProperty } from "../util/has_own_property.ts";
 import { BufReader, BufWriter, UnexpectedEOFError } from "../io/bufio.ts";
 import { readLong, readShort, sliceLongToBytes } from "../io/ioutil.ts";
 import { Sha1 } from "./sha1.ts";
-import { writeResponse } from "../http/server.ts";
+import { writeResponse } from "../http/io.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { Deferred, deferred } from "../util/async.ts";
 import { assertNotEOF } from "../testing/asserts.ts";
