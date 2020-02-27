@@ -627,7 +627,6 @@ mod tests {
       false,
       false,
       None,
-      Verbosity::default(),
     )
     .expect("setup fail")
   }

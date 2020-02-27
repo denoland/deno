@@ -1914,7 +1914,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
-        verbosity: Verbosity::new(Level::Error),
+        log_level: Some(Level::Error),
         ..Flags::default()
       }
     );
