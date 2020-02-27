@@ -31,7 +31,7 @@ test(function symlinkSyncPerm(): void {
   } catch (e) {
     err = e;
   }
-  assert(err instanceof Deno.Err.PermissionDenied);
+  assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 

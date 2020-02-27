@@ -22,7 +22,7 @@ export {
 } from "./diagnostics.ts";
 export { chdir, cwd } from "./dir.ts";
 export { applySourceMap } from "./error_stack.ts";
-export { Err } from "./errors.ts";
+export { errors } from "./errors.ts";
 export { FileInfo } from "./file_info.ts";
 export {
   File,
@@ -43,6 +43,7 @@ export {
   OpenOptions,
   OpenMode
 } from "./files.ts";
+export { formatDiagnostics } from "./format_error.ts";
 export { FsEvent, fsEvents } from "./fs_events.ts";
 export {
   EOF,
@@ -85,7 +86,15 @@ export {
   ShutdownMode,
   shutdown
 } from "./net.ts";
-export { dir, env, exit, isTTY, execPath, hostname, loadavg } from "./os.ts";
+export {
+  dir,
+  env,
+  exit,
+  execPath,
+  hostname,
+  loadavg,
+  osRelease
+} from "./os.ts";
 export {
   permissions,
   PermissionName,
@@ -114,6 +123,7 @@ export { statSync, lstatSync, stat, lstat } from "./stat.ts";
 export { symlinkSync, symlink } from "./symlink.ts";
 export { connectTLS, listenTLS } from "./tls.ts";
 export { truncateSync, truncate } from "./truncate.ts";
+export { isatty, setRaw } from "./tty.ts";
 export { utimeSync, utime } from "./utime.ts";
 export { version } from "./version.ts";
 export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";

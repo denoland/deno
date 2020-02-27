@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
 
@@ -17,18 +16,9 @@ use std::task::Waker;
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op(
-    "signal_bind",
-    s.core_op(json_op(s.stateful_op(op_signal_bind))),
-  );
-  i.register_op(
-    "signal_unbind",
-    s.core_op(json_op(s.stateful_op(op_signal_unbind))),
-  );
-  i.register_op(
-    "signal_poll",
-    s.core_op(json_op(s.stateful_op(op_signal_poll))),
-  );
+  i.register_op("op_signal_bind", s.stateful_json_op(op_signal_bind));
+  i.register_op("op_signal_unbind", s.stateful_json_op(op_signal_unbind));
+  i.register_op("op_signal_poll", s.stateful_json_op(op_signal_poll));
 }
 
 #[cfg(unix)]

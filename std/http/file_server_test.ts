@@ -3,7 +3,6 @@ import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 const { test } = Deno;
-
 let fileServer: Deno.Process;
 
 async function startFileServer(): Promise<void> {
@@ -17,7 +16,8 @@ async function startFileServer(): Promise<void> {
       ".",
       "--cors"
     ],
-    stdout: "piped"
+    stdout: "piped",
+    stderr: "null"
   });
   // Once fileServer is ready it will write to its stdout.
   assert(fileServer.stdout != null);

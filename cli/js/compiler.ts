@@ -202,13 +202,34 @@ async function tsCompilerOnMessage({
         sources: sources ? Object.keys(sources) : undefined
       });
 
+      // resolve the root name, if there are sources, the root name does not
+      // get resolved
       const resolvedRootName = sources
         ? rootName
         : resolveModules([rootName])[0];
 
+      // recursively process imports, loading each file into memory.  If there
+      // are sources, these files are pulled out of the there, otherwise the
+      // files are retrieved from the privileged side
       const rootNames = sources
         ? processLocalImports(sources, [[resolvedRootName, resolvedRootName]])
         : await processImports([[resolvedRootName, resolvedRootName]]);
+
+      // if there are options, convert them into TypeScript compiler options,
+      // and resolve any external file references
+      let convertedOptions: ts.CompilerOptions | undefined;
+      if (options) {
+        const result = convertCompilerOptions(options);
+        convertedOptions = result.options;
+        if (result.files) {
+          // any files supplied in the configuration are resolved externally,
+          // even if sources are provided
+          const resolvedNames = resolveModules(result.files);
+          rootNames.push(
+            ...(await processImports(resolvedNames.map(rn => [rn, rn])))
+          );
+        }
+      }
 
       const state: WriteFileState = {
         type: request.type,
@@ -227,8 +248,8 @@ async function tsCompilerOnMessage({
         writeFile
       }));
       const compilerOptions = [defaultRuntimeCompileOptions];
-      if (options) {
-        compilerOptions.push(convertCompilerOptions(options));
+      if (convertedOptions) {
+        compilerOptions.push(convertedOptions);
       }
       if (bundle) {
         compilerOptions.push(defaultBundlerOptions);
@@ -278,7 +299,7 @@ async function tsCompilerOnMessage({
         ? Object.assign(
             {},
             defaultTranspileOptions,
-            convertCompilerOptions(options)
+            convertCompilerOptions(options).options
           )
         : defaultTranspileOptions;
 

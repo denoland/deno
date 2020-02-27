@@ -8,6 +8,7 @@
 //! the same functions as ops available in JS runtime.
 
 use crate::fs::files_in_subtree;
+use crate::op_error::OpError;
 use deno_core::ErrBox;
 use dprint_plugin_typescript as dprint;
 use std::fs;
@@ -17,7 +18,6 @@ use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
-use std::time::Instant;
 
 fn is_supported(path: &Path) -> bool {
   if let Some(ext) = path.extension() {
@@ -52,7 +52,6 @@ fn check_source_files(
   config: dprint::configuration::Configuration,
   paths: Vec<PathBuf>,
 ) -> Result<(), ErrBox> {
-  let start = Instant::now();
   let mut not_formatted_files = vec![];
 
   for file_path in paths {
@@ -74,8 +73,6 @@ fn check_source_files(
     }
   }
 
-  let duration = Instant::now() - start;
-
   if not_formatted_files.is_empty() {
     Ok(())
   } else {
@@ -85,11 +82,10 @@ fn check_source_files(
       "files"
     };
     Err(
-      crate::op_error::OpError::other(format!(
-        "Found {} not formatted {} in {:?}",
+      OpError::other(format!(
+        "Found {} not formatted {}",
         not_formatted_files.len(),
         f,
-        duration
       ))
       .into(),
     )
@@ -99,53 +95,55 @@ fn check_source_files(
 fn format_source_files(
   config: dprint::configuration::Configuration,
   paths: Vec<PathBuf>,
-) {
-  let start = Instant::now();
+) -> Result<(), ErrBox> {
   let mut not_formatted_files = vec![];
 
   for file_path in paths {
     let file_path_str = file_path.to_string_lossy();
-    let file_contents = fs::read_to_string(&file_path).unwrap();
-    match dprint::format_text(&file_path_str, &file_contents, &config) {
-      Ok(None) => {
-        // nothing to format, pass
-      }
-      Ok(Some(formatted_text)) => {
-        if formatted_text != file_contents {
-          println!("Formatting {}", file_path_str);
-          fs::write(&file_path, formatted_text).unwrap();
-          not_formatted_files.push(file_path);
+    let file_contents = fs::read_to_string(&file_path)?;
+    // TODO(ry) dprint seems to panic unnecessarally sometimes. Until it matures
+    // we'll use a catch_unwind to avoid passing it on to our users.
+    let catch_unwind_result = std::panic::catch_unwind(|| {
+      dprint::format_text(&file_path_str, &file_contents, &config)
+    });
+    if let Ok(dprint_result) = catch_unwind_result {
+      match dprint_result {
+        Ok(None) => {
+          // nothing to format, pass
+        }
+        Ok(Some(formatted_text)) => {
+          if formatted_text != file_contents {
+            println!("{}", file_path_str);
+            fs::write(&file_path, formatted_text)?;
+            not_formatted_files.push(file_path);
+          }
+        }
+        Err(e) => {
+          eprintln!("Error formatting: {}", &file_path_str);
+          eprintln!("   {}", e);
         }
       }
-      Err(e) => {
-        eprintln!("Error formatting: {}", &file_path_str);
-        eprintln!("   {}", e);
-      }
+    } else {
+      eprintln!("dprint panic {}", file_path_str);
     }
   }
 
-  let duration = Instant::now() - start;
   let f = if not_formatted_files.len() == 1 {
     "file"
   } else {
     "files"
   };
-  eprintln!(
-    "Formatted {} {} in {:?}",
-    not_formatted_files.len(),
-    f,
-    duration
-  );
+  debug!("Formatted {} {}", not_formatted_files.len(), f);
+  Ok(())
 }
 
 /// Format JavaScript/TypeScript files.
 ///
 /// First argument supports globs, and if it is `None`
 /// then the current directory is recursively walked.
-pub fn format_files(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
+pub fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
   if args.len() == 1 && args[0] == "-" {
-    format_stdin(check);
-    return Ok(());
+    return format_stdin(check);
   }
 
   let mut target_files: Vec<PathBuf> = vec![];
@@ -169,7 +167,7 @@ pub fn format_files(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
   if check {
     check_source_files(config, target_files)?;
   } else {
-    format_source_files(config, target_files);
+    format_source_files(config, target_files)?;
   }
   Ok(())
 }
@@ -177,10 +175,10 @@ pub fn format_files(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
 /// Format stdin and write result to stdout.
 /// Treats input as TypeScript.
 /// Compatible with `--check` flag.
-fn format_stdin(check: bool) {
+fn format_stdin(check: bool) -> Result<(), ErrBox> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
-    eprintln!("Failed to read from stdin");
+    return Err(OpError::other("Failed to read from stdin".to_string()).into());
   }
   let config = get_config();
 
@@ -192,15 +190,14 @@ fn format_stdin(check: bool) {
           println!("Not formatted stdin");
         }
       } else {
-        let _r = stdout().write_all(formatted_text.as_bytes());
-        // TODO(ry) Only ignore SIGPIPE. Currently ignoring all errors.
+        stdout().write_all(formatted_text.as_bytes())?;
       }
     }
     Err(e) => {
-      eprintln!("Error formatting from stdin");
-      eprintln!("   {}", e);
+      return Err(OpError::other(e).into());
     }
   }
+  Ok(())
 }
 
 #[test]
@@ -218,6 +215,6 @@ fn test_is_supported() {
 fn check_tests_dir() {
   // Because of cli/tests/error_syntax.js the following should fail but not
   // crash.
-  let r = format_files(vec!["./tests".to_string()], true);
+  let r = format(vec!["./tests".to_string()], true);
   assert!(r.is_err());
 }

@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
 use futures::future::FutureExt;
@@ -11,14 +10,11 @@ use std::time::Instant;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
-    "global_timer_stop",
-    s.core_op(json_op(s.stateful_op(op_global_timer_stop))),
+    "op_global_timer_stop",
+    s.stateful_json_op(op_global_timer_stop),
   );
-  i.register_op(
-    "global_timer",
-    s.core_op(json_op(s.stateful_op(op_global_timer))),
-  );
-  i.register_op("now", s.core_op(json_op(s.stateful_op(op_now))));
+  i.register_op("op_global_timer", s.stateful_json_op(op_global_timer));
+  i.register_op("op_now", s.stateful_json_op(op_now));
 }
 
 fn op_global_timer_stop(

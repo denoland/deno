@@ -31,7 +31,7 @@ pub struct GlobalState(Arc<GlobalStateInner>);
 /// It is shared by all created workers (thus V8 isolates).
 pub struct GlobalStateInner {
   /// Flags parsed from `argv` contents.
-  pub flags: flags::DenoFlags,
+  pub flags: flags::Flags,
   /// Permissions parsed from `flags`.
   pub permissions: DenoPermissions,
   pub dir: deno_dir::DenoDir,
@@ -53,7 +53,7 @@ impl Deref for GlobalState {
 }
 
 impl GlobalState {
-  pub fn new(flags: flags::DenoFlags) -> Result<Self, ErrBox> {
+  pub fn new(flags: flags::Flags) -> Result<Self, ErrBox> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
@@ -111,7 +111,7 @@ impl GlobalState {
 
     let out = self
       .file_fetcher
-      .fetch_source_file_async(&module_specifier, maybe_referrer)
+      .fetch_source_file(&module_specifier, maybe_referrer)
       .await?;
 
     // TODO(ry) Try to lift compile_lock as high up in the call stack for
@@ -119,30 +119,27 @@ impl GlobalState {
     let compile_lock = self.compile_lock.lock().await;
 
     let compiled_module = match out.media_type {
-      msg::MediaType::Unknown => state1.js_compiler.compile_async(out).await,
-      msg::MediaType::Json => state1.json_compiler.compile_async(&out).await,
+      msg::MediaType::Unknown => state1.js_compiler.compile(out).await,
+      msg::MediaType::Json => state1.json_compiler.compile(&out).await,
       msg::MediaType::Wasm => {
-        state1
-          .wasm_compiler
-          .compile_async(state1.clone(), &out)
-          .await
+        state1.wasm_compiler.compile(state1.clone(), &out).await
       }
       msg::MediaType::TypeScript
       | msg::MediaType::TSX
       | msg::MediaType::JSX => {
         state1
           .ts_compiler
-          .compile_async(state1.clone(), &out, target_lib)
+          .compile(state1.clone(), &out, target_lib)
           .await
       }
       msg::MediaType::JavaScript => {
         if state1.ts_compiler.compile_js {
           state2
             .ts_compiler
-            .compile_async(state1.clone(), &out, target_lib)
+            .compile(state1.clone(), &out, target_lib)
             .await
         } else {
-          state1.js_compiler.compile_async(out).await
+          state1.js_compiler.compile(out).await
         }
       }
     }?;
@@ -171,9 +168,9 @@ impl GlobalState {
 
   #[cfg(test)]
   pub fn mock(argv: Vec<String>) -> GlobalState {
-    GlobalState::new(flags::DenoFlags {
+    GlobalState::new(flags::Flags {
       argv,
-      ..flags::DenoFlags::default()
+      ..flags::Flags::default()
     })
     .unwrap()
   }
@@ -182,16 +179,13 @@ impl GlobalState {
 #[test]
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
-  f(GlobalState::mock(vec![
-    String::from("./deno"),
-    String::from("hello.js"),
-  ]));
+  f(GlobalState::mock(vec![]));
 }
 
 #[test]
 fn import_map_given_for_repl() {
-  let _result = GlobalState::new(flags::DenoFlags {
+  let _result = GlobalState::new(flags::Flags {
     import_map_path: Some("import_map.json".to_string()),
-    ..flags::DenoFlags::default()
+    ..flags::Flags::default()
   });
 }

@@ -238,7 +238,7 @@ mod tests {
   use super::*;
 
   #[tokio::test]
-  async fn test_fetch_sync_string() {
+  async fn test_fetch_string() {
     let http_server_guard = crate::test_util::http_server();
     // Relies on external http server. See tools/http_server.py
     let url =
@@ -388,7 +388,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_fetch_with_cafile_sync_string() {
+  async fn test_fetch_with_cafile_string() {
     let http_server_guard = crate::test_util::http_server();
     // Relies on external http server. See tools/http_server.py
     let url =
@@ -402,7 +402,6 @@ mod tests {
     )))
     .unwrap();
     let result = fetch_once(client, &url, None).await;
-
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(headers.get("content-type").unwrap(), "application/json");

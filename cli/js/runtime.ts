@@ -28,16 +28,14 @@ interface Start {
   arch: Arch;
 }
 
+export let OPS_CACHE: { [name: string]: number };
+
 // TODO(bartlomieju): temporary solution, must be fixed when moving
 // dispatches to separate crates
 export function initOps(): void {
-  const ops = core.ops();
-  for (const [name, opId] of Object.entries(ops)) {
-    const opName = `OP_${name.toUpperCase()}`;
-    // Assign op ids to actual variables
-    // TODO(ry) This type casting is gross and should be fixed.
-    ((dispatch as unknown) as { [key: string]: number })[opName] = opId;
-    core.setAsyncHandler(opId, dispatch.getAsyncHandler(opName));
+  OPS_CACHE = core.ops();
+  for (const [name, opId] of Object.entries(OPS_CACHE)) {
+    core.setAsyncHandler(opId, dispatch.getAsyncHandler(name));
   }
 }
 
@@ -51,7 +49,7 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI
   // args and other info.
-  const s = sendSync(dispatch.OP_START);
+  const s = sendSync("op_start");
 
   setVersions(s.denoVersion, s.v8Version, s.tsVersion);
   setBuildInfo(s.os, s.arch);

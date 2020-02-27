@@ -1,153 +1,19 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { listen, listenTLS, copy, toAsyncIterator } = Deno;
-type Listener = Deno.Listener;
-type Conn = Deno.Conn;
-type Reader = Deno.Reader;
-type Writer = Deno.Writer;
-import { BufReader, BufWriter, UnexpectedEOFError } from "../io/bufio.ts";
-import { TextProtoReader } from "../textproto/mod.ts";
-import { STATUS_TEXT } from "./http_status.ts";
+import { BufReader, BufWriter } from "../io/bufio.ts";
 import { assert } from "../testing/asserts.ts";
 import { deferred, Deferred, MuxAsyncIterator } from "../util/async.ts";
-
-const encoder = new TextEncoder();
-
-export function setContentLength(r: Response): void {
-  if (!r.headers) {
-    r.headers = new Headers();
-  }
-
-  if (r.body) {
-    if (!r.headers.has("content-length")) {
-      // typeof r.body === "string" handled in writeResponse.
-      if (r.body instanceof Uint8Array) {
-        const bodyLength = r.body.byteLength;
-        r.headers.set("content-length", bodyLength.toString());
-      } else {
-        r.headers.set("transfer-encoding", "chunked");
-      }
-    }
-  }
-}
-
-async function writeChunkedBody(w: Writer, r: Reader): Promise<void> {
-  const writer = BufWriter.create(w);
-
-  for await (const chunk of toAsyncIterator(r)) {
-    if (chunk.byteLength <= 0) continue;
-    const start = encoder.encode(`${chunk.byteLength.toString(16)}\r\n`);
-    const end = encoder.encode("\r\n");
-    await writer.write(start);
-    await writer.write(chunk);
-    await writer.write(end);
-  }
-
-  const endChunk = encoder.encode("0\r\n\r\n");
-  await writer.write(endChunk);
-}
-const kProhibitedTrailerHeaders = [
-  "transfer-encoding",
-  "content-length",
-  "trailer"
-];
-
-/** write trailer headers to writer. it mostly should be called after writeResponse */
-export async function writeTrailers(
-  w: Writer,
-  headers: Headers,
-  trailers: Headers
-): Promise<void> {
-  const trailer = headers.get("trailer");
-  if (trailer === null) {
-    throw new Error('response headers must have "trailer" header field');
-  }
-  const transferEncoding = headers.get("transfer-encoding");
-  if (transferEncoding === null || !transferEncoding.match(/^chunked/)) {
-    throw new Error(
-      `trailer headers is only allowed for "transfer-encoding: chunked": got "${transferEncoding}"`
-    );
-  }
-  const writer = BufWriter.create(w);
-  const trailerHeaderFields = trailer
-    .split(",")
-    .map(s => s.trim().toLowerCase());
-  for (const f of trailerHeaderFields) {
-    assert(
-      !kProhibitedTrailerHeaders.includes(f),
-      `"${f}" is prohibited for trailer header`
-    );
-  }
-  for (const [key, value] of trailers) {
-    assert(
-      trailerHeaderFields.includes(key),
-      `Not trailer header field: ${key}`
-    );
-    await writer.write(encoder.encode(`${key}: ${value}\r\n`));
-  }
-  await writer.write(encoder.encode("\r\n"));
-  await writer.flush();
-}
-
-export async function writeResponse(w: Writer, r: Response): Promise<void> {
-  const protoMajor = 1;
-  const protoMinor = 1;
-  const statusCode = r.status || 200;
-  const statusText = STATUS_TEXT.get(statusCode);
-  const writer = BufWriter.create(w);
-  if (!statusText) {
-    throw Error("bad status code");
-  }
-  if (!r.body) {
-    r.body = new Uint8Array();
-  }
-  if (typeof r.body === "string") {
-    r.body = encoder.encode(r.body);
-  }
-
-  let out = `HTTP/${protoMajor}.${protoMinor} ${statusCode} ${statusText}\r\n`;
-
-  setContentLength(r);
-  assert(r.headers != null);
-  const headers = r.headers;
-
-  for (const [key, value] of headers) {
-    out += `${key}: ${value}\r\n`;
-  }
-  out += "\r\n";
-
-  const header = encoder.encode(out);
-  const n = await writer.write(header);
-  assert(n === header.byteLength);
-
-  if (r.body instanceof Uint8Array) {
-    const n = await writer.write(r.body);
-    assert(n === r.body.byteLength);
-  } else if (headers.has("content-length")) {
-    const contentLength = headers.get("content-length");
-    assert(contentLength != null);
-    const bodyLength = parseInt(contentLength);
-    const n = await copy(writer, r.body);
-    assert(n === bodyLength);
-  } else {
-    await writeChunkedBody(writer, r.body);
-  }
-  if (r.trailers) {
-    const t = await r.trailers();
-    await writeTrailers(writer, headers, t);
-  }
-  await writer.flush();
-}
-
-export class ServerRequestBody implements Reader {
-  constructor(private it: AsyncIterator<number, undefined, Uint8Array>) {}
-  async read(p: Uint8Array): Promise<number | Deno.EOF> {
-    const res = await this.it.next(p);
-    if (res.done) {
-      return Deno.EOF;
-    }
-    return res.value;
-  }
-}
+import {
+  bodyReader,
+  chunkedBodyReader,
+  emptyReader,
+  writeResponse,
+  readRequest
+} from "./io.ts";
+import { encode } from "../strings/mod.ts";
+import Listener = Deno.Listener;
+import Conn = Deno.Conn;
+import Reader = Deno.Reader;
+const { listen, listenTLS } = Deno;
 
 export class ServerRequest {
   url!: string;
@@ -184,7 +50,7 @@ export class ServerRequest {
     return this._contentLength;
   }
 
-  private _body: ServerRequestBody | null = null;
+  private _body: Deno.Reader | null = null;
 
   /**
    * Body of the request.
@@ -200,100 +66,28 @@ export class ServerRequest {
    *       bufSlice = bufSlice.subarray(nread);
    *     }
    */
-  get body(): ServerRequestBody {
+  get body(): Deno.Reader {
     if (!this._body) {
-      const stream = this._bodyStream();
-      stream.next(); // drop dummy such that first read is not empty.
-      this._body = new ServerRequestBody(stream);
+      if (this.contentLength != null) {
+        this._body = bodyReader(this.contentLength, this.r);
+      } else {
+        const transferEncoding = this.headers.get("transfer-encoding");
+        if (transferEncoding != null) {
+          const parts = transferEncoding
+            .split(",")
+            .map((e): string => e.trim().toLowerCase());
+          assert(
+            parts.includes("chunked"),
+            'transfer-encoding must include "chunked" if content-length is not set'
+          );
+          this._body = chunkedBodyReader(this.headers, this.r);
+        } else {
+          // Neither content-length nor transfer-encoding: chunked
+          this._body = emptyReader();
+        }
+      }
     }
     return this._body;
-  }
-
-  /**
-   * Internal: actually reading body. Each step, buf to use is passed
-   * in through yield result.
-   * Returns on no more data to read or error.
-   */
-  private async *_bodyStream(): AsyncIterator<number, undefined, Uint8Array> {
-    let buf = yield 0; // dummy yield to retrieve user provided buf.
-    if (this.headers.has("content-length")) {
-      const len = this.contentLength;
-      if (len === null) {
-        return;
-      }
-      let rr = await this.r.read(buf);
-      let nread = rr === Deno.EOF ? 0 : rr;
-      let nreadTotal = nread;
-      while (rr !== Deno.EOF && nreadTotal < len) {
-        buf = yield nread;
-        rr = await this.r.read(buf);
-        nread = rr === Deno.EOF ? 0 : rr;
-        nreadTotal += nread;
-      }
-      yield nread;
-    } else {
-      const transferEncoding = this.headers.get("transfer-encoding");
-      if (transferEncoding) {
-        const parts = transferEncoding
-          .split(",")
-          .map((e): string => e.trim().toLowerCase());
-        if (parts.includes("chunked")) {
-          // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
-          const tp = new TextProtoReader(this.r);
-          let line = await tp.readLine();
-          if (line === Deno.EOF) throw new UnexpectedEOFError();
-          // TODO: handle chunk extension
-          const [chunkSizeString] = line.split(";");
-          let chunkSize = parseInt(chunkSizeString, 16);
-          if (Number.isNaN(chunkSize) || chunkSize < 0) {
-            throw new Error("Invalid chunk size");
-          }
-          while (chunkSize > 0) {
-            let currChunkOffset = 0;
-            // Since given readBuffer might be smaller, loop.
-            while (currChunkOffset < chunkSize) {
-              // Try to be as large as chunkSize. Might be smaller though.
-              const bufferToFill = buf.subarray(0, chunkSize);
-              if ((await this.r.readFull(bufferToFill)) === Deno.EOF) {
-                throw new UnexpectedEOFError();
-              }
-              currChunkOffset += bufferToFill.length;
-              buf = yield bufferToFill.length;
-            }
-            await this.r.readLine(); // Consume \r\n
-            line = await tp.readLine();
-            if (line === Deno.EOF) throw new UnexpectedEOFError();
-            chunkSize = parseInt(line, 16);
-          }
-          const entityHeaders = await tp.readMIMEHeader();
-          if (entityHeaders !== Deno.EOF) {
-            for (const [k, v] of entityHeaders) {
-              this.headers.set(k, v);
-            }
-          }
-          /* Pseudo code from https://tools.ietf.org/html/rfc2616#section-19.4.6
-          length := 0
-          read chunk-size, chunk-extension (if any) and CRLF
-          while (chunk-size > 0) {
-            read chunk-data and CRLF
-            append chunk-data to entity-body
-            length := length + chunk-size
-            read chunk-size and CRLF
-          }
-          read entity-header
-          while (entity-header not empty) {
-            append entity-header to existing header fields
-            read entity-header
-          }
-          Content-Length := length
-          Remove "chunked" from Transfer-Encoding
-          */
-          return; // Must return here to avoid fall through
-        }
-        // TODO: handle other transfer-encoding types
-      }
-      // Otherwise... Do nothing
-    }
   }
 
   async respond(r: Response): Promise<void> {
@@ -316,108 +110,16 @@ export class ServerRequest {
       throw err;
     }
   }
-}
 
-function fixLength(req: ServerRequest): void {
-  const contentLength = req.headers.get("Content-Length");
-  if (contentLength) {
-    const arrClen = contentLength.split(",");
-    if (arrClen.length > 1) {
-      const distinct = [...new Set(arrClen.map((e): string => e.trim()))];
-      if (distinct.length > 1) {
-        throw Error("cannot contain multiple Content-Length headers");
-      } else {
-        req.headers.set("Content-Length", distinct[0]);
-      }
-    }
-    const c = req.headers.get("Content-Length");
-    if (req.method === "HEAD" && c && c !== "0") {
-      throw Error("http: method cannot contain a Content-Length");
-    }
-    if (c && req.headers.has("transfer-encoding")) {
-      // A sender MUST NOT send a Content-Length header field in any message
-      // that contains a Transfer-Encoding header field.
-      // rfc: https://tools.ietf.org/html/rfc7230#section-3.3.2
-      throw new Error(
-        "http: Transfer-Encoding and Content-Length cannot be send together"
-      );
-    }
+  private finalized = false;
+  async finalize(): Promise<void> {
+    if (this.finalized) return;
+    // Consume unread body
+    const body = this.body;
+    const buf = new Uint8Array(1024);
+    while ((await body.read(buf)) !== Deno.EOF) {}
+    this.finalized = true;
   }
-}
-
-/**
- * ParseHTTPVersion parses a HTTP version string.
- * "HTTP/1.0" returns (1, 0, true).
- * Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request.go#L766-L792
- */
-export function parseHTTPVersion(vers: string): [number, number] {
-  switch (vers) {
-    case "HTTP/1.1":
-      return [1, 1];
-
-    case "HTTP/1.0":
-      return [1, 0];
-
-    default: {
-      const Big = 1000000; // arbitrary upper bound
-      const digitReg = /^\d+$/; // test if string is only digit
-
-      if (!vers.startsWith("HTTP/")) {
-        break;
-      }
-
-      const dot = vers.indexOf(".");
-      if (dot < 0) {
-        break;
-      }
-
-      const majorStr = vers.substring(vers.indexOf("/") + 1, dot);
-      const major = parseInt(majorStr);
-      if (
-        !digitReg.test(majorStr) ||
-        isNaN(major) ||
-        major < 0 ||
-        major > Big
-      ) {
-        break;
-      }
-
-      const minorStr = vers.substring(dot + 1);
-      const minor = parseInt(minorStr);
-      if (
-        !digitReg.test(minorStr) ||
-        isNaN(minor) ||
-        minor < 0 ||
-        minor > Big
-      ) {
-        break;
-      }
-
-      return [major, minor];
-    }
-  }
-
-  throw new Error(`malformed HTTP version ${vers}`);
-}
-
-export async function readRequest(
-  conn: Conn,
-  bufr: BufReader
-): Promise<ServerRequest | Deno.EOF> {
-  const tp = new TextProtoReader(bufr);
-  const firstLine = await tp.readLine(); // e.g. GET /index.html HTTP/1.0
-  if (firstLine === Deno.EOF) return Deno.EOF;
-  const headers = await tp.readMIMEHeader();
-  if (headers === Deno.EOF) throw new UnexpectedEOFError();
-
-  const req = new ServerRequest();
-  req.conn = conn;
-  req.r = bufr;
-  [req.method, req.url, req.proto] = firstLine.split(" ", 3);
-  [req.protoMinor, req.protoMajor] = parseHTTPVersion(req.proto);
-  req.headers = headers;
-  fixLength(req);
-  return req;
 }
 
 export class Server implements AsyncIterable<ServerRequest> {
@@ -462,6 +164,8 @@ export class Server implements AsyncIterable<ServerRequest> {
         // req.done implies this connection already closed, so we can just return.
         return;
       }
+      // Consume unread body and trailers if receiver didn't consume those data
+      await req.finalize();
     }
 
     if (req === Deno.EOF) {
@@ -471,7 +175,7 @@ export class Server implements AsyncIterable<ServerRequest> {
       try {
         await writeResponse(req.w, {
           status: 400,
-          body: encoder.encode(`${err.message}\r\n\r\n`)
+          body: encode(`${err.message}\r\n\r\n`)
         });
       } catch (_) {
         // The connection is destroyed.

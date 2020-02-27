@@ -1,9 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::state::State;
-use atty;
 use deno_core::*;
 use std::collections::HashMap;
 use std::env;
@@ -12,15 +10,15 @@ use sys_info;
 use url::Url;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("exit", s.core_op(json_op(s.stateful_op(op_exit))));
-  i.register_op("is_tty", s.core_op(json_op(s.stateful_op(op_is_tty))));
-  i.register_op("env", s.core_op(json_op(s.stateful_op(op_env))));
-  i.register_op("exec_path", s.core_op(json_op(s.stateful_op(op_exec_path))));
-  i.register_op("set_env", s.core_op(json_op(s.stateful_op(op_set_env))));
-  i.register_op("get_env", s.core_op(json_op(s.stateful_op(op_get_env))));
-  i.register_op("get_dir", s.core_op(json_op(s.stateful_op(op_get_dir))));
-  i.register_op("hostname", s.core_op(json_op(s.stateful_op(op_hostname))));
-  i.register_op("loadavg", s.core_op(json_op(s.stateful_op(op_loadavg))));
+  i.register_op("op_exit", s.stateful_json_op(op_exit));
+  i.register_op("op_env", s.stateful_json_op(op_env));
+  i.register_op("op_exec_path", s.stateful_json_op(op_exec_path));
+  i.register_op("op_set_env", s.stateful_json_op(op_set_env));
+  i.register_op("op_get_env", s.stateful_json_op(op_get_env));
+  i.register_op("op_get_dir", s.stateful_json_op(op_get_dir));
+  i.register_op("op_hostname", s.stateful_json_op(op_hostname));
+  i.register_op("op_loadavg", s.stateful_json_op(op_loadavg));
+  i.register_op("op_os_release", s.stateful_json_op(op_os_release));
 }
 
 #[derive(Deserialize)]
@@ -151,18 +149,6 @@ fn op_exit(
   std::process::exit(args.code)
 }
 
-fn op_is_tty(
-  _s: &State,
-  _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, OpError> {
-  Ok(JsonOp::Sync(json!({
-    "stdin": atty::is(atty::Stream::Stdin),
-    "stdout": atty::is(atty::Stream::Stdout),
-    "stderr": atty::is(atty::Stream::Stderr),
-  })))
-}
-
 fn op_loadavg(
   state: &State,
   _args: Value,
@@ -185,6 +171,16 @@ fn op_hostname(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   state.check_env()?;
-  let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_owned());
+  let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
   Ok(JsonOp::Sync(json!(hostname)))
+}
+
+fn op_os_release(
+  state: &State,
+  _args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  state.check_env()?;
+  let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
+  Ok(JsonOp::Sync(json!(release)))
 }

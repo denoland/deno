@@ -29,14 +29,14 @@ where
 
 pub fn init(i: &mut Isolate, s: &State, sender: &mpsc::Sender<WorkerEvent>) {
   i.register_op(
-    "worker_post_message",
+    "op_worker_post_message",
     s.core_op(json_op(web_worker_op(
       sender.clone(),
       op_worker_post_message,
     ))),
   );
   i.register_op(
-    "worker_close",
+    "op_worker_close",
     s.core_op(json_op(web_worker_op(sender.clone(), op_worker_close))),
   );
 }

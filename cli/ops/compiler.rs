@@ -5,25 +5,22 @@ use super::dispatch_json::Value;
 use crate::futures::future::try_join_all;
 use crate::msg;
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::state::State;
 use deno_core::Loader;
 use deno_core::*;
 use futures::future::FutureExt;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("cache", s.core_op(json_op(s.stateful_op(op_cache))));
+  i.register_op("op_cache", s.stateful_json_op(op_cache));
+  i.register_op("op_resolve_modules", s.stateful_json_op(op_resolve_modules));
   i.register_op(
-    "resolve_modules",
-    s.core_op(json_op(s.stateful_op(op_resolve_modules))),
+    "op_fetch_source_files",
+    s.stateful_json_op(op_fetch_source_files),
   );
+  let custom_assets = std::collections::HashMap::new(); // TODO(ry) use None.
   i.register_op(
-    "fetch_source_files",
-    s.core_op(json_op(s.stateful_op(op_fetch_source_files))),
-  );
-  i.register_op(
-    "fetch_asset",
-    s.core_op(json_op(s.stateful_op(op_fetch_asset))),
+    "op_fetch_asset",
+    deno_typescript::op_fetch_asset(custom_assets),
   );
 }
 
@@ -115,7 +112,7 @@ fn op_fetch_source_files(
           let resolved_specifier = ModuleSpecifier::resolve_url(&specifier)
             .expect("Invalid specifier");
           file_fetcher_
-            .fetch_source_file_async(&resolved_specifier, ref_specifier_)
+            .fetch_source_file(&resolved_specifier, ref_specifier_)
             .await
         }
         .boxed_local()
@@ -133,7 +130,7 @@ fn op_fetch_source_files(
             let types_specifier = ModuleSpecifier::from(types_url);
             global_state
               .file_fetcher
-              .fetch_source_file_async(&types_specifier, ref_specifier.clone())
+              .fetch_source_file(&types_specifier, ref_specifier.clone())
               .await
               .map_err(OpError::from)?
           }
@@ -146,7 +143,7 @@ fn op_fetch_source_files(
           msg::MediaType::Wasm => {
             global_state
               .wasm_compiler
-              .compile_async(global_state.clone(), &file)
+              .compile(global_state.clone(), &file)
               .await
               .map_err(|e| OpError::other(e.to_string()))?
               .code
@@ -168,27 +165,4 @@ fn op_fetch_source_files(
   .boxed_local();
 
   Ok(JsonOp::Async(future))
-}
-
-#[derive(Deserialize, Debug)]
-struct FetchRemoteAssetArgs {
-  name: String,
-}
-
-fn op_fetch_asset(
-  _state: &State,
-  args: Value,
-  _data: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, OpError> {
-  let args: FetchRemoteAssetArgs = serde_json::from_value(args)?;
-  debug!("args.name: {}", args.name);
-
-  let source_code =
-    if let Some(source_code) = deno_typescript::get_asset(&args.name) {
-      source_code.to_string()
-    } else {
-      panic!("Asset not found: \"{}\"", args.name)
-    };
-
-  Ok(JsonOp::Sync(json!({ "sourceCode": source_code })))
 }

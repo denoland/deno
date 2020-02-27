@@ -2,6 +2,7 @@
 import * as util from "./util.ts";
 import { TextEncoder, TextDecoder } from "./text_encoding.ts";
 import { core } from "./core.ts";
+import { OPS_CACHE } from "./runtime.ts";
 import { ErrorKind, constructError } from "./errors.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -54,10 +55,12 @@ export function asyncMsgFromRust(resUi8: Uint8Array): void {
 }
 
 export function sendSync(
-  opId: number,
+  opName: string,
   args: object = {},
   zeroCopy?: Uint8Array
 ): Ok {
+  const opId = OPS_CACHE[opName];
+  util.log("sendSync", opName, opId);
   const argsUi8 = encode(args);
   const resUi8 = core.dispatch(opId, argsUi8, zeroCopy);
   util.assert(resUi8 != null);
@@ -68,10 +71,12 @@ export function sendSync(
 }
 
 export async function sendAsync(
-  opId: number,
+  opName: string,
   args: object = {},
   zeroCopy?: Uint8Array
 ): Promise<Ok> {
+  const opId = OPS_CACHE[opName];
+  util.log("sendAsync", opName, opId);
   const promiseId = nextPromiseId();
   args = Object.assign(args, { promiseId });
   const promise = util.createResolvable<Ok>();

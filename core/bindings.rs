@@ -1,6 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::es_isolate::EsIsolate;
+use crate::isolate::encode_message_as_json;
+use crate::isolate::handle_exception;
 use crate::isolate::Isolate;
 use crate::isolate::ZeroCopyBuf;
 
@@ -278,13 +280,19 @@ pub extern "C" fn message_callback(
     unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
 
   // TerminateExecution was called
-  if scope.isolate().is_execution_terminating() {
+  // TODO(piscisaureus): rusty_v8 should implement the
+  // `is_execution_terminating()` method on struct `Isolate` also.
+  if scope
+    .isolate()
+    .thread_safe_handle()
+    .is_execution_terminating()
+  {
     let undefined = v8::undefined(scope).into();
-    deno_isolate.handle_exception(scope, undefined);
+    handle_exception(scope, undefined, &mut deno_isolate.last_exception);
     return;
   }
 
-  let json_str = deno_isolate.encode_message_as_json(scope, message);
+  let json_str = encode_message_as_json(scope, message);
   deno_isolate.last_exception = Some(json_str);
 }
 
@@ -387,9 +395,16 @@ fn send(
     unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
   assert!(!deno_isolate.global_context.is_empty());
 
-  let op_id = v8::Local::<v8::Uint32>::try_from(args.get(0))
-    .unwrap()
-    .value() as u32;
+  let r = v8::Local::<v8::Uint32>::try_from(args.get(0));
+
+  if let Err(err) = r {
+    let s = format!("bad op id {}", err);
+    let msg = v8::String::new(scope, &s).unwrap();
+    scope.isolate().throw_exception(msg.into());
+    return;
+  }
+
+  let op_id = r.unwrap().value() as u32;
 
   let control = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(1)) {
     Ok(view) => {
@@ -661,7 +676,7 @@ pub fn encode_message_as_object<'a>(
   s: &mut impl v8::ToLocal<'a>,
   message: v8::Local<v8::Message>,
 ) -> v8::Local<'a, v8::Object> {
-  let context = s.isolate().get_current_context();
+  let context = s.get_current_context().unwrap();
   let json_obj = v8::Object::new(s);
 
   let exception_str = message.get(s);

@@ -30,16 +30,6 @@ declare namespace Deno {
 
   export function runTests(opts?: RunTestsOptions): Promise<void>;
 
-  /** Check if running in terminal.
-   *
-   *       console.log(Deno.isTTY().stdout);
-   */
-  export function isTTY(): {
-    stdin: boolean;
-    stdout: boolean;
-    stderr: boolean;
-  };
-
   /** Get the loadavg. Requires the `--allow-env` flag.
    *
    *       console.log(Deno.loadavg());
@@ -51,6 +41,12 @@ declare namespace Deno {
    *       console.log(Deno.hostname());
    */
   export function hostname(): string;
+
+  /** Get the OS release. Requires the `--allow-env` flag.
+   *
+   *       console.log(Deno.osRelease());
+   */
+  export function osRelease(): string;
 
   /** Exit the Deno process with optional exit code. */
   export function exit(code?: number): never;
@@ -486,6 +482,7 @@ declare namespace Deno {
     seekSync(offset: number, whence: SeekMode): void;
     close(): void;
   }
+
   /** An instance of `File` for stdin. */
   export const stdin: File;
   /** An instance of `File` for stdout. */
@@ -548,6 +545,20 @@ declare namespace Deno {
     | "x"
     /** Read-write. Behaves like `x` and allows to read from file. */
     | "x+";
+
+  // @url js/tty.d.ts
+
+  /** UNSTABLE: newly added API
+   *
+   *  Check if a given resource is TTY
+   */
+  export function isatty(rid: number): boolean;
+
+  /** UNSTABLE: newly added API
+   *
+   *  Set TTY to be under raw mode or not.
+   */
+  export function setRaw(rid: number, mode: boolean): void;
 
   // @url js/buffer.d.ts
 
@@ -1211,7 +1222,7 @@ declare namespace Deno {
   export function applySourceMap(location: Location): Location;
 
   /* eslint-disable @typescript-eslint/no-unused-vars */
-  namespace Err {
+  namespace errors {
     class NotFound extends Error {
       constructor(msg: string);
     }
@@ -1897,6 +1908,13 @@ declare namespace Deno {
 
   /** UNSTABLE: new API, yet to be vetted.
    *
+   * Format an array of diagnostic items and return them as a single string.
+   * @param items An array of diagnostic items to format
+   */
+  export function formatDiagnostics(items: DiagnosticItem[]): string;
+
+  /** UNSTABLE: new API, yet to be vetted.
+   *
    * A specific subset TypeScript compiler options that can be supported by
    * the Deno TypeScript compiler.
    */
@@ -2138,7 +2156,21 @@ declare namespace Deno {
       | "es2020"
       | "esnext";
 
-    /** List of names of type definitions to include. Defaults to `undefined`. */
+    /** List of names of type definitions to include. Defaults to `undefined`.
+     *
+     * The type definitions are resolved according to the normal Deno resolution
+     * irrespective of if sources are provided on the call.  Like other Deno
+     * modules, there is no "magical" resolution.  For example:
+     *
+     *      Deno.compile(
+     *        "./foo.js",
+     *        undefined,
+     *        {
+     *          types: [ "./foo.d.ts", "https://deno.land/x/example/types.d.ts" ]
+     *        }
+     *      );
+     *
+     */
     types?: string[];
   }
 

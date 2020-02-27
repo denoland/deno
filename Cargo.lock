@@ -433,7 +433,6 @@ dependencies = [
 name = "deno"
 version = "0.34.0"
 dependencies = [
- "ansi_term",
  "atty",
  "base64 0.11.0",
  "byteorder",
@@ -455,6 +454,7 @@ dependencies = [
  "nix",
  "notify",
  "os_pipe",
+ "pty",
  "rand 0.7.3",
  "regex",
  "remove_dir_all",
@@ -576,9 +576,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35436beb5b5c902deae6063f3e47a62ba94703828c527381cb05d48be8027cfe"
+checksum = "9606967ab3af22b75547a3040349c4f32429189a86626f5b64f1cfb704a25d38"
 dependencies = [
  "dprint-core",
  "serde",
@@ -618,6 +618,17 @@ dependencies = [
  "proc-macro2 1.0.8",
  "swc_macros_common",
  "syn 1.0.14",
+]
+
+[[package]]
+name = "errno"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e2b2decb0484e15560df3210cf0d78654bb0864b2c138977c07e377a1bae0e2"
+dependencies = [
+ "kernel32-sys",
+ "libc",
+ "winapi 0.2.8",
 ]
 
 [[package]]
@@ -1510,6 +1521,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pty"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f50f3d255966981eb4e4c5df3e983e6f7d163221f547406d83b6a460ff5c5ee8"
+dependencies = [
+ "errno",
+ "libc",
+]
+
+[[package]]
 name = "qadapt-spin"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1862,9 +1883,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.2.1"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ed9530934df58a5be648916e142858b473558a0df6356b59e083c1c3c2f7d32"
+checksum = "cbefe28096120d07dc9a70ff402e1eddff9fcf7921362dd2b79d6b32aa3e298f"
 dependencies = [
  "bitflags",
  "cargo_gn",

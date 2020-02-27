@@ -2,17 +2,15 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::*;
+use futures::future::poll_fn;
 use futures::future::FutureExt;
 use std;
 use std::convert::From;
-use std::future::Future;
 use std::net::Shutdown;
 use std::net::SocketAddr;
-use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 use tokio;
@@ -21,70 +19,12 @@ use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("accept", s.core_op(json_op(s.stateful_op(op_accept))));
-  i.register_op("connect", s.core_op(json_op(s.stateful_op(op_connect))));
-  i.register_op("shutdown", s.core_op(json_op(s.stateful_op(op_shutdown))));
-  i.register_op("listen", s.core_op(json_op(s.stateful_op(op_listen))));
-  i.register_op("receive", s.core_op(json_op(s.stateful_op(op_receive))));
-  i.register_op("send", s.core_op(json_op(s.stateful_op(op_send))));
-}
-
-#[derive(Debug, PartialEq)]
-enum AcceptState {
-  Pending,
-  Done,
-}
-
-/// Simply accepts a connection.
-pub fn accept(state: &State, rid: ResourceId) -> Accept {
-  Accept {
-    accept_state: AcceptState::Pending,
-    rid,
-    state,
-  }
-}
-
-/// A future representing state of accepting a TCP connection.
-pub struct Accept<'a> {
-  accept_state: AcceptState,
-  rid: ResourceId,
-  state: &'a State,
-}
-
-impl Future for Accept<'_> {
-  type Output = Result<(TcpStream, SocketAddr), OpError>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    if inner.accept_state == AcceptState::Done {
-      panic!("poll Accept after it's done");
-    }
-
-    let mut state = inner.state.borrow_mut();
-    let listener_resource = state
-      .resource_table
-      .get_mut::<TcpListenerResource>(inner.rid)
-      .ok_or_else(|| OpError::other("Listener has been closed".to_string()))?;
-
-    let listener = &mut listener_resource.listener;
-
-    match listener.poll_accept(cx).map_err(OpError::from) {
-      Poll::Ready(Ok((stream, addr))) => {
-        listener_resource.untrack_task();
-        inner.accept_state = AcceptState::Done;
-        Poll::Ready(Ok((stream, addr)))
-      }
-      Poll::Pending => {
-        listener_resource.track_task(cx)?;
-        Poll::Pending
-      }
-      Poll::Ready(Err(e)) => {
-        listener_resource.untrack_task();
-        inner.accept_state = AcceptState::Done;
-        Poll::Ready(Err(e))
-      }
-    }
-  }
+  i.register_op("op_accept", s.stateful_json_op(op_accept));
+  i.register_op("op_connect", s.stateful_json_op(op_connect));
+  i.register_op("op_shutdown", s.stateful_json_op(op_shutdown));
+  i.register_op("op_listen", s.stateful_json_op(op_listen));
+  i.register_op("op_receive", s.stateful_json_op(op_receive));
+  i.register_op("op_send", s.stateful_json_op(op_send));
 }
 
 #[derive(Deserialize)]
@@ -108,8 +48,33 @@ fn op_accept(
       .ok_or_else(OpError::bad_resource)?;
   }
 
+  let state = state.clone();
+
   let op = async move {
-    let (tcp_stream, _socket_addr) = accept(&state_, rid).await?;
+    let accept_fut = poll_fn(|cx| {
+      let resource_table = &mut state.borrow_mut().resource_table;
+      let listener_resource = resource_table
+        .get_mut::<TcpListenerResource>(rid)
+        .ok_or_else(|| {
+          OpError::other("Listener has been closed".to_string())
+        })?;
+      let listener = &mut listener_resource.listener;
+      match listener.poll_accept(cx).map_err(OpError::from) {
+        Poll::Ready(Ok((stream, addr))) => {
+          listener_resource.untrack_task();
+          Poll::Ready(Ok((stream, addr)))
+        }
+        Poll::Pending => {
+          listener_resource.track_task(cx)?;
+          Poll::Pending
+        }
+        Poll::Ready(Err(e)) => {
+          listener_resource.untrack_task();
+          Poll::Ready(Err(e))
+        }
+      }
+    });
+    let (tcp_stream, _socket_addr) = accept_fut.await?;
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
     let mut state = state_.borrow_mut();
@@ -134,38 +99,9 @@ fn op_accept(
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
-pub struct Receive<'a> {
-  state: &'a State,
-  rid: ResourceId,
-  buf: ZeroCopyBuf,
-}
-
-impl Future for Receive<'_> {
-  type Output = Result<(usize, SocketAddr), OpError>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    let mut state = inner.state.borrow_mut();
-    let resource = state
-      .resource_table
-      .get_mut::<UdpSocketResource>(inner.rid)
-      .ok_or_else(|| OpError::other("Socket has been closed".to_string()))?;
-
-    let socket = &mut resource.socket;
-
-    socket
-      .poll_recv_from(cx, &mut inner.buf)
-      .map_err(OpError::from)
-  }
-}
-
 #[derive(Deserialize)]
 struct ReceiveArgs {
   rid: i32,
-}
-
-fn receive(state: &State, rid: ResourceId, buf: ZeroCopyBuf) -> Receive {
-  Receive { state, rid, buf }
 }
 
 fn op_receive(
@@ -174,7 +110,7 @@ fn op_receive(
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   assert!(zero_copy.is_some());
-  let buf = zero_copy.unwrap();
+  let mut buf = zero_copy.unwrap();
 
   let args: ReceiveArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -182,8 +118,15 @@ fn op_receive(
   let state_ = state.clone();
 
   let op = async move {
-    let (size, remote_addr) = receive(&state_, rid, buf).await?;
-
+    let receive_fut = poll_fn(|cx| {
+      let resource_table = &mut state_.borrow_mut().resource_table;
+      let resource = resource_table
+        .get_mut::<UdpSocketResource>(rid)
+        .ok_or_else(|| OpError::other("Socket has been closed".to_string()))?;
+      let socket = &mut resource.socket;
+      socket.poll_recv_from(cx, &mut buf).map_err(OpError::from)
+    });
+    let (size, remote_addr) = receive_fut.await?;
     Ok(json!({
       "size": size,
       "remoteAddr": {

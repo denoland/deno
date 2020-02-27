@@ -4,7 +4,6 @@
 // compiler within Deno.
 
 import { DiagnosticItem } from "./diagnostics.ts";
-import * as dispatch from "./dispatch.ts";
 import { sendAsync } from "./dispatch_json.ts";
 import * as util from "./util.ts";
 
@@ -248,7 +247,21 @@ export interface CompilerOptions {
     | "es2020"
     | "esnext";
 
-  /** List of names of type definitions to include. Defaults to `undefined`. */
+  /** List of names of type definitions to include. Defaults to `undefined`.
+   *
+   * The type definitions are resolved according to the normal Deno resolution
+   * irrespective of if sources are provided on the call.  Like other Deno
+   * modules, there is no "magical" resolution.  For example:
+   *
+   *      Deno.compile(
+   *        "./foo.js",
+   *        undefined,
+   *        {
+   *          types: [ "./foo.d.ts", "https://deno.land/x/example/types.d.ts" ]
+   *        }
+   *      );
+   *
+   */
   types?: string[];
 }
 
@@ -296,9 +309,7 @@ export function transpileOnly(
     sources,
     options: options ? JSON.stringify(options) : undefined
   };
-  return sendAsync(dispatch.OP_TRANSPILE, payload).then(result =>
-    JSON.parse(result)
-  );
+  return sendAsync("op_transpile", payload).then(result => JSON.parse(result));
 }
 
 /** Takes a root module name, any optionally a record set of sources. Resolves
@@ -344,9 +355,7 @@ export function compile(
     sources: !!sources,
     options
   });
-  return sendAsync(dispatch.OP_COMPILE, payload).then(result =>
-    JSON.parse(result)
-  );
+  return sendAsync("op_compile", payload).then(result => JSON.parse(result));
 }
 
 /** Takes a root module name, and optionally a record set of sources. Resolves
@@ -393,7 +402,5 @@ export function bundle(
     sources: !!sources,
     options
   });
-  return sendAsync(dispatch.OP_COMPILE, payload).then(result =>
-    JSON.parse(result)
-  );
+  return sendAsync("op_compile", payload).then(result => JSON.parse(result));
 }

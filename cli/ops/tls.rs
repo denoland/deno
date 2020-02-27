@@ -2,19 +2,17 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::*;
+use futures::future::poll_fn;
 use futures::future::FutureExt;
 use std;
 use std::convert::From;
 use std::fs::File;
-use std::future::Future;
 use std::io::BufReader;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
@@ -34,18 +32,9 @@ use webpki::DNSNameRef;
 use webpki_roots;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op(
-    "connect_tls",
-    s.core_op(json_op(s.stateful_op(op_connect_tls))),
-  );
-  i.register_op(
-    "listen_tls",
-    s.core_op(json_op(s.stateful_op(op_listen_tls))),
-  );
-  i.register_op(
-    "accept_tls",
-    s.core_op(json_op(s.stateful_op(op_accept_tls))),
-  );
+  i.register_op("op_connect_tls", s.stateful_json_op(op_connect_tls));
+  i.register_op("op_listen_tls", s.stateful_json_op(op_listen_tls));
+  i.register_op("op_accept_tls", s.stateful_json_op(op_accept_tls));
 }
 
 #[derive(Deserialize)]
@@ -275,64 +264,6 @@ fn op_listen_tls(
   })))
 }
 
-#[derive(Debug, PartialEq)]
-enum AcceptTlsState {
-  Pending,
-  Done,
-}
-
-/// Simply accepts a TLS connection.
-pub fn accept_tls(state: &State, rid: ResourceId) -> AcceptTls {
-  AcceptTls {
-    accept_state: AcceptTlsState::Pending,
-    rid,
-    state: state.clone(),
-  }
-}
-
-/// A future representing state of accepting a TLS connection.
-pub struct AcceptTls {
-  accept_state: AcceptTlsState,
-  rid: ResourceId,
-  state: State,
-}
-
-impl Future for AcceptTls {
-  type Output = Result<(TcpStream, SocketAddr), OpError>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    if inner.accept_state == AcceptTlsState::Done {
-      panic!("poll AcceptTls after it's done");
-    }
-
-    let mut state = inner.state.borrow_mut();
-    let listener_resource = state
-      .resource_table
-      .get_mut::<TlsListenerResource>(inner.rid)
-      .ok_or_else(|| OpError::other("Listener has been closed".to_string()))?;
-
-    let listener = &mut listener_resource.listener;
-
-    match listener.poll_accept(cx).map_err(OpError::from) {
-      Poll::Ready(Ok((stream, addr))) => {
-        listener_resource.untrack_task();
-        inner.accept_state = AcceptTlsState::Done;
-        Poll::Ready(Ok((stream, addr)))
-      }
-      Poll::Pending => {
-        listener_resource.track_task(cx)?;
-        Poll::Pending
-      }
-      Poll::Ready(Err(e)) => {
-        listener_resource.untrack_task();
-        inner.accept_state = AcceptTlsState::Done;
-        Poll::Ready(Err(e))
-      }
-    }
-  }
-}
-
 #[derive(Deserialize)]
 struct AcceptTlsArgs {
   rid: i32,
@@ -347,7 +278,30 @@ fn op_accept_tls(
   let rid = args.rid as u32;
   let state = state.clone();
   let op = async move {
-    let (tcp_stream, _socket_addr) = accept_tls(&state.clone(), rid).await?;
+    let accept_fut = poll_fn(|cx| {
+      let resource_table = &mut state.borrow_mut().resource_table;
+      let listener_resource = resource_table
+        .get_mut::<TlsListenerResource>(rid)
+        .ok_or_else(|| {
+          OpError::other("Listener has been closed".to_string())
+        })?;
+      let listener = &mut listener_resource.listener;
+      match listener.poll_accept(cx).map_err(OpError::from) {
+        Poll::Ready(Ok((stream, addr))) => {
+          listener_resource.untrack_task();
+          Poll::Ready(Ok((stream, addr)))
+        }
+        Poll::Pending => {
+          listener_resource.track_task(cx)?;
+          Poll::Pending
+        }
+        Poll::Ready(Err(e)) => {
+          listener_resource.untrack_task();
+          Poll::Ready(Err(e))
+        }
+      }
+    });
+    let (tcp_stream, _socket_addr) = accept_fut.await?;
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
     let tls_acceptor = {

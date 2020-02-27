@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "./dispatch_json.ts";
-import * as dispatch from "./dispatch.ts";
 import { File, close } from "./files.ts";
 import { ReadCloser, WriteCloser } from "./io.ts";
 import { readAll } from "./buffer.ts";
@@ -38,7 +37,7 @@ interface RunStatusResponse {
 }
 
 async function runStatus(rid: number): Promise<ProcessStatus> {
-  const res = (await sendAsync(dispatch.OP_RUN_STATUS, {
+  const res = (await sendAsync("op_run_status", {
     rid
   })) as RunStatusResponse;
 
@@ -57,7 +56,7 @@ async function runStatus(rid: number): Promise<ProcessStatus> {
  * Requires the `--allow-run` flag.
  */
 export function kill(pid: number, signo: number): void {
-  sendSync(dispatch.OP_KILL, { pid, signo });
+  sendSync("op_kill", { pid, signo });
 }
 
 export class Process {
@@ -220,7 +219,7 @@ export function run(opt: RunOptions): Process {
     stderrRid
   };
 
-  const res = sendSync(dispatch.OP_RUN, req) as RunResponse;
+  const res = sendSync("op_run", req) as RunResponse;
   return new Process(res);
 }
 

@@ -10,7 +10,7 @@ static JS_RESERVED_WORDS: &str = r"^(?:do|if|in|for|let|new|try|var|case|else|en
 pub struct JsonCompiler {}
 
 impl JsonCompiler {
-  pub async fn compile_async(
+  pub async fn compile(
     &self,
     source_file: &SourceFile,
   ) -> Result<CompiledModule, ErrBox> {

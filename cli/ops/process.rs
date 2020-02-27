@@ -2,32 +2,24 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::signal::kill;
 use crate::state::State;
 use deno_core::*;
 use futures;
+use futures::future::poll_fn;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
+use futures::TryFutureExt;
 use std;
 use std::convert::From;
-use std::future::Future;
-use std::pin::Pin;
-use std::process::ExitStatus;
-use std::task::Context;
-use std::task::Poll;
 use tokio::process::Command;
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("run", s.core_op(json_op(s.stateful_op(op_run))));
-  i.register_op(
-    "run_status",
-    s.core_op(json_op(s.stateful_op(op_run_status))),
-  );
-  i.register_op("kill", s.core_op(json_op(s.stateful_op(op_kill))));
+  i.register_op("op_run", s.stateful_json_op(op_run));
+  i.register_op("op_run_status", s.stateful_json_op(op_run_status));
+  i.register_op("op_kill", s.stateful_json_op(op_kill));
 }
 
 fn clone_file(rid: u32, state: &State) -> Result<std::fs::File, OpError> {
@@ -37,7 +29,7 @@ fn clone_file(rid: u32, state: &State) -> Result<std::fs::File, OpError> {
     .get_mut::<StreamResource>(rid)
     .ok_or_else(OpError::bad_resource)?;
   let file = match repr {
-    StreamResource::FsFile(ref mut file) => file,
+    StreamResource::FsFile(ref mut file, _) => file,
     _ => return Err(OpError::bad_resource()),
   };
   let tokio_file = futures::executor::block_on(file.try_clone())?;
@@ -176,26 +168,6 @@ fn op_run(
   })))
 }
 
-pub struct ChildStatus {
-  rid: ResourceId,
-  state: State,
-}
-
-impl Future for ChildStatus {
-  type Output = Result<ExitStatus, OpError>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    let mut state = inner.state.borrow_mut();
-    let child_resource = state
-      .resource_table
-      .get_mut::<ChildResource>(inner.rid)
-      .ok_or_else(OpError::bad_resource)?;
-    let child = &mut child_resource.child;
-    child.map_err(OpError::from).poll_unpin(cx)
-  }
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RunStatusArgs {
@@ -211,14 +183,19 @@ fn op_run_status(
   let rid = args.rid as u32;
 
   state.check_run()?;
-
-  let future = ChildStatus {
-    rid,
-    state: state.clone(),
-  };
+  let state = state.clone();
 
   let future = async move {
-    let run_status = future.await?;
+    let run_status = poll_fn(|cx| {
+      let resource_table = &mut state.borrow_mut().resource_table;
+      let child_resource = resource_table
+        .get_mut::<ChildResource>(rid)
+        .ok_or_else(OpError::bad_resource)?;
+      let child = &mut child_resource.child;
+      child.map_err(OpError::from).poll_unpin(cx)
+    })
+    .await?;
+
     let code = run_status.code();
 
     #[cfg(unix)]

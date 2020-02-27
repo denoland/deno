@@ -8,14 +8,10 @@
 
 const { args, stat, readDir, open, exit } = Deno;
 import { posix } from "../path/mod.ts";
-import {
-  listenAndServe,
-  ServerRequest,
-  setContentLength,
-  Response
-} from "./server.ts";
+import { listenAndServe, ServerRequest, Response } from "./server.ts";
 import { parse } from "../flags/mod.ts";
 import { assert } from "../testing/asserts.ts";
+import { setContentLength } from "./io.ts";
 
 interface EntryInfo {
   mode: string;
@@ -163,7 +159,7 @@ async function serveDir(
 }
 
 async function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
-  if (e instanceof Deno.Err.NotFound) {
+  if (e instanceof Deno.errors.NotFound) {
     return {
       status: 404,
       body: encoder.encode("Not found")

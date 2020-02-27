@@ -31,7 +31,7 @@ if (Deno.build.os !== "win") {
     try {
       await Deno.chown(filePath, 1000, 1000);
     } catch (e) {
-      assert(e instanceof Deno.Err.PermissionDenied);
+      assert(e instanceof Deno.errors.PermissionDenied);
     }
   });
 
@@ -44,7 +44,7 @@ if (Deno.build.os !== "win") {
       try {
         Deno.chownSync(filePath, uid, gid);
       } catch (e) {
-        assert(e instanceof Deno.Err.NotFound);
+        assert(e instanceof Deno.errors.NotFound);
       }
     }
   );
@@ -58,7 +58,7 @@ if (Deno.build.os !== "win") {
       try {
         await Deno.chown(filePath, uid, gid);
       } catch (e) {
-        assert(e instanceof Deno.Err.NotFound);
+        assert(e instanceof Deno.errors.NotFound);
       }
     }
   );
@@ -74,7 +74,7 @@ if (Deno.build.os !== "win") {
       // try changing the file's owner to root
       Deno.chownSync(filePath, 0, 0);
     } catch (e) {
-      assert(e instanceof Deno.Err.PermissionDenied);
+      assert(e instanceof Deno.errors.PermissionDenied);
     }
     Deno.removeSync(dirPath, { recursive: true });
   });
@@ -92,7 +92,7 @@ if (Deno.build.os !== "win") {
       // try changing the file's owner to root
       await Deno.chown(filePath, 0, 0);
     } catch (e) {
-      assert(e instanceof Deno.Err.PermissionDenied);
+      assert(e instanceof Deno.errors.PermissionDenied);
     }
     await Deno.remove(dirPath, { recursive: true });
   });

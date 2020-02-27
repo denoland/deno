@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import * as dispatch from "./dispatch.ts";
 import { sendAsync, sendSync } from "./dispatch_json.ts";
 import { log } from "./util.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
@@ -30,7 +29,7 @@ function createWorker(
   sourceCode: Uint8Array,
   name?: string
 ): { id: number } {
-  return sendSync(dispatch.OP_CREATE_WORKER, {
+  return sendSync("op_create_worker", {
     specifier,
     hasSourceCode,
     sourceCode: new TextDecoder().decode(sourceCode),
@@ -39,12 +38,12 @@ function createWorker(
 }
 
 function hostTerminateWorker(id: number): void {
-  sendSync(dispatch.OP_HOST_TERMINATE_WORKER, { id });
+  sendSync("op_host_terminate_worker", { id });
 }
 
 function hostPostMessage(id: number, data: any): void {
   const dataIntArray = encodeMessage(data);
-  sendSync(dispatch.OP_HOST_POST_MESSAGE, { id }, dataIntArray);
+  sendSync("op_host_post_message", { id }, dataIntArray);
 }
 
 interface WorkerEvent {
@@ -54,7 +53,7 @@ interface WorkerEvent {
 }
 
 async function hostGetMessage(id: number): Promise<any> {
-  return await sendAsync(dispatch.OP_HOST_GET_MESSAGE, { id });
+  return await sendAsync("op_host_get_message", { id });
 }
 
 export interface Worker {
