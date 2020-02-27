@@ -28,5 +28,6 @@ pub mod runtime_compiler;
 pub mod signal;
 pub mod timers;
 pub mod tls;
+pub mod tty;
 pub mod web_worker;
 pub mod worker_host;
