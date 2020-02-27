@@ -200,13 +200,13 @@ unitTest(
     const tempDir = Deno.makeTempDirSync();
     const filename = tempDir + "/test.txt";
     const filename2 = tempDir + "/test2.txt";
-    Deno.writeFileSync(filename, data, { mode: 0o666 });
+    Deno.writeFileSync(filename, data, { mode: 0o626 });
     // Create a link
     Deno.linkSync(filename, filename2);
     const s = Deno.statSync(filename);
     assert(s.dev !== null);
     assert(s.ino !== null);
-    assertEquals(s.mode! & 0o666, 0o666);
+    assertEquals(s.mode! & 0o666, 0o626 & ~Deno.umask());
     assertEquals(s.nlink, 2);
     assert(s.uid !== null);
     assert(s.gid !== null);
