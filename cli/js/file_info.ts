@@ -30,10 +30,11 @@ export interface FileInfo {
    *
    * _Linux/Mac OS only._ */
   ino: number | null;
-  /** The underlying raw st_mode bits that contain the standard Unix permissions
-   * for this file/directory. TODO Match behavior with Go on windows for mode.
-   */
-  mode: number | null;
+  /** **UNSTABLE**: Match behavior with Go on windows for `perm`.
+   *
+   * The underlying raw `st_mode` bits that contain the standard Unix
+   * permissions for this file/directory. */
+  perm: number | null;
   /** Number of hard links pointing to this file.
    *
    * _Linux/Mac OS only._ */
@@ -81,7 +82,7 @@ export class FileInfoImpl implements FileInfo {
 
   dev: number | null;
   ino: number | null;
-  mode: number | null;
+  perm: number | null;
   nlink: number | null;
   uid: number | null;
   gid: number | null;
@@ -119,7 +120,7 @@ export class FileInfoImpl implements FileInfo {
     // Only non-null if on Unix
     this.dev = isUnix ? dev : null;
     this.ino = isUnix ? ino : null;
-    this.mode = isUnix ? mode : null;
+    this.perm = isUnix ? mode : null;
     this.nlink = isUnix ? nlink : null;
     this.uid = isUnix ? uid : null;
     this.gid = isUnix ? gid : null;

@@ -8,13 +8,13 @@ testPerm({ read: true, write: true }, function mkdirSyncSuccess(): void {
   assert(pathInfo.isDirectory());
 });
 
-testPerm({ read: true, write: true }, function mkdirSyncMode(): void {
+testPerm({ read: true, write: true }, function mkdirSyncFsPerm(): void {
   const path = Deno.makeTempDirSync() + "/dir";
-  Deno.mkdirSync(path, { mode: 0o755 }); // no perm for x
+  Deno.mkdirSync(path, { perm: 0o755 }); // no perm for x
   const pathInfo = Deno.statSync(path);
-  if (pathInfo.mode !== null) {
+  if (pathInfo.perm !== null) {
     // Skip windows
-    assertEquals(pathInfo.mode & 0o777, 0o755);
+    assertEquals(pathInfo.perm & 0o777, 0o755);
   }
 });
 

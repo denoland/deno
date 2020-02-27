@@ -48,9 +48,9 @@ testPerm({ read: true, write: true }, function writeFileSyncUpdatePerm(): void {
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
     Deno.writeFileSync(filename, data, { perm: 0o755 });
-    assertEquals(Deno.statSync(filename).mode! & 0o777, 0o755);
+    assertEquals(Deno.statSync(filename).perm! & 0o777, 0o755);
     Deno.writeFileSync(filename, data, { perm: 0o666 });
-    assertEquals(Deno.statSync(filename).mode! & 0o777, 0o666);
+    assertEquals(Deno.statSync(filename).perm! & 0o777, 0o666);
   }
 });
 
@@ -156,9 +156,9 @@ testPerm(
       const data = enc.encode("Hello");
       const filename = Deno.makeTempDirSync() + "/test.txt";
       await Deno.writeFile(filename, data, { perm: 0o755 });
-      assertEquals(Deno.statSync(filename).mode! & 0o777, 0o755);
+      assertEquals(Deno.statSync(filename).perm! & 0o777, 0o755);
       await Deno.writeFile(filename, data, { perm: 0o666 });
-      assertEquals(Deno.statSync(filename).mode! & 0o777, 0o666);
+      assertEquals(Deno.statSync(filename).perm! & 0o777, 0o666);
     }
   }
 );

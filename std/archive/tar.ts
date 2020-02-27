@@ -316,7 +316,7 @@ export class Tar {
     }
 
     const mode =
-        opts.fileMode || (info && info.mode) || parseInt("777", 8) & 0xfff,
+        opts.fileMode || (info && info.perm) || parseInt("777", 8) & 0xfff,
       mtime =
         opts.mtime ||
         (info && info.modified) ||

@@ -6,20 +6,20 @@ import { sendSync, sendAsync } from "./dispatch_json.ts";
 function mkdirArgs(
   path: string,
   optionsOrRecursive?: MkdirOptions | boolean,
-  mode?: number
-): { path: string; recursive: boolean; mode: number } {
-  const args = { path, recursive: false, mode: 0o777 };
+  perm?: number
+): { path: string; recursive: boolean; perm: number } {
+  const args = { path, recursive: false, perm: 0o777 };
   if (typeof optionsOrRecursive == "boolean") {
     args.recursive = optionsOrRecursive;
-    if (mode) {
-      args.mode = mode;
+    if (perm) {
+      args.perm = perm;
     }
   } else if (optionsOrRecursive) {
     if (typeof optionsOrRecursive.recursive == "boolean") {
       args.recursive = optionsOrRecursive.recursive;
     }
-    if (optionsOrRecursive.mode) {
-      args.mode = optionsOrRecursive.mode;
+    if (optionsOrRecursive.perm) {
+      args.perm = optionsOrRecursive.perm;
     }
   }
   return args;
@@ -35,7 +35,7 @@ export interface MkdirOptions {
   /** Permissions to use when creating the directory (defaults to `0o777`,
    * before the process's umask).
    * Does nothing/raises on Windows. */
-  mode?: number;
+  perm?: number;
 }
 
 /** Synchronously creates a new directory with the specified path.
@@ -47,9 +47,9 @@ export interface MkdirOptions {
 export function mkdirSync(
   path: string,
   optionsOrRecursive?: MkdirOptions | boolean,
-  mode?: number
+  perm?: number
 ): void {
-  sendSync("op_mkdir", mkdirArgs(path, optionsOrRecursive, mode));
+  sendSync("op_mkdir", mkdirArgs(path, optionsOrRecursive, perm));
 }
 
 /** Creates a new directory with the specified path.
@@ -61,7 +61,7 @@ export function mkdirSync(
 export async function mkdir(
   path: string,
   optionsOrRecursive?: MkdirOptions | boolean,
-  mode?: number
+  perm?: number
 ): Promise<void> {
-  await sendAsync("op_mkdir", mkdirArgs(path, optionsOrRecursive, mode));
+  await sendAsync("op_mkdir", mkdirArgs(path, optionsOrRecursive, perm));
 }
