@@ -4,16 +4,37 @@
 
 import os
 import sys
+import argparse
 from util import enable_ansi_colors, git_ls_files, root_path, run
-from util import third_party_path
+from util import third_party_path, build_mode
 from third_party import python_env
 
 
 def main():
     enable_ansi_colors()
     os.chdir(root_path)
-    eslint()
-    pylint()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--js", help="run eslint", action="store_true")
+    parser.add_argument("--py", help="run pylint", action="store_true")
+    parser.add_argument("--rs", help="run clippy", action="store_true")
+    args = parser.parse_args()
+
+    did_fmt = False
+    if args.js:
+        eslint()
+        did_fmt = True
+    if args.py:
+        pylint()
+        did_fmt = True
+    if args.rs:
+        clippy()
+        did_fmt = True
+
+    if not did_fmt:
+        eslint()
+        pylint()
+        clippy()
 
 
 def eslint():
@@ -47,6 +68,15 @@ def pylint():
         env=python_env(),
         shell=False,
         quiet=True)
+
+
+def clippy():
+    print "clippy"
+    current_build_mode = build_mode()
+    args = ["cargo", "clippy", "--all-targets", "--locked"]
+    if current_build_mode != "debug":
+        args += ["--release"]
+    run(args + ["--", "-D", "clippy::all"], shell=False, quiet=True)
 
 
 if __name__ == "__main__":
