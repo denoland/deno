@@ -7,7 +7,6 @@ use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
-use crate::flags::Verbosity;
 use crate::global_state::GlobalState;
 use crate::msg;
 use crate::op_error::OpError;
@@ -23,7 +22,7 @@ use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
-use log::Level;
+use log::info;
 use regex::Regex;
 use serde_json::json;
 use std::collections::HashMap;
@@ -221,7 +220,6 @@ pub struct TsCompilerInner {
   pub use_disk_cache: bool,
   /// This setting is controlled by `compilerOptions.checkJs`
   pub compile_js: bool,
-  pub verbosity: Verbosity,
 }
 
 #[derive(Clone)]
@@ -240,7 +238,6 @@ impl TsCompiler {
     disk_cache: DiskCache,
     use_disk_cache: bool,
     config_path: Option<String>,
-    verbosity: Verbosity,
   ) -> Result<Self, ErrBox> {
     let config = CompilerConfig::load(config_path)?;
     Ok(TsCompiler(Arc::new(TsCompilerInner {
@@ -250,7 +247,6 @@ impl TsCompiler {
       config,
       compiled: Mutex::new(HashSet::new()),
       use_disk_cache,
-      verbosity,
     })))
   }
 
@@ -378,13 +374,11 @@ impl TsCompiler {
 
     let ts_compiler = self.clone();
 
-    if self.verbosity.includes(Level::Info) {
-      eprintln!(
-        "{} {}",
-        colors::green("Compile".to_string()),
-        module_url.to_string()
-      );
-    }
+    info!(
+      "{} {}",
+      colors::green("Compile".to_string()),
+      module_url.to_string()
+    );
 
     let msg = execute_in_thread(global_state.clone(), req_msg).await?;
 

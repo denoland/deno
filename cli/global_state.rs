@@ -66,7 +66,6 @@ impl GlobalState {
       flags.no_remote,
       flags.cached_only,
       flags.ca_file.clone(),
-      flags.verbosity,
     )?;
 
     let ts_compiler = TsCompiler::new(
@@ -74,7 +73,6 @@ impl GlobalState {
       dir.gen_cache.clone(),
       !flags.reload,
       flags.config_path.clone(),
-      flags.verbosity,
     )?;
 
     // Note: reads lazily from disk on first call to lockfile.check()

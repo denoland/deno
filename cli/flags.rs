@@ -70,27 +70,6 @@ impl Default for DenoSubcommand {
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Verbosity {
-  pub level: Level,
-}
-
-impl Default for Verbosity {
-  fn default() -> Verbosity {
-    Verbosity::new(Level::Info)
-  }
-}
-
-impl Verbosity {
-  pub const fn new(level: Level) -> Verbosity {
-    Verbosity { level }
-  }
-
-  pub fn includes(self, level: Level) -> bool {
-    self.level >= level
-  }
-}
-
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
@@ -99,7 +78,6 @@ pub struct Flags {
   pub subcommand: DenoSubcommand,
 
   pub log_level: Option<Level>,
-  pub verbosity: Verbosity,
   pub version: bool,
   pub reload: bool,
   pub config_path: Option<String>,
@@ -251,9 +229,8 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
       _ => unreachable!(),
     };
   }
-
   if matches.is_present("quiet") {
-    flags.verbosity = Verbosity::new(Level::Error);
+    flags.log_level = Some(Level::Error);
   }
 
   if let Some(m) = matches.subcommand_matches("run") {

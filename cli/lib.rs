@@ -79,6 +79,7 @@ use url::Url;
 
 static LOGGER: Logger = Logger;
 
+// TODO(ry) Switch to env_logger or other standard crate.
 struct Logger;
 
 impl log::Log for Logger {
@@ -95,7 +96,11 @@ impl log::Log for Logger {
         target.push_str(&line_no.to_string());
       }
 
-      println!("{} RS - {} - {}", record.level(), target, record.args());
+      if record.level() >= Level::Info {
+        eprintln!("{}", record.args());
+      } else {
+        eprintln!("{} RS - {} - {}", record.level(), target, record.args());
+      }
     }
   }
   fn flush(&self) {}
@@ -399,7 +404,7 @@ pub fn main() {
 
   let log_level = match flags.log_level {
     Some(level) => level,
-    None => Level::Warn,
+    None => Level::Info, // Default log level
   };
   log::set_max_level(log_level.to_level_filter());
 

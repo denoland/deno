@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
-use crate::flags::Verbosity;
 use crate::http_cache::HttpCache;
 use crate::http_util;
 use crate::http_util::create_http_client;
@@ -10,10 +9,9 @@ use crate::op_error::OpError;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
-use log::Level;
+use log::info;
 use regex::Regex;
 use reqwest;
-use std;
 use std::collections::HashMap;
 use std::fs;
 use std::future::Future;
@@ -25,7 +23,6 @@ use std::result::Result;
 use std::str;
 use std::sync::Arc;
 use std::sync::Mutex;
-use url;
 use url::Url;
 
 /// Structure representing local or remote file.
@@ -71,7 +68,6 @@ pub struct SourceFileFetcher {
   no_remote: bool,
   cached_only: bool,
   http_client: reqwest::Client,
-  verbosity: Verbosity,
   // This field is public only to expose it's location
   pub http_cache: HttpCache,
 }
@@ -84,7 +80,6 @@ impl SourceFileFetcher {
     no_remote: bool,
     cached_only: bool,
     ca_file: Option<String>,
-    verbosity: Verbosity,
   ) -> Result<Self, ErrBox> {
     let file_fetcher = Self {
       http_cache,
@@ -94,7 +89,6 @@ impl SourceFileFetcher {
       no_remote,
       cached_only,
       http_client: create_http_client(ca_file)?,
-      verbosity,
     };
 
     Ok(file_fetcher)
@@ -396,13 +390,11 @@ impl SourceFileFetcher {
       .boxed_local();
     }
 
-    if self.verbosity.includes(Level::Info) {
-      eprintln!(
-        "{} {}",
-        colors::green("Download".to_string()),
-        module_url.to_string()
-      );
-    }
+    info!(
+      "{} {}",
+      colors::green("Download".to_string()),
+      module_url.to_string()
+    );
 
     let dir = self.clone();
     let module_url = module_url.clone();
