@@ -292,7 +292,7 @@ fn clap_root<'a, 'b>() -> App<'a, 'b> {
         .long_help(
           "Suppress diagnostic output
 By default, subcommands print human-readable diagnostic messages to stderr.
-If the flag is set, restrict the output to warnings and errors.",
+If the flag is set, restrict these messages to errors.",
         )
         .global(true),
     )
