@@ -62,6 +62,21 @@ test(async function compilerApiCompileLib() {
   assertEquals(Object.keys(actual), ["/foo.js.map", "/foo.js"]);
 });
 
+test(async function compilerApiCompileTypes() {
+  const [diagnostics, actual] = await compile(
+    "/foo.ts",
+    {
+      "/foo.ts": `console.log(Foo.bar);`
+    },
+    {
+      types: ["./cli/tests/subdir/foo_types.d.ts"]
+    }
+  );
+  assert(diagnostics == null);
+  assert(actual);
+  assertEquals(Object.keys(actual), ["/foo.js.map", "/foo.js"]);
+});
+
 test(async function transpileOnlyApi() {
   const actual = await transpileOnly({
     "foo.ts": `export enum Foo { Foo, Bar, Baz };\n`

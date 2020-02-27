@@ -182,12 +182,20 @@ export function createWriteFile(state: WriteFileState): WriteFileCallback {
   };
 }
 
+export interface ConvertCompilerOptionsResult {
+  files?: string[];
+  options: ts.CompilerOptions;
+}
+
 /** Take a runtime set of compiler options as stringified JSON and convert it
  * to a set of TypeScript compiler options. */
-export function convertCompilerOptions(str: string): ts.CompilerOptions {
+export function convertCompilerOptions(
+  str: string
+): ConvertCompilerOptionsResult {
   const options: CompilerOptions = JSON.parse(str);
   const out: Record<string, unknown> = {};
   const keys = Object.keys(options) as Array<keyof CompilerOptions>;
+  const files: string[] = [];
   for (const key of keys) {
     switch (key) {
       case "jsx":
@@ -261,11 +269,20 @@ export function convertCompilerOptions(str: string): ts.CompilerOptions {
           default:
             throw new TypeError("Unexpected emit target.");
         }
+        break;
+      case "types":
+        const types = options[key];
+        assert(types);
+        files.push(...types);
+        break;
       default:
         out[key] = options[key];
     }
   }
-  return out as ts.CompilerOptions;
+  return {
+    options: out as ts.CompilerOptions,
+    files: files.length ? files : undefined
+  };
 }
 
 /** An array of TypeScript diagnostic types we ignore. */
