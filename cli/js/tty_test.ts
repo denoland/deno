@@ -7,6 +7,7 @@ testPerm({ read: true }, function isatty(): void {
   // CI not under TTY, so cannot test stdin/stdout/stderr.
   const f = Deno.openSync("cli/tests/hello.txt");
   assert(!Deno.isatty(f.rid));
+  f.close();
 });
 
 test(function isattyError(): void {
