@@ -152,6 +152,28 @@ fn fmt_test() {
 }
 
 #[test]
+fn fmt_stdin_error() {
+  use std::io::Write;
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg("-")
+    .stdin(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let stdin = deno.stdin.as_mut().unwrap();
+  let invalid_js = "import { example }".as_bytes();
+  stdin.write_all(invalid_js).unwrap();
+  let output = deno.wait_with_output().unwrap();
+  // Error message might change. Just check stdout empty, stderr not.
+  assert!(output.stdout.len() == 0);
+  assert!(output.stderr.len() > 0);
+  assert_eq!(Some(1), output.status.code());
+}
+
+#[test]
 fn installer_test_local_module_run() {
   use deno::flags::Flags;
   use deno::installer;
