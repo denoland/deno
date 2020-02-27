@@ -17,8 +17,46 @@ declare namespace Deno {
     name: string;
   }
 
-  export function assert(expr: unknown, msg?: string): asserts expr;
+  export interface Assert {
+    /** Make an assertion, if not `true`, then throw. */
+    (expr: unknown, msg?: string): asserts expr;
+    /** Use this to stub out methods that will throw when invoked. */
+    unimplemented(msg?: string): never;
+    /** Use this to assert unreachable code. */
+    unreachable(msg?: string): never;
+    /**
+     * Make an assertion that `actual` and `expected` are equal, deeply. If not
+     * deeply equal, then throw.
+     */
+    equals(actual: unknown, expected: unknown, msg?: string): void;
+    /**
+     * Make an assertion that `actual` and `expected` are not equal, deeply.
+     * If not then throw.
+     */
+    notEquals(actual: unknown, expected: unknown, msg?: string): void;
+    /**
+     * Make an assertion that actual contains expected. If not
+     * then thrown.
+     */
+    strContains(actual: string, expected: string, msg?: string): void;
+    /**
+     * Make an assertion that `actual` and `expected` are strictly equal.  If
+     * not then throw.
+     */
+    strictEq(actual: unknown, expected: unknown, msg?: string): void;
+    /**
+     * Make an assertion that `actual` contains the `expected` values
+     * If not then thrown.
+     */
+    arrayContains(actual: unknown[], expected: unknown[], msg?: string): void;
+    /**
+     * Make an assertion that `actual` match RegExp `expected`. If not
+     * then thrown
+     */
+    match(actual: string, expected: RegExp, msg?: string): void;
+  }
 
+  export const assert: Assert;
   export function test(t: TestDefinition): void;
   export function test(fn: TestFunction): void;
   export function test(name: string, fn: TestFunction): void;
