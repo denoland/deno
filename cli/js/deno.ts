@@ -13,7 +13,7 @@ export { chmodSync, chmod } from "./chmod.ts";
 export { chownSync, chown } from "./chown.ts";
 export { transpileOnly, compile, bundle } from "./compiler_api.ts";
 export { inspect } from "./console.ts";
-export { copyFileSync, copyFile } from "./copy_file.ts";
+export { copyFileSync, copyFile, CopyFileOptions } from "./copy_file.ts";
 export {
   Diagnostic,
   DiagnosticCategory,

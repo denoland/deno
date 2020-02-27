@@ -1111,6 +1111,20 @@ declare namespace Deno {
 
   // @url js/copy_file.d.ts
 
+  export interface CopyFileOptions {
+    /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
+     * allowed to exist at the target location. When createNew is set to `true`,
+     * create is ignored. */
+    createNew?: boolean;
+    /** Sets the option to allow overwriting existing file. Note that setting
+     * `{ ..., clobber: false, create: true }` has the same effect as
+     * `{ ..., createNew: true }`. */
+    clobber?: boolean;
+    /** Sets the option to allow creating a new file, if one doesn't already
+     * exist at the specified path (defaults to `true`). */
+    create?: boolean;
+  }
+
   /** Synchronously copies the contents and permissions of one file to another
    * specified path, by default creating a new file if needed, else overwriting.
    * Fails if target path is a directory or is unwritable.
@@ -1118,8 +1132,13 @@ declare namespace Deno {
    *       Deno.copyFileSync("from.txt", "to.txt");
    *
    * Requires `allow-read` permission on fromPath.
-   * Requires `allow-write` permission on toPath. */
-  export function copyFileSync(fromPath: string, toPath: string): void;
+   * Requires `allow-write` permission on toPath, and `allow-read` if create is
+   * `false`. */
+  export function copyFileSync(
+    fromPath: string,
+    toPath: string,
+    options?: CopyFileOptions
+  ): void;
 
   /** Copies the contents and permissions of one file to another specified path,
    * by default creating a new file if needed, else overwriting. Fails if target
@@ -1128,8 +1147,13 @@ declare namespace Deno {
    *       await Deno.copyFile("from.txt", "to.txt");
    *
    * Requires `allow-read` permission on fromPath.
-   * Requires `allow-write` permission on toPath. */
-  export function copyFile(fromPath: string, toPath: string): Promise<void>;
+   * Requires `allow-write` permission on toPath, and `allow-read` if create is
+   * `false`. */
+  export function copyFile(
+    fromPath: string,
+    toPath: string,
+    options?: CopyFileOptions
+  ): Promise<void>;
 
   // @url js/read_link.d.ts
 
