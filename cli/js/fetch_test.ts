@@ -5,7 +5,7 @@ import {
   assert,
   assertEquals,
   assertStrContains,
-  assertThrows,
+  assertThrows
   // fail
 } from "./test_util.ts";
 
