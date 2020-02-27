@@ -96,10 +96,8 @@ fn fetch_test() {
     .output()
     .expect("Failed to spawn script");
 
-  let code = output.status.code();
+  assert!(output.status.success());
   let out = std::str::from_utf8(&output.stdout).unwrap();
-
-  assert_eq!(Some(0), code);
   assert_eq!(out, "");
 
   let expected_path = deno_dir
@@ -114,7 +112,6 @@ fn fetch_test() {
 #[test]
 fn fmt_test() {
   use tempfile::TempDir;
-
   let t = TempDir::new().expect("tempdir fail");
   let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
   let badly_formatted_original =
@@ -123,7 +120,6 @@ fn fmt_test() {
   let badly_formatted_str = badly_formatted.to_str().unwrap();
   std::fs::copy(&badly_formatted_original, &badly_formatted)
     .expect("Failed to copy file");
-
   let status = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("fmt")
@@ -133,9 +129,7 @@ fn fmt_test() {
     .expect("Failed to spawn script")
     .wait()
     .expect("Failed to wait for child process");
-
-  assert_eq!(Some(1), status.code());
-
+  assert!(!status.success());
   let status = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("fmt")
@@ -144,11 +138,32 @@ fn fmt_test() {
     .expect("Failed to spawn script")
     .wait()
     .expect("Failed to wait for child process");
-
-  assert_eq!(Some(0), status.code());
+  assert!(status.success());
   let expected = std::fs::read_to_string(fixed).unwrap();
   let actual = std::fs::read_to_string(badly_formatted).unwrap();
   assert_eq!(expected, actual);
+}
+
+#[test]
+fn fmt_stdin_error() {
+  use std::io::Write;
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg("-")
+    .stdin(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let stdin = deno.stdin.as_mut().unwrap();
+  let invalid_js = b"import { example }";
+  stdin.write_all(invalid_js).unwrap();
+  let output = deno.wait_with_output().unwrap();
+  // Error message might change. Just check stdout empty, stderr not.
+  assert!(output.stdout.is_empty());
+  assert!(!output.stderr.is_empty());
+  assert!(!output.status.success());
 }
 
 #[test]
