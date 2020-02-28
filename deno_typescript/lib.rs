@@ -232,7 +232,7 @@ fn write_snapshot(
   snapshot_filename: &Path,
 ) -> Result<(), ErrBox> {
   println!("Creating snapshot...");
-  let snapshot = runtime_isolate.snapshot()?;
+  let snapshot = runtime_isolate.snapshot();
   let snapshot_slice: &[u8] = &*snapshot;
   println!("Snapshot size: {}", snapshot_slice.len());
   fs::write(&snapshot_filename, snapshot_slice)?;

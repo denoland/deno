@@ -465,16 +465,18 @@ impl Isolate {
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is CoreJSError, however it may be a
   /// different type if Isolate::set_js_error_create() has been used.
-  pub fn snapshot(&mut self) -> Result<v8::OwnedStartupData, ErrBox> {
+  pub fn snapshot(&mut self) -> v8::OwnedStartupData {
     assert!(self.snapshot_creator.is_some());
 
-    let v8_isolate = self.v8_isolate.as_mut().unwrap();
-    let js_error_create_fn = &*self.js_error_create_fn;
-    let last_exception = &mut self.last_exception;
-
-    let mut hs = v8::HandleScope::new(v8_isolate);
-    let scope = hs.enter();
-    self.global_context.reset(scope);
+    // Note: create_blob() method must not be called from within a HandleScope.
+    // The HandleScope created here is exited at the end of the block.
+    // TODO(piscisaureus): The rusty_v8 type system should enforce this.
+    {
+      let v8_isolate = self.v8_isolate.as_mut().unwrap();
+      let mut hs = v8::HandleScope::new(v8_isolate);
+      let scope = hs.enter();
+      self.global_context.reset(scope);
+    }
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
@@ -482,7 +484,7 @@ impl Isolate {
       .unwrap();
     self.has_snapshotted = true;
 
-    check_last_exception(last_exception, js_error_create_fn).map(|_| snapshot)
+    snapshot
   }
 }
 
@@ -1160,9 +1162,7 @@ pub mod tests {
     let snapshot = {
       let mut isolate = Isolate::new(StartupData::None, true);
       js_check(isolate.execute("a.js", "a = 1 + 2"));
-      let s = isolate.snapshot().unwrap();
-      drop(isolate);
-      s
+      isolate.snapshot()
     };
 
     let startup_data = StartupData::OwnedSnapshot(snapshot);
