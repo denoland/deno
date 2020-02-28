@@ -298,7 +298,7 @@ impl SourceFileFetcher {
   ///
   /// This is a recursive operation if source file has redirections.
   ///
-  /// It will keep reading <filename>.headers.json for information about redirection.
+  /// It will keep reading <filename>.metadata.json for information about redirection.
   /// `module_initial_source_name` would be None on first call,
   /// and becomes the name of the very first module that initiates the call
   /// in subsequent recursions.
@@ -753,12 +753,8 @@ mod tests {
       Url::parse("http://localhost:4545/cli/tests/subdir/mod2.ts").unwrap();
     let module_url_1 = module_url.clone();
     let module_url_2 = module_url.clone();
-    let headers_file_name = fetcher
-      .http_cache
-      .get_cache_filename(&module_url)
-      .with_extension("headers.json");
-    let headers_file_name_1 = headers_file_name.clone();
-    let headers_file_name_2 = headers_file_name.clone();
+
+    let cache_filename = fetcher.http_cache.get_cache_filename(&module_url);
 
     let result = fetcher
       .get_source_file(&module_url, true, false, false)
@@ -770,13 +766,17 @@ mod tests {
       &b"export { printHello } from \"./print_hello.ts\";\n"[..]
     );
     assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-    assert!(fs::read_to_string(&headers_file_name_1).is_ok());
+
+    let mut metadata =
+      crate::http_cache::Metadata::read(&cache_filename).unwrap();
 
     // Modify .headers.json, write using fs write
-    let _ = fs::write(
-      &headers_file_name_1,
-      "{ \"content-type\": \"text/javascript\" }",
-    );
+    metadata.headers = HashMap::new();
+    metadata
+      .headers
+      .insert("content-type".to_string(), "text/javascript".to_string());
+    metadata.write(&cache_filename).unwrap();
+
     let result2 = fetcher_1
       .get_source_file(&module_url, true, false, false)
       .await;
@@ -794,10 +794,12 @@ mod tests {
     assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
 
     // Modify .headers.json again, but the other way around
-    let _ = fs::write(
-      &headers_file_name_1,
-      "{ \"content-type\": \"application/json\" }",
-    );
+    metadata.headers = HashMap::new();
+    metadata
+      .headers
+      .insert("content-type".to_string(), "application/json".to_string());
+    metadata.write(&cache_filename).unwrap();
+
     let result3 = fetcher_2
       .get_source_file(&module_url_1, true, false, false)
       .await;
@@ -810,9 +812,11 @@ mod tests {
     // If get_source_file does not call remote, this should be JavaScript
     // as we modified before! (we do not overwrite .headers.json due to no http fetch)
     assert_eq!(&(r3.media_type), &msg::MediaType::Json);
-    assert!(fs::read_to_string(&headers_file_name_2)
-      .unwrap()
-      .contains("application/json"));
+    let metadata = crate::http_cache::Metadata::read(&cache_filename).unwrap();
+    assert_eq!(
+      metadata.headers.get("content-type").unwrap(),
+      "application/json"
+    );
 
     // let's create fresh instance of DenoDir (simulating another freshh Deno process)
     // and don't use cache
@@ -838,10 +842,8 @@ mod tests {
       Url::parse("http://localhost:4545/cli/tests/subdir/mismatch_ext.ts")
         .unwrap();
     let module_url_1 = module_url.clone();
-    let headers_file_name = fetcher
-      .http_cache
-      .get_cache_filename(&module_url)
-      .with_extension("headers.json");
+
+    let cache_filename = fetcher.http_cache.get_cache_filename(&module_url);
 
     let result = fetcher
       .get_source_file(&module_url, true, false, false)
@@ -855,10 +857,14 @@ mod tests {
     assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
 
     // Modify .headers.json
-    let _ = fs::write(
-      &headers_file_name,
-      "{ \"content-type\": \"text/typescript\" }",
-    );
+    let mut metadata =
+      crate::http_cache::Metadata::read(&cache_filename).unwrap();
+    metadata.headers = HashMap::new();
+    metadata
+      .headers
+      .insert("content-type".to_string(), "text/typescript".to_string());
+    metadata.write(&cache_filename).unwrap();
+
     let result2 = fetcher
       .get_source_file(&module_url, true, false, false)
       .await;
@@ -870,9 +876,10 @@ mod tests {
     // as we modified before! (we do not overwrite .headers.json due to no http
     // fetch)
     assert_eq!(&(r2.media_type), &msg::MediaType::TypeScript);
+    let metadata = crate::http_cache::Metadata::read(&cache_filename).unwrap();
     assert_eq!(
-      fs::read_to_string(&headers_file_name).unwrap(),
-      "{ \"content-type\": \"text/typescript\" }",
+      metadata.headers.get("content-type").unwrap(),
+      "text/typescript"
     );
 
     // let's create fresh instance of DenoDir (simulating another fresh Deno
@@ -902,15 +909,15 @@ mod tests {
       "http://localhost:4545/cli/tests/subdir/mismatch_ext.ts",
     )
     .unwrap();
-    let headers_file_name = fetcher
-      .http_cache
-      .get_cache_filename(specifier.as_url())
-      .with_extension("headers.json");
+    let cache_filename =
+      fetcher.http_cache.get_cache_filename(&specifier.as_url());
 
     // first download
     let r = fetcher.fetch_source_file(&specifier, None).await;
     assert!(r.is_ok());
 
+    let headers_file_name =
+      crate::http_cache::Metadata::filename(&cache_filename);
     let result = fs::File::open(&headers_file_name);
     assert!(result.is_ok());
     let headers_file = result.unwrap();
@@ -1219,10 +1226,6 @@ mod tests {
     let module_url =
       Url::parse("http://127.0.0.1:4545/cli/tests/subdir/mt_video_mp2t.t3.ts")
         .unwrap();
-    let headers_file_name = fetcher
-      .http_cache
-      .get_cache_filename(&module_url)
-      .with_extension("headers.json");
     let result = fetcher
       .fetch_remote_source(&module_url, false, false, 10)
       .await;
@@ -1230,46 +1233,17 @@ mod tests {
     let r = result.unwrap();
     assert_eq!(r.source_code, b"export const loaded = true;\n");
     assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-    // Modify .headers.json, make sure read from local
-    let _ = fs::write(
-      &headers_file_name,
-      "{ \"content-type\": \"text/javascript\" }",
-    );
-    let result2 = fetcher.fetch_cached_remote_source(&module_url);
-    assert!(result2.is_ok());
-    let r2 = result2.unwrap().unwrap();
-    assert_eq!(r2.source_code, b"export const loaded = true;\n");
-    // Not MediaType::TypeScript due to .headers.json modification
-    assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
 
-    drop(http_server_guard);
-  }
+    // Modify .metadata.json, make sure read from local
+    let cache_filename = fetcher.http_cache.get_cache_filename(&module_url);
+    let mut metadata =
+      crate::http_cache::Metadata::read(&cache_filename).unwrap();
+    metadata.headers = HashMap::new();
+    metadata
+      .headers
+      .insert("content-type".to_string(), "text/javascript".to_string());
+    metadata.write(&cache_filename).unwrap();
 
-  #[tokio::test]
-  async fn test_fetch_source_1() {
-    let http_server_guard = crate::test_util::http_server();
-
-    let (_temp_dir, fetcher) = test_setup();
-    let module_url =
-      Url::parse("http://localhost:4545/cli/tests/subdir/mt_video_mp2t.t3.ts")
-        .unwrap();
-
-    let result = fetcher
-      .fetch_remote_source(&module_url, false, false, 10)
-      .await;
-    assert!(result.is_ok());
-    let r = result.unwrap();
-    assert_eq!(r.source_code, b"export const loaded = true;\n");
-    assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-    // Modify .headers.json, make sure read from local
-    let headers_file_name = fetcher
-      .http_cache
-      .get_cache_filename(&module_url)
-      .with_extension("headers.json");
-    let _ = fs::write(
-      &headers_file_name,
-      "{ \"content-type\": \"text/javascript\" }",
-    );
     let result2 = fetcher.fetch_cached_remote_source(&module_url);
     assert!(result2.is_ok());
     let r2 = result2.unwrap().unwrap();
@@ -1630,12 +1604,11 @@ mod tests {
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
     assert_eq!(headers.get("etag").unwrap(), "33a64df551425fcc55e");
 
-    let header_path = fetcher
-      .http_cache
-      .get_cache_filename(&module_url)
-      .with_extension("headers.json");
+    let metadata_path = crate::http_cache::Metadata::filename(
+      &fetcher.http_cache.get_cache_filename(&module_url),
+    );
 
-    let modified1 = header_path.metadata().unwrap().modified().unwrap();
+    let modified1 = metadata_path.metadata().unwrap().modified().unwrap();
 
     // Forcibly change the contents of the cache file and request
     // it again with the cache parameters turned off.
@@ -1648,7 +1621,7 @@ mod tests {
       .unwrap();
     assert_eq!(cached_source.source_code, b"changed content");
 
-    let modified2 = header_path.metadata().unwrap().modified().unwrap();
+    let modified2 = metadata_path.metadata().unwrap().modified().unwrap();
 
     // Assert that the file has not been modified
     assert_eq!(modified1, modified2);
