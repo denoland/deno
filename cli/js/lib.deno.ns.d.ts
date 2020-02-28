@@ -709,7 +709,7 @@ declare namespace Deno {
 
   // @url js/mkdir.d.ts
 
-  export interface MkdirOption {
+  export interface MkdirOptions {
     /** Defaults to `false`. If set to `true`, means that any intermediate
      * directories will also be created (as with the shell command `mkdir -p`).
      * Intermediate directories are created with the same permissions.
@@ -728,7 +728,7 @@ declare namespace Deno {
    *       Deno.mkdirSync("nested/directories", { recursive: true });
    *
    * Requires `allow-write` permission. */
-  export function mkdirSync(path: string, options?: MkdirOption): void;
+  export function mkdirSync(path: string, options?: MkdirOptions): void;
 
   /** @deprecated */
   export function mkdirSync(
@@ -743,7 +743,7 @@ declare namespace Deno {
    *       await Deno.mkdir("nested/directories", { recursive: true });
    *
    * Requires `allow-write` permission. */
-  export function mkdir(path: string, options?: MkdirOption): Promise<void>;
+  export function mkdir(path: string, options?: MkdirOptions): Promise<void>;
 
   /** @deprecated */
   export function mkdir(

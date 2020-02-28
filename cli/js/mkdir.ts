@@ -5,7 +5,7 @@ import { sendSync, sendAsync } from "./dispatch_json.ts";
 // mkdir and mkdirSync.
 function mkdirArgs(
   path: string,
-  optionsOrRecursive?: MkdirOption | boolean,
+  optionsOrRecursive?: MkdirOptions | boolean,
   mode?: number
 ): { path: string; recursive: boolean; mode: number } {
   const args = { path, recursive: false, mode: 0o777 };
@@ -25,7 +25,7 @@ function mkdirArgs(
   return args;
 }
 
-export interface MkdirOption {
+export interface MkdirOptions {
   /** Defaults to `false`. If set to `true`, means that any intermediate
    * directories will also be created (as with the shell command `mkdir -p`).
    * Intermediate directories are created with the same permissions.
@@ -46,7 +46,7 @@ export interface MkdirOption {
  * Requires `allow-write` permission. */
 export function mkdirSync(
   path: string,
-  optionsOrRecursive?: MkdirOption | boolean,
+  optionsOrRecursive?: MkdirOptions | boolean,
   mode?: number
 ): void {
   sendSync("op_mkdir", mkdirArgs(path, optionsOrRecursive, mode));
@@ -60,7 +60,7 @@ export function mkdirSync(
  * Requires `allow-write` permission. */
 export async function mkdir(
   path: string,
-  optionsOrRecursive?: MkdirOption | boolean,
+  optionsOrRecursive?: MkdirOptions | boolean,
   mode?: number
 ): Promise<void> {
   await sendAsync("op_mkdir", mkdirArgs(path, optionsOrRecursive, mode));
