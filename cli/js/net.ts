@@ -3,7 +3,7 @@ import { EOF, Reader, Writer, Closer } from "./io.ts";
 import { read, write, close } from "./files.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
-export type Transport = "tcp" | "udp";
+export type Transport = "tcp" | "udp" | "unix";
 // TODO support other types:
 // export type Transport = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
 
@@ -17,6 +17,11 @@ export interface UDPAddr {
   transport?: Transport;
   hostname?: string;
   port: number;
+}
+
+export interface UnixAddr {
+  transport: Transport;
+  address: string;
 }
 
 /** A socket is a generic transport listener for message-oriented protocols */
@@ -49,7 +54,7 @@ export interface Listener extends AsyncIterator<Conn> {
   close(): void;
 
   /** Return the address of the `Listener`. */
-  addr: Addr;
+  addr: Addr | UnixAddr;
 
   [Symbol.asyncIterator](): AsyncIterator<Conn>;
 }
@@ -111,12 +116,15 @@ export class ConnImpl implements Conn {
 export class ListenerImpl implements Listener {
   constructor(
     readonly rid: number,
-    readonly addr: Addr,
+    readonly addr: Addr | UnixAddr,
     private closing: boolean = false
   ) {}
 
   async accept(): Promise<Conn> {
-    const res = await sendAsync("op_accept", { rid: this.rid });
+    const res = await sendAsync("op_accept", {
+      rid: this.rid,
+      transport: this.addr.transport
+    });
     return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
   }
 
@@ -227,6 +235,11 @@ export interface ListenOptions {
   transport?: Transport;
 }
 
+export interface UnixListenOptions {
+  transport: Transport;
+  address: string;
+}
+
 const listenDefaults = { hostname: "0.0.0.0", transport: "tcp" };
 
 /** Listen announces on the local transport address.
@@ -250,11 +263,16 @@ export function listen(
   options: ListenOptions & { transport?: "tcp" }
 ): Listener;
 export function listen(options: ListenOptions & { transport: "udp" }): UDPConn;
-export function listen(options: ListenOptions): Listener | UDPConn {
+export function listen(
+  options: UnixListenOptions & { transport: "unix" }
+): Listener;
+export function listen(
+  options: ListenOptions | UnixListenOptions
+): Listener | UDPConn {
   const args = { ...listenDefaults, ...options };
   const res = sendSync("op_listen", args);
 
-  if (args.transport === "tcp") {
+  if (args.transport === "tcp" || args.transport === "unix") {
     return new ListenerImpl(res.rid, res.localAddr);
   } else {
     return new UDPConnImpl(res.rid, res.localAddr);
@@ -265,6 +283,11 @@ export interface ConnectOptions {
   port: number;
   hostname?: string;
   transport?: Transport;
+}
+
+export interface UnixConnectOptions {
+  transport?: Transport;
+  address: string;
 }
 
 const connectDefaults = { hostname: "127.0.0.1", transport: "tcp" };
@@ -286,7 +309,12 @@ const connectDefaults = { hostname: "127.0.0.1", transport: "tcp" };
  *     connect({ hostname: "[2001:db8::1]", port: 80 });
  *     connect({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
-export async function connect(options: ConnectOptions): Promise<Conn> {
+export async function connect(
+  options: UnixConnectOptions & { transport: "unix" }
+): Promise<Conn>;
+export async function connect(
+  options: ConnectOptions | UnixConnectOptions
+): Promise<Conn> {
   options = Object.assign(connectDefaults, options);
   const res = await sendAsync("op_connect", options);
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);

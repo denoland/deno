@@ -1456,7 +1456,7 @@ declare namespace Deno {
    * Requires the `allow-plugin` permission. */
   export function openPlugin(filename: string): Plugin;
 
-  export type Transport = "tcp" | "udp";
+  export type Transport = "tcp" | "udp" | "unix";
 
   export interface Addr {
     transport: Transport;
@@ -1564,6 +1564,16 @@ declare namespace Deno {
     transport?: Transport;
   }
 
+  export interface UnixListenOptions {
+	  /** A Path to the Unix Socket. */
+    address: string;
+    /** Either `"tcp"` or `"udp"`. Defaults to `"tcp"`.
+     *
+     * In the future: `"tcp4"`, `"tcp6"`, `"udp4"`, `"udp6"`, `"ip"`, `"ip4"`,
+     * `"ip6"`, `"unix"`, `"unixgram"`, and `"unixpacket"`. */
+    transport: Transport;
+  }
+
   /** **UNSTABLE**: new API
    *
    * Listen announces on the local transport address.
@@ -1600,7 +1610,22 @@ declare namespace Deno {
    *      Deno.listen({ hostname: "golang.org", port: 80, transport: "tcp" });
    *
    * Requires `allow-net` permission. */
-  export function listen(options: ListenOptions): Listener | UDPConn;
+  export function listen(
+    options: ListenOptions & { transport?: "unix" }
+  ): Listener;
+  /** **UNSTABLE**: new API
+   *
+   * Listen announces on the local transport address.
+   *
+   *      Deno.listen({ port: 80 })
+   *      Deno.listen({ hostname: "192.0.2.1", port: 80 })
+   *      Deno.listen({ hostname: "[2001:db8::1]", port: 80 });
+   *      Deno.listen({ hostname: "golang.org", port: 80, transport: "tcp" });
+   *
+   * Requires `allow-net` permission. */
+  export function listen(
+    options: ListenOptions | UnixListenOptions
+  ): Listener | UDPConn;
 
   export interface ListenTLSOptions extends ListenOptions {
     /** Server certificate file. */
