@@ -27,7 +27,7 @@ export interface RecordMinimal {
 }
 
 export function recordFromBufMinimal(ui8: Uint8Array): RecordMinimal {
-  const header = ui8.subarray(0, 12);
+  const header = ui8.slice(0, 12);
   const buf32 = new Int32Array(
     header.buffer,
     header.byteOffset,
@@ -40,7 +40,7 @@ export function recordFromBufMinimal(ui8: Uint8Array): RecordMinimal {
 
   if (arg < 0) {
     const kind = result as ErrorKind;
-    const message = decoder.decode(ui8.subarray(12));
+    const message = decoder.decode(ui8.slice(12));
     err = { kind, message };
   } else if (ui8.length != 12) {
     throw new errors.InvalidData("BadMessage");
