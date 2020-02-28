@@ -73,7 +73,7 @@ export {
   MakeTempOptions
 } from "./make_temp.ts";
 export { metrics, Metrics } from "./metrics.ts";
-export { mkdirSync, mkdir } from "./mkdir.ts";
+export { mkdirSync, mkdir, MkdirOptions } from "./mkdir.ts";
 export {
   Addr,
   connect,
