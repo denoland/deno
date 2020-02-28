@@ -8,13 +8,11 @@ use std::path::PathBuf;
 use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::sync::Mutex;
+use std::sync::MutexGuard;
 
 lazy_static! {
-  static ref SERVER: Mutex<Option<Child>> = Mutex::new(None);
-  static ref SERVER_COUNT: AtomicUsize = AtomicUsize::new(0);
+  static ref GUARD: Mutex<()> = Mutex::new(());
 }
 
 pub fn root_path() -> PathBuf {
@@ -37,62 +35,53 @@ pub fn deno_exe_path() -> PathBuf {
   p
 }
 
-pub struct HttpServerGuard {}
+pub struct HttpServerGuard<'a> {
+  #[allow(dead_code)]
+  g: MutexGuard<'a, ()>,
+  child: Child,
+}
 
-impl Drop for HttpServerGuard {
+impl<'a> Drop for HttpServerGuard<'a> {
   fn drop(&mut self) {
-    let count = SERVER_COUNT.fetch_sub(1, Ordering::SeqCst);
-    // If no more tests hold guard we can kill the server
-
-    if count == 1 {
-      kill_http_server();
-    }
-  }
-}
-
-fn kill_http_server() {
-  let mut server_guard = SERVER.lock().unwrap();
-  let mut child = server_guard
-    .take()
-    .expect("Trying to kill server but already killed");
-  match child.try_wait() {
-    Ok(None) => {
-      child.kill().expect("failed to kill http_server.py");
-    }
-    Ok(Some(status)) => panic!("http_server.py exited unexpectedly {}", status),
-    Err(e) => panic!("http_server.py error: {}", e),
-  }
-  drop(server_guard);
-}
-
-pub fn http_server() -> HttpServerGuard {
-  SERVER_COUNT.fetch_add(1, Ordering::SeqCst);
-  {
-    let mut server_guard = SERVER.lock().unwrap();
-    if server_guard.is_none() {
-      println!("tools/http_server.py starting...");
-      let mut child = Command::new("python")
-        .current_dir(root_path())
-        .args(&["-u", "tools/http_server.py"])
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("failed to execute child");
-
-      let stdout = child.stdout.as_mut().unwrap();
-      use std::io::{BufRead, BufReader};
-      let lines = BufReader::new(stdout).lines();
-      // Wait for "ready" on stdout. See tools/http_server.py
-      for maybe_line in lines {
-        if let Ok(line) = maybe_line {
-          if line.starts_with("ready") {
-            server_guard.replace(child);
-            break;
-          }
-        } else {
-          panic!(maybe_line.unwrap_err());
-        }
+    match self.child.try_wait() {
+      Ok(None) => {
+        self.child.kill().expect("failed to kill http_server.py");
       }
+      Ok(Some(status)) => {
+        panic!("http_server.py exited unexpectedly {}", status)
+      }
+      Err(e) => panic!("http_server.py err {}", e),
     }
   }
-  HttpServerGuard {}
+}
+
+/// Starts tools/http_server.py when the returned guard is dropped, the server
+/// will be killed.
+pub fn http_server<'a>() -> HttpServerGuard<'a> {
+  // TODO(bartlomieju) Allow tests to use the http server in parallel.
+  let g = GUARD.lock().unwrap();
+
+  println!("tools/http_server.py starting...");
+  let mut child = Command::new("python")
+    .current_dir(root_path())
+    .args(&["-u", "tools/http_server.py"])
+    .stdout(Stdio::piped())
+    .spawn()
+    .expect("failed to execute child");
+
+  let stdout = child.stdout.as_mut().unwrap();
+  use std::io::{BufRead, BufReader};
+  let lines = BufReader::new(stdout).lines();
+  // Wait for "ready" on stdout. See tools/http_server.py
+  for maybe_line in lines {
+    if let Ok(line) = maybe_line {
+      if line.starts_with("ready") {
+        break;
+      }
+    } else {
+      panic!(maybe_line.unwrap_err());
+    }
+  }
+
+  HttpServerGuard { child, g }
 }

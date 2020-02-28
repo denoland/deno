@@ -8,6 +8,7 @@
 //! the same functions as ops available in JS runtime.
 
 use crate::fs::files_in_subtree;
+use crate::op_error::OpError;
 use deno_core::ErrBox;
 use dprint_plugin_typescript as dprint;
 use std::fs;
@@ -81,7 +82,7 @@ fn check_source_files(
       "files"
     };
     Err(
-      crate::op_error::OpError::other(format!(
+      OpError::other(format!(
         "Found {} not formatted {}",
         not_formatted_files.len(),
         f,
@@ -142,8 +143,7 @@ fn format_source_files(
 /// then the current directory is recursively walked.
 pub fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
   if args.len() == 1 && args[0] == "-" {
-    format_stdin(check);
-    return Ok(());
+    return format_stdin(check);
   }
 
   let mut target_files: Vec<PathBuf> = vec![];
@@ -175,10 +175,10 @@ pub fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
 /// Format stdin and write result to stdout.
 /// Treats input as TypeScript.
 /// Compatible with `--check` flag.
-fn format_stdin(check: bool) {
+fn format_stdin(check: bool) -> Result<(), ErrBox> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
-    eprintln!("Failed to read from stdin");
+    return Err(OpError::other("Failed to read from stdin".to_string()).into());
   }
   let config = get_config();
 
@@ -190,15 +190,14 @@ fn format_stdin(check: bool) {
           println!("Not formatted stdin");
         }
       } else {
-        let _r = stdout().write_all(formatted_text.as_bytes());
-        // TODO(ry) Only ignore SIGPIPE. Currently ignoring all errors.
+        stdout().write_all(formatted_text.as_bytes())?;
       }
     }
     Err(e) => {
-      eprintln!("Error formatting from stdin");
-      eprintln!("   {}", e);
+      return Err(OpError::other(e).into());
     }
   }
+  Ok(())
 }
 
 #[test]

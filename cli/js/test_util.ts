@@ -7,6 +7,7 @@
 // tests by the special string. permW1N0 means allow-write but not allow-net.
 // See tools/unit_tests.py for more details.
 
+import { readLines } from "../../std/io/bufio.ts";
 import { assert, assertEquals } from "../../std/testing/asserts.ts";
 export {
   assert,
@@ -140,16 +141,13 @@ function extractNumber(re: RegExp, str: string): number | undefined {
   }
 }
 
-export function parseUnitTestOutput(
-  rawOutput: Uint8Array,
+export async function parseUnitTestOutput(
+  reader: Deno.Reader,
   print: boolean
-): { actual?: number; expected?: number; resultOutput?: string } {
-  const decoder = new TextDecoder();
-  const output = decoder.decode(rawOutput);
-
+): Promise<{ actual?: number; expected?: number; resultOutput?: string }> {
   let expected, actual, result;
 
-  for (const line of output.split("\n")) {
+  for await (const line of readLines(reader)) {
     if (!expected) {
       // expect "running 30 tests"
       expected = extractNumber(/running (\d+) tests/, line);
@@ -267,31 +265,32 @@ testPerm({ read: true }, async function parsingUnitTestOutput(): Promise<void> {
   let result;
 
   // This is an example of a successful unit test output.
-  result = parseUnitTestOutput(
-    await Deno.readFile(`${testDataPath}/unit_test_output1.txt`),
+  result = await parseUnitTestOutput(
+    await Deno.open(`${testDataPath}/unit_test_output1.txt`),
     false
   );
   assertEquals(result.actual, 96);
   assertEquals(result.expected, 96);
 
   // This is an example of a silently dying unit test.
-  result = parseUnitTestOutput(
-    await Deno.readFile(`${testDataPath}/unit_test_output2.txt`),
+  result = await parseUnitTestOutput(
+    await Deno.open(`${testDataPath}/unit_test_output2.txt`),
     false
   );
   assertEquals(result.actual, undefined);
   assertEquals(result.expected, 96);
 
   // This is an example of compiling before successful unit tests.
-  result = parseUnitTestOutput(
-    await Deno.readFile(`${testDataPath}/unit_test_output3.txt`),
+  result = await parseUnitTestOutput(
+    await Deno.open(`${testDataPath}/unit_test_output3.txt`),
     false
   );
   assertEquals(result.actual, 96);
   assertEquals(result.expected, 96);
 
   // Check what happens on empty output.
-  result = parseUnitTestOutput(new TextEncoder().encode("\n\n\n"), false);
+  const f = new Deno.Buffer(new TextEncoder().encode("\n\n\n"));
+  result = await parseUnitTestOutput(f, false);
   assertEquals(result.actual, undefined);
   assertEquals(result.expected, undefined);
 });

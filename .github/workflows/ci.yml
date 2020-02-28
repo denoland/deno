@@ -122,10 +122,6 @@ jobs:
         if: matrix.kind == 'lint'
         run: python ./tools/test_format.py
 
-      - name: Clippy
-        if: matrix.kind == 'lint'
-        run: cargo clippy --all-targets --release --locked -- -D clippy::all
-
       - name: Build
         if: matrix.kind == 'test_release' || matrix.kind == 'bench'
         run: cargo build --release --locked --all-targets
