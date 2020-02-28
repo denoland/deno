@@ -76,7 +76,7 @@ test(async function workerThrowsWhenExecuting(): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   throwingWorker.onerror = (e: any): void => {
     e.preventDefault();
-    assertEquals(e.message, "Uncaught Error: Thrown error");
+    assert(/Uncaught Error: Thrown error/.test(e.message));
     promise.resolve();
   };
 
