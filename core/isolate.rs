@@ -201,6 +201,11 @@ impl Drop for Isolate {
         drop(creator);
       }
     }
+    // TODO(afinch7) This prevents a segfault when dropping ZeroCopyBuf values after
+    // the isolate is dropped.(see #4149) This seems to be a bug with v8, so we should be able
+    // to remove this once the bug has been fixed.
+    let ops = std::mem::take(&mut self.pending_ops);
+    drop(ops);
   }
 }
 
