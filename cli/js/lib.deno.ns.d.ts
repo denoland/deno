@@ -1565,9 +1565,9 @@ declare namespace Deno {
   }
 
   export interface UnixListenOptions {
-	  /** A Path to the Unix Socket. */
+    /** A Path to the Unix Socket. */
     address: string;
-    /** Either `"tcp"` or `"udp"`. Defaults to `"tcp"`.
+    /** Either `"tcp"`, `"udp"` or `"unix"`. Defaults to `"tcp"`.
      *
      * In the future: `"tcp4"`, `"tcp6"`, `"udp4"`, `"udp6"`, `"ip"`, `"ip4"`,
      * `"ip6"`, `"unix"`, `"unixgram"`, and `"unixpacket"`. */
@@ -1604,14 +1604,12 @@ declare namespace Deno {
    *
    * Listen announces on the local transport address.
    *
-   *      Deno.listen({ port: 80 })
-   *      Deno.listen({ hostname: "192.0.2.1", port: 80 })
-   *      Deno.listen({ hostname: "[2001:db8::1]", port: 80 });
-   *      Deno.listen({ hostname: "golang.org", port: 80, transport: "tcp" });
+   *     Deno.listen({ address: "/foo/bar.sock" })
+   *     Deno.listen({ address: "/foo/bar.sock", transport: "unix" })
    *
-   * Requires `allow-net` permission. */
+   * Requires `allow-read` permission. */
   export function listen(
-    options: ListenOptions & { transport?: "unix" }
+    options: UnixListenOptions & { transport: "unix" }
   ): Listener;
   /** **UNSTABLE**: new API
    *
@@ -1655,6 +1653,21 @@ declare namespace Deno {
     transport?: Transport;
   }
 
+  export interface UnixConnectOptions {
+    transport?: Transport;
+    address: string;
+  }
+
+  /**
+   * Connects to the address on the named transport.
+   *
+   *     Deno.connect({ address: "/foo/bar.sock" })
+   *     Deno.connect({ address: "/foo/bar.sock", transport: "unix" })
+   *
+   * Requires `allow-read` permission. */
+  export function connect(
+    options: UnixConnectOptions & { transport: "unix" }
+  ): Promise<Conn>;
   /**
    * Connects to the address on the named transport.
    *

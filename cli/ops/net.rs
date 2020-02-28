@@ -247,8 +247,8 @@ fn op_send(
 #[derive(Deserialize)]
 struct ConnectArgs {
   transport: String,
-  hostname: String,
-  port: u16,
+  #[serde(flatten)]
+  transport_args: ListenArgsEnum,
 }
 
 fn op_connect(
@@ -256,36 +256,72 @@ fn op_connect(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
-  let args: ConnectArgs = serde_json::from_value(args)?;
-  assert_eq!(args.transport, "tcp"); // TODO Support others.
-  let state_ = state.clone();
-  state.check_net(&args.hostname, args.port)?;
-
-  let op = async move {
-    let addr = resolve_addr(&args.hostname, args.port).await?;
-    let tcp_stream = TcpStream::connect(&addr).await?;
-    let local_addr = tcp_stream.local_addr()?;
-    let remote_addr = tcp_stream.peer_addr()?;
-    let mut state = state_.borrow_mut();
-    let rid = state
-      .resource_table
-      .add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
-    Ok(json!({
-      "rid": rid,
-      "localAddr": {
-        "hostname": local_addr.ip().to_string(),
-        "port": local_addr.port(),
-        "transport": args.transport,
-      },
-      "remoteAddr": {
-        "hostname": remote_addr.ip().to_string(),
-        "port": remote_addr.port(),
-        "transport": args.transport,
-      }
-    }))
-  };
-
-  Ok(JsonOp::Async(op.boxed_local()))
+  match serde_json::from_value(args)? {
+    ConnectArgs {
+      transport,
+      transport_args: ListenArgsEnum::Ip(args),
+    } if transport == "tcp" => {
+      let state_ = state.clone();
+      state.check_net(&args.hostname, args.port)?;
+      let op = async move {
+        let addr = resolve_addr(&args.hostname, args.port).await?;
+        let tcp_stream = TcpStream::connect(&addr).await?;
+        let local_addr = tcp_stream.local_addr()?;
+        let remote_addr = tcp_stream.peer_addr()?;
+        let mut state = state_.borrow_mut();
+        let rid = state
+          .resource_table
+          .add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
+        Ok(json!({
+          "rid": rid,
+          "localAddr": {
+            "hostname": local_addr.ip().to_string(),
+            "port": local_addr.port(),
+            "transport": transport,
+          },
+          "remoteAddr": {
+            "hostname": remote_addr.ip().to_string(),
+            "port": remote_addr.port(),
+            "transport": transport,
+          }
+        }))
+      };
+      Ok(JsonOp::Async(op.boxed_local()))
+    }
+    #[cfg(not(windows))]
+    ConnectArgs {
+      transport,
+      transport_args: ListenArgsEnum::Unix(args),
+    } if transport == "unix" => {
+      let address_path = Path::new(&args.address);
+      let state_ = state.clone();
+      state.check_read(&address_path)?;
+      let op = async move {
+        let address = args.address;
+        let unix_stream = UnixStream::connect(Path::new(&address)).await?;
+        let local_addr = unix_stream.local_addr()?;
+        let remote_addr = unix_stream.peer_addr()?;
+        let mut state = state_.borrow_mut();
+        let rid = state.resource_table.add(
+          "unixStream",
+          Box::new(StreamResource::UnixStream(unix_stream)),
+        );
+        Ok(json!({
+          "rid": rid,
+          "localAddr": {
+            "address": local_addr.as_pathname(),
+            "transport": transport,
+          },
+          "remoteAddr": {
+            "address": remote_addr.as_pathname(),
+            "transport": transport,
+          }
+        }))
+      };
+      Ok(JsonOp::Async(op.boxed_local()))
+    }
+    _ => Err(OpError::other("Wrong argument format!".to_owned())),
+  }
 }
 
 #[derive(Deserialize)]

@@ -82,8 +82,8 @@ export function shutdown(rid: number, how: ShutdownMode): void {
 export class ConnImpl implements Conn {
   constructor(
     readonly rid: number,
-    readonly remoteAddr: Addr,
-    readonly localAddr: Addr
+    readonly remoteAddr: Addr | UnixAddr,
+    readonly localAddr: Addr | UnixAddr
   ) {}
 
   write(p: Uint8Array): Promise<number> {
@@ -214,9 +214,9 @@ export class UDPConnImpl implements UDPConn {
 
 export interface Conn extends Reader, Writer, Closer {
   /** The local address of the connection. */
-  localAddr: Addr;
+  localAddr: Addr | UnixAddr;
   /** The remote address of the connection. */
-  remoteAddr: Addr;
+  remoteAddr: Addr | UnixAddr;
   /** The resource ID of the connection. */
   rid: number;
   /** Shuts down (`shutdown(2)`) the reading side of the TCP connection. Most
@@ -272,7 +272,9 @@ export function listen(
   const args = { ...listenDefaults, ...options };
   const res = sendSync("op_listen", args);
 
-  if (args.transport === "tcp" || args.transport === "unix") {
+  if (args.transport === "tcp") {
+    return new ListenerImpl(res.rid, res.localAddr);
+  } else if (args.transport === "unix") {
     return new ListenerImpl(res.rid, res.localAddr);
   } else {
     return new UDPConnImpl(res.rid, res.localAddr);
