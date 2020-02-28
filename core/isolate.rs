@@ -941,7 +941,7 @@ pub mod tests {
 
       // terminate execution
       let ok = v8_isolate_handle.terminate_execution();
-      assert!(ok, true);
+      assert!(ok);
     });
 
     // Rn an infinite loop, which should be terminated.
