@@ -2,6 +2,7 @@
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 import { FileInfo, FileInfoImpl } from "./file_info.ts";
 
+/** @internal */
 export interface StatResponse {
   isFile: boolean;
   isSymlink: boolean;
