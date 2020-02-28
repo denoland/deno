@@ -89,7 +89,7 @@ export default class Dir {
   /**
    * Unlike Node, Deno does not require managing resource ids for reading
    * directories, and therefore does not need to close directories when
-   * finisehd reading
+   * finished reading
    */
   closeSync(): void {
     //No op
