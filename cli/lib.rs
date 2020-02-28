@@ -57,8 +57,10 @@ mod web_worker;
 pub mod worker;
 
 use crate::compilers::TargetLib;
+use crate::file_fetcher::SourceFile;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
+use crate::msg::MediaType;
 use crate::ops::io::get_stdio;
 use crate::state::State;
 use crate::worker::MainWorker;
@@ -279,14 +281,39 @@ async fn fetch_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
   Ok(())
 }
 
-async fn eval_command(flags: Flags, code: String) -> Result<(), ErrBox> {
+async fn eval_command(
+  flags: Flags,
+  code: String,
+  as_typescript: bool,
+) -> Result<(), ErrBox> {
   // Force TypeScript compile.
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
   let mut worker = create_main_worker(global_state, main_module.clone())?;
+  let main_module_url = main_module.as_url().to_owned();
+  // Create a dummy source file.
+  let source_file = SourceFile {
+    filename: main_module_url.to_file_path().unwrap(),
+    url: main_module_url,
+    types_url: None,
+    media_type: if as_typescript {
+      MediaType::TypeScript
+    } else {
+      MediaType::JavaScript
+    },
+    source_code: code.clone().into_bytes(),
+  };
+  // Save our fake file into file fetcher cache
+  // to allow module access by TS compiler (e.g. op_fetch_source_files)
+  worker
+    .state
+    .borrow()
+    .global_state
+    .file_fetcher
+    .save_source_file_in_cache(&main_module, source_file);
   debug!("main_module {}", &main_module);
-  worker.execute_module_from_code(&main_module, code).await?;
+  worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   (&mut *worker).await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
@@ -409,7 +436,10 @@ pub fn main() {
       source_file,
       out_file,
     } => bundle_command(flags, source_file, out_file).boxed_local(),
-    DenoSubcommand::Eval { code } => eval_command(flags, code).boxed_local(),
+    DenoSubcommand::Eval {
+      code,
+      as_typescript,
+    } => eval_command(flags, code, as_typescript).boxed_local(),
     DenoSubcommand::Fetch { files } => {
       fetch_command(flags, files).boxed_local()
     }

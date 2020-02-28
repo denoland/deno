@@ -788,6 +788,12 @@ itest!(_029_eval {
   output: "029_eval.out",
 });
 
+// Ugly parentheses due to whitespace delimiting problem.
+itest!(_030_eval_ts {
+  args: "eval -T console.log((123)as(number))", // 'as' is a TS keyword only
+  output: "030_eval_ts.out",
+});
+
 itest!(_033_import_map {
   args:
     "run --reload --importmap=importmaps/import_map.json importmaps/test.ts",

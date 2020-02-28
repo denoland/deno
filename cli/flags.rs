@@ -33,6 +33,7 @@ pub enum DenoSubcommand {
   },
   Eval {
     code: String,
+    as_typescript: bool,
   },
   Fetch {
     files: Vec<String>,
@@ -401,7 +402,11 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_plugin = true;
   flags.allow_hrtime = true;
   let code = matches.value_of("code").unwrap().to_string();
-  flags.subcommand = DenoSubcommand::Eval { code }
+  let as_typescript = matches.is_present("ts");
+  flags.subcommand = DenoSubcommand::Eval {
+    code,
+    as_typescript,
+  }
 }
 
 fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -662,7 +667,20 @@ fn eval_subcommand<'a, 'b>() -> App<'a, 'b> {
 
 This command has implicit access to all permissions (--allow-all)
 
-  deno eval \"console.log('hello world')\"",
+  deno eval \"console.log('hello world')\"
+
+To evaluate as TypeScript:
+
+  deno eval -T \"const v: string = 'hello'; console.log(v)\"
+  ",
+    )
+    .arg(
+      Arg::with_name("ts")
+        .long("ts")
+        .short("T")
+        .help("Treat eval input as TypeScript")
+        .takes_value(false)
+        .multiple(false),
     )
     .arg(Arg::with_name("code").takes_value(true).required(true))
     .arg(v8_flags_arg())
@@ -1497,6 +1515,34 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Eval {
           code: "'console.log(\"hello\")'".to_string(),
+          as_typescript: false,
+        },
+        allow_net: true,
+        allow_env: true,
+        allow_run: true,
+        allow_read: true,
+        allow_write: true,
+        allow_plugin: true,
+        allow_hrtime: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn eval_typescript() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "eval",
+      "-T",
+      "'console.log(\"hello\")'"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Eval {
+          code: "'console.log(\"hello\")'".to_string(),
+          as_typescript: true,
         },
         allow_net: true,
         allow_env: true,
@@ -1519,6 +1565,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Eval {
           code: "42".to_string(),
+          as_typescript: false,
         },
         v8_flags: Some(svec!["--help"]),
         allow_net: true,
@@ -2131,6 +2178,7 @@ fn eval_with_cafile() {
     Flags {
       subcommand: DenoSubcommand::Eval {
         code: "console.log('hello world')".to_string(),
+        as_typescript: false,
       },
       ca_file: Some("example.crt".to_owned()),
       allow_net: true,

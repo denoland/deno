@@ -132,6 +132,19 @@ impl SourceFileFetcher {
       .ok()
   }
 
+  /// Save a given source file into cache.
+  /// Allows injection of files that normally would not present
+  /// in filesystem.
+  /// This is useful when e.g. TS compiler retrieves a custom file
+  /// under a dummy specifier.
+  pub fn save_source_file_in_cache(
+    &self,
+    specifier: &ModuleSpecifier,
+    file: SourceFile,
+  ) {
+    self.source_file_cache.set(specifier.to_string(), file);
+  }
+
   pub async fn fetch_source_file(
     &self,
     specifier: &ModuleSpecifier,
