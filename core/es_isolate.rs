@@ -226,51 +226,6 @@ impl EsIsolate {
     }
   }
 
-  /// TODO(bartlomieju): copy-pasta to avoid problem with global handle attached
-  /// to ErrBox
-  pub fn mod_evaluate_dyn_import(
-    &mut self,
-    id: ModuleId,
-  ) -> Result<(), ErrBox> {
-    let v8_isolate = self.core_isolate.v8_isolate.as_mut().unwrap();
-    let js_error_create_fn = &*self.core_isolate.js_error_create_fn;
-
-    let mut hs = v8::HandleScope::new(v8_isolate);
-    let scope = hs.enter();
-    assert!(!self.core_isolate.global_context.is_empty());
-    let context = self.core_isolate.global_context.get(scope).unwrap();
-    let mut cs = v8::ContextScope::new(scope, context);
-    let scope = cs.enter();
-
-    let info = self.modules.get_info(id).expect("ModuleInfo not found");
-    let mut module = info.handle.get(scope).expect("Empty module handle");
-    let mut status = module.get_status();
-
-    if status == v8::ModuleStatus::Instantiated {
-      let ok = module.evaluate(scope, context).is_some();
-      // Update status after evaluating.
-      status = module.get_status();
-      if ok {
-        assert!(
-          status == v8::ModuleStatus::Evaluated
-            || status == v8::ModuleStatus::Errored
-        );
-      } else {
-        assert!(status == v8::ModuleStatus::Errored);
-      }
-    }
-
-    match status {
-      v8::ModuleStatus::Evaluated => Ok(()),
-      v8::ModuleStatus::Errored => {
-        let exception = module.get_exception();
-        exception_to_err_result(scope, exception, js_error_create_fn)
-          .map_err(|err| attach_handle_to_error(scope, err, exception))
-      }
-      other => panic!("Unexpected module status {:?}", other),
-    }
-  }
-
   /// Evaluates an already instantiated ES module.
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
@@ -311,6 +266,7 @@ impl EsIsolate {
       v8::ModuleStatus::Errored => {
         let exception = module.get_exception();
         exception_to_err_result(scope, exception, js_error_create_fn)
+          .map_err(|err| attach_handle_to_error(scope, err, exception))
       }
       other => panic!("Unexpected module status {:?}", other),
     }
@@ -461,7 +417,7 @@ impl EsIsolate {
             // Load is done.
             let module_id = load.root_module_id.unwrap();
             self.mod_instantiate(module_id)?;
-            match self.mod_evaluate_dyn_import(module_id) {
+            match self.mod_evaluate(module_id) {
               Ok(()) => self.dyn_import_done(dyn_import_id, module_id)?,
               Err(err) => self.dyn_import_error(dyn_import_id, err)?,
             };
