@@ -79,6 +79,9 @@ fn resolve_url_from_location(base_url: &Url, location: &str) -> Url {
   }
 }
 
+// TODO(ry) HTTP headers are not unique key, value pairs. There may be more than
+// one header line with the same key. This should be changed to something like
+// Vec<(String, String)>
 pub type HeadersMap = HashMap<String, String>;
 
 #[derive(Debug, PartialEq)]
