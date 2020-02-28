@@ -1451,7 +1451,7 @@ declare namespace Deno {
    *        const response = some_op.dispatch(new Uint8Array([1,2,3,4]));
    *        console.log(`Response from plugin ${response}`);
    *
-   * Requires the `allow-plugin` permission. */
+   * Requires `allow-plugin` permission. */
   export function openPlugin(filename: string): Plugin;
 
   export type Transport = "tcp" | "udp";
@@ -1497,7 +1497,7 @@ declare namespace Deno {
    * Waits for the next message to the passed `rid` and writes it on the passed
    * `Uint8Array`.
    *
-   * Resolves with the number of bytes written and the remote address. */
+   * Resolves to the number of bytes written and the remote address. */
   export function recvfrom(rid: number, p: Uint8Array): Promise<[number, Addr]>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
@@ -1738,7 +1738,7 @@ declare namespace Deno {
     readonly stdin?: WriteCloser;
     readonly stdout?: ReadCloser;
     readonly stderr?: ReadCloser;
-    /** Resolves with the current status of the process. */
+    /** Resolves to the current status of the process. */
     status(): Promise<ProcessStatus>;
     /** Buffer the stdout and return it as `Uint8Array` after `Deno.EOF`.
      *
@@ -1923,7 +1923,7 @@ declare namespace Deno {
     message: string;
     /** An ordered array of further diagnostics. */
     messageChain?: DiagnosticMessageChain;
-    /** Information related to the diagnostic.  This is present when there is a
+    /** Information related to the diagnostic. This is present when there is a
      * suggestion or other additional diagnostic information */
     relatedInformation?: DiagnosticItem[];
     /** The text of the source line related to the diagnostic. */
@@ -1991,7 +1991,7 @@ declare namespace Deno {
      * `false`. */
     declarationMap?: boolean;
     /** Provide full support for iterables in `for..of`, spread and
-     * destructuring when targeting ES5 or ES3.  Defaults to `false`. */
+     * destructuring when targeting ES5 or ES3. Defaults to `false`. */
     downlevelIteration?: boolean;
     /** Emit a UTF-8 Byte Order Mark (BOM) in the beginning of output files.
      * Defaults to `false`. */
@@ -2029,7 +2029,7 @@ declare namespace Deno {
     /** Emit class fields with ECMAScript-standard semantics. Defaults to `false`.
      * Does not apply to `"esnext"` target. */
     useDefineForClassFields?: boolean;
-    /** List of library files to be included in the compilation.  If omitted,
+    /** List of library files to be included in the compilation. If omitted,
      * then the Deno main runtime libs are used. */
     lib?: string[];
     /** The locale to use to show error messages. */
@@ -2040,7 +2040,7 @@ declare namespace Deno {
      * specified will be embedded in the source map to direct the debugger where
      * the map files will be located. Defaults to `undefined`. */
     mapRoot?: string;
-    /** Specify the module format for the emitted code.  Defaults to
+    /** Specify the module format for the emitted code. Defaults to
      * `"esnext"`. */
     module?:
       | "none"
@@ -2080,7 +2080,7 @@ declare namespace Deno {
     /** Report errors on unused parameters. Defaults to `false`. */
     noUnusedParameters?: boolean;
     /** Redirect output structure to the directory. This only impacts
-     * `Deno.compile` and only changes the emitted file names.  Defaults to
+     * `Deno.compile` and only changes the emitted file names. Defaults to
      * `undefined`. */
     outDir?: string;
     /** List of path mapping entries for module names to locations relative to the
@@ -2148,8 +2148,8 @@ declare namespace Deno {
     /** List of names of type definitions to include. Defaults to `undefined`.
      *
      * The type definitions are resolved according to the normal Deno resolution
-     * irrespective of if sources are provided on the call.  Like other Deno
-     * modules, there is no "magical" resolution.  For example:
+     * irrespective of if sources are provided on the call. Like other Deno
+     * modules, there is no "magical" resolution. For example:
      *
      *      Deno.compile(
      *        "./foo.js",
@@ -2158,7 +2158,6 @@ declare namespace Deno {
      *          types: [ "./foo.d.ts", "https://deno.land/x/example/types.d.ts" ]
      *        }
      *      );
-     *
      */
     types?: string[];
   }
@@ -2174,7 +2173,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
-   * Takes a set of TypeScript sources and resolves with a map where the key was
+   * Takes a set of TypeScript sources and resolves to a map where the key was
    * the original file name provided in sources and the result contains the
    * `source` and optionally the `map` from the transpile operation. This does no
    * type checking and validation, it effectively "strips" the types from the
@@ -2185,7 +2184,7 @@ declare namespace Deno {
    *      });
    *
    * @param sources A map where the key is the filename and the value is the text
-   *                to transpile.  The filename is only used in the transpile and
+   *                to transpile. The filename is only used in the transpile and
    *                not resolved, for example to fill in the source name in the
    *                source map.
    * @param options An option object of options to send to the compiler. This is
@@ -2201,11 +2200,11 @@ declare namespace Deno {
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Takes a root module name, any optionally a record set of sources. Resolves
-   * with a compiled set of modules.  If just a root name is provided, the modules
+   * with a compiled set of modules. If just a root name is provided, the modules
    * will be resolved as if the root module had been passed on the command line.
    *
    * If sources are passed, all modules will be resolved out of this object, where
-   * the key is the module name and the value is the content.  The extension of
+   * the key is the module name and the value is the content. The extension of
    * the module name will be used to determine the media type of the module.
    *
    *      const [ maybeDiagnostics1, output1 ] = await Deno.compile("foo.ts");
@@ -2216,13 +2215,13 @@ declare namespace Deno {
    *      });
    *
    * @param rootName The root name of the module which will be used as the
-   *                 "starting point".  If no `sources` is specified, Deno will
+   *                 "starting point". If no `sources` is specified, Deno will
    *                 resolve the module externally as if the `rootName` had been
    *                 specified on the command line.
    * @param sources An optional key/value map of sources to be used when resolving
    *                modules, where the key is the module name, and the value is
-   *                the source content.  The extension of the key will determine
-   *                the media type of the file when processing.  If supplied,
+   *                the source content. The extension of the key will determine
+   *                the media type of the file when processing. If supplied,
    *                Deno will not attempt to resolve any modules externally.
    * @param options An optional object of options to send to the compiler. This is
    *                a subset of ts.CompilerOptions which can be supported by Deno.
@@ -2237,7 +2236,7 @@ declare namespace Deno {
    *
    * Takes a root module name, and optionally a record set of sources. Resolves
    * with a single JavaScript string that is like the output of a `deno bundle`
-   * command.  If just a root name is provided, the modules will be resolved as if
+   * command. If just a root name is provided, the modules will be resolved as if
    * the root module had been passed on the command line.
    *
    * If sources are passed, all modules will be resolved out of this object, where
@@ -2252,13 +2251,13 @@ declare namespace Deno {
    *      });
    *
    * @param rootName The root name of the module which will be used as the
-   *                 "starting point".  If no `sources` is specified, Deno will
+   *                 "starting point". If no `sources` is specified, Deno will
    *                 resolve the module externally as if the `rootName` had been
    *                 specified on the command line.
    * @param sources An optional key/value map of sources to be used when resolving
    *                modules, where the key is the module name, and the value is
-   *                the source content.  The extension of the key will determine
-   *                the media type of the file when processing.  If supplied,
+   *                the source content. The extension of the key will determine
+   *                the media type of the file when processing. If supplied,
    *                Deno will not attempt to resolve any modules externally.
    * @param options An optional object of options to send to the compiler. This is
    *                a subset of ts.CompilerOptions which can be supported by Deno.
