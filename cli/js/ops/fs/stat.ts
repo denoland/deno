@@ -12,6 +12,7 @@ export interface StatResponse {
   created: number;
   name: string | null;
   // Unix only members
+  ctime: number;
   dev: number;
   ino: number;
   mode: number;

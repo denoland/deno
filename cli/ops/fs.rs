@@ -475,6 +475,7 @@ fn get_stat_json(
     "accessed":to_seconds!(metadata.accessed()),
     "created":to_seconds!(metadata.created()),
     // Following are only valid under Unix.
+    "ctime": usm!(ctime),
     "dev": usm!(dev),
     "ino": usm!(ino),
     "mode": usm!(mode),

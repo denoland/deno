@@ -1011,6 +1011,10 @@ declare namespace Deno {
      * field from `stat` on Linux/Mac OS and `ftLastWriteTime` on Windows. This
      * may not be available on all platforms. */
     modified: number | null;
+    /** The last time either the file or its metadata was modified. This corresponds
+     * to the `ctime` field from `stat` on Unix. Updated whenever `modified` is, and
+     * also when the file is chown/chmod/renamed/moved. Unix only. */
+    anyModified: number | null;
     /** The last access time of the file. This corresponds to the `atime`
      * field from `stat` on Unix and `ftLastAccessTime` on Windows. This may not
      * be available on all platforms. */

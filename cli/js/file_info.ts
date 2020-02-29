@@ -12,6 +12,10 @@ export interface FileInfo {
    * field from `stat` on Linux/Mac OS and `ftLastWriteTime` on Windows. This
    * may not be available on all platforms. */
   modified: number | null;
+  /** The last time either the file or its metadata was modified. This corresponds
+   * to the `ctime` field from `stat` on Unix. Updated whenever `modified` is, and
+   * also when the file is chown/chmod/renamed/moved. Unix only. */
+  anyModified: number | null;
   /** The last access time of the file. This corresponds to the `atime`
    * field from `stat` on Unix and `ftLastAccessTime` on Windows. This may not
    * be available on all platforms. */
@@ -76,6 +80,7 @@ export class FileInfoImpl implements FileInfo {
   private readonly _isSymlink: boolean;
   len: number;
   modified: number | null;
+  anyModified: number | null;
   accessed: number | null;
   created: number | null;
   name: string | null;
@@ -99,6 +104,7 @@ export class FileInfoImpl implements FileInfo {
     const name = this._res.name;
     // Unix only
     const {
+      ctime,
       dev,
       ino,
       mode,
@@ -118,6 +124,7 @@ export class FileInfoImpl implements FileInfo {
     this.created = created ? created : null;
     this.name = name ? name : null;
     // Only non-null if on Unix
+    this.anyModified = isUnix ? ctime : null;
     this.dev = isUnix ? dev : null;
     this.ino = isUnix ? ino : null;
     this.mode = isUnix ? mode : null;
