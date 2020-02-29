@@ -136,12 +136,11 @@ impl SharedQueue {
         let s = self.as_u32_slice();
         let prev_end = s[INDEX_OFFSETS + 2 * (index - 1)] as usize;
         let prev_modulo = prev_end % 4;
-        let next_start = if prev_modulo == 0 {
+        if prev_modulo == 0 {
           prev_end
         } else {
           prev_end + (4 - prev_modulo)
-        };
-        next_start
+        }
       })
     } else {
       None
