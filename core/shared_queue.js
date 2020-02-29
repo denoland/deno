@@ -115,7 +115,13 @@ SharedQueue Binary Layout
       if (index == 0) {
         return HEAD_INIT;
       } else {
-        return shared32[INDEX_OFFSETS + 2 * (index - 1)];
+        const prevEnd = shared32[INDEX_OFFSETS + 2 * (index - 1)];
+        const prevModulo = prevEnd % 4;
+        if (prevModulo === 0) {
+          return prevEnd;
+        } else {
+          return prevEnd + (4 - prevModulo);
+        }
       }
     } else {
       return null;
@@ -125,16 +131,19 @@ SharedQueue Binary Layout
   function push(opId, buf) {
     const off = head();
     const end = off + buf.byteLength;
+    const lenModulo = buf.byteLength % 4;
+    const alignedEnd = lenModulo === 0 ? end : end + (4 - lenModulo);
     const index = numRecords();
-    if (end > shared32.byteLength || index >= MAX_RECORDS) {
+    if (alignedEnd > shared32.byteLength || index >= MAX_RECORDS) {
       // console.log("shared_queue.js push fail");
       return false;
     }
     setMeta(index, end, opId);
+    assert(alignedEnd % 4 === 0);
     assert(end - off == buf.byteLength);
     sharedBytes.set(buf, off);
     shared32[INDEX_NUM_RECORDS] += 1;
-    shared32[INDEX_HEAD] = end;
+    shared32[INDEX_HEAD] = alignedEnd;
     return true;
   }
 
