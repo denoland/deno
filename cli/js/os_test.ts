@@ -76,6 +76,7 @@ if (Deno.build.os === "win") {
         new TextDecoder().decode(await proc.output())
       );
       assertEquals(actualValues, expectedValues);
+      proc.close();
     };
 
     assertEquals(Deno.env("path"), Deno.env("PATH"));
