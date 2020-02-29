@@ -107,7 +107,7 @@ const ustarStructure: Array<{ field: string; length: number }> = [
     length: 100
   },
   {
-    field: "fileMode",
+    field: "filePerm",
     length: 8
   },
   {
@@ -201,7 +201,7 @@ function parseHeader(buffer: Uint8Array): { [key: string]: Uint8Array } {
 export interface TarData {
   fileName?: string;
   fileNamePrefix?: string;
-  fileMode?: string;
+  filePerm?: string;
   uid?: string;
   gid?: string;
   fileSize?: string;
@@ -225,7 +225,7 @@ export interface TarDataWithSource extends TarData {
 }
 
 export interface TarInfo {
-  fileMode?: number;
+  filePerm?: number;
   mtime?: number;
   uid?: number;
   gid?: number;
@@ -315,8 +315,8 @@ export class Tar {
       info = await Deno.stat(opts.filePath);
     }
 
-    const mode =
-        opts.fileMode || (info && info.perm) || parseInt("777", 8) & 0xfff,
+    const perm =
+        opts.filePerm || (info && info.perm) || parseInt("777", 8) & 0xfff,
       mtime =
         opts.mtime ||
         (info && info.modified) ||
@@ -339,7 +339,7 @@ export class Tar {
     const tarData: TarDataWithSource = {
       fileName,
       fileNamePrefix,
-      fileMode: pad(mode, 7),
+      filePerm: pad(perm, 7),
       uid: pad(uid, 7),
       gid: pad(gid, 7),
       fileSize: pad(fileSize, 11),
@@ -446,8 +446,8 @@ export class Untar {
     if (fileNamePrefix.byteLength > 0) {
       meta.fileName = decoder.decode(fileNamePrefix) + "/" + meta.fileName;
     }
-    (["fileMode", "mtime", "uid", "gid"] as [
-      "fileMode",
+    (["filePerm", "mtime", "uid", "gid"] as [
+      "filePerm",
       "mtime",
       "uid",
       "gid"
