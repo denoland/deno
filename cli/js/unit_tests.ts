@@ -37,6 +37,7 @@ import "./mixins/dom_iterable_test.ts";
 import "./mkdir_test.ts";
 import "./net_test.ts";
 import "./os_test.ts";
+import "./permissions_test.ts";
 import "./process_test.ts";
 import "./realpath_test.ts";
 import "./read_dir_test.ts";
@@ -62,11 +63,6 @@ import "./write_file_test.ts";
 import "./performance_test.ts";
 import "./version_test.ts";
 import "./workers_test.ts";
-
-// FIXME(bartlomieju):
-// This test file revokes permissions, it must be run last,
-// otherwise it might revoke permission for tests that need them.
-import "./permissions_test.ts";
 
 if (import.meta.main) {
   await Deno.runTests();

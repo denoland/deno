@@ -6,6 +6,40 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.35.0 / 2020.02.28
+
+- feat: Deno.fsEvents() (#3452)
+- feat: Support UDP sockets (#3946)
+- feat: Deno.setRaw(rid, mode) to turn on/off raw mode (#3958)
+- feat: Add Deno.formatDiagnostics (#4032)
+- feat: Support TypeScript eval through `deno eval -T` flag (#4141)
+- feat: Support types compiler option in compiler APIs (#4155)
+- feat: add std/examples/chat (#4022, #4109, #4091)
+- feat: support brotli compression for fetch API (#4082)
+- feat: reverse URL lookup for cache (#4175)
+- feat(std/node): add improve os module (#4064, #4075, #4065)
+- feat(std/node): add os Symbol.toPrimitive methods (#4073)
+- fix(fetch): proper error for unsupported protocol (#4085)
+- fix(std/examples): add tests for examples (#4094)
+- fix(std/http): Consume unread body before reading next request (#3990)
+- fix(std/ws): createSecKey logic (#4063)
+- fix(std/ws): provide default close code for ws.close() (#4172)
+- fix(std/ws): sock shouldn't throw eof error when failed to read frame (#4083)
+- fix: Bundles can be sync or async based on top level await (#4124)
+- fix: Move WebAsssembly namespace to shared_globals (#4084)
+- fix: Resolve makeTemp paths from CWD (#4104)
+- fix: Return non-zero exit code on malformed stdin fmt (#4163)
+- fix: add window.self read-only property (#4131)
+- fix: fetch in workers (#4054)
+- fix: fetch_cached_remote_source support redirect URL without base (#4099)
+- fix: issues with JavaScript importing JavaScript. (#4120)
+- fix: rewrite normalize_path (#4143)
+- refactor(std/http): move io functions to http/io.ts (#4126)
+- refactor: Deno.errors (#3936, #4058, #4113, #4093)
+- upgrade: TypeScript 3.8 (#4100)
+- upgrade: dprint 0.7.0 (#4130)
+- upgrade: rusty_v8 0.3.4 (#4179)
+
 ### v0.34.0 / 2020.02.20
 
 - feat: Asynchronous event iteration node polyfill (#4016)

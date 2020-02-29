@@ -7,6 +7,8 @@
 use crate::fs as deno_fs;
 use crate::http_util::HeadersMap;
 use deno_core::ErrBox;
+use serde::Serialize;
+use serde_derive::Deserialize;
 use std::fs;
 use std::fs::File;
 use std::path::Path;
@@ -16,7 +18,8 @@ use url::Url;
 /// Turn base of url (scheme, hostname, port) into a valid filename.
 /// This method replaces port part with a special string token (because
 /// ":" cannot be used in filename on some platforms).
-pub fn base_url_to_filename(url: &Url) -> PathBuf {
+/// Ex: $DENO_DIR/deps/https/deno.land/
+fn base_url_to_filename(url: &Url) -> PathBuf {
   let mut out = PathBuf::new();
 
   let scheme = url.scheme();
@@ -70,6 +73,33 @@ pub struct HttpCache {
   pub location: PathBuf,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct Metadata {
+  pub headers: HeadersMap,
+  pub url: String,
+}
+
+impl Metadata {
+  pub fn write(&self, cache_filename: &Path) -> Result<(), ErrBox> {
+    let metadata_filename = Self::filename(cache_filename);
+    let json = serde_json::to_string_pretty(self)?;
+    deno_fs::write_file(&metadata_filename, json, 0o666)?;
+    Ok(())
+  }
+
+  pub fn read(cache_filename: &Path) -> Result<Metadata, ErrBox> {
+    let metadata_filename = Metadata::filename(&cache_filename);
+    let metadata = fs::read_to_string(metadata_filename)?;
+    let metadata: Metadata = serde_json::from_str(&metadata)?;
+    Ok(metadata)
+  }
+
+  /// Ex: $DENO_DIR/deps/https/deno.land/c885b7dcf1d6936e33a9cc3a2d74ec79bab5d733d3701c85a029b7f7ec9fbed4.metadata.json
+  pub fn filename(cache_filename: &Path) -> PathBuf {
+    cache_filename.with_extension("metadata.json")
+  }
+}
+
 impl HttpCache {
   /// Returns error if unable to create directory
   /// at specified location.
@@ -89,11 +119,19 @@ impl HttpCache {
   // ETAG check is currently done in `cli/file_fetcher.rs`.
   pub fn get(&self, url: &Url) -> Result<(File, HeadersMap), ErrBox> {
     let cache_filename = self.location.join(url_to_filename(url));
-    let headers_filename = cache_filename.with_extension("headers.json");
+    let metadata_filename = Metadata::filename(&cache_filename);
     let file = File::open(cache_filename)?;
-    let headers_json = fs::read_to_string(headers_filename)?;
-    let headers_map: HeadersMap = serde_json::from_str(&headers_json)?;
-    Ok((file, headers_map))
+    let metadata = fs::read_to_string(metadata_filename)?;
+    let metadata: Metadata = serde_json::from_str(&metadata)?;
+    Ok((file, metadata.headers))
+  }
+
+  pub fn get_metadata(&self, url: &Url) -> Result<Metadata, ErrBox> {
+    let cache_filename = self.location.join(url_to_filename(url));
+    let metadata_filename = Metadata::filename(&cache_filename);
+    let metadata = fs::read_to_string(metadata_filename)?;
+    let metadata: Metadata = serde_json::from_str(&metadata)?;
+    Ok(metadata)
   }
 
   pub fn set(
@@ -103,7 +141,6 @@ impl HttpCache {
     content: &[u8],
   ) -> Result<(), ErrBox> {
     let cache_filename = self.location.join(url_to_filename(url));
-    let headers_filename = cache_filename.with_extension("headers.json");
     // Create parent directory
     let parent_filename = cache_filename
       .parent()
@@ -111,10 +148,12 @@ impl HttpCache {
     fs::create_dir_all(parent_filename)?;
     // Cache content
     deno_fs::write_file(&cache_filename, content, 0o666)?;
-    let serialized_headers = serde_json::to_string(&headers_map)?;
-    // Cache headers
-    deno_fs::write_file(&headers_filename, serialized_headers, 0o666)?;
-    Ok(())
+
+    let metadata = Metadata {
+      url: url.to_string(),
+      headers: headers_map,
+    };
+    metadata.write(&cache_filename)
   }
 }
 
