@@ -14,7 +14,7 @@ import { assert } from "../testing/asserts.ts";
 import { setContentLength } from "./io.ts";
 
 interface EntryInfo {
-  mode: string;
+  perm: string;
   size: string;
   url: string;
   name: string;
@@ -57,23 +57,23 @@ OPTIONS:
   exit();
 }
 
-function modeToString(isDir: boolean, maybeMode: number | null): string {
-  const modeMap = ["---", "--x", "-w-", "-wx", "r--", "r-x", "rw-", "rwx"];
+function permToString(isDir: boolean, maybePerm: number | null): string {
+  const permMap = ["---", "--x", "-w-", "-wx", "r--", "r-x", "rw-", "rwx"];
 
-  if (maybeMode === null) {
-    return "(unknown mode)";
+  if (maybePerm === null) {
+    return "(unknown perm)";
   }
-  const mode = maybeMode.toString(8);
-  if (mode.length < 3) {
-    return "(unknown mode)";
+  const perm = maybePerm.toString(8);
+  if (perm.length < 3) {
+    return "(unknown perm)";
   }
   let output = "";
-  mode
+  perm
     .split("")
     .reverse()
     .slice(0, 3)
     .forEach((v): void => {
-      output = modeMap[+v] + output;
+      output = permMap[+v] + output;
     });
   output = `(${isDir ? "d" : "-"}${output})`;
   return output;
@@ -129,12 +129,12 @@ async function serveDir(
       return await serveFile(req, filePath);
     }
     // Yuck!
-    let mode = null;
+    let perm = null;
     try {
-      mode = (await stat(filePath)).perm;
+      perm = (await stat(filePath)).perm;
     } catch (e) {}
     listEntry.push({
-      mode: modeToString(fileInfo.isDirectory(), mode),
+      perm: permToString(fileInfo.isDirectory(), perm),
       size: fileInfo.isFile() ? fileLenToString(fileInfo.len) : "",
       name: fileInfo.name ?? "",
       url: fileUrl
@@ -253,15 +253,15 @@ function dirViewerTemplate(dirname: string, entries: EntryInfo[]): string {
           <h1>Index of ${dirname}</h1>
           <table>
             <tr>
-              <th>Mode</th>
+              <th>Perm</th>
               <th>Size</th>
               <th>Name</th>
             </tr>
             ${entries.map(
               entry => html`
                 <tr>
-                  <td class="mode">
-                    ${entry.mode}
+                  <td class="perm">
+                    ${entry.perm}
                   </td>
                   <td>
                     ${entry.size}
