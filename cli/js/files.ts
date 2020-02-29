@@ -167,7 +167,7 @@ export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
  *
  *       const encoder = new TextEncoder();
  *       const data = encoder.encode("Hello world\n");
- *       const file = Deno.openSync("/foo/bar.txt");
+ *       const file = Deno.openSync("/foo/bar.txt", {create: true, write: true});
  *       Deno.writeSync(file.rid, data);
  */
 export function writeSync(rid: number, p: Uint8Array): number {
@@ -188,7 +188,7 @@ export function writeSync(rid: number, p: Uint8Array): number {
  *
  *      const encoder = new TextEncoder();
  *      const data = encoder.encode("Hello world\n");
- *      const file = await Deno.open("/foo/bar.txt");
+ *      const file = await Deno.open("/foo/bar.txt", {create: true, write: true});
  *      await Deno.write(file.rid, data);
  *
  */
