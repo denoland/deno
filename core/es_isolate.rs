@@ -556,6 +556,7 @@ pub mod tests {
   use crate::modules::SourceCodeInfoFuture;
   use crate::ops::*;
   use std::io;
+  use std::path::PathBuf;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
 
@@ -882,5 +883,72 @@ pub mod tests {
       assert_eq!(resolve_count.load(Ordering::Relaxed), 2);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
     })
+  }
+
+  #[test]
+  fn dyn_circular_import() {
+    #[derive(Clone, Default)]
+    struct DynImportCircularLoader {
+      pub resolve_count: Arc<AtomicUsize>,
+      pub load_count: Arc<AtomicUsize>,
+    }
+
+    impl Loader for DynImportCircularLoader {
+      fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, ErrBox> {
+        self.resolve_count.fetch_add(1, Ordering::Relaxed);
+        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<SourceCodeInfoFuture>> {
+        self.load_count.fetch_add(1, Ordering::Relaxed);
+        let filename = PathBuf::from(specifier.to_string())
+          .file_name()
+          .unwrap()
+          .to_string_lossy()
+          .to_string();
+        eprintln!("{}", filename.as_str());
+        let code = match filename.as_str() {
+          "a.js" => "import './b.js';",
+          "b.js" => "import './c.js';\nimport './a.js';",
+          "c.js" => "import './d.js';",
+          "d.js" => "// pass",
+          _ => unreachable!(),
+        };
+        let info = SourceCodeInfo {
+          module_url_specified: specifier.to_string(),
+          module_url_found: specifier.to_string(),
+          code: code.to_owned(),
+        };
+        async move { Ok(info) }.boxed()
+      }
+    }
+
+    let loader = Rc::new(DynImportCircularLoader::default());
+    let resolve_count = loader.resolve_count.clone();
+    let load_count = loader.load_count.clone();
+    let mut isolate = EsIsolate::new(loader, StartupData::None, false);
+
+    // Dynamically import mod_b
+    js_check(
+      isolate
+        .execute("file:///entry.js", "import('./b.js');\nimport('./a.js');"),
+    );
+
+    let result = futures::executor::block_on(isolate);
+    eprintln!("result {:?}", result);
+    assert!(result.is_ok());
+    eprintln!("{}", resolve_count.load(Ordering::Relaxed));
+    eprintln!("{}", load_count.load(Ordering::Relaxed));
   }
 }
