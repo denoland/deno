@@ -37,8 +37,10 @@ export interface FileInfo {
   /** **UNSTABLE**: Match behavior with Go on windows for `perm`.
    *
    * The underlying raw `st_mode` bits that contain the standard Unix
-   * permissions for this file/directory. */
+   * permissions for this file/directory (masked to `0o7777`). */
   perm: number | null;
+  /** Type of file this is info for. */
+  type: FileType | null;
   /** Number of hard links pointing to this file.
    *
    * _Linux/Mac OS only._ */
@@ -74,10 +76,20 @@ export interface FileInfo {
   isSymlink(): boolean;
 }
 
+// File types (from st_mode >> 12)
+export enum FileType {
+  TYPE_UNKNOWN = 14, // BSD "whiteout"
+  TYPE_REGULAR = 8,
+  TYPE_DIRECTORY = 4,
+  TYPE_SYMLINK = 10,
+  TYPE_SOCKET = 12,
+  TYPE_FIFO = 1,
+  TYPE_CHARDEV = 2,
+  TYPE_BLKDEV = 6
+}
+
 // @internal
 export class FileInfoImpl implements FileInfo {
-  private readonly _isFile: boolean;
-  private readonly _isSymlink: boolean;
   length: number;
   modified: number | null;
   anyModified: number | null;
@@ -88,6 +100,7 @@ export class FileInfoImpl implements FileInfo {
   dev: number | null;
   ino: number | null;
   perm: number | null;
+  type: FileType | null;
   nlink: number | null;
   uid: number | null;
   gid: number | null;
@@ -116,8 +129,6 @@ export class FileInfoImpl implements FileInfo {
       blocks
     } = this._res;
 
-    this._isFile = this._res.isFile;
-    this._isSymlink = this._res.isSymlink;
     this.length = this._res.size;
     this.modified = modified ? modified : null;
     this.accessed = accessed ? accessed : null;
@@ -127,7 +138,16 @@ export class FileInfoImpl implements FileInfo {
     this.anyModified = isUnix ? ctime : null;
     this.dev = isUnix ? dev : null;
     this.ino = isUnix ? ino : null;
-    this.perm = isUnix ? mode : null;
+    this.perm = isUnix ? mode & 0o7777 : null;
+    this.type = isUnix
+      ? mode >> 12
+      : this._res.isFile
+      ? FileType.TYPE_REGULAR
+      : this._res.isSymlink
+      ? FileType.TYPE_SYMLINK
+      : this._res.isDir
+      ? FileType.TYPE_DIRECTORY
+      : null;
     this.nlink = isUnix ? nlink : null;
     this.uid = isUnix ? uid : null;
     this.gid = isUnix ? gid : null;
@@ -137,14 +157,14 @@ export class FileInfoImpl implements FileInfo {
   }
 
   isFile(): boolean {
-    return this._isFile;
+    return this.type == FileType.TYPE_REGULAR; // this._res.isFile;
   }
 
   isDirectory(): boolean {
-    return !this._isFile && !this._isSymlink;
+    return this.type == FileType.TYPE_DIRECTORY; // this._res.isDir;
   }
 
   isSymlink(): boolean {
-    return this._isSymlink;
+    return this.type == FileType.TYPE_SYMLINK; // this._res.isSymlink;
   }
 }

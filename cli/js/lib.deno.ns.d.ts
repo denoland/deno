@@ -1044,8 +1044,10 @@ declare namespace Deno {
     /** **UNSTABLE**: Match behavior with Go on windows for `perm`.
      *
      * The underlying raw `st_mode` bits that contain the standard Unix
-     * permissions for this file/directory. */
+     * permissions for this file/directory (masked to `0o7777`). */
     perm: number | null;
+    /** Type of file this is info for. */
+    type: FileType | null;
     /** Number of hard links pointing to this file.
      *
      * _Linux/Mac OS only._ */
@@ -1079,6 +1081,17 @@ declare namespace Deno {
     /** Returns whether this is info for a symlink. This result is
      * mutually exclusive to `FileInfo.isFile` and `FileInfo.isDirectory`. */
     isSymlink(): boolean;
+  }
+
+  // File types (from st_mode >> 12)
+  export enum FileType {
+    TYPE_REGULAR = 8,
+    TYPE_DIRECTORY = 4,
+    TYPE_SYMLINK = 10,
+    TYPE_SOCKET = 12,
+    TYPE_FIFO = 1,
+    TYPE_CHARDEV = 2,
+    TYPE_BLKDEV = 6
   }
 
   // @url js/realpath.d.ts

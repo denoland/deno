@@ -5,6 +5,7 @@ import { FileInfo, FileInfoImpl } from "./file_info.ts";
 /** @internal */
 export interface StatResponse {
   isFile: boolean;
+  isDir: boolean;
   isSymlink: boolean;
   size: number;
   modified: number;

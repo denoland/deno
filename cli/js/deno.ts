@@ -23,7 +23,7 @@ export {
 export { chdir, cwd } from "./dir.ts";
 export { applySourceMap } from "./error_stack.ts";
 export { errors } from "./errors.ts";
-export { FileInfo } from "./file_info.ts";
+export { FileInfo, FileType } from "./file_info.ts";
 export {
   File,
   open,

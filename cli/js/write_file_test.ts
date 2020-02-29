@@ -49,9 +49,9 @@ testPerm({ read: true, write: true }, function writeFileSyncFsPerm(): void {
     const filename = Deno.makeTempDirSync() + "/test.txt";
     Deno.writeFileSync(filename, data, { perm: 0o626 });
     // assertEquals(Deno.statSync(filename).perm!, 0o626 & ~Deno.umask());
-    assertEquals(Deno.statSync(filename).perm! & 0o777, 0o604); // assume umask 0o022
+    assertEquals(Deno.statSync(filename).perm!, 0o604); // assume umask 0o022
     Deno.writeFileSync(filename, data, { perm: 0o737 });
-    assertEquals(Deno.statSync(filename).perm! & 0o777, 0o604);
+    assertEquals(Deno.statSync(filename).perm!, 0o604);
   }
 });
 
@@ -158,9 +158,9 @@ testPerm({ read: true, write: true }, async function writeFileFsPerm(): Promise<
     const filename = Deno.makeTempDirSync() + "/test.txt";
     await Deno.writeFile(filename, data, { perm: 0o626 });
     // assertEquals(Deno.statSync(filename).perm!, 0o626 & ~Deno.umask());
-    assertEquals(Deno.statSync(filename).perm! & 0o777, 0o604); // assume umask 0o022
+    assertEquals(Deno.statSync(filename).perm!, 0o604); // assume umask 0o022
     await Deno.writeFile(filename, data, { perm: 0o737 });
-    assertEquals(Deno.statSync(filename).perm! & 0o777, 0o604);
+    assertEquals(Deno.statSync(filename).perm!, 0o604);
   }
 });
 
