@@ -21,13 +21,18 @@ test(function runPermissions(): void {
 
 testPerm({ run: true }, async function runSuccess(): Promise<void> {
   const p = run({
-    args: ["python", "-c", "print('hello world')"]
+    args: ["python", "-c", "print('hello world')"],
+    stdout: "piped",
+    stderr: "null"
   });
   const status = await p.status();
-  console.log("status", status);
+  assert(p.stdout != null);
+  const out = await Deno.readAll(p.stdout);
+  const dec = new TextDecoder();
   assertEquals(status.success, true);
   assertEquals(status.code, 0);
   assertEquals(status.signal, undefined);
+  assertEquals(dec.decode(out), "hello world\n");
   p.close();
 });
 

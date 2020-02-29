@@ -297,7 +297,7 @@ test(async function timerMaxCpuBug(): Promise<void> {
   const { opsDispatched } = Deno.metrics();
   await waitForMs(100);
   const opsDispatched_ = Deno.metrics().opsDispatched;
-  console.log("opsDispatched", opsDispatched, "opsDispatched_", opsDispatched_);
+  // console.log("opsDispatched", opsDispatched, "opsDispatched_", opsDispatched_);
   assert(opsDispatched_ - opsDispatched < 10);
 });
 
