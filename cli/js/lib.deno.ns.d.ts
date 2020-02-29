@@ -1466,7 +1466,7 @@ declare namespace Deno {
   }
 
   export interface UDPAddr {
-    port: number;
+    port?: number;
     transport?: Transport;
     hostname?: string;
   }

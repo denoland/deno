@@ -17,7 +17,7 @@ export interface Addr {
 export interface UDPAddr {
   transport?: Transport;
   hostname?: string;
-  port: number;
+  port?: number;
 }
 
 /** A socket is a generic transport listener for message-oriented protocols */
