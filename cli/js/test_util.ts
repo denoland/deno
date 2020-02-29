@@ -8,7 +8,11 @@
 // See tools/unit_tests.py for more details.
 
 import { readLines } from "../../std/io/bufio.ts";
-import { assert, assertEquals } from "../../std/testing/asserts.ts";
+import {
+  AssertionError,
+  assert,
+  assertEquals
+} from "../../std/testing/asserts.ts";
 export {
   assert,
   assertThrows,
@@ -106,19 +110,26 @@ function normalizeTestPermissions(perms: TestPermissions): Permissions {
   };
 }
 
+function assertResources(pre: Deno.ResourceMap, post: Deno.ResourceMap): void {
+  try {
+    assertEquals(pre, post);
+  } catch (e) {
+    const msg = `Test case is leaking resources.
+Before: ${JSON.stringify(pre, null, 2)}
+After: ${JSON.stringify(post, null, 2)}`;
+    throw new AssertionError(msg);
+  }
+}
+
 // Wrap `TestFunction` in additional assertion that makes sure
 // the test case does not "leak" resources - ie. resource table after
 // the test has exactly the same contents as before the test.
-function assertResources(fn: Deno.TestFunction): Deno.TestFunction {
-  return async function(): Promise<void> {
-    const preResources = Deno.resources();
+function sanitizeResources(fn: Deno.TestFunction): Deno.TestFunction {
+  return async (): Promise<void> => {
+    const pre = Deno.resources();
     await fn();
-    const postResources = Deno.resources();
-    const msg = `Test case is leaking resources.
-Before: ${JSON.stringify(preResources, null, 2)}
-After: ${JSON.stringify(postResources, null, 2)}`;
-
-    assertEquals(preResources, postResources, msg);
+    const post = Deno.resources();
+    assertResources(pre, post);
   };
 }
 
@@ -131,22 +142,30 @@ export function testPerm(perms: TestPermissions, fn: Deno.TestFunction): void {
     return;
   }
 
-  Deno.test(fn.name, assertResources(fn));
+  Deno.test(fn.name, sanitizeResources(fn));
+}
+
+interface CliTest extends Deno.TestDefinition {
+  name: string;
+  fn: Deno.TestFunction;
+  perms?: TestPermissions;
+  skip?: boolean;
+}
+
+export function unitTest(def: CliTest): void {
+  const normalizedPerms = normalizeTestPermissions(def.perms || {});
+
+  registerPermCombination(normalizedPerms);
+
+  if (!permissionsMatch(processPerms, normalizedPerms)) {
+    return;
+  }
+
+  Deno.test(def.name, sanitizeResources(def.fn));
 }
 
 export function test(fn: Deno.TestFunction): void {
-  testPerm(
-    {
-      read: false,
-      write: false,
-      net: false,
-      env: false,
-      run: false,
-      plugin: false,
-      hrtime: false
-    },
-    fn
-  );
+  testPerm({}, fn);
 }
 
 function extractNumber(re: RegExp, str: string): number | undefined {

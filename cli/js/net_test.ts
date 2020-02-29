@@ -1,41 +1,53 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { unitTest, testPerm, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ net: true }, function netTcpListenClose(): void {
-  const listener = Deno.listen({ hostname: "127.0.0.1", port: 4500 });
-  assertEquals(listener.addr.transport, "tcp");
-  assertEquals(listener.addr.hostname, "127.0.0.1");
-  assertEquals(listener.addr.port, 4500);
-  listener.close();
-});
-
-testPerm({ net: true }, function netUdpListenClose(): void {
-  if (Deno.build.os === "win") return; // TODO
-
-  const socket = Deno.listen({
-    hostname: "127.0.0.1",
-    port: 4500,
-    transport: "udp"
-  });
-  assertEquals(socket.addr.transport, "udp");
-  assertEquals(socket.addr.hostname, "127.0.0.1");
-  assertEquals(socket.addr.port, 4500);
-  socket.close();
-});
-
-testPerm({ net: true }, async function netTcpCloseWhileAccept(): Promise<void> {
-  const listener = Deno.listen({ port: 4501 });
-  const p = listener.accept();
-  listener.close();
-  let err;
-  try {
-    await p;
-  } catch (e) {
-    err = e;
+unitTest({
+  name: "net tcp listen close",
+  perms: { net: true },
+  fn: () => {
+    const listener = Deno.listen({ hostname: "127.0.0.1", port: 4500 });
+    assertEquals(listener.addr.transport, "tcp");
+    assertEquals(listener.addr.hostname, "127.0.0.1");
+    assertEquals(listener.addr.port, 4500);
+    listener.close();
   }
-  assert(!!err);
-  assert(err instanceof Error);
-  assertEquals(err.message, "Listener has been closed");
+});
+
+unitTest({
+  name: "net udp listen close",
+  perms: { net: true },
+  // TODO:
+  skip: Deno.build.os === "win",
+  fn: () => {
+    const socket = Deno.listen({
+      hostname: "127.0.0.1",
+      port: 4500,
+      transport: "udp"
+    });
+    assertEquals(socket.addr.transport, "udp");
+    assertEquals(socket.addr.hostname, "127.0.0.1");
+    assertEquals(socket.addr.port, 4500);
+    socket.close();
+  }
+});
+
+unitTest({
+  name: "net tcp close while accept",
+  perms: { net: true },
+  fn: async () => {
+    const listener = Deno.listen({ port: 4501 });
+    const p = listener.accept();
+    listener.close();
+    let err;
+    try {
+      await p;
+    } catch (e) {
+      err = e;
+    }
+    assert(!!err);
+    assert(err instanceof Error);
+    assertEquals(err.message, "Listener has been closed");
+  }
 });
 
 testPerm({ net: true }, async function netTcpConcurrentAccept(): Promise<void> {

@@ -2,6 +2,7 @@
 import {
   test,
   testPerm,
+  unitTest,
   assert,
   assertEquals,
   createResolvable
@@ -87,9 +88,10 @@ testPerm({ net: true }, async function listenTLSNoReadPerm(): Promise<void> {
   assertEquals(err.name, "PermissionDenied");
 });
 
-testPerm(
-  { read: true, write: true, net: true },
-  async function listenTLSEmptyKeyFile(): Promise<void> {
+unitTest({
+  name: "listenTLS empty key file",
+  perms: { read: true, write: true, net: true },
+  fn: async () => {
     let err;
     const options = {
       hostname: "localhost",
@@ -114,7 +116,7 @@ testPerm(
     }
     assert(err instanceof Error);
   }
-);
+});
 
 testPerm(
   { read: true, write: true, net: true },
