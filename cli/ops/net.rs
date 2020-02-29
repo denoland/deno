@@ -22,7 +22,9 @@ use tokio::net::UdpSocket;
 
 #[cfg(not(windows))]
 use std::os::unix;
+#[cfg(not(windows))]
 use tokio::net::UnixListener;
+#[cfg(not(windows))]
 use tokio::net::UnixStream;
 
 pub fn init(i: &mut Isolate, s: &State) {

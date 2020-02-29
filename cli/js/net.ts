@@ -9,19 +9,15 @@ export type Transport = "tcp" | "udp" | "unix";
 
 export interface Addr {
   transport: Transport;
-  hostname: string;
-  port: number;
+  hostname?: string;
+  port?: number;
+  address?: string;
 }
 
 export interface UDPAddr {
   transport?: Transport;
   hostname?: string;
   port: number;
-}
-
-export interface UnixAddr {
-  transport: Transport;
-  address: string;
 }
 
 /** A socket is a generic transport listener for message-oriented protocols */
@@ -54,7 +50,7 @@ export interface Listener extends AsyncIterator<Conn> {
   close(): void;
 
   /** Return the address of the `Listener`. */
-  addr: Addr | UnixAddr;
+  addr: Addr;
 
   [Symbol.asyncIterator](): AsyncIterator<Conn>;
 }
@@ -82,8 +78,8 @@ export function shutdown(rid: number, how: ShutdownMode): void {
 export class ConnImpl implements Conn {
   constructor(
     readonly rid: number,
-    readonly remoteAddr: Addr | UnixAddr,
-    readonly localAddr: Addr | UnixAddr
+    readonly remoteAddr: Addr,
+    readonly localAddr: Addr
   ) {}
 
   write(p: Uint8Array): Promise<number> {
@@ -116,7 +112,7 @@ export class ConnImpl implements Conn {
 export class ListenerImpl implements Listener {
   constructor(
     readonly rid: number,
-    readonly addr: Addr | UnixAddr,
+    readonly addr: Addr,
     private closing: boolean = false
   ) {}
 
@@ -214,9 +210,9 @@ export class UDPConnImpl implements UDPConn {
 
 export interface Conn extends Reader, Writer, Closer {
   /** The local address of the connection. */
-  localAddr: Addr | UnixAddr;
+  localAddr: Addr;
   /** The remote address of the connection. */
-  remoteAddr: Addr | UnixAddr;
+  remoteAddr: Addr;
   /** The resource ID of the connection. */
   rid: number;
   /** Shuts down (`shutdown(2)`) the reading side of the TCP connection. Most

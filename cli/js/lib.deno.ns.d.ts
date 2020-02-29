@@ -1460,8 +1460,9 @@ declare namespace Deno {
 
   export interface Addr {
     transport: Transport;
-    hostname: string;
-    port: number;
+    hostname?: string;
+    port?: number;
+    address?: string;
   }
 
   export interface UDPAddr {
@@ -1469,12 +1470,6 @@ declare namespace Deno {
     transport?: Transport;
     hostname?: string;
   }
-
-  export interface UnixAddr {
-    transport: Transport;
-    address: string;
-  }
-
   /** **UNSTABLE**: Maybe remove `ShutdownMode` entirely.
    *
    * Corresponds to `SHUT_RD`, `SHUT_WR`, `SHUT_RDWR` on POSIX-like systems.
@@ -1537,15 +1532,15 @@ declare namespace Deno {
      * with errors. */
     close(): void;
     /** Return the address of the `Listener`. */
-    readonly addr: Addr | UnixAddr;
+    readonly addr: Addr;
     [Symbol.asyncIterator](): AsyncIterator<Conn>;
   }
 
   export interface Conn extends Reader, Writer, Closer {
     /** The local address of the connection. */
-    readonly localAddr: Addr | UnixAddr;
+    readonly localAddr: Addr;
     /** The remote address of the connection. */
-    readonly remoteAddr: Addr | UnixAddr;
+    readonly remoteAddr: Addr;
     /** The resource ID of the connection. */
     readonly rid: number;
     /** Shuts down (`shutdown(2)`) the reading side of the TCP connection. Most
