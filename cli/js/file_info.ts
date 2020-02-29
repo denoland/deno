@@ -11,6 +11,7 @@ export interface FileInfo {
   dev: number | null;
   ino: number | null;
   mode: number | null;
+  type: FileType | null;
   nlink: number | null;
   uid: number | null;
   gid: number | null;
@@ -22,10 +23,20 @@ export interface FileInfo {
   isSymlink(): boolean;
 }
 
+// File types (from st_mode & ~0o7777)
+export enum FileType {
+  TYPE_UNKNOWN = 0, // whiteouts, doors, ports
+  TYPE_REGULAR = 8 << 12,
+  TYPE_DIRECTORY = 4 << 12,
+  TYPE_SYMLINK = 10 << 12,
+  TYPE_FIFO = 1 << 12,
+  TYPE_CHARDEV = 2 << 12,
+  TYPE_BLKDEV = 6 << 12,
+  TYPE_SOCKET = 12 << 12
+}
+
 // @internal
 export class FileInfoImpl implements FileInfo {
-  private readonly _isFile: boolean;
-  private readonly _isSymlink: boolean;
   size: number;
   modified: number | null;
   accessed: number | null;
@@ -35,6 +46,7 @@ export class FileInfoImpl implements FileInfo {
   dev: number | null;
   ino: number | null;
   mode: number | null;
+  type: FileType | null;
   nlink: number | null;
   uid: number | null;
   gid: number | null;
@@ -62,8 +74,6 @@ export class FileInfoImpl implements FileInfo {
       blocks
     } = this._res;
 
-    this._isFile = this._res.isFile;
-    this._isSymlink = this._res.isSymlink;
     this.size = this._res.size;
     this.modified = modified ? modified : null;
     this.accessed = accessed ? accessed : null;
@@ -72,7 +82,16 @@ export class FileInfoImpl implements FileInfo {
     // Only non-null if on Unix
     this.dev = isUnix ? dev : null;
     this.ino = isUnix ? ino : null;
-    this.mode = isUnix ? mode : null;
+    this.mode = isUnix ? mode & 0o7777 : null;
+    this.type = isUnix
+      ? mode & ~0o7777
+      : this._res.isFile
+      ? FileType.TYPE_REGULAR
+      : this._res.isSymlink
+      ? FileType.TYPE_SYMLINK
+      : this._res.isDir
+      ? FileType.TYPE_DIRECTORY
+      : null;
     this.nlink = isUnix ? nlink : null;
     this.uid = isUnix ? uid : null;
     this.gid = isUnix ? gid : null;
@@ -82,14 +101,14 @@ export class FileInfoImpl implements FileInfo {
   }
 
   isFile(): boolean {
-    return this._isFile;
+    return this.type == FileType.TYPE_REGULAR; // this._res.isFile;
   }
 
   isDirectory(): boolean {
-    return !this._isFile && !this._isSymlink;
+    return this.type == FileType.TYPE_DIRECTORY; // this._res.isDir;
   }
 
   isSymlink(): boolean {
-    return this._isSymlink;
+    return this.type == FileType.TYPE_SYMLINK; // this._res.isSymlink;
   }
 }

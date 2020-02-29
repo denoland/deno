@@ -11,6 +11,7 @@ class FileInfoMock implements Deno.FileInfo {
   dev = -1;
   ino = -1;
   mode = -1;
+  type = null;
   nlink = -1;
   uid = -1;
   gid = -1;

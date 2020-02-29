@@ -206,7 +206,7 @@ unitTest(
     const s = Deno.statSync(filename);
     assert(s.dev !== null);
     assert(s.ino !== null);
-    assertEquals(s.mode! & 0o666, 0o666);
+    assertEquals(s.mode!, 0o666);
     assertEquals(s.nlink, 2);
     assert(s.uid !== null);
     assert(s.gid !== null);

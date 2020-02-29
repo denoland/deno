@@ -14,7 +14,7 @@ unitTest(
 
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.mode);
-    assertEquals(fileInfo.mode & 0o777, 0o777);
+    assertEquals(fileInfo.mode, 0o777);
   }
 );
 
@@ -36,17 +36,17 @@ unitTest(
 
     let symlinkInfo = Deno.lstatSync(symlinkName);
     assert(symlinkInfo.mode);
-    const symlinkMode = symlinkInfo.mode & 0o777; // platform dependent
+    const symlinkMode = symlinkInfo.mode; // platform dependent
 
     Deno.chmodSync(symlinkName, 0o777);
 
     // Change actual file mode, not symlink
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.mode);
-    assertEquals(fileInfo.mode & 0o777, 0o777);
+    assertEquals(fileInfo.mode, 0o777);
     symlinkInfo = Deno.lstatSync(symlinkName);
     assert(symlinkInfo.mode);
-    assertEquals(symlinkInfo.mode & 0o777, symlinkMode);
+    assertEquals(symlinkInfo.mode, symlinkMode);
   }
 );
 
@@ -85,7 +85,7 @@ unitTest(
 
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.mode);
-    assertEquals(fileInfo.mode & 0o777, 0o777);
+    assertEquals(fileInfo.mode, 0o777);
   }
 );
 
@@ -108,17 +108,17 @@ unitTest(
 
     let symlinkInfo = Deno.lstatSync(symlinkName);
     assert(symlinkInfo.mode);
-    const symlinkMode = symlinkInfo.mode & 0o777; // platform dependent
+    const symlinkMode = symlinkInfo.mode; // platform dependent
 
     await Deno.chmod(symlinkName, 0o777);
 
     // Just change actual file mode, not symlink
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.mode);
-    assertEquals(fileInfo.mode & 0o777, 0o777);
+    assertEquals(fileInfo.mode, 0o777);
     symlinkInfo = Deno.lstatSync(symlinkName);
     assert(symlinkInfo.mode);
-    assertEquals(symlinkInfo.mode & 0o777, symlinkMode);
+    assertEquals(symlinkInfo.mode, symlinkMode);
   }
 );
 
