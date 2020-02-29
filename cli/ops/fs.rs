@@ -289,9 +289,10 @@ fn get_stat_json(
     "len": metadata.len(),
     // In seconds (i64). Available on both Unix or Windows.
     "accessed":to_seconds!(metadata.accessed()),
-    "modified":to_seconds!(metadata.modified()),
+    "modified":to_seconds!(metadata.modified()), // changed when fdatasync
     "created":to_seconds!(metadata.created()),
     // Following are only valid under Unix.
+    "ctime": usm!(ctime), // i64, changed when fdatasync or chown/chmod/rename/moved
     "dev": usm!(dev), // u64
     "ino": usm!(ino), // u64
     "mode": usm!(mode), // usually u32, may be u16 on Mac

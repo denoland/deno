@@ -185,6 +185,7 @@ if (isWindows) {
       assert(s.rdev === null);
       assert(s.blksize === null);
       assert(s.blocks === null);
+      assert(s.anyModified === null);
     }
   );
 } else {
@@ -210,6 +211,7 @@ if (isWindows) {
       assert(s.rdev !== null);
       assert(s.blksize !== null);
       assert(s.blocks !== null);
+      assert(s.anyModified !== null);
     }
   );
 }
