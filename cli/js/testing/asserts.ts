@@ -83,8 +83,6 @@ export function equal(actual: unknown, expected: unknown): boolean {
 export interface Assert {
   /** Make an assertion, if not `true`, then throw. */
   (expr: unknown, msg?: string): asserts expr;
-  /** Use this to stub out methods that will throw when invoked. */
-  unimplemented(msg?: string): never;
   /** Use this to assert unreachable code. */
   unreachable(msg?: string): never;
   /**
@@ -134,10 +132,6 @@ export interface Assert {
     msgIncludes?: string,
     msg?: string
   ): Promise<Error>;
-}
-
-function unimplemented(msg?: string): never {
-  throw new AssertionError(msg || "unimplemented");
 }
 
 function unreachable(msg?: string): never {
@@ -307,7 +301,6 @@ export const assert: Assert = Object.assign(
     }
   },
   {
-    unimplemented,
     unreachable,
     equals,
     notEquals,

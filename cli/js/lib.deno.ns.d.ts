@@ -19,16 +19,10 @@ declare namespace Deno {
     name: string;
   }
 
-  interface Constructor {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    new (...args: any[]): any;
-  }
-
+  /** **UNSTABLE**: newly added API */
   export interface Assert {
     /** Make an assertion, if not `true`, then throw. */
     (expr: unknown, msg?: string): asserts expr;
-    /** Use this to stub out methods that will throw when invoked. */
-    unimplemented(msg?: string): never;
     /** Use this to assert unreachable code. */
     unreachable(msg?: string): never;
     /**
@@ -67,19 +61,20 @@ declare namespace Deno {
      */
     throws(
       fn: () => void,
-      ErrorClass?: Constructor,
+      ErrorClass?: ErrorConstructor,
       msgIncludes?: string,
       msg?: string
     ): Error;
     /** The same as `throws` but takes async function as parameter. */
     throwsAsync(
       fn: () => Promise<void>,
-      ErrorClass?: Constructor,
+      ErrorClass?: ErrorConstructor,
       msgIncludes?: string,
       msg?: string
     ): Promise<Error>;
   }
 
+  /** **UNSTABLE**: newly added API */
   export const assert: Assert;
 
   /** Register a test which will be run when `deno test` is used on the command
