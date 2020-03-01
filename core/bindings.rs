@@ -1,8 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::es_isolate::EsIsolate;
-use crate::isolate::encode_message_as_json;
-use crate::isolate::handle_exception;
 use crate::isolate::Isolate;
 use crate::isolate::ZeroCopyBuf;
 
@@ -32,9 +30,6 @@ lazy_static! {
       },
       v8::ExternalReference {
         getter: shared_getter.map_fn_to()
-      },
-      v8::ExternalReference {
-        message: message_callback
       },
       v8::ExternalReference {
         function: queue_microtask.map_fn_to()
@@ -266,34 +261,6 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
     v8::String::new(scope, "main").unwrap().into(),
     v8::Boolean::new(scope, info.main).into(),
   );
-}
-
-pub extern "C" fn message_callback(
-  message: v8::Local<v8::Message>,
-  _exception: v8::Local<v8::Value>,
-) {
-  let mut cbs = v8::CallbackScope::new(message);
-  let mut hs = v8::HandleScope::new(cbs.enter());
-  let scope = hs.enter();
-
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
-
-  // TerminateExecution was called
-  // TODO(piscisaureus): rusty_v8 should implement the
-  // `is_execution_terminating()` method on struct `Isolate` also.
-  if scope
-    .isolate()
-    .thread_safe_handle()
-    .is_execution_terminating()
-  {
-    let undefined = v8::undefined(scope).into();
-    handle_exception(scope, undefined, &mut deno_isolate.last_exception);
-    return;
-  }
-
-  let json_str = encode_message_as_json(scope, message);
-  deno_isolate.last_exception = Some(json_str);
 }
 
 pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
