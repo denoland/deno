@@ -7,23 +7,27 @@ export type Transport = "tcp" | "udp" | "unix";
 // TODO support other types:
 // export type Transport = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
 
-export interface Addr {
+export interface TCPAddr {
   transport: Transport;
-  hostname?: string;
-  port?: number;
-  address?: string;
+  hostname: string;
+  port: number;
 }
 
 export interface UDPAddr {
   transport?: Transport;
   hostname?: string;
-  port?: number;
+  port: number;
+}
+
+export interface UnixAddr {
+  transport: Transport;
+  address: string;
 }
 
 /** A socket is a generic transport listener for message-oriented protocols */
-export interface UDPConn extends AsyncIterator<[Uint8Array, Addr]> {
+export interface UDPConn extends AsyncIterator<[Uint8Array, UDPAddr]> {
   /** Waits for and resolves to the next message to the `Socket`. */
-  receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
+  receive(p?: Uint8Array): Promise<[Uint8Array, UDPAddr]>;
 
   /** Sends a message to the target. */
   send(p: Uint8Array, addr: UDPAddr): Promise<void>;
@@ -34,15 +38,15 @@ export interface UDPConn extends AsyncIterator<[Uint8Array, Addr]> {
   close(): void;
 
   /** Return the address of the `Socket`. */
-  addr: Addr;
+  addr: UDPAddr;
 
-  [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]>;
+  [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, UDPAddr]>;
 }
 
 /** A Listener is a generic transport listener for stream-oriented protocols. */
-export interface Listener extends AsyncIterator<Conn> {
+export interface Listener<T> extends AsyncIterator<Conn<T>> {
   /** Waits for and resolves to the next connection to the `Listener`. */
-  accept(): Promise<Conn>;
+  accept(): Promise<Conn<T>>;
 
   /** Close closes the listener. Any pending accept promises will be rejected
    * with errors.
@@ -50,9 +54,9 @@ export interface Listener extends AsyncIterator<Conn> {
   close(): void;
 
   /** Return the address of the `Listener`. */
-  addr: Addr;
+  addr: T;
 
-  [Symbol.asyncIterator](): AsyncIterator<Conn>;
+  [Symbol.asyncIterator](): AsyncIterator<Conn<T>>;
 }
 
 export enum ShutdownMode {
@@ -75,11 +79,11 @@ export function shutdown(rid: number, how: ShutdownMode): void {
   sendSync("op_shutdown", { rid, how });
 }
 
-export class ConnImpl implements Conn {
+export class ConnImpl implements Conn<TCPAddr> {
   constructor(
     readonly rid: number,
-    readonly remoteAddr: Addr,
-    readonly localAddr: Addr
+    readonly remoteAddr: TCPAddr,
+    readonly localAddr: TCPAddr
   ) {}
 
   write(p: Uint8Array): Promise<number> {
@@ -109,14 +113,14 @@ export class ConnImpl implements Conn {
   }
 }
 
-export class ListenerImpl implements Listener {
+export class ListenerImpl implements Listener<TCPAddr> {
   constructor(
     readonly rid: number,
-    readonly addr: Addr,
+    readonly addr: TCPAddr,
     private closing: boolean = false
   ) {}
 
-  async accept(): Promise<Conn> {
+  async accept(): Promise<Conn<TCPAddr>> {
     const res = await sendAsync("op_accept", {
       rid: this.rid,
       transport: this.addr.transport
@@ -129,7 +133,7 @@ export class ListenerImpl implements Listener {
     close(this.rid);
   }
 
-  async next(): Promise<IteratorResult<Conn>> {
+  async next(): Promise<IteratorResult<Conn<TCPAddr>>> {
     if (this.closing) {
       return { value: undefined, done: true };
     }
@@ -146,7 +150,7 @@ export class ListenerImpl implements Listener {
       });
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<Conn> {
+  [Symbol.asyncIterator](): AsyncIterator<Conn<TCPAddr>> {
     return this;
   }
 }
@@ -154,7 +158,7 @@ export class ListenerImpl implements Listener {
 export async function recvfrom(
   rid: number,
   p: Uint8Array
-): Promise<[number, Addr]> {
+): Promise<[number, UDPAddr]> {
   const { size, remoteAddr } = await sendAsync("op_receive", { rid }, p);
   return [size, remoteAddr];
 }
@@ -162,12 +166,12 @@ export async function recvfrom(
 export class UDPConnImpl implements UDPConn {
   constructor(
     readonly rid: number,
-    readonly addr: Addr,
+    readonly addr: UDPAddr,
     public bufSize: number = 1024,
     private closing: boolean = false
   ) {}
 
-  async receive(p?: Uint8Array): Promise<[Uint8Array, Addr]> {
+  async receive(p?: Uint8Array): Promise<[Uint8Array, UDPAddr]> {
     const buf = p || new Uint8Array(this.bufSize);
     const [size, remoteAddr] = await recvfrom(this.rid, buf);
     const sub = buf.subarray(0, size);
@@ -186,7 +190,7 @@ export class UDPConnImpl implements UDPConn {
     close(this.rid);
   }
 
-  async next(): Promise<IteratorResult<[Uint8Array, Addr]>> {
+  async next(): Promise<IteratorResult<[Uint8Array, UDPAddr]>> {
     if (this.closing) {
       return { value: undefined, done: true };
     }
@@ -203,16 +207,16 @@ export class UDPConnImpl implements UDPConn {
       });
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]> {
+  [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, UDPAddr]> {
     return this;
   }
 }
 
-export interface Conn extends Reader, Writer, Closer {
+export interface Conn<T> extends Reader, Writer, Closer {
   /** The local address of the connection. */
-  localAddr: Addr;
+  localAddr: T;
   /** The remote address of the connection. */
-  remoteAddr: Addr;
+  remoteAddr: T;
   /** The resource ID of the connection. */
   rid: number;
   /** Shuts down (`shutdown(2)`) the reading side of the TCP connection. Most
@@ -228,7 +232,7 @@ export interface Conn extends Reader, Writer, Closer {
 export interface ListenOptions {
   port: number;
   hostname?: string;
-  transport?: Transport;
+  transport: Transport;
 }
 
 export interface UnixListenOptions {
@@ -257,14 +261,14 @@ const listenDefaults = { hostname: "0.0.0.0", transport: "tcp" };
  */
 export function listen(
   options: ListenOptions & { transport?: "tcp" }
-): Listener;
+): Listener<TCPAddr>;
 export function listen(options: ListenOptions & { transport: "udp" }): UDPConn;
 export function listen(
   options: UnixListenOptions & { transport: "unix" }
-): Listener;
+): Listener<UnixAddr>;
 export function listen(
   options: ListenOptions | UnixListenOptions
-): Listener | UDPConn {
+): Listener<TCPAddr | UnixAddr> | UDPConn {
   const args = { ...listenDefaults, ...options };
   const res = sendSync("op_listen", args);
 
@@ -282,9 +286,8 @@ export interface ConnectOptions {
   hostname?: string;
   transport?: Transport;
 }
-
 export interface UnixConnectOptions {
-  transport?: Transport;
+  transport: Transport;
   address: string;
 }
 
@@ -308,11 +311,14 @@ const connectDefaults = { hostname: "127.0.0.1", transport: "tcp" };
  *     connect({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
 export async function connect(
+  options: ConnectOptions & { transport?: "tcp" }
+): Promise<Conn<TCPAddr>>;
+export async function connect(
   options: UnixConnectOptions & { transport: "unix" }
-): Promise<Conn>;
+): Promise<Conn<UnixAddr>>;
 export async function connect(
   options: ConnectOptions | UnixConnectOptions
-): Promise<Conn> {
+): Promise<Conn<TCPAddr | UnixAddr>> {
   options = Object.assign(connectDefaults, options);
   const res = await sendAsync("op_connect", options);
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);

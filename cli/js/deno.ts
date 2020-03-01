@@ -75,7 +75,7 @@ export {
 export { metrics, Metrics } from "./metrics.ts";
 export { mkdirSync, mkdir } from "./mkdir.ts";
 export {
-  Addr,
+  TCPAddr,
   connect,
   listen,
   recvfrom,

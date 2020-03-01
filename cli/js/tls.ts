@@ -1,6 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendAsync, sendSync } from "./dispatch_json.ts";
-import { Listener, Transport, Conn, ConnImpl, ListenerImpl } from "./net.ts";
+import {
+  Listener,
+  Transport,
+  Conn,
+  ConnImpl,
+  ListenerImpl,
+  TCPAddr
+} from "./net.ts";
 
 // TODO(ry) There are many configuration options to add...
 // https://docs.rs/rustls/0.16.0/rustls/struct.ClientConfig.html
@@ -15,14 +22,16 @@ const connectTLSDefaults = { hostname: "127.0.0.1", transport: "tcp" };
 /**
  * Establishes a secure connection over TLS (transport layer security).
  */
-export async function connectTLS(options: ConnectTLSOptions): Promise<Conn> {
+export async function connectTLS(
+  options: ConnectTLSOptions
+): Promise<Conn<TCPAddr>> {
   options = Object.assign(connectTLSDefaults, options);
   const res = await sendAsync("op_connect_tls", options);
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
 
 class TLSListenerImpl extends ListenerImpl {
-  async accept(): Promise<Conn> {
+  async accept(): Promise<Conn<TCPAddr>> {
     const res = await sendAsync("op_accept_tls", { rid: this.rid });
     return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
   }
@@ -49,7 +58,7 @@ export interface ListenTLSOptions {
  *
  *     Deno.listenTLS({ port: 443, certFile: "./my_server.crt", keyFile: "./my_server.key" })
  */
-export function listenTLS(options: ListenTLSOptions): Listener {
+export function listenTLS(options: ListenTLSOptions): Listener<TCPAddr> {
   const hostname = options.hostname || "0.0.0.0";
   const transport = options.transport || "tcp";
   const res = sendSync("op_listen_tls", {
