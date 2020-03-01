@@ -92,3 +92,18 @@ pub fn bold(s: String) -> impl fmt::Display {
   style_spec.set_bold(true);
   style(&s, style_spec)
 }
+
+pub fn gray(s: String) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_fg(Some(Ansi256(8)));
+  style(&s, style_spec)
+}
+
+pub fn italic_bold_gray(s: String) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec
+    .set_fg(Some(Ansi256(8)))
+    .set_bold(true)
+    .set_italic(true);
+  style(&s, style_spec)
+}
