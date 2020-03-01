@@ -520,10 +520,8 @@ declare namespace Deno {
 
   /** Seek a file ID to the given offset under mode given by `whence`.
    *
-   *      (async () => {
-   *        const file = await Deno.open("/foo/bar.txt");
-   *        await Deno.seek(file.rid, 0, 0);
-   *      })();
+   *      const file = await Deno.open("/foo/bar.txt");
+   *      await Deno.seek(file.rid, 0, 0);
    */
   export function seek(
     rid: number,

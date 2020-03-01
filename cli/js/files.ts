@@ -225,10 +225,8 @@ export function seekSync(rid: number, offset: number, whence: SeekMode): void {
 
 /** Seek a file ID to the given offset under mode given by `whence`.
  *
- *      (async () => {
- *        const file = await Deno.open("/foo/bar.txt");
- *        await Deno.seek(file.rid, 0, 0);
- *      })();
+ *      const file = await Deno.open("/foo/bar.txt");
+ *      await Deno.seek(file.rid, 0, 0);
  */
 export async function seek(
   rid: number,

@@ -134,12 +134,6 @@ fn op_chown(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_chown {}", path.display());
-    /*
-    match deno_fs::chown(args.path.as_ref(), args.uid, args.gid) {
-      Ok(_) => Ok(json!({})),
-      Err(e) => Err(OpError::from(e)),
-    }
-    */
     deno_fs::chown(args.path.as_ref(), args.uid, args.gid)?;
     Ok(json!({}))
   })
