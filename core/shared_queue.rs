@@ -176,7 +176,6 @@ impl SharedQueue {
     let off = self.head();
     assert_eq!(off % 4, 0);
     let end = off + record.len();
-    let len_modulo = record.len() % 4;
     let aligned_end = (end + 3) & !3;
     debug!(
       "rust:shared_queue:pre-push: op={}, off={}, end={}, len={}, aligned_end={}",
