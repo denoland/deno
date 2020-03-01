@@ -93,6 +93,7 @@ export {
   execPath,
   hostname,
   loadavg,
+  OsPriority,
   getPriority,
   setPriority,
   osRelease
