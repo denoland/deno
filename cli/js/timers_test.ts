@@ -1,5 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEquals, assertNotEquals } from "./test_util.ts";
+import {
+  test,
+  createResolvable,
+  assert,
+  assertEquals,
+  assertNotEquals
+} from "./test_util.ts";
 
 function deferred(): {
   promise: Promise<{}>;
@@ -178,8 +184,6 @@ test(async function timeoutCallbackThis(): Promise<void> {
 });
 
 test(async function timeoutBindThis(): Promise<void> {
-  function noop(): void {}
-
   const thisCheckPassed = [null, undefined, window, globalThis];
 
   const thisCheckFailed = [
@@ -194,41 +198,37 @@ test(async function timeoutBindThis(): Promise<void> {
     Object.prototype
   ];
 
-  thisCheckPassed.forEach(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (thisArg: any): void => {
-      let hasThrown = 0;
-      try {
-        setTimeout.call(thisArg, noop, 1);
-        hasThrown = 1;
-      } catch (err) {
-        if (err instanceof TypeError) {
-          hasThrown = 2;
-        } else {
-          hasThrown = 3;
-        }
+  for (const thisArg of thisCheckPassed) {
+    const resolvable = createResolvable();
+    let hasThrown = 0;
+    try {
+      setTimeout.call(thisArg, () => resolvable.resolve(), 1);
+      hasThrown = 1;
+    } catch (err) {
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
       }
-      assertEquals(hasThrown, 1);
     }
-  );
+    await resolvable;
+    assertEquals(hasThrown, 1);
+  }
 
-  thisCheckFailed.forEach(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (thisArg: any): void => {
-      let hasThrown = 0;
-      try {
-        setTimeout.call(thisArg, noop, 1);
-        hasThrown = 1;
-      } catch (err) {
-        if (err instanceof TypeError) {
-          hasThrown = 2;
-        } else {
-          hasThrown = 3;
-        }
+  for (const thisArg of thisCheckFailed) {
+    let hasThrown = 0;
+    try {
+      setTimeout.call(thisArg, () => {}, 1);
+      hasThrown = 1;
+    } catch (err) {
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
       }
-      assertEquals(hasThrown, 2);
     }
-  );
+    assertEquals(hasThrown, 2);
+  }
 });
 
 test(async function clearTimeoutShouldConvertToNumber(): Promise<void> {
