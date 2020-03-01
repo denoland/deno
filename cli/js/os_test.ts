@@ -116,9 +116,55 @@ test(function osPid(): void {
   assert(Deno.pid > 0);
 });
 
-test(function testGetPriority(): void {
-  const priority = Deno.getPriority();
-  console.log("priority", priority);
+test({
+  name: "getPriority(): should get current process priority if no params",
+  fn() {
+    const priority = Deno.getPriority();
+    assert(Deno.OsPriority.HIGHEST <= priority);
+    assert(priority <= Deno.OsPriority.LOW);
+  }
+});
+
+if (Deno.build.os === "win")
+  test({
+    name: "setPriority(): should set current process priority to high",
+    fn() {
+      Deno.setPriority(Deno.OsPriority.HIGH);
+      assertEquals(Deno.getPriority(), Deno.OsPriority.HIGH);
+    }
+  });
+
+if (Deno.build.os === "win")
+  test({
+    name: "setPriority(): should set current process priority to above normal",
+    fn() {
+      Deno.setPriority(Deno.OsPriority.ABOVE_NORMAL);
+      assertEquals(Deno.getPriority(), Deno.OsPriority.ABOVE_NORMAL);
+    }
+  });
+
+test({
+  name: "setPriority(): should set current process priority to normal",
+  fn() {
+    Deno.setPriority(Deno.OsPriority.NORMAL);
+    assertEquals(Deno.getPriority(), Deno.OsPriority.NORMAL);
+  }
+});
+
+test({
+  name: "setPriority(): should set current process priority to below normal",
+  fn() {
+    Deno.setPriority(Deno.OsPriority.BELOW_NORMAL);
+    assertEquals(Deno.getPriority(), Deno.OsPriority.BELOW_NORMAL);
+  }
+});
+
+test({
+  name: "setPriority(): should set current process priority to low",
+  fn() {
+    Deno.setPriority(Deno.OsPriority.LOW);
+    assertEquals(Deno.getPriority(), Deno.OsPriority.LOW);
+  }
 });
 
 testPerm({ env: true }, function getDir(): void {

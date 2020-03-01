@@ -47,7 +47,9 @@ test({
 test({
   name: "getPriority(): should get current process priority if no params",
   fn() {
-    os.getPriority();
+    const priority = os.getPriority();
+    assert(os.constants.priority.PRIORITY_HIGHEST <= priority);
+    assert(priority <= os.constants.priority.PRIORITY_LOW);
   }
 });
 

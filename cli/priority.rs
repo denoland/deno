@@ -141,7 +141,7 @@ mod tests {
 
   /// this test makes multiple tests at once
   /// because we need to set them in order and rust
-  /// does not garanty test order execution
+  /// does not garantee test order execution
   #[test]
   fn test_set_current_process_priority_from_normal_to_low() {
     set_priority(0, PRIORITY_NORMAL).expect("Should set priority");

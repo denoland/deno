@@ -100,13 +100,6 @@ totalmem[Symbol.toPrimitive] = (): number => totalmem();
 type[Symbol.toPrimitive] = (): string => type();
 uptime[Symbol.toPrimitive] = (): number => uptime();
 
-const PRIORITY_LOW = 19;
-const PRIORITY_BELOW_NORMAL = 10;
-const PRIORITY_NORMAL = 0;
-const PRIORITY_ABOVE_NORMAL = -7;
-const PRIORITY_HIGH = -14;
-const PRIORITY_HIGHEST = -20;
-
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {
   return Deno.build.arch;
@@ -135,7 +128,10 @@ export function freemem(): number {
   notImplemented(SEE_GITHUB_ISSUE);
 }
 
-/** Get process priority */
+/**
+ * Returns the scheduling priority for the process specified by pid.
+ * If pid is not provided or is 0, the priority of the current process is returned.
+ */
 export function getPriority(pid = 0): number {
   validateIntegerRange(pid, "pid");
   return Deno.getPriority(pid);
@@ -173,7 +169,17 @@ export function release(): string {
   return Deno.osRelease();
 }
 
-/** Set process priority */
+/**
+ * Attempts to set the scheduling priority for the process specified by pid.
+ * If pid is not provided or is 0, the process ID of the current process is used.
+ * The priority input must be an integer between -20 (high priority) and 19 (low priority).
+ * Due to differences between Unix priority levels and Windows priority classes,
+ * priority is mapped to one of six priority constants in os.constants.priority.
+ * When retrieving a process priority level, this range mapping may cause the return value to be slightly different on Windows.
+ * To avoid confusion, set priority to one of the priority constants.
+ * On Windows, setting priority to PRIORITY_HIGHEST requires elevated user privileges.
+ * Otherwise the set priority will be silently reduced to PRIORITY_HIGH.
+ */
 export function setPriority(pid: number, priority?: number): void {
   /* The node API has the 'pid' as the first parameter and as optional.
        This makes for a problematic implementation in Typescript. */
@@ -182,7 +188,12 @@ export function setPriority(pid: number, priority?: number): void {
     pid = 0;
   }
   validateIntegerRange(pid, "pid");
-  validateIntegerRange(priority, "priority", PRIORITY_HIGHEST, PRIORITY_LOW);
+  validateIntegerRange(
+    priority,
+    "priority",
+    Deno.OsPriority.HIGHEST,
+    Deno.OsPriority.LOW
+  );
   Deno.setPriority(priority, pid);
 }
 
@@ -225,12 +236,12 @@ export const constants = {
   signals: Deno.Signal,
   priority: {
     // see https://nodejs.org/docs/latest-v12.x/api/os.html#os_priority_constants
-    PRIORITY_LOW,
-    PRIORITY_BELOW_NORMAL,
-    PRIORITY_NORMAL,
-    PRIORITY_ABOVE_NORMAL,
-    PRIORITY_HIGH,
-    PRIORITY_HIGHEST
+    PRIORITY_LOW: Deno.OsPriority.LOW,
+    PRIORITY_BELOW_NORMAL: Deno.OsPriority.BELOW_NORMAL,
+    PRIORITY_NORMAL: Deno.OsPriority.NORMAL,
+    PRIORITY_ABOVE_NORMAL: Deno.OsPriority.ABOVE_NORMAL,
+    PRIORITY_HIGH: Deno.OsPriority.HIGH,
+    PRIORITY_HIGHEST: Deno.OsPriority.HIGHEST
   }
 };
 

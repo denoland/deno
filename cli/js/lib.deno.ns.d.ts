@@ -71,11 +71,37 @@ declare namespace Deno {
   /** Exit the Deno process with optional exit code. */
   export function exit(code?: number): never;
 
-  /** Get process priority */
+  /** **UNSTABLE**: Might not use all-caps. */
+  export enum OsPriority {
+    LOW = 19,
+    BELOW_NORMAL = 10,
+    NORMAL = 0,
+    ABOVE_NORMAL = -7,
+    HIGH = -14,
+    HIGHEST = -20
+  }
+
+  /**
+   * Returns the scheduling priority for the process specified by pid.
+   * If pid is not provided or is 0, the priority of the current process is returned.
+   */
   export function getPriority(pid?: number): number;
 
-  /** Set process priority */
-  export function setPriority(priority: number, pid?: number): void;
+  /**
+   * Attempts to set the scheduling priority for the process specified by pid.
+   * If pid is not provided or is 0, the process ID of the current process is used.
+   * The priority input must be an integer between -20 (high priority) and 19 (low priority).
+   * Due to differences between Unix priority levels and Windows priority classes,
+   * priority is mapped to one of six priority constants in os.constants.priority.
+   * When retrieving a process priority level, this range mapping may cause the return value to be slightly different on Windows.
+   * To avoid confusion, set priority to one of the priority constants.
+   * On Windows, setting priority to PRIORITY_HIGHEST requires elevated user privileges.
+   * Otherwise the set priority will be silently reduced to PRIORITY_HIGH.
+   */
+  export function setPriority(
+    priority: number | OsPriority,
+    pid?: number
+  ): void;
 
   /** Returns a snapshot of the environment variables at invocation. Mutating a
    * property in the object will set that variable in the environment for the
