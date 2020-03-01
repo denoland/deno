@@ -154,7 +154,6 @@ impl SharedQueue {
 
     let off = self.get_offset(i).unwrap();
     let (op_id, end) = self.get_meta(i).unwrap();
-    println!("off {} end {}", off, end);
     if self.size() > 1 {
       let u32_slice = self.as_u32_slice_mut();
       u32_slice[INDEX_NUM_SHIFTED_OFF] += 1;
