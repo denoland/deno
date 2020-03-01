@@ -23,11 +23,11 @@ fn format_source_name(
   script_name: String,
   line: i64,
   column: i64,
-  is_raw: bool,
+  is_internal: bool,
 ) -> String {
   let line = line + 1;
   let column = column + 1;
-  if is_raw {
+  if is_internal {
     format!("{}:{}:{}", script_name, line, column)
   } else {
     let script_name_c = colors::cyan(script_name);
