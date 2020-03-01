@@ -633,7 +633,7 @@ pub fn module_resolve_callback<'s>(
 
   let deno_isolate: &mut EsIsolate =
     unsafe { &mut *(scope.isolate().get_data(1) as *mut EsIsolate) };
-
+  
   let referrer_id = referrer.get_identity_hash();
   let referrer_name = deno_isolate
     .modules
@@ -644,6 +644,7 @@ pub fn module_resolve_callback<'s>(
   let len_ = referrer.get_module_requests_length();
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
+  eprintln!("module resolve cb {} {}", specifier_str, referrer_name);
 
   for i in 0..len_ {
     let req = referrer.get_module_request(i);

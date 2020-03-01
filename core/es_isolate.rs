@@ -294,7 +294,7 @@ impl EsIsolate {
     id: DynImportId,
   ) {
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
-
+    eprintln!("dyn import cb {} {} {}", id, specifier, referrer);
     let load = RecursiveModuleLoad::dynamic_import(
       id,
       specifier,
@@ -397,6 +397,7 @@ impl EsIsolate {
                 // A module (not necessarily the one dynamically imported) has been
                 // fetched. Create and register it, and if successful, poll for the
                 // next recursive-load event related to this dynamic import.
+                eprintln!("register dyn import {}", dyn_import_id);
                 match self.register_during_load(info, &mut load) {
                   Ok(()) => {
                     // Keep importing until it's fully drained
@@ -437,6 +438,7 @@ impl EsIsolate {
       module_url_specified,
       module_url_found,
     } = info;
+    eprintln!("register during load {}", module_url_specified);
 
     let is_main =
       load.state == LoadState::LoadingRoot && !load.is_dynamic_import();

@@ -135,6 +135,7 @@ impl RecursiveModuleLoad {
 
       _ => unreachable!(),
     };
+    eprintln!("add_root {:?} {}", self.dyn_import_id, module_specifier);
 
     let load_fut = match &self.state {
       LoadState::ResolveMain(_, Some(code)) => {
@@ -162,6 +163,7 @@ impl RecursiveModuleLoad {
     specifier: ModuleSpecifier,
     referrer: ModuleSpecifier,
   ) {
+    eprintln!("add import id {:?} spec {} referrer {}", self.dyn_import_id, specifier, referrer);
     if !self.is_pending.contains(&specifier) {
       let fut =
         self
