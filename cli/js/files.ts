@@ -209,8 +209,12 @@ export async function write(rid: number, p: Uint8Array): Promise<number> {
  *       const file = Deno.openSync("/foo/bar.txt");
  *       Deno.seekSync(file.rid, 0, 0);
  */
-export function seekSync(rid: number, offset: number, whence: SeekMode): void {
-  sendSyncJson("op_seek", { rid, offset, whence });
+export function seekSync(
+  rid: number,
+  offset: number,
+  whence: SeekMode
+): number {
+  return sendSyncJson("op_seek", { rid, offset, whence });
 }
 
 /** Seek a file ID to the given offset under mode given by `whence`.
@@ -222,8 +226,8 @@ export async function seek(
   rid: number,
   offset: number,
   whence: SeekMode
-): Promise<void> {
-  await sendAsyncJson("op_seek", { rid, offset, whence });
+): Promise<number> {
+  return await sendAsyncJson("op_seek", { rid, offset, whence });
 }
 
 /** Close the file ID. */
@@ -259,11 +263,11 @@ export class File
     return readSync(this.rid, p);
   }
 
-  seek(offset: number, whence: SeekMode): Promise<void> {
+  seek(offset: number, whence: SeekMode): Promise<number> {
     return seek(this.rid, offset, whence);
   }
 
-  seekSync(offset: number, whence: SeekMode): void {
+  seekSync(offset: number, whence: SeekMode): number {
     return seekSync(this.rid, offset, whence);
   }
 
