@@ -45,6 +45,58 @@ test({
 });
 
 test({
+  name: "getPriority(): should get current process priority if no params",
+  fn() {
+    os.getPriority();
+  }
+});
+
+if (os.platform() === "win32")
+  test({
+    name: "setPriority(): should set current process priority to high",
+    fn() {
+      os.setPriority(os.constants.priority.PRIORITY_HIGH);
+      assertEquals(os.getPriority(), os.constants.priority.PRIORITY_HIGH);
+    }
+  });
+
+if (os.platform() === "win32")
+  test({
+    name: "setPriority(): should set current process priority to above normal",
+    fn() {
+      os.setPriority(os.constants.priority.PRIORITY_ABOVE_NORMAL);
+      assertEquals(
+        os.getPriority(),
+        os.constants.priority.PRIORITY_ABOVE_NORMAL
+      );
+    }
+  });
+
+test({
+  name: "setPriority(): should set current process priority to normal",
+  fn() {
+    os.setPriority(os.constants.priority.PRIORITY_NORMAL);
+    assertEquals(os.getPriority(), os.constants.priority.PRIORITY_NORMAL);
+  }
+});
+
+test({
+  name: "setPriority(): should set current process priority to below normal",
+  fn() {
+    os.setPriority(os.constants.priority.PRIORITY_BELOW_NORMAL);
+    assertEquals(os.getPriority(), os.constants.priority.PRIORITY_BELOW_NORMAL);
+  }
+});
+
+test({
+  name: "setPriority(): should set current process priority to low",
+  fn() {
+    os.setPriority(os.constants.priority.PRIORITY_LOW);
+    assertEquals(os.getPriority(), os.constants.priority.PRIORITY_LOW);
+  }
+});
+
+test({
   name: "getPriority(): PID must be a 32 bit integer",
   fn() {
     assertThrows(
@@ -218,21 +270,7 @@ test({
     );
     assertThrows(
       () => {
-        os.getPriority();
-      },
-      Error,
-      "Not implemented"
-    );
-    assertThrows(
-      () => {
         os.networkInterfaces();
-      },
-      Error,
-      "Not implemented"
-    );
-    assertThrows(
-      () => {
-        os.setPriority(0);
       },
       Error,
       "Not implemented"

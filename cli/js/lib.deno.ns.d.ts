@@ -71,6 +71,12 @@ declare namespace Deno {
   /** Exit the Deno process with optional exit code. */
   export function exit(code?: number): never;
 
+  /** Get process priority */
+  export function getPriority(pid?: number): number;
+
+  /** Set process priority */
+  export function setPriority(priority: number, pid?: number): void;
+
   /** Returns a snapshot of the environment variables at invocation. Mutating a
    * property in the object will set that variable in the environment for the
    * process. The environment object will only accept `string`s as values.

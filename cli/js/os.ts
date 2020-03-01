@@ -36,6 +36,16 @@ export function exit(code = 0): never {
   return util.unreachable();
 }
 
+/** Get process priority */
+export function getPriority(pid = 0): number {
+  return sendSync("op_get_priority", { pid });
+}
+
+/** Set process priority */
+export function setPriority(priority: number, pid = 0): void {
+  sendSync("op_set_priority", { pid, priority });
+}
+
 function setEnv(key: string, value: string): void {
   sendSync("op_set_env", { key, value });
 }

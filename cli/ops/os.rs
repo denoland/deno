@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::op_error::OpError;
+use crate::priority::{get_priority, set_priority};
 use crate::state::State;
 use deno_core::*;
 use std::collections::HashMap;
@@ -19,6 +20,8 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_hostname", s.stateful_json_op(op_hostname));
   i.register_op("op_loadavg", s.stateful_json_op(op_loadavg));
   i.register_op("op_os_release", s.stateful_json_op(op_os_release));
+  i.register_op("op_get_priority", s.stateful_json_op(op_get_priority));
+  i.register_op("op_set_priority", s.stateful_json_op(op_set_priority));
 }
 
 #[derive(Deserialize)]
@@ -184,4 +187,35 @@ fn op_os_release(
   state.check_env()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(JsonOp::Sync(json!(release)))
+}
+
+#[derive(Deserialize)]
+struct GetPriorityArgs {
+  pid: u32,
+}
+
+fn op_get_priority(
+  _state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  let args: GetPriorityArgs = serde_json::from_value(args)?;
+  let priority = get_priority(args.pid)?;
+  Ok(JsonOp::Sync(json!(priority)))
+}
+
+#[derive(Deserialize)]
+struct SetPriorityArgs {
+  pid: u32,
+  priority: i32,
+}
+
+fn op_set_priority(
+  _state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  let args: SetPriorityArgs = serde_json::from_value(args)?;
+  set_priority(args.pid, args.priority)?;
+  Ok(JsonOp::Sync(json!({})))
 }

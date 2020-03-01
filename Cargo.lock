@@ -443,6 +443,7 @@ dependencies = [
  "dirs",
  "dlopen",
  "dprint-plugin-typescript",
+ "errno",
  "futures 0.3.4",
  "fwdansi",
  "glob",

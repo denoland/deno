@@ -43,6 +43,7 @@ pub mod msg;
 pub mod op_error;
 pub mod ops;
 pub mod permissions;
+pub mod priority;
 mod repl;
 pub mod resolve_addr;
 pub mod signal;

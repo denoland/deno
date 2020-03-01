@@ -93,6 +93,8 @@ export {
   execPath,
   hostname,
   loadavg,
+  getPriority,
+  setPriority,
   osRelease
 } from "./os.ts";
 export {

@@ -116,6 +116,11 @@ test(function osPid(): void {
   assert(Deno.pid > 0);
 });
 
+test(function testGetPriority(): void {
+  const priority = Deno.getPriority();
+  console.log("priority", priority);
+});
+
 testPerm({ env: true }, function getDir(): void {
   type supportOS = "mac" | "win" | "linux";
 

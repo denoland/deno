@@ -100,6 +100,13 @@ totalmem[Symbol.toPrimitive] = (): number => totalmem();
 type[Symbol.toPrimitive] = (): string => type();
 uptime[Symbol.toPrimitive] = (): number => uptime();
 
+const PRIORITY_LOW = 19;
+const PRIORITY_BELOW_NORMAL = 10;
+const PRIORITY_NORMAL = 0;
+const PRIORITY_ABOVE_NORMAL = -7;
+const PRIORITY_HIGH = -14;
+const PRIORITY_HIGHEST = -20;
+
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {
   return Deno.build.arch;
@@ -128,10 +135,10 @@ export function freemem(): number {
   notImplemented(SEE_GITHUB_ISSUE);
 }
 
-/** Not yet implemented */
+/** Get process priority */
 export function getPriority(pid = 0): number {
   validateIntegerRange(pid, "pid");
-  notImplemented(SEE_GITHUB_ISSUE);
+  return Deno.getPriority(pid);
 }
 
 /** Returns the string path of the current user's home directory. */
@@ -166,7 +173,7 @@ export function release(): string {
   return Deno.osRelease();
 }
 
-/** Not yet implemented */
+/** Set process priority */
 export function setPriority(pid: number, priority?: number): void {
   /* The node API has the 'pid' as the first parameter and as optional.
        This makes for a problematic implementation in Typescript. */
@@ -175,9 +182,8 @@ export function setPriority(pid: number, priority?: number): void {
     pid = 0;
   }
   validateIntegerRange(pid, "pid");
-  validateIntegerRange(priority, "priority", -20, 19);
-
-  notImplemented(SEE_GITHUB_ISSUE);
+  validateIntegerRange(priority, "priority", PRIORITY_HIGHEST, PRIORITY_LOW);
+  Deno.setPriority(priority, pid);
 }
 
 /** Returns the operating system's default directory for temporary files as a string. */
@@ -219,6 +225,12 @@ export const constants = {
   signals: Deno.Signal,
   priority: {
     // see https://nodejs.org/docs/latest-v12.x/api/os.html#os_priority_constants
+    PRIORITY_LOW,
+    PRIORITY_BELOW_NORMAL,
+    PRIORITY_NORMAL,
+    PRIORITY_ABOVE_NORMAL,
+    PRIORITY_HIGH,
+    PRIORITY_HIGHEST
   }
 };
 
