@@ -616,7 +616,7 @@ fn op_utime(
   state.check_write(Path::new(&args.filename))?;
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_utimes {} {} {}", args.filename, args.atime, args.mtime);
+    debug!("op_utime {} {} {}", args.filename, args.atime, args.mtime);
     utime::set_file_times(args.filename, args.atime, args.mtime)?;
     Ok(json!({}))
   })
