@@ -120,7 +120,7 @@ SharedQueue Binary Layout
         if (prevModulo === 0) {
           return prevEnd;
         } else {
-          return prevEnd + (4 - prevModulo);
+          return (prevEnd + 3) & ~3;
         }
       }
     } else {
