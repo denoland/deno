@@ -135,12 +135,7 @@ impl SharedQueue {
       } else {
         let s = self.as_u32_slice();
         let prev_end = s[INDEX_OFFSETS + 2 * (index - 1)] as usize;
-        let prev_modulo = prev_end % 4;
-        if prev_modulo == 0 {
-          prev_end
-        } else {
-          (prev_end + 3) & !3
-        }
+        (prev_end + 3) & !3
       })
     } else {
       None
@@ -182,7 +177,7 @@ impl SharedQueue {
     assert_eq!(off % 4, 0);
     let end = off + record.len();
     let len_modulo = record.len() % 4;
-    let aligned_end = if len_modulo == 0 { end } else { (end + 3) & !3 };
+    let aligned_end = (end + 3) & !3;
     debug!(
       "rust:shared_queue:pre-push: op={}, off={}, end={}, len={}, aligned_end={}",
       op_id,

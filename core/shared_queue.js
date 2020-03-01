@@ -116,12 +116,7 @@ SharedQueue Binary Layout
         return HEAD_INIT;
       } else {
         const prevEnd = shared32[INDEX_OFFSETS + 2 * (index - 1)];
-        const prevModulo = prevEnd % 4;
-        if (prevModulo === 0) {
-          return prevEnd;
-        } else {
-          return (prevEnd + 3) & ~3;
-        }
+        return (prevEnd + 3) & ~3;
       }
     } else {
       return null;
