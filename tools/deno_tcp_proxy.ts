@@ -7,7 +7,7 @@ const [originHostname, originPort] = originAddr.split(":");
 
 const listener = Deno.listen({ hostname, port: Number(port) });
 
-async function handle(conn: Deno.Conn): Promise<void> {
+async function handle(conn: Deno.Conn<Deno.TCPAddr>): Promise<void> {
   const origin = await Deno.connect({
     hostname: originHostname,
     port: Number(originPort)

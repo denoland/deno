@@ -123,7 +123,7 @@ export class ServerRequest {
   }
 }
 
-export class Server<TCPAddr> implements AsyncIterable<ServerRequest> {
+export class Server implements AsyncIterable<ServerRequest> {
   private closing = false;
 
   constructor(public listener: Listener<TCPAddr>) {}
