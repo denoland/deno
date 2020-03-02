@@ -27,7 +27,7 @@ testPerm(
   { read: true, write: true },
   async function netUnixListenClose(): Promise<void> {
     if (Deno.build.os === "win") return; // TODO
-    let filePath = await Deno.makeTempFile();
+    const filePath = await Deno.makeTempFile();
     const socket = Deno.listen({
       address: filePath,
       transport: "unix"
