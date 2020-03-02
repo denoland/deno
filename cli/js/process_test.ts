@@ -2,6 +2,7 @@
 import {
   test,
   testPerm,
+  unitTest2,
   assert,
   assertEquals,
   assertStrContains
@@ -44,21 +45,23 @@ testPerm({ run: true }, async function runCommandFailedWithCode(): Promise<
   p.close();
 });
 
-testPerm({ run: true }, async function runCommandFailedWithSignal(): Promise<
-  void
-> {
-  if (Deno.build.os === "win") {
-    return; // No signals on windows.
+unitTest2(
+  {
+    // No signals on windows.
+    skip: Deno.build.os === "win",
+    perms: { run: true }
+  },
+  async function runCommandFailedWithSignal(): Promise<void> {
+    const p = run({
+      args: ["python", "-c", "import os;os.kill(os.getpid(), 9)"]
+    });
+    const status = await p.status();
+    assertEquals(status.success, false);
+    assertEquals(status.code, undefined);
+    assertEquals(status.signal, 9);
+    p.close();
   }
-  const p = run({
-    args: ["python", "-c", "import os;os.kill(os.getpid(), 9)"]
-  });
-  const status = await p.status();
-  assertEquals(status.success, false);
-  assertEquals(status.code, undefined);
-  assertEquals(status.signal, 9);
-  p.close();
-});
+);
 
 testPerm({ run: true }, function runNotFound(): void {
   let error;

@@ -2,6 +2,7 @@
 import {
   test,
   testPerm,
+  unitTest2,
   assert,
   assertEquals,
   assertThrows
@@ -13,8 +14,9 @@ function defer(n: number): Promise<void> {
   });
 }
 
-if (Deno.build.os === "win") {
-  test(async function signalsNotImplemented(): Promise<void> {
+unitTest2(
+  { skip: Deno.build.os !== "win" },
+  async function signalsNotImplemented(): Promise<void> {
     assertThrows(
       () => {
         Deno.signal(1);
@@ -99,11 +101,12 @@ if (Deno.build.os === "win") {
       Error,
       "not implemented"
     );
-  });
-} else {
-  testPerm({ run: true, net: true }, async function signalStreamTest(): Promise<
-    void
-  > {
+  }
+);
+
+unitTest2(
+  { skip: Deno.build.os === "win", perms: { run: true, net: true } },
+  async function signalStreamTest(): Promise<void> {
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);
 
@@ -127,26 +130,29 @@ if (Deno.build.os === "win") {
     assertEquals(c, 3);
 
     clearTimeout(t);
-  });
+  }
+);
 
-  testPerm(
-    { run: true, net: true },
-    async function signalPromiseTest(): Promise<void> {
-      // This prevents the program from exiting.
-      const t = setInterval(() => {}, 1000);
+unitTest2(
+  { skip: Deno.build.os === "win", perms: { run: true, net: true } },
+  async function signalPromiseTest(): Promise<void> {
+    // This prevents the program from exiting.
+    const t = setInterval(() => {}, 1000);
 
-      const sig = Deno.signal(Deno.Signal.SIGUSR1);
-      setTimeout(() => {
-        Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
-      }, 20);
-      await sig;
-      sig.dispose();
+    const sig = Deno.signal(Deno.Signal.SIGUSR1);
+    setTimeout(() => {
+      Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
+    }, 20);
+    await sig;
+    sig.dispose();
 
-      clearTimeout(t);
-    }
-  );
+    clearTimeout(t);
+  }
+);
 
-  testPerm({ run: true }, async function signalShorthandsTest(): Promise<void> {
+unitTest2(
+  { skip: Deno.build.os === "win", perms: { run: true } },
+  async function signalShorthandsTest(): Promise<void> {
     let s: Deno.SignalStream;
     s = Deno.signals.alarm(); // for SIGALRM
     assert(s instanceof Deno.SignalStream);
@@ -181,5 +187,5 @@ if (Deno.build.os === "win") {
     s = Deno.signals.windowChange(); // for SIGWINCH
     assert(s instanceof Deno.SignalStream);
     s.dispose();
-  });
-}
+  }
+);

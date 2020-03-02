@@ -164,6 +164,32 @@ export function unitTest(def: CliTest): void {
   Deno.test(def.name, sanitizeResources(def.fn));
 }
 
+interface UnitTestOptions {
+  skip?: boolean;
+  perms?: TestPermissions;
+}
+
+export function unitTest2(
+  optionsOrFn: UnitTestOptions | Deno.TestFunction,
+  fn?: Deno.TestFunction
+): void {
+  const options = typeof optionsOrFn === "function" ? {} : optionsOrFn;
+
+  if (options.skip) {
+    return;
+  }
+
+  const normalizedPerms = normalizeTestPermissions(options.perms || {});
+
+  registerPermCombination(normalizedPerms);
+
+  if (!permissionsMatch(processPerms, normalizedPerms)) {
+    return;
+  }
+
+  Deno.test(fn.name, sanitizeResources(fn));
+}
+
 export function test(fn: Deno.TestFunction): void {
   testPerm({}, fn);
 }

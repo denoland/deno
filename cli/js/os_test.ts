@@ -5,7 +5,8 @@ import {
   assert,
   assertEquals,
   assertNotEquals,
-  assertThrows
+  assertThrows,
+  unitTest2
 } from "./test_util.ts";
 
 testPerm({ env: true }, function envSuccess(): void {
@@ -47,11 +48,12 @@ test(function envPermissionDenied2(): void {
   assertEquals(err.name, "PermissionDenied");
 });
 
-if (Deno.build.os === "win") {
-  // This test verifies that on Windows, environment variables are
-  // case-insensitive. Case normalization needs be done using the collation
-  // that Windows uses, rather than naively using String.toLowerCase().
-  testPerm({ env: true, run: true }, async function envCaseInsensitive() {
+// This test verifies that on Windows, environment variables are
+// case-insensitive. Case normalization needs be done using the collation
+// that Windows uses, rather than naively using String.toLowerCase().
+unitTest2(
+  { skip: Deno.build.os !== "win", perms: { env: true, run: true } },
+  async function envCaseInsensitive() {
     // Utility function that runs a Deno subprocess with the environment
     // specified in `inputEnv`. The subprocess reads the environment variables
     // which are in the keys of `expectedEnv` and writes them to stdout as JSON.
@@ -61,9 +63,9 @@ if (Deno.build.os === "win") {
       expectedEnv: Record<string, string>
     ): Promise<void> => {
       const src = `
-        console.log(
-          ${JSON.stringify(Object.keys(expectedEnv))}.map(k => Deno.env(k))
-        )`;
+      console.log(
+        ${JSON.stringify(Object.keys(expectedEnv))}.map(k => Deno.env(k))
+      )`;
       const proc = Deno.run({
         args: [Deno.execPath(), "eval", src],
         env: inputEnv,
@@ -108,8 +110,8 @@ if (Deno.build.os === "win") {
       { [c2]: "Dz", [uc2]: "DZ" },
       { [c2]: "Dz", [uc2]: "DZ", [lc2]: "DZ" }
     );
-  });
-}
+  }
+);
 
 test(function osPid(): void {
   console.log("pid", Deno.pid);
