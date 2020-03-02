@@ -88,6 +88,7 @@ type DirKind =
   | "picture"
   | "public"
   | "template"
+  | "tmp"
   | "video";
 
 /**
@@ -190,6 +191,14 @@ type DirKind =
  * | Linux   | `XDG_TEMPLATES_DIR`    | /home/alice/Templates                                      |
  * | macOS   | –                      | –                                                          |
  * | Windows | `{FOLDERID_Templates}` | C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Templates |
+ *
+ * "tmp"
+ *
+ * |Platform | Value                  | Example                                                    |
+ * | ------- | ---------------------- | ---------------------------------------------------------- |
+ * | Linux   | `TMPDIR`               | /tmp                                                       |
+ * | macOS   | `TMPDIR`               | /tmp                                                       |
+ * | Windows | `{TMP}`                | C:\Users\Alice\AppData\Local\Temp                          |
  *
  * "video"
  * |Platform | Value               | Example               |

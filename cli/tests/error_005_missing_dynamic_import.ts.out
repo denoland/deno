@@ -1,6 +1,5 @@
 [WILDCARD]error: Uncaught NotFound: Cannot resolve module "[WILDCARD]/bad-module.ts" from "[WILDCARD]/error_005_missing_dynamic_import.ts"
-[WILDCARD]errors.ts:[WILDCARD]
+[WILDCARD]dispatch_json.ts:[WILDCARD]
     at NotFound ([WILDCARD]errors.ts:[WILDCARD])
-    at constructError ([WILDCARD]errors.ts:[WILDCARD])
     at unwrapResponse ([WILDCARD]dispatch_json.ts:[WILDCARD])
     at sendAsync[WILDCARD] ([WILDCARD]dispatch_json.ts:[WILDCARD])

@@ -112,6 +112,8 @@ testPerm({ net: true }, async function netUdpSendReceive(): Promise<void> {
   assertEquals(1, recvd[0]);
   assertEquals(2, recvd[1]);
   assertEquals(3, recvd[2]);
+  alice.close();
+  bob.close();
 });
 
 testPerm(

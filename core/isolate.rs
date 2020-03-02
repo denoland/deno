@@ -164,7 +164,6 @@ pub struct Isolate {
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
   snapshot: Option<SnapshotConfig>,
-  pub(crate) last_exception: Option<String>,
   pub(crate) global_context: v8::Global<v8::Context>,
   pub(crate) shared_ab: v8::Global<v8::SharedArrayBuffer>,
   pub(crate) js_recv_cb: v8::Global<v8::Function>,
@@ -297,7 +296,6 @@ impl Isolate {
 
     let core_isolate = Self {
       v8_isolate: None,
-      last_exception: None,
       global_context,
       pending_promise_exceptions: HashMap::new(),
       shared_ab: v8::Global::<v8::SharedArrayBuffer>::new(),
@@ -335,7 +333,6 @@ impl Isolate {
   pub fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(bindings::promise_reject_callback);
-    isolate.add_message_listener(bindings::message_callback);
     isolate
   }
 
@@ -620,17 +617,6 @@ pub(crate) fn exception_to_err_result<'a, T>(
   exception: v8::Local<v8::Value>,
   js_error_create_fn: &JSErrorCreateFn,
 ) -> Result<T, ErrBox> {
-  let mut last_exception = Option::<String>::None;
-  handle_exception(scope, exception, &mut last_exception);
-  check_last_exception(&mut last_exception, js_error_create_fn)
-    .map(|_| unreachable!())
-}
-
-pub(crate) fn handle_exception<'a>(
-  scope: &mut impl v8::ToLocal<'a>,
-  exception: v8::Local<v8::Value>,
-  last_exception: &mut Option<String>, // Out parameter.
-) {
   // Use a HandleScope because the  functions below create a lot of
   // local handles (in particular, `encode_message_as_json()` does).
   let mut hs = v8::HandleScope::new(scope);
@@ -663,9 +649,11 @@ pub(crate) fn handle_exception<'a>(
   }
 
   let message = v8::Exception::create_message(scope, exception);
-  let json_str = encode_message_as_json(scope, message);
-  let prev_last_exception = last_exception.replace(json_str);
-  assert_eq!(prev_last_exception, None);
+  // TODO(piscisaureus): don't encode the message as json first and then
+  // immediately parse it after.
+  let exception_json_str = encode_message_as_json(scope, message);
+  let v8_exception = V8Exception::from_json(&exception_json_str).unwrap();
+  let js_error = (js_error_create_fn)(v8_exception);
 
   if is_terminating_exception {
     // Re-enable exception termination.
@@ -673,20 +661,8 @@ pub(crate) fn handle_exception<'a>(
     // be implemented on `struct Isolate`.
     scope.isolate().thread_safe_handle().terminate_execution();
   }
-}
 
-pub(crate) fn check_last_exception(
-  last_exception: &mut Option<String>,
-  js_error_create_fn: &JSErrorCreateFn,
-) -> Result<(), ErrBox> {
-  match last_exception.take() {
-    None => Ok(()),
-    Some(json_str) => {
-      let v8_exception = V8Exception::from_json(&json_str).unwrap();
-      let js_error = (js_error_create_fn)(v8_exception);
-      Err(js_error)
-    }
-  }
+  Err(js_error)
 }
 
 fn check_promise_exceptions<'s>(

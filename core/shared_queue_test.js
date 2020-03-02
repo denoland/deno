@@ -28,10 +28,14 @@ function main() {
   const h = q.head();
   assert(h > 0);
 
+  // This record's len is not divisble by
+  // 4 so after pushing it to the queue,
+  // next record offset should be aligned to 4.
   let r = new Uint8Array([1, 2, 3, 4, 5]);
   const len = r.byteLength + h;
   assert(q.push(1, r));
-  assert(q.head() == len);
+  // Record should be aligned to 4 bytes
+  assert(q.head() == len + 3);
 
   r = new Uint8Array([6, 7]);
   assert(q.push(1, r));
