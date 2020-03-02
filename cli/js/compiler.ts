@@ -81,6 +81,13 @@ interface CompileResult {
   diagnostics?: Diagnostic;
 }
 
+type RuntimeCompileResult = [
+  undefined | DiagnosticItem[],
+  Record<string, string>
+];
+
+type RuntimeBundleResult = [undefined | DiagnosticItem[], string];
+
 async function requestCompile(
   request: CompilerRequestCompile
 ): Promise<CompileResult> {
@@ -176,14 +183,9 @@ async function requestCompile(
   return result;
 }
 
-type RuntimeCompileResult = [
-  undefined | DiagnosticItem[],
-  undefined | Record<string, string> | string
-];
-
 async function requestRuntimeCompile(
   request: CompilerRequestRuntimeCompile
-): Promise<RuntimeCompileResult> {
+): Promise<RuntimeCompileResult | RuntimeBundleResult> {
   // `RuntimeCompile` are requests from a runtime user, both compiles and
   // bundles.  The process is similar to a request from the privileged
   // side, but also returns the output to the on message.
@@ -284,12 +286,6 @@ async function requestRuntimeCompile(
   const emitResult = program.emit();
 
   assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
-  const result: RuntimeCompileResult = [
-    diagnostics.length
-      ? fromTypeScriptDiagnostic(diagnostics).items
-      : undefined,
-    bundle ? state.emitBundle : state.emitMap
-  ];
 
   assert(state.emitMap);
   util.log("<<< runtime compile finish", {
@@ -299,7 +295,15 @@ async function requestRuntimeCompile(
     emitMap: Object.keys(state.emitMap)
   });
 
-  return result;
+  const maybeDiagnostics = diagnostics.length
+    ? fromTypeScriptDiagnostic(diagnostics).items
+    : undefined;
+
+  if (bundle) {
+    return [maybeDiagnostics, state.emitBundle] as RuntimeBundleResult;
+  } else {
+    return [maybeDiagnostics, state.emitMap] as RuntimeCompileResult;
+  }
 }
 
 async function requestRuntimeTranspile(
@@ -362,9 +366,7 @@ async function tsCompilerOnMessage({
         } (${CompilerRequestType[(request as CompilerRequest).type]})`
       );
   }
-
-  // The compiler isolate exits after a single message.
-  globalThis.close();
+  // Currently Rust shuts down worker after single request
 }
 
 async function wasmCompilerOnMessage({
@@ -391,8 +393,7 @@ async function wasmCompilerOnMessage({
 
   util.log("<<< WASM compile end");
 
-  // The compiler isolate exits after a single message.
-  globalThis.close();
+  // Currently Rust shuts down worker after single request
 }
 
 function bootstrapTsCompilerRuntime(): void {
