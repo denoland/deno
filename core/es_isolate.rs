@@ -315,19 +315,14 @@ impl EsIsolate {
     let mut resolver = resolver_handle.get(scope).unwrap();
     resolver_handle.reset(scope);
 
-    let exception = match ErrBox::downcast::<ErrWithV8Handle>(err) {
-      Ok(mut err) => {
-        let handle = err.get_handle();
-        let exception = handle.get(scope).unwrap();
-        handle.reset(scope);
-        exception
-      }
-      Err(err) => {
+    let exception = err
+      .downcast_ref::<ErrWithV8Handle>()
+      .and_then(|err| err.get_handle().get(scope))
+      .unwrap_or_else(|| {
         let message = err.to_string();
         let message = v8::String::new(scope, &message).unwrap();
         v8::Exception::type_error(scope, message)
-      }
-    };
+      });
 
     resolver.reject(context, exception).unwrap();
     scope.isolate().run_microtasks();

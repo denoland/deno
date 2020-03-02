@@ -1164,8 +1164,8 @@ impl ErrWithV8Handle {
     Self { err, handle }
   }
 
-  pub fn get_handle(&mut self) -> &mut v8::Global<v8::Value> {
-    &mut self.handle
+  pub fn get_handle(&self) -> &v8::Global<v8::Value> {
+    &self.handle
   }
 }
 
