@@ -3,11 +3,12 @@
 use crate::colors;
 use crate::source_maps::apply_source_map;
 use crate::source_maps::SourceMapGetter;
+use deno_core;
 use deno_core::ErrBox;
-use deno_core::StackFrame;
-use deno_core::V8Exception;
+use deno_core::JSStackFrame;
 use std::error::Error;
 use std::fmt;
+use std::ops::Deref;
 
 /// A trait which specifies parts of a diagnostic like item needs to be able to
 /// generate to conform its display to other diagnostic like items
@@ -21,37 +22,37 @@ pub trait DisplayFormatter {
 
 fn format_source_name(
   script_name: String,
-  line: i64,
+  line_number: i64,
   column: i64,
   is_internal: bool,
 ) -> String {
-  let line = line + 1;
+  let line_number = line_number + 1;
   let column = column + 1;
   if is_internal {
-    format!("{}:{}:{}", script_name, line, column)
+    format!("{}:{}:{}", script_name, line_number, column)
   } else {
     let script_name_c = colors::cyan(script_name);
-    let line_c = colors::yellow(line.to_string());
+    let line_c = colors::yellow(line_number.to_string());
     let column_c = colors::yellow(column.to_string());
     format!("{}:{}:{}", script_name_c, line_c, column_c)
   }
 }
 
-/// Formats optional source, line and column into a single string.
+/// Formats optional source, line number and column into a single string.
 pub fn format_maybe_source_name(
   script_name: Option<String>,
-  line: Option<i64>,
+  line_number: Option<i64>,
   column: Option<i64>,
 ) -> String {
   if script_name.is_none() {
     return "".to_string();
   }
 
-  assert!(line.is_some());
+  assert!(line_number.is_some());
   assert!(column.is_some());
   format_source_name(
     script_name.unwrap(),
-    line.unwrap(),
+    line_number.unwrap(),
     column.unwrap(),
     false,
   )
@@ -80,11 +81,11 @@ pub fn format_maybe_source_line(
 
   assert!(start_column.is_some());
   assert!(end_column.is_some());
-  let line = (1 + line_number.unwrap()).to_string();
-  let line_color = colors::black_on_white(line.to_string());
-  let line_len = line.len();
+  let line_number = (1 + line_number.unwrap()).to_string();
+  let line_color = colors::black_on_white(line_number.to_string());
+  let line_number_len = line_number.len();
   let line_padding =
-    colors::black_on_white(format!("{:indent$}", "", indent = line_len))
+    colors::black_on_white(format!("{:indent$}", "", indent = line_number_len))
       .to_string();
   let mut s = String::new();
   let start_column = start_column.unwrap();
@@ -124,7 +125,7 @@ pub fn format_error_message(msg: String) -> String {
   format!("{} {}", preamble, msg)
 }
 
-fn format_stack_frame(frame: &StackFrame, is_internal_frame: bool) -> String {
+fn format_stack_frame(frame: &JSStackFrame, is_internal_frame: bool) -> String {
   // Note when we print to string, we change from 0-indexed to 1-indexed.
   let function_name = if is_internal_frame {
     colors::italic_bold_gray(frame.function_name.clone()).to_string()
@@ -133,7 +134,7 @@ fn format_stack_frame(frame: &StackFrame, is_internal_frame: bool) -> String {
   };
   let mut source_loc = format_source_name(
     frame.script_name.clone(),
-    frame.line,
+    frame.line_number,
     frame.column,
     is_internal_frame,
   );
@@ -160,37 +161,25 @@ fn format_stack_frame(frame: &StackFrame, is_internal_frame: bool) -> String {
   }
 }
 
-/// Wrapper around V8Exception which provides color to_string.
+/// Wrapper around deno_core::JSError which provides color to_string.
 #[derive(Debug)]
-pub struct JSError(V8Exception);
+pub struct JSError(deno_core::JSError);
 
 impl JSError {
-  pub fn new(v8_exception: V8Exception) -> Self {
-    Self(v8_exception)
-  }
-
-  pub fn from_json(
-    json_str: &str,
+  pub fn create(
+    core_js_error: deno_core::JSError,
     source_map_getter: &impl SourceMapGetter,
   ) -> ErrBox {
-    let unmapped_exception = V8Exception::from_json(json_str).unwrap();
-    Self::from_v8_exception(unmapped_exception, source_map_getter)
-  }
-
-  pub fn from_v8_exception(
-    unmapped_exception: V8Exception,
-    source_map_getter: &impl SourceMapGetter,
-  ) -> ErrBox {
-    let mapped_exception =
-      apply_source_map(&unmapped_exception, source_map_getter);
-    let js_error = Self(mapped_exception);
+    let core_js_error = apply_source_map(&core_js_error, source_map_getter);
+    let js_error = Self(core_js_error);
     ErrBox::from(js_error)
   }
 }
 
-impl Into<V8Exception> for JSError {
-  fn into(self) -> V8Exception {
-    self.0
+impl Deref for JSError {
+  type Target = deno_core::JSError;
+  fn deref(&self) -> &Self::Target {
+    &self.0
   }
 }
 
@@ -264,53 +253,46 @@ mod tests {
   use super::*;
   use crate::colors::strip_ansi_codes;
 
-  fn error1() -> V8Exception {
-    V8Exception {
+  #[test]
+  fn js_error_to_string() {
+    let core_js_error = deno_core::JSError {
       message: "Error: foo bar".to_string(),
       source_line: None,
       script_resource_name: None,
       line_number: None,
-      start_position: None,
-      end_position: None,
-      error_level: None,
       start_column: None,
       end_column: None,
       frames: vec![
-        StackFrame {
-          line: 4,
+        JSStackFrame {
+          line_number: 4,
           column: 16,
           script_name: "foo_bar.ts".to_string(),
           function_name: "foo".to_string(),
           is_eval: false,
           is_constructor: false,
-          is_wasm: false,
         },
-        StackFrame {
-          line: 5,
+        JSStackFrame {
+          line_number: 5,
           column: 20,
           script_name: "bar_baz.ts".to_string(),
           function_name: "qat".to_string(),
           is_eval: false,
           is_constructor: false,
-          is_wasm: false,
         },
-        StackFrame {
-          line: 1,
+        JSStackFrame {
+          line_number: 1,
           column: 1,
           script_name: "deno_main.js".to_string(),
           function_name: "".to_string(),
           is_eval: false,
           is_constructor: false,
-          is_wasm: false,
         },
       ],
-    }
-  }
-
-  #[test]
-  fn js_error_to_string() {
-    let e = error1();
-    assert_eq!("error: Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2", strip_ansi_codes(&JSError(e).to_string()));
+    };
+    let formatted_error = JSError(core_js_error).to_string();
+    let actual = strip_ansi_codes(&formatted_error);
+    let expected = "error: Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2";
+    assert_eq!(actual, expected);
   }
 
   #[test]

@@ -9,8 +9,7 @@ use rusty_v8 as v8;
 
 use crate::any_error::ErrBox;
 use crate::bindings;
-use crate::js_errors::CoreJSError;
-use crate::js_errors::V8Exception;
+use crate::js_errors::JSError;
 use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
@@ -147,7 +146,7 @@ pub enum StartupData<'a> {
   None,
 }
 
-type JSErrorCreateFn = dyn Fn(V8Exception) -> ErrBox;
+type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
 type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
@@ -169,7 +168,7 @@ pub struct Isolate {
   pub(crate) js_recv_cb: v8::Global<v8::Function>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
   shared_isolate_handle: Arc<Mutex<Option<*mut v8::Isolate>>>,
-  pub(crate) js_error_create_fn: Arc<JSErrorCreateFn>,
+  pub(crate) js_error_create_fn: Box<JSErrorCreateFn>,
   needs_init: bool,
   pub(crate) shared: SharedQueue,
   pending_ops: FuturesUnordered<PendingOpFuture>,
@@ -304,7 +303,7 @@ impl Isolate {
       snapshot: load_snapshot,
       has_snapshotted: false,
       shared_isolate_handle: Arc::new(Mutex::new(None)),
-      js_error_create_fn: Arc::new(CoreJSError::from_v8_exception),
+      js_error_create_fn: Box::new(JSError::create),
       shared,
       needs_init,
       pending_ops: FuturesUnordered::new(),
@@ -349,13 +348,13 @@ impl Isolate {
   }
 
   /// Allows a callback to be set whenever a V8 exception is made. This allows
-  /// the caller to wrap the V8Exception into an error. By default this callback
-  /// is set to CoreJSError::from_v8_exception.
-  pub fn set_js_error_create<F>(&mut self, f: F)
-  where
-    F: Fn(V8Exception) -> ErrBox + 'static,
-  {
-    self.js_error_create_fn = Arc::new(f);
+  /// the caller to wrap the JSError into an error. By default this callback
+  /// is set to JSError::create.
+  pub fn set_js_error_create_fn(
+    &mut self,
+    f: impl Fn(JSError) -> ErrBox + 'static,
+  ) {
+    self.js_error_create_fn = Box::new(f);
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
@@ -418,8 +417,8 @@ impl Isolate {
   /// Executes traditional JavaScript code (traditional = not ES modules)
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is CoreJSError, however it may be a
-  /// different type if Isolate::set_js_error_create() has been used.
+  /// the V8 exception. By default this type is JSError, however it may be a
+  /// different type if Isolate::set_js_error_create_fn() has been used.
   pub fn execute(
     &mut self,
     js_filename: &str,
@@ -460,8 +459,8 @@ impl Isolate {
   /// set to true.
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is CoreJSError, however it may be a
-  /// different type if Isolate::set_js_error_create() has been used.
+  /// the V8 exception. By default this type is JSError, however it may be a
+  /// different type if Isolate::set_js_error_create_fn() has been used.
   pub fn snapshot(&mut self) -> v8::OwnedStartupData {
     assert!(self.snapshot_creator.is_some());
 
@@ -612,16 +611,11 @@ pub(crate) fn attach_handle_to_error(
   ErrWithV8Handle::new(scope, err, handle).into()
 }
 
-pub(crate) fn exception_to_err_result<'a, T>(
-  scope: &mut impl v8::ToLocal<'a>,
+pub(crate) fn exception_to_err_result<'s, T>(
+  scope: &mut impl v8::ToLocal<'s>,
   exception: v8::Local<v8::Value>,
   js_error_create_fn: &JSErrorCreateFn,
 ) -> Result<T, ErrBox> {
-  // Use a HandleScope because the  functions below create a lot of
-  // local handles (in particular, `encode_message_as_json()` does).
-  let mut hs = v8::HandleScope::new(scope);
-  let scope = hs.enter();
-
   // TODO(piscisaureus): in rusty_v8, `is_execution_terminating()` should
   // also be implemented on `struct Isolate`.
   let is_terminating_exception = scope
@@ -642,18 +636,13 @@ pub(crate) fn exception_to_err_result<'a, T>(
 
     // Maybe make a new exception object.
     if exception.is_null_or_undefined() {
-      let exception_str =
-        v8::String::new(scope, "execution terminated").unwrap();
-      exception = v8::Exception::error(scope, exception_str);
+      let message = v8::String::new(scope, "execution terminated").unwrap();
+      exception = v8::Exception::error(scope, message);
     }
   }
 
-  let message = v8::Exception::create_message(scope, exception);
-  // TODO(piscisaureus): don't encode the message as json first and then
-  // immediately parse it after.
-  let exception_json_str = encode_message_as_json(scope, message);
-  let v8_exception = V8Exception::from_json(&exception_json_str).unwrap();
-  let js_error = (js_error_create_fn)(v8_exception);
+  let js_error = JSError::from_v8_exception(scope, exception);
+  let js_error = (js_error_create_fn)(js_error);
 
   if is_terminating_exception {
     // Re-enable exception termination.
@@ -677,16 +666,6 @@ fn check_promise_exceptions<'s>(
   } else {
     Ok(())
   }
-}
-
-pub fn encode_message_as_json<'a>(
-  scope: &mut impl v8::ToLocal<'a>,
-  message: v8::Local<v8::Message>,
-) -> String {
-  let context = scope.get_current_context().unwrap();
-  let json_obj = bindings::encode_message_as_object(scope, message);
-  let json_string = v8::json::stringify(context, json_obj.into()).unwrap();
-  json_string.to_rust_string_lossy(scope)
 }
 
 pub fn js_check<T>(r: Result<T, ErrBox>) -> T {

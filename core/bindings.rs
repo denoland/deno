@@ -3,6 +3,7 @@
 use crate::es_isolate::EsIsolate;
 use crate::isolate::Isolate;
 use crate::isolate::ZeroCopyBuf;
+use crate::js_errors::JSError;
 
 use rusty_v8 as v8;
 use v8::MapFnTo;
@@ -26,7 +27,7 @@ lazy_static! {
         function: eval_context.map_fn_to()
       },
       v8::ExternalReference {
-        function: error_to_json.map_fn_to()
+        function: format_error.map_fn_to()
       },
       v8::ExternalReference {
         getter: shared_getter.map_fn_to()
@@ -146,13 +147,13 @@ pub fn initialize_context<'s>(
     eval_context_val.into(),
   );
 
-  let mut error_to_json_tmpl = v8::FunctionTemplate::new(scope, error_to_json);
-  let error_to_json_val =
-    error_to_json_tmpl.get_function(scope, context).unwrap();
+  let mut format_error_tmpl = v8::FunctionTemplate::new(scope, format_error);
+  let format_error_val =
+    format_error_tmpl.get_function(scope, context).unwrap();
   core_val.set(
     context,
-    v8::String::new(scope, "errorToJSON").unwrap().into(),
-    error_to_json_val.into(),
+    v8::String::new(scope, "formatError").unwrap().into(),
+    format_error_val.into(),
   );
 
   core_val.set_accessor(
@@ -536,20 +537,18 @@ fn eval_context(
   rv.set(output.into());
 }
 
-fn error_to_json(
+fn format_error(
   scope: v8::FunctionCallbackScope,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
-  let context = deno_isolate.global_context.get(scope).unwrap();
-
-  let message = v8::Exception::create_message(scope, args.get(0));
-  let json_obj = encode_message_as_object(scope, message);
-  let json_string = v8::json::stringify(context, json_obj.into()).unwrap();
-
-  rv.set(json_string.into());
+  let e = JSError::from_v8_exception(scope, args.get(0));
+  let e = (deno_isolate.js_error_create_fn)(e);
+  let e = e.to_string();
+  let e = v8::String::new(scope, &e).unwrap();
+  rv.set(e.into())
 }
 
 fn queue_microtask(
@@ -637,185 +636,4 @@ pub fn module_resolve_callback<'s>(
   }
 
   None
-}
-
-pub fn encode_message_as_object<'a>(
-  s: &mut impl v8::ToLocal<'a>,
-  message: v8::Local<v8::Message>,
-) -> v8::Local<'a, v8::Object> {
-  let context = s.get_current_context().unwrap();
-  let json_obj = v8::Object::new(s);
-
-  let exception_str = message.get(s);
-  json_obj.set(
-    context,
-    v8::String::new(s, "message").unwrap().into(),
-    exception_str.into(),
-  );
-
-  let script_resource_name = message
-    .get_script_resource_name(s)
-    .expect("Missing ScriptResourceName");
-  json_obj.set(
-    context,
-    v8::String::new(s, "scriptResourceName").unwrap().into(),
-    script_resource_name,
-  );
-
-  let source_line = message
-    .get_source_line(s, context)
-    .expect("Missing SourceLine");
-  json_obj.set(
-    context,
-    v8::String::new(s, "sourceLine").unwrap().into(),
-    source_line.into(),
-  );
-
-  let line_number = message
-    .get_line_number(context)
-    .expect("Missing LineNumber");
-  json_obj.set(
-    context,
-    v8::String::new(s, "lineNumber").unwrap().into(),
-    v8::Integer::new(s, line_number as i32).into(),
-  );
-
-  json_obj.set(
-    context,
-    v8::String::new(s, "startPosition").unwrap().into(),
-    v8::Integer::new(s, message.get_start_position() as i32).into(),
-  );
-
-  json_obj.set(
-    context,
-    v8::String::new(s, "endPosition").unwrap().into(),
-    v8::Integer::new(s, message.get_end_position() as i32).into(),
-  );
-
-  json_obj.set(
-    context,
-    v8::String::new(s, "errorLevel").unwrap().into(),
-    v8::Integer::new(s, message.error_level() as i32).into(),
-  );
-
-  json_obj.set(
-    context,
-    v8::String::new(s, "startColumn").unwrap().into(),
-    v8::Integer::new(s, message.get_start_column() as i32).into(),
-  );
-
-  json_obj.set(
-    context,
-    v8::String::new(s, "endColumn").unwrap().into(),
-    v8::Integer::new(s, message.get_end_column() as i32).into(),
-  );
-
-  let is_shared_cross_origin =
-    v8::Boolean::new(s, message.is_shared_cross_origin());
-
-  json_obj.set(
-    context,
-    v8::String::new(s, "isSharedCrossOrigin").unwrap().into(),
-    is_shared_cross_origin.into(),
-  );
-
-  let is_opaque = v8::Boolean::new(s, message.is_opaque());
-
-  json_obj.set(
-    context,
-    v8::String::new(s, "isOpaque").unwrap().into(),
-    is_opaque.into(),
-  );
-
-  let frames = if let Some(stack_trace) = message.get_stack_trace(s) {
-    let count = stack_trace.get_frame_count() as i32;
-    let frames = v8::Array::new(s, count);
-
-    for i in 0..count {
-      let frame = stack_trace
-        .get_frame(s, i as usize)
-        .expect("No frame found");
-      let frame_obj = v8::Object::new(s);
-      frames.set(context, v8::Integer::new(s, i).into(), frame_obj.into());
-      frame_obj.set(
-        context,
-        v8::String::new(s, "line").unwrap().into(),
-        v8::Integer::new(s, frame.get_line_number() as i32).into(),
-      );
-      frame_obj.set(
-        context,
-        v8::String::new(s, "column").unwrap().into(),
-        v8::Integer::new(s, frame.get_column() as i32).into(),
-      );
-
-      if let Some(function_name) = frame.get_function_name(s) {
-        frame_obj.set(
-          context,
-          v8::String::new(s, "functionName").unwrap().into(),
-          function_name.into(),
-        );
-      }
-
-      let script_name = match frame.get_script_name_or_source_url(s) {
-        Some(name) => name,
-        None => v8::String::new(s, "<unknown>").unwrap(),
-      };
-      frame_obj.set(
-        context,
-        v8::String::new(s, "scriptName").unwrap().into(),
-        script_name.into(),
-      );
-
-      frame_obj.set(
-        context,
-        v8::String::new(s, "isEval").unwrap().into(),
-        v8::Boolean::new(s, frame.is_eval()).into(),
-      );
-
-      frame_obj.set(
-        context,
-        v8::String::new(s, "isConstructor").unwrap().into(),
-        v8::Boolean::new(s, frame.is_constructor()).into(),
-      );
-
-      frame_obj.set(
-        context,
-        v8::String::new(s, "isWasm").unwrap().into(),
-        v8::Boolean::new(s, frame.is_wasm()).into(),
-      );
-    }
-
-    frames
-  } else {
-    // No stack trace. We only have one stack frame of info..
-    let frames = v8::Array::new(s, 1);
-    let frame_obj = v8::Object::new(s);
-    frames.set(context, v8::Integer::new(s, 0).into(), frame_obj.into());
-
-    frame_obj.set(
-      context,
-      v8::String::new(s, "scriptResourceName").unwrap().into(),
-      script_resource_name,
-    );
-    frame_obj.set(
-      context,
-      v8::String::new(s, "line").unwrap().into(),
-      v8::Integer::new(s, line_number as i32).into(),
-    );
-    frame_obj.set(
-      context,
-      v8::String::new(s, "column").unwrap().into(),
-      v8::Integer::new(s, message.get_start_column() as i32).into(),
-    );
-
-    frames
-  };
-
-  json_obj.set(
-    context,
-    v8::String::new(s, "frames").unwrap().into(),
-    frames.into(),
-  );
-
-  json_obj
 }

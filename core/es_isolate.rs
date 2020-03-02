@@ -173,8 +173,8 @@ impl EsIsolate {
   /// Instantiates a ES module
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is CoreJSError, however it may be a
-  /// different type if Isolate::set_js_error_create() has been used.
+  /// the V8 exception. By default this type is JSError, however it may be a
+  /// different type if Isolate::set_js_error_create_fn() has been used.
   fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     let v8_isolate = self.core_isolate.v8_isolate.as_mut().unwrap();
     let js_error_create_fn = &*self.core_isolate.js_error_create_fn;
@@ -218,8 +218,8 @@ impl EsIsolate {
   /// Evaluates an already instantiated ES module.
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is CoreJSError, however it may be a
-  /// different type if Isolate::set_js_error_create() has been used.
+  /// the V8 exception. By default this type is JSError, however it may be a
+  /// different type if Isolate::set_js_error_create_fn() has been used.
   pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     let core_isolate = &mut self.core_isolate;
     let v8_isolate = core_isolate.v8_isolate.as_mut().unwrap();
