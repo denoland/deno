@@ -177,7 +177,7 @@ export class DatagramImpl<T> implements DatagramConn<T> {
     const { size, remoteAddr } = await sendAsync(
       "op_receive",
       { rid: this.rid, ...this.addr },
-      p
+      buf
     );
     const sub = buf.subarray(0, size);
     return [sub, remoteAddr];
