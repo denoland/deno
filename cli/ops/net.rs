@@ -661,13 +661,6 @@ fn op_listen(
       },
       })))
     }
-    #[cfg(windows)]
-    ListenArgs {
-      transport,
-      transport_args: ArgsEnum::Unix(_),
-    } if transport == "unix" || transport == "unixpacket" => Err(
-      OpError::other(format!("{} not supported on Windows!", transport)),
-    ),
     #[cfg(unix)]
     ListenArgs {
       transport,
@@ -693,6 +686,7 @@ fn op_listen(
       },
       })))
     }
+    #[cfg(unix)]
     _ => Err(OpError::other("Wrong argument format!".to_owned())),
   }
 }
