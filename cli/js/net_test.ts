@@ -27,13 +27,13 @@ testPerm(
   { read: true, write: true },
   async function netUnixListenClose(): Promise<void> {
     if (Deno.build.os === "win") return; // TODO
-    let file_path = await Deno.makeTempFile();
+    let filePath = await Deno.makeTempFile();
     const socket = Deno.listen({
-      address: file_path,
+      address: filePath,
       transport: "unix"
     });
     assertEquals(socket.addr.transport, "unix");
-    assertEquals(socket.addr.address, file_path);
+    assertEquals(socket.addr.address, filePath);
     socket.close();
   }
 );
