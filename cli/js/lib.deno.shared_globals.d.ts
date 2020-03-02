@@ -1185,14 +1185,14 @@ declare namespace __io {
   }
   export interface Seeker {
     /** Seek sets the offset for the next `read()` or `write()` to offset,
-     * interpreted according to `whence`: `SeekStart` means relative to the start
-     * of the file, `SeekCurrent` means relative to the current offset, and
-     * `SeekEnd` means relative to the end. Seek returns the new offset relative
-     * to the start of the file and an error, if any.
+     * interpreted according to `whence`: `SEEK_START` means relative to the
+     * start of the file, `SEEK_CURRENT` means relative to the current offset,
+     * and `SEEK_END` means relative to the end. Seek returns the new offset
+     * relative to the start of the file and an error, if any.
      *
      * Seeking to an offset before the start of the file is an error. Seeking to
-     * any positive offset is legal, but the behavior of subsequent I/O operations
-     * on the underlying object is implementation-dependent.
+     * any positive offset is legal, but the behavior of subsequent I/O
+     * operations on the underlying object is implementation-dependent.
      */
     seek(offset: number, whence: SeekMode): Promise<void>;
   }
