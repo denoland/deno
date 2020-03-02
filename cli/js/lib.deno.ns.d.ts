@@ -46,6 +46,7 @@ declare namespace Deno {
     skip?: string | RegExp;
     /** Disable logging of the results. Defaults to `false`. */
     disableLog?: boolean;
+    raw?: boolean;
   }
 
   /** Run any tests which have been registered. Always resolves

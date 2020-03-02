@@ -206,6 +206,60 @@ function extractNumber(re: RegExp, str: string): number | undefined {
   }
 }
 
+export async function newParseUnitTestOutput(
+  reader: Deno.Reader,
+  print: boolean
+): Promise<{ actual?: number; expected?: number; resultOutput?: string }> {
+  let expected, actual, result;
+  const linesIterator = readLines(reader);
+
+  {
+    const { value } = await linesIterator.next();
+    const msg = JSON.parse(value);
+    if (msg.kind !== "start") {
+      throw Error("Bad message");
+    }
+    expected = msg.start.tests;
+    if (print) {
+      console.log(JSON.stringify(msg.start));
+    }
+  }
+
+  for await (const value of linesIterator) {
+    let msg;
+    try {
+      msg = JSON.parse(value);
+    } catch (e) {
+      // Ignore bad output for now
+      if (print) {
+        console.log(value);
+      }
+      continue;
+    }
+
+    if (msg.kind === "end") {
+      actual = msg.stats.passed;
+      result = msg.stats;
+      if (print) {
+        console.log(JSON.stringify(msg));
+      }
+    } else if (msg.kind === "testResult") {
+      // ok
+      if (print) {
+        console.log(msg.result);
+      }
+    } else {
+      // Some random JSON; ignore for now
+      if (print) {
+        console.log(msg);
+      }
+      continue;
+    }
+  }
+
+  return { actual, expected, resultOutput: result };
+}
+
 export async function parseUnitTestOutput(
   reader: Deno.Reader,
   print: boolean

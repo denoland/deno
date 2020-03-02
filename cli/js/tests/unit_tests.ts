@@ -65,5 +65,5 @@ import "./performance_test.ts";
 import "./version_test.ts";
 
 if (import.meta.main) {
-  await Deno.runTests();
+  await Deno.runTests({ raw: true });
 }

@@ -3,7 +3,7 @@
 import "./unit_tests.ts";
 import {
   permissionCombinations,
-  parseUnitTestOutput,
+  newParseUnitTestOutput,
   Permissions
 } from "./test_util.ts";
 
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
       stdout: "piped"
     });
 
-    const { actual, expected, resultOutput } = await parseUnitTestOutput(
+    const { actual, expected, resultOutput } = await newParseUnitTestOutput(
       p.stdout!,
       true
     );
@@ -93,7 +93,7 @@ async function main(): Promise<void> {
 
   for (const testResult of testResults) {
     console.log(`Summary for ${testResult.perms}`);
-    console.log(testResult.output + "\n");
+    console.log(JSON.stringify(testResult.output) + "\n");
     testsFailed = testsFailed || Boolean(testResult.result);
   }
 

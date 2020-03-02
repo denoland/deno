@@ -83,6 +83,16 @@ export interface RunTestsOptions {
   only?: string | RegExp;
   skip?: string | RegExp;
   disableLog?: boolean;
+  raw?: boolean;
+}
+
+interface RunTestsMessage {
+  kind: "start" | "testResult" | "end";
+  start?: {
+    tests: number;
+  };
+  stats?: TestStats;
+  result?: TestCase;
 }
 
 function filterTests(
@@ -113,16 +123,13 @@ function filterTests(
   });
 }
 
-export async function runTests({
-  exitOnFail = true,
-  failFast = false,
-  only = undefined,
-  skip = undefined,
-  disableLog = false
-}: RunTestsOptions = {}): Promise<void> {
-  const testsToRun = filterTests(TEST_REGISTRY, only, skip);
-
-  const stats: TestStats = {
+class RunTestsIterable implements AsyncIterableIterator<RunTestsMessage> {
+  readonly testsToRun: TestDefinition[];
+  readonly testCases: TestCase[];
+  failFast: boolean;
+  currentTest = -1;
+  done = false;
+  stats: TestStats = {
     measured: 0,
     ignored: 0,
     filtered: 0,
@@ -130,16 +137,97 @@ export async function runTests({
     failed: 0
   };
 
-  const testCases = testsToRun.map(
-    ({ name, fn }): TestCase => {
+  constructor(
+    tests: TestDefinition[],
+    only: undefined | string | RegExp,
+    skip: undefined | string | RegExp,
+    failFast: boolean
+  ) {
+    this.testsToRun = filterTests(tests, only, skip);
+    this.failFast = failFast;
+    this.testCases = this.testsToRun.map(
+      ({ name, fn }): TestCase => {
+        return {
+          name,
+          fn,
+          timeElapsed: 0,
+          error: undefined
+        };
+      }
+    );
+  }
+
+  async next(): Promise<IteratorResult<RunTestsMessage>> {
+    if (this.currentTest === -1) {
+      this.currentTest = 0;
       return {
-        name,
-        fn,
-        timeElapsed: 0,
-        error: undefined
+        done: false,
+        value: {
+          kind: "start",
+          start: {
+            tests: this.testsToRun.length
+          }
+        }
       };
     }
-  );
+
+    if (this.done) {
+      return {
+        done: true,
+        value: {
+          kind: "end",
+          stats: this.stats
+        }
+      };
+    }
+
+    const testCase = this.testCases[this.currentTest];
+    if (testCase === undefined) {
+      throw new Error(`Missing test case: ${this.currentTest}`);
+    }
+
+    // TODO: using permormance here doesn't make sense
+    try {
+      const start = +new Date();
+      await testCase.fn();
+      testCase.timeElapsed = +new Date() - start;
+      this.stats.passed++;
+    } catch (err) {
+      testCase.error = err;
+      this.stats.failed++;
+      if (this.failFast) {
+        this.done = true;
+      }
+    }
+
+    this.currentTest++;
+    if (this.currentTest === this.testCases.length) {
+      this.done = true;
+    }
+
+    return {
+      done: false,
+      value: {
+        kind: "testResult",
+        result: testCase
+      }
+    };
+  }
+
+  [Symbol.asyncIterator](): AsyncIterableIterator<RunTestsMessage> {
+    return this;
+  }
+}
+
+export async function runTests({
+  exitOnFail = true,
+  failFast = false,
+  only = undefined,
+  skip = undefined,
+  disableLog = false,
+  raw = false
+}: RunTestsOptions = {}): Promise<void> {
+  const iterator = new RunTestsIterable(TEST_REGISTRY, only, skip, exitOnFail);
 
   // @ts-ignore
   const originalConsole = globalThis.console;
@@ -154,6 +242,22 @@ export async function runTests({
     globalThis.console = disabledConsole;
   }
 
+  if (raw) {
+    for await (const msg of iterator) {
+      Deno.core.print(`${JSON.stringify(msg)}\n`);
+    }
+    const msg = await iterator.next();
+    Deno.core.print(`${JSON.stringify(msg.value)}\n`);
+    return;
+  }
+
+  let stats: TestStats;
+  const { value } = await iterator.next();
+  if (value.kind !== "start") {
+    throw Error("Bad message");
+  }
+  stats = value.stats;
+
   const RED_FAILED = red("FAILED");
   const GREEN_OK = green("OK");
   const RED_BG_FAIL = bgRed(" FAIL ");
@@ -161,25 +265,23 @@ export async function runTests({
   originalConsole.log(`running ${testsToRun.length} tests`);
   const suiteStart = +new Date();
 
-  for (const testCase of testCases) {
-    try {
-      const start = +new Date();
-      await testCase.fn();
-      testCase.timeElapsed = +new Date() - start;
+  for (const msg of iterator) {
+    if (msg.kind === "end") {
+      stats = msg.stats as TestStats;
+      break;
+    }
+
+    const testResult = msg.result as TestCase;
+    if (testResult.error) {
+      originalConsole.log(`${RED_FAILED} ${testResult.name}`);
+      originalConsole.log(testResult.error.stack);
+    } else {
       originalConsole.log(
-        `${GREEN_OK}     ${testCase.name} ${formatDuration(
-          testCase.timeElapsed
+        `${GREEN_OK}     ${testResult.name} ${promptTestTime(
+          testResult.timeElapsed,
+          true
         )}`
       );
-      stats.passed++;
-    } catch (err) {
-      testCase.error = err;
-      originalConsole.log(`${RED_FAILED} ${testCase.name}`);
-      originalConsole.log(err.stack);
-      stats.failed++;
-      if (failFast) {
-        break;
-      }
     }
   }
 
@@ -207,7 +309,7 @@ export async function runTests({
 
   if (stats.failed > 0) {
     originalConsole.error(`There were ${stats.failed} test failures.`);
-    testCases
+    iterator.testCases
       .filter(testCase => !!testCase.error)
       .forEach(testCase => {
         originalConsole.error(`${RED_BG_FAIL} ${red(testCase.name)}`);
