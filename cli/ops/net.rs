@@ -664,14 +664,14 @@ fn op_listen(
     #[cfg(windows)]
     ListenArgs {
       transport,
-      transport_args: ArgsEnum::Unix(args),
+      transport_args: ArgsEnum::Unix(_),
     } if transport == "unix" || transport == "unixpacket" => Err(
       OpError::other(format!("{} not supported on Windows!", transport)),
     ),
     #[cfg(unix)]
     ListenArgs {
       transport,
-      transport_args: ArgsEnum::Unix(_),
+      transport_args: ArgsEnum::Unix(args),
     } if transport == "unix" || transport == "unixpacket" => {
       let address_path = Path::new(&args.address);
       state.check_read(&address_path)?;
