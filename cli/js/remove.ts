@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
-export interface RemoveOption {
+export interface RemoveOptions {
   /** Defaults to `false`. If set to `true`, path will be removed even if
    * it's a non-empty directory. */
   recursive?: boolean;
@@ -14,7 +14,7 @@ export interface RemoveOption {
  *       Deno.removeSync("/path/to/dir/or/file", { recursive: false });
  *
  * Requires `allow-write` permission. */
-export function removeSync(path: string, options: RemoveOption = {}): void {
+export function removeSync(path: string, options: RemoveOptions = {}): void {
   sendSync("op_remove", { path, recursive: !!options.recursive });
 }
 
@@ -27,7 +27,7 @@ export function removeSync(path: string, options: RemoveOption = {}): void {
  * Requires `allow-write` permission. */
 export async function remove(
   path: string,
-  options: RemoveOption = {}
+  options: RemoveOptions = {}
 ): Promise<void> {
   await sendAsync("op_remove", { path, recursive: !!options.recursive });
 }
