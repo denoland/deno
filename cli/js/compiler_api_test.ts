@@ -135,6 +135,15 @@ test(async function bundleApiConfig() {
   assert(!actual.includes(`random`));
 });
 
+test(async function bundleApiJsModules() {
+  const [diagnostics, actual] = await bundle("/foo.js", {
+    "/foo.js": `export * from "./bar.js";\n`,
+    "/bar.js": `export const bar = "bar";\n`
+  });
+  assert(diagnostics == null);
+  assert(actual.includes(`System.register("bar",`));
+});
+
 test(async function diagnosticsTest() {
   const [diagnostics] = await compile("/foo.ts", {
     "/foo.ts": `document.getElementById("foo");`

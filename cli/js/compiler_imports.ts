@@ -120,7 +120,7 @@ export function processLocalImports(
   sources: Record<string, string>,
   specifiers: Array<[string, string]>,
   referrer?: string,
-  checkJs = false
+  processJsImports = false
 ): string[] {
   if (!specifiers.length) {
     return [];
@@ -145,9 +145,9 @@ export function processLocalImports(
     if (!sourceFile.processed) {
       processLocalImports(
         sources,
-        sourceFile.imports(checkJs),
+        sourceFile.imports(processJsImports),
         sourceFile.url,
-        checkJs
+        processJsImports
       );
     }
   }
@@ -163,7 +163,7 @@ export function processLocalImports(
 export async function processImports(
   specifiers: Array<[string, string]>,
   referrer?: string,
-  checkJs = false
+  processJsImports = false
 ): Promise<string[]> {
   if (!specifiers.length) {
     return [];
@@ -179,9 +179,9 @@ export async function processImports(
     sourceFile.cache(specifiers[i][0], referrer);
     if (!sourceFile.processed) {
       await processImports(
-        sourceFile.imports(checkJs),
+        sourceFile.imports(processJsImports),
         sourceFile.url,
-        checkJs
+        processJsImports
       );
     }
   }
