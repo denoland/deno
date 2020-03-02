@@ -126,7 +126,9 @@ if (Deno.build.os === "win") {
 
     assertEquals(c, 3);
 
-    clearTimeout(t);
+    clearInterval(t);
+    // Defer for a moment to allow interval promise to resolve
+    await defer(20);
     await resolvable;
   });
 
@@ -143,7 +145,9 @@ if (Deno.build.os === "win") {
     await sig;
     sig.dispose();
 
-    clearTimeout(t);
+    clearInterval(t);
+    // Defer for a moment to allow interval promise to resolve
+    await defer(20);
     await resolvable;
   });
 
@@ -184,3 +188,5 @@ if (Deno.build.os === "win") {
     s.dispose();
   });
 }
+
+await Deno.runTests();
