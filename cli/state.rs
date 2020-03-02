@@ -12,7 +12,7 @@ use crate::worker::WorkerHandle;
 use deno_core::Buf;
 use deno_core::CoreOp;
 use deno_core::ErrBox;
-use deno_core::Loader;
+use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
 use deno_core::ResourceTable;
@@ -151,7 +151,7 @@ impl State {
   }
 }
 
-impl Loader for State {
+impl ModuleLoader for State {
   fn resolve(
     &self,
     specifier: &str,
@@ -178,7 +178,7 @@ impl Loader for State {
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     is_dyn_import: bool,
-  ) -> Pin<Box<deno_core::SourceCodeInfoFuture>> {
+  ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.clone();
     if is_dyn_import {
       if let Err(e) = self.check_dyn_import(&module_specifier) {
@@ -196,7 +196,7 @@ impl Loader for State {
       let compiled_module = global_state
         .fetch_compiled_module(module_specifier, maybe_referrer, target_lib)
         .await?;
-      Ok(deno_core::SourceCodeInfo {
+      Ok(deno_core::ModuleSource {
         // Real module name, might be different from initial specifier
         // due to redirections.
         code: compiled_module.code,
