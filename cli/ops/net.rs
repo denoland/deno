@@ -9,10 +9,8 @@ use futures::future::poll_fn;
 use futures::future::FutureExt;
 use std;
 use std::convert::From;
-use std::fs::remove_file;
 use std::net::Shutdown;
 use std::net::SocketAddr;
-use std::path::Path;
 use std::task::Context;
 use std::task::Poll;
 use tokio;
@@ -21,7 +19,11 @@ use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
 
 #[cfg(unix)]
+use std::fs::remove_file;
+#[cfg(unix)]
 use std::os::unix;
+#[cfg(unix)]
+use std::path::Path;
 #[cfg(unix)]
 use tokio::net::UnixDatagram;
 #[cfg(unix)]
@@ -110,6 +112,7 @@ fn accept_tcp(
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
+#[cfg(unix)]
 fn accept_unix(
   state: &State,
   args: AcceptArgs,
@@ -210,6 +213,7 @@ fn receive_udp(
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
+#[cfg(unix)]
 fn receive_unix_packet(
   state: &State,
   args: ReceiveArgs,
