@@ -59,7 +59,13 @@ fn op_metrics(
 
   Ok(JsonOp::Sync(json!({
     "opsDispatched": m.ops_dispatched,
+    "opsDispatchedSync": m.ops_dispatched_sync,
+    "opsDispatchedAsync": m.ops_dispatched_async,
+    "opsDispatchedAsyncUnref": m.ops_dispatched_async_unref,
     "opsCompleted": m.ops_completed,
+    "opsCompletedSync": m.ops_completed_sync,
+    "opsCompletedAsync": m.ops_completed_async,
+    "opsCompletedAsyncUnref": m.ops_completed_async_unref,
     "bytesSentControl": m.bytes_sent_control,
     "bytesSentData": m.bytes_sent_data,
     "bytesReceived": m.bytes_received
