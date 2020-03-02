@@ -116,7 +116,6 @@ declare namespace Deno {
     | "picture"
     | "public"
     | "template"
-    | "tmp"
     | "video";
 
   // TODO(ry) markdown in jsdoc broken https://deno.land/typedoc/index.html#dir
@@ -132,7 +131,7 @@ declare namespace Deno {
    *
    * Argument values: `"home"`, `"cache"`, `"config"`, `"executable"`, `"data"`,
    * `"data_local"`, `"audio"`, `"desktop"`, `"document"`, `"download"`,
-   * `"font"`, `"picture"`, `"public"`, `"template"`, `"tmp"`, `"video"`
+   * `"font"`, `"picture"`, `"public"`, `"template"`, `"video"`
    *
    * `"cache"`
    *
@@ -237,14 +236,6 @@ declare namespace Deno {
    * | Linux   | `XDG_TEMPLATES_DIR`    | /home/alice/Templates                                      |
    * | macOS   | –                      | –                                                          |
    * | Windows | `{FOLDERID_Templates}` | C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Templates |
-   *
-   * `"tmp"`
-   *
-   * |Platform | Value                  | Example                                                    |
-   * | ------- | ---------------------- | ---------------------------------------------------------- |
-   * | Linux   | `TMPDIR`               | /tmp                                                       |
-   * | macOS   | `TMPDIR`               | /tmp                                                       |
-   * | Windows | `{TMP}`                | C:\Users\Alice\AppData\Local\Temp                          |
    *
    * `"video"`
    *
@@ -1668,7 +1659,13 @@ declare namespace Deno {
   /** **UNSTABLE**: not sure if broken or not */
   export interface Metrics {
     opsDispatched: number;
+    opsDispatchedSync: number;
+    opsDispatchedAsync: number;
+    opsDispatchedAsyncUnref: number;
     opsCompleted: number;
+    opsCompletedSync: number;
+    opsCompletedAsync: number;
+    opsCompletedAsyncUnref: number;
     bytesSentControl: number;
     bytesSentData: number;
     bytesReceived: number;
@@ -1679,15 +1676,21 @@ declare namespace Deno {
    * Receive metrics from the privileged side of Deno.
    *
    *      > console.table(Deno.metrics())
-   *      ┌──────────────────┬────────┐
-   *      │     (index)      │ Values │
-   *      ├──────────────────┼────────┤
-   *      │  opsDispatched   │   9    │
-   *      │   opsCompleted   │   9    │
-   *      │ bytesSentControl │  504   │
-   *      │  bytesSentData   │   0    │
-   *      │  bytesReceived   │  856   │
-   *      └──────────────────┴────────┘
+   *      ┌─────────────────────────┬────────┐
+   *      │         (index)         │ Values │
+   *      ├─────────────────────────┼────────┤
+   *      │      opsDispatched      │   3    │
+   *      │    opsDispatchedSync    │   2    │
+   *      │   opsDispatchedAsync    │   1    │
+   *      │ opsDispatchedAsyncUnref │   0    │
+   *      │      opsCompleted       │   3    │
+   *      │    opsCompletedSync     │   2    │
+   *      │    opsCompletedAsync    │   1    │
+   *      │ opsCompletedAsyncUnref  │   0    │
+   *      │    bytesSentControl     │   73   │
+   *      │      bytesSentData      │   0    │
+   *      │      bytesReceived      │  375   │
+   *      └─────────────────────────┴────────┘
    */
   export function metrics(): Metrics;
 
