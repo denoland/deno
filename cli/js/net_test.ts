@@ -1,17 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, unitTest2, assert, assertEquals } from "./test_util.ts";
 
-unitTest({
-  name: "net tcp listen close",
-  perms: { net: true },
-  fn: () => {
+unitTest(
+  "net tcp listen close", 
+  { perms: { net: true } }, 
+  () => {
     const listener = Deno.listen({ hostname: "127.0.0.1", port: 4500 });
     assertEquals(listener.addr.transport, "tcp");
     assertEquals(listener.addr.hostname, "127.0.0.1");
     assertEquals(listener.addr.port, 4500);
     listener.close();
   }
-});
+);
 
 unitTest({
   name: "net udp listen close",
