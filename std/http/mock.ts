@@ -1,5 +1,7 @@
 /** Create dummy Deno.Conn object with given base properties */
-export function mockConn(base: Partial<Deno.Conn> = {}): Deno.Conn {
+export function mockConn(
+  base: Partial<Deno.Conn<Deno.TCPAddr>> = {}
+): Deno.Conn<Deno.TCPAddr> {
   return {
     localAddr: {
       transport: "tcp",
