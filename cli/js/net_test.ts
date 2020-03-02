@@ -23,6 +23,21 @@ testPerm({ net: true }, function netUdpListenClose(): void {
   socket.close();
 });
 
+testPerm(
+  { read: true, write: true },
+  async function netUnixListenClose(): Promise<void> {
+    if (Deno.build.os === "win") return; // TODO
+    let file_path = await Deno.makeTempFile();
+    const socket = Deno.listen({
+      address: file_path,
+      transport: "unix"
+    });
+    assertEquals(socket.addr.transport, "unix");
+    assertEquals(socket.addr.address, file_path);
+    socket.close();
+  }
+);
+
 testPerm({ net: true }, async function netTcpCloseWhileAccept(): Promise<void> {
   const listener = Deno.listen({ port: 4501 });
   const p = listener.accept();
