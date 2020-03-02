@@ -1509,7 +1509,7 @@ declare namespace Deno {
    * `Uint8Array`.
    *
    * Resolves to the number of bytes written and the remote address. */
-  export function recvfrom(rid: number, p: Uint8Array): Promise<[number, Addr]>;
+//   export function recvfrom(rid: number, p: Uint8Array): Promise<[number, Addr]>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
