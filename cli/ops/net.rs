@@ -165,6 +165,7 @@ fn op_accept(
   let args: AcceptArgs = serde_json::from_value(args)?;
   match args.transport.as_str() {
     "tcp" => accept_tcp(state, args, zero_copy),
+    #[cfg(unix)]
     "unix" => accept_unix(state, args, zero_copy),
     _ => Err(OpError::other(format!(
       "Unsupported transport protocol {}",
@@ -253,6 +254,7 @@ fn op_receive(
   let args: ReceiveArgs = serde_json::from_value(args)?;
   match args.transport.as_str() {
     "udp" => receive_udp(state, args, zero_copy),
+    #[cfg(unix)]
     "unixpacket" => receive_unix_packet(state, args, zero_copy),
     _ => Err(OpError::other(format!(
       "Unsupported transport protocol {}",
