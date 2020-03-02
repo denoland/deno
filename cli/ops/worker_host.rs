@@ -215,15 +215,14 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
         }
       });
 
-      if let Ok(err) = error.downcast::<JSError>() {
-        let exception: V8Exception = err.into();
+      if let Ok(js_error) = error.downcast::<JSError>() {
         serialized_error = json!({
           "type": "error",
           "error": {
-            "message": exception.message,
-            "fileName": exception.script_resource_name,
-            "lineNumber": exception.line_number,
-            "columnNumber": exception.start_column,
+            "message": js_error.message,
+            "fileName": js_error.script_resource_name,
+            "lineNumber": js_error.line_number,
+            "columnNumber": js_error.start_column,
           }
         });
       }

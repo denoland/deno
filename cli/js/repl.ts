@@ -2,7 +2,6 @@
 import { close } from "./files.ts";
 import { exit } from "./os.ts";
 import { core } from "./core.ts";
-import { formatError } from "./format_error.ts";
 import { stringifyArgs } from "./console.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
@@ -89,9 +88,7 @@ function evaluate(code: string): boolean {
   } else {
     lastThrownError = errInfo.thrown;
     if (errInfo.isNativeError) {
-      const formattedError = formatError(
-        core.errorToJSON(errInfo.thrown as Error)
-      );
+      const formattedError = core.formatError(errInfo.thrown as Error);
       replError(formattedError);
     } else {
       replError("Thrown:", errInfo.thrown);
@@ -162,7 +159,7 @@ export async function replLoop(): Promise<void> {
         if (err.message !== "Interrupted") {
           // e.g. this happens when we have deno.close(3).
           // We want to display the problem.
-          const formattedError = formatError(core.errorToJSON(err));
+          const formattedError = core.formatError(err);
           replError(formattedError);
         }
         // Quit REPL anyways.
@@ -184,7 +181,7 @@ export async function replLoop(): Promise<void> {
         } else {
           // e.g. this happens when we have deno.close(3).
           // We want to display the problem.
-          const formattedError = formatError(core.errorToJSON(err));
+          const formattedError = core.formatError(err);
           replError(formattedError);
           quitRepl(1);
         }
