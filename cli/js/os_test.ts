@@ -235,6 +235,14 @@ testPerm({ env: true }, function getDir(): void {
       ]
     },
     {
+      kind: "tmp",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: true }
+      ]
+    },
+    {
       kind: "video",
       runtime: [
         { os: "mac", shouldHaveValue: true },
