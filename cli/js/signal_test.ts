@@ -188,5 +188,3 @@ if (Deno.build.os === "win") {
     s.dispose();
   });
 }
-
-await Deno.runTests();
