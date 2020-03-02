@@ -47,7 +47,7 @@ pub type DynImportId = i32;
 /// loading of modules can be customized by the implementor.
 pub struct EsIsolate {
   core_isolate: Box<Isolate>,
-  loader: Rc<dyn ModuleLoader + Unpin>,
+  loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
   pub(crate) next_dyn_import_id: DynImportId,
   pub(crate) dyn_import_map:
@@ -73,7 +73,7 @@ impl DerefMut for EsIsolate {
 
 impl EsIsolate {
   pub fn new(
-    loader: Rc<dyn ModuleLoader + Unpin>,
+    loader: Rc<dyn ModuleLoader>,
     startup_data: StartupData,
     will_snapshot: bool,
   ) -> Box<Self> {

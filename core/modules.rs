@@ -94,7 +94,7 @@ pub struct RecursiveModuleLoad {
   // Kind::Main
   pub dyn_import_id: Option<DynImportId>,
   pub state: LoadState,
-  pub loader: Rc<dyn ModuleLoader + Unpin>,
+  pub loader: Rc<dyn ModuleLoader>,
   pub pending: FuturesUnordered<Pin<Box<ModuleSourceFuture>>>,
   pub is_pending: HashSet<ModuleSpecifier>,
 }
@@ -104,7 +104,7 @@ impl RecursiveModuleLoad {
   pub fn main(
     specifier: &str,
     code: Option<String>,
-    loader: Rc<dyn ModuleLoader + Unpin>,
+    loader: Rc<dyn ModuleLoader>,
   ) -> Self {
     let kind = Kind::Main;
     let state = LoadState::ResolveMain(specifier.to_owned(), code);
@@ -115,7 +115,7 @@ impl RecursiveModuleLoad {
     id: DynImportId,
     specifier: &str,
     referrer: &str,
-    loader: Rc<dyn ModuleLoader + Unpin>,
+    loader: Rc<dyn ModuleLoader>,
   ) -> Self {
     let kind = Kind::DynamicImport;
     let state =
@@ -130,7 +130,7 @@ impl RecursiveModuleLoad {
   fn new(
     kind: Kind,
     state: LoadState,
-    loader: Rc<dyn ModuleLoader + Unpin>,
+    loader: Rc<dyn ModuleLoader>,
     dyn_import_id: Option<DynImportId>,
   ) -> Self {
     Self {
