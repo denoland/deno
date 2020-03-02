@@ -20,7 +20,10 @@ export default class Dir {
    * NOTE: Deno doesn't provide an interface to the filesystem like readdir
    * where each call to readdir returns the next file.  This function simulates this
    * behaviour by fetching all the entries on the first call, putting them on a stack
-   * and then poping them off the stack one at a time.
+   * and then popping them off the stack one at a time.
+   * 
+   * TODO: Rework this implementation once https://github.com/denoland/deno/issues/4218
+   * is resolved.
    */
   read(callback?: Function): Promise<Dirent | null> {
     return new Promise(async (resolve, reject) => {
@@ -68,7 +71,7 @@ export default class Dir {
   /**
    * Unlike Node, Deno does not require managing resource ids for reading
    * directories, and therefore does not need to close directories when
-   * finisehd reading.
+   * finished reading.
    */
   close(callback?: Function): Promise<void> {
     return new Promise((resolve, reject) => {
