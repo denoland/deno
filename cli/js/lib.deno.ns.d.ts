@@ -1509,28 +1509,28 @@ declare namespace Deno {
    * `Uint8Array`.
    *
    * Resolves to the number of bytes written and the remote address. */
-//   export function recvfrom(rid: number, p: Uint8Array): Promise<[number, Addr]>;
+  //   export function recvfrom(rid: number, p: Uint8Array): Promise<[number, Addr]>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * A generic transport listener for message-oriented protocols. */
-  export interface UDPConn extends AsyncIterator<[Uint8Array, UDPAddr]> {
+  export interface DatagramConn<T> extends AsyncIterator<[Uint8Array, T]> {
     /** **UNSTABLE**: new API, yet to be vetted.
      *
      * Waits for and resolves to the next message to the `UDPConn`. */
-    receive(p?: Uint8Array): Promise<[Uint8Array, UDPAddr]>;
+    receive(p?: Uint8Array): Promise<[Uint8Array, T]>;
     /** UNSTABLE: new API, yet to be vetted.
      *
      * Sends a message to the target. */
-    send(p: Uint8Array, addr: UDPAddr): Promise<void>;
+    send(p: Uint8Array, addr: T): Promise<void>;
     /** UNSTABLE: new API, yet to be vetted.
      *
      * Close closes the socket. Any pending message promises will be rejected
      * with errors. */
     close(): void;
     /** Return the address of the `UDPConn`. */
-    readonly addr: UDPAddr;
-    [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, UDPAddr]>;
+    readonly addr: T;
+    [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, T]>;
   }
 
   /** A generic network listener for stream-oriented protocols. */
@@ -1600,6 +1600,17 @@ declare namespace Deno {
    *
    * Listen announces on the local transport address.
    *
+   *     Deno.listen({ address: "/foo/bar.sock" })
+   *     Deno.listen({ address: "/foo/bar.sock", transport: "unix" })
+   *
+   * Requires `allow-read` permission. */
+  export function listen(
+    options: UnixListenOptions & { transport: "unix" }
+  ): Listener<UnixAddr>;
+  /** **UNSTABLE**: new API
+   *
+   * Listen announces on the local transport address.
+   *
    *      Deno.listen({ port: 80 })
    *      Deno.listen({ hostname: "192.0.2.1", port: 80 })
    *      Deno.listen({ hostname: "[2001:db8::1]", port: 80 });
@@ -1608,18 +1619,18 @@ declare namespace Deno {
    * Requires `allow-net` permission. */
   export function listen(
     options: ListenOptions & { transport: "udp" }
-  ): UDPConn;
+  ): DatagramConn<UDPAddr>;
   /** **UNSTABLE**: new API
    *
    * Listen announces on the local transport address.
    *
    *     Deno.listen({ address: "/foo/bar.sock" })
-   *     Deno.listen({ address: "/foo/bar.sock", transport: "unix" })
+   *     Deno.listen({ address: "/foo/bar.sock", transport: "unixpacket" })
    *
    * Requires `allow-read` permission. */
   export function listen(
-    options: UnixListenOptions & { transport: "unix" }
-  ): Listener<UnixAddr>;
+    options: UnixListenOptions & { transport: "unixpacket" }
+  ): DatagramConn<UnixAddr>;
 
   export interface ListenTLSOptions extends ListenOptions {
     /** Server certificate file. */
@@ -1677,15 +1688,6 @@ declare namespace Deno {
   export function connect(
     options: UnixConnectOptions & { transport: "unix" }
   ): Promise<Conn<UnixAddr>>;
-  /**
-   * Connects to the address on the named transport.
-   *
-   *     Deno.connect({ port: 80 })
-   *     Deno.connect({ hostname: "192.0.2.1", port: 80 })
-   *     Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
-   *     Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" })
-   *
-   * Requires `allow-net` permission. */
 
   export interface ConnectTLSOptions {
     /** The port to connect to. */

@@ -9,10 +9,8 @@ use futures::future::poll_fn;
 use futures::future::FutureExt;
 use std;
 use std::convert::From;
-use std::fs::remove_file;
 use std::net::Shutdown;
 use std::net::SocketAddr;
-use std::path::Path;
 use std::task::Context;
 use std::task::Poll;
 use tokio;
@@ -21,7 +19,11 @@ use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
 
 #[cfg(unix)]
+use std::fs::remove_file;
+#[cfg(unix)]
 use std::os::unix;
+#[cfg(unix)]
+use std::path::Path;
 #[cfg(unix)]
 use tokio::net::UnixDatagram;
 #[cfg(unix)]
@@ -110,6 +112,7 @@ fn accept_tcp(
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
+#[cfg(unix)]
 fn accept_unix(
   state: &State,
   args: AcceptArgs,
@@ -162,6 +165,7 @@ fn op_accept(
   let args: AcceptArgs = serde_json::from_value(args)?;
   match args.transport.as_str() {
     "tcp" => accept_tcp(state, args, zero_copy),
+    #[cfg(unix)]
     "unix" => accept_unix(state, args, zero_copy),
     _ => Err(OpError::other(format!(
       "Unsupported transport protocol {}",
@@ -210,6 +214,7 @@ fn receive_udp(
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
+#[cfg(unix)]
 fn receive_unix_packet(
   state: &State,
   args: ReceiveArgs,
@@ -249,6 +254,7 @@ fn op_receive(
   let args: ReceiveArgs = serde_json::from_value(args)?;
   match args.transport.as_str() {
     "udp" => receive_udp(state, args, zero_copy),
+    #[cfg(unix)]
     "unixpacket" => receive_unix_packet(state, args, zero_copy),
     _ => Err(OpError::other(format!(
       "Unsupported transport protocol {}",
@@ -655,6 +661,13 @@ fn op_listen(
       },
       })))
     }
+    #[cfg(windows)]
+    ListenArgs {
+      transport,
+      transport_args: ArgsEnum::Unix(_),
+    } if transport == "unix" || transport == "unixpacket" => Err(
+      OpError::other(format!("{} not supported on Windows!", transport)),
+    ),
     #[cfg(unix)]
     ListenArgs {
       transport,
