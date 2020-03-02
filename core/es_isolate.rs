@@ -31,34 +31,23 @@ use crate::isolate::Isolate;
 use crate::isolate::StartupData;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::LoadState;
-use crate::modules::Loader;
+use crate::modules::ModuleLoader;
+use crate::modules::ModuleSource;
 use crate::modules::Modules;
 use crate::modules::RecursiveModuleLoad;
 
 pub type ModuleId = i32;
 pub type DynImportId = i32;
-/// Represent result of fetching the source code of a module. Found module URL
-/// might be different from specified URL used for loading due to redirections
-/// (like HTTP 303). E.G. Both https://example.com/a.ts and
-/// https://example.com/b.ts may point to https://example.com/c.ts
-/// By keeping track of specified and found URL we can alias modules and avoid
-/// recompiling the same code 3 times.
-#[derive(Debug, Eq, PartialEq)]
-pub struct SourceCodeInfo {
-  pub code: String,
-  pub module_url_specified: String,
-  pub module_url_found: String,
-}
 
 /// More specialized version of `Isolate` that provides loading
 /// and execution of ES Modules.
 ///
 /// Creating `EsIsolate` requires to pass `loader` argument
-/// that implements `Loader` trait - that way actual resolution and
+/// that implements `ModuleLoader` trait - that way actual resolution and
 /// loading of modules can be customized by the implementor.
 pub struct EsIsolate {
   core_isolate: Box<Isolate>,
-  loader: Rc<dyn Loader + Unpin>,
+  loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
   pub(crate) next_dyn_import_id: DynImportId,
   pub(crate) dyn_import_map:
@@ -84,7 +73,7 @@ impl DerefMut for EsIsolate {
 
 impl EsIsolate {
   pub fn new(
-    loader: Rc<dyn Loader + Unpin>,
+    loader: Rc<dyn ModuleLoader>,
     startup_data: StartupData,
     will_snapshot: bool,
   ) -> Box<Self> {
@@ -429,10 +418,10 @@ impl EsIsolate {
 
   fn register_during_load(
     &mut self,
-    info: SourceCodeInfo,
+    info: ModuleSource,
     load: &mut RecursiveModuleLoad,
   ) -> Result<(), ErrBox> {
-    let SourceCodeInfo {
+    let ModuleSource {
       code,
       module_url_specified,
       module_url_found,
@@ -553,7 +542,7 @@ pub mod tests {
   use crate::isolate::js_check;
   use crate::isolate::tests::run_in_task;
   use crate::isolate::ZeroCopyBuf;
-  use crate::modules::SourceCodeInfoFuture;
+  use crate::modules::ModuleSourceFuture;
   use crate::ops::*;
   use std::io;
   use std::sync::atomic::{AtomicUsize, Ordering};
@@ -566,7 +555,7 @@ pub mod tests {
       pub count: Arc<AtomicUsize>,
     }
 
-    impl Loader for ModsLoader {
+    impl ModuleLoader for ModsLoader {
       fn resolve(
         &self,
         specifier: &str,
@@ -585,7 +574,7 @@ pub mod tests {
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
-      ) -> Pin<Box<SourceCodeInfoFuture>> {
+      ) -> Pin<Box<ModuleSourceFuture>> {
         unreachable!()
       }
     }
@@ -665,7 +654,7 @@ pub mod tests {
       pub count: Arc<AtomicUsize>,
     }
 
-    impl Loader for DynImportErrLoader {
+    impl ModuleLoader for DynImportErrLoader {
       fn resolve(
         &self,
         specifier: &str,
@@ -684,7 +673,7 @@ pub mod tests {
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
-      ) -> Pin<Box<SourceCodeInfoFuture>> {
+      ) -> Pin<Box<ModuleSourceFuture>> {
         async { Err(ErrBox::from(io::Error::from(io::ErrorKind::NotFound))) }
           .boxed()
       }
@@ -726,7 +715,7 @@ pub mod tests {
       pub count: Arc<AtomicUsize>,
     }
 
-    impl Loader for DynImportErr2Loader {
+    impl ModuleLoader for DynImportErr2Loader {
       fn resolve(
         &self,
         specifier: &str,
@@ -750,8 +739,8 @@ pub mod tests {
         &self,
         specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
-      ) -> Pin<Box<SourceCodeInfoFuture>> {
-        let info = SourceCodeInfo {
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        let info = ModuleSource {
           module_url_specified: specifier.to_string(),
           module_url_found: specifier.to_string(),
           code: "# not valid JS".to_owned(),
@@ -811,7 +800,7 @@ pub mod tests {
       pub load_count: Arc<AtomicUsize>,
     }
 
-    impl Loader for DynImportOkLoader {
+    impl ModuleLoader for DynImportOkLoader {
       fn resolve(
         &self,
         specifier: &str,
@@ -834,9 +823,9 @@ pub mod tests {
         specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
-      ) -> Pin<Box<SourceCodeInfoFuture>> {
+      ) -> Pin<Box<ModuleSourceFuture>> {
         self.load_count.fetch_add(1, Ordering::Relaxed);
-        let info = SourceCodeInfo {
+        let info = ModuleSource {
           module_url_specified: specifier.to_string(),
           module_url_found: specifier.to_string(),
           code: "export function b() { return 'b' }".to_owned(),

@@ -6,7 +6,7 @@ use crate::futures::future::try_join_all;
 use crate::msg;
 use crate::op_error::OpError;
 use crate::state::State;
-use deno_core::Loader;
+use deno_core::ModuleLoader;
 use deno_core::*;
 use futures::future::FutureExt;
 
