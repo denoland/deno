@@ -21,7 +21,7 @@ export default class Dir {
    * where each call to readdir returns the next file.  This function simulates this
    * behaviour by fetching all the entries on the first call, putting them on a stack
    * and then popping them off the stack one at a time.
-   * 
+   *
    * TODO: Rework this implementation once https://github.com/denoland/deno/issues/4218
    * is resolved.
    */
