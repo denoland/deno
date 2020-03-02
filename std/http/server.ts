@@ -22,7 +22,7 @@ export class ServerRequest {
   protoMinor!: number;
   protoMajor!: number;
   headers!: Headers;
-  conn!: Conn;
+  conn!: Conn<Deno.TCPAddr>;
   r!: BufReader;
   w!: BufWriter;
   done: Deferred<Error | undefined> = deferred();
@@ -122,10 +122,10 @@ export class ServerRequest {
   }
 }
 
-export class Server implements AsyncIterable<ServerRequest> {
+export class Server<Deno.TCPAddr> implements AsyncIterable<ServerRequest> {
   private closing = false;
 
-  constructor(public listener: Listener) {}
+  constructor(public listener: Listener<Deno.TCPAddr>) {}
 
   close(): void {
     this.closing = true;
@@ -134,7 +134,7 @@ export class Server implements AsyncIterable<ServerRequest> {
 
   // Yields all HTTP requests on a single TCP connection.
   private async *iterateHttpRequests(
-    conn: Conn
+    conn: Conn<Deno.TCPAddr>
   ): AsyncIterableIterator<ServerRequest> {
     const bufr = new BufReader(conn);
     const w = new BufWriter(conn);
@@ -200,7 +200,7 @@ export class Server implements AsyncIterable<ServerRequest> {
     // Wait for a new connection.
     const { value, done } = await this.listener.next();
     if (done) return;
-    const conn = value as Conn;
+    const conn = value as Conn<Deno.TCPAddr>;
     // Try to accept another connection and add it to the multiplexer.
     mux.add(this.acceptConnAndIterateHttpRequests(mux));
     // Yield the requests that arrive on the just-accepted connection.

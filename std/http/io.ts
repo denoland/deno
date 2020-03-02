@@ -341,7 +341,7 @@ export function parseHTTPVersion(vers: string): [number, number] {
 }
 
 export async function readRequest(
-  conn: Deno.Conn,
+  conn: Deno.Conn<Deno.TCPAddr>,
   bufr: BufReader
 ): Promise<ServerRequest | Deno.EOF> {
   const tp = new TextProtoReader(bufr);

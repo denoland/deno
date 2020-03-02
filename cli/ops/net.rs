@@ -20,11 +20,13 @@ use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
 
-#[cfg(not(windows))]
+#[cfg(unix)]
 use std::os::unix;
-#[cfg(not(windows))]
+#[cfg(unix)]
+use tokio::net::UnixDatagram;
+#[cfg(unix)]
 use tokio::net::UnixListener;
-#[cfg(not(windows))]
+#[cfg(unix)]
 use tokio::net::UnixStream;
 
 pub fn init(i: &mut Isolate, s: &State) {
@@ -158,27 +160,29 @@ fn op_accept(
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: AcceptArgs = serde_json::from_value(args)?;
-  if args.transport == "tcp" {
-    accept_tcp(state, args, zero_copy)
-  } else {
-    accept_unix(state, args, zero_copy)
+  match args.transport.as_str() {
+    "tcp" => accept_tcp(state, args, zero_copy),
+    "unix" => accept_unix(state, args, zero_copy),
+    _ => Err(OpError::other(format!(
+      "Unsupported transport protocol {}",
+      args.transport
+    ))),
   }
 }
 
 #[derive(Deserialize)]
 struct ReceiveArgs {
   rid: i32,
+  transport: String,
 }
 
-fn op_receive(
+fn receive_udp(
   state: &State,
-  args: Value,
+  args: ReceiveArgs,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
-  assert!(zero_copy.is_some());
   let mut buf = zero_copy.unwrap();
 
-  let args: ReceiveArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
   let state_ = state.clone();
@@ -206,12 +210,59 @@ fn op_receive(
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
+fn receive_unix_packet(
+  state: &State,
+  args: ReceiveArgs,
+  zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  let mut buf = zero_copy.unwrap();
+
+  let rid = args.rid as u32;
+
+  let state_ = state.clone();
+
+  let op = async move {
+    let mut state = state_.borrow_mut();
+    let resource = state
+      .resource_table
+      .get_mut::<UnixDatagramResource>(rid)
+      .ok_or_else(|| OpError::other("Socket has been closed".to_string()))?;
+    let (size, remote_addr) = resource.socket.recv_from(&mut buf).await?;
+    Ok(json!({
+      "size": size,
+      "remoteAddr": {
+        "address": remote_addr.as_pathname(),
+        "transport": args.transport,
+      }
+    }))
+  };
+
+  Ok(JsonOp::Async(op.boxed_local()))
+}
+
+fn op_receive(
+  state: &State,
+  args: Value,
+  zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  assert!(zero_copy.is_some());
+  let args: ReceiveArgs = serde_json::from_value(args)?;
+  match args.transport.as_str() {
+    "udp" => receive_udp(state, args, zero_copy),
+    "unixpacket" => receive_unix_packet(state, args, zero_copy),
+    _ => Err(OpError::other(format!(
+      "Unsupported transport protocol {}",
+      args.transport
+    ))),
+  }
+}
+
 #[derive(Deserialize)]
 struct SendArgs {
   rid: i32,
-  hostname: String,
-  port: u16,
   transport: String,
+  #[serde(flatten)]
+  transport_args: ArgsEnum,
 }
 
 fn op_send(
@@ -221,36 +272,69 @@ fn op_send(
 ) -> Result<JsonOp, OpError> {
   assert!(zero_copy.is_some());
   let buf = zero_copy.unwrap();
-
-  let args: SendArgs = serde_json::from_value(args)?;
-  assert_eq!(args.transport, "udp");
-  let rid = args.rid as u32;
-
   let state_ = state.clone();
-  state.check_net(&args.hostname, args.port)?;
+  match serde_json::from_value(args)? {
+    SendArgs {
+      rid,
+      transport,
+      transport_args: ArgsEnum::Ip(args),
+    } if transport == "udp" => {
+      state.check_net(&args.hostname, args.port)?;
 
-  let op = async move {
-    let mut state = state_.borrow_mut();
-    let resource = state
-      .resource_table
-      .get_mut::<UdpSocketResource>(rid)
-      .ok_or_else(|| OpError::other("Socket has been closed".to_string()))?;
+      let op = async move {
+        let mut state = state_.borrow_mut();
+        let resource = state
+          .resource_table
+          .get_mut::<UdpSocketResource>(rid as u32)
+          .ok_or_else(|| {
+            OpError::other("Socket has been closed".to_string())
+          })?;
 
-    let socket = &mut resource.socket;
-    let addr = resolve_addr(&args.hostname, args.port).await?;
-    socket.send_to(&buf, addr).await?;
+        let socket = &mut resource.socket;
+        let addr = resolve_addr(&args.hostname, args.port).await?;
+        socket.send_to(&buf, addr).await?;
 
-    Ok(json!({}))
-  };
+        Ok(json!({}))
+      };
 
-  Ok(JsonOp::Async(op.boxed_local()))
+      Ok(JsonOp::Async(op.boxed_local()))
+    }
+    #[cfg(unix)]
+    SendArgs {
+      rid,
+      transport,
+      transport_args: ArgsEnum::Unix(args),
+    } if transport == "unixpacket" => {
+      let address_path = Path::new(&args.address);
+      state.check_read(&address_path)?;
+      let op = async move {
+        let mut state = state_.borrow_mut();
+        let resource = state
+          .resource_table
+          .get_mut::<UnixDatagramResource>(rid as u32)
+          .ok_or_else(|| {
+            OpError::other("Socket has been closed".to_string())
+          })?;
+
+        let socket = &mut resource.socket;
+        socket
+          .send_to(&buf, &resource.local_addr.as_pathname().unwrap())
+          .await?;
+
+        Ok(json!({}))
+      };
+
+      Ok(JsonOp::Async(op.boxed_local()))
+    }
+    _ => Err(OpError::other("Wrong argument format!".to_owned())),
+  }
 }
 
 #[derive(Deserialize)]
 struct ConnectArgs {
   transport: String,
   #[serde(flatten)]
-  transport_args: ListenArgsEnum,
+  transport_args: ArgsEnum,
 }
 
 fn op_connect(
@@ -261,7 +345,7 @@ fn op_connect(
   match serde_json::from_value(args)? {
     ConnectArgs {
       transport,
-      transport_args: ListenArgsEnum::Ip(args),
+      transport_args: ArgsEnum::Ip(args),
     } if transport == "tcp" => {
       let state_ = state.clone();
       state.check_net(&args.hostname, args.port)?;
@@ -290,10 +374,10 @@ fn op_connect(
       };
       Ok(JsonOp::Async(op.boxed_local()))
     }
-    #[cfg(not(windows))]
+    #[cfg(unix)]
     ConnectArgs {
       transport,
-      transport_args: ListenArgsEnum::Unix(args),
+      transport_args: ArgsEnum::Unix(args),
     } if transport == "unix" => {
       let address_path = Path::new(&args.address);
       let state_ = state.clone();
@@ -357,7 +441,7 @@ fn op_shutdown(
     StreamResource::TcpStream(ref mut stream) => {
       TcpStream::shutdown(stream, shutdown_mode).map_err(OpError::from)?;
     }
-    #[cfg(not(windows))]
+    #[cfg(unix)]
     StreamResource::UnixStream(ref mut stream) => {
       UnixStream::shutdown(stream, shutdown_mode).map_err(OpError::from)?;
     }
@@ -368,7 +452,7 @@ fn op_shutdown(
 }
 
 #[allow(dead_code)]
-#[cfg(not(windows))]
+#[cfg(unix)]
 struct UnixListenerResource {
   listener: UnixListener,
   local_addr: unix::net::SocketAddr,
@@ -423,6 +507,12 @@ impl TcpListenerResource {
   }
 }
 
+#[cfg(unix)]
+struct UnixDatagramResource {
+  socket: UnixDatagram,
+  local_addr: unix::net::SocketAddr,
+}
+
 struct UdpSocketResource {
   socket: UdpSocket,
 }
@@ -433,6 +523,7 @@ struct IpListenArgs {
   port: u16,
 }
 
+#[cfg(unix)]
 #[derive(Deserialize)]
 struct UnixListenArgs {
   address: String,
@@ -440,8 +531,9 @@ struct UnixListenArgs {
 
 #[derive(Deserialize)]
 #[serde(untagged)]
-enum ListenArgsEnum {
+enum ArgsEnum {
   Ip(IpListenArgs),
+  #[cfg(unix)]
   Unix(UnixListenArgs),
 }
 
@@ -449,7 +541,7 @@ enum ListenArgsEnum {
 struct ListenArgs {
   transport: String,
   #[serde(flatten)]
-  transport_args: ListenArgsEnum,
+  transport_args: ArgsEnum,
 }
 
 fn listen_tcp(
@@ -486,7 +578,7 @@ fn listen_udp(
   Ok((rid, local_addr))
 }
 
-#[cfg(not(windows))]
+#[cfg(unix)]
 fn listen_unix(
   state: &State,
   addr: &Path,
@@ -508,6 +600,28 @@ fn listen_unix(
   Ok((rid, local_addr))
 }
 
+#[cfg(unix)]
+fn listen_unix_packet(
+  state: &State,
+  addr: &Path,
+) -> Result<(u32, unix::net::SocketAddr), OpError> {
+  let mut state = state.borrow_mut();
+  if addr.exists() {
+    remove_file(&addr).unwrap();
+  }
+  let socket = UnixDatagram::bind(&addr)?;
+  let local_addr = socket.local_addr()?;
+  let datagram_resource = UnixDatagramResource {
+    socket,
+    local_addr: local_addr.clone(),
+  };
+  let rid = state
+    .resource_table
+    .add("unixDatagram", Box::new(datagram_resource));
+
+  Ok((rid, local_addr))
+}
+
 fn op_listen(
   state: &State,
   args: Value,
@@ -516,7 +630,7 @@ fn op_listen(
   match serde_json::from_value(args)? {
     ListenArgs {
       transport,
-      transport_args: ListenArgsEnum::Ip(args),
+      transport_args: ArgsEnum::Ip(args),
     } => {
       state.check_net(&args.hostname, args.port)?;
       let addr =
@@ -541,14 +655,18 @@ fn op_listen(
       },
       })))
     }
-    #[cfg(not(windows))]
+    #[cfg(unix)]
     ListenArgs {
       transport,
-      transport_args: ListenArgsEnum::Unix(args),
-    } if transport == "unix" => {
+      transport_args: ArgsEnum::Unix(args),
+    } if transport == "unix" || transport == "unixpacket" => {
       let address_path = Path::new(&args.address);
       state.check_read(&address_path)?;
-      let (rid, local_addr) = listen_unix(state, &address_path)?;
+      let (rid, local_addr) = if transport == "unix" {
+        listen_unix(state, &address_path)?
+      } else {
+        listen_unix_packet(state, &address_path)?
+      };
       debug!(
         "New listener {} {}",
         rid,
