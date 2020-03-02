@@ -3,6 +3,11 @@ import {
   intoCallbackAPIWithIntercept,
   MaybeEmpty
 } from "./_utils.ts";
+
+import { appendFile } from "./_fs/_fs_appendFile.ts";
+
+export { appendFile };
+
 const {
   readFile: denoReadFile,
   readFileSync: denoReadFileSync,
@@ -128,3 +133,12 @@ export function readlinkSync(
 ): string | Uint8Array {
   return maybeEncode(denoReadlinkSync(path), getEncoding(opt));
 }
+
+export function access(path: string, modeOrCallback: number|Function, callback?:Function):void {
+  notImplemented("Comparable functionality is not yet available in Deno");
+}
+
+export function accessSync(path: string, mode?:number): undefined {
+  notImplemented("Comparable functionality is not yet available in Deno");
+}
+

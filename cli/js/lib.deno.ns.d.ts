@@ -1025,7 +1025,7 @@ declare namespace Deno {
     ino: number | null;
     /** **UNSTABLE**: Match behavior with Go on Windows for `mode`.
      *
-     * The underlying raw `st_mod`e bits that contain the standard Linux/Mac OS
+     * The underlying raw `st_mode` bits that contain the standard Linux/Mac OS
      * permissions for this file/directory. */
     mode: number | null;
     /** Number of hard links pointing to this file.
