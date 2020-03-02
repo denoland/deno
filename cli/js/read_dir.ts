@@ -15,19 +15,23 @@ function res(response: ReadDirResponse): FileInfo[] {
   );
 }
 
-/** Reads the directory given by path and returns a list of file info
- * synchronously.
+/** Synchronously reads the directory given by `path` and returns an array of
+ * `Deno.FileInfo`.
  *
  *       const files = Deno.readDirSync("/");
- */
+ *
+ * Requires `allow-read` permission. */
 export function readDirSync(path: string): FileInfo[] {
   return res(sendSync("op_read_dir", { path }));
 }
 
-/** Reads the directory given by path and returns a list of file info.
+/** UNSTABLE: Maybe need to return an `AsyncIterable`.
+ *
+ * Reads the directory given by `path` and resolves to an array of `Deno.FileInfo`.
  *
  *       const files = await Deno.readDir("/");
- */
+ *
+ * Requires `allow-read` permission. */
 export async function readDir(path: string): Promise<FileInfo[]> {
   return res(await sendAsync("op_read_dir", { path }));
 }
