@@ -91,7 +91,7 @@ export class SourceFile {
   }
 
   /** Process the imports for the file and return them. */
-  imports(checkJs: boolean): Array<[string, string]> {
+  imports(processJsImports: boolean): Array<[string, string]> {
     if (this.processed) {
       throw new Error("SourceFile has already been processed.");
     }
@@ -134,7 +134,7 @@ export class SourceFile {
       }
     } else if (
       !(
-        !checkJs &&
+        !processJsImports &&
         (this.mediaType === MediaType.JavaScript ||
           this.mediaType === MediaType.JSX)
       )

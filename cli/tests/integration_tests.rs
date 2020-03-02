@@ -437,6 +437,36 @@ fn bundle_tla() {
 }
 
 #[test]
+fn bundle_js() {
+  use tempfile::TempDir;
+
+  // First we have to generate a bundle of some module that has exports.
+  let mod6 = util::root_path().join("cli/tests/subdir/mod6.js");
+  assert!(mod6.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("mod6.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(mod6)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&bundle)
+    .output()
+    .expect("failed to spawn script");
+  // check that nothing went to stderr
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
 fn repl_test_console_log() {
   let (out, err, code) = util::run_and_collect_output(
     "repl",
