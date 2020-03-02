@@ -12,7 +12,7 @@ use crate::worker::WorkerHandle;
 use deno_core::Buf;
 use deno_core::CoreOp;
 use deno_core::ErrBox;
-use deno_core::Loader;
+use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
 use deno_core::ResourceTable;
@@ -89,25 +89,40 @@ impl State {
         zero_copy.as_ref().map(|b| b.len()).unwrap_or(0) as u64;
 
       let op = dispatcher(control, zero_copy);
-      state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
 
       match op {
         Op::Sync(buf) => {
-          state.metrics_op_completed(buf.len() as u64);
+          let mut state_ = state.borrow_mut();
+          state_.metrics.op_sync(
+            bytes_sent_control,
+            bytes_sent_zero_copy,
+            buf.len() as u64,
+          );
           Op::Sync(buf)
         }
         Op::Async(fut) => {
+          let mut state_ = state.borrow_mut();
+          state_
+            .metrics
+            .op_dispatched_async(bytes_sent_control, bytes_sent_zero_copy);
           let state = state.clone();
           let result_fut = fut.map_ok(move |buf: Buf| {
-            state.metrics_op_completed(buf.len() as u64);
+            let mut state_ = state.borrow_mut();
+            state_.metrics.op_completed_async(buf.len() as u64);
             buf
           });
           Op::Async(result_fut.boxed_local())
         }
         Op::AsyncUnref(fut) => {
+          let mut state_ = state.borrow_mut();
+          state_.metrics.op_dispatched_async_unref(
+            bytes_sent_control,
+            bytes_sent_zero_copy,
+          );
           let state = state.clone();
           let result_fut = fut.map_ok(move |buf: Buf| {
-            state.metrics_op_completed(buf.len() as u64);
+            let mut state_ = state.borrow_mut();
+            state_.metrics.op_completed_async_unref(buf.len() as u64);
             buf
           });
           Op::AsyncUnref(result_fut.boxed_local())
@@ -151,7 +166,7 @@ impl State {
   }
 }
 
-impl Loader for State {
+impl ModuleLoader for State {
   fn resolve(
     &self,
     specifier: &str,
@@ -178,7 +193,7 @@ impl Loader for State {
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     is_dyn_import: bool,
-  ) -> Pin<Box<deno_core::SourceCodeInfoFuture>> {
+  ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.clone();
     if is_dyn_import {
       if let Err(e) = self.check_dyn_import(&module_specifier) {
@@ -196,7 +211,7 @@ impl Loader for State {
       let compiled_module = global_state
         .fetch_compiled_module(module_specifier, maybe_referrer, target_lib)
         .await?;
-      Ok(deno_core::SourceCodeInfo {
+      Ok(deno_core::ModuleSource {
         // Real module name, might be different from initial specifier
         // due to redirections.
         code: compiled_module.code,
@@ -357,22 +372,5 @@ impl State {
       module_specifier,
     )
     .unwrap()
-  }
-
-  pub fn metrics_op_dispatched(
-    &self,
-    bytes_sent_control: u64,
-    bytes_sent_data: u64,
-  ) {
-    let mut state = self.borrow_mut();
-    state.metrics.ops_dispatched += 1;
-    state.metrics.bytes_sent_control += bytes_sent_control;
-    state.metrics.bytes_sent_data += bytes_sent_data;
-  }
-
-  pub fn metrics_op_completed(&self, bytes_received: u64) {
-    let mut state = self.borrow_mut();
-    state.metrics.ops_completed += 1;
-    state.metrics.bytes_received += bytes_received;
   }
 }

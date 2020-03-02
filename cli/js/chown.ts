@@ -1,8 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
-/**
- * Change owner of a regular file or directory synchronously. Unix only at the moment.
+/** Synchronously change owner of a regular file or directory. Linux/Mac OS
+ * only at the moment.
+ *
+ * Requires `allow-write` permission.
+ *
  * @param path path to the file
  * @param uid user id of the new owner
  * @param gid group id of the new owner
@@ -11,8 +14,11 @@ export function chownSync(path: string, uid: number, gid: number): void {
   sendSync("op_chown", { path, uid, gid });
 }
 
-/**
- * Change owner of a regular file or directory asynchronously. Unix only at the moment.
+/** Change owner of a regular file or directory. Linux/Mac OS only at the
+ * moment.
+ *
+ * Requires `allow-write` permission.
+ *
  * @param path path to the file
  * @param uid user id of the new owner
  * @param gid group id of the new owner

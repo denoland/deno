@@ -280,6 +280,7 @@ testPerm(
     const data = encoder.encode("Hello world!\n");
 
     const file = await Deno.open(filename, "w+");
+    const seekPosition = 0;
     // assert file was created
     let fileInfo = Deno.statSync(filename);
     assert(fileInfo.isFile());
@@ -290,7 +291,12 @@ testPerm(
     assertEquals(fileInfo.len, 13);
 
     const buf = new Uint8Array(20);
-    await file.seek(0, Deno.SeekMode.SEEK_START);
+    // seeking from beginning of a file
+    const cursorPosition = await file.seek(
+      seekPosition,
+      Deno.SeekMode.SEEK_START
+    );
+    assertEquals(seekPosition, cursorPosition);
     const result = await file.read(buf);
     assertEquals(result, 13);
     file.close();
@@ -302,10 +308,16 @@ testPerm(
 testPerm({ read: true }, async function seekStart(): Promise<void> {
   const filename = "cli/tests/hello.txt";
   const file = await Deno.open(filename);
+  const seekPosition = 6;
   // Deliberately move 1 step forward
   await file.read(new Uint8Array(1)); // "H"
   // Skipping "Hello "
-  await file.seek(6, Deno.SeekMode.SEEK_START);
+  // seeking from beginning of a file plus seekPosition
+  const cursorPosition = await file.seek(
+    seekPosition,
+    Deno.SeekMode.SEEK_START
+  );
+  assertEquals(seekPosition, cursorPosition);
   const buf = new Uint8Array(6);
   await file.read(buf);
   const decoded = new TextDecoder().decode(buf);
@@ -316,10 +328,13 @@ testPerm({ read: true }, async function seekStart(): Promise<void> {
 testPerm({ read: true }, function seekSyncStart(): void {
   const filename = "cli/tests/hello.txt";
   const file = Deno.openSync(filename);
+  const seekPosition = 6;
   // Deliberately move 1 step forward
   file.readSync(new Uint8Array(1)); // "H"
   // Skipping "Hello "
-  file.seekSync(6, Deno.SeekMode.SEEK_START);
+  // seeking from beginning of a file plus seekPosition
+  const cursorPosition = file.seekSync(seekPosition, Deno.SeekMode.SEEK_START);
+  assertEquals(seekPosition, cursorPosition);
   const buf = new Uint8Array(6);
   file.readSync(buf);
   const decoded = new TextDecoder().decode(buf);
@@ -333,7 +348,13 @@ testPerm({ read: true }, async function seekCurrent(): Promise<void> {
   // Deliberately move 1 step forward
   await file.read(new Uint8Array(1)); // "H"
   // Skipping "ello "
-  await file.seek(5, Deno.SeekMode.SEEK_CURRENT);
+  const seekPosition = 5;
+  // seekPosition is relative to current cursor position after read
+  const cursorPosition = await file.seek(
+    seekPosition,
+    Deno.SeekMode.SEEK_CURRENT
+  );
+  assertEquals(seekPosition + 1, cursorPosition);
   const buf = new Uint8Array(6);
   await file.read(buf);
   const decoded = new TextDecoder().decode(buf);
@@ -347,7 +368,13 @@ testPerm({ read: true }, function seekSyncCurrent(): void {
   // Deliberately move 1 step forward
   file.readSync(new Uint8Array(1)); // "H"
   // Skipping "ello "
-  file.seekSync(5, Deno.SeekMode.SEEK_CURRENT);
+  const seekPosition = 5;
+  // seekPosition is relative to current cursor position after read
+  const cursorPosition = file.seekSync(
+    seekPosition,
+    Deno.SeekMode.SEEK_CURRENT
+  );
+  assertEquals(seekPosition + 1, cursorPosition);
   const buf = new Uint8Array(6);
   file.readSync(buf);
   const decoded = new TextDecoder().decode(buf);
@@ -358,7 +385,10 @@ testPerm({ read: true }, function seekSyncCurrent(): void {
 testPerm({ read: true }, async function seekEnd(): Promise<void> {
   const filename = "cli/tests/hello.txt";
   const file = await Deno.open(filename);
-  await file.seek(-6, Deno.SeekMode.SEEK_END);
+  const seekPosition = -6;
+  // seek from end of file that has 12 chars, 12 - 6  = 6
+  const cursorPosition = await file.seek(seekPosition, Deno.SeekMode.SEEK_END);
+  assertEquals(6, cursorPosition);
   const buf = new Uint8Array(6);
   await file.read(buf);
   const decoded = new TextDecoder().decode(buf);
@@ -369,7 +399,10 @@ testPerm({ read: true }, async function seekEnd(): Promise<void> {
 testPerm({ read: true }, function seekSyncEnd(): void {
   const filename = "cli/tests/hello.txt";
   const file = Deno.openSync(filename);
-  file.seekSync(-6, Deno.SeekMode.SEEK_END);
+  const seekPosition = -6;
+  // seek from end of file that has 12 chars, 12 - 6  = 6
+  const cursorPosition = file.seekSync(seekPosition, Deno.SeekMode.SEEK_END);
+  assertEquals(6, cursorPosition);
   const buf = new Uint8Array(6);
   file.readSync(buf);
   const decoded = new TextDecoder().decode(buf);

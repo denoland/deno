@@ -19,11 +19,22 @@ pub trait DisplayFormatter {
   fn format_source_name(&self) -> String;
 }
 
-fn format_source_name(script_name: String, line: i64, column: i64) -> String {
-  let script_name_c = colors::cyan(script_name);
-  let line_c = colors::yellow((1 + line).to_string());
-  let column_c = colors::yellow((1 + column).to_string());
-  format!("{}:{}:{}", script_name_c, line_c, column_c,)
+fn format_source_name(
+  script_name: String,
+  line: i64,
+  column: i64,
+  is_internal: bool,
+) -> String {
+  let line = line + 1;
+  let column = column + 1;
+  if is_internal {
+    format!("{}:{}:{}", script_name, line, column)
+  } else {
+    let script_name_c = colors::cyan(script_name);
+    let line_c = colors::yellow(line.to_string());
+    let column_c = colors::yellow(column.to_string());
+    format!("{}:{}:{}", script_name_c, line_c, column_c)
+  }
 }
 
 /// Formats optional source, line and column into a single string.
@@ -38,7 +49,12 @@ pub fn format_maybe_source_name(
 
   assert!(line.is_some());
   assert!(column.is_some());
-  format_source_name(script_name.unwrap(), line.unwrap(), column.unwrap())
+  format_source_name(
+    script_name.unwrap(),
+    line.unwrap(),
+    column.unwrap(),
+    false,
+  )
 }
 
 /// Take an optional source line and associated information to format it into
@@ -108,18 +124,39 @@ pub fn format_error_message(msg: String) -> String {
   format!("{} {}", preamble, msg)
 }
 
-fn format_stack_frame(frame: &StackFrame) -> String {
+fn format_stack_frame(frame: &StackFrame, is_internal_frame: bool) -> String {
   // Note when we print to string, we change from 0-indexed to 1-indexed.
-  let function_name = colors::italic_bold(frame.function_name.clone());
-  let source_loc =
-    format_source_name(frame.script_name.clone(), frame.line, frame.column);
-
-  if !frame.function_name.is_empty() {
-    format!("    at {} ({})", function_name, source_loc)
-  } else if frame.is_eval {
-    format!("    at eval ({})", source_loc)
+  let function_name = if is_internal_frame {
+    colors::italic_bold_gray(frame.function_name.clone()).to_string()
   } else {
-    format!("    at {}", source_loc)
+    colors::italic_bold(frame.function_name.clone()).to_string()
+  };
+  let mut source_loc = format_source_name(
+    frame.script_name.clone(),
+    frame.line,
+    frame.column,
+    is_internal_frame,
+  );
+
+  // Each chunk of styled text is auto-resetted on end,
+  // which make nesting not working.
+  // Explicitly specify color for each section.
+  let mut at_prefix = "    at".to_owned();
+  if is_internal_frame {
+    at_prefix = colors::gray(at_prefix).to_string();
+  }
+  if !frame.function_name.is_empty() || frame.is_eval {
+    source_loc = format!("({})", source_loc); // wrap then style
+  }
+  if is_internal_frame {
+    source_loc = colors::gray(source_loc).to_string();
+  }
+  if !frame.function_name.is_empty() {
+    format!("{} {} {}", at_prefix, function_name, source_loc)
+  } else if frame.is_eval {
+    format!("{} eval {}", at_prefix, source_loc)
+  } else {
+    format!("{} {}", at_prefix, source_loc)
   }
 }
 
@@ -213,7 +250,8 @@ impl fmt::Display for JSError {
     )?;
 
     for frame in &self.0.frames {
-      write!(f, "\n{}", format_stack_frame(&frame))?;
+      let is_internal_frame = frame.script_name.starts_with("$deno$");
+      write!(f, "\n{}", format_stack_frame(&frame, is_internal_frame))?;
     }
     Ok(())
   }
