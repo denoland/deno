@@ -13,6 +13,7 @@ import { encode } from "../strings/mod.ts";
 import Listener = Deno.Listener;
 import Conn = Deno.Conn;
 import Reader = Deno.Reader;
+import TCPAddr = Deno.TCPAddr;
 const { listen, listenTLS } = Deno;
 
 export class ServerRequest {
@@ -22,7 +23,7 @@ export class ServerRequest {
   protoMinor!: number;
   protoMajor!: number;
   headers!: Headers;
-  conn!: Conn<Deno.TCPAddr>;
+  conn!: Conn<TCPAddr>;
   r!: BufReader;
   w!: BufWriter;
   done: Deferred<Error | undefined> = deferred();
@@ -122,10 +123,10 @@ export class ServerRequest {
   }
 }
 
-export class Server<Deno.TCPAddr> implements AsyncIterable<ServerRequest> {
+export class Server<TCPAddr> implements AsyncIterable<ServerRequest> {
   private closing = false;
 
-  constructor(public listener: Listener<Deno.TCPAddr>) {}
+  constructor(public listener: Listener<TCPAddr>) {}
 
   close(): void {
     this.closing = true;
@@ -134,7 +135,7 @@ export class Server<Deno.TCPAddr> implements AsyncIterable<ServerRequest> {
 
   // Yields all HTTP requests on a single TCP connection.
   private async *iterateHttpRequests(
-    conn: Conn<Deno.TCPAddr>
+    conn: Conn<TCPAddr>
   ): AsyncIterableIterator<ServerRequest> {
     const bufr = new BufReader(conn);
     const w = new BufWriter(conn);
@@ -200,7 +201,7 @@ export class Server<Deno.TCPAddr> implements AsyncIterable<ServerRequest> {
     // Wait for a new connection.
     const { value, done } = await this.listener.next();
     if (done) return;
-    const conn = value as Conn<Deno.TCPAddr>;
+    const conn = value as Conn<TCPAddr>;
     // Try to accept another connection and add it to the multiplexer.
     mux.add(this.acceptConnAndIterateHttpRequests(mux));
     // Yield the requests that arrive on the just-accepted connection.
