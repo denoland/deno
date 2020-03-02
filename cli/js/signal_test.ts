@@ -122,12 +122,6 @@ if (Deno.build.os === "win") {
 
     for await (const _ of sig) {
       c += 1;
-      // FIXME(bartlomieju): this is probably a bug; if you don't break
-      // here then there's a pending async op going on - that suggests
-      // signals iterator doesn't handle signal.dispose() properly
-      if (c === 3) {
-        break;
-      }
     }
 
     assertEquals(c, 3);
@@ -136,8 +130,6 @@ if (Deno.build.os === "win") {
     await resolvable;
   });
 
-  /* FIXME: leaking async op - `sig.dispose()` doesn't handle
-    pending ops
   testPerm({ run: true }, async function signalPromiseTest(): Promise<void> {
     const resolvable = createResolvable();
     // This prevents the program from exiting.
@@ -154,7 +146,6 @@ if (Deno.build.os === "win") {
     clearTimeout(t);
     await resolvable;
   });
-  */
 
   testPerm({ run: true }, async function signalShorthandsTest(): Promise<void> {
     let s: Deno.SignalStream;
