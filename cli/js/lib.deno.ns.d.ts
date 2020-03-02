@@ -116,6 +116,7 @@ declare namespace Deno {
     | "picture"
     | "public"
     | "template"
+    | "tmp"
     | "video";
 
   // TODO(ry) markdown in jsdoc broken https://deno.land/typedoc/index.html#dir
@@ -131,7 +132,7 @@ declare namespace Deno {
    *
    * Argument values: `"home"`, `"cache"`, `"config"`, `"executable"`, `"data"`,
    * `"data_local"`, `"audio"`, `"desktop"`, `"document"`, `"download"`,
-   * `"font"`, `"picture"`, `"public"`, `"template"`, `"video"`
+   * `"font"`, `"picture"`, `"public"`, `"template"`, `"tmp"`, `"video"`
    *
    * `"cache"`
    *
@@ -236,6 +237,14 @@ declare namespace Deno {
    * | Linux   | `XDG_TEMPLATES_DIR`    | /home/alice/Templates                                      |
    * | macOS   | –                      | –                                                          |
    * | Windows | `{FOLDERID_Templates}` | C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Templates |
+   *
+   * `"tmp"`
+   *
+   * |Platform | Value                  | Example                                                    |
+   * | ------- | ---------------------- | ---------------------------------------------------------- |
+   * | Linux   | `TMPDIR`               | /tmp                                                       |
+   * | macOS   | `TMPDIR`               | /tmp                                                       |
+   * | Windows | `{TMP}`                | C:\Users\Alice\AppData\Local\Temp                          |
    *
    * `"video"`
    *
