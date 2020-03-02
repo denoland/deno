@@ -21,6 +21,7 @@ export async function appendFile(path: string | number, data: string | Uint8Arra
       const flag:string|undefined = isFileOptions(options) ? options.flag : undefined;
   
       if (mode) {
+        //TODO rework once https://github.com/denoland/deno/issues/4017 lands
         notImplemented('Deno does not yet support setting mode on create');
       } 
       
