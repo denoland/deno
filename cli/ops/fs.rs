@@ -13,9 +13,7 @@ use std::path::Path;
 use std::time::UNIX_EPOCH;
 
 #[cfg(unix)]
-use std::os::unix::fs::MetadataExt;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_chdir", s.stateful_json_op(op_chdir));
@@ -104,7 +102,7 @@ fn op_chmod(
     debug!("op_chmod {}", path.display());
     // Still check file/dir exists on windows
     let _metadata = fs::metadata(&path)?;
-    #[cfg(any(unix))]
+    #[cfg(unix)]
     {
       let mut permissions = _metadata.permissions();
       permissions.set_mode(args.mode);
@@ -136,10 +134,8 @@ fn op_chown(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_chown {}", path.display());
-    match deno_fs::chown(args.path.as_ref(), args.uid, args.gid) {
-      Ok(_) => Ok(json!({})),
-      Err(e) => Err(OpError::from(e)),
-    }
+    deno_fs::chown(args.path.as_ref(), args.uid, args.gid)?;
+    Ok(json!({}))
   })
 }
 
@@ -201,13 +197,14 @@ fn op_copy_file(
   debug!("op_copy_file {} {}", from.display(), to.display());
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    // On *nix, Rust deem non-existent path as invalid input
+    // On *nix, Rust reports non-existent `from` as ErrorKind::InvalidInput
     // See https://github.com/rust-lang/rust/issues/54800
-    // Once the issue is reolved, we should remove this workaround.
+    // Once the issue is resolved, we should remove this workaround.
     if cfg!(unix) && !from.is_file() {
       return Err(OpError::not_found("File not found".to_string()));
     }
 
+    // returns length of from as u64 (we ignore)
     fs::copy(&from, &to)?;
     Ok(json!({}))
   })
@@ -451,13 +448,13 @@ fn op_symlink(
 
   state.check_write(&newname)?;
   // TODO Use type for Windows.
-  if cfg!(windows) {
+  if cfg!(not(unix)) {
     return Err(OpError::other("Not implemented".to_string()));
   }
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_symlink {} {}", oldname.display(), newname.display());
-    #[cfg(any(unix))]
+    #[cfg(unix)]
     std::os::unix::fs::symlink(&oldname, &newname)?;
     Ok(json!({}))
   })
@@ -597,7 +594,7 @@ fn op_make_temp_file(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Utime {
+struct UtimeArgs {
   promise_id: Option<u64>,
   filename: String,
   atime: u64,
@@ -609,11 +606,11 @@ fn op_utime(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
-  let args: Utime = serde_json::from_value(args)?;
+  let args: UtimeArgs = serde_json::from_value(args)?;
   state.check_write(Path::new(&args.filename))?;
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_utimes {} {} {}", args.filename, args.atime, args.mtime);
+    debug!("op_utime {} {} {}", args.filename, args.atime, args.mtime);
     utime::set_file_times(args.filename, args.atime, args.mtime)?;
     Ok(json!({}))
   })

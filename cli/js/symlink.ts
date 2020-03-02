@@ -3,12 +3,15 @@ import { sendSync, sendAsync } from "./dispatch_json.ts";
 import * as util from "./util.ts";
 import { build } from "./build.ts";
 
-/** Synchronously creates `newname` as a symbolic link to `oldname`. The type
- * argument can be set to `dir` or `file` and is only available on Windows
- * (ignored on other platforms).
+/** **UNSTABLE**: `type` argument type may be changed to `"dir" | "file"`.
+ *
+ * Creates `newname` as a symbolic link to `oldname`. The type argument can be
+ * set to `dir` or `file`. Is only available on Windows and ignored on other
+ * platforms.
  *
  *       Deno.symlinkSync("old/name", "new/name");
- */
+ *
+ * Requires `allow-read` and `allow-write` permissions. */
 export function symlinkSync(
   oldname: string,
   newname: string,
@@ -20,12 +23,15 @@ export function symlinkSync(
   sendSync("op_symlink", { oldname, newname });
 }
 
-/** Creates `newname` as a symbolic link to `oldname`. The type argument can be
- * set to `dir` or `file` and is only available on Windows (ignored on other
- * platforms).
+/** **UNSTABLE**: `type` argument may be changed to "dir" | "file"
+ *
+ * Creates `newname` as a symbolic link to `oldname`. The type argument can be
+ * set to `dir` or `file`. Is only available on Windows and ignored on other
+ * platforms.
  *
  *       await Deno.symlink("old/name", "new/name");
- */
+ *
+ * Requires `allow-read` and `allow-write` permissions. */
 export async function symlink(
   oldname: string,
   newname: string,

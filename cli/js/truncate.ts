@@ -13,21 +13,21 @@ function coerceLen(len?: number): number {
   return len;
 }
 
-/** Truncates or extends the specified file synchronously, updating the size of
- * this file to become size.
+/** Synchronously truncates or extends the specified file, to reach the
+ * specified `len`.
  *
  *       Deno.truncateSync("hello.txt", 10);
- */
+ *
+ * Requires `allow-write` permission. */
 export function truncateSync(name: string, len?: number): void {
   sendSync("op_truncate", { name, len: coerceLen(len) });
 }
 
-/**
- * Truncates or extends the specified file, updating the size of this file to
- * become size.
+/** Truncates or extends the specified file, to reach the specified `len`.
  *
  *       await Deno.truncate("hello.txt", 10);
- */
+ *
+ * Requires `allow-write` permission. */
 export async function truncate(name: string, len?: number): Promise<void> {
   await sendAsync("op_truncate", { name, len: coerceLen(len) });
 }
