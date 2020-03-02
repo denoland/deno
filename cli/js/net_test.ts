@@ -1,24 +1,22 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, unitTest2, assert, assertEquals } from "./test_util.ts";
+import { unitTest, assert, assertEquals } from "./test_util.ts";
+
+unitTest("net tcp listen close", { perms: { net: true } }, () => {
+  const listener = Deno.listen({ hostname: "127.0.0.1", port: 4500 });
+  assertEquals(listener.addr.transport, "tcp");
+  assertEquals(listener.addr.hostname, "127.0.0.1");
+  assertEquals(listener.addr.port, 4500);
+  listener.close();
+});
 
 unitTest(
-  "net tcp listen close", 
-  { perms: { net: true } }, 
+  {
+    name: "net udp listen close",
+    perms: { net: true },
+    // TODO:
+    skip: Deno.build.os === "win"
+  },
   () => {
-    const listener = Deno.listen({ hostname: "127.0.0.1", port: 4500 });
-    assertEquals(listener.addr.transport, "tcp");
-    assertEquals(listener.addr.hostname, "127.0.0.1");
-    assertEquals(listener.addr.port, 4500);
-    listener.close();
-  }
-);
-
-unitTest({
-  name: "net udp listen close",
-  perms: { net: true },
-  // TODO:
-  skip: Deno.build.os === "win",
-  fn: () => {
     const socket = Deno.listen({
       hostname: "127.0.0.1",
       port: 4500,
@@ -29,12 +27,14 @@ unitTest({
     assertEquals(socket.addr.port, 4500);
     socket.close();
   }
-});
+);
 
-unitTest({
-  name: "net tcp close while accept",
-  perms: { net: true },
-  fn: async () => {
+unitTest(
+  {
+    name: "net tcp close while accept",
+    perms: { net: true }
+  },
+  async () => {
     const listener = Deno.listen({ port: 4501 });
     const p = listener.accept();
     listener.close();
@@ -48,9 +48,9 @@ unitTest({
     assert(err instanceof Error);
     assertEquals(err.message, "Listener has been closed");
   }
-});
+);
 
-unitTest2(
+unitTest(
   { perms: { net: true } },
   async function netTcpConcurrentAccept(): Promise<void> {
     const listener = Deno.listen({ port: 4502 });
@@ -73,7 +73,7 @@ unitTest2(
   }
 );
 
-unitTest2({ perms: { net: true } }, async function netTcpDialListen(): Promise<
+unitTest({ perms: { net: true } }, async function netTcpDialListen(): Promise<
   void
 > {
   const listener = Deno.listen({ port: 4500 });
@@ -107,7 +107,7 @@ unitTest2({ perms: { net: true } }, async function netTcpDialListen(): Promise<
   conn.close();
 });
 
-unitTest2(
+unitTest(
   { skip: Deno.build.os === "win", perms: { net: true } },
   async function netUdpSendReceive(): Promise<void> {
     const alice = Deno.listen({ port: 4500, transport: "udp" });
@@ -134,7 +134,7 @@ unitTest2(
   }
 );
 
-unitTest2(
+unitTest(
   { perms: { net: true } },
   async function netTcpListenCloseWhileIterating(): Promise<void> {
     const listener = Deno.listen({ port: 8000 });
@@ -147,7 +147,7 @@ unitTest2(
   }
 );
 
-unitTest2(
+unitTest(
   { skip: Deno.build.os === "win", perms: { net: true } },
   async function netUdpListenCloseWhileIterating(): Promise<void> {
     const socket = Deno.listen({ port: 8000, transport: "udp" });

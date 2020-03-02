@@ -1,10 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import {
-  unitTest2,
-  assert,
-  assertEquals,
-  assertThrows
-} from "./test_util.ts";
+import { unitTest, assert, assertEquals, assertThrows } from "./test_util.ts";
 
 function defer(n: number): Promise<void> {
   return new Promise((resolve: () => void, _) => {
@@ -12,7 +7,7 @@ function defer(n: number): Promise<void> {
   });
 }
 
-unitTest2(
+unitTest(
   { skip: Deno.build.os !== "win" },
   async function signalsNotImplemented(): Promise<void> {
     assertThrows(
@@ -102,7 +97,7 @@ unitTest2(
   }
 );
 
-unitTest2(
+unitTest(
   { skip: Deno.build.os === "win", perms: { run: true, net: true } },
   async function signalStreamTest(): Promise<void> {
     // This prevents the program from exiting.
@@ -131,7 +126,7 @@ unitTest2(
   }
 );
 
-unitTest2(
+unitTest(
   { skip: Deno.build.os === "win", perms: { run: true, net: true } },
   async function signalPromiseTest(): Promise<void> {
     // This prevents the program from exiting.
@@ -148,7 +143,7 @@ unitTest2(
   }
 );
 
-unitTest2(
+unitTest(
   { skip: Deno.build.os === "win", perms: { run: true } },
   async function signalShorthandsTest(): Promise<void> {
     let s: Deno.SignalStream;

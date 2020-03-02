@@ -88,10 +88,12 @@ testPerm({ net: true }, async function listenTLSNoReadPerm(): Promise<void> {
   assertEquals(err.name, "PermissionDenied");
 });
 
-unitTest({
-  name: "listenTLS empty key file",
-  perms: { read: true, write: true, net: true },
-  fn: async () => {
+unitTest(
+  {
+    name: "listenTLS empty key file",
+    perms: { read: true, write: true, net: true }
+  },
+  async () => {
     let err;
     const options = {
       hostname: "localhost",
@@ -116,7 +118,7 @@ unitTest({
     }
     assert(err instanceof Error);
   }
-});
+);
 
 testPerm(
   { read: true, write: true, net: true },

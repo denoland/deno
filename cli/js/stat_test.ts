@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, unitTest2, assert, assertEquals } from "./test_util.ts";
+import { testPerm, unitTest, assert, assertEquals } from "./test_util.ts";
 
 // TODO Add tests for modified, accessed, and created fields once there is a way
 // to create temp files.
@@ -163,7 +163,7 @@ testPerm({ read: true }, async function lstatNotFound(): Promise<void> {
   assertEquals(badInfo, undefined);
 });
 
-unitTest2(
+unitTest(
   { skip: Deno.build.os !== "win", perms: { read: true, write: true } },
   async function statNoUnixFields(): Promise<void> {
     const enc = new TextEncoder();
@@ -184,7 +184,7 @@ unitTest2(
   }
 );
 
-unitTest2(
+unitTest(
   { skip: Deno.build.os === "win", perms: { read: true, write: true } },
   async function statUnixFields(): Promise<void> {
     const enc = new TextEncoder();

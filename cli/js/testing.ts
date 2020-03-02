@@ -191,13 +191,17 @@ export async function runTests({
   // TODO(bartlomieju): what's it for? Do we really need, maybe add handler for unhandled
   // promise to avoid such shenanigans
   if (stats.failed) {
-    originalConsole.error(`There were ${stats.failed} test failures.`);
-    testCases
-      .filter(testCase => !!testCase.error)
-      .forEach(testCase => {
-        originalConsole.error(`${RED_BG_FAIL} ${red(testCase.name)}`);
-        originalConsole.error(testCase.error);
-      });
-    exit(1);
+    // Use setTimeout to avoid the error being ignored due to unhandled
+    // promise rejections being swallowed.
+    setTimeout((): void => {
+      originalConsole.error(`There were ${stats.failed} test failures.`);
+      testCases
+        .filter(testCase => !!testCase.error)
+        .forEach(testCase => {
+          originalConsole.error(`${RED_BG_FAIL} ${red(testCase.name)}`);
+          originalConsole.error(testCase.error);
+        });
+      exit(1);
+    }, 0);
   }
 }

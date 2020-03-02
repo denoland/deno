@@ -2,7 +2,7 @@
 import {
   test,
   testPerm,
-  unitTest2,
+  unitTest,
   assert,
   assertEquals,
   assertStrContains
@@ -45,7 +45,7 @@ testPerm({ run: true }, async function runCommandFailedWithCode(): Promise<
   p.close();
 });
 
-unitTest2(
+unitTest(
   {
     // No signals on windows.
     skip: Deno.build.os === "win",

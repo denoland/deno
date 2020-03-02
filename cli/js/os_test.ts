@@ -6,7 +6,7 @@ import {
   assertEquals,
   assertNotEquals,
   assertThrows,
-  unitTest2
+  unitTest
 } from "./test_util.ts";
 
 testPerm({ env: true }, function envSuccess(): void {
@@ -51,7 +51,7 @@ test(function envPermissionDenied2(): void {
 // This test verifies that on Windows, environment variables are
 // case-insensitive. Case normalization needs be done using the collation
 // that Windows uses, rather than naively using String.toLowerCase().
-unitTest2(
+unitTest(
   { skip: Deno.build.os !== "win", perms: { env: true, run: true } },
   async function envCaseInsensitive() {
     // Utility function that runs a Deno subprocess with the environment

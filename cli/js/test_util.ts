@@ -145,49 +145,74 @@ export function testPerm(perms: TestPermissions, fn: Deno.TestFunction): void {
   Deno.test(fn.name, sanitizeResources(fn));
 }
 
-interface CliTest extends Deno.TestDefinition {
-  name: string;
-  fn: Deno.TestFunction;
-  perms?: TestPermissions;
-  skip?: boolean;
-}
-
-export function unitTest(def: CliTest): void {
-  const normalizedPerms = normalizeTestPermissions(def.perms || {});
-
-  registerPermCombination(normalizedPerms);
-
-  if (!permissionsMatch(processPerms, normalizedPerms)) {
-    return;
-  }
-
-  Deno.test(def.name, sanitizeResources(def.fn));
-}
-
 interface UnitTestOptions {
+  name?: string;
   skip?: boolean;
   perms?: TestPermissions;
 }
 
-export function unitTest2(
-  optionsOrFn: UnitTestOptions | Deno.TestFunction,
-  fn?: Deno.TestFunction
+export function unitTest(fn: Deno.TestFunction): void;
+export function unitTest(name: string, fn: Deno.TestFunction): void;
+export function unitTest(options: UnitTestOptions, fn: Deno.TestFunction): void;
+export function unitTest(
+  name: string,
+  options: UnitTestOptions,
+  fn: Deno.TestFunction
+): void;
+export function unitTest(
+  optionsOrNameOrFn: UnitTestOptions | string | Deno.TestFunction,
+  maybeFnOrOptions?: UnitTestOptions | Deno.TestFunction,
+  maybeFn?: Deno.TestFunction
 ): void {
-  const options = typeof optionsOrFn === "function" ? {} : optionsOrFn;
+  assert(optionsOrNameOrFn, "At least one argument is required");
+
+  let options: UnitTestOptions;
+  let name: string;
+  let fn: Deno.TestFunction;
+
+  if (typeof optionsOrNameOrFn === "string") {
+    name = optionsOrNameOrFn;
+    assert(maybeFnOrOptions, "Missing test function definition");
+    if (typeof maybeFnOrOptions === "function") {
+      fn = maybeFnOrOptions;
+      options = {};
+    } else {
+      options = maybeFnOrOptions;
+      assert(maybeFn, "Missing test function definition");
+      fn = maybeFn;
+    }
+  } else if (typeof optionsOrNameOrFn === "function") {
+    options = {};
+    fn = optionsOrNameOrFn;
+    name = fn.name;
+    assert(name, "Missing test function name");
+  } else {
+    options = optionsOrNameOrFn;
+    assert(maybeFnOrOptions, "Missing test function definition");
+    assert(
+      typeof maybeFnOrOptions === "function",
+      "Second argument should be test function definition"
+    );
+    fn = maybeFnOrOptions as Deno.TestFunction;
+    name = options.name || fn.name;
+    assert(name, "Missing test name");
+  }
 
   if (options.skip) {
     return;
   }
 
   const normalizedPerms = normalizeTestPermissions(options.perms || {});
-
   registerPermCombination(normalizedPerms);
-
   if (!permissionsMatch(processPerms, normalizedPerms)) {
     return;
   }
 
-  Deno.test(fn.name, sanitizeResources(fn));
+  const testDefinition: Deno.TestDefinition = {
+    name,
+    fn: sanitizeResources(fn)
+  };
+  Deno.test(testDefinition);
 }
 
 export function test(fn: Deno.TestFunction): void {
