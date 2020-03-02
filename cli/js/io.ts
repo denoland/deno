@@ -77,7 +77,8 @@ export interface Seeker {
    *
    * Seeking to an offset before the start of the file is an error. Seeking to
    * any positive offset is legal, but the behavior of subsequent I/O operations
-   * on the underlying object is implementation-dependent.
+   * on the underlying object is implementation-dependent. It returns the number
+   * of cursor position.
    */
   seek(offset: number, whence: SeekMode): Promise<number>;
 }

@@ -206,8 +206,10 @@ export async function write(rid: number, p: Uint8Array): Promise<number> {
 
 /** Seek a file ID synchronously to the given offset under mode given by `whence`.
  *
+ * Returns the number of cursor position.
+ *
  *       const file = Deno.openSync("/foo/bar.txt");
- *       Deno.seekSync(file.rid, 0, 0);
+ *       const position = Deno.seekSync(file.rid, 0, 0);
  */
 export function seekSync(
   rid: number,
@@ -219,8 +221,10 @@ export function seekSync(
 
 /** Seek a file ID to the given offset under mode given by `whence`.
  *
+ * Resolves with the number of cursor position.
+ *
  *      const file = await Deno.open("/foo/bar.txt");
- *      await Deno.seek(file.rid, 0, 0);
+ *      const position = await Deno.seek(file.rid, 0, 0);
  */
 export async function seek(
   rid: number,
