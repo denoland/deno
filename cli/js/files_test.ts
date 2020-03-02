@@ -21,6 +21,7 @@ testPerm({ read: true }, async function filesCopyToStdout(): Promise<void> {
   const fileSize = Deno.statSync(filename).len;
   assertEquals(bytesWritten, fileSize);
   console.log("bytes written", bytesWritten);
+  file.close();
 });
 
 testPerm({ read: true }, async function filesToAsyncIterator(): Promise<void> {
@@ -33,6 +34,7 @@ testPerm({ read: true }, async function filesToAsyncIterator(): Promise<void> {
   }
 
   assertEquals(totalSize, 12);
+  file.close();
 });
 
 test(async function readerToAsyncIterator(): Promise<void> {
@@ -320,6 +322,7 @@ testPerm({ read: true }, async function seekStart(): Promise<void> {
   await file.read(buf);
   const decoded = new TextDecoder().decode(buf);
   assertEquals(decoded, "world!");
+  file.close();
 });
 
 testPerm({ read: true }, function seekSyncStart(): void {
@@ -336,6 +339,7 @@ testPerm({ read: true }, function seekSyncStart(): void {
   file.readSync(buf);
   const decoded = new TextDecoder().decode(buf);
   assertEquals(decoded, "world!");
+  file.close();
 });
 
 testPerm({ read: true }, async function seekCurrent(): Promise<void> {
@@ -355,6 +359,7 @@ testPerm({ read: true }, async function seekCurrent(): Promise<void> {
   await file.read(buf);
   const decoded = new TextDecoder().decode(buf);
   assertEquals(decoded, "world!");
+  file.close();
 });
 
 testPerm({ read: true }, function seekSyncCurrent(): void {
@@ -374,6 +379,7 @@ testPerm({ read: true }, function seekSyncCurrent(): void {
   file.readSync(buf);
   const decoded = new TextDecoder().decode(buf);
   assertEquals(decoded, "world!");
+  file.close();
 });
 
 testPerm({ read: true }, async function seekEnd(): Promise<void> {
@@ -387,6 +393,7 @@ testPerm({ read: true }, async function seekEnd(): Promise<void> {
   await file.read(buf);
   const decoded = new TextDecoder().decode(buf);
   assertEquals(decoded, "world!");
+  file.close();
 });
 
 testPerm({ read: true }, function seekSyncEnd(): void {
@@ -400,6 +407,7 @@ testPerm({ read: true }, function seekSyncEnd(): void {
   file.readSync(buf);
   const decoded = new TextDecoder().decode(buf);
   assertEquals(decoded, "world!");
+  file.close();
 });
 
 testPerm({ read: true }, async function seekMode(): Promise<void> {
@@ -420,4 +428,5 @@ testPerm({ read: true }, async function seekMode(): Promise<void> {
   const buf = new Uint8Array(1);
   await file.read(buf); // "H"
   assertEquals(new TextDecoder().decode(buf), "H");
+  file.close();
 });

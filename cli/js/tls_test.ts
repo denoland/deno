@@ -1,5 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEquals } from "./test_util.ts";
+import {
+  test,
+  testPerm,
+  assert,
+  assertEquals,
+  createResolvable
+} from "./test_util.ts";
 import { BufWriter, BufReader } from "../../std/io/bufio.ts";
 import { TextProtoReader } from "../../std/textproto/mod.ts";
 
@@ -142,6 +148,7 @@ testPerm(
 testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
   void
 > {
+  const resolvable = createResolvable();
   const hostname = "localhost";
   const port = 4500;
 
@@ -164,6 +171,7 @@ testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
       // TODO(bartlomieju): this might be a bug
       setTimeout(() => {
         conn.close();
+        resolvable.resolve();
       }, 0);
     }
   );
@@ -196,4 +204,6 @@ testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
   await r.readFull(bodyBuf);
   assertEquals(decoder.decode(bodyBuf), "Hello World\n");
   conn.close();
+  listener.close();
+  await resolvable;
 });

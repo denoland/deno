@@ -52,9 +52,9 @@ testPerm({ read: true }, async function lstatSyncSuccess(): Promise<void> {
   assert(!modulesInfo.isDirectory());
   assert(modulesInfo.isSymlink());
 
-  const i = Deno.lstatSync("core");
-  assert(i.isDirectory());
-  assert(!i.isSymlink());
+  const coreInfo = Deno.lstatSync("core");
+  assert(coreInfo.isDirectory());
+  assert(!coreInfo.isSymlink());
 });
 
 testPerm({ read: false }, async function lstatSyncPerm(): Promise<void> {
@@ -92,9 +92,9 @@ testPerm({ read: true }, async function statSuccess(): Promise<void> {
   assert(modulesInfo.isDirectory());
   assert(!modulesInfo.isSymlink());
 
-  const i = await Deno.stat("cli/tests");
-  assert(i.isDirectory());
-  assert(!i.isSymlink());
+  const testsInfo = await Deno.stat("cli/tests");
+  assert(testsInfo.isDirectory());
+  assert(!testsInfo.isSymlink());
 });
 
 testPerm({ read: false }, async function statPerm(): Promise<void> {
@@ -132,9 +132,9 @@ testPerm({ read: true }, async function lstatSuccess(): Promise<void> {
   assert(!modulesInfo.isDirectory());
   assert(modulesInfo.isSymlink());
 
-  const i = await Deno.lstat("core");
-  assert(i.isDirectory());
-  assert(!i.isSymlink());
+  const coreInfo = await Deno.lstat("core");
+  assert(coreInfo.isDirectory());
+  assert(!coreInfo.isSymlink());
 });
 
 testPerm({ read: false }, async function lstatPerm(): Promise<void> {

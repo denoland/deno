@@ -1,6 +1,5 @@
 [WILDCARD]error: Uncaught URIError: relative import path "bad-module.ts" not prefixed with / or ./ or ../ Imported from "[WILDCARD]/error_012_bad_dynamic_import_specifier.ts"
-[WILDCARD]errors.ts:[WILDCARD]
-    at constructError ($deno$/errors.ts:[WILDCARD])
+[WILDCARD]dispatch_json.ts:[WILDCARD]
     at unwrapResponse ($deno$/dispatch_json.ts:[WILDCARD])
     at sendSync ($deno$/dispatch_json.ts:[WILDCARD])
     at resolveModules ($deno$/compiler_imports.ts:[WILDCARD])

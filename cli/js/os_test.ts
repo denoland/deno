@@ -76,6 +76,7 @@ if (Deno.build.os === "win") {
         new TextDecoder().decode(await proc.output())
       );
       assertEquals(actualValues, expectedValues);
+      proc.close();
     };
 
     assertEquals(Deno.env("path"), Deno.env("PATH"));
@@ -231,6 +232,14 @@ testPerm({ env: true }, function getDir(): void {
         { os: "mac", shouldHaveValue: false },
         { os: "win", shouldHaveValue: true },
         { os: "linux", shouldHaveValue: false }
+      ]
+    },
+    {
+      kind: "tmp",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: true }
       ]
     },
     {
