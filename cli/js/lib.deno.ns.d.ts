@@ -82,12 +82,16 @@ declare namespace Deno {
   }
 
   /**
+   *  **UNSTABLE:** new api
+   *
    * Returns the scheduling priority for the process specified by pid.
    * If pid is not provided or is 0, the priority of the current process is returned.
    */
   export function getPriority(pid?: number): number;
 
   /**
+   *  **UNSTABLE:** new api
+   *
    * Attempts to set the scheduling priority for the process specified by pid.
    * If pid is not provided or is 0, the process ID of the current process is used.
    * The priority input must be an integer between -20 (high priority) and 19 (low priority).

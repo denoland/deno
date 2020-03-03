@@ -1,4 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+//! This module provides cross-platform ability to get and set program scheduling priority.
+//! It uses libc getpriority/setpriority on posix
+//! It uses winapi GetPriorityClass/SetPriorityClass on windows
 use crate::op_error::OpError;
 
 #[cfg(unix)]
@@ -37,6 +41,7 @@ pub const PRIORITY_ABOVE_NORMAL: i32 = -7;
 pub const PRIORITY_HIGH: i32 = -14;
 pub const PRIORITY_HIGHEST: i32 = -20;
 
+/* **UNSTABLE:** new api */
 #[cfg(unix)]
 pub fn get_priority(pid: u32) -> Result<i32, OpError> {
   unsafe {
@@ -52,6 +57,7 @@ pub fn get_priority(pid: u32) -> Result<i32, OpError> {
   }
 }
 
+/* **UNSTABLE:** new api */
 #[cfg(unix)]
 pub fn set_priority(pid: u32, priority: i32) -> Result<(), OpError> {
   unsafe {
@@ -62,6 +68,7 @@ pub fn set_priority(pid: u32, priority: i32) -> Result<(), OpError> {
   }
 }
 
+/* **UNSTABLE:** new api */
 #[cfg(windows)]
 pub fn get_priority(pid: u32) -> Result<i32, OpError> {
   unsafe {
@@ -89,6 +96,7 @@ pub fn get_priority(pid: u32) -> Result<i32, OpError> {
   }
 }
 
+/* **UNSTABLE:** new api */
 #[cfg(windows)]
 pub fn set_priority(pid: u32, priority: i32) -> Result<(), OpError> {
   unsafe {
