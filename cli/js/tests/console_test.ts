@@ -340,13 +340,12 @@ unitTest(function consoleTestClear(): void {
   const uint8 = new TextEncoder().encode("\x1b[1;1H" + "\x1b[0J");
   let buffer = new Uint8Array(0);
 
-  stdout.writeSync = (u8: Uint8Array): Promise<number> => {
+  stdout.writeSync = (u8: Uint8Array): number => {
     const tmp = new Uint8Array(buffer.length + u8.length);
     tmp.set(buffer, 0);
     tmp.set(u8, buffer.length);
     buffer = tmp;
-
-    return writeSync(stdout.rid, u8);
+    return u8.length;
   };
   console.clear();
   stdout.writeSync = stdoutWriteSync;
@@ -355,6 +354,11 @@ unitTest(function consoleTestClear(): void {
 
 // Test bound this issue
 unitTest(function consoleDetachedLog(): void {
+  // Mock out `stdout.writeSync` so console
+  // doesn't mess output from test runner
+  const stdoutWriteSync = stdout.writeSync;
+  stdout.writeSync = () => {};
+
   mockConsole(console => {
     const log = console.log;
     const dir = console.dir;
@@ -391,6 +395,8 @@ unitTest(function consoleDetachedLog(): void {
     consoleGroupEnd();
     consoleClear();
   });
+
+  stdout.writeSync = stdoutWriteSync;
 });
 
 class StringBuffer {

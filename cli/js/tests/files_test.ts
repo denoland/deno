@@ -12,16 +12,14 @@ unitTest(function filesStdioFileDescriptors(): void {
   assertEquals(Deno.stderr.rid, 2);
 });
 
-unitTest({ perms: { read: true } }, async function filesCopyToStdout(): Promise<
-  void
-> {
+unitTest({ perms: { read: true }}, async function filesCopyToBuffer(): Promise<void> {
   const filename = "cli/tests/fixture.json";
   const file = await Deno.open(filename);
   assert(file.rid > 2);
-  const bytesWritten = await Deno.copy(Deno.stdout, file);
+  const buf = new Deno.Buffer();
+  const bytesWritten = await Deno.copy(buf, file);
   const fileSize = Deno.statSync(filename).len;
   assertEquals(bytesWritten, fileSize);
-  console.log("bytes written", bytesWritten);
   file.close();
 });
 
