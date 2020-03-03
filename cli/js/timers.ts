@@ -43,6 +43,14 @@ async function setGlobalTimeout(due: number, now: number): Promise<void> {
   // Send message to the backend.
   globalTimeoutDue = due;
   pendingEvents++;
+  // FIXME(bartlomieju): this is problematic, because `clearGlobalTimeout`
+  // is synchronous. That means that timer is cancelled, but this promise is still pending
+  // until next turn of event loop. This leads to "leaking of async ops" in tests;
+  // because `clearTimeout/clearInterval` might be the last statement in test function
+  // `opSanitizer` will immediately complain that there is pending op going on, unless
+  // some timeout/defer is put in place to allow promise resolution.
+  // Ideally `clearGlobalTimeout` doesn't return until this op is resolved, but
+  // I'm not if that's possible.
   await sendAsync("op_global_timer", { timeout });
   pendingEvents--;
   // eslint-disable-next-line @typescript-eslint/no-use-before-define
