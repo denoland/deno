@@ -29,6 +29,7 @@ testPerm({ run: true }, async function runSuccess(): Promise<void> {
   assertEquals(status.success, true);
   assertEquals(status.code, 0);
   assertEquals(status.signal, undefined);
+  p.stdout!.close();
   p.close();
 });
 
