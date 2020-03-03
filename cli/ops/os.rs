@@ -49,6 +49,7 @@ fn op_get_dir(
     "picture" => dirs::picture_dir(),
     "public" => dirs::public_dir(),
     "template" => dirs::template_dir(),
+    "tmp" => Some(std::env::temp_dir()),
     "video" => dirs::video_dir(),
     _ => {
       return Err(

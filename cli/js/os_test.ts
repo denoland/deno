@@ -112,7 +112,6 @@ if (Deno.build.os === "win") {
 }
 
 test(function osPid(): void {
-  console.log("pid", Deno.pid);
   assert(Deno.pid > 0);
 });
 
@@ -232,6 +231,14 @@ testPerm({ env: true }, function getDir(): void {
         { os: "mac", shouldHaveValue: false },
         { os: "win", shouldHaveValue: true },
         { os: "linux", shouldHaveValue: false }
+      ]
+    },
+    {
+      kind: "tmp",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: true }
       ]
     },
     {

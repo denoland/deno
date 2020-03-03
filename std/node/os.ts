@@ -180,9 +180,9 @@ export function setPriority(pid: number, priority?: number): void {
   notImplemented(SEE_GITHUB_ISSUE);
 }
 
-/** Not yet implemented */
-export function tmpdir(): string {
-  notImplemented(SEE_GITHUB_ISSUE);
+/** Returns the operating system's default directory for temporary files as a string. */
+export function tmpdir(): string | null {
+  return Deno.dir("tmp");
 }
 
 /** Not yet implemented */
