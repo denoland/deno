@@ -77,22 +77,39 @@ interface TestCase {
   error?: Error;
 }
 
+interface TestResult {
+  name: string;
+  fn: TestFunction;
+  hasRun: boolean;
+  duration: number;
+  failed: boolean;
+  error?: Error;
+}
+
 export interface RunTestsOptions {
   exitOnFail?: boolean;
   failFast?: boolean;
   only?: string | RegExp;
   skip?: string | RegExp;
   disableLog?: boolean;
-  raw?: boolean;
+  json?: boolean;
 }
 
-interface RunTestsMessage {
-  kind: "start" | "testResult" | "end";
-  start?: {
-    tests: number;
-  };
-  stats?: TestStats;
-  result?: TestCase;
+enum MsgKind {
+  Start = "start",
+  Test = "test",
+  End = "end"
+}
+
+interface StartMsg {
+  kind: MsgKind.Start;
+  tests: number;
+  stats: TestStats;
+}
+
+interface TestMsg {
+  kind: MsgKind.Test;
+  result: TestResult;
 }
 
 function filterTests(
@@ -123,12 +140,23 @@ function filterTests(
   });
 }
 
+interface EndMsg {
+  kind: MsgKind.End;
+  stats: TestStats;
+}
+
+type RunTestsMessage = StartMsg | TestMsg | EndMsg;
+
 class RunTestsIterable implements AsyncIterableIterator<RunTestsMessage> {
   readonly testsToRun: TestDefinition[];
-  readonly testCases: TestCase[];
+  readonly testResults: TestResult[];
+
+  private hasStarted = false;
+  private hasFinished = false;
+  private currentTestIndex = 0;
+
   failFast: boolean;
-  currentTest = -1;
-  done = false;
+
   stats: TestStats = {
     measured: 0,
     ignored: 0,
@@ -145,12 +173,14 @@ class RunTestsIterable implements AsyncIterableIterator<RunTestsMessage> {
   ) {
     this.testsToRun = filterTests(tests, only, skip);
     this.failFast = failFast;
-    this.testCases = this.testsToRun.map(
-      ({ name, fn }): TestCase => {
+    this.testResults = this.testsToRun.map(
+      ({ name, fn }): TestResult => {
         return {
           name,
           fn,
-          timeElapsed: 0,
+          duration: 0,
+          hasRun: false,
+          failed: false,
           error: undefined
         };
       }
@@ -158,58 +188,65 @@ class RunTestsIterable implements AsyncIterableIterator<RunTestsMessage> {
   }
 
   async next(): Promise<IteratorResult<RunTestsMessage>> {
-    if (this.currentTest === -1) {
-      this.currentTest = 0;
+    if (!this.hasStarted) {
+      this.hasStarted = true;
       return {
         done: false,
         value: {
-          kind: "start",
-          start: {
-            tests: this.testsToRun.length
-          }
-        }
-      };
-    }
-
-    if (this.done) {
-      return {
-        done: true,
-        value: {
-          kind: "end",
+          kind: MsgKind.Start,
+          tests: this.testsToRun.length,
           stats: this.stats
         }
       };
     }
 
-    const testCase = this.testCases[this.currentTest];
-    if (testCase === undefined) {
-      throw new Error(`Missing test case: ${this.currentTest}`);
+    if (this.hasFinished) {
+      return {
+        done: true,
+        value: {
+          kind: MsgKind.End,
+          stats: this.stats
+        }
+      };
     }
 
-    // TODO: using permormance here doesn't make sense
+    const testResult = this.testResults[this.currentTestIndex];
+    if (testResult === undefined) {
+      throw new Error(`Missing test case: ${this.currentTestIndex}`);
+    }
+
+    if (testResult.hasRun) {
+      throw new Error(`Trying to run test case again: ${testResult.name}`);
+    }
+
+    // TODO(bartlomieju): using permformance here doesn't make sense, as there
+    // is no guarantee that we're running with `--allow-hr` perm
     try {
       const start = +new Date();
-      await testCase.fn();
-      testCase.timeElapsed = +new Date() - start;
+      await testResult.fn();
+      testResult.duration = +new Date() - start;
       this.stats.passed++;
     } catch (err) {
-      testCase.error = err;
+      testResult.failed = true;
+      testResult.error = err;
       this.stats.failed++;
       if (this.failFast) {
-        this.done = true;
+        this.hasFinished = true;
       }
+    } finally {
+      testResult.hasRun = true;
     }
 
-    this.currentTest++;
-    if (this.currentTest === this.testCases.length) {
-      this.done = true;
+    this.currentTestIndex++;
+    if (this.currentTestIndex === this.testResults.length) {
+      this.hasFinished = true;
     }
 
     return {
       done: false,
       value: {
-        kind: "testResult",
-        result: testCase
+        kind: MsgKind.Test,
+        result: testResult
       }
     };
   }
@@ -225,7 +262,7 @@ export async function runTests({
   only = undefined,
   skip = undefined,
   disableLog = false,
-  raw = false
+  json = false
 }: RunTestsOptions = {}): Promise<void> {
   const iterator = new RunTestsIterable(TEST_REGISTRY, only, skip, exitOnFail);
 
@@ -237,12 +274,12 @@ export async function runTests({
     (_x: string, _isErr?: boolean): void => {}
   );
 
-  if (disableLog) {
+  if (disableLog || json) {
     // @ts-ignore
     globalThis.console = disabledConsole;
   }
 
-  if (raw) {
+  if (json) {
     for await (const msg of iterator) {
       Deno.core.print(`${JSON.stringify(msg)}\n`);
     }
@@ -262,23 +299,23 @@ export async function runTests({
   const GREEN_OK = green("OK");
   const RED_BG_FAIL = bgRed(" FAIL ");
 
-  originalConsole.log(`running ${testsToRun.length} tests`);
+  originalConsole.log(`running ${iterator.testResults.length} tests`);
   const suiteStart = +new Date();
-
+  
   for (const msg of iterator) {
     if (msg.kind === "end") {
       stats = msg.stats as TestStats;
       break;
     }
 
-    const testResult = msg.result as TestCase;
-    if (testResult.error) {
+    const testResult = msg.result as TestResult;
+    if (testResult.failed) {
       originalConsole.log(`${RED_FAILED} ${testResult.name}`);
-      originalConsole.log(testResult.error.stack);
+      originalConsole.log(testResult.error!.stack);
     } else {
       originalConsole.log(
         `${GREEN_OK}     ${testResult.name} ${promptTestTime(
-          testResult.timeElapsed,
+          testResult.duration,
           true
         )}`
       );

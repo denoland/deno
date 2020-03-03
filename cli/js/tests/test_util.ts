@@ -219,9 +219,9 @@ export async function newParseUnitTestOutput(
     if (msg.kind !== "start") {
       throw Error("Bad message");
     }
-    expected = msg.start.tests;
+    expected = msg.tests;
     if (print) {
-      console.log(JSON.stringify(msg.start));
+      console.log("tests start", JSON.stringify(msg));
     }
   }
 
@@ -230,7 +230,8 @@ export async function newParseUnitTestOutput(
     try {
       msg = JSON.parse(value);
     } catch (e) {
-      // Ignore bad output for now
+      // TODO(bartlomieju): Ignoring malformed messages
+      // for now, but ultimately there should be no other output
       if (print) {
         console.log(value);
       }
@@ -241,15 +242,22 @@ export async function newParseUnitTestOutput(
       actual = msg.stats.passed;
       result = msg.stats;
       if (print) {
-        console.log(JSON.stringify(msg));
+        console.log("tests end", JSON.stringify(msg));
       }
-    } else if (msg.kind === "testResult") {
+    } else if (msg.kind === "test") {
       // ok
       if (print) {
-        console.log(msg.result);
+        const testResult = msg.result;
+        if (testResult.failed) {
+          console.log(`FAILED ${testResult.name}`);
+          console.log(testResult.error.stack);
+        } else {
+          console.log(`OK     ${testResult.name} ${testResult.duration}`);
+        }
       }
     } else {
-      // Some random JSON; ignore for now
+      // TODO(bartlomieju): Ignoring random JSON messages
+      // for now, but ultimately there should be no other output
       if (print) {
         console.log(msg);
       }
