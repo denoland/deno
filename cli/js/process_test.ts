@@ -1,15 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  test,
-  testPerm,
-  unitTest,
   assert,
   assertEquals,
-  assertStrContains
+  assertStrContains,
+  testPerm,
+  unitTest,
 } from "./test_util.ts";
 const { kill, run, readFile, open, makeTempDir, writeFile } = Deno;
 
-test(function runPermissions(): void {
+unitTest(function runPermissions(): void {
   let caughtError = false;
   try {
     Deno.run({ args: ["python", "-c", "print('hello world')"] });
@@ -307,7 +306,7 @@ testPerm({ run: true }, async function runClose(): Promise<void> {
   p.stderr!.close();
 });
 
-test(function signalNumbers(): void {
+unitTest(function signalNumbers(): void {
   if (Deno.build.os === "mac") {
     assertEquals(Deno.Signal.SIGSTOP, 17);
   } else if (Deno.build.os === "linux") {
@@ -317,7 +316,7 @@ test(function signalNumbers(): void {
 
 // Ignore signal tests on windows for now...
 if (Deno.build.os !== "win") {
-  test(function killPermissions(): void {
+  unitTest(function killPermissions(): void {
     let caughtError = false;
     try {
       // Unlike the other test cases, we don't have permission to spawn a

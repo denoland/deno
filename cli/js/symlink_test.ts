@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEquals } from "./test_util.ts";
+import { unitTest, testPerm, assert, assertEquals } from "./test_util.ts";
 
 testPerm({ read: true, write: true }, function symlinkSyncSuccess(): void {
   const testDir = Deno.makeTempDirSync();
@@ -24,7 +24,7 @@ testPerm({ read: true, write: true }, function symlinkSyncSuccess(): void {
   }
 });
 
-test(function symlinkSyncPerm(): void {
+unitTest(function symlinkSyncPerm(): void {
   let err;
   try {
     Deno.symlinkSync("oldbaddir", "newbaddir");

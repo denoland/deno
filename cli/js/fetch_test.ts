@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  test,
+  unitTest,
   testPerm,
   assert,
   assertEquals,
@@ -37,7 +37,7 @@ testPerm({ net: true }, async function fetchJsonSuccess(): Promise<void> {
   assertEquals(json.name, "deno");
 });
 
-test(async function fetchPerm(): Promise<void> {
+unitTest(async function fetchPerm(): Promise<void> {
   let err;
   try {
     await fetch("http://localhost:4545/cli/tests/fixture.json");
@@ -269,7 +269,7 @@ testPerm({ net: true }, async function fetchUserAgent(): Promise<void> {
 // TODO(ry) The following tests work but are flaky. There's a race condition
 // somewhere. Here is what one of these flaky failures looks like:
 //
-// test fetchPostBodyString_permW0N1E0R0
+// unitTest fetchPostBodyString_permW0N1E0R0
 // assertEquals failed. actual =   expected = POST /blah HTTP/1.1
 // hello: World
 // foo: Bar
@@ -423,7 +423,7 @@ testPerm({ net: true }, async function fetchWithErrorRedirection(): Promise<
 });
 */
 
-test(function responseRedirect(): void {
+unitTest(function responseRedirect(): void {
   const response = new Response(
     "example.com/beforeredirect",
     200,
@@ -441,7 +441,7 @@ test(function responseRedirect(): void {
   assertEquals(redir.type, "default");
 });
 
-test(function responseConstructionHeaderRemoval(): void {
+unitTest(function responseConstructionHeaderRemoval(): void {
   const res = new Response(
     "example.com",
     200,

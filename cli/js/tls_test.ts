@@ -1,11 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  test,
-  testPerm,
-  unitTest,
   assert,
   assertEquals,
-  createResolvable
+  createResolvable,
+  testPerm,
+  unitTest,
 } from "./test_util.ts";
 import { BufWriter, BufReader } from "../../std/io/bufio.ts";
 import { TextProtoReader } from "../../std/textproto/mod.ts";
@@ -13,7 +12,7 @@ import { TextProtoReader } from "../../std/textproto/mod.ts";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-test(async function connectTLSNoPerm(): Promise<void> {
+unitTest(async function connectTLSNoPerm(): Promise<void> {
   let err;
   try {
     await Deno.connectTLS({ hostname: "github.com", port: 443 });
@@ -24,7 +23,7 @@ test(async function connectTLSNoPerm(): Promise<void> {
   assertEquals(err.name, "PermissionDenied");
 });
 
-test(async function connectTLSCertFileNoReadPerm(): Promise<void> {
+unitTest(async function connectTLSCertFileNoReadPerm(): Promise<void> {
   let err;
   try {
     await Deno.connectTLS({

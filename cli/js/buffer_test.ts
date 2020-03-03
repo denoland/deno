@@ -3,7 +3,12 @@
 // This code has been ported almost directly from Go's src/bytes/buffer_test.go
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
-import { assertEquals, assert, assertStrContains, test } from "./test_util.ts";
+import {
+  assertEquals,
+  assert,
+  assertStrContains,
+  unitTest
+} from "./test_util.ts";
 
 const { Buffer, readAll, readAllSync, writeAll, writeAllSync } = Deno;
 type Buffer = Deno.Buffer;
@@ -76,7 +81,7 @@ function repeat(c: string, bytes: number): Uint8Array {
   return ui8;
 }
 
-test(function bufferNewBuffer(): void {
+unitTest(function bufferNewBuffer(): void {
   init();
   assert(testBytes);
   assert(testString);
@@ -84,7 +89,7 @@ test(function bufferNewBuffer(): void {
   check(buf, testString);
 });
 
-test(async function bufferBasicOperations(): Promise<void> {
+unitTest(async function bufferBasicOperations(): Promise<void> {
   init();
   assert(testBytes);
   assert(testString);
@@ -124,7 +129,7 @@ test(async function bufferBasicOperations(): Promise<void> {
   }
 });
 
-test(async function bufferReadEmptyAtEOF(): Promise<void> {
+unitTest(async function bufferReadEmptyAtEOF(): Promise<void> {
   // check that EOF of 'buf' is not reached (even though it's empty) if
   // results are written to buffer that has 0 length (ie. it can't store any data)
   const buf = new Buffer();
@@ -133,7 +138,7 @@ test(async function bufferReadEmptyAtEOF(): Promise<void> {
   assertEquals(result, 0);
 });
 
-test(async function bufferLargeByteWrites(): Promise<void> {
+unitTest(async function bufferLargeByteWrites(): Promise<void> {
   init();
   const buf = new Buffer();
   const limit = 9;
@@ -144,7 +149,7 @@ test(async function bufferLargeByteWrites(): Promise<void> {
   check(buf, "");
 });
 
-test(async function bufferTooLargeByteWrites(): Promise<void> {
+unitTest(async function bufferTooLargeByteWrites(): Promise<void> {
   init();
   const tmp = new Uint8Array(72);
   const growLen = Number.MAX_VALUE;
@@ -163,7 +168,7 @@ test(async function bufferTooLargeByteWrites(): Promise<void> {
   assertStrContains(err.message, "grown beyond the maximum size");
 });
 
-test(async function bufferLargeByteReads(): Promise<void> {
+unitTest(async function bufferLargeByteReads(): Promise<void> {
   init();
   assert(testBytes);
   assert(testString);
@@ -176,12 +181,12 @@ test(async function bufferLargeByteReads(): Promise<void> {
   check(buf, "");
 });
 
-test(function bufferCapWithPreallocatedSlice(): void {
+unitTest(function bufferCapWithPreallocatedSlice(): void {
   const buf = new Buffer(new ArrayBuffer(10));
   assertEquals(buf.capacity, 10);
 });
 
-test(async function bufferReadFrom(): Promise<void> {
+unitTest(async function bufferReadFrom(): Promise<void> {
   init();
   assert(testBytes);
   assert(testString);
@@ -200,7 +205,7 @@ test(async function bufferReadFrom(): Promise<void> {
   }
 });
 
-test(async function bufferReadFromSync(): Promise<void> {
+unitTest(async function bufferReadFromSync(): Promise<void> {
   init();
   assert(testBytes);
   assert(testString);
@@ -219,7 +224,7 @@ test(async function bufferReadFromSync(): Promise<void> {
   }
 });
 
-test(async function bufferTestGrow(): Promise<void> {
+unitTest(async function bufferTestGrow(): Promise<void> {
   const tmp = new Uint8Array(72);
   for (const startLen of [0, 100, 1000, 10000, 100000]) {
     const xBytes = repeat("x", startLen);
@@ -244,7 +249,7 @@ test(async function bufferTestGrow(): Promise<void> {
   }
 });
 
-test(async function testReadAll(): Promise<void> {
+unitTest(async function testReadAll(): Promise<void> {
   init();
   assert(testBytes);
   const reader = new Buffer(testBytes.buffer as ArrayBuffer);
@@ -255,7 +260,7 @@ test(async function testReadAll(): Promise<void> {
   }
 });
 
-test(function testReadAllSync(): void {
+unitTest(function testReadAllSync(): void {
   init();
   assert(testBytes);
   const reader = new Buffer(testBytes.buffer as ArrayBuffer);
@@ -266,7 +271,7 @@ test(function testReadAllSync(): void {
   }
 });
 
-test(async function testWriteAll(): Promise<void> {
+unitTest(async function testWriteAll(): Promise<void> {
   init();
   assert(testBytes);
   const writer = new Buffer();
@@ -278,7 +283,7 @@ test(async function testWriteAll(): Promise<void> {
   }
 });
 
-test(function testWriteAllSync(): void {
+unitTest(function testWriteAllSync(): void {
   init();
   assert(testBytes);
   const writer = new Buffer();

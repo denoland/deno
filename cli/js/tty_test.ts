@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert } from "./test_util.ts";
+import { unitTest, testPerm, assert } from "./test_util.ts";
 
 // Note tests for Deno.setRaw is in integration tests.
 
@@ -10,7 +10,7 @@ testPerm({ read: true }, function isatty(): void {
   f.close();
 });
 
-test(function isattyError(): void {
+unitTest(function isattyError(): void {
   let caught = false;
   try {
     // Absurdly large rid.

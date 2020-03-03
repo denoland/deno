@@ -1,6 +1,6 @@
 import {
   assert,
-  test,
+  unitTest,
   testPerm,
   assertMatch,
   unreachable
@@ -22,7 +22,7 @@ testPerm({ read: true }, async function sendAsyncStackTrace(): Promise<void> {
     });
 });
 
-test(async function malformedJsonControlBuffer(): Promise<void> {
+unitTest(async function malformedJsonControlBuffer(): Promise<void> {
   // @ts-ignore
   const opId = Deno.core.ops()["op_open"];
   // @ts-ignore

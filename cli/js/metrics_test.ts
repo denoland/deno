@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert } from "./test_util.ts";
+import { unitTest, testPerm, assert } from "./test_util.ts";
 
-test(async function metrics(): Promise<void> {
+unitTest(async function metrics(): Promise<void> {
   const m1 = Deno.metrics();
   assert(m1.opsDispatched > 0);
   assert(m1.opsDispatchedSync > 0);

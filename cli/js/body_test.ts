@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assertEquals, assert } from "./test_util.ts";
+import { unitTest, testPerm, assertEquals, assert } from "./test_util.ts";
 
 // just a hack to get a body object
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -21,7 +21,7 @@ const intArrays = [
   Float32Array,
   Float64Array
 ];
-test(async function arrayBufferFromByteArrays(): Promise<void> {
+unitTest(async function arrayBufferFromByteArrays(): Promise<void> {
   const buffer = new TextEncoder().encode("ahoyhoy8").buffer;
 
   for (const type of intArrays) {

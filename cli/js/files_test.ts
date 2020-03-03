@@ -1,13 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  test,
+  unitTest,
   testPerm,
   assert,
   assertEquals,
   assertStrContains
 } from "./test_util.ts";
 
-test(function filesStdioFileDescriptors(): void {
+unitTest(function filesStdioFileDescriptors(): void {
   assertEquals(Deno.stdin.rid, 0);
   assertEquals(Deno.stdout.rid, 1);
   assertEquals(Deno.stderr.rid, 2);
@@ -37,7 +37,7 @@ testPerm({ read: true }, async function filesToAsyncIterator(): Promise<void> {
   file.close();
 });
 
-test(async function readerToAsyncIterator(): Promise<void> {
+unitTest(async function readerToAsyncIterator(): Promise<void> {
   // ref: https://github.com/denoland/deno/issues/2330
   const encoder = new TextEncoder();
 
@@ -86,7 +86,7 @@ testPerm({ write: false }, async function writePermFailure(): Promise<void> {
   }
 });
 
-test(async function openOptions(): Promise<void> {
+unitTest(async function openOptions(): Promise<void> {
   const filename = "cli/tests/fixture.json";
   let err;
   try {

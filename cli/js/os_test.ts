@@ -1,11 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  test,
-  testPerm,
   assert,
   assertEquals,
   assertNotEquals,
   assertThrows,
+  testPerm,
   unitTest
 } from "./test_util.ts";
 
@@ -24,7 +23,7 @@ testPerm({ env: true }, function envNotFound(): void {
   assertEquals(r, undefined);
 });
 
-test(function envPermissionDenied1(): void {
+unitTest(function envPermissionDenied1(): void {
   let err;
   try {
     Deno.env();
@@ -36,7 +35,7 @@ test(function envPermissionDenied1(): void {
   assertEquals(err.name, "PermissionDenied");
 });
 
-test(function envPermissionDenied2(): void {
+unitTest(function envPermissionDenied2(): void {
   let err;
   try {
     Deno.env("PATH");
@@ -113,7 +112,7 @@ unitTest(
   }
 );
 
-test(function osPid(): void {
+unitTest(function osPid(): void {
   assert(Deno.pid > 0);
 });
 

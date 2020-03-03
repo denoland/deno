@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEquals } from "./test_util.ts";
+import { unitTest, testPerm, assert, assertEquals } from "./test_util.ts";
 
-test(function dirCwdNotNull(): void {
+unitTest(function dirCwdNotNull(): void {
   assert(Deno.cwd() != null);
 });
 

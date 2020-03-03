@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assertEquals } from "./test_util.ts";
+import { unitTest, testPerm, assertEquals } from "./test_util.ts";
 
-test(function resourcesStdio(): void {
+unitTest(function resourcesStdio(): void {
   const res = Deno.resources();
 
   assertEquals(res[0], "stdin");
