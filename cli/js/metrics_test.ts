@@ -13,7 +13,7 @@ test(async function metrics(): Promise<void> {
 
   // Write to stdout to ensure a "data" message gets sent instead of just
   // control messages.
-  const dataMsg = new Uint8Array([41, 42, 43]);
+  const dataMsg = new Uint8Array([13, 13, 13]); // "\r\r\r",
   await Deno.stdout.write(dataMsg);
 
   const m2 = Deno.metrics();

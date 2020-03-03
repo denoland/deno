@@ -114,7 +114,6 @@ unitTest(
 );
 
 test(function osPid(): void {
-  console.log("pid", Deno.pid);
   assert(Deno.pid > 0);
 });
 

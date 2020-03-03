@@ -6,12 +6,10 @@ if (self.name !== "jsWorker") {
 }
 
 onmessage = function(e) {
-  console.log("jsWorker onmessage", e.data);
   postMessage(e.data);
   close();
 };
 
 onerror = function() {
-  console.log("called onerror in worker");
   return false;
 };

@@ -1,5 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals, assertThrows } from "./test_util.ts";
+import {
+  unitTest,
+  assert,
+  assertEquals,
+  assertThrows,
+  createResolvable
+} from "./test_util.ts";
 
 function defer(n: number): Promise<void> {
   return new Promise((resolve: () => void, _) => {
@@ -100,12 +106,12 @@ unitTest(
 unitTest(
   { skip: Deno.build.os === "win", perms: { run: true, net: true } },
   async function signalStreamTest(): Promise<void> {
+    const resolvable = createResolvable();
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);
 
     let c = 0;
     const sig = Deno.signal(Deno.Signal.SIGUSR1);
-
     setTimeout(async () => {
       await defer(20);
       for (const _ of Array(3)) {
@@ -114,6 +120,7 @@ unitTest(
         await defer(20);
       }
       sig.dispose();
+      resolvable.resolve();
     });
 
     for await (const _ of sig) {
@@ -122,24 +129,34 @@ unitTest(
 
     assertEquals(c, 3);
 
-    clearTimeout(t);
+    clearInterval(t);
+    // Defer for a moment to allow async op from `setInterval` to resolve;
+    // for more explanation see `FIXME` in `cli/js/timers.ts::setGlobalTimeout`
+    await defer(20);
+    await resolvable;
   }
 );
 
 unitTest(
-  { skip: Deno.build.os === "win", perms: { run: true, net: true } },
+  { skip: Deno.build.os === "win", perms: { run: true } },
   async function signalPromiseTest(): Promise<void> {
+    const resolvable = createResolvable();
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);
 
     const sig = Deno.signal(Deno.Signal.SIGUSR1);
     setTimeout(() => {
       Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
+      resolvable.resolve();
     }, 20);
     await sig;
     sig.dispose();
 
-    clearTimeout(t);
+    clearInterval(t);
+    // Defer for a moment to allow async op from `setInterval` to resolve;
+    // for more explanation see `FIXME` in `cli/js/timers.ts::setGlobalTimeout`
+    await defer(20);
+    await resolvable;
   }
 );
 

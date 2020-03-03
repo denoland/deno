@@ -68,7 +68,7 @@ unitTest(
     const p1 = listener.accept().catch(checkErr);
     await Promise.race([p, p1]);
     listener.close();
-    await [p, p1];
+    await Promise.all([p, p1]);
     assertEquals(acceptErrCount, 1);
   }
 );

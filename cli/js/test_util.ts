@@ -110,26 +110,44 @@ function normalizeTestPermissions(perms: TestPermissions): Permissions {
   };
 }
 
-function assertResources(pre: Deno.ResourceMap, post: Deno.ResourceMap): void {
-  try {
-    assertEquals(pre, post);
-  } catch (e) {
-    const msg = `Test case is leaking resources.
-Before: ${JSON.stringify(pre, null, 2)}
-After: ${JSON.stringify(post, null, 2)}`;
-    throw new AssertionError(msg);
-  }
+// Wrap `TestFunction` in additional assertion that makes sure
+// the test case does not leak async "ops" - ie. number of async
+// completed ops after the test is the same as number of dispatched
+// ops. Note that "unref" ops are ignored since in nature that are
+// optional.
+function assertOps(fn: Deno.TestFunction): Deno.TestFunction {
+  return async function asyncOpSanitizer(): Promise<void> {
+    const pre = Deno.metrics();
+    await fn();
+    const post = Deno.metrics();
+    // We're checking diff because one might spawn HTTP server in the background
+    // that will be a pending async op before test starts.
+    assertEquals(
+      post.opsDispatchedAsync - pre.opsDispatchedAsync,
+      post.opsCompletedAsync - pre.opsCompletedAsync,
+      `Test case is leaking async ops.
+    Before:
+      - dispatched: ${pre.opsDispatchedAsync}
+      - completed: ${pre.opsCompletedAsync}
+    After: 
+      - dispatched: ${post.opsDispatchedAsync}
+      - completed: ${post.opsCompletedAsync}`
+    );
+  };
 }
 
 // Wrap `TestFunction` in additional assertion that makes sure
 // the test case does not "leak" resources - ie. resource table after
 // the test has exactly the same contents as before the test.
-function sanitizeResources(fn: Deno.TestFunction): Deno.TestFunction {
-  return async (): Promise<void> => {
+function assertResources(fn: Deno.TestFunction): Deno.TestFunction {
+  return async function resourceSanitizer(): Promise<void> {
     const pre = Deno.resources();
     await fn();
     const post = Deno.resources();
-    assertResources(pre, post);
+    const msg = `Test case is leaking resources.
+    Before: ${JSON.stringify(pre, null, 2)}
+    After: ${JSON.stringify(post, null, 2)}`;
+    assertEquals(pre, post, msg);
   };
 }
 
@@ -142,7 +160,7 @@ export function testPerm(perms: TestPermissions, fn: Deno.TestFunction): void {
     return;
   }
 
-  Deno.test(fn.name, sanitizeResources(fn));
+  Deno.test(fn.name, assertResources(assertOps(fn)));
 }
 
 interface UnitTestOptions {
@@ -210,7 +228,7 @@ export function unitTest(
 
   const testDefinition: Deno.TestDefinition = {
     name,
-    fn: sanitizeResources(fn)
+    fn: assertResources(assertOps(fn))
   };
   Deno.test(testDefinition);
 }

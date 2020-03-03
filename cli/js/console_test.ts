@@ -37,16 +37,17 @@ test(function consoleHasRightInstance(): void {
 });
 
 test(function consoleTestAssertShouldNotThrowError(): void {
-  console.assert(true);
-
-  let hasThrown = undefined;
-  try {
-    console.assert(false);
-    hasThrown = false;
-  } catch {
-    hasThrown = true;
-  }
-  assertEquals(hasThrown, false);
+  mockConsole(console => {
+    console.assert(true);
+    let hasThrown = undefined;
+    try {
+      console.assert(false);
+      hasThrown = false;
+    } catch {
+      hasThrown = true;
+    }
+    assertEquals(hasThrown, false);
+  });
 });
 
 test(function consoleTestStringifyComplexObjects(): void {
@@ -302,19 +303,18 @@ test(function consoleTestWithVariousOrInvalidFormatSpecifier(): void {
 
 test(function consoleTestCallToStringOnLabel(): void {
   const methods = ["count", "countReset", "time", "timeLog", "timeEnd"];
-
-  for (const method of methods) {
-    let hasCalled = false;
-
-    // @ts-ignore
-    console[method]({
-      toString(): void {
-        hasCalled = true;
-      }
-    });
-
-    assertEquals(hasCalled, true);
-  }
+  mockConsole(console => {
+    for (const method of methods) {
+      let hasCalled = false;
+      // @ts-ignore
+      console[method]({
+        toString(): void {
+          hasCalled = true;
+        }
+      });
+      assertEquals(hasCalled, true);
+    }
+  });
 });
 
 test(function consoleTestError(): void {
@@ -355,40 +355,42 @@ test(function consoleTestClear(): void {
 
 // Test bound this issue
 test(function consoleDetachedLog(): void {
-  const log = console.log;
-  const dir = console.dir;
-  const dirxml = console.dirxml;
-  const debug = console.debug;
-  const info = console.info;
-  const warn = console.warn;
-  const error = console.error;
-  const consoleAssert = console.assert;
-  const consoleCount = console.count;
-  const consoleCountReset = console.countReset;
-  const consoleTable = console.table;
-  const consoleTime = console.time;
-  const consoleTimeLog = console.timeLog;
-  const consoleTimeEnd = console.timeEnd;
-  const consoleGroup = console.group;
-  const consoleGroupEnd = console.groupEnd;
-  const consoleClear = console.clear;
-  log("Hello world");
-  dir("Hello world");
-  dirxml("Hello world");
-  debug("Hello world");
-  info("Hello world");
-  warn("Hello world");
-  error("Hello world");
-  consoleAssert(true);
-  consoleCount("Hello world");
-  consoleCountReset("Hello world");
-  consoleTable({ test: "Hello world" });
-  consoleTime("Hello world");
-  consoleTimeLog("Hello world");
-  consoleTimeEnd("Hello world");
-  consoleGroup("Hello world");
-  consoleGroupEnd();
-  consoleClear();
+  mockConsole(console => {
+    const log = console.log;
+    const dir = console.dir;
+    const dirxml = console.dirxml;
+    const debug = console.debug;
+    const info = console.info;
+    const warn = console.warn;
+    const error = console.error;
+    const consoleAssert = console.assert;
+    const consoleCount = console.count;
+    const consoleCountReset = console.countReset;
+    const consoleTable = console.table;
+    const consoleTime = console.time;
+    const consoleTimeLog = console.timeLog;
+    const consoleTimeEnd = console.timeEnd;
+    const consoleGroup = console.group;
+    const consoleGroupEnd = console.groupEnd;
+    const consoleClear = console.clear;
+    log("Hello world");
+    dir("Hello world");
+    dirxml("Hello world");
+    debug("Hello world");
+    info("Hello world");
+    warn("Hello world");
+    error("Hello world");
+    consoleAssert(true);
+    consoleCount("Hello world");
+    consoleCountReset("Hello world");
+    consoleTable({ test: "Hello world" });
+    consoleTime("Hello world");
+    consoleTimeLog("Hello world");
+    consoleTimeEnd("Hello world");
+    consoleGroup("Hello world");
+    consoleGroupEnd();
+    consoleClear();
+  });
 });
 
 class StringBuffer {
@@ -652,14 +654,16 @@ test(function consoleTable(): void {
 
 // console.log(Error) test
 test(function consoleLogShouldNotThrowError(): void {
-  let result = 0;
-  try {
-    console.log(new Error("foo"));
-    result = 1;
-  } catch (e) {
-    result = 2;
-  }
-  assertEquals(result, 1);
+  mockConsole(console => {
+    let result = 0;
+    try {
+      console.log(new Error("foo"));
+      result = 1;
+    } catch (e) {
+      result = 2;
+    }
+    assertEquals(result, 1);
+  });
 
   // output errors to the console should not include "Uncaught"
   mockConsole((console, out): void => {
