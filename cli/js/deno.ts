@@ -21,7 +21,6 @@ export {
   DiagnosticMessageChain
 } from "./diagnostics.ts";
 export { chdir, cwd } from "./dir.ts";
-export { applySourceMap } from "./error_stack.ts";
 export { errors } from "./errors.ts";
 export { FileInfo } from "./file_info.ts";
 export {

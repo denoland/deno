@@ -8,7 +8,6 @@ import { OperatingSystem, Arch } from "./build.ts";
 import { setBuildInfo } from "./build.ts";
 import { setVersions } from "./version.ts";
 import { setLocation } from "./location.ts";
-import { setPrepareStackTrace } from "./error_stack.ts";
 
 interface Start {
   cwd: string;
@@ -58,7 +57,6 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
   // TODO(bartlomieju): this field should always be set
   assert(s.location.length > 0);
   setLocation(s.location);
-  setPrepareStackTrace(Error);
 
   // TODO(bartlomieju): I don't like that it's mixed in here, when
   // compiler and worker runtimes call this funtion and they don't use

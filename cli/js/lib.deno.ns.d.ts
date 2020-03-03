@@ -1276,31 +1276,6 @@ declare namespace Deno {
     column: number;
   }
 
-  /** UNSTABLE: new API, yet to be vetted.
-   *
-   * Given a current location in a module, lookup the source location and return
-   * it.
-   *
-   * When Deno transpiles code, it keep source maps of the transpiled code. This
-   * function can be used to lookup the original location. This is
-   * automatically done when accessing the `.stack` of an error, or when an
-   * uncaught error is logged. This function can be used to perform the lookup
-   * for creating better error handling.
-   *
-   * **Note:** `line` and `column` are 1 indexed, which matches display
-   * expectations, but is not typical of most index numbers in Deno.
-   *
-   * An example:
-   *
-   *       const orig = Deno.applySourceMap({
-   *         location: "file://my/module.ts",
-   *         line: 5,
-   *         column: 15
-   *       });
-   *       console.log(`${orig.filename}:${orig.line}:${orig.column}`);
-   */
-  export function applySourceMap(location: Location): Location;
-
   /** A set of error constructors that are raised by Deno APIs. */
   export const errors: {
     NotFound: ErrorConstructor;

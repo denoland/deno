@@ -1197,13 +1197,6 @@ itest!(error_016_dynamic_import_permissions2 {
   http_server: true,
 });
 
-itest!(error_stack {
-  args: "run --reload error_stack.ts",
-  check_stderr: true,
-  exit_code: 1,
-  output: "error_stack.ts.out",
-});
-
 itest!(error_syntax {
   args: "run --reload error_syntax.js",
   check_stderr: true,
