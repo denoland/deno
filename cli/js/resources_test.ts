@@ -31,8 +31,9 @@ testPerm({ net: true }, async function resourcesNet(): Promise<void> {
 
 testPerm({ read: true }, async function resourcesFile(): Promise<void> {
   const resourcesBefore = Deno.resources();
-  await Deno.open("cli/tests/hello.txt");
+  const f = await Deno.open("cli/tests/hello.txt");
   const resourcesAfter = Deno.resources();
+  f.close();
 
   // check that exactly one new resource (file) was added
   assertEquals(

@@ -17,6 +17,13 @@ test({
 });
 
 test({
+  name: "tmp directory is a string",
+  fn() {
+    assertEquals(typeof os.tmpdir(), "string");
+  }
+});
+
+test({
   name: "hostname is a string",
   fn() {
     assertEquals(typeof os.hostname(), "string");
@@ -226,13 +233,6 @@ test({
     assertThrows(
       () => {
         os.setPriority(0);
-      },
-      Error,
-      "Not implemented"
-    );
-    assertThrows(
-      () => {
-        os.tmpdir();
       },
       Error,
       "Not implemented"

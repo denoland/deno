@@ -5,12 +5,15 @@ function toSecondsFromEpoch(v: number | Date): number {
   return v instanceof Date ? v.valueOf() / 1000 : v;
 }
 
-/** Synchronously changes the access and modification times of a file system
+/** **UNSTABLE**: needs investigation into high precision time.
+ *
+ * Synchronously changes the access and modification times of a file system
  * object referenced by `filename`. Given times are either in seconds
  * (Unix epoch time) or as `Date` objects.
  *
  *       Deno.utimeSync("myfile.txt", 1556495550, new Date());
- */
+ *
+ * Requires `allow-write` permission. */
 export function utimeSync(
   filename: string,
   atime: number | Date,
@@ -24,12 +27,15 @@ export function utimeSync(
   });
 }
 
-/** Changes the access and modification times of a file system object
+/** **UNSTABLE**: needs investigation into high precision time.
+ *
+ * Changes the access and modification times of a file system object
  * referenced by `filename`. Given times are either in seconds
  * (Unix epoch time) or as `Date` objects.
  *
  *       await Deno.utime("myfile.txt", 1556495550, new Date());
- */
+ *
+ * Requires `allow-write` permission. */
 export async function utime(
   filename: string,
   atime: number | Date,

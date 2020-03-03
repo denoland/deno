@@ -7,7 +7,8 @@ import { sendSync, sendAsync } from "./dispatch_json.ts";
  * directories.
  *
  *       Deno.renameSync("old/path", "new/path");
- */
+ *
+ * Requires `allow-read` and `allow-write` permissions. */
 export function renameSync(oldpath: string, newpath: string): void {
   sendSync("op_rename", { oldpath, newpath });
 }
@@ -17,7 +18,8 @@ export function renameSync(oldpath: string, newpath: string): void {
  * when `oldpath` and `newpath` are in different directories.
  *
  *       await Deno.rename("old/path", "new/path");
- */
+ *
+ * Requires `allow-read` and `allow-write`. */
 export async function rename(oldpath: string, newpath: string): Promise<void> {
   await sendAsync("op_rename", { oldpath, newpath });
 }

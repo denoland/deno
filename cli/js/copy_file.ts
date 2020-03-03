@@ -1,29 +1,29 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
-/** Copies the contents of a file to another by name synchronously.
- * Creates a new file if target does not exists, and if target exists,
- * overwrites original content of the target file.
- *
- * It would also copy the permission of the original file
- * to the destination.
+/** Synchronously copies the contents and permissions of one file to another
+ * specified path, by default creating a new file if needed, else overwriting.
+ * Fails if target path is a directory or is unwritable.
  *
  *       Deno.copyFileSync("from.txt", "to.txt");
- */
-export function copyFileSync(from: string, to: string): void {
-  sendSync("op_copy_file", { from, to });
+ *
+ * Requires `allow-read` permission on fromPath.
+ * Requires `allow-write` permission on toPath. */
+export function copyFileSync(fromPath: string, toPath: string): void {
+  sendSync("op_copy_file", { from: fromPath, to: toPath });
 }
 
-/** Copies the contents of a file to another by name.
- *
- * Creates a new file if target does not exists, and if target exists,
- * overwrites original content of the target file.
- *
- * It would also copy the permission of the original file
- * to the destination.
+/** Copies the contents and permissions of one file to another specified path,
+ * by default creating a new file if needed, else overwriting. Fails if target
+ * path is a directory or is unwritable.
  *
  *       await Deno.copyFile("from.txt", "to.txt");
- */
-export async function copyFile(from: string, to: string): Promise<void> {
-  await sendAsync("op_copy_file", { from, to });
+ *
+ * Requires `allow-read` permission on fromPath.
+ * Requires `allow-write` permission on toPath. */
+export async function copyFile(
+  fromPath: string,
+  toPath: string
+): Promise<void> {
+  await sendAsync("op_copy_file", { from: fromPath, to: toPath });
 }

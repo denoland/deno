@@ -437,11 +437,42 @@ fn bundle_tla() {
 }
 
 #[test]
+fn bundle_js() {
+  use tempfile::TempDir;
+
+  // First we have to generate a bundle of some module that has exports.
+  let mod6 = util::root_path().join("cli/tests/subdir/mod6.js");
+  assert!(mod6.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("mod6.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(mod6)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&bundle)
+    .output()
+    .expect("failed to spawn script");
+  // check that nothing went to stderr
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
 fn repl_test_console_log() {
   let (out, err, code) = util::run_and_collect_output(
     "repl",
     Some(vec!["console.log('hello')", "'world'"]),
     None,
+    false,
   );
   assert_eq!(out, "hello\nundefined\nworld\n");
   assert!(err.is_empty());
@@ -451,7 +482,7 @@ fn repl_test_console_log() {
 #[test]
 fn repl_test_eof() {
   let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["1 + 2"]), None);
+    util::run_and_collect_output("repl", Some(vec!["1 + 2"]), None, false);
   assert_eq!(out, "3\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -459,8 +490,12 @@ fn repl_test_eof() {
 
 #[test]
 fn repl_test_exit_command() {
-  let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["exit", "'ignored'"]), None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["exit", "'ignored'"]),
+    None,
+    false,
+  );
   assert!(out.is_empty());
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -469,7 +504,7 @@ fn repl_test_exit_command() {
 #[test]
 fn repl_test_help_command() {
   let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["help"]), None);
+    util::run_and_collect_output("repl", Some(vec!["help"]), None, false);
   assert_eq!(
     out,
     vec![
@@ -491,6 +526,7 @@ fn repl_test_function() {
     "repl",
     Some(vec!["Deno.writeFileSync"]),
     None,
+    false,
   );
   assert_eq!(out, "[Function: writeFileSync]\n");
   assert!(err.is_empty());
@@ -499,8 +535,12 @@ fn repl_test_function() {
 
 #[test]
 fn repl_test_multiline() {
-  let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["(\n1 + 2\n)"]), None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["(\n1 + 2\n)"]),
+    None,
+    false,
+  );
   assert_eq!(out, "3\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -509,7 +549,7 @@ fn repl_test_multiline() {
 #[test]
 fn repl_test_eval_unterminated() {
   let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["eval('{')"]), None);
+    util::run_and_collect_output("repl", Some(vec!["eval('{')"]), None, false);
   assert!(out.is_empty());
   assert!(err.contains("Unexpected end of input"));
   assert_eq!(code, 0);
@@ -517,8 +557,12 @@ fn repl_test_eval_unterminated() {
 
 #[test]
 fn repl_test_reference_error() {
-  let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["not_a_variable"]), None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["not_a_variable"]),
+    None,
+    false,
+  );
   assert!(out.is_empty());
   assert!(err.contains("not_a_variable is not defined"));
   assert_eq!(code, 0);
@@ -526,8 +570,12 @@ fn repl_test_reference_error() {
 
 #[test]
 fn repl_test_syntax_error() {
-  let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["syntax error"]), None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["syntax error"]),
+    None,
+    false,
+  );
   assert!(out.is_empty());
   assert!(err.contains("Unexpected identifier"));
   assert_eq!(code, 0);
@@ -536,7 +584,7 @@ fn repl_test_syntax_error() {
 #[test]
 fn repl_test_type_error() {
   let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["console()"]), None);
+    util::run_and_collect_output("repl", Some(vec!["console()"]), None, false);
   assert!(out.is_empty());
   assert!(err.contains("console is not a function"));
   assert_eq!(code, 0);
@@ -544,8 +592,12 @@ fn repl_test_type_error() {
 
 #[test]
 fn repl_test_variable() {
-  let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["var a = 123;", "a"]), None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["var a = 123;", "a"]),
+    None,
+    false,
+  );
   assert_eq!(out, "undefined\n123\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -553,8 +605,12 @@ fn repl_test_variable() {
 
 #[test]
 fn repl_test_lexical_scoped_variable() {
-  let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["let a = 123;", "a"]), None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["let a = 123;", "a"]),
+    None,
+    false,
+  );
   assert_eq!(out, "undefined\n123\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -570,6 +626,7 @@ fn repl_test_missing_deno_dir() {
     "repl",
     Some(vec!["1"]),
     Some(vec![("DENO_DIR".to_owned(), DENO_DIR.to_owned())]),
+    false,
   );
   assert!(read_dir(&test_deno_dir).is_ok());
   remove_dir_all(&test_deno_dir).unwrap();
@@ -581,7 +638,7 @@ fn repl_test_missing_deno_dir() {
 #[test]
 fn repl_test_save_last_eval() {
   let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["1", "_"]), None);
+    util::run_and_collect_output("repl", Some(vec!["1", "_"]), None, false);
   assert_eq!(out, "1\n1\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -589,8 +646,12 @@ fn repl_test_save_last_eval() {
 
 #[test]
 fn repl_test_save_last_thrown() {
-  let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["throw 1", "_error"]), None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["throw 1", "_error"]),
+    None,
+    false,
+  );
   assert_eq!(out, "1\n");
   assert_eq!(err, "Thrown: 1\n");
   assert_eq!(code, 0);
@@ -598,8 +659,12 @@ fn repl_test_save_last_thrown() {
 
 #[test]
 fn repl_test_assign_underscore() {
-  let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["_ = 1", "2", "_"]), None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["_ = 1", "2", "_"]),
+    None,
+    false,
+  );
   assert_eq!(
     out,
     "Last evaluation result is no longer saved to _.\n1\n2\n1\n"
@@ -614,6 +679,7 @@ fn repl_test_assign_underscore_error() {
     "repl",
     Some(vec!["_error = 1", "throw 2", "_error"]),
     None,
+    false,
   );
   assert_eq!(
     out,
@@ -1476,6 +1542,7 @@ fn test_permissions_with_allow() {
       &format!("run --allow-{0} permission_test.ts {0}Required", permission),
       None,
       None,
+      false,
     );
     assert_eq!(code, 0);
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
@@ -1489,10 +1556,329 @@ fn test_permissions_without_allow() {
       &format!("run permission_test.ts {0}Required", permission),
       None,
       None,
+      false,
     );
     assert_eq!(code, 1);
     assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
   }
+}
+
+#[test]
+fn test_permissions_rw_inside_project_dir() {
+  const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+  for permission in &PERMISSION_VARIANTS {
+    let (_, err, code) = util::run_and_collect_output(
+      &format!(
+        "run --allow-{0}={1} complex_permissions_test.ts {0} {2} {2}",
+        permission,
+        util::root_path().into_os_string().into_string().unwrap(),
+        "complex_permissions_test.ts"
+      ),
+      None,
+      None,
+      false,
+    );
+    assert_eq!(code, 0);
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+}
+
+#[test]
+fn test_permissions_rw_outside_test_dir() {
+  const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+  for permission in &PERMISSION_VARIANTS {
+    let (_, err, code) = util::run_and_collect_output(
+      &format!(
+        "run --allow-{0}={1} complex_permissions_test.ts {0} {2}",
+        permission,
+        util::root_path()
+          .join("cli")
+          .join("tests")
+          .into_os_string()
+          .into_string()
+          .unwrap(),
+        util::root_path()
+          .join("Cargo.toml")
+          .into_os_string()
+          .into_string()
+          .unwrap(),
+      ),
+      None,
+      None,
+      false,
+    );
+    assert_eq!(code, 1);
+    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+}
+
+#[test]
+fn test_permissions_rw_inside_test_dir() {
+  const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+  for permission in &PERMISSION_VARIANTS {
+    let (_, err, code) = util::run_and_collect_output(
+      &format!(
+        "run --allow-{0}={1} complex_permissions_test.ts {0} {2}",
+        permission,
+        util::root_path()
+          .join("cli")
+          .join("tests")
+          .into_os_string()
+          .into_string()
+          .unwrap(),
+        "complex_permissions_test.ts"
+      ),
+      None,
+      None,
+      false,
+    );
+    assert_eq!(code, 0);
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+}
+
+#[test]
+fn test_permissions_rw_outside_test_and_js_dir() {
+  const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+  let test_dir = util::root_path()
+    .join("cli")
+    .join("tests")
+    .into_os_string()
+    .into_string()
+    .unwrap();
+  let js_dir = util::root_path()
+    .join("js")
+    .into_os_string()
+    .into_string()
+    .unwrap();
+  for permission in &PERMISSION_VARIANTS {
+    let (_, err, code) = util::run_and_collect_output(
+      &format!(
+        "run --allow-{0}={1},{2} complex_permissions_test.ts {0} {3}",
+        permission,
+        test_dir,
+        js_dir,
+        util::root_path()
+          .join("Cargo.toml")
+          .into_os_string()
+          .into_string()
+          .unwrap(),
+      ),
+      None,
+      None,
+      false,
+    );
+    assert_eq!(code, 1);
+    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+}
+
+#[test]
+fn test_permissions_rw_inside_test_and_js_dir() {
+  const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+  let test_dir = util::root_path()
+    .join("cli")
+    .join("tests")
+    .into_os_string()
+    .into_string()
+    .unwrap();
+  let js_dir = util::root_path()
+    .join("js")
+    .into_os_string()
+    .into_string()
+    .unwrap();
+  for permission in &PERMISSION_VARIANTS {
+    let (_, err, code) = util::run_and_collect_output(
+      &format!(
+        "run --allow-{0}={1},{2} complex_permissions_test.ts {0} {3}",
+        permission, test_dir, js_dir, "complex_permissions_test.ts"
+      ),
+      None,
+      None,
+      false,
+    );
+    assert_eq!(code, 0);
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+}
+
+#[test]
+fn test_permissions_rw_relative() {
+  const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+  for permission in &PERMISSION_VARIANTS {
+    let (_, err, code) = util::run_and_collect_output(
+      &format!(
+				"run --allow-{0}=. complex_permissions_test.ts {0} complex_permissions_test.ts",
+				permission
+			),
+      None,
+      None,
+      false,
+    );
+    assert_eq!(code, 0);
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+}
+
+#[test]
+fn test_permissions_rw_no_prefix() {
+  const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+  for permission in &PERMISSION_VARIANTS {
+    let (_, err, code) = util::run_and_collect_output(
+			&format!(
+				"run --allow-{0}=tls/../ complex_permissions_test.ts {0} complex_permissions_test.ts",
+				permission
+			),
+			None,
+			None,
+			false,
+		);
+    assert_eq!(code, 0);
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+}
+
+#[test]
+fn test_permissions_net_fetch_allow_localhost_4545() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=localhost:4545 complex_permissions_test.ts netFetch http://localhost:4545/",
+			None,
+			None,true,
+		);
+  assert_eq!(code, 0);
+  assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_fetch_allow_deno_land() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=deno.land complex_permissions_test.ts netFetch http://localhost:4545/",
+			None,
+			None,
+			true,
+		);
+  assert_eq!(code, 1);
+  assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_fetch_localhost_4545_fail() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=localhost:4545 complex_permissions_test.ts netFetch http://localhost:4546/",
+			None,
+			None,
+			true,
+		);
+  assert_eq!(code, 1);
+  assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_fetch_localhost() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=localhost complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
+			None,
+			None,
+			true,
+		);
+  assert_eq!(code, 0);
+  assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_connect_allow_localhost_ip_4555() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=127.0.0.1:4545 complex_permissions_test.ts netConnect 127.0.0.1:4545",
+			None,
+			None,
+			true,
+		);
+  assert_eq!(code, 0);
+  assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_connect_allow_deno_land() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=deno.land complex_permissions_test.ts netConnect 127.0.0.1:4546",
+			None,
+			None,
+			true,
+		);
+  assert_eq!(code, 1);
+  assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_connect_allow_localhost_ip_4545_fail() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=127.0.0.1:4545 complex_permissions_test.ts netConnect 127.0.0.1:4546",
+			None,
+			None,
+			true,
+		);
+  assert_eq!(code, 1);
+  assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_connect_allow_localhost_ip() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=127.0.0.1 complex_permissions_test.ts netConnect 127.0.0.1:4545 127.0.0.1:4546 127.0.0.1:4547",
+			None,
+			None,
+			true,
+		);
+  assert_eq!(code, 0);
+  assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_listen_allow_localhost_4555() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=localhost:4558 complex_permissions_test.ts netListen localhost:4558",
+			None,
+			None,
+			false,
+		);
+  assert_eq!(code, 0);
+  assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_listen_allow_deno_land() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=deno.land complex_permissions_test.ts netListen localhost:4545",
+			None,
+			None,
+			false,
+		);
+  assert_eq!(code, 1);
+  assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_listen_allow_localhost_4555_fail() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=localhost:4555 complex_permissions_test.ts netListen localhost:4556",
+			None,
+			None,
+			false,
+		);
+  assert_eq!(code, 1);
+  assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_listen_allow_localhost() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=localhost complex_permissions_test.ts netListen localhost:4545 localhost:4546 localhost:4547",
+			None,
+			None,
+			false,
+		);
+  assert_eq!(code, 0);
+  assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
 
 mod util {
@@ -1518,6 +1904,7 @@ mod util {
     args: &str,
     input: Option<Vec<&str>>,
     envs: Option<Vec<(String, String)>>,
+    need_http_server: bool,
   ) -> (String, String, i32) {
     let root = root_path();
     let tests_dir = root.join("cli").join("tests");
@@ -1531,6 +1918,11 @@ mod util {
     if let Some(envs) = envs {
       deno_process_builder.envs(envs);
     }
+    let http_guard = if need_http_server {
+      Some(http_server())
+    } else {
+      None
+    };
     let mut deno = deno_process_builder
       .spawn()
       .expect("failed to spawn script");
@@ -1545,6 +1937,7 @@ mod util {
       stderr,
       status,
     } = deno.wait_with_output().expect("failed to wait on child");
+    drop(http_guard);
     (
       String::from_utf8(stdout).unwrap(),
       String::from_utf8(stderr).unwrap(),

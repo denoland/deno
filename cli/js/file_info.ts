@@ -3,72 +3,69 @@ import { StatResponse } from "./stat.ts";
 import { build } from "./build.ts";
 
 /** A FileInfo describes a file and is returned by `stat`, `lstat`,
- * `statSync`, `lstatSync`.
- */
+ * `statSync`, `lstatSync`. A list of FileInfo is returned by `readDir`,
+ * `readDirSync`. */
 export interface FileInfo {
   /** The size of the file, in bytes. */
   len: number;
   /** The last modification time of the file. This corresponds to the `mtime`
-   * field from `stat` on Unix and `ftLastWriteTime` on Windows. This may not
-   * be available on all platforms.
-   */
+   * field from `stat` on Linux/Mac OS and `ftLastWriteTime` on Windows. This
+   * may not be available on all platforms. */
   modified: number | null;
   /** The last access time of the file. This corresponds to the `atime`
    * field from `stat` on Unix and `ftLastAccessTime` on Windows. This may not
-   * be available on all platforms.
-   */
+   * be available on all platforms. */
   accessed: number | null;
   /** The last access time of the file. This corresponds to the `birthtime`
-   * field from `stat` on Unix and `ftCreationTime` on Windows. This may not
-   * be available on all platforms.
-   */
+   * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may not
+   * be available on all platforms. */
   created: number | null;
-
   /** The file or directory name. */
   name: string | null;
-
-  /** ID of the device containing the file. Unix only. */
+  /** ID of the device containing the file.
+   *
+   * _Linux/Mac OS only._ */
   dev: number | null;
-
-  /** Inode number. Unix only. */
+  /** Inode number.
+   *
+   * _Linux/Mac OS only._ */
   ino: number | null;
-
   /** The underlying raw st_mode bits that contain the standard Unix permissions
    * for this file/directory. TODO Match behavior with Go on windows for mode.
    */
   mode: number | null;
-
-  /** Number of hard links pointing to this file. Unix only. */
+  /** Number of hard links pointing to this file.
+   *
+   * _Linux/Mac OS only._ */
   nlink: number | null;
-
-  /** User ID of the owner of this file. Unix only. */
+  /** User ID of the owner of this file.
+   *
+   * _Linux/Mac OS only._ */
   uid: number | null;
-
-  /** User ID of the owner of this file. Unix only. */
+  /** User ID of the owner of this file.
+   *
+   * _Linux/Mac OS only._ */
   gid: number | null;
-
-  /** Device ID of this file. Unix only. */
+  /** Device ID of this file.
+   *
+   * _Linux/Mac OS only._ */
   rdev: number | null;
-
-  /** Blocksize for filesystem I/O. Unix only. */
+  /** Blocksize for filesystem I/O.
+   *
+   * _Linux/Mac OS only._ */
   blksize: number | null;
-
-  /** Number of blocks allocated to the file, in 512-byte units. Unix only. */
+  /** Number of blocks allocated to the file, in 512-byte units.
+   *
+   * _Linux/Mac OS only._ */
   blocks: number | null;
-
   /** Returns whether this is info for a regular file. This result is mutually
-   * exclusive to `FileInfo.isDirectory` and `FileInfo.isSymlink`.
-   */
+   * exclusive to `FileInfo.isDirectory` and `FileInfo.isSymlink`. */
   isFile(): boolean;
-
   /** Returns whether this is info for a regular directory. This result is
-   * mutually exclusive to `FileInfo.isFile` and `FileInfo.isSymlink`.
-   */
+   * mutually exclusive to `FileInfo.isFile` and `FileInfo.isSymlink`. */
   isDirectory(): boolean;
-
   /** Returns whether this is info for a symlink. This result is
-   * mutually exclusive to `FileInfo.isFile` and `FileInfo.isDirectory`.
-   */
+   * mutually exclusive to `FileInfo.isFile` and `FileInfo.isDirectory`. */
   isSymlink(): boolean;
 }
 

@@ -1,14 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 #[macro_use]
-extern crate log;
-extern crate futures;
-extern crate libc;
-#[macro_use]
 extern crate downcast_rs;
-extern crate rusty_v8;
+extern crate futures;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate log;
 
 mod any_error;
 mod bindings;
