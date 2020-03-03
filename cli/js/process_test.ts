@@ -21,13 +21,15 @@ test(function runPermissions(): void {
 
 testPerm({ run: true }, async function runSuccess(): Promise<void> {
   const p = run({
-    args: ["python", "-c", "print('hello world')"]
+    args: ["python", "-c", "print('hello world')"],
+    stdout: "piped",
+    stderr: "null"
   });
   const status = await p.status();
-  console.log("status", status);
   assertEquals(status.success, true);
   assertEquals(status.code, 0);
   assertEquals(status.signal, undefined);
+  p.stdout!.close();
   p.close();
 });
 

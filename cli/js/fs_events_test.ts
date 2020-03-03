@@ -19,7 +19,6 @@ async function getTwoEvents(
 ): Promise<Deno.FsEvent[]> {
   const events = [];
   for await (const event of iter) {
-    console.log(">>>> event", event);
     events.push(event);
     if (events.length > 2) break;
   }
@@ -43,7 +42,6 @@ testPerm({ read: true, write: true }, async function fsEventsBasic(): Promise<
 
   // We should have gotten two fs events.
   const events = await eventsPromise;
-  console.log("events", events);
   assert(events.length >= 2);
   assert(events[0].kind == "create");
   assert(events[0].paths[0].includes(testDir));
