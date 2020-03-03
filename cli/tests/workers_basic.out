@@ -1,3 +1,0 @@
-hello from test_worker_basic.js
-jsWorker onmessage msg1
-main recv: msg1

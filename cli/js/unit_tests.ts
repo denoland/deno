@@ -62,7 +62,6 @@ import "./utime_test.ts";
 import "./write_file_test.ts";
 import "./performance_test.ts";
 import "./version_test.ts";
-import "./workers_test.ts";
 
 if (import.meta.main) {
   await Deno.runTests();
