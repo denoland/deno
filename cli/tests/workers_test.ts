@@ -2,6 +2,11 @@
 
 // Requires to be run with `--allow-net` flag
 
+// FIXME(bartlomieju): this file is an integration test only because
+// workers are leaking ops at the moment - `worker.terminate()` is not
+// yet implemented. Once it gets implemented this file should be
+// again moved to `cli/js/` as an unit test file.
+
 import { assert, assertEquals } from "../../std/testing/asserts.ts";
 
 export interface ResolvableMethods<T> {
