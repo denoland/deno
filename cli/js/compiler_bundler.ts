@@ -50,8 +50,8 @@ export function buildBundle(
   let instantiate: string;
   if (rootExports && rootExports.length) {
     instantiate = hasTla
-      ? `const __exp = await __inst("${rootName}");\n`
-      : `const __exp = __inst_s("${rootName}");\n`;
+      ? `const __exp = await __ia("${rootName}");\n`
+      : `const __exp = __i("${rootName}");\n`;
     for (const rootExport of rootExports) {
       if (rootExport === "default") {
         instantiate += `export default __exp["${rootExport}"];\n`;
@@ -61,8 +61,8 @@ export function buildBundle(
     }
   } else {
     instantiate = hasTla
-      ? `await __inst("${rootName}");\n`
-      : `__inst_s("${rootName}");\n`;
+      ? `await __ia("${rootName}");\n`
+      : `__i("${rootName}");\n`;
   }
   return `${SYSTEM_LOADER}\n${data}\n${instantiate}`;
 }
