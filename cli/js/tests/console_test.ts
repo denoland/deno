@@ -5,7 +5,6 @@ import { assert, assertEquals, unitTest } from "./test_util.ts";
 // in order to "trick" TypeScript.
 const {
   inspect,
-  writeSync,
   stdout
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } = Deno as any;
@@ -357,7 +356,7 @@ unitTest(function consoleDetachedLog(): void {
   // Mock out `stdout.writeSync` so console
   // doesn't mess output from test runner
   const stdoutWriteSync = stdout.writeSync;
-  stdout.writeSync = () => {};
+  stdout.writeSync = (): void => {};
 
   mockConsole(console => {
     const log = console.log;
