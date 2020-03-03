@@ -167,6 +167,7 @@ fn frame_apply_source_map<G: SourceMapGetter>(
     column,
     is_eval: frame.is_eval,
     is_constructor: frame.is_constructor,
+    is_async: frame.is_async,
   }
 }
 
@@ -308,6 +309,7 @@ mod tests {
           function_name: "foo".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
         JSStackFrame {
           line_number: 5,
@@ -316,6 +318,7 @@ mod tests {
           function_name: "qat".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
         JSStackFrame {
           line_number: 1,
@@ -324,6 +327,7 @@ mod tests {
           function_name: "".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
       ],
     };
@@ -344,6 +348,7 @@ mod tests {
           function_name: "foo".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
         JSStackFrame {
           line_number: 4,
@@ -352,6 +357,7 @@ mod tests {
           function_name: "qat".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
         JSStackFrame {
           line_number: 1,
@@ -360,6 +366,7 @@ mod tests {
           function_name: "".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
       ],
     };

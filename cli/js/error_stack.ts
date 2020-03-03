@@ -235,7 +235,9 @@ function prepareStackTrace(
   error: Error,
   structuredStackTrace: CallSite[]
 ): string {
-  return (
+  // @ts-ignore
+  error["__callSites"] = [];
+  const errorString =
     `${error.name}: ${error.message}\n` +
     structuredStackTrace
       .map(
@@ -256,9 +258,13 @@ function prepareStackTrace(
           return callSite;
         }
       )
-      .map((callSite): string => `    at ${callSiteToString(callSite)}`)
-      .join("\n")
-  );
+      .map((callSite): string => {
+        // @ts-ignore
+        error["__callSites"].push(callSite); // Save callsites to self
+        return `    at ${callSiteToString(callSite)}`;
+      })
+      .join("\n");
+  return errorString;
 }
 
 /** Sets the `prepareStackTrace` method on the Error constructor which will
