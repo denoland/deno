@@ -90,10 +90,9 @@ testPerm({ net: true }, async function listenTLSNoReadPerm(): Promise<void> {
 
 unitTest(
   {
-    name: "listenTLS empty key file",
     perms: { read: true, write: true, net: true }
   },
-  async () => {
+  async function listenTLSEmptyKeyFile(): Promise<void> {
     let err;
     const options = {
       hostname: "localhost",

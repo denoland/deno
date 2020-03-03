@@ -8,11 +8,7 @@
 // See tools/unit_tests.py for more details.
 
 import { readLines } from "../../std/io/bufio.ts";
-import {
-  AssertionError,
-  assert,
-  assertEquals
-} from "../../std/testing/asserts.ts";
+import { assert, assertEquals } from "../../std/testing/asserts.ts";
 export {
   assert,
   assertThrows,
@@ -164,56 +160,37 @@ export function testPerm(perms: TestPermissions, fn: Deno.TestFunction): void {
 }
 
 interface UnitTestOptions {
-  name?: string;
   skip?: boolean;
   perms?: TestPermissions;
 }
 
 export function unitTest(fn: Deno.TestFunction): void;
-export function unitTest(name: string, fn: Deno.TestFunction): void;
 export function unitTest(options: UnitTestOptions, fn: Deno.TestFunction): void;
 export function unitTest(
-  name: string,
-  options: UnitTestOptions,
-  fn: Deno.TestFunction
-): void;
-export function unitTest(
-  optionsOrNameOrFn: UnitTestOptions | string | Deno.TestFunction,
-  maybeFnOrOptions?: UnitTestOptions | Deno.TestFunction,
+  optionsOrFn: UnitTestOptions | Deno.TestFunction,
   maybeFn?: Deno.TestFunction
 ): void {
-  assert(optionsOrNameOrFn, "At least one argument is required");
+  assert(optionsOrFn, "At least one argument is required");
 
   let options: UnitTestOptions;
   let name: string;
   let fn: Deno.TestFunction;
 
-  if (typeof optionsOrNameOrFn === "string") {
-    name = optionsOrNameOrFn;
-    assert(maybeFnOrOptions, "Missing test function definition");
-    if (typeof maybeFnOrOptions === "function") {
-      fn = maybeFnOrOptions;
-      options = {};
-    } else {
-      options = maybeFnOrOptions;
-      assert(maybeFn, "Missing test function definition");
-      fn = maybeFn;
-    }
-  } else if (typeof optionsOrNameOrFn === "function") {
+  if (typeof optionsOrFn === "function") {
     options = {};
-    fn = optionsOrNameOrFn;
+    fn = optionsOrFn;
     name = fn.name;
     assert(name, "Missing test function name");
   } else {
-    options = optionsOrNameOrFn;
-    assert(maybeFnOrOptions, "Missing test function definition");
+    options = optionsOrFn;
+    assert(maybeFn, "Missing test function definition");
     assert(
-      typeof maybeFnOrOptions === "function",
+      typeof maybeFn === "function",
       "Second argument should be test function definition"
     );
-    fn = maybeFnOrOptions as Deno.TestFunction;
-    name = options.name || fn.name;
-    assert(name, "Missing test name");
+    fn = maybeFn;
+    name = fn.name;
+    assert(name, "Missing test function name");
   }
 
   if (options.skip) {

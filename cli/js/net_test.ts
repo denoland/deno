@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals } from "./test_util.ts";
 
-unitTest("net tcp listen close", { perms: { net: true } }, () => {
+unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
   const listener = Deno.listen({ hostname: "127.0.0.1", port: 4500 });
   assertEquals(listener.addr.transport, "tcp");
   assertEquals(listener.addr.hostname, "127.0.0.1");
@@ -11,12 +11,11 @@ unitTest("net tcp listen close", { perms: { net: true } }, () => {
 
 unitTest(
   {
-    name: "net udp listen close",
     perms: { net: true },
     // TODO:
     skip: Deno.build.os === "win"
   },
-  () => {
+  function netUdpListenClose(): void {
     const socket = Deno.listen({
       hostname: "127.0.0.1",
       port: 4500,
@@ -31,10 +30,9 @@ unitTest(
 
 unitTest(
   {
-    name: "net tcp close while accept",
     perms: { net: true }
   },
-  async () => {
+  async function netTcpCloseWhileAccept(): Promise<void> {
     const listener = Deno.listen({ port: 4501 });
     const p = listener.accept();
     listener.close();
@@ -307,5 +305,3 @@ testPerm({ net: true }, async function netDoubleCloseWrite() {
   conn.close();
 });
 */
-
-await Deno.runTests();
