@@ -159,7 +159,7 @@ unitTest(
 );
 
 /* TODO(ry) Re-enable this test.
-testPerm({ net: true }, async function netListenAsyncIterator(): Promise<void> {
+unitTest({ perms: { net: true } }, async function netListenAsyncIterator(): Promise<void> {
   const listener = Deno.listen(":4500");
   const runAsyncIterator = async (): Promise<void> => {
     for await (let conn of listener) {
@@ -188,7 +188,7 @@ testPerm({ net: true }, async function netListenAsyncIterator(): Promise<void> {
  */
 
 /* TODO Fix broken test.
-testPerm({ net: true }, async function netCloseReadSuccess() {
+unitTest({ perms: { net: true } }, async function netCloseReadSuccess() {
   const addr = "127.0.0.1:4500";
   const listener = Deno.listen(addr);
   const closeDeferred = deferred();
@@ -220,7 +220,7 @@ testPerm({ net: true }, async function netCloseReadSuccess() {
 */
 
 /* TODO Fix broken test.
-testPerm({ net: true }, async function netDoubleCloseRead() {
+unitTest({ perms: { net: true } }, async function netDoubleCloseRead() {
   const addr = "127.0.0.1:4500";
   const listener = Deno.listen(addr);
   const closeDeferred = deferred();
@@ -247,7 +247,7 @@ testPerm({ net: true }, async function netDoubleCloseRead() {
 */
 
 /* TODO Fix broken test.
-testPerm({ net: true }, async function netCloseWriteSuccess() {
+unitTest({ perms: { net: true } }, async function netCloseWriteSuccess() {
   const addr = "127.0.0.1:4500";
   const listener = Deno.listen(addr);
   const closeDeferred = deferred();
@@ -281,7 +281,7 @@ testPerm({ net: true }, async function netCloseWriteSuccess() {
 */
 
 /* TODO Fix broken test.
-testPerm({ net: true }, async function netDoubleCloseWrite() {
+unitTest({ perms: { net: true } }, async function netDoubleCloseWrite() {
   const addr = "127.0.0.1:4500";
   const listener = Deno.listen(addr);
   const closeDeferred = deferred();

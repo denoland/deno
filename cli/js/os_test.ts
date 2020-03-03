@@ -4,11 +4,10 @@ import {
   assertEquals,
   assertNotEquals,
   assertThrows,
-  testPerm,
   unitTest
 } from "./test_util.ts";
 
-testPerm({ env: true }, function envSuccess(): void {
+unitTest({ perms: { env: true } }, function envSuccess(): void {
   const env = Deno.env();
   assert(env !== null);
   // eslint-disable-next-line @typescript-eslint/camelcase
@@ -18,7 +17,7 @@ testPerm({ env: true }, function envSuccess(): void {
   assertEquals(Deno.env("test_var"), env.test_var);
 });
 
-testPerm({ env: true }, function envNotFound(): void {
+unitTest({ perms: { env: true } }, function envNotFound(): void {
   const r = Deno.env("env_var_does_not_exist!");
   assertEquals(r, undefined);
 });
@@ -116,7 +115,7 @@ unitTest(function osPid(): void {
   assert(Deno.pid > 0);
 });
 
-testPerm({ env: true }, function getDir(): void {
+unitTest({ perms: { env: true } }, function getDir(): void {
   type supportOS = "mac" | "win" | "linux";
 
   interface Runtime {
@@ -264,7 +263,7 @@ testPerm({ env: true }, function getDir(): void {
   }
 });
 
-testPerm({}, function getDirWithoutPermission(): void {
+unitTest(function getDirWithoutPermission(): void {
   assertThrows(
     () => Deno.dir("home"),
     Deno.errors.PermissionDenied,
@@ -272,11 +271,11 @@ testPerm({}, function getDirWithoutPermission(): void {
   );
 });
 
-testPerm({ env: true }, function execPath(): void {
+unitTest({ perms: { env: true } }, function execPath(): void {
   assertNotEquals(Deno.execPath(), "");
 });
 
-testPerm({ env: false }, function execPathPerm(): void {
+unitTest({ perms: { env: false } }, function execPathPerm(): void {
   let caughtError = false;
   try {
     Deno.execPath();
@@ -288,12 +287,12 @@ testPerm({ env: false }, function execPathPerm(): void {
   assert(caughtError);
 });
 
-testPerm({ env: true }, function loadavgSuccess(): void {
+unitTest({ perms: { env: true } }, function loadavgSuccess(): void {
   const load = Deno.loadavg();
   assertEquals(load.length, 3);
 });
 
-testPerm({ env: false }, function loadavgPerm(): void {
+unitTest({ perms: { env: false } }, function loadavgPerm(): void {
   let caughtError = false;
   try {
     Deno.loadavg();
@@ -305,11 +304,11 @@ testPerm({ env: false }, function loadavgPerm(): void {
   assert(caughtError);
 });
 
-testPerm({ env: true }, function hostnameDir(): void {
+unitTest({ perms: { env: true } }, function hostnameDir(): void {
   assertNotEquals(Deno.hostname(), "");
 });
 
-testPerm({ env: false }, function hostnamePerm(): void {
+unitTest({ perms: { env: false } }, function hostnamePerm(): void {
   let caughtError = false;
   try {
     Deno.hostname();
@@ -321,11 +320,11 @@ testPerm({ env: false }, function hostnamePerm(): void {
   assert(caughtError);
 });
 
-testPerm({ env: true }, function releaseDir(): void {
+unitTest({ perms: { env: true } }, function releaseDir(): void {
   assertNotEquals(Deno.osRelease(), "");
 });
 
-testPerm({ env: false }, function releasePerm(): void {
+unitTest({ perms: { env: false } }, function releasePerm(): void {
   let caughtError = false;
   try {
     Deno.osRelease();

@@ -1,9 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, unitTest, assert, assertEquals } from "./test_util.ts";
+import { unitTest, assert, assertEquals } from "./test_util.ts";
 
 // TODO Add tests for modified, accessed, and created fields once there is a way
 // to create temp files.
-testPerm({ read: true }, async function statSyncSuccess(): Promise<void> {
+unitTest({ perms: { read: true } }, async function statSyncSuccess(): Promise<
+  void
+> {
   const packageInfo = Deno.statSync("README.md");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
@@ -17,7 +19,9 @@ testPerm({ read: true }, async function statSyncSuccess(): Promise<void> {
   assert(!testsInfo.isSymlink());
 });
 
-testPerm({ read: false }, async function statSyncPerm(): Promise<void> {
+unitTest({ perms: { read: false } }, async function statSyncPerm(): Promise<
+  void
+> {
   let caughtError = false;
   try {
     Deno.statSync("README.md");
@@ -28,7 +32,9 @@ testPerm({ read: false }, async function statSyncPerm(): Promise<void> {
   assert(caughtError);
 });
 
-testPerm({ read: true }, async function statSyncNotFound(): Promise<void> {
+unitTest({ perms: { read: true } }, async function statSyncNotFound(): Promise<
+  void
+> {
   let caughtError = false;
   let badInfo;
 
@@ -43,7 +49,9 @@ testPerm({ read: true }, async function statSyncNotFound(): Promise<void> {
   assertEquals(badInfo, undefined);
 });
 
-testPerm({ read: true }, async function lstatSyncSuccess(): Promise<void> {
+unitTest({ perms: { read: true } }, async function lstatSyncSuccess(): Promise<
+  void
+> {
   const packageInfo = Deno.lstatSync("README.md");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
@@ -57,7 +65,9 @@ testPerm({ read: true }, async function lstatSyncSuccess(): Promise<void> {
   assert(!coreInfo.isSymlink());
 });
 
-testPerm({ read: false }, async function lstatSyncPerm(): Promise<void> {
+unitTest({ perms: { read: false } }, async function lstatSyncPerm(): Promise<
+  void
+> {
   let caughtError = false;
   try {
     Deno.lstatSync("README.md");
@@ -68,7 +78,9 @@ testPerm({ read: false }, async function lstatSyncPerm(): Promise<void> {
   assert(caughtError);
 });
 
-testPerm({ read: true }, async function lstatSyncNotFound(): Promise<void> {
+unitTest({ perms: { read: true } }, async function lstatSyncNotFound(): Promise<
+  void
+> {
   let caughtError = false;
   let badInfo;
 
@@ -83,7 +95,9 @@ testPerm({ read: true }, async function lstatSyncNotFound(): Promise<void> {
   assertEquals(badInfo, undefined);
 });
 
-testPerm({ read: true }, async function statSuccess(): Promise<void> {
+unitTest({ perms: { read: true } }, async function statSuccess(): Promise<
+  void
+> {
   const packageInfo = await Deno.stat("README.md");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
@@ -97,7 +111,7 @@ testPerm({ read: true }, async function statSuccess(): Promise<void> {
   assert(!testsInfo.isSymlink());
 });
 
-testPerm({ read: false }, async function statPerm(): Promise<void> {
+unitTest({ perms: { read: false } }, async function statPerm(): Promise<void> {
   let caughtError = false;
   try {
     await Deno.stat("README.md");
@@ -108,7 +122,9 @@ testPerm({ read: false }, async function statPerm(): Promise<void> {
   assert(caughtError);
 });
 
-testPerm({ read: true }, async function statNotFound(): Promise<void> {
+unitTest({ perms: { read: true } }, async function statNotFound(): Promise<
+  void
+> {
   let caughtError = false;
   let badInfo;
 
@@ -123,7 +139,9 @@ testPerm({ read: true }, async function statNotFound(): Promise<void> {
   assertEquals(badInfo, undefined);
 });
 
-testPerm({ read: true }, async function lstatSuccess(): Promise<void> {
+unitTest({ perms: { read: true } }, async function lstatSuccess(): Promise<
+  void
+> {
   const packageInfo = await Deno.lstat("README.md");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
@@ -137,7 +155,7 @@ testPerm({ read: true }, async function lstatSuccess(): Promise<void> {
   assert(!coreInfo.isSymlink());
 });
 
-testPerm({ read: false }, async function lstatPerm(): Promise<void> {
+unitTest({ perms: { read: false } }, async function lstatPerm(): Promise<void> {
   let caughtError = false;
   try {
     await Deno.lstat("README.md");
@@ -148,7 +166,9 @@ testPerm({ read: false }, async function lstatPerm(): Promise<void> {
   assert(caughtError);
 });
 
-testPerm({ read: true }, async function lstatNotFound(): Promise<void> {
+unitTest({ perms: { read: true } }, async function lstatNotFound(): Promise<
+  void
+> {
   let caughtError = false;
   let badInfo;
 
