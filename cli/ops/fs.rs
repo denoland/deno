@@ -12,6 +12,8 @@ use std::fs;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 
+use utime::set_file_times;
+
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
@@ -616,7 +618,7 @@ fn op_utime(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_utime {} {} {}", args.filename, args.atime, args.mtime);
-    utime::set_file_times(args.filename, args.atime, args.mtime)?;
+    set_file_times(args.filename, args.atime, args.mtime)?;
     Ok(json!({}))
   })
 }
