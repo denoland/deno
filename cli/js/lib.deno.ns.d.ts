@@ -1077,7 +1077,9 @@ declare namespace Deno {
 
   // @url js/read_dir.d.ts
 
-  /** Synchronously reads the directory given by `path` and returns an array of
+  /** UNSTABLE: need to consider streaming case
+   *
+   * Synchronously reads the directory given by `path` and returns an array of
    * `Deno.FileInfo`.
    *
    *       const files = Deno.readdirSync("/");
