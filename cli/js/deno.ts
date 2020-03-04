@@ -21,7 +21,7 @@ export {
   DiagnosticMessageChain
 } from "./diagnostics.ts";
 export { chdir, cwd } from "./dir.ts";
-export { applySourceMap } from "./error_stack.ts";
+export { applySourceMap, formatDiagnostics } from "./ops/errors.ts";
 export { errors } from "./errors.ts";
 export { FileInfo } from "./file_info.ts";
 export {
@@ -43,7 +43,6 @@ export {
   OpenOptions,
   OpenMode
 } from "./files.ts";
-export { formatDiagnostics } from "./format_error.ts";
 export { FsEvent, fsEvents } from "./fs_events.ts";
 export {
   EOF,
