@@ -1210,6 +1210,67 @@ console.log(result["/foo.ts"].map);
 We would expect the `enum` would be rewritten to an IIFE which constructs the
 enumerable, and the map to be defined.
 
+## TypeScript Compiler Options
+
+In Deno ecosystem, all strict flags are enabled in order to comply with
+TypeScript ideal of being `strict` by default. However, in order to provide a
+way to support customization a configuration file such as `tsconfig.json` might
+be provided to Deno on program execution.
+
+You do need to explicitly tell Deno where to look for this configuration, in
+order to do so you can use the `-c` argument when executing your application.
+
+```bash
+deno -c tsconfig.json mod.ts
+```
+
+Currently allowed settings, as well as their default values in Deno go as
+follows:
+
+```json
+{
+  "compilerOptions": {
+    "allowJs": false,
+    "allowUmdGlobalAccess": false,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "alwaysStrict": true,
+    "assumeChangesOnlyAffectDirectDependencies": false,
+    "checkJs": false,
+    "disableSizeLimit": false,
+    "generateCpuProfile": "profile.cpuprofile",
+    "jsx": "react",
+    "jsxFactory": "React.createElement",
+    "lib": [],
+    "noFallthroughCasesInSwitch": false,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noImplicitUseStrict": false,
+    "noStrictGenericChecks": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "preserveConstEnums": false,
+    "removeComments": false,
+    "resolveJsonModule": true,
+    "strict": true,
+    "strictBindCallApply": true,
+    "strictFunctionTypes": true,
+    "strictNullChecks": true,
+    "strictPropertyInitialization": true,
+    "suppressExcessPropertyErrors": false,
+    "suppressImplicitAnyIndexErrors": false,
+    "useDefineForClassFields": false
+  }
+}
+```
+
+For documentation on allowed values and use cases please visit
+https://www.typescriptlang.org/docs/handbook/compiler-options.html
+
+**Note**: Any options not listed above are either not supported by Deno or are
+listed as deprecated/experimental in the TypeScript documentation.
+
 ## Program lifecycle
 
 Deno supports browser compatible lifecycle events: `load` and `unload`. You can
