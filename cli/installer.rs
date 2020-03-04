@@ -143,7 +143,7 @@ pub fn install(
   let mut file_path = installation_dir.join(exec_name);
 
   if cfg!(windows) {
-    file_path = file_path.with_extension(".cmd");
+    file_path = file_path.with_extension("cmd");
   }
 
   if file_path.exists() && !force {
@@ -229,7 +229,7 @@ mod tests {
 
     let mut file_path = temp_dir.path().join(".deno/bin/echo_test");
     if cfg!(windows) {
-      file_path = file_path.with_extension(".cmd");
+      file_path = file_path.with_extension("cmd");
     }
 
     assert!(file_path.exists());
@@ -263,7 +263,7 @@ mod tests {
 
     let mut file_path = temp_dir.path().join("echo_test");
     if cfg!(windows) {
-      file_path = file_path.with_extension(".cmd");
+      file_path = file_path.with_extension("cmd");
     }
 
     assert!(file_path.exists());
@@ -292,7 +292,7 @@ mod tests {
 
     let mut file_path = temp_dir.path().join("echo_test");
     if cfg!(windows) {
-      file_path = file_path.with_extension(".cmd");
+      file_path = file_path.with_extension("cmd");
     }
 
     assert!(file_path.exists());
@@ -319,7 +319,7 @@ mod tests {
 
     let mut file_path = temp_dir.path().join("echo_test");
     if cfg!(windows) {
-      file_path = file_path.with_extension(".cmd");
+      file_path = file_path.with_extension("cmd");
     }
 
     assert!(file_path.exists());
@@ -343,7 +343,7 @@ mod tests {
 
     let mut file_path = temp_dir.path().join("echo_test");
     if cfg!(windows) {
-      file_path = file_path.with_extension(".cmd");
+      file_path = file_path.with_extension("cmd");
     }
     assert!(file_path.exists());
 

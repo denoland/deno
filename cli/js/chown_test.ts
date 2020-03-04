@@ -19,9 +19,11 @@ if (Deno.build.os !== "win") {
     const uid = parseInt(
       new TextDecoder("utf-8").decode(await uidProc.output())
     );
+    uidProc.close();
     const gid = parseInt(
       new TextDecoder("utf-8").decode(await gidProc.output())
     );
+    gidProc.close();
 
     return { uid, gid };
   }

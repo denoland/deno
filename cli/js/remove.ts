@@ -1,31 +1,33 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
-export interface RemoveOption {
+export interface RemoveOptions {
+  /** Defaults to `false`. If set to `true`, path will be removed even if
+   * it's a non-empty directory. */
   recursive?: boolean;
 }
 
-/** Removes the named file, directory or symlink synchronously. Would throw
- * error if permission denied, not found, or directory not empty if `recursive`
- * set to false.
- * `recursive` is set to false by default.
+/** Synchronously removes the named file or directory. Throws error if
+ * permission denied, path not found, or path is a non-empty directory and
+ * the `recursive` option isn't set to `true`.
  *
- *       Deno.removeSync("/path/to/dir/or/file", {recursive: false});
- */
-export function removeSync(path: string, options: RemoveOption = {}): void {
+ *       Deno.removeSync("/path/to/dir/or/file", { recursive: false });
+ *
+ * Requires `allow-write` permission. */
+export function removeSync(path: string, options: RemoveOptions = {}): void {
   sendSync("op_remove", { path, recursive: !!options.recursive });
 }
 
-/** Removes the named file, directory or symlink. Would throw error if
- * permission denied, not found, or directory not empty if `recursive` set
- * to false.
- * `recursive` is set to false by default.
+/** Removes the named file or directory. Throws error if permission denied,
+ * path not found, or path is a non-empty directory and the `recursive`
+ * option isn't set to `true`.
  *
- *       await Deno.remove("/path/to/dir/or/file", {recursive: false});
- */
+ *       await Deno.remove("/path/to/dir/or/file", { recursive: false });
+ *
+ * Requires `allow-write` permission. */
 export async function remove(
   path: string,
-  options: RemoveOption = {}
+  options: RemoveOptions = {}
 ): Promise<void> {
   await sendAsync("op_remove", { path, recursive: !!options.recursive });
 }

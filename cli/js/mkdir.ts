@@ -5,7 +5,7 @@ import { sendSync, sendAsync } from "./dispatch_json.ts";
 // mkdir and mkdirSync.
 function mkdirArgs(
   path: string,
-  optionsOrRecursive?: MkdirOption | boolean,
+  optionsOrRecursive?: MkdirOptions | boolean,
   mode?: number
 ): { path: string; recursive: boolean; mode: number } {
   const args = { path, recursive: false, mode: 0o777 };
@@ -25,40 +25,42 @@ function mkdirArgs(
   return args;
 }
 
-export interface MkdirOption {
+export interface MkdirOptions {
+  /** Defaults to `false`. If set to `true`, means that any intermediate
+   * directories will also be created (as with the shell command `mkdir -p`).
+   * Intermediate directories are created with the same permissions.
+   * When recursive is set to `true`, succeeds silently (without changing any
+   * permissions) if a directory already exists at the path. */
   recursive?: boolean;
+  /** Permissions to use when creating the directory (defaults to `0o777`,
+   * before the process's umask).
+   * Does nothing/raises on Windows. */
   mode?: number;
 }
 
-/** Creates a new directory with the specified path synchronously.
- * If `recursive` is set to true, nested directories will be created (also known
- * as "mkdir -p").
- * `mode` sets permission bits (before umask) on UNIX and does nothing on
- * Windows.
+/** Synchronously creates a new directory with the specified path.
  *
  *       Deno.mkdirSync("new_dir");
  *       Deno.mkdirSync("nested/directories", { recursive: true });
- */
+ *
+ * Requires `allow-write` permission. */
 export function mkdirSync(
   path: string,
-  optionsOrRecursive?: MkdirOption | boolean,
+  optionsOrRecursive?: MkdirOptions | boolean,
   mode?: number
 ): void {
   sendSync("op_mkdir", mkdirArgs(path, optionsOrRecursive, mode));
 }
 
 /** Creates a new directory with the specified path.
- * If `recursive` is set to true, nested directories will be created (also known
- * as "mkdir -p").
- * `mode` sets permission bits (before umask) on UNIX and does nothing on
- * Windows.
  *
  *       await Deno.mkdir("new_dir");
  *       await Deno.mkdir("nested/directories", { recursive: true });
- */
+ *
+ * Requires `allow-write` permission. */
 export async function mkdir(
   path: string,
-  optionsOrRecursive?: MkdirOption | boolean,
+  optionsOrRecursive?: MkdirOptions | boolean,
   mode?: number
 ): Promise<void> {
   await sendAsync("op_mkdir", mkdirArgs(path, optionsOrRecursive, mode));

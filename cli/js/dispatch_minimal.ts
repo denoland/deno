@@ -2,7 +2,7 @@
 import * as util from "./util.ts";
 import { core } from "./core.ts";
 import { TextDecoder } from "./text_encoding.ts";
-import { errors, ErrorKind, constructError } from "./errors.ts";
+import { ErrorKind, errors, getErrorClass } from "./errors.ts";
 
 const promiseTableMin = new Map<number, util.Resolvable<RecordMinimal>>();
 // Note it's important that promiseId starts at 1 instead of 0, because sync
@@ -27,7 +27,7 @@ export interface RecordMinimal {
 }
 
 export function recordFromBufMinimal(ui8: Uint8Array): RecordMinimal {
-  const header = ui8.slice(0, 12);
+  const header = ui8.subarray(0, 12);
   const buf32 = new Int32Array(
     header.buffer,
     header.byteOffset,
@@ -40,7 +40,7 @@ export function recordFromBufMinimal(ui8: Uint8Array): RecordMinimal {
 
   if (arg < 0) {
     const kind = result as ErrorKind;
-    const message = decoder.decode(ui8.slice(12));
+    const message = decoder.decode(ui8.subarray(12));
     err = { kind, message };
   } else if (ui8.length != 12) {
     throw new errors.InvalidData("BadMessage");
@@ -56,7 +56,7 @@ export function recordFromBufMinimal(ui8: Uint8Array): RecordMinimal {
 
 function unwrapResponse(res: RecordMinimal): number {
   if (res.err != null) {
-    return constructError(res.err!.kind, res.err!.message);
+    throw new (getErrorClass(res.err.kind))(res.err.message);
   }
   return res.result;
 }

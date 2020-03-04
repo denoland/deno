@@ -96,7 +96,7 @@ declare global {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     evalContext(code: string): [any, EvalErrorInfo | null];
 
-    errorToJSON: (e: Error) => string;
+    formatError: (e: Error) => string;
   }
 
   // Only `var` variables show up in the `globalThis` type when doing a global

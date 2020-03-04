@@ -189,7 +189,7 @@ fn installer_test_local_module_run() {
   .expect("Failed to install");
   let mut file_path = temp_dir.path().join("echo_test");
   if cfg!(windows) {
-    file_path = file_path.with_extension(".cmd");
+    file_path = file_path.with_extension("cmd");
   }
   assert!(file_path.exists());
   let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
@@ -237,7 +237,7 @@ fn installer_test_remote_module_run() {
   .expect("Failed to install");
   let mut file_path = temp_dir.path().join("echo_test");
   if cfg!(windows) {
-    file_path = file_path.with_extension(".cmd");
+    file_path = file_path.with_extension("cmd");
   }
   assert!(file_path.exists());
   let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
@@ -437,11 +437,42 @@ fn bundle_tla() {
 }
 
 #[test]
+fn bundle_js() {
+  use tempfile::TempDir;
+
+  // First we have to generate a bundle of some module that has exports.
+  let mod6 = util::root_path().join("cli/tests/subdir/mod6.js");
+  assert!(mod6.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("mod6.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(mod6)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&bundle)
+    .output()
+    .expect("failed to spawn script");
+  // check that nothing went to stderr
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
 fn repl_test_console_log() {
   let (out, err, code) = util::run_and_collect_output(
     "repl",
     Some(vec!["console.log('hello')", "'world'"]),
     None,
+    false,
   );
   assert_eq!(out, "hello\nundefined\nworld\n");
   assert!(err.is_empty());
@@ -451,7 +482,7 @@ fn repl_test_console_log() {
 #[test]
 fn repl_test_eof() {
   let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["1 + 2"]), None);
+    util::run_and_collect_output("repl", Some(vec!["1 + 2"]), None, false);
   assert_eq!(out, "3\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -459,8 +490,12 @@ fn repl_test_eof() {
 
 #[test]
 fn repl_test_exit_command() {
-  let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["exit", "'ignored'"]), None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["exit", "'ignored'"]),
+    None,
+    false,
+  );
   assert!(out.is_empty());
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -469,7 +504,7 @@ fn repl_test_exit_command() {
 #[test]
 fn repl_test_help_command() {
   let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["help"]), None);
+    util::run_and_collect_output("repl", Some(vec!["help"]), None, false);
   assert_eq!(
     out,
     vec![
@@ -491,6 +526,7 @@ fn repl_test_function() {
     "repl",
     Some(vec!["Deno.writeFileSync"]),
     None,
+    false,
   );
   assert_eq!(out, "[Function: writeFileSync]\n");
   assert!(err.is_empty());
@@ -499,8 +535,12 @@ fn repl_test_function() {
 
 #[test]
 fn repl_test_multiline() {
-  let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["(\n1 + 2\n)"]), None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["(\n1 + 2\n)"]),
+    None,
+    false,
+  );
   assert_eq!(out, "3\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -509,7 +549,7 @@ fn repl_test_multiline() {
 #[test]
 fn repl_test_eval_unterminated() {
   let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["eval('{')"]), None);
+    util::run_and_collect_output("repl", Some(vec!["eval('{')"]), None, false);
   assert!(out.is_empty());
   assert!(err.contains("Unexpected end of input"));
   assert_eq!(code, 0);
@@ -517,8 +557,12 @@ fn repl_test_eval_unterminated() {
 
 #[test]
 fn repl_test_reference_error() {
-  let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["not_a_variable"]), None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["not_a_variable"]),
+    None,
+    false,
+  );
   assert!(out.is_empty());
   assert!(err.contains("not_a_variable is not defined"));
   assert_eq!(code, 0);
@@ -526,8 +570,12 @@ fn repl_test_reference_error() {
 
 #[test]
 fn repl_test_syntax_error() {
-  let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["syntax error"]), None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["syntax error"]),
+    None,
+    false,
+  );
   assert!(out.is_empty());
   assert!(err.contains("Unexpected identifier"));
   assert_eq!(code, 0);
@@ -536,7 +584,7 @@ fn repl_test_syntax_error() {
 #[test]
 fn repl_test_type_error() {
   let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["console()"]), None);
+    util::run_and_collect_output("repl", Some(vec!["console()"]), None, false);
   assert!(out.is_empty());
   assert!(err.contains("console is not a function"));
   assert_eq!(code, 0);
@@ -544,8 +592,12 @@ fn repl_test_type_error() {
 
 #[test]
 fn repl_test_variable() {
-  let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["var a = 123;", "a"]), None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["var a = 123;", "a"]),
+    None,
+    false,
+  );
   assert_eq!(out, "undefined\n123\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -553,8 +605,12 @@ fn repl_test_variable() {
 
 #[test]
 fn repl_test_lexical_scoped_variable() {
-  let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["let a = 123;", "a"]), None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["let a = 123;", "a"]),
+    None,
+    false,
+  );
   assert_eq!(out, "undefined\n123\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -570,6 +626,7 @@ fn repl_test_missing_deno_dir() {
     "repl",
     Some(vec!["1"]),
     Some(vec![("DENO_DIR".to_owned(), DENO_DIR.to_owned())]),
+    false,
   );
   assert!(read_dir(&test_deno_dir).is_ok());
   remove_dir_all(&test_deno_dir).unwrap();
@@ -581,7 +638,7 @@ fn repl_test_missing_deno_dir() {
 #[test]
 fn repl_test_save_last_eval() {
   let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["1", "_"]), None);
+    util::run_and_collect_output("repl", Some(vec!["1", "_"]), None, false);
   assert_eq!(out, "1\n1\n");
   assert!(err.is_empty());
   assert_eq!(code, 0);
@@ -589,8 +646,12 @@ fn repl_test_save_last_eval() {
 
 #[test]
 fn repl_test_save_last_thrown() {
-  let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["throw 1", "_error"]), None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["throw 1", "_error"]),
+    None,
+    false,
+  );
   assert_eq!(out, "1\n");
   assert_eq!(err, "Thrown: 1\n");
   assert_eq!(code, 0);
@@ -598,8 +659,12 @@ fn repl_test_save_last_thrown() {
 
 #[test]
 fn repl_test_assign_underscore() {
-  let (out, err, code) =
-    util::run_and_collect_output("repl", Some(vec!["_ = 1", "2", "_"]), None);
+  let (out, err, code) = util::run_and_collect_output(
+    "repl",
+    Some(vec!["_ = 1", "2", "_"]),
+    None,
+    false,
+  );
   assert_eq!(
     out,
     "Last evaluation result is no longer saved to _.\n1\n2\n1\n"
@@ -614,6 +679,7 @@ fn repl_test_assign_underscore_error() {
     "repl",
     Some(vec!["_error = 1", "throw 2", "_error"]),
     None,
+    false,
   );
   assert_eq!(
     out,
@@ -635,6 +701,22 @@ fn util_test() {
 
 macro_rules! itest(
   ($name:ident {$( $key:ident: $value:expr,)*})  => {
+    #[test]
+    fn $name() {
+      (util::CheckOutputIntegrationTest {
+        $(
+          $key: $value,
+         )*
+        .. Default::default()
+      }).run()
+    }
+  }
+);
+
+// Unfortunately #[ignore] doesn't work with itest!
+macro_rules! itest_ignore(
+  ($name:ident {$( $key:ident: $value:expr,)*})  => {
+    #[ignore]
     #[test]
     fn $name() {
       (util::CheckOutputIntegrationTest {
@@ -713,7 +795,8 @@ itest!(_018_async_catch {
   output: "018_async_catch.ts.out",
 });
 
-itest!(_019_media_types {
+// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
+itest_ignore!(_019_media_types {
   args: "run --reload 019_media_types.ts",
   output: "019_media_types.ts.out",
   http_server: true,
@@ -729,7 +812,8 @@ itest!(_021_mjs_modules {
   output: "021_mjs_modules.ts.out",
 });
 
-itest!(_022_info_flag_script {
+// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
+itest_ignore!(_022_info_flag_script {
   args: "info http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "022_info_flag_script.out",
   http_server: true,
@@ -741,10 +825,10 @@ itest!(_023_no_ext_with_headers {
 });
 
 // FIXME(bartlomieju): this test should use remote file
-// itest!(_024_import_no_ext_with_headers {
-//   args: "run --reload 024_import_no_ext_with_headers.ts",
-//   output: "024_import_no_ext_with_headers.ts.out",
-// });
+itest_ignore!(_024_import_no_ext_with_headers {
+  args: "run --reload 024_import_no_ext_with_headers.ts",
+  output: "024_import_no_ext_with_headers.ts.out",
+});
 
 itest!(_025_hrtime {
   args: "run --allow-hrtime --reload 025_hrtime.ts",
@@ -762,14 +846,10 @@ itest!(_026_redirect_javascript {
   http_server: true,
 });
 
-itest!(_026_workers {
-  args: "run --reload 026_workers.ts",
-  output: "026_workers.ts.out",
-});
-
-itest!(workers_basic {
-  args: "run --reload workers_basic.ts",
-  output: "workers_basic.out",
+itest!(workers {
+  args: "run --reload --allow-net workers_test.ts",
+  http_server: true,
+  output: "workers_test.out",
 });
 
 itest!(_027_redirect_typescript {
@@ -788,6 +868,12 @@ itest!(_029_eval {
   output: "029_eval.out",
 });
 
+// Ugly parentheses due to whitespace delimiting problem.
+itest!(_030_eval_ts {
+  args: "eval -T console.log((123)as(number))", // 'as' is a TS keyword only
+  output: "030_eval_ts.out",
+});
+
 itest!(_033_import_map {
   args:
     "run --reload --importmap=importmaps/import_map.json importmaps/test.ts",
@@ -799,7 +885,8 @@ itest!(_034_onload {
   output: "034_onload.out",
 });
 
-itest!(_035_cached_only_flag {
+// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
+itest_ignore!(_035_cached_only_flag {
   args:
     "--reload --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "035_cached_only_flag.out",
@@ -829,17 +916,16 @@ itest!(_038_checkjs {
   output: "038_checkjs.js.out",
 });
 
-/* TODO(bartlomieju):
-itest!(_039_worker_deno_ns {
+// TODO(bartlomieju): re-enable
+itest_ignore!(_039_worker_deno_ns {
   args: "run --reload 039_worker_deno_ns.ts",
   output: "039_worker_deno_ns.ts.out",
 });
 
-itest!(_040_worker_blob {
+itest_ignore!(_040_worker_blob {
   args: "run --reload 040_worker_blob.ts",
   output: "040_worker_blob.ts.out",
 });
-*/
 
 itest!(_041_dyn_import_eval {
   args: "eval import('./subdir/mod4.js').then(console.log)",
@@ -863,13 +949,11 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
-/*
-itest!(_045_proxy {
+itest_ignore!(_045_proxy {
   args: "run --allow-net --allow-env --allow-run --reload 045_proxy_test.ts",
   output: "045_proxy_test.ts.out",
   http_server: true,
 });
-*/
 
 itest!(_046_tsx {
   args: "run --reload 046_jsx_test.tsx",
@@ -881,13 +965,15 @@ itest!(_047_jsx {
   output: "047_jsx_test.jsx.out",
 });
 
-itest!(_048_media_types_jsx {
+// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
+itest_ignore!(_048_media_types_jsx {
   args: "run  --reload 048_media_types_jsx.ts",
   output: "048_media_types_jsx.ts.out",
   http_server: true,
 });
 
-itest!(_049_info_flag_script_jsx {
+// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
+itest_ignore!(_049_info_flag_script_jsx {
   args: "info http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts",
   output: "049_info_flag_script_jsx.out",
   http_server: true,
@@ -904,7 +990,8 @@ itest!(_051_wasm_import {
   http_server: true,
 });
 
-itest!(_052_no_remote_flag {
+// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
+itest_ignore!(_052_no_remote_flag {
   args:
     "--reload --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "052_no_remote_flag.out",
@@ -930,6 +1017,11 @@ itest!(_056_make_temp_file_write_perm {
   output: "056_make_temp_file_write_perm.out",
 });
 
+itest!(_057_revoke_permissions {
+  args: "test -A 057_revoke_permissions.ts",
+  output: "057_revoke_permissions.out",
+});
+
 itest!(js_import_detect {
   args: "run --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
@@ -949,7 +1041,8 @@ itest!(lock_check_ok {
   http_server: true,
 });
 
-itest!(lock_check_ok2 {
+// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
+itest_ignore!(lock_check_ok2 {
   args: "run 019_media_types.ts --lock=lock_check_ok2.json",
   output: "019_media_types.ts.out",
   http_server: true,
@@ -963,7 +1056,8 @@ itest!(lock_check_err {
   http_server: true,
 });
 
-itest!(lock_check_err2 {
+// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
+itest_ignore!(lock_check_err2 {
   args: "run --lock=lock_check_err2.json 019_media_types.ts",
   output: "lock_check_err2.out",
   check_stderr: true,
@@ -1145,14 +1239,13 @@ itest!(error_type_definitions {
   output: "error_type_definitions.ts.out",
 });
 
-/* TODO(bartlomieju)
-itest!(error_worker_dynamic {
+// TODO(bartlomieju) Re-enable
+itest_ignore!(error_worker_dynamic {
   args: "run --reload error_worker_dynamic.ts",
   check_stderr: true,
   exit_code: 1,
   output: "error_worker_dynamic.ts.out",
 });
-*/
 
 itest!(exit_error42 {
   exit_code: 42,
@@ -1350,7 +1443,9 @@ fn cafile_fetch() {
   drop(g);
 }
 
+// TODO(ry) Re-enable this broken test.
 #[test]
+#[ignore]
 fn cafile_install_remote_module() {
   pub use deno::test_util::*;
   use std::env;
@@ -1465,6 +1560,7 @@ fn test_permissions_with_allow() {
       &format!("run --allow-{0} permission_test.ts {0}Required", permission),
       None,
       None,
+      false,
     );
     assert_eq!(code, 0);
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
@@ -1478,10 +1574,329 @@ fn test_permissions_without_allow() {
       &format!("run permission_test.ts {0}Required", permission),
       None,
       None,
+      false,
     );
     assert_eq!(code, 1);
     assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
   }
+}
+
+#[test]
+fn test_permissions_rw_inside_project_dir() {
+  const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+  for permission in &PERMISSION_VARIANTS {
+    let (_, err, code) = util::run_and_collect_output(
+      &format!(
+        "run --allow-{0}={1} complex_permissions_test.ts {0} {2} {2}",
+        permission,
+        util::root_path().into_os_string().into_string().unwrap(),
+        "complex_permissions_test.ts"
+      ),
+      None,
+      None,
+      false,
+    );
+    assert_eq!(code, 0);
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+}
+
+#[test]
+fn test_permissions_rw_outside_test_dir() {
+  const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+  for permission in &PERMISSION_VARIANTS {
+    let (_, err, code) = util::run_and_collect_output(
+      &format!(
+        "run --allow-{0}={1} complex_permissions_test.ts {0} {2}",
+        permission,
+        util::root_path()
+          .join("cli")
+          .join("tests")
+          .into_os_string()
+          .into_string()
+          .unwrap(),
+        util::root_path()
+          .join("Cargo.toml")
+          .into_os_string()
+          .into_string()
+          .unwrap(),
+      ),
+      None,
+      None,
+      false,
+    );
+    assert_eq!(code, 1);
+    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+}
+
+#[test]
+fn test_permissions_rw_inside_test_dir() {
+  const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+  for permission in &PERMISSION_VARIANTS {
+    let (_, err, code) = util::run_and_collect_output(
+      &format!(
+        "run --allow-{0}={1} complex_permissions_test.ts {0} {2}",
+        permission,
+        util::root_path()
+          .join("cli")
+          .join("tests")
+          .into_os_string()
+          .into_string()
+          .unwrap(),
+        "complex_permissions_test.ts"
+      ),
+      None,
+      None,
+      false,
+    );
+    assert_eq!(code, 0);
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+}
+
+#[test]
+fn test_permissions_rw_outside_test_and_js_dir() {
+  const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+  let test_dir = util::root_path()
+    .join("cli")
+    .join("tests")
+    .into_os_string()
+    .into_string()
+    .unwrap();
+  let js_dir = util::root_path()
+    .join("js")
+    .into_os_string()
+    .into_string()
+    .unwrap();
+  for permission in &PERMISSION_VARIANTS {
+    let (_, err, code) = util::run_and_collect_output(
+      &format!(
+        "run --allow-{0}={1},{2} complex_permissions_test.ts {0} {3}",
+        permission,
+        test_dir,
+        js_dir,
+        util::root_path()
+          .join("Cargo.toml")
+          .into_os_string()
+          .into_string()
+          .unwrap(),
+      ),
+      None,
+      None,
+      false,
+    );
+    assert_eq!(code, 1);
+    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+}
+
+#[test]
+fn test_permissions_rw_inside_test_and_js_dir() {
+  const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+  let test_dir = util::root_path()
+    .join("cli")
+    .join("tests")
+    .into_os_string()
+    .into_string()
+    .unwrap();
+  let js_dir = util::root_path()
+    .join("js")
+    .into_os_string()
+    .into_string()
+    .unwrap();
+  for permission in &PERMISSION_VARIANTS {
+    let (_, err, code) = util::run_and_collect_output(
+      &format!(
+        "run --allow-{0}={1},{2} complex_permissions_test.ts {0} {3}",
+        permission, test_dir, js_dir, "complex_permissions_test.ts"
+      ),
+      None,
+      None,
+      false,
+    );
+    assert_eq!(code, 0);
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+}
+
+#[test]
+fn test_permissions_rw_relative() {
+  const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+  for permission in &PERMISSION_VARIANTS {
+    let (_, err, code) = util::run_and_collect_output(
+      &format!(
+				"run --allow-{0}=. complex_permissions_test.ts {0} complex_permissions_test.ts",
+				permission
+			),
+      None,
+      None,
+      false,
+    );
+    assert_eq!(code, 0);
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+}
+
+#[test]
+fn test_permissions_rw_no_prefix() {
+  const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+  for permission in &PERMISSION_VARIANTS {
+    let (_, err, code) = util::run_and_collect_output(
+			&format!(
+				"run --allow-{0}=tls/../ complex_permissions_test.ts {0} complex_permissions_test.ts",
+				permission
+			),
+			None,
+			None,
+			false,
+		);
+    assert_eq!(code, 0);
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+}
+
+#[test]
+fn test_permissions_net_fetch_allow_localhost_4545() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=localhost:4545 complex_permissions_test.ts netFetch http://localhost:4545/",
+			None,
+			None,true,
+		);
+  assert_eq!(code, 0);
+  assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_fetch_allow_deno_land() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=deno.land complex_permissions_test.ts netFetch http://localhost:4545/",
+			None,
+			None,
+			true,
+		);
+  assert_eq!(code, 1);
+  assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_fetch_localhost_4545_fail() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=localhost:4545 complex_permissions_test.ts netFetch http://localhost:4546/",
+			None,
+			None,
+			true,
+		);
+  assert_eq!(code, 1);
+  assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_fetch_localhost() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=localhost complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
+			None,
+			None,
+			true,
+		);
+  assert_eq!(code, 0);
+  assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_connect_allow_localhost_ip_4555() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=127.0.0.1:4545 complex_permissions_test.ts netConnect 127.0.0.1:4545",
+			None,
+			None,
+			true,
+		);
+  assert_eq!(code, 0);
+  assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_connect_allow_deno_land() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=deno.land complex_permissions_test.ts netConnect 127.0.0.1:4546",
+			None,
+			None,
+			true,
+		);
+  assert_eq!(code, 1);
+  assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_connect_allow_localhost_ip_4545_fail() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=127.0.0.1:4545 complex_permissions_test.ts netConnect 127.0.0.1:4546",
+			None,
+			None,
+			true,
+		);
+  assert_eq!(code, 1);
+  assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_connect_allow_localhost_ip() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=127.0.0.1 complex_permissions_test.ts netConnect 127.0.0.1:4545 127.0.0.1:4546 127.0.0.1:4547",
+			None,
+			None,
+			true,
+		);
+  assert_eq!(code, 0);
+  assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_listen_allow_localhost_4555() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=localhost:4558 complex_permissions_test.ts netListen localhost:4558",
+			None,
+			None,
+			false,
+		);
+  assert_eq!(code, 0);
+  assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_listen_allow_deno_land() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=deno.land complex_permissions_test.ts netListen localhost:4545",
+			None,
+			None,
+			false,
+		);
+  assert_eq!(code, 1);
+  assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_listen_allow_localhost_4555_fail() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=localhost:4555 complex_permissions_test.ts netListen localhost:4556",
+			None,
+			None,
+			false,
+		);
+  assert_eq!(code, 1);
+  assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_listen_allow_localhost() {
+  let (_, err, code) = util::run_and_collect_output(
+			"run --allow-net=localhost complex_permissions_test.ts netListen localhost:4545 localhost:4546 localhost:4547",
+			None,
+			None,
+			false,
+		);
+  assert_eq!(code, 0);
+  assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
 
 mod util {
@@ -1507,6 +1922,7 @@ mod util {
     args: &str,
     input: Option<Vec<&str>>,
     envs: Option<Vec<(String, String)>>,
+    need_http_server: bool,
   ) -> (String, String, i32) {
     let root = root_path();
     let tests_dir = root.join("cli").join("tests");
@@ -1520,6 +1936,11 @@ mod util {
     if let Some(envs) = envs {
       deno_process_builder.envs(envs);
     }
+    let http_guard = if need_http_server {
+      Some(http_server())
+    } else {
+      None
+    };
     let mut deno = deno_process_builder
       .spawn()
       .expect("failed to spawn script");
@@ -1534,6 +1955,7 @@ mod util {
       stderr,
       status,
     } = deno.wait_with_output().expect("failed to wait on child");
+    drop(http_guard);
     (
       String::from_utf8(stdout).unwrap(),
       String::from_utf8(stderr).unwrap(),

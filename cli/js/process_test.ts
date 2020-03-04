@@ -21,13 +21,15 @@ test(function runPermissions(): void {
 
 testPerm({ run: true }, async function runSuccess(): Promise<void> {
   const p = run({
-    args: ["python", "-c", "print('hello world')"]
+    args: ["python", "-c", "print('hello world')"],
+    stdout: "piped",
+    stderr: "null"
   });
   const status = await p.status();
-  console.log("status", status);
   assertEquals(status.success, true);
   assertEquals(status.code, 0);
   assertEquals(status.signal, undefined);
+  p.stdout!.close();
   p.close();
 });
 
@@ -299,6 +301,7 @@ testPerm({ run: true }, async function runClose(): Promise<void> {
   const data = new Uint8Array(10);
   const r = await p.stderr!.read(data);
   assertEquals(r, Deno.EOF);
+  p.stderr!.close();
 });
 
 test(function signalNumbers(): void {
@@ -341,6 +344,7 @@ if (Deno.build.os !== "win") {
     // re-enable when it can be made deterministic.
     // assertEquals(status.code, 1);
     // assertEquals(status.signal, Deno.Signal.SIGINT);
+    p.close();
   });
 
   testPerm({ run: true }, async function killFailed(): Promise<void> {

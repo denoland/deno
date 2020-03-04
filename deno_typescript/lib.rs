@@ -25,7 +25,7 @@ use std::sync::Mutex;
 
 static TYPESCRIPT_CODE: &str = include_str!("typescript/lib/typescript.js");
 static COMPILER_CODE: &str = include_str!("compiler_main.js");
-static BUNDLE_LOADER: &str = include_str!("bundle_loader.js");
+static SYSTEM_LOADER: &str = include_str!("system_loader.js");
 
 pub fn ts_version() -> String {
   let data = include_str!("typescript/package.json");
@@ -143,20 +143,20 @@ pub fn compile_bundle(
 
   let config_json = serde_json::json!({
     "compilerOptions": {
-      "strict": true,
       "declaration": true,
-      "lib": ["esnext"],
-      "module": "amd",
-      "target": "esnext",
-      "listFiles": true,
-      "listEmittedFiles": true,
-      // "types" : ["typescript.d.ts"],
-      "typeRoots" : ["$typeRoots$"],
       // Emit the source alongside the sourcemaps within a single file;
       // requires --inlineSourceMap or --sourceMap to be set.
       // "inlineSources": true,
-      "sourceMap": true,
+      "lib": ["esnext"],
+      "listEmittedFiles": true,
+      "listFiles": true,
+      "module": "system",
       "outFile": bundle_filename,
+      "removeComments": true,
+      "sourceMap": true,
+      "strict": true,
+      "target": "esnext",
+      "typeRoots" : ["$typeRoots$"],
     },
   });
 
@@ -198,13 +198,13 @@ pub fn mksnapshot_bundle(
   bundle_filename: &Path,
   main_module_name: &str,
 ) -> Result<(), ErrBox> {
-  js_check(isolate.execute("bundle_loader.js", BUNDLE_LOADER));
+  js_check(isolate.execute("system_loader.js", SYSTEM_LOADER));
   let source_code_vec = std::fs::read(bundle_filename).unwrap();
   let bundle_source_code = std::str::from_utf8(&source_code_vec).unwrap();
   js_check(
     isolate.execute(&bundle_filename.to_string_lossy(), bundle_source_code),
   );
-  let script = &format!("instantiate('{}')", main_module_name);
+  let script = &format!("__instantiate(\"{}\");", main_module_name);
   js_check(isolate.execute("anon", script));
   write_snapshot(isolate, snapshot_filename)?;
   Ok(())
@@ -232,7 +232,7 @@ fn write_snapshot(
   snapshot_filename: &Path,
 ) -> Result<(), ErrBox> {
   println!("Creating snapshot...");
-  let snapshot = runtime_isolate.snapshot()?;
+  let snapshot = runtime_isolate.snapshot();
   let snapshot_slice: &[u8] = &*snapshot;
   println!("Snapshot size: {}", snapshot_slice.len());
   fs::write(&snapshot_filename, snapshot_slice)?;
@@ -251,7 +251,7 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
     "bootstrap.ts" => Some("console.log(\"hello deno\");"),
     "typescript.d.ts" => inc!("typescript.d.ts"),
     "lib.dom.d.ts" => inc!("lib.dom.d.ts"),
-    "lib.dom.iterable.d.ts" => inc!("lib.dom.d.ts"),
+    "lib.dom.iterable.d.ts" => inc!("lib.dom.iterable.d.ts"),
     "lib.es5.d.ts" => inc!("lib.es5.d.ts"),
     "lib.es6.d.ts" => inc!("lib.es6.d.ts"),
     "lib.esnext.d.ts" => inc!("lib.esnext.d.ts"),

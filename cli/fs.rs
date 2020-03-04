@@ -11,11 +11,10 @@ use rand::Rng;
 use walkdir::WalkDir;
 
 #[cfg(unix)]
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+
+#[cfg(unix)]
 use nix::unistd::{chown as unix_chown, Gid, Uid};
-#[cfg(any(unix))]
-use std::os::unix::fs::DirBuilderExt;
-#[cfg(any(unix))]
-use std::os::unix::fs::PermissionsExt;
 
 pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
@@ -48,12 +47,13 @@ pub fn write_file_2<T: AsRef<[u8]>>(
   file.write_all(data.as_ref())
 }
 
-#[cfg(any(unix))]
+#[cfg(unix)]
 fn set_permissions(file: &mut File, perm: u32) -> std::io::Result<()> {
   debug!("set file perm to {}", perm);
   file.set_permissions(PermissionsExt::from_mode(perm & 0o777))
 }
-#[cfg(not(any(unix)))]
+
+#[cfg(not(unix))]
 fn set_permissions(_file: &mut File, _perm: u32) -> std::io::Result<()> {
   // NOOP on windows
   Ok(())
@@ -102,13 +102,13 @@ pub fn mkdir(path: &Path, perm: u32, recursive: bool) -> std::io::Result<()> {
   builder.create(path)
 }
 
-#[cfg(any(unix))]
+#[cfg(unix)]
 fn set_dir_permission(builder: &mut DirBuilder, perm: u32) {
   debug!("set dir perm to {}", perm);
   builder.mode(perm & 0o777);
 }
 
-#[cfg(not(any(unix)))]
+#[cfg(not(unix))]
 fn set_dir_permission(_builder: &mut DirBuilder, _perm: u32) {
   // NOOP on windows
 }
@@ -123,11 +123,11 @@ pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), ErrBox> {
 
 #[cfg(not(unix))]
 pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), ErrBox> {
-  // Noop
+  // FAIL on Windows
   // TODO: implement chown for Windows
   let e = std::io::Error::new(
     std::io::ErrorKind::Other,
-    "Op not implemented".to_string(),
+    "Not implemented".to_string(),
   );
   Err(ErrBox::from(e))
 }

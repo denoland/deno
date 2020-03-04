@@ -106,6 +106,48 @@ function normalizeTestPermissions(perms: TestPermissions): Permissions {
   };
 }
 
+// Wrap `TestFunction` in additional assertion that makes sure
+// the test case does not leak async "ops" - ie. number of async
+// completed ops after the test is the same as number of dispatched
+// ops. Note that "unref" ops are ignored since in nature that are
+// optional.
+function assertOps(fn: Deno.TestFunction): Deno.TestFunction {
+  return async function asyncOpSanitizer(): Promise<void> {
+    const pre = Deno.metrics();
+    await fn();
+    const post = Deno.metrics();
+    // We're checking diff because one might spawn HTTP server in the background
+    // that will be a pending async op before test starts.
+    assertEquals(
+      post.opsDispatchedAsync - pre.opsDispatchedAsync,
+      post.opsCompletedAsync - pre.opsCompletedAsync,
+      `Test case is leaking async ops.
+    Before:
+      - dispatched: ${pre.opsDispatchedAsync}
+      - completed: ${pre.opsCompletedAsync}
+    After: 
+      - dispatched: ${post.opsDispatchedAsync}
+      - completed: ${post.opsCompletedAsync}`
+    );
+  };
+}
+
+// Wrap `TestFunction` in additional assertion that makes sure
+// the test case does not "leak" resources - ie. resource table after
+// the test has exactly the same contents as before the test.
+function assertResources(fn: Deno.TestFunction): Deno.TestFunction {
+  return async function resourceSanitizer(): Promise<void> {
+    const preResources = Deno.resources();
+    await fn();
+    const postResources = Deno.resources();
+    const msg = `Test case is leaking resources.
+Before: ${JSON.stringify(preResources, null, 2)}
+After: ${JSON.stringify(postResources, null, 2)}`;
+
+    assertEquals(preResources, postResources, msg);
+  };
+}
+
 export function testPerm(perms: TestPermissions, fn: Deno.TestFunction): void {
   const normalizedPerms = normalizeTestPermissions(perms);
 
@@ -115,7 +157,7 @@ export function testPerm(perms: TestPermissions, fn: Deno.TestFunction): void {
     return;
   }
 
-  Deno.test(fn);
+  Deno.test(fn.name, assertResources(assertOps(fn)));
 }
 
 export function test(fn: Deno.TestFunction): void {
@@ -169,6 +211,24 @@ export async function parseUnitTestOutput(
   }
 
   return { actual, expected, resultOutput: result };
+}
+
+export interface ResolvableMethods<T> {
+  resolve: (value?: T | PromiseLike<T>) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  reject: (reason?: any) => void;
+}
+
+export type Resolvable<T> = Promise<T> & ResolvableMethods<T>;
+
+export function createResolvable<T>(): Resolvable<T> {
+  let methods: ResolvableMethods<T>;
+  const promise = new Promise<T>((resolve, reject): void => {
+    methods = { resolve, reject };
+  });
+  // TypeScript doesn't know that the Promise callback occurs synchronously
+  // therefore use of not null assertion (`!`)
+  return Object.assign(promise, methods!) as Resolvable<T>;
 }
 
 test(function permissionsMatches(): void {
@@ -265,28 +325,25 @@ testPerm({ read: true }, async function parsingUnitTestOutput(): Promise<void> {
   let result;
 
   // This is an example of a successful unit test output.
-  result = await parseUnitTestOutput(
-    await Deno.open(`${testDataPath}/unit_test_output1.txt`),
-    false
-  );
+  const f1 = await Deno.open(`${testDataPath}/unit_test_output1.txt`);
+  result = await parseUnitTestOutput(f1, false);
   assertEquals(result.actual, 96);
   assertEquals(result.expected, 96);
+  f1.close();
 
   // This is an example of a silently dying unit test.
-  result = await parseUnitTestOutput(
-    await Deno.open(`${testDataPath}/unit_test_output2.txt`),
-    false
-  );
+  const f2 = await Deno.open(`${testDataPath}/unit_test_output2.txt`);
+  result = await parseUnitTestOutput(f2, false);
   assertEquals(result.actual, undefined);
   assertEquals(result.expected, 96);
+  f2.close();
 
   // This is an example of compiling before successful unit tests.
-  result = await parseUnitTestOutput(
-    await Deno.open(`${testDataPath}/unit_test_output3.txt`),
-    false
-  );
+  const f3 = await Deno.open(`${testDataPath}/unit_test_output3.txt`);
+  result = await parseUnitTestOutput(f3, false);
   assertEquals(result.actual, 96);
   assertEquals(result.expected, 96);
+  f3.close();
 
   // Check what happens on empty output.
   const f = new Deno.Buffer(new TextEncoder().encode("\n\n\n"));

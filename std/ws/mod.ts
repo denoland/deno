@@ -103,9 +103,12 @@ export interface WebSocket {
 
   /** Close connection after sending close frame to peer.
    * This is canonical way of disconnection but it may hang because of peer's response delay.
+   * Default close code is 1000 (Normal Closure)
    * @throws SocketClosedError
    */
-  close(code: number, reason?: string): Promise<void>;
+  close(): Promise<void>;
+  close(code: number): Promise<void>;
+  close(code: number, reason: string): Promise<void>;
 
   /** Close connection forcely without sending close frame to peer.
    *  This is basically undesirable way of disconnection. Use carefully. */
@@ -355,7 +358,7 @@ class WebSocketImpl implements WebSocket {
     return this._isClosed;
   }
 
-  async close(code: number, reason?: string): Promise<void> {
+  async close(code = 1000, reason?: string): Promise<void> {
     try {
       const header = [code >>> 8, code & 0x00ff];
       let payload: Uint8Array;

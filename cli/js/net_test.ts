@@ -57,7 +57,7 @@ testPerm({ net: true }, async function netTcpConcurrentAccept(): Promise<void> {
   const p1 = listener.accept().catch(checkErr);
   await Promise.race([p, p1]);
   listener.close();
-  await [p, p1];
+  await Promise.all([p, p1]);
   assertEquals(acceptErrCount, 1);
 });
 
@@ -117,6 +117,8 @@ testPerm({ net: true }, async function netUdpSendReceive(): Promise<void> {
   assertEquals(1, recvd[0]);
   assertEquals(2, recvd[1]);
   assertEquals(3, recvd[2]);
+  alice.close();
+  bob.close();
 });
 
 testPerm(
