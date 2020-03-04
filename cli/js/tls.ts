@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendAsync, sendSync } from "./dispatch_json.ts";
+import { sendAsync, sendSync } from "./ops/dispatch_json.ts";
 import { Listener, Transport, Conn, ConnImpl, ListenerImpl } from "./net.ts";
 
 // TODO(ry) There are many configuration options to add...

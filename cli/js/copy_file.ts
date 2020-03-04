@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { sendSync, sendAsync } from "./ops/dispatch_json.ts";
 
 /** Synchronously copies the contents and permissions of one file to another
  * specified path, by default creating a new file if needed, else overwriting.

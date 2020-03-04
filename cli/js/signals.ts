@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { Signal } from "./process.ts";
-import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { sendSync, sendAsync } from "./ops/dispatch_json.ts";
 import { build } from "./build.ts";
 
 /**

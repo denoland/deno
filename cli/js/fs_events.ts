@@ -1,5 +1,5 @@
 // Copyright 2019 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { sendSync, sendAsync } from "./ops/dispatch_json.ts";
 import { close } from "./files.ts";
 
 export interface FsEvent {

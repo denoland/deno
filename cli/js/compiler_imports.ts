@@ -7,7 +7,7 @@ import {
 } from "./compiler_sourcefile.ts";
 import { normalizeString, CHAR_FORWARD_SLASH } from "./compiler_util.ts";
 import { cwd } from "./dir.ts";
-import { sendAsync, sendSync } from "./dispatch_json.ts";
+import { sendAsync, sendSync } from "./ops/dispatch_json.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
 

@@ -3,7 +3,7 @@ import { close } from "./files.ts";
 import { exit } from "./os.ts";
 import { core } from "./core.ts";
 import { stringifyArgs } from "./console.ts";
-import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { sendSync, sendAsync } from "./ops/dispatch_json.ts";
 
 /**
  * REPL logging.

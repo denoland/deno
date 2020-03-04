@@ -5,7 +5,7 @@ import { CompilerOptions } from "./compiler_api.ts";
 import { buildBundle } from "./compiler_bundler.ts";
 import { ConfigureResponse, Host } from "./compiler_host.ts";
 import { SourceFile } from "./compiler_sourcefile.ts";
-import { sendSync } from "./dispatch_json.ts";
+import { sendSync } from "./ops/dispatch_json.ts";
 import { atob, TextDecoder, TextEncoder } from "./web/text_encoding.ts";
 import { core } from "./core.ts";
 import * as util from "./util.ts";

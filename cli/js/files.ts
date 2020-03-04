@@ -10,11 +10,11 @@ import {
   SyncWriter,
   SyncSeeker
 } from "./io.ts";
-import { sendAsyncMinimal, sendSyncMinimal } from "./dispatch_minimal.ts";
+import { sendAsyncMinimal, sendSyncMinimal } from "./ops/dispatch_minimal.ts";
 import {
   sendSync as sendSyncJson,
   sendAsync as sendAsyncJson
-} from "./dispatch_json.ts";
+} from "./ops/dispatch_json.ts";
 import { OPS_CACHE } from "./runtime.ts";
 
 // This is done because read/write are extremely performance sensitive.

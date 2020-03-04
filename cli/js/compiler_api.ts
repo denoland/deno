@@ -4,7 +4,7 @@
 // compiler within Deno.
 
 import { DiagnosticItem } from "./diagnostics.ts";
-import { sendAsync } from "./dispatch_json.ts";
+import { sendAsync } from "./ops/dispatch_json.ts";
 import * as util from "./util.ts";
 
 /** A specific subset TypeScript compiler options that can be supported by

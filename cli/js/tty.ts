@@ -1,4 +1,4 @@
-import { sendSync } from "./dispatch_json.ts";
+import { sendSync } from "./ops/dispatch_json.ts";
 
 /** Check if a given resource is TTY. */
 export function isatty(rid: number): boolean {
