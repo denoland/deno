@@ -140,7 +140,7 @@ async function tsCompilerOnMessage({
       const resolvedRootModules = await processImports(
         rootNames.map(rootName => [rootName, rootName]),
         undefined,
-        host.getCompilationSettings().checkJs
+        bundle || host.getCompilationSettings().checkJs
       );
 
       let emitSkipped = true;
@@ -208,27 +208,46 @@ async function tsCompilerOnMessage({
         ? rootName
         : resolveModules([rootName])[0];
 
+      // if there are options, convert them into TypeScript compiler options,
+      // and resolve any external file references
+      let convertedOptions: ts.CompilerOptions | undefined;
+      let additionalFiles: string[] | undefined;
+      if (options) {
+        const result = convertCompilerOptions(options);
+        convertedOptions = result.options;
+        additionalFiles = result.files;
+      }
+
+      const checkJsImports =
+        bundle || (convertedOptions && convertedOptions.checkJs);
+
       // recursively process imports, loading each file into memory.  If there
       // are sources, these files are pulled out of the there, otherwise the
       // files are retrieved from the privileged side
       const rootNames = sources
-        ? processLocalImports(sources, [[resolvedRootName, resolvedRootName]])
-        : await processImports([[resolvedRootName, resolvedRootName]]);
-
-      // if there are options, convert them into TypeScript compiler options,
-      // and resolve any external file references
-      let convertedOptions: ts.CompilerOptions | undefined;
-      if (options) {
-        const result = convertCompilerOptions(options);
-        convertedOptions = result.options;
-        if (result.files) {
-          // any files supplied in the configuration are resolved externally,
-          // even if sources are provided
-          const resolvedNames = resolveModules(result.files);
-          rootNames.push(
-            ...(await processImports(resolvedNames.map(rn => [rn, rn])))
+        ? processLocalImports(
+            sources,
+            [[resolvedRootName, resolvedRootName]],
+            undefined,
+            checkJsImports
+          )
+        : await processImports(
+            [[resolvedRootName, resolvedRootName]],
+            undefined,
+            checkJsImports
           );
-        }
+
+      if (additionalFiles) {
+        // any files supplied in the configuration are resolved externally,
+        // even if sources are provided
+        const resolvedNames = resolveModules(additionalFiles);
+        rootNames.push(
+          ...(await processImports(
+            resolvedNames.map(rn => [rn, rn]),
+            undefined,
+            checkJsImports
+          ))
+        );
       }
 
       const state: WriteFileState = {

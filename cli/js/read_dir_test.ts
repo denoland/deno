@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { unitTest, assert, assertEquals } from "./test_util.ts";
 
 type FileInfo = Deno.FileInfo;
 
@@ -21,12 +21,12 @@ function assertSameContent(files: FileInfo[]): void {
   assertEquals(counter, 2);
 }
 
-testPerm({ read: true }, function readdirSyncSuccess(): void {
+unitTest({ perms: { read: true } }, function readdirSyncSuccess(): void {
   const files = Deno.readdirSync("cli/tests/");
   assertSameContent(files);
 });
 
-testPerm({ read: false }, function readdirSyncPerm(): void {
+unitTest({ perms: { read: false } }, function readdirSyncPerm(): void {
   let caughtError = false;
   try {
     Deno.readdirSync("tests/");
@@ -37,7 +37,7 @@ testPerm({ read: false }, function readdirSyncPerm(): void {
   assert(caughtError);
 });
 
-testPerm({ read: true }, function readdirSyncNotDir(): void {
+unitTest({ perms: { read: true } }, function readdirSyncNotDir(): void {
   let caughtError = false;
   let src;
 
@@ -51,7 +51,7 @@ testPerm({ read: true }, function readdirSyncNotDir(): void {
   assertEquals(src, undefined);
 });
 
-testPerm({ read: true }, function readdirSyncNotFound(): void {
+unitTest({ perms: { read: true } }, function readdirSyncNotFound(): void {
   let caughtError = false;
   let src;
 
@@ -65,12 +65,16 @@ testPerm({ read: true }, function readdirSyncNotFound(): void {
   assertEquals(src, undefined);
 });
 
-testPerm({ read: true }, async function readdirSuccess(): Promise<void> {
+unitTest({ perms: { read: true } }, async function readdirSuccess(): Promise<
+  void
+> {
   const files = await Deno.readdir("cli/tests/");
   assertSameContent(files);
 });
 
-testPerm({ read: false }, async function readdirPerm(): Promise<void> {
+unitTest({ perms: { read: false } }, async function readdirPerm(): Promise<
+  void
+> {
   let caughtError = false;
   try {
     await Deno.readdir("tests/");

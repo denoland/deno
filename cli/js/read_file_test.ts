@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { unitTest, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ read: true }, function readFileSyncSuccess(): void {
+unitTest({ perms: { read: true } }, function readFileSyncSuccess(): void {
   const data = Deno.readFileSync("cli/tests/fixture.json");
   assert(data.byteLength > 0);
   const decoder = new TextDecoder("utf-8");
@@ -10,7 +10,7 @@ testPerm({ read: true }, function readFileSyncSuccess(): void {
   assertEquals(pkg.name, "deno");
 });
 
-testPerm({ read: false }, function readFileSyncPerm(): void {
+unitTest({ perms: { read: false } }, function readFileSyncPerm(): void {
   let caughtError = false;
   try {
     Deno.readFileSync("cli/tests/fixture.json");
@@ -21,7 +21,7 @@ testPerm({ read: false }, function readFileSyncPerm(): void {
   assert(caughtError);
 });
 
-testPerm({ read: true }, function readFileSyncNotFound(): void {
+unitTest({ perms: { read: true } }, function readFileSyncNotFound(): void {
   let caughtError = false;
   let data;
   try {
@@ -34,7 +34,9 @@ testPerm({ read: true }, function readFileSyncNotFound(): void {
   assert(data === undefined);
 });
 
-testPerm({ read: true }, async function readFileSuccess(): Promise<void> {
+unitTest({ perms: { read: true } }, async function readFileSuccess(): Promise<
+  void
+> {
   const data = await Deno.readFile("cli/tests/fixture.json");
   assert(data.byteLength > 0);
   const decoder = new TextDecoder("utf-8");
@@ -43,7 +45,9 @@ testPerm({ read: true }, async function readFileSuccess(): Promise<void> {
   assertEquals(pkg.name, "deno");
 });
 
-testPerm({ read: false }, async function readFilePerm(): Promise<void> {
+unitTest({ perms: { read: false } }, async function readFilePerm(): Promise<
+  void
+> {
   let caughtError = false;
   try {
     await Deno.readFile("cli/tests/fixture.json");

@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, test } from "./test_util.ts";
+import { assert, unitTest } from "./test_util.ts";
 
-test(function formatDiagnosticBasic() {
+unitTest(function formatDiagnosticBasic() {
   const fixture: Deno.DiagnosticItem[] = [
     {
       message: "Example error",
@@ -19,7 +19,7 @@ test(function formatDiagnosticBasic() {
   assert(out.includes("foo.ts"));
 });
 
-test(function formatDiagnosticError() {
+unitTest(function formatDiagnosticError() {
   let thrown = false;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const bad = ([{ hello: 123 }] as any) as Deno.DiagnosticItem[];

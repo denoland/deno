@@ -1,14 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEquals } from "./test_util.ts";
+import { unitTest, assert, assertEquals } from "./test_util.ts";
 
-test(function blobString(): void {
+unitTest(function blobString(): void {
   const b1 = new Blob(["Hello World"]);
   const str = "Test";
   const b2 = new Blob([b1, str]);
   assertEquals(b2.size, b1.size + str.length);
 });
 
-test(function blobBuffer(): void {
+unitTest(function blobBuffer(): void {
   const buffer = new ArrayBuffer(12);
   const u8 = new Uint8Array(buffer);
   const f1 = new Float32Array(buffer);
@@ -18,7 +18,7 @@ test(function blobBuffer(): void {
   assertEquals(b2.size, 3 * u8.length);
 });
 
-test(function blobSlice(): void {
+unitTest(function blobSlice(): void {
   const blob = new Blob(["Deno", "Foo"]);
   const b1 = blob.slice(0, 3, "Text/HTML");
   assert(b1 instanceof Blob);
@@ -32,7 +32,7 @@ test(function blobSlice(): void {
   assertEquals(b4.size, blob.size);
 });
 
-test(function blobShouldNotThrowError(): void {
+unitTest(function blobShouldNotThrowError(): void {
   let hasThrown = false;
 
   try {
@@ -50,7 +50,7 @@ test(function blobShouldNotThrowError(): void {
   assertEquals(hasThrown, false);
 });
 
-test(function nativeEndLine(): void {
+unitTest(function nativeEndLine(): void {
   const options: object = {
     ending: "native"
   };

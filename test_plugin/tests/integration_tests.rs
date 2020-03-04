@@ -23,7 +23,8 @@ fn basic() {
   if BUILD_VARIANT == "release" {
     build_plugin = build_plugin.arg("--release");
   }
-  let _build_plugin_output = build_plugin.output().unwrap();
+  let build_plugin_output = build_plugin.output().unwrap();
+  assert!(build_plugin_output.status.success());
   let output = deno_cmd()
     .arg("--allow-plugin")
     .arg("tests/test.js")
