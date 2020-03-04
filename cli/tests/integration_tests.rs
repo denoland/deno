@@ -189,7 +189,7 @@ fn installer_test_local_module_run() {
   .expect("Failed to install");
   let mut file_path = temp_dir.path().join("echo_test");
   if cfg!(windows) {
-    file_path = file_path.with_extension(".cmd");
+    file_path = file_path.with_extension("cmd");
   }
   assert!(file_path.exists());
   let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
@@ -237,7 +237,7 @@ fn installer_test_remote_module_run() {
   .expect("Failed to install");
   let mut file_path = temp_dir.path().join("echo_test");
   if cfg!(windows) {
-    file_path = file_path.with_extension(".cmd");
+    file_path = file_path.with_extension("cmd");
   }
   assert!(file_path.exists());
   let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
