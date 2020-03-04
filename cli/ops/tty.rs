@@ -78,7 +78,7 @@ pub fn op_set_raw(
     let state = state_.borrow_mut();
     let resource = state.resource_table.get::<StreamResource>(rid);
     if resource.is_none() {
-      return Err(OpError::bad_resource());
+      return Err(OpError::bad_resource_id());
     }
 
     // For now, only stdin.
@@ -117,7 +117,7 @@ pub fn op_set_raw(
     let mut state = state_.borrow_mut();
     let resource = state.resource_table.get_mut::<StreamResource>(rid);
     if resource.is_none() {
-      return Err(OpError::bad_resource());
+      return Err(OpError::bad_resource_id());
     }
 
     if is_raw {
@@ -201,7 +201,7 @@ pub fn op_isatty(
 
   let state = state_.borrow_mut();
   if !state.resource_table.has(rid) {
-    return Err(OpError::bad_resource());
+    return Err(OpError::bad_resource_id());
   }
 
   let resource = state.resource_table.get::<StreamResource>(rid);

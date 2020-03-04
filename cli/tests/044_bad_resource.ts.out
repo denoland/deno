@@ -1,5 +1,5 @@
 [WILDCARD]
-error: Uncaught BadResource: bad resource id
+error: Uncaught BadResource: Bad resource ID
 [WILDCARD]dispatch_json.ts:[WILDCARD]
     at BadResource ([WILDCARD]errors.ts:[WILDCARD])
     at unwrapResponse ([WILDCARD]dispatch_json.ts:[WILDCARD])

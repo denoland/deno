@@ -103,7 +103,7 @@ pub fn op_signal_unbind(
   state
     .resource_table
     .close(rid)
-    .ok_or_else(OpError::bad_resource)?;
+    .ok_or_else(OpError::bad_resource_id)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
