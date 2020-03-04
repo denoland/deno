@@ -5,8 +5,8 @@ import {
   createResolvable,
   unitTest
 } from "./test_util.ts";
-import { BufWriter, BufReader } from "../../std/io/bufio.ts";
-import { TextProtoReader } from "../../std/textproto/mod.ts";
+import { BufWriter, BufReader } from "../../../std/io/bufio.ts";
+import { TextProtoReader } from "../../../std/textproto/mod.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

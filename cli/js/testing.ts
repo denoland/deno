@@ -140,82 +140,24 @@ export async function runTests({
       };
     }
   );
-
-  // @ts-ignore
-  const originalConsole = globalThis.console;
-  // TODO(bartlomieju): add option to capture output of test
-  // cases and display it if test fails (like --nopcature in Rust)
-  const disabledConsole = new Console(
-    (_x: string, _isErr?: boolean): void => {}
-  );
-
-  if (disableLog) {
-    // @ts-ignore
-    globalThis.console = disabledConsole;
-  }
-
-  const RED_FAILED = red("FAILED");
-  const GREEN_OK = green("OK");
-  const RED_BG_FAIL = bgRed(" FAIL ");
-
-  originalConsole.log(`running ${testsToRun.length} tests`);
-  const suiteStart = +new Date();
-
-  for (const testCase of testCases) {
-    try {
-      const start = +new Date();
-      await testCase.fn();
-      testCase.timeElapsed = +new Date() - start;
-      originalConsole.log(
-        `${GREEN_OK}     ${testCase.name} ${formatDuration(
-          testCase.timeElapsed
-        )}`
-      );
-      stats.passed++;
-    } catch (err) {
-      testCase.error = err;
-      originalConsole.log(`${RED_FAILED} ${testCase.name}`);
-      originalConsole.log(err.stack);
-      stats.failed++;
-      if (failFast) {
-        break;
-      }
-    }
-  }
-
-  const suiteDuration = +new Date() - suiteStart;
-
-  if (disableLog) {
-    // @ts-ignore
-    globalThis.console = originalConsole;
-  }
-
-  // Attempting to match the output of Rust's test runner.
-  originalConsole.log(
-    `\ntest result: ${stats.failed ? RED_BG_FAIL : GREEN_OK} ` +
-      `${stats.passed} passed; ${stats.failed} failed; ` +
-      `${stats.ignored} ignored; ${stats.measured} measured; ` +
-      `${stats.filtered} filtered out ` +
-      `${formatDuration(suiteDuration)}\n`
-  );
-
-  // TODO(bartlomieju): is `defer` really needed? Shouldn't unhandled
-  // promise rejection be handled per test case?
-  // Use defer to avoid the error being ignored due to unhandled
-  // promise rejections being swallowed.
-  await defer(0);
-
-  if (stats.failed > 0) {
-    originalConsole.error(`There were ${stats.failed} test failures.`);
-    testCases
-      .filter(testCase => !!testCase.error)
-      .forEach(testCase => {
-        originalConsole.error(`${RED_BG_FAIL} ${red(testCase.name)}`);
-        originalConsole.error(testCase.error);
+  assertThrows(
+    () => {
+      Deno.test({
+        name: "",
+        fn: () => {}
       });
+    },
+    Error,
+    "The name of test case can't be empty"
+  );
+});
 
-    if (exitOnFail) {
-      exit(1);
-    }
-  }
-}
+unitTest(function testFnCantBeAnonymous(): void {
+  assertThrows(
+    () => {
+      Deno.test(function() {});
+    },
+    Error,
+    "Test function can't be anonymous"
+  );
+});
