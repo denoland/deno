@@ -703,13 +703,18 @@ fn op_symlink(
   state.check_write(&newname)?;
   // TODO Use type for Windows.
   if cfg!(not(unix)) {
+    let _ = oldname; // avoid unused warning
     return Err(OpError::other("Not implemented".to_string()));
   }
+
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_symlink {} {}", oldname.display(), newname.display());
     #[cfg(unix)]
-    std::os::unix::fs::symlink(&oldname, &newname)?;
+    {
+      use std::os::unix::fs::symlink;
+      debug!("op_symlink {} {}", oldname.display(), newname.display());
+      symlink(&oldname, &newname)?;
+    }
     Ok(json!({}))
   })
 }
