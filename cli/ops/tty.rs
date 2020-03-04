@@ -39,17 +39,6 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_isatty", s.core_op(json_op(s.stateful_op(op_isatty))));
 }
 
-#[cfg(windows)]
-macro_rules! wincheck {
-  ($funcall:expr) => {{
-    let rc = unsafe { $funcall };
-    if rc == 0 {
-      Err(OpError::from(std::io::Error::last_os_error()))?;
-    }
-    rc
-  }};
-}
-
 #[derive(Deserialize)]
 struct SetRawArgs {
   rid: u32,
@@ -73,6 +62,7 @@ pub fn op_set_raw(
   #[cfg(windows)]
   {
     use std::os::windows::io::AsRawHandle;
+    use winapi::shared::minwindef::FALSE;
     use winapi::um::{consoleapi, handleapi};
 
     let state = state_.borrow_mut();
@@ -100,13 +90,19 @@ pub fn op_set_raw(
       return Err(OpError::other("null handle".to_owned()));
     }
     let mut original_mode: DWORD = 0;
-    wincheck!(consoleapi::GetConsoleMode(handle, &mut original_mode));
+    if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
+      == FALSE
+    {
+      return Err(OpError::from(std::io::Error::last_os_error()));
+    }
     let new_mode = if is_raw {
       original_mode & !RAW_MODE_MASK
     } else {
       original_mode | RAW_MODE_MASK
     };
-    wincheck!(consoleapi::SetConsoleMode(handle, new_mode));
+    if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
+      return Err(OpError::from(std::io::Error::last_os_error()));
+    }
 
     Ok(JsonOp::Sync(json!({})))
   }
