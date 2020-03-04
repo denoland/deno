@@ -204,7 +204,7 @@ pub fn mksnapshot_bundle(
   js_check(
     isolate.execute(&bundle_filename.to_string_lossy(), bundle_source_code),
   );
-  let script = &format!("__i(\"{}\");", main_module_name);
+  let script = &format!("__instantiate(\"{}\");", main_module_name);
   js_check(isolate.execute("anon", script));
   write_snapshot(isolate, snapshot_filename)?;
   Ok(())

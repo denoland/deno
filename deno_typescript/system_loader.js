@@ -4,7 +4,7 @@
 
 // @ts-nocheck
 /* eslint-disable */
-let System, __ia, __i;
+let System, __instantiateAsync, __instantiate;
 
 (() => {
   const r = new Map();
@@ -73,14 +73,14 @@ let System, __ia, __i;
     return m.exp;
   }
 
-  __ia = async m => {
-    System = __ia = __i = undefined;
+  __instantiateAsync = async m => {
+    System = __instantiateAsync = __instantiate = undefined;
     rF(m);
     return gExpA(m);
   };
 
-  __i = m => {
-    System = __ia = __i = undefined;
+  __instantiate = m => {
+    System = __instantiateAsync = __instantiate = undefined;
     rF(m);
     return gExp(m);
   };
