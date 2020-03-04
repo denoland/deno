@@ -1317,7 +1317,6 @@ declare namespace Deno {
     TimedOut: ErrorConstructor;
     Interrupted: ErrorConstructor;
     WriteZero: ErrorConstructor;
-    Other: ErrorConstructor;
     UnexpectedEof: ErrorConstructor;
     BadResource: ErrorConstructor;
     Http: ErrorConstructor;
