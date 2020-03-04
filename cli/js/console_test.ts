@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, test } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 
 // Some of these APIs aren't exposed in the types and so we have to cast to any
 // in order to "trick" TypeScript.
@@ -23,7 +23,7 @@ function stringify(...args: unknown[]): string {
 
 // test cases from web-platform-tests
 // via https://github.com/web-platform-tests/wpt/blob/master/console/console-is-a-namespace.any.js
-test(function consoleShouldBeANamespace(): void {
+unitTest(function consoleShouldBeANamespace(): void {
   const prototype1 = Object.getPrototypeOf(console);
   const prototype2 = Object.getPrototypeOf(prototype1);
 
@@ -31,31 +31,32 @@ test(function consoleShouldBeANamespace(): void {
   assertEquals(prototype2, Object.prototype);
 });
 
-test(function consoleHasRightInstance(): void {
+unitTest(function consoleHasRightInstance(): void {
   assert(console instanceof Console);
   assertEquals({} instanceof Console, false);
 });
 
-test(function consoleTestAssertShouldNotThrowError(): void {
-  console.assert(true);
-
-  let hasThrown = undefined;
-  try {
-    console.assert(false);
-    hasThrown = false;
-  } catch {
-    hasThrown = true;
-  }
-  assertEquals(hasThrown, false);
+unitTest(function consoleTestAssertShouldNotThrowError(): void {
+  mockConsole(console => {
+    console.assert(true);
+    let hasThrown = undefined;
+    try {
+      console.assert(false);
+      hasThrown = false;
+    } catch {
+      hasThrown = true;
+    }
+    assertEquals(hasThrown, false);
+  });
 });
 
-test(function consoleTestStringifyComplexObjects(): void {
+unitTest(function consoleTestStringifyComplexObjects(): void {
   assertEquals(stringify("foo"), "foo");
   assertEquals(stringify(["foo", "bar"]), `[ "foo", "bar" ]`);
   assertEquals(stringify({ foo: "bar" }), `{ foo: "bar" }`);
 });
 
-test(function consoleTestStringifyLongStrings(): void {
+unitTest(function consoleTestStringifyLongStrings(): void {
   const veryLongString = "a".repeat(200);
   // If we stringify an object containing the long string, it gets abbreviated.
   let actual = stringify({ veryLongString });
@@ -67,7 +68,7 @@ test(function consoleTestStringifyLongStrings(): void {
 });
 
 /* eslint-disable @typescript-eslint/explicit-function-return-type */
-test(function consoleTestStringifyCircular(): void {
+unitTest(function consoleTestStringifyCircular(): void {
   class Base {
     a = 1;
     m1() {}
@@ -172,7 +173,7 @@ test(function consoleTestStringifyCircular(): void {
 });
 /* eslint-enable @typescript-eslint/explicit-function-return-type */
 
-test(function consoleTestStringifyWithDepth(): void {
+unitTest(function consoleTestStringifyWithDepth(): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
   assertEquals(
@@ -195,7 +196,7 @@ test(function consoleTestStringifyWithDepth(): void {
   );
 });
 
-test(function consoleTestWithCustomInspector(): void {
+unitTest(function consoleTestWithCustomInspector(): void {
   class A {
     [customInspect](): string {
       return "b";
@@ -205,7 +206,7 @@ test(function consoleTestWithCustomInspector(): void {
   assertEquals(stringify(new A()), "b");
 });
 
-test(function consoleTestWithCustomInspectorError(): void {
+unitTest(function consoleTestWithCustomInspectorError(): void {
   class A {
     [customInspect](): string {
       throw new Error("BOOM");
@@ -226,7 +227,7 @@ test(function consoleTestWithCustomInspectorError(): void {
   assertEquals(stringify(B.prototype), "{}");
 });
 
-test(function consoleTestWithIntegerFormatSpecifier(): void {
+unitTest(function consoleTestWithIntegerFormatSpecifier(): void {
   assertEquals(stringify("%i"), "%i");
   assertEquals(stringify("%i", 42.0), "42");
   assertEquals(stringify("%i", 42), "42");
@@ -245,7 +246,7 @@ test(function consoleTestWithIntegerFormatSpecifier(): void {
   );
 });
 
-test(function consoleTestWithFloatFormatSpecifier(): void {
+unitTest(function consoleTestWithFloatFormatSpecifier(): void {
   assertEquals(stringify("%f"), "%f");
   assertEquals(stringify("%f", 42.0), "42");
   assertEquals(stringify("%f", 42), "42");
@@ -261,7 +262,7 @@ test(function consoleTestWithFloatFormatSpecifier(): void {
   assertEquals(stringify("%f %f", 42), "42 %f");
 });
 
-test(function consoleTestWithStringFormatSpecifier(): void {
+unitTest(function consoleTestWithStringFormatSpecifier(): void {
   assertEquals(stringify("%s"), "%s");
   assertEquals(stringify("%s", undefined), "undefined");
   assertEquals(stringify("%s", "foo"), "foo");
@@ -272,7 +273,7 @@ test(function consoleTestWithStringFormatSpecifier(): void {
   assertEquals(stringify("%s", Symbol("foo")), "Symbol(foo)");
 });
 
-test(function consoleTestWithObjectFormatSpecifier(): void {
+unitTest(function consoleTestWithObjectFormatSpecifier(): void {
   assertEquals(stringify("%o"), "%o");
   assertEquals(stringify("%o", 42), "42");
   assertEquals(stringify("%o", "foo"), "foo");
@@ -284,7 +285,7 @@ test(function consoleTestWithObjectFormatSpecifier(): void {
   );
 });
 
-test(function consoleTestWithVariousOrInvalidFormatSpecifier(): void {
+unitTest(function consoleTestWithVariousOrInvalidFormatSpecifier(): void {
   assertEquals(stringify("%s:%s"), "%s:%s");
   assertEquals(stringify("%i:%i"), "%i:%i");
   assertEquals(stringify("%d:%d"), "%d:%d");
@@ -300,24 +301,23 @@ test(function consoleTestWithVariousOrInvalidFormatSpecifier(): void {
   assertEquals(stringify("abc%", 1), "abc% 1");
 });
 
-test(function consoleTestCallToStringOnLabel(): void {
+unitTest(function consoleTestCallToStringOnLabel(): void {
   const methods = ["count", "countReset", "time", "timeLog", "timeEnd"];
-
-  for (const method of methods) {
-    let hasCalled = false;
-
-    // @ts-ignore
-    console[method]({
-      toString(): void {
-        hasCalled = true;
-      }
-    });
-
-    assertEquals(hasCalled, true);
-  }
+  mockConsole(console => {
+    for (const method of methods) {
+      let hasCalled = false;
+      // @ts-ignore
+      console[method]({
+        toString(): void {
+          hasCalled = true;
+        }
+      });
+      assertEquals(hasCalled, true);
+    }
+  });
 });
 
-test(function consoleTestError(): void {
+unitTest(function consoleTestError(): void {
   class MyError extends Error {
     constructor(errStr: string) {
       super(errStr);
@@ -335,7 +335,7 @@ test(function consoleTestError(): void {
   }
 });
 
-test(function consoleTestClear(): void {
+unitTest(function consoleTestClear(): void {
   const stdoutWriteSync = stdout.writeSync;
   const uint8 = new TextEncoder().encode("\x1b[1;1H" + "\x1b[0J");
   let buffer = new Uint8Array(0);
@@ -354,41 +354,43 @@ test(function consoleTestClear(): void {
 });
 
 // Test bound this issue
-test(function consoleDetachedLog(): void {
-  const log = console.log;
-  const dir = console.dir;
-  const dirxml = console.dirxml;
-  const debug = console.debug;
-  const info = console.info;
-  const warn = console.warn;
-  const error = console.error;
-  const consoleAssert = console.assert;
-  const consoleCount = console.count;
-  const consoleCountReset = console.countReset;
-  const consoleTable = console.table;
-  const consoleTime = console.time;
-  const consoleTimeLog = console.timeLog;
-  const consoleTimeEnd = console.timeEnd;
-  const consoleGroup = console.group;
-  const consoleGroupEnd = console.groupEnd;
-  const consoleClear = console.clear;
-  log("Hello world");
-  dir("Hello world");
-  dirxml("Hello world");
-  debug("Hello world");
-  info("Hello world");
-  warn("Hello world");
-  error("Hello world");
-  consoleAssert(true);
-  consoleCount("Hello world");
-  consoleCountReset("Hello world");
-  consoleTable({ test: "Hello world" });
-  consoleTime("Hello world");
-  consoleTimeLog("Hello world");
-  consoleTimeEnd("Hello world");
-  consoleGroup("Hello world");
-  consoleGroupEnd();
-  consoleClear();
+unitTest(function consoleDetachedLog(): void {
+  mockConsole(console => {
+    const log = console.log;
+    const dir = console.dir;
+    const dirxml = console.dirxml;
+    const debug = console.debug;
+    const info = console.info;
+    const warn = console.warn;
+    const error = console.error;
+    const consoleAssert = console.assert;
+    const consoleCount = console.count;
+    const consoleCountReset = console.countReset;
+    const consoleTable = console.table;
+    const consoleTime = console.time;
+    const consoleTimeLog = console.timeLog;
+    const consoleTimeEnd = console.timeEnd;
+    const consoleGroup = console.group;
+    const consoleGroupEnd = console.groupEnd;
+    const consoleClear = console.clear;
+    log("Hello world");
+    dir("Hello world");
+    dirxml("Hello world");
+    debug("Hello world");
+    info("Hello world");
+    warn("Hello world");
+    error("Hello world");
+    consoleAssert(true);
+    consoleCount("Hello world");
+    consoleCountReset("Hello world");
+    consoleTable({ test: "Hello world" });
+    consoleTime("Hello world");
+    consoleTimeLog("Hello world");
+    consoleTimeEnd("Hello world");
+    consoleGroup("Hello world");
+    consoleGroupEnd();
+    consoleClear();
+  });
 });
 
 class StringBuffer {
@@ -425,7 +427,7 @@ function mockConsole(f: ConsoleExamineFunc): void {
 }
 
 // console.group test
-test(function consoleGroup(): void {
+unitTest(function consoleGroup(): void {
   mockConsole((console, out): void => {
     console.group("1");
     console.log("2");
@@ -450,7 +452,7 @@ test(function consoleGroup(): void {
 });
 
 // console.group with console.warn test
-test(function consoleGroupWarn(): void {
+unitTest(function consoleGroupWarn(): void {
   mockConsole((console, _out, _err, both): void => {
     assert(both);
     console.warn("1");
@@ -480,7 +482,7 @@ test(function consoleGroupWarn(): void {
 });
 
 // console.table test
-test(function consoleTable(): void {
+unitTest(function consoleTable(): void {
   mockConsole((console, out): void => {
     console.table({ a: "test", b: 1 });
     assertEquals(
@@ -651,15 +653,17 @@ test(function consoleTable(): void {
 });
 
 // console.log(Error) test
-test(function consoleLogShouldNotThrowError(): void {
-  let result = 0;
-  try {
-    console.log(new Error("foo"));
-    result = 1;
-  } catch (e) {
-    result = 2;
-  }
-  assertEquals(result, 1);
+unitTest(function consoleLogShouldNotThrowError(): void {
+  mockConsole(console => {
+    let result = 0;
+    try {
+      console.log(new Error("foo"));
+      result = 1;
+    } catch (e) {
+      result = 2;
+    }
+    assertEquals(result, 1);
+  });
 
   // output errors to the console should not include "Uncaught"
   mockConsole((console, out): void => {
@@ -669,7 +673,7 @@ test(function consoleLogShouldNotThrowError(): void {
 });
 
 // console.dir test
-test(function consoleDir(): void {
+unitTest(function consoleDir(): void {
   mockConsole((console, out): void => {
     console.dir("DIR");
     assertEquals(out.toString(), "DIR\n");
@@ -681,7 +685,7 @@ test(function consoleDir(): void {
 });
 
 // console.dir test
-test(function consoleDirXml(): void {
+unitTest(function consoleDirXml(): void {
   mockConsole((console, out): void => {
     console.dirxml("DIRXML");
     assertEquals(out.toString(), "DIRXML\n");
@@ -693,7 +697,7 @@ test(function consoleDirXml(): void {
 });
 
 // console.trace test
-test(function consoleTrace(): void {
+unitTest(function consoleTrace(): void {
   mockConsole((console, _out, err): void => {
     console.trace("%s", "custom message");
     assert(err);

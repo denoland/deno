@@ -1,74 +1,84 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { unitTest, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ read: true, write: true }, function renameSyncSuccess(): void {
-  const testDir = Deno.makeTempDirSync();
-  const oldpath = testDir + "/oldpath";
-  const newpath = testDir + "/newpath";
-  Deno.mkdirSync(oldpath);
-  Deno.renameSync(oldpath, newpath);
-  const newPathInfo = Deno.statSync(newpath);
-  assert(newPathInfo.isDirectory());
-
-  let caughtErr = false;
-  let oldPathInfo;
-
-  try {
-    oldPathInfo = Deno.statSync(oldpath);
-  } catch (e) {
-    caughtErr = true;
-    assert(e instanceof Deno.errors.NotFound);
-  }
-  assert(caughtErr);
-  assertEquals(oldPathInfo, undefined);
-});
-
-testPerm({ read: false, write: true }, function renameSyncReadPerm(): void {
-  let err;
-  try {
-    const oldpath = "/oldbaddir";
-    const newpath = "/newbaddir";
+unitTest(
+  { perms: { read: true, write: true } },
+  function renameSyncSuccess(): void {
+    const testDir = Deno.makeTempDirSync();
+    const oldpath = testDir + "/oldpath";
+    const newpath = testDir + "/newpath";
+    Deno.mkdirSync(oldpath);
     Deno.renameSync(oldpath, newpath);
-  } catch (e) {
-    err = e;
+    const newPathInfo = Deno.statSync(newpath);
+    assert(newPathInfo.isDirectory());
+
+    let caughtErr = false;
+    let oldPathInfo;
+
+    try {
+      oldPathInfo = Deno.statSync(oldpath);
+    } catch (e) {
+      caughtErr = true;
+      assert(e instanceof Deno.errors.NotFound);
+    }
+    assert(caughtErr);
+    assertEquals(oldPathInfo, undefined);
   }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
-});
+);
 
-testPerm({ read: true, write: false }, function renameSyncWritePerm(): void {
-  let err;
-  try {
-    const oldpath = "/oldbaddir";
-    const newpath = "/newbaddir";
-    Deno.renameSync(oldpath, newpath);
-  } catch (e) {
-    err = e;
+unitTest(
+  { perms: { read: false, write: true } },
+  function renameSyncReadPerm(): void {
+    let err;
+    try {
+      const oldpath = "/oldbaddir";
+      const newpath = "/newbaddir";
+      Deno.renameSync(oldpath, newpath);
+    } catch (e) {
+      err = e;
+    }
+    assert(err instanceof Deno.errors.PermissionDenied);
+    assertEquals(err.name, "PermissionDenied");
   }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
-});
+);
 
-testPerm({ read: true, write: true }, async function renameSuccess(): Promise<
-  void
-> {
-  const testDir = Deno.makeTempDirSync();
-  const oldpath = testDir + "/oldpath";
-  const newpath = testDir + "/newpath";
-  Deno.mkdirSync(oldpath);
-  await Deno.rename(oldpath, newpath);
-  const newPathInfo = Deno.statSync(newpath);
-  assert(newPathInfo.isDirectory());
-
-  let caughtErr = false;
-  let oldPathInfo;
-
-  try {
-    oldPathInfo = Deno.statSync(oldpath);
-  } catch (e) {
-    caughtErr = true;
-    assert(e instanceof Deno.errors.NotFound);
+unitTest(
+  { perms: { read: true, write: false } },
+  function renameSyncWritePerm(): void {
+    let err;
+    try {
+      const oldpath = "/oldbaddir";
+      const newpath = "/newbaddir";
+      Deno.renameSync(oldpath, newpath);
+    } catch (e) {
+      err = e;
+    }
+    assert(err instanceof Deno.errors.PermissionDenied);
+    assertEquals(err.name, "PermissionDenied");
   }
-  assert(caughtErr);
-  assertEquals(oldPathInfo, undefined);
-});
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function renameSuccess(): Promise<void> {
+    const testDir = Deno.makeTempDirSync();
+    const oldpath = testDir + "/oldpath";
+    const newpath = testDir + "/newpath";
+    Deno.mkdirSync(oldpath);
+    await Deno.rename(oldpath, newpath);
+    const newPathInfo = Deno.statSync(newpath);
+    assert(newPathInfo.isDirectory());
+
+    let caughtErr = false;
+    let oldPathInfo;
+
+    try {
+      oldPathInfo = Deno.statSync(oldpath);
+    } catch (e) {
+      caughtErr = true;
+      assert(e instanceof Deno.errors.NotFound);
+    }
+    assert(caughtErr);
+    assertEquals(oldPathInfo, undefined);
+  }
+);
