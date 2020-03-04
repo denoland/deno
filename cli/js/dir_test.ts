@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEquals } from "./test_util.ts";
+import { unitTest, assert, assertEquals } from "./test_util.ts";
 
-test(function dirCwdNotNull(): void {
+unitTest(function dirCwdNotNull(): void {
   assert(Deno.cwd() != null);
 });
 
-testPerm({ write: true }, function dirCwdChdirSuccess(): void {
+unitTest({ perms: { write: true } }, function dirCwdChdirSuccess(): void {
   const initialdir = Deno.cwd();
   const path = Deno.makeTempDirSync();
   Deno.chdir(path);
@@ -18,7 +18,7 @@ testPerm({ write: true }, function dirCwdChdirSuccess(): void {
   Deno.chdir(initialdir);
 });
 
-testPerm({ write: true }, function dirCwdError(): void {
+unitTest({ perms: { write: true } }, function dirCwdError(): void {
   // excluding windows since it throws resource busy, while removeSync
   if (["linux", "mac"].includes(Deno.build.os)) {
     const initialdir = Deno.cwd();
@@ -39,7 +39,7 @@ testPerm({ write: true }, function dirCwdError(): void {
   }
 });
 
-testPerm({ write: true }, function dirChdirError(): void {
+unitTest({ perms: { write: true } }, function dirChdirError(): void {
   const path = Deno.makeTempDirSync() + "test";
   try {
     Deno.chdir(path);

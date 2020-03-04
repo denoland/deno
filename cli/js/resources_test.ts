@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assertEquals } from "./test_util.ts";
+import { unitTest, assertEquals } from "./test_util.ts";
 
-test(function resourcesStdio(): void {
+unitTest(function resourcesStdio(): void {
   const res = Deno.resources();
 
   assertEquals(res[0], "stdin");
@@ -9,7 +9,9 @@ test(function resourcesStdio(): void {
   assertEquals(res[2], "stderr");
 });
 
-testPerm({ net: true }, async function resourcesNet(): Promise<void> {
+unitTest({ perms: { net: true } }, async function resourcesNet(): Promise<
+  void
+> {
   const listener = Deno.listen({ port: 4501 });
   const dialerConn = await Deno.connect({ port: 4501 });
   const listenerConn = await listener.accept();
@@ -29,7 +31,9 @@ testPerm({ net: true }, async function resourcesNet(): Promise<void> {
   listener.close();
 });
 
-testPerm({ read: true }, async function resourcesFile(): Promise<void> {
+unitTest({ perms: { read: true } }, async function resourcesFile(): Promise<
+  void
+> {
   const resourcesBefore = Deno.resources();
   const f = await Deno.open("cli/tests/hello.txt");
   const resourcesAfter = Deno.resources();

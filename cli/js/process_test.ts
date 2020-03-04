@@ -1,14 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  test,
-  testPerm,
   assert,
   assertEquals,
-  assertStrContains
+  assertStrContains,
+  unitTest
 } from "./test_util.ts";
 const { kill, run, readFile, open, makeTempDir, writeFile } = Deno;
 
-test(function runPermissions(): void {
+unitTest(function runPermissions(): void {
   let caughtError = false;
   try {
     Deno.run({ args: ["python", "-c", "print('hello world')"] });
@@ -19,7 +18,7 @@ test(function runPermissions(): void {
   assert(caughtError);
 });
 
-testPerm({ run: true }, async function runSuccess(): Promise<void> {
+unitTest({ perms: { run: true } }, async function runSuccess(): Promise<void> {
   const p = run({
     args: ["python", "-c", "print('hello world')"],
     stdout: "piped",
@@ -33,36 +32,39 @@ testPerm({ run: true }, async function runSuccess(): Promise<void> {
   p.close();
 });
 
-testPerm({ run: true }, async function runCommandFailedWithCode(): Promise<
-  void
-> {
-  const p = run({
-    args: ["python", "-c", "import sys;sys.exit(41 + 1)"]
-  });
-  const status = await p.status();
-  assertEquals(status.success, false);
-  assertEquals(status.code, 42);
-  assertEquals(status.signal, undefined);
-  p.close();
-});
-
-testPerm({ run: true }, async function runCommandFailedWithSignal(): Promise<
-  void
-> {
-  if (Deno.build.os === "win") {
-    return; // No signals on windows.
+unitTest(
+  { perms: { run: true } },
+  async function runCommandFailedWithCode(): Promise<void> {
+    const p = run({
+      args: ["python", "-c", "import sys;sys.exit(41 + 1)"]
+    });
+    const status = await p.status();
+    assertEquals(status.success, false);
+    assertEquals(status.code, 42);
+    assertEquals(status.signal, undefined);
+    p.close();
   }
-  const p = run({
-    args: ["python", "-c", "import os;os.kill(os.getpid(), 9)"]
-  });
-  const status = await p.status();
-  assertEquals(status.success, false);
-  assertEquals(status.code, undefined);
-  assertEquals(status.signal, 9);
-  p.close();
-});
+);
 
-testPerm({ run: true }, function runNotFound(): void {
+unitTest(
+  {
+    // No signals on windows.
+    skip: Deno.build.os === "win",
+    perms: { run: true }
+  },
+  async function runCommandFailedWithSignal(): Promise<void> {
+    const p = run({
+      args: ["python", "-c", "import os;os.kill(os.getpid(), 9)"]
+    });
+    const status = await p.status();
+    assertEquals(status.success, false);
+    assertEquals(status.code, undefined);
+    assertEquals(status.signal, 9);
+    p.close();
+  }
+);
+
+unitTest({ perms: { run: true } }, function runNotFound(): void {
   let error;
   try {
     run({ args: ["this file hopefully doesn't exist"] });
@@ -73,8 +75,8 @@ testPerm({ run: true }, function runNotFound(): void {
   assert(error instanceof Deno.errors.NotFound);
 });
 
-testPerm(
-  { write: true, run: true },
+unitTest(
+  { perms: { write: true, run: true } },
   async function runWithCwdIsAsync(): Promise<void> {
     const enc = new TextEncoder();
     const cwd = await makeTempDir({ prefix: "deno_command_test" });
@@ -116,7 +118,9 @@ while True:
   }
 );
 
-testPerm({ run: true }, async function runStdinPiped(): Promise<void> {
+unitTest({ perms: { run: true } }, async function runStdinPiped(): Promise<
+  void
+> {
   const p = run({
     args: ["python", "-c", "import sys; assert 'hello' == sys.stdin.read();"],
     stdin: "piped"
@@ -138,7 +142,9 @@ testPerm({ run: true }, async function runStdinPiped(): Promise<void> {
   p.close();
 });
 
-testPerm({ run: true }, async function runStdoutPiped(): Promise<void> {
+unitTest({ perms: { run: true } }, async function runStdoutPiped(): Promise<
+  void
+> {
   const p = run({
     args: ["python", "-c", "import sys; sys.stdout.write('hello')"],
     stdout: "piped"
@@ -165,7 +171,9 @@ testPerm({ run: true }, async function runStdoutPiped(): Promise<void> {
   p.close();
 });
 
-testPerm({ run: true }, async function runStderrPiped(): Promise<void> {
+unitTest({ perms: { run: true } }, async function runStderrPiped(): Promise<
+  void
+> {
   const p = run({
     args: ["python", "-c", "import sys; sys.stderr.write('hello')"],
     stderr: "piped"
@@ -192,7 +200,7 @@ testPerm({ run: true }, async function runStderrPiped(): Promise<void> {
   p.close();
 });
 
-testPerm({ run: true }, async function runOutput(): Promise<void> {
+unitTest({ perms: { run: true } }, async function runOutput(): Promise<void> {
   const p = run({
     args: ["python", "-c", "import sys; sys.stdout.write('hello')"],
     stdout: "piped"
@@ -203,7 +211,9 @@ testPerm({ run: true }, async function runOutput(): Promise<void> {
   p.close();
 });
 
-testPerm({ run: true }, async function runStderrOutput(): Promise<void> {
+unitTest({ perms: { run: true } }, async function runStderrOutput(): Promise<
+  void
+> {
   const p = run({
     args: ["python", "-c", "import sys; sys.stderr.write('error')"],
     stderr: "piped"
@@ -214,8 +224,8 @@ testPerm({ run: true }, async function runStderrOutput(): Promise<void> {
   p.close();
 });
 
-testPerm(
-  { run: true, write: true, read: true },
+unitTest(
+  { perms: { run: true, write: true, read: true } },
   async function runRedirectStdoutStderr(): Promise<void> {
     const tempDir = await makeTempDir();
     const fileName = tempDir + "/redirected_stdio.txt";
@@ -244,8 +254,8 @@ testPerm(
   }
 );
 
-testPerm(
-  { run: true, write: true, read: true },
+unitTest(
+  { perms: { run: true, write: true, read: true } },
   async function runRedirectStdin(): Promise<void> {
     const tempDir = await makeTempDir();
     const fileName = tempDir + "/redirected_stdio.txt";
@@ -265,7 +275,7 @@ testPerm(
   }
 );
 
-testPerm({ run: true }, async function runEnv(): Promise<void> {
+unitTest({ perms: { run: true } }, async function runEnv(): Promise<void> {
   const p = run({
     args: [
       "python",
@@ -284,7 +294,7 @@ testPerm({ run: true }, async function runEnv(): Promise<void> {
   p.close();
 });
 
-testPerm({ run: true }, async function runClose(): Promise<void> {
+unitTest({ perms: { run: true } }, async function runClose(): Promise<void> {
   const p = run({
     args: [
       "python",
@@ -304,7 +314,7 @@ testPerm({ run: true }, async function runClose(): Promise<void> {
   p.stderr!.close();
 });
 
-test(function signalNumbers(): void {
+unitTest(function signalNumbers(): void {
   if (Deno.build.os === "mac") {
     assertEquals(Deno.Signal.SIGSTOP, 17);
   } else if (Deno.build.os === "linux") {
@@ -314,7 +324,7 @@ test(function signalNumbers(): void {
 
 // Ignore signal tests on windows for now...
 if (Deno.build.os !== "win") {
-  test(function killPermissions(): void {
+  unitTest(function killPermissions(): void {
     let caughtError = false;
     try {
       // Unlike the other test cases, we don't have permission to spawn a
@@ -329,7 +339,9 @@ if (Deno.build.os !== "win") {
     assert(caughtError);
   });
 
-  testPerm({ run: true }, async function killSuccess(): Promise<void> {
+  unitTest({ perms: { run: true } }, async function killSuccess(): Promise<
+    void
+  > {
     const p = run({
       args: ["python", "-c", "from time import sleep; sleep(10000)"]
     });
@@ -347,7 +359,9 @@ if (Deno.build.os !== "win") {
     p.close();
   });
 
-  testPerm({ run: true }, async function killFailed(): Promise<void> {
+  unitTest({ perms: { run: true } }, async function killFailed(): Promise<
+    void
+  > {
     const p = run({
       args: ["python", "-c", "from time import sleep; sleep(10000)"]
     });

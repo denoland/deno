@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEquals } from "../test_util.ts";
+import { unitTest, assert, assertEquals } from "../test_util.ts";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function setup() {
@@ -25,7 +25,7 @@ function setup() {
   };
 }
 
-test(function testDomIterable(): void {
+unitTest(function testDomIterable(): void {
   const { DomIterable, Base } = setup();
 
   const fixture: Array<[string, number]> = [
@@ -67,7 +67,7 @@ test(function testDomIterable(): void {
   assertEquals(DomIterable.name, Base.name);
 });
 
-test(function testDomIterableScope(): void {
+unitTest(function testDomIterableScope(): void {
   const { DomIterable } = setup();
 
   const domIterable = new DomIterable([["foo", 1]]);
