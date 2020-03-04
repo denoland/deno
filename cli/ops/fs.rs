@@ -715,16 +715,24 @@ fn op_symlink(
   let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
 
   state.check_write(&newpath)?;
-  // TODO Use type for Windows.
-  if cfg!(not(unix)) {
-    return Err(OpError::other("Not implemented".to_string()));
-  }
+
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_symlink {} {}", oldpath.display(), newpath.display());
     #[cfg(unix)]
-    std::os::unix::fs::symlink(&oldpath, &newpath)?;
-    Ok(json!({}))
+    {
+      use std::os::unix::fs::symlink;
+      symlink(&oldpath, &newpath)?;
+      Ok(json!({}))
+    }
+    // TODO Implement symlink, use type for Windows
+    #[cfg(not(unix))]
+    {
+      // Unlike with chmod/chown, here we don't
+      // require `oldpath` to exist on Windows
+      let _ = oldpath; // avoid unused warning
+      return Err(OpError::other("Not implemented".to_string()));
+    }
   })
 }
 
