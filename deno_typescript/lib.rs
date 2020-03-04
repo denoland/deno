@@ -251,7 +251,7 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
     "bootstrap.ts" => Some("console.log(\"hello deno\");"),
     "typescript.d.ts" => inc!("typescript.d.ts"),
     "lib.dom.d.ts" => inc!("lib.dom.d.ts"),
-    "lib.dom.iterable.d.ts" => inc!("lib.dom.d.ts"),
+    "lib.dom.iterable.d.ts" => inc!("lib.dom.iterable.d.ts"),
     "lib.es5.d.ts" => inc!("lib.es5.d.ts"),
     "lib.es6.d.ts" => inc!("lib.es6.d.ts"),
     "lib.esnext.d.ts" => inc!("lib.esnext.d.ts"),
