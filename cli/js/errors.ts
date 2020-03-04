@@ -154,12 +154,6 @@ class WriteZero extends Error {
     this.name = "WriteZero";
   }
 }
-class Other extends Error {
-  constructor(msg: string) {
-    super(msg);
-    this.name = "Other";
-  }
-}
 class UnexpectedEof extends Error {
   constructor(msg: string) {
     super(msg);
@@ -194,7 +188,6 @@ export const errors = {
   TimedOut: TimedOut,
   Interrupted: Interrupted,
   WriteZero: WriteZero,
-  Other: Other,
   UnexpectedEof: UnexpectedEof,
   BadResource: BadResource,
   Http: Http

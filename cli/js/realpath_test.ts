@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert } from "./test_util.ts";
+import { unitTest, assert } from "./test_util.ts";
 
-testPerm({ read: true }, function realpathSyncSuccess(): void {
+unitTest({ perms: { read: true } }, function realpathSyncSuccess(): void {
   const incompletePath = "cli/tests/fixture.json";
   const realPath = Deno.realpathSync(incompletePath);
   if (Deno.build.os !== "win") {
@@ -12,8 +12,12 @@ testPerm({ read: true }, function realpathSyncSuccess(): void {
   assert(realPath.endsWith(incompletePath));
 });
 
-if (Deno.build.os !== "win") {
-  testPerm({ read: true, write: true }, function realpathSyncSymlink(): void {
+unitTest(
+  {
+    skip: Deno.build.os === "win",
+    perms: { read: true, write: true }
+  },
+  function realpathSyncSymlink(): void {
     const testDir = Deno.makeTempDirSync();
     const target = testDir + "/target";
     const symlink = testDir + "/symln";
@@ -22,10 +26,10 @@ if (Deno.build.os !== "win") {
     const targetPath = Deno.realpathSync(symlink);
     assert(targetPath.startsWith("/"));
     assert(targetPath.endsWith("/target"));
-  });
-}
+  }
+);
 
-testPerm({ read: false }, function realpathSyncPerm(): void {
+unitTest({ perms: { read: false } }, function realpathSyncPerm(): void {
   let caughtError = false;
   try {
     Deno.realpathSync("some_file");
@@ -36,7 +40,7 @@ testPerm({ read: false }, function realpathSyncPerm(): void {
   assert(caughtError);
 });
 
-testPerm({ read: true }, function realpathSyncNotFound(): void {
+unitTest({ perms: { read: true } }, function realpathSyncNotFound(): void {
   let caughtError = false;
   try {
     Deno.realpathSync("bad_filename");
@@ -47,7 +51,9 @@ testPerm({ read: true }, function realpathSyncNotFound(): void {
   assert(caughtError);
 });
 
-testPerm({ read: true }, async function realpathSuccess(): Promise<void> {
+unitTest({ perms: { read: true } }, async function realpathSuccess(): Promise<
+  void
+> {
   const incompletePath = "cli/tests/fixture.json";
   const realPath = await Deno.realpath(incompletePath);
   if (Deno.build.os !== "win") {
@@ -58,23 +64,26 @@ testPerm({ read: true }, async function realpathSuccess(): Promise<void> {
   assert(realPath.endsWith(incompletePath));
 });
 
-if (Deno.build.os !== "win") {
-  testPerm(
-    { read: true, write: true },
-    async function realpathSymlink(): Promise<void> {
-      const testDir = Deno.makeTempDirSync();
-      const target = testDir + "/target";
-      const symlink = testDir + "/symln";
-      Deno.mkdirSync(target);
-      Deno.symlinkSync(target, symlink);
-      const targetPath = await Deno.realpath(symlink);
-      assert(targetPath.startsWith("/"));
-      assert(targetPath.endsWith("/target"));
-    }
-  );
-}
+unitTest(
+  {
+    skip: Deno.build.os === "win",
+    perms: { read: true, write: true }
+  },
+  async function realpathSymlink(): Promise<void> {
+    const testDir = Deno.makeTempDirSync();
+    const target = testDir + "/target";
+    const symlink = testDir + "/symln";
+    Deno.mkdirSync(target);
+    Deno.symlinkSync(target, symlink);
+    const targetPath = await Deno.realpath(symlink);
+    assert(targetPath.startsWith("/"));
+    assert(targetPath.endsWith("/target"));
+  }
+);
 
-testPerm({ read: false }, async function realpathPerm(): Promise<void> {
+unitTest({ perms: { read: false } }, async function realpathPerm(): Promise<
+  void
+> {
   let caughtError = false;
   try {
     await Deno.realpath("some_file");
@@ -85,7 +94,9 @@ testPerm({ read: false }, async function realpathPerm(): Promise<void> {
   assert(caughtError);
 });
 
-testPerm({ read: true }, async function realpathNotFound(): Promise<void> {
+unitTest({ perms: { read: true } }, async function realpathNotFound(): Promise<
+  void
+> {
   let caughtError = false;
   try {
     await Deno.realpath("bad_filename");

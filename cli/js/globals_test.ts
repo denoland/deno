@@ -1,51 +1,51 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert } from "./test_util.ts";
+import { unitTest, assert } from "./test_util.ts";
 
-test(function globalThisExists(): void {
+unitTest(function globalThisExists(): void {
   assert(globalThis != null);
 });
 
-test(function windowExists(): void {
+unitTest(function windowExists(): void {
   assert(window != null);
 });
 
-test(function selfExists(): void {
+unitTest(function selfExists(): void {
   assert(self != null);
 });
 
-test(function windowWindowExists(): void {
+unitTest(function windowWindowExists(): void {
   assert(window.window === window);
 });
 
-test(function windowSelfExists(): void {
+unitTest(function windowSelfExists(): void {
   assert(window.self === window);
 });
 
-test(function globalThisEqualsWindow(): void {
+unitTest(function globalThisEqualsWindow(): void {
   assert(globalThis === window);
 });
 
-test(function globalThisEqualsSelf(): void {
+unitTest(function globalThisEqualsSelf(): void {
   assert(globalThis === self);
 });
 
-test(function DenoNamespaceExists(): void {
+unitTest(function DenoNamespaceExists(): void {
   assert(Deno != null);
 });
 
-test(function DenoNamespaceEqualsWindowDeno(): void {
+unitTest(function DenoNamespaceEqualsWindowDeno(): void {
   assert(Deno === window.Deno);
 });
 
-test(function DenoNamespaceIsFrozen(): void {
+unitTest(function DenoNamespaceIsFrozen(): void {
   assert(Object.isFrozen(Deno));
 });
 
-test(function webAssemblyExists(): void {
+unitTest(function webAssemblyExists(): void {
   assert(typeof WebAssembly.compile === "function");
 });
 
-test(function DenoNamespaceImmutable(): void {
+unitTest(function DenoNamespaceImmutable(): void {
   const denoCopy = window.Deno;
   try {
     // @ts-ignore
@@ -89,7 +89,7 @@ test(function DenoNamespaceImmutable(): void {
   assert(print === Deno.core.print);
 });
 
-test(async function windowQueueMicrotask(): Promise<void> {
+unitTest(async function windowQueueMicrotask(): Promise<void> {
   let resolve1: () => void | undefined;
   let resolve2: () => void | undefined;
   let microtaskDone = false;

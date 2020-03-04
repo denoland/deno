@@ -1,17 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEquals } from "./test_util.ts";
+import { unitTest, assert, assertEquals } from "./test_util.ts";
 
-test(function formDataHasCorrectNameProp(): void {
+unitTest(function formDataHasCorrectNameProp(): void {
   assertEquals(FormData.name, "FormData");
 });
 
-test(function formDataParamsAppendSuccess(): void {
+unitTest(function formDataParamsAppendSuccess(): void {
   const formData = new FormData();
   formData.append("a", "true");
   assertEquals(formData.get("a"), "true");
 });
 
-test(function formDataParamsDeleteSuccess(): void {
+unitTest(function formDataParamsDeleteSuccess(): void {
   const formData = new FormData();
   formData.append("a", "true");
   formData.append("b", "false");
@@ -21,7 +21,7 @@ test(function formDataParamsDeleteSuccess(): void {
   assertEquals(formData.get("b"), null);
 });
 
-test(function formDataParamsGetAllSuccess(): void {
+unitTest(function formDataParamsGetAllSuccess(): void {
   const formData = new FormData();
   formData.append("a", "true");
   formData.append("b", "false");
@@ -31,7 +31,7 @@ test(function formDataParamsGetAllSuccess(): void {
   assertEquals(formData.getAll("c"), []);
 });
 
-test(function formDataParamsGetSuccess(): void {
+unitTest(function formDataParamsGetSuccess(): void {
   const formData = new FormData();
   formData.append("a", "true");
   formData.append("b", "false");
@@ -47,7 +47,7 @@ test(function formDataParamsGetSuccess(): void {
   assertEquals(formData.get("e"), "null");
 });
 
-test(function formDataParamsHasSuccess(): void {
+unitTest(function formDataParamsHasSuccess(): void {
   const formData = new FormData();
   formData.append("a", "true");
   formData.append("b", "false");
@@ -56,7 +56,7 @@ test(function formDataParamsHasSuccess(): void {
   assert(!formData.has("c"));
 });
 
-test(function formDataParamsSetSuccess(): void {
+unitTest(function formDataParamsSetSuccess(): void {
   const formData = new FormData();
   formData.append("a", "true");
   formData.append("b", "false");
@@ -73,7 +73,7 @@ test(function formDataParamsSetSuccess(): void {
   assertEquals(formData.get("e"), "null");
 });
 
-test(function formDataSetEmptyBlobSuccess(): void {
+unitTest(function formDataSetEmptyBlobSuccess(): void {
   const formData = new FormData();
   formData.set("a", new Blob([]), "blank.txt");
   formData.get("a");
@@ -85,7 +85,7 @@ test(function formDataSetEmptyBlobSuccess(): void {
   */
 });
 
-test(function formDataParamsForEachSuccess(): void {
+unitTest(function formDataParamsForEachSuccess(): void {
   const init = [
     ["a", "54"],
     ["b", "true"]
@@ -104,7 +104,7 @@ test(function formDataParamsForEachSuccess(): void {
   assertEquals(callNum, init.length);
 });
 
-test(function formDataParamsArgumentsCheck(): void {
+unitTest(function formDataParamsArgumentsCheck(): void {
   const methodRequireOneParam = [
     "delete",
     "getAll",
@@ -183,7 +183,7 @@ test(function formDataParamsArgumentsCheck(): void {
   });
 });
 
-test(function toStringShouldBeWebCompatibility(): void {
+unitTest(function toStringShouldBeWebCompatibility(): void {
   const formData = new FormData();
   assertEquals(formData.toString(), "[object FormData]");
 });

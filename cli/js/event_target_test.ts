@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assertEquals } from "./test_util.ts";
+import { unitTest, assertEquals } from "./test_util.ts";
 
-test(function addEventListenerTest(): void {
+unitTest(function addEventListenerTest(): void {
   const document = new EventTarget();
 
   // @ts-ignore tests ignoring the type system for resilience
@@ -12,7 +12,7 @@ test(function addEventListenerTest(): void {
   assertEquals(document.addEventListener("x", null), undefined);
 });
 
-test(function constructedEventTargetCanBeUsedAsExpected(): void {
+unitTest(function constructedEventTargetCanBeUsedAsExpected(): void {
   const target = new EventTarget();
   const event = new Event("foo", { bubbles: true, cancelable: false });
   let callCount = 0;
@@ -35,7 +35,7 @@ test(function constructedEventTargetCanBeUsedAsExpected(): void {
   assertEquals(callCount, 2);
 });
 
-test(function anEventTargetCanBeSubclassed(): void {
+unitTest(function anEventTargetCanBeSubclassed(): void {
   class NicerEventTarget extends EventTarget {
     on(
       type: string,
@@ -69,7 +69,7 @@ test(function anEventTargetCanBeSubclassed(): void {
   assertEquals(callCount, 0);
 });
 
-test(function removingNullEventListenerShouldSucceed(): void {
+unitTest(function removingNullEventListenerShouldSucceed(): void {
   const document = new EventTarget();
   // @ts-ignore
   assertEquals(document.removeEventListener("x", null, false), undefined);
@@ -79,7 +79,7 @@ test(function removingNullEventListenerShouldSucceed(): void {
   assertEquals(document.removeEventListener("x", null), undefined);
 });
 
-test(function constructedEventTargetUseObjectPrototype(): void {
+unitTest(function constructedEventTargetUseObjectPrototype(): void {
   const target = new EventTarget();
   const event = new Event("toString", { bubbles: true, cancelable: false });
   let callCount = 0;
@@ -102,12 +102,12 @@ test(function constructedEventTargetUseObjectPrototype(): void {
   assertEquals(callCount, 2);
 });
 
-test(function toStringShouldBeWebCompatible(): void {
+unitTest(function toStringShouldBeWebCompatible(): void {
   const target = new EventTarget();
   assertEquals(target.toString(), "[object EventTarget]");
 });
 
-test(function dispatchEventShouldNotThrowError(): void {
+unitTest(function dispatchEventShouldNotThrowError(): void {
   let hasThrown = false;
 
   try {
@@ -126,7 +126,7 @@ test(function dispatchEventShouldNotThrowError(): void {
   assertEquals(hasThrown, false);
 });
 
-test(function eventTargetThisShouldDefaultToWindow(): void {
+unitTest(function eventTargetThisShouldDefaultToWindow(): void {
   const {
     addEventListener,
     dispatchEvent,
