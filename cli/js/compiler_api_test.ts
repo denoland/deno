@@ -109,14 +109,14 @@ test(async function bundleApiSources() {
     "/bar.ts": `export const bar = "bar";\n`
   });
   assert(diagnostics == null);
-  assert(actual.includes(`__inst_s("foo")`));
+  assert(actual.includes(`__instantiate("foo")`));
   assert(actual.includes(`__exp["bar"]`));
 });
 
 test(async function bundleApiNoSources() {
   const [diagnostics, actual] = await bundle("./cli/tests/subdir/mod1.ts");
   assert(diagnostics == null);
-  assert(actual.includes(`__inst_s("mod1")`));
+  assert(actual.includes(`__instantiate("mod1")`));
   assert(actual.includes(`__exp["printHello3"]`));
 });
 
