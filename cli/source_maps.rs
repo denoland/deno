@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-//! This mod provides functions to remap a deno_core::V8Exception based on a source map
-use deno_core::StackFrame;
-use deno_core::V8Exception;
+//! This mod provides functions to remap a deno_core::deno_core::JSError based on a source map
+use deno_core;
+use deno_core::JSStackFrame;
 use serde_json;
 use source_map_mappings::parse_mappings;
 use source_map_mappings::Bias;
@@ -12,7 +12,11 @@ use std::str;
 pub trait SourceMapGetter {
   /// Returns the raw source map file.
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>>;
-  fn get_source_line(&self, script_name: &str, line: usize) -> Option<String>;
+  fn get_source_line(
+    &self,
+    script_name: &str,
+    line_number: usize,
+  ) -> Option<String>;
 }
 
 /// Cached filename lookups. The key can be None if a previous lookup failed to
@@ -82,36 +86,36 @@ fn builtin_source_map(script_name: &str) -> Option<Vec<u8>> {
   }
 }
 
-/// Apply a source map to a V8Exception, returning a V8Exception where the filenames,
-/// the lines and the columns point to their original source location, not their
-/// transpiled location if applicable.
+/// Apply a source map to a deno_core::JSError, returning a JSError where file
+/// names and line/column numbers point to the location in the original source,
+/// rather than the transpiled source code.
 pub fn apply_source_map<G: SourceMapGetter>(
-  v8_exception: &V8Exception,
+  js_error: &deno_core::JSError,
   getter: &G,
-) -> V8Exception {
+) -> deno_core::JSError {
   let mut mappings_map: CachedMaps = HashMap::new();
 
-  let mut frames = Vec::<StackFrame>::new();
-  for frame in &v8_exception.frames {
+  let mut frames = Vec::<JSStackFrame>::new();
+  for frame in &js_error.frames {
     let f = frame_apply_source_map(&frame, &mut mappings_map, getter);
     frames.push(f);
   }
 
   let (script_resource_name, line_number, start_column) =
     get_maybe_orig_position(
-      v8_exception.script_resource_name.clone(),
-      v8_exception.line_number,
-      v8_exception.start_column,
+      js_error.script_resource_name.clone(),
+      js_error.line_number,
+      js_error.start_column,
       &mut mappings_map,
       getter,
     );
   // It is better to just move end_column to be the same distance away from
   // start column because sometimes the code point is not available in the
   // source file map.
-  let end_column = match v8_exception.end_column {
+  let end_column = match js_error.end_column {
     Some(ec) => {
       if let Some(sc) = start_column {
-        Some(ec - (v8_exception.start_column.unwrap() - sc))
+        Some(ec - (js_error.start_column.unwrap() - sc))
       } else {
         None
       }
@@ -122,74 +126,67 @@ pub fn apply_source_map<G: SourceMapGetter>(
   // will go fetch it from the getter
   let source_line = match line_number {
     Some(ln)
-      if v8_exception.source_line.is_some()
-        && script_resource_name.is_some() =>
+      if js_error.source_line.is_some() && script_resource_name.is_some() =>
     {
       getter.get_source_line(
-        &v8_exception.script_resource_name.clone().unwrap(),
+        &js_error.script_resource_name.clone().unwrap(),
         ln as usize,
       )
     }
-    _ => v8_exception.source_line.clone(),
+    _ => js_error.source_line.clone(),
   };
 
-  V8Exception {
-    message: v8_exception.message.clone(),
-    frames,
-    error_level: v8_exception.error_level,
+  deno_core::JSError {
+    message: js_error.message.clone(),
     source_line,
     script_resource_name,
     line_number,
     start_column,
     end_column,
-    // These are difficult to map to their original position and they are not
-    // currently used in any output, so we don't remap them.
-    start_position: v8_exception.start_position,
-    end_position: v8_exception.end_position,
+    frames,
   }
 }
 
 fn frame_apply_source_map<G: SourceMapGetter>(
-  frame: &StackFrame,
+  frame: &JSStackFrame,
   mappings_map: &mut CachedMaps,
   getter: &G,
-) -> StackFrame {
-  let (script_name, line, column) = get_orig_position(
+) -> JSStackFrame {
+  let (script_name, line_number, column) = get_orig_position(
     frame.script_name.to_string(),
-    frame.line,
+    frame.line_number,
     frame.column,
     mappings_map,
     getter,
   );
 
-  StackFrame {
+  JSStackFrame {
     script_name,
     function_name: frame.function_name.clone(),
-    line,
+    line_number,
     column,
     is_eval: frame.is_eval,
     is_constructor: frame.is_constructor,
-    is_wasm: frame.is_wasm,
   }
 }
 
 fn get_maybe_orig_position<G: SourceMapGetter>(
   script_name: Option<String>,
-  line: Option<i64>,
+  line_number: Option<i64>,
   column: Option<i64>,
   mappings_map: &mut CachedMaps,
   getter: &G,
 ) -> (Option<String>, Option<i64>, Option<i64>) {
-  match (script_name, line, column) {
+  match (script_name, line_number, column) {
     (Some(script_name_v), Some(line_v), Some(column_v)) => {
-      let (script_name, line, column) = get_orig_position(
+      let (script_name, line_number, column) = get_orig_position(
         script_name_v,
         line_v - 1,
         column_v,
         mappings_map,
         getter,
       );
-      (Some(script_name), Some(line), Some(column))
+      (Some(script_name), Some(line_number), Some(column))
     }
     _ => (None, None, None),
   }
@@ -197,18 +194,18 @@ fn get_maybe_orig_position<G: SourceMapGetter>(
 
 pub fn get_orig_position<G: SourceMapGetter>(
   script_name: String,
-  line: i64,
+  line_number: i64,
   column: i64,
   mappings_map: &mut CachedMaps,
   getter: &G,
 ) -> (String, i64, i64) {
   let maybe_sm = get_mappings(&script_name, mappings_map, getter);
-  let default_pos = (script_name, line, column);
+  let default_pos = (script_name, line_number, column);
 
   match maybe_sm {
     None => default_pos,
     Some(sm) => match sm.mappings.original_location_for(
-      line as u32,
+      line_number as u32,
       column as u32,
       Bias::default(),
     ) {
@@ -274,7 +271,7 @@ mod tests {
     fn get_source_line(
       &self,
       script_name: &str,
-      line: usize,
+      line_number: usize,
     ) -> Option<String> {
       let s = match script_name {
         "foo_bar.ts" => vec![
@@ -286,99 +283,83 @@ mod tests {
         ],
         _ => return None,
       };
-      if s.len() > line {
-        Some(s[line].to_string())
+      if s.len() > line_number {
+        Some(s[line_number].to_string())
       } else {
         None
       }
     }
   }
 
-  fn error1() -> V8Exception {
-    V8Exception {
+  #[test]
+  fn apply_source_map_1() {
+    let core_js_error = deno_core::JSError {
       message: "Error: foo bar".to_string(),
       source_line: None,
       script_resource_name: None,
       line_number: None,
-      start_position: None,
-      end_position: None,
-      error_level: None,
       start_column: None,
       end_column: None,
       frames: vec![
-        StackFrame {
-          line: 4,
+        JSStackFrame {
+          line_number: 4,
           column: 16,
           script_name: "foo_bar.ts".to_string(),
           function_name: "foo".to_string(),
           is_eval: false,
           is_constructor: false,
-          is_wasm: false,
         },
-        StackFrame {
-          line: 5,
+        JSStackFrame {
+          line_number: 5,
           column: 20,
           script_name: "bar_baz.ts".to_string(),
           function_name: "qat".to_string(),
           is_eval: false,
           is_constructor: false,
-          is_wasm: false,
         },
-        StackFrame {
-          line: 1,
+        JSStackFrame {
+          line_number: 1,
           column: 1,
           script_name: "deno_main.js".to_string(),
           function_name: "".to_string(),
           is_eval: false,
           is_constructor: false,
-          is_wasm: false,
         },
       ],
-    }
-  }
-
-  #[test]
-  fn v8_exception_apply_source_map_1() {
-    let e = error1();
+    };
     let getter = MockSourceMapGetter {};
-    let actual = apply_source_map(&e, &getter);
-    let expected = V8Exception {
+    let actual = apply_source_map(&core_js_error, &getter);
+    let expected = deno_core::JSError {
       message: "Error: foo bar".to_string(),
       source_line: None,
       script_resource_name: None,
       line_number: None,
-      start_position: None,
-      end_position: None,
-      error_level: None,
       start_column: None,
       end_column: None,
       frames: vec![
-        StackFrame {
-          line: 5,
+        JSStackFrame {
+          line_number: 5,
           column: 12,
           script_name: "foo_bar.ts".to_string(),
           function_name: "foo".to_string(),
           is_eval: false,
           is_constructor: false,
-          is_wasm: false,
         },
-        StackFrame {
-          line: 4,
+        JSStackFrame {
+          line_number: 4,
           column: 14,
           script_name: "bar_baz.ts".to_string(),
           function_name: "qat".to_string(),
           is_eval: false,
           is_constructor: false,
-          is_wasm: false,
         },
-        StackFrame {
-          line: 1,
+        JSStackFrame {
+          line_number: 1,
           column: 1,
           script_name: "deno_main.js".to_string(),
           function_name: "".to_string(),
           is_eval: false,
           is_constructor: false,
-          is_wasm: false,
         },
       ],
     };
@@ -386,25 +367,21 @@ mod tests {
   }
 
   #[test]
-  fn v8_exception_apply_source_map_2() {
-    let e = V8Exception {
+  fn apply_source_map_2() {
+    let e = deno_core::JSError {
       message: "TypeError: baz".to_string(),
       source_line: None,
       script_resource_name: None,
       line_number: None,
-      start_position: None,
-      end_position: None,
-      error_level: None,
       start_column: None,
       end_column: None,
-      frames: vec![StackFrame {
-        line: 11,
+      frames: vec![JSStackFrame {
+        line_number: 11,
         column: 12,
         script_name: "CLI_SNAPSHOT.js".to_string(),
         function_name: "setLogDebug".to_string(),
         is_eval: false,
         is_constructor: false,
-        is_wasm: false,
       }],
     };
     let getter = MockSourceMapGetter {};
@@ -416,15 +393,12 @@ mod tests {
   }
 
   #[test]
-  fn v8_exception_apply_source_map_line() {
-    let e = V8Exception {
+  fn apply_source_map_line() {
+    let e = deno_core::JSError {
       message: "TypeError: baz".to_string(),
       source_line: Some("foo".to_string()),
       script_resource_name: Some("foo_bar.ts".to_string()),
       line_number: Some(4),
-      start_position: None,
-      end_position: None,
-      error_level: None,
       start_column: Some(16),
       end_column: None,
       frames: vec![],

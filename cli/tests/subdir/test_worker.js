@@ -5,8 +5,6 @@ if (self.name !== "jsWorker") {
 }
 
 onmessage = function(e) {
-  console.log(e.data);
-
   if (thrown === false) {
     thrown = true;
     throw new SyntaxError("[test error]");
@@ -17,6 +15,5 @@ onmessage = function(e) {
 };
 
 onerror = function() {
-  console.log("called onerror in worker");
   return false;
 };
