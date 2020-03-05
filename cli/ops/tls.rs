@@ -309,7 +309,7 @@ fn op_accept_tls(
       let resource = state
         .resource_table
         .get::<TlsListenerResource>(rid)
-        .ok_or_else(OpError::bad_resource)
+        .ok_or_else(OpError::bad_resource_id)
         .expect("Can't find tls listener");
       resource.tls_acceptor.clone()
     };
