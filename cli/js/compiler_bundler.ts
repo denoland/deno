@@ -2,11 +2,11 @@
 
 import { SYSTEM_LOADER } from "./compiler_bootstrap.ts";
 import {
-  assert,
   commonPath,
   normalizeString,
   CHAR_FORWARD_SLASH
-} from "./util.ts";
+} from "./compiler_util.ts";
+import { assert } from "./util.ts";
 
 /** Local state of what the root exports are of a root module. */
 let rootExports: string[] | undefined;

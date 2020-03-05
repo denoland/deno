@@ -34,7 +34,8 @@ import {
   convertCompilerOptions,
   ignoredDiagnostics,
   WriteFileState,
-  processConfigureResponse
+  processConfigureResponse,
+  base64ToUint8Array
 } from "./compiler_util.ts";
 import { Diagnostic, DiagnosticItem } from "./diagnostics.ts";
 import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
@@ -379,7 +380,7 @@ async function wasmCompilerOnMessage({
 }: {
   data: string;
 }): Promise<void> {
-  const buffer = util.base64ToUint8Array(binary);
+  const buffer = base64ToUint8Array(binary);
   // @ts-ignore
   const compiled = await WebAssembly.compile(buffer);
 
