@@ -193,7 +193,6 @@ async function compile(
  * additional file mappings which can be used instead of relying
  * on Deno defaults.
  */
-
 async function runtimeCompile(
   request: CompilerRequestRuntimeCompile
 ): Promise<RuntimeCompileResult | RuntimeBundleResult> {
