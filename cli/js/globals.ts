@@ -104,7 +104,7 @@ declare global {
   /* eslint-disable no-var */
   var addEventListener: (
     type: string,
-    callback: (event: domTypes.Event) => void | null,
+    callback: domTypes.EventListenerOrEventListenerObject | null,
     options?: boolean | domTypes.AddEventListenerOptions | undefined
   ) => void;
   var queueMicrotask: (callback: () => void) => void;

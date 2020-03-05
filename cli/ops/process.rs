@@ -27,10 +27,10 @@ fn clone_file(rid: u32, state: &State) -> Result<std::fs::File, OpError> {
   let repr = state
     .resource_table
     .get_mut::<StreamResource>(rid)
-    .ok_or_else(OpError::bad_resource)?;
+    .ok_or_else(OpError::bad_resource_id)?;
   let file = match repr {
     StreamResource::FsFile(ref mut file, _) => file,
-    _ => return Err(OpError::bad_resource()),
+    _ => return Err(OpError::bad_resource_id()),
   };
   let tokio_file = futures::executor::block_on(file.try_clone())?;
   let std_file = futures::executor::block_on(tokio_file.into_std());
@@ -190,7 +190,7 @@ fn op_run_status(
       let resource_table = &mut state.borrow_mut().resource_table;
       let child_resource = resource_table
         .get_mut::<ChildResource>(rid)
-        .ok_or_else(OpError::bad_resource)?;
+        .ok_or_else(OpError::bad_resource_id)?;
       let child = &mut child_resource.child;
       child.map_err(OpError::from).poll_unpin(cx)
     })

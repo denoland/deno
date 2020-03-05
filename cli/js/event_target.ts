@@ -25,7 +25,7 @@ export const eventTargetHasActivationBehavior: unique symbol = Symbol();
 export class EventTarget implements domTypes.EventTarget {
   public [domTypes.eventTargetHost]: domTypes.EventTarget | null = null;
   public [domTypes.eventTargetListeners]: {
-    [type in string]: domTypes.EventListener[];
+    [type in string]: domTypes.EventTargetListener[];
   } = {};
   public [domTypes.eventTargetMode] = "";
   public [domTypes.eventTargetNodeType]: domTypes.NodeType =
@@ -35,7 +35,7 @@ export class EventTarget implements domTypes.EventTarget {
 
   public addEventListener(
     type: string,
-    callback: (event: domTypes.Event) => void | null,
+    callback: domTypes.EventListenerOrEventListenerObject | null,
     options?: domTypes.AddEventListenerOptions | boolean
   ): void {
     const this_ = this || globalThis;
@@ -68,20 +68,15 @@ export class EventTarget implements domTypes.EventTarget {
       }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const eventTarget = this;
     listeners[type].push({
       callback,
-      options: normalizedOptions,
-      handleEvent(event: domTypes.Event): void {
-        this.callback.call(eventTarget, event);
-      }
-    } as domTypes.EventListener);
+      options: normalizedOptions
+    });
   }
 
   public removeEventListener(
     type: string,
-    callback: (event: domTypes.Event) => void | null,
+    callback: domTypes.EventListenerOrEventListenerObject | null,
     options?: domTypes.EventListenerOptions | boolean
   ): void {
     const this_ = this || globalThis;
@@ -359,7 +354,7 @@ const eventTargetHelpers = {
   innerInvokeEventListeners(
     targetImpl: EventTarget,
     eventImpl: domTypes.Event,
-    targetListeners: { [type in string]: domTypes.EventListener[] }
+    targetListeners: { [type in string]: domTypes.EventTargetListener[] }
   ): boolean {
     let found = false;
 
@@ -413,7 +408,13 @@ const eventTargetHelpers = {
       }
 
       try {
-        listener.handleEvent(eventImpl);
+        if (typeof listener.callback === "object") {
+          if (typeof listener.callback.handleEvent === "function") {
+            listener.callback.handleEvent(eventImpl);
+          }
+        } else {
+          listener.callback.call(eventImpl.currentTarget, eventImpl);
+        }
       } catch (error) {
         // TODO(bartlomieju): very likely that different error
         // should be thrown here (DOMException?)
