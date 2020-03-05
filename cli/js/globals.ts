@@ -1,22 +1,22 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import * as blob from "./blob.ts";
+import * as blob from "./web/blob.ts";
 import * as consoleTypes from "./console.ts";
-import * as customEvent from "./custom_event.ts";
-import * as domTypes from "./dom_types.ts";
-import * as domFile from "./dom_file.ts";
-import * as event from "./event.ts";
-import * as eventTarget from "./event_target.ts";
-import * as formData from "./form_data.ts";
-import * as fetchTypes from "./fetch.ts";
-import * as headers from "./headers.ts";
-import * as textEncoding from "./text_encoding.ts";
+import * as customEvent from "./web/custom_event.ts";
+import * as domTypes from "./web/dom_types.ts";
+import * as domFile from "./web/dom_file.ts";
+import * as event from "./web/event.ts";
+import * as eventTarget from "./web/event_target.ts";
+import * as formData from "./web/form_data.ts";
+import * as fetchTypes from "./web/fetch.ts";
+import * as headers from "./web/headers.ts";
+import * as textEncoding from "./web/text_encoding.ts";
 import * as timers from "./timers.ts";
-import * as url from "./url.ts";
-import * as urlSearchParams from "./url_search_params.ts";
+import * as url from "./web/url.ts";
+import * as urlSearchParams from "./web/url_search_params.ts";
 import * as workers from "./workers.ts";
 import * as performanceUtil from "./performance.ts";
-import * as request from "./request.ts";
+import * as request from "./web/request.ts";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.

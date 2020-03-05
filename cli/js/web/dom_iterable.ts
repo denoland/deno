@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { DomIterable } from "../dom_types.ts";
+import { DomIterable } from "./dom_types.ts";
 import { requiredArguments } from "../util.ts";
 import { exposeForTest } from "../internals.ts";
 

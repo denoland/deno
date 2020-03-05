@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as util from "./util.ts";
 import { core } from "./core.ts";
-import { TextDecoder } from "./text_encoding.ts";
+import { TextDecoder } from "./web/text_encoding.ts";
 import { ErrorKind, errors, getErrorClass } from "./errors.ts";
 
 const promiseTableMin = new Map<number, util.Resolvable<RecordMinimal>>();
