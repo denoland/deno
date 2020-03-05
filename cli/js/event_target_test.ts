@@ -39,7 +39,7 @@ unitTest(function anEventTargetCanBeSubclassed(): void {
   class NicerEventTarget extends EventTarget {
     on(
       type: string,
-      callback: (e: Event) => void | null,
+      callback: ((e: Event) => void) | null,
       options?: __domTypes.AddEventListenerOptions
     ): void {
       this.addEventListener(type, callback, options);
@@ -47,7 +47,7 @@ unitTest(function anEventTargetCanBeSubclassed(): void {
 
     off(
       type: string,
-      callback: (e: Event) => void | null,
+      callback: ((e: Event) => void) | null,
       options?: __domTypes.EventListenerOptions
     ): void {
       this.removeEventListener(type, callback, options);
@@ -154,3 +154,78 @@ unitTest(function eventTargetThisShouldDefaultToWindow(): void {
   dispatchEvent(event);
   assertEquals(n, 1);
 });
+
+test(function eventTargetShouldAcceptEventListenerObject(): void {
+  const target = new EventTarget();
+  const event = new Event("foo", { bubbles: true, cancelable: false });
+  let callCount = 0;
+
+  const listener = {
+    handleEvent(e: Event): void {
+      assertEquals(e, event);
+      ++callCount;
+    }
+  };
+
+  target.addEventListener("foo", listener);
+
+  target.dispatchEvent(event);
+  assertEquals(callCount, 1);
+
+  target.dispatchEvent(event);
+  assertEquals(callCount, 2);
+
+  target.removeEventListener("foo", listener);
+  target.dispatchEvent(event);
+  assertEquals(callCount, 2);
+});
+
+test(function eventTargetShouldAcceptAsyncFunction(): void {
+  const target = new EventTarget();
+  const event = new Event("foo", { bubbles: true, cancelable: false });
+  let callCount = 0;
+
+  const listener = async (e: Event): Promise<void> => {
+    assertEquals(e, event);
+    ++callCount;
+  };
+
+  target.addEventListener("foo", listener);
+
+  target.dispatchEvent(event);
+  assertEquals(callCount, 1);
+
+  target.dispatchEvent(event);
+  assertEquals(callCount, 2);
+
+  target.removeEventListener("foo", listener);
+  target.dispatchEvent(event);
+  assertEquals(callCount, 2);
+});
+
+test(
+  function eventTargetShouldAcceptAsyncFunctionForEventListenerObject(): void {
+    const target = new EventTarget();
+    const event = new Event("foo", { bubbles: true, cancelable: false });
+    let callCount = 0;
+
+    const listener = {
+      async handleEvent(e: Event): Promise<void> {
+        assertEquals(e, event);
+        ++callCount;
+      }
+    };
+
+    target.addEventListener("foo", listener);
+
+    target.dispatchEvent(event);
+    assertEquals(callCount, 1);
+
+    target.dispatchEvent(event);
+    assertEquals(callCount, 2);
+
+    target.removeEventListener("foo", listener);
+    target.dispatchEvent(event);
+    assertEquals(callCount, 2);
+  }
+);
