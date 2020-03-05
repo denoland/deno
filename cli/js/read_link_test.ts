@@ -1,21 +1,26 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals } from "./test_util.ts";
+import { unitTest, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ write: true, read: true }, function readlinkSyncSuccess(): void {
-  const testDir = Deno.makeTempDirSync();
-  const target = testDir + "/target";
-  const symlink = testDir + "/symln";
-  Deno.mkdirSync(target);
-  // TODO Add test for Windows once symlink is implemented for Windows.
-  // See https://github.com/denoland/deno/issues/815.
-  if (Deno.build.os !== "win") {
-    Deno.symlinkSync(target, symlink);
-    const targetPath = Deno.readlinkSync(symlink);
-    assertEquals(targetPath, target);
+unitTest(
+  { perms: { write: true, read: true } },
+  function readlinkSyncSuccess(): void {
+    const testDir = Deno.makeTempDirSync();
+    const target = testDir + "/target";
+    const symlink = testDir + "/symln";
+    Deno.mkdirSync(target);
+    // TODO Add test for Windows once symlink is implemented for Windows.
+    // See https://github.com/denoland/deno/issues/815.
+    if (Deno.build.os !== "win") {
+      Deno.symlinkSync(target, symlink);
+      const targetPath = Deno.readlinkSync(symlink);
+      assertEquals(targetPath, target);
+    }
   }
-});
+);
 
-testPerm({ read: false }, async function readlinkSyncPerm(): Promise<void> {
+unitTest({ perms: { read: false } }, async function readlinkSyncPerm(): Promise<
+  void
+> {
   let caughtError = false;
   try {
     Deno.readlinkSync("/symlink");
@@ -26,7 +31,7 @@ testPerm({ read: false }, async function readlinkSyncPerm(): Promise<void> {
   assert(caughtError);
 });
 
-testPerm({ read: true }, function readlinkSyncNotFound(): void {
+unitTest({ perms: { read: true } }, function readlinkSyncNotFound(): void {
   let caughtError = false;
   let data;
   try {
@@ -39,23 +44,26 @@ testPerm({ read: true }, function readlinkSyncNotFound(): void {
   assertEquals(data, undefined);
 });
 
-testPerm({ write: true, read: true }, async function readlinkSuccess(): Promise<
+unitTest(
+  { perms: { write: true, read: true } },
+  async function readlinkSuccess(): Promise<void> {
+    const testDir = Deno.makeTempDirSync();
+    const target = testDir + "/target";
+    const symlink = testDir + "/symln";
+    Deno.mkdirSync(target);
+    // TODO Add test for Windows once symlink is implemented for Windows.
+    // See https://github.com/denoland/deno/issues/815.
+    if (Deno.build.os !== "win") {
+      Deno.symlinkSync(target, symlink);
+      const targetPath = await Deno.readlink(symlink);
+      assertEquals(targetPath, target);
+    }
+  }
+);
+
+unitTest({ perms: { read: false } }, async function readlinkPerm(): Promise<
   void
 > {
-  const testDir = Deno.makeTempDirSync();
-  const target = testDir + "/target";
-  const symlink = testDir + "/symln";
-  Deno.mkdirSync(target);
-  // TODO Add test for Windows once symlink is implemented for Windows.
-  // See https://github.com/denoland/deno/issues/815.
-  if (Deno.build.os !== "win") {
-    Deno.symlinkSync(target, symlink);
-    const targetPath = await Deno.readlink(symlink);
-    assertEquals(targetPath, target);
-  }
-});
-
-testPerm({ read: false }, async function readlinkPerm(): Promise<void> {
   let caughtError = false;
   try {
     await Deno.readlink("/symlink");

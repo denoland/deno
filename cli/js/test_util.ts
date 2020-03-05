@@ -137,42 +137,65 @@ function assertOps(fn: Deno.TestFunction): Deno.TestFunction {
 // the test has exactly the same contents as before the test.
 function assertResources(fn: Deno.TestFunction): Deno.TestFunction {
   return async function resourceSanitizer(): Promise<void> {
-    const preResources = Deno.resources();
+    const pre = Deno.resources();
     await fn();
-    const postResources = Deno.resources();
+    const post = Deno.resources();
     const msg = `Test case is leaking resources.
-Before: ${JSON.stringify(preResources, null, 2)}
-After: ${JSON.stringify(postResources, null, 2)}`;
-
-    assertEquals(preResources, postResources, msg);
+    Before: ${JSON.stringify(pre, null, 2)}
+    After: ${JSON.stringify(post, null, 2)}`;
+    assertEquals(pre, post, msg);
   };
 }
 
-export function testPerm(perms: TestPermissions, fn: Deno.TestFunction): void {
-  const normalizedPerms = normalizeTestPermissions(perms);
+interface UnitTestOptions {
+  skip?: boolean;
+  perms?: TestPermissions;
+}
 
+export function unitTest(fn: Deno.TestFunction): void;
+export function unitTest(options: UnitTestOptions, fn: Deno.TestFunction): void;
+export function unitTest(
+  optionsOrFn: UnitTestOptions | Deno.TestFunction,
+  maybeFn?: Deno.TestFunction
+): void {
+  assert(optionsOrFn, "At least one argument is required");
+
+  let options: UnitTestOptions;
+  let name: string;
+  let fn: Deno.TestFunction;
+
+  if (typeof optionsOrFn === "function") {
+    options = {};
+    fn = optionsOrFn;
+    name = fn.name;
+    assert(name, "Missing test function name");
+  } else {
+    options = optionsOrFn;
+    assert(maybeFn, "Missing test function definition");
+    assert(
+      typeof maybeFn === "function",
+      "Second argument should be test function definition"
+    );
+    fn = maybeFn;
+    name = fn.name;
+    assert(name, "Missing test function name");
+  }
+
+  if (options.skip) {
+    return;
+  }
+
+  const normalizedPerms = normalizeTestPermissions(options.perms || {});
   registerPermCombination(normalizedPerms);
-
   if (!permissionsMatch(processPerms, normalizedPerms)) {
     return;
   }
 
-  Deno.test(fn.name, assertResources(assertOps(fn)));
-}
-
-export function test(fn: Deno.TestFunction): void {
-  testPerm(
-    {
-      read: false,
-      write: false,
-      net: false,
-      env: false,
-      run: false,
-      plugin: false,
-      hrtime: false
-    },
-    fn
-  );
+  const testDefinition: Deno.TestDefinition = {
+    name,
+    fn: assertResources(assertOps(fn))
+  };
+  Deno.test(testDefinition);
 }
 
 function extractNumber(re: RegExp, str: string): number | undefined {
@@ -231,7 +254,7 @@ export function createResolvable<T>(): Resolvable<T> {
   return Object.assign(promise, methods!) as Resolvable<T>;
 }
 
-test(function permissionsMatches(): void {
+unitTest(function permissionsMatches(): void {
   assert(
     permissionsMatch(
       {
@@ -318,46 +341,49 @@ test(function permissionsMatches(): void {
   );
 });
 
-testPerm({ read: true }, async function parsingUnitTestOutput(): Promise<void> {
-  const cwd = Deno.cwd();
-  const testDataPath = `${cwd}/tools/testdata/`;
+unitTest(
+  { perms: { read: true } },
+  async function parsingUnitTestOutput(): Promise<void> {
+    const cwd = Deno.cwd();
+    const testDataPath = `${cwd}/tools/testdata/`;
 
-  let result;
+    let result;
 
-  // This is an example of a successful unit test output.
-  const f1 = await Deno.open(`${testDataPath}/unit_test_output1.txt`);
-  result = await parseUnitTestOutput(f1, false);
-  assertEquals(result.actual, 96);
-  assertEquals(result.expected, 96);
-  f1.close();
+    // This is an example of a successful unit test output.
+    const f1 = await Deno.open(`${testDataPath}/unit_test_output1.txt`);
+    result = await parseUnitTestOutput(f1, false);
+    assertEquals(result.actual, 96);
+    assertEquals(result.expected, 96);
+    f1.close();
 
-  // This is an example of a silently dying unit test.
-  const f2 = await Deno.open(`${testDataPath}/unit_test_output2.txt`);
-  result = await parseUnitTestOutput(f2, false);
-  assertEquals(result.actual, undefined);
-  assertEquals(result.expected, 96);
-  f2.close();
+    // This is an example of a silently dying unit test.
+    const f2 = await Deno.open(`${testDataPath}/unit_test_output2.txt`);
+    result = await parseUnitTestOutput(f2, false);
+    assertEquals(result.actual, undefined);
+    assertEquals(result.expected, 96);
+    f2.close();
 
-  // This is an example of compiling before successful unit tests.
-  const f3 = await Deno.open(`${testDataPath}/unit_test_output3.txt`);
-  result = await parseUnitTestOutput(f3, false);
-  assertEquals(result.actual, 96);
-  assertEquals(result.expected, 96);
-  f3.close();
+    // This is an example of compiling before successful unit tests.
+    const f3 = await Deno.open(`${testDataPath}/unit_test_output3.txt`);
+    result = await parseUnitTestOutput(f3, false);
+    assertEquals(result.actual, 96);
+    assertEquals(result.expected, 96);
+    f3.close();
 
-  // Check what happens on empty output.
-  const f = new Deno.Buffer(new TextEncoder().encode("\n\n\n"));
-  result = await parseUnitTestOutput(f, false);
-  assertEquals(result.actual, undefined);
-  assertEquals(result.expected, undefined);
-});
+    // Check what happens on empty output.
+    const f = new Deno.Buffer(new TextEncoder().encode("\n\n\n"));
+    result = await parseUnitTestOutput(f, false);
+    assertEquals(result.actual, undefined);
+    assertEquals(result.expected, undefined);
+  }
+);
 
 /*
  * Ensure all unit test files (e.g. xxx_test.ts) are present as imports in
  * cli/js/unit_tests.ts as it is easy to miss this out
  */
-testPerm(
-  { read: true },
+unitTest(
+  { perms: { read: true } },
   async function assertAllUnitTestFilesImported(): Promise<void> {
     const directoryTestFiles = Deno.readDirSync("./cli/js")
       .map(k => k.name)

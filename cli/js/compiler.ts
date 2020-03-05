@@ -36,7 +36,7 @@ import {
   WriteFileState,
   processConfigureResponse
 } from "./compiler_util.ts";
-import { Diagnostic } from "./diagnostics.ts";
+import { Diagnostic, DiagnosticItem } from "./diagnostics.ts";
 import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
@@ -81,259 +81,287 @@ interface CompileResult {
   diagnostics?: Diagnostic;
 }
 
-// TODO(bartlomieju): refactor this function into multiple functions
-// per CompilerRequestType
+type RuntimeCompileResult = [
+  undefined | DiagnosticItem[],
+  Record<string, string>
+];
+
+type RuntimeBundleResult = [undefined | DiagnosticItem[], string];
+
+/** `Compile` are requests from the internals of Deno; eg. used when
+ * the `run` or `bundle` subcommand is used. */
+async function compile(
+  request: CompilerRequestCompile
+): Promise<CompileResult> {
+  const { bundle, config, configPath, outFile, rootNames, target } = request;
+  util.log(">>> compile start", {
+    rootNames,
+    type: CompilerRequestType[request.type]
+  });
+
+  // When a programme is emitted, TypeScript will call `writeFile` with
+  // each file that needs to be emitted.  The Deno compiler host delegates
+  // this, to make it easier to perform the right actions, which vary
+  // based a lot on the request.  For a `Compile` request, we need to
+  // cache all the files in the privileged side if we aren't bundling,
+  // and if we are bundling we need to enrich the bundle and either write
+  // out the bundle or log it to the console.
+  const state: WriteFileState = {
+    type: request.type,
+    bundle,
+    host: undefined,
+    outFile,
+    rootNames
+  };
+  const writeFile = createWriteFile(state);
+
+  const host = (state.host = new Host({
+    bundle,
+    target,
+    writeFile
+  }));
+  let diagnostics: readonly ts.Diagnostic[] | undefined;
+
+  // if there is a configuration supplied, we need to parse that
+  if (config && config.length && configPath) {
+    const configResult = host.configure(configPath, config);
+    diagnostics = processConfigureResponse(configResult, configPath);
+  }
+
+  // This will recursively analyse all the code for other imports,
+  // requesting those from the privileged side, populating the in memory
+  // cache which will be used by the host, before resolving.
+  const resolvedRootModules = await processImports(
+    rootNames.map(rootName => [rootName, rootName]),
+    undefined,
+    bundle || host.getCompilationSettings().checkJs
+  );
+
+  let emitSkipped = true;
+  // if there was a configuration and no diagnostics with it, we will continue
+  // to generate the program and possibly emit it.
+  if (!diagnostics || (diagnostics && diagnostics.length === 0)) {
+    const options = host.getCompilationSettings();
+    const program = ts.createProgram({
+      rootNames,
+      options,
+      host,
+      oldProgram: TS_SNAPSHOT_PROGRAM
+    });
+
+    diagnostics = ts
+      .getPreEmitDiagnostics(program)
+      .filter(({ code }) => !ignoredDiagnostics.includes(code));
+
+    // We will only proceed with the emit if there are no diagnostics.
+    if (diagnostics && diagnostics.length === 0) {
+      if (bundle) {
+        // we only support a single root module when bundling
+        assert(resolvedRootModules.length === 1);
+        // warning so it goes to stderr instead of stdout
+        console.warn(`Bundling "${resolvedRootModules[0]}"`);
+        setRootExports(program, resolvedRootModules[0]);
+      }
+      const emitResult = program.emit();
+      emitSkipped = emitResult.emitSkipped;
+      // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
+      // without casting.
+      diagnostics = emitResult.diagnostics;
+    }
+  }
+
+  const result: CompileResult = {
+    emitSkipped,
+    diagnostics: diagnostics.length
+      ? fromTypeScriptDiagnostic(diagnostics)
+      : undefined
+  };
+
+  util.log("<<< compile end", {
+    rootNames,
+    type: CompilerRequestType[request.type]
+  });
+
+  return result;
+}
+
+/**`RuntimeCompile` are requests from a runtime user; it can be both
+ * "compile" and "bundle".
+ *
+ * The process is similar to a request from the privileged
+ * side, but unline `compile`, `runtimeCompile` allows to specify
+ * additional file mappings which can be used instead of relying
+ * on Deno defaults.
+ */
+async function runtimeCompile(
+  request: CompilerRequestRuntimeCompile
+): Promise<RuntimeCompileResult | RuntimeBundleResult> {
+  const { rootName, sources, options, bundle, target } = request;
+
+  util.log(">>> runtime compile start", {
+    rootName,
+    bundle,
+    sources: sources ? Object.keys(sources) : undefined
+  });
+
+  // resolve the root name, if there are sources, the root name does not
+  // get resolved
+  const resolvedRootName = sources ? rootName : resolveModules([rootName])[0];
+
+  // if there are options, convert them into TypeScript compiler options,
+  // and resolve any external file references
+  let convertedOptions: ts.CompilerOptions | undefined;
+  let additionalFiles: string[] | undefined;
+  if (options) {
+    const result = convertCompilerOptions(options);
+    convertedOptions = result.options;
+    additionalFiles = result.files;
+  }
+
+  const checkJsImports =
+    bundle || (convertedOptions && convertedOptions.checkJs);
+
+  // recursively process imports, loading each file into memory.  If there
+  // are sources, these files are pulled out of the there, otherwise the
+  // files are retrieved from the privileged side
+  const rootNames = sources
+    ? processLocalImports(
+        sources,
+        [[resolvedRootName, resolvedRootName]],
+        undefined,
+        checkJsImports
+      )
+    : await processImports(
+        [[resolvedRootName, resolvedRootName]],
+        undefined,
+        checkJsImports
+      );
+
+  if (additionalFiles) {
+    // any files supplied in the configuration are resolved externally,
+    // even if sources are provided
+    const resolvedNames = resolveModules(additionalFiles);
+    rootNames.push(
+      ...(await processImports(
+        resolvedNames.map(rn => [rn, rn]),
+        undefined,
+        checkJsImports
+      ))
+    );
+  }
+
+  const state: WriteFileState = {
+    type: request.type,
+    bundle,
+    host: undefined,
+    rootNames,
+    sources,
+    emitMap: {},
+    emitBundle: undefined
+  };
+  const writeFile = createWriteFile(state);
+
+  const host = (state.host = new Host({
+    bundle,
+    target,
+    writeFile
+  }));
+  const compilerOptions = [defaultRuntimeCompileOptions];
+  if (convertedOptions) {
+    compilerOptions.push(convertedOptions);
+  }
+  if (bundle) {
+    compilerOptions.push(defaultBundlerOptions);
+  }
+  host.mergeOptions(...compilerOptions);
+
+  const program = ts.createProgram({
+    rootNames,
+    options: host.getCompilationSettings(),
+    host,
+    oldProgram: TS_SNAPSHOT_PROGRAM
+  });
+
+  if (bundle) {
+    setRootExports(program, rootNames[0]);
+  }
+
+  const diagnostics = ts
+    .getPreEmitDiagnostics(program)
+    .filter(({ code }) => !ignoredDiagnostics.includes(code));
+
+  const emitResult = program.emit();
+
+  assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
+
+  assert(state.emitMap);
+  util.log("<<< runtime compile finish", {
+    rootName,
+    sources: sources ? Object.keys(sources) : undefined,
+    bundle,
+    emitMap: Object.keys(state.emitMap)
+  });
+
+  const maybeDiagnostics = diagnostics.length
+    ? fromTypeScriptDiagnostic(diagnostics).items
+    : undefined;
+
+  if (bundle) {
+    return [maybeDiagnostics, state.emitBundle] as RuntimeBundleResult;
+  } else {
+    return [maybeDiagnostics, state.emitMap] as RuntimeCompileResult;
+  }
+}
+
+async function runtimeTranspile(
+  request: CompilerRequestRuntimeTranspile
+): Promise<Record<string, TranspileOnlyResult>> {
+  const result: Record<string, TranspileOnlyResult> = {};
+  const { sources, options } = request;
+  const compilerOptions = options
+    ? Object.assign(
+        {},
+        defaultTranspileOptions,
+        convertCompilerOptions(options).options
+      )
+    : defaultTranspileOptions;
+
+  for (const [fileName, inputText] of Object.entries(sources)) {
+    const { outputText: source, sourceMapText: map } = ts.transpileModule(
+      inputText,
+      {
+        fileName,
+        compilerOptions
+      }
+    );
+    result[fileName] = { source, map };
+  }
+  return result;
+}
+
 async function tsCompilerOnMessage({
   data: request
 }: {
   data: CompilerRequest;
 }): Promise<void> {
   switch (request.type) {
-    // `Compile` are requests from the internals to Deno, generated by both
-    // the `run` and `bundle` sub command.
     case CompilerRequestType.Compile: {
-      const {
-        bundle,
-        config,
-        configPath,
-        outFile,
-        rootNames,
-        target
-      } = request;
-      util.log(">>> compile start", {
-        rootNames,
-        type: CompilerRequestType[request.type]
-      });
-
-      // When a programme is emitted, TypeScript will call `writeFile` with
-      // each file that needs to be emitted.  The Deno compiler host delegates
-      // this, to make it easier to perform the right actions, which vary
-      // based a lot on the request.  For a `Compile` request, we need to
-      // cache all the files in the privileged side if we aren't bundling,
-      // and if we are bundling we need to enrich the bundle and either write
-      // out the bundle or log it to the console.
-      const state: WriteFileState = {
-        type: request.type,
-        bundle,
-        host: undefined,
-        outFile,
-        rootNames
-      };
-      const writeFile = createWriteFile(state);
-
-      const host = (state.host = new Host({
-        bundle,
-        target,
-        writeFile
-      }));
-      let diagnostics: readonly ts.Diagnostic[] | undefined;
-
-      // if there is a configuration supplied, we need to parse that
-      if (config && config.length && configPath) {
-        const configResult = host.configure(configPath, config);
-        diagnostics = processConfigureResponse(configResult, configPath);
-      }
-
-      // This will recursively analyse all the code for other imports,
-      // requesting those from the privileged side, populating the in memory
-      // cache which will be used by the host, before resolving.
-      const resolvedRootModules = await processImports(
-        rootNames.map(rootName => [rootName, rootName]),
-        undefined,
-        bundle || host.getCompilationSettings().checkJs
-      );
-
-      let emitSkipped = true;
-      // if there was a configuration and no diagnostics with it, we will continue
-      // to generate the program and possibly emit it.
-      if (!diagnostics || (diagnostics && diagnostics.length === 0)) {
-        const options = host.getCompilationSettings();
-        const program = ts.createProgram({
-          rootNames,
-          options,
-          host,
-          oldProgram: TS_SNAPSHOT_PROGRAM
-        });
-
-        diagnostics = ts
-          .getPreEmitDiagnostics(program)
-          .filter(({ code }) => !ignoredDiagnostics.includes(code));
-
-        // We will only proceed with the emit if there are no diagnostics.
-        if (diagnostics && diagnostics.length === 0) {
-          if (bundle) {
-            // we only support a single root module when bundling
-            assert(resolvedRootModules.length === 1);
-            // warning so it goes to stderr instead of stdout
-            console.warn(`Bundling "${resolvedRootModules[0]}"`);
-            setRootExports(program, resolvedRootModules[0]);
-          }
-          const emitResult = program.emit();
-          emitSkipped = emitResult.emitSkipped;
-          // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
-          // without casting.
-          diagnostics = emitResult.diagnostics;
-        }
-      }
-
-      const result: CompileResult = {
-        emitSkipped,
-        diagnostics: diagnostics.length
-          ? fromTypeScriptDiagnostic(diagnostics)
-          : undefined
-      };
+      const result = await compile(request as CompilerRequestCompile);
       globalThis.postMessage(result);
-
-      util.log("<<< compile end", {
-        rootNames,
-        type: CompilerRequestType[request.type]
-      });
       break;
     }
     case CompilerRequestType.RuntimeCompile: {
-      // `RuntimeCompile` are requests from a runtime user, both compiles and
-      // bundles.  The process is similar to a request from the privileged
-      // side, but also returns the output to the on message.
-      const { rootName, sources, options, bundle, target } = request;
-
-      util.log(">>> runtime compile start", {
-        rootName,
-        bundle,
-        sources: sources ? Object.keys(sources) : undefined
-      });
-
-      // resolve the root name, if there are sources, the root name does not
-      // get resolved
-      const resolvedRootName = sources
-        ? rootName
-        : resolveModules([rootName])[0];
-
-      // if there are options, convert them into TypeScript compiler options,
-      // and resolve any external file references
-      let convertedOptions: ts.CompilerOptions | undefined;
-      let additionalFiles: string[] | undefined;
-      if (options) {
-        const result = convertCompilerOptions(options);
-        convertedOptions = result.options;
-        additionalFiles = result.files;
-      }
-
-      const checkJsImports =
-        bundle || (convertedOptions && convertedOptions.checkJs);
-
-      // recursively process imports, loading each file into memory.  If there
-      // are sources, these files are pulled out of the there, otherwise the
-      // files are retrieved from the privileged side
-      const rootNames = sources
-        ? processLocalImports(
-            sources,
-            [[resolvedRootName, resolvedRootName]],
-            undefined,
-            checkJsImports
-          )
-        : await processImports(
-            [[resolvedRootName, resolvedRootName]],
-            undefined,
-            checkJsImports
-          );
-
-      if (additionalFiles) {
-        // any files supplied in the configuration are resolved externally,
-        // even if sources are provided
-        const resolvedNames = resolveModules(additionalFiles);
-        rootNames.push(
-          ...(await processImports(
-            resolvedNames.map(rn => [rn, rn]),
-            undefined,
-            checkJsImports
-          ))
-        );
-      }
-
-      const state: WriteFileState = {
-        type: request.type,
-        bundle,
-        host: undefined,
-        rootNames,
-        sources,
-        emitMap: {},
-        emitBundle: undefined
-      };
-      const writeFile = createWriteFile(state);
-
-      const host = (state.host = new Host({
-        bundle,
-        target,
-        writeFile
-      }));
-      const compilerOptions = [defaultRuntimeCompileOptions];
-      if (convertedOptions) {
-        compilerOptions.push(convertedOptions);
-      }
-      if (bundle) {
-        compilerOptions.push(defaultBundlerOptions);
-      }
-      host.mergeOptions(...compilerOptions);
-
-      const program = ts.createProgram({
-        rootNames,
-        options: host.getCompilationSettings(),
-        host,
-        oldProgram: TS_SNAPSHOT_PROGRAM
-      });
-
-      if (bundle) {
-        setRootExports(program, rootNames[0]);
-      }
-
-      const diagnostics = ts
-        .getPreEmitDiagnostics(program)
-        .filter(({ code }) => !ignoredDiagnostics.includes(code));
-
-      const emitResult = program.emit();
-
-      assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
-      const result = [
-        diagnostics.length
-          ? fromTypeScriptDiagnostic(diagnostics).items
-          : undefined,
-        bundle ? state.emitBundle : state.emitMap
-      ];
+      const result = await runtimeCompile(
+        request as CompilerRequestRuntimeCompile
+      );
       globalThis.postMessage(result);
-
-      assert(state.emitMap);
-      util.log("<<< runtime compile finish", {
-        rootName,
-        sources: sources ? Object.keys(sources) : undefined,
-        bundle,
-        emitMap: Object.keys(state.emitMap)
-      });
-
       break;
     }
     case CompilerRequestType.RuntimeTranspile: {
-      const result: Record<string, TranspileOnlyResult> = {};
-      const { sources, options } = request;
-      const compilerOptions = options
-        ? Object.assign(
-            {},
-            defaultTranspileOptions,
-            convertCompilerOptions(options).options
-          )
-        : defaultTranspileOptions;
-
-      for (const [fileName, inputText] of Object.entries(sources)) {
-        const { outputText: source, sourceMapText: map } = ts.transpileModule(
-          inputText,
-          {
-            fileName,
-            compilerOptions
-          }
-        );
-        result[fileName] = { source, map };
-      }
+      const result = await runtimeTranspile(
+        request as CompilerRequestRuntimeTranspile
+      );
       globalThis.postMessage(result);
-
       break;
     }
     default:
@@ -343,9 +371,7 @@ async function tsCompilerOnMessage({
         } (${CompilerRequestType[(request as CompilerRequest).type]})`
       );
   }
-
-  // The compiler isolate exits after a single message.
-  globalThis.close();
+  // Currently Rust shuts down worker after single request
 }
 
 async function wasmCompilerOnMessage({
@@ -372,8 +398,7 @@ async function wasmCompilerOnMessage({
 
   util.log("<<< WASM compile end");
 
-  // The compiler isolate exits after a single message.
-  globalThis.close();
+  // Currently Rust shuts down worker after single request
 }
 
 function bootstrapTsCompilerRuntime(): void {
