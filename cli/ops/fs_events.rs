@@ -22,17 +22,9 @@ pub fn init(i: &mut Isolate, s: &State) {
 }
 
 struct FsEventsResource {
-  paths: Vec<String>,
+  #[allow(unused)]
   watcher: RecommendedWatcher,
   receiver: mpsc::Receiver<Result<FsEvent, ErrBox>>,
-}
-
-impl Drop for FsEventsResource {
-  fn drop(&mut self) {
-    for path in &self.paths {
-      let _ = self.watcher.unwatch(path);
-    }
-  }
 }
 
 /// Represents a file system event.
@@ -98,11 +90,7 @@ pub fn op_fs_events_open(
     state.check_read(&PathBuf::from(path))?;
     watcher.watch(path, recursive_mode).map_err(ErrBox::from)?;
   }
-  let resource = FsEventsResource {
-    paths: args.paths,
-    watcher,
-    receiver,
-  };
+  let resource = FsEventsResource { watcher, receiver };
   let table = &mut state.borrow_mut().resource_table;
   let rid = table.add("fsEvents", Box::new(resource));
   Ok(JsonOp::Sync(json!(rid)))
