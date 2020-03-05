@@ -4,30 +4,29 @@
 
 // @ts-nocheck
 /* eslint-disable */
-
-let System, __inst, __inst_s;
+let System, __instantiateAsync, __instantiate;
 
 (() => {
-  const mMap = new Map();
+  const r = new Map();
+
   System = {
     register(id, d, f) {
-      mMap.set(id, { id, d, f, exp: {} });
+      r.set(id, { d, f, exp: {} });
     }
   };
 
-  const gC = (data, main) => {
-    const { id } = data;
+  function gC(id, main) {
     return {
       id,
-      import: async id => mMap.get(id)?.exp,
+      import: async id => r.get(id)?.exp,
       meta: { url: id, main }
     };
-  };
+  }
 
-  const gE = ({ exp }) => {
+  function gE(exp) {
     return (id, v) => {
-      const vs = typeof id === "string" ? { [id]: v } : id;
-      for (const [id, value] of Object.entries(vs)) {
+      v = typeof id === "string" ? { [id]: v } : id;
+      for (const [id, value] of Object.entries(v)) {
         Object.defineProperty(exp, id, {
           value,
           writable: true,
@@ -35,65 +34,54 @@ let System, __inst, __inst_s;
         });
       }
     };
-  };
+  }
 
-  const iQ = [];
-
-  const enq = ids => {
-    for (const id of ids) {
-      if (!iQ.includes(id)) {
-        const { d } = mMap.get(id);
-        iQ.push(id);
-        enq(d);
-      }
-    }
-  };
-
-  const gRQ = main => {
-    const rQ = [];
-    let id;
-    while ((id = iQ.pop())) {
-      const m = mMap.get(id),
-        { f } = m;
-      if (!f) return;
-      rQ.push([m.d, f(gE(m), gC(m, id === main))]);
+  function rF(main) {
+    for (const [id, m] of r.entries()) {
+      const { f, exp } = m;
+      const { execute: e, setters: s } = f(gE(exp), gC(id, id === main));
       delete m.f;
+      m.e = e;
+      m.s = s;
     }
-    return rQ;
-  };
+  }
 
-  const dr = async main => {
-    const rQ = gRQ(main);
-    let r;
-    while ((r = rQ.shift())) {
-      const [d, { execute, setters }] = r;
-      for (let i = 0; i < d.length; i++) setters[i](mMap.get(d[i])?.exp);
-      const e = execute();
-      if (e) await e;
+  async function gExpA(id) {
+    if (!r.has(id)) return;
+    const m = r.get(id);
+    if (m.s) {
+      const { d, e, s } = m;
+      delete m.s;
+      delete m.e;
+      for (let i = 0; i < s.length; i++) s[i](await gExpA(d[i]));
+      const r = e();
+      if (r) await r;
     }
-  };
+    return m.exp;
+  }
 
-  const dr_s = main => {
-    const rQ = gRQ(main);
-    let r;
-    while ((r = rQ.shift())) {
-      const [d, { execute, setters }] = r;
-      for (let i = 0; i < d.length; i++) setters[i](mMap.get(d[i])?.exp);
-      execute();
+  function gExp(id) {
+    if (!r.has(id)) return;
+    const m = r.get(id);
+    if (m.s) {
+      const { d, e, s } = m;
+      delete m.s;
+      delete m.e;
+      for (let i = 0; i < s.length; i++) s[i](gExp(d[i]));
+      e();
     }
+    return m.exp;
+  }
+
+  __instantiateAsync = async m => {
+    System = __instantiateAsync = __instantiate = undefined;
+    rF(m);
+    return gExpA(m);
   };
 
-  __inst = async id => {
-    System = __inst = __inst_s = undefined;
-    enq([id]);
-    await dr(id);
-    return mMap.get(id)?.exp;
-  };
-
-  __inst_s = id => {
-    System = __inst = __inst_s = undefined;
-    enq([id]);
-    dr_s(id);
-    return mMap.get(id)?.exp;
+  __instantiate = m => {
+    System = __instantiateAsync = __instantiate = undefined;
+    rF(m);
+    return gExp(m);
   };
 })();

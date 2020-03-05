@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert } from "./test_util.ts";
+import { unitTest, assert } from "./test_util.ts";
 
-test(function buildInfo(): void {
+unitTest(function buildInfo(): void {
   // Deno.build is injected by rollup at compile time. Here
   // we check it has been properly transformed.
   const { arch, os } = Deno.build;

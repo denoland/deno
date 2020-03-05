@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assertEquals, assert } from "./test_util.ts";
+import { unitTest, assertEquals, assert } from "./test_util.ts";
 
 // just a hack to get a body object
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -21,7 +21,7 @@ const intArrays = [
   Float32Array,
   Float64Array
 ];
-test(async function arrayBufferFromByteArrays(): Promise<void> {
+unitTest(async function arrayBufferFromByteArrays(): Promise<void> {
   const buffer = new TextEncoder().encode("ahoyhoy8").buffer;
 
   for (const type of intArrays) {
@@ -32,37 +32,43 @@ test(async function arrayBufferFromByteArrays(): Promise<void> {
 });
 
 //FormData
-testPerm({ net: true }, async function bodyMultipartFormData(): Promise<void> {
-  const response = await fetch(
-    "http://localhost:4545/cli/tests/subdir/multipart_form_data.txt"
-  );
-  const text = await response.text();
+unitTest(
+  { perms: { net: true } },
+  async function bodyMultipartFormData(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/subdir/multipart_form_data.txt"
+    );
+    const text = await response.text();
 
-  const body = buildBody(text);
+    const body = buildBody(text);
 
-  // @ts-ignore
-  body.contentType = "multipart/form-data;boundary=boundary";
+    // @ts-ignore
+    body.contentType = "multipart/form-data;boundary=boundary";
 
-  const formData = await body.formData();
-  assert(formData.has("field_1"));
-  assertEquals(formData.get("field_1")!.toString(), "value_1 \r\n");
-  assert(formData.has("field_2"));
-});
+    const formData = await body.formData();
+    assert(formData.has("field_1"));
+    assertEquals(formData.get("field_1")!.toString(), "value_1 \r\n");
+    assert(formData.has("field_2"));
+  }
+);
 
-testPerm({ net: true }, async function bodyURLEncodedFormData(): Promise<void> {
-  const response = await fetch(
-    "http://localhost:4545/cli/tests/subdir/form_urlencoded.txt"
-  );
-  const text = await response.text();
+unitTest(
+  { perms: { net: true } },
+  async function bodyURLEncodedFormData(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/subdir/form_urlencoded.txt"
+    );
+    const text = await response.text();
 
-  const body = buildBody(text);
+    const body = buildBody(text);
 
-  // @ts-ignore
-  body.contentType = "application/x-www-form-urlencoded";
+    // @ts-ignore
+    body.contentType = "application/x-www-form-urlencoded";
 
-  const formData = await body.formData();
-  assert(formData.has("field_1"));
-  assertEquals(formData.get("field_1")!.toString(), "Hi");
-  assert(formData.has("field_2"));
-  assertEquals(formData.get("field_2")!.toString(), "<Deno>");
-});
+    const formData = await body.formData();
+    assert(formData.has("field_1"));
+    assertEquals(formData.get("field_1")!.toString(), "Hi");
+    assert(formData.has("field_2"));
+    assertEquals(formData.get("field_2")!.toString(), "<Deno>");
+  }
+);

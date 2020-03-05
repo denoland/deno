@@ -91,8 +91,13 @@ impl OpError {
     Self::new(ErrorKind::PermissionDenied, msg)
   }
 
-  pub fn bad_resource() -> OpError {
-    Self::new(ErrorKind::BadResource, "bad resource id".to_string())
+  pub fn bad_resource(msg: String) -> OpError {
+    Self::new(ErrorKind::BadResource, msg)
+  }
+
+  // BadResource usually needs no additional detail, hence this helper.
+  pub fn bad_resource_id() -> OpError {
+    Self::new(ErrorKind::BadResource, "Bad resource ID".to_string())
   }
 }
 
@@ -444,10 +449,18 @@ mod tests {
 
   #[test]
   fn test_bad_resource() {
-    let err = OpError::bad_resource();
+    let err = OpError::bad_resource("Resource has been closed".to_string());
     assert_eq!(err.kind, ErrorKind::BadResource);
-    assert_eq!(err.to_string(), "bad resource id");
+    assert_eq!(err.to_string(), "Resource has been closed");
   }
+
+  #[test]
+  fn test_bad_resource_id() {
+    let err = OpError::bad_resource_id();
+    assert_eq!(err.kind, ErrorKind::BadResource);
+    assert_eq!(err.to_string(), "Bad resource ID");
+  }
+
   #[test]
   fn test_permission_denied() {
     let err = OpError::permission_denied(
