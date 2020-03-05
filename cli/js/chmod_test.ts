@@ -98,7 +98,6 @@ unitTest(
   }
 );
 
-
 // Check symlink when not on windows
 
 unitTest(
