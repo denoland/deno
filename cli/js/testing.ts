@@ -301,7 +301,7 @@ export async function runTests({
 
   originalConsole.log(`running ${iterator.testResults.length} tests`);
   const suiteStart = +new Date();
-  
+
   for (const msg of iterator) {
     if (msg.kind === "end") {
       stats = msg.stats as TestStats;

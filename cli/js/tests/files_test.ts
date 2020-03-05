@@ -12,7 +12,9 @@ unitTest(function filesStdioFileDescriptors(): void {
   assertEquals(Deno.stderr.rid, 2);
 });
 
-unitTest({ perms: { read: true }}, async function filesCopyToBuffer(): Promise<void> {
+unitTest({ perms: { read: true } }, async function filesCopyToBuffer(): Promise<
+  void
+> {
   const filename = "cli/tests/fixture.json";
   const file = await Deno.open(filename);
   assert(file.rid > 2);
