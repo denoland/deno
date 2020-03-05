@@ -1461,22 +1461,20 @@ declare namespace Deno {
    * Requires `allow-plugin` permission. */
   export function openPlugin(filename: string): Plugin;
 
-  export type Transport = "tcp" | "udp" | "unix" | "unixpacket";
-
   export interface TCPAddr {
-    transport: Transport;
+    transport: "tcp";
     hostname: string;
     port: number;
   }
 
   export interface UDPAddr {
-    transport?: Transport;
-    hostname?: string;
+    transport: "udp";
+    hostname: string;
     port: number;
   }
 
   export interface UnixAddr {
-    transport: Transport;
+    transport: "unix" | "unixpacket";
     address: string;
   }
   /** **UNSTABLE**: Maybe remove `ShutdownMode` entirely.
@@ -1567,21 +1565,11 @@ declare namespace Deno {
     /** A literal IP address or host name that can be resolved to an IP address.
      * If not specified, defaults to `0.0.0.0`. */
     hostname?: string;
-    /** Either `"tcp"` or `"udp"`. Defaults to `"tcp"`.
-     *
-     * In the future: `"tcp4"`, `"tcp6"`, `"udp4"`, `"udp6"`, `"ip"`, `"ip4"`,
-     * `"ip6"`, `"unix"`, `"unixgram"`, and `"unixpacket"`. */
-    transport?: Transport;
   }
 
   export interface UnixListenOptions {
     /** A Path to the Unix Socket. */
     address: string;
-    /** Either `"tcp"`, `"udp"` or `"unix"`. Defaults to `"tcp"`.
-     *
-     * In the future: `"tcp4"`, `"tcp6"`, `"udp4"`, `"udp6"`, `"ip"`, `"ip4"`,
-     * `"ip6"`, `"unix"`, `"unixgram"`, and `"unixpacket"`. */
-    transport: Transport;
   }
   /** **UNSTABLE**: new API
    *
@@ -1600,7 +1588,6 @@ declare namespace Deno {
    *
    * Listen announces on the local transport address.
    *
-   *     Deno.listen({ address: "/foo/bar.sock" })
    *     Deno.listen({ address: "/foo/bar.sock", transport: "unix" })
    *
    * Requires `allow-read` permission. */
@@ -1611,10 +1598,8 @@ declare namespace Deno {
    *
    * Listen announces on the local transport address.
    *
-   *      Deno.listen({ port: 80 })
-   *      Deno.listen({ hostname: "192.0.2.1", port: 80 })
-   *      Deno.listen({ hostname: "[2001:db8::1]", port: 80 });
-   *      Deno.listen({ hostname: "golang.org", port: 80, transport: "tcp" });
+   *      Deno.listen({ port: 80, transport: "udp" })
+   *      Deno.listen({ hostname: "golang.org", port: 80, transport: "udp" });
    *
    * Requires `allow-net` permission. */
   export function listen(
@@ -1624,7 +1609,6 @@ declare namespace Deno {
    *
    * Listen announces on the local transport address.
    *
-   *     Deno.listen({ address: "/foo/bar.sock" })
    *     Deno.listen({ address: "/foo/bar.sock", transport: "unixpacket" })
    *
    * Requires `allow-read` permission. */
@@ -1653,15 +1637,11 @@ declare namespace Deno {
     /** A literal IP address or host name that can be resolved to an IP address.
      * If not specified, defaults to `127.0.0.1`. */
     hostname?: string;
-    /** Either `"tcp"` or `"udp"`. Defaults to `"tcp"`.
-     *
-     * In the future: `"tcp4"`, `"tcp6"`, `"udp4"`, `"udp6"`, `"ip"`, `"ip4"`,
-     * `"ip6"`, `"unix"`, `"unixgram"`, and `"unixpacket"`. */
-    transport?: Transport;
+    transport?: "tcp";
   }
 
   export interface UnixConnectOptions {
-    transport: Transport;
+    transport: "unix";
     address: string;
   }
 
@@ -1674,20 +1654,15 @@ declare namespace Deno {
    *     Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" })
    *
    * Requires `allow-net` permission. */
-  export function connect(
-    options: ConnectOptions & { transport?: "tcp" }
-  ): Promise<Conn<TCPAddr>>;
+  export function connect(options: ConnectOptions): Promise<Conn<TCPAddr>>;
   /**
   /**
    * Connects to the address on the named transport.
    *
-   *     Deno.connect({ address: "/foo/bar.sock" })
    *     Deno.connect({ address: "/foo/bar.sock", transport: "unix" })
    *
    * Requires `allow-read` permission. */
-  export function connect(
-    options: UnixConnectOptions & { transport: "unix" }
-  ): Promise<Conn<UnixAddr>>;
+  export function connect(options: UnixConnectOptions): Promise<Conn<UnixAddr>>;
 
   export interface ConnectTLSOptions {
     /** The port to connect to. */

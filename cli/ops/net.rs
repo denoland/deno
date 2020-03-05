@@ -25,11 +25,7 @@ use std::os::unix;
 #[cfg(unix)]
 use std::path::Path;
 #[cfg(unix)]
-use tokio::net::UnixDatagram;
-#[cfg(unix)]
-use tokio::net::UnixListener;
-#[cfg(unix)]
-use tokio::net::UnixStream;
+use tokio::net::{UnixDatagram, UnixListener, UnixStream};
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_accept", s.stateful_json_op(op_accept));

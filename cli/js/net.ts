@@ -3,24 +3,22 @@ import { EOF, Reader, Writer, Closer } from "./io.ts";
 import { read, write, close } from "./files.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
-export type Transport = "tcp" | "udp" | "unix" | "unixpacket";
-// TODO support other types:
-// export type Transport = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
+// TODO support other types: "tcp4" | "tcp6"
 
 export interface TCPAddr {
-  transport: Transport;
+  transport: "tcp";
   hostname: string;
   port: number;
 }
 
 export interface UDPAddr {
-  transport?: Transport;
-  hostname?: string;
+  transport: "udp";
+  hostname: string;
   port: number;
 }
 
 export interface UnixAddr {
-  transport: Transport;
+  transport: "unix" | "unixpacket";
   address: string;
 }
 
@@ -155,14 +153,13 @@ export class ListenerImpl<T> implements Listener<T> {
   }
 }
 
-// // TODO: Why is this exposed?
-// export async function recvfrom<T>(
-//   rid: number,
-//   p: Uint8Array
-// ): Promise<[number, T]> {
-//   const { size, remoteAddr } = await sendAsync("op_receive", { rid }, p);
-//   return [size, remoteAddr];
-// }
+export async function recvfrom<T>(
+  args: { rid: number; transport: string },
+  p: Uint8Array
+): Promise<[number, T]> {
+  const { size, remoteAddr } = await sendAsync("op_receive", args, p);
+  return [size, remoteAddr];
+}
 
 export class DatagramImpl<T> implements DatagramConn<T> {
   constructor(
@@ -235,11 +232,9 @@ export interface Conn<T> extends Reader, Writer, Closer {
 export interface ListenOptions {
   port: number;
   hostname?: string;
-  transport: Transport;
 }
 
 export interface UnixListenOptions {
-  transport: Transport;
   address: string;
 }
 
@@ -293,10 +288,10 @@ export function listen(
 export interface ConnectOptions {
   port: number;
   hostname?: string;
-  transport?: Transport;
+  transport?: "tcp";
 }
 export interface UnixConnectOptions {
-  transport: Transport;
+  transport: "unix";
   address: string;
 }
 
@@ -308,9 +303,8 @@ const connectDefaults = { hostname: "127.0.0.1", transport: "tcp" };
  * @param options.port The port to connect to. (Required.)
  * @param options.hostname A literal IP address or host name that can be
  *   resolved to an IP address. If not specified, defaults to 127.0.0.1
- * @param options.transport Must be "tcp" or "udp". Defaults to "tcp". Later we plan to add "tcp4",
- *   "tcp6", "udp4", "udp6", "ip", "ip4", "ip6", "unix", "unixgram" and
- *   "unixpacket".
+ * @param options.transport Must be "tcp" or "unix". Defaults to "tcp". Later we plan to add "tcp4",
+ *   "tcp6", "ip", "ip4", "ip6", "unix".
  *
  * Examples:
  *
@@ -319,11 +313,9 @@ const connectDefaults = { hostname: "127.0.0.1", transport: "tcp" };
  *     connect({ hostname: "[2001:db8::1]", port: 80 });
  *     connect({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
+export async function connect(options: ConnectOptions): Promise<Conn<TCPAddr>>;
 export async function connect(
-  options: ConnectOptions & { transport?: "tcp" }
-): Promise<Conn<TCPAddr>>;
-export async function connect(
-  options: UnixConnectOptions & { transport: "unix" }
+  options: UnixConnectOptions
 ): Promise<Conn<UnixAddr>>;
 export async function connect(
   options: ConnectOptions | UnixConnectOptions
