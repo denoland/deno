@@ -308,7 +308,7 @@ export async function runTests({
       break;
     }
 
-    const testResult = msg.result as TestResult;
+    const testResult = (msg as TestMsg).result as TestResult;
     if (testResult.failed) {
       originalConsole.log(`${RED_FAILED} ${testResult.name}`);
       originalConsole.log(testResult.error!.stack);
