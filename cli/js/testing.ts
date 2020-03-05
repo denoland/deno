@@ -302,7 +302,7 @@ export async function runTests({
   originalConsole.log(`running ${iterator.testResults.length} tests`);
   const suiteStart = +new Date();
 
-  for (const msg of iterator) {
+  for await (const msg of iterator) {
     if (msg.kind === "end") {
       stats = msg.stats as TestStats;
       break;
@@ -314,10 +314,7 @@ export async function runTests({
       originalConsole.log(testResult.error!.stack);
     } else {
       originalConsole.log(
-        `${GREEN_OK}     ${testResult.name} ${promptTestTime(
-          testResult.duration,
-          true
-        )}`
+        `${GREEN_OK}     ${testResult.name} ${formatDuration(testResult.duration)}`
       );
     }
   }
@@ -346,11 +343,11 @@ export async function runTests({
 
   if (stats.failed > 0) {
     originalConsole.error(`There were ${stats.failed} test failures.`);
-    iterator.testCases
-      .filter(testCase => !!testCase.error)
-      .forEach(testCase => {
-        originalConsole.error(`${RED_BG_FAIL} ${red(testCase.name)}`);
-        originalConsole.error(testCase.error);
+    iterator.testResults
+      .filter(result => result.failed)
+      .forEach(result => {
+        originalConsole.error(`${RED_BG_FAIL} ${red(result.name)}`);
+        originalConsole.error(result.error);
       });
 
     if (exitOnFail) {
