@@ -54,7 +54,8 @@ unitTest(
 unitTest(
   { perms: { net: true } },
   async function netTcpConcurrentAccept(): Promise<void> {
-    const listener = Deno.listen({ port: 4502 });
+    const port = usePort();
+    const listener = Deno.listen({ port });
     let acceptErrCount = 0;
     const checkErr = (e: Error): void => {
       if (e.message === "Listener has been closed") {
