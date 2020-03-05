@@ -22,9 +22,17 @@ pub fn init(i: &mut Isolate, s: &State) {
 }
 
 struct FsEventsResource {
-  #[allow(unused)]
+  paths: Vec<String>,
   watcher: RecommendedWatcher,
   receiver: mpsc::Receiver<Result<FsEvent, ErrBox>>,
+}
+
+impl Drop for FsEventsResource {
+  fn drop(&mut self) {
+    for path in &self.paths {
+      let _ = self.watcher.unwatch(path);
+    }
+  }
 }
 
 /// Represents a file system event.
@@ -76,7 +84,9 @@ pub fn op_fs_events_open(
     Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
       let res2 = res.map(FsEvent::from).map_err(ErrBox::from);
       let mut sender = sender.lock().unwrap();
-      futures::executor::block_on(sender.send(res2)).expect("fs events error");
+      // Ignore result, if send failed it means that watcher was already closed,
+      // but not all messages have been flushed.
+      let _ = futures::executor::block_on(sender.send(res2));
     })
     .map_err(ErrBox::from)?;
   let recursive_mode = if args.recursive {
@@ -88,7 +98,11 @@ pub fn op_fs_events_open(
     state.check_read(&PathBuf::from(path))?;
     watcher.watch(path, recursive_mode).map_err(ErrBox::from)?;
   }
-  let resource = FsEventsResource { watcher, receiver };
+  let resource = FsEventsResource {
+    paths: args.paths,
+    watcher,
+    receiver,
+  };
   let table = &mut state.borrow_mut().resource_table;
   let rid = table.add("fsEvents", Box::new(resource));
   Ok(JsonOp::Sync(json!(rid)))
