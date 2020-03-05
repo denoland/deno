@@ -264,7 +264,7 @@ export async function runTests({
   disableLog = false,
   json = false
 }: RunTestsOptions = {}): Promise<void> {
-  const iterator = new RunTestsIterable(TEST_REGISTRY, only, skip, exitOnFail);
+  const iterator = new RunTestsIterable(TEST_REGISTRY, only, skip, failFast);
 
   // @ts-ignore
   const originalConsole = globalThis.console;
