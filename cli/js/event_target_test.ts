@@ -155,7 +155,7 @@ unitTest(function eventTargetThisShouldDefaultToWindow(): void {
   assertEquals(n, 1);
 });
 
-test(function eventTargetShouldAcceptEventListenerObject(): void {
+unitTest(function eventTargetShouldAcceptEventListenerObject(): void {
   const target = new EventTarget();
   const event = new Event("foo", { bubbles: true, cancelable: false });
   let callCount = 0;
@@ -180,7 +180,7 @@ test(function eventTargetShouldAcceptEventListenerObject(): void {
   assertEquals(callCount, 2);
 });
 
-test(function eventTargetShouldAcceptAsyncFunction(): void {
+unitTest(function eventTargetShouldAcceptAsyncFunction(): void {
   const target = new EventTarget();
   const event = new Event("foo", { bubbles: true, cancelable: false });
   let callCount = 0;
@@ -203,7 +203,7 @@ test(function eventTargetShouldAcceptAsyncFunction(): void {
   assertEquals(callCount, 2);
 });
 
-test(
+unitTest(
   function eventTargetShouldAcceptAsyncFunctionForEventListenerObject(): void {
     const target = new EventTarget();
     const event = new Event("foo", { bubbles: true, cancelable: false });
