@@ -33,15 +33,17 @@ declare namespace Deno {
   export function test(name: string, fn: TestFunction): void;
 
   export interface RunTestsOptions {
-    /** If `true`, Deno will exit upon a failure after logging that failure to
-     * the console. Defaults to `false`. */
+    /** If `true`, Deno will exit with status code 1 if there was
+     * test failure. Defaults to `true`. */
     exitOnFail?: boolean;
-    /** Provide a regular expression of which only tests that match the regular
-     * expression are run. */
-    only?: RegExp;
-    /** Provide a regular expression of which tests that match the regular
-     * expression are skipped. */
-    skip?: RegExp;
+    /** If `true`, Deno will exit upon first test failure Defaults to `false`. */
+    failFast?: boolean;
+    /** String or RegExp used to filter test to run. Only test with names
+     * matching provided `String` or `RegExp` will be run. */
+    only?: string | RegExp;
+    /** String or RegExp used to skip tests to run. Tests with names
+     * matching provided `String` or `RegExp` will not be run. */
+    skip?: string | RegExp;
     /** Disable logging of the results. Defaults to `false`. */
     disableLog?: boolean;
   }
