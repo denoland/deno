@@ -314,7 +314,9 @@ export async function runTests({
       originalConsole.log(testResult.error!.stack);
     } else {
       originalConsole.log(
-        `${GREEN_OK}     ${testResult.name} ${formatDuration(testResult.duration)}`
+        `${GREEN_OK}     ${testResult.name} ${formatDuration(
+          testResult.duration
+        )}`
       );
     }
   }
