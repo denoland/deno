@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types.ts";
-import { hasOwnProperty, requiredArguments } from "./util.ts";
+import { hasOwnProperty, requiredArguments } from "../util.ts";
 import {
   getRoot,
   isNode,

@@ -8,7 +8,7 @@
 //   It sets up runtime by providing globals for `WindowScope` and adds `Deno` global.
 
 import * as Deno from "./deno.ts";
-import * as domTypes from "./dom_types.ts";
+import * as domTypes from "./web/dom_types.ts";
 import * as csprng from "./get_random_values.ts";
 import {
   readOnly,

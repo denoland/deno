@@ -2,13 +2,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { sendAsync, sendSync } from "./dispatch_json.ts";
 import { log } from "./util.ts";
-import { TextDecoder, TextEncoder } from "./text_encoding.ts";
+import { TextDecoder, TextEncoder } from "./web/text_encoding.ts";
 /*
-import { blobURLMap } from "./url.ts";
-import { blobBytesWeakMap } from "./blob.ts";
+import { blobURLMap } from "./web/url.ts";
+import { blobBytesWeakMap } from "./web/blob.ts";
 */
-import { Event } from "./event.ts";
-import { EventTarget } from "./event_target.ts";
+import { Event } from "./web/event.ts";
+import { EventTarget } from "./web/event_target.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
