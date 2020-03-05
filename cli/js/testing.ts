@@ -172,6 +172,7 @@ class RunTestsIterable implements AsyncIterableIterator<RunTestsMessage> {
     failFast: boolean
   ) {
     this.testsToRun = filterTests(tests, only, skip);
+    this.stats.filtered = tests.length - this.testsToRun.length;
     this.failFast = failFast;
     this.testResults = this.testsToRun.map(
       ({ name, fn }): TestResult => {
