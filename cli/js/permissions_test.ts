@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert } from "./test_util.ts";
+import { unitTest, assert } from "./test_util.ts";
 
-test(async function permissionInvalidName(): Promise<void> {
+unitTest(async function permissionInvalidName(): Promise<void> {
   let thrown = false;
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -14,7 +14,7 @@ test(async function permissionInvalidName(): Promise<void> {
   }
 });
 
-test(async function permissionNetInvalidUrl(): Promise<void> {
+unitTest(async function permissionNetInvalidUrl(): Promise<void> {
   let thrown = false;
   try {
     await Deno.permissions.query({ name: "net", url: ":" });

@@ -33,15 +33,17 @@ declare namespace Deno {
   export function test(name: string, fn: TestFunction): void;
 
   export interface RunTestsOptions {
-    /** If `true`, Deno will exit upon a failure after logging that failure to
-     * the console. Defaults to `false`. */
+    /** If `true`, Deno will exit with status code 1 if there was
+     * test failure. Defaults to `true`. */
     exitOnFail?: boolean;
-    /** Provide a regular expression of which only tests that match the regular
-     * expression are run. */
-    only?: RegExp;
-    /** Provide a regular expression of which tests that match the regular
-     * expression are skipped. */
-    skip?: RegExp;
+    /** If `true`, Deno will exit upon first test failure Defaults to `false`. */
+    failFast?: boolean;
+    /** String or RegExp used to filter test to run. Only test with names
+     * matching provided `String` or `RegExp` will be run. */
+    only?: string | RegExp;
+    /** String or RegExp used to skip tests to run. Tests with names
+     * matching provided `String` or `RegExp` will not be run. */
+    skip?: string | RegExp;
     /** Disable logging of the results. Defaults to `false`. */
     disableLog?: boolean;
   }
@@ -721,7 +723,7 @@ declare namespace Deno {
 
   // @url js/mkdir.d.ts
 
-  export interface MkdirOption {
+  export interface MkdirOptions {
     /** Defaults to `false`. If set to `true`, means that any intermediate
      * directories will also be created (as with the shell command `mkdir -p`).
      * Intermediate directories are created with the same permissions.
@@ -740,7 +742,7 @@ declare namespace Deno {
    *       Deno.mkdirSync("nested/directories", { recursive: true });
    *
    * Requires `allow-write` permission. */
-  export function mkdirSync(path: string, options?: MkdirOption): void;
+  export function mkdirSync(path: string, options?: MkdirOptions): void;
 
   /** @deprecated */
   export function mkdirSync(
@@ -755,7 +757,7 @@ declare namespace Deno {
    *       await Deno.mkdir("nested/directories", { recursive: true });
    *
    * Requires `allow-write` permission. */
-  export function mkdir(path: string, options?: MkdirOption): Promise<void>;
+  export function mkdir(path: string, options?: MkdirOptions): Promise<void>;
 
   /** @deprecated */
   export function mkdir(
@@ -920,8 +922,7 @@ declare namespace Deno {
 
   // @url js/remove.d.ts
 
-  /** UNSTABLE: rename to RemoveOptions */
-  export interface RemoveOption {
+  export interface RemoveOptions {
     /** Defaults to `false`. If set to `true`, path will be removed even if
      * it's a non-empty directory. */
     recursive?: boolean;
@@ -934,7 +935,7 @@ declare namespace Deno {
    *       Deno.removeSync("/path/to/dir/or/file", { recursive: false });
    *
    * Requires `allow-write` permission. */
-  export function removeSync(path: string, options?: RemoveOption): void;
+  export function removeSync(path: string, options?: RemoveOptions): void;
 
   /** Removes the named file or directory. Throws error if permission denied,
    * path not found, or path is a non-empty directory and the `recursive`
@@ -943,7 +944,7 @@ declare namespace Deno {
    *       await Deno.remove("/path/to/dir/or/file", { recursive: false });
    *
    * Requires `allow-write` permission. */
-  export function remove(path: string, options?: RemoveOption): Promise<void>;
+  export function remove(path: string, options?: RemoveOptions): Promise<void>;
 
   // @url js/rename.d.ts
 
@@ -1318,7 +1319,6 @@ declare namespace Deno {
     TimedOut: ErrorConstructor;
     Interrupted: ErrorConstructor;
     WriteZero: ErrorConstructor;
-    Other: ErrorConstructor;
     UnexpectedEof: ErrorConstructor;
     BadResource: ErrorConstructor;
     Http: ErrorConstructor;

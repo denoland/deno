@@ -189,7 +189,7 @@ fn installer_test_local_module_run() {
   .expect("Failed to install");
   let mut file_path = temp_dir.path().join("echo_test");
   if cfg!(windows) {
-    file_path = file_path.with_extension(".cmd");
+    file_path = file_path.with_extension("cmd");
   }
   assert!(file_path.exists());
   let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
@@ -237,7 +237,7 @@ fn installer_test_remote_module_run() {
   .expect("Failed to install");
   let mut file_path = temp_dir.path().join("echo_test");
   if cfg!(windows) {
-    file_path = file_path.with_extension(".cmd");
+    file_path = file_path.with_extension("cmd");
   }
   assert!(file_path.exists());
   let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
@@ -433,6 +433,36 @@ fn bundle_tla() {
     .unwrap()
     .trim()
     .ends_with("Hello"));
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
+fn bundle_js() {
+  use tempfile::TempDir;
+
+  // First we have to generate a bundle of some module that has exports.
+  let mod6 = util::root_path().join("cli/tests/subdir/mod6.js");
+  assert!(mod6.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("mod6.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(mod6)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&bundle)
+    .output()
+    .expect("failed to spawn script");
+  // check that nothing went to stderr
   assert_eq!(output.stderr, b"");
 }
 
@@ -683,6 +713,22 @@ macro_rules! itest(
   }
 );
 
+// Unfortunately #[ignore] doesn't work with itest!
+macro_rules! itest_ignore(
+  ($name:ident {$( $key:ident: $value:expr,)*})  => {
+    #[ignore]
+    #[test]
+    fn $name() {
+      (util::CheckOutputIntegrationTest {
+        $(
+          $key: $value,
+         )*
+        .. Default::default()
+      }).run()
+    }
+  }
+);
+
 itest!(_001_hello {
   args: "run --reload 001_hello.js",
   output: "001_hello.js.out",
@@ -749,7 +795,8 @@ itest!(_018_async_catch {
   output: "018_async_catch.ts.out",
 });
 
-itest!(_019_media_types {
+// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
+itest_ignore!(_019_media_types {
   args: "run --reload 019_media_types.ts",
   output: "019_media_types.ts.out",
   http_server: true,
@@ -765,7 +812,8 @@ itest!(_021_mjs_modules {
   output: "021_mjs_modules.ts.out",
 });
 
-itest!(_022_info_flag_script {
+// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
+itest_ignore!(_022_info_flag_script {
   args: "info http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "022_info_flag_script.out",
   http_server: true,
@@ -777,10 +825,10 @@ itest!(_023_no_ext_with_headers {
 });
 
 // FIXME(bartlomieju): this test should use remote file
-// itest!(_024_import_no_ext_with_headers {
-//   args: "run --reload 024_import_no_ext_with_headers.ts",
-//   output: "024_import_no_ext_with_headers.ts.out",
-// });
+itest_ignore!(_024_import_no_ext_with_headers {
+  args: "run --reload 024_import_no_ext_with_headers.ts",
+  output: "024_import_no_ext_with_headers.ts.out",
+});
 
 itest!(_025_hrtime {
   args: "run --allow-hrtime --reload 025_hrtime.ts",
@@ -798,14 +846,10 @@ itest!(_026_redirect_javascript {
   http_server: true,
 });
 
-itest!(_026_workers {
-  args: "run --reload 026_workers.ts",
-  output: "026_workers.ts.out",
-});
-
-itest!(workers_basic {
-  args: "run --reload workers_basic.ts",
-  output: "workers_basic.out",
+itest!(workers {
+  args: "run --reload --allow-net workers_test.ts",
+  http_server: true,
+  output: "workers_test.out",
 });
 
 itest!(_027_redirect_typescript {
@@ -841,7 +885,8 @@ itest!(_034_onload {
   output: "034_onload.out",
 });
 
-itest!(_035_cached_only_flag {
+// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
+itest_ignore!(_035_cached_only_flag {
   args:
     "--reload --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "035_cached_only_flag.out",
@@ -871,17 +916,16 @@ itest!(_038_checkjs {
   output: "038_checkjs.js.out",
 });
 
-/* TODO(bartlomieju):
-itest!(_039_worker_deno_ns {
+// TODO(bartlomieju): re-enable
+itest_ignore!(_039_worker_deno_ns {
   args: "run --reload 039_worker_deno_ns.ts",
   output: "039_worker_deno_ns.ts.out",
 });
 
-itest!(_040_worker_blob {
+itest_ignore!(_040_worker_blob {
   args: "run --reload 040_worker_blob.ts",
   output: "040_worker_blob.ts.out",
 });
-*/
 
 itest!(_041_dyn_import_eval {
   args: "eval import('./subdir/mod4.js').then(console.log)",
@@ -905,13 +949,11 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
-/*
-itest!(_045_proxy {
+itest_ignore!(_045_proxy {
   args: "run --allow-net --allow-env --allow-run --reload 045_proxy_test.ts",
   output: "045_proxy_test.ts.out",
   http_server: true,
 });
-*/
 
 itest!(_046_tsx {
   args: "run --reload 046_jsx_test.tsx",
@@ -923,13 +965,15 @@ itest!(_047_jsx {
   output: "047_jsx_test.jsx.out",
 });
 
-itest!(_048_media_types_jsx {
+// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
+itest_ignore!(_048_media_types_jsx {
   args: "run  --reload 048_media_types_jsx.ts",
   output: "048_media_types_jsx.ts.out",
   http_server: true,
 });
 
-itest!(_049_info_flag_script_jsx {
+// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
+itest_ignore!(_049_info_flag_script_jsx {
   args: "info http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts",
   output: "049_info_flag_script_jsx.out",
   http_server: true,
@@ -946,7 +990,8 @@ itest!(_051_wasm_import {
   http_server: true,
 });
 
-itest!(_052_no_remote_flag {
+// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
+itest_ignore!(_052_no_remote_flag {
   args:
     "--reload --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "052_no_remote_flag.out",
@@ -996,7 +1041,8 @@ itest!(lock_check_ok {
   http_server: true,
 });
 
-itest!(lock_check_ok2 {
+// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
+itest_ignore!(lock_check_ok2 {
   args: "run 019_media_types.ts --lock=lock_check_ok2.json",
   output: "019_media_types.ts.out",
   http_server: true,
@@ -1010,7 +1056,8 @@ itest!(lock_check_err {
   http_server: true,
 });
 
-itest!(lock_check_err2 {
+// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
+itest_ignore!(lock_check_err2 {
   args: "run --lock=lock_check_err2.json 019_media_types.ts",
   output: "lock_check_err2.out",
   check_stderr: true,
@@ -1192,14 +1239,13 @@ itest!(error_type_definitions {
   output: "error_type_definitions.ts.out",
 });
 
-/* TODO(bartlomieju)
-itest!(error_worker_dynamic {
+// TODO(bartlomieju) Re-enable
+itest_ignore!(error_worker_dynamic {
   args: "run --reload error_worker_dynamic.ts",
   check_stderr: true,
   exit_code: 1,
   output: "error_worker_dynamic.ts.out",
 });
-*/
 
 itest!(exit_error42 {
   exit_code: 42,
@@ -1397,7 +1443,9 @@ fn cafile_fetch() {
   drop(g);
 }
 
+// TODO(ry) Re-enable this broken test.
 #[test]
+#[ignore]
 fn cafile_install_remote_module() {
   pub use deno::test_util::*;
   use std::env;

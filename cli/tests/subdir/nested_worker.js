@@ -9,7 +9,6 @@ jsWorker.onerror = _e => {
 };
 
 jsWorker.onmessage = e => {
-  console.log("js worker on message");
   postMessage({ type: "msg", text: e });
   close();
 };

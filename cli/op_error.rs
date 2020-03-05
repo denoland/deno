@@ -3,19 +3,16 @@
 //! There are many types of errors in Deno:
 //! - ErrBox: a generic boxed object. This is the super type of all
 //!   errors handled in Rust.
-//! - JSError: exceptions thrown from V8 into Rust. Usually a user exception.
-//!   These are basically a big JSON structure which holds information about
-//!   line numbers. We use this to pretty-print stack traces. These are
-//!   never passed back into the runtime.
+//! - JSError: a container for the error message and stack trace for exceptions
+//!   thrown in JavaScript code. We use this to pretty-print stack traces.
 //! - OpError: these are errors that happen during ops, which are passed
 //!   back into the runtime, where an exception object is created and thrown.
-//!   OpErrors have an integer code associated with them - access this via the `kind` field.
+//!   OpErrors have an integer code associated with them - access this via the
+//!   `kind` field.
 //! - Diagnostic: these are errors that originate in TypeScript's compiler.
 //!   They're similar to JSError, in that they have line numbers.
-//!   But Diagnostics are compile-time type errors, whereas JSErrors are runtime exceptions.
-//!
-//! TODO:
-//! - rename/merge JSError with V8Exception?
+//!   But Diagnostics are compile-time type errors, whereas JSErrors are runtime
+//!   exceptions.
 
 use crate::import_map::ImportMapError;
 use deno_core::ErrBox;
@@ -94,8 +91,13 @@ impl OpError {
     Self::new(ErrorKind::PermissionDenied, msg)
   }
 
-  pub fn bad_resource() -> OpError {
-    Self::new(ErrorKind::BadResource, "bad resource id".to_string())
+  pub fn bad_resource(msg: String) -> OpError {
+    Self::new(ErrorKind::BadResource, msg)
+  }
+
+  // BadResource usually needs no additional detail, hence this helper.
+  pub fn bad_resource_id() -> OpError {
+    Self::new(ErrorKind::BadResource, "Bad resource ID".to_string())
   }
 }
 
@@ -447,10 +449,18 @@ mod tests {
 
   #[test]
   fn test_bad_resource() {
-    let err = OpError::bad_resource();
+    let err = OpError::bad_resource("Resource has been closed".to_string());
     assert_eq!(err.kind, ErrorKind::BadResource);
-    assert_eq!(err.to_string(), "bad resource id");
+    assert_eq!(err.to_string(), "Resource has been closed");
   }
+
+  #[test]
+  fn test_bad_resource_id() {
+    let err = OpError::bad_resource_id();
+    assert_eq!(err.kind, ErrorKind::BadResource);
+    assert_eq!(err.to_string(), "Bad resource ID");
+  }
+
   #[test]
   fn test_permission_denied() {
     let err = OpError::permission_denied(

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert } from "./test_util.ts";
+import { unitTest, assert } from "./test_util.ts";
 
 // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
 const { setPrepareStackTrace } = Deno[Deno.symbols.internal];
@@ -80,7 +80,7 @@ function getMockCallSite(
   };
 }
 
-test(function prepareStackTrace(): void {
+unitTest(function prepareStackTrace(): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const MockError = {} as any;
   setPrepareStackTrace(MockError);
@@ -96,7 +96,7 @@ test(function prepareStackTrace(): void {
   assert(result.includes(".ts:"), "should remap to something in 'js/'");
 });
 
-test(function applySourceMap(): void {
+unitTest(function applySourceMap(): void {
   const result = Deno.applySourceMap({
     filename: "CLI_SNAPSHOT.js",
     line: 23,

@@ -57,7 +57,7 @@ fn op_repl_readline(
   let resource = state
     .resource_table
     .get::<ReplResource>(rid)
-    .ok_or_else(OpError::bad_resource)?;
+    .ok_or_else(OpError::bad_resource_id)?;
   let repl = resource.0.clone();
 
   blocking_json(false, move || {
