@@ -127,7 +127,7 @@ impl DenoAsyncRead for StreamResource {
       ChildStdout(f) => Box::pin(f),
       ChildStderr(f) => Box::pin(f),
       HttpBody(f) => Box::pin(f),
-      _ => return Err(OpError::bad_resource()).into(),
+      _ => return Err(OpError::bad_resource_id()).into(),
     };
 
     let v = ready!(f.as_mut().poll_read(cx, buf))?;
@@ -152,7 +152,7 @@ pub fn op_read(
     let resource_table = &mut state.borrow_mut().resource_table;
     let resource = resource_table
       .get_mut::<StreamResource>(rid as u32)
-      .ok_or_else(OpError::bad_resource)?;
+      .ok_or_else(OpError::bad_resource_id)?;
     let nread = ready!(resource.poll_read(cx, &mut buf.as_mut()[..]))?;
     Poll::Ready(Ok(nread as i32))
   })
@@ -188,7 +188,7 @@ impl DenoAsyncWrite for StreamResource {
       ClientTlsStream(f) => Box::pin(f),
       ServerTlsStream(f) => Box::pin(f),
       ChildStdin(f) => Box::pin(f),
-      _ => return Err(OpError::bad_resource()).into(),
+      _ => return Err(OpError::bad_resource_id()).into(),
     };
 
     let v = ready!(f.as_mut().poll_write(cx, buf))?;
@@ -205,7 +205,7 @@ impl DenoAsyncWrite for StreamResource {
       ClientTlsStream(f) => Box::pin(f),
       ServerTlsStream(f) => Box::pin(f),
       ChildStdin(f) => Box::pin(f),
-      _ => return Err(OpError::bad_resource()).into(),
+      _ => return Err(OpError::bad_resource_id()).into(),
     };
 
     ready!(f.as_mut().poll_flush(cx))?;
@@ -235,7 +235,7 @@ pub fn op_write(
       let resource_table = &mut state.borrow_mut().resource_table;
       let resource = resource_table
         .get_mut::<StreamResource>(rid as u32)
-        .ok_or_else(OpError::bad_resource)?;
+        .ok_or_else(OpError::bad_resource_id)?;
       resource.poll_write(cx, &buf.as_ref()[..])
     })
     .await?;
@@ -248,7 +248,7 @@ pub fn op_write(
       let resource_table = &mut state.borrow_mut().resource_table;
       let resource = resource_table
         .get_mut::<StreamResource>(rid as u32)
-        .ok_or_else(OpError::bad_resource)?;
+        .ok_or_else(OpError::bad_resource_id)?;
       resource.poll_flush(cx)
     })
     .await?;
