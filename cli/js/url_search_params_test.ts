@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEquals } from "./test_util.ts";
+import { unitTest, assert, assertEquals } from "./test_util.ts";
 
-test(function urlSearchParamsInitString(): void {
+unitTest(function urlSearchParamsInitString(): void {
   const init = "c=4&a=2&b=3&%C3%A1=1";
   const searchParams = new URLSearchParams(init);
   assert(
@@ -10,7 +10,7 @@ test(function urlSearchParamsInitString(): void {
   );
 });
 
-test(function urlSearchParamsInitIterable(): void {
+unitTest(function urlSearchParamsInitIterable(): void {
   const init = [
     ["a", "54"],
     ["b", "true"]
@@ -19,13 +19,13 @@ test(function urlSearchParamsInitIterable(): void {
   assertEquals(searchParams.toString(), "a=54&b=true");
 });
 
-test(function urlSearchParamsInitRecord(): void {
+unitTest(function urlSearchParamsInitRecord(): void {
   const init = { a: "54", b: "true" };
   const searchParams = new URLSearchParams(init);
   assertEquals(searchParams.toString(), "a=54&b=true");
 });
 
-test(function urlSearchParamsInit(): void {
+unitTest(function urlSearchParamsInit(): void {
   const params1 = new URLSearchParams("a=b");
   assertEquals(params1.toString(), "a=b");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -33,20 +33,20 @@ test(function urlSearchParamsInit(): void {
   assertEquals(params2.toString(), "a=b");
 });
 
-test(function urlSearchParamsAppendSuccess(): void {
+unitTest(function urlSearchParamsAppendSuccess(): void {
   const searchParams = new URLSearchParams();
   searchParams.append("a", "true");
   assertEquals(searchParams.toString(), "a=true");
 });
 
-test(function urlSearchParamsDeleteSuccess(): void {
+unitTest(function urlSearchParamsDeleteSuccess(): void {
   const init = "a=54&b=true";
   const searchParams = new URLSearchParams(init);
   searchParams.delete("b");
   assertEquals(searchParams.toString(), "a=54");
 });
 
-test(function urlSearchParamsGetAllSuccess(): void {
+unitTest(function urlSearchParamsGetAllSuccess(): void {
   const init = "a=54&b=true&a=true";
   const searchParams = new URLSearchParams(init);
   assertEquals(searchParams.getAll("a"), ["54", "true"]);
@@ -54,7 +54,7 @@ test(function urlSearchParamsGetAllSuccess(): void {
   assertEquals(searchParams.getAll("c"), []);
 });
 
-test(function urlSearchParamsGetSuccess(): void {
+unitTest(function urlSearchParamsGetSuccess(): void {
   const init = "a=54&b=true&a=true";
   const searchParams = new URLSearchParams(init);
   assertEquals(searchParams.get("a"), "54");
@@ -62,7 +62,7 @@ test(function urlSearchParamsGetSuccess(): void {
   assertEquals(searchParams.get("c"), null);
 });
 
-test(function urlSearchParamsHasSuccess(): void {
+unitTest(function urlSearchParamsHasSuccess(): void {
   const init = "a=54&b=true&a=true";
   const searchParams = new URLSearchParams(init);
   assert(searchParams.has("a"));
@@ -70,28 +70,28 @@ test(function urlSearchParamsHasSuccess(): void {
   assert(!searchParams.has("c"));
 });
 
-test(function urlSearchParamsSetReplaceFirstAndRemoveOthers(): void {
+unitTest(function urlSearchParamsSetReplaceFirstAndRemoveOthers(): void {
   const init = "a=54&b=true&a=true";
   const searchParams = new URLSearchParams(init);
   searchParams.set("a", "false");
   assertEquals(searchParams.toString(), "a=false&b=true");
 });
 
-test(function urlSearchParamsSetAppendNew(): void {
+unitTest(function urlSearchParamsSetAppendNew(): void {
   const init = "a=54&b=true&a=true";
   const searchParams = new URLSearchParams(init);
   searchParams.set("c", "foo");
   assertEquals(searchParams.toString(), "a=54&b=true&a=true&c=foo");
 });
 
-test(function urlSearchParamsSortSuccess(): void {
+unitTest(function urlSearchParamsSortSuccess(): void {
   const init = "c=4&a=2&b=3&a=1";
   const searchParams = new URLSearchParams(init);
   searchParams.sort();
   assertEquals(searchParams.toString(), "a=2&a=1&b=3&c=4");
 });
 
-test(function urlSearchParamsForEachSuccess(): void {
+unitTest(function urlSearchParamsForEachSuccess(): void {
   const init = [
     ["a", "54"],
     ["b", "true"]
@@ -107,28 +107,28 @@ test(function urlSearchParamsForEachSuccess(): void {
   assertEquals(callNum, init.length);
 });
 
-test(function urlSearchParamsMissingName(): void {
+unitTest(function urlSearchParamsMissingName(): void {
   const init = "=4";
   const searchParams = new URLSearchParams(init);
   assertEquals(searchParams.get(""), "4");
   assertEquals(searchParams.toString(), "=4");
 });
 
-test(function urlSearchParamsMissingValue(): void {
+unitTest(function urlSearchParamsMissingValue(): void {
   const init = "4=";
   const searchParams = new URLSearchParams(init);
   assertEquals(searchParams.get("4"), "");
   assertEquals(searchParams.toString(), "4=");
 });
 
-test(function urlSearchParamsMissingEqualSign(): void {
+unitTest(function urlSearchParamsMissingEqualSign(): void {
   const init = "4";
   const searchParams = new URLSearchParams(init);
   assertEquals(searchParams.get("4"), "");
   assertEquals(searchParams.toString(), "4=");
 });
 
-test(function urlSearchParamsMissingPair(): void {
+unitTest(function urlSearchParamsMissingPair(): void {
   const init = "c=4&&a=54&";
   const searchParams = new URLSearchParams(init);
   assertEquals(searchParams.toString(), "c=4&a=54");
@@ -136,7 +136,7 @@ test(function urlSearchParamsMissingPair(): void {
 
 // If pair does not contain exactly two items, then throw a TypeError.
 // ref https://url.spec.whatwg.org/#interface-urlsearchparams
-test(function urlSearchParamsShouldThrowTypeError(): void {
+unitTest(function urlSearchParamsShouldThrowTypeError(): void {
   let hasThrown = 0;
 
   try {
@@ -166,7 +166,7 @@ test(function urlSearchParamsShouldThrowTypeError(): void {
   assertEquals(hasThrown, 2);
 });
 
-test(function urlSearchParamsAppendArgumentsCheck(): void {
+unitTest(function urlSearchParamsAppendArgumentsCheck(): void {
   const methodRequireOneParam = ["delete", "getAll", "get", "has", "forEach"];
 
   const methodRequireTwoParams = ["append", "set"];
@@ -209,7 +209,7 @@ test(function urlSearchParamsAppendArgumentsCheck(): void {
 });
 
 // ref: https://github.com/web-platform-tests/wpt/blob/master/url/urlsearchparams-delete.any.js
-test(function urlSearchParamsDeletingAppendedMultiple(): void {
+unitTest(function urlSearchParamsDeletingAppendedMultiple(): void {
   const params = new URLSearchParams();
   params.append("first", (1 as unknown) as string);
   assert(params.has("first"));
@@ -223,7 +223,7 @@ test(function urlSearchParamsDeletingAppendedMultiple(): void {
 });
 
 // ref: https://github.com/web-platform-tests/wpt/blob/master/url/urlsearchparams-constructor.any.js#L176-L182
-test(function urlSearchParamsCustomSymbolIterator(): void {
+unitTest(function urlSearchParamsCustomSymbolIterator(): void {
   const params = new URLSearchParams();
   params[Symbol.iterator] = function*(): IterableIterator<[string, string]> {
     yield ["a", "b"];
@@ -232,12 +232,14 @@ test(function urlSearchParamsCustomSymbolIterator(): void {
   assertEquals(params1.get("a"), "b");
 });
 
-test(function urlSearchParamsCustomSymbolIteratorWithNonStringParams(): void {
-  const params = {};
-  // @ts-ignore
-  params[Symbol.iterator] = function*(): IterableIterator<[number, number]> {
-    yield [1, 2];
-  };
-  const params1 = new URLSearchParams((params as unknown) as string[][]);
-  assertEquals(params1.get("1"), "2");
-});
+unitTest(
+  function urlSearchParamsCustomSymbolIteratorWithNonStringParams(): void {
+    const params = {};
+    // @ts-ignore
+    params[Symbol.iterator] = function*(): IterableIterator<[number, number]> {
+      yield [1, 2];
+    };
+    const params1 = new URLSearchParams((params as unknown) as string[][]);
+    assertEquals(params1.get("1"), "2");
+  }
+);
