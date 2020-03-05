@@ -159,10 +159,6 @@ export async function runTests({
   const RED_BG_FAIL = bgRed(" FAIL ");
 
   originalConsole.log(`running ${testsToRun.length} tests`);
-  // NOTE(bartlomieju): originally we used `performance.now()` here,
-  // but there's no guarantee that user runs tests with `--allow-hr`
-  // flag - so `new Date()` provides actually more precision
-  // (1ms instead of 2ms).
   const suiteStart = +new Date();
 
   for (const testCase of testCases) {

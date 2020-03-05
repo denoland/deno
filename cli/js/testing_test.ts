@@ -1,12 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertThrows, test } from "./test_util.ts";
+import { assertThrows, unitTest } from "./test_util.ts";
 
-test(function testFnOverloading(): void {
+unitTest(function testFnOverloading(): void {
   // just verifying that you can use this test definition syntax
   Deno.test("test fn overloading", (): void => {});
 });
 
-test(function nameOfTestCaseCantBeEmpty(): void {
+unitTest(function nameOfTestCaseCantBeEmpty(): void {
   assertThrows(
     () => {
       Deno.test("", () => {});
@@ -26,7 +26,7 @@ test(function nameOfTestCaseCantBeEmpty(): void {
   );
 });
 
-test(function testFnCantBeAnonymous(): void {
+unitTest(function testFnCantBeAnonymous(): void {
   assertThrows(
     () => {
       Deno.test(function() {});
