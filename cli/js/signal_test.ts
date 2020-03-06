@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  test,
-  testPerm,
+  unitTest,
   assert,
   assertEquals,
-  assertThrows
+  assertThrows,
+  createResolvable
 } from "./test_util.ts";
 
 function defer(n: number): Promise<void> {
@@ -13,8 +13,9 @@ function defer(n: number): Promise<void> {
   });
 }
 
-if (Deno.build.os === "win") {
-  test(async function signalsNotImplemented(): Promise<void> {
+unitTest(
+  { skip: Deno.build.os !== "win" },
+  async function signalsNotImplemented(): Promise<void> {
     assertThrows(
       () => {
         Deno.signal(1);
@@ -99,17 +100,18 @@ if (Deno.build.os === "win") {
       Error,
       "not implemented"
     );
-  });
-} else {
-  testPerm({ run: true, net: true }, async function signalStreamTest(): Promise<
-    void
-  > {
+  }
+);
+
+unitTest(
+  { skip: Deno.build.os === "win", perms: { run: true, net: true } },
+  async function signalStreamTest(): Promise<void> {
+    const resolvable = createResolvable();
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);
 
     let c = 0;
     const sig = Deno.signal(Deno.Signal.SIGUSR1);
-
     setTimeout(async () => {
       await defer(20);
       for (const _ of Array(3)) {
@@ -118,6 +120,7 @@ if (Deno.build.os === "win") {
         await defer(20);
       }
       sig.dispose();
+      resolvable.resolve();
     });
 
     for await (const _ of sig) {
@@ -126,27 +129,40 @@ if (Deno.build.os === "win") {
 
     assertEquals(c, 3);
 
-    clearTimeout(t);
-  });
+    clearInterval(t);
+    // Defer for a moment to allow async op from `setInterval` to resolve;
+    // for more explanation see `FIXME` in `cli/js/timers.ts::setGlobalTimeout`
+    await defer(20);
+    await resolvable;
+  }
+);
 
-  testPerm(
-    { run: true, net: true },
-    async function signalPromiseTest(): Promise<void> {
-      // This prevents the program from exiting.
-      const t = setInterval(() => {}, 1000);
+unitTest(
+  { skip: Deno.build.os === "win", perms: { run: true } },
+  async function signalPromiseTest(): Promise<void> {
+    const resolvable = createResolvable();
+    // This prevents the program from exiting.
+    const t = setInterval(() => {}, 1000);
 
-      const sig = Deno.signal(Deno.Signal.SIGUSR1);
-      setTimeout(() => {
-        Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
-      }, 20);
-      await sig;
-      sig.dispose();
+    const sig = Deno.signal(Deno.Signal.SIGUSR1);
+    setTimeout(() => {
+      Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
+      resolvable.resolve();
+    }, 20);
+    await sig;
+    sig.dispose();
 
-      clearTimeout(t);
-    }
-  );
+    clearInterval(t);
+    // Defer for a moment to allow async op from `setInterval` to resolve;
+    // for more explanation see `FIXME` in `cli/js/timers.ts::setGlobalTimeout`
+    await defer(20);
+    await resolvable;
+  }
+);
 
-  testPerm({ run: true }, async function signalShorthandsTest(): Promise<void> {
+unitTest(
+  { skip: Deno.build.os === "win", perms: { run: true } },
+  async function signalShorthandsTest(): Promise<void> {
     let s: Deno.SignalStream;
     s = Deno.signals.alarm(); // for SIGALRM
     assert(s instanceof Deno.SignalStream);
@@ -181,5 +197,5 @@ if (Deno.build.os === "win") {
     s = Deno.signals.windowChange(); // for SIGWINCH
     assert(s instanceof Deno.SignalStream);
     s.dispose();
-  });
-}
+  }
+);

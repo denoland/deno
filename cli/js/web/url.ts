@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as urlSearchParams from "./url_search_params.ts";
 import * as domTypes from "./dom_types.ts";
-import { getRandomValues } from "./get_random_values.ts";
-import { customInspect } from "./console.ts";
+import { getRandomValues } from "../get_random_values.ts";
+import { customInspect } from "../console.ts";
 
 interface URLParts {
   protocol: string;

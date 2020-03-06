@@ -48,7 +48,7 @@ fn accept_tcp(
     state
       .resource_table
       .get::<TcpListenerResource>(rid)
-      .ok_or_else(OpError::bad_resource)?;
+      .ok_or_else(OpError::bad_resource_id)?;
   }
 
   let state = state.clone();
@@ -358,7 +358,7 @@ fn op_shutdown(
   let resource = state
     .resource_table
     .get_mut::<StreamResource>(rid)
-    .ok_or_else(OpError::bad_resource)?;
+    .ok_or_else(OpError::bad_resource_id)?;
   match resource {
     StreamResource::TcpStream(ref mut stream) => {
       TcpStream::shutdown(stream, shutdown_mode).map_err(OpError::from)?;
@@ -367,7 +367,7 @@ fn op_shutdown(
     StreamResource::UnixStream(ref mut stream) => {
       net_unix::UnixStream::shutdown(stream, shutdown_mode).map_err(OpError::from)?;
     }
-    _ => return Err(OpError::bad_resource()),
+    _ => return Err(OpError::bad_resource_id()),
   }
 
   Ok(JsonOp::Sync(json!({})))

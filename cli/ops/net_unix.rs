@@ -37,7 +37,7 @@ pub fn accept_unix(
     state
       .resource_table
       .get::<UnixListenerResource>(rid)
-      .ok_or_else(OpError::bad_resource)?;
+      .ok_or_else(OpError::bad_resource_id)?;
   }
   let op = async move {
     let mut state = state_.borrow_mut();

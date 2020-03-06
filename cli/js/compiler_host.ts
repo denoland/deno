@@ -37,6 +37,7 @@ export interface ConfigureResponse {
 /** Options that need to be used when generating a bundle (either trusted or
  * runtime). */
 export const defaultBundlerOptions: ts.CompilerOptions = {
+  allowJs: true,
   inlineSourceMap: false,
   module: ts.ModuleKind.System,
   outDir: undefined,

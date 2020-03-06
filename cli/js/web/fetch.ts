@@ -4,18 +4,18 @@ import {
   createResolvable,
   notImplemented,
   isTypedArray
-} from "./util.ts";
+} from "../util.ts";
 import * as domTypes from "./dom_types.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob.ts";
 import { Headers } from "./headers.ts";
-import * as io from "./io.ts";
-import { read, close } from "./files.ts";
-import { Buffer } from "./buffer.ts";
+import * as io from "../io.ts";
+import { read, close } from "../files.ts";
+import { Buffer } from "../buffer.ts";
 import { FormData } from "./form_data.ts";
 import { URL } from "./url.ts";
 import { URLSearchParams } from "./url_search_params.ts";
-import { sendAsync } from "./dispatch_json.ts";
+import { sendAsync } from "../dispatch_json.ts";
 
 function getHeaderValueParams(value: string): Map<string, string> {
   const params = new Map();

@@ -105,23 +105,15 @@ export interface Seeker {
    * and `SEEK_END` means relative to the end.
    *
    * Seeking to an offset before the start of the file is an error. Seeking to
-   * any positive offset is legal, but the behavior of subsequent I/O
-   * operations on the underlying object is implementation-dependent.
+   * any positive offset is legal, but the behavior of subsequent I/O operations
+   * on the underlying object is implementation-dependent. It returns the cursor
+   * position.
    */
-  seek(offset: number, whence: SeekMode): Promise<void>;
+  seek(offset: number, whence: SeekMode): Promise<number>;
 }
 
 export interface SyncSeeker {
-  /** Seek sets the offset for the next `readSync()` or `writeSync()` to
-   * offset, interpreted according to `whence`: `SEEK_START` means relative
-   * to the start of the file, `SEEK_CURRENT` means relative to the current
-   * offset, and `SEEK_END` means relative to the end.
-   *
-   * Seeking to an offset before the start of the file is an error. Seeking to
-   * any positive offset is legal, but the behavior of subsequent I/O
-   * operations on the underlying object is implementation-dependent.
-   */
-  seekSync(offset: number, whence: SeekMode): void;
+  seekSync(offset: number, whence: SeekMode): number;
 }
 
 // https://golang.org/pkg/io/#ReadCloser

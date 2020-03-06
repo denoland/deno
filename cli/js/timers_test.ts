@@ -1,5 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEquals, assertNotEquals } from "./test_util.ts";
+import {
+  unitTest,
+  createResolvable,
+  assert,
+  assertEquals,
+  assertNotEquals
+} from "./test_util.ts";
 
 function deferred(): {
   promise: Promise<{}>;
@@ -25,7 +31,7 @@ async function waitForMs(ms: number): Promise<number> {
   return new Promise((resolve: () => void): number => setTimeout(resolve, ms));
 }
 
-test(async function timeoutSuccess(): Promise<void> {
+unitTest(async function timeoutSuccess(): Promise<void> {
   const { promise, resolve } = deferred();
   let count = 0;
   setTimeout((): void => {
@@ -37,7 +43,7 @@ test(async function timeoutSuccess(): Promise<void> {
   assertEquals(count, 1);
 });
 
-test(async function timeoutArgs(): Promise<void> {
+unitTest(async function timeoutArgs(): Promise<void> {
   const { promise, resolve } = deferred();
   const arg = 1;
   setTimeout(
@@ -55,7 +61,7 @@ test(async function timeoutArgs(): Promise<void> {
   await promise;
 });
 
-test(async function timeoutCancelSuccess(): Promise<void> {
+unitTest(async function timeoutCancelSuccess(): Promise<void> {
   let count = 0;
   const id = setTimeout((): void => {
     count++;
@@ -66,7 +72,7 @@ test(async function timeoutCancelSuccess(): Promise<void> {
   assertEquals(count, 0);
 });
 
-test(async function timeoutCancelMultiple(): Promise<void> {
+unitTest(async function timeoutCancelMultiple(): Promise<void> {
   function uncalled(): never {
     throw new Error("This function should not be called.");
   }
@@ -91,7 +97,7 @@ test(async function timeoutCancelMultiple(): Promise<void> {
   await waitForMs(50);
 });
 
-test(async function timeoutCancelInvalidSilentFail(): Promise<void> {
+unitTest(async function timeoutCancelInvalidSilentFail(): Promise<void> {
   // Expect no panic
   const { promise, resolve } = deferred();
   let count = 0;
@@ -108,7 +114,7 @@ test(async function timeoutCancelInvalidSilentFail(): Promise<void> {
   clearTimeout(2147483647);
 });
 
-test(async function intervalSuccess(): Promise<void> {
+unitTest(async function intervalSuccess(): Promise<void> {
   const { promise, resolve } = deferred();
   let count = 0;
   const id = setInterval((): void => {
@@ -123,7 +129,7 @@ test(async function intervalSuccess(): Promise<void> {
   assertEquals(count, 1);
 });
 
-test(async function intervalCancelSuccess(): Promise<void> {
+unitTest(async function intervalCancelSuccess(): Promise<void> {
   let count = 0;
   const id = setInterval((): void => {
     count++;
@@ -133,7 +139,7 @@ test(async function intervalCancelSuccess(): Promise<void> {
   assertEquals(count, 0);
 });
 
-test(async function intervalOrdering(): Promise<void> {
+unitTest(async function intervalOrdering(): Promise<void> {
   const timers: number[] = [];
   let timeouts = 0;
   function onTimeout(): void {
@@ -149,12 +155,12 @@ test(async function intervalOrdering(): Promise<void> {
   assertEquals(timeouts, 1);
 });
 
-test(async function intervalCancelInvalidSilentFail(): Promise<void> {
+unitTest(async function intervalCancelInvalidSilentFail(): Promise<void> {
   // Should silently fail (no panic)
   clearInterval(2147483647);
 });
 
-test(async function fireCallbackImmediatelyWhenDelayOverMaxValue(): Promise<
+unitTest(async function fireCallbackImmediatelyWhenDelayOverMaxValue(): Promise<
   void
 > {
   let count = 0;
@@ -165,7 +171,7 @@ test(async function fireCallbackImmediatelyWhenDelayOverMaxValue(): Promise<
   assertEquals(count, 1);
 });
 
-test(async function timeoutCallbackThis(): Promise<void> {
+unitTest(async function timeoutCallbackThis(): Promise<void> {
   const { promise, resolve } = deferred();
   const obj = {
     foo(): void {
@@ -177,9 +183,7 @@ test(async function timeoutCallbackThis(): Promise<void> {
   await promise;
 });
 
-test(async function timeoutBindThis(): Promise<void> {
-  function noop(): void {}
-
+unitTest(async function timeoutBindThis(): Promise<void> {
   const thisCheckPassed = [null, undefined, window, globalThis];
 
   const thisCheckFailed = [
@@ -194,44 +198,40 @@ test(async function timeoutBindThis(): Promise<void> {
     Object.prototype
   ];
 
-  thisCheckPassed.forEach(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (thisArg: any): void => {
-      let hasThrown = 0;
-      try {
-        setTimeout.call(thisArg, noop, 1);
-        hasThrown = 1;
-      } catch (err) {
-        if (err instanceof TypeError) {
-          hasThrown = 2;
-        } else {
-          hasThrown = 3;
-        }
+  for (const thisArg of thisCheckPassed) {
+    const resolvable = createResolvable();
+    let hasThrown = 0;
+    try {
+      setTimeout.call(thisArg, () => resolvable.resolve(), 1);
+      hasThrown = 1;
+    } catch (err) {
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
       }
-      assertEquals(hasThrown, 1);
     }
-  );
+    await resolvable;
+    assertEquals(hasThrown, 1);
+  }
 
-  thisCheckFailed.forEach(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (thisArg: any): void => {
-      let hasThrown = 0;
-      try {
-        setTimeout.call(thisArg, noop, 1);
-        hasThrown = 1;
-      } catch (err) {
-        if (err instanceof TypeError) {
-          hasThrown = 2;
-        } else {
-          hasThrown = 3;
-        }
+  for (const thisArg of thisCheckFailed) {
+    let hasThrown = 0;
+    try {
+      setTimeout.call(thisArg, () => {}, 1);
+      hasThrown = 1;
+    } catch (err) {
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
       }
-      assertEquals(hasThrown, 2);
     }
-  );
+    assertEquals(hasThrown, 2);
+  }
 });
 
-test(async function clearTimeoutShouldConvertToNumber(): Promise<void> {
+unitTest(async function clearTimeoutShouldConvertToNumber(): Promise<void> {
   let called = false;
   const obj = {
     valueOf(): number {
@@ -243,7 +243,7 @@ test(async function clearTimeoutShouldConvertToNumber(): Promise<void> {
   assert(called);
 });
 
-test(function setTimeoutShouldThrowWithBigint(): void {
+unitTest(function setTimeoutShouldThrowWithBigint(): void {
   let hasThrown = 0;
   try {
     setTimeout((): void => {}, (1n as unknown) as number);
@@ -258,7 +258,7 @@ test(function setTimeoutShouldThrowWithBigint(): void {
   assertEquals(hasThrown, 2);
 });
 
-test(function clearTimeoutShouldThrowWithBigint(): void {
+unitTest(function clearTimeoutShouldThrowWithBigint(): void {
   let hasThrown = 0;
   try {
     clearTimeout((1n as unknown) as number);
@@ -273,23 +273,23 @@ test(function clearTimeoutShouldThrowWithBigint(): void {
   assertEquals(hasThrown, 2);
 });
 
-test(function testFunctionName(): void {
+unitTest(function testFunctionName(): void {
   assertEquals(clearTimeout.name, "clearTimeout");
   assertEquals(clearInterval.name, "clearInterval");
 });
 
-test(function testFunctionParamsLength(): void {
+unitTest(function testFunctionParamsLength(): void {
   assertEquals(setTimeout.length, 1);
   assertEquals(setInterval.length, 1);
   assertEquals(clearTimeout.length, 0);
   assertEquals(clearInterval.length, 0);
 });
 
-test(function clearTimeoutAndClearIntervalNotBeEquals(): void {
+unitTest(function clearTimeoutAndClearIntervalNotBeEquals(): void {
   assertNotEquals(clearTimeout, clearInterval);
 });
 
-test(async function timerMaxCpuBug(): Promise<void> {
+unitTest(async function timerMaxCpuBug(): Promise<void> {
   // There was a bug where clearing a timeout would cause Deno to use 100% CPU.
   clearTimeout(setTimeout(() => {}, 1000));
   // We can check this by counting how many ops have triggered in the interim.
@@ -297,11 +297,10 @@ test(async function timerMaxCpuBug(): Promise<void> {
   const { opsDispatched } = Deno.metrics();
   await waitForMs(100);
   const opsDispatched_ = Deno.metrics().opsDispatched;
-  console.log("opsDispatched", opsDispatched, "opsDispatched_", opsDispatched_);
   assert(opsDispatched_ - opsDispatched < 10);
 });
 
-test(async function timerBasicMicrotaskOrdering(): Promise<void> {
+unitTest(async function timerBasicMicrotaskOrdering(): Promise<void> {
   let s = "";
   let count = 0;
   const { promise, resolve } = deferred();
@@ -325,7 +324,7 @@ test(async function timerBasicMicrotaskOrdering(): Promise<void> {
   assertEquals(s, "deno");
 });
 
-test(async function timerNestedMicrotaskOrdering(): Promise<void> {
+unitTest(async function timerNestedMicrotaskOrdering(): Promise<void> {
   let s = "";
   const { promise, resolve } = deferred();
   s += "0";

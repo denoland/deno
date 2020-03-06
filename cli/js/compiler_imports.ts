@@ -5,6 +5,7 @@ import {
   SourceFile,
   SourceFileJson
 } from "./compiler_sourcefile.ts";
+import { normalizeString, CHAR_FORWARD_SLASH } from "./compiler_util.ts";
 import { cwd } from "./dir.ts";
 import { sendAsync, sendSync } from "./dispatch_json.ts";
 import { assert } from "./util.ts";
@@ -27,18 +28,18 @@ function resolvePath(...pathSegments: string[]): string {
     }
 
     resolvedPath = `${path}/${resolvedPath}`;
-    resolvedAbsolute = path.charCodeAt(0) === util.CHAR_FORWARD_SLASH;
+    resolvedAbsolute = path.charCodeAt(0) === CHAR_FORWARD_SLASH;
   }
 
   // At this point the path should be resolved to a full absolute path, but
   // handle relative paths to be safe (might happen when cwd() fails)
 
   // Normalize the path
-  resolvedPath = util.normalizeString(
+  resolvedPath = normalizeString(
     resolvedPath,
     !resolvedAbsolute,
     "/",
-    code => code === util.CHAR_FORWARD_SLASH
+    code => code === CHAR_FORWARD_SLASH
   );
 
   if (resolvedAbsolute) {
@@ -120,7 +121,7 @@ export function processLocalImports(
   sources: Record<string, string>,
   specifiers: Array<[string, string]>,
   referrer?: string,
-  checkJs = false
+  processJsImports = false
 ): string[] {
   if (!specifiers.length) {
     return [];
@@ -145,9 +146,9 @@ export function processLocalImports(
     if (!sourceFile.processed) {
       processLocalImports(
         sources,
-        sourceFile.imports(checkJs),
+        sourceFile.imports(processJsImports),
         sourceFile.url,
-        checkJs
+        processJsImports
       );
     }
   }
@@ -163,7 +164,7 @@ export function processLocalImports(
 export async function processImports(
   specifiers: Array<[string, string]>,
   referrer?: string,
-  checkJs = false
+  processJsImports = false
 ): Promise<string[]> {
   if (!specifiers.length) {
     return [];
@@ -179,9 +180,9 @@ export async function processImports(
     sourceFile.cache(specifiers[i][0], referrer);
     if (!sourceFile.processed) {
       await processImports(
-        sourceFile.imports(checkJs),
+        sourceFile.imports(processJsImports),
         sourceFile.url,
-        checkJs
+        processJsImports
       );
     }
   }

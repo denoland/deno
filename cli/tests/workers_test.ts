@@ -1,13 +1,33 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import {
-  test,
-  testPerm,
-  assert,
-  assertEquals,
-  createResolvable
-} from "./test_util.ts";
 
-test(async function workersBasic(): Promise<void> {
+// Requires to be run with `--allow-net` flag
+
+// FIXME(bartlomieju): this file is an integration test only because
+// workers are leaking ops at the moment - `worker.terminate()` is not
+// yet implemented. Once it gets implemented this file should be
+// again moved to `cli/js/` as an unit test file.
+
+import { assert, assertEquals } from "../../std/testing/asserts.ts";
+
+export interface ResolvableMethods<T> {
+  resolve: (value?: T | PromiseLike<T>) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  reject: (reason?: any) => void;
+}
+
+export type Resolvable<T> = Promise<T> & ResolvableMethods<T>;
+
+export function createResolvable<T>(): Resolvable<T> {
+  let methods: ResolvableMethods<T>;
+  const promise = new Promise<T>((resolve, reject): void => {
+    methods = { resolve, reject };
+  });
+  // TypeScript doesn't know that the Promise callback occurs synchronously
+  // therefore use of not null assertion (`!`)
+  return Object.assign(promise, methods!) as Resolvable<T>;
+}
+
+Deno.test(async function workersBasic(): Promise<void> {
   const promise = createResolvable();
   const jsWorker = new Worker("../tests/subdir/test_worker.js", {
     type: "module",
@@ -37,7 +57,7 @@ test(async function workersBasic(): Promise<void> {
   await promise;
 });
 
-test(async function nestedWorker(): Promise<void> {
+Deno.test(async function nestedWorker(): Promise<void> {
   const promise = createResolvable();
 
   const nestedWorker = new Worker("../tests/subdir/nested_worker.js", {
@@ -54,9 +74,8 @@ test(async function nestedWorker(): Promise<void> {
   await promise;
 });
 
-test(async function workerThrowsWhenExecuting(): Promise<void> {
+Deno.test(async function workerThrowsWhenExecuting(): Promise<void> {
   const promise = createResolvable();
-
   const throwingWorker = new Worker("../tests/subdir/throwing_worker.js", {
     type: "module"
   });
@@ -71,7 +90,7 @@ test(async function workerThrowsWhenExecuting(): Promise<void> {
   await promise;
 });
 
-testPerm({ net: true }, async function workerCanUseFetch(): Promise<void> {
+Deno.test(async function workerCanUseFetch(): Promise<void> {
   const promise = createResolvable();
 
   const fetchingWorker = new Worker("../tests/subdir/fetching_worker.js", {
@@ -84,6 +103,7 @@ testPerm({ net: true }, async function workerCanUseFetch(): Promise<void> {
     promise.reject(e.message);
   };
 
+  // Defer promise.resolve() to allow worker to shut down
   fetchingWorker.onmessage = (e): void => {
     assert(e.data === "Done!");
     promise.resolve();
@@ -91,3 +111,5 @@ testPerm({ net: true }, async function workerCanUseFetch(): Promise<void> {
 
   await promise;
 });
+
+await Deno.runTests();

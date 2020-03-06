@@ -5,7 +5,6 @@ use rusty_v8 as v8;
 use crate::any_error::ErrBox;
 use crate::es_isolate::DynImportId;
 use crate::es_isolate::ModuleId;
-use crate::es_isolate::SourceCodeInfo;
 use crate::module_specifier::ModuleSpecifier;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
@@ -20,10 +19,31 @@ use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
-pub type SourceCodeInfoFuture =
-  dyn Future<Output = Result<SourceCodeInfo, ErrBox>>;
+/// EsModule source code that will be loaded into V8.
+///
+/// Users can implement `Into<ModuleInfo>` for different file types that
+/// can be transpiled to valid EsModule.
+///
+/// Found module URL might be different from specified URL
+/// used for loading due to redirections (like HTTP 303).
+/// Eg. Both "https://example.com/a.ts" and
+/// "https://example.com/b.ts" may point to "https://example.com/c.ts"
+/// By keeping track of specified and found URL we can alias modules and avoid
+/// recompiling the same code 3 times.
+// TODO(bartlomieju): I have a strong opinion we should store all redirects
+// that happened; not only first and final target. It would simplify a lot
+// of things throughout the codebase otherwise we may end up requesting
+// intermediate redirects from file loader.
+#[derive(Debug, Eq, PartialEq)]
+pub struct ModuleSource {
+  pub code: String,
+  pub module_url_specified: String,
+  pub module_url_found: String,
+}
 
-pub trait Loader {
+pub type ModuleSourceFuture = dyn Future<Output = Result<ModuleSource, ErrBox>>;
+
+pub trait ModuleLoader {
   /// Returns an absolute URL.
   /// When implementing an spec-complaint VM, this should be exactly the
   /// algorithm described here:
@@ -47,7 +67,7 @@ pub trait Loader {
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     is_dyn_import: bool,
-  ) -> Pin<Box<SourceCodeInfoFuture>>;
+  ) -> Pin<Box<ModuleSourceFuture>>;
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -74,8 +94,8 @@ pub struct RecursiveModuleLoad {
   // Kind::Main
   pub dyn_import_id: Option<DynImportId>,
   pub state: LoadState,
-  pub loader: Rc<dyn Loader + Unpin>,
-  pub pending: FuturesUnordered<Pin<Box<SourceCodeInfoFuture>>>,
+  pub loader: Rc<dyn ModuleLoader>,
+  pub pending: FuturesUnordered<Pin<Box<ModuleSourceFuture>>>,
   pub is_pending: HashSet<ModuleSpecifier>,
 }
 
@@ -84,7 +104,7 @@ impl RecursiveModuleLoad {
   pub fn main(
     specifier: &str,
     code: Option<String>,
-    loader: Rc<dyn Loader + Unpin>,
+    loader: Rc<dyn ModuleLoader>,
   ) -> Self {
     let kind = Kind::Main;
     let state = LoadState::ResolveMain(specifier.to_owned(), code);
@@ -95,7 +115,7 @@ impl RecursiveModuleLoad {
     id: DynImportId,
     specifier: &str,
     referrer: &str,
-    loader: Rc<dyn Loader + Unpin>,
+    loader: Rc<dyn ModuleLoader>,
   ) -> Self {
     let kind = Kind::DynamicImport;
     let state =
@@ -110,7 +130,7 @@ impl RecursiveModuleLoad {
   fn new(
     kind: Kind,
     state: LoadState,
-    loader: Rc<dyn Loader + Unpin>,
+    loader: Rc<dyn ModuleLoader>,
     dyn_import_id: Option<DynImportId>,
   ) -> Self {
     Self {
@@ -138,7 +158,7 @@ impl RecursiveModuleLoad {
 
     let load_fut = match &self.state {
       LoadState::ResolveMain(_, Some(code)) => {
-        futures::future::ok(SourceCodeInfo {
+        futures::future::ok(ModuleSource {
           code: code.to_owned(),
           module_url_specified: module_specifier.to_string(),
           module_url_found: module_specifier.to_string(),
@@ -174,7 +194,7 @@ impl RecursiveModuleLoad {
 }
 
 impl Stream for RecursiveModuleLoad {
-  type Item = Result<SourceCodeInfo, ErrBox>;
+  type Item = Result<ModuleSource, ErrBox>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -544,7 +564,7 @@ mod tests {
   }
 
   impl Future for DelayedSourceCodeFuture {
-    type Output = Result<SourceCodeInfo, ErrBox>;
+    type Output = Result<ModuleSource, ErrBox>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
       let inner = self.get_mut();
@@ -559,7 +579,7 @@ mod tests {
         return Poll::Pending;
       }
       match mock_source_code(&inner.url) {
-        Some(src) => Poll::Ready(Ok(SourceCodeInfo {
+        Some(src) => Poll::Ready(Ok(ModuleSource {
           code: src.0.to_owned(),
           module_url_specified: inner.url.clone(),
           module_url_found: src.1.to_owned(),
@@ -569,7 +589,7 @@ mod tests {
     }
   }
 
-  impl Loader for MockLoader {
+  impl ModuleLoader for MockLoader {
     fn resolve(
       &self,
       specifier: &str,
@@ -602,7 +622,7 @@ mod tests {
       module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<ModuleSpecifier>,
       _is_dyn_import: bool,
-    ) -> Pin<Box<SourceCodeInfoFuture>> {
+    ) -> Pin<Box<ModuleSourceFuture>> {
       let mut loads = self.loads.lock().unwrap();
       loads.push(module_specifier.to_string());
       let url = module_specifier.to_string();
@@ -835,7 +855,7 @@ mod tests {
   // slow.js
   const SLOW_SRC: &str = r#"
     // Circular import of never_ready.js
-    // Does this trigger two Loader calls? It shouldn't.
+    // Does this trigger two ModuleLoader calls? It shouldn't.
     import "/never_ready.js";
     import "/a.js";
   "#;

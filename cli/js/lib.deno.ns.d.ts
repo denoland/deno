@@ -33,15 +33,17 @@ declare namespace Deno {
   export function test(name: string, fn: TestFunction): void;
 
   export interface RunTestsOptions {
-    /** If `true`, Deno will exit upon a failure after logging that failure to
-     * the console. Defaults to `false`. */
+    /** If `true`, Deno will exit with status code 1 if there was
+     * test failure. Defaults to `true`. */
     exitOnFail?: boolean;
-    /** Provide a regular expression of which only tests that match the regular
-     * expression are run. */
-    only?: RegExp;
-    /** Provide a regular expression of which tests that match the regular
-     * expression are skipped. */
-    skip?: RegExp;
+    /** If `true`, Deno will exit upon first test failure Defaults to `false`. */
+    failFast?: boolean;
+    /** String or RegExp used to filter test to run. Only test with names
+     * matching provided `String` or `RegExp` will be run. */
+    only?: string | RegExp;
+    /** String or RegExp used to skip tests to run. Tests with names
+     * matching provided `String` or `RegExp` will not be run. */
+    skip?: string | RegExp;
     /** Disable logging of the results. Defaults to `false`. */
     disableLog?: boolean;
   }
@@ -383,8 +385,9 @@ declare namespace Deno {
      * Seeking to an offset before the start of the file is an error. Seeking to
      * any positive offset is legal, but the behavior of subsequent I/O
      * operations on the underlying object is implementation-dependent.
+     * It returns the number of cursor position.
      */
-    seek(offset: number, whence: SeekMode): Promise<void>;
+    seek(offset: number, whence: SeekMode): Promise<number>;
   }
 
   export interface SyncSeeker {
@@ -397,7 +400,7 @@ declare namespace Deno {
      * any positive offset is legal, but the behavior of subsequent I/O
      * operations on the underlying object is implementation-dependent.
      */
-    seekSync(offset: number, whence: SeekMode): void;
+    seekSync(offset: number, whence: SeekMode): number;
   }
 
   export interface ReadCloser extends Reader, Closer {}
@@ -525,7 +528,11 @@ declare namespace Deno {
    *       const file = Deno.openSync("/foo/bar.txt");
    *       Deno.seekSync(file.rid, 0, 0);
    */
-  export function seekSync(rid: number, offset: number, whence: SeekMode): void;
+  export function seekSync(
+    rid: number,
+    offset: number,
+    whence: SeekMode
+  ): number;
 
   /** Seek a file ID to the given offset under mode given by `whence`.
    *
@@ -536,7 +543,7 @@ declare namespace Deno {
     rid: number,
     offset: number,
     whence: SeekMode
-  ): Promise<void>;
+  ): Promise<number>;
 
   /** Close the given resource ID. */
   export function close(rid: number): void;
@@ -557,8 +564,8 @@ declare namespace Deno {
     writeSync(p: Uint8Array): number;
     read(p: Uint8Array): Promise<number | EOF>;
     readSync(p: Uint8Array): number | EOF;
-    seek(offset: number, whence: SeekMode): Promise<void>;
-    seekSync(offset: number, whence: SeekMode): void;
+    seek(offset: number, whence: SeekMode): Promise<number>;
+    seekSync(offset: number, whence: SeekMode): number;
     close(): void;
   }
 
@@ -716,7 +723,7 @@ declare namespace Deno {
 
   // @url js/mkdir.d.ts
 
-  export interface MkdirOption {
+  export interface MkdirOptions {
     /** Defaults to `false`. If set to `true`, means that any intermediate
      * directories will also be created (as with the shell command `mkdir -p`).
      * Intermediate directories are created with the same permissions.
@@ -735,7 +742,7 @@ declare namespace Deno {
    *       Deno.mkdirSync("nested/directories", { recursive: true });
    *
    * Requires `allow-write` permission. */
-  export function mkdirSync(path: string, options?: MkdirOption): void;
+  export function mkdirSync(path: string, options?: MkdirOptions): void;
 
   /** @deprecated */
   export function mkdirSync(
@@ -750,7 +757,7 @@ declare namespace Deno {
    *       await Deno.mkdir("nested/directories", { recursive: true });
    *
    * Requires `allow-write` permission. */
-  export function mkdir(path: string, options?: MkdirOption): Promise<void>;
+  export function mkdir(path: string, options?: MkdirOptions): Promise<void>;
 
   /** @deprecated */
   export function mkdir(
@@ -915,8 +922,7 @@ declare namespace Deno {
 
   // @url js/remove.d.ts
 
-  /** UNSTABLE: rename to RemoveOptions */
-  export interface RemoveOption {
+  export interface RemoveOptions {
     /** Defaults to `false`. If set to `true`, path will be removed even if
      * it's a non-empty directory. */
     recursive?: boolean;
@@ -929,7 +935,7 @@ declare namespace Deno {
    *       Deno.removeSync("/path/to/dir/or/file", { recursive: false });
    *
    * Requires `allow-write` permission. */
-  export function removeSync(path: string, options?: RemoveOption): void;
+  export function removeSync(path: string, options?: RemoveOptions): void;
 
   /** Removes the named file or directory. Throws error if permission denied,
    * path not found, or path is a non-empty directory and the `recursive`
@@ -938,7 +944,7 @@ declare namespace Deno {
    *       await Deno.remove("/path/to/dir/or/file", { recursive: false });
    *
    * Requires `allow-write` permission. */
-  export function remove(path: string, options?: RemoveOption): Promise<void>;
+  export function remove(path: string, options?: RemoveOptions): Promise<void>;
 
   // @url js/rename.d.ts
 
@@ -1313,7 +1319,6 @@ declare namespace Deno {
     TimedOut: ErrorConstructor;
     Interrupted: ErrorConstructor;
     WriteZero: ErrorConstructor;
-    Other: ErrorConstructor;
     UnexpectedEof: ErrorConstructor;
     BadResource: ErrorConstructor;
     Http: ErrorConstructor;
@@ -1684,7 +1689,13 @@ declare namespace Deno {
   /** **UNSTABLE**: not sure if broken or not */
   export interface Metrics {
     opsDispatched: number;
+    opsDispatchedSync: number;
+    opsDispatchedAsync: number;
+    opsDispatchedAsyncUnref: number;
     opsCompleted: number;
+    opsCompletedSync: number;
+    opsCompletedAsync: number;
+    opsCompletedAsyncUnref: number;
     bytesSentControl: number;
     bytesSentData: number;
     bytesReceived: number;
@@ -1695,15 +1706,21 @@ declare namespace Deno {
    * Receive metrics from the privileged side of Deno.
    *
    *      > console.table(Deno.metrics())
-   *      ┌──────────────────┬────────┐
-   *      │     (index)      │ Values │
-   *      ├──────────────────┼────────┤
-   *      │  opsDispatched   │   9    │
-   *      │   opsCompleted   │   9    │
-   *      │ bytesSentControl │  504   │
-   *      │  bytesSentData   │   0    │
-   *      │  bytesReceived   │  856   │
-   *      └──────────────────┴────────┘
+   *      ┌─────────────────────────┬────────┐
+   *      │         (index)         │ Values │
+   *      ├─────────────────────────┼────────┤
+   *      │      opsDispatched      │   3    │
+   *      │    opsDispatchedSync    │   2    │
+   *      │   opsDispatchedAsync    │   1    │
+   *      │ opsDispatchedAsyncUnref │   0    │
+   *      │      opsCompleted       │   3    │
+   *      │    opsCompletedSync     │   2    │
+   *      │    opsCompletedAsync    │   1    │
+   *      │ opsCompletedAsyncUnref  │   0    │
+   *      │    bytesSentControl     │   73   │
+   *      │      bytesSentData      │   0    │
+   *      │      bytesReceived      │  375   │
+   *      └─────────────────────────┴────────┘
    */
   export function metrics(): Metrics;
 

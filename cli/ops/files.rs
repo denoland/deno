@@ -156,7 +156,7 @@ fn op_close(
   state
     .resource_table
     .close(args.rid as u32)
-    .ok_or_else(OpError::bad_resource)?;
+    .ok_or_else(OpError::bad_resource_id)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -195,17 +195,17 @@ fn op_seek(
   let resource = state
     .resource_table
     .get::<StreamResource>(rid)
-    .ok_or_else(OpError::bad_resource)?;
+    .ok_or_else(OpError::bad_resource_id)?;
 
   let tokio_file = match resource {
     StreamResource::FsFile(ref file, _) => file,
-    _ => return Err(OpError::bad_resource()),
+    _ => return Err(OpError::bad_resource_id()),
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
   let fut = async move {
-    file.seek(seek_from).await?;
-    Ok(json!({}))
+    let pos = file.seek(seek_from).await?;
+    Ok(json!(pos))
   };
 
   if args.promise_id.is_none() {
