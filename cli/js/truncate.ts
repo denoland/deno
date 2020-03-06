@@ -19,8 +19,8 @@ function coerceLen(len?: number): number {
  *       Deno.truncateSync("hello.txt", 10);
  *
  * Requires `allow-write` permission. */
-export function truncateSync(name: string, len?: number): void {
-  sendSync("op_truncate", { name, len: coerceLen(len) });
+export function truncateSync(path: string, len?: number): void {
+  sendSync("op_truncate", { path, len: coerceLen(len) });
 }
 
 /** Truncates or extends the specified file, to reach the specified `len`.
@@ -28,6 +28,6 @@ export function truncateSync(name: string, len?: number): void {
  *       await Deno.truncate("hello.txt", 10);
  *
  * Requires `allow-write` permission. */
-export async function truncate(name: string, len?: number): Promise<void> {
-  await sendAsync("op_truncate", { name, len: coerceLen(len) });
+export async function truncate(path: string, len?: number): Promise<void> {
+  await sendAsync("op_truncate", { path, len: coerceLen(len) });
 }

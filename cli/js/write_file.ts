@@ -26,7 +26,7 @@ export interface WriteFileOptions {
  * Requires `allow-write` permission, and `allow-read` if create is `false`.
  */
 export function writeFileSync(
-  filename: string,
+  path: string,
   data: Uint8Array,
   options: WriteFileOptions = {}
 ): void {
@@ -34,15 +34,15 @@ export function writeFileSync(
     const create = !!options.create;
     if (!create) {
       // verify that file exists
-      statSync(filename);
+      statSync(path);
     }
   }
 
   const openMode = !!options.append ? "a" : "w";
-  const file = openSync(filename, openMode);
+  const file = openSync(path, openMode);
 
   if (options.perm !== undefined && options.perm !== null) {
-    chmodSync(filename, options.perm);
+    chmodSync(path, options.perm);
   }
 
   writeAllSync(file, data);
@@ -59,7 +59,7 @@ export function writeFileSync(
  * Requires `allow-write` permission, and `allow-read` if create is `false`.
  */
 export async function writeFile(
-  filename: string,
+  path: string,
   data: Uint8Array,
   options: WriteFileOptions = {}
 ): Promise<void> {
@@ -67,15 +67,15 @@ export async function writeFile(
     const create = !!options.create;
     if (!create) {
       // verify that file exists
-      await stat(filename);
+      await stat(path);
     }
   }
 
   const openMode = !!options.append ? "a" : "w";
-  const file = await open(filename, openMode);
+  const file = await open(path, openMode);
 
   if (options.perm !== undefined && options.perm !== null) {
-    await chmod(filename, options.perm);
+    await chmod(path, options.perm);
   }
 
   await writeAll(file, data);

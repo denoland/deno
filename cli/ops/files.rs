@@ -22,7 +22,7 @@ pub fn init(i: &mut Isolate, s: &State) {
 #[serde(rename_all = "camelCase")]
 struct OpenArgs {
   promise_id: Option<u64>,
-  filename: String,
+  path: String,
   options: Option<OpenOptions>,
   mode: Option<String>,
 }
@@ -45,17 +45,17 @@ fn op_open(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: OpenArgs = serde_json::from_value(args)?;
-  let filename = deno_fs::resolve_from_cwd(Path::new(&args.filename))?;
+  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
   let state_ = state.clone();
   let mut open_options = tokio::fs::OpenOptions::new();
 
   if let Some(options) = args.options {
     if options.read {
-      state.check_read(&filename)?;
+      state.check_read(&path)?;
     }
 
     if options.write || options.append {
-      state.check_write(&filename)?;
+      state.check_write(&path)?;
     }
 
     open_options
@@ -69,14 +69,14 @@ fn op_open(
     let mode = mode.as_ref();
     match mode {
       "r" => {
-        state.check_read(&filename)?;
+        state.check_read(&path)?;
       }
       "w" | "a" | "x" => {
-        state.check_write(&filename)?;
+        state.check_write(&path)?;
       }
       &_ => {
-        state.check_read(&filename)?;
-        state.check_write(&filename)?;
+        state.check_read(&path)?;
+        state.check_write(&path)?;
       }
     };
 
@@ -123,7 +123,7 @@ fn op_open(
   let is_sync = args.promise_id.is_none();
 
   let fut = async move {
-    let fs_file = open_options.open(filename).await?;
+    let fs_file = open_options.open(path).await?;
     let mut state = state_.borrow_mut();
     let rid = state.resource_table.add(
       "fsFile",
