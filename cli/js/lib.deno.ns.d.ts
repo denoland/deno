@@ -33,15 +33,17 @@ declare namespace Deno {
   export function test(name: string, fn: TestFunction): void;
 
   export interface RunTestsOptions {
-    /** If `true`, Deno will exit upon a failure after logging that failure to
-     * the console. Defaults to `false`. */
+    /** If `true`, Deno will exit with status code 1 if there was
+     * test failure. Defaults to `true`. */
     exitOnFail?: boolean;
-    /** Provide a regular expression of which only tests that match the regular
-     * expression are run. */
-    only?: RegExp;
-    /** Provide a regular expression of which tests that match the regular
-     * expression are skipped. */
-    skip?: RegExp;
+    /** If `true`, Deno will exit upon first test failure Defaults to `false`. */
+    failFast?: boolean;
+    /** String or RegExp used to filter test to run. Only test with names
+     * matching provided `String` or `RegExp` will be run. */
+    only?: string | RegExp;
+    /** String or RegExp used to skip tests to run. Tests with names
+     * matching provided `String` or `RegExp` will not be run. */
+    skip?: string | RegExp;
     /** Disable logging of the results. Defaults to `false`. */
     disableLog?: boolean;
   }
@@ -990,8 +992,8 @@ declare namespace Deno {
   /** UNSTABLE: 'len' maybe should be 'length' or 'size'.
    *
    * A FileInfo describes a file and is returned by `stat`, `lstat`,
-   * `statSync`, `lstatSync`. A list of FileInfo is returned by `readDir`,
-   * `readDirSync`. */
+   * `statSync`, `lstatSync`. A list of FileInfo is returned by `readdir`,
+   * `readdirSync`. */
   export interface FileInfo {
     /** **UNSTABLE**: `.len` maybe should be `.length` or `.size`.
      *
@@ -1077,25 +1079,24 @@ declare namespace Deno {
 
   // @url js/read_dir.d.ts
 
-  /** UNSTABLE: Unstable rename to readdirSync.
+  /** UNSTABLE: need to consider streaming case
    *
-  /* Synchronously reads the directory given by `path` and returns an array of
+   * Synchronously reads the directory given by `path` and returns an array of
    * `Deno.FileInfo`.
    *
-   *       const files = Deno.readDirSync("/");
+   *       const files = Deno.readdirSync("/");
    *
    * Requires `allow-read` permission. */
-  export function readDirSync(path: string): FileInfo[];
+  export function readdirSync(path: string): FileInfo[];
 
-  /** UNSTABLE: Possibly rename to `.readdir()`. Maybe need to return an
-   * `AsyncIterable`.
+  /** UNSTABLE: Maybe need to return an `AsyncIterable`.
    *
    * Reads the directory given by `path` and resolves to an array of `Deno.FileInfo`.
    *
-   *       const files = await Deno.readDir("/");
+   *       const files = await Deno.readdir("/");
    *
    * Requires `allow-read` permission. */
-  export function readDir(path: string): Promise<FileInfo[]>;
+  export function readdir(path: string): Promise<FileInfo[]>;
 
   // @url js/copy_file.d.ts
 
@@ -1317,7 +1318,6 @@ declare namespace Deno {
     TimedOut: ErrorConstructor;
     Interrupted: ErrorConstructor;
     WriteZero: ErrorConstructor;
-    Other: ErrorConstructor;
     UnexpectedEof: ErrorConstructor;
     BadResource: ErrorConstructor;
     Http: ErrorConstructor;

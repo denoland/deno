@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assertEquals, assert } from "./test_util.ts";
+import { unitTest, assertEquals, assert } from "./test_util.ts";
 
-test(function eventInitializedWithType(): void {
+unitTest(function eventInitializedWithType(): void {
   const type = "click";
   const event = new Event(type);
 
@@ -13,7 +13,7 @@ test(function eventInitializedWithType(): void {
   assertEquals(event.cancelable, false);
 });
 
-test(function eventInitializedWithTypeAndDict(): void {
+unitTest(function eventInitializedWithTypeAndDict(): void {
   const init = "submit";
   const eventInit = { bubbles: true, cancelable: true } as EventInit;
   const event = new Event(init, eventInit);
@@ -26,7 +26,7 @@ test(function eventInitializedWithTypeAndDict(): void {
   assertEquals(event.cancelable, true);
 });
 
-test(function eventComposedPathSuccess(): void {
+unitTest(function eventComposedPathSuccess(): void {
   const type = "click";
   const event = new Event(type);
   const composedPath = event.composedPath();
@@ -34,7 +34,7 @@ test(function eventComposedPathSuccess(): void {
   assertEquals(composedPath, []);
 });
 
-test(function eventStopPropagationSuccess(): void {
+unitTest(function eventStopPropagationSuccess(): void {
   const type = "click";
   const event = new Event(type);
 
@@ -43,7 +43,7 @@ test(function eventStopPropagationSuccess(): void {
   assertEquals(event.cancelBubble, true);
 });
 
-test(function eventStopImmediatePropagationSuccess(): void {
+unitTest(function eventStopImmediatePropagationSuccess(): void {
   const type = "click";
   const event = new Event(type);
 
@@ -54,7 +54,7 @@ test(function eventStopImmediatePropagationSuccess(): void {
   assertEquals(event.cancelBubbleImmediately, true);
 });
 
-test(function eventPreventDefaultSuccess(): void {
+unitTest(function eventPreventDefaultSuccess(): void {
   const type = "click";
   const event = new Event(type);
 
@@ -69,7 +69,7 @@ test(function eventPreventDefaultSuccess(): void {
   assertEquals(cancelableEvent.defaultPrevented, true);
 });
 
-test(function eventInitializedWithNonStringType(): void {
+unitTest(function eventInitializedWithNonStringType(): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const type: any = undefined;
   const event = new Event(type);
@@ -83,7 +83,7 @@ test(function eventInitializedWithNonStringType(): void {
 });
 
 // ref https://github.com/web-platform-tests/wpt/blob/master/dom/events/Event-isTrusted.any.js
-test(function eventIsTrusted(): void {
+unitTest(function eventIsTrusted(): void {
   const desc1 = Object.getOwnPropertyDescriptor(new Event("x"), "isTrusted");
   assert(desc1);
   assertEquals(typeof desc1.get, "function");

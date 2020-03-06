@@ -163,9 +163,9 @@ test readFileSyncNotFound_permW0N0E0
 ... [32mok[0m
 test readFileSuccess_permW0N0E0
 ... [32mok[0m
-test readDirSyncNotDir_permW0N0E0
+test readdirSyncNotDir_permW0N0E0
 ... [32mok[0m
-test readDirSyncNotFound_permW0N0E0
+test readdirSyncNotFound_permW0N0E0
 ... [32mok[0m
 test writeFileSyncPerm_permW0N0E0
 ... [32mok[0m

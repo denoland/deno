@@ -18,7 +18,7 @@ import {
 } from "./globals.ts";
 import { sendSync } from "./dispatch_json.ts";
 import { log } from "./util.ts";
-import { TextEncoder } from "./text_encoding.ts";
+import { TextEncoder } from "./web/text_encoding.ts";
 import * as runtime from "./runtime.ts";
 
 const encoder = new TextEncoder();

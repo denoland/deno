@@ -1,15 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  test,
-  testPerm,
+  unitTest,
   assert,
   assertEquals,
   assertStrContains,
-  assertThrows
-  // fail
+  assertThrows,
+  fail
 } from "./test_util.ts";
 
-testPerm({ net: true }, async function fetchProtocolError(): Promise<void> {
+unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
+  void
+> {
   let err;
   try {
     await fetch("file:///");
@@ -20,24 +21,29 @@ testPerm({ net: true }, async function fetchProtocolError(): Promise<void> {
   assertStrContains(err.message, "not supported");
 });
 
-testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
-  let err;
-  try {
-    await fetch("http://localhost:4000");
-  } catch (err_) {
-    err = err_;
+unitTest(
+  { perms: { net: true } },
+  async function fetchConnectionError(): Promise<void> {
+    let err;
+    try {
+      await fetch("http://localhost:4000");
+    } catch (err_) {
+      err = err_;
+    }
+    assert(err instanceof Deno.errors.Http);
+    assertStrContains(err.message, "error trying to connect");
   }
-  assert(err instanceof Deno.errors.Http);
-  assertStrContains(err.message, "error trying to connect");
-});
+);
 
-testPerm({ net: true }, async function fetchJsonSuccess(): Promise<void> {
+unitTest({ perms: { net: true } }, async function fetchJsonSuccess(): Promise<
+  void
+> {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const json = await response.json();
   assertEquals(json.name, "deno");
 });
 
-test(async function fetchPerm(): Promise<void> {
+unitTest(async function fetchPerm(): Promise<void> {
   let err;
   try {
     await fetch("http://localhost:4545/cli/tests/fixture.json");
@@ -48,13 +54,13 @@ test(async function fetchPerm(): Promise<void> {
   assertEquals(err.name, "PermissionDenied");
 });
 
-testPerm({ net: true }, async function fetchUrl(): Promise<void> {
+unitTest({ perms: { net: true } }, async function fetchUrl(): Promise<void> {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   assertEquals(response.url, "http://localhost:4545/cli/tests/fixture.json");
   response.body.close();
 });
 
-testPerm({ net: true }, async function fetchURL(): Promise<void> {
+unitTest({ perms: { net: true } }, async function fetchURL(): Promise<void> {
   const response = await fetch(
     new URL("http://localhost:4545/cli/tests/fixture.json")
   );
@@ -62,7 +68,9 @@ testPerm({ net: true }, async function fetchURL(): Promise<void> {
   response.body.close();
 });
 
-testPerm({ net: true }, async function fetchHeaders(): Promise<void> {
+unitTest({ perms: { net: true } }, async function fetchHeaders(): Promise<
+  void
+> {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;
   assertEquals(headers.get("Content-Type"), "application/json");
@@ -70,7 +78,7 @@ testPerm({ net: true }, async function fetchHeaders(): Promise<void> {
   response.body.close();
 });
 
-testPerm({ net: true }, async function fetchBlob(): Promise<void> {
+unitTest({ perms: { net: true } }, async function fetchBlob(): Promise<void> {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;
   const blob = await response.blob();
@@ -78,7 +86,9 @@ testPerm({ net: true }, async function fetchBlob(): Promise<void> {
   assertEquals(blob.size, Number(headers.get("Content-Length")));
 });
 
-testPerm({ net: true }, async function fetchBodyUsed(): Promise<void> {
+unitTest({ perms: { net: true } }, async function fetchBodyUsed(): Promise<
+  void
+> {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   assertEquals(response.bodyUsed, false);
   assertThrows((): void => {
@@ -89,7 +99,9 @@ testPerm({ net: true }, async function fetchBodyUsed(): Promise<void> {
   assertEquals(response.bodyUsed, true);
 });
 
-testPerm({ net: true }, async function fetchAsyncIterator(): Promise<void> {
+unitTest({ perms: { net: true } }, async function fetchAsyncIterator(): Promise<
+  void
+> {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;
   let total = 0;
@@ -101,7 +113,9 @@ testPerm({ net: true }, async function fetchAsyncIterator(): Promise<void> {
   response.body.close();
 });
 
-testPerm({ net: true }, async function responseClone(): Promise<void> {
+unitTest({ perms: { net: true } }, async function responseClone(): Promise<
+  void
+> {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const response1 = response.clone();
   assert(response !== response1);
@@ -114,7 +128,9 @@ testPerm({ net: true }, async function responseClone(): Promise<void> {
   }
 });
 
-testPerm({ net: true }, async function fetchEmptyInvalid(): Promise<void> {
+unitTest({ perms: { net: true } }, async function fetchEmptyInvalid(): Promise<
+  void
+> {
   let err;
   try {
     await fetch("");
@@ -124,25 +140,26 @@ testPerm({ net: true }, async function fetchEmptyInvalid(): Promise<void> {
   assert(err instanceof URIError);
 });
 
-testPerm({ net: true }, async function fetchMultipartFormDataSuccess(): Promise<
-  void
-> {
-  const response = await fetch(
-    "http://localhost:4545/cli/tests/subdir/multipart_form_data.txt"
-  );
-  const formData = await response.formData();
-  assert(formData.has("field_1"));
-  assertEquals(formData.get("field_1")!.toString(), "value_1 \r\n");
-  assert(formData.has("field_2"));
-  /* TODO(ry) Re-enable this test once we bring back the global File type.
+unitTest(
+  { perms: { net: true } },
+  async function fetchMultipartFormDataSuccess(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/subdir/multipart_form_data.txt"
+    );
+    const formData = await response.formData();
+    assert(formData.has("field_1"));
+    assertEquals(formData.get("field_1")!.toString(), "value_1 \r\n");
+    assert(formData.has("field_2"));
+    /* TODO(ry) Re-enable this test once we bring back the global File type.
   const file = formData.get("field_2") as File;
   assertEquals(file.name, "file.js");
   */
-  // Currently we cannot read from file...
-});
+    // Currently we cannot read from file...
+  }
+);
 
-testPerm(
-  { net: true },
+unitTest(
+  { perms: { net: true } },
   async function fetchURLEncodedFormDataSuccess(): Promise<void> {
     const response = await fetch(
       "http://localhost:4545/cli/tests/subdir/form_urlencoded.txt"
@@ -155,32 +172,40 @@ testPerm(
   }
 );
 
-/*
-// TODO: leaking resources
-testPerm({ net: true }, async function fetchWithRedirection(): Promise<void> {
-  const response = await fetch("http://localhost:4546/"); // will redirect to http://localhost:4545/
-  assertEquals(response.status, 200);
-  assertEquals(response.statusText, "OK");
-  assertEquals(response.url, "http://localhost:4545/");
-  const body = await response.text();
-  assert(body.includes("<title>Directory listing for /</title>"));
-});
+unitTest(
+  {
+    // TODO(bartlomieju): leaking resources
+    skip: true,
+    perms: { net: true }
+  },
+  async function fetchWithRedirection(): Promise<void> {
+    const response = await fetch("http://localhost:4546/"); // will redirect to http://localhost:4545/
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    assertEquals(response.url, "http://localhost:4545/");
+    const body = await response.text();
+    assert(body.includes("<title>Directory listing for /</title>"));
+  }
+);
 
-// TODO: leaking resources
-testPerm({ net: true }, async function fetchWithRelativeRedirection(): Promise<
-  void
-> {
-  const response = await fetch("http://localhost:4545/cli/tests"); // will redirect to /cli/tests/
-  assertEquals(response.status, 200);
-  assertEquals(response.statusText, "OK");
-  const body = await response.text();
-  assert(body.includes("<title>Directory listing for /cli/tests/</title>"));
-});
-*/
+unitTest(
+  {
+    // TODO: leaking resources
+    skip: true,
+    perms: { net: true }
+  },
+  async function fetchWithRelativeRedirection(): Promise<void> {
+    const response = await fetch("http://localhost:4545/cli/tests"); // will redirect to /cli/tests/
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    const body = await response.text();
+    assert(body.includes("<title>Directory listing for /cli/tests/</title>"));
+  }
+);
 
 // The feature below is not implemented, but the test should work after implementation
 /*
-testPerm({ net: true }, async function fetchWithInfRedirection(): Promise<
+unitTest({ perms: { net: true} }, async function fetchWithInfRedirection(): Promise<
   void
 > {
   const response = await fetch("http://localhost:4549/cli/tests"); // will redirect to the same place
@@ -188,61 +213,69 @@ testPerm({ net: true }, async function fetchWithInfRedirection(): Promise<
 });
 */
 
-testPerm({ net: true }, async function fetchInitStringBody(): Promise<void> {
-  const data = "Hello World";
-  const response = await fetch("http://localhost:4545/echo_server", {
-    method: "POST",
-    body: data
-  });
-  const text = await response.text();
-  assertEquals(text, data);
-  assert(response.headers.get("content-type")!.startsWith("text/plain"));
-});
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitStringBody(): Promise<void> {
+    const data = "Hello World";
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data
+    });
+    const text = await response.text();
+    assertEquals(text, data);
+    assert(response.headers.get("content-type")!.startsWith("text/plain"));
+  }
+);
 
-testPerm({ net: true }, async function fetchRequestInitStringBody(): Promise<
+unitTest(
+  { perms: { net: true } },
+  async function fetchRequestInitStringBody(): Promise<void> {
+    const data = "Hello World";
+    const req = new Request("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data
+    });
+    const response = await fetch(req);
+    const text = await response.text();
+    assertEquals(text, data);
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitTypedArrayBody(): Promise<void> {
+    const data = "Hello World";
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: new TextEncoder().encode(data)
+    });
+    const text = await response.text();
+    assertEquals(text, data);
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitURLSearchParamsBody(): Promise<void> {
+    const data = "param1=value1&param2=value2";
+    const params = new URLSearchParams(data);
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: params
+    });
+    const text = await response.text();
+    assertEquals(text, data);
+    assert(
+      response.headers
+        .get("content-type")!
+        .startsWith("application/x-www-form-urlencoded")
+    );
+  }
+);
+
+unitTest({ perms: { net: true } }, async function fetchInitBlobBody(): Promise<
   void
 > {
-  const data = "Hello World";
-  const req = new Request("http://localhost:4545/echo_server", {
-    method: "POST",
-    body: data
-  });
-  const response = await fetch(req);
-  const text = await response.text();
-  assertEquals(text, data);
-});
-
-testPerm({ net: true }, async function fetchInitTypedArrayBody(): Promise<
-  void
-> {
-  const data = "Hello World";
-  const response = await fetch("http://localhost:4545/echo_server", {
-    method: "POST",
-    body: new TextEncoder().encode(data)
-  });
-  const text = await response.text();
-  assertEquals(text, data);
-});
-
-testPerm({ net: true }, async function fetchInitURLSearchParamsBody(): Promise<
-  void
-> {
-  const data = "param1=value1&param2=value2";
-  const params = new URLSearchParams(data);
-  const response = await fetch("http://localhost:4545/echo_server", {
-    method: "POST",
-    body: params
-  });
-  const text = await response.text();
-  assertEquals(text, data);
-  assert(
-    response.headers
-      .get("content-type")!
-      .startsWith("application/x-www-form-urlencoded")
-  );
-});
-
-testPerm({ net: true }, async function fetchInitBlobBody(): Promise<void> {
   const data = "const a = 1";
   const blob = new Blob([data], {
     type: "text/javascript"
@@ -256,7 +289,9 @@ testPerm({ net: true }, async function fetchInitBlobBody(): Promise<void> {
   assert(response.headers.get("content-type")!.startsWith("text/javascript"));
 });
 
-testPerm({ net: true }, async function fetchUserAgent(): Promise<void> {
+unitTest({ perms: { net: true } }, async function fetchUserAgent(): Promise<
+  void
+> {
   const data = "Hello World";
   const response = await fetch("http://localhost:4545/echo_server", {
     method: "POST",
@@ -269,7 +304,7 @@ testPerm({ net: true }, async function fetchUserAgent(): Promise<void> {
 // TODO(ry) The following tests work but are flaky. There's a race condition
 // somewhere. Here is what one of these flaky failures looks like:
 //
-// test fetchPostBodyString_permW0N1E0R0
+// unitTest fetchPostBodyString_permW0N1E0R0
 // assertEquals failed. actual =   expected = POST /blah HTTP/1.1
 // hello: World
 // foo: Bar
@@ -309,7 +344,7 @@ function bufferServer(addr: string): Deno.Buffer {
   return buf;
 }
 
-testPerm({ net: true }, async function fetchRequest():Promise<void> {
+unitTest({ perms: { net: true} }, async function fetchRequest():Promise<void> {
   const addr = "127.0.0.1:4501";
   const buf = bufferServer(addr);
   const response = await fetch(`http://${addr}/blah`, {
@@ -329,7 +364,7 @@ testPerm({ net: true }, async function fetchRequest():Promise<void> {
   assertEquals(actual, expected);
 });
 
-testPerm({ net: true }, async function fetchPostBodyString():Promise<void> {
+unitTest({ perms: { net: true} }, async function fetchPostBodyString():Promise<void> {
   const addr = "127.0.0.1:4502";
   const buf = bufferServer(addr);
   const body = "hello world";
@@ -353,7 +388,7 @@ testPerm({ net: true }, async function fetchPostBodyString():Promise<void> {
   assertEquals(actual, expected);
 });
 
-testPerm({ net: true }, async function fetchPostBodyTypedArray():Promise<void> {
+unitTest({ perms: { net: true} }, async function fetchPostBodyTypedArray():Promise<void> {
   const addr = "127.0.0.1:4503";
   const buf = bufferServer(addr);
   const bodyStr = "hello world";
@@ -379,51 +414,57 @@ testPerm({ net: true }, async function fetchPostBodyTypedArray():Promise<void> {
 });
 */
 
-/*
-// TODO: leaking resources
-testPerm({ net: true }, async function fetchWithManualRedirection(): Promise<
-  void
-> {
-  const response = await fetch("http://localhost:4546/", {
-    redirect: "manual"
-  }); // will redirect to http://localhost:4545/
-  assertEquals(response.status, 0);
-  assertEquals(response.statusText, "");
-  assertEquals(response.url, "");
-  assertEquals(response.type, "opaqueredirect");
-  try {
-    await response.text();
-    fail(
-      "Reponse.text() didn't throw on a filtered response without a body (type opaqueredirect)"
-    );
-  } catch (e) {
-    return;
+unitTest(
+  {
+    // TODO: leaking resources
+    skip: true,
+    perms: { net: true }
+  },
+  async function fetchWithManualRedirection(): Promise<void> {
+    const response = await fetch("http://localhost:4546/", {
+      redirect: "manual"
+    }); // will redirect to http://localhost:4545/
+    assertEquals(response.status, 0);
+    assertEquals(response.statusText, "");
+    assertEquals(response.url, "");
+    assertEquals(response.type, "opaqueredirect");
+    try {
+      await response.text();
+      fail(
+        "Reponse.text() didn't throw on a filtered response without a body (type opaqueredirect)"
+      );
+    } catch (e) {
+      return;
+    }
   }
-});
+);
 
-// TODO: leaking resources
-testPerm({ net: true }, async function fetchWithErrorRedirection(): Promise<
-  void
-> {
-  const response = await fetch("http://localhost:4546/", {
-    redirect: "error"
-  }); // will redirect to http://localhost:4545/
-  assertEquals(response.status, 0);
-  assertEquals(response.statusText, "");
-  assertEquals(response.url, "");
-  assertEquals(response.type, "error");
-  try {
-    await response.text();
-    fail(
-      "Reponse.text() didn't throw on a filtered response without a body (type error)"
-    );
-  } catch (e) {
-    return;
+unitTest(
+  {
+    // TODO: leaking resources
+    skip: true,
+    perms: { net: true }
+  },
+  async function fetchWithErrorRedirection(): Promise<void> {
+    const response = await fetch("http://localhost:4546/", {
+      redirect: "error"
+    }); // will redirect to http://localhost:4545/
+    assertEquals(response.status, 0);
+    assertEquals(response.statusText, "");
+    assertEquals(response.url, "");
+    assertEquals(response.type, "error");
+    try {
+      await response.text();
+      fail(
+        "Reponse.text() didn't throw on a filtered response without a body (type error)"
+      );
+    } catch (e) {
+      return;
+    }
   }
-});
-*/
+);
 
-test(function responseRedirect(): void {
+unitTest(function responseRedirect(): void {
   const response = new Response(
     "example.com/beforeredirect",
     200,
@@ -441,7 +482,7 @@ test(function responseRedirect(): void {
   assertEquals(redir.type, "default");
 });
 
-test(function responseConstructionHeaderRemoval(): void {
+unitTest(function responseConstructionHeaderRemoval(): void {
   const res = new Response(
     "example.com",
     200,

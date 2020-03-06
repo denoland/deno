@@ -1,10 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  test,
-  testPerm,
   assert,
   assertEquals,
-  createResolvable
+  createResolvable,
+  unitTest
 } from "./test_util.ts";
 import { BufWriter, BufReader } from "../../std/io/bufio.ts";
 import { TextProtoReader } from "../../std/textproto/mod.ts";
@@ -12,7 +11,7 @@ import { TextProtoReader } from "../../std/textproto/mod.ts";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-test(async function connectTLSNoPerm(): Promise<void> {
+unitTest(async function connectTLSNoPerm(): Promise<void> {
   let err;
   try {
     await Deno.connectTLS({ hostname: "github.com", port: 443 });
@@ -23,7 +22,7 @@ test(async function connectTLSNoPerm(): Promise<void> {
   assertEquals(err.name, "PermissionDenied");
 });
 
-test(async function connectTLSCertFileNoReadPerm(): Promise<void> {
+unitTest(async function connectTLSCertFileNoReadPerm(): Promise<void> {
   let err;
   try {
     await Deno.connectTLS({
@@ -38,8 +37,8 @@ test(async function connectTLSCertFileNoReadPerm(): Promise<void> {
   assertEquals(err.name, "PermissionDenied");
 });
 
-testPerm(
-  { read: true, net: true },
+unitTest(
+  { perms: { read: true, net: true } },
   async function listenTLSNonExistentCertKeyFiles(): Promise<void> {
     let err;
     const options = {
@@ -71,24 +70,29 @@ testPerm(
   }
 );
 
-testPerm({ net: true }, async function listenTLSNoReadPerm(): Promise<void> {
-  let err;
-  try {
-    Deno.listenTLS({
-      hostname: "localhost",
-      port: 4500,
-      certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key"
-    });
-  } catch (e) {
-    err = e;
+unitTest(
+  { perms: { net: true } },
+  async function listenTLSNoReadPerm(): Promise<void> {
+    let err;
+    try {
+      Deno.listenTLS({
+        hostname: "localhost",
+        port: 4500,
+        certFile: "cli/tests/tls/localhost.crt",
+        keyFile: "cli/tests/tls/localhost.key"
+      });
+    } catch (e) {
+      err = e;
+    }
+    assert(err instanceof Deno.errors.PermissionDenied);
+    assertEquals(err.name, "PermissionDenied");
   }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
-});
+);
 
-testPerm(
-  { read: true, write: true, net: true },
+unitTest(
+  {
+    perms: { read: true, write: true, net: true }
+  },
   async function listenTLSEmptyKeyFile(): Promise<void> {
     let err;
     const options = {
@@ -116,8 +120,8 @@ testPerm(
   }
 );
 
-testPerm(
-  { read: true, write: true, net: true },
+unitTest(
+  { perms: { read: true, write: true, net: true } },
   async function listenTLSEmptyCertFile(): Promise<void> {
     let err;
     const options = {
@@ -145,65 +149,66 @@ testPerm(
   }
 );
 
-testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
-  void
-> {
-  const resolvable = createResolvable();
-  const hostname = "localhost";
-  const port = 4500;
+unitTest(
+  { perms: { read: true, net: true } },
+  async function dialAndListenTLS(): Promise<void> {
+    const resolvable = createResolvable();
+    const hostname = "localhost";
+    const port = 4500;
 
-  const listener = Deno.listenTLS({
-    hostname,
-    port,
-    certFile: "cli/tests/tls/localhost.crt",
-    keyFile: "cli/tests/tls/localhost.key"
-  });
+    const listener = Deno.listenTLS({
+      hostname,
+      port,
+      certFile: "cli/tests/tls/localhost.crt",
+      keyFile: "cli/tests/tls/localhost.key"
+    });
 
-  const response = encoder.encode(
-    "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
-  );
+    const response = encoder.encode(
+      "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
+    );
 
-  listener.accept().then(
-    async (conn): Promise<void> => {
-      assert(conn.remoteAddr != null);
-      assert(conn.localAddr != null);
-      await conn.write(response);
-      // TODO(bartlomieju): this might be a bug
-      setTimeout(() => {
-        conn.close();
-        resolvable.resolve();
-      }, 0);
-    }
-  );
+    listener.accept().then(
+      async (conn): Promise<void> => {
+        assert(conn.remoteAddr != null);
+        assert(conn.localAddr != null);
+        await conn.write(response);
+        // TODO(bartlomieju): this might be a bug
+        setTimeout(() => {
+          conn.close();
+          resolvable.resolve();
+        }, 0);
+      }
+    );
 
-  const conn = await Deno.connectTLS({
-    hostname,
-    port,
-    certFile: "cli/tests/tls/RootCA.pem"
-  });
-  assert(conn.rid > 0);
-  const w = new BufWriter(conn);
-  const r = new BufReader(conn);
-  const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
-  const writeResult = await w.write(encoder.encode(body));
-  assertEquals(body.length, writeResult);
-  await w.flush();
-  const tpr = new TextProtoReader(r);
-  const statusLine = await tpr.readLine();
-  assert(statusLine !== Deno.EOF, `line must be read: ${String(statusLine)}`);
-  const m = statusLine.match(/^(.+?) (.+?) (.+?)$/);
-  assert(m !== null, "must be matched");
-  const [_, proto, status, ok] = m;
-  assertEquals(proto, "HTTP/1.1");
-  assertEquals(status, "200");
-  assertEquals(ok, "OK");
-  const headers = await tpr.readMIMEHeader();
-  assert(headers !== Deno.EOF);
-  const contentLength = parseInt(headers.get("content-length")!);
-  const bodyBuf = new Uint8Array(contentLength);
-  await r.readFull(bodyBuf);
-  assertEquals(decoder.decode(bodyBuf), "Hello World\n");
-  conn.close();
-  listener.close();
-  await resolvable;
-});
+    const conn = await Deno.connectTLS({
+      hostname,
+      port,
+      certFile: "cli/tests/tls/RootCA.pem"
+    });
+    assert(conn.rid > 0);
+    const w = new BufWriter(conn);
+    const r = new BufReader(conn);
+    const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
+    const writeResult = await w.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+    await w.flush();
+    const tpr = new TextProtoReader(r);
+    const statusLine = await tpr.readLine();
+    assert(statusLine !== Deno.EOF, `line must be read: ${String(statusLine)}`);
+    const m = statusLine.match(/^(.+?) (.+?) (.+?)$/);
+    assert(m !== null, "must be matched");
+    const [_, proto, status, ok] = m;
+    assertEquals(proto, "HTTP/1.1");
+    assertEquals(status, "200");
+    assertEquals(ok, "OK");
+    const headers = await tpr.readMIMEHeader();
+    assert(headers !== Deno.EOF);
+    const contentLength = parseInt(headers.get("content-length")!);
+    const bodyBuf = new Uint8Array(contentLength);
+    await r.readFull(bodyBuf);
+    assertEquals(decoder.decode(bodyBuf), "Hello World\n");
+    conn.close();
+    listener.close();
+    await resolvable;
+  }
+);

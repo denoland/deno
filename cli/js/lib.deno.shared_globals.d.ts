@@ -42,13 +42,13 @@ declare interface WindowOrWorkerGlobalScope {
 
   addEventListener: (
     type: string,
-    callback: (event: __domTypes.Event) => void | null,
+    callback: __domTypes.EventListenerOrEventListenerObject | null,
     options?: boolean | __domTypes.AddEventListenerOptions | undefined
   ) => void;
   dispatchEvent: (event: __domTypes.Event) => boolean;
   removeEventListener: (
     type: string,
-    callback: (event: __domTypes.Event) => void | null,
+    callback: __domTypes.EventListenerOrEventListenerObject | null,
     options?: boolean | __domTypes.EventListenerOptions | undefined
   ) => void;
 }
@@ -240,7 +240,7 @@ declare const CustomEventInit: typeof __customEvent.CustomEventInit;
 declare const CustomEvent: typeof __customEvent.CustomEvent;
 declare const EventInit: typeof __event.EventInit;
 declare const Event: typeof __event.Event;
-declare const EventListener: typeof __eventTarget.EventListener;
+declare const EventListener: __domTypes.EventListener;
 declare const EventTarget: typeof __eventTarget.EventTarget;
 declare const URL: typeof __url.URL;
 declare const URLSearchParams: typeof __urlSearchParams.URLSearchParams;
@@ -256,13 +256,13 @@ declare const Worker: typeof __workers.WorkerImpl;
 
 declare const addEventListener: (
   type: string,
-  callback: (event: __domTypes.Event) => void | null,
+  callback: __domTypes.EventListenerOrEventListenerObject | null,
   options?: boolean | __domTypes.AddEventListenerOptions | undefined
 ) => void;
 declare const dispatchEvent: (event: __domTypes.Event) => boolean;
 declare const removeEventListener: (
   type: string,
-  callback: (event: __domTypes.Event) => void | null,
+  callback: __domTypes.EventListenerOrEventListenerObject | null,
   options?: boolean | __domTypes.EventListenerOptions | undefined
 ) => void;
 
@@ -346,6 +346,19 @@ declare namespace __domTypes {
   export const eventTargetListeners: unique symbol;
   export const eventTargetMode: unique symbol;
   export const eventTargetNodeType: unique symbol;
+  export interface EventListener {
+    (evt: Event): void | Promise<void>;
+  }
+  export interface EventListenerObject {
+    handleEvent(evt: Event): void | Promise<void>;
+  }
+  export type EventListenerOrEventListenerObject =
+    | EventListener
+    | EventListenerObject;
+  export interface EventTargetListener {
+    callback: EventListenerOrEventListenerObject;
+    options: AddEventListenerOptions;
+  }
   export interface EventTarget {
     [eventTargetHost]: EventTarget | null;
     [eventTargetListeners]: { [type in string]: EventListener[] };
@@ -353,13 +366,13 @@ declare namespace __domTypes {
     [eventTargetNodeType]: NodeType;
     addEventListener(
       type: string,
-      callback: (event: Event) => void | null,
+      callback: EventListenerOrEventListenerObject | null,
       options?: boolean | AddEventListenerOptions
     ): void;
     dispatchEvent(event: Event): boolean;
     removeEventListener(
       type: string,
-      callback?: (event: Event) => void | null,
+      callback?: EventListenerOrEventListenerObject | null,
       options?: EventListenerOptions | boolean
     ): void;
   }
@@ -413,11 +426,6 @@ declare namespace __domTypes {
       callbackfn: (value: string, key: string, parent: this) => void,
       thisArg?: any
     ): void;
-  }
-  export interface EventListener {
-    handleEvent(event: Event): void;
-    readonly callback: (event: Event) => void | null;
-    readonly options: boolean | AddEventListenerOptions;
   }
   export interface EventInit {
     bubbles?: boolean;
@@ -1095,21 +1103,6 @@ declare namespace __eventTarget {
     readonly passive: boolean;
     readonly once: boolean;
   }
-  export class EventListener implements __domTypes.EventListener {
-    allEvents: __domTypes.Event[];
-    atEvents: __domTypes.Event[];
-    bubbledEvents: __domTypes.Event[];
-    capturedEvents: __domTypes.Event[];
-    private _callback;
-    private _options;
-    constructor(
-      callback: (event: __domTypes.Event) => void | null,
-      options: boolean | __domTypes.AddEventListenerOptions
-    );
-    handleEvent(event: __domTypes.Event): void;
-    readonly callback: (event: __domTypes.Event) => void | null;
-    readonly options: __domTypes.AddEventListenerOptions | boolean;
-  }
   export const eventTargetAssignedSlot: unique symbol;
   export const eventTargetHasActivationBehavior: unique symbol;
   export class EventTarget implements __domTypes.EventTarget {
@@ -1123,12 +1116,12 @@ declare namespace __eventTarget {
     private [eventTargetHasActivationBehavior];
     addEventListener(
       type: string,
-      callback: (event: __domTypes.Event) => void | null,
+      callback: __domTypes.EventListenerOrEventListenerObject | null,
       options?: __domTypes.AddEventListenerOptions | boolean
     ): void;
     removeEventListener(
       type: string,
-      callback: (event: __domTypes.Event) => void | null,
+      callback: __domTypes.EventListenerOrEventListenerObject | null,
       options?: __domTypes.EventListenerOptions | boolean
     ): void;
     dispatchEvent(event: __domTypes.Event): boolean;

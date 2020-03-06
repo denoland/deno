@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEquals, assertThrows } from "./test_util.ts";
+import { unitTest, assert, assertEquals, assertThrows } from "./test_util.ts";
 
-test(function urlParsing(): void {
+unitTest(function urlParsing(): void {
   const url = new URL(
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
   );
@@ -31,7 +31,7 @@ test(function urlParsing(): void {
   );
 });
 
-test(function urlModifications(): void {
+unitTest(function urlModifications(): void {
   const url = new URL(
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
   );
@@ -86,7 +86,7 @@ test(function urlModifications(): void {
   );
 });
 
-test(function urlModifyHref(): void {
+unitTest(function urlModifyHref(): void {
   const url = new URL("http://example.com/");
   url.href = "https://foo:bar@example.com:8080/baz/qat#qux";
   assertEquals(url.protocol, "https:");
@@ -98,7 +98,7 @@ test(function urlModifyHref(): void {
   assertEquals(url.hash, "#qux");
 });
 
-test(function urlModifyPathname(): void {
+unitTest(function urlModifyPathname(): void {
   const url = new URL("http://foo.bar/baz%qat/qux%quux");
   assertEquals(url.pathname, "/baz%qat/qux%quux");
   url.pathname = url.pathname;
@@ -109,7 +109,7 @@ test(function urlModifyPathname(): void {
   assertEquals(url.pathname, "/baz%23qat%20qux");
 });
 
-test(function urlModifyHash(): void {
+unitTest(function urlModifyHash(): void {
   const url = new URL("http://foo.bar");
   url.hash = "%foo bar/qat%qux#bar";
   assertEquals(url.hash, "#%foo%20bar/qat%qux#bar");
@@ -117,7 +117,7 @@ test(function urlModifyHash(): void {
   assertEquals(url.hash, "#%foo%20bar/qat%qux#bar");
 });
 
-test(function urlSearchParamsReuse(): void {
+unitTest(function urlSearchParamsReuse(): void {
   const url = new URL(
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
   );
@@ -126,7 +126,7 @@ test(function urlSearchParamsReuse(): void {
   assert(sp === url.searchParams, "Search params should be reused.");
 });
 
-test(function urlBaseURL(): void {
+unitTest(function urlBaseURL(): void {
   const base = new URL(
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
   );
@@ -134,7 +134,7 @@ test(function urlBaseURL(): void {
   assertEquals(url.href, "https://foo:bar@baz.qat:8000/foo/bar?baz=foo#qux");
 });
 
-test(function urlBaseString(): void {
+unitTest(function urlBaseString(): void {
   const url = new URL(
     "/foo/bar?baz=foo#qux",
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
@@ -142,7 +142,7 @@ test(function urlBaseString(): void {
   assertEquals(url.href, "https://foo:bar@baz.qat:8000/foo/bar?baz=foo#qux");
 });
 
-test(function urlRelativeWithBase(): void {
+unitTest(function urlRelativeWithBase(): void {
   assertEquals(new URL("", "file:///a/a/a").href, "file:///a/a/a");
   assertEquals(new URL(".", "file:///a/a/a").href, "file:///a/a/");
   assertEquals(new URL("..", "file:///a/a/a").href, "file:///a/");
@@ -152,11 +152,11 @@ test(function urlRelativeWithBase(): void {
   assertEquals(new URL("../b", "file:///a/a/a").href, "file:///a/b");
 });
 
-test(function emptyBasePath(): void {
+unitTest(function emptyBasePath(): void {
   assertEquals(new URL("", "http://example.com").href, "http://example.com/");
 });
 
-test(function deletingAllParamsRemovesQuestionMarkFromURL(): void {
+unitTest(function deletingAllParamsRemovesQuestionMarkFromURL(): void {
   const url = new URL("http://example.com/?param1&param2");
   url.searchParams.delete("param1");
   url.searchParams.delete("param2");
@@ -164,7 +164,7 @@ test(function deletingAllParamsRemovesQuestionMarkFromURL(): void {
   assertEquals(url.search, "");
 });
 
-test(function removingNonExistentParamRemovesQuestionMarkFromURL(): void {
+unitTest(function removingNonExistentParamRemovesQuestionMarkFromURL(): void {
   const url = new URL("http://example.com/?");
   assertEquals(url.href, "http://example.com/?");
   url.searchParams.delete("param1");
@@ -172,7 +172,7 @@ test(function removingNonExistentParamRemovesQuestionMarkFromURL(): void {
   assertEquals(url.search, "");
 });
 
-test(function sortingNonExistentParamRemovesQuestionMarkFromURL(): void {
+unitTest(function sortingNonExistentParamRemovesQuestionMarkFromURL(): void {
   const url = new URL("http://example.com/?");
   assertEquals(url.href, "http://example.com/?");
   url.searchParams.sort();
@@ -181,7 +181,7 @@ test(function sortingNonExistentParamRemovesQuestionMarkFromURL(): void {
 });
 
 /*
-test(function customInspectFunction(): void {
+unitTest(function customInspectFunction(): void {
   const url = new URL("http://example.com/?");
   assertEquals(
     Deno.inspect(url),
@@ -190,14 +190,14 @@ test(function customInspectFunction(): void {
 });
 */
 
-test(function protocolNotHttpOrFile() {
+unitTest(function protocolNotHttpOrFile() {
   const url = new URL("about:blank");
   assertEquals(url.href, "about:blank");
   assertEquals(url.protocol, "about:");
   assertEquals(url.origin, "null");
 });
 
-test(function createBadUrl(): void {
+unitTest(function createBadUrl(): void {
   assertThrows(() => {
     new URL("0.0.0.0:8080");
   });

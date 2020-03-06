@@ -6,7 +6,7 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-const { args, stat, readDir, open, exit } = Deno;
+const { args, stat, readdir, open, exit } = Deno;
 import { posix } from "../path/mod.ts";
 import { listenAndServe, ServerRequest, Response } from "./server.ts";
 import { parse } from "../flags/mod.ts";
@@ -113,14 +113,14 @@ async function serveFile(
   return res;
 }
 
-// TODO: simplify this after deno.stat and deno.readDir are fixed
+// TODO: simplify this after deno.stat and deno.readdir are fixed
 async function serveDir(
   req: ServerRequest,
   dirPath: string
 ): Promise<Response> {
   const dirUrl = `/${posix.relative(target, dirPath)}`;
   const listEntry: EntryInfo[] = [];
-  const fileInfos = await readDir(dirPath);
+  const fileInfos = await readdir(dirPath);
   for (const fileInfo of fileInfos) {
     const filePath = posix.join(dirPath, fileInfo.name ?? "");
     const fileUrl = posix.join(dirUrl, fileInfo.name ?? "");
