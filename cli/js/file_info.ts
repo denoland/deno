@@ -3,8 +3,8 @@ import { StatResponse } from "./stat.ts";
 import { build } from "./build.ts";
 
 /** A FileInfo describes a file and is returned by `stat`, `lstat`,
- * `statSync`, `lstatSync`. A list of FileInfo is returned by `readDir`,
- * `readDirSync`. */
+ * `statSync`, `lstatSync`. A list of FileInfo is returned by `readdir`,
+ * `readdirSync`. */
 export interface FileInfo {
   /** The size of the file, in bytes. */
   len: number;
