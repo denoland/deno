@@ -3,10 +3,10 @@ use crate::op_error::OpError;
 
 #[cfg(unix)]
 pub fn kill(pid: i32, signo: i32) -> Result<(), OpError> {
-  use nix::sys::signal::{kill as unix_kill, Signal};
-  use nix::unistd::Pid;
-  let sig = Signal::from_c_int(signo)?;
-  unix_kill(Pid::from_raw(pid), Option::Some(sig)).map_err(OpError::from)
+  use std::convert::TryFrom;
+  let sig = nix::sys::signal::Signal::try_from(signo)?;
+  nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), Option::Some(sig))
+    .map_err(OpError::from)
 }
 
 #[cfg(not(unix))]
