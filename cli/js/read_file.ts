@@ -9,8 +9,8 @@ import { readAll, readAllSync } from "./buffer.ts";
  *       console.log(decoder.decode(data));
  *
  * Requires `allow-read` permission. */
-export function readFileSync(filename: string): Uint8Array {
-  const file = openSync(filename);
+export function readFileSync(path: string): Uint8Array {
+  const file = openSync(path);
   const contents = readAllSync(file);
   file.close();
   return contents;
@@ -23,8 +23,8 @@ export function readFileSync(filename: string): Uint8Array {
  *       console.log(decoder.decode(data));
  *
  * Requires `allow-read` permission. */
-export async function readFile(filename: string): Promise<Uint8Array> {
-  const file = await open(filename);
+export async function readFile(path: string): Promise<Uint8Array> {
+  const file = await open(path);
   const contents = await readAll(file);
   file.close();
   return contents;
