@@ -2,6 +2,22 @@
 
 const { PermissionDenied } = Deno.errors;
 
+function getPermissionString(descriptors: Deno.PermissionDescriptor[]): string {
+  return descriptors
+    .map(pd => {
+      switch (pd.name) {
+        case "read":
+        case "write":
+          return pd.path ? `${pd.name}(${pd.path})` : pd.name;
+        case "net":
+          return pd.url ? `${pd.name}(${pd.url})` : pd.url;
+        default:
+          return pd.name;
+      }
+    })
+    .join(", ");
+}
+
 /** Attempts to grant a set of permissions, resolving with the descriptors of
  * the permissions that are granted.
  *
@@ -68,9 +84,9 @@ export async function grantOrThrow(
  *      await grantOrThrow([{ name: "env" }, { name: "net" }]);
  *
  * If the permission can be prompted for, the function will attempt to prompt.
- * If any of the permissions are denied, the function will reject for the first
- * permission that is denied.  If all permissions are granted, the function
- * will resolve. */
+ * If any of the permissions are denied, the function will reject mentioning the
+ * the denied permissions.  If all permissions are granted, the function will
+ * resolve. */
 export async function grantOrThrow(
   descriptors: Deno.PermissionDescriptor[]
 ): Promise<void>;
@@ -78,6 +94,7 @@ export async function grantOrThrow(
   descriptor: Deno.PermissionDescriptor[] | Deno.PermissionDescriptor,
   ...descriptors: Deno.PermissionDescriptor[]
 ): Promise<void> {
+  const denied: Deno.PermissionDescriptor[] = [];
   descriptors = Array.isArray(descriptor)
     ? descriptor
     : [descriptor, ...descriptors];
@@ -87,9 +104,12 @@ export async function grantOrThrow(
       state = (await Deno.permissions.request(descriptor)).state;
     }
     if (state !== "granted") {
-      throw new PermissionDenied(
-        `Permission for "${descriptor.name}" has been denied.`
-      );
+      denied.push(descriptor);
     }
+  }
+  if (denied.length) {
+    throw new PermissionDenied(
+      `The following permissions are denied: ${getPermissionString(denied)}`
+    );
   }
 }
