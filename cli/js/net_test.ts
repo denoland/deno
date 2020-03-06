@@ -154,6 +154,7 @@ unitTest({ perms: { net: true } }, async function netTcpDialListen(): Promise<
   listener.accept().then(
     async (conn): Promise<void> => {
       assert(conn.remoteAddr != null);
+      assert(conn.localAddr.transport === "tcp");
       assertEquals(conn.localAddr.hostname, "127.0.0.1");
       assertEquals(conn.localAddr.port, 4500);
       await conn.write(new Uint8Array([1, 2, 3]));
@@ -161,6 +162,7 @@ unitTest({ perms: { net: true } }, async function netTcpDialListen(): Promise<
     }
   );
   const conn = await Deno.connect({ hostname: "127.0.0.1", port: 4500 });
+  assert(conn.remoteAddr.transport === "tcp");
   assertEquals(conn.remoteAddr.hostname, "127.0.0.1");
   assertEquals(conn.remoteAddr.port, 4500);
   assert(conn.localAddr != null);
@@ -189,15 +191,15 @@ unitTest(
     listener.accept().then(
       async (conn): Promise<void> => {
         assert(conn.remoteAddr != null);
+        assert(conn.localAddr.transport === "unix");
         assertEquals(conn.localAddr.address, filePath);
-        assertEquals(conn.localAddr.transport, "unix");
         await conn.write(new Uint8Array([1, 2, 3]));
         conn.close();
       }
     );
     const conn = await Deno.connect({ address: filePath, transport: "unix" });
+    assert(conn.remoteAddr.transport === "unix");
     assertEquals(conn.remoteAddr.address, filePath);
-    assertEquals(conn.remoteAddr.transport, "unix");
     assert(conn.remoteAddr != null);
     const buf = new Uint8Array(1024);
     const readResult = await conn.read(buf);
