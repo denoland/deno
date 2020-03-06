@@ -6,7 +6,7 @@ const { PermissionDenied } = Deno.errors;
  * the permissions that are granted.
  *
  *      const perms = await grant({ name: "net" }, { name: "read" });
- *      if (perms.length === 2) {
+ *      if (perms && perms.length === 2) {
  *        // do something cool that connects to the net and reads files
  *      } else {
  *        // notify user of missing permissions
@@ -21,7 +21,7 @@ export async function grant(
  * the permissions that are granted.
  *
  *      const perms = await grant([{ name: "net" }, { name: "read" }]);
- *      if (perms.length === 2) {
+ *      if (perms && perms.length === 2) {
  *        // do something cool that connects to the net and reads files
  *      } else {
  *        // notify user of missing permissions
