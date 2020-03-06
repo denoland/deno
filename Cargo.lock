@@ -445,7 +445,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "log",
- "nix 0.17.0",
+ "nix",
  "notify",
  "os_pipe",
  "pty",
@@ -1252,19 +1252,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nix"
-version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50e4785f2c3b7589a0d0c1dd60285e1188adac4006e8abd6dd578e1567027363"
-dependencies = [
- "bitflags",
- "cc",
- "cfg-if",
- "libc",
- "void",
-]
-
-[[package]]
 name = "notify"
 version = "5.0.0-pre.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1911,7 +1898,7 @@ dependencies = [
  "libc",
  "log",
  "memchr",
- "nix 0.14.1",
+ "nix",
  "unicode-segmentation",
  "unicode-width",
  "utf8parse",

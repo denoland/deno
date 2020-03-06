@@ -265,7 +265,7 @@ impl From<&ReadlineError> for OpError {
       Eof => ErrorKind::UnexpectedEof,
       Interrupted => ErrorKind::Interrupted,
       #[cfg(unix)]
-      Errno(_err) => todo!("why doesn't this work: (*err).into()"),
+      Errno(err) => return (*err).into(),
       _ => unimplemented!(),
     };
 

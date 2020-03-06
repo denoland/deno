@@ -52,7 +52,7 @@ serde = { version = "1.0.104", features = ["derive"] }
 serde_derive = "1.0.104"
 serde_json = { version = "1.0.48", features = [ "preserve_order" ] }
 source-map-mappings = "0.5.0"
-sys-info = "=0.5.8"
+sys-info = "=0.5.8" # 0.5.9 and 0.5.10 are broken on windows.
 tempfile = "3.1.0"
 termcolor = "1.1.0"
 tokio = { version = "0.2.13", features = ["rt-core", "tcp", "udp", "process", "fs", "blocking", "sync", "io-std", "macros", "time"] }
@@ -68,7 +68,7 @@ winapi = "0.3.8"
 fwdansi = "1.1.0"
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.17.0"
+nix = "0.14" # rustyline depends on 0.14, to avoid duplicates we do too.
 
 [dev-dependencies]
 os_pipe = "0.9.1"
