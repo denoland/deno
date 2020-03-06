@@ -16,7 +16,7 @@ const { PermissionDenied } = Deno.errors;
  * prompt for it.  The function resolves with all of the granted permissions. */
 export async function grant(
   ...descriptors: Deno.PermissionDescriptor[]
-): Promise<Deno.PermissionDescriptor[]>;
+): Promise<void | Deno.PermissionDescriptor[]>;
 /** Attempts to grant a set of permissions, resolving with the descriptors of
  * the permissions that are granted.
  *
@@ -31,11 +31,11 @@ export async function grant(
  * prompt for it.  The function resolves with all of the granted permissions. */
 export async function grant(
   descriptors: Deno.PermissionDescriptor[]
-): Promise<Deno.PermissionDescriptor[]>;
+): Promise<void | Deno.PermissionDescriptor[]>;
 export async function grant(
   descriptor: Deno.PermissionDescriptor[] | Deno.PermissionDescriptor,
   ...descriptors: Deno.PermissionDescriptor[]
-): Promise<Deno.PermissionDescriptor[]> {
+): Promise<void | Deno.PermissionDescriptor[]> {
   const result: Deno.PermissionDescriptor[] = [];
   descriptors = Array.isArray(descriptor)
     ? descriptor
@@ -49,7 +49,7 @@ export async function grant(
       result.push(descriptor);
     }
   }
-  return result;
+  return result.length ? result : undefined;
 }
 
 /** Attempts to grant a set of permissions or rejects.
@@ -92,26 +92,4 @@ export async function grantOrThrow(
       );
     }
   }
-}
-
-/** Attempts to grant the requested permissions, resolving with `true` if it is
- * granted or `false` if it isn't.
- *
- *      if (await isGranted({ name: "env" })) {
- *        // ...
- *      } else {
- *        console.error("Cannot access the environment.");
- *      }
- *
- * If the permission is denied, the function will resolve with `false`.  If the
- * permission is not granted, but can be prompted for, the function will prompt
- * for it. If the permission is granted, the function resolves with `true`. */
-export async function isGranted(
-  descriptor: Deno.PermissionDescriptor
-): Promise<boolean> {
-  let state = (await Deno.permissions.query(descriptor)).state;
-  if (state === "prompt") {
-    state = (await Deno.permissions.request(descriptor)).state;
-  }
-  return state === "granted" ? true : false;
 }

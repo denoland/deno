@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { grant, grantOrThrow, isGranted } from "./mod.ts";
+import { grant, grantOrThrow } from "./mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
 
 const { test } = Deno;
@@ -26,6 +26,13 @@ test({
 });
 
 test({
+  name: "grant logic",
+  async fn() {
+    assert(await grant({ name: "net" }));
+  }
+});
+
+test({
   name: "grantOrThrow basic",
   async fn() {
     await grantOrThrow({ name: "net" }, { name: "env" });
@@ -36,12 +43,5 @@ test({
   name: "grantOrThrow array",
   async fn() {
     await grantOrThrow([{ name: "net" }, { name: "env" }]);
-  }
-});
-
-test({
-  name: "isGranted basic",
-  async fn() {
-    assert(await isGranted({ name: "net" }));
   }
 });
