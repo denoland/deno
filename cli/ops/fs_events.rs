@@ -76,7 +76,9 @@ pub fn op_fs_events_open(
     Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
       let res2 = res.map(FsEvent::from).map_err(ErrBox::from);
       let mut sender = sender.lock().unwrap();
-      futures::executor::block_on(sender.send(res2)).expect("fs events error");
+      // Ignore result, if send failed it means that watcher was already closed,
+      // but not all messages have been flushed.
+      let _ = futures::executor::block_on(sender.send(res2));
     })
     .map_err(ErrBox::from)?;
   let recursive_mode = if args.recursive {
