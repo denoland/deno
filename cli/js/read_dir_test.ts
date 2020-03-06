@@ -21,15 +21,15 @@ function assertSameContent(files: FileInfo[]): void {
   assertEquals(counter, 2);
 }
 
-unitTest({ perms: { read: true } }, function readDirSyncSuccess(): void {
-  const files = Deno.readDirSync("cli/tests/");
+unitTest({ perms: { read: true } }, function readdirSyncSuccess(): void {
+  const files = Deno.readdirSync("cli/tests/");
   assertSameContent(files);
 });
 
-unitTest({ perms: { read: false } }, function readDirSyncPerm(): void {
+unitTest({ perms: { read: false } }, function readdirSyncPerm(): void {
   let caughtError = false;
   try {
-    Deno.readDirSync("tests/");
+    Deno.readdirSync("tests/");
   } catch (e) {
     caughtError = true;
     assert(e instanceof Deno.errors.PermissionDenied);
@@ -37,12 +37,12 @@ unitTest({ perms: { read: false } }, function readDirSyncPerm(): void {
   assert(caughtError);
 });
 
-unitTest({ perms: { read: true } }, function readDirSyncNotDir(): void {
+unitTest({ perms: { read: true } }, function readdirSyncNotDir(): void {
   let caughtError = false;
   let src;
 
   try {
-    src = Deno.readDirSync("cli/tests/fixture.json");
+    src = Deno.readdirSync("cli/tests/fixture.json");
   } catch (err) {
     caughtError = true;
     assert(err instanceof Error);
@@ -51,12 +51,12 @@ unitTest({ perms: { read: true } }, function readDirSyncNotDir(): void {
   assertEquals(src, undefined);
 });
 
-unitTest({ perms: { read: true } }, function readDirSyncNotFound(): void {
+unitTest({ perms: { read: true } }, function readdirSyncNotFound(): void {
   let caughtError = false;
   let src;
 
   try {
-    src = Deno.readDirSync("bad_dir_name");
+    src = Deno.readdirSync("bad_dir_name");
   } catch (err) {
     caughtError = true;
     assert(err instanceof Deno.errors.NotFound);
@@ -65,19 +65,19 @@ unitTest({ perms: { read: true } }, function readDirSyncNotFound(): void {
   assertEquals(src, undefined);
 });
 
-unitTest({ perms: { read: true } }, async function readDirSuccess(): Promise<
+unitTest({ perms: { read: true } }, async function readdirSuccess(): Promise<
   void
 > {
-  const files = await Deno.readDir("cli/tests/");
+  const files = await Deno.readdir("cli/tests/");
   assertSameContent(files);
 });
 
-unitTest({ perms: { read: false } }, async function readDirPerm(): Promise<
+unitTest({ perms: { read: false } }, async function readdirPerm(): Promise<
   void
 > {
   let caughtError = false;
   try {
-    await Deno.readDir("tests/");
+    await Deno.readdir("tests/");
   } catch (e) {
     caughtError = true;
     assert(e instanceof Deno.errors.PermissionDenied);
