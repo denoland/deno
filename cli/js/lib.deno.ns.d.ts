@@ -1626,6 +1626,8 @@ declare namespace Deno {
     certFile: string;
     /** Server public key file. */
     keyFile: string;
+
+    transport?: "tcp";
   }
 
   /** Listen announces on the local transport address over TLS (transport layer
