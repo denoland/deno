@@ -1,4 +1,3 @@
-use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::dispatch_minimal::MinimalOp;
 use crate::http_util::HttpBody;
 use crate::op_error::OpError;
@@ -55,7 +54,6 @@ pub fn init(i: &mut Isolate, s: &State) {
     "op_write",
     s.core_op(minimal_op(s.stateful_minimal_op(op_write))),
   );
-  i.register_op("op_close", s.stateful_json_op(op_close));
 }
 
 pub fn get_stdio() -> (StreamResource, StreamResource, StreamResource) {
@@ -258,24 +256,4 @@ pub fn op_write(
     Ok(nwritten as i32)
   }
   .boxed_local()
-}
-
-#[derive(Deserialize)]
-struct CloseArgs {
-  rid: i32,
-}
-
-fn op_close(
-  state: &State,
-  args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, OpError> {
-  let args: CloseArgs = serde_json::from_value(args)?;
-
-  let mut state = state.borrow_mut();
-  state
-    .resource_table
-    .close(args.rid as u32)
-    .ok_or_else(OpError::bad_resource_id)?;
-  Ok(JsonOp::Sync(json!({})))
 }
