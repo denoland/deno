@@ -306,7 +306,8 @@ fn op_connect(
       state.check_read(&address_path)?;
       let op = async move {
         let address = args.address;
-        let unix_stream = net_unix::UnixStream::connect(net_unix::Path::new(&address)).await?;
+        let unix_stream =
+          net_unix::UnixStream::connect(net_unix::Path::new(&address)).await?;
         let local_addr = unix_stream.local_addr()?;
         let remote_addr = unix_stream.peer_addr()?;
         let mut state = state_.borrow_mut();
@@ -365,7 +366,8 @@ fn op_shutdown(
     }
     #[cfg(unix)]
     StreamResource::UnixStream(ref mut stream) => {
-      net_unix::UnixStream::shutdown(stream, shutdown_mode).map_err(OpError::from)?;
+      net_unix::UnixStream::shutdown(stream, shutdown_mode)
+        .map_err(OpError::from)?;
     }
     _ => return Err(OpError::bad_resource_id()),
   }
@@ -421,7 +423,6 @@ impl TcpListenerResource {
     }
   }
 }
-
 
 struct UdpSocketResource {
   socket: UdpSocket,
