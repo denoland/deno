@@ -3,7 +3,7 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 import { unimplemented, assert } from "../testing/asserts.ts";
 import { join } from "../path/mod.ts";
-const { readDir, readDirSync, stat, statSync } = Deno;
+const { readdir, readdirSync, stat, statSync } = Deno;
 type FileInfo = Deno.FileInfo;
 
 export interface WalkOptions {
@@ -79,7 +79,7 @@ export async function* walk(
   if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
-  const ls: FileInfo[] = await readDir(root);
+  const ls: FileInfo[] = await readdir(root);
   for (const info of ls) {
     if (info.isSymlink()) {
       if (followSymlinks) {
@@ -133,7 +133,7 @@ export function* walkSync(
   if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
-  const ls: FileInfo[] = readDirSync(root);
+  const ls: FileInfo[] = readdirSync(root);
   for (const info of ls) {
     if (info.isSymlink()) {
       if (followSymlinks) {

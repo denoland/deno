@@ -6,8 +6,8 @@ import { sendSync, sendAsync } from "./dispatch_json.ts";
  *       const targetPath = Deno.readlinkSync("symlink/path");
  *
  * Requires `allow-read` permission. */
-export function readlinkSync(name: string): string {
-  return sendSync("op_read_link", { name });
+export function readlinkSync(path: string): string {
+  return sendSync("op_read_link", { path });
 }
 
 /** Resolves to the destination of the named symbolic link.
@@ -15,6 +15,6 @@ export function readlinkSync(name: string): string {
  *       const targetPath = await Deno.readlink("symlink/path");
  *
  * Requires `allow-read` permission. */
-export async function readlink(name: string): Promise<string> {
-  return await sendAsync("op_read_link", { name });
+export async function readlink(path: string): Promise<string> {
+  return await sendAsync("op_read_link", { path });
 }
