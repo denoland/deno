@@ -273,7 +273,7 @@ test("[ws] ws.close() should use 1000 as close code", async () => {
   assertEquals(code, 1000);
 });
 
-function dummyConn(r: Reader, w: Writer): Conn<Deno.TCPAddr> {
+function dummyConn(r: Reader, w: Writer): Conn {
   return {
     rid: -1,
     closeRead: (): void => {},

@@ -11,7 +11,7 @@ Deno.test("[examples/echo_server]", async () => {
     stdout: "piped"
   });
 
-  let conn: Deno.Conn<Deno.TCPAddr> | undefined;
+  let conn: Deno.Conn | undefined;
   try {
     const processReader = new BufReader(process.stdout!);
     const message = await processReader.readLine();

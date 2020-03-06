@@ -15,16 +15,14 @@ const connectTLSDefaults = { hostname: "127.0.0.1", transport: "tcp" };
 /**
  * Establishes a secure connection over TLS (transport layer security).
  */
-export async function connectTLS(
-  options: ConnectTLSOptions
-): Promise<Conn<TCPAddr>> {
+export async function connectTLS(options: ConnectTLSOptions): Promise<Conn> {
   options = Object.assign(connectTLSDefaults, options);
   const res = await sendAsync("op_connect_tls", options);
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
 
 class TLSListenerImpl extends ListenerImpl<TCPAddr> {
-  async accept(): Promise<Conn<TCPAddr>> {
+  async accept(): Promise<Conn> {
     const res = await sendAsync("op_accept_tls", { rid: this.rid });
     return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
   }

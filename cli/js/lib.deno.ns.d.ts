@@ -1537,23 +1537,23 @@ declare namespace Deno {
   }
 
   /** A generic network listener for stream-oriented protocols. */
-  export interface Listener<T> extends AsyncIterator<Conn<T>> {
+  export interface Listener<T> extends AsyncIterator<Conn> {
     /** Waits for and resolves to the next connection to the `Listener`. */
-    accept(): Promise<Conn<T>>;
+    accept(): Promise<Conn>;
     /** Close closes the listener. Any pending accept promises will be rejected
      * with errors. */
     close(): void;
     /** Return the address of the `Listener`. */
     readonly addr: T;
 
-    [Symbol.asyncIterator](): AsyncIterator<Conn<T>>;
+    [Symbol.asyncIterator](): AsyncIterator<Conn>;
   }
 
-  export interface Conn<T> extends Reader, Writer, Closer {
+  export interface Conn extends Reader, Writer, Closer {
     /** The local address of the connection. */
-    readonly localAddr: T;
+    readonly localAddr: TCPAddr | UnixAddr;
     /** The remote address of the connection. */
-    readonly remoteAddr: T;
+    readonly remoteAddr: TCPAddr | UnixAddr;
     /** The resource ID of the connection. */
     readonly rid: number;
     /** Shuts down (`shutdown(2)`) the reading side of the TCP connection. Most
@@ -1659,17 +1659,12 @@ declare namespace Deno {
    *     Deno.connect({ hostname: "192.0.2.1", port: 80 })
    *     Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
    *     Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" })
-   *
-   * Requires `allow-net` permission. */
-  export function connect(options: ConnectOptions): Promise<Conn<TCPAddr>>;
-  /**
-  /**
-   * Connects to the address on the named transport.
-   *
    *     Deno.connect({ address: "/foo/bar.sock", transport: "unix" })
    *
-   * Requires `allow-read` permission. */
-  export function connect(options: UnixConnectOptions): Promise<Conn<UnixAddr>>;
+   * Requires `allow-net` permission for "tcp" and `allow-read` for unix. */
+  export function connect(
+    options: ConnectOptions | UnixConnectOptions
+  ): Promise<Conn>;
 
   export interface ConnectTLSOptions {
     /** The port to connect to. */
@@ -1684,9 +1679,7 @@ declare namespace Deno {
   /** Establishes a secure connection over TLS (transport layer security).
    *
    * Requires `allow-net` permission. */
-  export function connectTLS(
-    options: ConnectTLSOptions
-  ): Promise<Conn<TCPAddr>>;
+  export function connectTLS(options: ConnectTLSOptions): Promise<Conn>;
 
   /** **UNSTABLE**: not sure if broken or not */
   export interface Metrics {

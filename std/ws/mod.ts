@@ -85,7 +85,7 @@ export interface WebSocketFrame {
 }
 
 export interface WebSocket {
-  readonly conn: Conn<Deno.TCPAddr>;
+  readonly conn: Conn;
   readonly isClosed: boolean;
 
   receive(): AsyncIterableIterator<WebSocketEvent>;
@@ -215,7 +215,7 @@ function createMask(): Uint8Array {
 }
 
 class WebSocketImpl implements WebSocket {
-  readonly conn: Conn<Deno.TCPAddr>;
+  readonly conn: Conn;
   private readonly mask?: Uint8Array;
   private readonly bufReader: BufReader;
   private readonly bufWriter: BufWriter;
@@ -230,7 +230,7 @@ class WebSocketImpl implements WebSocket {
     bufWriter,
     mask
   }: {
-    conn: Conn<Deno.TCPAddr>;
+    conn: Conn;
     bufReader?: BufReader;
     bufWriter?: BufWriter;
     mask?: Uint8Array;
@@ -428,7 +428,7 @@ export function createSecAccept(nonce: string): string {
 
 /** Upgrade given TCP connection into websocket connection */
 export async function acceptWebSocket(req: {
-  conn: Conn<Deno.TCPAddr>;
+  conn: Conn;
   bufWriter: BufWriter;
   bufReader: BufReader;
   headers: Headers;
@@ -536,7 +536,7 @@ export async function connectWebSocket(
 ): Promise<WebSocket> {
   const url = new URL(endpoint);
   const { hostname } = url;
-  let conn: Conn<Deno.TCPAddr>;
+  let conn: Conn;
   if (url.protocol === "http:" || url.protocol === "ws:") {
     const port = parseInt(url.port || "80");
     conn = await Deno.connect({ hostname, port });
@@ -563,7 +563,7 @@ export async function connectWebSocket(
 }
 
 export function createWebSocket(params: {
-  conn: Conn<Deno.TCPAddr>;
+  conn: Conn;
   bufWriter?: BufWriter;
   bufReader?: BufReader;
   mask?: Uint8Array;

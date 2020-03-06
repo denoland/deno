@@ -42,9 +42,9 @@ export interface DatagramConn<T> extends AsyncIterator<[Uint8Array, T]> {
 }
 
 /** A Listener is a generic transport listener for stream-oriented protocols. */
-export interface Listener<T> extends AsyncIterator<Conn<T>> {
+export interface Listener<T> extends AsyncIterator<Conn> {
   /** Waits for and resolves to the next connection to the `Listener`. */
-  accept(): Promise<Conn<T>>;
+  accept(): Promise<Conn>;
 
   /** Close closes the listener. Any pending accept promises will be rejected
    * with errors.
@@ -54,7 +54,7 @@ export interface Listener<T> extends AsyncIterator<Conn<T>> {
   /** Return the address of the `Listener`. */
   addr: T;
 
-  [Symbol.asyncIterator](): AsyncIterator<Conn<T>>;
+  [Symbol.asyncIterator](): AsyncIterator<Conn>;
 }
 
 export enum ShutdownMode {
@@ -77,11 +77,11 @@ export function shutdown(rid: number, how: ShutdownMode): void {
   sendSync("op_shutdown", { rid, how });
 }
 
-export class ConnImpl<T> implements Conn<T> {
+export class ConnImpl implements Conn {
   constructor(
     readonly rid: number,
-    readonly remoteAddr: T,
-    readonly localAddr: T
+    readonly remoteAddr: TCPAddr | UnixAddr,
+    readonly localAddr: TCPAddr | UnixAddr
   ) {}
 
   write(p: Uint8Array): Promise<number> {
@@ -118,12 +118,12 @@ export class ListenerImpl<T> implements Listener<T> {
     private closing: boolean = false
   ) {}
 
-  async accept(): Promise<Conn<T>> {
+  async accept(): Promise<Conn> {
     const res = await sendAsync("op_accept", {
       rid: this.rid,
       ...this.addr
     });
-    return new ConnImpl<T>(res.rid, res.remoteAddr, res.localAddr);
+    return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
   }
 
   close(): void {
@@ -131,7 +131,7 @@ export class ListenerImpl<T> implements Listener<T> {
     close(this.rid);
   }
 
-  async next(): Promise<IteratorResult<Conn<T>>> {
+  async next(): Promise<IteratorResult<Conn>> {
     if (this.closing) {
       return { value: undefined, done: true };
     }
@@ -148,7 +148,7 @@ export class ListenerImpl<T> implements Listener<T> {
       });
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<Conn<T>> {
+  [Symbol.asyncIterator](): AsyncIterator<Conn> {
     return this;
   }
 }
@@ -212,11 +212,11 @@ export class DatagramImpl<T> implements DatagramConn<T> {
   }
 }
 
-export interface Conn<T> extends Reader, Writer, Closer {
+export interface Conn extends Reader, Writer, Closer {
   /** The local address of the connection. */
-  localAddr: T;
+  localAddr: TCPAddr | UnixAddr;
   /** The remote address of the connection. */
-  remoteAddr: T;
+  remoteAddr: TCPAddr | UnixAddr;
   /** The resource ID of the connection. */
   rid: number;
   /** Shuts down (`shutdown(2)`) the reading side of the TCP connection. Most
@@ -313,13 +313,9 @@ const connectDefaults = { hostname: "127.0.0.1", transport: "tcp" };
  *     connect({ hostname: "[2001:db8::1]", port: 80 });
  *     connect({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
-export async function connect(options: ConnectOptions): Promise<Conn<TCPAddr>>;
-export async function connect(
-  options: UnixConnectOptions
-): Promise<Conn<UnixAddr>>;
 export async function connect(
   options: ConnectOptions | UnixConnectOptions
-): Promise<Conn<TCPAddr | UnixAddr>> {
+): Promise<Conn> {
   options = Object.assign(connectDefaults, options);
   const res = await sendAsync("op_connect", options);
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
