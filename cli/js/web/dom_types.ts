@@ -76,20 +76,44 @@ export const eventTargetListeners: unique symbol = Symbol();
 export const eventTargetMode: unique symbol = Symbol();
 export const eventTargetNodeType: unique symbol = Symbol();
 
+export interface EventListener {
+  // Different from lib.dom.d.ts. Added Promise<void>
+  (evt: Event): void | Promise<void>;
+}
+
+export interface EventListenerObject {
+  // Different from lib.dom.d.ts. Added Promise<void>
+  handleEvent(evt: Event): void | Promise<void>;
+}
+
+export type EventListenerOrEventListenerObject =
+  | EventListener
+  | EventListenerObject;
+
+// This is actually not part of actual DOM types,
+// but an implementation specific thing on our custom EventTarget
+// (due to the presence of our custom symbols)
+export interface EventTargetListener {
+  callback: EventListenerOrEventListenerObject;
+  options: AddEventListenerOptions;
+}
+
 export interface EventTarget {
+  // TODO: below 4 symbol props should not present on EventTarget WebIDL.
+  // They should be implementation specific details.
   [eventTargetHost]: EventTarget | null;
-  [eventTargetListeners]: { [type in string]: EventListener[] };
+  [eventTargetListeners]: { [type in string]: EventTargetListener[] };
   [eventTargetMode]: string;
   [eventTargetNodeType]: NodeType;
   addEventListener(
     type: string,
-    callback: (event: Event) => void | null,
+    listener: EventListenerOrEventListenerObject | null,
     options?: boolean | AddEventListenerOptions
   ): void;
   dispatchEvent(event: Event): boolean;
   removeEventListener(
     type: string,
-    callback?: (event: Event) => void | null,
+    listener: EventListenerOrEventListenerObject | null,
     options?: EventListenerOptions | boolean
   ): void;
 }
@@ -145,12 +169,6 @@ export interface URLSearchParams extends DomIterable<string, string> {
     callbackfn: (value: string, key: string, parent: this) => void,
     thisArg?: any
   ): void;
-}
-
-export interface EventListener {
-  handleEvent(event: Event): void;
-  readonly callback: (event: Event) => void | null;
-  readonly options: boolean | AddEventListenerOptions;
 }
 
 export interface EventInit {

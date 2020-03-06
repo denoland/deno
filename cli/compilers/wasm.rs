@@ -134,11 +134,7 @@ async fn execute_in_thread(
     WorkerEvent::Message(buf) => Ok(buf),
     WorkerEvent::Error(error) => Err(error),
   }?;
-  // Compiler worker finishes after one request
-  // so we should receive signal that channel was closed.
-  // Then close worker's channel and join the thread.
-  let event = handle.get_event().await;
-  assert!(event.is_none());
+  // Shutdown worker and wait for thread to finish
   handle.sender.close_channel();
   join_handle.join().unwrap();
   Ok(buf)

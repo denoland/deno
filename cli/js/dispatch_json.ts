@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as util from "./util.ts";
-import { TextEncoder, TextDecoder } from "./text_encoding.ts";
+import { TextEncoder, TextDecoder } from "./web/text_encoding.ts";
 import { core } from "./core.ts";
 import { OPS_CACHE } from "./runtime.ts";
 import { ErrorKind, getErrorClass } from "./errors.ts";

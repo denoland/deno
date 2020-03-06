@@ -7,7 +7,7 @@ import * as util from "./util.ts";
 import { OperatingSystem, Arch } from "./build.ts";
 import { setBuildInfo } from "./build.ts";
 import { setVersions } from "./version.ts";
-import { setLocation } from "./location.ts";
+import { setLocation } from "./web/location.ts";
 import { setPrepareStackTrace } from "./error_stack.ts";
 
 interface Start {

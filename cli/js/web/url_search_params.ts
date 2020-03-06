@@ -1,6 +1,20 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { URL } from "./url.ts";
-import { requiredArguments, isIterable } from "./util.ts";
+import { requiredArguments } from "../util.ts";
+
+// Returns whether o is iterable.
+// @internal
+export function isIterable<T, P extends keyof T, K extends T[P]>(
+  o: T
+): o is T & Iterable<[P, K]> {
+  // checks for null and undefined
+  if (o == null) {
+    return false;
+  }
+  return (
+    typeof ((o as unknown) as Iterable<[P, K]>)[Symbol.iterator] === "function"
+  );
+}
 
 export class URLSearchParams {
   private params: Array<[string, string]> = [];

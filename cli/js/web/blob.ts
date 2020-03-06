@@ -1,10 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types.ts";
-import { containsOnlyASCII, hasOwnProperty } from "./util.ts";
+import { hasOwnProperty } from "../util.ts";
 import { TextEncoder } from "./text_encoding.ts";
-import { build } from "./build.ts";
+import { build } from "../build.ts";
 
 export const bytesSymbol = Symbol("bytes");
+
+export function containsOnlyASCII(str: string): boolean {
+  if (typeof str !== "string") {
+    return false;
+  }
+  return /^[\x00-\x7F]*$/.test(str);
+}
 
 function convertLineEndingsToNative(s: string): string {
   const nativeLineEnd = build.os == "win" ? "\r\n" : "\n";
