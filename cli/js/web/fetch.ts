@@ -15,7 +15,7 @@ import { Buffer } from "../buffer.ts";
 import { FormData } from "./form_data.ts";
 import { URL } from "./url.ts";
 import { URLSearchParams } from "./url_search_params.ts";
-import { sendAsync } from "../ops/dispatch_json.ts";
+import { fetch as opFetch, FetchResponse } from "../ops/fetch.ts";
 
 function getHeaderValueParams(value: string): Map<string, string> {
   const params = new Map();
@@ -439,13 +439,6 @@ export class Response implements domTypes.Response {
   }
 }
 
-interface FetchResponse {
-  bodyRid: number;
-  status: number;
-  statusText: string;
-  headers: Array<[string, string]>;
-}
-
 async function sendFetchReq(
   url: string,
   method: string | null,
@@ -457,18 +450,13 @@ async function sendFetchReq(
     headerArray = Array.from(headers.entries());
   }
 
-  let zeroCopy = undefined;
-  if (body) {
-    zeroCopy = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
-  }
-
   const args = {
     method,
     url,
     headers: headerArray
   };
 
-  return (await sendAsync("op_fetch", args, zeroCopy)) as FetchResponse;
+  return await opFetch(args, body);
 }
 
 /** Fetch a resource from the network. */
