@@ -190,7 +190,7 @@ unitTest(
     const data = enc.encode("Hello");
     const tempDir = Deno.makeTempDirSync();
     const filename = tempDir + "/test.txt";
-    Deno.writeFileSync(filename, data, { perm: 0o666 });
+    Deno.writeFileSync(filename, data, { mode: 0o666 });
     const s = Deno.statSync(filename);
     assert(s.dev === null);
     assert(s.ino === null);
@@ -212,7 +212,7 @@ unitTest(
     const tempDir = Deno.makeTempDirSync();
     const filename = tempDir + "/test.txt";
     const filename2 = tempDir + "/test2.txt";
-    Deno.writeFileSync(filename, data, { perm: 0o666 });
+    Deno.writeFileSync(filename, data, { mode: 0o666 });
     // Create a link
     Deno.linkSync(filename, filename2);
     const s = Deno.statSync(filename);

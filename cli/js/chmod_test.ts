@@ -10,7 +10,7 @@ unitTest(
     const data = enc.encode("Hello");
     const tempDir = Deno.makeTempDirSync();
     const filename = tempDir + "/test.txt";
-    Deno.writeFileSync(filename, data, { perm: 0o666 });
+    Deno.writeFileSync(filename, data, { mode: 0o666 });
 
     // On windows no effect, but should not crash
     Deno.chmodSync(filename, 0o777);
@@ -36,7 +36,7 @@ unitTest(
     const tempDir = Deno.makeTempDirSync();
 
     const filename = tempDir + "/test.txt";
-    Deno.writeFileSync(filename, data, { perm: 0o666 });
+    Deno.writeFileSync(filename, data, { mode: 0o666 });
     const symlinkName = tempDir + "/test_symlink.txt";
     Deno.symlinkSync(filename, symlinkName);
 
@@ -85,7 +85,7 @@ unitTest(
     const data = enc.encode("Hello");
     const tempDir = Deno.makeTempDirSync();
     const filename = tempDir + "/test.txt";
-    Deno.writeFileSync(filename, data, { perm: 0o666 });
+    Deno.writeFileSync(filename, data, { mode: 0o666 });
 
     // On windows no effect, but should not crash
     await Deno.chmod(filename, 0o777);
@@ -112,7 +112,7 @@ unitTest(
     const tempDir = Deno.makeTempDirSync();
 
     const filename = tempDir + "/test.txt";
-    Deno.writeFileSync(filename, data, { perm: 0o666 });
+    Deno.writeFileSync(filename, data, { mode: 0o666 });
     const symlinkName = tempDir + "/test_symlink.txt";
     Deno.symlinkSync(filename, symlinkName);
 

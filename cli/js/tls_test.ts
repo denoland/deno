@@ -105,7 +105,7 @@ unitTest(
     const testDir = Deno.makeTempDirSync();
     const keyFilename = testDir + "/key.pem";
     Deno.writeFileSync(keyFilename, new Uint8Array([]), {
-      perm: 0o666
+      mode: 0o666
     });
 
     try {
@@ -134,7 +134,7 @@ unitTest(
     const testDir = Deno.makeTempDirSync();
     const certFilename = testDir + "/cert.crt";
     Deno.writeFileSync(certFilename, new Uint8Array([]), {
-      perm: 0o666
+      mode: 0o666
     });
 
     try {
