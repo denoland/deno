@@ -39,7 +39,6 @@ export {
   writeSync,
   seek,
   seekSync,
-  close,
   OpenOptions,
   OpenMode
 } from "./files.ts";
@@ -116,7 +115,7 @@ export { readlinkSync, readlink } from "./read_link.ts";
 export { realpathSync, realpath } from "./realpath.ts";
 export { removeSync, remove, RemoveOptions } from "./remove.ts";
 export { renameSync, rename } from "./rename.ts";
-export { resources } from "./resources.ts";
+export { resources, close } from "./ops/resources.ts";
 export { signal, signals, SignalStream } from "./signals.ts";
 export { statSync, lstatSync, stat, lstat } from "./stat.ts";
 export { symlinkSync, symlink } from "./symlink.ts";

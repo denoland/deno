@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync } from "./ops/dispatch_json.ts";
+import { sendSync } from "./dispatch_json.ts";
 
 export interface ResourceMap {
   [rid: number]: string;
@@ -15,4 +15,9 @@ export function resources(): ResourceMap {
     resources[resourceTuple[0]] = resourceTuple[1];
   }
   return resources;
+}
+
+/** Close the given resource ID. */
+export function close(rid: number): void {
+  sendSync("op_close", { rid });
 }
