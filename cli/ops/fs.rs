@@ -275,7 +275,7 @@ fn get_stat_json(
 #[serde(rename_all = "camelCase")]
 struct StatArgs {
   promise_id: Option<u64>,
-  filename: String,
+  path: String,
   lstat: bool,
 }
 
@@ -285,18 +285,18 @@ fn op_stat(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: StatArgs = serde_json::from_value(args)?;
-  let filename = deno_fs::resolve_from_cwd(Path::new(&args.filename))?;
+  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
   let lstat = args.lstat;
 
-  state.check_read(&filename)?;
+  state.check_read(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_stat {} {}", filename.display(), lstat);
+    debug!("op_stat {} {}", path.display(), lstat);
     let metadata = if lstat {
-      fs::symlink_metadata(&filename)?
+      fs::symlink_metadata(&path)?
     } else {
-      fs::metadata(&filename)?
+      fs::metadata(&path)?
     };
     get_stat_json(metadata, None)
   })
@@ -464,7 +464,7 @@ fn op_symlink(
 #[serde(rename_all = "camelCase")]
 struct ReadLinkArgs {
   promise_id: Option<u64>,
-  name: String,
+  path: String,
 }
 
 fn op_read_link(
@@ -473,14 +473,14 @@ fn op_read_link(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: ReadLinkArgs = serde_json::from_value(args)?;
-  let name = deno_fs::resolve_from_cwd(Path::new(&args.name))?;
+  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
 
-  state.check_read(&name)?;
+  state.check_read(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_read_link {}", name.display());
-    let path = fs::read_link(&name)?;
+    debug!("op_read_link {}", path.display());
+    let path = fs::read_link(&path)?;
     let path_str = path.to_str().unwrap();
 
     Ok(json!(path_str))
@@ -491,7 +491,7 @@ fn op_read_link(
 #[serde(rename_all = "camelCase")]
 struct TruncateArgs {
   promise_id: Option<u64>,
-  name: String,
+  path: String,
   len: u64,
 }
 
@@ -501,15 +501,15 @@ fn op_truncate(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: TruncateArgs = serde_json::from_value(args)?;
-  let filename = deno_fs::resolve_from_cwd(Path::new(&args.name))?;
+  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
   let len = args.len;
 
-  state.check_write(&filename)?;
+  state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_truncate {} {}", filename.display(), len);
-    let f = fs::OpenOptions::new().write(true).open(&filename)?;
+    debug!("op_truncate {} {}", path.display(), len);
+    let f = fs::OpenOptions::new().write(true).open(&path)?;
     f.set_len(len)?;
     Ok(json!({}))
   })
@@ -596,7 +596,7 @@ fn op_make_temp_file(
 #[serde(rename_all = "camelCase")]
 struct UtimeArgs {
   promise_id: Option<u64>,
-  filename: String,
+  path: String,
   atime: u64,
   mtime: u64,
 }
@@ -607,11 +607,11 @@ fn op_utime(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: UtimeArgs = serde_json::from_value(args)?;
-  state.check_write(Path::new(&args.filename))?;
+  state.check_write(Path::new(&args.path))?;
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_utime {} {} {}", args.filename, args.atime, args.mtime);
-    utime::set_file_times(args.filename, args.atime, args.mtime)?;
+    debug!("op_utime {} {} {}", args.path, args.atime, args.mtime);
+    utime::set_file_times(args.path, args.atime, args.mtime)?;
     Ok(json!({}))
   })
 }
