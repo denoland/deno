@@ -14,6 +14,8 @@ extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
 extern crate rand;
+extern crate regex;
+extern crate reqwest;
 extern crate serde;
 extern crate serde_derive;
 extern crate tokio;
@@ -73,13 +75,24 @@ use futures::future::FutureExt;
 use log::Level;
 use log::Metadata;
 use log::Record;
+use regex::Regex;
+use reqwest::redirect::Policy;
 use std::env;
 use std::fs as std_fs;
 use std::io::Write;
 use std::path::PathBuf;
 use url::Url;
 
+const LATEST_VERSION_URL: &str =
+  "https://github.com/denoland/deno/releases/latest";
+const REGEX_TAG_VERSION: &str = r#"v([^\?]+)?""#;
+const REGEX_HREF: &str = r#""([^\?]+)?""#;
 static LOGGER: Logger = Logger;
+
+enum RegexOpt {
+  TagVersion,
+  Href,
+}
 
 struct Logger;
 
@@ -411,6 +424,40 @@ async fn test_command(
   worker.execute("window.dispatchEvent(new Event('unload'))")
 }
 
+async fn upgrade_command() -> Result<(), ErrBox> {
+  println!("Starting upgrade...");
+  println!("Local version: {}", &version::DENO);
+  let client = reqwest::Client::builder()
+    .redirect(Policy::none())
+    .build()?;
+  let body = client.get(LATEST_VERSION_URL).send().await?.text().await?;
+  println!("Body: {}", &body);
+  let version = find_for_regex(RegexOpt::TagVersion, &body)?;
+  println!("Latest version: {}", &version[1..version.len() - 1]);
+  let href = find_for_regex(RegexOpt::Href, &body)?;
+  println!("Href: {}", &href[1..href.len() - 1]);
+  Ok(())
+}
+
+fn find_for_regex(
+  regex_opt: RegexOpt,
+  text: &String,
+) -> Result<String, ErrBox> {
+  let regex_str = match regex_opt {
+    RegexOpt::TagVersion => REGEX_TAG_VERSION,
+    RegexOpt::Href => REGEX_HREF,
+  };
+  let re = Regex::new(regex_str)?;
+  if let Some(mat) = re.find(text) {
+    return Ok(mat.as_str().to_string());
+  }
+  let e = std::io::Error::new(
+    std::io::ErrorKind::Other,
+    "Cannot read latest version tag".to_string(),
+  );
+  Err(ErrBox::from(e))
+}
+
 pub fn main() {
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
@@ -480,6 +527,7 @@ pub fn main() {
       let _r = std::io::stdout().write_all(types.as_bytes());
       return;
     }
+    DenoSubcommand::Upgrade => upgrade_command().boxed_local(),
     _ => unreachable!(),
   };
 

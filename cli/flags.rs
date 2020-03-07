@@ -64,6 +64,7 @@ pub enum DenoSubcommand {
     include: Option<Vec<String>>,
   },
   Types,
+  Upgrade,
 }
 
 impl Default for DenoSubcommand {
@@ -254,6 +255,8 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
     completions_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("test") {
     test_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("upgrade") {
+    upgrade_parse(&mut flags, m);
   } else {
     unimplemented!();
   }
@@ -294,6 +297,7 @@ fn clap_root<'a, 'b>() -> App<'a, 'b> {
     .subcommand(run_subcommand())
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
+    .subcommand(upgrade_subcommand())
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
 }
@@ -528,6 +532,10 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 }
 
+fn upgrade_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
+  flags.subcommand = DenoSubcommand::Upgrade;
+}
+
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("types")
     .about("Print runtime TypeScript declarations")
@@ -742,6 +750,20 @@ Downloads all dependencies
 Once cached, static imports no longer send network requests
 
   deno run -A https://deno.land/std/http/file_server.ts",
+    )
+}
+
+fn upgrade_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("upgrade")
+    .about("Upgrade deno executable to newest version")
+    .long_about(
+      "Upgrade deno executable to newest available version.
+      
+  Checks for newest available version of deno and if higher than
+  local version, then downloads and installs newest version in place
+  of current one.
+      
+  Example: deno upgrade"
     )
 }
 
@@ -1164,7 +1186,8 @@ fn arg_hacks(mut args: Vec<String>) -> Vec<String> {
     "types",
     "install",
     "help",
-    "version"
+    "version",
+    "upgrade"
   ];
   let modifier_flags = sset!["-h", "--help", "-V", "--version"];
   // deno [subcommand|behavior modifier flags] -> do nothing
@@ -1208,6 +1231,8 @@ mod tests {
     assert_eq!(args3, ["deno", "run", "script.js"]);
     let args4 = arg_hacks(svec!["deno", "-A", "script.js", "-L=info"]);
     assert_eq!(args4, ["deno", "run", "-A", "script.js", "-L=info"]);
+    let args5 = arg_hacks(svec!["deno", "upgrade"]);
+    assert_eq!(args5, ["deno", "upgrade"]);
   }
 
   #[test]
