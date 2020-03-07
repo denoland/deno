@@ -111,7 +111,7 @@ export {
   ProcessStatus,
   Signal
 } from "./process.ts";
-export { readDirSync, readDir } from "./read_dir.ts";
+export { readdirSync, readdir } from "./read_dir.ts";
 export { readFileSync, readFile } from "./read_file.ts";
 export { readlinkSync, readlink } from "./read_link.ts";
 export { realpathSync, realpath } from "./realpath.ts";

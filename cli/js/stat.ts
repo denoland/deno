@@ -23,61 +23,61 @@ export interface StatResponse {
   blocks: number;
 }
 
-/** Resolves to a `Deno.FileInfo` for the specified path. If path is a
+/** Resolves to a `Deno.FileInfo` for the specified `path`. If `path` is a
  * symlink, information for the symlink will be returned.
  *
  *       const fileInfo = await Deno.lstat("hello.txt");
  *       assert(fileInfo.isFile());
  *
  * Requires `allow-read` permission. */
-export async function lstat(filename: string): Promise<FileInfo> {
+export async function lstat(path: string): Promise<FileInfo> {
   const res = (await sendAsync("op_stat", {
-    filename,
+    path,
     lstat: true
   })) as StatResponse;
   return new FileInfoImpl(res);
 }
 
-/** Synchronously returns a `Deno.FileInfo` for the specified path. If
- * path is a symlink, information for the symlink will be returned.
+/** Synchronously returns a `Deno.FileInfo` for the specified `path`. If
+ * `path` is a symlink, information for the symlink will be returned.
  *
  *       const fileInfo = Deno.lstatSync("hello.txt");
  *       assert(fileInfo.isFile());
  *
  * Requires `allow-read` permission. */
-export function lstatSync(filename: string): FileInfo {
+export function lstatSync(path: string): FileInfo {
   const res = sendSync("op_stat", {
-    filename,
+    path,
     lstat: true
   }) as StatResponse;
   return new FileInfoImpl(res);
 }
 
-/** Resolves to a `Deno.FileInfo` for the specified path. Will always follow
- * symlinks.
+/** Resolves to a `Deno.FileInfo` for the specified `path`. Will always
+ * follow symlinks.
  *
  *       const fileInfo = await Deno.stat("hello.txt");
  *       assert(fileInfo.isFile());
  *
  * Requires `allow-read` permission. */
-export async function stat(filename: string): Promise<FileInfo> {
+export async function stat(path: string): Promise<FileInfo> {
   const res = (await sendAsync("op_stat", {
-    filename,
+    path,
     lstat: false
   })) as StatResponse;
   return new FileInfoImpl(res);
 }
 
-/** Synchronously returns a `Deno.FileInfo` for the specified path. Will
+/** Synchronously returns a `Deno.FileInfo` for the specified `path`. Will
  * always follow symlinks.
  *
  *       const fileInfo = Deno.statSync("hello.txt");
  *       assert(fileInfo.isFile());
  *
  * Requires `allow-read` permission. */
-export function statSync(filename: string): FileInfo {
+export function statSync(path: string): FileInfo {
   const res = sendSync("op_stat", {
-    filename,
+    path,
     lstat: false
   }) as StatResponse;
   return new FileInfoImpl(res);
