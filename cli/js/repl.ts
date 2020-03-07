@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { close } from "./files.ts";
-import { exit } from "./os.ts";
+import { exit } from "./ops/os.ts";
 import { core } from "./core.ts";
 import { stringifyArgs } from "./console.ts";
 import { sendSync, sendAsync } from "./ops/dispatch_json.ts";

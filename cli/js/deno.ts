@@ -93,7 +93,7 @@ export {
   hostname,
   loadavg,
   osRelease
-} from "./os.ts";
+} from "./ops/os.ts";
 export {
   permissions,
   PermissionName,
