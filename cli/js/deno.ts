@@ -33,15 +33,12 @@ export {
   stdin,
   stdout,
   stderr,
-  read,
-  readSync,
-  write,
-  writeSync,
   seek,
   seekSync,
   OpenOptions,
   OpenMode
 } from "./files.ts";
+export { read, readSync, write, writeSync } from "./ops/io.ts";
 export { FsEvent, fsEvents } from "./ops/fs_events.ts";
 export {
   EOF,
