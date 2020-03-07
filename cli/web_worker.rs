@@ -37,6 +37,7 @@ impl WebWorker {
       ops::web_worker::init(isolate, &state, &worker.internal_channels.sender);
       ops::worker_host::init(isolate, &state);
       ops::io::init(isolate, &state);
+      ops::resources::init(isolate, &state);
       ops::errors::init(isolate, &state);
       ops::timers::init(isolate, &state);
       ops::fetch::init(isolate, &state);
