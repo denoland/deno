@@ -19,16 +19,16 @@ use nix::unistd::{chown as unix_chown, Gid, Uid};
 pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
   data: T,
-  perm: u32,
+  mode: u32,
 ) -> std::io::Result<()> {
-  write_file_2(filename, data, true, perm, true, false)
+  write_file_2(filename, data, true, mode, true, false)
 }
 
 pub fn write_file_2<T: AsRef<[u8]>>(
   filename: &Path,
   data: T,
-  update_perm: bool,
-  perm: u32,
+  update_mode: bool,
+  mode: u32,
   is_create: bool,
   is_append: bool,
 ) -> std::io::Result<()> {
@@ -40,21 +40,21 @@ pub fn write_file_2<T: AsRef<[u8]>>(
     .create(is_create)
     .open(filename)?;
 
-  if update_perm {
-    set_permissions(&mut file, perm)?;
+  if update_mode {
+    set_permissions(&mut file, mode)?;
   }
 
   file.write_all(data.as_ref())
 }
 
 #[cfg(unix)]
-fn set_permissions(file: &mut File, perm: u32) -> std::io::Result<()> {
-  debug!("set file perm to {}", perm);
-  file.set_permissions(PermissionsExt::from_mode(perm & 0o777))
+fn set_permissions(file: &mut File, mode: u32) -> std::io::Result<()> {
+  debug!("set file mode to {}", mode);
+  file.set_permissions(PermissionsExt::from_mode(mode & 0o777))
 }
 
 #[cfg(not(unix))]
-fn set_permissions(_file: &mut File, _perm: u32) -> std::io::Result<()> {
+fn set_permissions(_file: &mut File, _mode: u32) -> std::io::Result<()> {
   // NOOP on windows
   Ok(())
 }
@@ -94,22 +94,22 @@ pub fn make_temp(
   }
 }
 
-pub fn mkdir(path: &Path, perm: u32, recursive: bool) -> std::io::Result<()> {
+pub fn mkdir(path: &Path, mode: u32, recursive: bool) -> std::io::Result<()> {
   debug!("mkdir -p {}", path.display());
   let mut builder = DirBuilder::new();
   builder.recursive(recursive);
-  set_dir_permission(&mut builder, perm);
+  set_dir_permission(&mut builder, mode);
   builder.create(path)
 }
 
 #[cfg(unix)]
-fn set_dir_permission(builder: &mut DirBuilder, perm: u32) {
-  debug!("set dir perm to {}", perm);
-  builder.mode(perm & 0o777);
+fn set_dir_permission(builder: &mut DirBuilder, mode: u32) {
+  debug!("set dir mode to {}", mode);
+  builder.mode(mode & 0o777);
 }
 
 #[cfg(not(unix))]
-fn set_dir_permission(_builder: &mut DirBuilder, _perm: u32) {
+fn set_dir_permission(_builder: &mut DirBuilder, _mode: u32) {
   // NOOP on windows
 }
 
