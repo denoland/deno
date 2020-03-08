@@ -87,6 +87,61 @@ pub struct FileMetadata {
   pub tty: TTYMetadata,
 }
 
+pub struct StreamResourceHolder {
+  resource: StreamResource,
+  waker: Option<futures::task::AtomicWaker>,
+}
+
+impl StreamResourceHolder {
+  pub fn new(resource: StreamResource) -> StreamResourceHolder {
+    StreamResourceHolder {
+      resource,
+      waker: None,
+    }
+  }
+}
+
+impl Drop for StreamResourceHolder {
+  fn drop(&mut self) {
+    self.wake_task();
+  }
+}
+
+impl StreamResourceHolder {
+  /// Track the current task so future awaiting for connection
+  /// can be notified when listener is closed.
+  ///
+  /// Throws an error if another task is already tracked.
+  pub fn track_task(&mut self, cx: &Context) -> Result<(), OpError> {
+    // Currently, we only allow tracking a single accept task for a listener.
+    // This might be changed in the future with multiple workers.
+    // Caveat: TcpListener by itself also only tracks an accept task at a time.
+    // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
+    if self.waker.is_some() {
+      return Err(OpError::other("Another accept task is ongoing".to_string()));
+    }
+    let waker = futures::task::AtomicWaker::new();
+    waker.register(cx.waker());
+    self.waker.replace(waker);
+    Ok(())
+  }
+
+  /// Notifies a task when listener is closed so accept future can resolve.
+  pub fn wake_task(&mut self) {
+    if let Some(waker) = self.waker.as_ref() {
+      waker.wake();
+    }
+  }
+
+  /// Stop tracking a task.
+  /// Happens when the task is done and thus no further tracking is needed.
+  pub fn untrack_task(&mut self) {
+    if self.waker.is_some() {
+      self.waker.take();
+    }
+  }
+}
+
 pub enum StreamResource {
   Stdin(tokio::io::Stdin, TTYMetadata),
   Stdout(tokio::fs::File),
@@ -150,10 +205,22 @@ pub fn op_read(
 
   poll_fn(move |cx| {
     let resource_table = &mut state.borrow_mut().resource_table;
-    let resource = resource_table
-      .get_mut::<StreamResource>(rid as u32)
+    let resource_holder = resource_table
+      .get_mut::<StreamResourceHolder>(rid as u32)
       .ok_or_else(OpError::bad_resource_id)?;
-    let nread = ready!(resource.poll_read(cx, &mut buf.as_mut()[..]))?;
+    let nread = match resource_holder
+      .resource
+      .poll_read(cx, &mut buf.as_mut()[..])
+    {
+      Poll::Ready(t) => {
+        resource_holder.untrack_task();
+        t
+      }
+      Poll::Pending => {
+        resource_holder.track_task(cx)?;
+        return Poll::Pending;
+      }
+    }?;
     Poll::Ready(Ok(nread as i32))
   })
   .boxed_local()
@@ -233,10 +300,10 @@ pub fn op_write(
   async move {
     let nwritten = poll_fn(|cx| {
       let resource_table = &mut state.borrow_mut().resource_table;
-      let resource = resource_table
-        .get_mut::<StreamResource>(rid as u32)
+      let resource_holder = resource_table
+        .get_mut::<StreamResourceHolder>(rid as u32)
         .ok_or_else(OpError::bad_resource_id)?;
-      resource.poll_write(cx, &buf.as_ref()[..])
+      resource_holder.resource.poll_write(cx, &buf.as_ref()[..])
     })
     .await?;
 
@@ -246,10 +313,10 @@ pub fn op_write(
     // https://github.com/denoland/deno/issues/3565
     poll_fn(|cx| {
       let resource_table = &mut state.borrow_mut().resource_table;
-      let resource = resource_table
-        .get_mut::<StreamResource>(rid as u32)
+      let resource_holder = resource_table
+        .get_mut::<StreamResourceHolder>(rid as u32)
         .ok_or_else(OpError::bad_resource_id)?;
-      resource.poll_flush(cx)
+      resource_holder.resource.poll_flush(cx)
     })
     .await?;
 
