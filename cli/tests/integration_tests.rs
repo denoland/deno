@@ -7,7 +7,7 @@ extern crate nix;
 extern crate pty;
 extern crate tempfile;
 
-// TODO (kevinkassimo) re-enable. This hangs on macOS
+// TODO re-enable. This hangs on macOS
 // https://github.com/denoland/deno/issues/4262
 #[cfg(unix)]
 #[test]
