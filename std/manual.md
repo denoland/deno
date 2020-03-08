@@ -498,8 +498,6 @@ Deno.test(function t1() {
 Deno.test(function t2() {
   assertEquals("world", "world");
 });
-
-await Deno.runTests();
 ```
 
 Try running this:
