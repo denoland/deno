@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync } from "./dispatch_json.ts";
+import { sendSync } from "./ops/dispatch_json.ts";
 
 /** Permissions as granted by the caller
  * See: https://w3c.github.io/permissions/#permission-registry

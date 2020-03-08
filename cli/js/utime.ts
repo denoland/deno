@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { sendSync, sendAsync } from "./ops/dispatch_json.ts";
 
 function toSecondsFromEpoch(v: number | Date): number {
   return v instanceof Date ? v.valueOf() / 1000 : v;

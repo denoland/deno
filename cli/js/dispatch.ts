@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as minimal from "./dispatch_minimal.ts";
-import * as json from "./dispatch_json.ts";
+import * as minimal from "./ops/dispatch_minimal.ts";
+import * as json from "./ops/dispatch_json.ts";
 import { AsyncHandler } from "./plugins.ts";
 
 const PLUGIN_ASYNC_HANDLER_MAP: Map<number, AsyncHandler> = new Map();

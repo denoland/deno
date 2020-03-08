@@ -1,32 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { core } from "./core.ts";
 import * as dispatch from "./dispatch.ts";
-import { sendSync } from "./dispatch_json.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
-import { OperatingSystem, Arch } from "./build.ts";
 import { setBuildInfo } from "./build.ts";
 import { setVersions } from "./version.ts";
 import { setLocation } from "./web/location.ts";
 import { setPrepareStackTrace } from "./error_stack.ts";
-
-interface Start {
-  cwd: string;
-  pid: number;
-  args: string[];
-  location: string; // Absolute URL.
-  repl: boolean;
-  debugFlag: boolean;
-  depsFlag: boolean;
-  typesFlag: boolean;
-  versionFlag: boolean;
-  denoVersion: string;
-  v8Version: string;
-  tsVersion: string;
-  noColor: boolean;
-  os: OperatingSystem;
-  arch: Arch;
-}
+import { Start, start as startOp } from "./ops/runtime.ts";
 
 export let OPS_CACHE: { [name: string]: number };
 
@@ -49,7 +30,7 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI
   // args and other info.
-  const s = sendSync("op_start");
+  const s = startOp();
 
   setVersions(s.denoVersion, s.v8Version, s.tsVersion);
   setBuildInfo(s.os, s.arch);

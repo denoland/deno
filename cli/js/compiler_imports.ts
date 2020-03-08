@@ -7,9 +7,9 @@ import {
 } from "./compiler_sourcefile.ts";
 import { normalizeString, CHAR_FORWARD_SLASH } from "./compiler_util.ts";
 import { cwd } from "./dir.ts";
-import { sendAsync, sendSync } from "./dispatch_json.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
+import * as compilerOps from "./ops/compiler.ts";
 
 /** Resolve a path to the final path segment passed. */
 function resolvePath(...pathSegments: string[]): string {
@@ -68,7 +68,7 @@ export function resolveModules(
   referrer?: string
 ): string[] {
   util.log("compiler_imports::resolveModules", { specifiers, referrer });
-  return sendSync("op_resolve_modules", { specifiers, referrer });
+  return compilerOps.resolveModules(specifiers, referrer);
 }
 
 /** Ops to Rust to fetch modules meta data. */
@@ -77,10 +77,7 @@ function fetchSourceFiles(
   referrer?: string
 ): Promise<SourceFileJson[]> {
   util.log("compiler_imports::fetchSourceFiles", { specifiers, referrer });
-  return sendAsync("op_fetch_source_files", {
-    specifiers,
-    referrer
-  });
+  return compilerOps.fetchSourceFiles(specifiers, referrer);
 }
 
 /** Given a filename, determine the media type based on extension.  Used when

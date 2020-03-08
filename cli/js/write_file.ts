@@ -13,7 +13,7 @@ export interface WriteFileOptions {
    * exist at the specified path (defaults to `true`). */
   create?: boolean;
   /** Permissions always applied to file. */
-  perm?: number;
+  mode?: number;
 }
 
 /** Synchronously write data to the given path, by default creating a new
@@ -41,8 +41,8 @@ export function writeFileSync(
   const openMode = !!options.append ? "a" : "w";
   const file = openSync(path, openMode);
 
-  if (options.perm !== undefined && options.perm !== null) {
-    chmodSync(path, options.perm);
+  if (options.mode !== undefined && options.mode !== null) {
+    chmodSync(path, options.mode);
   }
 
   writeAllSync(file, data);
@@ -74,8 +74,8 @@ export async function writeFile(
   const openMode = !!options.append ? "a" : "w";
   const file = await open(path, openMode);
 
-  if (options.perm !== undefined && options.perm !== null) {
-    await chmod(path, options.perm);
+  if (options.mode !== undefined && options.mode !== null) {
+    await chmod(path, options.mode);
   }
 
   await writeAll(file, data);
