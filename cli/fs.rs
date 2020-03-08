@@ -95,7 +95,6 @@ pub fn make_temp(
 }
 
 pub fn mkdir(path: &Path, mode: u32, recursive: bool) -> std::io::Result<()> {
-  debug!("mkdir -p {}", path.display());
   let mut builder = DirBuilder::new();
   builder.recursive(recursive);
   set_dir_permission(&mut builder, mode);
