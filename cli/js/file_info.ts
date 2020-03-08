@@ -30,9 +30,10 @@ export interface FileInfo {
    *
    * _Linux/Mac OS only._ */
   ino: number | null;
-  /** The underlying raw st_mode bits that contain the standard Unix permissions
-   * for this file/directory. TODO Match behavior with Go on windows for mode.
-   */
+  /** **UNSTABLE**: Match behavior with Go on windows for `mode`.
+   *
+   * The underlying raw `st_mode` bits that contain the standard Unix
+   * permissions for this file/directory. */
   mode: number | null;
   /** Number of hard links pointing to this file.
    *

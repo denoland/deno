@@ -1023,7 +1023,7 @@ declare namespace Deno {
     ino: number | null;
     /** **UNSTABLE**: Match behavior with Go on Windows for `mode`.
      *
-     * The underlying raw `st_mod`e bits that contain the standard Linux/Mac OS
+     * The underlying raw `st_mode` bits that contain the standard Unix
      * permissions for this file/directory. */
     mode: number | null;
     /** Number of hard links pointing to this file.
@@ -1233,7 +1233,7 @@ declare namespace Deno {
      * exist at the specified path (defaults to `true`). */
     create?: boolean;
     /** Permissions always applied to file. */
-    perm?: number;
+    mode?: number;
   }
 
   /** Synchronously write data to the given path, by default creating a new

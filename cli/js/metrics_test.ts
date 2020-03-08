@@ -34,7 +34,7 @@ unitTest(
     const filename = Deno.makeTempDirSync() + "/test.txt";
 
     const data = new Uint8Array([41, 42, 43]);
-    Deno.writeFileSync(filename, data, { perm: 0o666 });
+    Deno.writeFileSync(filename, data, { mode: 0o666 });
 
     const metrics = Deno.metrics();
     assert(metrics.opsDispatched === metrics.opsCompleted);
@@ -48,7 +48,7 @@ unitTest(
     const filename = Deno.makeTempDirSync() + "/test.txt";
 
     const data = new Uint8Array([41, 42, 43]);
-    await Deno.writeFile(filename, data, { perm: 0o666 });
+    await Deno.writeFile(filename, data, { mode: 0o666 });
 
     const metrics = Deno.metrics();
     assert(metrics.opsDispatched === metrics.opsCompleted);
