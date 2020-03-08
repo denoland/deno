@@ -10,11 +10,12 @@ import {
   SyncWriter,
   SyncSeeker
 } from "./io.ts";
-import { sendAsyncMinimal, sendSyncMinimal } from "./dispatch_minimal.ts";
+import { sendAsyncMinimal, sendSyncMinimal } from "./ops/dispatch_minimal.ts";
 import {
   sendSync as sendSyncJson,
   sendAsync as sendAsyncJson
-} from "./dispatch_json.ts";
+} from "./ops/dispatch_json.ts";
+import { close } from "./ops/resources.ts";
 import { OPS_CACHE } from "./runtime.ts";
 
 // This is done because read/write are extremely performance sensitive.
@@ -239,11 +240,6 @@ export async function seek(
   whence: SeekMode
 ): Promise<number> {
   return await sendAsyncJson("op_seek", { rid, offset, whence });
-}
-
-/** Close the given resource ID. */
-export function close(rid: number): void {
-  sendSyncJson("op_close", { rid });
 }
 
 /** The Deno abstraction for reading and writing files. */

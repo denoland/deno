@@ -16,7 +16,7 @@ import {
   windowOrWorkerGlobalScopeProperties,
   eventTargetProperties
 } from "./globals.ts";
-import { sendSync } from "./dispatch_json.ts";
+import { sendSync } from "./ops/dispatch_json.ts";
 import { log } from "./util.ts";
 import { TextEncoder } from "./web/text_encoding.ts";
 import * as runtime from "./runtime.ts";

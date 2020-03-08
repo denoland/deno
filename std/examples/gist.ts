@@ -26,8 +26,8 @@ if (parsedArgs._.length === 0) {
 
 const files: Record<string, { content: string }> = {};
 for (const filename of parsedArgs._) {
-  const base = pathBase(filename);
-  const content = await Deno.readFile(filename);
+  const base = pathBase(filename as string);
+  const content = await Deno.readFile(filename as string);
   const contentStr = new TextDecoder().decode(content);
   files[base] = { content: contentStr };
 }
