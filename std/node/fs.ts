@@ -133,15 +133,17 @@ export function readlinkSync(
   return maybeEncode(denoReadlinkSync(path), getEncoding(opt));
 }
 
+/** Revist once https://github.com/denoland/deno/issues/4017 lands */
 export function access(
   path: string, // eslint-disable-line @typescript-eslint/no-unused-vars
   modeOrCallback: number | Function, // eslint-disable-line @typescript-eslint/no-unused-vars
   callback?: Function // eslint-disable-line @typescript-eslint/no-unused-vars
 ): void {
-  notImplemented("Comparable functionality is not available in Deno");
+  notImplemented("Not yet available");
 }
 
+/** Revist once https://github.com/denoland/deno/issues/4017 lands */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function accessSync(path: string, mode?: number): undefined {
-  notImplemented("Comparable functionality is not available in Deno");
+  notImplemented("Not yet available");
 }
