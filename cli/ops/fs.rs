@@ -257,7 +257,12 @@ fn op_mkdir(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_mkdir {}", path.display());
+    debug!(
+      "op_mkdir {} {:o} {}",
+      path.display(),
+      args.mode,
+      args.recursive
+    );
     deno_fs::mkdir(&path, args.mode, args.recursive)?;
     Ok(json!({}))
   })
