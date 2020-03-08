@@ -56,7 +56,7 @@ fn op_accept(
       let listener_resource = resource_table
         .get_mut::<TcpListenerResource>(rid)
         .ok_or_else(|| {
-          OpError::other("Listener has been closed".to_string())
+          OpError::bad_resource("Listener has been closed".to_string())
         })?;
       let listener = &mut listener_resource.listener;
       match listener.poll_accept(cx).map_err(OpError::from) {
@@ -122,7 +122,9 @@ fn op_receive(
       let resource_table = &mut state_.borrow_mut().resource_table;
       let resource = resource_table
         .get_mut::<UdpSocketResource>(rid)
-        .ok_or_else(|| OpError::other("Socket has been closed".to_string()))?;
+        .ok_or_else(|| {
+          OpError::bad_resource("Socket has been closed".to_string())
+        })?;
       let socket = &mut resource.socket;
       socket.poll_recv_from(cx, &mut buf).map_err(OpError::from)
     });
@@ -168,7 +170,9 @@ fn op_send(
     let resource = state
       .resource_table
       .get_mut::<UdpSocketResource>(rid)
-      .ok_or_else(|| OpError::other("Socket has been closed".to_string()))?;
+      .ok_or_else(|| {
+        OpError::bad_resource("Socket has been closed".to_string())
+      })?;
 
     let socket = &mut resource.socket;
     let addr = resolve_addr(&args.hostname, args.port).await?;
