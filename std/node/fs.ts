@@ -4,9 +4,8 @@ import {
   MaybeEmpty
 } from "./_utils.ts";
 
-import { appendFile } from "./_fs/_fs_appendFile.ts";
-
-export { appendFile };
+import { appendFile, appendFileSync } from "./_fs/_fs_appendFile.ts";
+export { appendFile, appendFileSync };
 
 const {
   readFile: denoReadFile,
@@ -134,11 +133,15 @@ export function readlinkSync(
   return maybeEncode(denoReadlinkSync(path), getEncoding(opt));
 }
 
-export function access(path: string, modeOrCallback: number|Function, callback?:Function):void {
-  notImplemented("Comparable functionality is not yet available in Deno");
+export function access(
+  path: string, // eslint-disable-line @typescript-eslint/no-unused-vars
+  modeOrCallback: number | Function, // eslint-disable-line @typescript-eslint/no-unused-vars
+  callback?: Function // eslint-disable-line @typescript-eslint/no-unused-vars
+): void {
+  notImplemented("Comparable functionality is not available in Deno");
 }
 
-export function accessSync(path: string, mode?:number): undefined {
-  notImplemented("Comparable functionality is not yet available in Deno");
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function accessSync(path: string, mode?: number): undefined {
+  notImplemented("Comparable functionality is not available in Deno");
 }
-

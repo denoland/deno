@@ -4,10 +4,14 @@ export interface FileOptions {
   flag?: string;
 }
 
-export function isFileOptions(fileOptions: string | FileOptions | undefined): fileOptions is FileOptions {
+export function isFileOptions(
+  fileOptions: string | FileOptions | undefined
+): fileOptions is FileOptions {
   if (!fileOptions) return false;
-  
-  return (fileOptions as FileOptions).encoding != undefined 
-    || (fileOptions as FileOptions).flag != undefined
-    || (fileOptions as FileOptions).mode != undefined;
+
+  return (
+    (fileOptions as FileOptions).encoding != undefined ||
+    (fileOptions as FileOptions).flag != undefined ||
+    (fileOptions as FileOptions).mode != undefined
+  );
 }
