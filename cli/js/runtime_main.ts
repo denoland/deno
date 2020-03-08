@@ -9,7 +9,7 @@
 
 import * as Deno from "./deno.ts";
 import * as domTypes from "./web/dom_types.ts";
-import * as csprng from "./get_random_values.ts";
+import * as csprng from "./ops/get_random_values.ts";
 import {
   readOnly,
   writable,

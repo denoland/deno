@@ -261,11 +261,11 @@ impl From<&ReadlineError> for OpError {
   fn from(error: &ReadlineError) -> Self {
     use ReadlineError::*;
     let kind = match error {
-      Io(err) => return err.into(),
+      Io(err) => return OpError::from(err),
       Eof => ErrorKind::UnexpectedEof,
       Interrupted => ErrorKind::Interrupted,
       #[cfg(unix)]
-      Errno(err) => return err.into(),
+      Errno(err) => return (*err).into(),
       _ => unimplemented!(),
     };
 
@@ -300,35 +300,23 @@ impl From<&serde_json::error::Error> for OpError {
 }
 
 #[cfg(unix)]
-mod unix {
-  use super::{ErrorKind, OpError};
-  use nix::errno::Errno::*;
-  pub use nix::Error;
-  use nix::Error::Sys;
+impl From<nix::Error> for OpError {
+  fn from(error: nix::Error) -> Self {
+    use nix::errno::Errno::*;
+    let kind = match error {
+      nix::Error::Sys(EPERM) => ErrorKind::PermissionDenied,
+      nix::Error::Sys(EINVAL) => ErrorKind::TypeError,
+      nix::Error::Sys(ENOENT) => ErrorKind::NotFound,
+      nix::Error::Sys(UnknownErrno) => unreachable!(),
+      nix::Error::Sys(_) => unreachable!(),
+      nix::Error::InvalidPath => ErrorKind::TypeError,
+      nix::Error::InvalidUtf8 => ErrorKind::InvalidData,
+      nix::Error::UnsupportedOperation => unreachable!(),
+    };
 
-  impl From<Error> for OpError {
-    fn from(error: Error) -> Self {
-      OpError::from(&error)
-    }
-  }
-
-  impl From<&Error> for OpError {
-    fn from(error: &Error) -> Self {
-      let kind = match error {
-        Sys(EPERM) => ErrorKind::PermissionDenied,
-        Sys(EINVAL) => ErrorKind::TypeError,
-        Sys(ENOENT) => ErrorKind::NotFound,
-        Sys(UnknownErrno) => unreachable!(),
-        Sys(_) => unreachable!(),
-        Error::InvalidPath => ErrorKind::TypeError,
-        Error::InvalidUtf8 => ErrorKind::InvalidData,
-        Error::UnsupportedOperation => unreachable!(),
-      };
-
-      Self {
-        kind,
-        msg: error.to_string(),
-      }
+    Self {
+      kind,
+      msg: error.to_string(),
     }
   }
 }
@@ -361,7 +349,7 @@ impl From<ErrBox> for OpError {
   fn from(error: ErrBox) -> Self {
     #[cfg(unix)]
     fn unix_error_kind(err: &ErrBox) -> Option<OpError> {
-      err.downcast_ref::<unix::Error>().map(|e| e.into())
+      err.downcast_ref::<nix::Error>().map(|e| (*e).into())
     }
 
     #[cfg(not(unix))]

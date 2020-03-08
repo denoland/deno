@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { close } from "./files.ts";
-import { exit } from "./os.ts";
+import { exit } from "./ops/os.ts";
 import { core } from "./core.ts";
 import { stringifyArgs } from "./console.ts";
-import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { startRepl, readline } from "./ops/repl.ts";
+import { close } from "./ops/resources.ts";
 
 /**
  * REPL logging.
@@ -40,15 +40,6 @@ const replCommands = {
     }
   }
 };
-
-function startRepl(historyFile: string): number {
-  return sendSync("op_repl_start", { historyFile });
-}
-
-// @internal
-export async function readline(rid: number, prompt: string): Promise<string> {
-  return sendAsync("op_repl_readline", { rid, prompt });
-}
 
 // Error messages that allow users to continue input
 // instead of throwing an error to REPL

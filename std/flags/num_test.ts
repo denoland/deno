@@ -33,7 +33,7 @@ Deno.test(function nums(): void {
 });
 
 Deno.test(function alreadyNumber(): void {
-  const argv = parse(["-x", 1234, 789]);
+  const argv = parse(["-x", "1234", "789"]);
   assertEquals(argv, { x: 1234, _: [789] });
   assertEquals(typeof argv.x, "number");
   assertEquals(typeof argv._[0], "number");

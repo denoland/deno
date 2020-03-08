@@ -16,3 +16,8 @@ export function resources(): ResourceMap {
   }
   return resources;
 }
+
+/** Close the given resource ID. */
+export function close(rid: number): void {
+  sendSync("op_close", { rid });
+}

@@ -4,8 +4,8 @@
 // compiler within Deno.
 
 import { DiagnosticItem } from "./diagnostics.ts";
-import { sendAsync } from "./dispatch_json.ts";
 import * as util from "./util.ts";
+import * as runtimeCompilerOps from "./ops/runtime_compiler.ts";
 
 /** A specific subset TypeScript compiler options that can be supported by
  * the Deno TypeScript compiler. */
@@ -300,7 +300,7 @@ export interface TranspileOnlyResult {
  *                Many of the options related to type checking and emitting
  *                type declaration files will have no impact on the output.
  */
-export function transpileOnly(
+export async function transpileOnly(
   sources: Record<string, string>,
   options?: CompilerOptions
 ): Promise<Record<string, TranspileOnlyResult>> {
@@ -309,7 +309,8 @@ export function transpileOnly(
     sources,
     options: options ? JSON.stringify(options) : undefined
   };
-  return sendAsync("op_transpile", payload).then(result => JSON.parse(result));
+  const result = await runtimeCompilerOps.transpile(payload);
+  return JSON.parse(result);
 }
 
 /** Takes a root module name, any optionally a record set of sources. Resolves
@@ -339,7 +340,7 @@ export function transpileOnly(
  * @param options An optional object of options to send to the compiler. This is
  *                a subset of ts.CompilerOptions which can be supported by Deno.
  */
-export function compile(
+export async function compile(
   rootName: string,
   sources?: Record<string, string>,
   options?: CompilerOptions
@@ -355,7 +356,8 @@ export function compile(
     sources: !!sources,
     options
   });
-  return sendAsync("op_compile", payload).then(result => JSON.parse(result));
+  const result = await runtimeCompilerOps.compile(payload);
+  return JSON.parse(result);
 }
 
 /** Takes a root module name, and optionally a record set of sources. Resolves
@@ -386,7 +388,7 @@ export function compile(
  * @param options An optional object of options to send to the compiler. This is
  *                a subset of ts.CompilerOptions which can be supported by Deno.
  */
-export function bundle(
+export async function bundle(
   rootName: string,
   sources?: Record<string, string>,
   options?: CompilerOptions
@@ -402,5 +404,6 @@ export function bundle(
     sources: !!sources,
     options
   });
-  return sendAsync("op_compile", payload).then(result => JSON.parse(result));
+  const result = await runtimeCompilerOps.compile(payload);
+  return JSON.parse(result);
 }

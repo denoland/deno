@@ -21,7 +21,7 @@ export {
   DiagnosticMessageChain
 } from "./diagnostics.ts";
 export { chdir, cwd } from "./dir.ts";
-export { applySourceMap } from "./error_stack.ts";
+export { applySourceMap, formatDiagnostics } from "./ops/errors.ts";
 export { errors } from "./errors.ts";
 export { FileInfo } from "./file_info.ts";
 export {
@@ -39,12 +39,10 @@ export {
   writeSync,
   seek,
   seekSync,
-  close,
   OpenOptions,
   OpenMode
 } from "./files.ts";
-export { formatDiagnostics } from "./format_error.ts";
-export { FsEvent, fsEvents } from "./fs_events.ts";
+export { FsEvent, fsEvents } from "./ops/fs_events.ts";
 export {
   EOF,
   copy,
@@ -72,7 +70,7 @@ export {
   makeTempFile,
   MakeTempOptions
 } from "./make_temp.ts";
-export { metrics, Metrics } from "./metrics.ts";
+export { metrics, Metrics } from "./ops/runtime.ts";
 export { mkdirSync, mkdir, MkdirOptions } from "./mkdir.ts";
 export {
   Addr,
@@ -94,7 +92,7 @@ export {
   hostname,
   loadavg,
   osRelease
-} from "./os.ts";
+} from "./ops/os.ts";
 export {
   permissions,
   PermissionName,
@@ -117,13 +115,13 @@ export { readlinkSync, readlink } from "./read_link.ts";
 export { realpathSync, realpath } from "./realpath.ts";
 export { removeSync, remove, RemoveOptions } from "./remove.ts";
 export { renameSync, rename } from "./rename.ts";
-export { resources } from "./resources.ts";
+export { resources, close } from "./ops/resources.ts";
 export { signal, signals, SignalStream } from "./signals.ts";
 export { statSync, lstatSync, stat, lstat } from "./stat.ts";
 export { symlinkSync, symlink } from "./symlink.ts";
 export { connectTLS, listenTLS } from "./tls.ts";
 export { truncateSync, truncate } from "./truncate.ts";
-export { isatty, setRaw } from "./tty.ts";
+export { isatty, setRaw } from "./ops/tty.ts";
 export { utimeSync, utime } from "./utime.ts";
 export { version } from "./version.ts";
 export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";
