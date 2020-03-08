@@ -103,8 +103,9 @@ pub fn mkdir(path: &Path, mode: u32, recursive: bool) -> std::io::Result<()> {
 
 #[cfg(unix)]
 fn set_dir_permission(builder: &mut DirBuilder, mode: u32) {
-  debug!("set dir mode to {}", mode);
-  builder.mode(mode & 0o777);
+  let mode = mode & 0o777;
+  debug!("set dir mode to {:o}", mode);
+  builder.mode(mode);
 }
 
 #[cfg(not(unix))]
