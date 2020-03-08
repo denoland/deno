@@ -7,6 +7,8 @@ extern crate nix;
 extern crate pty;
 extern crate tempfile;
 
+/* TODO (kevin) re-enable. This hangs on macOS
+https://github.com/denoland/deno/issues/4262
 #[cfg(unix)]
 #[test]
 pub fn test_raw_tty() {
@@ -55,6 +57,7 @@ pub fn test_raw_tty() {
     child.wait().unwrap();
   }
 }
+*/
 
 #[test]
 fn test_pattern_match() {
