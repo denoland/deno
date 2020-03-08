@@ -7,10 +7,11 @@ extern crate nix;
 extern crate pty;
 extern crate tempfile;
 
-/* TODO (kevin) re-enable. This hangs on macOS
-https://github.com/denoland/deno/issues/4262
+// TODO (kevinkassimo) re-enable. This hangs on macOS
+// https://github.com/denoland/deno/issues/4262
 #[cfg(unix)]
 #[test]
+#[ignore]
 pub fn test_raw_tty() {
   use pty::fork::*;
   use std::io::{Read, Write};
@@ -57,7 +58,6 @@ pub fn test_raw_tty() {
     child.wait().unwrap();
   }
 }
-*/
 
 #[test]
 fn test_pattern_match() {
