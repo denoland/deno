@@ -20,7 +20,7 @@ export async function testWalk(
       await t();
     } finally {
       chdir(origCwd);
-      remove(d, { recursive: true });
+      await remove(d, { recursive: true });
     }
   }
   Deno.test({ skip, name: `[walk] ${name}`, fn });

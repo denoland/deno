@@ -8,7 +8,6 @@ use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
 use deno_core::*;
 use futures::future::FutureExt;
-use remove_dir_all::remove_dir_all;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
 use std::io::SeekFrom;
@@ -424,13 +423,13 @@ fn op_remove(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_remove {}", path.display());
     let metadata = std::fs::symlink_metadata(&path)?;
+    debug!("op_remove {} {}", path.display(), recursive);
     let file_type = metadata.file_type();
     if file_type.is_file() || file_type.is_symlink() {
       std::fs::remove_file(&path)?;
     } else if recursive {
-      remove_dir_all(&path)?;
+      std::fs::remove_dir_all(&path)?;
     } else {
       std::fs::remove_dir(&path)?;
     }
