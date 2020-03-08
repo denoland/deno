@@ -332,7 +332,6 @@ fn op_mkdir(
 struct ChmodArgs {
   promise_id: Option<u64>,
   path: String,
-  #[allow(unused)]
   mode: u32,
 }
 
@@ -343,20 +342,24 @@ fn op_chmod(
 ) -> Result<JsonOp, OpError> {
   let args: ChmodArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
+  let mode = args.mode & 0o777;
 
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_chmod {}", path.display());
-    // Still check file/dir exists on windows
-    let _metadata = std::fs::metadata(&path)?;
+    debug!("op_chmod {} {:o}", path.display(), mode);
     #[cfg(unix)]
     {
       use std::os::unix::fs::PermissionsExt;
-      let mut permissions = _metadata.permissions();
-      permissions.set_mode(args.mode);
+      let permissions = PermissionsExt::from_mode(mode);
       std::fs::set_permissions(&path, permissions)?;
+    }
+    // TODO Implement chmod for Windows (#4357)
+    #[cfg(not(unix))]
+    {
+      // Still check file/dir exists on Windows
+      let _metadata = std::fs::metadata(&path)?;
     }
     Ok(json!({}))
   })
