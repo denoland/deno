@@ -15,6 +15,17 @@ async function readData(name: string): Promise<string> {
   return text;
 }
 
+function assertFile(path: string, size?: number, mode?: number): void {
+  const info = Deno.lstatSync(path);
+  assert(info.isFile());
+  if (size !== undefined) {
+    assertEquals(info.size, size);
+  }
+  if (Deno.build.os !== "win" && mode !== undefined) {
+    assertEquals(info.mode! & 0o777, mode & ~Deno.umask());
+  }
+}
+
 unitTest(
   { perms: { read: true, write: true } },
   function truncateSyncSuccess(): void {
@@ -52,6 +63,28 @@ unitTest(
     data = await readData(filename);
     assertEquals(data.length, 0);
     await Deno.remove(filename);
+  }
+);
+
+unitTest(
+  {
+    perms: { read: true, write: true },
+  },
+  function truncateSyncMode(): void {
+    const path = Deno.makeTempDirSync() + "/test_truncateSync.txt";
+    Deno.truncateSync(path, 20, { mode: 0o626 });
+    assertFile(path, 20, 0o626);
+  }
+);
+
+unitTest(
+  {
+    perms: { read: true, write: true },
+  },
+  async function truncateMode(): Promise<void> {
+    const path = (await Deno.makeTempDir()) + "/test_truncate.txt";
+    await Deno.truncate(path, 20, { mode: 0o626 });
+    assertFile(path, 20, 0o626);
   }
 );
 
