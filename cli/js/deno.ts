@@ -98,14 +98,8 @@ export {
   Permissions
 } from "./permissions.ts";
 export { openPlugin } from "./plugins.ts";
-export {
-  kill,
-  run,
-  RunOptions,
-  Process,
-  ProcessStatus,
-  Signal
-} from "./process.ts";
+export { kill } from "./ops/process.ts";
+export { run, RunOptions, Process, ProcessStatus, Signal } from "./process.ts";
 export { readdirSync, readdir } from "./read_dir.ts";
 export { readFileSync, readFile } from "./read_file.ts";
 export { readlinkSync, readlink } from "./read_link.ts";
