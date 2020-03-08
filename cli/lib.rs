@@ -22,6 +22,7 @@ extern crate tokio;
 extern crate url;
 
 mod checksum;
+mod upgrade;
 pub mod colors;
 pub mod compilers;
 pub mod deno_dir;
@@ -66,6 +67,7 @@ use crate::msg::MediaType;
 use crate::ops::io::get_stdio;
 use crate::state::State;
 use crate::worker::MainWorker;
+use upgrade::deno_upgrade;
 use deno_core::v8_set_flags;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
@@ -75,24 +77,13 @@ use futures::future::FutureExt;
 use log::Level;
 use log::Metadata;
 use log::Record;
-use regex::Regex;
-use reqwest::redirect::Policy;
 use std::env;
 use std::fs as std_fs;
 use std::io::Write;
 use std::path::PathBuf;
 use url::Url;
 
-const LATEST_VERSION_URL: &str =
-  "https://github.com/denoland/deno/releases/latest";
-const REGEX_TAG_VERSION: &str = r#"v([^\?]+)?""#;
-const REGEX_HREF: &str = r#""([^\?]+)?""#;
 static LOGGER: Logger = Logger;
-
-enum RegexOpt {
-  TagVersion,
-  Href,
-}
 
 struct Logger;
 
@@ -425,37 +416,7 @@ async fn test_command(
 }
 
 async fn upgrade_command() -> Result<(), ErrBox> {
-  println!("Starting upgrade...");
-  println!("Local version: {}", &version::DENO);
-  let client = reqwest::Client::builder()
-    .redirect(Policy::none())
-    .build()?;
-  let body = client.get(LATEST_VERSION_URL).send().await?.text().await?;
-  println!("Body: {}", &body);
-  let version = find_for_regex(RegexOpt::TagVersion, &body)?;
-  println!("Latest version: {}", &version[1..version.len() - 1]);
-  let href = find_for_regex(RegexOpt::Href, &body)?;
-  println!("Href: {}", &href[1..href.len() - 1]);
-  Ok(())
-}
-
-fn find_for_regex(
-  regex_opt: RegexOpt,
-  text: &String,
-) -> Result<String, ErrBox> {
-  let regex_str = match regex_opt {
-    RegexOpt::TagVersion => REGEX_TAG_VERSION,
-    RegexOpt::Href => REGEX_HREF,
-  };
-  let re = Regex::new(regex_str)?;
-  if let Some(mat) = re.find(text) {
-    return Ok(mat.as_str().to_string());
-  }
-  let e = std::io::Error::new(
-    std::io::ErrorKind::Other,
-    "Cannot read latest version tag".to_string(),
-  );
-  Err(ErrBox::from(e))
+  deno_upgrade().await
 }
 
 pub fn main() {
