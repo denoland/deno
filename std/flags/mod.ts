@@ -54,16 +54,6 @@ export interface ArgParsingOptions {
   unknown: (i: unknown) => unknown;
 }
 
-const DEFAULT_OPTIONS: ArgParsingOptions = {
-  unknown: (i: unknown): unknown => i,
-  boolean: false,
-  alias: {},
-  string: [],
-  default: {},
-  "--": false,
-  stopEarly: false
-};
-
 interface Flags {
   bools: Record<string, boolean>;
   strings: Record<string, boolean>;
@@ -110,26 +100,28 @@ function hasKey(obj: NestedMapping, keys: string[]): boolean {
  */
 export function parse(
   args: string[],
-  options: Partial<ArgParsingOptions> = {}
+  {
+    "--": doubleDash = false,
+    alias = {},
+    boolean = false,
+    default: defaults = {},
+    stopEarly = false,
+    string = [],
+    unknown = (i: unknown): unknown => i
+  }: Partial<ArgParsingOptions> = {}
 ): Args {
-  const opts: ArgParsingOptions = {
-    ...DEFAULT_OPTIONS,
-    ...options
-  };
-
   const flags: Flags = {
     bools: {},
     strings: {},
-    unknownFn: opts.unknown,
+    unknownFn: unknown,
     allBools: false
   };
 
-  if (opts.boolean !== undefined) {
-    if (typeof opts.boolean === "boolean") {
-      flags.allBools = !!opts.boolean;
+  if (boolean !== undefined) {
+    if (typeof boolean === "boolean") {
+      flags.allBools = !!boolean;
     } else {
-      const booleanArgs =
-        typeof opts.boolean === "string" ? [opts.boolean] : opts.boolean;
+      const booleanArgs = typeof boolean === "string" ? [boolean] : boolean;
 
       for (const key of booleanArgs.filter(Boolean)) {
         flags.bools[key] = true;
@@ -138,9 +130,9 @@ export function parse(
   }
 
   const aliases: Record<string, string[]> = {};
-  if (opts.alias !== undefined) {
-    for (const key in opts.alias) {
-      const val = getForce(opts.alias, key);
+  if (alias !== undefined) {
+    for (const key in alias) {
+      const val = getForce(alias, key);
       if (typeof val === "string") {
         aliases[key] = [val];
       } else {
@@ -152,9 +144,8 @@ export function parse(
     }
   }
 
-  if (opts.string !== undefined) {
-    const stringArgs =
-      typeof opts.string === "string" ? [opts.string] : opts.string;
+  if (string !== undefined) {
+    const stringArgs = typeof string === "string" ? [string] : string;
 
     for (const key of stringArgs.filter(Boolean)) {
       flags.strings[key] = true;
@@ -166,8 +157,6 @@ export function parse(
       }
     }
   }
-
-  const { default: defaults } = opts;
 
   const argv: Args = { _: [] };
 
@@ -336,7 +325,7 @@ export function parse(
       if (!flags.unknownFn || flags.unknownFn(arg) !== false) {
         argv._.push(flags.strings["_"] ?? !isNumber(arg) ? arg : Number(arg));
       }
-      if (opts.stopEarly) {
+      if (stopEarly) {
         argv._.push(...args.slice(i + 1));
         break;
       }
@@ -355,7 +344,7 @@ export function parse(
     }
   }
 
-  if (opts["--"]) {
+  if (doubleDash) {
     argv["--"] = [];
     for (const key of notFlags) {
       argv["--"].push(key);
