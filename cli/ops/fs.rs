@@ -15,7 +15,7 @@ use std::fs;
 use std::io::SeekFrom;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
-use tokio;
+use tokio::fs as tokio_fs;
 
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -72,7 +72,7 @@ fn op_open(
   let args: OpenArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
   let state_ = state.clone();
-  let mut open_options = tokio::fs::OpenOptions::new();
+  let mut open_options = tokio_fs::OpenOptions::new();
 
   if let Some(options) = args.options {
     if options.read {
