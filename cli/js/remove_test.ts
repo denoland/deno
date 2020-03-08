@@ -31,7 +31,7 @@ unitTest(
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
-    Deno.writeFileSync(filename, data, { perm: 0o666 });
+    Deno.writeFileSync(filename, data, { mode: 0o666 });
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.isFile()); // check exist first
     Deno.removeSync(filename); // remove
@@ -115,7 +115,7 @@ unitTest(
     const tempDir = Deno.makeTempDirSync();
     const filePath = tempDir + "/test.txt";
     const validSymlinkPath = tempDir + "/valid_symlink";
-    Deno.writeFileSync(filePath, data, { perm: 0o666 });
+    Deno.writeFileSync(filePath, data, { mode: 0o666 });
     // TODO(#3832): Remove "Not Implemented" error checking when symlink creation is implemented for Windows
     let errOnWindows;
     try {
@@ -199,7 +199,7 @@ unitTest(
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
-    Deno.writeFileSync(filename, data, { perm: 0o666 });
+    Deno.writeFileSync(filename, data, { mode: 0o666 });
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.isFile()); // check exist first
     Deno.removeSync(filename, { recursive: true }); // remove
@@ -268,7 +268,7 @@ unitTest(
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
-    Deno.writeFileSync(filename, data, { perm: 0o666 });
+    Deno.writeFileSync(filename, data, { mode: 0o666 });
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.isFile()); // check exist first
     await Deno.remove(filename); // remove
@@ -351,7 +351,7 @@ unitTest(
     const tempDir = Deno.makeTempDirSync();
     const filePath = tempDir + "/test.txt";
     const validSymlinkPath = tempDir + "/valid_symlink";
-    Deno.writeFileSync(filePath, data, { perm: 0o666 });
+    Deno.writeFileSync(filePath, data, { mode: 0o666 });
     // TODO(#3832): Remove "Not Implemented" error checking when symlink creation is implemented for Windows
     let errOnWindows;
     try {
@@ -437,7 +437,7 @@ unitTest(
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
-    Deno.writeFileSync(filename, data, { perm: 0o666 });
+    Deno.writeFileSync(filename, data, { mode: 0o666 });
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.isFile()); // check exist first
     await Deno.remove(filename, { recursive: true }); // remove
