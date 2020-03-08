@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json.ts";
-import { File, close } from "./files.ts";
+import { sendSync, sendAsync } from "./ops/dispatch_json.ts";
+import { File } from "./files.ts";
+import { close } from "./ops/resources.ts";
 import { ReadCloser, WriteCloser } from "./io.ts";
 import { readAll } from "./buffer.ts";
 import { assert, unreachable } from "./util.ts";

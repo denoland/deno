@@ -1,7 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { EOF, Reader, Writer, Closer } from "./io.ts";
-import { read, write, close } from "./files.ts";
-import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { read, write } from "./files.ts";
+import { close } from "./ops/resources.ts";
+import { sendSync, sendAsync } from "./ops/dispatch_json.ts";
 
 export type Transport = "tcp" | "udp";
 // TODO support other types:

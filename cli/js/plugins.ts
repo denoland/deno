@@ -1,4 +1,4 @@
-import { sendSync } from "./dispatch_json.ts";
+import { sendSync } from "./ops/dispatch_json.ts";
 import { core } from "./core.ts";
 
 export interface AsyncHandler {

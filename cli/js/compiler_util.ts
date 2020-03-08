@@ -5,9 +5,8 @@ import { CompilerOptions } from "./compiler_api.ts";
 import { buildBundle } from "./compiler_bundler.ts";
 import { ConfigureResponse, Host } from "./compiler_host.ts";
 import { SourceFile } from "./compiler_sourcefile.ts";
-import { sendSync } from "./dispatch_json.ts";
-import { atob, TextDecoder, TextEncoder } from "./web/text_encoding.ts";
-import { core } from "./core.ts";
+import { atob, TextEncoder } from "./web/text_encoding.ts";
+import * as compilerOps from "./ops/compiler.ts";
 import * as util from "./util.ts";
 import { assert } from "./util.ts";
 import { writeFileSync } from "./write_file.ts";
@@ -70,36 +69,21 @@ function cache(
 
   if (emittedFileName.endsWith(".map")) {
     // Source Map
-    sendSync("op_cache", {
-      extension: ".map",
-      moduleId,
-      contents
-    });
+    compilerOps.cache(".map", moduleId, contents);
   } else if (
     emittedFileName.endsWith(".js") ||
     emittedFileName.endsWith(".json")
   ) {
     // Compiled JavaScript
-    sendSync("op_cache", {
-      extension: ".js",
-      moduleId,
-      contents
-    });
+    compilerOps.cache(".js", moduleId, contents);
   } else {
     assert(false, `Trying to cache unhandled file type "${emittedFileName}"`);
   }
 }
 
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-
 /** Retrieve an asset from Rust. */
 export function getAsset(name: string): string {
-  const opId = core.ops()["op_fetch_asset"];
-  // We really don't want to depend on JSON dispatch during snapshotting, so
-  // this op exchanges strings with Rust as raw byte arrays.
-  const sourceCodeBytes = core.dispatch(opId, encoder.encode(name));
-  return decoder.decode(sourceCodeBytes!);
+  return compilerOps.getAsset(name);
 }
 
 /** Generates a `writeFile` function which can be passed to the compiler `Host`
