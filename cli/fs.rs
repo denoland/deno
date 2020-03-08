@@ -49,8 +49,9 @@ pub fn write_file_2<T: AsRef<[u8]>>(
 
 #[cfg(unix)]
 fn set_permissions(file: &mut File, mode: u32) -> std::io::Result<()> {
-  debug!("set file mode to {}", mode);
-  file.set_permissions(PermissionsExt::from_mode(mode & 0o777))
+  let mode = mode & 0o777;
+  debug!("set file mode to {:o}", mode);
+  file.set_permissions(PermissionsExt::from_mode(mode))
 }
 
 #[cfg(not(unix))]
