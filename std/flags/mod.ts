@@ -1,17 +1,60 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { assert } from "../testing/asserts.ts";
 
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-export interface ArgParsingOptions {
-  unknown: (i: unknown) => unknown;
-  boolean: boolean | string | string[];
-  alias: { [key: string]: string | string[] };
-  string: string | string[];
-  default: { [key: string]: unknown };
-  "--": boolean;
-  stopEarly: boolean;
+export interface Args {
+  /** Contains all the arguments that didn't have an option associated with
+   * them. */
+  _: Array<string | number>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
 }
 
-const DEFAULT_OPTIONS = {
+export interface ArgParsingOptions {
+  /** When `true`, populate the result `_` with everything before the `--` and
+   * the result `['--']` with everything after the `--`. Here's an example:
+   *
+   *      const { args } = Deno;
+   *      import { parse } from "https://deno.land/std/flags/mod.ts";
+   *      // options['--'] is now set to false
+   *      console.dir(parse(args, { "--": false }));
+   *      // $ deno example.ts -- a arg1
+   *      // output: { _: [ "example.ts", "a", "arg1" ] }
+   *      // options['--'] is now set to true
+   *      console.dir(parse(args, { "--": true }));
+   *      // $ deno example.ts -- a arg1
+   *      // output: { _: [ "example.ts" ], --: [ "a", "arg1" ] }
+   *
+   * Defaults to `false`.
+   */
+  "--": boolean;
+
+  /** An object mapping string names to strings or arrays of string argument
+   * names to use as aliases */
+  alias: Record<string, string | string[]>;
+
+  /** A boolean, string or array of strings to always treat as booleans. If
+   * `true` will treat all double hyphenated arguments without equal signs as
+   * `boolean` (e.g. affects `--foo`, not `-f` or `--foo=bar`) */
+  boolean: boolean | string | string[];
+
+  /** An object mapping string argument names to default values. */
+  default: Record<string, unknown>;
+
+  /** When `true`, populate the result `_` with everything after the first
+   * non-option. */
+  stopEarly: boolean;
+
+  /** A string or array of strings argument names to always treat as strings. */
+  string: string | string[];
+
+  /** A function which is invoked with a command line parameter not defined in
+   * the `options` configuration object. If the function returns `false`, the
+   * unknown option is not added to `parsedArgs`. */
+  unknown: (i: unknown) => unknown;
+}
+
+const DEFAULT_OPTIONS: ArgParsingOptions = {
   unknown: (i: unknown): unknown => i,
   boolean: false,
   alias: {},
@@ -22,8 +65,8 @@ const DEFAULT_OPTIONS = {
 };
 
 interface Flags {
-  bools: { [key: string]: boolean };
-  strings: { [key: string]: boolean };
+  bools: Record<string, boolean>;
+  strings: Record<string, boolean>;
   unknownFn: (i: unknown) => unknown;
   allBools: boolean;
 }
@@ -32,12 +75,13 @@ interface NestedMapping {
   [key: string]: NestedMapping | unknown;
 }
 
-function get<T>(obj: { [s: string]: T }, key: string): T | undefined {
+function get<T>(obj: Record<string, T>, key: string): T | undefined {
   if (Object.prototype.hasOwnProperty.call(obj, key)) {
     return obj[key];
   }
 }
-function getForce<T>(obj: { [s: string]: T }, key: string): T {
+
+function getForce<T>(obj: Record<string, T>, key: string): T {
   const v = get(obj, key);
   assert(v != null);
   return v;
@@ -51,82 +95,81 @@ function isNumber(x: unknown): boolean {
 
 function hasKey(obj: NestedMapping, keys: string[]): boolean {
   let o = obj;
-  keys.slice(0, -1).forEach(function(key: string): void {
-    o = (get(o, key) || {}) as NestedMapping;
+  keys.slice(0, -1).forEach(key => {
+    o = (get(o, key) ?? {}) as NestedMapping;
   });
 
   const key = keys[keys.length - 1];
   return key in o;
 }
 
+/** Take a set of command line arguments, with an optional set of options, and
+ * return an object representation of those argument.
+ *
+ *      const parsedArgs = parse(Deno.args);
+ */
 export function parse(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  args: any[],
-  initialOptions: Partial<ArgParsingOptions> = {}
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): { [key: string]: any } {
-  const options: ArgParsingOptions = {
+  args: string[],
+  options: Partial<ArgParsingOptions> = {}
+): Args {
+  const opts: ArgParsingOptions = {
     ...DEFAULT_OPTIONS,
-    ...initialOptions
+    ...options
   };
 
   const flags: Flags = {
     bools: {},
     strings: {},
-    unknownFn: options.unknown,
+    unknownFn: opts.unknown,
     allBools: false
   };
 
-  if (options.boolean !== undefined) {
-    if (typeof options.boolean === "boolean") {
-      flags.allBools = !!options.boolean;
+  if (opts.boolean !== undefined) {
+    if (typeof opts.boolean === "boolean") {
+      flags.allBools = !!opts.boolean;
     } else {
-      const booleanArgs: string[] =
-        typeof options.boolean === "string"
-          ? [options.boolean]
-          : options.boolean;
+      const booleanArgs =
+        typeof opts.boolean === "string" ? [opts.boolean] : opts.boolean;
 
-      booleanArgs.filter(Boolean).forEach((key: string): void => {
+      for (const key of booleanArgs.filter(Boolean)) {
         flags.bools[key] = true;
-      });
+      }
     }
   }
 
-  const aliases: { [key: string]: string[] } = {};
-  if (options.alias !== undefined) {
-    for (const key in options.alias) {
-      const val = getForce(options.alias, key);
+  const aliases: Record<string, string[]> = {};
+  if (opts.alias !== undefined) {
+    for (const key in opts.alias) {
+      const val = getForce(opts.alias, key);
       if (typeof val === "string") {
         aliases[key] = [val];
       } else {
         aliases[key] = val;
       }
       for (const alias of getForce(aliases, key)) {
-        aliases[alias] = [key].concat(
-          aliases[key].filter((y: string): boolean => alias !== y)
-        );
+        aliases[alias] = [key].concat(aliases[key].filter(y => alias !== y));
       }
     }
   }
 
-  if (options.string !== undefined) {
+  if (opts.string !== undefined) {
     const stringArgs =
-      typeof options.string === "string" ? [options.string] : options.string;
+      typeof opts.string === "string" ? [opts.string] : opts.string;
 
-    stringArgs.filter(Boolean).forEach(function(key): void {
+    for (const key of stringArgs.filter(Boolean)) {
       flags.strings[key] = true;
       const alias = get(aliases, key);
       if (alias) {
-        alias.forEach((alias: string): void => {
-          flags.strings[alias] = true;
-        });
+        for (const al of alias) {
+          flags.strings[al] = true;
+        }
       }
-    });
+    }
   }
 
-  const defaults = options.default;
+  const { default: defaults } = opts;
 
-  const argv: { [key: string]: unknown[] } = { _: [] };
+  const argv: Args = { _: [] };
 
   function argDefined(key: string, arg: string): boolean {
     return (
@@ -172,25 +215,28 @@ export function parse(
     const value = !get(flags.strings, key) && isNumber(val) ? Number(val) : val;
     setKey(argv, key.split("."), value);
 
-    (get(aliases, key) || []).forEach(function(x): void {
-      setKey(argv, x.split("."), value);
-    });
+    const alias = get(aliases, key);
+    if (alias) {
+      for (const x of alias) {
+        setKey(argv, x.split("."), value);
+      }
+    }
   }
 
   function aliasIsBoolean(key: string): boolean {
-    return getForce(aliases, key).some(function(x): boolean {
-      return typeof get(flags.bools, x) === "boolean";
-    });
+    return getForce(aliases, key).some(
+      x => typeof get(flags.bools, x) === "boolean"
+    );
   }
 
-  Object.keys(flags.bools).forEach(function(key): void {
+  for (const key of Object.keys(flags.bools)) {
     setArg(key, defaults[key] === undefined ? false : defaults[key]);
-  });
+  }
 
   let notFlags: string[] = [];
 
   // all args after "--" are not parsed
-  if (args.indexOf("--") !== -1) {
+  if (args.includes("--")) {
     notFlags = args.slice(args.indexOf("--") + 1);
     args = args.slice(0, args.indexOf("--"));
   }
@@ -199,13 +245,9 @@ export function parse(
     const arg = args[i];
 
     if (/^--.+=/.test(arg)) {
-      // Using [\s\S] instead of . because js doesn't support the
-      // 'dotall' regex modifier. See:
-      // http://stackoverflow.com/a/1068308/13216
-      const m = arg.match(/^--([^=]+)=([\s\S]*)$/);
+      const m = arg.match(/^--([^=]+)=(.*)$/s);
       assert(m != null);
-      const key = m[1];
-      const value = m[2];
+      const [, key, value] = m;
 
       if (flags.bools[key]) {
         const booleanValue = value !== "false";
@@ -220,7 +262,7 @@ export function parse(
     } else if (/^--.+/.test(arg)) {
       const m = arg.match(/^--(.+)/);
       assert(m != null);
-      const key = m[1];
+      const [, key] = m;
       const next = args[i + 1];
       if (
         next !== undefined &&
@@ -273,7 +315,7 @@ export function parse(
         }
       }
 
-      const key = arg.slice(-1)[0];
+      const [key] = arg.slice(-1);
       if (!broken && key !== "-") {
         if (
           args[i + 1] &&
@@ -292,34 +334,36 @@ export function parse(
       }
     } else {
       if (!flags.unknownFn || flags.unknownFn(arg) !== false) {
-        argv._.push(flags.strings["_"] || !isNumber(arg) ? arg : Number(arg));
+        argv._.push(flags.strings["_"] ?? !isNumber(arg) ? arg : Number(arg));
       }
-      if (options.stopEarly) {
+      if (opts.stopEarly) {
         argv._.push(...args.slice(i + 1));
         break;
       }
     }
   }
 
-  Object.keys(defaults).forEach(function(key): void {
+  for (const key of Object.keys(defaults)) {
     if (!hasKey(argv, key.split("."))) {
       setKey(argv, key.split("."), defaults[key]);
 
-      (aliases[key] || []).forEach(function(x): void {
-        setKey(argv, x.split("."), defaults[key]);
-      });
+      if (aliases[key]) {
+        for (const x of aliases[key]) {
+          setKey(argv, x.split("."), defaults[key]);
+        }
+      }
     }
-  });
+  }
 
-  if (options["--"]) {
+  if (opts["--"]) {
     argv["--"] = [];
-    notFlags.forEach(function(key): void {
+    for (const key of notFlags) {
       argv["--"].push(key);
-    });
+    }
   } else {
-    notFlags.forEach(function(key): void {
+    for (const key of notFlags) {
       argv._.push(key);
-    });
+    }
   }
 
   return argv;
