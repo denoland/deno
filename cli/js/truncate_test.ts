@@ -55,6 +55,34 @@ unitTest(
   }
 );
 
+unitTest(
+  {
+    skip: Deno.build.os === "win",
+    perms: { read: true, write: true }
+  },
+  function truncateSyncMode(): void {
+    const path = Deno.makeTempDirSync() + "/test_truncateSync.txt";
+    Deno.truncateSync(path, 20, { mode: 0o626 });
+    const pathInfo = Deno.statSync(path);
+    // assertEquals(pathInfo.mode!, 0o626 & ~Deno.umask());
+    assertEquals(pathInfo.mode! & 0o777, 0o604); // assume umask 0o022
+  }
+);
+
+unitTest(
+  {
+    skip: Deno.build.os === "win",
+    perms: { read: true, write: true }
+  },
+  async function truncateMode(): Promise<void> {
+    const path = (await Deno.makeTempDir()) + "/test_truncate.txt";
+    await Deno.truncate(path, 20, { mode: 0o626 });
+    const pathInfo = Deno.statSync(path);
+    // assertEquals(pathInfo.mode!, 0o626 & ~Deno.umask());
+    assertEquals(pathInfo.mode! & 0o777, 0o604); // assume umask 0o022
+  }
+);
+
 unitTest({ perms: { write: false } }, function truncateSyncPerm(): void {
   let err;
   try {
