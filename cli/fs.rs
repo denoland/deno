@@ -1,15 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use std;
-use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 use deno_core::ErrBox;
 use walkdir::WalkDir;
-
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 
 #[cfg(unix)]
 use nix::unistd::{chown as unix_chown, Gid, Uid};
@@ -39,22 +35,19 @@ pub fn write_file_2<T: AsRef<[u8]>>(
     .open(filename)?;
 
   if update_mode {
-    set_permissions(&mut file, mode)?;
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::PermissionsExt;
+      let mode = mode & 0o777;
+      debug!("set file mode to {:o}", mode);
+      let permissions = PermissionsExt::from_mode(mode);
+      file.set_permissions(permissions)?;
+    }
+    #[cfg(not(unix))]
+    let _ = mode;
   }
 
   file.write_all(data.as_ref())
-}
-
-#[cfg(unix)]
-fn set_permissions(file: &mut File, mode: u32) -> std::io::Result<()> {
-  debug!("set file mode to {}", mode);
-  file.set_permissions(PermissionsExt::from_mode(mode & 0o777))
-}
-
-#[cfg(not(unix))]
-fn set_permissions(_file: &mut File, _mode: u32) -> std::io::Result<()> {
-  // NOOP on windows
-  Ok(())
 }
 
 #[cfg(unix)]
