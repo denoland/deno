@@ -1,6 +1,9 @@
-use crate::{version, ErrBox};
+use crate::{http_util::{fetch_once, FetchOnceResult}, version, ErrBox};
+use crate::futures::FutureExt;
 use regex::Regex;
 use reqwest::{redirect::Policy, Client};
+use std::future::{Future};
+use std::pin::Pin;
 use url::Url;
 
 lazy_static! {
@@ -20,20 +23,28 @@ pub async fn deno_upgrade() -> Result<(), ErrBox> {
     .text()
     .await?;
   let checked_version = find_version(&body)?;
-  if is_latest_version_greater(&version::DENO.to_string(), &checked_version) {
-    download_and_replace_exec(compose_url_to_exec(&checked_version)?, &client)
-      .await?;
+  if !is_latest_version_greater(&version::DENO.to_string(), &checked_version) {
+    let exec = download_exec(&compose_url_to_exec(&checked_version)?, client).await?;
+    println!("{:?}", &exec);
   } else {
     println!("Local deno version {} is the newest one", &version::DENO);
   }
   Ok(())
 }
 
-async fn download_and_replace_exec(
-  _url: Url,
-  _client: &Client,
-) -> Result<(), ErrBox> {
-  Ok(())
+fn download_exec(
+  url: &Url,
+  client: Client,
+) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ErrBox>>>> {
+  let url = url.clone();
+  let fut = async move {
+    match fetch_once(client.clone(), &url, None).await? {
+      FetchOnceResult::Code(source, _) => Ok(source),
+      FetchOnceResult::NotModified => Ok(Vec::new()),
+      FetchOnceResult::Redirect(_url, _) => download_exec(&_url, client).await,
+    }
+  };
+  fut.boxed_local()
 }
 
 fn compose_url_to_exec(version: &String) -> Result<Url, ErrBox> {
