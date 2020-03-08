@@ -284,11 +284,11 @@ fn op_chmod(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_chmod {}", path.display());
     // Still check file/dir exists on windows
     let _metadata = fs::metadata(&path)?;
     #[cfg(unix)]
     {
+      debug!("op_chmod {} {:o}", path.display(), args.mode);
       let mut permissions = _metadata.permissions();
       permissions.set_mode(args.mode);
       fs::set_permissions(&path, permissions)?;
