@@ -367,7 +367,7 @@ function createObjectString(
 /** @internal */
 export function stringifyArgs(
   args: unknown[],
-  options: ConsoleOptions = {}
+  { depth = DEFAULT_MAX_DEPTH, indentLevel = 0 }: ConsoleOptions = {}
 ): string {
   const first = args[0];
   let a = 0;
@@ -411,12 +411,7 @@ export function stringifyArgs(
             case CHAR_LOWERCASE_O:
             case CHAR_UPPERCASE_O:
               // format as an object
-              tempStr = stringify(
-                args[++a],
-                new Set<unknown>(),
-                0,
-                options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
-              );
+              tempStr = stringify(args[++a], new Set<unknown>(), 0, depth);
               break;
             case CHAR_PERCENT:
               str += first.slice(lastPos, i);
@@ -459,19 +454,13 @@ export function stringifyArgs(
       str += value;
     } else {
       // use default maximum depth for null or undefined argument
-      str += stringify(
-        value,
-        new Set<unknown>(),
-        0,
-        options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
-      );
+      str += stringify(value, new Set<unknown>(), 0, depth);
     }
     join = " ";
     a++;
   }
 
-  const { indentLevel } = options;
-  if (indentLevel != null && indentLevel > 0) {
+  if (indentLevel > 0) {
     const groupIndent = " ".repeat(indentLevel);
     if (str.indexOf("\n") !== -1) {
       str = str.replace(/\n/g, `\n${groupIndent}`);
@@ -771,17 +760,14 @@ export const customInspect = Symbol.for("Deno.customInspect");
  * `inspect()` converts input into string that has the same format
  * as printed by `console.log(...)`;
  */
-export function inspect(value: unknown, options?: ConsoleOptions): string {
-  const opts = options || {};
+export function inspect(
+  value: unknown,
+  { depth = DEFAULT_MAX_DEPTH }: ConsoleOptions = {}
+): string {
   if (typeof value === "string") {
     return value;
   } else {
-    return stringify(
-      value,
-      new Set<unknown>(),
-      0,
-      opts.depth != undefined ? opts.depth : DEFAULT_MAX_DEPTH
-    );
+    return stringify(value, new Set<unknown>(), 0, depth);
   }
 }
 

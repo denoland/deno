@@ -10,7 +10,7 @@ interface MoveOptions {
 export async function move(
   src: string,
   dest: string,
-  options?: MoveOptions
+  { overwrite = false }: MoveOptions = {}
 ): Promise<void> {
   const srcStat = await Deno.stat(src);
 
@@ -20,7 +20,7 @@ export async function move(
     );
   }
 
-  if (options && options.overwrite) {
+  if (overwrite) {
     await Deno.remove(dest, { recursive: true });
     await Deno.rename(src, dest);
   } else {
@@ -37,7 +37,7 @@ export async function move(
 export function moveSync(
   src: string,
   dest: string,
-  options?: MoveOptions
+  { overwrite = false }: MoveOptions = {}
 ): void {
   const srcStat = Deno.statSync(src);
 
@@ -47,7 +47,7 @@ export function moveSync(
     );
   }
 
-  if (options && options.overwrite) {
+  if (overwrite) {
     Deno.removeSync(dest, { recursive: true });
     Deno.renameSync(src, dest);
   } else {

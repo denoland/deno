@@ -10,14 +10,22 @@ interface ConnectTLSOptions {
   hostname?: string;
   certFile?: string;
 }
-const connectTLSDefaults = { hostname: "127.0.0.1", transport: "tcp" };
 
 /**
  * Establishes a secure connection over TLS (transport layer security).
  */
-export async function connectTLS(options: ConnectTLSOptions): Promise<Conn> {
-  options = Object.assign(connectTLSDefaults, options);
-  const res = await tlsOps.connectTLS(options as tlsOps.ConnectTLSRequest);
+export async function connectTLS({
+  port,
+  hostname = "127.0.0.1",
+  transport = "tcp",
+  certFile = undefined
+}: ConnectTLSOptions): Promise<Conn> {
+  const res = await tlsOps.connectTLS({
+    port,
+    hostname,
+    transport,
+    certFile
+  });
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
 
@@ -49,15 +57,19 @@ export interface ListenTLSOptions {
  *
  *     Deno.listenTLS({ port: 443, certFile: "./my_server.crt", keyFile: "./my_server.key" })
  */
-export function listenTLS(options: ListenTLSOptions): Listener {
-  const hostname = options.hostname || "0.0.0.0";
-  const transport = options.transport || "tcp";
+export function listenTLS({
+  port,
+  certFile,
+  keyFile,
+  hostname = "0.0.0.0",
+  transport = "tcp"
+}: ListenTLSOptions): Listener {
   const res = tlsOps.listenTLS({
+    port,
+    certFile,
+    keyFile,
     hostname,
-    port: options.port,
-    transport,
-    certFile: options.certFile,
-    keyFile: options.keyFile
+    transport
   });
   return new TLSListenerImpl(res.rid, res.localAddr);
 }

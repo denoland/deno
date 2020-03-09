@@ -3,7 +3,6 @@ import { File } from "./files.ts";
 import { close } from "./ops/resources.ts";
 import { ReadCloser, WriteCloser } from "./io.ts";
 import { readAll } from "./buffer.ts";
-import { assert, unreachable } from "./util.ts";
 import { build } from "./build.ts";
 import { kill, runStatus as runStatusOp, run as runOp } from "./ops/process.ts";
 
@@ -117,18 +116,6 @@ export interface ProcessStatus {
   signal?: number; // TODO: Make this a string, e.g. 'SIGTERM'.
 }
 
-// TODO: this method is only used to validate proper option, probably can be renamed
-function stdioMap(s: string): string {
-  switch (s) {
-    case "inherit":
-    case "piped":
-    case "null":
-      return s;
-    default:
-      return unreachable();
-  }
-}
-
 function isRid(arg: unknown): arg is number {
   return !isNaN(arg as number);
 }
@@ -153,57 +140,25 @@ interface RunResponse {
  * `opt.stdout`, `opt.stderr` and `opt.stdin` can be specified independently -
  * they can be set to either `ProcessStdio` or `rid` of open file.
  */
-export function run(opt: RunOptions): Process {
-  assert(opt.args.length > 0);
-  let env: Array<[string, string]> = [];
-  if (opt.env) {
-    env = Array.from(Object.entries(opt.env));
-  }
-
-  let stdin = stdioMap("inherit");
-  let stdout = stdioMap("inherit");
-  let stderr = stdioMap("inherit");
-  let stdinRid = 0;
-  let stdoutRid = 0;
-  let stderrRid = 0;
-
-  if (opt.stdin) {
-    if (isRid(opt.stdin)) {
-      stdinRid = opt.stdin;
-    } else {
-      stdin = stdioMap(opt.stdin);
-    }
-  }
-
-  if (opt.stdout) {
-    if (isRid(opt.stdout)) {
-      stdoutRid = opt.stdout;
-    } else {
-      stdout = stdioMap(opt.stdout);
-    }
-  }
-
-  if (opt.stderr) {
-    if (isRid(opt.stderr)) {
-      stderrRid = opt.stderr;
-    } else {
-      stderr = stdioMap(opt.stderr);
-    }
-  }
-
-  const req = {
-    args: opt.args.map(String),
-    cwd: opt.cwd,
-    env,
-    stdin,
-    stdout,
-    stderr,
-    stdinRid,
-    stdoutRid,
-    stderrRid
-  };
-
-  const res = runOp(req);
+export function run({
+  args,
+  cwd = undefined,
+  env = {},
+  stdout = "inherit",
+  stderr = "inherit",
+  stdin = "inherit"
+}: RunOptions): Process {
+  const res = runOp({
+    args: args.map(String),
+    cwd,
+    env: Object.entries(env),
+    stdin: isRid(stdin) ? "" : stdin,
+    stdout: isRid(stdout) ? "" : stdout,
+    stderr: isRid(stderr) ? "" : stderr,
+    stdinRid: isRid(stdin) ? stdin : 0,
+    stdoutRid: isRid(stdout) ? stdout : 0,
+    stderrRid: isRid(stderr) ? stderr : 0
+  }) as RunResponse;
   return new Process(res);
 }
 
