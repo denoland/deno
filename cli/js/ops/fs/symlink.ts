@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./ops/dispatch_json.ts";
-import * as util from "./util.ts";
-import { build } from "./build.ts";
+import { sendSync, sendAsync } from "../dispatch_json.ts";
+import * as util from "../../util.ts";
+import { build } from "../../build.ts";
 
 /** **UNSTABLE**: `type` argument type may be changed to `"dir" | "file"`.
  *

@@ -2,11 +2,9 @@
 import { EOF, Reader, Writer, Closer } from "./io.ts";
 import { read, write } from "./ops/io.ts";
 import { close } from "./ops/resources.ts";
-import { sendSync, sendAsync } from "./ops/dispatch_json.ts";
-
-export type Transport = "tcp" | "udp";
-// TODO support other types:
-// export type Transport = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
+import * as netOps from "./ops/net.ts";
+import { Transport } from "./ops/net.ts";
+export { ShutdownMode, shutdown, Transport } from "./ops/net.ts";
 
 export interface Addr {
   transport: Transport;
@@ -55,26 +53,6 @@ export interface Listener extends AsyncIterator<Conn> {
   [Symbol.asyncIterator](): AsyncIterator<Conn>;
 }
 
-export enum ShutdownMode {
-  // See http://man7.org/linux/man-pages/man2/shutdown.2.html
-  // Corresponding to SHUT_RD, SHUT_WR, SHUT_RDWR
-  Read = 0,
-  Write,
-  ReadWrite // unused
-}
-
-/** Shut down socket send and receive operations.
- *
- * Matches behavior of POSIX shutdown(3).
- *
- *       const listener = Deno.listen({ port: 80 });
- *       const conn = await listener.accept();
- *       Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
- */
-export function shutdown(rid: number, how: ShutdownMode): void {
-  sendSync("op_shutdown", { rid, how });
-}
-
 export class ConnImpl implements Conn {
   constructor(
     readonly rid: number,
@@ -98,14 +76,14 @@ export class ConnImpl implements Conn {
    * Most callers should just use close().
    */
   closeRead(): void {
-    shutdown(this.rid, ShutdownMode.Read);
+    netOps.shutdown(this.rid, netOps.ShutdownMode.Read);
   }
 
   /** closeWrite shuts down (shutdown(2)) the writing side of the TCP
    * connection. Most callers should just use close().
    */
   closeWrite(): void {
-    shutdown(this.rid, ShutdownMode.Write);
+    netOps.shutdown(this.rid, netOps.ShutdownMode.Write);
   }
 }
 
@@ -117,7 +95,7 @@ export class ListenerImpl implements Listener {
   ) {}
 
   async accept(): Promise<Conn> {
-    const res = await sendAsync("op_accept", { rid: this.rid });
+    const res = await netOps.accept(this.rid);
     return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
   }
 
@@ -152,7 +130,7 @@ export async function recvfrom(
   rid: number,
   p: Uint8Array
 ): Promise<[number, Addr]> {
-  const { size, remoteAddr } = await sendAsync("op_receive", { rid }, p);
+  const { size, remoteAddr } = await netOps.receive(rid, p);
   return [size, remoteAddr];
 }
 
@@ -175,7 +153,7 @@ export class UDPConnImpl implements UDPConn {
     const remote = { hostname: "127.0.0.1", transport: "udp", ...addr };
     if (remote.transport !== "udp") throw Error("Remote transport must be UDP");
     const args = { ...remote, rid: this.rid };
-    await sendAsync("op_send", args, p);
+    await netOps.send(args as netOps.SendRequest, p);
   }
 
   close(): void {
@@ -253,7 +231,7 @@ export function listen(
 export function listen(options: ListenOptions & { transport: "udp" }): UDPConn;
 export function listen(options: ListenOptions): Listener | UDPConn {
   const args = { ...listenDefaults, ...options };
-  const res = sendSync("op_listen", args);
+  const res = netOps.listen(args as netOps.ListenRequest);
 
   if (args.transport === "tcp") {
     return new ListenerImpl(res.rid, res.localAddr);
@@ -289,6 +267,6 @@ const connectDefaults = { hostname: "127.0.0.1", transport: "tcp" };
  */
 export async function connect(options: ConnectOptions): Promise<Conn> {
   options = Object.assign(connectDefaults, options);
-  const res = await sendAsync("op_connect", options);
+  const res = await netOps.connect(options as netOps.ConnectRequest);
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
