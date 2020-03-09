@@ -33,15 +33,12 @@ export {
   stdin,
   stdout,
   stderr,
-  read,
-  readSync,
-  write,
-  writeSync,
   seek,
   seekSync,
   OpenOptions,
   OpenMode
 } from "./files.ts";
+export { read, readSync, write, writeSync } from "./ops/io.ts";
 export { FsEvent, fsEvents } from "./ops/fs_events.ts";
 export {
   EOF,
@@ -101,14 +98,8 @@ export {
   Permissions
 } from "./permissions.ts";
 export { openPlugin } from "./plugins.ts";
-export {
-  kill,
-  run,
-  RunOptions,
-  Process,
-  ProcessStatus,
-  Signal
-} from "./process.ts";
+export { kill } from "./ops/process.ts";
+export { run, RunOptions, Process, ProcessStatus, Signal } from "./process.ts";
 export { readdirSync, readdir } from "./read_dir.ts";
 export { readFileSync, readFile } from "./read_file.ts";
 export { readlinkSync, readlink } from "./read_link.ts";

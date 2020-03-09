@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert } from "./util.ts";
-import { sendSync, sendAsync } from "./ops/dispatch_json.ts";
+import { startGlobalTimer, stopGlobalTimer } from "./ops/timers.ts";
 import { RBTree } from "./rbtree.ts";
 
 const { console } = globalThis;
@@ -26,7 +26,7 @@ const dueTree = new RBTree<DueNode>((a, b) => a.due - b.due);
 
 function clearGlobalTimeout(): void {
   globalTimeoutDue = null;
-  sendSync("op_global_timer_stop");
+  stopGlobalTimer();
 }
 
 let pendingEvents = 0;
@@ -51,7 +51,7 @@ async function setGlobalTimeout(due: number, now: number): Promise<void> {
   // some timeout/defer is put in place to allow promise resolution.
   // Ideally `clearGlobalTimeout` doesn't return until this op is resolved, but
   // I'm not if that's possible.
-  await sendAsync("op_global_timer", { timeout });
+  await startGlobalTimer(timeout);
   pendingEvents--;
   // eslint-disable-next-line @typescript-eslint/no-use-before-define
   fireTimers();
