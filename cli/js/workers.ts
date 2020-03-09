@@ -1,6 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { sendAsync, sendSync } from "./ops/dispatch_json.ts";
+import {
+  createWorker,
+  hostTerminateWorker,
+  hostPostMessage,
+  hostGetMessage
+} from "./ops/worker_host.ts";
 import { log } from "./util.ts";
 import { TextDecoder, TextEncoder } from "./web/text_encoding.ts";
 /*
@@ -23,37 +28,10 @@ function decodeMessage(dataIntArray: Uint8Array): any {
   return JSON.parse(dataJson);
 }
 
-function createWorker(
-  specifier: string,
-  hasSourceCode: boolean,
-  sourceCode: Uint8Array,
-  name?: string
-): { id: number } {
-  return sendSync("op_create_worker", {
-    specifier,
-    hasSourceCode,
-    sourceCode: new TextDecoder().decode(sourceCode),
-    name
-  });
-}
-
-function hostTerminateWorker(id: number): void {
-  sendSync("op_host_terminate_worker", { id });
-}
-
-function hostPostMessage(id: number, data: any): void {
-  const dataIntArray = encodeMessage(data);
-  sendSync("op_host_post_message", { id }, dataIntArray);
-}
-
 interface WorkerEvent {
   event: "error" | "msg" | "close";
   data?: any;
   error?: any;
-}
-
-async function hostGetMessage(id: number): Promise<any> {
-  return await sendAsync("op_host_get_message", { id });
 }
 
 export interface Worker {
@@ -95,7 +73,7 @@ export class WorkerImpl extends EventTarget implements Worker {
 
     this.name = options?.name ?? "unknown";
     const hasSourceCode = false;
-    const sourceCode = new Uint8Array();
+    const sourceCode = decoder.decode(new Uint8Array());
 
     /* TODO(bartlomieju):
     // Handle blob URL.
@@ -185,7 +163,7 @@ export class WorkerImpl extends EventTarget implements Worker {
       return;
     }
 
-    hostPostMessage(this.id, data);
+    hostPostMessage(this.id, encodeMessage(data));
   }
 
   terminate(): void {
