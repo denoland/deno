@@ -236,9 +236,9 @@ fn op_umask(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: UmaskArgs = serde_json::from_value(args)?;
+  let mask = args.mask;
   #[cfg(unix)]
   {
-    let mask = args.mask;
     let current: Mode = unix_umask(Mode::from_bits_truncate(
       mask.unwrap_or(0o777) as mode_t & 0o777,
     ));
@@ -256,7 +256,7 @@ fn op_umask(
       // and https://docs.microsoft.com/fr-fr/cpp/c-runtime-library/reference/umask?view=vs-2019
       return Err(OpError::other("Not implemented".to_string()));
     }
-    None => Ok(0),
+    None => Ok(JsonOp::Sync(json!(0)))
   }
 }
 
