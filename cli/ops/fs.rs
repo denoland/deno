@@ -20,6 +20,9 @@ use tokio;
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
+#[cfg(unix)]
+use nix::sys::stat::{mode_t, umask as unix_umask, Mode};
+
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
   i.register_op("op_seek", s.stateful_json_op(op_seek));
@@ -233,8 +236,25 @@ fn op_umask(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: UmaskArgs = serde_json::from_value(args)?;
-  let buf = deno_fs::umask(args.mask)?;
-  Ok(JsonOp::Sync(json!(buf)))
+  #[cfg(unix)]
+  {
+    let mask = args.mask;
+    let current: Mode = unix_umask(Mode::from_bits_truncate(
+      mask.unwrap_or(0o777) as mode_t & 0o777,
+    ));
+    if mask.is_none() {
+      unix_umask(current);
+    }
+    let current = current.bits() as u32 & 0o777;
+    Ok(JsonOp::Sync(json!(current)))
+  }
+  #[cfg(not(unix))]
+  match mask {
+    Some(_) => {
+      return Err(OpError::other("Not implemented".to_string()));
+    }
+    None => Ok(0),
+  }
 }
 
 #[derive(Deserialize)]
