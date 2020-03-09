@@ -16,7 +16,7 @@ import {
   windowOrWorkerGlobalScopeProperties,
   eventTargetProperties
 } from "./globals.ts";
-import { sendSync } from "./ops/dispatch_json.ts";
+import * as webWorkerOps from "./ops/web_worker.ts";
 import { log } from "./util.ts";
 import { TextEncoder } from "./web/text_encoding.ts";
 import * as runtime from "./runtime.ts";
@@ -31,7 +31,7 @@ export const onerror: (e: { data: any }) => void = (): void => {};
 export function postMessage(data: any): void {
   const dataJson = JSON.stringify(data);
   const dataIntArray = encoder.encode(dataJson);
-  sendSync("op_worker_post_message", {}, dataIntArray);
+  webWorkerOps.postMessage(dataIntArray);
 }
 
 let isClosing = false;
@@ -43,7 +43,7 @@ export function close(): void {
   }
 
   isClosing = true;
-  sendSync("op_worker_close");
+  webWorkerOps.close();
 }
 
 export async function workerMessageRecvCallback(data: string): Promise<void> {
