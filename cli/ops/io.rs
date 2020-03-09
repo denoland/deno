@@ -56,15 +56,23 @@ pub fn init(i: &mut Isolate, s: &State) {
   );
 }
 
-pub fn get_stdio() -> (StreamResource, StreamResource, StreamResource) {
-  let stdin = StreamResource::Stdin(tokio::io::stdin(), TTYMetadata::default());
-  let stdout = StreamResource::Stdout({
+pub fn get_stdio() -> (
+  StreamResourceHolder,
+  StreamResourceHolder,
+  StreamResourceHolder,
+) {
+  let stdin = StreamResourceHolder::new(StreamResource::Stdin(
+    tokio::io::stdin(),
+    TTYMetadata::default(),
+  ));
+  let stdout = StreamResourceHolder::new(StreamResource::Stdout({
     let stdout = STDOUT_HANDLE
       .try_clone()
       .expect("Unable to clone stdout handle");
     tokio::fs::File::from_std(stdout)
-  });
-  let stderr = StreamResource::Stderr(tokio::io::stderr());
+  }));
+  let stderr =
+    StreamResourceHolder::new(StreamResource::Stderr(tokio::io::stderr()));
 
   (stdin, stdout, stderr)
 }
@@ -88,7 +96,7 @@ pub struct FileMetadata {
 }
 
 pub struct StreamResourceHolder {
-  resource: StreamResource,
+  pub resource: StreamResource,
   waker: Option<futures::task::AtomicWaker>,
 }
 

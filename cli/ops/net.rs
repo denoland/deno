@@ -253,11 +253,11 @@ fn op_shutdown(
   };
 
   let mut state = state.borrow_mut();
-  let resource = state
+  let resource_holder = state
     .resource_table
-    .get_mut::<StreamResource>(rid)
+    .get_mut::<StreamResourceHolder>(rid)
     .ok_or_else(OpError::bad_resource_id)?;
-  match resource {
+  match resource_holder.resource {
     StreamResource::TcpStream(ref mut stream) => {
       TcpStream::shutdown(stream, shutdown_mode).map_err(OpError::from)?;
     }
