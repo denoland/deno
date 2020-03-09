@@ -256,7 +256,7 @@ fn op_umask(
       // and https://docs.microsoft.com/fr-fr/cpp/c-runtime-library/reference/umask?view=vs-2019
       return Err(OpError::other("Not implemented".to_string()));
     }
-    None => Ok(JsonOp::Sync(json!(0)))
+    None => Ok(JsonOp::Sync(json!(0))),
   }
 }
 
