@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { FileOptions, isFileOptions } from "./_fs_common.ts";
+import { FileOptions, isFileOptions, CallbackWithError } from "./_fs_common.ts";
 import { notImplemented } from "../_utils.ts";
 
 /**
@@ -9,10 +9,10 @@ import { notImplemented } from "../_utils.ts";
 export async function appendFile(
   pathOrRid: string | number,
   data: string,
-  optionsOrCallback: string | FileOptions | Function,
-  callback?: Function
+  optionsOrCallback: string | FileOptions | CallbackWithError,
+  callback?: CallbackWithError
 ): Promise<void> {
-  const callbackFn: Function | undefined =
+  const callbackFn: CallbackWithError | undefined =
     optionsOrCallback instanceof Function ? optionsOrCallback : callback;
   const options: string | FileOptions | undefined =
     optionsOrCallback instanceof Function ? undefined : optionsOrCallback;

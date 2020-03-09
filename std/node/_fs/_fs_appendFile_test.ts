@@ -110,7 +110,7 @@ test({
     let calledBack = false;
     const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
     const tempFile: string = await Deno.makeTempFile();
-    await appendFile(tempFile, "hello world", { flag: "ax" }, (err: Error) => {
+    await appendFile(tempFile, "hello world", { flag: "ax" }, (err: Error|undefined) => {
       calledBack = true;
       assert(err);
     });
