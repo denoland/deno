@@ -3,6 +3,7 @@ use crate::futures::FutureExt;
 use regex::Regex;
 use reqwest::{redirect::Policy, Client};
 use std::future::{Future};
+use std::env::current_exe;
 use std::pin::Pin;
 use url::Url;
 
@@ -14,8 +15,12 @@ lazy_static! {
   static ref REGEX_STRING: String = r#"v([^\?]+)?""#.to_string();
 }
 
-pub async fn deno_upgrade() -> Result<(), ErrBox> {
+
+// TODO: docs
+pub async fn exec_upgrade() -> Result<(), ErrBox> {
+  println!("{:?}", current_exe()); // TODO: use current_exe to set path to copy over exec
   let client = Client::builder().redirect(Policy::none()).build()?;
+  println!("Checking for latest version.");
   let body = client
     .get(Url::parse(&LATEST_VERSION_URL)?)
     .send()
@@ -23,11 +28,12 @@ pub async fn deno_upgrade() -> Result<(), ErrBox> {
     .text()
     .await?;
   let checked_version = find_version(&body)?;
-  if !is_latest_version_greater(&version::DENO.to_string(), &checked_version) {
+  if is_latest_version_greater(&version::DENO.to_string(), &checked_version) {
+    println!("Deno found greater version.\nDeno is upgrading to version {}", &checked_version);
     let exec = download_exec(&compose_url_to_exec(&checked_version)?, client).await?;
-    println!("{:?}", &exec);
+    println!("{:?}", &exec.len());
   } else {
-    println!("Local deno version {} is the newest one", &version::DENO);
+    println!("Local deno version {} is the greatest one", &version::DENO);
   }
   Ok(())
 }

@@ -67,7 +67,7 @@ use crate::msg::MediaType;
 use crate::ops::io::get_stdio;
 use crate::state::State;
 use crate::worker::MainWorker;
-use upgrade::deno_upgrade;
+use upgrade::exec_upgrade;
 use deno_core::v8_set_flags;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
@@ -416,7 +416,7 @@ async fn test_command(
 }
 
 async fn upgrade_command() -> Result<(), ErrBox> {
-  deno_upgrade().await
+  exec_upgrade().await
 }
 
 pub fn main() {
