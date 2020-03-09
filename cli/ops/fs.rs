@@ -251,6 +251,9 @@ fn op_umask(
   #[cfg(not(unix))]
   match mask {
     Some(_) => {
+      // TODO implement umask for Windows
+      // see https://github.com/nodejs/node/blob/master/src/node_process_methods.cc
+      // and https://docs.microsoft.com/fr-fr/cpp/c-runtime-library/reference/umask?view=vs-2019
       return Err(OpError::other("Not implemented".to_string()));
     }
     None => Ok(0),
