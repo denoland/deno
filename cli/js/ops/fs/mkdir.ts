@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./ops/dispatch_json.ts";
+import { sendSync, sendAsync } from "../dispatch_json.ts";
 
 // TODO(ry) The complexity in argument parsing is to support deprecated forms of
 // mkdir and mkdirSync.

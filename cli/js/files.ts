@@ -10,12 +10,17 @@ import {
   SyncWriter,
   SyncSeeker
 } from "./io.ts";
-import {
-  sendSync as sendSyncJson,
-  sendAsync as sendAsyncJson
-} from "./ops/dispatch_json.ts";
 import { close } from "./ops/resources.ts";
 import { read, readSync, write, writeSync } from "./ops/io.ts";
+import { seek, seekSync } from "./ops/fs/seek.ts";
+export { seek, seekSync } from "./ops/fs/seek.ts";
+import {
+  open as opOpen,
+  openSync as opOpenSync,
+  OpenOptions,
+  OpenMode
+} from "./ops/fs/open.ts";
+export { OpenOptions, OpenMode } from "./ops/fs/open.ts";
 
 /** Synchronously open a file and return an instance of the `File` object.
  *
@@ -24,31 +29,22 @@ import { read, readSync, write, writeSync } from "./ops/io.ts";
  * Requires `allow-read` and `allow-write` permissions depending on mode.
  */
 export function openSync(path: string, mode?: OpenOptions): File;
-
-/** Synchronously open a file and return an instance of the `File` object.
- *
- *       const file = Deno.openSync("/foo/bar.txt", "r");
- *
- * Requires `allow-read` and `allow-write` permissions depending on mode.
- */
 export function openSync(path: string, mode?: OpenMode): File;
-
-/**@internal*/
 export function openSync(
   path: string,
   modeOrOptions: OpenOptions | OpenMode = "r"
 ): File {
-  let mode = null;
-  let options = null;
+  let mode = undefined;
+  let options = undefined;
 
   if (typeof modeOrOptions === "string") {
     mode = modeOrOptions;
   } else {
     checkOpenOptions(modeOrOptions);
-    options = modeOrOptions;
+    options = modeOrOptions as OpenOptions;
   }
 
-  const rid = sendSyncJson("op_open", { path, options, mode });
+  const rid = opOpenSync(path, mode as OpenMode, options);
   return new File(rid);
 }
 
@@ -59,35 +55,22 @@ export function openSync(
  * Requires `allow-read` and `allow-write` permissions depending on mode.
  */
 export async function open(path: string, options?: OpenOptions): Promise<File>;
-
-/** Open a file and resolves to an instance of `Deno.File`.
- *
- *     const file = await Deno.open("/foo/bar.txt, "w+");
- *
- * Requires `allow-read` and `allow-write` permissions depending on mode.
- */
 export async function open(path: string, mode?: OpenMode): Promise<File>;
-
-/**@internal*/
 export async function open(
   path: string,
   modeOrOptions: OpenOptions | OpenMode = "r"
 ): Promise<File> {
-  let mode = null;
-  let options = null;
+  let mode = undefined;
+  let options = undefined;
 
   if (typeof modeOrOptions === "string") {
     mode = modeOrOptions;
   } else {
     checkOpenOptions(modeOrOptions);
-    options = modeOrOptions;
+    options = modeOrOptions as OpenOptions;
   }
 
-  const rid = await sendAsyncJson("op_open", {
-    path,
-    options,
-    mode
-  });
+  const rid = await opOpen(path, mode as OpenMode, options);
   return new File(rid);
 }
 
@@ -111,36 +94,6 @@ export function createSync(path: string): File {
  */
 export function create(path: string): Promise<File> {
   return open(path, "w+");
-}
-
-/** Synchronously seek a file ID to the given offset under mode given by `whence`.
- *
- * Returns the number of cursor position.
- *
- *       const file = Deno.openSync("/foo/bar.txt");
- *       const position = Deno.seekSync(file.rid, 0, 0);
- */
-export function seekSync(
-  rid: number,
-  offset: number,
-  whence: SeekMode
-): number {
-  return sendSyncJson("op_seek", { rid, offset, whence });
-}
-
-/** Seek a file ID to the given offset under mode given by `whence`.
- *
- * Resolves with the number of cursor position.
- *
- *      const file = await Deno.open("/foo/bar.txt");
- *      const position = await Deno.seek(file.rid, 0, 0);
- */
-export async function seek(
-  rid: number,
-  offset: number,
-  whence: SeekMode
-): Promise<number> {
-  return await sendAsyncJson("op_seek", { rid, offset, whence });
 }
 
 /** The Deno abstraction for reading and writing files. */
@@ -190,51 +143,6 @@ export const stdin = new File(0);
 export const stdout = new File(1);
 /** An instance of `Deno.File` for `stderr`. */
 export const stderr = new File(2);
-
-export interface OpenOptions {
-  /** Sets the option for read access. This option, when `true`, means that the
-   * file should be read-able if opened. */
-  read?: boolean;
-  /** Sets the option for write access. This option, when `true`, means that
-   * the file should be write-able if opened. If the file already exists,
-   * any write calls on it will overwrite its contents, by default without
-   * truncating it. */
-  write?: boolean;
-  /**Sets the option for the append mode. This option, when `true`, means that
-   * writes will append to a file instead of overwriting previous contents.
-   * Note that setting `{ write: true, append: true }` has the same effect as
-   * setting only `{ append: true }`. */
-  append?: boolean;
-  /** Sets the option for truncating a previous file. If a file is
-   * successfully opened with this option set it will truncate the file to `0`
-   * length if it already exists. The file must be opened with write access
-   * for truncate to work. */
-  truncate?: boolean;
-  /** Sets the option to allow creating a new file, if one doesn't already
-   * exist at the specified path. Requires write or append access to be
-   * used. */
-  create?: boolean;
-  /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
-   * allowed to exist at the target location. Requires write or append
-   * access to be used. When createNew is set to `true`, create and truncate
-   * are ignored. */
-  createNew?: boolean;
-}
-
-/** A set of string literals which specify the open mode of a file.
- *
- * |Value |Description                                                                                       |
- * |------|--------------------------------------------------------------------------------------------------|
- * |`"r"` |Read-only. Default. Starts at beginning of file.                                                  |
- * |`"r+"`|Read-write. Start at beginning of file.                                                           |
- * |`"w"` |Write-only. Opens and truncates existing file or creates new one for writing only.                |
- * |`"w+"`|Read-write. Opens and truncates existing file or creates new one for writing and reading.         |
- * |`"a"` |Write-only. Opens existing file or creates new one. Each write appends content to the end of file.|
- * |`"a+"`|Read-write. Behaves like `"a"` and allows to read from file.                                      |
- * |`"x"` |Write-only. Exclusive create - creates new file only if one doesn't exist already.                |
- * |`"x+"`|Read-write. Behaves like `x` and allows reading from file.                                        |
- */
-export type OpenMode = "r" | "r+" | "w" | "w+" | "a" | "a+" | "x" | "x+";
 
 /** Check if OpenOptions is set to valid combination of options.
  *  @returns Tuple representing if openMode is valid and error message if it's not
