@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// Public deno module.
+// Deno namespace
 export {
   Buffer,
   readAll,
@@ -115,13 +115,11 @@ export { truncateSync, truncate } from "./ops/fs/truncate.ts";
 export { isatty, setRaw } from "./ops/tty.ts";
 export { utimeSync, utime } from "./ops/fs/utime.ts";
 export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";
-export const args: string[] = [];
 export { test, runTests } from "./testing.ts";
 
-// These are internal Deno APIs.  We are marking them as internal so they do not
-// appear in the runtime type library.
-/** @internal */
 export { core } from "./core.ts";
+
+export { symbols } from "./symbols.ts";
 
 /** The current process id of the runtime. */
 export let pid: number;
@@ -129,4 +127,12 @@ export let pid: number;
 /** Reflects the NO_COLOR environment variable: https://no-color.org/ */
 export let noColor: boolean;
 
-export { symbols } from "./symbols.ts";
+export let args: string[];
+
+interface Version {
+  deno: string;
+  v8: string;
+  typescript: string;
+}
+
+export let version: Version;

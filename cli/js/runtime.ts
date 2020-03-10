@@ -13,12 +13,6 @@ import { setSignals } from "./process.ts";
 import { symbols } from "./symbols.ts";
 import { internalObject } from "./internals.ts";
 
-interface Version {
-  deno: string;
-  v8: string;
-  typescript: string;
-}
-
 export let OPS_CACHE: { [name: string]: number };
 
 export function getAsyncHandler(opName: string): (msg: Uint8Array) => void {
@@ -40,6 +34,20 @@ export function initOps(): void {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/ban-types
+function deepFreeze(object: Object): Object {
+  // Freeze all properties first
+  for (const name of Object.getOwnPropertyNames(object)) {
+    // @ts-ignore
+    const prop = object[name];
+    if (typeof prop === "object") {
+      deepFreeze(prop);
+    }
+  }
+
+  return Object.freeze(object);
+}
+
 /**
  * This function bootstraps JS runtime, unfortunately some of runtime
  * code depends on information like "os" and thus getting this information
@@ -52,6 +60,8 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
   // args and other info.
   const s = startOp();
 
+  // TODO(bartlomieju): Deno[symbols.internal]
+  // is still exposed to end users, not only for tests.
   // Add internal object to Deno object.
   // This is not exposed as part of the Deno types.
   // @ts-ignore
@@ -61,30 +71,21 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
 
   util.setLogDebug(s.debugFlag, source);
   util.immutableDefine(globalThis, "location", new LocationImpl(s.location));
-  Object.freeze(globalThis.location);
+  deepFreeze(globalThis.location);
   setPrepareStackTrace(Error);
   setSignals();
 
   if (preserveDenoNamespace) {
-    const version: Version = {
+    util.immutableDefine(Deno, "version", {
       deno: s.denoVersion,
       v8: s.v8Version,
       typescript: s.tsVersion
-    };
-    Object.freeze(version);
-    util.immutableDefine(Deno, "version", version);
+    });
     util.immutableDefine(Deno, "pid", s.pid);
     util.immutableDefine(Deno, "noColor", s.noColor);
     util.immutableDefine(Deno, "args", [...s.args]);
-    // TODO(bartlomieju): Object.freeze should be called recursively on
-    // all properties of `globalThis.Deno`
-    Object.freeze(Deno);
-    util.immutableDefine(globalThis, "Deno", Deno);
-    // Deno.core could ONLY be safely frozen here (not in globals.ts)
-    // since shared_queue.js will modify core properties.
-    Object.freeze(globalThis.Deno.core);
-    // core.sharedQueue is an object so we should also freeze it.
-    Object.freeze(globalThis.Deno.core.sharedQueue);
+    const frozenDenoNs = deepFreeze(Deno);
+    util.immutableDefine(globalThis, "Deno", frozenDenoNs);
   } else {
     // Remove globalThis.Deno
     delete globalThis.Deno;
@@ -92,6 +93,6 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
   }
 
   util.log("cwd", s.cwd);
-  util.log("args", Deno.args);
+  util.log("args", s.args);
   return s;
 }
