@@ -75,6 +75,15 @@ unitTest(
   }
 );
 
+unitTest(
+  { skip: Deno.build.os === "win", perms: { read: true, write: true } },
+  async function makeTempDirMode(): void {
+    const path = await Deno.makeTempDir({ mode: 0o737 });
+    const pathInfo = Deno.statSync(path);
+    assertEquals(pathInfo.mode! & 0o777, 0o737 & ~Deno.umask());
+  }
+);
+
 unitTest({ perms: { write: true } }, function makeTempFileSyncSuccess(): void {
   const file1 = Deno.makeTempFileSync({ prefix: "hello", suffix: "world" });
   const file2 = Deno.makeTempFileSync({ prefix: "hello", suffix: "world" });
@@ -148,5 +157,14 @@ unitTest(
       err = err_;
     }
     assert(err instanceof Deno.errors.NotFound);
+  }
+);
+
+unitTest(
+  { skip: Deno.build.os === "win", perms: { read: true, write: true } },
+  async function makeTempFileMode(): void {
+    const path = await Deno.makeTempFile({ mode: 0o626 });
+    const pathInfo = Deno.statSync(path);
+    assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
   }
 );
