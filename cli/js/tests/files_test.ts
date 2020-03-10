@@ -88,8 +88,7 @@ unitTest(
     });
     file.close();
     const pathInfo = Deno.statSync(path);
-    // assertEquals(pathInfo.mode!, 0o626 & ~Deno.umask());
-    assertEquals(pathInfo.mode! & 0o777, 0o604); // assume umask 0o022
+    assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
   }
 );
 
@@ -107,8 +106,7 @@ unitTest(
     });
     file.close();
     const pathInfo = Deno.statSync(path);
-    // assertEquals(pathInfo.mode!, 0o626 & ~Deno.umask());
-    assertEquals(pathInfo.mode! & 0o777, 0o604); // assume umask 0o022
+    assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
   }
 );
 
