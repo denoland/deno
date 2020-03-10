@@ -232,6 +232,7 @@ fn op_umask(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  #[allow(unused)]
   let args: UmaskArgs = serde_json::from_value(args)?;
 
   // TODO implement umask for Windows
