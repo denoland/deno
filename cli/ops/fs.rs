@@ -76,13 +76,20 @@ fn op_open(
   let state_ = state.clone();
   let gave_mode = args.mode.is_some();
 
-  let mut open_options = if let Some(_mode) = args.mode {
+  let mut open_options = if let Some(mode) = args.mode {
     #[allow(unused_mut)]
     let mut std_options = fs::OpenOptions::new();
     // mode only used if creating the file on Unix
     // if not specified, defaults to 0o666
     #[cfg(unix)]
-    std_options.mode(_mode & 0o777);
+    std_options.mode(mode & 0o777);
+    #[cfg(not(unix))]
+    {
+      let _ = mode; // avoid unused warning
+
+      // should this error be more verbose? or noop instead of error?
+      return Err(OpError::not_implemented());
+    }
     tokio_fs::OpenOptions::from(std_options)
   } else {
     tokio_fs::OpenOptions::new()
