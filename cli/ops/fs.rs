@@ -236,8 +236,10 @@ fn op_umask(
   // see https://github.com/nodejs/node/blob/master/src/node_process_methods.cc
   // and https://docs.microsoft.com/fr-fr/cpp/c-runtime-library/reference/umask?view=vs-2019
   #[cfg(not(unix))]
-  return Err(OpError::not_implemented());
-
+  {
+    let _ = args;
+    return Err(OpError::not_implemented());
+  }
   #[cfg(unix)]
   {
     let args: UmaskArgs = serde_json::from_value(args)?;
