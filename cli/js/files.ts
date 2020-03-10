@@ -36,20 +36,16 @@ export function openSync(path: string, openMode?: OpenOptions): File;
  *
  * Requires `allow-read` and `allow-write` permissions depending on openMode.
  */
-export function openSync(
-  path: string,
-  openMode?: OpenMode,
-  mode?: number
-): File;
+export function openSync(path: string, openMode?: OpenMode): File;
 
 /**@internal*/
 export function openSync(
   path: string,
-  modeOrOptions: OpenOptions | OpenMode = "r",
-  mode?: number
+  modeOrOptions: OpenOptions | OpenMode = "r"
 ): File {
   let openMode = null;
   let options = null;
+  let mode = null;
 
   if (typeof modeOrOptions === "string") {
     openMode = modeOrOptions;
@@ -77,20 +73,16 @@ export async function open(path: string, options?: OpenOptions): Promise<File>;
  *
  * Requires `allow-read` and `allow-write` permissions depending on openMode.
  */
-export async function open(
-  path: string,
-  openMode?: OpenMode,
-  mode?: number
-): Promise<File>;
+export async function open(path: string, openMode?: OpenMode): Promise<File>;
 
 /**@internal*/
 export async function open(
   path: string,
-  modeOrOptions: OpenOptions | OpenMode = "r",
-  mode?: number
+  modeOrOptions: OpenOptions | OpenMode = "r"
 ): Promise<File> {
   let openMode = null;
   let options = null;
+  let mode = null;
 
   if (typeof modeOrOptions === "string") {
     openMode = modeOrOptions;
@@ -117,7 +109,13 @@ export async function open(
  * Requires `allow-read` and `allow-write` permissions.
  */
 export function createSync(path: string, mode?: number): File {
-  return openSync(path, "w+", mode);
+  return openSync(path, {
+    mode,
+    read: true,
+    write: true,
+    create: true,
+    truncate: true
+  });
 }
 
 /** Creates a file if none exists or truncates an existing file and resolves to
@@ -128,7 +126,13 @@ export function createSync(path: string, mode?: number): File {
  * Requires `allow-read` and `allow-write` permissions.
  */
 export function create(path: string, mode?: number): Promise<File> {
-  return open(path, "w+", mode);
+  return open(path, {
+    mode,
+    read: true,
+    write: true,
+    create: true,
+    truncate: true
+  });
 }
 
 /** Synchronously read from a file ID into an array buffer.

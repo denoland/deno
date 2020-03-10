@@ -443,11 +443,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions depending on openMode.
    */
-  export function openSync(
-    path: string,
-    openMode?: OpenMode,
-    mode?: number
-  ): File;
+  export function openSync(path: string, openMode?: OpenMode): File;
 
   /** Open a file and resolve to an instance of the `File` object.
    *
@@ -463,11 +459,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions depending on openMode.
    */
-  export function open(
-    path: string,
-    openMode?: OpenMode,
-    mode?: number
-  ): Promise<File>;
+  export function open(path: string, openMode?: OpenMode): Promise<File>;
 
   /** Creates a file if none exists or truncates an existing file and returns
    *  an instance of `Deno.File`.
