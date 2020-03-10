@@ -37,11 +37,12 @@ export function initOps(): void {
 // eslint-disable-next-line @typescript-eslint/ban-types
 function deepFreeze(object: Object): Object {
   // Freeze all properties first
-  for (const name of Object.getOwnPropertyNames(object)) {
+  const propNames = Object.getOwnPropertyNames(object);
+  for (const name of propNames) {
     // @ts-ignore
     const prop = object[name];
     if (typeof prop === "object") {
-      deepFreeze(prop);
+      Object.freeze(prop);
     }
   }
 
@@ -70,8 +71,7 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
   setBuildInfo(s.os, s.arch);
 
   util.setLogDebug(s.debugFlag, source);
-  util.immutableDefine(globalThis, "location", new LocationImpl(s.location));
-  deepFreeze(globalThis.location);
+  util.immutableDefine(globalThis, "location", deepFreeze(new LocationImpl(s.location)));
   setPrepareStackTrace(Error);
   setSignals();
 
