@@ -176,26 +176,20 @@ static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
 static DENO_HELP: &str = "A secure JavaScript and TypeScript runtime
 
 Docs: https://deno.land/std/manual.md
-Modules: https://deno.land/x/
+Modules: https://deno.land/std/ https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
-To run the REPL supply no arguments:
-
+To start the REPL, supply no arguments:
   deno
 
-To evaluate code from the command line:
-
-  deno eval \"console.log(30933 + 404)\"
-
 To execute a script:
-
+  deno run https://deno.land/std/examples/welcome.ts
   deno https://deno.land/std/examples/welcome.ts
 
-The default subcommand is 'run'. The above is equivalent to
+To evaluate code in the shell:
+  deno eval \"console.log(30933 + 404)\"
 
-  deno run https://deno.land/std/examples/welcome.ts
-
-See 'deno help run' for run specific flags.";
+Run 'deno help run' for 'run'-specific flags.";
 
 lazy_static! {
   static ref LONG_VERSION: String = format!(
@@ -545,7 +539,6 @@ fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Print runtime TypeScript declarations")
     .long_about(
       "Print runtime TypeScript declarations.
-
   deno types > lib.deno_runtime.d.ts
 
 The declaration file could be saved and used for typing information.",
@@ -556,15 +549,12 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("fmt")
     .about("Format source files")
     .long_about(
-      "Auto-format JavaScript/TypeScript source code
-
+      "Auto-format JavaScript/TypeScript source code.
   deno fmt
-
   deno fmt myfile1.ts myfile2.ts
-
   deno fmt --check
 
-  # Format stdin and write to stdout
+Format stdin and write to stdout:
   cat file.ts | deno fmt -",
     )
     .arg(
@@ -619,13 +609,10 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
         .long_about(
 "Installs a script as executable. The default installation directory is
 $HOME/.deno/bin and it must be added to the path manually.
-
   deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
-
   deno install colors https://deno.land/std/examples/colors.ts
 
-To change installation directory use -d/--dir flag
-
+To change installation directory use -d/--dir flag:
   deno install --allow-net --allow-read -d /usr/local/bin file_server https://deno.land/std/http/file_server.ts")
 }
 
@@ -641,13 +628,10 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
+  deno bundle https://deno.land/std/examples/colors.ts colors.bundle.js
 
-If a out_file argument is omitted, the output of the bundle will be sent to
-standard out. Examples:
-
-  deno bundle https://deno.land/std/examples/colors.ts
-
-  deno bundle https://deno.land/std/examples/colors.ts colors.bundle.js",
+If no output file is given, the output is written to standard output:
+  deno bundle https://deno.land/std/examples/colors.ts",
     )
 }
 
@@ -662,9 +646,6 @@ fn completions_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Generate shell completions")
     .long_about(
       "Output shell completion script to standard output.
-
-Example:
-
   deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
   source /usr/local/etc/bash_completion.d/deno.bash",
     )
@@ -675,16 +656,13 @@ fn eval_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(ca_file_arg())
     .about("Eval script")
     .long_about(
-      "Evaluate JavaScript from command-line
-
-This command has implicit access to all permissions (--allow-all)
-
+      "Evaluate JavaScript from the command line.
   deno eval \"console.log('hello world')\"
 
 To evaluate as TypeScript:
-
   deno eval -T \"const v: string = 'hello'; console.log(v)\"
-  ",
+
+This command has implicit access to all permissions (--allow-all).",
     )
     .arg(
       Arg::with_name("ts")
@@ -702,23 +680,24 @@ fn info_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("info")
     .about("Show info about cache or info related to source file")
     .long_about(
-      "Information about source file and cache
+      "Information about a module or the cache directories.
 
-Example: deno info https://deno.land/std/http/file_server.ts
+Get information about a module:
+  deno info https://deno.land/std/http/file_server.ts
 
 The following information is shown:
 
 local: Local path of the file.
 type: JavaScript, TypeScript, or JSON.
-compiled: Local path of compiled source code (TypeScript only)
-map: Local path of source map (TypeScript only)
+compiled: Local path of compiled source code. (TypeScript only.)
+map: Local path of source map. (TypeScript only.)
 deps: Dependency tree of the source file.
 
-Without any additional arguments 'deno info' shows:
+Without any additional arguments, 'deno info' shows:
 
-DENO_DIR: directory containing Deno-related files
-Remote modules cache: directory containing remote modules
-TypeScript compiler cache: directory containing TS compiler output",
+DENO_DIR: Directory containing Deno-managed files.
+Remote modules cache: Subdirectory containing downloaded remote modules.
+TypeScript compiler cache: Subdirectory containing TS compiler output.",
     )
     .arg(Arg::with_name("file").takes_value(true).required(false))
     .arg(ca_file_arg())
@@ -743,17 +722,12 @@ fn fetch_subcommand<'a, 'b>() -> App<'a, 'b> {
     .long_about(
       "Fetch and compile remote dependencies recursively.
 
-Downloads all statically imported scripts and save them in local
-cache, without running the code. No future import network requests
-would be made unless --reload is specified.
-
-Downloads all dependencies
-
+Download and compile a module with all of its static dependencies and save them
+in the local cache, without running any code:
   deno fetch https://deno.land/std/http/file_server.ts
 
-Once cached, static imports no longer send network requests
-
-  deno run -A https://deno.land/std/http/file_server.ts",
+Future runs of this module will trigger no downloads or compilation unless
+--reload is specified.",
     )
 }
 
@@ -846,25 +820,21 @@ fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
   run_test_args(SubCommand::with_name("run"))
     .setting(AppSettings::TrailingVarArg)
     .arg(script_arg())
-    .about("Run a program given a filename or url to the source code")
+    .about("Run a program given a filename or url to the module")
     .long_about(
-      "Run a program given a filename or url to the source code.
+      "Run a program given a filename or url to the module.
 
 By default all programs are run in sandbox without access to disk, network or
 ability to spawn subprocesses.
-
   deno run https://deno.land/std/examples/welcome.ts
 
-With all permissions
-
+Grant all permissions:
   deno run -A https://deno.land/std/http/file_server.ts
 
-With only permission to read from disk and listen to network
+Grant permission to read from disk and listen to network:
+  deno run --allow-read --allow-net https://deno.land/std/http/file_server.ts
 
-  deno run --allow-net --allow-read https://deno.land/std/http/file_server.ts
-
-With only permission to read whitelist files from disk
-
+Grant permission to read whitelisted files from disk:
   deno run --allow-read=/etc https://deno.land/std/http/file_server.ts",
     )
 }
@@ -892,11 +862,14 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
     )
     .about("Run tests")
     .long_about(
-      "Run tests using test runner
+      "Run tests using Deno's built-in test runner.
 
-Searches the specified directories for all files that end in _test.ts or
-_test.js and executes them.
+Evaluate the given modules, run all tests declared with 'Deno.test()' and
+report results to standard output:
+  deno test src/fetch_test.ts src/signal_test.ts
 
+Directory arguments are expanded to all contained files matching the glob
+{*_,}test.{js,ts,jsx,tsx}:
   deno test src/",
     )
 }
