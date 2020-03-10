@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { isTypedArray } from "./util.ts";
-import { TypedArray } from "./types.ts";
-import { TextEncoder } from "./web/text_encoding.ts";
-import { File, stdout } from "./files.ts";
+import { isTypedArray } from "../util.ts";
+import { TypedArray } from "../types.ts";
+import { TextEncoder } from "./text_encoding.ts";
+import { File, stdout } from "../files.ts";
 import { cliTable } from "./console_table.ts";
-import { exposeForTest } from "./internals.ts";
+import { exposeForTest } from "../internals.ts";
 
 type ConsoleContext = Set<unknown>;
 type ConsoleOptions = Partial<{
