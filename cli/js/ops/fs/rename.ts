@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./ops/dispatch_json.ts";
+import { sendSync, sendAsync } from "../dispatch_json.ts";
 
 /** Synchronously renames (moves) `oldpath` to `newpath`. If `newpath` already
  * exists and is not a directory, `renameSync()` replaces it. OS-specific

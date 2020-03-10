@@ -1,10 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync } from "./ops/dispatch_json.ts";
-
-interface NowResponse {
-  seconds: number;
-  subsecNanos: number;
-}
+import { now as opNow } from "./ops/timers.ts";
 
 export class Performance {
   /** Returns a current time from Deno's start in milliseconds.
@@ -15,7 +10,7 @@ export class Performance {
    *       console.log(`${t} ms since start!`);
    */
   now(): number {
-    const res = sendSync("op_now") as NowResponse;
+    const res = opNow();
     return res.seconds * 1e3 + res.subsecNanos / 1e6;
   }
 }

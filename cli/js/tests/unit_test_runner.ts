@@ -54,7 +54,12 @@ async function main(): Promise<void> {
     console.log(`Running tests for: ${permsFmt}`);
     const cliPerms = permsToCliFlags(perms);
     // run subsequent tests using same deno executable
-    const args = [Deno.execPath(), "run", ...cliPerms, "cli/js/unit_tests.ts"];
+    const args = [
+      Deno.execPath(),
+      "run",
+      ...cliPerms,
+      "cli/js/tests/unit_tests.ts"
+    ];
 
     const p = Deno.run({
       args,
@@ -69,7 +74,7 @@ async function main(): Promise<void> {
     let result = 0;
 
     if (!actual && !expected) {
-      console.error("Bad cli/js/unit_test.ts output");
+      console.error("Bad cli/js/tests/unit_test.ts output");
       result = 1;
     } else if (expected !== actual) {
       result = 1;

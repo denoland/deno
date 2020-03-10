@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "../test_util.ts";
+import { unitTest, assert, assertEquals } from "./test_util.ts";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function setup() {
