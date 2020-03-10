@@ -503,11 +503,11 @@ declare namespace __domTypes {
     readonly total: number;
   }
   export interface EventListenerOptions {
-    capture: boolean;
+    capture?: boolean;
   }
   export interface AddEventListenerOptions extends EventListenerOptions {
-    once: boolean;
-    passive: boolean;
+    once?: boolean;
+    passive?: boolean;
   }
   interface AbortSignal extends EventTarget {
     readonly aborted: boolean;

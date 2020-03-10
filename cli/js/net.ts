@@ -206,8 +206,6 @@ export interface ListenOptions {
   transport?: Transport;
 }
 
-const listenDefaults = { hostname: "0.0.0.0", transport: "tcp" };
-
 /** Listen announces on the local transport address.
  *
  * @param options
@@ -229,11 +227,14 @@ export function listen(
   options: ListenOptions & { transport?: "tcp" }
 ): Listener;
 export function listen(options: ListenOptions & { transport: "udp" }): UDPConn;
-export function listen(options: ListenOptions): Listener | UDPConn {
-  const args = { ...listenDefaults, ...options };
-  const res = netOps.listen(args as netOps.ListenRequest);
+export function listen({
+  port,
+  hostname = "0.0.0.0",
+  transport = "tcp"
+}: ListenOptions): Listener | UDPConn {
+  const res = netOps.listen({ port, hostname, transport });
 
-  if (args.transport === "tcp") {
+  if (transport === "tcp") {
     return new ListenerImpl(res.rid, res.localAddr);
   } else {
     return new UDPConnImpl(res.rid, res.localAddr);
@@ -245,8 +246,6 @@ export interface ConnectOptions {
   hostname?: string;
   transport?: Transport;
 }
-
-const connectDefaults = { hostname: "127.0.0.1", transport: "tcp" };
 
 /** Connects to the address on the named transport.
  *
@@ -265,8 +264,11 @@ const connectDefaults = { hostname: "127.0.0.1", transport: "tcp" };
  *     connect({ hostname: "[2001:db8::1]", port: 80 });
  *     connect({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
-export async function connect(options: ConnectOptions): Promise<Conn> {
-  options = Object.assign(connectDefaults, options);
-  const res = await netOps.connect(options as netOps.ConnectRequest);
+export async function connect({
+  port,
+  hostname = "127.0.0.1",
+  transport = "tcp"
+}: ConnectOptions): Promise<Conn> {
+  const res = await netOps.connect({ port, hostname, transport });
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
