@@ -9,9 +9,9 @@ use crate::op_error::OpError;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
+use log::info;
 use regex::Regex;
 use reqwest;
-use std;
 use std::collections::HashMap;
 use std::fs;
 use std::future::Future;
@@ -23,7 +23,6 @@ use std::result::Result;
 use std::str;
 use std::sync::Arc;
 use std::sync::Mutex;
-use url;
 use url::Url;
 
 /// Structure representing local or remote file.
@@ -414,11 +413,12 @@ impl SourceFileFetcher {
       .boxed_local();
     }
 
-    eprintln!(
+    info!(
       "{} {}",
       colors::green("Download".to_string()),
       module_url.to_string()
     );
+
     let dir = self.clone();
     let module_url = module_url.clone();
     let module_etag = match self.http_cache.get(&module_url) {
