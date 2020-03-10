@@ -760,7 +760,17 @@ fn op_make_temp_dir(
     .map(|s| deno_fs::resolve_from_cwd(Path::new(&s)).unwrap());
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
-  let mode = args.mode.unwrap_or(0o700);
+  let mode = match args.mode {
+    None => 0o700,
+    Some(m) => {
+      if cfg!(unix) {
+        m
+      } else {
+        // should this error be more verbose? or noop instead of error?
+        return Err(OpError::not_implemented());
+      }
+    }
+  };
 
   state
     .check_write(dir.clone().unwrap_or_else(std::env::temp_dir).as_path())?;
@@ -796,7 +806,17 @@ fn op_make_temp_file(
     .map(|s| deno_fs::resolve_from_cwd(Path::new(&s)).unwrap());
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
-  let mode = args.mode.unwrap_or(0o600);
+  let mode = match args.mode {
+    None => 0o600,
+    Some(m) => {
+      if cfg!(unix) {
+        m
+      } else {
+        // should this error be more verbose? or noop instead of error?
+        return Err(OpError::not_implemented());
+      }
+    }
+  };
 
   state
     .check_write(dir.clone().unwrap_or_else(std::env::temp_dir).as_path())?;
