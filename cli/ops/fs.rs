@@ -88,6 +88,7 @@ fn op_open(
       let _ = mode; // avoid unused warning
 
       // should this error be more verbose? or noop instead of error?
+      #[allow(unreachable_code)]
       return Err(OpError::not_implemented());
     }
     tokio_fs::OpenOptions::from(std_options)
