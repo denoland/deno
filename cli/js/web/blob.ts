@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types.ts";
-import { hasOwnProperty } from "../util.ts";
 import { TextEncoder } from "./text_encoding.ts";
 import { build } from "../build.ts";
 
@@ -144,34 +143,29 @@ export class DenoBlob implements domTypes.Blob {
       return;
     }
 
-    options = options || {};
-    // Set ending property's default value to "transparent".
-    if (!hasOwnProperty(options, "ending")) {
-      options.ending = "transparent";
-    }
-
-    if (options.type && !containsOnlyASCII(options.type)) {
+    const { ending = "transparent", type = "" } = options ?? {};
+    if (!containsOnlyASCII(type)) {
       const errMsg = "The 'type' property must consist of ASCII characters.";
       throw new SyntaxError(errMsg);
     }
 
-    const bytes = processBlobParts(blobParts!, options);
+    const bytes = processBlobParts(blobParts!, { ending, type });
     // Normalize options.type.
-    let type = options.type ? options.type : "";
+    let normalizedType = type;
     if (type.length) {
       for (let i = 0; i < type.length; ++i) {
         const char = type[i];
         if (char < "\u0020" || char > "\u007E") {
-          type = "";
+          normalizedType = "";
           break;
         }
       }
-      type = type.toLowerCase();
+      normalizedType = type.toLowerCase();
     }
     // Set Blob object's properties.
     this[bytesSymbol] = bytes;
     this.size = bytes.byteLength;
-    this.type = type;
+    this.type = normalizedType;
 
     // Register bytes for internal private use.
     blobBytesWeakMap.set(this, bytes);

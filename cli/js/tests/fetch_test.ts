@@ -203,15 +203,18 @@ unitTest(
   }
 );
 
-// The feature below is not implemented, but the test should work after implementation
-/*
-unitTest({ perms: { net: true} }, async function fetchWithInfRedirection(): Promise<
-  void
-> {
-  const response = await fetch("http://localhost:4549/cli/tests"); // will redirect to the same place
-  assertEquals(response.status, 0); // network error
-});
-*/
+unitTest(
+  {
+    // FIXME(bartlomieju):
+    // The feature below is not implemented, but the test should work after implementation
+    skip: true,
+    perms: { net: true }
+  },
+  async function fetchWithInfRedirection(): Promise<void> {
+    const response = await fetch("http://localhost:4549/cli/tests"); // will redirect to the same place
+    assertEquals(response.status, 0); // network error
+  }
+);
 
 unitTest(
   { perms: { net: true } },
@@ -320,11 +323,14 @@ unitTest({ perms: { net: true } }, async function fetchUserAgent(): Promise<
 //     at Object.assertEquals (file:///C:/deno/js/testing/util.ts:29:11)
 //     at fetchPostBodyString (file
 
-/*
 function bufferServer(addr: string): Deno.Buffer {
-  const listener = Deno.listen(addr);
+  const [hostname, port] = addr.split(":");
+  const listener = Deno.listen({
+    hostname,
+    port: Number(port)
+  }) as Deno.Listener;
   const buf = new Deno.Buffer();
-  listener.accept().then(async conn => {
+  listener.accept().then(async (conn: Deno.Conn) => {
     const p1 = buf.readFrom(conn);
     const p2 = conn.write(
       new TextEncoder().encode(
@@ -344,75 +350,104 @@ function bufferServer(addr: string): Deno.Buffer {
   return buf;
 }
 
-unitTest({ perms: { net: true} }, async function fetchRequest():Promise<void> {
-  const addr = "127.0.0.1:4501";
-  const buf = bufferServer(addr);
-  const response = await fetch(`http://${addr}/blah`, {
-    method: "POST",
-    headers: [["Hello", "World"], ["Foo", "Bar"]]
-  });
-  assertEquals(response.status, 404);
-  assertEquals(response.headers.get("Content-Length"), "2");
+unitTest(
+  {
+    // FIXME(bartlomieju)
+    skip: true,
+    perms: { net: true }
+  },
+  async function fetchRequest(): Promise<void> {
+    const addr = "127.0.0.1:4501";
+    const buf = bufferServer(addr);
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: [
+        ["Hello", "World"],
+        ["Foo", "Bar"]
+      ]
+    });
+    assertEquals(response.status, 404);
+    assertEquals(response.headers.get("Content-Length"), "2");
 
-  const actual = new TextDecoder().decode(buf.bytes());
-  const expected = [
-    "POST /blah HTTP/1.1\r\n",
-    "hello: World\r\n",
-    "foo: Bar\r\n",
-    `host: ${addr}\r\n\r\n`
-  ].join("");
-  assertEquals(actual, expected);
-});
+    const actual = new TextDecoder().decode(buf.bytes());
+    const expected = [
+      "POST /blah HTTP/1.1\r\n",
+      "hello: World\r\n",
+      "foo: Bar\r\n",
+      `host: ${addr}\r\n\r\n`
+    ].join("");
+    assertEquals(actual, expected);
+  }
+);
 
-unitTest({ perms: { net: true} }, async function fetchPostBodyString():Promise<void> {
-  const addr = "127.0.0.1:4502";
-  const buf = bufferServer(addr);
-  const body = "hello world";
-  const response = await fetch(`http://${addr}/blah`, {
-    method: "POST",
-    headers: [["Hello", "World"], ["Foo", "Bar"]],
-    body
-  });
-  assertEquals(response.status, 404);
-  assertEquals(response.headers.get("Content-Length"), "2");
+unitTest(
+  {
+    // FIXME(bartlomieju)
+    skip: true,
+    perms: { net: true }
+  },
+  async function fetchPostBodyString(): Promise<void> {
+    const addr = "127.0.0.1:4502";
+    const buf = bufferServer(addr);
+    const body = "hello world";
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: [
+        ["Hello", "World"],
+        ["Foo", "Bar"]
+      ],
+      body
+    });
+    assertEquals(response.status, 404);
+    assertEquals(response.headers.get("Content-Length"), "2");
 
-  const actual = new TextDecoder().decode(buf.bytes());
-  const expected = [
-    "POST /blah HTTP/1.1\r\n",
-    "hello: World\r\n",
-    "foo: Bar\r\n",
-    `host: ${addr}\r\n`,
-    `content-length: ${body.length}\r\n\r\n`,
-    body
-  ].join("");
-  assertEquals(actual, expected);
-});
+    const actual = new TextDecoder().decode(buf.bytes());
+    const expected = [
+      "POST /blah HTTP/1.1\r\n",
+      "hello: World\r\n",
+      "foo: Bar\r\n",
+      `host: ${addr}\r\n`,
+      `content-length: ${body.length}\r\n\r\n`,
+      body
+    ].join("");
+    assertEquals(actual, expected);
+  }
+);
 
-unitTest({ perms: { net: true} }, async function fetchPostBodyTypedArray():Promise<void> {
-  const addr = "127.0.0.1:4503";
-  const buf = bufferServer(addr);
-  const bodyStr = "hello world";
-  const body = new TextEncoder().encode(bodyStr);
-  const response = await fetch(`http://${addr}/blah`, {
-    method: "POST",
-    headers: [["Hello", "World"], ["Foo", "Bar"]],
-    body
-  });
-  assertEquals(response.status, 404);
-  assertEquals(response.headers.get("Content-Length"), "2");
+unitTest(
+  {
+    // FIXME(bartlomieju)
+    skip: true,
+    perms: { net: true }
+  },
+  async function fetchPostBodyTypedArray(): Promise<void> {
+    const addr = "127.0.0.1:4503";
+    const buf = bufferServer(addr);
+    const bodyStr = "hello world";
+    const body = new TextEncoder().encode(bodyStr);
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: [
+        ["Hello", "World"],
+        ["Foo", "Bar"]
+      ],
+      body
+    });
+    assertEquals(response.status, 404);
+    assertEquals(response.headers.get("Content-Length"), "2");
 
-  const actual = new TextDecoder().decode(buf.bytes());
-  const expected = [
-    "POST /blah HTTP/1.1\r\n",
-    "hello: World\r\n",
-    "foo: Bar\r\n",
-    `host: ${addr}\r\n`,
-    `content-length: ${body.byteLength}\r\n\r\n`,
-    bodyStr
-  ].join("");
-  assertEquals(actual, expected);
-});
-*/
+    const actual = new TextDecoder().decode(buf.bytes());
+    const expected = [
+      "POST /blah HTTP/1.1\r\n",
+      "hello: World\r\n",
+      "foo: Bar\r\n",
+      `host: ${addr}\r\n`,
+      `content-length: ${body.byteLength}\r\n\r\n`,
+      bodyStr
+    ].join("");
+    assertEquals(actual, expected);
+  }
+);
 
 unitTest(
   {
