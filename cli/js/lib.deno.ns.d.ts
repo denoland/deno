@@ -287,6 +287,14 @@ declare namespace Deno {
    */
   export function chdir(directory: string): void;
 
+  /**
+   * **UNSTABLE**: New API. Maybe needs permissions.
+   *
+   * If `mask` is provided, sets the process umask. Always returns what the umask
+   * was before the call.
+   */
+  export function umask(mask?: number): number;
+
   /** **UNSTABLE**: might move to `Deno.symbols`. */
   export const EOF: unique symbol;
   export type EOF = typeof EOF;
