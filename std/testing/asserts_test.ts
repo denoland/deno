@@ -230,6 +230,24 @@ test(function testingAssertFail(): void {
   );
 });
 
+test(function testingAssertFailWithWrongErrorClass(): void {
+  assertThrows(
+    (): void => {
+      //This next assertThrows will throw an AssertionError due to the wrong
+      //expected error class
+      assertThrows(
+        (): void => {
+          fail("foo");
+        },
+        Error,
+        "Failed assertion: foo"
+      );
+    },
+    AssertionError,
+    `Expected error to be instance of "Error", but was "AssertionError"`
+  );
+});
+
 const createHeader = (): string[] => [
   "",
   "",

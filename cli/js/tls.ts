@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendAsync, sendSync } from "./ops/dispatch_json.ts";
+import * as tlsOps from "./ops/tls.ts";
 import { Listener, Transport, Conn, ConnImpl, ListenerImpl } from "./net.ts";
 
 // TODO(ry) There are many configuration options to add...
@@ -17,13 +17,13 @@ const connectTLSDefaults = { hostname: "127.0.0.1", transport: "tcp" };
  */
 export async function connectTLS(options: ConnectTLSOptions): Promise<Conn> {
   options = Object.assign(connectTLSDefaults, options);
-  const res = await sendAsync("op_connect_tls", options);
+  const res = await tlsOps.connectTLS(options as tlsOps.ConnectTLSRequest);
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
 
 class TLSListenerImpl extends ListenerImpl {
   async accept(): Promise<Conn> {
-    const res = await sendAsync("op_accept_tls", { rid: this.rid });
+    const res = await tlsOps.acceptTLS(this.rid);
     return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
   }
 }
@@ -52,7 +52,7 @@ export interface ListenTLSOptions {
 export function listenTLS(options: ListenTLSOptions): Listener {
   const hostname = options.hostname || "0.0.0.0";
   const transport = options.transport || "tcp";
-  const res = sendSync("op_listen_tls", {
+  const res = tlsOps.listenTLS({
     hostname,
     port: options.port,
     transport,

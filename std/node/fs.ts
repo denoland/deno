@@ -1,8 +1,13 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   notImplemented,
   intoCallbackAPIWithIntercept,
   MaybeEmpty
 } from "./_utils.ts";
+
+import { appendFile, appendFileSync } from "./_fs/_fs_appendFile.ts";
+export { appendFile, appendFileSync };
+
 const {
   readFile: denoReadFile,
   readFileSync: denoReadFileSync,
@@ -127,4 +132,19 @@ export function readlinkSync(
   opt?: ReadlinkOptions
 ): string | Uint8Array {
   return maybeEncode(denoReadlinkSync(path), getEncoding(opt));
+}
+
+/** Revist once https://github.com/denoland/deno/issues/4017 lands */
+export function access(
+  path: string, // eslint-disable-line @typescript-eslint/no-unused-vars
+  modeOrCallback: number | Function, // eslint-disable-line @typescript-eslint/no-unused-vars
+  callback?: Function // eslint-disable-line @typescript-eslint/no-unused-vars
+): void {
+  notImplemented("Not yet available");
+}
+
+/** Revist once https://github.com/denoland/deno/issues/4017 lands */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function accessSync(path: string, mode?: number): undefined {
+  notImplemented("Not yet available");
 }
