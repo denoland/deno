@@ -10,7 +10,7 @@ import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob.ts";
 import { Headers } from "./headers.ts";
 import * as io from "../io.ts";
-import { read } from "../files.ts";
+import { read } from "../ops/io.ts";
 import { close } from "../ops/resources.ts";
 import { Buffer } from "../buffer.ts";
 import { FormData } from "./form_data.ts";

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./ops/dispatch_json.ts";
+import { sendSync, sendAsync } from "../dispatch_json.ts";
 
 export interface TruncateOptions {
   /** Permissions to use if creating the file (defaults to `0o666`, before

@@ -10,7 +10,7 @@ const readErrorStackPattern = new RegExp(
   `^.*
     at unwrapResponse \\(.*dispatch_minimal\\.ts:.*\\)
     at Object.sendAsyncMinimal \\(.*dispatch_minimal\\.ts:.*\\)
-    at async Object\\.read \\(.*files\\.ts:.*\\).*$`,
+    at async Object\\.read \\(.*io\\.ts:.*\\).*$`,
   "ms"
 );
 
