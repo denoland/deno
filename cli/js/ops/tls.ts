@@ -6,7 +6,7 @@ export interface ConnectTLSRequest {
   transport: Transport;
   hostname: string;
   port: number;
-  cert_file?: string;
+  certFile?: string;
 }
 
 interface ConnectTLSResponse {

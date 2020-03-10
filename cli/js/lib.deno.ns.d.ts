@@ -287,6 +287,14 @@ declare namespace Deno {
    */
   export function chdir(directory: string): void;
 
+  /**
+   * **UNSTABLE**: New API. Maybe needs permissions.
+   *
+   * If `mask` is provided, sets the process umask. Always returns what the umask
+   * was before the call.
+   */
+  export function umask(mask?: number): number;
+
   /** **UNSTABLE**: might move to `Deno.symbols`. */
   export const EOF: unique symbol;
   export type EOF = typeof EOF;
@@ -1518,7 +1526,7 @@ declare namespace Deno {
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * A generic transport listener for message-oriented protocols. */
-  export interface UDPConn extends AsyncIterator<[Uint8Array, Addr]> {
+  export interface UDPConn extends AsyncIterable<[Uint8Array, Addr]> {
     /** **UNSTABLE**: new API, yet to be vetted.
      *
      * Waits for and resolves to the next message to the `UDPConn`. */
@@ -1538,7 +1546,7 @@ declare namespace Deno {
   }
 
   /** A generic network listener for stream-oriented protocols. */
-  export interface Listener extends AsyncIterator<Conn> {
+  export interface Listener extends AsyncIterable<Conn> {
     /** Waits for and resolves to the next connection to the `Listener`. */
     accept(): Promise<Conn>;
     /** Close closes the listener. Any pending accept promises will be rejected
