@@ -44,8 +44,3 @@ export class LocationImpl implements Location {
     throw notImplemented();
   }
 }
-
-export function setLocation(url: string): void {
-  globalThis.location = new LocationImpl(url);
-  Object.freeze(globalThis.location);
-}

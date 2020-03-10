@@ -6,7 +6,7 @@ import { assert } from "./util.ts";
 import * as util from "./util.ts";
 import { setBuildInfo } from "./build.ts";
 import { setVersions } from "./version.ts";
-import { setLocation } from "./web/location.ts";
+import { LocationImpl } from "./web/location.ts";
 import { setPrepareStackTrace } from "./error_stack.ts";
 import { Start, start as startOp } from "./ops/runtime.ts";
 
@@ -46,10 +46,9 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
   setVersions(s.denoVersion, s.v8Version, s.tsVersion);
   setBuildInfo(s.os, s.arch);
   util.setLogDebug(s.debugFlag, source);
+  util.immutableDefine(globalThis, "location", new LocationImpl(s.location));
+  Object.freeze(globalThis.location);
 
-  // TODO(bartlomieju): this field should always be set
-  assert(s.location.length > 0);
-  setLocation(s.location);
   setPrepareStackTrace(Error);
 
   // TODO(bartlomieju): I don't like that it's mixed in here, when
