@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./ops/dispatch_json.ts";
 import { File } from "./files.ts";
 import { close } from "./ops/resources.ts";
 import { ReadCloser, WriteCloser } from "./io.ts";
 import { readAll } from "./buffer.ts";
 import { assert, unreachable } from "./util.ts";
 import { build } from "./build.ts";
+import { kill, runStatus as runStatusOp, run as runOp } from "./ops/process.ts";
 
 /** How to handle subprocess stdio.
  *
@@ -31,16 +31,8 @@ export interface RunOptions {
   stdin?: ProcessStdio | number;
 }
 
-interface RunStatusResponse {
-  gotSignal: boolean;
-  exitCode: number;
-  exitSignal: number;
-}
-
 async function runStatus(rid: number): Promise<ProcessStatus> {
-  const res = (await sendAsync("op_run_status", {
-    rid
-  })) as RunStatusResponse;
+  const res = await runStatusOp(rid);
 
   if (res.gotSignal) {
     const signal = res.exitSignal;
@@ -49,15 +41,6 @@ async function runStatus(rid: number): Promise<ProcessStatus> {
     const code = res.exitCode;
     return { code, success: code === 0 };
   }
-}
-
-/** Send a signal to process under given PID. Unix only at this moment.
- * If pid is negative, the signal will be sent to the process group identified
- * by -pid.
- * Requires the `--allow-run` flag.
- */
-export function kill(pid: number, signo: number): void {
-  sendSync("op_kill", { pid, signo });
 }
 
 export class Process {
@@ -220,7 +203,7 @@ export function run(opt: RunOptions): Process {
     stderrRid
   };
 
-  const res = sendSync("op_run", req) as RunResponse;
+  const res = runOp(req);
   return new Process(res);
 }
 

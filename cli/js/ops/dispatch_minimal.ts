@@ -4,7 +4,11 @@ import { core } from "../core.ts";
 import { TextDecoder } from "../web/text_encoding.ts";
 import { ErrorKind, errors, getErrorClass } from "../errors.ts";
 
-const promiseTableMin = new Map<number, util.Resolvable<RecordMinimal>>();
+// Using an object without a prototype because `Map` was causing GC problems.
+const promiseTableMin: {
+  [key: number]: util.Resolvable<RecordMinimal>;
+} = Object.create(null);
+
 // Note it's important that promiseId starts at 1 instead of 0, because sync
 // messages are indicated with promiseId 0. If we ever add wrap around logic for
 // overflows, this should be taken into account.
@@ -72,8 +76,8 @@ util.assert(scratchBytes.byteLength === scratch32.length * 4);
 export function asyncMsgFromRust(ui8: Uint8Array): void {
   const record = recordFromBufMinimal(ui8);
   const { promiseId } = record;
-  const promise = promiseTableMin.get(promiseId);
-  promiseTableMin.delete(promiseId);
+  const promise = promiseTableMin[promiseId];
+  delete promiseTableMin[promiseId];
   util.assert(promise);
   promise.resolve(record);
 }
@@ -95,7 +99,7 @@ export async function sendAsyncMinimal(
     promise.resolve(record);
   } else {
     // Async result.
-    promiseTableMin.set(promiseId, promise);
+    promiseTableMin[promiseId] = promise;
   }
 
   const res = await promise;
