@@ -2,6 +2,6 @@
 [WILDCARD]dispatch_json.ts:[WILDCARD]
     at unwrapResponse ($deno$/ops/dispatch_json.ts:[WILDCARD])
     at sendSync ($deno$/ops/dispatch_json.ts:[WILDCARD])
-    at resolveModules ($deno$/compiler_imports.ts:[WILDCARD])
-    at processImports ($deno$/compiler_imports.ts:[WILDCARD])
-    at processImports ($deno$/compiler_imports.ts:[WILDCARD])
+    at resolveModules ($deno$/compiler/imports.ts:[WILDCARD])
+    at processImports ($deno$/compiler/imports.ts:[WILDCARD])
+    at processImports ($deno$/compiler/imports.ts:[WILDCARD])

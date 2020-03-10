@@ -3,9 +3,9 @@
 // This file contains the runtime APIs which will dispatch work to the internal
 // compiler within Deno.
 
-import { DiagnosticItem } from "./diagnostics.ts";
-import * as util from "./util.ts";
-import * as runtimeCompilerOps from "./ops/runtime_compiler.ts";
+import { DiagnosticItem } from "../diagnostics.ts";
+import * as util from "../util.ts";
+import * as runtimeCompilerOps from "../ops/runtime_compiler.ts";
 
 /** A specific subset TypeScript compiler options that can be supported by
  * the Deno TypeScript compiler. */
