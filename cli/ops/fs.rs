@@ -232,17 +232,17 @@ fn op_umask(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  let args: UmaskArgs = serde_json::from_value(args)?;
   // TODO implement umask for Windows
   // see https://github.com/nodejs/node/blob/master/src/node_process_methods.cc
   // and https://docs.microsoft.com/fr-fr/cpp/c-runtime-library/reference/umask?view=vs-2019
   #[cfg(not(unix))]
   {
-    let _ = args;
+    let _ = args.mask; // avoid unused warning.
     return Err(OpError::not_implemented());
   }
   #[cfg(unix)]
   {
-    let args: UmaskArgs = serde_json::from_value(args)?;
     use nix::sys::stat::mode_t;
     use nix::sys::stat::umask;
     use nix::sys::stat::Mode;
