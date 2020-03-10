@@ -17,10 +17,9 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/dir";
     Deno.mkdirSync(path, { mode: 0o737 });
     const pathInfo = Deno.statSync(path);
-    if (pathInfo.mode !== null) {
-      // Skip windows
-      // assertEquals(pathInfo.mode, 0o737 & ~Deno.umask());
-      assertEquals(pathInfo.mode & 0o777, 0o715); // assume umask 0o022
+    // Skip windows mode check.
+    if (Deno.build.os !== "win") {
+      assertEquals(pathInfo.mode, 0o737 & ~Deno.umask());
     }
   }
 );
