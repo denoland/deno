@@ -58,12 +58,7 @@ export class WorkerImpl extends EventTarget implements Worker {
 
   constructor(specifier: string, options?: WorkerOptions) {
     super();
-
-    let type = "classic";
-
-    if (options?.type) {
-      type = options.type;
-    }
+    const { type = "classic", name = "unknown" } = options ?? {};
 
     if (type !== "module") {
       throw new Error(
@@ -71,7 +66,7 @@ export class WorkerImpl extends EventTarget implements Worker {
       );
     }
 
-    this.name = options?.name ?? "unknown";
+    this.name = name;
     const hasSourceCode = false;
     const sourceCode = decoder.decode(new Uint8Array());
 

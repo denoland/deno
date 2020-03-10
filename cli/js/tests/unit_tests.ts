@@ -57,6 +57,7 @@ import "./timers_test.ts";
 import "./tls_test.ts";
 import "./truncate_test.ts";
 import "./tty_test.ts";
+import "./umask_test.ts";
 import "./url_test.ts";
 import "./url_search_params_test.ts";
 import "./utime_test.ts";
