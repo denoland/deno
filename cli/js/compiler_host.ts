@@ -2,7 +2,7 @@
 
 import { ASSETS, MediaType, SourceFile } from "./compiler_sourcefile.ts";
 import { OUT_DIR, WriteFileCallback, getAsset } from "./compiler_util.ts";
-import { cwd } from "./dir.ts";
+import { cwd } from "./ops/fs/dir.ts";
 import { assert, notImplemented } from "./util.ts";
 import * as util from "./util.ts";
 

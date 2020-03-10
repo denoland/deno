@@ -7,8 +7,11 @@ extern crate nix;
 extern crate pty;
 extern crate tempfile;
 
+// TODO re-enable. This hangs on macOS
+// https://github.com/denoland/deno/issues/4262
 #[cfg(unix)]
 #[test]
+#[ignore]
 pub fn test_raw_tty() {
   use pty::fork::*;
   use std::io::{Read, Write};
@@ -271,7 +274,7 @@ fn js_unit_tests() {
     .arg("--reload")
     .arg("--allow-run")
     .arg("--allow-env")
-    .arg("cli/js/unit_test_runner.ts")
+    .arg("cli/js/tests/unit_test_runner.ts")
     .spawn()
     .expect("failed to spawn script");
   let status = deno.wait().expect("failed to wait for the child process");
