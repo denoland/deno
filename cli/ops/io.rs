@@ -7,7 +7,9 @@ use deno_core::*;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::ready;
+use std::collections::HashMap;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicIsize, Ordering};
 use std::task::Context;
 use std::task::Poll;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -97,56 +99,46 @@ pub struct FileMetadata {
 
 pub struct StreamResourceHolder {
   pub resource: StreamResource,
-  waker: Option<futures::task::AtomicWaker>,
+  waker: HashMap<isize, futures::task::AtomicWaker>,
+  waker_counter: AtomicIsize,
 }
 
 impl StreamResourceHolder {
   pub fn new(resource: StreamResource) -> StreamResourceHolder {
     StreamResourceHolder {
       resource,
-      waker: None,
+      // Atleast one task is expecter for the resource
+      waker: HashMap::with_capacity(1),
+      // Tracks wakers Ids
+      waker_counter: AtomicIsize::new(0),
     }
   }
 }
 
 impl Drop for StreamResourceHolder {
   fn drop(&mut self) {
-    self.wake_task();
+    self.wake_tasks();
   }
 }
 
 impl StreamResourceHolder {
-  /// Track the current task so future awaiting for connection
-  /// can be notified when listener is closed.
-  ///
-  /// Throws an error if another task is already tracked.
-  pub fn track_task(&mut self, cx: &Context) -> Result<(), OpError> {
-    // Currently, we only allow tracking a single accept task for a listener.
-    // This might be changed in the future with multiple workers.
-    // Caveat: TcpListener by itself also only tracks an accept task at a time.
-    // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
-    if self.waker.is_some() {
-      return Err(OpError::other("Another accept task is ongoing".to_string()));
-    }
+  pub fn track_task(&mut self, cx: &Context) -> Result<isize, OpError> {
     let waker = futures::task::AtomicWaker::new();
     waker.register(cx.waker());
-    self.waker.replace(waker);
-    Ok(())
+    // Its OK if it overflows
+    let task_waker_id = self.waker_counter.fetch_add(1, Ordering::Relaxed);
+    self.waker.insert(task_waker_id, waker);
+    Ok(task_waker_id)
   }
 
-  /// Notifies a task when listener is closed so accept future can resolve.
-  pub fn wake_task(&mut self) {
-    if let Some(waker) = self.waker.as_ref() {
+  pub fn wake_tasks(&mut self) {
+    for waker in self.waker.values() {
       waker.wake();
     }
   }
 
-  /// Stop tracking a task.
-  /// Happens when the task is done and thus no further tracking is needed.
-  pub fn untrack_task(&mut self) {
-    if self.waker.is_some() {
-      self.waker.take();
-    }
+  pub fn untrack_task(&mut self, task_waker_id: isize) {
+    self.waker.remove(&task_waker_id);
   }
 }
 
@@ -210,22 +202,27 @@ pub fn op_read(
 
   let state = state.clone();
   let mut buf = zero_copy.unwrap();
+  // let mut task_tracker_id: Option<isize> = None;
 
   poll_fn(move |cx| {
     let resource_table = &mut state.borrow_mut().resource_table;
     let resource_holder = resource_table
       .get_mut::<StreamResourceHolder>(rid as u32)
       .ok_or_else(OpError::bad_resource_id)?;
+
+    let mut task_tracker_id: Option<isize> = None;
     let nread = match resource_holder
       .resource
       .poll_read(cx, &mut buf.as_mut()[..])
     {
       Poll::Ready(t) => {
-        resource_holder.untrack_task();
+        if let Some(id) = task_tracker_id {
+          resource_holder.untrack_task(id);
+        }
         t
       }
       Poll::Pending => {
-        resource_holder.track_task(cx)?;
+        task_tracker_id.replace(resource_holder.track_task(cx)?);
         return Poll::Pending;
       }
     }?;
