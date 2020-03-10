@@ -186,7 +186,7 @@ unitTest(function consoleTestStringifyWithDepth(): void {
   );
   assertEquals(stringifyArgs([nestedObj], { depth: 0 }), "[Object]");
   assertEquals(
-    stringifyArgs([nestedObj], { depth: null }),
+    stringifyArgs([nestedObj]),
     "{ a: { b: { c: { d: [Object] } } } }"
   );
   // test inspect is working the same way

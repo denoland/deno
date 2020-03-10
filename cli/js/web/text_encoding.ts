@@ -154,11 +154,14 @@ class SingleByteDecoder implements Decoder {
   private _index: number[];
   private _fatal: boolean;
 
-  constructor(index: number[], options: DecoderOptions) {
-    if (options.ignoreBOM) {
+  constructor(
+    index: number[],
+    { ignoreBOM = false, fatal = false }: DecoderOptions = {}
+  ) {
+    if (ignoreBOM) {
       throw new TypeError("Ignoring the BOM is available only with utf-8.");
     }
-    this._fatal = options.fatal || false;
+    this._fatal = fatal;
     this._index = index;
   }
   handler(stream: Stream, byte: number): number {
