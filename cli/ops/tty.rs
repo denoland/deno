@@ -72,7 +72,7 @@ pub fn op_set_raw(
     }
 
     // For now, only stdin.
-    let handle = match resource_holder.unwrap().resource {
+    let handle = match &resource_holder.unwrap().resource {
       StreamResource::Stdin(_, _) => std::io::stdin().as_raw_handle(),
       StreamResource::FsFile(f, _) => {
         let tokio_file = futures::executor::block_on(f.try_clone())?;
