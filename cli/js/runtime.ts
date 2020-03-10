@@ -71,7 +71,11 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
   setBuildInfo(s.os, s.arch);
 
   util.setLogDebug(s.debugFlag, source);
-  util.immutableDefine(globalThis, "location", deepFreeze(new LocationImpl(s.location)));
+  util.immutableDefine(
+    globalThis,
+    "location",
+    deepFreeze(new LocationImpl(s.location))
+  );
   setPrepareStackTrace(Error);
   setSignals();
 
