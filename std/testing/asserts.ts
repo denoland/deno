@@ -315,9 +315,9 @@ export function assertThrows(
     fn();
   } catch (e) {
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
-      msg = `Expected error to be instance of "${ErrorClass.name}"${
-        msg ? `: ${msg}` : "."
-      }`;
+      msg = `Expected error to be instance of "${ErrorClass.name}", but was "${
+        e.constructor.name
+      }"${msg ? `: ${msg}` : "."}`;
       throw new AssertionError(msg);
     }
     if (msgIncludes && !e.message.includes(msgIncludes)) {

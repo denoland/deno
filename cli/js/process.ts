@@ -1,11 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./ops/dispatch_json.ts";
 import { File } from "./files.ts";
 import { close } from "./ops/resources.ts";
 import { ReadCloser, WriteCloser } from "./io.ts";
 import { readAll } from "./buffer.ts";
-import { assert, unreachable } from "./util.ts";
 import { build } from "./build.ts";
+import { kill, runStatus as runStatusOp, run as runOp } from "./ops/process.ts";
 
 /** How to handle subprocess stdio.
  *
@@ -31,16 +30,8 @@ export interface RunOptions {
   stdin?: ProcessStdio | number;
 }
 
-interface RunStatusResponse {
-  gotSignal: boolean;
-  exitCode: number;
-  exitSignal: number;
-}
-
 async function runStatus(rid: number): Promise<ProcessStatus> {
-  const res = (await sendAsync("op_run_status", {
-    rid
-  })) as RunStatusResponse;
+  const res = await runStatusOp(rid);
 
   if (res.gotSignal) {
     const signal = res.exitSignal;
@@ -49,15 +40,6 @@ async function runStatus(rid: number): Promise<ProcessStatus> {
     const code = res.exitCode;
     return { code, success: code === 0 };
   }
-}
-
-/** Send a signal to process under given PID. Unix only at this moment.
- * If pid is negative, the signal will be sent to the process group identified
- * by -pid.
- * Requires the `--allow-run` flag.
- */
-export function kill(pid: number, signo: number): void {
-  sendSync("op_kill", { pid, signo });
 }
 
 export class Process {
@@ -134,18 +116,6 @@ export interface ProcessStatus {
   signal?: number; // TODO: Make this a string, e.g. 'SIGTERM'.
 }
 
-// TODO: this method is only used to validate proper option, probably can be renamed
-function stdioMap(s: string): string {
-  switch (s) {
-    case "inherit":
-    case "piped":
-    case "null":
-      return s;
-    default:
-      return unreachable();
-  }
-}
-
 function isRid(arg: unknown): arg is number {
   return !isNaN(arg as number);
 }
@@ -170,57 +140,25 @@ interface RunResponse {
  * `opt.stdout`, `opt.stderr` and `opt.stdin` can be specified independently -
  * they can be set to either `ProcessStdio` or `rid` of open file.
  */
-export function run(opt: RunOptions): Process {
-  assert(opt.args.length > 0);
-  let env: Array<[string, string]> = [];
-  if (opt.env) {
-    env = Array.from(Object.entries(opt.env));
-  }
-
-  let stdin = stdioMap("inherit");
-  let stdout = stdioMap("inherit");
-  let stderr = stdioMap("inherit");
-  let stdinRid = 0;
-  let stdoutRid = 0;
-  let stderrRid = 0;
-
-  if (opt.stdin) {
-    if (isRid(opt.stdin)) {
-      stdinRid = opt.stdin;
-    } else {
-      stdin = stdioMap(opt.stdin);
-    }
-  }
-
-  if (opt.stdout) {
-    if (isRid(opt.stdout)) {
-      stdoutRid = opt.stdout;
-    } else {
-      stdout = stdioMap(opt.stdout);
-    }
-  }
-
-  if (opt.stderr) {
-    if (isRid(opt.stderr)) {
-      stderrRid = opt.stderr;
-    } else {
-      stderr = stdioMap(opt.stderr);
-    }
-  }
-
-  const req = {
-    args: opt.args.map(String),
-    cwd: opt.cwd,
-    env,
-    stdin,
-    stdout,
-    stderr,
-    stdinRid,
-    stdoutRid,
-    stderrRid
-  };
-
-  const res = sendSync("op_run", req) as RunResponse;
+export function run({
+  args,
+  cwd = undefined,
+  env = {},
+  stdout = "inherit",
+  stderr = "inherit",
+  stdin = "inherit"
+}: RunOptions): Process {
+  const res = runOp({
+    args: args.map(String),
+    cwd,
+    env: Object.entries(env),
+    stdin: isRid(stdin) ? "" : stdin,
+    stdout: isRid(stdout) ? "" : stdout,
+    stderr: isRid(stderr) ? "" : stderr,
+    stdinRid: isRid(stdin) ? stdin : 0,
+    stdoutRid: isRid(stdout) ? stdout : 0,
+    stderrRid: isRid(stderr) ? stderr : 0
+  }) as RunResponse;
   return new Process(res);
 }
 

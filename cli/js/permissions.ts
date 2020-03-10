@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync } from "./ops/dispatch_json.ts";
+import * as permissionsOps from "./ops/permissions.ts";
 
 /** Permissions as granted by the caller
  * See: https://w3c.github.io/permissions/#permission-registry
@@ -60,7 +60,7 @@ export class Permissions {
    *       }
    */
   async query(desc: PermissionDescriptor): Promise<PermissionStatus> {
-    const { state } = sendSync("op_query_permission", desc);
+    const state = permissionsOps.query(desc);
     return new PermissionStatus(state);
   }
 
@@ -69,7 +69,7 @@ export class Permissions {
    *       assert(status.state !== "granted")
    */
   async revoke(desc: PermissionDescriptor): Promise<PermissionStatus> {
-    const { state } = sendSync("op_revoke_permission", desc);
+    const state = permissionsOps.revoke(desc);
     return new PermissionStatus(state);
   }
 
@@ -82,7 +82,7 @@ export class Permissions {
    *       }
    */
   async request(desc: PermissionDescriptor): Promise<PermissionStatus> {
-    const { state } = sendSync("op_request_permission", desc);
+    const state = permissionsOps.request(desc);
     return new PermissionStatus(state);
   }
 }

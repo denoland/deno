@@ -258,12 +258,12 @@ interface ProgressEvent extends Event {
 }
 
 export interface EventListenerOptions {
-  capture: boolean;
+  capture?: boolean;
 }
 
 export interface AddEventListenerOptions extends EventListenerOptions {
-  once: boolean;
-  passive: boolean;
+  once?: boolean;
+  passive?: boolean;
 }
 
 export interface AbortSignal extends EventTarget {

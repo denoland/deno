@@ -81,6 +81,7 @@ use url::Url;
 
 static LOGGER: Logger = Logger;
 
+// TODO(ry) Switch to env_logger or other standard crate.
 struct Logger;
 
 impl log::Log for Logger {
@@ -97,7 +98,11 @@ impl log::Log for Logger {
         target.push_str(&line_no.to_string());
       }
 
-      println!("{} RS - {} - {}", record.level(), target, record.args());
+      if record.level() >= Level::Info {
+        eprintln!("{}", record.args());
+      } else {
+        eprintln!("{} RS - {} - {}", record.level(), target, record.args());
+      }
     }
   }
   fn flush(&self) {}
@@ -372,7 +377,6 @@ async fn test_command(
   flags: Flags,
   include: Option<Vec<String>>,
   fail_fast: bool,
-  _quiet: bool,
   allow_none: bool,
 ) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
@@ -427,7 +431,7 @@ pub fn main() {
 
   let log_level = match flags.log_level {
     Some(level) => level,
-    None => Level::Warn,
+    None => Level::Info, // Default log level
   };
   log::set_max_level(log_level.to_level_filter());
 
@@ -458,13 +462,10 @@ pub fn main() {
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
-      quiet,
       fail_fast,
       include,
       allow_none,
-    } => {
-      test_command(flags, include, fail_fast, quiet, allow_none).boxed_local()
-    }
+    } => test_command(flags, include, fail_fast, allow_none).boxed_local(),
     DenoSubcommand::Completions { buf } => {
       print!("{}", std::str::from_utf8(&buf).unwrap());
       return;

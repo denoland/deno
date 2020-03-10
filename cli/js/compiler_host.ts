@@ -2,7 +2,7 @@
 
 import { ASSETS, MediaType, SourceFile } from "./compiler_sourcefile.ts";
 import { OUT_DIR, WriteFileCallback, getAsset } from "./compiler_util.ts";
-import { cwd } from "./dir.ts";
+import { cwd } from "./ops/fs/dir.ts";
 import { assert, notImplemented } from "./util.ts";
 import * as util from "./util.ts";
 
@@ -165,8 +165,7 @@ export class Host implements ts.CompilerHost {
   /* Deno specific APIs */
 
   /** Provides the `ts.HostCompiler` interface for Deno. */
-  constructor(options: CompilerHostOptions) {
-    const { bundle = false, target, writeFile } = options;
+  constructor({ bundle = false, target, writeFile }: CompilerHostOptions) {
     this._target = target;
     this._writeFile = writeFile;
     if (bundle) {
