@@ -287,10 +287,8 @@ declare namespace Deno {
    */
   export function chdir(directory: string): void;
 
-  // @url js/umask.d.ts
-
   /**
-   * **UNSTABLE**: maybe needs `allow-env` permissions.
+   * **UNSTABLE**: New API. Maybe needs permissions.
    *
    * If `mask` is provided, sets the process umask. Always returns what the umask
    * was before the call.

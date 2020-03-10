@@ -3,8 +3,7 @@ import { unitTest, assertEquals } from "./test_util.ts";
 
 unitTest(
   {
-    skip: Deno.build.os === "win",
-    perms: {}
+    skip: Deno.build.os === "win"
   },
   function umaskSuccess(): void {
     const prevMask = Deno.umask(0o020);

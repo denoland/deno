@@ -71,6 +71,10 @@ impl OpError {
     Self::new(ErrorKind::NotFound, msg)
   }
 
+  pub fn not_implemented() -> Self {
+    Self::other("not implemented".to_string())
+  }
+
   pub fn other(msg: String) -> Self {
     Self::new(ErrorKind::Other, msg)
   }
