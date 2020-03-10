@@ -27,15 +27,11 @@ unitTest({ perms: { write: true } }, function makeTempDirSyncSuccess(): void {
 });
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { skip: Deno.build.os === "win", perms: { read: true, write: true } },
   function makeTempDirSyncMode(): void {
     const path = Deno.makeTempDirSync({ mode: 0o737 });
     const pathInfo = Deno.statSync(path);
-    if (pathInfo.mode !== null) {
-      // Skip windows
-      // assertEquals(pathInfo.mode, 0o737 & ~Deno.umask());
-      assertEquals(pathInfo.mode & 0o777, 0o715); // assume umask 0o022
-    }
+    assertEquals(pathInfo.mode! & 0o777, 0o737 & ~Deno.umask());
   }
 );
 
@@ -106,15 +102,11 @@ unitTest({ perms: { write: true } }, function makeTempFileSyncSuccess(): void {
 });
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { skip: Deno.build.os === "win", perms: { read: true, write: true } },
   function makeTempFileSyncMode(): void {
     const path = Deno.makeTempFileSync({ mode: 0o626 });
     const pathInfo = Deno.statSync(path);
-    if (pathInfo.mode != null) {
-      // Skip windows
-      // assertEquals(pathInfo.mode, 0o626 & ~Deno.umask());
-      assertEquals(pathInfo.mode & 0o777, 0o604); // assume umask 0o022
-    }
+    assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
   }
 );
 
