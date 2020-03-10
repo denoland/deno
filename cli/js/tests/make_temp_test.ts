@@ -77,7 +77,7 @@ unitTest(
 
 unitTest(
   { skip: Deno.build.os === "win", perms: { read: true, write: true } },
-  async function makeTempDirMode(): void {
+  async function makeTempDirMode(): Promise<void> {
     const path = await Deno.makeTempDir({ mode: 0o737 });
     const pathInfo = Deno.statSync(path);
     assertEquals(pathInfo.mode! & 0o777, 0o737 & ~Deno.umask());
@@ -162,7 +162,7 @@ unitTest(
 
 unitTest(
   { skip: Deno.build.os === "win", perms: { read: true, write: true } },
-  async function makeTempFileMode(): void {
+  async function makeTempFileMode(): Promise<void> {
     const path = await Deno.makeTempFile({ mode: 0o626 });
     const pathInfo = Deno.statSync(path);
     assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
