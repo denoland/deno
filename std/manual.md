@@ -768,7 +768,7 @@ if (import.meta.main) {
 
 ### Flags
 
-Use `deno help` to see the help text documenting Deno's flags and usage. Use
+Use `deno help` to see help text documenting Deno's flags and usage. Use
 `deno help <subcommand>` for subcommand-specific flags.
 
 ### Environmental variables
