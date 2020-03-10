@@ -6,7 +6,7 @@ import {
   SourceFileJson
 } from "./compiler_sourcefile.ts";
 import { normalizeString, CHAR_FORWARD_SLASH } from "./compiler_util.ts";
-import { cwd } from "./dir.ts";
+import { cwd } from "./ops/fs/dir.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
 import * as compilerOps from "./ops/compiler.ts";
