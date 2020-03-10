@@ -34,21 +34,6 @@ export function initOps(): void {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/ban-types
-function deepFreeze(object: Object): Object {
-  // Freeze all properties first
-  const propNames = Object.getOwnPropertyNames(object);
-  for (const name of propNames) {
-    // @ts-ignore
-    const prop = object[name];
-    if (typeof prop === "object") {
-      Object.freeze(prop);
-    }
-  }
-
-  return Object.freeze(object);
-}
-
 /**
  * This function bootstraps JS runtime, unfortunately some of runtime
  * code depends on information like "os" and thus getting this information
@@ -74,22 +59,27 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
   util.immutableDefine(
     globalThis,
     "location",
-    deepFreeze(new LocationImpl(s.location))
+    Object.freeze(new LocationImpl(s.location))
   );
   setPrepareStackTrace(Error);
   setSignals();
 
   if (preserveDenoNamespace) {
-    util.immutableDefine(Deno, "version", {
-      deno: s.denoVersion,
-      v8: s.v8Version,
-      typescript: s.tsVersion
-    });
+    util.immutableDefine(
+      Deno,
+      "version",
+      Object.freeze({
+        deno: s.denoVersion,
+        v8: s.v8Version,
+        typescript: s.tsVersion
+      })
+    );
     util.immutableDefine(Deno, "pid", s.pid);
     util.immutableDefine(Deno, "noColor", s.noColor);
-    util.immutableDefine(Deno, "args", [...s.args]);
-    const frozenDenoNs = deepFreeze(Deno);
-    util.immutableDefine(globalThis, "Deno", frozenDenoNs);
+    util.immutableDefine(Deno, "args", Object.freeze([...s.args]));
+    Object.freeze(Deno.core);
+    Object.freeze(Deno.core.sharedQueue);
+    util.immutableDefine(globalThis, "Deno", Object.freeze(Deno));
   } else {
     // Remove globalThis.Deno
     delete globalThis.Deno;
