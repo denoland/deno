@@ -28,7 +28,7 @@ export { OpenOptions, OpenMode } from "./ops/fs/open.ts";
  *
  * Requires `allow-read` and `allow-write` permissions depending on openMode.
  */
-export function openSync(path: string, openMode?: OpenOptions): File;
+export function openSync(path: string, options?: OpenOptions): File;
 
 /** Synchronously open a file and return an instance of the `File` object.
  *

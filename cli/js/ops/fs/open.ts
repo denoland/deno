@@ -56,7 +56,8 @@ export function openSync(
   openMode: OpenMode | undefined,
   options: OpenOptions | undefined
 ): number {
-  return sendSync("op_open", { path, options, openMode });
+  const mode: number | undefined = options?.mode;
+  return sendSync("op_open", { path, options, openMode, mode });
 }
 
 export async function open(
@@ -64,9 +65,11 @@ export async function open(
   openMode: OpenMode | undefined,
   options: OpenOptions | undefined
 ): Promise<number> {
+  const mode: number | undefined = options?.mode;
   return await sendAsync("op_open", {
     path,
     options,
-    openMode
+    openMode,
+    mode
   });
 }
