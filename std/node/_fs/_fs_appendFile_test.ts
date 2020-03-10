@@ -2,9 +2,9 @@
 const { test } = Deno;
 import {
   assertEquals,
-  assert,
   assertThrows,
-  assertThrowsAsync
+  assertThrowsAsync,
+  fail
 } from "../../testing/asserts.ts";
 import { appendFile, appendFileSync } from "./_fs_appendFile.ts";
 
@@ -15,7 +15,7 @@ test({
   async fn() {
     await assertThrowsAsync(
       async () => {
-        await appendFile("some/path", "some data", "utf8");
+        appendFile("some/path", "some data", "utf8");
       },
       Error,
       "No callback function supplied"
@@ -75,31 +75,48 @@ test({
       write: true,
       read: true
     });
-    let calledBack = false;
-    await appendFile(file.rid, "hello world", () => {
-      calledBack = true;
-    });
-    assert(calledBack);
-    Deno.close(file.rid);
-    const data = await Deno.readFile(tempFile);
-    assertEquals(decoder.decode(data), "hello world");
-    await Deno.remove(tempFile);
+    await new Promise((resolve, reject) => {
+      appendFile(file.rid, "hello world", err => {
+        if (err) reject();
+        else resolve();
+      });
+    })
+      .then(async () => {
+        const data = await Deno.readFile(tempFile);
+        assertEquals(decoder.decode(data), "hello world");
+      })
+      .catch(() => {
+        fail("No error expected");
+      })
+      .finally(async () => {
+        Deno.close(file.rid);
+        await Deno.remove(tempFile);
+      });
   }
 });
 
 test({
   name: "Async: Data is written to passed in file path",
   async fn() {
-    let calledBack = false;
     const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
-    await appendFile("_fs_appendFile_test_file.txt", "hello world", () => {
-      calledBack = true;
-    });
-    assert(calledBack);
-    assertEquals(Deno.resources(), openResourcesBeforeAppend);
-    const data = await Deno.readFile("_fs_appendFile_test_file.txt");
-    assertEquals(decoder.decode(data), "hello world");
-    await Deno.remove("_fs_appendFile_test_file.txt");
+
+    await new Promise((resolve, reject) => {
+      appendFile("_fs_appendFile_test_file.txt", "hello world", err => {
+        if (err) reject(err);
+        else resolve();
+      });
+    })
+      .then(async () => {
+        assertEquals(Deno.resources(), openResourcesBeforeAppend);
+        const data = await Deno.readFile("_fs_appendFile_test_file.txt");
+        assertEquals(decoder.decode(data), "hello world");
+      })
+      .catch(err => {
+        fail("No error was expected: " + err);
+      })
+      .finally(async () => {
+        await Deno.remove("_fs_appendFile_test_file.txt");
+      });
   }
 });
 
@@ -107,16 +124,23 @@ test({
   name:
     "Async: Callback is made with error if attempting to append data to an existing file with 'ax' flag",
   async fn() {
-    let calledBack = false;
     const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
     const tempFile: string = await Deno.makeTempFile();
-    await appendFile(tempFile, "hello world", { flag: "ax" }, (err: Error|undefined) => {
-      calledBack = true;
-      assert(err);
-    });
-    assert(calledBack);
-    assertEquals(Deno.resources(), openResourcesBeforeAppend);
-    await Deno.remove(tempFile);
+    await new Promise((resolve, reject) => {
+      appendFile(tempFile, "hello world", { flag: "ax" }, err => {
+        if (err) reject(err);
+        else resolve();
+      });
+    })
+      .then(() => {
+        fail("Expected error to be thrown");
+      })
+      .catch(() => {
+        assertEquals(Deno.resources(), openResourcesBeforeAppend);
+      })
+      .finally(async () => {
+        await Deno.remove(tempFile);
+      });
   }
 });
 
