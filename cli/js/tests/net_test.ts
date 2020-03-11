@@ -353,12 +353,10 @@ unitTest(
       try {
         while (true) {
           const nread = await conn.read(p);
-          console.log("read", nread, "bytes");
           if (nread === Deno.EOF) {
             break;
           }
-          const nwritten = await conn.write(new Uint8Array([1, 2, 3]));
-          console.log("written", nwritten, "bytes");
+          await conn.write(new Uint8Array([1, 2, 3]));
         }
       } catch (err) {
         assert(!!err);
@@ -374,13 +372,10 @@ unitTest(
     const conn = await Deno.connect(addr);
     await conn.write(new Uint8Array([1, 2, 3, 4]));
     const buf = new Uint8Array(10);
-    const nread = await conn.read(buf);
-    console.log("main read", nread);
-    console.log("accepted", acceptedConn!);
+    await conn.read(buf);
     conn!.close();
     acceptedConn!.close();
     listener.close();
-    console.log("heyt");
     await resolvable;
   }
 );
