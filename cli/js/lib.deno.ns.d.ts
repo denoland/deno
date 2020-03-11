@@ -476,7 +476,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions.
    */
-  export function createSync(path: string, mode?: number): File;
+  export function createSync(path: string): File;
 
   /** Creates a file if none exists or truncates an existing file and resolves to
    *  an instance of `Deno.File`.
@@ -485,7 +485,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions.
    */
-  export function create(path: string, mode?: number): Promise<File>;
+  export function create(path: string): Promise<File>;
 
   /** Synchronously read from a file ID into an array buffer.
    *

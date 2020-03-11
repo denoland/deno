@@ -99,14 +99,8 @@ export async function open(
  *
  * Requires `allow-read` and `allow-write` permissions.
  */
-export function createSync(path: string, mode?: number): File {
-  return openSync(path, {
-    mode,
-    read: true,
-    write: true,
-    create: true,
-    truncate: true
-  });
+export function createSync(path: string): File {
+  return openSync(path, "w+");
 }
 
 /** Creates a file if none exists or truncates an existing file and resolves to
@@ -116,14 +110,8 @@ export function createSync(path: string, mode?: number): File {
  *
  * Requires `allow-read` and `allow-write` permissions.
  */
-export function create(path: string, mode?: number): Promise<File> {
-  return open(path, {
-    mode,
-    read: true,
-    write: true,
-    create: true,
-    truncate: true
-  });
+export function create(path: string): Promise<File> {
+  return open(path, "w+");
 }
 
 /** The Deno abstraction for reading and writing files. */
