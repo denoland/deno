@@ -11,23 +11,23 @@
 // to properly setup runtime.
 
 // NOTE: this import has side effects!
-import "./ts_global.d.ts";
+import "./compiler/ts_global.d.ts";
 
-import { TranspileOnlyResult } from "./compiler_api.ts";
-import { TS_SNAPSHOT_PROGRAM } from "./compiler_bootstrap.ts";
-import { setRootExports } from "./compiler_bundler.ts";
+import { TranspileOnlyResult } from "./compiler/api.ts";
+import { TS_SNAPSHOT_PROGRAM } from "./compiler/bootstrap.ts";
+import { setRootExports } from "./compiler/bundler.ts";
 import {
   CompilerHostTarget,
   defaultBundlerOptions,
   defaultRuntimeCompileOptions,
   defaultTranspileOptions,
   Host
-} from "./compiler_host.ts";
+} from "./compiler/host.ts";
 import {
   processImports,
   processLocalImports,
   resolveModules
-} from "./compiler_imports.ts";
+} from "./compiler/imports.ts";
 import {
   createWriteFile,
   CompilerRequestType,
@@ -36,7 +36,7 @@ import {
   WriteFileState,
   processConfigureResponse,
   base64ToUint8Array
-} from "./compiler_util.ts";
+} from "./compiler/util.ts";
 import { Diagnostic, DiagnosticItem } from "./diagnostics.ts";
 import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
 import { assert } from "./util.ts";

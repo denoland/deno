@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import * as blob from "./web/blob.ts";
-import * as consoleTypes from "./console.ts";
+import * as consoleTypes from "./web/console.ts";
 import * as customEvent from "./web/custom_event.ts";
 import * as domTypes from "./web/dom_types.ts";
 import * as domFile from "./web/dom_file.ts";
@@ -11,11 +11,11 @@ import * as formData from "./web/form_data.ts";
 import * as fetchTypes from "./web/fetch.ts";
 import * as headers from "./web/headers.ts";
 import * as textEncoding from "./web/text_encoding.ts";
-import * as timers from "./timers.ts";
+import * as timers from "./web/timers.ts";
 import * as url from "./web/url.ts";
 import * as urlSearchParams from "./web/url_search_params.ts";
-import * as workers from "./workers.ts";
-import * as performanceUtil from "./performance.ts";
+import * as workers from "./web/workers.ts";
+import * as performanceUtil from "./web/performance.ts";
 import * as request from "./web/request.ts";
 
 // These imports are not exposed and therefore are fine to just import the

@@ -1,15 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import {
-  MediaType,
-  SourceFile,
-  SourceFileJson
-} from "./compiler_sourcefile.ts";
-import { normalizeString, CHAR_FORWARD_SLASH } from "./compiler_util.ts";
-import { cwd } from "./ops/fs/dir.ts";
-import { assert } from "./util.ts";
-import * as util from "./util.ts";
-import * as compilerOps from "./ops/compiler.ts";
+import { MediaType, SourceFile, SourceFileJson } from "./sourcefile.ts";
+import { normalizeString, CHAR_FORWARD_SLASH } from "./util.ts";
+import { cwd } from "../ops/fs/dir.ts";
+import { assert } from "../util.ts";
+import * as util from "../util.ts";
+import * as compilerOps from "../ops/compiler.ts";
 
 /** Resolve a path to the final path segment passed. */
 function resolvePath(...pathSegments: string[]): string {

@@ -2,7 +2,7 @@
 import * as domTypes from "./dom_types.ts";
 import { DomIterableMixin } from "./dom_iterable.ts";
 import { requiredArguments } from "../util.ts";
-import { customInspect } from "../console.ts";
+import { customInspect } from "./console.ts";
 
 // From node-fetch
 // Copyright (c) 2016 David Frank. MIT License.

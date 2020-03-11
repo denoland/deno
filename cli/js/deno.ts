@@ -11,8 +11,8 @@ export {
 export { build, OperatingSystem, Arch } from "./build.ts";
 export { chmodSync, chmod } from "./ops/fs/chmod.ts";
 export { chownSync, chown } from "./ops/fs/chown.ts";
-export { transpileOnly, compile, bundle } from "./compiler_api.ts";
-export { inspect } from "./console.ts";
+export { transpileOnly, compile, bundle } from "./compiler/api.ts";
+export { inspect } from "./web/console.ts";
 export { copyFileSync, copyFile } from "./ops/fs/copy_file.ts";
 export {
   Diagnostic,

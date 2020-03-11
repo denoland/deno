@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { CompilerHostTarget, Host } from "./compiler_host.ts";
-import { ASSETS } from "./compiler_sourcefile.ts";
-import { getAsset } from "./compiler_util.ts";
+import { CompilerHostTarget, Host } from "./host.ts";
+import { ASSETS } from "./sourcefile.ts";
+import { getAsset } from "./util.ts";
 
 // NOTE: target doesn't really matter here,
 // this is in fact a mock host created just to

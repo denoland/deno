@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { exit } from "./ops/os.ts";
 import { core } from "./core.ts";
-import { stringifyArgs } from "./console.ts";
+import { stringifyArgs } from "./web/console.ts";
 import { startRepl, readline } from "./ops/repl.ts";
 import { close } from "./ops/resources.ts";
 

@@ -1,12 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { SYSTEM_LOADER } from "./compiler_bootstrap.ts";
-import {
-  commonPath,
-  normalizeString,
-  CHAR_FORWARD_SLASH
-} from "./compiler_util.ts";
-import { assert } from "./util.ts";
+import { SYSTEM_LOADER } from "./bootstrap.ts";
+import { commonPath, normalizeString, CHAR_FORWARD_SLASH } from "./util.ts";
+import { assert } from "../util.ts";
 
 /** Local state of what the root exports are of a root module. */
 let rootExports: string[] | undefined;

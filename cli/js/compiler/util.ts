@@ -1,15 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { bold, cyan, yellow } from "./colors.ts";
-import { CompilerOptions } from "./compiler_api.ts";
-import { buildBundle } from "./compiler_bundler.ts";
-import { ConfigureResponse, Host } from "./compiler_host.ts";
-import { SourceFile } from "./compiler_sourcefile.ts";
-import { atob, TextEncoder } from "./web/text_encoding.ts";
-import * as compilerOps from "./ops/compiler.ts";
-import * as util from "./util.ts";
-import { assert } from "./util.ts";
-import { writeFileSync } from "./write_file.ts";
+import { bold, cyan, yellow } from "../colors.ts";
+import { CompilerOptions } from "./api.ts";
+import { buildBundle } from "./bundler.ts";
+import { ConfigureResponse, Host } from "./host.ts";
+import { SourceFile } from "./sourcefile.ts";
+import { atob, TextEncoder } from "../web/text_encoding.ts";
+import * as compilerOps from "../ops/compiler.ts";
+import * as util from "../util.ts";
+import { assert } from "../util.ts";
+import { writeFileSync } from "../write_file.ts";
 
 /** Type for the write fall callback that allows delegation from the compiler
  * host on writing files. */
