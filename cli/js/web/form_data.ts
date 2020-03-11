@@ -3,7 +3,7 @@ import * as domTypes from "./dom_types.ts";
 import * as blob from "./blob.ts";
 import * as domFile from "./dom_file.ts";
 import { DomIterableMixin } from "./dom_iterable.ts";
-import { requiredArguments } from "../util.ts";
+import { requiredArguments } from "./util.ts";
 
 const dataSymbol = Symbol("data");
 

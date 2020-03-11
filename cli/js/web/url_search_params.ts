@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { URL } from "./url.ts";
-import { requiredArguments } from "../util.ts";
+import { requiredArguments } from "./util.ts";
 
 // Returns whether o is iterable.
 // @internal

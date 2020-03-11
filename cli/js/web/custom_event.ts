@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types.ts";
 import * as event from "./event.ts";
-import { getPrivateValue, requiredArguments } from "../util.ts";
+import { getPrivateValue, requiredArguments } from "./util.ts";
 
 // WeakMaps are recommended for private attributes (see MDN link below)
 // https://developer.mozilla.org/en-US/docs/Archive/Add-ons/Add-on_SDK/Guides/Contributor_s_Guide/Private_Properties#Using_WeakMaps

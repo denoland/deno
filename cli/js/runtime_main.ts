@@ -18,7 +18,7 @@ import {
   eventTargetProperties
 } from "./globals.ts";
 import { internalObject } from "./internals.ts";
-import { setSignals } from "./process.ts";
+import { setSignals } from "./signals.ts";
 import { replLoop } from "./repl.ts";
 import * as runtime from "./runtime.ts";
 import { symbols } from "./symbols.ts";
