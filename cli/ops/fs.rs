@@ -280,7 +280,7 @@ struct MkdirArgs {
   promise_id: Option<u64>,
   path: String,
   recursive: bool,
-  mode: u32,
+  mode: Option<u32>,
 }
 
 fn op_mkdir(
@@ -290,13 +290,14 @@ fn op_mkdir(
 ) -> Result<JsonOp, OpError> {
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+  let mode = args.mode.unwrap_or(0o777);
 
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_mkdir {}", path.display());
-    deno_fs::mkdir(&path, args.mode, args.recursive)?;
+    debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
+    deno_fs::mkdir(&path, mode, args.recursive)?;
     Ok(json!({}))
   })
 }
