@@ -36,7 +36,7 @@ export interface OpenOptions {
   mode?: number;
 }
 
-/** A set of string literals which specify the openMode of a file.
+/** A set of string literals which specify how to open a file.
  *
  * |Value |Description                                                                                       |
  * |------|--------------------------------------------------------------------------------------------------|
