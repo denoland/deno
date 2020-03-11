@@ -3,7 +3,6 @@ import { File } from "./files.ts";
 import { close } from "./ops/resources.ts";
 import { ReadCloser, WriteCloser } from "./io.ts";
 import { readAll } from "./buffer.ts";
-import { build } from "./build.ts";
 import { kill, runStatus as runStatusOp, run as runOp } from "./ops/process.ts";
 
 /** How to handle subprocess stdio.
