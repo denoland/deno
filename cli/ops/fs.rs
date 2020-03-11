@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
-use super::io::{FileMetadata, StreamResource};
+use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
 use crate::fs as deno_fs;
 use crate::op_error::OpError;
 use crate::ops::dispatch_json::JsonResult;
@@ -153,7 +153,10 @@ fn op_open(
     let mut state = state_.borrow_mut();
     let rid = state.resource_table.add(
       "fsFile",
-      Box::new(StreamResource::FsFile(fs_file, FileMetadata::default())),
+      Box::new(StreamResourceHolder::new(StreamResource::FsFile(
+        fs_file,
+        FileMetadata::default(),
+      ))),
     );
     Ok(json!(rid))
   };
@@ -198,12 +201,12 @@ fn op_seek(
   };
 
   let state = state.borrow();
-  let resource = state
+  let resource_holder = state
     .resource_table
-    .get::<StreamResource>(rid)
+    .get::<StreamResourceHolder>(rid)
     .ok_or_else(OpError::bad_resource_id)?;
 
-  let tokio_file = match resource {
+  let tokio_file = match resource_holder.resource {
     StreamResource::FsFile(ref file, _) => file,
     _ => return Err(OpError::bad_resource_id()),
   };

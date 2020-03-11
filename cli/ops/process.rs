@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use super::io::StreamResource;
+use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
 use crate::signal::kill;
 use crate::state::State;
@@ -24,11 +24,11 @@ pub fn init(i: &mut Isolate, s: &State) {
 
 fn clone_file(rid: u32, state: &State) -> Result<std::fs::File, OpError> {
   let mut state = state.borrow_mut();
-  let repr = state
+  let repr_holder = state
     .resource_table
-    .get_mut::<StreamResource>(rid)
+    .get_mut::<StreamResourceHolder>(rid)
     .ok_or_else(OpError::bad_resource_id)?;
-  let file = match repr {
+  let file = match repr_holder.resource {
     StreamResource::FsFile(ref mut file, _) => file,
     _ => return Err(OpError::bad_resource_id()),
   };
@@ -127,7 +127,9 @@ fn op_run(
     Some(child_stdin) => {
       let rid = table.add(
         "childStdin",
-        Box::new(StreamResource::ChildStdin(child_stdin)),
+        Box::new(StreamResourceHolder::new(StreamResource::ChildStdin(
+          child_stdin,
+        ))),
       );
       Some(rid)
     }
@@ -138,7 +140,9 @@ fn op_run(
     Some(child_stdout) => {
       let rid = table.add(
         "childStdout",
-        Box::new(StreamResource::ChildStdout(child_stdout)),
+        Box::new(StreamResourceHolder::new(StreamResource::ChildStdout(
+          child_stdout,
+        ))),
       );
       Some(rid)
     }
@@ -149,7 +153,9 @@ fn op_run(
     Some(child_stderr) => {
       let rid = table.add(
         "childStderr",
-        Box::new(StreamResource::ChildStderr(child_stderr)),
+        Box::new(StreamResourceHolder::new(StreamResource::ChildStderr(
+          child_stderr,
+        ))),
       );
       Some(rid)
     }

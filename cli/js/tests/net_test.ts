@@ -336,3 +336,46 @@ unitTest(
     conn.close();
   }
 );
+
+unitTest(
+  {
+    perms: { net: true }
+  },
+  async function netHangsOnClose() {
+    let acceptedConn: Deno.Conn;
+    const resolvable = createResolvable();
+
+    async function iteratorReq(listener: Deno.Listener): Promise<void> {
+      const p = new Uint8Array(10);
+      const conn = await listener.accept();
+      acceptedConn = conn;
+
+      try {
+        while (true) {
+          const nread = await conn.read(p);
+          if (nread === Deno.EOF) {
+            break;
+          }
+          await conn.write(new Uint8Array([1, 2, 3]));
+        }
+      } catch (err) {
+        assert(!!err);
+        assert(err instanceof Deno.errors.BadResource);
+      }
+
+      resolvable.resolve();
+    }
+
+    const addr = { hostname: "127.0.0.1", port: 4500 };
+    const listener = Deno.listen(addr);
+    iteratorReq(listener);
+    const conn = await Deno.connect(addr);
+    await conn.write(new Uint8Array([1, 2, 3, 4]));
+    const buf = new Uint8Array(10);
+    await conn.read(buf);
+    conn!.close();
+    acceptedConn!.close();
+    listener.close();
+    await resolvable;
+  }
+);

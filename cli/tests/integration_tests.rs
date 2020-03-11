@@ -1785,7 +1785,8 @@ fn test_permissions_net_fetch_allow_localhost_4545() {
     true,
 			"run --allow-net=localhost:4545 complex_permissions_test.ts netFetch http://localhost:4545/",
 			None,
-			None,true,
+      None,
+      true,
 		);
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
@@ -1918,7 +1919,7 @@ fn test_permissions_net_listen_allow_localhost() {
 			"run --allow-net=localhost complex_permissions_test.ts netListen localhost:4600",
 			None,
 			None,
-			false,
+      false,
 		);
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
@@ -1932,6 +1933,7 @@ mod util {
   use std::process::Command;
   use std::process::Output;
   use std::process::Stdio;
+
   use tempfile::TempDir;
 
   pub const PERMISSION_VARIANTS: [&str; 5] =
