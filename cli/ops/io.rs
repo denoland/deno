@@ -213,7 +213,7 @@ pub fn op_read(
     let mut task_tracker_id: Option<isize> = None;
     let nread = match resource_holder
       .resource
-      .poll_read(cx, &mut buf.as_mut()[..])
+      .poll_read(cx, &mut buf.as_mut()[..]).map_err(OpError::from)
     {
       Poll::Ready(t) => {
         if let Some(id) = task_tracker_id {
