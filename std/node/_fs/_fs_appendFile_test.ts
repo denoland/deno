@@ -3,7 +3,6 @@ const { test } = Deno;
 import {
   assertEquals,
   assertThrows,
-  assertThrowsAsync,
   fail
 } from "../../testing/asserts.ts";
 import { appendFile, appendFileSync } from "./_fs_appendFile.ts";
@@ -12,9 +11,9 @@ const decoder = new TextDecoder("utf-8");
 
 test({
   name: "No callback Fn results in Error",
-  async fn() {
-    await assertThrowsAsync(
-      async () => {
+  fn() {
+    assertThrows(
+      () => {
         appendFile("some/path", "some data", "utf8");
       },
       Error,
@@ -25,15 +24,10 @@ test({
 
 test({
   name: "Unsupported encoding results in error()",
-  async fn() {
+  fn() {
     assertThrows(
       () => {
-        appendFile(
-          "some/path",
-          "some data",
-          "made-up-encoding",
-          () => {}
-        );
+        appendFile("some/path", "some data", "made-up-encoding", () => {});
       },
       Error,
       "Only 'utf8' encoding is currently supported"

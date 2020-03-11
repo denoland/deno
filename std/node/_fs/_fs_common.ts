@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type CallbackWithError = (err?: Error) => void;
 
 export interface FileOptions {
