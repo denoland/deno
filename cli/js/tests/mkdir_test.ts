@@ -12,12 +12,14 @@ unitTest(
 );
 
 unitTest(
-  { skip: Deno.build.os === "win", perms: { read: true, write: true } },
+  { perms: { read: true, write: true } },
   function mkdirSyncMode(): void {
     const path = Deno.makeTempDirSync() + "/dir";
     Deno.mkdirSync(path, { mode: 0o737 });
     const pathInfo = Deno.statSync(path);
-    assertEquals(pathInfo.mode! & 0o777, 0o737 & ~Deno.umask());
+    if (Deno.build.os !== "win") {
+      assertEquals(pathInfo.mode! & 0o777, 0o737 & ~Deno.umask());
+    }
   }
 );
 
@@ -43,12 +45,14 @@ unitTest(
 );
 
 unitTest(
-  { skip: Deno.build.os === "win", perms: { read: true, write: true } },
+  { perms: { read: true, write: true } },
   async function mkdirMode(): Promise<void> {
     const path = Deno.makeTempDirSync() + "/dir";
     await Deno.mkdir(path, { mode: 0o737 });
     const pathInfo = Deno.statSync(path);
-    assertEquals(pathInfo.mode! & 0o777, 0o737 & ~Deno.umask());
+    if (Deno.build.os !== "win") {
+      assertEquals(pathInfo.mode! & 0o777, 0o737 & ~Deno.umask());
+    }
   }
 );
 

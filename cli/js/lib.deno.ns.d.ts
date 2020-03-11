@@ -740,7 +740,7 @@ declare namespace Deno {
     recursive?: boolean;
     /** Permissions to use when creating the directory (defaults to `0o777`,
      * before the process's umask).
-     * Raises on Windows. */
+     * Ignored on Windows. */
     mode?: number;
   }
 
