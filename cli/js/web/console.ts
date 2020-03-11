@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { isTypedArray } from "../util.ts";
-import { TypedArray } from "../types.ts";
+import { isTypedArray, TypedArray } from "./util.ts";
 import { TextEncoder } from "./text_encoding.ts";
 import { File, stdout } from "../files.ts";
 import { cliTable } from "./console_table.ts";

@@ -2,7 +2,7 @@
 // Forked from Node's lib/internal/cli_table.js
 
 import { TextEncoder } from "./text_encoding.ts";
-import { hasOwnProperty } from "../util.ts";
+import { hasOwnProperty } from "./util.ts";
 
 const encoder = new TextEncoder();
 

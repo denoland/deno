@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync } from "./dispatch_json.ts";
 import { errors } from "../errors.ts";
-import * as util from "../util.ts";
 
 /** Get the loadavg.
  * Requires the `--allow-env` flag.
@@ -33,7 +32,7 @@ export function osRelease(): string {
 /** Exit the Deno process with optional exit code. */
 export function exit(code = 0): never {
   sendSync("op_exit", { code });
-  return util.unreachable();
+  throw new Error("Code not reachable");
 }
 
 function setEnv(key: string, value: string): void {
