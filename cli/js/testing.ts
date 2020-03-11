@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { red, green, bgRed, gray, italic } from "./colors.ts";
 import { exit } from "./ops/os.ts";
-import { Console } from "./console.ts";
+import { Console } from "./web/console.ts";
 
 function formatDuration(time = 0): string {
   const timeStr = `(${time}ms)`;

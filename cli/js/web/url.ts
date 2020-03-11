@@ -2,7 +2,7 @@
 import * as urlSearchParams from "./url_search_params.ts";
 import * as domTypes from "./dom_types.ts";
 import { getRandomValues } from "../ops/get_random_values.ts";
-import { customInspect } from "../console.ts";
+import { customInspect } from "./console.ts";
 
 interface URLParts {
   protocol: string;

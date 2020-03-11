@@ -1,10 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import {
-  getMappedModuleName,
-  parseTypeDirectives
-} from "./compiler_type_directives.ts";
-import { assert, log } from "./util.ts";
+import { getMappedModuleName, parseTypeDirectives } from "./type_directives.ts";
+import { assert, log } from "../util.ts";
 
 // Warning! The values in this enum are duplicated in `cli/msg.rs`
 // Update carefully!

@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { ASSETS, MediaType, SourceFile } from "./compiler_sourcefile.ts";
-import { OUT_DIR, WriteFileCallback, getAsset } from "./compiler_util.ts";
-import { cwd } from "./ops/fs/dir.ts";
-import { assert, notImplemented } from "./util.ts";
-import * as util from "./util.ts";
+import { ASSETS, MediaType, SourceFile } from "./sourcefile.ts";
+import { OUT_DIR, WriteFileCallback, getAsset } from "./util.ts";
+import { cwd } from "../ops/fs/dir.ts";
+import { assert, notImplemented } from "../util.ts";
+import * as util from "../util.ts";
 
 /** Specifies the target that the host should use to inform the TypeScript
  * compiler of what types should be used to validate the program against. */
