@@ -81,16 +81,12 @@ fn op_open(
     let mut std_options = fs::OpenOptions::new();
     // mode only used if creating the file on Unix
     // if not specified, defaults to 0o666
-    #[cfg(unix)]
-    std_options.mode(mode & 0o777);
     if cfg!(unix) {
-      tokio::fs::OpenOptions::from(std_options)
+      std_options.mode(mode & 0o777);
     } else {
       let _ = mode; // avoid unused warning
-
-      // should this error be more verbose? or noop instead of error?
-      return Err(OpError::not_implemented());
     }
+    tokio::fs::OpenOptions::from(std_options)
   } else {
     tokio::fs::OpenOptions::new()
   };

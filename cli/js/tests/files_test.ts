@@ -76,7 +76,6 @@ unitTest(async function readerToAsyncIterator(): Promise<void> {
 
 unitTest(
   {
-    skip: Deno.build.os === "win",
     perms: { read: true, write: true }
   },
   function openSyncMode(): void {
@@ -88,13 +87,14 @@ unitTest(
     });
     file.close();
     const pathInfo = Deno.statSync(path);
-    assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
+    if (Deno.build.os !== "win") {
+      assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
+    }
   }
 );
 
 unitTest(
   {
-    skip: Deno.build.os === "win",
     perms: { read: true, write: true }
   },
   async function openMode(): Promise<void> {
@@ -106,7 +106,9 @@ unitTest(
     });
     file.close();
     const pathInfo = Deno.statSync(path);
-    assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
+    if (Deno.build.os !== "win") {
+      assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
+    }
   }
 );
 
