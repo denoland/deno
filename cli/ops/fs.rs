@@ -83,15 +83,12 @@ fn op_open(
     // if not specified, defaults to 0o666
     #[cfg(unix)]
     std_options.mode(mode & 0o777);
-    #[cfg(not(unix))]
-    {
-      let _ = mode; // avoid unused warning
-
+    if cfg!(unix) {
+      tokio_fs::OpenOptions::from(std_options)
+    } else {
       // should this error be more verbose? or noop instead of error?
-      #[allow(unreachable_code)]
       return Err(OpError::not_implemented());
     }
-    tokio_fs::OpenOptions::from(std_options)
   } else {
     tokio_fs::OpenOptions::new()
   };
