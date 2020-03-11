@@ -111,5 +111,3 @@ Deno.test(async function workerCanUseFetch(): Promise<void> {
 
   await promise;
 });
-
-await Deno.runTests();
