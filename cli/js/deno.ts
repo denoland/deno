@@ -99,7 +99,7 @@ export {
 } from "./permissions.ts";
 export { openPlugin } from "./plugins.ts";
 export { kill } from "./ops/process.ts";
-export { run, RunOptions, Process, ProcessStatus, Signal } from "./process.ts";
+export { run, RunOptions, Process, ProcessStatus } from "./process.ts";
 export { readdirSync, readdir } from "./ops/fs/read_dir.ts";
 export { readFileSync, readFile } from "./read_file.ts";
 export { readlinkSync, readlink } from "./ops/fs/read_link.ts";
@@ -107,7 +107,7 @@ export { realpathSync, realpath } from "./ops/fs/realpath.ts";
 export { removeSync, remove, RemoveOptions } from "./ops/fs/remove.ts";
 export { renameSync, rename } from "./ops/fs/rename.ts";
 export { resources, close } from "./ops/resources.ts";
-export { signal, signals, SignalStream } from "./signals.ts";
+export { signal, signals, Signal, SignalStream } from "./signals.ts";
 export { statSync, lstatSync, stat, lstat } from "./ops/fs/stat.ts";
 export { symlinkSync, symlink } from "./ops/fs/symlink.ts";
 export { connectTLS, listenTLS } from "./tls.ts";
