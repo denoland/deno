@@ -52,16 +52,16 @@ export function appendFile(
     }
   })
     .then(() => {
-      close(typeof pathOrRid === "string", rid);
+      closeRidIfNecessary(typeof pathOrRid === "string", rid);
       callbackFn();
     })
     .catch(err => {
-      close(typeof pathOrRid === "string", rid);
+      closeRidIfNecessary(typeof pathOrRid === "string", rid);
       callbackFn(err);
     });
 }
 
-function close(isPathString: boolean, rid: number): void {
+function closeRidIfNecessary(isPathString: boolean, rid: number): void {
   if (isPathString && rid != -1) {
     //Only close if a path was supplied and a rid allocated
     Deno.close(rid);
@@ -105,7 +105,7 @@ export function appendFileSync(
 
     Deno.writeSync(rid, buffer);
   } finally {
-    close(typeof pathOrRid === "string", rid);
+    closeRidIfNecessary(typeof pathOrRid === "string", rid);
   }
 }
 

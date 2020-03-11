@@ -26,9 +26,9 @@ test({
 test({
   name: "Unsupported encoding results in error()",
   async fn() {
-    await assertThrowsAsync(
-      async () => {
-        await appendFile(
+    assertThrows(
+      () => {
+        appendFile(
           "some/path",
           "some data",
           "made-up-encoding",
@@ -38,9 +38,9 @@ test({
       Error,
       "Only 'utf8' encoding is currently supported"
     );
-    await assertThrowsAsync(
-      async () => {
-        await appendFile(
+    assertThrows(
+      () => {
+        appendFile(
           "some/path",
           "some data",
           { encoding: "made-up-encoding" },
@@ -99,7 +99,6 @@ test({
   name: "Async: Data is written to passed in file path",
   async fn() {
     const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
-
     await new Promise((resolve, reject) => {
       appendFile("_fs_appendFile_test_file.txt", "hello world", err => {
         if (err) reject(err);
