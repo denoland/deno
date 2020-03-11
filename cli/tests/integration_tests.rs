@@ -865,9 +865,14 @@ itest!(_026_redirect_javascript {
 });
 
 itest!(workers {
-  args: "run --reload --allow-net workers_test.ts",
+  args: "test --reload --allow-net workers_test.ts",
   http_server: true,
   output: "workers_test.out",
+});
+
+itest!(compiler_api {
+  args: "test --reload compiler_api_test.ts",
+  output: "compiler_api_test.out",
 });
 
 itest!(_027_redirect_typescript {
