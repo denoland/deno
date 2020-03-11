@@ -2,10 +2,11 @@ async function server(): Promise<void> {
   const l = Deno.listen({ port: 4444 });
   const buf = new Uint8Array(4);
   const conn = await l.accept();
-  const process = async function*(): any {
+  const process = async function(): Promise<void> {
     while (true) {
-      // Read request with timeout
       const nr = await Promise.race([
+        // Testing multiple read tasks!
+        conn.read(buf),
         conn.read(buf),
         new Promise(resolve => {
           setTimeout(resolve, 100);
@@ -19,7 +20,7 @@ async function server(): Promise<void> {
       }
     }
   };
-  for await (const _ of process());
+  await process();
   l.close();
 }
 server();
@@ -29,7 +30,6 @@ async function reqRes(): Promise<void> {
   await conn.write(new Uint8Array([0, 1, 2, 3]));
   const buf = new Uint8Array(4);
   await conn.read(buf);
-  return;
 }
 // First request-response:
 await reqRes();
