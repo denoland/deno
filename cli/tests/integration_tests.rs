@@ -1957,7 +1957,7 @@ fn test_read_after_close_hang() {
     None,
     None,
     false,
-    Some(2500),
+    Some(10000),
   );
 }
 
