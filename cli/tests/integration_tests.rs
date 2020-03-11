@@ -477,7 +477,6 @@ fn repl_test_console_log() {
     Some(vec!["console.log('hello')", "'world'"]),
     None,
     false,
-    
   );
   assert_eq!(out, "hello\nundefined\nworld\n");
   assert!(err.is_empty());
@@ -491,7 +490,6 @@ fn repl_test_eof() {
     Some(vec!["1 + 2"]),
     None,
     false,
-    
   );
   assert_eq!(out, "3\n");
   assert!(err.is_empty());
@@ -505,7 +503,6 @@ fn repl_test_exit_command() {
     Some(vec!["exit", "'ignored'"]),
     None,
     false,
-    
   );
   assert!(out.is_empty());
   assert!(err.is_empty());
@@ -513,14 +510,8 @@ fn repl_test_exit_command() {
 
 #[test]
 fn repl_test_help_command() {
-  let (out, err) = util::run_and_collect_output(
-    true,
-    "repl",
-    Some(vec!["help"]),
-    None,
-    false,
-   
-  );
+  let (out, err) =
+    util::run_and_collect_output(true, "repl", Some(vec!["help"]), None, false);
   assert_eq!(
     out,
     vec![
@@ -543,7 +534,6 @@ fn repl_test_function() {
     Some(vec!["Deno.writeFileSync"]),
     None,
     false,
-    
   );
   assert_eq!(out, "[Function: writeFileSync]\n");
   assert!(err.is_empty());
@@ -557,7 +547,6 @@ fn repl_test_multiline() {
     Some(vec!["(\n1 + 2\n)"]),
     None,
     false,
-    
   );
   assert_eq!(out, "3\n");
   assert!(err.is_empty());
@@ -571,7 +560,6 @@ fn repl_test_eval_unterminated() {
     Some(vec!["eval('{')"]),
     None,
     false,
-  
   );
   assert!(out.is_empty());
   assert!(err.contains("Unexpected end of input"));
@@ -585,7 +573,6 @@ fn repl_test_reference_error() {
     Some(vec!["not_a_variable"]),
     None,
     false,
-    
   );
   assert!(out.is_empty());
   assert!(err.contains("not_a_variable is not defined"));
@@ -599,7 +586,6 @@ fn repl_test_syntax_error() {
     Some(vec!["syntax error"]),
     None,
     false,
-    
   );
   assert!(out.is_empty());
   assert!(err.contains("Unexpected identifier"));
@@ -613,7 +599,6 @@ fn repl_test_type_error() {
     Some(vec!["console()"]),
     None,
     false,
-   
   );
   assert!(out.is_empty());
   assert!(err.contains("console is not a function"));
@@ -627,7 +612,6 @@ fn repl_test_variable() {
     Some(vec!["var a = 123;", "a"]),
     None,
     false,
-   
   );
   assert_eq!(out, "undefined\n123\n");
   assert!(err.is_empty());
@@ -641,7 +625,6 @@ fn repl_test_lexical_scoped_variable() {
     Some(vec!["let a = 123;", "a"]),
     None,
     false,
-    
   );
   assert_eq!(out, "undefined\n123\n");
   assert!(err.is_empty());
@@ -659,7 +642,6 @@ fn repl_test_missing_deno_dir() {
     Some(vec!["1"]),
     Some(vec![("DENO_DIR".to_owned(), DENO_DIR.to_owned())]),
     false,
-    
   );
   assert!(read_dir(&test_deno_dir).is_ok());
   remove_dir_all(&test_deno_dir).unwrap();
@@ -675,7 +657,6 @@ fn repl_test_save_last_eval() {
     Some(vec!["1", "_"]),
     None,
     false,
-    
   );
   assert_eq!(out, "1\n1\n");
   assert!(err.is_empty());
@@ -689,7 +670,6 @@ fn repl_test_save_last_thrown() {
     Some(vec!["throw 1", "_error"]),
     None,
     false,
-    
   );
   assert_eq!(out, "1\n");
   assert_eq!(err, "Thrown: 1\n");
@@ -703,7 +683,6 @@ fn repl_test_assign_underscore() {
     Some(vec!["_ = 1", "2", "_"]),
     None,
     false,
-
   );
   assert_eq!(
     out,
@@ -720,7 +699,6 @@ fn repl_test_assign_underscore_error() {
     Some(vec!["_error = 1", "throw 2", "_error"]),
     None,
     false,
-
   );
   assert_eq!(
     out,
@@ -1937,7 +1915,6 @@ fn test_permissions_net_listen_allow_localhost() {
 			None,
 			None,
       false,
-  
 		);
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
