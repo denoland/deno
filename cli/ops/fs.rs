@@ -15,7 +15,7 @@ use std::fs;
 use std::io::SeekFrom;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
-use tokio::fs as tokio_fs;
+use tokio;
 
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
@@ -84,7 +84,7 @@ fn op_open(
     #[cfg(unix)]
     std_options.mode(mode & 0o777);
     if cfg!(unix) {
-      tokio_fs::OpenOptions::from(std_options)
+      tokio::fs::OpenOptions::from(std_options)
     } else {
       let _ = mode; // avoid unused warning
 
@@ -92,7 +92,7 @@ fn op_open(
       return Err(OpError::not_implemented());
     }
   } else {
-    tokio_fs::OpenOptions::new()
+    tokio::fs::OpenOptions::new()
   };
 
   if let Some(options) = args.options {
