@@ -86,6 +86,7 @@ fn op_open(
     if cfg!(unix) {
       tokio_fs::OpenOptions::from(std_options)
     } else {
+      let _ = mode; // avoid unused warning
       // should this error be more verbose? or noop instead of error?
       return Err(OpError::not_implemented());
     }
