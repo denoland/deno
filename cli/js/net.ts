@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { errors } from "./errors.ts";
 import { EOF, Reader, Writer, Closer } from "./io.ts";
 import { read, write } from "./ops/io.ts";
 import { close } from "./ops/resources.ts";
@@ -19,7 +20,7 @@ export interface UDPAddr {
 }
 
 /** A socket is a generic transport listener for message-oriented protocols */
-export interface UDPConn extends AsyncIterator<[Uint8Array, Addr]> {
+export interface UDPConn extends AsyncIterable<[Uint8Array, Addr]> {
   /** Waits for and resolves to the next message to the `Socket`. */
   receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
 
@@ -38,7 +39,7 @@ export interface UDPConn extends AsyncIterator<[Uint8Array, Addr]> {
 }
 
 /** A Listener is a generic transport listener for stream-oriented protocols. */
-export interface Listener extends AsyncIterator<Conn> {
+export interface Listener extends AsyncIterable<Conn> {
   /** Waits for and resolves to the next connection to the `Listener`. */
   accept(): Promise<Conn>;
 
@@ -88,11 +89,7 @@ export class ConnImpl implements Conn {
 }
 
 export class ListenerImpl implements Listener {
-  constructor(
-    readonly rid: number,
-    readonly addr: Addr,
-    private closing: boolean = false
-  ) {}
+  constructor(readonly rid: number, readonly addr: Addr) {}
 
   async accept(): Promise<Conn> {
     const res = await netOps.accept(this.rid);
@@ -100,29 +97,20 @@ export class ListenerImpl implements Listener {
   }
 
   close(): void {
-    this.closing = true;
     close(this.rid);
   }
 
-  async next(): Promise<IteratorResult<Conn>> {
-    if (this.closing) {
-      return { value: undefined, done: true };
-    }
-    return await this.accept()
-      .then(value => ({ value, done: false }))
-      .catch(e => {
-        // It wouldn't be correct to simply check this.closing here.
-        // TODO: Get a proper error kind for this case, don't check the message.
-        // The current error kind is Other.
-        if (e.message == "Listener has been closed") {
-          return { value: undefined, done: true };
+  async *[Symbol.asyncIterator](): AsyncIterator<Conn> {
+    while (true) {
+      try {
+        yield await this.accept();
+      } catch (error) {
+        if (error instanceof errors.BadResource) {
+          break;
         }
-        throw e;
-      });
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<Conn> {
-    return this;
+        throw error;
+      }
+    }
   }
 }
 
@@ -138,8 +126,7 @@ export class UDPConnImpl implements UDPConn {
   constructor(
     readonly rid: number,
     readonly addr: Addr,
-    public bufSize: number = 1024,
-    private closing: boolean = false
+    public bufSize: number = 1024
   ) {}
 
   async receive(p?: Uint8Array): Promise<[Uint8Array, Addr]> {
@@ -157,29 +144,20 @@ export class UDPConnImpl implements UDPConn {
   }
 
   close(): void {
-    this.closing = true;
     close(this.rid);
   }
 
-  async next(): Promise<IteratorResult<[Uint8Array, Addr]>> {
-    if (this.closing) {
-      return { value: undefined, done: true };
-    }
-    return await this.receive()
-      .then(value => ({ value, done: false }))
-      .catch(e => {
-        // It wouldn't be correct to simply check this.closing here.
-        // TODO: Get a proper error kind for this case, don't check the message.
-        // The current error kind is Other.
-        if (e.message == "Socket has been closed") {
-          return { value: undefined, done: true };
+  async *[Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]> {
+    while (true) {
+      try {
+        yield await this.receive();
+      } catch (error) {
+        if (error instanceof errors.BadResource) {
+          break;
         }
-        throw e;
-      });
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]> {
-    return this;
+        throw error;
+      }
+    }
   }
 }
 

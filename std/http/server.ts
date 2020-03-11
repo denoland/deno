@@ -198,9 +198,15 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     if (this.closing) return;
     // Wait for a new connection.
-    const { value, done } = await this.listener.next();
-    if (done) return;
-    const conn = value as Conn;
+    let conn: Conn;
+    try {
+      conn = await this.listener.accept();
+    } catch (error) {
+      if (error instanceof Deno.errors.BadResource) {
+        return;
+      }
+      throw error;
+    }
     // Try to accept another connection and add it to the multiplexer.
     mux.add(this.acceptConnAndIterateHttpRequests(mux));
     // Yield the requests that arrive on the just-accepted connection.
