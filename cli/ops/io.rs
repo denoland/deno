@@ -9,7 +9,7 @@ use futures::future::FutureExt;
 use futures::ready;
 use std::collections::HashMap;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::Context;
 use std::task::Poll;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -99,8 +99,8 @@ pub struct FileMetadata {
 
 pub struct StreamResourceHolder {
   pub resource: StreamResource,
-  waker: HashMap<isize, futures::task::AtomicWaker>,
-  waker_counter: AtomicIsize,
+  waker: HashMap<usize, futures::task::AtomicWaker>,
+  waker_counter: AtomicUsize,
 }
 
 impl StreamResourceHolder {
@@ -110,7 +110,7 @@ impl StreamResourceHolder {
       // Atleast one task is expecter for the resource
       waker: HashMap::with_capacity(1),
       // Tracks wakers Ids
-      waker_counter: AtomicIsize::new(0),
+      waker_counter: AtomicUsize::new(0),
     }
   }
 }
@@ -122,7 +122,7 @@ impl Drop for StreamResourceHolder {
 }
 
 impl StreamResourceHolder {
-  pub fn track_task(&mut self, cx: &Context) -> Result<isize, OpError> {
+  pub fn track_task(&mut self, cx: &Context) -> Result<usize, OpError> {
     let waker = futures::task::AtomicWaker::new();
     waker.register(cx.waker());
     // Its OK if it overflows
@@ -137,7 +137,7 @@ impl StreamResourceHolder {
     }
   }
 
-  pub fn untrack_task(&mut self, task_waker_id: isize) {
+  pub fn untrack_task(&mut self, task_waker_id: usize) {
     self.waker.remove(&task_waker_id);
   }
 }
@@ -202,7 +202,6 @@ pub fn op_read(
 
   let state = state.clone();
   let mut buf = zero_copy.unwrap();
-  // let mut task_tracker_id: Option<isize> = None;
 
   poll_fn(move |cx| {
     let resource_table = &mut state.borrow_mut().resource_table;
@@ -210,10 +209,11 @@ pub fn op_read(
       .get_mut::<StreamResourceHolder>(rid as u32)
       .ok_or_else(OpError::bad_resource_id)?;
 
-    let mut task_tracker_id: Option<isize> = None;
+    let mut task_tracker_id: Option<usize> = None;
     let nread = match resource_holder
       .resource
-      .poll_read(cx, &mut buf.as_mut()[..]).map_err(OpError::from)
+      .poll_read(cx, &mut buf.as_mut()[..])
+      .map_err(OpError::from)
     {
       Poll::Ready(t) => {
         if let Some(id) = task_tracker_id {

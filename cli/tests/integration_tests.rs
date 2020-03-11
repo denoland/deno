@@ -477,6 +477,7 @@ fn repl_test_console_log() {
     Some(vec!["console.log('hello')", "'world'"]),
     None,
     false,
+    None,
   );
   assert_eq!(out, "hello\nundefined\nworld\n");
   assert!(err.is_empty());
@@ -490,6 +491,7 @@ fn repl_test_eof() {
     Some(vec!["1 + 2"]),
     None,
     false,
+    None,
   );
   assert_eq!(out, "3\n");
   assert!(err.is_empty());
@@ -503,6 +505,7 @@ fn repl_test_exit_command() {
     Some(vec!["exit", "'ignored'"]),
     None,
     false,
+    None,
   );
   assert!(out.is_empty());
   assert!(err.is_empty());
@@ -510,8 +513,14 @@ fn repl_test_exit_command() {
 
 #[test]
 fn repl_test_help_command() {
-  let (out, err) =
-    util::run_and_collect_output(true, "repl", Some(vec!["help"]), None, false);
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["help"]),
+    None,
+    false,
+    None,
+  );
   assert_eq!(
     out,
     vec![
@@ -534,6 +543,7 @@ fn repl_test_function() {
     Some(vec!["Deno.writeFileSync"]),
     None,
     false,
+    None,
   );
   assert_eq!(out, "[Function: writeFileSync]\n");
   assert!(err.is_empty());
@@ -547,6 +557,7 @@ fn repl_test_multiline() {
     Some(vec!["(\n1 + 2\n)"]),
     None,
     false,
+    None,
   );
   assert_eq!(out, "3\n");
   assert!(err.is_empty());
@@ -560,6 +571,7 @@ fn repl_test_eval_unterminated() {
     Some(vec!["eval('{')"]),
     None,
     false,
+    None,
   );
   assert!(out.is_empty());
   assert!(err.contains("Unexpected end of input"));
@@ -573,6 +585,7 @@ fn repl_test_reference_error() {
     Some(vec!["not_a_variable"]),
     None,
     false,
+    None,
   );
   assert!(out.is_empty());
   assert!(err.contains("not_a_variable is not defined"));
@@ -586,6 +599,7 @@ fn repl_test_syntax_error() {
     Some(vec!["syntax error"]),
     None,
     false,
+    None,
   );
   assert!(out.is_empty());
   assert!(err.contains("Unexpected identifier"));
@@ -599,6 +613,7 @@ fn repl_test_type_error() {
     Some(vec!["console()"]),
     None,
     false,
+    None,
   );
   assert!(out.is_empty());
   assert!(err.contains("console is not a function"));
@@ -612,6 +627,7 @@ fn repl_test_variable() {
     Some(vec!["var a = 123;", "a"]),
     None,
     false,
+    None,
   );
   assert_eq!(out, "undefined\n123\n");
   assert!(err.is_empty());
@@ -625,6 +641,7 @@ fn repl_test_lexical_scoped_variable() {
     Some(vec!["let a = 123;", "a"]),
     None,
     false,
+    None,
   );
   assert_eq!(out, "undefined\n123\n");
   assert!(err.is_empty());
@@ -642,6 +659,7 @@ fn repl_test_missing_deno_dir() {
     Some(vec!["1"]),
     Some(vec![("DENO_DIR".to_owned(), DENO_DIR.to_owned())]),
     false,
+    None,
   );
   assert!(read_dir(&test_deno_dir).is_ok());
   remove_dir_all(&test_deno_dir).unwrap();
@@ -657,6 +675,7 @@ fn repl_test_save_last_eval() {
     Some(vec!["1", "_"]),
     None,
     false,
+    None,
   );
   assert_eq!(out, "1\n1\n");
   assert!(err.is_empty());
@@ -670,6 +689,7 @@ fn repl_test_save_last_thrown() {
     Some(vec!["throw 1", "_error"]),
     None,
     false,
+    None,
   );
   assert_eq!(out, "1\n");
   assert_eq!(err, "Thrown: 1\n");
@@ -683,6 +703,7 @@ fn repl_test_assign_underscore() {
     Some(vec!["_ = 1", "2", "_"]),
     None,
     false,
+    None,
   );
   assert_eq!(
     out,
@@ -699,6 +720,7 @@ fn repl_test_assign_underscore_error() {
     Some(vec!["_error = 1", "throw 2", "_error"]),
     None,
     false,
+    None,
   );
   assert_eq!(
     out,
@@ -1580,6 +1602,7 @@ fn test_permissions_with_allow() {
       None,
       None,
       false,
+      None,
     );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
@@ -1594,6 +1617,7 @@ fn test_permissions_without_allow() {
       None,
       None,
       false,
+      None,
     );
     assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
   }
@@ -1614,6 +1638,7 @@ fn test_permissions_rw_inside_project_dir() {
       None,
       None,
       false,
+      None,
     );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
@@ -1643,6 +1668,7 @@ fn test_permissions_rw_outside_test_dir() {
       None,
       None,
       false,
+      None,
     );
     assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
   }
@@ -1668,6 +1694,7 @@ fn test_permissions_rw_inside_test_dir() {
       None,
       None,
       false,
+      None,
     );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
@@ -1704,6 +1731,7 @@ fn test_permissions_rw_outside_test_and_js_dir() {
       None,
       None,
       false,
+      None,
     );
     assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
   }
@@ -1733,6 +1761,7 @@ fn test_permissions_rw_inside_test_and_js_dir() {
       None,
       None,
       false,
+      None,
     );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
@@ -1751,6 +1780,7 @@ fn test_permissions_rw_relative() {
       None,
       None,
       false,
+      None,
     );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
@@ -1768,7 +1798,7 @@ fn test_permissions_rw_no_prefix() {
 			),
 			None,
 			None,
-			false,
+			false,None
 		);
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
@@ -1780,7 +1810,7 @@ fn test_permissions_net_fetch_allow_localhost_4545() {
     true,
 			"run --allow-net=localhost:4545 complex_permissions_test.ts netFetch http://localhost:4545/",
 			None,
-			None,true,
+			None,true,None
 		);
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
@@ -1792,7 +1822,7 @@ fn test_permissions_net_fetch_allow_deno_land() {
 			"run --allow-net=deno.land complex_permissions_test.ts netFetch http://localhost:4545/",
 			None,
 			None,
-			true,
+			true,None
 		);
   assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
 }
@@ -1804,7 +1834,7 @@ fn test_permissions_net_fetch_localhost_4545_fail() {
 			"run --allow-net=localhost:4545 complex_permissions_test.ts netFetch http://localhost:4546/",
 			None,
 			None,
-			true,
+			true,None
 		);
   assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
 }
@@ -1816,7 +1846,7 @@ fn test_permissions_net_fetch_localhost() {
 			"run --allow-net=localhost complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
 			None,
 			None,
-			true,
+			true,None
 		);
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
@@ -1828,7 +1858,7 @@ fn test_permissions_net_connect_allow_localhost_ip_4555() {
 			"run --allow-net=127.0.0.1:4545 complex_permissions_test.ts netConnect 127.0.0.1:4545",
 			None,
 			None,
-			true,
+			true,None
 		);
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
@@ -1840,7 +1870,7 @@ fn test_permissions_net_connect_allow_deno_land() {
 			"run --allow-net=deno.land complex_permissions_test.ts netConnect 127.0.0.1:4546",
 			None,
 			None,
-			true,
+			true,None
 		);
   assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
 }
@@ -1852,7 +1882,7 @@ fn test_permissions_net_connect_allow_localhost_ip_4545_fail() {
 			"run --allow-net=127.0.0.1:4545 complex_permissions_test.ts netConnect 127.0.0.1:4546",
 			None,
 			None,
-			true,
+			true,None
 		);
   assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
 }
@@ -1864,7 +1894,7 @@ fn test_permissions_net_connect_allow_localhost_ip() {
 			"run --allow-net=127.0.0.1 complex_permissions_test.ts netConnect 127.0.0.1:4545 127.0.0.1:4546 127.0.0.1:4547",
 			None,
 			None,
-			true,
+			true,None
 		);
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
@@ -1876,7 +1906,7 @@ fn test_permissions_net_listen_allow_localhost_4555() {
 			"run --allow-net=localhost:4558 complex_permissions_test.ts netListen localhost:4558",
 			None,
 			None,
-			false,
+			false,None
 		);
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
@@ -1888,7 +1918,7 @@ fn test_permissions_net_listen_allow_deno_land() {
 			"run --allow-net=deno.land complex_permissions_test.ts netListen localhost:4545",
 			None,
 			None,
-			false,
+			false,None
 		);
   assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
 }
@@ -1900,7 +1930,7 @@ fn test_permissions_net_listen_allow_localhost_4555_fail() {
 			"run --allow-net=localhost:4555 complex_permissions_test.ts netListen localhost:4556",
 			None,
 			None,
-			false,
+			false,None
 		);
   assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
 }
@@ -1913,9 +1943,22 @@ fn test_permissions_net_listen_allow_localhost() {
 			"run --allow-net=localhost complex_permissions_test.ts netListen localhost:4600",
 			None,
 			None,
-			false,
+      false,
+      None
 		);
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_read_after_close_hang() {
+  util::run_and_collect_output(
+    true,
+    "run --allow-net listener_hanging_test.ts",
+    None,
+    None,
+    false,
+    Some(2500),
+  );
 }
 
 mod util {
@@ -1927,6 +1970,8 @@ mod util {
   use std::process::Command;
   use std::process::Output;
   use std::process::Stdio;
+  use std::{thread, time};
+
   use tempfile::TempDir;
 
   pub const PERMISSION_VARIANTS: [&str; 5] =
@@ -1943,6 +1988,7 @@ mod util {
     input: Option<Vec<&str>>,
     envs: Option<Vec<(String, String)>>,
     need_http_server: bool,
+    timeout: Option<u64>,
   ) -> (String, String) {
     let root = root_path();
     let tests_dir = root.join("cli").join("tests");
@@ -1969,6 +2015,13 @@ mod util {
       stdin
         .write_all(lines.join("\n").as_bytes())
         .expect("failed to write to stdin");
+    }
+    if let Some(timeout) = timeout {
+      let ten_millis = time::Duration::from_millis(timeout);
+      thread::sleep(ten_millis);
+      if deno.try_wait().unwrap().is_none() {
+        panic!("Timed out!");
+      }
     }
     let Output {
       stdout,
