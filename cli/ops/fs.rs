@@ -81,11 +81,10 @@ fn op_open(
     let mut std_options = fs::OpenOptions::new();
     // mode only used if creating the file on Unix
     // if not specified, defaults to 0o666
-    if cfg!(unix) {
-      std_options.mode(mode & 0o777);
-    } else {
-      let _ = mode; // avoid unused warning
-    }
+    #[cfg(unix)]
+    std_options.mode(mode & 0o777);
+    #[cfg(not(unix))]
+    let _ = mode; // avoid unused warning
     tokio::fs::OpenOptions::from(std_options)
   } else {
     tokio::fs::OpenOptions::new()
