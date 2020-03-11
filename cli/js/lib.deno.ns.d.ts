@@ -788,7 +788,7 @@ declare namespace Deno {
     suffix?: string;
     /** Permissions to use when creating the file or directory (defaults to
      * `0o700`, before the process's umask).
-     * Does nothing/raises on Windows. */
+     * Raises on Windows. */
     mode?: number;
   }
 
