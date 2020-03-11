@@ -290,17 +290,7 @@ fn op_mkdir(
 ) -> Result<JsonOp, OpError> {
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
-  let mode = match args.mode {
-    None => 0o777,
-    Some(m) => {
-      if cfg!(unix) {
-        m
-      } else {
-        // should this error be more verbose? or noop instead of error?
-        return Err(OpError::not_implemented());
-      }
-    }
-  };
+  let mode = args.mode.unwrap_or(0o777);
 
   state.check_write(&path)?;
 
