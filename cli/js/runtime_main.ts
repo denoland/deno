@@ -7,6 +7,7 @@
 //  - `bootstrapMainRuntime` - must be called once, when Isolate is created.
 //   It sets up runtime by providing globals for `WindowScope` and adds `Deno` global.
 
+import * as Deno from "./deno.ts";
 import * as domTypes from "./web/dom_types.ts";
 import * as csprng from "./ops/get_random_values.ts";
 import {
@@ -16,10 +17,18 @@ import {
   windowOrWorkerGlobalScopeProperties,
   eventTargetProperties
 } from "./globals.ts";
+import { internalObject } from "./internals.ts";
+import { setSignals } from "./process.ts";
 import { replLoop } from "./repl.ts";
 import * as runtime from "./runtime.ts";
-
+import { symbols } from "./symbols.ts";
 import { log } from "./util.ts";
+
+// TODO: factor out `Deno` global assignment to separate function
+// Add internal object to Deno object.
+// This is not exposed as part of the Deno types.
+// @ts-ignore
+Deno[symbols.internal] = internalObject;
 
 export const mainRuntimeGlobalProperties = {
   window: readOnly(globalThis),
@@ -61,6 +70,15 @@ export function bootstrapMainRuntime(): void {
   });
 
   const s = runtime.start(true);
+  setSignals();
+
+  log("cwd", s.cwd);
+  for (let i = 0; i < s.args.length; i++) {
+    Deno.args.push(s.args[i]);
+  }
+  log("args", Deno.args);
+  Object.freeze(Deno.args);
+
   if (s.repl) {
     replLoop();
   }

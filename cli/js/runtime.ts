@@ -1,36 +1,22 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { core } from "./core.ts";
-import * as Deno from "./deno.ts";
-import * as dispatchMinimal from "./ops/dispatch_minimal.ts";
-import * as dispatchJson from "./ops/dispatch_json.ts";
+import * as dispatch from "./dispatch.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
 import { setBuildInfo } from "./build.ts";
-import { LocationImpl } from "./web/location.ts";
+import { setVersions } from "./version.ts";
+import { setLocation } from "./web/location.ts";
 import { setPrepareStackTrace } from "./error_stack.ts";
 import { Start, start as startOp } from "./ops/runtime.ts";
-import { setSignals } from "./process.ts";
-import { symbols } from "./symbols.ts";
-import { internalObject } from "./internals.ts";
 
 export let OPS_CACHE: { [name: string]: number };
-
-export function getAsyncHandler(opName: string): (msg: Uint8Array) => void {
-  switch (opName) {
-    case "op_write":
-    case "op_read":
-      return dispatchMinimal.asyncMsgFromRust;
-    default:
-      return dispatchJson.asyncMsgFromRust;
-  }
-}
 
 // TODO(bartlomieju): temporary solution, must be fixed when moving
 // dispatches to separate crates
 export function initOps(): void {
   OPS_CACHE = core.ops();
   for (const [name, opId] of Object.entries(OPS_CACHE)) {
-    core.setAsyncHandler(opId, getAsyncHandler(name));
+    core.setAsyncHandler(opId, dispatch.getAsyncHandler(name));
   }
 }
 
@@ -46,47 +32,37 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
   // args and other info.
   const s = startOp();
 
-  // TODO(bartlomieju): Deno[symbols.internal]
-  // is still exposed to end users, not only for tests.
-  // Add internal object to Deno object.
-  // This is not exposed as part of the Deno types.
-  // @ts-ignore
-  Deno[symbols.internal] = internalObject;
-  // Build info is used by internal code, so setting it first.
+  setVersions(s.denoVersion, s.v8Version, s.tsVersion);
   setBuildInfo(s.os, s.arch);
-
   util.setLogDebug(s.debugFlag, source);
-  util.immutableDefine(
-    globalThis,
-    "location",
-    Object.freeze(new LocationImpl(s.location))
-  );
+
+  // TODO(bartlomieju): this field should always be set
+  assert(s.location.length > 0);
+  setLocation(s.location);
   setPrepareStackTrace(Error);
-  setSignals();
+
+  // TODO(bartlomieju): I don't like that it's mixed in here, when
+  // compiler and worker runtimes call this funtion and they don't use
+  // Deno namespace (sans shared queue - Deno.core)
+
+  // pid and noColor need to be set in the Deno module before it's set to be
+  // frozen.
+  util.immutableDefine(globalThis.Deno, "pid", s.pid);
+  util.immutableDefine(globalThis.Deno, "noColor", s.noColor);
+  Object.freeze(globalThis.Deno);
 
   if (preserveDenoNamespace) {
-    util.immutableDefine(
-      Deno,
-      "version",
-      Object.freeze({
-        deno: s.denoVersion,
-        v8: s.v8Version,
-        typescript: s.tsVersion
-      })
-    );
-    util.immutableDefine(Deno, "pid", s.pid);
-    util.immutableDefine(Deno, "noColor", s.noColor);
-    util.immutableDefine(Deno, "args", Object.freeze([...s.args]));
-    Object.freeze(Deno.core);
-    Object.freeze(Deno.core.sharedQueue);
-    util.immutableDefine(globalThis, "Deno", Object.freeze(Deno));
+    util.immutableDefine(globalThis, "Deno", globalThis.Deno);
+    // Deno.core could ONLY be safely frozen here (not in globals.ts)
+    // since shared_queue.js will modify core properties.
+    Object.freeze(globalThis.Deno.core);
+    // core.sharedQueue is an object so we should also freeze it.
+    Object.freeze(globalThis.Deno.core.sharedQueue);
   } else {
     // Remove globalThis.Deno
     delete globalThis.Deno;
     assert(globalThis.Deno === undefined);
   }
 
-  util.log("cwd", s.cwd);
-  util.log("args", s.args);
   return s;
 }
