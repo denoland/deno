@@ -2,6 +2,7 @@
 import { red, green, bgRed, gray, italic } from "./colors.ts";
 import { exit } from "./ops/os.ts";
 import { Console } from "./web/console.ts";
+import { assert } from "./util.ts";
 
 const RED_FAILED = red("FAILED");
 const GREEN_OK = green("OK");
@@ -82,6 +83,7 @@ export interface RunTestsOptions {
   only?: string | RegExp;
   skip?: string | RegExp;
   disableLog?: boolean;
+  reporter?: TestReporter;
 }
 
 type FilterFn = (testDef: TestDefinition) => boolean;
@@ -285,8 +287,13 @@ export async function runTests({
   failFast = false,
   only = undefined,
   skip = undefined,
-  disableLog = false
-}: RunTestsOptions = {}): Promise<void> {
+  disableLog = false,
+  reporter = undefined
+}: RunTestsOptions = {}): Promise<{
+  results: TestResult[];
+  stats: TestStats;
+  duration: number;
+}> {
   const filterFn = createFilterFn(only, skip);
   const testApi = new TestApi(TEST_REGISTRY, filterFn, failFast);
 
@@ -298,9 +305,11 @@ export async function runTests({
     globalThis.console = disabledConsole;
   }
 
-  const reporter = new ConsoleReporter(originalConsole);
+  if (!reporter) {
+    reporter = new ConsoleReporter(originalConsole);
+  }
 
-  let stats: TestStats;
+  let endMsg: EndMsg;
 
   for await (const testMsg of testApi) {
     switch (testMsg.kind) {
@@ -311,7 +320,7 @@ export async function runTests({
         await reporter.test(testMsg);
         continue;
       case MsgKind.End:
-        stats = testMsg.stats;
+        endMsg = testMsg;
         await reporter.end(testMsg);
         continue;
     }
@@ -322,7 +331,10 @@ export async function runTests({
     globalThis.console = originalConsole;
   }
 
-  if (stats!.failed > 0 && exitOnFail) {
+  if (endMsg!.stats.failed > 0 && exitOnFail) {
     exit(1);
   }
+
+  delete endMsg!.kind;
+  return endMsg!;
 }

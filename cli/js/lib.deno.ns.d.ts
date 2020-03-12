@@ -32,6 +32,54 @@ declare namespace Deno {
    * when `Deno.runTests` is used */
   export function test(name: string, fn: TestFunction): void;
 
+  interface TestResult {
+    passed: boolean;
+    name: string;
+    fn: TestFunction;
+    skipped: boolean;
+    hasRun: boolean;
+    duration: number;
+    error?: Error;
+  }
+
+  interface TestStats {
+    filtered: number;
+    ignored: number;
+    measured: number;
+    passed: number;
+    failed: number;
+  }
+
+  enum MsgKind {
+    Start = "start",
+    Test = "test",
+    End = "end"
+  }
+
+  interface StartMsg {
+    kind: MsgKind.Start;
+    tests: number;
+    stats: TestStats;
+  }
+
+  interface TestMsg {
+    kind: MsgKind.Test;
+    result: TestResult;
+  }
+
+  interface EndMsg {
+    kind: MsgKind.End;
+    stats: TestStats;
+    duration: number;
+    results: TestResult[];
+  }
+
+  interface TestReporter {
+    start(msg: StartMsg): Promise<void>;
+    test(msg: TestMsg): Promise<void>;
+    end(msg: EndMsg): Promise<void>;
+  }
+
   export interface RunTestsOptions {
     /** If `true`, Deno will exit with status code 1 if there was
      * test failure. Defaults to `true`. */
@@ -46,11 +94,19 @@ declare namespace Deno {
     skip?: string | RegExp;
     /** Disable logging of the results. Defaults to `false`. */
     disableLog?: boolean;
+    /** Custom reporter class. If not provided uses console reporter. */
+    reporter?: TestReporter;
   }
 
   /** Run any tests which have been registered. Always resolves
    * asynchronously. */
-  export function runTests(opts?: RunTestsOptions): Promise<void>;
+  export function runTests(
+    opts?: RunTestsOptions
+  ): Promise<{
+    results: TestResult[];
+    stats: TestStats;
+    duration: number;
+  }>;
 
   /** Get the `loadavg`. Requires `allow-env` permission.
    *
