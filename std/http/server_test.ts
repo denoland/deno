@@ -12,12 +12,7 @@ import {
   assertNotEOF,
   assertStrContains
 } from "../testing/asserts.ts";
-import {
-  Response,
-  ServerRequest,
-  Server,
-  serve,
-} from "./server.ts";
+import { Response, ServerRequest, Server, serve } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay, deferred } from "../util/async.ts";
 import { encode, decode } from "../strings/mod.ts";
