@@ -46,13 +46,13 @@ export function normalizeString(
   let lastSegmentLength = 0;
   let lastSlash = -1;
   let dots = 0;
-  let code: number;
+  let code: number | undefined;
   for (let i = 0, len = path.length; i <= len; ++i) {
     if (i < len) code = path.charCodeAt(i);
-    else if (isPathSeparator(code)) break;
+    else if (isPathSeparator(code!)) break;
     else code = CHAR_FORWARD_SLASH;
 
-    if (isPathSeparator(code)) {
+    if (isPathSeparator(code!)) {
       if (lastSlash === i - 1 || dots === 1) {
         // NOOP
       } else if (lastSlash !== i - 1 && dots === 2) {

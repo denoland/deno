@@ -6,15 +6,12 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-const { ErrorKind, DenoError, args, stat, readDir, open, exit } = Deno;
+const { args, stat, readdir, open, exit } = Deno;
 import { posix } from "../path/mod.ts";
-import {
-  listenAndServe,
-  ServerRequest,
-  setContentLength,
-  Response
-} from "./server.ts";
+import { listenAndServe, ServerRequest, Response } from "./server.ts";
 import { parse } from "../flags/mod.ts";
+import { assert } from "../testing/asserts.ts";
+import { setContentLength } from "./io.ts";
 
 interface EntryInfo {
   mode: string;
@@ -40,10 +37,10 @@ const encoder = new TextEncoder();
 const serverArgs = parse(args) as FileServerArgs;
 
 const CORSEnabled = serverArgs.cors ? true : false;
-const target = posix.resolve(serverArgs._[1] || "");
-const addr = `0.0.0.0:${serverArgs.port || serverArgs.p || 4500}`;
+const target = posix.resolve(serverArgs._[1] ?? "");
+const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4500}`;
 
-if (serverArgs.h || serverArgs.help) {
+if (serverArgs.h ?? serverArgs.help) {
   console.log(`Deno File Server
   Serves a local directory in HTTP.
 
@@ -116,17 +113,17 @@ async function serveFile(
   return res;
 }
 
-// TODO: simplify this after deno.stat and deno.readDir are fixed
+// TODO: simplify this after deno.stat and deno.readdir are fixed
 async function serveDir(
   req: ServerRequest,
   dirPath: string
 ): Promise<Response> {
   const dirUrl = `/${posix.relative(target, dirPath)}`;
   const listEntry: EntryInfo[] = [];
-  const fileInfos = await readDir(dirPath);
+  const fileInfos = await readdir(dirPath);
   for (const fileInfo of fileInfos) {
-    const filePath = posix.join(dirPath, fileInfo.name);
-    const fileUrl = posix.join(dirUrl, fileInfo.name);
+    const filePath = posix.join(dirPath, fileInfo.name ?? "");
+    const fileUrl = posix.join(dirUrl, fileInfo.name ?? "");
     if (fileInfo.name === "index.html" && fileInfo.isFile()) {
       // in case index.html as dir...
       return await serveFile(req, filePath);
@@ -139,7 +136,7 @@ async function serveDir(
     listEntry.push({
       mode: modeToString(fileInfo.isDirectory(), mode),
       size: fileInfo.isFile() ? fileLenToString(fileInfo.len) : "",
-      name: fileInfo.name,
+      name: fileInfo.name ?? "",
       url: fileUrl
     });
   }
@@ -162,7 +159,7 @@ async function serveDir(
 }
 
 async function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
-  if (e instanceof DenoError && e.kind === ErrorKind.NotFound) {
+  if (e instanceof Deno.errors.NotFound) {
     return {
       status: 404,
       body: encoder.encode("Not found")
@@ -301,11 +298,17 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): string {
 listenAndServe(
   addr,
   async (req): Promise<void> => {
-    const normalizedUrl = posix.normalize(req.url);
-    const decodedUrl = decodeURIComponent(normalizedUrl);
-    const fsPath = posix.join(target, decodedUrl);
+    let normalizedUrl = posix.normalize(req.url);
+    try {
+      normalizedUrl = decodeURIComponent(normalizedUrl);
+    } catch (e) {
+      if (!(e instanceof URIError)) {
+        throw e;
+      }
+    }
+    const fsPath = posix.join(target, normalizedUrl);
 
-    let response: Response;
+    let response: Response | undefined;
     try {
       const info = await stat(fsPath);
       if (info.isDirectory()) {
@@ -318,10 +321,11 @@ listenAndServe(
       response = await serveFallback(req, e);
     } finally {
       if (CORSEnabled) {
+        assert(response);
         setCORS(response);
       }
-      serverLog(req, response);
-      req.respond(response);
+      serverLog(req, response!);
+      req.respond(response!);
     }
   }
 );

@@ -19,7 +19,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 import { notImplemented } from "./_utils.ts";
+import { validateIntegerRange } from "./util.ts";
 import { EOL as fsEOL } from "../fs/eol.ts";
+import { process } from "./process.ts";
 
 const SEE_GITHUB_ISSUE = "See https://github.com/denoland/deno/issues/3802";
 
@@ -87,6 +89,17 @@ interface UserInfo {
   homedir: string;
 }
 
+arch[Symbol.toPrimitive] = (): string => arch();
+endianness[Symbol.toPrimitive] = (): string => endianness();
+freemem[Symbol.toPrimitive] = (): number => freemem();
+homedir[Symbol.toPrimitive] = (): string | null => homedir();
+hostname[Symbol.toPrimitive] = (): string | null => hostname();
+platform[Symbol.toPrimitive] = (): string => platform();
+release[Symbol.toPrimitive] = (): string => release();
+totalmem[Symbol.toPrimitive] = (): number => totalmem();
+type[Symbol.toPrimitive] = (): string => type();
+uptime[Symbol.toPrimitive] = (): number => uptime();
+
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {
   return Deno.build.arch;
@@ -117,12 +130,12 @@ export function freemem(): number {
 
 /** Not yet implemented */
 export function getPriority(pid = 0): number {
-  validateInt32(pid, "pid");
+  validateIntegerRange(pid, "pid");
   notImplemented(SEE_GITHUB_ISSUE);
 }
 
 /** Returns the string path of the current user's home directory. */
-export function homedir(): string {
+export function homedir(): string | null {
   return Deno.dir("home");
 }
 
@@ -131,46 +144,45 @@ export function hostname(): string {
   return Deno.hostname();
 }
 
-/** Not yet implemented */
+/** Returns an array containing the 1, 5, and 15 minute load averages */
 export function loadavg(): number[] {
   if (Deno.build.os == "win") {
     return [0, 0, 0];
   }
-  notImplemented(SEE_GITHUB_ISSUE);
+  return Deno.loadavg();
 }
 
 /** Not yet implemented */
 export function networkInterfaces(): NetworkInterfaces {
   notImplemented(SEE_GITHUB_ISSUE);
 }
-
-/** Not yet implemented */
+/** Returns the a string identifying the operating system platform. The value is set at compile time. Possible values are 'darwin', 'linux', and 'win32'. */
 export function platform(): string {
-  notImplemented(SEE_GITHUB_ISSUE);
+  return process.platform;
 }
 
-/** Not yet implemented */
+/** Returns the operating system as a string */
 export function release(): string {
-  notImplemented(SEE_GITHUB_ISSUE);
+  return Deno.osRelease();
 }
 
 /** Not yet implemented */
 export function setPriority(pid: number, priority?: number): void {
-  /* The node API has the 'pid' as the first parameter and as optional.  
+  /* The node API has the 'pid' as the first parameter and as optional.
        This makes for a problematic implementation in Typescript. */
   if (priority === undefined) {
     priority = pid;
     pid = 0;
   }
-  validateInt32(pid, "pid");
-  validateInt32(priority, "priority", -20, 19);
+  validateIntegerRange(pid, "pid");
+  validateIntegerRange(priority, "priority", -20, 19);
 
   notImplemented(SEE_GITHUB_ISSUE);
 }
 
-/** Not yet implemented */
-export function tmpdir(): string {
-  notImplemented(SEE_GITHUB_ISSUE);
+/** Returns the operating system's default directory for temporary files as a string. */
+export function tmpdir(): string | null {
+  return Deno.dir("tmp");
 }
 
 /** Not yet implemented */
@@ -211,20 +223,3 @@ export const constants = {
 };
 
 export const EOL = Deno.build.os == "win" ? fsEOL.CRLF : fsEOL.LF;
-
-const validateInt32 = (
-  value: number,
-  name: string,
-  min = -2147483648,
-  max = 2147483647
-): void => {
-  // The defaults for min and max correspond to the limits of 32-bit integers.
-  if (!Number.isInteger(value)) {
-    throw new Error(`${name} must be 'an integer' but was ${value}`);
-  }
-  if (value < min || value > max) {
-    throw new Error(
-      `${name} must be >= ${min} && <= ${max}.  Value was ${value}`
-    );
-  }
-};

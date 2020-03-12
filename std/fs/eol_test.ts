@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { format, detect, EOL } from "./eol.ts";
 
@@ -9,28 +8,28 @@ const Mixedinput2 = "deno\r\nis not\nnode";
 const LFinput = "deno\nis not\nnode";
 const NoNLinput = "deno is not node";
 
-test({
+Deno.test({
   name: "[EOL] Detect CR LF",
   fn(): void {
     assertEquals(detect(CRLFinput), EOL.CRLF);
   }
 });
 
-test({
+Deno.test({
   name: "[EOL] Detect LF",
   fn(): void {
     assertEquals(detect(LFinput), EOL.LF);
   }
 });
 
-test({
+Deno.test({
   name: "[EOL] Detect No New Line",
   fn(): void {
     assertEquals(detect(NoNLinput), null);
   }
 });
 
-test({
+Deno.test({
   name: "[EOL] Detect Mixed",
   fn(): void {
     assertEquals(detect(Mixedinput), EOL.CRLF);
@@ -38,7 +37,7 @@ test({
   }
 });
 
-test({
+Deno.test({
   name: "[EOL] Format",
   fn(): void {
     assertEquals(format(CRLFinput, EOL.LF), LFinput);

@@ -1,35 +1,34 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use std;
-use std::fs::{create_dir, DirBuilder, File, OpenOptions};
+use std::fs::{DirBuilder, File, OpenOptions};
 use std::io::ErrorKind;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use deno_core::ErrBox;
 use rand;
 use rand::Rng;
-use url::Url;
+use walkdir::WalkDir;
+
+#[cfg(unix)]
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 
 #[cfg(unix)]
 use nix::unistd::{chown as unix_chown, Gid, Uid};
-#[cfg(any(unix))]
-use std::os::unix::fs::DirBuilderExt;
-#[cfg(any(unix))]
-use std::os::unix::fs::PermissionsExt;
 
 pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
   data: T,
-  perm: u32,
+  mode: u32,
 ) -> std::io::Result<()> {
-  write_file_2(filename, data, true, perm, true, false)
+  write_file_2(filename, data, true, mode, true, false)
 }
 
 pub fn write_file_2<T: AsRef<[u8]>>(
   filename: &Path,
   data: T,
-  update_perm: bool,
-  perm: u32,
+  update_mode: bool,
+  mode: u32,
   is_create: bool,
   is_append: bool,
 ) -> std::io::Result<()> {
@@ -41,28 +40,30 @@ pub fn write_file_2<T: AsRef<[u8]>>(
     .create(is_create)
     .open(filename)?;
 
-  if update_perm {
-    set_permissions(&mut file, perm)?;
+  if update_mode {
+    set_permissions(&mut file, mode)?;
   }
 
   file.write_all(data.as_ref())
 }
 
-#[cfg(any(unix))]
-fn set_permissions(file: &mut File, perm: u32) -> std::io::Result<()> {
-  debug!("set file perm to {}", perm);
-  file.set_permissions(PermissionsExt::from_mode(perm & 0o777))
+#[cfg(unix)]
+fn set_permissions(file: &mut File, mode: u32) -> std::io::Result<()> {
+  debug!("set file mode to {}", mode);
+  file.set_permissions(PermissionsExt::from_mode(mode & 0o777))
 }
-#[cfg(not(any(unix)))]
-fn set_permissions(_file: &mut File, _perm: u32) -> std::io::Result<()> {
+
+#[cfg(not(unix))]
+fn set_permissions(_file: &mut File, _mode: u32) -> std::io::Result<()> {
   // NOOP on windows
   Ok(())
 }
 
-pub fn make_temp_dir(
+pub fn make_temp(
   dir: Option<&Path>,
   prefix: Option<&str>,
   suffix: Option<&str>,
+  is_dir: bool,
 ) -> std::io::Result<PathBuf> {
   let prefix_ = prefix.unwrap_or("");
   let suffix_ = suffix.unwrap_or("");
@@ -75,8 +76,18 @@ pub fn make_temp_dir(
   loop {
     let unique = rng.gen::<u32>();
     buf.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
-    // TODO: on posix, set mode flags to 0o700.
-    let r = create_dir(buf.as_path());
+    let r = if is_dir {
+      let mut builder = DirBuilder::new();
+      set_dir_permission(&mut builder, 0o700);
+      builder.create(buf.as_path())
+    } else {
+      let mut open_options = OpenOptions::new();
+      open_options.write(true).create_new(true);
+      #[cfg(unix)]
+      open_options.mode(0o600);
+      open_options.open(buf.as_path())?;
+      Ok(())
+    };
     match r {
       Err(ref e) if e.kind() == ErrorKind::AlreadyExists => continue,
       Ok(_) => return Ok(buf),
@@ -85,33 +96,23 @@ pub fn make_temp_dir(
   }
 }
 
-pub fn mkdir(path: &Path, perm: u32, recursive: bool) -> std::io::Result<()> {
-  debug!("mkdir -p {}", path.display());
+pub fn mkdir(path: &Path, mode: u32, recursive: bool) -> std::io::Result<()> {
   let mut builder = DirBuilder::new();
   builder.recursive(recursive);
-  set_dir_permission(&mut builder, perm);
+  set_dir_permission(&mut builder, mode);
   builder.create(path)
 }
 
-#[cfg(any(unix))]
-fn set_dir_permission(builder: &mut DirBuilder, perm: u32) {
-  debug!("set dir perm to {}", perm);
-  builder.mode(perm & 0o777);
+#[cfg(unix)]
+fn set_dir_permission(builder: &mut DirBuilder, mode: u32) {
+  let mode = mode & 0o777;
+  debug!("set dir mode to {:o}", mode);
+  builder.mode(mode);
 }
 
-#[cfg(not(any(unix)))]
-fn set_dir_permission(_builder: &mut DirBuilder, _perm: u32) {
+#[cfg(not(unix))]
+fn set_dir_permission(_builder: &mut DirBuilder, _mode: u32) {
   // NOOP on windows
-}
-
-pub fn normalize_path(path: &Path) -> String {
-  let s = String::from(path.to_str().unwrap());
-  if cfg!(windows) {
-    // TODO This isn't correct. Probbly should iterate over components.
-    s.replace("\\", "/")
-  } else {
-    s
-  }
 }
 
 #[cfg(unix)]
@@ -124,11 +125,46 @@ pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), ErrBox> {
 
 #[cfg(not(unix))]
 pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), ErrBox> {
-  // Noop
+  // FAIL on Windows
   // TODO: implement chown for Windows
-  Err(crate::deno_error::other_error(
-    "Op not implemented".to_string(),
-  ))
+  let e = std::io::Error::new(
+    std::io::ErrorKind::Other,
+    "Not implemented".to_string(),
+  );
+  Err(ErrBox::from(e))
+}
+
+/// Normalize all itermediate components of the path (ie. remove "./" and "../" components).
+/// Similar to `fs::canonicalize()` but doesn't resolve symlinks.
+///
+/// Taken from Cargo
+/// https://github.com/rust-lang/cargo/blob/af307a38c20a753ec60f0ad18be5abed3db3c9ac/src/cargo/util/paths.rs#L60-L85
+pub fn normalize_path(path: &Path) -> PathBuf {
+  let mut components = path.components().peekable();
+  let mut ret =
+    if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
+      components.next();
+      PathBuf::from(c.as_os_str())
+    } else {
+      PathBuf::new()
+    };
+
+  for component in components {
+    match component {
+      Component::Prefix(..) => unreachable!(),
+      Component::RootDir => {
+        ret.push(component.as_os_str());
+      }
+      Component::CurDir => {}
+      Component::ParentDir => {
+        ret.pop();
+      }
+      Component::Normal(c) => {
+        ret.push(c);
+      }
+    }
+  }
+  ret
 }
 
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, ErrBox> {
@@ -139,23 +175,7 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, ErrBox> {
     cwd.join(path)
   };
 
-  // HACK: `Url::parse` is used here because it normalizes the path.
-  // Joining `/dev/deno/" with "./tests" using `PathBuf` yields `/deno/dev/./tests/`.
-  // On the other hand joining `/dev/deno/" with "./tests" using `Url` yields "/dev/deno/tests"
-  // - and that's what we want.
-  // There exists similar method on `PathBuf` - `PathBuf.canonicalize`, but the problem
-  // is `canonicalize` resolves symlinks and we don't want that.
-  // We just want to normalize the path...
-  // This only works on absolute paths - not worth extracting as a public utility.
-  let resolved_url =
-    Url::from_file_path(resolved_path).expect("Path should be absolute");
-  let normalized_url = Url::parse(resolved_url.as_str())
-    .expect("String from a URL should parse to a URL");
-  let normalized_path = normalized_url
-    .to_file_path()
-    .expect("URL from a path should contain a valid path");
-
-  Ok(normalized_path)
+  Ok(normalize_path(&resolved_path))
 }
 
 #[cfg(test)]
@@ -180,6 +200,23 @@ mod tests {
     assert_eq!(resolve_from_cwd(Path::new("a/..")).unwrap(), cwd);
   }
 
+  #[test]
+  fn test_normalize_path() {
+    assert_eq!(normalize_path(Path::new("a/../b")), PathBuf::from("b"));
+    assert_eq!(normalize_path(Path::new("a/./b/")), PathBuf::from("a/b/"));
+    assert_eq!(
+      normalize_path(Path::new("a/./b/../c")),
+      PathBuf::from("a/c")
+    );
+
+    if cfg!(windows) {
+      assert_eq!(
+        normalize_path(Path::new("C:\\a\\.\\b\\..\\c")),
+        PathBuf::from("C:\\a\\c")
+      );
+    }
+  }
+
   // TODO: Get a good expected value here for Windows.
   #[cfg(not(windows))]
   #[test]
@@ -187,4 +224,18 @@ mod tests {
     let expected = Path::new("/a");
     assert_eq!(resolve_from_cwd(expected).unwrap(), expected);
   }
+}
+
+pub fn files_in_subtree<F>(root: PathBuf, filter: F) -> Vec<PathBuf>
+where
+  F: Fn(&Path) -> bool,
+{
+  assert!(root.is_dir());
+
+  WalkDir::new(root)
+    .into_iter()
+    .filter_map(|e| e.ok())
+    .map(|e| e.path().to_owned())
+    .filter(|p| if p.is_dir() { false } else { filter(&p) })
+    .collect()
 }

@@ -1,8 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::ops::json_op;
+use crate::op_error::OpError;
 use crate::state::State;
-use atty;
 use deno_core::*;
 use std::collections::HashMap;
 use std::env;
@@ -11,14 +10,15 @@ use sys_info;
 use url::Url;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("exit", s.core_op(json_op(s.stateful_op(op_exit))));
-  i.register_op("is_tty", s.core_op(json_op(s.stateful_op(op_is_tty))));
-  i.register_op("env", s.core_op(json_op(s.stateful_op(op_env))));
-  i.register_op("exec_path", s.core_op(json_op(s.stateful_op(op_exec_path))));
-  i.register_op("set_env", s.core_op(json_op(s.stateful_op(op_set_env))));
-  i.register_op("get_env", s.core_op(json_op(s.stateful_op(op_get_env))));
-  i.register_op("get_dir", s.core_op(json_op(s.stateful_op(op_get_dir))));
-  i.register_op("hostname", s.core_op(json_op(s.stateful_op(op_hostname))));
+  i.register_op("op_exit", s.stateful_json_op(op_exit));
+  i.register_op("op_env", s.stateful_json_op(op_env));
+  i.register_op("op_exec_path", s.stateful_json_op(op_exec_path));
+  i.register_op("op_set_env", s.stateful_json_op(op_set_env));
+  i.register_op("op_get_env", s.stateful_json_op(op_get_env));
+  i.register_op("op_get_dir", s.stateful_json_op(op_get_dir));
+  i.register_op("op_hostname", s.stateful_json_op(op_hostname));
+  i.register_op("op_loadavg", s.stateful_json_op(op_loadavg));
+  i.register_op("op_os_release", s.stateful_json_op(op_os_release));
 }
 
 #[derive(Deserialize)]
@@ -30,7 +30,7 @@ fn op_get_dir(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   state.check_env()?;
   let args: GetDirArgs = serde_json::from_value(args)?;
 
@@ -49,19 +49,23 @@ fn op_get_dir(
     "picture" => dirs::picture_dir(),
     "public" => dirs::public_dir(),
     "template" => dirs::template_dir(),
+    "tmp" => Some(std::env::temp_dir()),
     "video" => dirs::video_dir(),
     _ => {
-      return Err(ErrBox::from(Error::new(
-        ErrorKind::InvalidInput,
-        format!("Invalid dir type `{}`", args.kind.as_str()),
-      )))
+      return Err(
+        Error::new(
+          ErrorKind::InvalidInput,
+          format!("Invalid dir type `{}`", args.kind.as_str()),
+        )
+        .into(),
+      )
     }
   };
 
   if path == None {
-    Err(ErrBox::from(Error::new(
-      ErrorKind::NotFound,
-      format!("Could not get user {} directory.", args.kind.as_str()),
+    Err(OpError::not_found(format!(
+      "Could not get user {} directory.",
+      args.kind.as_str()
     )))
   } else {
     Ok(JsonOp::Sync(json!(path
@@ -76,7 +80,7 @@ fn op_exec_path(
   state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   state.check_env()?;
   let current_exe = env::current_exe().unwrap();
   // Now apply URL parser to current exe to get fully resolved path, otherwise
@@ -96,7 +100,7 @@ fn op_set_env(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: SetEnv = serde_json::from_value(args)?;
   state.check_env()?;
   env::set_var(args.key, args.value);
@@ -107,7 +111,7 @@ fn op_env(
   state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   state.check_env()?;
   let v = env::vars().collect::<HashMap<String, String>>();
   Ok(JsonOp::Sync(json!(v)))
@@ -122,7 +126,7 @@ fn op_get_env(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: GetEnv = serde_json::from_value(args)?;
   state.check_env()?;
   let r = match env::var(args.key) {
@@ -141,29 +145,43 @@ fn op_exit(
   _s: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: Exit = serde_json::from_value(args)?;
   std::process::exit(args.code)
 }
 
-fn op_is_tty(
-  _s: &State,
+fn op_loadavg(
+  state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
-  Ok(JsonOp::Sync(json!({
-    "stdin": atty::is(atty::Stream::Stdin),
-    "stdout": atty::is(atty::Stream::Stdout),
-    "stderr": atty::is(atty::Stream::Stderr),
-  })))
+) -> Result<JsonOp, OpError> {
+  state.check_env()?;
+  match sys_info::loadavg() {
+    Ok(loadavg) => Ok(JsonOp::Sync(json!([
+      loadavg.one,
+      loadavg.five,
+      loadavg.fifteen
+    ]))),
+    Err(_) => Ok(JsonOp::Sync(json!([0f64, 0f64, 0f64]))),
+  }
 }
 
 fn op_hostname(
   state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   state.check_env()?;
-  let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_owned());
+  let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
   Ok(JsonOp::Sync(json!(hostname)))
+}
+
+fn op_os_release(
+  state: &State,
+  _args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  state.check_env()?;
+  let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
+  Ok(JsonOp::Sync(json!(release)))
 }

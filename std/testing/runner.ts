@@ -3,8 +3,7 @@
 import { parse } from "../flags/mod.ts";
 import { ExpandGlobOptions, expandGlob } from "../fs/mod.ts";
 import { isWindows, join } from "../path/mod.ts";
-import { RunTestsOptions, runTests } from "./mod.ts";
-const { DenoError, ErrorKind, args, cwd, exit } = Deno;
+const { args, cwd, exit } = Deno;
 
 const DIR_GLOBS = [join("**", "?(*_)test.{js,ts}")];
 
@@ -110,7 +109,7 @@ export async function* findTestModules(
   yield* includeUrls.filter(shouldIncludeUrl);
 }
 
-export interface RunTestModulesOptions extends RunTestsOptions {
+export interface RunTestModulesOptions extends Deno.RunTestsOptions {
   include?: string[];
   exclude?: string[];
   allowNone?: boolean;
@@ -168,7 +167,6 @@ export async function runTestModules({
   include = ["."],
   exclude = [],
   allowNone = false,
-  parallel = false,
   exitOnFail = false,
   only = /[^\s]/,
   skip = /^\s*$/,
@@ -184,7 +182,7 @@ export async function runTestModules({
   if (moduleCount == 0) {
     const noneFoundMessage = "No matching test modules found.";
     if (!allowNone) {
-      throw new DenoError(ErrorKind.NotFound, noneFoundMessage);
+      throw new Deno.errors.NotFound(noneFoundMessage);
     } else if (!disableLog) {
       console.log(noneFoundMessage);
     }
@@ -233,8 +231,7 @@ export async function runTestModules({
     console.log(`Found ${moduleCount} matching test modules.`);
   }
 
-  await runTests({
-    parallel,
+  await Deno.runTests({
     exitOnFail,
     only,
     skip,

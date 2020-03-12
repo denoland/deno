@@ -303,7 +303,7 @@ export function join(...paths: string[]): string {
   if (pathsCount === 0) return ".";
 
   let joined: string | undefined;
-  let firstPart: string;
+  let firstPart: string | null = null;
   for (let i = 0; i < pathsCount; ++i) {
     const path = paths[i];
     assertPath(path);

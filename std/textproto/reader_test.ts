@@ -9,15 +9,10 @@ import { stringsReader } from "../io/util.ts";
 import {
   assert,
   assertEquals,
-  assertNotEquals,
-  assertThrows
+  assertThrows,
+  assertNotEOF
 } from "../testing/asserts.ts";
-import { test, runIfMain } from "../testing/mod.ts";
-
-function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
-  assertNotEquals(val, Deno.EOF);
-  return val as T;
-}
+const { test } = Deno;
 
 function reader(s: string): TextProtoReader {
   return new TextProtoReader(new BufReader(stringsReader(s)));
@@ -180,5 +175,3 @@ test({
     assertEquals(m.get("Content-Disposition"), 'form-data; name="test"');
   }
 });
-
-runIfMain(import.meta);

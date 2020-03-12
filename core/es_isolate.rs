@@ -21,42 +21,33 @@ use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
+use crate::isolate::attach_handle_to_error;
+use crate::isolate::exception_to_err_result;
 use crate::isolate::Isolate;
 use crate::isolate::StartupData;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::LoadState;
-use crate::modules::Loader;
+use crate::modules::ModuleLoader;
+use crate::modules::ModuleSource;
 use crate::modules::Modules;
 use crate::modules::RecursiveModuleLoad;
 
 pub type ModuleId = i32;
 pub type DynImportId = i32;
-/// Represent result of fetching the source code of a module. Found module URL
-/// might be different from specified URL used for loading due to redirections
-/// (like HTTP 303). E.G. Both https://example.com/a.ts and
-/// https://example.com/b.ts may point to https://example.com/c.ts
-/// By keeping track of specified and found URL we can alias modules and avoid
-/// recompiling the same code 3 times.
-#[derive(Debug, Eq, PartialEq)]
-pub struct SourceCodeInfo {
-  pub code: String,
-  pub module_url_specified: String,
-  pub module_url_found: String,
-}
 
 /// More specialized version of `Isolate` that provides loading
 /// and execution of ES Modules.
 ///
 /// Creating `EsIsolate` requires to pass `loader` argument
-/// that implements `Loader` trait - that way actual resolution and
+/// that implements `ModuleLoader` trait - that way actual resolution and
 /// loading of modules can be customized by the implementor.
 pub struct EsIsolate {
   core_isolate: Box<Isolate>,
-  loader: Arc<Box<dyn Loader + Unpin>>,
+  loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
   pub(crate) next_dyn_import_id: DynImportId,
   pub(crate) dyn_import_map:
@@ -80,45 +71,26 @@ impl DerefMut for EsIsolate {
   }
 }
 
-unsafe impl Send for EsIsolate {}
-
-impl Drop for EsIsolate {
-  fn drop(&mut self) {
-    let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
-    // Clear persistent handles we own.
-    {
-      let mut locker = v8::Locker::new(&isolate);
-      let scope = locker.enter();
-      for module in self.modules.info.values_mut() {
-        module.handle.reset(scope);
-      }
-      for handle in self.dyn_import_map.values_mut() {
-        handle.reset(scope);
-      }
-    }
-  }
-}
-
 impl EsIsolate {
   pub fn new(
-    loader: Box<dyn Loader + Unpin>,
+    loader: Rc<dyn ModuleLoader>,
     startup_data: StartupData,
     will_snapshot: bool,
   ) -> Box<Self> {
     let mut core_isolate = Isolate::new(startup_data, will_snapshot);
     {
-      let isolate = core_isolate.v8_isolate.as_mut().unwrap();
-      isolate.set_host_initialize_import_meta_object_callback(
+      let v8_isolate = core_isolate.v8_isolate.as_mut().unwrap();
+      v8_isolate.set_host_initialize_import_meta_object_callback(
         bindings::host_initialize_import_meta_object_callback,
       );
-      isolate.set_host_import_module_dynamically_callback(
+      v8_isolate.set_host_import_module_dynamically_callback(
         bindings::host_import_module_dynamically_callback,
       );
     }
 
     let es_isolate = Self {
       modules: Modules::new(),
-      loader: Arc::new(loader),
+      loader,
       core_isolate,
       next_dyn_import_id: 0,
       dyn_import_map: HashMap::new(),
@@ -147,13 +119,14 @@ impl EsIsolate {
     name: &str,
     source: &str,
   ) -> Result<ModuleId, ErrBox> {
-    let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
-    let mut locker = v8::Locker::new(&isolate);
+    let core_isolate = &mut self.core_isolate;
+    let v8_isolate = core_isolate.v8_isolate.as_mut().unwrap();
+    let js_error_create_fn = &*core_isolate.js_error_create_fn;
 
-    let mut hs = v8::HandleScope::new(locker.enter());
+    let mut hs = v8::HandleScope::new(v8_isolate);
     let scope = hs.enter();
-    assert!(!self.core_isolate.global_context.is_empty());
-    let context = self.core_isolate.global_context.get(scope).unwrap();
+    assert!(!core_isolate.global_context.is_empty());
+    let context = core_isolate.global_context.get(scope).unwrap();
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
@@ -166,13 +139,15 @@ impl EsIsolate {
     let mut try_catch = v8::TryCatch::new(scope);
     let tc = try_catch.enter();
 
-    let maybe_module = v8::script_compiler::compile_module(&isolate, source);
+    let maybe_module = v8::script_compiler::compile_module(scope, source);
 
     if tc.has_caught() {
       assert!(maybe_module.is_none());
-      return self
-        .core_isolate
-        .exception_to_err_result(scope, tc.exception().unwrap());
+      return exception_to_err_result(
+        scope,
+        tc.exception().unwrap(),
+        js_error_create_fn,
+      );
     }
 
     let module = maybe_module.unwrap();
@@ -198,12 +173,13 @@ impl EsIsolate {
   /// Instantiates a ES module
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is CoreJSError, however it may be a
-  /// different type if Isolate::set_js_error_create() has been used.
+  /// the V8 exception. By default this type is JSError, however it may be a
+  /// different type if Isolate::set_js_error_create_fn() has been used.
   fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
-    let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
-    let mut locker = v8::Locker::new(isolate);
-    let mut hs = v8::HandleScope::new(locker.enter());
+    let v8_isolate = self.core_isolate.v8_isolate.as_mut().unwrap();
+    let js_error_create_fn = &*self.core_isolate.js_error_create_fn;
+
+    let mut hs = v8::HandleScope::new(v8_isolate);
     let scope = hs.enter();
     assert!(!self.core_isolate.global_context.is_empty());
     let context = self.core_isolate.global_context.get(scope).unwrap();
@@ -221,7 +197,11 @@ impl EsIsolate {
     let mut module = module_info.handle.get(scope).unwrap();
 
     if module.get_status() == v8::ModuleStatus::Errored {
-      self.exception_to_err_result(scope, module.get_exception())?
+      exception_to_err_result(
+        scope,
+        module.get_exception(),
+        js_error_create_fn,
+      )?
     }
 
     let result =
@@ -230,7 +210,7 @@ impl EsIsolate {
       Some(_) => Ok(()),
       None => {
         let exception = tc.exception().unwrap();
-        self.exception_to_err_result(scope, exception)
+        exception_to_err_result(scope, exception, js_error_create_fn)
       }
     }
   }
@@ -238,15 +218,17 @@ impl EsIsolate {
   /// Evaluates an already instantiated ES module.
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is CoreJSError, however it may be a
-  /// different type if Isolate::set_js_error_create() has been used.
+  /// the V8 exception. By default this type is JSError, however it may be a
+  /// different type if Isolate::set_js_error_create_fn() has been used.
   pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
-    let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
-    let mut locker = v8::Locker::new(isolate);
-    let mut hs = v8::HandleScope::new(locker.enter());
+    let core_isolate = &mut self.core_isolate;
+    let v8_isolate = core_isolate.v8_isolate.as_mut().unwrap();
+    let js_error_create_fn = &*core_isolate.js_error_create_fn;
+
+    let mut hs = v8::HandleScope::new(v8_isolate);
     let scope = hs.enter();
-    assert!(!self.core_isolate.global_context.is_empty());
-    let context = self.core_isolate.global_context.get(scope).unwrap();
+    assert!(!core_isolate.global_context.is_empty());
+    let context = core_isolate.global_context.get(scope).unwrap();
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
@@ -271,10 +253,9 @@ impl EsIsolate {
     match status {
       v8::ModuleStatus::Evaluated => Ok(()),
       v8::ModuleStatus::Errored => {
-        let i = &mut self.core_isolate;
         let exception = module.get_exception();
-        i.exception_to_err_result(scope, exception)
-          .map_err(|err| i.attach_handle_to_error(scope, err, exception))
+        exception_to_err_result(scope, exception, js_error_create_fn)
+          .map_err(|err| attach_handle_to_error(scope, err, exception))
       }
       other => panic!("Unexpected module status {:?}", other),
     }
@@ -318,11 +299,12 @@ impl EsIsolate {
     id: DynImportId,
     err: ErrBox,
   ) -> Result<(), ErrBox> {
-    let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
-    let mut locker = v8::Locker::new(isolate);
-    let mut hs = v8::HandleScope::new(locker.enter());
+    let core_isolate = &mut self.core_isolate;
+    let v8_isolate = core_isolate.v8_isolate.as_mut().unwrap();
+
+    let mut hs = v8::HandleScope::new(v8_isolate);
     let scope = hs.enter();
-    let context = self.core_isolate.global_context.get(scope).unwrap();
+    let context = core_isolate.global_context.get(scope).unwrap();
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
@@ -333,19 +315,14 @@ impl EsIsolate {
     let mut resolver = resolver_handle.get(scope).unwrap();
     resolver_handle.reset(scope);
 
-    let exception = match ErrBox::downcast::<ErrWithV8Handle>(err) {
-      Ok(mut err) => {
-        let handle = err.get_handle();
-        let exception = handle.get(scope).unwrap();
-        handle.reset(scope);
-        exception
-      }
-      Err(err) => {
+    let exception = err
+      .downcast_ref::<ErrWithV8Handle>()
+      .and_then(|err| err.get_handle().get(scope))
+      .unwrap_or_else(|| {
         let message = err.to_string();
         let message = v8::String::new(scope, &message).unwrap();
         v8::Exception::type_error(scope, message)
-      }
-    };
+      });
 
     resolver.reject(context, exception).unwrap();
     scope.isolate().run_microtasks();
@@ -359,9 +336,8 @@ impl EsIsolate {
   ) -> Result<(), ErrBox> {
     debug!("dyn_import_done {} {:?}", id, mod_id);
     assert!(mod_id != 0);
-    let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
-    let mut locker = v8::Locker::new(isolate);
-    let mut hs = v8::HandleScope::new(locker.enter());
+    let v8_isolate = self.core_isolate.v8_isolate.as_mut().unwrap();
+    let mut hs = v8::HandleScope::new(v8_isolate);
     let scope = hs.enter();
     assert!(!self.core_isolate.global_context.is_empty());
     let context = self.core_isolate.global_context.get(scope).unwrap();
@@ -437,10 +413,10 @@ impl EsIsolate {
 
   fn register_during_load(
     &mut self,
-    info: SourceCodeInfo,
+    info: ModuleSource,
     load: &mut RecursiveModuleLoad,
   ) -> Result<(), ErrBox> {
-    let SourceCodeInfo {
+    let ModuleSource {
       code,
       module_url_specified,
       module_url_found,
@@ -509,11 +485,14 @@ impl EsIsolate {
   /// manually after load is finished.
   pub async fn load_module(
     &mut self,
-    specifier: &str,
+    specifier: &ModuleSpecifier,
     code: Option<String>,
   ) -> Result<ModuleId, ErrBox> {
-    let mut load =
-      RecursiveModuleLoad::main(specifier, code, self.loader.clone());
+    let mut load = RecursiveModuleLoad::main(
+      &specifier.to_string(),
+      code,
+      self.loader.clone(),
+    );
 
     while let Some(info_result) = load.next().await {
       let info = info_result?;
@@ -558,10 +537,11 @@ pub mod tests {
   use crate::isolate::js_check;
   use crate::isolate::tests::run_in_task;
   use crate::isolate::ZeroCopyBuf;
-  use crate::modules::SourceCodeInfoFuture;
+  use crate::modules::ModuleSourceFuture;
   use crate::ops::*;
   use std::io;
   use std::sync::atomic::{AtomicUsize, Ordering};
+  use std::sync::Arc;
 
   #[test]
   fn test_mods() {
@@ -570,7 +550,7 @@ pub mod tests {
       pub count: Arc<AtomicUsize>,
     }
 
-    impl Loader for ModsLoader {
+    impl ModuleLoader for ModsLoader {
       fn resolve(
         &self,
         specifier: &str,
@@ -589,12 +569,12 @@ pub mod tests {
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
-      ) -> Pin<Box<SourceCodeInfoFuture>> {
+      ) -> Pin<Box<ModuleSourceFuture>> {
         unreachable!()
       }
     }
 
-    let loader = Box::new(ModsLoader::default());
+    let loader = Rc::new(ModsLoader::default());
     let resolve_count = loader.count.clone();
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
@@ -669,7 +649,7 @@ pub mod tests {
       pub count: Arc<AtomicUsize>,
     }
 
-    impl Loader for DynImportErrLoader {
+    impl ModuleLoader for DynImportErrLoader {
       fn resolve(
         &self,
         specifier: &str,
@@ -688,7 +668,7 @@ pub mod tests {
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
-      ) -> Pin<Box<SourceCodeInfoFuture>> {
+      ) -> Pin<Box<ModuleSourceFuture>> {
         async { Err(ErrBox::from(io::Error::from(io::ErrorKind::NotFound))) }
           .boxed()
       }
@@ -696,7 +676,7 @@ pub mod tests {
 
     // Test an erroneous dynamic import where the specified module isn't found.
     run_in_task(|cx| {
-      let loader = Box::new(DynImportErrLoader::default());
+      let loader = Rc::new(DynImportErrLoader::default());
       let count = loader.count.clone();
       let mut isolate = EsIsolate::new(loader, StartupData::None, false);
 
@@ -730,7 +710,7 @@ pub mod tests {
       pub count: Arc<AtomicUsize>,
     }
 
-    impl Loader for DynImportErr2Loader {
+    impl ModuleLoader for DynImportErr2Loader {
       fn resolve(
         &self,
         specifier: &str,
@@ -754,8 +734,8 @@ pub mod tests {
         &self,
         specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
-      ) -> Pin<Box<SourceCodeInfoFuture>> {
-        let info = SourceCodeInfo {
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        let info = ModuleSource {
           module_url_specified: specifier.to_string(),
           module_url_found: specifier.to_string(),
           code: "# not valid JS".to_owned(),
@@ -815,7 +795,7 @@ pub mod tests {
       pub load_count: Arc<AtomicUsize>,
     }
 
-    impl Loader for DynImportOkLoader {
+    impl ModuleLoader for DynImportOkLoader {
       fn resolve(
         &self,
         specifier: &str,
@@ -838,9 +818,9 @@ pub mod tests {
         specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
-      ) -> Pin<Box<SourceCodeInfoFuture>> {
+      ) -> Pin<Box<ModuleSourceFuture>> {
         self.load_count.fetch_add(1, Ordering::Relaxed);
-        let info = SourceCodeInfo {
+        let info = ModuleSource {
           module_url_specified: specifier.to_string(),
           module_url_found: specifier.to_string(),
           code: "export function b() { return 'b' }".to_owned(),
@@ -850,7 +830,7 @@ pub mod tests {
     }
 
     run_in_task(|cx| {
-      let loader = Box::new(DynImportOkLoader::default());
+      let loader = Rc::new(DynImportOkLoader::default());
       let resolve_count = loader.resolve_count.clone();
       let load_count = loader.load_count.clone();
       let mut isolate = EsIsolate::new(loader, StartupData::None, false);

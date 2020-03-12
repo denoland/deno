@@ -1,13 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
-use crate::ops::json_op;
+use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::*;
 
 #[cfg(unix)]
 use super::dispatch_json::Deserialize;
-#[cfg(unix)]
-use crate::deno_error::bad_resource;
 #[cfg(unix)]
 use futures::future::{poll_fn, FutureExt};
 #[cfg(unix)]
@@ -18,18 +16,9 @@ use std::task::Waker;
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op(
-    "signal_bind",
-    s.core_op(json_op(s.stateful_op(op_signal_bind))),
-  );
-  i.register_op(
-    "signal_unbind",
-    s.core_op(json_op(s.stateful_op(op_signal_unbind))),
-  );
-  i.register_op(
-    "signal_poll",
-    s.core_op(json_op(s.stateful_op(op_signal_poll))),
-  );
+  i.register_op("op_signal_bind", s.stateful_json_op(op_signal_bind));
+  i.register_op("op_signal_unbind", s.stateful_json_op(op_signal_unbind));
+  i.register_op("op_signal_poll", s.stateful_json_op(op_signal_poll));
 }
 
 #[cfg(unix)]
@@ -54,7 +43,7 @@ fn op_signal_bind(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: BindSignalArgs = serde_json::from_value(args)?;
   let mut state = state.borrow_mut();
   let rid = state.resource_table.add(
@@ -74,7 +63,7 @@ fn op_signal_poll(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let state_ = state.clone();
@@ -99,7 +88,7 @@ pub fn op_signal_unbind(
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let mut state = state.borrow_mut();
@@ -111,7 +100,10 @@ pub fn op_signal_unbind(
       waker.clone().wake();
     }
   }
-  state.resource_table.close(rid).ok_or_else(bad_resource)?;
+  state
+    .resource_table
+    .close(rid)
+    .ok_or_else(OpError::bad_resource_id)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -120,7 +112,7 @@ pub fn op_signal_bind(
   _state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   unimplemented!();
 }
 
@@ -129,7 +121,7 @@ fn op_signal_unbind(
   _state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   unimplemented!();
 }
 
@@ -138,6 +130,6 @@ fn op_signal_poll(
   _state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   unimplemented!();
 }

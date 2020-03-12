@@ -26,6 +26,10 @@ pub struct ResourceTable {
 }
 
 impl ResourceTable {
+  pub fn has(&self, rid: ResourceId) -> bool {
+    self.map.contains_key(&rid)
+  }
+
   pub fn get<T: Resource>(&self, rid: ResourceId) -> Option<&T> {
     if let Some((_name, resource)) = self.map.get(&rid) {
       return resource.downcast_ref::<T>();
@@ -79,3 +83,60 @@ impl ResourceTable {
 pub trait Resource: Downcast + Any + Send {}
 impl<T> Resource for T where T: Downcast + Any + Send {}
 impl_downcast!(Resource);
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  struct FakeResource {
+    not_empty: u128,
+  }
+
+  impl FakeResource {
+    fn new(value: u128) -> FakeResource {
+      FakeResource { not_empty: value }
+    }
+  }
+
+  #[test]
+  fn test_create_resource_table_default() {
+    let table = ResourceTable::default();
+    assert_eq!(table.map.len(), 0);
+  }
+
+  #[test]
+  fn test_add_to_resource_table_not_empty() {
+    let mut table = ResourceTable::default();
+    table.add("fake1", Box::new(FakeResource::new(1)));
+    table.add("fake2", Box::new(FakeResource::new(2)));
+    assert_eq!(table.map.len(), 2);
+  }
+
+  #[test]
+  fn test_add_to_resource_table_are_contiguous() {
+    let mut table = ResourceTable::default();
+    let rid1 = table.add("fake1", Box::new(FakeResource::new(1)));
+    let rid2 = table.add("fake2", Box::new(FakeResource::new(2)));
+    assert_eq!(rid1 + 1, rid2);
+  }
+
+  #[test]
+  fn test_get_from_resource_table_is_what_was_given() {
+    let mut table = ResourceTable::default();
+    let rid = table.add("fake", Box::new(FakeResource::new(7)));
+    let resource = table.get::<FakeResource>(rid);
+    assert_eq!(resource.unwrap().not_empty, 7);
+  }
+
+  #[test]
+  fn test_remove_from_resource_table() {
+    let mut table = ResourceTable::default();
+    let rid1 = table.add("fake1", Box::new(FakeResource::new(1)));
+    let rid2 = table.add("fake2", Box::new(FakeResource::new(2)));
+    assert_eq!(table.map.len(), 2);
+    table.close(rid1);
+    assert_eq!(table.map.len(), 1);
+    table.close(rid2);
+    assert_eq!(table.map.len(), 0);
+  }
+}

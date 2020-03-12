@@ -58,7 +58,7 @@ impl<'a> Drop for HttpServerGuard<'a> {
 /// Starts tools/http_server.py when the returned guard is dropped, the server
 /// will be killed.
 pub fn http_server<'a>() -> HttpServerGuard<'a> {
-  // TODO(ry) Allow tests to use the http server in parallel.
+  // TODO(bartlomieju) Allow tests to use the http server in parallel.
   let g = GUARD.lock().unwrap();
 
   println!("tools/http_server.py starting...");
@@ -71,9 +71,17 @@ pub fn http_server<'a>() -> HttpServerGuard<'a> {
 
   let stdout = child.stdout.as_mut().unwrap();
   use std::io::{BufRead, BufReader};
-  let mut lines = BufReader::new(stdout).lines();
-  let line = lines.next().unwrap().unwrap();
-  assert!(line.starts_with("ready"));
+  let lines = BufReader::new(stdout).lines();
+  // Wait for "ready" on stdout. See tools/http_server.py
+  for maybe_line in lines {
+    if let Ok(line) = maybe_line {
+      if line.starts_with("ready") {
+        break;
+      }
+    } else {
+      panic!(maybe_line.unwrap_err());
+    }
+  }
 
   HttpServerGuard { child, g }
 }

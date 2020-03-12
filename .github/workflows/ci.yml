@@ -33,7 +33,10 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v1
         with:
-          fetch-depth: 1
+          # Use depth > 1, because sometimes we need to rebuild master and if
+          # other commits have landed it will become impossible to rebuild if
+          # the checkout is too shallow.
+          fetch-depth: 5
           submodules: true
 
       - name: Create source tarballs (release, linux)
@@ -119,10 +122,6 @@ jobs:
         if: matrix.kind == 'lint'
         run: python ./tools/test_format.py
 
-      - name: Clippy
-        if: matrix.kind == 'lint'
-        run: cargo clippy --all-targets --release --locked -- -D clippy::all
-
       - name: Build
         if: matrix.kind == 'test_release' || matrix.kind == 'bench'
         run: cargo build --release --locked --all-targets
@@ -146,7 +145,7 @@ jobs:
         env:
           DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
         run: |
-          git clone --depth 1 -b gh-pages https://${DENOBOT_PAT}@github.com/denoland/deno.git gh-pages
+          git clone --depth 1 -b gh-pages https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git gh-pages
           python ./tools/build_benchmark_jsons.py
           cd gh-pages
           git config user.email "propelml@gmail.com"

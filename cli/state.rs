@@ -1,19 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::compilers::TargetLib;
-use crate::deno_error::permission_denied;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
+use crate::op_error::OpError;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
 use crate::permissions::DenoPermissions;
-use crate::worker::WorkerChannelsExternal;
-use crate::worker::WorkerChannelsInternal;
+use crate::worker::WorkerHandle;
 use deno_core::Buf;
 use deno_core::CoreOp;
 use deno_core::ErrBox;
-use deno_core::Loader;
+use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
 use deno_core::ResourceTable;
@@ -31,8 +30,7 @@ use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
+use std::thread::JoinHandle;
 use std::time::Instant;
 
 #[derive(Clone)]
@@ -55,9 +53,8 @@ pub struct StateInner {
   pub import_map: Option<ImportMap>,
   pub metrics: Metrics,
   pub global_timer: GlobalTimer,
-  pub workers: HashMap<u32, WorkerChannelsExternal>,
-  pub worker_channels_internal: Option<WorkerChannelsInternal>,
-  pub next_worker_id: AtomicUsize,
+  pub workers: HashMap<u32, (JoinHandle<()>, WorkerHandle)>,
+  pub next_worker_id: u32,
   pub start_time: Instant,
   pub seeded_rng: Option<StdRng>,
   pub resource_table: ResourceTable,
@@ -65,6 +62,17 @@ pub struct StateInner {
 }
 
 impl State {
+  pub fn stateful_json_op<D>(
+    &self,
+    dispatcher: D,
+  ) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp
+  where
+    D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
+  {
+    use crate::ops::json_op;
+    self.core_op(json_op(self.stateful_op(dispatcher)))
+  }
+
   /// Wrap core `OpDispatcher` to collect metrics.
   pub fn core_op<D>(
     &self,
@@ -76,30 +84,45 @@ impl State {
     let state = self.clone();
 
     move |control: &[u8], zero_copy: Option<ZeroCopyBuf>| -> CoreOp {
-      let bytes_sent_control = control.len();
+      let bytes_sent_control = control.len() as u64;
       let bytes_sent_zero_copy =
-        zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
+        zero_copy.as_ref().map(|b| b.len()).unwrap_or(0) as u64;
 
       let op = dispatcher(control, zero_copy);
-      state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
 
       match op {
         Op::Sync(buf) => {
-          state.metrics_op_completed(buf.len());
+          let mut state_ = state.borrow_mut();
+          state_.metrics.op_sync(
+            bytes_sent_control,
+            bytes_sent_zero_copy,
+            buf.len() as u64,
+          );
           Op::Sync(buf)
         }
         Op::Async(fut) => {
+          let mut state_ = state.borrow_mut();
+          state_
+            .metrics
+            .op_dispatched_async(bytes_sent_control, bytes_sent_zero_copy);
           let state = state.clone();
           let result_fut = fut.map_ok(move |buf: Buf| {
-            state.metrics_op_completed(buf.len());
+            let mut state_ = state.borrow_mut();
+            state_.metrics.op_completed_async(buf.len() as u64);
             buf
           });
           Op::Async(result_fut.boxed_local())
         }
         Op::AsyncUnref(fut) => {
+          let mut state_ = state.borrow_mut();
+          state_.metrics.op_dispatched_async_unref(
+            bytes_sent_control,
+            bytes_sent_zero_copy,
+          );
           let state = state.clone();
           let result_fut = fut.map_ok(move |buf: Buf| {
-            state.metrics_op_completed(buf.len());
+            let mut state_ = state.borrow_mut();
+            state_.metrics.op_completed_async_unref(buf.len() as u64);
             buf
           });
           Op::AsyncUnref(result_fut.boxed_local())
@@ -131,19 +154,19 @@ impl State {
   pub fn stateful_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, ErrBox>
+  ) -> impl Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>
   where
-    D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, ErrBox>,
+    D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
   {
     let state = self.clone();
 
     move |args: Value,
           zero_copy: Option<ZeroCopyBuf>|
-          -> Result<JsonOp, ErrBox> { dispatcher(&state, args, zero_copy) }
+          -> Result<JsonOp, OpError> { dispatcher(&state, args, zero_copy) }
   }
 }
 
-impl Loader for State {
+impl ModuleLoader for State {
   fn resolve(
     &self,
     specifier: &str,
@@ -170,17 +193,17 @@ impl Loader for State {
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     is_dyn_import: bool,
-  ) -> Pin<Box<deno_core::SourceCodeInfoFuture>> {
+  ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.clone();
     if is_dyn_import {
       if let Err(e) = self.check_dyn_import(&module_specifier) {
-        return async move { Err(e) }.boxed_local();
+        return async move { Err(e.into()) }.boxed_local();
       }
     }
 
-    let state = self.borrow();
+    let mut state = self.borrow_mut();
     // TODO(bartlomieju): incrementing resolve_count here has no sense...
-    state.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
+    state.metrics.resolve_count += 1;
     let module_url_specified = module_specifier.to_string();
     let global_state = state.global_state.clone();
     let target_lib = state.target_lib.clone();
@@ -188,7 +211,7 @@ impl Loader for State {
       let compiled_module = global_state
         .fetch_compiled_module(module_specifier, maybe_referrer, target_lib)
         .await?;
-      Ok(deno_core::SourceCodeInfo {
+      Ok(deno_core::ModuleSource {
         // Real module name, might be different from initial specifier
         // due to redirections.
         code: compiled_module.code,
@@ -232,9 +255,8 @@ impl State {
       import_map,
       metrics: Metrics::default(),
       global_timer: GlobalTimer::new(),
-      worker_channels_internal: None,
       workers: HashMap::new(),
-      next_worker_id: AtomicUsize::new(0),
+      next_worker_id: 0,
       start_time: Instant::now(),
       seeded_rng,
 
@@ -269,9 +291,8 @@ impl State {
       import_map: None,
       metrics: Metrics::default(),
       global_timer: GlobalTimer::new(),
-      worker_channels_internal: None,
       workers: HashMap::new(),
-      next_worker_id: AtomicUsize::new(0),
+      next_worker_id: 0,
       start_time: Instant::now(),
       seeded_rng,
 
@@ -282,53 +303,45 @@ impl State {
     Ok(Self(state))
   }
 
-  pub fn add_child_worker(&self, handle: WorkerChannelsExternal) -> u32 {
-    let mut inner_state = self.borrow_mut();
-    let worker_id =
-      inner_state.next_worker_id.fetch_add(1, Ordering::Relaxed) as u32;
-    inner_state.workers.insert(worker_id, handle);
-    worker_id
-  }
-
   #[inline]
-  pub fn check_read(&self, path: &Path) -> Result<(), ErrBox> {
+  pub fn check_read(&self, path: &Path) -> Result<(), OpError> {
     self.borrow().permissions.check_read(path)
   }
 
   #[inline]
-  pub fn check_write(&self, path: &Path) -> Result<(), ErrBox> {
+  pub fn check_write(&self, path: &Path) -> Result<(), OpError> {
     self.borrow().permissions.check_write(path)
   }
 
   #[inline]
-  pub fn check_env(&self) -> Result<(), ErrBox> {
+  pub fn check_env(&self) -> Result<(), OpError> {
     self.borrow().permissions.check_env()
   }
 
   #[inline]
-  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
+  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), OpError> {
     self.borrow().permissions.check_net(hostname, port)
   }
 
   #[inline]
-  pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
+  pub fn check_net_url(&self, url: &url::Url) -> Result<(), OpError> {
     self.borrow().permissions.check_net_url(url)
   }
 
   #[inline]
-  pub fn check_run(&self) -> Result<(), ErrBox> {
+  pub fn check_run(&self) -> Result<(), OpError> {
     self.borrow().permissions.check_run()
   }
 
   #[inline]
-  pub fn check_plugin(&self, filename: &Path) -> Result<(), ErrBox> {
+  pub fn check_plugin(&self, filename: &Path) -> Result<(), OpError> {
     self.borrow().permissions.check_plugin(filename)
   }
 
   pub fn check_dyn_import(
     &self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), OpError> {
     let u = module_specifier.as_url();
     match u.scheme() {
       "http" | "https" => {
@@ -345,7 +358,7 @@ impl State {
         self.check_read(Path::new(&path))?;
         Ok(())
       }
-      _ => Err(permission_denied()),
+      _ => unreachable!(),
     }
   }
 
@@ -359,31 +372,5 @@ impl State {
       module_specifier,
     )
     .unwrap()
-  }
-
-  pub fn metrics_op_dispatched(
-    &self,
-    bytes_sent_control: usize,
-    bytes_sent_data: usize,
-  ) {
-    let state = self.borrow();
-    state.metrics.ops_dispatched.fetch_add(1, Ordering::SeqCst);
-    state
-      .metrics
-      .bytes_sent_control
-      .fetch_add(bytes_sent_control, Ordering::SeqCst);
-    state
-      .metrics
-      .bytes_sent_data
-      .fetch_add(bytes_sent_data, Ordering::SeqCst);
-  }
-
-  pub fn metrics_op_completed(&self, bytes_received: usize) {
-    let state = self.borrow();
-    state.metrics.ops_completed.fetch_add(1, Ordering::SeqCst);
-    state
-      .metrics
-      .bytes_received
-      .fetch_add(bytes_received, Ordering::SeqCst);
   }
 }

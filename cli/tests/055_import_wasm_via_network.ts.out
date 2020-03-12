@@ -1,1 +1,1 @@
-{ __data_end, __dso_handle, __global_base, __heap_base, __wasm_call_ctors, add, memory }
+{ add_one: [Function: 0], memory: Memory {} }

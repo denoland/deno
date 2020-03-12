@@ -1,8 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
 use crate::colors;
-use crate::fs as deno_fs;
-use crate::ops::json_op;
+use crate::op_error::OpError;
 use crate::state::State;
 use crate::version;
 use crate::DenoSubcommand;
@@ -20,19 +19,21 @@ static BUILD_OS: &str = "win";
 static BUILD_ARCH: &str = "x64";
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("start", s.core_op(json_op(s.stateful_op(op_start))));
+  i.register_op("op_start", s.stateful_json_op(op_start));
+  i.register_op("op_metrics", s.stateful_json_op(op_metrics));
 }
 
 fn op_start(
   state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let state = state.borrow();
   let gs = &state.global_state;
 
   Ok(JsonOp::Sync(json!({
-    "cwd": deno_fs::normalize_path(&env::current_dir().unwrap()),
+    // TODO(bartlomieju): `cwd` field is not used in JS, remove?
+    "cwd": &env::current_dir().unwrap(),
     "pid": std::process::id(),
     "args": gs.flags.argv.clone(),
     "repl": gs.flags.subcommand == DenoSubcommand::Repl,
@@ -45,5 +46,28 @@ fn op_start(
     "noColor": !colors::use_color(),
     "os": BUILD_OS,
     "arch": BUILD_ARCH,
+  })))
+}
+
+fn op_metrics(
+  state: &State,
+  _args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  let state = state.borrow();
+  let m = &state.metrics;
+
+  Ok(JsonOp::Sync(json!({
+    "opsDispatched": m.ops_dispatched,
+    "opsDispatchedSync": m.ops_dispatched_sync,
+    "opsDispatchedAsync": m.ops_dispatched_async,
+    "opsDispatchedAsyncUnref": m.ops_dispatched_async_unref,
+    "opsCompleted": m.ops_completed,
+    "opsCompletedSync": m.ops_completed_sync,
+    "opsCompletedAsync": m.ops_completed_async,
+    "opsCompletedAsyncUnref": m.ops_completed_async_unref,
+    "bytesSentControl": m.bytes_sent_control,
+    "bytesSentData": m.bytes_sent_data,
+    "bytesReceived": m.bytes_received
   })))
 }

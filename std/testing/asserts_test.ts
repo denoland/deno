@@ -14,8 +14,8 @@ import {
   unimplemented,
   unreachable
 } from "./asserts.ts";
-import { test } from "./mod.ts";
 import { red, green, white, gray, bold } from "../fmt/colors.ts";
+const { test } = Deno;
 
 test(function testingEqual(): void {
   assert(equal("world", "world"));
@@ -227,6 +227,24 @@ test(function testingAssertFail(): void {
     },
     AssertionError,
     "Failed assertion: foo"
+  );
+});
+
+test(function testingAssertFailWithWrongErrorClass(): void {
+  assertThrows(
+    (): void => {
+      //This next assertThrows will throw an AssertionError due to the wrong
+      //expected error class
+      assertThrows(
+        (): void => {
+          fail("foo");
+        },
+        Error,
+        "Failed assertion: foo"
+      );
+    },
+    AssertionError,
+    `Expected error to be instance of "Error", but was "AssertionError"`
   );
 });
 

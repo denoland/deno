@@ -1,16 +1,15 @@
 use super::dispatch_minimal::MinimalOp;
-use crate::deno_error;
-use crate::deno_error::bad_resource;
 use crate::http_util::HttpBody;
+use crate::op_error::OpError;
 use crate::ops::minimal_op;
 use crate::state::State;
-use deno_core::ErrBox;
 use deno_core::*;
+use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::ready;
-use std::future::Future;
-use std::net::Shutdown;
+use std::collections::HashMap;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::Context;
 use std::task::Poll;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -50,33 +49,104 @@ lazy_static! {
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
-    "read",
+    "op_read",
     s.core_op(minimal_op(s.stateful_minimal_op(op_read))),
   );
   i.register_op(
-    "write",
+    "op_write",
     s.core_op(minimal_op(s.stateful_minimal_op(op_write))),
   );
 }
 
-pub fn get_stdio() -> (StreamResource, StreamResource, StreamResource) {
-  let stdin = StreamResource::Stdin(tokio::io::stdin());
-  let stdout = StreamResource::Stdout({
+pub fn get_stdio() -> (
+  StreamResourceHolder,
+  StreamResourceHolder,
+  StreamResourceHolder,
+) {
+  let stdin = StreamResourceHolder::new(StreamResource::Stdin(
+    tokio::io::stdin(),
+    TTYMetadata::default(),
+  ));
+  let stdout = StreamResourceHolder::new(StreamResource::Stdout({
     let stdout = STDOUT_HANDLE
       .try_clone()
       .expect("Unable to clone stdout handle");
     tokio::fs::File::from_std(stdout)
-  });
-  let stderr = StreamResource::Stderr(tokio::io::stderr());
+  }));
+  let stderr =
+    StreamResourceHolder::new(StreamResource::Stderr(tokio::io::stderr()));
 
   (stdin, stdout, stderr)
 }
 
+fn no_buffer_specified() -> OpError {
+  OpError::type_error("no buffer specified".to_string())
+}
+
+#[cfg(unix)]
+use nix::sys::termios;
+
+#[derive(Default)]
+pub struct TTYMetadata {
+  #[cfg(unix)]
+  pub mode: Option<termios::Termios>,
+}
+
+#[derive(Default)]
+pub struct FileMetadata {
+  pub tty: TTYMetadata,
+}
+
+pub struct StreamResourceHolder {
+  pub resource: StreamResource,
+  waker: HashMap<usize, futures::task::AtomicWaker>,
+  waker_counter: AtomicUsize,
+}
+
+impl StreamResourceHolder {
+  pub fn new(resource: StreamResource) -> StreamResourceHolder {
+    StreamResourceHolder {
+      resource,
+      // Atleast one task is expecter for the resource
+      waker: HashMap::with_capacity(1),
+      // Tracks wakers Ids
+      waker_counter: AtomicUsize::new(0),
+    }
+  }
+}
+
+impl Drop for StreamResourceHolder {
+  fn drop(&mut self) {
+    self.wake_tasks();
+  }
+}
+
+impl StreamResourceHolder {
+  pub fn track_task(&mut self, cx: &Context) -> Result<usize, OpError> {
+    let waker = futures::task::AtomicWaker::new();
+    waker.register(cx.waker());
+    // Its OK if it overflows
+    let task_waker_id = self.waker_counter.fetch_add(1, Ordering::Relaxed);
+    self.waker.insert(task_waker_id, waker);
+    Ok(task_waker_id)
+  }
+
+  pub fn wake_tasks(&mut self) {
+    for waker in self.waker.values() {
+      waker.wake();
+    }
+  }
+
+  pub fn untrack_task(&mut self, task_waker_id: usize) {
+    self.waker.remove(&task_waker_id);
+  }
+}
+
 pub enum StreamResource {
-  Stdin(tokio::io::Stdin),
+  Stdin(tokio::io::Stdin, TTYMetadata),
   Stdout(tokio::fs::File),
   Stderr(tokio::io::Stderr),
-  FsFile(tokio::fs::File),
+  FsFile(tokio::fs::File, FileMetadata),
   TcpStream(tokio::net::TcpStream),
   ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
   ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
@@ -86,25 +156,14 @@ pub enum StreamResource {
   ChildStderr(tokio::process::ChildStderr),
 }
 
-impl Drop for StreamResource {
-  fn drop(&mut self) {
-    match self {
-      StreamResource::TcpStream(stream) => {
-        let _ = stream.shutdown(Shutdown::Both);
-      }
-      _ => {}
-    }
-  }
-}
-
 /// `DenoAsyncRead` is the same as the `tokio_io::AsyncRead` trait
-/// but uses an `ErrBox` error instead of `std::io:Error`
+/// but uses an `OpError` error instead of `std::io:Error`
 pub trait DenoAsyncRead {
   fn poll_read(
     &mut self,
     cx: &mut Context,
     buf: &mut [u8],
-  ) -> Poll<Result<usize, ErrBox>>;
+  ) -> Poll<Result<usize, OpError>>;
 }
 
 impl DenoAsyncRead for StreamResource {
@@ -112,80 +171,22 @@ impl DenoAsyncRead for StreamResource {
     &mut self,
     cx: &mut Context,
     buf: &mut [u8],
-  ) -> Poll<Result<usize, ErrBox>> {
+  ) -> Poll<Result<usize, OpError>> {
     use StreamResource::*;
     let mut f: Pin<Box<dyn AsyncRead>> = match self {
-      FsFile(f) => Box::pin(f),
-      Stdin(f) => Box::pin(f),
+      FsFile(f, _) => Box::pin(f),
+      Stdin(f, _) => Box::pin(f),
       TcpStream(f) => Box::pin(f),
       ClientTlsStream(f) => Box::pin(f),
       ServerTlsStream(f) => Box::pin(f),
       ChildStdout(f) => Box::pin(f),
       ChildStderr(f) => Box::pin(f),
       HttpBody(f) => Box::pin(f),
-      _ => return Err(bad_resource()).into(),
+      _ => return Err(OpError::bad_resource_id()).into(),
     };
 
     let v = ready!(f.as_mut().poll_read(cx, buf))?;
     Ok(v).into()
-  }
-}
-
-#[derive(Debug, PartialEq)]
-enum IoState {
-  Pending,
-  Flush,
-  Done,
-}
-
-/// Tries to read some bytes directly into the given `buf` in asynchronous
-/// manner, returning a future type.
-///
-/// The returned future will resolve to both the I/O stream and the buffer
-/// as well as the number of bytes read once the read operation is completed.
-pub fn read<T>(state: &State, rid: ResourceId, buf: T) -> Read<T>
-where
-  T: AsMut<[u8]>,
-{
-  Read {
-    rid,
-    buf,
-    io_state: IoState::Pending,
-    state: state.clone(),
-  }
-}
-
-/// A future which can be used to easily read available number of bytes to fill
-/// a buffer.
-///
-/// Created by the [`read`] function.
-pub struct Read<T> {
-  rid: ResourceId,
-  buf: T,
-  io_state: IoState,
-  state: State,
-}
-
-impl<T> Future for Read<T>
-where
-  T: AsMut<[u8]> + Unpin,
-{
-  type Output = Result<i32, ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    if inner.io_state == IoState::Done {
-      panic!("poll a Read after it's done");
-    }
-
-    let mut state = inner.state.borrow_mut();
-    let resource = state
-      .resource_table
-      .get_mut::<StreamResource>(inner.rid)
-      .ok_or_else(bad_resource)?;
-    let nread = ready!(resource.poll_read(cx, &mut inner.buf.as_mut()[..]))?;
-    inner.io_state = IoState::Done;
-    Poll::Ready(Ok(nread as i32))
   }
 }
 
@@ -195,30 +196,53 @@ pub fn op_read(
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Pin<Box<MinimalOp>> {
   debug!("read rid={}", rid);
-  let zero_copy = match zero_copy {
-    None => {
-      return futures::future::err(deno_error::no_buffer_specified())
-        .boxed_local()
-    }
-    Some(buf) => buf,
-  };
+  if zero_copy.is_none() {
+    return futures::future::err(no_buffer_specified()).boxed_local();
+  }
 
-  let fut = read(state, rid as u32, zero_copy);
-  fut.boxed_local()
+  let state = state.clone();
+  let mut buf = zero_copy.unwrap();
+
+  poll_fn(move |cx| {
+    let resource_table = &mut state.borrow_mut().resource_table;
+    let resource_holder = resource_table
+      .get_mut::<StreamResourceHolder>(rid as u32)
+      .ok_or_else(OpError::bad_resource_id)?;
+
+    let mut task_tracker_id: Option<usize> = None;
+    let nread = match resource_holder
+      .resource
+      .poll_read(cx, &mut buf.as_mut()[..])
+      .map_err(OpError::from)
+    {
+      Poll::Ready(t) => {
+        if let Some(id) = task_tracker_id {
+          resource_holder.untrack_task(id);
+        }
+        t
+      }
+      Poll::Pending => {
+        task_tracker_id.replace(resource_holder.track_task(cx)?);
+        return Poll::Pending;
+      }
+    }?;
+    Poll::Ready(Ok(nread as i32))
+  })
+  .boxed_local()
 }
 
 /// `DenoAsyncWrite` is the same as the `tokio_io::AsyncWrite` trait
-/// but uses an `ErrBox` error instead of `std::io:Error`
+/// but uses an `OpError` error instead of `std::io:Error`
 pub trait DenoAsyncWrite {
   fn poll_write(
     &mut self,
     cx: &mut Context,
     buf: &[u8],
-  ) -> Poll<Result<usize, ErrBox>>;
+  ) -> Poll<Result<usize, OpError>>;
 
-  fn poll_close(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>>;
+  fn poll_close(&mut self, cx: &mut Context) -> Poll<Result<(), OpError>>;
 
-  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>>;
+  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), OpError>>;
 }
 
 impl DenoAsyncWrite for StreamResource {
@@ -226,113 +250,42 @@ impl DenoAsyncWrite for StreamResource {
     &mut self,
     cx: &mut Context,
     buf: &[u8],
-  ) -> Poll<Result<usize, ErrBox>> {
+  ) -> Poll<Result<usize, OpError>> {
     use StreamResource::*;
     let mut f: Pin<Box<dyn AsyncWrite>> = match self {
-      FsFile(f) => Box::pin(f),
+      FsFile(f, _) => Box::pin(f),
       Stdout(f) => Box::pin(f),
       Stderr(f) => Box::pin(f),
       TcpStream(f) => Box::pin(f),
       ClientTlsStream(f) => Box::pin(f),
       ServerTlsStream(f) => Box::pin(f),
       ChildStdin(f) => Box::pin(f),
-      _ => return Err(bad_resource()).into(),
+      _ => return Err(OpError::bad_resource_id()).into(),
     };
 
     let v = ready!(f.as_mut().poll_write(cx, buf))?;
     Ok(v).into()
   }
 
-  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
+  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), OpError>> {
     use StreamResource::*;
     let mut f: Pin<Box<dyn AsyncWrite>> = match self {
-      FsFile(f) => Box::pin(f),
+      FsFile(f, _) => Box::pin(f),
       Stdout(f) => Box::pin(f),
       Stderr(f) => Box::pin(f),
       TcpStream(f) => Box::pin(f),
       ClientTlsStream(f) => Box::pin(f),
       ServerTlsStream(f) => Box::pin(f),
       ChildStdin(f) => Box::pin(f),
-      _ => return Err(bad_resource()).into(),
+      _ => return Err(OpError::bad_resource_id()).into(),
     };
 
     ready!(f.as_mut().poll_flush(cx))?;
     Ok(()).into()
   }
 
-  fn poll_close(&mut self, _cx: &mut Context) -> Poll<Result<(), ErrBox>> {
+  fn poll_close(&mut self, _cx: &mut Context) -> Poll<Result<(), OpError>> {
     unimplemented!()
-  }
-}
-
-/// A future used to write some data to a stream.
-pub struct Write<T> {
-  rid: ResourceId,
-  buf: T,
-  io_state: IoState,
-  state: State,
-  nwritten: i32,
-}
-
-/// Creates a future that will write some of the buffer `buf` to
-/// the stream resource with `rid`.
-///
-/// Any error which happens during writing will cause both the stream and the
-/// buffer to get destroyed.
-pub fn write<T>(state: &State, rid: ResourceId, buf: T) -> Write<T>
-where
-  T: AsRef<[u8]>,
-{
-  Write {
-    rid,
-    buf,
-    io_state: IoState::Pending,
-    state: state.clone(),
-    nwritten: 0,
-  }
-}
-
-/// This is almost the same implementation as in tokio, difference is
-/// that error type is `ErrBox` instead of `std::io::Error`.
-impl<T> Future for Write<T>
-where
-  T: AsRef<[u8]> + Unpin,
-{
-  type Output = Result<i32, ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    if inner.io_state == IoState::Done {
-      panic!("poll a Read after it's done");
-    }
-
-    if inner.io_state == IoState::Pending {
-      let mut state = inner.state.borrow_mut();
-      let resource = state
-        .resource_table
-        .get_mut::<StreamResource>(inner.rid)
-        .ok_or_else(bad_resource)?;
-
-      let nwritten = ready!(resource.poll_write(cx, inner.buf.as_ref()))?;
-      inner.io_state = IoState::Flush;
-      inner.nwritten = nwritten as i32;
-    }
-
-    // TODO(bartlomieju): this step was added during upgrade to Tokio 0.2
-    // and the reasons for the need to explicitly flush are not fully known.
-    // Figure out why it's needed and preferably remove it.
-    // https://github.com/denoland/deno/issues/3565
-    if inner.io_state == IoState::Flush {
-      let mut state = inner.state.borrow_mut();
-      let resource = state
-        .resource_table
-        .get_mut::<StreamResource>(inner.rid)
-        .ok_or_else(bad_resource)?;
-      ready!(resource.poll_flush(cx))?;
-      inner.io_state = IoState::Done;
-    }
-
-    Poll::Ready(Ok(inner.nwritten))
   }
 }
 
@@ -342,15 +295,37 @@ pub fn op_write(
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Pin<Box<MinimalOp>> {
   debug!("write rid={}", rid);
-  let zero_copy = match zero_copy {
-    None => {
-      return futures::future::err(deno_error::no_buffer_specified())
-        .boxed_local()
-    }
-    Some(buf) => buf,
-  };
+  if zero_copy.is_none() {
+    return futures::future::err(no_buffer_specified()).boxed_local();
+  }
 
-  let fut = write(state, rid as u32, zero_copy);
+  let state = state.clone();
+  let buf = zero_copy.unwrap();
 
-  fut.boxed_local()
+  async move {
+    let nwritten = poll_fn(|cx| {
+      let resource_table = &mut state.borrow_mut().resource_table;
+      let resource_holder = resource_table
+        .get_mut::<StreamResourceHolder>(rid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+      resource_holder.resource.poll_write(cx, &buf.as_ref()[..])
+    })
+    .await?;
+
+    // TODO(bartlomieju): this step was added during upgrade to Tokio 0.2
+    // and the reasons for the need to explicitly flush are not fully known.
+    // Figure out why it's needed and preferably remove it.
+    // https://github.com/denoland/deno/issues/3565
+    poll_fn(|cx| {
+      let resource_table = &mut state.borrow_mut().resource_table;
+      let resource_holder = resource_table
+        .get_mut::<StreamResourceHolder>(rid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+      resource_holder.resource.poll_flush(cx)
+    })
+    .await?;
+
+    Ok(nwritten as i32)
+  }
+  .boxed_local()
 }

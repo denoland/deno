@@ -29,7 +29,7 @@ async function ensureValidCopy(
   try {
     destStat = await Deno.lstat(dest);
   } catch (err) {
-    if (err instanceof Deno.DenoError && err.kind == Deno.ErrorKind.NotFound) {
+    if (err instanceof Deno.errors.NotFound) {
       return;
     }
     throw err;
@@ -57,7 +57,7 @@ function ensureValidCopySync(
   try {
     destStat = Deno.lstatSync(dest);
   } catch (err) {
-    if (err instanceof Deno.DenoError && err.kind == Deno.ErrorKind.NotFound) {
+    if (err instanceof Deno.errors.NotFound) {
       return;
     }
     throw err;
@@ -85,6 +85,8 @@ async function copyFile(
   await Deno.copyFile(src, dest);
   if (options.preserveTimestamps) {
     const statInfo = await Deno.stat(src);
+    assert(statInfo.accessed != null, `statInfo.accessed is unavailable`);
+    assert(statInfo.modified != null, `statInfo.modified is unavailable`);
     await Deno.utime(dest, statInfo.accessed, statInfo.modified);
   }
 }
@@ -155,7 +157,7 @@ async function copyDir(
     await Deno.utime(dest, srcStatInfo.accessed, srcStatInfo.modified);
   }
 
-  const files = await Deno.readDir(src);
+  const files = await Deno.readdir(src);
 
   for (const file of files) {
     assert(file.name != null, "file.name must be set");
@@ -186,7 +188,7 @@ function copyDirSync(src: string, dest: string, options: CopyOptions): void {
     Deno.utimeSync(dest, srcStatInfo.accessed, srcStatInfo.modified);
   }
 
-  const files = Deno.readDirSync(src);
+  const files = Deno.readdirSync(src);
 
   for (const file of files) {
     assert(file.name != null, "file.name must be set");

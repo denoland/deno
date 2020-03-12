@@ -1,9 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, runIfMain } from "../testing/mod.ts";
 import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-
+const { test } = Deno;
 let fileServer: Deno.Process;
 
 async function startFileServer(): Promise<void> {
@@ -17,7 +16,8 @@ async function startFileServer(): Promise<void> {
       ".",
       "--cors"
     ],
-    stdout: "piped"
+    stdout: "piped",
+    stderr: "null"
   });
   // Once fileServer is ready it will write to its stdout.
   assert(fileServer.stdout != null);
@@ -38,7 +38,7 @@ test(async function serveFile(): Promise<void> {
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assert(res.headers.has("content-type"));
-    assert(res.headers.get("content-type").includes("charset=utf-8"));
+    assert(res.headers.get("content-type")!.includes("charset=utf-8"));
     const downloadedFile = await res.text();
     const localFile = new TextDecoder().decode(
       await Deno.readFile("README.md")
@@ -83,12 +83,15 @@ test(async function serveFallback(): Promise<void> {
   }
 });
 
-test(async function serveFallback(): Promise<void> {
+test(async function serveWithUnorthodoxFilename(): Promise<void> {
   await startFileServer();
   try {
-    const res = await fetch(
-      "http://localhost:4500/http/testdata/test%20file.txt"
-    );
+    let res = await fetch("http://localhost:4500/http/testdata/%");
+    assert(res.headers.has("access-control-allow-origin"));
+    assert(res.headers.has("access-control-allow-headers"));
+    assertEquals(res.status, 200);
+
+    res = await fetch("http://localhost:4500/http/testdata/test%20file.txt");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 200);
@@ -135,5 +138,3 @@ test(async function printHelp(): Promise<void> {
   helpProcess.close();
   helpProcess.stdout.close();
 });
-
-runIfMain(import.meta);

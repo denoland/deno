@@ -1,28 +1,32 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { stat, statSync } from "./stat.ts";
+import { stat, statSync } from "./ops/fs/stat.ts";
 import { open, openSync } from "./files.ts";
-import { chmod, chmodSync } from "./chmod.ts";
+import { chmod, chmodSync } from "./ops/fs/chmod.ts";
 import { writeAll, writeAllSync } from "./buffer.ts";
 
-/** Options for writing to a file.
- * `perm` would change the file's permission if set.
- * `create` decides if the file should be created if not exists (default: true)
- * `append` decides if the file should be appended (default: false)
- */
+/** Options for writing to a file. */
 export interface WriteFileOptions {
-  perm?: number;
-  create?: boolean;
+  /** Defaults to `false`. If set to `true`, will append to a file instead of
+   * overwriting previous contents. */
   append?: boolean;
+  /** Sets the option to allow creating a new file, if one doesn't already
+   * exist at the specified path (defaults to `true`). */
+  create?: boolean;
+  /** Permissions always applied to file. */
+  mode?: number;
 }
 
-/** Write a new file, with given filename and data synchronously.
+/** Synchronously write data to the given path, by default creating a new
+ * file if needed, else overwriting.
  *
  *       const encoder = new TextEncoder();
  *       const data = encoder.encode("Hello world\n");
  *       Deno.writeFileSync("hello.txt", data);
+ *
+ * Requires `allow-write` permission, and `allow-read` if create is `false`.
  */
 export function writeFileSync(
-  filename: string,
+  path: string,
   data: Uint8Array,
   options: WriteFileOptions = {}
 ): void {
@@ -30,29 +34,32 @@ export function writeFileSync(
     const create = !!options.create;
     if (!create) {
       // verify that file exists
-      statSync(filename);
+      statSync(path);
     }
   }
 
   const openMode = !!options.append ? "a" : "w";
-  const file = openSync(filename, openMode);
+  const file = openSync(path, openMode);
 
-  if (options.perm !== undefined && options.perm !== null) {
-    chmodSync(filename, options.perm);
+  if (options.mode !== undefined && options.mode !== null) {
+    chmodSync(path, options.mode);
   }
 
   writeAllSync(file, data);
   file.close();
 }
 
-/** Write a new file, with given filename and data.
+/** Write data to the given path, by default creating a new file if needed,
+ * else overwriting.
  *
  *       const encoder = new TextEncoder();
  *       const data = encoder.encode("Hello world\n");
  *       await Deno.writeFile("hello.txt", data);
+ *
+ * Requires `allow-write` permission, and `allow-read` if create is `false`.
  */
 export async function writeFile(
-  filename: string,
+  path: string,
   data: Uint8Array,
   options: WriteFileOptions = {}
 ): Promise<void> {
@@ -60,15 +67,15 @@ export async function writeFile(
     const create = !!options.create;
     if (!create) {
       // verify that file exists
-      await stat(filename);
+      await stat(path);
     }
   }
 
   const openMode = !!options.append ? "a" : "w";
-  const file = await open(filename, openMode);
+  const file = await open(path, openMode);
 
-  if (options.perm !== undefined && options.perm !== null) {
-    await chmod(filename, options.perm);
+  if (options.mode !== undefined && options.mode !== null) {
+    await chmod(path, options.mode);
   }
 
   await writeAll(file, data);

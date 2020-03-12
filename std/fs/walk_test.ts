@@ -1,14 +1,11 @@
-const { DenoError, ErrorKind, cwd, chdir, makeTempDir, mkdir, open } = Deno;
+const { cwd, chdir, makeTempDir, mkdir, open } = Deno;
 const { remove } = Deno;
-type ErrorKind = Deno.ErrorKind;
-type DenoError = Deno.DenoError<ErrorKind>;
 import { walk, walkSync, WalkOptions, WalkInfo } from "./walk.ts";
-import { test, TestFunction, runIfMain } from "../testing/mod.ts";
 import { assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 
 export async function testWalk(
   setup: (arg0: string) => void | Promise<void>,
-  t: TestFunction
+  t: Deno.TestFunction
 ): Promise<void> {
   const name = t.name;
   async function fn(): Promise<void> {
@@ -23,7 +20,7 @@ export async function testWalk(
       remove(d, { recursive: true });
     }
   }
-  test({ name, fn });
+  Deno.test({ name, fn });
 }
 
 function normalize({ filename }: WalkInfo): string {
@@ -236,10 +233,9 @@ testWalk(
 testWalk(
   async (_d: string): Promise<void> => {},
   async function nonexistentRoot(): Promise<void> {
-    const error = (await assertThrowsAsync(async () => {
+    await assertThrowsAsync(async () => {
       await walkArray("nonexistent");
-    }, DenoError)) as DenoError;
-    assertEquals(error.kind, ErrorKind.NotFound);
+    }, Deno.errors.NotFound);
   }
 );
 
@@ -275,5 +271,3 @@ testWalk(
   }
 );
 */
-
-runIfMain(import.meta);

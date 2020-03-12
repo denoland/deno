@@ -7,6 +7,9 @@
 //  - `bootstrapMainRuntime` - must be called once, when Isolate is created.
 //   It sets up runtime by providing globals for `WindowScope` and adds `Deno` global.
 
+import * as Deno from "./deno.ts";
+import * as domTypes from "./web/dom_types.ts";
+import * as csprng from "./ops/get_random_values.ts";
 import {
   readOnly,
   writable,
@@ -14,26 +17,23 @@ import {
   windowOrWorkerGlobalScopeProperties,
   eventTargetProperties
 } from "./globals.ts";
-import * as domTypes from "./dom_types.ts";
-import { log } from "./util.ts";
-import * as runtime from "./runtime.ts";
-import { args } from "./deno.ts";
-import * as csprng from "./get_random_values.ts";
-import { replLoop } from "./repl.ts";
-import { setSignals } from "./process.ts";
-import * as Deno from "./deno.ts";
 import { internalObject } from "./internals.ts";
+import { setSignals } from "./signals.ts";
+import { replLoop } from "./repl.ts";
+import { LocationImpl } from "./web/location.ts";
+import * as runtime from "./runtime.ts";
+import { symbols } from "./symbols.ts";
+import { log, immutableDefine } from "./util.ts";
 
 // TODO: factor out `Deno` global assignment to separate function
 // Add internal object to Deno object.
 // This is not exposed as part of the Deno types.
 // @ts-ignore
-Deno[Deno.symbols.internal] = internalObject;
+Deno[symbols.internal] = internalObject;
 
 export const mainRuntimeGlobalProperties = {
   window: readOnly(globalThis),
-  Deno: readOnly(Deno),
-
+  self: readOnly(globalThis),
   crypto: readOnly(csprng),
   // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
   // it seems those two properties should be availble to workers as well
@@ -68,15 +68,27 @@ export function bootstrapMainRuntime(): void {
     }
   });
 
-  const s = runtime.start(true);
+  const s = runtime.start();
+
+  const location = new LocationImpl(s.location);
+  immutableDefine(globalThis, "location", location);
+  Object.freeze(globalThis.location);
+
+  Object.defineProperties(Deno, {
+    pid: readOnly(s.pid),
+    noColor: readOnly(s.noColor),
+    args: readOnly(Object.freeze(s.args))
+  });
+  // Setup `Deno` global - we're actually overriding already
+  // existing global `Deno` with `Deno` namespace from "./deno.ts".
+  immutableDefine(globalThis, "Deno", Deno);
+  Object.freeze(globalThis.Deno);
+  Object.freeze(globalThis.Deno.core);
+  Object.freeze(globalThis.Deno.core.sharedQueue);
   setSignals();
 
   log("cwd", s.cwd);
-  for (let i = 0; i < s.args.length; i++) {
-    args.push(s.args[i]);
-  }
-  log("args", args);
-  Object.freeze(args);
+  log("args", Deno.args);
 
   if (s.repl) {
     replLoop();

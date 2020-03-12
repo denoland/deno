@@ -1,11 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { close } from "./files.ts";
-import { exit } from "./os.ts";
+import { exit } from "./ops/os.ts";
 import { core } from "./core.ts";
-import { formatError } from "./format_error.ts";
-import { stringifyArgs } from "./console.ts";
-import * as dispatch from "./dispatch.ts";
-import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { stringifyArgs } from "./web/console.ts";
+import { startRepl, readline } from "./ops/repl.ts";
+import { close } from "./ops/resources.ts";
 
 /**
  * REPL logging.
@@ -42,15 +40,6 @@ const replCommands = {
     }
   }
 };
-
-function startRepl(historyFile: string): number {
-  return sendSync(dispatch.OP_REPL_START, { historyFile });
-}
-
-// @internal
-export async function readline(rid: number, prompt: string): Promise<string> {
-  return sendAsync(dispatch.OP_REPL_READLINE, { rid, prompt });
-}
 
 // Error messages that allow users to continue input
 // instead of throwing an error to REPL
@@ -90,9 +79,7 @@ function evaluate(code: string): boolean {
   } else {
     lastThrownError = errInfo.thrown;
     if (errInfo.isNativeError) {
-      const formattedError = formatError(
-        core.errorToJSON(errInfo.thrown as Error)
-      );
+      const formattedError = core.formatError(errInfo.thrown as Error);
       replError(formattedError);
     } else {
       replError("Thrown:", errInfo.thrown);
@@ -163,7 +150,7 @@ export async function replLoop(): Promise<void> {
         if (err.message !== "Interrupted") {
           // e.g. this happens when we have deno.close(3).
           // We want to display the problem.
-          const formattedError = formatError(core.errorToJSON(err));
+          const formattedError = core.formatError(err);
           replError(formattedError);
         }
         // Quit REPL anyways.
@@ -185,7 +172,7 @@ export async function replLoop(): Promise<void> {
         } else {
           // e.g. this happens when we have deno.close(3).
           // We want to display the problem.
-          const formattedError = formatError(core.errorToJSON(err));
+          const formattedError = core.formatError(err);
           replError(formattedError);
           quitRepl(1);
         }
