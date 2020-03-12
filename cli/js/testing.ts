@@ -6,16 +6,11 @@ import { Console } from "./web/console.ts";
 const RED_FAILED = red("FAILED");
 const GREEN_OK = green("OK");
 const RED_BG_FAIL = bgRed(" FAIL ");
+const disabledConsole = new Console((_x: string, _isErr?: boolean): void => {});
 
 function formatDuration(time = 0): string {
   const timeStr = `(${time}ms)`;
   return gray(italic(timeStr));
-}
-
-function defer(n: number): Promise<void> {
-  return new Promise((resolve: () => void, _) => {
-    setTimeout(resolve, n);
-  });
 }
 
 export type TestFunction = () => void | Promise<void>;
@@ -121,6 +116,8 @@ interface TestMsg {
 interface EndMsg {
   kind: MsgKind.End;
   stats: TestStats;
+  duration: number;
+  results: TestResult[];
 }
 
 type RunTestsMessage = StartMsg | TestMsg | EndMsg;
@@ -172,6 +169,7 @@ class TestApi {
       tests: this.testsToRun.length
     };
 
+    const suiteStart = +new Date();
     for (const testResult of this.results) {
       let shouldBreak = false;
       try {
@@ -195,8 +193,14 @@ class TestApi {
         }
       }
     }
+    const duration = +new Date() - suiteStart;
 
-    yield { kind: MsgKind.End, stats: this.stats };
+    yield {
+      kind: MsgKind.End,
+      results: this.results,
+      stats: this.stats,
+      duration
+    };
   }
 }
 
@@ -227,6 +231,55 @@ function createFilterFn(
   };
 }
 
+interface TestReporter {
+  start(msg: StartMsg): Promise<void>;
+  test(msg: TestMsg): Promise<void>;
+  end(msg: EndMsg): Promise<void>;
+}
+
+class ConsoleReporter implements TestReporter {
+  constructor(private console: Console) {}
+
+  async start(msg: StartMsg): Promise<void> {
+    this.console.log(`running ${msg.tests} tests`);
+  }
+
+  async test(msg: TestMsg): Promise<void> {
+    const { result } = msg;
+
+    if (result.passed) {
+      this.console.log(
+        `${GREEN_OK}     ${result.name} ${formatDuration(result.duration)}`
+      );
+    } else {
+      this.console.log(`${RED_FAILED} ${result.name}`);
+      this.console.log(result.error!.stack);
+    }
+  }
+
+  async end(msg: EndMsg): Promise<void> {
+    const stats = msg.stats;
+    // Attempting to match the output of Rust's test runner.
+    this.console.log(
+      `\ntest result: ${stats.failed ? RED_BG_FAIL : GREEN_OK} ` +
+        `${stats.passed} passed; ${stats.failed} failed; ` +
+        `${stats.ignored} ignored; ${stats.measured} measured; ` +
+        `${stats.filtered} filtered out ` +
+        `${formatDuration(msg.duration)}\n`
+    );
+
+    if (stats!.failed > 0) {
+      this.console.log(`There were ${stats!.failed} test failures.`);
+      msg.results
+        .filter(testCase => !!testCase.error)
+        .forEach(testCase => {
+          this.console.log(`${RED_BG_FAIL} ${red(testCase.name)}`);
+          this.console.log(testCase.error);
+        });
+    }
+  }
+}
+
 export async function runTests({
   exitOnFail = true,
   failFast = false,
@@ -239,51 +292,29 @@ export async function runTests({
 
   // @ts-ignore
   const originalConsole = globalThis.console;
-  // TODO(bartlomieju): add option to capture output of test
-  // cases and display it if test fails (like --nopcature in Rust)
-  const disabledConsole = new Console(
-    (_x: string, _isErr?: boolean): void => {}
-  );
 
   if (disableLog) {
     // @ts-ignore
     globalThis.console = disabledConsole;
   }
 
-  const suiteStart = +new Date();
+  const reporter = new ConsoleReporter(originalConsole);
+
   let stats: TestStats;
 
   for await (const testMsg of testApi) {
-    if (testMsg.kind === MsgKind.Start) {
-      originalConsole.log(`running ${testMsg.tests} tests`);
-      continue;
+    switch (testMsg.kind) {
+      case MsgKind.Start:
+        await reporter.start(testMsg);
+        continue;
+      case MsgKind.Test:
+        await reporter.test(testMsg);
+        continue;
+      case MsgKind.End:
+        stats = testMsg.stats;
+        await reporter.end(testMsg);
+        continue;
     }
-
-    if (testMsg.kind === MsgKind.Test) {
-      const { result } = testMsg;
-
-      if (result.passed) {
-        originalConsole.log(
-          `${GREEN_OK}     ${result.name} ${formatDuration(result.duration)}`
-        );
-      } else {
-        originalConsole.log(`${RED_FAILED} ${result.name}`);
-        originalConsole.log(result.error!.stack);
-      }
-
-      continue;
-    }
-
-    stats = testMsg.stats;
-    const suiteDuration = +new Date() - suiteStart;
-    // Attempting to match the output of Rust's test runner.
-    originalConsole.log(
-      `\ntest result: ${stats.failed ? RED_BG_FAIL : GREEN_OK} ` +
-        `${stats.passed} passed; ${stats.failed} failed; ` +
-        `${stats.ignored} ignored; ${stats.measured} measured; ` +
-        `${stats.filtered} filtered out ` +
-        `${formatDuration(suiteDuration)}\n`
-    );
   }
 
   if (disableLog) {
@@ -291,23 +322,7 @@ export async function runTests({
     globalThis.console = originalConsole;
   }
 
-  // TODO(bartlomieju): is `defer` really needed? Shouldn't unhandled
-  // promise rejection be handled per test case?
-  // Use defer to avoid the error being ignored due to unhandled
-  // promise rejections being swallowed.
-  await defer(0);
-
-  if (stats!.failed > 0) {
-    originalConsole.error(`There were ${stats!.failed} test failures.`);
-    testApi.results
-      .filter(testCase => !!testCase.error)
-      .forEach(testCase => {
-        originalConsole.error(`${RED_BG_FAIL} ${red(testCase.name)}`);
-        originalConsole.error(testCase.error);
-      });
-
-    if (exitOnFail) {
-      exit(1);
-    }
+  if (stats!.failed > 0 && exitOnFail) {
+    exit(1);
   }
 }
