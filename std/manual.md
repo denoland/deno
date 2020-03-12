@@ -376,7 +376,7 @@ await p.status();
 Run it:
 
 ```shell
-$ deno --allow-run ./subprocess_simple.ts
+$ deno --allow-all ./subprocess_simple.ts
 hello
 ```
 
@@ -421,10 +421,10 @@ Deno.exit(code);
 When you run it:
 
 ```shell
-$ deno run --allow-run ./subprocess.ts <somefile>
+$ deno run --allow-all ./subprocess.ts <somefile>
 [file content]
 
-$ deno run --allow-run ./subprocess.ts non_existent_file.md
+$ deno run --allow-all ./subprocess.ts non_existent_file.md
 
 Uncaught NotFound: No such file or directory (os error 2)
     at DenoError (deno/js/errors.ts:22:5)

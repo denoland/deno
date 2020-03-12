@@ -108,8 +108,6 @@ pub struct DenoPermissions {
   pub allow_net: PermissionState,
   pub net_whitelist: HashSet<String>,
   pub allow_env: PermissionState,
-  pub allow_run: PermissionState,
-  pub allow_plugin: PermissionState,
   pub allow_hrtime: PermissionState,
 }
 
@@ -123,16 +121,23 @@ impl DenoPermissions {
       allow_net: PermissionState::from(flags.allow_net),
       net_whitelist: flags.net_whitelist.iter().cloned().collect(),
       allow_env: PermissionState::from(flags.allow_env),
-      allow_run: PermissionState::from(flags.allow_run),
-      allow_plugin: PermissionState::from(flags.allow_plugin),
       allow_hrtime: PermissionState::from(flags.allow_hrtime),
     }
   }
 
-  pub fn check_run(&self) -> Result<(), OpError> {
-    self
-      .allow_run
-      .check("access to run a subprocess", "--allow-run")
+  pub fn check_all(&self) -> Result<(), OpError> {
+    if self.allow_read == PermissionState::Allow
+      && self.allow_write == PermissionState::Allow
+      && self.allow_net == PermissionState::Allow
+      && self.allow_env == PermissionState::Allow
+      && self.allow_hrtime == PermissionState::Allow
+    {
+      log_perm_access("--allow-all");
+      return Ok(());
+    }
+    Err(OpError::permission_denied(
+      "run again with the --allow-all flag".to_string(),
+    ))
   }
 
   fn get_state_read(&self, path: &Option<&Path>) -> PermissionState {
@@ -207,19 +212,6 @@ impl DenoPermissions {
       .check("access to environment variables", "--allow-env")
   }
 
-  pub fn check_plugin(&self, path: &Path) -> Result<(), OpError> {
-    self.allow_plugin.check(
-      &format!("access to open a plugin: {}", path.display()),
-      "--allow-plugin",
-    )
-  }
-
-  pub fn request_run(&mut self) -> PermissionState {
-    self
-      .allow_run
-      .request("Deno requests to access to run a subprocess.")
-  }
-
   pub fn request_read(&mut self, path: &Option<&Path>) -> PermissionState {
     if path.map_or(false, |f| check_path_white_list(f, &self.read_whitelist)) {
       return PermissionState::Allow;
@@ -269,10 +261,6 @@ impl DenoPermissions {
       .request("Deno requests to access to high precision time.")
   }
 
-  pub fn request_plugin(&mut self) -> PermissionState {
-    self.allow_plugin.request("Deno requests to open plugins.")
-  }
-
   pub fn get_permission_state(
     &self,
     name: &str,
@@ -280,12 +268,10 @@ impl DenoPermissions {
     path: &Option<&Path>,
   ) -> Result<PermissionState, OpError> {
     match name {
-      "run" => Ok(self.allow_run),
       "read" => Ok(self.get_state_read(path)),
       "write" => Ok(self.get_state_write(path)),
       "net" => self.get_state_net_url(url),
       "env" => Ok(self.allow_env),
-      "plugin" => Ok(self.allow_plugin),
       "hrtime" => Ok(self.allow_hrtime),
       n => Err(OpError::other(format!("No such permission name: {}", n))),
     }
@@ -523,23 +509,6 @@ mod tests {
   }
 
   #[test]
-  fn test_permissions_request_run() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let mut perms0 = DenoPermissions::from_flags(&Flags {
-      ..Default::default()
-    });
-    set_prompt_result(true);
-    assert_eq!(perms0.request_run(), PermissionState::Allow);
-
-    let mut perms1 = DenoPermissions::from_flags(&Flags {
-      ..Default::default()
-    });
-    set_prompt_result(false);
-    assert_eq!(perms1.request_run(), PermissionState::Deny);
-    drop(guard);
-  }
-
-  #[test]
   fn test_permissions_request_read() {
     let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
     let whitelist = vec![PathBuf::from("/foo/bar")];
@@ -681,23 +650,6 @@ mod tests {
     });
     set_prompt_result(false);
     assert_eq!(perms1.request_env(), PermissionState::Deny);
-    drop(guard);
-  }
-
-  #[test]
-  fn test_permissions_request_plugin() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let mut perms0 = DenoPermissions::from_flags(&Flags {
-      ..Default::default()
-    });
-    set_prompt_result(true);
-    assert_eq!(perms0.request_plugin(), PermissionState::Allow);
-
-    let mut perms1 = DenoPermissions::from_flags(&Flags {
-      ..Default::default()
-    });
-    set_prompt_result(false);
-    assert_eq!(perms1.request_plugin(), PermissionState::Deny);
     drop(guard);
   }
 

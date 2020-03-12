@@ -71,7 +71,7 @@ fn op_run(
 ) -> Result<JsonOp, OpError> {
   let run_args: RunArgs = serde_json::from_value(args)?;
 
-  state.check_run()?;
+  state.check_all()?;
   let state_ = state.clone();
 
   let args = run_args.args;
@@ -188,7 +188,7 @@ fn op_run_status(
   let args: RunStatusArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
-  state.check_run()?;
+  state.check_all()?;
   let state = state.clone();
 
   let future = async move {
@@ -235,7 +235,7 @@ fn op_kill(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
-  state.check_run()?;
+  state.check_all()?;
 
   let args: KillArgs = serde_json::from_value(args)?;
   kill(args.pid, args.signo)?;

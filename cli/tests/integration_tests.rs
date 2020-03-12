@@ -272,8 +272,7 @@ fn js_unit_tests() {
     .current_dir(util::root_path())
     .arg("run")
     .arg("--reload")
-    .arg("--allow-run")
-    .arg("--allow-env")
+    .arg("--allow-all")
     .arg("cli/js/tests/unit_test_runner.ts")
     .spawn()
     .expect("failed to spawn script");
@@ -973,7 +972,7 @@ itest!(_044_bad_resource {
 });
 
 itest_ignore!(_045_proxy {
-  args: "run --allow-net --allow-env --allow-run --reload 045_proxy_test.ts",
+  args: "run --allow-all --reload 045_proxy_test.ts",
   output: "045_proxy_test.ts.out",
   http_server: true,
 });
@@ -1052,8 +1051,7 @@ itest!(js_import_detect {
 });
 
 itest!(lock_write_fetch {
-  args:
-    "run --allow-read --allow-write --allow-env --allow-run lock_write_fetch.ts",
+  args: "run --allow-all lock_write_fetch.ts",
   output: "lock_write_fetch.ts.out",
   exit_code: 0,
 });
@@ -1936,8 +1934,7 @@ mod util {
 
   use tempfile::TempDir;
 
-  pub const PERMISSION_VARIANTS: [&str; 5] =
-    ["read", "write", "env", "net", "run"];
+  pub const PERMISSION_VARIANTS: [&str; 4] = ["read", "write", "env", "net"];
   pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 
   lazy_static! {

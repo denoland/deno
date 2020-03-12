@@ -22,12 +22,11 @@ export {
 } from "../../../std/testing/asserts.ts";
 
 interface TestPermissions {
+  all?: boolean;
   read?: boolean;
   write?: boolean;
   net?: boolean;
   env?: boolean;
-  run?: boolean;
-  plugin?: boolean;
   hrtime?: boolean;
 }
 
@@ -36,8 +35,6 @@ export interface Permissions {
   write: boolean;
   net: boolean;
   env: boolean;
-  run: boolean;
-  plugin: boolean;
   hrtime: boolean;
 }
 
@@ -46,12 +43,10 @@ const isGranted = async (name: Deno.PermissionName): Promise<boolean> =>
 
 async function getProcessPermissions(): Promise<Permissions> {
   return {
-    run: await isGranted("run"),
     read: await isGranted("read"),
     write: await isGranted("write"),
     net: await isGranted("net"),
     env: await isGranted("env"),
-    plugin: await isGranted("plugin"),
     hrtime: await isGranted("hrtime")
   };
 }
@@ -81,10 +76,8 @@ function permToString(perms: Permissions): string {
   const w = perms.write ? 1 : 0;
   const n = perms.net ? 1 : 0;
   const e = perms.env ? 1 : 0;
-  const u = perms.run ? 1 : 0;
-  const p = perms.plugin ? 1 : 0;
   const h = perms.hrtime ? 1 : 0;
-  return `permR${r}W${w}N${n}E${e}U${u}P${p}H${h}`;
+  return `permR${r}W${w}N${n}E${e}H${h}`;
 }
 
 function registerPermCombination(perms: Permissions): void {
@@ -96,13 +89,11 @@ function registerPermCombination(perms: Permissions): void {
 
 function normalizeTestPermissions(perms: TestPermissions): Permissions {
   return {
-    read: !!perms.read,
-    write: !!perms.write,
-    net: !!perms.net,
-    run: !!perms.run,
-    env: !!perms.env,
-    plugin: !!perms.plugin,
-    hrtime: !!perms.hrtime
+    read: perms.all || !!perms.read,
+    write: perms.all || !!perms.write,
+    net: perms.all || !!perms.net,
+    env: perms.all || !!perms.env,
+    hrtime: perms.all || !!perms.hrtime
   };
 }
 
@@ -262,8 +253,6 @@ unitTest(function permissionsMatches(): void {
         write: false,
         net: false,
         env: false,
-        run: false,
-        plugin: false,
         hrtime: false
       },
       normalizeTestPermissions({ read: true })
@@ -277,8 +266,6 @@ unitTest(function permissionsMatches(): void {
         write: false,
         net: false,
         env: false,
-        run: false,
-        plugin: false,
         hrtime: false
       },
       normalizeTestPermissions({})
@@ -292,8 +279,6 @@ unitTest(function permissionsMatches(): void {
         write: true,
         net: true,
         env: true,
-        run: true,
-        plugin: true,
         hrtime: true
       },
       normalizeTestPermissions({ read: true })
@@ -308,8 +293,6 @@ unitTest(function permissionsMatches(): void {
         write: false,
         net: true,
         env: false,
-        run: false,
-        plugin: false,
         hrtime: false
       },
       normalizeTestPermissions({ read: true })
@@ -324,8 +307,6 @@ unitTest(function permissionsMatches(): void {
         write: true,
         net: true,
         env: true,
-        run: true,
-        plugin: true,
         hrtime: true
       },
       {
@@ -333,8 +314,6 @@ unitTest(function permissionsMatches(): void {
         write: true,
         net: true,
         env: true,
-        run: true,
-        plugin: true,
         hrtime: true
       }
     )

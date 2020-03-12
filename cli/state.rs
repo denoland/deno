@@ -304,6 +304,11 @@ impl State {
   }
 
   #[inline]
+  pub fn check_all(&self) -> Result<(), OpError> {
+    self.borrow().permissions.check_all()
+  }
+
+  #[inline]
   pub fn check_read(&self, path: &Path) -> Result<(), OpError> {
     self.borrow().permissions.check_read(path)
   }
@@ -326,16 +331,6 @@ impl State {
   #[inline]
   pub fn check_net_url(&self, url: &url::Url) -> Result<(), OpError> {
     self.borrow().permissions.check_net_url(url)
-  }
-
-  #[inline]
-  pub fn check_run(&self) -> Result<(), OpError> {
-    self.borrow().permissions.check_run()
-  }
-
-  #[inline]
-  pub fn check_plugin(&self, filename: &Path) -> Result<(), OpError> {
-    self.borrow().permissions.check_plugin(filename)
   }
 
   pub fn check_dyn_import(

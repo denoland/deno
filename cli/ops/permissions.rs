@@ -61,12 +61,10 @@ pub fn op_revoke_permission(
   let mut state = state.borrow_mut();
   let permissions = &mut state.permissions;
   match args.name.as_ref() {
-    "run" => permissions.allow_run.revoke(),
     "read" => permissions.allow_read.revoke(),
     "write" => permissions.allow_write.revoke(),
     "net" => permissions.allow_net.revoke(),
     "env" => permissions.allow_env.revoke(),
-    "plugin" => permissions.allow_plugin.revoke(),
     "hrtime" => permissions.allow_hrtime.revoke(),
     _ => {}
   };
@@ -89,7 +87,6 @@ pub fn op_request_permission(
   let permissions = &mut state.permissions;
   let resolved_path = args.path.as_deref().map(resolve_path);
   let perm = match args.name.as_ref() {
-    "run" => Ok(permissions.request_run()),
     "read" => {
       Ok(permissions.request_read(&resolved_path.as_deref().map(Path::new)))
     }
@@ -98,7 +95,6 @@ pub fn op_request_permission(
     }
     "net" => permissions.request_net(&args.url.as_deref()),
     "env" => Ok(permissions.request_env()),
-    "plugin" => Ok(permissions.request_plugin()),
     "hrtime" => Ok(permissions.request_hrtime()),
     n => Err(OpError::other(format!("No such permission name: {}", n))),
   }?;

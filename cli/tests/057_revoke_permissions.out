@@ -1,10 +1,8 @@
-running 7 tests
-OK     runGranted [WILDCARD]
+running 5 tests
 OK     readGranted [WILDCARD]
 OK     writeGranted [WILDCARD]
 OK     netGranted [WILDCARD]
 OK     envGranted [WILDCARD]
-OK     pluginGranted [WILDCARD]
 OK     hrtimeGranted [WILDCARD]
 
-test result: OK 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
+test result: OK 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]

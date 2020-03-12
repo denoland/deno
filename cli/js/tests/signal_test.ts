@@ -104,7 +104,7 @@ unitTest(
 );
 
 unitTest(
-  { skip: Deno.build.os === "win", perms: { run: true, net: true } },
+  { skip: Deno.build.os === "win", perms: { all: true } },
   async function signalStreamTest(): Promise<void> {
     const resolvable = createResolvable();
     // This prevents the program from exiting.
@@ -138,7 +138,7 @@ unitTest(
 );
 
 unitTest(
-  { skip: Deno.build.os === "win", perms: { run: true } },
+  { skip: Deno.build.os === "win", perms: { all: true } },
   async function signalPromiseTest(): Promise<void> {
     const resolvable = createResolvable();
     // This prevents the program from exiting.
@@ -161,7 +161,7 @@ unitTest(
 );
 
 unitTest(
-  { skip: Deno.build.os === "win", perms: { run: true } },
+  { skip: Deno.build.os === "win", perms: { all: true } },
   async function signalShorthandsTest(): Promise<void> {
     let s: Deno.SignalStream;
     s = Deno.signals.alarm(); // for SIGALRM
