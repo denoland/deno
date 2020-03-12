@@ -53,7 +53,7 @@ impl ErrorMsg {
 }
 
 /// Asynchronously updates deno executable to greatest version
-/// if newest version is available.
+/// if greatest version is available.
 pub async fn exec_upgrade() -> Result<(), ErrBox> {
   let client = Client::builder().redirect(Policy::none()).build()?;
   println!("Checking for latest version");
@@ -66,7 +66,7 @@ pub async fn exec_upgrade() -> Result<(), ErrBox> {
   let checked_version = find_version(&body)?;
   if is_latest_version_greater(&version::DENO.to_string(), &checked_version) {
     println!(
-      "New version has been found.\nDeno is upgrading to version {}",
+      "New version has been found\nDeno is upgrading to version {}",
       &checked_version
     );
     let archive =
