@@ -187,12 +187,6 @@ export class Event implements domTypes.Event {
     return getPrivateValue(this, eventAttributes, "type");
   }
 
-  /** Returns the event’s path (objects on which listeners will be
-   * invoked). This does not include nodes in shadow trees if the
-   * shadow root was created with its ShadowRoot.mode closed.
-   *
-   *      event.composedPath();
-   */
   composedPath(): domTypes.EventPath[] {
     if (this._path.length === 0) {
       return [];
@@ -299,41 +293,22 @@ export class Event implements domTypes.Event {
     return composedPath;
   }
 
-  /** Cancels the event (if it is cancelable).
-   * See https://dom.spec.whatwg.org/#set-the-canceled-flag
-   *
-   *      event.preventDefault();
-   */
   preventDefault(): void {
     if (this.cancelable && !this._inPassiveListenerFlag) {
       this._canceledFlag = true;
     }
   }
 
-  /** Stops the propagation of events further along in the DOM.
-   *
-   *      event.stopPropagation();
-   */
   stopPropagation(): void {
     this._stopPropagationFlag = true;
   }
 
-  /** For this particular event, no other listener will be called.
-   * Neither those attached on the same element, nor those attached
-   * on elements which will be traversed later (in capture phase,
-   * for instance).
-   *
-   *      event.stopImmediatePropagation();
-   */
   stopImmediatePropagation(): void {
     this._stopPropagationFlag = true;
     this._stopImmediatePropagationFlag = true;
   }
 }
 
-/** Built-in objects providing `get` methods for our
- * interceptable JavaScript operations.
- */
 Reflect.defineProperty(Event.prototype, "bubbles", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "cancelable", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "composed", { enumerable: true });

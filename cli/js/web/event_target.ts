@@ -486,9 +486,6 @@ const eventTargetHelpers = {
   }
 };
 
-/** Built-in objects providing `get` methods for our
- * interceptable JavaScript operations.
- */
 Reflect.defineProperty(EventTarget.prototype, "addEventListener", {
   enumerable: true
 });

@@ -6,7 +6,6 @@ interface FileReference {
   end: number;
 }
 
-/** Remap the module name based on any supplied type directives passed. */
 export function getMappedModuleName(
   source: FileReference,
   typeDirectives: Map<FileReference, string>
@@ -20,29 +19,10 @@ export function getMappedModuleName(
   return source.fileName;
 }
 
-/** Matches directives that look something like this and parses out the value
- * of the directive:
- *
- *      // @deno-types="./foo.d.ts"
- *
- * [See Diagram](http://bit.ly/31nZPCF)
- */
 const typeDirectiveRegEx = /@deno-types\s*=\s*(["'])((?:(?=(\\?))\3.)*?)\1/gi;
 
-/** Matches `import`, `import from` or `export from` statements and parses out the value of the
- * module specifier in the second capture group:
- *
- *      import "./foo.js"
- *      import * as foo from "./foo.js"
- *      export { a, b, c } from "./bar.js"
- *
- * [See Diagram](http://bit.ly/2lOsp0K)
- */
 const importExportRegEx = /(?:import|export)(?:\s+|\s+[\s\S]*?from\s+)?(["'])((?:(?=(\\?))\3.)*?)\1/;
 
-/** Parses out any Deno type directives that are part of the source code, or
- * returns `undefined` if there are not any.
- */
 export function parseTypeDirectives(
   sourceCode: string | undefined
 ): Map<FileReference, string> | undefined {

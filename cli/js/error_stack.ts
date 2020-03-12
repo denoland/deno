@@ -5,9 +5,6 @@ import { applySourceMap, Location } from "./ops/errors.ts";
 import { assert } from "./util.ts";
 import { exposeForTest } from "./internals.ts";
 
-/** Mutate the call site so that it returns the location, instead of its
- * original location.
- */
 function patchCallSite(callSite: CallSite, location: Location): CallSite {
   return {
     getThis(): unknown {
@@ -61,10 +58,6 @@ function patchCallSite(callSite: CallSite, location: Location): CallSite {
   };
 }
 
-/** Return a string representations of a CallSite's method call name
- *
- * This is adapted directly from V8.
- */
 function getMethodCall(callSite: CallSite): string {
   let result = "";
 
@@ -100,10 +93,6 @@ function getMethodCall(callSite: CallSite): string {
   return result;
 }
 
-/** Return a string representations of a CallSite's file location
- *
- * This is adapted directly from V8.
- */
 function getFileLocation(callSite: CallSite): string {
   if (callSite.isNative()) {
     return "native";
@@ -137,10 +126,6 @@ function getFileLocation(callSite: CallSite): string {
   return result;
 }
 
-/** Convert a CallSite to a string.
- *
- * This is adapted directly from V8.
- */
 function callSiteToString(callSite: CallSite): string {
   let result = "";
   const functionName = callSite.getFunctionName();
@@ -178,9 +163,6 @@ function callSiteToString(callSite: CallSite): string {
   return result;
 }
 
-/** A replacement for the default stack trace preparer which will op into Rust
- * to apply source maps to individual sites
- */
 function prepareStackTrace(
   error: Error,
   structuredStackTrace: CallSite[]
@@ -211,12 +193,6 @@ function prepareStackTrace(
   );
 }
 
-/** Sets the `prepareStackTrace` method on the Error constructor which will
- * op into Rust to remap source code for caught errors where the `.stack` is
- * being accessed.
- *
- * See: https://v8.dev/docs/stack-trace-api
- */
 // @internal
 export function setPrepareStackTrace(ErrorConstructor: typeof Error): void {
   ErrorConstructor.prepareStackTrace = prepareStackTrace;

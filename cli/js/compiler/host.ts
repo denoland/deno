@@ -6,26 +6,17 @@ import { cwd } from "../ops/fs/dir.ts";
 import { assert, notImplemented } from "../util.ts";
 import * as util from "../util.ts";
 
-/** Specifies the target that the host should use to inform the TypeScript
- * compiler of what types should be used to validate the program against. */
 export enum CompilerHostTarget {
-  /** The main isolate library, where the main program runs. */
   Main = "main",
-  /** The runtime API library. */
   Runtime = "runtime",
-  /** The worker isolate library, where worker programs run. */
   Worker = "worker"
 }
 
 export interface CompilerHostOptions {
-  /** Flag determines if the host should assume a single bundle output. */
   bundle?: boolean;
 
-  /** Determines what the default library that should be used when type checking
-   * TS code. */
   target: CompilerHostTarget;
 
-  /** A function to be used when the program emit occurs to write out files. */
   writeFile: WriteFileCallback;
 }
 
@@ -34,8 +25,6 @@ export interface ConfigureResponse {
   diagnostics?: ts.Diagnostic[];
 }
 
-/** Options that need to be used when generating a bundle (either trusted or
- * runtime). */
 export const defaultBundlerOptions: ts.CompilerOptions = {
   allowJs: true,
   inlineSourceMap: false,
@@ -46,7 +35,6 @@ export const defaultBundlerOptions: ts.CompilerOptions = {
   sourceMap: false
 };
 
-/** Default options used by the compiler Host when compiling. */
 export const defaultCompileOptions: ts.CompilerOptions = {
   allowJs: false,
   allowNonTsExtensions: true,
@@ -62,12 +50,10 @@ export const defaultCompileOptions: ts.CompilerOptions = {
   target: ts.ScriptTarget.ESNext
 };
 
-/** Options that need to be used when doing a runtime (non bundled) compilation */
 export const defaultRuntimeCompileOptions: ts.CompilerOptions = {
   outDir: undefined
 };
 
-/** Default options used when doing a transpile only. */
 export const defaultTranspileOptions: ts.CompilerOptions = {
   esModuleInterop: true,
   module: ts.ModuleKind.ESNext,
@@ -76,8 +62,6 @@ export const defaultTranspileOptions: ts.CompilerOptions = {
   target: ts.ScriptTarget.ESNext
 };
 
-/** Options that either do nothing in Deno, or would cause undesired behavior
- * if modified. */
 const ignoredCompilerOptions: readonly string[] = [
   "allowSyntheticDefaultImports",
   "baseUrl",
@@ -164,7 +148,6 @@ export class Host implements ts.CompilerHost {
 
   /* Deno specific APIs */
 
-  /** Provides the `ts.HostCompiler` interface for Deno. */
   constructor({ bundle = false, target, writeFile }: CompilerHostOptions) {
     this._target = target;
     this._writeFile = writeFile;
@@ -174,9 +157,6 @@ export class Host implements ts.CompilerHost {
     }
   }
 
-  /** Take a configuration string, parse it, and use it to merge with the
-   * compiler's configuration options.  The method returns an array of compiler
-   * options which were ignored, or `undefined`. */
   configure(path: string, configurationText: string): ConfigureResponse {
     util.log("compiler::host.configure", path);
     assert(configurationText);
@@ -208,8 +188,6 @@ export class Host implements ts.CompilerHost {
     };
   }
 
-  /** Merge options into the host's current set of compiler options and return
-   * the merged set. */
   mergeOptions(...options: ts.CompilerOptions[]): ts.CompilerOptions {
     Object.assign(this._options, ...options);
     return Object.assign({}, this._options);
