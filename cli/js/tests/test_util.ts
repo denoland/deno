@@ -1,13 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-//
-// We want to test many ops in deno which have different behavior depending on
-// the permissions set. These tests can specify which permissions they expect,
-// which appends a special string like "permW1N0" to the end of the test name.
-// Here we run several copies of deno with different permissions, filtering the
-// tests by the special string. permW1N0 means allow-write but not allow-net.
-// See tools/unit_tests.py for more details.
 
-import { readLines } from "../../../std/io/bufio.ts";
 import { assert, assertEquals } from "../../../std/testing/asserts.ts";
 export {
   assert,
@@ -20,22 +12,7 @@ export {
   unreachable,
   fail
 } from "../../../std/testing/asserts.ts";
-
-export function defer(n: number): Promise<void> {
-  return new Promise((resolve: () => void, _) => {
-    setTimeout(resolve, n);
-  });
-}
-
-interface TestPermissions {
-  read?: boolean;
-  write?: boolean;
-  net?: boolean;
-  env?: boolean;
-  run?: boolean;
-  plugin?: boolean;
-  hrtime?: boolean;
-}
+export { readLines } from "../../../std/io/bufio.ts";
 
 export interface Permissions {
   read: boolean;
@@ -45,6 +22,18 @@ export interface Permissions {
   run: boolean;
   plugin: boolean;
   hrtime: boolean;
+}
+
+export function fmtPerms(perms: Permissions): string {
+  const p = Object.keys(perms)
+    .filter((e): boolean => perms[e as keyof Permissions] === true)
+    .map(key => `--allow-${key}`);
+
+  if (p.length) {
+    return p.join(" ");
+  }
+
+  return "<no permissions>";
 }
 
 const isGranted = async (name: Deno.PermissionName): Promise<boolean> =>
@@ -114,7 +103,7 @@ export async function registerUnitTests(): Promise<void> {
   }
 }
 
-function normalizeTestPermissions(perms: TestPermissions): Permissions {
+function normalizeTestPermissions(perms: UnitTestPermissions): Permissions {
   return {
     read: !!perms.read,
     write: !!perms.write,
@@ -167,9 +156,19 @@ function assertResources(fn: Deno.TestFunction): Deno.TestFunction {
   };
 }
 
+interface UnitTestPermissions {
+  read?: boolean;
+  write?: boolean;
+  net?: boolean;
+  env?: boolean;
+  run?: boolean;
+  plugin?: boolean;
+  hrtime?: boolean;
+}
+
 interface UnitTestOptions {
   skip?: boolean;
-  perms?: TestPermissions;
+  perms?: UnitTestPermissions;
 }
 
 interface UnitTestDefinition {
@@ -216,9 +215,6 @@ export function unitTest(
 
   const normalizedPerms = normalizeTestPermissions(options.perms || {});
   registerPermCombination(normalizedPerms);
-  // if (!permissionsMatch(processPerms, normalizedPerms)) {
-  //   return;
-  // }
 
   const unitTestDefinition: UnitTestDefinition = {
     name,
@@ -226,47 +222,8 @@ export function unitTest(
     skip: !!options.skip,
     perms: normalizedPerms
   };
-  // Deno.test(testDefinition);
 
   REGISTERED_UNIT_TESTS.push(unitTestDefinition);
-}
-
-function extractNumber(re: RegExp, str: string): number | undefined {
-  const match = str.match(re);
-
-  if (match) {
-    return Number.parseInt(match[1]);
-  }
-}
-
-export async function parseUnitTestOutput(
-  reader: Deno.Reader,
-  print: boolean
-): Promise<{ actual?: number; expected?: number; resultOutput?: string }> {
-  let expected, actual, result;
-
-  for await (const line of readLines(reader)) {
-    if (!expected) {
-      // expect "running 30 tests"
-      expected = extractNumber(/running (\d+) tests/, line);
-    } else if (line.indexOf("test result:") !== -1) {
-      result = line;
-    }
-
-    if (print) {
-      console.log(line);
-    }
-  }
-
-  // Check that the number of expected tests equals what was reported at the
-  // bottom.
-  if (result) {
-    // result should be a string like this:
-    // "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; ..."
-    actual = extractNumber(/(\d+) passed/, result);
-  }
-
-  return { actual, expected, resultOutput: result };
 }
 
 export interface ResolvableMethods<T> {
@@ -285,6 +242,44 @@ export function createResolvable<T>(): Resolvable<T> {
   // TypeScript doesn't know that the Promise callback occurs synchronously
   // therefore use of not null assertion (`!`)
   return Object.assign(promise, methods!) as Resolvable<T>;
+}
+
+export class SocketReporter implements Deno.TestReporter {
+  private encoder: TextEncoder;
+
+  constructor(private conn: Deno.Conn) {
+    this.encoder = new TextEncoder();
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async write(msg: any): Promise<void> {
+    const encodedMsg = this.encoder.encode(`${JSON.stringify(msg)}\n`);
+    await Deno.writeAll(this.conn, encodedMsg);
+  }
+
+  async start(msg: Deno.StartMsg): Promise<void> {
+    await this.write(msg);
+  }
+
+  async test(msg: Deno.TestMsg): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const serializedMsg: any = { ...msg };
+    delete serializedMsg.result.fn;
+
+    if (serializedMsg.result.error) {
+      serializedMsg.result.error = String(serializedMsg.result.error.stack);
+    }
+
+    await this.write(serializedMsg);
+  }
+
+  async end(msg: Deno.EndMsg): Promise<void> {
+    await this.write(msg);
+  }
+
+  close(): void {
+    this.conn.close();
+  }
 }
 
 unitTest(function permissionsMatches(): void {
@@ -373,43 +368,6 @@ unitTest(function permissionsMatches(): void {
     )
   );
 });
-
-unitTest(
-  { perms: { read: true } },
-  async function parsingUnitTestOutput(): Promise<void> {
-    const cwd = Deno.cwd();
-    const testDataPath = `${cwd}/tools/testdata/`;
-
-    let result;
-
-    // This is an example of a successful unit test output.
-    const f1 = await Deno.open(`${testDataPath}/unit_test_output1.txt`);
-    result = await parseUnitTestOutput(f1, false);
-    assertEquals(result.actual, 96);
-    assertEquals(result.expected, 96);
-    f1.close();
-
-    // This is an example of a silently dying unit test.
-    const f2 = await Deno.open(`${testDataPath}/unit_test_output2.txt`);
-    result = await parseUnitTestOutput(f2, false);
-    assertEquals(result.actual, undefined);
-    assertEquals(result.expected, 96);
-    f2.close();
-
-    // This is an example of compiling before successful unit tests.
-    const f3 = await Deno.open(`${testDataPath}/unit_test_output3.txt`);
-    result = await parseUnitTestOutput(f3, false);
-    assertEquals(result.actual, 96);
-    assertEquals(result.expected, 96);
-    f3.close();
-
-    // Check what happens on empty output.
-    const f = new Deno.Buffer(new TextEncoder().encode("\n\n\n"));
-    result = await parseUnitTestOutput(f, false);
-    assertEquals(result.actual, undefined);
-    assertEquals(result.expected, undefined);
-  }
-);
 
 /*
  * Ensure all unit test files (e.g. xxx_test.ts) are present as imports in

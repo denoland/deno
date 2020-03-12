@@ -1,12 +1,14 @@
 #!/usr/bin/env -S deno run --reload --allow-run
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { readLines } from "../../../std/io/bufio.ts";
 import "./unit_tests.ts";
 import {
   assert,
+  readLines,
   permissionCombinations,
   Permissions,
-  registerUnitTests
+  registerUnitTests,
+  SocketReporter,
+  fmtPerms
 } from "./test_util.ts";
 
 interface PermissionSetTestResult {
@@ -15,44 +17,6 @@ interface PermissionSetTestResult {
   stats: Deno.TestStats;
   permsStr: string;
   result: number;
-}
-
-class SocketReporter implements Deno.TestReporter {
-  private encoder: TextEncoder;
-
-  constructor(private conn: Deno.Conn) {
-    this.encoder = new TextEncoder();
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async write(msg: any): Promise<void> {
-    const encodedMsg = this.encoder.encode(`${JSON.stringify(msg)}\n`);
-    await Deno.writeAll(this.conn, encodedMsg);
-  }
-
-  async start(msg: Deno.StartMsg): Promise<void> {
-    await this.write(msg);
-  }
-
-  async test(msg: Deno.TestMsg): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const serializedMsg: any = { ...msg };
-    delete serializedMsg.result.fn;
-
-    if (serializedMsg.result.error) {
-      serializedMsg.result.error = String(serializedMsg.result.error.stack);
-    }
-
-    await this.write(serializedMsg);
-  }
-
-  async end(msg: Deno.EndMsg): Promise<void> {
-    await this.write(msg);
-  }
-
-  close(): void {
-    this.conn.close();
-  }
 }
 
 /**
@@ -88,7 +52,6 @@ async function workerRunnerMain(
   permissions: Deno.PermissionName[]
 ): Promise<void> {
   // Create reporter, then drop permissions to requested set
-  // const fileReporter = new FileReporter(filename);
   const conn = await Deno.connect(addr);
   console.log("Test worker online", addr, permissions);
   const socketReporter = new SocketReporter(conn);
@@ -105,30 +68,6 @@ async function workerRunnerMain(
   });
   console.log("worker finished running tests", results.stats);
   socketReporter.close();
-}
-
-function permsToCliFlags(perms: Permissions): string[] {
-  return Object.keys(perms)
-    .map(key => {
-      if (!perms[key as keyof Permissions]) return "";
-
-      const cliFlag = key.replace(
-        /\.?([A-Z])/g,
-        (x, y): string => `-${y.toLowerCase()}`
-      );
-      return `--allow-${cliFlag}`;
-    })
-    .filter((e): boolean => e.length > 0);
-}
-
-function fmtPerms(perms: Permissions): string {
-  let fmt = permsToCliFlags(perms).join(" ");
-
-  if (!fmt) {
-    fmt = "<no permissions>";
-  }
-
-  return fmt;
 }
 
 function spawnWorkerRunner(addr: string, perms: Permissions): Deno.Process {
