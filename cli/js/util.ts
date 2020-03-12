@@ -26,7 +26,6 @@ export function assert(cond: unknown, msg = "assert"): asserts cond {
   }
 }
 
-
 export type ResolveFunction<T> = (value?: T | PromiseLike<T>) => void;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type RejectFunction = (reason?: any) => void;
