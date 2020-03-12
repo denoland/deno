@@ -21,11 +21,10 @@ export {
   fail
 } from "../../../std/testing/asserts.ts";
 
-
-export function defer(n: number): Promise<void> {	
-  return new Promise((resolve: () => void, _) => {	
-    setTimeout(resolve, n);	
-  });	
+export function defer(n: number): Promise<void> {
+  return new Promise((resolve: () => void, _) => {
+    setTimeout(resolve, n);
+  });
 }
 
 interface TestPermissions {
@@ -51,7 +50,7 @@ export interface Permissions {
 const isGranted = async (name: Deno.PermissionName): Promise<boolean> =>
   (await Deno.permissions.query({ name })).state === "granted";
 
-async function getProcessPermissions(): Promise<Permissions> {
+export async function getProcessPermissions(): Promise<Permissions> {
   return {
     run: await isGranted("run"),
     read: await isGranted("read"),
@@ -63,9 +62,7 @@ async function getProcessPermissions(): Promise<Permissions> {
   };
 }
 
-const processPerms = await getProcessPermissions();
-
-function permissionsMatch(
+export function permissionsMatch(
   processPerms: Permissions,
   requiredPerms: Permissions
 ): boolean {
@@ -159,6 +156,15 @@ interface UnitTestOptions {
   perms?: TestPermissions;
 }
 
+interface UnitTestDefinition {
+  name: string;
+  fn: Deno.TestFunction;
+  skip?: boolean;
+  perms: Permissions;
+}
+
+export const REGISTERED_UNIT_TESTS: UnitTestDefinition[] = [];
+
 export function unitTest(fn: Deno.TestFunction): void;
 export function unitTest(options: UnitTestOptions, fn: Deno.TestFunction): void;
 export function unitTest(
@@ -194,15 +200,19 @@ export function unitTest(
 
   const normalizedPerms = normalizeTestPermissions(options.perms || {});
   registerPermCombination(normalizedPerms);
-  if (!permissionsMatch(processPerms, normalizedPerms)) {
-    return;
-  }
+  // if (!permissionsMatch(processPerms, normalizedPerms)) {
+  //   return;
+  // }
 
-  const testDefinition: Deno.TestDefinition = {
+  const unitTestDefinition: UnitTestDefinition = {
     name,
-    fn: assertResources(assertOps(fn))
+    fn: assertResources(assertOps(fn)),
+    skip: !!options.skip,
+    perms: normalizedPerms
   };
-  Deno.test(testDefinition);
+  // Deno.test(testDefinition);
+
+  REGISTERED_UNIT_TESTS.push(unitTestDefinition);
 }
 
 function extractNumber(re: RegExp, str: string): number | undefined {
@@ -218,31 +228,36 @@ export async function newParseUnitTestOutput(
   print: boolean
 ): Promise<{ actual?: number; expected?: number; resultOutput?: string }> {
   let expected, actual, result;
-  console.log("start parsing", reader);
-  
-  const linesIterator = readLines(reader);
-  {
-    const { value } = await linesIterator.next();
-    const msg = JSON.parse(value);
-    if (msg.kind !== "start") {
-      throw Error("Bad message");
-    }
-    expected = msg.tests;
-    if (print) {
-      console.log("tests start", JSON.stringify(msg));
-    }
-  }
 
-  for await (const value of linesIterator) {
-    let msg;
-    try {
-      msg = JSON.parse(value);
-    } catch (e) {
-      // TODO(bartlomieju): Ignoring malformed messages
-      // for now, but ultimately there should be no other output
-      if (print) {
-        console.log(value);
+  const bufReader = new BufReader(reader, 1024 * 1024);
+  console.log("start parsing");
+
+  let seenStart = false;
+  let seenEnd = false;
+
+  while (true) {
+    const r = await bufReader.readString("\n");
+
+    // If we're hitting EOF it means that there is no new
+    // data available, sleep for a while and let worker make progress.
+    if (r === Deno.EOF) {
+      // console.log("got eof");
+      await defer(1000);
+      bufReader.reset(reader);
+      continue;
+    }
+
+    const msg = JSON.parse(r);
+
+    if (!seenStart) {
+      if (msg.kind !== "start") {
+        throw Error("Bad message");
       }
+      expected = msg.tests;
+      if (print) {
+        console.log("tests start", JSON.stringify(msg));
+      }
+      seenStart = true;
       continue;
     }
 
@@ -250,26 +265,21 @@ export async function newParseUnitTestOutput(
       actual = msg.stats.passed;
       result = msg.stats;
       if (print) {
-        console.log("tests end", JSON.stringify(msg));
+        console.log("tests end", JSON.stringify(result));
       }
-    } else if (msg.kind === "test") {
-      // ok
-      if (print) {
-        const testResult = msg.result;
-        if (testResult.failed) {
-          console.log(`FAILED ${testResult.name}`);
-          console.log(testResult.error.stack);
-        } else {
-          console.log(`OK     ${testResult.name} ${testResult.duration}`);
-        }
+      seenEnd = true;
+      break;
+    }
+
+    // ok
+    if (print) {
+      const testResult = msg.result;
+      if (testResult.failed) {
+        console.log(`FAILED ${testResult.name}`);
+        console.log(testResult.error.stack);
+      } else {
+        console.log(`OK     ${testResult.name} ${testResult.duration}`);
       }
-    } else {
-      // TODO(bartlomieju): Ignoring random JSON messages
-      // for now, but ultimately there should be no other output
-      if (print) {
-        console.log(msg);
-      }
-      continue;
     }
   }
 

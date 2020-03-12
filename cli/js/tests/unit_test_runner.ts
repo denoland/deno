@@ -1,9 +1,14 @@
 #!/usr/bin/env -S deno run --reload --allow-run
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import "./unit_tests.ts";
 import {
   permissionCombinations,
-  Permissions, defer,
-  newParseUnitTestOutput
+  Permissions,
+  defer,
+  newParseUnitTestOutput,
+  getProcessPermissions,
+  permissionsMatch,
+  REGISTERED_UNIT_TESTS
 } from "./test_util.ts";
 
 interface TestResult {
@@ -23,10 +28,8 @@ class FileReporter implements Deno.TestReporter {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async write(msg: any): Promise<void> {
-    console.log("writing to file", msg);
     const encodedMsg = this.encoder.encode(`${JSON.stringify(msg)}\n`);
     await Deno.writeAll(this.file, encodedMsg);
-    console.log("written to file");
   }
 
   async start(msg: Deno.StartMsg): Promise<void> {
@@ -46,7 +49,9 @@ class FileReporter implements Deno.TestReporter {
   }
 }
 
-async function dropPermissions(requiredPermissions: Deno.PermissionName[]): Promise<void> {
+async function dropPermissions(
+  requiredPermissions: Deno.PermissionName[]
+): Promise<void> {
   const permsToDrop: Deno.PermissionName[] = [
     "read",
     "write",
@@ -54,7 +59,7 @@ async function dropPermissions(requiredPermissions: Deno.PermissionName[]): Prom
     "env",
     "run",
     "plugin",
-    "hrtime",
+    "hrtime"
   ];
 
   for (const flag of requiredPermissions) {
@@ -63,27 +68,44 @@ async function dropPermissions(requiredPermissions: Deno.PermissionName[]): Prom
     permsToDrop.splice(index, 1);
   }
 
+  console.log("worker runner dropping permissions: ", permsToDrop);
   for (const perm of permsToDrop) {
-    console.log("dropping permission", perm);
     await Deno.permissions.revoke({ name: perm });
   }
 }
 
-async function workerRunnerMain(filename: string, permissions: Deno.PermissionName[]): Promise<void> {
+async function workerRunnerMain(
+  filename: string,
+  permissions: Deno.PermissionName[]
+): Promise<void> {
   // Create reporter, then drop permissions to requested set
   const fileReporter = new FileReporter(filename);
   await dropPermissions(permissions);
-  await import("./unit_tests.ts");
+
+  // Register unit tests that match process permissions
+  const processPerms = await getProcessPermissions();
+
+  for (const unitTestDefinition of REGISTERED_UNIT_TESTS) {
+    if (unitTestDefinition.skip) {
+      continue;
+    }
+
+    if (!permissionsMatch(processPerms, unitTestDefinition.perms)) {
+      continue;
+    }
+
+    Deno.test(unitTestDefinition);
+  }
+
   // Permissions dropped we're ready to execute tests
   const results = await Deno.runTests({
     failFast: false,
     exitOnFail: false,
-    reporter: fileReporter,
+    reporter: fileReporter
   });
-  console.log("worker finished running tests", results);
+  console.log("worker finished running tests", results.stats);
   fileReporter.close();
 }
-
 
 function permsToStrings(perms: Permissions): string[] {
   return Object.keys(perms)
@@ -98,7 +120,6 @@ function permsToStrings(perms: Permissions): string[] {
     })
     .filter((e): boolean => e.length > 0);
 }
-
 
 function permsToCliFlags(perms: Permissions): string[] {
   return Object.keys(perms)
@@ -124,9 +145,7 @@ function fmtPerms(perms: Permissions): string {
   return fmt;
 }
 
-
 async function masterRunnerMain(): Promise<void> {
-  await import("./unit_tests.ts");
   console.log(
     "Discovered permission combinations for tests:",
     permissionCombinations.size
@@ -146,7 +165,7 @@ async function masterRunnerMain(): Promise<void> {
     // TODO: open file
     const r = Math.random() * 100_000;
     const filename = `.report.${~~r}.deno.test`;
-    
+
     // run subsequent tests using same deno executable
     const args = [
       Deno.execPath(),
@@ -156,19 +175,19 @@ async function masterRunnerMain(): Promise<void> {
       "--",
       "--worker",
       `--filename=${filename}`,
-      `--perms=${permStrs.join(",")}`,
+      `--perms=${permStrs.join(",")}`
     ];
 
     const p = Deno.run({
-      args,
+      args
     });
-  
+
     // Wait until file is created by subprocess
     while (true) {
       try {
         await Deno.stat(filename);
-        break
-      } catch  {
+        break;
+      } catch {
         // pass
       }
       await defer(100);
@@ -179,6 +198,8 @@ async function masterRunnerMain(): Promise<void> {
       reportFile,
       true
     );
+    reportFile.close();
+    Deno.remove(filename);
 
     let result = 0;
 
@@ -189,7 +210,6 @@ async function masterRunnerMain(): Promise<void> {
       result = 1;
     }
 
-    return;
     testResults.add({
       perms: permsFmt,
       output: resultOutput,
