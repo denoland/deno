@@ -1,5 +1,5 @@
 const { test } = Deno;
-import { assert, assertEquals, fail } from "../testing/asserts.ts";
+import { assert, assertEquals, fail } from "../../testing/asserts.ts";
 import Dir from "./_fs_dir.ts";
 import Dirent from "./_fs_dirent.ts";
 

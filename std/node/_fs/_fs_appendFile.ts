@@ -1,18 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { FileOptions, isFileOptions } from "./_fs_common.ts";
+import { FileOptions, isFileOptions, CallbackWithError } from "./_fs_common.ts";
 import { notImplemented } from "../_utils.ts";
 
 /**
  * TODO: Also accept 'data' parameter as a Node polyfill Buffer type once this
  * is implemented. See https://github.com/denoland/deno/issues/3403
  */
-export async function appendFile(
+export function appendFile(
   pathOrRid: string | number,
   data: string,
-  optionsOrCallback: string | FileOptions | Function,
-  callback?: Function
-): Promise<void> {
-  const callbackFn: Function | undefined =
+  optionsOrCallback: string | FileOptions | CallbackWithError,
+  callback?: CallbackWithError
+): void {
+  const callbackFn: CallbackWithError | undefined =
     optionsOrCallback instanceof Function ? optionsOrCallback : callback;
   const options: string | FileOptions | undefined =
     optionsOrCallback instanceof Function ? undefined : optionsOrCallback;
@@ -23,37 +23,48 @@ export async function appendFile(
   validateEncoding(options);
 
   let rid = -1;
-  try {
-    if (typeof pathOrRid === "number") {
-      rid = pathOrRid;
-    } else {
-      const mode: number | undefined = isFileOptions(options)
-        ? options.mode
-        : undefined;
-      const flag: string | undefined = isFileOptions(options)
-        ? options.flag
-        : undefined;
+  new Promise(async (resolve, reject) => {
+    try {
+      if (typeof pathOrRid === "number") {
+        rid = pathOrRid;
+      } else {
+        const mode: number | undefined = isFileOptions(options)
+          ? options.mode
+          : undefined;
+        const flag: string | undefined = isFileOptions(options)
+          ? options.flag
+          : undefined;
 
-      if (mode) {
-        //TODO rework once https://github.com/denoland/deno/issues/4017 completes
-        notImplemented("Deno does not yet support setting mode on create");
+        if (mode) {
+          //TODO rework once https://github.com/denoland/deno/issues/4017 completes
+          notImplemented("Deno does not yet support setting mode on create");
+        }
+        const file = await Deno.open(pathOrRid, getOpenOptions(flag));
+        rid = file.rid;
       }
 
-      const file = await Deno.open(pathOrRid, getOpenOptions(flag));
-      rid = file.rid;
-    }
+      const buffer: Uint8Array = new TextEncoder().encode(data);
 
-    const buffer: Uint8Array = new TextEncoder().encode(data);
-
-    await Deno.write(rid, buffer);
-    callbackFn();
-  } catch (err) {
-    callbackFn(err);
-  } finally {
-    if (typeof pathOrRid === "string" && rid != -1) {
-      //Only close if a path was supplied and a rid allocated
-      Deno.close(rid);
+      await Deno.write(rid, buffer);
+      resolve();
+    } catch (err) {
+      reject(err);
     }
+  })
+    .then(() => {
+      closeRidIfNecessary(typeof pathOrRid === "string", rid);
+      callbackFn();
+    })
+    .catch(err => {
+      closeRidIfNecessary(typeof pathOrRid === "string", rid);
+      callbackFn(err);
+    });
+}
+
+function closeRidIfNecessary(isPathString: boolean, rid: number): void {
+  if (isPathString && rid != -1) {
+    //Only close if a path was supplied and a rid allocated
+    Deno.close(rid);
   }
 }
 
@@ -94,10 +105,7 @@ export function appendFileSync(
 
     Deno.writeSync(rid, buffer);
   } finally {
-    if (typeof pathOrRid === "string" && rid != -1) {
-      //Only close if a 'string' path was supplied and a rid allocated
-      Deno.close(rid);
-    }
+    closeRidIfNecessary(typeof pathOrRid === "string", rid);
   }
 }
 
