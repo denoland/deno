@@ -1,21 +1,28 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
+use super::io::{FileMetadata, StreamResource};
 use crate::fs as deno_fs;
 use crate::op_error::OpError;
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
 use deno_core::*;
+use futures::future::FutureExt;
 use remove_dir_all::remove_dir_all;
+use std;
 use std::convert::From;
 use std::fs;
+use std::io::SeekFrom;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
+use tokio;
 
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
 pub fn init(i: &mut Isolate, s: &State) {
+  i.register_op("op_open", s.stateful_json_op(op_open));
+  i.register_op("op_seek", s.stateful_json_op(op_seek));
   i.register_op("op_chdir", s.stateful_json_op(op_chdir));
   i.register_op("op_mkdir", s.stateful_json_op(op_mkdir));
   i.register_op("op_chmod", s.stateful_json_op(op_chmod));
@@ -34,6 +41,184 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_make_temp_file", s.stateful_json_op(op_make_temp_file));
   i.register_op("op_cwd", s.stateful_json_op(op_cwd));
   i.register_op("op_utime", s.stateful_json_op(op_utime));
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenArgs {
+  promise_id: Option<u64>,
+  path: String,
+  options: Option<OpenOptions>,
+  mode: Option<String>,
+}
+
+#[derive(Deserialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+struct OpenOptions {
+  read: bool,
+  write: bool,
+  create: bool,
+  truncate: bool,
+  append: bool,
+  create_new: bool,
+}
+
+fn op_open(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  let args: OpenArgs = serde_json::from_value(args)?;
+  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+  let state_ = state.clone();
+  let mut open_options = tokio::fs::OpenOptions::new();
+
+  if let Some(options) = args.options {
+    if options.read {
+      state.check_read(&path)?;
+    }
+
+    if options.write || options.append {
+      state.check_write(&path)?;
+    }
+
+    open_options
+      .read(options.read)
+      .create(options.create)
+      .write(options.write)
+      .truncate(options.truncate)
+      .append(options.append)
+      .create_new(options.create_new);
+  } else if let Some(mode) = args.mode {
+    let mode = mode.as_ref();
+    match mode {
+      "r" => {
+        state.check_read(&path)?;
+      }
+      "w" | "a" | "x" => {
+        state.check_write(&path)?;
+      }
+      &_ => {
+        state.check_read(&path)?;
+        state.check_write(&path)?;
+      }
+    };
+
+    match mode {
+      "r" => {
+        open_options.read(true);
+      }
+      "r+" => {
+        open_options.read(true).write(true);
+      }
+      "w" => {
+        open_options.create(true).write(true).truncate(true);
+      }
+      "w+" => {
+        open_options
+          .read(true)
+          .create(true)
+          .write(true)
+          .truncate(true);
+      }
+      "a" => {
+        open_options.create(true).append(true);
+      }
+      "a+" => {
+        open_options.read(true).create(true).append(true);
+      }
+      "x" => {
+        open_options.create_new(true).write(true);
+      }
+      "x+" => {
+        open_options.create_new(true).read(true).write(true);
+      }
+      &_ => {
+        // TODO: this should be type error
+        return Err(OpError::other("Unknown open mode.".to_string()));
+      }
+    }
+  } else {
+    return Err(OpError::other(
+      "Open requires either mode or options.".to_string(),
+    ));
+  };
+
+  let is_sync = args.promise_id.is_none();
+
+  let fut = async move {
+    let fs_file = open_options.open(path).await?;
+    let mut state = state_.borrow_mut();
+    let rid = state.resource_table.add(
+      "fsFile",
+      Box::new(StreamResource::FsFile(fs_file, FileMetadata::default())),
+    );
+    Ok(json!(rid))
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SeekArgs {
+  promise_id: Option<u64>,
+  rid: i32,
+  offset: i32,
+  whence: i32,
+}
+
+fn op_seek(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  let args: SeekArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let offset = args.offset;
+  let whence = args.whence as u32;
+  // Translate seek mode to Rust repr.
+  let seek_from = match whence {
+    0 => SeekFrom::Start(offset as u64),
+    1 => SeekFrom::Current(i64::from(offset)),
+    2 => SeekFrom::End(i64::from(offset)),
+    _ => {
+      return Err(OpError::type_error(format!(
+        "Invalid seek mode: {}",
+        whence
+      )));
+    }
+  };
+
+  let state = state.borrow();
+  let resource = state
+    .resource_table
+    .get::<StreamResource>(rid)
+    .ok_or_else(OpError::bad_resource_id)?;
+
+  let tokio_file = match resource {
+    StreamResource::FsFile(ref file, _) => file,
+    _ => return Err(OpError::bad_resource_id()),
+  };
+  let mut file = futures::executor::block_on(tokio_file.try_clone())?;
+
+  let fut = async move {
+    let pos = file.seek(seek_from).await?;
+    Ok(json!(pos))
+  };
+
+  if args.promise_id.is_none() {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
