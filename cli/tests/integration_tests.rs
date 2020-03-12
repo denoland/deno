@@ -273,6 +273,8 @@ fn js_unit_tests() {
     .arg("run")
     .arg("--reload")
     .arg("--allow-run")
+    .arg("--allow-read")
+    .arg("--allow-write")
     .arg("--allow-env")
     .arg("cli/js/tests/unit_test_runner.ts")
     .spawn()

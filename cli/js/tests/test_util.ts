@@ -7,7 +7,7 @@
 // tests by the special string. permW1N0 means allow-write but not allow-net.
 // See tools/unit_tests.py for more details.
 
-import { readLines } from "../../../std/io/bufio.ts";
+import { readLines, BufReader } from "../../../std/io/bufio.ts";
 import { assert, assertEquals } from "../../../std/testing/asserts.ts";
 export {
   assert,
@@ -20,6 +20,13 @@ export {
   unreachable,
   fail
 } from "../../../std/testing/asserts.ts";
+
+
+export function defer(n: number): Promise<void> {	
+  return new Promise((resolve: () => void, _) => {	
+    setTimeout(resolve, n);	
+  });	
+}
 
 interface TestPermissions {
   read?: boolean;
@@ -204,6 +211,69 @@ function extractNumber(re: RegExp, str: string): number | undefined {
   if (match) {
     return Number.parseInt(match[1]);
   }
+}
+
+export async function newParseUnitTestOutput(
+  reader: Deno.Reader,
+  print: boolean
+): Promise<{ actual?: number; expected?: number; resultOutput?: string }> {
+  let expected, actual, result;
+  console.log("start parsing", reader);
+  
+  const linesIterator = readLines(reader);
+  {
+    const { value } = await linesIterator.next();
+    const msg = JSON.parse(value);
+    if (msg.kind !== "start") {
+      throw Error("Bad message");
+    }
+    expected = msg.tests;
+    if (print) {
+      console.log("tests start", JSON.stringify(msg));
+    }
+  }
+
+  for await (const value of linesIterator) {
+    let msg;
+    try {
+      msg = JSON.parse(value);
+    } catch (e) {
+      // TODO(bartlomieju): Ignoring malformed messages
+      // for now, but ultimately there should be no other output
+      if (print) {
+        console.log(value);
+      }
+      continue;
+    }
+
+    if (msg.kind === "end") {
+      actual = msg.stats.passed;
+      result = msg.stats;
+      if (print) {
+        console.log("tests end", JSON.stringify(msg));
+      }
+    } else if (msg.kind === "test") {
+      // ok
+      if (print) {
+        const testResult = msg.result;
+        if (testResult.failed) {
+          console.log(`FAILED ${testResult.name}`);
+          console.log(testResult.error.stack);
+        } else {
+          console.log(`OK     ${testResult.name} ${testResult.duration}`);
+        }
+      }
+    } else {
+      // TODO(bartlomieju): Ignoring random JSON messages
+      // for now, but ultimately there should be no other output
+      if (print) {
+        console.log(msg);
+      }
+      continue;
+    }
+  }
+
+  return { actual, expected, resultOutput: result };
 }
 
 export async function parseUnitTestOutput(
