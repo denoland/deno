@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assertEquals } from "./test_util.ts";
+import { unitTest, assertEquals, assert } from "./test_util.ts";
 
 unitTest(function resourcesStdio(): void {
   const res = Deno.resources();
@@ -21,10 +21,10 @@ unitTest({ perms: { net: true } }, async function resourcesNet(): Promise<
     Object.values(res).filter((r): boolean => r === "tcpListener").length,
     1
   );
-  assertEquals(
-    Object.values(res).filter((r): boolean => r === "tcpStream").length,
-    2
+  const tcpStreams = Object.values(res).filter(
+    (r): boolean => r === "tcpStream"
   );
+  assert(tcpStreams.length >= 2);
 
   listenerConn.close();
   dialerConn.close();
