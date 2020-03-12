@@ -66,9 +66,11 @@ walkdir = "2.3.1"
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.8"
 fwdansi = "1.1.0"
+unzip = "0.1.0"
 
 [target.'cfg(unix)'.dependencies]
 nix = "0.14.1"
+flate2 = "1.0.13"
 
 [dev-dependencies]
 os_pipe = "0.9.1"

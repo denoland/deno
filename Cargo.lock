@@ -242,6 +242,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "130aac562c0dd69c56b3b1cc8ffd2e17be31d0b6c25b61c96b76231aa23e39e1"
 
 [[package]]
+name = "bzip2"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42b7c3cbf0fa9c1b82308d57191728ca0256cb821220f4e2fd410a72ade26e3b"
+dependencies = [
+ "bzip2-sys",
+ "libc",
+]
+
+[[package]]
+name = "bzip2-sys"
+version = "0.1.8+1.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05305b41c5034ff0e93937ac64133d109b5a2660114ec45e9760bc6816d83038"
+dependencies = [
+ "cc",
+ "libc",
+]
+
+[[package]]
 name = "c2-chacha"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -443,6 +463,7 @@ dependencies = [
  "dirs",
  "dlopen",
  "dprint-plugin-typescript",
+ "flate2",
  "futures 0.3.4",
  "fwdansi",
  "glob",
@@ -470,6 +491,7 @@ dependencies = [
  "termcolor",
  "tokio",
  "tokio-rustls",
+ "unzip",
  "url",
  "utime",
  "walkdir",
@@ -1219,6 +1241,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "msdos_time"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aad9dfe950c057b1bfe9c1f2aa51583a8468ef2a5baba2ebbe06d775efeb7729"
+dependencies = [
+ "time",
+ "winapi 0.3.8",
+]
+
+[[package]]
 name = "net2"
 version = "0.2.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1472,6 +1504,12 @@ dependencies = [
  "quote 1.0.2",
  "syn 1.0.14",
 ]
+
+[[package]]
+name = "podio"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "780fb4b6698bbf9cf2444ea5d22411cef2953f0824b98f33cf454ec5615645bd"
 
 [[package]]
 name = "ppv-lite86"
@@ -2431,6 +2469,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e987b6bf443f4b5b3b6f38704195592cca41c5bb7aedd3c3693c7081f8289860"
 
 [[package]]
+name = "transformation-pipeline"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce1d17c634c5196b37a2680f31627ab35b9e84e5f7f1abd13731c3fbd71dea36"
+
+[[package]]
 name = "try-lock"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2492,6 +2536,17 @@ name = "untrusted"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60369ef7a31de49bcb3f6ca728d4ba7300d9a1658f94c727d4cab8c8d9f4aece"
+
+[[package]]
+name = "unzip"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90e59a2baae95b4b60ecd5a1ba39e9654b09b09bf813989c70f52c957c213dfd"
+dependencies = [
+ "time",
+ "transformation-pipeline",
+ "zip",
+]
 
 [[package]]
 name = "url"
@@ -2773,4 +2828,17 @@ checksum = "d59cefebd0c892fa2dd6de581e937301d8552cb44489cdff035c6187cb63fa5e"
 dependencies = [
  "winapi 0.2.8",
  "winapi-build",
+]
+
+[[package]]
+name = "zip"
+version = "0.2.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7341988e4535c60882d5e5f0b7ad0a9a56b080ade8bdb5527cb512f7b2180e0"
+dependencies = [
+ "bzip2",
+ "flate2",
+ "msdos_time",
+ "podio",
+ "time",
 ]
