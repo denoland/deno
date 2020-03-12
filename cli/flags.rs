@@ -761,9 +761,9 @@ fn upgrade_subcommand<'a, 'b>() -> App<'a, 'b> {
       
   Checks for newest available version of deno and if higher than
   local version, then downloads and installs newest version in place
-  of current one.
+  of the current one.
       
-  Example: deno upgrade"
+  Example: deno upgrade",
     )
 }
 

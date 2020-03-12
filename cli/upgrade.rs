@@ -100,14 +100,14 @@ fn download_package(
   fut.boxed_local()
 }
 
-fn compose_url_to_exec(version: &String) -> Result<Url, ErrBox> {
+fn compose_url_to_exec(version: &str) -> Result<Url, ErrBox> {
   let mut url_str = EXEC_DOWNLOAD_URL.clone();
   url_str.push_str(&format!("{}/", version));
   url_str.push_str(&EXEC_FILE_NAME);
   Ok(Url::parse(&url_str[..])?)
 }
 
-fn find_version(text: &String) -> Result<String, ErrBox> {
+fn find_version(text: &str) -> Result<String, ErrBox> {
   let re = Regex::new(&REGEX_STRING)?;
   if let Some(_mat) = re.find(text) {
     let mat = _mat.as_str();
@@ -116,13 +116,12 @@ fn find_version(text: &String) -> Result<String, ErrBox> {
   Err(ErrorMsg("Cannot read latest tag version".to_string()).to_err_box())
 }
 
-fn is_latest_version_greater(old_v: &String, new_v: &String) -> bool {
+fn is_latest_version_greater(old_v: &str, new_v: &str) -> bool {
   let mut power = 4;
   let (mut old_v_num, mut new_v_num) = (0, 0);
   old_v
-    .split(".")
-    .into_iter()
-    .zip(new_v.split(".").into_iter())
+    .split('.')
+    .zip(new_v.split('.'))
     .for_each(|(old, new)| {
       old_v_num += old.parse::<i32>().unwrap() * (10_f32.powi(power) as i32);
       new_v_num += new.parse::<i32>().unwrap() * (10_f32.powi(power) as i32);
