@@ -80,6 +80,13 @@ declare namespace Deno {
     end(msg: EndMsg): Promise<void>;
   }
 
+  export class ConsoleReporter implements TestReporter {
+    constructor();
+    start(msg: StartMsg): Promise<void>;
+    test(msg: TestMsg): Promise<void>;
+    end(msg: EndMsg): Promise<void>;
+  }
+
   export interface RunTestsOptions {
     /** If `true`, Deno will exit with status code 1 if there was
      * test failure. Defaults to `true`. */

@@ -1,15 +1,13 @@
 #!/usr/bin/env -S deno run --reload --allow-run
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { readLines } from "../../../std/io/bufio.ts";
 import "./unit_tests.ts";
 import {
   permissionCombinations,
   Permissions,
-  defer,
-  newParseUnitTestOutput,
-  getProcessPermissions,
-  permissionsMatch,
-  REGISTERED_UNIT_TESTS
+  registerUnitTests
 } from "./test_util.ts";
+import { assert } from "../../../std/testing/asserts.ts";
 
 interface TestResult {
   perms: string;
@@ -17,19 +15,17 @@ interface TestResult {
   result: number;
 }
 
-class FileReporter implements Deno.TestReporter {
-  private file: Deno.File;
+class SocketReporter implements Deno.TestReporter {
   private encoder: TextEncoder;
 
-  constructor(filename: string) {
-    this.file = Deno.openSync(filename, "w+");
+  constructor(private conn: Deno.Conn) {
     this.encoder = new TextEncoder();
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async write(msg: any): Promise<void> {
     const encodedMsg = this.encoder.encode(`${JSON.stringify(msg)}\n`);
-    await Deno.writeAll(this.file, encodedMsg);
+    await Deno.writeAll(this.conn, encodedMsg);
   }
 
   async start(msg: Deno.StartMsg): Promise<void> {
@@ -37,7 +33,15 @@ class FileReporter implements Deno.TestReporter {
   }
 
   async test(msg: Deno.TestMsg): Promise<void> {
-    await this.write(msg);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const serializedMsg: any = { ...msg };
+    delete serializedMsg.result.fn;
+
+    if (serializedMsg.result.error) {
+      serializedMsg.result.error = String(serializedMsg.result.error.stack);
+    }
+
+    await this.write(serializedMsg);
   }
 
   async end(msg: Deno.EndMsg): Promise<void> {
@@ -45,11 +49,14 @@ class FileReporter implements Deno.TestReporter {
   }
 
   close(): void {
-    this.file.close();
+    this.conn.close();
   }
 }
 
-async function dropPermissions(
+/**
+ * Take a list of permissions and revoke missing permissions.
+ */
+async function dropWorkerPermissions(
   requiredPermissions: Deno.PermissionName[]
 ): Promise<void> {
   const permsToDrop: Deno.PermissionName[] = [
@@ -75,36 +82,26 @@ async function dropPermissions(
 }
 
 async function workerRunnerMain(
-  filename: string,
+  addr: { hostname: string; port: number },
   permissions: Deno.PermissionName[]
 ): Promise<void> {
   // Create reporter, then drop permissions to requested set
-  const fileReporter = new FileReporter(filename);
-  await dropPermissions(permissions);
+  // const fileReporter = new FileReporter(filename);
+  const conn = await Deno.connect(addr);
+  const socketReporter = new SocketReporter(conn);
+  await dropWorkerPermissions(permissions);
 
   // Register unit tests that match process permissions
-  const processPerms = await getProcessPermissions();
-
-  for (const unitTestDefinition of REGISTERED_UNIT_TESTS) {
-    if (unitTestDefinition.skip) {
-      continue;
-    }
-
-    if (!permissionsMatch(processPerms, unitTestDefinition.perms)) {
-      continue;
-    }
-
-    Deno.test(unitTestDefinition);
-  }
+  await registerUnitTests();
 
   // Permissions dropped we're ready to execute tests
   const results = await Deno.runTests({
     failFast: false,
     exitOnFail: false,
-    reporter: fileReporter
+    reporter: socketReporter
   });
   console.log("worker finished running tests", results.stats);
-  fileReporter.close();
+  socketReporter.close();
 }
 
 function permsToStrings(perms: Permissions): string[] {
@@ -145,6 +142,28 @@ function fmtPerms(perms: Permissions): string {
   return fmt;
 }
 
+function spawnWorkerRunner(addr: string, perms: Permissions): Deno.Process {
+  const permStrs = permsToStrings(perms);
+
+  // run subsequent tests using same deno executable
+  const args = [
+    Deno.execPath(),
+    "run",
+    "-A",
+    "cli/js/tests/unit_test_runner.ts",
+    "--",
+    "--worker",
+    `--addr=${addr}`,
+    `--perms=${permStrs.join(",")}`
+  ];
+
+  const p = Deno.run({
+    args
+  });
+
+  return p;
+}
+
 async function masterRunnerMain(): Promise<void> {
   console.log(
     "Discovered permission combinations for tests:",
@@ -156,63 +175,81 @@ async function masterRunnerMain(): Promise<void> {
   }
 
   const testResults = new Set<TestResult>();
+  const consoleReporter = new Deno.ConsoleReporter();
 
   for (const perms of permissionCombinations.values()) {
     const permsFmt = fmtPerms(perms);
     console.log(`Running tests for: ${permsFmt}`);
-    const permStrs = permsToStrings(perms);
 
-    // TODO: open file
-    const r = Math.random() * 100_000;
-    const filename = `.report.${~~r}.deno.test`;
+    const addr = { hostname: "127.0.0.1", port: 4510 };
+    const addrStr = `${addr.hostname}:${addr.port}`;
+    const workerListener = Deno.listen(addr);
 
-    // run subsequent tests using same deno executable
-    const args = [
-      Deno.execPath(),
-      "run",
-      "-A",
-      "cli/js/tests/unit_test_runner.ts",
-      "--",
-      "--worker",
-      `--filename=${filename}`,
-      `--perms=${permStrs.join(",")}`
-    ];
+    const workerProcess = spawnWorkerRunner(addrStr, perms);
 
-    const p = Deno.run({
-      args
-    });
+    // Wait for worker subprocess to go online
+    const conn = await workerListener.accept();
+    const linesIterator = readLines(conn);
 
-    // Wait until file is created by subprocess
-    while (true) {
-      try {
-        await Deno.stat(filename);
+    let err;
+    let hasThrown = false;
+    let expectedTests;
+    let permTestResult;
+
+    try {
+      const { value } = await linesIterator.next();
+      const msg = JSON.parse(value);
+      assert(msg.kind === "start");
+      expectedTests = msg.tests;
+      consoleReporter.start(msg);
+
+      for await (const line of readLines(conn)) {
+        const msg = JSON.parse(line);
+
+        if (msg.kind === "test") {
+          await consoleReporter.test(msg);
+          continue;
+        }
+
+        permTestResult = msg.stats;
+        await consoleReporter.end(msg);
         break;
-      } catch {
-        // pass
       }
-      await defer(100);
+    } catch (e) {
+      hasThrown = true;
+      err = e;
+    } finally {
+      workerListener.close();
     }
 
-    const reportFile = await Deno.open(filename, "r");
-    const { actual, expected, resultOutput } = await newParseUnitTestOutput(
-      reportFile,
-      true
-    );
-    reportFile.close();
-    Deno.remove(filename);
-
-    let result = 0;
-
-    if (!actual && !expected) {
-      console.error("Bad cli/js/tests/unit_test.ts output");
-      result = 1;
-    } else if (expected !== actual) {
-      result = 1;
+    if (hasThrown) {
+      throw err;
     }
+
+    if (typeof expectedTests === "undefined") {
+      throw new Error("Worker runner didn't report start");
+    }
+
+    if (typeof permTestResult === "undefined") {
+      throw new Error("Worker runner didn't report end");
+    }
+
+    const workerStatus = await workerProcess.status();
+    if (!workerStatus.success) {
+      throw new Error(
+        `Worker runner exited with status code: ${workerStatus.code}`
+      );
+    }
+
+    workerProcess.close();
+
+    const actual = permTestResult.passed;
+    console.log("expected", expectedTests, "actual", actual);
+    const result = expectedTests === actual ? 0 : 1;
 
     testResults.add({
       perms: permsFmt,
-      output: resultOutput,
+      output: "",
       result
     });
   }
@@ -222,7 +259,7 @@ async function masterRunnerMain(): Promise<void> {
   let testsFailed = false;
 
   for (const testResult of testResults) {
-    console.log(`Summary for ${testResult.perms}`);
+    console.log(`Summary for ${testResult.perms} ${testResult.result}`);
     console.log(testResult.output + "\n");
     testsFailed = testsFailed || Boolean(testResult.result);
   }
@@ -235,19 +272,18 @@ async function masterRunnerMain(): Promise<void> {
   console.log("Unit tests passed");
 }
 
-// --worker --filename=asdf.txt --perms=net,run,read,env
-
 async function main(): Promise<void> {
   const args = Deno.args.slice(1);
   console.log("worker main", args);
-  // return;
 
+  // TODO: use `flags` parser
   if (args[0] === "--worker") {
     // Worker runner
-    const filename = args[1].split("=")[1];
+    const addr = args[1].split("=")[1];
     const perms = args[2].split("=")[1].split(",") as Deno.PermissionName[];
-    console.log("test worker", filename, perms);
-    await workerRunnerMain(filename, perms);
+    console.log("test worker", addr, perms);
+    const [hostname, port] = addr.split(":");
+    await workerRunnerMain({ hostname, port: Number(port) }, perms);
   } else {
     // Master runner
     await masterRunnerMain();

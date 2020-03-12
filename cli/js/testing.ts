@@ -2,7 +2,6 @@
 import { red, green, bgRed, gray, italic } from "./colors.ts";
 import { exit } from "./ops/os.ts";
 import { Console } from "./web/console.ts";
-import { assert } from "./util.ts";
 
 const RED_FAILED = red("FAILED");
 const GREEN_OK = green("OK");
@@ -239,8 +238,11 @@ interface TestReporter {
   end(msg: EndMsg): Promise<void>;
 }
 
-class ConsoleReporter implements TestReporter {
-  constructor(private console: Console) {}
+export class ConsoleReporter implements TestReporter {
+  private console: Console;
+  constructor() {
+    this.console = globalThis.console as Console;
+  }
 
   async start(msg: StartMsg): Promise<void> {
     this.console.log(`running ${msg.tests} tests`);
@@ -297,16 +299,16 @@ export async function runTests({
   const filterFn = createFilterFn(only, skip);
   const testApi = new TestApi(TEST_REGISTRY, filterFn, failFast);
 
+  if (!reporter) {
+    reporter = new ConsoleReporter();
+  }
+
   // @ts-ignore
   const originalConsole = globalThis.console;
 
   if (disableLog) {
     // @ts-ignore
     globalThis.console = disabledConsole;
-  }
-
-  if (!reporter) {
-    reporter = new ConsoleReporter(originalConsole);
   }
 
   let endMsg: EndMsg;

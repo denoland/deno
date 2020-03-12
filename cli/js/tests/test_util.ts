@@ -7,7 +7,7 @@
 // tests by the special string. permW1N0 means allow-write but not allow-net.
 // See tools/unit_tests.py for more details.
 
-import { readLines, BufReader } from "../../../std/io/bufio.ts";
+import { readLines } from "../../../std/io/bufio.ts";
 import { assert, assertEquals } from "../../../std/testing/asserts.ts";
 export {
   assert,
@@ -95,6 +95,22 @@ function registerPermCombination(perms: Permissions): void {
   const key = permToString(perms);
   if (!permissionCombinations.has(key)) {
     permissionCombinations.set(key, perms);
+  }
+}
+
+export async function registerUnitTests(): Promise<void> {
+  const processPerms = await getProcessPermissions();
+
+  for (const unitTestDefinition of REGISTERED_UNIT_TESTS) {
+    if (unitTestDefinition.skip) {
+      continue;
+    }
+
+    if (!permissionsMatch(processPerms, unitTestDefinition.perms)) {
+      continue;
+    }
+
+    Deno.test(unitTestDefinition);
   }
 }
 
@@ -221,69 +237,6 @@ function extractNumber(re: RegExp, str: string): number | undefined {
   if (match) {
     return Number.parseInt(match[1]);
   }
-}
-
-export async function newParseUnitTestOutput(
-  reader: Deno.Reader,
-  print: boolean
-): Promise<{ actual?: number; expected?: number; resultOutput?: string }> {
-  let expected, actual, result;
-
-  const bufReader = new BufReader(reader, 1024 * 1024);
-  console.log("start parsing");
-
-  let seenStart = false;
-  let seenEnd = false;
-
-  while (true) {
-    const r = await bufReader.readString("\n");
-
-    // If we're hitting EOF it means that there is no new
-    // data available, sleep for a while and let worker make progress.
-    if (r === Deno.EOF) {
-      // console.log("got eof");
-      await defer(1000);
-      bufReader.reset(reader);
-      continue;
-    }
-
-    const msg = JSON.parse(r);
-
-    if (!seenStart) {
-      if (msg.kind !== "start") {
-        throw Error("Bad message");
-      }
-      expected = msg.tests;
-      if (print) {
-        console.log("tests start", JSON.stringify(msg));
-      }
-      seenStart = true;
-      continue;
-    }
-
-    if (msg.kind === "end") {
-      actual = msg.stats.passed;
-      result = msg.stats;
-      if (print) {
-        console.log("tests end", JSON.stringify(result));
-      }
-      seenEnd = true;
-      break;
-    }
-
-    // ok
-    if (print) {
-      const testResult = msg.result;
-      if (testResult.failed) {
-        console.log(`FAILED ${testResult.name}`);
-        console.log(testResult.error.stack);
-      } else {
-        console.log(`OK     ${testResult.name} ${testResult.duration}`);
-      }
-    }
-  }
-
-  return { actual, expected, resultOutput: result };
 }
 
 export async function parseUnitTestOutput(
