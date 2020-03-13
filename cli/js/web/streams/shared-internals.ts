@@ -1,13 +1,6 @@
 // Forked from https://github.com/stardazed/sd-streams/tree/8928cf04b035fd02fb1340b7eb541c76be37e546
 // Copyright (c) 2018-Present by Arthur Langereis - @zenmumbler MIT
 
-/**
- * streams/shared-internals - common types and methods for streams
- * Part of Stardazed
- * (c) 2018-Present by Arthur Langereis - @zenmumbler
- * https://github.com/stardazed/sd-streams
- */
-
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // TODO don't disable this warning
 
@@ -20,7 +13,6 @@ export const storedError_ = Symbol("storedError_");
 
 // ---------
 
-/** An error reason / result can be anything */
 export type ErrorResult = any;
 
 // ---------
@@ -122,11 +114,6 @@ function supportsSharedArrayBuffer(): boolean {
   return sharedArrayBufferSupported_;
 }
 
-/**
- * Implement a method of value cloning that is reasonably close to performing `StructuredSerialize(StructuredDeserialize(value))`
- * from the HTML standard. Used by the internal `readableStreamTee` method to clone values for connected implementations.
- * @see https://html.spec.whatwg.org/multipage/structured-data.html#structuredserializeinternal
- */
 export function cloneValue(value: any): any {
   const valueType = typeof value;
   switch (valueType) {

@@ -5,9 +5,6 @@ export interface ResourceMap {
   [rid: number]: string;
 }
 
-/** Returns a map of open _file like_ resource ids along with their string
- * representation.
- */
 export function resources(): ResourceMap {
   const res = sendSync("op_resources") as Array<[number, string]>;
   const resources: ResourceMap = {};
@@ -17,7 +14,6 @@ export function resources(): ResourceMap {
   return resources;
 }
 
-/** Close the given resource ID. */
 export function close(rid: number): void {
   sendSync("op_close", { rid });
 }

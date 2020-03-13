@@ -5,17 +5,6 @@ import { ReadCloser, WriteCloser } from "./io.ts";
 import { readAll } from "./buffer.ts";
 import { kill, runStatus as runStatusOp, run as runOp } from "./ops/process.ts";
 
-/** How to handle subprocess stdio.
- *
- * "inherit" The default if unspecified. The child inherits from the
- * corresponding parent descriptor.
- *
- * "piped"  A new pipe should be arranged to connect the parent and child
- * subprocesses.
- *
- * "null" This stream will be ignored. This is the equivalent of attaching the
- * stream to /dev/null.
- */
 export type ProcessStdio = "inherit" | "piped" | "null";
 
 // TODO Maybe extend VSCode's 'CommandOptions'?
@@ -70,10 +59,6 @@ export class Process {
     return await runStatus(this.rid);
   }
 
-  /** Buffer the stdout and return it as Uint8Array after EOF.
-   * You must set stdout to "piped" when creating the process.
-   * This calls close() on stdout after its done.
-   */
   async output(): Promise<Uint8Array> {
     if (!this.stdout) {
       throw new Error("Process.output: stdout is undefined");
@@ -85,10 +70,6 @@ export class Process {
     }
   }
 
-  /** Buffer the stderr and return it as Uint8Array after EOF.
-   * You must set stderr to "piped" when creating the process.
-   * This calls close() on stderr after its done.
-   */
   async stderrOutput(): Promise<Uint8Array> {
     if (!this.stderr) {
       throw new Error("Process.stderrOutput: stderr is undefined");
@@ -126,19 +107,6 @@ interface RunResponse {
   stdoutRid: number | null;
   stderrRid: number | null;
 }
-/**
- * Spawns new subprocess.
- *
- * Subprocess uses same working directory as parent process unless `opt.cwd`
- * is specified.
- *
- * Environmental variables for subprocess can be specified using `opt.env`
- * mapping.
- *
- * By default subprocess inherits stdio of parent process. To change that
- * `opt.stdout`, `opt.stderr` and `opt.stdin` can be specified independently -
- * they can be set to either `ProcessStdio` or `rid` of open file.
- */
 export function run({
   args,
   cwd = undefined,

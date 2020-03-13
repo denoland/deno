@@ -10,12 +10,6 @@ const dataSymbol = Symbol("data");
 class FormDataBase {
   private [dataSymbol]: Array<[string, domTypes.FormDataEntryValue]> = [];
 
-  /** Appends a new value onto an existing key inside a `FormData`
-   * object, or adds the key if it does not already exist.
-   *
-   *       formData.append('name', 'first');
-   *       formData.append('name', 'second');
-   */
   append(name: string, value: string): void;
   append(name: string, value: blob.DenoBlob, filename?: string): void;
   append(name: string, value: string | blob.DenoBlob, filename?: string): void {
@@ -29,10 +23,6 @@ class FormDataBase {
     }
   }
 
-  /** Deletes a key/value pair from a `FormData` object.
-   *
-   *       formData.delete('name');
-   */
   delete(name: string): void {
     requiredArguments("FormData.delete", arguments.length, 1);
     name = String(name);
@@ -46,11 +36,6 @@ class FormDataBase {
     }
   }
 
-  /** Returns an array of all the values associated with a given key
-   * from within a `FormData`.
-   *
-   *       formData.getAll('name');
-   */
   getAll(name: string): domTypes.FormDataEntryValue[] {
     requiredArguments("FormData.getAll", arguments.length, 1);
     name = String(name);
@@ -64,11 +49,6 @@ class FormDataBase {
     return values;
   }
 
-  /** Returns the first value associated with a given key from within a
-   * `FormData` object.
-   *
-   *       formData.get('name');
-   */
   get(name: string): domTypes.FormDataEntryValue | null {
     requiredArguments("FormData.get", arguments.length, 1);
     name = String(name);
@@ -81,23 +61,12 @@ class FormDataBase {
     return null;
   }
 
-  /** Returns a boolean stating whether a `FormData` object contains a
-   * certain key/value pair.
-   *
-   *       formData.has('name');
-   */
   has(name: string): boolean {
     requiredArguments("FormData.has", arguments.length, 1);
     name = String(name);
     return this[dataSymbol].some((entry): boolean => entry[0] === name);
   }
 
-  /** Sets a new value for an existing key inside a `FormData` object, or
-   * adds the key/value if it does not already exist.
-   * ref: https://xhr.spec.whatwg.org/#dom-formdata-set
-   *
-   *       formData.set('name', 'value');
-   */
   set(name: string, value: string): void;
   set(name: string, value: blob.DenoBlob, filename?: string): void;
   set(name: string, value: string | blob.DenoBlob, filename?: string): void {

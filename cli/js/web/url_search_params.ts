@@ -60,22 +60,12 @@ export class URLSearchParams {
     (this.url as any)._parts.query = query;
   }
 
-  /** Appends a specified key/value pair as a new search parameter.
-   *
-   *       searchParams.append('name', 'first');
-   *       searchParams.append('name', 'second');
-   */
   append(name: string, value: string): void {
     requiredArguments("URLSearchParams.append", arguments.length, 2);
     this.params.push([String(name), String(value)]);
     this.updateSteps();
   }
 
-  /** Deletes the given search parameter and its associated value,
-   * from the list of all search parameters.
-   *
-   *       searchParams.delete('name');
-   */
   delete(name: string): void {
     requiredArguments("URLSearchParams.delete", arguments.length, 1);
     name = String(name);
@@ -90,11 +80,6 @@ export class URLSearchParams {
     this.updateSteps();
   }
 
-  /** Returns all the values associated with a given search parameter
-   * as an array.
-   *
-   *       searchParams.getAll('name');
-   */
   getAll(name: string): string[] {
     requiredArguments("URLSearchParams.getAll", arguments.length, 1);
     name = String(name);
@@ -108,10 +93,6 @@ export class URLSearchParams {
     return values;
   }
 
-  /** Returns the first value associated to the given search parameter.
-   *
-   *       searchParams.get('name');
-   */
   get(name: string): string | null {
     requiredArguments("URLSearchParams.get", arguments.length, 1);
     name = String(name);
@@ -124,24 +105,12 @@ export class URLSearchParams {
     return null;
   }
 
-  /** Returns a Boolean that indicates whether a parameter with the
-   * specified name exists.
-   *
-   *       searchParams.has('name');
-   */
   has(name: string): boolean {
     requiredArguments("URLSearchParams.has", arguments.length, 1);
     name = String(name);
     return this.params.some((entry): boolean => entry[0] === name);
   }
 
-  /** Sets the value associated with a given search parameter to the
-   * given value. If there were several matching values, this method
-   * deletes the others. If the search parameter doesn't exist, this
-   * method creates it.
-   *
-   *       searchParams.set('name', 'value');
-   */
   set(name: string, value: string): void {
     requiredArguments("URLSearchParams.set", arguments.length, 2);
 
@@ -175,12 +144,6 @@ export class URLSearchParams {
     this.updateSteps();
   }
 
-  /** Sort all key/value pairs contained in this object in place and
-   * return undefined. The sort order is according to Unicode code
-   * points of the keys.
-   *
-   *       searchParams.sort();
-   */
   sort(): void {
     this.params = this.params.sort((a, b): number =>
       a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1
@@ -188,15 +151,6 @@ export class URLSearchParams {
     this.updateSteps();
   }
 
-  /** Calls a function for each element contained in this object in
-   * place and return undefined. Optionally accepts an object to use
-   * as this when executing callback as second argument.
-   *
-   *       searchParams.forEach((value, key, parent) => {
-   *         console.log(value, key, parent);
-   *       });
-   *
-   */
   forEach(
     callbackfn: (value: string, key: string, parent: this) => void,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -213,58 +167,26 @@ export class URLSearchParams {
     }
   }
 
-  /** Returns an iterator allowing to go through all keys contained
-   * in this object.
-   *
-   *       for (const key of searchParams.keys()) {
-   *         console.log(key);
-   *       }
-   */
   *keys(): IterableIterator<string> {
     for (const entry of this.params) {
       yield entry[0];
     }
   }
 
-  /** Returns an iterator allowing to go through all values contained
-   * in this object.
-   *
-   *       for (const value of searchParams.values()) {
-   *         console.log(value);
-   *       }
-   */
   *values(): IterableIterator<string> {
     for (const entry of this.params) {
       yield entry[1];
     }
   }
 
-  /** Returns an iterator allowing to go through all key/value
-   * pairs contained in this object.
-   *
-   *       for (const [key, value] of searchParams.entries()) {
-   *         console.log(key, value);
-   *       }
-   */
   *entries(): IterableIterator<[string, string]> {
     yield* this.params;
   }
 
-  /** Returns an iterator allowing to go through all key/value
-   * pairs contained in this object.
-   *
-   *       for (const [key, value] of searchParams[Symbol.iterator]()) {
-   *         console.log(key, value);
-   *       }
-   */
   *[Symbol.iterator](): IterableIterator<[string, string]> {
     yield* this.params;
   }
 
-  /** Returns a query string suitable for use in a URL.
-   *
-   *        searchParams.toString();
-   */
   toString(): string {
     return this.params
       .map(
