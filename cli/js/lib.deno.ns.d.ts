@@ -32,6 +32,59 @@ declare namespace Deno {
    * when `Deno.runTests` is used */
   export function test(name: string, fn: TestFunction): void;
 
+  interface TestResult {
+    passed: boolean;
+    name: string;
+    skipped: boolean;
+    hasRun: boolean;
+    duration: number;
+    error?: Error;
+  }
+
+  interface TestStats {
+    filtered: number;
+    ignored: number;
+    measured: number;
+    passed: number;
+    failed: number;
+  }
+
+  export enum TestEvent {
+    Start = "start",
+    Result = "result",
+    End = "end"
+  }
+
+  interface TestEventStart {
+    kind: TestEvent.Start;
+    tests: number;
+  }
+
+  interface TestEventResult {
+    kind: TestEvent.Result;
+    result: TestResult;
+  }
+
+  interface TestEventEnd {
+    kind: TestEvent.End;
+    stats: TestStats;
+    duration: number;
+    results: TestResult[];
+  }
+
+  interface TestReporter {
+    start(event: TestEventStart): Promise<void>;
+    result(event: TestEventResult): Promise<void>;
+    end(event: TestEventEnd): Promise<void>;
+  }
+
+  export class ConsoleTestReporter implements TestReporter {
+    constructor();
+    start(event: TestEventStart): Promise<void>;
+    result(event: TestEventResult): Promise<void>;
+    end(event: TestEventEnd): Promise<void>;
+  }
+
   export interface RunTestsOptions {
     /** If `true`, Deno will exit with status code 1 if there was
      * test failure. Defaults to `true`. */
@@ -46,11 +99,19 @@ declare namespace Deno {
     skip?: string | RegExp;
     /** Disable logging of the results. Defaults to `false`. */
     disableLog?: boolean;
+    /** Custom reporter class. If not provided uses console reporter. */
+    reporter?: TestReporter;
   }
 
   /** Run any tests which have been registered. Always resolves
    * asynchronously. */
-  export function runTests(opts?: RunTestsOptions): Promise<void>;
+  export function runTests(
+    opts?: RunTestsOptions
+  ): Promise<{
+    results: TestResult[];
+    stats: TestStats;
+    duration: number;
+  }>;
 
   /** Get the `loadavg`. Requires `allow-env` permission.
    *
