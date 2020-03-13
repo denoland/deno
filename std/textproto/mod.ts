@@ -89,7 +89,9 @@ export class TextProtoReader {
       // them if present.
       let i = kv.indexOf(charCode(":"));
       if (i < 0) {
-        throw new Deno.errors.InvalidData(`malformed MIME header line: ${str(kv)}`);
+        throw new Deno.errors.InvalidData(
+          `malformed MIME header line: ${str(kv)}`
+        );
       }
       let endKey = i;
       while (endKey > 0 && kv[endKey - 1] == charCode(" ")) {

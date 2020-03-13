@@ -391,7 +391,11 @@ class WebSocketImpl implements WebSocket {
       this._isClosed = true;
       const rest = this.sendQueue;
       this.sendQueue = [];
-      rest.forEach(e => e.d.reject(new Deno.errors.ConnectionReset("Socket has already been closed")));
+      rest.forEach(e =>
+        e.d.reject(
+          new Deno.errors.ConnectionReset("Socket has already been closed")
+        )
+      );
     }
   }
 }

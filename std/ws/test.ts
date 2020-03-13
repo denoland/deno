@@ -340,7 +340,10 @@ test("[ws] WebSocket should throw `Deno.errors.ConnectionReset` when peer closed
   const conn = dummyConn(eofReader, buf);
   const sock = createWebSocket({ conn });
   sock.closeForce();
-  await assertThrowsAsync(() => sock.send("hello"), Deno.errors.ConnectionReset);
+  await assertThrowsAsync(
+    () => sock.send("hello"),
+    Deno.errors.ConnectionReset
+  );
   await assertThrowsAsync(() => sock.ping(), Deno.errors.ConnectionReset);
   await assertThrowsAsync(() => sock.close(0), Deno.errors.ConnectionReset);
 });
