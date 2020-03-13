@@ -363,7 +363,6 @@ function createObjectString(
   }
 }
 
-/** @internal */
 export function stringifyArgs(
   args: unknown[],
   { depth = DEFAULT_MAX_DEPTH, indentLevel = 0 }: ConsoleOptions = {}
@@ -480,7 +479,6 @@ export class Console {
   indentLevel: number;
   [isConsoleInstance] = false;
 
-  /** @internal */
   constructor(private printFunc: PrintFunc) {
     this.indentLevel = 0;
     this[isConsoleInstance] = true;
@@ -494,7 +492,6 @@ export class Console {
     return console;
   }
 
-  /** Writes the arguments to stdout */
   log = (...args: unknown[]): void => {
     this.printFunc(
       stringifyArgs(args, {
@@ -504,29 +501,15 @@ export class Console {
     );
   };
 
-  /** Writes the arguments to stdout */
   debug = this.log;
-  /** Writes the arguments to stdout */
   info = this.log;
 
-  /** Writes the properties of the supplied `obj` to stdout */
   dir = (obj: unknown, options: ConsoleOptions = {}): void => {
     this.printFunc(stringifyArgs([obj], options) + "\n", false);
   };
 
-  /** From MDN:
-   * Displays an interactive tree of the descendant elements of
-   * the specified XML/HTML element. If it is not possible to display
-   * as an element the JavaScript Object view is shown instead.
-   * The output is presented as a hierarchical listing of expandable
-   * nodes that let you see the contents of child nodes.
-   *
-   * Since we write to stdout, we can't display anything interactive
-   * we just fall back to `console.dir`.
-   */
   dirxml = this.dir;
 
-  /** Writes the arguments to stdout */
   warn = (...args: unknown[]): void => {
     this.printFunc(
       stringifyArgs(args, {
@@ -536,14 +519,8 @@ export class Console {
     );
   };
 
-  /** Writes the arguments to stdout */
   error = this.warn;
 
-  /** Writes an error message to stdout if the assertion is `false`. If the
-   * assertion is `true`, nothing happens.
-   *
-   * ref: https://console.spec.whatwg.org/#assert
-   */
   assert = (condition = false, ...args: unknown[]): void => {
     if (condition) {
       return;
@@ -750,15 +727,8 @@ export class Console {
   }
 }
 
-/** A symbol which can be used as a key for a custom method which will be called
- * when `Deno.inspect()` is called, or when the object is logged to the console.
- */
 export const customInspect = Symbol.for("Deno.customInspect");
 
-/**
- * `inspect()` converts input into string that has the same format
- * as printed by `console.log(...)`;
- */
 export function inspect(
   value: unknown,
   { depth = DEFAULT_MAX_DEPTH }: ConsoleOptions = {}

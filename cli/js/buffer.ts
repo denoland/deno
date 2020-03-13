@@ -27,9 +27,6 @@ function copyBytes(dst: Uint8Array, src: Uint8Array, off = 0): number {
   return src.byteLength;
 }
 
-/** A Buffer is a variable-sized buffer of bytes with read() and write()
- * methods. Based on https://golang.org/pkg/bytes/#Buffer
- */
 export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
   private buf: Uint8Array; // contents are the bytes buf[off : len(buf)]
   private off = 0; // read at buf[off], write at buf[buf.byteLength]
@@ -43,50 +40,27 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
     this.buf = new Uint8Array(ab);
   }
 
-  /** bytes() returns a slice holding the unread portion of the buffer.
-   * The slice is valid for use only until the next buffer modification (that
-   * is, only until the next call to a method like read(), write(), reset(), or
-   * truncate()). The slice aliases the buffer content at least until the next
-   * buffer modification, so immediate changes to the slice will affect the
-   * result of future reads.
-   */
   bytes(): Uint8Array {
     return this.buf.subarray(this.off);
   }
 
-  /** toString() returns the contents of the unread portion of the buffer
-   * as a string. Warning - if multibyte characters are present when data is
-   * flowing through the buffer, this method may result in incorrect strings
-   * due to a character being split.
-   */
   toString(): string {
     const decoder = new TextDecoder();
     return decoder.decode(this.buf.subarray(this.off));
   }
 
-  /** empty() returns whether the unread portion of the buffer is empty. */
   empty(): boolean {
     return this.buf.byteLength <= this.off;
   }
 
-  /** length is a getter that returns the number of bytes of the unread
-   * portion of the buffer
-   */
   get length(): number {
     return this.buf.byteLength - this.off;
   }
 
-  /** Returns the capacity of the buffer's underlying byte slice, that is,
-   * the total space allocated for the buffer's data.
-   */
   get capacity(): number {
     return this.buf.buffer.byteLength;
   }
 
-  /** truncate() discards all but the first n unread bytes from the buffer but
-   * continues to use the same allocated storage.  It throws if n is negative or
-   * greater than the length of the buffer.
-   */
   truncate(n: number): void {
     if (n === 0) {
       this.reset();
@@ -98,19 +72,11 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
     this._reslice(this.off + n);
   }
 
-  /** reset() resets the buffer to be empty, but it retains the underlying
-   * storage for use by future writes. reset() is the same as truncate(0)
-   */
   reset(): void {
     this._reslice(0);
     this.off = 0;
   }
 
-  /** _tryGrowByReslice() is a version of grow for the fast-case
-   * where the internal buffer only needs to be resliced. It returns the index
-   * where bytes should be written and whether it succeeded.
-   * It returns -1 if a reslice was not needed.
-   */
   private _tryGrowByReslice(n: number): number {
     const l = this.buf.byteLength;
     if (n <= this.capacity - l) {
@@ -125,10 +91,6 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
     this.buf = new Uint8Array(this.buf.buffer, 0, len);
   }
 
-  /** readSync() reads the next len(p) bytes from the buffer or until the buffer
-   * is drained. The return value n is the number of bytes read. If the
-   * buffer has no data to return, eof in the response will be true.
-   */
   readSync(p: Uint8Array): number | EOF {
     if (this.empty()) {
       // Buffer is empty, reset to recover space.
@@ -159,10 +121,6 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
     return Promise.resolve(n);
   }
 
-  /** _grow() grows the buffer to guarantee space for n more bytes.
-   * It returns the index where bytes should be written.
-   * If the buffer can't grow it will throw with Error.
-   */
   private _grow(n: number): number {
     const m = this.length;
     // If buffer is empty, reset to recover space.
@@ -195,12 +153,6 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
     return m;
   }
 
-  /** grow() grows the buffer's capacity, if necessary, to guarantee space for
-   * another n bytes. After grow(n), at least n bytes can be written to the
-   * buffer without another allocation. If n is negative, grow() will panic. If
-   * the buffer can't grow it will throw Error.
-   * Based on https://golang.org/pkg/bytes/#Buffer.Grow
-   */
   grow(n: number): void {
     if (n < 0) {
       throw Error("Buffer.grow: negative count");
@@ -209,11 +161,6 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
     this._reslice(m);
   }
 
-  /** readFrom() reads data from r until EOF and appends it to the buffer,
-   * growing the buffer as needed. It returns the number of bytes read. If the
-   * buffer becomes too large, readFrom will panic with Error.
-   * Based on https://golang.org/pkg/bytes/#Buffer.ReadFrom
-   */
   async readFrom(r: Reader): Promise<number> {
     let n = 0;
     while (true) {
@@ -233,8 +180,6 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
     }
   }
 
-  /** Sync version of `readFrom`
-   */
   readFromSync(r: SyncReader): number {
     let n = 0;
     while (true) {
@@ -255,24 +200,18 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
   }
 }
 
-/** Read `r` until EOF and return the content as `Uint8Array`.
- */
 export async function readAll(r: Reader): Promise<Uint8Array> {
   const buf = new Buffer();
   await buf.readFrom(r);
   return buf.bytes();
 }
 
-/** Read synchronously `r` until EOF and return the content as `Uint8Array`.
- */
 export function readAllSync(r: SyncReader): Uint8Array {
   const buf = new Buffer();
   buf.readFromSync(r);
   return buf.bytes();
 }
 
-/** Write all the content of `arr` to `w`.
- */
 export async function writeAll(w: Writer, arr: Uint8Array): Promise<void> {
   let nwritten = 0;
   while (nwritten < arr.length) {
@@ -280,8 +219,6 @@ export async function writeAll(w: Writer, arr: Uint8Array): Promise<void> {
   }
 }
 
-/** Write synchronously all the content of `arr` to `w`.
- */
 export function writeAllSync(w: SyncWriter, arr: Uint8Array): void {
   let nwritten = 0;
   while (nwritten < arr.length) {

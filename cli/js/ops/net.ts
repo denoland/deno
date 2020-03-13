@@ -13,14 +13,6 @@ export enum ShutdownMode {
   ReadWrite // unused
 }
 
-/** Shut down socket send and receive operations.
- *
- * Matches behavior of POSIX shutdown(3).
- *
- *       const listener = Deno.listen({ port: 80 });
- *       const conn = await listener.accept();
- *       Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
- */
 export function shutdown(rid: number, how: ShutdownMode): void {
   sendSync("op_shutdown", { rid, how });
 }

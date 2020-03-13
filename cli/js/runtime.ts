@@ -29,11 +29,6 @@ export function initOps(): void {
   }
 }
 
-/**
- * This function bootstraps JS runtime, unfortunately some of runtime
- * code depends on information like "os" and thus getting this information
- * is required at startup.
- */
 export function start(source?: string): Start {
   initOps();
   // First we send an empty `Start` message to let the privileged side know we

@@ -88,12 +88,6 @@ export const workerRuntimeGlobalProperties = {
   workerMessageRecvCallback: nonEnumerable(workerMessageRecvCallback)
 };
 
-/**
- * Main method to initialize worker runtime.
- *
- * It sets up global variables for DedicatedWorkerScope,
- * and initializes ops.
- */
 export function bootstrapWorkerRuntime(name: string): void {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
