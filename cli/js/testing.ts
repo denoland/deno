@@ -247,7 +247,7 @@ export class ConsoleTestReporter implements TestReporter {
       );
     } else {
       this.console.log(`${RED_FAILED} ${result.name}`);
-      this.console.log(result.error!.stack);
+      this.console.log(result.error!);
     }
   }
 
