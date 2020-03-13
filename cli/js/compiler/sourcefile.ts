@@ -15,7 +15,6 @@ export enum MediaType {
   Unknown = 6
 }
 
-/** The shape of the SourceFile that comes from the privileged side */
 export interface SourceFileJson {
   url: string;
   filename: string;
@@ -25,7 +24,6 @@ export interface SourceFileJson {
 
 export const ASSETS = "$asset$";
 
-/** Returns the TypeScript Extension enum for a given media type. */
 function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
   switch (mediaType) {
     case MediaType.JavaScript:
@@ -49,15 +47,10 @@ function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
   }
 }
 
-/** A self registering abstraction of source files. */
 export class SourceFile {
   extension!: ts.Extension;
   filename!: string;
 
-  /** An array of tuples which represent the imports for the source file.  The
-   * first element is the one that will be requested at compile time, the
-   * second is the one that should be actually resolved.  This provides the
-   * feature of type directives for Deno. */
   importedFiles?: Array<[string, string]>;
 
   mediaType!: MediaType;
@@ -75,8 +68,6 @@ export class SourceFile {
     SourceFile._moduleCache.set(this.url, this);
   }
 
-  /** Cache the source file to be able to be retrieved by `moduleSpecifier` and
-   * `containingFile`. */
   cache(moduleSpecifier: string, containingFile?: string): void {
     containingFile = containingFile || "";
     let innerCache = SourceFile._specifierCache.get(containingFile);
@@ -87,7 +78,6 @@ export class SourceFile {
     innerCache.set(moduleSpecifier, this);
   }
 
-  /** Process the imports for the file and return them. */
   imports(processJsImports: boolean): Array<[string, string]> {
     if (this.processed) {
       throw new Error("SourceFile has already been processed.");
@@ -152,19 +142,13 @@ export class SourceFile {
     return files;
   }
 
-  /** A cache of all the source files which have been loaded indexed by the
-   * url. */
   private static _moduleCache: Map<string, SourceFile> = new Map();
 
-  /** A cache of source files based on module specifiers and containing files
-   * which is used by the TypeScript compiler to resolve the url */
   private static _specifierCache: Map<
     string,
     Map<string, SourceFile>
   > = new Map();
 
-  /** Retrieve a `SourceFile` based on a `moduleSpecifier` and `containingFile`
-   * or return `undefined` if not preset. */
   static getUrl(
     moduleSpecifier: string,
     containingFile: string
@@ -177,12 +161,10 @@ export class SourceFile {
     return undefined;
   }
 
-  /** Retrieve a `SourceFile` based on a `url` */
   static get(url: string): SourceFile | undefined {
     return this._moduleCache.get(url);
   }
 
-  /** Determine if a source file exists or not */
   static has(url: string): boolean {
     return this._moduleCache.has(url);
   }

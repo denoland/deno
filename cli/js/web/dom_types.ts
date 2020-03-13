@@ -125,46 +125,14 @@ export interface ProgressEventInit extends EventInit {
 }
 
 export interface URLSearchParams extends DomIterable<string, string> {
-  /**
-   * Appends a specified key/value pair as a new search parameter.
-   */
   append(name: string, value: string): void;
-  /**
-   * Deletes the given search parameter, and its associated value,
-   * from the list of all search parameters.
-   */
   delete(name: string): void;
-  /**
-   * Returns the first value associated to the given search parameter.
-   */
   get(name: string): string | null;
-  /**
-   * Returns all the values association with a given search parameter.
-   */
   getAll(name: string): string[];
-  /**
-   * Returns a Boolean indicating if such a search parameter exists.
-   */
   has(name: string): boolean;
-  /**
-   * Sets the value associated to a given search parameter to the given value.
-   * If there were several values, delete the others.
-   */
   set(name: string, value: string): void;
-  /**
-   * Sort all key/value pairs contained in this object in place
-   * and return undefined. The sort order is according to Unicode
-   * code points of the keys.
-   */
   sort(): void;
-  /**
-   * Returns a query string suitable for use in a URL.
-   */
   toString(): string;
-  /**
-   * Iterates over each name-value pair in the query
-   * and invokes the given function.
-   */
   forEach(
     callbackfn: (value: string, key: string, parent: this) => void,
     thisArg?: any
@@ -305,46 +273,19 @@ export interface FormDataConstructor {
   prototype: FormData;
 }
 
-/** A blob object represents a file-like object of immutable, raw data. */
 export interface Blob {
-  /** The size, in bytes, of the data contained in the `Blob` object. */
   readonly size: number;
-  /** A string indicating the media type of the data contained in the `Blob`.
-   * If the type is unknown, this string is empty.
-   */
   readonly type: string;
-  /** Returns a new `Blob` object containing the data in the specified range of
-   * bytes of the source `Blob`.
-   */
   slice(start?: number, end?: number, contentType?: string): Blob;
 }
 
 export interface Body {
-  /** A simple getter used to expose a `ReadableStream` of the body contents. */
   readonly body: ReadableStream | null;
-  /** Stores a `Boolean` that declares whether the body has been used in a
-   * response yet.
-   */
   readonly bodyUsed: boolean;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
-   * that resolves with an `ArrayBuffer`.
-   */
   arrayBuffer(): Promise<ArrayBuffer>;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
-   * that resolves with a `Blob`.
-   */
   blob(): Promise<Blob>;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
-   * that resolves with a `FormData` object.
-   */
   formData(): Promise<FormData>;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
-   * that resolves with the result of parsing the body text as JSON.
-   */
   json(): Promise<any>;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
-   * that resolves with a `USVString` (text).
-   */
   text(): Promise<string>;
 }
 
@@ -474,44 +415,18 @@ export interface QueuingStrategySizeCallback<T = any> {
 }
 
 export interface Headers extends DomIterable<string, string> {
-  /** Appends a new value onto an existing header inside a `Headers` object, or
-   * adds the header if it does not already exist.
-   */
   append(name: string, value: string): void;
-  /** Deletes a header from a `Headers` object. */
   delete(name: string): void;
-  /** Returns an iterator allowing to go through all key/value pairs
-   * contained in this Headers object. The both the key and value of each pairs
-   * are ByteString objects.
-   */
   entries(): IterableIterator<[string, string]>;
-  /** Returns a `ByteString` sequence of all the values of a header within a
-   * `Headers` object with a given name.
-   */
   get(name: string): string | null;
-  /** Returns a boolean stating whether a `Headers` object contains a certain
-   * header.
-   */
   has(name: string): boolean;
-  /** Returns an iterator allowing to go through all keys contained in
-   * this Headers object. The keys are ByteString objects.
-   */
   keys(): IterableIterator<string>;
-  /** Sets a new value for an existing header inside a Headers object, or adds
-   * the header if it does not already exist.
-   */
   set(name: string, value: string): void;
-  /** Returns an iterator allowing to go through all values contained in
-   * this Headers object. The values are ByteString objects.
-   */
   values(): IterableIterator<string>;
   forEach(
     callbackfn: (value: string, key: string, parent: this) => void,
     thisArg?: any
   ): void;
-  /** The Symbol.iterator well-known symbol specifies the default
-   * iterator for this Headers object
-   */
   [Symbol.iterator](): IterableIterator<[string, string]>;
 }
 
@@ -585,171 +500,49 @@ export interface RequestConstructor {
 }
 
 export interface Request extends Body {
-  /** Returns the cache mode associated with request, which is a string
-   * indicating how the the request will interact with the browser's cache when
-   * fetching.
-   */
   readonly cache?: RequestCache;
-  /** Returns the credentials mode associated with request, which is a string
-   * indicating whether credentials will be sent with the request always, never,
-   * or only when sent to a same-origin URL.
-   */
   readonly credentials?: RequestCredentials;
-  /** Returns the kind of resource requested by request, (e.g., `document` or
-   * `script`).
-   */
   readonly destination?: RequestDestination;
-  /** Returns a Headers object consisting of the headers associated with
-   * request.
-   *
-   * Note that headers added in the network layer by the user agent
-   * will not be accounted for in this object, (e.g., the `Host` header).
-   */
   readonly headers: Headers;
-  /** Returns request's subresource integrity metadata, which is a cryptographic
-   * hash of the resource being fetched. Its value consists of multiple hashes
-   * separated by whitespace. [SRI]
-   */
   readonly integrity?: string;
-  /** Returns a boolean indicating whether or not request is for a history
-   * navigation (a.k.a. back-forward navigation).
-   */
   readonly isHistoryNavigation?: boolean;
-  /** Returns a boolean indicating whether or not request is for a reload
-   * navigation.
-   */
   readonly isReloadNavigation?: boolean;
-  /** Returns a boolean indicating whether or not request can outlive the global
-   * in which it was created.
-   */
   readonly keepalive?: boolean;
-  /** Returns request's HTTP method, which is `GET` by default. */
   readonly method: string;
-  /** Returns the mode associated with request, which is a string indicating
-   * whether the request will use CORS, or will be restricted to same-origin
-   * URLs.
-   */
   readonly mode?: RequestMode;
-  /** Returns the redirect mode associated with request, which is a string
-   * indicating how redirects for the request will be handled during fetching.
-   *
-   * A request will follow redirects by default.
-   */
   readonly redirect?: RequestRedirect;
-  /** Returns the referrer of request. Its value can be a same-origin URL if
-   * explicitly set in init, the empty string to indicate no referrer, and
-   * `about:client` when defaulting to the global's default.
-   *
-   * This is used during fetching to determine the value of the `Referer`
-   * header of the request being made.
-   */
   readonly referrer?: string;
-  /** Returns the referrer policy associated with request. This is used during
-   * fetching to compute the value of the request's referrer.
-   */
   readonly referrerPolicy?: ReferrerPolicy;
-  /** Returns the signal associated with request, which is an AbortSignal object
-   * indicating whether or not request has been aborted, and its abort event
-   * handler.
-   */
   readonly signal?: AbortSignal;
-  /** Returns the URL of request as a string. */
   readonly url: string;
   clone(): Request;
 }
 
 export interface Response extends Body {
-  /** Contains the `Headers` object associated with the response. */
   readonly headers: Headers;
-  /** Contains a boolean stating whether the response was successful (status in
-   * the range 200-299) or not.
-   */
   readonly ok: boolean;
-  /** Indicates whether or not the response is the result of a redirect; that
-   * is, its URL list has more than one entry.
-   */
   readonly redirected: boolean;
-  /** Contains the status code of the response (e.g., `200` for a success). */
   readonly status: number;
-  /** Contains the status message corresponding to the status code (e.g., `OK`
-   * for `200`).
-   */
   readonly statusText: string;
   readonly trailer: Promise<Headers>;
-  /** Contains the type of the response (e.g., `basic`, `cors`). */
   readonly type: ResponseType;
-  /** Contains the URL of the response. */
   readonly url: string;
-  /** Creates a clone of a `Response` object. */
   clone(): Response;
 }
 
 export interface Location {
-  /**
-   * Returns a DOMStringList object listing the origins of the ancestor browsing
-   * contexts, from the parent browsing context to the top-level browsing
-   * context.
-   */
   readonly ancestorOrigins: string[];
-  /**
-   * Returns the Location object's URL's fragment (includes leading "#" if
-   * non-empty).
-   * Can be set, to navigate to the same URL with a changed fragment (ignores
-   * leading "#").
-   */
   hash: string;
-  /**
-   * Returns the Location object's URL's host and port (if different from the
-   * default port for the scheme).  Can be set, to navigate to the same URL with
-   * a changed host and port.
-   */
   host: string;
-  /**
-   * Returns the Location object's URL's host.  Can be set, to navigate to the
-   * same URL with a changed host.
-   */
   hostname: string;
-  /**
-   * Returns the Location object's URL.  Can be set, to navigate to the given
-   * URL.
-   */
   href: string;
-  /** Returns the Location object's URL's origin. */
   readonly origin: string;
-  /**
-   * Returns the Location object's URL's path.
-   * Can be set, to navigate to the same URL with a changed path.
-   */
   pathname: string;
-  /**
-   * Returns the Location object's URL's port.
-   * Can be set, to navigate to the same URL with a changed port.
-   */
   port: string;
-  /**
-   * Returns the Location object's URL's scheme.
-   * Can be set, to navigate to the same URL with a changed scheme.
-   */
   protocol: string;
-  /**
-   * Returns the Location object's URL's query (includes leading "?" if
-   * non-empty). Can be set, to navigate to the same URL with a changed query
-   * (ignores leading "?").
-   */
   search: string;
-  /**
-   * Navigates to the given URL.
-   */
   assign(url: string): void;
-  /**
-   * Reloads the current page.
-   */
   reload(): void;
-  /** @deprecated */
   reload(forcedReload: boolean): void;
-  /**
-   * Removes the current page from the session history and navigates to the
-   * given URL.
-   */
   replace(url: string): void;
 }

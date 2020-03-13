@@ -456,7 +456,6 @@ async function sendFetchReq(
   return await opFetch(args, body);
 }
 
-/** Fetch a resource from the network. */
 export async function fetch(
   input: domTypes.Request | URL | string,
   init?: domTypes.RequestInit

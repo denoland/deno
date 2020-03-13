@@ -11,16 +11,12 @@ import * as util from "../util.ts";
 import { assert } from "../util.ts";
 import { writeFileSync } from "../write_file.ts";
 
-/** Type for the write fall callback that allows delegation from the compiler
- * host on writing files. */
 export type WriteFileCallback = (
   fileName: string,
   data: string,
   sourceFiles?: readonly ts.SourceFile[]
 ) => void;
 
-/** An object which is passed to `createWriteFile` to be used to read and set
- * state related to the emit of a program. */
 export interface WriteFileState {
   type: CompilerRequestType;
   bundle?: boolean;
@@ -42,7 +38,6 @@ export enum CompilerRequestType {
 
 export const OUT_DIR = "$deno$";
 
-/** Cache the contents of a file on the trusted side. */
 function cache(
   moduleId: string,
   emittedFileName: string,
@@ -81,13 +76,10 @@ function cache(
   }
 }
 
-/** Retrieve an asset from Rust. */
 export function getAsset(name: string): string {
   return compilerOps.getAsset(name);
 }
 
-/** Generates a `writeFile` function which can be passed to the compiler `Host`
- * to use when emitting files. */
 export function createWriteFile(state: WriteFileState): WriteFileCallback {
   const encoder = new TextEncoder();
   if (state.type === CompilerRequestType.Compile) {
@@ -171,8 +163,6 @@ export interface ConvertCompilerOptionsResult {
   options: ts.CompilerOptions;
 }
 
-/** Take a runtime set of compiler options as stringified JSON and convert it
- * to a set of TypeScript compiler options. */
 export function convertCompilerOptions(
   str: string
 ): ConvertCompilerOptionsResult {
@@ -269,7 +259,6 @@ export function convertCompilerOptions(
   };
 }
 
-/** An array of TypeScript diagnostic types we ignore. */
 export const ignoredDiagnostics = [
   // TS2306: File 'file:///Users/rld/src/deno/cli/tests/subdir/amd_like.js' is
   // not a module.
@@ -301,8 +290,6 @@ export const ignoredDiagnostics = [
   7016
 ];
 
-/** When doing a host configuration, processing the response and logging out
- * and options which were ignored. */
 export function processConfigureResponse(
   configResult: ConfigureResponse,
   configPath: string
@@ -322,7 +309,6 @@ export function processConfigureResponse(
 export const CHAR_DOT = 46; /* . */
 export const CHAR_FORWARD_SLASH = 47; /* / */
 
-/** Resolves `.` and `..` elements in a path with directory names */
 export function normalizeString(
   path: string,
   allowAboveRoot: boolean,
@@ -390,12 +376,6 @@ export function normalizeString(
   return res;
 }
 
-/** Return the common path shared by the `paths`.
- *
- * @param paths The set of paths to compare.
- * @param sep An optional separator to use. Defaults to `/`.
- * @internal
- */
 export function commonPath(paths: string[], sep = "/"): string {
   const [first = "", ...remaining] = paths;
   if (first === "" || remaining.length === 0) {
@@ -420,8 +400,6 @@ export function commonPath(paths: string[], sep = "/"): string {
   return prefix.endsWith(sep) ? prefix : `${prefix}${sep}`;
 }
 
-/** Utility function to turn the number of bytes into a human readable
- * unit */
 function humanFileSize(bytes: number): string {
   const thresh = 1000;
   if (Math.abs(bytes) < thresh) {
