@@ -109,9 +109,13 @@ jobs:
       - name: Start sccache
         env:
           SCCACHE_AZURE_BLOB_CONTAINER: deno-sccache
-          SCCACHE_AZURE_CONNECTION_STRING: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }} || 'DefaultEndpointsProtocol=https;AccountName=denosccache;EndpointSuffix=core.windows.net'
+          SCCACHE_AZURE_CONNECTION_STRING: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
           SCCACHE_IDLE_TIMEOUT: 0
-        run: sccache --start-server
+        run: |
+          if [[ -z "$SCCACHE_AZURE_CONNECTION_STRING" ]]; then
+            echo ::set-env name=SCCACHE_AZURE_CONNECTION_STRING::DefaultEndpointsProtocol=https;AccountName=denosccache;EndpointSuffix=core.windows.net
+          fi
+          sccache --start-server
 
       - name: lint.py
         if: matrix.kind == 'lint'
