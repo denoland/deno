@@ -16,8 +16,17 @@ interface PermissionSetTestResult {
   passed: boolean;
   stats: Deno.TestStats;
   permsStr: string;
-  result: number;
 }
+
+const PERMISSIONS: Deno.PermissionName[] = [
+  "read",
+  "write",
+  "net",
+  "env",
+  "run",
+  "plugin",
+  "hrtime"
+];
 
 /**
  * Take a list of permissions and revoke missing permissions.
@@ -25,23 +34,10 @@ interface PermissionSetTestResult {
 async function dropWorkerPermissions(
   requiredPermissions: Deno.PermissionName[]
 ): Promise<void> {
-  const permsToDrop: Deno.PermissionName[] = [
-    "read",
-    "write",
-    "net",
-    "env",
-    "run",
-    "plugin",
-    "hrtime"
-  ];
+  const permsToDrop = PERMISSIONS.filter((p): boolean => {
+    return !requiredPermissions.includes(p);
+  });
 
-  for (const flag of requiredPermissions) {
-    if (!flag.length) continue;
-    const index = permsToDrop.indexOf(flag);
-    permsToDrop.splice(index, 1);
-  }
-
-  console.log("worker runner dropping permissions: ", permsToDrop);
   for (const perm of permsToDrop) {
     await Deno.permissions.revoke({ name: perm });
   }
@@ -51,22 +47,20 @@ async function workerRunnerMain(
   addr: { hostname: string; port: number },
   permissions: Deno.PermissionName[]
 ): Promise<void> {
-  // Create reporter, then drop permissions to requested set
+  // Setup reporter
   const conn = await Deno.connect(addr);
-  console.log("Test worker online", addr, permissions);
   const socketReporter = new SocketReporter(conn);
+  // Drop current process permissions to requested set
   await dropWorkerPermissions(permissions);
-
   // Register unit tests that match process permissions
   await registerUnitTests();
-
-  // Permissions dropped we're ready to execute tests
-  const results = await Deno.runTests({
+  // Execute tests
+  await Deno.runTests({
     failFast: false,
     exitOnFail: false,
     reporter: socketReporter
   });
-  console.log("worker finished running tests", results.stats);
+  // Notify parent process we're done
   socketReporter.close();
 }
 
@@ -90,7 +84,10 @@ function spawnWorkerRunner(addr: string, perms: Permissions): Deno.Process {
   ];
 
   const p = Deno.run({
-    args
+    args,
+    stdin: "null",
+    stdout: "null",
+    stderr: "null"
   });
 
   return p;
@@ -113,15 +110,15 @@ async function runTestsForPermissionSet(
 
   let err;
   let hasThrown = false;
-  let expectedTests;
-  let permTestResult;
+  let expectedPassedTests;
+  let testStats;
 
   try {
     for await (const line of readLines(conn)) {
       const msg = JSON.parse(line);
 
       if (msg.kind === "start") {
-        expectedTests = msg.tests;
+        expectedPassedTests = msg.tests;
         await reporter.start(msg);
         continue;
       }
@@ -131,7 +128,7 @@ async function runTestsForPermissionSet(
         continue;
       }
 
-      permTestResult = msg.stats;
+      testStats = msg.stats;
       await reporter.end(msg);
       break;
     }
@@ -146,11 +143,11 @@ async function runTestsForPermissionSet(
     throw err;
   }
 
-  if (typeof expectedTests === "undefined") {
+  if (typeof expectedPassedTests === "undefined") {
     throw new Error("Worker runner didn't report start");
   }
 
-  if (typeof permTestResult === "undefined") {
+  if (typeof testStats === "undefined") {
     throw new Error("Worker runner didn't report end");
   }
 
@@ -163,15 +160,13 @@ async function runTestsForPermissionSet(
 
   workerProcess.close();
 
-  const actual = permTestResult.passed;
-  console.log("expected", expectedTests, "actual", actual);
-  const result = expectedTests === actual ? 0 : 1;
+  const passed = expectedPassedTests === testStats.passed;
+
   return {
     perms,
-    passed: expectedTests === actual,
+    passed,
     permsStr: permsFmt,
-    result,
-    stats: permTestResult
+    stats: testStats
   };
 }
 

@@ -69,13 +69,6 @@ interface TestStats {
   failed: number;
 }
 
-interface TestCase {
-  name: string;
-  fn: TestFunction;
-  timeElapsed?: number;
-  error?: Error;
-}
-
 export interface RunTestsOptions {
   exitOnFail?: boolean;
   failFast?: boolean;
@@ -85,16 +78,18 @@ export interface RunTestsOptions {
   reporter?: TestReporter;
 }
 
-type FilterFn = (testDef: TestDefinition) => boolean;
-
 interface TestResult {
   passed: boolean;
   name: string;
-  fn: TestFunction;
   skipped: boolean;
   hasRun: boolean;
   duration: number;
   error?: Error;
+}
+
+interface TestCase {
+  result: TestResult;
+  fn: TestFunction;
 }
 
 enum MsgKind {
@@ -106,7 +101,6 @@ enum MsgKind {
 interface StartMsg {
   kind: MsgKind.Start;
   tests: number;
-  stats: TestStats;
 }
 
 interface TestMsg {
@@ -123,83 +117,79 @@ interface EndMsg {
 
 type RunTestsMessage = StartMsg | TestMsg | EndMsg;
 
-// interface TestsResult {
-//   results: TestResult[];
-//   stats: TestStats;
-// }
-
-function testDefinitionToResult(def: TestDefinition): TestResult {
+function testDefinitionToTestCase(def: TestDefinition): TestCase {
   return {
     fn: def.fn,
-    name: def.name,
-    passed: false,
-    skipped: false,
-    hasRun: false,
-    duration: 0
+    result: {
+      name: def.name,
+      passed: false,
+      skipped: false,
+      hasRun: false,
+      duration: 0
+    }
   };
 }
 
-// TODO: implements AsyncGenerator<RunTestsMessage>
+// TODO: already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
 // TODO: implements PromiseLike<TestsResult>
 class TestApi {
-  readonly stats: TestStats;
   readonly testsToRun: TestDefinition[];
-  readonly results: TestResult[];
+  readonly testCases: TestCase[];
+  readonly stats: TestStats = {
+    filtered: 0,
+    ignored: 0,
+    measured: 0,
+    passed: 0,
+    failed: 0
+  };
 
   constructor(
     public tests: TestDefinition[],
-    public filterFn: FilterFn,
+    public filterFn: (def: TestDefinition) => boolean,
     public failFast: boolean
   ) {
-    this.stats = {
-      filtered: 0,
-      ignored: 0,
-      measured: 0,
-      passed: 0,
-      failed: 0
-    };
     this.testsToRun = tests.filter(filterFn);
     this.stats.filtered = tests.length - this.testsToRun.length;
-    this.results = this.testsToRun.map(testDefinitionToResult);
+    this.testCases = this.testsToRun.map(testDefinitionToTestCase);
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<RunTestsMessage> {
     yield {
       kind: MsgKind.Start,
-      stats: this.stats,
       tests: this.testsToRun.length
     };
 
     const suiteStart = +new Date();
-    for (const testResult of this.results) {
+    for (const testCase of this.testCases) {
+      const { fn, result } = testCase;
       let shouldBreak = false;
       try {
         const start = +new Date();
-        await testResult.fn();
-        testResult.duration = +new Date() - start;
-        testResult.passed = true;
+        await fn();
+        result.duration = +new Date() - start;
+        result.passed = true;
         this.stats.passed++;
       } catch (err) {
-        testResult.passed = false;
-        testResult.error = err;
+        result.passed = false;
+        result.error = err;
         this.stats.failed++;
-        if (this.failFast) {
-          shouldBreak = true;
-        }
+        shouldBreak = this.failFast;
       } finally {
-        testResult.hasRun = true;
-        yield { kind: MsgKind.Test, result: testResult };
+        result.hasRun = true;
+        yield { kind: MsgKind.Test, result };
         if (shouldBreak) {
           break;
         }
       }
     }
+
     const duration = +new Date() - suiteStart;
+    const results = this.testCases.map(r => r.result);
 
     yield {
       kind: MsgKind.End,
-      results: this.results,
       stats: this.stats,
+      results,
       duration
     };
   }

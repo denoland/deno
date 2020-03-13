@@ -35,7 +35,6 @@ declare namespace Deno {
   interface TestResult {
     passed: boolean;
     name: string;
-    fn: TestFunction;
     skipped: boolean;
     hasRun: boolean;
     duration: number;
@@ -59,7 +58,6 @@ declare namespace Deno {
   interface StartMsg {
     kind: MsgKind.Start;
     tests: number;
-    stats: TestStats;
   }
 
   interface TestMsg {
