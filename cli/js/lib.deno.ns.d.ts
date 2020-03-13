@@ -17,7 +17,10 @@ declare namespace Deno {
   export interface TestDefinition {
     fn: TestFunction;
     name: string;
+    skip?: boolean;
   }
+
+  type TestOptions = Omit<TestDefinition, "fn" | "name">;
 
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module, or explicitly
@@ -26,18 +29,26 @@ declare namespace Deno {
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module, or explicitly
    * when `Deno.runTests` is used */
-  export function test(fn: TestFunction): void;
+  export function test(fn: TestFunction, options?: TestOptions): void;
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module, or explicitly
    * when `Deno.runTests` is used */
-  export function test(name: string, fn: TestFunction): void;
+  export function test(
+    name: string,
+    fn: TestFunction,
+    options?: TestOptions
+  ): void;
+
+  enum TestStatus {
+    Passed = "passed",
+    Failed = "failed",
+    Skipped = "skipped"
+  }
 
   interface TestResult {
-    passed: boolean;
     name: string;
-    skipped: boolean;
-    hasRun: boolean;
-    duration: number;
+    status: TestStatus;
+    duration?: number;
     error?: Error;
   }
 

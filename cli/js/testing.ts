@@ -1,10 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { red, green, bgRed, gray, italic } from "./colors.ts";
+import { bgRed, gray, green, italic, red, yellow } from "./colors.ts";
 import { exit } from "./ops/os.ts";
 import { Console } from "./web/console.ts";
 
 const RED_FAILED = red("FAILED");
 const GREEN_OK = green("OK");
+const YELLOW_SKIPPED = yellow("SKIPPED");
 const RED_BG_FAIL = bgRed(" FAIL ");
 const disabledConsole = new Console((_x: string, _isErr?: boolean): void => {});
 
@@ -18,47 +19,61 @@ export type TestFunction = () => void | Promise<void>;
 export interface TestDefinition {
   fn: TestFunction;
   name: string;
+  skip?: boolean;
 }
+
+type TestOptions = Omit<TestDefinition, "fn" | "name">;
 
 const TEST_REGISTRY: TestDefinition[] = [];
 
 export function test(t: TestDefinition): void;
-export function test(fn: TestFunction): void;
-export function test(name: string, fn: TestFunction): void;
+export function test(fn: TestFunction, options?: TestOptions): void;
+export function test(
+  name: string,
+  fn: TestFunction,
+  options?: TestOptions
+): void;
 // Main test function provided by Deno, as you can see it merely
 // creates a new object with "name" and "fn" fields.
 export function test(
   t: string | TestDefinition | TestFunction,
-  fn?: TestFunction
+  fnOrOptions?: TestFunction | TestOptions,
+  options?: TestOptions
 ): void {
-  let name: string;
+  let testDef: TestDefinition;
 
   if (typeof t === "string") {
-    if (!fn) {
+    if (!fnOrOptions || typeof fnOrOptions != "function") {
       throw new Error("Missing test function");
     }
-    name = t;
-    if (!name) {
+    if (!t) {
       throw new Error("The name of test case can't be empty");
     }
+    testDef = {
+      fn: fnOrOptions as TestFunction,
+      name: t,
+      skip: Boolean(options?.skip)
+    };
   } else if (typeof t === "function") {
-    fn = t;
-    name = t.name;
-    if (!name) {
-      throw new Error("Test function can't be anonymous");
+    if (!t.name) {
+      throw new Error("The test function can't be anonymous");
     }
+    testDef = {
+      fn: t,
+      name: t.name,
+      skip: Boolean((fnOrOptions as TestOptions)?.skip)
+    };
   } else {
-    fn = t.fn;
-    if (!fn) {
+    if (!t.fn) {
       throw new Error("Missing test function");
     }
-    name = t.name;
-    if (!name) {
+    if (!t.name) {
       throw new Error("The name of test case can't be empty");
     }
+    testDef = { fn: t.fn, name: t.name, skip: Boolean(t.skip) };
   }
 
-  TEST_REGISTRY.push({ fn, name });
+  TEST_REGISTRY.push(testDef as TestDefinition);
 }
 
 interface TestStats {
@@ -78,18 +93,17 @@ export interface RunTestsOptions {
   reporter?: TestReporter;
 }
 
-interface TestResult {
-  passed: boolean;
-  name: string;
-  skipped: boolean;
-  hasRun: boolean;
-  duration: number;
-  error?: Error;
+enum TestStatus {
+  Passed = "passed",
+  Failed = "failed",
+  Skipped = "skipped"
 }
 
-interface TestCase {
-  result: TestResult;
-  fn: TestFunction;
+interface TestResult {
+  name: string;
+  status: TestStatus;
+  duration?: number;
+  error?: Error;
 }
 
 export enum TestEvent {
@@ -115,24 +129,10 @@ interface TestEventEnd {
   results: TestResult[];
 }
 
-function testDefinitionToTestCase(def: TestDefinition): TestCase {
-  return {
-    fn: def.fn,
-    result: {
-      name: def.name,
-      passed: false,
-      skipped: false,
-      hasRun: false,
-      duration: 0
-    }
-  };
-}
-
 // TODO: already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
 // TODO: implements PromiseLike<TestsResult>
 class TestApi {
   readonly testsToRun: TestDefinition[];
-  readonly testCases: TestCase[];
   readonly stats: TestStats = {
     filtered: 0,
     ignored: 0,
@@ -148,7 +148,6 @@ class TestApi {
   ) {
     this.testsToRun = tests.filter(filterFn);
     this.stats.filtered = tests.length - this.testsToRun.length;
-    this.testCases = this.testsToRun.map(testDefinitionToTestCase);
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<
@@ -159,32 +158,34 @@ class TestApi {
       tests: this.testsToRun.length
     };
 
+    const results: TestResult[] = [];
     const suiteStart = +new Date();
-    for (const testCase of this.testCases) {
-      const { fn, result } = testCase;
-      let shouldBreak = false;
-      try {
-        const start = +new Date();
-        await fn();
-        result.duration = +new Date() - start;
-        result.passed = true;
-        this.stats.passed++;
-      } catch (err) {
-        result.passed = false;
-        result.error = err;
-        this.stats.failed++;
-        shouldBreak = this.failFast;
-      } finally {
-        result.hasRun = true;
-        yield { kind: TestEvent.Result, result };
-        if (shouldBreak) {
-          break;
+    for (const { name, fn, skip } of this.testsToRun) {
+      const result: Partial<TestResult> = { name };
+      if (skip) {
+        result.status = TestStatus.Skipped;
+        this.stats.ignored++;
+      } else {
+        try {
+          const start = +new Date();
+          await fn();
+          result.duration = +new Date() - start;
+          result.status = TestStatus.Passed;
+          this.stats.passed++;
+        } catch (err) {
+          result.status = TestStatus.Failed;
+          result.error = err;
+          this.stats.failed++;
         }
+      }
+      yield { kind: TestEvent.Result, result: result as TestResult };
+      results.push(result as TestResult);
+      if (this.failFast && result.error != null) {
+        break;
       }
     }
 
     const duration = +new Date() - suiteStart;
-    const results = this.testCases.map(r => r.result);
 
     yield {
       kind: TestEvent.End,
@@ -241,13 +242,19 @@ export class ConsoleTestReporter implements TestReporter {
   async result(event: TestEventResult): Promise<void> {
     const { result } = event;
 
-    if (result.passed) {
-      this.console.log(
-        `${GREEN_OK}     ${result.name} ${formatDuration(result.duration)}`
-      );
-    } else {
-      this.console.log(`${RED_FAILED} ${result.name}`);
-      this.console.log(result.error!);
+    switch (result.status) {
+      case TestStatus.Passed:
+        this.console.log(
+          `${GREEN_OK}      ${result.name} ${formatDuration(result.duration)}`
+        );
+        break;
+      case TestStatus.Failed:
+        this.console.log(`${RED_FAILED}  ${result.name}`);
+        this.console.log(result.error!);
+        break;
+      case TestStatus.Skipped:
+        this.console.log(`${YELLOW_SKIPPED} ${result.name}`);
+        break;
     }
   }
 
