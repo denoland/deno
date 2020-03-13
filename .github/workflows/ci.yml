@@ -108,9 +108,8 @@ jobs:
 
       - name: Start sccache
         env:
-          AWS_ACCESS_KEY_ID: AKIAIVRN52PLDBP55LBQ
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          SCCACHE_BUCKET: deno-sccache
+          SCCACHE_AZURE_BLOB_CONTAINER: deno-sccache
+          SCCACHE_AZURE_CONNECTION_STRING: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }} || 'DefaultEndpointsProtocol=https;AccountName=denosccache;EndpointSuffix=core.windows.net'
           SCCACHE_IDLE_TIMEOUT: 0
         run: sccache --start-server
 
