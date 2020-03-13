@@ -1,17 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import {
-  MediaType,
-  SourceFile,
-  SourceFileJson
-} from "./compiler_sourcefile.ts";
-import { normalizeString, CHAR_FORWARD_SLASH } from "./compiler_util.ts";
-import { cwd } from "./ops/fs/dir.ts";
-import { assert } from "./util.ts";
-import * as util from "./util.ts";
-import * as compilerOps from "./ops/compiler.ts";
+import { MediaType, SourceFile, SourceFileJson } from "./sourcefile.ts";
+import { normalizeString, CHAR_FORWARD_SLASH } from "./util.ts";
+import { cwd } from "../ops/fs/dir.ts";
+import { assert } from "../util.ts";
+import * as util from "../util.ts";
+import * as compilerOps from "../ops/compiler.ts";
 
-/** Resolve a path to the final path segment passed. */
 function resolvePath(...pathSegments: string[]): string {
   let resolvedPath = "";
   let resolvedAbsolute = false;
@@ -49,8 +44,6 @@ function resolvePath(...pathSegments: string[]): string {
   else return ".";
 }
 
-/** Resolve a relative specifier based on the referrer.  Used when resolving
- * modules internally within the runtime compiler API. */
 function resolveSpecifier(specifier: string, referrer: string): string {
   if (!specifier.startsWith(".")) {
     return specifier;
@@ -62,7 +55,6 @@ function resolveSpecifier(specifier: string, referrer: string): string {
   return resolvePath(path, specifier);
 }
 
-/** Ops to Rust to resolve modules' URLs. */
 export function resolveModules(
   specifiers: string[],
   referrer?: string
@@ -71,7 +63,6 @@ export function resolveModules(
   return compilerOps.resolveModules(specifiers, referrer);
 }
 
-/** Ops to Rust to fetch modules meta data. */
 function fetchSourceFiles(
   specifiers: string[],
   referrer?: string
@@ -80,8 +71,6 @@ function fetchSourceFiles(
   return compilerOps.fetchSourceFiles(specifiers, referrer);
 }
 
-/** Given a filename, determine the media type based on extension.  Used when
- * resolving modules internally in a runtime compile. */
 function getMediaType(filename: string): MediaType {
   const maybeExtension = /\.([a-zA-Z]+)$/.exec(filename);
   if (!maybeExtension) {
@@ -108,12 +97,6 @@ function getMediaType(filename: string): MediaType {
   }
 }
 
-/** Recursively process the imports of modules from within the supplied sources,
- * generating `SourceFile`s of any imported files.
- *
- * Specifiers are supplied in an array of tuples where the first is the
- * specifier that will be requested in the code and the second is the specifier
- * that should be actually resolved. */
 export function processLocalImports(
   sources: Record<string, string>,
   specifiers: Array<[string, string]>,
@@ -152,12 +135,6 @@ export function processLocalImports(
   return moduleNames;
 }
 
-/** Recursively process the imports of modules, generating `SourceFile`s of any
- * imported files.
- *
- * Specifiers are supplied in an array of tuples where the first is the
- * specifier that will be requested in the code and the second is the specifier
- * that should be actually resolved. */
 export async function processImports(
   specifiers: Array<[string, string]>,
   referrer?: string,

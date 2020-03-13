@@ -1,10 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import {
-  assert,
-  createResolvable,
-  notImplemented,
-  isTypedArray
-} from "../util.ts";
+import { assert, createResolvable, notImplemented } from "../util.ts";
+import { isTypedArray } from "./util.ts";
 import * as domTypes from "./dom_types.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob.ts";
@@ -460,7 +456,6 @@ async function sendFetchReq(
   return await opFetch(args, body);
 }
 
-/** Fetch a resource from the network. */
 export async function fetch(
   input: domTypes.Request | URL | string,
   init?: domTypes.RequestInit

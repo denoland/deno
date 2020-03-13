@@ -2,7 +2,6 @@
 import { sendSync, sendAsync } from "../dispatch_json.ts";
 import { FileInfo, FileInfoImpl } from "../../file_info.ts";
 
-/** @internal */
 export interface StatResponse {
   isFile: boolean;
   isSymlink: boolean;
@@ -23,13 +22,6 @@ export interface StatResponse {
   blocks: number;
 }
 
-/** Resolves to a `Deno.FileInfo` for the specified `path`. If `path` is a
- * symlink, information for the symlink will be returned.
- *
- *       const fileInfo = await Deno.lstat("hello.txt");
- *       assert(fileInfo.isFile());
- *
- * Requires `allow-read` permission. */
 export async function lstat(path: string): Promise<FileInfo> {
   const res = (await sendAsync("op_stat", {
     path,
@@ -38,13 +30,6 @@ export async function lstat(path: string): Promise<FileInfo> {
   return new FileInfoImpl(res);
 }
 
-/** Synchronously returns a `Deno.FileInfo` for the specified `path`. If
- * `path` is a symlink, information for the symlink will be returned.
- *
- *       const fileInfo = Deno.lstatSync("hello.txt");
- *       assert(fileInfo.isFile());
- *
- * Requires `allow-read` permission. */
 export function lstatSync(path: string): FileInfo {
   const res = sendSync("op_stat", {
     path,
@@ -53,13 +38,6 @@ export function lstatSync(path: string): FileInfo {
   return new FileInfoImpl(res);
 }
 
-/** Resolves to a `Deno.FileInfo` for the specified `path`. Will always
- * follow symlinks.
- *
- *       const fileInfo = await Deno.stat("hello.txt");
- *       assert(fileInfo.isFile());
- *
- * Requires `allow-read` permission. */
 export async function stat(path: string): Promise<FileInfo> {
   const res = (await sendAsync("op_stat", {
     path,
@@ -68,13 +46,6 @@ export async function stat(path: string): Promise<FileInfo> {
   return new FileInfoImpl(res);
 }
 
-/** Synchronously returns a `Deno.FileInfo` for the specified `path`. Will
- * always follow symlinks.
- *
- *       const fileInfo = Deno.statSync("hello.txt");
- *       assert(fileInfo.isFile());
- *
- * Requires `allow-read` permission. */
 export function statSync(path: string): FileInfo {
   const res = sendSync("op_stat", {
     path,

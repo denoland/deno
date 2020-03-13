@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use super::io::StreamResource;
+use super::io::{StreamResource, StreamResourceHolder};
 use crate::http_util::{create_http_client, HttpBody};
 use crate::op_error::OpError;
 use crate::state::State;
@@ -80,7 +80,9 @@ pub fn op_fetch(
     let mut state = state_.borrow_mut();
     let rid = state.resource_table.add(
       "httpBody",
-      Box::new(StreamResource::HttpBody(Box::new(body))),
+      Box::new(StreamResourceHolder::new(StreamResource::HttpBody(
+        Box::new(body),
+      ))),
     );
 
     let json_res = json!({

@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert } from "./util.ts";
-import { startGlobalTimer, stopGlobalTimer } from "./ops/timers.ts";
-import { RBTree } from "./rbtree.ts";
+import { assert } from "../util.ts";
+import { startGlobalTimer, stopGlobalTimer } from "../ops/timers.ts";
+import { RBTree } from "../rbtree.ts";
 
 const { console } = globalThis;
 
@@ -261,7 +261,6 @@ function setTimer(
   return timer.id;
 }
 
-/** Sets a timer which executes a function once after the timer expires. */
 export function setTimeout(
   cb: (...args: Args) => void,
   delay = 0,
@@ -273,7 +272,6 @@ export function setTimeout(
   return setTimer(cb, delay, args, false);
 }
 
-/** Repeatedly calls a function, with a fixed time delay between each call. */
 export function setInterval(
   cb: (...args: Args) => void,
   delay = 0,
@@ -285,7 +283,6 @@ export function setInterval(
   return setTimer(cb, delay, args, true);
 }
 
-/** Clears a previously set timer by id. AKA clearTimeout and clearInterval. */
 function clearTimer(id: number): void {
   id = Number(id);
   const timer = idMap.get(id);

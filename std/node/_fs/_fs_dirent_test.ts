@@ -1,5 +1,5 @@
 const { test } = Deno;
-import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
+import { assert, assertEquals, assertThrows } from "../../testing/asserts.ts";
 import Dirent from "./_fs_dirent.ts";
 
 class FileInfoMock implements Deno.FileInfo {

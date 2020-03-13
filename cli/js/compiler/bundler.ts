@@ -1,17 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { SYSTEM_LOADER } from "./compiler_bootstrap.ts";
-import {
-  commonPath,
-  normalizeString,
-  CHAR_FORWARD_SLASH
-} from "./compiler_util.ts";
-import { assert } from "./util.ts";
+import { SYSTEM_LOADER } from "./bootstrap.ts";
+import { commonPath, normalizeString, CHAR_FORWARD_SLASH } from "./util.ts";
+import { assert } from "../util.ts";
 
-/** Local state of what the root exports are of a root module. */
 let rootExports: string[] | undefined;
 
-/** Take a URL and normalize it, resolving relative path parts. */
 function normalizeUrl(rootName: string): string {
   const match = /^(\S+:\/{2,3})(.+)$/.exec(rootName);
   if (match) {
@@ -27,8 +21,6 @@ function normalizeUrl(rootName: string): string {
   }
 }
 
-/** Given a root name, contents, and source files, enrich the data of the
- * bundle with a loader and re-export the exports of the root name. */
 export function buildBundle(
   rootName: string,
   data: string,
@@ -67,7 +59,6 @@ export function buildBundle(
   return `${SYSTEM_LOADER}\n${data}\n${instantiate}`;
 }
 
-/** Set the rootExports which will by the `emitBundle()` */
 export function setRootExports(program: ts.Program, rootModule: string): void {
   // get a reference to the type checker, this will let us find symbols from
   // the AST.

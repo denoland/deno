@@ -28,11 +28,6 @@ function normalizeMethod(m: string): string {
   return m;
 }
 
-/**
- * An HTTP request
- * @param {Blob|String} [body]
- * @param {Object} [init]
- */
 export class Request extends body.Body implements domTypes.Request {
   public method: string;
   public url: string;
@@ -83,20 +78,9 @@ export class Request extends body.Body implements domTypes.Request {
     this.headers = headers;
 
     // readonly attribute ByteString method;
-    /**
-     * The HTTP request method
-     * @readonly
-     * @default GET
-     * @type {string}
-     */
     this.method = "GET";
 
     // readonly attribute USVString url;
-    /**
-     * The request URL
-     * @readonly
-     * @type {string}
-     */
     this.url = "";
 
     // readonly attribute RequestCredentials credentials;

@@ -1,9 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as permissionsOps from "./ops/permissions.ts";
 
-/** Permissions as granted by the caller
- * See: https://w3c.github.io/permissions/#permission-registry
- */
 export type PermissionName =
   | "read"
   | "write"
@@ -14,7 +11,6 @@ export type PermissionName =
   | "hrtime";
 // NOTE: Keep in sync with cli/permissions.rs
 
-/** https://w3c.github.io/permissions/#status-of-a-permission */
 export type PermissionState = "granted" | "denied" | "prompt";
 
 interface RunPermissionDescriptor {
@@ -37,7 +33,6 @@ interface PluginPermissionDescriptor {
 interface HrtimePermissionDescriptor {
   name: "hrtime";
 }
-/** See: https://w3c.github.io/permissions/#permission-descriptor */
 type PermissionDescriptor =
   | RunPermissionDescriptor
   | ReadWritePermissionDescriptor
@@ -46,41 +41,22 @@ type PermissionDescriptor =
   | PluginPermissionDescriptor
   | HrtimePermissionDescriptor;
 
-/** https://w3c.github.io/permissions/#permissionstatus */
 export class PermissionStatus {
   constructor(public state: PermissionState) {}
   // TODO(kt3k): implement onchange handler
 }
 
 export class Permissions {
-  /** Queries the permission.
-   *       const status = await Deno.permissions.query({ name: "read", path: "/etc" });
-   *       if (status.state === "granted") {
-   *         file = await Deno.readFile("/etc/passwd");
-   *       }
-   */
   async query(desc: PermissionDescriptor): Promise<PermissionStatus> {
     const state = permissionsOps.query(desc);
     return new PermissionStatus(state);
   }
 
-  /** Revokes the permission.
-   *       const status = await Deno.permissions.revoke({ name: "run" });
-   *       assert(status.state !== "granted")
-   */
   async revoke(desc: PermissionDescriptor): Promise<PermissionStatus> {
     const state = permissionsOps.revoke(desc);
     return new PermissionStatus(state);
   }
 
-  /** Requests the permission.
-   *       const status = await Deno.permissions.request({ name: "env" });
-   *       if (status.state === "granted") {
-   *         console.log(Deno.homeDir());
-   *       } else {
-   *         console.log("'env' permission is denied.");
-   *       }
-   */
   async request(desc: PermissionDescriptor): Promise<PermissionStatus> {
     const state = permissionsOps.request(desc);
     return new PermissionStatus(state);

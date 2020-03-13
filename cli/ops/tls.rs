@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use super::io::StreamResource;
+use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
@@ -85,7 +85,9 @@ pub fn op_connect_tls(
     let mut state = state_.borrow_mut();
     let rid = state.resource_table.add(
       "clientTlsStream",
-      Box::new(StreamResource::ClientTlsStream(Box::new(tls_stream))),
+      Box::new(StreamResourceHolder::new(StreamResource::ClientTlsStream(
+        Box::new(tls_stream),
+      ))),
     );
     Ok(json!({
         "rid": rid,
@@ -318,7 +320,9 @@ fn op_accept_tls(
       let mut state = state.borrow_mut();
       state.resource_table.add(
         "serverTlsStream",
-        Box::new(StreamResource::ServerTlsStream(Box::new(tls_stream))),
+        Box::new(StreamResourceHolder::new(StreamResource::ServerTlsStream(
+          Box::new(tls_stream),
+        ))),
       )
     };
     Ok(json!({

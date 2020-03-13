@@ -15,11 +15,10 @@ unitTest(
   { perms: { read: true, write: true } },
   function mkdirSyncMode(): void {
     const path = Deno.makeTempDirSync() + "/dir";
-    Deno.mkdirSync(path, { mode: 0o755 }); // no perm for x
+    Deno.mkdirSync(path, { mode: 0o737 });
     const pathInfo = Deno.statSync(path);
-    if (pathInfo.mode !== null) {
-      // Skip windows
-      assertEquals(pathInfo.mode & 0o777, 0o755);
+    if (Deno.build.os !== "win") {
+      assertEquals(pathInfo.mode! & 0o777, 0o737 & ~Deno.umask());
     }
   }
 );
@@ -42,6 +41,18 @@ unitTest(
     await Deno.mkdir(path);
     const pathInfo = Deno.statSync(path);
     assert(pathInfo.isDirectory());
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function mkdirMode(): Promise<void> {
+    const path = Deno.makeTempDirSync() + "/dir";
+    await Deno.mkdir(path, { mode: 0o737 });
+    const pathInfo = Deno.statSync(path);
+    if (Deno.build.os !== "win") {
+      assertEquals(pathInfo.mode! & 0o777, 0o737 & ~Deno.umask());
+    }
   }
 );
 

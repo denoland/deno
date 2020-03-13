@@ -26,6 +26,17 @@ unitTest({ perms: { write: true } }, function makeTempDirSyncSuccess(): void {
   assert(err instanceof Deno.errors.NotFound);
 });
 
+unitTest(
+  { perms: { read: true, write: true } },
+  function makeTempDirSyncMode(): void {
+    const path = Deno.makeTempDirSync();
+    const pathInfo = Deno.statSync(path);
+    if (Deno.build.os !== "win") {
+      assertEquals(pathInfo.mode! & 0o777, 0o700 & ~Deno.umask());
+    }
+  }
+);
+
 unitTest(function makeTempDirSyncPerm(): void {
   // makeTempDirSync should require write permissions (for now).
   let err;
@@ -66,6 +77,17 @@ unitTest(
   }
 );
 
+unitTest(
+  { perms: { read: true, write: true } },
+  async function makeTempDirMode(): Promise<void> {
+    const path = await Deno.makeTempDir();
+    const pathInfo = Deno.statSync(path);
+    if (Deno.build.os !== "win") {
+      assertEquals(pathInfo.mode! & 0o777, 0o700 & ~Deno.umask());
+    }
+  }
+);
+
 unitTest({ perms: { write: true } }, function makeTempFileSyncSuccess(): void {
   const file1 = Deno.makeTempFileSync({ prefix: "hello", suffix: "world" });
   const file2 = Deno.makeTempFileSync({ prefix: "hello", suffix: "world" });
@@ -91,6 +113,17 @@ unitTest({ perms: { write: true } }, function makeTempFileSyncSuccess(): void {
   }
   assert(err instanceof Deno.errors.NotFound);
 });
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function makeTempFileSyncMode(): void {
+    const path = Deno.makeTempFileSync();
+    const pathInfo = Deno.statSync(path);
+    if (Deno.build.os !== "win") {
+      assertEquals(pathInfo.mode! & 0o777, 0o600 & ~Deno.umask());
+    }
+  }
+);
 
 unitTest(function makeTempFileSyncPerm(): void {
   // makeTempFileSync should require write permissions (for now).
@@ -130,5 +163,16 @@ unitTest(
       err = err_;
     }
     assert(err instanceof Deno.errors.NotFound);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function makeTempFileMode(): Promise<void> {
+    const path = await Deno.makeTempFile();
+    const pathInfo = Deno.statSync(path);
+    if (Deno.build.os !== "win") {
+      assertEquals(pathInfo.mode! & 0o777, 0o600 & ~Deno.umask());
+    }
   }
 );

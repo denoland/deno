@@ -865,9 +865,14 @@ itest!(_026_redirect_javascript {
 });
 
 itest!(workers {
-  args: "run --reload --allow-net workers_test.ts",
+  args: "test --reload --allow-net workers_test.ts",
   http_server: true,
   output: "workers_test.out",
+});
+
+itest!(compiler_api {
+  args: "test --reload compiler_api_test.ts",
+  output: "compiler_api_test.out",
 });
 
 itest!(_027_redirect_typescript {
@@ -1780,7 +1785,8 @@ fn test_permissions_net_fetch_allow_localhost_4545() {
     true,
 			"run --allow-net=localhost:4545 complex_permissions_test.ts netFetch http://localhost:4545/",
 			None,
-			None,true,
+      None,
+      true,
 		);
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
@@ -1913,7 +1919,7 @@ fn test_permissions_net_listen_allow_localhost() {
 			"run --allow-net=localhost complex_permissions_test.ts netListen localhost:4600",
 			None,
 			None,
-			false,
+      false,
 		);
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
@@ -1927,6 +1933,7 @@ mod util {
   use std::process::Command;
   use std::process::Output;
   use std::process::Stdio;
+
   use tempfile::TempDir;
 
   pub const PERMISSION_VARIANTS: [&str; 5] =

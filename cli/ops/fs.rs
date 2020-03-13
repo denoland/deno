@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
-use super::io::{FileMetadata, StreamResource};
+use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
 use crate::fs as deno_fs;
 use crate::op_error::OpError;
 use crate::ops::dispatch_json::JsonResult;
@@ -179,7 +179,10 @@ fn op_open(
     let mut state = state_.borrow_mut();
     let rid = state.resource_table.add(
       "fsFile",
-      Box::new(StreamResource::FsFile(fs_file, FileMetadata::default())),
+      Box::new(StreamResourceHolder::new(StreamResource::FsFile(
+        fs_file,
+        FileMetadata::default(),
+      ))),
     );
     Ok(json!(rid))
   };
@@ -224,12 +227,12 @@ fn op_seek(
   };
 
   let state = state.borrow();
-  let resource = state
+  let resource_holder = state
     .resource_table
-    .get::<StreamResource>(rid)
+    .get::<StreamResourceHolder>(rid)
     .ok_or_else(OpError::bad_resource_id)?;
 
-  let tokio_file = match resource {
+  let tokio_file = match resource_holder.resource {
     StreamResource::FsFile(ref file, _) => file,
     _ => return Err(OpError::bad_resource_id()),
   };
@@ -306,7 +309,7 @@ struct MkdirArgs {
   promise_id: Option<u64>,
   path: String,
   recursive: bool,
-  mode: u32,
+  mode: Option<u32>,
 }
 
 fn op_mkdir(
@@ -316,13 +319,14 @@ fn op_mkdir(
 ) -> Result<JsonOp, OpError> {
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+  let mode = args.mode.unwrap_or(0o777);
 
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_mkdir {}", path.display());
-    deno_fs::mkdir(&path, args.mode, args.recursive)?;
+    debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
+    deno_fs::mkdir(&path, mode, args.recursive)?;
     Ok(json!({}))
   })
 }
