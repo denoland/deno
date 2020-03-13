@@ -4,7 +4,6 @@ import { sendAsync, sendSync } from "./dispatch_json.ts";
 import { TextDecoder, TextEncoder } from "../web/text_encoding.ts";
 import { core } from "../core.ts";
 
-/** Ops to Rust to resolve modules' URLs. */
 export function resolveModules(
   specifiers: string[],
   referrer?: string
@@ -12,7 +11,6 @@ export function resolveModules(
   return sendSync("op_resolve_modules", { specifiers, referrer });
 }
 
-/** Ops to Rust to fetch modules meta data. */
 export function fetchSourceFiles(
   specifiers: string[],
   referrer?: string
@@ -33,7 +31,6 @@ export function fetchSourceFiles(
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-/** This op is also used during snapshotting */
 export function getAsset(name: string): string {
   const opId = core.ops()["op_fetch_asset"];
   // We really don't want to depend on JSON dispatch during snapshotting, so

@@ -1,13 +1,6 @@
 // Forked from https://github.com/stardazed/sd-streams/tree/8928cf04b035fd02fb1340b7eb541c76be37e546
 // Copyright (c) 2018-Present by Arthur Langereis - @zenmumbler MIT
 
-/**
- * streams/readable-stream-byob-reader - ReadableStreamBYOBReader class implementation
- * Part of Stardazed
- * (c) 2018-Present by Arthur Langereis - @zenmumbler
- * https://github.com/stardazed/sd-streams
- */
-
 import * as rs from "./readable-internals.ts";
 import * as shared from "./shared-internals.ts";
 

@@ -1,13 +1,6 @@
 // Forked from https://github.com/stardazed/sd-streams/tree/8928cf04b035fd02fb1340b7eb541c76be37e546
 // Copyright (c) 2018-Present by Arthur Langereis - @zenmumbler MIT
 
-/**
- * streams/queue - simple queue type with chunked array backing
- * Part of Stardazed
- * (c) 2018-Present by Arthur Langereis - @zenmumbler
- * https://github.com/stardazed/sd-streams
- */
-
 const CHUNK_SIZE = 16384;
 
 export interface Queue<T> {
