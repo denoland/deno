@@ -1426,6 +1426,11 @@ itest!(fix_js_imports {
   output: "fix_js_imports.ts.out",
 });
 
+itest!(proto_exploit {
+  args: "run proto_exploit.js",
+  output: "proto_exploit.js.out",
+});
+
 #[test]
 fn cafile_fetch() {
   use deno::http_cache::url_to_filename;

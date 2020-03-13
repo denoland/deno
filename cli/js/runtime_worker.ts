@@ -100,6 +100,10 @@ export function bootstrapWorkerRuntime(name: string): void {
   }
   log("bootstrapWorkerRuntime");
   hasBootstrapped = true;
+  // Closes a denial of service vulnerability.  This makes Deno intentionally
+  // non-compliant with ECMA-262 Annex B.2.2.1.
+  // See: https://www.ecma-international.org/ecma-262/6.0/#sec-object.prototype.__proto__
+  delete (Object.prototype as any).__proto__;
   Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
   Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
   Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
