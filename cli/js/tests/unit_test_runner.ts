@@ -44,15 +44,25 @@ async function dropWorkerPermissions(
   }
 }
 
-async function workerRunnerMain(
-  addr: { hostname: string; port: number },
-  permissions: Deno.PermissionName[]
-): Promise<void> {
+async function workerRunnerMain(args: string[]): Promise<void> {
+  const addrArg = args.find(e => e.includes("--addr"));
+  assert(typeof addrArg === "string", "Missing --addr argument");
+  const addrStr = addrArg.split("=")[1];
+  const [hostname, port] = addrStr.split(":");
+  const addr = { hostname, port: Number(port) };
+
+  let perms: Deno.PermissionName[] = [];
+  const permsArg = args.find(e => e.includes("--perms"));
+  assert(typeof permsArg === "string", "Missing --perms argument");
+  const permsStr = permsArg.split("=")[1];
+  if (permsStr.length > 0) {
+    perms = permsStr.split(",") as Deno.PermissionName[];
+  }
   // Setup reporter
   const conn = await Deno.connect(addr);
   const socketReporter = new SocketReporter(conn);
   // Drop current process permissions to requested set
-  await dropWorkerPermissions(permissions);
+  await dropWorkerPermissions(perms);
   // Register unit tests that match process permissions
   await registerUnitTests();
   // Execute tests
@@ -87,7 +97,7 @@ function spawnWorkerRunner(addr: string, perms: Permissions): Deno.Process {
   const p = Deno.run({
     args,
     stdin: "null",
-    stdout: "null",
+    stdout: "piped",
     stderr: "null"
   });
 
@@ -215,30 +225,15 @@ async function masterRunnerMain(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  // TODO: use `flags` parser
   const args = Deno.args;
 
   const isWorker = args.includes("--worker");
 
-  if (!isWorker) {
-    return await masterRunnerMain();
+  if (isWorker) {
+    return await workerRunnerMain(args);
   }
 
-  const addrArg = args.find(e => e.includes("--addr"));
-  assert(typeof addrArg === "string");
-  const addrStr = addrArg.split("=")[1];
-  const [hostname, port] = addrStr.split(":");
-  const addr = { hostname, port: Number(port) };
-
-  let perms: Deno.PermissionName[] = [];
-  const permsArg = args.find(e => e.includes("--perms"));
-  assert(typeof permsArg === "string");
-  const permsStr = permsArg.split("=")[1];
-  if (permsStr.length > 0) {
-    perms = permsStr.split(",") as Deno.PermissionName[];
-  }
-
-  await workerRunnerMain(addr, perms);
+  return await masterRunnerMain();
 }
 
 main();
