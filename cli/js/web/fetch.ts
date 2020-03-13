@@ -13,6 +13,7 @@ import { FormData } from "./form_data.ts";
 import { URL } from "./url.ts";
 import { URLSearchParams } from "./url_search_params.ts";
 import { fetch as opFetch, FetchResponse } from "../ops/fetch.ts";
+import { DomFileImpl } from "./dom_file";
 
 function getHeaderValueParams(value: string): Map<string, string> {
   const params = new Map();
@@ -499,8 +500,49 @@ export async function fetch(
         } else if (init.body instanceof DenoBlob) {
           body = init.body[blobBytesSymbol];
           contentType = init.body.type;
+        } else if (init.body instanceof FormData) {
+          let boundary = "";
+
+          if (headers.has("content-type")) {
+            let boundaryParam = headers.get("content-type").split("; ")[1];
+
+            if (boundaryParam !== undefined) {
+              boundary = boundaryParam.split("=")[1];
+            }
+          }
+          if (boundary === undefined) {
+            boundary = "-----------------";
+            boundary += Array.from(Array(16))
+              .map(() => Math.random().toString(36)[2] || 0)
+              .join("");
+          }
+
+          let payload = "";
+          for (const [fieldName, fieldValue] of init.body.entries()) {
+            let part = `\r\n${boundary}\r\n`;
+            part += `Content-Disposition: form-data; name=\"${fieldName}\"`;
+            if (fieldValue instanceof DomFileImpl) {
+              part += `; filename=\"${fieldValue.name}\"`;
+            }
+            part += "\r\n";
+            if (fieldValue instanceof DomFileImpl) {
+              part += `Content-Type: ${fieldValue.type ||
+                "application/octet-stream"}\r\n`;
+            }
+            part += "\r\n";
+            if (fieldValue instanceof DomFileImpl) {
+              part += fieldValue[blobBytesSymbol];
+            } else {
+              part += fieldValue;
+            }
+            payload += part;
+          }
+          payload += `\r\n${boundary}--`;
+
+          body = new TextEncoder().encode(payload);
+          contentType = "multipart/form-data; boundary=" + boundary;
         } else {
-          // TODO: FormData, ReadableStream
+          // TODO: ReadableStream
           notImplemented();
         }
         if (contentType && !headers.has("content-type")) {
