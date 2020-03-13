@@ -9,7 +9,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        os: [macOS-latest, windows-2019, ubuntu-16.04]
+        os: [macOS-latest, ubuntu-16.04] # TODO windows-2019, 
         kind: ['test_release', 'test_debug', 'bench', 'lint']
         exclude:
           - os: windows-2019
