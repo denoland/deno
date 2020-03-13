@@ -92,30 +92,28 @@ interface TestCase {
   fn: TestFunction;
 }
 
-enum MsgKind {
+export enum TestEvent {
   Start = "start",
-  Test = "test",
+  Result = "result",
   End = "end"
 }
 
-interface StartMsg {
-  kind: MsgKind.Start;
+interface TestEventStart {
+  kind: TestEvent.Start;
   tests: number;
 }
 
-interface TestMsg {
-  kind: MsgKind.Test;
+interface TestEventResult {
+  kind: TestEvent.Result;
   result: TestResult;
 }
 
-interface EndMsg {
-  kind: MsgKind.End;
+interface TestEventEnd {
+  kind: TestEvent.End;
   stats: TestStats;
   duration: number;
   results: TestResult[];
 }
-
-type RunTestsMessage = StartMsg | TestMsg | EndMsg;
 
 function testDefinitionToTestCase(def: TestDefinition): TestCase {
   return {
@@ -153,9 +151,11 @@ class TestApi {
     this.testCases = this.testsToRun.map(testDefinitionToTestCase);
   }
 
-  async *[Symbol.asyncIterator](): AsyncIterator<RunTestsMessage> {
+  async *[Symbol.asyncIterator](): AsyncIterator<
+    TestEventStart | TestEventResult | TestEventEnd
+  > {
     yield {
-      kind: MsgKind.Start,
+      kind: TestEvent.Start,
       tests: this.testsToRun.length
     };
 
@@ -176,7 +176,7 @@ class TestApi {
         shouldBreak = this.failFast;
       } finally {
         result.hasRun = true;
-        yield { kind: MsgKind.Test, result };
+        yield { kind: TestEvent.Result, result };
         if (shouldBreak) {
           break;
         }
@@ -187,7 +187,7 @@ class TestApi {
     const results = this.testCases.map(r => r.result);
 
     yield {
-      kind: MsgKind.End,
+      kind: TestEvent.End,
       stats: this.stats,
       results,
       duration
@@ -223,23 +223,23 @@ function createFilterFn(
 }
 
 interface TestReporter {
-  start(msg: StartMsg): Promise<void>;
-  test(msg: TestMsg): Promise<void>;
-  end(msg: EndMsg): Promise<void>;
+  start(msg: TestEventStart): Promise<void>;
+  result(msg: TestEventResult): Promise<void>;
+  end(msg: TestEventEnd): Promise<void>;
 }
 
-export class ConsoleReporter implements TestReporter {
+export class ConsoleTestReporter implements TestReporter {
   private console: Console;
   constructor() {
     this.console = globalThis.console as Console;
   }
 
-  async start(msg: StartMsg): Promise<void> {
-    this.console.log(`running ${msg.tests} tests`);
+  async start(event: TestEventStart): Promise<void> {
+    this.console.log(`running ${event.tests} tests`);
   }
 
-  async test(msg: TestMsg): Promise<void> {
-    const { result } = msg;
+  async result(event: TestEventResult): Promise<void> {
+    const { result } = event;
 
     if (result.passed) {
       this.console.log(
@@ -251,26 +251,16 @@ export class ConsoleReporter implements TestReporter {
     }
   }
 
-  async end(msg: EndMsg): Promise<void> {
-    const stats = msg.stats;
+  async end(event: TestEventEnd): Promise<void> {
+    const { stats, duration } = event;
     // Attempting to match the output of Rust's test runner.
     this.console.log(
       `\ntest result: ${stats.failed ? RED_BG_FAIL : GREEN_OK} ` +
         `${stats.passed} passed; ${stats.failed} failed; ` +
         `${stats.ignored} ignored; ${stats.measured} measured; ` +
         `${stats.filtered} filtered out ` +
-        `${formatDuration(msg.duration)}\n`
+        `${formatDuration(duration)}\n`
     );
-
-    if (stats!.failed > 0) {
-      this.console.log(`There were ${stats!.failed} test failures.`);
-      msg.results
-        .filter(testCase => !!testCase.error)
-        .forEach(testCase => {
-          this.console.log(`${RED_BG_FAIL} ${red(testCase.name)}`);
-          this.console.log(testCase.error);
-        });
-    }
   }
 }
 
@@ -290,7 +280,7 @@ export async function runTests({
   const testApi = new TestApi(TEST_REGISTRY, filterFn, failFast);
 
   if (!reporter) {
-    reporter = new ConsoleReporter();
+    reporter = new ConsoleTestReporter();
   }
 
   // @ts-ignore
@@ -301,18 +291,19 @@ export async function runTests({
     globalThis.console = disabledConsole;
   }
 
-  let endMsg: EndMsg;
+  let endMsg: TestEventEnd;
 
   for await (const testMsg of testApi) {
     switch (testMsg.kind) {
-      case MsgKind.Start:
+      case TestEvent.Start:
         await reporter.start(testMsg);
         continue;
-      case MsgKind.Test:
-        await reporter.test(testMsg);
+      case TestEvent.Result:
+        await reporter.result(testMsg);
         continue;
-      case MsgKind.End:
+      case TestEvent.End:
         endMsg = testMsg;
+        delete endMsg!.kind;
         await reporter.end(testMsg);
         continue;
     }
@@ -327,6 +318,5 @@ export async function runTests({
     exit(1);
   }
 
-  delete endMsg!.kind;
   return endMsg!;
 }

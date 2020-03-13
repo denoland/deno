@@ -49,40 +49,40 @@ declare namespace Deno {
     failed: number;
   }
 
-  enum MsgKind {
+  export enum TestEvent {
     Start = "start",
-    Test = "test",
+    Result = "result",
     End = "end"
   }
 
-  interface StartMsg {
-    kind: MsgKind.Start;
+  interface TestEventStart {
+    kind: TestEvent.Start;
     tests: number;
   }
 
-  interface TestMsg {
-    kind: MsgKind.Test;
+  interface TestEventResult {
+    kind: TestEvent.Result;
     result: TestResult;
   }
 
-  interface EndMsg {
-    kind: MsgKind.End;
+  interface TestEventEnd {
+    kind: TestEvent.End;
     stats: TestStats;
     duration: number;
     results: TestResult[];
   }
 
   interface TestReporter {
-    start(msg: StartMsg): Promise<void>;
-    test(msg: TestMsg): Promise<void>;
-    end(msg: EndMsg): Promise<void>;
+    start(event: TestEventStart): Promise<void>;
+    result(event: TestEventResult): Promise<void>;
+    end(event: TestEventEnd): Promise<void>;
   }
 
-  export class ConsoleReporter implements TestReporter {
+  export class ConsoleTestReporter implements TestReporter {
     constructor();
-    start(msg: StartMsg): Promise<void>;
-    test(msg: TestMsg): Promise<void>;
-    end(msg: EndMsg): Promise<void>;
+    start(event: TestEventStart): Promise<void>;
+    result(event: TestEventResult): Promise<void>;
+    end(event: TestEventEnd): Promise<void>;
   }
 
   export interface RunTestsOptions {

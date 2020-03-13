@@ -16,6 +16,7 @@ interface PermissionSetTestResult {
   passed: boolean;
   stats: Deno.TestStats;
   permsStr: string;
+  duration: number;
 }
 
 const PERMISSIONS: Deno.PermissionName[] = [
@@ -94,7 +95,7 @@ function spawnWorkerRunner(addr: string, perms: Permissions): Deno.Process {
 }
 
 async function runTestsForPermissionSet(
-  reporter: Deno.ConsoleReporter,
+  reporter: Deno.ConsoleTestReporter,
   perms: Permissions
 ): Promise<PermissionSetTestResult> {
   const permsFmt = fmtPerms(perms);
@@ -111,24 +112,24 @@ async function runTestsForPermissionSet(
   let err;
   let hasThrown = false;
   let expectedPassedTests;
-  let testStats;
+  let endEvent;
 
   try {
     for await (const line of readLines(conn)) {
       const msg = JSON.parse(line);
 
-      if (msg.kind === "start") {
+      if (msg.kind === Deno.TestEvent.Start) {
         expectedPassedTests = msg.tests;
         await reporter.start(msg);
         continue;
       }
 
-      if (msg.kind === "test") {
-        await reporter.test(msg);
+      if (msg.kind === Deno.TestEvent.Result) {
+        await reporter.result(msg);
         continue;
       }
 
-      testStats = msg.stats;
+      endEvent = msg;
       await reporter.end(msg);
       break;
     }
@@ -147,7 +148,7 @@ async function runTestsForPermissionSet(
     throw new Error("Worker runner didn't report start");
   }
 
-  if (typeof testStats === "undefined") {
+  if (typeof endEvent === "undefined") {
     throw new Error("Worker runner didn't report end");
   }
 
@@ -160,13 +161,14 @@ async function runTestsForPermissionSet(
 
   workerProcess.close();
 
-  const passed = expectedPassedTests === testStats.passed;
+  const passed = expectedPassedTests === endEvent.stats.passed;
 
   return {
     perms,
     passed,
     permsStr: permsFmt,
-    stats: testStats
+    duration: endEvent.duration,
+    stats: endEvent.stats
   };
 }
 
@@ -181,7 +183,7 @@ async function masterRunnerMain(): Promise<void> {
   }
 
   const testResults = new Set<PermissionSetTestResult>();
-  const consoleReporter = new Deno.ConsoleReporter();
+  const consoleReporter = new Deno.ConsoleTestReporter();
 
   for (const perms of permissionCombinations.values()) {
     const result = await runTestsForPermissionSet(consoleReporter, perms);
@@ -193,15 +195,14 @@ async function masterRunnerMain(): Promise<void> {
   let testsPassed = true;
 
   for (const testResult of testResults) {
-    const { permsStr, stats } = testResult;
-    // TODO: use common functionality from ConsoleReporter
+    const { permsStr, stats, duration } = testResult;
     console.log(`Summary for ${permsStr}`);
-    console.log(
-      `test result: ${stats.failed ? "FAIL" : "OK"} ` +
-        `${stats.passed} passed; ${stats.failed} failed; ` +
-        `${stats.ignored} ignored; ${stats.measured} measured; ` +
-        `${stats.filtered} filtered out\n`
-    );
+    await consoleReporter.end({
+      kind: Deno.TestEvent.End,
+      stats,
+      duration,
+      results: []
+    });
     testsPassed = testsPassed && testResult.passed;
   }
 

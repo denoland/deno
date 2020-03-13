@@ -257,15 +257,16 @@ export class SocketReporter implements Deno.TestReporter {
     await Deno.writeAll(this.conn, encodedMsg);
   }
 
-  async start(msg: Deno.StartMsg): Promise<void> {
+  async start(msg: Deno.TestEventStart): Promise<void> {
     await this.write(msg);
   }
 
-  async test(msg: Deno.TestMsg): Promise<void> {
+  async result(msg: Deno.TestEventResult): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const serializedMsg: any = { ...msg };
-    delete serializedMsg.result.fn;
 
+    // Error is a JS object, so we need to turn it into string to
+    // send over socket.
     if (serializedMsg.result.error) {
       serializedMsg.result.error = String(serializedMsg.result.error.stack);
     }
@@ -273,7 +274,7 @@ export class SocketReporter implements Deno.TestReporter {
     await this.write(serializedMsg);
   }
 
-  async end(msg: Deno.EndMsg): Promise<void> {
+  async end(msg: Deno.TestEventEnd): Promise<void> {
     await this.write(msg);
   }
 
