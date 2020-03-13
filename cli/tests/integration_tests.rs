@@ -274,6 +274,7 @@ fn js_unit_tests() {
     .arg("--reload")
     .arg("-A")
     .arg("cli/js/tests/unit_test_runner.ts")
+    .arg("--master")
     .spawn()
     .expect("failed to spawn script");
   let status = deno.wait().expect("failed to wait for the child process");
