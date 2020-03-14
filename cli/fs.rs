@@ -8,9 +8,6 @@ use std::path::{Component, Path, PathBuf};
 use deno_core::ErrBox;
 use walkdir::WalkDir;
 
-#[cfg(unix)]
-use nix::unistd::{chown as unix_chown, Gid, Uid};
-
 pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
   data: T,
@@ -49,25 +46,6 @@ pub fn write_file_2<T: AsRef<[u8]>>(
   }
 
   file.write_all(data.as_ref())
-}
-
-#[cfg(unix)]
-pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), ErrBox> {
-  let nix_uid = Uid::from_raw(uid);
-  let nix_gid = Gid::from_raw(gid);
-  unix_chown(path, Option::Some(nix_uid), Option::Some(nix_gid))
-    .map_err(ErrBox::from)
-}
-
-#[cfg(not(unix))]
-pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), ErrBox> {
-  // FAIL on Windows
-  // TODO: implement chown for Windows
-  let e = std::io::Error::new(
-    std::io::ErrorKind::Other,
-    "Not implemented".to_string(),
-  );
-  Err(ErrBox::from(e))
 }
 
 /// Normalize all itermediate components of the path (ie. remove "./" and "../" components).

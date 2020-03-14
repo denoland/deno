@@ -365,6 +365,28 @@ fn op_chmod(
   })
 }
 
+#[cfg(unix)]
+use nix::unistd::{chown as unix_chown, Gid, Uid};
+
+#[cfg(unix)]
+pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), ErrBox> {
+  let nix_uid = Uid::from_raw(uid);
+  let nix_gid = Gid::from_raw(gid);
+  unix_chown(path, Option::Some(nix_uid), Option::Some(nix_gid))
+    .map_err(ErrBox::from)
+}
+
+#[cfg(not(unix))]
+pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), ErrBox> {
+  // FAIL on Windows
+  // TODO: implement chown for Windows
+  let e = std::io::Error::new(
+    std::io::ErrorKind::Other,
+    "Not implemented".to_string(),
+  );
+  Err(ErrBox::from(e))
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ChownArgs {
@@ -387,7 +409,7 @@ fn op_chown(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_chown {}", path.display());
-    deno_fs::chown(args.path.as_ref(), args.uid, args.gid)?;
+    chown(args.path.as_ref(), args.uid, args.gid)?;
     Ok(json!({}))
   })
 }
