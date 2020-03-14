@@ -15,7 +15,7 @@ import {
   writeResponse
 } from "./io.ts";
 import { encode, decode } from "../strings/mod.ts";
-import { BufReader, UnexpectedEOFError, ReadLineResult } from "../io/bufio.ts";
+import { BufReader, ReadLineResult } from "../io/bufio.ts";
 import { chunkedBodyReader } from "./io.ts";
 import { ServerRequest, Response } from "./server.ts";
 import { StringReader } from "../io/readers.ts";
@@ -369,7 +369,7 @@ test(async function testReadRequestError(): Promise<void> {
     },
     {
       in: "GET / HTTP/1.1\r\nheader:foo\r\n",
-      err: UnexpectedEOFError
+      err: Deno.errors.UnexpectedEof
     },
     { in: "", err: Deno.EOF },
     {
@@ -437,7 +437,7 @@ test(async function testReadRequestError(): Promise<void> {
     } else if (typeof test.err === "string") {
       assertEquals(err.message, test.err);
     } else if (test.err) {
-      assert(err instanceof (test.err as typeof UnexpectedEOFError));
+      assert(err instanceof (test.err as typeof Deno.errors.UnexpectedEof));
     } else {
       assert(req instanceof ServerRequest);
       assert(test.headers);
