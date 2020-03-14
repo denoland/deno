@@ -20,8 +20,6 @@ declare namespace Deno {
     skip?: boolean;
   }
 
-  type TestOptions = Omit<TestDefinition, "fn" | "name">;
-
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module, or explicitly
    * when `Deno.runTests` is used */
@@ -29,15 +27,11 @@ declare namespace Deno {
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module, or explicitly
    * when `Deno.runTests` is used */
-  export function test(fn: TestFunction, options?: TestOptions): void;
+  export function test(fn: TestFunction): void;
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module, or explicitly
    * when `Deno.runTests` is used */
-  export function test(
-    name: string,
-    fn: TestFunction,
-    options?: TestOptions
-  ): void;
+  export function test(name: string, fn: TestFunction): void;
 
   enum TestStatus {
     Passed = "passed",

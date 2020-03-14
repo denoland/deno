@@ -22,58 +22,51 @@ export interface TestDefinition {
   skip?: boolean;
 }
 
-type TestOptions = Omit<TestDefinition, "fn" | "name">;
-
 const TEST_REGISTRY: TestDefinition[] = [];
 
 export function test(t: TestDefinition): void;
-export function test(fn: TestFunction, options?: TestOptions): void;
-export function test(
-  name: string,
-  fn: TestFunction,
-  options?: TestOptions
-): void;
+export function test(fn: TestFunction): void;
+export function test(name: string, fn: TestFunction): void;
 // Main test function provided by Deno, as you can see it merely
 // creates a new object with "name" and "fn" fields.
 export function test(
   t: string | TestDefinition | TestFunction,
-  fnOrOptions?: TestFunction | TestOptions,
-  options?: TestOptions
+  fn?: TestFunction
 ): void {
   let testDef: TestDefinition;
 
   if (typeof t === "string") {
-    if (!fnOrOptions || typeof fnOrOptions != "function") {
-      throw new Error("Missing test function");
+    if (!fn || typeof fn != "function") {
+      throw new TypeError("Missing test function");
     }
     if (!t) {
-      throw new Error("The name of test case can't be empty");
+      throw new TypeError("The name of test case can't be empty");
     }
     testDef = {
-      fn: fnOrOptions as TestFunction,
+      fn: fn as TestFunction,
       name: t,
-      skip: Boolean(options?.skip)
+      skip: false
     };
   } else if (typeof t === "function") {
     if (!t.name) {
-      throw new Error("The test function can't be anonymous");
+      throw new TypeError("The test function can't be anonymous");
     }
     testDef = {
       fn: t,
       name: t.name,
-      skip: Boolean((fnOrOptions as TestOptions)?.skip)
+      skip: false
     };
   } else {
     if (!t.fn) {
-      throw new Error("Missing test function");
+      throw new TypeError("Missing test function");
     }
     if (!t.name) {
-      throw new Error("The name of test case can't be empty");
+      throw new TypeError("The name of test case can't be empty");
     }
     testDef = { fn: t.fn, name: t.name, skip: Boolean(t.skip) };
   }
 
-  TEST_REGISTRY.push(testDef as TestDefinition);
+  TEST_REGISTRY.push(testDef);
 }
 
 interface TestStats {
