@@ -151,13 +151,14 @@ class TestApi {
         result.status = TestStatus.Skipped;
         this.stats.ignored++;
       } else {
+        const start = +new Date();
         try {
-          const start = +new Date();
           await fn();
           result.duration = +new Date() - start;
           result.status = TestStatus.Passed;
           this.stats.passed++;
         } catch (err) {
+          result.duration = +new Date() - start;
           result.status = TestStatus.Failed;
           result.error = err;
           this.stats.failed++;
@@ -234,7 +235,9 @@ export class ConsoleTestReporter implements TestReporter {
         );
         break;
       case TestStatus.Failed:
-        this.console.log(`${RED_FAILED}  ${result.name}`);
+        this.console.log(
+          `${RED_FAILED}  ${result.name} ${formatDuration(result.duration)}`
+        );
         this.console.log(result.error!);
         break;
       case TestStatus.Skipped:
