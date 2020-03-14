@@ -231,12 +231,12 @@ export class ConsoleTestReporter implements TestReporter {
     switch (result.status) {
       case TestStatus.Passed:
         this.console.log(
-          `${GREEN_OK}      ${result.name} ${formatDuration(result.duration)}`
+          `${GREEN_OK}      ${result.name} ${formatDuration(result.duration!)}`
         );
         break;
       case TestStatus.Failed:
         this.console.log(
-          `${RED_FAILED}  ${result.name} ${formatDuration(result.duration)}`
+          `${RED_FAILED}  ${result.name} ${formatDuration(result.duration!)}`
         );
         this.console.log(result.error!);
         break;
