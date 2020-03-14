@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file.
 
 import { BufReader } from "../io/bufio.ts";
-import { TextProtoReader, ProtocolError } from "./mod.ts";
+import { TextProtoReader } from "./mod.ts";
 import { stringsReader } from "../io/util.ts";
 import {
   assert,
@@ -134,7 +134,7 @@ test({
     } catch (e) {
       err = e;
     }
-    assert(err instanceof ProtocolError);
+    assert(err instanceof Deno.errors.InvalidData);
   }
 });
 
@@ -156,7 +156,7 @@ test({
     } catch (e) {
       err = e;
     }
-    assert(err instanceof ProtocolError);
+    assert(err instanceof Deno.errors.InvalidData);
   }
 });
 
