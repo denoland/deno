@@ -74,7 +74,6 @@ fn op_open(
   let args: OpenArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
   let state_ = state.clone();
-  let gave_mode = args.mode.is_some();
 
   let mut open_options = if let Some(mode) = args.mode {
     #[allow(unused_mut)]
@@ -99,12 +98,6 @@ fn op_open(
       state.check_write(&path)?;
     }
 
-    if gave_mode && !(options.create || options.create_new) {
-      return Err(OpError::type_error(
-        "specified mode without allowing file creation".to_string(),
-      ));
-    }
-
     open_options
       .read(options.read)
       .create(options.create)
@@ -117,11 +110,6 @@ fn op_open(
     match open_mode {
       "r" => {
         state.check_read(&path)?;
-        if gave_mode {
-          return Err(OpError::type_error(
-            "specified mode for read-only open".to_string(),
-          ));
-        }
       }
       "w" | "a" | "x" => {
         state.check_write(&path)?;
