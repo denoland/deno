@@ -206,10 +206,7 @@ pub fn mksnapshot_bundle(
   );
   // instantiate the bundle and delete __proto__ for security reasons
   // this is intentionally not compliant with ECMA-262 Annex B.2.2.1.
-  let script = &format!(
-    "__instantiate(\"{}\");\n\ndelete Object.prototype.__proto__;",
-    main_module_name
-  );
+  let script = &format!("__instantiate(\"{}\");", main_module_name);
   js_check(isolate.execute("anon", script));
   write_snapshot(isolate, snapshot_filename)?;
   Ok(())
