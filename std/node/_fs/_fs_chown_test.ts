@@ -48,4 +48,3 @@ if (Deno.build.os !== "win") {
     }
   });
 }
-

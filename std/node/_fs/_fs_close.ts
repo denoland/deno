@@ -2,10 +2,7 @@
 
 import { CallbackWithError } from "./_fs_common.ts";
 
-export function close(
-  fd: number,
-  callback: CallbackWithError
-): void {
+export function close(fd: number, callback: CallbackWithError): void {
   new Promise(async (resolve, reject) => {
     try {
       Deno.close(fd);
