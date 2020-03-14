@@ -431,7 +431,7 @@ fn op_copy_file(
       return Err(OpError::not_found("File not found".to_string()));
     }
 
-    // returns length of from as u64 (we ignore)
+    // returns size of from as u64 (we ignore)
     fs::copy(&from, &to)?;
     Ok(json!({}))
   })

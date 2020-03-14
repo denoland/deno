@@ -334,7 +334,7 @@ export class Tar {
       );
     }
 
-    const fileSize = info?.length ?? opts.contentSize;
+    const fileSize = info?.size ?? opts.contentSize;
     assert(fileSize != null, "fileSize must be set");
     const tarData: TarDataWithSource = {
       fileName,

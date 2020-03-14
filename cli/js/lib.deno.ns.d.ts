@@ -600,7 +600,7 @@ declare namespace Deno {
     append?: boolean;
     /** Sets the option for truncating a previous file. If a file is
      * successfully opened with this option set it will truncate the file to `0`
-     * length if it already exists. The file must be opened with write access
+     * size if it already exists. The file must be opened with write access
      * for truncate to work. */
     truncate?: boolean;
     /** Sets the option to allow creating a new file, if one doesn't already
@@ -1002,7 +1002,7 @@ declare namespace Deno {
    * `readdirSync`. */
   export interface FileInfo {
     /** The size of the file, in bytes. */
-    length: number;
+    size: number;
     /** The last modification time of the file. This corresponds to the `mtime`
      * field from `stat` on Linux/Mac OS and `ftLastWriteTime` on Windows. This
      * may not be available on all platforms. */
