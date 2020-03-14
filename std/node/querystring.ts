@@ -5,14 +5,14 @@ interface ParseOptions {
 
 export function parse(
   str: string,
-  sep: string = "&",
-  eq: string = "=",
+  sep = "&",
+  eq = "=",
   { decodeURIComponent = unescape, maxKeys = 1000 }: ParseOptions = {}
-): any {
-  let entries = str
+): {} {
+  const entries = str
     .split(sep)
     .map(entry => entry.split(eq).map(decodeURIComponent));
-  let final: any = {};
+  const final: {} = {};
 
   let i = 0;
   while (true) {
@@ -44,11 +44,11 @@ interface StringifyOptions {
 
 export function stringify(
   obj: object,
-  sep: string = "&",
-  eq: string = "=",
+  sep = "&",
+  eq = "=",
   { encodeURIComponent = escape }: StringifyOptions = {}
 ): string {
-  let final = [];
+  const final = [];
 
   for (const entry of Object.entries(obj)) {
     if (Array.isArray(entry[1])) {
