@@ -13,11 +13,17 @@ fn is_supported(p: &Path) -> bool {
   if let Some(Component::Normal(basename_os_str)) = p.components().next_back() {
     let basename = basename_os_str.to_string_lossy();
     basename.ends_with("_test.ts")
+      || basename.ends_with("_test.tsx")
       || basename.ends_with("_test.js")
+      || basename.ends_with("_test.jsx")
       || basename.ends_with(".test.ts")
+      || basename.ends_with(".test.tsx")
       || basename.ends_with(".test.js")
+      || basename.ends_with(".test.jsx")
       || basename == "test.ts"
+      || basename == "test.tsx"
       || basename == "test.js"
+      || basename == "test.jsx"
   } else {
     false
   }
@@ -108,11 +114,17 @@ mod tests {
   #[test]
   fn test_is_supported() {
     assert!(is_supported(Path::new("tests/subdir/foo_test.ts")));
+    assert!(is_supported(Path::new("tests/subdir/foo_test.tsx")));
     assert!(is_supported(Path::new("tests/subdir/foo_test.js")));
+    assert!(is_supported(Path::new("tests/subdir/foo_test.jsx")));
     assert!(is_supported(Path::new("bar/foo.test.ts")));
+    assert!(is_supported(Path::new("bar/foo.test.tsx")));
     assert!(is_supported(Path::new("bar/foo.test.js")));
+    assert!(is_supported(Path::new("bar/foo.test.jsx")));
     assert!(is_supported(Path::new("foo/bar/test.js")));
+    assert!(is_supported(Path::new("foo/bar/test.jsx")));
     assert!(is_supported(Path::new("foo/bar/test.ts")));
+    assert!(is_supported(Path::new("foo/bar/test.tsx")));
     assert!(!is_supported(Path::new("README.md")));
     assert!(!is_supported(Path::new("lib/typescript.d.ts")));
     assert!(!is_supported(Path::new("notatest.js")));
