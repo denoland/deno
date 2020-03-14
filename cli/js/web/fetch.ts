@@ -509,7 +509,11 @@ export async function fetch(
             }
           }
           if (!boundary) {
-            boundary = "----------" + Array.from(Array(32)).map(() => Math.random().toString(36)[2] || 0).join("");
+            boundary =
+              "----------" +
+              Array.from(Array(32))
+                .map(() => Math.random().toString(36)[2] || 0)
+                .join("");
           }
 
           let payload = "";
@@ -521,7 +525,8 @@ export async function fetch(
             }
             part += "\r\n";
             if (fieldValue instanceof DomFileImpl) {
-              part += `Content-Type: ${fieldValue.type || "application/octet-stream"}\r\n`;
+              part += `Content-Type: ${fieldValue.type ||
+                "application/octet-stream"}\r\n`;
             }
             part += "\r\n";
             if (fieldValue instanceof DomFileImpl) {
