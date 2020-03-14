@@ -42,20 +42,12 @@ export function test(
     if (!t) {
       throw new TypeError("The name of test case can't be empty");
     }
-    testDef = {
-      fn: fn as TestFunction,
-      name: t,
-      skip: false
-    };
+    testDef = { fn: fn as TestFunction, name: t, skip: false };
   } else if (typeof t === "function") {
     if (!t.name) {
       throw new TypeError("The test function can't be anonymous");
     }
-    testDef = {
-      fn: t,
-      name: t.name,
-      skip: false
-    };
+    testDef = { fn: t, name: t.name, skip: false };
   } else {
     if (!t.fn) {
       throw new TypeError("Missing test function");
