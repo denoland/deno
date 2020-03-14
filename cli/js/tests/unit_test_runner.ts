@@ -144,16 +144,17 @@ async function runTestsForPermissionSet(
         expectedPassedTests = msg.tests;
         await reporter.start(msg);
         continue;
-      }
-
-      if (msg.kind === Deno.TestEvent.Result) {
-        await reporter.result(msg);
+      } else if (msg.kind === Deno.TestEvent.TestStart) {
+        await reporter.testStart(msg);
         continue;
+      } else if (msg.kind === Deno.TestEvent.TestEnd) {
+        await reporter.testEnd(msg);
+        continue;
+      } else {
+        endEvent = msg;
+        await reporter.end(msg);
+        break;
       }
-
-      endEvent = msg;
-      await reporter.end(msg);
-      break;
     }
   } catch (e) {
     hasThrown = true;

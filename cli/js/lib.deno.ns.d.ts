@@ -56,7 +56,8 @@ declare namespace Deno {
 
   export enum TestEvent {
     Start = "start",
-    Result = "result",
+    TestStart = "testStart",
+    TestEnd = "testEnd",
     End = "end"
   }
 
@@ -65,8 +66,13 @@ declare namespace Deno {
     tests: number;
   }
 
-  interface TestEventResult {
-    kind: TestEvent.Result;
+  interface TestEventTestStart {
+    kind: TestEvent.TestStart;
+    name: string;
+  }
+
+  interface TestEventTestEnd {
+    kind: TestEvent.TestEnd;
     result: TestResult;
   }
 
@@ -79,14 +85,16 @@ declare namespace Deno {
 
   interface TestReporter {
     start(event: TestEventStart): Promise<void>;
-    result(event: TestEventResult): Promise<void>;
+    testStart(msg: TestEventTestStart): Promise<void>;
+    testEnd(msg: TestEventTestEnd): Promise<void>;
     end(event: TestEventEnd): Promise<void>;
   }
 
   export class ConsoleTestReporter implements TestReporter {
     constructor();
     start(event: TestEventStart): Promise<void>;
-    result(event: TestEventResult): Promise<void>;
+    testStart(msg: TestEventTestStart): Promise<void>;
+    testEnd(msg: TestEventTestEnd): Promise<void>;
     end(event: TestEventEnd): Promise<void>;
   }
 

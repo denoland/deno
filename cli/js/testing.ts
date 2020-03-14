@@ -7,6 +7,9 @@ const RED_FAILED = red("FAILED");
 const GREEN_OK = green("OK");
 const YELLOW_SKIPPED = yellow("SKIPPED");
 const RED_BG_FAIL = bgRed(" FAIL ");
+// Clear the previous line of the console.
+// see: http://ascii-table.com/ansi-escape-sequences-vt-100.php
+const CLEAR_LINE = "\x1b[A\r";
 const disabledConsole = new Console((_x: string, _isErr?: boolean): void => {});
 
 function formatDuration(time = 0): string {
@@ -93,7 +96,8 @@ interface TestResult {
 
 export enum TestEvent {
   Start = "start",
-  Result = "result",
+  TestStart = "testStart",
+  TestEnd = "testEnd",
   End = "end"
 }
 
@@ -102,8 +106,13 @@ interface TestEventStart {
   tests: number;
 }
 
-interface TestEventResult {
-  kind: TestEvent.Result;
+interface TestEventTestStart {
+  kind: TestEvent.TestStart;
+  name: string;
+}
+
+interface TestEventTestEnd {
+  kind: TestEvent.TestEnd;
   result: TestResult;
 }
 
@@ -136,7 +145,7 @@ class TestApi {
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<
-    TestEventStart | TestEventResult | TestEventEnd
+    TestEventStart | TestEventTestStart | TestEventTestEnd | TestEventEnd
   > {
     yield {
       kind: TestEvent.Start,
@@ -147,6 +156,7 @@ class TestApi {
     const suiteStart = +new Date();
     for (const { name, fn, skip } of this.testsToRun) {
       const result: Partial<TestResult> = { name };
+      yield { kind: TestEvent.TestStart, name };
       if (skip) {
         result.status = TestStatus.Skipped;
         this.stats.ignored++;
@@ -164,7 +174,7 @@ class TestApi {
           this.stats.failed++;
         }
       }
-      yield { kind: TestEvent.Result, result: result as TestResult };
+      yield { kind: TestEvent.TestEnd, result: result as TestResult };
       results.push(result as TestResult);
       if (this.failFast && result.error != null) {
         break;
@@ -211,7 +221,8 @@ function createFilterFn(
 
 interface TestReporter {
   start(msg: TestEventStart): Promise<void>;
-  result(msg: TestEventResult): Promise<void>;
+  testStart(msg: TestEventTestStart): Promise<void>;
+  testEnd(msg: TestEventTestEnd): Promise<void>;
   end(msg: TestEventEnd): Promise<void>;
 }
 
@@ -225,7 +236,13 @@ export class ConsoleTestReporter implements TestReporter {
     this.console.log(`running ${event.tests} tests`);
   }
 
-  async result(event: TestEventResult): Promise<void> {
+  async testStart(event: TestEventTestStart): Promise<void> {
+    const { name } = event;
+
+    console.log(`${name} ...`);
+  }
+
+  async testEnd(event: TestEventTestEnd): Promise<void> {
     const { result } = event;
 
     switch (result.status) {
@@ -293,8 +310,11 @@ export async function runTests({
       case TestEvent.Start:
         await reporter.start(testMsg);
         continue;
-      case TestEvent.Result:
-        await reporter.result(testMsg);
+      case TestEvent.TestStart:
+        await reporter.testStart(testMsg);
+        continue;
+      case TestEvent.TestEnd:
+        await reporter.testEnd(testMsg);
         continue;
       case TestEvent.End:
         endMsg = testMsg;
