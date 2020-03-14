@@ -675,7 +675,6 @@ declare namespace Deno {
     createNew?: boolean;
     /** Permissions to use if creating the file (defaults to `0o666`, before
      * the process's umask).
-     * It's an error to specify mode without also setting create or createNew to `true`.
      * Ignored on Windows. */
     mode?: number;
   }
