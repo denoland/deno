@@ -14,8 +14,7 @@ import {
   readFrame,
   unmask,
   writeFrame,
-  createWebSocket,
-  SocketClosedError
+  createWebSocket
 } from "./mod.ts";
 import { encode, decode } from "../strings/mod.ts";
 import Writer = Deno.Writer;
@@ -331,7 +330,7 @@ test("[ws] createSecKeyHasCorrectLength", () => {
   assertEquals(atob(secKey).length, 16);
 });
 
-test("[ws] WebSocket should throw SocketClosedError when peer closed connection without close frame", async () => {
+test("[ws] WebSocket should throw `Deno.errors.ConnectionReset` when peer closed connection without close frame", async () => {
   const buf = new Buffer();
   const eofReader: Deno.Reader = {
     async read(_: Uint8Array): Promise<number | Deno.EOF> {
@@ -341,12 +340,15 @@ test("[ws] WebSocket should throw SocketClosedError when peer closed connection 
   const conn = dummyConn(eofReader, buf);
   const sock = createWebSocket({ conn });
   sock.closeForce();
-  await assertThrowsAsync(() => sock.send("hello"), SocketClosedError);
-  await assertThrowsAsync(() => sock.ping(), SocketClosedError);
-  await assertThrowsAsync(() => sock.close(0), SocketClosedError);
+  await assertThrowsAsync(
+    () => sock.send("hello"),
+    Deno.errors.ConnectionReset
+  );
+  await assertThrowsAsync(() => sock.ping(), Deno.errors.ConnectionReset);
+  await assertThrowsAsync(() => sock.close(0), Deno.errors.ConnectionReset);
 });
 
-test("[ws] WebSocket shouldn't throw UnexpectedEOFError on recive()", async () => {
+test("[ws] WebSocket shouldn't throw `Deno.errors.UnexpectedEof` on recive()", async () => {
   const buf = new Buffer();
   const eofReader: Deno.Reader = {
     async read(_: Uint8Array): Promise<number | Deno.EOF> {
@@ -382,8 +384,8 @@ test("[ws] WebSocket should reject sending promise when connection reset forcely
   sock.closeForce();
   assertEquals(sock.isClosed, true);
   const [a, b, c] = await p;
-  assert(a instanceof SocketClosedError);
-  assert(b instanceof SocketClosedError);
-  assert(c instanceof SocketClosedError);
+  assert(a instanceof Deno.errors.ConnectionReset);
+  assert(b instanceof Deno.errors.ConnectionReset);
+  assert(c instanceof Deno.errors.ConnectionReset);
   clearTimeout(timer);
 });

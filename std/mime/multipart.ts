@@ -10,7 +10,7 @@ import { copyN } from "../io/ioutil.ts";
 import { MultiReader } from "../io/readers.ts";
 import { extname } from "../path/mod.ts";
 import { tempFile } from "../io/util.ts";
-import { BufReader, BufWriter, UnexpectedEOFError } from "../io/bufio.ts";
+import { BufReader, BufWriter } from "../io/bufio.ts";
 import { encoder } from "../strings/mod.ts";
 import { assertStrictEq, assert } from "../testing/asserts.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
@@ -166,7 +166,7 @@ class PartReader implements Reader, Closer {
       peekLength = max(peekLength, br.buffered());
       const peekBuf = await br.peek(peekLength);
       if (peekBuf === Deno.EOF) {
-        throw new UnexpectedEOFError();
+        throw new Deno.errors.UnexpectedEof();
       }
       const eof = peekBuf.length < peekLength;
       this.n = scanUntilBoundary(
@@ -352,14 +352,14 @@ export class MultipartReader {
     for (;;) {
       const line = await this.bufReader.readSlice("\n".charCodeAt(0));
       if (line === Deno.EOF) {
-        throw new UnexpectedEOFError();
+        throw new Deno.errors.UnexpectedEof();
       }
       if (this.isBoundaryDelimiterLine(line)) {
         this.partsRead++;
         const r = new TextProtoReader(this.bufReader);
         const headers = await r.readMIMEHeader();
         if (headers === Deno.EOF) {
-          throw new UnexpectedEOFError();
+          throw new Deno.errors.UnexpectedEof();
         }
         const np = new PartReader(this, headers);
         this.currentPart = np;

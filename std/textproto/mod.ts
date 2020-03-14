@@ -3,7 +3,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import { BufReader, UnexpectedEOFError } from "../io/bufio.ts";
+import { BufReader } from "../io/bufio.ts";
 import { charCode } from "../io/util.ts";
 
 const asciiDecoder = new TextDecoder();
@@ -12,13 +12,6 @@ function str(buf: Uint8Array | null | undefined): string {
     return "";
   } else {
     return asciiDecoder.decode(buf);
-  }
-}
-
-export class ProtocolError extends Error {
-  constructor(msg: string) {
-    super(msg);
-    this.name = "ProtocolError";
   }
 }
 
@@ -79,16 +72,16 @@ export class TextProtoReader {
 
     buf = await this.r.peek(1);
     if (buf === Deno.EOF) {
-      throw new UnexpectedEOFError();
+      throw new Deno.errors.UnexpectedEof();
     } else if (buf[0] == charCode(" ") || buf[0] == charCode("\t")) {
-      throw new ProtocolError(
+      throw new Deno.errors.InvalidData(
         `malformed MIME header initial line: ${str(line)}`
       );
     }
 
     while (true) {
       const kv = await this.readLineSlice(); // readContinuedLineSlice
-      if (kv === Deno.EOF) throw new UnexpectedEOFError();
+      if (kv === Deno.EOF) throw new Deno.errors.UnexpectedEof();
       if (kv.byteLength === 0) return m;
 
       // Key ends at first colon; should not have trailing spaces
@@ -96,7 +89,9 @@ export class TextProtoReader {
       // them if present.
       let i = kv.indexOf(charCode(":"));
       if (i < 0) {
-        throw new ProtocolError(`malformed MIME header line: ${str(kv)}`);
+        throw new Deno.errors.InvalidData(
+          `malformed MIME header line: ${str(kv)}`
+        );
       }
       let endKey = i;
       while (endKey > 0 && kv[endKey - 1] == charCode(" ")) {
@@ -108,7 +103,7 @@ export class TextProtoReader {
 
       // As per RFC 7230 field-name is a token,
       // tokens consist of one or more chars.
-      // We could return a ProtocolError here,
+      // We could throw `Deno.errors.InvalidData` here,
       // but better to be liberal in what we
       // accept, so if we get an empty key, skip it.
       if (key == "") {

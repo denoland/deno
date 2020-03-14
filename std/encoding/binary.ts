@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { UnexpectedEOFError } from "../io/bufio.ts";
-
 type RawBaseTypes = "int8" | "int16" | "int32" | "uint8" | "uint16" | "uint32";
 type RawNumberTypes = RawBaseTypes | "float32" | "float64";
 type RawBigTypes = RawBaseTypes | "int64" | "uint64";
@@ -46,14 +44,14 @@ export function sizeof(dataType: RawTypes): number {
 
 /** Reads `n` bytes from `r`.
  *
- * Returns it in a `Uint8Array`, or throws `UnexpectedEOFError` if `n` bytes cannot be read. */
+ * Returns it in a `Uint8Array`, or throws `Deno.errors.UnexpectedEof` if `n` bytes cannot be read. */
 export async function getNBytes(
   r: Deno.Reader,
   n: number
 ): Promise<Uint8Array> {
   const scratch = new Uint8Array(n);
   const nRead = await r.read(scratch);
-  if (nRead === Deno.EOF || nRead < n) throw new UnexpectedEOFError();
+  if (nRead === Deno.EOF || nRead < n) throw new Deno.errors.UnexpectedEof();
   return scratch;
 }
 
@@ -199,7 +197,7 @@ export function putVarbig(
 
 /** Reads a number from `r`, comsuming `sizeof(o.dataType)` bytes. Data-type defaults to `int32`.
  *
- * Returns it as `number`, or throws `UnexpectedEOFError` if not enough bytes can be read. */
+ * Returns it as `number`, or throws `Deno.errors.UnexpectedEof` if not enough bytes can be read. */
 export async function readVarnum(
   r: Deno.Reader,
   o: VarnumOptions = {}
@@ -211,7 +209,7 @@ export async function readVarnum(
 
 /** Reads an integer from `r`, comsuming `sizeof(o.dataType)` bytes. Data-type defaults to `int64`.
  *
- * Returns it as `bigint`, or throws `UnexpectedEOFError` if not enough bytes can be read. */
+ * Returns it as `bigint`, or throws `Deno.errors.UnexpectedEof` if not enough bytes can be read. */
 export async function readVarbig(
   r: Deno.Reader,
   o: VarbigOptions = {}
