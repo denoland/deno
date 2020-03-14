@@ -272,8 +272,7 @@ fn js_unit_tests() {
     .current_dir(util::root_path())
     .arg("run")
     .arg("--reload")
-    .arg("--allow-run")
-    .arg("--allow-env")
+    .arg("-A")
     .arg("cli/js/tests/unit_test_runner.ts")
     .spawn()
     .expect("failed to spawn script");

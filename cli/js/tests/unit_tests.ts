@@ -1,7 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// This test is executed as part of tools/test.py
-// But it can also be run manually: ./target/debug/deno cli/js/tests/unit_tests.ts
+// This test is executed as part of unit test suite.
+//
+// Test runner automatically spawns subprocesses for each required permissions combination.
 
 import "./blob_test.ts";
 import "./body_test.ts";
@@ -63,7 +64,3 @@ import "./utime_test.ts";
 import "./write_file_test.ts";
 import "./performance_test.ts";
 import "./version_test.ts";
-
-if (import.meta.main) {
-  await Deno.runTests();
-}

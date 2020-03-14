@@ -1,4 +1,4 @@
-import { BufReader, UnexpectedEOFError, BufWriter } from "../io/bufio.ts";
+import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { assert } from "../testing/asserts.ts";
 import { encoder } from "../strings/mod.ts";
@@ -57,13 +57,13 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
         chunks.shift();
         // Consume \r\n;
         if ((await tp.readLine()) === Deno.EOF) {
-          throw new UnexpectedEOFError();
+          throw new Deno.errors.UnexpectedEof();
         }
       }
       return readLength;
     }
     const line = await tp.readLine();
-    if (line === Deno.EOF) throw new UnexpectedEOFError();
+    if (line === Deno.EOF) throw new Deno.errors.UnexpectedEof();
     // TODO: handle chunk extension
     const [chunkSizeString] = line.split(";");
     const chunkSize = parseInt(chunkSizeString, 16);
@@ -74,12 +74,12 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
       if (chunkSize > buf.byteLength) {
         let eof = await r.readFull(buf);
         if (eof === Deno.EOF) {
-          throw new UnexpectedEOFError();
+          throw new Deno.errors.UnexpectedEof();
         }
         const restChunk = new Uint8Array(chunkSize - buf.byteLength);
         eof = await r.readFull(restChunk);
         if (eof === Deno.EOF) {
-          throw new UnexpectedEOFError();
+          throw new Deno.errors.UnexpectedEof();
         } else {
           chunks.push({
             offset: 0,
@@ -91,11 +91,11 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
         const bufToFill = buf.subarray(0, chunkSize);
         const eof = await r.readFull(bufToFill);
         if (eof === Deno.EOF) {
-          throw new UnexpectedEOFError();
+          throw new Deno.errors.UnexpectedEof();
         }
         // Consume \r\n
         if ((await tp.readLine()) === Deno.EOF) {
-          throw new UnexpectedEOFError();
+          throw new Deno.errors.UnexpectedEof();
         }
         return chunkSize;
       }
@@ -103,7 +103,7 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
       assert(chunkSize === 0);
       // Consume \r\n
       if ((await r.readLine()) === Deno.EOF) {
-        throw new UnexpectedEOFError();
+        throw new Deno.errors.UnexpectedEof();
       }
       await readTrailers(h, r);
       finished = true;
@@ -348,7 +348,7 @@ export async function readRequest(
   const firstLine = await tp.readLine(); // e.g. GET /index.html HTTP/1.0
   if (firstLine === Deno.EOF) return Deno.EOF;
   const headers = await tp.readMIMEHeader();
-  if (headers === Deno.EOF) throw new UnexpectedEOFError();
+  if (headers === Deno.EOF) throw new Deno.errors.UnexpectedEof();
 
   const req = new ServerRequest();
   req.conn = conn;
