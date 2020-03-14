@@ -1536,7 +1536,7 @@ declare namespace __workers {
     type?: "classic" | "module";
     name?: string;
   }
-  export class WorkerImpl implements Worker {
+  export class WorkerImpl extends EventTarget implements Worker {
     private readonly id;
     private isClosing;
     private readonly isClosedPromise;

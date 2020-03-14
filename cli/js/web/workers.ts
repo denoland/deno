@@ -175,9 +175,11 @@ export class WorkerImpl extends EventTarget implements Worker {
     let handled = false;
     if (this.onerror) {
       this.onerror(event);
-      if (event.defaultPrevented) {
-        handled = true;
-      }
+    }
+
+    this.dispatchEvent(event);
+    if (event.defaultPrevented) {
+      handled = true;
     }
 
     return handled;
@@ -199,6 +201,11 @@ export class WorkerImpl extends EventTarget implements Worker {
           const message = decodeMessage(new Uint8Array(event.data));
           this.onmessage({ data: message });
         }
+        // TODO: this is being handled in a type unsafe way, it should be type safe
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ev = new Event("message", { cancelable: false }) as any;
+        ev.data = event.data;
+        this.dispatchEvent(ev);
         continue;
       }
 
