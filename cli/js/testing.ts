@@ -40,7 +40,7 @@ export function test(
       throw new TypeError("Missing test function");
     }
     if (!t) {
-      throw new TypeError("The name of test case can't be empty");
+      throw new TypeError("The test name can't be empty");
     }
     testDef = { fn: fn as TestFunction, name: t, skip: false };
   } else if (typeof t === "function") {
@@ -53,7 +53,7 @@ export function test(
       throw new TypeError("Missing test function");
     }
     if (!t.name) {
-      throw new TypeError("The name of test case can't be empty");
+      throw new TypeError("The test name can't be empty");
     }
     testDef = { fn: t.fn, name: t.name, skip: Boolean(t.skip) };
   }
