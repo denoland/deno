@@ -1,6 +1,6 @@
 interface ParseOptions {
-  decodeURIComponent: (string: string) => string;
-  maxKeys: number;
+  decodeURIComponent?: (string: string) => string;
+  maxKeys?: number;
 }
 
 export function parse(
@@ -39,7 +39,7 @@ export function parse(
 }
 
 interface StringifyOptions {
-  encodeURIComponent: (string: string) => string;
+  encodeURIComponent?: (string: string) => string;
 }
 
 export function stringify(
