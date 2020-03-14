@@ -107,7 +107,7 @@ jobs:
           cargo --version
 
       - name: Start sccache (azure)
-        if: !startsWith(matrix.os, 'windows')
+        if: startsWith(matrix.os, 'windows') == false
         env:
           SCCACHE_AZURE_BLOB_CONTAINER: deno-sccache2
           SCCACHE_AZURE_CONNECTION_STRING: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING || 'DefaultEndpointsProtocol=https;AccountName=denosccache;EndpointSuffix=core.windows.net' }}
