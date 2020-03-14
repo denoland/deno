@@ -598,9 +598,15 @@ fn decode(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let uint8_array = match v8::Local::<v8::Uint8Array>::try_from(args.get(0)) {
-    Ok(s) => s,
-    Err(_) => {
+  let buf = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(0)) {
+    Ok(view) => {
+      let byte_offset = view.byte_offset();
+      let byte_length = view.byte_length();
+      let backing_store = view.buffer().unwrap().get_backing_store();
+      let buf = unsafe { &**backing_store.get() };
+      &buf[byte_offset..byte_offset + byte_length]
+    }
+    Err(..) => {
       let msg = v8::String::new(scope, "Invalid argument").unwrap();
       let exception = v8::Exception::type_error(scope, msg);
       scope.isolate().throw_exception(exception);
@@ -608,12 +614,8 @@ fn decode(
     }
   };
 
-  let maybe_array_buffer = uint8_array.buffer();
-  let ab = maybe_array_buffer.unwrap();
-  let backing_store = ab.get_backing_store();
-  let buf = unsafe { &**backing_store.get() };
   let text_str =
-    v8::String::new_from_utf8(scope, buf, v8::NewStringType::Normal).unwrap();
+    v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal).unwrap();
   rv.set(text_str.into())
 }
 
