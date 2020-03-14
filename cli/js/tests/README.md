@@ -37,11 +37,58 @@ ways:
 - sanitization of async ops - ensuring that tests don't leak async ops by
   ensuring that all started async ops are done before test finishes
 
-`unit_test_runner.ts` is main script used to run unit tests.
+## Running tests
+
+`unit_test_runner.ts` is the main script used to run unit tests.
 
 Runner discoveres required permissions combinations by loading
 `cli/js/tests/unit_tests.ts` and going through all registered instances of
-`unitTest`. For each discovered permission combination a new Deno process is
-created with respective `--allow-*` flags which loads
-`cli/js/tests/unit_tests.ts` and executes all `unitTest` that match runtime
-permissions.
+`unitTest`.
+
+There are three ways to run `unit_test_runner.ts`:
+
+- run tests matching current process permissions
+
+```
+// run tests that don't require any permissions
+target/debug/deno unit_test_runner.ts
+
+// run tests with "net" permission
+target/debug/deno --allow-net unit_test_runner.ts
+
+target/debug/deno --allow-net --allow-read unit_test_runner.ts
+```
+
+- run all tests - "master" mode, that spawns worker processes for each
+  discovered permission combination:
+
+```
+target/debug/deno -A unit_test_runner.ts --master
+```
+
+By default all output of worker processes is discarded; for debug purposes
+`--verbose` flag can be provided to preserve output from worker
+
+```
+target/debug/deno -A unit_test_runner.ts --master --verbose
+```
+
+- "worker" mode; communicates with parent using TCP socket on provided address;
+  after initial setup drops permissions to specified set. It shouldn't be used
+  directly, only be "master" process.
+
+```
+target/debug/deno -A unit_test_runner.ts --worker --addr=127.0.0.1:4500 --perms=net,write,run
+```
+
+### Filtering
+
+Runner supports basic test filtering by name:
+
+```
+target/debug/deno unit_test_runner.ts -- netAccept
+
+target/debug/deno -A unit_test_runner.ts --master -- netAccept
+```
+
+Filter string must be specified after "--" argument

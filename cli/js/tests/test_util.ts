@@ -13,6 +13,7 @@ export {
   fail
 } from "../../../std/testing/asserts.ts";
 export { readLines } from "../../../std/io/bufio.ts";
+export { parse as parseArgs } from "../../../std/flags/mod.ts";
 
 export interface Permissions {
   read: boolean;
