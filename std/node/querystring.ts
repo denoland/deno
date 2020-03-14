@@ -8,11 +8,11 @@ export function parse(
   sep = "&",
   eq = "=",
   { decodeURIComponent = unescape, maxKeys = 1000 }: ParseOptions = {}
-): {} {
+): { [key: string]: string[] | string } {
   const entries = str
     .split(sep)
     .map(entry => entry.split(eq).map(decodeURIComponent));
-  const final: {} = {};
+  const final: { [key: string]: string[] | string } = {};
 
   let i = 0;
   while (true) {
@@ -21,12 +21,11 @@ export function parse(
     }
 
     const [key, val] = entries[i];
-
     if (final[key]) {
       if (Array.isArray(final[key])) {
-        final[key].push(val);
+        (final[key] as string[]).push(val);
       } else {
-        final[key] = [final[key], val];
+        final[key] = [final[key] as string, val];
       }
     } else {
       final[key] = val;
