@@ -1,15 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { bgRed, gray, green, italic, red, yellow } from "./colors.ts";
 import { exit } from "./ops/os.ts";
-import { Console } from "./web/console.ts";
+import { Console, stringifyArgs } from "./web/console.ts";
+import { stdout } from "./files.ts";
+import { TextEncoder } from "./web/text_encoding.ts";
 
 const RED_FAILED = red("FAILED");
-const GREEN_OK = green("OK");
+const GREEN_OK = green("ok");
 const YELLOW_SKIPPED = yellow("SKIPPED");
 const RED_BG_FAIL = bgRed(" FAIL ");
-// Clear the previous line of the console.
-// see: http://ascii-table.com/ansi-escape-sequences-vt-100.php
-const CLEAR_LINE = "\x1b[A\r";
 const disabledConsole = new Console((_x: string, _isErr?: boolean): void => {});
 
 function formatDuration(time = 0): string {
@@ -227,19 +226,30 @@ interface TestReporter {
 }
 
 export class ConsoleTestReporter implements TestReporter {
-  private console: Console;
+  private encoder: TextEncoder;
+
   constructor() {
-    this.console = globalThis.console as Console;
+    this.encoder = new TextEncoder();
+  }
+
+  private log(msg: string, noNewLine = false): void {
+    // Using `core.print` here because it doesn't force new lines
+    // compared to `console.log` (which uses core.print anyway)
+    if (!noNewLine) {
+      msg += "\n";
+    }
+
+    stdout.writeSync(this.encoder.encode(msg));
   }
 
   async start(event: TestEventStart): Promise<void> {
-    this.console.log(`running ${event.tests} tests`);
+    this.log(`running ${event.tests} tests`);
   }
 
   async testStart(event: TestEventTestStart): Promise<void> {
     const { name } = event;
 
-    console.log(`${name} ...`);
+    this.log(`test ${name} ... `, true);
   }
 
   async testEnd(event: TestEventTestEnd): Promise<void> {
@@ -247,18 +257,18 @@ export class ConsoleTestReporter implements TestReporter {
 
     switch (result.status) {
       case TestStatus.Passed:
-        this.console.log(
+        this.log(
           `${GREEN_OK}      ${result.name} ${formatDuration(result.duration!)}`
         );
         break;
       case TestStatus.Failed:
-        this.console.log(
+        this.log(
           `${RED_FAILED}  ${result.name} ${formatDuration(result.duration!)}`
         );
-        this.console.log(result.error!);
+        this.log(`${stringifyArgs([result.error!])}`);
         break;
       case TestStatus.Skipped:
-        this.console.log(`${YELLOW_SKIPPED} ${result.name}`);
+        this.log(`${YELLOW_SKIPPED} ${result.name}`);
         break;
     }
   }
@@ -266,7 +276,7 @@ export class ConsoleTestReporter implements TestReporter {
   async end(event: TestEventEnd): Promise<void> {
     const { stats, duration } = event;
     // Attempting to match the output of Rust's test runner.
-    this.console.log(
+    this.log(
       `\ntest result: ${stats.failed ? RED_BG_FAIL : GREEN_OK} ` +
         `${stats.passed} passed; ${stats.failed} failed; ` +
         `${stats.ignored} ignored; ${stats.measured} measured; ` +
