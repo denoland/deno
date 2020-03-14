@@ -1,7 +1,7 @@
 running 4 tests
-OK     workersBasic [WILDCARD]
-OK     nestedWorker [WILDCARD]
-OK     workerThrowsWhenExecuting [WILDCARD]
-OK     workerCanUseFetch [WILDCARD]
+OK      workersBasic [WILDCARD]
+OK      nestedWorker [WILDCARD]
+OK      workerThrowsWhenExecuting [WILDCARD]
+OK      workerCanUseFetch [WILDCARD]
 
 test result: OK 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
