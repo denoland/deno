@@ -503,9 +503,9 @@ export async function fetch(
         } else if (init.body instanceof FormData) {
           let boundary = "";
           if (headers.has("content-type")) {
-            const boundaryParam = headers.get("content-type")!.split(/; ?/)[1];
-            if (boundaryParam) {
-              boundary = boundaryParam.split("=")[1];
+            const params = getHeaderValueParams("content-type");
+            if (params.has("boundary")) {
+              boundary = params.get("boundary")!;
             }
           }
           if (!boundary) {
