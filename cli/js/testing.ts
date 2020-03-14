@@ -233,12 +233,13 @@ export class ConsoleTestReporter implements TestReporter {
   }
 
   private log(msg: string, noNewLine = false): void {
-    // Using `core.print` here because it doesn't force new lines
-    // compared to `console.log` (which uses core.print anyway)
     if (!noNewLine) {
       msg += "\n";
     }
 
+    // Using `stdout` here because it doesn't force new lines
+    // compared to `console.log`; `core.print` on the other hand
+    // is line-buffered and doesn't output message without newline
     stdout.writeSync(this.encoder.encode(msg));
   }
 
