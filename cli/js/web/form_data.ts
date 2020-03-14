@@ -16,7 +16,9 @@ class FormDataBase {
     requiredArguments("FormData.append", arguments.length, 2);
     name = String(name);
     if (value instanceof blob.DenoBlob) {
-      const dfile = new domFile.DomFileImpl([value], filename || name, {type: value.type});
+      const dfile = new domFile.DomFileImpl([value], filename || name, {
+        type: value.type
+      });
       this[dataSymbol].push([name, dfile]);
     } else {
       this[dataSymbol].push([name, String(value)]);
