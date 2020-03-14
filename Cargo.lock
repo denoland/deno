@@ -458,7 +458,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "source-map-mappings",
+ "sourcemap",
  "sys-info",
  "tempfile",
  "termcolor",
@@ -2083,16 +2083,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "source-map-mappings"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89babfa6891f638e3e30c5dd248368937015b627a9704aaa8c9d3b9177bf8bfa"
-dependencies = [
- "rand 0.4.6",
- "vlq",
-]
-
-[[package]]
 name = "sourcemap"
 version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2548,12 +2538,6 @@ name = "version_check"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "078775d0255232fb988e6fccf26ddc9d1ac274299aaedcedce21c6f72cc533ce"
-
-[[package]]
-name = "vlq"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65dd7eed29412da847b0f78bcec0ac98588165988a8cfe41d4ea1d429f8ccfff"
 
 [[package]]
 name = "void"
