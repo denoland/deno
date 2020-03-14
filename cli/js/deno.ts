@@ -102,7 +102,7 @@ export { readFileSync, readFile } from "./read_file.ts";
 export { readlinkSync, readlink } from "./ops/fs/read_link.ts";
 export { realpathSync, realpath } from "./ops/fs/realpath.ts";
 export { removeSync, remove, RemoveOptions } from "./ops/fs/remove.ts";
-export { renameSync, rename } from "./ops/fs/rename.ts";
+export { renameSync, rename, RenameOptions } from "./ops/fs/rename.ts";
 export { resources, close } from "./ops/resources.ts";
 export { signal, signals, Signal, SignalStream } from "./signals.ts";
 export { statSync, lstatSync, stat, lstat } from "./ops/fs/stat.ts";

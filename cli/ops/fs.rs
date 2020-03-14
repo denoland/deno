@@ -647,6 +647,7 @@ struct RenameArgs {
   promise_id: Option<u64>,
   oldpath: String,
   newpath: String,
+  create_new: bool,
 }
 
 fn op_rename(
@@ -657,6 +658,7 @@ fn op_rename(
   let args: RenameArgs = serde_json::from_value(args)?;
   let oldpath = resolve_from_cwd(Path::new(&args.oldpath))?;
   let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
+  let create_new = args.create_new;
 
   state.check_read(&oldpath)?;
   state.check_write(&oldpath)?;
@@ -665,6 +667,29 @@ fn op_rename(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
+    if create_new {
+      // like `mv -Tn`, we don't follow symlinks
+      let old_meta = std::fs::symlink_metadata(&oldpath)?;
+      if cfg!(unix) && old_meta.is_dir() {
+        // on Unix, mv from dir to file always fails, but to emptydir is ok
+        std::fs::create_dir(&newpath)?;
+      } else {
+        // on Windows, mv from dir to dir always fails, but to file is ok
+        let mut open_options = std::fs::OpenOptions::new();
+        open_options.write(true).create_new(true);
+        if let Err(e) = open_options.open(&newpath) {
+          // if newpath.is_dir(), prefer to fail with AlreadyExists
+          if cfg!(windows)
+            && e.kind() == std::io::ErrorKind::PermissionDenied
+            && std::fs::metadata(&newpath).map_or(false, |m| m.is_dir())
+          {
+            // alternately, "The file exists. (os error 80)"
+            return Err(OpError::already_exists("Cannot create a file when that file already exists. (os error 183)".to_string()));
+          }
+          return Err(OpError::from(e));
+        }
+      }
+    }
     std::fs::rename(&oldpath, &newpath)?;
     Ok(json!({}))
   })
