@@ -43,33 +43,3 @@ test({
     Deno.removeSync(tempFile);
   }
 });
-
-test({
-  name: "ASYNC: Error passed in callback function when bad mode passed in",
-  async fn() {
-    await new Promise((resolve, reject) => {
-      chmod("some_pretend_file.txt", "999", err => {
-        if (err) reject(err);
-        else resolve();
-      });
-    })
-      .then(() => {
-        fail("Expected exception to be thrown");
-      })
-      .catch(err => {
-        assert(err);
-      });
-  }
-});
-test({
-  name: "SYNC: Error thrown when bad mode passed in",
-  fn() {
-    let caughtError: Error | undefined;
-    try {
-      chmodSync("some_pretend_file.txt", "999");
-    } catch (err) {
-      caughtError = err;
-    }
-    assert(caughtError);
-  }
-});

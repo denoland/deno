@@ -23,7 +23,6 @@ Deno.test(async function xevalDelimiter(): Promise<void> {
   assertEquals(chunks, ["!MAD", "ADAM!"]);
 });
 
-// https://github.com/denoland/deno/issues/2861
 const xevalPath = "examples/xeval.ts";
 
 Deno.test(async function xevalCliReplvar(): Promise<void> {

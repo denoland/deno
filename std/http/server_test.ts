@@ -445,8 +445,10 @@ test("close server while iterating", async (): Promise<void> => {
 // receive a RST and thus trigger an error during response for us to test.
 // We need to find a way to similarly trigger an error on Windows so that
 // we can test if connection is closed.
-if (Deno.build.os !== "win") {
-  test("respond error handling", async (): Promise<void> => {
+test({
+  skip: Deno.build.os == "win",
+  name: "respond error handling",
+  async fn(): Promise<void> {
     const connClosedPromise = deferred();
     const serverRoutine = async (): Promise<void> => {
       let reqCount = 0;
@@ -498,5 +500,5 @@ if (Deno.build.os !== "win") {
     // conn on server side enters CLOSE_WAIT state.
     connClosedPromise.resolve();
     await p;
-  });
-}
+  }
+});
