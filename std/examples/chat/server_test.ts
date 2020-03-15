@@ -24,29 +24,47 @@ async function startServer(): Promise<void> {
 const { test, build } = Deno;
 
 // TODO: https://github.com/denoland/deno/issues/4108
-if (build.os !== "win") {
-  test("beforeAll", async () => {
-    await startServer();
-  });
+const skip = build.os == "win";
 
-  test("GET / should serve html", async () => {
+test({
+  skip,
+  name: "beforeAll",
+  async fn() {
+    await startServer();
+  }
+});
+
+test({
+  skip,
+  name: "GET / should serve html",
+  async fn() {
     const resp = await fetch("http://127.0.0.1:8080/");
     assertEquals(resp.status, 200);
     assertEquals(resp.headers.get("content-type"), "text/html");
     const html = await resp.body.text();
     assert(html.includes("ws chat example"), "body is ok");
-  });
+  }
+});
 
-  let ws: WebSocket | undefined;
-  test("GET /ws should upgrade conn to ws", async () => {
+let ws: WebSocket | undefined;
+
+test({
+  skip,
+  name: "GET /ws should upgrade conn to ws",
+  async fn() {
     ws = await connectWebSocket("http://127.0.0.1:8080/ws");
     const it = ws.receive();
     assertEquals((await it.next()).value, "Connected: [1]");
     ws.send("Hello");
     assertEquals((await it.next()).value, "[1]: Hello");
-  });
-  test("afterAll", () => {
+  }
+});
+
+test({
+  skip,
+  name: "afterAll",
+  fn() {
     server?.close();
     ws?.conn.close();
-  });
-}
+  }
+});
