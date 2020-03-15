@@ -4,4 +4,4 @@ test nestedWorker ... ok [WILDCARD]
 test workerThrowsWhenExecuting ... ok [WILDCARD]
 test workerCanUseFetch ... ok [WILDCARD]
 
-test result: ok 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]

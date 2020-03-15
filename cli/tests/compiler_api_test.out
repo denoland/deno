@@ -12,5 +12,5 @@ test bundleApiConfig ... ok [WILDCARD]
 test bundleApiJsModules ... ok [WILDCARD]
 test diagnosticsTest ... ok [WILDCARD]
 
-test result: ok 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
 
