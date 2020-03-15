@@ -673,7 +673,7 @@ TypeScript code that is destined for the browser, you would want to use the
 TypeScript `"dom"` library:
 
 ```ts
-const [errors, emitted] = Deno.compile(
+const [errors, emitted] = await Deno.compile(
   "main.ts",
   {
     "main.ts": `document.getElementById("foo");\n`
@@ -713,7 +713,7 @@ So to add the Deno namespace to a compilation, you would include the `deno.ns`
 lib in the array. For example:
 
 ```ts
-const [errors, emitted] = Deno.compile(
+const [errors, emitted] = await Deno.compile(
   "main.ts",
   {
     "main.ts": `document.getElementById("foo");\n`
@@ -744,7 +744,7 @@ document.getElementById("foo");
 It would compiler without errors like this:
 
 ```ts
-const [errors, emitted] = Deno.compile("./main.ts", undefined, {
+const [errors, emitted] = await Deno.compile("./main.ts", undefined, {
   lib: ["esnext"]
 });
 ```
