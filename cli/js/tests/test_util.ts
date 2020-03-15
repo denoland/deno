@@ -92,10 +92,6 @@ export async function registerUnitTests(): Promise<void> {
   const processPerms = await getProcessPermissions();
 
   for (const unitTestDefinition of REGISTERED_UNIT_TESTS) {
-    if (unitTestDefinition.skip) {
-      continue;
-    }
-
     if (!permissionsMatch(processPerms, unitTestDefinition.perms)) {
       continue;
     }
@@ -172,10 +168,8 @@ interface UnitTestOptions {
   perms?: UnitTestPermissions;
 }
 
-interface UnitTestDefinition {
-  name: string;
-  fn: Deno.TestFunction;
-  skip?: boolean;
+interface UnitTestDefinition extends Deno.TestDefinition {
+  skip: boolean;
   perms: Permissions;
 }
 
@@ -208,10 +202,6 @@ export function unitTest(
     fn = maybeFn;
     name = fn.name;
     assert(name, "Missing test function name");
-  }
-
-  if (options.skip) {
-    return;
   }
 
   const normalizedPerms = normalizeTestPermissions(options.perms || {});

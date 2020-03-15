@@ -184,7 +184,8 @@ async function runTestsForPermissionSet(
 
   workerProcess.close();
 
-  const passed = expectedPassedTests === endEvent.stats.passed;
+  const passed =
+    expectedPassedTests === endEvent.stats.passed + endEvent.stats.ignored;
 
   return {
     perms,
