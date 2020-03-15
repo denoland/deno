@@ -4,41 +4,8 @@ import { fail, assert } from "../../testing/asserts.ts";
 import { chmod, chmodSync } from "./_fs_chmod.ts";
 
 test({
-  name: "ASYNC: Error passed in callback function when bad mode passed in",
-  async fn() {
-    await new Promise((resolve, reject) => {
-      chmod("some_pretend_file.txt", "999", err => {
-        if (err) reject(err);
-        else resolve();
-      });
-    })
-      .then(() => {
-        fail("Expected exception to be thrown");
-      })
-      .catch(err => {
-        assert(err);
-      });
-  }
-});
-
-test({
-  name: "SYNC: Error thrown when bad mode passed in",
-  fn() {
-    let caughtError: Error | undefined;
-    try {
-      chmodSync("some_pretend_file.txt", "999");
-    } catch (err) {
-      caughtError = err;
-    }
-    assert(caughtError);
-  }
-});
-
-const skip = Deno.build.os == "win";
-
-test({
-  skip,
   name: "ASYNC: Permissions are changed (non-Windows)",
+  skip: Deno.build.os === "win",
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
     const originalFileMode: number | null = (await Deno.lstat(tempFile)).mode;
@@ -63,8 +30,8 @@ test({
 });
 
 test({
-  skip,
   name: "SYNC: Permissions are changed (non-Windows)",
+  skip: Deno.build.os === "win",
   fn() {
     const tempFile: string = Deno.makeTempFileSync();
     const originalFileMode: number | null = Deno.lstatSync(tempFile).mode;
