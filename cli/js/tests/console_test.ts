@@ -1,5 +1,6 @@
+//@ts-nocheck
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 // Some of these APIs aren't exposed in the types and so we have to cast to any
 // in order to "trick" TypeScript.
@@ -234,12 +235,12 @@ unitTest(function consoleTestWithIntegerFormatSpecifier(): void {
   assertEquals(stringify("%i", "42"), "42");
   assertEquals(stringify("%i", "42.0"), "42");
   assertEquals(stringify("%i", 1.5), "1");
-  assertEquals(stringify("%i", -0.5), "0");
+  assertEquals(stringify("%i", -0.5), "-0");
   assertEquals(stringify("%i", ""), "NaN");
   assertEquals(stringify("%i", Symbol()), "NaN");
   assertEquals(stringify("%i %d", 42, 43), "42 43");
   assertEquals(stringify("%d %i", 42), "42 %i");
-  assertEquals(stringify("%d", 12345678901234567890123), "1");
+  assertEquals(stringify("%i", 12345678901234567890123), "1");
   assertEquals(
     stringify("%i", 12345678901234567890123n),
     "12345678901234567890123n"
@@ -704,3 +705,572 @@ unitTest(function consoleTrace(): void {
     assert(err.toString().includes("Trace: custom message"));
   });
 });
+
+unitTest(function consoleTestSymbols(): void {
+  mockConsole((console, out): void => {
+    console.log({ [Symbol.iterator]: "a", a: "a" });
+    assert(out.toString(), "{ a: 'a', [Symbol(Symbol.iterator)]: 'a' }");
+  });
+});
+
+unitTest(function consoleTestObjectWithManyAttributes(): void {
+  mockConsole((console, out): void => {
+    const obj = {
+      a: "a",
+      b: "b",
+      c: "c",
+      d: "d",
+      e: "e",
+      f: "f"
+    };
+    console.log(obj);
+    assert(
+      out.toString(),
+      "{ a: 'a', b: 'b', c: 'c', d: 'd', e: 'e', f: 'f' }"
+    );
+  });
+});
+
+unitTest(function consoleTestLongArray(): void {
+  mockConsole((console, out): void => {
+    const array = [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67,
+      68,
+      69,
+      70,
+      71,
+      72,
+      73,
+      74,
+      75,
+      76,
+      77,
+      78,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84,
+      85,
+      86,
+      87,
+      88,
+      89,
+      90,
+      91,
+      92,
+      93,
+      94,
+      95,
+      96,
+      97,
+      98,
+      99
+    ];
+    console.log(array);
+    const expected =
+      "[\n" +
+      "   0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11,\n" +
+      "  12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,\n" +
+      "  24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,\n" +
+      "  36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,\n" +
+      "  48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59,\n" +
+      "  60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71,\n" +
+      "  72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83,\n" +
+      "  84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95,\n" +
+      "  96, 97, 98, 99\n" +
+      "]";
+    assert(out.toString(), expected);
+  });
+});
+
+
+unitTest(function nodeJsTests(){
+  assertEquals(stringify(), '');
+assertEquals(stringify(''), '');
+assertEquals(stringify([]), '[]');
+assertEquals(stringify([0]), '[ 0 ]');
+assertEquals(stringify({}), '{}');
+assertEquals(stringify({ foo: 42 }), '{ foo: 42 }');
+assertEquals(stringify(null), 'null');
+assertEquals(stringify(true), 'true');
+assertEquals(stringify(false), 'false');
+assertEquals(stringify('test'), 'test');
+
+// CHECKME this is for console.log() compatibility - but is it *right*?
+assertEquals(stringify('foo', 'bar', 'baz'), 'foo bar baz');
+
+// ES6 Symbol handling
+const symbol = Symbol("foo");
+assertEquals(stringify(symbol), 'Symbol(foo)');
+assertEquals(stringify('foo', symbol), 'foo Symbol(foo)');
+assertEquals(stringify('%s', symbol), 'Symbol(foo)');
+assertEquals(stringify('%j', symbol), 'undefined');
+
+// Number format specifier
+assertEquals(stringify('%d'), '%d');
+assertEquals(stringify('%d', 42.0), '42');
+assertEquals(stringify('%d', 42), '42');
+assertEquals(stringify('%d', '42'), '42');
+assertEquals(stringify('%d', '42.0'), '42');
+assertEquals(stringify('%d', 1.5), '1.5');
+assertEquals(stringify('%d', -0.5), '-0.5');
+assertEquals(stringify('%d', -0.0), '-0');
+assertEquals(stringify('%d', ''), '0');
+assertEquals(stringify('%d', ' -0.000'), '-0');
+assertEquals(stringify('%d', Symbol()), 'NaN');
+assertEquals(stringify('%d %d', 42, 43), '42 43');
+assertEquals(stringify('%d %d', 42), '42 %d');
+assertEquals(
+  stringify('%d', 1180591620717411303424),
+  '1.1805916207174113e+21'
+);
+assertEquals(
+  stringify('%d', 1180591620717411303424n),
+  '1180591620717411303424n'
+);
+assertEquals(
+  stringify('%d %d', 1180591620717411303424n, 12345678901234567890123n),
+  '1180591620717411303424n 12345678901234567890123n'
+);
+
+// Integer format specifier
+assertEquals(stringify('%i'), '%i');
+assertEquals(stringify('%i', 42.0), '42');
+assertEquals(stringify('%i', 42), '42');
+assertEquals(stringify('%i', '42'), '42');
+assertEquals(stringify('%i', '42.0'), '42');
+assertEquals(stringify('%i', 1.5), '1');
+assertEquals(stringify('%i', -0.5), '-0');
+assertEquals(stringify('%i', ''), 'NaN');
+assertEquals(stringify('%i', Symbol()), 'NaN');
+assertEquals(stringify('%i %i', 42, 43), '42 43');
+assertEquals(stringify('%i %i', 42), '42 %i');
+assertEquals(
+  stringify('%i', 1180591620717411303424),
+  '1'
+);
+assertEquals(
+  stringify('%i', 1180591620717411303424n),
+  '1180591620717411303424n'
+);
+assertEquals(
+  stringify('%i %i', 1180591620717411303424n, 12345678901234567890123n),
+  '1180591620717411303424n 12345678901234567890123n'
+);
+
+assertEquals(
+  stringify('%d %i', 1180591620717411303424n, 12345678901234567890123n),
+  '1180591620717411303424n 12345678901234567890123n'
+);
+
+assertEquals(
+  stringify('%i %d', 1180591620717411303424n, 12345678901234567890123n),
+  '1180591620717411303424n 12345678901234567890123n'
+);
+
+// Float format specifier
+assertEquals(stringify('%f'), '%f');
+assertEquals(stringify('%f', 42.0), '42');
+assertEquals(stringify('%f', 42), '42');
+assertEquals(stringify('%f', '42'), '42');
+assertEquals(stringify('%f', '-0.0'), '-0');
+assertEquals(stringify('%f', '42.0'), '42');
+assertEquals(stringify('%f', 1.5), '1.5');
+assertEquals(stringify('%f', -0.5), '-0.5');
+assertEquals(stringify('%f', Math.PI), '3.141592653589793');
+assertEquals(stringify('%f', ''), 'NaN');
+assertEquals(stringify('%f', Symbol('foo')), 'NaN');
+assertEquals(stringify('%f', 5n), '5');
+assertEquals(stringify('%f %f', 42, 43), '42 43');
+assertEquals(stringify('%f %f', 42), '42 %f');
+
+// String format specifier
+assertEquals(stringify('%s'), '%s');
+assertEquals(stringify('%s', undefined), 'undefined');
+assertEquals(stringify('%s', null), 'null');
+assertEquals(stringify('%s', 'foo'), 'foo');
+assertEquals(stringify('%s', 42), '42');
+assertEquals(stringify('%s', '42'), '42');
+assertEquals(stringify('%s', -0), '-0');
+assertEquals(stringify('%s', '-0.0'), '-0.0');
+assertEquals(stringify('%s %s', 42, 43), '42 43');
+assertEquals(stringify('%s %s', 42), '42 %s');
+assertEquals(stringify('%s', 42n), '42n');
+assertEquals(stringify('%s', Symbol('foo')), 'Symbol(foo)');
+assertEquals(stringify('%s', true), 'true');
+assertEquals(stringify('%s', { a: [1, 2, 3] }), '{ a: [Array] }');
+assertEquals(stringify('%s', { toString() { return 'Foo'; } }), 'Foo');
+assertEquals(stringify('%s', { toString: 5 }), '{ toString: 5 }');
+assertEquals(stringify('%s', () => 5), '() => 5');
+
+// String format specifier including `toString` properties on the prototype.
+{
+  class Foo { toString() { return 'Bar'; } }
+  assertEquals(stringify('%s', new Foo()), 'Bar');
+  assertEquals(
+    stringify('%s', Object.setPrototypeOf(new Foo(), null)),
+    '[Foo: null prototype] {}'
+  );
+  window["Foo"] = Foo;
+  assertEquals(stringify('%s', new Foo()), 'Bar');
+  delete window["Foo"];
+  class Bar { abc = true; }
+  assertEquals(stringify('%s', new Bar()), 'Bar { abc: true }');
+  class Foobar extends Array { aaa = true; }
+  assertEquals(
+    stringify('%s', new Foobar(5)),
+    'Foobar(5) [ <5 empty items>, aaa: true ]'
+  );
+
+  // Subclassing:
+  class B extends Foo {}
+
+  function C() {}
+  C.prototype.toString = function() {
+    return 'Custom';
+  };
+
+  function D() {
+    C.call(this);
+  }
+  D.prototype = Object.create(C.prototype);
+
+  assertEquals(
+    stringify('%s', new B()),
+    'Bar'
+  );
+  assertEquals(
+    stringify('%s', new C()),
+    'Custom'
+  );
+  assertEquals(
+    stringify('%s', new D()),
+    'Custom'
+  );
+
+  D.prototype.constructor = D;
+  assertEquals(
+    stringify('%s', new D()),
+    'Custom'
+  );
+
+  D.prototype.constructor = null;
+  assertEquals(
+    stringify('%s', new D()),
+    'Custom'
+  );
+
+  D.prototype.constructor = { name: 'Foobar' };
+  assertEquals(
+    stringify('%s', new D()),
+    'Custom'
+  );
+
+  Object.defineProperty(D.prototype, 'constructor', {
+    get() {
+      throw new Error();
+    },
+    configurable: true
+  });
+  assertEquals(
+    stringify('%s', new D()),
+    'Custom'
+  );
+
+  assertEquals(
+    stringify('%s', Object.create(null)),
+    '[Object: null prototype] {}'
+  );
+}
+
+// JSON format specifier
+assertEquals(stringify('%j'), '%j');
+assertEquals(stringify('%j', 42), '42');
+assertEquals(stringify('%j', '42'), '"42"');
+assertEquals(stringify('%j %j', 42, 43), '42 43');
+assertEquals(stringify('%j %j', 42), '42 %j');
+
+// Object format specifier
+const obj = {
+  foo: 'bar',
+  foobar: 1,
+  func: function() {}
+};
+const nestedObj = {
+  foo: 'bar',
+  foobar: {
+    foo: 'bar',
+    func: function() {}
+  }
+};
+const nestedObj2 = {
+  foo: 'bar',
+  foobar: 1,
+  func: [{ a: function() {} }]
+};
+assertEquals(stringify('%o'), '%o');
+assertEquals(stringify('%o', 42), '42');
+assertEquals(stringify('%o', 'foo'), '\'foo\'');
+assertEquals(
+  stringify('%o', obj),
+  '{\n' +
+  '  foo: \'bar\',\n' +
+  '  foobar: 1,\n' +
+  '  func: <ref *1> [Function: func] {\n' +
+  '    [length]: 0,\n' +
+  '    [name]: \'func\',\n' +
+  '    [prototype]: func { [constructor]: [Circular *1] }\n' +
+  '  }\n' +
+  '}');
+assertEquals(
+  stringify('%o', nestedObj2),
+  '{\n' +
+  '  foo: \'bar\',\n' +
+  '  foobar: 1,\n' +
+  '  func: [\n' +
+  '    {\n' +
+  '      a: <ref *1> [Function: a] {\n' +
+  '        [length]: 0,\n' +
+  '        [name]: \'a\',\n' +
+  '        [prototype]: a { [constructor]: [Circular *1] }\n' +
+  '      }\n' +
+  '    },\n' +
+  '    [length]: 1\n' +
+  '  ]\n' +
+  '}');
+assertEquals(
+  stringify('%o', nestedObj),
+  '{\n' +
+  '  foo: \'bar\',\n' +
+  '  foobar: {\n' +
+  '    foo: \'bar\',\n' +
+  '    func: <ref *1> [Function: func] {\n' +
+  '      [length]: 0,\n' +
+  '      [name]: \'func\',\n' +
+  '      [prototype]: func { [constructor]: [Circular *1] }\n' +
+  '    }\n' +
+  '  }\n' +
+  '}');
+assertEquals(
+  stringify('%o %o', obj, obj),
+  '{\n' +
+  '  foo: \'bar\',\n' +
+  '  foobar: 1,\n' +
+  '  func: <ref *1> [Function: func] {\n' +
+  '    [length]: 0,\n' +
+  '    [name]: \'func\',\n' +
+  '    [prototype]: func { [constructor]: [Circular *1] }\n' +
+  '  }\n' +
+  '} {\n' +
+  '  foo: \'bar\',\n' +
+  '  foobar: 1,\n' +
+  '  func: <ref *1> [Function: func] {\n' +
+  '    [length]: 0,\n' +
+  '    [name]: \'func\',\n' +
+  '    [prototype]: func { [constructor]: [Circular *1] }\n' +
+  '  }\n' +
+  '}');
+assertEquals(
+  stringify('%o %o', obj),
+  '{\n' +
+  '  foo: \'bar\',\n' +
+  '  foobar: 1,\n' +
+  '  func: <ref *1> [Function: func] {\n' +
+  '    [length]: 0,\n' +
+  '    [name]: \'func\',\n' +
+  '    [prototype]: func { [constructor]: [Circular *1] }\n' +
+  '  }\n' +
+  '} %o');
+
+assertEquals(stringify('%O'), '%O');
+assertEquals(stringify('%O', 42), '42');
+assertEquals(stringify('%O', 'foo'), '\'foo\'');
+assertEquals(
+  stringify('%O', obj),
+  '{ foo: \'bar\', foobar: 1, func: [Function: func] }');
+assertEquals(
+  stringify('%O', nestedObj),
+  '{ foo: \'bar\', foobar: { foo: \'bar\', func: [Function: func] } }');
+assertEquals(
+  stringify('%O %O', obj, obj),
+  '{ foo: \'bar\', foobar: 1, func: [Function: func] } ' +
+  '{ foo: \'bar\', foobar: 1, func: [Function: func] }');
+assertEquals(
+  stringify('%O %O', obj),
+  '{ foo: \'bar\', foobar: 1, func: [Function: func] } %O');
+
+// Various format specifiers
+assertEquals(stringify('%%s%s', 'foo'), '%sfoo');
+assertEquals(stringify('%s:%s'), '%s:%s');
+assertEquals(stringify('%s:%s', undefined), 'undefined:%s');
+assertEquals(stringify('%s:%s', 'foo'), 'foo:%s');
+assertEquals(stringify('%s:%i', 'foo'), 'foo:%i');
+assertEquals(stringify('%s:%f', 'foo'), 'foo:%f');
+assertEquals(stringify('%s:%s', 'foo', 'bar'), 'foo:bar');
+assertEquals(stringify('%s:%s', 'foo', 'bar', 'baz'), 'foo:bar baz');
+assertEquals(stringify('%%%s%%', 'hi'), '%hi%');
+assertEquals(stringify('%%%s%%%%', 'hi'), '%hi%%');
+assertEquals(stringify('%sbc%%def', 'a'), 'abc%def');
+assertEquals(stringify('%d:%d', 12, 30), '12:30');
+assertEquals(stringify('%d:%d', 12), '12:%d');
+assertEquals(stringify('%d:%d'), '%d:%d');
+assertEquals(stringify('%i:%i', 12, 30), '12:30');
+assertEquals(stringify('%i:%i', 12), '12:%i');
+assertEquals(stringify('%i:%i'), '%i:%i');
+assertEquals(stringify('%f:%f', 12, 30), '12:30');
+assertEquals(stringify('%f:%f', 12), '12:%f');
+assertEquals(stringify('%f:%f'), '%f:%f');
+assertEquals(stringify('o: %j, a: %j', {}, []), 'o: {}, a: []');
+assertEquals(stringify('o: %j, a: %j', {}), 'o: {}, a: %j');
+assertEquals(stringify('o: %j, a: %j'), 'o: %j, a: %j');
+assertEquals(stringify('o: %o, a: %O', {}, []), 'o: {}, a: []');
+assertEquals(stringify('o: %o, a: %o', {}), 'o: {}, a: %o');
+assertEquals(stringify('o: %O, a: %O'), 'o: %O, a: %O');
+
+
+// Invalid format specifiers
+assertEquals(stringify('a% b', 'x'), 'a% b x');
+assertEquals(stringify('percent: %d%, fraction: %d', 10, 0.1),
+                   'percent: 10%, fraction: 0.1');
+assertEquals(stringify('abc%', 1), 'abc% 1');
+
+// Additional arguments after format specifiers
+assertEquals(stringify('%i', 1, 'number'), '1 number');
+assertEquals(stringify('%i', 1, () => {}), '1 [Function (anonymous)]');
+
+// %c from https://console.spec.whatwg.org/
+assertEquals(stringify('%c'), '%c');
+assertEquals(stringify('%cab'), '%cab');
+assertEquals(stringify('%cab', 'color: blue'), 'ab');
+assertEquals(stringify('%cab', 'color: blue', 'c'), 'ab c');
+
+{
+  const o = {};
+  o["o"] = o;
+  assertEquals(stringify('%j', o), '[Circular]');
+}
+
+{
+  const o = {
+    toJSON() {
+      throw new Error('Not a circular object but still not serializable');
+    }
+  };
+  assertThrows(() => stringify('%j', o),
+                Error,
+                "Not a circular object but still not serializable");
+}
+
+// Errors
+const err = new Error('foo');
+assertEquals(stringify(err), err.stack);
+class CustomError extends Error {
+  constructor(msg) {
+    super();
+    Object.defineProperty(this, 'message',
+                          { value: msg, enumerable: false });
+    Object.defineProperty(this, 'name',
+                          { value: 'CustomError', enumerable: false });
+    Error["captureStackTrace"](this, CustomError);
+  }
+}
+const customError = new CustomError('bar');
+assertEquals(stringify(customError), customError.stack);
+// Doesn't capture stack trace
+function BadCustomError(msg) {
+  Error.call(this);
+  Object.defineProperty(this, 'message',
+                        { value: msg, enumerable: false });
+  Object.defineProperty(this, 'name',
+                        { value: 'BadCustomError', enumerable: false });
+}
+Object.setPrototypeOf(BadCustomError.prototype, Error.prototype);
+Object.setPrototypeOf(BadCustomError, Error);
+assertEquals(stringify(new BadCustomError('foo')),
+                   '[BadCustomError: foo]');
+
+// The format of arguments should not depend on type of the first argument
+assertEquals(stringify('1', '1'), '1 1');
+assertEquals(stringify(1, '1'), '1 1');
+assertEquals(stringify('1', 1), '1 1');
+assertEquals(stringify(1, -0), '1 -0');
+assertEquals(stringify('1', () => {}), '1 [Function (anonymous)]');
+assertEquals(stringify(1, () => {}), '1 [Function (anonymous)]');
+assertEquals(stringify('1', "'"), "1 '");
+assertEquals(stringify(1, "'"), "1 '");
+assertEquals(stringify('1', 'number'), '1 number');
+assertEquals(stringify(1, 'number'), '1 number');
+assertEquals(stringify(5n), '5n');
+assertEquals(stringify(5n, 5n), '5n 5n');
+});
+
+Deno.runTests()

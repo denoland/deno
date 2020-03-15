@@ -4,6 +4,7 @@ import { TextEncoder } from "./text_encoding.ts";
 import { File, stdout } from "../files.ts";
 import { cliTable } from "./console_table.ts";
 import { exposeForTest } from "../internals.ts";
+import * as ins from "./inspect.ts";
 
 type ConsoleContext = Set<unknown>;
 type ConsoleOptions = Partial<{
@@ -31,6 +32,8 @@ const CHAR_LOWERCASE_F = 102; /* f */
 const CHAR_LOWERCASE_O = 111; /* o */
 const CHAR_UPPERCASE_O = 79; /* O */
 const CHAR_LOWERCASE_C = 99; /* c */
+const CHAR_LOWERCASE_J = 106; /* j */
+
 export class CSI {
   static kClear = "\x1b[1;1H";
   static kClearScreenDown = "\x1b[0J";
@@ -93,7 +96,7 @@ function createIterableString<T>(
   maxLevel: number,
   config: IterablePrintConfig<T>
 ): string {
-  if (level >= maxLevel) {
+  if (level > maxLevel) {
     return `[${config.typeName}]`;
   }
   ctx.add(value);
@@ -279,7 +282,7 @@ function createRawObjectString(
   level: number,
   maxLevel: number
 ): string {
-  if (level >= maxLevel) {
+  if (level > maxLevel) {
     return "[Object]";
   }
   ctx.add(value);
@@ -363,6 +366,81 @@ function createObjectString(
   }
 }
 
+let CIRCULAR_ERROR_MESSAGE : string;
+const firstErrorLine = (error : Error) => error.message.split('\n')[0];
+function lazyLoadCircularError(){
+  try{
+    const a : any = {};
+    a.a = a;
+    JSON.stringify(a);
+  }catch(err){
+    CIRCULAR_ERROR_MESSAGE = firstErrorLine(err);
+  }
+}
+
+function tryStringify(value: unknown) : string{
+  try{
+    return JSON.stringify(value);
+  }catch(err){
+    if(!CIRCULAR_ERROR_MESSAGE){
+      lazyLoadCircularError();
+    }
+    if(err.name === "TypeError" && firstErrorLine(err) === CIRCULAR_ERROR_MESSAGE){
+      return "[Circular]";
+    }
+    throw err;
+  }
+}
+
+
+function stylizeNoColor(value: string) : string {
+  return value;
+}
+
+function formatNumber(stylizeFunction : Function, value: unknown) : string{
+  return stylizeFunction(Object.is(value, -0) ? '-0' : `${value}`, 'number');
+}
+
+function hasBuiltInToString(value : any) : boolean {
+  // Prevent triggering proxy traps.
+  // TODO Proxy
+
+  // Count objects that have no `toString` function as built-in.
+  if (typeof value.toString !== 'function') {
+    return true;
+  }
+
+  // The object has a own `toString` property. Thus it's not not a built-in one.
+  if (value.prototype && value.prototype.hasOwnProperty && value.prototype.hasOwnProperty('toString')) {
+    return false;
+  }
+
+  // Find the object that has the `toString` property as own property in the
+  // prototype chain.
+  let pointer = value;
+  do {
+    pointer = Object.getPrototypeOf(pointer);
+  } while (pointer && pointer.prototypeHasOwnProperty && !pointer.prototypeHasOwnProperty('toString'));
+
+  // Check closer if the object is a built-in.
+  const descriptor = Object.getOwnPropertyDescriptor(pointer, 'constructor');
+  return descriptor !== undefined &&
+    typeof descriptor.value === 'function' &&
+    getBuiltInObjects().has(descriptor.value.name);
+}
+
+let LAZY_BUILT_IN_OBJECTS : Set<unknown>;
+function getBuiltInObjects(){
+  if(!LAZY_BUILT_IN_OBJECTS){
+    // TODO get rid of the eval
+    LAZY_BUILT_IN_OBJECTS = new Set(
+      Object.getOwnPropertyNames(eval("window")).filter((e) => /^[A-Z][a-zA-Z0-9]+$/.test(e))
+    );
+  }
+  return LAZY_BUILT_IN_OBJECTS;
+}
+
+/** @internal */
 export function stringifyArgs(
   args: unknown[],
   { depth = DEFAULT_MAX_DEPTH, indentLevel = 0 }: ConsoleOptions = {}
@@ -382,28 +460,49 @@ export function stringifyArgs(
         if (a + 1 !== args.length) {
           switch (nextChar) {
             case CHAR_LOWERCASE_S:
-              // format as a string
-              tempStr = String(args[++a]);
+              case 115: // 's'
+              const tempArg = args[++a];
+              if (typeof tempArg === 'number') {
+                tempStr = formatNumber(stylizeNoColor, tempArg);
+              } else if (typeof tempArg === 'bigint') {
+                tempStr = `${tempArg}n`;
+              } else if (typeof tempArg !== 'object' ||
+                         tempArg === null ||
+                         !hasBuiltInToString(tempArg)) {
+                tempStr = String(tempArg);
+              } else {
+                tempStr = stringify(tempArg, new Set(), 0, 1);
+              }
+              break;
+            case CHAR_LOWERCASE_J:
+              tempStr = tryStringify(args[++a]);
               break;
             case CHAR_LOWERCASE_D:
-            case CHAR_LOWERCASE_I:
-              // format as an integer
-              const tempInteger = args[++a];
-              if (typeof tempInteger === "bigint") {
-                tempStr = `${tempInteger}n`;
-              } else if (typeof tempInteger === "symbol") {
-                tempStr = "NaN";
+              const tempNum = args[++a];
+              if (typeof tempNum === 'bigint') {
+                tempStr = `${tempNum}n`;
+              } else if (typeof tempNum === 'symbol') {
+                tempStr = 'NaN';
               } else {
-                tempStr = `${parseInt(String(tempInteger), 10)}`;
+                tempStr = formatNumber(stylizeNoColor, Number(tempNum));
+              }
+              break;
+            case CHAR_LOWERCASE_I:
+              const tempInteger = args[++a];
+              if (typeof tempInteger === 'bigint') {
+                tempStr = `${tempInteger}n`;
+              } else if (typeof tempInteger === 'symbol') {
+                tempStr = 'NaN';
+              } else {
+                tempStr = formatNumber(stylizeNoColor, parseInt(tempInteger as string));
               }
               break;
             case CHAR_LOWERCASE_F:
-              // format as a floating point value
               const tempFloat = args[++a];
-              if (typeof tempFloat === "symbol") {
-                tempStr = "NaN";
+              if (typeof tempFloat === 'symbol') {
+                tempStr = 'NaN';
               } else {
-                tempStr = `${parseFloat(String(tempFloat))}`;
+                tempStr = formatNumber(stylizeNoColor, parseFloat(tempFloat as string));
               }
               break;
             case CHAR_LOWERCASE_O:
@@ -497,6 +596,10 @@ export class Console {
       stringifyArgs(args, {
         indentLevel: this.indentLevel
       }) + "\n",
+      false
+    );
+    this.printFunc(
+      ins.inspect(args) + "\n",
       false
     );
   };
