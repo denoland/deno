@@ -19,7 +19,7 @@ unitTest({ perms: { read: true } }, async function filesCopyToStdout(): Promise<
   const file = await Deno.open(filename);
   assert(file.rid > 2);
   const bytesWritten = await Deno.copy(Deno.stdout, file);
-  const fileSize = Deno.statSync(filename).len;
+  const fileSize = Deno.statSync(filename).size;
   assertEquals(bytesWritten, fileSize);
   console.log("bytes written", bytesWritten);
   file.close();
@@ -234,12 +234,12 @@ unitTest(
     const f = await Deno.create(filename);
     let fileInfo = Deno.statSync(filename);
     assert(fileInfo.isFile());
-    assert(fileInfo.len === 0);
+    assert(fileInfo.size === 0);
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     await f.write(data);
     fileInfo = Deno.statSync(filename);
-    assert(fileInfo.len === 5);
+    assert(fileInfo.size === 5);
     f.close();
 
     // TODO: test different modes
@@ -258,11 +258,11 @@ unitTest(
     // assert file was created
     let fileInfo = Deno.statSync(filename);
     assert(fileInfo.isFile());
-    assertEquals(fileInfo.len, 0);
+    assertEquals(fileInfo.size, 0);
     // write some data
     await file.write(data);
     fileInfo = Deno.statSync(filename);
-    assertEquals(fileInfo.len, 13);
+    assertEquals(fileInfo.size, 13);
     // assert we can't read from file
     let thrown = false;
     try {
@@ -277,7 +277,7 @@ unitTest(
     // assert that existing file is truncated on open
     file = await Deno.open(filename, "w");
     file.close();
-    const fileSize = Deno.statSync(filename).len;
+    const fileSize = Deno.statSync(filename).size;
     assertEquals(fileSize, 0);
     await Deno.remove(tempDir, { recursive: true });
   }
@@ -296,11 +296,11 @@ unitTest(
     // assert file was created
     let fileInfo = Deno.statSync(filename);
     assert(fileInfo.isFile());
-    assertEquals(fileInfo.len, 0);
+    assertEquals(fileInfo.size, 0);
     // write some data
     await file.write(data);
     fileInfo = Deno.statSync(filename);
-    assertEquals(fileInfo.len, 13);
+    assertEquals(fileInfo.size, 13);
 
     const buf = new Uint8Array(20);
     // seeking from beginning of a file

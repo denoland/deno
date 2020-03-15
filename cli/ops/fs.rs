@@ -431,7 +431,7 @@ fn op_copy_file(
       return Err(OpError::not_found("File not found".to_string()));
     }
 
-    // returns length of from as u64 (we ignore)
+    // returns size of from as u64 (we ignore)
     fs::copy(&from, &to)?;
     Ok(json!({}))
   })
@@ -469,7 +469,7 @@ fn get_stat_json(
   let mut json_val = json!({
     "isFile": metadata.is_file(),
     "isSymlink": metadata.file_type().is_symlink(),
-    "len": metadata.len(),
+    "size": metadata.len(),
     // In seconds. Available on both Unix or Windows.
     "modified":to_seconds!(metadata.modified()),
     "accessed":to_seconds!(metadata.accessed()),

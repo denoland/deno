@@ -3,7 +3,7 @@ import { StatResponse } from "./ops/fs/stat.ts";
 import { build } from "./build.ts";
 
 export interface FileInfo {
-  len: number;
+  size: number;
   modified: number | null;
   accessed: number | null;
   created: number | null;
@@ -26,7 +26,7 @@ export interface FileInfo {
 export class FileInfoImpl implements FileInfo {
   private readonly _isFile: boolean;
   private readonly _isSymlink: boolean;
-  len: number;
+  size: number;
   modified: number | null;
   accessed: number | null;
   created: number | null;
@@ -64,7 +64,7 @@ export class FileInfoImpl implements FileInfo {
 
     this._isFile = this._res.isFile;
     this._isSymlink = this._res.isSymlink;
-    this.len = this._res.len;
+    this.size = this._res.size;
     this.modified = modified ? modified : null;
     this.accessed = accessed ? accessed : null;
     this.created = created ? created : null;
