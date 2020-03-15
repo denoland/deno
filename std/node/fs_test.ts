@@ -50,9 +50,16 @@ test(function readFileEncodeUtf8Success() {
 });
 
 // Just for now, until we implement symlink for Windows.
-if (Deno.build.os !== "win") {
+const skip = Deno.build.os == "win";
+
+if (!skip) {
   Deno.symlinkSync(oldname, newname);
-  test(async function readlinkSuccess() {
+}
+
+test({
+  skip,
+  name: "readlinkSuccess",
+  async fn() {
     const data = await new Promise((res, rej) => {
       readlink(newname, (err, data) => {
         if (err) {
@@ -64,9 +71,13 @@ if (Deno.build.os !== "win") {
 
     assertEquals(typeof data, "string");
     assertEquals(data as string, oldname);
-  });
+  }
+});
 
-  test(async function readlinkEncodeBufferSuccess() {
+test({
+  skip,
+  name: "readlinkEncodeBufferSuccess",
+  async fn() {
     const data = await new Promise((res, rej) => {
       readlink(newname, { encoding: "buffer" }, (err, data) => {
         if (err) {
@@ -78,17 +89,25 @@ if (Deno.build.os !== "win") {
 
     assert(data instanceof Uint8Array);
     assertEquals(new TextDecoder().decode(data as Uint8Array), oldname);
-  });
+  }
+});
 
-  test(function readlinkSyncSuccess() {
+test({
+  skip,
+  name: "readlinkSyncSuccess",
+  fn() {
     const data = readlinkSync(newname);
     assertEquals(typeof data, "string");
     assertEquals(data as string, oldname);
-  });
+  }
+});
 
-  test(function readlinkEncodeBufferSuccess() {
+test({
+  skip,
+  name: "readlinkEncodeBufferSuccess",
+  fn() {
     const data = readlinkSync(newname, { encoding: "buffer" });
     assert(data instanceof Uint8Array);
     assertEquals(new TextDecoder().decode(data as Uint8Array), oldname);
-  });
-}
+  }
+});
