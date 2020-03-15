@@ -6,7 +6,10 @@ const testDir = Deno.makeTempDirSync();
 const oldname = testDir + "/oldname";
 const newname = testDir + "/newname";
 
-Deno.symlinkSync(oldname, newname);
+if (Deno.build.os !== "win") {
+  Deno.symlinkSync(oldname, newname);
+}
+
 test({
   name: "readlinkSuccess",
   skip: Deno.build.os === "win",
