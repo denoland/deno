@@ -17,6 +17,7 @@ declare namespace Deno {
   export interface TestDefinition {
     fn: TestFunction;
     name: string;
+    skip?: boolean;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -32,12 +33,16 @@ declare namespace Deno {
    * when `Deno.runTests` is used */
   export function test(name: string, fn: TestFunction): void;
 
+  enum TestStatus {
+    Passed = "passed",
+    Failed = "failed",
+    Skipped = "skipped"
+  }
+
   interface TestResult {
-    passed: boolean;
     name: string;
-    skipped: boolean;
-    hasRun: boolean;
-    duration: number;
+    status: TestStatus;
+    duration?: number;
     error?: Error;
   }
 
@@ -661,7 +666,7 @@ declare namespace Deno {
     append?: boolean;
     /** Sets the option for truncating a previous file. If a file is
      * successfully opened with this option set it will truncate the file to `0`
-     * length if it already exists. The file must be opened with write access
+     * size if it already exists. The file must be opened with write access
      * for truncate to work. */
     truncate?: boolean;
     /** Sets the option to allow creating a new file, if one doesn't already
@@ -1058,16 +1063,12 @@ declare namespace Deno {
 
   // @url js/file_info.d.ts
 
-  /** UNSTABLE: 'len' maybe should be 'length' or 'size'.
-   *
-   * A FileInfo describes a file and is returned by `stat`, `lstat`,
+  /** A FileInfo describes a file and is returned by `stat`, `lstat`,
    * `statSync`, `lstatSync`. A list of FileInfo is returned by `readdir`,
    * `readdirSync`. */
   export interface FileInfo {
-    /** **UNSTABLE**: `.len` maybe should be `.length` or `.size`.
-     *
-     * The size of the file, in bytes. */
-    len: number;
+    /** The size of the file, in bytes. */
+    size: number;
     /** The last modification time of the file. This corresponds to the `mtime`
      * field from `stat` on Linux/Mac OS and `ftLastWriteTime` on Windows. This
      * may not be available on all platforms. */

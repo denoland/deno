@@ -3,7 +3,7 @@ import { assert, assertEquals, assertThrows } from "../../testing/asserts.ts";
 import Dirent from "./_fs_dirent.ts";
 
 class FileInfoMock implements Deno.FileInfo {
-  len = -1;
+  size = -1;
   modified = -1;
   accessed = -1;
   created = -1;

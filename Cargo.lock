@@ -458,7 +458,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "source-map-mappings",
+ "sourcemap",
  "sys-info",
  "tempfile",
  "termcolor",
@@ -1876,9 +1876,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.3.4"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db0e3daf22c046be395b87f47063cf6a78254b839500d87b7c62897d6eb92d6f"
+checksum = "057a99614b5d0dd7140084beb1281c3d2fa89e195cf2ecb98d39bb525f2dc492"
 dependencies = [
  "bitflags",
  "cargo_gn",
@@ -2080,16 +2080,6 @@ dependencies = [
  "libc",
  "redox_syscall",
  "winapi 0.3.8",
-]
-
-[[package]]
-name = "source-map-mappings"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89babfa6891f638e3e30c5dd248368937015b627a9704aaa8c9d3b9177bf8bfa"
-dependencies = [
- "rand 0.4.6",
- "vlq",
 ]
 
 [[package]]
@@ -2550,12 +2540,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "078775d0255232fb988e6fccf26ddc9d1ac274299aaedcedce21c6f72cc533ce"
 
 [[package]]
-name = "vlq"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65dd7eed29412da847b0f78bcec0ac98588165988a8cfe41d4ea1d429f8ccfff"
-
-[[package]]
 name = "void"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2696,9 +2680,9 @@ dependencies = [
 
 [[package]]
 name = "which"
-version = "3.1.0"
+version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5475d47078209a02e60614f7ba5e645ef3ed60f771920ac1906d7c1cc65024c8"
+checksum = "d011071ae14a2f6671d0b74080ae0cd8ebf3a6f8c9589a2cd45f23126fe29724"
 dependencies = [
  "failure",
  "libc",

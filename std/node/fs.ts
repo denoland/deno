@@ -8,6 +8,12 @@ import {
 import { appendFile, appendFileSync } from "./_fs/_fs_appendFile.ts";
 export { appendFile, appendFileSync };
 
+import { chmod, chmodSync } from "./_fs/_fs_chmod.ts";
+export { chmod, chmodSync };
+
+import * as constants from "./_fs/_fs_constants.ts";
+export { constants };
+
 const {
   readFile: denoReadFile,
   readFileSync: denoReadFileSync,

@@ -102,7 +102,7 @@ async function serveFile(
 ): Promise<Response> {
   const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
   const headers = new Headers();
-  headers.set("content-length", fileInfo.len.toString());
+  headers.set("content-length", fileInfo.size.toString());
   headers.set("content-type", "text/plain; charset=utf-8");
 
   const res = {
@@ -135,7 +135,7 @@ async function serveDir(
     } catch (e) {}
     listEntry.push({
       mode: modeToString(fileInfo.isDirectory(), mode),
-      size: fileInfo.isFile() ? fileLenToString(fileInfo.len) : "",
+      size: fileInfo.isFile() ? fileLenToString(fileInfo.size) : "",
       name: fileInfo.name ?? "",
       url: fileUrl
     });
