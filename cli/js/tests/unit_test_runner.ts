@@ -17,6 +17,7 @@ interface PermissionSetTestResult {
   stats: Deno.TestStats;
   permsStr: string;
   duration: number;
+  results: Deno.TestResult[];
 }
 
 const PERMISSIONS: Deno.PermissionName[] = [
@@ -144,16 +145,17 @@ async function runTestsForPermissionSet(
         expectedPassedTests = msg.tests;
         await reporter.start(msg);
         continue;
-      }
-
-      if (msg.kind === Deno.TestEvent.Result) {
-        await reporter.result(msg);
+      } else if (msg.kind === Deno.TestEvent.TestStart) {
+        await reporter.testStart(msg);
         continue;
+      } else if (msg.kind === Deno.TestEvent.TestEnd) {
+        await reporter.testEnd(msg);
+        continue;
+      } else {
+        endEvent = msg;
+        await reporter.end(msg);
+        break;
       }
-
-      endEvent = msg;
-      await reporter.end(msg);
-      break;
     }
   } catch (e) {
     hasThrown = true;
@@ -183,14 +185,16 @@ async function runTestsForPermissionSet(
 
   workerProcess.close();
 
-  const passed = expectedPassedTests === endEvent.stats.passed;
+  const passed =
+    expectedPassedTests === endEvent.stats.passed + endEvent.stats.ignored;
 
   return {
     perms,
     passed,
     permsStr: permsFmt,
     duration: endEvent.duration,
-    stats: endEvent.stats
+    stats: endEvent.stats,
+    results: endEvent.results
   };
 }
 
@@ -225,13 +229,13 @@ async function masterRunnerMain(
   let testsPassed = true;
 
   for (const testResult of testResults) {
-    const { permsStr, stats, duration } = testResult;
+    const { permsStr, stats, duration, results } = testResult;
     console.log(`Summary for ${permsStr}`);
     await consoleReporter.end({
       kind: Deno.TestEvent.End,
       stats,
       duration,
-      results: []
+      results
     });
     testsPassed = testsPassed && testResult.passed;
   }
