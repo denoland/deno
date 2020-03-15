@@ -1,6 +1,7 @@
 // These types are adapted from
 // https://github.com/DefinitelyTyped/DefinitelyTyped to work under Deno.
 //
+/* eslint-disable */
 export interface StandardLonghandProperties<TLength = string | 0> {
   /**
    * The CSS **`align-content`** property sets how the browser distributes space between and around content items along the cross-axis of a flexbox container, and the main-axis of a grid container.

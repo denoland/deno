@@ -27,6 +27,8 @@
 //                 Cong Zhang <https://github.com/dancerphil>
 // Definitions: https://github.com/DefinitelyTyped/DefinitelyTyped
 
+/* eslint-disable */
+
 import "./react/react_global.d.ts";
 
 import * as CSS from "./react/csstype.d.ts";

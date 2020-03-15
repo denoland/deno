@@ -7,6 +7,8 @@ React Native applications use React, but there is no DOM available. The JavaScri
 is ES6/ES2015 only. These definitions allow such projects to compile with only `--lib ES6`.
 */
 
+/* eslint-disable */
+
 interface AnimationEvent extends Event {}
 interface ClipboardEvent extends Event {}
 interface CompositionEvent extends Event {}
