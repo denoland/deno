@@ -17,6 +17,7 @@ interface PermissionSetTestResult {
   stats: Deno.TestStats;
   permsStr: string;
   duration: number;
+  results: Deno.TestResult[];
 }
 
 const PERMISSIONS: Deno.PermissionName[] = [
@@ -192,7 +193,8 @@ async function runTestsForPermissionSet(
     passed,
     permsStr: permsFmt,
     duration: endEvent.duration,
-    stats: endEvent.stats
+    stats: endEvent.stats,
+    results: endEvent.results
   };
 }
 
@@ -227,13 +229,13 @@ async function masterRunnerMain(
   let testsPassed = true;
 
   for (const testResult of testResults) {
-    const { permsStr, stats, duration } = testResult;
+    const { permsStr, stats, duration, results } = testResult;
     console.log(`Summary for ${permsStr}`);
     await consoleReporter.end({
       kind: Deno.TestEvent.End,
       stats,
       duration,
-      results: []
+      results
     });
     testsPassed = testsPassed && testResult.passed;
   }

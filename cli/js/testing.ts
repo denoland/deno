@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { bgRed, gray, green, italic, red, yellow } from "./colors.ts";
+import { gray, green, italic, red, yellow } from "./colors.ts";
 import { exit } from "./ops/os.ts";
 import { Console, stringifyArgs } from "./web/console.ts";
 import { stdout } from "./files.ts";
@@ -8,7 +8,6 @@ import { TextEncoder } from "./web/text_encoding.ts";
 const RED_FAILED = red("FAILED");
 const GREEN_OK = green("ok");
 const YELLOW_SKIPPED = yellow("SKIPPED");
-const RED_BG_FAIL = bgRed(" FAIL ");
 const disabledConsole = new Console((_x: string, _isErr?: boolean): void => {});
 
 function formatDuration(time = 0): string {
@@ -89,7 +88,7 @@ enum TestStatus {
 interface TestResult {
   name: string;
   status: TestStatus;
-  duration?: number;
+  duration: number;
   error?: Error;
 }
 
@@ -154,7 +153,7 @@ class TestApi {
     const results: TestResult[] = [];
     const suiteStart = +new Date();
     for (const { name, fn, skip } of this.testsToRun) {
-      const result: Partial<TestResult> = { name };
+      const result: Partial<TestResult> = { name, duration: 0 };
       yield { kind: TestEvent.TestStart, name };
       if (skip) {
         result.status = TestStatus.Skipped;
@@ -163,14 +162,14 @@ class TestApi {
         const start = +new Date();
         try {
           await fn();
-          result.duration = +new Date() - start;
           result.status = TestStatus.Passed;
           this.stats.passed++;
         } catch (err) {
-          result.duration = +new Date() - start;
           result.status = TestStatus.Failed;
           result.error = err;
           this.stats.failed++;
+        } finally {
+          result.duration = +new Date() - start;
         }
       }
       yield { kind: TestEvent.TestEnd, result: result as TestResult };
@@ -258,23 +257,40 @@ export class ConsoleTestReporter implements TestReporter {
 
     switch (result.status) {
       case TestStatus.Passed:
-        this.log(`${GREEN_OK} ${formatDuration(result.duration!)}`);
+        this.log(`${GREEN_OK} ${formatDuration(result.duration)}`);
         break;
       case TestStatus.Failed:
-        this.log(`${RED_FAILED} ${formatDuration(result.duration!)}`);
-        this.log(`${stringifyArgs([result.error!])}`);
+        this.log(`${RED_FAILED} ${formatDuration(result.duration)}`);
         break;
       case TestStatus.Skipped:
-        this.log(`${YELLOW_SKIPPED}`);
+        this.log(`${YELLOW_SKIPPED} ${formatDuration(result.duration)}`);
         break;
     }
   }
 
   async end(event: TestEventEnd): Promise<void> {
-    const { stats, duration } = event;
+    const { stats, duration, results } = event;
     // Attempting to match the output of Rust's test runner.
+    const failedTests = results.filter(r => r.error);
+
+    if (failedTests.length > 0) {
+      this.log(`\nfailures:\n`);
+
+      for (const result of failedTests) {
+        this.log(`${result.name}`);
+        this.log(`${stringifyArgs([result.error!])}`);
+        this.log("");
+      }
+
+      this.log(`failures:\n`);
+
+      for (const result of failedTests) {
+        this.log(`\t${result.name}`);
+      }
+    }
+
     this.log(
-      `\ntest result: ${stats.failed ? RED_BG_FAIL : GREEN_OK} ` +
+      `\ntest result: ${stats.failed ? RED_FAILED : GREEN_OK}. ` +
         `${stats.passed} passed; ${stats.failed} failed; ` +
         `${stats.ignored} ignored; ${stats.measured} measured; ` +
         `${stats.filtered} filtered out ` +
