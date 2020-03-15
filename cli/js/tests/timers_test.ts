@@ -127,6 +127,9 @@ unitTest(async function intervalSuccess(): Promise<void> {
   clearInterval(id);
   // count should increment twice
   assertEquals(count, 1);
+  // Similar false async leaking alarm.
+  // Force next round of polling.
+  await waitForMs(0);
 });
 
 unitTest(async function intervalCancelSuccess(): Promise<void> {
