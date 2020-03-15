@@ -17,6 +17,7 @@ declare namespace Deno {
   export interface TestDefinition {
     fn: TestFunction;
     name: string;
+    skip?: boolean;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -32,12 +33,16 @@ declare namespace Deno {
    * when `Deno.runTests` is used */
   export function test(name: string, fn: TestFunction): void;
 
+  enum TestStatus {
+    Passed = "passed",
+    Failed = "failed",
+    Skipped = "skipped"
+  }
+
   interface TestResult {
-    passed: boolean;
     name: string;
-    skipped: boolean;
-    hasRun: boolean;
-    duration: number;
+    status: TestStatus;
+    duration?: number;
     error?: Error;
   }
 

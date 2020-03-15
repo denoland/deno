@@ -11,8 +11,8 @@ unitTest(function nameOfTestCaseCantBeEmpty(): void {
     () => {
       Deno.test("", () => {});
     },
-    Error,
-    "The name of test case can't be empty"
+    TypeError,
+    "The test name can't be empty"
   );
   assertThrows(
     () => {
@@ -21,8 +21,8 @@ unitTest(function nameOfTestCaseCantBeEmpty(): void {
         fn: () => {}
       });
     },
-    Error,
-    "The name of test case can't be empty"
+    TypeError,
+    "The test name can't be empty"
   );
 });
 
@@ -31,7 +31,7 @@ unitTest(function testFnCantBeAnonymous(): void {
     () => {
       Deno.test(function() {});
     },
-    Error,
-    "Test function can't be anonymous"
+    TypeError,
+    "The test function can't be anonymous"
   );
 });
