@@ -1,10 +1,10 @@
 running 7 tests
-OK      runGranted [WILDCARD]
-OK      readGranted [WILDCARD]
-OK      writeGranted [WILDCARD]
-OK      netGranted [WILDCARD]
-OK      envGranted [WILDCARD]
-OK      pluginGranted [WILDCARD]
-OK      hrtimeGranted [WILDCARD]
+test runGranted ... ok [WILDCARD]
+test readGranted ... ok [WILDCARD]
+test writeGranted ... ok [WILDCARD]
+test netGranted ... ok [WILDCARD]
+test envGranted ... ok [WILDCARD]
+test pluginGranted ... ok [WILDCARD]
+test hrtimeGranted ... ok [WILDCARD]
 
-test result: OK 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]

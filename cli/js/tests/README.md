@@ -47,48 +47,32 @@ Runner discoveres required permissions combinations by loading
 
 There are three ways to run `unit_test_runner.ts`:
 
-- run tests matching current process permissions
-
 ```
-// run tests that don't require any permissions
-target/debug/deno unit_test_runner.ts
+# Run all tests. Spawns worker processes for each discovered permission
+# combination:
+target/debug/deno -A cli/js/tests/unit_test_runner.ts --master
 
-// run tests with "net" permission
-target/debug/deno --allow-net unit_test_runner.ts
+# By default all output of worker processes is discarded; for debug purposes
+# the --verbose flag preserves output from the worker
+target/debug/deno -A cli/js/tests/unit_test_runner.ts --master --verbose
 
-target/debug/deno --allow-net --allow-read unit_test_runner.ts
-```
+# Run subset of tests that don't require any permissions
+target/debug/deno cli/js/tests/unit_test_runner.ts
 
-- run all tests - "master" mode, that spawns worker processes for each
-  discovered permission combination:
+# Run subset tests that require "net" and "read" permissions
+target/debug/deno --allow-net --allow-read cli/js/tests/unit_test_runner.ts
 
-```
-target/debug/deno -A unit_test_runner.ts --master
-```
+# "worker" mode communicates with parent using TCP socket on provided address;
+# after initial setup drops permissions to specified set. It shouldn't be used
+# directly, only be "master" process.
+target/debug/deno -A cli/js/tests/unit_test_runner.ts --worker --addr=127.0.0.1:4500 --perms=net,write,run
 
-By default all output of worker processes is discarded; for debug purposes
-`--verbose` flag can be provided to preserve output from worker
-
-```
-target/debug/deno -A unit_test_runner.ts --master --verbose
+# Run specific tests
+target/debug/deno --allow-net cli/js/tests/unit_test_runner.ts -- netTcpListenClose
 ```
 
-- "worker" mode; communicates with parent using TCP socket on provided address;
-  after initial setup drops permissions to specified set. It shouldn't be used
-  directly, only be "master" process.
+### Http server
 
-```
-target/debug/deno -A unit_test_runner.ts --worker --addr=127.0.0.1:4500 --perms=net,write,run
-```
-
-### Filtering
-
-Runner supports basic test filtering by name:
-
-```
-target/debug/deno unit_test_runner.ts -- netAccept
-
-target/debug/deno -A unit_test_runner.ts --master -- netAccept
-```
-
-Filter string must be specified after "--" argument
+`tools/http_server.py` is required to run when one's running unit tests. During
+CI it's spawned automatically, but if you want to run tests manually make sure
+that server is spawned otherwise there'll be cascade of test failures.
