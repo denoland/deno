@@ -6,5 +6,5 @@ export function realpathSync(path: string): string {
 }
 
 export async function realpath(path: string): Promise<string> {
-  return await sendAsync("op_realpath", { path });
+  return sendAsync("op_realpath", { path });
 }

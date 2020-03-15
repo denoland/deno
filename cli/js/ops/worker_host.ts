@@ -25,5 +25,5 @@ export function hostPostMessage(id: number, data: Uint8Array): void {
 }
 
 export async function hostGetMessage(id: number): Promise<any> {
-  return await sendAsync("op_host_get_message", { id });
+  return sendAsync("op_host_get_message", { id });
 }

@@ -453,7 +453,7 @@ async function sendFetchReq(
     headers: headerArray
   };
 
-  return await opFetch(args, body);
+  return opFetch(args, body);
 }
 
 export async function fetch(

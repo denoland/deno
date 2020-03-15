@@ -126,7 +126,7 @@ async function serveDir(
     const fileUrl = posix.join(dirUrl, fileInfo.name ?? "");
     if (fileInfo.name === "index.html" && fileInfo.isFile()) {
       // in case index.html as dir...
-      return await serveFile(req, filePath);
+      return serveFile(req, filePath);
     }
     // Yuck!
     let mode = null;
