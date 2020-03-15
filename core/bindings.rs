@@ -35,6 +35,12 @@ lazy_static! {
       v8::ExternalReference {
         function: queue_microtask.map_fn_to()
       },
+      v8::ExternalReference {
+        function: encode.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: decode.map_fn_to()
+      },
     ]);
 }
 
@@ -154,6 +160,22 @@ pub fn initialize_context<'s>(
     context,
     v8::String::new(scope, "formatError").unwrap().into(),
     format_error_val.into(),
+  );
+
+  let mut encode_tmpl = v8::FunctionTemplate::new(scope, encode);
+  let encode_val = encode_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "encode").unwrap().into(),
+    encode_val.into(),
+  );
+
+  let mut decode_tmpl = v8::FunctionTemplate::new(scope, decode);
+  let decode_val = decode_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "decode").unwrap().into(),
+    decode_val.into(),
   );
 
   core_val.set_accessor(
@@ -549,6 +571,52 @@ fn format_error(
   let e = e.to_string();
   let e = v8::String::new(scope, &e).unwrap();
   rv.set(e.into())
+}
+
+fn encode(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let text = match v8::Local::<v8::String>::try_from(args.get(0)) {
+    Ok(s) => s,
+    Err(_) => {
+      let msg = v8::String::new(scope, "Invalid argument").unwrap();
+      let exception = v8::Exception::type_error(scope, msg);
+      scope.isolate().throw_exception(exception);
+      return;
+    }
+  };
+  let text_str = text.to_rust_string_lossy(scope);
+  let text_bytes = text_str.as_bytes().to_vec().into_boxed_slice();
+  let buf = boxed_slice_to_uint8array(scope, text_bytes);
+  rv.set(buf.into())
+}
+
+fn decode(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let buf = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(0)) {
+    Ok(view) => {
+      let byte_offset = view.byte_offset();
+      let byte_length = view.byte_length();
+      let backing_store = view.buffer().unwrap().get_backing_store();
+      let buf = unsafe { &**backing_store.get() };
+      &buf[byte_offset..byte_offset + byte_length]
+    }
+    Err(..) => {
+      let msg = v8::String::new(scope, "Invalid argument").unwrap();
+      let exception = v8::Exception::type_error(scope, msg);
+      scope.isolate().throw_exception(exception);
+      return;
+    }
+  };
+
+  let text_str =
+    v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal).unwrap();
+  rv.set(text_str.into())
 }
 
 fn queue_microtask(

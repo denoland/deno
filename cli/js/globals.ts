@@ -97,6 +97,9 @@ declare global {
     evalContext(code: string): [any, EvalErrorInfo | null];
 
     formatError: (e: Error) => string;
+
+    decode(bytes: Uint8Array): string;
+    encode(text: string): Uint8Array;
   }
 
   // Only `var` variables show up in the `globalThis` type when doing a global
