@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 interface ParseOptions {
   decodeURIComponent?: (string: string) => string;
   maxKeys?: number;
