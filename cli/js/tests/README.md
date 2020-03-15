@@ -81,6 +81,12 @@ target/debug/deno -A unit_test_runner.ts --master --verbose
 target/debug/deno -A unit_test_runner.ts --worker --addr=127.0.0.1:4500 --perms=net,write,run
 ```
 
+### Http server
+
+`tools/http_server.py` is required to run when one's running unit tests. During
+CI it's spawned automatically, but if you want to run tests manually make sure
+that server is spawned otherwise there'll be cascade of test failures.
+
 ### Filtering
 
 Runner supports basic test filtering by name:
