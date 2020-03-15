@@ -1,11 +1,14 @@
-const { cwd, chdir, makeTempDir, mkdir, open } = Deno;
+const { cwd, chdir, makeTempDir, mkdir, open, symlink } = Deno;
 const { remove } = Deno;
 import { walk, walkSync, WalkOptions, WalkInfo } from "./walk.ts";
-import { assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
+import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
+
+const isWindows = Deno.build.os == "win";
 
 export async function testWalk(
   setup: (arg0: string) => void | Promise<void>,
-  t: Deno.TestFunction
+  t: Deno.TestFunction,
+  skip = false
 ): Promise<void> {
   const name = t.name;
   async function fn(): Promise<void> {
@@ -20,7 +23,7 @@ export async function testWalk(
       remove(d, { recursive: true });
     }
   }
-  Deno.test({ name, fn });
+  Deno.test({ skip, name: `[walk] ${name}`, fn });
 }
 
 function normalize({ filename }: WalkInfo): string {
@@ -239,7 +242,7 @@ testWalk(
   }
 );
 
-/* TODO(ry) Re-enable followSymlinks
+// TODO(ry) Re-enable followSymlinks
 testWalk(
   async (d: string): Promise<void> => {
     await mkdir(d + "/a");
@@ -268,6 +271,6 @@ testWalk(
     const arr = await walkArray("a", { followSymlinks: true });
     assertEquals(arr.length, 3);
     assert(arr.some((f): boolean => f.endsWith("/b/z")));
-  }
+  },
+  true
 );
-*/
