@@ -6,6 +6,7 @@ import {
   hostPostMessage,
   hostGetMessage
 } from "../ops/worker_host.ts";
+import * as domTypes from "./dom_types.ts";
 import { log, notImplemented } from "../util.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 /*
@@ -36,7 +37,7 @@ export interface MessagePort extends EventTarget {
   postMessage(message: any, options: PostMessageOptions): void;
 }
 export type MessageEventSource = MessagePort | Worker; // | WindowProxy
-export interface MessageEventInit extends __domTypes.EventInit {
+export interface MessageEventInit extends domTypes.EventInit {
   data?: any;
   origin?: string;
   lastEventId?: string;
@@ -68,7 +69,7 @@ export class MessageEvent extends Event {
   }
 }
 
-export interface ErrorEventInit extends __domTypes.EventInit {
+export interface ErrorEventInit extends domTypes.EventInit {
   message?: string;
   filename?: string;
   lineno?: number;
