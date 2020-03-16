@@ -72,8 +72,8 @@ impl From<Record> for RecordBuf {
   }
 }
 
-struct Isolate {
-  core_isolate: Box<CoreIsolate>, // Unclear why CoreIsolate::new() returns a box.
+struct Isolate<'a> {
+  core_isolate: Box<CoreIsolate<'a>>, // Unclear why CoreIsolate::new() returns a box.
   state: State,
 }
 
@@ -85,7 +85,7 @@ struct StateInner {
   resource_table: ResourceTable,
 }
 
-impl Isolate {
+impl Isolate<'_> {
   pub fn new() -> Self {
     let startup_data = StartupData::Script(Script {
       source: include_str!("http_bench.js"),
@@ -142,8 +142,8 @@ impl Isolate {
   }
 }
 
-impl Future for Isolate {
-  type Output = <CoreIsolate as Future>::Output;
+impl<'a> Future for Isolate<'a> {
+  type Output = <CoreIsolate<'a> as Future>::Output;
 
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     self.core_isolate.poll_unpin(cx)

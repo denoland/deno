@@ -45,8 +45,8 @@ pub type DynImportId = i32;
 /// Creating `EsIsolate` requires to pass `loader` argument
 /// that implements `ModuleLoader` trait - that way actual resolution and
 /// loading of modules can be customized by the implementor.
-pub struct EsIsolate {
-  core_isolate: Box<Isolate>,
+pub struct EsIsolate<'a> {
+  core_isolate: Box<Isolate<'a>>,
   loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
   pub(crate) next_dyn_import_id: DynImportId,
@@ -57,21 +57,21 @@ pub struct EsIsolate {
   waker: AtomicWaker,
 }
 
-impl Deref for EsIsolate {
-  type Target = Isolate;
+impl<'a> Deref for EsIsolate<'a> {
+  type Target = Isolate<'a>;
 
   fn deref(&self) -> &Self::Target {
     &self.core_isolate
   }
 }
 
-impl DerefMut for EsIsolate {
+impl DerefMut for EsIsolate<'_> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.core_isolate
   }
 }
 
-impl EsIsolate {
+impl EsIsolate<'_> {
   pub fn new(
     loader: Rc<dyn ModuleLoader>,
     startup_data: StartupData,
@@ -504,7 +504,7 @@ impl EsIsolate {
   }
 }
 
-impl Future for EsIsolate {
+impl Future for EsIsolate<'_> {
   type Output = Result<(), ErrBox>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {

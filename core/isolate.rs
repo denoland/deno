@@ -87,25 +87,25 @@ impl AsMut<[u8]> for ZeroCopyBuf {
   }
 }
 
-pub enum SnapshotConfig {
-  Borrowed(v8::StartupData<'static>),
+pub enum SnapshotConfig<'a> {
+  Borrowed(v8::StartupData<'a>),
   Owned(v8::OwnedStartupData),
 }
 
-impl From<&'static [u8]> for SnapshotConfig {
+impl From<&'static [u8]> for SnapshotConfig<'_> {
   fn from(sd: &'static [u8]) -> Self {
     Self::Borrowed(v8::StartupData::new(sd))
   }
 }
 
-impl From<v8::OwnedStartupData> for SnapshotConfig {
+impl From<v8::OwnedStartupData> for SnapshotConfig<'_> {
   fn from(sd: v8::OwnedStartupData) -> Self {
     Self::Owned(sd)
   }
 }
 
-impl Deref for SnapshotConfig {
-  type Target = v8::StartupData<'static>;
+impl<'a> Deref for SnapshotConfig<'a> {
+  type Target = v8::StartupData<'a>;
   fn deref(&self) -> &Self::Target {
     match self {
       Self::Borrowed(sd) => sd,
@@ -158,11 +158,11 @@ type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 /// by implementing dispatcher function that takes control buffer and optional zero copy buffer
 /// as arguments. An async Op corresponds exactly to a Promise in JavaScript.
 #[allow(unused)]
-pub struct Isolate {
+pub struct Isolate<'a> {
   pub(crate) v8_isolate: Option<v8::OwnedIsolate>,
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
-  snapshot: Option<SnapshotConfig>,
+  snapshot: Option<SnapshotConfig<'a>>,
   pub(crate) global_context: v8::Global<v8::Context>,
   pub(crate) shared_ab: v8::Global<v8::SharedArrayBuffer>,
   pub(crate) js_recv_cb: v8::Global<v8::Function>,
@@ -181,7 +181,7 @@ pub struct Isolate {
   error_handler: Option<Box<IsolateErrorHandleFn>>,
 }
 
-impl Drop for Isolate {
+impl Drop for Isolate<'_> {
   fn drop(&mut self) {
     if let Some(creator) = self.snapshot_creator.take() {
       // TODO(ry): in rusty_v8, `SnapShotCreator::get_owned_isolate()` returns
@@ -222,7 +222,7 @@ pub unsafe fn v8_init() {
   v8::V8::set_flags_from_command_line(argv);
 }
 
-impl Isolate {
+impl Isolate<'_> {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
   pub fn new(startup_data: StartupData, will_snapshot: bool) -> Box<Self> {
@@ -486,7 +486,7 @@ impl Isolate {
   }
 }
 
-impl Future for Isolate {
+impl Future for Isolate<'_> {
   type Output = Result<(), ErrBox>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -755,7 +755,7 @@ pub mod tests {
     OverflowResAsync,
   }
 
-  pub fn setup(mode: Mode) -> (Box<Isolate>, Arc<AtomicUsize>) {
+  pub fn setup(mode: Mode) -> (Box<Isolate<'static>>, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
