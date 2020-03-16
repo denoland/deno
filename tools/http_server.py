@@ -130,6 +130,40 @@ class ContentTypeHandler(QuietSimpleHTTPRequestHandler):
             self.wfile.write(bytes("export const foo: 'foo';"))
             return
 
+        if "xt001.js" in self.path:
+            self.protocol_version = "HTTP/1.1"
+            self.send_response(200, 'OK')
+            self.send_header('Content-type', 'application/javascript')
+            self.send_header('X-TypeScript-Types', './xt001.d.ts')
+            self.end_headers()
+            self.wfile.write(bytes("export * from './xt002.js';"))
+            return
+
+        if "xt001.d.ts" in self.path:
+            self.protocol_version = "HTTP/1.1"
+            self.send_response(200, 'OK')
+            self.send_header('Content-type', 'application/typescript')
+            self.end_headers()
+            self.wfile.write(bytes("export * from './xt002.js';"))
+            return
+
+        if "xt002.js" in self.path:
+            self.protocol_version = "HTTP/1.1"
+            self.send_response(200, 'OK')
+            self.send_header('Content-type', 'application/javascript')
+            self.send_header('X-TypeScript-Types', './xt002.d.ts')
+            self.end_headers()
+            self.wfile.write(bytes("export const foo = 'foo';"))
+            return
+
+        if "xt002.d.ts" in self.path:
+            self.protocol_version = "HTTP/1.1"
+            self.send_response(200, 'OK')
+            self.send_header('Content-type', 'application/typescript')
+            self.end_headers()
+            self.wfile.write(bytes("export const foo: 'foo';"))
+            return
+
         if "referenceTypes.js" in self.path:
             self.protocol_version = "HTTP/1.1"
             self.send_response(200, 'OK')

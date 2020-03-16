@@ -1,0 +1,5 @@
+[WILDCARD]
+DEBUG TS - compiler::host.getSourceFile http://127.0.0.1:4545/xt001.d.ts
+[WILDCARD]
+DEBUG TS - compiler::host.getSourceFile http://127.0.0.1:4545/xt002.d.ts
+[WILDCARD]

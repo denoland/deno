@@ -1381,6 +1381,11 @@ itest!(type_directives_02 {
   output: "type_directives_02.ts.out",
 });
 
+itest!(type_directives_03 {
+  args: "run --reload -L debug type_directives_03.ts",
+  output: "type_directives_03.ts.out",
+});
+
 itest!(types {
   args: "types",
   output: "types.out",
