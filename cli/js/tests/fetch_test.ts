@@ -174,8 +174,6 @@ unitTest(
 
 unitTest(
   {
-    // TODO(bartlomieju): leaking resources
-    skip: true,
     perms: { net: true }
   },
   async function fetchWithRedirection(): Promise<void> {
@@ -190,8 +188,6 @@ unitTest(
 
 unitTest(
   {
-    // TODO: leaking resources
-    skip: true,
     perms: { net: true }
   },
   async function fetchWithRelativeRedirection(): Promise<void> {
@@ -451,8 +447,6 @@ unitTest(
 
 unitTest(
   {
-    // TODO: leaking resources
-    skip: true,
     perms: { net: true }
   },
   async function fetchWithManualRedirection(): Promise<void> {
@@ -476,8 +470,6 @@ unitTest(
 
 unitTest(
   {
-    // TODO: leaking resources
-    skip: true,
     perms: { net: true }
   },
   async function fetchWithErrorRedirection(): Promise<void> {

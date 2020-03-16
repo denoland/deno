@@ -531,6 +531,9 @@ export async function fetch(
       redirected
     );
     if ([301, 302, 303, 307, 308].includes(response.status)) {
+      // We won't use body of received response, so close it now
+      // otherwise it will be kept in resource table.
+      close(fetchResponse.bodyRid);
       // We're in a redirect status
       switch ((init && init.redirect) || "follow") {
         case "error":
