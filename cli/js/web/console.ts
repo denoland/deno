@@ -286,24 +286,45 @@ function createRawObjectString(
 
   let baseString = "";
 
-  const className = getClassInstanceName(value);
-  let shouldShowClassName = false;
-  if (className && className !== "Object" && className !== "anonymous") {
-    shouldShowClassName = true;
+  let shouldShowDisplayName = false;
+  // @ts-ignore
+  let displayName = value[Symbol.toStringTag];
+  if (!displayName) {
+    displayName = getClassInstanceName(value);
   }
-  const keys = Object.keys(value);
-  const entries: string[] = keys.map((key): string => {
-    if (keys.length > OBJ_ABBREVIATE_SIZE) {
-      return key;
-    } else {
-      return `${key}: ${stringifyWithQuotes(
-        value[key],
-        ctx,
-        level + 1,
-        maxLevel
-      )}`;
+  if (displayName && displayName !== "Object" && displayName !== "anonymous") {
+    shouldShowDisplayName = true;
+  }
+
+  const entries: string[] = [];
+  const stringKeys = Object.keys(value);
+  const symbolKeys = Object.getOwnPropertySymbols(value);
+  const numKeys = stringKeys.length + symbolKeys.length;
+  if (numKeys > OBJ_ABBREVIATE_SIZE) {
+    for (const key of stringKeys) {
+      entries.push(key);
     }
-  });
+    for (const key of symbolKeys) {
+      entries.push(key.toString());
+    }
+  } else {
+    for (const key of stringKeys) {
+      entries.push(
+        `${key}: ${stringifyWithQuotes(value[key], ctx, level + 1, maxLevel)}`
+      );
+    }
+    for (const key of symbolKeys) {
+      entries.push(
+        `${key.toString()}: ${stringifyWithQuotes(
+          // @ts-ignore
+          value[key],
+          ctx,
+          level + 1,
+          maxLevel
+        )}`
+      );
+    }
+  }
 
   ctx.delete(value);
 
@@ -313,8 +334,8 @@ function createRawObjectString(
     baseString = `{ ${entries.join(", ")} }`;
   }
 
-  if (shouldShowClassName) {
-    baseString = `${className} ${baseString}`;
+  if (shouldShowDisplayName) {
+    baseString = `${displayName} ${baseString}`;
   }
 
   return baseString;

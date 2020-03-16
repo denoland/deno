@@ -163,10 +163,14 @@ unitTest(function consoleTestStringifyCircular(): void {
     "{ a: { b: { c: { d: [Set] } } } }"
   );
   assertEquals(stringify(nestedObj), nestedObjExpected);
-  assertEquals(stringify(JSON), "{}");
+  assertEquals(stringify(JSON), 'JSON { Symbol(Symbol.toStringTag): "JSON" }');
   assertEquals(
     stringify(console),
-    "{ printFunc, log, debug, info, dir, dirxml, warn, error, assert, count, countReset, table, time, timeLog, timeEnd, group, groupCollapsed, groupEnd, clear, trace, indentLevel }"
+    "{ printFunc, log, debug, info, dir, dirxml, warn, error, assert, count, countReset, table, time, timeLog, timeEnd, group, groupCollapsed, groupEnd, clear, trace, indentLevel, Symbol(isConsoleInstance) }"
+  );
+  assertEquals(
+    stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
+    'TAG { str: 1, Symbol(sym): 2, Symbol(Symbol.toStringTag): "TAG" }'
   );
   // test inspect is working the same
   assertEquals(inspect(nestedObj), nestedObjExpected);
@@ -224,7 +228,10 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
   }
 
   assertEquals(stringify(new B({ a: "a" })), "a");
-  assertEquals(stringify(B.prototype), "{}");
+  assertEquals(
+    stringify(B.prototype),
+    "{ Symbol(Deno.customInspect): [Function: [Deno.customInspect]] }"
+  );
 });
 
 unitTest(function consoleTestWithIntegerFormatSpecifier(): void {
