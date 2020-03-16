@@ -12,6 +12,7 @@ use remove_dir_all::remove_dir_all;
 use std;
 use std::convert::From;
 use std::fs;
+use std::env::{current_dir, set_current_dir, temp_dir};
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -289,7 +290,7 @@ fn op_chdir(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: ChdirArgs = serde_json::from_value(args)?;
-  std::env::set_current_dir(&args.directory)?;
+  set_current_dir(&args.directory)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -791,7 +792,7 @@ fn make_temp(
   let suffix_ = suffix.unwrap_or("");
   let mut buf: PathBuf = match dir {
     Some(ref p) => p.to_path_buf(),
-    None => std::env::temp_dir(),
+    None => temp_dir(),
   }
   .join("_");
   let mut rng = thread_rng();
@@ -848,8 +849,7 @@ fn op_make_temp_dir(
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
-  state
-    .check_write(dir.clone().unwrap_or_else(std::env::temp_dir).as_path())?;
+  state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
@@ -882,8 +882,7 @@ fn op_make_temp_file(
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
-  state
-    .check_write(dir.clone().unwrap_or_else(std::env::temp_dir).as_path())?;
+  state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
@@ -932,7 +931,7 @@ fn op_cwd(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
-  let path = std::env::current_dir()?;
+  let path = current_dir()?;
   let path_str = path.into_os_string().into_string().unwrap();
   Ok(JsonOp::Sync(json!(path_str)))
 }
