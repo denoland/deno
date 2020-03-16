@@ -71,8 +71,6 @@ async function workerRunnerMain(
     reporter: socketReporter,
     only: filter
   });
-  // Notify parent process we're done
-  socketReporter.close();
 }
 
 function spawnWorkerRunner(
@@ -151,6 +149,9 @@ async function runTestsForPermissionSet(
       break;
     }
   }
+
+  // Close socket to worker, it should shutdown gracefully.
+  conn.close();
 
   if (typeof expectedPassedTests === "undefined") {
     throw new Error("Worker runner didn't report start");
