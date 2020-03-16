@@ -194,7 +194,14 @@ export function createResolvable<T>(): Resolvable<T> {
   return Object.assign(promise, methods!) as Resolvable<T>;
 }
 
-export class SocketReporter implements Deno.TestReporter {
+export enum TestEvent {
+  Start = "start",
+  TestStart = "testStart",
+  TestEnd = "testEnd",
+  End = "end"
+}
+
+export class SocketReporter implements Deno.tests.Reporter {
   private encoder: TextEncoder;
 
   constructor(private conn: Deno.Conn) {
@@ -207,15 +214,21 @@ export class SocketReporter implements Deno.TestReporter {
     await Deno.writeAll(this.conn, encodedMsg);
   }
 
-  async start(msg: Deno.TestEventStart): Promise<void> {
-    await this.write(msg);
+  async start(msg: Deno.tests.StartMessage): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const serializedMsg: any = { ...msg };
+    serializedMsg.tests = msg.tests.map(test => ({ ...test, fn: null }));
+    await this.write([TestEvent.Start, msg]);
   }
 
-  async testStart(msg: Deno.TestEventTestStart): Promise<void> {
-    await this.write(msg);
+  async testStart(msg: Deno.tests.TestStartMessage): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const serializedMsg: any = { ...msg };
+    serializedMsg.test = { ...serializedMsg.test, fn: null };
+    await this.write([TestEvent.TestStart, msg]);
   }
 
-  async testEnd(msg: Deno.TestEventTestEnd): Promise<void> {
+  async testEnd(msg: Deno.tests.TestEndMessage): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const serializedMsg: any = { ...msg };
 
@@ -225,11 +238,13 @@ export class SocketReporter implements Deno.TestReporter {
       serializedMsg.result.error = String(serializedMsg.result.error.stack);
     }
 
-    await this.write(serializedMsg);
+    await this.write([TestEvent.TestEnd, serializedMsg]);
   }
 
-  async end(msg: Deno.TestEventEnd): Promise<void> {
-    const encodedMsg = this.encoder.encode(JSON.stringify(msg));
+  async end(msg: Deno.tests.EndMessage): Promise<void> {
+    const encodedMsg = this.encoder.encode(
+      JSON.stringify([TestEvent.End, msg])
+    );
     await Deno.writeAll(this.conn, encodedMsg);
     this.conn.closeWrite();
   }

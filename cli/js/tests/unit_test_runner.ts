@@ -2,6 +2,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import "./unit_tests.ts";
 import {
+  TestEvent,
   readLines,
   permissionCombinations,
   Permissions,
@@ -14,10 +15,10 @@ import {
 interface PermissionSetTestResult {
   perms: Permissions;
   passed: boolean;
-  stats: Deno.TestStats;
+  stats: Deno.tests.Stats;
   permsStr: string;
   duration: number;
-  results: Deno.TestResult[];
+  results: Deno.tests.Result[];
 }
 
 const PERMISSIONS: Deno.PermissionName[] = [
@@ -117,7 +118,7 @@ async function runTestsForPermissionSet(
   listener: Deno.Listener,
   addrStr: string,
   verbose: boolean,
-  reporter: Deno.ConsoleTestReporter,
+  reporter: Deno.tests.ConsoleReporter,
   perms: Permissions,
   filter?: string
 ): Promise<PermissionSetTestResult> {
@@ -132,18 +133,18 @@ async function runTestsForPermissionSet(
 
   try {
     for await (const line of readLines(conn)) {
-      const msg = JSON.parse(line);
+      const e = JSON.parse(line);
 
-      if (msg.kind === Deno.TestEvent.Start) {
-        expectedPassedTests = msg.tests;
-        await reporter.start(msg);
-      } else if (msg.kind === Deno.TestEvent.TestStart) {
-        await reporter.testStart(msg);
-      } else if (msg.kind === Deno.TestEvent.TestEnd) {
-        await reporter.testEnd(msg);
+      if (e[0] === TestEvent.Start) {
+        expectedPassedTests = e[1].tests.length;
+        await reporter.start(e[1]);
+      } else if (e[0] === TestEvent.TestStart) {
+        await reporter.testStart(e[1]);
+      } else if (e[0] === TestEvent.TestEnd) {
+        await reporter.testEnd(e[1]);
       } else {
-        endEvent = msg;
-        await reporter.end(msg);
+        endEvent = e[1];
+        await reporter.end(e[1]);
       }
     }
   } finally {
@@ -195,7 +196,7 @@ async function masterRunnerMain(
   }
 
   const testResults = new Set<PermissionSetTestResult>();
-  const consoleReporter = new Deno.ConsoleTestReporter();
+  const consoleReporter = new Deno.tests.ConsoleReporter();
   const addr = { hostname: "127.0.0.1", port: 4510 };
   const addrStr = `${addr.hostname}:${addr.port}`;
   const listener = Deno.listen(addr);
@@ -220,7 +221,6 @@ async function masterRunnerMain(
     const { permsStr, stats, duration, results } = testResult;
     console.log(`Summary for ${permsStr}`);
     await consoleReporter.end({
-      kind: Deno.TestEvent.End,
       stats,
       duration,
       results
