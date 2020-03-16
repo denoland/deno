@@ -3,19 +3,25 @@
 const { PermissionDenied } = Deno.errors;
 
 function getPermissionString(descriptors: Deno.PermissionDescriptor[]): string {
-  return descriptors
-    .map(pd => {
-      switch (pd.name) {
-        case "read":
-        case "write":
-          return pd.path ? `${pd.name}(${pd.path})` : pd.name;
-        case "net":
-          return pd.url ? `${pd.name}(${pd.url})` : pd.url;
-        default:
-          return pd.name;
-      }
-    })
-    .join(", ");
+  return descriptors.length
+    ? `  ${descriptors
+        .map(pd => {
+          switch (pd.name) {
+            case "read":
+            case "write":
+              return pd.path
+                ? `--allow-${pd.name}=${pd.path}`
+                : `--allow-${pd.name}`;
+            case "net":
+              return pd.url
+                ? `--allow-${pd.name}=${pd.url}`
+                : `--allow-${pd.name}`;
+            default:
+              return `--allow-${pd.name}`;
+          }
+        })
+        .join("\n  ")}`
+    : "";
 }
 
 /** Attempts to grant a set of permissions, resolving with the descriptors of
@@ -99,17 +105,16 @@ export async function grantOrThrow(
     ? descriptor
     : [descriptor, ...descriptors];
   for (const descriptor of descriptors) {
-    let state = (await Deno.permissions.query(descriptor)).state;
-    if (state === "prompt") {
-      state = (await Deno.permissions.request(descriptor)).state;
-    }
+    const { state } = await Deno.permissions.request(descriptor);
     if (state !== "granted") {
       denied.push(descriptor);
     }
   }
   if (denied.length) {
     throw new PermissionDenied(
-      `The following permissions are denied: ${getPermissionString(denied)}`
+      `The following permissions have not been granted:\n${getPermissionString(
+        denied
+      )}`
     );
   }
 }
