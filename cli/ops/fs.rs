@@ -9,9 +9,7 @@ use crate::state::State;
 use deno_core::*;
 use futures::future::FutureExt;
 use remove_dir_all::remove_dir_all;
-use std;
 use std::convert::From;
-use std::fs;
 use std::env::{current_dir, set_current_dir, temp_dir};
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
@@ -77,7 +75,7 @@ fn op_open(
 
   let mut open_options = if let Some(mode) = args.mode {
     #[allow(unused_mut)]
-    let mut std_options = fs::OpenOptions::new();
+    let mut std_options = std::fs::OpenOptions::new();
     // mode only used if creating the file on Unix
     // if not specified, defaults to 0o666
     #[cfg(unix)]
@@ -353,13 +351,13 @@ fn op_chmod(
   blocking_json(is_sync, move || {
     debug!("op_chmod {}", path.display());
     // Still check file/dir exists on windows
-    let _metadata = fs::metadata(&path)?;
+    let _metadata = std::fs::metadata(&path)?;
     #[cfg(unix)]
     {
       use std::os::unix::fs::PermissionsExt;
       let mut permissions = _metadata.permissions();
       permissions.set_mode(args.mode);
-      fs::set_permissions(&path, permissions)?;
+      std::fs::set_permissions(&path, permissions)?;
     }
     Ok(json!({}))
   })
@@ -426,14 +424,14 @@ fn op_remove(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_remove {}", path.display());
-    let metadata = fs::symlink_metadata(&path)?;
+    let metadata = std::fs::symlink_metadata(&path)?;
     let file_type = metadata.file_type();
     if file_type.is_file() || file_type.is_symlink() {
-      fs::remove_file(&path)?;
+      std::fs::remove_file(&path)?;
     } else if recursive {
       remove_dir_all(&path)?;
     } else {
-      fs::remove_dir(&path)?;
+      std::fs::remove_dir(&path)?;
     }
     Ok(json!({}))
   })
@@ -470,7 +468,7 @@ fn op_copy_file(
     }
 
     // returns size of from as u64 (we ignore)
-    fs::copy(&from, &to)?;
+    std::fs::copy(&from, &to)?;
     Ok(json!({}))
   })
 }
@@ -487,7 +485,7 @@ macro_rules! to_seconds {
 
 #[inline(always)]
 fn get_stat_json(
-  metadata: fs::Metadata,
+  metadata: std::fs::Metadata,
   maybe_name: Option<String>,
 ) -> JsonResult {
   // Unix stat member (number types only). 0 if not on unix.
@@ -561,9 +559,9 @@ fn op_stat(
   blocking_json(is_sync, move || {
     debug!("op_stat {} {}", path.display(), lstat);
     let metadata = if lstat {
-      fs::symlink_metadata(&path)?
+      std::fs::symlink_metadata(&path)?
     } else {
-      fs::metadata(&path)?
+      std::fs::metadata(&path)?
     };
     get_stat_json(metadata, None)
   })
@@ -591,7 +589,7 @@ fn op_realpath(
     debug!("op_realpath {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
-    let realpath = fs::canonicalize(&path)?;
+    let realpath = std::fs::canonicalize(&path)?;
     let mut realpath_str =
       realpath.to_str().unwrap().to_owned().replace("\\", "/");
     if cfg!(windows) {
@@ -621,7 +619,7 @@ fn op_read_dir(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_read_dir {}", path.display());
-    let entries: Vec<_> = fs::read_dir(path)?
+    let entries: Vec<_> = std::fs::read_dir(path)?
       .filter_map(|entry| {
         let entry = entry.unwrap();
         let metadata = entry.metadata().unwrap();
@@ -663,7 +661,7 @@ fn op_rename(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
-    fs::rename(&oldpath, &newpath)?;
+    std::fs::rename(&oldpath, &newpath)?;
     Ok(json!({}))
   })
 }
@@ -747,7 +745,7 @@ fn op_read_link(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_read_link {}", path.display());
-    let path = fs::read_link(&path)?;
+    let path = std::fs::read_link(&path)?;
     let path_str = path.to_str().unwrap();
 
     Ok(json!(path_str))
@@ -776,7 +774,7 @@ fn op_truncate(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_truncate {} {}", path.display(), len);
-    let f = fs::OpenOptions::new().write(true).open(&path)?;
+    let f = std::fs::OpenOptions::new().write(true).open(&path)?;
     f.set_len(len)?;
     Ok(json!({}))
   })
