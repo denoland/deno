@@ -13,9 +13,11 @@ use std;
 use std::convert::From;
 use std::fs;
 use std::io::SeekFrom;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 use tokio;
+
+use rand::{thread_rng, Rng};
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
@@ -291,6 +293,28 @@ fn op_chdir(
   Ok(JsonOp::Sync(json!({})))
 }
 
+use std::fs::DirBuilder;
+
+#[cfg(unix)]
+fn set_dir_permission(builder: &mut DirBuilder, mode: u32) {
+  use std::os::unix::fs::DirBuilderExt;
+  let mode = mode & 0o777;
+  debug!("set dir mode to {:o}", mode);
+  builder.mode(mode);
+}
+
+#[cfg(not(unix))]
+fn set_dir_permission(_builder: &mut DirBuilder, _mode: u32) {
+  // NOOP on windows
+}
+
+pub fn mkdir(path: &Path, mode: u32, recursive: bool) -> std::io::Result<()> {
+  let mut builder = DirBuilder::new();
+  builder.recursive(recursive);
+  set_dir_permission(&mut builder, mode);
+  builder.create(path)
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct MkdirArgs {
@@ -314,7 +338,7 @@ fn op_mkdir(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
-    deno_fs::mkdir(&path, mode, args.recursive)?;
+    mkdir(&path, mode, args.recursive)?;
     Ok(json!({}))
   })
 }
@@ -759,6 +783,48 @@ fn op_truncate(
   })
 }
 
+use std::io::ErrorKind;
+
+fn make_temp(
+  dir: Option<&Path>,
+  prefix: Option<&str>,
+  suffix: Option<&str>,
+  is_dir: bool,
+) -> std::io::Result<PathBuf> {
+  let prefix_ = prefix.unwrap_or("");
+  let suffix_ = suffix.unwrap_or("");
+  let mut buf: PathBuf = match dir {
+    Some(ref p) => p.to_path_buf(),
+    None => std::env::temp_dir(),
+  }
+  .join("_");
+  let mut rng = thread_rng();
+  loop {
+    let unique = rng.gen::<u32>();
+    buf.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
+    let r = if is_dir {
+      let mut builder = DirBuilder::new();
+      set_dir_permission(&mut builder, 0o700);
+      builder.create(buf.as_path())
+    } else {
+      let mut open_options = std::fs::OpenOptions::new();
+      open_options.write(true).create_new(true);
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::OpenOptionsExt;
+        open_options.mode(0o600);
+      }
+      open_options.open(buf.as_path())?;
+      Ok(())
+    };
+    match r {
+      Err(ref e) if e.kind() == ErrorKind::AlreadyExists => continue,
+      Ok(_) => return Ok(buf),
+      Err(e) => return Err(e),
+    }
+  }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct MakeTempArgs {
@@ -789,7 +855,7 @@ fn op_make_temp_dir(
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
     // We can't assume that paths are always valid utf8 strings.
-    let path = deno_fs::make_temp(
+    let path = make_temp(
       // Converting Option<String> to Option<&str>
       dir.as_ref().map(|x| &**x),
       prefix.as_ref().map(|x| &**x),
@@ -823,7 +889,7 @@ fn op_make_temp_file(
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
     // We can't assume that paths are always valid utf8 strings.
-    let path = deno_fs::make_temp(
+    let path = make_temp(
       // Converting Option<String> to Option<&str>
       dir.as_ref().map(|x| &**x),
       prefix.as_ref().map(|x| &**x),
