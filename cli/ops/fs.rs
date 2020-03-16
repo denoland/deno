@@ -293,28 +293,6 @@ fn op_chdir(
   Ok(JsonOp::Sync(json!({})))
 }
 
-use std::fs::DirBuilder;
-
-#[cfg(unix)]
-fn set_dir_permission(builder: &mut DirBuilder, mode: u32) {
-  use std::os::unix::fs::DirBuilderExt;
-  let mode = mode & 0o777;
-  debug!("set dir mode to {:o}", mode);
-  builder.mode(mode);
-}
-
-#[cfg(not(unix))]
-fn set_dir_permission(_builder: &mut DirBuilder, _mode: u32) {
-  // NOOP on windows
-}
-
-pub fn mkdir(path: &Path, mode: u32, recursive: bool) -> std::io::Result<()> {
-  let mut builder = DirBuilder::new();
-  builder.recursive(recursive);
-  set_dir_permission(&mut builder, mode);
-  builder.create(path)
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct MkdirArgs {
@@ -331,14 +309,22 @@ fn op_mkdir(
 ) -> Result<JsonOp, OpError> {
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
-  let mode = args.mode.unwrap_or(0o777);
+  let mode = args.mode.unwrap_or(0o777) & 0o777;
 
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
-    mkdir(&path, mode, args.recursive)?;
+    // #[allow(unused_mut)]
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(args.recursive);
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::DirBuilderExt;
+      builder.mode(mode);
+    }
+    builder.create(path)?;
     Ok(json!({}))
   })
 }
@@ -783,8 +769,6 @@ fn op_truncate(
   })
 }
 
-use std::io::ErrorKind;
-
 fn make_temp(
   dir: Option<&Path>,
   prefix: Option<&str>,
@@ -803,8 +787,13 @@ fn make_temp(
     let unique = rng.gen::<u32>();
     buf.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
     let r = if is_dir {
-      let mut builder = DirBuilder::new();
-      set_dir_permission(&mut builder, 0o700);
+      #[allow(unused_mut)]
+      let mut builder = std::fs::DirBuilder::new();
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+      }
       builder.create(buf.as_path())
     } else {
       let mut open_options = std::fs::OpenOptions::new();
@@ -818,7 +807,7 @@ fn make_temp(
       Ok(())
     };
     match r {
-      Err(ref e) if e.kind() == ErrorKind::AlreadyExists => continue,
+      Err(ref e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
       Ok(_) => return Ok(buf),
       Err(e) => return Err(e),
     }
