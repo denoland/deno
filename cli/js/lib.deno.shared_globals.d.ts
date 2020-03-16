@@ -1483,6 +1483,48 @@ declare namespace __url {
 
 declare namespace __workers {
   // @url js/workers.d.ts
+  export interface PostMessageOptions {
+    transfer: object[];
+  }
+  export interface MessagePort extends EventTarget {
+    postMessage(message: any, transfer: object[]): void;
+    postMessage(message: any, options: PostMessageOptions): void;
+  }
+  export type MessageEventSource = MessagePort | Worker; // | WindowProxy
+  export interface MessageEventInit extends EventInit {
+    data?: any;
+    origin?: string;
+    lastEventId?: string;
+    source?: MessageEventSource | null;
+    ports?: MessagePort[];
+  }
+  export class MessageEvent extends Event {
+    readonly data: any;
+    readonly origin: string;
+    readonly lastEventId: string;
+    readonly source: MessageEventSource | null;
+    readonly ports: MessagePort[];
+
+    constructor(type: string, eventInitDict?: MessageEventInit);
+  }
+
+  export interface ErrorEventInit extends EventInit {
+    message?: string;
+    filename?: string;
+    lineno?: number;
+    colno?: number;
+    error?: any;
+  }
+  export class ErrorEvent extends Event {
+    readonly message: string;
+    readonly filename: string;
+    readonly lineno: number;
+    readonly colno: number;
+    readonly error: any;
+
+    constructor(type: string, eventInitDict?: ErrorEventInit);
+  }
+
   export interface Worker {
     onerror?: (e: Event) => void;
     onmessage?: (e: { data: any }) => void;
