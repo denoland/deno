@@ -71,8 +71,6 @@ async function workerRunnerMain(
     reporter: socketReporter,
     only: filter
   });
-  // Notify parent process we're done
-  socketReporter.close();
 }
 
 function spawnWorkerRunner(
@@ -116,6 +114,8 @@ function spawnWorkerRunner(
 }
 
 async function runTestsForPermissionSet(
+  listener: Deno.Listener,
+  addrStr: string,
   verbose: boolean,
   reporter: Deno.ConsoleTestReporter,
   perms: Permissions,
@@ -123,50 +123,35 @@ async function runTestsForPermissionSet(
 ): Promise<PermissionSetTestResult> {
   const permsFmt = fmtPerms(perms);
   console.log(`Running tests for: ${permsFmt}`);
-  const addr = { hostname: "127.0.0.1", port: 4510 };
-  const addrStr = `${addr.hostname}:${addr.port}`;
-  const workerListener = Deno.listen(addr);
-
   const workerProcess = spawnWorkerRunner(verbose, addrStr, perms, filter);
-
   // Wait for worker subprocess to go online
-  const conn = await workerListener.accept();
+  const conn = await listener.accept();
 
-  let err;
-  let hasThrown = false;
   let expectedPassedTests;
   let endEvent;
 
-  try {
-    for await (const line of readLines(conn)) {
-      const msg = JSON.parse(line);
+  for await (const line of readLines(conn)) {
+    const msg = JSON.parse(line);
 
-      if (msg.kind === Deno.TestEvent.Start) {
-        expectedPassedTests = msg.tests;
-        await reporter.start(msg);
-        continue;
-      } else if (msg.kind === Deno.TestEvent.TestStart) {
-        await reporter.testStart(msg);
-        continue;
-      } else if (msg.kind === Deno.TestEvent.TestEnd) {
-        await reporter.testEnd(msg);
-        continue;
-      } else {
-        endEvent = msg;
-        await reporter.end(msg);
-        break;
-      }
+    if (msg.kind === Deno.TestEvent.Start) {
+      expectedPassedTests = msg.tests;
+      await reporter.start(msg);
+      continue;
+    } else if (msg.kind === Deno.TestEvent.TestStart) {
+      await reporter.testStart(msg);
+      continue;
+    } else if (msg.kind === Deno.TestEvent.TestEnd) {
+      await reporter.testEnd(msg);
+      continue;
+    } else {
+      endEvent = msg;
+      await reporter.end(msg);
+      break;
     }
-  } catch (e) {
-    hasThrown = true;
-    err = e;
-  } finally {
-    workerListener.close();
   }
 
-  if (hasThrown) {
-    throw err;
-  }
+  // Close socket to worker, it should shutdown gracefully.
+  conn.close();
 
   if (typeof expectedPassedTests === "undefined") {
     throw new Error("Worker runner didn't report start");
@@ -213,9 +198,14 @@ async function masterRunnerMain(
 
   const testResults = new Set<PermissionSetTestResult>();
   const consoleReporter = new Deno.ConsoleTestReporter();
+  const addr = { hostname: "127.0.0.1", port: 4510 };
+  const addrStr = `${addr.hostname}:${addr.port}`;
+  const listener = Deno.listen(addr);
 
   for (const perms of permissionCombinations.values()) {
     const result = await runTestsForPermissionSet(
+      listener,
+      addrStr,
       verbose,
       consoleReporter,
       perms,

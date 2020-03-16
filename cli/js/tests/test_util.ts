@@ -272,10 +272,6 @@ export class SocketReporter implements Deno.TestReporter {
   async end(msg: Deno.TestEventEnd): Promise<void> {
     await this.write(msg);
   }
-
-  close(): void {
-    this.conn.close();
-  }
 }
 
 unitTest(function permissionsMatches(): void {
