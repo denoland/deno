@@ -619,20 +619,19 @@ fn op_read_dir(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_read_dir {}", path.display());
-    let entries: Vec<_> = std::fs::read_dir(path)?
-      .filter_map(|entry| {
-        let entry = entry.unwrap();
-        let metadata = entry.metadata().unwrap();
-        // Not all filenames can be encoded as UTF-8. Skip those for now.
-        if let Some(filename) = entry.file_name().to_str() {
-          let filename = Some(filename.to_owned());
-          Some(get_stat_json(metadata, filename).unwrap())
-        } else {
-          None
-        }
-      })
-      .collect();
-
+    let mut entries = Vec::new();
+    let stream = std::fs::read_dir(path)?;
+    for entry in stream {
+      let entry: std::fs::DirEntry = entry?;
+      // let metadata = entry.metadata().unwrap();
+      let metadata = entry.metadata()?;
+      // Not all filenames can be encoded as UTF-8. Skip those for now.
+      if let Some(filename) = entry.file_name().to_str() {
+        let filename = Some(filename.to_owned());
+        // entries.push(get_stat_json(metadata, filename).unwrap());
+        entries.push(get_stat_json(metadata, filename)?);
+      }
+    }
     Ok(json!({ "entries": entries }))
   })
 }
