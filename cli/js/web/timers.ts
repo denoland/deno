@@ -32,7 +32,13 @@ function clearGlobalTimeout(): void {
 let pendingEvents = 0;
 const pendingFireTimers: Timer[] = [];
 
-// Handler when timer macrotask is should be called
+/** Process and run a single ready timer macrotask.
+ * This function should be registered through Deno.core.setMacrotaskCallback.
+ * Returns true when all ready macrotasks have been processed, false if more
+ * ready ones are available. The Isolate future would rely on the return value
+ * to repeatedly invoke this function until depletion. Multiple invocations
+ * of this function one at a time ensures newly ready microtasks are processed
+ * before next macrotask timer callback is invoked. */
 export function handleTimerMacrotask(): boolean {
   if (pendingFireTimers.length > 0) {
     fire(pendingFireTimers.shift()!);

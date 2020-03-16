@@ -621,6 +621,9 @@ fn drain_macrotasks<'s>(
   }
   let js_macrotask_cb = js_macrotask_cb.unwrap();
 
+  // Repeatedly invoke macrotask callback until it returns true (done),
+  // such that ready microtasks would be automatically run before
+  // next macrotask is processed.
   loop {
     let mut try_catch = v8::TryCatch::new(scope);
     let tc = try_catch.enter();
