@@ -71,10 +71,10 @@ impl DerefMut for EsIsolate<'_> {
   }
 }
 
-impl EsIsolate<'_> {
+impl<'a> EsIsolate<'a> {
   pub fn new(
     loader: Rc<dyn ModuleLoader>,
-    startup_data: StartupData,
+    startup_data: StartupData<'a>,
     will_snapshot: bool,
   ) -> Box<Self> {
     let mut core_isolate = Isolate::new(startup_data, will_snapshot);

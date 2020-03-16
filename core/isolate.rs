@@ -92,8 +92,8 @@ pub enum SnapshotConfig<'a> {
   Owned(v8::OwnedStartupData),
 }
 
-impl From<&'static [u8]> for SnapshotConfig<'_> {
-  fn from(sd: &'static [u8]) -> Self {
+impl<'a> From<&'a [u8]> for SnapshotConfig<'a> {
+  fn from(sd: &'a [u8]) -> Self {
     Self::Borrowed(v8::StartupData::new(sd))
   }
 }
@@ -141,7 +141,7 @@ impl From<Script<'_>> for OwnedScript {
 /// in the form of the StartupScript struct.
 pub enum StartupData<'a> {
   Script(Script<'a>),
-  Snapshot(&'static [u8]),
+  Snapshot(&'a [u8]),
   OwnedSnapshot(v8::OwnedStartupData),
   None,
 }
@@ -222,10 +222,10 @@ pub unsafe fn v8_init() {
   v8::V8::set_flags_from_command_line(argv);
 }
 
-impl Isolate<'_> {
+impl<'a> Isolate<'a> {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
-  pub fn new(startup_data: StartupData, will_snapshot: bool) -> Box<Self> {
+  pub fn new(startup_data: StartupData<'a>, will_snapshot: bool) -> Box<Self> {
     DENO_INIT.call_once(|| {
       unsafe { v8_init() };
     });

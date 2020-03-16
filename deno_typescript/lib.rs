@@ -60,16 +60,16 @@ where
   }
 }
 
-pub struct TSIsolate {
-  isolate: Box<Isolate>,
+pub struct TSIsolate<'a> {
+  isolate: Box<Isolate<'a>>,
   state: Arc<Mutex<TSState>>,
 }
 
-impl TSIsolate {
-  fn new(
+impl TSIsolate<'_> {
+  fn new<'a>(
     bundle: bool,
     maybe_extern_crate_modules: Option<ExternCrateModules>,
-  ) -> TSIsolate {
+  ) -> TSIsolate<'a> {
     let mut isolate = Isolate::new(StartupData::None, false);
     js_check(isolate.execute("assets/typescript.js", TYPESCRIPT_CODE));
     js_check(isolate.execute("compiler_main.js", COMPILER_CODE));
