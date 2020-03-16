@@ -393,7 +393,10 @@ async fn test_command(
   }
 
   let test_file = test_runner::render_test_file(test_modules, fail_fast);
-  let test_file_path = cwd.join(".deno.test.ts");
+  // Interpolated with pid, because multiple deno process may be run in current
+  // directory to run tests.
+  let filename = format!(".deno.{}.test.ts", std::process::id());
+  let test_file_path = cwd.join(filename);
   let test_file_url =
     Url::from_file_path(&test_file_path).expect("Should be valid file url");
   let main_module =
