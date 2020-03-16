@@ -274,12 +274,13 @@ fn js_unit_tests() {
     .arg("--reload")
     .arg("-A")
     .arg("cli/js/tests/unit_test_runner.ts")
+    .arg("--master")
     .spawn()
     .expect("failed to spawn script");
   let status = deno.wait().expect("failed to wait for the child process");
+  drop(g);
   assert_eq!(Some(0), status.code());
   assert!(status.success());
-  drop(g);
 }
 
 #[test]
@@ -1423,6 +1424,11 @@ itest!(fix_js_import_js {
 itest!(fix_js_imports {
   args: "run --reload fix_js_imports.ts",
   output: "fix_js_imports.ts.out",
+});
+
+itest!(proto_exploit {
+  args: "run proto_exploit.js",
+  output: "proto_exploit.js.out",
 });
 
 #[test]

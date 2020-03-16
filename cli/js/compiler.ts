@@ -400,6 +400,12 @@ function bootstrapWasmCompilerRuntime(): void {
   globalThis.onmessage = wasmCompilerOnMessage;
 }
 
+// Removes the `__proto__` for security reasons.  This intentionally makes
+// Deno non compliant with ECMA-262 Annex B.2.2.1
+//
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+delete (Object.prototype as any).__proto__;
+
 Object.defineProperties(globalThis, {
   bootstrapWasmCompilerRuntime: {
     value: bootstrapWasmCompilerRuntime,

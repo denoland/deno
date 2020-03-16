@@ -32,7 +32,7 @@ export async function open(
   options: OpenOptions | undefined
 ): Promise<number> {
   const mode: number | undefined = options?.mode;
-  return await sendAsync("op_open", {
+  return sendAsync("op_open", {
     path,
     options,
     openMode,

@@ -9,7 +9,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        os: [macOS-latest, windows-2019, ubuntu-16.04]
+        os: [macOS-latest, ubuntu-16.04, windows-2019]
         kind: ['test_release', 'test_debug', 'bench', 'lint']
         exclude:
           - os: windows-2019
@@ -106,7 +106,19 @@ jobs:
           rustc --version
           cargo --version
 
-      - name: Start sccache
+      - name: Start sccache (azure)
+        if: startsWith(matrix.os, 'windows') == false
+        env:
+          SCCACHE_AZURE_BLOB_CONTAINER: deno-sccache2
+          SCCACHE_AZURE_CONNECTION_STRING: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING || 'DefaultEndpointsProtocol=https;AccountName=denosccache;EndpointSuffix=core.windows.net' }}
+          SCCACHE_IDLE_TIMEOUT: 0
+        run: sccache --start-server
+
+      # TODO(ry) We want to use Azure because it's cheaper. However sccache on
+      # Windows has a bug when using Azure. The bug manifests itself as a
+      # "multiple input files" error message.
+      - name: Start sccache (s3)
+        if: startsWith(matrix.os, 'windows')
         env:
           AWS_ACCESS_KEY_ID: AKIAIVRN52PLDBP55LBQ
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

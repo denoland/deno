@@ -1113,6 +1113,20 @@ pub mod tests {
   }
 
   #[test]
+  fn test_encode_decode() {
+    run_in_task(|mut cx| {
+      let (mut isolate, _dispatch_count) = setup(Mode::Async);
+      js_check(isolate.execute(
+        "encode_decode_test.js",
+        include_str!("encode_decode_test.js"),
+      ));
+      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
+        unreachable!();
+      }
+    });
+  }
+
+  #[test]
   fn will_snapshot() {
     let snapshot = {
       let mut isolate = Isolate::new(StartupData::None, true);

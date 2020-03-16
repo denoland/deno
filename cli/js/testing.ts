@@ -1,11 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { red, green, bgRed, gray, italic } from "./colors.ts";
+import { gray, green, italic, red, yellow } from "./colors.ts";
 import { exit } from "./ops/os.ts";
-import { Console } from "./web/console.ts";
+import { Console, stringifyArgs } from "./web/console.ts";
+import { stdout } from "./files.ts";
+import { TextEncoder } from "./web/text_encoding.ts";
 
 const RED_FAILED = red("FAILED");
-const GREEN_OK = green("OK");
-const RED_BG_FAIL = bgRed(" FAIL ");
+const GREEN_OK = green("ok");
+const YELLOW_SKIPPED = yellow("SKIPPED");
 const disabledConsole = new Console((_x: string, _isErr?: boolean): void => {});
 
 function formatDuration(time = 0): string {
@@ -18,6 +20,7 @@ export type TestFunction = () => void | Promise<void>;
 export interface TestDefinition {
   fn: TestFunction;
   name: string;
+  skip?: boolean;
 }
 
 const TEST_REGISTRY: TestDefinition[] = [];
@@ -31,34 +34,32 @@ export function test(
   t: string | TestDefinition | TestFunction,
   fn?: TestFunction
 ): void {
-  let name: string;
+  let testDef: TestDefinition;
 
   if (typeof t === "string") {
-    if (!fn) {
-      throw new Error("Missing test function");
+    if (!fn || typeof fn != "function") {
+      throw new TypeError("Missing test function");
     }
-    name = t;
-    if (!name) {
-      throw new Error("The name of test case can't be empty");
+    if (!t) {
+      throw new TypeError("The test name can't be empty");
     }
+    testDef = { fn: fn as TestFunction, name: t, skip: false };
   } else if (typeof t === "function") {
-    fn = t;
-    name = t.name;
-    if (!name) {
-      throw new Error("Test function can't be anonymous");
+    if (!t.name) {
+      throw new TypeError("The test function can't be anonymous");
     }
+    testDef = { fn: t, name: t.name, skip: false };
   } else {
-    fn = t.fn;
-    if (!fn) {
-      throw new Error("Missing test function");
+    if (!t.fn) {
+      throw new TypeError("Missing test function");
     }
-    name = t.name;
-    if (!name) {
-      throw new Error("The name of test case can't be empty");
+    if (!t.name) {
+      throw new TypeError("The test name can't be empty");
     }
+    testDef = { fn: t.fn, name: t.name, skip: Boolean(t.skip) };
   }
 
-  TEST_REGISTRY.push({ fn, name });
+  TEST_REGISTRY.push(testDef);
 }
 
 interface TestStats {
@@ -78,23 +79,23 @@ export interface RunTestsOptions {
   reporter?: TestReporter;
 }
 
+enum TestStatus {
+  Passed = "passed",
+  Failed = "failed",
+  Skipped = "skipped"
+}
+
 interface TestResult {
-  passed: boolean;
   name: string;
-  skipped: boolean;
-  hasRun: boolean;
+  status: TestStatus;
   duration: number;
   error?: Error;
 }
 
-interface TestCase {
-  result: TestResult;
-  fn: TestFunction;
-}
-
 export enum TestEvent {
   Start = "start",
-  Result = "result",
+  TestStart = "testStart",
+  TestEnd = "testEnd",
   End = "end"
 }
 
@@ -103,8 +104,13 @@ interface TestEventStart {
   tests: number;
 }
 
-interface TestEventResult {
-  kind: TestEvent.Result;
+interface TestEventTestStart {
+  kind: TestEvent.TestStart;
+  name: string;
+}
+
+interface TestEventTestEnd {
+  kind: TestEvent.TestEnd;
   result: TestResult;
 }
 
@@ -115,24 +121,10 @@ interface TestEventEnd {
   results: TestResult[];
 }
 
-function testDefinitionToTestCase(def: TestDefinition): TestCase {
-  return {
-    fn: def.fn,
-    result: {
-      name: def.name,
-      passed: false,
-      skipped: false,
-      hasRun: false,
-      duration: 0
-    }
-  };
-}
-
 // TODO: already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
 // TODO: implements PromiseLike<TestsResult>
 class TestApi {
   readonly testsToRun: TestDefinition[];
-  readonly testCases: TestCase[];
   readonly stats: TestStats = {
     filtered: 0,
     ignored: 0,
@@ -148,43 +140,46 @@ class TestApi {
   ) {
     this.testsToRun = tests.filter(filterFn);
     this.stats.filtered = tests.length - this.testsToRun.length;
-    this.testCases = this.testsToRun.map(testDefinitionToTestCase);
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<
-    TestEventStart | TestEventResult | TestEventEnd
+    TestEventStart | TestEventTestStart | TestEventTestEnd | TestEventEnd
   > {
     yield {
       kind: TestEvent.Start,
       tests: this.testsToRun.length
     };
 
+    const results: TestResult[] = [];
     const suiteStart = +new Date();
-    for (const testCase of this.testCases) {
-      const { fn, result } = testCase;
-      let shouldBreak = false;
-      try {
+    for (const { name, fn, skip } of this.testsToRun) {
+      const result: Partial<TestResult> = { name, duration: 0 };
+      yield { kind: TestEvent.TestStart, name };
+      if (skip) {
+        result.status = TestStatus.Skipped;
+        this.stats.ignored++;
+      } else {
         const start = +new Date();
-        await fn();
-        result.duration = +new Date() - start;
-        result.passed = true;
-        this.stats.passed++;
-      } catch (err) {
-        result.passed = false;
-        result.error = err;
-        this.stats.failed++;
-        shouldBreak = this.failFast;
-      } finally {
-        result.hasRun = true;
-        yield { kind: TestEvent.Result, result };
-        if (shouldBreak) {
-          break;
+        try {
+          await fn();
+          result.status = TestStatus.Passed;
+          this.stats.passed++;
+        } catch (err) {
+          result.status = TestStatus.Failed;
+          result.error = err;
+          this.stats.failed++;
+        } finally {
+          result.duration = +new Date() - start;
         }
+      }
+      yield { kind: TestEvent.TestEnd, result: result as TestResult };
+      results.push(result as TestResult);
+      if (this.failFast && result.error != null) {
+        break;
       }
     }
 
     const duration = +new Date() - suiteStart;
-    const results = this.testCases.map(r => r.result);
 
     yield {
       kind: TestEvent.End,
@@ -224,38 +219,78 @@ function createFilterFn(
 
 interface TestReporter {
   start(msg: TestEventStart): Promise<void>;
-  result(msg: TestEventResult): Promise<void>;
+  testStart(msg: TestEventTestStart): Promise<void>;
+  testEnd(msg: TestEventTestEnd): Promise<void>;
   end(msg: TestEventEnd): Promise<void>;
 }
 
 export class ConsoleTestReporter implements TestReporter {
-  private console: Console;
+  private encoder: TextEncoder;
+
   constructor() {
-    this.console = globalThis.console as Console;
+    this.encoder = new TextEncoder();
+  }
+
+  private log(msg: string, noNewLine = false): void {
+    if (!noNewLine) {
+      msg += "\n";
+    }
+
+    // Using `stdout` here because it doesn't force new lines
+    // compared to `console.log`; `core.print` on the other hand
+    // is line-buffered and doesn't output message without newline
+    stdout.writeSync(this.encoder.encode(msg));
   }
 
   async start(event: TestEventStart): Promise<void> {
-    this.console.log(`running ${event.tests} tests`);
+    this.log(`running ${event.tests} tests`);
   }
 
-  async result(event: TestEventResult): Promise<void> {
+  async testStart(event: TestEventTestStart): Promise<void> {
+    const { name } = event;
+
+    this.log(`test ${name} ... `, true);
+  }
+
+  async testEnd(event: TestEventTestEnd): Promise<void> {
     const { result } = event;
 
-    if (result.passed) {
-      this.console.log(
-        `${GREEN_OK}     ${result.name} ${formatDuration(result.duration)}`
-      );
-    } else {
-      this.console.log(`${RED_FAILED} ${result.name}`);
-      this.console.log(result.error!);
+    switch (result.status) {
+      case TestStatus.Passed:
+        this.log(`${GREEN_OK} ${formatDuration(result.duration)}`);
+        break;
+      case TestStatus.Failed:
+        this.log(`${RED_FAILED} ${formatDuration(result.duration)}`);
+        break;
+      case TestStatus.Skipped:
+        this.log(`${YELLOW_SKIPPED} ${formatDuration(result.duration)}`);
+        break;
     }
   }
 
   async end(event: TestEventEnd): Promise<void> {
-    const { stats, duration } = event;
+    const { stats, duration, results } = event;
     // Attempting to match the output of Rust's test runner.
-    this.console.log(
-      `\ntest result: ${stats.failed ? RED_BG_FAIL : GREEN_OK} ` +
+    const failedTests = results.filter(r => r.error);
+
+    if (failedTests.length > 0) {
+      this.log(`\nfailures:\n`);
+
+      for (const result of failedTests) {
+        this.log(`${result.name}`);
+        this.log(`${stringifyArgs([result.error!])}`);
+        this.log("");
+      }
+
+      this.log(`failures:\n`);
+
+      for (const result of failedTests) {
+        this.log(`\t${result.name}`);
+      }
+    }
+
+    this.log(
+      `\ntest result: ${stats.failed ? RED_FAILED : GREEN_OK}. ` +
         `${stats.passed} passed; ${stats.failed} failed; ` +
         `${stats.ignored} ignored; ${stats.measured} measured; ` +
         `${stats.filtered} filtered out ` +
@@ -298,8 +333,11 @@ export async function runTests({
       case TestEvent.Start:
         await reporter.start(testMsg);
         continue;
-      case TestEvent.Result:
-        await reporter.result(testMsg);
+      case TestEvent.TestStart:
+        await reporter.testStart(testMsg);
+        continue;
+      case TestEvent.TestEnd:
+        await reporter.testEnd(testMsg);
         continue;
       case TestEvent.End:
         endMsg = testMsg;
