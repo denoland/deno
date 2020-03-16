@@ -18,7 +18,7 @@ use std::time::UNIX_EPOCH;
 use tokio;
 
 #[cfg(unix)]
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
@@ -50,7 +50,8 @@ struct OpenArgs {
   promise_id: Option<u64>,
   path: String,
   options: Option<OpenOptions>,
-  mode: Option<String>,
+  open_mode: Option<String>,
+  mode: Option<u32>,
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -73,7 +74,20 @@ fn op_open(
   let args: OpenArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
   let state_ = state.clone();
-  let mut open_options = tokio::fs::OpenOptions::new();
+
+  let mut open_options = if let Some(mode) = args.mode {
+    #[allow(unused_mut)]
+    let mut std_options = fs::OpenOptions::new();
+    // mode only used if creating the file on Unix
+    // if not specified, defaults to 0o666
+    #[cfg(unix)]
+    std_options.mode(mode & 0o777);
+    #[cfg(not(unix))]
+    let _ = mode; // avoid unused warning
+    tokio::fs::OpenOptions::from(std_options)
+  } else {
+    tokio::fs::OpenOptions::new()
+  };
 
   if let Some(options) = args.options {
     if options.read {
@@ -91,9 +105,9 @@ fn op_open(
       .truncate(options.truncate)
       .append(options.append)
       .create_new(options.create_new);
-  } else if let Some(mode) = args.mode {
-    let mode = mode.as_ref();
-    match mode {
+  } else if let Some(open_mode) = args.open_mode {
+    let open_mode = open_mode.as_ref();
+    match open_mode {
       "r" => {
         state.check_read(&path)?;
       }
@@ -106,7 +120,7 @@ fn op_open(
       }
     };
 
-    match mode {
+    match open_mode {
       "r" => {
         open_options.read(true);
       }
@@ -142,7 +156,7 @@ fn op_open(
     }
   } else {
     return Err(OpError::other(
-      "Open requires either mode or options.".to_string(),
+      "Open requires either openMode or options.".to_string(),
     ));
   };
 
