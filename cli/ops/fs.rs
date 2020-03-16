@@ -714,7 +714,7 @@ fn op_symlink(
   // TODO Use type for Windows.
   if cfg!(not(unix)) {
     let _ = oldname; // avoid unused warning
-    return Err(OpError::other("Not implemented".to_string()));
+    return Err(OpError::not_implemented());
   }
 
   let is_sync = args.promise_id.is_none();
