@@ -277,7 +277,7 @@ async function main(): Promise<void> {
       exclude,
       allowNone,
       disableLog,
-      exitOnFail: true,
+      exitOnFail: true
     });
   } catch (error) {
     if (!disableLog) {
