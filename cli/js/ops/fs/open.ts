@@ -25,7 +25,7 @@ export async function open(
   mode: OpenMode | undefined,
   options: OpenOptions | undefined
 ): Promise<number> {
-  return await sendAsync("op_open", {
+  return sendAsync("op_open", {
     path,
     options,
     mode

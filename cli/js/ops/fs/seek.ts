@@ -15,5 +15,5 @@ export async function seek(
   offset: number,
   whence: SeekMode
 ): Promise<number> {
-  return await sendAsync("op_seek", { rid, offset, whence });
+  return sendAsync("op_seek", { rid, offset, whence });
 }

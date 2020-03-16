@@ -312,14 +312,14 @@ async function main(): Promise<void> {
 
   // Master mode
   if (args.master) {
-    return await masterRunnerMain(args.verbose, filter);
+    return masterRunnerMain(args.verbose, filter);
   }
 
   // Worker mode
   if (args.worker) {
     assertOrHelp(typeof args.addr === "string");
     assertOrHelp(typeof args.perms === "string");
-    return await workerRunnerMain(args.addr, args.perms, filter);
+    return workerRunnerMain(args.addr, args.perms, filter);
   }
 
   // Running tests matching current process permissions
