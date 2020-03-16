@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use std;
+use std::env::current_dir;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
@@ -106,7 +107,7 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, ErrBox> {
   let resolved_path = if path.is_absolute() {
     path.to_owned()
   } else {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = current_dir().unwrap();
     cwd.join(path)
   };
 
@@ -119,19 +120,19 @@ mod tests {
 
   #[test]
   fn resolve_from_cwd_child() {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = current_dir().unwrap();
     assert_eq!(resolve_from_cwd(Path::new("a")).unwrap(), cwd.join("a"));
   }
 
   #[test]
   fn resolve_from_cwd_dot() {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = current_dir().unwrap();
     assert_eq!(resolve_from_cwd(Path::new(".")).unwrap(), cwd);
   }
 
   #[test]
   fn resolve_from_cwd_parent() {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = current_dir().unwrap();
     assert_eq!(resolve_from_cwd(Path::new("a/..")).unwrap(), cwd);
   }
 
