@@ -17,9 +17,6 @@ use std::path::Path;
 use std::time::UNIX_EPOCH;
 use tokio;
 
-#[cfg(unix)]
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
-
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
   i.register_op("op_seek", s.stateful_json_op(op_seek));
@@ -81,7 +78,10 @@ fn op_open(
     // mode only used if creating the file on Unix
     // if not specified, defaults to 0o666
     #[cfg(unix)]
-    std_options.mode(mode & 0o777);
+    {
+      use std::os::unix::fs::OpenOptionsExt;
+      std_options.mode(mode & 0o777);
+    }
     #[cfg(not(unix))]
     let _ = mode; // avoid unused warning
     tokio::fs::OpenOptions::from(std_options)
@@ -345,6 +345,7 @@ fn op_chmod(
     let _metadata = fs::metadata(&path)?;
     #[cfg(unix)]
     {
+      use std::os::unix::fs::PermissionsExt;
       let mut permissions = _metadata.permissions();
       permissions.set_mode(args.mode);
       fs::set_permissions(&path, permissions)?;
@@ -480,6 +481,8 @@ fn get_stat_json(
     }};
   }
 
+  #[cfg(unix)]
+  use std::os::unix::fs::MetadataExt;
   let mut json_val = json!({
     "isFile": metadata.is_file(),
     "isSymlink": metadata.file_type().is_symlink(),
