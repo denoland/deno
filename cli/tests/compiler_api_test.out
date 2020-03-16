@@ -1,0 +1,16 @@
+running 12 tests
+test compilerApiCompileSources ... ok [WILDCARD]
+test compilerApiCompileNoSources ... ok [WILDCARD]
+test compilerApiCompileOptions ... ok [WILDCARD]
+test compilerApiCompileLib ... ok [WILDCARD]
+test compilerApiCompileTypes ... ok [WILDCARD]
+test transpileOnlyApi ... ok [WILDCARD]
+test transpileOnlyApiConfig ... ok [WILDCARD]
+test bundleApiSources ... ok [WILDCARD]
+test bundleApiNoSources ... ok [WILDCARD]
+test bundleApiConfig ... ok [WILDCARD]
+test bundleApiJsModules ... ok [WILDCARD]
+test diagnosticsTest ... ok [WILDCARD]
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
+

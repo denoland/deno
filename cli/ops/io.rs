@@ -7,7 +7,9 @@ use deno_core::*;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::ready;
+use std::collections::HashMap;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::Context;
 use std::task::Poll;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -56,15 +58,23 @@ pub fn init(i: &mut Isolate, s: &State) {
   );
 }
 
-pub fn get_stdio() -> (StreamResource, StreamResource, StreamResource) {
-  let stdin = StreamResource::Stdin(tokio::io::stdin(), TTYMetadata::default());
-  let stdout = StreamResource::Stdout({
+pub fn get_stdio() -> (
+  StreamResourceHolder,
+  StreamResourceHolder,
+  StreamResourceHolder,
+) {
+  let stdin = StreamResourceHolder::new(StreamResource::Stdin(
+    tokio::io::stdin(),
+    TTYMetadata::default(),
+  ));
+  let stdout = StreamResourceHolder::new(StreamResource::Stdout({
     let stdout = STDOUT_HANDLE
       .try_clone()
       .expect("Unable to clone stdout handle");
     tokio::fs::File::from_std(stdout)
-  });
-  let stderr = StreamResource::Stderr(tokio::io::stderr());
+  }));
+  let stderr =
+    StreamResourceHolder::new(StreamResource::Stderr(tokio::io::stderr()));
 
   (stdin, stdout, stderr)
 }
@@ -85,6 +95,51 @@ pub struct TTYMetadata {
 #[derive(Default)]
 pub struct FileMetadata {
   pub tty: TTYMetadata,
+}
+
+pub struct StreamResourceHolder {
+  pub resource: StreamResource,
+  waker: HashMap<usize, futures::task::AtomicWaker>,
+  waker_counter: AtomicUsize,
+}
+
+impl StreamResourceHolder {
+  pub fn new(resource: StreamResource) -> StreamResourceHolder {
+    StreamResourceHolder {
+      resource,
+      // Atleast one task is expecter for the resource
+      waker: HashMap::with_capacity(1),
+      // Tracks wakers Ids
+      waker_counter: AtomicUsize::new(0),
+    }
+  }
+}
+
+impl Drop for StreamResourceHolder {
+  fn drop(&mut self) {
+    self.wake_tasks();
+  }
+}
+
+impl StreamResourceHolder {
+  pub fn track_task(&mut self, cx: &Context) -> Result<usize, OpError> {
+    let waker = futures::task::AtomicWaker::new();
+    waker.register(cx.waker());
+    // Its OK if it overflows
+    let task_waker_id = self.waker_counter.fetch_add(1, Ordering::Relaxed);
+    self.waker.insert(task_waker_id, waker);
+    Ok(task_waker_id)
+  }
+
+  pub fn wake_tasks(&mut self) {
+    for waker in self.waker.values() {
+      waker.wake();
+    }
+  }
+
+  pub fn untrack_task(&mut self, task_waker_id: usize) {
+    self.waker.remove(&task_waker_id);
+  }
 }
 
 pub enum StreamResource {
@@ -127,7 +182,7 @@ impl DenoAsyncRead for StreamResource {
       ChildStdout(f) => Box::pin(f),
       ChildStderr(f) => Box::pin(f),
       HttpBody(f) => Box::pin(f),
-      _ => return Err(OpError::bad_resource()).into(),
+      _ => return Err(OpError::bad_resource_id()).into(),
     };
 
     let v = ready!(f.as_mut().poll_read(cx, buf))?;
@@ -150,10 +205,27 @@ pub fn op_read(
 
   poll_fn(move |cx| {
     let resource_table = &mut state.borrow_mut().resource_table;
-    let resource = resource_table
-      .get_mut::<StreamResource>(rid as u32)
-      .ok_or_else(OpError::bad_resource)?;
-    let nread = ready!(resource.poll_read(cx, &mut buf.as_mut()[..]))?;
+    let resource_holder = resource_table
+      .get_mut::<StreamResourceHolder>(rid as u32)
+      .ok_or_else(OpError::bad_resource_id)?;
+
+    let mut task_tracker_id: Option<usize> = None;
+    let nread = match resource_holder
+      .resource
+      .poll_read(cx, &mut buf.as_mut()[..])
+      .map_err(OpError::from)
+    {
+      Poll::Ready(t) => {
+        if let Some(id) = task_tracker_id {
+          resource_holder.untrack_task(id);
+        }
+        t
+      }
+      Poll::Pending => {
+        task_tracker_id.replace(resource_holder.track_task(cx)?);
+        return Poll::Pending;
+      }
+    }?;
     Poll::Ready(Ok(nread as i32))
   })
   .boxed_local()
@@ -188,7 +260,7 @@ impl DenoAsyncWrite for StreamResource {
       ClientTlsStream(f) => Box::pin(f),
       ServerTlsStream(f) => Box::pin(f),
       ChildStdin(f) => Box::pin(f),
-      _ => return Err(OpError::bad_resource()).into(),
+      _ => return Err(OpError::bad_resource_id()).into(),
     };
 
     let v = ready!(f.as_mut().poll_write(cx, buf))?;
@@ -205,7 +277,7 @@ impl DenoAsyncWrite for StreamResource {
       ClientTlsStream(f) => Box::pin(f),
       ServerTlsStream(f) => Box::pin(f),
       ChildStdin(f) => Box::pin(f),
-      _ => return Err(OpError::bad_resource()).into(),
+      _ => return Err(OpError::bad_resource_id()).into(),
     };
 
     ready!(f.as_mut().poll_flush(cx))?;
@@ -233,10 +305,10 @@ pub fn op_write(
   async move {
     let nwritten = poll_fn(|cx| {
       let resource_table = &mut state.borrow_mut().resource_table;
-      let resource = resource_table
-        .get_mut::<StreamResource>(rid as u32)
-        .ok_or_else(OpError::bad_resource)?;
-      resource.poll_write(cx, &buf.as_ref()[..])
+      let resource_holder = resource_table
+        .get_mut::<StreamResourceHolder>(rid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+      resource_holder.resource.poll_write(cx, &buf.as_ref()[..])
     })
     .await?;
 
@@ -246,10 +318,10 @@ pub fn op_write(
     // https://github.com/denoland/deno/issues/3565
     poll_fn(|cx| {
       let resource_table = &mut state.borrow_mut().resource_table;
-      let resource = resource_table
-        .get_mut::<StreamResource>(rid as u32)
-        .ok_or_else(OpError::bad_resource)?;
-      resource.poll_flush(cx)
+      let resource_holder = resource_table
+        .get_mut::<StreamResourceHolder>(rid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+      resource_holder.resource.poll_flush(cx)
     })
     .await?;
 

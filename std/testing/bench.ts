@@ -171,7 +171,7 @@ export async function runBenchmarks({
 /** Runs specified benchmarks if the enclosing script is main. */
 export async function runIfMain(
   meta: ImportMeta,
-  opts?: BenchmarkRunOptions
+  opts: BenchmarkRunOptions = {}
 ): Promise<void> {
   if (meta.main) {
     return runBenchmarks(opts);

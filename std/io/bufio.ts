@@ -21,11 +21,11 @@ export class BufferFullError extends Error {
   }
 }
 
-export class UnexpectedEOFError extends Error {
-  name = "UnexpectedEOFError";
+export class PartialReadError extends Deno.errors.UnexpectedEof {
+  name = "PartialReadError";
   partial?: Uint8Array;
   constructor() {
-    super("Unexpected EOF");
+    super("Encountered UnexpectedEof, data only partially read");
   }
 }
 
@@ -178,7 +178,7 @@ export class BufReader implements Reader {
           if (bytesRead === 0) {
             return Deno.EOF;
           } else {
-            throw new UnexpectedEOFError();
+            throw new PartialReadError();
           }
         }
         bytesRead += rr;

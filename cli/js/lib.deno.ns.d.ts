@@ -17,6 +17,7 @@ declare namespace Deno {
   export interface TestDefinition {
     fn: TestFunction;
     name: string;
+    skip?: boolean;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -32,6 +33,71 @@ declare namespace Deno {
    * when `Deno.runTests` is used */
   export function test(name: string, fn: TestFunction): void;
 
+  enum TestStatus {
+    Passed = "passed",
+    Failed = "failed",
+    Skipped = "skipped"
+  }
+
+  interface TestResult {
+    name: string;
+    status: TestStatus;
+    duration?: number;
+    error?: Error;
+  }
+
+  interface TestStats {
+    filtered: number;
+    ignored: number;
+    measured: number;
+    passed: number;
+    failed: number;
+  }
+
+  export enum TestEvent {
+    Start = "start",
+    TestStart = "testStart",
+    TestEnd = "testEnd",
+    End = "end"
+  }
+
+  interface TestEventStart {
+    kind: TestEvent.Start;
+    tests: number;
+  }
+
+  interface TestEventTestStart {
+    kind: TestEvent.TestStart;
+    name: string;
+  }
+
+  interface TestEventTestEnd {
+    kind: TestEvent.TestEnd;
+    result: TestResult;
+  }
+
+  interface TestEventEnd {
+    kind: TestEvent.End;
+    stats: TestStats;
+    duration: number;
+    results: TestResult[];
+  }
+
+  interface TestReporter {
+    start(event: TestEventStart): Promise<void>;
+    testStart(msg: TestEventTestStart): Promise<void>;
+    testEnd(msg: TestEventTestEnd): Promise<void>;
+    end(event: TestEventEnd): Promise<void>;
+  }
+
+  export class ConsoleTestReporter implements TestReporter {
+    constructor();
+    start(event: TestEventStart): Promise<void>;
+    testStart(msg: TestEventTestStart): Promise<void>;
+    testEnd(msg: TestEventTestEnd): Promise<void>;
+    end(event: TestEventEnd): Promise<void>;
+  }
+
   export interface RunTestsOptions {
     /** If `true`, Deno will exit with status code 1 if there was
      * test failure. Defaults to `true`. */
@@ -46,11 +112,19 @@ declare namespace Deno {
     skip?: string | RegExp;
     /** Disable logging of the results. Defaults to `false`. */
     disableLog?: boolean;
+    /** Custom reporter class. If not provided uses console reporter. */
+    reporter?: TestReporter;
   }
 
   /** Run any tests which have been registered. Always resolves
    * asynchronously. */
-  export function runTests(opts?: RunTestsOptions): Promise<void>;
+  export function runTests(
+    opts?: RunTestsOptions
+  ): Promise<{
+    results: TestResult[];
+    stats: TestStats;
+    duration: number;
+  }>;
 
   /** Get the `loadavg`. Requires `allow-env` permission.
    *
@@ -287,6 +361,14 @@ declare namespace Deno {
    */
   export function chdir(directory: string): void;
 
+  /**
+   * **UNSTABLE**: New API. Maybe needs permissions.
+   *
+   * If `mask` is provided, sets the process umask. Always returns what the umask
+   * was before the call.
+   */
+  export function umask(mask?: number): number;
+
   /** **UNSTABLE**: might move to `Deno.symbols`. */
   export const EOF: unique symbol;
   export type EOF = typeof EOF;
@@ -435,7 +517,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions depending on mode.
    */
-  export function openSync(filename: string, options?: OpenOptions): File;
+  export function openSync(path: string, options?: OpenOptions): File;
 
   /** Synchronously open a file and return an instance of the `File` object.
    *
@@ -443,7 +525,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions depending on mode.
    */
-  export function openSync(filename: string, mode?: OpenMode): File;
+  export function openSync(path: string, mode?: OpenMode): File;
 
   /** Open a file and resolve to an instance of the `File` object.
    *
@@ -451,7 +533,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions depending on mode.
    */
-  export function open(filename: string, options?: OpenOptions): Promise<File>;
+  export function open(path: string, options?: OpenOptions): Promise<File>;
 
   /** Open a file and resolves to an instance of `Deno.File`.
    *
@@ -459,7 +541,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions depending on mode.
    */
-  export function open(filename: string, mode?: OpenMode): Promise<File>;
+  export function open(path: string, mode?: OpenMode): Promise<File>;
 
   /** Creates a file if none exists or truncates an existing file and returns
    *  an instance of `Deno.File`.
@@ -468,7 +550,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions.
    */
-  export function createSync(filename: string): File;
+  export function createSync(path: string): File;
 
   /** Creates a file if none exists or truncates an existing file and resolves to
    *  an instance of `Deno.File`.
@@ -477,7 +559,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions.
    */
-  export function create(filename: string): Promise<File>;
+  export function create(path: string): Promise<File>;
 
   /** Synchronously read from a file ID into an array buffer.
    *
@@ -592,7 +674,7 @@ declare namespace Deno {
     append?: boolean;
     /** Sets the option for truncating a previous file. If a file is
      * successfully opened with this option set it will truncate the file to `0`
-     * length if it already exists. The file must be opened with write access
+     * size if it already exists. The file must be opened with write access
      * for truncate to work. */
     truncate?: boolean;
     /** Sets the option to allow creating a new file, if one doesn't already
@@ -732,7 +814,7 @@ declare namespace Deno {
     recursive?: boolean;
     /** Permissions to use when creating the directory (defaults to `0o777`,
      * before the process's umask).
-     * Does nothing/raises on Windows. */
+     * Ignored on Windows. */
     mode?: number;
   }
 
@@ -893,14 +975,14 @@ declare namespace Deno {
   /** **UNSTABLE**: needs investigation into high precision time.
    *
    * Synchronously changes the access and modification times of a file system
-   * object referenced by `filename`. Given times are either in seconds (UNIX
-   * epoch time) or as `Date` objects.
+   * object referenced by `path`. Given times are either in seconds (UNIX epoch
+   * time) or as `Date` objects.
    *
    *       Deno.utimeSync("myfile.txt", 1556495550, new Date());
    *
    * Requires `allow-write` permission. */
   export function utimeSync(
-    filename: string,
+    path: string,
     atime: number | Date,
     mtime: number | Date
   ): void;
@@ -908,14 +990,14 @@ declare namespace Deno {
   /** **UNSTABLE**: needs investigation into high precision time.
    *
    * Changes the access and modification times of a file system object
-   * referenced by `filename`. Given times are either in seconds (UNIX epoch
-   * time) or as `Date` objects.
+   * referenced by `path`. Given times are either in seconds (UNIX epoch time)
+   * or as `Date` objects.
    *
    *       await Deno.utime("myfile.txt", 1556495550, new Date());
    *
    * Requires `allow-write` permission. */
   export function utime(
-    filename: string,
+    path: string,
     atime: number | Date,
     mtime: number | Date
   ): Promise<void>;
@@ -976,7 +1058,7 @@ declare namespace Deno {
    *       console.log(decoder.decode(data));
    *
    * Requires `allow-read` permission. */
-  export function readFileSync(filename: string): Uint8Array;
+  export function readFileSync(path: string): Uint8Array;
 
   /** Reads and resolves to the entire contents of a file.
    *
@@ -985,20 +1067,16 @@ declare namespace Deno {
    *       console.log(decoder.decode(data));
    *
    * Requires `allow-read` permission. */
-  export function readFile(filename: string): Promise<Uint8Array>;
+  export function readFile(path: string): Promise<Uint8Array>;
 
   // @url js/file_info.d.ts
 
-  /** UNSTABLE: 'len' maybe should be 'length' or 'size'.
-   *
-   * A FileInfo describes a file and is returned by `stat`, `lstat`,
-   * `statSync`, `lstatSync`. A list of FileInfo is returned by `readDir`,
-   * `readDirSync`. */
+  /** A FileInfo describes a file and is returned by `stat`, `lstat`,
+   * `statSync`, `lstatSync`. A list of FileInfo is returned by `readdir`,
+   * `readdirSync`. */
   export interface FileInfo {
-    /** **UNSTABLE**: `.len` maybe should be `.length` or `.size`.
-     *
-     * The size of the file, in bytes. */
-    len: number;
+    /** The size of the file, in bytes. */
+    size: number;
     /** The last modification time of the file. This corresponds to the `mtime`
      * field from `stat` on Linux/Mac OS and `ftLastWriteTime` on Windows. This
      * may not be available on all platforms. */
@@ -1023,7 +1101,7 @@ declare namespace Deno {
     ino: number | null;
     /** **UNSTABLE**: Match behavior with Go on Windows for `mode`.
      *
-     * The underlying raw `st_mod`e bits that contain the standard Linux/Mac OS
+     * The underlying raw `st_mode` bits that contain the standard Unix
      * permissions for this file/directory. */
     mode: number | null;
     /** Number of hard links pointing to this file.
@@ -1079,25 +1157,24 @@ declare namespace Deno {
 
   // @url js/read_dir.d.ts
 
-  /** UNSTABLE: Unstable rename to readdirSync.
+  /** UNSTABLE: need to consider streaming case
    *
-  /* Synchronously reads the directory given by `path` and returns an array of
+   * Synchronously reads the directory given by `path` and returns an array of
    * `Deno.FileInfo`.
    *
-   *       const files = Deno.readDirSync("/");
+   *       const files = Deno.readdirSync("/");
    *
    * Requires `allow-read` permission. */
-  export function readDirSync(path: string): FileInfo[];
+  export function readdirSync(path: string): FileInfo[];
 
-  /** UNSTABLE: Possibly rename to `.readdir()`. Maybe need to return an
-   * `AsyncIterable`.
+  /** UNSTABLE: Maybe need to return an `AsyncIterable`.
    *
    * Reads the directory given by `path` and resolves to an array of `Deno.FileInfo`.
    *
-   *       const files = await Deno.readDir("/");
+   *       const files = await Deno.readdir("/");
    *
    * Requires `allow-read` permission. */
-  export function readDir(path: string): Promise<FileInfo[]>;
+  export function readdir(path: string): Promise<FileInfo[]>;
 
   // @url js/copy_file.d.ts
 
@@ -1128,52 +1205,52 @@ declare namespace Deno {
    *       const targetPath = Deno.readlinkSync("symlink/path");
    *
    * Requires `allow-read` permission. */
-  export function readlinkSync(name: string): string;
+  export function readlinkSync(path: string): string;
 
   /** Resolves to the destination of the named symbolic link.
    *
    *       const targetPath = await Deno.readlink("symlink/path");
    *
    * Requires `allow-read` permission. */
-  export function readlink(name: string): Promise<string>;
+  export function readlink(path: string): Promise<string>;
 
   // @url js/stat.d.ts
 
-  /** Resolves to a `Deno.FileInfo` for the specified path. If path is a
+  /** Resolves to a `Deno.FileInfo` for the specified `path`. If `path` is a
    * symlink, information for the symlink will be returned.
    *
    *       const fileInfo = await Deno.lstat("hello.txt");
    *       assert(fileInfo.isFile());
    *
    * Requires `allow-read` permission. */
-  export function lstat(filename: string): Promise<FileInfo>;
+  export function lstat(path: string): Promise<FileInfo>;
 
-  /** Synchronously returns a `Deno.FileInfo` for the specified path. If
-   * path is a symlink, information for the symlink will be returned.
+  /** Synchronously returns a `Deno.FileInfo` for the specified `path`. If
+   * `path` is a symlink, information for the symlink will be returned.
    *
    *       const fileInfo = Deno.lstatSync("hello.txt");
    *       assert(fileInfo.isFile());
    *
    * Requires `allow-read` permission. */
-  export function lstatSync(filename: string): FileInfo;
+  export function lstatSync(path: string): FileInfo;
 
-  /** Resolves to a `Deno.FileInfo` for the specified path. Will always follow
-   * symlinks.
+  /** Resolves to a `Deno.FileInfo` for the specified `path`. Will always
+   * follow symlinks.
    *
    *       const fileInfo = await Deno.stat("hello.txt");
    *       assert(fileInfo.isFile());
    *
    * Requires `allow-read` permission. */
-  export function stat(filename: string): Promise<FileInfo>;
+  export function stat(path: string): Promise<FileInfo>;
 
-  /** Synchronously returns a `Deno.FileInfo` for the specified path. Will
+  /** Synchronously returns a `Deno.FileInfo` for the specified `path`. Will
    * always follow symlinks.
    *
    *       const fileInfo = Deno.statSync("hello.txt");
    *       assert(fileInfo.isFile());
    *
    * Requires `allow-read` permission. */
-  export function statSync(filename: string): FileInfo;
+  export function statSync(path: string): FileInfo;
 
   // @url js/link.d.ts
 
@@ -1234,7 +1311,7 @@ declare namespace Deno {
      * exist at the specified path (defaults to `true`). */
     create?: boolean;
     /** Permissions always applied to file. */
-    perm?: number;
+    mode?: number;
   }
 
   /** Synchronously write data to the given path, by default creating a new
@@ -1247,7 +1324,7 @@ declare namespace Deno {
    * Requires `allow-write` permission, and `allow-read` if create is `false`.
    */
   export function writeFileSync(
-    filename: string,
+    path: string,
     data: Uint8Array,
     options?: WriteFileOptions
   ): void;
@@ -1262,7 +1339,7 @@ declare namespace Deno {
    * Requires `allow-write` permission, and `allow-read` if create is `false`.
    */
   export function writeFile(
-    filename: string,
+    path: string,
     data: Uint8Array,
     options?: WriteFileOptions
   ): Promise<void>;
@@ -1515,7 +1592,7 @@ declare namespace Deno {
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * A generic transport listener for message-oriented protocols. */
-  export interface UDPConn extends AsyncIterator<[Uint8Array, Addr]> {
+  export interface UDPConn extends AsyncIterable<[Uint8Array, Addr]> {
     /** **UNSTABLE**: new API, yet to be vetted.
      *
      * Waits for and resolves to the next message to the `UDPConn`. */
@@ -1535,7 +1612,7 @@ declare namespace Deno {
   }
 
   /** A generic network listener for stream-oriented protocols. */
-  export interface Listener extends AsyncIterator<Conn> {
+  export interface Listener extends AsyncIterable<Conn> {
     /** Waits for and resolves to the next connection to the `Listener`. */
     accept(): Promise<Conn>;
     /** Close closes the listener. Any pending accept promises will be rejected

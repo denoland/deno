@@ -498,8 +498,6 @@ Deno.test(function t1() {
 Deno.test(function t2() {
   assertEquals("world", "world");
 });
-
-await Deno.runTests();
 ```
 
 Try running this:
@@ -675,7 +673,7 @@ TypeScript code that is destined for the browser, you would want to use the
 TypeScript `"dom"` library:
 
 ```ts
-const [errors, emitted] = Deno.compile(
+const [errors, emitted] = await Deno.compile(
   "main.ts",
   {
     "main.ts": `document.getElementById("foo");\n`
@@ -715,7 +713,7 @@ So to add the Deno namespace to a compilation, you would include the `deno.ns`
 lib in the array. For example:
 
 ```ts
-const [errors, emitted] = Deno.compile(
+const [errors, emitted] = await Deno.compile(
   "main.ts",
   {
     "main.ts": `document.getElementById("foo");\n`
@@ -746,7 +744,7 @@ document.getElementById("foo");
 It would compiler without errors like this:
 
 ```ts
-const [errors, emitted] = Deno.compile("./main.ts", undefined, {
+const [errors, emitted] = await Deno.compile("./main.ts", undefined, {
   lib: ["esnext"]
 });
 ```
@@ -770,61 +768,8 @@ if (import.meta.main) {
 
 ### Flags
 
-Use `deno help` to see the help text.
-
-```
-A secure JavaScript and TypeScript runtime
-
-Docs: https://deno.land/std/manual.md
-Modules: https://deno.land/x/
-Bugs: https://github.com/denoland/deno/issues
-
-To run the REPL supply no arguments:
-
-  deno
-
-To evaluate code from the command line:
-
-  deno eval "console.log(30933 + 404)"
-
-To execute a script:
-
-  deno https://deno.land/std/examples/welcome.ts
-
-The default subcommand is 'run'. The above is equivalent to
-
-  deno run https://deno.land/std/examples/welcome.ts
-
-See 'deno help run' for run specific flags.
-
-USAGE:
-    deno [SUBCOMMAND]
-
-OPTIONS:
-    -h, --help                     Prints help information
-    -L, --log-level <log-level>    Set log level [possible values: debug, info]
-    -V, --version                  Prints version information
-
-SUBCOMMANDS:
-    bundle         Bundle module and dependencies into single file
-    completions    Generate shell completions
-    eval           Eval script
-    fetch          Fetch the dependencies
-    fmt            Format files
-    help           Prints this message or the help of the given subcommand(s)
-    info           Show info about cache or info related to source file
-    install        Install script as executable
-    repl           Read Eval Print Loop
-    run            Run a program given a filename or url to the source code
-    test           Run tests
-    types          Print runtime TypeScript declarations
-
-ENVIRONMENT VARIABLES:
-    DENO_DIR       Set deno's base directory
-    NO_COLOR       Set to disable color
-    HTTP_PROXY     Proxy address for HTTP requests (module downloads, fetch)
-    HTTPS_PROXY    Same but for HTTPS
-```
+Use `deno help` to see help text documenting Deno's flags and usage. Use
+`deno help <subcommand>` for subcommand-specific flags.
 
 ### Environmental variables
 
@@ -1210,6 +1155,67 @@ console.log(result["/foo.ts"].map);
 We would expect the `enum` would be rewritten to an IIFE which constructs the
 enumerable, and the map to be defined.
 
+## TypeScript Compiler Options
+
+In Deno ecosystem, all strict flags are enabled in order to comply with
+TypeScript ideal of being `strict` by default. However, in order to provide a
+way to support customization a configuration file such as `tsconfig.json` might
+be provided to Deno on program execution.
+
+You do need to explicitly tell Deno where to look for this configuration, in
+order to do so you can use the `-c` argument when executing your application.
+
+```bash
+deno -c tsconfig.json mod.ts
+```
+
+Currently allowed settings, as well as their default values in Deno go as
+follows:
+
+```json
+{
+  "compilerOptions": {
+    "allowJs": false,
+    "allowUmdGlobalAccess": false,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "alwaysStrict": true,
+    "assumeChangesOnlyAffectDirectDependencies": false,
+    "checkJs": false,
+    "disableSizeLimit": false,
+    "generateCpuProfile": "profile.cpuprofile",
+    "jsx": "react",
+    "jsxFactory": "React.createElement",
+    "lib": [],
+    "noFallthroughCasesInSwitch": false,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noImplicitUseStrict": false,
+    "noStrictGenericChecks": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "preserveConstEnums": false,
+    "removeComments": false,
+    "resolveJsonModule": true,
+    "strict": true,
+    "strictBindCallApply": true,
+    "strictFunctionTypes": true,
+    "strictNullChecks": true,
+    "strictPropertyInitialization": true,
+    "suppressExcessPropertyErrors": false,
+    "suppressImplicitAnyIndexErrors": false,
+    "useDefineForClassFields": false
+  }
+}
+```
+
+For documentation on allowed values and use cases please visit
+https://www.typescriptlang.org/docs/handbook/compiler-options.html
+
+**Note**: Any options not listed above are either not supported by Deno or are
+listed as deprecated/experimental in the TypeScript documentation.
+
 ## Program lifecycle
 
 Deno supports browser compatible lifecycle events: `load` and `unload`. You can
@@ -1557,6 +1563,9 @@ Build with Cargo:
 ```bash
 # Build:
 cargo build -vv
+
+# Build errors?  Ensure you have latest master and try building again, or if that doesn't work try:
+cargo clean && cargo build -vv
 
 # Run:
 ./target/debug/deno cli/tests/002_hello.ts

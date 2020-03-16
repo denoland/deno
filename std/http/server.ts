@@ -198,9 +198,15 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     if (this.closing) return;
     // Wait for a new connection.
-    const { value, done } = await this.listener.next();
-    if (done) return;
-    const conn = value as Conn;
+    let conn: Conn;
+    try {
+      conn = await this.listener.accept();
+    } catch (error) {
+      if (error instanceof Deno.errors.BadResource) {
+        return;
+      }
+      throw error;
+    }
     // Try to accept another connection and add it to the multiplexer.
     mux.add(this.acceptConnAndIterateHttpRequests(mux));
     // Yield the requests that arrive on the just-accepted connection.
@@ -218,7 +224,7 @@ export class Server implements AsyncIterable<ServerRequest> {
 export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
 
 /**
- * Start a HTTP server
+ * Create a HTTP server
  *
  *     import { serve } from "https://deno.land/std/http/server.ts";
  *     const body = "Hello World\n";
@@ -237,6 +243,18 @@ export function serve(addr: string | HTTPOptions): Server {
   return new Server(listener);
 }
 
+/**
+ * Start an HTTP server with given options and request handler
+ *
+ *     const body = "Hello World\n";
+ *     const options = { port: 8000 };
+ *     listenAndServeTLS(options, (req) => {
+ *       req.respond({ body });
+ *     });
+ *
+ * @param options Server configuration
+ * @param handler Request handler
+ */
 export async function listenAndServe(
   addr: string | HTTPOptions,
   handler: (req: ServerRequest) => void
@@ -278,7 +296,7 @@ export function serveTLS(options: HTTPSOptions): Server {
 }
 
 /**
- * Create an HTTPS server with given options and request handler
+ * Start an HTTPS server with given options and request handler
  *
  *     const body = "Hello HTTPS";
  *     const options = {
