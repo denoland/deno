@@ -4,7 +4,7 @@ import {
   assert,
   assertEquals,
   createResolvable,
-  usePort,
+  usePort
 } from "./test_util.ts";
 
 unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
