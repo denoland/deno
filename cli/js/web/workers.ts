@@ -53,19 +53,19 @@ export class MessageEvent extends Event {
 
   constructor(type: string, eventInitDict?: MessageEventInit) {
     super(type, {
-      bubbles: eventInitDict.bubbles,
-      cancelable: eventInitDict.cancelable,
-      composed: eventInitDict.composed
+      bubbles: eventInitDict?.bubbles,
+      cancelable: eventInitDict?.cancelable,
+      composed: eventInitDict?.composed
     });
 
-    if (eventInitDict.ports) {
+    if (eventInitDict?.ports) {
       notImplemented();
     }
 
-    this.data = eventInitDict.data;
-    this.origin = eventInitDict.origin;
-    this.lastEventId = eventInitDict.lastEventId;
-    this.source = eventInitDict.source;
+    this.data = eventInitDict?.data;
+    this.origin = eventInitDict?.origin;
+    this.lastEventId = eventInitDict?.lastEventId;
+    this.source = eventInitDict?.source;
   }
 }
 
@@ -85,16 +85,16 @@ export class ErrorEvent extends Event {
 
   constructor(type: string, eventInitDict?: ErrorEventInit) {
     super(type, {
-      bubbles: eventInitDict.bubbles,
-      cancelable: eventInitDict.cancelable,
-      composed: eventInitDict.composed
+      bubbles: eventInitDict?.bubbles,
+      cancelable: eventInitDict?.cancelable,
+      composed: eventInitDict?.composed
     });
 
-    this.message = eventInitDict.message;
-    this.filename = eventInitDict.filename;
-    this.lineno = eventInitDict.lineno;
-    this.colno = eventInitDict.colno;
-    this.error = eventInitDict.error;
+    this.message = eventInitDict?.message;
+    this.filename = eventInitDict?.filename;
+    this.lineno = eventInitDict?.lineno;
+    this.colno = eventInitDict?.colno;
+    this.error = eventInitDict?.error;
   }
 }
 
