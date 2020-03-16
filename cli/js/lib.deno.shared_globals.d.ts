@@ -886,6 +886,9 @@ declare namespace __blob {
       options?: __domTypes.BlobPropertyBag
     );
     slice(start?: number, end?: number, contentType?: string): DenoBlob;
+    stream(): __domTypes.ReadableStream;
+    text(): Promise<string>;
+    arrayBuffer(): Promise<ArrayBuffer>;
   }
 }
 
