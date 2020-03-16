@@ -343,39 +343,45 @@ test(async function requestBodyReaderWithTransferEncoding(): Promise<void> {
   }
 });
 
-test("destroyed connection", async (): Promise<void> => {
-  // Runs a simple server as another process
-  const p = Deno.run({
-    args: [Deno.execPath(), "--allow-net", "http/testdata/simple_server.ts"],
-    stdout: "piped"
-  });
+test({
+  name: "destroyed connection",
+  // FIXME(bartlomieju)
+  disableOpSanitizer: true,
+  fn: async (): Promise<void> => {
+    // Runs a simple server as another process
+    const p = Deno.run({
+      args: [Deno.execPath(), "--allow-net", "http/testdata/simple_server.ts"],
+      stdout: "piped"
+    });
 
-  try {
-    const r = new TextProtoReader(new BufReader(p.stdout!));
-    const s = await r.readLine();
-    assert(s !== Deno.EOF && s.includes("server listening"));
+    try {
+      const r = new TextProtoReader(new BufReader(p.stdout!));
+      const s = await r.readLine();
+      assert(s !== Deno.EOF && s.includes("server listening"));
 
-    let serverIsRunning = true;
-    p.status()
-      .then((): void => {
-        serverIsRunning = false;
-      })
-      .catch((_): void => {}); // Ignores the error when closing the process.
+      let serverIsRunning = true;
+      p.status()
+        .then((): void => {
+          serverIsRunning = false;
+        })
+        .catch((_): void => {}); // Ignores the error when closing the process.
 
-    await delay(100);
+      await delay(100);
 
-    // Reqeusts to the server and immediately closes the connection
-    const conn = await Deno.connect({ port: 4502 });
-    await conn.write(new TextEncoder().encode("GET / HTTP/1.0\n\n"));
-    conn.close();
+      // Reqeusts to the server and immediately closes the connection
+      const conn = await Deno.connect({ port: 4502 });
+      await conn.write(new TextEncoder().encode("GET / HTTP/1.0\n\n"));
+      conn.close();
 
-    // Waits for the server to handle the above (broken) request
-    await delay(100);
+      // Waits for the server to handle the above (broken) request
+      await delay(100);
 
-    assert(serverIsRunning);
-  } finally {
-    // Stops the sever.
-    p.close();
+      assert(serverIsRunning);
+    } finally {
+      // Stops the sever.
+      p.stdout!.close();
+      p.close();
+    }
   }
 });
 
@@ -424,6 +430,7 @@ test("serveTLS", async (): Promise<void> => {
     assert(serverIsRunning);
   } finally {
     // Stops the sever.
+    p.stdout!.close();
     p.close();
   }
 });
@@ -447,6 +454,8 @@ test("close server while iterating", async (): Promise<void> => {
 // we can test if connection is closed.
 test({
   skip: Deno.build.os == "win",
+  // FIXME(bartlomieju):
+  disableOpSanitizer: true,
   name: "respond error handling",
   async fn(): Promise<void> {
     const connClosedPromise = deferred();

@@ -17,6 +17,7 @@ async function startServer(): Promise<void> {
     const s = await r.readLine();
     assert(s !== Deno.EOF && s.includes("chat server starting"));
   } catch {
+    server.stdout!.close();
     server.close();
   }
 }
@@ -29,6 +30,9 @@ const skip = build.os == "win";
 test({
   skip,
   name: "beforeAll",
+  // FIXME(bartlomieju):
+  disableOpSanitizer: true,
+  disableResourceSanitizer: true,
   async fn() {
     await startServer();
   }
@@ -50,6 +54,8 @@ let ws: WebSocket | undefined;
 
 test({
   skip,
+  // FIXME(bartlomieju):
+  disableResourceSanitizer: true,
   name: "GET /ws should upgrade conn to ws",
   async fn() {
     ws = await connectWebSocket("http://127.0.0.1:8080/ws");
@@ -62,6 +68,8 @@ test({
 
 test({
   skip,
+  // FIXME(bartlomieju):
+  disableResourceSanitizer: true,
   name: "afterAll",
   fn() {
     server?.close();

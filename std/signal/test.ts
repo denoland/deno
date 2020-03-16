@@ -15,40 +15,45 @@ if (Deno.build.os !== "win") {
     );
   });
 
-  test("signal() iterates for multiple signals", async (): Promise<void> => {
-    // This prevents the program from exiting.
-    const t = setInterval(() => {}, 1000);
+  test({
+    name: "signal() iterates for multiple signals",
+    // FIXME(bartlomieju):
+    disableOpSanitizer: true,
+    fn: async (): Promise<void> => {
+      // This prevents the program from exiting.
+      const t = setInterval(() => {}, 1000);
 
-    let c = 0;
-    const sig = signal(
-      Deno.Signal.SIGUSR1,
-      Deno.Signal.SIGUSR2,
-      Deno.Signal.SIGINT
-    );
+      let c = 0;
+      const sig = signal(
+        Deno.Signal.SIGUSR1,
+        Deno.Signal.SIGUSR2,
+        Deno.Signal.SIGINT
+      );
 
-    setTimeout(async () => {
-      await delay(20);
-      Deno.kill(Deno.pid, Deno.Signal.SIGINT);
-      await delay(20);
-      Deno.kill(Deno.pid, Deno.Signal.SIGUSR2);
-      await delay(20);
-      Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
-      await delay(20);
-      Deno.kill(Deno.pid, Deno.Signal.SIGUSR2);
-      await delay(20);
-      Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
-      await delay(20);
-      Deno.kill(Deno.pid, Deno.Signal.SIGINT);
-      await delay(20);
-      sig.dispose();
-    });
+      setTimeout(async () => {
+        await delay(20);
+        Deno.kill(Deno.pid, Deno.Signal.SIGINT);
+        await delay(20);
+        Deno.kill(Deno.pid, Deno.Signal.SIGUSR2);
+        await delay(20);
+        Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
+        await delay(20);
+        Deno.kill(Deno.pid, Deno.Signal.SIGUSR2);
+        await delay(20);
+        Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
+        await delay(20);
+        Deno.kill(Deno.pid, Deno.Signal.SIGINT);
+        await delay(20);
+        sig.dispose();
+      });
 
-    for await (const _ of sig) {
-      c += 1;
+      for await (const _ of sig) {
+        c += 1;
+      }
+
+      assertEquals(c, 6);
+
+      clearTimeout(t);
     }
-
-    assertEquals(c, 6);
-
-    clearTimeout(t);
   });
 }

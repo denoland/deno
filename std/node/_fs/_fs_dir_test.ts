@@ -69,6 +69,8 @@ test({
 
 test({
   name: "Async read returns one file at a time",
+  // FIXME(bartlomieju):
+  disableResourceSanitizer: true,
   async fn() {
     const testDir: string = Deno.makeTempDirSync();
     Deno.createSync(testDir + "/foo.txt");
@@ -106,6 +108,8 @@ test({
 
 test({
   name: "Sync read returns one file at a time",
+  // FIXME(bartlomieju):
+  disableResourceSanitizer: true,
   fn() {
     const testDir: string = Deno.makeTempDirSync();
     Deno.createSync(testDir + "/foo.txt");
@@ -133,6 +137,8 @@ test({
 
 test({
   name: "Async iteration over existing directory",
+  // FIXME(bartlomieju):
+  disableResourceSanitizer: true,
   async fn() {
     const testDir: string = Deno.makeTempDirSync();
     Deno.createSync(testDir + "/foo.txt");
