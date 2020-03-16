@@ -110,7 +110,7 @@ export async function* expandGlob(
     } else if (globSegment == "**") {
       return yield* walk(walkInfo.filename, {
         includeFiles: false,
-        skip: excludePatterns
+        ignore: excludePatterns
       });
     }
     yield* walk(walkInfo.filename, {
@@ -121,7 +121,7 @@ export async function* expandGlob(
           globOptions
         )
       ],
-      skip: excludePatterns
+      ignore: excludePatterns
     });
   }
 
@@ -214,7 +214,7 @@ export function* expandGlobSync(
     } else if (globSegment == "**") {
       return yield* walkSync(walkInfo.filename, {
         includeFiles: false,
-        skip: excludePatterns
+        ignore: excludePatterns
       });
     }
     yield* walkSync(walkInfo.filename, {
@@ -225,7 +225,7 @@ export function* expandGlobSync(
           globOptions
         )
       ],
-      skip: excludePatterns
+      ignore: excludePatterns
     });
   }
 

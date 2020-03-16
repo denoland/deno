@@ -27,7 +27,7 @@ unitTest(
 // Check symlink when not on windows
 unitTest(
   {
-    skip: Deno.build.os === "win",
+    ignore: Deno.build.os === "win",
     perms: { read: true, write: true }
   },
   function chmodSyncSymlinkSuccess(): void {
@@ -103,7 +103,7 @@ unitTest(
 
 unitTest(
   {
-    skip: Deno.build.os === "win",
+    ignore: Deno.build.os === "win",
     perms: { read: true, write: true }
   },
   async function chmodSymlinkSuccess(): Promise<void> {

@@ -17,7 +17,7 @@ declare namespace Deno {
   export interface TestDefinition {
     fn: TestFunction;
     name: string;
-    skip?: boolean;
+    ignore?: boolean;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -36,7 +36,7 @@ declare namespace Deno {
   enum TestStatus {
     Passed = "passed",
     Failed = "failed",
-    Skipped = "skipped"
+    Ignored = "ignored"
   }
 
   interface TestResult {

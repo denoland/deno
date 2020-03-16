@@ -203,7 +203,7 @@ unitTest(
   {
     // FIXME(bartlomieju):
     // The feature below is not implemented, but the test should work after implementation
-    skip: true,
+    ignore: true,
     perms: { net: true }
   },
   async function fetchWithInfRedirection(): Promise<void> {
@@ -349,7 +349,7 @@ function bufferServer(addr: string): Deno.Buffer {
 unitTest(
   {
     // FIXME(bartlomieju)
-    skip: true,
+    ignore: true,
     perms: { net: true }
   },
   async function fetchRequest(): Promise<void> {
@@ -379,7 +379,7 @@ unitTest(
 unitTest(
   {
     // FIXME(bartlomieju)
-    skip: true,
+    ignore: true,
     perms: { net: true }
   },
   async function fetchPostBodyString(): Promise<void> {
@@ -413,7 +413,7 @@ unitTest(
 unitTest(
   {
     // FIXME(bartlomieju)
-    skip: true,
+    ignore: true,
     perms: { net: true }
   },
   async function fetchPostBodyTypedArray(): Promise<void> {

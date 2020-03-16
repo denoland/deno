@@ -446,7 +446,7 @@ test("close server while iterating", async (): Promise<void> => {
 // We need to find a way to similarly trigger an error on Windows so that
 // we can test if connection is closed.
 test({
-  skip: Deno.build.os == "win",
+  ignore: Deno.build.os == "win",
   name: "respond error handling",
   async fn(): Promise<void> {
     const connClosedPromise = deferred();

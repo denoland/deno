@@ -50,7 +50,7 @@ unitTest(function envPermissionDenied2(): void {
 // case-insensitive. Case normalization needs be done using the collation
 // that Windows uses, rather than naively using String.toLowerCase().
 unitTest(
-  { skip: Deno.build.os !== "win", perms: { env: true, run: true } },
+  { ignore: Deno.build.os !== "win", perms: { env: true, run: true } },
   async function envCaseInsensitive() {
     // Utility function that runs a Deno subprocess with the environment
     // specified in `inputEnv`. The subprocess reads the environment variables
