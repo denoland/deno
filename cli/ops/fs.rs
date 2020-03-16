@@ -730,7 +730,7 @@ fn op_symlink(
       // Unlike with chmod/chown, here we don't
       // require `oldpath` to exist on Windows
       let _ = oldpath; // avoid unused warning
-      return Err(OpError::other("Not implemented".to_string()));
+      return Err(OpError::not_implemented());
     }
   })
 }
