@@ -112,7 +112,6 @@ Deno.test(async function workerCanUseFetch(): Promise<void> {
   await promise;
 });
 
-
 Deno.test(async function workerIsEventListener(): Promise<void> {
   let messageHandlersCalled = 0;
   let errorHandlersCalled = 0;
@@ -123,10 +122,9 @@ Deno.test(async function workerIsEventListener(): Promise<void> {
     type: "module"
   });
 
-
   worker.onmessage = (_e: Event): void => {
     messageHandlersCalled++;
-  }
+  };
   worker.addEventListener("message", (_e: Event) => {
     messageHandlersCalled++;
   });
@@ -137,7 +135,7 @@ Deno.test(async function workerIsEventListener(): Promise<void> {
   worker.onerror = (e): void => {
     errorHandlersCalled++;
     e.preventDefault();
-  }
+  };
   worker.addEventListener("error", (_e: Event) => {
     errorHandlersCalled++;
   });

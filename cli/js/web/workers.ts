@@ -6,7 +6,7 @@ import {
   hostPostMessage,
   hostGetMessage
 } from "../ops/worker_host.ts";
-import { log } from "../util.ts";
+import { log, notImplemented } from "../util.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 /*
 import { blobURLMap } from "./web/url.ts";
@@ -48,7 +48,7 @@ export class MessageEvent extends Event {
   readonly origin: string;
   readonly lastEventId: string;
   readonly source: MessageEventSource | null;
-  readonly ports: MessagePort[];
+  //readonly ports: MessagePort[];
 
   constructor(type: string, eventInitDict?: MessageEventInit) {
     super(type, {
@@ -57,11 +57,14 @@ export class MessageEvent extends Event {
       composed: eventInitDict.composed
     });
 
+    if (eventInitDict.ports) {
+      notImplemented();
+    }
+
     this.data = eventInitDict.data;
     this.origin = eventInitDict.origin;
     this.lastEventId = eventInitDict.lastEventId;
     this.source = eventInitDict.source;
-    this.ports = eventInitDict.ports;
   }
 }
 
@@ -163,14 +166,14 @@ export class WorkerImpl extends EventTarget implements Worker {
   }
 
   private handleError(e: any): boolean {
-    // TODO: this is being handled in a type unsafe way, it should be type safe
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const event = new Event("error", { cancelable: true }) as any;
-    event.message = e.message;
-    event.lineNumber = e.lineNumber ? e.lineNumber + 1 : null;
-    event.columnNumber = e.columnNumber ? e.columnNumber + 1 : null;
-    event.fileName = e.fileName;
-    event.error = null;
+    const event = new ErrorEvent("error", {
+      cancelable: true,
+      message: e.message,
+      lineno: e.lineNumber ? e.lineNumber + 1 : null,
+      colno: e.columnNumber ? e.columnNumber + 1 : null,
+      filename: e.fileName,
+      error: null
+    });
 
     let handled = false;
     if (this.onerror) {
@@ -201,10 +204,11 @@ export class WorkerImpl extends EventTarget implements Worker {
           const message = decodeMessage(new Uint8Array(event.data));
           this.onmessage({ data: message });
         }
-        // TODO: this is being handled in a type unsafe way, it should be type safe
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const ev = new Event("message", { cancelable: false }) as any;
-        ev.data = event.data;
+        const ev = new MessageEvent("message", {
+          cancelable: false,
+          data: event.data
+        });
+
         this.dispatchEvent(ev);
         continue;
       }

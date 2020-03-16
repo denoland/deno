@@ -1503,7 +1503,7 @@ declare namespace __workers {
     readonly origin: string;
     readonly lastEventId: string;
     readonly source: MessageEventSource | null;
-    readonly ports: MessagePort[];
+    //readonly ports: MessagePort[];
 
     constructor(type: string, eventInitDict?: MessageEventInit);
   }
