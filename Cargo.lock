@@ -455,6 +455,7 @@ dependencies = [
  "reqwest",
  "ring",
  "rustyline",
+ "scoped-tls",
  "serde",
  "serde_derive",
  "serde_json",

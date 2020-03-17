@@ -336,11 +336,10 @@ async fn ast_command(flags: Flags, source_file: String) -> Result<(), ErrBox> {
 
   use op_error::OpError;
   let mut swc_compiler = swc_util::Compiler::new();
-  let swc_module = swc_compiler.parse_file(source_file).map_err(|e| {
+  let serialized = swc_compiler.json_ast(source_file).map_err(|e| {
     eprintln!("SWC diagnostics: {:#?}", e);
     OpError::other("Failed to parse AST".to_string())
   })?;
-  let serialized = serde_json::to_string_pretty(&swc_module).unwrap();
   println!("{}", serialized);
 
   Ok(())

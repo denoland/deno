@@ -2,16 +2,14 @@ use crate::file_fetcher::SourceFile;
 use crate::msg::MediaType;
 use std::sync::Arc;
 use std::sync::RwLock;
+use swc_common;
 use swc_common::errors::Diagnostic;
 use swc_common::errors::DiagnosticBuilder;
 use swc_common::errors::Emitter;
 use swc_common::errors::Handler;
 use swc_common::errors::HandlerFlags;
 use swc_common::FileName;
-use swc_common::Globals;
 use swc_common::SourceMap;
-use swc_common::GLOBALS;
-use swc_ecma_ast::Module;
 use swc_ecma_parser::lexer::Lexer;
 use swc_ecma_parser::JscTarget;
 use swc_ecma_parser::Parser;
@@ -40,7 +38,6 @@ impl From<BufferedError> for Vec<Diagnostic> {
 
 pub struct Compiler {
   buffered_error: BufferedError,
-  globals: Globals,
   pub source_map: Arc<SourceMap>,
   pub handler: Handler,
 }
@@ -62,22 +59,14 @@ impl Compiler {
       buffered_error,
       source_map: Arc::new(SourceMap::default()),
       handler,
-      globals: Globals::new(),
     }
   }
 
-  fn run<R, F>(&self, op: F) -> R
-  where
-    F: FnOnce() -> R,
-  {
-    GLOBALS.set(&self.globals, || op())
-  }
-
-  pub fn parse_file(
+  pub fn json_ast(
     &mut self,
     source_file: SourceFile,
-  ) -> Result<Module, SwcDiagnostics> {
-    self.run(|| {
+  ) -> Result<String, SwcDiagnostics> {
+    swc_common::GLOBALS.set(&swc_common::Globals::new(), || {
       let swc_source_file = self.source_map.new_source_file(
         FileName::Custom(source_file.url.as_str().into()),
         std::str::from_utf8(&source_file.source_code)
@@ -109,12 +98,15 @@ impl Compiler {
 
       let mut parser = Parser::new_from(session, lexer);
 
-      parser
-        .parse_module()
-        .map_err(move |mut err: DiagnosticBuilder| {
-          err.cancel();
-          SwcDiagnostics::from(buffered_err)
-        })
+      let module =
+        parser
+          .parse_module()
+          .map_err(move |mut err: DiagnosticBuilder| {
+            err.cancel();
+            SwcDiagnostics::from(buffered_err)
+          })?;
+
+      Ok(serde_json::to_string_pretty(&module).unwrap())
     })
   }
 }
