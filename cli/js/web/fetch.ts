@@ -225,14 +225,14 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
 
   close(): Promise<void> {
     close(this.rid);
-    return;
+    return Promise.resolve(void 0);
   }
 
-  cancel(): Promise<void> {
+  cancel(): void {
     return notImplemented();
   }
 
-  getReader(): Promise<domTypes.ReadableStreamReader> {
+  getReader(): domTypes.ReadableStreamReader {
     return notImplemented();
   }
 
@@ -394,7 +394,7 @@ export class Response implements domTypes.Response {
     return this.body.bodyUsed;
   }
 
-  clone(): Promise<domTypes.Response> {
+  clone(): domTypes.Response {
     if (this.bodyUsed) {
       throw new TypeError(
         "Failed to execute 'clone' on 'Response': Response body is already used"
@@ -407,17 +407,15 @@ export class Response implements domTypes.Response {
       headersList.push(header);
     }
 
-    return Promise.resolve(
-      new Response(
-        this.url,
-        this.status,
-        this.statusText,
-        headersList,
-        -1,
-        this.redirected,
-        this.type,
-        this.body
-      )
+    return new Response(
+      this.url,
+      this.status,
+      this.statusText,
+      headersList,
+      -1,
+      this.redirected,
+      this.type,
+      this.body
     );
   }
 
