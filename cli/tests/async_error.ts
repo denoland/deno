@@ -1,5 +1,5 @@
 console.log("hello");
-const foo = async (): Promise<never> => {
+const foo = (): Promise<never> => {
   console.log("before error");
   throw Error("error");
 };

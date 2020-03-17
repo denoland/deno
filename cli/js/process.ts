@@ -70,7 +70,7 @@ export class Process {
     }
   }
 
-  async stderrOutput(): Promise<Uint8Array> {
+  stderrOutput(): Promise<Uint8Array> {
     if (!this.stderr) {
       throw new Error("Process.stderrOutput: stderr is undefined");
     }

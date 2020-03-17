@@ -14,13 +14,15 @@ export function mockConn(base: Partial<Deno.Conn> = {}): Deno.Conn {
     rid: -1,
     closeRead: (): void => {},
     closeWrite: (): void => {},
-    read: async (): Promise<number | Deno.EOF> => {
-      return 0;
+    read: (): Promise<number | Deno.EOF> => {
+      return Promise.resolve(0);
     },
-    write: async (): Promise<number> => {
-      return -1;
+    write: (): Promise<number> => {
+      return Promise.resolve(-1);
     },
-    close: (): void => {},
+    close: (): Promise<void> => {
+      return;
+    },
     ...base
   };
 }

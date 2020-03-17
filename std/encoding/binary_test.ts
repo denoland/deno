@@ -21,42 +21,47 @@ Deno.test(async function testGetNBytes(): Promise<void> {
   assertEquals(rslt, data);
 });
 
-Deno.test(async function testGetNBytesThrows(): Promise<void> {
+Deno.test(function testGetNBytesThrows(): Promise<void> {
   const data = new Uint8Array([1, 2, 3, 4]);
   const buff = new Deno.Buffer(data.buffer);
   assertThrowsAsync(async () => {
     await getNBytes(buff, 8);
   }, Deno.errors.UnexpectedEof);
+  return;
 });
 
-Deno.test(async function testPutVarbig(): Promise<void> {
+Deno.test(function testPutVarbig(): Promise<void> {
   const buff = new Uint8Array(8);
   putVarbig(buff, 0xffeeddccbbaa9988n);
   assertEquals(
     buff,
     new Uint8Array([0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa, 0x99, 0x88])
   );
+  return;
 });
 
-Deno.test(async function testPutVarbigLittleEndian(): Promise<void> {
+Deno.test(function testPutVarbigLittleEndian(): Promise<void> {
   const buff = new Uint8Array(8);
   putVarbig(buff, 0x8899aabbccddeeffn, { endian: "little" });
   assertEquals(
     buff,
     new Uint8Array([0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa, 0x99, 0x88])
   );
+  return;
 });
 
-Deno.test(async function testPutVarnum(): Promise<void> {
+Deno.test(function testPutVarnum(): Promise<void> {
   const buff = new Uint8Array(4);
   putVarnum(buff, 0xffeeddcc);
   assertEquals(buff, new Uint8Array([0xff, 0xee, 0xdd, 0xcc]));
+  return;
 });
 
-Deno.test(async function testPutVarnumLittleEndian(): Promise<void> {
+Deno.test(function testPutVarnumLittleEndian(): Promise<void> {
   const buff = new Uint8Array(4);
   putVarnum(buff, 0xccddeeff, { endian: "little" });
   assertEquals(buff, new Uint8Array([0xff, 0xee, 0xdd, 0xcc]));
+  return;
 });
 
 Deno.test(async function testReadVarbig(): Promise<void> {

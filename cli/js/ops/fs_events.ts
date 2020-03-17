@@ -15,15 +15,15 @@ class FsEvents implements AsyncIterableIterator<FsEvent> {
     this.rid = sendSync("op_fs_events_open", { recursive, paths });
   }
 
-  async next(): Promise<IteratorResult<FsEvent>> {
+  next(): Promise<IteratorResult<FsEvent>> {
     return sendAsync("op_fs_events_poll", {
       rid: this.rid
     });
   }
 
-  async return(value?: FsEvent): Promise<IteratorResult<FsEvent>> {
+  return(value?: FsEvent): Promise<IteratorResult<FsEvent>> {
     close(this.rid);
-    return { value, done: true };
+    return Promise.resolve({ value, done: true });
   }
 
   [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent> {

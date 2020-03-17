@@ -1,4 +1,4 @@
-async function* asyncGenerator(): AsyncIterableIterator<number> {
+function* asyncGenerator(): AsyncIterableIterator<number> {
   let i = 0;
   while (i < 3) {
     yield i++;
