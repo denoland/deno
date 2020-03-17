@@ -288,6 +288,20 @@ unitTest({ perms: { net: true } }, async function fetchInitBlobBody(): Promise<
   assert(response.headers.get("content-type")!.startsWith("text/javascript"));
 });
 
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataBody(): Promise<void> {
+    const form = new FormData();
+    form.append("field", "value");
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: form
+    });
+    const resultForm = await response.formData();
+    assertEquals(form.get("field"), resultForm.get("field"));
+  }
+);
+
 unitTest({ perms: { net: true } }, async function fetchUserAgent(): Promise<
   void
 > {
