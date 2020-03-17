@@ -6,9 +6,6 @@ import "./bench_example.ts";
 test({
   name: "benching",
 
-  // FIXME(bartlomieju):
-  disableOpSanitizer: true,
-
   fn: async function(): Promise<void> {
     bench(function forIncrementX1e9(b): void {
       b.start();

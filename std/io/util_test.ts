@@ -40,9 +40,6 @@ test("[io/tuil] copyBytes", function(): void {
 
 test({
   name: "[io/util] tempfile",
-  // FIXME(bartlomieju)
-  disableOpSanitizer: true,
-
   fn: async function(): Promise<void> {
     const f = await tempFile(".", {
       prefix: "prefix-",

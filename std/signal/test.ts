@@ -17,8 +17,6 @@ if (Deno.build.os !== "win") {
 
   test({
     name: "signal() iterates for multiple signals",
-    // FIXME(bartlomieju):
-    disableOpSanitizer: true,
     fn: async (): Promise<void> => {
       // This prevents the program from exiting.
       const t = setInterval(() => {}, 1000);
@@ -54,6 +52,10 @@ if (Deno.build.os !== "win") {
       assertEquals(c, 6);
 
       clearTimeout(t);
+      // Clear timeout clears interval, but interval promise is not
+      // yet resolved, delay to next turn of event loop otherwise,
+      // we'll be leaking resources.
+      delay(0);
     }
   });
 }

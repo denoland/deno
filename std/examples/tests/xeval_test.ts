@@ -27,8 +27,6 @@ const xevalPath = "examples/xeval.ts";
 
 Deno.test({
   name: "xevalCliReplvar",
-  // FIXME(bartlomieju):
-  disableOpSanitizer: true,
   fn: async function(): Promise<void> {
     const p = run({
       args: [execPath(), xevalPath, "--replvar=abc", "console.log(abc)"],

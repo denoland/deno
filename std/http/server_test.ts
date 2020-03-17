@@ -345,8 +345,6 @@ test(async function requestBodyReaderWithTransferEncoding(): Promise<void> {
 
 test({
   name: "destroyed connection",
-  // FIXME(bartlomieju)
-  disableOpSanitizer: true,
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
     const p = Deno.run({
@@ -454,8 +452,6 @@ test("close server while iterating", async (): Promise<void> => {
 // we can test if connection is closed.
 test({
   skip: Deno.build.os == "win",
-  // FIXME(bartlomieju):
-  disableOpSanitizer: true,
   name: "respond error handling",
   async fn(): Promise<void> {
     const connClosedPromise = deferred();

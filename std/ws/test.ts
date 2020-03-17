@@ -298,8 +298,6 @@ function delayedWriter(ms: number, dest: Writer): Writer {
 }
 test({
   name: "[ws] WebSocket.send(), WebSocket.ping() should be exclusive",
-  // FIXME(bartlomieju):
-  disableOpSanitizer: true,
   fn: async (): Promise<void> => {
     const buf = new Buffer();
     const conn = dummyConn(new Buffer(), delayedWriter(1, buf));
@@ -369,8 +367,6 @@ test("[ws] WebSocket shouldn't throw `Deno.errors.UnexpectedEof` on recive()", a
 test({
   name:
     "[ws] WebSocket should reject sending promise when connection reset forcely",
-  // FIXME(bartlomieju):
-  disableOpSanitizer: true,
   fn: async () => {
     const buf = new Buffer();
     let timer: number | undefined;
