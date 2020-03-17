@@ -466,7 +466,7 @@ x,,,
 ];
 for (const t of testCases) {
   Deno.test({
-    ignore: !!t.skip,
+    ignore: !!t.ignore,
     name: `[CSV] ${t.Name}`,
     async fn(): Promise<void> {
       let comma = ",";

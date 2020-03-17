@@ -24,10 +24,10 @@ async function startServer(): Promise<void> {
 const { test, build } = Deno;
 
 // TODO: https://github.com/denoland/deno/issues/4108
-const skip = build.os == "win";
+const ignore = build.os == "win";
 
 test({
-  skip,
+  ignore,
   name: "beforeAll",
   async fn() {
     await startServer();
@@ -35,7 +35,7 @@ test({
 });
 
 test({
-  skip,
+  ignore,
   name: "GET / should serve html",
   async fn() {
     const resp = await fetch("http://127.0.0.1:8080/");
@@ -49,7 +49,7 @@ test({
 let ws: WebSocket | undefined;
 
 test({
-  skip,
+  ignore,
   name: "GET /ws should upgrade conn to ws",
   async fn() {
     ws = await connectWebSocket("http://127.0.0.1:8080/ws");
@@ -61,7 +61,7 @@ test({
 });
 
 test({
-  skip,
+  ignore,
   name: "afterAll",
   fn() {
     server?.close();
