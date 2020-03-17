@@ -2,7 +2,7 @@
 
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
-export function startRepl(historyFile: string): Promise<number> {
+export function startRepl(historyFile: string): number {
   return sendSync("op_repl_start", { historyFile });
 }
 
