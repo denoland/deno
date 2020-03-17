@@ -10,7 +10,8 @@ import {
   assert,
   assertEquals,
   assertNotEOF,
-  assertStrContains
+  assertStrContains,
+  assertThrowsAsync
 } from "../testing/asserts.ts";
 import { Response, ServerRequest, Server, serve } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
@@ -506,29 +507,26 @@ test({
       // @ts-ignore
       const serverRid = server.listener["rid"];
       let connRid = -1;
-      for await (const req of server) {
-        connRid = req.conn.rid;
-        reqCount++;
-        await Deno.readAll(req.body);
-        await connClosedPromise;
-        try {
-          await req.respond({
-            body: new TextEncoder().encode("Hello World")
-          });
-          await delay(100);
-          req.done = deferred();
-          // This duplicate respond is to ensure we get a write failure from the
-          // other side. Our client would enter CLOSE_WAIT stage after close(),
-          // meaning first server .send (.respond) after close would still work.
-          // However, a second send would fail under RST, which is similar
-          // to the scenario where a failure happens during .respond
-          await req.respond({
-            body: new TextEncoder().encode("Hello World")
-          });
-        } catch {
-          break;
-        }
-      }
+      const { value: req } = await server[Symbol.asyncIterator]().next();
+      connRid = req.conn.rid;
+      reqCount++;
+      await Deno.readAll(req.body);
+      await connClosedPromise;
+      await assertThrowsAsync(async () => {
+        await req.respond({
+          body: new TextEncoder().encode("Hello World")
+        });
+        await delay(100);
+        req.done = deferred();
+        // This duplicate respond is to ensure we get a write failure from the
+        // other side. Our client would enter CLOSE_WAIT stage after close(),
+        // meaning first server .send (.respond) after close would still work.
+        // However, a second send would fail under RST, which is similar
+        // to the scenario where a failure happens during .respond
+        await req.respond({
+          body: new TextEncoder().encode("Hello World")
+        });
+      }, Deno.errors.BrokenPipe);
       server.close();
       // Let event loop do another turn so server
       // finishes all pending ops.
