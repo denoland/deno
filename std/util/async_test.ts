@@ -3,18 +3,18 @@ const { test } = Deno;
 import { assert, assertEquals, assertStrictEq } from "../testing/asserts.ts";
 import { collectUint8Arrays, deferred, MuxAsyncIterator } from "./async.ts";
 
-test(async function asyncDeferred(): Promise<void> {
+test(function asyncDeferred(): void {
   const d = deferred<number>();
   d.resolve(12);
 });
 
-async function* gen123(): AsyncIterableIterator<number> {
+function* gen123(): AsyncIterableIterator<number> {
   yield 1;
   yield 2;
   yield 3;
 }
 
-async function* gen456(): AsyncIterableIterator<number> {
+function* gen456(): AsyncIterableIterator<number> {
   yield 4;
   yield 5;
   yield 6;
@@ -47,7 +47,7 @@ test(async function collectUint8Arrays0(): Promise<void> {
 
 test(async function collectUint8Arrays1(): Promise<void> {
   const buf = new Uint8Array([1, 2, 3]);
-  async function* gen(): AsyncIterableIterator<Uint8Array> {
+  function* gen(): AsyncIterableIterator<Uint8Array> {
     yield buf;
   }
   const result = await collectUint8Arrays(gen());
@@ -56,7 +56,7 @@ test(async function collectUint8Arrays1(): Promise<void> {
 });
 
 test(async function collectUint8Arrays4(): Promise<void> {
-  async function* gen(): AsyncIterableIterator<Uint8Array> {
+  function* gen(): AsyncIterableIterator<Uint8Array> {
     yield new Uint8Array([1, 2, 3]);
     yield new Uint8Array([]);
     yield new Uint8Array([4, 5]);

@@ -306,7 +306,7 @@ export class Body implements domTypes.Body {
     return JSON.parse(raw);
   }
 
-  public async arrayBuffer(): Promise<ArrayBuffer> {
+  public arrayBuffer(): ArrayBuffer {
     if (
       this._bodySource instanceof Int8Array ||
       this._bodySource instanceof Int16Array ||

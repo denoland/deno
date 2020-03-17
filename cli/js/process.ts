@@ -56,15 +56,15 @@ export class Process {
   }
 
   async status(): Promise<ProcessStatus> {
-    return await runStatus(this.rid);
+    return runStatus(this.rid);
   }
 
-  async output(): Promise<Uint8Array> {
+  output(): Promise<Uint8Array> {
     if (!this.stdout) {
       throw new Error("Process.output: stdout is undefined");
     }
     try {
-      return await readAll(this.stdout);
+      return readAll(this.stdout);
     } finally {
       this.stdout.close();
     }
@@ -75,7 +75,7 @@ export class Process {
       throw new Error("Process.stderrOutput: stderr is undefined");
     }
     try {
-      return await readAll(this.stderr);
+      return readAll(this.stderr);
     } finally {
       this.stderr.close();
     }

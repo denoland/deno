@@ -158,7 +158,7 @@ async function serveDir(
   return res;
 }
 
-async function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
+function serveFallback(req: ServerRequest, e: Error): Response {
   if (e instanceof Deno.errors.NotFound) {
     return {
       status: 404,

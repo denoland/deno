@@ -59,6 +59,7 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
     return this._data;
   }
 
+  // eslint-disable-next-line require-await
   async arrayBuffer(): Promise<ArrayBuffer> {
     // If we've already bufferred the response, just return it.
     if (this._data != null) {
@@ -226,7 +227,7 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
     close(this.rid);
   }
 
-  async cancel(): Promise<void> {
+  cancel(): void {
     return notImplemented();
   }
 
@@ -345,7 +346,7 @@ export class Response implements domTypes.Response {
     return false;
   }
 
-  async arrayBuffer(): Promise<ArrayBuffer> {
+  arrayBuffer(): Promise<ArrayBuffer> {
     /* You have to do the null check here and not in the function because
      * otherwise TS complains about this.body potentially being null */
     if (this.bodyViewable() || this.body == null) {
@@ -354,14 +355,14 @@ export class Response implements domTypes.Response {
     return this.body.arrayBuffer();
   }
 
-  async blob(): Promise<domTypes.Blob> {
+  blob(): Promise<domTypes.Blob> {
     if (this.bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
     return this.body.blob();
   }
 
-  async formData(): Promise<domTypes.FormData> {
+  formData(): Promise<domTypes.FormData> {
     if (this.bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
@@ -369,14 +370,14 @@ export class Response implements domTypes.Response {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async json(): Promise<any> {
+  json(): Promise<any> {
     if (this.bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
     return this.body.json();
   }
 
-  async text(): Promise<string> {
+  text(): Promise<string> {
     if (this.bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
@@ -436,7 +437,7 @@ export class Response implements domTypes.Response {
   }
 }
 
-async function sendFetchReq(
+function sendFetchReq(
   url: string,
   method: string | null,
   headers: domTypes.Headers | null,

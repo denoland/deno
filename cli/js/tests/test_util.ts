@@ -131,7 +131,7 @@ function assertOps(fn: Deno.TestFunction): Deno.TestFunction {
     Before:
       - dispatched: ${pre.opsDispatchedAsync}
       - completed: ${pre.opsCompletedAsync}
-    After: 
+    After:
       - dispatched: ${post.opsDispatchedAsync}
       - completed: ${post.opsCompletedAsync}`
     );
@@ -367,7 +367,7 @@ unitTest(function permissionsMatches(): void {
  */
 unitTest(
   { perms: { read: true } },
-  async function assertAllUnitTestFilesImported(): Promise<void> {
+  function assertAllUnitTestFilesImported(): void {
     const directoryTestFiles = Deno.readdirSync("./cli/js/tests/")
       .map(k => k.name)
       .filter(
