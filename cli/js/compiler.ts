@@ -302,9 +302,9 @@ async function runtimeCompile(
   }
 }
 
-async function runtimeTranspile(
+function runtimeTranspile(
   request: CompilerRequestRuntimeTranspile
-): Promise<Record<string, TranspileOnlyResult>> {
+): Record<string, TranspileOnlyResult> {
   const result: Record<string, TranspileOnlyResult> = {};
   const { sources, options } = request;
   const compilerOptions = options

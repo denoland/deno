@@ -218,10 +218,10 @@ function createFilterFn(
 }
 
 interface TestReporter {
-  start(msg: TestEventStart): Promise<void>;
-  testStart(msg: TestEventTestStart): Promise<void>;
-  testEnd(msg: TestEventTestEnd): Promise<void>;
-  end(msg: TestEventEnd): Promise<void>;
+  start(msg: TestEventStart): void;
+  testStart(msg: TestEventTestStart): void;
+  testEnd(msg: TestEventTestEnd): void;
+  end(msg: TestEventEnd): void;
 }
 
 export class ConsoleTestReporter implements TestReporter {
@@ -242,17 +242,17 @@ export class ConsoleTestReporter implements TestReporter {
     stdout.writeSync(this.encoder.encode(msg));
   }
 
-  async start(event: TestEventStart): Promise<void> {
+  start(event: TestEventStart): void {
     this.log(`running ${event.tests} tests`);
   }
 
-  async testStart(event: TestEventTestStart): Promise<void> {
+  testStart(event: TestEventTestStart): void {
     const { name } = event;
 
     this.log(`test ${name} ... `, true);
   }
 
-  async testEnd(event: TestEventTestEnd): Promise<void> {
+  testEnd(event: TestEventTestEnd): void {
     const { result } = event;
 
     switch (result.status) {
@@ -268,7 +268,7 @@ export class ConsoleTestReporter implements TestReporter {
     }
   }
 
-  async end(event: TestEventEnd): Promise<void> {
+  end(event: TestEventEnd): void {
     const { stats, duration, results } = event;
     // Attempting to match the output of Rust's test runner.
     const failedTests = results.filter(r => r.error);

@@ -359,9 +359,7 @@ if (Deno.build.os !== "win") {
     p.close();
   });
 
-  unitTest({ perms: { run: true } }, async function killFailed(): Promise<
-    void
-  > {
+  unitTest({ perms: { run: true } }, function killFailed(): void {
     const p = run({
       args: ["python", "-c", "from time import sleep; sleep(10000)"]
     });

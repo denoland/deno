@@ -11,7 +11,7 @@ import { ensureSymlink, ensureSymlinkSync } from "./ensure_symlink.ts";
 const testdataDir = path.resolve("fs", "testdata");
 const isWindows = Deno.build.os === "win";
 
-Deno.test(async function ensureSymlinkIfItNotExist(): Promise<void> {
+Deno.test(function ensureSymlinkIfItNotExist(): void {
   const testDir = path.join(testdataDir, "link_file_1");
   const testFile = path.join(testDir, "test.txt");
 

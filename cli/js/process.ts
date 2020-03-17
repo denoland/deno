@@ -56,7 +56,7 @@ export class Process {
   }
 
   async status(): Promise<ProcessStatus> {
-    return runStatus(this.rid);
+    return await runStatus(this.rid);
   }
 
   async output(): Promise<Uint8Array> {
