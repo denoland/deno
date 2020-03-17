@@ -367,7 +367,7 @@ unitTest(function permissionsMatches(): void {
  */
 unitTest(
   { perms: { read: true } },
-  function assertAllUnitTestFilesImported(): void {
+  function assertAllUnitTestFilesImported(): Promise<void> {
     const directoryTestFiles = Deno.readdirSync("./cli/js/tests/")
       .map(k => k.name)
       .filter(
@@ -396,5 +396,7 @@ unitTest(
         );
       }
     });
+
+    return;
   }
 );

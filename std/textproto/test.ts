@@ -7,11 +7,12 @@ import { append } from "./mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 const { test } = Deno;
 
-test(function textprotoAppend(): void {
+test(function textprotoAppend(): Promise<void> {
   const enc = new TextEncoder();
   const dec = new TextDecoder();
   const u1 = enc.encode("Hello ");
   const u2 = enc.encode("World");
   const joined = append(u1, u2);
   assertEquals(dec.decode(joined), "Hello World");
+  return;
 });

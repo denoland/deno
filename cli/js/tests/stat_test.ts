@@ -3,7 +3,7 @@ import { unitTest, assert, assertEquals } from "./test_util.ts";
 
 // TODO Add tests for modified, accessed, and created fields once there is a way
 // to create temp files.
-unitTest({ perms: { read: true } }, function statSyncSuccess(): void {
+unitTest({ perms: { read: true } }, function statSyncSuccess(): Promise<void> {
   const packageInfo = Deno.statSync("README.md");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
@@ -15,9 +15,11 @@ unitTest({ perms: { read: true } }, function statSyncSuccess(): void {
   const testsInfo = Deno.statSync("cli/tests");
   assert(testsInfo.isDirectory());
   assert(!testsInfo.isSymlink());
+
+  return;
 });
 
-unitTest({ perms: { read: false } }, async function statSyncPerm(): void {
+unitTest({ perms: { read: false } }, function statSyncPerm(): Promise<void> {
   let caughtError = false;
   try {
     Deno.statSync("README.md");
@@ -26,9 +28,11 @@ unitTest({ perms: { read: false } }, async function statSyncPerm(): void {
     assert(e instanceof Deno.errors.PermissionDenied);
   }
   assert(caughtError);
+
+  return;
 });
 
-unitTest({ perms: { read: true } }, function statSyncNotFound(): void {
+unitTest({ perms: { read: true } }, function statSyncNotFound(): Promise<void> {
   let caughtError = false;
   let badInfo;
 
@@ -41,9 +45,11 @@ unitTest({ perms: { read: true } }, function statSyncNotFound(): void {
 
   assert(caughtError);
   assertEquals(badInfo, undefined);
+
+  return;
 });
 
-unitTest({ perms: { read: true } }, function lstatSyncSuccess(): void {
+unitTest({ perms: { read: true } }, function lstatSyncSuccess(): Promise<void> {
   const packageInfo = Deno.lstatSync("README.md");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
@@ -55,9 +61,11 @@ unitTest({ perms: { read: true } }, function lstatSyncSuccess(): void {
   const coreInfo = Deno.lstatSync("core");
   assert(coreInfo.isDirectory());
   assert(!coreInfo.isSymlink());
+
+  return;
 });
 
-unitTest({ perms: { read: false } }, function lstatSyncPerm(): void {
+unitTest({ perms: { read: false } }, function lstatSyncPerm(): Promise<void> {
   let caughtError = false;
   try {
     Deno.lstatSync("README.md");
@@ -66,9 +74,13 @@ unitTest({ perms: { read: false } }, function lstatSyncPerm(): void {
     assert(e instanceof Deno.errors.PermissionDenied);
   }
   assert(caughtError);
+
+  return;
 });
 
-unitTest({ perms: { read: true } }, function lstatSyncNotFound(): void {
+unitTest({ perms: { read: true } }, function lstatSyncNotFound(): Promise<
+  void
+> {
   let caughtError = false;
   let badInfo;
 
@@ -81,6 +93,8 @@ unitTest({ perms: { read: true } }, function lstatSyncNotFound(): void {
 
   assert(caughtError);
   assertEquals(badInfo, undefined);
+
+  return;
 });
 
 unitTest({ perms: { read: true } }, async function statSuccess(): Promise<
@@ -173,7 +187,7 @@ unitTest({ perms: { read: true } }, async function lstatNotFound(): Promise<
 
 unitTest(
   { skip: Deno.build.os !== "win", perms: { read: true, write: true } },
-  function statNoUnixFields(): void {
+  function statNoUnixFields(): Promise<void> {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const tempDir = Deno.makeTempDirSync();
@@ -189,12 +203,14 @@ unitTest(
     assert(s.rdev === null);
     assert(s.blksize === null);
     assert(s.blocks === null);
+
+    return;
   }
 );
 
 unitTest(
   { skip: Deno.build.os === "win", perms: { read: true, write: true } },
-  function statUnixFields(): void {
+  function statUnixFields(): Promise<void> {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const tempDir = Deno.makeTempDirSync();
@@ -213,5 +229,7 @@ unitTest(
     assert(s.rdev !== null);
     assert(s.blksize !== null);
     assert(s.blocks !== null);
+
+    return;
   }
 );

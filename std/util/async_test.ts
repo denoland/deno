@@ -3,9 +3,10 @@ const { test } = Deno;
 import { assert, assertEquals, assertStrictEq } from "../testing/asserts.ts";
 import { collectUint8Arrays, deferred, MuxAsyncIterator } from "./async.ts";
 
-test(function asyncDeferred(): void {
+test(function asyncDeferred(): Promise<void> {
   const d = deferred<number>();
   d.resolve(12);
+  return;
 });
 
 function* gen123(): AsyncIterableIterator<number> {

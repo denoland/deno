@@ -8,10 +8,12 @@ import {
 
 const clients = new Map<number, WebSocket>();
 let clientId = 0;
-function dispatch(msg: string): void {
+function dispatch(msg: string): Promise<void> {
   for (const client of clients.values()) {
     client.send(msg);
   }
+
+  return;
 }
 async function wsHandler(ws: WebSocket): Promise<void> {
   const id = ++clientId;
