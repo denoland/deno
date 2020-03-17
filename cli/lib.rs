@@ -49,6 +49,7 @@ pub mod signal;
 pub mod source_maps;
 mod startup_data;
 pub mod state;
+mod swc_util;
 mod test_runner;
 pub mod test_util;
 mod tokio_util;
@@ -326,9 +327,15 @@ async fn eval_command(
 }
 
 async fn ast_command(flags: Flags, source_file: String) -> Result<(), ErrBox> {
-  let _module_name = ModuleSpecifier::resolve_url_or_path(&source_file)?;
-  let _global_state = GlobalState::new(flags)?;
-  eprintln!("not yet implemented");
+  let module_name = ModuleSpecifier::resolve_url_or_path(&source_file)?;
+  let global_state = GlobalState::new(flags)?;
+  // eprintln!("not yet implemented");
+  let source_file = global_state
+    .file_fetcher
+    .fetch_source_file(&module_name, None)
+    .await?;
+  swc_util::parse_file(source_file);
+
   Ok(())
 }
 
