@@ -106,10 +106,10 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
-fn create_main_worker(
+fn create_main_worker<'a>(
   global_state: GlobalState,
   main_module: ModuleSpecifier,
-) -> Result<MainWorker, ErrBox> {
+) -> Result<MainWorker<'a>, ErrBox> {
   let state = State::new(global_state, None, main_module)?;
 
   {
@@ -150,7 +150,7 @@ fn print_cache_info(state: &GlobalState) {
 // TODO(bartlomieju): this function de facto repeats
 // whole compilation stack. Can this be done better somehow?
 async fn print_file_info(
-  worker: &MainWorker,
+  worker: &MainWorker<'_>,
   module_specifier: ModuleSpecifier,
 ) -> Result<(), ErrBox> {
   let global_state = worker.state.borrow().global_state.clone();

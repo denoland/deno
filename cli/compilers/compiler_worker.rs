@@ -26,10 +26,10 @@ use std::task::Poll;
 ///
 /// TODO(bartlomieju): add support to reuse the worker - or in other
 /// words support stateful TS compiler
-pub struct CompilerWorker(WebWorker);
+pub struct CompilerWorker<'a>(WebWorker<'a>);
 
-impl CompilerWorker {
-  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
+impl<'a> CompilerWorker<'a> {
+  pub fn new(name: String, startup_data: StartupData<'a>, state: State) -> Self {
     let state_ = state.clone();
     let mut worker = WebWorker::new(name, startup_data, state_);
     {
@@ -44,20 +44,20 @@ impl CompilerWorker {
   }
 }
 
-impl Deref for CompilerWorker {
-  type Target = WebWorker;
+impl<'a> Deref for CompilerWorker<'a> {
+  type Target = WebWorker<'a>;
   fn deref(&self) -> &Self::Target {
     &self.0
   }
 }
 
-impl DerefMut for CompilerWorker {
+impl DerefMut for CompilerWorker<'_> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.0
   }
 }
 
-impl Future for CompilerWorker {
+impl Future for CompilerWorker<'_> {
   type Output = Result<(), ErrBox>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {

@@ -90,17 +90,17 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
 ///  - `MainWorker`
 ///  - `CompilerWorker`
 ///  - `WebWorker`
-pub struct Worker {
+pub struct Worker<'a> {
   pub name: String,
-  pub isolate: Box<deno_core::EsIsolate>,
+  pub isolate: Box<deno_core::EsIsolate<'a>>,
   pub state: State,
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
 }
 
-impl Worker {
-  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
+impl<'a> Worker<'a> {
+  pub fn new(name: String, startup_data: StartupData<'a>, state: State) -> Self {
     let loader = Rc::new(state.clone());
     let mut isolate = deno_core::EsIsolate::new(loader, startup_data, false);
 
@@ -175,7 +175,7 @@ impl Worker {
   }
 }
 
-impl Future for Worker {
+impl Future for Worker<'_> {
   type Output = Result<(), ErrBox>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -191,10 +191,10 @@ impl Future for Worker {
 ///
 /// All WebWorkers created during program execution are decendants of
 /// this worker.
-pub struct MainWorker(Worker);
+pub struct MainWorker<'a>(Worker<'a>);
 
-impl MainWorker {
-  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
+impl<'a> MainWorker<'a> {
+  pub fn new(name: String, startup_data: StartupData<'a>, state: State) -> Self {
     let state_ = state.clone();
     let mut worker = Worker::new(name, startup_data, state_);
     {
@@ -226,14 +226,14 @@ impl MainWorker {
   }
 }
 
-impl Deref for MainWorker {
-  type Target = Worker;
+impl<'a> Deref for MainWorker<'a> {
+  type Target = Worker<'a>;
   fn deref(&self) -> &Self::Target {
     &self.0
   }
 }
 
-impl DerefMut for MainWorker {
+impl DerefMut for MainWorker<'_> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.0
   }
@@ -356,7 +356,7 @@ mod tests {
     drop(http_server_guard);
   }
 
-  fn create_test_worker() -> MainWorker {
+  fn create_test_worker<'a>() -> MainWorker<'a> {
     let state = State::mock("./hello.js");
     let mut worker = MainWorker::new(
       "TEST".to_string(),

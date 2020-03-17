@@ -35,12 +35,12 @@ pub fn init(i: &mut Isolate, s: &State) {
   );
 }
 
-fn create_web_worker(
+fn create_web_worker<'a>(
   name: String,
   global_state: GlobalState,
   permissions: DenoPermissions,
   specifier: ModuleSpecifier,
-) -> Result<WebWorker, ErrBox> {
+) -> Result<WebWorker<'a>, ErrBox> {
   let state =
     State::new_for_worker(global_state, Some(permissions), specifier)?;
 

@@ -252,7 +252,7 @@ impl TsCompiler {
 
   /// Create a new V8 worker with snapshot of TS compiler and setup compiler's
   /// runtime.
-  fn setup_worker(global_state: GlobalState) -> CompilerWorker {
+  fn setup_worker<'a>(global_state: GlobalState) -> CompilerWorker<'a> {
     let entry_point =
       ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
     let worker_state = State::new(global_state.clone(), None, entry_point)

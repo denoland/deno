@@ -52,7 +52,7 @@ pub struct WasmCompiler {
 
 impl WasmCompiler {
   /// Create a new V8 worker with snapshot of WASM compiler and setup compiler's runtime.
-  fn setup_worker(global_state: GlobalState) -> CompilerWorker {
+  fn setup_worker<'a>(global_state: GlobalState) -> CompilerWorker<'a> {
     let entry_point =
       ModuleSpecifier::resolve_url_or_path("./__$deno$wasm_compiler.ts")
         .unwrap();

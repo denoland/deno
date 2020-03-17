@@ -22,13 +22,13 @@ use std::task::Poll;
 ///
 /// Each `WebWorker` is either a child of `MainWorker` or other
 /// `WebWorker`.
-pub struct WebWorker {
-  worker: Worker,
+pub struct WebWorker<'a> {
+  worker: Worker<'a>,
   is_ready: bool,
 }
 
-impl WebWorker {
-  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
+impl<'a> WebWorker<'a> {
+  pub fn new(name: String, startup_data: StartupData<'a>, state: State) -> Self {
     let state_ = state.clone();
     let mut worker = Worker::new(name, startup_data, state_);
     {
@@ -50,20 +50,20 @@ impl WebWorker {
   }
 }
 
-impl Deref for WebWorker {
-  type Target = Worker;
+impl<'a> Deref for WebWorker<'a> {
+  type Target = Worker<'a>;
   fn deref(&self) -> &Self::Target {
     &self.worker
   }
 }
 
-impl DerefMut for WebWorker {
+impl DerefMut for WebWorker<'_> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.worker
   }
 }
 
-impl Future for WebWorker {
+impl Future for WebWorker<'_> {
   type Output = Result<(), ErrBox>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -126,7 +126,7 @@ mod tests {
   use crate::worker::WorkerEvent;
   use crate::worker::WorkerHandle;
 
-  fn create_test_worker() -> WebWorker {
+  fn create_test_worker<'a>() -> WebWorker<'a> {
     let state = State::mock("./hello.js");
     let mut worker = WebWorker::new(
       "TEST".to_string(),
