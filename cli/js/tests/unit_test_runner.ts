@@ -127,31 +127,46 @@ async function runTestsForPermissionSet(
   // Wait for worker subprocess to go online
   const conn = await listener.accept();
 
+  let err: Error | undefined = undefined;
   let expectedPassedTests;
   let endEvent;
 
-  for await (const line of readLines(conn)) {
-    const msg = JSON.parse(line);
+  try {
+    for await (const line of readLines(conn)) {
+      const msg = JSON.parse(line);
 
-    if (msg.kind === Deno.TestEvent.Start) {
-      expectedPassedTests = msg.tests;
-      await reporter.start(msg);
-      continue;
-    } else if (msg.kind === Deno.TestEvent.TestStart) {
-      await reporter.testStart(msg);
-      continue;
-    } else if (msg.kind === Deno.TestEvent.TestEnd) {
-      await reporter.testEnd(msg);
-      continue;
-    } else {
-      endEvent = msg;
-      await reporter.end(msg);
-      break;
+      if (msg.kind === Deno.TestEvent.Start) {
+        expectedPassedTests = msg.tests;
+        await reporter.start(msg);
+        continue;
+      } else if (msg.kind === Deno.TestEvent.TestStart) {
+        await reporter.testStart(msg);
+        continue;
+      } else if (msg.kind === Deno.TestEvent.TestEnd) {
+        await reporter.testEnd(msg);
+        continue;
+      } else {
+        endEvent = msg;
+        await reporter.end(msg);
+        break;
+      }
     }
+  } catch (e) {
+    err = e;
+  } finally {
+    // Close socket to worker, it should shutdown gracefully.
+    conn.close();
   }
 
-  // Close socket to worker, it should shutdown gracefully.
-  conn.close();
+  if (err) {
+    if (err instanceof Deno.errors.ConnectionReset) {
+      if (!endEvent) {
+        throw err;
+      }
+    } else {
+      throw err;
+    }
+  }
 
   if (typeof expectedPassedTests === "undefined") {
     throw new Error("Worker runner didn't report start");

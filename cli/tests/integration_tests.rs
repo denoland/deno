@@ -275,6 +275,7 @@ fn js_unit_tests() {
     .arg("-A")
     .arg("cli/js/tests/unit_test_runner.ts")
     .arg("--master")
+    .arg("--verbose")
     .spawn()
     .expect("failed to spawn script");
   let status = deno.wait().expect("failed to wait for the child process");
