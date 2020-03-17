@@ -325,6 +325,13 @@ async fn eval_command(
   Ok(())
 }
 
+async fn ast_command(flags: Flags, source_file: String) -> Result<(), ErrBox> {
+  let _module_name = ModuleSpecifier::resolve_url_or_path(&source_file)?;
+  let _global_state = GlobalState::new(flags)?;
+  eprintln!("not yet implemented");
+  Ok(())
+}
+
 async fn bundle_command(
   flags: Flags,
   source_file: String,
@@ -436,6 +443,9 @@ pub fn main() {
   log::set_max_level(log_level.to_level_filter());
 
   let fut = match flags.clone().subcommand {
+    DenoSubcommand::Ast { source_file } => {
+      ast_command(flags, source_file).boxed_local()
+    }
     DenoSubcommand::Bundle {
       source_file,
       out_file,

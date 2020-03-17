@@ -24,6 +24,9 @@ macro_rules! sset {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum DenoSubcommand {
+  Ast {
+    source_file: String,
+  },
   Bundle {
     source_file: String,
     out_file: Option<PathBuf>,
@@ -242,6 +245,8 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
     eval_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("repl") {
     repl_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("ast") {
+    ast_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("bundle") {
     bundle_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("install") {
@@ -291,6 +296,7 @@ If the flag is set, restrict these messages to errors.",
         )
         .global(true),
     )
+    .subcommand(ast_subcommand())
     .subcommand(bundle_subcommand())
     .subcommand(completions_subcommand())
     .subcommand(eval_subcommand())
@@ -351,6 +357,14 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     args,
     force,
   };
+}
+
+fn ast_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  ca_file_arg_parse(flags, matches);
+
+  let source_file = matches.value_of("source_file").unwrap().to_string();
+
+  flags.subcommand = DenoSubcommand::Ast { source_file };
 }
 
 fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -614,6 +628,17 @@ $HOME/.deno/bin and it must be added to the path manually.
 
 To change installation directory use -d/--dir flag:
   deno install --allow-net --allow-read -d /usr/local/bin file_server https://deno.land/std/http/file_server.ts")
+}
+
+fn ast_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("ast")
+    .arg(
+      Arg::with_name("source_file")
+        .takes_value(true)
+        .required(true),
+    )
+    .arg(ca_file_arg())
+    .about("Print AST of provided module")
 }
 
 fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1130,6 +1155,7 @@ fn arg_hacks(mut args: Vec<String>) -> Vec<String> {
     return args;
   }
   let subcommands = sset![
+    "ast",
     "bundle",
     "completions",
     "eval",
@@ -1676,6 +1702,20 @@ mod tests {
         },
         allow_net: true,
         allow_read: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn ast() {
+    let r = flags_from_vec_safe(svec!["deno", "ast", "source.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Ast {
+          source_file: "source.ts".to_string(),
+        },
         ..Flags::default()
       }
     );
