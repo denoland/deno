@@ -5,7 +5,7 @@ import Dirent from "./_fs_dirent.ts";
 
 test({
   name: "Closing current directory with callback is successful",
-  async fn() {
+  fn() {
     let calledBack = false;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     new Dir(".").close((valOrErr: any) => {
@@ -25,7 +25,7 @@ test({
 
 test({
   name: "Closing current directory synchronously works",
-  async fn() {
+  fn() {
     new Dir(".").closeSync();
   }
 });

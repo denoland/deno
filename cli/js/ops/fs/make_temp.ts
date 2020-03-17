@@ -11,9 +11,7 @@ export function makeTempDirSync(options: MakeTempOptions = {}): string {
   return sendSync("op_make_temp_dir", options);
 }
 
-export async function makeTempDir(
-  options: MakeTempOptions = {}
-): Promise<string> {
+export function makeTempDir(options: MakeTempOptions = {}): Promise<string> {
   return sendAsync("op_make_temp_dir", options);
 }
 
@@ -21,8 +19,6 @@ export function makeTempFileSync(options: MakeTempOptions = {}): string {
   return sendSync("op_make_temp_file", options);
 }
 
-export async function makeTempFile(
-  options: MakeTempOptions = {}
-): Promise<string> {
+export function makeTempFile(options: MakeTempOptions = {}): Promise<string> {
   return sendAsync("op_make_temp_file", options);
 }

@@ -602,8 +602,6 @@ export async function* readStringDelim(
 }
 
 /** Read strings line-by-line from a Reader. */
-export async function* readLines(
-  reader: Reader
-): AsyncIterableIterator<string> {
+export function* readLines(reader: Reader): AsyncIterableIterator<string> {
   yield* readStringDelim(reader, "\n");
 }

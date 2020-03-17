@@ -5,7 +5,7 @@ import { parse } from "../../yaml.ts";
 
 const { readFileSync, cwd } = Deno;
 
-(async () => {
+(() => {
   const yml = readFileSync(`${cwd()}/example/sample_document.yml`);
 
   const document = new TextDecoder().decode(yml);
