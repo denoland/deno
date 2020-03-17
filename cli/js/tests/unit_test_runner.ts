@@ -127,31 +127,50 @@ async function runTestsForPermissionSet(
   // Wait for worker subprocess to go online
   const conn = await listener.accept();
 
+  let err: Error | undefined = undefined;
   let expectedPassedTests;
   let endEvent;
 
-  for await (const line of readLines(conn)) {
-    const msg = JSON.parse(line);
+  try {
+    for await (const line of readLines(conn)) {
+      const msg = JSON.parse(line);
 
-    if (msg.kind === Deno.TestEvent.Start) {
-      expectedPassedTests = msg.tests;
-      await reporter.start(msg);
-      continue;
-    } else if (msg.kind === Deno.TestEvent.TestStart) {
-      await reporter.testStart(msg);
-      continue;
-    } else if (msg.kind === Deno.TestEvent.TestEnd) {
-      await reporter.testEnd(msg);
-      continue;
-    } else {
-      endEvent = msg;
-      await reporter.end(msg);
-      break;
+      if (msg.kind === Deno.TestEvent.Start) {
+        expectedPassedTests = msg.tests;
+        await reporter.start(msg);
+        continue;
+      } else if (msg.kind === Deno.TestEvent.TestStart) {
+        await reporter.testStart(msg);
+        continue;
+      } else if (msg.kind === Deno.TestEvent.TestEnd) {
+        await reporter.testEnd(msg);
+        continue;
+      } else {
+        endEvent = msg;
+        await reporter.end(msg);
+        break;
+      }
     }
+  } catch (e) {
+    err = e;
+  } finally {
+    // Close socket to worker, it should shutdown gracefully.
+    conn.close();
   }
 
-  // Close socket to worker, it should shutdown gracefully.
-  conn.close();
+  if (typeof err !== "undefined") {
+    // There are intermittent `ConnectionReset` errors occurring
+    // on Windows CI; if error occurred but test runner
+    // sent end message then the error is ignored.
+    if (err instanceof Deno.errors.ConnectionReset) {
+      // If we didn't receive end event it's an actual error
+      if (typeof endEvent === "undefined") {
+        throw err;
+      }
+    } else {
+      throw err;
+    }
+  }
 
   if (typeof expectedPassedTests === "undefined") {
     throw new Error("Worker runner didn't report start");
