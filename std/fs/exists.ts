@@ -18,13 +18,13 @@ export function exists(filePath: string): Promise<boolean> {
 /**
  * Test whether or not the given path exists by checking with the file system
  */
-export function existsSync(filePath: string): boolean {
+export function existsSync(filePath: string): Promise<boolean> {
   try {
     lstatSync(filePath);
-    return true;
+    return Promise.resolve(true);
   } catch (err) {
     if (err instanceof Deno.errors.NotFound) {
-      return false;
+      return Promise.resolve(false);
     }
     throw err;
   }

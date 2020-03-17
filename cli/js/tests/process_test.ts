@@ -359,7 +359,7 @@ if (Deno.build.os !== "win") {
     p.close();
   });
 
-  unitTest({ perms: { run: true } }, function killFailed(): void {
+  unitTest({ perms: { run: true } }, function killFailed(): Promise<void> {
     const p = run({
       args: ["python", "-c", "from time import sleep; sleep(10000)"]
     });
@@ -377,5 +377,7 @@ if (Deno.build.os !== "win") {
     assert(err instanceof TypeError);
 
     p.close();
+
+    return Promise.resolve(void 0);
   });
 }

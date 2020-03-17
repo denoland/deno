@@ -9,7 +9,7 @@ export function testWalk(
   setup: (arg0: string) => void | Promise<void>,
   t: Deno.TestFunction,
   skip = false
-): void {
+): Promise<void> {
   const name = t.name;
   async function fn(): Promise<void> {
     const origCwd = cwd();
@@ -24,6 +24,7 @@ export function testWalk(
     }
   }
   Deno.test({ skip, name: `[walk] ${name}`, fn });
+  return;
 }
 
 function normalize({ filename }: WalkInfo): string {

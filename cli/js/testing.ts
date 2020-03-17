@@ -218,10 +218,10 @@ function createFilterFn(
 }
 
 interface TestReporter {
-  start(msg: TestEventStart): void;
-  testStart(msg: TestEventTestStart): void;
-  testEnd(msg: TestEventTestEnd): void;
-  end(msg: TestEventEnd): void;
+  start(msg: TestEventStart): Promise<void>;
+  testStart(msg: TestEventTestStart): Promise<void>;
+  testEnd(msg: TestEventTestEnd): Promise<void>;
+  end(msg: TestEventEnd): Promise<void>;
 }
 
 export class ConsoleTestReporter implements TestReporter {
@@ -231,7 +231,7 @@ export class ConsoleTestReporter implements TestReporter {
     this.encoder = new TextEncoder();
   }
 
-  private log(msg: string, noNewLine = false): void {
+  private log(msg: string, noNewLine = false): Promise<void> {
     if (!noNewLine) {
       msg += "\n";
     }
@@ -240,19 +240,22 @@ export class ConsoleTestReporter implements TestReporter {
     // compared to `console.log`; `core.print` on the other hand
     // is line-buffered and doesn't output message without newline
     stdout.writeSync(this.encoder.encode(msg));
+    return Promise.resolve(void 0);
   }
 
-  start(event: TestEventStart): void {
+  start(event: TestEventStart): Promise<void> {
     this.log(`running ${event.tests} tests`);
+    return Promise.resolve(void 0);
   }
 
-  testStart(event: TestEventTestStart): void {
+  testStart(event: TestEventTestStart): Promise<void> {
     const { name } = event;
 
     this.log(`test ${name} ... `, true);
+    return Promise.resolve(void 0);
   }
 
-  testEnd(event: TestEventTestEnd): void {
+  testEnd(event: TestEventTestEnd): Promise<void> {
     const { result } = event;
 
     switch (result.status) {
@@ -266,9 +269,11 @@ export class ConsoleTestReporter implements TestReporter {
         this.log(`${YELLOW_SKIPPED} ${formatDuration(result.duration)}`);
         break;
     }
+
+    return Promise.resolve(void 0);
   }
 
-  end(event: TestEventEnd): void {
+  end(event: TestEventEnd): Promise<void> {
     const { stats, duration, results } = event;
     // Attempting to match the output of Rust's test runner.
     const failedTests = results.filter(r => r.error);
@@ -296,6 +301,8 @@ export class ConsoleTestReporter implements TestReporter {
         `${stats.filtered} filtered out ` +
         `${formatDuration(duration)}\n`
     );
+
+    return Promise.resolve(void 0);
   }
 }
 

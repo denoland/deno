@@ -12,7 +12,7 @@ function write(socket, buffer) {
   const p = new Promise((resolve, _) => {
     socket.write(buffer, resolve);
   });
-  return p;
+  return Promise.resolve(p);
 }
 
 Server(async socket => {
@@ -20,6 +20,6 @@ Server(async socket => {
     socket.destroy();
   });
   for await (const _ of socket) {
-    write(socket, response);
+    await write(socket, response);
   }
 }).listen(port);
