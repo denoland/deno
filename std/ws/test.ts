@@ -21,6 +21,7 @@ import Writer = Deno.Writer;
 import Reader = Deno.Reader;
 import Conn = Deno.Conn;
 import Buffer = Deno.Buffer;
+import { delay } from "../util/async.ts";
 
 test("[ws] read unmasked text frame", async () => {
   // unmasked single text frame with payload "Hello"
@@ -392,5 +393,8 @@ test({
     assert(b instanceof Deno.errors.ConnectionReset);
     assert(c instanceof Deno.errors.ConnectionReset);
     clearTimeout(timer);
+    // Wait for another event loop turn for `timeout` op promise
+    // to resolve, otherwise we'll get "op leak".
+    await delay(10);
   }
 });

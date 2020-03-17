@@ -44,7 +44,7 @@ test({
       server.close();
       server.stdout!.close();
     }
-    delay(0);
+    await delay(10);
   }
 });
 

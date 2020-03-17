@@ -55,7 +55,7 @@ if (Deno.build.os !== "win") {
       // Clear timeout clears interval, but interval promise is not
       // yet resolved, delay to next turn of event loop otherwise,
       // we'll be leaking resources.
-      delay(0);
+      await delay(10);
     }
   });
 }

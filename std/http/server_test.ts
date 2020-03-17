@@ -352,31 +352,30 @@ test({
       stdout: "piped"
     });
 
+    let serverIsRunning = true;
+    const statusPromise = p
+      .status()
+      .then((): void => {
+        serverIsRunning = false;
+      })
+      .catch((_): void => {}); // Ignores the error when closing the process.
+
     try {
       const r = new TextProtoReader(new BufReader(p.stdout!));
       const s = await r.readLine();
       assert(s !== Deno.EOF && s.includes("server listening"));
-
-      let serverIsRunning = true;
-      p.status()
-        .then((): void => {
-          serverIsRunning = false;
-        })
-        .catch((_): void => {}); // Ignores the error when closing the process.
-
       await delay(100);
-
       // Reqeusts to the server and immediately closes the connection
       const conn = await Deno.connect({ port: 4502 });
       await conn.write(new TextEncoder().encode("GET / HTTP/1.0\n\n"));
       conn.close();
-
       // Waits for the server to handle the above (broken) request
       await delay(100);
-
       assert(serverIsRunning);
     } finally {
-      // Stops the sever.
+      // Stops the sever and allows `p.status()` promise to resolve
+      Deno.kill(p.pid, Deno.Signal.SIGKILL);
+      await statusPromise;
       p.stdout!.close();
       p.close();
     }
@@ -395,6 +394,14 @@ test("serveTLS", async (): Promise<void> => {
     stdout: "piped"
   });
 
+  let serverIsRunning = true;
+  const statusPromise = p
+    .status()
+    .then((): void => {
+      serverIsRunning = false;
+    })
+    .catch((_): void => {}); // Ignores the error when closing the process.
+
   try {
     const r = new TextProtoReader(new BufReader(p.stdout!));
     const s = await r.readLine();
@@ -402,14 +409,6 @@ test("serveTLS", async (): Promise<void> => {
       s !== Deno.EOF && s.includes("server listening"),
       "server must be started"
     );
-
-    let serverIsRunning = true;
-    p.status()
-      .then((): void => {
-        serverIsRunning = false;
-      })
-      .catch((_): void => {}); // Ignores the error when closing the process.
-
     // Requests to the server and immediately closes the connection
     const conn = await Deno.connectTLS({
       hostname: "localhost",
@@ -427,7 +426,9 @@ test("serveTLS", async (): Promise<void> => {
     assert(resStr.includes("Hello HTTPS"));
     assert(serverIsRunning);
   } finally {
-    // Stops the sever.
+    // Stops the sever and allows `p.status()` promise to resolve
+    Deno.kill(p.pid, Deno.Signal.SIGKILL);
+    await statusPromise;
     p.stdout!.close();
     p.close();
   }
@@ -485,6 +486,9 @@ test({
         }
       }
       server.close();
+      // Let event loop do another turn so server
+      // finishes all pending ops.
+      await delay(0);
       const resources = Deno.resources();
       assert(reqCount === 1);
       // Server should be gone
