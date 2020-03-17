@@ -329,12 +329,19 @@ async fn eval_command(
 async fn ast_command(flags: Flags, source_file: String) -> Result<(), ErrBox> {
   let module_name = ModuleSpecifier::resolve_url_or_path(&source_file)?;
   let global_state = GlobalState::new(flags)?;
-  // eprintln!("not yet implemented");
   let source_file = global_state
     .file_fetcher
     .fetch_source_file(&module_name, None)
     .await?;
-  swc_util::parse_file(source_file);
+
+  use op_error::OpError;
+  let mut swc_compiler = swc_util::Compiler::new();
+  let swc_module = swc_compiler.parse_file(source_file).map_err(|e| {
+    eprintln!("SWC diagnostics: {:#?}", e);
+    OpError::other("Failed to parse AST".to_string())
+  })?;
+  let serialized = serde_json::to_string_pretty(&swc_module).unwrap();
+  println!("{}", serialized);
 
   Ok(())
 }
