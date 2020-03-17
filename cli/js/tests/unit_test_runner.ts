@@ -158,13 +158,9 @@ async function runTestsForPermissionSet(
     conn.close();
   }
 
-  if (typeof err !== "undefined") {
-    // There are intermittent `ConnectionReset` errors occurring
-    // on Windows CI; if error occurred but test runner
-    // sent end message then the error is ignored.
+  if (err) {
     if (err instanceof Deno.errors.ConnectionReset) {
-      // If we didn't receive end event it's an actual error
-      if (typeof endEvent === "undefined") {
+      if (!endEvent) {
         throw err;
       }
     } else {
