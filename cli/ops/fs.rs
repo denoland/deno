@@ -673,8 +673,8 @@ fn op_rename(
 #[serde(rename_all = "camelCase")]
 struct LinkArgs {
   promise_id: Option<u64>,
-  oldname: String,
-  newname: String,
+  oldpath: String,
+  newpath: String,
 }
 
 fn op_link(
@@ -683,16 +683,16 @@ fn op_link(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: LinkArgs = serde_json::from_value(args)?;
-  let oldname = resolve_from_cwd(Path::new(&args.oldname))?;
-  let newname = resolve_from_cwd(Path::new(&args.newname))?;
+  let oldpath = resolve_from_cwd(Path::new(&args.oldpath))?;
+  let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
 
-  state.check_read(&oldname)?;
-  state.check_write(&newname)?;
+  state.check_read(&oldpath)?;
+  state.check_write(&newpath)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_link {} {}", oldname.display(), newname.display());
-    std::fs::hard_link(&oldname, &newname)?;
+    debug!("op_link {} {}", oldpath.display(), newpath.display());
+    std::fs::hard_link(&oldpath, &newpath)?;
     Ok(json!({}))
   })
 }
@@ -701,8 +701,8 @@ fn op_link(
 #[serde(rename_all = "camelCase")]
 struct SymlinkArgs {
   promise_id: Option<u64>,
-  oldname: String,
-  newname: String,
+  oldpath: String,
+  newpath: String,
 }
 
 fn op_symlink(
@@ -711,19 +711,19 @@ fn op_symlink(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: SymlinkArgs = serde_json::from_value(args)?;
-  let oldname = resolve_from_cwd(Path::new(&args.oldname))?;
-  let newname = resolve_from_cwd(Path::new(&args.newname))?;
+  let oldpath = resolve_from_cwd(Path::new(&args.oldpath))?;
+  let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
 
-  state.check_write(&newname)?;
+  state.check_write(&newpath)?;
   // TODO Use type for Windows.
   if cfg!(not(unix)) {
     return Err(OpError::other("Not implemented".to_string()));
   }
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_symlink {} {}", oldname.display(), newname.display());
+    debug!("op_symlink {} {}", oldpath.display(), newpath.display());
     #[cfg(unix)]
-    std::os::unix::fs::symlink(&oldname, &newname)?;
+    std::os::unix::fs::symlink(&oldpath, &newpath)?;
     Ok(json!({}))
   })
 }
