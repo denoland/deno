@@ -3,6 +3,7 @@ import { stat, statSync } from "./ops/fs/stat.ts";
 import { open, openSync } from "./files.ts";
 import { chmod, chmodSync } from "./ops/fs/chmod.ts";
 import { writeAll, writeAllSync } from "./buffer.ts";
+import { build } from "./build.ts";
 
 export interface WriteFileOptions {
   append?: boolean;
@@ -29,7 +30,7 @@ export function writeFileSync(
   if (
     options.mode !== undefined &&
     options.mode !== null &&
-    Deno.build.os !== "win"
+    build.os !== "win"
   ) {
     chmodSync(path, options.mode);
   }
@@ -57,7 +58,7 @@ export async function writeFile(
   if (
     options.mode !== undefined &&
     options.mode !== null &&
-    Deno.build.os !== "win"
+    build.os !== "win"
   ) {
     await chmod(path, options.mode);
   }
