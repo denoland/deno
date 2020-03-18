@@ -354,6 +354,7 @@ fn op_chmod(
       use std::os::unix::fs::PermissionsExt;
       let permissions = PermissionsExt::from_mode(mode);
       std::fs::set_permissions(&path, permissions)?;
+      Ok(json!({}))
     }
     // TODO Implement chmod for Windows (#4357)
     #[cfg(not(unix))]
@@ -362,7 +363,6 @@ fn op_chmod(
       let _metadata = std::fs::metadata(&path)?;
       return Err(OpError::not_implemented());
     }
-    Ok(json!({}))
   })
 }
 
@@ -394,6 +394,7 @@ fn op_chown(
       let nix_uid = Uid::from_raw(args.uid);
       let nix_gid = Gid::from_raw(args.gid);
       chown(&path, Option::Some(nix_uid), Option::Some(nix_gid))?;
+      Ok(json!({}))
     }
     // TODO Implement chown for Windows
     #[cfg(not(unix))]
@@ -402,7 +403,6 @@ fn op_chown(
       let _metadata = std::fs::metadata(&path)?;
       return Err(OpError::not_implemented());
     }
-    Ok(json!({}))
   })
 }
 
@@ -723,6 +723,7 @@ fn op_symlink(
     {
       use std::os::unix::fs::symlink;
       symlink(&oldpath, &newpath)?;
+      Ok(json!({}))
     }
     // TODO Implement symlink, use type for Windows
     #[cfg(not(unix))]
@@ -732,7 +733,6 @@ fn op_symlink(
       let _ = oldpath; // avoid unused warning
       return Err(OpError::not_implemented());
     }
-    Ok(json!({}))
   })
 }
 
