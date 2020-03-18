@@ -355,11 +355,18 @@ declare namespace Deno {
   export function cwd(): string;
 
   /**
-   * **UNSTABLE**: maybe needs permissions.
+   * **UNSTABLE**: Currently under evaluation to decide if explicit permission is
+   * required to change the current working directory.
    *
    * Change the current working directory to the specified path.
    *
-   * Throws `Deno.errors.NotFound` if directory not available.
+   *       Deno.chdir("/home/userA");
+   *       Deno.chdir("../userB");
+   *       Deno.chdir("C:\\Program Files (x86)\\Java");
+   *
+   * Throws `Deno.errors.NotFound` if directory not found.
+   * Throws `Deno.errors.PermissionDenied` if the user does not have access
+   * rights
    */
   export function chdir(directory: string): void;
 
@@ -2341,15 +2348,20 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
+   * `bundle()` is part the compiler API.  A full description of this functionality
+   * can be found in the [manual](https://deno.land/std/manual.md#denobundle).
+   *
    * Takes a root module name, and optionally a record set of sources. Resolves
-   * with a single JavaScript string that is like the output of a `deno bundle`
-   * command. If just a root name is provided, the modules will be resolved as if
-   * the root module had been passed on the command line.
+   * with a single JavaScript string (and bundle diagnostics if issues arise with
+   * the bundling) that is like the output of a `deno bundle` command. If just
+   * a root name is provided, the modules will be resolved as if the root module
+   * had been passed on the command line.
    *
    * If sources are passed, all modules will be resolved out of this object, where
    * the key is the module name and the value is the content. The extension of the
    * module name will be used to determine the media type of the module.
    *
+   *      //equivalent to "deno bundle foo.ts" from the command line
    *      const [ maybeDiagnostics1, output1 ] = await Deno.bundle("foo.ts");
    *
    *      const [ maybeDiagnostics2, output2 ] = await Deno.bundle("/foo.ts", {
