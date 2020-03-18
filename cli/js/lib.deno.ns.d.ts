@@ -2346,6 +2346,9 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
+   * `bundle()` is part the compiler API.  A full description of this functionality
+   * can be found in the [manual](https://deno.land/std/manual.md#denobundle).
+   * 
    * Takes a root module name, and optionally a record set of sources. Resolves
    * with a single JavaScript string (and bundle diagnostics if issues arise with
    * the bundling) that is like the output of a `deno bundle` command. If just
