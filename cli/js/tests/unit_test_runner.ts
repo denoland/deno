@@ -213,7 +213,7 @@ async function masterRunnerMain(
 
   const testResults = new Set<PermissionSetTestResult>();
   const consoleReporter = new Deno.ConsoleTestReporter();
-  const addr = { hostname: "127.0.0.1", port: 4510 };
+  const addr = { hostname: "127.0.0.1", port: 4610 };
   const addrStr = `${addr.hostname}:${addr.port}`;
   const listener = Deno.listen(addr);
 
