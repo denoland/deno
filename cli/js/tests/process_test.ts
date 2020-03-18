@@ -294,28 +294,25 @@ unitTest({ perms: { run: true } }, async function runEnv(): Promise<void> {
   p.close();
 });
 
-unitTest(
-  { skip: true, perms: { run: true } },
-  async function runClose(): Promise<void> {
-    const p = run({
-      args: [
-        "python",
-        "-c",
-        "from time import sleep; import sys; sleep(10000); sys.stderr.write('error')"
-      ],
-      stderr: "piped"
-    });
-    assert(!p.stdin);
-    assert(!p.stdout);
+unitTest({ perms: { run: true } }, async function runClose(): Promise<void> {
+  const p = run({
+    args: [
+      "python",
+      "-c",
+      "from time import sleep; import sys; sleep(10000); sys.stderr.write('error')"
+    ],
+    stderr: "piped"
+  });
+  assert(!p.stdin);
+  assert(!p.stdout);
 
-    p.close();
+  p.close();
 
-    const data = new Uint8Array(10);
-    const r = await p.stderr!.read(data);
-    assertEquals(r, Deno.EOF);
-    p.stderr!.close();
-  }
-);
+  const data = new Uint8Array(10);
+  const r = await p.stderr!.read(data);
+  assertEquals(r, Deno.EOF);
+  p.stderr!.close();
+});
 
 unitTest(function signalNumbers(): void {
   if (Deno.build.os === "mac") {
