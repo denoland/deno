@@ -130,9 +130,15 @@ jobs:
         if: matrix.kind == 'lint'
         run: python ./tools/test_format.py
 
-      - name: Build
+      - name: Build release
         if: matrix.kind == 'test_release' || matrix.kind == 'bench'
         run: cargo build --release --locked --all-targets
+
+      - name: Build debug
+        if: matrix.kind == 'test_debug'
+        run: |
+          echo ::set-env name=DENO_BUILD_MODE::debug
+          cargo build --locked --all-targets
 
       - name: Test release
         if: matrix.kind == 'test_release'
