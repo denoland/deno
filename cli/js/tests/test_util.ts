@@ -112,47 +112,6 @@ function normalizeTestPermissions(perms: UnitTestPermissions): Permissions {
   };
 }
 
-// Wrap `TestFunction` in additional assertion that makes sure
-// the test case does not leak async "ops" - ie. number of async
-// completed ops after the test is the same as number of dispatched
-// ops. Note that "unref" ops are ignored since in nature that are
-// optional.
-function assertOps(fn: Deno.TestFunction): Deno.TestFunction {
-  return async function asyncOpSanitizer(): Promise<void> {
-    const pre = Deno.metrics();
-    await fn();
-    const post = Deno.metrics();
-    // We're checking diff because one might spawn HTTP server in the background
-    // that will be a pending async op before test starts.
-    assertEquals(
-      post.opsDispatchedAsync - pre.opsDispatchedAsync,
-      post.opsCompletedAsync - pre.opsCompletedAsync,
-      `Test case is leaking async ops.
-    Before:
-      - dispatched: ${pre.opsDispatchedAsync}
-      - completed: ${pre.opsCompletedAsync}
-    After: 
-      - dispatched: ${post.opsDispatchedAsync}
-      - completed: ${post.opsCompletedAsync}`
-    );
-  };
-}
-
-// Wrap `TestFunction` in additional assertion that makes sure
-// the test case does not "leak" resources - ie. resource table after
-// the test has exactly the same contents as before the test.
-function assertResources(fn: Deno.TestFunction): Deno.TestFunction {
-  return async function resourceSanitizer(): Promise<void> {
-    const pre = Deno.resources();
-    await fn();
-    const post = Deno.resources();
-    const msg = `Test case is leaking resources.
-    Before: ${JSON.stringify(pre, null, 2)}
-    After: ${JSON.stringify(post, null, 2)}`;
-    assertEquals(pre, post, msg);
-  };
-}
-
 interface UnitTestPermissions {
   read?: boolean;
   write?: boolean;
@@ -209,7 +168,7 @@ export function unitTest(
 
   const unitTestDefinition: UnitTestDefinition = {
     name,
-    fn: assertResources(assertOps(fn)),
+    fn,
     skip: !!options.skip,
     perms: normalizedPerms
   };

@@ -131,4 +131,5 @@ Deno.test(async function expandGlobPermError(): Promise<void> {
     decode(await p.stderrOutput()),
     "Uncaught PermissionDenied"
   );
+  p.close();
 });

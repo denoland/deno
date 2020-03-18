@@ -21,8 +21,10 @@ Deno.test(async function catSmoke(): Promise<void> {
       "examples/cat.ts",
       "README.md"
     ],
-    stdout: "piped"
+    stdout: "null",
+    stderr: "null"
   });
   const s = await p.status();
   assertEquals(s.code, 0);
+  p.close();
 });

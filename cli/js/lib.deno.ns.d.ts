@@ -18,6 +18,8 @@ declare namespace Deno {
     fn: TestFunction;
     name: string;
     skip?: boolean;
+    disableOpSanitizer?: boolean;
+    disableResourceSanitizer?: boolean;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
