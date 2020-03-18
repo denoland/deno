@@ -29,6 +29,7 @@ jobs:
 
     env:
       RUST_BACKTRACE: full
+      DENO_BUILD_MODE: release
       RUSTC_WRAPPER: sccache
       V8_BINARY: true
 
