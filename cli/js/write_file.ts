@@ -26,7 +26,11 @@ export function writeFileSync(
   const openMode = !!options.append ? "a" : "w";
   const file = openSync(path, openMode);
 
-  if (options.mode !== undefined && options.mode !== null) {
+  if (
+    options.mode !== undefined &&
+    options.mode !== null &&
+    Deno.build.os !== "win"
+  ) {
     chmodSync(path, options.mode);
   }
 
@@ -50,7 +54,11 @@ export async function writeFile(
   const openMode = !!options.append ? "a" : "w";
   const file = await open(path, openMode);
 
-  if (options.mode !== undefined && options.mode !== null) {
+  if (
+    options.mode !== undefined &&
+    options.mode !== null &&
+    Deno.build.os !== "win"
+  ) {
     await chmod(path, options.mode);
   }
 
