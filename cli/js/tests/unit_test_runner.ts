@@ -124,14 +124,10 @@ async function runTestsForPermissionSet(
   const permsFmt = fmtPerms(perms);
   console.log(`Running tests for: ${permsFmt}`);
   const workerProcess = spawnWorkerRunner(verbose, addrStr, perms, filter);
-  // Wait for worker subprocess to go online
-  const conn = await listener.accept();
-
-  let err: Error | undefined = undefined;
   let expectedPassedTests;
   let endEvent;
-
   try {
+    const conn = await listener.accept();
     for await (const line of readLines(conn)) {
       const msg = JSON.parse(line);
 
@@ -151,28 +147,22 @@ async function runTestsForPermissionSet(
         break;
       }
     }
-  } catch (e) {
-    err = e;
-  } finally {
-    // Close socket to worker, it should shutdown gracefully.
-    conn.close();
-  }
-
-  if (err) {
+  } catch (err) {
     if (err instanceof Deno.errors.ConnectionReset) {
-      if (!endEvent) {
-        throw err;
-      }
+      console.log("test runner master ConnectionReset");
     } else {
       throw err;
     }
+  } finally {
+    // Close socket to worker?
+    // conn.close();
   }
 
-  if (typeof expectedPassedTests === "undefined") {
+  if (!expectedPassedTests) {
     throw new Error("Worker runner didn't report start");
   }
 
-  if (typeof endEvent === "undefined") {
+  if (!endEvent) {
     throw new Error("Worker runner didn't report end");
   }
 
