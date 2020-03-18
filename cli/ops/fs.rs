@@ -915,7 +915,10 @@ fn op_utime(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: UtimeArgs = serde_json::from_value(args)?;
-  state.check_write(Path::new(&args.path))?;
+  let path = resolve_from_cwd(Path::new(&args.path))?;
+
+  state.check_write(&path)?;
+
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_utime {} {} {}", args.path, args.atime, args.mtime);
