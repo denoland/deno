@@ -213,11 +213,12 @@ async function masterRunnerMain(
 
   const testResults = new Set<PermissionSetTestResult>();
   const consoleReporter = new Deno.ConsoleTestReporter();
-  const addr = { hostname: "127.0.0.1", port: 4610 };
-  const addrStr = `${addr.hostname}:${addr.port}`;
-  const listener = Deno.listen(addr);
+  let port = 4610;
 
   for (const perms of permissionCombinations.values()) {
+    const addr = { hostname: "127.0.0.1", port };
+    const addrStr = `${addr.hostname}:${addr.port}`;
+    const listener = Deno.listen(addr);
     const result = await runTestsForPermissionSet(
       listener,
       addrStr,
@@ -227,6 +228,7 @@ async function masterRunnerMain(
       filter
     );
     testResults.add(result);
+    port += 1;
   }
 
   // if any run tests returned non-zero status then whole test
