@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { Server, serve } from "../../http/server.ts";
 import { assertStrictEq } from "../../testing/asserts.ts";
-import { usePort } from "../../http/internal/test_util.ts";
+import { randomPort } from "../../http/test_util.ts";
 
 let server: Server | undefined;
-const port = usePort();
+const port = randomPort();
 async function startTestServer(): Promise<void> {
   server = await serve({ port });
   (async (): Promise<void> => {

@@ -12,7 +12,7 @@ import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay, deferred } from "../util/async.ts";
 import { encode, decode } from "../strings/mod.ts";
 import { mockConn } from "./mock.ts";
-import { usePort } from "./internal/test_util.ts";
+import { randomPort } from "./test_util.ts";
 
 const { Buffer, test } = Deno;
 
@@ -346,8 +346,14 @@ test(async function requestBodyReaderWithTransferEncoding(): Promise<void> {
 
 test("destroyed connection", async (): Promise<void> => {
   // Runs a simple server as another process
+  const port = randomPort();
   const p = Deno.run({
-    args: [Deno.execPath(), "--allow-net", "http/testdata/simple_server.ts"],
+    args:
+      [Deno.execPath(),
+        "--allow-net",
+        "http/testdata/simple_server.ts",
+        `${port}`
+      ],
     stdout: "piped"
   });
 
@@ -366,7 +372,7 @@ test("destroyed connection", async (): Promise<void> => {
     await delay(100);
 
     // Reqeusts to the server and immediately closes the connection
-    const conn = await Deno.connect({ port: 4502 });
+    const conn = await Deno.connect({ port });
     await conn.write(new TextEncoder().encode("GET / HTTP/1.0\n\n"));
     conn.close();
 
@@ -381,13 +387,15 @@ test("destroyed connection", async (): Promise<void> => {
 });
 
 test("serveTLS", async (): Promise<void> => {
+  const port = randomPort();
   // Runs a simple server as another process
   const p = Deno.run({
     args: [
       Deno.execPath(),
       "--allow-net",
       "--allow-read",
-      "http/testdata/simple_https_server.ts"
+      "http/testdata/simple_https_server.ts",
+      `${port}`,
     ],
     stdout: "piped"
   });
@@ -410,7 +418,7 @@ test("serveTLS", async (): Promise<void> => {
     // Requests to the server and immediately closes the connection
     const conn = await Deno.connectTLS({
       hostname: "localhost",
-      port: 4503,
+      port,
       certFile: "http/testdata/tls/RootCA.pem"
     });
     await Deno.writeAll(
@@ -430,7 +438,7 @@ test("serveTLS", async (): Promise<void> => {
 });
 
 test("close server while iterating", async (): Promise<void> => {
-  const server = serve({ port: usePort() });
+  const server = serve({ port: randomPort() });
   const nextWhileClosing = server[Symbol.asyncIterator]().next();
   server.close();
   assertEquals(await nextWhileClosing, { value: undefined, done: true });
@@ -451,7 +459,7 @@ test({
   name: "respond error handling",
   async fn(): Promise<void> {
     const connClosedPromise = deferred();
-    const port = usePort();
+    const port = randomPort();
     const serverRoutine = async (): Promise<void> => {
       let reqCount = 0;
       const server = serve({ port });

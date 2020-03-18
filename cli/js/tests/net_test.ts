@@ -4,11 +4,11 @@ import {
   assert,
   assertEquals,
   createResolvable,
-  usePort
+  randomPort
 } from "./test_util.ts";
 
 unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
-  const port = usePort();
+  const port = randomPort();
   const listener = Deno.listen({ hostname: "127.0.0.1", port });
   assertEquals(listener.addr.transport, "tcp");
   assertEquals(listener.addr.hostname, "127.0.0.1");
@@ -23,7 +23,7 @@ unitTest(
     skip: Deno.build.os === "win"
   },
   function netUdpListenClose(): void {
-    const port = usePort();
+    const port = randomPort();
     const socket = Deno.listen({
       hostname: "127.0.0.1",
       port,
@@ -41,7 +41,7 @@ unitTest(
     perms: { net: true }
   },
   async function netTcpCloseWhileAccept(): Promise<void> {
-    const port = usePort();
+    const port = randomPort();
     const listener = Deno.listen({ port });
     const p = listener.accept();
     listener.close();
@@ -60,7 +60,7 @@ unitTest(
 unitTest(
   { perms: { net: true } },
   async function netTcpConcurrentAccept(): Promise<void> {
-    const port = usePort();
+    const port = randomPort();
     const listener = Deno.listen({ port });
     let acceptErrCount = 0;
     const checkErr = (e: Error): void => {
@@ -84,7 +84,7 @@ unitTest(
 unitTest({ perms: { net: true } }, async function netTcpDialListen(): Promise<
   void
 > {
-  const port = usePort();
+  const port = randomPort();
   const listener = Deno.listen({ port });
   listener.accept().then(
     async (conn): Promise<void> => {
@@ -119,13 +119,13 @@ unitTest({ perms: { net: true } }, async function netTcpDialListen(): Promise<
 unitTest(
   { skip: Deno.build.os === "win", perms: { net: true } },
   async function netUdpSendReceive(): Promise<void> {
-    const alicePort = usePort();
+    const alicePort = randomPort();
     const alice = Deno.listen({ port: alicePort, transport: "udp" });
     assertEquals(alice.addr.port, alicePort);
     assertEquals(alice.addr.hostname, "0.0.0.0");
     assertEquals(alice.addr.transport, "udp");
 
-    const bobPort = usePort();
+    const bobPort = randomPort();
     const bob = Deno.listen({ port: bobPort, transport: "udp" });
     assertEquals(bob.addr.port, bobPort);
     assertEquals(bob.addr.hostname, "0.0.0.0");
@@ -148,7 +148,7 @@ unitTest(
 unitTest(
   { perms: { net: true } },
   async function netTcpListenCloseWhileIterating(): Promise<void> {
-    const port = usePort();
+    const port = randomPort();
     const listener = Deno.listen({ port });
     const nextWhileClosing = listener[Symbol.asyncIterator]().next();
     listener.close();
@@ -162,7 +162,7 @@ unitTest(
 unitTest(
   { skip: Deno.build.os === "win", perms: { net: true } },
   async function netUdpListenCloseWhileIterating(): Promise<void> {
-    const port = usePort();
+    const port = randomPort();
     const socket = Deno.listen({ port, transport: "udp" });
     const nextWhileClosing = socket[Symbol.asyncIterator]().next();
     socket.close();
@@ -180,7 +180,7 @@ unitTest(
     perms: { net: true }
   },
   async function netListenAsyncIterator(): Promise<void> {
-    const port = usePort();
+    const port = randomPort();
     const addr = { hostname: "127.0.0.1", port };
     const listener = Deno.listen(addr);
     const runAsyncIterator = async (): Promise<void> => {
@@ -216,7 +216,7 @@ unitTest(
     perms: { net: true }
   },
   async function netCloseReadSuccess() {
-    const port = usePort();
+    const port = randomPort();
     const addr = { hostname: "127.0.0.1", port };
     const listener = Deno.listen(addr);
     const closeDeferred = createResolvable();
@@ -254,7 +254,7 @@ unitTest(
     perms: { net: true }
   },
   async function netDoubleCloseRead() {
-    const port = usePort();
+    const port = randomPort();
     const addr = { hostname: "127.0.0.1", port };
     const listener = Deno.listen(addr);
     const closeDeferred = createResolvable();
@@ -287,7 +287,7 @@ unitTest(
     perms: { net: true }
   },
   async function netCloseWriteSuccess() {
-    const port = usePort();
+    const port = randomPort();
     const addr = { hostname: "127.0.0.1", port };
     const listener = Deno.listen(addr);
     const closeDeferred = createResolvable();
@@ -327,7 +327,7 @@ unitTest(
     perms: { net: true }
   },
   async function netDoubleCloseWrite() {
-    const port = usePort();
+    const port = randomPort();
     const addr = { hostname: "127.0.0.1", port };
     const listener = Deno.listen(addr);
     const closeDeferred = createResolvable();
@@ -380,7 +380,7 @@ unitTest(
 
       resolvable.resolve();
     }
-    const port = usePort();
+    const port = randomPort();
     const addr = { hostname: "127.0.0.1", port };
     const listener = Deno.listen(addr);
     iteratorReq(listener);

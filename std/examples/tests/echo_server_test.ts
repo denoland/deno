@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertStrictEq, assertNotEquals } from "../../testing/asserts.ts";
 import { BufReader, ReadLineResult } from "../../io/bufio.ts";
-import { usePort } from "../../http/internal/test_util.ts";
-const port = usePort();
+import { randomPort } from "../../http/test_util.ts";
+const port = randomPort();
 
 Deno.test("[examples/echo_server]", async () => {
   const encoder = new TextEncoder();

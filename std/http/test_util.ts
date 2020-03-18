@@ -1,4 +1,4 @@
-import { assert } from "../../testing/asserts.ts";
+import { assert } from "../testing/asserts.ts";
 
 function* portIterator(): IterableIterator<number> {
   // use 55001 ~ 65535 (rest (49152~55000) are for cli/js)
@@ -13,7 +13,7 @@ function* portIterator(): IterableIterator<number> {
 }
 const it = portIterator();
 /** Obtain (maybe) safe port number for net tests */
-export function usePort(): number {
+export function randomPort(): number {
   const { value } = it.next();
   assert(value != null);
   return value;

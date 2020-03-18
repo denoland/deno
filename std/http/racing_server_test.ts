@@ -1,8 +1,8 @@
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { usePort } from "./internal/test_util.ts";
-const port = usePort();
+import { randomPort } from "./test_util.ts";
+const port = randomPort();
 const { connect, run, test } = Deno;
 
 let server: Deno.Process;

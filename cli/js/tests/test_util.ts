@@ -131,7 +131,7 @@ function assertOps(fn: Deno.TestFunction): Deno.TestFunction {
     Before:
       - dispatched: ${pre.opsDispatchedAsync}
       - completed: ${pre.opsCompletedAsync}
-    After: 
+    After:
       - dispatched: ${post.opsDispatchedAsync}
       - completed: ${post.opsCompletedAsync}`
     );
@@ -411,7 +411,7 @@ function* portIterator(): IterableIterator<number> {
 }
 const it = portIterator();
 /** Obtain (maybe) safe port number for net tests */
-export function usePort(): number {
+export function randomPort(): number {
   const { value } = it.next();
   assert(value != null);
   return value;

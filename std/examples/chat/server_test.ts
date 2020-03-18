@@ -3,10 +3,10 @@ import { assert, assertEquals } from "../../testing/asserts.ts";
 import { TextProtoReader } from "../../textproto/mod.ts";
 import { BufReader } from "../../io/bufio.ts";
 import { connectWebSocket, WebSocket } from "../../ws/mod.ts";
-import { usePort } from "../../http/internal/test_util.ts";
+import { randomPort } from "../../http/test_util.ts";
 
 let server: Deno.Process | undefined;
-const port = usePort();
+const port = randomPort();
 async function startServer(): Promise<void> {
   server = Deno.run({
     args: [

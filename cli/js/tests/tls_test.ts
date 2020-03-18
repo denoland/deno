@@ -2,7 +2,7 @@
 import {
   assert,
   assertEquals,
-  usePort,
+  randomPort,
   createResolvable,
   unitTest
 } from "./test_util.ts";
@@ -44,7 +44,7 @@ unitTest(
     let err;
     const options = {
       hostname: "localhost",
-      port: usePort(),
+      port: randomPort(),
       certFile: "cli/tests/tls/localhost.crt",
       keyFile: "cli/tests/tls/localhost.key"
     };
@@ -78,7 +78,7 @@ unitTest(
     try {
       Deno.listenTLS({
         hostname: "localhost",
-        port: usePort(),
+        port: randomPort(),
         certFile: "cli/tests/tls/localhost.crt",
         keyFile: "cli/tests/tls/localhost.key"
       });
@@ -98,7 +98,7 @@ unitTest(
     let err;
     const options = {
       hostname: "localhost",
-      port: usePort(),
+      port: randomPort(),
       certFile: "cli/tests/tls/localhost.crt",
       keyFile: "cli/tests/tls/localhost.key"
     };
@@ -127,7 +127,7 @@ unitTest(
     let err;
     const options = {
       hostname: "localhost",
-      port: usePort(),
+      port: randomPort(),
       certFile: "cli/tests/tls/localhost.crt",
       keyFile: "cli/tests/tls/localhost.key"
     };
@@ -155,7 +155,7 @@ unitTest(
   async function dialAndListenTLS(): Promise<void> {
     const resolvable = createResolvable();
     const hostname = "localhost";
-    const port = usePort();
+    const port = randomPort();
 
     const listener = Deno.listenTLS({
       hostname,

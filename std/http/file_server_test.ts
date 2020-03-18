@@ -2,11 +2,11 @@
 import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { usePort } from "./internal/test_util.ts";
+import { randomPort } from "./test_util.ts";
 const { test } = Deno;
 let fileServer: Deno.Process;
 
-const port = usePort();
+const port = randomPort();
 async function startFileServer(): Promise<void> {
   fileServer = Deno.run({
     args: [
@@ -105,7 +105,7 @@ test(async function serveWithUnorthodoxFilename(): Promise<void> {
 });
 
 test(async function servePermissionDenied(): Promise<void> {
-  const _port = usePort();
+  const _port = randomPort();
   const deniedServer = Deno.run({
     args: [
       Deno.execPath(),
