@@ -515,7 +515,7 @@ declare namespace Deno {
    *
    *       const file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
    *
-   * Requires `allow-read` and `allow-write` permissions depending on mode.
+   * Requires `allow-read` and `allow-write` permissions depending on openMode.
    */
   export function openSync(path: string, options?: OpenOptions): File;
 
@@ -523,15 +523,15 @@ declare namespace Deno {
    *
    *       const file = Deno.openSync("/foo/bar.txt", "r");
    *
-   * Requires `allow-read` and `allow-write` permissions depending on mode.
+   * Requires `allow-read` and `allow-write` permissions depending on openMode.
    */
-  export function openSync(path: string, mode?: OpenMode): File;
+  export function openSync(path: string, openMode?: OpenMode): File;
 
   /** Open a file and resolve to an instance of the `File` object.
    *
    *     const file = await Deno.open("/foo/bar.txt", { read: true, write: true });
    *
-   * Requires `allow-read` and `allow-write` permissions depending on mode.
+   * Requires `allow-read` and `allow-write` permissions depending on openMode.
    */
   export function open(path: string, options?: OpenOptions): Promise<File>;
 
@@ -539,9 +539,9 @@ declare namespace Deno {
    *
    *     const file = await Deno.open("/foo/bar.txt, "w+");
    *
-   * Requires `allow-read` and `allow-write` permissions depending on mode.
+   * Requires `allow-read` and `allow-write` permissions depending on openMode.
    */
-  export function open(path: string, mode?: OpenMode): Promise<File>;
+  export function open(path: string, openMode?: OpenMode): Promise<File>;
 
   /** Creates a file if none exists or truncates an existing file and returns
    *  an instance of `Deno.File`.
@@ -686,9 +686,13 @@ declare namespace Deno {
      * access to be used. When createNew is set to `true`, create and truncate
      * are ignored. */
     createNew?: boolean;
+    /** Permissions to use if creating the file (defaults to `0o666`, before
+     * the process's umask).
+     * Ignored on Windows. */
+    mode?: number;
   }
 
-  /** A set of string literals which specify the open mode of a file.
+  /** A set of string literals which specify how to open a file.
    *
    * |Value |Description                                                                                       |
    * |------|--------------------------------------------------------------------------------------------------|

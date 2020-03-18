@@ -156,6 +156,12 @@ pub enum StreamResource {
   ChildStderr(tokio::process::ChildStderr),
 }
 
+trait UnpinAsyncRead: AsyncRead + Unpin {}
+trait UnpinAsyncWrite: AsyncWrite + Unpin {}
+
+impl<T: AsyncRead + Unpin> UnpinAsyncRead for T {}
+impl<T: AsyncWrite + Unpin> UnpinAsyncWrite for T {}
+
 /// `DenoAsyncRead` is the same as the `tokio_io::AsyncRead` trait
 /// but uses an `OpError` error instead of `std::io:Error`
 pub trait DenoAsyncRead {
@@ -173,19 +179,18 @@ impl DenoAsyncRead for StreamResource {
     buf: &mut [u8],
   ) -> Poll<Result<usize, OpError>> {
     use StreamResource::*;
-    let mut f: Pin<Box<dyn AsyncRead>> = match self {
-      FsFile(f, _) => Box::pin(f),
-      Stdin(f, _) => Box::pin(f),
-      TcpStream(f) => Box::pin(f),
-      ClientTlsStream(f) => Box::pin(f),
-      ServerTlsStream(f) => Box::pin(f),
-      ChildStdout(f) => Box::pin(f),
-      ChildStderr(f) => Box::pin(f),
-      HttpBody(f) => Box::pin(f),
+    let f: &mut dyn UnpinAsyncRead = match self {
+      FsFile(f, _) => f,
+      Stdin(f, _) => f,
+      TcpStream(f) => f,
+      ClientTlsStream(f) => f,
+      ServerTlsStream(f) => f,
+      ChildStdout(f) => f,
+      ChildStderr(f) => f,
+      HttpBody(f) => f,
       _ => return Err(OpError::bad_resource_id()).into(),
     };
-
-    let v = ready!(f.as_mut().poll_read(cx, buf))?;
+    let v = ready!(Pin::new(f).poll_read(cx, buf))?;
     Ok(v).into()
   }
 }
@@ -252,35 +257,35 @@ impl DenoAsyncWrite for StreamResource {
     buf: &[u8],
   ) -> Poll<Result<usize, OpError>> {
     use StreamResource::*;
-    let mut f: Pin<Box<dyn AsyncWrite>> = match self {
-      FsFile(f, _) => Box::pin(f),
-      Stdout(f) => Box::pin(f),
-      Stderr(f) => Box::pin(f),
-      TcpStream(f) => Box::pin(f),
-      ClientTlsStream(f) => Box::pin(f),
-      ServerTlsStream(f) => Box::pin(f),
-      ChildStdin(f) => Box::pin(f),
+    let f: &mut dyn UnpinAsyncWrite = match self {
+      FsFile(f, _) => f,
+      Stdout(f) => f,
+      Stderr(f) => f,
+      TcpStream(f) => f,
+      ClientTlsStream(f) => f,
+      ServerTlsStream(f) => f,
+      ChildStdin(f) => f,
       _ => return Err(OpError::bad_resource_id()).into(),
     };
 
-    let v = ready!(f.as_mut().poll_write(cx, buf))?;
+    let v = ready!(Pin::new(f).poll_write(cx, buf))?;
     Ok(v).into()
   }
 
   fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), OpError>> {
     use StreamResource::*;
-    let mut f: Pin<Box<dyn AsyncWrite>> = match self {
-      FsFile(f, _) => Box::pin(f),
-      Stdout(f) => Box::pin(f),
-      Stderr(f) => Box::pin(f),
-      TcpStream(f) => Box::pin(f),
-      ClientTlsStream(f) => Box::pin(f),
-      ServerTlsStream(f) => Box::pin(f),
-      ChildStdin(f) => Box::pin(f),
+    let f: &mut dyn UnpinAsyncWrite = match self {
+      FsFile(f, _) => f,
+      Stdout(f) => f,
+      Stderr(f) => f,
+      TcpStream(f) => f,
+      ClientTlsStream(f) => f,
+      ServerTlsStream(f) => f,
+      ChildStdin(f) => f,
       _ => return Err(OpError::bad_resource_id()).into(),
     };
 
-    ready!(f.as_mut().poll_flush(cx))?;
+    ready!(Pin::new(f).poll_flush(cx))?;
     Ok(()).into()
   }
 

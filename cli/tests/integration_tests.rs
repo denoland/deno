@@ -275,6 +275,7 @@ fn js_unit_tests() {
     .arg("-A")
     .arg("cli/js/tests/unit_test_runner.ts")
     .arg("--master")
+    .arg("--verbose")
     .spawn()
     .expect("failed to spawn script");
   let status = deno.wait().expect("failed to wait for the child process");
@@ -394,6 +395,40 @@ fn bundle_single_module() {
     .unwrap()
     .trim()
     .ends_with("Hello world!"));
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
+fn bundle_json() {
+  use tempfile::TempDir;
+
+  let json_modules = util::root_path().join("cli/tests/020_json_modules.ts");
+  assert!(json_modules.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("020_json_modules.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(json_modules)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--reload")
+    .arg(&bundle)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the the bundle program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("{\"foo\":{\"bar\":true,\"baz\":[\"qat\",1]}}"));
   assert_eq!(output.stderr, b"");
 }
 

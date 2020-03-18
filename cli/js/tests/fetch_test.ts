@@ -174,8 +174,6 @@ unitTest(
 
 unitTest(
   {
-    // TODO(bartlomieju): leaking resources
-    skip: true,
     perms: { net: true }
   },
   async function fetchWithRedirection(): Promise<void> {
@@ -190,8 +188,6 @@ unitTest(
 
 unitTest(
   {
-    // TODO: leaking resources
-    skip: true,
     perms: { net: true }
   },
   async function fetchWithRelativeRedirection(): Promise<void> {
@@ -291,6 +287,20 @@ unitTest({ perms: { net: true } }, async function fetchInitBlobBody(): Promise<
   assertEquals(text, data);
   assert(response.headers.get("content-type")!.startsWith("text/javascript"));
 });
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataBody(): Promise<void> {
+    const form = new FormData();
+    form.append("field", "value");
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: form
+    });
+    const resultForm = await response.formData();
+    assertEquals(form.get("field"), resultForm.get("field"));
+  }
+);
 
 unitTest({ perms: { net: true } }, async function fetchUserAgent(): Promise<
   void
@@ -451,8 +461,6 @@ unitTest(
 
 unitTest(
   {
-    // TODO: leaking resources
-    skip: true,
     perms: { net: true }
   },
   async function fetchWithManualRedirection(): Promise<void> {
@@ -476,8 +484,6 @@ unitTest(
 
 unitTest(
   {
-    // TODO: leaking resources
-    skip: true,
     perms: { net: true }
   },
   async function fetchWithErrorRedirection(): Promise<void> {
