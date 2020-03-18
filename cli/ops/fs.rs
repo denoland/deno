@@ -348,17 +348,20 @@ fn op_chmod(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    // Still check file/dir exists on windows
-    let _metadata = std::fs::metadata(&path)?;
+    debug!("op_chmod {} {:o}", path.display(), mode);
     #[cfg(unix)]
     {
       use std::os::unix::fs::PermissionsExt;
-      debug!("op_chmod {} {:o}", path.display(), mode);
       let permissions = PermissionsExt::from_mode(mode);
       std::fs::set_permissions(&path, permissions)?;
     }
+    // TODO Implement chmod for Windows (#4357)
     #[cfg(not(unix))]
-    let _ = mode; // avoid unused warning
+    {
+      // Still check file/dir exists on Windows
+      let _metadata = std::fs::metadata(&path)?;
+      return Err(OpError::not_implemented());
+    }
     Ok(json!({}))
   })
 }
