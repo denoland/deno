@@ -30,6 +30,7 @@ jobs:
     env:
       RUST_BACKTRACE: full
       RUSTC_WRAPPER: sccache
+      V8_BINARY: true
 
     steps:
       - name: Configure git
