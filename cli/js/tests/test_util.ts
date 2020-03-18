@@ -203,7 +203,7 @@ export class SocketReporter implements Deno.TestReporter {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async write(msg: any): Promise<void> {
-    const encodedMsg = this.encoder.encode(`${JSON.stringify(msg)}\n`);
+    const encodedMsg = this.encoder.encode(JSON.stringify(msg) + "\n");
     await Deno.writeAll(this.conn, encodedMsg);
   }
 
@@ -229,11 +229,9 @@ export class SocketReporter implements Deno.TestReporter {
   }
 
   async end(msg: Deno.TestEventEnd): Promise<void> {
-    await this.write(msg);
-  }
-
-  close(): void {
-    this.conn.close();
+    const encodedMsg = this.encoder.encode(JSON.stringify(msg));
+    await Deno.writeAll(this.conn, encodedMsg);
+    this.conn.closeWrite();
   }
 }
 
