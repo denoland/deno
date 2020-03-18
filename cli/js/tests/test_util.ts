@@ -242,35 +242,32 @@ export class SocketReporter implements Deno.TestReporter {
     this.encoder = new TextEncoder();
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async write(msg: any): Promise<void> {
+  write(msg: object): Promise<void> {
     const encodedMsg = this.encoder.encode(`${JSON.stringify(msg)}\n`);
-    await Deno.writeAll(this.conn, encodedMsg);
+    return Deno.writeAll(this.conn, encodedMsg);
   }
 
-  async start(msg: Deno.TestEventStart): Promise<void> {
-    await this.write(msg);
+  start(msg: Deno.TestEventStart): Promise<void> {
+    return this.write(msg);
   }
 
-  async testStart(msg: Deno.TestEventTestStart): Promise<void> {
-    await this.write(msg);
+  testStart(msg: Deno.TestEventTestStart): Promise<void> {
+    return this.write(msg);
   }
 
-  async testEnd(msg: Deno.TestEventTestEnd): Promise<void> {
+  testEnd(msg: Deno.TestEventTestEnd): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const serializedMsg: any = { ...msg };
-
     // Error is a JS object, so we need to turn it into string to
     // send over socket.
     if (serializedMsg.result.error) {
       serializedMsg.result.error = String(serializedMsg.result.error.stack);
     }
-
-    await this.write(serializedMsg);
+    return this.write(serializedMsg);
   }
 
-  async end(msg: Deno.TestEventEnd): Promise<void> {
-    await this.write(msg);
+  end(msg: Deno.TestEventEnd): Promise<void> {
+    return this.write(msg);
   }
 }
 

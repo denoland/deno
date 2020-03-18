@@ -121,9 +121,15 @@ interface TestEventEnd {
   results: TestResult[];
 }
 
+type Msg =
+  | TestEventStart
+  | TestEventTestStart
+  | TestEventTestEnd
+  | TestEventEnd;
+
 // TODO: already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
 // TODO: implements PromiseLike<TestsResult>
-class TestApi {
+class TestIterator {
   readonly testsToRun: TestDefinition[];
   readonly stats: TestStats = {
     filtered: 0,
@@ -142,9 +148,7 @@ class TestApi {
     this.stats.filtered = tests.length - this.testsToRun.length;
   }
 
-  async *[Symbol.asyncIterator](): AsyncIterator<
-    TestEventStart | TestEventTestStart | TestEventTestEnd | TestEventEnd
-  > {
+  async *[Symbol.asyncIterator](): AsyncIterator<Msg> {
     yield {
       kind: TestEvent.Start,
       tests: this.testsToRun.length
@@ -312,7 +316,7 @@ export async function runTests({
   duration: number;
 }> {
   const filterFn = createFilterFn(only, skip);
-  const testApi = new TestApi(TEST_REGISTRY, filterFn, failFast);
+  const iter = new TestIterator(TEST_REGISTRY, filterFn, failFast);
 
   if (!reporter) {
     reporter = new ConsoleTestReporter();
@@ -328,22 +332,22 @@ export async function runTests({
 
   let endMsg: TestEventEnd;
 
-  for await (const testMsg of testApi) {
+  for await (const testMsg of iter) {
     switch (testMsg.kind) {
       case TestEvent.Start:
         await reporter.start(testMsg);
-        continue;
+        break;
       case TestEvent.TestStart:
         await reporter.testStart(testMsg);
-        continue;
+        break;
       case TestEvent.TestEnd:
         await reporter.testEnd(testMsg);
-        continue;
+        break;
       case TestEvent.End:
         endMsg = testMsg;
         delete endMsg!.kind;
         await reporter.end(testMsg);
-        continue;
+        break;
     }
   }
 
