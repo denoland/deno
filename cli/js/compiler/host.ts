@@ -242,8 +242,16 @@ export class Host implements ts.CompilerHost {
       assert(sourceFile != null);
       if (!sourceFile.tsSourceFile) {
         assert(sourceFile.sourceCode != null);
+        // even though we assert the extension for JSON modules to the compiler
+        // is TypeScript, TypeScript internally analyses the filename for its
+        // extension and tries to parse it as JSON instead of TS.  We have to
+        // change the filename to the TypeScript file.
         sourceFile.tsSourceFile = ts.createSourceFile(
-          fileName.startsWith(ASSETS) ? sourceFile.filename : fileName,
+          fileName.startsWith(ASSETS)
+            ? sourceFile.filename
+            : fileName.toLowerCase().endsWith(".json")
+            ? `${fileName}.ts`
+            : fileName,
           sourceFile.sourceCode,
           languageVersion
         );
