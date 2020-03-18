@@ -348,12 +348,12 @@ test("destroyed connection", async (): Promise<void> => {
   // Runs a simple server as another process
   const port = randomPort();
   const p = Deno.run({
-    args:
-      [Deno.execPath(),
-        "--allow-net",
-        "http/testdata/simple_server.ts",
-        `${port}`
-      ],
+    args: [
+      Deno.execPath(),
+      "--allow-net",
+      "http/testdata/simple_server.ts",
+      `${port}`
+    ],
     stdout: "piped"
   });
 
@@ -395,7 +395,7 @@ test("serveTLS", async (): Promise<void> => {
       "--allow-net",
       "--allow-read",
       "http/testdata/simple_https_server.ts",
-      `${port}`,
+      `${port}`
     ],
     stdout: "piped"
   });
