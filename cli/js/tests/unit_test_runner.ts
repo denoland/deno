@@ -130,7 +130,7 @@ async function runTestsForPermissionSet(
     const conn = await listener.accept();
     for await (const line of readLines(conn)) {
       const msg = JSON.parse(line);
-
+      console.log("msg", line);
       if (msg.kind === Deno.TestEvent.Start) {
         expectedPassedTests = msg.tests;
         await reporter.start(msg);
