@@ -127,7 +127,6 @@ async function runTestsForPermissionSet(
   // Wait for worker subprocess to go online
   const conn = await listener.accept();
 
-  let err: Error | undefined = undefined;
   let expectedPassedTests;
   let endEvent;
 
@@ -138,41 +137,25 @@ async function runTestsForPermissionSet(
       if (msg.kind === Deno.TestEvent.Start) {
         expectedPassedTests = msg.tests;
         await reporter.start(msg);
-        continue;
       } else if (msg.kind === Deno.TestEvent.TestStart) {
         await reporter.testStart(msg);
-        continue;
       } else if (msg.kind === Deno.TestEvent.TestEnd) {
         await reporter.testEnd(msg);
-        continue;
       } else {
         endEvent = msg;
         await reporter.end(msg);
-        break;
       }
     }
-  } catch (e) {
-    err = e;
   } finally {
-    // Close socket to worker, it should shutdown gracefully.
+    // Close socket to worker.
     conn.close();
   }
 
-  if (err) {
-    if (err instanceof Deno.errors.ConnectionReset) {
-      if (!endEvent) {
-        throw err;
-      }
-    } else {
-      throw err;
-    }
-  }
-
-  if (typeof expectedPassedTests === "undefined") {
+  if (expectedPassedTests === undefined) {
     throw new Error("Worker runner didn't report start");
   }
 
-  if (typeof endEvent === "undefined") {
+  if (endEvent === undefined) {
     throw new Error("Worker runner didn't report end");
   }
 
@@ -274,11 +257,11 @@ Run worker process for given permissions:
 
 
 OPTIONS:
-  --master 
+  --master
     Run in master mode, spawning worker processes for
     each discovered permission combination
-    
-  --worker 
+
+  --worker
     Run in worker mode, requires "perms" and "addr" flags,
     should be run with "-A" flag; after setup worker will
     drop permissions to required set specified in "perms"
@@ -290,7 +273,7 @@ OPTIONS:
     Address of TCP socket for reporting
 
 ARGS:
-  -- <filter>... 
+  -- <filter>...
     Run only tests with names matching filter, must
     be used after "--"
 `;
