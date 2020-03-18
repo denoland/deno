@@ -21,7 +21,16 @@ libc = "0.2.67"
 log = "0.4.8"
 serde_json = "1.0.48"
 url = "2.1.1"
-rusty_v8 = "0.3.5"
+
+# By default we use a binary build of rusty_v8.
+[target.'cfg(not(features = "v8_from_source"))'.dependencies]
+rusty_v8 = { version = "0.3.7", features = ["binary"] }
+# By specifying the "v8_from_source" feature, one can compile v8 from scratch.
+# In this case it's recommended to use sccache. See the rusty_v8 README for more
+# details.
+[target.'cfg(features = "v8_from_source")'.dependencies]
+rusty_v8 = "0.3.7"
+
 
 [[example]]
 name = "deno_core_http_bench"

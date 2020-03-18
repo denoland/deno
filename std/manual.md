@@ -1509,52 +1509,51 @@ Extra steps for Windows users:
 
 #### Prerequisites
 
-Deno has most of its dependencies in a git submodule to ensure reproducible
-builds. The following must be installed separately:
+By default Deno uses a precompiled binary build of
+[rusty_v8](https://github.com/denoland/rusty_v8)]. So the required development
+environment is minimal.
 
-<!-- prettier-ignore-start -->
-<!-- see https://github.com/prettier/prettier/issues/3679 -->
+However V8 can be built from source during Deno:
 
-1. [Rust](https://www.rust-lang.org/en-US/install.html)
-    - Ensure that your version is compatible with the one used in [CI](
-      https://github.com/denoland/deno/blob/master/.github/workflows/ci.yml).
-      This is updated frequently.
-2. [Python 2](https://www.python.org/downloads)
-    - Ensure that a suffix-less `python`/`python.exe` exists in your `PATH` and
-      it refers to Python 2, [not 3](
-      https://github.com/denoland/deno/issues/464#issuecomment-411795578).
+```
+cargo build -vv --features="v8_from_source"
+```
 
-Extra steps for Linux users:
+When building V8 from source, there are more dependencies:
 
-- Install glib-2.0 development files.
-    - Required by [rusty_v8](https://github.com/denoland/rusty_v8#build).
-    - On Ubuntu, run `sudo apt install libglib2.0-dev`.
+[Python 2](https://www.python.org/downloads). Ensure that a suffix-less
+`python`/`python.exe` exists in your `PATH` and it refers to Python 2,
+[not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
 
-Extra steps for Mac users:
+For Linux users glib-2.0 development files must also be installed. (On Ubuntu,
+run `apt install libglib2.0-dev`.)
 
-- Install [XCode](https://developer.apple.com/xcode/) :(
+Mac users must have [XCode](https://developer.apple.com/xcode/) installed.
 
-Extra steps for Windows users:
+For Windows users:
 
 1. Get [VS Community 2019](https://www.visualstudio.com/downloads/) with
    "Desktop development with C++" toolkit and make sure to select the following
    required tools listed below along with all C++ tools.
-    - Visual C++ tools for CMake
-    - Windows 10 SDK (10.0.17763.0)
-    - Testing tools core features - Build Tools
-    - Visual C++ ATL for x86 and x64
-    - Visual C++ MFC for x86 and x64
-    - C++/CLI support
-    - VC++ 2015.3 v14.00 (v140) toolset for desktop
+
+   - Visual C++ tools for CMake
+   - Windows 10 SDK (10.0.17763.0)
+   - Testing tools core features - Build Tools
+   - Visual C++ ATL for x86 and x64
+   - Visual C++ MFC for x86 and x64
+   - C++/CLI support
+   - VC++ 2015.3 v14.00 (v140) toolset for desktop
 
 2. Enable "Debugging Tools for Windows". Go to "Control Panel" → "Programs" →
    "Programs and Features" → Select "Windows Software Development Kit - Windows
    10" → "Change" → "Change" → Check "Debugging Tools For Windows" → "Change" ->
-   "Finish".
-   Or use:
-   [Debugging Tools for Windows](https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/) (Notice: it will download the files, you should install `X64 Debuggers And Tools-x64_en-us.msi` file manually.)
+   "Finish". Or use:
+   [Debugging Tools for Windows](https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/)
+   (Notice: it will download the files, you should install
+   `X64 Debuggers And Tools-x64_en-us.msi` file manually.)
 
-<!-- prettier-ignore-end -->
+See [rusty_v8's README](https://github.com/denoland/rusty_v8) for more details
+about the V8 build.
 
 #### Building
 
