@@ -391,17 +391,18 @@ fn op_chown(
     #[cfg(unix)]
     {
       use nix::unistd::{chown, Gid, Uid};
-      let path: &str = args.path.as_ref();
       let nix_uid = Uid::from_raw(args.uid);
       let nix_gid = Gid::from_raw(args.gid);
-      chown(path, Option::Some(nix_uid), Option::Some(nix_gid))?;
-      Ok(json!({}))
+      chown(&path, Option::Some(nix_uid), Option::Some(nix_gid))?;
     }
+    // TODO Implement chown for Windows
     #[cfg(not(unix))]
     {
-      // TODO: implement chown for Windows
-      Err(OpError::not_implemented())
+      // Still check file/dir exists on Windows
+      let _metadata = std::fs::metadata(&path)?;
+      return Err(OpError::not_implemented());
     }
+    Ok(json!({}))
   })
 }
 
