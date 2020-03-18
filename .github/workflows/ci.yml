@@ -26,6 +26,13 @@ jobs:
             kind: 'test_debug'
           - os: macOS-latest
             kind: 'test_debug'
+
+    env:
+      RUST_BACKTRACE: full
+      DENO_BUILD_MODE: release
+      RUSTC_WRAPPER: sccache
+      V8_BINARY: true
+
     steps:
       - name: Configure git
         run: git config --global core.symlinks true
@@ -69,13 +76,6 @@ jobs:
             Where-Object { Test-Path "$_\python.exe" } |
             Select-Object -Skip 1 |
             ForEach-Object { Move-Item "$_" "$_.disabled" }
-
-      - name: Environment (common)
-        run: |
-          echo ::set-env name=GH_ACTIONS::1
-          echo ::set-env name=RUSTC_WRAPPER::sccache
-          echo ::set-env name=DENO_BUILD_MODE::release
-          echo ::set-env name=RUST_BACKTRACE::full
 
       - name: Environment (linux)
         if: startsWith(matrix.os, 'ubuntu')
