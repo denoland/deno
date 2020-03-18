@@ -314,7 +314,6 @@ fn op_mkdir(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
-    // #[allow(unused_mut)]
     let mut builder = std::fs::DirBuilder::new();
     builder.recursive(args.recursive);
     #[cfg(unix)]
