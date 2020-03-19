@@ -10,7 +10,7 @@ import { assert } from "./util.ts";
 
 const RED_FAILED = red("FAILED");
 const GREEN_OK = green("ok");
-const YELLOW_SKIPPED = yellow("SKIPPED");
+const YELLOW_IGNORED = yellow("ignored");
 const disabledConsole = new Console((_x: string, _isErr?: boolean): void => {});
 
 function formatDuration(time = 0): string {
@@ -68,7 +68,7 @@ export type TestFunction = () => void | Promise<void>;
 export interface TestDefinition {
   fn: TestFunction;
   name: string;
-  skip?: boolean;
+  ignore?: boolean;
   disableOpSanitizer?: boolean;
   disableResourceSanitizer?: boolean;
 }
@@ -93,12 +93,12 @@ export function test(
     if (!t) {
       throw new TypeError("The test name can't be empty");
     }
-    testDef = { fn: fn as TestFunction, name: t, skip: false };
+    testDef = { fn: fn as TestFunction, name: t, ignore: false };
   } else if (typeof t === "function") {
     if (!t.name) {
       throw new TypeError("The test function can't be anonymous");
     }
-    testDef = { fn: t, name: t.name, skip: false };
+    testDef = { fn: t, name: t.name, ignore: false };
   } else {
     if (!t.fn) {
       throw new TypeError("Missing test function");
@@ -106,8 +106,7 @@ export function test(
     if (!t.name) {
       throw new TypeError("The test name can't be empty");
     }
-
-    testDef = { ...t, skip: Boolean(t.skip) };
+    testDef = { ...t, ignore: Boolean(t.ignore) };
   }
 
   if (testDef.disableOpSanitizer !== true) {
@@ -141,7 +140,7 @@ export interface RunTestsOptions {
 enum TestStatus {
   Passed = "passed",
   Failed = "failed",
-  Skipped = "skipped"
+  Ignored = "ignored"
 }
 
 interface TestResult {
@@ -211,11 +210,11 @@ class TestApi {
 
     const results: TestResult[] = [];
     const suiteStart = +new Date();
-    for (const { name, fn, skip } of this.testsToRun) {
+    for (const { name, fn, ignore } of this.testsToRun) {
       const result: Partial<TestResult> = { name, duration: 0 };
       yield { kind: TestEvent.TestStart, name };
-      if (skip) {
-        result.status = TestStatus.Skipped;
+      if (ignore) {
+        result.status = TestStatus.Ignored;
         this.stats.ignored++;
       } else {
         const start = +new Date();
@@ -321,8 +320,8 @@ export class ConsoleTestReporter implements TestReporter {
       case TestStatus.Failed:
         this.log(`${RED_FAILED} ${formatDuration(result.duration)}`);
         break;
-      case TestStatus.Skipped:
-        this.log(`${YELLOW_SKIPPED} ${formatDuration(result.duration)}`);
+      case TestStatus.Ignored:
+        this.log(`${YELLOW_IGNORED} ${formatDuration(result.duration)}`);
         break;
     }
   }

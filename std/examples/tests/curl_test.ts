@@ -6,7 +6,7 @@ Deno.test({
   name: "[examples/curl] send a request to a specified url",
   // FIXME(bartlomieju): this test is leaking both resources and ops,
   // and causes interference with other tests
-  skip: true,
+  ignore: true,
   fn: async () => {
     const server = serve({ port: 8081 });
     (async (): Promise<void> => {

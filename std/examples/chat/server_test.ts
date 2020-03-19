@@ -27,10 +27,10 @@ async function startServer(): Promise<Deno.Process> {
 }
 
 // TODO: https://github.com/denoland/deno/issues/4108
-const skip = build.os == "win";
+const ignore = build.os == "win";
 
 test({
-  skip,
+  ignore,
   name: "GET / should serve html",
   async fn() {
     const server = await startServer();
@@ -49,7 +49,7 @@ test({
 });
 
 test({
-  skip,
+  ignore,
   name: "GET /ws should upgrade conn to ws",
   async fn() {
     const server = await startServer();
