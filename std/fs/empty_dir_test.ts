@@ -23,7 +23,7 @@ Deno.test(async function emptyDirIfItNotExist(): Promise<void> {
     assertEquals(stat.isDirectory(), true);
   } finally {
     // remove the test dir
-    Deno.remove(testDir, { recursive: true });
+    await Deno.remove(testDir, { recursive: true });
   }
 });
 
@@ -39,7 +39,7 @@ Deno.test(function emptyDirSyncIfItNotExist(): void {
     assertEquals(stat.isDirectory(), true);
   } finally {
     // remove the test dir
-    Deno.remove(testDir, { recursive: true });
+    Deno.removeSync(testDir, { recursive: true });
   }
 });
 
@@ -218,16 +218,15 @@ for (const s of scenes) {
         );
         args.push("testfolder");
 
-        const { stdout } = Deno.run({
+        const p = Deno.run({
           stdout: "piped",
           cwd: testdataDir,
           args: args
         });
 
-        assert(stdout);
-
-        const output = await Deno.readAll(stdout);
-
+        assert(p.stdout);
+        const output = await p.output();
+        p.close();
         assertStrContains(new TextDecoder().decode(output), s.output);
       } catch (err) {
         await Deno.remove(testfolder, { recursive: true });
