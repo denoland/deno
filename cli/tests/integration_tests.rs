@@ -1518,13 +1518,9 @@ fn cafile_fetch() {
   drop(g);
 }
 
-// TODO(ry) Re-enable this broken test.
 #[test]
-#[ignore]
 fn cafile_install_remote_module() {
   pub use deno::test_util::*;
-  use std::env;
-  use std::path::PathBuf;
   use std::process::Command;
   use tempfile::TempDir;
 
@@ -1545,33 +1541,22 @@ fn cafile_install_remote_module() {
     .arg("https://localhost:5545/cli/tests/echo.ts")
     .output()
     .expect("Failed to spawn script");
+  assert!(install_output.status.success());
 
-  let code = install_output.status.code();
-  assert_eq!(Some(0), code);
-
-  let mut file_path = temp_dir.path().join("echo_test");
+  let mut echo_test_path = temp_dir.path().join("echo_test");
   if cfg!(windows) {
-    file_path = file_path.with_extension(".cmd");
+    echo_test_path = echo_test_path.with_extension("cmd");
   }
-  assert!(file_path.exists());
+  assert!(echo_test_path.exists());
 
-  let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
-  let paths_var = env::var_os(path_var_name).expect("PATH not set");
-  let mut paths: Vec<PathBuf> = env::split_paths(&paths_var).collect();
-  paths.push(temp_dir.path().to_owned());
-  paths.push(util::target_dir());
-  let path_var_value = env::join_paths(paths).expect("Can't create PATH");
-
-  let output = Command::new(file_path)
+  let output = Command::new(echo_test_path)
     .current_dir(temp_dir.path())
     .arg("foo")
-    .env(path_var_name, path_var_value)
+    .env("PATH", util::target_dir())
     .output()
     .expect("failed to spawn script");
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("foo"));
+  let stdout = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert!(stdout.ends_with("foo"));
 
   drop(deno_dir);
   drop(temp_dir);
