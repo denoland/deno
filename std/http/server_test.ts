@@ -6,8 +6,13 @@
 // https://github.com/golang/go/blob/master/src/net/http/responsewrite_test.go
 
 import { TextProtoReader } from "../textproto/mod.ts";
-import { assert, assertEquals, assertNotEOF } from "../testing/asserts.ts";
-import { Response, ServerRequest, serve } from "./server.ts";
+import {
+  assert,
+  assertEquals,
+  assertNotEOF,
+  assertStrContains
+} from "../testing/asserts.ts";
+import { Response, ServerRequest, Server, serve } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay, deferred } from "../util/async.ts";
 import { encode, decode } from "../strings/mod.ts";
@@ -449,6 +454,38 @@ test("close server while iterating", async (): Promise<void> => {
 
   const nextAfterClosing = server[Symbol.asyncIterator]().next();
   assertEquals(await nextAfterClosing, { value: undefined, done: true });
+});
+
+test({
+  name: "[http] close server while connection is open",
+  async fn(): Promise<void> {
+    async function iteratorReq(server: Server): Promise<void> {
+      for await (const req of server) {
+        req.respond({ body: new TextEncoder().encode(req.url) });
+      }
+    }
+
+    const server = serve(":8123");
+    iteratorReq(server);
+    const conn = await Deno.connect({ hostname: "127.0.0.1", port: 8123 });
+    await Deno.writeAll(
+      conn,
+      new TextEncoder().encode("GET /hello HTTP/1.1\r\n\r\n")
+    );
+    const res = new Uint8Array(100);
+    const nread = await conn.read(res);
+    assert(nread !== Deno.EOF);
+    const resStr = new TextDecoder().decode(res.subarray(0, nread));
+    assertStrContains(resStr, "/hello");
+    server.close();
+    // Defer to allow async ops to resolve after server has been closed.
+    await delay(0);
+    // Client connection should still be open, verify that
+    // it's visible in resource table.
+    const resources = Deno.resources();
+    assertEquals(resources[conn.rid], "tcpStream");
+    conn.close();
+  }
 });
 
 // TODO(kevinkassimo): create a test that works on Windows.
