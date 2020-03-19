@@ -10,6 +10,7 @@ use v8::MapFnTo;
 
 use std::convert::TryFrom;
 use std::option::Option;
+use url::Url;
 
 lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
@@ -448,6 +449,9 @@ fn eval_context(
     }
   };
 
+  let url = v8::Local::<v8::String>::try_from(args.get(1))
+    .map(|n| Url::from_file_path(n.to_rust_string_lossy(scope)).unwrap());
+
   let output = v8::Array::new(scope, 2);
   /*
    output[0] = result
@@ -460,7 +464,9 @@ fn eval_context(
   */
   let mut try_catch = v8::TryCatch::new(scope);
   let tc = try_catch.enter();
-  let name = v8::String::new(scope, "<unknown>").unwrap();
+  let name =
+    v8::String::new(scope, url.as_ref().map_or("<unknown>", Url::as_str))
+      .unwrap();
   let origin = script_origin(scope, name);
   let maybe_script = v8::Script::compile(scope, context, source, Some(&origin));
 

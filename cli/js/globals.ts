@@ -93,8 +93,10 @@ declare global {
 
     shared: SharedArrayBuffer;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    evalContext(code: string): [any, EvalErrorInfo | null];
+    evalContext(
+      code: string,
+      scriptName?: string
+    ): [unknown, EvalErrorInfo | null];
 
     formatError: (e: Error) => string;
 
