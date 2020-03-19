@@ -121,13 +121,6 @@ export function test(
   TEST_REGISTRY.push(testDef);
 }
 
-enum TestEvent {
-  Start = "start",
-  TestStart = "testStart",
-  TestEnd = "testEnd",
-  End = "end"
-}
-
 // Namespace containing lesser used testing APIs.
 // test(), TestDefinition, runTests() and RunTestsOptions should stay top-level.
 // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -278,18 +271,18 @@ class TestApi {
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<
-    | [TestEvent.Start, tests.StartMessage]
-    | [TestEvent.TestStart, tests.TestStartMessage]
-    | [TestEvent.TestEnd, tests.TestEndMessage]
-    | [TestEvent.End, tests.EndMessage]
+    | ["start", tests.StartMessage]
+    | ["testStart", tests.TestStartMessage]
+    | ["testEnd", tests.TestEndMessage]
+    | ["end", tests.EndMessage]
   > {
-    yield [TestEvent.Start, { tests: this.testsToRun }];
+    yield ["start", { tests: this.testsToRun }];
 
     const results: tests.Result[] = [];
     const suiteStart = +new Date();
     for (const test of this.testsToRun) {
       const result: Partial<tests.Result> = { name: test.name, duration: 0 };
-      yield [TestEvent.TestStart, { test }];
+      yield ["testStart", { test }];
       if (test.skip) {
         result.status = tests.Status.Skipped;
         this.stats.ignored++;
@@ -307,7 +300,7 @@ class TestApi {
           result.duration = +new Date() - start;
         }
       }
-      yield [TestEvent.TestEnd, { result: result as tests.Result }];
+      yield ["testEnd", { result: result as tests.Result }];
       results.push(result as tests.Result);
       if (this.failFast && result.error != null) {
         break;
@@ -316,7 +309,7 @@ class TestApi {
 
     const duration = +new Date() - suiteStart;
 
-    yield [TestEvent.End, { stats: this.stats, results, duration }];
+    yield ["end", { stats: this.stats, results, duration }];
   }
 }
 
@@ -379,16 +372,16 @@ export async function runTests({
 
   for await (const e of testApi) {
     switch (e[0]) {
-      case TestEvent.Start:
+      case "start":
         await reporter.start(e[1]);
         continue;
-      case TestEvent.TestStart:
+      case "testStart":
         await reporter.testStart(e[1]);
         continue;
-      case TestEvent.TestEnd:
+      case "testEnd":
         await reporter.testEnd(e[1]);
         continue;
-      case TestEvent.End:
+      case "end":
         endMsg = e[1];
         await reporter.end(e[1]);
         continue;
