@@ -184,7 +184,7 @@ unitTest({ perms: { read: true } }, async function lstatNotFound(): Promise<
 });
 
 unitTest(
-  { skip: Deno.build.os !== "win", perms: { read: true, write: true } },
+  { ignore: Deno.build.os !== "win", perms: { read: true, write: true } },
   async function statNoUnixFields(): Promise<void> {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
@@ -205,7 +205,7 @@ unitTest(
 );
 
 unitTest(
-  { skip: Deno.build.os === "win", perms: { read: true, write: true } },
+  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
   async function statUnixFields(): Promise<void> {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");

@@ -123,12 +123,12 @@ interface UnitTestPermissions {
 }
 
 interface UnitTestOptions {
-  skip?: boolean;
+  ignore?: boolean;
   perms?: UnitTestPermissions;
 }
 
 interface UnitTestDefinition extends Deno.TestDefinition {
-  skip: boolean;
+  ignore: boolean;
   perms: Permissions;
 }
 
@@ -169,7 +169,7 @@ export function unitTest(
   const unitTestDefinition: UnitTestDefinition = {
     name,
     fn,
-    skip: !!options.skip,
+    ignore: !!options.ignore,
     perms: normalizedPerms
   };
 
