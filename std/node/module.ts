@@ -1045,11 +1045,11 @@ type RequireWrapper = (
   __dirname: string
 ) => void;
 
-function wrapSafe(filename_: string, content: string): RequireWrapper {
+function wrapSafe(filename: string, content: string): RequireWrapper {
   // TODO: fix this
   const wrapper = Module.wrap(content);
   // @ts-ignore
-  const [f, err] = Deno.core.evalContext(wrapper);
+  const [f, err] = Deno.core.evalContext(wrapper, filename);
   if (err) {
     throw err;
   }
