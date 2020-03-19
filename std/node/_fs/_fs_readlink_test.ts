@@ -12,7 +12,7 @@ if (Deno.build.os !== "win") {
 
 test({
   name: "readlinkSuccess",
-  skip: Deno.build.os === "win",
+  ignore: Deno.build.os === "win",
   async fn() {
     const data = await new Promise((res, rej) => {
       readlink(newname, (err, data) => {
@@ -30,7 +30,7 @@ test({
 
 test({
   name: "readlinkEncodeBufferSuccess",
-  skip: Deno.build.os === "win",
+  ignore: Deno.build.os === "win",
   async fn() {
     const data = await new Promise((res, rej) => {
       readlink(newname, { encoding: "buffer" }, (err, data) => {
@@ -48,7 +48,7 @@ test({
 
 test({
   name: "readlinkSyncSuccess",
-  skip: Deno.build.os === "win",
+  ignore: Deno.build.os === "win",
   fn() {
     const data = readlinkSync(newname);
     assertEquals(typeof data, "string");
@@ -58,7 +58,7 @@ test({
 
 test({
   name: "readlinkEncodeBufferSuccess",
-  skip: Deno.build.os === "win",
+  ignore: Deno.build.os === "win",
   fn() {
     const data = readlinkSync(newname, { encoding: "buffer" });
     assert(data instanceof Uint8Array);
