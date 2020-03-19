@@ -9,7 +9,7 @@ Deno.test("[examples/welcome] print a welcome message", async () => {
     stdout: "piped"
   });
   try {
-    const output = await Deno.readAll(process.stdout!);
+    const output = await process.output();
     const actual = decoder.decode(output).trim();
     const expected = "Welcome to Deno 🦕";
     assertStrictEq(actual, expected);

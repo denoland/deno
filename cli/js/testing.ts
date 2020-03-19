@@ -4,6 +4,9 @@ import { exit } from "./ops/os.ts";
 import { Console, stringifyArgs } from "./web/console.ts";
 import { stdout } from "./files.ts";
 import { TextEncoder } from "./web/text_encoding.ts";
+import { metrics } from "./ops/runtime.ts";
+import { resources } from "./ops/resources.ts";
+import { assert } from "./util.ts";
 
 const RED_FAILED = red("FAILED");
 const GREEN_OK = green("ok");
@@ -15,12 +18,59 @@ function formatDuration(time = 0): string {
   return gray(italic(timeStr));
 }
 
+// Wrap `TestFunction` in additional assertion that makes sure
+// the test case does not leak async "ops" - ie. number of async
+// completed ops after the test is the same as number of dispatched
+// ops. Note that "unref" ops are ignored since in nature that are
+// optional.
+function assertOps(fn: TestFunction): TestFunction {
+  return async function asyncOpSanitizer(): Promise<void> {
+    const pre = metrics();
+    await fn();
+    const post = metrics();
+    // We're checking diff because one might spawn HTTP server in the background
+    // that will be a pending async op before test starts.
+    const dispatchedDiff = post.opsDispatchedAsync - pre.opsDispatchedAsync;
+    const completedDiff = post.opsCompletedAsync - pre.opsCompletedAsync;
+    assert(
+      dispatchedDiff === completedDiff,
+      `Test case is leaking async ops.
+Before:
+  - dispatched: ${pre.opsDispatchedAsync}
+  - completed: ${pre.opsCompletedAsync}
+After: 
+  - dispatched: ${post.opsDispatchedAsync}
+  - completed: ${post.opsCompletedAsync}`
+    );
+  };
+}
+
+// Wrap `TestFunction` in additional assertion that makes sure
+// the test case does not "leak" resources - ie. resource table after
+// the test has exactly the same contents as before the test.
+function assertResources(fn: TestFunction): TestFunction {
+  return async function resourceSanitizer(): Promise<void> {
+    const pre = resources();
+    await fn();
+    const post = resources();
+
+    const preStr = JSON.stringify(pre, null, 2);
+    const postStr = JSON.stringify(post, null, 2);
+    const msg = `Test case is leaking resources.
+Before: ${preStr}
+After: ${postStr}`;
+    assert(preStr === postStr, msg);
+  };
+}
+
 export type TestFunction = () => void | Promise<void>;
 
 export interface TestDefinition {
   fn: TestFunction;
   name: string;
   skip?: boolean;
+  disableOpSanitizer?: boolean;
+  disableResourceSanitizer?: boolean;
 }
 
 const TEST_REGISTRY: TestDefinition[] = [];
@@ -56,7 +106,16 @@ export function test(
     if (!t.name) {
       throw new TypeError("The test name can't be empty");
     }
-    testDef = { fn: t.fn, name: t.name, skip: Boolean(t.skip) };
+
+    testDef = { ...t, skip: Boolean(t.skip) };
+  }
+
+  if (testDef.disableOpSanitizer !== true) {
+    testDef.fn = assertOps(testDef.fn);
+  }
+
+  if (testDef.disableResourceSanitizer !== true) {
+    testDef.fn = assertResources(testDef.fn);
   }
 
   TEST_REGISTRY.push(testDef);

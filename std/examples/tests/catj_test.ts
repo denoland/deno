@@ -5,7 +5,7 @@ Deno.test("[examples/catj] print an array", async () => {
   const decoder = new TextDecoder();
   const process = catj("testdata/catj/array.json");
   try {
-    const output = await Deno.readAll(process.stdout!);
+    const output = await process.output();
     const actual = decoder.decode(output).trim();
     const expected = [
       '.[0] = "string"',
@@ -17,6 +17,7 @@ Deno.test("[examples/catj] print an array", async () => {
 
     assertStrictEq(actual, expected);
   } finally {
+    process.stdin!.close();
     process.close();
   }
 });
@@ -25,7 +26,7 @@ Deno.test("[examples/catj] print an object", async () => {
   const decoder = new TextDecoder();
   const process = catj("testdata/catj/object.json");
   try {
-    const output = await Deno.readAll(process.stdout!);
+    const output = await process.output();
     const actual = decoder.decode(output).trim();
     const expected = [
       '.string = "foobar"',
@@ -35,6 +36,7 @@ Deno.test("[examples/catj] print an object", async () => {
 
     assertStrictEq(actual, expected);
   } finally {
+    process.stdin!.close();
     process.close();
   }
 });
@@ -46,12 +48,13 @@ Deno.test("[examples/catj] print multiple files", async () => {
     "testdata/catj/simple-array.json"
   );
   try {
-    const output = await Deno.readAll(process.stdout!);
+    const output = await process.output();
     const actual = decoder.decode(output).trim();
     const expected = ['.message = "hello"', ".[0] = 1", ".[1] = 2"].join("\n");
 
     assertStrictEq(actual, expected);
   } finally {
+    process.stdin!.close();
     process.close();
   }
 });
@@ -63,7 +66,7 @@ Deno.test("[examples/catj] read from stdin", async () => {
   try {
     await process.stdin!.write(new TextEncoder().encode(input));
     process.stdin!.close();
-    const output = await Deno.readAll(process.stdout!);
+    const output = await process.output();
     const actual = decoder.decode(output).trim();
 
     assertStrictEq(actual, '.foo = "bar"');
