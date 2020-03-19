@@ -632,7 +632,20 @@ fn encode(
   };
   let text_str = text.to_rust_string_lossy(scope);
   let text_bytes = text_str.as_bytes().to_vec().into_boxed_slice();
-  let buf = boxed_slice_to_uint8array(scope, text_bytes);
+
+  let buf = if text_bytes.is_empty() {
+    let ab = v8::ArrayBuffer::new(scope, 0);
+    v8::Uint8Array::new(ab, 0, 0).expect("Failed to create UintArray8")
+  } else {
+    let buf_len = text_bytes.len();
+    let backing_store =
+      v8::ArrayBuffer::new_backing_store_from_boxed_slice(text_bytes);
+    let mut backing_store_shared = backing_store.make_shared();
+    let ab =
+      v8::ArrayBuffer::with_backing_store(scope, &mut backing_store_shared);
+    v8::Uint8Array::new(ab, 0, buf_len).expect("Failed to create UintArray8")
+  };
+
   rv.set(buf.into())
 }
 
