@@ -899,6 +899,18 @@ itest!(_026_redirect_javascript {
   http_server: true,
 });
 
+itest!(deno_test_fail_fast {
+  args: "test --failfast test_runner_test.ts",
+  exit_code: 1,
+  output: "deno_test_fail_fast.out",
+});
+
+itest!(deno_test {
+  args: "test test_runner_test.ts",
+  exit_code: 1,
+  output: "deno_test.out",
+});
+
 itest!(workers {
   args: "test --reload --allow-net workers_test.ts",
   http_server: true,
