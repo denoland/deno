@@ -6,5 +6,5 @@ export function readlinkSync(path: string): string {
 }
 
 export async function readlink(path: string): Promise<string> {
-  return await sendAsync("op_read_link", { path });
+  return sendAsync("op_read_link", { path });
 }

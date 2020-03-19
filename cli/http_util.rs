@@ -195,7 +195,7 @@ impl AsyncRead for HttpBody {
       let n = min(buf.len(), chunk.len() - inner.pos);
       {
         let rest = &chunk[inner.pos..];
-        buf[..n].clone_from_slice(&rest[..n]);
+        buf[..n].copy_from_slice(&rest[..n]);
       }
       inner.pos += n;
       if inner.pos == chunk.len() {
@@ -208,14 +208,12 @@ impl AsyncRead for HttpBody {
       assert_eq!(inner.pos, 0);
     }
 
-    let chunk_future = &mut inner.response.chunk();
-    // Safety: `chunk_future` lives only for duration of this poll. So, it doesn't move.
-    let chunk_future = unsafe { Pin::new_unchecked(chunk_future) };
-    match chunk_future.poll(cx) {
-      Poll::Ready(Err(e)) => {
-        Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)))
-      }
-      Poll::Ready(Ok(Some(chunk))) => {
+    let chunk_future = inner.response.chunk();
+    futures::pin_mut!(chunk_future);
+
+    let result = match futures::ready!(chunk_future.poll(cx)) {
+      Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),
+      Ok(Some(chunk)) => {
         debug!(
           "HttpBody Real Read buf {} chunk {} pos {}",
           buf.len(),
@@ -223,16 +221,16 @@ impl AsyncRead for HttpBody {
           inner.pos
         );
         let n = min(buf.len(), chunk.len());
-        buf[..n].clone_from_slice(&chunk[..n]);
+        buf[..n].copy_from_slice(&chunk[..n]);
         if buf.len() < chunk.len() {
           inner.pos = n;
           inner.chunk = Some(chunk);
         }
-        Poll::Ready(Ok(n))
+        Ok(n)
       }
-      Poll::Ready(Ok(None)) => Poll::Ready(Ok(0)),
-      Poll::Pending => Poll::Pending,
-    }
+      Ok(None) => Ok(0),
+    };
+    result.into()
   }
 }
 

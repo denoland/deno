@@ -13,7 +13,7 @@ interface RunStatusResponse {
 }
 
 export async function runStatus(rid: number): Promise<RunStatusResponse> {
-  return await sendAsync("op_run_status", { rid });
+  return sendAsync("op_run_status", { rid });
 }
 
 interface RunRequest {

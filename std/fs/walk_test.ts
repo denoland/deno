@@ -20,7 +20,7 @@ export async function testWalk(
       await t();
     } finally {
       chdir(origCwd);
-      remove(d, { recursive: true });
+      await remove(d, { recursive: true });
     }
   }
   Deno.test({ skip, name: `[walk] ${name}`, fn });
@@ -46,7 +46,8 @@ export async function walkArray(
 }
 
 export async function touch(path: string): Promise<void> {
-  await open(path, "w");
+  const f = await open(path, "w");
+  f.close();
 }
 
 function assertReady(expectedLength: number): void {

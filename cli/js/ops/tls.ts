@@ -26,7 +26,7 @@ interface ConnectTLSResponse {
 export async function connectTLS(
   args: ConnectTLSRequest
 ): Promise<ConnectTLSResponse> {
-  return await sendAsync("op_connect_tls", args);
+  return sendAsync("op_connect_tls", args);
 }
 
 interface AcceptTLSResponse {
@@ -44,7 +44,7 @@ interface AcceptTLSResponse {
 }
 
 export async function acceptTLS(rid: number): Promise<AcceptTLSResponse> {
-  return await sendAsync("op_accept_tls", { rid });
+  return sendAsync("op_accept_tls", { rid });
 }
 
 export interface ListenTLSRequest {
