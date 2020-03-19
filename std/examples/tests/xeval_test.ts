@@ -25,18 +25,22 @@ Deno.test(async function xevalDelimiter(): Promise<void> {
 
 const xevalPath = "examples/xeval.ts";
 
-Deno.test(async function xevalCliReplvar(): Promise<void> {
-  const p = run({
-    args: [execPath(), xevalPath, "--replvar=abc", "console.log(abc)"],
-    stdin: "piped",
-    stdout: "piped",
-    stderr: "null"
-  });
-  assert(p.stdin != null);
-  await p.stdin.write(encode("hello"));
-  await p.stdin.close();
-  assertEquals(await p.status(), { code: 0, success: true });
-  assertEquals(decode(await p.output()).trimEnd(), "hello");
+Deno.test({
+  name: "xevalCliReplvar",
+  fn: async function(): Promise<void> {
+    const p = run({
+      args: [execPath(), xevalPath, "--replvar=abc", "console.log(abc)"],
+      stdin: "piped",
+      stdout: "piped",
+      stderr: "null"
+    });
+    assert(p.stdin != null);
+    await p.stdin.write(encode("hello"));
+    p.stdin.close();
+    assertEquals(await p.status(), { code: 0, success: true });
+    assertEquals(decode(await p.output()).trimEnd(), "hello");
+    p.close();
+  }
 });
 
 Deno.test(async function xevalCliSyntaxError(): Promise<void> {
@@ -49,4 +53,5 @@ Deno.test(async function xevalCliSyntaxError(): Promise<void> {
   assertEquals(await p.status(), { code: 1, success: false });
   assertEquals(decode(await p.output()), "");
   assertStrContains(decode(await p.stderrOutput()), "Uncaught SyntaxError");
+  p.close();
 });

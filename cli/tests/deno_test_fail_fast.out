@@ -1,0 +1,14 @@
+running 4 tests
+test fail1 ... FAILED [WILDCARD]
+
+failures:
+
+fail1
+AssertionError: fail1 assertion
+[WILDCARD]
+
+failures:
+[WILDCARD]
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
+

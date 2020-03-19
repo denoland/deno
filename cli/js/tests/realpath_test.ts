@@ -14,7 +14,7 @@ unitTest({ perms: { read: true } }, function realpathSyncSuccess(): void {
 
 unitTest(
   {
-    skip: Deno.build.os === "win",
+    ignore: Deno.build.os === "win",
     perms: { read: true, write: true }
   },
   function realpathSyncSymlink(): void {
@@ -66,7 +66,7 @@ unitTest({ perms: { read: true } }, async function realpathSuccess(): Promise<
 
 unitTest(
   {
-    skip: Deno.build.os === "win",
+    ignore: Deno.build.os === "win",
     perms: { read: true, write: true }
   },
   async function realpathSymlink(): Promise<void> {
