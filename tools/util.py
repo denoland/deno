@@ -205,9 +205,7 @@ def rmtree(directory):
 
 
 def build_mode(default="debug"):
-    if "DENO_BUILD_MODE" in os.environ:
-        return os.environ["DENO_BUILD_MODE"]
-    elif "--release" in sys.argv:
+    if "--release" in sys.argv:
         return "release"
     else:
         return default
@@ -215,10 +213,7 @@ def build_mode(default="debug"):
 
 # E.G. "target/debug"
 def build_path():
-    if "DENO_BUILD_PATH" in os.environ:
-        return os.environ["DENO_BUILD_PATH"]
-    else:
-        return os.path.join(root_path, "target", build_mode())
+    return os.path.join(root_path, "target", build_mode())
 
 
 def parse_exit_code(s):
