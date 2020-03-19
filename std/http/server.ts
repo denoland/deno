@@ -136,6 +136,9 @@ export class Server implements AsyncIterable<ServerRequest> {
         conn.close();
       } catch (e) {
         // Connection might have been already closed
+        if (!(e instanceof Deno.errors.BadResource)) {
+          throw e;
+        }
       }
     }
   }

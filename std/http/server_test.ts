@@ -478,6 +478,13 @@ test({
     const resStr = new TextDecoder().decode(res.subarray(0, nread));
     assertStrContains(resStr, "/hello");
     server.close();
+    // Defer to allow async ops to resolve after server has been closed.
+    await delay(0);
+    // Client connection should still be open, verify that
+    // it's visible in resource table.
+    const resources = Deno.resources();
+    assertEquals(resources[conn.rid], "tcpStream");
+    conn.close();
   }
 });
 
