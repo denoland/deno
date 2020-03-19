@@ -355,11 +355,18 @@ declare namespace Deno {
   export function cwd(): string;
 
   /**
-   * **UNSTABLE**: maybe needs permissions.
+   * **UNSTABLE**: Currently under evaluation to decide if explicit permission is
+   * required to change the current working directory.
    *
    * Change the current working directory to the specified path.
    *
-   * Throws `Deno.errors.NotFound` if directory not available.
+   *       Deno.chdir("/home/userA");
+   *       Deno.chdir("../userB");
+   *       Deno.chdir("C:\\Program Files (x86)\\Java");
+   *
+   * Throws `Deno.errors.NotFound` if directory not found.
+   * Throws `Deno.errors.PermissionDenied` if the user does not have access
+   * rights
    */
   export function chdir(directory: string): void;
 
@@ -517,7 +524,7 @@ declare namespace Deno {
    *
    *       const file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
    *
-   * Requires `allow-read` and `allow-write` permissions depending on mode.
+   * Requires `allow-read` and `allow-write` permissions depending on openMode.
    */
   export function openSync(path: string, options?: OpenOptions): File;
 
@@ -525,15 +532,15 @@ declare namespace Deno {
    *
    *       const file = Deno.openSync("/foo/bar.txt", "r");
    *
-   * Requires `allow-read` and `allow-write` permissions depending on mode.
+   * Requires `allow-read` and `allow-write` permissions depending on openMode.
    */
-  export function openSync(path: string, mode?: OpenMode): File;
+  export function openSync(path: string, openMode?: OpenMode): File;
 
   /** Open a file and resolve to an instance of the `File` object.
    *
    *     const file = await Deno.open("/foo/bar.txt", { read: true, write: true });
    *
-   * Requires `allow-read` and `allow-write` permissions depending on mode.
+   * Requires `allow-read` and `allow-write` permissions depending on openMode.
    */
   export function open(path: string, options?: OpenOptions): Promise<File>;
 
@@ -541,9 +548,9 @@ declare namespace Deno {
    *
    *     const file = await Deno.open("/foo/bar.txt, "w+");
    *
-   * Requires `allow-read` and `allow-write` permissions depending on mode.
+   * Requires `allow-read` and `allow-write` permissions depending on openMode.
    */
-  export function open(path: string, mode?: OpenMode): Promise<File>;
+  export function open(path: string, openMode?: OpenMode): Promise<File>;
 
   /** Creates a file if none exists or truncates an existing file and returns
    *  an instance of `Deno.File`.
@@ -688,9 +695,13 @@ declare namespace Deno {
      * access to be used. When createNew is set to `true`, create and truncate
      * are ignored. */
     createNew?: boolean;
+    /** Permissions to use if creating the file (defaults to `0o666`, before
+     * the process's umask).
+     * Ignored on Windows. */
+    mode?: number;
   }
 
-  /** A set of string literals which specify the open mode of a file.
+  /** A set of string literals which specify how to open a file.
    *
    * |Value |Description                                                                                       |
    * |------|--------------------------------------------------------------------------------------------------|
@@ -937,6 +948,10 @@ declare namespace Deno {
    *
    *       Deno.chmodSync("/path/to/file", 0o666);
    *
+   * For a full description, see [chmod](#chmod)
+   *
+   * NOTE: This API currently has no effect on Windows
+   *
    * Requires `allow-write` permission. */
   export function chmodSync(path: string, mode: number): void;
 
@@ -944,6 +959,26 @@ declare namespace Deno {
    * Ignores the process's umask.
    *
    *       await Deno.chmod("/path/to/file", 0o666);
+   *
+   * The mode is a sequence of 3 octal numbers.  The first/left-most number
+   * specifies the permissions for the owner.  The second number specifies the
+   * permissions for the group. The last/right-most number specifies the
+   * permissions for others.  For example, with a mode of 0o764, the owner (7) can
+   * read/write/execute, the group (6) can read/write and everyone else (4) can
+   * read only.
+   *
+   * | Number | Description |
+   * | ------ | ----------- |
+   * | 7      | read, write, and execute |
+   * | 6      | read and write |
+   * | 5      | read and execute |
+   * | 4      | read only |
+   * | 3      | write and execute |
+   * | 2      | write only |
+   * | 1      | execute only |
+   * | 0      | no permission |
+   *
+   * NOTE: This API currently has no effect on Windows
    *
    * Requires `allow-write` permission. */
   export function chmod(path: string, mode: number): Promise<void>;
@@ -2337,15 +2372,20 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
+   * `bundle()` is part the compiler API.  A full description of this functionality
+   * can be found in the [manual](https://deno.land/std/manual.md#denobundle).
+   *
    * Takes a root module name, and optionally a record set of sources. Resolves
-   * with a single JavaScript string that is like the output of a `deno bundle`
-   * command. If just a root name is provided, the modules will be resolved as if
-   * the root module had been passed on the command line.
+   * with a single JavaScript string (and bundle diagnostics if issues arise with
+   * the bundling) that is like the output of a `deno bundle` command. If just
+   * a root name is provided, the modules will be resolved as if the root module
+   * had been passed on the command line.
    *
    * If sources are passed, all modules will be resolved out of this object, where
    * the key is the module name and the value is the content. The extension of the
    * module name will be used to determine the media type of the module.
    *
+   *      //equivalent to "deno bundle foo.ts" from the command line
    *      const [ maybeDiagnostics1, output1 ] = await Deno.bundle("foo.ts");
    *
    *      const [ maybeDiagnostics2, output2 ] = await Deno.bundle("/foo.ts", {
