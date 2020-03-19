@@ -127,6 +127,9 @@ unitTest(async function intervalSuccess(): Promise<void> {
   clearInterval(id);
   // count should increment twice
   assertEquals(count, 1);
+  // Similar false async leaking alarm.
+  // Force next round of polling.
+  await waitForMs(0);
 });
 
 unitTest(async function intervalCancelSuccess(): Promise<void> {
@@ -330,24 +333,32 @@ unitTest(async function timerNestedMicrotaskOrdering(): Promise<void> {
   s += "0";
   setTimeout(() => {
     s += "4";
-    setTimeout(() => (s += "8"));
-    Promise.resolve().then(() => {
-      setTimeout(() => {
-        s += "9";
-        resolve();
+    setTimeout(() => (s += "A"));
+    Promise.resolve()
+      .then(() => {
+        setTimeout(() => {
+          s += "B";
+          resolve();
+        });
+      })
+      .then(() => {
+        s += "5";
       });
-    });
   });
-  setTimeout(() => (s += "5"));
+  setTimeout(() => (s += "6"));
   Promise.resolve().then(() => (s += "2"));
   Promise.resolve().then(() =>
     setTimeout(() => {
-      s += "6";
-      Promise.resolve().then(() => (s += "7"));
+      s += "7";
+      Promise.resolve()
+        .then(() => (s += "8"))
+        .then(() => {
+          s += "9";
+        });
     })
   );
   Promise.resolve().then(() => Promise.resolve().then(() => (s += "3")));
   s += "1";
   await promise;
-  assertEquals(s, "0123456789");
+  assertEquals(s, "0123456789AB");
 });

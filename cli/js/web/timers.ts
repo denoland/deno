@@ -31,8 +31,21 @@ function clearGlobalTimeout(): void {
 
 let pendingEvents = 0;
 const pendingFireTimers: Timer[] = [];
-let hasPendingFireTimers = false;
-let pendingScheduleTimers: Timer[] = [];
+
+/** Process and run a single ready timer macrotask.
+ * This function should be registered through Deno.core.setMacrotaskCallback.
+ * Returns true when all ready macrotasks have been processed, false if more
+ * ready ones are available. The Isolate future would rely on the return value
+ * to repeatedly invoke this function until depletion. Multiple invocations
+ * of this function one at a time ensures newly ready microtasks are processed
+ * before next macrotask timer callback is invoked. */
+export function handleTimerMacrotask(): boolean {
+  if (pendingFireTimers.length > 0) {
+    fire(pendingFireTimers.shift()!);
+    return pendingFireTimers.length === 0;
+  }
+  return true;
+}
 
 async function setGlobalTimeout(due: number, now: number): Promise<void> {
   // Since JS and Rust don't use the same clock, pass the time to rust as a
@@ -54,7 +67,29 @@ async function setGlobalTimeout(due: number, now: number): Promise<void> {
   await startGlobalTimer(timeout);
   pendingEvents--;
   // eslint-disable-next-line @typescript-eslint/no-use-before-define
-  fireTimers();
+  prepareReadyTimers();
+}
+
+function prepareReadyTimers(): void {
+  const now = Date.now();
+  // Bail out if we're not expecting the global timer to fire.
+  if (globalTimeoutDue === null || pendingEvents > 0) {
+    return;
+  }
+  // After firing the timers that are due now, this will hold the first timer
+  // list that hasn't fired yet.
+  let nextDueNode: DueNode | null;
+  while ((nextDueNode = dueTree.min()) !== null && nextDueNode.due <= now) {
+    dueTree.remove(nextDueNode);
+    // Fire all the timers in the list.
+    for (const timer of nextDueNode.timers) {
+      // With the list dropped, the timer is no longer scheduled.
+      timer.scheduled = false;
+      // Place the callback to pending timers to fire.
+      pendingFireTimers.push(timer);
+    }
+  }
+  setOrClearGlobalTimeout(nextDueNode && nextDueNode.due, now);
 }
 
 function setOrClearGlobalTimeout(due: number | null, now: number): void {
@@ -68,15 +103,6 @@ function setOrClearGlobalTimeout(due: number | null, now: number): void {
 function schedule(timer: Timer, now: number): void {
   assert(!timer.scheduled);
   assert(now <= timer.due);
-  // There are more timers pending firing.
-  // We must ensure new timer scheduled after them.
-  // Push them to a queue that would be depleted after last pending fire
-  // timer is fired.
-  // (This also implies behavior of setInterval)
-  if (hasPendingFireTimers) {
-    pendingScheduleTimers.push(timer);
-    return;
-  }
   // Find or create the list of timers that will fire at point-in-time `due`.
   const maybeNewDueNode = { due: timer.due, timers: [] };
   let dueNode = dueTree.find(maybeNewDueNode);
@@ -99,10 +125,6 @@ function unschedule(timer: Timer): void {
   // If either is true, they are not in tree, and their idMap entry
   // will be deleted soon. Remove it from queue.
   let index = -1;
-  if ((index = pendingScheduleTimers.indexOf(timer)) >= 0) {
-    pendingScheduleTimers.splice(index);
-    return;
-  }
   if ((index = pendingFireTimers.indexOf(timer)) >= 0) {
     pendingFireTimers.splice(index);
     return;
@@ -155,57 +177,6 @@ function fire(timer: Timer): void {
   // to it, while also keeping the stack trace neat when it shows up in there.
   const callback = timer.callback;
   callback();
-}
-
-function fireTimers(): void {
-  const now = Date.now();
-  // Bail out if we're not expecting the global timer to fire.
-  if (globalTimeoutDue === null || pendingEvents > 0) {
-    return;
-  }
-  // After firing the timers that are due now, this will hold the first timer
-  // list that hasn't fired yet.
-  let nextDueNode: DueNode | null;
-  while ((nextDueNode = dueTree.min()) !== null && nextDueNode.due <= now) {
-    dueTree.remove(nextDueNode);
-    // Fire all the timers in the list.
-    for (const timer of nextDueNode.timers) {
-      // With the list dropped, the timer is no longer scheduled.
-      timer.scheduled = false;
-      // Place the callback to pending timers to fire.
-      pendingFireTimers.push(timer);
-    }
-  }
-  if (pendingFireTimers.length > 0) {
-    hasPendingFireTimers = true;
-    // Fire the list of pending timers as a chain of microtasks.
-    globalThis.queueMicrotask(firePendingTimers);
-  } else {
-    setOrClearGlobalTimeout(nextDueNode && nextDueNode.due, now);
-  }
-}
-
-function firePendingTimers(): void {
-  if (pendingFireTimers.length === 0) {
-    // All timer tasks are done.
-    hasPendingFireTimers = false;
-    // Schedule all new timers pushed during previous timer executions
-    const now = Date.now();
-    for (const newTimer of pendingScheduleTimers) {
-      newTimer.due = Math.max(newTimer.due, now);
-      schedule(newTimer, now);
-    }
-    pendingScheduleTimers = [];
-    // Reschedule for next round of timeout.
-    const nextDueNode = dueTree.min();
-    const due = nextDueNode && Math.max(nextDueNode.due, now);
-    setOrClearGlobalTimeout(due, now);
-  } else {
-    // Fire a single timer and allow its children microtasks scheduled first.
-    fire(pendingFireTimers.shift()!);
-    // ...and we schedule next timer after this.
-    globalThis.queueMicrotask(firePendingTimers);
-  }
 }
 
 export type Args = unknown[];

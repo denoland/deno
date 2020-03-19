@@ -166,6 +166,7 @@ pub struct Isolate {
   pub(crate) global_context: v8::Global<v8::Context>,
   pub(crate) shared_ab: v8::Global<v8::SharedArrayBuffer>,
   pub(crate) js_recv_cb: v8::Global<v8::Function>,
+  pub(crate) js_macrotask_cb: v8::Global<v8::Function>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
   shared_isolate_handle: Arc<Mutex<Option<*mut v8::Isolate>>>,
   pub(crate) js_error_create_fn: Box<JSErrorCreateFn>,
@@ -299,6 +300,7 @@ impl Isolate {
       pending_promise_exceptions: HashMap::new(),
       shared_ab: v8::Global::<v8::SharedArrayBuffer>::new(),
       js_recv_cb: v8::Global::<v8::Function>::new(),
+      js_macrotask_cb: v8::Global::<v8::Function>::new(),
       snapshot_creator: maybe_snapshot_creator,
       snapshot: load_snapshot,
       has_snapshotted: false,
@@ -495,6 +497,7 @@ impl Future for Isolate {
     let v8_isolate = inner.v8_isolate.as_mut().unwrap();
     let js_error_create_fn = &*inner.js_error_create_fn;
     let js_recv_cb = &inner.js_recv_cb;
+    let js_macrotask_cb = &inner.js_macrotask_cb;
     let pending_promise_exceptions = &mut inner.pending_promise_exceptions;
 
     let mut hs = v8::HandleScope::new(v8_isolate);
@@ -550,6 +553,8 @@ impl Future for Isolate {
       )?;
     }
 
+    drain_macrotasks(scope, js_macrotask_cb, js_error_create_fn)?;
+
     check_promise_exceptions(
       scope,
       pending_promise_exceptions,
@@ -601,6 +606,41 @@ fn async_op_response<'s>(
       exception_to_err_result(scope, exception, js_error_create_fn)
     }
   }
+}
+
+fn drain_macrotasks<'s>(
+  scope: &mut impl v8::ToLocal<'s>,
+  js_macrotask_cb: &v8::Global<v8::Function>,
+  js_error_create_fn: &JSErrorCreateFn,
+) -> Result<(), ErrBox> {
+  let context = scope.get_current_context().unwrap();
+  let global: v8::Local<v8::Value> = context.global(scope).into();
+  let js_macrotask_cb = js_macrotask_cb.get(scope);
+  if js_macrotask_cb.is_none() {
+    return Ok(());
+  }
+  let js_macrotask_cb = js_macrotask_cb.unwrap();
+
+  // Repeatedly invoke macrotask callback until it returns true (done),
+  // such that ready microtasks would be automatically run before
+  // next macrotask is processed.
+  loop {
+    let mut try_catch = v8::TryCatch::new(scope);
+    let tc = try_catch.enter();
+
+    let is_done = js_macrotask_cb.call(scope, context, global, &[]);
+
+    if let Some(exception) = tc.exception() {
+      return exception_to_err_result(scope, exception, js_error_create_fn);
+    }
+
+    let is_done = is_done.unwrap();
+    if is_done.is_true() {
+      break;
+    }
+  }
+
+  Ok(())
 }
 
 pub(crate) fn attach_handle_to_error(

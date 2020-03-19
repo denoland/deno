@@ -25,6 +25,9 @@ lazy_static! {
         function: send.map_fn_to()
       },
       v8::ExternalReference {
+        function: set_macrotask_callback.map_fn_to()
+      },
+      v8::ExternalReference {
         function: eval_context.map_fn_to()
       },
       v8::ExternalReference {
@@ -143,6 +146,19 @@ pub fn initialize_context<'s>(
     context,
     v8::String::new(scope, "send").unwrap().into(),
     send_val.into(),
+  );
+
+  let mut set_macrotask_callback_tmpl =
+    v8::FunctionTemplate::new(scope, set_macrotask_callback);
+  let set_macrotask_callback_val = set_macrotask_callback_tmpl
+    .get_function(scope, context)
+    .unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "setMacrotaskCallback")
+      .unwrap()
+      .into(),
+    set_macrotask_callback_val.into(),
   );
 
   let mut eval_context_tmpl = v8::FunctionTemplate::new(scope, eval_context);
@@ -427,6 +443,27 @@ fn send(
       rv.set(ui8.into())
     }
   }
+}
+
+fn set_macrotask_callback(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let deno_isolate: &mut Isolate =
+    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
+
+  if !deno_isolate.js_macrotask_cb.is_empty() {
+    let msg =
+      v8::String::new(scope, "Deno.core.setMacrotaskCallback already called.")
+        .unwrap();
+    scope.isolate().throw_exception(msg.into());
+    return;
+  }
+
+  let macrotask_cb_fn =
+    v8::Local::<v8::Function>::try_from(args.get(0)).unwrap();
+  deno_isolate.js_macrotask_cb.set(scope, macrotask_cb_fn);
 }
 
 fn eval_context(
