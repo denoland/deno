@@ -91,6 +91,8 @@ declare global {
       data?: ArrayBufferView
     ): null | Uint8Array;
 
+    setMacrotaskCallback(cb: () => boolean): void;
+
     shared: SharedArrayBuffer;
 
     evalContext(
