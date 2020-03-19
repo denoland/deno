@@ -7,6 +7,9 @@ extern crate nix;
 extern crate pty;
 extern crate tempfile;
 
+use std::process::Command;
+use tempfile::TempDir;
+
 // TODO re-enable. This hangs on macOS
 // https://github.com/denoland/deno/issues/4262
 #[cfg(unix)]
@@ -36,7 +39,6 @@ pub fn test_raw_tty() {
     use nix::sys::termios;
     use std::os::unix::io::AsRawFd;
     use std::process::*;
-    use tempfile::TempDir;
 
     // Turn off echo such that parent is reading works properly.
     let stdin_fd = std::io::stdin().as_raw_fd();
@@ -81,8 +83,6 @@ fn deno_dir_test() {
 fn fetch_test() {
   use deno::http_cache::url_to_filename;
   pub use deno::test_util::*;
-  use std::process::Command;
-  use tempfile::TempDir;
   use url::Url;
 
   let g = util::http_server();
@@ -114,7 +114,6 @@ fn fetch_test() {
 
 #[test]
 fn fmt_test() {
-  use tempfile::TempDir;
   let t = TempDir::new().expect("tempdir fail");
   let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
   let badly_formatted_original =
@@ -171,18 +170,11 @@ fn fmt_stdin_error() {
 
 #[test]
 fn installer_test_local_module_run() {
-  use deno::flags::Flags;
-  use deno::installer;
-  use std::env;
-  use std::path::PathBuf;
-  use std::process::Command;
-  use tempfile::TempDir;
-
   let temp_dir = TempDir::new().expect("tempdir fail");
-  let local_module = env::current_dir().unwrap().join("tests/echo.ts");
+  let local_module = std::env::current_dir().unwrap().join("tests/echo.ts");
   let local_module_str = local_module.to_string_lossy();
-  installer::install(
-    Flags::default(),
+  deno::installer::install(
+    deno::flags::Flags::default(),
     Some(temp_dir.path().to_path_buf()),
     "echo_test",
     &local_module_str,
@@ -195,18 +187,13 @@ fn installer_test_local_module_run() {
     file_path = file_path.with_extension("cmd");
   }
   assert!(file_path.exists());
-  let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
-  let paths_var = env::var_os(path_var_name).expect("PATH not set");
-  let mut paths: Vec<PathBuf> = env::split_paths(&paths_var).collect();
-  paths.push(temp_dir.path().to_owned());
-  paths.push(util::target_dir());
-  let path_var_value = env::join_paths(paths).expect("Can't create PATH");
+
   // NOTE: using file_path here instead of exec_name, because tests
   // shouldn't mess with user's PATH env variable
   let output = Command::new(file_path)
     .current_dir(temp_dir.path())
     .arg("foo")
-    .env(path_var_name, path_var_value)
+    .env("PATH", util::target_dir())
     .output()
     .expect("failed to spawn script");
 
@@ -220,17 +207,10 @@ fn installer_test_local_module_run() {
 
 #[test]
 fn installer_test_remote_module_run() {
-  use deno::flags::Flags;
-  use deno::installer;
-  use std::env;
-  use std::path::PathBuf;
-  use std::process::Command;
-  use tempfile::TempDir;
-
   let g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
-  installer::install(
-    Flags::default(),
+  deno::installer::install(
+    deno::flags::Flags::default(),
     Some(temp_dir.path().to_path_buf()),
     "echo_test",
     "http://localhost:4545/cli/tests/echo.ts",
@@ -243,18 +223,10 @@ fn installer_test_remote_module_run() {
     file_path = file_path.with_extension("cmd");
   }
   assert!(file_path.exists());
-  let path_var_name = if cfg!(windows) { "Path" } else { "PATH" };
-  let paths_var = env::var_os(path_var_name).expect("PATH not set");
-  let mut paths: Vec<PathBuf> = env::split_paths(&paths_var).collect();
-  paths.push(temp_dir.path().to_owned());
-  paths.push(util::target_dir());
-  let path_var_value = env::join_paths(paths).expect("Can't create PATH");
-  // NOTE: using file_path here instead of exec_name, because tests
-  // shouldn't mess with user's PATH env variable
   let output = Command::new(file_path)
     .current_dir(temp_dir.path())
     .arg("foo")
-    .env(path_var_name, path_var_value)
+    .env("PATH", util::target_dir())
     .output()
     .expect("failed to spawn script");
   assert!(std::str::from_utf8(&output.stdout)
@@ -286,8 +258,6 @@ fn js_unit_tests() {
 
 #[test]
 fn bundle_exports() {
-  use tempfile::TempDir;
-
   // First we have to generate a bundle of some module that has exports.
   let mod1 = util::root_path().join("cli/tests/subdir/mod1.ts");
   assert!(mod1.is_file());
@@ -330,8 +300,6 @@ fn bundle_exports() {
 
 #[test]
 fn bundle_circular() {
-  use tempfile::TempDir;
-
   // First we have to generate a bundle of some module that has exports.
   let circular1 = util::root_path().join("cli/tests/subdir/circular1.ts");
   assert!(circular1.is_file());
@@ -364,8 +332,6 @@ fn bundle_circular() {
 
 #[test]
 fn bundle_single_module() {
-  use tempfile::TempDir;
-
   // First we have to generate a bundle of some module that has exports.
   let single_module =
     util::root_path().join("cli/tests/subdir/single_module.ts");
@@ -400,8 +366,6 @@ fn bundle_single_module() {
 
 #[test]
 fn bundle_json() {
-  use tempfile::TempDir;
-
   let json_modules = util::root_path().join("cli/tests/020_json_modules.ts");
   assert!(json_modules.is_file());
   let t = TempDir::new().expect("tempdir fail");
@@ -476,8 +440,6 @@ fn bundle_tla() {
 
 #[test]
 fn bundle_js() {
-  use tempfile::TempDir;
-
   // First we have to generate a bundle of some module that has exports.
   let mod6 = util::root_path().join("cli/tests/subdir/mod6.js");
   assert!(mod6.is_file());
@@ -1482,8 +1444,6 @@ itest!(proto_exploit {
 fn cafile_fetch() {
   use deno::http_cache::url_to_filename;
   pub use deno::test_util::*;
-  use std::process::Command;
-  use tempfile::TempDir;
   use url::Url;
 
   let g = util::http_server();
@@ -1520,9 +1480,7 @@ fn cafile_fetch() {
 
 #[test]
 fn cafile_install_remote_module() {
-  pub use deno::test_util::*;
-  use std::process::Command;
-  use tempfile::TempDir;
+  use deno::test_util::*;
 
   let g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
@@ -1565,8 +1523,6 @@ fn cafile_install_remote_module() {
 
 #[test]
 fn cafile_bundle_remote_exports() {
-  use tempfile::TempDir;
-
   let g = util::http_server();
 
   // First we have to generate a bundle of some remote module that has exports.
@@ -1970,7 +1926,6 @@ mod util {
   use std::process::Command;
   use std::process::Output;
   use std::process::Stdio;
-
   use tempfile::TempDir;
 
   pub const PERMISSION_VARIANTS: [&str; 5] =
