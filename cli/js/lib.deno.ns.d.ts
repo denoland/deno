@@ -17,7 +17,7 @@ declare namespace Deno {
   export interface TestDefinition {
     fn: TestFunction;
     name: string;
-    skip?: boolean;
+    ignore?: boolean;
     disableOpSanitizer?: boolean;
     disableResourceSanitizer?: boolean;
   }
@@ -38,7 +38,7 @@ declare namespace Deno {
   enum TestStatus {
     Passed = "passed",
     Failed = "failed",
-    Skipped = "skipped"
+    Ignored = "ignored"
   }
 
   interface TestResult {

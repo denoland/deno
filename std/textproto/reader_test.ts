@@ -19,7 +19,7 @@ function reader(s: string): TextProtoReader {
 }
 
 test({
-  skip: true,
+  ignore: true,
   name: "[textproto] Reader : DotBytes",
   async fn(): Promise<void> {
     const _input =

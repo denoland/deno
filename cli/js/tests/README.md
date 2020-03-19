@@ -17,7 +17,7 @@ unitTest(function simpleTestFn(): void {
 });
 
 unitTest({
-    skip: Deno.build.os === "win",
+    ignore: Deno.build.os === "win",
     perms: { read: true, write: true },
   },
   function complexTestFn(): void {
