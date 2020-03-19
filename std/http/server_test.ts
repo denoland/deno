@@ -346,7 +346,7 @@ test(async function requestBodyReaderWithTransferEncoding(): Promise<void> {
 test({
   name: "destroyed connection",
   // FIXME(bartlomieju): hangs on windows, cause can't do `Deno.kill`
-  skip: true,
+  ignore: true,
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
     const p = Deno.run({
@@ -387,7 +387,7 @@ test({
 test({
   name: "serveTLS",
   // FIXME(bartlomieju): hangs on windows, cause can't do `Deno.kill`
-  skip: true,
+  ignore: true,
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
     const p = Deno.run({
