@@ -12,7 +12,7 @@ declare namespace Deno {
    * See: https://no-color.org/ */
   export let noColor: boolean;
 
-  type TestFunction = () => void | Promise<void>;
+  export type TestFunction = () => void | Promise<void>;
 
   export interface TestDefinition {
     fn: TestFunction;

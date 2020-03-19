@@ -63,7 +63,7 @@ After: ${postStr}`;
   };
 }
 
-type TestFunction = () => void | Promise<void>;
+export type TestFunction = () => void | Promise<void>;
 
 export interface TestDefinition {
   fn: TestFunction;
