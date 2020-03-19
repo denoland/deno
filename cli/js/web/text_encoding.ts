@@ -26,7 +26,6 @@
 import * as base64 from "./base64.ts";
 import { decodeUtf8 } from "./decode_utf8.ts";
 import * as domTypes from "./dom_types.ts";
-import { encodeUtf8 } from "./encode_utf8.ts";
 import { core } from "../core.ts";
 
 const CONTINUE = null;
@@ -351,6 +350,15 @@ export class TextDecoder {
       bytes = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
     } else {
       bytes = new Uint8Array(0);
+    }
+
+    // For simple utf-8 decoding "Deno.core.decode" can be used for performance
+    if (
+      this._encoding === "utf-8" &&
+      this.fatal === false &&
+      this.ignoreBOM === false
+    ) {
+      return core.decode(bytes);
     }
 
     // For performance reasons we utilise a highly optimised decoder instead of
