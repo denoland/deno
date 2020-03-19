@@ -1545,7 +1545,7 @@ fn cafile_install_remote_module() {
 
   let mut echo_test_path = temp_dir.path().join("echo_test");
   if cfg!(windows) {
-    echo_test_path = echo_test_path.with_extension(".cmd");
+    echo_test_path = echo_test_path.with_extension("cmd");
   }
   assert!(echo_test_path.exists());
 
