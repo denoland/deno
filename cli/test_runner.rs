@@ -69,7 +69,7 @@ pub fn render_test_file(modules: Vec<Url>, fail_fast: bool) -> String {
   }
 
   let run_tests_cmd =
-    format!("Deno.runTests({{ exitOnFail: {} }});\n", fail_fast);
+    format!("Deno.runTests({{ failFast: {} }});\n", fail_fast);
   test_file.push_str(&run_tests_cmd);
 
   test_file
