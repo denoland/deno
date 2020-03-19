@@ -348,9 +348,9 @@ export async function assertThrowsAsync(
     await fn();
   } catch (e) {
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
-      msg = `Expected error to be instance of "${ErrorClass.name}"${
-        msg ? `: ${msg}` : "."
-      }`;
+      msg = `Expected error to be instance of "${ErrorClass.name}", but got "${
+        e.name
+      }"${msg ? `: ${msg}` : "."}`;
       throw new AssertionError(msg);
     }
     if (msgIncludes && !e.message.includes(msgIncludes)) {
