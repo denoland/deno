@@ -346,7 +346,7 @@ test(async function requestBodyReaderWithTransferEncoding(): Promise<void> {
 test({
   name: "destroyed connection",
   // FIXME(bartlomieju): hangs on windows, cause can't do `Deno.kill`
-  skip: true,
+  ignore: true,
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
     const p = Deno.run({
@@ -387,7 +387,7 @@ test({
 test({
   name: "serveTLS",
   // FIXME(bartlomieju): hangs on windows, cause can't do `Deno.kill`
-  skip: true,
+  ignore: true,
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
     const p = Deno.run({
@@ -459,7 +459,7 @@ test("close server while iterating", async (): Promise<void> => {
 // We need to find a way to similarly trigger an error on Windows so that
 // we can test if connection is closed.
 test({
-  skip: Deno.build.os == "win",
+  ignore: Deno.build.os == "win",
   name: "respond error handling",
   async fn(): Promise<void> {
     const connClosedPromise = deferred();
