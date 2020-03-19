@@ -2041,6 +2041,7 @@ mod util {
       .env("DENO_DIR", DENO_DIR.path())
       .current_dir(root_path())
       .arg(script)
+      .arg(format!("--build-dir={}", target_dir().display()))
       .arg(format!("--executable={}", deno_exe_path().display()))
       .output()
       .expect("failed to spawn script");
