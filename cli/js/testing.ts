@@ -106,7 +106,7 @@ export function test(
     if (!t.name) {
       throw new TypeError("The test name can't be empty");
     }
-    testDef = { fn: t.fn, name: t.name, ignore: Boolean(t.ignore) };
+    testDef = { ...t, ignore: Boolean(t.ignore) };
   }
 
   if (testDef.disableOpSanitizer !== true) {
