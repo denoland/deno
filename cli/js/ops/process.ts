@@ -2,11 +2,6 @@
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 import { assert } from "../util.ts";
 
-/** Send a signal to process under given PID. Unix only at this moment.
- * If pid is negative, the signal will be sent to the process group identified
- * by -pid.
- * Requires the `--allow-run` flag.
- */
 export function kill(pid: number, signo: number): void {
   sendSync("op_kill", { pid, signo });
 }
@@ -18,7 +13,7 @@ interface RunStatusResponse {
 }
 
 export async function runStatus(rid: number): Promise<RunStatusResponse> {
-  return await sendAsync("op_run_status", { rid });
+  return sendAsync("op_run_status", { rid });
 }
 
 interface RunRequest {

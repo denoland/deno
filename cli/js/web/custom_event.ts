@@ -42,7 +42,4 @@ export class CustomEvent extends event.Event implements domTypes.CustomEvent {
   }
 }
 
-/** Built-in objects providing `get` methods for our
- * interceptable JavaScript operations.
- */
 Reflect.defineProperty(CustomEvent.prototype, "detail", { enumerable: true });

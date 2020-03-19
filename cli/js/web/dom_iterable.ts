@@ -7,10 +7,6 @@ import { exposeForTest } from "../internals.ts";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Constructor<T = {}> = new (...args: any[]) => T;
 
-/** Mixes in a DOM iterable methods into a base class, assumes that there is
- * a private data iterable that is part of the base class, located at
- * `[dataSymbol]`.
- */
 export function DomIterableMixin<K, V, TBase extends Constructor>(
   Base: TBase,
   dataSymbol: symbol

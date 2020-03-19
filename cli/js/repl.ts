@@ -5,18 +5,10 @@ import { stringifyArgs } from "./web/console.ts";
 import { startRepl, readline } from "./ops/repl.ts";
 import { close } from "./ops/resources.ts";
 
-/**
- * REPL logging.
- * In favor of console.log to avoid unwanted indentation
- */
 function replLog(...args: unknown[]): void {
   core.print(stringifyArgs(args) + "\n");
 }
 
-/**
- * REPL logging for errors.
- * In favor of console.error to avoid unwanted indentation
- */
 function replError(...args: unknown[]): void {
   core.print(stringifyArgs(args) + "\n", true);
 }

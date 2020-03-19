@@ -70,13 +70,11 @@ interface CompilerRequestRuntimeTranspile {
   options?: string;
 }
 
-/** The format of the work message payload coming from the privileged side */
 type CompilerRequest =
   | CompilerRequestCompile
   | CompilerRequestRuntimeCompile
   | CompilerRequestRuntimeTranspile;
 
-/** The format of the result sent back when doing a compilation. */
 interface CompileResult {
   emitSkipped: boolean;
   diagnostics?: Diagnostic;
@@ -89,8 +87,6 @@ type RuntimeCompileResult = [
 
 type RuntimeBundleResult = [undefined | DiagnosticItem[], string];
 
-/** `Compile` are requests from the internals of Deno; eg. used when
- * the `run` or `bundle` subcommand is used. */
 async function compile(
   request: CompilerRequestCompile
 ): Promise<CompileResult> {
@@ -186,14 +182,6 @@ async function compile(
   return result;
 }
 
-/**`RuntimeCompile` are requests from a runtime user; it can be both
- * "compile" and "bundle".
- *
- * The process is similar to a request from the privileged
- * side, but unline `compile`, `runtimeCompile` allows to specify
- * additional file mappings which can be used instead of relying
- * on Deno defaults.
- */
 async function runtimeCompile(
   request: CompilerRequestRuntimeCompile
 ): Promise<RuntimeCompileResult | RuntimeBundleResult> {
@@ -411,6 +399,12 @@ function bootstrapWasmCompilerRuntime(): void {
   bootstrapWorkerRuntime("WASM");
   globalThis.onmessage = wasmCompilerOnMessage;
 }
+
+// Removes the `__proto__` for security reasons.  This intentionally makes
+// Deno non compliant with ECMA-262 Annex B.2.2.1
+//
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+delete (Object.prototype as any).__proto__;
 
 Object.defineProperties(globalThis, {
   bootstrapWasmCompilerRuntime: {

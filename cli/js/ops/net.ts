@@ -13,14 +13,6 @@ export enum ShutdownMode {
   ReadWrite // unused
 }
 
-/** Shut down socket send and receive operations.
- *
- * Matches behavior of POSIX shutdown(3).
- *
- *       const listener = Deno.listen({ port: 80 });
- *       const conn = await listener.accept();
- *       Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
- */
 export function shutdown(rid: number, how: ShutdownMode): void {
   sendSync("op_shutdown", { rid, how });
 }
@@ -40,7 +32,7 @@ interface AcceptResponse {
 }
 
 export async function accept(rid: number): Promise<AcceptResponse> {
-  return await sendAsync("op_accept", { rid });
+  return sendAsync("op_accept", { rid });
 }
 
 export interface ListenRequest {
@@ -83,7 +75,7 @@ export interface ConnectRequest {
 }
 
 export async function connect(args: ConnectRequest): Promise<ConnectResponse> {
-  return await sendAsync("op_connect", args);
+  return sendAsync("op_connect", args);
 }
 
 interface ReceiveResponse {
@@ -99,7 +91,7 @@ export async function receive(
   rid: number,
   zeroCopy: Uint8Array
 ): Promise<ReceiveResponse> {
-  return await sendAsync("op_receive", { rid }, zeroCopy);
+  return sendAsync("op_receive", { rid }, zeroCopy);
 }
 
 export interface SendRequest {

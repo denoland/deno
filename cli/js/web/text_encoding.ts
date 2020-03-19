@@ -92,7 +92,6 @@ class UTF8Encoder implements Encoder {
   }
 }
 
-/** Decodes a string of data which has been encoded using base-64. */
 export function atob(s: string): string {
   s = String(s);
   s = s.replace(/[\t\n\f\r ]/g, "");
@@ -120,7 +119,6 @@ export function atob(s: string): string {
   return result;
 }
 
-/** Creates a base-64 ASCII string from the input string. */
 export function btoa(s: string): string {
   const byteArray = [];
   for (let i = 0; i < s.length; i++) {
@@ -303,13 +301,10 @@ function isEitherArrayBuffer(x: any): x is EitherArrayBuffer {
 export class TextDecoder {
   private _encoding: string;
 
-  /** Returns encoding's name, lowercased. */
   get encoding(): string {
     return this._encoding;
   }
-  /** Returns `true` if error mode is "fatal", and `false` otherwise. */
   readonly fatal: boolean = false;
-  /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
   readonly ignoreBOM: boolean = false;
 
   constructor(label = "utf-8", options: TextDecoderOptions = { fatal: false }) {
@@ -334,7 +329,6 @@ export class TextDecoder {
     this._encoding = encoding;
   }
 
-  /** Returns the result of running encoding's decoder. */
   decode(
     input?: domTypes.BufferSource,
     options: TextDecodeOptions = { stream: false }
@@ -400,9 +394,7 @@ interface TextEncoderEncodeIntoResult {
 }
 
 export class TextEncoder {
-  /** Returns "utf-8". */
   readonly encoding = "utf-8";
-  /** Returns the result of running UTF-8's encoder. */
   encode(input = ""): Uint8Array {
     // For performance reasons we utilise a highly optimised decoder instead of
     // the general decoder.

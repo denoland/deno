@@ -78,6 +78,7 @@ test(async function serveFallback(): Promise<void> {
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 404);
+    res.body.close();
   } finally {
     killFileServer();
   }
@@ -90,11 +91,12 @@ test(async function serveWithUnorthodoxFilename(): Promise<void> {
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 200);
-
+    res.body.close();
     res = await fetch("http://localhost:4500/http/testdata/test%20file.txt");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 200);
+    res.body.close();
   } finally {
     killFileServer();
   }
@@ -114,7 +116,8 @@ test(async function servePermissionDenied(): Promise<void> {
   assert(s !== Deno.EOF && s.includes("server listening"));
 
   try {
-    await fetch("http://localhost:4500/");
+    const res = await fetch("http://localhost:4500/");
+    res.body.close();
     assertStrContains(
       (await errReader.readLine()) as string,
       "run again with the --allow-read flag"

@@ -31,7 +31,7 @@ test(function requireBuiltin() {
   assert("readFileSync" in fs);
   const { readFileSync, isNull, extname } = require_("./tests/cjs/cjs_builtin");
   assertEquals(
-    readFileSync("./node/testdata/hello.txt", { encoding: "utf8" }),
+    readFileSync("./node/_fs/testdata/hello.txt", { encoding: "utf8" }),
     "hello world"
   );
   assert(isNull(null));

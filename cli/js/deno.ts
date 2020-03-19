@@ -118,17 +118,14 @@ export { utimeSync, utime } from "./ops/fs/utime.ts";
 export { version } from "./version.ts";
 export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";
 export const args: string[] = [];
-export { test, runTests } from "./testing.ts";
+export { test, runTests, TestEvent, ConsoleTestReporter } from "./testing.ts";
 
 // These are internal Deno APIs.  We are marking them as internal so they do not
 // appear in the runtime type library.
-/** @internal */
 export { core } from "./core.ts";
 
-/** The current process id of the runtime. */
 export let pid: number;
 
-/** Reflects the NO_COLOR environment variable: https://no-color.org/ */
 export let noColor: boolean;
 
 export { symbols } from "./symbols.ts";

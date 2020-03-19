@@ -22,81 +22,58 @@ import {
 } from "./ops/fs/open.ts";
 export { OpenOptions, OpenMode } from "./ops/fs/open.ts";
 
-/** Synchronously open a file and return an instance of the `File` object.
- *
- *       const file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
- *
- * Requires `allow-read` and `allow-write` permissions depending on mode.
- */
-export function openSync(path: string, mode?: OpenOptions): File;
-export function openSync(path: string, mode?: OpenMode): File;
+export function openSync(path: string, options?: OpenOptions): File;
+export function openSync(path: string, openMode?: OpenMode): File;
+
+/**@internal*/
 export function openSync(
   path: string,
   modeOrOptions: OpenOptions | OpenMode = "r"
 ): File {
-  let mode = undefined;
+  let openMode = undefined;
   let options = undefined;
 
   if (typeof modeOrOptions === "string") {
-    mode = modeOrOptions;
+    openMode = modeOrOptions;
   } else {
     checkOpenOptions(modeOrOptions);
     options = modeOrOptions as OpenOptions;
   }
 
-  const rid = opOpenSync(path, mode as OpenMode, options);
+  const rid = opOpenSync(path, openMode as OpenMode, options);
   return new File(rid);
 }
 
-/** Open a file and resolve to an instance of the `File` object.
- *
- *     const file = await Deno.open("/foo/bar.txt", { read: true, write: true });
- *
- * Requires `allow-read` and `allow-write` permissions depending on mode.
- */
 export async function open(path: string, options?: OpenOptions): Promise<File>;
-export async function open(path: string, mode?: OpenMode): Promise<File>;
+export async function open(path: string, openMode?: OpenMode): Promise<File>;
+
+/**@internal*/
 export async function open(
   path: string,
   modeOrOptions: OpenOptions | OpenMode = "r"
 ): Promise<File> {
-  let mode = undefined;
+  let openMode = undefined;
   let options = undefined;
 
   if (typeof modeOrOptions === "string") {
-    mode = modeOrOptions;
+    openMode = modeOrOptions;
   } else {
     checkOpenOptions(modeOrOptions);
     options = modeOrOptions as OpenOptions;
   }
 
-  const rid = await opOpen(path, mode as OpenMode, options);
+  const rid = await opOpen(path, openMode as OpenMode, options);
   return new File(rid);
 }
 
-/** Creates a file if none exists or truncates an existing file and returns
- *  an instance of `Deno.File`.
- *
- *       const file = Deno.createSync("/foo/bar.txt");
- *
- * Requires `allow-read` and `allow-write` permissions.
- */
 export function createSync(path: string): File {
   return openSync(path, "w+");
 }
 
-/** Creates a file if none exists or truncates an existing file and resolves to
- *  an instance of `Deno.File`.
- *
- *       const file = await Deno.create("/foo/bar.txt");
- *
- * Requires `allow-read` and `allow-write` permissions.
- */
 export function create(path: string): Promise<File> {
   return open(path, "w+");
 }
 
-/** The Deno abstraction for reading and writing files. */
 export class File
   implements
     Reader,
@@ -137,17 +114,10 @@ export class File
   }
 }
 
-/** An instance of `Deno.File` for `stdin`. */
 export const stdin = new File(0);
-/** An instance of `Deno.File` for `stdout`. */
 export const stdout = new File(1);
-/** An instance of `Deno.File` for `stderr`. */
 export const stderr = new File(2);
 
-/** Check if OpenOptions is set to valid combination of options.
- *  @returns Tuple representing if openMode is valid and error message if it's not
- *  @internal
- */
 function checkOpenOptions(options: OpenOptions): void {
   if (Object.values(options).filter(val => val === true).length === 0) {
     throw new Error("OpenOptions requires at least one option to be true");

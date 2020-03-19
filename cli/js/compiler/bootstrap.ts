@@ -31,22 +31,10 @@ host.getSourceFile(
   ts.ScriptTarget.ESNext
 );
 
-/**
- * This function spins up TS compiler and loads all available libraries
- * into memory (including ones specified above).
- *
- * Used to generate the foundational AST for all other compilations, so it can
- * be cached as part of the snapshot and available to speed up startup.
- */
 export const TS_SNAPSHOT_PROGRAM = ts.createProgram({
   rootNames: [`${ASSETS}/bootstrap.ts`],
   options,
   host
 });
 
-/** A module loader which is concatenated into bundle files.
- *
- * We read all static assets during the snapshotting process, which is
- * why this is located in compiler_bootstrap.
- */
 export const SYSTEM_LOADER = getAsset("system_loader.js");

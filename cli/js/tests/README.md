@@ -17,7 +17,7 @@ unitTest(function simpleTestFn(): void {
 });
 
 unitTest({
-    skip: Deno.build.os === "win",
+    ignore: Deno.build.os === "win",
     perms: { read: true, write: true },
   },
   function complexTestFn(): void {
@@ -37,11 +37,42 @@ ways:
 - sanitization of async ops - ensuring that tests don't leak async ops by
   ensuring that all started async ops are done before test finishes
 
-`unit_test_runner.ts` is main script used to run unit tests.
+## Running tests
+
+`unit_test_runner.ts` is the main script used to run unit tests.
 
 Runner discoveres required permissions combinations by loading
 `cli/js/tests/unit_tests.ts` and going through all registered instances of
-`unitTest`. For each discovered permission combination a new Deno process is
-created with respective `--allow-*` flags which loads
-`cli/js/tests/unit_tests.ts` and executes all `unitTest` that match runtime
-permissions.
+`unitTest`.
+
+There are three ways to run `unit_test_runner.ts`:
+
+```
+# Run all tests. Spawns worker processes for each discovered permission
+# combination:
+target/debug/deno -A cli/js/tests/unit_test_runner.ts --master
+
+# By default all output of worker processes is discarded; for debug purposes
+# the --verbose flag preserves output from the worker
+target/debug/deno -A cli/js/tests/unit_test_runner.ts --master --verbose
+
+# Run subset of tests that don't require any permissions
+target/debug/deno cli/js/tests/unit_test_runner.ts
+
+# Run subset tests that require "net" and "read" permissions
+target/debug/deno --allow-net --allow-read cli/js/tests/unit_test_runner.ts
+
+# "worker" mode communicates with parent using TCP socket on provided address;
+# after initial setup drops permissions to specified set. It shouldn't be used
+# directly, only be "master" process.
+target/debug/deno -A cli/js/tests/unit_test_runner.ts --worker --addr=127.0.0.1:4500 --perms=net,write,run
+
+# Run specific tests
+target/debug/deno --allow-net cli/js/tests/unit_test_runner.ts -- netTcpListenClose
+```
+
+### Http server
+
+`tools/http_server.py` is required to run when one's running unit tests. During
+CI it's spawned automatically, but if you want to run tests manually make sure
+that server is spawned otherwise there'll be cascade of test failures.

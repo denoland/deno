@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
-import { UnexpectedEOFError } from "../io/bufio.ts";
 import {
   getNBytes,
   putVarbig,
@@ -27,7 +26,7 @@ Deno.test(async function testGetNBytesThrows(): Promise<void> {
   const buff = new Deno.Buffer(data.buffer);
   assertThrowsAsync(async () => {
     await getNBytes(buff, 8);
-  }, UnexpectedEOFError);
+  }, Deno.errors.UnexpectedEof);
 });
 
 Deno.test(async function testPutVarbig(): Promise<void> {
@@ -161,5 +160,3 @@ Deno.test(async function testWriteVarnumLittleEndian(): Promise<void> {
   await buff.read(data);
   assertEquals(data, new Uint8Array([0x01, 0x02, 0x03, 0x04]));
 });
-
-Deno.runTests();

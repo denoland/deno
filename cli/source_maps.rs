@@ -2,10 +2,7 @@
 //! This mod provides functions to remap a deno_core::deno_core::JSError based on a source map
 use deno_core;
 use deno_core::JSStackFrame;
-use serde_json;
-use source_map_mappings::parse_mappings;
-use source_map_mappings::Bias;
-use source_map_mappings::Mappings;
+use sourcemap::SourceMap;
 use std::collections::HashMap;
 use std::str;
 
@@ -22,48 +19,6 @@ pub trait SourceMapGetter {
 /// Cached filename lookups. The key can be None if a previous lookup failed to
 /// find a SourceMap.
 pub type CachedMaps = HashMap<String, Option<SourceMap>>;
-
-pub struct SourceMap {
-  mappings: Mappings,
-  sources: Vec<String>,
-}
-
-impl SourceMap {
-  /// Take a JSON string and attempt to decode it, returning an optional
-  /// instance of `SourceMap`.
-  fn from_json(json_str: &str) -> Option<Self> {
-    // Ugly. Maybe use serde_derive.
-    match serde_json::from_str::<serde_json::Value>(json_str) {
-      Ok(serde_json::Value::Object(map)) => match map["mappings"].as_str() {
-        None => None,
-        Some(mappings_str) => {
-          match parse_mappings::<()>(mappings_str.as_bytes()) {
-            Err(_) => None,
-            Ok(mappings) => {
-              if !map["sources"].is_array() {
-                return None;
-              }
-              let sources_val = map["sources"].as_array().unwrap();
-              let mut sources = Vec::<String>::new();
-
-              for source_val in sources_val {
-                match source_val.as_str() {
-                  None => return None,
-                  Some(source) => {
-                    sources.push(source.to_string());
-                  }
-                }
-              }
-
-              Some(SourceMap { sources, mappings })
-            }
-          }
-        }
-      },
-      _ => None,
-    }
-  }
-}
 
 // The bundle does not get built for 'cargo check', so we don't embed the
 // bundle source map.  The built in source map is the source map for the main
@@ -199,29 +154,24 @@ pub fn get_orig_position<G: SourceMapGetter>(
   mappings_map: &mut CachedMaps,
   getter: &G,
 ) -> (String, i64, i64) {
-  let maybe_sm = get_mappings(&script_name, mappings_map, getter);
+  let maybe_source_map = get_mappings(&script_name, mappings_map, getter);
   let default_pos = (script_name, line_number, column);
 
-  match maybe_sm {
+  match maybe_source_map {
     None => default_pos,
-    Some(sm) => match sm.mappings.original_location_for(
-      line_number as u32,
-      column as u32,
-      Bias::default(),
-    ) {
-      None => default_pos,
-      Some(mapping) => match &mapping.original {
+    Some(source_map) => {
+      match source_map.lookup_token(line_number as u32, column as u32) {
         None => default_pos,
-        Some(original) => {
-          let orig_source = sm.sources[original.source as usize].clone();
-          (
-            orig_source,
-            i64::from(original.original_line),
-            i64::from(original.original_column),
-          )
-        }
-      },
-    },
+        Some(token) => match token.get_source() {
+          None => default_pos,
+          Some(original) => (
+            original.to_string(),
+            i64::from(token.get_src_line()),
+            i64::from(token.get_src_col()),
+          ),
+        },
+      }
+    }
   }
 }
 
@@ -243,9 +193,7 @@ fn parse_map_string<G: SourceMapGetter>(
 ) -> Option<SourceMap> {
   builtin_source_map(script_name)
     .or_else(|| getter.get_source_map(script_name))
-    .and_then(|raw_source_map| {
-      SourceMap::from_json(str::from_utf8(&raw_source_map).unwrap())
-    })
+    .and_then(|raw_source_map| SourceMap::from_slice(&raw_source_map).ok())
 }
 
 #[cfg(test)]
@@ -405,31 +353,5 @@ mod tests {
     let getter = MockSourceMapGetter {};
     let actual = apply_source_map(&e, &getter);
     assert_eq!(actual.source_line, Some("console.log('foo');".to_string()));
-  }
-
-  #[test]
-  fn source_map_from_json() {
-    let json = r#"{"version":3,"file":"error_001.js","sourceRoot":"","sources":["file:///Users/rld/src/deno/cli/tests/error_001.ts"],"names":[],"mappings":"AAAA,SAAS,GAAG;IACV,MAAM,KAAK,CAAC,KAAK,CAAC,CAAC;AACrB,CAAC;AAED,SAAS,GAAG;IACV,GAAG,EAAE,CAAC;AACR,CAAC;AAED,GAAG,EAAE,CAAC"}"#;
-    let sm = SourceMap::from_json(json).unwrap();
-    assert_eq!(sm.sources.len(), 1);
-    assert_eq!(
-      sm.sources[0],
-      "file:///Users/rld/src/deno/cli/tests/error_001.ts"
-    );
-    let mapping = sm
-      .mappings
-      .original_location_for(1, 10, Bias::default())
-      .unwrap();
-    assert_eq!(mapping.generated_line, 1);
-    assert_eq!(mapping.generated_column, 10);
-    assert_eq!(
-      mapping.original,
-      Some(source_map_mappings::OriginalLocation {
-        source: 0,
-        original_line: 1,
-        original_column: 8,
-        name: None
-      })
-    );
   }
 }

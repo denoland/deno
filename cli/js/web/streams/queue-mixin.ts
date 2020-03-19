@@ -1,13 +1,6 @@
 // Forked from https://github.com/stardazed/sd-streams/tree/8928cf04b035fd02fb1340b7eb541c76be37e546
 // Copyright (c) 2018-Present by Arthur Langereis - @zenmumbler MIT
 
-/**
- * streams/queue-mixin - internal queue operations for stream controllers
- * Part of Stardazed
- * (c) 2018-Present by Arthur Langereis - @zenmumbler
- * https://github.com/stardazed/sd-streams
- */
-
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // TODO reenable this lint here
 

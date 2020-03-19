@@ -1,4 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+export type CallbackWithError = (err?: Error) => void;
+
 export interface FileOptions {
   encoding?: string;
   mode?: number;

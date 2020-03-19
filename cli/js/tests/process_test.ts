@@ -49,7 +49,7 @@ unitTest(
 unitTest(
   {
     // No signals on windows.
-    skip: Deno.build.os === "win",
+    ignore: Deno.build.os === "win",
     perms: { run: true }
   },
   async function runCommandFailedWithSignal(): Promise<void> {

@@ -183,7 +183,7 @@ unitTest(function sortingNonExistentParamRemovesQuestionMarkFromURL(): void {
 unitTest(
   {
     // FIXME(bartlomieju)
-    skip: true
+    ignore: true
   },
   function customInspectFunction(): void {
     const url = new URL("http://example.com/?");
