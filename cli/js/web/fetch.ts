@@ -229,7 +229,7 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
     return Promise.resolve(void 0);
   }
 
-  cancel(): void {
+  cancel(): Promise<void> {
     return notImplemented();
   }
 

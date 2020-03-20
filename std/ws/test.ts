@@ -372,7 +372,7 @@ test({
     const buf = new Buffer();
     let timer: number | undefined;
     const lazyWriter: Deno.Writer = {
-      async write(_: Uint8Array): Promise<number> {
+      write(_: Uint8Array): Promise<number> {
         return new Promise(resolve => {
           timer = setTimeout(() => resolve(0), 1000);
         });
