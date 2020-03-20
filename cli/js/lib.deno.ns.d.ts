@@ -950,7 +950,7 @@ declare namespace Deno {
    *
    * For a full description, see [chmod](#chmod)
    *
-   * NOTE: This API currently has no effect on Windows
+   * NOTE: This API currently throws on Windows
    *
    * Requires `allow-write` permission. */
   export function chmodSync(path: string, mode: number): void;
@@ -978,7 +978,7 @@ declare namespace Deno {
    * | 1      | execute only |
    * | 0      | no permission |
    *
-   * NOTE: This API currently has no effect on Windows
+   * NOTE: This API currently throws on Windows
    *
    * Requires `allow-write` permission. */
   export function chmod(path: string, mode: number): Promise<void>;
