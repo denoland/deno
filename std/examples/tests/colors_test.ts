@@ -9,7 +9,7 @@ Deno.test("[examples/colors] print a colored text", async () => {
     stdout: "piped"
   });
   try {
-    const output = await Deno.readAll(process.stdout!);
+    const output = await process.output();
     const actual = decoder.decode(output).trim();
     const expected = "[44m[3m[31m[1mHello world![22m[39m[23m[49m";
     assertStrictEq(actual, expected);

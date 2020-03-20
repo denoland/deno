@@ -121,14 +121,14 @@ for (const s of scenes) {
     args.push(path.join(testdataDir, s.async ? "exists.ts" : "exists_sync.ts"));
     args.push(s.file);
 
-    const { stdout } = Deno.run({
+    const p = Deno.run({
       stdout: "piped",
       cwd: testdataDir,
       args: args
     });
 
-    const output = await Deno.readAll(stdout!);
-
+    const output = await p.output();
+    p.close();
     assertStrContains(new TextDecoder().decode(output), s.output);
   });
   // done

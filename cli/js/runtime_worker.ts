@@ -16,8 +16,9 @@ import {
   windowOrWorkerGlobalScopeProperties,
   eventTargetProperties
 } from "./globals.ts";
-import { sendSync } from "./ops/dispatch_json.ts";
-import { log } from "./util.ts";
+import * as webWorkerOps from "./ops/web_worker.ts";
+import { LocationImpl } from "./web/location.ts";
+import { log, assert, immutableDefine } from "./util.ts";
 import { TextEncoder } from "./web/text_encoding.ts";
 import * as runtime from "./runtime.ts";
 
@@ -31,7 +32,7 @@ export const onerror: (e: { data: any }) => void = (): void => {};
 export function postMessage(data: any): void {
   const dataJson = JSON.stringify(data);
   const dataIntArray = encoder.encode(dataJson);
-  sendSync("op_worker_post_message", {}, dataIntArray);
+  webWorkerOps.postMessage(dataIntArray);
 }
 
 let isClosing = false;
@@ -43,7 +44,7 @@ export function close(): void {
   }
 
   isClosing = true;
-  sendSync("op_worker_close");
+  webWorkerOps.close();
 }
 
 export async function workerMessageRecvCallback(data: string): Promise<void> {
@@ -87,12 +88,6 @@ export const workerRuntimeGlobalProperties = {
   workerMessageRecvCallback: nonEnumerable(workerMessageRecvCallback)
 };
 
-/**
- * Main method to initialize worker runtime.
- *
- * It sets up global variables for DedicatedWorkerScope,
- * and initializes ops.
- */
 export function bootstrapWorkerRuntime(name: string): void {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
@@ -104,5 +99,13 @@ export function bootstrapWorkerRuntime(name: string): void {
   Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
   Object.defineProperties(globalThis, eventTargetProperties);
   Object.defineProperties(globalThis, { name: readOnly(name) });
-  runtime.start(false, name);
+  const s = runtime.start(name);
+
+  const location = new LocationImpl(s.location);
+  immutableDefine(globalThis, "location", location);
+  Object.freeze(globalThis.location);
+
+  // globalThis.Deno is not available in worker scope
+  delete globalThis.Deno;
+  assert(globalThis.Deno === undefined);
 }

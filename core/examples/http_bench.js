@@ -85,7 +85,7 @@ function listen() {
 
 /** Accepts a connection, returns rid. */
 async function accept(rid) {
-  return await sendAsync(ops["accept"], rid);
+  return sendAsync(ops["accept"], rid);
 }
 
 /**
@@ -93,12 +93,12 @@ async function accept(rid) {
  * Returns bytes read.
  */
 async function read(rid, data) {
-  return await sendAsync(ops["read"], rid, data);
+  return sendAsync(ops["read"], rid, data);
 }
 
 /** Writes a fixed HTTP response to the socket rid. Returns bytes written. */
 async function write(rid, data) {
-  return await sendAsync(ops["write"], rid, data);
+  return sendAsync(ops["write"], rid, data);
 }
 
 function close(rid) {

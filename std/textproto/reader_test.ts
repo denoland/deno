@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file.
 
 import { BufReader } from "../io/bufio.ts";
-import { TextProtoReader, ProtocolError } from "./mod.ts";
+import { TextProtoReader } from "./mod.ts";
 import { stringsReader } from "../io/util.ts";
 import {
   assert,
@@ -17,13 +17,15 @@ const { test } = Deno;
 function reader(s: string): TextProtoReader {
   return new TextProtoReader(new BufReader(stringsReader(s)));
 }
-// test({
-//   name: "[textproto] Reader : DotBytes",
-//   async fn(): Promise<void> {
-//     const input =
-//       "dotlines\r\n.foo\r\n..bar\n...baz\nquux\r\n\r\n.\r\nanot.her\r\n";
-//   }
-// });
+
+test({
+  ignore: true,
+  name: "[textproto] Reader : DotBytes",
+  async fn(): Promise<void> {
+    const _input =
+      "dotlines\r\n.foo\r\n..bar\n...baz\nquux\r\n\r\n.\r\nanot.her\r\n";
+  }
+});
 
 test(async function textprotoReadEmpty(): Promise<void> {
   const r = reader("");
@@ -134,7 +136,7 @@ test({
     } catch (e) {
       err = e;
     }
-    assert(err instanceof ProtocolError);
+    assert(err instanceof Deno.errors.InvalidData);
   }
 });
 
@@ -156,7 +158,7 @@ test({
     } catch (e) {
       err = e;
     }
-    assert(err instanceof ProtocolError);
+    assert(err instanceof Deno.errors.InvalidData);
   }
 });
 

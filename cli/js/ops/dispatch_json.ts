@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as util from "../util.ts";
-import { TextEncoder, TextDecoder } from "../web/text_encoding.ts";
 import { core } from "../core.ts";
 import { OPS_CACHE } from "../runtime.ts";
 import { ErrorKind, getErrorClass } from "../errors.ts";
@@ -19,7 +18,10 @@ interface JsonResponse {
   promiseId?: number; // Only present in async messages.
 }
 
-const promiseTable = new Map<number, util.Resolvable<JsonResponse>>();
+// Using an object without a prototype because `Map` was causing GC problems.
+const promiseTable: {
+  [key: number]: util.Resolvable<JsonResponse>;
+} = Object.create(null);
 let _nextPromiseId = 1;
 
 function nextPromiseId(): number {
@@ -27,13 +29,13 @@ function nextPromiseId(): number {
 }
 
 function decode(ui8: Uint8Array): JsonResponse {
-  const s = new TextDecoder().decode(ui8);
+  const s = core.decode(ui8);
   return JSON.parse(s) as JsonResponse;
 }
 
 function encode(args: object): Uint8Array {
   const s = JSON.stringify(args);
-  return new TextEncoder().encode(s);
+  return core.encode(s);
 }
 
 function unwrapResponse(res: JsonResponse): Ok {
@@ -48,9 +50,9 @@ export function asyncMsgFromRust(resUi8: Uint8Array): void {
   const res = decode(resUi8);
   util.assert(res.promiseId != null);
 
-  const promise = promiseTable.get(res.promiseId!);
+  const promise = promiseTable[res.promiseId!];
   util.assert(promise != null);
-  promiseTable.delete(res.promiseId!);
+  delete promiseTable[res.promiseId!];
   promise.resolve(res);
 }
 
@@ -89,7 +91,7 @@ export async function sendAsync(
     promise.resolve(res);
   } else {
     // Async result.
-    promiseTable.set(promiseId, promise);
+    promiseTable[promiseId] = promise;
   }
 
   const res = await promise;

@@ -2,12 +2,6 @@
 import { sendSync } from "./dispatch_json.ts";
 import { assert } from "../util.ts";
 
-/** Synchronously collects cryptographically secure random values. The
- * underlying CSPRNG in use is Rust's `rand::rngs::ThreadRng`.
- *
- *       const arr = new Uint8Array(32);
- *       crypto.getRandomValues(arr);
- */
 export function getRandomValues<
   T extends
     | Int8Array

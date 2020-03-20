@@ -58,7 +58,6 @@ pub mod worker;
 
 use crate::compilers::TargetLib;
 use crate::file_fetcher::SourceFile;
-use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg::MediaType;
 use crate::ops::io::get_stdio;
@@ -74,13 +73,13 @@ use log::Level;
 use log::Metadata;
 use log::Record;
 use std::env;
-use std::fs as std_fs;
 use std::io::Write;
 use std::path::PathBuf;
 use url::Url;
 
 static LOGGER: Logger = Logger;
 
+// TODO(ry) Switch to env_logger or other standard crate.
 struct Logger;
 
 impl log::Log for Logger {
@@ -97,7 +96,11 @@ impl log::Log for Logger {
         target.push_str(&line_no.to_string());
       }
 
-      println!("{} RS - {} - {}", record.level(), target, record.args());
+      if record.level() >= Level::Info {
+        eprintln!("{}", record.args());
+      } else {
+        eprintln!("{} RS - {} - {}", record.level(), target, record.args());
+      }
     }
   }
   fn flush(&self) {}
@@ -372,7 +375,6 @@ async fn test_command(
   flags: Flags,
   include: Option<Vec<String>>,
   fail_fast: bool,
-  _quiet: bool,
   allow_none: bool,
 ) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
@@ -388,23 +390,31 @@ async fn test_command(
     return Ok(());
   }
 
-  let test_file = test_runner::render_test_file(test_modules, fail_fast);
   let test_file_path = cwd.join(".deno.test.ts");
   let test_file_url =
     Url::from_file_path(&test_file_path).expect("Should be valid file url");
+  let test_file = test_runner::render_test_file(test_modules, fail_fast);
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
-  // First create worker with specified test file and only then write
-  // file to disk. Then test file will be executed and removed
-  // immediately after. That way even if compilation/tests fail test
-  // file can be cleaned up.
   let mut worker =
     create_main_worker(global_state.clone(), main_module.clone())?;
-  deno_fs::write_file(&test_file_path, test_file.as_bytes(), 0o666)
-    .expect("Can't write test file");
+  // Create a dummy source file.
+  let source_file = SourceFile {
+    filename: test_file_url.to_file_path().unwrap(),
+    url: test_file_url,
+    types_url: None,
+    media_type: MediaType::TypeScript,
+    source_code: test_file.clone().into_bytes(),
+  };
+  // Save our fake file into file fetcher cache
+  // to allow module access by TS compiler (e.g. op_fetch_source_files)
+  worker
+    .state
+    .borrow()
+    .global_state
+    .file_fetcher
+    .save_source_file_in_cache(&main_module, source_file);
   let execute_result = worker.execute_module(&main_module).await;
-  // Remove temporary test file
-  std_fs::remove_file(&test_file_path).expect("Failed to remove temp file");
   execute_result?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   (&mut *worker).await?;
@@ -427,7 +437,7 @@ pub fn main() {
 
   let log_level = match flags.log_level {
     Some(level) => level,
-    None => Level::Warn,
+    None => Level::Info, // Default log level
   };
   log::set_max_level(log_level.to_level_filter());
 
@@ -458,13 +468,10 @@ pub fn main() {
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
-      quiet,
       fail_fast,
       include,
       allow_none,
-    } => {
-      test_command(flags, include, fail_fast, quiet, allow_none).boxed_local()
-    }
+    } => test_command(flags, include, fail_fast, allow_none).boxed_local(),
     DenoSubcommand::Completions { buf } => {
       print!("{}", std::str::from_utf8(&buf).unwrap());
       return;

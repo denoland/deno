@@ -1,5 +1,5 @@
 use super::dispatch_json::JsonOp;
-use super::io::StreamResource;
+use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
@@ -66,13 +66,13 @@ pub fn op_set_raw(
     use winapi::um::{consoleapi, handleapi};
 
     let state = state_.borrow_mut();
-    let resource = state.resource_table.get::<StreamResource>(rid);
-    if resource.is_none() {
+    let resource_holder = state.resource_table.get::<StreamResourceHolder>(rid);
+    if resource_holder.is_none() {
       return Err(OpError::bad_resource_id());
     }
 
     // For now, only stdin.
-    let handle = match resource.unwrap() {
+    let handle = match &resource_holder.unwrap().resource {
       StreamResource::Stdin(_, _) => std::io::stdin().as_raw_handle(),
       StreamResource::FsFile(f, _) => {
         let tokio_file = futures::executor::block_on(f.try_clone())?;
@@ -111,25 +111,27 @@ pub fn op_set_raw(
     use std::os::unix::io::AsRawFd;
 
     let mut state = state_.borrow_mut();
-    let resource = state.resource_table.get_mut::<StreamResource>(rid);
-    if resource.is_none() {
+    let resource_holder =
+      state.resource_table.get_mut::<StreamResourceHolder>(rid);
+    if resource_holder.is_none() {
       return Err(OpError::bad_resource_id());
     }
 
     if is_raw {
-      let (raw_fd, maybe_tty_mode) = match resource.unwrap() {
-        StreamResource::Stdin(_, ref mut metadata) => {
-          (std::io::stdin().as_raw_fd(), &mut metadata.mode)
-        }
-        StreamResource::FsFile(f, ref mut metadata) => {
-          let tokio_file = futures::executor::block_on(f.try_clone())?;
-          let std_file = futures::executor::block_on(tokio_file.into_std());
-          (std_file.as_raw_fd(), &mut metadata.tty.mode)
-        }
-        _ => {
-          return Err(OpError::other("Not supported".to_owned()));
-        }
-      };
+      let (raw_fd, maybe_tty_mode) =
+        match &mut resource_holder.unwrap().resource {
+          StreamResource::Stdin(_, ref mut metadata) => {
+            (std::io::stdin().as_raw_fd(), &mut metadata.mode)
+          }
+          StreamResource::FsFile(f, ref mut metadata) => {
+            let tokio_file = futures::executor::block_on(f.try_clone())?;
+            let std_file = futures::executor::block_on(tokio_file.into_std());
+            (std_file.as_raw_fd(), &mut metadata.tty.mode)
+          }
+          _ => {
+            return Err(OpError::other("Not supported".to_owned()));
+          }
+        };
 
       if maybe_tty_mode.is_some() {
         // Already raw. Skip.
@@ -159,19 +161,20 @@ pub fn op_set_raw(
       Ok(JsonOp::Sync(json!({})))
     } else {
       // Try restore saved mode.
-      let (raw_fd, maybe_tty_mode) = match resource.unwrap() {
-        StreamResource::Stdin(_, ref mut metadata) => {
-          (std::io::stdin().as_raw_fd(), &mut metadata.mode)
-        }
-        StreamResource::FsFile(f, ref mut metadata) => {
-          let tokio_file = futures::executor::block_on(f.try_clone())?;
-          let std_file = futures::executor::block_on(tokio_file.into_std());
-          (std_file.as_raw_fd(), &mut metadata.tty.mode)
-        }
-        _ => {
-          return Err(OpError::other("Not supported".to_owned()));
-        }
-      };
+      let (raw_fd, maybe_tty_mode) =
+        match &mut resource_holder.unwrap().resource {
+          StreamResource::Stdin(_, ref mut metadata) => {
+            (std::io::stdin().as_raw_fd(), &mut metadata.mode)
+          }
+          StreamResource::FsFile(f, ref mut metadata) => {
+            let tokio_file = futures::executor::block_on(f.try_clone())?;
+            let std_file = futures::executor::block_on(tokio_file.into_std());
+            (std_file.as_raw_fd(), &mut metadata.tty.mode)
+          }
+          _ => {
+            return Err(OpError::other("Not supported".to_owned()));
+          }
+        };
 
       if let Some(mode) = maybe_tty_mode.take() {
         termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
@@ -200,12 +203,12 @@ pub fn op_isatty(
     return Err(OpError::bad_resource_id());
   }
 
-  let resource = state.resource_table.get::<StreamResource>(rid);
-  if resource.is_none() {
+  let resource_holder = state.resource_table.get::<StreamResourceHolder>(rid);
+  if resource_holder.is_none() {
     return Ok(JsonOp::Sync(json!(false)));
   }
 
-  match resource.unwrap() {
+  match &resource_holder.unwrap().resource {
     StreamResource::Stdin(_, _) => {
       Ok(JsonOp::Sync(json!(atty::is(atty::Stream::Stdin))))
     }

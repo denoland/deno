@@ -269,7 +269,6 @@ async function main(): Promise<void> {
   const exclude =
     parsedArgs.exclude != null ? (parsedArgs.exclude as string).split(",") : [];
   const allowNone = parsedArgs["allow-none"];
-  const exitOnFail = parsedArgs.failfast;
   const disableLog = parsedArgs.quiet;
 
   try {
@@ -277,8 +276,8 @@ async function main(): Promise<void> {
       include,
       exclude,
       allowNone,
-      exitOnFail,
-      disableLog
+      disableLog,
+      exitOnFail: true
     });
   } catch (error) {
     if (!disableLog) {

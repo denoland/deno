@@ -12,3 +12,4 @@ export {
 } from "./hex.ts";
 export { parse as parseToml, stringify as tomlStringify } from "./toml.ts";
 export { parse as parseYaml, stringify as yamlStringify } from "./yaml.ts";
+export * from "./binary.ts";

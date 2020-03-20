@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
-use super::io::{FileMetadata, StreamResource};
+use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
 use crate::fs as deno_fs;
 use crate::op_error::OpError;
 use crate::ops::dispatch_json::JsonResult;
@@ -18,11 +18,12 @@ use std::time::UNIX_EPOCH;
 use tokio;
 
 #[cfg(unix)]
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
   i.register_op("op_seek", s.stateful_json_op(op_seek));
+  i.register_op("op_umask", s.stateful_json_op(op_umask));
   i.register_op("op_chdir", s.stateful_json_op(op_chdir));
   i.register_op("op_mkdir", s.stateful_json_op(op_mkdir));
   i.register_op("op_chmod", s.stateful_json_op(op_chmod));
@@ -49,7 +50,8 @@ struct OpenArgs {
   promise_id: Option<u64>,
   path: String,
   options: Option<OpenOptions>,
-  mode: Option<String>,
+  open_mode: Option<String>,
+  mode: Option<u32>,
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -72,7 +74,20 @@ fn op_open(
   let args: OpenArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
   let state_ = state.clone();
-  let mut open_options = tokio::fs::OpenOptions::new();
+
+  let mut open_options = if let Some(mode) = args.mode {
+    #[allow(unused_mut)]
+    let mut std_options = fs::OpenOptions::new();
+    // mode only used if creating the file on Unix
+    // if not specified, defaults to 0o666
+    #[cfg(unix)]
+    std_options.mode(mode & 0o777);
+    #[cfg(not(unix))]
+    let _ = mode; // avoid unused warning
+    tokio::fs::OpenOptions::from(std_options)
+  } else {
+    tokio::fs::OpenOptions::new()
+  };
 
   if let Some(options) = args.options {
     if options.read {
@@ -90,9 +105,9 @@ fn op_open(
       .truncate(options.truncate)
       .append(options.append)
       .create_new(options.create_new);
-  } else if let Some(mode) = args.mode {
-    let mode = mode.as_ref();
-    match mode {
+  } else if let Some(open_mode) = args.open_mode {
+    let open_mode = open_mode.as_ref();
+    match open_mode {
       "r" => {
         state.check_read(&path)?;
       }
@@ -105,7 +120,7 @@ fn op_open(
       }
     };
 
-    match mode {
+    match open_mode {
       "r" => {
         open_options.read(true);
       }
@@ -141,7 +156,7 @@ fn op_open(
     }
   } else {
     return Err(OpError::other(
-      "Open requires either mode or options.".to_string(),
+      "Open requires either openMode or options.".to_string(),
     ));
   };
 
@@ -152,7 +167,10 @@ fn op_open(
     let mut state = state_.borrow_mut();
     let rid = state.resource_table.add(
       "fsFile",
-      Box::new(StreamResource::FsFile(fs_file, FileMetadata::default())),
+      Box::new(StreamResourceHolder::new(StreamResource::FsFile(
+        fs_file,
+        FileMetadata::default(),
+      ))),
     );
     Ok(json!(rid))
   };
@@ -197,12 +215,12 @@ fn op_seek(
   };
 
   let state = state.borrow();
-  let resource = state
+  let resource_holder = state
     .resource_table
-    .get::<StreamResource>(rid)
+    .get::<StreamResourceHolder>(rid)
     .ok_or_else(OpError::bad_resource_id)?;
 
-  let tokio_file = match resource {
+  let tokio_file = match resource_holder.resource {
     StreamResource::FsFile(ref file, _) => file,
     _ => return Err(OpError::bad_resource_id()),
   };
@@ -218,6 +236,43 @@ fn op_seek(
     Ok(JsonOp::Sync(buf))
   } else {
     Ok(JsonOp::Async(fut.boxed_local()))
+  }
+}
+
+#[derive(Deserialize)]
+struct UmaskArgs {
+  mask: Option<u32>,
+}
+
+fn op_umask(
+  _state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  let args: UmaskArgs = serde_json::from_value(args)?;
+  // TODO implement umask for Windows
+  // see https://github.com/nodejs/node/blob/master/src/node_process_methods.cc
+  // and https://docs.microsoft.com/fr-fr/cpp/c-runtime-library/reference/umask?view=vs-2019
+  #[cfg(not(unix))]
+  {
+    let _ = args.mask; // avoid unused warning.
+    return Err(OpError::not_implemented());
+  }
+  #[cfg(unix)]
+  {
+    use nix::sys::stat::mode_t;
+    use nix::sys::stat::umask;
+    use nix::sys::stat::Mode;
+    let r = if let Some(mask) = args.mask {
+      // If mask provided, return previous.
+      umask(Mode::from_bits_truncate(mask as mode_t))
+    } else {
+      // If no mask provided, we query the current. Requires two syscalls.
+      let prev = umask(Mode::from_bits_truncate(0o777));
+      let _ = umask(prev);
+      prev
+    };
+    Ok(JsonOp::Sync(json!(r.bits() as u32)))
   }
 }
 
@@ -242,7 +297,7 @@ struct MkdirArgs {
   promise_id: Option<u64>,
   path: String,
   recursive: bool,
-  mode: u32,
+  mode: Option<u32>,
 }
 
 fn op_mkdir(
@@ -252,13 +307,14 @@ fn op_mkdir(
 ) -> Result<JsonOp, OpError> {
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+  let mode = args.mode.unwrap_or(0o777);
 
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_mkdir {}", path.display());
-    deno_fs::mkdir(&path, args.mode, args.recursive)?;
+    debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
+    deno_fs::mkdir(&path, mode, args.recursive)?;
     Ok(json!({}))
   })
 }
@@ -389,7 +445,7 @@ fn op_copy_file(
       return Err(OpError::not_found("File not found".to_string()));
     }
 
-    // returns length of from as u64 (we ignore)
+    // returns size of from as u64 (we ignore)
     fs::copy(&from, &to)?;
     Ok(json!({}))
   })
@@ -427,7 +483,7 @@ fn get_stat_json(
   let mut json_val = json!({
     "isFile": metadata.is_file(),
     "isSymlink": metadata.file_type().is_symlink(),
-    "len": metadata.len(),
+    "size": metadata.len(),
     // In seconds. Available on both Unix or Windows.
     "modified":to_seconds!(metadata.modified()),
     "accessed":to_seconds!(metadata.accessed()),

@@ -1,22 +1,19 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import {
-  assert,
-  createResolvable,
-  notImplemented,
-  isTypedArray
-} from "../util.ts";
+import { assert, createResolvable, notImplemented } from "../util.ts";
+import { isTypedArray } from "./util.ts";
 import * as domTypes from "./dom_types.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob.ts";
 import { Headers } from "./headers.ts";
 import * as io from "../io.ts";
-import { read } from "../files.ts";
+import { read } from "../ops/io.ts";
 import { close } from "../ops/resources.ts";
 import { Buffer } from "../buffer.ts";
 import { FormData } from "./form_data.ts";
 import { URL } from "./url.ts";
 import { URLSearchParams } from "./url_search_params.ts";
 import { fetch as opFetch, FetchResponse } from "../ops/fetch.ts";
+import { DomFileImpl } from "./dom_file.ts";
 
 function getHeaderValueParams(value: string): Map<string, string> {
   const params = new Map();
@@ -457,10 +454,9 @@ async function sendFetchReq(
     headers: headerArray
   };
 
-  return await opFetch(args, body);
+  return opFetch(args, body);
 }
 
-/** Fetch a resource from the network. */
 export async function fetch(
   input: domTypes.Request | URL | string,
   init?: domTypes.RequestInit
@@ -504,8 +500,47 @@ export async function fetch(
         } else if (init.body instanceof DenoBlob) {
           body = init.body[blobBytesSymbol];
           contentType = init.body.type;
+        } else if (init.body instanceof FormData) {
+          let boundary = "";
+          if (headers.has("content-type")) {
+            const params = getHeaderValueParams("content-type");
+            if (params.has("boundary")) {
+              boundary = params.get("boundary")!;
+            }
+          }
+          if (!boundary) {
+            boundary =
+              "----------" +
+              Array.from(Array(32))
+                .map(() => Math.random().toString(36)[2] || 0)
+                .join("");
+          }
+
+          let payload = "";
+          for (const [fieldName, fieldValue] of init.body.entries()) {
+            let part = `\r\n--${boundary}\r\n`;
+            part += `Content-Disposition: form-data; name=\"${fieldName}\"`;
+            if (fieldValue instanceof DomFileImpl) {
+              part += `; filename=\"${fieldValue.name}\"`;
+            }
+            part += "\r\n";
+            if (fieldValue instanceof DomFileImpl) {
+              part += `Content-Type: ${fieldValue.type ||
+                "application/octet-stream"}\r\n`;
+            }
+            part += "\r\n";
+            if (fieldValue instanceof DomFileImpl) {
+              part += new TextDecoder().decode(fieldValue[blobBytesSymbol]);
+            } else {
+              part += fieldValue;
+            }
+            payload += part;
+          }
+          payload += `\r\n--${boundary}--`;
+          body = new TextEncoder().encode(payload);
+          contentType = "multipart/form-data; boundary=" + boundary;
         } else {
-          // TODO: FormData, ReadableStream
+          // TODO: ReadableStream
           notImplemented();
         }
         if (contentType && !headers.has("content-type")) {
@@ -536,6 +571,9 @@ export async function fetch(
       redirected
     );
     if ([301, 302, 303, 307, 308].includes(response.status)) {
+      // We won't use body of received response, so close it now
+      // otherwise it will be kept in resource table.
+      close(fetchResponse.bodyRid);
       // We're in a redirect status
       switch ((init && init.redirect) || "follow") {
         case "error":
