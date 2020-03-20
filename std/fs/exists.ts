@@ -3,28 +3,29 @@ const { lstat, lstatSync } = Deno;
 /**
  * Test whether or not the given path exists by checking with the file system
  */
-export function exists(filePath: string): Promise<boolean> {
-  return lstat(filePath)
-    .then((): boolean => true)
-    .catch((err: Error): boolean => {
-      if (err instanceof Deno.errors.NotFound) {
-        return false;
-      }
+export async function exists(filePath: string): Promise<boolean> {
+  try {
+    await lstat(filePath);
+    return true;
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) {
+      return false;
+    }
 
-      throw err;
-    });
+    throw err;
+  }
 }
 
 /**
  * Test whether or not the given path exists by checking with the file system
  */
-export function existsSync(filePath: string): Promise<boolean> {
+export function existsSync(filePath: string): boolean {
   try {
     lstatSync(filePath);
-    return Promise.resolve(true);
+    return true;
   } catch (err) {
     if (err instanceof Deno.errors.NotFound) {
-      return Promise.resolve(false);
+      return false;
     }
     throw err;
   }
