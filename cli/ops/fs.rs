@@ -353,14 +353,15 @@ fn op_chmod(
       use std::os::unix::fs::PermissionsExt;
       let permissions = PermissionsExt::from_mode(mode);
       std::fs::set_permissions(&path, permissions)?;
+      Ok(json!({}))
     }
     // TODO Implement chmod for Windows (#4357)
     #[cfg(not(unix))]
     {
       // Still check file/dir exists on Windows
       let _metadata = std::fs::metadata(&path)?;
+      return Err(OpError::not_implemented());
     }
-    Ok(json!({}))
   })
 }
 
