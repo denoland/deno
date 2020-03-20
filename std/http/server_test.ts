@@ -462,12 +462,12 @@ test({
   async fn(): Promise<void> {
     async function iteratorReq(server: Server): Promise<void> {
       for await (const req of server) {
-        req.respond({ body: new TextEncoder().encode(req.url) });
+        await req.respond({ body: new TextEncoder().encode(req.url) });
       }
     }
 
     const server = serve(":8123");
-    iteratorReq(server);
+    const p = iteratorReq(server);
     const conn = await Deno.connect({ hostname: "127.0.0.1", port: 8123 });
     await Deno.writeAll(
       conn,
@@ -479,8 +479,7 @@ test({
     const resStr = new TextDecoder().decode(res.subarray(0, nread));
     assertStrContains(resStr, "/hello");
     server.close();
-    // Defer to allow async ops to resolve after server has been closed.
-    await delay(0);
+    await p;
     // Client connection should still be open, verify that
     // it's visible in resource table.
     const resources = Deno.resources();
