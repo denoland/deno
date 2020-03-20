@@ -1,4 +1,4 @@
-async function* asyncGenerator() {
+function* asyncGenerator() {
   let i = 0;
   while (i < 3) {
     yield i++;

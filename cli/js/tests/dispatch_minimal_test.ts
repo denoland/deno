@@ -25,7 +25,7 @@ unitTest(async function sendAsyncStackTrace(): Promise<void> {
   }
 });
 
-unitTest(async function malformedMinimalControlBuffer(): Promise<void> {
+unitTest(function malformedMinimalControlBuffer(): void {
   // @ts-ignore
   const readOpId = Deno.core.ops()["op_read"];
   // @ts-ignore

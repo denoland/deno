@@ -68,7 +68,7 @@ test(async function responseWrite(): Promise<void> {
   }
 });
 
-test(async function requestContentLength(): Promise<void> {
+test(function requestContentLength(): void {
   // Has content length
   {
     const req = new ServerRequest();

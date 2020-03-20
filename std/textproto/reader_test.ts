@@ -21,9 +21,10 @@ function reader(s: string): TextProtoReader {
 test({
   ignore: true,
   name: "[textproto] Reader : DotBytes",
-  async fn(): Promise<void> {
+  fn(): Promise<void> {
     const _input =
       "dotlines\r\n.foo\r\n..bar\n...baz\nquux\r\n\r\n.\r\nanot.her\r\n";
+    return Promise.resolve();
   }
 });
 

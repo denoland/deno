@@ -55,7 +55,7 @@ export class Process {
     }
   }
 
-  async status(): Promise<ProcessStatus> {
+  status(): Promise<ProcessStatus> {
     return runStatus(this.rid);
   }
 
