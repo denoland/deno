@@ -172,7 +172,7 @@ export function listen(
   const res = (() => {
     if (options.transport === "unix" || options.transport === "unixpacket") {
       return netOps.listen(options);
-    } else {
+    } else if (options.transport === "tcp") {
       return netOps.listen({
         transport: options.transport || "tcp",
         hostname: options.hostname || "127.0.0.1",
