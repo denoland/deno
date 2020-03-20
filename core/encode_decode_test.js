@@ -27,11 +27,17 @@ function main() {
     108, 100 
   ];
 
+  const empty = Deno.core.encode("");
+  if (empty.length !== 0) throw new Error("assert");
+
   assertArrayEquals(Array.from(Deno.core.encode("𝓽𝓮𝔁𝓽")), fixture1);
   assertArrayEquals(
     Array.from(Deno.core.encode("Hello \udc12\ud834 World")),
     fixture2
   );
+
+  const emptyBuf = Deno.core.decode(new Uint8Array(0));
+  if (emptyBuf !== "") throw new Error("assert");
 
   assert(Deno.core.decode(new Uint8Array(fixture1)) === "𝓽𝓮𝔁𝓽");
   assert(Deno.core.decode(new Uint8Array(fixture2)) === "Hello �� World");
