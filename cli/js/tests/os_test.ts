@@ -65,7 +65,7 @@ unitTest(
         ${JSON.stringify(Object.keys(expectedEnv))}.map(k => Deno.env(k))
       )`;
       const proc = Deno.run({
-        args: [Deno.execPath(), "eval", src],
+        cmd: [Deno.execPath(), "eval", src],
         env: inputEnv,
         stdout: "piped"
       });

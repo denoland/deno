@@ -77,7 +77,7 @@ Deno.test("[examples/catj] read from stdin", async () => {
 
 function catj(...files: string[]): Deno.Process {
   return Deno.run({
-    args: [Deno.execPath(), "--allow-read", "catj.ts", ...files],
+    cmd: [Deno.execPath(), "--allow-read", "catj.ts", ...files],
     cwd: "examples",
     stdin: "piped",
     stdout: "piped",

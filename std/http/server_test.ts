@@ -358,7 +358,7 @@ test({
     // Runs a simple server as another process
     const port = randomPort();
     const p = Deno.run({
-      args: [
+      cmd: [
         Deno.execPath(),
         "--allow-net",
         "http/testdata/simple_server.ts",
@@ -405,7 +405,7 @@ test({
     const port = randomPort();
     // Runs a simple server as another process
     const p = Deno.run({
-      args: [
+      cmd: [
         Deno.execPath(),
         "--allow-net",
         "--allow-read",

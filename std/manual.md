@@ -366,7 +366,7 @@ Example:
 ```ts
 // create subprocess
 const p = Deno.run({
-  args: ["echo", "hello"]
+  cmd: ["echo", "hello"]
 });
 
 // await its completion
@@ -393,7 +393,7 @@ you can use `"piped"` option.
 const fileNames = Deno.args;
 
 const p = Deno.run({
-  args: [
+  cmd: [
     "deno",
     "run",
     "--allow-read",

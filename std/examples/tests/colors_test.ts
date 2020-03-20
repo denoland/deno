@@ -4,7 +4,7 @@ import { assertStrictEq } from "../../testing/asserts.ts";
 Deno.test("[examples/colors] print a colored text", async () => {
   const decoder = new TextDecoder();
   const process = Deno.run({
-    args: [Deno.execPath(), "colors.ts"],
+    cmd: [Deno.execPath(), "colors.ts"],
     cwd: "examples",
     stdout: "piped"
   });
