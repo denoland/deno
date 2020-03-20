@@ -3,8 +3,9 @@ const { args, listen, env, exit, makeTempDirSync, readFileSync, run } = Deno;
 
 const name = args[0];
 const test: { [key: string]: Function } = {
-  async readRequired(): Promise<void> {
+  readRequired(): Promise<void> {
     readFileSync("README.md");
+    return Promise.resolve();
   },
   writeRequired(): void {
     makeTempDirSync();

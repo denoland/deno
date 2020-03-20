@@ -18,7 +18,7 @@ async function startServer(): Promise<Deno.Process> {
     const r = new TextProtoReader(new BufReader(server.stdout));
     const s = await r.readLine();
     assert(s !== Deno.EOF && s.includes("chat server starting"));
-  } catch {
+  } catch (err) {
     server.stdout!.close();
     server.close();
   }

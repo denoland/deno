@@ -5,11 +5,11 @@ import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 
 const isWindows = Deno.build.os == "win";
 
-export async function testWalk(
+export function testWalk(
   setup: (arg0: string) => void | Promise<void>,
   t: Deno.TestFunction,
   ignore = false
-): Promise<void> {
+): void {
   const name = t.name;
   async function fn(): Promise<void> {
     const origCwd = cwd();

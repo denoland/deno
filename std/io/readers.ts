@@ -9,14 +9,14 @@ export class StringReader implements Reader {
 
   constructor(private readonly s: string) {}
 
-  async read(p: Uint8Array): Promise<number | Deno.EOF> {
+  read(p: Uint8Array): Promise<number | Deno.EOF> {
     const n = Math.min(p.byteLength, this.buf.byteLength - this.offs);
     p.set(this.buf.slice(this.offs, this.offs + n));
     this.offs += n;
     if (n === 0) {
-      return Deno.EOF;
+      return Promise.resolve(Deno.EOF);
     }
-    return n;
+    return Promise.resolve(n);
   }
 }
 

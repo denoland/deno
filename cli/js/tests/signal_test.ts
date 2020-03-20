@@ -15,7 +15,7 @@ function defer(n: number): Promise<void> {
 
 unitTest(
   { ignore: Deno.build.os !== "win" },
-  async function signalsNotImplemented(): Promise<void> {
+  function signalsNotImplemented(): void {
     assertThrows(
       () => {
         Deno.signal(1);
@@ -162,7 +162,7 @@ unitTest(
 
 unitTest(
   { ignore: Deno.build.os === "win", perms: { run: true } },
-  async function signalShorthandsTest(): Promise<void> {
+  function signalShorthandsTest(): void {
     let s: Deno.SignalStream;
     s = Deno.signals.alarm(); // for SIGALRM
     assert(s instanceof Deno.SignalStream);

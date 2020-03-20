@@ -31,7 +31,7 @@ interface AcceptResponse {
   };
 }
 
-export async function accept(rid: number): Promise<AcceptResponse> {
+export function accept(rid: number): Promise<AcceptResponse> {
   return sendAsync("op_accept", { rid });
 }
 
@@ -74,7 +74,7 @@ export interface ConnectRequest {
   port: number;
 }
 
-export async function connect(args: ConnectRequest): Promise<ConnectResponse> {
+export function connect(args: ConnectRequest): Promise<ConnectResponse> {
   return sendAsync("op_connect", args);
 }
 
@@ -87,7 +87,7 @@ interface ReceiveResponse {
   };
 }
 
-export async function receive(
+export function receive(
   rid: number,
   zeroCopy: Uint8Array
 ): Promise<ReceiveResponse> {
