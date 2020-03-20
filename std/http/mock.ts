@@ -21,7 +21,7 @@ export function mockConn(base: Partial<Deno.Conn> = {}): Deno.Conn {
       return Promise.resolve(-1);
     },
     close: (): Promise<void> => {
-      return;
+      return Promise.resolve();
     },
     ...base
   };

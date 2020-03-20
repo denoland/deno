@@ -6,16 +6,18 @@ import { collectUint8Arrays, deferred, MuxAsyncIterator } from "./async.ts";
 test(function asyncDeferred(): Promise<void> {
   const d = deferred<number>();
   d.resolve(12);
-  return;
+  return Promise.resolve();
 });
 
-function* gen123(): AsyncIterableIterator<number> {
+// eslint-disable-next-line require-await
+async function* gen123(): AsyncIterableIterator<number> {
   yield 1;
   yield 2;
   yield 3;
 }
 
-function* gen456(): AsyncIterableIterator<number> {
+// eslint-disable-next-line require-await
+async function* gen456(): AsyncIterableIterator<number> {
   yield 4;
   yield 5;
   yield 6;
@@ -48,7 +50,8 @@ test(async function collectUint8Arrays0(): Promise<void> {
 
 test(async function collectUint8Arrays1(): Promise<void> {
   const buf = new Uint8Array([1, 2, 3]);
-  function* gen(): AsyncIterableIterator<Uint8Array> {
+  // eslint-disable-next-line require-await
+  async function* gen(): AsyncIterableIterator<Uint8Array> {
     yield buf;
   }
   const result = await collectUint8Arrays(gen());
@@ -57,7 +60,8 @@ test(async function collectUint8Arrays1(): Promise<void> {
 });
 
 test(async function collectUint8Arrays4(): Promise<void> {
-  function* gen(): AsyncIterableIterator<Uint8Array> {
+  // eslint-disable-next-line require-await
+  async function* gen(): AsyncIterableIterator<Uint8Array> {
     yield new Uint8Array([1, 2, 3]);
     yield new Uint8Array([]);
     yield new Uint8Array([4, 5]);

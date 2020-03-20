@@ -8,7 +8,7 @@ import { STATUS_TEXT } from "./http_status.ts";
 export function emptyReader(): Deno.Reader {
   return {
     read(_: Uint8Array): Promise<number | Deno.EOF> {
-      return Deno.EOF;
+      return Promise.resolve(Deno.EOF);
     }
   };
 }

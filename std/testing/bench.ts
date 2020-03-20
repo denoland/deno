@@ -176,4 +176,5 @@ export function runIfMain(
   if (meta.main) {
     return runBenchmarks(opts);
   }
+  return Promise.resolve(undefined);
 }

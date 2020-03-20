@@ -68,7 +68,7 @@ test(async function responseWrite(): Promise<void> {
   }
 });
 
-test(function requestContentLength(): Promise<void> {
+test(function requestContentLength(): void {
   // Has content length
   {
     const req = new ServerRequest();
@@ -100,8 +100,6 @@ test(function requestContentLength(): Promise<void> {
     req.r = new BufReader(buf);
     assertEquals(req.contentLength, null);
   }
-
-  return;
 });
 
 interface TotalReader extends Deno.Reader {

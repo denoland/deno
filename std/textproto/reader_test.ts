@@ -24,7 +24,7 @@ test({
   fn(): Promise<void> {
     const _input =
       "dotlines\r\n.foo\r\n..bar\n...baz\nquux\r\n\r\n.\r\nanot.her\r\n";
-    return;
+    return Promise.resolve();
   }
 });
 
