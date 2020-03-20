@@ -203,7 +203,7 @@ unitTest(
   {
     // FIXME(bartlomieju):
     // The feature below is not implemented, but the test should work after implementation
-    skip: true,
+    ignore: true,
     perms: { net: true }
   },
   async function fetchWithInfRedirection(): Promise<void> {
@@ -288,6 +288,20 @@ unitTest({ perms: { net: true } }, async function fetchInitBlobBody(): Promise<
   assert(response.headers.get("content-type")!.startsWith("text/javascript"));
 });
 
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataBody(): Promise<void> {
+    const form = new FormData();
+    form.append("field", "value");
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: form
+    });
+    const resultForm = await response.formData();
+    assertEquals(form.get("field"), resultForm.get("field"));
+  }
+);
+
 unitTest({ perms: { net: true } }, async function fetchUserAgent(): Promise<
   void
 > {
@@ -349,7 +363,7 @@ function bufferServer(addr: string): Deno.Buffer {
 unitTest(
   {
     // FIXME(bartlomieju)
-    skip: true,
+    ignore: true,
     perms: { net: true }
   },
   async function fetchRequest(): Promise<void> {
@@ -379,7 +393,7 @@ unitTest(
 unitTest(
   {
     // FIXME(bartlomieju)
-    skip: true,
+    ignore: true,
     perms: { net: true }
   },
   async function fetchPostBodyString(): Promise<void> {
@@ -413,7 +427,7 @@ unitTest(
 unitTest(
   {
     // FIXME(bartlomieju)
-    skip: true,
+    ignore: true,
     perms: { net: true }
   },
   async function fetchPostBodyTypedArray(): Promise<void> {

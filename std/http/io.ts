@@ -242,7 +242,7 @@ export async function writeResponse(
   const statusText = STATUS_TEXT.get(statusCode);
   const writer = BufWriter.create(w);
   if (!statusText) {
-    throw Error("bad status code");
+    throw new Deno.errors.InvalidData("Bad status code");
   }
   if (!r.body) {
     r.body = new Uint8Array();

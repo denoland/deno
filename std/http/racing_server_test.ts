@@ -73,4 +73,5 @@ test(async function serverPipelineRace(): Promise<void> {
     assertEquals(s, outLines[i]);
   }
   killServer();
+  conn.close();
 });

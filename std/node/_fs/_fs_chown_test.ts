@@ -4,10 +4,10 @@ import { fail, assertEquals } from "../../testing/asserts.ts";
 import { chown, chownSync } from "./_fs_chown.ts";
 
 //chown is difficult to test.  Best we can do is set the existing user id/group id again
-const skip = Deno.build.os == "win";
+const ignore = Deno.build.os == "win";
 
 test({
-  skip,
+  ignore,
   name: "ASYNC: setting existing uid/gid works as expected (non-Windows)",
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
@@ -35,7 +35,7 @@ test({
 });
 
 test({
-  skip,
+  ignore,
   name: "SYNC: setting existing uid/gid works as expected (non-Windows)",
   fn() {
     const tempFile: string = Deno.makeTempFileSync();

@@ -165,5 +165,3 @@ Deno.test(async function testWriteVarnumLittleEndian(): Promise<void> {
   await buff.read(data);
   assertEquals(data, new Uint8Array([0x01, 0x02, 0x03, 0x04]));
 });
-
-Deno.runTests();
