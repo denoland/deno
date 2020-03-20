@@ -25,7 +25,7 @@ unitTest(async function sendAsyncStackTrace(): Promise<void> {
   }
 });
 
-unitTest(function malformedMinimalControlBuffer(): Promise<void> {
+unitTest(function malformedMinimalControlBuffer(): void {
   // @ts-ignore
   const readOpId = Deno.core.ops()["op_read"];
   // @ts-ignore
@@ -40,6 +40,4 @@ unitTest(function malformedMinimalControlBuffer(): Promise<void> {
   const message = new TextDecoder().decode(res.slice(12)).trim();
   assert(arg < 0);
   assertEquals(message, "Unparsable control buffer");
-
-  return Promise.resolve(void 0);
 });

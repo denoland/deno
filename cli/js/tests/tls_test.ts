@@ -39,7 +39,7 @@ unitTest(async function connectTLSCertFileNoReadPerm(): Promise<void> {
 
 unitTest(
   { perms: { read: true, net: true } },
-  function listenTLSNonExistentCertKeyFiles(): Promise<void> {
+  function listenTLSNonExistentCertKeyFiles(): void {
     let err;
     const options = {
       hostname: "localhost",
@@ -67,14 +67,10 @@ unitTest(
       err = e;
     }
     assert(err instanceof Deno.errors.NotFound);
-
-    return;
   }
 );
 
-unitTest({ perms: { net: true } }, function listenTLSNoReadPerm(): Promise<
-  void
-> {
+unitTest({ perms: { net: true } }, function listenTLSNoReadPerm(): void {
   let err;
   try {
     Deno.listenTLS({
@@ -88,15 +84,13 @@ unitTest({ perms: { net: true } }, function listenTLSNoReadPerm(): Promise<
   }
   assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
-
-  return;
 });
 
 unitTest(
   {
     perms: { read: true, write: true, net: true }
   },
-  function listenTLSEmptyKeyFile(): Promise<void> {
+  function listenTLSEmptyKeyFile(): void {
     let err;
     const options = {
       hostname: "localhost",
@@ -120,14 +114,12 @@ unitTest(
       err = e;
     }
     assert(err instanceof Error);
-
-    return;
   }
 );
 
 unitTest(
   { perms: { read: true, write: true, net: true } },
-  function listenTLSEmptyCertFile(): Promise<void> {
+  function listenTLSEmptyCertFile(): void {
     let err;
     const options = {
       hostname: "localhost",
@@ -151,8 +143,6 @@ unitTest(
       err = e;
     }
     assert(err instanceof Error);
-
-    return;
   }
 );
 

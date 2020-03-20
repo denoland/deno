@@ -17,10 +17,7 @@ const testdataDir = path.resolve("fs", "testdata");
 // TODO(axetroy): Add test for Windows once symlink is implemented for Windows.
 const isWindows = Deno.build.os === "win";
 
-function testCopy(
-  name: string,
-  cb: (tempDir: string) => Promise<void>
-): Promise<void> {
+function testCopy(name: string, cb: (tempDir: string) => Promise<void>): void {
   Deno.test({
     name,
     async fn(): Promise<void> {
@@ -31,14 +28,9 @@ function testCopy(
       await Deno.remove(tempDir, { recursive: true });
     }
   });
-
-  return Promise.resolve(void 0);
 }
 
-function testCopySync(
-  name: string,
-  cb: (tempDir: string) => void
-): Promise<void> {
+function testCopySync(name: string, cb: (tempDir: string) => void): void {
   Deno.test({
     name,
     fn: (): void => {
@@ -49,7 +41,6 @@ function testCopySync(
       Deno.removeSync(tempDir, { recursive: true });
     }
   });
-  return Promise.resolve(void 0);
 }
 
 testCopy(

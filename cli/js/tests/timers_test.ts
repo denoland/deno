@@ -158,10 +158,9 @@ unitTest(async function intervalOrdering(): Promise<void> {
   assertEquals(timeouts, 1);
 });
 
-unitTest(function intervalCancelInvalidSilentFail(): Promise<void> {
+unitTest(function intervalCancelInvalidSilentFail(): void {
   // Should silently fail (no panic)
   clearInterval(2147483647);
-  return;
 });
 
 unitTest(async function fireCallbackImmediatelyWhenDelayOverMaxValue(): Promise<
@@ -235,7 +234,7 @@ unitTest(async function timeoutBindThis(): Promise<void> {
   }
 });
 
-unitTest(function clearTimeoutShouldConvertToNumber(): Promise<void> {
+unitTest(function clearTimeoutShouldConvertToNumber(): void {
   let called = false;
   const obj = {
     valueOf(): number {
@@ -245,7 +244,6 @@ unitTest(function clearTimeoutShouldConvertToNumber(): Promise<void> {
   };
   clearTimeout((obj as unknown) as number);
   assert(called);
-  return;
 });
 
 unitTest(function setTimeoutShouldThrowWithBigint(): void {

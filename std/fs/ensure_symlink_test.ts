@@ -30,7 +30,7 @@ Deno.test(async function ensureSymlinkIfItNotExist(): Promise<void> {
   );
 });
 
-Deno.test(function ensureSymlinkSyncIfItNotExist(): Promise<void> {
+Deno.test(function ensureSymlinkSyncIfItNotExist(): void {
   const testDir = path.join(testdataDir, "link_file_2");
   const testFile = path.join(testDir, "test.txt");
 
@@ -42,8 +42,6 @@ Deno.test(function ensureSymlinkSyncIfItNotExist(): Promise<void> {
     Deno.statSync(testFile);
     throw new Error("test file should exists.");
   });
-
-  return Promise.resolve(void 0);
 });
 
 Deno.test(async function ensureSymlinkIfItExist(): Promise<void> {

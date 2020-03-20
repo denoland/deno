@@ -298,19 +298,19 @@ export class ConsoleTestReporter implements TestReporter {
     // compared to `console.log`; `core.print` on the other hand
     // is line-buffered and doesn't output message without newline
     stdout.writeSync(this.encoder.encode(msg));
-    return Promise.resolve(void 0);
+    return Promise.resolve();
   }
 
   start(event: TestEventStart): Promise<void> {
     this.log(`running ${event.tests} tests`);
-    return Promise.resolve(void 0);
+    return Promise.resolve();
   }
 
   testStart(event: TestEventTestStart): Promise<void> {
     const { name } = event;
 
     this.log(`test ${name} ... `, true);
-    return Promise.resolve(void 0);
+    return Promise.resolve();
   }
 
   testEnd(event: TestEventTestEnd): Promise<void> {
@@ -328,7 +328,7 @@ export class ConsoleTestReporter implements TestReporter {
         break;
     }
 
-    return Promise.resolve(void 0);
+    return Promise.resolve();
   }
 
   end(event: TestEventEnd): Promise<void> {
@@ -360,7 +360,7 @@ export class ConsoleTestReporter implements TestReporter {
         `${formatDuration(duration)}\n`
     );
 
-    return Promise.resolve(void 0);
+    return Promise.resolve();
   }
 }
 

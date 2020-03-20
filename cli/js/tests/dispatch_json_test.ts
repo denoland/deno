@@ -19,7 +19,7 @@ unitTest(
   }
 );
 
-unitTest(function malformedJsonControlBuffer(): Promise<void> {
+unitTest(function malformedJsonControlBuffer(): void {
   // @ts-ignore
   const opId = Deno.core.ops()["op_open"];
   // @ts-ignore
@@ -29,6 +29,4 @@ unitTest(function malformedJsonControlBuffer(): Promise<void> {
   const resJson = JSON.parse(resText) as any;
   assert(!resJson.ok);
   assert(resJson.err);
-
-  return Promise.resolve(void 0);
 });

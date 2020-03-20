@@ -226,7 +226,7 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
 
   close(): Promise<void> {
     close(this.rid);
-    return Promise.resolve(void 0);
+    return Promise.resolve();
   }
 
   cancel(): Promise<void> {

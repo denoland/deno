@@ -3,7 +3,7 @@ import { unitTest, assert, assertEquals } from "./test_util.ts";
 
 unitTest(
   { perms: { write: true, read: true } },
-  function readlinkSyncSuccess(): Promise<void> {
+  function readlinkSyncSuccess(): void {
     const testDir = Deno.makeTempDirSync();
     const target = testDir + "/target";
     const symlink = testDir + "/symln";
@@ -15,14 +15,10 @@ unitTest(
       const targetPath = Deno.readlinkSync(symlink);
       assertEquals(targetPath, target);
     }
-
-    return Promise.resolve(void 0);
   }
 );
 
-unitTest({ perms: { read: false } }, function readlinkSyncPerm(): Promise<
-  void
-> {
+unitTest({ perms: { read: false } }, function readlinkSyncPerm(): void {
   let caughtError = false;
   try {
     Deno.readlinkSync("/symlink");
@@ -31,13 +27,9 @@ unitTest({ perms: { read: false } }, function readlinkSyncPerm(): Promise<
     assert(e instanceof Deno.errors.PermissionDenied);
   }
   assert(caughtError);
-
-  return Promise.resolve(void 0);
 });
 
-unitTest({ perms: { read: true } }, function readlinkSyncNotFound(): Promise<
-  void
-> {
+unitTest({ perms: { read: true } }, function readlinkSyncNotFound(): void {
   let caughtError = false;
   let data;
   try {
@@ -48,8 +40,6 @@ unitTest({ perms: { read: true } }, function readlinkSyncNotFound(): Promise<
   }
   assert(caughtError);
   assertEquals(data, undefined);
-
-  return Promise.resolve(void 0);
 });
 
 unitTest(
@@ -69,7 +59,9 @@ unitTest(
   }
 );
 
-unitTest({ perms: { read: false } }, function readlinkPerm(): Promise<void> {
+unitTest({ perms: { read: false } }, async function readlinkPerm(): Promise<
+  void
+> {
   let caughtError = false;
   try {
     await Deno.readlink("/symlink");
@@ -78,6 +70,4 @@ unitTest({ perms: { read: false } }, function readlinkPerm(): Promise<void> {
     assert(e instanceof Deno.errors.PermissionDenied);
   }
   assert(caughtError);
-
-  return Promise.resolve(void 0);
 });
