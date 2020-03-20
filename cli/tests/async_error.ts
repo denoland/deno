@@ -1,5 +1,6 @@
 console.log("hello");
-const foo = (): Promise<never> => {
+// eslint-disable-next-line require-await
+const foo = async (): Promise<never> => {
   console.log("before error");
   throw Error("error");
 };

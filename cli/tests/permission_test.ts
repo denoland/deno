@@ -5,7 +5,7 @@ const name = args[0];
 const test: { [key: string]: Function } = {
   readRequired(): Promise<void> {
     readFileSync("README.md");
-    return;
+    return Promise.resolve();
   },
   writeRequired(): void {
     makeTempDirSync();
