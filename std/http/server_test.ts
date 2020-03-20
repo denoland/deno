@@ -375,7 +375,6 @@ test({
       })
       .catch((_): void => {}); // Ignores the error when closing the process.
 
-
     try {
       const r = new TextProtoReader(new BufReader(p.stdout!));
       const s = await r.readLine();
@@ -414,7 +413,7 @@ test({
         `${port}`
       ],
       stdout: "piped"
-  });
+    });
 
     let serverIsRunning = true;
     const statusPromise = p
@@ -503,7 +502,7 @@ test({
   async fn(): Promise<void> {
     const port = randomPort();
     const serverRoutine = async (): Promise<void> => {
-      const server = serve(":"+port);
+      const server = serve(":" + port);
       // @ts-ignore
       for await (const req of server) {
         await assertThrowsAsync(async () => {

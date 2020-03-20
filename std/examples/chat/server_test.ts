@@ -6,14 +6,19 @@ import { connectWebSocket, WebSocket } from "../../ws/mod.ts";
 import { randomPort } from "../../http/test_util.ts";
 import { delay } from "../../util/async.ts";
 
-let server: Deno.Process | undefined;
 const port = randomPort();
 
 const { test, build } = Deno;
 
 async function startServer(): Promise<Deno.Process> {
   const server = Deno.run({
-    args: [Deno.execPath(), "--allow-net", "--allow-read", "server.ts", `127.0.0.1:${port}`],
+    args: [
+      Deno.execPath(),
+      "--allow-net",
+      "--allow-read",
+      "server.ts",
+      `127.0.0.1:${port}`
+    ],
     cwd: "examples/chat",
     stdout: "piped"
   });

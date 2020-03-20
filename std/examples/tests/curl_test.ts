@@ -23,7 +23,7 @@ Deno.test({
         Deno.execPath(),
         "--allow-net",
         "curl.ts",
-        "http://localhost:"+port
+        "http://localhost:" + port
       ],
       cwd: "examples",
       stdout: "piped"
