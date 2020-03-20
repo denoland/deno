@@ -43,7 +43,7 @@ zzz,yyy,xxx`,
       ["a,a", `bbb`, "ccc"],
       ["zzz", "yyy", "xxx"]
     ],
-    skip: true
+    ignore: true
   },
   {
     Name: "NoEOLTest",
@@ -63,7 +63,7 @@ line","one line","three
 line
 field"`,
     Output: [["two\nline"], ["one line"], ["three\nline\nfield"]],
-    skip: true
+    ignore: true
   },
   {
     Name: "BlankLine",
@@ -263,20 +263,20 @@ x,,,
     Input: 'a,"b\nc"d,e',
     Error: true,
     // Error: &ParseError{StartLine: 1, Line: 2, Column: 1, Err: ErrQuote},
-    skip: true
+    ignore: true
   },
   {
     Name: "StartLine2",
     Input: 'a,b\n"d\n\n,e',
     Error: true,
     // Error: &ParseError{StartLine: 2, Line: 5, Column: 0, Err: ErrQuote},
-    skip: true
+    ignore: true
   },
   {
     Name: "CRLFInQuotedField", // Issue 21201
     Input: 'A,"Hello\r\nHi",B\r\n',
     Output: [["A", "Hello\nHi", "B"]],
-    skip: true
+    ignore: true
   },
   {
     Name: "BinaryBlobField", // Issue 19410
@@ -287,32 +287,32 @@ x,,,
     Name: "TrailingCR",
     Input: "field1,field2\r",
     Output: [["field1", "field2"]],
-    skip: true
+    ignore: true
   },
   {
     Name: "QuotedTrailingCR",
     Input: '"field"\r',
     Output: [['"field"']],
-    skip: true
+    ignore: true
   },
   {
     Name: "QuotedTrailingCRCR",
     Input: '"field"\r\r',
     Error: true,
     // Error: &ParseError{StartLine: 1, Line: 1, Column: 6, Err: ErrQuote},
-    skip: true
+    ignore: true
   },
   {
     Name: "FieldCR",
     Input: "field\rfield\r",
     Output: [["field\rfield"]],
-    skip: true
+    ignore: true
   },
   {
     Name: "FieldCRCR",
     Input: "field\r\rfield\r\r",
     Output: [["field\r\rfield\r"]],
-    skip: true
+    ignore: true
   },
   {
     Name: "FieldCRCRLF",
@@ -328,7 +328,7 @@ x,,,
     Name: "FieldCRCRLFCRCR",
     Input: "field\r\r\n\r\rfield\r\r\n\r\r",
     Output: [["field\r"], ["\r\rfield\r"], ["\r"]],
-    skip: true
+    ignore: true
   },
   {
     Name: "MultiFieldCRCRLFCRCR",
@@ -338,7 +338,7 @@ x,,,
       ["\r\rfield1", "field2\r"],
       ["\r\r", ""]
     ],
-    skip: true
+    ignore: true
   },
   {
     Name: "NonASCIICommaAndComment",
@@ -374,12 +374,12 @@ x,,,
     Name: "QuotedFieldMultipleLF",
     Input: '"\n\n\n\n"',
     Output: [["\n\n\n\n"]],
-    skip: true
+    ignore: true
   },
   {
     Name: "MultipleCRLF",
     Input: "\r\n\r\n\r\n\r\n",
-    skip: true
+    ignore: true
   },
   /**
    * The implementation may read each line in several chunks if
@@ -392,7 +392,7 @@ x,,,
       "#ignore\n".repeat(10000) + "@".repeat(5000) + "," + "*".repeat(5000),
     Output: [["@".repeat(5000), "*".repeat(5000)]],
     Comment: "#",
-    skip: true
+    ignore: true
   },
   {
     Name: "QuoteWithTrailingCRLF",
@@ -410,27 +410,27 @@ x,,,
     Name: "DoubleQuoteWithTrailingCRLF",
     Input: '"foo""bar"\r\n',
     Output: [[`foo"bar`]],
-    skip: true
+    ignore: true
   },
   {
     Name: "EvenQuotes",
     Input: `""""""""`,
     Output: [[`"""`]],
-    skip: true
+    ignore: true
   },
   {
     Name: "OddQuotes",
     Input: `"""""""`,
     Error: true,
     // Error:" &ParseError{StartLine: 1, Line: 1, Column: 7, Err: ErrQuote}",
-    skip: true
+    ignore: true
   },
   {
     Name: "LazyOddQuotes",
     Input: `"""""""`,
     Output: [[`"""`]],
     LazyQuotes: true,
-    skip: true
+    ignore: true
   },
   {
     Name: "BadComma1",
@@ -466,7 +466,7 @@ x,,,
 ];
 for (const t of testCases) {
   Deno.test({
-    skip: !!t.skip,
+    ignore: !!t.ignore,
     name: `[CSV] ${t.Name}`,
     async fn(): Promise<void> {
       let comma = ",";

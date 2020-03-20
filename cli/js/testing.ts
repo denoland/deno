@@ -4,10 +4,13 @@ import { exit } from "./ops/os.ts";
 import { Console, stringifyArgs } from "./web/console.ts";
 import { stdout } from "./files.ts";
 import { TextEncoder } from "./web/text_encoding.ts";
+import { metrics } from "./ops/runtime.ts";
+import { resources } from "./ops/resources.ts";
+import { assert } from "./util.ts";
 
 const RED_FAILED = red("FAILED");
 const GREEN_OK = green("ok");
-const YELLOW_SKIPPED = yellow("SKIPPED");
+const YELLOW_IGNORED = yellow("ignored");
 const disabledConsole = new Console((_x: string, _isErr?: boolean): void => {});
 
 function formatDuration(time = 0): string {
@@ -15,12 +18,59 @@ function formatDuration(time = 0): string {
   return gray(italic(timeStr));
 }
 
+// Wrap `TestFunction` in additional assertion that makes sure
+// the test case does not leak async "ops" - ie. number of async
+// completed ops after the test is the same as number of dispatched
+// ops. Note that "unref" ops are ignored since in nature that are
+// optional.
+function assertOps(fn: TestFunction): TestFunction {
+  return async function asyncOpSanitizer(): Promise<void> {
+    const pre = metrics();
+    await fn();
+    const post = metrics();
+    // We're checking diff because one might spawn HTTP server in the background
+    // that will be a pending async op before test starts.
+    const dispatchedDiff = post.opsDispatchedAsync - pre.opsDispatchedAsync;
+    const completedDiff = post.opsCompletedAsync - pre.opsCompletedAsync;
+    assert(
+      dispatchedDiff === completedDiff,
+      `Test case is leaking async ops.
+Before:
+  - dispatched: ${pre.opsDispatchedAsync}
+  - completed: ${pre.opsCompletedAsync}
+After: 
+  - dispatched: ${post.opsDispatchedAsync}
+  - completed: ${post.opsCompletedAsync}`
+    );
+  };
+}
+
+// Wrap `TestFunction` in additional assertion that makes sure
+// the test case does not "leak" resources - ie. resource table after
+// the test has exactly the same contents as before the test.
+function assertResources(fn: TestFunction): TestFunction {
+  return async function resourceSanitizer(): Promise<void> {
+    const pre = resources();
+    await fn();
+    const post = resources();
+
+    const preStr = JSON.stringify(pre, null, 2);
+    const postStr = JSON.stringify(post, null, 2);
+    const msg = `Test case is leaking resources.
+Before: ${preStr}
+After: ${postStr}`;
+    assert(preStr === postStr, msg);
+  };
+}
+
 export type TestFunction = () => void | Promise<void>;
 
 export interface TestDefinition {
   fn: TestFunction;
   name: string;
-  skip?: boolean;
+  ignore?: boolean;
+  disableOpSanitizer?: boolean;
+  disableResourceSanitizer?: boolean;
 }
 
 const TEST_REGISTRY: TestDefinition[] = [];
@@ -43,12 +93,12 @@ export function test(
     if (!t) {
       throw new TypeError("The test name can't be empty");
     }
-    testDef = { fn: fn as TestFunction, name: t, skip: false };
+    testDef = { fn: fn as TestFunction, name: t, ignore: false };
   } else if (typeof t === "function") {
     if (!t.name) {
       throw new TypeError("The test function can't be anonymous");
     }
-    testDef = { fn: t, name: t.name, skip: false };
+    testDef = { fn: t, name: t.name, ignore: false };
   } else {
     if (!t.fn) {
       throw new TypeError("Missing test function");
@@ -56,7 +106,15 @@ export function test(
     if (!t.name) {
       throw new TypeError("The test name can't be empty");
     }
-    testDef = { fn: t.fn, name: t.name, skip: Boolean(t.skip) };
+    testDef = { ...t, ignore: Boolean(t.ignore) };
+  }
+
+  if (testDef.disableOpSanitizer !== true) {
+    testDef.fn = assertOps(testDef.fn);
+  }
+
+  if (testDef.disableResourceSanitizer !== true) {
+    testDef.fn = assertResources(testDef.fn);
   }
 
   TEST_REGISTRY.push(testDef);
@@ -82,7 +140,7 @@ export interface RunTestsOptions {
 enum TestStatus {
   Passed = "passed",
   Failed = "failed",
-  Skipped = "skipped"
+  Ignored = "ignored"
 }
 
 interface TestResult {
@@ -152,11 +210,11 @@ class TestApi {
 
     const results: TestResult[] = [];
     const suiteStart = +new Date();
-    for (const { name, fn, skip } of this.testsToRun) {
+    for (const { name, fn, ignore } of this.testsToRun) {
       const result: Partial<TestResult> = { name, duration: 0 };
       yield { kind: TestEvent.TestStart, name };
-      if (skip) {
-        result.status = TestStatus.Skipped;
+      if (ignore) {
+        result.status = TestStatus.Ignored;
         this.stats.ignored++;
       } else {
         const start = +new Date();
@@ -262,8 +320,8 @@ export class ConsoleTestReporter implements TestReporter {
       case TestStatus.Failed:
         this.log(`${RED_FAILED} ${formatDuration(result.duration)}`);
         break;
-      case TestStatus.Skipped:
-        this.log(`${YELLOW_SKIPPED} ${formatDuration(result.duration)}`);
+      case TestStatus.Ignored:
+        this.log(`${YELLOW_IGNORED} ${formatDuration(result.duration)}`);
         break;
     }
   }

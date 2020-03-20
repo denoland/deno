@@ -40,6 +40,7 @@ Deno.test("[examples/echo_server]", async () => {
     assertStrictEq(actualResponse, expectedResponse);
   } finally {
     conn?.close();
+    process.stdout!.close();
     process.close();
   }
 });

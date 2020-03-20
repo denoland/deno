@@ -20,7 +20,7 @@ unitTest(
   {
     perms: { net: true },
     // TODO:
-    skip: Deno.build.os === "win"
+    ignore: Deno.build.os === "win"
   },
   function netUdpListenClose(): void {
     const port = randomPort();
@@ -117,7 +117,7 @@ unitTest({ perms: { net: true } }, async function netTcpDialListen(): Promise<
 });
 
 unitTest(
-  { skip: Deno.build.os === "win", perms: { net: true } },
+  { ignore: Deno.build.os === "win", perms: { net: true } },
   async function netUdpSendReceive(): Promise<void> {
     const alicePort = randomPort();
     const alice = Deno.listen({ port: alicePort, transport: "udp" });
@@ -160,7 +160,7 @@ unitTest(
 );
 
 unitTest(
-  { skip: Deno.build.os === "win", perms: { net: true } },
+  { ignore: Deno.build.os === "win", perms: { net: true } },
   async function netUdpListenCloseWhileIterating(): Promise<void> {
     const port = randomPort();
     const socket = Deno.listen({ port, transport: "udp" });
@@ -176,7 +176,7 @@ unitTest(
 unitTest(
   {
     // FIXME(bartlomieju)
-    skip: true,
+    ignore: true,
     perms: { net: true }
   },
   async function netListenAsyncIterator(): Promise<void> {
@@ -212,7 +212,7 @@ unitTest(
 unitTest(
   {
     // FIXME(bartlomieju)
-    skip: true,
+    ignore: true,
     perms: { net: true }
   },
   async function netCloseReadSuccess() {
@@ -250,7 +250,7 @@ unitTest(
 unitTest(
   {
     // FIXME(bartlomieju)
-    skip: true,
+    ignore: true,
     perms: { net: true }
   },
   async function netDoubleCloseRead() {
@@ -283,7 +283,7 @@ unitTest(
 unitTest(
   {
     // FIXME(bartlomieju)
-    skip: true,
+    ignore: true,
     perms: { net: true }
   },
   async function netCloseWriteSuccess() {
@@ -323,7 +323,7 @@ unitTest(
 unitTest(
   {
     // FIXME(bartlomieju)
-    skip: true,
+    ignore: true,
     perms: { net: true }
   },
   async function netDoubleCloseWrite() {

@@ -8,7 +8,7 @@ const isWindows = Deno.build.os == "win";
 export async function testWalk(
   setup: (arg0: string) => void | Promise<void>,
   t: Deno.TestFunction,
-  skip = false
+  ignore = false
 ): Promise<void> {
   const name = t.name;
   async function fn(): Promise<void> {
@@ -20,10 +20,10 @@ export async function testWalk(
       await t();
     } finally {
       chdir(origCwd);
-      remove(d, { recursive: true });
+      await remove(d, { recursive: true });
     }
   }
-  Deno.test({ skip, name: `[walk] ${name}`, fn });
+  Deno.test({ ignore, name: `[walk] ${name}`, fn });
 }
 
 function normalize({ filename }: WalkInfo): string {
@@ -46,7 +46,8 @@ export async function walkArray(
 }
 
 export async function touch(path: string): Promise<void> {
-  await open(path, "w");
+  const f = await open(path, "w");
+  f.close();
 }
 
 function assertReady(expectedLength: number): void {

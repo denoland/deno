@@ -91,10 +91,14 @@ declare global {
       data?: ArrayBufferView
     ): null | Uint8Array;
 
+    setMacrotaskCallback(cb: () => boolean): void;
+
     shared: SharedArrayBuffer;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    evalContext(code: string): [any, EvalErrorInfo | null];
+    evalContext(
+      code: string,
+      scriptName?: string
+    ): [unknown, EvalErrorInfo | null];
 
     formatError: (e: Error) => string;
 
