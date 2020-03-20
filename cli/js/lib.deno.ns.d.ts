@@ -1291,25 +1291,25 @@ declare namespace Deno {
 
   // @url js/link.d.ts
 
-  /** Creates `newname` as a hard link to `oldname`.
+  /** Creates `newpath` as a hard link to `oldpath`.
    *
    *       Deno.linkSync("old/name", "new/name");
    *
    * Requires `allow-read` and `allow-write` permissions. */
-  export function linkSync(oldname: string, newname: string): void;
+  export function linkSync(oldpath: string, newpath: string): void;
 
-  /** Creates `newname` as a hard link to `oldname`.
+  /** Creates `newpath` as a hard link to `oldpath`.
    *
    *       await Deno.link("old/name", "new/name");
    *
    * Requires `allow-read` and `allow-write` permissions. */
-  export function link(oldname: string, newname: string): Promise<void>;
+  export function link(oldpath: string, newpath: string): Promise<void>;
 
   // @url js/symlink.d.ts
 
   /** **UNSTABLE**: `type` argument type may be changed to `"dir" | "file"`.
    *
-   * Creates `newname` as a symbolic link to `oldname`. The type argument can be
+   * Creates `newpath` as a symbolic link to `oldpath`. The type argument can be
    * set to `dir` or `file`. Is only available on Windows and ignored on other
    * platforms.
    *
@@ -1317,14 +1317,14 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions. */
   export function symlinkSync(
-    oldname: string,
-    newname: string,
+    oldpath: string,
+    newpath: string,
     type?: string
   ): void;
 
   /** **UNSTABLE**: `type` argument may be changed to "dir" | "file"
    *
-   * Creates `newname` as a symbolic link to `oldname`. The type argument can be
+   * Creates `newpath` as a symbolic link to `oldpath`. The type argument can be
    * set to `dir` or `file`. Is only available on Windows and ignored on other
    * platforms.
    *
@@ -1332,8 +1332,8 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions. */
   export function symlink(
-    oldname: string,
-    newname: string,
+    oldpath: string,
+    newpath: string,
     type?: string
   ): Promise<void>;
 

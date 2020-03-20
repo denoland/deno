@@ -442,7 +442,6 @@ dependencies = [
  "pty",
  "rand 0.7.3",
  "regex",
- "remove_dir_all",
  "reqwest",
  "ring",
  "rustyline",
