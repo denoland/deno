@@ -6,41 +6,30 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
-extern crate flate2;
-extern crate semver;
-use crate::fs::write_file;
+extern crate semver_parser;
 use crate::futures::FutureExt;
 use crate::{
   http_util::{fetch_once, FetchOnceResult},
-  version, ErrBox,
+  ErrBox,
 };
-use flate2::write::GzDecoder;
 use regex::Regex;
 use reqwest::{redirect::Policy, Client};
-use semver::Version;
-use std::env::current_exe;
-use std::fs::{remove_file, rename};
+use semver_parser::version::Version;
 use std::future::Future;
 use std::io::prelude::*;
 use std::path::Path;
 use std::pin::Pin;
+use std::process::Command;
 use std::string::String;
+use tempfile::TempDir;
 use url::Url;
 
-lazy_static! {
-  static ref LATEST_VERSION_URL: String =
-    "https://github.com/denoland/deno/releases/latest".to_string();
-  static ref EXEC_DOWNLOAD_URL: String =
-    "https://github.com/denoland/deno/releases/download/v".to_string();
-  static ref REGEX_STRING: String = r#"v([^\?]+)?""#.to_string();
-  static ref DENO_EXEC_TEMP_NAME: String = "deno_temp".to_string();
-}
-
+// TODO(ry) we should really be using target triples for the uploaded files.
 #[cfg(windows)]
 const EXEC_FILE_NAME: &str = "deno_win_x64.zip";
-#[cfg(macos)]
+#[cfg(target_os = "macos")]
 const EXEC_FILE_NAME: &str = "deno_osx_x64.gz";
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 const EXEC_FILE_NAME: &str = "deno_linux_x64.gz";
 
 struct ErrorMsg(String);
@@ -54,36 +43,45 @@ impl ErrorMsg {
   }
 }
 
-/// Asynchronously updates deno executable to greatest version
-/// if greatest version is available.
-pub async fn exec_upgrade() -> Result<(), ErrBox> {
-  let client = Client::builder().redirect(Policy::none()).build()?;
+async fn get_latest_version(client: &Client) -> Result<Version, ErrBox> {
   println!("Checking for latest version");
   let body = client
-    .get(Url::parse(&LATEST_VERSION_URL)?)
+    .get(Url::parse(
+      "https://github.com/denoland/deno/releases/latest",
+    )?)
     .send()
     .await?
     .text()
     .await?;
-  let checked_version = find_version(&body)?;
-  if Version::parse(&version::DENO.to_string())
-    < Version::parse(&checked_version)
-  {
-    println!(
-      "New version has been found\nDeno is upgrading to version {}",
-      &checked_version
-    );
-    let archive =
-      download_package(&compose_url_to_exec(&checked_version)?, client).await?;
-    let path = current_exe()?;
-    unpack(archive, &path)?;
-    replace_exec(&path)?;
-    println!("Upgrade done successfully")
-  } else {
+  let v = find_version(&body)?;
+  Ok(semver_parser::version::parse(&v).unwrap())
+}
+
+/// Asynchronously updates deno executable to greatest version
+/// if greatest version is available.
+pub async fn exec_upgrade() -> Result<(), ErrBox> {
+  let force = true; // TODO(ry) Should this be a CLI flag?
+
+  let client = Client::builder().redirect(Policy::none()).build()?;
+  let latest_version = get_latest_version(&client).await?;
+  let current_version =
+    semver_parser::version::parse(crate::version::DENO).unwrap();
+
+  if !force && current_version >= latest_version {
     println!(
       "Local deno version {} is the most recent release",
-      &version::DENO
+      &crate::version::DENO
     );
+  } else {
+    println!(
+      "New version has been found\nDeno is upgrading to version {}",
+      &latest_version
+    );
+    let archive =
+      download_package(&compose_url_to_exec(&latest_version)?, client).await?;
+    let path = std::env::current_exe()?;
+    unpack_and_replace(archive, &path, &latest_version)?;
+    println!("Upgrade done successfully")
   }
   Ok(())
 }
@@ -92,6 +90,7 @@ fn download_package(
   url: &Url,
   client: Client,
 ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ErrBox>>>> {
+  println!("downloading {}", url);
   let url = url.clone();
   let fut = async move {
     match fetch_once(client.clone(), &url, None).await? {
@@ -105,15 +104,16 @@ fn download_package(
   fut.boxed_local()
 }
 
-fn compose_url_to_exec(version: &str) -> Result<Url, ErrBox> {
-  let mut url_str = EXEC_DOWNLOAD_URL.clone();
+fn compose_url_to_exec(version: &Version) -> Result<Url, ErrBox> {
+  let mut url_str =
+    "https://github.com/denoland/deno/releases/download/v".to_string();
   url_str.push_str(&format!("{}/", version));
   url_str.push_str(&EXEC_FILE_NAME);
   Ok(Url::parse(&url_str[..])?)
 }
 
 fn find_version(text: &str) -> Result<String, ErrBox> {
-  let re = Regex::new(&REGEX_STRING)?;
+  let re = Regex::new(r#"v([^\?]+)?""#)?;
   if let Some(_mat) = re.find(text) {
     let mat = _mat.as_str();
     return Ok(mat[1..mat.len() - 1].to_string());
@@ -121,23 +121,60 @@ fn find_version(text: &str) -> Result<String, ErrBox> {
   Err(ErrorMsg("Cannot read latest tag version".to_string()).to_err_box())
 }
 
-fn unpack(archive: Vec<u8>, path: &Path) -> Result<(), ErrBox> {
-  let mut exec = Vec::new();
-  let mut decoder = GzDecoder::new(exec);
-  decoder.write_all(&archive[..])?;
-  decoder.try_finish()?;
-  exec = decoder.finish()?;
-  write_file::<Vec<u8>>(
-    &path.with_file_name(DENO_EXEC_TEMP_NAME.as_str()),
-    exec,
-    0o777,
-  )?;
+fn unpack_and_replace(
+  archive: Vec<u8>,
+  old_exe_path: &Path,
+  expected_version: &Version,
+) -> Result<(), ErrBox> {
+  let tmp = TempDir::new().unwrap();
+  let ar_path = tmp.path().join(EXEC_FILE_NAME);
+  {
+    let mut ar_file = std::fs::File::create(&ar_path)?;
+    ar_file.write_all(&archive)?;
+  }
+
+  let new_exe_path = if cfg!(windows) {
+    todo!()
+  } else {
+    let status = Command::new("gunzip")
+      .arg(&ar_path)
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+    assert!(status.success());
+
+    let new_exe_path = ar_path.with_extension("");
+    assert!(new_exe_path.exists());
+
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = std::fs::metadata(&new_exe_path)?.permissions();
+    perms.set_mode(perms.mode() | 0o100); // make executable
+    std::fs::set_permissions(&new_exe_path, perms)?;
+    new_exe_path
+  };
+
+  // test the downloaded file first...
+  check_exe(&new_exe_path, expected_version)?;
+
+  // replace old exe with new
+  std::fs::remove_file(old_exe_path)?;
+  std::fs::rename(new_exe_path, old_exe_path)?;
+
   Ok(())
 }
 
-fn replace_exec(path: &Path) -> Result<(), ErrBox> {
-  remove_file(path)?;
-  rename(path.with_file_name(DENO_EXEC_TEMP_NAME.as_str()), path)?;
+fn check_exe(
+  exe_path: &Path,
+  expected_version: &Version,
+) -> Result<(), ErrBox> {
+  let output = Command::new(exe_path)
+    .arg("-V")
+    .stderr(std::process::Stdio::inherit())
+    .output()?;
+  let stdout = String::from_utf8(output.stdout).unwrap();
+  assert!(output.status.success());
+  assert_eq!(stdout.trim(), format!("deno {}", expected_version));
   Ok(())
 }
 

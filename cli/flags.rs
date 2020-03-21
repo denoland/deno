@@ -744,9 +744,10 @@ fn upgrade_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Upgrade deno executable to newest version")
     .long_about(
       "Upgrade deno executable to newest available version.
-      
-      The newest available version is downloaded from
-      https://github.com/denoland/deno/releases",
+
+The latest version is downloaded from
+https://github.com/denoland/deno/releases
+and is used to replace the current executable.",
     )
 }
 
