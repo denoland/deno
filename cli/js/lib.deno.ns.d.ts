@@ -84,7 +84,7 @@ declare namespace Deno {
     skip?: string | RegExp;
     /** Disable logging of the results. Defaults to `false`. */
     disableLog?: boolean;
-    /** Whether or not to report results to the console as is done for `deno test`. Defaults to `false`. */
+    /** If true, report results to the console as is done for `deno test`. Defaults to `false`. */
     reportToConsole?: boolean;
   }
 
