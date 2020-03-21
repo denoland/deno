@@ -229,6 +229,7 @@ export async function reportToConn(
     const serializedMsg: any = { ...message };
     serializedMsg.errors = message.errors.map(([n, e]) => [n, e.stack]);
     await write(conn, serializedMsg, false);
+    conn.closeWrite();
   }
 }
 
