@@ -1603,6 +1603,25 @@ Format the code:
 ./tools/format.py
 ```
 
+### Testing deno types (JSDoc) changes locally
+
+If you would like to see how your JSDoc will be rendered after changing
+`cli/js/lib.deno.ns.d.ts`, you can run the following:
+
+First, make sure you have typedoc installed:
+
+```bash
+npm install typedoc --save-dev
+```
+
+Then run the doc generation tool:
+
+```bash
+./tools/docs.py
+```
+
+Output can be found in `./target/typedoc/index.html`
+
 ### Submitting a Pull Request
 
 Before submitting, please make sure the following is done:
