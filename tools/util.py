@@ -204,11 +204,11 @@ def rmtree(directory):
     shutil.rmtree(directory, onerror=rm_readonly)
 
 
-def build_mode(default="debug"):
+def build_mode():
     if "--release" in sys.argv:
         return "release"
     else:
-        return default
+        return "debug"
 
 
 # E.G. "target/debug"
