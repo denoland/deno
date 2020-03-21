@@ -228,7 +228,7 @@ export class SocketReporter implements Deno.TestReporter {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const serializedMsg: any = { ...msg };
     serializedMsg.test = { ...serializedMsg.test, fn: null };
-    await this.write([TestEvent.TestStart, msg]);
+    await this.write([TestEvent.TestStart, serializedMsg]);
   }
 
   async testEnd(msg: Deno.TestEndMessage): Promise<void> {
