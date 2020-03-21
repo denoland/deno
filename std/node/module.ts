@@ -27,6 +27,7 @@ import * as nodePath from "./path.ts";
 import * as nodeTimers from "./timers.ts";
 import * as nodeOs from "./os.ts";
 import * as nodeEvents from "./events.ts";
+import * as nodeQueryString from "./querystring.ts";
 
 import * as path from "../path/mod.ts";
 import { assert } from "../testing/asserts.ts";
@@ -593,6 +594,10 @@ nativeModulePolyfill.set("os", createNativeModule("os", nodeOs));
 nativeModulePolyfill.set("path", createNativeModule("path", nodePath));
 nativeModulePolyfill.set("timers", createNativeModule("timers", nodeTimers));
 nativeModulePolyfill.set("util", createNativeModule("util", nodeUtil));
+nativeModulePolyfill.set(
+  "querystring",
+  createNativeModule("querystring", nodeQueryString)
+);
 
 function loadNativeModule(
   _filename: string,
@@ -1040,11 +1045,11 @@ type RequireWrapper = (
   __dirname: string
 ) => void;
 
-function wrapSafe(filename_: string, content: string): RequireWrapper {
+function wrapSafe(filename: string, content: string): RequireWrapper {
   // TODO: fix this
   const wrapper = Module.wrap(content);
   // @ts-ignore
-  const [f, err] = Deno.core.evalContext(wrapper);
+  const [f, err] = Deno.core.evalContext(wrapper, filename);
   if (err) {
     throw err;
   }

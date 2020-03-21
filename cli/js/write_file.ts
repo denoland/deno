@@ -1,30 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { stat, statSync } from "./stat.ts";
+import { stat, statSync } from "./ops/fs/stat.ts";
 import { open, openSync } from "./files.ts";
-import { chmod, chmodSync } from "./chmod.ts";
+import { chmod, chmodSync } from "./ops/fs/chmod.ts";
 import { writeAll, writeAllSync } from "./buffer.ts";
+import { build } from "./build.ts";
 
-/** Options for writing to a file. */
 export interface WriteFileOptions {
-  /** Defaults to `false`. If set to `true`, will append to a file instead of
-   * overwriting previous contents. */
   append?: boolean;
-  /** Sets the option to allow creating a new file, if one doesn't already
-   * exist at the specified path (defaults to `true`). */
   create?: boolean;
-  /** Permissions always applied to file. */
-  perm?: number;
+  mode?: number;
 }
 
-/** Synchronously write data to the given path, by default creating a new
- * file if needed, else overwriting.
- *
- *       const encoder = new TextEncoder();
- *       const data = encoder.encode("Hello world\n");
- *       Deno.writeFileSync("hello.txt", data);
- *
- * Requires `allow-write` permission, and `allow-read` if create is `false`.
- */
 export function writeFileSync(
   path: string,
   data: Uint8Array,
@@ -41,23 +27,18 @@ export function writeFileSync(
   const openMode = !!options.append ? "a" : "w";
   const file = openSync(path, openMode);
 
-  if (options.perm !== undefined && options.perm !== null) {
-    chmodSync(path, options.perm);
+  if (
+    options.mode !== undefined &&
+    options.mode !== null &&
+    build.os !== "win"
+  ) {
+    chmodSync(path, options.mode);
   }
 
   writeAllSync(file, data);
   file.close();
 }
 
-/** Write data to the given path, by default creating a new file if needed,
- * else overwriting.
- *
- *       const encoder = new TextEncoder();
- *       const data = encoder.encode("Hello world\n");
- *       await Deno.writeFile("hello.txt", data);
- *
- * Requires `allow-write` permission, and `allow-read` if create is `false`.
- */
 export async function writeFile(
   path: string,
   data: Uint8Array,
@@ -74,8 +55,12 @@ export async function writeFile(
   const openMode = !!options.append ? "a" : "w";
   const file = await open(path, openMode);
 
-  if (options.perm !== undefined && options.perm !== null) {
-    await chmod(path, options.perm);
+  if (
+    options.mode !== undefined &&
+    options.mode !== null &&
+    build.os !== "win"
+  ) {
+    await chmod(path, options.mode);
   }
 
   await writeAll(file, data);

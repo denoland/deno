@@ -9,7 +9,6 @@ import {
   writeResponse,
   readRequest
 } from "./io.ts";
-import { encode } from "../strings/mod.ts";
 import Listener = Deno.Listener;
 import Conn = Deno.Conn;
 import Reader = Deno.Reader;
@@ -124,12 +123,23 @@ export class ServerRequest {
 
 export class Server implements AsyncIterable<ServerRequest> {
   private closing = false;
+  private connections: Conn[] = [];
 
   constructor(public listener: Listener) {}
 
   close(): void {
     this.closing = true;
     this.listener.close();
+    for (const conn of this.connections) {
+      try {
+        conn.close();
+      } catch (e) {
+        // Connection might have been already closed
+        if (!(e instanceof Deno.errors.BadResource)) {
+          throw e;
+        }
+      }
+    }
   }
 
   // Yields all HTTP requests on a single TCP connection.
@@ -138,7 +148,7 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     const bufr = new BufReader(conn);
     const w = new BufWriter(conn);
-    let req: ServerRequest | Deno.EOF | undefined;
+    let req: ServerRequest | Deno.EOF = Deno.EOF;
     let err: Error | undefined;
 
     while (!this.closing) {
@@ -146,9 +156,8 @@ export class Server implements AsyncIterable<ServerRequest> {
         req = await readRequest(conn, bufr);
       } catch (e) {
         err = e;
-        break;
       }
-      if (req === Deno.EOF) {
+      if (err != null || req === Deno.EOF) {
         break;
       }
 
@@ -162,31 +171,30 @@ export class Server implements AsyncIterable<ServerRequest> {
         // Something bad happened during response.
         // (likely other side closed during pipelined req)
         // req.done implies this connection already closed, so we can just return.
+        this.untrackConnection(req.conn);
         return;
       }
       // Consume unread body and trailers if receiver didn't consume those data
       await req.finalize();
     }
 
-    if (req === Deno.EOF) {
-      // The connection was gracefully closed.
-    } else if (err && req) {
-      // An error was thrown while parsing request headers.
-      try {
-        await writeResponse(req.w, {
-          status: 400,
-          body: encode(`${err.message}\r\n\r\n`)
-        });
-      } catch (_) {
-        // The connection is destroyed.
-        // Ignores the error.
-      }
-    } else if (this.closing) {
-      // There are more requests incoming but the server is closing.
-      // TODO(ry): send a back a HTTP 503 Service Unavailable status.
+    this.untrackConnection(conn);
+    try {
+      conn.close();
+    } catch (e) {
+      // might have been already closed
     }
+  }
 
-    conn.close();
+  private trackConnection(conn: Conn): void {
+    this.connections.push(conn);
+  }
+
+  private untrackConnection(conn: Conn): void {
+    const index = this.connections.indexOf(conn);
+    if (index !== -1) {
+      this.connections.splice(index, 1);
+    }
   }
 
   // Accepts a new TCP connection and yields all HTTP requests that arrive on
@@ -198,9 +206,16 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     if (this.closing) return;
     // Wait for a new connection.
-    const { value, done } = await this.listener.next();
-    if (done) return;
-    const conn = value as Conn;
+    let conn: Conn;
+    try {
+      conn = await this.listener.accept();
+    } catch (error) {
+      if (error instanceof Deno.errors.BadResource) {
+        return;
+      }
+      throw error;
+    }
+    this.trackConnection(conn);
     // Try to accept another connection and add it to the multiplexer.
     mux.add(this.acceptConnAndIterateHttpRequests(mux));
     // Yield the requests that arrive on the just-accepted connection.
@@ -218,7 +233,7 @@ export class Server implements AsyncIterable<ServerRequest> {
 export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
 
 /**
- * Start a HTTP server
+ * Create a HTTP server
  *
  *     import { serve } from "https://deno.land/std/http/server.ts";
  *     const body = "Hello World\n";
@@ -237,6 +252,18 @@ export function serve(addr: string | HTTPOptions): Server {
   return new Server(listener);
 }
 
+/**
+ * Start an HTTP server with given options and request handler
+ *
+ *     const body = "Hello World\n";
+ *     const options = { port: 8000 };
+ *     listenAndServeTLS(options, (req) => {
+ *       req.respond({ body });
+ *     });
+ *
+ * @param options Server configuration
+ * @param handler Request handler
+ */
 export async function listenAndServe(
   addr: string | HTTPOptions,
   handler: (req: ServerRequest) => void
@@ -278,7 +305,7 @@ export function serveTLS(options: HTTPSOptions): Server {
 }
 
 /**
- * Create an HTTPS server with given options and request handler
+ * Start an HTTPS server with given options and request handler
  *
  *     const body = "Hello HTTPS";
  *     const options = {

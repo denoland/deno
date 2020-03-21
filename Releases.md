@@ -6,6 +6,53 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.36.0 / 2020.03.11
+
+- BREAKING CHANGE: Remove Deno.errors.Other (#4249)
+- BREAKING CHANGE: Rename readDir -> readdir (#4225)
+- feat(std/encoding): add binary module (#4274)
+- feat(std/node): add appendFile and appendFileSync (#4294)
+- feat(std/node): add directory classes (#4087)
+- feat(std/node): add os.tmpdir() implementation (#4213)
+- feat: Add Deno.umask (#4290)
+- feat: Add global --quiet flag (#4135)
+- feat: Improvements to std/flags. (#4279)
+- feat: Make internel error frames dimmer (#4201)
+- feat: Support async function and EventListenerObject as listeners (#4240)
+- feat: add actual error class to fail message (#4305)
+- feat: seek should return cursor position (#4211)
+- feat: support permission mode in mkdir (#4286)
+- feat: update metrics to track different op types (#4221)
+- fix: Add content type for wasm, fix encoding in wasm test fixture (#4269)
+- fix: Add waker to StreamResource to fix hang on close bugs (#4293)
+- fix: Flattens dispatch error handling to produce one less useless stack frame
+  on op errors. (#4189)
+- fix: JavaScript dependencies in bundles. (#4215)
+- fix: Stricter permissions for Deno.makeTemp (#4318)
+- fix: `deno install` file name including extra dot on Windows (#4243)
+- fix: inlining of lib.dom.iterable.d.ts. (#4242)
+- fix: properly close FsEventsResource (#4266)
+- fix: remove unwanted ANSI Reset Sequence (#4268)
+- perf: use Object instead of Map for promise table (#4309)
+- perf: use subarray instead of slice in dispatch minimal (#4180)
+- refactor(cli/js): add assertOps and assertResources sanitizer in cli/js/ unit
+  tests (#4209, #4161)
+- refactor(cli/js/net): Cleanup iterable APIs (#4236)
+- refactor(core): improve exception handling(#4214, #4214, #4198)
+- refactor(core): rename structures related to Modules (#4217)
+- refactor: Cleanup options object parameters (#4296)
+- refactor: Migrate internal bundles to System (#4233)
+- refactor: Rename Option -> Options (#4226)
+- refactor: cleanup compiler runtimes (#4230)
+- refactor: preliminary cleanup of Deno.runTests() (#4237)
+- refactor: reduce unnecesarry output in cli/js tests (#4182)
+- refactor: reorganize cli/js (#4317, #4316, #4310, #4250, #4302, #4283, #4264)
+- refactor: rewrite testPerm into unitTest (#4231)
+- refactor: uncomment tests broken tests, use skip (#4311)
+- upgrade: dprint 0.8.0 (#4308, #4314)
+- upgrade: rust dependencies (#4270)
+- upgrade: typescript 3.8.3 (#4301)
+
 ### v0.35.0 / 2020.02.28
 
 - feat: Deno.fsEvents() (#3452)

@@ -22,6 +22,7 @@ use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
+use log::info;
 use regex::Regex;
 use serde_json::json;
 use std::collections::HashMap;
@@ -373,11 +374,12 @@ impl TsCompiler {
 
     let ts_compiler = self.clone();
 
-    eprintln!(
+    info!(
       "{} {}",
       colors::green("Compile".to_string()),
       module_url.to_string()
     );
+
     let msg = execute_in_thread(global_state.clone(), req_msg).await?;
 
     let json_str = std::str::from_utf8(&msg).unwrap();

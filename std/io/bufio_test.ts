@@ -15,7 +15,7 @@ import {
   BufReader,
   BufWriter,
   BufferFullError,
-  UnexpectedEOFError,
+  PartialReadError,
   readStringDelim,
   readLines
 } from "./bufio.ts";
@@ -191,7 +191,7 @@ const testOutput = encoder.encode("0123456789abcdefghijklmnopqrstuvwxy");
 class TestReader implements Reader {
   constructor(private data: Uint8Array, private stride: number) {}
 
-  async read(buf: Uint8Array): Promise<number | Deno.EOF> {
+  read(buf: Uint8Array): Promise<number | Deno.EOF> {
     let nread = this.stride;
     if (nread > this.data.byteLength) {
       nread = this.data.byteLength;
@@ -200,11 +200,11 @@ class TestReader implements Reader {
       nread = buf.byteLength;
     }
     if (nread === 0) {
-      return Deno.EOF;
+      return Promise.resolve(Deno.EOF);
     }
     copyBytes(buf as Uint8Array, this.data);
     this.data = this.data.subarray(nread);
-    return nread;
+    return Promise.resolve(nread);
   }
 }
 
@@ -369,9 +369,9 @@ Deno.test(async function bufReaderReadFull(): Promise<void> {
     const buf = new Uint8Array(6);
     try {
       await bufr.readFull(buf);
-      fail("readFull() should throw");
+      fail("readFull() should throw PartialReadError");
     } catch (err) {
-      assert(err instanceof UnexpectedEOFError);
+      assert(err instanceof PartialReadError);
       assert(err.partial instanceof Uint8Array);
       assertEquals(err.partial.length, 5);
       assertEquals(dec.decode(buf.subarray(0, 5)), "World");

@@ -3,36 +3,28 @@ import * as domTypes from "./dom_types.ts";
 import * as blob from "./blob.ts";
 import * as domFile from "./dom_file.ts";
 import { DomIterableMixin } from "./dom_iterable.ts";
-import { requiredArguments } from "../util.ts";
+import { requiredArguments } from "./util.ts";
 
 const dataSymbol = Symbol("data");
 
 class FormDataBase {
   private [dataSymbol]: Array<[string, domTypes.FormDataEntryValue]> = [];
 
-  /** Appends a new value onto an existing key inside a `FormData`
-   * object, or adds the key if it does not already exist.
-   *
-   *       formData.append('name', 'first');
-   *       formData.append('name', 'second');
-   */
   append(name: string, value: string): void;
   append(name: string, value: blob.DenoBlob, filename?: string): void;
   append(name: string, value: string | blob.DenoBlob, filename?: string): void {
     requiredArguments("FormData.append", arguments.length, 2);
     name = String(name);
     if (value instanceof blob.DenoBlob) {
-      const dfile = new domFile.DomFileImpl([value], filename || name);
+      const dfile = new domFile.DomFileImpl([value], filename || name, {
+        type: value.type
+      });
       this[dataSymbol].push([name, dfile]);
     } else {
       this[dataSymbol].push([name, String(value)]);
     }
   }
 
-  /** Deletes a key/value pair from a `FormData` object.
-   *
-   *       formData.delete('name');
-   */
   delete(name: string): void {
     requiredArguments("FormData.delete", arguments.length, 1);
     name = String(name);
@@ -46,11 +38,6 @@ class FormDataBase {
     }
   }
 
-  /** Returns an array of all the values associated with a given key
-   * from within a `FormData`.
-   *
-   *       formData.getAll('name');
-   */
   getAll(name: string): domTypes.FormDataEntryValue[] {
     requiredArguments("FormData.getAll", arguments.length, 1);
     name = String(name);
@@ -64,11 +51,6 @@ class FormDataBase {
     return values;
   }
 
-  /** Returns the first value associated with a given key from within a
-   * `FormData` object.
-   *
-   *       formData.get('name');
-   */
   get(name: string): domTypes.FormDataEntryValue | null {
     requiredArguments("FormData.get", arguments.length, 1);
     name = String(name);
@@ -81,23 +63,12 @@ class FormDataBase {
     return null;
   }
 
-  /** Returns a boolean stating whether a `FormData` object contains a
-   * certain key/value pair.
-   *
-   *       formData.has('name');
-   */
   has(name: string): boolean {
     requiredArguments("FormData.has", arguments.length, 1);
     name = String(name);
     return this[dataSymbol].some((entry): boolean => entry[0] === name);
   }
 
-  /** Sets a new value for an existing key inside a `FormData` object, or
-   * adds the key/value if it does not already exist.
-   * ref: https://xhr.spec.whatwg.org/#dom-formdata-set
-   *
-   *       formData.set('name', 'value');
-   */
   set(name: string, value: string): void;
   set(name: string, value: blob.DenoBlob, filename?: string): void;
   set(name: string, value: string | blob.DenoBlob, filename?: string): void {
@@ -112,7 +83,9 @@ class FormDataBase {
       if (this[dataSymbol][i][0] === name) {
         if (!found) {
           if (value instanceof blob.DenoBlob) {
-            const dfile = new domFile.DomFileImpl([value], filename || name);
+            const dfile = new domFile.DomFileImpl([value], filename || name, {
+              type: value.type
+            });
             this[dataSymbol][i][1] = dfile;
           } else {
             this[dataSymbol][i][1] = String(value);
@@ -129,7 +102,9 @@ class FormDataBase {
     // Otherwise, append entry to the context object’s entry list.
     if (!found) {
       if (value instanceof blob.DenoBlob) {
-        const dfile = new domFile.DomFileImpl([value], filename || name);
+        const dfile = new domFile.DomFileImpl([value], filename || name, {
+          type: value.type
+        });
         this[dataSymbol].push([name, dfile]);
       } else {
         this[dataSymbol].push([name, String(value)]);

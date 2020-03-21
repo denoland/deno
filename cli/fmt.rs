@@ -36,15 +36,15 @@ fn is_supported(path: &Path) -> bool {
 }
 
 fn get_config() -> dprint::configuration::Configuration {
-  dprint::configuration::ConfigurationBuilder::new()
+  use dprint::configuration::*;
+  ConfigurationBuilder::new()
     .line_width(80)
     .indent_width(2)
-    .next_control_flow_position(
-      dprint::configuration::NextControlFlowPosition::SameLine,
-    )
-    .binary_expression_operator_position(
-      dprint::configuration::OperatorPosition::SameLine,
-    )
+    .next_control_flow_position(NextControlFlowPosition::SameLine)
+    .binary_expression_operator_position(OperatorPosition::SameLine)
+    .brace_position(BracePosition::SameLine) // default is NextLineIfHanging
+    .comment_line_force_space_after_slashes(false)
+    .construct_signature_space_after_new_keyword(true)
     .build()
 }
 

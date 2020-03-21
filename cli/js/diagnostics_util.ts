@@ -71,7 +71,6 @@ function getSourceInformation(
   };
 }
 
-/** Converts a TypeScript diagnostic message chain to a Deno one. */
 function fromDiagnosticMessageChain(
   messageChain: ts.DiagnosticMessageChain[] | undefined
 ): DiagnosticMessageChain[] | undefined {
@@ -89,7 +88,6 @@ function fromDiagnosticMessageChain(
   });
 }
 
-/** Parse out information from a TypeScript diagnostic structure. */
 function parseDiagnostic(
   item: ts.Diagnostic | ts.DiagnosticRelatedInformation
 ): DiagnosticItem {
@@ -130,8 +128,6 @@ function parseDiagnostic(
   return sourceInfo ? { ...base, ...sourceInfo } : base;
 }
 
-/** Convert a diagnostic related information array into a Deno diagnostic
- * array. */
 function parseRelatedInformation(
   relatedInformation: readonly ts.DiagnosticRelatedInformation[]
 ): DiagnosticItem[] {
@@ -142,7 +138,6 @@ function parseRelatedInformation(
   return result;
 }
 
-/** Convert TypeScript diagnostics to Deno diagnostics. */
 export function fromTypeScriptDiagnostic(
   diagnostics: readonly ts.Diagnostic[]
 ): Diagnostic {

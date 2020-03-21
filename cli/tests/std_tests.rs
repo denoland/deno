@@ -1,8 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// TODO: fix tests in debug mode
-// Runs only on release build
-#[cfg(not(debug_assertions))]
 mod tests {
   extern crate lazy_static;
   extern crate tempfile;
@@ -20,11 +17,10 @@ mod tests {
     cwd.push("std");
     let mut deno = deno_cmd
       .current_dir(cwd) // note: std tests expect to run from "std" dir
+      .arg("test")
       .arg("--seed=86") // Some tests rely on specific random numbers.
       .arg("-A")
       // .arg("-Ldebug")
-      .arg("./testing/runner.ts")
-      .arg("--exclude=testing/testdata")
       .spawn()
       .expect("failed to spawn script");
     let status = deno.wait().expect("failed to wait for the child process");

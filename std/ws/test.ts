@@ -14,14 +14,14 @@ import {
   readFrame,
   unmask,
   writeFrame,
-  createWebSocket,
-  SocketClosedError
+  createWebSocket
 } from "./mod.ts";
 import { encode, decode } from "../strings/mod.ts";
 import Writer = Deno.Writer;
 import Reader = Deno.Reader;
 import Conn = Deno.Conn;
 import Buffer = Deno.Buffer;
+import { delay } from "../util/async.ts";
 
 test("[ws] read unmasked text frame", async () => {
   // unmasked single text frame with payload "Hello"
@@ -126,7 +126,7 @@ test("[ws] read unmasked bigger binary frame", async () => {
   assertEquals(bin.payload.length, payloadLength);
 });
 
-test("[ws] createSecAccept", async () => {
+test("[ws] createSecAccept", () => {
   const nonce = "dGhlIHNhbXBsZSBub25jZQ==";
   const d = createSecAccept(nonce);
   assertEquals(d, "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
@@ -297,31 +297,32 @@ function delayedWriter(ms: number, dest: Writer): Writer {
     }
   };
 }
-test("[ws] WebSocket.send(), WebSocket.ping() should be exclusive", async (): Promise<
-  void
-> => {
-  const buf = new Buffer();
-  const conn = dummyConn(new Buffer(), delayedWriter(1, buf));
-  const sock = createWebSocket({ conn });
-  // Ensure send call
-  await Promise.all([
-    sock.send("first"),
-    sock.send("second"),
-    sock.ping(),
-    sock.send(new Uint8Array([3]))
-  ]);
-  const bufr = new BufReader(buf);
-  const first = await readFrame(bufr);
-  const second = await readFrame(bufr);
-  const ping = await readFrame(bufr);
-  const third = await readFrame(bufr);
-  assertEquals(first.opcode, OpCode.TextFrame);
-  assertEquals(decode(first.payload), "first");
-  assertEquals(first.opcode, OpCode.TextFrame);
-  assertEquals(decode(second.payload), "second");
-  assertEquals(ping.opcode, OpCode.Ping);
-  assertEquals(third.opcode, OpCode.BinaryFrame);
-  assertEquals(bytes.equal(third.payload, new Uint8Array([3])), true);
+test({
+  name: "[ws] WebSocket.send(), WebSocket.ping() should be exclusive",
+  fn: async (): Promise<void> => {
+    const buf = new Buffer();
+    const conn = dummyConn(new Buffer(), delayedWriter(1, buf));
+    const sock = createWebSocket({ conn });
+    // Ensure send call
+    await Promise.all([
+      sock.send("first"),
+      sock.send("second"),
+      sock.ping(),
+      sock.send(new Uint8Array([3]))
+    ]);
+    const bufr = new BufReader(buf);
+    const first = await readFrame(bufr);
+    const second = await readFrame(bufr);
+    const ping = await readFrame(bufr);
+    const third = await readFrame(bufr);
+    assertEquals(first.opcode, OpCode.TextFrame);
+    assertEquals(decode(first.payload), "first");
+    assertEquals(first.opcode, OpCode.TextFrame);
+    assertEquals(decode(second.payload), "second");
+    assertEquals(ping.opcode, OpCode.Ping);
+    assertEquals(third.opcode, OpCode.BinaryFrame);
+    assertEquals(bytes.equal(third.payload, new Uint8Array([3])), true);
+  }
 });
 
 test("[ws] createSecKeyHasCorrectLength", () => {
@@ -331,26 +332,29 @@ test("[ws] createSecKeyHasCorrectLength", () => {
   assertEquals(atob(secKey).length, 16);
 });
 
-test("[ws] WebSocket should throw SocketClosedError when peer closed connection without close frame", async () => {
+test("[ws] WebSocket should throw `Deno.errors.ConnectionReset` when peer closed connection without close frame", async () => {
   const buf = new Buffer();
   const eofReader: Deno.Reader = {
-    async read(_: Uint8Array): Promise<number | Deno.EOF> {
-      return Deno.EOF;
+    read(_: Uint8Array): Promise<number | Deno.EOF> {
+      return Promise.resolve(Deno.EOF);
     }
   };
   const conn = dummyConn(eofReader, buf);
   const sock = createWebSocket({ conn });
   sock.closeForce();
-  await assertThrowsAsync(() => sock.send("hello"), SocketClosedError);
-  await assertThrowsAsync(() => sock.ping(), SocketClosedError);
-  await assertThrowsAsync(() => sock.close(0), SocketClosedError);
+  await assertThrowsAsync(
+    () => sock.send("hello"),
+    Deno.errors.ConnectionReset
+  );
+  await assertThrowsAsync(() => sock.ping(), Deno.errors.ConnectionReset);
+  await assertThrowsAsync(() => sock.close(0), Deno.errors.ConnectionReset);
 });
 
-test("[ws] WebSocket shouldn't throw UnexpectedEOFError on recive()", async () => {
+test("[ws] WebSocket shouldn't throw `Deno.errors.UnexpectedEof` on recive()", async () => {
   const buf = new Buffer();
   const eofReader: Deno.Reader = {
-    async read(_: Uint8Array): Promise<number | Deno.EOF> {
-      return Deno.EOF;
+    read(_: Uint8Array): Promise<number | Deno.EOF> {
+      return Promise.resolve(Deno.EOF);
     }
   };
   const conn = dummyConn(eofReader, buf);
@@ -361,29 +365,36 @@ test("[ws] WebSocket shouldn't throw UnexpectedEOFError on recive()", async () =
   assertEquals(done, true);
 });
 
-test("[ws] WebSocket should reject sending promise when connection reset forcely", async () => {
-  const buf = new Buffer();
-  let timer: number | undefined;
-  const lazyWriter: Deno.Writer = {
-    async write(_: Uint8Array): Promise<number> {
-      return new Promise(resolve => {
-        timer = setTimeout(() => resolve(0), 1000);
-      });
-    }
-  };
-  const conn = dummyConn(buf, lazyWriter);
-  const sock = createWebSocket({ conn });
-  const onError = (e: unknown): unknown => e;
-  const p = Promise.all([
-    sock.send("hello").catch(onError),
-    sock.send(new Uint8Array([1, 2])).catch(onError),
-    sock.ping().catch(onError)
-  ]);
-  sock.closeForce();
-  assertEquals(sock.isClosed, true);
-  const [a, b, c] = await p;
-  assert(a instanceof SocketClosedError);
-  assert(b instanceof SocketClosedError);
-  assert(c instanceof SocketClosedError);
-  clearTimeout(timer);
+test({
+  name:
+    "[ws] WebSocket should reject sending promise when connection reset forcely",
+  fn: async () => {
+    const buf = new Buffer();
+    let timer: number | undefined;
+    const lazyWriter: Deno.Writer = {
+      write(_: Uint8Array): Promise<number> {
+        return new Promise(resolve => {
+          timer = setTimeout(() => resolve(0), 1000);
+        });
+      }
+    };
+    const conn = dummyConn(buf, lazyWriter);
+    const sock = createWebSocket({ conn });
+    const onError = (e: unknown): unknown => e;
+    const p = Promise.all([
+      sock.send("hello").catch(onError),
+      sock.send(new Uint8Array([1, 2])).catch(onError),
+      sock.ping().catch(onError)
+    ]);
+    sock.closeForce();
+    assertEquals(sock.isClosed, true);
+    const [a, b, c] = await p;
+    assert(a instanceof Deno.errors.ConnectionReset);
+    assert(b instanceof Deno.errors.ConnectionReset);
+    assert(c instanceof Deno.errors.ConnectionReset);
+    clearTimeout(timer);
+    // Wait for another event loop turn for `timeout` op promise
+    // to resolve, otherwise we'll get "op leak".
+    await delay(10);
+  }
 });

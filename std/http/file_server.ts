@@ -102,7 +102,7 @@ async function serveFile(
 ): Promise<Response> {
   const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
   const headers = new Headers();
-  headers.set("content-length", fileInfo.len.toString());
+  headers.set("content-length", fileInfo.size.toString());
   headers.set("content-type", "text/plain; charset=utf-8");
 
   const res = {
@@ -126,7 +126,7 @@ async function serveDir(
     const fileUrl = posix.join(dirUrl, fileInfo.name ?? "");
     if (fileInfo.name === "index.html" && fileInfo.isFile()) {
       // in case index.html as dir...
-      return await serveFile(req, filePath);
+      return serveFile(req, filePath);
     }
     // Yuck!
     let mode = null;
@@ -135,7 +135,7 @@ async function serveDir(
     } catch (e) {}
     listEntry.push({
       mode: modeToString(fileInfo.isDirectory(), mode),
-      size: fileInfo.isFile() ? fileLenToString(fileInfo.len) : "",
+      size: fileInfo.isFile() ? fileLenToString(fileInfo.size) : "",
       name: fileInfo.name ?? "",
       url: fileUrl
     });
@@ -158,17 +158,17 @@ async function serveDir(
   return res;
 }
 
-async function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
+function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
   if (e instanceof Deno.errors.NotFound) {
-    return {
+    return Promise.resolve({
       status: 404,
       body: encoder.encode("Not found")
-    };
+    });
   } else {
-    return {
+    return Promise.resolve({
       status: 500,
       body: encoder.encode("Internal server error")
-    };
+    });
   }
 }
 

@@ -4,7 +4,6 @@ use crate::flags::Flags;
 use crate::op_error::OpError;
 #[cfg(not(test))]
 use atty;
-use log;
 use std::collections::HashSet;
 use std::fmt;
 #[cfg(not(test))]
@@ -349,12 +348,10 @@ fn permission_prompt(_message: &str) -> bool {
 }
 
 fn log_perm_access(message: &str) {
-  if log_enabled!(log::Level::Info) {
-    eprintln!(
-      "{}",
-      colors::bold(format!("{}️  Granted {}", PERMISSION_EMOJI, message))
-    );
-  }
+  debug!(
+    "{}",
+    colors::bold(format!("{}️  Granted {}", PERMISSION_EMOJI, message))
+  );
 }
 
 fn check_path_white_list(path: &Path, white_list: &HashSet<PathBuf>) -> bool {

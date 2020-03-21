@@ -2,8 +2,9 @@
 // This is an example of a server that responds with an empty body
 import { serve } from "../server.ts";
 
-const addr = "0.0.0.0:4502";
-console.log(`Simple server listening on ${addr}`);
+const port = parseInt(Deno.args[0] || "4502");
+const addr: Deno.ListenOptions = { port };
+console.log(`Simple server listening on ${port}`);
 for await (const req of serve(addr)) {
   req.respond({});
 }

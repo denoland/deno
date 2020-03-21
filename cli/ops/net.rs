@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use super::io::StreamResource;
+use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
@@ -56,7 +56,7 @@ fn op_accept(
       let listener_resource = resource_table
         .get_mut::<TcpListenerResource>(rid)
         .ok_or_else(|| {
-          OpError::other("Listener has been closed".to_string())
+          OpError::bad_resource("Listener has been closed".to_string())
         })?;
       let listener = &mut listener_resource.listener;
       match listener.poll_accept(cx).map_err(OpError::from) {
@@ -78,9 +78,12 @@ fn op_accept(
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
     let mut state = state_.borrow_mut();
-    let rid = state
-      .resource_table
-      .add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
+    let rid = state.resource_table.add(
+      "tcpStream",
+      Box::new(StreamResourceHolder::new(StreamResource::TcpStream(
+        tcp_stream,
+      ))),
+    );
     Ok(json!({
       "rid": rid,
       "localAddr": {
@@ -122,7 +125,9 @@ fn op_receive(
       let resource_table = &mut state_.borrow_mut().resource_table;
       let resource = resource_table
         .get_mut::<UdpSocketResource>(rid)
-        .ok_or_else(|| OpError::other("Socket has been closed".to_string()))?;
+        .ok_or_else(|| {
+          OpError::bad_resource("Socket has been closed".to_string())
+        })?;
       let socket = &mut resource.socket;
       socket.poll_recv_from(cx, &mut buf).map_err(OpError::from)
     });
@@ -168,7 +173,9 @@ fn op_send(
     let resource = state
       .resource_table
       .get_mut::<UdpSocketResource>(rid)
-      .ok_or_else(|| OpError::other("Socket has been closed".to_string()))?;
+      .ok_or_else(|| {
+        OpError::bad_resource("Socket has been closed".to_string())
+      })?;
 
     let socket = &mut resource.socket;
     let addr = resolve_addr(&args.hostname, args.port).await?;
@@ -203,9 +210,12 @@ fn op_connect(
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
     let mut state = state_.borrow_mut();
-    let rid = state
-      .resource_table
-      .add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
+    let rid = state.resource_table.add(
+      "tcpStream",
+      Box::new(StreamResourceHolder::new(StreamResource::TcpStream(
+        tcp_stream,
+      ))),
+    );
     Ok(json!({
       "rid": rid,
       "localAddr": {
@@ -247,11 +257,11 @@ fn op_shutdown(
   };
 
   let mut state = state.borrow_mut();
-  let resource = state
+  let resource_holder = state
     .resource_table
-    .get_mut::<StreamResource>(rid)
+    .get_mut::<StreamResourceHolder>(rid)
     .ok_or_else(OpError::bad_resource_id)?;
-  match resource {
+  match resource_holder.resource {
     StreamResource::TcpStream(ref mut stream) => {
       TcpStream::shutdown(stream, shutdown_mode).map_err(OpError::from)?;
     }

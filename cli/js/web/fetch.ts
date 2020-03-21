@@ -1,21 +1,19 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import {
-  assert,
-  createResolvable,
-  notImplemented,
-  isTypedArray
-} from "../util.ts";
+import { assert, createResolvable, notImplemented } from "../util.ts";
+import { isTypedArray } from "./util.ts";
 import * as domTypes from "./dom_types.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob.ts";
 import { Headers } from "./headers.ts";
 import * as io from "../io.ts";
-import { read, close } from "../files.ts";
+import { read } from "../ops/io.ts";
+import { close } from "../ops/resources.ts";
 import { Buffer } from "../buffer.ts";
 import { FormData } from "./form_data.ts";
 import { URL } from "./url.ts";
 import { URLSearchParams } from "./url_search_params.ts";
-import { sendAsync } from "../dispatch_json.ts";
+import { fetch as opFetch, FetchResponse } from "../ops/fetch.ts";
+import { DomFileImpl } from "./dom_file.ts";
 
 function getHeaderValueParams(value: string): Map<string, string> {
   const params = new Map();
@@ -62,6 +60,7 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
     return this._data;
   }
 
+  // eslint-disable-next-line require-await
   async arrayBuffer(): Promise<ArrayBuffer> {
     // If we've already bufferred the response, just return it.
     if (this._data != null) {
@@ -225,11 +224,12 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
     return read(this.rid, p);
   }
 
-  close(): void {
+  close(): Promise<void> {
     close(this.rid);
+    return Promise.resolve();
   }
 
-  async cancel(): Promise<void> {
+  cancel(): Promise<void> {
     return notImplemented();
   }
 
@@ -348,7 +348,7 @@ export class Response implements domTypes.Response {
     return false;
   }
 
-  async arrayBuffer(): Promise<ArrayBuffer> {
+  arrayBuffer(): Promise<ArrayBuffer> {
     /* You have to do the null check here and not in the function because
      * otherwise TS complains about this.body potentially being null */
     if (this.bodyViewable() || this.body == null) {
@@ -357,14 +357,14 @@ export class Response implements domTypes.Response {
     return this.body.arrayBuffer();
   }
 
-  async blob(): Promise<domTypes.Blob> {
+  blob(): Promise<domTypes.Blob> {
     if (this.bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
     return this.body.blob();
   }
 
-  async formData(): Promise<domTypes.FormData> {
+  formData(): Promise<domTypes.FormData> {
     if (this.bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
@@ -372,14 +372,14 @@ export class Response implements domTypes.Response {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async json(): Promise<any> {
+  json(): Promise<any> {
     if (this.bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
     return this.body.json();
   }
 
-  async text(): Promise<string> {
+  text(): Promise<string> {
     if (this.bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
@@ -439,14 +439,7 @@ export class Response implements domTypes.Response {
   }
 }
 
-interface FetchResponse {
-  bodyRid: number;
-  status: number;
-  statusText: string;
-  headers: Array<[string, string]>;
-}
-
-async function sendFetchReq(
+function sendFetchReq(
   url: string,
   method: string | null,
   headers: domTypes.Headers | null,
@@ -457,21 +450,15 @@ async function sendFetchReq(
     headerArray = Array.from(headers.entries());
   }
 
-  let zeroCopy = undefined;
-  if (body) {
-    zeroCopy = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
-  }
-
   const args = {
     method,
     url,
     headers: headerArray
   };
 
-  return (await sendAsync("op_fetch", args, zeroCopy)) as FetchResponse;
+  return opFetch(args, body);
 }
 
-/** Fetch a resource from the network. */
 export async function fetch(
   input: domTypes.Request | URL | string,
   init?: domTypes.RequestInit
@@ -515,8 +502,47 @@ export async function fetch(
         } else if (init.body instanceof DenoBlob) {
           body = init.body[blobBytesSymbol];
           contentType = init.body.type;
+        } else if (init.body instanceof FormData) {
+          let boundary = "";
+          if (headers.has("content-type")) {
+            const params = getHeaderValueParams("content-type");
+            if (params.has("boundary")) {
+              boundary = params.get("boundary")!;
+            }
+          }
+          if (!boundary) {
+            boundary =
+              "----------" +
+              Array.from(Array(32))
+                .map(() => Math.random().toString(36)[2] || 0)
+                .join("");
+          }
+
+          let payload = "";
+          for (const [fieldName, fieldValue] of init.body.entries()) {
+            let part = `\r\n--${boundary}\r\n`;
+            part += `Content-Disposition: form-data; name=\"${fieldName}\"`;
+            if (fieldValue instanceof DomFileImpl) {
+              part += `; filename=\"${fieldValue.name}\"`;
+            }
+            part += "\r\n";
+            if (fieldValue instanceof DomFileImpl) {
+              part += `Content-Type: ${fieldValue.type ||
+                "application/octet-stream"}\r\n`;
+            }
+            part += "\r\n";
+            if (fieldValue instanceof DomFileImpl) {
+              part += new TextDecoder().decode(fieldValue[blobBytesSymbol]);
+            } else {
+              part += fieldValue;
+            }
+            payload += part;
+          }
+          payload += `\r\n--${boundary}--`;
+          body = new TextEncoder().encode(payload);
+          contentType = "multipart/form-data; boundary=" + boundary;
         } else {
-          // TODO: FormData, ReadableStream
+          // TODO: ReadableStream
           notImplemented();
         }
         if (contentType && !headers.has("content-type")) {
@@ -547,6 +573,9 @@ export async function fetch(
       redirected
     );
     if ([301, 302, 303, 307, 308].includes(response.status)) {
+      // We won't use body of received response, so close it now
+      // otherwise it will be kept in resource table.
+      close(fetchResponse.bodyRid);
       // We're in a redirect status
       switch ((init && init.redirect) || "follow") {
         case "error":

@@ -2,9 +2,10 @@
 // This is an example of a https server
 import { serveTLS } from "../server.ts";
 
+const port = parseInt(Deno.args[0] || "4503");
 const tlsOptions = {
   hostname: "localhost",
-  port: 4503,
+  port,
   certFile: "./http/testdata/tls/localhost.crt",
   keyFile: "./http/testdata/tls/localhost.key"
 };

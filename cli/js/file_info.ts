@@ -1,71 +1,24 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { StatResponse } from "./stat.ts";
+import { StatResponse } from "./ops/fs/stat.ts";
 import { build } from "./build.ts";
 
-/** A FileInfo describes a file and is returned by `stat`, `lstat`,
- * `statSync`, `lstatSync`. A list of FileInfo is returned by `readdir`,
- * `readdirSync`. */
 export interface FileInfo {
-  /** The size of the file, in bytes. */
-  len: number;
-  /** The last modification time of the file. This corresponds to the `mtime`
-   * field from `stat` on Linux/Mac OS and `ftLastWriteTime` on Windows. This
-   * may not be available on all platforms. */
+  size: number;
   modified: number | null;
-  /** The last access time of the file. This corresponds to the `atime`
-   * field from `stat` on Unix and `ftLastAccessTime` on Windows. This may not
-   * be available on all platforms. */
   accessed: number | null;
-  /** The last access time of the file. This corresponds to the `birthtime`
-   * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may not
-   * be available on all platforms. */
   created: number | null;
-  /** The file or directory name. */
   name: string | null;
-  /** ID of the device containing the file.
-   *
-   * _Linux/Mac OS only._ */
   dev: number | null;
-  /** Inode number.
-   *
-   * _Linux/Mac OS only._ */
   ino: number | null;
-  /** The underlying raw st_mode bits that contain the standard Unix permissions
-   * for this file/directory. TODO Match behavior with Go on windows for mode.
-   */
   mode: number | null;
-  /** Number of hard links pointing to this file.
-   *
-   * _Linux/Mac OS only._ */
   nlink: number | null;
-  /** User ID of the owner of this file.
-   *
-   * _Linux/Mac OS only._ */
   uid: number | null;
-  /** User ID of the owner of this file.
-   *
-   * _Linux/Mac OS only._ */
   gid: number | null;
-  /** Device ID of this file.
-   *
-   * _Linux/Mac OS only._ */
   rdev: number | null;
-  /** Blocksize for filesystem I/O.
-   *
-   * _Linux/Mac OS only._ */
   blksize: number | null;
-  /** Number of blocks allocated to the file, in 512-byte units.
-   *
-   * _Linux/Mac OS only._ */
   blocks: number | null;
-  /** Returns whether this is info for a regular file. This result is mutually
-   * exclusive to `FileInfo.isDirectory` and `FileInfo.isSymlink`. */
   isFile(): boolean;
-  /** Returns whether this is info for a regular directory. This result is
-   * mutually exclusive to `FileInfo.isFile` and `FileInfo.isSymlink`. */
   isDirectory(): boolean;
-  /** Returns whether this is info for a symlink. This result is
-   * mutually exclusive to `FileInfo.isFile` and `FileInfo.isDirectory`. */
   isSymlink(): boolean;
 }
 
@@ -73,7 +26,7 @@ export interface FileInfo {
 export class FileInfoImpl implements FileInfo {
   private readonly _isFile: boolean;
   private readonly _isSymlink: boolean;
-  len: number;
+  size: number;
   modified: number | null;
   accessed: number | null;
   created: number | null;
@@ -111,7 +64,7 @@ export class FileInfoImpl implements FileInfo {
 
     this._isFile = this._res.isFile;
     this._isSymlink = this._res.isSymlink;
-    this.len = this._res.len;
+    this.size = this._res.size;
     this.modified = modified ? modified : null;
     this.accessed = accessed ? accessed : null;
     this.created = created ? created : null;

@@ -1,34 +1,25 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use std;
-use std::fs::{create_dir, DirBuilder, File, OpenOptions};
-use std::io::ErrorKind;
+use std::env::current_dir;
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 use deno_core::ErrBox;
-use rand;
-use rand::Rng;
 use walkdir::WalkDir;
-
-#[cfg(unix)]
-use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
-
-#[cfg(unix)]
-use nix::unistd::{chown as unix_chown, Gid, Uid};
 
 pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
   data: T,
-  perm: u32,
+  mode: u32,
 ) -> std::io::Result<()> {
-  write_file_2(filename, data, true, perm, true, false)
+  write_file_2(filename, data, true, mode, true, false)
 }
 
 pub fn write_file_2<T: AsRef<[u8]>>(
   filename: &Path,
   data: T,
-  update_perm: bool,
-  perm: u32,
+  update_mode: bool,
+  mode: u32,
   is_create: bool,
   is_append: bool,
 ) -> std::io::Result<()> {
@@ -40,96 +31,20 @@ pub fn write_file_2<T: AsRef<[u8]>>(
     .create(is_create)
     .open(filename)?;
 
-  if update_perm {
-    set_permissions(&mut file, perm)?;
+  if update_mode {
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::PermissionsExt;
+      let mode = mode & 0o777;
+      debug!("set file mode to {:o}", mode);
+      let permissions = PermissionsExt::from_mode(mode);
+      file.set_permissions(permissions)?;
+    }
+    #[cfg(not(unix))]
+    let _ = mode;
   }
 
   file.write_all(data.as_ref())
-}
-
-#[cfg(unix)]
-fn set_permissions(file: &mut File, perm: u32) -> std::io::Result<()> {
-  debug!("set file perm to {}", perm);
-  file.set_permissions(PermissionsExt::from_mode(perm & 0o777))
-}
-
-#[cfg(not(unix))]
-fn set_permissions(_file: &mut File, _perm: u32) -> std::io::Result<()> {
-  // NOOP on windows
-  Ok(())
-}
-
-pub fn make_temp(
-  dir: Option<&Path>,
-  prefix: Option<&str>,
-  suffix: Option<&str>,
-  is_dir: bool,
-) -> std::io::Result<PathBuf> {
-  let prefix_ = prefix.unwrap_or("");
-  let suffix_ = suffix.unwrap_or("");
-  let mut buf: PathBuf = match dir {
-    Some(ref p) => p.to_path_buf(),
-    None => std::env::temp_dir(),
-  }
-  .join("_");
-  let mut rng = rand::thread_rng();
-  loop {
-    let unique = rng.gen::<u32>();
-    buf.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
-    // TODO: on posix, set mode flags to 0o700.
-    let r = if is_dir {
-      create_dir(buf.as_path())
-    } else {
-      OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(buf.as_path())
-        .map(|_| ())
-    };
-    match r {
-      Err(ref e) if e.kind() == ErrorKind::AlreadyExists => continue,
-      Ok(_) => return Ok(buf),
-      Err(e) => return Err(e),
-    }
-  }
-}
-
-pub fn mkdir(path: &Path, perm: u32, recursive: bool) -> std::io::Result<()> {
-  debug!("mkdir -p {}", path.display());
-  let mut builder = DirBuilder::new();
-  builder.recursive(recursive);
-  set_dir_permission(&mut builder, perm);
-  builder.create(path)
-}
-
-#[cfg(unix)]
-fn set_dir_permission(builder: &mut DirBuilder, perm: u32) {
-  debug!("set dir perm to {}", perm);
-  builder.mode(perm & 0o777);
-}
-
-#[cfg(not(unix))]
-fn set_dir_permission(_builder: &mut DirBuilder, _perm: u32) {
-  // NOOP on windows
-}
-
-#[cfg(unix)]
-pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), ErrBox> {
-  let nix_uid = Uid::from_raw(uid);
-  let nix_gid = Gid::from_raw(gid);
-  unix_chown(path, Option::Some(nix_uid), Option::Some(nix_gid))
-    .map_err(ErrBox::from)
-}
-
-#[cfg(not(unix))]
-pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), ErrBox> {
-  // FAIL on Windows
-  // TODO: implement chown for Windows
-  let e = std::io::Error::new(
-    std::io::ErrorKind::Other,
-    "Not implemented".to_string(),
-  );
-  Err(ErrBox::from(e))
 }
 
 /// Normalize all itermediate components of the path (ie. remove "./" and "../" components).
@@ -169,7 +84,7 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, ErrBox> {
   let resolved_path = if path.is_absolute() {
     path.to_owned()
   } else {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = current_dir().unwrap();
     cwd.join(path)
   };
 
@@ -182,19 +97,19 @@ mod tests {
 
   #[test]
   fn resolve_from_cwd_child() {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = current_dir().unwrap();
     assert_eq!(resolve_from_cwd(Path::new("a")).unwrap(), cwd.join("a"));
   }
 
   #[test]
   fn resolve_from_cwd_dot() {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = current_dir().unwrap();
     assert_eq!(resolve_from_cwd(Path::new(".")).unwrap(), cwd);
   }
 
   #[test]
   fn resolve_from_cwd_parent() {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = current_dir().unwrap();
     assert_eq!(resolve_from_cwd(Path::new("a/..")).unwrap(), cwd);
   }
 

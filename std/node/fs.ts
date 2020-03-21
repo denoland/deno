@@ -1,130 +1,28 @@
-import {
-  notImplemented,
-  intoCallbackAPIWithIntercept,
-  MaybeEmpty
-} from "./_utils.ts";
-const {
-  readFile: denoReadFile,
-  readFileSync: denoReadFileSync,
-  readlink: denoReadlink,
-  readlinkSync: denoReadlinkSync
-} = Deno;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-type ReadFileCallback = (
-  err: MaybeEmpty<Error>,
-  data: MaybeEmpty<string | Uint8Array>
-) => void;
+import { access, accessSync } from "./_fs/_fs_access.ts";
+import { appendFile, appendFileSync } from "./_fs/_fs_appendFile.ts";
+import { chmod, chmodSync } from "./_fs/_fs_chmod.ts";
+import { chown, chownSync } from "./_fs/_fs_chown.ts";
+import { close, closeSync } from "./_fs/_fs_close.ts";
+import * as constants from "./_fs/_fs_constants.ts";
+import { readFile, readFileSync } from "./_fs/_fs_readFile.ts";
+import { readlink, readlinkSync } from "./_fs/_fs_readlink.ts";
 
-interface ReadFileOptions {
-  encoding?: string | null;
-  flag?: string;
-}
-
-type ReadlinkCallback = (
-  err: MaybeEmpty<Error>,
-  linkString: MaybeEmpty<string | Uint8Array>
-) => void;
-
-interface ReadlinkOptions {
-  encoding?: string | null;
-}
-
-function getEncoding(
-  optOrCallback?: ReadFileOptions | ReadFileCallback
-): string | null {
-  if (!optOrCallback || typeof optOrCallback === "function") {
-    return null;
-  } else {
-    if (optOrCallback.encoding) {
-      if (
-        optOrCallback.encoding === "utf8" ||
-        optOrCallback.encoding === "utf-8"
-      ) {
-        return "utf8";
-      } else if (optOrCallback.encoding === "buffer") {
-        return "buffer";
-      } else {
-        notImplemented();
-      }
-    }
-    return null;
-  }
-}
-
-function maybeDecode(
-  data: Uint8Array,
-  encoding: string | null
-): string | Uint8Array {
-  if (encoding === "utf8") {
-    return new TextDecoder().decode(data);
-  }
-  return data;
-}
-
-function maybeEncode(
-  data: string,
-  encoding: string | null
-): string | Uint8Array {
-  if (encoding === "buffer") {
-    return new TextEncoder().encode(data);
-  }
-  return data;
-}
-
-export function readFile(
-  path: string,
-  optOrCallback: ReadFileCallback | ReadFileOptions,
-  callback?: ReadFileCallback
-): void {
-  let cb: ReadFileCallback | undefined;
-  if (typeof optOrCallback === "function") {
-    cb = optOrCallback;
-  } else {
-    cb = callback;
-  }
-
-  const encoding = getEncoding(optOrCallback);
-
-  intoCallbackAPIWithIntercept<Uint8Array, string | Uint8Array>(
-    denoReadFile,
-    (data: Uint8Array): string | Uint8Array => maybeDecode(data, encoding),
-    cb,
-    path
-  );
-}
-
-export function readFileSync(
-  path: string,
-  opt?: ReadFileOptions
-): string | Uint8Array {
-  return maybeDecode(denoReadFileSync(path), getEncoding(opt));
-}
-
-export function readlink(
-  path: string,
-  optOrCallback: ReadlinkCallback | ReadlinkOptions,
-  callback?: ReadlinkCallback
-): void {
-  let cb: ReadlinkCallback | undefined;
-  if (typeof optOrCallback === "function") {
-    cb = optOrCallback;
-  } else {
-    cb = callback;
-  }
-
-  const encoding = getEncoding(optOrCallback);
-
-  intoCallbackAPIWithIntercept<string, Uint8Array | string>(
-    denoReadlink,
-    (data: string): string | Uint8Array => maybeEncode(data, encoding),
-    cb,
-    path
-  );
-}
-
-export function readlinkSync(
-  path: string,
-  opt?: ReadlinkOptions
-): string | Uint8Array {
-  return maybeEncode(denoReadlinkSync(path), getEncoding(opt));
-}
+export {
+  access,
+  accessSync,
+  appendFile,
+  appendFileSync,
+  chmod,
+  chmodSync,
+  chown,
+  chownSync,
+  close,
+  closeSync,
+  constants,
+  readFile,
+  readFileSync,
+  readlink,
+  readlinkSync
+};

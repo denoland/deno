@@ -9,7 +9,7 @@
 
 import * as Deno from "./deno.ts";
 import * as domTypes from "./web/dom_types.ts";
-import * as csprng from "./get_random_values.ts";
+import * as csprng from "./ops/get_random_values.ts";
 import {
   readOnly,
   writable,
@@ -18,11 +18,12 @@ import {
   eventTargetProperties
 } from "./globals.ts";
 import { internalObject } from "./internals.ts";
-import { setSignals } from "./process.ts";
+import { setSignals } from "./signals.ts";
 import { replLoop } from "./repl.ts";
+import { LocationImpl } from "./web/location.ts";
 import * as runtime from "./runtime.ts";
 import { symbols } from "./symbols.ts";
-import { log } from "./util.ts";
+import { log, immutableDefine } from "./util.ts";
 
 // TODO: factor out `Deno` global assignment to separate function
 // Add internal object to Deno object.
@@ -33,8 +34,6 @@ Deno[symbols.internal] = internalObject;
 export const mainRuntimeGlobalProperties = {
   window: readOnly(globalThis),
   self: readOnly(globalThis),
-  Deno: readOnly(Deno),
-
   crypto: readOnly(csprng),
   // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
   // it seems those two properties should be availble to workers as well
@@ -69,15 +68,27 @@ export function bootstrapMainRuntime(): void {
     }
   });
 
-  const s = runtime.start(true);
+  const s = runtime.start();
+
+  const location = new LocationImpl(s.location);
+  immutableDefine(globalThis, "location", location);
+  Object.freeze(globalThis.location);
+
+  Object.defineProperties(Deno, {
+    pid: readOnly(s.pid),
+    noColor: readOnly(s.noColor),
+    args: readOnly(Object.freeze(s.args))
+  });
+  // Setup `Deno` global - we're actually overriding already
+  // existing global `Deno` with `Deno` namespace from "./deno.ts".
+  immutableDefine(globalThis, "Deno", Deno);
+  Object.freeze(globalThis.Deno);
+  Object.freeze(globalThis.Deno.core);
+  Object.freeze(globalThis.Deno.core.sharedQueue);
   setSignals();
 
   log("cwd", s.cwd);
-  for (let i = 0; i < s.args.length; i++) {
-    Deno.args.push(s.args[i]);
-  }
   log("args", Deno.args);
-  Object.freeze(Deno.args);
 
   if (s.repl) {
     replLoop();

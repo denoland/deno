@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { BufReader, UnexpectedEOFError } from "./bufio.ts";
+import { BufReader } from "./bufio.ts";
 type Reader = Deno.Reader;
 type Writer = Deno.Writer;
 import { assert } from "../testing/asserts.ts";
@@ -37,7 +37,7 @@ export async function readShort(buf: BufReader): Promise<number | Deno.EOF> {
   const high = await buf.readByte();
   if (high === Deno.EOF) return Deno.EOF;
   const low = await buf.readByte();
-  if (low === Deno.EOF) throw new UnexpectedEOFError();
+  if (low === Deno.EOF) throw new Deno.errors.UnexpectedEof();
   return (high << 8) | low;
 }
 
@@ -46,7 +46,7 @@ export async function readInt(buf: BufReader): Promise<number | Deno.EOF> {
   const high = await readShort(buf);
   if (high === Deno.EOF) return Deno.EOF;
   const low = await readShort(buf);
-  if (low === Deno.EOF) throw new UnexpectedEOFError();
+  if (low === Deno.EOF) throw new Deno.errors.UnexpectedEof();
   return (high << 16) | low;
 }
 
@@ -57,7 +57,7 @@ export async function readLong(buf: BufReader): Promise<number | Deno.EOF> {
   const high = await readInt(buf);
   if (high === Deno.EOF) return Deno.EOF;
   const low = await readInt(buf);
-  if (low === Deno.EOF) throw new UnexpectedEOFError();
+  if (low === Deno.EOF) throw new Deno.errors.UnexpectedEof();
   const big = (BigInt(high) << 32n) | BigInt(low);
   // We probably should provide a similar API that returns BigInt values.
   if (big > MAX_SAFE_INTEGER) {

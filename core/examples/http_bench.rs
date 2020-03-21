@@ -1,8 +1,3 @@
-/// To run this benchmark:
-///
-/// > DENO_BUILD_MODE=release ./tools/build.py && \
-///   ./target/release/deno_core_http_bench --multi-thread
-
 #[macro_use]
 extern crate derive_deref;
 #[macro_use]
