@@ -168,7 +168,7 @@ jobs:
 
       - name: Run Benchmarks
         if: matrix.kind == 'bench'
-        run: python ./tools/benchmark.py target/release
+        run: python ./tools/benchmark.py --release
 
       - name: Post Benchmarks
         if: matrix.kind == 'bench' && github.ref == 'refs/heads/master' && github.repository == 'denoland/deno'
