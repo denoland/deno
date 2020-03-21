@@ -35,13 +35,6 @@ declare namespace Deno {
    * when `Deno.runTests` is used */
   export function test(name: string, fn: TestFunction): void;
 
-  export interface TestResult {
-    name: string;
-    status: "passed" | "failed" | "ignored";
-    duration: number;
-    error?: Error;
-  }
-
   export interface RunTestsStartMessage {
     tests: TestDefinition[];
   }
@@ -51,7 +44,10 @@ declare namespace Deno {
   }
 
   export interface TestEndMessage {
-    result: TestResult;
+    name: string;
+    status: "passed" | "failed" | "ignored";
+    duration: number;
+    error?: Error;
   }
 
   export interface RunTestsEndMessage {
@@ -61,7 +57,7 @@ declare namespace Deno {
     passed: number;
     failed: number;
     duration: number;
-    results: TestResult[];
+    errors: Array<[string, Error]>;
   }
 
   export interface TestReporter {

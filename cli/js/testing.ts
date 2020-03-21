@@ -120,13 +120,6 @@ export function test(
   TEST_REGISTRY.push(testDef);
 }
 
-export interface TestResult {
-  name: string;
-  status: "passed" | "failed" | "ignored";
-  duration: number;
-  error?: Error;
-}
-
 export interface RunTestsStartMessage {
   tests: TestDefinition[];
 }
@@ -136,7 +129,10 @@ export interface TestStartMessage {
 }
 
 export interface TestEndMessage {
-  result: TestResult;
+  name: string;
+  status: "passed" | "failed" | "ignored";
+  duration: number;
+  error?: Error;
 }
 
 export interface RunTestsEndMessage {
@@ -146,7 +142,7 @@ export interface RunTestsEndMessage {
   passed: number;
   failed: number;
   duration: number;
-  results: TestResult[];
+  errors: Array<[string, Error]>;
 }
 
 export interface TestReporter {
@@ -189,17 +185,15 @@ export class ConsoleTestReporter implements TestReporter {
   }
 
   testEnd(message: TestEndMessage): Promise<void> {
-    const { result } = message;
-
-    switch (result.status) {
+    switch (message.status) {
       case "passed":
-        this.log(`${GREEN_OK} ${formatDuration(result.duration)}`);
+        this.log(`${GREEN_OK} ${formatDuration(message.duration)}`);
         break;
       case "failed":
-        this.log(`${RED_FAILED} ${formatDuration(result.duration)}`);
+        this.log(`${RED_FAILED} ${formatDuration(message.duration)}`);
         break;
       case "ignored":
-        this.log(`${YELLOW_IGNORED} ${formatDuration(result.duration)}`);
+        this.log(`${YELLOW_IGNORED} ${formatDuration(message.duration)}`);
         break;
     }
     return Promise.resolve();
@@ -207,21 +201,19 @@ export class ConsoleTestReporter implements TestReporter {
 
   runTestsEnd(message: RunTestsEndMessage): Promise<void> {
     // Attempting to match the output of Rust's test runner.
-    const failedTests = message.results.filter(r => r.error);
-
-    if (failedTests.length > 0) {
+    if (message.errors.length > 0) {
       this.log(`\nfailures:\n`);
 
-      for (const result of failedTests) {
-        this.log(`${result.name}`);
-        this.log(`${stringifyArgs([result.error!])}`);
+      for (const [name, error] of message.errors) {
+        this.log(name);
+        this.log(stringifyArgs([error]));
         this.log("");
       }
 
       this.log(`failures:\n`);
 
-      for (const result of failedTests) {
-        this.log(`\t${result.name}`);
+      for (const [name] of message.errors) {
+        this.log(`\t${name}`);
       }
     }
 
@@ -265,38 +257,41 @@ class TestApi {
   > {
     yield ["start", { tests: this.testsToRun }];
 
-    const results: TestResult[] = [];
+    const errors: Array<[string, Error]> = [];
     const suiteStart = +new Date();
     for (const test of this.testsToRun) {
-      const result: Partial<TestResult> = { name: test.name, duration: 0 };
+      const endMessage: Partial<TestEndMessage> = {
+        name: test.name,
+        duration: 0
+      };
       yield ["testStart", { test }];
       if (test.ignore) {
-        result.status = "ignored";
+        endMessage.status = "ignored";
         this.stats.ignored++;
       } else {
         const start = +new Date();
         try {
           await test.fn();
-          result.status = "passed";
+          endMessage.status = "passed";
           this.stats.passed++;
         } catch (err) {
-          result.status = "failed";
-          result.error = err;
+          endMessage.status = "failed";
+          endMessage.error = err;
+          errors.push([test.name, err]);
           this.stats.failed++;
         } finally {
-          result.duration = +new Date() - start;
+          endMessage.duration = +new Date() - start;
         }
       }
-      yield ["testEnd", { result: result as TestResult }];
-      results.push(result as TestResult);
-      if (this.failFast && result.error != null) {
+      yield ["testEnd", endMessage as TestEndMessage];
+      if (this.failFast && endMessage.error != null) {
         break;
       }
     }
 
     const duration = +new Date() - suiteStart;
 
-    yield ["end", { ...this.stats, results, duration }];
+    yield ["end", { ...this.stats, duration, errors }];
   }
 }
 

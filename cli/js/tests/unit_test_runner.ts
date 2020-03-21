@@ -133,7 +133,7 @@ async function runTestsForPermissionSet(
     for await (const line of readLines(conn)) {
       const e = JSON.parse(line);
 
-      if (e[0] === TestEvent.Start) {
+      if (e[0] === TestEvent.RunTestsStart) {
         expectedPassedTests = e[1].tests.length;
         await reporter.runTestsStart(e[1]);
       } else if (e[0] === TestEvent.TestStart) {

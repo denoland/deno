@@ -126,7 +126,6 @@ export {
   TestDefinition,
   TestEndMessage,
   TestReporter,
-  TestResult,
   TestStartMessage,
   runTests,
   test

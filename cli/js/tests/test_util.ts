@@ -195,10 +195,10 @@ export function createResolvable<T>(): Resolvable<T> {
 }
 
 export enum TestEvent {
-  Start = "start",
+  RunTestsStart = "start",
   TestStart = "testStart",
   TestEnd = "testEnd",
-  End = "end"
+  RunTestsEnd = "end"
 }
 
 export class SocketReporter implements Deno.TestReporter {
@@ -209,19 +209,22 @@ export class SocketReporter implements Deno.TestReporter {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async write(msg: any): Promise<void> {
-    const encodedMsg = this.encoder.encode(JSON.stringify(msg) + "\n");
+  async write(msg: any, noNewLine = false): Promise<void> {
+    const s = noNewLine ? "" : "\n";
+    const encodedMsg = this.encoder.encode(JSON.stringify(msg) + s);
     await Deno.writeAll(this.conn, encodedMsg);
   }
 
   async runTestsStart(msg: Deno.RunTestsStartMessage): Promise<void> {
+    // Message contains JS functions, serialize it.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const serializedMsg: any = { ...msg };
     serializedMsg.tests = msg.tests.map(test => ({ ...test, fn: null }));
-    await this.write([TestEvent.Start, msg]);
+    await this.write([TestEvent.RunTestsStart, msg]);
   }
 
   async testStart(msg: Deno.TestStartMessage): Promise<void> {
+    // Message contains a JS function, serialize it.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const serializedMsg: any = { ...msg };
     serializedMsg.test = { ...serializedMsg.test, fn: null };
@@ -229,24 +232,17 @@ export class SocketReporter implements Deno.TestReporter {
   }
 
   async testEnd(msg: Deno.TestEndMessage): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const serializedMsg: any = { ...msg };
-
-    // Error is a JS object, so we need to turn it into string to
-    // send over socket.
-    if (serializedMsg.result.error) {
-      serializedMsg.result.error = String(serializedMsg.result.error.stack);
-    }
-
+    // Message contains a JS Error, serialize it.
+    const serializedMsg = { ...msg, error: String(msg.error?.stack) };
     await this.write([TestEvent.TestEnd, serializedMsg]);
   }
 
   async runTestsEnd(msg: Deno.RunTestsEndMessage): Promise<void> {
-    const encodedMsg = this.encoder.encode(
-      JSON.stringify([TestEvent.End, msg])
-    );
-    await Deno.writeAll(this.conn, encodedMsg);
-    this.conn.closeWrite();
+    // Message contains JS Errors, serialize it.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const serializedMsg: any = { ...msg };
+    serializedMsg.errors = msg.errors.map(([n, e]) => [n, e.stack]);
+    await this.write([TestEvent.RunTestsEnd, serializedMsg], true);
   }
 }
 
