@@ -194,55 +194,41 @@ export function createResolvable<T>(): Resolvable<T> {
   return Object.assign(promise, methods!) as Resolvable<T>;
 }
 
-export enum TestEvent {
-  RunTestsStart = "start",
-  TestStart = "testStart",
-  TestEnd = "testEnd",
-  RunTestsEnd = "end"
+const encoder = new TextEncoder();
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function write(conn: Deno.Conn, msg: any, newLn = true): Promise<void> {
+  const s = newLn ? "\n" : "";
+  const encodedMsg = encoder.encode(JSON.stringify(msg) + s);
+  await Deno.writeAll(conn, encodedMsg);
 }
 
-export class SocketReporter implements Deno.TestReporter {
-  private encoder: TextEncoder;
-
-  constructor(private conn: Deno.Conn) {
-    this.encoder = new TextEncoder();
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async write(msg: any, noNewLine = false): Promise<void> {
-    const s = noNewLine ? "" : "\n";
-    const encodedMsg = this.encoder.encode(JSON.stringify(msg) + s);
-    await Deno.writeAll(this.conn, encodedMsg);
-  }
-
-  async runTestsStart(msg: Deno.RunTestsStartMessage): Promise<void> {
+export async function reportToConn(
+  conn: Deno.Conn,
+  message: Deno.TestMessage
+): Promise<void> {
+  if (message.kind == "runTestsStart") {
     // Message contains JS functions, serialize it.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const serializedMsg: any = { ...msg };
-    serializedMsg.tests = msg.tests.map(test => ({ ...test, fn: null }));
-    await this.write([TestEvent.RunTestsStart, msg]);
-  }
-
-  async testStart(msg: Deno.TestStartMessage): Promise<void> {
+    const serializedMsg: any = { ...message };
+    serializedMsg.tests = message.tests.map(test => ({ ...test, fn: null }));
+    await write(conn, serializedMsg);
+  } else if (message.kind == "testStart") {
     // Message contains a JS function, serialize it.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const serializedMsg: any = { ...msg };
+    const serializedMsg: any = { ...message };
     serializedMsg.test = { ...serializedMsg.test, fn: null };
-    await this.write([TestEvent.TestStart, serializedMsg]);
-  }
-
-  async testEnd(msg: Deno.TestEndMessage): Promise<void> {
+    await write(conn, serializedMsg);
+  } else if (message.kind == "testEnd") {
     // Message contains a JS Error, serialize it.
-    const serializedMsg = { ...msg, error: String(msg.error?.stack) };
-    await this.write([TestEvent.TestEnd, serializedMsg]);
-  }
-
-  async runTestsEnd(msg: Deno.RunTestsEndMessage): Promise<void> {
+    const serializedMsg = { ...message, error: String(message.error?.stack) };
+    await write(conn, serializedMsg);
+  } else {
     // Message contains JS Errors, serialize it.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const serializedMsg: any = { ...msg };
-    serializedMsg.errors = msg.errors.map(([n, e]) => [n, e.stack]);
-    await this.write([TestEvent.RunTestsEnd, serializedMsg], true);
+    const serializedMsg: any = { ...message };
+    serializedMsg.errors = message.errors.map(([n, e]) => [n, e.stack]);
+    await write(conn, serializedMsg, false);
   }
 }
 

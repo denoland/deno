@@ -36,14 +36,17 @@ declare namespace Deno {
   export function test(name: string, fn: TestFunction): void;
 
   export interface RunTestsStartMessage {
+    kind: "runTestsStart";
     tests: TestDefinition[];
   }
 
   export interface TestStartMessage {
+    kind: "testStart";
     test: TestDefinition;
   }
 
   export interface TestEndMessage {
+    kind: "testEnd";
     name: string;
     status: "passed" | "failed" | "ignored";
     duration: number;
@@ -51,6 +54,7 @@ declare namespace Deno {
   }
 
   export interface RunTestsEndMessage {
+    kind: "runTestsEnd";
     filtered: number;
     ignored: number;
     measured: number;
@@ -60,20 +64,15 @@ declare namespace Deno {
     errors: Array<[string, Error]>;
   }
 
-  export interface TestReporter {
-    runTestsStart(message: RunTestsStartMessage): Promise<void>;
-    testStart(message: TestStartMessage): Promise<void>;
-    testEnd(message: TestEndMessage): Promise<void>;
-    runTestsEnd(message: RunTestsEndMessage): Promise<void>;
-  }
+  export type TestMessage =
+    | RunTestsStartMessage
+    | TestStartMessage
+    | TestEndMessage
+    | RunTestsEndMessage;
 
-  export class ConsoleTestReporter implements TestReporter {
-    constructor();
-    runTestsStart(message: RunTestsStartMessage): Promise<void>;
-    testStart(message: TestStartMessage): Promise<void>;
-    testEnd(message: TestEndMessage): Promise<void>;
-    runTestsEnd(message: RunTestsEndMessage): Promise<void>;
-  }
+  export type TestReporter = (message: TestMessage) => void | Promise<void>;
+
+  export function reportToConsole(message: TestMessage): void;
 
   export interface RunTestsOptions {
     /** If `true`, Deno will exit with status code 1 if there was
@@ -89,8 +88,8 @@ declare namespace Deno {
     skip?: string | RegExp;
     /** Disable logging of the results. Defaults to `false`. */
     disableLog?: boolean;
-    /** Custom reporter class. If not provided uses console reporter. */
-    reporter?: TestReporter;
+    /** Custom reporter function. If not provided uses console reporter. */
+    report?: TestReporter;
   }
 
   /** Run any tests which have been registered. Always resolves

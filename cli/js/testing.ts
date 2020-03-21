@@ -121,14 +121,17 @@ export function test(
 }
 
 export interface RunTestsStartMessage {
+  kind: "runTestsStart";
   tests: TestDefinition[];
 }
 
 export interface TestStartMessage {
+  kind: "testStart";
   test: TestDefinition;
 }
 
 export interface TestEndMessage {
+  kind: "testEnd";
   name: string;
   status: "passed" | "failed" | "ignored";
   duration: number;
@@ -136,6 +139,7 @@ export interface TestEndMessage {
 }
 
 export interface RunTestsEndMessage {
+  kind: "runTestsEnd";
   filtered: number;
   ignored: number;
   measured: number;
@@ -145,86 +149,72 @@ export interface RunTestsEndMessage {
   errors: Array<[string, Error]>;
 }
 
-export interface TestReporter {
-  runTestsStart(message: RunTestsStartMessage): Promise<void>;
-  testStart(message: TestStartMessage): Promise<void>;
-  testEnd(message: TestEndMessage): Promise<void>;
-  runTestsEnd(message: RunTestsEndMessage): Promise<void>;
+export type TestMessage =
+  | RunTestsStartMessage
+  | TestStartMessage
+  | TestEndMessage
+  | RunTestsEndMessage;
+
+export type TestReporter = (message: TestMessage) => void | Promise<void>;
+
+const encoder = new TextEncoder();
+
+function log(msg: string, noNewLine = false): void {
+  if (!noNewLine) {
+    msg += "\n";
+  }
+
+  // Using `stdout` here because it doesn't force new lines
+  // compared to `console.log`; `core.print` on the other hand
+  // is line-buffered and doesn't output message without newline
+  stdout.writeSync(encoder.encode(msg));
 }
 
-export class ConsoleTestReporter implements TestReporter {
-  private encoder: TextEncoder;
-
-  constructor() {
-    this.encoder = new TextEncoder();
-  }
-
-  private log(msg: string, noNewLine = false): void {
-    if (!noNewLine) {
-      msg += "\n";
-    }
-
-    // Using `stdout` here because it doesn't force new lines
-    // compared to `console.log`; `core.print` on the other hand
-    // is line-buffered and doesn't output message without newline
-    stdout.writeSync(this.encoder.encode(msg));
-  }
-
-  runTestsStart(message: RunTestsStartMessage): Promise<void> {
-    this.log(`running ${message.tests.length} tests`);
-    return Promise.resolve();
-  }
-
-  testStart(message: TestStartMessage): Promise<void> {
+export function reportToConsole(message: TestMessage): void {
+  if (message.kind == "runTestsStart") {
+    log(`running ${message.tests.length} tests`);
+  } else if (message.kind == "testStart") {
     const {
       test: { name }
     } = message;
 
-    this.log(`test ${name} ... `, true);
-    return Promise.resolve();
-  }
-
-  testEnd(message: TestEndMessage): Promise<void> {
+    log(`test ${name} ... `, true);
+    return;
+  } else if (message.kind == "testEnd") {
     switch (message.status) {
       case "passed":
-        this.log(`${GREEN_OK} ${formatDuration(message.duration)}`);
+        log(`${GREEN_OK} ${formatDuration(message.duration)}`);
         break;
       case "failed":
-        this.log(`${RED_FAILED} ${formatDuration(message.duration)}`);
+        log(`${RED_FAILED} ${formatDuration(message.duration)}`);
         break;
       case "ignored":
-        this.log(`${YELLOW_IGNORED} ${formatDuration(message.duration)}`);
+        log(`${YELLOW_IGNORED} ${formatDuration(message.duration)}`);
         break;
     }
-    return Promise.resolve();
-  }
-
-  runTestsEnd(message: RunTestsEndMessage): Promise<void> {
-    // Attempting to match the output of Rust's test runner.
+  } else if (message.kind == "runTestsEnd") {
     if (message.errors.length > 0) {
-      this.log(`\nfailures:\n`);
+      log(`\nfailures:\n`);
 
       for (const [name, error] of message.errors) {
-        this.log(name);
-        this.log(stringifyArgs([error]));
-        this.log("");
+        log(name);
+        log(stringifyArgs([error]));
+        log("");
       }
 
-      this.log(`failures:\n`);
+      log(`failures:\n`);
 
       for (const [name] of message.errors) {
-        this.log(`\t${name}`);
+        log(`\t${name}`);
       }
     }
-
-    this.log(
+    log(
       `\ntest result: ${message.failed ? RED_FAILED : GREEN_OK}. ` +
         `${message.passed} passed; ${message.failed} failed; ` +
         `${message.ignored} ignored; ${message.measured} measured; ` +
         `${message.filtered} filtered out ` +
         `${formatDuration(message.duration)}\n`
     );
-    return Promise.resolve();
   }
 }
 
@@ -250,21 +240,22 @@ class TestApi {
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<
-    | ["start", RunTestsStartMessage]
-    | ["testStart", TestStartMessage]
-    | ["testEnd", TestEndMessage]
-    | ["end", RunTestsEndMessage]
+    | RunTestsStartMessage
+    | TestStartMessage
+    | TestEndMessage
+    | RunTestsEndMessage
   > {
-    yield ["start", { tests: this.testsToRun }];
+    yield { kind: "runTestsStart", tests: this.testsToRun };
 
     const errors: Array<[string, Error]> = [];
     const suiteStart = +new Date();
     for (const test of this.testsToRun) {
       const endMessage: Partial<TestEndMessage> = {
+        kind: "testEnd",
         name: test.name,
         duration: 0
       };
-      yield ["testStart", { test }];
+      yield { kind: "testStart", test };
       if (test.ignore) {
         endMessage.status = "ignored";
         this.stats.ignored++;
@@ -283,7 +274,7 @@ class TestApi {
           endMessage.duration = +new Date() - start;
         }
       }
-      yield ["testEnd", endMessage as TestEndMessage];
+      yield endMessage as TestEndMessage;
       if (this.failFast && endMessage.error != null) {
         break;
       }
@@ -291,7 +282,7 @@ class TestApi {
 
     const duration = +new Date() - suiteStart;
 
-    yield ["end", { ...this.stats, duration, errors }];
+    yield { kind: "runTestsEnd", ...this.stats, duration, errors };
   }
 }
 
@@ -328,7 +319,7 @@ export interface RunTestsOptions {
   only?: string | RegExp;
   skip?: string | RegExp;
   disableLog?: boolean;
-  reporter?: TestReporter;
+  report?: TestReporter;
 }
 
 export async function runTests({
@@ -337,7 +328,7 @@ export async function runTests({
   only = undefined,
   skip = undefined,
   disableLog = false,
-  reporter = new ConsoleTestReporter()
+  report = reportToConsole
 }: RunTestsOptions = {}): Promise<RunTestsEndMessage> {
   const filterFn = createFilterFn(only, skip);
   const testApi = new TestApi(TEST_REGISTRY, filterFn, failFast);
@@ -352,21 +343,10 @@ export async function runTests({
 
   let endMsg: RunTestsEndMessage;
 
-  for await (const e of testApi) {
-    switch (e[0]) {
-      case "start":
-        await reporter.runTestsStart(e[1]);
-        continue;
-      case "testStart":
-        await reporter.testStart(e[1]);
-        continue;
-      case "testEnd":
-        await reporter.testEnd(e[1]);
-        continue;
-      case "end":
-        endMsg = e[1];
-        await reporter.runTestsEnd(e[1]);
-        continue;
+  for await (const message of testApi) {
+    await report(message);
+    if (message.kind == "runTestsEnd") {
+      endMsg = message;
     }
   }
 

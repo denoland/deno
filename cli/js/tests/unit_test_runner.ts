@@ -2,14 +2,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import "./unit_tests.ts";
 import {
-  TestEvent,
   readLines,
   permissionCombinations,
   Permissions,
   registerUnitTests,
-  SocketReporter,
   fmtPerms,
-  parseArgs
+  parseArgs,
+  reportToConn
 } from "./test_util.ts";
 
 interface PermissionSetTestResult {
@@ -58,7 +57,6 @@ async function workerRunnerMain(
   }
   // Setup reporter
   const conn = await Deno.connect(addr);
-  const socketReporter = new SocketReporter(conn);
   // Drop current process permissions to requested set
   await dropWorkerPermissions(perms);
   // Register unit tests that match process permissions
@@ -67,7 +65,7 @@ async function workerRunnerMain(
   await Deno.runTests({
     failFast: false,
     exitOnFail: false,
-    reporter: socketReporter,
+    report: reportToConn.bind(null, conn),
     only: filter
   });
 }
@@ -116,7 +114,7 @@ async function runTestsForPermissionSet(
   listener: Deno.Listener,
   addrStr: string,
   verbose: boolean,
-  reporter: Deno.ConsoleTestReporter,
+  report: Deno.TestReporter,
   perms: Permissions,
   filter?: string
 ): Promise<PermissionSetTestResult> {
@@ -131,18 +129,12 @@ async function runTestsForPermissionSet(
 
   try {
     for await (const line of readLines(conn)) {
-      const e = JSON.parse(line);
-
-      if (e[0] === TestEvent.RunTestsStart) {
-        expectedPassedTests = e[1].tests.length;
-        await reporter.runTestsStart(e[1]);
-      } else if (e[0] === TestEvent.TestStart) {
-        await reporter.testStart(e[1]);
-      } else if (e[0] === TestEvent.TestEnd) {
-        await reporter.testEnd(e[1]);
-      } else {
-        endMessage = e[1];
-        await reporter.runTestsEnd(e[1]);
+      const message = JSON.parse(line) as Deno.TestMessage;
+      await report(message);
+      if (message.kind == "runTestsStart") {
+        expectedPassedTests = message.tests.length;
+      } else if (message.kind == "runTestsEnd") {
+        endMessage = message;
       }
     }
   } finally {
@@ -191,7 +183,6 @@ async function masterRunnerMain(
   }
 
   const testResults = new Set<PermissionSetTestResult>();
-  const consoleReporter = new Deno.ConsoleTestReporter();
   const addr = { hostname: "127.0.0.1", port: 4510 };
   const addrStr = `${addr.hostname}:${addr.port}`;
   const listener = Deno.listen(addr);
@@ -201,7 +192,7 @@ async function masterRunnerMain(
       listener,
       addrStr,
       verbose,
-      consoleReporter,
+      Deno.reportToConsole,
       perms,
       filter
     );
@@ -215,7 +206,7 @@ async function masterRunnerMain(
   for (const testResult of testResults) {
     const { permsStr, endMessage } = testResult;
     console.log(`Summary for ${permsStr}`);
-    await consoleReporter.runTestsEnd(endMessage);
+    Deno.reportToConsole(endMessage);
     testsPassed = testsPassed && testResult.passed;
   }
 
