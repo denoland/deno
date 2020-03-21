@@ -124,7 +124,6 @@ export {
   RunTestsStartMessage,
   TestDefinition,
   TestEndMessage,
-  TestReporter,
   TestStartMessage,
   reportToConsole,
   runTests,

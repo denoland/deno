@@ -155,8 +155,6 @@ export type TestMessage =
   | TestEndMessage
   | RunTestsEndMessage;
 
-export type TestReporter = (message: TestMessage) => void | Promise<void>;
-
 const encoder = new TextEncoder();
 
 function log(msg: string, noNewLine = false): void {
@@ -239,12 +237,7 @@ class TestApi {
     this.stats.filtered = tests.length - this.testsToRun.length;
   }
 
-  async *[Symbol.asyncIterator](): AsyncIterator<
-    | RunTestsStartMessage
-    | TestStartMessage
-    | TestEndMessage
-    | RunTestsEndMessage
-  > {
+  async *[Symbol.asyncIterator](): AsyncIterator<TestMessage> {
     yield { kind: "runTestsStart", tests: this.testsToRun };
 
     const errors: Array<[string, Error]> = [];
@@ -319,17 +312,17 @@ export interface RunTestsOptions {
   only?: string | RegExp;
   skip?: string | RegExp;
   disableLog?: boolean;
-  report?: TestReporter;
+  reportToConsole?: boolean;
 }
 
-export async function runTests({
+export async function* runTests({
   exitOnFail = true,
   failFast = false,
   only = undefined,
   skip = undefined,
   disableLog = false,
-  report = reportToConsole
-}: RunTestsOptions = {}): Promise<RunTestsEndMessage> {
+  reportToConsole: reportToConsole_ = false
+}: RunTestsOptions = {}): AsyncIterableIterator<TestMessage> {
   const filterFn = createFilterFn(only, skip);
   const testApi = new TestApi(TEST_REGISTRY, filterFn, failFast);
 
@@ -344,7 +337,10 @@ export async function runTests({
   let endMsg: RunTestsEndMessage;
 
   for await (const message of testApi) {
-    await report(message);
+    yield message;
+    if (reportToConsole_) {
+      reportToConsole(message);
+    }
     if (message.kind == "runTestsEnd") {
       endMsg = message;
     }
@@ -358,6 +354,4 @@ export async function runTests({
   if (endMsg!.failed > 0 && exitOnFail) {
     exit(1);
   }
-
-  return endMsg!;
 }

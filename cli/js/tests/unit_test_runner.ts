@@ -62,12 +62,12 @@ async function workerRunnerMain(
   // Register unit tests that match process permissions
   await registerUnitTests();
   // Execute tests
-  await Deno.runTests({
-    failFast: false,
+  for await (const message of Deno.runTests({
     exitOnFail: false,
-    report: reportToConn.bind(null, conn),
     only: filter
-  });
+  })) {
+    await reportToConn(conn, message);
+  }
 }
 
 function spawnWorkerRunner(
@@ -114,7 +114,6 @@ async function runTestsForPermissionSet(
   listener: Deno.Listener,
   addrStr: string,
   verbose: boolean,
-  report: Deno.TestReporter,
   perms: Permissions,
   filter?: string
 ): Promise<PermissionSetTestResult> {
@@ -130,7 +129,7 @@ async function runTestsForPermissionSet(
   try {
     for await (const line of readLines(conn)) {
       const message = JSON.parse(line) as Deno.TestMessage;
-      await report(message);
+      Deno.reportToConsole(message);
       if (message.kind == "runTestsStart") {
         expectedPassedTests = message.tests.length;
       } else if (message.kind == "runTestsEnd") {
@@ -192,7 +191,6 @@ async function masterRunnerMain(
       listener,
       addrStr,
       verbose,
-      Deno.reportToConsole,
       perms,
       filter
     );
@@ -294,11 +292,10 @@ async function main(): Promise<void> {
 
   // Running tests matching current process permissions
   await registerUnitTests();
-  await Deno.runTests({
-    failFast: false,
-    exitOnFail: true,
-    only: filter
-  });
+  for await (const _ of Deno.runTests({
+    only: filter,
+    reportToConsole: true
+  }));
 }
 
 main();

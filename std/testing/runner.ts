@@ -231,12 +231,13 @@ export async function runTestModules({
     console.log(`Found ${moduleCount} matching test modules.`);
   }
 
-  await Deno.runTests({
+  for await (const _ of Deno.runTests({
     exitOnFail,
     only,
     skip,
-    disableLog
-  });
+    disableLog,
+    reportToConsole: true
+  }));
 }
 
 async function main(): Promise<void> {

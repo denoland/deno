@@ -70,8 +70,6 @@ declare namespace Deno {
     | TestEndMessage
     | RunTestsEndMessage;
 
-  export type TestReporter = (message: TestMessage) => void | Promise<void>;
-
   export function reportToConsole(message: TestMessage): void;
 
   export interface RunTestsOptions {
@@ -89,12 +87,13 @@ declare namespace Deno {
     /** Disable logging of the results. Defaults to `false`. */
     disableLog?: boolean;
     /** Custom reporter function. If not provided uses console reporter. */
-    report?: TestReporter;
+    reportToConsole?: boolean;
   }
 
-  /** Run any tests which have been registered. Always resolves
-   * asynchronously. */
-  export function runTests(opts?: RunTestsOptions): Promise<RunTestsEndMessage>;
+  /** Run registered tests and iterate through messages. */
+  export function runTests(
+    opts?: RunTestsOptions
+  ): AsyncIterableIterator<TestMessage>;
 
   /** Get the `loadavg`. Requires `allow-env` permission.
    *
