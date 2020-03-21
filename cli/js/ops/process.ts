@@ -17,7 +17,7 @@ export function runStatus(rid: number): Promise<RunStatusResponse> {
 }
 
 interface RunRequest {
-  args: string[];
+  cmd: string[];
   cwd?: string;
   env?: Array<[string, string]>;
   stdin: string;
@@ -37,6 +37,6 @@ interface RunResponse {
 }
 
 export function run(request: RunRequest): RunResponse {
-  assert(request.args.length > 0);
+  assert(request.cmd.length > 0);
   return sendSync("op_run", request);
 }

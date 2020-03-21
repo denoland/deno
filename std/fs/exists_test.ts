@@ -124,7 +124,7 @@ for (const s of scenes) {
     const p = Deno.run({
       stdout: "piped",
       cwd: testdataDir,
-      args: args
+      cmd: args
     });
 
     const output = await p.output();

@@ -1900,12 +1900,12 @@ declare namespace Deno {
     signal?: number;
   }
 
-  /** **UNSTABLE**:  Maybe rename `args` to `argv` to differentiate from
+  /** **UNSTABLE**: `args` has been recently renamed to `cmd` to differentiate from
    * `Deno.args`. */
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
      * binary */
-    args: string[];
+    cmd: string[];
     cwd?: string;
     env?: {
       [key: string]: string;

@@ -9,7 +9,7 @@ let fileServer: Deno.Process;
 const port = randomPort();
 async function startFileServer(): Promise<void> {
   fileServer = Deno.run({
-    args: [
+    cmd: [
       Deno.execPath(),
       "run",
       "--allow-read",
@@ -109,7 +109,7 @@ test(async function serveWithUnorthodoxFilename(): Promise<void> {
 test(async function servePermissionDenied(): Promise<void> {
   const _port = randomPort();
   const deniedServer = Deno.run({
-    args: [
+    cmd: [
       Deno.execPath(),
       "run",
       "--allow-net",
@@ -143,7 +143,7 @@ test(async function servePermissionDenied(): Promise<void> {
 
 test(async function printHelp(): Promise<void> {
   const helpProcess = Deno.run({
-    args: [Deno.execPath(), "run", "http/file_server.ts", "--help"],
+    cmd: [Deno.execPath(), "run", "http/file_server.ts", "--help"],
     stdout: "piped"
   });
   assert(helpProcess.stdout != null);
