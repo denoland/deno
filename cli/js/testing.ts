@@ -7,6 +7,10 @@ import { TextEncoder } from "./web/text_encoding.ts";
 import { metrics } from "./ops/runtime.ts";
 import { resources } from "./ops/resources.ts";
 import { assert } from "./util.ts";
+import { permissions } from "./permissions.ts";
+import { Performance } from "./web/performance.ts";
+
+const performance = new Performance();
 
 const RED_FAILED = red("FAILED");
 const GREEN_OK = green("ok");
@@ -14,7 +18,7 @@ const YELLOW_IGNORED = yellow("ignored");
 const disabledConsole = new Console((_x: string, _isErr?: boolean): void => {});
 
 function formatDuration(time = 0): string {
-  const timeStr = `(${time}ms)`;
+  const timeStr = `(${time % 1 !== 0 ? time.toFixed(2) : time}ms)`;
   return gray(italic(timeStr));
 }
 
@@ -179,6 +183,13 @@ interface TestEventEnd {
   results: TestResult[];
 }
 
+async function date(): Promise<number> {
+  if ((await permissions.query({ name: "hrtime" })).state == "granted") {
+    return performance.now();
+  }
+  return new Date().getTime();
+}
+
 // TODO: already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
 // TODO: implements PromiseLike<TestsResult>
 class TestApi {
@@ -209,7 +220,7 @@ class TestApi {
     };
 
     const results: TestResult[] = [];
-    const suiteStart = +new Date();
+    const suiteStart = await date();
     for (const { name, fn, ignore } of this.testsToRun) {
       const result: Partial<TestResult> = { name, duration: 0 };
       yield { kind: TestEvent.TestStart, name };
@@ -217,7 +228,7 @@ class TestApi {
         result.status = TestStatus.Ignored;
         this.stats.ignored++;
       } else {
-        const start = +new Date();
+        const start = await date();
         try {
           await fn();
           result.status = TestStatus.Passed;
@@ -227,7 +238,7 @@ class TestApi {
           result.error = err;
           this.stats.failed++;
         } finally {
-          result.duration = +new Date() - start;
+          result.duration = (await date()) - start;
         }
       }
       yield { kind: TestEvent.TestEnd, result: result as TestResult };
@@ -237,7 +248,7 @@ class TestApi {
       }
     }
 
-    const duration = +new Date() - suiteStart;
+    const duration = (await date()) - suiteStart;
 
     yield {
       kind: TestEvent.End,
