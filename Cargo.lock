@@ -462,6 +462,7 @@ dependencies = [
  "reqwest",
  "ring",
  "rustyline",
+ "semver",
  "serde",
  "serde_derive",
  "serde_json",

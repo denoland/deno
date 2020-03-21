@@ -759,11 +759,8 @@ fn upgrade_subcommand<'a, 'b>() -> App<'a, 'b> {
     .long_about(
       "Upgrade deno executable to newest available version.
       
-  Checks for newest available version of deno and if higher than
-  local version, then downloads and installs newest version in place
-  of the current one.
-      
-  Example: deno upgrade",
+      The newest available version is downloaded from
+      https://github.com/denoland/deno/releases",
     )
 }
 
@@ -1231,6 +1228,10 @@ mod tests {
     assert_eq!(args3, ["deno", "run", "script.js"]);
     let args4 = arg_hacks(svec!["deno", "-A", "script.js", "-L=info"]);
     assert_eq!(args4, ["deno", "run", "-A", "script.js", "-L=info"]);
+  }
+
+  #[test]
+  fn upgrade_hacks_test() {
     let args5 = arg_hacks(svec!["deno", "upgrade"]);
     assert_eq!(args5, ["deno", "upgrade"]);
   }

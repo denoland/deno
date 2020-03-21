@@ -7,6 +7,7 @@
 //! the same functions as ops available in JS runtime.
 
 extern crate flate2;
+extern crate semver;
 use crate::fs::write_file;
 use crate::futures::FutureExt;
 use crate::{
@@ -16,6 +17,7 @@ use crate::{
 use flate2::write::GzDecoder;
 use regex::Regex;
 use reqwest::{redirect::Policy, Client};
+use semver::Version;
 use std::env::current_exe;
 use std::fs::{remove_file, rename};
 use std::future::Future;
@@ -64,7 +66,9 @@ pub async fn exec_upgrade() -> Result<(), ErrBox> {
     .text()
     .await?;
   let checked_version = find_version(&body)?;
-  if is_latest_version_greater(&version::DENO.to_string(), &checked_version) {
+  if Version::parse(&version::DENO.to_string())
+    < Version::parse(&checked_version)
+  {
     println!(
       "New version has been found\nDeno is upgrading to version {}",
       &checked_version
@@ -76,7 +80,10 @@ pub async fn exec_upgrade() -> Result<(), ErrBox> {
     replace_exec(&path)?;
     println!("Upgrade done successfully")
   } else {
-    println!("Local deno version {} is the greatest one", &version::DENO);
+    println!(
+      "Local deno version {} is the most recent release",
+      &version::DENO
+    );
   }
   Ok(())
 }
@@ -89,9 +96,7 @@ fn download_package(
   let fut = async move {
     match fetch_once(client.clone(), &url, None).await? {
       FetchOnceResult::Code(source, _) => Ok(source),
-      FetchOnceResult::NotModified => Err(
-        ErrorMsg(format!("Cannot fetch data from url: {}", &url)).to_err_box(),
-      ),
+      FetchOnceResult::NotModified => unreachable!(),
       FetchOnceResult::Redirect(_url, _) => {
         download_package(&_url, client).await
       }
@@ -116,20 +121,6 @@ fn find_version(text: &str) -> Result<String, ErrBox> {
   Err(ErrorMsg("Cannot read latest tag version".to_string()).to_err_box())
 }
 
-fn is_latest_version_greater(old_v: &str, new_v: &str) -> bool {
-  let mut power = 4;
-  let (mut old_v_num, mut new_v_num) = (0, 0);
-  old_v
-    .split('.')
-    .zip(new_v.split('.'))
-    .for_each(|(old, new)| {
-      old_v_num += old.parse::<i32>().unwrap() * (10_f32.powi(power) as i32);
-      new_v_num += new.parse::<i32>().unwrap() * (10_f32.powi(power) as i32);
-      power -= 2;
-    });
-  old_v_num < new_v_num
-}
-
 fn unpack(archive: Vec<u8>, path: &Path) -> Result<(), ErrBox> {
   let mut exec = Vec::new();
   let mut decoder = GzDecoder::new(exec);
@@ -152,24 +143,6 @@ fn replace_exec(path: &Path) -> Result<(), ErrBox> {
 
 #[cfg(test)]
 mod test {
-  #[test]
-  fn test_is_latest_version_greater() {
-    let mut version = "0.0.0".to_string();
-    let versions = [
-      "0.0.1".to_string(),
-      "0.1.0".to_string(),
-      "1.0.0".to_string(),
-      "11.22.33".to_string(),
-      "22.0.44".to_string(),
-      "30.0.0".to_string(),
-    ];
-    for v in versions.iter() {
-      assert_eq!(super::is_latest_version_greater(&version, v), true);
-      version = v.clone();
-    }
-    assert_eq!(super::is_latest_version_greater(&version, &version), false);
-  }
-
   #[test]
   fn test_find_version() {
     let url = "<html><body>You are being <a href=\"https://github.com/denoland/deno/releases/tag/v0.36.0\">redirected</a>.</body></html>".to_string();
