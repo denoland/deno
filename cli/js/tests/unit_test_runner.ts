@@ -86,7 +86,7 @@ function spawnWorkerRunner(
     })
     .join(",");
 
-  const args = [
+  const cmd = [
     Deno.execPath(),
     "run",
     "-A",
@@ -97,14 +97,14 @@ function spawnWorkerRunner(
   ];
 
   if (filter) {
-    args.push("--");
-    args.push(filter);
+    cmd.push("--");
+    cmd.push(filter);
   }
 
   const ioMode = verbose ? "inherit" : "null";
 
   const p = Deno.run({
-    args,
+    cmd,
     stdin: ioMode,
     stdout: ioMode,
     stderr: ioMode

@@ -5,7 +5,7 @@ try {
 const fetchProc = Deno.run({
   stdout: "null",
   stderr: "null",
-  args: [
+  cmd: [
     Deno.execPath(),
     "fetch",
     "--reload",
@@ -21,7 +21,7 @@ console.log(`fetch code: ${fetchCode}`);
 const fetchCheckProc = Deno.run({
   stdout: "null",
   stderr: "null",
-  args: [
+  cmd: [
     Deno.execPath(),
     "fetch",
     "--lock=lock_write_fetch.json",
@@ -35,7 +35,7 @@ console.log(`fetch check code: ${fetchCheckProcCode}`);
 const runProc = Deno.run({
   stdout: "null",
   stderr: "null",
-  args: [Deno.execPath(), "--lock=lock_write_fetch.json", "https_import.ts"]
+  cmd: [Deno.execPath(), "--lock=lock_write_fetch.json", "https_import.ts"]
 });
 
 const runCode = (await runProc.status()).code;

@@ -19,7 +19,7 @@ Deno.test({
 
     const decoder = new TextDecoder();
     const process = Deno.run({
-      args: [
+      cmd: [
         Deno.execPath(),
         "--allow-net",
         "curl.ts",

@@ -8,7 +8,7 @@ Deno.test("[examples/echo_server]", async () => {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   const process = Deno.run({
-    args: [Deno.execPath(), "--allow-net", "echo_server.ts", `${port}`],
+    cmd: [Deno.execPath(), "--allow-net", "echo_server.ts", `${port}`],
     cwd: "examples",
     stdout: "piped"
   });

@@ -8,7 +8,7 @@ const { connect, run, test } = Deno;
 let server: Deno.Process;
 async function startServer(): Promise<void> {
   server = run({
-    args: [
+    cmd: [
       Deno.execPath(),
       "run",
       "-A",
