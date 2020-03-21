@@ -21,6 +21,7 @@ use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use futures::Future;
 use libc::c_void;
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::convert::From;
 use std::error::Error;
@@ -90,6 +91,7 @@ impl AsMut<[u8]> for ZeroCopyBuf {
 pub enum SnapshotConfig {
   Borrowed(v8::StartupData<'static>),
   Owned(v8::OwnedStartupData),
+  Bytes(bytes::Bytes),
 }
 
 impl From<&'static [u8]> for SnapshotConfig {
@@ -104,12 +106,18 @@ impl From<v8::OwnedStartupData> for SnapshotConfig {
   }
 }
 
-impl Deref for SnapshotConfig {
-  type Target = v8::StartupData<'static>;
-  fn deref(&self) -> &Self::Target {
+impl From<bytes::Bytes> for SnapshotConfig {
+  fn from(sd: bytes::Bytes) -> Self {
+    Self::Bytes(sd)
+  }
+}
+
+impl Borrow<[u8]> for SnapshotConfig {
+  fn borrow(&self) -> &[u8] {
     match self {
       Self::Borrowed(sd) => sd,
       Self::Owned(sd) => &*sd,
+      Self::Bytes(sd) => sd,
     }
   }
 }
@@ -143,6 +151,7 @@ pub enum StartupData<'a> {
   Script(Script<'a>),
   Snapshot(&'static [u8]),
   OwnedSnapshot(v8::OwnedStartupData),
+  BytesSnapshot(bytes::Bytes),
   None,
 }
 
@@ -244,6 +253,9 @@ impl Isolate {
       StartupData::OwnedSnapshot(d) => {
         load_snapshot = Some(d.into());
       }
+      StartupData::BytesSnapshot(d) => {
+        load_snapshot = Some(d.into());
+      }
       StartupData::None => {}
     };
 
@@ -268,8 +280,9 @@ impl Isolate {
       let mut params = v8::Isolate::create_params();
       params.set_array_buffer_allocator(v8::new_default_allocator());
       params.set_external_references(&bindings::EXTERNAL_REFERENCES);
-      if let Some(ref mut snapshot) = load_snapshot {
-        params.set_snapshot_blob(snapshot);
+      if let Some(ref snapshot) = load_snapshot {
+        let data = v8::StartupData::new(snapshot);
+        params.set_snapshot_blob(&data);
       }
 
       let isolate = v8::Isolate::new(params);
