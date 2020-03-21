@@ -1232,8 +1232,8 @@ mod tests {
 
   #[test]
   fn upgrade_hacks_test() {
-    let args5 = arg_hacks(svec!["deno", "upgrade"]);
-    assert_eq!(args5, ["deno", "upgrade"]);
+    let upgrade_args = arg_hacks(svec!["deno", "upgrade"]);
+    assert_eq!(upgrade_args, ["deno", "upgrade"]);
   }
 
   #[test]
