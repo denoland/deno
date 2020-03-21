@@ -12,7 +12,7 @@ interface RunStatusResponse {
   exitSignal: number;
 }
 
-export async function runStatus(rid: number): Promise<RunStatusResponse> {
+export function runStatus(rid: number): Promise<RunStatusResponse> {
   return sendAsync("op_run_status", { rid });
 }
 

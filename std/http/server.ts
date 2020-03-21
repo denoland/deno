@@ -9,7 +9,6 @@ import {
   writeResponse,
   readRequest
 } from "./io.ts";
-import { encode } from "../strings/mod.ts";
 import Listener = Deno.Listener;
 import Conn = Deno.Conn;
 import Reader = Deno.Reader;
@@ -149,7 +148,7 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     const bufr = new BufReader(conn);
     const w = new BufWriter(conn);
-    let req: ServerRequest | Deno.EOF | undefined;
+    let req: ServerRequest | Deno.EOF = Deno.EOF;
     let err: Error | undefined;
 
     while (!this.closing) {
@@ -157,9 +156,8 @@ export class Server implements AsyncIterable<ServerRequest> {
         req = await readRequest(conn, bufr);
       } catch (e) {
         err = e;
-        break;
       }
-      if (req === Deno.EOF) {
+      if (err != null || req === Deno.EOF) {
         break;
       }
 
@@ -178,24 +176,6 @@ export class Server implements AsyncIterable<ServerRequest> {
       }
       // Consume unread body and trailers if receiver didn't consume those data
       await req.finalize();
-    }
-
-    if (req === Deno.EOF) {
-      // The connection was gracefully closed.
-    } else if (err && req) {
-      // An error was thrown while parsing request headers.
-      try {
-        await writeResponse(req.w, {
-          status: 400,
-          body: encode(`${err.message}\r\n\r\n`)
-        });
-      } catch (_) {
-        // The connection is destroyed.
-        // Ignores the error.
-      }
-    } else if (this.closing) {
-      // There are more requests incoming but the server is closing.
-      // TODO(ry): send a back a HTTP 503 Service Unavailable status.
     }
 
     this.untrackConnection(conn);

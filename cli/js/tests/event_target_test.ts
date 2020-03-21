@@ -185,7 +185,7 @@ unitTest(function eventTargetShouldAcceptAsyncFunction(): void {
   const event = new Event("foo", { bubbles: true, cancelable: false });
   let callCount = 0;
 
-  const listener = async (e: Event): Promise<void> => {
+  const listener = (e: Event): void => {
     assertEquals(e, event);
     ++callCount;
   };
@@ -210,7 +210,7 @@ unitTest(
     let callCount = 0;
 
     const listener = {
-      async handleEvent(e: Event): Promise<void> {
+      handleEvent(e: Event): void {
         assertEquals(e, event);
         ++callCount;
       }

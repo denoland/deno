@@ -7,7 +7,7 @@ import { append } from "./mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 const { test } = Deno;
 
-test(async function textprotoAppend(): Promise<void> {
+test(function textprotoAppend(): void {
   const enc = new TextEncoder();
   const dec = new TextDecoder();
   const u1 = enc.encode("Hello ");

@@ -9,7 +9,7 @@ interface CompileRequest {
   bundle: boolean;
 }
 
-export async function compile(request: CompileRequest): Promise<string> {
+export function compile(request: CompileRequest): Promise<string> {
   return sendAsync("op_compile", request);
 }
 
@@ -18,6 +18,6 @@ interface TranspileRequest {
   options?: string;
 }
 
-export async function transpile(request: TranspileRequest): Promise<string> {
+export function transpile(request: TranspileRequest): Promise<string> {
   return sendAsync("op_transpile", request);
 }

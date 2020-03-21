@@ -306,7 +306,7 @@ export class Body implements domTypes.Body {
     return JSON.parse(raw);
   }
 
-  public async arrayBuffer(): Promise<ArrayBuffer> {
+  public arrayBuffer(): Promise<ArrayBuffer> {
     if (
       this._bodySource instanceof Int8Array ||
       this._bodySource instanceof Int16Array ||
@@ -318,20 +318,24 @@ export class Body implements domTypes.Body {
       this._bodySource instanceof Float32Array ||
       this._bodySource instanceof Float64Array
     ) {
-      return this._bodySource.buffer as ArrayBuffer;
+      return Promise.resolve(this._bodySource.buffer as ArrayBuffer);
     } else if (this._bodySource instanceof ArrayBuffer) {
-      return this._bodySource;
+      return Promise.resolve(this._bodySource);
     } else if (typeof this._bodySource === "string") {
       const enc = new TextEncoder();
-      return enc.encode(this._bodySource).buffer as ArrayBuffer;
+      return Promise.resolve(
+        enc.encode(this._bodySource).buffer as ArrayBuffer
+      );
     } else if (this._bodySource instanceof ReadableStream) {
       // @ts-ignore
       return bufferFromStream(this._bodySource.getReader());
     } else if (this._bodySource instanceof FormData) {
       const enc = new TextEncoder();
-      return enc.encode(this._bodySource.toString()).buffer as ArrayBuffer;
+      return Promise.resolve(
+        enc.encode(this._bodySource.toString()).buffer as ArrayBuffer
+      );
     } else if (!this._bodySource) {
-      return new ArrayBuffer(0);
+      return Promise.resolve(new ArrayBuffer(0));
     }
     throw new Error(
       `Body type not yet implemented: ${this._bodySource.constructor.name}`

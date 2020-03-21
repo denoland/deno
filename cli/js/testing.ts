@@ -289,7 +289,7 @@ export class ConsoleTestReporter implements TestReporter {
     this.encoder = new TextEncoder();
   }
 
-  private log(msg: string, noNewLine = false): void {
+  private log(msg: string, noNewLine = false): Promise<void> {
     if (!noNewLine) {
       msg += "\n";
     }
@@ -298,19 +298,22 @@ export class ConsoleTestReporter implements TestReporter {
     // compared to `console.log`; `core.print` on the other hand
     // is line-buffered and doesn't output message without newline
     stdout.writeSync(this.encoder.encode(msg));
+    return Promise.resolve();
   }
 
-  async start(event: TestEventStart): Promise<void> {
+  start(event: TestEventStart): Promise<void> {
     this.log(`running ${event.tests} tests`);
+    return Promise.resolve();
   }
 
-  async testStart(event: TestEventTestStart): Promise<void> {
+  testStart(event: TestEventTestStart): Promise<void> {
     const { name } = event;
 
     this.log(`test ${name} ... `, true);
+    return Promise.resolve();
   }
 
-  async testEnd(event: TestEventTestEnd): Promise<void> {
+  testEnd(event: TestEventTestEnd): Promise<void> {
     const { result } = event;
 
     switch (result.status) {
@@ -324,9 +327,11 @@ export class ConsoleTestReporter implements TestReporter {
         this.log(`${YELLOW_IGNORED} ${formatDuration(result.duration)}`);
         break;
     }
+
+    return Promise.resolve();
   }
 
-  async end(event: TestEventEnd): Promise<void> {
+  end(event: TestEventEnd): Promise<void> {
     const { stats, duration, results } = event;
     // Attempting to match the output of Rust's test runner.
     const failedTests = results.filter(r => r.error);
@@ -354,6 +359,8 @@ export class ConsoleTestReporter implements TestReporter {
         `${stats.filtered} filtered out ` +
         `${formatDuration(duration)}\n`
     );
+
+    return Promise.resolve();
   }
 }
 

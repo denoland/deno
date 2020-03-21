@@ -27,7 +27,7 @@ function deferred(): {
   };
 }
 
-async function waitForMs(ms: number): Promise<number> {
+function waitForMs(ms: number): Promise<number> {
   return new Promise((resolve: () => void): number => setTimeout(resolve, ms));
 }
 
@@ -158,7 +158,7 @@ unitTest(async function intervalOrdering(): Promise<void> {
   assertEquals(timeouts, 1);
 });
 
-unitTest(async function intervalCancelInvalidSilentFail(): Promise<void> {
+unitTest(function intervalCancelInvalidSilentFail(): void {
   // Should silently fail (no panic)
   clearInterval(2147483647);
 });
@@ -234,7 +234,7 @@ unitTest(async function timeoutBindThis(): Promise<void> {
   }
 });
 
-unitTest(async function clearTimeoutShouldConvertToNumber(): Promise<void> {
+unitTest(function clearTimeoutShouldConvertToNumber(): void {
   let called = false;
   const obj = {
     valueOf(): number {

@@ -302,7 +302,7 @@ async function runtimeCompile(
   }
 }
 
-async function runtimeTranspile(
+function runtimeTranspile(
   request: CompilerRequestRuntimeTranspile
 ): Promise<Record<string, TranspileOnlyResult>> {
   const result: Record<string, TranspileOnlyResult> = {};
@@ -325,7 +325,7 @@ async function runtimeTranspile(
     );
     result[fileName] = { source, map };
   }
-  return result;
+  return Promise.resolve(result);
 }
 
 async function tsCompilerOnMessage({
