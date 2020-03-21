@@ -19,7 +19,7 @@ unitTest(
   }
 );
 
-unitTest(async function malformedJsonControlBuffer(): Promise<void> {
+unitTest(function malformedJsonControlBuffer(): void {
   // @ts-ignore
   const opId = Deno.core.ops()["op_open"];
   // @ts-ignore

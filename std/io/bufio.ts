@@ -602,6 +602,7 @@ export async function* readStringDelim(
 }
 
 /** Read strings line-by-line from a Reader. */
+// eslint-disable-next-line require-await
 export async function* readLines(
   reader: Reader
 ): AsyncIterableIterator<string> {

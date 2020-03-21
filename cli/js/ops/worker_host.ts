@@ -24,6 +24,6 @@ export function hostPostMessage(id: number, data: Uint8Array): void {
   sendSync("op_host_post_message", { id }, data);
 }
 
-export async function hostGetMessage(id: number): Promise<any> {
+export function hostGetMessage(id: number): Promise<any> {
   return sendAsync("op_host_get_message", { id });
 }

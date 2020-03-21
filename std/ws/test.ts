@@ -126,7 +126,7 @@ test("[ws] read unmasked bigger binary frame", async () => {
   assertEquals(bin.payload.length, payloadLength);
 });
 
-test("[ws] createSecAccept", async () => {
+test("[ws] createSecAccept", () => {
   const nonce = "dGhlIHNhbXBsZSBub25jZQ==";
   const d = createSecAccept(nonce);
   assertEquals(d, "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
@@ -335,8 +335,8 @@ test("[ws] createSecKeyHasCorrectLength", () => {
 test("[ws] WebSocket should throw `Deno.errors.ConnectionReset` when peer closed connection without close frame", async () => {
   const buf = new Buffer();
   const eofReader: Deno.Reader = {
-    async read(_: Uint8Array): Promise<number | Deno.EOF> {
-      return Deno.EOF;
+    read(_: Uint8Array): Promise<number | Deno.EOF> {
+      return Promise.resolve(Deno.EOF);
     }
   };
   const conn = dummyConn(eofReader, buf);
@@ -353,8 +353,8 @@ test("[ws] WebSocket should throw `Deno.errors.ConnectionReset` when peer closed
 test("[ws] WebSocket shouldn't throw `Deno.errors.UnexpectedEof` on recive()", async () => {
   const buf = new Buffer();
   const eofReader: Deno.Reader = {
-    async read(_: Uint8Array): Promise<number | Deno.EOF> {
-      return Deno.EOF;
+    read(_: Uint8Array): Promise<number | Deno.EOF> {
+      return Promise.resolve(Deno.EOF);
     }
   };
   const conn = dummyConn(eofReader, buf);
@@ -372,7 +372,7 @@ test({
     const buf = new Buffer();
     let timer: number | undefined;
     const lazyWriter: Deno.Writer = {
-      async write(_: Uint8Array): Promise<number> {
+      write(_: Uint8Array): Promise<number> {
         return new Promise(resolve => {
           timer = setTimeout(() => resolve(0), 1000);
         });

@@ -39,7 +39,7 @@ unitTest(async function connectTLSCertFileNoReadPerm(): Promise<void> {
 
 unitTest(
   { perms: { read: true, net: true } },
-  async function listenTLSNonExistentCertKeyFiles(): Promise<void> {
+  function listenTLSNonExistentCertKeyFiles(): void {
     let err;
     const options = {
       hostname: "localhost",
@@ -70,30 +70,27 @@ unitTest(
   }
 );
 
-unitTest(
-  { perms: { net: true } },
-  async function listenTLSNoReadPerm(): Promise<void> {
-    let err;
-    try {
-      Deno.listenTLS({
-        hostname: "localhost",
-        port: 4500,
-        certFile: "cli/tests/tls/localhost.crt",
-        keyFile: "cli/tests/tls/localhost.key"
-      });
-    } catch (e) {
-      err = e;
-    }
-    assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
+unitTest({ perms: { net: true } }, function listenTLSNoReadPerm(): void {
+  let err;
+  try {
+    Deno.listenTLS({
+      hostname: "localhost",
+      port: 4500,
+      certFile: "cli/tests/tls/localhost.crt",
+      keyFile: "cli/tests/tls/localhost.key"
+    });
+  } catch (e) {
+    err = e;
   }
-);
+  assert(err instanceof Deno.errors.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
+});
 
 unitTest(
   {
     perms: { read: true, write: true, net: true }
   },
-  async function listenTLSEmptyKeyFile(): Promise<void> {
+  function listenTLSEmptyKeyFile(): void {
     let err;
     const options = {
       hostname: "localhost",
@@ -122,7 +119,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true, net: true } },
-  async function listenTLSEmptyCertFile(): Promise<void> {
+  function listenTLSEmptyCertFile(): void {
     let err;
     const options = {
       hostname: "localhost",

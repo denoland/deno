@@ -322,7 +322,7 @@ class WebSocketImpl implements WebSocket {
     return d;
   }
 
-  async send(data: WebSocketMessage): Promise<void> {
+  send(data: WebSocketMessage): Promise<void> {
     const opcode =
       typeof data === "string" ? OpCode.TextFrame : OpCode.BinaryFrame;
     const payload = typeof data === "string" ? encode(data) : data;
@@ -336,7 +336,7 @@ class WebSocketImpl implements WebSocket {
     return this.enqueue(frame);
   }
 
-  async ping(data: WebSocketMessage = ""): Promise<void> {
+  ping(data: WebSocketMessage = ""): Promise<void> {
     const payload = typeof data === "string" ? encode(data) : data;
     const frame = {
       isLastFrame: true,

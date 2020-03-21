@@ -15,7 +15,7 @@ export interface FetchResponse {
   headers: Array<[string, string]>;
 }
 
-export async function fetch(
+export function fetch(
   args: FetchRequest,
   body: ArrayBufferView | undefined
 ): Promise<FetchResponse> {

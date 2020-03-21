@@ -26,7 +26,7 @@ export function openSync(
   return sendSync("op_open", { path, options, openMode, mode });
 }
 
-export async function open(
+export function open(
   path: string,
   openMode: OpenMode | undefined,
   options: OpenOptions | undefined

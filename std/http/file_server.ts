@@ -158,17 +158,17 @@ async function serveDir(
   return res;
 }
 
-async function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
+function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
   if (e instanceof Deno.errors.NotFound) {
-    return {
+    return Promise.resolve({
       status: 404,
       body: encoder.encode("Not found")
-    };
+    });
   } else {
-    return {
+    return Promise.resolve({
       status: 500,
       body: encoder.encode("Internal server error")
-    };
+    });
   }
 }
 

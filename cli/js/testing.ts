@@ -188,19 +188,21 @@ export namespace tests {
       stdout.writeSync(this.encoder.encode(msg));
     }
 
-    async start(message: StartMessage): Promise<void> {
+    start(message: StartMessage): Promise<void> {
       this.log(`running ${message.tests.length} tests`);
+      return Promise.resolve();
     }
 
-    async testStart(message: TestStartMessage): Promise<void> {
+    testStart(message: TestStartMessage): Promise<void> {
       const {
         test: { name }
       } = message;
 
       this.log(`test ${name} ... `, true);
+      return Promise.resolve();
     }
 
-    async testEnd(message: TestEndMessage): Promise<void> {
+    testEnd(message: TestEndMessage): Promise<void> {
       const { result } = message;
 
       switch (result.status) {
@@ -214,9 +216,10 @@ export namespace tests {
           this.log(`${YELLOW_IGNORED} ${formatDuration(result.duration)}`);
           break;
       }
+      return Promise.resolve();
     }
 
-    async end(message: EndMessage): Promise<void> {
+    end(message: EndMessage): Promise<void> {
       const { stats, duration, results } = message;
       // Attempting to match the output of Rust's test runner.
       const failedTests = results.filter(r => r.error);
@@ -244,6 +247,7 @@ export namespace tests {
           `${stats.filtered} filtered out ` +
           `${formatDuration(duration)}\n`
       );
+      return Promise.resolve();
     }
   }
 }
