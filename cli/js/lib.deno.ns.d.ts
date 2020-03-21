@@ -35,69 +35,48 @@ declare namespace Deno {
    * when `Deno.runTests` is used */
   export function test(name: string, fn: TestFunction): void;
 
-  enum TestStatus {
-    Passed = "passed",
-    Failed = "failed",
-    Ignored = "ignored"
-  }
-
-  interface TestResult {
+  export interface TestResult {
     name: string;
-    status: TestStatus;
-    duration?: number;
+    status: "passed" | "failed" | "ignored";
+    duration: number;
     error?: Error;
   }
 
-  interface TestStats {
+  export interface RunTestsStartMessage {
+    tests: TestDefinition[];
+  }
+
+  export interface TestStartMessage {
+    test: TestDefinition;
+  }
+
+  export interface TestEndMessage {
+    result: TestResult;
+  }
+
+  export interface RunTestsEndMessage {
     filtered: number;
     ignored: number;
     measured: number;
     passed: number;
     failed: number;
-  }
-
-  export enum TestEvent {
-    Start = "start",
-    TestStart = "testStart",
-    TestEnd = "testEnd",
-    End = "end"
-  }
-
-  interface TestEventStart {
-    kind: TestEvent.Start;
-    tests: number;
-  }
-
-  interface TestEventTestStart {
-    kind: TestEvent.TestStart;
-    name: string;
-  }
-
-  interface TestEventTestEnd {
-    kind: TestEvent.TestEnd;
-    result: TestResult;
-  }
-
-  interface TestEventEnd {
-    kind: TestEvent.End;
-    stats: TestStats;
     duration: number;
     results: TestResult[];
   }
 
-  interface TestReporter {
-    start(event: TestEventStart): Promise<void>;
-    testStart(msg: TestEventTestStart): Promise<void>;
-    testEnd(msg: TestEventTestEnd): Promise<void>;
-    end(event: TestEventEnd): Promise<void>;
+  export interface TestReporter {
+    runTestsStart(message: RunTestsStartMessage): Promise<void>;
+    testStart(message: TestStartMessage): Promise<void>;
+    testEnd(message: TestEndMessage): Promise<void>;
+    runTestsEnd(message: RunTestsEndMessage): Promise<void>;
   }
 
   export class ConsoleTestReporter implements TestReporter {
     constructor();
-    start(event: TestEventStart): Promise<void>;
-    testStart(msg: TestEventTestStart): Promise<void>;
-    testEnd(msg: TestEventTestEnd): Promise<void>;
-    end(event: TestEventEnd): Promise<void>;
+    runTestsStart(message: RunTestsStartMessage): Promise<void>;
+    testStart(message: TestStartMessage): Promise<void>;
+    testEnd(message: TestEndMessage): Promise<void>;
+    runTestsEnd(message: RunTestsEndMessage): Promise<void>;
   }
 
   export interface RunTestsOptions {
@@ -120,13 +99,7 @@ declare namespace Deno {
 
   /** Run any tests which have been registered. Always resolves
    * asynchronously. */
-  export function runTests(
-    opts?: RunTestsOptions
-  ): Promise<{
-    results: TestResult[];
-    stats: TestStats;
-    duration: number;
-  }>;
+  export function runTests(opts?: RunTestsOptions): Promise<RunTestsEndMessage>;
 
   /** Get the `loadavg`. Requires `allow-env` permission.
    *

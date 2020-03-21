@@ -2,6 +2,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import "./unit_tests.ts";
 import {
+  TestEvent,
   readLines,
   permissionCombinations,
   Permissions,
@@ -14,10 +15,8 @@ import {
 interface PermissionSetTestResult {
   perms: Permissions;
   passed: boolean;
-  stats: Deno.TestStats;
+  endMessage: Deno.RunTestsEndMessage;
   permsStr: string;
-  duration: number;
-  results: Deno.TestResult[];
 }
 
 const PERMISSIONS: Deno.PermissionName[] = [
@@ -128,22 +127,22 @@ async function runTestsForPermissionSet(
   const conn = await listener.accept();
 
   let expectedPassedTests;
-  let endEvent;
+  let endMessage: Deno.RunTestsEndMessage | undefined;
 
   try {
     for await (const line of readLines(conn)) {
-      const msg = JSON.parse(line);
+      const e = JSON.parse(line);
 
-      if (msg.kind === Deno.TestEvent.Start) {
-        expectedPassedTests = msg.tests;
-        await reporter.start(msg);
-      } else if (msg.kind === Deno.TestEvent.TestStart) {
-        await reporter.testStart(msg);
-      } else if (msg.kind === Deno.TestEvent.TestEnd) {
-        await reporter.testEnd(msg);
+      if (e[0] === TestEvent.Start) {
+        expectedPassedTests = e[1].tests.length;
+        await reporter.runTestsStart(e[1]);
+      } else if (e[0] === TestEvent.TestStart) {
+        await reporter.testStart(e[1]);
+      } else if (e[0] === TestEvent.TestEnd) {
+        await reporter.testEnd(e[1]);
       } else {
-        endEvent = msg;
-        await reporter.end(msg);
+        endMessage = e[1];
+        await reporter.runTestsEnd(e[1]);
       }
     }
   } finally {
@@ -151,11 +150,11 @@ async function runTestsForPermissionSet(
     conn.close();
   }
 
-  if (expectedPassedTests === undefined) {
+  if (expectedPassedTests == null) {
     throw new Error("Worker runner didn't report start");
   }
 
-  if (endEvent === undefined) {
+  if (endMessage == null) {
     throw new Error("Worker runner didn't report end");
   }
 
@@ -168,16 +167,13 @@ async function runTestsForPermissionSet(
 
   workerProcess.close();
 
-  const passed =
-    expectedPassedTests === endEvent.stats.passed + endEvent.stats.ignored;
+  const passed = expectedPassedTests === endMessage.passed + endMessage.ignored;
 
   return {
     perms,
     passed,
     permsStr: permsFmt,
-    duration: endEvent.duration,
-    stats: endEvent.stats,
-    results: endEvent.results
+    endMessage
   };
 }
 
@@ -217,14 +213,9 @@ async function masterRunnerMain(
   let testsPassed = true;
 
   for (const testResult of testResults) {
-    const { permsStr, stats, duration, results } = testResult;
+    const { permsStr, endMessage } = testResult;
     console.log(`Summary for ${permsStr}`);
-    await consoleReporter.end({
-      kind: Deno.TestEvent.End,
-      stats,
-      duration,
-      results
-    });
+    await consoleReporter.runTestsEnd(endMessage);
     testsPassed = testsPassed && testResult.passed;
   }
 

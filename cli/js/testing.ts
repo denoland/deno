@@ -38,7 +38,7 @@ function assertOps(fn: TestFunction): TestFunction {
 Before:
   - dispatched: ${pre.opsDispatchedAsync}
   - completed: ${pre.opsCompletedAsync}
-After: 
+After:
   - dispatched: ${post.opsDispatchedAsync}
   - completed: ${post.opsCompletedAsync}`
     );
@@ -120,70 +120,127 @@ export function test(
   TEST_REGISTRY.push(testDef);
 }
 
-interface TestStats {
+export interface TestResult {
+  name: string;
+  status: "passed" | "failed" | "ignored";
+  duration: number;
+  error?: Error;
+}
+
+export interface RunTestsStartMessage {
+  tests: TestDefinition[];
+}
+
+export interface TestStartMessage {
+  test: TestDefinition;
+}
+
+export interface TestEndMessage {
+  result: TestResult;
+}
+
+export interface RunTestsEndMessage {
   filtered: number;
   ignored: number;
   measured: number;
   passed: number;
   failed: number;
-}
-
-export interface RunTestsOptions {
-  exitOnFail?: boolean;
-  failFast?: boolean;
-  only?: string | RegExp;
-  skip?: string | RegExp;
-  disableLog?: boolean;
-  reporter?: TestReporter;
-}
-
-enum TestStatus {
-  Passed = "passed",
-  Failed = "failed",
-  Ignored = "ignored"
-}
-
-interface TestResult {
-  name: string;
-  status: TestStatus;
-  duration: number;
-  error?: Error;
-}
-
-export enum TestEvent {
-  Start = "start",
-  TestStart = "testStart",
-  TestEnd = "testEnd",
-  End = "end"
-}
-
-interface TestEventStart {
-  kind: TestEvent.Start;
-  tests: number;
-}
-
-interface TestEventTestStart {
-  kind: TestEvent.TestStart;
-  name: string;
-}
-
-interface TestEventTestEnd {
-  kind: TestEvent.TestEnd;
-  result: TestResult;
-}
-
-interface TestEventEnd {
-  kind: TestEvent.End;
-  stats: TestStats;
   duration: number;
   results: TestResult[];
 }
 
+export interface TestReporter {
+  runTestsStart(message: RunTestsStartMessage): Promise<void>;
+  testStart(message: TestStartMessage): Promise<void>;
+  testEnd(message: TestEndMessage): Promise<void>;
+  runTestsEnd(message: RunTestsEndMessage): Promise<void>;
+}
+
+export class ConsoleTestReporter implements TestReporter {
+  private encoder: TextEncoder;
+
+  constructor() {
+    this.encoder = new TextEncoder();
+  }
+
+  private log(msg: string, noNewLine = false): void {
+    if (!noNewLine) {
+      msg += "\n";
+    }
+
+    // Using `stdout` here because it doesn't force new lines
+    // compared to `console.log`; `core.print` on the other hand
+    // is line-buffered and doesn't output message without newline
+    stdout.writeSync(this.encoder.encode(msg));
+  }
+
+  runTestsStart(message: RunTestsStartMessage): Promise<void> {
+    this.log(`running ${message.tests.length} tests`);
+    return Promise.resolve();
+  }
+
+  testStart(message: TestStartMessage): Promise<void> {
+    const {
+      test: { name }
+    } = message;
+
+    this.log(`test ${name} ... `, true);
+    return Promise.resolve();
+  }
+
+  testEnd(message: TestEndMessage): Promise<void> {
+    const { result } = message;
+
+    switch (result.status) {
+      case "passed":
+        this.log(`${GREEN_OK} ${formatDuration(result.duration)}`);
+        break;
+      case "failed":
+        this.log(`${RED_FAILED} ${formatDuration(result.duration)}`);
+        break;
+      case "ignored":
+        this.log(`${YELLOW_IGNORED} ${formatDuration(result.duration)}`);
+        break;
+    }
+    return Promise.resolve();
+  }
+
+  runTestsEnd(message: RunTestsEndMessage): Promise<void> {
+    // Attempting to match the output of Rust's test runner.
+    const failedTests = message.results.filter(r => r.error);
+
+    if (failedTests.length > 0) {
+      this.log(`\nfailures:\n`);
+
+      for (const result of failedTests) {
+        this.log(`${result.name}`);
+        this.log(`${stringifyArgs([result.error!])}`);
+        this.log("");
+      }
+
+      this.log(`failures:\n`);
+
+      for (const result of failedTests) {
+        this.log(`\t${result.name}`);
+      }
+    }
+
+    this.log(
+      `\ntest result: ${message.failed ? RED_FAILED : GREEN_OK}. ` +
+        `${message.passed} passed; ${message.failed} failed; ` +
+        `${message.ignored} ignored; ${message.measured} measured; ` +
+        `${message.filtered} filtered out ` +
+        `${formatDuration(message.duration)}\n`
+    );
+    return Promise.resolve();
+  }
+}
+
 // TODO: already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
-// TODO: implements PromiseLike<TestsResult>
+// TODO: implements PromiseLike<TestsTestResult>
 class TestApi {
   readonly testsToRun: TestDefinition[];
-  readonly stats: TestStats = {
+  readonly stats = {
     filtered: 0,
     ignored: 0,
     measured: 0,
@@ -201,36 +258,36 @@ class TestApi {
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<
-    TestEventStart | TestEventTestStart | TestEventTestEnd | TestEventEnd
+    | ["start", RunTestsStartMessage]
+    | ["testStart", TestStartMessage]
+    | ["testEnd", TestEndMessage]
+    | ["end", RunTestsEndMessage]
   > {
-    yield {
-      kind: TestEvent.Start,
-      tests: this.testsToRun.length
-    };
+    yield ["start", { tests: this.testsToRun }];
 
     const results: TestResult[] = [];
     const suiteStart = +new Date();
-    for (const { name, fn, ignore } of this.testsToRun) {
-      const result: Partial<TestResult> = { name, duration: 0 };
-      yield { kind: TestEvent.TestStart, name };
-      if (ignore) {
-        result.status = TestStatus.Ignored;
+    for (const test of this.testsToRun) {
+      const result: Partial<TestResult> = { name: test.name, duration: 0 };
+      yield ["testStart", { test }];
+      if (test.ignore) {
+        result.status = "ignored";
         this.stats.ignored++;
       } else {
         const start = +new Date();
         try {
-          await fn();
-          result.status = TestStatus.Passed;
+          await test.fn();
+          result.status = "passed";
           this.stats.passed++;
         } catch (err) {
-          result.status = TestStatus.Failed;
+          result.status = "failed";
           result.error = err;
           this.stats.failed++;
         } finally {
           result.duration = +new Date() - start;
         }
       }
-      yield { kind: TestEvent.TestEnd, result: result as TestResult };
+      yield ["testEnd", { result: result as TestResult }];
       results.push(result as TestResult);
       if (this.failFast && result.error != null) {
         break;
@@ -239,12 +296,7 @@ class TestApi {
 
     const duration = +new Date() - suiteStart;
 
-    yield {
-      kind: TestEvent.End,
-      stats: this.stats,
-      results,
-      duration
-    };
+    yield ["end", { ...this.stats, results, duration }];
   }
 }
 
@@ -275,93 +327,13 @@ function createFilterFn(
   };
 }
 
-interface TestReporter {
-  start(msg: TestEventStart): Promise<void>;
-  testStart(msg: TestEventTestStart): Promise<void>;
-  testEnd(msg: TestEventTestEnd): Promise<void>;
-  end(msg: TestEventEnd): Promise<void>;
-}
-
-export class ConsoleTestReporter implements TestReporter {
-  private encoder: TextEncoder;
-
-  constructor() {
-    this.encoder = new TextEncoder();
-  }
-
-  private log(msg: string, noNewLine = false): Promise<void> {
-    if (!noNewLine) {
-      msg += "\n";
-    }
-
-    // Using `stdout` here because it doesn't force new lines
-    // compared to `console.log`; `core.print` on the other hand
-    // is line-buffered and doesn't output message without newline
-    stdout.writeSync(this.encoder.encode(msg));
-    return Promise.resolve();
-  }
-
-  start(event: TestEventStart): Promise<void> {
-    this.log(`running ${event.tests} tests`);
-    return Promise.resolve();
-  }
-
-  testStart(event: TestEventTestStart): Promise<void> {
-    const { name } = event;
-
-    this.log(`test ${name} ... `, true);
-    return Promise.resolve();
-  }
-
-  testEnd(event: TestEventTestEnd): Promise<void> {
-    const { result } = event;
-
-    switch (result.status) {
-      case TestStatus.Passed:
-        this.log(`${GREEN_OK} ${formatDuration(result.duration)}`);
-        break;
-      case TestStatus.Failed:
-        this.log(`${RED_FAILED} ${formatDuration(result.duration)}`);
-        break;
-      case TestStatus.Ignored:
-        this.log(`${YELLOW_IGNORED} ${formatDuration(result.duration)}`);
-        break;
-    }
-
-    return Promise.resolve();
-  }
-
-  end(event: TestEventEnd): Promise<void> {
-    const { stats, duration, results } = event;
-    // Attempting to match the output of Rust's test runner.
-    const failedTests = results.filter(r => r.error);
-
-    if (failedTests.length > 0) {
-      this.log(`\nfailures:\n`);
-
-      for (const result of failedTests) {
-        this.log(`${result.name}`);
-        this.log(`${stringifyArgs([result.error!])}`);
-        this.log("");
-      }
-
-      this.log(`failures:\n`);
-
-      for (const result of failedTests) {
-        this.log(`\t${result.name}`);
-      }
-    }
-
-    this.log(
-      `\ntest result: ${stats.failed ? RED_FAILED : GREEN_OK}. ` +
-        `${stats.passed} passed; ${stats.failed} failed; ` +
-        `${stats.ignored} ignored; ${stats.measured} measured; ` +
-        `${stats.filtered} filtered out ` +
-        `${formatDuration(duration)}\n`
-    );
-
-    return Promise.resolve();
-  }
+export interface RunTestsOptions {
+  exitOnFail?: boolean;
+  failFast?: boolean;
+  only?: string | RegExp;
+  skip?: string | RegExp;
+  disableLog?: boolean;
+  reporter?: TestReporter;
 }
 
 export async function runTests({
@@ -370,18 +342,10 @@ export async function runTests({
   only = undefined,
   skip = undefined,
   disableLog = false,
-  reporter = undefined
-}: RunTestsOptions = {}): Promise<{
-  results: TestResult[];
-  stats: TestStats;
-  duration: number;
-}> {
+  reporter = new ConsoleTestReporter()
+}: RunTestsOptions = {}): Promise<RunTestsEndMessage> {
   const filterFn = createFilterFn(only, skip);
   const testApi = new TestApi(TEST_REGISTRY, filterFn, failFast);
-
-  if (!reporter) {
-    reporter = new ConsoleTestReporter();
-  }
 
   // @ts-ignore
   const originalConsole = globalThis.console;
@@ -391,23 +355,22 @@ export async function runTests({
     globalThis.console = disabledConsole;
   }
 
-  let endMsg: TestEventEnd;
+  let endMsg: RunTestsEndMessage;
 
-  for await (const testMsg of testApi) {
-    switch (testMsg.kind) {
-      case TestEvent.Start:
-        await reporter.start(testMsg);
+  for await (const e of testApi) {
+    switch (e[0]) {
+      case "start":
+        await reporter.runTestsStart(e[1]);
         continue;
-      case TestEvent.TestStart:
-        await reporter.testStart(testMsg);
+      case "testStart":
+        await reporter.testStart(e[1]);
         continue;
-      case TestEvent.TestEnd:
-        await reporter.testEnd(testMsg);
+      case "testEnd":
+        await reporter.testEnd(e[1]);
         continue;
-      case TestEvent.End:
-        endMsg = testMsg;
-        delete endMsg!.kind;
-        await reporter.end(testMsg);
+      case "end":
+        endMsg = e[1];
+        await reporter.runTestsEnd(e[1]);
         continue;
     }
   }
@@ -417,7 +380,7 @@ export async function runTests({
     globalThis.console = originalConsole;
   }
 
-  if (endMsg!.stats.failed > 0 && exitOnFail) {
+  if (endMsg!.failed > 0 && exitOnFail) {
     exit(1);
   }
 
