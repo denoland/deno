@@ -125,7 +125,6 @@ export {
   TestDefinition,
   TestEndMessage,
   TestStartMessage,
-  reportToConsole,
   runTests,
   test
 } from "./testing.ts";

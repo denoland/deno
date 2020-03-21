@@ -3,6 +3,7 @@ import { gray, green, italic, red, yellow } from "./colors.ts";
 import { exit } from "./ops/os.ts";
 import { Console, stringifyArgs } from "./web/console.ts";
 import { stdout } from "./files.ts";
+import { exposeForTest } from "./internals.ts";
 import { TextEncoder } from "./web/text_encoding.ts";
 import { metrics } from "./ops/runtime.ts";
 import { resources } from "./ops/resources.ts";
@@ -168,7 +169,7 @@ function log(msg: string, noNewLine = false): void {
   stdout.writeSync(encoder.encode(msg));
 }
 
-export function reportToConsole(message: TestMessage): void {
+function reportToConsole(message: TestMessage): void {
   if (message.kind == "runTestsStart") {
     log(`running ${message.tests.length} tests`);
   } else if (message.kind == "testStart") {
@@ -215,6 +216,8 @@ export function reportToConsole(message: TestMessage): void {
     );
   }
 }
+
+exposeForTest("reportToConsole", reportToConsole);
 
 // TODO: already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
 // TODO: implements PromiseLike<TestsTestResult>

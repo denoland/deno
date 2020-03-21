@@ -11,6 +11,9 @@ import {
   reportToConn
 } from "./test_util.ts";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const { reportToConsole } = (Deno as any)[Deno.symbols.internal];
+
 interface PermissionSetTestResult {
   perms: Permissions;
   passed: boolean;
@@ -129,7 +132,7 @@ async function runTestsForPermissionSet(
   try {
     for await (const line of readLines(conn)) {
       const message = JSON.parse(line) as Deno.TestMessage;
-      Deno.reportToConsole(message);
+      reportToConsole(message);
       if (message.kind == "runTestsStart") {
         expectedPassedTests = message.tests.length;
       } else if (message.kind == "runTestsEnd") {
@@ -204,7 +207,7 @@ async function masterRunnerMain(
   for (const testResult of testResults) {
     const { permsStr, endMessage } = testResult;
     console.log(`Summary for ${permsStr}`);
-    Deno.reportToConsole(endMessage);
+    reportToConsole(endMessage);
     testsPassed = testsPassed && testResult.passed;
   }
 

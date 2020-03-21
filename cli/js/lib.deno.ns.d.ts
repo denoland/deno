@@ -70,8 +70,6 @@ declare namespace Deno {
     | TestEndMessage
     | RunTestsEndMessage;
 
-  export function reportToConsole(message: TestMessage): void;
-
   export interface RunTestsOptions {
     /** If `true`, Deno will exit with status code 1 if there was
      * test failure. Defaults to `true`. */
