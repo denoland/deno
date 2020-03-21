@@ -74,7 +74,7 @@ declare namespace Deno {
     /** If `true`, Deno will exit with status code 1 if there was
      * test failure. Defaults to `true`. */
     exitOnFail?: boolean;
-    /** If `true`, Deno will exit upon first test failure Defaults to `false`. */
+    /** If `true`, Deno will exit upon first test failure. Defaults to `false`. */
     failFast?: boolean;
     /** String or RegExp used to filter test to run. Only test with names
      * matching provided `String` or `RegExp` will be run. */
@@ -84,7 +84,7 @@ declare namespace Deno {
     skip?: string | RegExp;
     /** Disable logging of the results. Defaults to `false`. */
     disableLog?: boolean;
-    /** Custom reporter function. If not provided uses console reporter. */
+    /** Whether or not to report results to the console as is done for `deno test`. Defaults to `false`. */
     reportToConsole?: boolean;
   }
 
