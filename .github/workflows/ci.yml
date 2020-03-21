@@ -29,7 +29,6 @@ jobs:
 
     env:
       RUST_BACKTRACE: full
-      DENO_BUILD_MODE: release
       RUSTC_WRAPPER: sccache
       V8_BINARY: true
 
@@ -157,9 +156,7 @@ jobs:
 
       - name: Build debug
         if: matrix.kind == 'test_debug'
-        run: |
-          echo ::set-env name=DENO_BUILD_MODE::debug
-          cargo build --locked --all-targets
+        run: cargo build --locked --all-targets
 
       - name: Test release
         if: matrix.kind == 'test_release'
@@ -167,13 +164,11 @@ jobs:
 
       - name: Test debug
         if: matrix.kind == 'test_debug'
-        run: |
-          echo ::set-env name=DENO_BUILD_MODE::debug
-          cargo test --locked --all-targets
+        run: cargo test --locked --all-targets
 
       - name: Run Benchmarks
         if: matrix.kind == 'bench'
-        run: python ./tools/benchmark.py target/release
+        run: python ./tools/benchmark.py --release
 
       - name: Post Benchmarks
         if: matrix.kind == 'bench' && github.ref == 'refs/heads/master' && github.repository == 'denoland/deno'
@@ -181,7 +176,7 @@ jobs:
           DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
         run: |
           git clone --depth 1 -b gh-pages https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git gh-pages
-          python ./tools/build_benchmark_jsons.py
+          python ./tools/build_benchmark_jsons.py --release
           cd gh-pages
           git config user.email "propelml@gmail.com"
           git config user.name "denobot"
