@@ -12,6 +12,8 @@ export interface UnixAddr {
   address: string;
 }
 
+export type Addr = NetAddr | UnixAddr;
+
 export enum ShutdownMode {
   // See http://man7.org/linux/man-pages/man2/shutdown.2.html
   // Corresponding to SHUT_RD, SHUT_WR, SHUT_RDWR
@@ -26,8 +28,8 @@ export function shutdown(rid: number, how: ShutdownMode): void {
 
 interface AcceptResponse {
   rid: number;
-  localAddr: NetAddr | UnixAddr;
-  remoteAddr: NetAddr | UnixAddr;
+  localAddr: Addr;
+  remoteAddr: Addr;
 }
 
 export async function accept(
@@ -37,11 +39,11 @@ export async function accept(
   return sendAsync("op_accept", { rid, transport });
 }
 
-export type ListenRequest = NetAddr | UnixAddr;
+export type ListenRequest = Addr;
 
 interface ListenResponse {
   rid: number;
-  localAddr: NetAddr | UnixAddr;
+  localAddr: Addr;
 }
 
 export function listen(args: ListenRequest): ListenResponse {
@@ -50,11 +52,11 @@ export function listen(args: ListenRequest): ListenResponse {
 
 interface ConnectResponse {
   rid: number;
-  localAddr: NetAddr | UnixAddr;
-  remoteAddr: NetAddr | UnixAddr;
+  localAddr: Addr;
+  remoteAddr: Addr;
 }
 
-export type ConnectRequest = NetAddr | UnixAddr;
+export type ConnectRequest = Addr;
 
 export async function connect(args: ConnectRequest): Promise<ConnectResponse> {
   return sendAsync("op_connect", args);
@@ -62,7 +64,7 @@ export async function connect(args: ConnectRequest): Promise<ConnectResponse> {
 
 interface ReceiveResponse {
   size: number;
-  remoteAddr: NetAddr | UnixAddr;
+  remoteAddr: Addr;
 }
 
 export async function receive(
@@ -73,12 +75,12 @@ export async function receive(
   return sendAsync("op_receive", { rid, transport }, zeroCopy);
 }
 
-export interface SendRequest {
+export type SendRequest = {
   rid: number;
-}
+} & Addr;
 
 export async function send(
-  args: SendRequest & (UnixAddr | NetAddr),
+  args: SendRequest,
   zeroCopy: Uint8Array
 ): Promise<void> {
   await sendAsync("op_send", args, zeroCopy);

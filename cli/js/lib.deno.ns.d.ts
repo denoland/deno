@@ -1579,15 +1579,8 @@ declare namespace Deno {
    *
    * Requires `allow-plugin` permission. */
   export function openPlugin(filename: string): Plugin;
-
-  export interface TCPAddr {
-    transport: "tcp";
-    hostname: string;
-    port: number;
-  }
-
-  export interface UDPAddr {
-    transport: "udp";
+  export interface NetAddr {
+    transport: "tcp" | "udp";
     hostname: string;
     port: number;
   }

@@ -4,19 +4,19 @@ import { EOF, Reader, Writer, Closer } from "./io.ts";
 import { read, write } from "./ops/io.ts";
 import { close } from "./ops/resources.ts";
 import * as netOps from "./ops/net.ts";
+import { Addr } from "./ops/net.ts";
 export { ShutdownMode, shutdown, NetAddr, UnixAddr } from "./ops/net.ts";
 
-export interface DatagramConn
-  extends AsyncIterable<[Uint8Array, NetAddr | UnixAddr]> {
-  receive(p?: Uint8Array): Promise<[Uint8Array, NetAddr | UnixAddr]>;
+export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
+  receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
 
-  send(p: Uint8Array, addr: NetAddr | UnixAddr): Promise<void>;
+  send(p: Uint8Array, addr: Addr): Promise<void>;
 
   close(): void;
 
-  addr: NetAddr | UnixAddr;
+  addr: Addr;
 
-  [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, T]>;
+  [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]>;
 }
 
 export interface Listener extends AsyncIterable<Conn> {
@@ -24,7 +24,7 @@ export interface Listener extends AsyncIterable<Conn> {
 
   close(): void;
 
-  addr: NetAddr | UnixAddr;
+  addr: Addr;
 
   [Symbol.asyncIterator](): AsyncIterator<Conn>;
 }
@@ -32,8 +32,8 @@ export interface Listener extends AsyncIterable<Conn> {
 export class ConnImpl implements Conn {
   constructor(
     readonly rid: number,
-    readonly remoteAddr: NetAddr | UnixAddr,
-    readonly localAddr: NetAddr | UnixAddr
+    readonly remoteAddr: Addr,
+    readonly localAddr: Addr
   ) {}
 
   write(p: Uint8Array): Promise<number> {
@@ -58,7 +58,7 @@ export class ConnImpl implements Conn {
 }
 
 export class ListenerImpl implements Listener {
-  constructor(readonly rid: number, readonly addr: NetAddr | UnixAddr) {}
+  constructor(readonly rid: number, readonly addr: Addr) {}
 
   async accept(): Promise<Conn> {
     const res = await netOps.accept(this.rid, this.addr.transport);
@@ -86,7 +86,7 @@ export class ListenerImpl implements Listener {
 export async function recvfrom(
   { rid, transport = "udp" }: { rid: number; transport: string },
   p: Uint8Array
-): Promise<[number, NetAddr | UnixAddr]> {
+): Promise<[number, Addr]> {
   const { size, remoteAddr } = await netOps.receive(rid, transport, p);
   return [size, remoteAddr];
 }
@@ -94,11 +94,11 @@ export async function recvfrom(
 export class DatagramImpl implements DatagramConn {
   constructor(
     readonly rid: number,
-    readonly addr: NetAddr | UnixAddr,
+    readonly addr: Addr,
     public bufSize: number = 1024
   ) {}
 
-  async receive(p?: Uint8Array): Promise<[Uint8Array, NetAddr | UnixAddr]> {
+  async receive(p?: Uint8Array): Promise<[Uint8Array, Addr]> {
     const buf = p || new Uint8Array(this.bufSize);
     const [size, remoteAddr] = await recvfrom(
       { rid: this.rid, ...this.addr },
@@ -108,7 +108,7 @@ export class DatagramImpl implements DatagramConn {
     return [sub, remoteAddr];
   }
 
-  async send(p: Uint8Array, addr: NetAddr | UnixAddr): Promise<void> {
+  async send(p: Uint8Array, addr: Addr): Promise<void> {
     const remote = { hostname: "127.0.0.1", transport: "udp", ...addr };
     if (remote.transport !== "udp") throw Error("Remote transport must be UDP");
     const args = { ...remote, rid: this.rid };
@@ -119,9 +119,7 @@ export class DatagramImpl implements DatagramConn {
     close(this.rid);
   }
 
-  async *[Symbol.asyncIterator](): AsyncIterator<
-    [Uint8Array, NetAddr | UnixAddr]
-  > {
+  async *[Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]> {
     while (true) {
       try {
         yield await this.receive();
@@ -136,8 +134,8 @@ export class DatagramImpl implements DatagramConn {
 }
 
 export interface Conn extends Reader, Writer, Closer {
-  localAddr: NetAddr | UnixAddr;
-  remoteAddr: NetAddr | UnixAddr;
+  localAddr: Addr;
+  remoteAddr: Addr;
   rid: number;
   closeRead(): void;
   closeWrite(): void;
@@ -146,7 +144,7 @@ export interface Conn extends Reader, Writer, Closer {
 export interface ListenOptions {
   port: number;
   hostname?: string;
-  transport?: "tcp" | "udp";
+  transport: "tcp" | "udp" | undefined;
 }
 
 export interface UnixListenOptions {
@@ -154,34 +152,32 @@ export interface UnixListenOptions {
   address: string;
 }
 
-export function listen(
-  options: ListenOptions & { transport?: "tcp" }
-): Listener;
-export function listen(
-  options: UnixListenOptions & { transport: "unix" }
-): Listener;
-export function listen(
-  options: ListenOptions & { transport: "udp" }
-): DatagramConn;
-export function listen(
-  options: UnixListenOptions & { transport: "unixpacket" }
-): DatagramConn;
+// export function listen(
+//   options: ListenOptions & { transport?: "tcp" }
+// ): Listener;
+// export function listen(
+//   options: UnixListenOptions & { transport: "unix" }
+// ): Listener;
+// export function listen(
+//   options: ListenOptions & { transport: "udp" }
+// ): DatagramConn;
+// export function listen(
+//   options: UnixListenOptions & { transport: "unixpacket" }
+// ): DatagramConn;
 export function listen(
   options: ListenOptions | UnixListenOptions
 ): Listener | DatagramConn {
+  if (options.transport === "unix" || options.transport === "unixpacket") {
+    return netOps.listen(options);
+  }
+  return netOps.listen({
+    hostname: "127.0.0.1",
+    transport: "tcp",
+    ...options
+  });
   const res = (() => {
-    if (options.transport === "unix" || options.transport === "unixpacket") {
-      return netOps.listen(options);
-    } else if (options.transport === "tcp") {
-      return netOps.listen({
-        transport: options.transport || "tcp",
-        hostname: options.hostname || "127.0.0.1",
-        port: options.port
-      });
-    }
   })();
-
-  if (transport === "tcp") {
+  if (options.transport === "tcp" || options.transport === "unix") {
     return new ListenerImpl(res.rid, res.localAddr);
   } else {
     return new DatagramImpl(res.rid, res.localAddr);

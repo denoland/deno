@@ -13,7 +13,6 @@ import { encode } from "../strings/mod.ts";
 import Listener = Deno.Listener;
 import Conn = Deno.Conn;
 import Reader = Deno.Reader;
-import TCPAddr = Deno.TCPAddr;
 const { listen, listenTLS } = Deno;
 
 export class ServerRequest {
@@ -127,7 +126,7 @@ export class Server implements AsyncIterable<ServerRequest> {
   private closing = false;
   private connections: Conn[] = [];
 
-  constructor(public listener: Listener<TCPAddr>) {}
+  constructor(public listener: Listener) {}
 
   close(): void {
     this.closing = true;
