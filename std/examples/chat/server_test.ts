@@ -16,7 +16,7 @@ async function startServer(): Promise<Deno.Process> {
       Deno.execPath(),
       "--allow-net",
       "--allow-read",
-      "server.ts",
+      "examples/chat/server.ts",
       `127.0.0.1:${port}`
     ],
     cwd: "examples/chat",
