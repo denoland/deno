@@ -21,7 +21,6 @@ use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use futures::Future;
 use libc::c_void;
-use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::convert::From;
 use std::error::Error;
@@ -89,14 +88,14 @@ impl AsMut<[u8]> for ZeroCopyBuf {
 }
 
 pub enum SnapshotConfig {
-  Borrowed(v8::StartupData<'static>),
+  Borrowed(&'static [u8]),
   Owned(v8::OwnedStartupData),
   Bytes(bytes::Bytes),
 }
 
 impl From<&'static [u8]> for SnapshotConfig {
   fn from(sd: &'static [u8]) -> Self {
-    Self::Borrowed(v8::StartupData::new(sd))
+    Self::Borrowed(sd)
   }
 }
 
@@ -112,12 +111,12 @@ impl From<bytes::Bytes> for SnapshotConfig {
   }
 }
 
-impl Borrow<[u8]> for SnapshotConfig {
-  fn borrow(&self) -> &[u8] {
+impl SnapshotConfig {
+  pub fn try_as_bytes(&self) -> Option<&[u8]> {
     match self {
-      Self::Borrowed(sd) => sd,
-      Self::Owned(sd) => &*sd,
-      Self::Bytes(sd) => sd,
+      Self::Owned(_) => None,
+      Self::Borrowed(data) => Some(*data),
+      Self::Bytes(bytes) => Some(bytes),
     }
   }
 }
@@ -281,8 +280,13 @@ impl Isolate {
       params.set_array_buffer_allocator(v8::new_default_allocator());
       params.set_external_references(&bindings::EXTERNAL_REFERENCES);
       if let Some(ref snapshot) = load_snapshot {
-        let data = v8::StartupData::new(snapshot);
-        params.set_snapshot_blob(&data);
+        match snapshot {
+          SnapshotConfig::Owned(sd) => params.set_snapshot_blob(sd),
+          other => {
+            let sd = v8::StartupData::new(other.try_as_bytes().unwrap());
+            params.set_snapshot_blob(&sd);
+          }
+        };
       }
 
       let isolate = v8::Isolate::new(params);
