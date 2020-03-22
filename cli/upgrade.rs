@@ -80,12 +80,14 @@ pub async fn upgrade_command(dry_run: bool) -> Result<(), ErrBox> {
       "New version has been found\nDeno is upgrading to version {}",
       &latest_version
     );
-    let archive =
+    let archive_data =
       download_package(&compose_url_to_exec(&latest_version)?, client).await?;
 
-    let new_exe_path = unpack(archive)?;
-    check_exe(&new_exe_path, &latest_version)?;
     let old_exe_path = std::env::current_exe()?;
+    let new_exe_path = unpack(archive_data)?;
+    let permissions = fs::metadata(&old_exe_path)?.permissions();
+    fs::set_permissions(&new_exe_path, permissions)?;
+    check_exe(&new_exe_path, &latest_version)?;
 
     if !dry_run {
       replace_exe(&new_exe_path, &old_exe_path)?;
@@ -176,10 +178,8 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
 }
 
 fn replace_exe(new: &Path, old: &Path) -> Result<(), ErrBox> {
-  let perms = fs::metadata(old)?.permissions();
   fs::remove_file(old)?;
   fs::rename(new, old)?;
-  fs::set_permissions(&old, perms)?;
   Ok(())
 }
 
