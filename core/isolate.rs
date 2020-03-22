@@ -736,6 +736,7 @@ pub fn js_check<T>(r: Result<T, ErrBox>) -> T {
 pub mod tests {
   use super::*;
   use futures::future::lazy;
+  use std::fs::read;
   use std::ops::FnOnce;
   use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -1194,6 +1195,39 @@ pub mod tests {
     let startup_data = StartupData::OwnedSnapshot(snapshot);
     let mut isolate2 = Isolate::new(startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
+  }
+
+  fn verify_snapshot(isolate: &mut Isolate) {
+    isolate
+      .execute(
+        "anon",
+        r#"
+          const greeting = fixture("Deno");
+          if (greeting != "Hello Deno!") {
+            throw new Error("Invalid return value");
+          }
+        "#,
+      )
+      .expect("failed to run JS test on isolate from snapshot");
+  }
+
+  static TEST_SNAPSHOT: &[u8] = include_bytes!("TEST_SNAPSHOT.bin");
+
+  #[test]
+  fn test_load_static_snapshot() {
+    let mut isolate = Isolate::new(StartupData::Snapshot(TEST_SNAPSHOT), false);
+    verify_snapshot(&mut isolate);
+  }
+
+  static TEST_SNAPSHOT_PATH: &str = "TEST_SNAPSHOT.bin";
+
+  #[test]
+  fn test_load_file_snapshot() {
+    let snap_bytes =
+      read(TEST_SNAPSHOT_PATH).expect("failed to read from file");
+    let mut isolate =
+      Isolate::new(StartupData::BytesSnapshot(snap_bytes.into()), false);
+    verify_snapshot(&mut isolate);
   }
 }
 
