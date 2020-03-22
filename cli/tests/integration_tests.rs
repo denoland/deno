@@ -171,7 +171,7 @@ fn fmt_stdin_error() {
 #[test]
 fn upgrade_dry_run() {
   // warning this test requires internet access
-  let mut status = util::deno_cmd()
+  let status = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("upgrade")
     .arg("--dry-run")

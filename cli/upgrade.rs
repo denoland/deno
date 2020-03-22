@@ -34,6 +34,15 @@ const EXEC_FILE_NAME: &str = "deno_osx_x64.gz";
 #[cfg(target_os = "linux")]
 const EXEC_FILE_NAME: &str = "deno_linux_x64.gz";
 
+#[cfg(windows)]
+const UNZIP_COMMAND: &str = "Expand-Archive";
+#[cfg(windows)]
+const EXT: &str = "exe";
+#[cfg(not(windows))]
+const UNZIP_COMMAND: &str = "gunzip";
+#[cfg(not(windows))]
+const EXT: &str = "";
+
 struct ErrorMsg(String);
 
 impl ErrorMsg {
@@ -133,27 +142,22 @@ fn unpack(archive: Vec<u8>) -> Result<PathBuf, ErrBox> {
   // We use into_path so that the tempdir is not automatically deleted. This is
   // useful for debugging upgrade, but also so this function can return a path
   // to the newly uncompressed file without fear of the tempdir being deleted.
-  let tmp = TempDir::new().unwrap().into_path();
+  let tmp = TempDir::new()?.into_path();
   let ar_path = tmp.join(EXEC_FILE_NAME);
   {
     let mut ar_file = std::fs::File::create(&ar_path)?;
     ar_file.write_all(&archive)?;
   }
 
+  let status = Command::new(UNZIP_COMMAND).arg(&ar_path).spawn()?.wait()?;
+  assert!(status.success());
+
+  let new_exe_path = ar_path.with_extension(EXT);
+  assert!(new_exe_path.exists());
+
   if cfg!(windows) {
-    todo!()
+    Ok(new_exe_path)
   } else {
-    let status = Command::new("gunzip")
-      .arg(&ar_path)
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
-    assert!(status.success());
-
-    let new_exe_path = ar_path.with_extension("");
-    assert!(new_exe_path.exists());
-
     use std::os::unix::fs::PermissionsExt;
     let mut perms = std::fs::metadata(&new_exe_path)?.permissions();
     perms.set_mode(perms.mode() | 0o100); // make executable
@@ -176,7 +180,7 @@ fn check_exe(
     .arg("-V")
     .stderr(std::process::Stdio::inherit())
     .output()?;
-  let stdout = String::from_utf8(output.stdout).unwrap();
+  let stdout = String::from_utf8(output.stdout)?;
   assert!(output.status.success());
   assert_eq!(stdout.trim(), format!("deno {}", expected_version));
   Ok(())
