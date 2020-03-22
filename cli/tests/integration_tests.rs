@@ -169,6 +169,20 @@ fn fmt_stdin_error() {
 }
 
 #[test]
+fn upgrade_dry_run() {
+  // warning this test requires internet access
+  let mut status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("upgrade")
+    .arg("--dry-run")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
 fn installer_test_local_module_run() {
   let temp_dir = TempDir::new().expect("tempdir fail");
   let local_module = std::env::current_dir().unwrap().join("tests/echo.ts");
