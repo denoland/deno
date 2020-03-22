@@ -2,7 +2,7 @@
 import { serve, ServerRequest } from "./server.ts";
 import { delay } from "../util/async.ts";
 
-const addr = Deno.args[1] || "127.0.0.1:4501";
+const addr = Deno.args[0] || "127.0.0.1:4501";
 const server = serve(addr);
 
 function body(i: number): string {

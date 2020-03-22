@@ -3,13 +3,22 @@ import { assert, assertEquals } from "../../testing/asserts.ts";
 import { TextProtoReader } from "../../textproto/mod.ts";
 import { BufReader } from "../../io/bufio.ts";
 import { connectWebSocket, WebSocket } from "../../ws/mod.ts";
+import { randomPort } from "../../http/test_util.ts";
 import { delay } from "../../util/async.ts";
+
+const port = randomPort();
 
 const { test, build } = Deno;
 
 async function startServer(): Promise<Deno.Process> {
   const server = Deno.run({
-    args: [Deno.execPath(), "--allow-net", "--allow-read", "server.ts"],
+    cmd: [
+      Deno.execPath(),
+      "--allow-net",
+      "--allow-read",
+      "server.ts",
+      `127.0.0.1:${port}`
+    ],
     cwd: "examples/chat",
     stdout: "piped"
   });
@@ -18,7 +27,7 @@ async function startServer(): Promise<Deno.Process> {
     const r = new TextProtoReader(new BufReader(server.stdout));
     const s = await r.readLine();
     assert(s !== Deno.EOF && s.includes("chat server starting"));
-  } catch {
+  } catch (err) {
     server.stdout!.close();
     server.close();
   }
@@ -35,7 +44,7 @@ test({
   async fn() {
     const server = await startServer();
     try {
-      const resp = await fetch("http://127.0.0.1:8080/");
+      const resp = await fetch(`http://127.0.0.1:${port}/`);
       assertEquals(resp.status, 200);
       assertEquals(resp.headers.get("content-type"), "text/html");
       const html = await resp.body.text();
@@ -55,7 +64,7 @@ test({
     const server = await startServer();
     let ws: WebSocket | undefined;
     try {
-      ws = await connectWebSocket("http://127.0.0.1:8080/ws");
+      ws = await connectWebSocket(`http://127.0.0.1:${port}/ws`);
       const it = ws.receive();
       assertEquals((await it.next()).value, "Connected: [1]");
       ws.send("Hello");

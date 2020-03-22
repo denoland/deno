@@ -106,7 +106,7 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
     return nread;
   }
 
-  async read(p: Uint8Array): Promise<number | EOF> {
+  read(p: Uint8Array): Promise<number | EOF> {
     const rr = this.readSync(p);
     return Promise.resolve(rr);
   }
@@ -116,7 +116,7 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
     return copyBytes(this.buf, p, m);
   }
 
-  async write(p: Uint8Array): Promise<number> {
+  write(p: Uint8Array): Promise<number> {
     const n = this.writeSync(p);
     return Promise.resolve(n);
   }

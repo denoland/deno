@@ -1,12 +1,20 @@
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
+import { randomPort } from "./test_util.ts";
+const port = randomPort();
 const { connect, run, test } = Deno;
 
 let server: Deno.Process;
 async function startServer(): Promise<void> {
   server = run({
-    args: [Deno.execPath(), "run", "-A", "http/racing_server.ts"],
+    cmd: [
+      Deno.execPath(),
+      "run",
+      "-A",
+      "http/racing_server.ts",
+      "127.0.0.1:" + port
+    ],
     stdout: "piped"
   });
   // Once racing server is ready it will write to its stdout.
@@ -61,7 +69,7 @@ Step7
 test(async function serverPipelineRace(): Promise<void> {
   await startServer();
 
-  const conn = await connect({ port: 4501 });
+  const conn = await connect({ port });
   const r = new TextProtoReader(new BufReader(conn));
   const w = new BufWriter(conn);
   await w.write(new TextEncoder().encode(input));

@@ -27,10 +27,15 @@ jobs:
           - os: macOS-latest
             kind: 'test_debug'
 
+      # Always run master branch builds to completion. This allows the cache to
+      # stay mostly up-to-date in situations where a single job fails due to
+      # e.g. a flaky test.
+      fail-fast:
+        ${{ github.event_name != 'push' || github.ref != 'refs/heads/master' }}
+
     env:
+      CARGO_INCREMENTAL: 0
       RUST_BACKTRACE: full
-      DENO_BUILD_MODE: release
-      RUSTC_WRAPPER: sccache
       V8_BINARY: true
 
     steps:
@@ -50,24 +55,7 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test_release' && startsWith(github.ref, 'refs/tags/') && github.repository == 'denoland/deno'
         run: |
           mkdir -p target/release
-          tar --exclude=".git*" --exclude=target --exclude=deno_typescript/typescript/tests --exclude=third_party/cpplint --exclude=third_party/node_modules --exclude=third_party/python_packages --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
-
-      # Cache https://github.com/actions/cache/blob/master/examples.md#rust---cargo
-      - name: Cache cargo registry
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-      - name: Cache cargo index
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-      - name: Cache cargo build
-        uses: actions/cache@v1
-        with:
-          path: target
-          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          tar --exclude=.cargo --exclude=".git*" --exclude=target --exclude=deno_typescript/typescript/tests --exclude=third_party/cpplint --exclude=third_party/node_modules --exclude=third_party/python_packages --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
 
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
@@ -94,28 +82,6 @@ jobs:
             Select-Object -Skip 1 |
             ForEach-Object { Move-Item "$_" "$_.disabled" }
 
-      - name: Environment (linux)
-        if: startsWith(matrix.os, 'ubuntu')
-        # In order to test the installer scripts in std we need a deno
-        # executable in the path. See
-        # https://github.com/denoland/deno/blob/27cd2c97f18c0392bc04c66b786717b2bc677315/std/installer/mod.ts#L185-L193
-        # TODO(ry) This path modification should rather be done in "cargo test".
-        run: |
-          echo ::add-path::`pwd`/third_party/prebuilt/linux64
-          echo ::add-path::`pwd`/target/release
-
-      - name: Environment (mac)
-        if: startsWith(matrix.os, 'macOS')
-        run: |
-          echo ::add-path::`pwd`/third_party/prebuilt/mac
-          echo ::add-path::`pwd`/target/release
-
-      - name: Environment (windows)
-        if: startsWith(matrix.os, 'windows')
-        run: |
-          echo ::add-path::$(pwd)\third_party\prebuilt\win
-          echo ::add-path::$(pwd)\target\release
-
       - name: Log versions
         run: |
           node -v
@@ -123,25 +89,29 @@ jobs:
           rustc --version
           cargo --version
 
-      - name: Start sccache (azure)
-        if: startsWith(matrix.os, 'windows') == false
-        env:
-          SCCACHE_AZURE_BLOB_CONTAINER: deno-sccache2
-          SCCACHE_AZURE_CONNECTION_STRING: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING || 'DefaultEndpointsProtocol=https;AccountName=denosccache;EndpointSuffix=core.windows.net' }}
-          SCCACHE_IDLE_TIMEOUT: 0
-        run: sccache --start-server
+      - name: Configure cargo data directory
+        # After this point, all cargo registry and crate data is stored in
+        # $GITHUB_WORKSPACE/.cargo. This allows us to cache only the files that
+        # are needed during the build process. Additionally, this works around
+        # a bug in the 'cache' action that causes directories outside of the
+        # workspace dir to be saved/restored incorrectly.
+        run: echo "::set-env name=CARGO_HOME::$(pwd)/.cargo"
 
-      # TODO(ry) We want to use Azure because it's cheaper. However sccache on
-      # Windows has a bug when using Azure. The bug manifests itself as a
-      # "multiple input files" error message.
-      - name: Start sccache (s3)
-        if: startsWith(matrix.os, 'windows')
-        env:
-          AWS_ACCESS_KEY_ID: AKIAIVRN52PLDBP55LBQ
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          SCCACHE_BUCKET: deno-sccache
-          SCCACHE_IDLE_TIMEOUT: 0
-        run: sccache --start-server
+      - name: Cache
+        uses: actions/cache@master
+        with:
+          # Note: crates from the denoland/deno git repo always get rebuilt,
+          # and their outputs ('deno', 'libdeno.rlib' etc.) are quite big,
+          # so we cache only those subdirectories of target/{debug|release} that
+          # contain the build output for crates that come from the registry.
+          path: |-
+            .cargo
+            target/*/.*
+            target/*/build
+            target/*/deps
+            target/*/gn_out
+          key:
+            ${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
 
       - name: lint.py
         if: matrix.kind == 'lint'
@@ -157,9 +127,7 @@ jobs:
 
       - name: Build debug
         if: matrix.kind == 'test_debug'
-        run: |
-          echo ::set-env name=DENO_BUILD_MODE::debug
-          cargo build --locked --all-targets
+        run: cargo build --locked --all-targets
 
       - name: Test release
         if: matrix.kind == 'test_release'
@@ -167,13 +135,11 @@ jobs:
 
       - name: Test debug
         if: matrix.kind == 'test_debug'
-        run: |
-          echo ::set-env name=DENO_BUILD_MODE::debug
-          cargo test --locked --all-targets
+        run: cargo test --locked --all-targets
 
       - name: Run Benchmarks
         if: matrix.kind == 'bench'
-        run: python ./tools/benchmark.py target/release
+        run: python ./tools/benchmark.py --release
 
       - name: Post Benchmarks
         if: matrix.kind == 'bench' && github.ref == 'refs/heads/master' && github.repository == 'denoland/deno'
@@ -181,7 +147,7 @@ jobs:
           DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
         run: |
           git clone --depth 1 -b gh-pages https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git gh-pages
-          python ./tools/build_benchmark_jsons.py
+          python ./tools/build_benchmark_jsons.py --release
           cd gh-pages
           git config user.email "propelml@gmail.com"
           git config user.name "denobot"
@@ -237,6 +203,3 @@ jobs:
           cd ../cli
           sleep 30
           cargo publish
-
-      - name: Stop sccache
-        run: sccache --stop-server

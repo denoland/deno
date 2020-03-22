@@ -8,7 +8,7 @@ import {
 
 const clients = new Map<number, WebSocket>();
 let clientId = 0;
-async function dispatch(msg: string): Promise<void> {
+function dispatch(msg: string): void {
   for (const client of clients.values()) {
     client.send(msg);
   }
@@ -29,7 +29,9 @@ async function wsHandler(ws: WebSocket): Promise<void> {
   }
 }
 
-listenAndServe({ port: 8080 }, async req => {
+const addr = Deno.args[0] ?? "127.0.0.1:8080";
+
+listenAndServe(addr, async req => {
   if (req.method === "GET" && req.url === "/") {
     //Serve with hack
     const u = new URL("./index.html", import.meta.url);
@@ -75,4 +77,4 @@ listenAndServe({ port: 8080 }, async req => {
     }
   }
 });
-console.log("chat server starting on :8080....");
+console.log(`chat server starting on ${addr}....`);

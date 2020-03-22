@@ -169,11 +169,12 @@ export async function runBenchmarks({
 }
 
 /** Runs specified benchmarks if the enclosing script is main. */
-export async function runIfMain(
+export function runIfMain(
   meta: ImportMeta,
   opts: BenchmarkRunOptions = {}
 ): Promise<void> {
   if (meta.main) {
     return runBenchmarks(opts);
   }
+  return Promise.resolve(undefined);
 }

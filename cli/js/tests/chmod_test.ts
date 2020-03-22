@@ -1,10 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals } from "./test_util.ts";
 
-const isNotWindows = Deno.build.os !== "win";
-
 unitTest(
-  { perms: { read: true, write: true } },
+  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
   function chmodSyncSuccess(): void {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
@@ -12,15 +10,11 @@ unitTest(
     const filename = tempDir + "/test.txt";
     Deno.writeFileSync(filename, data, { mode: 0o666 });
 
-    // On windows no effect, but should not crash
     Deno.chmodSync(filename, 0o777);
 
-    // Check success when not on windows
-    if (isNotWindows) {
-      const fileInfo = Deno.statSync(filename);
-      assert(fileInfo.mode);
-      assertEquals(fileInfo.mode & 0o777, 0o777);
-    }
+    const fileInfo = Deno.statSync(filename);
+    assert(fileInfo.mode);
+    assertEquals(fileInfo.mode & 0o777, 0o777);
   }
 );
 
@@ -79,7 +73,7 @@ unitTest({ perms: { write: false } }, function chmodSyncPerm(): void {
 });
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
   async function chmodSuccess(): Promise<void> {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
@@ -87,15 +81,11 @@ unitTest(
     const filename = tempDir + "/test.txt";
     Deno.writeFileSync(filename, data, { mode: 0o666 });
 
-    // On windows no effect, but should not crash
     await Deno.chmod(filename, 0o777);
 
-    // Check success when not on windows
-    if (isNotWindows) {
-      const fileInfo = Deno.statSync(filename);
-      assert(fileInfo.mode);
-      assertEquals(fileInfo.mode & 0o777, 0o777);
-    }
+    const fileInfo = Deno.statSync(filename);
+    assert(fileInfo.mode);
+    assertEquals(fileInfo.mode & 0o777, 0o777);
   }
 );
 

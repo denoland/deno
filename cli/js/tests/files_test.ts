@@ -51,16 +51,16 @@ unitTest(async function readerToAsyncIterator(): Promise<void> {
 
     constructor(private readonly s: string) {}
 
-    async read(p: Uint8Array): Promise<number | Deno.EOF> {
+    read(p: Uint8Array): Promise<number | Deno.EOF> {
       const n = Math.min(p.byteLength, this.buf.byteLength - this.offset);
       p.set(this.buf.slice(this.offset, this.offset + n));
       this.offset += n;
 
       if (n === 0) {
-        return Deno.EOF;
+        return Promise.resolve(Deno.EOF);
       }
 
-      return n;
+      return Promise.resolve(n);
     }
   }
 

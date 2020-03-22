@@ -23,7 +23,7 @@ interface ConnectTLSResponse {
   };
 }
 
-export async function connectTLS(
+export function connectTLS(
   args: ConnectTLSRequest
 ): Promise<ConnectTLSResponse> {
   return sendAsync("op_connect_tls", args);
@@ -43,7 +43,7 @@ interface AcceptTLSResponse {
   };
 }
 
-export async function acceptTLS(rid: number): Promise<AcceptTLSResponse> {
+export function acceptTLS(rid: number): Promise<AcceptTLSResponse> {
   return sendAsync("op_accept_tls", { rid });
 }
 

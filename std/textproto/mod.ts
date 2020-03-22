@@ -5,24 +5,14 @@
 
 import { BufReader } from "../io/bufio.ts";
 import { charCode } from "../io/util.ts";
+import { concat } from "../bytes/mod.ts";
+import { decode } from "../strings/mod.ts";
 
-const asciiDecoder = new TextDecoder();
 function str(buf: Uint8Array | null | undefined): string {
   if (buf == null) {
     return "";
   } else {
-    return asciiDecoder.decode(buf);
-  }
-}
-
-export function append(a: Uint8Array, b: Uint8Array): Uint8Array {
-  if (a == null) {
-    return b;
-  } else {
-    const output = new Uint8Array(a.length + b.length);
-    output.set(a, 0);
-    output.set(b, a.length);
-    return output;
+    return decode(buf);
   }
 }
 
@@ -146,9 +136,7 @@ export class TextProtoReader {
         }
         return l;
       }
-
-      // @ts-ignore
-      line = append(line, l);
+      line = line ? concat(line, l) : l;
       if (!more) {
         break;
       }

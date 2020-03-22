@@ -366,7 +366,7 @@ Example:
 ```ts
 // create subprocess
 const p = Deno.run({
-  args: ["echo", "hello"]
+  cmd: ["echo", "hello"]
 });
 
 // await its completion
@@ -393,7 +393,7 @@ you can use `"piped"` option.
 const fileNames = Deno.args;
 
 const p = Deno.run({
-  args: [
+  cmd: [
     "deno",
     "run",
     "--allow-read",
@@ -1602,40 +1602,6 @@ Format the code:
 ```bash
 ./tools/format.py
 ```
-
-#### Other Useful Commands
-
-```bash
-# Call ninja manually.
-ninja -C target/debug
-
-# Build a release binary.
-cargo build --release
-
-# List executable targets.
-gn --root=core/libdeno ls target/debug "//:*" --as=output --type=executable
-
-# List build configuration.
-gn --root=core/libdeno args target/debug/ --list
-
-# Edit build configuration.
-gn --root=core/libdeno args target/debug/
-
-# Describe a target.
-gn --root=core/libdeno desc target/debug/ :deno
-gn help
-
-# Update third_party modules
-git submodule update
-
-# Skip downloading binary build tools and point the build
-# to the system provided ones (for packagers of deno ...).
-export DENO_BUILD_ARGS="clang_base_path=/usr clang_use_chrome_plugins=false"
-DENO_NO_BINARY_DOWNLOAD=1 DENO_GN_PATH=/usr/bin/gn cargo build
-```
-
-Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
-`DENO_DIR`, `DENO_GN_PATH`, `DENO_NO_BINARY_DOWNLOAD`.
 
 ### Submitting a Pull Request
 

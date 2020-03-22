@@ -12,12 +12,12 @@ interface RunStatusResponse {
   exitSignal: number;
 }
 
-export async function runStatus(rid: number): Promise<RunStatusResponse> {
+export function runStatus(rid: number): Promise<RunStatusResponse> {
   return sendAsync("op_run_status", { rid });
 }
 
 interface RunRequest {
-  args: string[];
+  cmd: string[];
   cwd?: string;
   env?: Array<[string, string]>;
   stdin: string;
@@ -37,6 +37,6 @@ interface RunResponse {
 }
 
 export function run(request: RunRequest): RunResponse {
-  assert(request.args.length > 0);
+  assert(request.cmd.length > 0);
   return sendSync("op_run", request);
 }

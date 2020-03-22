@@ -16,7 +16,7 @@ test({
         else resolve();
       });
     })
-      .then(async () => {
+      .then(() => {
         assert(!Deno.resources()[file.rid]);
       })
       .catch(() => {

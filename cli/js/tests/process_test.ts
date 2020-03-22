@@ -10,7 +10,7 @@ const { kill, run, readFile, open, makeTempDir, writeFile } = Deno;
 unitTest(function runPermissions(): void {
   let caughtError = false;
   try {
-    Deno.run({ args: ["python", "-c", "print('hello world')"] });
+    Deno.run({ cmd: ["python", "-c", "print('hello world')"] });
   } catch (e) {
     caughtError = true;
     assert(e instanceof Deno.errors.PermissionDenied);
@@ -20,7 +20,7 @@ unitTest(function runPermissions(): void {
 
 unitTest({ perms: { run: true } }, async function runSuccess(): Promise<void> {
   const p = run({
-    args: ["python", "-c", "print('hello world')"],
+    cmd: ["python", "-c", "print('hello world')"],
     stdout: "piped",
     stderr: "null"
   });
@@ -36,7 +36,7 @@ unitTest(
   { perms: { run: true } },
   async function runCommandFailedWithCode(): Promise<void> {
     const p = run({
-      args: ["python", "-c", "import sys;sys.exit(41 + 1)"]
+      cmd: ["python", "-c", "import sys;sys.exit(41 + 1)"]
     });
     const status = await p.status();
     assertEquals(status.success, false);
@@ -54,7 +54,7 @@ unitTest(
   },
   async function runCommandFailedWithSignal(): Promise<void> {
     const p = run({
-      args: ["python", "-c", "import os;os.kill(os.getpid(), 9)"]
+      cmd: ["python", "-c", "import os;os.kill(os.getpid(), 9)"]
     });
     const status = await p.status();
     assertEquals(status.success, false);
@@ -67,7 +67,7 @@ unitTest(
 unitTest({ perms: { run: true } }, function runNotFound(): void {
   let error;
   try {
-    run({ args: ["this file hopefully doesn't exist"] });
+    run({ cmd: ["this file hopefully doesn't exist"] });
   } catch (e) {
     error = e;
   }
@@ -102,7 +102,7 @@ while True:
     Deno.writeFileSync(`${cwd}/${pyProgramFile}.py`, enc.encode(pyProgram));
     const p = run({
       cwd,
-      args: ["python", `${pyProgramFile}.py`]
+      cmd: ["python", `${pyProgramFile}.py`]
     });
 
     // Write the expected exit code *after* starting python.
@@ -122,7 +122,7 @@ unitTest({ perms: { run: true } }, async function runStdinPiped(): Promise<
   void
 > {
   const p = run({
-    args: ["python", "-c", "import sys; assert 'hello' == sys.stdin.read();"],
+    cmd: ["python", "-c", "import sys; assert 'hello' == sys.stdin.read();"],
     stdin: "piped"
   });
   assert(p.stdin);
@@ -146,7 +146,7 @@ unitTest({ perms: { run: true } }, async function runStdoutPiped(): Promise<
   void
 > {
   const p = run({
-    args: ["python", "-c", "import sys; sys.stdout.write('hello')"],
+    cmd: ["python", "-c", "import sys; sys.stdout.write('hello')"],
     stdout: "piped"
   });
   assert(!p.stdin);
@@ -175,7 +175,7 @@ unitTest({ perms: { run: true } }, async function runStderrPiped(): Promise<
   void
 > {
   const p = run({
-    args: ["python", "-c", "import sys; sys.stderr.write('hello')"],
+    cmd: ["python", "-c", "import sys; sys.stderr.write('hello')"],
     stderr: "piped"
   });
   assert(!p.stdin);
@@ -202,7 +202,7 @@ unitTest({ perms: { run: true } }, async function runStderrPiped(): Promise<
 
 unitTest({ perms: { run: true } }, async function runOutput(): Promise<void> {
   const p = run({
-    args: ["python", "-c", "import sys; sys.stdout.write('hello')"],
+    cmd: ["python", "-c", "import sys; sys.stdout.write('hello')"],
     stdout: "piped"
   });
   const output = await p.output();
@@ -215,7 +215,7 @@ unitTest({ perms: { run: true } }, async function runStderrOutput(): Promise<
   void
 > {
   const p = run({
-    args: ["python", "-c", "import sys; sys.stderr.write('error')"],
+    cmd: ["python", "-c", "import sys; sys.stderr.write('error')"],
     stderr: "piped"
   });
   const error = await p.stderrOutput();
@@ -232,7 +232,7 @@ unitTest(
     const file = await open(fileName, "w");
 
     const p = run({
-      args: [
+      cmd: [
         "python",
         "-c",
         "import sys; sys.stderr.write('error\\n'); sys.stdout.write('output\\n');"
@@ -264,7 +264,7 @@ unitTest(
     const file = await open(fileName, "r");
 
     const p = run({
-      args: ["python", "-c", "import sys; assert 'hello' == sys.stdin.read();"],
+      cmd: ["python", "-c", "import sys; assert 'hello' == sys.stdin.read();"],
       stdin: file.rid
     });
 
@@ -277,7 +277,7 @@ unitTest(
 
 unitTest({ perms: { run: true } }, async function runEnv(): Promise<void> {
   const p = run({
-    args: [
+    cmd: [
       "python",
       "-c",
       "import os, sys; sys.stdout.write(os.environ.get('FOO', '') + os.environ.get('BAR', ''))"
@@ -296,7 +296,7 @@ unitTest({ perms: { run: true } }, async function runEnv(): Promise<void> {
 
 unitTest({ perms: { run: true } }, async function runClose(): Promise<void> {
   const p = run({
-    args: [
+    cmd: [
       "python",
       "-c",
       "from time import sleep; import sys; sleep(10000); sys.stderr.write('error')"
@@ -343,7 +343,7 @@ if (Deno.build.os !== "win") {
     void
   > {
     const p = run({
-      args: ["python", "-c", "from time import sleep; sleep(10000)"]
+      cmd: ["python", "-c", "from time import sleep; sleep(10000)"]
     });
 
     assertEquals(Deno.Signal.SIGINT, 2);
@@ -359,11 +359,9 @@ if (Deno.build.os !== "win") {
     p.close();
   });
 
-  unitTest({ perms: { run: true } }, async function killFailed(): Promise<
-    void
-  > {
+  unitTest({ perms: { run: true } }, function killFailed(): void {
     const p = run({
-      args: ["python", "-c", "from time import sleep; sleep(10000)"]
+      cmd: ["python", "-c", "from time import sleep; sleep(10000)"]
     });
     assert(!p.stdin);
     assert(!p.stdout);
