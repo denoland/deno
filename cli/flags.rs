@@ -65,6 +65,7 @@ pub enum DenoSubcommand {
   Types,
   Upgrade {
     dry_run: bool,
+    force: bool,
   },
 }
 
@@ -542,7 +543,8 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let dry_run = matches.is_present("dry-run");
-  flags.subcommand = DenoSubcommand::Upgrade { dry_run };
+  let force = matches.is_present("force");
+  flags.subcommand = DenoSubcommand::Upgrade { dry_run, force };
 }
 
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -756,6 +758,12 @@ and is used to replace the current executable.",
       Arg::with_name("dry-run")
         .long("dry-run")
         .help("Perform all checks without replacing old exe"),
+    )
+    .arg(
+      Arg::with_name("force")
+        .long("force")
+        .short("f")
+        .help("Replace current exe even if not out-of-date"),
     )
 }
 
@@ -1218,9 +1226,20 @@ mod tests {
   }
 
   #[test]
-  fn upgrade_hacks_test() {
-    let upgrade_args = arg_hacks(svec!["deno", "upgrade"]);
-    assert_eq!(upgrade_args, ["deno", "upgrade"]);
+  fn upgrade() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "upgrade", "--dry-run", "--force"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Upgrade {
+          force: true,
+          dry_run: true,
+        },
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]

@@ -491,8 +491,8 @@ pub fn main() {
       let _r = std::io::stdout().write_all(types.as_bytes());
       return;
     }
-    DenoSubcommand::Upgrade { dry_run } => {
-      upgrade_command(dry_run).boxed_local()
+    DenoSubcommand::Upgrade { force, dry_run } => {
+      upgrade_command(dry_run, force).boxed_local()
     }
     _ => unreachable!(),
   };

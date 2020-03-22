@@ -168,18 +168,28 @@ fn fmt_stdin_error() {
   assert!(!output.status.success());
 }
 
+// Warning: this test requires internet access.
 #[test]
-fn upgrade_dry_run() {
-  // warning this test requires internet access
-  let status = util::deno_cmd()
-    .current_dir(util::root_path())
+fn upgrade_in_tmpdir() {
+  let temp_dir = TempDir::new().unwrap();
+  let exe_path = if cfg!(windows) {
+    temp_dir.path().join("deno")
+  } else {
+    temp_dir.path().join("deno.exe")
+  };
+  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  assert!(exe_path.exists());
+  let mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
+  let status = Command::new(&exe_path)
     .arg("upgrade")
-    .arg("--dry-run")
+    .arg("--force")
     .spawn()
     .unwrap()
     .wait()
     .unwrap();
   assert!(status.success());
+  let mtime2 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
+  assert!(mtime1 < mtime2);
 }
 
 #[test]

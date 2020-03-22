@@ -63,9 +63,7 @@ async fn get_latest_version(client: &Client) -> Result<Version, ErrBox> {
 
 /// Asynchronously updates deno executable to greatest version
 /// if greatest version is available.
-pub async fn upgrade_command(dry_run: bool) -> Result<(), ErrBox> {
-  let force = dry_run; // TODO(ry) Should this be a CLI flag?
-
+pub async fn upgrade_command(dry_run: bool, force: bool) -> Result<(), ErrBox> {
   let client = Client::builder().redirect(Policy::none()).build()?;
   let latest_version = get_latest_version(&client).await?;
   let current_version = semver_parse(crate::version::DENO).unwrap();
