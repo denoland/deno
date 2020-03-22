@@ -16,32 +16,25 @@ use regex::Regex;
 use reqwest::{redirect::Policy, Client};
 use semver_parser::version::parse as semver_parse;
 use semver_parser::version::Version;
+use std::fs;
 use std::future::Future;
 use std::io::prelude::*;
 use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::Command;
+use std::process::Stdio;
 use std::string::String;
 use tempfile::TempDir;
 use url::Url;
 
 // TODO(ry) we should really be using target triples for the uploaded files.
 #[cfg(windows)]
-const EXEC_FILE_NAME: &str = "deno_win_x64.zip";
+const ARCHIVE_NAME: &str = "deno_win_x64.zip";
 #[cfg(target_os = "macos")]
-const EXEC_FILE_NAME: &str = "deno_osx_x64.gz";
+const ARCHIVE_NAME: &str = "deno_osx_x64.gz";
 #[cfg(target_os = "linux")]
-const EXEC_FILE_NAME: &str = "deno_linux_x64.gz";
-
-#[cfg(windows)]
-const UNZIP_COMMAND: &str = "Expand-Archive";
-#[cfg(windows)]
-const EXT: &str = "exe";
-#[cfg(not(windows))]
-const UNZIP_COMMAND: &str = "gunzip";
-#[cfg(not(windows))]
-const EXT: &str = "";
+const ARCHIVE_NAME: &str = "deno_linux_x64.gz";
 
 struct ErrorMsg(String);
 
@@ -124,7 +117,7 @@ fn download_package(
 fn compose_url_to_exec(version: &Version) -> Result<Url, ErrBox> {
   let s = format!(
     "https://github.com/denoland/deno/releases/download/v{}/{}",
-    version, EXEC_FILE_NAME
+    version, ARCHIVE_NAME
   );
   Ok(Url::parse(&s)?)
 }
@@ -138,37 +131,55 @@ fn find_version(text: &str) -> Result<String, ErrBox> {
   Err(ErrorMsg("Cannot read latest tag version".to_string()).to_err_box())
 }
 
-fn unpack(archive: Vec<u8>) -> Result<PathBuf, ErrBox> {
+fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
   // We use into_path so that the tempdir is not automatically deleted. This is
   // useful for debugging upgrade, but also so this function can return a path
   // to the newly uncompressed file without fear of the tempdir being deleted.
-  let tmp = TempDir::new()?.into_path();
-  let ar_path = tmp.join(EXEC_FILE_NAME);
-  {
-    let mut ar_file = std::fs::File::create(&ar_path)?;
-    ar_file.write_all(&archive)?;
-  }
+  let temp_dir = TempDir::new()?.into_path();
+  let exe_ext = if cfg!(windows) { "exe" } else { "" };
+  let exe_path = temp_dir.join("deno").with_extension(exe_ext);
+  assert!(!exe_path.exists());
 
-  let status = Command::new(UNZIP_COMMAND).arg(&ar_path).spawn()?.wait()?;
-  assert!(status.success());
-
-  let new_exe_path = ar_path.with_extension(EXT);
-  assert!(new_exe_path.exists());
-
-  if cfg!(windows) {
-    Ok(new_exe_path)
-  } else {
-    use std::os::unix::fs::PermissionsExt;
-    let mut perms = std::fs::metadata(&new_exe_path)?.permissions();
-    perms.set_mode(perms.mode() | 0o100); // make executable
-    std::fs::set_permissions(&new_exe_path, perms)?;
-    Ok(new_exe_path)
-  }
+  let archive_ext = Path::new(ARCHIVE_NAME)
+    .extension()
+    .and_then(|ext| ext.to_str())
+    .unwrap();
+  let unpack_status = match archive_ext {
+    "gz" => {
+      let exe_file = fs::File::create(&exe_path)?;
+      let mut cmd = Command::new("gunzip")
+        .arg("-c")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::from(exe_file))
+        .spawn()?;
+      cmd.stdin.as_mut().unwrap().write_all(&archive_data)?;
+      cmd.wait()?
+    }
+    "zip" if cfg!(windows) => {
+      let archive_path = temp_dir.join("deno.zip");
+      fs::write(&archive_path, &archive_data)?;
+      Command::new("powershell.exe")
+        .arg("-Command")
+        .arg("Expand-Archive")
+        .arg("-Path")
+        .arg(&archive_path)
+        .arg("-DestinationPath")
+        .arg(&temp_dir)
+        .spawn()?
+        .wait()?
+    }
+    ext => panic!("Unsupported archive type: '{}'", ext),
+  };
+  assert!(unpack_status.success());
+  assert!(exe_path.exists());
+  Ok(exe_path)
 }
 
 fn replace_exe(new: &Path, old: &Path) -> Result<(), ErrBox> {
-  std::fs::remove_file(old)?;
-  std::fs::rename(new, old)?;
+  let perms = fs::metadata(old)?.permissions();
+  fs::remove_file(old)?;
+  fs::rename(new, old)?;
+  fs::set_permissions(&old, perms)?;
   Ok(())
 }
 
@@ -198,13 +209,12 @@ fn test_compose_url_to_exec() {
   let v = semver_parse("0.0.1").unwrap();
   let url = compose_url_to_exec(&v).unwrap();
   #[cfg(windows)]
-  assert_eq!(url.to_string(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno_win_x64.zip".to_string());
+  assert_eq!(url.as_str(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno_win_x64.zip");
   #[cfg(target_os = "macos")]
   assert_eq!(
-    url.to_string(),
+    url.as_str(),
     "https://github.com/denoland/deno/releases/download/v0.0.1/deno_osx_x64.gz"
-      .to_string()
   );
   #[cfg(target_os = "linux")]
-  assert_eq!(url.to_string(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno_linux_x64.gz".to_string());
+  assert_eq!(url.as_str(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno_linux_x64.gz");
 }
