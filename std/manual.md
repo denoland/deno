@@ -1588,7 +1588,7 @@ Test `std/`:
 
 ```bash
 cd std
-cargo run -- -A testing/runner.ts --exclude "**/testdata"
+cargo run -- test -A
 ```
 
 Lint the code:
