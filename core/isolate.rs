@@ -88,14 +88,14 @@ impl AsMut<[u8]> for ZeroCopyBuf {
 }
 
 pub enum SnapshotConfig {
-  Borrowed(&'static [u8]),
+  Borrowed(v8::StartupData<'static>),
   Owned(v8::OwnedStartupData),
-  Bytes(bytes::Bytes),
+  Boxed(Pin<Box<[u8]>>),
 }
 
 impl From<&'static [u8]> for SnapshotConfig {
   fn from(sd: &'static [u8]) -> Self {
-    Self::Borrowed(sd)
+    Self::Borrowed(v8::StartupData::new(sd))
   }
 }
 
@@ -105,19 +105,9 @@ impl From<v8::OwnedStartupData> for SnapshotConfig {
   }
 }
 
-impl From<bytes::Bytes> for SnapshotConfig {
-  fn from(sd: bytes::Bytes) -> Self {
-    Self::Bytes(sd)
-  }
-}
-
-impl SnapshotConfig {
-  pub fn try_as_bytes(&self) -> Option<&[u8]> {
-    match self {
-      Self::Owned(_) => None,
-      Self::Borrowed(data) => Some(*data),
-      Self::Bytes(bytes) => Some(bytes),
-    }
+impl From<Box<[u8]>> for SnapshotConfig {
+  fn from(sd: Box<[u8]>) -> Self {
+    Self::Boxed(Pin::new(sd))
   }
 }
 
@@ -150,7 +140,7 @@ pub enum StartupData<'a> {
   Script(Script<'a>),
   Snapshot(&'static [u8]),
   OwnedSnapshot(v8::OwnedStartupData),
-  BytesSnapshot(bytes::Bytes),
+  BoxedSnapshot(Box<[u8]>),
   None,
 }
 
@@ -252,7 +242,7 @@ impl Isolate {
       StartupData::OwnedSnapshot(d) => {
         load_snapshot = Some(d.into());
       }
-      StartupData::BytesSnapshot(d) => {
+      StartupData::BoxedSnapshot(d) => {
         load_snapshot = Some(d.into());
       }
       StartupData::None => {}
@@ -281,9 +271,14 @@ impl Isolate {
       params.set_external_references(&bindings::EXTERNAL_REFERENCES);
       if let Some(ref snapshot) = load_snapshot {
         match snapshot {
+          SnapshotConfig::Borrowed(sd) => params.set_snapshot_blob(sd),
           SnapshotConfig::Owned(sd) => params.set_snapshot_blob(sd),
-          other => {
-            let sd = v8::StartupData::new(other.try_as_bytes().unwrap());
+          SnapshotConfig::Boxed(sd) => {
+            // this v8::StartupData is being dropped when leaving this scope
+            // but since the [u8] is pinned, the pointers into memory will
+            // stay valid as long as SnapshotConfig lives
+            let sd =
+              v8::StartupData::new(Pin::<&[u8]>::into_inner(sd.as_ref()));
             params.set_snapshot_blob(&sd);
           }
         };
@@ -1226,7 +1221,7 @@ pub mod tests {
     let snap_bytes =
       read(TEST_SNAPSHOT_PATH).expect("failed to read from file");
     let mut isolate =
-      Isolate::new(StartupData::BytesSnapshot(snap_bytes.into()), false);
+      Isolate::new(StartupData::BoxedSnapshot(snap_bytes.into()), false);
     verify_snapshot(&mut isolate);
   }
 }

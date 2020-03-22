@@ -466,7 +466,6 @@ dependencies = [
 name = "deno_core"
 version = "0.36.0"
 dependencies = [
- "bytes 0.5.4",
  "derive_deref",
  "downcast-rs",
  "futures 0.3.4",
