@@ -9,6 +9,7 @@ import { writeResponse } from "../http/io.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { Deferred, deferred } from "../util/async.ts";
 import { assertNotEOF } from "../testing/asserts.ts";
+import { concat } from "../bytes/mod.ts";
 import Conn = Deno.Conn;
 import Writer = Deno.Writer;
 
@@ -56,20 +57,6 @@ export function isWebSocketPongEvent(
 }
 
 export type WebSocketMessage = string | Uint8Array;
-
-// TODO move this to common/util module
-export function append(a: Uint8Array, b: Uint8Array): Uint8Array {
-  if (a == null || !a.length) {
-    return b;
-  }
-  if (b == null || !b.length) {
-    return a;
-  }
-  const output = new Uint8Array(a.length + b.length);
-  output.set(a, 0);
-  output.set(b, a.length);
-  return output;
-}
 
 export interface WebSocketFrame {
   isLastFrame: boolean;
@@ -148,10 +135,10 @@ export async function writeFrame(
     ]);
   }
   if (frame.mask) {
-    header = append(header, frame.mask);
+    header = concat(header, frame.mask);
   }
   unmask(frame.payload, frame.mask);
-  header = append(header, frame.payload);
+  header = concat(header, frame.payload);
   const w = BufWriter.create(writer);
   await w.write(header);
   await w.flush();
