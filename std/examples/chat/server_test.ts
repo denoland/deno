@@ -8,7 +8,7 @@ import { delay } from "../../util/async.ts";
 
 const port = randomPort();
 
-const { test, build } = Deno;
+const { test } = Deno;
 
 async function startServer(): Promise<Deno.Process> {
   const server = Deno.run({
@@ -35,11 +35,7 @@ async function startServer(): Promise<Deno.Process> {
   return server;
 }
 
-// TODO: https://github.com/denoland/deno/issues/4108
-const ignore = build.os == "win";
-
 test({
-  ignore,
   name: "GET / should serve html",
   async fn() {
     const server = await startServer();
@@ -58,7 +54,6 @@ test({
 });
 
 test({
-  ignore,
   name: "GET /ws should upgrade conn to ws",
   async fn() {
     const server = await startServer();

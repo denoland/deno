@@ -473,10 +473,10 @@ test({
         await req.respond({ body: new TextEncoder().encode(req.url) });
       }
     }
-
-    const server = serve(":8123");
+    const port = randomPort();
+    const server = serve({ port });
     const p = iteratorReq(server);
-    const conn = await Deno.connect({ hostname: "127.0.0.1", port: 8123 });
+    const conn = await Deno.connect({ hostname: "127.0.0.1", port });
     await Deno.writeAll(
       conn,
       new TextEncoder().encode("GET /hello HTTP/1.1\r\n\r\n")
