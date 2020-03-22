@@ -1,4 +1,5 @@
 import { listenAndServe } from "../../http/server.ts";
+import * as path from "../../path/mod.ts";
 import {
   acceptWebSocket,
   acceptable,
@@ -48,7 +49,7 @@ listenAndServe(addr, async req => {
       });
     } else {
       // server launched by deno run ./server.ts
-      const file = await Deno.open(u.pathname);
+      const file = await Deno.open(path.resolve(u.href));
       req.respond({
         status: 200,
         headers: new Headers({
