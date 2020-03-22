@@ -14,10 +14,12 @@ use crate::{
 };
 use regex::Regex;
 use reqwest::{redirect::Policy, Client};
+use semver_parser::version::parse as semver_parse;
 use semver_parser::version::Version;
 use std::future::Future;
 use std::io::prelude::*;
 use std::path::Path;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::Command;
 use std::string::String;
@@ -54,18 +56,17 @@ async fn get_latest_version(client: &Client) -> Result<Version, ErrBox> {
     .text()
     .await?;
   let v = find_version(&body)?;
-  Ok(semver_parser::version::parse(&v).unwrap())
+  Ok(semver_parse(&v).unwrap())
 }
 
 /// Asynchronously updates deno executable to greatest version
 /// if greatest version is available.
-pub async fn exec_upgrade() -> Result<(), ErrBox> {
+pub async fn upgrade_command(dry_run: bool) -> Result<(), ErrBox> {
   let force = true; // TODO(ry) Should this be a CLI flag?
 
   let client = Client::builder().redirect(Policy::none()).build()?;
   let latest_version = get_latest_version(&client).await?;
-  let current_version =
-    semver_parser::version::parse(crate::version::DENO).unwrap();
+  let current_version = semver_parse(crate::version::DENO).unwrap();
 
   if !force && current_version >= latest_version {
     println!(
@@ -79,8 +80,15 @@ pub async fn exec_upgrade() -> Result<(), ErrBox> {
     );
     let archive =
       download_package(&compose_url_to_exec(&latest_version)?, client).await?;
-    let path = std::env::current_exe()?;
-    unpack_and_replace(archive, &path, &latest_version)?;
+
+    let new_exe_path = unpack(archive)?;
+    check_exe(&new_exe_path, &latest_version)?;
+    let old_exe_path = std::env::current_exe()?;
+
+    if !dry_run {
+      replace_exe(&new_exe_path, &old_exe_path)?;
+    }
+
     println!("Upgrade done successfully")
   }
   Ok(())
@@ -105,11 +113,11 @@ fn download_package(
 }
 
 fn compose_url_to_exec(version: &Version) -> Result<Url, ErrBox> {
-  let mut url_str =
-    "https://github.com/denoland/deno/releases/download/v".to_string();
-  url_str.push_str(&format!("{}/", version));
-  url_str.push_str(&EXEC_FILE_NAME);
-  Ok(Url::parse(&url_str[..])?)
+  let s = format!(
+    "https://github.com/denoland/deno/releases/download/v{}/{}",
+    version, EXEC_FILE_NAME
+  );
+  Ok(Url::parse(&s)?)
 }
 
 fn find_version(text: &str) -> Result<String, ErrBox> {
@@ -121,19 +129,18 @@ fn find_version(text: &str) -> Result<String, ErrBox> {
   Err(ErrorMsg("Cannot read latest tag version".to_string()).to_err_box())
 }
 
-fn unpack_and_replace(
-  archive: Vec<u8>,
-  old_exe_path: &Path,
-  expected_version: &Version,
-) -> Result<(), ErrBox> {
-  let tmp = TempDir::new().unwrap();
-  let ar_path = tmp.path().join(EXEC_FILE_NAME);
+fn unpack(archive: Vec<u8>) -> Result<PathBuf, ErrBox> {
+  // We use into_path so that the tempdir is not automatically deleted. This is
+  // useful for debugging upgrade, but also so this function can return a path
+  // to the newly uncompressed file without fear of the tempdir being deleted.
+  let tmp = TempDir::new().unwrap().into_path();
+  let ar_path = tmp.join(EXEC_FILE_NAME);
   {
     let mut ar_file = std::fs::File::create(&ar_path)?;
     ar_file.write_all(&archive)?;
   }
 
-  let new_exe_path = if cfg!(windows) {
+  if cfg!(windows) {
     todo!()
   } else {
     let status = Command::new("gunzip")
@@ -151,16 +158,13 @@ fn unpack_and_replace(
     let mut perms = std::fs::metadata(&new_exe_path)?.permissions();
     perms.set_mode(perms.mode() | 0o100); // make executable
     std::fs::set_permissions(&new_exe_path, perms)?;
-    new_exe_path
-  };
+    Ok(new_exe_path)
+  }
+}
 
-  // test the downloaded file first...
-  check_exe(&new_exe_path, expected_version)?;
-
-  // replace old exe with new
-  std::fs::remove_file(old_exe_path)?;
-  std::fs::rename(new_exe_path, old_exe_path)?;
-
+fn replace_exe(new: &Path, old: &Path) -> Result<(), ErrBox> {
+  std::fs::remove_file(old)?;
+  std::fs::rename(new, old)?;
   Ok(())
 }
 
@@ -178,22 +182,25 @@ fn check_exe(
   Ok(())
 }
 
-#[cfg(test)]
-mod test {
-  #[test]
-  fn test_find_version() {
-    let url = "<html><body>You are being <a href=\"https://github.com/denoland/deno/releases/tag/v0.36.0\">redirected</a>.</body></html>".to_string();
-    assert_eq!(super::find_version(&url).unwrap(), "0.36.0".to_string());
-  }
+#[test]
+fn test_find_version() {
+  let url = "<html><body>You are being <a href=\"https://github.com/denoland/deno/releases/tag/v0.36.0\">redirected</a>.</body></html>";
+  assert_eq!(find_version(url).unwrap(), "0.36.0".to_string());
+}
 
-  #[test]
-  fn test_compose_url_to_exec() {
-    let url = super::compose_url_to_exec(&"0.0.1".to_string()).unwrap();
-    #[cfg(windows)]
-    assert_eq!(url.to_string(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno_win_x64.zip".to_string());
-    #[cfg(macos)]
-    assert_eq!(url.to_string(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno_osx_x64.gz".to_string());
-    #[cfg(unix)]
-    assert_eq!(url.to_string(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno_linux_x64.gz".to_string());
-  }
+#[test]
+fn test_compose_url_to_exec() {
+  use semver_parser::version::parse as semver_parse;
+  let v = semver_parse("0.0.1").unwrap();
+  let url = compose_url_to_exec(&v).unwrap();
+  #[cfg(windows)]
+  assert_eq!(url.to_string(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno_win_x64.zip".to_string());
+  #[cfg(target_os = "macos")]
+  assert_eq!(
+    url.to_string(),
+    "https://github.com/denoland/deno/releases/download/v0.0.1/deno_osx_x64.gz"
+      .to_string()
+  );
+  #[cfg(target_os = "linux")]
+  assert_eq!(url.to_string(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno_linux_x64.gz".to_string());
 }

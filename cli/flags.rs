@@ -63,7 +63,9 @@ pub enum DenoSubcommand {
     include: Option<Vec<String>>,
   },
   Types,
-  Upgrade,
+  Upgrade {
+    dry_run: bool,
+  },
 }
 
 impl Default for DenoSubcommand {
@@ -538,8 +540,9 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 }
 
-fn upgrade_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
-  flags.subcommand = DenoSubcommand::Upgrade;
+fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  let dry_run = matches.is_present("dry-run");
+  flags.subcommand = DenoSubcommand::Upgrade { dry_run };
 }
 
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -748,6 +751,11 @@ fn upgrade_subcommand<'a, 'b>() -> App<'a, 'b> {
 The latest version is downloaded from
 https://github.com/denoland/deno/releases
 and is used to replace the current executable.",
+    )
+    .arg(
+      Arg::with_name("dry-run")
+        .long("dry-run")
+        .help("Perform all checks without replacing old exe"),
     )
 }
 

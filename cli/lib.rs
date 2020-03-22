@@ -78,7 +78,7 @@ use log::Record;
 use std::env;
 use std::io::Write;
 use std::path::PathBuf;
-use upgrade::exec_upgrade;
+use upgrade::upgrade_command;
 use url::Url;
 
 static LOGGER: Logger = Logger;
@@ -425,10 +425,6 @@ async fn test_command(
   worker.execute("window.dispatchEvent(new Event('unload'))")
 }
 
-async fn upgrade_command() -> Result<(), ErrBox> {
-  exec_upgrade().await
-}
-
 pub fn main() {
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
@@ -495,7 +491,9 @@ pub fn main() {
       let _r = std::io::stdout().write_all(types.as_bytes());
       return;
     }
-    DenoSubcommand::Upgrade => upgrade_command().boxed_local(),
+    DenoSubcommand::Upgrade { dry_run } => {
+      upgrade_command(dry_run).boxed_local()
+    }
     _ => unreachable!(),
   };
 
