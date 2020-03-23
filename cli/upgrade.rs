@@ -28,13 +28,13 @@ use std::string::String;
 use tempfile::TempDir;
 use url::Url;
 
-// TODO(ry) we should really be using target triples for the uploaded files.
+// TODO(ry) Auto detect target triples for the uploaded files.
 #[cfg(windows)]
-const ARCHIVE_NAME: &str = "deno_win_x64.zip";
+const ARCHIVE_NAME: &str = "deno-x86_64-pc-windows-msvc.zip";
 #[cfg(target_os = "macos")]
-const ARCHIVE_NAME: &str = "deno_osx_x64.gz";
+const ARCHIVE_NAME: &str = "deno-x86_64-apple-darwin.zip";
 #[cfg(target_os = "linux")]
-const ARCHIVE_NAME: &str = "deno_linux_x64.gz";
+const ARCHIVE_NAME: &str = "deno-x86_64-unknown-linux-gnu.zip";
 
 struct ErrorMsg(String);
 
@@ -155,18 +155,28 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
       cmd.stdin.as_mut().unwrap().write_all(&archive_data)?;
       cmd.wait()?
     }
-    "zip" if cfg!(windows) => {
-      let archive_path = temp_dir.join("deno.zip");
-      fs::write(&archive_path, &archive_data)?;
-      Command::new("powershell.exe")
-        .arg("-Command")
-        .arg("Expand-Archive")
-        .arg("-Path")
-        .arg(&archive_path)
-        .arg("-DestinationPath")
-        .arg(&temp_dir)
-        .spawn()?
-        .wait()?
+    "zip" => {
+      if cfg!(windows) {
+        let archive_path = temp_dir.join("deno.zip");
+        fs::write(&archive_path, &archive_data)?;
+        Command::new("powershell.exe")
+          .arg("-Command")
+          .arg("Expand-Archive")
+          .arg("-Path")
+          .arg(&archive_path)
+          .arg("-DestinationPath")
+          .arg(&temp_dir)
+          .spawn()?
+          .wait()?
+      } else {
+        let archive_path = temp_dir.join("deno.zip");
+        fs::write(&archive_path, &archive_data)?;
+        Command::new("unzip")
+          .current_dir(&temp_dir)
+          .arg(archive_path)
+          .spawn()?
+          .wait()?
+      }
     }
     ext => panic!("Unsupported archive type: '{}'", ext),
   };
@@ -203,16 +213,15 @@ fn test_find_version() {
 
 #[test]
 fn test_compose_url_to_exec() {
-  use semver_parser::version::parse as semver_parse;
   let v = semver_parse("0.0.1").unwrap();
   let url = compose_url_to_exec(&v).unwrap();
   #[cfg(windows)]
-  assert_eq!(url.as_str(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno_win_x64.zip");
+  assert_eq!(url.as_str(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-pc-windows-msvc.zip");
   #[cfg(target_os = "macos")]
   assert_eq!(
     url.as_str(),
-    "https://github.com/denoland/deno/releases/download/v0.0.1/deno_osx_x64.gz"
+    "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-apple-darwin.zip"
   );
   #[cfg(target_os = "linux")]
-  assert_eq!(url.as_str(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno_linux_x64.gz");
+  assert_eq!(url.as_str(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-unknown-linux-gnu.zip");
 }
