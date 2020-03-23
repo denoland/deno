@@ -182,7 +182,9 @@ fn replace_exe(new: &Path, old: &Path) -> Result<(), ErrBox> {
   } else {
     fs::remove_file(old)?;
   }
-  fs::copy(new, old)?;
+  // Windows cannot rename files across device boundaries, so if rename fails,
+  // we try again with copy.
+  fs::rename(new, old).or_else(|| fs::copy(new, old))?;
   Ok(())
 }
 
