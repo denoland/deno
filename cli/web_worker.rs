@@ -28,7 +28,11 @@ pub struct WebWorker<'a> {
 }
 
 impl<'a> WebWorker<'a> {
-  pub fn new(name: String, startup_data: StartupData<'a>, state: State) -> Self {
+  pub fn new(
+    name: String,
+    startup_data: StartupData<'a>,
+    state: State,
+  ) -> Self {
     let state_ = state.clone();
     let mut worker = Worker::new(name, startup_data, state_);
     {

@@ -100,7 +100,11 @@ pub struct Worker<'a> {
 }
 
 impl<'a> Worker<'a> {
-  pub fn new(name: String, startup_data: StartupData<'a>, state: State) -> Self {
+  pub fn new(
+    name: String,
+    startup_data: StartupData<'a>,
+    state: State,
+  ) -> Self {
     let loader = Rc::new(state.clone());
     let mut isolate = deno_core::EsIsolate::new(loader, startup_data, false);
 
@@ -194,7 +198,11 @@ impl Future for Worker<'_> {
 pub struct MainWorker<'a>(Worker<'a>);
 
 impl<'a> MainWorker<'a> {
-  pub fn new(name: String, startup_data: StartupData<'a>, state: State) -> Self {
+  pub fn new(
+    name: String,
+    startup_data: StartupData<'a>,
+    state: State,
+  ) -> Self {
     let state_ = state.clone();
     let mut worker = Worker::new(name, startup_data, state_);
     {

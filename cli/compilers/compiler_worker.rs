@@ -29,7 +29,11 @@ use std::task::Poll;
 pub struct CompilerWorker<'a>(WebWorker<'a>);
 
 impl<'a> CompilerWorker<'a> {
-  pub fn new(name: String, startup_data: StartupData<'a>, state: State) -> Self {
+  pub fn new(
+    name: String,
+    startup_data: StartupData<'a>,
+    state: State,
+  ) -> Self {
     let state_ = state.clone();
     let mut worker = WebWorker::new(name, startup_data, state_);
     {
