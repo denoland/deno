@@ -19,6 +19,7 @@ def main():
     did_fmt = False
     if args.js:
         prettier()
+        dprint()
         did_fmt = True
     if args.py:
         yapf()
@@ -29,6 +30,7 @@ def main():
 
     if not did_fmt:
         prettier()
+        dprint()
         yapf()
         rustfmt()
 
@@ -37,8 +39,16 @@ def prettier():
     print "prettier"
     script = os.path.join(third_party_path, "node_modules", "prettier",
                           "bin-prettier.js")
-    source_files = git_ls_files(root_path, ["*.js", "*.json", "*.ts", "*.md"])
+    source_files = git_ls_files(root_path, ["*.json", "*.md"])
     run(["node", script, "--write", "--loglevel=error", "--"] + source_files,
+        shell=False,
+        quiet=True)
+
+
+def dprint():
+    print "dprint"
+    source_files = git_ls_files(root_path, ["*.js", "*.ts"])
+    run(["cargo", "run", "--", "fmt", "-q"] + source_files,
         shell=False,
         quiet=True)
 
