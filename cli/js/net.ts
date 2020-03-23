@@ -84,7 +84,7 @@ export class ListenerImpl implements Listener {
   async *[Symbol.asyncIterator](): AsyncIterator<Conn> {
     while (true) {
       try {
-        yield await this.accept();
+        yield (await this.accept());
       } catch (error) {
         if (error instanceof errors.BadResource) {
           break;
@@ -131,7 +131,7 @@ export class UDPConnImpl implements UDPConn {
   async *[Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]> {
     while (true) {
       try {
-        yield await this.receive();
+        yield (await this.receive());
       } catch (error) {
         if (error instanceof errors.BadResource) {
           break;
