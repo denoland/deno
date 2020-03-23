@@ -70,12 +70,9 @@ export {
 export { metrics, Metrics } from "./ops/runtime.ts";
 export { mkdirSync, mkdir, MkdirOptions } from "./ops/fs/mkdir.ts";
 export {
-  Addr,
   connect,
   listen,
-  recvfrom,
-  UDPConn,
-  UDPAddr,
+  DatagramConn,
   Listener,
   Conn,
   ShutdownMode,
