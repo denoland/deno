@@ -54,7 +54,7 @@ jobs:
         if: startsWith(matrix.config.os, 'ubuntu') && matrix.config.kind == 'test_release' && startsWith(github.ref, 'refs/tags/') && github.repository == 'denoland/deno'
         run: |
           mkdir -p target/release
-          tar --exclude=.cargo --exclude=".git*" --exclude=target --exclude=deno_typescript/typescript/tests --exclude=third_party/cpplint --exclude=third_party/node_modules --exclude=third_party/python_packages --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
+          tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=deno_typescript/typescript/tests --exclude=third_party/cpplint --exclude=third_party/node_modules --exclude=third_party/python_packages --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
 
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
@@ -90,11 +90,11 @@ jobs:
 
       - name: Configure cargo data directory
         # After this point, all cargo registry and crate data is stored in
-        # $GITHUB_WORKSPACE/.cargo. This allows us to cache only the files that
-        # are needed during the build process. Additionally, this works around
-        # a bug in the 'cache' action that causes directories outside of the
-        # workspace dir to be saved/restored incorrectly.
-        run: echo "::set-env name=CARGO_HOME::$(pwd)/.cargo"
+        # $GITHUB_WORKSPACE/.cargo_home. This allows us to cache only the files
+        # that are needed during the build process. Additionally, this works
+        # around a bug in the 'cache' action that causes directories outside of
+        # the workspace dir to be saved/restored incorrectly.
+        run: echo "::set-env name=CARGO_HOME::$(pwd)/.cargo_home"
 
       - name: Cache
         uses: actions/cache@master
@@ -104,7 +104,7 @@ jobs:
           # so we cache only those subdirectories of target/{debug|release} that
           # contain the build output for crates that come from the registry.
           path: |-
-            .cargo
+            .cargo_home
             target/*/.*
             target/*/build
             target/*/deps
