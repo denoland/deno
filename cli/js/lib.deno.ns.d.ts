@@ -630,7 +630,12 @@ declare namespace Deno {
     whence: SeekMode
   ): Promise<number>;
 
-  /** Close the given resource ID. */
+  /** Close the given resource ID (rid) which has been previously opened, such
+   * as via opening or creating a file.  Closing a file when you are finished
+   * with it is important to avoid leaking resources.
+   *
+   *      Deno.close(4);
+   */
   export function close(rid: number): void;
 
   /** The Deno abstraction for reading and writing files. */
@@ -967,25 +972,33 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function chmod(path: string, mode: number): Promise<void>;
 
-  /** Synchronously change owner of a regular file or directory. Linux/Mac OS
-   * only at the moment.
+  /** Synchronously change owner of a regular file or directory. This functionality
+   * is not available on Windows.
+   *
+   *      Deno.chownSync('myFile.txt', 1000, 1002);
    *
    * Requires `allow-write` permission.
    *
+   * Throws Error (not implemented) if executed on Windows
+   *
    * @param path path to the file
-   * @param uid user id of the new owner
-   * @param gid group id of the new owner
+   * @param uid user id (UID) of the new owner
+   * @param gid group id (GID) of the new owner
    */
   export function chownSync(path: string, uid: number, gid: number): void;
 
-  /** Change owner of a regular file or directory. Linux/Mac OS only at the
-   * moment.
+  /** Change owner of a regular file or directory. This functionality
+   * is not available on Windows.
+   *
+   *      await Deno.chown('myFile.txt', 1000, 1002);
    *
    * Requires `allow-write` permission.
    *
+   * Throws Error (not implemented) if executed on Windows
+   *
    * @param path path to the file
-   * @param uid user id of the new owner
-   * @param gid group id of the new owner
+   * @param uid user id (UID) of the new owner
+   * @param gid group id (GID) of the new owner
    */
   export function chown(path: string, uid: number, gid: number): Promise<void>;
 
@@ -1709,12 +1722,13 @@ declare namespace Deno {
   }
 
   /**
-   * Connects to the address on the named transport.
+   * Connects to the hostname (default is "127.0.0.1") and port on the named
+   * transport (default is "tcp").
    *
-   *     Deno.connect({ port: 80 })
-   *     Deno.connect({ hostname: "192.0.2.1", port: 80 })
-   *     Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
-   *     Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" })
+   *     const conn1 = await Deno.connect({ port: 80 })
+   *     const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 })
+   *     const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
+   *     const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" })
    *
    * Requires `allow-net` permission. */
   export function connect(options: ConnectOptions): Promise<Conn>;
@@ -2291,8 +2305,9 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
-   * Takes a root module name, any optionally a record set of sources. Resolves
-   * with a compiled set of modules. If just a root name is provided, the modules
+   * Takes a root module name, and optionally a record set of sources. Resolves
+   * with a compiled set of modules and possibly diagnostics if the compiler
+   * encountered any issues. If just a root name is provided, the modules
    * will be resolved as if the root module had been passed on the command line.
    *
    * If sources are passed, all modules will be resolved out of this object, where

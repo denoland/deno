@@ -63,6 +63,10 @@ pub enum DenoSubcommand {
     include: Option<Vec<String>>,
   },
   Types,
+  Upgrade {
+    dry_run: bool,
+    force: bool,
+  },
 }
 
 impl Default for DenoSubcommand {
@@ -250,6 +254,8 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
     completions_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("test") {
     test_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("upgrade") {
+    upgrade_parse(&mut flags, m);
   } else {
     unimplemented!();
   }
@@ -302,6 +308,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(run_subcommand())
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
+    .subcommand(upgrade_subcommand())
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
 }
@@ -534,6 +541,12 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 }
 
+fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  let dry_run = matches.is_present("dry-run");
+  let force = matches.is_present("force");
+  flags.subcommand = DenoSubcommand::Upgrade { dry_run, force };
+}
+
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("types")
     .about("Print runtime TypeScript declarations")
@@ -728,6 +741,29 @@ in the local cache, without running any code:
 
 Future runs of this module will trigger no downloads or compilation unless
 --reload is specified.",
+    )
+}
+
+fn upgrade_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("upgrade")
+    .about("Upgrade deno executable to newest version")
+    .long_about(
+      "Upgrade deno executable to newest available version.
+
+The latest version is downloaded from
+https://github.com/denoland/deno/releases
+and is used to replace the current executable.",
+    )
+    .arg(
+      Arg::with_name("dry-run")
+        .long("dry-run")
+        .help("Perform all checks without replacing old exe"),
+    )
+    .arg(
+      Arg::with_name("force")
+        .long("force")
+        .short("f")
+        .help("Replace current exe even if not out-of-date"),
     )
 }
 
@@ -1142,7 +1178,8 @@ fn arg_hacks(mut args: Vec<String>) -> Vec<String> {
     "types",
     "install",
     "help",
-    "version"
+    "version",
+    "upgrade"
   ];
   let modifier_flags = sset!["-h", "--help", "-V", "--version"];
   // deno [subcommand|behavior modifier flags] -> do nothing
@@ -1186,6 +1223,23 @@ mod tests {
     assert_eq!(args3, ["deno", "run", "script.js"]);
     let args4 = arg_hacks(svec!["deno", "-A", "script.js", "-L=info"]);
     assert_eq!(args4, ["deno", "run", "-A", "script.js", "-L=info"]);
+  }
+
+  #[test]
+  fn upgrade() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "upgrade", "--dry-run", "--force"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Upgrade {
+          force: true,
+          dry_run: true,
+        },
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
