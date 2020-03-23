@@ -1589,6 +1589,9 @@ Test `std/`:
 ```bash
 cd std
 cargo run -- test -A
+
+# Or the following also works:
+cargo test std_tests
 ```
 
 Lint the code:
