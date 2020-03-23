@@ -274,9 +274,6 @@ impl Isolate {
           SnapshotConfig::Borrowed(sd) => params.set_snapshot_blob(sd),
           SnapshotConfig::Owned(sd) => params.set_snapshot_blob(sd),
           SnapshotConfig::Boxed(sd) => {
-            // this v8::StartupData is being dropped when leaving this scope
-            // but since the [u8] is pinned, the pointers into memory will
-            // stay valid as long as SnapshotConfig lives
             let sd =
               v8::StartupData::new(Pin::<&[u8]>::into_inner(sd.as_ref()));
             params.set_snapshot_blob(&sd);
@@ -1195,7 +1192,7 @@ pub mod tests {
   fn verify_snapshot(isolate: &mut Isolate) {
     isolate
       .execute(
-        "anon",
+        "check.js",
         r#"
           const greeting = fixture("Deno");
           if (greeting != "Hello Deno!") {
@@ -1206,20 +1203,31 @@ pub mod tests {
       .expect("failed to run JS test on isolate from snapshot");
   }
 
-  static TEST_SNAPSHOT: &[u8] = include_bytes!("TEST_SNAPSHOT.bin");
-
-  #[test]
-  fn test_load_static_snapshot() {
-    let mut isolate = Isolate::new(StartupData::Snapshot(TEST_SNAPSHOT), false);
-    verify_snapshot(&mut isolate);
-  }
-
-  static TEST_SNAPSHOT_PATH: &str = "TEST_SNAPSHOT.bin";
-
   #[test]
   fn test_load_file_snapshot() {
+    let snapshot = {
+      let mut init_isolate = Isolate::new(StartupData::None, true);
+      init_isolate
+        .execute(
+          "test.js",
+          r#"
+            function fixture(name) {
+              return `Hello ${name}!`;
+            }
+          "#,
+        )
+        .expect("failed to initialize snapshot with javascript");
+      init_isolate.snapshot()
+    };
+    let snapshot_slice: &[u8] = &*snapshot;
+
+    let snapshot_filename = std::env::temp_dir().join("SNAPSHOT.bin");
+    std::fs::write(&snapshot_filename, snapshot_slice)
+      .expect("failed to write snapshot");
+
     let snap_bytes =
-      read(TEST_SNAPSHOT_PATH).expect("failed to read from file");
+      read(&snapshot_filename).expect("failed to read from file");
+    println!("len of snap: {}", snap_bytes.len());
     let mut isolate =
       Isolate::new(StartupData::BoxedSnapshot(snap_bytes.into()), false);
     verify_snapshot(&mut isolate);
