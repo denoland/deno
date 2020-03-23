@@ -6,6 +6,42 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.37.0 / 2020.03.23
+
+- BREAKING CHANGE: FileInfo.len renamed to FileName.size (#4338)
+- BREAKING CHANGE: Rename Deno.run's args to cmd (#4444)
+- feat(ci): Releases should all use zip and LLVM target triples (#4460)
+- feat(console): Symbol.toStringTag and display Object symbol entries (#4388)
+- feat(std/node): Add chmod Node polyfill (#4358)
+- feat(std/node): Add node querystring polyfill (#4370)
+- feat(std/node): Node polyfill for fs.chown and fs.close (#4377)
+- feat(std/permissions): Add helper functions for permissions to std (#4258)
+- feat(std/types): Provide types for React and ReactDOM (#4376)
+- feat(test): Add option to skip tests (#4351)
+- feat(test): Add support for jsx/tsx for deno test (#4369)
+- feat: Add mode option to open/create (#4289)
+- feat: Deno.test() sanitizes ops and resources (#4399)
+- feat: Fetch should accept a FormData body (#4363)
+- feat: First pass at "deno upgrade" (#4328)
+- feat: Prvode way to build Deno without building V8 from source (#4412)
+- feat: Remove `Object.prototype.__proto__` (#4341)
+- fix(std/http): Close open connections on server close (#3679)
+- fix(std/http): Properly await ops in a server test (#4436)
+- fix(std/http): Remove bad error handling (#4435)
+- fix(std/node): Node polyfill fsAppend rework (#4322)
+- fix(std/node): Stack traces for modules imported via require (#4035)
+- fix: Importing JSON doesn't work in bundles (#4404)
+- fix: Simplify timer with macrotask callback (#4385)
+- fix: Test runner ConnectionReset bug (#4424)
+- fix: chmod should throw on Windows (#4446)
+- fix: fetch closes unused body (#4393)
+- perf: Optimize TextEncoder and TextDecoder (#4430, #4349)
+- refactor: Improve test runner (#4336, #4352, #4356, #4371)
+- refactor: Remove std/testing/runner.ts, use deno test (#4397, #4392)
+- upgrade: Rust 1.42.0 (#4331)
+- upgrade: Rust crates (#4412)
+- upgrade: to rusty_v8 0.3.5 / v8 8.2.308 (#4364)
+
 ### v0.36.0 / 2020.03.11
 
 - BREAKING CHANGE: Remove Deno.errors.Other (#4249)
