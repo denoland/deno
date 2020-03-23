@@ -136,7 +136,7 @@ export class Request extends body.Body implements domTypes.Request {
       body: body2,
       method: this.method,
       headers: new Headers(headersList),
-      credentials: this.credentials
+      credentials: this.credentials,
     });
     return cloned;
   }

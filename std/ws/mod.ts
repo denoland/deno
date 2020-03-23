@@ -19,7 +19,7 @@ export enum OpCode {
   BinaryFrame = 0x2,
   Close = 0x8,
   Ping = 0x9,
-  Pong = 0xa
+  Pong = 0xa,
 }
 
 export type WebSocketEvent =
@@ -125,13 +125,13 @@ export async function writeFrame(
       0x80 | frame.opcode,
       hasMask | 0b01111110,
       payloadLength >>> 8,
-      payloadLength & 0x00ff
+      payloadLength & 0x00ff,
     ]);
   } else {
     header = new Uint8Array([
       0x80 | frame.opcode,
       hasMask | 0b01111111,
-      ...sliceLongToBytes(payloadLength)
+      ...sliceLongToBytes(payloadLength),
     ]);
   }
   if (frame.mask) {
@@ -186,7 +186,7 @@ export async function readFrame(buf: BufReader): Promise<WebSocketFrame> {
     isLastFrame,
     opcode,
     mask,
-    payload
+    payload,
   };
 }
 
@@ -209,7 +209,7 @@ class WebSocketImpl implements WebSocket {
     conn,
     bufReader,
     bufWriter,
-    mask
+    mask,
   }: {
     conn: Conn;
     bufReader?: BufReader;
@@ -271,7 +271,7 @@ class WebSocketImpl implements WebSocket {
           await this.enqueue({
             opcode: OpCode.Pong,
             payload: frame.payload,
-            isLastFrame: true
+            isLastFrame: true,
           });
           yield ["ping", frame.payload] as WebSocketPingEvent;
           break;
@@ -290,7 +290,7 @@ class WebSocketImpl implements WebSocket {
     const { d, frame } = entry;
     writeFrame(frame, this.bufWriter)
       .then(() => d.resolve())
-      .catch(e => d.reject(e))
+      .catch((e) => d.reject(e))
       .finally(() => {
         this.sendQueue.shift();
         this.dequeue();
@@ -318,7 +318,7 @@ class WebSocketImpl implements WebSocket {
       isLastFrame,
       opcode,
       payload,
-      mask: this.mask
+      mask: this.mask,
     };
     return this.enqueue(frame);
   }
@@ -329,7 +329,7 @@ class WebSocketImpl implements WebSocket {
       isLastFrame: true,
       opcode: OpCode.Ping,
       mask: this.mask,
-      payload
+      payload,
     };
     return this.enqueue(frame);
   }
@@ -355,7 +355,7 @@ class WebSocketImpl implements WebSocket {
         isLastFrame: true,
         opcode: OpCode.Close,
         mask: this.mask,
-        payload
+        payload,
       });
     } catch (e) {
       throw e;
@@ -378,7 +378,7 @@ class WebSocketImpl implements WebSocket {
       this._isClosed = true;
       const rest = this.sendQueue;
       this.sendQueue = [];
-      rest.forEach(e =>
+      rest.forEach((e) =>
         e.d.reject(
           new Deno.errors.ConnectionReset("Socket has already been closed")
         )
@@ -431,8 +431,8 @@ export async function acceptWebSocket(req: {
       headers: new Headers({
         Upgrade: "websocket",
         Connection: "Upgrade",
-        "Sec-WebSocket-Accept": secAccept
-      })
+        "Sec-WebSocket-Accept": secAccept,
+      }),
     });
     return sock;
   }
@@ -543,7 +543,7 @@ export async function connectWebSocket(
     conn,
     bufWriter,
     bufReader,
-    mask: createMask()
+    mask: createMask(),
   });
 }
 

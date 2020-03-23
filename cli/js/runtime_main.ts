@@ -15,7 +15,7 @@ import {
   writable,
   windowOrWorkerGlobalScopeMethods,
   windowOrWorkerGlobalScopeProperties,
-  eventTargetProperties
+  eventTargetProperties,
 } from "./globals.ts";
 import { internalObject } from "./internals.ts";
 import { setSignals } from "./signals.ts";
@@ -38,7 +38,7 @@ export const mainRuntimeGlobalProperties = {
   // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
   // it seems those two properties should be availble to workers as well
   onload: writable(undefined),
-  onunload: writable(undefined)
+  onunload: writable(undefined),
 };
 
 let hasBootstrapped = false;
@@ -77,7 +77,7 @@ export function bootstrapMainRuntime(): void {
   Object.defineProperties(Deno, {
     pid: readOnly(s.pid),
     noColor: readOnly(s.noColor),
-    args: readOnly(Object.freeze(s.args))
+    args: readOnly(Object.freeze(s.args)),
   });
   // Setup `Deno` global - we're actually overriding already
   // existing global `Deno` with `Deno` namespace from "./deno.ts".

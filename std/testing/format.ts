@@ -56,7 +56,7 @@ const DEFAULT_OPTIONS: Options = {
   indent: 2,
   maxDepth: Infinity,
   min: false,
-  printFunctionName: true
+  printFunctionName: true,
 };
 
 interface BasicValueOptions {
@@ -358,7 +358,7 @@ function printIteratorValues(
   return result;
 }
 
-const getKeysOfEnumerableProperties = (object: {}): Array<string | symbol> => {
+const getKeysOfEnumerableProperties = (object: {}) => {
   const keys: Array<string | symbol> = Object.keys(object).sort();
 
   if (Object.getOwnPropertySymbols) {
@@ -519,7 +519,7 @@ const getConfig = (options: Options): Config => ({
   ...options,
   indent: options.min ? "" : createIndent(options.indent),
   spacingInner: options.min ? " " : "\n",
-  spacingOuter: options.min ? "" : "\n"
+  spacingOuter: options.min ? "" : "\n",
 });
 
 /**
@@ -531,7 +531,7 @@ const getConfig = (options: Options): Config => ({
 export function format(val: any, options: Optional<Options> = {}): string {
   const opts: Options = {
     ...DEFAULT_OPTIONS,
-    ...options
+    ...options,
   };
   const basicResult = printBasicValue(val, opts);
   if (basicResult !== null) {

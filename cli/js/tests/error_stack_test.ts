@@ -76,7 +76,7 @@ function getMockCallSite(
     },
     getPromiseIndex(): null {
       return null;
-    }
+    },
   };
 }
 
@@ -90,7 +90,7 @@ unitTest(function prepareStackTrace(): void {
     structuredStackTrace: CallSite[]
   ) => string = MockError.prepareStackTrace;
   const result = prepareStackTrace(new Error("foo"), [
-    getMockCallSite("CLI_SNAPSHOT.js", 23, 0)
+    getMockCallSite("CLI_SNAPSHOT.js", 23, 0),
   ]);
   assert(result.startsWith("Error: foo\n"));
   assert(result.includes(".ts:"), "should remap to something in 'js/'");
@@ -100,7 +100,7 @@ unitTest(function applySourceMap(): void {
   const result = Deno.applySourceMap({
     filename: "CLI_SNAPSHOT.js",
     line: 23,
-    column: 0
+    column: 0,
   });
   assert(result.filename.endsWith(".ts"));
   assert(result.line != null);

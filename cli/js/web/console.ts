@@ -176,7 +176,7 @@ function createArrayString(
     displayName: "",
     delims: ["[", "]"],
     entryHandler: (el, ctx, level, maxLevel): string =>
-      stringifyWithQuotes(el, ctx, level + 1, maxLevel)
+      stringifyWithQuotes(el, ctx, level + 1, maxLevel),
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
@@ -193,7 +193,7 @@ function createTypedArrayString(
     displayName: typedArrayName,
     delims: ["[", "]"],
     entryHandler: (el, ctx, level, maxLevel): string =>
-      stringifyWithQuotes(el, ctx, level + 1, maxLevel)
+      stringifyWithQuotes(el, ctx, level + 1, maxLevel),
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
@@ -209,7 +209,7 @@ function createSetString(
     displayName: "Set",
     delims: ["{", "}"],
     entryHandler: (el, ctx, level, maxLevel): string =>
-      stringifyWithQuotes(el, ctx, level + 1, maxLevel)
+      stringifyWithQuotes(el, ctx, level + 1, maxLevel),
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
@@ -232,7 +232,7 @@ function createMapString(
         level + 1,
         maxLevel
       )} => ${stringifyWithQuotes(val, ctx, level + 1, maxLevel)}`;
-    }
+    },
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
@@ -516,7 +516,7 @@ export class Console {
   log = (...args: unknown[]): void => {
     this.printFunc(
       stringifyArgs(args, {
-        indentLevel: this.indentLevel
+        indentLevel: this.indentLevel,
       }) + "\n",
       false
     );
@@ -534,7 +534,7 @@ export class Console {
   warn = (...args: unknown[]): void => {
     this.printFunc(
       stringifyArgs(args, {
-        indentLevel: this.indentLevel
+        indentLevel: this.indentLevel,
       }) + "\n",
       true
     );
@@ -607,7 +607,7 @@ export class Console {
       this.log(cliTable(header, body));
     const createColumn = (value: unknown, shift?: number): string[] => [
       ...(shift ? [...new Array(shift)].map((): string => "") : []),
-      stringifyValue(value)
+      stringifyValue(value),
     ];
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -663,8 +663,8 @@ export class Console {
       indexKey,
       ...(properties || [
         ...headerKeys,
-        !isMap && values.length > 0 && valuesKey
-      ])
+        !isMap && values.length > 0 && valuesKey,
+      ]),
     ].filter(Boolean) as string[];
     const body = [indexKeys, ...bodyValues, values];
 
@@ -736,7 +736,7 @@ export class Console {
     const message = stringifyArgs(args, { indentLevel: 0 });
     const err = {
       name: "Trace",
-      message
+      message,
     };
     // @ts-ignore
     Error.captureStackTrace(err, this.trace);

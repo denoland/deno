@@ -4,7 +4,7 @@ import {
   createWorker,
   hostTerminateWorker,
   hostPostMessage,
-  hostGetMessage
+  hostGetMessage,
 } from "../ops/worker_host.ts";
 import { log } from "../util.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";

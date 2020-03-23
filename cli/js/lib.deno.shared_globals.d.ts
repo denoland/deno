@@ -338,7 +338,7 @@ declare namespace __domTypes {
   export enum NodeType {
     ELEMENT_NODE = 1,
     TEXT_NODE = 3,
-    DOCUMENT_FRAGMENT_NODE = 11
+    DOCUMENT_FRAGMENT_NODE = 11,
   }
   export const eventTargetHost: unique symbol;
   export const eventTargetListeners: unique symbol;
@@ -437,7 +437,7 @@ declare namespace __domTypes {
     NONE = 0,
     CAPTURING_PHASE = 1,
     AT_TARGET = 2,
-    BUBBLING_PHASE = 3
+    BUBBLING_PHASE = 3,
   }
   export interface EventPath {
     item: EventTarget;
@@ -981,7 +981,7 @@ declare namespace __event {
     constructor({
       bubbles,
       cancelable,
-      composed
+      composed,
     }?: {
       bubbles?: boolean | undefined;
       cancelable?: boolean | undefined;
@@ -1052,7 +1052,7 @@ declare namespace __customEvent {
       bubbles,
       cancelable,
       composed,
-      detail
+      detail,
     }: __domTypes.CustomEventInit);
   }
   export class CustomEvent extends __event.Event
@@ -1082,7 +1082,7 @@ declare namespace __eventTarget {
     constructor({
       capture,
       passive,
-      once
+      once,
     }?: {
       capture?: boolean | undefined;
       passive?: boolean | undefined;
@@ -1122,7 +1122,7 @@ declare namespace __io {
   export enum SeekMode {
     SEEK_START = 0,
     SEEK_CURRENT = 1,
-    SEEK_END = 2
+    SEEK_END = 2,
   }
   export interface Reader {
     /** Reads up to p.byteLength bytes into `p`. It resolves to the number

@@ -13,7 +13,7 @@ export function parse(
 ): { [key: string]: string[] | string } {
   const entries = str
     .split(sep)
-    .map(entry => entry.split(eq).map(decodeURIComponent));
+    .map((entry) => entry.split(eq).map(decodeURIComponent));
   const final: { [key: string]: string[] | string } = {};
 
   let i = 0;

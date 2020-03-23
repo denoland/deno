@@ -24,7 +24,7 @@ const patterns = {
 
   authentication: "(?:([^:]*)(?::([^@]*))?@)",
   hostname: "([^:]+)",
-  port: "(?::(\\d+))"
+  port: "(?::(\\d+))",
 };
 
 const urlRegExp = new RegExp(
@@ -38,7 +38,7 @@ const authorityRegExp = new RegExp(
 const searchParamsMethods: Array<keyof urlSearchParams.URLSearchParams> = [
   "append",
   "delete",
-  "set"
+  "set",
 ];
 
 function parse(url: string): URLParts | undefined {
@@ -57,7 +57,7 @@ function parse(url: string): URLParts | undefined {
         port: authorityMatch[4] || "",
         path: urlMatch[3] || "",
         query: urlMatch[4] || "",
-        hash: urlMatch[5] || ""
+        hash: urlMatch[5] || "",
       };
     }
   }
@@ -152,7 +152,7 @@ export class URL {
       "port",
       "pathname",
       "hash",
-      "search"
+      "search",
     ];
     const objectString = keys
       .map((key: string) => `${key}: "${this[key as keyof this] || ""}"`)
@@ -355,7 +355,7 @@ export class URL {
         port: baseParts.port,
         path: resolvePathFromBase(urlParts.path, baseParts.path || "/"),
         query: urlParts.query,
-        hash: urlParts.hash
+        hash: urlParts.hash,
       };
     } else {
       throw new TypeError("URL requires a base URL.");

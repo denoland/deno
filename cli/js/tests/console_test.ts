@@ -6,14 +6,14 @@ import { assert, assertEquals, unitTest } from "./test_util.ts";
 const {
   inspect,
   writeSync,
-  stdout
+  stdout,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } = Deno as any;
 
 const customInspect = Deno.symbols.customInspect;
 const {
   Console,
-  stringifyArgs
+  stringifyArgs,
   // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.symbols.internal];
 
@@ -37,7 +37,7 @@ unitTest(function consoleHasRightInstance(): void {
 });
 
 unitTest(function consoleTestAssertShouldNotThrowError(): void {
-  mockConsole(console => {
+  mockConsole((console) => {
     console.assert(true);
     let hasThrown = undefined;
     try {
@@ -92,7 +92,7 @@ unitTest(function consoleTestStringifyCircular(): void {
     arrowFunc: () => {},
     extendedClass: new Extended(),
     nFunc: new Function(),
-    extendedCstr: Extended
+    extendedCstr: Extended,
   };
 
   const circularObj = {
@@ -105,7 +105,7 @@ unitTest(function consoleTestStringifyCircular(): void {
     nested: nestedObj,
     emptyObj: {},
     arr: [1, "s", false, null, nestedObj],
-    baseClass: new Base()
+    baseClass: new Base(),
   };
 
   nestedObj.o = circularObj;
@@ -129,7 +129,7 @@ unitTest(function consoleTestStringifyCircular(): void {
     stringify(
       new Map([
         [1, "one"],
-        [2, "two"]
+        [2, "two"],
       ])
     ),
     `Map { 1 => "one", 2 => "two" }`
@@ -310,14 +310,14 @@ unitTest(function consoleTestWithVariousOrInvalidFormatSpecifier(): void {
 
 unitTest(function consoleTestCallToStringOnLabel(): void {
   const methods = ["count", "countReset", "time", "timeLog", "timeEnd"];
-  mockConsole(console => {
+  mockConsole((console) => {
     for (const method of methods) {
       let hasCalled = false;
       // @ts-ignore
       console[method]({
         toString(): void {
           hasCalled = true;
-        }
+        },
       });
       assertEquals(hasCalled, true);
     }
@@ -362,7 +362,7 @@ unitTest(function consoleTestClear(): void {
 
 // Test bound this issue
 unitTest(function consoleDetachedLog(): void {
-  mockConsole(console => {
+  mockConsole((console) => {
     const log = console.log;
     const dir = console.dir;
     const dirxml = console.dirxml;
@@ -551,7 +551,7 @@ unitTest(function consoleTable(): void {
     console.table(
       new Map([
         [1, "one"],
-        [2, "two"]
+        [2, "two"],
       ])
     );
     assertEquals(
@@ -571,7 +571,7 @@ unitTest(function consoleTable(): void {
       b: { c: { d: 10 }, e: [1, 2, [5, 6]] },
       f: "test",
       g: new Set([1, 2, 3, "test"]),
-      h: new Map([[1, "one"]])
+      h: new Map([[1, "one"]]),
     });
     assertEquals(
       out.toString(),
@@ -593,7 +593,7 @@ unitTest(function consoleTable(): void {
       "test",
       false,
       { a: 10 },
-      ["test", { b: 20, c: "test" }]
+      ["test", { b: 20, c: "test" }],
     ]);
     assertEquals(
       out.toString(),
@@ -661,7 +661,7 @@ unitTest(function consoleTable(): void {
 
 // console.log(Error) test
 unitTest(function consoleLogShouldNotThrowError(): void {
-  mockConsole(console => {
+  mockConsole((console) => {
     let result = 0;
     try {
       console.log(new Error("foo"));

@@ -31,7 +31,7 @@ export function immutableDefine(
   Object.defineProperty(o, p, {
     value,
     configurable: false,
-    writable: false
+    writable: false,
   });
 }
 

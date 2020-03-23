@@ -78,7 +78,7 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
   async blob(): Promise<domTypes.Blob> {
     const arrayBuffer = await this.arrayBuffer();
     return new DenoBlob([arrayBuffer], {
-      type: this.contentType
+      type: this.contentType,
     });
   }
 
@@ -164,7 +164,7 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
         if (dispositionParams.has("filename")) {
           const filename = dispositionParams.get("filename")!;
           const blob = new DenoBlob([enc.encode(octets)], {
-            type: partContentType
+            type: partContentType,
           });
           // TODO: based on spec
           // https://xhr.spec.whatwg.org/#dom-formdata-append
@@ -308,7 +308,7 @@ export class Response implements domTypes.Response {
           "Content-Type",
           "Expires",
           "Last-Modified",
-          "Pragma"
+          "Pragma",
         ].map((c: string) => c.toLowerCase());
         for (const h of this.headers) {
           /* Technically this is still not standards compliant because we are
@@ -453,7 +453,7 @@ function sendFetchReq(
   const args = {
     method,
     url,
-    headers: headerArray
+    headers: headerArray,
   };
 
   return opFetch(args, body);
@@ -527,8 +527,9 @@ export async function fetch(
             }
             part += "\r\n";
             if (fieldValue instanceof DomFileImpl) {
-              part += `Content-Type: ${fieldValue.type ||
-                "application/octet-stream"}\r\n`;
+              part += `Content-Type: ${
+                fieldValue.type || "application/octet-stream"
+              }\r\n`;
             }
             part += "\r\n";
             if (fieldValue instanceof DomFileImpl) {

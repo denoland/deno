@@ -10,7 +10,7 @@ import {
   assert,
   assertEquals,
   assertThrows,
-  assertNotEOF
+  assertNotEOF,
 } from "../testing/asserts.ts";
 const { test } = Deno;
 
@@ -25,7 +25,7 @@ test({
     const _input =
       "dotlines\r\n.foo\r\n..bar\n...baz\nquux\r\n\r\n.\r\nanot.her\r\n";
     return Promise.resolve();
-  }
+  },
 });
 
 test("[textproto] ReadEmpty", async () => {
@@ -56,7 +56,7 @@ test({
     const m = assertNotEOF(await r.readMIMEHeader());
     assertEquals(m.get("My-Key"), "Value 1, Value 2");
     assertEquals(m.get("Long-key"), "Even Longer Value");
-  }
+  },
 });
 
 test({
@@ -66,7 +66,7 @@ test({
     const r = reader(input);
     const m = assertNotEOF(await r.readMIMEHeader());
     assertEquals(m.get("Foo"), "bar");
-  }
+  },
 });
 
 test({
@@ -76,7 +76,7 @@ test({
     const r = reader(input);
     const m = assertNotEOF(await r.readMIMEHeader());
     assertEquals(m.get("Test-1"), "1");
-  }
+  },
 });
 
 test({
@@ -91,7 +91,7 @@ test({
     const r = reader(`Cookie: ${sdata}\r\n\r\n`);
     const m = assertNotEOF(await r.readMIMEHeader());
     assertEquals(m.get("Cookie"), sdata);
-  }
+  },
 });
 
 // Test that we read slightly-bogus MIME headers seen in the wild,
@@ -115,7 +115,7 @@ test({
     assertThrows((): void => {
       assertEquals(m.get("Audio Mode"), "None");
     });
-  }
+  },
 });
 
 test({
@@ -127,7 +127,7 @@ test({
       "\tNo colon first line with leading tab\r\nFoo: foo\r\n\r\n",
       " First: line with leading space\r\nFoo: foo\r\n\r\n",
       "\tFirst: line with leading tab\r\nFoo: foo\r\n\r\n",
-      "Foo: foo\r\nNo colon second line\r\n\r\n"
+      "Foo: foo\r\nNo colon second line\r\n\r\n",
     ];
     const r = reader(input.join(""));
 
@@ -138,7 +138,7 @@ test({
       err = e;
     }
     assert(err instanceof Deno.errors.InvalidData);
-  }
+  },
 });
 
 test({
@@ -160,7 +160,7 @@ test({
       err = e;
     }
     assert(err instanceof Deno.errors.InvalidData);
-  }
+  },
 });
 
 test({
@@ -170,11 +170,11 @@ test({
       "Accept: */*\r\n",
       'Content-Disposition: form-data; name="test"\r\n',
       " \r\n",
-      "------WebKitFormBoundaryimeZ2Le9LjohiUiG--\r\n\n"
+      "------WebKitFormBoundaryimeZ2Le9LjohiUiG--\r\n\n",
     ];
     const r = reader(input.join(""));
     const m = assertNotEOF(await r.readMIMEHeader());
     assertEquals(m.get("Accept"), "*/*");
     assertEquals(m.get("Content-Disposition"), 'form-data; name="test"');
-  }
+  },
 });

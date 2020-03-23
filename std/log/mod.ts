@@ -4,7 +4,7 @@ import {
   BaseHandler,
   ConsoleHandler,
   WriterHandler,
-  FileHandler
+  FileHandler,
 } from "./handlers.ts";
 import { assert } from "../testing/asserts.ts";
 
@@ -25,28 +25,28 @@ export interface LogConfig {
 const DEFAULT_LEVEL = "INFO";
 const DEFAULT_CONFIG: LogConfig = {
   handlers: {
-    default: new ConsoleHandler(DEFAULT_LEVEL)
+    default: new ConsoleHandler(DEFAULT_LEVEL),
   },
 
   loggers: {
     default: {
       level: DEFAULT_LEVEL,
-      handlers: ["default"]
-    }
-  }
+      handlers: ["default"],
+    },
+  },
 };
 
 const state = {
   handlers: new Map<string, BaseHandler>(),
   loggers: new Map<string, Logger>(),
-  config: DEFAULT_CONFIG
+  config: DEFAULT_CONFIG,
 };
 
 export const handlers = {
   BaseHandler,
   ConsoleHandler,
   WriterHandler,
-  FileHandler
+  FileHandler,
 };
 
 export function getLogger(name?: string): Logger {
@@ -81,7 +81,7 @@ export const critical = (msg: string, ...args: unknown[]): void =>
 export async function setup(config: LogConfig): Promise<void> {
   state.config = {
     handlers: { ...DEFAULT_CONFIG.handlers, ...config.handlers },
-    loggers: { ...DEFAULT_CONFIG.loggers, ...config.loggers }
+    loggers: { ...DEFAULT_CONFIG.loggers, ...config.loggers },
   };
 
   // tear down existing handlers

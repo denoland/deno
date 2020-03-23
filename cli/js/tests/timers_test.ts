@@ -4,7 +4,7 @@ import {
   createResolvable,
   assert,
   assertEquals,
-  assertNotEquals
+  assertNotEquals,
 } from "./test_util.ts";
 
 function deferred(): {
@@ -23,7 +23,7 @@ function deferred(): {
   return {
     promise,
     resolve: resolve!,
-    reject: reject!
+    reject: reject!,
   };
 }
 
@@ -180,7 +180,7 @@ unitTest(async function timeoutCallbackThis(): Promise<void> {
     foo(): void {
       assertEquals(this, window);
       resolve();
-    }
+    },
   };
   setTimeout(obj.foo, 1);
   await promise;
@@ -198,7 +198,7 @@ unitTest(async function timeoutBindThis(): Promise<void> {
     [],
     "foo",
     (): void => {},
-    Object.prototype
+    Object.prototype,
   ];
 
   for (const thisArg of thisCheckPassed) {
@@ -240,7 +240,7 @@ unitTest(function clearTimeoutShouldConvertToNumber(): void {
     valueOf(): number {
       called = true;
       return 1;
-    }
+    },
   };
   clearTimeout((obj as unknown) as number);
   assert(called);

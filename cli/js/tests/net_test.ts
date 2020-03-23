@@ -4,7 +4,7 @@ import {
   assert,
   assertEquals,
   createResolvable,
-  randomPort
+  randomPort,
 } from "./test_util.ts";
 
 unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
@@ -20,14 +20,14 @@ unitTest(
   {
     perms: { net: true },
     // TODO:
-    ignore: Deno.build.os === "win"
+    ignore: Deno.build.os === "win",
   },
   function netUdpListenClose(): void {
     const port = randomPort();
     const socket = Deno.listen({
       hostname: "127.0.0.1",
       port,
-      transport: "udp"
+      transport: "udp",
     });
     assertEquals(socket.addr.transport, "udp");
     assertEquals(socket.addr.hostname, "127.0.0.1");
@@ -38,7 +38,7 @@ unitTest(
 
 unitTest(
   {
-    perms: { net: true }
+    perms: { net: true },
   },
   async function netTcpCloseWhileAccept(): Promise<void> {
     const port = randomPort();
@@ -177,7 +177,7 @@ unitTest(
   {
     // FIXME(bartlomieju)
     ignore: true,
-    perms: { net: true }
+    perms: { net: true },
   },
   async function netListenAsyncIterator(): Promise<void> {
     const port = randomPort();
@@ -213,7 +213,7 @@ unitTest(
   {
     // FIXME(bartlomieju)
     ignore: true,
-    perms: { net: true }
+    perms: { net: true },
   },
   async function netCloseReadSuccess() {
     const port = randomPort();
@@ -221,7 +221,7 @@ unitTest(
     const listener = Deno.listen(addr);
     const closeDeferred = createResolvable();
     const closeReadDeferred = createResolvable();
-    listener.accept().then(async conn => {
+    listener.accept().then(async (conn) => {
       await closeReadDeferred;
       await conn.write(new Uint8Array([1, 2, 3]));
       const buf = new Uint8Array(1024);
@@ -251,14 +251,14 @@ unitTest(
   {
     // FIXME(bartlomieju)
     ignore: true,
-    perms: { net: true }
+    perms: { net: true },
   },
   async function netDoubleCloseRead() {
     const port = randomPort();
     const addr = { hostname: "127.0.0.1", port };
     const listener = Deno.listen(addr);
     const closeDeferred = createResolvable();
-    listener.accept().then(async conn => {
+    listener.accept().then(async (conn) => {
       await conn.write(new Uint8Array([1, 2, 3]));
       await closeDeferred;
       conn.close();
@@ -284,14 +284,14 @@ unitTest(
   {
     // FIXME(bartlomieju)
     ignore: true,
-    perms: { net: true }
+    perms: { net: true },
   },
   async function netCloseWriteSuccess() {
     const port = randomPort();
     const addr = { hostname: "127.0.0.1", port };
     const listener = Deno.listen(addr);
     const closeDeferred = createResolvable();
-    listener.accept().then(async conn => {
+    listener.accept().then(async (conn) => {
       await conn.write(new Uint8Array([1, 2, 3]));
       await closeDeferred;
       conn.close();
@@ -324,14 +324,14 @@ unitTest(
   {
     // FIXME(bartlomieju)
     ignore: true,
-    perms: { net: true }
+    perms: { net: true },
   },
   async function netDoubleCloseWrite() {
     const port = randomPort();
     const addr = { hostname: "127.0.0.1", port };
     const listener = Deno.listen(addr);
     const closeDeferred = createResolvable();
-    listener.accept().then(async conn => {
+    listener.accept().then(async (conn) => {
       await closeDeferred;
       conn.close();
     });
@@ -354,7 +354,7 @@ unitTest(
 
 unitTest(
   {
-    perms: { net: true }
+    perms: { net: true },
   },
   async function netHangsOnClose() {
     let acceptedConn: Deno.Conn;

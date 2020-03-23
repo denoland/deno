@@ -14,7 +14,7 @@ export function close(fd: number, callback: CallbackWithError): void {
     .then(() => {
       callback();
     })
-    .catch(err => {
+    .catch((err) => {
       callback(err);
     });
 }

@@ -8,7 +8,7 @@ import {
   extension,
   charset,
   extensions,
-  types
+  types,
 } from "./mod.ts";
 
 test(function testLookup(): void {

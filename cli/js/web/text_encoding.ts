@@ -199,9 +199,9 @@ const encodingMap: { [key: string]: string[] } = {
     "latin1",
     "us-ascii",
     "windows-1252",
-    "x-cp1252"
+    "x-cp1252",
   ],
-  "utf-8": ["unicode-1-1-utf-8", "utf-8", "utf8"]
+  "utf-8": ["unicode-1-1-utf-8", "utf-8", "utf8"],
 };
 // We convert these into a Map where every label resolves to its canonical
 // encoding type.
@@ -314,9 +314,7 @@ export class TextDecoder {
     if (options.fatal) {
       this.fatal = true;
     }
-    label = String(label)
-      .trim()
-      .toLowerCase();
+    label = String(label).trim().toLowerCase();
     const encoding = encodings.get(label);
     if (!encoding) {
       throw new RangeError(
@@ -369,7 +367,7 @@ export class TextDecoder {
 
     const decoder = decoders.get(this._encoding)!({
       fatal: this.fatal,
-      ignoreBOM: this.ignoreBOM
+      ignoreBOM: this.ignoreBOM,
     });
     const inputStream = new Stream(bytes);
     const output: number[] = [];
@@ -455,7 +453,7 @@ export class TextEncoder {
 
     return {
       read,
-      written
+      written,
     };
   }
   get [Symbol.toStringTag](): string {

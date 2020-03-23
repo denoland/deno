@@ -12,7 +12,7 @@ export enum MediaType {
   TSX = 3,
   Json = 4,
   Wasm = 5,
-  Unknown = 6
+  Unknown = 6,
 }
 
 export interface SourceFileJson {
@@ -112,14 +112,14 @@ export class SourceFile {
       importedFiles,
       referencedFiles,
       libReferenceDirectives,
-      typeReferenceDirectives
+      typeReferenceDirectives,
     } = preProcessedFileInfo;
     const typeDirectives = parseTypeDirectives(this.sourceCode);
     if (typeDirectives) {
       for (const importedFile of importedFiles) {
         files.push([
           importedFile.fileName,
-          getMappedModuleName(importedFile, typeDirectives)
+          getMappedModuleName(importedFile, typeDirectives),
         ]);
       }
     } else if (

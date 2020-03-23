@@ -140,7 +140,7 @@ export interface RunTestsOptions {
 enum TestStatus {
   Passed = "passed",
   Failed = "failed",
-  Ignored = "ignored"
+  Ignored = "ignored",
 }
 
 interface TestResult {
@@ -154,7 +154,7 @@ export enum TestEvent {
   Start = "start",
   TestStart = "testStart",
   TestEnd = "testEnd",
-  End = "end"
+  End = "end",
 }
 
 interface TestEventStart {
@@ -188,7 +188,7 @@ class TestApi {
     ignored: 0,
     measured: 0,
     passed: 0,
-    failed: 0
+    failed: 0,
   };
 
   constructor(
@@ -205,7 +205,7 @@ class TestApi {
   > {
     yield {
       kind: TestEvent.Start,
-      tests: this.testsToRun.length
+      tests: this.testsToRun.length,
     };
 
     const results: TestResult[] = [];
@@ -243,7 +243,7 @@ class TestApi {
       kind: TestEvent.End,
       stats: this.stats,
       results,
-      duration
+      duration,
     };
   }
 }
@@ -334,7 +334,7 @@ export class ConsoleTestReporter implements TestReporter {
   end(event: TestEventEnd): Promise<void> {
     const { stats, duration, results } = event;
     // Attempting to match the output of Rust's test runner.
-    const failedTests = results.filter(r => r.error);
+    const failedTests = results.filter((r) => r.error);
 
     if (failedTests.length > 0) {
       this.log(`\nfailures:\n`);
@@ -370,7 +370,7 @@ export async function runTests({
   only = undefined,
   skip = undefined,
   disableLog = false,
-  reporter = undefined
+  reporter = undefined,
 }: RunTestsOptions = {}): Promise<{
   results: TestResult[];
   stats: TestStats;

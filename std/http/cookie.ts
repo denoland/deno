@@ -130,6 +130,6 @@ export function delCookie(res: Response, name: string): void {
   setCookie(res, {
     name: name,
     value: "",
-    expires: new Date(0)
+    expires: new Date(0),
   });
 }

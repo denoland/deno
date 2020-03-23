@@ -163,7 +163,7 @@ export function listen(options: ListenOptions & { transport: "udp" }): UDPConn;
 export function listen({
   port,
   hostname = "0.0.0.0",
-  transport = "tcp"
+  transport = "tcp",
 }: ListenOptions): Listener | UDPConn {
   const res = netOps.listen({ port, hostname, transport });
 
@@ -183,7 +183,7 @@ export interface ConnectOptions {
 export async function connect({
   port,
   hostname = "127.0.0.1",
-  transport = "tcp"
+  transport = "tcp",
 }: ConnectOptions): Promise<Conn> {
   const res = await netOps.connect({ port, hostname, transport });
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);

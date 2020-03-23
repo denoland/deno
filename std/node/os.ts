@@ -219,7 +219,7 @@ export const constants = {
   signals: Deno.Signal,
   priority: {
     // see https://nodejs.org/docs/latest-v12.x/api/os.html#os_priority_constants
-  }
+  },
 };
 
 export const EOL = Deno.build.os == "win" ? fsEOL.CRLF : fsEOL.LF;

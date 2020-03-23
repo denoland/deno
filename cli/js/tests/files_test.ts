@@ -3,7 +3,7 @@ import {
   unitTest,
   assert,
   assertEquals,
-  assertStrContains
+  assertStrContains,
 } from "./test_util.ts";
 
 unitTest(function filesStdioFileDescriptors(): void {
@@ -76,14 +76,14 @@ unitTest(async function readerToAsyncIterator(): Promise<void> {
 
 unitTest(
   {
-    perms: { read: true, write: true }
+    perms: { read: true, write: true },
   },
   function openSyncMode(): void {
     const path = Deno.makeTempDirSync() + "/test_openSync.txt";
     const file = Deno.openSync(path, {
       write: true,
       createNew: true,
-      mode: 0o626
+      mode: 0o626,
     });
     file.close();
     const pathInfo = Deno.statSync(path);
@@ -95,14 +95,14 @@ unitTest(
 
 unitTest(
   {
-    perms: { read: true, write: true }
+    perms: { read: true, write: true },
   },
   async function openMode(): Promise<void> {
     const path = (await Deno.makeTempDir()) + "/test_open.txt";
     const file = await Deno.open(path, {
       write: true,
       createNew: true,
-      mode: 0o626
+      mode: 0o626,
     });
     file.close();
     const pathInfo = Deno.statSync(path);
@@ -198,7 +198,7 @@ unitTest(
     const w = {
       write: true,
       truncate: true,
-      create: true
+      create: true,
     };
     const file = await Deno.open(filename, w);
 

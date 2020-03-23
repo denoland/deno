@@ -17,10 +17,10 @@ async function startServer(): Promise<Deno.Process> {
       "--allow-net",
       "--allow-read",
       "server.ts",
-      `127.0.0.1:${port}`
+      `127.0.0.1:${port}`,
     ],
     cwd: "examples/chat",
-    stdout: "piped"
+    stdout: "piped",
   });
   try {
     assert(server.stdout != null);
@@ -54,7 +54,7 @@ test({
       server.stdout!.close();
     }
     await delay(10);
-  }
+  },
 });
 
 test({
@@ -74,5 +74,5 @@ test({
       server.stdout!.close();
       ws!.conn.close();
     }
-  }
+  },
 });

@@ -5,13 +5,13 @@ import { parse } from "./mod.ts";
 Deno.test(function flagBooleanDefaultFalse(): void {
   const argv = parse(["moo"], {
     boolean: ["t", "verbose"],
-    default: { verbose: false, t: false }
+    default: { verbose: false, t: false },
   });
 
   assertEquals(argv, {
     verbose: false,
     t: false,
-    _: ["moo"]
+    _: ["moo"],
   });
 
   assertEquals(typeof argv.verbose, "boolean");
@@ -20,14 +20,14 @@ Deno.test(function flagBooleanDefaultFalse(): void {
 
 Deno.test(function booleanGroups(): void {
   const argv = parse(["-x", "-z", "one", "two", "three"], {
-    boolean: ["x", "y", "z"]
+    boolean: ["x", "y", "z"],
   });
 
   assertEquals(argv, {
     x: true,
     y: false,
     z: true,
-    _: ["one", "two", "three"]
+    _: ["one", "two", "three"],
   });
 
   assertEquals(typeof argv.x, "boolean");
@@ -40,16 +40,16 @@ Deno.test(function booleanAndAliasWithChainableApi(): void {
   const regular = ["--herp", "derp"];
   const aliasedArgv = parse(aliased, {
     boolean: "herp",
-    alias: { h: "herp" }
+    alias: { h: "herp" },
   });
   const propertyArgv = parse(regular, {
     boolean: "herp",
-    alias: { h: "herp" }
+    alias: { h: "herp" },
   });
   const expected = {
     herp: true,
     h: true,
-    _: ["derp"]
+    _: ["derp"],
   };
 
   assertEquals(aliasedArgv, expected);
@@ -61,14 +61,14 @@ Deno.test(function booleanAndAliasWithOptionsHash(): void {
   const regular = ["--herp", "derp"];
   const opts = {
     alias: { h: "herp" },
-    boolean: "herp"
+    boolean: "herp",
   };
   const aliasedArgv = parse(aliased, opts);
   const propertyArgv = parse(regular, opts);
   const expected = {
     herp: true,
     h: true,
-    _: ["derp"]
+    _: ["derp"],
   };
   assertEquals(aliasedArgv, expected);
   assertEquals(propertyArgv, expected);
@@ -80,7 +80,7 @@ Deno.test(function booleanAndAliasArrayWithOptionsHash(): void {
   const alt = ["--harp", "derp"];
   const opts = {
     alias: { h: ["herp", "harp"] },
-    boolean: "h"
+    boolean: "h",
   };
   const aliasedArgv = parse(aliased, opts);
   const propertyArgv = parse(regular, opts);
@@ -89,7 +89,7 @@ Deno.test(function booleanAndAliasArrayWithOptionsHash(): void {
     harp: true,
     herp: true,
     h: true,
-    _: ["derp"]
+    _: ["derp"],
   };
   assertEquals(aliasedArgv, expected);
   assertEquals(propertyArgv, expected);
@@ -101,14 +101,14 @@ Deno.test(function booleanAndAliasUsingExplicitTrue(): void {
   const regular = ["--herp", "true"];
   const opts = {
     alias: { h: "herp" },
-    boolean: "h"
+    boolean: "h",
   };
   const aliasedArgv = parse(aliased, opts);
   const propertyArgv = parse(regular, opts);
   const expected = {
     herp: true,
     h: true,
-    _: []
+    _: [],
   };
 
   assertEquals(aliasedArgv, expected);
@@ -119,14 +119,14 @@ Deno.test(function booleanAndAliasUsingExplicitTrue(): void {
 // boolean and --x=true
 Deno.test(function booleanAndNonBoolean(): void {
   const parsed = parse(["--boool", "--other=true"], {
-    boolean: "boool"
+    boolean: "boool",
   });
 
   assertEquals(parsed.boool, true);
   assertEquals(parsed.other, "true");
 
   const parsed2 = parse(["--boool", "--other=false"], {
-    boolean: "boool"
+    boolean: "boool",
   });
 
   assertEquals(parsed2.boool, true);
@@ -136,9 +136,9 @@ Deno.test(function booleanAndNonBoolean(): void {
 Deno.test(function booleanParsingTrue(): void {
   const parsed = parse(["--boool=true"], {
     default: {
-      boool: false
+      boool: false,
     },
-    boolean: ["boool"]
+    boolean: ["boool"],
   });
 
   assertEquals(parsed.boool, true);
@@ -147,9 +147,9 @@ Deno.test(function booleanParsingTrue(): void {
 Deno.test(function booleanParsingFalse(): void {
   const parsed = parse(["--boool=false"], {
     default: {
-      boool: true
+      boool: true,
     },
-    boolean: ["boool"]
+    boolean: ["boool"],
   });
 
   assertEquals(parsed.boool, false);
@@ -187,7 +187,7 @@ Deno.test(function latestFlagIsBooleanNegation(): void {
   assertEquals(parsed.foo, false);
 
   const parsed2 = parse(["--no-foo", "--foo", "--no-foo", "123"], {
-    boolean: ["foo"]
+    boolean: ["foo"],
   });
   assertEquals(parsed2.foo, false);
 });
@@ -197,7 +197,7 @@ Deno.test(function latestFlagIsBoolean(): void {
   assertEquals(parsed.foo, true);
 
   const parsed2 = parse(["--foo", "--no-foo", "--foo", "123"], {
-    boolean: ["foo"]
+    boolean: ["foo"],
   });
   assertEquals(parsed2.foo, true);
 });

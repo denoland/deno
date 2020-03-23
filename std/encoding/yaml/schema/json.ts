@@ -11,5 +11,5 @@ import { failsafe } from "./failsafe.ts";
 // http://www.yaml.org/spec/1.2/spec.html#id2803231
 export const json = new Schema({
   implicit: [nil, bool, int, float],
-  include: [failsafe]
+  include: [failsafe],
 });

@@ -59,7 +59,7 @@ export class FileInfoImpl implements FileInfo {
       gid,
       rdev,
       blksize,
-      blocks
+      blocks,
     } = this._res;
 
     this._isFile = this._res.isFile;

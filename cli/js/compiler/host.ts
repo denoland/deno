@@ -9,7 +9,7 @@ import * as util from "../util.ts";
 export enum CompilerHostTarget {
   Main = "main",
   Runtime = "runtime",
-  Worker = "worker"
+  Worker = "worker",
 }
 
 export interface CompilerHostOptions {
@@ -32,7 +32,7 @@ export const defaultBundlerOptions: ts.CompilerOptions = {
   outDir: undefined,
   outFile: `${OUT_DIR}/bundle.js`,
   // disabled until we have effective way to modify source maps
-  sourceMap: false
+  sourceMap: false,
 };
 
 export const defaultCompileOptions: ts.CompilerOptions = {
@@ -47,11 +47,11 @@ export const defaultCompileOptions: ts.CompilerOptions = {
   sourceMap: true,
   strict: true,
   stripComments: true,
-  target: ts.ScriptTarget.ESNext
+  target: ts.ScriptTarget.ESNext,
 };
 
 export const defaultRuntimeCompileOptions: ts.CompilerOptions = {
-  outDir: undefined
+  outDir: undefined,
 };
 
 export const defaultTranspileOptions: ts.CompilerOptions = {
@@ -59,7 +59,7 @@ export const defaultTranspileOptions: ts.CompilerOptions = {
   module: ts.ModuleKind.ESNext,
   sourceMap: true,
   scriptComments: true,
-  target: ts.ScriptTarget.ESNext
+  target: ts.ScriptTarget.ESNext,
 };
 
 const ignoredCompilerOptions: readonly string[] = [
@@ -117,7 +117,7 @@ const ignoredCompilerOptions: readonly string[] = [
   "types",
   "typeRoots",
   "version",
-  "watch"
+  "watch",
 ];
 
 export class Host implements ts.CompilerHost {
@@ -142,7 +142,7 @@ export class Host implements ts.CompilerHost {
       url,
       filename: `${ASSETS}/${name}`,
       mediaType: MediaType.TypeScript,
-      sourceCode
+      sourceCode,
     });
   }
 
@@ -184,7 +184,7 @@ export class Host implements ts.CompilerHost {
     Object.assign(this._options, options);
     return {
       ignoredOptions: ignoredOptions.length ? ignoredOptions : undefined,
-      diagnostics: errors.length ? errors : undefined
+      diagnostics: errors.length ? errors : undefined,
     };
   }
 
@@ -278,9 +278,9 @@ export class Host implements ts.CompilerHost {
   ): Array<ts.ResolvedModuleFull | undefined> {
     util.log("compiler::host.resolveModuleNames", {
       moduleNames,
-      containingFile
+      containingFile,
     });
-    return moduleNames.map(specifier => {
+    return moduleNames.map((specifier) => {
       const url = SourceFile.getUrl(specifier, containingFile);
       const sourceFile = specifier.startsWith(ASSETS)
         ? this._getAsset(specifier)
@@ -293,7 +293,7 @@ export class Host implements ts.CompilerHost {
       return {
         resolvedFileName: sourceFile.url,
         isExternalLibraryImport: specifier.startsWith(ASSETS),
-        extension: sourceFile.extension
+        extension: sourceFile.extension,
       };
     });
   }

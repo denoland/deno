@@ -34,7 +34,7 @@ enum LinuxSignal {
   SIGWINCH = 28,
   SIGIO = 29,
   SIGPWR = 30,
-  SIGSYS = 31
+  SIGSYS = 31,
 }
 
 // From `kill -l`
@@ -69,7 +69,7 @@ enum MacOSSignal {
   SIGWINCH = 28,
   SIGINFO = 29,
   SIGUSR1 = 30,
-  SIGUSR2 = 31
+  SIGUSR2 = 31,
 }
 
 export const Signal: { [key: string]: number } = {};
@@ -122,7 +122,7 @@ export const signals = {
   },
   windowChange(): SignalStream {
     return signal(Signal.SIGWINCH);
-  }
+  },
 };
 
 export class SignalStream

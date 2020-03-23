@@ -172,7 +172,7 @@ export class DenoBlob implements domTypes.Blob {
 
   slice(start?: number, end?: number, contentType?: string): DenoBlob {
     return new DenoBlob([this[bytesSymbol].slice(start, end)], {
-      type: contentType || this.type
+      type: contentType || this.type,
     });
   }
 }

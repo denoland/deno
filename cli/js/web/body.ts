@@ -148,7 +148,7 @@ export class Body implements domTypes.Body {
         start(controller: ReadableStreamController): void {
           controller.enqueue(bodySource);
           controller.close();
-        }
+        },
       });
     }
     return this._stream;
@@ -247,7 +247,7 @@ export class Body implements domTypes.Body {
         if (dispositionParams.has("filename")) {
           const filename = dispositionParams.get("filename")!;
           const blob = new DenoBlob([enc.encode(octets)], {
-            type: partContentType
+            type: partContentType,
           });
           // TODO: based on spec
           // https://xhr.spec.whatwg.org/#dom-formdata-append

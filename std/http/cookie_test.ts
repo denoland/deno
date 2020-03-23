@@ -27,9 +27,9 @@ test({
     assertEquals(getCookies(req), {
       PREF: "al=en-GB&f1=123",
       wide: "1",
-      SID: "123"
+      SID: "123",
     });
-  }
+  },
 });
 
 test({
@@ -41,7 +41,7 @@ test({
       res.headers?.get("Set-Cookie"),
       "deno=; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
     );
-  }
+  },
 });
 
 test({
@@ -66,7 +66,7 @@ test({
       name: "Space",
       value: "Cat",
       httpOnly: true,
-      secure: true
+      secure: true,
     });
     assertEquals(res.headers.get("Set-Cookie"), "Space=Cat; Secure; HttpOnly");
 
@@ -76,7 +76,7 @@ test({
       value: "Cat",
       httpOnly: true,
       secure: true,
-      maxAge: 2
+      maxAge: 2,
     });
     assertEquals(
       res.headers.get("Set-Cookie"),
@@ -91,7 +91,7 @@ test({
         value: "Cat",
         httpOnly: true,
         secure: true,
-        maxAge: 0
+        maxAge: 0,
       });
     } catch (e) {
       error = true;
@@ -105,7 +105,7 @@ test({
       httpOnly: true,
       secure: true,
       maxAge: 2,
-      domain: "deno.land"
+      domain: "deno.land",
     });
     assertEquals(
       res.headers.get("Set-Cookie"),
@@ -120,7 +120,7 @@ test({
       secure: true,
       maxAge: 2,
       domain: "deno.land",
-      sameSite: "Strict"
+      sameSite: "Strict",
     });
     assertEquals(
       res.headers.get("Set-Cookie"),
@@ -136,7 +136,7 @@ test({
       secure: true,
       maxAge: 2,
       domain: "deno.land",
-      sameSite: "Lax"
+      sameSite: "Lax",
     });
     assertEquals(
       res.headers.get("Set-Cookie"),
@@ -151,7 +151,7 @@ test({
       secure: true,
       maxAge: 2,
       domain: "deno.land",
-      path: "/"
+      path: "/",
     });
     assertEquals(
       res.headers.get("Set-Cookie"),
@@ -167,7 +167,7 @@ test({
       maxAge: 2,
       domain: "deno.land",
       path: "/",
-      unparsed: ["unparsed=keyvalue", "batman=Bruce"]
+      unparsed: ["unparsed=keyvalue", "batman=Bruce"],
     });
     assertEquals(
       res.headers.get("Set-Cookie"),
@@ -184,7 +184,7 @@ test({
       maxAge: 2,
       domain: "deno.land",
       path: "/",
-      expires: new Date(Date.UTC(1983, 0, 7, 15, 32))
+      expires: new Date(Date.UTC(1983, 0, 7, 15, 32)),
     });
     assertEquals(
       res.headers.get("Set-Cookie"),
@@ -200,11 +200,11 @@ test({
     setCookie(res, {
       name: "__Host-Kitty",
       value: "Meow",
-      domain: "deno.land"
+      domain: "deno.land",
     });
     assertEquals(
       res.headers.get("Set-Cookie"),
       "__Host-Kitty=Meow; Secure; Path=/"
     );
-  }
+  },
 });

@@ -27,5 +27,5 @@ function constructYamlSet(data: string): Any {
 export const set = new Type("tag:yaml.org,2002:set", {
   construct: constructYamlSet,
   kind: "mapping",
-  resolve: resolveYamlSet
+  resolve: resolveYamlSet,
 });
