@@ -1,1 +1,1 @@
-./fs/testdata/0.ts
+0.ts
