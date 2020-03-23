@@ -1178,6 +1178,53 @@ pub mod tests {
     let mut isolate2 = Isolate::new(startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
+
+  fn make_snapshot() -> std::path::PathBuf {
+    let snapshot = {
+      let mut isolate = Isolate::new(StartupData::None, true);
+      isolate
+        .execute(
+          "test.js",
+          r#"
+            function fixture(name) {
+              return `Hello ${name}!`;
+            }
+          "#,
+        )
+        .expect("failed to initialize snapshot with javascript");
+      isolate.snapshot()
+    };
+    let snapshot_slice: &[u8] = &*snapshot;
+
+    let snapshot_filename = std::env::temp_dir().join("SNAPSHOT.bin");
+    std::fs::write(&snapshot_filename, snapshot_slice)
+      .expect("failed to write snapshot");
+
+    snapshot_filename
+  }
+
+  fn verify_snapshot(isolate: &mut Isolate) {
+    isolate
+      .execute(
+        "check.js",
+        r#"
+          const greeting = fixture("Deno");
+          if (greeting != "Hello Deno!") {
+            throw new Error("Invalid return value");
+          }
+        "#,
+      )
+      .expect("failed to run JS test on isolate from snapshot");
+  }
+
+  #[test]
+  fn test_load_file_snapshot() {
+    let snapshot_filename = make_snapshot();
+    let snap_bytes =
+      std::fs::read(&snapshot_filename).expect("failed to read from file");
+    let mut isolate = Isolate::new(StartupData::Snapshot(&snap_bytes), false);
+    verify_snapshot(&mut isolate);
+  }
 }
 
 // TODO(piscisaureus): rusty_v8 should implement the Error trait on
