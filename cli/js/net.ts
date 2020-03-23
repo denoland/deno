@@ -179,7 +179,11 @@ export function listen(
     });
   }
 
-  if (options.transport === "tcp" || options.transport === "unix") {
+  if (
+    !options.transport ||
+    options.transport === "tcp" ||
+    options.transport === "unix"
+  ) {
     return new ListenerImpl(res.rid, res.localAddr);
   } else {
     return new DatagramImpl(res.rid, res.localAddr);
