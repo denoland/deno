@@ -319,7 +319,9 @@ fn op_connect(
         let mut state = state_.borrow_mut();
         let rid = state.resource_table.add(
           "unixStream",
-          Box::new(StreamResource::UnixStream(unix_stream)),
+          Box::new(StreamResourceHolder::new(StreamResource::UnixStream(
+            unix_stream,
+          ))),
         );
         Ok(json!({
           "rid": rid,

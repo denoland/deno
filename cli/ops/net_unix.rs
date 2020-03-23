@@ -1,5 +1,5 @@
 use super::dispatch_json::{Deserialize, JsonOp};
-use super::io::StreamResource;
+use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
 use crate::state::State;
 use futures::future::FutureExt;
@@ -44,14 +44,18 @@ pub fn accept_unix(
     let listener_resource = state
       .resource_table
       .get_mut::<UnixListenerResource>(rid)
-      .ok_or_else(|| OpError::other("Listener has been closed".to_string()))?;
+      .ok_or_else(|| {
+        OpError::bad_resource("Listener has been closed".to_string())
+      })?;
     let (unix_stream, _socket_addr) =
       listener_resource.listener.accept().await?;
     let local_addr = unix_stream.local_addr()?;
     let remote_addr = unix_stream.peer_addr()?;
     let rid = state.resource_table.add(
       "unixStream",
-      Box::new(StreamResource::UnixStream(unix_stream)),
+      Box::new(StreamResourceHolder::new(StreamResource::UnixStream(
+        unix_stream,
+      ))),
     );
     Ok(json!({
       "rid": rid,
@@ -82,13 +86,15 @@ pub fn receive_unix_packet(
     let resource = state
       .resource_table
       .get_mut::<UnixDatagramResource>(rid)
-      .ok_or_else(|| OpError::other("Socket has been closed".to_string()))?;
+      .ok_or_else(|| {
+        OpError::bad_resource("Socket has been closed".to_string())
+      })?;
     let (size, remote_addr) = resource.socket.recv_from(&mut buf).await?;
     Ok(json!({
       "size": size,
       "remoteAddr": {
         "address": remote_addr.as_pathname(),
-        "transport": "unix",
+        "transport": "unixpacket",
       }
     }))
   };
