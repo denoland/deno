@@ -14,6 +14,8 @@ extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
 extern crate rand;
+extern crate regex;
+extern crate reqwest;
 extern crate serde;
 extern crate serde_derive;
 extern crate tokio;
@@ -52,6 +54,7 @@ pub mod state;
 mod test_runner;
 pub mod test_util;
 mod tokio_util;
+mod upgrade;
 pub mod version;
 mod web_worker;
 pub mod worker;
@@ -75,6 +78,7 @@ use log::Record;
 use std::env;
 use std::io::Write;
 use std::path::PathBuf;
+use upgrade::upgrade_command;
 use url::Url;
 
 static LOGGER: Logger = Logger;
@@ -486,6 +490,9 @@ pub fn main() {
       // TODO(ry) Only ignore SIGPIPE. Currently ignoring all errors.
       let _r = std::io::stdout().write_all(types.as_bytes());
       return;
+    }
+    DenoSubcommand::Upgrade { force, dry_run } => {
+      upgrade_command(dry_run, force).boxed_local()
     }
     _ => unreachable!(),
   };
