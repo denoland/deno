@@ -6,6 +6,10 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.37.1 / 2020.03.23
+
+- fix: Statically link the C runtime library on Windows (#4469)
+
 ### v0.37.0 / 2020.03.23
 
 - BREAKING CHANGE: FileInfo.len renamed to FileName.size (#4338)
