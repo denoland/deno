@@ -220,7 +220,7 @@ function reportToConsole(message: TestMessage): void {
 exposeForTest("reportToConsole", reportToConsole);
 
 // TODO: already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
-// TODO: implements PromiseLike<TestsTestResult>
+// TODO: implements PromiseLike<RunTestsEndResult>
 class TestApi {
   readonly testsToRun: TestDefinition[];
   readonly stats = {
@@ -316,16 +316,18 @@ export interface RunTestsOptions {
   skip?: string | RegExp;
   disableLog?: boolean;
   reportToConsole?: boolean;
+  onMessage?: (message: TestMessage) => void | Promise<void>;
 }
 
-export async function* runTests({
+export async function runTests({
   exitOnFail = true,
   failFast = false,
   only = undefined,
   skip = undefined,
   disableLog = false,
-  reportToConsole: reportToConsole_ = false
-}: RunTestsOptions = {}): AsyncIterableIterator<TestMessage> {
+  reportToConsole: reportToConsole_ = false,
+  onMessage = reportToConsole
+}: RunTestsOptions = {}): Promise<RunTestsEndMessage> {
   const filterFn = createFilterFn(only, skip);
   const testApi = new TestApi(TEST_REGISTRY, filterFn, failFast);
 
@@ -340,7 +342,9 @@ export async function* runTests({
   let endMsg: RunTestsEndMessage;
 
   for await (const message of testApi) {
-    yield message;
+    if (onMessage != null) {
+      await onMessage(message);
+    }
     if (reportToConsole_) {
       reportToConsole(message);
     }
@@ -357,4 +361,6 @@ export async function* runTests({
   if (endMsg!.failed > 0 && exitOnFail) {
     exit(1);
   }
+
+  return endMsg!;
 }

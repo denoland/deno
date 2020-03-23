@@ -86,12 +86,12 @@ declare namespace Deno {
     disableLog?: boolean;
     /** If true, report results to the console as is done for `deno test`. Defaults to `false`. */
     reportToConsole?: boolean;
+    /** Called for each message received from the test run. */
+    onMessage?: (message: TestMessage) => void | Promise<void>;
   }
 
   /** Run registered tests and iterate through messages. */
-  export function runTests(
-    opts?: RunTestsOptions
-  ): AsyncIterableIterator<TestMessage>;
+  export function runTests(opts?: RunTestsOptions): Promise<RunTestsEndMessage>;
 
   /** Get the `loadavg`. Requires `allow-env` permission.
    *

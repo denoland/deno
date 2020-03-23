@@ -65,12 +65,11 @@ async function workerRunnerMain(
   // Register unit tests that match process permissions
   await registerUnitTests();
   // Execute tests
-  for await (const message of Deno.runTests({
+  await Deno.runTests({
     exitOnFail: false,
-    only: filter
-  })) {
-    await reportToConn(conn, message);
-  }
+    only: filter,
+    onMessage: reportToConn.bind(null, conn)
+  });
 }
 
 function spawnWorkerRunner(
@@ -295,10 +294,10 @@ async function main(): Promise<void> {
 
   // Running tests matching current process permissions
   await registerUnitTests();
-  for await (const _ of Deno.runTests({
+  await Deno.runTests({
     only: filter,
     reportToConsole: true
-  }));
+  });
 }
 
 main();
