@@ -54,7 +54,7 @@ sys-info = "=0.5.8" # 0.5.9 and 0.5.10 are broken on windows.
 sourcemap = "5.0.0"
 tempfile = "3.1.0"
 termcolor = "1.1.0"
-tokio = { version = "0.2.13", features = ["rt-core", "tcp", "udp", "process", "fs", "blocking", "sync", "io-std", "macros", "time"] }
+tokio = { version = "0.2.13", features = ["rt-core", "tcp", "udp", "uds", "process", "fs", "blocking", "sync", "io-std", "macros", "time"] }
 tokio-rustls = "0.13.0"
 url = "2.1.1"
 utime = "0.2.1"
