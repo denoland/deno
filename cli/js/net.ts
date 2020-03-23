@@ -83,14 +83,6 @@ export class ListenerImpl implements Listener {
   }
 }
 
-export async function recvfrom(
-  { rid, transport = "udp" }: { rid: number; transport: string },
-  p: Uint8Array
-): Promise<[number, Addr]> {
-  const { size, remoteAddr } = await netOps.receive(rid, transport, p);
-  return [size, remoteAddr];
-}
-
 export class DatagramImpl implements DatagramConn {
   constructor(
     readonly rid: number,
@@ -100,8 +92,9 @@ export class DatagramImpl implements DatagramConn {
 
   async receive(p?: Uint8Array): Promise<[Uint8Array, Addr]> {
     const buf = p || new Uint8Array(this.bufSize);
-    const [size, remoteAddr] = await recvfrom(
-      { rid: this.rid, ...this.addr },
+    const { size, remoteAddr } = await netOps.receive(
+      this.rid,
+      this.addr.transport,
       buf
     );
     const sub = buf.subarray(0, size);

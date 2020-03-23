@@ -131,31 +131,30 @@ unitTest(
   }
 );
 
-// TODO(jsouto): Uncomment when tokio updates mio to v0.7!
-// unitTest(
-//   { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
-//   async function netUnixConcurrentAccept(): Promise<void> {
-// if (Deno.build.os === "win") return;
-//     const filePath = await Deno.makeTempFile();
-//     const listener = Deno.listen({ transport: "unix", address: filePath });
-//     let acceptErrCount = 0;
-//     const checkErr = (e: Error): void => {
-//       if (e.message === "Listener has been closed") {
-//         assertEquals(acceptErrCount, 1);
-//       } else if (e.message === "Another accept task is ongoing") {
-//         acceptErrCount++;
-//       } else {
-//         throw new Error("Unexpected error message");
-//       }
-//     };
-//     const p = listener.accept().catch(checkErr);
-//     const p1 = listener.accept().catch(checkErr);
-//     await Promise.race([p, p1]);
-//     listener.close();
-//     await [p, p1];
-//     assertEquals(acceptErrCount, 1);
-//   }
-// );
+// TODO(jsouto): Enable when tokio updates mio to v0.7!
+unitTest(
+  { ignore: true, perms: { read: true, write: true } },
+  async function netUnixConcurrentAccept(): Promise<void> {
+    const filePath = await Deno.makeTempFile();
+    const listener = Deno.listen({ transport: "unix", address: filePath });
+    let acceptErrCount = 0;
+    const checkErr = (e: Error): void => {
+      if (e.message === "Listener has been closed") {
+        assertEquals(acceptErrCount, 1);
+      } else if (e.message === "Another accept task is ongoing") {
+        acceptErrCount++;
+      } else {
+        throw new Error("Unexpected error message");
+      }
+    };
+    const p = listener.accept().catch(checkErr);
+    const p1 = listener.accept().catch(checkErr);
+    await Promise.race([p, p1]);
+    listener.close();
+    await [p, p1];
+    assertEquals(acceptErrCount, 1);
+  }
+);
 
 unitTest({ perms: { net: true } }, async function netTcpDialListen(): Promise<
   void

@@ -72,7 +72,6 @@ export { mkdirSync, mkdir, MkdirOptions } from "./ops/fs/mkdir.ts";
 export {
   connect,
   listen,
-  recvfrom,
   DatagramConn,
   Listener,
   Conn,

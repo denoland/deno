@@ -1584,14 +1584,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
-   * Waits for the next message to the passed `rid` and writes it on the passed
-   * `Uint8Array`.
-   *
-   * Resolves to the number of bytes written and the remote address. */
-  //   export function recvfrom(rid: number, p: Uint8Array): Promise<[number, Addr]>;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
    * A generic transport listener for message-oriented protocols. */
   export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
     /** **UNSTABLE**: new API, yet to be vetted.
