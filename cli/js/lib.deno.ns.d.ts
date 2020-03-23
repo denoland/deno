@@ -40,9 +40,8 @@ declare namespace Deno {
     tests: TestDefinition[];
   }
 
-  export interface TestStartMessage {
+  export interface TestStartMessage extends TestDefinition {
     kind: "testStart";
-    test: TestDefinition;
   }
 
   export interface TestEndMessage {

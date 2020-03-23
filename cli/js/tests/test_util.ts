@@ -215,9 +215,7 @@ export async function reportToConn(
     await write(conn, serializedMsg);
   } else if (message.kind == "testStart") {
     // Message contains a JS function, serialize it.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const serializedMsg: any = { ...message };
-    serializedMsg.test = { ...serializedMsg.test, fn: null };
+    const serializedMsg = { ...message, fn: null };
     await write(conn, serializedMsg);
   } else if (message.kind == "testEnd") {
     // Message contains a JS Error, serialize it.

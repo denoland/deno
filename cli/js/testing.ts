@@ -126,9 +126,8 @@ export interface RunTestsStartMessage {
   tests: TestDefinition[];
 }
 
-export interface TestStartMessage {
+export interface TestStartMessage extends TestDefinition {
   kind: "testStart";
-  test: TestDefinition;
 }
 
 export interface TestEndMessage {
@@ -173,9 +172,7 @@ function reportToConsole(message: TestMessage): void {
   if (message.kind == "runTestsStart") {
     log(`running ${message.tests.length} tests`);
   } else if (message.kind == "testStart") {
-    const {
-      test: { name }
-    } = message;
+    const { name } = message;
 
     log(`test ${name} ... `, true);
     return;
@@ -251,7 +248,7 @@ class TestApi {
         name: test.name,
         duration: 0
       };
-      yield { kind: "testStart", test };
+      yield { kind: "testStart", ...test };
       if (test.ignore) {
         endMessage.status = "ignored";
         this.stats.ignored++;
