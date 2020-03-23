@@ -46,7 +46,7 @@ function main(configText, rootNames) {
   handleDiagnostics(host, emitResult.diagnostics);
 
   dispatch(
-    "setEmitResult",
+    "op_set_emit_result",
     Object.assign(emitResult, { tsVersion: ts.version })
   );
 }
@@ -98,7 +98,6 @@ function encode(str) {
   return ui8;
 }
 
-//
 /** **Warning!** Op ids must be acquired from Rust using `Deno.core.ops()`
  * before dispatching any action.
  * @type {Record<string, number>}
@@ -133,7 +132,6 @@ class Host {
    */
   readFile(_fileName) {
     unreachable();
-    return undefined;
   }
 
   useCaseSensitiveFileNames() {
@@ -180,33 +178,22 @@ class Host {
     }
 
     // This looks up any modules that have been mapped to internal names
-    if (moduleMap.has(fileName)) {
-      fileName = moduleMap.get(fileName);
-    }
+    const moduleUrl = moduleMap.has(fileName)
+      ? moduleMap.get(fileName)
+      : fileName;
 
-    const { sourceCode, moduleName } = dispatch("readFile", {
-      fileName,
+    const { sourceCode } = dispatch("op_load_module", {
+      moduleUrl,
       languageVersion,
       shouldCreateNewSourceFile
     });
 
-    // If we match the external specifier regex, we will then create an internal
-    // specifier and then use that when creating the source file
-    let internalModuleName = moduleName;
-    const result = externalSpecifierRegEx.exec(moduleName);
-    if (result) {
-      const [, specifier] = result;
-      const internalSpecifier = `$deno$${specifier}`;
-      moduleMap.set(internalSpecifier, moduleName);
-      internalModuleName = internalSpecifier;
-    }
-
     const sourceFile = ts.createSourceFile(
-      internalModuleName,
+      fileName,
       sourceCode,
       languageVersion
     );
-    sourceFile.moduleName = internalModuleName;
+    sourceFile.moduleName = fileName;
     return sourceFile;
   }
 
@@ -228,7 +215,7 @@ class Host {
       return;
     }
     const moduleName = sourceFiles[sourceFiles.length - 1].moduleName;
-    return dispatch("writeFile", { fileName, moduleName, data });
+    return dispatch("op_write_file", { fileName, moduleName, data });
   }
 
   /**
@@ -246,7 +233,6 @@ class Host {
     _shouldCreateNewSourceFile
   ) {
     unreachable();
-    return undefined;
   }
 
   /**
@@ -272,13 +258,24 @@ class Host {
       ? moduleMap.get(containingFile)
       : containingFile;
     /** @type {string[]} */
-    const resolvedNames = dispatch("resolveModuleNames", {
+    const resolvedNames = dispatch("op_resolve_module_names", {
       moduleNames,
       containingFile
     });
     /** @type {ts.ResolvedModule[]} */
     const r = resolvedNames.map(resolvedFileName => {
       const extension = getExtension(resolvedFileName);
+      if (!moduleMap.has(resolvedFileName)) {
+        // If we match the external specifier regex, we will then create an internal
+        // specifier and then use that when creating the source file
+        const result = externalSpecifierRegEx.exec(resolvedFileName);
+        if (result) {
+          const [, specifier] = result;
+          const internalSpecifier = `$deno$${specifier}`;
+          moduleMap.set(internalSpecifier, resolvedFileName);
+          resolvedFileName = internalSpecifier;
+        }
+      }
       return { resolvedFileName, extension };
     });
     return r;
@@ -332,7 +329,7 @@ function dispatch(opName, obj) {
  * @param {number} code
  */
 function exit(code) {
-  dispatch("exit", { code });
+  dispatch("op_exit2", { code });
   return unreachable();
 }
 

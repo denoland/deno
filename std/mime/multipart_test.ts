@@ -7,7 +7,7 @@ import {
   assertThrows,
   assertThrowsAsync
 } from "../testing/asserts.ts";
-import { test, runIfMain } from "../testing/mod.ts";
+const { test } = Deno;
 import * as path from "../path/mod.ts";
 import {
   FormFile,
@@ -98,6 +98,7 @@ test(async function multipartMultipartWriter(): Promise<void> {
   const f = await open(path.resolve("./mime/testdata/sample.txt"), "r");
   await mw.writeFile("file", "sample.txt", f);
   await mw.close();
+  f.close();
 });
 
 test(function multipartMultipartWriter2(): void {
@@ -185,6 +186,7 @@ test(async function multipartMultipartReader(): Promise<void> {
   const file = form["file"] as FormFile;
   assertEquals(isFormFile(file), true);
   assert(file.content !== void 0);
+  o.close();
 });
 
 test(async function multipartMultipartReader2(): Promise<void> {
@@ -199,7 +201,8 @@ test(async function multipartMultipartReader2(): Promise<void> {
     assertEquals(form["bar"], "bar");
     const file = form["file"] as FormFile;
     assertEquals(file.type, "application/octet-stream");
-    const f = await open(file.tempfile!);
+    assert(file.tempfile != null);
+    const f = await open(file.tempfile);
     const w = new StringWriter();
     await copy(w, f);
     const json = JSON.parse(w.toString());
@@ -207,8 +210,9 @@ test(async function multipartMultipartReader2(): Promise<void> {
     f.close();
   } finally {
     const file = form["file"] as FormFile;
-    await remove(file.tempfile!);
+    if (file.tempfile) {
+      await remove(file.tempfile);
+    }
+    o.close();
   }
 });
-
-runIfMain(import.meta);

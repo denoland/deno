@@ -1,4 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { assert } from "../testing/asserts.ts";
+
 export function deepAssign(
   target: Record<string, unknown>,
   ...sources: object[]
@@ -24,7 +26,8 @@ export function deepAssign(
       if (typeof target[key] !== `object` || !target[key]) {
         target[key] = {};
       }
-      deepAssign(target[key] as Record<string, unknown>, value!);
+      assert(value);
+      deepAssign(target[key] as Record<string, unknown>, value);
     });
   }
   return target;

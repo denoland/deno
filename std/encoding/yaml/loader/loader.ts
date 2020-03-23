@@ -3,7 +3,6 @@
 // Copyright 2011-2015 by Vitaly Puzrin. All rights reserved. MIT license.
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-/* eslint-disable no-conditional-assignment */
 /* eslint-disable max-len */
 
 import { YAMLError } from "../error.ts";
@@ -187,7 +186,7 @@ interface DirectiveHandlers {
   [directive: string]: (
     state: LoaderState,
     name: string,
-    ...args: unknown[]
+    ...args: string[]
   ) => void;
 }
 
@@ -362,7 +361,7 @@ function storeMappingPair(
         mergeMappings(state, result, valueNode[index], overridableKeys);
       }
     } else {
-      mergeMappings(state, result, valueNode, overridableKeys);
+      mergeMappings(state, result, valueNode as ArrayObject, overridableKeys);
     }
   } else {
     if (
@@ -1610,7 +1609,7 @@ function readDocument(state: LoaderState): void {
   const documentStart = state.position;
   let position: number,
     directiveName: string,
-    directiveArgs: unknown[],
+    directiveArgs: string[],
     hasDirectives = false,
     ch: number;
 

@@ -1,47 +1,36 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use super::io::StreamResource;
-use crate::deno_error::bad_resource;
-use crate::ops::json_op;
+use super::io::{StreamResource, StreamResourceHolder};
+use crate::op_error::OpError;
 use crate::signal::kill;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use deno_core::*;
 use futures;
+use futures::future::poll_fn;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
-use futures::task::SpawnExt;
+use futures::TryFutureExt;
 use std;
 use std::convert::From;
-use std::future::Future;
-use std::pin::Pin;
-use std::process::ExitStatus;
-use std::task::Context;
-use std::task::Poll;
 use tokio::process::Command;
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
-  i.register_op("run", s.core_op(json_op(s.stateful_op(op_run))));
-  i.register_op(
-    "run_status",
-    s.core_op(json_op(s.stateful_op(op_run_status))),
-  );
-  i.register_op("kill", s.core_op(json_op(s.stateful_op(op_kill))));
+pub fn init(i: &mut Isolate, s: &State) {
+  i.register_op("op_run", s.stateful_json_op(op_run));
+  i.register_op("op_run_status", s.stateful_json_op(op_run_status));
+  i.register_op("op_kill", s.stateful_json_op(op_kill));
 }
 
-fn clone_file(
-  rid: u32,
-  state: &ThreadSafeState,
-) -> Result<std::fs::File, ErrBox> {
-  let mut table = state.lock_resource_table();
-  let repr = table
-    .get_mut::<StreamResource>(rid)
-    .ok_or_else(bad_resource)?;
-  let file = match repr {
-    StreamResource::FsFile(ref mut file) => file,
-    _ => return Err(bad_resource()),
+fn clone_file(rid: u32, state: &State) -> Result<std::fs::File, OpError> {
+  let mut state = state.borrow_mut();
+  let repr_holder = state
+    .resource_table
+    .get_mut::<StreamResourceHolder>(rid)
+    .ok_or_else(OpError::bad_resource_id)?;
+  let file = match repr_holder.resource {
+    StreamResource::FsFile(ref mut file, _) => file,
+    _ => return Err(OpError::bad_resource_id()),
   };
   let tokio_file = futures::executor::block_on(file.try_clone())?;
   let std_file = futures::executor::block_on(tokio_file.into_std());
@@ -60,7 +49,7 @@ fn subprocess_stdio_map(s: &str) -> std::process::Stdio {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RunArgs {
-  args: Vec<String>,
+  cmd: Vec<String>,
   cwd: Option<String>,
   env: Vec<(String, String)>,
   stdin: String,
@@ -75,19 +64,17 @@ struct ChildResource {
   child: tokio::process::Child,
 }
 
-impl Resource for ChildResource {}
-
 fn op_run(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let run_args: RunArgs = serde_json::from_value(args)?;
 
   state.check_run()?;
   let state_ = state.clone();
 
-  let args = run_args.args;
+  let args = run_args.cmd;
   let env = run_args.env;
   let cwd = run_args.cwd;
 
@@ -133,13 +120,16 @@ fn op_run(
   let mut child = c.spawn()?;
   let pid = child.id();
 
-  let mut table = state_.lock_resource_table();
+  let mut state = state_.borrow_mut();
+  let table = &mut state.resource_table;
 
   let stdin_rid = match child.stdin.take() {
     Some(child_stdin) => {
       let rid = table.add(
         "childStdin",
-        Box::new(StreamResource::ChildStdin(child_stdin)),
+        Box::new(StreamResourceHolder::new(StreamResource::ChildStdin(
+          child_stdin,
+        ))),
       );
       Some(rid)
     }
@@ -150,7 +140,9 @@ fn op_run(
     Some(child_stdout) => {
       let rid = table.add(
         "childStdout",
-        Box::new(StreamResource::ChildStdout(child_stdout)),
+        Box::new(StreamResourceHolder::new(StreamResource::ChildStdout(
+          child_stdout,
+        ))),
       );
       Some(rid)
     }
@@ -161,7 +153,9 @@ fn op_run(
     Some(child_stderr) => {
       let rid = table.add(
         "childStderr",
-        Box::new(StreamResource::ChildStderr(child_stderr)),
+        Box::new(StreamResourceHolder::new(StreamResource::ChildStderr(
+          child_stderr,
+        ))),
       );
       Some(rid)
     }
@@ -180,25 +174,6 @@ fn op_run(
   })))
 }
 
-pub struct ChildStatus {
-  rid: ResourceId,
-  state: ThreadSafeState,
-}
-
-impl Future for ChildStatus {
-  type Output = Result<ExitStatus, ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    let mut table = inner.state.lock_resource_table();
-    let child_resource = table
-      .get_mut::<ChildResource>(inner.rid)
-      .ok_or_else(bad_resource)?;
-    let child = &mut child_resource.child;
-    child.map_err(ErrBox::from).poll_unpin(cx)
-  }
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RunStatusArgs {
@@ -206,22 +181,27 @@ struct RunStatusArgs {
 }
 
 fn op_run_status(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   let args: RunStatusArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
   state.check_run()?;
-
-  let future = ChildStatus {
-    rid,
-    state: state.clone(),
-  };
+  let state = state.clone();
 
   let future = async move {
-    let run_status = future.await?;
+    let run_status = poll_fn(|cx| {
+      let resource_table = &mut state.borrow_mut().resource_table;
+      let child_resource = resource_table
+        .get_mut::<ChildResource>(rid)
+        .ok_or_else(OpError::bad_resource_id)?;
+      let child = &mut child_resource.child;
+      child.map_err(OpError::from).poll_unpin(cx)
+    })
+    .await?;
+
     let code = run_status.code();
 
     #[cfg(unix)]
@@ -241,10 +221,7 @@ fn op_run_status(
     }))
   };
 
-  let pool = futures::executor::ThreadPool::new().unwrap();
-  let handle = pool.spawn_with_handle(future).unwrap();
-
-  Ok(JsonOp::Async(handle.boxed()))
+  Ok(JsonOp::Async(future.boxed_local()))
 }
 
 #[derive(Deserialize)]
@@ -254,10 +231,10 @@ struct KillArgs {
 }
 
 fn op_kill(
-  state: &ThreadSafeState,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, ErrBox> {
+) -> Result<JsonOp, OpError> {
   state.check_run()?;
 
   let args: KillArgs = serde_json::from_value(args)?;

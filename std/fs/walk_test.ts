@@ -1,15 +1,15 @@
-const { DenoError, ErrorKind, cwd, chdir, makeTempDir, mkdir, open } = Deno;
+const { cwd, chdir, makeTempDir, mkdir, open, symlink } = Deno;
 const { remove } = Deno;
-type ErrorKind = Deno.ErrorKind;
-type DenoError = Deno.DenoError<ErrorKind>;
 import { walk, walkSync, WalkOptions, WalkInfo } from "./walk.ts";
-import { test, TestFunction, runIfMain } from "../testing/mod.ts";
-import { assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
+import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 
-export async function testWalk(
+const isWindows = Deno.build.os == "win";
+
+export function testWalk(
   setup: (arg0: string) => void | Promise<void>,
-  t: TestFunction
-): Promise<void> {
+  t: Deno.TestFunction,
+  ignore = false
+): void {
   const name = t.name;
   async function fn(): Promise<void> {
     const origCwd = cwd();
@@ -20,10 +20,10 @@ export async function testWalk(
       await t();
     } finally {
       chdir(origCwd);
-      remove(d, { recursive: true });
+      await remove(d, { recursive: true });
     }
   }
-  test({ name, fn });
+  Deno.test({ ignore, name: `[walk] ${name}`, fn });
 }
 
 function normalize({ filename }: WalkInfo): string {
@@ -46,7 +46,8 @@ export async function walkArray(
 }
 
 export async function touch(path: string): Promise<void> {
-  await open(path, "w");
+  const f = await open(path, "w");
+  f.close();
 }
 
 function assertReady(expectedLength: number): void {
@@ -236,14 +237,13 @@ testWalk(
 testWalk(
   async (_d: string): Promise<void> => {},
   async function nonexistentRoot(): Promise<void> {
-    const error = (await assertThrowsAsync(async () => {
+    await assertThrowsAsync(async () => {
       await walkArray("nonexistent");
-    }, DenoError)) as DenoError;
-    assertEquals(error.kind, ErrorKind.NotFound);
+    }, Deno.errors.NotFound);
   }
 );
 
-/* TODO(ry) Re-enable followSymlinks
+// TODO(ry) Re-enable followSymlinks
 testWalk(
   async (d: string): Promise<void> => {
     await mkdir(d + "/a");
@@ -272,8 +272,6 @@ testWalk(
     const arr = await walkArray("a", { followSymlinks: true });
     assertEquals(arr.length, 3);
     assert(arr.some((f): boolean => f.endsWith("/b/z")));
-  }
+  },
+  true
 );
-*/
-
-runIfMain(import.meta);

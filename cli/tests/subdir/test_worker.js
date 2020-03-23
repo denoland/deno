@@ -1,19 +1,19 @@
 let thrown = false;
 
-onmessage = function(e) {
-  console.log(e.data);
+if (self.name !== "jsWorker") {
+  throw Error(`Bad worker name: ${self.name}, expected jsWorker`);
+}
 
+onmessage = function(e) {
   if (thrown === false) {
     thrown = true;
     throw new SyntaxError("[test error]");
   }
 
   postMessage(e.data);
-
-  workerClose();
+  close();
 };
 
 onerror = function() {
-  console.log("called onerror in worker");
   return false;
 };

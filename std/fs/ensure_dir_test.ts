@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test } from "../testing/mod.ts";
 import { assertThrows, assertThrowsAsync } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
@@ -7,7 +6,7 @@ import { ensureFile, ensureFileSync } from "./ensure_file.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-test(async function ensureDirIfItNotExist(): Promise<void> {
+Deno.test(async function ensureDirIfItNotExist(): Promise<void> {
   const baseDir = path.join(testdataDir, "ensure_dir_not_exist");
   const testDir = path.join(baseDir, "test");
 
@@ -24,7 +23,7 @@ test(async function ensureDirIfItNotExist(): Promise<void> {
   await Deno.remove(baseDir, { recursive: true });
 });
 
-test(function ensureDirSyncIfItNotExist(): void {
+Deno.test(function ensureDirSyncIfItNotExist(): void {
   const baseDir = path.join(testdataDir, "ensure_dir_sync_not_exist");
   const testDir = path.join(baseDir, "test");
 
@@ -35,7 +34,7 @@ test(function ensureDirSyncIfItNotExist(): void {
   Deno.removeSync(baseDir, { recursive: true });
 });
 
-test(async function ensureDirIfItExist(): Promise<void> {
+Deno.test(async function ensureDirIfItExist(): Promise<void> {
   const baseDir = path.join(testdataDir, "ensure_dir_exist");
   const testDir = path.join(baseDir, "test");
 
@@ -55,7 +54,7 @@ test(async function ensureDirIfItExist(): Promise<void> {
   await Deno.remove(baseDir, { recursive: true });
 });
 
-test(function ensureDirSyncIfItExist(): void {
+Deno.test(function ensureDirSyncIfItExist(): void {
   const baseDir = path.join(testdataDir, "ensure_dir_sync_exist");
   const testDir = path.join(baseDir, "test");
 
@@ -72,7 +71,7 @@ test(function ensureDirSyncIfItExist(): void {
   Deno.removeSync(baseDir, { recursive: true });
 });
 
-test(async function ensureDirIfItAsFile(): Promise<void> {
+Deno.test(async function ensureDirIfItAsFile(): Promise<void> {
   const baseDir = path.join(testdataDir, "ensure_dir_exist_file");
   const testFile = path.join(baseDir, "test");
 
@@ -89,7 +88,7 @@ test(async function ensureDirIfItAsFile(): Promise<void> {
   await Deno.remove(baseDir, { recursive: true });
 });
 
-test(function ensureDirSyncIfItAsFile(): void {
+Deno.test(function ensureDirSyncIfItAsFile(): void {
   const baseDir = path.join(testdataDir, "ensure_dir_exist_file_async");
   const testFile = path.join(baseDir, "test");
 

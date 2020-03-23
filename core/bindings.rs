@@ -3,12 +3,14 @@
 use crate::es_isolate::EsIsolate;
 use crate::isolate::Isolate;
 use crate::isolate::ZeroCopyBuf;
+use crate::js_errors::JSError;
 
 use rusty_v8 as v8;
 use v8::MapFnTo;
 
 use std::convert::TryFrom;
 use std::option::Option;
+use url::Url;
 
 lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
@@ -23,19 +25,25 @@ lazy_static! {
         function: send.map_fn_to()
       },
       v8::ExternalReference {
+        function: set_macrotask_callback.map_fn_to()
+      },
+      v8::ExternalReference {
         function: eval_context.map_fn_to()
       },
       v8::ExternalReference {
-        function: error_to_json.map_fn_to()
+        function: format_error.map_fn_to()
       },
       v8::ExternalReference {
         getter: shared_getter.map_fn_to()
       },
       v8::ExternalReference {
-        message: message_callback
+        function: queue_microtask.map_fn_to()
       },
       v8::ExternalReference {
-        function: queue_microtask.map_fn_to()
+        function: encode.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: decode.map_fn_to()
       },
     ]);
 }
@@ -140,6 +148,19 @@ pub fn initialize_context<'s>(
     send_val.into(),
   );
 
+  let mut set_macrotask_callback_tmpl =
+    v8::FunctionTemplate::new(scope, set_macrotask_callback);
+  let set_macrotask_callback_val = set_macrotask_callback_tmpl
+    .get_function(scope, context)
+    .unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "setMacrotaskCallback")
+      .unwrap()
+      .into(),
+    set_macrotask_callback_val.into(),
+  );
+
   let mut eval_context_tmpl = v8::FunctionTemplate::new(scope, eval_context);
   let eval_context_val =
     eval_context_tmpl.get_function(scope, context).unwrap();
@@ -149,13 +170,29 @@ pub fn initialize_context<'s>(
     eval_context_val.into(),
   );
 
-  let mut error_to_json_tmpl = v8::FunctionTemplate::new(scope, error_to_json);
-  let error_to_json_val =
-    error_to_json_tmpl.get_function(scope, context).unwrap();
+  let mut format_error_tmpl = v8::FunctionTemplate::new(scope, format_error);
+  let format_error_val =
+    format_error_tmpl.get_function(scope, context).unwrap();
   core_val.set(
     context,
-    v8::String::new(scope, "errorToJSON").unwrap().into(),
-    error_to_json_val.into(),
+    v8::String::new(scope, "formatError").unwrap().into(),
+    format_error_val.into(),
+  );
+
+  let mut encode_tmpl = v8::FunctionTemplate::new(scope, encode);
+  let encode_val = encode_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "encode").unwrap().into(),
+    encode_val.into(),
+  );
+
+  let mut decode_tmpl = v8::FunctionTemplate::new(scope, decode);
+  let decode_val = decode_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "decode").unwrap().into(),
+    decode_val.into(),
   );
 
   core_val.set_accessor(
@@ -266,28 +303,6 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   );
 }
 
-pub extern "C" fn message_callback(
-  message: v8::Local<v8::Message>,
-  _exception: v8::Local<v8::Value>,
-) {
-  let mut cbs = v8::CallbackScope::new(message);
-  let mut hs = v8::HandleScope::new(cbs.enter());
-  let scope = hs.enter();
-
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
-
-  // TerminateExecution was called
-  if scope.isolate().is_execution_terminating() {
-    let undefined = v8::undefined(scope).into();
-    deno_isolate.handle_exception(scope, undefined);
-    return;
-  }
-
-  let json_str = deno_isolate.encode_message_as_json(scope, message);
-  deno_isolate.last_exception = Some(json_str);
-}
-
 pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   let mut cbs = v8::CallbackScope::new(&message);
   let mut hs = v8::HandleScope::new(cbs.enter());
@@ -387,9 +402,16 @@ fn send(
     unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
   assert!(!deno_isolate.global_context.is_empty());
 
-  let op_id = v8::Local::<v8::Uint32>::try_from(args.get(0))
-    .unwrap()
-    .value() as u32;
+  let r = v8::Local::<v8::Uint32>::try_from(args.get(0));
+
+  if let Err(err) = r {
+    let s = format!("bad op id {}", err);
+    let msg = v8::String::new(scope, &s).unwrap();
+    scope.isolate().throw_exception(msg.into());
+    return;
+  }
+
+  let op_id = r.unwrap().value() as u32;
 
   let control = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(1)) {
     Ok(view) => {
@@ -423,6 +445,27 @@ fn send(
   }
 }
 
+fn set_macrotask_callback(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let deno_isolate: &mut Isolate =
+    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
+
+  if !deno_isolate.js_macrotask_cb.is_empty() {
+    let msg =
+      v8::String::new(scope, "Deno.core.setMacrotaskCallback already called.")
+        .unwrap();
+    scope.isolate().throw_exception(msg.into());
+    return;
+  }
+
+  let macrotask_cb_fn =
+    v8::Local::<v8::Function>::try_from(args.get(0)).unwrap();
+  deno_isolate.js_macrotask_cb.set(scope, macrotask_cb_fn);
+}
+
 fn eval_context(
   scope: v8::FunctionCallbackScope,
   args: v8::FunctionCallbackArguments,
@@ -443,6 +486,9 @@ fn eval_context(
     }
   };
 
+  let url = v8::Local::<v8::String>::try_from(args.get(1))
+    .map(|n| Url::from_file_path(n.to_rust_string_lossy(scope)).unwrap());
+
   let output = v8::Array::new(scope, 2);
   /*
    output[0] = result
@@ -455,7 +501,9 @@ fn eval_context(
   */
   let mut try_catch = v8::TryCatch::new(scope);
   let tc = try_catch.enter();
-  let name = v8::String::new(scope, "<unknown>").unwrap();
+  let name =
+    v8::String::new(scope, url.as_ref().map_or("<unknown>", Url::as_str))
+      .unwrap();
   let origin = script_origin(scope, name);
   let maybe_script = v8::Script::compile(scope, context, source, Some(&origin));
 
@@ -554,20 +602,77 @@ fn eval_context(
   rv.set(output.into());
 }
 
-fn error_to_json(
+fn format_error(
   scope: v8::FunctionCallbackScope,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
-  let context = deno_isolate.global_context.get(scope).unwrap();
+  let e = JSError::from_v8_exception(scope, args.get(0));
+  let e = (deno_isolate.js_error_create_fn)(e);
+  let e = e.to_string();
+  let e = v8::String::new(scope, &e).unwrap();
+  rv.set(e.into())
+}
 
-  let message = v8::Exception::create_message(scope, args.get(0));
-  let json_obj = encode_message_as_object(scope, message);
-  let json_string = v8::json::stringify(context, json_obj.into()).unwrap();
+fn encode(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let text = match v8::Local::<v8::String>::try_from(args.get(0)) {
+    Ok(s) => s,
+    Err(_) => {
+      let msg = v8::String::new(scope, "Invalid argument").unwrap();
+      let exception = v8::Exception::type_error(scope, msg);
+      scope.isolate().throw_exception(exception);
+      return;
+    }
+  };
+  let text_str = text.to_rust_string_lossy(scope);
+  let text_bytes = text_str.as_bytes().to_vec().into_boxed_slice();
 
-  rv.set(json_string.into());
+  let buf = if text_bytes.is_empty() {
+    let ab = v8::ArrayBuffer::new(scope, 0);
+    v8::Uint8Array::new(ab, 0, 0).expect("Failed to create UintArray8")
+  } else {
+    let buf_len = text_bytes.len();
+    let backing_store =
+      v8::ArrayBuffer::new_backing_store_from_boxed_slice(text_bytes);
+    let mut backing_store_shared = backing_store.make_shared();
+    let ab =
+      v8::ArrayBuffer::with_backing_store(scope, &mut backing_store_shared);
+    v8::Uint8Array::new(ab, 0, buf_len).expect("Failed to create UintArray8")
+  };
+
+  rv.set(buf.into())
+}
+
+fn decode(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let buf = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(0)) {
+    Ok(view) => {
+      let byte_offset = view.byte_offset();
+      let byte_length = view.byte_length();
+      let backing_store = view.buffer().unwrap().get_backing_store();
+      let buf = unsafe { &**backing_store.get() };
+      &buf[byte_offset..byte_offset + byte_length]
+    }
+    Err(..) => {
+      let msg = v8::String::new(scope, "Invalid argument").unwrap();
+      let exception = v8::Exception::type_error(scope, msg);
+      scope.isolate().throw_exception(exception);
+      return;
+    }
+  };
+
+  let text_str =
+    v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal).unwrap();
+  rv.set(text_str.into())
 }
 
 fn queue_microtask(
@@ -655,185 +760,4 @@ pub fn module_resolve_callback<'s>(
   }
 
   None
-}
-
-pub fn encode_message_as_object<'a>(
-  s: &mut impl v8::ToLocal<'a>,
-  message: v8::Local<v8::Message>,
-) -> v8::Local<'a, v8::Object> {
-  let context = s.isolate().get_current_context();
-  let json_obj = v8::Object::new(s);
-
-  let exception_str = message.get(s);
-  json_obj.set(
-    context,
-    v8::String::new(s, "message").unwrap().into(),
-    exception_str.into(),
-  );
-
-  let script_resource_name = message
-    .get_script_resource_name(s)
-    .expect("Missing ScriptResourceName");
-  json_obj.set(
-    context,
-    v8::String::new(s, "scriptResourceName").unwrap().into(),
-    script_resource_name,
-  );
-
-  let source_line = message
-    .get_source_line(s, context)
-    .expect("Missing SourceLine");
-  json_obj.set(
-    context,
-    v8::String::new(s, "sourceLine").unwrap().into(),
-    source_line.into(),
-  );
-
-  let line_number = message
-    .get_line_number(context)
-    .expect("Missing LineNumber");
-  json_obj.set(
-    context,
-    v8::String::new(s, "lineNumber").unwrap().into(),
-    v8::Integer::new(s, line_number as i32).into(),
-  );
-
-  json_obj.set(
-    context,
-    v8::String::new(s, "startPosition").unwrap().into(),
-    v8::Integer::new(s, message.get_start_position() as i32).into(),
-  );
-
-  json_obj.set(
-    context,
-    v8::String::new(s, "endPosition").unwrap().into(),
-    v8::Integer::new(s, message.get_end_position() as i32).into(),
-  );
-
-  json_obj.set(
-    context,
-    v8::String::new(s, "errorLevel").unwrap().into(),
-    v8::Integer::new(s, message.error_level() as i32).into(),
-  );
-
-  json_obj.set(
-    context,
-    v8::String::new(s, "startColumn").unwrap().into(),
-    v8::Integer::new(s, message.get_start_column() as i32).into(),
-  );
-
-  json_obj.set(
-    context,
-    v8::String::new(s, "endColumn").unwrap().into(),
-    v8::Integer::new(s, message.get_end_column() as i32).into(),
-  );
-
-  let is_shared_cross_origin =
-    v8::Boolean::new(s, message.is_shared_cross_origin());
-
-  json_obj.set(
-    context,
-    v8::String::new(s, "isSharedCrossOrigin").unwrap().into(),
-    is_shared_cross_origin.into(),
-  );
-
-  let is_opaque = v8::Boolean::new(s, message.is_opaque());
-
-  json_obj.set(
-    context,
-    v8::String::new(s, "isOpaque").unwrap().into(),
-    is_opaque.into(),
-  );
-
-  let frames = if let Some(stack_trace) = message.get_stack_trace(s) {
-    let count = stack_trace.get_frame_count() as i32;
-    let frames = v8::Array::new(s, count);
-
-    for i in 0..count {
-      let frame = stack_trace
-        .get_frame(s, i as usize)
-        .expect("No frame found");
-      let frame_obj = v8::Object::new(s);
-      frames.set(context, v8::Integer::new(s, i).into(), frame_obj.into());
-      frame_obj.set(
-        context,
-        v8::String::new(s, "line").unwrap().into(),
-        v8::Integer::new(s, frame.get_line_number() as i32).into(),
-      );
-      frame_obj.set(
-        context,
-        v8::String::new(s, "column").unwrap().into(),
-        v8::Integer::new(s, frame.get_column() as i32).into(),
-      );
-
-      if let Some(function_name) = frame.get_function_name(s) {
-        frame_obj.set(
-          context,
-          v8::String::new(s, "functionName").unwrap().into(),
-          function_name.into(),
-        );
-      }
-
-      let script_name = match frame.get_script_name_or_source_url(s) {
-        Some(name) => name,
-        None => v8::String::new(s, "<unknown>").unwrap(),
-      };
-      frame_obj.set(
-        context,
-        v8::String::new(s, "scriptName").unwrap().into(),
-        script_name.into(),
-      );
-
-      frame_obj.set(
-        context,
-        v8::String::new(s, "isEval").unwrap().into(),
-        v8::Boolean::new(s, frame.is_eval()).into(),
-      );
-
-      frame_obj.set(
-        context,
-        v8::String::new(s, "isConstructor").unwrap().into(),
-        v8::Boolean::new(s, frame.is_constructor()).into(),
-      );
-
-      frame_obj.set(
-        context,
-        v8::String::new(s, "isWasm").unwrap().into(),
-        v8::Boolean::new(s, frame.is_wasm()).into(),
-      );
-    }
-
-    frames
-  } else {
-    // No stack trace. We only have one stack frame of info..
-    let frames = v8::Array::new(s, 1);
-    let frame_obj = v8::Object::new(s);
-    frames.set(context, v8::Integer::new(s, 0).into(), frame_obj.into());
-
-    frame_obj.set(
-      context,
-      v8::String::new(s, "scriptResourceName").unwrap().into(),
-      script_resource_name,
-    );
-    frame_obj.set(
-      context,
-      v8::String::new(s, "line").unwrap().into(),
-      v8::Integer::new(s, line_number as i32).into(),
-    );
-    frame_obj.set(
-      context,
-      v8::String::new(s, "column").unwrap().into(),
-      v8::Integer::new(s, message.get_start_column() as i32).into(),
-    );
-
-    frames
-  };
-
-  json_obj.set(
-    context,
-    v8::String::new(s, "frames").unwrap().into(),
-    frames.into(),
-  );
-
-  json_obj
 }

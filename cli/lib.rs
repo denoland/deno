@@ -16,6 +16,8 @@ extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
 extern crate rand;
+extern crate regex;
+extern crate reqwest;
 extern crate serde;
 extern crate serde_derive;
 extern crate tokio;
@@ -27,57 +29,66 @@ mod checksum;
 pub mod colors;
 pub mod compilers;
 pub mod deno_dir;
-pub mod deno_error;
 pub mod diagnostics;
 mod disk_cache;
 mod file_fetcher;
 pub mod flags;
+mod fmt;
 pub mod fmt_errors;
 mod fs;
 mod global_state;
 mod global_timer;
+pub mod http_cache;
 mod http_util;
 mod import_map;
 mod inspector;
+pub mod installer;
 mod js;
 mod lockfile;
 mod metrics;
 pub mod msg;
+pub mod op_error;
 pub mod ops;
 pub mod permissions;
-mod progress;
 mod repl;
 pub mod resolve_addr;
-mod shell;
 pub mod signal;
 pub mod source_maps;
 mod startup_data;
 pub mod state;
+mod test_runner;
 pub mod test_util;
 mod tokio_util;
+mod upgrade;
 pub mod version;
 mod web_worker;
 pub mod worker;
 
-use crate::deno_error::js_check;
-use crate::deno_error::{print_err_and_exit, print_msg_and_exit};
-use crate::global_state::ThreadSafeGlobalState;
+use crate::compilers::TargetLib;
+use crate::file_fetcher::SourceFile;
+use crate::global_state::GlobalState;
+use crate::msg::MediaType;
 use crate::ops::io::get_stdio;
-use crate::progress::Progress;
-use crate::state::ThreadSafeState;
+use crate::state::State;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use flags::DenoFlags;
 use flags::DenoSubcommand;
+use flags::Flags;
+use futures::future::FutureExt;
 use log::Level;
 use log::Metadata;
 use log::Record;
 use std::env;
+use std::io::Write;
+use std::path::PathBuf;
+use upgrade::upgrade_command;
+use url::Url;
 
 static LOGGER: Logger = Logger;
 
+// TODO(ry) Switch to env_logger or other standard crate.
 struct Logger;
 
 impl log::Log for Logger {
@@ -94,69 +105,40 @@ impl log::Log for Logger {
         target.push_str(&line_no.to_string());
       }
 
-      println!("{} RS - {} - {}", record.level(), target, record.args());
+      if record.level() >= Level::Info {
+        eprintln!("{}", record.args());
+      } else {
+        eprintln!("{} RS - {} - {}", record.level(), target, record.args());
+      }
     }
   }
   fn flush(&self) {}
 }
 
-fn create_worker_and_state(
-  flags: DenoFlags,
-) -> (MainWorker, ThreadSafeGlobalState) {
-  use crate::shell::Shell;
-  use std::sync::Arc;
-  use std::sync::Mutex;
+fn create_main_worker(
+  global_state: GlobalState,
+  main_module: ModuleSpecifier,
+) -> Result<MainWorker, ErrBox> {
+  let state = State::new(global_state, None, main_module)?;
 
-  let shell = Arc::new(Mutex::new(Shell::new()));
-
-  let progress = Progress::new();
-  progress.set_callback(move |_done, _completed, _total, status, msg| {
-    if !status.is_empty() {
-      let mut s = shell.lock().unwrap();
-      s.status(status, msg).expect("shell problem");
-    }
-  });
-
-  let global_state = ThreadSafeGlobalState::new(flags, progress)
-    .map_err(deno_error::print_err_and_exit)
-    .unwrap();
-
-  let (int, ext) = ThreadSafeState::create_channels();
-  let state = ThreadSafeState::new(
-    global_state.clone(),
-    None,
-    global_state.main_module.clone(),
-    int,
-  )
-  .map_err(deno_error::print_err_and_exit)
-  .unwrap();
-
-  let state_ = state.clone();
   {
-    let mut resource_table = state_.lock_resource_table();
+    let mut s = state.borrow_mut();
     let (stdin, stdout, stderr) = get_stdio();
-    resource_table.add("stdin", Box::new(stdin));
-    resource_table.add("stdout", Box::new(stdout));
-    resource_table.add("stderr", Box::new(stderr));
+    s.resource_table.add("stdin", Box::new(stdin));
+    s.resource_table.add("stdout", Box::new(stdout));
+    s.resource_table.add("stderr", Box::new(stderr));
   }
 
-  let worker = MainWorker::new(
+  let mut worker = MainWorker::new(
     "main".to_string(),
     startup_data::deno_isolate_init(),
     state,
-    ext,
   );
-
-  (worker, global_state)
+  worker.execute("bootstrapMainRuntime()")?;
+  Ok(worker)
 }
 
-fn types_command() {
-  println!("{}\n{}", crate::js::DENO_NS_LIB, crate::js::DENO_MAIN_LIB);
-}
-
-fn print_cache_info(worker: MainWorker) {
-  let state = &worker.state.global_state;
-
+fn print_cache_info(state: &GlobalState) {
   println!(
     "{} {:?}",
     colors::bold("DENO_DIR location:".to_string()),
@@ -165,7 +147,7 @@ fn print_cache_info(worker: MainWorker) {
   println!(
     "{} {:?}",
     colors::bold("Remote modules cache:".to_string()),
-    state.dir.deps_cache.location
+    state.file_fetcher.http_cache.location
   );
   println!(
     "{} {:?}",
@@ -174,21 +156,19 @@ fn print_cache_info(worker: MainWorker) {
   );
 }
 
+// TODO(bartlomieju): this function de facto repeats
+// whole compilation stack. Can this be done better somehow?
 async fn print_file_info(
-  worker: MainWorker,
+  worker: &MainWorker,
   module_specifier: ModuleSpecifier,
-) {
-  let global_state_ = &worker.state.global_state;
+) -> Result<(), ErrBox> {
+  let global_state = worker.state.borrow().global_state.clone();
 
-  let maybe_source_file = global_state_
+  let out = global_state
     .file_fetcher
-    .fetch_source_file_async(&module_specifier, None)
-    .await;
-  if let Err(err) = maybe_source_file {
-    println!("{}", err);
-    return;
-  }
-  let out = maybe_source_file.unwrap();
+    .fetch_source_file(&module_specifier, None)
+    .await?;
+
   println!(
     "{} {}",
     colors::bold("local:".to_string()),
@@ -201,20 +181,17 @@ async fn print_file_info(
     msg::enum_name_media_type(out.media_type)
   );
 
-  let maybe_compiled = global_state_
+  let module_specifier_ = module_specifier.clone();
+  global_state
     .clone()
-    .fetch_compiled_module(&module_specifier, None)
-    .await;
-  if let Err(e) = maybe_compiled {
-    debug!("compiler error exiting!");
-    eprintln!("\n{}", e.to_string());
-    std::process::exit(1);
-  }
+    .fetch_compiled_module(module_specifier_, None, TargetLib::Main)
+    .await?;
+
   if out.media_type == msg::MediaType::TypeScript
     || (out.media_type == msg::MediaType::JavaScript
-      && global_state_.ts_compiler.compile_js)
+      && global_state.ts_compiler.compile_js)
   {
-    let compiled_source_file = global_state_
+    let compiled_source_file = global_state
       .ts_compiler
       .get_compiled_source_file(&out.url)
       .unwrap();
@@ -226,7 +203,7 @@ async fn print_file_info(
     );
   }
 
-  if let Ok(source_map) = global_state_
+  if let Ok(source_map) = global_state
     .clone()
     .ts_compiler
     .get_source_map_file(&module_specifier)
@@ -238,8 +215,7 @@ async fn print_file_info(
     );
   }
 
-  let isolate = worker.isolate.try_lock().unwrap();
-  if let Some(deps) = isolate.modules.deps(&module_specifier) {
+  if let Some(deps) = worker.isolate.modules.deps(&module_specifier) {
     println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
     if let Some(ref depsdeps) = deps.deps {
       for d in depsdeps {
@@ -252,167 +228,211 @@ async fn print_file_info(
       colors::bold("deps:".to_string()),
     );
   }
+
+  Ok(())
 }
 
-fn info_command(flags: DenoFlags) {
-  let argv_len = flags.argv.len();
-  let (mut worker, state) = create_worker_and_state(flags);
-
+async fn info_command(
+  flags: Flags,
+  file: Option<String>,
+) -> Result<(), ErrBox> {
+  let global_state = GlobalState::new(flags)?;
   // If it was just "deno info" print location of caches and exit
-  if argv_len == 1 {
-    return print_cache_info(worker);
+  if file.is_none() {
+    print_cache_info(&global_state);
+    return Ok(());
   }
 
-  let main_module = state.main_module.as_ref().unwrap().clone();
+  let main_module = ModuleSpecifier::resolve_url_or_path(&file.unwrap())?;
+  let mut worker = create_main_worker(global_state, main_module.clone())?;
+  worker.preload_module(&main_module).await?;
+  print_file_info(&worker, main_module.clone()).await
+}
 
-  // Setup runtime.
-  js_check(worker.execute("bootstrapMainRuntime()"));
-  debug!("main_module {}", main_module);
+async fn install_command(
+  flags: Flags,
+  dir: Option<PathBuf>,
+  exe_name: String,
+  module_url: String,
+  args: Vec<String>,
+  force: bool,
+) -> Result<(), ErrBox> {
+  // Firstly fetch and compile module, this step ensures that module exists.
+  let mut fetch_flags = flags.clone();
+  fetch_flags.reload = true;
+  let global_state = GlobalState::new(fetch_flags)?;
+  let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
+  let mut worker = create_main_worker(global_state, main_module.clone())?;
+  worker.preload_module(&main_module).await?;
+  installer::install(flags, dir, &exe_name, &module_url, args, force)
+    .map_err(ErrBox::from)
+}
 
-  let main_future = async move {
-    let main_result = worker.execute_mod_async(&main_module, None, true).await;
-    if let Err(e) = main_result {
-      print_err_and_exit(e);
+async fn fetch_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
+  let main_module =
+    ModuleSpecifier::resolve_url_or_path("./__$deno$fetch.ts").unwrap();
+  let global_state = GlobalState::new(flags)?;
+  let mut worker =
+    create_main_worker(global_state.clone(), main_module.clone())?;
+
+  for file in files {
+    let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
+    worker.preload_module(&specifier).await.map(|_| ())?;
+  }
+
+  if global_state.flags.lock_write {
+    if let Some(ref lockfile) = global_state.lockfile {
+      let g = lockfile.lock().unwrap();
+      g.write()?;
+    } else {
+      eprintln!("--lock flag must be specified when using --lock-write");
+      std::process::exit(11);
     }
-    print_file_info(worker.clone(), main_module.clone()).await;
-    let result = worker.await;
-    js_check(result);
-  };
+  }
 
-  tokio_util::run(main_future);
+  Ok(())
 }
 
-fn fetch_command(flags: DenoFlags) {
-  let (mut worker, state) = create_worker_and_state(flags);
-
-  let main_module = state.main_module.as_ref().unwrap().clone();
-
-  // Setup runtime.
-  js_check(worker.execute("bootstrapMainRuntime()"));
-  debug!("main_module {}", main_module);
-
-  let main_future = async move {
-    let result = worker.execute_mod_async(&main_module, None, true).await;
-    js_check(result);
-  };
-
-  tokio_util::run(main_future);
-}
-
-fn eval_command(flags: DenoFlags) {
-  let ts_source = flags.argv[1].clone();
-  let (mut worker, _state) = create_worker_and_state(flags);
+async fn eval_command(
+  flags: Flags,
+  code: String,
+  as_typescript: bool,
+) -> Result<(), ErrBox> {
   // Force TypeScript compile.
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
-
-  js_check(worker.execute("bootstrapMainRuntime()"));
+  let global_state = GlobalState::new(flags)?;
+  let mut worker = create_main_worker(global_state, main_module.clone())?;
+  let main_module_url = main_module.as_url().to_owned();
+  // Create a dummy source file.
+  let source_file = SourceFile {
+    filename: main_module_url.to_file_path().unwrap(),
+    url: main_module_url,
+    types_url: None,
+    media_type: if as_typescript {
+      MediaType::TypeScript
+    } else {
+      MediaType::JavaScript
+    },
+    source_code: code.clone().into_bytes(),
+  };
+  // Save our fake file into file fetcher cache
+  // to allow module access by TS compiler (e.g. op_fetch_source_files)
+  worker
+    .state
+    .borrow()
+    .global_state
+    .file_fetcher
+    .save_source_file_in_cache(&main_module, source_file);
   debug!("main_module {}", &main_module);
-
-  let main_future = async move {
-    let exec_result = worker
-      .execute_mod_async(&main_module, Some(ts_source), false)
-      .await;
-    if let Err(e) = exec_result {
-      print_err_and_exit(e);
-    }
-    js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
-    let mut worker_ = worker.clone();
-    let result = worker.await;
-    js_check(result);
-    js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
-  };
-
-  tokio_util::run(main_future);
+  worker.execute_module(&main_module).await?;
+  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  (&mut *worker).await?;
+  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  Ok(())
 }
 
-fn bundle_command(flags: DenoFlags) {
-  let out_file = flags.bundle_output.clone();
-  let (worker, state) = create_worker_and_state(flags);
-  let main_module = state.main_module.as_ref().unwrap().clone();
-
-  debug!(">>>>> bundle_async START");
-  // NOTE: we need to poll `worker` otherwise TS compiler worker won't run properly
-  let main_future = async move {
-    let result = worker.await;
-    js_check(result);
-    let bundle_result = state
-      .ts_compiler
-      .bundle_async(state.clone(), main_module.to_string(), out_file)
-      .await;
-    if let Err(err) = bundle_result {
-      debug!("diagnostics returned, exiting!");
-      eprintln!("");
-      print_err_and_exit(err);
-    }
-    debug!(">>>>> bundle_async END");
-  };
-  tokio_util::run(main_future);
+async fn bundle_command(
+  flags: Flags,
+  source_file: String,
+  out_file: Option<PathBuf>,
+) -> Result<(), ErrBox> {
+  let module_name = ModuleSpecifier::resolve_url_or_path(&source_file)?;
+  let global_state = GlobalState::new(flags)?;
+  debug!(">>>>> bundle START");
+  let bundle_result = global_state
+    .ts_compiler
+    .bundle(global_state.clone(), module_name.to_string(), out_file)
+    .await;
+  debug!(">>>>> bundle END");
+  bundle_result
 }
 
-fn run_repl(flags: DenoFlags) {
-  let (mut worker, _state) = create_worker_and_state(flags);
-  js_check(worker.execute("bootstrapMainRuntime()"));
-  let main_future = async move {
-    loop {
-      let result = worker.clone().await;
-      if let Err(err) = result {
-        eprintln!("{}", err.to_string());
-      }
-    }
-  };
-  tokio_util::run(main_future);
-}
-
-fn run_script(flags: DenoFlags) {
-  let use_current_thread = flags.current_thread;
-  let (mut worker, state) = create_worker_and_state(flags);
-
-  let maybe_main_module = state.main_module.as_ref();
-  if maybe_main_module.is_none() {
-    print_msg_and_exit("Please provide a name to the main script to run.");
+async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
+  let main_module =
+    ModuleSpecifier::resolve_url_or_path("./__$deno$repl.ts").unwrap();
+  let global_state = GlobalState::new(flags)?;
+  let mut worker = create_main_worker(global_state, main_module)?;
+  loop {
+    (&mut *worker).await?;
   }
-  let main_module = maybe_main_module.unwrap().clone();
-  // Normal situation of executing a module.
+}
 
-  // Setup runtime.
-  js_check(worker.execute("bootstrapMainRuntime()"));
+async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
+  let global_state = GlobalState::new(flags.clone())?;
+  let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
+  let mut worker =
+    create_main_worker(global_state.clone(), main_module.clone())?;
   debug!("main_module {}", main_module);
-
-  let mut worker_ = worker.clone();
-
-  let main_future = async move {
-    let mod_result = worker.execute_mod_async(&main_module, None, false).await;
-    if let Err(err) = mod_result {
-      print_err_and_exit(err);
+  worker.execute_module(&main_module).await?;
+  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  (&mut *worker).await?;
+  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  if global_state.flags.lock_write {
+    if let Some(ref lockfile) = global_state.lockfile {
+      let g = lockfile.lock().unwrap();
+      g.write()?;
+    } else {
+      eprintln!("--lock flag must be specified when using --lock-write");
+      std::process::exit(11);
     }
-    if state.flags.lock_write {
-      if let Some(ref lockfile) = state.lockfile {
-        let g = lockfile.lock().unwrap();
-        if let Err(e) = g.write() {
-          print_err_and_exit(ErrBox::from(e));
-        }
-      } else {
-        eprintln!("--lock flag must be specified when using --lock-write");
-        std::process::exit(11);
-      }
-    }
-    js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
-    let result = worker.await;
-    js_check(result);
-    js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
-  };
-
-  if use_current_thread {
-    tokio_util::run_on_current_thread(main_future);
-  } else {
-    tokio_util::run(main_future);
   }
+  Ok(())
+}
+
+async fn test_command(
+  flags: Flags,
+  include: Option<Vec<String>>,
+  fail_fast: bool,
+  allow_none: bool,
+) -> Result<(), ErrBox> {
+  let global_state = GlobalState::new(flags.clone())?;
+  let cwd = std::env::current_dir().expect("No current directory");
+  let include = include.unwrap_or_else(|| vec![".".to_string()]);
+  let test_modules = test_runner::prepare_test_modules_urls(include, &cwd)?;
+
+  if test_modules.is_empty() {
+    println!("No matching test modules found");
+    if !allow_none {
+      std::process::exit(1);
+    }
+    return Ok(());
+  }
+
+  let test_file_path = cwd.join(".deno.test.ts");
+  let test_file_url =
+    Url::from_file_path(&test_file_path).expect("Should be valid file url");
+  let test_file = test_runner::render_test_file(test_modules, fail_fast);
+  let main_module =
+    ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
+  let mut worker =
+    create_main_worker(global_state.clone(), main_module.clone())?;
+  // Create a dummy source file.
+  let source_file = SourceFile {
+    filename: test_file_url.to_file_path().unwrap(),
+    url: test_file_url,
+    types_url: None,
+    media_type: MediaType::TypeScript,
+    source_code: test_file.clone().into_bytes(),
+  };
+  // Save our fake file into file fetcher cache
+  // to allow module access by TS compiler (e.g. op_fetch_source_files)
+  worker
+    .state
+    .borrow()
+    .global_state
+    .file_fetcher
+    .save_source_file_in_cache(&main_module, source_file);
+  let execute_result = worker.execute_module(&main_module).await;
+  execute_result?;
+  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  (&mut *worker).await?;
+  worker.execute("window.dispatchEvent(new Event('unload'))")
 }
 
 pub fn main() {
   #[cfg(windows)]
-  ansi_term::enable_ansi_support().ok(); // For Windows 10
+  colors::enable_ansi(); // For Windows 10
 
   log::set_logger(&LOGGER).unwrap();
   let args: Vec<String> = env::args().collect();
@@ -426,19 +446,65 @@ pub fn main() {
 
   let log_level = match flags.log_level {
     Some(level) => level,
-    None => Level::Warn,
+    None => Level::Info, // Default log level
   };
   log::set_max_level(log_level.to_level_filter());
 
-  match flags.subcommand {
-    DenoSubcommand::Bundle => bundle_command(flags),
-    DenoSubcommand::Completions => {}
-    DenoSubcommand::Eval => eval_command(flags),
-    DenoSubcommand::Fetch => fetch_command(flags),
-    DenoSubcommand::Info => info_command(flags),
-    DenoSubcommand::Repl => run_repl(flags),
-    DenoSubcommand::Run => run_script(flags),
-    DenoSubcommand::Types => types_command(),
-    _ => panic!("bad subcommand"),
+  let fut = match flags.clone().subcommand {
+    DenoSubcommand::Bundle {
+      source_file,
+      out_file,
+    } => bundle_command(flags, source_file, out_file).boxed_local(),
+    DenoSubcommand::Eval {
+      code,
+      as_typescript,
+    } => eval_command(flags, code, as_typescript).boxed_local(),
+    DenoSubcommand::Fetch { files } => {
+      fetch_command(flags, files).boxed_local()
+    }
+    DenoSubcommand::Fmt { check, files } => {
+      async move { fmt::format(files, check) }.boxed_local()
+    }
+    DenoSubcommand::Info { file } => info_command(flags, file).boxed_local(),
+    DenoSubcommand::Install {
+      dir,
+      exe_name,
+      module_url,
+      args,
+      force,
+    } => install_command(flags, dir, exe_name, module_url, args, force)
+      .boxed_local(),
+    DenoSubcommand::Repl => run_repl(flags).boxed_local(),
+    DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
+    DenoSubcommand::Test {
+      fail_fast,
+      include,
+      allow_none,
+    } => test_command(flags, include, fail_fast, allow_none).boxed_local(),
+    DenoSubcommand::Completions { buf } => {
+      print!("{}", std::str::from_utf8(&buf).unwrap());
+      return;
+    }
+    DenoSubcommand::Types => {
+      let types = format!(
+        "{}\n{}\n{}",
+        crate::js::DENO_NS_LIB,
+        crate::js::SHARED_GLOBALS_LIB,
+        crate::js::WINDOW_LIB
+      );
+      // TODO(ry) Only ignore SIGPIPE. Currently ignoring all errors.
+      let _r = std::io::stdout().write_all(types.as_bytes());
+      return;
+    }
+    DenoSubcommand::Upgrade { force, dry_run } => {
+      upgrade_command(dry_run, force).boxed_local()
+    }
+    _ => unreachable!(),
+  };
+
+  let result = tokio_util::run_basic(fut);
+  if let Err(err) = result {
+    eprintln!("{}", err.to_string());
+    std::process::exit(1);
   }
 }

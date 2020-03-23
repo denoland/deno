@@ -1,4 +1,31 @@
-# Encoding
+# encoding
+
+Helper module for dealing with external data structures.
+
+- [`base32`](#base32)
+- [`binary`](#binary)
+- [`csv`](#csv)
+- [`toml`](#toml)
+- [`yaml`](#yaml)
+
+## Binary
+
+Implements equivalent methods to Go's `encoding/binary` package.
+
+Available Functions:
+
+```typescript
+sizeof(dataType: RawTypes): number
+getNBytes(r: Deno.Reader, n: number): Promise<Uint8Array>
+varnum(b: Uint8Array, o: VarnumOptions = {}): number | Deno.EOF
+varbig(b: Uint8Array, o: VarbigOptions = {}): bigint | Deno.EOF
+putVarnum(b: Uint8Array, x: number, o: VarnumOptions = {}): number
+putVarbig(b: Uint8Array, x: bigint, o: VarbigOptions = {}): number
+readVarnum(r: Deno.Reader, o: VarnumOptions = {}): Promise<number>
+readVarbig(r: Deno.Reader, o: VarbigOptions = {}): Promise<bigint>
+writeVarnum(w: Deno.Writer, x: number, o: VarnumOptions = {}): Promise<number>
+writeVarbig(w: Deno.Writer, x: bigint, o: VarbigOptions = {}): Promise<number>
+```
 
 ## CSV
 
@@ -219,3 +246,26 @@ Serializes `object` as a YAML document.
 See [`./yaml/example`](./yaml/example) folder and [js-yaml] repository.
 
 [js-yaml]: https://github.com/nodeca/js-yaml
+
+## base32
+
+[RFC4648 base32](https://tools.ietf.org/html/rfc4648#section-6) encoder/decoder
+for Deno
+
+### Basic usage
+
+`encode` encodes a `Uint8Array` to RFC4648 base32 representation, and `decode`
+decodes the given RFC4648 base32 representation to a `Uint8Array`.
+
+```ts
+import { encode, decode } from "https://deno.land/std/encoding/base32.ts";
+
+const b32Repr = "RC2E6GA=";
+
+const binaryData = decode(b32Repr);
+console.log(binaryData);
+// => Uint8Array [ 136, 180, 79, 24 ]
+
+console.log(encode(binaryData));
+// => RC2E6GA=
+```

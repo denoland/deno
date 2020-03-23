@@ -6,15 +6,12 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-const { ErrorKind, DenoError, args, stat, readDir, open, exit } = Deno;
+const { args, stat, readdir, open, exit } = Deno;
 import { posix } from "../path/mod.ts";
-import {
-  listenAndServe,
-  ServerRequest,
-  setContentLength,
-  Response
-} from "./server.ts";
+import { listenAndServe, ServerRequest, Response } from "./server.ts";
 import { parse } from "../flags/mod.ts";
+import { assert } from "../testing/asserts.ts";
+import { setContentLength } from "./io.ts";
 
 interface EntryInfo {
   mode: string;
@@ -40,15 +37,15 @@ const encoder = new TextEncoder();
 const serverArgs = parse(args) as FileServerArgs;
 
 const CORSEnabled = serverArgs.cors ? true : false;
-const target = posix.resolve(serverArgs._[1] || "");
-const addr = `0.0.0.0:${serverArgs.port || serverArgs.p || 4500}`;
+const target = posix.resolve(serverArgs._[1] ?? "");
+const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4500}`;
 
-if (serverArgs.h || serverArgs.help) {
+if (serverArgs.h ?? serverArgs.help) {
   console.log(`Deno File Server
   Serves a local directory in HTTP.
 
 INSTALL:
-  deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
+  deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
 
 USAGE:
   file_server [path] [options]
@@ -66,7 +63,7 @@ function modeToString(isDir: boolean, maybeMode: number | null): string {
   if (maybeMode === null) {
     return "(unknown mode)";
   }
-  const mode = maybeMode!.toString(8);
+  const mode = maybeMode.toString(8);
   if (mode.length < 3) {
     return "(unknown mode)";
   }
@@ -105,7 +102,7 @@ async function serveFile(
 ): Promise<Response> {
   const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
   const headers = new Headers();
-  headers.set("content-length", fileInfo.len.toString());
+  headers.set("content-length", fileInfo.size.toString());
   headers.set("content-type", "text/plain; charset=utf-8");
 
   const res = {
@@ -116,20 +113,20 @@ async function serveFile(
   return res;
 }
 
-// TODO: simplify this after deno.stat and deno.readDir are fixed
+// TODO: simplify this after deno.stat and deno.readdir are fixed
 async function serveDir(
   req: ServerRequest,
   dirPath: string
 ): Promise<Response> {
   const dirUrl = `/${posix.relative(target, dirPath)}`;
   const listEntry: EntryInfo[] = [];
-  const fileInfos = await readDir(dirPath);
+  const fileInfos = await readdir(dirPath);
   for (const fileInfo of fileInfos) {
-    const filePath = posix.join(dirPath, fileInfo.name);
-    const fileUrl = posix.join(dirUrl, fileInfo.name);
+    const filePath = posix.join(dirPath, fileInfo.name ?? "");
+    const fileUrl = posix.join(dirUrl, fileInfo.name ?? "");
     if (fileInfo.name === "index.html" && fileInfo.isFile()) {
       // in case index.html as dir...
-      return await serveFile(req, filePath);
+      return serveFile(req, filePath);
     }
     // Yuck!
     let mode = null;
@@ -138,8 +135,8 @@ async function serveDir(
     } catch (e) {}
     listEntry.push({
       mode: modeToString(fileInfo.isDirectory(), mode),
-      size: fileInfo.isFile() ? fileLenToString(fileInfo.len) : "",
-      name: fileInfo.name,
+      size: fileInfo.isFile() ? fileLenToString(fileInfo.size) : "",
+      name: fileInfo.name ?? "",
       url: fileUrl
     });
   }
@@ -161,17 +158,17 @@ async function serveDir(
   return res;
 }
 
-async function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
-  if (e instanceof DenoError && e.kind === ErrorKind.NotFound) {
-    return {
+function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
+  if (e instanceof Deno.errors.NotFound) {
+    return Promise.resolve({
       status: 404,
       body: encoder.encode("Not found")
-    };
+    });
   } else {
-    return {
+    return Promise.resolve({
       status: 500,
       body: encoder.encode("Internal server error")
-    };
+    });
   }
 }
 
@@ -186,8 +183,8 @@ function setCORS(res: Response): void {
   if (!res.headers) {
     res.headers = new Headers();
   }
-  res.headers!.append("access-control-allow-origin", "*");
-  res.headers!.append(
+  res.headers.append("access-control-allow-origin", "*");
+  res.headers.append(
     "access-control-allow-headers",
     "Origin, X-Requested-With, Content-Type, Accept, Range"
   );
@@ -301,11 +298,17 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): string {
 listenAndServe(
   addr,
   async (req): Promise<void> => {
-    const normalizedUrl = posix.normalize(req.url);
-    const decodedUrl = decodeURIComponent(normalizedUrl);
-    const fsPath = posix.join(target, decodedUrl);
+    let normalizedUrl = posix.normalize(req.url);
+    try {
+      normalizedUrl = decodeURIComponent(normalizedUrl);
+    } catch (e) {
+      if (!(e instanceof URIError)) {
+        throw e;
+      }
+    }
+    const fsPath = posix.join(target, normalizedUrl);
 
-    let response: Response;
+    let response: Response | undefined;
     try {
       const info = await stat(fsPath);
       if (info.isDirectory()) {
@@ -318,10 +321,11 @@ listenAndServe(
       response = await serveFallback(req, e);
     } finally {
       if (CORSEnabled) {
+        assert(response);
         setCORS(response);
       }
-      serverLog(req, response);
-      req.respond(response);
+      serverLog(req, response!);
+      req.respond(response!);
     }
   }
 );

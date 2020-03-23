@@ -21,7 +21,7 @@ executable_suffix = ".exe" if os.name == "nt" else ""
 
 root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 libdeno_path = os.path.join(root_path, "core", "libdeno")
-tests_path = os.path.join(root_path, "tests")
+tests_path = os.path.join(root_path, "cli/tests")
 third_party_path = os.path.join(root_path, "third_party")
 
 
@@ -204,21 +204,16 @@ def rmtree(directory):
     shutil.rmtree(directory, onerror=rm_readonly)
 
 
-def build_mode(default="debug"):
-    if "DENO_BUILD_MODE" in os.environ:
-        return os.environ["DENO_BUILD_MODE"]
-    elif "--release" in sys.argv:
+def build_mode():
+    if "--release" in sys.argv:
         return "release"
     else:
-        return default
+        return "debug"
 
 
 # E.G. "target/debug"
 def build_path():
-    if "DENO_BUILD_PATH" in os.environ:
-        return os.environ["DENO_BUILD_PATH"]
-    else:
-        return os.path.join(root_path, "target", build_mode())
+    return os.path.join(root_path, "target", build_mode())
 
 
 def parse_exit_code(s):

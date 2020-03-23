@@ -1,6 +1,5 @@
 // Test ported from Golang
 // https://github.com/golang/go/blob/2cc15b1/src/encoding/csv/reader_test.go
-import { test, runIfMain } from "../testing/mod.ts";
 import { assertEquals, assert } from "../testing/asserts.ts";
 import { readMatrix, parse } from "./csv.ts";
 import { StringReader } from "../io/readers.ts";
@@ -30,21 +29,22 @@ const testCases = [
     Input: "a,b\rc,d\r\n",
     Output: [["a", "b\rc", "d"]]
   },
-  //   {
-  //     Name: "RFC4180test",
-  //     Input: `#field1,field2,field3
-  // "aaa","bbb","ccc"
-  // "a,a","bbb","ccc"
-  // zzz,yyy,xxx`,
-  //     UseFieldsPerRecord: true,
-  //     FieldsPerRecord: 0,
-  //     Output: [
-  //       ["#field1", "field2", "field3"],
-  //       ["aaa", "bbb", "ccc"],
-  //       ["a,a", `bbb`, "ccc"],
-  //       ["zzz", "yyy", "xxx"]
-  //     ]
-  //   },
+  {
+    Name: "RFC4180test",
+    Input: `#field1,field2,field3
+"aaa","bbb","ccc"
+"a,a","bbb","ccc"
+zzz,yyy,xxx`,
+    UseFieldsPerRecord: true,
+    FieldsPerRecord: 0,
+    Output: [
+      ["#field1", "field2", "field3"],
+      ["aaa", "bbb", "ccc"],
+      ["a,a", `bbb`, "ccc"],
+      ["zzz", "yyy", "xxx"]
+    ],
+    ignore: true
+  },
   {
     Name: "NoEOLTest",
     Input: "a,b,c",
@@ -56,14 +56,15 @@ const testCases = [
     Output: [["a", "b", "c"]],
     Comma: ";"
   },
-  //   {
-  //     Name: "MultiLine",
-  //     Input: `"two
-  // line","one line","three
-  // line
-  // field"`,
-  //     Output: [["two\nline"], ["one line"], ["three\nline\nfield"]]
-  //   },
+  {
+    Name: "MultiLine",
+    Input: `"two
+line","one line","three
+line
+field"`,
+    Output: [["two\nline"], ["one line"], ["three\nline\nfield"]],
+    ignore: true
+  },
   {
     Name: "BlankLine",
     Input: "a,b,c\n\nd,e,f\n\n",
@@ -257,54 +258,62 @@ x,,,
     ],
     ReuseRecord: true
   },
-  // {
-  //   Name: "StartLine1", // Issue 19019
-  //   Input: 'a,"b\nc"d,e',
-  //   Error: true
-  //   // Error: &ParseError{StartLine: 1, Line: 2, Column: 1, Err: ErrQuote},
-  // },
-  // {
-  //   Name: "StartLine2",
-  //   Input: 'a,b\n"d\n\n,e',
-  //   Error: true
-  //   // Error: &ParseError{StartLine: 2, Line: 5, Column: 0, Err: ErrQuote},
-  // },
-  // {
-  //   Name: "CRLFInQuotedField", // Issue 21201
-  //   Input: 'A,"Hello\r\nHi",B\r\n',
-  //   Output: [["A", "Hello\nHi", "B"]]
-  // },
+  {
+    Name: "StartLine1", // Issue 19019
+    Input: 'a,"b\nc"d,e',
+    Error: true,
+    // Error: &ParseError{StartLine: 1, Line: 2, Column: 1, Err: ErrQuote},
+    ignore: true
+  },
+  {
+    Name: "StartLine2",
+    Input: 'a,b\n"d\n\n,e',
+    Error: true,
+    // Error: &ParseError{StartLine: 2, Line: 5, Column: 0, Err: ErrQuote},
+    ignore: true
+  },
+  {
+    Name: "CRLFInQuotedField", // Issue 21201
+    Input: 'A,"Hello\r\nHi",B\r\n',
+    Output: [["A", "Hello\nHi", "B"]],
+    ignore: true
+  },
   {
     Name: "BinaryBlobField", // Issue 19410
     Input: "x09\x41\xb4\x1c,aktau",
     Output: [["x09A\xb4\x1c", "aktau"]]
   },
-  // {
-  //   Name: "TrailingCR",
-  //   Input: "field1,field2\r",
-  //   Output: [["field1", "field2"]]
-  // },
-  // {
-  //   Name: "QuotedTrailingCR",
-  //   Input: '"field"\r',
-  //   Output: [['"field"']]
-  // },
-  // {
-  //   Name: "QuotedTrailingCRCR",
-  //   Input: '"field"\r\r',
-  //   Error: true,
-  //   // Error: &ParseError{StartLine: 1, Line: 1, Column: 6, Err: ErrQuote},
-  // },
-  // {
-  //   Name: "FieldCR",
-  //   Input: "field\rfield\r",
-  //   Output: [["field\rfield"]]
-  // },
-  // {
-  //   Name: "FieldCRCR",
-  //   Input: "field\r\rfield\r\r",
-  //   Output: [["field\r\rfield\r"]]
-  // },
+  {
+    Name: "TrailingCR",
+    Input: "field1,field2\r",
+    Output: [["field1", "field2"]],
+    ignore: true
+  },
+  {
+    Name: "QuotedTrailingCR",
+    Input: '"field"\r',
+    Output: [['"field"']],
+    ignore: true
+  },
+  {
+    Name: "QuotedTrailingCRCR",
+    Input: '"field"\r\r',
+    Error: true,
+    // Error: &ParseError{StartLine: 1, Line: 1, Column: 6, Err: ErrQuote},
+    ignore: true
+  },
+  {
+    Name: "FieldCR",
+    Input: "field\rfield\r",
+    Output: [["field\rfield"]],
+    ignore: true
+  },
+  {
+    Name: "FieldCRCR",
+    Input: "field\r\rfield\r\r",
+    Output: [["field\r\rfield\r"]],
+    ignore: true
+  },
   {
     Name: "FieldCRCRLF",
     Input: "field\r\r\nfield\r\r\n",
@@ -315,20 +324,22 @@ x,,,
     Input: "field\r\r\n\rfield\r\r\n\r",
     Output: [["field\r"], ["\rfield\r"]]
   },
-  // {
-  //   Name: "FieldCRCRLFCRCR",
-  //   Input: "field\r\r\n\r\rfield\r\r\n\r\r",
-  //   Output: [["field\r"], ["\r\rfield\r"], ["\r"]]
-  // },
-  // {
-  //   Name: "MultiFieldCRCRLFCRCR",
-  //   Input: "field1,field2\r\r\n\r\rfield1,field2\r\r\n\r\r,",
-  //   Output: [
-  //     ["field1", "field2\r"],
-  //     ["\r\rfield1", "field2\r"],
-  //     ["\r\r", ""]
-  //   ]
-  // },
+  {
+    Name: "FieldCRCRLFCRCR",
+    Input: "field\r\r\n\r\rfield\r\r\n\r\r",
+    Output: [["field\r"], ["\r\rfield\r"], ["\r"]],
+    ignore: true
+  },
+  {
+    Name: "MultiFieldCRCRLFCRCR",
+    Input: "field1,field2\r\r\n\r\rfield1,field2\r\r\n\r\r,",
+    Output: [
+      ["field1", "field2\r"],
+      ["\r\rfield1", "field2\r"],
+      ["\r\r", ""]
+    ],
+    ignore: true
+  },
   {
     Name: "NonASCIICommaAndComment",
     Input: "a£b,c£ \td,e\n€ comment\n",
@@ -359,30 +370,30 @@ x,,,
     Output: [["λ"], ["λ"], ["λ"]],
     Comment: "θ"
   },
-  // {
-  //   Name: "QuotedFieldMultipleLF",
-  //   Input: '"\n\n\n\n"',
-  //   Output: [["\n\n\n\n"]]
-  // },
-  // {
-  //   Name: "MultipleCRLF",
-  //   Input: "\r\n\r\n\r\n\r\n"
-  // },
+  {
+    Name: "QuotedFieldMultipleLF",
+    Input: '"\n\n\n\n"',
+    Output: [["\n\n\n\n"]],
+    ignore: true
+  },
+  {
+    Name: "MultipleCRLF",
+    Input: "\r\n\r\n\r\n\r\n",
+    ignore: true
+  },
   /**
    * The implementation may read each line in several chunks if
    * it doesn't fit entirely.
    * in the read buffer, so we should test the code to handle that condition.
    */
-  // {
-  //   Name: "HugeLines",
-  //   Input:
-  //     strings.Repeat("#ignore\n", 10000) +
-  //     strings.Repeat("@", 5000) +
-  //     "," +
-  //     strings.Repeat("*", 5000),
-  //   Output: [[strings.Repeat("@", 5000), strings.Repeat("*", 5000)]],
-  //   Comment: "#"
-  // },
+  {
+    Name: "HugeLines",
+    Input:
+      "#ignore\n".repeat(10000) + "@".repeat(5000) + "," + "*".repeat(5000),
+    Output: [["@".repeat(5000), "*".repeat(5000)]],
+    Comment: "#",
+    ignore: true
+  },
   {
     Name: "QuoteWithTrailingCRLF",
     Input: '"foo"bar"\r\n',
@@ -395,28 +406,32 @@ x,,,
     Output: [[`foo"bar`]],
     LazyQuotes: true
   },
-  // {
-  //   Name: "DoubleQuoteWithTrailingCRLF",
-  //   Input: '"foo""bar"\r\n',
-  //   Output: [[`foo"bar`]]
-  // },
-  // {
-  //   Name: "EvenQuotes",
-  //   Input: `""""""""`,
-  //   Output: [[`"""`]]
-  // },
-  // {
-  //   Name: "OddQuotes",
-  //   Input: `"""""""`,
-  //   Error: true
-  //   // Error:" &ParseError{StartLine: 1, Line: 1, Column: 7, Err: ErrQuote}",
-  // },
-  // {
-  //   Name: "LazyOddQuotes",
-  //   Input: `"""""""`,
-  //   Output: [[`"""`]],
-  //   LazyQuotes: true
-  // },
+  {
+    Name: "DoubleQuoteWithTrailingCRLF",
+    Input: '"foo""bar"\r\n',
+    Output: [[`foo"bar`]],
+    ignore: true
+  },
+  {
+    Name: "EvenQuotes",
+    Input: `""""""""`,
+    Output: [[`"""`]],
+    ignore: true
+  },
+  {
+    Name: "OddQuotes",
+    Input: `"""""""`,
+    Error: true,
+    // Error:" &ParseError{StartLine: 1, Line: 1, Column: 7, Err: ErrQuote}",
+    ignore: true
+  },
+  {
+    Name: "LazyOddQuotes",
+    Input: `"""""""`,
+    Output: [[`"""`]],
+    LazyQuotes: true,
+    ignore: true
+  },
   {
     Name: "BadComma1",
     Comma: "\n",
@@ -450,7 +465,8 @@ x,,,
   }
 ];
 for (const t of testCases) {
-  test({
+  Deno.test({
+    ignore: !!t.ignore,
     name: `[CSV] ${t.Name}`,
     async fn(): Promise<void> {
       let comma = ",";
@@ -477,26 +493,32 @@ for (const t of testCases) {
       if (t.Error) {
         let err;
         try {
-          actual = await readMatrix(new BufReader(new StringReader(t.Input!)), {
-            comma: comma,
-            comment: comment,
-            trimLeadingSpace: trim,
-            fieldsPerRecord: fieldsPerRec,
-            lazyQuotes: lazyquote
-          });
+          actual = await readMatrix(
+            new BufReader(new StringReader(t.Input ?? "")),
+            {
+              comma: comma,
+              comment: comment,
+              trimLeadingSpace: trim,
+              fieldsPerRecord: fieldsPerRec,
+              lazyQuotes: lazyquote
+            }
+          );
         } catch (e) {
           err = e;
         }
         assert(err);
         assertEquals(err.message, t.Error);
       } else {
-        actual = await readMatrix(new BufReader(new StringReader(t.Input!)), {
-          comma: comma,
-          comment: comment,
-          trimLeadingSpace: trim,
-          fieldsPerRecord: fieldsPerRec,
-          lazyQuotes: lazyquote
-        });
+        actual = await readMatrix(
+          new BufReader(new StringReader(t.Input ?? "")),
+          {
+            comma: comma,
+            comment: comment,
+            trimLeadingSpace: trim,
+            fieldsPerRecord: fieldsPerRec,
+            lazyQuotes: lazyquote
+          }
+        );
         const expected = t.Output;
         assertEquals(actual, expected);
       }
@@ -605,7 +627,7 @@ const parseTestCases = [
 ];
 
 for (const testCase of parseTestCases) {
-  test({
+  Deno.test({
     name: `[CSV] Parse ${testCase.name}`,
     async fn(): Promise<void> {
       const r = await parse(testCase.in, {
@@ -616,5 +638,3 @@ for (const testCase of parseTestCases) {
     }
   });
 }
-
-runIfMain(import.meta);

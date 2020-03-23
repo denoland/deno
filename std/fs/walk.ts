@@ -1,9 +1,9 @@
 // Documentation and interface for walk were adapted from Go
 // https://golang.org/pkg/path/filepath/#Walk
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
-import { unimplemented } from "../testing/asserts.ts";
+import { unimplemented, assert } from "../testing/asserts.ts";
 import { join } from "../path/mod.ts";
-const { readDir, readDirSync, stat, statSync } = Deno;
+const { readdir, readdirSync, stat, statSync } = Deno;
 type FileInfo = Deno.FileInfo;
 
 export interface WalkOptions {
@@ -65,9 +65,9 @@ export async function* walk(
     includeFiles = true,
     includeDirs = true,
     followSymlinks = false,
-    exts = null,
-    match = null,
-    skip = null
+    exts = undefined,
+    match = undefined,
+    skip = undefined
   }: WalkOptions = {}
 ): AsyncIterableIterator<WalkInfo> {
   if (maxDepth < 0) {
@@ -76,10 +76,10 @@ export async function* walk(
   if (includeDirs && include(root, exts, match, skip)) {
     yield { filename: root, info: await stat(root) };
   }
-  if (maxDepth < 1 || !include(root, null, null, skip)) {
+  if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
-  const ls: FileInfo[] = await readDir(root);
+  const ls: FileInfo[] = await readdir(root);
   for (const info of ls) {
     if (info.isSymlink()) {
       if (followSymlinks) {
@@ -90,7 +90,8 @@ export async function* walk(
       }
     }
 
-    const filename = join(root, info.name!);
+    assert(info.name != null);
+    const filename = join(root, info.name);
 
     if (info.isFile()) {
       if (includeFiles && include(filename, exts, match, skip)) {
@@ -118,9 +119,9 @@ export function* walkSync(
     includeFiles = true,
     includeDirs = true,
     followSymlinks = false,
-    exts = null,
-    match = null,
-    skip = null
+    exts = undefined,
+    match = undefined,
+    skip = undefined
   }: WalkOptions = {}
 ): IterableIterator<WalkInfo> {
   if (maxDepth < 0) {
@@ -129,10 +130,10 @@ export function* walkSync(
   if (includeDirs && include(root, exts, match, skip)) {
     yield { filename: root, info: statSync(root) };
   }
-  if (maxDepth < 1 || !include(root, null, null, skip)) {
+  if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
-  const ls: FileInfo[] = readDirSync(root);
+  const ls: FileInfo[] = readdirSync(root);
   for (const info of ls) {
     if (info.isSymlink()) {
       if (followSymlinks) {
@@ -142,7 +143,8 @@ export function* walkSync(
       }
     }
 
-    const filename = join(root, info.name!);
+    assert(info.name != null);
+    const filename = join(root, info.name);
 
     if (info.isFile()) {
       if (includeFiles && include(filename, exts, match, skip)) {

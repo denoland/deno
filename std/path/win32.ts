@@ -17,6 +17,7 @@ import {
   normalizeString,
   _format
 } from "./utils.ts";
+import { assert } from "../testing/asserts.ts";
 
 export const sep = "\\";
 export const delimiter = ";";
@@ -302,7 +303,7 @@ export function join(...paths: string[]): string {
   if (pathsCount === 0) return ".";
 
   let joined: string | undefined;
-  let firstPart: string;
+  let firstPart: string | null = null;
   for (let i = 0; i < pathsCount; ++i) {
     const path = paths[i];
     assertPath(path);
@@ -329,7 +330,7 @@ export function join(...paths: string[]): string {
   //   path.join('//server', 'share') -> '\\\\server\\share\\')
   let needsReplace = true;
   let slashCount = 0;
-  firstPart = firstPart!;
+  assert(firstPart != null);
   if (isPathSeparator(firstPart.charCodeAt(0))) {
     ++slashCount;
     const firstLen = firstPart.length;

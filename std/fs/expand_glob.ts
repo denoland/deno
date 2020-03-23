@@ -9,9 +9,8 @@ import {
   normalize
 } from "../path/mod.ts";
 import { WalkInfo, walk, walkSync } from "./walk.ts";
-const { ErrorKind, cwd, stat, statSync } = Deno;
-type ErrorKind = Deno.ErrorKind;
-type DenoError = Deno.DenoError<ErrorKind>;
+import { assert } from "../testing/asserts.ts";
+const { cwd, stat, statSync } = Deno;
 type FileInfo = Deno.FileInfo;
 
 export interface ExpandGlobOptions extends GlobOptions {
@@ -44,7 +43,7 @@ function split(path: string): SplitPath {
 }
 
 function throwUnlessNotFound(error: Error): void {
-  if ((error as DenoError).kind != ErrorKind.NotFound) {
+  if (!(error instanceof Deno.errors.NotFound)) {
     throw error;
   }
 }
@@ -80,7 +79,9 @@ export async function* expandGlob(
 
   let fixedRoot = winRoot != undefined ? winRoot : "/";
   while (segments.length > 0 && !isGlob(segments[0])) {
-    fixedRoot = joinGlobs([fixedRoot, segments.shift()!], globOptions);
+    const seg = segments.shift();
+    assert(seg != null);
+    fixedRoot = joinGlobs([fixedRoot, seg], globOptions);
   }
 
   let fixedRootInfo: WalkInfo;
@@ -182,7 +183,9 @@ export function* expandGlobSync(
 
   let fixedRoot = winRoot != undefined ? winRoot : "/";
   while (segments.length > 0 && !isGlob(segments[0])) {
-    fixedRoot = joinGlobs([fixedRoot, segments.shift()!], globOptions);
+    const seg = segments.shift();
+    assert(seg != null);
+    fixedRoot = joinGlobs([fixedRoot, seg], globOptions);
   }
 
   let fixedRootInfo: WalkInfo;

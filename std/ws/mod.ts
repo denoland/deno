@@ -2,14 +2,16 @@
 
 import { decode, encode } from "../strings/mod.ts";
 import { hasOwnProperty } from "../util/has_own_property.ts";
-
-type Conn = Deno.Conn;
-type Writer = Deno.Writer;
-import { BufReader, BufWriter, UnexpectedEOFError } from "../io/bufio.ts";
+import { BufReader, BufWriter } from "../io/bufio.ts";
 import { readLong, readShort, sliceLongToBytes } from "../io/ioutil.ts";
 import { Sha1 } from "./sha1.ts";
-import { writeResponse } from "../http/server.ts";
+import { writeResponse } from "../http/io.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
+import { Deferred, deferred } from "../util/async.ts";
+import { assertNotEOF } from "../testing/asserts.ts";
+import { concat } from "../bytes/mod.ts";
+import Conn = Deno.Conn;
+import Writer = Deno.Writer;
 
 export enum OpCode {
   Continue = 0x0,
@@ -23,8 +25,8 @@ export enum OpCode {
 export type WebSocketEvent =
   | string
   | Uint8Array
-  | WebSocketCloseEvent
-  | WebSocketPingEvent
+  | WebSocketCloseEvent // Received after closing connection finished.
+  | WebSocketPingEvent // Received after pong frame responded.
   | WebSocketPongEvent;
 
 export interface WebSocketCloseEvent {
@@ -56,22 +58,6 @@ export function isWebSocketPongEvent(
 
 export type WebSocketMessage = string | Uint8Array;
 
-// TODO move this to common/util module
-export function append(a: Uint8Array, b: Uint8Array): Uint8Array {
-  if (a == null || !a.length) {
-    return b;
-  }
-  if (b == null || !b.length) {
-    return a;
-  }
-  const output = new Uint8Array(a.length + b.length);
-  output.set(a, 0);
-  output.set(b, a.length);
-  return output;
-}
-
-export class SocketClosedError extends Error {}
-
 export interface WebSocketFrame {
   isLastFrame: boolean;
   opcode: OpCode;
@@ -85,18 +71,36 @@ export interface WebSocket {
 
   receive(): AsyncIterableIterator<WebSocketEvent>;
 
+  /**
+   * @throws `Deno.errors.ConnectionReset`
+   */
   send(data: WebSocketMessage): Promise<void>;
 
+  /**
+   * @param data
+   * @throws `Deno.errors.ConnectionReset`
+   */
   ping(data?: WebSocketMessage): Promise<void>;
 
-  close(code: number, reason?: string): Promise<void>;
+  /** Close connection after sending close frame to peer.
+   * This is canonical way of disconnection but it may hang because of peer's response delay.
+   * Default close code is 1000 (Normal Closure)
+   * @throws `Deno.errors.ConnectionReset`
+   */
+  close(): Promise<void>;
+  close(code: number): Promise<void>;
+  close(code: number, reason: string): Promise<void>;
+
+  /** Close connection forcely without sending close frame to peer.
+   *  This is basically undesirable way of disconnection. Use carefully. */
+  closeForce(): void;
 }
 
 /** Unmask masked websocket payload */
 export function unmask(payload: Uint8Array, mask?: Uint8Array): void {
   if (mask) {
     for (let i = 0, len = payload.length; i < len; i++) {
-      payload[i] ^= mask![i & 3];
+      payload[i] ^= mask[i & 3];
     }
   }
 }
@@ -131,19 +135,21 @@ export async function writeFrame(
     ]);
   }
   if (frame.mask) {
-    header = append(header, frame.mask);
+    header = concat(header, frame.mask);
   }
   unmask(frame.payload, frame.mask);
-  header = append(header, frame.payload);
+  header = concat(header, frame.payload);
   const w = BufWriter.create(writer);
   await w.write(header);
   await w.flush();
 }
 
-/** Read websocket frame from given BufReader */
+/** Read websocket frame from given BufReader
+ * @throws `Deno.errors.UnexpectedEof` When peer closed connection without close frame
+ * @throws `Error` Frame is invalid
+ */
 export async function readFrame(buf: BufReader): Promise<WebSocketFrame> {
-  let b = await buf.readByte();
-  if (b === Deno.EOF) throw new UnexpectedEOFError();
+  let b = assertNotEOF(await buf.readByte());
   let isLastFrame = false;
   switch (b >>> 4) {
     case 0b1000:
@@ -157,28 +163,25 @@ export async function readFrame(buf: BufReader): Promise<WebSocketFrame> {
   }
   const opcode = b & 0x0f;
   // has_mask & payload
-  b = await buf.readByte();
-  if (b === Deno.EOF) throw new UnexpectedEOFError();
+  b = assertNotEOF(await buf.readByte());
   const hasMask = b >>> 7;
   let payloadLength = b & 0b01111111;
   if (payloadLength === 126) {
-    const l = await readShort(buf);
-    if (l === Deno.EOF) throw new UnexpectedEOFError();
+    const l = assertNotEOF(await readShort(buf));
     payloadLength = l;
   } else if (payloadLength === 127) {
-    const l = await readLong(buf);
-    if (l === Deno.EOF) throw new UnexpectedEOFError();
+    const l = assertNotEOF(await readLong(buf));
     payloadLength = Number(l);
   }
   // mask
-  let mask;
+  let mask: Uint8Array | undefined;
   if (hasMask) {
     mask = new Uint8Array(4);
-    await buf.readFull(mask);
+    assertNotEOF(await buf.readFull(mask));
   }
   // payload
   const payload = new Uint8Array(payloadLength);
-  await buf.readFull(payload);
+  assertNotEOF(await buf.readFull(payload));
   return {
     isLastFrame,
     opcode,
@@ -193,28 +196,43 @@ function createMask(): Uint8Array {
 }
 
 class WebSocketImpl implements WebSocket {
+  readonly conn: Conn;
   private readonly mask?: Uint8Array;
   private readonly bufReader: BufReader;
   private readonly bufWriter: BufWriter;
+  private sendQueue: Array<{
+    frame: WebSocketFrame;
+    d: Deferred<void>;
+  }> = [];
 
-  constructor(
-    readonly conn: Conn,
-    opts: {
-      bufReader?: BufReader;
-      bufWriter?: BufWriter;
-      mask?: Uint8Array;
-    }
-  ) {
-    this.mask = opts.mask;
-    this.bufReader = opts.bufReader || new BufReader(conn);
-    this.bufWriter = opts.bufWriter || new BufWriter(conn);
+  constructor({
+    conn,
+    bufReader,
+    bufWriter,
+    mask
+  }: {
+    conn: Conn;
+    bufReader?: BufReader;
+    bufWriter?: BufWriter;
+    mask?: Uint8Array;
+  }) {
+    this.conn = conn;
+    this.mask = mask;
+    this.bufReader = bufReader || new BufReader(conn);
+    this.bufWriter = bufWriter || new BufWriter(conn);
   }
 
   async *receive(): AsyncIterableIterator<WebSocketEvent> {
     let frames: WebSocketFrame[] = [];
     let payloadsLength = 0;
-    while (true) {
-      const frame = await readFrame(this.bufReader);
+    while (!this._isClosed) {
+      let frame: WebSocketFrame;
+      try {
+        frame = await readFrame(this.bufReader);
+      } catch (e) {
+        this.ensureSocketClosed();
+        break;
+      }
       unmask(frame.payload, frame.mask);
       switch (frame.opcode) {
         case OpCode.TextFrame:
@@ -250,14 +268,11 @@ class WebSocketImpl implements WebSocket {
           yield { code, reason };
           return;
         case OpCode.Ping:
-          await writeFrame(
-            {
-              opcode: OpCode.Pong,
-              payload: frame.payload,
-              isLastFrame: true
-            },
-            this.bufWriter
-          );
+          await this.enqueue({
+            opcode: OpCode.Pong,
+            payload: frame.payload,
+            isLastFrame: true
+          });
           yield ["ping", frame.payload] as WebSocketPingEvent;
           break;
         case OpCode.Pong:
@@ -268,36 +283,55 @@ class WebSocketImpl implements WebSocket {
     }
   }
 
-  async send(data: WebSocketMessage): Promise<void> {
-    if (this.isClosed) {
-      throw new SocketClosedError("socket has been closed");
+  private dequeue(): void {
+    const [entry] = this.sendQueue;
+    if (!entry) return;
+    if (this._isClosed) return;
+    const { d, frame } = entry;
+    writeFrame(frame, this.bufWriter)
+      .then(() => d.resolve())
+      .catch(e => d.reject(e))
+      .finally(() => {
+        this.sendQueue.shift();
+        this.dequeue();
+      });
+  }
+
+  private enqueue(frame: WebSocketFrame): Promise<void> {
+    if (this._isClosed) {
+      throw new Deno.errors.ConnectionReset("Socket has already been closed");
     }
+    const d = deferred<void>();
+    this.sendQueue.push({ d, frame });
+    if (this.sendQueue.length === 1) {
+      this.dequeue();
+    }
+    return d;
+  }
+
+  send(data: WebSocketMessage): Promise<void> {
     const opcode =
       typeof data === "string" ? OpCode.TextFrame : OpCode.BinaryFrame;
     const payload = typeof data === "string" ? encode(data) : data;
     const isLastFrame = true;
-    await writeFrame(
-      {
-        isLastFrame,
-        opcode,
-        payload,
-        mask: this.mask
-      },
-      this.bufWriter
-    );
+    const frame = {
+      isLastFrame,
+      opcode,
+      payload,
+      mask: this.mask
+    };
+    return this.enqueue(frame);
   }
 
-  async ping(data: WebSocketMessage = ""): Promise<void> {
+  ping(data: WebSocketMessage = ""): Promise<void> {
     const payload = typeof data === "string" ? encode(data) : data;
-    await writeFrame(
-      {
-        isLastFrame: true,
-        opcode: OpCode.Ping,
-        mask: this.mask,
-        payload
-      },
-      this.bufWriter
-    );
+    const frame = {
+      isLastFrame: true,
+      opcode: OpCode.Ping,
+      mask: this.mask,
+      payload
+    };
+    return this.enqueue(frame);
   }
 
   private _isClosed = false;
@@ -305,7 +339,7 @@ class WebSocketImpl implements WebSocket {
     return this._isClosed;
   }
 
-  async close(code: number, reason?: string): Promise<void> {
+  async close(code = 1000, reason?: string): Promise<void> {
     try {
       const header = [code >>> 8, code & 0x00ff];
       let payload: Uint8Array;
@@ -317,15 +351,12 @@ class WebSocketImpl implements WebSocket {
       } else {
         payload = new Uint8Array(header);
       }
-      await writeFrame(
-        {
-          isLastFrame: true,
-          opcode: OpCode.Close,
-          mask: this.mask,
-          payload
-        },
-        this.bufWriter
-      );
+      await this.enqueue({
+        isLastFrame: true,
+        opcode: OpCode.Close,
+        mask: this.mask,
+        payload
+      });
     } catch (e) {
       throw e;
     } finally {
@@ -333,16 +364,25 @@ class WebSocketImpl implements WebSocket {
     }
   }
 
+  closeForce(): void {
+    this.ensureSocketClosed();
+  }
+
   private ensureSocketClosed(): void {
-    if (this.isClosed) {
-      return;
-    }
+    if (this.isClosed) return;
     try {
       this.conn.close();
     } catch (e) {
       console.error(e);
     } finally {
       this._isClosed = true;
+      const rest = this.sendQueue;
+      this.sendQueue = [];
+      rest.forEach(e =>
+        e.d.reject(
+          new Deno.errors.ConnectionReset("Socket has already been closed")
+        )
+      );
     }
   }
 }
@@ -380,7 +420,7 @@ export async function acceptWebSocket(req: {
 }): Promise<WebSocket> {
   const { conn, headers, bufReader, bufWriter } = req;
   if (acceptable(req)) {
-    const sock = new WebSocketImpl(conn, { bufReader, bufWriter });
+    const sock = new WebSocketImpl({ conn, bufReader, bufWriter });
     const secKey = headers.get("sec-websocket-key");
     if (typeof secKey !== "string") {
       throw new Error("sec-websocket-key is not provided");
@@ -405,7 +445,7 @@ const kSecChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-.~_";
 export function createSecKey(): string {
   let key = "";
   for (let i = 0; i < 16; i++) {
-    const j = Math.round(Math.random() * kSecChars.length);
+    const j = Math.floor(Math.random() * kSecChars.length);
     key += kSecChars[j];
   }
   return btoa(key);
@@ -440,7 +480,7 @@ export async function handshake(
   const tpReader = new TextProtoReader(bufReader);
   const statusLine = await tpReader.readLine();
   if (statusLine === Deno.EOF) {
-    throw new UnexpectedEOFError();
+    throw new Deno.errors.UnexpectedEof();
   }
   const m = statusLine.match(/^(?<version>\S+) (?<statusCode>\S+) /);
   if (!m) {
@@ -458,7 +498,7 @@ export async function handshake(
 
   const responseHeaders = await tpReader.readMIMEHeader();
   if (responseHeaders === Deno.EOF) {
-    throw new UnexpectedEOFError();
+    throw new Deno.errors.UnexpectedEof();
   }
 
   const expectedSecAccept = createSecAccept(key);
@@ -499,9 +539,19 @@ export async function connectWebSocket(
     conn.close();
     throw err;
   }
-  return new WebSocketImpl(conn, {
+  return new WebSocketImpl({
+    conn,
     bufWriter,
     bufReader,
     mask: createMask()
   });
+}
+
+export function createWebSocket(params: {
+  conn: Conn;
+  bufWriter?: BufWriter;
+  bufReader?: BufReader;
+  mask?: Uint8Array;
+}): WebSocket {
+  return new WebSocketImpl(params);
 }

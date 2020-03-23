@@ -1,35 +1,26 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// This is a "special" module, in that it define the global runtime scope of
-// Deno, and therefore it defines a lot of the runtime environment that code
-// is evaluated in.
-
-// By convention we import those items that are globally exposed as namespaces
-import * as blob from "./blob.ts";
-import * as consoleTypes from "./console.ts";
-import * as csprng from "./get_random_values.ts";
-import * as customEvent from "./custom_event.ts";
-import * as Deno from "./deno.ts";
-import * as domTypes from "./dom_types.ts";
-import * as domFile from "./dom_file.ts";
-import * as event from "./event.ts";
-import * as eventTarget from "./event_target.ts";
-import * as formData from "./form_data.ts";
-import * as fetchTypes from "./fetch.ts";
-import * as headers from "./headers.ts";
-import * as textEncoding from "./text_encoding.ts";
-import * as timers from "./timers.ts";
-import * as url from "./url.ts";
-import * as urlSearchParams from "./url_search_params.ts";
-import * as workerRuntime from "./worker_main.ts";
-import * as workers from "./workers.ts";
-import * as performanceUtil from "./performance.ts";
-import * as request from "./request.ts";
+import * as blob from "./web/blob.ts";
+import * as consoleTypes from "./web/console.ts";
+import * as customEvent from "./web/custom_event.ts";
+import * as domTypes from "./web/dom_types.ts";
+import * as domFile from "./web/dom_file.ts";
+import * as event from "./web/event.ts";
+import * as eventTarget from "./web/event_target.ts";
+import * as formData from "./web/form_data.ts";
+import * as fetchTypes from "./web/fetch.ts";
+import * as headers from "./web/headers.ts";
+import * as textEncoding from "./web/text_encoding.ts";
+import * as timers from "./web/timers.ts";
+import * as url from "./web/url.ts";
+import * as urlSearchParams from "./web/url_search_params.ts";
+import * as workers from "./web/workers.ts";
+import * as performanceUtil from "./web/performance.ts";
+import * as request from "./web/request.ts";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
 import { core } from "./core.ts";
-import { internalObject } from "./internals.ts";
 
 // This global augmentation is just enough types to be able to build Deno,
 // the runtime types are fully defined in `lib.deno_runtime.d.ts`.
@@ -68,6 +59,11 @@ declare global {
     thrown: any;
   }
 
+  interface ImportMeta {
+    url: string;
+    main: boolean;
+  }
+
   interface DenoCore {
     print(s: string, isErr?: boolean): void;
     dispatch(
@@ -95,12 +91,19 @@ declare global {
       data?: ArrayBufferView
     ): null | Uint8Array;
 
+    setMacrotaskCallback(cb: () => boolean): void;
+
     shared: SharedArrayBuffer;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    evalContext(code: string): [any, EvalErrorInfo | null];
+    evalContext(
+      code: string,
+      scriptName?: string
+    ): [unknown, EvalErrorInfo | null];
 
-    errorToJSON: (e: Error) => string;
+    formatError: (e: Error) => string;
+
+    decode(bytes: Uint8Array): string;
+    encode(text: string): Uint8Array;
   }
 
   // Only `var` variables show up in the `globalThis` type when doing a global
@@ -108,17 +111,25 @@ declare global {
   /* eslint-disable no-var */
   var addEventListener: (
     type: string,
-    callback: (event: domTypes.Event) => void | null,
+    callback: domTypes.EventListenerOrEventListenerObject | null,
     options?: boolean | domTypes.AddEventListenerOptions | undefined
   ) => void;
-  var bootstrapTsCompiler: (() => void) | undefined;
+  var queueMicrotask: (callback: () => void) => void;
   var console: consoleTypes.Console;
+  var location: domTypes.Location;
+
+  // Assigned to `window` global - main runtime
   var Deno: {
     core: DenoCore;
   };
-  var bootstrapCompilerRuntime: ((compilerType: string) => void) | undefined;
+  var onload: ((e: domTypes.Event) => void) | undefined;
+  var onunload: ((e: domTypes.Event) => void) | undefined;
   var bootstrapMainRuntime: (() => void) | undefined;
-  var location: domTypes.Location;
+
+  // Assigned to `self` global - worker runtime and compiler
+  var bootstrapWorkerRuntime:
+    | ((name: string) => Promise<void> | void)
+    | undefined;
   var onerror:
     | ((
         msg: string,
@@ -128,22 +139,23 @@ declare global {
         e: domTypes.Event
       ) => boolean | void)
     | undefined;
-  var onload: ((e: domTypes.Event) => void) | undefined;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   var onmessage: ((e: { data: any }) => Promise<void> | void) | undefined;
-  var onunload: ((e: domTypes.Event) => void) | undefined;
-  var queueMicrotask: (callback: () => void) => void;
-  var bootstrapWasmCompiler: (() => void) | undefined;
-  var bootstrapWorkerRuntime: (() => Promise<void> | void) | undefined;
+  // Called in compiler
+  var close: () => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  var postMessage: (msg: any) => void;
+  // Assigned to `self` global - compiler
+  var bootstrapTsCompilerRuntime: (() => void) | undefined;
+  var bootstrapWasmCompilerRuntime: (() => void) | undefined;
+
+  var performance: performanceUtil.Performance;
+  var setTimeout: typeof timers.setTimeout;
   /* eslint-enable */
 }
 
-// Add internal object to Deno object.
-// This is not exposed as part of the Deno types.
-// @ts-ignore
-Deno[Deno.symbols.internal] = internalObject;
-
-function writable(value: unknown): PropertyDescriptor {
+export function writable(value: unknown): PropertyDescriptor {
   return {
     value,
     writable: true,
@@ -152,7 +164,7 @@ function writable(value: unknown): PropertyDescriptor {
   };
 }
 
-function nonEnumerable(value: unknown): PropertyDescriptor {
+export function nonEnumerable(value: unknown): PropertyDescriptor {
   return {
     value,
     writable: true,
@@ -160,27 +172,28 @@ function nonEnumerable(value: unknown): PropertyDescriptor {
   };
 }
 
-function readOnly(value: unknown): PropertyDescriptor {
+export function readOnly(value: unknown): PropertyDescriptor {
   return {
     value,
     enumerable: true
   };
 }
 
-const globalProperties = {
-  window: readOnly(globalThis),
-  Deno: readOnly(Deno),
+// https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
+export const windowOrWorkerGlobalScopeMethods = {
   atob: writable(textEncoding.atob),
   btoa: writable(textEncoding.btoa),
-  fetch: writable(fetchTypes.fetch),
-  clearTimeout: writable(timers.clearTimeout),
   clearInterval: writable(timers.clearInterval),
-  console: writable(new consoleTypes.Console(core.print)),
-  setTimeout: writable(timers.setTimeout),
+  clearTimeout: writable(timers.clearTimeout),
+  fetch: writable(fetchTypes.fetch),
+  // queueMicrotask is bound in Rust
   setInterval: writable(timers.setInterval),
-  onload: writable(undefined),
-  onunload: writable(undefined),
-  crypto: readOnly(csprng),
+  setTimeout: writable(timers.setTimeout)
+};
+
+// Other properties shared between WindowScope and WorkerGlobalScope
+export const windowOrWorkerGlobalScopeProperties = {
+  console: writable(new consoleTypes.Console(core.print)),
   Blob: nonEnumerable(blob.DenoBlob),
   File: nonEnumerable(domFile.DomFileImpl),
   CustomEvent: nonEnumerable(customEvent.CustomEvent),
@@ -195,15 +208,10 @@ const globalProperties = {
   Request: nonEnumerable(request.Request),
   Response: nonEnumerable(fetchTypes.Response),
   performance: writable(new performanceUtil.Performance()),
+  Worker: nonEnumerable(workers.WorkerImpl)
+};
 
-  onmessage: writable(workerRuntime.onmessage),
-  onerror: writable(workerRuntime.onerror),
-
-  bootstrapWorkerRuntime: nonEnumerable(workerRuntime.bootstrapWorkerRuntime),
-  workerClose: nonEnumerable(workerRuntime.workerClose),
-  postMessage: writable(workerRuntime.postMessage),
-  Worker: nonEnumerable(workers.WorkerImpl),
-
+export const eventTargetProperties = {
   [domTypes.eventTargetHost]: nonEnumerable(null),
   [domTypes.eventTargetListeners]: nonEnumerable({}),
   [domTypes.eventTargetMode]: nonEnumerable(""),
@@ -219,20 +227,3 @@ const globalProperties = {
     eventTarget.EventTarget.prototype.removeEventListener
   )
 };
-
-Object.defineProperties(globalThis, globalProperties);
-
-// Registers the handler for window.onload function.
-globalThis.addEventListener("load", (e: domTypes.Event): void => {
-  const { onload } = globalThis;
-  if (typeof onload === "function") {
-    onload(e);
-  }
-});
-// Registers the handler for window.onunload function.
-globalThis.addEventListener("unload", (e: domTypes.Event): void => {
-  const { onunload } = globalThis;
-  if (typeof onunload === "function") {
-    onunload(e);
-  }
-});

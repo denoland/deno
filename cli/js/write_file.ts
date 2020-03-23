@@ -1,28 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { stat, statSync } from "./stat.ts";
+import { stat, statSync } from "./ops/fs/stat.ts";
 import { open, openSync } from "./files.ts";
-import { chmod, chmodSync } from "./chmod.ts";
+import { chmod, chmodSync } from "./ops/fs/chmod.ts";
 import { writeAll, writeAllSync } from "./buffer.ts";
+import { build } from "./build.ts";
 
-/** Options for writing to a file.
- * `perm` would change the file's permission if set.
- * `create` decides if the file should be created if not exists (default: true)
- * `append` decides if the file should be appended (default: false)
- */
 export interface WriteFileOptions {
-  perm?: number;
-  create?: boolean;
   append?: boolean;
+  create?: boolean;
+  mode?: number;
 }
 
-/** Write a new file, with given filename and data synchronously.
- *
- *       const encoder = new TextEncoder();
- *       const data = encoder.encode("Hello world\n");
- *       Deno.writeFileSync("hello.txt", data);
- */
 export function writeFileSync(
-  filename: string,
+  path: string,
   data: Uint8Array,
   options: WriteFileOptions = {}
 ): void {
@@ -30,29 +20,27 @@ export function writeFileSync(
     const create = !!options.create;
     if (!create) {
       // verify that file exists
-      statSync(filename);
+      statSync(path);
     }
   }
 
   const openMode = !!options.append ? "a" : "w";
-  const file = openSync(filename, openMode);
+  const file = openSync(path, openMode);
 
-  if (options.perm !== undefined && options.perm !== null) {
-    chmodSync(filename, options.perm);
+  if (
+    options.mode !== undefined &&
+    options.mode !== null &&
+    build.os !== "win"
+  ) {
+    chmodSync(path, options.mode);
   }
 
   writeAllSync(file, data);
   file.close();
 }
 
-/** Write a new file, with given filename and data.
- *
- *       const encoder = new TextEncoder();
- *       const data = encoder.encode("Hello world\n");
- *       await Deno.writeFile("hello.txt", data);
- */
 export async function writeFile(
-  filename: string,
+  path: string,
   data: Uint8Array,
   options: WriteFileOptions = {}
 ): Promise<void> {
@@ -60,15 +48,19 @@ export async function writeFile(
     const create = !!options.create;
     if (!create) {
       // verify that file exists
-      await stat(filename);
+      await stat(path);
     }
   }
 
   const openMode = !!options.append ? "a" : "w";
-  const file = await open(filename, openMode);
+  const file = await open(path, openMode);
 
-  if (options.perm !== undefined && options.perm !== null) {
-    await chmod(filename, options.perm);
+  if (
+    options.mode !== undefined &&
+    options.mode !== null &&
+    build.os !== "win"
+  ) {
+    await chmod(path, options.mode);
   }
 
   await writeAll(file, data);

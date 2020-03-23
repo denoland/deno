@@ -14,11 +14,11 @@ export class StringWriter implements Writer {
     this.byteLength += c.byteLength;
   }
 
-  async write(p: Uint8Array): Promise<number> {
+  write(p: Uint8Array): Promise<number> {
     this.chunks.push(p);
     this.byteLength += p.byteLength;
     this.cache = undefined;
-    return p.byteLength;
+    return Promise.resolve(p.byteLength);
   }
 
   toString(): string {
@@ -32,6 +32,6 @@ export class StringWriter implements Writer {
       offs += chunk.byteLength;
     }
     this.cache = decode(buf);
-    return this.cache!;
+    return this.cache;
   }
 }

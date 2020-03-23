@@ -1,5 +1,5 @@
-import { test } from "../testing/mod.ts";
-import { assertEquals, assert } from "../testing/asserts.ts";
+const { test } = Deno;
+import { assertEquals, assert, assertStrContains } from "../testing/asserts.ts";
 import { createRequire } from "./module.ts";
 
 // TS compiler would try to resolve if function named "require"
@@ -31,7 +31,7 @@ test(function requireBuiltin() {
   assert("readFileSync" in fs);
   const { readFileSync, isNull, extname } = require_("./tests/cjs/cjs_builtin");
   assertEquals(
-    readFileSync("./node/testdata/hello.txt", { encoding: "utf8" }),
+    readFileSync("./node/_fs/testdata/hello.txt", { encoding: "utf8" }),
     "hello world"
   );
   assert(isNull(null));
@@ -41,4 +41,19 @@ test(function requireBuiltin() {
 test(function requireIndexJS() {
   const { isIndex } = require_("./tests/cjs");
   assert(isIndex);
+});
+
+test(function requireNodeOs() {
+  const os = require_("os");
+  assert(os.arch);
+  assert(typeof os.arch() == "string");
+});
+
+test(function requireStack() {
+  const { hello } = require_("./tests/cjs/cjs_throw");
+  try {
+    hello();
+  } catch (e) {
+    assertStrContains(e.stack, "/tests/cjs/cjs_throw.js");
+  }
 });

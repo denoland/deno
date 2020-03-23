@@ -4,7 +4,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Install using `deno install`
-// $ deno install catj https://deno.land/std/examples/catj.ts --allow-read
+// $ deno install --allow-read catj https://deno.land/std/examples/catj.ts
 
 /* eslint-disable @typescript-eslint/no-use-before-define */
 import { parse } from "../flags/mod.ts";
@@ -12,7 +12,8 @@ import * as colors from "../fmt/colors.ts";
 
 const decoder = new TextDecoder();
 
-function isObject(arg): arg is object {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isObject(arg: any): arg is object {
   return !!arg && arg.constructor === Object;
 }
 
@@ -35,7 +36,8 @@ function printValue(value: unknown, path: string): void {
   console.log(path + " = " + value);
 }
 
-function printObject(obj: object, path: string): void {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function printObject(obj: { [key: string]: any }, path: string): void {
   for (const key of Object.keys(obj)) {
     const value = obj[key];
     let nodePath = path + colors.cyan(".") + key;
@@ -79,28 +81,30 @@ function print(data: any): void {
   }
 }
 
-const parsedArgs = parse(Deno.args);
+if (import.meta.main) {
+  const parsedArgs = parse(Deno.args);
 
-if (parsedArgs.h || parsedArgs.help || parsedArgs._.length === 0) {
-  console.log("Usage: catj [-h|--help] [file...]");
-  console.log();
-  console.log("Examples:");
-  console.log();
-  console.log("// print file:\n   catj file.json");
-  console.log();
-  console.log("// print multiple files:\n   catj file1.json file2.json");
-  console.log();
-  console.log("// print from stdin:\n   cat file.json | catj -");
-}
+  if (parsedArgs.h || parsedArgs.help || parsedArgs._.length === 0) {
+    console.log("Usage: catj [-h|--help] [file...]");
+    console.log();
+    console.log("Examples:");
+    console.log();
+    console.log("// print file:\n   catj file.json");
+    console.log();
+    console.log("// print multiple files:\n   catj file1.json file2.json");
+    console.log();
+    console.log("// print from stdin:\n   cat file.json | catj -");
+  }
 
-if (parsedArgs._[0] === "-") {
-  const contents = await Deno.readAll(Deno.stdin);
-  const json = JSON.parse(decoder.decode(contents));
-  print(json);
-} else {
-  for (const fileName of parsedArgs._) {
-    const fileContents = await Deno.readFile(fileName);
-    const json = JSON.parse(decoder.decode(fileContents));
+  if (parsedArgs._[0] === "-") {
+    const contents = await Deno.readAll(Deno.stdin);
+    const json = JSON.parse(decoder.decode(contents));
     print(json);
+  } else {
+    for (const fileName of parsedArgs._) {
+      const fileContents = await Deno.readFile(fileName.toString());
+      const json = JSON.parse(decoder.decode(fileContents));
+      print(json);
+    }
   }
 }

@@ -2,10 +2,10 @@
 import { ServerRequest, Response } from "./server.ts";
 import { getCookies, delCookie, setCookie } from "./cookie.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
-import { test } from "../testing/mod.ts";
+const { test } = Deno;
 
 test({
-  name: "[HTTP] Cookie parser",
+  name: "Cookie parser",
   fn(): void {
     const req = new ServerRequest();
     req.headers = new Headers();
@@ -33,19 +33,19 @@ test({
 });
 
 test({
-  name: "[HTTP] Cookie Delete",
+  name: "Cookie Delete",
   fn(): void {
     const res: Response = {};
     delCookie(res, "deno");
     assertEquals(
-      res.headers!.get("Set-Cookie"),
+      res.headers?.get("Set-Cookie"),
       "deno=; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
     );
   }
 });
 
 test({
-  name: "[HTTP] Cookie Set",
+  name: "Cookie Set",
   fn(): void {
     const res: Response = {};
 

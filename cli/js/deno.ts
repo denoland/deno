@@ -1,8 +1,29 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Public deno module.
-export { dir, env, exit, isTTY, execPath, hostname } from "./os.ts";
-export { chdir, cwd } from "./dir.ts";
+export {
+  Buffer,
+  readAll,
+  readAllSync,
+  writeAll,
+  writeAllSync
+} from "./buffer.ts";
+export { build, OperatingSystem, Arch } from "./build.ts";
+export { chmodSync, chmod } from "./ops/fs/chmod.ts";
+export { chownSync, chown } from "./ops/fs/chown.ts";
+export { transpileOnly, compile, bundle } from "./compiler/api.ts";
+export { inspect } from "./web/console.ts";
+export { copyFileSync, copyFile } from "./ops/fs/copy_file.ts";
+export {
+  Diagnostic,
+  DiagnosticCategory,
+  DiagnosticItem,
+  DiagnosticMessageChain
+} from "./diagnostics.ts";
+export { chdir, cwd } from "./ops/fs/dir.ts";
+export { applySourceMap, formatDiagnostics } from "./ops/errors.ts";
+export { errors } from "./errors.ts";
+export { FileInfo } from "./file_info.ts";
 export {
   File,
   open,
@@ -12,16 +33,13 @@ export {
   stdin,
   stdout,
   stderr,
-  read,
-  readSync,
-  write,
-  writeSync,
   seek,
   seekSync,
-  close,
   OpenOptions,
   OpenMode
 } from "./files.ts";
+export { read, readSync, write, writeSync } from "./ops/io.ts";
+export { FsEvent, fsEvents } from "./ops/fs_events.ts";
 export {
   EOF,
   copy,
@@ -41,35 +59,37 @@ export {
   ReadWriteCloser,
   ReadWriteSeeker
 } from "./io.ts";
-export {
-  Buffer,
-  readAll,
-  readAllSync,
-  writeAll,
-  writeAllSync
-} from "./buffer.ts";
-export { mkdirSync, mkdir } from "./mkdir.ts";
+export { linkSync, link } from "./ops/fs/link.ts";
 export {
   makeTempDirSync,
   makeTempDir,
-  MakeTempDirOptions
-} from "./make_temp_dir.ts";
-export { chmodSync, chmod } from "./chmod.ts";
-export { chownSync, chown } from "./chown.ts";
-export { utimeSync, utime } from "./utime.ts";
-export { removeSync, remove, RemoveOption } from "./remove.ts";
-export { renameSync, rename } from "./rename.ts";
-export { realpathSync, realpath } from "./realpath.ts";
-export { readFileSync, readFile } from "./read_file.ts";
-export { readDirSync, readDir } from "./read_dir.ts";
-export { copyFileSync, copyFile } from "./copy_file.ts";
-export { readlinkSync, readlink } from "./read_link.ts";
-export { statSync, lstatSync, stat, lstat } from "./stat.ts";
-export { linkSync, link } from "./link.ts";
-export { symlinkSync, symlink } from "./symlink.ts";
-export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";
-export { applySourceMap } from "./error_stack.ts";
-export { ErrorKind, DenoError } from "./errors.ts";
+  makeTempFileSync,
+  makeTempFile,
+  MakeTempOptions
+} from "./ops/fs/make_temp.ts";
+export { metrics, Metrics } from "./ops/runtime.ts";
+export { mkdirSync, mkdir, MkdirOptions } from "./ops/fs/mkdir.ts";
+export {
+  Addr,
+  connect,
+  listen,
+  recvfrom,
+  UDPConn,
+  UDPAddr,
+  Listener,
+  Conn,
+  ShutdownMode,
+  shutdown
+} from "./net.ts";
+export {
+  dir,
+  env,
+  exit,
+  execPath,
+  hostname,
+  loadavg,
+  osRelease
+} from "./ops/os.ts";
 export {
   permissions,
   PermissionName,
@@ -77,44 +97,35 @@ export {
   PermissionStatus,
   Permissions
 } from "./permissions.ts";
-export { truncateSync, truncate } from "./truncate.ts";
-export { FileInfo } from "./file_info.ts";
 export { openPlugin } from "./plugins.ts";
-export {
-  connect,
-  listen,
-  Listener,
-  Conn,
-  ShutdownMode,
-  shutdown
-} from "./net.ts";
+export { kill } from "./ops/process.ts";
+export { run, RunOptions, Process, ProcessStatus } from "./process.ts";
+export { readdirSync, readdir } from "./ops/fs/read_dir.ts";
+export { readFileSync, readFile } from "./read_file.ts";
+export { readlinkSync, readlink } from "./ops/fs/read_link.ts";
+export { realpathSync, realpath } from "./ops/fs/realpath.ts";
+export { removeSync, remove, RemoveOptions } from "./ops/fs/remove.ts";
+export { renameSync, rename } from "./ops/fs/rename.ts";
+export { resources, close } from "./ops/resources.ts";
+export { signal, signals, Signal, SignalStream } from "./signals.ts";
+export { statSync, lstatSync, stat, lstat } from "./ops/fs/stat.ts";
+export { symlinkSync, symlink } from "./ops/fs/symlink.ts";
 export { connectTLS, listenTLS } from "./tls.ts";
-export { metrics, Metrics } from "./metrics.ts";
-export { resources } from "./resources.ts";
-export {
-  kill,
-  run,
-  RunOptions,
-  Process,
-  ProcessStatus,
-  Signal
-} from "./process.ts";
-export { transpileOnly, compile, bundle } from "./compiler_api.ts";
-export { inspect } from "./console.ts";
-export { signal, signals, SignalStream } from "./signals.ts";
-export { build, OperatingSystem, Arch } from "./build.ts";
+export { truncateSync, truncate } from "./ops/fs/truncate.ts";
+export { isatty, setRaw } from "./ops/tty.ts";
+export { umask } from "./ops/fs/umask.ts";
+export { utimeSync, utime } from "./ops/fs/utime.ts";
 export { version } from "./version.ts";
+export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";
 export const args: string[] = [];
+export { test, runTests, TestEvent, ConsoleTestReporter } from "./testing.ts";
 
 // These are internal Deno APIs.  We are marking them as internal so they do not
 // appear in the runtime type library.
-/** @internal */
 export { core } from "./core.ts";
 
-/** The current process id of the runtime. */
 export let pid: number;
 
-/** Reflects the NO_COLOR environment variable: https://no-color.org/ */
 export let noColor: boolean;
 
 export { symbols } from "./symbols.ts";

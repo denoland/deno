@@ -10,19 +10,19 @@ bookmark to a program.)
 ### A TCP echo server
 
 ```shell
-deno https://deno.land/std/examples/echo_server.ts --allow-net
+deno  --allow-net https://deno.land/std/examples/echo_server.ts
 ```
 
 Or
 
 ```shell
-deno install echo_server https://deno.land/std/examples/echo_server.ts --allow-net
+deno install --allow-net echo_server https://deno.land/std/examples/echo_server.ts
 ```
 
 ### cat - print file to standard output
 
 ```shell
-deno install deno_cat https://deno.land/std/examples/cat.ts --allow-read
+deno install --allow-read deno_cat https://deno.land/std/examples/cat.ts
 deno_cat file.txt
 ```
 
@@ -31,7 +31,7 @@ deno_cat file.txt
 A very useful command by Soheil Rashidi ported to Deno.
 
 ```shell
-deno install catj https://deno.land/std/examples/catj.ts --allow-read
+deno install --allow-read catj https://deno.land/std/examples/catj.ts
 catj example.json
 catj file1.json file2.json
 echo example.json | catj -
@@ -40,14 +40,22 @@ echo example.json | catj -
 ### curl - print the contents of a url to standard output
 
 ```shell
-deno --allow-net=deno.land https://deno.land/std/examples/curl.ts -- https://deno.land/
+deno --allow-net=deno.land https://deno.land/std/examples/curl.ts https://deno.land/
 ```
 
 ### gist - easily create and upload Gists
 
 ```
 export GIST_TOKEN=ABC # Generate at https://github.com/settings/tokens
-deno install gist https://deno.land/std/examples/gist.ts --allow-net --allow-env
+deno install --allow-net --allow-env gist https://deno.land/std/examples/gist.ts
 gist --title "Example gist 1" script.ts
 gist --t "Example gist 2" script2.ts
 ```
+
+### chat - WebSocket chat server and browser client
+
+```shell
+deno --allow-net --allow-read https://deno.land/std/examples/chat/server.ts
+```
+
+Open http://localhost:8080 on the browser.

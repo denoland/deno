@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // TODO(axetroy): Add test for Windows once symlink is implemented for Windows.
-import { test } from "../testing/mod.ts";
 import {
   assertEquals,
   assertThrows,
@@ -12,17 +11,17 @@ import { ensureSymlink, ensureSymlinkSync } from "./ensure_symlink.ts";
 const testdataDir = path.resolve("fs", "testdata");
 const isWindows = Deno.build.os === "win";
 
-test(async function ensureSymlinkIfItNotExist(): Promise<void> {
+Deno.test(async function ensureSymlinkIfItNotExist(): Promise<void> {
   const testDir = path.join(testdataDir, "link_file_1");
   const testFile = path.join(testDir, "test.txt");
 
-  assertThrowsAsync(
+  await assertThrowsAsync(
     async (): Promise<void> => {
       await ensureSymlink(testFile, path.join(testDir, "test1.txt"));
     }
   );
 
-  assertThrowsAsync(
+  await assertThrowsAsync(
     async (): Promise<void> => {
       await Deno.stat(testFile).then((): void => {
         throw new Error("test file should exists.");
@@ -31,7 +30,7 @@ test(async function ensureSymlinkIfItNotExist(): Promise<void> {
   );
 });
 
-test(function ensureSymlinkSyncIfItNotExist(): void {
+Deno.test(function ensureSymlinkSyncIfItNotExist(): void {
   const testDir = path.join(testdataDir, "link_file_2");
   const testFile = path.join(testDir, "test.txt");
 
@@ -45,7 +44,7 @@ test(function ensureSymlinkSyncIfItNotExist(): void {
   });
 });
 
-test(async function ensureSymlinkIfItExist(): Promise<void> {
+Deno.test(async function ensureSymlinkIfItExist(): Promise<void> {
   const testDir = path.join(testdataDir, "link_file_3");
   const testFile = path.join(testDir, "test.txt");
   const linkFile = path.join(testDir, "link.txt");
@@ -57,7 +56,7 @@ test(async function ensureSymlinkIfItExist(): Promise<void> {
     await assertThrowsAsync(
       (): Promise<void> => ensureSymlink(testFile, linkFile),
       Error,
-      "Not implemented"
+      "not implemented"
     );
     await Deno.remove(testDir, { recursive: true });
     return;
@@ -74,7 +73,7 @@ test(async function ensureSymlinkIfItExist(): Promise<void> {
   await Deno.remove(testDir, { recursive: true });
 });
 
-test(function ensureSymlinkSyncIfItExist(): void {
+Deno.test(function ensureSymlinkSyncIfItExist(): void {
   const testDir = path.join(testdataDir, "link_file_4");
   const testFile = path.join(testDir, "test.txt");
   const linkFile = path.join(testDir, "link.txt");
@@ -86,7 +85,7 @@ test(function ensureSymlinkSyncIfItExist(): void {
     assertThrows(
       (): void => ensureSymlinkSync(testFile, linkFile),
       Error,
-      "Not implemented"
+      "not implemented"
     );
     Deno.removeSync(testDir, { recursive: true });
     return;
@@ -104,7 +103,7 @@ test(function ensureSymlinkSyncIfItExist(): void {
   Deno.removeSync(testDir, { recursive: true });
 });
 
-test(async function ensureSymlinkDirectoryIfItExist(): Promise<void> {
+Deno.test(async function ensureSymlinkDirectoryIfItExist(): Promise<void> {
   const testDir = path.join(testdataDir, "link_file_origin_3");
   const linkDir = path.join(testdataDir, "link_file_link_3");
   const testFile = path.join(testDir, "test.txt");
@@ -116,7 +115,7 @@ test(async function ensureSymlinkDirectoryIfItExist(): Promise<void> {
     await assertThrowsAsync(
       (): Promise<void> => ensureSymlink(testDir, linkDir),
       Error,
-      "Not implemented"
+      "not implemented"
     );
     await Deno.remove(testDir, { recursive: true });
     return;
@@ -136,7 +135,7 @@ test(async function ensureSymlinkDirectoryIfItExist(): Promise<void> {
   await Deno.remove(testDir, { recursive: true });
 });
 
-test(function ensureSymlinkSyncDirectoryIfItExist(): void {
+Deno.test(function ensureSymlinkSyncDirectoryIfItExist(): void {
   const testDir = path.join(testdataDir, "link_file_origin_3");
   const linkDir = path.join(testdataDir, "link_file_link_3");
   const testFile = path.join(testDir, "test.txt");
@@ -148,7 +147,7 @@ test(function ensureSymlinkSyncDirectoryIfItExist(): void {
     assertThrows(
       (): void => ensureSymlinkSync(testDir, linkDir),
       Error,
-      "Not implemented"
+      "not implemented"
     );
     Deno.removeSync(testDir, { recursive: true });
     return;

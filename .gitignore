@@ -2,6 +2,7 @@
 *.pyc
 *.swp
 
+/.cargo/
 /.idea/
 /.vscode/
 gclient_config.py_entries

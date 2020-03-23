@@ -315,9 +315,9 @@ export function assertThrows(
     fn();
   } catch (e) {
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
-      msg = `Expected error to be instance of "${ErrorClass.name}"${
-        msg ? `: ${msg}` : "."
-      }`;
+      msg = `Expected error to be instance of "${ErrorClass.name}", but was "${
+        e.constructor.name
+      }"${msg ? `: ${msg}` : "."}`;
       throw new AssertionError(msg);
     }
     if (msgIncludes && !e.message.includes(msgIncludes)) {
@@ -348,9 +348,9 @@ export async function assertThrowsAsync(
     await fn();
   } catch (e) {
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
-      msg = `Expected error to be instance of "${ErrorClass.name}"${
-        msg ? `: ${msg}` : "."
-      }`;
+      msg = `Expected error to be instance of "${ErrorClass.name}", but got "${
+        e.name
+      }"${msg ? `: ${msg}` : "."}`;
       throw new AssertionError(msg);
     }
     if (msgIncludes && !e.message.includes(msgIncludes)) {
@@ -377,4 +377,9 @@ export function unimplemented(msg?: string): never {
 /** Use this to assert unreachable code. */
 export function unreachable(): never {
   throw new AssertionError("unreachable");
+}
+
+export function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
+  assertNotEquals(val, Deno.EOF);
+  return val as T;
 }

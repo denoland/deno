@@ -3,33 +3,16 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import { BufReader, UnexpectedEOFError } from "../io/bufio.ts";
+import { BufReader } from "../io/bufio.ts";
 import { charCode } from "../io/util.ts";
+import { concat } from "../bytes/mod.ts";
+import { decode } from "../strings/mod.ts";
 
-const asciiDecoder = new TextDecoder();
-function str(buf: Uint8Array): string {
+function str(buf: Uint8Array | null | undefined): string {
   if (buf == null) {
     return "";
   } else {
-    return asciiDecoder.decode(buf);
-  }
-}
-
-export class ProtocolError extends Error {
-  constructor(msg: string) {
-    super(msg);
-    this.name = "ProtocolError";
-  }
-}
-
-export function append(a: Uint8Array, b: Uint8Array): Uint8Array {
-  if (a == null) {
-    return b;
-  } else {
-    const output = new Uint8Array(a.length + b.length);
-    output.set(a, 0);
-    output.set(b, a.length);
-    return output;
+    return decode(buf);
   }
 }
 
@@ -67,7 +50,7 @@ export class TextProtoReader {
    */
   async readMIMEHeader(): Promise<Headers | Deno.EOF> {
     const m = new Headers();
-    let line: Uint8Array;
+    let line: Uint8Array | undefined;
 
     // The first line cannot start with a leading space.
     let buf = await this.r.peek(1);
@@ -79,16 +62,16 @@ export class TextProtoReader {
 
     buf = await this.r.peek(1);
     if (buf === Deno.EOF) {
-      throw new UnexpectedEOFError();
+      throw new Deno.errors.UnexpectedEof();
     } else if (buf[0] == charCode(" ") || buf[0] == charCode("\t")) {
-      throw new ProtocolError(
-        `malformed MIME header initial line: ${str(line!)}`
+      throw new Deno.errors.InvalidData(
+        `malformed MIME header initial line: ${str(line)}`
       );
     }
 
     while (true) {
       const kv = await this.readLineSlice(); // readContinuedLineSlice
-      if (kv === Deno.EOF) throw new UnexpectedEOFError();
+      if (kv === Deno.EOF) throw new Deno.errors.UnexpectedEof();
       if (kv.byteLength === 0) return m;
 
       // Key ends at first colon; should not have trailing spaces
@@ -96,7 +79,9 @@ export class TextProtoReader {
       // them if present.
       let i = kv.indexOf(charCode(":"));
       if (i < 0) {
-        throw new ProtocolError(`malformed MIME header line: ${str(kv)}`);
+        throw new Deno.errors.InvalidData(
+          `malformed MIME header line: ${str(kv)}`
+        );
       }
       let endKey = i;
       while (endKey > 0 && kv[endKey - 1] == charCode(" ")) {
@@ -108,7 +93,7 @@ export class TextProtoReader {
 
       // As per RFC 7230 field-name is a token,
       // tokens consist of one or more chars.
-      // We could return a ProtocolError here,
+      // We could throw `Deno.errors.InvalidData` here,
       // but better to be liberal in what we
       // accept, so if we get an empty key, skip it.
       if (key == "") {
@@ -135,14 +120,14 @@ export class TextProtoReader {
 
   async readLineSlice(): Promise<Uint8Array | Deno.EOF> {
     // this.closeDot();
-    let line: Uint8Array;
+    let line: Uint8Array | undefined;
     while (true) {
       const r = await this.r.readLine();
       if (r === Deno.EOF) return Deno.EOF;
       const { line: l, more } = r;
 
       // Avoid the copy if the first call produced a full line.
-      if (!line! && !more) {
+      if (!line && !more) {
         // TODO(ry):
         // This skipSpace() is definitely misplaced, but I don't know where it
         // comes from nor how to fix it.
@@ -151,9 +136,7 @@ export class TextProtoReader {
         }
         return l;
       }
-
-      // @ts-ignore
-      line = append(line, l);
+      line = line ? concat(line, l) : l;
       if (!more) {
         break;
       }

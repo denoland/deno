@@ -10,8 +10,7 @@ use rusty_v8 as v8;
 use crate::any_error::ErrBox;
 use crate::bindings;
 use crate::inspector::InspectorClient;
-use crate::js_errors::CoreJSError;
-use crate::js_errors::V8Exception;
+use crate::js_errors::JSError;
 use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
@@ -22,15 +21,17 @@ use futures::stream::select;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
+use futures::Future;
 use libc::c_void;
 use std::collections::HashMap;
 use std::convert::From;
 use std::error::Error;
 use std::fmt;
-use std::future::Future;
+use std::mem::forget;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex, Once};
 use std::task::Context;
 use std::task::Poll;
@@ -147,7 +148,7 @@ pub enum StartupData<'a> {
   None,
 }
 
-type JSErrorCreateFn = dyn Fn(V8Exception) -> ErrBox;
+type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
 type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
@@ -164,61 +165,44 @@ pub struct Isolate {
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
   snapshot: Option<SnapshotConfig>,
-  pub(crate) last_exception: Option<String>,
   pub(crate) global_context: v8::Global<v8::Context>,
   pub(crate) shared_ab: v8::Global<v8::SharedArrayBuffer>,
   pub(crate) js_recv_cb: v8::Global<v8::Function>,
+  pub(crate) js_macrotask_cb: v8::Global<v8::Function>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
   shared_isolate_handle: Arc<Mutex<Option<*mut v8::Isolate>>>,
-  js_error_create: Arc<JSErrorCreateFn>,
+  pub(crate) js_error_create_fn: Box<JSErrorCreateFn>,
   needs_init: bool,
   pub(crate) shared: SharedQueue,
   pending_ops: FuturesUnordered<PendingOpFuture>,
   pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
-  pub op_registry: Arc<OpRegistry>,
+  pub op_registry: Rc<OpRegistry>,
   waker: AtomicWaker,
   error_handler: Option<Box<IsolateErrorHandleFn>>,
   inspector_handle: Option<InspectorHandle>,
   pub inspector_client: Option<InspectorClient>,
 }
 
-unsafe impl Send for Isolate {}
-
 impl Drop for Isolate {
   fn drop(&mut self) {
-    // remove shared_libdeno_isolate reference
-    *self.shared_isolate_handle.lock().unwrap() = None;
-
-    // TODO Too much boiler plate.
-    // <Boilerplate>
-    let isolate = self.v8_isolate.take().unwrap();
-    // Clear persistent handles we own.
-    {
-      let mut locker = v8::Locker::new(&isolate);
-      let mut hs = v8::HandleScope::new(locker.enter());
-      let scope = hs.enter();
-      // </Boilerplate>
-      self.global_context.reset(scope);
-      self.shared_ab.reset(scope);
-      self.js_recv_cb.reset(scope);
-      for (_key, handle) in self.pending_promise_exceptions.iter_mut() {
-        handle.reset(scope);
-      }
-    }
     if let Some(creator) = self.snapshot_creator.take() {
+      // TODO(ry): in rusty_v8, `SnapShotCreator::get_owned_isolate()` returns
+      // a `struct OwnedIsolate` which is not actually owned, hence the need
+      // here to leak the `OwnedIsolate` in order to avoid a double free and
+      // the segfault that it causes.
+      let v8_isolate = self.v8_isolate.take().unwrap();
+      forget(v8_isolate);
+
       // TODO(ry) V8 has a strange assert which prevents a SnapshotCreator from
       // being deallocated if it hasn't created a snapshot yet.
       // https://github.com/v8/v8/blob/73212783fbd534fac76cc4b66aac899c13f71fc8/src/api.cc#L603
       // If that assert is removed, this if guard could be removed.
       // WARNING: There may be false positive LSAN errors here.
-      std::mem::forget(isolate);
       if self.has_snapshotted {
         drop(creator);
       }
-    } else {
-      drop(isolate);
     }
   }
 }
@@ -274,12 +258,9 @@ impl Isolate {
       let mut creator =
         v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
       let isolate = unsafe { creator.get_owned_isolate() };
-      let isolate = Isolate::setup_isolate(isolate);
+      let mut isolate = Isolate::setup_isolate(isolate);
 
-      let mut locker = v8::Locker::new(&isolate);
-      let scope = locker.enter();
-
-      let mut hs = v8::HandleScope::new(scope);
+      let mut hs = v8::HandleScope::new(&mut isolate);
       let scope = hs.enter();
 
       let context = bindings::initialize_context(scope);
@@ -296,12 +277,9 @@ impl Isolate {
       }
 
       let isolate = v8::Isolate::new(params);
-      let isolate = Isolate::setup_isolate(isolate);
+      let mut isolate = Isolate::setup_isolate(isolate);
 
-      let mut locker = v8::Locker::new(&isolate);
-      let scope = locker.enter();
-
-      let mut hs = v8::HandleScope::new(scope);
+      let mut hs = v8::HandleScope::new(&mut isolate);
       let scope = hs.enter();
 
       let context = match load_snapshot {
@@ -322,23 +300,23 @@ impl Isolate {
 
     let core_isolate = Self {
       v8_isolate: None,
-      last_exception: None,
       global_context,
       pending_promise_exceptions: HashMap::new(),
       shared_ab: v8::Global::<v8::SharedArrayBuffer>::new(),
       js_recv_cb: v8::Global::<v8::Function>::new(),
+      js_macrotask_cb: v8::Global::<v8::Function>::new(),
       snapshot_creator: maybe_snapshot_creator,
       snapshot: load_snapshot,
       has_snapshotted: false,
       shared_isolate_handle: Arc::new(Mutex::new(None)),
-      js_error_create: Arc::new(CoreJSError::from_v8_exception),
+      js_error_create_fn: Box::new(JSError::create),
       shared,
       needs_init,
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
       have_unpolled_ops: false,
       startup_script,
-      op_registry: Arc::new(OpRegistry::new()),
+      op_registry: Rc::new(OpRegistry::new()),
       waker: AtomicWaker::new(),
       error_handler: None,
       inspector_handle: None,
@@ -362,73 +340,7 @@ impl Isolate {
   pub fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(bindings::promise_reject_callback);
-    isolate.add_message_listener(bindings::message_callback);
     isolate
-  }
-
-  pub fn exception_to_err_result<'a, T>(
-    &mut self,
-    scope: &mut (impl v8::ToLocal<'a> + v8::InContext),
-    exception: v8::Local<v8::Value>,
-  ) -> Result<T, ErrBox> {
-    self.handle_exception(scope, exception);
-    self.check_last_exception().map(|_| unreachable!())
-  }
-
-  pub fn handle_exception<'a>(
-    &mut self,
-    scope: &mut (impl v8::ToLocal<'a> + v8::InContext),
-    exception: v8::Local<v8::Value>,
-  ) {
-    // Use a HandleScope because the  functions below create a lot of
-    // local handles (in particular, `encode_message_as_json()` does).
-    let mut hs = v8::HandleScope::new(scope);
-    let scope = hs.enter();
-
-    let is_terminating_exception = scope.isolate().is_execution_terminating();
-    let mut exception = exception;
-
-    if is_terminating_exception {
-      // TerminateExecution was called. Cancel exception termination so that the
-      // exception can be created..
-      scope.isolate().cancel_terminate_execution();
-
-      // Maybe make a new exception object.
-      if exception.is_null_or_undefined() {
-        let exception_str =
-          v8::String::new(scope, "execution terminated").unwrap();
-        exception = v8::Exception::error(scope, exception_str);
-      }
-    }
-
-    let message = v8::Exception::create_message(scope, exception);
-    let json_str = self.encode_message_as_json(scope, message);
-    self.last_exception = Some(json_str);
-
-    if is_terminating_exception {
-      // Re-enable exception termination.
-      scope.isolate().terminate_execution();
-    }
-  }
-
-  pub fn encode_message_as_json<'a>(
-    &mut self,
-    scope: &mut (impl v8::ToLocal<'a> + v8::InContext),
-    message: v8::Local<v8::Message>,
-  ) -> String {
-    let context = scope.isolate().get_current_context();
-    let json_obj = bindings::encode_message_as_object(scope, message);
-    let json_string = v8::json::stringify(context, json_obj.into()).unwrap();
-    json_string.to_rust_string_lossy(scope)
-  }
-
-  #[allow(dead_code)]
-  pub fn run_microtasks(&mut self) {
-    let isolate = self.v8_isolate.as_mut().unwrap();
-    let _locker = v8::Locker::new(isolate);
-    // isolate.enter();
-    isolate.run_microtasks();
-    // isolate.exit();
   }
 
   pub fn set_inspector_handle(&mut self, handle: InspectorHandle) {
@@ -505,12 +417,6 @@ impl Isolate {
     // v8::platform::pump_message_loop(V*_::get(), isolate)
   }
 
-  // TODO(bartlomieju): `error_handler` should be removed
-  #[allow(dead_code)]
-  pub fn set_error_handler(&mut self, handler: Box<IsolateErrorHandleFn>) {
-    self.error_handler = Some(handler);
-  }
-
   /// Defines the how Deno.core.dispatch() acts.
   /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
   /// corresponds to the second argument of Deno.core.dispatch().
@@ -518,26 +424,19 @@ impl Isolate {
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
   pub fn register_op<F>(&self, name: &str, op: F) -> OpId
   where
-    F: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + Send + Sync + 'static,
+    F: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + 'static,
   {
     self.op_registry.register(name, op)
   }
 
   /// Allows a callback to be set whenever a V8 exception is made. This allows
-  /// the caller to wrap the V8Exception into an error. By default this callback
-  /// is set to CoreJSError::from_v8_exception.
-  pub fn set_js_error_create<F>(&mut self, f: F)
-  where
-    F: Fn(V8Exception) -> ErrBox + 'static,
-  {
-    self.js_error_create = Arc::new(f);
-  }
-
-  /// Get a thread safe handle on the isolate.
-  pub fn shared_isolate_handle(&mut self) -> IsolateHandle {
-    IsolateHandle {
-      shared_isolate: self.shared_isolate_handle.clone(),
-    }
+  /// the caller to wrap the JSError into an error. By default this callback
+  /// is set to JSError::create.
+  pub fn set_js_error_create_fn(
+    &mut self,
+    f: impl Fn(JSError) -> ErrBox + 'static,
+  ) {
+    self.js_error_create_fn = Box::new(f);
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
@@ -556,7 +455,7 @@ impl Isolate {
 
   pub fn dispatch_op<'s>(
     &mut self,
-    scope: &mut (impl v8::ToLocal<'s> + v8::InContext),
+    scope: &mut impl v8::ToLocal<'s>,
     op_id: OpId,
     control_buf: &[u8],
     zero_copy_buf: Option<ZeroCopyBuf>,
@@ -584,13 +483,13 @@ impl Isolate {
       }
       Op::Async(fut) => {
         let fut2 = fut.map_ok(move |buf| (op_id, buf));
-        self.pending_ops.push(fut2.boxed());
+        self.pending_ops.push(fut2.boxed_local());
         self.have_unpolled_ops = true;
         None
       }
       Op::AsyncUnref(fut) => {
         let fut2 = fut.map_ok(move |buf| (op_id, buf));
-        self.pending_unref_ops.push(fut2.boxed());
+        self.pending_unref_ops.push(fut2.boxed_local());
         self.have_unpolled_ops = true;
         None
       }
@@ -600,8 +499,8 @@ impl Isolate {
   /// Executes traditional JavaScript code (traditional = not ES modules)
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is CoreJSError, however it may be a
-  /// different type if Isolate::set_js_error_create() has been used.
+  /// the V8 exception. By default this type is JSError, however it may be a
+  /// different type if Isolate::set_js_error_create_fn() has been used.
   pub fn execute(
     &mut self,
     js_filename: &str,
@@ -609,11 +508,12 @@ impl Isolate {
   ) -> Result<(), ErrBox> {
     self.shared_init();
 
-    let isolate = self.v8_isolate.as_ref().unwrap();
-    let mut locker = v8::Locker::new(isolate);
-    assert!(!self.global_context.is_empty());
-    let mut hs = v8::HandleScope::new(locker.enter());
+    let js_error_create_fn = &*self.js_error_create_fn;
+    let v8_isolate = self.v8_isolate.as_mut().unwrap();
+
+    let mut hs = v8::HandleScope::new(v8_isolate);
     let scope = hs.enter();
+    assert!(!self.global_context.is_empty());
     let context = self.global_context.get(scope).unwrap();
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
@@ -632,75 +532,8 @@ impl Isolate {
       None => {
         assert!(tc.has_caught());
         let exception = tc.exception().unwrap();
-        self.exception_to_err_result(scope, exception)
+        exception_to_err_result(scope, exception, js_error_create_fn)
       }
-    }
-  }
-
-  pub(crate) fn check_last_exception(&mut self) -> Result<(), ErrBox> {
-    match self.last_exception.take() {
-      None => Ok(()),
-      Some(json_str) => {
-        let v8_exception = V8Exception::from_json(&json_str).unwrap();
-        let js_error = (self.js_error_create)(v8_exception);
-        Err(js_error)
-      }
-    }
-  }
-
-  pub(crate) fn attach_handle_to_error(
-    &mut self,
-    scope: &mut impl v8::InIsolate,
-    err: ErrBox,
-    handle: v8::Local<v8::Value>,
-  ) -> ErrBox {
-    ErrWithV8Handle::new(scope, err, handle).into()
-  }
-
-  fn check_promise_exceptions<'s>(
-    &mut self,
-    scope: &mut (impl v8::ToLocal<'s> + v8::InContext),
-  ) -> Result<(), ErrBox> {
-    if let Some(&key) = self.pending_promise_exceptions.keys().next() {
-      let mut handle = self.pending_promise_exceptions.remove(&key).unwrap();
-      let exception = handle.get(scope).expect("empty error handle");
-      handle.reset(scope);
-      self.exception_to_err_result(scope, exception)
-    } else {
-      Ok(())
-    }
-  }
-
-  fn async_op_response<'s>(
-    &mut self,
-    scope: &mut (impl v8::ToLocal<'s> + v8::InContext),
-    maybe_buf: Option<(OpId, Box<[u8]>)>,
-  ) -> Result<(), ErrBox> {
-    let context = scope.isolate().get_current_context();
-    let global: v8::Local<v8::Value> = context.global(scope).into();
-    let js_recv_cb = self
-      .js_recv_cb
-      .get(scope)
-      .expect("Deno.core.recv has not been called.");
-
-    // TODO(piscisaureus): properly integrate TryCatch in the scope chain.
-    let mut try_catch = v8::TryCatch::new(scope);
-    let tc = try_catch.enter();
-
-    match maybe_buf {
-      Some((op_id, buf)) => {
-        let op_id: v8::Local<v8::Value> =
-          v8::Integer::new(scope, op_id as i32).into();
-        let ui8: v8::Local<v8::Value> =
-          bindings::boxed_slice_to_uint8array(scope, buf).into();
-        js_recv_cb.call(scope, context, global, &[op_id, ui8])
-      }
-      None => js_recv_cb.call(scope, context, global, &[]),
-    };
-
-    match tc.exception() {
-      None => Ok(()),
-      Some(exception) => self.exception_to_err_result(scope, exception),
     }
   }
 
@@ -708,23 +541,28 @@ impl Isolate {
   /// set to true.
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is CoreJSError, however it may be a
-  /// different type if Isolate::set_js_error_create() has been used.
-  pub fn snapshot(&mut self) -> Result<v8::OwnedStartupData, ErrBox> {
+  /// the V8 exception. By default this type is JSError, however it may be a
+  /// different type if Isolate::set_js_error_create_fn() has been used.
+  pub fn snapshot(&mut self) -> v8::OwnedStartupData {
     assert!(self.snapshot_creator.is_some());
 
-    let isolate = self.v8_isolate.as_ref().unwrap();
-    let mut locker = v8::Locker::new(isolate);
-    let mut hs = v8::HandleScope::new(locker.enter());
-    let scope = hs.enter();
-    self.global_context.reset(scope);
+    // Note: create_blob() method must not be called from within a HandleScope.
+    // The HandleScope created here is exited at the end of the block.
+    // TODO(piscisaureus): The rusty_v8 type system should enforce this.
+    {
+      let v8_isolate = self.v8_isolate.as_mut().unwrap();
+      let mut hs = v8::HandleScope::new(v8_isolate);
+      let scope = hs.enter();
+      self.global_context.reset(scope);
+    }
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
       .create_blob(v8::FunctionCodeHandling::Keep)
       .unwrap();
     self.has_snapshotted = true;
-    self.check_last_exception().map(|_| snapshot)
+
+    snapshot
   }
 }
 
@@ -736,14 +574,23 @@ impl Future for Isolate {
     inner.waker.register(cx.waker());
     inner.shared_init();
 
-    let mut locker = v8::Locker::new(&*inner.v8_isolate.as_mut().unwrap());
-    let mut hs = v8::HandleScope::new(locker.enter());
+    let v8_isolate = inner.v8_isolate.as_mut().unwrap();
+    let js_error_create_fn = &*inner.js_error_create_fn;
+    let js_recv_cb = &inner.js_recv_cb;
+    let js_macrotask_cb = &inner.js_macrotask_cb;
+    let pending_promise_exceptions = &mut inner.pending_promise_exceptions;
+
+    let mut hs = v8::HandleScope::new(v8_isolate);
     let scope = hs.enter();
     let context = inner.global_context.get(scope).unwrap();
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
-    inner.check_promise_exceptions(scope)?;
+    check_promise_exceptions(
+      scope,
+      pending_promise_exceptions,
+      js_error_create_fn,
+    )?;
 
     let mut overflow_response: Option<(OpId, Buf)> = None;
 
@@ -771,17 +618,28 @@ impl Future for Isolate {
     }
 
     if inner.shared.size() > 0 {
-      inner.async_op_response(scope, None)?;
+      async_op_response(scope, None, js_recv_cb, js_error_create_fn)?;
       // The other side should have shifted off all the messages.
       assert_eq!(inner.shared.size(), 0);
     }
 
     if overflow_response.is_some() {
       let (op_id, buf) = overflow_response.take().unwrap();
-      inner.async_op_response(scope, Some((op_id, buf)))?;
+      async_op_response(
+        scope,
+        Some((op_id, buf)),
+        js_recv_cb,
+        js_error_create_fn,
+      )?;
     }
 
-    inner.check_promise_exceptions(scope)?;
+    drain_macrotasks(scope, js_macrotask_cb, js_error_create_fn)?;
+
+    check_promise_exceptions(
+      scope,
+      pending_promise_exceptions,
+      js_error_create_fn,
+    )?;
 
     // We're idle if pending_ops is empty.
     if inner.pending_ops.is_empty() {
@@ -795,23 +653,138 @@ impl Future for Isolate {
   }
 }
 
-/// IsolateHandle is a thread safe handle on an Isolate. It exposed thread safe V8 functions.
-#[derive(Clone)]
-pub struct IsolateHandle {
-  shared_isolate: Arc<Mutex<Option<*mut v8::Isolate>>>,
+fn async_op_response<'s>(
+  scope: &mut impl v8::ToLocal<'s>,
+  maybe_buf: Option<(OpId, Box<[u8]>)>,
+  js_recv_cb: &v8::Global<v8::Function>,
+  js_error_create_fn: &JSErrorCreateFn,
+) -> Result<(), ErrBox> {
+  let context = scope.get_current_context().unwrap();
+  let global: v8::Local<v8::Value> = context.global(scope).into();
+  let js_recv_cb = js_recv_cb
+    .get(scope)
+    .expect("Deno.core.recv has not been called.");
+
+  // TODO(piscisaureus): properly integrate TryCatch in the scope chain.
+  let mut try_catch = v8::TryCatch::new(scope);
+  let tc = try_catch.enter();
+
+  match maybe_buf {
+    Some((op_id, buf)) => {
+      let op_id: v8::Local<v8::Value> =
+        v8::Integer::new(scope, op_id as i32).into();
+      let ui8: v8::Local<v8::Value> =
+        bindings::boxed_slice_to_uint8array(scope, buf).into();
+      js_recv_cb.call(scope, context, global, &[op_id, ui8])
+    }
+    None => js_recv_cb.call(scope, context, global, &[]),
+  };
+
+  match tc.exception() {
+    None => Ok(()),
+    Some(exception) => {
+      exception_to_err_result(scope, exception, js_error_create_fn)
+    }
+  }
 }
 
-unsafe impl Send for IsolateHandle {}
+fn drain_macrotasks<'s>(
+  scope: &mut impl v8::ToLocal<'s>,
+  js_macrotask_cb: &v8::Global<v8::Function>,
+  js_error_create_fn: &JSErrorCreateFn,
+) -> Result<(), ErrBox> {
+  let context = scope.get_current_context().unwrap();
+  let global: v8::Local<v8::Value> = context.global(scope).into();
+  let js_macrotask_cb = js_macrotask_cb.get(scope);
+  if js_macrotask_cb.is_none() {
+    return Ok(());
+  }
+  let js_macrotask_cb = js_macrotask_cb.unwrap();
 
-impl IsolateHandle {
-  /// Terminate the execution of any currently running javascript.
-  /// After terminating execution it is probably not wise to continue using
-  /// the isolate.
-  pub fn terminate_execution(&self) {
-    if let Some(isolate) = *self.shared_isolate.lock().unwrap() {
-      let isolate = unsafe { &mut *isolate };
-      isolate.terminate_execution();
+  // Repeatedly invoke macrotask callback until it returns true (done),
+  // such that ready microtasks would be automatically run before
+  // next macrotask is processed.
+  loop {
+    let mut try_catch = v8::TryCatch::new(scope);
+    let tc = try_catch.enter();
+
+    let is_done = js_macrotask_cb.call(scope, context, global, &[]);
+
+    if let Some(exception) = tc.exception() {
+      return exception_to_err_result(scope, exception, js_error_create_fn);
     }
+
+    let is_done = is_done.unwrap();
+    if is_done.is_true() {
+      break;
+    }
+  }
+
+  Ok(())
+}
+
+pub(crate) fn attach_handle_to_error(
+  scope: &mut impl v8::InIsolate,
+  err: ErrBox,
+  handle: v8::Local<v8::Value>,
+) -> ErrBox {
+  ErrWithV8Handle::new(scope, err, handle).into()
+}
+
+pub(crate) fn exception_to_err_result<'s, T>(
+  scope: &mut impl v8::ToLocal<'s>,
+  exception: v8::Local<v8::Value>,
+  js_error_create_fn: &JSErrorCreateFn,
+) -> Result<T, ErrBox> {
+  // TODO(piscisaureus): in rusty_v8, `is_execution_terminating()` should
+  // also be implemented on `struct Isolate`.
+  let is_terminating_exception = scope
+    .isolate()
+    .thread_safe_handle()
+    .is_execution_terminating();
+  let mut exception = exception;
+
+  if is_terminating_exception {
+    // TerminateExecution was called. Cancel exception termination so that the
+    // exception can be created..
+    // TODO(piscisaureus): in rusty_v8, `cancel_terminate_execution()` should
+    // also be implemented on `struct Isolate`.
+    scope
+      .isolate()
+      .thread_safe_handle()
+      .cancel_terminate_execution();
+
+    // Maybe make a new exception object.
+    if exception.is_null_or_undefined() {
+      let message = v8::String::new(scope, "execution terminated").unwrap();
+      exception = v8::Exception::error(scope, message);
+    }
+  }
+
+  let js_error = JSError::from_v8_exception(scope, exception);
+  let js_error = (js_error_create_fn)(js_error);
+
+  if is_terminating_exception {
+    // Re-enable exception termination.
+    // TODO(piscisaureus): in rusty_v8, `terminate_execution()` should also
+    // be implemented on `struct Isolate`.
+    scope.isolate().thread_safe_handle().terminate_execution();
+  }
+
+  Err(js_error)
+}
+
+fn check_promise_exceptions<'s>(
+  scope: &mut impl v8::ToLocal<'s>,
+  pending_promise_exceptions: &mut HashMap<i32, v8::Global<v8::Value>>,
+  js_error_create_fn: &JSErrorCreateFn,
+) -> Result<(), ErrBox> {
+  if let Some(&key) = pending_promise_exceptions.keys().next() {
+    let handle = pending_promise_exceptions.remove(&key).unwrap();
+    let exception = handle.get(scope).expect("empty error handle");
+    exception_to_err_result(scope, exception, js_error_create_fn)
+  } else {
+    Ok(())
   }
 }
 
@@ -875,7 +848,7 @@ pub mod tests {
           Mode::Async => {
             assert_eq!(control.len(), 1);
             assert_eq!(control[0], 42);
-            let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
+            let buf = vec![43u8].into_boxed_slice();
             Op::Async(futures::future::ok(buf).boxed())
           }
           Mode::AsyncUnref => {
@@ -884,14 +857,14 @@ pub mod tests {
             let fut = async {
               // This future never finish.
               futures::future::pending::<()>().await;
-              let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
+              let buf = vec![43u8].into_boxed_slice();
               Ok(buf)
             };
             Op::AsyncUnref(fut.boxed())
           }
           Mode::OverflowReqSync => {
             assert_eq!(control.len(), 100 * 1024 * 1024);
-            let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
+            let buf = vec![43u8].into_boxed_slice();
             Op::Sync(buf)
           }
           Mode::OverflowResSync => {
@@ -905,7 +878,7 @@ pub mod tests {
           }
           Mode::OverflowReqAsync => {
             assert_eq!(control.len(), 100 * 1024 * 1024);
-            let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
+            let buf = vec![43u8].into_boxed_slice();
             Op::Async(futures::future::ok(buf).boxed())
           }
           Mode::OverflowResAsync => {
@@ -1033,60 +1006,61 @@ pub mod tests {
 
   #[test]
   fn terminate_execution() {
-    let (tx, rx) = std::sync::mpsc::channel::<bool>();
-    let tx_clone = tx.clone();
-
     let (mut isolate, _dispatch_count) = setup(Mode::Async);
-    let shared = isolate.shared_isolate_handle();
+    // TODO(piscisaureus): in rusty_v8, the `thread_safe_handle()` method
+    // should not require a mutable reference to `struct rusty_v8::Isolate`.
+    let v8_isolate_handle =
+      isolate.v8_isolate.as_mut().unwrap().thread_safe_handle();
 
-    let t1 = std::thread::spawn(move || {
+    let terminator_thread = std::thread::spawn(move || {
       // allow deno to boot and run
       std::thread::sleep(std::time::Duration::from_millis(100));
 
       // terminate execution
-      shared.terminate_execution();
-
-      // allow shutdown
-      std::thread::sleep(std::time::Duration::from_millis(200));
-
-      // unless reported otherwise the test should fail after this point
-      tx_clone.send(false).ok();
+      let ok = v8_isolate_handle.terminate_execution();
+      assert!(ok);
     });
 
-    let t2 = std::thread::spawn(move || {
-      // Rn an infinite loop, which should be terminated.
-      match isolate.execute("infinite_loop.js", "for(;;) {}") {
-        Ok(_) => panic!("execution should be terminated"),
-        Err(e) => {
-          assert_eq!(e.to_string(), "Uncaught Error: execution terminated")
-        }
-      };
+    // Rn an infinite loop, which should be terminated.
+    match isolate.execute("infinite_loop.js", "for(;;) {}") {
+      Ok(_) => panic!("execution should be terminated"),
+      Err(e) => {
+        assert_eq!(e.to_string(), "Uncaught Error: execution terminated")
+      }
+    };
 
-      // `execute()` returned, which means `terminate_execution()` worked.
-      tx.send(true).ok();
+    // Cancel the execution-terminating exception in order to allow script
+    // execution again.
+    // TODO(piscisaureus): in rusty_v8, `cancel_terminate_execution()` should
+    // also be implemented on `struct Isolate`.
+    let ok = isolate
+      .v8_isolate
+      .as_mut()
+      .unwrap()
+      .thread_safe_handle()
+      .cancel_terminate_execution();
+    assert!(ok);
 
-      // Make sure the isolate unusable again.
-      isolate
-        .execute("simple.js", "1 + 1")
-        .expect("execution should be possible again");
-    });
+    // Verify that the isolate usable again.
+    isolate
+      .execute("simple.js", "1 + 1")
+      .expect("execution should be possible again");
 
-    rx.recv().expect("execution should be terminated");
-
-    t1.join().unwrap();
-    t2.join().unwrap();
+    terminator_thread.join().unwrap();
   }
 
   #[test]
   fn dangling_shared_isolate() {
-    let shared = {
+    let v8_isolate_handle = {
       // isolate is dropped at the end of this block
       let (mut isolate, _dispatch_count) = setup(Mode::Async);
-      isolate.shared_isolate_handle()
+      // TODO(piscisaureus): in rusty_v8, the `thread_safe_handle()` method
+      // should not require a mutable reference to `struct rusty_v8::Isolate`.
+      isolate.v8_isolate.as_mut().unwrap().thread_safe_handle()
     };
 
     // this should not SEGFAULT
-    shared.terminate_execution();
+    v8_isolate_handle.terminate_execution();
   }
 
   #[test]
@@ -1101,7 +1075,7 @@ pub mod tests {
         let control = new Uint8Array(100 * 1024 * 1024);
         let response = Deno.core.dispatch(1, control);
         assert(response instanceof Uint8Array);
-        assert(response.length == 4);
+        assert(response.length == 1);
         assert(response[0] == 43);
         assert(asyncRecv == 0);
         "#,
@@ -1140,7 +1114,7 @@ pub mod tests {
         r#"
          let asyncRecv = 0;
          Deno.core.setAsyncHandler(1, (buf) => {
-           assert(buf.byteLength === 4);
+           assert(buf.byteLength === 1);
            assert(buf[0] === 43);
            asyncRecv++;
          });
@@ -1259,13 +1233,25 @@ pub mod tests {
   }
 
   #[test]
+  fn test_encode_decode() {
+    run_in_task(|mut cx| {
+      let (mut isolate, _dispatch_count) = setup(Mode::Async);
+      js_check(isolate.execute(
+        "encode_decode_test.js",
+        include_str!("encode_decode_test.js"),
+      ));
+      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
+        unreachable!();
+      }
+    });
+  }
+
+  #[test]
   fn will_snapshot() {
     let snapshot = {
       let mut isolate = Isolate::new(StartupData::None, true);
       js_check(isolate.execute("a.js", "a = 1 + 2"));
-      let s = isolate.snapshot().unwrap();
-      drop(isolate);
-      s
+      isolate.snapshot()
     };
 
     let startup_data = StartupData::OwnedSnapshot(snapshot);
@@ -1291,8 +1277,8 @@ impl ErrWithV8Handle {
     Self { err, handle }
   }
 
-  pub fn get_handle(&mut self) -> &mut v8::Global<v8::Value> {
-    &mut self.handle
+  pub fn get_handle(&self) -> &v8::Global<v8::Value> {
+    &self.handle
   }
 }
 

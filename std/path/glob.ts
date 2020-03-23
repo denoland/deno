@@ -1,7 +1,7 @@
 import { SEP, SEP_PATTERN } from "./constants.ts";
 import { globrex } from "./globrex.ts";
 import { join, normalize } from "./mod.ts";
-const { DenoError, ErrorKind } = Deno;
+import { assert } from "../testing/asserts.ts";
 
 export interface GlobOptions {
   extended?: boolean;
@@ -38,10 +38,16 @@ export interface GlobToRegExpOptions extends GlobOptions {
  */
 export function globToRegExp(
   glob: string,
-  options: GlobToRegExpOptions = {}
+  { extended = false, globstar = true }: GlobToRegExpOptions = {}
 ): RegExp {
-  const result = globrex(glob, { ...options, strict: false, filepath: true });
-  return result.path!.regex;
+  const result = globrex(glob, {
+    extended,
+    globstar,
+    strict: false,
+    filepath: true
+  });
+  assert(result.path != null);
+  return result.path.regex;
 }
 
 /** Test whether the given string is a glob */
@@ -83,10 +89,7 @@ export function normalizeGlob(
   { globstar = false }: GlobOptions = {}
 ): string {
   if (!!glob.match(/\0/g)) {
-    throw new DenoError(
-      ErrorKind.InvalidPath,
-      `Glob contains invalid characters: "${glob}"`
-    );
+    throw new Error(`Glob contains invalid characters: "${glob}"`);
   }
   if (!globstar) {
     return normalize(glob);

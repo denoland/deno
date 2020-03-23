@@ -35,16 +35,16 @@ pub fn json_op(d: Dispatcher) -> impl Fn(&mut TSState, &[u8]) -> CoreOp {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ReadFile {
-  file_name: String,
+struct LoadModule {
+  module_url: String,
   language_version: Option<i32>,
   should_create_new_source_file: bool,
 }
 
-pub fn read_file(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
-  let v: ReadFile = serde_json::from_value(v)?;
-  let (module_name, source_code) = if v.file_name.starts_with("$asset$/") {
-    let asset = v.file_name.replace("$asset$/", "");
+pub fn op_load_module(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+  let v: LoadModule = serde_json::from_value(v)?;
+  let (module_name, source_code) = if v.module_url.starts_with("$asset$/") {
+    let asset = v.module_url.replace("$asset$/", "");
 
     let source_code = match crate::get_asset(&asset) {
       Some(code) => code.to_string(),
@@ -58,14 +58,31 @@ pub fn read_file(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
 
     (asset, source_code)
   } else {
-    assert!(!v.file_name.starts_with("$assets$"), "you meant $asset$");
-    let module_specifier = ModuleSpecifier::resolve_url_or_path(&v.file_name)?;
-    let path = module_specifier.as_url().to_file_path().unwrap();
-    println!("cargo:rerun-if-changed={}", path.display());
-    (
-      module_specifier.as_str().to_string(),
-      std::fs::read_to_string(&path)?,
-    )
+    assert!(!v.module_url.starts_with("$assets$"), "you meant $asset$");
+    let module_specifier = ModuleSpecifier::resolve_url_or_path(&v.module_url)?;
+    let module_url = module_specifier.as_url();
+    match module_url.scheme() {
+      "file" => {
+        let path = module_url.to_file_path().unwrap();
+        println!("cargo:rerun-if-changed={}", path.display());
+        (
+          module_specifier.as_str().to_string(),
+          std::fs::read_to_string(&path)?,
+        )
+      }
+      "crate" => {
+        let crate_name = module_url.host_str().unwrap();
+        // TODO(afinch7) turn failures here into real error messages.
+        let path_prefix = s.extern_crate_modules.get(crate_name).unwrap();
+        let path =
+          std::path::Path::new(path_prefix).join(&module_url.path()[1..]);
+        (
+          module_specifier.as_str().to_string(),
+          std::fs::read_to_string(&path)?,
+        )
+      }
+      _ => unimplemented!(),
+    }
   };
   Ok(json!({
     "moduleName": module_name,
@@ -81,7 +98,7 @@ struct WriteFile {
   module_name: String,
 }
 
-pub fn write_file(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn op_write_file(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: WriteFile = serde_json::from_value(v)?;
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&v.file_name)?;
   if s.bundle {
@@ -102,7 +119,7 @@ struct ResolveModuleNames {
   containing_file: String,
 }
 
-pub fn resolve_module_names(
+pub fn op_resolve_module_names(
   _s: &mut TSState,
   v: Value,
 ) -> Result<Value, ErrBox> {
@@ -126,7 +143,7 @@ struct Exit {
   code: i32,
 }
 
-pub fn exit(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn op_exit2(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: Exit = serde_json::from_value(v)?;
   s.exit_code = v.code;
   std::process::exit(v.code)
@@ -140,7 +157,7 @@ pub struct EmitResult {
   pub emitted_files: Vec<String>,
 }
 
-pub fn set_emit_result(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn op_set_emit_result(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: EmitResult = serde_json::from_value(v)?;
   s.emit_result = Some(v);
   Ok(json!(true))

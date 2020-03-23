@@ -20,19 +20,15 @@ import http_server
 
 # The list of the tuples of the benchmark name and arguments
 exec_time_benchmarks = [
-    ("hello", ["tests/002_hello.ts"]),
-    ("relative_import", ["tests/003_relative_import.ts"]),
-    ("error_001", ["tests/error_001.ts"]),
-    ("cold_hello", ["--reload", "tests/002_hello.ts"]),
-    ("cold_relative_import", ["--reload", "tests/003_relative_import.ts"]),
-    ("workers_startup", ["tests/workers_startup_bench.ts"]),
-    ("workers_round_robin", ["tests/workers_round_robin_bench.ts"]),
+    ("hello", ["cli/tests/002_hello.ts"]),
+    ("relative_import", ["cli/tests/003_relative_import.ts"]),
+    ("error_001", ["cli/tests/error_001.ts"]),
+    ("cold_hello", ["--reload", "cli/tests/002_hello.ts"]),
+    ("cold_relative_import", ["--reload", "cli/tests/003_relative_import.ts"]),
+    ("workers_startup", ["cli/tests/workers_startup_bench.ts"]),
+    ("workers_round_robin", ["cli/tests/workers_round_robin_bench.ts"]),
     ("text_decoder", ["cli/tests/text_decoder_perf.js"]),
     ("text_encoder", ["cli/tests/text_encoder_perf.js"]),
-    ("compile_local_prettier", ["fetch", "--reload", "std/prettier/main.ts"]),
-    ("compile_remote_prettier",
-     ["fetch", "--reload",
-      "https://deno.land/x/std@v0.29.0/prettier/main.ts"]),
 ]
 
 
@@ -227,15 +223,8 @@ def bundle_benchmark(deno_exe):
     return sizes
 
 
-def main(argv):
-    if len(argv) == 2:
-        build_dir = sys.argv[1]
-    elif len(argv) == 1:
-        build_dir = build_path()
-    else:
-        print "Usage: tools/benchmark.py [build_dir]"
-        sys.exit(1)
-
+def main():
+    build_dir = build_path()
     sha1 = run_output(["git", "rev-parse", "HEAD"],
                       exit_on_fail=True).out.strip()
     http_server.spawn()
@@ -275,4 +264,4 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    main(sys.argv)
+    main()

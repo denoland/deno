@@ -10,9 +10,9 @@ import { copyN } from "../io/ioutil.ts";
 import { MultiReader } from "../io/readers.ts";
 import { extname } from "../path/mod.ts";
 import { tempFile } from "../io/util.ts";
-import { BufReader, BufWriter, UnexpectedEOFError } from "../io/bufio.ts";
+import { BufReader, BufWriter } from "../io/bufio.ts";
 import { encoder } from "../strings/mod.ts";
-import { assertStrictEq } from "../testing/asserts.ts";
+import { assertStrictEq, assert } from "../testing/asserts.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { hasOwnProperty } from "../util/has_own_property.ts";
 
@@ -166,7 +166,7 @@ class PartReader implements Reader, Closer {
       peekLength = max(peekLength, br.buffered());
       const peekBuf = await br.peek(peekLength);
       if (peekBuf === Deno.EOF) {
-        throw new UnexpectedEOFError();
+        throw new Deno.errors.UnexpectedEof();
       }
       const eof = peekBuf.length < peekLength;
       this.n = scanUntilBoundary(
@@ -205,7 +205,8 @@ class PartReader implements Reader, Closer {
     if (this.contentDispositionParams) return this.contentDispositionParams;
     const cd = this.headers.get("content-disposition");
     const params: { [key: string]: string } = {};
-    const comps = cd!.split(";");
+    assert(cd != null, "content-disposition must be set");
+    const comps = cd.split(";");
     this.contentDisposition = comps[0];
     comps
       .slice(1)
@@ -265,10 +266,12 @@ export class MultipartReader {
   /** Read all form data from stream.
    * If total size of stored data in memory exceed maxMemory,
    * overflowed file data will be written to temporal files.
-   * String field values are never written to files */
+   * String field values are never written to files.
+   * null value means parsing or writing to file was failed in some reason.
+   *  */
   async readForm(
     maxMemory: number
-  ): Promise<{ [key: string]: string | FormFile }> {
+  ): Promise<{ [key: string]: null | string | FormFile }> {
     const result = Object.create(null);
     let maxValueBytes = maxMemory + (10 << 20);
     const buf = new Buffer(new Uint8Array(maxValueBytes));
@@ -293,8 +296,10 @@ export class MultipartReader {
         continue;
       }
       // file
-      let formFile: FormFile;
+      let formFile: FormFile | null = null;
       const n = await copy(buf, p);
+      const contentType = p.headers.get("content-type");
+      assert(contentType != null, "content-type must be set");
       if (n > maxMemory) {
         // too big, write to disk and flush buffer
         const ext = extname(p.fileName);
@@ -311,7 +316,7 @@ export class MultipartReader {
           file.close();
           formFile = {
             filename: p.fileName,
-            type: p.headers.get("content-type")!,
+            type: contentType,
             tempfile: filepath,
             size
           };
@@ -321,14 +326,14 @@ export class MultipartReader {
       } else {
         formFile = {
           filename: p.fileName,
-          type: p.headers.get("content-type")!,
+          type: contentType,
           content: buf.bytes(),
           size: buf.length
         };
         maxMemory -= n;
         maxValueBytes -= n;
       }
-      result[p.formName] = formFile!;
+      result[p.formName] = formFile;
     }
     return result;
   }
@@ -347,14 +352,14 @@ export class MultipartReader {
     for (;;) {
       const line = await this.bufReader.readSlice("\n".charCodeAt(0));
       if (line === Deno.EOF) {
-        throw new UnexpectedEOFError();
+        throw new Deno.errors.UnexpectedEof();
       }
       if (this.isBoundaryDelimiterLine(line)) {
         this.partsRead++;
         const r = new TextProtoReader(this.bufReader);
         const headers = await r.readMIMEHeader();
         if (headers === Deno.EOF) {
-          throw new UnexpectedEOFError();
+          throw new Deno.errors.UnexpectedEof();
         }
         const np = new PartReader(this, headers);
         this.currentPart = np;
