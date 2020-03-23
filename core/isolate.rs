@@ -345,9 +345,8 @@ impl Isolate {
 
   pub fn set_inspector_handle(&mut self, handle: InspectorHandle) {
     let isolate = self.v8_isolate.as_mut().unwrap();
-    let mut locker = v8::Locker::new(isolate);
     assert!(!self.global_context.is_empty());
-    let mut hs = v8::HandleScope::new(locker.enter());
+    let mut hs = v8::HandleScope::new(isolate);
     let s = hs.enter();
     let context = self.global_context.get(s).unwrap();
 
@@ -394,9 +393,8 @@ impl Isolate {
   #[allow(unused)]
   pub fn inspector_message(&mut self, message: String) {
     let isolate = self.v8_isolate.as_ref().unwrap();
-    let mut locker = v8::Locker::new(isolate);
     assert!(!self.global_context.is_empty());
-    let mut hs = v8::HandleScope::new(locker.enter());
+    let mut hs = v8::HandleScope::new(isolate);
     let s = hs.enter();
     let mut context = self.global_context.get(s).unwrap();
     let mut cs = v8::ContextScope::new(s, context);
