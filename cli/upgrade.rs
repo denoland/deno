@@ -8,10 +8,10 @@
 
 extern crate semver_parser;
 use crate::futures::FutureExt;
-use crate::{
-  http_util::{fetch_once, FetchOnceResult},
-  ErrBox,
-};
+use crate::http_util::fetch_once;
+use crate::http_util::FetchOnceResult;
+use crate::op_error::OpError;
+use crate::ErrBox;
 use regex::Regex;
 use reqwest::{redirect::Policy, Client};
 use semver_parser::version::parse as semver_parse;
@@ -35,17 +35,6 @@ const ARCHIVE_NAME: &str = "deno-x86_64-pc-windows-msvc.zip";
 const ARCHIVE_NAME: &str = "deno-x86_64-apple-darwin.zip";
 #[cfg(target_os = "linux")]
 const ARCHIVE_NAME: &str = "deno-x86_64-unknown-linux-gnu.zip";
-
-struct ErrorMsg(String);
-
-impl ErrorMsg {
-  fn to_err_box(&self) -> ErrBox {
-    ErrBox::from(std::io::Error::new(
-      std::io::ErrorKind::Other,
-      self.0.clone(),
-    ))
-  }
-}
 
 async fn get_latest_version(client: &Client) -> Result<Version, ErrBox> {
   println!("Checking for latest version");
@@ -128,7 +117,7 @@ fn find_version(text: &str) -> Result<String, ErrBox> {
     let mat = _mat.as_str();
     return Ok(mat[1..mat.len() - 1].to_string());
   }
-  Err(ErrorMsg("Cannot read latest tag version".to_string()).to_err_box())
+  Err(OpError::other("Cannot read latest tag version".to_string()).into())
 }
 
 fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
@@ -186,8 +175,14 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
 }
 
 fn replace_exe(new: &Path, old: &Path) -> Result<(), ErrBox> {
-  fs::remove_file(old)?;
-  fs::rename(new, old)?;
+  if cfg!(windows) {
+    // On windows you cannot replace the currently running executable.
+    // so first we rename it to deno.old.exe
+    fs::rename(old, old.with_extension("old.exe"))?;
+  } else {
+    fs::remove_file(old)?;
+  }
+  fs::copy(new, old)?;
   Ok(())
 }
 
