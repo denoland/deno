@@ -212,15 +212,13 @@ fn op_send(
         let mut state = state_.borrow_mut();
         let resource = state
           .resource_table
-          .get_mut::<UdpSocketResource>(rid)
+          .get_mut::<UdpSocketResource>(rid as u32)
           .ok_or_else(|| {
             OpError::bad_resource("Socket has been closed".to_string())
           })?;
-    
         let socket = &mut resource.socket;
         let addr = resolve_addr(&args.hostname, args.port).await?;
         socket.send_to(&buf, addr).await?;
-    
         Ok(json!({}))
       };
 
@@ -282,9 +280,12 @@ fn op_connect(
         let local_addr = tcp_stream.local_addr()?;
         let remote_addr = tcp_stream.peer_addr()?;
         let mut state = state_.borrow_mut();
-        let rid = state
-          .resource_table
-          .add("tcpStream", StreamResource::TcpStream(tcp_stream));
+        let rid = state.resource_table.add(
+          "tcpStream",
+          Box::new(StreamResourceHolder::new(StreamResource::TcpStream(
+            tcp_stream,
+          ))),
+        );
         Ok(json!({
           "rid": rid,
           "localAddr": {

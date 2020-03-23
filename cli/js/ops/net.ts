@@ -32,7 +32,7 @@ interface AcceptResponse {
   remoteAddr: Addr;
 }
 
-export async function accept(
+export function accept(
   rid: number,
   transport: string
 ): Promise<AcceptResponse> {

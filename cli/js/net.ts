@@ -110,7 +110,7 @@ export class DatagramImpl implements DatagramConn {
 
   async send(p: Uint8Array, addr: Addr): Promise<void> {
     const remote = { hostname: "127.0.0.1", transport: "udp", ...addr };
-    if (remote.transport !== "udp") throw Error("Remote transport must be UDP");
+
     const args = { ...remote, rid: this.rid };
     await netOps.send(args as netOps.SendRequest, p);
   }
@@ -144,7 +144,7 @@ export interface Conn extends Reader, Writer, Closer {
 export interface ListenOptions {
   port: number;
   hostname?: string;
-  transport: "tcp" | "udp" | undefined;
+  transport?: "tcp" | "udp";
 }
 
 export interface UnixListenOptions {
@@ -152,31 +152,33 @@ export interface UnixListenOptions {
   address: string;
 }
 
-// export function listen(
-//   options: ListenOptions & { transport?: "tcp" }
-// ): Listener;
-// export function listen(
-//   options: UnixListenOptions & { transport: "unix" }
-// ): Listener;
-// export function listen(
-//   options: ListenOptions & { transport: "udp" }
-// ): DatagramConn;
-// export function listen(
-//   options: UnixListenOptions & { transport: "unixpacket" }
-// ): DatagramConn;
+export function listen(
+  options: ListenOptions & { transport?: "tcp" }
+): Listener;
+export function listen(
+  options: UnixListenOptions & { transport: "unix" }
+): Listener;
+export function listen(
+  options: ListenOptions & { transport: "udp" }
+): DatagramConn;
+export function listen(
+  options: UnixListenOptions & { transport: "unixpacket" }
+): DatagramConn;
 export function listen(
   options: ListenOptions | UnixListenOptions
 ): Listener | DatagramConn {
+  let res;
+
   if (options.transport === "unix" || options.transport === "unixpacket") {
-    return netOps.listen(options);
+    res = netOps.listen(options);
+  } else {
+    res = netOps.listen({
+      transport: "tcp",
+      hostname: "127.0.0.1",
+      ...(options as ListenOptions)
+    });
   }
-  return netOps.listen({
-    hostname: "127.0.0.1",
-    transport: "tcp",
-    ...options
-  });
-  const res = (() => {
-  })();
+
   if (options.transport === "tcp" || options.transport === "unix") {
     return new ListenerImpl(res.rid, res.localAddr);
   } else {
@@ -198,16 +200,17 @@ export async function connect(options: ConnectOptions): Promise<Conn>;
 export async function connect(
   options: ConnectOptions | UnixConnectOptions
 ): Promise<Conn> {
-  const res = await (async () => {
-    if (options.transport === "unix") {
-      return await netOps.connect(options);
-    }
-    return await netOps.connect({
+  let res;
+
+  if (options.transport === "unix") {
+    res = await netOps.connect(options);
+  } else {
+    res = await netOps.connect({
       transport: "tcp",
       hostname: "127.0.0.1",
       ...options
     });
-  })();
+  }
 
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }

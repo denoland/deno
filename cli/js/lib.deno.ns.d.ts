@@ -1543,6 +1543,8 @@ declare namespace Deno {
     transport: "unix" | "unixpacket";
     address: string;
   }
+
+  export type Addr = NetAddr | UnixAddr;
   /** **UNSTABLE**: Maybe remove `ShutdownMode` entirely.
    *
    * Corresponds to `SHUT_RD`, `SHUT_WR`, `SHUT_RDWR` on POSIX-like systems.
@@ -1578,7 +1580,7 @@ declare namespace Deno {
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * A generic transport listener for message-oriented protocols. */
-  export interface UDPConn extends AsyncIterable<[Uint8Array, Addr]> {
+  export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
     /** **UNSTABLE**: new API, yet to be vetted.
      *
      * Waits for and resolves to the next message to the `UDPConn`. */
@@ -1593,7 +1595,7 @@ declare namespace Deno {
      * with errors. */
     close(): void;
     /** Return the address of the `UDPConn`. */
-    readonly addr: T;
+    readonly addr: Addr;
     [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]>;
   }
 
@@ -1612,9 +1614,9 @@ declare namespace Deno {
 
   export interface Conn extends Reader, Writer, Closer {
     /** The local address of the connection. */
-    readonly localAddr: TCPAddr | UnixAddr;
+    readonly localAddr: Addr;
     /** The remote address of the connection. */
-    readonly remoteAddr: TCPAddr | UnixAddr;
+    readonly remoteAddr: Addr;
     /** The resource ID of the connection. */
     readonly rid: number;
     /** Shuts down (`shutdown(2)`) the reading side of the TCP connection. Most
@@ -1649,7 +1651,7 @@ declare namespace Deno {
    * Requires `allow-net` permission. */
   export function listen(
     options: ListenOptions & { transport?: "tcp" }
-  ): Listener<TCPAddr>;
+  ): Listener;
   /** **UNSTABLE**: new API
    *
    * Listen announces on the local transport address.
@@ -1659,7 +1661,7 @@ declare namespace Deno {
    * Requires `allow-read` permission. */
   export function listen(
     options: UnixListenOptions & { transport: "unix" }
-  ): Listener<UnixAddr>;
+  ): Listener;
   /** **UNSTABLE**: new API
    *
    * Listen announces on the local transport address.
@@ -1670,7 +1672,7 @@ declare namespace Deno {
    * Requires `allow-net` permission. */
   export function listen(
     options: ListenOptions & { transport: "udp" }
-  ): DatagramConn<UDPAddr>;
+  ): DatagramConn;
   /** **UNSTABLE**: new API
    *
    * Listen announces on the local transport address.
@@ -1680,7 +1682,7 @@ declare namespace Deno {
    * Requires `allow-read` permission. */
   export function listen(
     options: UnixListenOptions & { transport: "unixpacket" }
-  ): DatagramConn<UnixAddr>;
+  ): DatagramConn;
 
   export interface ListenTLSOptions extends ListenOptions {
     /** Server certificate file. */
@@ -1697,7 +1699,7 @@ declare namespace Deno {
    *      Deno.listenTLS({ port: 443, certFile: "./my_server.crt", keyFile: "./my_server.key" });
    *
    * Requires `allow-net` permission. */
-  export function listenTLS(options: ListenTLSOptions): Listener<TCPAddr>;
+  export function listenTLS(options: ListenTLSOptions): Listener;
 
   export interface ConnectOptions {
     /** The port to connect to. */
