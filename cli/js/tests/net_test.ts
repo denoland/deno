@@ -8,7 +8,7 @@ import {
 
 unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
   const listener = Deno.listen({ hostname: "127.0.0.1", port: 4500 });
-  assertEquals(listener.addr.transport, "tcp");
+  assert(listener.addr.transport === "tcp");
   assertEquals(listener.addr.hostname, "127.0.0.1");
   assertEquals(listener.addr.port, 4500);
   listener.close();
@@ -228,14 +228,14 @@ unitTest(
   { ignore: Deno.build.os === "win", perms: { net: true } },
   async function netUdpSendReceive(): Promise<void> {
     const alice = Deno.listen({ port: 4500, transport: "udp" });
+    assert(alice.addr.transport === "udp");
     assertEquals(alice.addr.port, 4500);
     assertEquals(alice.addr.hostname, "0.0.0.0");
-    assertEquals(alice.addr.transport, "udp");
 
     const bob = Deno.listen({ port: 4501, transport: "udp" });
+    assert(bob.addr.transport === "udp");
     assertEquals(bob.addr.port, 4501);
     assertEquals(bob.addr.hostname, "0.0.0.0");
-    assertEquals(bob.addr.transport, "udp");
 
     const sent = new Uint8Array([1, 2, 3]);
     await alice.send(sent, bob.addr);
