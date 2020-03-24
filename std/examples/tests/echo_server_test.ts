@@ -1,14 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertStrictEq, assertNotEquals } from "../../testing/asserts.ts";
 import { BufReader, ReadLineResult } from "../../io/bufio.ts";
-import { randomPort } from "../../http/test_util.ts";
-const port = randomPort();
 
 Deno.test("[examples/echo_server]", async () => {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   const process = Deno.run({
-    cmd: [Deno.execPath(), "--allow-net", "echo_server.ts", `${port}`],
+    cmd: [Deno.execPath(), "--allow-net", "echo_server.ts"],
     cwd: "examples",
     stdout: "piped"
   });
@@ -21,10 +19,10 @@ Deno.test("[examples/echo_server]", async () => {
     assertNotEquals(message, Deno.EOF);
     assertStrictEq(
       decoder.decode((message as ReadLineResult).line).trim(),
-      "Listening on 0.0.0.0:" + port
+      "Listening on 0.0.0.0:8080"
     );
 
-    conn = await Deno.connect({ hostname: "127.0.0.1", port });
+    conn = await Deno.connect({ hostname: "127.0.0.1", port: 8080 });
     const connReader = new BufReader(conn);
 
     await conn.write(encoder.encode("Hello echo_server\n"));
