@@ -94,6 +94,36 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
+  function writeFileSyncCreateNew(): void {
+    const enc = new TextEncoder();
+    const data1 = enc.encode("Hello");
+    const data2 = enc.encode("world");
+    const dec = new TextDecoder("utf-8");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    // file newly created
+    Deno.writeFileSync(filename, data1, { createNew: true });
+    const dataRead1 = Deno.readFileSync(filename);
+    const actual1 = dec.decode(dataRead1);
+    assertEquals("Hello", actual1);
+    // createNew: true but file exists
+    let caughtError = false;
+    try {
+      Deno.writeFileSync(filename, data2, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    // createNew: false and file exists
+    Deno.writeFileSync(filename, data2, { createNew: false });
+    const dataRead2 = Deno.readFileSync(filename);
+    const actual2 = dec.decode(dataRead2);
+    assertEquals("world", actual2);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
   function writeFileSyncAppend(): void {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
@@ -211,6 +241,36 @@ unitTest(
     const dec = new TextDecoder("utf-8");
     const actual = dec.decode(dataRead);
     assertEquals("Hello", actual);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function writeFileCreateNew(): Promise<void> {
+    const enc = new TextEncoder();
+    const data1 = enc.encode("Hello");
+    const data2 = enc.encode("world");
+    const dec = new TextDecoder("utf-8");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    // file newly created
+    await Deno.writeFile(filename, data1, { createNew: true });
+    const dataRead1 = Deno.readFileSync(filename);
+    const actual1 = dec.decode(dataRead1);
+    assertEquals("Hello", actual1);
+    // createNew: true but file exists
+    let caughtError = false;
+    try {
+      await Deno.writeFile(filename, data2, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    // createNew: false and file exists
+    await Deno.writeFile(filename, data2, { createNew: false });
+    const dataRead2 = Deno.readFileSync(filename);
+    const actual2 = dec.decode(dataRead2);
+    assertEquals("world", actual2);
   }
 );
 
