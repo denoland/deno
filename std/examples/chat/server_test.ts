@@ -9,7 +9,7 @@ const { test, build } = Deno;
 
 async function startServer(): Promise<Deno.Process> {
   const server = Deno.run({
-    args: [Deno.execPath(), "--allow-net", "--allow-read", "server.ts"],
+    cmd: [Deno.execPath(), "--allow-net", "--allow-read", "server.ts"],
     cwd: "examples/chat",
     stdout: "piped"
   });

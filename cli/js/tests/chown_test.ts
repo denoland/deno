@@ -7,11 +7,11 @@ if (Deno.build.os !== "win") {
     // get the user ID and group ID of the current process
     const uidProc = Deno.run({
       stdout: "piped",
-      args: ["python", "-c", "import os; print(os.getuid())"]
+      cmd: ["python", "-c", "import os; print(os.getuid())"]
     });
     const gidProc = Deno.run({
       stdout: "piped",
-      args: ["python", "-c", "import os; print(os.getgid())"]
+      cmd: ["python", "-c", "import os; print(os.getgid())"]
     });
 
     assertEquals((await uidProc.status()).code, 0);

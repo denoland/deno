@@ -4,12 +4,9 @@ import { assertStrictEq } from "../../testing/asserts.ts";
 
 Deno.test({
   name: "[examples/curl] send a request to a specified url",
-  // FIXME(bartlomieju): this test is leaking both resources and ops,
-  // and causes interference with other tests
-  ignore: true,
   fn: async () => {
     const server = serve({ port: 8081 });
-    (async (): Promise<void> => {
+    const serverPromise = (async (): Promise<void> => {
       for await (const req of server) {
         req.respond({ body: "Hello world" });
       }
@@ -17,12 +14,7 @@ Deno.test({
 
     const decoder = new TextDecoder();
     const process = Deno.run({
-      args: [
-        Deno.execPath(),
-        "--allow-net",
-        "curl.ts",
-        "http://localhost:8081"
-      ],
+      cmd: [Deno.execPath(), "--allow-net", "curl.ts", "http://localhost:8081"],
       cwd: "examples",
       stdout: "piped"
     });
@@ -34,8 +26,9 @@ Deno.test({
 
       assertStrictEq(actual, expected);
     } finally {
-      process.close();
       server.close();
+      process.close();
+      await serverPromise;
     }
   }
 });

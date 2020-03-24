@@ -356,7 +356,7 @@ test({
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
     const p = Deno.run({
-      args: [Deno.execPath(), "--allow-net", "http/testdata/simple_server.ts"],
+      cmd: [Deno.execPath(), "--allow-net", "http/testdata/simple_server.ts"],
       stdout: "piped"
     });
 
@@ -397,7 +397,7 @@ test({
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
     const p = Deno.run({
-      args: [
+      cmd: [
         Deno.execPath(),
         "--allow-net",
         "--allow-read",

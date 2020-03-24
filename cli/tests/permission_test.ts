@@ -18,7 +18,7 @@ const test: { [key: string]: Function } = {
   },
   runRequired(): void {
     run({
-      args: [
+      cmd: [
         "python",
         "-c",
         "import sys; sys.stdout.write('hello'); sys.stdout.flush()"

@@ -18,8 +18,8 @@ declare interface WindowOrWorkerGlobalScope {
   clearInterval: typeof __timers.clearInterval;
   clearTimeout: typeof __timers.clearTimeout;
   fetch: typeof __fetch.fetch;
-  queueMicrotask: (task: () => void) => void;
   setInterval: typeof __timers.setInterval;
+  queueMicrotask: typeof __timers.queueMicrotask;
   setTimeout: typeof __timers.setTimeout;
   // properties
   console: __console.Console;
@@ -232,6 +232,7 @@ declare const clearTimeout: typeof __timers.clearTimeout;
 declare const fetch: typeof __fetch.fetch;
 declare const setInterval: typeof __timers.setInterval;
 declare const setTimeout: typeof __timers.setTimeout;
+declare const queueMicrotask: typeof __timers.queueMicrotask;
 
 declare const console: __console.Console;
 declare const Blob: typeof __blob.DenoBlob;
@@ -291,8 +292,6 @@ declare interface ImportMeta {
 }
 
 declare namespace __domTypes {
-  // @url js/dom_types.d.ts
-
   export type BufferSource = ArrayBufferView | ArrayBuffer;
   export type HeadersInit =
     | Headers
@@ -872,8 +871,6 @@ declare namespace __domTypes {
 }
 
 declare namespace __blob {
-  // @url js/blob.d.ts
-
   export const bytesSymbol: unique symbol;
   export const blobBytesWeakMap: WeakMap<__domTypes.Blob, Uint8Array>;
   export class DenoBlob implements __domTypes.Blob {
@@ -890,8 +887,6 @@ declare namespace __blob {
 }
 
 declare namespace __console {
-  // @url js/console.d.ts
-
   type ConsoleOptions = Partial<{
     showHidden: boolean;
     depth: number;
@@ -979,8 +974,6 @@ declare namespace __console {
 }
 
 declare namespace __event {
-  // @url js/event.d.ts
-
   export const eventAttributes: WeakMap<object, any>;
   export class EventInit implements __domTypes.EventInit {
     bubbles: boolean;
@@ -1052,8 +1045,6 @@ declare namespace __event {
 }
 
 declare namespace __customEvent {
-  // @url js/custom_event.d.ts
-
   export const customEventAttributes: WeakMap<object, any>;
   export class CustomEventInit extends __event.EventInit
     implements __domTypes.CustomEventInit {
@@ -1080,8 +1071,6 @@ declare namespace __customEvent {
 }
 
 declare namespace __eventTarget {
-  // @url js/event_target.d.ts
-
   export class EventListenerOptions implements __domTypes.EventListenerOptions {
     _capture: boolean;
     constructor({ capture }?: { capture?: boolean | undefined });
@@ -1223,8 +1212,6 @@ declare namespace __io {
 }
 
 declare namespace __fetch {
-  // @url js/fetch.d.ts
-
   class Body
     implements __domTypes.Body, __domTypes.ReadableStream, __io.ReadCloser {
     private rid;
@@ -1285,8 +1272,6 @@ declare namespace __fetch {
 }
 
 declare namespace __textEncoding {
-  // @url js/text_encoding.d.ts
-
   export function atob(s: string): string;
   /** Creates a base-64 ASCII string from the input string. */
   export function btoa(s: string): string;
@@ -1328,8 +1313,6 @@ declare namespace __textEncoding {
 }
 
 declare namespace __timers {
-  // @url js/timers.d.ts
-
   export type Args = unknown[];
   /** Sets a timer which executes a function once after the timer expires. */
   export function setTimeout(
@@ -1345,11 +1328,10 @@ declare namespace __timers {
   ): number;
   export function clearTimeout(id?: number): void;
   export function clearInterval(id?: number): void;
+  export function queueMicrotask(func: Function): void;
 }
 
 declare namespace __urlSearchParams {
-  // @url js/url_search_params.d.ts
-
   export class URLSearchParams {
     private params;
     private url;
@@ -1455,7 +1437,6 @@ declare namespace __urlSearchParams {
 }
 
 declare namespace __url {
-  // @url js/url.d.ts
   export interface URL {
     hash: string;
     host: string;
@@ -1482,7 +1463,6 @@ declare namespace __url {
 }
 
 declare namespace __workers {
-  // @url js/workers.d.ts
   export interface Worker {
     onerror?: (e: Event) => void;
     onmessage?: (e: { data: any }) => void;
@@ -1509,8 +1489,6 @@ declare namespace __workers {
 }
 
 declare namespace __performanceUtil {
-  // @url js/performance.d.ts
-
   export class Performance {
     /** Returns a current time from Deno's start in milliseconds.
      *

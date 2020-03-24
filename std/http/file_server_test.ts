@@ -7,7 +7,7 @@ let fileServer: Deno.Process;
 
 async function startFileServer(): Promise<void> {
   fileServer = Deno.run({
-    args: [
+    cmd: [
       Deno.execPath(),
       "run",
       "--allow-read",
@@ -104,7 +104,7 @@ test(async function serveWithUnorthodoxFilename(): Promise<void> {
 
 test(async function servePermissionDenied(): Promise<void> {
   const deniedServer = Deno.run({
-    args: [Deno.execPath(), "run", "--allow-net", "http/file_server.ts"],
+    cmd: [Deno.execPath(), "run", "--allow-net", "http/file_server.ts"],
     stdout: "piped",
     stderr: "piped"
   });
@@ -131,7 +131,7 @@ test(async function servePermissionDenied(): Promise<void> {
 
 test(async function printHelp(): Promise<void> {
   const helpProcess = Deno.run({
-    args: [Deno.execPath(), "run", "http/file_server.ts", "--help"],
+    cmd: [Deno.execPath(), "run", "http/file_server.ts", "--help"],
     stdout: "piped"
   });
   assert(helpProcess.stdout != null);
