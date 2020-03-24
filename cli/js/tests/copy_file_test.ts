@@ -29,6 +29,24 @@ function assertFile(path: string, mode?: number): void {
   }
 }
 
+function assertLink(path: string, valid: boolean): void {
+  let info = Deno.lstatSync(path);
+  assert(info.isSymlink());
+  let caughtErr = false;
+  try {
+    info = Deno.statSync(path);
+  } catch (e) {
+    caughtErr = true;
+    assert(e instanceof Deno.errors.NotFound);
+  }
+  if (valid) {
+    assert(!caughtErr);
+  } else {
+    assert(caughtErr);
+    assertEquals(info, undefined);
+  }
+}
+
 unitTest(
   { perms: { read: true, write: true } },
   function copyFileSyncSuccess(): void {
@@ -400,5 +418,181 @@ unitTest(
       assert(e instanceof Deno.errors.AlreadyExists);
     }
     assert(caughtError);
+  }
+);
+
+unitTest(
+  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
+  function copyFileSyncLinks(): void {
+    const testDir = Deno.makeTempDirSync();
+    const from = testDir + "/from.txt";
+    const alt = testDir + "/alt.txt";
+    const dir = testDir + "/dir";
+    const file = testDir + "/file";
+    writeFileString(from, "Hello", 0o626);
+    writeFileString(alt, "world", 0o660);
+    Deno.mkdirSync(dir);
+    Deno.createSync(file).close();
+    const fileLink = testDir + "/fileLink";
+    const dirLink = testDir + "/dirLink";
+    const danglingLink = testDir + "/danglingLink";
+    const danglingTarget = testDir + "/nonexistent";
+    Deno.symlinkSync(file, fileLink);
+    Deno.symlinkSync(dir, dirLink);
+    Deno.symlinkSync(danglingTarget, danglingLink);
+    let caughtError = false;
+    try {
+      Deno.copyFileSync(from, fileLink, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      Deno.copyFileSync(from, dirLink, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      Deno.copyFileSync(from, dirLink, { create: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e.message.includes("Is a directory"));
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      Deno.copyFileSync(from, dirLink, { create: false });
+    } catch (e) {
+      caughtError = true;
+      assert(e.message.includes("Is a directory"));
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      Deno.copyFileSync(from, danglingLink, { create: false });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.NotFound);
+    }
+    assert(caughtError);
+
+    // should succeed
+    Deno.copyFileSync(from, fileLink, { create: true });
+    assertLink(fileLink, true);
+    assertFile(file, 0o626);
+    assertSameContent(from, file);
+    assertEquals(readFileString(file), "Hello");
+
+    Deno.copyFileSync(alt, fileLink, { create: false });
+    assertLink(fileLink, true);
+    assertFile(file, 0o660);
+    assertSameContent(alt, file);
+    assertEquals(readFileString(file), "world");
+
+    Deno.copyFileSync(from, danglingLink, { createNew: true });
+    assertLink(danglingLink, true);
+    assertFile(danglingTarget, 0o626);
+    assertSameContent(from, danglingTarget);
+    assertEquals(readFileString(danglingTarget), "Hello");
+
+    Deno.removeSync(danglingTarget);
+    Deno.copyFileSync(alt, danglingLink, { create: true });
+    assertLink(danglingLink, true);
+    assertFile(danglingTarget, 0o660);
+    assertSameContent(alt, danglingTarget);
+    assertEquals(readFileString(danglingTarget), "world");
+  }
+);
+
+unitTest(
+  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
+  async function copyFileLinks(): Promise<void> {
+    const testDir = Deno.makeTempDirSync();
+    const from = testDir + "/from.txt";
+    const alt = testDir + "/alt.txt";
+    const dir = testDir + "/dir";
+    const file = testDir + "/file";
+    writeFileString(from, "Hello", 0o626);
+    writeFileString(alt, "world", 0o660);
+    Deno.mkdirSync(dir);
+    Deno.createSync(file).close();
+    const fileLink = testDir + "/fileLink";
+    const dirLink = testDir + "/dirLink";
+    const danglingLink = testDir + "/danglingLink";
+    const danglingTarget = testDir + "/nonexistent";
+    Deno.symlinkSync(file, fileLink);
+    Deno.symlinkSync(dir, dirLink);
+    Deno.symlinkSync(danglingTarget, danglingLink);
+    let caughtError = false;
+    try {
+      await Deno.copyFile(from, fileLink, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      await Deno.copyFile(from, dirLink, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      await Deno.copyFile(from, dirLink, { create: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e.message.includes("Is a directory"));
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      await Deno.copyFile(from, dirLink, { create: false });
+    } catch (e) {
+      caughtError = true;
+      assert(e.message.includes("Is a directory"));
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      await Deno.copyFile(from, danglingLink, { create: false });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.NotFound);
+    }
+    assert(caughtError);
+
+    // should succeed
+    await Deno.copyFile(from, fileLink, { create: true });
+    assertLink(fileLink, true);
+    assertFile(file, 0o626);
+    assertSameContent(from, file);
+    assertEquals(readFileString(file), "Hello");
+
+    await Deno.copyFile(alt, fileLink, { create: false });
+    assertLink(fileLink, true);
+    assertFile(file, 0o660);
+    assertSameContent(alt, file);
+    assertEquals(readFileString(file), "world");
+
+    await Deno.copyFile(from, danglingLink, { createNew: true });
+    assertLink(danglingLink, true);
+    assertFile(danglingTarget, 0o626);
+    assertSameContent(from, danglingTarget);
+    assertEquals(readFileString(danglingTarget), "Hello");
+
+    Deno.removeSync(danglingTarget);
+    await Deno.copyFile(alt, danglingLink, { create: true });
+    assertLink(danglingLink, true);
+    assertFile(danglingTarget, 0o660);
+    assertSameContent(alt, danglingTarget);
+    assertEquals(readFileString(danglingTarget), "world");
   }
 );
