@@ -96,6 +96,10 @@ impl OpError {
     Self::new(ErrorKind::PermissionDenied, msg)
   }
 
+  pub fn already_exists(msg: String) -> OpError {
+    Self::new(ErrorKind::AlreadyExists, msg)
+  }
+
   pub fn bad_resource(msg: String) -> OpError {
     Self::new(ErrorKind::BadResource, msg)
   }
