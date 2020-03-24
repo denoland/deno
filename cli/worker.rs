@@ -1,4 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+#![allow(dead_code)]
+
 use crate::fmt_errors::JSError;
 use crate::ops;
 use crate::state::State;
@@ -97,6 +100,7 @@ pub struct Worker {
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
+  inspector_client: Option<crate::inspector::DenoInspectorClient>,
 }
 
 impl Worker {
@@ -105,6 +109,29 @@ impl Worker {
     let mut isolate = deno_core::EsIsolate::new(loader, startup_data, false);
 
     let global_state_ = state.borrow().global_state.clone();
+
+    /*
+    if let Some(inspector_server) = global_state_.inspector_server {
+      inspector_server.register_worker(worker);
+    }
+    */
+
+    let inspector_client = if global_state_.inspector_server.is_some() {
+      use deno_core::v8;
+      let deno_core::Isolate {
+        v8_isolate,
+        global_context,
+        ..
+      } = &mut **isolate;
+      let mut hs = v8::HandleScope::new(v8_isolate.as_mut().unwrap());
+      let scope = hs.enter();
+      let context = global_context.get(scope).unwrap();
+      let inspector_client =
+        crate::inspector::DenoInspectorClient::new(scope, context);
+      Some(inspector_client)
+    } else {
+      None
+    };
 
     isolate.set_js_error_create_fn(move |core_js_error| {
       JSError::create(core_js_error, &global_state_.ts_compiler)
@@ -119,6 +146,7 @@ impl Worker {
       waker: AtomicWaker::new(),
       internal_channels,
       external_channels,
+      inspector_client,
     }
   }
 
