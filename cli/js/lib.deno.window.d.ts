@@ -14,6 +14,8 @@ declare interface Window extends WindowOrWorkerGlobalScope {
   onunload: Function | undefined;
   crypto: Crypto;
   Deno: typeof Deno;
+  close: () => void;
+  closed: boolean;
 }
 
 declare const window: Window & WindowOrWorkerGlobalScope & typeof globalThis;

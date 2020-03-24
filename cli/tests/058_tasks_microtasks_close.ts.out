@@ -1,0 +1,6 @@
+sync 1[WILDCARD]
+sync 2[WILDCARD]
+promise 1[WILDCARD]
+setTimeout 1[WILDCARD]
+Promise resolve in setTimeout 1[WILDCARD]
+setTimeout 2[WILDCARD]
