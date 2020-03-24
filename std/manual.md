@@ -1587,8 +1587,7 @@ cargo test js_unit_tests
 Test `std/`:
 
 ```bash
-cd std
-cargo run -- -A testing/runner.ts --exclude "**/testdata"
+cargo test std_tests
 ```
 
 Lint the code:
