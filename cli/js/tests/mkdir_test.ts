@@ -56,10 +56,22 @@ unitTest(
   }
 );
 
-unitTest({ perms: { write: true } }, function mkdirErrIfExists(): void {
+unitTest({ perms: { write: true } }, function mkdirErrSyncIfExists(): void {
   let err;
   try {
     Deno.mkdirSync(".");
+  } catch (e) {
+    err = e;
+  }
+  assert(err instanceof Deno.errors.AlreadyExists);
+});
+
+unitTest({ perms: { write: true } }, async function mkdirErrIfExists(): Promise<
+  void
+> {
+  let err;
+  try {
+    await Deno.mkdir(".");
   } catch (e) {
     err = e;
   }
