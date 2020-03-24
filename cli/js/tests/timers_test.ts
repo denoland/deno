@@ -365,5 +365,4 @@ unitTest(async function timerNestedMicrotaskOrdering(): Promise<void> {
 
 unitTest(function testQueueMicrotask() {
   assertEquals(typeof queueMicrotask, "function");
-  assertEquals(queueMicrotask.name, "queueMicrotask");
 });
