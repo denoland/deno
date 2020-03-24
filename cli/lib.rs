@@ -37,6 +37,7 @@ mod global_timer;
 pub mod http_cache;
 mod http_util;
 mod import_map;
+mod inspector;
 pub mod installer;
 mod js;
 mod lockfile;
@@ -371,6 +372,18 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
       eprintln!("--lock flag must be specified when using --lock-write");
       std::process::exit(11);
     }
+  }
+
+  // TODO This should probably be done in impl Drop for InspectorServer, but it
+  // seems GlobalState is being leaked and the drop is never called.
+  {
+    let mut s = global_state
+      .inspector_server
+      .as_ref()
+      .unwrap()
+      .lock()
+      .unwrap();
+    s.exit();
   }
   Ok(())
 }

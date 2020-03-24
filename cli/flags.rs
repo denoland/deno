@@ -101,6 +101,7 @@ pub struct Flags {
   pub no_prompts: bool,
   pub no_remote: bool,
   pub cached_only: bool,
+  pub debug: bool,
   pub seed: Option<u64>,
   pub v8_flags: Option<Vec<String>>,
 
@@ -479,6 +480,10 @@ fn run_test_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.cached_only = true;
   }
 
+  if matches.is_present("debug") {
+    flags.debug = true;
+  }
+
   if matches.is_present("seed") {
     let seed_string = matches.value_of("seed").unwrap();
     let seed = seed_string.parse::<u64>().unwrap();
@@ -838,6 +843,11 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
       Arg::with_name("cached-only")
         .long("cached-only")
         .help("Require that remote dependencies are already cached"),
+    )
+    .arg(
+      Arg::with_name("debug")
+        .long("debug")
+        .help("Enable debugger and pause on first statement"),
     )
     .arg(
       Arg::with_name("seed")
