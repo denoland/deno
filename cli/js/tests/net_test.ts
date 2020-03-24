@@ -230,12 +230,12 @@ unitTest(
     const alice = Deno.listen({ port: 4500, transport: "udp" });
     assert(alice.addr.transport === "udp");
     assertEquals(alice.addr.port, 4500);
-    assertEquals(alice.addr.hostname, "0.0.0.0");
+    assertEquals(alice.addr.hostname, "127.0.0.1");
 
     const bob = Deno.listen({ port: 4501, transport: "udp" });
     assert(bob.addr.transport === "udp");
     assertEquals(bob.addr.port, 4501);
-    assertEquals(bob.addr.hostname, "0.0.0.0");
+    assertEquals(bob.addr.hostname, "127.0.0.1");
 
     const sent = new Uint8Array([1, 2, 3]);
     await alice.send(sent, bob.addr);
