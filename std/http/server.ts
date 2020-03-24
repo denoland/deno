@@ -37,7 +37,7 @@ export class ServerRequest {
     if (this._contentLength === undefined) {
       const cl = this.headers.get("content-length");
       if (cl) {
-        this._contentLength = parseInt(cl);
+        this._contentLength = parseInt(cl, 10);
         // Convert NaN to null (as NaN harder to test)
         if (Number.isNaN(this._contentLength)) {
           this._contentLength = null;

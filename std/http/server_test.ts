@@ -458,6 +458,18 @@ test("close server while iterating", async (): Promise<void> => {
 });
 
 test({
+  name: "[http] test Content-Length header parsed correctly",
+  async fn(): Promise<void> {
+    const req = new ServerRequest();
+    req.headers = new Headers();
+    req.headers.set("content-length", "1776");
+    assertEquals(req.contentLength, 1776);
+    req.headers.set("content-length", "0xcafebebe");
+    assertEquals(req.contentLength, null);
+  }
+});
+
+test({
   name: "[http] close server while connection is open",
   async fn(): Promise<void> {
     async function iteratorReq(server: Server): Promise<void> {
