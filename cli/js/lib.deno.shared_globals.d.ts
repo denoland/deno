@@ -19,7 +19,7 @@ declare interface WindowOrWorkerGlobalScope {
   clearTimeout: typeof __timers.clearTimeout;
   fetch: typeof __fetch.fetch;
   setInterval: typeof __timers.setInterval;
-  queueMicrotask: __timers.queueMicrotask;
+  queueMicrotask: typeof __timers.queueMicrotask;
   setTimeout: typeof __timers.setTimeout;
   // properties
   console: __console.Console;
