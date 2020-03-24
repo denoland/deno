@@ -298,3 +298,65 @@ unitTest(
     assertEquals("Hello", actual);
   }
 );
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function writeFileSyncDir(): void {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const testDir = Deno.makeTempDirSync();
+    const dir = testDir + "/dir";
+    Deno.mkdirSync(dir);
+    let caughtError = false;
+    try {
+      Deno.writeFileSync(dir, data);
+    } catch (e) {
+      caughtError = true;
+      if (Deno.build.os == "win") {
+        assert(e instanceof Deno.errors.PermissionDenied);
+      } else {
+        assert(e.message.includes("Is a directory"));
+      }
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      Deno.writeFileSync(dir, data, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function writeFileDir(): Promise<void> {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const testDir = Deno.makeTempDirSync();
+    const dir = testDir + "/dir";
+    Deno.mkdirSync(dir);
+    let caughtError = false;
+    try {
+      await Deno.writeFile(dir, data);
+    } catch (e) {
+      caughtError = true;
+      if (Deno.build.os == "win") {
+        assert(e instanceof Deno.errors.PermissionDenied);
+      } else {
+        assert(e.message.includes("Is a directory"));
+      }
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      await Deno.writeFile(dir, data, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+  }
+);
