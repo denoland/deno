@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { unitTest, assert, assertEquals, assertThrows } from "./test_util.ts";
 
 function assertDirectory(path: string, mode?: number): void {
   const info = Deno.lstatSync(path);
@@ -150,6 +150,57 @@ unitTest(
       await Deno.mkdir(pathLink, { recursive: true });
       await Deno.mkdir(pathLink, { recursive: true, mode: 0o731 });
       assertDirectory(path, 0o737);
+    }
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function mkdirSyncErrors(): void {
+    const testDir = Deno.makeTempDirSync();
+    const emptydir = testDir + "/empty";
+    const fulldir = testDir + "/dir";
+    const file = fulldir + "/file";
+    Deno.mkdirSync(emptydir);
+    Deno.mkdirSync(fulldir);
+    Deno.createSync(file).close();
+
+    assertThrows((): void => {
+      Deno.mkdirSync(emptydir, { recursive: false });
+    }, Deno.errors.AlreadyExists);
+    assertThrows((): void => {
+      Deno.mkdirSync(fulldir, { recursive: false });
+    }, Deno.errors.AlreadyExists);
+    assertThrows((): void => {
+      Deno.mkdirSync(file, { recursive: false });
+    }, Deno.errors.AlreadyExists);
+    assertThrows((): void => {
+      Deno.mkdirSync(file, { recursive: true });
+    }, Deno.errors.AlreadyExists);
+
+    if (Deno.build.os !== "win") {
+      const fileLink = testDir + "/fileLink";
+      const dirLink = testDir + "/dirLink";
+      const danglingLink = testDir + "/danglingLink";
+      Deno.symlinkSync(file, fileLink);
+      Deno.symlinkSync(emptydir, dirLink);
+      Deno.symlinkSync(testDir + "/nonexistent", danglingLink);
+
+      assertThrows((): void => {
+        Deno.mkdirSync(dirLink, { recursive: false });
+      }, Deno.errors.AlreadyExists);
+      assertThrows((): void => {
+        Deno.mkdirSync(fileLink, { recursive: false });
+      }, Deno.errors.AlreadyExists);
+      assertThrows((): void => {
+        Deno.mkdirSync(fileLink, { recursive: true });
+      }, Deno.errors.AlreadyExists);
+      assertThrows((): void => {
+        Deno.mkdirSync(danglingLink, { recursive: false });
+      }, Deno.errors.AlreadyExists);
+      assertThrows((): void => {
+        Deno.mkdirSync(danglingLink, { recursive: true });
+      }, Deno.errors.AlreadyExists);
     }
   }
 );
