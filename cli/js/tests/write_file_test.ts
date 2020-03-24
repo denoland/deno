@@ -18,8 +18,8 @@ unitTest(
 unitTest({ perms: { write: true } }, function writeFileSyncFail(): void {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
-  const filename = "/baddir/test.txt";
-  // The following should fail because /baddir doesn't exist (hopefully).
+  const filename = Deno.makeTempDirSync() + "/baddir/test.txt";
+  // The following should fail because /baddir doesn't exist
   let caughtError = false;
   try {
     Deno.writeFileSync(filename, data);
@@ -136,8 +136,8 @@ unitTest(
   async function writeFileNotFound(): Promise<void> {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
-    const filename = "/baddir/test.txt";
-    // The following should fail because /baddir doesn't exist (hopefully).
+    const filename = Deno.makeTempDirSync() + "/baddir/test.txt";
+    // The following should fail because /baddir doesn't exist
     let caughtError = false;
     try {
       await Deno.writeFile(filename, data);
