@@ -350,7 +350,7 @@ impl Isolate {
     let s = hs.enter();
     let context = self.global_context.get(s).unwrap();
 
-    let client = InspectorClient::new(isolate, context);
+    let client = InspectorClient::new(s, context);
     self.inspector_handle = Some(handle);
     self.inspector_client = Some(client);
     eprintln!("client created");
@@ -392,7 +392,7 @@ impl Isolate {
 
   #[allow(unused)]
   pub fn inspector_message(&mut self, message: String) {
-    let isolate = self.v8_isolate.as_ref().unwrap();
+    let isolate = self.v8_isolate.as_mut().unwrap();
     assert!(!self.global_context.is_empty());
     let mut hs = v8::HandleScope::new(isolate);
     let s = hs.enter();

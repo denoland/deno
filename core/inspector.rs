@@ -110,10 +110,10 @@ impl V8InspectorClientImpl for InspectorClient {
 }
 
 impl InspectorClient {
-  pub fn new(
-    isolate: &mut v8::Isolate,
-    context: v8::Local<v8::Context>,
-  ) -> Self {
+  pub fn new<P>(scope: &mut P, context: v8::Local<v8::Context>) -> Self
+  where
+    P: v8::InIsolate,
+  {
     let mut frontend = InspectorFrontend::new();
 
     let mut client = Self {
@@ -124,7 +124,7 @@ impl InspectorClient {
       terminated: false,
     };
 
-    let mut inspector = V8Inspector::create(isolate, &mut client);
+    let mut inspector = V8Inspector::create(scope, &mut client);
     let context_group_id = 1;
     let empty_view = StringView::empty();
     let mut buffer = StringBuffer::create(&empty_view).unwrap();
@@ -150,14 +150,13 @@ impl InspectorClient {
     eprintln!("pause on next statement");
     let session = self.session.as_mut().unwrap();
     let reason = &"Break on start".to_string().into_bytes()[..];
-    let string_view = StringView::from(reason);
-    let mut reason_buffer = StringBuffer::create(&string_view).unwrap();
-    let mut reason_buffer2 = StringBuffer::create(&string_view).unwrap();
+    let mut string_view = StringView::from(reason);
+    let mut string_view2 = StringView::from(reason);
+    //let mut reason_buffer = StringBuffer::create(&string_view).unwrap();
+    //let mut reason_buffer2 = StringBuffer::create(&string_view).unwrap();
     eprintln!("before break");
-    session.schedule_pause_on_next_statement(
-      &mut reason_buffer,
-      &mut reason_buffer2,
-    );
+    session
+      .schedule_pause_on_next_statement(&mut string_view, &mut string_view2);
     eprintln!("after break");
   }
 }
