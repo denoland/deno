@@ -29,9 +29,7 @@ async function wsHandler(ws: WebSocket): Promise<void> {
   }
 }
 
-const addr = Deno.args[0] ?? "127.0.0.1:8080";
-
-listenAndServe(addr, async req => {
+listenAndServe({ port: 8080 }, async req => {
   if (req.method === "GET" && req.url === "/") {
     //Serve with hack
     const u = new URL("./index.html", import.meta.url);
@@ -77,4 +75,4 @@ listenAndServe(addr, async req => {
     }
   }
 });
-console.log(`chat server starting on ${addr}....`);
+console.log("chat server starting on :8080....");
