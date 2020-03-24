@@ -18,7 +18,6 @@ import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay } from "../util/async.ts";
 import { encode, decode } from "../strings/mod.ts";
 import { mockConn } from "./mock.ts";
-import { randomPort } from "./test_util.ts";
 
 const { Buffer, test } = Deno;
 
@@ -356,14 +355,8 @@ test({
   ignore: true,
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
-    const port = randomPort();
     const p = Deno.run({
-      cmd: [
-        Deno.execPath(),
-        "--allow-net",
-        "http/testdata/simple_server.ts",
-        `${port}`
-      ],
+      cmd: [Deno.execPath(), "--allow-net", "http/testdata/simple_server.ts"],
       stdout: "piped"
     });
 
@@ -402,15 +395,13 @@ test({
   // FIXME(bartlomieju): hangs on windows, cause can't do `Deno.kill`
   ignore: true,
   fn: async (): Promise<void> => {
-    const port = randomPort();
     // Runs a simple server as another process
     const p = Deno.run({
       cmd: [
         Deno.execPath(),
         "--allow-net",
         "--allow-read",
-        "http/testdata/simple_https_server.ts",
-        `${port}`
+        "http/testdata/simple_https_server.ts"
       ],
       stdout: "piped"
     });
@@ -422,6 +413,7 @@ test({
         serverIsRunning = false;
       })
       .catch((_): void => {}); // Ignores the error when closing the process.
+
     try {
       const r = new TextProtoReader(new BufReader(p.stdout!));
       const s = await r.readLine();
@@ -432,7 +424,7 @@ test({
       // Requests to the server and immediately closes the connection
       const conn = await Deno.connectTLS({
         hostname: "localhost",
-        port,
+        port: 4503,
         certFile: "http/testdata/tls/RootCA.pem"
       });
       await Deno.writeAll(
@@ -456,7 +448,7 @@ test({
 });
 
 test("close server while iterating", async (): Promise<void> => {
-  const server = serve({ port: randomPort() });
+  const server = serve(":8123");
   const nextWhileClosing = server[Symbol.asyncIterator]().next();
   server.close();
   assertEquals(await nextWhileClosing, { value: undefined, done: true });
@@ -499,9 +491,8 @@ test({
 test({
   name: "respond error closes connection",
   async fn(): Promise<void> {
-    const port = randomPort();
     const serverRoutine = async (): Promise<void> => {
-      const server = serve(":" + port);
+      const server = serve(":8124");
       // @ts-ignore
       for await (const req of server) {
         await assertThrowsAsync(async () => {
@@ -518,7 +509,7 @@ test({
     const p = serverRoutine();
     const conn = await Deno.connect({
       hostname: "127.0.0.1",
-      port
+      port: 8124
     });
     await Deno.writeAll(
       conn,
