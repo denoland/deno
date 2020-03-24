@@ -7,16 +7,26 @@ function readFileString(filename: string): string {
   return dec.decode(dataRead);
 }
 
-function writeFileString(filename: string, s: string): void {
+function writeFileString(filename: string, s: string, mode = 0o666): void {
   const enc = new TextEncoder();
   const data = enc.encode(s);
-  Deno.writeFileSync(filename, data, { mode: 0o666 });
+  Deno.writeFileSync(filename, data, { mode });
 }
 
 function assertSameContent(filename1: string, filename2: string): void {
   const data1 = Deno.readFileSync(filename1);
   const data2 = Deno.readFileSync(filename2);
   assertEquals(data1, data2);
+}
+
+function assertFile(path: string, mode?: number): void {
+  const info = Deno.lstatSync(path);
+  assert(info.isFile());
+  if (Deno.build.os !== "win" && mode !== undefined) {
+    // when writeFile is reimplemented in terms of open, it will respect umask
+    // assertEquals(info.mode, mode & ~Deno.umask());
+    assertEquals(info.mode! & 0o777, mode);
+  }
 }
 
 unitTest(
@@ -172,5 +182,135 @@ unitTest(
       assert(e instanceof Deno.errors.PermissionDenied);
     }
     assert(caughtError);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function copyFileSyncCreate(): void {
+    const testDir = Deno.makeTempDirSync();
+    const from = testDir + "/from.txt";
+    const alt = testDir + "/alt.txt";
+    const to = testDir + "/to.txt";
+    writeFileString(from, "Hello", 0o626);
+    writeFileString(alt, "world", 0o660);
+
+    let caughtError = false;
+    // if create turned off, the file won't be copied
+    try {
+      Deno.copyFileSync(from, to, { create: false });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.NotFound);
+    }
+    assert(caughtError);
+
+    // Turn on create, should have no error
+    Deno.copyFileSync(from, to, { create: true });
+    assertFile(to, 0o626);
+    assertSameContent(from, to);
+    assertEquals(readFileString(to), "Hello");
+    Deno.copyFileSync(alt, to, { create: false });
+    assertFile(to, 0o660);
+    assertSameContent(alt, to);
+    assertEquals(readFileString(to), "world");
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function copyFileCreate(): Promise<void> {
+    const testDir = Deno.makeTempDirSync();
+    const from = testDir + "/from.txt";
+    const alt = testDir + "/alt.txt";
+    const to = testDir + "/to.txt";
+    writeFileString(from, "Hello", 0o626);
+    writeFileString(alt, "world", 0o660);
+
+    let caughtError = false;
+    // if create turned off, the file won't be copied
+    try {
+      await Deno.copyFile(from, to, { create: false });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.NotFound);
+    }
+    assert(caughtError);
+
+    // Turn on create, should have no error
+    await Deno.copyFile(from, to, { create: true });
+    assertFile(to, 0o626);
+    assertSameContent(from, to);
+    assertEquals(readFileString(to), "Hello");
+    await Deno.copyFile(alt, to, { create: false });
+    assertFile(to, 0o660);
+    assertSameContent(alt, to);
+    assertEquals(readFileString(to), "world");
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function copyFileSyncCreateNew(): void {
+    const testDir = Deno.makeTempDirSync();
+    const from = testDir + "/from.txt";
+    const alt = testDir + "/alt.txt";
+    const to = testDir + "/to.txt";
+    writeFileString(from, "Hello", 0o626);
+    writeFileString(alt, "world", 0o660);
+
+    Deno.copyFileSync(from, to, { createNew: true });
+    assertFile(to, 0o626);
+    assertSameContent(from, to);
+    assertEquals(readFileString(to), "Hello");
+
+    // createNew: true but file exists
+    let caughtError = false;
+    try {
+      Deno.copyFileSync(alt, to, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+
+    // createNew: false and file exists
+    Deno.copyFileSync(alt, to, { createNew: false });
+    assertFile(to, 0o660);
+    assertSameContent(alt, to);
+    assertEquals(readFileString(to), "world");
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function copyFileCreateNew(): Promise<void> {
+    const testDir = Deno.makeTempDirSync();
+    const from = testDir + "/from.txt";
+    const alt = testDir + "/alt.txt";
+    const to = testDir + "/to.txt";
+    writeFileString(from, "Hello", 0o626);
+    writeFileString(alt, "world", 0o660);
+
+    await Deno.copyFile(from, to, { createNew: true });
+    assertFile(to, 0o626);
+    assertSameContent(from, to);
+    assertEquals(readFileString(to), "Hello");
+
+    // createNew: true but file exists
+    let caughtError = false;
+    try {
+      await Deno.copyFile(alt, to, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+
+    // createNew: false and file exists
+    await Deno.copyFile(alt, to, { createNew: false });
+    assertFile(to, 0o660);
+    assertSameContent(alt, to);
+    assertEquals(readFileString(to), "world");
   }
 );
