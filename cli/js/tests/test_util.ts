@@ -132,19 +132,21 @@ interface UnitTestDefinition extends Deno.TestDefinition {
   perms: Permissions;
 }
 
+type TestFunction = () => void | Promise<void>;
+
 export const REGISTERED_UNIT_TESTS: UnitTestDefinition[] = [];
 
-export function unitTest(fn: Deno.TestFunction): void;
-export function unitTest(options: UnitTestOptions, fn: Deno.TestFunction): void;
+export function unitTest(fn: TestFunction): void;
+export function unitTest(options: UnitTestOptions, fn: TestFunction): void;
 export function unitTest(
-  optionsOrFn: UnitTestOptions | Deno.TestFunction,
-  maybeFn?: Deno.TestFunction
+  optionsOrFn: UnitTestOptions | TestFunction,
+  maybeFn?: TestFunction
 ): void {
   assert(optionsOrFn, "At least one argument is required");
 
   let options: UnitTestOptions;
   let name: string;
-  let fn: Deno.TestFunction;
+  let fn: TestFunction;
 
   if (typeof optionsOrFn === "function") {
     options = {};

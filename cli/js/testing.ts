@@ -19,12 +19,12 @@ function formatDuration(time = 0): string {
   return gray(italic(timeStr));
 }
 
-// Wrap `TestFunction` in additional assertion that makes sure
+// Wrap test function in additional assertion that makes sure
 // the test case does not leak async "ops" - ie. number of async
 // completed ops after the test is the same as number of dispatched
 // ops. Note that "unref" ops are ignored since in nature that are
 // optional.
-function assertOps(fn: TestFunction): TestFunction {
+function assertOps(fn: () => void | Promise<void>): () => void | Promise<void> {
   return async function asyncOpSanitizer(): Promise<void> {
     const pre = metrics();
     await fn();
@@ -46,10 +46,12 @@ After:
   };
 }
 
-// Wrap `TestFunction` in additional assertion that makes sure
+// Wrap test function in additional assertion that makes sure
 // the test case does not "leak" resources - ie. resource table after
 // the test has exactly the same contents as before the test.
-function assertResources(fn: TestFunction): TestFunction {
+function assertResources(
+  fn: () => void | Promise<void>
+): () => void | Promise<void> {
   return async function resourceSanitizer(): Promise<void> {
     const pre = resources();
     await fn();
@@ -64,10 +66,8 @@ After: ${postStr}`;
   };
 }
 
-export type TestFunction = () => void | Promise<void>;
-
 export interface TestDefinition {
-  fn: TestFunction;
+  fn: () => void | Promise<void>;
   name: string;
   ignore?: boolean;
   disableOpSanitizer?: boolean;
@@ -77,13 +77,13 @@ export interface TestDefinition {
 const TEST_REGISTRY: TestDefinition[] = [];
 
 export function test(t: TestDefinition): void;
-export function test(fn: TestFunction): void;
-export function test(name: string, fn: TestFunction): void;
+export function test(fn: () => void | Promise<void>): void;
+export function test(name: string, fn: () => void | Promise<void>): void;
 // Main test function provided by Deno, as you can see it merely
 // creates a new object with "name" and "fn" fields.
 export function test(
-  t: string | TestDefinition | TestFunction,
-  fn?: TestFunction
+  t: string | TestDefinition | (() => void | Promise<void>),
+  fn?: () => void | Promise<void>
 ): void {
   let testDef: TestDefinition;
 
@@ -94,7 +94,7 @@ export function test(
     if (!t) {
       throw new TypeError("The test name can't be empty");
     }
-    testDef = { fn: fn as TestFunction, name: t, ignore: false };
+    testDef = { fn: fn as () => void | Promise<void>, name: t, ignore: false };
   } else if (typeof t === "function") {
     if (!t.name) {
       throw new TypeError("The test function can't be anonymous");

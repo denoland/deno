@@ -12,10 +12,8 @@ declare namespace Deno {
    * See: https://no-color.org/ */
   export let noColor: boolean;
 
-  export type TestFunction = () => void | Promise<void>;
-
   export interface TestDefinition {
-    fn: TestFunction;
+    fn: () => void | Promise<void>;
     name: string;
     ignore?: boolean;
     disableOpSanitizer?: boolean;
@@ -29,11 +27,11 @@ declare namespace Deno {
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module, or explicitly
    * when `Deno.runTests` is used */
-  export function test(fn: TestFunction): void;
+  export function test(fn: () => void | Promise<void>): void;
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module, or explicitly
    * when `Deno.runTests` is used */
-  export function test(name: string, fn: TestFunction): void;
+  export function test(name: string, fn: () => void | Promise<void>): void;
 
   export interface TestMessage {
     start?: {
