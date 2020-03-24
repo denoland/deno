@@ -459,7 +459,7 @@ test("close server while iterating", async (): Promise<void> => {
 
 test({
   name: "[http] test Content-Length header parsed correctly",
-  async fn(): Promise<void> {
+  fn(): Promise<void> {
     const req = new ServerRequest();
     req.headers = new Headers();
     req.headers.set("content-length", "1776");
