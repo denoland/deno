@@ -314,3 +314,91 @@ unitTest(
     assertEquals(readFileString(to), "world");
   }
 );
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function copyFileSyncDir(): void {
+    const testDir = Deno.makeTempDirSync();
+    const from = testDir + "/from.txt";
+    const dir = testDir + "/dir";
+    writeFileString(from, "Hello");
+    Deno.mkdirSync(dir);
+
+    let caughtError = false;
+    try {
+      Deno.copyFileSync(from, dir);
+    } catch (e) {
+      caughtError = true;
+      if (Deno.build.os == "win") {
+        assert(e instanceof Deno.errors.PermissionDenied);
+      } else {
+        assert(e.message.includes("Is a directory"));
+      }
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      Deno.copyFileSync(from, dir, { create: false });
+    } catch (e) {
+      caughtError = true;
+      if (Deno.build.os == "win") {
+        assert(e instanceof Deno.errors.PermissionDenied);
+      } else {
+        assert(e.message.includes("Is a directory"));
+      }
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      Deno.copyFileSync(from, dir, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function copyFileDir(): Promise<void> {
+    const testDir = Deno.makeTempDirSync();
+    const from = testDir + "/from.txt";
+    const dir = testDir + "/dir";
+    writeFileString(from, "Hello");
+    Deno.mkdirSync(dir);
+
+    let caughtError = false;
+    try {
+      await Deno.copyFile(from, dir);
+    } catch (e) {
+      caughtError = true;
+      if (Deno.build.os == "win") {
+        assert(e instanceof Deno.errors.PermissionDenied);
+      } else {
+        assert(e.message.includes("Is a directory"));
+      }
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      await Deno.copyFile(from, dir, { create: false });
+    } catch (e) {
+      caughtError = true;
+      if (Deno.build.os == "win") {
+        assert(e instanceof Deno.errors.PermissionDenied);
+      } else {
+        assert(e.message.includes("Is a directory"));
+      }
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      await Deno.copyFile(from, dir, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+  }
+);
