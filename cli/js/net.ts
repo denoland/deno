@@ -4,25 +4,13 @@ import { EOF, Reader, Writer, Closer } from "./io.ts";
 import { read, write } from "./ops/io.ts";
 import { close } from "./ops/resources.ts";
 import * as netOps from "./ops/net.ts";
-import { Transport } from "./ops/net.ts";
-export { ShutdownMode, shutdown, Transport } from "./ops/net.ts";
+import { Addr } from "./ops/net.ts";
+export { ShutdownMode, shutdown, NetAddr, UnixAddr } from "./ops/net.ts";
 
-export interface Addr {
-  transport: Transport;
-  hostname: string;
-  port: number;
-}
-
-export interface UDPAddr {
-  transport?: Transport;
-  hostname?: string;
-  port: number;
-}
-
-export interface UDPConn extends AsyncIterable<[Uint8Array, Addr]> {
+export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
   receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
 
-  send(p: Uint8Array, addr: UDPAddr): Promise<void>;
+  send(p: Uint8Array, addr: Addr): Promise<void>;
 
   close(): void;
 
@@ -73,7 +61,7 @@ export class ListenerImpl implements Listener {
   constructor(readonly rid: number, readonly addr: Addr) {}
 
   async accept(): Promise<Conn> {
-    const res = await netOps.accept(this.rid);
+    const res = await netOps.accept(this.rid, this.addr.transport);
     return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
   }
 
@@ -95,15 +83,7 @@ export class ListenerImpl implements Listener {
   }
 }
 
-export async function recvfrom(
-  rid: number,
-  p: Uint8Array
-): Promise<[number, Addr]> {
-  const { size, remoteAddr } = await netOps.receive(rid, p);
-  return [size, remoteAddr];
-}
-
-export class UDPConnImpl implements UDPConn {
+export class DatagramImpl implements DatagramConn {
   constructor(
     readonly rid: number,
     readonly addr: Addr,
@@ -112,14 +92,18 @@ export class UDPConnImpl implements UDPConn {
 
   async receive(p?: Uint8Array): Promise<[Uint8Array, Addr]> {
     const buf = p || new Uint8Array(this.bufSize);
-    const [size, remoteAddr] = await recvfrom(this.rid, buf);
+    const { size, remoteAddr } = await netOps.receive(
+      this.rid,
+      this.addr.transport,
+      buf
+    );
     const sub = buf.subarray(0, size);
     return [sub, remoteAddr];
   }
 
-  async send(p: Uint8Array, addr: UDPAddr): Promise<void> {
+  async send(p: Uint8Array, addr: Addr): Promise<void> {
     const remote = { hostname: "127.0.0.1", transport: "udp", ...addr };
-    if (remote.transport !== "udp") throw Error("Remote transport must be UDP");
+
     const args = { ...remote, rid: this.rid };
     await netOps.send(args as netOps.SendRequest, p);
   }
@@ -153,38 +137,77 @@ export interface Conn extends Reader, Writer, Closer {
 export interface ListenOptions {
   port: number;
   hostname?: string;
-  transport?: Transport;
+  transport?: "tcp" | "udp";
+}
+
+export interface UnixListenOptions {
+  transport: "unix" | "unixpacket";
+  address: string;
 }
 
 export function listen(
   options: ListenOptions & { transport?: "tcp" }
 ): Listener;
-export function listen(options: ListenOptions & { transport: "udp" }): UDPConn;
-export function listen({
-  port,
-  hostname = "0.0.0.0",
-  transport = "tcp"
-}: ListenOptions): Listener | UDPConn {
-  const res = netOps.listen({ port, hostname, transport });
+export function listen(
+  options: UnixListenOptions & { transport: "unix" }
+): Listener;
+export function listen(
+  options: ListenOptions & { transport: "udp" }
+): DatagramConn;
+export function listen(
+  options: UnixListenOptions & { transport: "unixpacket" }
+): DatagramConn;
+export function listen(
+  options: ListenOptions | UnixListenOptions
+): Listener | DatagramConn {
+  let res;
 
-  if (transport === "tcp") {
+  if (options.transport === "unix" || options.transport === "unixpacket") {
+    res = netOps.listen(options);
+  } else {
+    res = netOps.listen({
+      transport: "tcp",
+      hostname: "127.0.0.1",
+      ...(options as ListenOptions)
+    });
+  }
+
+  if (
+    !options.transport ||
+    options.transport === "tcp" ||
+    options.transport === "unix"
+  ) {
     return new ListenerImpl(res.rid, res.localAddr);
   } else {
-    return new UDPConnImpl(res.rid, res.localAddr);
+    return new DatagramImpl(res.rid, res.localAddr);
   }
 }
 
 export interface ConnectOptions {
   port: number;
   hostname?: string;
-  transport?: Transport;
+  transport?: "tcp";
 }
+export interface UnixConnectOptions {
+  transport: "unix";
+  address: string;
+}
+export async function connect(options: UnixConnectOptions): Promise<Conn>;
+export async function connect(options: ConnectOptions): Promise<Conn>;
+export async function connect(
+  options: ConnectOptions | UnixConnectOptions
+): Promise<Conn> {
+  let res;
 
-export async function connect({
-  port,
-  hostname = "127.0.0.1",
-  transport = "tcp"
-}: ConnectOptions): Promise<Conn> {
-  const res = await netOps.connect({ port, hostname, transport });
+  if (options.transport === "unix") {
+    res = await netOps.connect(options);
+  } else {
+    res = await netOps.connect({
+      transport: "tcp",
+      hostname: "127.0.0.1",
+      ...options
+    });
+  }
+
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }

@@ -1,9 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
-export type Transport = "tcp" | "udp";
-// TODO support other types:
-// export type Transport = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
+export interface NetAddr {
+  transport: "tcp" | "udp";
+  hostname: string;
+  port: number;
+}
+
+export interface UnixAddr {
+  transport: "unix" | "unixpacket";
+  address: string;
+}
+
+export type Addr = NetAddr | UnixAddr;
 
 export enum ShutdownMode {
   // See http://man7.org/linux/man-pages/man2/shutdown.2.html
@@ -19,35 +28,22 @@ export function shutdown(rid: number, how: ShutdownMode): void {
 
 interface AcceptResponse {
   rid: number;
-  localAddr: {
-    hostname: string;
-    port: number;
-    transport: Transport;
-  };
-  remoteAddr: {
-    hostname: string;
-    port: number;
-    transport: Transport;
-  };
+  localAddr: Addr;
+  remoteAddr: Addr;
 }
 
-export function accept(rid: number): Promise<AcceptResponse> {
-  return sendAsync("op_accept", { rid });
+export function accept(
+  rid: number,
+  transport: string
+): Promise<AcceptResponse> {
+  return sendAsync("op_accept", { rid, transport });
 }
 
-export interface ListenRequest {
-  transport: Transport;
-  hostname: string;
-  port: number;
-}
+export type ListenRequest = Addr;
 
 interface ListenResponse {
   rid: number;
-  localAddr: {
-    hostname: string;
-    port: number;
-    transport: Transport;
-  };
+  localAddr: Addr;
 }
 
 export function listen(args: ListenRequest): ListenResponse {
@@ -56,23 +52,11 @@ export function listen(args: ListenRequest): ListenResponse {
 
 interface ConnectResponse {
   rid: number;
-  localAddr: {
-    hostname: string;
-    port: number;
-    transport: Transport;
-  };
-  remoteAddr: {
-    hostname: string;
-    port: number;
-    transport: Transport;
-  };
+  localAddr: Addr;
+  remoteAddr: Addr;
 }
 
-export interface ConnectRequest {
-  transport: Transport;
-  hostname: string;
-  port: number;
-}
+export type ConnectRequest = Addr;
 
 export function connect(args: ConnectRequest): Promise<ConnectResponse> {
   return sendAsync("op_connect", args);
@@ -80,26 +64,20 @@ export function connect(args: ConnectRequest): Promise<ConnectResponse> {
 
 interface ReceiveResponse {
   size: number;
-  remoteAddr: {
-    hostname: string;
-    port: number;
-    transport: Transport;
-  };
+  remoteAddr: Addr;
 }
 
 export function receive(
   rid: number,
+  transport: string,
   zeroCopy: Uint8Array
 ): Promise<ReceiveResponse> {
-  return sendAsync("op_receive", { rid }, zeroCopy);
+  return sendAsync("op_receive", { rid, transport }, zeroCopy);
 }
 
-export interface SendRequest {
+export type SendRequest = {
   rid: number;
-  hostname: string;
-  port: number;
-  transport: Transport;
-}
+} & Addr;
 
 export async function send(
   args: SendRequest,
