@@ -95,3 +95,61 @@ unitTest(
     assertDirectory(path);
   }
 );
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function mkdirSyncRecursiveMode(): void {
+    const nested = Deno.makeTempDirSync() + "/nested";
+    const path = nested + "/dir";
+    Deno.mkdirSync(path, { mode: 0o737, recursive: true });
+    assertDirectory(path, 0o737);
+    assertDirectory(nested, 0o737);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function mkdirRecursiveMode(): Promise<void> {
+    const nested = Deno.makeTempDirSync() + "/nested";
+    const path = nested + "/dir";
+    await Deno.mkdir(path, { mode: 0o737, recursive: true });
+    assertDirectory(path, 0o737);
+    assertDirectory(nested, 0o737);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function mkdirSyncRecursiveIfExists(): void {
+    const path = Deno.makeTempDirSync() + "/dir";
+    Deno.mkdirSync(path, { mode: 0o737 });
+    Deno.mkdirSync(path, { recursive: true });
+    Deno.mkdirSync(path, { recursive: true, mode: 0o731 });
+    assertDirectory(path, 0o737);
+    if (Deno.build.os != "win") {
+      const pathLink = path + "Link";
+      Deno.symlinkSync(path, pathLink);
+      Deno.mkdirSync(pathLink, { recursive: true });
+      Deno.mkdirSync(pathLink, { recursive: true, mode: 0o731 });
+      assertDirectory(path, 0o737);
+    }
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function mkdirRecursiveIfExists(): Promise<void> {
+    const path = Deno.makeTempDirSync() + "/dir";
+    await Deno.mkdir(path, { mode: 0o737 });
+    await Deno.mkdir(path, { recursive: true });
+    await Deno.mkdir(path, { recursive: true, mode: 0o731 });
+    assertDirectory(path, 0o737);
+    if (Deno.build.os != "win") {
+      const pathLink = path + "Link";
+      Deno.symlinkSync(path, pathLink);
+      await Deno.mkdir(pathLink, { recursive: true });
+      await Deno.mkdir(pathLink, { recursive: true, mode: 0o731 });
+      assertDirectory(path, 0o737);
+    }
+  }
+);
