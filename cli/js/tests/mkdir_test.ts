@@ -18,7 +18,7 @@ unitTest(
     Deno.mkdirSync(path, { mode: 0o737 });
     const pathInfo = Deno.statSync(path);
     if (Deno.build.os !== "win") {
-      assertEquals(pathInfo.mode!, 0o737 & ~Deno.umask());
+      assertEquals(pathInfo.mode, 0o737 & ~Deno.umask());
     }
   }
 );
@@ -51,7 +51,7 @@ unitTest(
     await Deno.mkdir(path, { mode: 0o737 });
     const pathInfo = Deno.statSync(path);
     if (Deno.build.os !== "win") {
-      assertEquals(pathInfo.mode!, 0o737 & ~Deno.umask());
+      assertEquals(pathInfo.mode, 0o737 & ~Deno.umask());
     }
   }
 );

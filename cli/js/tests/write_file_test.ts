@@ -53,9 +53,9 @@ unitTest(
       const data = enc.encode("Hello");
       const filename = Deno.makeTempDirSync() + "/test.txt";
       Deno.writeFileSync(filename, data, { mode: 0o755 });
-      assertEquals(Deno.statSync(filename).mode!, 0o755);
+      assertEquals(Deno.statSync(filename).mode, 0o755);
       Deno.writeFileSync(filename, data, { mode: 0o666 });
-      assertEquals(Deno.statSync(filename).mode!, 0o666);
+      assertEquals(Deno.statSync(filename).mode, 0o666);
     }
   }
 );
@@ -169,9 +169,9 @@ unitTest(
       const data = enc.encode("Hello");
       const filename = Deno.makeTempDirSync() + "/test.txt";
       await Deno.writeFile(filename, data, { mode: 0o755 });
-      assertEquals(Deno.statSync(filename).mode!, 0o755);
+      assertEquals(Deno.statSync(filename).mode, 0o755);
       await Deno.writeFile(filename, data, { mode: 0o666 });
-      assertEquals(Deno.statSync(filename).mode!, 0o666);
+      assertEquals(Deno.statSync(filename).mode, 0o666);
     }
   }
 );
