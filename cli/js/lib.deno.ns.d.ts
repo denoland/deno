@@ -294,8 +294,6 @@ declare namespace Deno {
    */
   export function execPath(): string;
 
-  // @url js/dir.d.ts
-
   /**
    * **UNSTABLE**: maybe needs permissions.
    *
@@ -335,8 +333,6 @@ declare namespace Deno {
   /** **UNSTABLE**: might move to `Deno.symbols`. */
   export const EOF: unique symbol;
   export type EOF = typeof EOF;
-
-  // @url js/io.d.ts
 
   /** **UNSTABLE**: might remove `"SEEK_"` prefix. Might not use all-caps. */
   export enum SeekMode {
@@ -472,8 +468,6 @@ declare namespace Deno {
    */
   export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array>;
 
-  // @url js/files.d.ts
-
   /** Synchronously open a file and return an instance of the `File` object.
    *
    *       const file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
@@ -590,7 +584,12 @@ declare namespace Deno {
     whence: SeekMode
   ): Promise<number>;
 
-  /** Close the given resource ID. */
+  /** Close the given resource ID (rid) which has been previously opened, such
+   * as via opening or creating a file.  Closing a file when you are finished
+   * with it is important to avoid leaking resources.
+   *
+   *      Deno.close(4);
+   */
   export function close(rid: number): void;
 
   /** The Deno abstraction for reading and writing files. */
@@ -670,8 +669,6 @@ declare namespace Deno {
    */
   export type OpenMode = "r" | "r+" | "w" | "w+" | "a" | "a+" | "x" | "x+";
 
-  // @url js/tty.d.ts
-
   /** **UNSTABLE**: newly added API
    *
    *  Check if a given resource is TTY. */
@@ -681,8 +678,6 @@ declare namespace Deno {
    *
    *  Set TTY to be under raw mode or not. */
   export function setRaw(rid: number, mode: boolean): void;
-
-  // @url js/buffer.d.ts
 
   /** A variable-sized buffer of bytes with `read()` and `write()` methods.
    *
@@ -770,8 +765,6 @@ declare namespace Deno {
   /** Synchronously write all the content of `arr` to `w`. */
   export function writeAllSync(w: SyncWriter, arr: Uint8Array): void;
 
-  // @url js/mkdir.d.ts
-
   export interface MkdirOptions {
     /** Defaults to `false`. If set to `true`, means that any intermediate
      * directories will also be created (as with the shell command `mkdir -p`).
@@ -814,8 +807,6 @@ declare namespace Deno {
     recursive?: boolean,
     mode?: number
   ): Promise<void>;
-
-  // @url js/make_temp.d.ts
 
   export interface MakeTempOptions {
     /** Directory where the temporary directory should be created (defaults to
@@ -895,8 +886,6 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function makeTempFile(options?: MakeTempOptions): Promise<string>;
 
-  // @url js/chmod.d.ts
-
   /** Synchronously changes the permission of a specific file/directory of
    * specified path.  Ignores the process's umask.
    *
@@ -937,31 +926,35 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function chmod(path: string, mode: number): Promise<void>;
 
-  // @url js/chown.d.ts
-
-  /** Synchronously change owner of a regular file or directory. Linux/Mac OS
-   * only at the moment.
+  /** Synchronously change owner of a regular file or directory. This functionality
+   * is not available on Windows.
+   *
+   *      Deno.chownSync('myFile.txt', 1000, 1002);
    *
    * Requires `allow-write` permission.
    *
+   * Throws Error (not implemented) if executed on Windows
+   *
    * @param path path to the file
-   * @param uid user id of the new owner
-   * @param gid group id of the new owner
+   * @param uid user id (UID) of the new owner
+   * @param gid group id (GID) of the new owner
    */
   export function chownSync(path: string, uid: number, gid: number): void;
 
-  /** Change owner of a regular file or directory. Linux/Mac OS only at the
-   * moment.
+  /** Change owner of a regular file or directory. This functionality
+   * is not available on Windows.
+   *
+   *      await Deno.chown('myFile.txt', 1000, 1002);
    *
    * Requires `allow-write` permission.
    *
+   * Throws Error (not implemented) if executed on Windows
+   *
    * @param path path to the file
-   * @param uid user id of the new owner
-   * @param gid group id of the new owner
+   * @param uid user id (UID) of the new owner
+   * @param gid group id (GID) of the new owner
    */
   export function chown(path: string, uid: number, gid: number): Promise<void>;
-
-  // @url js/utime.d.ts
 
   /** **UNSTABLE**: needs investigation into high precision time.
    *
@@ -993,8 +986,6 @@ declare namespace Deno {
     mtime: number | Date
   ): Promise<void>;
 
-  // @url js/remove.d.ts
-
   export interface RemoveOptions {
     /** Defaults to `false`. If set to `true`, path will be removed even if
      * it's a non-empty directory. */
@@ -1019,8 +1010,6 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function remove(path: string, options?: RemoveOptions): Promise<void>;
 
-  // @url js/rename.d.ts
-
   /** Synchronously renames (moves) `oldpath` to `newpath`. If `newpath` already
    * exists and is not a directory, `renameSync()` replaces it. OS-specific
    * restrictions may apply when `oldpath` and `newpath` are in different
@@ -1040,8 +1029,6 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write`. */
   export function rename(oldpath: string, newpath: string): Promise<void>;
 
-  // @url js/read_file.d.ts
-
   /** Reads and returns the entire contents of a file.
    *
    *       const decoder = new TextDecoder("utf-8");
@@ -1059,8 +1046,6 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission. */
   export function readFile(path: string): Promise<Uint8Array>;
-
-  // @url js/file_info.d.ts
 
   /** A FileInfo describes a file and is returned by `stat`, `lstat`,
    * `statSync`, `lstatSync`. A list of FileInfo is returned by `readdir`,
@@ -1130,8 +1115,6 @@ declare namespace Deno {
     isSymlink(): boolean;
   }
 
-  // @url js/realpath.d.ts
-
   /** Returns absolute normalized path with, symbolic links resolved.
    *
    *       const realPath = Deno.realpathSync("./some/path");
@@ -1145,8 +1128,6 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission. */
   export function realpath(path: string): Promise<string>;
-
-  // @url js/read_dir.d.ts
 
   /** UNSTABLE: need to consider streaming case
    *
@@ -1166,8 +1147,6 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission. */
   export function readdir(path: string): Promise<FileInfo[]>;
-
-  // @url js/copy_file.d.ts
 
   /** Synchronously copies the contents and permissions of one file to another
    * specified path, by default creating a new file if needed, else overwriting.
@@ -1189,8 +1168,6 @@ declare namespace Deno {
    * Requires `allow-write` permission on toPath. */
   export function copyFile(fromPath: string, toPath: string): Promise<void>;
 
-  // @url js/read_link.d.ts
-
   /** Returns the destination of the named symbolic link.
    *
    *       const targetPath = Deno.readlinkSync("symlink/path");
@@ -1204,8 +1181,6 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission. */
   export function readlink(path: string): Promise<string>;
-
-  // @url js/stat.d.ts
 
   /** Resolves to a `Deno.FileInfo` for the specified `path`. If `path` is a
    * symlink, information for the symlink will be returned.
@@ -1243,8 +1218,6 @@ declare namespace Deno {
    * Requires `allow-read` permission. */
   export function statSync(path: string): FileInfo;
 
-  // @url js/link.d.ts
-
   /** Creates `newpath` as a hard link to `oldpath`.
    *
    *       Deno.linkSync("old/name", "new/name");
@@ -1258,8 +1231,6 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions. */
   export function link(oldpath: string, newpath: string): Promise<void>;
-
-  // @url js/symlink.d.ts
 
   /** **UNSTABLE**: `type` argument type may be changed to `"dir" | "file"`.
    *
@@ -1290,8 +1261,6 @@ declare namespace Deno {
     newpath: string,
     type?: string
   ): Promise<void>;
-
-  // @url js/write_file.d.ts
 
   /** Options for writing to a file. */
   export interface WriteFileOptions {
@@ -1487,8 +1456,6 @@ declare namespace Deno {
     constructor(state: PermissionState);
   }
 
-  // @url js/truncate.d.ts
-
   /** Synchronously truncates or extends the specified file, to reach the
    * specified `len`.
    *
@@ -1533,21 +1500,18 @@ declare namespace Deno {
    *
    * Requires `allow-plugin` permission. */
   export function openPlugin(filename: string): Plugin;
-
-  export type Transport = "tcp" | "udp";
-
-  export interface Addr {
-    transport: Transport;
+  export interface NetAddr {
+    transport: "tcp" | "udp";
     hostname: string;
     port: number;
   }
 
-  export interface UDPAddr {
-    port: number;
-    transport?: Transport;
-    hostname?: string;
+  export interface UnixAddr {
+    transport: "unix" | "unixpacket";
+    address: string;
   }
 
+  export type Addr = NetAddr | UnixAddr;
   /** **UNSTABLE**: Maybe remove `ShutdownMode` entirely.
    *
    * Corresponds to `SHUT_RD`, `SHUT_WR`, `SHUT_RDWR` on POSIX-like systems.
@@ -1574,16 +1538,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
-   * Waits for the next message to the passed `rid` and writes it on the passed
-   * `Uint8Array`.
-   *
-   * Resolves to the number of bytes written and the remote address. */
-  export function recvfrom(rid: number, p: Uint8Array): Promise<[number, Addr]>;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
    * A generic transport listener for message-oriented protocols. */
-  export interface UDPConn extends AsyncIterable<[Uint8Array, Addr]> {
+  export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
     /** **UNSTABLE**: new API, yet to be vetted.
      *
      * Waits for and resolves to the next message to the `UDPConn`. */
@@ -1591,7 +1547,7 @@ declare namespace Deno {
     /** UNSTABLE: new API, yet to be vetted.
      *
      * Sends a message to the target. */
-    send(p: Uint8Array, addr: UDPAddr): Promise<void>;
+    send(p: Uint8Array, addr: Addr): Promise<void>;
     /** UNSTABLE: new API, yet to be vetted.
      *
      * Close closes the socket. Any pending message promises will be rejected
@@ -1611,6 +1567,7 @@ declare namespace Deno {
     close(): void;
     /** Return the address of the `Listener`. */
     readonly addr: Addr;
+
     [Symbol.asyncIterator](): AsyncIterator<Conn>;
   }
 
@@ -1635,13 +1592,12 @@ declare namespace Deno {
     /** A literal IP address or host name that can be resolved to an IP address.
      * If not specified, defaults to `0.0.0.0`. */
     hostname?: string;
-    /** Either `"tcp"` or `"udp"`. Defaults to `"tcp"`.
-     *
-     * In the future: `"tcp4"`, `"tcp6"`, `"udp4"`, `"udp6"`, `"ip"`, `"ip4"`,
-     * `"ip6"`, `"unix"`, `"unixgram"`, and `"unixpacket"`. */
-    transport?: Transport;
   }
 
+  export interface UnixListenOptions {
+    /** A Path to the Unix Socket. */
+    address: string;
+  }
   /** **UNSTABLE**: new API
    *
    * Listen announces on the local transport address.
@@ -1659,32 +1615,41 @@ declare namespace Deno {
    *
    * Listen announces on the local transport address.
    *
-   *      Deno.listen({ port: 80 })
-   *      Deno.listen({ hostname: "192.0.2.1", port: 80 })
-   *      Deno.listen({ hostname: "[2001:db8::1]", port: 80 });
-   *      Deno.listen({ hostname: "golang.org", port: 80, transport: "tcp" });
+   *     Deno.listen({ address: "/foo/bar.sock", transport: "unix" })
    *
-   * Requires `allow-net` permission. */
+   * Requires `allow-read` permission. */
   export function listen(
-    options: ListenOptions & { transport: "udp" }
-  ): UDPConn;
+    options: UnixListenOptions & { transport: "unix" }
+  ): Listener;
   /** **UNSTABLE**: new API
    *
    * Listen announces on the local transport address.
    *
-   *      Deno.listen({ port: 80 })
-   *      Deno.listen({ hostname: "192.0.2.1", port: 80 })
-   *      Deno.listen({ hostname: "[2001:db8::1]", port: 80 });
-   *      Deno.listen({ hostname: "golang.org", port: 80, transport: "tcp" });
+   *      Deno.listen({ port: 80, transport: "udp" })
+   *      Deno.listen({ hostname: "golang.org", port: 80, transport: "udp" });
    *
    * Requires `allow-net` permission. */
-  export function listen(options: ListenOptions): Listener | UDPConn;
+  export function listen(
+    options: ListenOptions & { transport: "udp" }
+  ): DatagramConn;
+  /** **UNSTABLE**: new API
+   *
+   * Listen announces on the local transport address.
+   *
+   *     Deno.listen({ address: "/foo/bar.sock", transport: "unixpacket" })
+   *
+   * Requires `allow-read` permission. */
+  export function listen(
+    options: UnixListenOptions & { transport: "unixpacket" }
+  ): DatagramConn;
 
   export interface ListenTLSOptions extends ListenOptions {
     /** Server certificate file. */
     certFile: string;
     /** Server public key file. */
     keyFile: string;
+
+    transport?: "tcp";
   }
 
   /** Listen announces on the local transport address over TLS (transport layer
@@ -1701,23 +1666,28 @@ declare namespace Deno {
     /** A literal IP address or host name that can be resolved to an IP address.
      * If not specified, defaults to `127.0.0.1`. */
     hostname?: string;
-    /** Either `"tcp"` or `"udp"`. Defaults to `"tcp"`.
-     *
-     * In the future: `"tcp4"`, `"tcp6"`, `"udp4"`, `"udp6"`, `"ip"`, `"ip4"`,
-     * `"ip6"`, `"unix"`, `"unixgram"`, and `"unixpacket"`. */
-    transport?: Transport;
+    transport?: "tcp";
+  }
+
+  export interface UnixConnectOptions {
+    transport: "unix";
+    address: string;
   }
 
   /**
-   * Connects to the address on the named transport.
+   * Connects to the hostname (default is "127.0.0.1") and port on the named
+   * transport (default is "tcp").
    *
-   *     Deno.connect({ port: 80 })
-   *     Deno.connect({ hostname: "192.0.2.1", port: 80 })
-   *     Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
-   *     Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" })
+   *     const conn1 = await Deno.connect({ port: 80 })
+   *     const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 })
+   *     const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
+   *     const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
+   *     const conn5 = await Deno.connect({ address: "/foo/bar.sock", transport: "unix" });
    *
-   * Requires `allow-net` permission. */
-  export function connect(options: ConnectOptions): Promise<Conn>;
+   * Requires `allow-net` permission for "tcp" and `allow-read` for unix. */
+  export function connect(
+    options: ConnectOptions | UnixConnectOptions
+  ): Promise<Conn>;
 
   export interface ConnectTLSOptions {
     /** The port to connect to. */
@@ -1854,12 +1824,12 @@ declare namespace Deno {
     signal?: number;
   }
 
-  /** **UNSTABLE**:  Maybe rename `args` to `argv` to differentiate from
+  /** **UNSTABLE**: `args` has been recently renamed to `cmd` to differentiate from
    * `Deno.args`. */
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
      * binary */
-    args: string[];
+    cmd: string[];
     cwd?: string;
     env?: {
       [key: string]: string;
@@ -2291,8 +2261,9 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
-   * Takes a root module name, any optionally a record set of sources. Resolves
-   * with a compiled set of modules. If just a root name is provided, the modules
+   * Takes a root module name, and optionally a record set of sources. Resolves
+   * with a compiled set of modules and possibly diagnostics if the compiler
+   * encountered any issues. If just a root name is provided, the modules
    * will be resolved as if the root module had been passed on the command line.
    *
    * If sources are passed, all modules will be resolved out of this object, where

@@ -4,7 +4,7 @@ import { assertStrictEq } from "../../testing/asserts.ts";
 Deno.test("[examples/cat] print multiple files", async () => {
   const decoder = new TextDecoder();
   const process = Deno.run({
-    args: [
+    cmd: [
       Deno.execPath(),
       "--allow-read",
       "cat.ts",

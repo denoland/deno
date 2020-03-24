@@ -366,7 +366,7 @@ Example:
 ```ts
 // create subprocess
 const p = Deno.run({
-  args: ["echo", "hello"]
+  cmd: ["echo", "hello"]
 });
 
 // await its completion
@@ -393,7 +393,7 @@ you can use `"piped"` option.
 const fileNames = Deno.args;
 
 const p = Deno.run({
-  args: [
+  cmd: [
     "deno",
     "run",
     "--allow-read",
@@ -1587,8 +1587,7 @@ cargo test js_unit_tests
 Test `std/`:
 
 ```bash
-cd std
-cargo run -- -A testing/runner.ts --exclude "**/testdata"
+cargo test std_tests
 ```
 
 Lint the code:

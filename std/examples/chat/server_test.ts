@@ -12,7 +12,7 @@ const { test, build } = Deno;
 
 async function startServer(): Promise<Deno.Process> {
   const server = Deno.run({
-    args: [
+    cmd: [
       Deno.execPath(),
       "--allow-net",
       "--allow-read",
