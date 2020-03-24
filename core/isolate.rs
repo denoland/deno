@@ -9,10 +9,12 @@ use rusty_v8 as v8;
 
 use crate::any_error::ErrBox;
 use crate::bindings;
+use crate::inspector::InspectorClient;
 use crate::js_errors::JSError;
 use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
+use crate::InspectorHandle;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
 use futures::stream::select;
@@ -179,6 +181,8 @@ pub struct Isolate {
   pub op_registry: Rc<OpRegistry>,
   waker: AtomicWaker,
   error_handler: Option<Box<IsolateErrorHandleFn>>,
+  inspector_handle: Option<InspectorHandle>,
+  pub inspector_client: Option<InspectorClient>,
 }
 
 impl Drop for Isolate {
@@ -315,6 +319,8 @@ impl Isolate {
       op_registry: Rc::new(OpRegistry::new()),
       waker: AtomicWaker::new(),
       error_handler: None,
+      inspector_handle: None,
+      inspector_client: None,
     };
 
     let mut boxed_isolate = Box::new(core_isolate);
@@ -335,6 +341,78 @@ impl Isolate {
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(bindings::promise_reject_callback);
     isolate
+  }
+
+  pub fn set_inspector_handle(&mut self, handle: InspectorHandle) {
+    let isolate = self.v8_isolate.as_mut().unwrap();
+    assert!(!self.global_context.is_empty());
+    let mut hs = v8::HandleScope::new(isolate);
+    let s = hs.enter();
+    let context = self.global_context.get(s).unwrap();
+
+    let client = InspectorClient::new(s, context);
+    self.inspector_handle = Some(handle);
+    self.inspector_client = Some(client);
+    eprintln!("client created");
+  }
+
+  #[allow(unused)]
+  pub fn inspector_message_cb(
+    &mut self,
+    mut message: v8::UniquePtr<v8::inspector::StringBuffer>,
+  ) {
+    eprintln!("inspector message cb");
+    if let Some(handle) = &self.inspector_handle {
+      let tx = handle.tx.lock().unwrap();
+
+      let mut string_buffer = message.unwrap();
+      let string_view = string_buffer.string();
+      let str_message = if string_view.is_8bit() {
+        let v = string_view.characters8().unwrap().to_vec();
+        String::from_utf8(v).unwrap()
+      } else {
+        String::from_utf16(string_view.characters16().unwrap()).unwrap()
+      };
+      tx.send(str_message).unwrap();
+    }
+  }
+
+  #[allow(unused)]
+  pub fn inspector_block_recv(&mut self) {
+    eprintln!("inspector block recv");
+    if let Some(handle) = &self.inspector_handle {
+      let rx = handle.rx.lock().unwrap();
+      let msg = rx.recv().unwrap();
+      if let Some(handle) = &self.inspector_handle {
+        let tx = handle.tx.lock().unwrap();
+        tx.send(msg).unwrap();
+      }
+    }
+  }
+
+  #[allow(unused)]
+  pub fn inspector_message(&mut self, message: String) {
+    let isolate = self.v8_isolate.as_mut().unwrap();
+    assert!(!self.global_context.is_empty());
+    let mut hs = v8::HandleScope::new(isolate);
+    let s = hs.enter();
+    let mut context = self.global_context.get(s).unwrap();
+    let mut cs = v8::ContextScope::new(s, context);
+    let s = cs.enter();
+
+    let inspector_client = self.inspector_client.as_mut().unwrap();
+    let mut session = inspector_client.get_session();
+    eprintln!("before message");
+    let message = &message.into_bytes()[..];
+    let string_view = v8::inspector::StringView::from(message);
+    eprintln!("before dispatch protocol message");
+    session.dispatch_protocol_message(&string_view);
+    eprintln!("after dispatch protocol message");
+    // let task_runner = platform::get_foreground_task_runner(self);
+    // let task = DispatchOnInspectorBackendTask::new(session, message);
+    // task_runner.post_task(task);
+
+    // v8::platform::pump_message_loop(V*_::get(), isolate)
   }
 
   /// Defines the how Deno.core.dispatch() acts.

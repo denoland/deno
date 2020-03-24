@@ -106,6 +106,10 @@ pub struct Flags {
 
   pub lock: Option<String>,
   pub lock_write: bool,
+
+  pub debug: bool,
+  pub debug_address: Option<String>,
+
   pub ca_file: Option<String>,
 }
 
@@ -457,6 +461,15 @@ fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   }
 }
 
+fn debug_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  if matches.is_present("debug") {
+    flags.debug = true;
+    if matches.value_of("debug").is_some() {
+      flags.debug_address = Some(matches.value_of("debug").unwrap().to_owned());
+    }
+  }
+}
+
 fn resolve_fs_whitelist(whitelist: &[PathBuf]) -> Vec<PathBuf> {
   whitelist
     .iter()
@@ -472,6 +485,7 @@ fn run_test_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
+  debug_args_parse(flags, matches);
   permission_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
 
@@ -769,6 +783,15 @@ and is used to replace the current executable.",
 
 fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
   app
+    .arg(
+      Arg::with_name("debug")
+        .long("debug")
+        .takes_value(true)
+        .require_equals(true)
+        .min_values(0)
+        .value_name("ADDRESS")
+        .help("Enable debugger and pause on first statement"),
+    )
     .arg(
       Arg::with_name("allow-read")
         .long("allow-read")

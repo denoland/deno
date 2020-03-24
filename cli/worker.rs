@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
+use crate::inspector::Inspector;
 use crate::ops;
 use crate::state::State;
 use deno_core;
@@ -21,6 +22,7 @@ use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::task::Context;
 use std::task::Poll;
 use tokio::sync::Mutex as AsyncMutex;
@@ -97,10 +99,18 @@ pub struct Worker {
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
+
+  #[allow(dead_code)]
+  inspector: Arc<Mutex<Inspector>>,
 }
 
 impl Worker {
   pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
+    let inspector = Inspector::new(
+      state.borrow().global_state.flags.debug,
+      state.borrow().global_state.flags.debug_address.clone(),
+    );
+
     let loader = Rc::new(state.clone());
     let mut isolate = deno_core::EsIsolate::new(loader, startup_data, false);
 
@@ -111,8 +121,34 @@ impl Worker {
 
     let (internal_channels, external_channels) = create_channels();
 
+    let inspector_handle = inspector.handle.clone();
+    {
+      isolate.set_inspector_handle(inspector.handle.clone());
+    }
+
+    // TODO(bartlomieju): refactor this...
+    // I'm pretty sure it can be port of `Poll` for worker
+    std::thread::spawn(move || loop {
+      {
+        let message = {
+          let rx = inspector_handle.rx.lock().unwrap();
+          rx.try_recv()
+        };
+
+        if let Ok(msg) = message {
+          eprintln!("[i] message ok {}", msg);
+          //  TODO!!
+          // let mut i = isolate_.try_lock().unwrap();
+          // i.inspector_message(msg);
+        }
+      }
+
+      std::thread::sleep(std::time::Duration::from_millis(5));
+    });
+
     Self {
       name,
+      inspector: Arc::new(Mutex::new(inspector)),
       isolate,
       state,
       waker: AtomicWaker::new(),
