@@ -1,13 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { serve } from "../../http/server.ts";
 import { assertStrictEq } from "../../testing/asserts.ts";
-import { randomPort } from "../../http/test_util.ts";
 
-const port = randomPort();
 Deno.test({
   name: "[examples/curl] send a request to a specified url",
   fn: async () => {
-    const server = serve({ port });
+    const server = serve({ port: 8081 });
     const serverPromise = (async (): Promise<void> => {
       for await (const req of server) {
         req.respond({ body: "Hello world" });
@@ -16,12 +14,7 @@ Deno.test({
 
     const decoder = new TextDecoder();
     const process = Deno.run({
-      cmd: [
-        Deno.execPath(),
-        "--allow-net",
-        "curl.ts",
-        "http://localhost:" + port
-      ],
+      cmd: [Deno.execPath(), "--allow-net", "curl.ts", "http://localhost:8081"],
       cwd: "examples",
       stdout: "piped"
     });
