@@ -1,6 +1,27 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals } from "./test_util.ts";
 
+function assertMissing(path: string): void {
+  let caughtErr = false;
+  let info;
+  try {
+    info = Deno.lstatSync(path);
+  } catch (e) {
+    caughtErr = true;
+    assert(e instanceof Deno.errors.NotFound);
+  }
+  assert(caughtErr);
+  assertEquals(info, undefined);
+}
+
+function assertDirectory(path: string, mode?: number): void {
+  const info = Deno.lstatSync(path);
+  assert(info.isDirectory());
+  if (Deno.build.os !== "win" && mode !== undefined) {
+    assertEquals(info.mode! & 0o777, mode & ~Deno.umask());
+  }
+}
+
 unitTest(
   { perms: { read: true, write: true } },
   function renameSyncSuccess(): void {
@@ -9,20 +30,8 @@ unitTest(
     const newpath = testDir + "/newpath";
     Deno.mkdirSync(oldpath);
     Deno.renameSync(oldpath, newpath);
-    const newPathInfo = Deno.statSync(newpath);
-    assert(newPathInfo.isDirectory());
-
-    let caughtErr = false;
-    let oldPathInfo;
-
-    try {
-      oldPathInfo = Deno.statSync(oldpath);
-    } catch (e) {
-      caughtErr = true;
-      assert(e instanceof Deno.errors.NotFound);
-    }
-    assert(caughtErr);
-    assertEquals(oldPathInfo, undefined);
+    assertDirectory(newpath);
+    assertMissing(oldpath);
   }
 );
 
@@ -66,19 +75,7 @@ unitTest(
     const newpath = testDir + "/newpath";
     Deno.mkdirSync(oldpath);
     await Deno.rename(oldpath, newpath);
-    const newPathInfo = Deno.statSync(newpath);
-    assert(newPathInfo.isDirectory());
-
-    let caughtErr = false;
-    let oldPathInfo;
-
-    try {
-      oldPathInfo = Deno.statSync(oldpath);
-    } catch (e) {
-      caughtErr = true;
-      assert(e instanceof Deno.errors.NotFound);
-    }
-    assert(caughtErr);
-    assertEquals(oldPathInfo, undefined);
+    assertDirectory(newpath);
+    assertMissing(oldpath);
   }
 );
