@@ -219,7 +219,7 @@ const decoders = new Map<string, (options: DecoderOptions) => Decoder>();
 
 // Single byte decoders are an array of code point lookups
 const encodingIndexes = new Map<string, number[]>();
-// prettier-ignore
+// dprint-ignore
 encodingIndexes.set("windows-1252", [
   8364,129,8218,402,8222,8230,8224,8225,710,8240,352,8249,338,141,381,143,144,
   8216,8217,8220,8221,8226,8211,8212,732,8482,353,8250,339,157,382,376,160,161,

@@ -88,7 +88,7 @@ test("[ws] read unmasked ping / pong frame", async () => {
   const ping = await readFrame(buf);
   assertEquals(ping.opcode, OpCode.Ping);
   assertEquals(new Buffer(ping.payload).toString(), "Hello");
-  // prettier-ignore
+  // dprint-ignore
   const pongFrame= [0x8a, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58]
   const buf2 = new BufReader(new Buffer(new Uint8Array(pongFrame)));
   const pong = await readFrame(buf2);

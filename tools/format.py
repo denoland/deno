@@ -39,7 +39,7 @@ def prettier():
     print "prettier"
     script = os.path.join(third_party_path, "node_modules", "prettier",
                           "bin-prettier.js")
-    source_files = git_ls_files(root_path, ["*.json", "*.md"])
+    source_files = git_ls_files(root_path, ["*.json", "*.md", "*.d.ts"])
     run(["node", script, "--write", "--loglevel=error", "--"] + source_files,
         shell=False,
         quiet=True)
@@ -48,6 +48,7 @@ def prettier():
 def dprint():
     print "dprint"
     source_files = git_ls_files(root_path, ["*.js", "*.ts"])
+    source_files = filter(lambda x: ("d.ts" in x) == False, source_files)
     run(["cargo", "run", "--", "fmt", "-q"] + source_files,
         shell=False,
         quiet=True)
