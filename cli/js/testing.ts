@@ -121,39 +121,30 @@ export function test(
   TEST_REGISTRY.push(testDef);
 }
 
-export interface RunTestsStartMessage {
-  kind: "runTestsStart";
-  tests: TestDefinition[];
+export interface TestMessage {
+  start?: {
+    tests: TestDefinition[];
+  };
+  // Must be extensible, avoiding `testStart?: TestDefinition;`.
+  testStart?: {
+    [P in keyof TestDefinition]: TestDefinition[P];
+  };
+  testEnd?: {
+    name: string;
+    status: "passed" | "failed" | "ignored";
+    duration: number;
+    error?: Error;
+  };
+  end?: {
+    filtered: number;
+    ignored: number;
+    measured: number;
+    passed: number;
+    failed: number;
+    duration: number;
+    errors: Array<[string, Error]>;
+  };
 }
-
-export interface TestStartMessage extends TestDefinition {
-  kind: "testStart";
-}
-
-export interface TestEndMessage {
-  kind: "testEnd";
-  name: string;
-  status: "passed" | "failed" | "ignored";
-  duration: number;
-  error?: Error;
-}
-
-export interface RunTestsEndMessage {
-  kind: "runTestsEnd";
-  filtered: number;
-  ignored: number;
-  measured: number;
-  passed: number;
-  failed: number;
-  duration: number;
-  errors: Array<[string, Error]>;
-}
-
-export type TestMessage =
-  | RunTestsStartMessage
-  | TestStartMessage
-  | TestEndMessage
-  | RunTestsEndMessage;
 
 const encoder = new TextEncoder();
 
@@ -169,30 +160,30 @@ function log(msg: string, noNewLine = false): void {
 }
 
 function reportToConsole(message: TestMessage): void {
-  if (message.kind == "runTestsStart") {
-    log(`running ${message.tests.length} tests`);
-  } else if (message.kind == "testStart") {
-    const { name } = message;
+  if (message.start != null) {
+    log(`running ${message.start.tests.length} tests`);
+  } else if (message.testStart != null) {
+    const { name } = message.testStart;
 
     log(`test ${name} ... `, true);
     return;
-  } else if (message.kind == "testEnd") {
-    switch (message.status) {
+  } else if (message.testEnd != null) {
+    switch (message.testEnd.status) {
       case "passed":
-        log(`${GREEN_OK} ${formatDuration(message.duration)}`);
+        log(`${GREEN_OK} ${formatDuration(message.testEnd.duration)}`);
         break;
       case "failed":
-        log(`${RED_FAILED} ${formatDuration(message.duration)}`);
+        log(`${RED_FAILED} ${formatDuration(message.testEnd.duration)}`);
         break;
       case "ignored":
-        log(`${YELLOW_IGNORED} ${formatDuration(message.duration)}`);
+        log(`${YELLOW_IGNORED} ${formatDuration(message.testEnd.duration)}`);
         break;
     }
-  } else if (message.kind == "runTestsEnd") {
-    if (message.errors.length > 0) {
+  } else if (message.end != null) {
+    if (message.end.errors.length > 0) {
       log(`\nfailures:\n`);
 
-      for (const [name, error] of message.errors) {
+      for (const [name, error] of message.end.errors) {
         log(name);
         log(stringifyArgs([error]));
         log("");
@@ -200,16 +191,16 @@ function reportToConsole(message: TestMessage): void {
 
       log(`failures:\n`);
 
-      for (const [name] of message.errors) {
+      for (const [name] of message.end.errors) {
         log(`\t${name}`);
       }
     }
     log(
-      `\ntest result: ${message.failed ? RED_FAILED : GREEN_OK}. ` +
-        `${message.passed} passed; ${message.failed} failed; ` +
-        `${message.ignored} ignored; ${message.measured} measured; ` +
-        `${message.filtered} filtered out ` +
-        `${formatDuration(message.duration)}\n`
+      `\ntest result: ${message.end.failed ? RED_FAILED : GREEN_OK}. ` +
+        `${message.end.passed} passed; ${message.end.failed} failed; ` +
+        `${message.end.ignored} ignored; ${message.end.measured} measured; ` +
+        `${message.end.filtered} filtered out ` +
+        `${formatDuration(message.end.duration)}\n`
     );
   }
 }
@@ -238,17 +229,16 @@ class TestApi {
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<TestMessage> {
-    yield { kind: "runTestsStart", tests: this.testsToRun };
+    yield { start: { tests: this.testsToRun } };
 
     const errors: Array<[string, Error]> = [];
     const suiteStart = +new Date();
     for (const test of this.testsToRun) {
-      const endMessage: Partial<TestEndMessage> = {
-        kind: "testEnd",
+      const endMessage: Partial<TestMessage["testEnd"]> = {
         name: test.name,
         duration: 0
       };
-      yield { kind: "testStart", ...test };
+      yield { testStart: { ...test } };
       if (test.ignore) {
         endMessage.status = "ignored";
         this.stats.ignored++;
@@ -267,7 +257,7 @@ class TestApi {
           endMessage.duration = +new Date() - start;
         }
       }
-      yield endMessage as TestEndMessage;
+      yield { testEnd: endMessage as TestMessage["testEnd"] };
       if (this.failFast && endMessage.error != null) {
         break;
       }
@@ -275,7 +265,7 @@ class TestApi {
 
     const duration = +new Date() - suiteStart;
 
-    yield { kind: "runTestsEnd", ...this.stats, duration, errors };
+    yield { end: { ...this.stats, duration, errors } };
   }
 }
 
@@ -324,7 +314,7 @@ export async function runTests({
   disableLog = false,
   reportToConsole: reportToConsole_ = false,
   onMessage = undefined
-}: RunTestsOptions = {}): Promise<RunTestsEndMessage> {
+}: RunTestsOptions = {}): Promise<TestMessage["end"]> {
   const filterFn = createFilterFn(only, skip);
   const testApi = new TestApi(TEST_REGISTRY, filterFn, failFast);
 
@@ -336,7 +326,7 @@ export async function runTests({
     globalThis.console = disabledConsole;
   }
 
-  let endMsg: RunTestsEndMessage;
+  let endMsg: TestMessage["end"];
 
   for await (const message of testApi) {
     if (onMessage != null) {
@@ -345,8 +335,8 @@ export async function runTests({
     if (reportToConsole_) {
       reportToConsole(message);
     }
-    if (message.kind == "runTestsEnd") {
-      endMsg = message;
+    if (message.end != null) {
+      endMsg = message.end;
     }
   }
 

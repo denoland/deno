@@ -119,12 +119,9 @@ export { version } from "./version.ts";
 export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";
 export const args: string[] = [];
 export {
-  RunTestsEndMessage,
   RunTestsOptions,
-  RunTestsStartMessage,
   TestDefinition,
-  TestEndMessage,
-  TestStartMessage,
+  TestMessage,
   runTests,
   test
 } from "./testing.ts";

@@ -196,37 +196,34 @@ export function createResolvable<T>(): Resolvable<T> {
 
 const encoder = new TextEncoder();
 
+// Replace functions with null, errors with their stack strings, and JSONify.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function write(conn: Deno.Conn, msg: any, newLn = true): Promise<void> {
-  const s = newLn ? "\n" : "";
-  const encodedMsg = encoder.encode(JSON.stringify(msg) + s);
-  await Deno.writeAll(conn, encodedMsg);
+function serializeTestMessage(message: Deno.TestMessage): string {
+  return JSON.stringify({
+    start: message.start && {
+      ...message.start,
+      tests: message.start.tests.map(test => ({ ...test, fn: null }))
+    },
+    testStart: message.testStart && { ...message.testStart, fn: null },
+    testEnd: message.testEnd && {
+      ...message.testEnd,
+      error: String(message.testEnd.error?.stack)
+    },
+    end: message.end && {
+      ...message.end,
+      errors: message.end.errors.map(([n, e]) => [n, e.stack])
+    }
+  });
 }
 
 export async function reportToConn(
   conn: Deno.Conn,
   message: Deno.TestMessage
 ): Promise<void> {
-  if (message.kind == "runTestsStart") {
-    // Message contains JS functions, serialize it.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const serializedMsg: any = { ...message };
-    serializedMsg.tests = message.tests.map(test => ({ ...test, fn: null }));
-    await write(conn, serializedMsg);
-  } else if (message.kind == "testStart") {
-    // Message contains a JS function, serialize it.
-    const serializedMsg = { ...message, fn: null };
-    await write(conn, serializedMsg);
-  } else if (message.kind == "testEnd") {
-    // Message contains a JS Error, serialize it.
-    const serializedMsg = { ...message, error: String(message.error?.stack) };
-    await write(conn, serializedMsg);
-  } else {
-    // Message contains JS Errors, serialize it.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const serializedMsg: any = { ...message };
-    serializedMsg.errors = message.errors.map(([n, e]) => [n, e.stack]);
-    await write(conn, serializedMsg, false);
+  const line = serializeTestMessage(message);
+  const encodedMsg = encoder.encode(line + (message.end == null ? "\n" : ""));
+  await Deno.writeAll(conn, encodedMsg);
+  if (message.end != null) {
     conn.closeWrite();
   }
 }

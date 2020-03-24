@@ -35,39 +35,29 @@ declare namespace Deno {
    * when `Deno.runTests` is used */
   export function test(name: string, fn: TestFunction): void;
 
-  export interface RunTestsStartMessage {
-    kind: "runTestsStart";
-    tests: TestDefinition[];
+  export interface TestMessage {
+    start?: {
+      tests: TestDefinition[];
+    };
+    testStart?: {
+      [P in keyof TestDefinition]: TestDefinition[P];
+    };
+    testEnd?: {
+      name: string;
+      status: "passed" | "failed" | "ignored";
+      duration: number;
+      error?: Error;
+    };
+    end?: {
+      filtered: number;
+      ignored: number;
+      measured: number;
+      passed: number;
+      failed: number;
+      duration: number;
+      errors: Array<[string, Error]>;
+    };
   }
-
-  export interface TestStartMessage extends TestDefinition {
-    kind: "testStart";
-  }
-
-  export interface TestEndMessage {
-    kind: "testEnd";
-    name: string;
-    status: "passed" | "failed" | "ignored";
-    duration: number;
-    error?: Error;
-  }
-
-  export interface RunTestsEndMessage {
-    kind: "runTestsEnd";
-    filtered: number;
-    ignored: number;
-    measured: number;
-    passed: number;
-    failed: number;
-    duration: number;
-    errors: Array<[string, Error]>;
-  }
-
-  export type TestMessage =
-    | RunTestsStartMessage
-    | TestStartMessage
-    | TestEndMessage
-    | RunTestsEndMessage;
 
   export interface RunTestsOptions {
     /** If `true`, Deno will exit with status code 1 if there was
@@ -90,7 +80,7 @@ declare namespace Deno {
   }
 
   /** Run registered tests and iterate through messages. */
-  export function runTests(opts?: RunTestsOptions): Promise<RunTestsEndMessage>;
+  export function runTests(opts?: RunTestsOptions): Promise<TestMessage["end"]>;
 
   /** Get the `loadavg`. Requires `allow-env` permission.
    *

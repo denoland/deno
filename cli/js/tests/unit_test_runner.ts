@@ -12,12 +12,13 @@ import {
 } from "./test_util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const { reportToConsole } = (Deno as any)[Deno.symbols.internal];
+const reportToConsole = (Deno as any)[Deno.symbols.internal]
+  .reportToConsole as (message: Deno.TestMessage) => void;
 
 interface PermissionSetTestResult {
   perms: Permissions;
   passed: boolean;
-  endMessage: Deno.RunTestsEndMessage;
+  endMessage: Deno.TestMessage["end"];
   permsStr: string;
 }
 
@@ -126,16 +127,16 @@ async function runTestsForPermissionSet(
   const conn = await listener.accept();
 
   let expectedPassedTests;
-  let endMessage: Deno.RunTestsEndMessage | undefined;
+  let endMessage: Deno.TestMessage["end"];
 
   try {
     for await (const line of readLines(conn)) {
       const message = JSON.parse(line) as Deno.TestMessage;
       reportToConsole(message);
-      if (message.kind == "runTestsStart") {
-        expectedPassedTests = message.tests.length;
-      } else if (message.kind == "runTestsEnd") {
-        endMessage = message;
+      if (message.start != null) {
+        expectedPassedTests = message.start.tests.length;
+      } else if (message.end != null) {
+        endMessage = message.end;
       }
     }
   } finally {
@@ -206,7 +207,7 @@ async function masterRunnerMain(
   for (const testResult of testResults) {
     const { permsStr, endMessage } = testResult;
     console.log(`Summary for ${permsStr}`);
-    reportToConsole(endMessage);
+    reportToConsole({ end: endMessage });
     testsPassed = testsPassed && testResult.passed;
   }
 
