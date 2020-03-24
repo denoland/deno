@@ -111,3 +111,89 @@ unitTest({ perms: { write: false } }, async function truncatePerm(): Promise<
   assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function truncateSyncCreate(): void {
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    let caughtError = false;
+    // if create turned off, the file won't be created
+    try {
+      Deno.truncateSync(filename, 0, { create: false });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.NotFound);
+    }
+    assert(caughtError);
+
+    // Turn on create, should have no error
+    Deno.truncateSync(filename, 10, { create: true });
+    assertFile(filename, 10);
+    Deno.truncateSync(filename, 0, { create: false });
+    assertFile(filename, 0);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function truncateCreate(): Promise<void> {
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    let caughtError = false;
+    // if create turned off, the file won't be created
+    try {
+      await Deno.truncate(filename, 0, { create: false });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.NotFound);
+    }
+    assert(caughtError);
+
+    // Turn on create, should have no error
+    await Deno.truncate(filename, 10, { create: true });
+    assertFile(filename, 10);
+    await Deno.truncate(filename, 0, { create: false });
+    assertFile(filename, 0);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function truncateSyncCreateNew(): void {
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    // file newly created
+    Deno.truncateSync(filename, 0, { createNew: true });
+    // createNew: true but file exists
+    let caughtError = false;
+    try {
+      Deno.truncateSync(filename, 0, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    // createNew: false and file exists
+    Deno.truncateSync(filename, 10, { createNew: false });
+    assertFile(filename, 10);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function truncateCreateNew(): Promise<void> {
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    // file newly created
+    await Deno.truncate(filename, 0, { createNew: true });
+    // createNew: true but file exists
+    let caughtError = false;
+    try {
+      await Deno.truncate(filename, 0, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    // createNew: false and file exists
+    await Deno.truncate(filename, 10, { createNew: false });
+    assertFile(filename, 10);
+  }
+);
