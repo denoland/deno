@@ -100,14 +100,15 @@ pub struct Worker {
   pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
 
+  #[allow(dead_code)]
   inspector: Arc<Mutex<Inspector>>,
 }
 
 impl Worker {
   pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let inspector = Inspector::new(
-      state.global_state.flags.debug,
-      state.global_state.flags.debug_address.clone(),
+      state.borrow().global_state.flags.debug,
+      state.borrow().global_state.flags.debug_address.clone(),
     );
 
     let loader = Rc::new(state.clone());
@@ -118,18 +119,15 @@ impl Worker {
       JSError::create(core_js_error, &global_state_.ts_compiler)
     });
 
-
     let (internal_channels, external_channels) = create_channels();
 
     let inspector_handle = inspector.handle.clone();
     {
-      let mut i = isolate.try_lock().unwrap();
-      i.set_inspector_handle(inspector.handle.clone());
+      isolate.set_inspector_handle(inspector.handle.clone());
     }
 
     // TODO(bartlomieju): refactor this...
     // I'm pretty sure it can be port of `Poll` for worker
-    let isolate_ = isolate.clone();
     std::thread::spawn(move || loop {
       {
         let message = {
@@ -139,12 +137,14 @@ impl Worker {
 
         if let Ok(msg) = message {
           eprintln!("[i] message ok {}", msg);
-          let mut i = isolate_.try_lock().unwrap();
-          i.inspector_message(msg);
+          //  TODO!!
+          // let mut i = isolate_.try_lock().unwrap();
+          // i.inspector_message(msg);
         }
       }
 
       std::thread::sleep(std::time::Duration::from_millis(5));
+    });
 
     Self {
       name,

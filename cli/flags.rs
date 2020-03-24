@@ -461,7 +461,7 @@ fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   }
 }
 
-fn debug_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
+fn debug_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("debug") {
     flags.debug = true;
     if matches.value_of("debug").is_some() {
