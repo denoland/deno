@@ -285,15 +285,13 @@ pub struct DenoInspector {
   terminated: bool,
   sessions: HashMap<usize, Box<DenoInspectorSession>>,
   next_session_id: usize,
-  /// used to receive messages from ws server
-  inspector_rx: InspectorRx,
 }
 
 impl DenoInspector {
   pub fn new<P>(
     scope: &mut P,
     context: v8::Local<v8::Context>,
-    inspector_rx: InspectorRx,
+    mut inspector_rx: InspectorRx,
   ) -> Box<Self>
   where
     P: v8::InIsolate,
@@ -308,7 +306,6 @@ impl DenoInspector {
       terminated: false,
       sessions: HashMap::new(),
       next_session_id: 1,
-      inspector_rx,
     });
 
     let empty_view = v8::inspector::StringView::empty();
@@ -317,6 +314,17 @@ impl DenoInspector {
       CONTEXT_GROUP_ID,
       &empty_view,
     );
+
+    tokio::spawn(async move {
+      while let Some(msg) = inspector_rx.next().await {
+        match msg {
+          InspectorMsg::WsConnection { .. } => {
+            println!("Got new ws connection in DenoInspector");
+            // TODO need to create a new session.
+          }
+        }
+      }
+    });
 
     deno_inspector
   }
