@@ -1302,6 +1302,13 @@ itest!(error_syntax {
   output: "error_syntax.js.out",
 });
 
+itest!(error_syntax_empty_trailing_line {
+  args: "run --reload error_syntax_empty_trailing_line.mjs",
+  check_stderr: true,
+  exit_code: 1,
+  output: "error_syntax_empty_trailing_line.mjs.out",
+});
+
 itest!(error_type_definitions {
   args: "run --reload error_type_definitions.ts",
   check_stderr: true,
