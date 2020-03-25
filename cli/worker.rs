@@ -110,27 +110,26 @@ impl Worker {
 
     let global_state_ = state.borrow().global_state.clone();
 
-    /*
-    if let Some(inspector_server) = global_state_.inspector_server {
-      inspector_server.register_worker(worker);
-    }
-    */
+    let inspector =
+      if let Some(inspector_server) = &global_state_.inspector_server {
+        use deno_core::v8;
+        let deno_core::Isolate {
+          v8_isolate,
+          global_context,
+          ..
+        } = &mut **isolate;
+        let mut hs = v8::HandleScope::new(v8_isolate.as_mut().unwrap());
+        let scope = hs.enter();
+        let context = global_context.get(scope).unwrap();
+        let inspector = crate::inspector::DenoInspector::new(scope, context);
 
-    let inspector = if global_state_.inspector_server.is_some() {
-      use deno_core::v8;
-      let deno_core::Isolate {
-        v8_isolate,
-        global_context,
-        ..
-      } = &mut **isolate;
-      let mut hs = v8::HandleScope::new(v8_isolate.as_mut().unwrap());
-      let scope = hs.enter();
-      let context = global_context.get(scope).unwrap();
-      let inspector = crate::inspector::DenoInspector::new(scope, context);
-      Some(inspector)
-    } else {
-      None
-    };
+        let mut x = inspector_server.lock().unwrap();
+        let _uuid = x.register();
+
+        Some(inspector)
+      } else {
+        None
+      };
 
     isolate.set_js_error_create_fn(move |core_js_error| {
       JSError::create(core_js_error, &global_state_.ts_compiler)

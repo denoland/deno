@@ -6,88 +6,120 @@ use std::collections::HashMap;
 use std::mem::MaybeUninit;
 use std::net::SocketAddrV4;
 use std::ptr;
+use std::sync::Arc;
+use std::sync::Mutex;
+use uuid::Uuid;
 use warp;
 use warp::Filter;
 
 const CONTEXT_GROUP_ID: i32 = 1;
 
+// TODO Currently the value in this map is just (), but we will fill that in
+// later with more stuff. Probably channels.
+type InspectorMap = Arc<Mutex<HashMap<Uuid, ()>>>;
+
 /// Owned by GlobalState
 pub struct InspectorServer {
+  address: SocketAddrV4,
   thread_handle: Option<std::thread::JoinHandle<()>>,
+  inspector_map: InspectorMap,
 }
 
 impl InspectorServer {
   pub fn new() -> Self {
-    let thread_handle = std::thread::spawn(move || {
-      println!("debug");
-      println!("debug before run_basic");
-      crate::tokio_util::run_basic(server());
-      println!("debug after run_basic");
-    });
     Self {
-      // control_sender: sender,
-      thread_handle: Some(thread_handle),
+      address: "127.0.0.1:9229".parse::<SocketAddrV4>().unwrap(),
+      thread_handle: None,
+      inspector_map: Arc::new(Mutex::new(HashMap::new())),
     }
   }
 
   // TODO this should probably be done in impl Drop, but it seems we're leaking
   // GlobalState and so it can't be done there...
   pub fn exit(&mut self) {
-    self.thread_handle.take().unwrap().join().unwrap();
+    if let Some(thread_handle) = self.thread_handle.take() {
+      thread_handle.join().unwrap();
+    }
   }
 
-  pub async fn register_worker() {
-    todo!()
+  /// Each worker/isolate to be debugged should call this exactly one.
+  pub fn register(&mut self) -> Uuid {
+    let uuid = Uuid::new_v4();
+
+    let inspector_map_ = self.inspector_map.clone();
+    let mut inspector_map = self.inspector_map.lock().unwrap();
+    inspector_map.insert(uuid.clone(), ());
+
+    // Don't start the InspectorServer thread until we have one UUID registered.
+    if inspector_map.len() == 1 {
+      let address = self.address;
+      self.thread_handle = Some(std::thread::spawn(move || {
+        println!("Open chrome://inspect/");
+        crate::tokio_util::run_basic(server(address, inspector_map_));
+      }));
+    }
+
+    eprintln!(
+      "Debugger listening on {}",
+      websocket_debugger_url(self.address, &uuid)
+    );
+
+    uuid
   }
 }
 
-async fn server() -> () {
-  let websocket =
-    warp::path("websocket")
-      .and(warp::ws())
-      .map(move |ws: warp::ws::Ws| {
-        ws.on_upgrade(move |_socket| async {
-          // here
+fn websocket_debugger_url(address: SocketAddrV4, uuid: &Uuid) -> String {
+  format!("ws://{}", websocket_debugger_url2(address, uuid))
+}
 
-          // send a message back so register_worker can return...
+/// Same thing but without "ws://" prefix
+fn websocket_debugger_url2(address: SocketAddrV4, uuid: &Uuid) -> String {
+  format!("{}:{}/ws/{}", address.ip(), address.port(), uuid)
+}
 
-          todo!()
-          // let client = Client::new(state, socket);
-          // client.on_connection()
-        })
+async fn server(address: SocketAddrV4, inspector_map: InspectorMap) -> () {
+  let websocket = warp::path("ws")
+    .and(warp::path::param())
+    .and(warp::ws())
+    .map(move |param: String, ws: warp::ws::Ws| {
+      println!("ws connection {}", param);
+      ws.on_upgrade(move |_socket| async {
+        // send a message back so register_worker can return...
+        todo!()
+      })
+    });
+
+  let json_list =
+    warp::path("json")
+      .map(move || {
+        let im = inspector_map.lock().unwrap();
+        let json_values: Vec<serde_json::Value> = im.iter().map(|(uuid, _)| {
+          let url = websocket_debugger_url(address, uuid);
+          let url2 = websocket_debugger_url2(address, uuid);
+          json!({
+            "description": "deno",
+            "devtoolsFrontendUrl": format!("chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws={}", url2),
+            "faviconUrl": "https://deno.land/favicon.ico",
+            "id": uuid.to_string(),
+            "title": format!("deno[{}]", std::process::id()),
+            "type": "deno",
+            "url": "file://",
+            "webSocketDebuggerUrl": url,
+          })
+        }).collect();
+        warp::reply::json(&json!(json_values))
       });
 
-  // todo(matt): Make this unique per run (https://github.com/denoland/deno/pull/2696#discussion_r309282566)
-  let uuid = "97690037-256e-4e27-add0-915ca5421e2f";
-
-  let address = "127.0.0.1:9229".parse::<SocketAddrV4>().unwrap();
-  let ip = format!("{}", address.ip());
-  let port = address.port();
-
-  let response_json = json!([{
-    "description": "deno",
-    "devtoolsFrontendUrl": format!("chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws={}:{}/websocket", ip, port),
-    "devtoolsFrontendUrlCompat": format!("chrome-devtools://devtools/bundled/inspector.html?experiments=true&v8only=true&ws={}:{}/websocket", ip, port),
-    "faviconUrl": "https://www.deno-play.app/images/deno.svg",
-    "id": uuid,
-    "title": format!("deno[{}]", std::process::id()),
-    "type": "deno",
-    "url": "file://",
-    "webSocketDebuggerUrl": format!("ws://{}:{}/websocket", ip, port)
-  }]);
-
-  let response_version = json!({
-    "Browser": format!("Deno/{}", crate::version::DENO),
-    "Protocol-Version": "1.1",
-    "webSocketDebuggerUrl": format!("ws://{}:{}/{}", ip, port, uuid)
+  let version = warp::path!("json" / "version").map(|| {
+    warp::reply::json(&json!({
+      "Browser": format!("Deno/{}", crate::version::DENO),
+      // TODO upgrade to 1.3? https://chromedevtools.github.io/devtools-protocol/
+      "Protocol-Version": "1.1",
+      "V8-Version": crate::version::v8(),
+    }))
   });
 
-  let json = warp::path("json").map(move || warp::reply::json(&response_json));
-
-  let version = warp::path!("json" / "version")
-    .map(move || warp::reply::json(&response_version));
-
-  let routes = websocket.or(version).or(json);
+  let routes = websocket.or(version).or(json_list);
   warp::serve(routes).bind(address).await;
 }
 

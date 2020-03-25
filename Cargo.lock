@@ -500,6 +500,7 @@ dependencies = [
  "tokio-rustls",
  "url 2.1.1",
  "utime",
+ "uuid",
  "walkdir",
  "warp",
  "webpki",
@@ -2815,6 +2816,15 @@ dependencies = [
  "kernel32-sys",
  "libc",
  "winapi 0.2.8",
+]
+
+[[package]]
+name = "uuid"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fde2f6a4bea1d6e007c4ad38c6839fa71cbb63b6dbf5b595aa38dc9b1093c11"
+dependencies = [
+ "rand 0.7.3",
 ]
 
 [[package]]
