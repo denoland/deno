@@ -10,6 +10,8 @@ use std::error::Error;
 use std::fmt;
 use std::ops::Deref;
 
+const SOURCE_ABBREV_THRESHOLD: usize = 150;
+
 /// A trait which specifies parts of a diagnostic like item needs to be able to
 /// generate to conform its display to other diagnostic like items
 pub trait DisplayFormatter {
@@ -74,8 +76,9 @@ pub fn format_maybe_source_line(
 
   let source_line = source_line.as_ref().unwrap();
   // sometimes source_line gets set with an empty string, which then outputs
-  // an empty source line when displayed, so need just short circuit here
-  if source_line.is_empty() {
+  // an empty source line when displayed, so need just short circuit here.
+  // Also short-circuit on error line too long.
+  if source_line.is_empty() || source_line.len() > SOURCE_ABBREV_THRESHOLD {
     return "".to_string();
   }
 
