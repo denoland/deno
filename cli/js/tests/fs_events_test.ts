@@ -14,6 +14,17 @@ unitTest({ perms: { read: false } }, function fsEventsPermissions() {
   assert(thrown);
 });
 
+unitTest({ perms: { read: true } }, function fsEventsInvalidPath() {
+  let thrown = false;
+  try {
+    Deno.fsEvents("non-existant.file");
+  } catch (err) {
+    assert(err instanceof Deno.errors.NotFound);
+    thrown = true;
+  }
+  assert(thrown);
+});
+
 async function getTwoEvents(
   iter: AsyncIterableIterator<Deno.FsEvent>
 ): Promise<Deno.FsEvent[]> {
