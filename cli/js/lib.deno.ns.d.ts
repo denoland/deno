@@ -1546,21 +1546,18 @@ declare namespace Deno {
    *
    * Requires `allow-plugin` permission. */
   export function openPlugin(filename: string): Plugin;
-
-  export type Transport = "tcp" | "udp";
-
-  export interface Addr {
-    transport: Transport;
+  export interface NetAddr {
+    transport: "tcp" | "udp";
     hostname: string;
     port: number;
   }
 
-  export interface UDPAddr {
-    port: number;
-    transport?: Transport;
-    hostname?: string;
+  export interface UnixAddr {
+    transport: "unix" | "unixpacket";
+    address: string;
   }
 
+  export type Addr = NetAddr | UnixAddr;
   /** **UNSTABLE**: Maybe remove `ShutdownMode` entirely.
    *
    * Corresponds to `SHUT_RD`, `SHUT_WR`, `SHUT_RDWR` on POSIX-like systems.
@@ -1587,16 +1584,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
-   * Waits for the next message to the passed `rid` and writes it on the passed
-   * `Uint8Array`.
-   *
-   * Resolves to the number of bytes written and the remote address. */
-  export function recvfrom(rid: number, p: Uint8Array): Promise<[number, Addr]>;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
    * A generic transport listener for message-oriented protocols. */
-  export interface UDPConn extends AsyncIterable<[Uint8Array, Addr]> {
+  export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
     /** **UNSTABLE**: new API, yet to be vetted.
      *
      * Waits for and resolves to the next message to the `UDPConn`. */
@@ -1604,7 +1593,7 @@ declare namespace Deno {
     /** UNSTABLE: new API, yet to be vetted.
      *
      * Sends a message to the target. */
-    send(p: Uint8Array, addr: UDPAddr): Promise<void>;
+    send(p: Uint8Array, addr: Addr): Promise<void>;
     /** UNSTABLE: new API, yet to be vetted.
      *
      * Close closes the socket. Any pending message promises will be rejected
@@ -1624,6 +1613,7 @@ declare namespace Deno {
     close(): void;
     /** Return the address of the `Listener`. */
     readonly addr: Addr;
+
     [Symbol.asyncIterator](): AsyncIterator<Conn>;
   }
 
@@ -1648,13 +1638,12 @@ declare namespace Deno {
     /** A literal IP address or host name that can be resolved to an IP address.
      * If not specified, defaults to `0.0.0.0`. */
     hostname?: string;
-    /** Either `"tcp"` or `"udp"`. Defaults to `"tcp"`.
-     *
-     * In the future: `"tcp4"`, `"tcp6"`, `"udp4"`, `"udp6"`, `"ip"`, `"ip4"`,
-     * `"ip6"`, `"unix"`, `"unixgram"`, and `"unixpacket"`. */
-    transport?: Transport;
   }
 
+  export interface UnixListenOptions {
+    /** A Path to the Unix Socket. */
+    address: string;
+  }
   /** **UNSTABLE**: new API
    *
    * Listen announces on the local transport address.
@@ -1672,32 +1661,41 @@ declare namespace Deno {
    *
    * Listen announces on the local transport address.
    *
-   *      Deno.listen({ port: 80 })
-   *      Deno.listen({ hostname: "192.0.2.1", port: 80 })
-   *      Deno.listen({ hostname: "[2001:db8::1]", port: 80 });
-   *      Deno.listen({ hostname: "golang.org", port: 80, transport: "tcp" });
+   *     Deno.listen({ address: "/foo/bar.sock", transport: "unix" })
    *
-   * Requires `allow-net` permission. */
+   * Requires `allow-read` permission. */
   export function listen(
-    options: ListenOptions & { transport: "udp" }
-  ): UDPConn;
+    options: UnixListenOptions & { transport: "unix" }
+  ): Listener;
   /** **UNSTABLE**: new API
    *
    * Listen announces on the local transport address.
    *
-   *      Deno.listen({ port: 80 })
-   *      Deno.listen({ hostname: "192.0.2.1", port: 80 })
-   *      Deno.listen({ hostname: "[2001:db8::1]", port: 80 });
-   *      Deno.listen({ hostname: "golang.org", port: 80, transport: "tcp" });
+   *      Deno.listen({ port: 80, transport: "udp" })
+   *      Deno.listen({ hostname: "golang.org", port: 80, transport: "udp" });
    *
    * Requires `allow-net` permission. */
-  export function listen(options: ListenOptions): Listener | UDPConn;
+  export function listen(
+    options: ListenOptions & { transport: "udp" }
+  ): DatagramConn;
+  /** **UNSTABLE**: new API
+   *
+   * Listen announces on the local transport address.
+   *
+   *     Deno.listen({ address: "/foo/bar.sock", transport: "unixpacket" })
+   *
+   * Requires `allow-read` permission. */
+  export function listen(
+    options: UnixListenOptions & { transport: "unixpacket" }
+  ): DatagramConn;
 
   export interface ListenTLSOptions extends ListenOptions {
     /** Server certificate file. */
     certFile: string;
     /** Server public key file. */
     keyFile: string;
+
+    transport?: "tcp";
   }
 
   /** Listen announces on the local transport address over TLS (transport layer
@@ -1714,11 +1712,12 @@ declare namespace Deno {
     /** A literal IP address or host name that can be resolved to an IP address.
      * If not specified, defaults to `127.0.0.1`. */
     hostname?: string;
-    /** Either `"tcp"` or `"udp"`. Defaults to `"tcp"`.
-     *
-     * In the future: `"tcp4"`, `"tcp6"`, `"udp4"`, `"udp6"`, `"ip"`, `"ip4"`,
-     * `"ip6"`, `"unix"`, `"unixgram"`, and `"unixpacket"`. */
-    transport?: Transport;
+    transport?: "tcp";
+  }
+
+  export interface UnixConnectOptions {
+    transport: "unix";
+    address: string;
   }
 
   /**
@@ -1728,10 +1727,13 @@ declare namespace Deno {
    *     const conn1 = await Deno.connect({ port: 80 })
    *     const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 })
    *     const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
-   *     const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" })
+   *     const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
+   *     const conn5 = await Deno.connect({ address: "/foo/bar.sock", transport: "unix" });
    *
-   * Requires `allow-net` permission. */
-  export function connect(options: ConnectOptions): Promise<Conn>;
+   * Requires `allow-net` permission for "tcp" and `allow-read` for unix. */
+  export function connect(
+    options: ConnectOptions | UnixConnectOptions
+  ): Promise<Conn>;
 
   export interface ConnectTLSOptions {
     /** The port to connect to. */

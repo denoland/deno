@@ -16,9 +16,7 @@ type ConsoleOptions = Partial<{
 // Default depth of logging nested objects
 const DEFAULT_MAX_DEPTH = 4;
 
-// Number of elements an object must have before it's displayed in appreviated
-// form.
-const OBJ_ABBREVIATE_SIZE = 5;
+const LINE_BREAKING_LENGTH = 80;
 
 const STR_ABBREVIATE_SIZE = 100;
 
@@ -299,37 +297,36 @@ function createRawObjectString(
   const entries: string[] = [];
   const stringKeys = Object.keys(value);
   const symbolKeys = Object.getOwnPropertySymbols(value);
-  const numKeys = stringKeys.length + symbolKeys.length;
-  if (numKeys > OBJ_ABBREVIATE_SIZE) {
-    for (const key of stringKeys) {
-      entries.push(key);
-    }
-    for (const key of symbolKeys) {
-      entries.push(key.toString());
-    }
-  } else {
-    for (const key of stringKeys) {
-      entries.push(
-        `${key}: ${stringifyWithQuotes(value[key], ctx, level + 1, maxLevel)}`
-      );
-    }
-    for (const key of symbolKeys) {
-      entries.push(
-        `${key.toString()}: ${stringifyWithQuotes(
-          // @ts-ignore
-          value[key],
-          ctx,
-          level + 1,
-          maxLevel
-        )}`
-      );
-    }
+
+  for (const key of stringKeys) {
+    entries.push(
+      `${key}: ${stringifyWithQuotes(value[key], ctx, level + 1, maxLevel)}`
+    );
   }
+  for (const key of symbolKeys) {
+    entries.push(
+      `${key.toString()}: ${stringifyWithQuotes(
+        // @ts-ignore
+        value[key],
+        ctx,
+        level + 1,
+        maxLevel
+      )}`
+    );
+  }
+
+  const totalLength = entries.length + level + entries.join("").length;
 
   ctx.delete(value);
 
   if (entries.length === 0) {
     baseString = "{}";
+  } else if (totalLength > LINE_BREAKING_LENGTH) {
+    const entryIndent = " ".repeat(level + 1);
+    const closingIndent = " ".repeat(level);
+    baseString = `{\n${entryIndent}${entries.join(
+      `,\n${entryIndent}`
+    )}\n${closingIndent}}`;
   } else {
     baseString = `{ ${entries.join(", ")} }`;
   }

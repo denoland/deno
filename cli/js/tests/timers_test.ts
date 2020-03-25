@@ -362,3 +362,7 @@ unitTest(async function timerNestedMicrotaskOrdering(): Promise<void> {
   await promise;
   assertEquals(s, "0123456789AB");
 });
+
+unitTest(function testQueueMicrotask() {
+  assertEquals(typeof queueMicrotask, "function");
+});

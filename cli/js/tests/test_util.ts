@@ -359,21 +359,3 @@ unitTest(
     });
   }
 );
-function* portIterator(): IterableIterator<number> {
-  // use 49152 ~ 55000 for js/cli (rest are for std)
-  let i = 49152;
-  while (true) {
-    yield i;
-    i++;
-    if (i > 55000) {
-      i = 55000;
-    }
-  }
-}
-const it = portIterator();
-/** Obtain (maybe) safe port number for net tests */
-export function randomPort(): number {
-  const { value } = it.next();
-  assert(value != null);
-  return value;
-}
