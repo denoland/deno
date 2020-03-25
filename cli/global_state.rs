@@ -43,7 +43,7 @@ pub struct GlobalStateInner {
   pub wasm_compiler: WasmCompiler,
   pub lockfile: Option<Mutex<Lockfile>>,
   pub compiler_starts: AtomicUsize,
-  pub inspector_server: Option<Mutex<InspectorServer>>,
+  pub inspector_server: Option<InspectorServer>,
   compile_lock: AsyncMutex<()>,
 }
 
@@ -85,7 +85,7 @@ impl GlobalState {
     };
 
     let inspector_server = if flags.debug {
-      Some(Mutex::new(InspectorServer::new()))
+      Some(InspectorServer::new())
     } else {
       None
     };

@@ -376,15 +376,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
 
   // TODO This should probably be done in impl Drop for InspectorServer, but it
   // seems GlobalState is being leaked and the drop is never called.
-  {
-    let mut s = global_state
-      .inspector_server
-      .as_ref()
-      .unwrap()
-      .lock()
-      .unwrap();
-    s.exit();
-  }
+  // global_state.inspector_server.take();
   Ok(())
 }
 

@@ -1,13 +1,14 @@
+#![allow(dead_code)]
+
 use deno_core::v8;
 use futures;
-use futures::FutureExt;
 use futures::StreamExt;
 use std::collections::HashMap;
 use std::mem::MaybeUninit;
 use std::net::SocketAddrV4;
 use std::ptr;
 use std::sync::Arc;
-use std::sync::Mutex;
+
 use tokio;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -36,38 +37,30 @@ type InspectorRx = mpsc::UnboundedReceiver<InspectorMsg>;
 pub struct InspectorServer {
   address: SocketAddrV4,
   thread_handle: Option<std::thread::JoinHandle<()>>,
-  server_msg_tx: ServerMsgTx,
+  server_msg_tx: Option<ServerMsgTx>,
 }
 
 impl InspectorServer {
   pub fn new() -> Self {
     let address = "127.0.0.1:9229".parse::<SocketAddrV4>().unwrap();
-    let address_ = address.clone();
-    let (mut server_msg_tx, mut server_msg_rx) =
-      mpsc::unbounded_channel::<ServerMsg>();
+    let (server_msg_tx, server_msg_rx) = mpsc::unbounded_channel::<ServerMsg>();
     let thread_handle = std::thread::spawn(move || {
       crate::tokio_util::run_basic(server(address, server_msg_rx));
     });
     Self {
       address,
       thread_handle: Some(thread_handle),
-      server_msg_tx,
+      server_msg_tx: Some(server_msg_tx),
     }
   }
 
-  // TODO this should probably be done in impl Drop, but it seems we're leaking
-  // GlobalState and so it can't be done there...
-  pub fn exit(&mut self) {
-    self.thread_handle.take().unwrap().join().unwrap();
-  }
-
   /// Each worker/isolate to be debugged should call this exactly one.
-  pub fn add_inspector(&mut self) -> impl futures::future::Future<Output = ()> {
+  pub fn add_inspector(&self) -> impl futures::future::Future<Output = ()> {
     let server_msg_tx = self.server_msg_tx.clone();
-    let address = self.address.clone();
+    let address = self.address;
 
     async move {
-      let (mut inspector_tx, mut inspector_rx) =
+      let (inspector_tx, _inspector_rx) =
         mpsc::unbounded_channel::<InspectorMsg>();
       let uuid = Uuid::new_v4();
 
@@ -77,14 +70,23 @@ impl InspectorServer {
       );
 
       server_msg_tx
+        .as_ref()
+        .unwrap()
         .send(ServerMsg::AddInspector {
           uuid: uuid,
           inspector_tx,
         })
-        .map_err(|_| {
+        .unwrap_or_else(|_| {
           panic!("sending message to inspector server thread failed");
         });
     }
+  }
+}
+
+impl Drop for InspectorServer {
+  fn drop(&mut self) {
+    self.server_msg_tx.take();
+    self.thread_handle.take().unwrap().join().unwrap();
   }
 }
 
@@ -208,8 +210,8 @@ impl v8::inspector::ChannelImpl for DenoInspectorSession {
 
   fn send_response(
     &mut self,
-    call_id: i32,
-    message: v8::UniquePtr<v8::inspector::StringBuffer>,
+    _call_id: i32,
+    _message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
     // deno_isolate.inspector_message_cb(message)
     todo!()
@@ -217,7 +219,7 @@ impl v8::inspector::ChannelImpl for DenoInspectorSession {
 
   fn send_notification(
     &mut self,
-    message: v8::UniquePtr<v8::inspector::StringBuffer>,
+    _message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
     // deno_isolate.inspector_message_cb(message)
     todo!()
@@ -282,7 +284,7 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
     &mut self.client
   }
 
-  fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
+  fn run_message_loop_on_pause(&mut self, _context_group_id: i32) {
     // while !self.terminated {
     // self.deno_isolate.inspector_block_recv();
     // }
@@ -293,7 +295,7 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
     todo!()
   }
 
-  fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
+  fn run_if_waiting_for_debugger(&mut self, _context_group_id: i32) {
     todo!()
   }
 }

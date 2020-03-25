@@ -111,7 +111,7 @@ impl Worker {
     let global_state_ = state.borrow().global_state.clone();
 
     let inspector =
-      if let Some(inspector_server) = &global_state_.inspector_server {
+      if let Some(inspector_server) = global_state_.inspector_server.as_ref() {
         use deno_core::v8;
         let deno_core::Isolate {
           v8_isolate,
@@ -123,8 +123,7 @@ impl Worker {
         let context = global_context.get(scope).unwrap();
         let inspector = crate::inspector::DenoInspector::new(scope, context);
 
-        let mut x = inspector_server.lock().unwrap();
-        tokio::spawn(x.add_inspector());
+        tokio::spawn(inspector_server.add_inspector());
 
         Some(inspector)
       } else {
@@ -199,6 +198,14 @@ impl Worker {
   /// Returns a way to communicate with the Worker from other threads.
   pub fn thread_safe_handle(&self) -> WorkerHandle {
     self.external_channels.clone()
+  }
+}
+
+impl Drop for Worker {
+  fn drop(&mut self) {
+    // The Isolate object must outlive the Inspector object, but this is
+    // currently not enforced by the type system.
+    self.inspector.take();
   }
 }
 
