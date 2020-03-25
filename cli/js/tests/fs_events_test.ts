@@ -19,7 +19,16 @@ unitTest({ perms: { read: true } }, function fsEventsInvalidPath() {
   try {
     Deno.fsEvents("non-existant.file");
   } catch (err) {
-    assert(err instanceof Deno.errors.NotFound);
+    console.error(err);
+    if (Deno.build.os === "win") {
+      assert(
+        err.message.includes(
+          "Input watch path is neither a file nor a directory"
+        )
+      );
+    } else {
+      assert(err instanceof Deno.errors.NotFound);
+    }
     thrown = true;
   }
   assert(thrown);
