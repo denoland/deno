@@ -14,7 +14,7 @@ async function startFileServer(): Promise<void> {
       "--allow-net",
       "http/file_server.ts",
       ".",
-      "--cors"
+      "--cors",
     ],
     stdout: "piped",
     stderr: "null",

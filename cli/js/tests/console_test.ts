@@ -261,8 +261,8 @@ unitTest(function consoleTestStringifyLargeObject(): void {
       g: 10,
       asd: 2,
       asda: 3,
-      x: { a: "asd", x: 3 }
-    }
+      x: { a: "asd", x: 3 },
+    },
   };
   assertEquals(
     stringify(obj),

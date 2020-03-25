@@ -29,7 +29,7 @@ async function wsHandler(ws: WebSocket): Promise<void> {
   }
 }
 
-listenAndServe({ port: 8080 }, async req => {
+listenAndServe({ port: 8080 }, async (req) => {
   if (req.method === "GET" && req.url === "/") {
     //Serve with hack
     const u = new URL("./index.html", import.meta.url);

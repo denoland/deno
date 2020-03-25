@@ -7,7 +7,7 @@ let server: Deno.Process;
 async function startServer(): Promise<void> {
   server = run({
     cmd: [Deno.execPath(), "run", "-A", "http/racing_server.ts"],
-    stdout: "piped"
+    stdout: "piped",
   });
   // Once racing server is ready it will write to its stdout.
   assert(server.stdout != null);

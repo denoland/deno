@@ -3,7 +3,7 @@ import {
   unitTest,
   assert,
   assertEquals,
-  createResolvable
+  createResolvable,
 } from "./test_util.ts";
 
 unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
@@ -24,7 +24,7 @@ unitTest(
     const socket = Deno.listen({
       hostname: "127.0.0.1",
       port: 4500,
-      transport: "udp"
+      transport: "udp",
     });
     assert(socket.addr.transport === "udp");
     assertEquals(socket.addr.hostname, "127.0.0.1");
@@ -39,7 +39,7 @@ unitTest(
     const filePath = Deno.makeTempFileSync();
     const socket = Deno.listen({
       address: filePath,
-      transport: "unix"
+      transport: "unix",
     });
     assert(socket.addr.transport === "unix");
     assertEquals(socket.addr.address, filePath);
@@ -53,7 +53,7 @@ unitTest(
     const filePath = Deno.makeTempFileSync();
     const socket = Deno.listen({
       address: filePath,
-      transport: "unixpacket"
+      transport: "unixpacket",
     });
     assert(socket.addr.transport === "unixpacket");
     assertEquals(socket.addr.address, filePath);
@@ -87,7 +87,7 @@ unitTest(
     const filePath = await Deno.makeTempFile();
     const listener = Deno.listen({
       address: filePath,
-      transport: "unix"
+      transport: "unix",
     });
     const p = listener.accept();
     listener.close();

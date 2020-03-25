@@ -357,7 +357,7 @@ test({
     // Runs a simple server as another process
     const p = Deno.run({
       cmd: [Deno.execPath(), "--allow-net", "http/testdata/simple_server.ts"],
-      stdout: "piped"
+      stdout: "piped",
     });
 
     let serverIsRunning = true;
@@ -401,7 +401,7 @@ test({
         Deno.execPath(),
         "--allow-net",
         "--allow-read",
-        "http/testdata/simple_https_server.ts"
+        "http/testdata/simple_https_server.ts",
       ],
       stdout: "piped",
     });
@@ -425,7 +425,7 @@ test({
       const conn = await Deno.connectTLS({
         hostname: "localhost",
         port: 4503,
-        certFile: "http/testdata/tls/RootCA.pem"
+        certFile: "http/testdata/tls/RootCA.pem",
       });
       await Deno.writeAll(
         conn,
@@ -509,7 +509,7 @@ test({
     const p = serverRoutine();
     const conn = await Deno.connect({
       hostname: "127.0.0.1",
-      port: 8124
+      port: 8124,
     });
     await Deno.writeAll(
       conn,
