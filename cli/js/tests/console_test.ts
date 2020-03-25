@@ -109,7 +109,32 @@ unitTest(function consoleTestStringifyCircular(): void {
   };
 
   nestedObj.o = circularObj;
-  const nestedObjExpected = `{ num, bool, str, method, asyncMethod, generatorMethod, un, nu, arrowFunc, extendedClass, nFunc, extendedCstr, o }`;
+  const nestedObjExpected = `{
+ num: 1,
+ bool: true,
+ str: "a",
+ method: [Function: method],
+ asyncMethod: [AsyncFunction: asyncMethod],
+ generatorMethod: [GeneratorFunction: generatorMethod],
+ un: undefined,
+ nu: null,
+ arrowFunc: [Function: arrowFunc],
+ extendedClass: Extended { a: 1, b: 2 },
+ nFunc: [Function],
+ extendedCstr: [Function: Extended],
+ o: {
+  num: 2,
+  bool: false,
+  str: "b",
+  method: [Function: method],
+  un: undefined,
+  nu: null,
+  nested: [Circular],
+  emptyObj: {},
+  arr: [ 1, "s", false, null, [Circular] ],
+  baseClass: Base { a: 1 }
+ }
+}`;
 
   assertEquals(stringify(1), "1");
   assertEquals(stringify(-0), "-0");
@@ -166,7 +191,30 @@ unitTest(function consoleTestStringifyCircular(): void {
   assertEquals(stringify(JSON), 'JSON { Symbol(Symbol.toStringTag): "JSON" }');
   assertEquals(
     stringify(console),
-    "{ printFunc, log, debug, info, dir, dirxml, warn, error, assert, count, countReset, table, time, timeLog, timeEnd, group, groupCollapsed, groupEnd, clear, trace, indentLevel, Symbol(isConsoleInstance) }"
+    `{
+ printFunc: [Function],
+ log: [Function],
+ debug: [Function],
+ info: [Function],
+ dir: [Function],
+ dirxml: [Function],
+ warn: [Function],
+ error: [Function],
+ assert: [Function],
+ count: [Function],
+ countReset: [Function],
+ table: [Function],
+ time: [Function],
+ timeLog: [Function],
+ timeEnd: [Function],
+ group: [Function],
+ groupCollapsed: [Function],
+ groupEnd: [Function],
+ clear: [Function],
+ trace: [Function],
+ indentLevel: 0,
+ Symbol(isConsoleInstance): true
+}`
   );
   assertEquals(
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
@@ -197,6 +245,42 @@ unitTest(function consoleTestStringifyWithDepth(): void {
   assertEquals(
     inspect(nestedObj, { depth: 4 }),
     "{ a: { b: { c: { d: [Object] } } } }"
+  );
+});
+
+unitTest(function consoleTestStringifyLargeObject(): void {
+  const obj = {
+    a: 2,
+    o: {
+      a: "1",
+      b: "2",
+      c: "3",
+      d: "4",
+      e: "5",
+      f: "6",
+      g: 10,
+      asd: 2,
+      asda: 3,
+      x: { a: "asd", x: 3 }
+    }
+  };
+  assertEquals(
+    stringify(obj),
+    `{
+ a: 2,
+ o: {
+  a: "1",
+  b: "2",
+  c: "3",
+  d: "4",
+  e: "5",
+  f: "6",
+  g: 10,
+  asd: 2,
+  asda: 3,
+  x: { a: "asd", x: 3 }
+ }
+}`
   );
 });
 
