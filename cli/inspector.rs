@@ -86,7 +86,7 @@ impl InspectorServer {
   pub fn add_inspector(
     &self,
     isolate: &mut deno_core::Isolate,
-  ) -> DenoInspector {
+  ) -> Box<DenoInspector> {
     let deno_core::Isolate {
       v8_isolate,
       global_context,
@@ -250,10 +250,8 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) -> () {
   futures::future::join(msg_handler, web_handler).await;
 }
 
-pub struct DenoInspector(Box<DenoInspectorInner>);
-
 #[repr(C)]
-struct DenoInspectorInner {
+pub struct DenoInspector {
   client: v8::inspector::V8InspectorClientBase,
   inspector: v8::UniqueRef<v8::inspector::V8Inspector>,
   terminated: bool,
@@ -275,7 +273,7 @@ impl Future for DenoInspector {
     // let recv_future = inner.recv_future.as_mut().unwrap().as_mut();
     // recv_future.poll(cx)
 
-    match deno_inspector.0.inspector_rx.poll_recv(cx) {
+    match deno_inspector.inspector_rx.poll_recv(cx) {
       Poll::Pending => Poll::Pending,
       Poll::Ready(Some(msg)) => {
         match msg {
@@ -289,7 +287,7 @@ impl Future for DenoInspector {
           InspectorMsg::WsIncoming { session_uuid, msg } => {
             println!(">>> {}", msg.to_str().unwrap());
             if let Some(deno_session) =
-              deno_inspector.0.sessions.get_mut(&session_uuid)
+              deno_inspector.sessions.get_mut(&session_uuid)
             {
               deno_session.dispatch_protocol_message(msg)
             } else {
@@ -309,12 +307,12 @@ impl DenoInspector {
     scope: &mut P,
     context: v8::Local<v8::Context>,
     inspector_rx: InspectorRx,
-  ) -> Self
+  ) -> Box<Self>
   where
     P: v8::InIsolate,
   {
-    let mut deno_inspector = new_box_with(|address| DenoInspectorInner {
-      client: v8::inspector::V8InspectorClientBase::new::<DenoInspectorInner>(),
+    let mut deno_inspector = new_box_with(|address| Self {
+      client: v8::inspector::V8InspectorClientBase::new::<Self>(),
       // TODO(piscisaureus): V8Inspector::create() should require that
       // the 'client' argument cannot move.
       inspector: v8::inspector::V8Inspector::create(scope, unsafe {
@@ -332,16 +330,16 @@ impl DenoInspector {
       &empty_view,
     );
 
-    DenoInspector(deno_inspector)
+    deno_inspector
   }
 
   pub fn connect(&mut self, session_uuid: Uuid, ws_tx: WsTx) {
-    let session = DenoInspectorSession::new(&mut self.0.inspector, ws_tx);
-    self.0.sessions.insert(session_uuid, session);
+    let session = DenoInspectorSession::new(&mut self.inspector, ws_tx);
+    self.sessions.insert(session_uuid, session);
   }
 }
 
-impl v8::inspector::V8InspectorClientImpl for DenoInspectorInner {
+impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   fn base(&self) -> &v8::inspector::V8InspectorClientBase {
     &self.client
   }
@@ -350,19 +348,18 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspectorInner {
     &mut self.client
   }
 
-  fn run_message_loop_on_pause(&mut self, _context_group_id: i32) {
-    // while !self.terminated {
-    // self.deno_isolate.inspector_block_recv();
-    // }
-    todo!()
+  fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
+    assert_eq!(context_group_id, CONTEXT_GROUP_ID);
+    eprintln!("TODO run_message_loop_on_pause");
   }
 
   fn quit_message_loop_on_pause(&mut self) {
-    todo!()
+    eprintln!("TODO quit_message_loop_on_pause");
   }
 
-  fn run_if_waiting_for_debugger(&mut self, _context_group_id: i32) {
-    todo!()
+  fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
+    assert_eq!(context_group_id, CONTEXT_GROUP_ID);
+    eprintln!("TODO run_if_waiting_for_debugger");
   }
 }
 

@@ -100,7 +100,7 @@ pub struct Worker {
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
-  inspector: Option<crate::inspector::DenoInspector>,
+  inspector: Option<Box<crate::inspector::DenoInspector>>,
 }
 
 impl Worker {
