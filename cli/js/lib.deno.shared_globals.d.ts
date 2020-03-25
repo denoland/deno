@@ -887,7 +887,7 @@ declare namespace __blob {
 }
 
 declare namespace __console {
-  type ConsoleOptions = Partial<{
+  type InspectOptions = Partial<{
     showHidden: boolean;
     depth: number;
     colors: boolean;
@@ -970,7 +970,7 @@ declare namespace __console {
    * `inspect()` converts input into string that has the same format
    * as printed by `console.log(...)`;
    */
-  export function inspect(value: unknown, options?: ConsoleOptions): string;
+  export function inspect(value: unknown, options?: InspectOptions): string;
 }
 
 declare namespace __event {
