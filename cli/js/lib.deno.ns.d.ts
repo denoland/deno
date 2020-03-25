@@ -148,16 +148,16 @@ declare namespace Deno {
 
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.
-   * 
+   *
    *       Deno.exit(5);
-  */
+   */
   export function exit(code?: number): never;
 
-  /** Without any parameters, this will return a snapshot of the environment 
+  /** Without any parameters, this will return a snapshot of the environment
    * variables at invocation. Changing a property in the object will set that
    * variable in the environment for the process. The environment object will
    * only accept `string`s as values.
-   * 
+   *
    * Passing in a `string` key parameter will return the value for that environment
    * variable, or undefined if that key doesn't exist.
    *
@@ -348,7 +348,7 @@ declare namespace Deno {
    * Returns the path to the current deno executable.
    *
    *       console.log(Deno.execPath());  //e.g. "/home/alice/.local/bin/deno"
-   * 
+   *
    * Requires `allow-env` permission.
    */
   export function execPath(): string;
@@ -524,8 +524,8 @@ declare namespace Deno {
    *
    * Because `copy()` is defined to read from `src` until `EOF`, it does not
    * treat an `EOF` from `read()` as an error to be reported.
-   * 
-   * @param dst The destination to copy to 
+   *
+   * @param dst The destination to copy to
    * @param src The source to copy from
    */
   export function copy(dst: Writer, src: Reader): Promise<number>;
@@ -1781,7 +1781,7 @@ declare namespace Deno {
    *     const conn3 = await Deno.connectTLS({ hostname: "[2001:db8::1]", port: 80 });
    *     const conn4 = await Deno.connectTLS({ certFile: "./certs/my_custom_root_CA.pem", hostname: "golang.org", port: 80});
    *
-   * Requires `allow-net` permission. 
+   * Requires `allow-net` permission.
    */
   export function connectTLS(options: ConnectTLSOptions): Promise<Conn>;
 
@@ -1843,10 +1843,10 @@ declare namespace Deno {
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Watch for file system events against one or more `paths`, which can be files
-   * or directories.  These paths must exist already.  One user action (e.g. 
-   * `touch test.file`) can  generate multiple file system events.  Likewise, 
-   * one user action can result in multiple file paths in one event (e.g. `mv 
-   * old_name.txt new_name.txt`).  Recursive option is `true` by default and, 
+   * or directories.  These paths must exist already.  One user action (e.g.
+   * `touch test.file`) can  generate multiple file system events.  Likewise,
+   * one user action can result in multiple file paths in one event (e.g. `mv
+   * old_name.txt new_name.txt`).  Recursive option is `true` by default and,
    * for directories, will watch the specified directory and all sub directories.
    * Note that the exact ordering of the events can vary between operating systems.
    *
@@ -2110,7 +2110,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
-   * Format an array of diagnostic items and return them as a single string in a 
+   * Format an array of diagnostic items and return them as a single string in a
    * user friendly format.
    *
    *       const [diagnostics, result] = Deno.compile("file_with_compile_issues.ts");
