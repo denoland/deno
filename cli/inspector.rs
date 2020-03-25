@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use crate::futures::SinkExt;
 use deno_core::v8;
 use futures;
 use futures::StreamExt;
@@ -17,6 +18,7 @@ use tokio;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 use warp;
+use warp::filters::ws;
 use warp::Filter;
 
 const CONTEXT_GROUP_ID: i32 = 1;
@@ -33,12 +35,16 @@ enum ServerMsg {
 type ServerMsgTx = mpsc::UnboundedSender<ServerMsg>;
 type ServerMsgRx = mpsc::UnboundedReceiver<ServerMsg>;
 
+type WsTx = futures::stream::SplitSink<ws::WebSocket, ws::Message>;
+
 pub enum InspectorMsg {
   WsConnection {
-    ws_tx: futures::stream::SplitSink<
-      warp::filters::ws::WebSocket,
-      warp::filters::ws::Message,
-    >,
+    session_uuid: Uuid,
+    ws_tx: WsTx,
+  },
+  WsIncoming {
+    session_uuid: Uuid,
+    msg: ws::Message,
   },
 }
 
@@ -184,15 +190,26 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) -> () {
         // send a message back so register_worker can return...
         let (ws_tx, mut ws_rx) = socket.split();
 
+        // Not to be confused with the WS's uuid...
+        let session_uuid = Uuid::new_v4();
+
         inspector_info
           .inspector_tx
-          .send(InspectorMsg::WsConnection { ws_tx })
+          .send(InspectorMsg::WsConnection {
+            ws_tx,
+            session_uuid,
+          })
           .unwrap_or_else(|_| {
             panic!("sending message to inspector_tx failed");
           });
 
         while let Some(Ok(msg)) = ws_rx.next().await {
-          println!("m: {:?}", msg);
+          inspector_info
+            .inspector_tx
+            .send(InspectorMsg::WsIncoming { msg, session_uuid })
+            .unwrap_or_else(|_| {
+              panic!("sending message to inspector_tx failed");
+            });
         }
       })
     });
@@ -240,12 +257,14 @@ struct DenoInspectorInner {
   client: v8::inspector::V8InspectorClientBase,
   inspector: v8::UniqueRef<v8::inspector::V8Inspector>,
   terminated: bool,
-  sessions: HashMap<usize, Box<DenoInspectorSession>>,
-  next_session_id: usize,
+  sessions: HashMap<Uuid, Box<DenoInspectorSession>>,
   // recv_future: Option<Pin<Box<dyn Future<Output = ()>>>>,
   inspector_rx: InspectorRx,
 }
 
+/// DenoInspector implements a Future so that it can poll for incoming messages
+/// from the WebSocket server. Since a Worker ownes a DenoInspector, and because
+/// a Worker is a Future too, Worker::poll will call this.
 impl Future for DenoInspector {
   type Output = ();
 
@@ -260,10 +279,22 @@ impl Future for DenoInspector {
       Poll::Pending => Poll::Pending,
       Poll::Ready(Some(msg)) => {
         match msg {
-          InspectorMsg::WsConnection { .. } => {
-            println!("Got new ws connection in DenoInspector");
-            let session_id = deno_inspector.connect();
-            println!("session_id {:?}", session_id);
+          InspectorMsg::WsConnection {
+            session_uuid,
+            ws_tx,
+          } => {
+            deno_inspector.connect(session_uuid, ws_tx);
+            println!("Got new ws connection in DenoInspector {}", session_uuid);
+          }
+          InspectorMsg::WsIncoming { session_uuid, msg } => {
+            println!(">>> {}", msg.to_str().unwrap());
+            if let Some(deno_session) =
+              deno_inspector.0.sessions.get_mut(&session_uuid)
+            {
+              deno_session.dispatch_protocol_message(msg)
+            } else {
+              eprintln!("Unknown session {}. msg {:?}", session_uuid, msg);
+            }
           }
         };
         Poll::Ready(())
@@ -291,7 +322,6 @@ impl DenoInspector {
       }),
       terminated: false,
       sessions: HashMap::new(),
-      next_session_id: 1,
       inspector_rx,
     });
 
@@ -305,12 +335,9 @@ impl DenoInspector {
     DenoInspector(deno_inspector)
   }
 
-  pub fn connect(&mut self) -> usize {
-    let id = self.0.next_session_id;
-    self.0.next_session_id += 1;
-    let session = DenoInspectorSession::new(&mut self.0.inspector);
-    self.0.sessions.insert(id, session);
-    id
+  pub fn connect(&mut self, session_uuid: Uuid, ws_tx: WsTx) {
+    let session = DenoInspectorSession::new(&mut self.0.inspector, ws_tx);
+    self.0.sessions.insert(session_uuid, session);
   }
 }
 
@@ -343,10 +370,14 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspectorInner {
 pub struct DenoInspectorSession {
   channel: v8::inspector::ChannelBase,
   session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
+  ws_tx: WsTx,
 }
 
 impl DenoInspectorSession {
-  pub fn new(inspector: &mut v8::inspector::V8Inspector) -> Box<Self> {
+  pub fn new(
+    inspector: &mut v8::inspector::V8Inspector,
+    ws_tx: WsTx,
+  ) -> Box<Self> {
     new_box_with(|address| {
       let empty_view = v8::inspector::StringView::empty();
       Self {
@@ -358,8 +389,15 @@ impl DenoInspectorSession {
           unsafe { &mut *address },
           &empty_view,
         ),
+        ws_tx,
       }
     })
+  }
+
+  pub fn dispatch_protocol_message(&mut self, ws_msg: ws::Message) {
+    let bytes = ws_msg.as_bytes();
+    let string_view = v8::inspector::StringView::from(bytes);
+    self.session.dispatch_protocol_message(&string_view);
   }
 }
 
@@ -375,24 +413,35 @@ impl v8::inspector::ChannelImpl for DenoInspectorSession {
   fn send_response(
     &mut self,
     _call_id: i32,
-    _message: v8::UniquePtr<v8::inspector::StringBuffer>,
+    message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    // deno_isolate.inspector_message_cb(message)
-    todo!()
+    let ws_msg = v8_to_ws_msg(message);
+    let r = futures::executor::block_on(self.ws_tx.send(ws_msg));
+    assert!(r.is_ok());
   }
 
   fn send_notification(
     &mut self,
-    _message: v8::UniquePtr<v8::inspector::StringBuffer>,
+    message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    // deno_isolate.inspector_message_cb(message)
-    todo!()
+    let ws_msg = v8_to_ws_msg(message);
+    let r = futures::executor::block_on(self.ws_tx.send(ws_msg));
+    assert!(r.is_ok());
   }
 
   fn flush_protocol_notifications(&mut self) {
-    // pass
     todo!()
   }
+}
+
+// TODO impl From or Into
+fn v8_to_ws_msg(
+  message: v8::UniquePtr<v8::inspector::StringBuffer>,
+) -> ws::Message {
+  let mut x = message.unwrap();
+  let s = x.string().to_string();
+  eprintln!("<<< {}", s);
+  ws::Message::text(s)
 }
 
 fn new_box_with<T>(new_fn: impl FnOnce(*mut T) -> T) -> Box<T> {
