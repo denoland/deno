@@ -1,70 +1,90 @@
-#![allow(unused_variables)]
-#![allow(dead_code)]
-
 use deno_core::v8;
+use futures;
+use futures::FutureExt;
+use futures::StreamExt;
 use std::collections::HashMap;
 use std::mem::MaybeUninit;
 use std::net::SocketAddrV4;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
+use tokio;
+use tokio::sync::mpsc;
 use uuid::Uuid;
 use warp;
 use warp::Filter;
 
 const CONTEXT_GROUP_ID: i32 = 1;
 
-// TODO Currently the value in this map is just (), but we will fill that in
-// later with more stuff. Probably channels.
-type InspectorMap = Arc<Mutex<HashMap<Uuid, ()>>>;
+// These messages can be sent from any thread to the server thread.
+enum ServerMsg {
+  AddInspector {
+    uuid: Uuid,
+    inspector_tx: InspectorTx,
+  },
+}
 
-/// Owned by GlobalState
+type ServerMsgTx = mpsc::UnboundedSender<ServerMsg>;
+type ServerMsgRx = mpsc::UnboundedReceiver<ServerMsg>;
+
+enum InspectorMsg {}
+
+type InspectorTx = mpsc::UnboundedSender<InspectorMsg>;
+type InspectorRx = mpsc::UnboundedReceiver<InspectorMsg>;
+
+/// Owned by GlobalState.
 pub struct InspectorServer {
   address: SocketAddrV4,
   thread_handle: Option<std::thread::JoinHandle<()>>,
-  inspector_map: InspectorMap,
+  server_msg_tx: ServerMsgTx,
 }
 
 impl InspectorServer {
   pub fn new() -> Self {
+    let address = "127.0.0.1:9229".parse::<SocketAddrV4>().unwrap();
+    let address_ = address.clone();
+    let (mut server_msg_tx, mut server_msg_rx) =
+      mpsc::unbounded_channel::<ServerMsg>();
+    let thread_handle = std::thread::spawn(move || {
+      crate::tokio_util::run_basic(server(address, server_msg_rx));
+    });
     Self {
-      address: "127.0.0.1:9229".parse::<SocketAddrV4>().unwrap(),
-      thread_handle: None,
-      inspector_map: Arc::new(Mutex::new(HashMap::new())),
+      address,
+      thread_handle: Some(thread_handle),
+      server_msg_tx,
     }
   }
 
   // TODO this should probably be done in impl Drop, but it seems we're leaking
   // GlobalState and so it can't be done there...
   pub fn exit(&mut self) {
-    if let Some(thread_handle) = self.thread_handle.take() {
-      thread_handle.join().unwrap();
-    }
+    self.thread_handle.take().unwrap().join().unwrap();
   }
 
   /// Each worker/isolate to be debugged should call this exactly one.
-  pub fn register(&mut self) -> Uuid {
-    let uuid = Uuid::new_v4();
+  pub fn add_inspector(&mut self) -> impl futures::future::Future<Output = ()> {
+    let server_msg_tx = self.server_msg_tx.clone();
+    let address = self.address.clone();
 
-    let inspector_map_ = self.inspector_map.clone();
-    let mut inspector_map = self.inspector_map.lock().unwrap();
-    inspector_map.insert(uuid.clone(), ());
+    async move {
+      let (mut inspector_tx, mut inspector_rx) =
+        mpsc::unbounded_channel::<InspectorMsg>();
+      let uuid = Uuid::new_v4();
 
-    // Don't start the InspectorServer thread until we have one UUID registered.
-    if inspector_map.len() == 1 {
-      let address = self.address;
-      self.thread_handle = Some(std::thread::spawn(move || {
-        println!("Open chrome://inspect/");
-        crate::tokio_util::run_basic(server(address, inspector_map_));
-      }));
+      eprintln!(
+        "Debugger listening on {}",
+        websocket_debugger_url(address, &uuid)
+      );
+
+      server_msg_tx
+        .send(ServerMsg::AddInspector {
+          uuid: uuid,
+          inspector_tx,
+        })
+        .map_err(|_| {
+          panic!("sending message to inspector server thread failed");
+        });
     }
-
-    eprintln!(
-      "Debugger listening on {}",
-      websocket_debugger_url(self.address, &uuid)
-    );
-
-    uuid
   }
 }
 
@@ -77,25 +97,53 @@ fn websocket_debugger_url2(address: SocketAddrV4, uuid: &Uuid) -> String {
   format!("{}:{}/ws/{}", address.ip(), address.port(), uuid)
 }
 
-async fn server(address: SocketAddrV4, inspector_map: InspectorMap) -> () {
+async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) -> () {
+  let inspector_map = HashMap::<Uuid, InspectorTx>::new();
+  let inspector_map = Arc::new(std::sync::Mutex::new(inspector_map));
+
+  let inspector_map_ = inspector_map.clone();
+  let msg_handler = async move {
+    while let Some(msg) = server_msg_rx.next().await {
+      match msg {
+        ServerMsg::AddInspector { uuid, inspector_tx } => {
+          inspector_map_
+            .lock()
+            .unwrap()
+            .insert(uuid, inspector_tx)
+            .map(|_| panic!("UUID already in map"));
+        }
+      };
+    }
+  };
+
   let websocket = warp::path("ws")
     .and(warp::path::param())
     .and(warp::ws())
-    .map(move |param: String, ws: warp::ws::Ws| {
-      println!("ws connection {}", param);
-      ws.on_upgrade(move |_socket| async {
+    .map(move |uuid: String, ws: warp::ws::Ws| {
+      ws.on_upgrade(move |mut socket| async move {
+        let uuid = match Uuid::parse_str(&uuid) {
+          Ok(uuid) => uuid,
+          Err(_) => {
+            return;
+          }
+        };
         // send a message back so register_worker can return...
-        todo!()
+        println!("ws connection {}", uuid);
+
+        while let Some(Ok(msg)) = socket.next().await {
+          println!("m: {:?}", msg);
+        }
       })
     });
 
+  let inspector_map_ = inspector_map.clone();
+  let address_ = address.clone();
   let json_list =
     warp::path("json")
       .map(move || {
-        let im = inspector_map.lock().unwrap();
-        let json_values: Vec<serde_json::Value> = im.iter().map(|(uuid, _)| {
-          let url = websocket_debugger_url(address, uuid);
-          let url2 = websocket_debugger_url2(address, uuid);
+        let json_values: Vec<serde_json::Value> = inspector_map_.lock().unwrap().iter().map(|(uuid, _)| {
+          let url = websocket_debugger_url(address_, uuid);
+          let url2 = websocket_debugger_url2(address_, uuid);
           json!({
             "description": "deno",
             "devtoolsFrontendUrl": format!("chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws={}", url2),
@@ -120,7 +168,9 @@ async fn server(address: SocketAddrV4, inspector_map: InspectorMap) -> () {
   });
 
   let routes = websocket.or(version).or(json_list);
-  warp::serve(routes).bind(address).await;
+  let web_handler = warp::serve(routes).bind(address);
+
+  futures::future::join(msg_handler, web_handler).await;
 }
 
 /// sub-class of v8::inspector::Channel

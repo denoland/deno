@@ -124,7 +124,7 @@ impl Worker {
         let inspector = crate::inspector::DenoInspector::new(scope, context);
 
         let mut x = inspector_server.lock().unwrap();
-        let _uuid = x.register();
+        tokio::spawn(x.add_inspector());
 
         Some(inspector)
       } else {
