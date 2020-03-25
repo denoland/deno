@@ -1078,6 +1078,11 @@ itest!(_057_revoke_permissions {
   output: "057_revoke_permissions.out",
 });
 
+itest!(_058_tasks_microtasks_close {
+  args: "run 058_tasks_microtasks_close.ts",
+  output: "058_tasks_microtasks_close.ts.out",
+});
+
 itest!(js_import_detect {
   args: "run --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
