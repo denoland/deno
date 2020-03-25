@@ -124,7 +124,7 @@ impl Worker {
         let context = global_context.get(scope).unwrap();
         let inspector = crate::inspector::DenoInspector::new(scope, context);
 
-        tokio::spawn(inspector_server.add_inspector(isolate_handle));
+        inspector_server.add_inspector(isolate_handle.clone());
 
         Some(inspector)
       } else {

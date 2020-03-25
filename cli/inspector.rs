@@ -30,10 +30,17 @@ type ServerMsgTx = mpsc::UnboundedSender<ServerMsg>;
 type ServerMsgRx = mpsc::UnboundedReceiver<ServerMsg>;
 
 enum InspectorMsg {
-  WsConnection, // TODO add send half of websocket connection?
+  WsConnection {
+    ws_tx: futures::stream::SplitSink<
+      warp::filters::ws::WebSocket,
+      warp::filters::ws::Message,
+    >,
+  },
 }
 
+/// Owned by the web socket server
 type InspectorTx = mpsc::UnboundedSender<InspectorMsg>;
+/// Owned by the isolate/worker
 type InspectorRx = mpsc::UnboundedReceiver<InspectorMsg>;
 
 /// Owned by GlobalState.
@@ -58,35 +65,28 @@ impl InspectorServer {
   }
 
   /// Each worker/isolate to be debugged should call this exactly one.
-  pub fn add_inspector(
-    &self,
-    isolate_handle: v8::IsolateHandle,
-  ) -> impl futures::future::Future<Output = ()> {
-    let server_msg_tx = self.server_msg_tx.clone();
+  pub fn add_inspector(&self, isolate_handle: v8::IsolateHandle) {
+    let server_msg_tx = self.server_msg_tx.as_ref().unwrap().clone();
     let address = self.address;
 
-    async move {
-      let (inspector_tx, _inspector_rx) =
-        mpsc::unbounded_channel::<InspectorMsg>();
-      let uuid = Uuid::new_v4();
+    let (inspector_tx, _inspector_rx) =
+      mpsc::unbounded_channel::<InspectorMsg>();
+    let uuid = Uuid::new_v4();
 
-      eprintln!(
-        "Debugger listening on {}",
-        websocket_debugger_url(address, &uuid)
-      );
+    eprintln!(
+      "Debugger listening on {}",
+      websocket_debugger_url(address, &uuid)
+    );
 
-      server_msg_tx
-        .as_ref()
-        .unwrap()
-        .send(ServerMsg::AddInspector {
-          uuid,
-          inspector_tx,
-          isolate_handle,
-        })
-        .unwrap_or_else(|_| {
-          panic!("sending message to inspector server thread failed");
-        });
-    }
+    server_msg_tx
+      .send(ServerMsg::AddInspector {
+        uuid,
+        inspector_tx,
+        isolate_handle,
+      })
+      .unwrap_or_else(|_| {
+        panic!("sending message to inspector server thread failed");
+      });
   }
 }
 
@@ -134,30 +134,31 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) -> () {
     .and(warp::ws())
     .map(move |uuid: String, ws: warp::ws::Ws| {
       let inspector_map__ = inspector_map_.clone();
-      ws.on_upgrade(move |mut socket| async move {
-        let uuid = match Uuid::parse_str(&uuid) {
-          Ok(uuid) => uuid,
-          Err(_) => {
-            return;
-          }
-        };
-
+      ws.on_upgrade(move |socket| async move {
         let inspector_tx = {
-          let g = inspector_map__.lock().unwrap();
-          let maybe = g.get(&uuid);
-          if maybe.is_none() {
+          if let Ok(uuid) = Uuid::parse_str(&uuid) {
+            let g = inspector_map__.lock().unwrap();
+            if let Some(inspector_tx) = g.get(&uuid) {
+              println!("ws connection {}", uuid);
+              inspector_tx.clone()
+            } else {
+              return;
+            }
+          } else {
             return;
           }
-          maybe.unwrap().clone()
         };
 
         // send a message back so register_worker can return...
-        println!("ws connection {}", uuid);
+        let (ws_tx, mut ws_rx) = socket.split();
 
-        let r = inspector_tx.send(InspectorMsg::WsConnection);
-        assert!(r.is_ok());
+        let r = inspector_tx
+          .send(InspectorMsg::WsConnection { ws_tx })
+          .unwrap_or_else(|_| {
+            panic!("sending message to inspector_tx failed");
+          });
 
-        while let Some(Ok(msg)) = socket.next().await {
+        while let Some(Ok(msg)) = ws_rx.next().await {
           println!("m: {:?}", msg);
         }
       })
@@ -170,10 +171,9 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) -> () {
       .map(move || {
         let json_values: Vec<serde_json::Value> = inspector_map_.lock().unwrap().iter().map(|(uuid, _)| {
           let url = websocket_debugger_url(address_, uuid);
-          let url2 = websocket_debugger_url2(address_, uuid);
           json!({
             "description": "deno",
-            "devtoolsFrontendUrl": format!("chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws={}", url2),
+            "devtoolsFrontendUrl": format!("chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws={}", url),
             "faviconUrl": "https://deno.land/favicon.ico",
             "id": uuid.to_string(),
             "title": format!("deno[{}]", std::process::id()),
