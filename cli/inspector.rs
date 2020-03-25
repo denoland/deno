@@ -3,7 +3,9 @@
 
 use deno_core::v8;
 use std::collections::HashMap;
+use std::mem::MaybeUninit;
 use std::net::SocketAddrV4;
+use std::ptr;
 use warp;
 use warp::Filter;
 
@@ -91,32 +93,35 @@ async fn server() -> () {
 
 /// sub-class of v8::inspector::Channel
 pub struct DenoInspectorSession {
-  base: v8::inspector::ChannelBase,
-  session: Option<v8::UniqueRef<v8::inspector::V8InspectorSession>>,
+  channel: v8::inspector::ChannelBase,
+  session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
 }
 
 impl DenoInspectorSession {
-  pub fn new(inspector: &mut v8::inspector::V8Inspector) -> Self {
-    let mut x = Self {
-      base: v8::inspector::ChannelBase::new::<Self>(),
-      session: None,
-    };
-    let empty_view = v8::inspector::StringView::empty();
-    let session = inspector.connect(CONTEXT_GROUP_ID, &mut x, &empty_view);
-
-    x.session = Some(session);
-
-    x
+  pub fn new(inspector: &mut v8::inspector::V8Inspector) -> Box<Self> {
+    new_box_with(|address| {
+      let empty_view = v8::inspector::StringView::empty();
+      Self {
+        channel: v8::inspector::ChannelBase::new::<Self>(),
+        session: inspector.connect(
+          CONTEXT_GROUP_ID,
+          // Todo(piscisaureus): V8Inspector::connect() should require that
+          // the 'channel'  argument cannot move.
+          unsafe { &mut *address },
+          &empty_view,
+        ),
+      }
+    })
   }
 }
 
 impl v8::inspector::ChannelImpl for DenoInspectorSession {
   fn base(&self) -> &v8::inspector::ChannelBase {
-    &self.base
+    &self.channel
   }
 
   fn base_mut(&mut self) -> &mut v8::inspector::ChannelBase {
-    &mut self.base
+    &mut self.channel
   }
 
   fn send_response(
@@ -143,62 +148,56 @@ impl v8::inspector::ChannelImpl for DenoInspectorSession {
 }
 
 #[repr(C)]
-pub struct DenoInspectorClient {
-  base: v8::inspector::V8InspectorClientBase,
-
-  // Note this is the same as NodeInspectorClient::client_
-  inspector: Option<v8::UniqueRef<v8::inspector::V8Inspector>>,
-
+pub struct DenoInspector {
+  client: v8::inspector::V8InspectorClientBase,
+  inspector: v8::UniqueRef<v8::inspector::V8Inspector>,
   terminated: bool,
-
-  // Note this is the same as NodeInspectorClient::channels_
-  sessions: HashMap<usize, DenoInspectorSession>,
-
+  sessions: HashMap<usize, Box<DenoInspectorSession>>,
   next_session_id: usize,
 }
 
-impl DenoInspectorClient {
-  pub fn new<P>(scope: &mut P, context: v8::Local<v8::Context>) -> Self
+impl DenoInspector {
+  pub fn new<P>(scope: &mut P, context: v8::Local<v8::Context>) -> Box<Self>
   where
     P: v8::InIsolate,
   {
-    let mut client = Self {
-      base: v8::inspector::V8InspectorClientBase::new::<Self>(),
-      inspector: None,
+    let mut deno_inspector = new_box_with(|address| Self {
+      client: v8::inspector::V8InspectorClientBase::new::<Self>(),
+      // Todo(piscisaureus): V8Inspector::create() should require that
+      // the 'client' argument cannot move.
+      inspector: v8::inspector::V8Inspector::create(scope, unsafe {
+        &mut *address
+      }),
       terminated: false,
       sessions: HashMap::new(),
       next_session_id: 1,
-    };
-
-    let mut inspector = v8::inspector::V8Inspector::create(scope, &mut client);
+    });
 
     let empty_view = v8::inspector::StringView::empty();
-    let buffer = v8::inspector::StringBuffer::create(&empty_view).unwrap();
+    deno_inspector.inspector.context_created(
+      context,
+      CONTEXT_GROUP_ID,
+      &empty_view,
+    );
 
-    let state = b"";
-    let state_view = v8::inspector::StringView::from(&state[..]);
-
-    inspector.context_created(context, CONTEXT_GROUP_ID, &state_view);
-
-    client.inspector = Some(inspector);
-    client
+    deno_inspector
   }
 
   pub fn connect(&mut self) {
     let id = self.next_session_id;
     self.next_session_id += 1;
-    let session = DenoInspectorSession::new(self.inspector.as_mut().unwrap());
+    let session = DenoInspectorSession::new(&mut self.inspector);
     self.sessions.insert(id, session);
   }
 }
 
-impl v8::inspector::V8InspectorClientImpl for DenoInspectorClient {
+impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   fn base(&self) -> &v8::inspector::V8InspectorClientBase {
-    &self.base
+    &self.client
   }
 
   fn base_mut(&mut self) -> &mut v8::inspector::V8InspectorClientBase {
-    &mut self.base
+    &mut self.client
   }
 
   fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
@@ -215,4 +214,11 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspectorClient {
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
     todo!()
   }
+}
+
+fn new_box_with<T>(new_fn: impl FnOnce(*mut T) -> T) -> Box<T> {
+  let b = Box::new(MaybeUninit::<T>::uninit());
+  let p = Box::into_raw(b) as *mut T;
+  unsafe { ptr::write(p, new_fn(p)) };
+  unsafe { Box::from_raw(p) }
 }

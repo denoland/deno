@@ -100,7 +100,7 @@ pub struct Worker {
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
-  inspector_client: Option<crate::inspector::DenoInspectorClient>,
+  inspector: Option<Box<crate::inspector::DenoInspector>>,
 }
 
 impl Worker {
@@ -116,7 +116,7 @@ impl Worker {
     }
     */
 
-    let inspector_client = if global_state_.inspector_server.is_some() {
+    let inspector = if global_state_.inspector_server.is_some() {
       use deno_core::v8;
       let deno_core::Isolate {
         v8_isolate,
@@ -126,9 +126,8 @@ impl Worker {
       let mut hs = v8::HandleScope::new(v8_isolate.as_mut().unwrap());
       let scope = hs.enter();
       let context = global_context.get(scope).unwrap();
-      let inspector_client =
-        crate::inspector::DenoInspectorClient::new(scope, context);
-      Some(inspector_client)
+      let inspector = crate::inspector::DenoInspector::new(scope, context);
+      Some(inspector)
     } else {
       None
     };
@@ -146,7 +145,7 @@ impl Worker {
       waker: AtomicWaker::new(),
       internal_channels,
       external_channels,
-      inspector_client,
+      inspector,
     }
   }
 
