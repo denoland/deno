@@ -75,14 +75,26 @@ impl InspectorServer {
   /// Called from worker's thread
   pub fn add_inspector(
     &self,
-    isolate_handle: v8::IsolateHandle,
-  ) -> InspectorRx {
+    isolate: &mut deno_core::Isolate,
+  ) -> Box<DenoInspector> {
+    let deno_core::Isolate {
+      v8_isolate,
+      global_context,
+      ..
+    } = isolate;
+    let isolate_handle = v8_isolate.as_mut().unwrap().thread_safe_handle();
+    let mut hs = v8::HandleScope::new(v8_isolate.as_mut().unwrap());
+    let scope = hs.enter();
+    let context = global_context.get(scope).unwrap();
+
     let server_msg_tx = self.server_msg_tx.as_ref().unwrap().clone();
     let address = self.address;
-
     let (inspector_tx, inspector_rx) =
       mpsc::unbounded_channel::<InspectorMsg>();
     let uuid = Uuid::new_v4();
+
+    let inspector =
+      crate::inspector::DenoInspector::new(scope, context, inspector_rx);
 
     eprintln!(
       "Debugger listening on {}",
@@ -99,7 +111,7 @@ impl InspectorServer {
         panic!("sending message to inspector server thread failed");
       });
 
-    inspector_rx
+    inspector
   }
 }
 
@@ -222,62 +234,6 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) -> () {
   futures::future::join(msg_handler, web_handler).await;
 }
 
-/// sub-class of v8::inspector::Channel
-pub struct DenoInspectorSession {
-  channel: v8::inspector::ChannelBase,
-  session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
-}
-
-impl DenoInspectorSession {
-  pub fn new(inspector: &mut v8::inspector::V8Inspector) -> Box<Self> {
-    new_box_with(|address| {
-      let empty_view = v8::inspector::StringView::empty();
-      Self {
-        channel: v8::inspector::ChannelBase::new::<Self>(),
-        session: inspector.connect(
-          CONTEXT_GROUP_ID,
-          // Todo(piscisaureus): V8Inspector::connect() should require that
-          // the 'channel'  argument cannot move.
-          unsafe { &mut *address },
-          &empty_view,
-        ),
-      }
-    })
-  }
-}
-
-impl v8::inspector::ChannelImpl for DenoInspectorSession {
-  fn base(&self) -> &v8::inspector::ChannelBase {
-    &self.channel
-  }
-
-  fn base_mut(&mut self) -> &mut v8::inspector::ChannelBase {
-    &mut self.channel
-  }
-
-  fn send_response(
-    &mut self,
-    _call_id: i32,
-    _message: v8::UniquePtr<v8::inspector::StringBuffer>,
-  ) {
-    // deno_isolate.inspector_message_cb(message)
-    todo!()
-  }
-
-  fn send_notification(
-    &mut self,
-    _message: v8::UniquePtr<v8::inspector::StringBuffer>,
-  ) {
-    // deno_isolate.inspector_message_cb(message)
-    todo!()
-  }
-
-  fn flush_protocol_notifications(&mut self) {
-    // pass
-    todo!()
-  }
-}
-
 #[repr(C)]
 pub struct DenoInspector {
   client: v8::inspector::V8InspectorClientBase,
@@ -358,6 +314,62 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   }
 
   fn run_if_waiting_for_debugger(&mut self, _context_group_id: i32) {
+    todo!()
+  }
+}
+
+/// sub-class of v8::inspector::Channel
+pub struct DenoInspectorSession {
+  channel: v8::inspector::ChannelBase,
+  session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
+}
+
+impl DenoInspectorSession {
+  pub fn new(inspector: &mut v8::inspector::V8Inspector) -> Box<Self> {
+    new_box_with(|address| {
+      let empty_view = v8::inspector::StringView::empty();
+      Self {
+        channel: v8::inspector::ChannelBase::new::<Self>(),
+        session: inspector.connect(
+          CONTEXT_GROUP_ID,
+          // Todo(piscisaureus): V8Inspector::connect() should require that
+          // the 'channel'  argument cannot move.
+          unsafe { &mut *address },
+          &empty_view,
+        ),
+      }
+    })
+  }
+}
+
+impl v8::inspector::ChannelImpl for DenoInspectorSession {
+  fn base(&self) -> &v8::inspector::ChannelBase {
+    &self.channel
+  }
+
+  fn base_mut(&mut self) -> &mut v8::inspector::ChannelBase {
+    &mut self.channel
+  }
+
+  fn send_response(
+    &mut self,
+    _call_id: i32,
+    _message: v8::UniquePtr<v8::inspector::StringBuffer>,
+  ) {
+    // deno_isolate.inspector_message_cb(message)
+    todo!()
+  }
+
+  fn send_notification(
+    &mut self,
+    _message: v8::UniquePtr<v8::inspector::StringBuffer>,
+  ) {
+    // deno_isolate.inspector_message_cb(message)
+    todo!()
+  }
+
+  fn flush_protocol_notifications(&mut self) {
+    // pass
     todo!()
   }
 }
