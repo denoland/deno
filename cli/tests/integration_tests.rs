@@ -1274,6 +1274,20 @@ itest!(error_016_dynamic_import_permissions2 {
   http_server: true,
 });
 
+itest!(error_017_hide_long_source_ts {
+  args: "--reload error_017_hide_long_source_ts.ts",
+  output: "error_017_hide_long_source_ts.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
+itest!(error_018_hide_long_source_js {
+  args: "error_018_hide_long_source_js.js",
+  output: "error_018_hide_long_source_js.js.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
 itest!(error_stack {
   args: "run --reload error_stack.ts",
   check_stderr: true,
