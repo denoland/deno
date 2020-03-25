@@ -37,11 +37,7 @@ fn is_supported(path: &Path) -> bool {
 
 fn get_config() -> dprint::configuration::Configuration {
   use dprint::configuration::*;
-  ConfigurationBuilder::new()
-    .prettier()
-    .line_width(80)
-    .indent_width(2)
-    .build()
+  ConfigurationBuilder::new().prettier().build()
 }
 
 fn check_source_files(
@@ -97,22 +93,30 @@ fn format_source_files(
   for file_path in paths {
     let file_path_str = file_path.to_string_lossy();
     let file_contents = fs::read_to_string(&file_path)?;
-    let r = dprint::format_text(&file_path_str, &file_contents, &config);
-    match r {
-      Ok(None) => {
-        // nothing to format, pass
-      }
-      Ok(Some(formatted_text)) => {
-        if formatted_text != file_contents {
-          println!("{}", file_path_str);
-          fs::write(&file_path, formatted_text)?;
-          not_formatted_files.push(file_path);
+    // TODO(ry) dprint seems to panic unnecessarally sometimes. Until it matures
+    // we'll use a catch_unwind to avoid passing it on to our users.
+    let catch_unwind_result = std::panic::catch_unwind(|| {
+      dprint::format_text(&file_path_str, &file_contents, &config)
+    });
+    if let Ok(dprint_result) = catch_unwind_result {
+      match dprint_result {
+        Ok(None) => {
+          // nothing to format, pass
+        }
+        Ok(Some(formatted_text)) => {
+          if formatted_text != file_contents {
+            println!("{}", file_path_str);
+            fs::write(&file_path, formatted_text)?;
+            not_formatted_files.push(file_path);
+          }
+        }
+        Err(e) => {
+          eprintln!("Error formatting: {}", &file_path_str);
+          eprintln!("   {}", e);
         }
       }
-      Err(e) => {
-        eprintln!("Error formatting: {}", &file_path_str);
-        eprintln!("   {}", e);
-      }
+    } else {
+      eprintln!("dprint panic {}", file_path_str);
     }
   }
 
