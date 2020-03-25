@@ -29,7 +29,7 @@ enum ServerMsg {
 type ServerMsgTx = mpsc::UnboundedSender<ServerMsg>;
 type ServerMsgRx = mpsc::UnboundedReceiver<ServerMsg>;
 
-enum InspectorMsg {
+pub enum InspectorMsg {
   WsConnection {
     ws_tx: futures::stream::SplitSink<
       warp::filters::ws::WebSocket,
@@ -42,6 +42,13 @@ enum InspectorMsg {
 type InspectorTx = mpsc::UnboundedSender<InspectorMsg>;
 /// Owned by the isolate/worker
 type InspectorRx = mpsc::UnboundedReceiver<InspectorMsg>;
+
+// Stored in a UUID hashmap, used by WS server
+#[derive(Clone)]
+struct InspectorInfo {
+  inspector_tx: InspectorTx,
+  isolate_handle: v8::IsolateHandle,
+}
 
 /// Owned by GlobalState.
 pub struct InspectorServer {
@@ -65,11 +72,15 @@ impl InspectorServer {
   }
 
   /// Each worker/isolate to be debugged should call this exactly one.
-  pub fn add_inspector(&self, isolate_handle: v8::IsolateHandle) {
+  /// Called from worker's thread
+  pub fn add_inspector(
+    &self,
+    isolate_handle: v8::IsolateHandle,
+  ) -> InspectorRx {
     let server_msg_tx = self.server_msg_tx.as_ref().unwrap().clone();
     let address = self.address;
 
-    let (inspector_tx, _inspector_rx) =
+    let (inspector_tx, inspector_rx) =
       mpsc::unbounded_channel::<InspectorMsg>();
     let uuid = Uuid::new_v4();
 
@@ -87,6 +98,8 @@ impl InspectorServer {
       .unwrap_or_else(|_| {
         panic!("sending message to inspector server thread failed");
       });
+
+    inspector_rx
   }
 }
 
@@ -108,7 +121,7 @@ fn websocket_debugger_url2(address: SocketAddrV4, uuid: &Uuid) -> String {
 }
 
 async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) -> () {
-  let inspector_map = HashMap::<Uuid, InspectorTx>::new();
+  let inspector_map = HashMap::<Uuid, InspectorInfo>::new();
   let inspector_map = Arc::new(std::sync::Mutex::new(inspector_map));
 
   let inspector_map_ = inspector_map.clone();
@@ -116,12 +129,20 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) -> () {
     while let Some(msg) = server_msg_rx.next().await {
       match msg {
         ServerMsg::AddInspector {
-          uuid, inspector_tx, ..
+          uuid,
+          inspector_tx,
+          isolate_handle,
         } => {
           inspector_map_
             .lock()
             .unwrap()
-            .insert(uuid, inspector_tx)
+            .insert(
+              uuid,
+              InspectorInfo {
+                inspector_tx,
+                isolate_handle,
+              },
+            )
             .map(|_| panic!("UUID already in map"));
         }
       };
@@ -135,12 +156,12 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) -> () {
     .map(move |uuid: String, ws: warp::ws::Ws| {
       let inspector_map__ = inspector_map_.clone();
       ws.on_upgrade(move |socket| async move {
-        let inspector_tx = {
+        let inspector_info = {
           if let Ok(uuid) = Uuid::parse_str(&uuid) {
             let g = inspector_map__.lock().unwrap();
-            if let Some(inspector_tx) = g.get(&uuid) {
+            if let Some(inspector_info) = g.get(&uuid) {
               println!("ws connection {}", uuid);
-              inspector_tx.clone()
+              inspector_info.clone()
             } else {
               return;
             }
@@ -152,7 +173,8 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) -> () {
         // send a message back so register_worker can return...
         let (ws_tx, mut ws_rx) = socket.split();
 
-        let r = inspector_tx
+        inspector_info
+          .inspector_tx
           .send(InspectorMsg::WsConnection { ws_tx })
           .unwrap_or_else(|_| {
             panic!("sending message to inspector_tx failed");
@@ -263,16 +285,22 @@ pub struct DenoInspector {
   terminated: bool,
   sessions: HashMap<usize, Box<DenoInspectorSession>>,
   next_session_id: usize,
+  /// used to receive messages from ws server
+  inspector_rx: InspectorRx,
 }
 
 impl DenoInspector {
-  pub fn new<P>(scope: &mut P, context: v8::Local<v8::Context>) -> Box<Self>
+  pub fn new<P>(
+    scope: &mut P,
+    context: v8::Local<v8::Context>,
+    inspector_rx: InspectorRx,
+  ) -> Box<Self>
   where
     P: v8::InIsolate,
   {
     let mut deno_inspector = new_box_with(|address| Self {
       client: v8::inspector::V8InspectorClientBase::new::<Self>(),
-      // Todo(piscisaureus): V8Inspector::create() should require that
+      // TODO(piscisaureus): V8Inspector::create() should require that
       // the 'client' argument cannot move.
       inspector: v8::inspector::V8Inspector::create(scope, unsafe {
         &mut *address
@@ -280,6 +308,7 @@ impl DenoInspector {
       terminated: false,
       sessions: HashMap::new(),
       next_session_id: 1,
+      inspector_rx,
     });
 
     let empty_view = v8::inspector::StringView::empty();
