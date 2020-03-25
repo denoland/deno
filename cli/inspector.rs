@@ -29,7 +29,9 @@ enum ServerMsg {
 type ServerMsgTx = mpsc::UnboundedSender<ServerMsg>;
 type ServerMsgRx = mpsc::UnboundedReceiver<ServerMsg>;
 
-enum InspectorMsg {}
+enum InspectorMsg {
+  WsConnection, // TODO add send half of websocket connection?
+}
 
 type InspectorTx = mpsc::UnboundedSender<InspectorMsg>;
 type InspectorRx = mpsc::UnboundedReceiver<InspectorMsg>;
@@ -126,10 +128,12 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) -> () {
     }
   };
 
+  let inspector_map_ = inspector_map.clone();
   let websocket = warp::path("ws")
     .and(warp::path::param())
     .and(warp::ws())
     .map(move |uuid: String, ws: warp::ws::Ws| {
+      let inspector_map__ = inspector_map_.clone();
       ws.on_upgrade(move |mut socket| async move {
         let uuid = match Uuid::parse_str(&uuid) {
           Ok(uuid) => uuid,
@@ -137,8 +141,21 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) -> () {
             return;
           }
         };
+
+        let inspector_tx = {
+          let g = inspector_map__.lock().unwrap();
+          let maybe = g.get(&uuid);
+          if maybe.is_none() {
+            return;
+          }
+          maybe.unwrap().clone()
+        };
+
         // send a message back so register_worker can return...
         println!("ws connection {}", uuid);
+
+        let r = inspector_tx.send(InspectorMsg::WsConnection);
+        assert!(r.is_ok());
 
         while let Some(Ok(msg)) = socket.next().await {
           println!("m: {:?}", msg);
