@@ -92,6 +92,7 @@ impl Drop for InspectorServer {
   fn drop(&mut self) {
     self.server_msg_tx.take();
     self.thread_handle.take().unwrap().join().unwrap();
+    panic!("TODO: this drop is never called");
   }
 }
 
