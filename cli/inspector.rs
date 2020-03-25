@@ -124,12 +124,7 @@ impl Drop for InspectorServer {
 }
 
 fn websocket_debugger_url(address: SocketAddrV4, uuid: &Uuid) -> String {
-  format!("ws://{}", websocket_debugger_url2(address, uuid))
-}
-
-/// Same thing but without "ws://" prefix
-fn websocket_debugger_url2(address: SocketAddrV4, uuid: &Uuid) -> String {
-  format!("{}:{}/ws/{}", address.ip(), address.port(), uuid)
+  format!("ws://{}:{}/ws/{}", address.ip(), address.port(), uuid)
 }
 
 async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) -> () {
