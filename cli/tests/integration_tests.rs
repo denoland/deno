@@ -1078,6 +1078,11 @@ itest!(_057_revoke_permissions {
   output: "057_revoke_permissions.out",
 });
 
+itest!(_058_tasks_microtasks_close {
+  args: "run 058_tasks_microtasks_close.ts",
+  output: "058_tasks_microtasks_close.ts.out",
+});
+
 itest!(js_import_detect {
   args: "run --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
@@ -1274,6 +1279,20 @@ itest!(error_016_dynamic_import_permissions2 {
   http_server: true,
 });
 
+itest!(error_017_hide_long_source_ts {
+  args: "--reload error_017_hide_long_source_ts.ts",
+  output: "error_017_hide_long_source_ts.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
+itest!(error_018_hide_long_source_js {
+  args: "error_018_hide_long_source_js.js",
+  output: "error_018_hide_long_source_js.js.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
 itest!(error_stack {
   args: "run --reload error_stack.ts",
   check_stderr: true,
@@ -1286,6 +1305,13 @@ itest!(error_syntax {
   check_stderr: true,
   exit_code: 1,
   output: "error_syntax.js.out",
+});
+
+itest!(error_syntax_empty_trailing_line {
+  args: "run --reload error_syntax_empty_trailing_line.mjs",
+  check_stderr: true,
+  exit_code: 1,
+  output: "error_syntax_empty_trailing_line.mjs.out",
 });
 
 itest!(error_type_definitions {

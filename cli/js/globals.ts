@@ -179,6 +179,14 @@ export function readOnly(value: unknown): PropertyDescriptor {
   };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getterOnly(getter: () => any): PropertyDescriptor {
+  return {
+    get: getter,
+    enumerable: true
+  };
+}
+
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 export const windowOrWorkerGlobalScopeMethods = {
   atob: writable(textEncoding.atob),
