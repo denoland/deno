@@ -22,6 +22,7 @@ enum ServerMsg {
   AddInspector {
     uuid: Uuid,
     inspector_tx: InspectorTx,
+    isolate_handle: v8::IsolateHandle,
   },
 }
 
@@ -55,7 +56,10 @@ impl InspectorServer {
   }
 
   /// Each worker/isolate to be debugged should call this exactly one.
-  pub fn add_inspector(&self) -> impl futures::future::Future<Output = ()> {
+  pub fn add_inspector(
+    &self,
+    isolate_handle: v8::IsolateHandle,
+  ) -> impl futures::future::Future<Output = ()> {
     let server_msg_tx = self.server_msg_tx.clone();
     let address = self.address;
 
@@ -73,8 +77,9 @@ impl InspectorServer {
         .as_ref()
         .unwrap()
         .send(ServerMsg::AddInspector {
-          uuid: uuid,
+          uuid,
           inspector_tx,
+          isolate_handle,
         })
         .unwrap_or_else(|_| {
           panic!("sending message to inspector server thread failed");
@@ -107,7 +112,9 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) -> () {
   let msg_handler = async move {
     while let Some(msg) = server_msg_rx.next().await {
       match msg {
-        ServerMsg::AddInspector { uuid, inspector_tx } => {
+        ServerMsg::AddInspector {
+          uuid, inspector_tx, ..
+        } => {
           inspector_map_
             .lock()
             .unwrap()

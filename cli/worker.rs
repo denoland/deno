@@ -118,12 +118,13 @@ impl Worker {
           global_context,
           ..
         } = &mut **isolate;
+        let isolate_handle = v8_isolate.as_mut().unwrap().thread_safe_handle();
         let mut hs = v8::HandleScope::new(v8_isolate.as_mut().unwrap());
         let scope = hs.enter();
         let context = global_context.get(scope).unwrap();
         let inspector = crate::inspector::DenoInspector::new(scope, context);
 
-        tokio::spawn(inspector_server.add_inspector());
+        tokio::spawn(inspector_server.add_inspector(isolate_handle));
 
         Some(inspector)
       } else {
