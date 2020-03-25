@@ -40,6 +40,22 @@ fn get_config() -> dprint::configuration::Configuration {
   ConfigurationBuilder::new().prettier().build()
 }
 
+// TODO(ry) dprint seems to panic unnecessarally sometimes. Until it matures
+// we'll use a catch_unwind to avoid passing it on to our users.
+fn format_text_ignore_panic(
+  file_path_str: &str,
+  file_contents: &str,
+  config: &dprint::configuration::Configuration,
+) -> Result<Option<String>, String> {
+  let catch_result = std::panic::catch_unwind(|| {
+    dprint::format_text(file_path_str, file_contents, config)
+  });
+  match catch_result {
+    Ok(dprint_result) => dprint_result,
+    Err(e) => Err(format!("dprint panic '{}' {:?}", file_path_str, e)),
+  }
+}
+
 fn check_source_files(
   config: dprint::configuration::Configuration,
   paths: Vec<PathBuf>,
@@ -49,7 +65,7 @@ fn check_source_files(
   for file_path in paths {
     let file_path_str = file_path.to_string_lossy();
     let file_contents = fs::read_to_string(&file_path).unwrap();
-    match dprint::format_text(&file_path_str, &file_contents, &config) {
+    match format_text_ignore_panic(&file_path_str, &file_contents, &config) {
       Ok(None) => {
         // nothing to format, pass
       }
@@ -93,30 +109,23 @@ fn format_source_files(
   for file_path in paths {
     let file_path_str = file_path.to_string_lossy();
     let file_contents = fs::read_to_string(&file_path)?;
-    // TODO(ry) dprint seems to panic unnecessarally sometimes. Until it matures
-    // we'll use a catch_unwind to avoid passing it on to our users.
-    let catch_unwind_result = std::panic::catch_unwind(|| {
-      dprint::format_text(&file_path_str, &file_contents, &config)
-    });
-    if let Ok(dprint_result) = catch_unwind_result {
-      match dprint_result {
-        Ok(None) => {
-          // nothing to format, pass
-        }
-        Ok(Some(formatted_text)) => {
-          if formatted_text != file_contents {
-            println!("{}", file_path_str);
-            fs::write(&file_path, formatted_text)?;
-            not_formatted_files.push(file_path);
-          }
-        }
-        Err(e) => {
-          eprintln!("Error formatting: {}", &file_path_str);
-          eprintln!("   {}", e);
+    let dprint_result =
+      format_text_ignore_panic(&file_path_str, &file_contents, &config);
+    match dprint_result {
+      Ok(None) => {
+        // nothing to format, pass
+      }
+      Ok(Some(formatted_text)) => {
+        if formatted_text != file_contents {
+          println!("{}", file_path_str);
+          fs::write(&file_path, formatted_text)?;
+          not_formatted_files.push(file_path);
         }
       }
-    } else {
-      eprintln!("dprint panic {}", file_path_str);
+      Err(e) => {
+        eprintln!("Error formatting: {}", &file_path_str);
+        eprintln!("   {}", e);
+      }
     }
   }
 
