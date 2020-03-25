@@ -4,10 +4,14 @@ use deno_core::v8;
 use futures;
 use futures::StreamExt;
 use std::collections::HashMap;
+use std::future::Future;
 use std::mem::MaybeUninit;
 use std::net::SocketAddrV4;
+use std::pin::Pin;
 use std::ptr;
 use std::sync::Arc;
+use std::task::Context;
+use std::task::Poll;
 
 use tokio;
 use tokio::sync::mpsc;
@@ -76,7 +80,7 @@ impl InspectorServer {
   pub fn add_inspector(
     &self,
     isolate: &mut deno_core::Isolate,
-  ) -> Box<DenoInspector> {
+  ) -> DenoInspector {
     let deno_core::Isolate {
       v8_isolate,
       global_context,
@@ -229,26 +233,57 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) -> () {
   futures::future::join(msg_handler, web_handler).await;
 }
 
+pub struct DenoInspector(Box<DenoInspectorInner>);
+
 #[repr(C)]
-pub struct DenoInspector {
+struct DenoInspectorInner {
   client: v8::inspector::V8InspectorClientBase,
   inspector: v8::UniqueRef<v8::inspector::V8Inspector>,
   terminated: bool,
   sessions: HashMap<usize, Box<DenoInspectorSession>>,
   next_session_id: usize,
+  // recv_future: Option<Pin<Box<dyn Future<Output = ()>>>>,
+  inspector_rx: InspectorRx,
+}
+
+impl Future for DenoInspector {
+  type Output = ();
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let deno_inspector = self.get_mut();
+    //inner.get_messages().boxed_local();
+    //
+    // let recv_future = inner.recv_future.as_mut().unwrap().as_mut();
+    // recv_future.poll(cx)
+
+    match deno_inspector.0.inspector_rx.poll_recv(cx) {
+      Poll::Pending => Poll::Pending,
+      Poll::Ready(Some(msg)) => {
+        match msg {
+          InspectorMsg::WsConnection { .. } => {
+            println!("Got new ws connection in DenoInspector");
+            let session_id = deno_inspector.connect();
+            println!("session_id {:?}", session_id);
+          }
+        };
+        Poll::Ready(())
+      }
+      _ => todo!("fixme"),
+    }
+  }
 }
 
 impl DenoInspector {
   pub fn new<P>(
     scope: &mut P,
     context: v8::Local<v8::Context>,
-    mut inspector_rx: InspectorRx,
-  ) -> Box<Self>
+    inspector_rx: InspectorRx,
+  ) -> Self
   where
     P: v8::InIsolate,
   {
-    let mut deno_inspector = new_box_with(|address| Self {
-      client: v8::inspector::V8InspectorClientBase::new::<Self>(),
+    let mut deno_inspector = new_box_with(|address| DenoInspectorInner {
+      client: v8::inspector::V8InspectorClientBase::new::<DenoInspectorInner>(),
       // TODO(piscisaureus): V8Inspector::create() should require that
       // the 'client' argument cannot move.
       inspector: v8::inspector::V8Inspector::create(scope, unsafe {
@@ -257,6 +292,7 @@ impl DenoInspector {
       terminated: false,
       sessions: HashMap::new(),
       next_session_id: 1,
+      inspector_rx,
     });
 
     let empty_view = v8::inspector::StringView::empty();
@@ -266,29 +302,19 @@ impl DenoInspector {
       &empty_view,
     );
 
-    tokio::spawn(async move {
-      while let Some(msg) = inspector_rx.next().await {
-        match msg {
-          InspectorMsg::WsConnection { .. } => {
-            println!("Got new ws connection in DenoInspector");
-            // TODO need to create a new session.
-          }
-        }
-      }
-    });
-
-    deno_inspector
+    DenoInspector(deno_inspector)
   }
 
-  pub fn connect(&mut self) {
-    let id = self.next_session_id;
-    self.next_session_id += 1;
-    let session = DenoInspectorSession::new(&mut self.inspector);
-    self.sessions.insert(id, session);
+  pub fn connect(&mut self) -> usize {
+    let id = self.0.next_session_id;
+    self.0.next_session_id += 1;
+    let session = DenoInspectorSession::new(&mut self.0.inspector);
+    self.0.sessions.insert(id, session);
+    id
   }
 }
 
-impl v8::inspector::V8InspectorClientImpl for DenoInspector {
+impl v8::inspector::V8InspectorClientImpl for DenoInspectorInner {
   fn base(&self) -> &v8::inspector::V8InspectorClientBase {
     &self.client
   }

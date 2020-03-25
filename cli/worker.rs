@@ -100,7 +100,7 @@ pub struct Worker {
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
-  inspector: Option<Box<crate::inspector::DenoInspector>>,
+  inspector: Option<crate::inspector::DenoInspector>,
 }
 
 impl Worker {
@@ -202,6 +202,10 @@ impl Future for Worker {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
+    if let Some(deno_inspector) = inner.inspector.as_mut() {
+      // We always poll the inspector if it exists.
+      let _ = deno_inspector.poll_unpin(cx);
+    }
     inner.waker.register(cx.waker());
     inner.isolate.poll_unpin(cx)
   }
