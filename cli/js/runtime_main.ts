@@ -10,8 +10,10 @@
 import * as Deno from "./deno.ts";
 import * as domTypes from "./web/dom_types.ts";
 import * as csprng from "./ops/get_random_values.ts";
+import { exit } from "./ops/os.ts";
 import {
   readOnly,
+  getterOnly,
   writable,
   windowOrWorkerGlobalScopeMethods,
   windowOrWorkerGlobalScopeProperties,
@@ -21,6 +23,7 @@ import { internalObject } from "./internals.ts";
 import { setSignals } from "./signals.ts";
 import { replLoop } from "./repl.ts";
 import { LocationImpl } from "./web/location.ts";
+import { setTimeout } from "./web/timers.ts";
 import * as runtime from "./runtime.ts";
 import { symbols } from "./symbols.ts";
 import { log, immutableDefine } from "./util.ts";
@@ -31,6 +34,26 @@ import { log, immutableDefine } from "./util.ts";
 // @ts-ignore
 Deno[symbols.internal] = internalObject;
 
+let windowIsClosing = false;
+
+function windowClose(): void {
+  if (!windowIsClosing) {
+    windowIsClosing = true;
+    // Push a macrotask to exit after a promise resolve.
+    // This is not perfect, but should be fine for first pass.
+    Promise.resolve().then(() =>
+      setTimeout.call(
+        null,
+        () => {
+          // This should be fine, since only Window/MainWorker has .close()
+          exit(0);
+        },
+        0
+      )
+    );
+  }
+}
+
 export const mainRuntimeGlobalProperties = {
   window: readOnly(globalThis),
   self: readOnly(globalThis),
@@ -38,7 +61,9 @@ export const mainRuntimeGlobalProperties = {
   // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
   // it seems those two properties should be availble to workers as well
   onload: writable(undefined),
-  onunload: writable(undefined)
+  onunload: writable(undefined),
+  close: writable(windowClose),
+  closed: getterOnly(() => windowIsClosing)
 };
 
 let hasBootstrapped = false;
