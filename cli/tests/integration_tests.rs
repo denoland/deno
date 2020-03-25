@@ -1079,7 +1079,7 @@ itest!(_057_revoke_permissions {
 });
 
 itest!(_058_tasks_microtasks_close {
-  args: "test 058_tasks_microtasks_close.ts",
+  args: "run 058_tasks_microtasks_close.ts",
   output: "058_tasks_microtasks_close.ts.out",
 });
 
