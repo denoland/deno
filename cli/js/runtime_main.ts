@@ -39,7 +39,8 @@ let windowIsClosing = false;
 function windowClose(): void {
   if (!windowIsClosing) {
     windowIsClosing = true;
-    // Push a macrotask to exit, as the last sync
+    // Push a macrotask to exit after a promise resolve.
+    // This is not perfect, but should be fine for first pass.
     Promise.resolve().then(() =>
       setTimeout.call(
         null,
