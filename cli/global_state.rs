@@ -85,7 +85,7 @@ impl GlobalState {
     };
 
     let inspector_server = if flags.debug {
-      Some(InspectorServer::new())
+      Some(InspectorServer::default())
     } else {
       None
     };

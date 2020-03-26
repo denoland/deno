@@ -32,11 +32,6 @@ enum ServerMsg {
   },
 }
 
-type ServerMsgTx = mpsc::UnboundedSender<ServerMsg>;
-type ServerMsgRx = mpsc::UnboundedReceiver<ServerMsg>;
-
-type WsTx = futures::stream::SplitSink<ws::WebSocket, ws::Message>;
-
 pub enum InspectorMsg {
   WsConnection {
     session_uuid: Uuid,
@@ -48,6 +43,9 @@ pub enum InspectorMsg {
   },
 }
 
+type ServerMsgTx = mpsc::UnboundedSender<ServerMsg>;
+type ServerMsgRx = mpsc::UnboundedReceiver<ServerMsg>;
+type WsTx = futures::stream::SplitSink<ws::WebSocket, ws::Message>;
 /// Owned by the web socket server
 type InspectorTx = mpsc::UnboundedSender<InspectorMsg>;
 /// Owned by the isolate/worker
@@ -68,7 +66,8 @@ pub struct InspectorServer {
 }
 
 impl InspectorServer {
-  pub fn new() -> Self {
+  /// Starts a DevTools Inspector server on port 127.0.0.1:9229
+  pub fn default() -> Self {
     let address = "127.0.0.1:9229".parse::<SocketAddrV4>().unwrap();
     let (server_msg_tx, server_msg_rx) = mpsc::unbounded_channel::<ServerMsg>();
     let thread_handle = std::thread::spawn(move || {
@@ -160,7 +159,7 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
                 isolate_handle,
               },
             )
-            .map(|_| panic!("UUID already in map"));
+            .or_else(|| panic!("UUID already in map"));
         }
       };
     }
@@ -215,12 +214,12 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
     });
 
   let inspector_map_ = inspector_map.clone();
-  let address_ = address.clone();
   let json_list =
     warp::path("json")
       .map(move || {
-        let json_values: Vec<serde_json::Value> = inspector_map_.lock().unwrap().iter().map(|(uuid, _)| {
-          let url = websocket_debugger_url(address_, uuid);
+        let g = inspector_map_.lock().unwrap();
+        let json_values: Vec<serde_json::Value> = g.iter().map(|(uuid, _)| {
+          let url = websocket_debugger_url(address, uuid);
           json!({
             "description": "deno",
             "devtoolsFrontendUrl": format!("chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws={}", url),

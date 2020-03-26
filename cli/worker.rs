@@ -1,7 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
-#![allow(dead_code)]
-
 use crate::fmt_errors::JSError;
 use crate::ops;
 use crate::state::State;
@@ -108,18 +105,15 @@ impl Worker {
     let loader = Rc::new(state.clone());
     let mut isolate = deno_core::EsIsolate::new(loader, startup_data, false);
 
-    let global_state_ = state.borrow().global_state.clone();
+    let global_state = state.borrow().global_state.clone();
 
-    let inspector =
-      if let Some(inspector_server) = global_state_.inspector_server.as_ref() {
-        let inspector = inspector_server.add_inspector(&mut *isolate);
-        Some(inspector)
-      } else {
-        None
-      };
+    let inspector = global_state
+      .inspector_server
+      .as_ref()
+      .map(|s| s.add_inspector(&mut *isolate));
 
     isolate.set_js_error_create_fn(move |core_js_error| {
-      JSError::create(core_js_error, &global_state_.ts_compiler)
+      JSError::create(core_js_error, &global_state.ts_compiler)
     });
 
     let (internal_channels, external_channels) = create_channels();
