@@ -137,7 +137,7 @@ fn websocket_debugger_url(address: SocketAddrV4, uuid: &Uuid) -> String {
   format!("ws://{}:{}/ws/{}", address.ip(), address.port(), uuid)
 }
 
-async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) -> () {
+async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
   let inspector_map = HashMap::<Uuid, InspectorInfo>::new();
   let inspector_map = Arc::new(std::sync::Mutex::new(inspector_map));
 

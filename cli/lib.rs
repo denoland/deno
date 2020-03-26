@@ -373,10 +373,6 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
       std::process::exit(11);
     }
   }
-
-  // TODO This should probably be done in impl Drop for InspectorServer, but it
-  // seems GlobalState is being leaked and the drop is never called.
-  // global_state.inspector_server.take();
   Ok(())
 }
 
