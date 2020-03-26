@@ -2276,9 +2276,9 @@ dependencies = [
 
 [[package]]
 name = "sys-info"
-version = "0.5.8"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0079fe39cec2c8215e21b0bc4ccec9031004c160b88358f531b601e96b77f0df"
+checksum = "4bbb07eeb96387ca95eb5a800b3aa8896fa1876a2cd86b3a53f1c4bd2caddfd1"
 dependencies = [
  "cc",
  "libc",
