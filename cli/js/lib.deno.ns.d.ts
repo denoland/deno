@@ -155,28 +155,28 @@ declare namespace Deno {
    */
   export function exit(code?: number): never;
 
-  /** Without any parameters, this will return a snapshot of the environment
-   * variables at invocation. Changing a property in the object will set that
-   * variable in the environment for the process. The environment object will
-   * only accept `string`s as values.
-   *
-   * Passing in a `string` key parameter will return the value for that environment
-   * variable, or undefined if that key doesn't exist.
+  /** Returns a snapshot of the environment variables at invocation. Changing a
+   * property in the object will set that variable in the environment for the
+   * process. The environment object will only accept `string`s as values.
    *
    *       const myEnv = Deno.env();
    *       console.log(myEnv.SHELL);
    *       myEnv.TEST_VAR = "HELLO";
    *       const newEnv = Deno.env();
    *       console.log(myEnv.TEST_VAR === newEnv.TEST_VAR);  //outputs "true"
-   *       console.log(Deno.env("TEST_VAR"));  //outputs "HELLO"
-   *       console.log(Deno.env("MADE_UP_VAR"));  //outputs "Undefined"
    *
    * Requires `allow-env` permission. */
   export function env(): {
     [index: string]: string;
   };
 
-  /** See overloaded parent function Deno.env() */
+  /** Retrieve the value of an environment variable. Returns undefined if that
+   * key doesn't exist.
+   *
+   *       console.log(Deno.env("HOME"));  //e.g. outputs "/home/alice"
+   *       console.log(Deno.env("MADE_UP_VAR"));  //outputs "Undefined"
+   *
+   * Requires `allow-env` permission. */
   export function env(key: string): string | undefined;
 
   /** **UNSTABLE** */
@@ -1292,7 +1292,7 @@ declare namespace Deno {
    * Requires `allow-read` permission. */
   export function statSync(path: string): FileInfo;
 
-  /** Creates `newpath` as a hard link to `oldpath`.
+  /** Synchronously creates `newpath` as a hard link to `oldpath`.
    *
    *       Deno.linkSync("old/name", "new/name");
    *
