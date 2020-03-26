@@ -258,6 +258,87 @@ pub struct DenoInspector {
   sessions: HashMap<Uuid, Box<DenoInspectorSession>>,
   // recv_future: Option<Pin<Box<dyn Future<Output = ()>>>>,
   inspector_rx: InspectorRx,
+  waiting_for_resume: bool,
+  waiting_for_frontend: bool,
+}
+
+impl DenoInspector {
+  pub fn new<P>(
+    scope: &mut P,
+    context: v8::Local<v8::Context>,
+    inspector_rx: InspectorRx,
+  ) -> Box<Self>
+  where
+    P: v8::InIsolate,
+  {
+    let mut deno_inspector = new_box_with(|address| Self {
+      client: v8::inspector::V8InspectorClientBase::new::<Self>(),
+      // TODO(piscisaureus): V8Inspector::create() should require that
+      // the 'client' argument cannot move.
+      inspector: v8::inspector::V8Inspector::create(scope, unsafe {
+        &mut *address
+      }),
+      terminated: false,
+      sessions: HashMap::new(),
+      inspector_rx,
+      waiting_for_resume: false,
+      waiting_for_frontend: false,
+    });
+
+    let empty_view = v8::inspector::StringView::empty();
+    deno_inspector.inspector.context_created(
+      context,
+      CONTEXT_GROUP_ID,
+      &empty_view,
+    );
+
+    deno_inspector
+  }
+
+  pub fn connect(&mut self, session_uuid: Uuid, ws_tx: WsTx) {
+    let session = DenoInspectorSession::new(&mut self.inspector, ws_tx);
+    self.sessions.insert(session_uuid, session);
+  }
+
+  fn has_connected_sessions(&self) -> bool {
+    !self.sessions.is_empty()
+  }
+
+  fn should_run_message_loop(&self) -> bool {
+    if self.waiting_for_frontend {
+      true
+    } else if self.waiting_for_resume {
+      self.has_connected_sessions()
+    } else {
+      false
+    }
+  }
+}
+
+impl v8::inspector::V8InspectorClientImpl for DenoInspector {
+  fn base(&self) -> &v8::inspector::V8InspectorClientBase {
+    &self.client
+  }
+
+  fn base_mut(&mut self) -> &mut v8::inspector::V8InspectorClientBase {
+    &mut self.client
+  }
+
+  fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
+    assert_eq!(context_group_id, CONTEXT_GROUP_ID);
+    eprintln!("TODO run_message_loop_on_pause");
+    // how to get context?
+    // TODO self.poll(context);
+  }
+
+  fn quit_message_loop_on_pause(&mut self) {
+    self.waiting_for_resume = false;
+  }
+
+  fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
+    assert_eq!(context_group_id, CONTEXT_GROUP_ID);
+    self.waiting_for_frontend = true;
+  }
 }
 
 /// DenoInspector implements a Future so that it can poll for incoming messages
@@ -268,10 +349,10 @@ impl Future for DenoInspector {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let deno_inspector = self.get_mut();
-    //inner.get_messages().boxed_local();
-    //
-    // let recv_future = inner.recv_future.as_mut().unwrap().as_mut();
-    // recv_future.poll(cx)
+
+    // if !deno_inspector.should_run_message_loop() {
+    //   return Poll::Ready(());
+    // }
 
     match deno_inspector.inspector_rx.poll_recv(cx) {
       Poll::Pending => Poll::Pending,
@@ -299,67 +380,6 @@ impl Future for DenoInspector {
       }
       _ => todo!("fixme"),
     }
-  }
-}
-
-impl DenoInspector {
-  pub fn new<P>(
-    scope: &mut P,
-    context: v8::Local<v8::Context>,
-    inspector_rx: InspectorRx,
-  ) -> Box<Self>
-  where
-    P: v8::InIsolate,
-  {
-    let mut deno_inspector = new_box_with(|address| Self {
-      client: v8::inspector::V8InspectorClientBase::new::<Self>(),
-      // TODO(piscisaureus): V8Inspector::create() should require that
-      // the 'client' argument cannot move.
-      inspector: v8::inspector::V8Inspector::create(scope, unsafe {
-        &mut *address
-      }),
-      terminated: false,
-      sessions: HashMap::new(),
-      inspector_rx,
-    });
-
-    let empty_view = v8::inspector::StringView::empty();
-    deno_inspector.inspector.context_created(
-      context,
-      CONTEXT_GROUP_ID,
-      &empty_view,
-    );
-
-    deno_inspector
-  }
-
-  pub fn connect(&mut self, session_uuid: Uuid, ws_tx: WsTx) {
-    let session = DenoInspectorSession::new(&mut self.inspector, ws_tx);
-    self.sessions.insert(session_uuid, session);
-  }
-}
-
-impl v8::inspector::V8InspectorClientImpl for DenoInspector {
-  fn base(&self) -> &v8::inspector::V8InspectorClientBase {
-    &self.client
-  }
-
-  fn base_mut(&mut self) -> &mut v8::inspector::V8InspectorClientBase {
-    &mut self.client
-  }
-
-  fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
-    assert_eq!(context_group_id, CONTEXT_GROUP_ID);
-    eprintln!("TODO run_message_loop_on_pause");
-  }
-
-  fn quit_message_loop_on_pause(&mut self) {
-    eprintln!("TODO quit_message_loop_on_pause");
-  }
-
-  fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
-    assert_eq!(context_group_id, CONTEXT_GROUP_ID);
-    eprintln!("TODO run_if_waiting_for_debugger");
   }
 }
 
