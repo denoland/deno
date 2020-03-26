@@ -31,11 +31,7 @@ type ServerMsgTx = mpsc::UnboundedSender<ServerMsg>;
 type ServerMsgRx = mpsc::UnboundedReceiver<ServerMsg>;
 // These messages can be sent from any thread to the server thread.
 enum ServerMsg {
-  AddInspector {
-    uuid: Uuid,
-    frontend_to_inspector_tx: FrontendToInspectorTx,
-    isolate_handle: v8::IsolateHandle,
-  },
+  AddInspector(InspectorInfo),
 }
 
 /// Owned by the web socket server. Relays incoming websocket connections and
@@ -65,11 +61,37 @@ type SessionToFrontendTx = mpsc::UnboundedSender<ws::Message>;
 /// websocket to the devtools frontend.
 type SessionToFrontendRx = mpsc::UnboundedReceiver<ws::Message>;
 
+#[derive(Copy, Clone)]
+struct DenoInspectorHandle(*mut DenoInspector);
+
+impl DenoInspectorHandle {
+  pub fn new(inspector: &mut DenoInspector) -> Self {
+    Self(inspector)
+  }
+
+  pub unsafe fn get(&mut self) -> &mut DenoInspector {
+    &mut *self.0
+  }
+
+  pub fn as_raw(&self) -> *mut std::ffi::c_void {
+    self.0 as *mut std::ffi::c_void
+  }
+
+  pub fn from_raw(ptr: *mut std::ffi::c_void) -> Self {
+    Self(ptr as *mut DenoInspector)
+  }
+}
+
+unsafe impl Send for DenoInspectorHandle {}
+unsafe impl Sync for DenoInspectorHandle {}
+
 /// Stored in a UUID hashmap, used by WS server. Clonable.
 #[derive(Clone)]
 struct InspectorInfo {
+  uuid: Uuid,
   frontend_to_inspector_tx: FrontendToInspectorTx,
   isolate_handle: v8::IsolateHandle,
+  inspector_handle: DenoInspectorHandle,
 }
 
 /// Owned by GlobalState.
@@ -116,7 +138,7 @@ impl InspectorServer {
       mpsc::unbounded_channel::<FrontendToInspectorMsg>();
     let uuid = Uuid::new_v4();
 
-    let inspector = crate::inspector::DenoInspector::new(
+    let mut inspector = crate::inspector::DenoInspector::new(
       scope,
       context,
       frontend_to_inspector_rx,
@@ -128,11 +150,12 @@ impl InspectorServer {
     );
 
     server_msg_tx
-      .send(ServerMsg::AddInspector {
+      .send(ServerMsg::AddInspector(InspectorInfo {
         uuid,
         frontend_to_inspector_tx,
         isolate_handle,
-      })
+        inspector_handle: DenoInspectorHandle::new(&mut *inspector),
+      }))
       .unwrap_or_else(|_| {
         panic!("sending message to inspector server thread failed");
       });
@@ -161,18 +184,11 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
   let msg_handler = async move {
     while let Some(msg) = server_msg_rx.next().await {
       match msg {
-        ServerMsg::AddInspector {
-          uuid,
-          frontend_to_inspector_tx,
-          isolate_handle,
-        } => {
-          let existing = inspector_map_.lock().unwrap().insert(
-            uuid,
-            InspectorInfo {
-              frontend_to_inspector_tx,
-              isolate_handle,
-            },
-          );
+        ServerMsg::AddInspector(inspector_info) => {
+          let existing = inspector_map_
+            .lock()
+            .unwrap()
+            .insert(inspector_info.uuid, inspector_info);
           if existing.is_some() {
             panic!("UUID already in map");
           }
@@ -221,6 +237,11 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
             panic!("sending message to frontend_to_inspector_tx failed");
           });
 
+        inspector_info.isolate_handle.request_interrupt(
+          DenoInspector::interrupt_callback,
+          inspector_info.inspector_handle.as_raw(),
+        );
+
         let pump_to_inspector = async {
           while let Some(Ok(msg)) = ws_rx.next().await {
             inspector_info
@@ -229,6 +250,11 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
               .unwrap_or_else(|_| {
                 panic!("sending message to frontend_to_inspector_tx failed");
               });
+
+            inspector_info.isolate_handle.request_interrupt(
+              DenoInspector::interrupt_callback,
+              inspector_info.inspector_handle.as_raw(),
+            );
           }
         };
 
@@ -283,7 +309,7 @@ pub struct DenoInspector {
   client: v8::inspector::V8InspectorClientBase,
   inspector: v8::UniqueRef<v8::inspector::V8Inspector>,
   terminated: bool,
-  sessions: HashMap<Uuid, Box<DenoInspectorSession>>,
+  pub sessions: HashMap<Uuid, Box<DenoInspectorSession>>,
   frontend_to_inspector_rx: FrontendToInspectorRx,
   waiting_for_resume: bool,
   waiting_for_frontend: bool,
@@ -334,17 +360,72 @@ impl DenoInspector {
     self.sessions.insert(session_uuid, session);
   }
 
-  fn has_connected_sessions(&self) -> bool {
-    !self.sessions.is_empty()
+  fn dispatch_frontend_to_inspector_msg(
+    &mut self,
+    msg: FrontendToInspectorMsg,
+  ) {
+    match msg {
+      FrontendToInspectorMsg::WsConnection {
+        session_uuid,
+        session_to_frontend_tx,
+      } => {
+        self.connect(session_uuid, session_to_frontend_tx);
+        println!("Got new ws connection in DenoInspector {}", session_uuid);
+      }
+      FrontendToInspectorMsg::WsIncoming { session_uuid, msg } => {
+        // println!(">>> {}", msg.to_str().unwrap());
+        eprint!(">");
+        if let Some(deno_session) = self.sessions.get_mut(&session_uuid) {
+          deno_session.dispatch_protocol_message(msg)
+        } else {
+          eprintln!("Unknown session {}. msg {:?}", session_uuid, msg);
+        }
+      }
+    };
   }
 
-  fn should_run_message_loop(&self) -> bool {
-    if self.waiting_for_frontend {
-      true
-    } else if self.waiting_for_resume {
-      self.has_connected_sessions()
-    } else {
-      false
+  extern "C" fn interrupt_callback(
+    _isolate: &mut v8::Isolate,
+    deno_inspector_ptr: *mut std::ffi::c_void,
+  ) {
+    eprintln!("!!! isolate_interrupt_callback START");
+    let mut deno_inspector_handle =
+      DenoInspectorHandle::from_raw(deno_inspector_ptr);
+    let deno_inspector = unsafe { deno_inspector_handle.get() };
+    let drain_future = futures::future::poll_fn(|cx| {
+      while let Poll::Ready(Some(msg)) =
+        deno_inspector.frontend_to_inspector_rx.poll_recv(cx)
+      {
+        deno_inspector.dispatch_frontend_to_inspector_msg(msg);
+      }
+      Poll::Ready(())
+    });
+    futures::executor::block_on(drain_future);
+    eprintln!("!!! isolate_interrupt_callback END");
+  }
+}
+
+/// DenoInspector implements a Future so that it can poll for incoming messages
+/// from the WebSocket server. Since a Worker ownes a DenoInspector, and because
+/// a Worker is a Future too, Worker::poll will call this.
+impl Future for DenoInspector {
+  type Output = ();
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let deno_inspector = self.get_mut();
+
+    loop {
+      if deno_inspector.resuming {
+        deno_inspector.resuming = false;
+        return Poll::Ready(());
+      }
+      match deno_inspector.frontend_to_inspector_rx.poll_recv(cx) {
+        Poll::Pending => return Poll::Pending,
+        Poll::Ready(None) => return Poll::Ready(()),
+        Poll::Ready(Some(msg)) => {
+          deno_inspector.dispatch_frontend_to_inspector_msg(msg)
+        }
+      }
     }
   }
 }
@@ -379,56 +460,6 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
     eprintln!("!!! run_if_waiting_for_debugger");
     assert_eq!(context_group_id, CONTEXT_GROUP_ID);
     self.waiting_for_frontend = true;
-  }
-}
-
-/// DenoInspector implements a Future so that it can poll for incoming messages
-/// from the WebSocket server. Since a Worker ownes a DenoInspector, and because
-/// a Worker is a Future too, Worker::poll will call this.
-impl Future for DenoInspector {
-  type Output = ();
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let deno_inspector = self.get_mut();
-
-    // if !deno_inspector.should_run_message_loop() {
-    //   return Poll::Ready(());
-    // }
-
-    loop {
-      if deno_inspector.resuming {
-        deno_inspector.resuming = false;
-        return Poll::Ready(());
-      }
-      match deno_inspector.frontend_to_inspector_rx.poll_recv(cx) {
-        Poll::Pending => return Poll::Pending,
-        Poll::Ready(None) => return Poll::Ready(()),
-        Poll::Ready(Some(msg)) => {
-          match msg {
-            FrontendToInspectorMsg::WsConnection {
-              session_uuid,
-              session_to_frontend_tx,
-            } => {
-              deno_inspector.connect(session_uuid, session_to_frontend_tx);
-              println!(
-                "Got new ws connection in DenoInspector {}",
-                session_uuid
-              );
-            }
-            FrontendToInspectorMsg::WsIncoming { session_uuid, msg } => {
-              println!(">>> {}", msg.to_str().unwrap());
-              if let Some(deno_session) =
-                deno_inspector.sessions.get_mut(&session_uuid)
-              {
-                deno_session.dispatch_protocol_message(msg)
-              } else {
-                eprintln!("Unknown session {}. msg {:?}", session_uuid, msg);
-              }
-            }
-          };
-        }
-      }
-    }
   }
 }
 
@@ -504,7 +535,8 @@ fn v8_to_ws_msg(
 ) -> ws::Message {
   let mut x = message.unwrap();
   let s = x.string().to_string();
-  eprintln!("<<< {}", s);
+  //eprintln!("<<< {}", s);
+  print!("<");
   ws::Message::text(s)
 }
 
