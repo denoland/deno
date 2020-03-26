@@ -741,12 +741,21 @@ declare namespace Deno {
    */
   export type OpenMode = "r" | "r+" | "w" | "w+" | "a" | "a+" | "x" | "x+";
 
-  /** **UNSTABLE**: newly added API
+  /** **UNSTABLE**: new API, yet to be vetted
    *
-   *  Check if a given resource is TTY. */
+   *  Check if a given resource id (`rid`) is a TTY.
+   *
+   *       //This example is system and context specific
+   *       const nonTTYRid = Deno.openSync("my_file.txt").rid;
+   *       const ttyRid = Deno.openSync("/dev/tty6").rid;
+   *       console.log(Deno.isatty(nonTTYRid)); // false
+   *       console.log(Deno.isatty(ttyRid)); // true
+   *       Deno.close(nonTTYRid);
+   *       Deno.close(ttyRid);
+   */
   export function isatty(rid: number): boolean;
 
-  /** **UNSTABLE**: newly added API
+  /** **UNSTABLE**: new API, yet to be vetted
    *
    *  Set TTY to be under raw mode or not. */
   export function setRaw(rid: number, mode: boolean): void;
