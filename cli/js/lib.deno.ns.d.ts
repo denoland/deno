@@ -1883,8 +1883,8 @@ declare namespace Deno {
    * the stream to `/dev/null`. */
   type ProcessStdio = "inherit" | "piped" | "null";
 
-  /** **UNSTABLE**: The `signo` argument may change to require the Deno.Signal 
-   * enum. 
+  /** **UNSTABLE**: The `signo` argument may change to require the Deno.Signal
+   * enum.
    *
    * Send a signal to process under given `pid`. This functionality currently
    * only works on Linux and Mac OS.
@@ -1895,7 +1895,7 @@ declare namespace Deno {
    *      const p = Deno.run({
    *        cmd: ["python", "-c", "from time import sleep; sleep(10000)"]
    *      });
-   *           
+   *
    *      Deno.kill(p.pid, Deno.Signal.SIGINT);
    *
    * Throws Error (not yet implemented) on Windows
