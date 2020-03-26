@@ -134,9 +134,11 @@ declare namespace Deno {
    */
   export function loadavg(): number[];
 
-  /** Get the `hostname`. Requires `allow-env` permission.
+  /** Get the `hostname` of the machine the Deno process is running on.
    *
    *       console.log(Deno.hostname());
+   *
+   *  Requires `allow-env` permission.
    */
   export function hostname(): string;
 
@@ -2021,20 +2023,45 @@ declare namespace Deno {
    * Signals numbers. This is platform dependent. */
   export const Signal: typeof MacOSSignal | typeof LinuxSignal;
 
-  /** **UNSTABLE**: rename to `InspectOptions`. */
-  interface ConsoleOptions {
+  interface InspectOptions {
     showHidden?: boolean;
     depth?: number;
     colors?: boolean;
     indentLevel?: number;
   }
 
-  /** **UNSTABLE**: `ConsoleOptions` rename to `InspectOptions`. Also the exact
-   * form of string output subject to change.
+  /** **UNSTABLE**: The exact form of the string output is under consideration
+   * and may change.
    *
-   * Converts input into string that has the same format as printed by
-   * `console.log()`. */
-  export function inspect(value: unknown, options?: ConsoleOptions): string;
+   * Converts the input into a string that has the same format as printed by
+   * `console.log()`.
+   *
+   *      const obj = {};
+   *      obj.propA = 10;
+   *      obj.propB = "hello"
+   *      const objAsString = Deno.inspect(obj); //{ propA: 10, propB: "hello" }
+   *      console.log(obj);  //prints same value as objAsString, e.g. { propA: 10, propB: "hello" }
+   *
+   * You can also register custom inspect functions, via the `customInspect` Deno
+   * symbol on objects, to control and customize the output.
+   *
+   *      class A {
+   *        x = 10;
+   *        y = "hello";
+   *        [Deno.symbols.customInspect](): string {
+   *          return "x=" + this.x + ", y=" + this.y;
+   *        }
+   *      }
+   *
+   *      const inStringFormat = Deno.inspect(new A()); //"x=10, y=hello"
+   *      console.log(inStringFormat);  //prints "x=10, y=hello"
+   *
+   * Finally, a number of output options are also available.
+   *
+   *      const out = Deno.inspect(obj, {showHidden: true, depth: 4, colors: true, indentLevel: 2});
+   *
+   */
+  export function inspect(value: unknown, options?: InspectOptions): string;
 
   export type OperatingSystem = "mac" | "win" | "linux";
 
