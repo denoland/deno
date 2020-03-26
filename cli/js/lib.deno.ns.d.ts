@@ -743,12 +743,21 @@ declare namespace Deno {
    */
   export type OpenMode = "r" | "r+" | "w" | "w+" | "a" | "a+" | "x" | "x+";
 
-  /** **UNSTABLE**: newly added API
+  /** **UNSTABLE**: new API, yet to be vetted
    *
-   *  Check if a given resource is TTY. */
+   *  Check if a given resource id (`rid`) is a TTY.
+   *
+   *       //This example is system and context specific
+   *       const nonTTYRid = Deno.openSync("my_file.txt").rid;
+   *       const ttyRid = Deno.openSync("/dev/tty6").rid;
+   *       console.log(Deno.isatty(nonTTYRid)); // false
+   *       console.log(Deno.isatty(ttyRid)); // true
+   *       Deno.close(nonTTYRid);
+   *       Deno.close(ttyRid);
+   */
   export function isatty(rid: number): boolean;
 
-  /** **UNSTABLE**: newly added API
+  /** **UNSTABLE**: new API, yet to be vetted
    *
    *  Set TTY to be under raw mode or not. */
   export function setRaw(rid: number, mode: boolean): void;
@@ -1876,15 +1885,22 @@ declare namespace Deno {
    * the stream to `/dev/null`. */
   type ProcessStdio = "inherit" | "piped" | "null";
 
-  /** **UNSTABLE**: the `signo` argument maybe shouldn't be number. Should throw
-   * on Windows instead of silently succeeding.
+  /** **UNSTABLE**: The `signo` argument may change to require the Deno.Signal
+   * enum.
    *
-   * Send a signal to process under given `pid`. Linux/Mac OS only currently.
+   * Send a signal to process under given `pid`. This functionality currently
+   * only works on Linux and Mac OS.
    *
    * If `pid` is negative, the signal will be sent to the process group
    * identified by `pid`.
    *
-   * Currently no-op on Windows.
+   *      const p = Deno.run({
+   *        cmd: ["python", "-c", "from time import sleep; sleep(10000)"]
+   *      });
+   *
+   *      Deno.kill(p.pid, Deno.Signal.SIGINT);
+   *
+   * Throws Error (not yet implemented) on Windows
    *
    * Requires `allow-run` permission. */
   export function kill(pid: number, signo: number): void;
