@@ -6,7 +6,7 @@ import { cliTable } from "./console_table.ts";
 import { exposeForTest } from "../internals.ts";
 
 type ConsoleContext = Set<unknown>;
-type ConsoleOptions = Partial<{
+type InspectOptions = Partial<{
   showHidden: boolean;
   depth: number;
   colors: boolean;
@@ -383,7 +383,7 @@ function createObjectString(
 
 export function stringifyArgs(
   args: unknown[],
-  { depth = DEFAULT_MAX_DEPTH, indentLevel = 0 }: ConsoleOptions = {}
+  { depth = DEFAULT_MAX_DEPTH, indentLevel = 0 }: InspectOptions = {}
 ): string {
   const first = args[0];
   let a = 0;
@@ -522,7 +522,7 @@ export class Console {
   debug = this.log;
   info = this.log;
 
-  dir = (obj: unknown, options: ConsoleOptions = {}): void => {
+  dir = (obj: unknown, options: InspectOptions = {}): void => {
     this.printFunc(stringifyArgs([obj], options) + "\n", false);
   };
 
@@ -749,7 +749,7 @@ export const customInspect = Symbol.for("Deno.customInspect");
 
 export function inspect(
   value: unknown,
-  { depth = DEFAULT_MAX_DEPTH }: ConsoleOptions = {}
+  { depth = DEFAULT_MAX_DEPTH }: InspectOptions = {}
 ): string {
   if (typeof value === "string") {
     return value;
