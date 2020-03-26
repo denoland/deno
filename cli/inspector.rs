@@ -324,8 +324,11 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
     assert_eq!(context_group_id, CONTEXT_GROUP_ID);
     eprintln!("TODO run_message_loop_on_pause");
-    // how to get context?
-    // TODO self.poll(context);
+    // TODO need to synchronously run self.poll until quit_message_loop_on_pause
+    // is called.
+    // Can we do something like this?
+    self.waiting_for_resume = true;
+    let _ = futures::executor::block_on(self);
   }
 
   fn quit_message_loop_on_pause(&mut self) {
@@ -351,31 +354,35 @@ impl Future for DenoInspector {
     //   return Poll::Ready(());
     // }
 
-    match deno_inspector.inspector_rx.poll_recv(cx) {
-      Poll::Pending => Poll::Pending,
-      Poll::Ready(Some(msg)) => {
-        match msg {
-          InspectorMsg::WsConnection {
-            session_uuid,
-            ws_tx,
-          } => {
-            deno_inspector.connect(session_uuid, ws_tx);
-            println!("Got new ws connection in DenoInspector {}", session_uuid);
-          }
-          InspectorMsg::WsIncoming { session_uuid, msg } => {
-            println!(">>> {}", msg.to_str().unwrap());
-            if let Some(deno_session) =
-              deno_inspector.sessions.get_mut(&session_uuid)
-            {
-              deno_session.dispatch_protocol_message(msg)
-            } else {
-              eprintln!("Unknown session {}. msg {:?}", session_uuid, msg);
+    loop {
+      match deno_inspector.inspector_rx.poll_recv(cx) {
+        Poll::Pending => return Poll::Pending,
+        Poll::Ready(None) => return Poll::Ready(()),
+        Poll::Ready(Some(msg)) => {
+          match msg {
+            InspectorMsg::WsConnection {
+              session_uuid,
+              ws_tx,
+            } => {
+              deno_inspector.connect(session_uuid, ws_tx);
+              println!(
+                "Got new ws connection in DenoInspector {}",
+                session_uuid
+              );
             }
-          }
-        };
-        Poll::Ready(())
+            InspectorMsg::WsIncoming { session_uuid, msg } => {
+              println!(">>> {}", msg.to_str().unwrap());
+              if let Some(deno_session) =
+                deno_inspector.sessions.get_mut(&session_uuid)
+              {
+                deno_session.dispatch_protocol_message(msg)
+              } else {
+                eprintln!("Unknown session {}. msg {:?}", session_uuid, msg);
+              }
+            }
+          };
+        }
       }
-      Poll::Ready(None) => Poll::Ready(()),
     }
   }
 }
@@ -444,7 +451,7 @@ impl v8::inspector::ChannelImpl for DenoInspectorSession {
   }
 
   fn flush_protocol_notifications(&mut self) {
-    todo!()
+    eprintln!("TODO flush_protocol_notifications");
   }
 }
 
