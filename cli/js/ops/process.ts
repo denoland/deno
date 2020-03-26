@@ -3,6 +3,9 @@ import { sendSync, sendAsync } from "./dispatch_json.ts";
 import { assert } from "../util.ts";
 
 export function kill(pid: number, signo: number): void {
+  if (Deno.build.os === "win") {
+    throw new Error("Not yet implemented");
+  }
   sendSync("op_kill", { pid, signo });
 }
 
