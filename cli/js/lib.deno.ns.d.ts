@@ -128,9 +128,15 @@ declare namespace Deno {
     duration: number;
   }>;
 
-  /** Get the `loadavg`. Requires `allow-env` permission.
+  /** Returns an array containing the 1, 5, and 15 minute load averages. The
+   * load average is a measure of CPU and IO utilization of the last one, five,
+   * and 15 minute periods expressed as a fractional number.  Zero means there
+   * is no load. On Windows, the three values are always the same and represent
+   * the current load, not the 1, 5 and 15 minute load averages.
    *
-   *       console.log(Deno.loadavg());
+   *       console.log(Deno.loadavg());  //e.g. [ 0.71, 0.44, 0.44 ]
+   *
+   * Requires `allow-env` permission.
    */
   export function loadavg(): number[];
 
@@ -1672,45 +1678,45 @@ declare namespace Deno {
     /** A Path to the Unix Socket. */
     address: string;
   }
-  /** **UNSTABLE**: new API
+  /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Listen announces on the local transport address.
    *
-   *      Deno.listen({ port: 80 })
-   *      Deno.listen({ hostname: "192.0.2.1", port: 80 })
-   *      Deno.listen({ hostname: "[2001:db8::1]", port: 80 });
-   *      Deno.listen({ hostname: "golang.org", port: 80, transport: "tcp" });
+   *      const listener1 = Deno.listen({ port: 80 })
+   *      const listener2 = Deno.listen({ hostname: "192.0.2.1", port: 80 })
+   *      const listener3 = Deno.listen({ hostname: "[2001:db8::1]", port: 80 });
+   *      const listener4 = Deno.listen({ hostname: "golang.org", port: 80, transport: "tcp" });
    *
    * Requires `allow-net` permission. */
   export function listen(
     options: ListenOptions & { transport?: "tcp" }
   ): Listener;
-  /** **UNSTABLE**: new API
+  /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Listen announces on the local transport address.
    *
-   *     Deno.listen({ address: "/foo/bar.sock", transport: "unix" })
+   *     const listener = Deno.listen({ address: "/foo/bar.sock", transport: "unix" })
    *
    * Requires `allow-read` permission. */
   export function listen(
     options: UnixListenOptions & { transport: "unix" }
   ): Listener;
-  /** **UNSTABLE**: new API
+  /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Listen announces on the local transport address.
    *
-   *      Deno.listen({ port: 80, transport: "udp" })
-   *      Deno.listen({ hostname: "golang.org", port: 80, transport: "udp" });
+   *      const listener1 = Deno.listen({ port: 80, transport: "udp" })
+   *      const listener2 = Deno.listen({ hostname: "golang.org", port: 80, transport: "udp" });
    *
    * Requires `allow-net` permission. */
   export function listen(
     options: ListenOptions & { transport: "udp" }
   ): DatagramConn;
-  /** **UNSTABLE**: new API
+  /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Listen announces on the local transport address.
    *
-   *     Deno.listen({ address: "/foo/bar.sock", transport: "unixpacket" })
+   *     const listener = Deno.listen({ address: "/foo/bar.sock", transport: "unixpacket" })
    *
    * Requires `allow-read` permission. */
   export function listen(
@@ -1729,7 +1735,7 @@ declare namespace Deno {
   /** Listen announces on the local transport address over TLS (transport layer
    * security).
    *
-   *      Deno.listenTLS({ port: 443, certFile: "./my_server.crt", keyFile: "./my_server.key" });
+   *      const lstnr = Deno.listenTLS({ port: 443, certFile: "./server.crt", keyFile: "./server.key" });
    *
    * Requires `allow-net` permission. */
   export function listenTLS(options: ListenTLSOptions): Listener;
