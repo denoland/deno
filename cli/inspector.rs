@@ -51,7 +51,7 @@ type InspectorTx = mpsc::UnboundedSender<InspectorMsg>;
 /// Owned by the isolate/worker
 type InspectorRx = mpsc::UnboundedReceiver<InspectorMsg>;
 
-// Stored in a UUID hashmap, used by WS server
+/// Stored in a UUID hashmap, used by WS server. Clonable.
 #[derive(Clone)]
 struct InspectorInfo {
   inspector_tx: InspectorTx,
@@ -149,17 +149,16 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
           inspector_tx,
           isolate_handle,
         } => {
-          inspector_map_
-            .lock()
-            .unwrap()
-            .insert(
-              uuid,
-              InspectorInfo {
-                inspector_tx,
-                isolate_handle,
-              },
-            )
-            .or_else(|| panic!("UUID already in map"));
+          let existing = inspector_map_.lock().unwrap().insert(
+            uuid,
+            InspectorInfo {
+              inspector_tx,
+              isolate_handle,
+            },
+          );
+          if existing.is_some() {
+            panic!("UUID already in map");
+          }
         }
       };
     }
@@ -255,7 +254,6 @@ pub struct DenoInspector {
   inspector: v8::UniqueRef<v8::inspector::V8Inspector>,
   terminated: bool,
   sessions: HashMap<Uuid, Box<DenoInspectorSession>>,
-  // recv_future: Option<Pin<Box<dyn Future<Output = ()>>>>,
   inspector_rx: InspectorRx,
   waiting_for_resume: bool,
   waiting_for_frontend: bool,
@@ -377,7 +375,7 @@ impl Future for DenoInspector {
         };
         Poll::Ready(())
       }
-      _ => todo!("fixme"),
+      Poll::Ready(None) => Poll::Ready(()),
     }
   }
 }
