@@ -498,6 +498,7 @@ dependencies = [
  "termcolor",
  "tokio",
  "tokio-rustls",
+ "tokio-tungstenite",
  "url 2.1.1",
  "utime",
  "uuid",

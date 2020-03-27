@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 #![allow(dead_code)]
 
 use deno_core::v8;
@@ -83,9 +85,11 @@ pub struct InspectorServer {
 }
 
 impl InspectorServer {
-  /// Starts a DevTools Inspector server on port 127.0.0.1:9229
-  pub fn default() -> Self {
-    let address = "127.0.0.1:9229".parse::<SocketAddrV4>().unwrap();
+  pub fn new(host: &str, brk: bool) -> Self {
+    if brk {
+      todo!("--inspect-brk not yet supported");
+    }
+    let address = host.parse::<SocketAddrV4>().unwrap();
     let (server_msg_tx, server_msg_rx) = mpsc::unbounded_channel::<ServerMsg>();
     let thread_handle = std::thread::spawn(move || {
       crate::tokio_util::run_basic(server(address, server_msg_rx));
@@ -192,7 +196,6 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
           if let Ok(uuid) = Uuid::parse_str(&uuid) {
             let g = inspector_map__.lock().unwrap();
             if let Some(inspector_info) = g.get(&uuid) {
-              println!("ws connection {}", uuid);
               inspector_info.clone()
             } else {
               return;
@@ -343,15 +346,15 @@ impl DenoInspector {
         session_to_frontend_tx,
       } => {
         self.connect(session_uuid, session_to_frontend_tx);
-        println!("Got new ws connection in DenoInspector {}", session_uuid);
       }
       FrontendToInspectorMsg::WsIncoming { session_uuid, msg } => {
-        eprintln!(">>> {}", msg.to_str().unwrap());
-        //eprint!(">");
         if let Some(deno_session) = self.sessions.get_mut(&session_uuid) {
           deno_session.dispatch_protocol_message(msg)
         } else {
-          eprintln!("Unknown session {}. msg {:?}", session_uuid, msg);
+          eprintln!(
+            "Unknown inspector session {}. msg {:?}",
+            session_uuid, msg
+          );
         }
       }
     };
@@ -430,12 +433,10 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   }
 
   fn quit_message_loop_on_pause(&mut self) {
-    eprintln!("!!! quit_message_loop_on_pause");
     self.paused = false;
   }
 
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
-    eprintln!("!!! run_if_waiting_for_debugger");
     assert_eq!(context_group_id, CONTEXT_GROUP_ID);
   }
 }
@@ -534,9 +535,7 @@ impl v8::inspector::ChannelImpl for DenoInspectorSession {
     self.session_to_frontend_tx.send(ws_msg).unwrap();
   }
 
-  fn flush_protocol_notifications(&mut self) {
-    eprintln!("TODO flush_protocol_notifications");
-  }
+  fn flush_protocol_notifications(&mut self) {}
 }
 
 // TODO impl From or Into
@@ -545,8 +544,6 @@ fn v8_to_ws_msg(
 ) -> ws::Message {
   let mut x = message.unwrap();
   let s = x.string().to_string();
-  eprintln!("<<< {}", s);
-  //eprint!("<");
   ws::Message::text(s)
 }
 
