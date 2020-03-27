@@ -103,6 +103,7 @@ pub struct Flags {
   pub cached_only: bool,
   pub inspect: Option<String>,
   pub inspect_brk: Option<String>,
+  pub inspect_try_ports: bool,
   pub seed: Option<u64>,
   pub v8_flags: Option<Vec<String>>,
 
@@ -987,10 +988,12 @@ fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
 
 fn inspect_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   const DEFAULT: &str = "127.0.0.1:9229";
+  let mut try_ports = false;
   flags.inspect = if matches.is_present("inspect") {
     if let Some(host) = matches.value_of("inspect") {
       Some(host.to_string())
     } else {
+      try_ports = true;
       Some(DEFAULT.to_string())
     }
   } else {
@@ -1000,11 +1003,13 @@ fn inspect_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     if let Some(host) = matches.value_of("inspect-brk") {
       Some(host.to_string())
     } else {
+      try_ports = true;
       Some(DEFAULT.to_string())
     }
   } else {
     None
   };
+  flags.inspect_try_ports = try_ports;
 }
 
 fn reload_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -2389,6 +2394,7 @@ fn inspect_default_host() {
         script: "foo.js".to_string(),
       },
       inspect: Some("127.0.0.1:9229".to_string()),
+      inspect_try_ports: true,
       ..Flags::default()
     }
   );

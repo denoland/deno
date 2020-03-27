@@ -21,6 +21,7 @@ use std::ptr;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::task::Context;
 use std::task::Poll;
 use tokio;
@@ -81,21 +82,31 @@ struct InspectorInfo {
 
 /// Owned by GlobalState.
 pub struct InspectorServer {
-  address: SocketAddrV4,
+  address: Arc<Mutex<SocketAddrV4>>,
   thread_handle: Option<std::thread::JoinHandle<()>>,
   server_msg_tx: Option<ServerMsgTx>,
 }
 
 impl InspectorServer {
-  pub fn new(host: &str, brk: bool) -> Self {
+  pub fn new(host: &str, brk: bool, use_first_free_port: bool) -> Self {
     if brk {
       todo!("--inspect-brk not yet supported");
     }
-    let address = host.parse::<SocketAddrV4>().unwrap();
+    let address = Arc::new(Mutex::new(host.parse::<SocketAddrV4>().unwrap()));
     let (server_msg_tx, server_msg_rx) = mpsc::unbounded_channel::<ServerMsg>();
+    // Oneshot wait for address ready.
+    let (addr_ready_tx, addr_ready_rx) = std::sync::mpsc::sync_channel::<()>(1);
+    let address_ = address.clone();
     let thread_handle = std::thread::spawn(move || {
-      crate::tokio_util::run_basic(server(address, server_msg_rx));
+      crate::tokio_util::run_basic(server(
+        address_,
+        addr_ready_tx,
+        server_msg_rx,
+        use_first_free_port,
+      ));
     });
+    // Wait for final address to settle.
+    let _ = addr_ready_rx.recv();
     Self {
       address,
       thread_handle: Some(thread_handle),
@@ -121,7 +132,7 @@ impl InspectorServer {
     let context = global_context.get(scope).unwrap();
 
     let server_msg_tx = self.server_msg_tx.as_ref().unwrap().clone();
-    let address = self.address;
+    let address = { *self.address.lock().unwrap() };
     let (frontend_to_inspector_tx, frontend_to_inspector_rx) =
       mpsc::unbounded_channel::<FrontendToInspectorMsg>();
     let uuid = Uuid::new_v4();
@@ -166,7 +177,12 @@ fn websocket_debugger_url(address: SocketAddrV4, uuid: &Uuid) -> String {
   format!("ws://{}:{}/ws/{}", address.ip(), address.port(), uuid)
 }
 
-async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
+async fn server(
+  address: Arc<Mutex<SocketAddrV4>>,
+  addr_ready_tx: std::sync::mpsc::SyncSender<()>,
+  mut server_msg_rx: ServerMsgRx,
+  use_first_free_port: bool,
+) {
   let inspector_map = HashMap::<Uuid, InspectorInfo>::new();
   let inspector_map = Arc::new(std::sync::Mutex::new(inspector_map));
 
@@ -254,12 +270,14 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
     });
 
   let inspector_map_ = inspector_map.clone();
+  let address_ = address.clone();
   let json_list =
     warp::path("json")
       .map(move || {
         let g = inspector_map_.lock().unwrap();
         let json_values: Vec<serde_json::Value> = g.iter().map(|(uuid, _)| {
-          let url = websocket_debugger_url(address, uuid);
+          let addr = { *address_.lock().unwrap() };
+          let url = websocket_debugger_url(addr, uuid);
           json!({
             "description": "deno",
             "devtoolsFrontendUrl": format!("chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws={}", url),
@@ -283,7 +301,40 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
   });
 
   let routes = websocket.or(version).or(json_list);
-  let web_handler = warp::serve(routes).bind(address);
+
+  let web_handler = async move {
+    let mut addr = { *address.lock().unwrap() };
+    let maybe_handler = warp::serve(routes.clone()).try_bind_ephemeral(addr);
+
+    match maybe_handler {
+      Ok((_, srv)) => return Ok(srv),
+      Err(e) => {
+        if use_first_free_port {
+          for _ in 0..30 {
+            // max try subsequent 30 ports
+            addr.set_port(addr.port() + 1);
+            if let Ok((_, srv)) =
+              warp::serve(routes.clone()).try_bind_ephemeral(addr)
+            {
+              {
+                address.lock().unwrap().set_port(addr.port());
+              }
+              addr_ready_tx.send(()).unwrap();
+              return Ok(srv);
+            }
+          }
+          return Err(e);
+        } else {
+          return Err(e);
+        }
+      }
+    }
+  }
+  .await
+  .unwrap_or_else(|e| {
+    eprintln!("Cannot start inspector server: {}", e);
+    std::process::exit(1);
+  });
 
   future::join(msg_handler, web_handler).await;
 }

@@ -85,9 +85,9 @@ impl GlobalState {
     };
 
     let inspector_server = if let Some(ref host) = flags.inspect {
-      Some(InspectorServer::new(host, false))
+      Some(InspectorServer::new(host, false, flags.inspect_try_ports))
     } else if let Some(ref host) = flags.inspect_brk {
-      Some(InspectorServer::new(host, true))
+      Some(InspectorServer::new(host, true, flags.inspect_try_ports))
     } else {
       None
     };
