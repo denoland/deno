@@ -494,10 +494,12 @@ const timerMap = new Map<string, number>();
 const isConsoleInstance = Symbol("isConsoleInstance");
 
 export class Console {
+  #printFunc: PrintFunc;
   indentLevel: number;
   [isConsoleInstance] = false;
 
-  constructor(private printFunc: PrintFunc) {
+  constructor(printFunc: PrintFunc) {
+    this.#printFunc = printFunc;
     this.indentLevel = 0;
     this[isConsoleInstance] = true;
 
@@ -511,7 +513,7 @@ export class Console {
   }
 
   log = (...args: unknown[]): void => {
-    this.printFunc(
+    this.#printFunc(
       stringifyArgs(args, {
         indentLevel: this.indentLevel,
       }) + "\n",
@@ -523,13 +525,13 @@ export class Console {
   info = this.log;
 
   dir = (obj: unknown, options: ConsoleOptions = {}): void => {
-    this.printFunc(stringifyArgs([obj], options) + "\n", false);
+    this.#printFunc(stringifyArgs([obj], options) + "\n", false);
   };
 
   dirxml = this.dir;
 
   warn = (...args: unknown[]): void => {
-    this.printFunc(
+    this.#printFunc(
       stringifyArgs(args, {
         indentLevel: this.indentLevel,
       }) + "\n",

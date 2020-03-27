@@ -358,8 +358,8 @@ function printIteratorValues(
   return result;
 }
 
-const getKeysOfEnumerableProperties = (object: {}) => {
-  const keys: Array<string | symbol> = Object.keys(object).sort();
+function getKeysOfEnumerableProperties<T>(object: T): Array<keyof T | symbol> {
+  const keys = Object.keys(object).sort() as Array<keyof T | symbol>;
 
   if (Object.getOwnPropertySymbols) {
     Object.getOwnPropertySymbols(object).forEach((symbol): void => {
@@ -372,7 +372,7 @@ const getKeysOfEnumerableProperties = (object: {}) => {
   }
 
   return keys;
-};
+}
 
 /**
  * Return properties of an object

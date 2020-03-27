@@ -63,7 +63,7 @@ export const mainRuntimeGlobalProperties = {
   onload: writable(undefined),
   onunload: writable(undefined),
   close: writable(windowClose),
-  closed: getterOnly(() => windowIsClosing)
+  closed: getterOnly(() => windowIsClosing),
 };
 
 let hasBootstrapped = false;

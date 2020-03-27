@@ -341,10 +341,6 @@ declare namespace __domTypes {
     TEXT_NODE = 3,
     DOCUMENT_FRAGMENT_NODE = 11,
   }
-  export const eventTargetHost: unique symbol;
-  export const eventTargetListeners: unique symbol;
-  export const eventTargetMode: unique symbol;
-  export const eventTargetNodeType: unique symbol;
   export interface EventListener {
     (evt: Event): void | Promise<void>;
   }
@@ -359,10 +355,6 @@ declare namespace __domTypes {
     options: AddEventListenerOptions;
   }
   export interface EventTarget {
-    [eventTargetHost]: EventTarget | null;
-    [eventTargetListeners]: { [type in string]: EventListener[] };
-    [eventTargetMode]: string;
-    [eventTargetNodeType]: NodeType;
     addEventListener(
       type: string,
       callback: EventListenerOrEventListenerObject | null,
@@ -532,16 +524,78 @@ declare namespace __domTypes {
       options?: boolean | EventListenerOptions
     ): void;
   }
-  export interface ReadableStream {
-    readonly locked: boolean;
-    cancel(): Promise<void>;
-    getReader(): ReadableStreamReader;
-    tee(): [ReadableStream, ReadableStream];
+  export interface ReadableStreamReadDoneResult<T> {
+    done: true;
+    value?: T;
   }
-  export interface ReadableStreamReader {
-    cancel(): Promise<void>;
-    read(): Promise<any>;
+  export interface ReadableStreamReadValueResult<T> {
+    done: false;
+    value: T;
+  }
+  export type ReadableStreamReadResult<T> =
+    | ReadableStreamReadValueResult<T>
+    | ReadableStreamReadDoneResult<T>;
+  export interface ReadableStreamDefaultReader<R = any> {
+    readonly closed: Promise<void>;
+    cancel(reason?: any): Promise<void>;
+    read(): Promise<ReadableStreamReadResult<R>>;
     releaseLock(): void;
+  }
+  export interface PipeOptions {
+    preventAbort?: boolean;
+    preventCancel?: boolean;
+    preventClose?: boolean;
+    signal?: AbortSignal;
+  }
+  /** This Streams API interface represents a readable stream of byte data. The
+   * Fetch API offers a concrete instance of a ReadableStream through the body
+   * property of a Response object. */
+  export interface ReadableStream<R = any> {
+    readonly locked: boolean;
+    cancel(reason?: any): Promise<void>;
+    getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
+    getReader(): ReadableStreamDefaultReader<R>;
+    /* disabled for now
+    pipeThrough<T>(
+      {
+        writable,
+        readable
+      }: {
+        writable: WritableStream<R>;
+        readable: ReadableStream<T>;
+      },
+      options?: PipeOptions
+    ): ReadableStream<T>;
+    pipeTo(dest: WritableStream<R>, options?: PipeOptions): Promise<void>;
+    */
+    tee(): [ReadableStream<R>, ReadableStream<R>];
+  }
+  export interface ReadableStreamReader<R = any> {
+    cancel(reason: any): Promise<void>;
+    read(): Promise<ReadableStreamReadResult<R>>;
+    releaseLock(): void;
+  }
+  export interface ReadableStreamBYOBReader {
+    readonly closed: Promise<void>;
+    cancel(reason?: any): Promise<void>;
+    read<T extends ArrayBufferView>(
+      view: T
+    ): Promise<ReadableStreamReadResult<T>>;
+    releaseLock(): void;
+  }
+  export interface WritableStream<W = any> {
+    readonly locked: boolean;
+    abort(reason?: any): Promise<void>;
+    getWriter(): WritableStreamDefaultWriter<W>;
+  }
+  export interface WritableStreamDefaultWriter<W = any> {
+    readonly closed: Promise<void>;
+    readonly desiredSize: number | null;
+    readonly ready: Promise<void>;
+    abort(reason?: any): Promise<void>;
+    close(): Promise<void>;
+    releaseLock(): void;
+    write(chunk: W): Promise<void>;
   }
   export interface FormData extends DomIterable<string, FormDataEntryValue> {
     append(name: string, value: string | Blob, fileName?: string): void;
@@ -570,7 +624,7 @@ declare namespace __domTypes {
   }
   export interface Body {
     /** A simple getter used to expose a `ReadableStream` of the body contents. */
-    readonly body: ReadableStream | null;
+    readonly body: ReadableStream<Uint8Array> | null;
     /** Stores a `Boolean` that declares whether the body has been used in a
      * response yet.
      */
@@ -799,58 +853,63 @@ declare namespace __domTypes {
     /** Creates a clone of a `Response` object. */
     clone(): Response;
   }
+  export interface DOMStringList {
+    /** Returns the number of strings in strings. */
+    readonly length: number;
+    /** Returns true if strings contains string, and false otherwise. */
+    contains(string: string): boolean;
+    /** Returns the string with index index from strings. */
+    item(index: number): string | null;
+    [index: number]: string;
+  }
+  /** The location (URL) of the object it is linked to. Changes done on it are
+   * reflected on the object it relates to. Both the Document and Window
+   * interface have such a linked Location, accessible via Document.location and
+   * Window.location respectively. */
   export interface Location {
-    /**
-     * Returns a DOMStringList object listing the origins of the ancestor browsing
-     * contexts, from the parent browsing context to the top-level browsing
-     * context.
-     */
-    readonly ancestorOrigins: string[];
-    /**
-     * Returns the Location object's URL's fragment (includes leading "#" if
+    /** Returns a DOMStringList object listing the origins of the ancestor
+     * browsing contexts, from the parent browsing context to the top-level
+     * browsing context. */
+    readonly ancestorOrigins: DOMStringList;
+    /** Returns the Location object's URL's fragment (includes leading "#" if
      * non-empty).
+     *
      * Can be set, to navigate to the same URL with a changed fragment (ignores
-     * leading "#").
-     */
+     * leading "#"). */
     hash: string;
-    /**
-     * Returns the Location object's URL's host and port (if different from the
-     * default port for the scheme).  Can be set, to navigate to the same URL with
-     * a changed host and port.
-     */
+    /** Returns the Location object's URL's host and port (if different from the
+     * default port for the scheme).
+     *
+     * Can be set, to navigate to the same URL with a changed host and port. */
     host: string;
-    /**
-     * Returns the Location object's URL's host.  Can be set, to navigate to the
-     * same URL with a changed host.
-     */
+    /** Returns the Location object's URL's host.
+     *
+     * Can be set, to navigate to the same URL with a changed host. */
     hostname: string;
-    /**
-     * Returns the Location object's URL.  Can be set, to navigate to the given
-     * URL.
-     */
+    /** Returns the Location object's URL.
+     *
+     * Can be set, to navigate to the given URL. */
     href: string;
+    toString(): string;
     /** Returns the Location object's URL's origin. */
     readonly origin: string;
-    /**
-     * Returns the Location object's URL's path.
-     * Can be set, to navigate to the same URL with a changed path.
-     */
+    /** Returns the Location object's URL's path.
+     *
+     * Can be set, to navigate to the same URL with a changed path. */
     pathname: string;
-    /**
-     * Returns the Location object's URL's port.
-     * Can be set, to navigate to the same URL with a changed port.
-     */
+    /** Returns the Location object's URL's port.
+     *
+     * Can be set, to navigate to the same URL with a changed port. */
     port: string;
-    /**
-     * Returns the Location object's URL's scheme.
-     * Can be set, to navigate to the same URL with a changed scheme.
-     */
+    /** Returns the Location object's URL's scheme.
+     *
+     * Can be set, to navigate to the same URL with a changed scheme. */
     protocol: string;
-    /**
-     * Returns the Location object's URL's query (includes leading "?" if
-     * non-empty). Can be set, to navigate to the same URL with a changed query
-     * (ignores leading "?").
-     */
+    /** Returns the Location object's URL's query (includes leading "?" if
+     * non-empty).
+     *
+     * Can be set, to navigate to the same URL with a changed query (ignores
+     * leading "?"). */
     search: string;
     /**
      * Navigates to the given URL.
@@ -860,21 +919,14 @@ declare namespace __domTypes {
      * Reloads the current page.
      */
     reload(): void;
-    /** @deprecated */
-    reload(forcedReload: boolean): void;
-    /**
-     * Removes the current page from the session history and navigates to the
-     * given URL.
-     */
+    /** Removes the current page from the session history and navigates to the
+     * given URL. */
     replace(url: string): void;
   }
 }
 
 declare namespace __blob {
-  export const bytesSymbol: unique symbol;
-  export const blobBytesWeakMap: WeakMap<__domTypes.Blob, Uint8Array>;
   export class DenoBlob implements __domTypes.Blob {
-    private readonly [bytesSymbol];
     readonly size: number;
     readonly type: string;
     /** A blob object represents a file-like object of immutable, raw data. */
@@ -899,7 +951,6 @@ declare namespace __console {
   }
   const isConsoleInstance: unique symbol;
   export class Console {
-    private printFunc;
     indentLevel: number;
     [isConsoleInstance]: boolean;
     /** Writes the arguments to stdout */
@@ -1213,16 +1264,15 @@ declare namespace __io {
 
 declare namespace __fetch {
   class Body
-    implements __domTypes.Body, __domTypes.ReadableStream, __io.ReadCloser {
-    private rid;
+    implements
+      __domTypes.Body,
+      __domTypes.ReadableStream<Uint8Array>,
+      __io.ReadCloser {
     readonly contentType: string;
     bodyUsed: boolean;
-    private _bodyPromise;
-    private _data;
     readonly locked: boolean;
-    readonly body: null | Body;
+    readonly body: __domTypes.ReadableStream<Uint8Array>;
     constructor(rid: number, contentType: string);
-    private _bodyBuffer;
     arrayBuffer(): Promise<ArrayBuffer>;
     blob(): Promise<__domTypes.Blob>;
     formData(): Promise<__domTypes.FormData>;
@@ -1231,7 +1281,9 @@ declare namespace __fetch {
     read(p: Uint8Array): Promise<number | Deno.EOF>;
     close(): void;
     cancel(): Promise<void>;
-    getReader(): __domTypes.ReadableStreamReader;
+    getReader(options: { mode: "byob" }): __domTypes.ReadableStreamBYOBReader;
+    getReader(): __domTypes.ReadableStreamDefaultReader<Uint8Array>;
+    getReader(): __domTypes.ReadableStreamBYOBReader;
     tee(): [__domTypes.ReadableStream, __domTypes.ReadableStream];
     [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array>;
   }
@@ -1283,7 +1335,6 @@ declare namespace __textEncoding {
     ignoreBOM?: boolean;
   }
   export class TextDecoder {
-    private _encoding;
     /** Returns encoding's name, lowercased. */
     readonly encoding: string;
     /** Returns `true` if error mode is "fatal", and `false` otherwise. */
@@ -1333,10 +1384,7 @@ declare namespace __timers {
 
 declare namespace __urlSearchParams {
   export class URLSearchParams {
-    private params;
-    private url;
     constructor(init?: string | string[][] | Record<string, string>);
-    private updateSteps;
     /** Appends a specified key/value pair as a new search parameter.
      *
      *       searchParams.append('name', 'first');
@@ -1431,8 +1479,6 @@ declare namespace __urlSearchParams {
      *        searchParams.toString();
      */
     toString(): string;
-    private _handleStringInitialization;
-    private _handleArrayInitialization;
   }
 }
 
@@ -1475,16 +1521,12 @@ declare namespace __workers {
     name?: string;
   }
   export class WorkerImpl implements Worker {
-    private readonly id;
-    private isClosing;
-    private readonly isClosedPromise;
     onerror?: (e: Event) => void;
     onmessage?: (data: any) => void;
     onmessageerror?: () => void;
     constructor(specifier: string, options?: WorkerOptions);
     postMessage(data: any): void;
     terminate(): void;
-    private run;
   }
 }
 

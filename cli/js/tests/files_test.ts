@@ -46,15 +46,17 @@ unitTest(async function readerToAsyncIterator(): Promise<void> {
   const encoder = new TextEncoder();
 
   class TestReader implements Deno.Reader {
-    private offset = 0;
-    private buf = new Uint8Array(encoder.encode(this.s));
+    #offset = 0;
+    #buf: Uint8Array;
 
-    constructor(private readonly s: string) {}
+    constructor(s: string) {
+      this.#buf = new Uint8Array(encoder.encode(s));
+    }
 
     read(p: Uint8Array): Promise<number | Deno.EOF> {
-      const n = Math.min(p.byteLength, this.buf.byteLength - this.offset);
-      p.set(this.buf.slice(this.offset, this.offset + n));
-      this.offset += n;
+      const n = Math.min(p.byteLength, this.#buf.byteLength - this.#offset);
+      p.set(this.#buf.slice(this.#offset, this.#offset + n));
+      this.#offset += n;
 
       if (n === 0) {
         return Promise.resolve(Deno.EOF);

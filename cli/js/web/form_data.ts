@@ -8,7 +8,7 @@ import { requiredArguments } from "./util.ts";
 const dataSymbol = Symbol("data");
 
 class FormDataBase {
-  private [dataSymbol]: Array<[string, domTypes.FormDataEntryValue]> = [];
+  [dataSymbol]: Array<[string, domTypes.FormDataEntryValue]> = [];
 
   append(name: string, value: string): void;
   append(name: string, value: blob.DenoBlob, filename?: string): void;

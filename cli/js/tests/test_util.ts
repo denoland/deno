@@ -194,17 +194,19 @@ export function createResolvable<T>(): Resolvable<T> {
   return Object.assign(promise, methods!) as Resolvable<T>;
 }
 
-export class SocketReporter implements Deno.TestReporter {
-  private encoder: TextEncoder;
+const encoder = new TextEncoder();
 
-  constructor(private conn: Deno.Conn) {
-    this.encoder = new TextEncoder();
+export class SocketReporter implements Deno.TestReporter {
+  #conn: Deno.Conn;
+
+  constructor(conn: Deno.Conn) {
+    this.#conn = conn;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async write(msg: any): Promise<void> {
-    const encodedMsg = this.encoder.encode(JSON.stringify(msg) + "\n");
-    await Deno.writeAll(this.conn, encodedMsg);
+    const encodedMsg = encoder.encode(JSON.stringify(msg) + "\n");
+    await Deno.writeAll(this.#conn, encodedMsg);
   }
 
   async start(msg: Deno.TestEventStart): Promise<void> {
@@ -229,9 +231,9 @@ export class SocketReporter implements Deno.TestReporter {
   }
 
   async end(msg: Deno.TestEventEnd): Promise<void> {
-    const encodedMsg = this.encoder.encode(JSON.stringify(msg));
-    await Deno.writeAll(this.conn, encodedMsg);
-    this.conn.closeWrite();
+    const encodedMsg = encoder.encode(JSON.stringify(msg));
+    await Deno.writeAll(this.#conn, encodedMsg);
+    this.#conn.closeWrite();
   }
 }
 

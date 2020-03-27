@@ -183,7 +183,7 @@ export function readOnly(value: unknown): PropertyDescriptor {
 export function getterOnly(getter: () => any): PropertyDescriptor {
   return {
     get: getter,
-    enumerable: true
+    enumerable: true,
   };
 }
 

@@ -755,12 +755,6 @@ declare namespace Deno {
    *
    * Based on [Go Buffer](https://golang.org/pkg/bytes/#Buffer). */
   export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
-    private buf;
-    private off;
-    private _tryGrowByReslice;
-    private _reslice;
-    private _grow;
-
     constructor(ab?: ArrayBuffer);
     /** Returns a slice holding the unread portion of the buffer.
      *

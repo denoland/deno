@@ -5,7 +5,7 @@ import { unitTest, assert, assertEquals } from "./test_util.ts";
 function setup() {
   const dataSymbol = Symbol("data symbol");
   class Base {
-    private [dataSymbol] = new Map<string, number>();
+    [dataSymbol] = new Map<string, number>();
 
     constructor(
       data: Array<[string, number]> | IterableIterator<[string, number]>
