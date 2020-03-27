@@ -1964,7 +1964,7 @@ async fn inspector1() {
     .join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
-    .arg("--debug")
+    .arg("--inspect")
     .arg(script)
     .stderr(std::process::Stdio::piped())
     .spawn()

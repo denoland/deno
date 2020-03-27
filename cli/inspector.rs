@@ -103,9 +103,11 @@ pub struct InspectorServer {
 }
 
 impl InspectorServer {
-  /// Starts a DevTools Inspector server on port 127.0.0.1:9229
-  pub fn default() -> Self {
-    let address = "127.0.0.1:9229".parse::<SocketAddrV4>().unwrap();
+  pub fn new(host: &str, brk: bool) -> Self {
+    if brk {
+      todo!("--inspect-brk not yet supported");
+    }
+    let address = host.parse::<SocketAddrV4>().unwrap();
     let (server_msg_tx, server_msg_rx) = mpsc::unbounded_channel::<ServerMsg>();
     let thread_handle = std::thread::spawn(move || {
       crate::tokio_util::run_basic(server(address, server_msg_rx));

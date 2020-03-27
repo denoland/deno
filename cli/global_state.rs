@@ -84,8 +84,10 @@ impl GlobalState {
       None
     };
 
-    let inspector_server = if flags.debug {
-      Some(InspectorServer::default())
+    let inspector_server = if let Some(ref host) = flags.inspect {
+      Some(InspectorServer::new(host, false))
+    } else if let Some(ref host) = flags.inspect_brk {
+      Some(InspectorServer::new(host, true))
     } else {
       None
     };
