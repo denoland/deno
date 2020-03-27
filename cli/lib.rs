@@ -38,6 +38,7 @@ mod global_timer;
 pub mod http_cache;
 mod http_util;
 mod import_map;
+mod inspector;
 pub mod installer;
 mod js;
 mod lockfile;

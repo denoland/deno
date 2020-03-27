@@ -61,13 +61,15 @@ utime = "0.2.1"
 webpki = "0.21.2"
 webpki-roots = "0.19.0"
 walkdir = "2.3.1"
+warp = "0.2.2"
 semver-parser = "0.9.0"
 # TODO(bartlomieju): make sure we're using exactly same versions
-# as dprint-plugin-typescript
+# of "swc_*" as dprint-plugin-typescript
 swc_common = "=0.5.9"
 swc_ecma_ast = "=0.18.1"
 swc_ecma_parser = "=0.21.6"
 swc_ecma_parser_macros = "=0.4.1"
+uuid = { version = "0.8", features = ["v4"] }
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.8"
@@ -78,6 +80,8 @@ nix = "0.14" # rustyline depends on 0.14, to avoid duplicates we do too.
 
 [dev-dependencies]
 os_pipe = "0.9.1"
+# Used for testing inspector. Keep in-sync with warp.
+tokio-tungstenite = { version = "0.10", features = ["connect"] }
 
 [target.'cfg(unix)'.dev-dependencies]
 pty = "0.2.2"
