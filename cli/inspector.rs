@@ -1,6 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-#![allow(dead_code)]
+// The documentation for the inspector API is sparse, but these are helpful:
+// https://chromedevtools.github.io/devtools-protocol/
+// https://medium.com/@hyperandroid/v8-inspector-from-an-embedder-standpoint-7f9c0472e2b7
 
 use deno_core::v8;
 use futures;
@@ -34,10 +36,10 @@ const CONTEXT_GROUP_ID: i32 = 1;
 /// Owned by GloalState, this channel end can be used by any isolate thread
 /// to register it's inspector with the inspector server.
 type ServerMsgTx = mpsc::UnboundedSender<ServerMsg>;
-// Owned by the inspector server thread, used to to receive information about
-// new isolates.
+/// Owned by the inspector server thread, used to to receive information about
+/// new isolates.
 type ServerMsgRx = mpsc::UnboundedReceiver<ServerMsg>;
-// These messages can be sent from any thread to the server thread.
+/// These messages can be sent from any thread to the server thread.
 enum ServerMsg {
   AddInspector(InspectorInfo),
 }
@@ -208,8 +210,10 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
         // send a message back so register_worker can return...
         let (mut ws_tx, mut ws_rx) = socket.split();
 
-        let (session_to_frontend_tx, mut session_to_frontend_rx) =
-          mpsc::unbounded_channel::<ws::Message>();
+        let (session_to_frontend_tx, mut session_to_frontend_rx): (
+          SessionToFrontendTx,
+          SessionToFrontendRx,
+        ) = mpsc::unbounded_channel();
 
         // Not to be confused with the WS's uuid...
         let session_uuid = Uuid::new_v4();
@@ -273,7 +277,6 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
   let version = warp::path!("json" / "version").map(|| {
     warp::reply::json(&json!({
       "Browser": format!("Deno/{}", crate::version::DENO),
-      // TODO upgrade to 1.3? https://chromedevtools.github.io/devtools-protocol/
       "Protocol-Version": "1.3",
       "V8-Version": crate::version::v8(),
     }))
