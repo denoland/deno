@@ -1512,13 +1512,13 @@ Extra steps for Windows users:
 The easiest way to build Deno is by using a precompiled version of V8:
 
 ```
-V8_BINARY=1 cargo build -vv
+cargo build -vv
 ```
 
 However if you want to build Deno and V8 from source code:
 
 ```
-cargo build -vv
+V8_FROM_SOURCE=1 cargo build -vv
 ```
 
 When building V8 from source, there are more dependencies:
