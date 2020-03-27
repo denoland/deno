@@ -108,10 +108,6 @@ impl InspectorServer {
       todo!("--inspect-brk not yet supported");
     }
     let mut address = host.parse::<SocketAddrV4>().unwrap();
-    use std::net::Ipv4Addr;
-    if address.ip() == &Ipv4Addr::new(127, 0, 0, 1) {
-      address.set_ip(Ipv4Addr::new(0, 0, 0, 0));
-    }
     let (server_msg_tx, server_msg_rx) = mpsc::unbounded_channel::<ServerMsg>();
     let thread_handle = std::thread::spawn(move || {
       crate::tokio_util::run_basic(server(address, server_msg_rx));
