@@ -134,9 +134,11 @@ declare namespace Deno {
    */
   export function loadavg(): number[];
 
-  /** Get the `hostname`. Requires `allow-env` permission.
+  /** Get the `hostname` of the machine the Deno process is running on.
    *
    *       console.log(Deno.hostname());
+   *
+   *  Requires `allow-env` permission.
    */
   export function hostname(): string;
 
@@ -741,12 +743,21 @@ declare namespace Deno {
    */
   export type OpenMode = "r" | "r+" | "w" | "w+" | "a" | "a+" | "x" | "x+";
 
-  /** **UNSTABLE**: newly added API
+  /** **UNSTABLE**: new API, yet to be vetted
    *
-   *  Check if a given resource is TTY. */
+   *  Check if a given resource id (`rid`) is a TTY.
+   *
+   *       //This example is system and context specific
+   *       const nonTTYRid = Deno.openSync("my_file.txt").rid;
+   *       const ttyRid = Deno.openSync("/dev/tty6").rid;
+   *       console.log(Deno.isatty(nonTTYRid)); // false
+   *       console.log(Deno.isatty(ttyRid)); // true
+   *       Deno.close(nonTTYRid);
+   *       Deno.close(ttyRid);
+   */
   export function isatty(rid: number): boolean;
 
-  /** **UNSTABLE**: newly added API
+  /** **UNSTABLE**: new API, yet to be vetted
    *
    *  Set TTY to be under raw mode or not. */
   export function setRaw(rid: number, mode: boolean): void;
@@ -1868,15 +1879,22 @@ declare namespace Deno {
    * the stream to `/dev/null`. */
   type ProcessStdio = "inherit" | "piped" | "null";
 
-  /** **UNSTABLE**: the `signo` argument maybe shouldn't be number. Should throw
-   * on Windows instead of silently succeeding.
+  /** **UNSTABLE**: The `signo` argument may change to require the Deno.Signal
+   * enum.
    *
-   * Send a signal to process under given `pid`. Linux/Mac OS only currently.
+   * Send a signal to process under given `pid`. This functionality currently
+   * only works on Linux and Mac OS.
    *
    * If `pid` is negative, the signal will be sent to the process group
    * identified by `pid`.
    *
-   * Currently no-op on Windows.
+   *      const p = Deno.run({
+   *        cmd: ["python", "-c", "from time import sleep; sleep(10000)"]
+   *      });
+   *
+   *      Deno.kill(p.pid, Deno.Signal.SIGINT);
+   *
+   * Throws Error (not yet implemented) on Windows
    *
    * Requires `allow-run` permission. */
   export function kill(pid: number, signo: number): void;
@@ -2015,20 +2033,45 @@ declare namespace Deno {
    * Signals numbers. This is platform dependent. */
   export const Signal: typeof MacOSSignal | typeof LinuxSignal;
 
-  /** **UNSTABLE**: rename to `InspectOptions`. */
-  interface ConsoleOptions {
+  interface InspectOptions {
     showHidden?: boolean;
     depth?: number;
     colors?: boolean;
     indentLevel?: number;
   }
 
-  /** **UNSTABLE**: `ConsoleOptions` rename to `InspectOptions`. Also the exact
-   * form of string output subject to change.
+  /** **UNSTABLE**: The exact form of the string output is under consideration
+   * and may change.
    *
-   * Converts input into string that has the same format as printed by
-   * `console.log()`. */
-  export function inspect(value: unknown, options?: ConsoleOptions): string;
+   * Converts the input into a string that has the same format as printed by
+   * `console.log()`.
+   *
+   *      const obj = {};
+   *      obj.propA = 10;
+   *      obj.propB = "hello"
+   *      const objAsString = Deno.inspect(obj); //{ propA: 10, propB: "hello" }
+   *      console.log(obj);  //prints same value as objAsString, e.g. { propA: 10, propB: "hello" }
+   *
+   * You can also register custom inspect functions, via the `customInspect` Deno
+   * symbol on objects, to control and customize the output.
+   *
+   *      class A {
+   *        x = 10;
+   *        y = "hello";
+   *        [Deno.symbols.customInspect](): string {
+   *          return "x=" + this.x + ", y=" + this.y;
+   *        }
+   *      }
+   *
+   *      const inStringFormat = Deno.inspect(new A()); //"x=10, y=hello"
+   *      console.log(inStringFormat);  //prints "x=10, y=hello"
+   *
+   * Finally, a number of output options are also available.
+   *
+   *      const out = Deno.inspect(obj, {showHidden: true, depth: 4, colors: true, indentLevel: 2});
+   *
+   */
+  export function inspect(value: unknown, options?: InspectOptions): string;
 
   export type OperatingSystem = "mac" | "win" | "linux";
 

@@ -6,7 +6,7 @@ import { cliTable } from "./console_table.ts";
 import { exposeForTest } from "../internals.ts";
 
 type ConsoleContext = Set<unknown>;
-type ConsoleOptions = Partial<{
+type InspectOptions = Partial<{
   showHidden: boolean;
   depth: number;
   colors: boolean;
@@ -153,10 +153,9 @@ function stringifyWithQuotes(
 ): string {
   switch (typeof value) {
     case "string":
-      const trunc =
-        value.length > STR_ABBREVIATE_SIZE
-          ? value.slice(0, STR_ABBREVIATE_SIZE) + "..."
-          : value;
+      const trunc = value.length > STR_ABBREVIATE_SIZE
+        ? value.slice(0, STR_ABBREVIATE_SIZE) + "..."
+        : value;
       return JSON.stringify(trunc);
     default:
       return stringify(value, ctx, level, maxLevel);
@@ -174,7 +173,7 @@ function createArrayString(
     displayName: "",
     delims: ["[", "]"],
     entryHandler: (el, ctx, level, maxLevel): string =>
-      stringifyWithQuotes(el, ctx, level + 1, maxLevel),
+      stringifyWithQuotes(el, ctx, level + 1, maxLevel)
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
@@ -191,7 +190,7 @@ function createTypedArrayString(
     displayName: typedArrayName,
     delims: ["[", "]"],
     entryHandler: (el, ctx, level, maxLevel): string =>
-      stringifyWithQuotes(el, ctx, level + 1, maxLevel),
+      stringifyWithQuotes(el, ctx, level + 1, maxLevel)
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
@@ -207,7 +206,7 @@ function createSetString(
     displayName: "Set",
     delims: ["{", "}"],
     entryHandler: (el, ctx, level, maxLevel): string =>
-      stringifyWithQuotes(el, ctx, level + 1, maxLevel),
+      stringifyWithQuotes(el, ctx, level + 1, maxLevel)
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
@@ -230,7 +229,7 @@ function createMapString(
         level + 1,
         maxLevel
       )} => ${stringifyWithQuotes(val, ctx, level + 1, maxLevel)}`;
-    },
+    }
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
@@ -383,7 +382,7 @@ function createObjectString(
 
 export function stringifyArgs(
   args: unknown[],
-  { depth = DEFAULT_MAX_DEPTH, indentLevel = 0 }: ConsoleOptions = {}
+  { depth = DEFAULT_MAX_DEPTH, indentLevel = 0 }: InspectOptions = {}
 ): string {
   const first = args[0];
   let a = 0;
@@ -515,7 +514,7 @@ export class Console {
   log = (...args: unknown[]): void => {
     this.#printFunc(
       stringifyArgs(args, {
-        indentLevel: this.indentLevel,
+        indentLevel: this.indentLevel
       }) + "\n",
       false
     );
@@ -524,7 +523,7 @@ export class Console {
   debug = this.log;
   info = this.log;
 
-  dir = (obj: unknown, options: ConsoleOptions = {}): void => {
+  dir = (obj: unknown, options: InspectOptions = {}): void => {
     this.#printFunc(stringifyArgs([obj], options) + "\n", false);
   };
 
@@ -533,7 +532,7 @@ export class Console {
   warn = (...args: unknown[]): void => {
     this.#printFunc(
       stringifyArgs(args, {
-        indentLevel: this.indentLevel,
+        indentLevel: this.indentLevel
       }) + "\n",
       true
     );
@@ -604,10 +603,11 @@ export class Console {
       stringifyWithQuotes(value, new Set<unknown>(), 0, 1);
     const toTable = (header: string[], body: string[][]): void =>
       this.log(cliTable(header, body));
-    const createColumn = (value: unknown, shift?: number): string[] => [
-      ...(shift ? [...new Array(shift)].map((): string => "") : []),
-      stringifyValue(value),
-    ];
+    const createColumn = (value: unknown, shift?: number): string[] =>
+      [
+        ...(shift ? [...new Array(shift)].map((): string => "") : []),
+        stringifyValue(value)
+      ];
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let resultData: any;
@@ -662,8 +662,8 @@ export class Console {
       indexKey,
       ...(properties || [
         ...headerKeys,
-        !isMap && values.length > 0 && valuesKey,
-      ]),
+        !isMap && values.length > 0 && valuesKey
+      ])
     ].filter(Boolean) as string[];
     const body = [indexKeys, ...bodyValues, values];
 
@@ -735,7 +735,7 @@ export class Console {
     const message = stringifyArgs(args, { indentLevel: 0 });
     const err = {
       name: "Trace",
-      message,
+      message
     };
     // @ts-ignore
     Error.captureStackTrace(err, this.trace);
@@ -751,7 +751,7 @@ export const customInspect = Symbol.for("Deno.customInspect");
 
 export function inspect(
   value: unknown,
-  { depth = DEFAULT_MAX_DEPTH }: ConsoleOptions = {}
+  { depth = DEFAULT_MAX_DEPTH }: InspectOptions = {}
 ): string {
   if (typeof value === "string") {
     return value;
