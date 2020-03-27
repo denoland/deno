@@ -10,6 +10,7 @@ use futures::future;
 use futures::sink;
 use futures::stream::FuturesOrdered;
 use futures::stream::FuturesUnordered;
+use futures::channel::mpsc;
 use futures::stream::SplitSink;
 use futures::FutureExt;
 use futures::SinkExt;
@@ -545,15 +546,16 @@ fn handle_session(
 
 struct DenoInspectorSession<'a> {
   channel: v8::inspector::ChannelBase,
-  send: &'a mut dyn FnMut(v8::UniquePtr<v8::inspector::StringBuffer>) -> (),
+  outbound_tx: UnboundedSender<ws::Message>,
+  outbound_rx: UnboundedReceiver<ws::Message>
 }
 
 impl<'a> DenoInspectorSession<'a> {
   pub fn new(
     inspector: &mut v8::inspector::V8Inspector,
-    send: &'a mut dyn FnMut(v8::UniquePtr<v8::inspector::StringBuffer>) -> (),
   ) -> Box<Self> {
     new_box_with(|address| {
+      let (outbound_tx, outbound_rx) = unbounded::<ws:Message>();
       let empty_view = v8::inspector::StringView::empty();
       Self {
         channel: v8::inspector::ChannelBase::new::<Self>(),
@@ -564,9 +566,23 @@ impl<'a> DenoInspectorSession<'a> {
           unsafe { &mut *address },
           &empty_view,
         ),
-        send,
+        outbound_tx,
+        outbound_tx
       }
     })
+  }
+
+  fn receive_inbound(&mut self, msg: ws::Message) {
+      let bytes = msg.as_bytes();
+      let string_view = v8::inspector::StringView::from(bytes);
+      self.session.dispatch_protocol_message(&string_view);
+  }
+
+  fn send_outbound(&mut self, msg: v8::UniquePtr<v8::inspector::StringBuffer>)  {
+    let mut msg = msg.unwrap();
+    let msg = msg.string().to_string();
+    let msg = ws::Message::text(msg);
+    self.outbound_tx.unbounded_send(msg).expect("internal channel failed");
   }
 }
 
@@ -584,14 +600,14 @@ impl<'a> v8::inspector::ChannelImpl for DenoInspectorSession<'a> {
     _call_id: i32,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    (self.send)(message);
+    self.send_outbound(message);
   }
 
   fn send_notification(
     &mut self,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    (self.send)(message);
+    self.send_outbound(message);
   }
 
   fn flush_protocol_notifications(&mut self) {}
