@@ -595,6 +595,8 @@ impl<'a> v8::inspector::ChannelImpl for DenoInspectorSession<'a> {
   }
 
   fn flush_protocol_notifications(&mut self) {}
+
+  async fn 
 }
 
 // TODO impl From or Into
