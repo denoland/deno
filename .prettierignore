@@ -4,4 +4,5 @@ cli/tests/badly_formatted.js
 cli/tests/top_level_for_await.js
 std/**/testdata
 std/**/vendor
+std/fs/testdata/0-link.ts
 std/node_modules

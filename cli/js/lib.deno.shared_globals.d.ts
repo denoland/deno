@@ -43,13 +43,13 @@ declare interface WindowOrWorkerGlobalScope {
   addEventListener: (
     type: string,
     callback: __domTypes.EventListenerOrEventListenerObject | null,
-    options?: boolean | __domTypes.AddEventListenerOptions | undefined,
+    options?: boolean | __domTypes.AddEventListenerOptions | undefined
   ) => void;
   dispatchEvent: (event: __domTypes.Event) => boolean;
   removeEventListener: (
     type: string,
     callback: __domTypes.EventListenerOrEventListenerObject | null,
-    options?: boolean | __domTypes.EventListenerOptions | undefined,
+    options?: boolean | __domTypes.EventListenerOptions | undefined
   ) => void;
 }
 
@@ -73,7 +73,7 @@ declare namespace WebAssembly {
    * before it can be instantiated (otherwise, the
    * `WebAssembly.instantiateStreaming()` function should be used). */
   function compileStreaming(
-    source: Promise<__domTypes.Response>,
+    source: Promise<__domTypes.Response>
   ): Promise<Module>;
 
   /** Takes the WebAssembly binary code, in the form of a typed array or
@@ -82,7 +82,7 @@ declare namespace WebAssembly {
    * its first `WebAssembly.Instance`. */
   function instantiate(
     bufferSource: __domTypes.BufferSource,
-    importObject?: object,
+    importObject?: object
   ): Promise<WebAssemblyInstantiatedSource>;
 
   /** Takes an already-compiled `WebAssembly.Module` and returns a `Promise`
@@ -90,7 +90,7 @@ declare namespace WebAssembly {
    * the `Module` has already been compiled. */
   function instantiate(
     module: Module,
-    importObject?: object,
+    importObject?: object
   ): Promise<Instance>;
 
   /** Compiles and instantiates a WebAssembly module directly from a streamed
@@ -98,7 +98,7 @@ declare namespace WebAssembly {
    * code. */
   function instantiateStreaming(
     source: Promise<__domTypes.Response>,
-    importObject?: object,
+    importObject?: object
   ): Promise<WebAssemblyInstantiatedSource>;
 
   /** Validates a given typed array of WebAssembly binary code, returning
@@ -124,7 +124,7 @@ declare namespace WebAssembly {
      * custom sections in the module with the given string name. */
     static customSections(
       moduleObject: Module,
-      sectionName: string,
+      sectionName: string
     ): ArrayBuffer;
 
     /** Given a `Module`, returns an array containing descriptions of all the
@@ -258,13 +258,13 @@ declare const Worker: typeof __workers.WorkerImpl;
 declare const addEventListener: (
   type: string,
   callback: __domTypes.EventListenerOrEventListenerObject | null,
-  options?: boolean | __domTypes.AddEventListenerOptions | undefined,
+  options?: boolean | __domTypes.AddEventListenerOptions | undefined
 ) => void;
 declare const dispatchEvent: (event: __domTypes.Event) => boolean;
 declare const removeEventListener: (
   type: string,
   callback: __domTypes.EventListenerOrEventListenerObject | null,
-  options?: boolean | __domTypes.EventListenerOptions | undefined,
+  options?: boolean | __domTypes.EventListenerOptions | undefined
 ) => void;
 
 declare type Blob = __domTypes.Blob;
@@ -325,7 +325,7 @@ declare namespace __domTypes {
     [Symbol.iterator](): IterableIterator<[K, V]>;
     forEach(
       callback: (value: V, key: K, parent: this) => void,
-      thisArg?: any,
+      thisArg?: any
     ): void;
   }
   type EndingType = "transparent" | "native";
@@ -362,13 +362,13 @@ declare namespace __domTypes {
     addEventListener(
       type: string,
       callback: EventListenerOrEventListenerObject | null,
-      options?: boolean | AddEventListenerOptions,
+      options?: boolean | AddEventListenerOptions
     ): void;
     dispatchEvent(event: Event): boolean;
     removeEventListener(
       type: string,
       callback?: EventListenerOrEventListenerObject | null,
-      options?: EventListenerOptions | boolean,
+      options?: EventListenerOptions | boolean
     ): void;
   }
   export interface ProgressEventInit extends EventInit {
@@ -419,7 +419,7 @@ declare namespace __domTypes {
      */
     forEach(
       callbackfn: (value: string, key: string, parent: this) => void,
-      thisArg?: any,
+      thisArg?: any
     ): void;
   }
   export interface EventInit {
@@ -474,7 +474,7 @@ declare namespace __domTypes {
       type: string,
       bubbles?: boolean,
       cancelable?: boolean,
-      detail?: any | null,
+      detail?: any | null
     ): void;
   }
   export interface DomFile extends Blob {
@@ -485,7 +485,7 @@ declare namespace __domTypes {
     new (
       bits: BlobPart[],
       filename: string,
-      options?: FilePropertyBag,
+      options?: FilePropertyBag
     ): DomFile;
     prototype: DomFile;
   }
@@ -510,22 +510,22 @@ declare namespace __domTypes {
     addEventListener<K extends keyof AbortSignalEventMap>(
       type: K,
       listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-      options?: boolean | AddEventListenerOptions,
+      options?: boolean | AddEventListenerOptions
     ): void;
     addEventListener(
       type: string,
       listener: EventListener,
-      options?: boolean | AddEventListenerOptions,
+      options?: boolean | AddEventListenerOptions
     ): void;
     removeEventListener<K extends keyof AbortSignalEventMap>(
       type: K,
       listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-      options?: boolean | EventListenerOptions,
+      options?: boolean | EventListenerOptions
     ): void;
     removeEventListener(
       type: string,
       listener: EventListener,
-      options?: boolean | EventListenerOptions,
+      options?: boolean | EventListenerOptions
     ): void;
   }
   export interface ReadableStreamReadDoneResult<T> {
@@ -583,7 +583,7 @@ declare namespace __domTypes {
     readonly closed: Promise<void>;
     cancel(reason?: any): Promise<void>;
     read<T extends ArrayBufferView>(
-      view: T,
+      view: T
     ): Promise<ReadableStreamReadResult<T>>;
     releaseLock(): void;
   }
@@ -688,7 +688,7 @@ declare namespace __domTypes {
     values(): IterableIterator<string>;
     forEach(
       callbackfn: (value: string, key: string, parent: this) => void,
-      thisArg?: any,
+      thisArg?: any
     ): void;
     /** The Symbol.iterator well-known symbol specifies the default
      * iterator for this Headers object
@@ -936,7 +936,7 @@ declare namespace __blob {
     /** A blob object represents a file-like object of immutable, raw data. */
     constructor(
       blobParts?: __domTypes.BlobPart[],
-      options?: __domTypes.BlobPropertyBag,
+      options?: __domTypes.BlobPropertyBag
     );
     slice(start?: number, end?: number, contentType?: string): DenoBlob;
   }
@@ -971,7 +971,7 @@ declare namespace __console {
         depth: number;
         colors: boolean;
         indentLevel: number;
-      }>,
+      }>
     ) => void;
 
     /** From MDN:
@@ -991,7 +991,7 @@ declare namespace __console {
         depth: number;
         colors: boolean;
         indentLevel: number;
-      }>,
+      }>
     ) => void;
 
     /** Writes the arguments to stdout */
@@ -1037,7 +1037,7 @@ declare namespace __event {
     constructor({
       bubbles,
       cancelable,
-      composed
+      composed,
     }?: {
       bubbles?: boolean | undefined;
       cancelable?: boolean | undefined;
@@ -1108,7 +1108,7 @@ declare namespace __customEvent {
       bubbles,
       cancelable,
       composed,
-      detail
+      detail,
     }: __domTypes.CustomEventInit);
   }
   export class CustomEvent extends __event.Event
@@ -1119,7 +1119,7 @@ declare namespace __customEvent {
       type: string,
       bubbles?: boolean,
       cancelable?: boolean,
-      detail?: any,
+      detail?: any
     ): void;
     readonly [Symbol.toStringTag]: string;
   }
@@ -1138,7 +1138,7 @@ declare namespace __eventTarget {
     constructor({
       capture,
       passive,
-      once
+      once,
     }?: {
       capture?: boolean | undefined;
       passive?: boolean | undefined;
@@ -1161,12 +1161,12 @@ declare namespace __eventTarget {
     addEventListener(
       type: string,
       callback: __domTypes.EventListenerOrEventListenerObject | null,
-      options?: __domTypes.AddEventListenerOptions | boolean,
+      options?: __domTypes.AddEventListenerOptions | boolean
     ): void;
     removeEventListener(
       type: string,
       callback: __domTypes.EventListenerOrEventListenerObject | null,
-      options?: __domTypes.EventListenerOptions | boolean,
+      options?: __domTypes.EventListenerOptions | boolean
     ): void;
     dispatchEvent(event: __domTypes.Event): boolean;
     readonly [Symbol.toStringTag]: string;
@@ -1271,8 +1271,7 @@ declare namespace __fetch {
     implements
       __domTypes.Body,
       __domTypes.ReadableStream<Uint8Array>,
-      __io.ReadCloser
-  {
+      __io.ReadCloser {
     readonly contentType: string;
     bodyUsed: boolean;
     readonly locked: boolean;
@@ -1310,7 +1309,7 @@ declare namespace __fetch {
       rid: number,
       redirected_: boolean,
       type_?: null | __domTypes.ResponseType,
-      body_?: null | Body,
+      body_?: null | Body
     );
     arrayBuffer(): Promise<ArrayBuffer>;
     blob(): Promise<__domTypes.Blob>;
@@ -1324,7 +1323,7 @@ declare namespace __fetch {
   /** Fetch a resource from the network. */
   export function fetch(
     input: __domTypes.Request | __url.URL | string,
-    init?: __domTypes.RequestInit,
+    init?: __domTypes.RequestInit
   ): Promise<Response>;
 }
 
@@ -1350,7 +1349,7 @@ declare namespace __textEncoding {
     /** Returns the result of running encoding's decoder. */
     decode(
       input?: __domTypes.BufferSource,
-      options?: TextDecodeOptions,
+      options?: TextDecodeOptions
     ): string;
     readonly [Symbol.toStringTag]: string;
   }
@@ -1374,13 +1373,13 @@ declare namespace __timers {
   export function setTimeout(
     cb: (...args: Args) => void,
     delay?: number,
-    ...args: Args,
+    ...args: Args
   ): number;
   /** Repeatedly calls a function , with a fixed time delay between each call. */
   export function setInterval(
     cb: (...args: Args) => void,
     delay?: number,
-    ...args: Args,
+    ...args: Args
   ): number;
   export function clearTimeout(id?: number): void;
   export function clearInterval(id?: number): void;
@@ -1445,7 +1444,7 @@ declare namespace __urlSearchParams {
      */
     forEach(
       callbackfn: (value: string, key: string, parent: this) => void,
-      thisArg?: any,
+      thisArg?: any
     ): void;
     /** Returns an iterator allowing to go through all keys contained
      * in this object.

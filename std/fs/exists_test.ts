@@ -37,13 +37,13 @@ Deno.test("[fs] existsDirectorySync", function (): void {
 Deno.test("[fs] existsLinkSync", function (): void {
   // TODO(axetroy): generate link file use Deno api instead of set a link file
   // in repository
-  assertEquals(existsSync(path.join(testdataDir, "0-link.ts")), true);
+  assertEquals(existsSync(path.join(testdataDir, "0-link")), true);
 });
 
 Deno.test("[fs] existsLink", async function (): Promise<void> {
   // TODO(axetroy): generate link file use Deno api instead of set a link file
   // in repository
-  assertEquals(await exists(path.join(testdataDir, "0-link.ts")), true);
+  assertEquals(await exists(path.join(testdataDir, "0-link")), true);
 });
 
 interface Scenes {
