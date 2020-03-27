@@ -75,6 +75,9 @@ nix = "0.14" # rustyline depends on 0.14, to avoid duplicates we do too.
 
 [dev-dependencies]
 os_pipe = "0.9.1"
+# Used for testing. Keep in-sync with warp.
+tokio-tungstenite = { version = "0.10", features = ["connect"] }
+
 
 [target.'cfg(unix)'.dev-dependencies]
 pty = "0.2.2"
