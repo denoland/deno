@@ -1,11 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 #![allow(dead_code)]
+#![allow(warnings)]
 
 use deno_core::v8;
 use futures;
 use futures::executor;
 use futures::future;
+use futures::sink;
+use futures::stream::FuturesOrdered;
+use futures::stream::FuturesUnordered;
+use futures::stream::SplitSink;
 use futures::FutureExt;
 use futures::SinkExt;
 use futures::StreamExt;
@@ -21,6 +26,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+use std::task::Waker;
 use tokio;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
@@ -52,12 +58,12 @@ type FrontendToInspectorRx = mpsc::UnboundedReceiver<FrontendToInspectorMsg>;
 pub enum FrontendToInspectorMsg {
   WsConnection {
     session_uuid: Uuid,
-    session_to_frontend_tx: SessionToFrontendTx,
+    websocket: ws::WebSocket,
   },
-  WsIncoming {
-    session_uuid: Uuid,
-    msg: ws::Message,
-  },
+  //WsIncoming {
+  //  session_uuid: Uuid,
+  //  msg: ws::Message,
+  //},
 }
 
 /// Owned by the deno inspector session, used to forward messages from the
@@ -68,6 +74,9 @@ type SessionToFrontendTx = mpsc::UnboundedSender<ws::Message>;
 /// from the inspector session on the isolate thread are forwarded over the
 /// websocket to the devtools frontend.
 type SessionToFrontendRx = mpsc::UnboundedReceiver<ws::Message>;
+
+type FrontendToSessionTx = mpsc::UnboundedSender<ws::Message>;
+type FrontendToSessionRx = mpsc::UnboundedReceiver<ws::Message>;
 
 /// Stored in a UUID hashmap, used by WS server. Clonable.
 #[derive(Clone)]
@@ -113,6 +122,7 @@ impl InspectorServer {
       ..
     } = isolate;
     let v8_isolate = v8_isolate.as_mut().unwrap();
+    let isolate_handle = v8_isolate.thread_safe_handle();
 
     let mut hs = v8::HandleScope::new(v8_isolate);
     let scope = hs.enter();
@@ -128,6 +138,7 @@ impl InspectorServer {
       scope,
       context,
       frontend_to_inspector_rx,
+      isolate_handle,
     );
 
     eprintln!(
@@ -139,10 +150,7 @@ impl InspectorServer {
       .send(ServerMsg::AddInspector(InspectorInfo {
         uuid,
         frontend_to_inspector_tx,
-        inspector_handle: DenoInspectorHandle::new(
-          &inspector,
-          v8_isolate.thread_safe_handle(),
-        ),
+        inspector_handle: DenoInspectorHandle::new(&inspector),
       }))
       .unwrap_or_else(|_| {
         panic!("sending message to inspector server thread failed");
@@ -191,7 +199,7 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
     .and(warp::ws())
     .map(move |uuid: String, ws: warp::ws::Ws| {
       let inspector_map__ = inspector_map_.clone();
-      ws.on_upgrade(move |socket| async move {
+      ws.on_upgrade(move |websocket| async move {
         let inspector_info = {
           if let Ok(uuid) = Uuid::parse_str(&uuid) {
             let g = inspector_map__.lock().unwrap();
@@ -205,20 +213,14 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
           }
         };
 
-        // send a message back so register_worker can return...
-        let (mut ws_tx, mut ws_rx) = socket.split();
-
-        let (session_to_frontend_tx, mut session_to_frontend_rx) =
-          mpsc::unbounded_channel::<ws::Message>();
-
         // Not to be confused with the WS's uuid...
         let session_uuid = Uuid::new_v4();
 
         inspector_info
           .frontend_to_inspector_tx
           .send(FrontendToInspectorMsg::WsConnection {
-            session_to_frontend_tx,
             session_uuid,
+            websocket,
           })
           .unwrap_or_else(|_| {
             panic!("sending message to frontend_to_inspector_tx failed");
@@ -226,26 +228,18 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
 
         inspector_info.inspector_handle.interrupt();
 
-        let pump_to_inspector = async {
-          while let Some(Ok(msg)) = ws_rx.next().await {
-            inspector_info
-              .frontend_to_inspector_tx
-              .send(FrontendToInspectorMsg::WsIncoming { msg, session_uuid })
-              .unwrap_or_else(|_| {
-                panic!("sending message to frontend_to_inspector_tx failed");
-              });
-
-            inspector_info.inspector_handle.interrupt();
-          }
-        };
-
-        let pump_from_session = async {
-          while let Some(msg) = session_to_frontend_rx.next().await {
-            ws_tx.send(msg).await.ok();
-          }
-        };
-
-        future::join(pump_to_inspector, pump_from_session).await;
+        //let pump_to_inspector = async {
+        //  while let Some(Ok(msg)) = ws_rx.next().await {
+        //    inspector_info
+        //      .frontend_to_inspector_tx
+        //      .send(FrontendToInspectorMsg::WsIncoming { msg, session_uuid })
+        //      .unwrap_or_else(|_| {
+        //        panic!("sending message to frontend_to_inspector_tx failed");
+        //      });
+        //
+        //    inspector_info.inspector_handle.interrupt();
+        //  }
+        //};
       })
     });
 
@@ -288,10 +282,12 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
 pub struct DenoInspector {
   client: v8::inspector::V8InspectorClientBase,
   inspector: v8::UniqueRef<v8::inspector::V8Inspector>,
-  pub sessions: HashMap<Uuid, Box<DenoInspectorSession>>,
+  sessions2: FuturesUnordered<Pin<Box<dyn Future<Output = ()>>>>,
   frontend_to_inspector_rx: FrontendToInspectorRx,
   paused: bool,
   interrupted: Arc<AtomicBool>,
+  isolate_handle: v8::IsolateHandle,
+  interrupting_waker: std::task::Waker,
 }
 
 impl DenoInspector {
@@ -299,6 +295,7 @@ impl DenoInspector {
     scope: &mut P,
     context: v8::Local<v8::Context>,
     frontend_to_inspector_rx: FrontendToInspectorRx,
+    isolate_handle: v8::IsolateHandle,
   ) -> Box<Self>
   where
     P: v8::InIsolate,
@@ -310,11 +307,15 @@ impl DenoInspector {
       inspector: v8::inspector::V8Inspector::create(scope, unsafe {
         &mut *address
       }),
-      sessions: HashMap::new(),
+      sessions2: FuturesUnordered::new(),
       frontend_to_inspector_rx,
       paused: false,
       interrupted: Arc::new(AtomicBool::new(false)),
+      isolate_handle,
+      interrupting_waker: NoopWaker::new(),
     });
+    deno_inspector.interrupting_waker =
+      InterruptingWaker::new(&deno_inspector, &NoopWaker::new());
 
     let empty_view = v8::inspector::StringView::empty();
     deno_inspector.inspector.context_created(
@@ -326,16 +327,6 @@ impl DenoInspector {
     deno_inspector
   }
 
-  pub fn connect(
-    &mut self,
-    session_uuid: Uuid,
-    session_to_frontend_tx: SessionToFrontendTx,
-  ) {
-    let session =
-      DenoInspectorSession::new(&mut self.inspector, session_to_frontend_tx);
-    self.sessions.insert(session_uuid, session);
-  }
-
   fn dispatch_frontend_to_inspector_msg(
     &mut self,
     msg: FrontendToInspectorMsg,
@@ -343,20 +334,10 @@ impl DenoInspector {
     match msg {
       FrontendToInspectorMsg::WsConnection {
         session_uuid,
-        session_to_frontend_tx,
-      } => {
-        self.connect(session_uuid, session_to_frontend_tx);
-      }
-      FrontendToInspectorMsg::WsIncoming { session_uuid, msg } => {
-        if let Some(deno_session) = self.sessions.get_mut(&session_uuid) {
-          deno_session.dispatch_protocol_message(msg)
-        } else {
-          eprintln!(
-            "Unknown inspector session {}. msg {:?}",
-            session_uuid, msg
-          );
-        }
-      }
+        websocket,
+      } => self
+        .sessions2
+        .push(handle_session(&mut self.inspector, websocket).boxed_local()),
     };
   }
 
@@ -364,18 +345,27 @@ impl DenoInspector {
     _isolate: &mut v8::Isolate,
     self_ptr: *mut c_void,
   ) {
+    eprintln!("Interrupt!");
     let self_ = unsafe { &mut *(self_ptr as *mut Self) };
     let _ = self_.poll_without_waker();
   }
 
   fn poll_without_waker(&mut self) -> Poll<<Self as Future>::Output> {
-    loop {
+    eprintln!("interrupted poll");
+    let _ = loop {
       match self.frontend_to_inspector_rx.try_recv() {
         Ok(msg) => self.dispatch_frontend_to_inspector_msg(msg),
         Err(TryRecvError::Closed) => break Poll::Ready(()),
         Err(TryRecvError::Empty)
           if self.interrupted.swap(false, Ordering::AcqRel) => {}
         Err(TryRecvError::Empty) => break Poll::Pending,
+      }
+    };
+    let cx = &mut Context::from_waker(&self.interrupting_waker);
+    loop {
+      match self.sessions2.poll_next_unpin(cx) {
+        Poll::Ready(Some(_)) => {}
+        _ => break Poll::Pending,
       }
     }
   }
@@ -389,6 +379,18 @@ impl Future for DenoInspector {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let self_ = self.get_mut();
+
+    let waker = InterruptingWaker::new(&self_, cx.waker());
+    self_.interrupting_waker = waker.clone();
+    let cx = &mut Context::from_waker(&waker);
+
+    eprintln!("poll sessions2");
+    let _ = loop {
+      match self_.sessions2.poll_next_unpin(cx) {
+        Poll::Ready(Some(_)) => {}
+        _ => break (), //Poll::Pending,
+      }
+    };
     loop {
       match self_.frontend_to_inspector_rx.poll_recv(cx) {
         Poll::Ready(Some(msg)) => self_.dispatch_frontend_to_inspector_msg(msg),
@@ -435,6 +437,44 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   }
 }
 
+struct InterruptingWaker {
+  inspector_handle: DenoInspectorHandle,
+  downstream_waker: Waker,
+}
+
+impl InterruptingWaker {
+  pub fn new(
+    deno_inspector: &DenoInspector,
+    downstream_waker: &Waker,
+  ) -> std::task::Waker {
+    let w = Self {
+      inspector_handle: DenoInspectorHandle::new(deno_inspector),
+      downstream_waker: downstream_waker.clone(),
+    };
+    futures::task::waker(Arc::new(w))
+  }
+}
+
+impl futures::task::ArcWake for InterruptingWaker {
+  fn wake_by_ref(arc_self: &Arc<Self>) {
+    eprintln!("wake!");
+    arc_self.downstream_waker.wake_by_ref();
+    arc_self.inspector_handle.interrupt();
+  }
+}
+
+struct NoopWaker;
+
+impl NoopWaker {
+  pub fn new() -> std::task::Waker {
+    futures::task::waker(Arc::new(Self))
+  }
+}
+
+impl futures::task::ArcWake for NoopWaker {
+  fn wake_by_ref(_: &Arc<Self>) {}
+}
+
 #[derive(Clone)]
 struct DenoInspectorHandle {
   deno_inspector_ptr: *mut c_void,
@@ -443,14 +483,11 @@ struct DenoInspectorHandle {
 }
 
 impl DenoInspectorHandle {
-  pub fn new(
-    deno_inspector: &DenoInspector,
-    isolate_handle: v8::IsolateHandle,
-  ) -> Self {
+  pub fn new(deno_inspector: &DenoInspector) -> Self {
     Self {
       deno_inspector_ptr: deno_inspector as *const DenoInspector
         as *const c_void as *mut c_void,
-      isolate_handle,
+      isolate_handle: deno_inspector.isolate_handle.clone(),
       interrupted: deno_inspector.interrupted.clone(),
     }
   }
@@ -468,48 +505,68 @@ impl DenoInspectorHandle {
 unsafe impl Send for DenoInspectorHandle {}
 unsafe impl Sync for DenoInspectorHandle {}
 
-/// sub-class of v8::inspector::Channel
-pub struct DenoInspectorSession {
-  channel: v8::inspector::ChannelBase,
-  session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
-  session_to_frontend_tx: SessionToFrontendTx,
+fn handle_session(
+  inspector: &'_ mut v8::inspector::V8Inspector,
+  websocket: ws::WebSocket,
+) -> Pin<Box<dyn Future<Output = ()>>> {
+  let (mut tx, mut rx) = websocket.split();
+
+  let mut tx_queue = FuturesOrdered::<
+    sink::Send<SplitSink<ws::WebSocket, ws::Message>, ws::Message>,
+  >::new();
+
+  let mut send = |mut msg: v8::UniquePtr<v8::inspector::StringBuffer>| {
+    let mut msg = msg.unwrap();
+    let msg = msg.string().to_string();
+    let msg = ws::Message::text(msg);
+    let _ = tx.send(msg);
+  };
+
+  let mut channel = DenoInspectorChannel {
+    base: v8::inspector::ChannelBase::new::<DenoInspectorChannel>(),
+    send: &mut send,
+  };
+
+  let empty_view = v8::inspector::StringView::empty();
+  let mut session = inspector.connect(
+    CONTEXT_GROUP_ID,
+    // Todo(piscisaureus): V8Inspector::connect() should require that
+    // the 'channel'  argument cannot move.
+    &mut channel,
+    &empty_view,
+  );
+
+  let tx_handler = async move {
+    let _ = tx_queue.next().await;
+  };
+
+  let rx_handler = async move {
+    while let Some(Ok(msg)) = rx.next().await {
+      let bytes = msg.as_bytes();
+      let string_view = v8::inspector::StringView::from(bytes);
+      session.dispatch_protocol_message(&string_view);
+    }
+  };
+
+  async {
+    rx_handler.await;
+    tx_handler.await;
+  }
+  .boxed_local()
 }
 
-impl DenoInspectorSession {
-  pub fn new(
-    inspector: &mut v8::inspector::V8Inspector,
-    session_to_frontend_tx: SessionToFrontendTx,
-  ) -> Box<Self> {
-    new_box_with(|address| {
-      let empty_view = v8::inspector::StringView::empty();
-      Self {
-        channel: v8::inspector::ChannelBase::new::<Self>(),
-        session: inspector.connect(
-          CONTEXT_GROUP_ID,
-          // Todo(piscisaureus): V8Inspector::connect() should require that
-          // the 'channel'  argument cannot move.
-          unsafe { &mut *address },
-          &empty_view,
-        ),
-        session_to_frontend_tx,
-      }
-    })
-  }
-
-  pub fn dispatch_protocol_message(&mut self, ws_msg: ws::Message) {
-    let bytes = ws_msg.as_bytes();
-    let string_view = v8::inspector::StringView::from(bytes);
-    self.session.dispatch_protocol_message(&string_view);
-  }
+struct DenoInspectorChannel<'a> {
+  base: v8::inspector::ChannelBase,
+  send: &'a mut dyn FnMut(v8::UniquePtr<v8::inspector::StringBuffer>) -> (),
 }
 
-impl v8::inspector::ChannelImpl for DenoInspectorSession {
+impl<'a> v8::inspector::ChannelImpl for DenoInspectorChannel<'a> {
   fn base(&self) -> &v8::inspector::ChannelBase {
-    &self.channel
+    &self.base
   }
 
   fn base_mut(&mut self) -> &mut v8::inspector::ChannelBase {
-    &mut self.channel
+    &mut self.base
   }
 
   fn send_response(
@@ -517,16 +574,14 @@ impl v8::inspector::ChannelImpl for DenoInspectorSession {
     _call_id: i32,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    let ws_msg = v8_to_ws_msg(message);
-    self.session_to_frontend_tx.send(ws_msg).unwrap();
+    (self.send)(message);
   }
 
   fn send_notification(
     &mut self,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    let ws_msg = v8_to_ws_msg(message);
-    self.session_to_frontend_tx.send(ws_msg).unwrap();
+    (self.send)(message);
   }
 
   fn flush_protocol_notifications(&mut self) {}

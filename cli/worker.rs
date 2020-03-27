@@ -106,7 +106,10 @@ impl Worker {
     let mut isolate = deno_core::EsIsolate::new(loader, startup_data, false);
 
     let global_state = state.borrow().global_state.clone();
-
+    eprintln!(
+      "Worker::new, inspector_server={:?}",
+      global_state.inspector_server.is_some()
+    );
     let inspector = global_state
       .inspector_server
       .as_ref()
@@ -196,6 +199,7 @@ impl Future for Worker {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
+    eprintln!("poll worker");
     if let Some(deno_inspector) = inner.inspector.as_mut() {
       // We always poll the inspector if it exists.
       let _ = deno_inspector.poll_unpin(cx);
