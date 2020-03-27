@@ -2443,12 +2443,8 @@ fn repl_with_cafile() {
 
 #[test]
 fn doc() {
-  let r = flags_from_vec_safe(svec![
-    "deno",
-    "doc",
-    "--json",
-    "path/to/module.ts"
-  ]);
+  let r =
+    flags_from_vec_safe(svec!["deno", "doc", "--json", "path/to/module.ts"]);
   assert_eq!(
     r.unwrap(),
     Flags {

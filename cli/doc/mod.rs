@@ -17,7 +17,6 @@ pub use node::DocNodeKind;
 pub use node::Location;
 pub use node::ParamDef;
 pub use parser::DocParser;
-pub use printer::JSONPrinter;
 pub use printer::TerminalPrinter;
 
 #[cfg(test)]

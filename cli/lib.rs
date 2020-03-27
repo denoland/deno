@@ -377,8 +377,8 @@ async fn doc_command(
   };
 
   if json {
-    let printer = doc::JSONPrinter::new(true);
-    printer.print(doc_nodes);
+    let json_string = serde_json::to_string_pretty(&doc_nodes).unwrap();
+    println!("{}", json_string);
     return Ok(());
   }
 
