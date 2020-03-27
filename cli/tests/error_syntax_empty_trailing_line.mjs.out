@@ -1,0 +1,2 @@
+error: Uncaught SyntaxError: Unexpected end of input
+► file:///[WILDCARD]cli/tests/error_syntax_empty_trailing_line.mjs:[WILDCARD]
