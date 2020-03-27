@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::ParamDef;
 use serde::Serialize;
 use swc_common::SourceMap;
