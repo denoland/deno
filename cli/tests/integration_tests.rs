@@ -1957,7 +1957,7 @@ fn extract_ws_url_from_stderr(
 }
 
 #[tokio::test]
-async fn inspector1() {
+async fn inspector_connect() {
   let script = deno::test_util::root_path()
     .join("cli")
     .join("tests")
@@ -1970,6 +1970,7 @@ async fn inspector1() {
     .spawn()
     .unwrap();
   let ws_url = extract_ws_url_from_stderr(child.stderr.as_mut().unwrap());
+  println!("ws_url {}", ws_url);
   // We use tokio_tungstenite as a websocket client because warp (which is
   // a dependency of Deno) uses it.
   let (_socket, response) = tokio_tungstenite::connect_async(ws_url)
