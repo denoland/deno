@@ -49,7 +49,7 @@ export interface DomIterable<K, V> {
   [Symbol.iterator](): IterableIterator<[K, V]>;
   forEach(
     callback: (value: V, key: K, parent: this) => void,
-    thisArg?: any
+    thisArg?: any,
   ): void;
 }
 
@@ -108,13 +108,13 @@ export interface EventTarget {
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject | null,
-    options?: boolean | AddEventListenerOptions
+    options?: boolean | AddEventListenerOptions,
   ): void;
   dispatchEvent(event: Event): boolean;
   removeEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject | null,
-    options?: EventListenerOptions | boolean
+    options?: EventListenerOptions | boolean,
   ): void;
 }
 
@@ -135,7 +135,7 @@ export interface URLSearchParams extends DomIterable<string, string> {
   toString(): string;
   forEach(
     callbackfn: (value: string, key: string, parent: this) => void,
-    thisArg?: any
+    thisArg?: any,
   ): void;
 }
 
@@ -201,7 +201,7 @@ export interface CustomEvent extends Event {
     type: string,
     bubbles?: boolean,
     cancelable?: boolean,
-    detail?: any | null
+    detail?: any | null,
   ): void;
 }
 
@@ -240,22 +240,22 @@ export interface AbortSignal extends EventTarget {
   addEventListener<K extends keyof AbortSignalEventMap>(
     type: K,
     listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-    options?: boolean | AddEventListenerOptions
+    options?: boolean | AddEventListenerOptions,
   ): void;
   addEventListener(
     type: string,
     listener: EventListener,
-    options?: boolean | AddEventListenerOptions
+    options?: boolean | AddEventListenerOptions,
   ): void;
   removeEventListener<K extends keyof AbortSignalEventMap>(
     type: K,
     listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-    options?: boolean | EventListenerOptions
+    options?: boolean | EventListenerOptions,
   ): void;
   removeEventListener(
     type: string,
     listener: EventListener,
-    options?: boolean | EventListenerOptions
+    options?: boolean | EventListenerOptions,
   ): void;
 }
 
@@ -342,7 +342,7 @@ export interface ReadableStreamBYOBReader {
   readonly closed: Promise<void>;
   cancel(reason?: any): Promise<void>;
   read<T extends ArrayBufferView>(
-    view: T
+    view: T,
   ): Promise<ReadableStreamReadResult<T>>;
   releaseLock(): void;
 }
@@ -492,7 +492,7 @@ export interface Headers extends DomIterable<string, string> {
   values(): IterableIterator<string>;
   forEach(
     callbackfn: (value: string, key: string, parent: this) => void,
-    thisArg?: any
+    thisArg?: any,
   ): void;
   [Symbol.iterator](): IterableIterator<[string, string]>;
 }
@@ -670,7 +670,7 @@ export interface URLSearchParams {
   toString(): string;
   forEach(
     callbackfn: (value: string, key: string, parent: URLSearchParams) => void,
-    thisArg?: any
+    thisArg?: any,
   ): void;
 
   [Symbol.iterator](): IterableIterator<[string, string]>;
