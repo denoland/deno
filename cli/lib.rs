@@ -349,7 +349,6 @@ async fn doc_command(
   flags: Flags,
   source_file: String,
   json: bool,
-  pretty: bool,
   maybe_filter: Option<String>,
 ) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
@@ -378,7 +377,7 @@ async fn doc_command(
   };
 
   if json {
-    let printer = doc::JSONPrinter::new(pretty);
+    let printer = doc::JSONPrinter::new(true);
     printer.print(doc_nodes);
     return Ok(());
   }
@@ -510,9 +509,8 @@ pub fn main() {
     DenoSubcommand::Doc {
       source_file,
       json,
-      pretty,
       filter,
-    } => doc_command(flags, source_file, json, pretty, filter).boxed_local(),
+    } => doc_command(flags, source_file, json, filter).boxed_local(),
     DenoSubcommand::Eval {
       code,
       as_typescript,

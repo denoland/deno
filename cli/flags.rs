@@ -33,7 +33,6 @@ pub enum DenoSubcommand {
   },
   Doc {
     json: bool,
-    pretty: bool,
     source_file: String,
     filter: Option<String>,
   },
@@ -563,7 +562,6 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
   let source_file = matches.value_of("source_file").map(String::from).unwrap();
   let json = matches.is_present("json");
-  let pretty = matches.is_present("pretty");
   let filter = if matches.is_present("filter") {
     Some(matches.value_of("filter").unwrap().to_string())
   } else {
@@ -572,7 +570,6 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Doc {
     source_file,
     json,
-    pretty,
     filter,
   };
 }
@@ -817,12 +814,6 @@ Output documentation in JSON format:
       Arg::with_name("json")
         .long("json")
         .help("Output documentation in JSON format.")
-        .takes_value(false),
-    )
-    .arg(
-      Arg::with_name("pretty")
-        .long("pretty")
-        .help("Pretty print JSON.")
         .takes_value(false),
     )
     .arg(
@@ -2456,7 +2447,6 @@ fn doc() {
     "deno",
     "doc",
     "--json",
-    "--pretty",
     "path/to/module.ts"
   ]);
   assert_eq!(
@@ -2464,7 +2454,6 @@ fn doc() {
     Flags {
       subcommand: DenoSubcommand::Doc {
         json: true,
-        pretty: true,
         source_file: "path/to/module.ts".to_string(),
         filter: None,
       },
@@ -2483,7 +2472,6 @@ fn doc() {
     Flags {
       subcommand: DenoSubcommand::Doc {
         json: false,
-        pretty: false,
         source_file: "path/to/module.ts".to_string(),
         filter: Some("SomeClass.someField".to_string()),
       },
