@@ -364,10 +364,8 @@ impl DenoInspector {
     _isolate: &mut v8::Isolate,
     self_ptr: *mut c_void,
   ) {
-    eprintln!("!!! interrupt start");
     let self_ = unsafe { &mut *(self_ptr as *mut Self) };
     let _ = self_.poll_without_waker();
-    eprintln!("!!! interrupt end");
   }
 
   fn poll_without_waker(&mut self) -> Poll<<Self as Future>::Output> {
@@ -412,8 +410,6 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   }
 
   fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
-    eprintln!("!!! run_message_loop_on_pause START");
-
     assert_eq!(context_group_id, CONTEXT_GROUP_ID);
     assert!(!self.paused);
     self.paused = true;
@@ -428,8 +424,6 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
         _ => Poll::Ready(()),
       });
     executor::block_on(dispatch_messages_while_paused);
-
-    eprintln!("!!! run_message_loop_on_pause END");
   }
 
   fn quit_message_loop_on_pause(&mut self) {
