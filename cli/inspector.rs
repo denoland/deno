@@ -13,9 +13,8 @@ use std::ptr;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
-
-use tokio;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TryRecvError;
 use uuid::Uuid;
 use warp;
 use warp::filters::ws;
@@ -293,7 +292,7 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
     warp::reply::json(&json!({
       "Browser": format!("Deno/{}", crate::version::DENO),
       // TODO upgrade to 1.3? https://chromedevtools.github.io/devtools-protocol/
-      "Protocol-Version": "1.1",
+      "Protocol-Version": "1.3",
       "V8-Version": crate::version::v8(),
     }))
   });
@@ -304,16 +303,20 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
   futures::future::join(msg_handler, web_handler).await;
 }
 
+enum ExecutionState {
+  WaitingForDebugger,
+  Paused,
+  Running,
+}
+
 #[repr(C)]
 pub struct DenoInspector {
   client: v8::inspector::V8InspectorClientBase,
   inspector: v8::UniqueRef<v8::inspector::V8Inspector>,
-  terminated: bool,
   pub sessions: HashMap<Uuid, Box<DenoInspectorSession>>,
   frontend_to_inspector_rx: FrontendToInspectorRx,
-  waiting_for_resume: bool,
-  waiting_for_frontend: bool,
-  resuming: bool,
+  frontend_to_inspector_pump_active: bool,
+  executing_state: ExecutionState,
 }
 
 impl DenoInspector {
@@ -332,12 +335,10 @@ impl DenoInspector {
       inspector: v8::inspector::V8Inspector::create(scope, unsafe {
         &mut *address
       }),
-      terminated: false,
       sessions: HashMap::new(),
       frontend_to_inspector_rx,
-      waiting_for_resume: false,
-      waiting_for_frontend: false,
-      resuming: false,
+      frontend_to_inspector_pump_active: false,
+      executing_state: ExecutionState::Running,
     });
 
     let empty_view = v8::inspector::StringView::empty();
@@ -373,8 +374,8 @@ impl DenoInspector {
         println!("Got new ws connection in DenoInspector {}", session_uuid);
       }
       FrontendToInspectorMsg::WsIncoming { session_uuid, msg } => {
-        // println!(">>> {}", msg.to_str().unwrap());
-        eprint!(">");
+        eprintln!(">>> {}", msg.to_str().unwrap());
+        //eprint!(">");
         if let Some(deno_session) = self.sessions.get_mut(&session_uuid) {
           deno_session.dispatch_protocol_message(msg)
         } else {
@@ -382,6 +383,60 @@ impl DenoInspector {
         }
       }
     };
+  }
+
+  fn pump_frontend_to_inspector_messages(
+    &mut self,
+    mut maybe_cx: Option<&mut Context>,
+  ) -> Poll<()> {
+    use ExecutionState::*;
+    use Poll::*;
+    use TryRecvError::*;
+
+    if self.frontend_to_inspector_pump_active {
+      eprintln!("Not recursively entering pump.");
+      return Poll::Pending; // TODO: makes little sense.
+    }
+    self.frontend_to_inspector_pump_active = true;
+
+    eprintln!("Enter pump.");
+
+    let result = loop {
+      let msg = match self.executing_state {
+        Running => match maybe_cx {
+          Some(ref mut cx) => match self.frontend_to_inspector_rx.poll_recv(cx)
+          {
+            Ready(Some(msg)) => msg,
+            Ready(None) => break Ready(()),
+            Pending => break Pending,
+          },
+          None => match self.frontend_to_inspector_rx.try_recv() {
+            Ok(msg) => msg,
+            Err(Closed) => break Ready(()),
+            Err(Empty) => break Pending,
+          },
+        },
+        WaitingForDebugger | Paused => {
+          // Note: this should theoretically not be possible because executors
+          // cannot be nested. It seems to work because the 'outer' executor
+          // is from tokio while the executor created here comes from the
+          // futures create. Nonetheless it would be nice to have a find a
+          // clean solution for it.
+          match futures::executor::block_on(futures::future::poll_fn(|cx| {
+            self.frontend_to_inspector_rx.poll_recv(cx)
+          })) {
+            Some(msg) => msg,
+            None => break Ready(()),
+          }
+        }
+      };
+      self.dispatch_frontend_to_inspector_msg(msg);
+    };
+
+    eprintln!("Exit pump.");
+
+    self.frontend_to_inspector_pump_active = false;
+    result
   }
 
   extern "C" fn interrupt_callback(
@@ -392,15 +447,7 @@ impl DenoInspector {
     let mut deno_inspector_handle =
       DenoInspectorHandle::from_raw(deno_inspector_ptr);
     let deno_inspector = unsafe { deno_inspector_handle.get() };
-    let drain_future = futures::future::poll_fn(|cx| {
-      while let Poll::Ready(Some(msg)) =
-        deno_inspector.frontend_to_inspector_rx.poll_recv(cx)
-      {
-        deno_inspector.dispatch_frontend_to_inspector_msg(msg);
-      }
-      Poll::Ready(())
-    });
-    futures::executor::block_on(drain_future);
+    let _ = deno_inspector.pump_frontend_to_inspector_messages(None);
     eprintln!("!!! isolate_interrupt_callback END");
   }
 }
@@ -413,20 +460,7 @@ impl Future for DenoInspector {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let deno_inspector = self.get_mut();
-
-    loop {
-      if deno_inspector.resuming {
-        deno_inspector.resuming = false;
-        return Poll::Ready(());
-      }
-      match deno_inspector.frontend_to_inspector_rx.poll_recv(cx) {
-        Poll::Pending => return Poll::Pending,
-        Poll::Ready(None) => return Poll::Ready(()),
-        Poll::Ready(Some(msg)) => {
-          deno_inspector.dispatch_frontend_to_inspector_msg(msg)
-        }
-      }
-    }
+    deno_inspector.pump_frontend_to_inspector_messages(Some(cx))
   }
 }
 
@@ -442,24 +476,18 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
     assert_eq!(context_group_id, CONTEXT_GROUP_ID);
     eprintln!("!!! run_message_loop_on_pause START");
-    // TODO need to synchronously run self.poll until quit_message_loop_on_pause
-    // is called.
-    // Can we do something like this?
-    self.waiting_for_resume = true;
-    let _ = futures::executor::block_on(self);
-    eprintln!("!!! run_message_loop_on_pause END");
+    self.executing_state = ExecutionState::Paused;
   }
 
   fn quit_message_loop_on_pause(&mut self) {
     eprintln!("!!! quit_message_loop_on_pause");
-    self.waiting_for_resume = false;
-    self.resuming = true;
+    self.executing_state = ExecutionState::Running;
   }
 
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
     eprintln!("!!! run_if_waiting_for_debugger");
     assert_eq!(context_group_id, CONTEXT_GROUP_ID);
-    self.waiting_for_frontend = true;
+    self.executing_state = ExecutionState::Running;
   }
 }
 
@@ -535,8 +563,8 @@ fn v8_to_ws_msg(
 ) -> ws::Message {
   let mut x = message.unwrap();
   let s = x.string().to_string();
-  //eprintln!("<<< {}", s);
-  print!("<");
+  eprintln!("<<< {}", s);
+  //eprint!("<");
   ws::Message::text(s)
 }
 
