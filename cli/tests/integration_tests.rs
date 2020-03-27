@@ -1966,7 +1966,9 @@ async fn inspector_connect() {
     .join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
-    .arg("--inspect")
+    // Warning: each inspector test should be on its own port to avoid
+    // conflicting with another inspector test.
+    .arg("--inspect=127.0.0.1:9229")
     .arg(script)
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -1991,7 +1993,9 @@ async fn inspector_pause() {
     .join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
-    .arg("--inspect")
+    // Warning: each inspector test should be on its own port to avoid
+    // conflicting with another inspector test.
+    .arg("--inspect=127.0.0.1:9230")
     .arg(script)
     .stderr(std::process::Stdio::piped())
     .spawn()
