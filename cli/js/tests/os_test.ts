@@ -304,7 +304,7 @@ unitTest({ perms: { env: false } }, function loadavgPerm(): void {
   assert(caughtError);
 });
 
-unitTest({ perms: { env: true } }, function hostnameDir(): void {
+unitTest({ ignore: true, perms: { env: true } }, function hostnameDir(): void {
   assertNotEquals(Deno.hostname(), "");
 });
 
@@ -320,7 +320,7 @@ unitTest({ perms: { env: false } }, function hostnamePerm(): void {
   assert(caughtError);
 });
 
-unitTest({ perms: { env: true } }, function releaseDir(): void {
+unitTest({ ignore: true, perms: { env: true } }, function releaseDir(): void {
   assertNotEquals(Deno.osRelease(), "");
 });
 

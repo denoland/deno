@@ -6,7 +6,7 @@ use deno_core::*;
 use std::collections::HashMap;
 use std::env;
 use std::io::{Error, ErrorKind};
-use sys_info;
+use systemstat::{Platform, System};
 use url::Url;
 
 pub fn init(i: &mut Isolate, s: &State) {
@@ -155,8 +155,9 @@ fn op_loadavg(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  let sys = System::new();
   state.check_env()?;
-  match sys_info::loadavg() {
+  match sys.load_average() {
     Ok(loadavg) => Ok(JsonOp::Sync(json!([
       loadavg.one,
       loadavg.five,
@@ -166,14 +167,14 @@ fn op_loadavg(
   }
 }
 
+// Could use hostname crate
 fn op_hostname(
   state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   state.check_env()?;
-  let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
-  Ok(JsonOp::Sync(json!(hostname)))
+  Err(OpError::not_implemented())
 }
 
 fn op_os_release(
@@ -182,6 +183,5 @@ fn op_os_release(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   state.check_env()?;
-  let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
-  Ok(JsonOp::Sync(json!(release)))
+  Err(OpError::not_implemented())
 }
