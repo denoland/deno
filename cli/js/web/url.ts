@@ -256,7 +256,7 @@ export class URL implements domTypes.URL {
   }
 
   get pathname(): string {
-    return parts.get(this)?.path ?? "/";
+    return parts.get(this)?.path || "/";
   }
 
   set pathname(value: string) {
