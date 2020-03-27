@@ -2,7 +2,7 @@
 
 // The documentation for the inspector API is sparse, but these are helpful:
 // https://chromedevtools.github.io/devtools-protocol/
-// https://medium.com/@hyperandroid/v8-inspector-from-an-embedder-standpoint-7f9c0472e2b7
+// https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
 
 use deno_core::v8;
 use futures;
@@ -132,7 +132,7 @@ impl InspectorServer {
       frontend_to_inspector_rx,
     );
 
-    eprintln!(
+    info!(
       "Debugger listening on {}",
       websocket_debugger_url(address, &uuid)
     );
@@ -354,10 +354,7 @@ impl DenoInspector {
         if let Some(deno_session) = self.sessions.get_mut(&session_uuid) {
           deno_session.dispatch_protocol_message(msg)
         } else {
-          eprintln!(
-            "Unknown inspector session {}. msg {:?}",
-            session_uuid, msg
-          );
+          info!("Unknown inspector session {}. msg {:?}", session_uuid, msg);
         }
       }
     };
