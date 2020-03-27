@@ -211,7 +211,6 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
           if let Ok(uuid) = Uuid::parse_str(&uuid) {
             let g = inspector_map__.lock().unwrap();
             if let Some(inspector_info) = g.get(&uuid) {
-              println!("ws connection {}", uuid);
               inspector_info.clone()
             } else {
               return;
@@ -375,15 +374,15 @@ impl DenoInspector {
         session_to_frontend_tx,
       } => {
         self.connect(session_uuid, session_to_frontend_tx);
-        println!("Got new ws connection in DenoInspector {}", session_uuid);
       }
       FrontendToInspectorMsg::WsIncoming { session_uuid, msg } => {
-        eprintln!(">>> {}", msg.to_str().unwrap());
-        //eprint!(">");
         if let Some(deno_session) = self.sessions.get_mut(&session_uuid) {
           deno_session.dispatch_protocol_message(msg)
         } else {
-          eprintln!("Unknown session {}. msg {:?}", session_uuid, msg);
+          eprintln!(
+            "Unknown inspector session {}. msg {:?}",
+            session_uuid, msg
+          );
         }
       }
     };
@@ -398,12 +397,9 @@ impl DenoInspector {
     use TryRecvError::*;
 
     if self.frontend_to_inspector_pump_active {
-      eprintln!("Not recursively entering pump.");
       return Poll::Pending; // TODO: makes little sense.
     }
     self.frontend_to_inspector_pump_active = true;
-
-    eprintln!("Enter pump.");
 
     let result = loop {
       let msg = match self.executing_state {
@@ -437,8 +433,6 @@ impl DenoInspector {
       self.dispatch_frontend_to_inspector_msg(msg);
     };
 
-    eprintln!("Exit pump.");
-
     self.frontend_to_inspector_pump_active = false;
     result
   }
@@ -447,12 +441,10 @@ impl DenoInspector {
     _isolate: &mut v8::Isolate,
     deno_inspector_ptr: *mut std::ffi::c_void,
   ) {
-    eprintln!("!!! isolate_interrupt_callback START");
     let mut deno_inspector_handle =
       DenoInspectorHandle::from_raw(deno_inspector_ptr);
     let deno_inspector = unsafe { deno_inspector_handle.get() };
     let _ = deno_inspector.pump_frontend_to_inspector_messages(None);
-    eprintln!("!!! isolate_interrupt_callback END");
   }
 }
 
@@ -479,17 +471,14 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
 
   fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
     assert_eq!(context_group_id, CONTEXT_GROUP_ID);
-    eprintln!("!!! run_message_loop_on_pause START");
     self.executing_state = ExecutionState::Paused;
   }
 
   fn quit_message_loop_on_pause(&mut self) {
-    eprintln!("!!! quit_message_loop_on_pause");
     self.executing_state = ExecutionState::Running;
   }
 
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
-    eprintln!("!!! run_if_waiting_for_debugger");
     assert_eq!(context_group_id, CONTEXT_GROUP_ID);
     self.executing_state = ExecutionState::Running;
   }
@@ -556,9 +545,7 @@ impl v8::inspector::ChannelImpl for DenoInspectorSession {
     self.session_to_frontend_tx.send(ws_msg).unwrap();
   }
 
-  fn flush_protocol_notifications(&mut self) {
-    eprintln!("TODO flush_protocol_notifications");
-  }
+  fn flush_protocol_notifications(&mut self) {}
 }
 
 // TODO impl From or Into
@@ -567,8 +554,6 @@ fn v8_to_ws_msg(
 ) -> ws::Message {
   let mut x = message.unwrap();
   let s = x.string().to_string();
-  eprintln!("<<< {}", s);
-  //eprint!("<");
   ws::Message::text(s)
 }
 
