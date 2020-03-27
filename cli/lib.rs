@@ -27,6 +27,7 @@ pub mod compilers;
 pub mod deno_dir;
 pub mod diagnostics;
 mod disk_cache;
+mod doc;
 mod file_fetcher;
 pub mod flags;
 mod fmt;
@@ -343,6 +344,61 @@ async fn bundle_command(
   bundle_result
 }
 
+async fn doc_command(
+  flags: Flags,
+  source_file: String,
+  json: bool,
+  pretty: bool,
+  maybe_filter: Option<String>,
+) -> Result<(), ErrBox> {
+  let global_state = GlobalState::new(flags.clone())?;
+  let module_specifier =
+    ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
+  let source_file = global_state
+    .file_fetcher
+    .fetch_source_file(&module_specifier, None)
+    .await?;
+  let source_code = String::from_utf8(source_file.source_code)?;
+
+  let doc_parser = doc::DocParser::default();
+  let parse_result =
+    doc_parser.parse(module_specifier.to_string(), source_code);
+
+  let doc_nodes = match parse_result {
+    Ok(nodes) => nodes,
+    Err(e) => {
+      eprintln!("Failed to parse documentation:");
+      for diagnostic in e {
+        eprintln!("{}", diagnostic.message());
+      }
+
+      std::process::exit(1);
+    }
+  };
+
+  if json {
+    let printer = doc::JSONPrinter::new(pretty);
+    printer.print(doc_nodes);
+    return Ok(());
+  }
+
+  let printer = doc::TerminalPrinter::new();
+
+  if let Some(filter) = maybe_filter {
+    let node = doc::find_node_by_name_recursively(doc_nodes, filter.clone());
+    if let Some(node) = node {
+      printer.print_details(node);
+    } else {
+      eprintln!("Node {} was not found!", filter);
+      std::process::exit(1);
+    }
+  } else {
+    printer.print(doc_nodes);
+  }
+
+  Ok(())
+}
+
 async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$repl.ts").unwrap();
@@ -450,6 +506,12 @@ pub fn main() {
       source_file,
       out_file,
     } => bundle_command(flags, source_file, out_file).boxed_local(),
+    DenoSubcommand::Doc {
+      source_file,
+      json,
+      pretty,
+      filter,
+    } => doc_command(flags, source_file, json, pretty, filter).boxed_local(),
     DenoSubcommand::Eval {
       code,
       as_typescript,
