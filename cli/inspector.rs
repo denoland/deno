@@ -74,7 +74,7 @@ impl DenoInspectorHandle {
     &mut *self.0
   }
 
-  pub fn as_raw(&self) -> *mut std::ffi::c_void {
+  pub fn as_raw(self) -> *mut std::ffi::c_void {
     self.0 as *mut std::ffi::c_void
   }
 
