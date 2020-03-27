@@ -1967,6 +1967,111 @@ fn test_permissions_net_listen_allow_localhost() {
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
 
+#[cfg(not(target_os = "linux"))] // TODO(ry) broken on github actions.
+fn extract_ws_url_from_stderr(
+  stderr: &mut std::process::ChildStderr,
+) -> url::Url {
+  use std::io::BufRead;
+  let mut stderr = std::io::BufReader::new(stderr);
+  let mut stderr_first_line = String::from("");
+  let _ = stderr.read_line(&mut stderr_first_line).unwrap();
+  assert!(stderr_first_line.starts_with("Debugger listening on "));
+  let v: Vec<_> = stderr_first_line.match_indices("ws:").collect();
+  assert_eq!(v.len(), 1);
+  let ws_url_index = v[0].0;
+  let ws_url = &stderr_first_line[ws_url_index..];
+  url::Url::parse(ws_url).unwrap()
+}
+
+#[cfg(not(target_os = "linux"))] // TODO(ry) broken on github actions.
+#[tokio::test]
+async fn inspector_connect() {
+  let script = deno::test_util::root_path()
+    .join("cli")
+    .join("tests")
+    .join("inspector1.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    // Warning: each inspector test should be on its own port to avoid
+    // conflicting with another inspector test.
+    .arg("--inspect=127.0.0.1:9229")
+    .arg(script)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let ws_url = extract_ws_url_from_stderr(child.stderr.as_mut().unwrap());
+  println!("ws_url {}", ws_url);
+  // We use tokio_tungstenite as a websocket client because warp (which is
+  // a dependency of Deno) uses it.
+  let (_socket, response) = tokio_tungstenite::connect_async(ws_url)
+    .await
+    .expect("Can't connect");
+  assert_eq!("101 Switching Protocols", response.status().to_string());
+  child.kill().unwrap();
+}
+
+#[cfg(not(target_os = "linux"))] // TODO(ry) broken on github actions.
+#[tokio::test]
+async fn inspector_pause() {
+  let script = deno::test_util::root_path()
+    .join("cli")
+    .join("tests")
+    .join("inspector1.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    // Warning: each inspector test should be on its own port to avoid
+    // conflicting with another inspector test.
+    .arg("--inspect=127.0.0.1:9230")
+    .arg(script)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let ws_url = extract_ws_url_from_stderr(child.stderr.as_mut().unwrap());
+  println!("ws_url {}", ws_url);
+  // We use tokio_tungstenite as a websocket client because warp (which is
+  // a dependency of Deno) uses it.
+  let (mut socket, _) = tokio_tungstenite::connect_async(ws_url)
+    .await
+    .expect("Can't connect");
+
+  /// Returns the next websocket message as a string ignoring
+  /// Debugger.scriptParsed messages.
+  async fn ws_read_msg(
+    socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+  ) -> String {
+    use futures::stream::StreamExt;
+    while let Some(msg) = socket.next().await {
+      let msg = msg.unwrap().to_string();
+      assert!(!msg.contains("error"));
+      if !msg.contains("Debugger.scriptParsed") {
+        return msg;
+      }
+    }
+    unreachable!()
+  }
+
+  use futures::sink::SinkExt;
+  socket
+    .send(r#"{"id":6,"method":"Debugger.enable"}"#.into())
+    .await
+    .unwrap();
+
+  let msg = ws_read_msg(&mut socket).await;
+  println!("response msg 1 {}", msg);
+  assert!(msg.starts_with(r#"{"id":6,"result":{"debuggerId":"#));
+
+  socket
+    .send(r#"{"id":31,"method":"Debugger.pause"}"#.into())
+    .await
+    .unwrap();
+
+  let msg = ws_read_msg(&mut socket).await;
+  println!("response msg 2 {}", msg);
+  assert_eq!(msg, r#"{"id":31,"result":{}}"#);
+
+  child.kill().unwrap();
+}
+
 mod util {
   use deno::colors::strip_ansi_codes;
   pub use deno::test_util::*;
