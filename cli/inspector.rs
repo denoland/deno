@@ -522,19 +522,7 @@ fn handle_session(
     let _ = tx.send(msg);
   };
 
-  let mut channel = DenoInspectorChannel {
-    base: v8::inspector::ChannelBase::new::<DenoInspectorChannel>(),
-    send: &mut send,
-  };
-
-  let empty_view = v8::inspector::StringView::empty();
-  let mut session = inspector.connect(
-    CONTEXT_GROUP_ID,
-    // Todo(piscisaureus): V8Inspector::connect() should require that
-    // the 'channel'  argument cannot move.
-    &mut channel,
-    &empty_view,
-  );
+  let mut session = DenoInspectorSession::new(inspector, &mut send);
 
   let tx_handler = async move {
     let _ = tx_queue.next().await;
@@ -555,18 +543,40 @@ fn handle_session(
   .boxed_local()
 }
 
-struct DenoInspectorChannel<'a> {
-  base: v8::inspector::ChannelBase,
+struct DenoInspectorSession<'a> {
+  channel: v8::inspector::ChannelBase,
   send: &'a mut dyn FnMut(v8::UniquePtr<v8::inspector::StringBuffer>) -> (),
 }
 
-impl<'a> v8::inspector::ChannelImpl for DenoInspectorChannel<'a> {
+impl<'a> DenoInspectorSession<'a> {
+  pub fn new(
+    inspector: &mut v8::inspector::V8Inspector,
+    send: &'a mut dyn FnMut(v8::UniquePtr<v8::inspector::StringBuffer>) -> (),
+  ) -> Box<Self> {
+    new_box_with(|address| {
+      let empty_view = v8::inspector::StringView::empty();
+      Self {
+        channel: v8::inspector::ChannelBase::new::<Self>(),
+        session: inspector.connect(
+          CONTEXT_GROUP_ID,
+          // Todo(piscisaureus): V8Inspector::connect() should require that
+          // the 'channel' argument cannot move.
+          unsafe { &mut *address },
+          &empty_view,
+        ),
+        send,
+      }
+    })
+  }
+}
+
+impl<'a> v8::inspector::ChannelImpl for DenoInspectorSession<'a> {
   fn base(&self) -> &v8::inspector::ChannelBase {
-    &self.base
+    &self.channel
   }
 
   fn base_mut(&mut self) -> &mut v8::inspector::ChannelBase {
-    &mut self.base
+    &mut self.channel
   }
 
   fn send_response(
