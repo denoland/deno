@@ -1941,24 +1941,24 @@ fn test_permissions_net_listen_allow_localhost() {
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
 
-fn extract_ws_url_from_stderr(
-  stderr: &mut std::process::ChildStderr,
-) -> url::Url {
-  use std::io::BufRead;
-  let mut stderr = std::io::BufReader::new(stderr);
-  let mut stderr_first_line = String::from("");
-  let _ = stderr.read_line(&mut stderr_first_line).unwrap();
-  assert!(stderr_first_line.starts_with("Debugger listening on "));
-  let v: Vec<_> = stderr_first_line.match_indices("ws:").collect();
-  assert_eq!(v.len(), 1);
-  let ws_url_index = v[0].0;
-  let ws_url = &stderr_first_line[ws_url_index..];
-  url::Url::parse(ws_url).unwrap()
-}
-
 #[cfg(not(target_os = "linux"))] // TODO broken on github actions.
 #[tokio::test]
 async fn inspector_connect() {
+  fn extract_ws_url_from_stderr(
+    stderr: &mut std::process::ChildStderr,
+  ) -> url::Url {
+    use std::io::BufRead;
+    let mut stderr = std::io::BufReader::new(stderr);
+    let mut stderr_first_line = String::from("");
+    let _ = stderr.read_line(&mut stderr_first_line).unwrap();
+    assert!(stderr_first_line.starts_with("Debugger listening on "));
+    let v: Vec<_> = stderr_first_line.match_indices("ws:").collect();
+    assert_eq!(v.len(), 1);
+    let ws_url_index = v[0].0;
+    let ws_url = &stderr_first_line[ws_url_index..];
+    url::Url::parse(ws_url).unwrap()
+  }
+
   let script = deno::test_util::root_path()
     .join("cli")
     .join("tests")
