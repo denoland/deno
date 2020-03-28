@@ -19,7 +19,7 @@ import { BufReader, ReadLineResult } from "../io/bufio.ts";
 import { chunkedBodyReader } from "./io.ts";
 import { ServerRequest, Response } from "./server.ts";
 import { StringReader } from "../io/readers.ts";
-import { mockConn } from "./mock.ts";
+import { mockConn } from "./testing.ts";
 const { Buffer, test } = Deno;
 
 test("bodyReader", async () => {

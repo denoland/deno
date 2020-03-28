@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+import { assert } from "../testing/asserts.ts";
+
 // TODO(ry) It'd be better to make Deferred a class that inherits from
 // Promise, rather than an interface. This is possible in ES2016, however
 // typescript produces broken code when targeting ES5 code.
@@ -114,4 +116,36 @@ export function delay(ms: number): Promise<void> {
       res();
     }, ms)
   );
+}
+
+export class TimeoutError extends Error {
+  constructor(msg = "Operation timed out") {
+    super(msg);
+  }
+}
+
+export function letTimeout<T>(p: Promise<T>, timeoutMs?: number): Promise<T> {
+  // noop for no timeout
+  if (timeoutMs == null) {
+    return p;
+  }
+  assert(timeoutMs > 0, "timeout must be greater than zero");
+  const d = deferred<T>();
+  const timer = setTimeout(() => {
+    d.reject(new TimeoutError());
+  }, timeoutMs);
+  p.then(d.resolve)
+    .catch(d.reject)
+    .finally(() => {
+      clearTimeout(timer);
+    });
+  return d;
+}
+
+export function timeoutReader(r: Deno.Reader, timeoutMs: number): Deno.Reader {
+  return {
+    read(p: Uint8Array): Promise<number | Deno.EOF> {
+      return letTimeout(r.read(p), timeoutMs);
+    }
+  };
 }

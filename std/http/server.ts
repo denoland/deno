@@ -1,13 +1,21 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { assert } from "../testing/asserts.ts";
-import { deferred, Deferred, MuxAsyncIterator } from "../util/async.ts";
+import {
+  deferred,
+  Deferred,
+  MuxAsyncIterator,
+  timeoutReader
+} from "../util/async.ts";
 import {
   bodyReader,
   chunkedBodyReader,
   emptyReader,
   writeResponse,
-  readRequest
+  readRequest,
+  KeepAlive,
+  parseKeepAlive,
+  parseHTTPVersion
 } from "./io.ts";
 import Listener = Deno.Listener;
 import Conn = Deno.Conn;
@@ -15,15 +23,43 @@ import Reader = Deno.Reader;
 const { listen, listenTLS } = Deno;
 
 export class ServerRequest {
-  url!: string;
-  method!: string;
-  proto!: string;
-  protoMinor!: number;
-  protoMajor!: number;
-  headers!: Headers;
-  conn!: Conn;
-  r!: BufReader;
+  constructor({
+    method,
+    url,
+    proto,
+    headers,
+    conn,
+    r,
+    timeout
+  }: {
+    method: string;
+    url: string;
+    proto: string;
+    headers: Headers;
+    conn: Deno.Conn;
+    r: BufReader;
+    timeout?: number;
+  }) {
+    this.conn = conn;
+    this.r = r;
+    this.method = method;
+    this.url = url;
+    this.proto = proto;
+    this.timeout = timeout;
+    [this.protoMinor, this.protoMajor] = parseHTTPVersion(this.proto);
+    this.headers = headers;
+    this.fixContentLength();
+  }
+  url: string;
+  method: string;
+  proto: string;
+  protoMinor: number;
+  protoMajor: number;
+  headers: Headers;
+  conn: Conn;
+  r: BufReader;
   w!: BufWriter;
+  timeout?: number;
   done: Deferred<Error | undefined> = deferred();
 
   private _contentLength: number | undefined | null = undefined;
@@ -51,20 +87,7 @@ export class ServerRequest {
 
   private _body: Deno.Reader | null = null;
 
-  /**
-   * Body of the request.
-   *
-   *     const buf = new Uint8Array(req.contentLength);
-   *     let bufSlice = buf;
-   *     let totRead = 0;
-   *     while (true) {
-   *       const nread = await req.body.read(bufSlice);
-   *       if (nread === Deno.EOF) break;
-   *       totRead += nread;
-   *       if (totRead >= req.contentLength) break;
-   *       bufSlice = bufSlice.subarray(nread);
-   *     }
-   */
+  /**  Body of the request */
   get body(): Deno.Reader {
     if (!this._body) {
       if (this.contentLength != null) {
@@ -85,8 +108,38 @@ export class ServerRequest {
           this._body = emptyReader();
         }
       }
+      if (this.timeout != null) {
+        this._body = timeoutReader(this._body, this.timeout);
+      }
     }
     return this._body;
+  }
+
+  fixContentLength(): void {
+    const contentLength = this.headers.get("Content-Length");
+    if (contentLength) {
+      const arrClen = contentLength.split(",");
+      if (arrClen.length > 1) {
+        const distinct = [...new Set(arrClen.map((e): string => e.trim()))];
+        if (distinct.length > 1) {
+          throw Error("cannot contain multiple Content-Length headers");
+        } else {
+          this.headers.set("Content-Length", distinct[0]);
+        }
+      }
+      const c = this.headers.get("Content-Length");
+      if (this.method === "HEAD" && c && c !== "0") {
+        throw Error("http: method cannot contain a Content-Length");
+      }
+      if (c && this.headers.has("transfer-encoding")) {
+        // A sender MUST NOT send a Content-Length header field in any message
+        // that contains a Transfer-Encoding header field.
+        // rfc: https://tools.ietf.org/html/rfc7230#section-3.3.2
+        throw new Error(
+          "http: Transfer-Encoding and Content-Length cannot be send together"
+        );
+      }
+    }
   }
 
   async respond(r: Response): Promise<void> {
@@ -121,11 +174,21 @@ export class ServerRequest {
   }
 }
 
+export type ServerOptions = {
+  /** Timeout for each readoperation. ms */
+  readTimeout?: number;
+};
 export class Server implements AsyncIterable<ServerRequest> {
   private closing = false;
   private connections: Conn[] = [];
+  readTimeout?: number;
 
-  constructor(public listener: Listener) {}
+  constructor(public listener: Listener, opts?: ServerOptions) {
+    if (opts?.readTimeout != null) {
+      assert(opts.readTimeout > 0, "readTimeout must be greater than zero");
+      this.readTimeout = opts.readTimeout;
+    }
+  }
 
   close(): void {
     this.closing = true;
@@ -150,15 +213,22 @@ export class Server implements AsyncIterable<ServerRequest> {
     const w = new BufWriter(conn);
     let req: ServerRequest | Deno.EOF = Deno.EOF;
     let err: Error | undefined;
-
+    let keepAlive: KeepAlive | undefined;
     while (!this.closing) {
       try {
-        req = await readRequest(conn, bufr);
+        const timeout = keepAlive?.timeout ?? this.readTimeout;
+        req = await readRequest(conn, bufr, { timeout });
       } catch (e) {
         err = e;
       }
+
       if (err != null || req === Deno.EOF) {
         break;
+      }
+
+      const ka = req.headers.get("keep-alive");
+      if (ka) {
+        keepAlive = parseKeepAlive(ka);
       }
 
       req.w = w;

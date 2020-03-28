@@ -4,6 +4,7 @@ import { assert } from "../testing/asserts.ts";
 import { encoder } from "../strings/mod.ts";
 import { ServerRequest, Response } from "./server.ts";
 import { STATUS_TEXT } from "./http_status.ts";
+import { letTimeout } from "../util/async.ts";
 
 export function emptyReader(): Deno.Reader {
   return {
@@ -118,6 +119,46 @@ const kProhibitedTrailerHeaders = [
   "content-length",
   "trailer"
 ];
+
+export interface BufConn extends Deno.Conn {
+  readonly r: BufReader;
+  readonly w: BufWriter;
+}
+
+export function bufConn(conn: Deno.Conn): BufConn {
+  const r = new BufReader(conn);
+  const w = new BufWriter(conn);
+  function read(p: Uint8Array): Promise<number | Deno.EOF> {
+    return r.read(p);
+  }
+  function write(p: Uint8Array): Promise<number> {
+    return w.write(p);
+  }
+  return {
+    r,
+    w,
+    read,
+    write,
+    get localAddr(): Deno.Addr {
+      return conn.localAddr;
+    },
+    get remoteAddr(): Deno.Addr {
+      return conn.remoteAddr;
+    },
+    get rid(): number {
+      return conn.rid;
+    },
+    close(): void {
+      conn.close();
+    },
+    closeRead(): void {
+      conn.closeRead();
+    },
+    closeWrite(): void {
+      conn.closeWrite();
+    }
+  };
+}
 
 /**
  * Read trailer headers from reader and append values to headers.
@@ -342,47 +383,50 @@ export function parseHTTPVersion(vers: string): [number, number] {
 
 export async function readRequest(
   conn: Deno.Conn,
-  bufr: BufReader
+  bufr: BufReader,
+  opts?: {
+    timeout?: number; // ms
+  }
 ): Promise<ServerRequest | Deno.EOF> {
-  const tp = new TextProtoReader(bufr);
-  const firstLine = await tp.readLine(); // e.g. GET /index.html HTTP/1.0
+  const tp = new TextProtoReader(conn.r);
+  const timeout = opts?.timeout;
+  // e.g. GET /index.html HTTP/1.0
+  const firstLine = await letTimeout(tp.readLine(), timeout);
   if (firstLine === Deno.EOF) return Deno.EOF;
-  const headers = await tp.readMIMEHeader();
+  const headers = await letTimeout(tp.readMIMEHeader(), timeout);
   if (headers === Deno.EOF) throw new Deno.errors.UnexpectedEof();
-
-  const req = new ServerRequest();
-  req.conn = conn;
-  req.r = bufr;
-  [req.method, req.url, req.proto] = firstLine.split(" ", 3);
-  [req.protoMinor, req.protoMajor] = parseHTTPVersion(req.proto);
-  req.headers = headers;
-  fixLength(req);
+  const [method, url, proto] = firstLine.split(" ", 3);
+  assert(
+    method != null && url != null && proto != null,
+    "Invalid request line"
+  );
+  const req = new ServerRequest({
+    method,
+    url,
+    proto,
+    headers,
+    conn,
+    r: bufr,
+    timeout
+  });
   return req;
 }
 
-function fixLength(req: ServerRequest): void {
-  const contentLength = req.headers.get("Content-Length");
-  if (contentLength) {
-    const arrClen = contentLength.split(",");
-    if (arrClen.length > 1) {
-      const distinct = [...new Set(arrClen.map((e): string => e.trim()))];
-      if (distinct.length > 1) {
-        throw Error("cannot contain multiple Content-Length headers");
-      } else {
-        req.headers.set("Content-Length", distinct[0]);
-      }
-    }
-    const c = req.headers.get("Content-Length");
-    if (req.method === "HEAD" && c && c !== "0") {
-      throw Error("http: method cannot contain a Content-Length");
-    }
-    if (c && req.headers.has("transfer-encoding")) {
-      // A sender MUST NOT send a Content-Length header field in any message
-      // that contains a Transfer-Encoding header field.
-      // rfc: https://tools.ietf.org/html/rfc7230#section-3.3.2
-      throw new Error(
-        "http: Transfer-Encoding and Content-Length cannot be send together"
-      );
+export type KeepAlive = {
+  timeout?: number;
+  max?: number;
+};
+
+export function parseKeepAlive(value: string): KeepAlive {
+  let timeout: number | undefined;
+  let max: number | undefined;
+  const kv = value.split(",").map(s => s.trim().split("="));
+  for (const [key, value] of kv) {
+    if (key === "timeout") {
+      timeout = parseInt(value);
+    } else if (key === "max") {
+      max = parseInt(value);
     }
   }
+  return { timeout, max };
 }

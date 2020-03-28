@@ -13,11 +13,11 @@ import {
   assertStrContains,
   assertThrowsAsync
 } from "../testing/asserts.ts";
-import { Response, ServerRequest, Server, serve } from "./server.ts";
+import { Response, Server, serve } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay } from "../util/async.ts";
 import { encode, decode } from "../strings/mod.ts";
-import { mockConn } from "./mock.ts";
+import { mockRequest } from "./testing.ts";
 
 const { Buffer, test } = Deno;
 
@@ -57,11 +57,9 @@ test(async function responseWrite(): Promise<void> {
   for (const testCase of responseTests) {
     const buf = new Buffer();
     const bufw = new BufWriter(buf);
-    const request = new ServerRequest();
-    request.w = bufw;
-
-    request.conn = mockConn();
-
+    const request = mockRequest({
+      w: bufw
+    });
     await request.respond(testCase.response);
     assertEquals(buf.toString(), testCase.raw);
     await request.done;
@@ -71,8 +69,7 @@ test(async function responseWrite(): Promise<void> {
 test(function requestContentLength(): void {
   // Has content length
   {
-    const req = new ServerRequest();
-    req.headers = new Headers();
+    const req = mockRequest();
     req.headers.set("content-length", "5");
     const buf = new Buffer(encode("Hello"));
     req.r = new BufReader(buf);
@@ -81,7 +78,7 @@ test(function requestContentLength(): void {
   // No content length
   {
     const shortText = "Hello";
-    const req = new ServerRequest();
+    const req = mockRequest();
     req.headers = new Headers();
     req.headers.set("transfer-encoding", "chunked");
     let chunksData = "";
@@ -123,7 +120,7 @@ function totalReader(r: Deno.Reader): TotalReader {
 }
 test(async function requestBodyWithContentLength(): Promise<void> {
   {
-    const req = new ServerRequest();
+    const req = mockRequest();
     req.headers = new Headers();
     req.headers.set("content-length", "5");
     const buf = new Buffer(encode("Hello"));
@@ -135,7 +132,7 @@ test(async function requestBodyWithContentLength(): Promise<void> {
   // Larger than internal buf
   {
     const longText = "1234\n".repeat(1000);
-    const req = new ServerRequest();
+    const req = mockRequest();
     req.headers = new Headers();
     req.headers.set("Content-Length", "5000");
     const buf = new Buffer(encode(longText));
@@ -147,7 +144,7 @@ test(async function requestBodyWithContentLength(): Promise<void> {
 });
 test("ServerRequest.finalize() should consume unread body / content-length", async () => {
   const text = "deno.land";
-  const req = new ServerRequest();
+  const req = mockRequest();
   req.headers = new Headers();
   req.headers.set("content-length", "" + text.length);
   const tr = totalReader(new Buffer(encode(text)));
@@ -171,7 +168,7 @@ test("ServerRequest.finalize() should consume unread body / chunked, trailers", 
     "",
     ""
   ].join("\r\n");
-  const req = new ServerRequest();
+  const req = mockRequest();
   req.headers = new Headers();
   req.headers.set("transfer-encoding", "chunked");
   req.headers.set("trailer", "deno,node");
@@ -193,7 +190,7 @@ test("ServerRequest.finalize() should consume unread body / chunked, trailers", 
 test(async function requestBodyWithTransferEncoding(): Promise<void> {
   {
     const shortText = "Hello";
-    const req = new ServerRequest();
+    const req = mockRequest();
     req.headers = new Headers();
     req.headers.set("transfer-encoding", "chunked");
     let chunksData = "";
@@ -217,7 +214,7 @@ test(async function requestBodyWithTransferEncoding(): Promise<void> {
   // Larger than internal buf
   {
     const longText = "1234\n".repeat(1000);
-    const req = new ServerRequest();
+    const req = mockRequest();
     req.headers = new Headers();
     req.headers.set("transfer-encoding", "chunked");
     let chunksData = "";
@@ -242,7 +239,7 @@ test(async function requestBodyWithTransferEncoding(): Promise<void> {
 test(async function requestBodyReaderWithContentLength(): Promise<void> {
   {
     const shortText = "Hello";
-    const req = new ServerRequest();
+    const req = mockRequest();
     req.headers = new Headers();
     req.headers.set("content-length", "" + shortText.length);
     const buf = new Buffer(encode(shortText));
@@ -263,7 +260,7 @@ test(async function requestBodyReaderWithContentLength(): Promise<void> {
   // Larger than given buf
   {
     const longText = "1234\n".repeat(1000);
-    const req = new ServerRequest();
+    const req = mockRequest();
     req.headers = new Headers();
     req.headers.set("Content-Length", "5000");
     const buf = new Buffer(encode(longText));
@@ -285,7 +282,7 @@ test(async function requestBodyReaderWithContentLength(): Promise<void> {
 test(async function requestBodyReaderWithTransferEncoding(): Promise<void> {
   {
     const shortText = "Hello";
-    const req = new ServerRequest();
+    const req = mockRequest();
     req.headers = new Headers();
     req.headers.set("transfer-encoding", "chunked");
     let chunksData = "";
@@ -318,7 +315,7 @@ test(async function requestBodyReaderWithTransferEncoding(): Promise<void> {
   // Larger than internal buf
   {
     const longText = "1234\n".repeat(1000);
-    const req = new ServerRequest();
+    const req = mockRequest();
     req.headers = new Headers();
     req.headers.set("transfer-encoding", "chunked");
     let chunksData = "";
