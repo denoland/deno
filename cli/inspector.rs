@@ -15,6 +15,8 @@ use futures::stream::FuturesOrdered;
 use futures::stream::FuturesUnordered;
 use futures::stream::SplitSink;
 use futures::stream::SplitStream;
+use futures::task;
+use futures::task::AtomicWaker;
 use futures::FutureExt;
 use futures::SinkExt;
 use futures::StreamExt;
@@ -285,6 +287,58 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
   future::join(msg_handler, web_handler).await;
 }
 
+/*
+struct DenoInspectorWaker {
+  default_loop_waker: AtomicWaker,
+  paused_loop_waker: AtomicWaker,
+  isolate_handle: v8::IsolateHandle,
+  interrupt_requested: AtomicBool,
+  waiting_for_poll: AtomicBool
+  waker: Option<Waker>
+}
+
+impl DenoInspectorWaker {
+  pub fn new(isolate_handle: v8::IsolateHandle) -> Arc<Self> {
+    let mut arc_self = Arc::new(Self {
+      default_loop_waker: AtomicWaker::new(),
+      paused_loop_waker: AtomicWaker::new(),
+      isolate_handle,
+      interrupt_requested: AtomicBool::new(false),
+      waiting_for_poll: AtomicBool::new(false),
+      waker: None
+    });
+
+    arc_self.waker = task::waker(arc_self.clone());
+    std::mem::forget(arc_self.clone());
+    assert_eq!(Arc::strong_count(&arc_self), 1);
+
+    arc_self
+  }
+
+  pub fn begin_poll(&self) -> bool {
+    self.waiting_for_poll.swap(false, Ordering::AcqRel);
+  }
+
+  pub fn set_default_loop_waker(&self, waker: &Waker) {
+    self.default_loop_waker.register(waker);
+  }
+
+  pub fn set_paused_loop_waker(&self, waker: &Waker) {
+    self.paused_loop_waker.register(waker);
+  }
+
+  pub fn waker(arc_self: &Arc<Self>) -> Waker {
+    task::waker(arc_self.clone)
+  }
+}
+
+impl ArcWake for DenoInspectorWaker {
+  fn wake_by_ref(arc_self: &Arc<Self>) {
+
+  }
+}
+*/
+
 pub struct DenoInspector {
   client: v8::inspector::V8InspectorClientBase,
   inspector: v8::UniqueRef<v8::inspector::V8Inspector>,
@@ -307,12 +361,12 @@ impl DenoInspector {
   where
     P: v8::InIsolate,
   {
-    let mut deno_inspector = new_box_with(|address| Self {
+    let mut deno_inspector = new_box_with(|client_address| Self {
       client: v8::inspector::V8InspectorClientBase::new::<Self>(),
       // TODO(piscisaureus): V8Inspector::create() should require that
       // the 'client' argument cannot move.
       inspector: v8::inspector::V8Inspector::create(scope, unsafe {
-        &mut *address
+        &mut *client_address
       }),
       sessions2: FuturesUnordered::new(),
       frontend_to_inspector_rx,
