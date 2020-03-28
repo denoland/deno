@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::DocParser;
+use crate::colors;
 use serde_json;
 use serde_json::json;
 
@@ -61,7 +62,10 @@ export function foo(a: string, b: number): void {
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
 
-  assert!(super::printer::format(entries).contains("Hello there"));
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("Hello there")
+  );
 }
 
 #[test]
@@ -90,7 +94,10 @@ fn export_const() {
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
 
-  assert!(super::printer::format(entries).contains("Something about fizzBuzz"));
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("Something about fizzBuzz")
+  );
 }
 
 #[test]
@@ -299,7 +306,10 @@ export class Foobar extends Fizz implements Buzz {
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
 
-  assert!(super::printer::format(entries).contains("class Foobar"));
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("class Foobar")
+  );
 }
 
 #[test]
@@ -381,7 +391,10 @@ export interface Reader {
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
 
-  assert!(super::printer::format(entries).contains("interface Reader"));
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("interface Reader")
+  );
 }
 
 #[test]
@@ -424,7 +437,10 @@ export type NumberArray = Array<number>;
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
 
-  assert!(super::printer::format(entries).contains("Array holding numbers"));
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("Array holding numbers")
+  );
 }
 
 #[test]
@@ -470,9 +486,14 @@ export enum Hello {
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
 
-  assert!(super::printer::format(entries.clone())
-    .contains("Some enum for good measure"));
-  assert!(super::printer::format(entries).contains("enum Hello"));
+  assert!(colors::strip_ansi_codes(
+    super::printer::format(entries.clone()).as_str()
+  )
+  .contains("Some enum for good measure"));
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("enum Hello")
+  );
 }
 
 #[test]
@@ -564,5 +585,8 @@ export namespace RootNs {
   });
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
-  assert!(super::printer::format(entries).contains("namespace RootNs"));
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("namespace RootNs")
+  );
 }
