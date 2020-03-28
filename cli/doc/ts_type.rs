@@ -166,7 +166,7 @@ impl Into<TsTypeDef> for &TsKeywordType {
       TsNumberKeyword => "number",
       TsObjectKeyword => "object",
       TsBooleanKeyword => "boolean",
-      TsBigIntKeyword => "BigInt",
+      TsBigIntKeyword => "bigint",
       TsStringKeyword => "string",
       TsSymbolKeyword => "symbol",
       TsVoidKeyword => "void",
