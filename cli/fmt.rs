@@ -158,7 +158,7 @@ pub fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
       let p = PathBuf::from(arg);
       if p.is_dir() {
         target_files.extend(files_in_subtree(p, is_supported));
-      } else {
+      } else if is_supported(&p) {
         target_files.push(p);
       };
     }
