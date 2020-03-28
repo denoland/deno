@@ -7,6 +7,6 @@ export function isatty(rid: number): boolean {
 export function setRaw(rid: number, mode: boolean): void {
   sendSync("op_set_raw", {
     rid,
-    mode
+    mode,
   });
 }

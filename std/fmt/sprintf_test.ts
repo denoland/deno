@@ -229,7 +229,6 @@ const tests: Array<[string, any, string]> = [
   ["%d", 12345, "12345"],
   ["%v", 12345, "12345"],
   ["%t", true, "true"],
-
   // basic string
   ["%s", "abc", "abc"],
   // ["%q", "abc", `"abc"`], // TODO: need %q?
@@ -248,7 +247,6 @@ const tests: Array<[string, any, string]> = [
   ["%#X", "xyz", "0X78797A"],
   ["%# x", "xyz", "0x78 0x79 0x7a"],
   ["%# X", "xyz", "0X78 0X79 0X7A"],
-
   // basic bytes : TODO special handling for Buffer? other std types?
   // escaped strings : TODO decide whether to have %q
 
@@ -261,7 +259,6 @@ const tests: Array<[string, any, string]> = [
   ["%.0c", "⌘".charCodeAt(0), "⌘"],
   ["%3c", "⌘".charCodeAt(0), "  ⌘"],
   ["%-3c", "⌘".charCodeAt(0), "⌘  "],
-
   // Runes that are not printable.
   // {"%c", '\U00000e00', "\u0e00"}, // TODO check if \U escape exists in js
   //["%c", '\U0010ffff'.codePointAt(0), "\U0010ffff"],
@@ -273,7 +270,6 @@ const tests: Array<[string, any, string]> = [
   // ["%c", 0xDC80, "�"],
   ["%c", 0x110000, "�"],
   ["%c", 0xfffffffff, "�"],
-
   // TODO
   // escaped characters
   // Runes that are not printable.
@@ -351,7 +347,6 @@ const tests: Array<[string, any, string]> = [
   ["%-#20.8x", 0x1234abc, "0x01234abc          "],
   ["%-#20.8X", 0x1234abc, "0X01234ABC          "],
   ["%-#20.8o", parseInt("01234", 8), "00001234            "],
-
   // Test correct f.intbuf overflow checks. // TODO, lazy
   // unicode format // TODO, decide whether unicode verb makes sense %U
 
@@ -433,7 +428,6 @@ const tests: Array<[string, any, string]> = [
   ["%+020e", Number.POSITIVE_INFINITY, "                +Inf"],
   ["%-020f", Number.NEGATIVE_INFINITY, "-Inf                "],
   ["%-020E", NaN, "NaN                 "],
-
   // complex values // go specific
   // old test/fmt_test.go
   ["%e", 1.0, "1.000000e+00"],
@@ -490,7 +484,6 @@ const tests: Array<[string, any, string]> = [
   ["%g", 1.23456789e-3, "0.00123457"], // see above prec6 = precdef6 - (-3+1)
   //["%g", 1.23456789e20, "1.23456789e+20"],
   ["%g", 1.23456789e20, "1.23457e+20"],
-
   // arrays // TODO
   // slice : go specific
 
@@ -527,7 +520,6 @@ const tests: Array<[string, any, string]> = [
   ["% -010X", "\xab", "AB        "],
   ["%#-10X", "\xab\xcd", "0XABCD    "],
   ["%# -010X", "\xab\xcd", "0XAB 0XCD "],
-
   // renamings
   // Formatter
   // GoStringer
@@ -541,7 +533,6 @@ const tests: Array<[string, any, string]> = [
   ["%T", S, "function"],
   ["%T", true, "boolean"],
   ["%T", Symbol(), "symbol"],
-
   // %p with pointers
 
   // erroneous things
@@ -582,7 +573,7 @@ const tests: Array<[string, any, string]> = [
   ["%+07.2f", 1.0, "+001.00"],
   ["%+07.2f", -1.0, "-001.00"],
   ["% +07.2f", 1.0, "+001.00"],
-  ["% +07.2f", -1.0, "-001.00"]
+  ["% +07.2f", -1.0, "-001.00"],
 ];
 
 Deno.test(function testThorough(): void {

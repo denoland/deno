@@ -3,7 +3,7 @@ import {
   assertEquals,
   assertMatch,
   unitTest,
-  unreachable
+  unreachable,
 } from "./test_util.ts";
 
 const readErrorStackPattern = new RegExp(

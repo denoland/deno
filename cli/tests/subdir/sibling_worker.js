@@ -1,4 +1,4 @@
-onmessage = e => {
+onmessage = (e) => {
   postMessage(e.data);
   close();
 };

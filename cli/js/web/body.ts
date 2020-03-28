@@ -124,7 +124,7 @@ export const BodyUsedError =
   "Failed to execute 'clone' on 'Body': body is already used";
 
 export class Body implements domTypes.Body {
-  protected _stream: domTypes.ReadableStream | null;
+  protected _stream: domTypes.ReadableStream<string | ArrayBuffer> | null;
 
   constructor(protected _bodySource: BodySource, readonly contentType: string) {
     validateBodyType(this, _bodySource);
@@ -148,8 +148,8 @@ export class Body implements domTypes.Body {
         start(controller: ReadableStreamController): void {
           controller.enqueue(bodySource);
           controller.close();
-        }
-      });
+        },
+      }) as domTypes.ReadableStream<ArrayBuffer | string>;
     }
     return this._stream;
   }
@@ -247,7 +247,7 @@ export class Body implements domTypes.Body {
         if (dispositionParams.has("filename")) {
           const filename = dispositionParams.get("filename")!;
           const blob = new DenoBlob([enc.encode(octets)], {
-            type: partContentType
+            type: partContentType,
           });
           // TODO: based on spec
           // https://xhr.spec.whatwg.org/#dom-formdata-append

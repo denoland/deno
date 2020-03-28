@@ -54,7 +54,7 @@ function patchCallSite(callSite: CallSite, location: Location): CallSite {
     },
     getPromiseIndex(): number | null {
       return callSite.getPromiseIndex();
-    }
+    },
   };
 }
 
@@ -181,7 +181,7 @@ function prepareStackTrace(
               applySourceMap({
                 filename,
                 line,
-                column
+                column,
               })
             );
           }

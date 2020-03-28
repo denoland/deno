@@ -13,10 +13,10 @@ test(function deepAssignTest(): void {
   const expected = {
     foo: {
       deno: new Date("1979-05-27T07:32:00Z"),
-      bar: "deno"
+      bar: "deno",
     },
     deno: { bar: { deno: ["is", "not", "node"] } },
-    reg: RegExp(/DENOWOWO/)
+    reg: RegExp(/DENOWOWO/),
   };
   assert(date !== expected.foo.deno);
   assert(reg !== expected.reg);

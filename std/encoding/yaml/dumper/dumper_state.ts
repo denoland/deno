@@ -121,7 +121,7 @@ export class DumperState extends State {
     lineWidth = 80,
     noRefs = false,
     noCompatMode = false,
-    condenseFlow = false
+    condenseFlow = false,
   }: DumperStateOptions) {
     super(schema);
     this.indent = Math.max(1, indent);
