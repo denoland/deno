@@ -108,7 +108,7 @@ export class DatagramImpl implements DatagramConn {
   }
 
   async send(p: Uint8Array, addr: Addr): Promise<void> {
-    const remote = { hostname: "127.0.0.1", transport: "udp", ...addr };
+    const remote = { hostname: "127.0.0.1", ...addr };
 
     const args = { ...remote, rid: this.rid };
     await netOps.send(args as netOps.SendRequest, p);
