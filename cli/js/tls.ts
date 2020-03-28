@@ -15,13 +15,13 @@ export async function connectTLS({
   port,
   hostname = "127.0.0.1",
   transport = "tcp",
-  certFile = undefined
+  certFile = undefined,
 }: ConnectTLSOptions): Promise<Conn> {
   const res = await tlsOps.connectTLS({
     port,
     hostname,
     transport,
-    certFile
+    certFile,
   });
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
@@ -46,14 +46,14 @@ export function listenTLS({
   certFile,
   keyFile,
   hostname = "0.0.0.0",
-  transport = "tcp"
+  transport = "tcp",
 }: ListenTLSOptions): Listener {
   const res = tlsOps.listenTLS({
     port,
     certFile,
     keyFile,
     hostname,
-    transport
+    transport,
   });
   return new TLSListenerImpl(res.rid, res.localAddr);
 }

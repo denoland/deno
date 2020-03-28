@@ -149,8 +149,8 @@ interface Encoder {
 }
 
 class SingleByteDecoder implements Decoder {
-  private _index: number[];
-  private _fatal: boolean;
+  #index: number[];
+  #fatal: boolean;
 
   constructor(
     index: number[],
@@ -159,20 +159,20 @@ class SingleByteDecoder implements Decoder {
     if (ignoreBOM) {
       throw new TypeError("Ignoring the BOM is available only with utf-8.");
     }
-    this._fatal = fatal;
-    this._index = index;
+    this.#fatal = fatal;
+    this.#index = index;
   }
-  handler(stream: Stream, byte: number): number {
+  handler(_stream: Stream, byte: number): number {
     if (byte === END_OF_STREAM) {
       return FINISHED;
     }
     if (isASCIIByte(byte)) {
       return byte;
     }
-    const codePoint = this._index[byte - 0x80];
+    const codePoint = this.#index[byte - 0x80];
 
     if (codePoint == null) {
-      return decoderError(this._fatal);
+      return decoderError(this.#fatal);
     }
 
     return codePoint;
@@ -199,9 +199,9 @@ const encodingMap: { [key: string]: string[] } = {
     "latin1",
     "us-ascii",
     "windows-1252",
-    "x-cp1252"
+    "x-cp1252",
   ],
-  "utf-8": ["unicode-1-1-utf-8", "utf-8", "utf8"]
+  "utf-8": ["unicode-1-1-utf-8", "utf-8", "utf8"],
 };
 // We convert these into a Map where every label resolves to its canonical
 // encoding type.
@@ -221,13 +221,134 @@ const decoders = new Map<string, (options: DecoderOptions) => Decoder>();
 const encodingIndexes = new Map<string, number[]>();
 // prettier-ignore
 encodingIndexes.set("windows-1252", [
-  8364,129,8218,402,8222,8230,8224,8225,710,8240,352,8249,338,141,381,143,144,
-  8216,8217,8220,8221,8226,8211,8212,732,8482,353,8250,339,157,382,376,160,161,
-  162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,
-  181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,
-  200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,
-  219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,
-  238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255
+  8364,
+  129,
+  8218,
+  402,
+  8222,
+  8230,
+  8224,
+  8225,
+  710,
+  8240,
+  352,
+  8249,
+  338,
+  141,
+  381,
+  143,
+  144,
+  8216,
+  8217,
+  8220,
+  8221,
+  8226,
+  8211,
+  8212,
+  732,
+  8482,
+  353,
+  8250,
+  339,
+  157,
+  382,
+  376,
+  160,
+  161,
+  162,
+  163,
+  164,
+  165,
+  166,
+  167,
+  168,
+  169,
+  170,
+  171,
+  172,
+  173,
+  174,
+  175,
+  176,
+  177,
+  178,
+  179,
+  180,
+  181,
+  182,
+  183,
+  184,
+  185,
+  186,
+  187,
+  188,
+  189,
+  190,
+  191,
+  192,
+  193,
+  194,
+  195,
+  196,
+  197,
+  198,
+  199,
+  200,
+  201,
+  202,
+  203,
+  204,
+  205,
+  206,
+  207,
+  208,
+  209,
+  210,
+  211,
+  212,
+  213,
+  214,
+  215,
+  216,
+  217,
+  218,
+  219,
+  220,
+  221,
+  222,
+  223,
+  224,
+  225,
+  226,
+  227,
+  228,
+  229,
+  230,
+  231,
+  232,
+  233,
+  234,
+  235,
+  236,
+  237,
+  238,
+  239,
+  240,
+  241,
+  242,
+  243,
+  244,
+  245,
+  246,
+  247,
+  248,
+  249,
+  250,
+  251,
+  252,
+  253,
+  254,
+  255
 ]);
 for (const [key, index] of encodingIndexes) {
   decoders.set(
@@ -247,37 +368,37 @@ function codePointsToString(codePoints: number[]): string {
 }
 
 class Stream {
-  private _tokens: number[];
+  #tokens: number[];
   constructor(tokens: number[] | Uint8Array) {
-    this._tokens = [].slice.call(tokens);
-    this._tokens.reverse();
+    this.#tokens = [...tokens];
+    this.#tokens.reverse();
   }
 
   endOfStream(): boolean {
-    return !this._tokens.length;
+    return !this.#tokens.length;
   }
 
   read(): number {
-    return !this._tokens.length ? END_OF_STREAM : this._tokens.pop()!;
+    return !this.#tokens.length ? END_OF_STREAM : this.#tokens.pop()!;
   }
 
   prepend(token: number | number[]): void {
     if (Array.isArray(token)) {
       while (token.length) {
-        this._tokens.push(token.pop()!);
+        this.#tokens.push(token.pop()!);
       }
     } else {
-      this._tokens.push(token);
+      this.#tokens.push(token);
     }
   }
 
   push(token: number | number[]): void {
     if (Array.isArray(token)) {
       while (token.length) {
-        this._tokens.unshift(token.shift()!);
+        this.#tokens.unshift(token.shift()!);
       }
     } else {
-      this._tokens.unshift(token);
+      this.#tokens.unshift(token);
     }
   }
 }
@@ -299,10 +420,10 @@ function isEitherArrayBuffer(x: any): x is EitherArrayBuffer {
 }
 
 export class TextDecoder {
-  private _encoding: string;
+  #encoding: string;
 
   get encoding(): string {
-    return this._encoding;
+    return this.#encoding;
   }
   readonly fatal: boolean = false;
   readonly ignoreBOM: boolean = false;
@@ -314,9 +435,7 @@ export class TextDecoder {
     if (options.fatal) {
       this.fatal = true;
     }
-    label = String(label)
-      .trim()
-      .toLowerCase();
+    label = String(label).trim().toLowerCase();
     const encoding = encodings.get(label);
     if (!encoding) {
       throw new RangeError(
@@ -326,7 +445,7 @@ export class TextDecoder {
     if (!decoders.has(encoding) && encoding !== "utf-8") {
       throw new TypeError(`Internal decoder ('${encoding}') not found.`);
     }
-    this._encoding = encoding;
+    this.#encoding = encoding;
   }
 
   decode(
@@ -354,7 +473,7 @@ export class TextDecoder {
 
     // For simple utf-8 decoding "Deno.core.decode" can be used for performance
     if (
-      this._encoding === "utf-8" &&
+      this.#encoding === "utf-8" &&
       this.fatal === false &&
       this.ignoreBOM === false
     ) {
@@ -363,13 +482,13 @@ export class TextDecoder {
 
     // For performance reasons we utilise a highly optimised decoder instead of
     // the general decoder.
-    if (this._encoding === "utf-8") {
+    if (this.#encoding === "utf-8") {
       return decodeUtf8(bytes, this.fatal, this.ignoreBOM);
     }
 
-    const decoder = decoders.get(this._encoding)!({
+    const decoder = decoders.get(this.#encoding)!({
       fatal: this.fatal,
-      ignoreBOM: this.ignoreBOM
+      ignoreBOM: this.ignoreBOM,
     });
     const inputStream = new Stream(bytes);
     const output: number[] = [];
@@ -455,7 +574,7 @@ export class TextEncoder {
 
     return {
       read,
-      written
+      written,
     };
   }
   get [Symbol.toStringTag](): string {

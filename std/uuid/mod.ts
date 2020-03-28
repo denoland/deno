@@ -14,7 +14,7 @@ const NOT_IMPLEMENTED = {
   },
   validate(): never {
     throw new Error("Not implemented");
-  }
+  },
 };
 
 // TODO Implement

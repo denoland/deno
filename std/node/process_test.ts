@@ -14,7 +14,7 @@ test({
     assert(process.cwd().match(/\Wnode$/));
     process.chdir("..");
     assert(process.cwd().match(/\Wstd$/));
-  }
+  },
 });
 
 test({
@@ -30,7 +30,7 @@ test({
       // "The system cannot find the file specified. (os error 2)" so "file" is
       // the only common string here.
     );
-  }
+  },
 });
 
 test({
@@ -40,14 +40,14 @@ test({
     assertEquals(typeof process.version, "string");
     assertEquals(typeof process.versions, "object");
     assertEquals(typeof process.versions.node, "string");
-  }
+  },
 });
 
 test({
   name: "process.platform",
   fn() {
     assertEquals(typeof process.platform, "string");
-  }
+  },
 });
 
 test({
@@ -56,7 +56,7 @@ test({
     assertEquals(typeof process.arch, "string");
     // TODO(rsp): make sure that the arch strings should be the same in Node and Deno:
     assertEquals(process.arch, Deno.build.arch);
-  }
+  },
 });
 
 test({
@@ -64,7 +64,7 @@ test({
   fn() {
     assertEquals(typeof process.pid, "number");
     assertEquals(process.pid, Deno.pid);
-  }
+  },
 });
 
 test({
@@ -78,7 +78,7 @@ test({
       Error,
       "implemented"
     );
-  }
+  },
 });
 
 test({
@@ -90,12 +90,12 @@ test({
       "deno included in the file name of argv[0]"
     );
     // we cannot test for anything else (we see test runner arguments here)
-  }
+  },
 });
 
 test({
   name: "process.env",
   fn() {
     assertEquals(typeof process.env.PATH, "string");
-  }
+  },
 });

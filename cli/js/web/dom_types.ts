@@ -68,7 +68,7 @@ interface AbortSignalEventMap {
 export enum NodeType {
   ELEMENT_NODE = 1,
   TEXT_NODE = 3,
-  DOCUMENT_FRAGMENT_NODE = 11
+  DOCUMENT_FRAGMENT_NODE = 11,
 }
 
 export const eventTargetHost: unique symbol = Symbol();
@@ -153,7 +153,7 @@ export enum EventPhase {
   NONE = 0,
   CAPTURING_PHASE = 1,
   AT_TARGET = 2,
-  BUBBLING_PHASE = 3
+  BUBBLING_PHASE = 3,
 }
 
 export interface EventPath {
@@ -280,7 +280,7 @@ export interface Blob {
 }
 
 export interface Body {
-  readonly body: ReadableStream | null;
+  readonly body: ReadableStream<Uint8Array> | null;
   readonly bodyUsed: boolean;
   arrayBuffer(): Promise<ArrayBuffer>;
   blob(): Promise<Blob>;
@@ -289,11 +289,78 @@ export interface Body {
   text(): Promise<string>;
 }
 
-export interface ReadableStream {
+export interface ReadableStreamReadDoneResult<T> {
+  done: true;
+  value?: T;
+}
+
+export interface ReadableStreamReadValueResult<T> {
+  done: false;
+  value: T;
+}
+
+export type ReadableStreamReadResult<T> =
+  | ReadableStreamReadValueResult<T>
+  | ReadableStreamReadDoneResult<T>;
+
+export interface ReadableStreamDefaultReader<R = any> {
+  readonly closed: Promise<void>;
+  cancel(reason?: any): Promise<void>;
+  read(): Promise<ReadableStreamReadResult<R>>;
+  releaseLock(): void;
+}
+
+export interface PipeOptions {
+  preventAbort?: boolean;
+  preventCancel?: boolean;
+  preventClose?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface ReadableStream<R = any> {
   readonly locked: boolean;
   cancel(reason?: any): Promise<void>;
-  getReader(): ReadableStreamReader;
-  tee(): ReadableStream[];
+  getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
+  getReader(): ReadableStreamDefaultReader<R>;
+  /* disabled for now
+  pipeThrough<T>(
+    {
+      writable,
+      readable
+    }: {
+      writable: WritableStream<R>;
+      readable: ReadableStream<T>;
+    },
+    options?: PipeOptions
+  ): ReadableStream<T>;
+  pipeTo(dest: WritableStream<R>, options?: PipeOptions): Promise<void>;
+  */
+  tee(): [ReadableStream<R>, ReadableStream<R>];
+}
+
+export interface ReadableStreamBYOBReader {
+  readonly closed: Promise<void>;
+  cancel(reason?: any): Promise<void>;
+  read<T extends ArrayBufferView>(
+    view: T
+  ): Promise<ReadableStreamReadResult<T>>;
+  releaseLock(): void;
+}
+
+export interface WritableStream<W = any> {
+  readonly locked: boolean;
+  abort(reason?: any): Promise<void>;
+  getWriter(): WritableStreamDefaultWriter<W>;
+}
+
+export interface WritableStreamDefaultWriter<W = any> {
+  readonly closed: Promise<void>;
+  readonly desiredSize: number | null;
+  readonly ready: Promise<void>;
+  abort(reason?: any): Promise<void>;
+  close(): Promise<void>;
+  releaseLock(): void;
+  write(chunk: W): Promise<void>;
 }
 
 export interface UnderlyingSource<R = any> {
@@ -311,9 +378,9 @@ export interface UnderlyingByteSource {
   type: "bytes";
 }
 
-export interface ReadableStreamReader {
-  cancel(reason?: any): Promise<void>;
-  read(): Promise<any>;
+export interface ReadableStreamReader<R = any> {
+  cancel(reason: any): Promise<void>;
+  read(): Promise<ReadableStreamReadResult<R>>;
   releaseLock(): void;
 }
 
@@ -530,12 +597,20 @@ export interface Response extends Body {
   clone(): Response;
 }
 
+export interface DOMStringList {
+  readonly length: number;
+  contains(string: string): boolean;
+  item(index: number): string | null;
+  [index: number]: string;
+}
+
 export interface Location {
-  readonly ancestorOrigins: string[];
+  readonly ancestorOrigins: DOMStringList;
   hash: string;
   host: string;
   hostname: string;
   href: string;
+  toString(): string;
   readonly origin: string;
   pathname: string;
   port: string;
@@ -543,6 +618,72 @@ export interface Location {
   search: string;
   assign(url: string): void;
   reload(): void;
-  reload(forcedReload: boolean): void;
   replace(url: string): void;
+}
+
+export interface URL {
+  hash: string;
+  host: string;
+  hostname: string;
+  href: string;
+  toString(): string;
+  readonly origin: string;
+  password: string;
+  pathname: string;
+  port: string;
+  protocol: string;
+  search: string;
+  readonly searchParams: URLSearchParams;
+  username: string;
+  toJSON(): string;
+}
+
+export interface URLSearchParams {
+  /**
+   * Appends a specified key/value pair as a new search parameter.
+   */
+  append(name: string, value: string): void;
+  /**
+   * Deletes the given search parameter, and its associated value, from the list of all search parameters.
+   */
+  delete(name: string): void;
+  /**
+   * Returns the first value associated to the given search parameter.
+   */
+  get(name: string): string | null;
+  /**
+   * Returns all the values association with a given search parameter.
+   */
+  getAll(name: string): string[];
+  /**
+   * Returns a Boolean indicating if such a search parameter exists.
+   */
+  has(name: string): boolean;
+  /**
+   * Sets the value associated to a given search parameter to the given value. If there were several values, delete the others.
+   */
+  set(name: string, value: string): void;
+  sort(): void;
+  /**
+   * Returns a string containing a query string suitable for use in a URL. Does not include the question mark.
+   */
+  toString(): string;
+  forEach(
+    callbackfn: (value: string, key: string, parent: URLSearchParams) => void,
+    thisArg?: any
+  ): void;
+
+  [Symbol.iterator](): IterableIterator<[string, string]>;
+  /**
+   * Returns an array of key, value pairs for every entry in the search params.
+   */
+  entries(): IterableIterator<[string, string]>;
+  /**
+   * Returns a list of keys in the search params.
+   */
+  keys(): IterableIterator<string>;
+  /**
+   * Returns a list of values in the search params.
+   */
+  values(): IterableIterator<string>;
 }

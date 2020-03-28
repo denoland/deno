@@ -168,7 +168,7 @@ export function listen(
     res = netOps.listen({
       transport: "tcp",
       hostname: "127.0.0.1",
-      ...(options as ListenOptions)
+      ...(options as ListenOptions),
     });
   }
 
@@ -205,7 +205,7 @@ export async function connect(
     res = await netOps.connect({
       transport: "tcp",
       hostname: "127.0.0.1",
-      ...options
+      ...options,
     });
   }
 

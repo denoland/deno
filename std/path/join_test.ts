@@ -53,7 +53,7 @@ const joinTests =
     [["/", "//foo"], "/foo"],
     [["/", "", "/foo"], "/foo"],
     [["", "/", "foo"], "/foo"],
-    [["", "/", "/foo"], "/foo"]
+    [["", "/", "/foo"], "/foo"],
   ];
 
 // Windows-specific join tests
@@ -103,11 +103,11 @@ const windowsJoinTests = [
   [["c:.", "/"], "c:.\\"],
   [["c:.", "file"], "c:file"],
   [["c:", "/"], "c:\\"],
-  [["c:", "file"], "c:\\file"]
+  [["c:", "file"], "c:\\file"],
 ];
 
 test(function join() {
-  joinTests.forEach(function(p) {
+  joinTests.forEach(function (p) {
     const _p = p[0] as string[];
     const actual = path.posix.join.apply(null, _p);
     assertEquals(actual, p[1]);
@@ -115,12 +115,12 @@ test(function join() {
 });
 
 test(function joinWin32() {
-  joinTests.forEach(function(p) {
+  joinTests.forEach(function (p) {
     const _p = p[0] as string[];
     const actual = path.win32.join.apply(null, _p).replace(backslashRE, "/");
     assertEquals(actual, p[1]);
   });
-  windowsJoinTests.forEach(function(p) {
+  windowsJoinTests.forEach(function (p) {
     const _p = p[0] as string[];
     const actual = path.win32.join.apply(null, _p);
     assertEquals(actual, p[1]);

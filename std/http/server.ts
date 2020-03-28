@@ -349,7 +349,7 @@ export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport"> &
 export function serveTLS(options: HTTPSOptions): Server {
   const tlsOptions: Deno.ListenTLSOptions = {
     ...options,
-    transport: "tcp"
+    transport: "tcp",
   };
   const listener = listenTLS(tlsOptions);
   const serveOpts: ServeOptions = {

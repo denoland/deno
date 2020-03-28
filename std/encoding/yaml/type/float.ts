@@ -121,5 +121,5 @@ export const float = new Type("tag:yaml.org,2002:float", {
   kind: "scalar",
   predicate: isFloat,
   represent: representYamlFloat,
-  resolve: resolveYamlFloat
+  resolve: resolveYamlFloat,
 });

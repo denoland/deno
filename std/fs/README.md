@@ -52,7 +52,7 @@ created.
 ```ts
 import {
   ensureSymlink,
-  ensureSymlinkSync
+  ensureSymlinkSync,
 } from "https://deno.land/std/fs/mod.ts";
 
 ensureSymlink(
@@ -110,7 +110,7 @@ import { globToRegExp } from "https://deno.land/std/fs/mod.ts";
 globToRegExp("foo/**/*.json", {
   flags: "g",
   extended: true,
-  globstar: true
+  globstar: true,
 }); // returns the regex to find all .json files in the folder foo
 ```
 
@@ -212,7 +212,7 @@ Write the string to file.
 ```ts
 import {
   writeFileStr,
-  writeFileStrSync
+  writeFileStrSync,
 } from "https://deno.land/std/fs/mod.ts";
 
 writeFileStr("./target.dat", "file content"); // returns a promise

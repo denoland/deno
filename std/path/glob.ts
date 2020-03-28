@@ -44,7 +44,7 @@ export function globToRegExp(
     extended,
     globstar,
     strict: false,
-    filepath: true
+    filepath: true,
   });
   assert(result.path != null);
   return result.path.regex;

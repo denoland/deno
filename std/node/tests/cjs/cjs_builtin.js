@@ -6,5 +6,5 @@ const path = require("path");
 module.exports = {
   readFileSync: fs.readFileSync,
   isNull: util.isNull,
-  extname: path.extname
+  extname: path.extname,
 };

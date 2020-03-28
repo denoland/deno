@@ -3,7 +3,7 @@ import {
   unitTest,
   assert,
   assertEquals,
-  createResolvable
+  createResolvable,
 } from "./test_util.ts";
 
 unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
@@ -18,13 +18,13 @@ unitTest(
   {
     perms: { net: true },
     // TODO:
-    ignore: Deno.build.os === "win"
+    ignore: Deno.build.os === "win",
   },
   function netUdpListenClose(): void {
     const socket = Deno.listen({
       hostname: "127.0.0.1",
       port: 4500,
-      transport: "udp"
+      transport: "udp",
     });
     assert(socket.addr.transport === "udp");
     assertEquals(socket.addr.hostname, "127.0.0.1");
@@ -39,7 +39,7 @@ unitTest(
     const filePath = Deno.makeTempFileSync();
     const socket = Deno.listen({
       address: filePath,
-      transport: "unix"
+      transport: "unix",
     });
     assert(socket.addr.transport === "unix");
     assertEquals(socket.addr.address, filePath);
@@ -53,7 +53,7 @@ unitTest(
     const filePath = Deno.makeTempFileSync();
     const socket = Deno.listen({
       address: filePath,
-      transport: "unixpacket"
+      transport: "unixpacket",
     });
     assert(socket.addr.transport === "unixpacket");
     assertEquals(socket.addr.address, filePath);
@@ -63,7 +63,7 @@ unitTest(
 
 unitTest(
   {
-    perms: { net: true }
+    perms: { net: true },
   },
   async function netTcpCloseWhileAccept(): Promise<void> {
     const listener = Deno.listen({ port: 4501 });
@@ -87,7 +87,7 @@ unitTest(
     const filePath = await Deno.makeTempFile();
     const listener = Deno.listen({
       address: filePath,
-      transport: "unix"
+      transport: "unix",
     });
     const p = listener.accept();
     listener.close();
@@ -337,7 +337,7 @@ unitTest(
   {
     // FIXME(bartlomieju)
     ignore: true,
-    perms: { net: true }
+    perms: { net: true },
   },
   async function netListenAsyncIterator(): Promise<void> {
     const addr = { hostname: "127.0.0.1", port: 4500 };
@@ -372,14 +372,14 @@ unitTest(
   {
     // FIXME(bartlomieju)
     ignore: true,
-    perms: { net: true }
+    perms: { net: true },
   },
   async function netCloseReadSuccess() {
     const addr = { hostname: "127.0.0.1", port: 4500 };
     const listener = Deno.listen(addr);
     const closeDeferred = createResolvable();
     const closeReadDeferred = createResolvable();
-    listener.accept().then(async conn => {
+    listener.accept().then(async (conn) => {
       await closeReadDeferred;
       await conn.write(new Uint8Array([1, 2, 3]));
       const buf = new Uint8Array(1024);
@@ -409,13 +409,13 @@ unitTest(
   {
     // FIXME(bartlomieju)
     ignore: true,
-    perms: { net: true }
+    perms: { net: true },
   },
   async function netDoubleCloseRead() {
     const addr = { hostname: "127.0.0.1", port: 4500 };
     const listener = Deno.listen(addr);
     const closeDeferred = createResolvable();
-    listener.accept().then(async conn => {
+    listener.accept().then(async (conn) => {
       await conn.write(new Uint8Array([1, 2, 3]));
       await closeDeferred;
       conn.close();
@@ -441,13 +441,13 @@ unitTest(
   {
     // FIXME(bartlomieju)
     ignore: true,
-    perms: { net: true }
+    perms: { net: true },
   },
   async function netCloseWriteSuccess() {
     const addr = { hostname: "127.0.0.1", port: 4500 };
     const listener = Deno.listen(addr);
     const closeDeferred = createResolvable();
-    listener.accept().then(async conn => {
+    listener.accept().then(async (conn) => {
       await conn.write(new Uint8Array([1, 2, 3]));
       await closeDeferred;
       conn.close();
@@ -480,13 +480,13 @@ unitTest(
   {
     // FIXME(bartlomieju)
     ignore: true,
-    perms: { net: true }
+    perms: { net: true },
   },
   async function netDoubleCloseWrite() {
     const addr = { hostname: "127.0.0.1", port: 4500 };
     const listener = Deno.listen(addr);
     const closeDeferred = createResolvable();
-    listener.accept().then(async conn => {
+    listener.accept().then(async (conn) => {
       await closeDeferred;
       conn.close();
     });
@@ -509,7 +509,7 @@ unitTest(
 
 unitTest(
   {
-    perms: { net: true }
+    perms: { net: true },
   },
   async function netHangsOnClose() {
     let acceptedConn: Deno.Conn;

@@ -44,7 +44,7 @@ Deno.test({
   fn(): void {
     assertEquals("world", "world");
     assertEquals({ hello: "world" }, { hello: "world" });
-  }
+  },
 });
 
 await Deno.runTests();
@@ -165,7 +165,7 @@ bench({
     b.start();
     for (let i = 0; i < 1e6; i++);
     b.stop();
-  }
+  },
 });
 ```
 

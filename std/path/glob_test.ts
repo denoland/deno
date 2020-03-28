@@ -32,17 +32,17 @@ test({
     );
     assertEquals(
       globToRegExp(join("unicorn", "!(sleeping)", "bathroom.ts"), {
-        extended: true
+        extended: true,
       }).test(join("unicorn", "flying", "bathroom.ts")),
       true
     );
     assertEquals(
       globToRegExp(join("unicorn", "(!sleeping)", "bathroom.ts"), {
-        extended: true
+        extended: true,
       }).test(join("unicorn", "sleeping", "bathroom.ts")),
       false
     );
-  }
+  },
 });
 
 testWalk(
@@ -55,7 +55,7 @@ testWalk(
   },
   async function globInWalkWildcard(): Promise<void> {
     const arr = await walkArray(".", {
-      match: [globToRegExp(join("*", "*.ts"))]
+      match: [globToRegExp(join("*", "*.ts"))],
     });
     assertEquals(arr.length, 2);
     assertEquals(arr[0], "a/x.ts");
@@ -74,9 +74,9 @@ testWalk(
       match: [
         globToRegExp(join("a", "**", "*.ts"), {
           flags: "g",
-          globstar: true
-        })
-      ]
+          globstar: true,
+        }),
+      ],
     });
     assertEquals(arr.length, 1);
     assertEquals(arr[0], "a/yo/x.ts");
@@ -98,9 +98,9 @@ testWalk(
       match: [
         globToRegExp(join("a", "+(raptor|deno)", "*.ts"), {
           flags: "g",
-          extended: true
-        })
-      ]
+          extended: true,
+        }),
+      ],
     });
     assertEquals(arr.length, 2);
     assertEquals(arr[0], "a/deno/x.ts");
@@ -116,7 +116,7 @@ testWalk(
   },
   async function globInWalkWildcardExtension(): Promise<void> {
     const arr = await walkArray(".", {
-      match: [globToRegExp("x.*", { flags: "g", globstar: true })]
+      match: [globToRegExp("x.*", { flags: "g", globstar: true })],
     });
     assertEquals(arr.length, 2);
     assertEquals(arr[0], "x.js");
@@ -236,7 +236,7 @@ test({
     assert(!isGlob("\\a/b/c/\\[a-z\\].js"));
     assert(!isGlob("abc/\\(aaa|bbb).js"));
     assert(!isGlob("abc/\\?.js"));
-  }
+  },
 });
 
 test(function normalizeGlobGlobstar(): void {

@@ -358,7 +358,7 @@ export class Sha1 {
       (h4 >> 24) & 0xff,
       (h4 >> 16) & 0xff,
       (h4 >> 8) & 0xff,
-      h4 & 0xff
+      h4 & 0xff,
     ];
   }
 
