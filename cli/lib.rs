@@ -384,18 +384,19 @@ async fn doc_command(
 
   let printer = doc::TerminalPrinter::new();
 
-  if let Some(filter) = maybe_filter {
+  let details = if let Some(filter) = maybe_filter {
     let node = doc::find_node_by_name_recursively(doc_nodes, filter.clone());
     if let Some(node) = node {
-      printer.print_details(node);
+      printer.format_details(node)
     } else {
       eprintln!("Node {} was not found!", filter);
       std::process::exit(1);
     }
   } else {
-    printer.print(doc_nodes);
-  }
+    printer.format(doc_nodes)
+  };
 
+  println!("{}", details);
   Ok(())
 }
 

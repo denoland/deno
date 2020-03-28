@@ -3,6 +3,8 @@ use crate::doc;
 use crate::doc::ts_type::TsTypeDefKind;
 use crate::doc::DocNodeKind;
 
+// TODO(bartlomieju): implement Display trait to reuse Rust's
+// semantics for terminal printing
 #[derive(Debug)]
 pub struct TerminalPrinter {}
 
@@ -11,29 +13,37 @@ impl TerminalPrinter {
     TerminalPrinter {}
   }
 
-  pub fn print(&self, doc_nodes: Vec<doc::DocNode>) {
-    self.print_(doc_nodes, 0);
+  pub fn format(&self, doc_nodes: Vec<doc::DocNode>) -> String {
+    self.format_(doc_nodes, 0)
   }
 
-  pub fn print_details(&self, node: doc::DocNode) {
-    println!(
+  pub fn format_details(&self, node: doc::DocNode) -> String {
+    let mut details = String::new();
+
+    details.push_str(&format!(
       "Defined in {}:{}:{}.\n",
       node.location.filename, node.location.line, node.location.col
-    );
+    ));
 
-    self.print_signature(&node, 0);
+    details.push_str(&self.format_signature(&node, 0));
 
     let js_doc = node.js_doc.clone();
     if let Some(js_doc) = js_doc {
-      self.print_jsdoc(js_doc, false, 1);
+      details.push_str(&self.format_jsdoc(js_doc, false, 1));
     }
-    println!();
+    details.push_str("\n");
 
-    match node.kind {
-      DocNodeKind::Class => self.print_class_details(node),
-      DocNodeKind::Namespace => self.print_namespace_details(node),
-      _ => {}
+    let maybe_extra = match node.kind {
+      DocNodeKind::Class => Some(self.format_class_details(node)),
+      DocNodeKind::Namespace => Some(self.format_namespace_details(node)),
+      _ => None,
     };
+
+    if let Some(extra) = maybe_extra {
+      details.push_str(&extra);
+    }
+
+    details
   }
 
   fn kind_order(&self, kind: &doc::DocNodeKind) -> i64 {
@@ -48,20 +58,20 @@ impl TerminalPrinter {
     }
   }
 
-  fn print_signature(&self, node: &doc::DocNode, indent: i64) {
+  fn format_signature(&self, node: &doc::DocNode, indent: i64) -> String {
     match node.kind {
-      DocNodeKind::Function => self.print_function_signature(&node, indent),
-      DocNodeKind::Variable => self.print_variable_signature(&node, indent),
-      DocNodeKind::Class => self.print_class_signature(&node, indent),
-      DocNodeKind::Enum => self.print_enum_signature(&node, indent),
-      DocNodeKind::Interface => self.print_interface_signature(&node, indent),
-      DocNodeKind::TypeAlias => self.print_type_alias_signature(&node, indent),
-      DocNodeKind::Namespace => self.print_namespace_signature(&node, indent),
-    };
+      DocNodeKind::Function => self.format_function_signature(&node, indent),
+      DocNodeKind::Variable => self.format_variable_signature(&node, indent),
+      DocNodeKind::Class => self.format_class_signature(&node, indent),
+      DocNodeKind::Enum => self.format_enum_signature(&node, indent),
+      DocNodeKind::Interface => self.format_interface_signature(&node, indent),
+      DocNodeKind::TypeAlias => self.format_type_alias_signature(&node, indent),
+      DocNodeKind::Namespace => self.format_namespace_signature(&node, indent),
+    }
   }
 
-  fn print_(&self, doc_nodes: Vec<doc::DocNode>, indent: i64) {
-    let mut sorted = doc_nodes;
+  fn format_(&self, doc_nodes: Vec<doc::DocNode>, indent: i64) -> String {
+    let mut sorted = doc_nodes.clone();
     sorted.sort_unstable_by(|a, b| {
       let kind_cmp = self.kind_order(&a.kind).cmp(&self.kind_order(&b.kind));
       if kind_cmp == core::cmp::Ordering::Equal {
@@ -71,17 +81,28 @@ impl TerminalPrinter {
       }
     });
 
+    let mut output = String::new();
+
     for node in sorted {
-      self.print_signature(&node, indent);
+      output.push_str(&self.format_signature(&node, indent));
       if node.js_doc.is_some() {
-        self.print_jsdoc(node.js_doc.unwrap(), true, indent);
+        output.push_str(&self.format_jsdoc(
+          node.js_doc.as_ref().unwrap().to_string(),
+          true,
+          indent,
+        ));
       }
-      println!();
+      output.push_str("\n");
       if DocNodeKind::Namespace == node.kind {
-        self.print_(node.namespace_def.unwrap().elements, indent + 1);
-        println!();
+        output.push_str(&self.format_(
+          node.namespace_def.as_ref().unwrap().elements.clone(),
+          indent + 1,
+        ));
+        output.push_str("\n");
       };
     }
+
+    output
   }
 
   fn render_params(&self, params: Vec<doc::ParamDef>) -> String {
@@ -260,35 +281,48 @@ impl TerminalPrinter {
     }
   }
 
-  fn print_indent(&self, indent: i64) {
+  fn format_indent(&self, indent: i64) -> String {
+    let mut indent_str = String::new();
     for _ in 0..indent {
-      print!("  ")
+      indent_str.push_str(" ");
     }
+    indent_str
   }
 
   // TODO: this should use some sort of markdown to console parser.
-  fn print_jsdoc(&self, jsdoc: String, truncated: bool, indent: i64) {
+  fn format_jsdoc(
+    &self,
+    jsdoc: String,
+    truncated: bool,
+    indent: i64,
+  ) -> String {
     let mut lines = jsdoc.split("\n\n").map(|line| line.replace("\n", " "));
+
+    let mut js_doc = String::new();
+
     if truncated {
       let first_line = lines.next().unwrap_or_else(|| "".to_string());
-      self.print_indent(indent + 1);
-      println!("{}", first_line)
+      js_doc.push_str(&self.format_indent(indent + 1));
+      js_doc.push_str(&format!("{}\n", first_line));
     } else {
       for line in lines {
-        self.print_indent(indent + 1);
-        println!("{}", line)
+        js_doc.push_str(&self.format_indent(indent + 1));
+        js_doc.push_str(&format!("{}\n", line));
       }
     }
+    js_doc
   }
 
-  fn print_class_details(&self, node: doc::DocNode) {
+  fn format_class_details(&self, node: doc::DocNode) -> String {
+    let mut details = String::new();
+
     let class_def = node.class_def.unwrap();
     for node in class_def.constructors {
-      println!(
-        "constructor {}({})",
+      details.push_str(&format!(
+        "constructor {}({})\n",
         node.name,
         self.render_params(node.params),
-      );
+      ));
     }
     for node in class_def.properties.iter().filter(|node| {
       node
@@ -296,8 +330,8 @@ impl TerminalPrinter {
         .unwrap_or(swc_ecma_ast::Accessibility::Public)
         != swc_ecma_ast::Accessibility::Private
     }) {
-      println!(
-        "{} {}: {}",
+      details.push_str(&format!(
+        "{} {}: {}\n",
         match node
           .accessibility
           .unwrap_or(swc_ecma_ast::Accessibility::Public)
@@ -308,7 +342,7 @@ impl TerminalPrinter {
         },
         node.name,
         self.render_ts_type(node.ts_type.clone().unwrap())
-      );
+      ));
     }
     for node in class_def.methods.iter().filter(|node| {
       node
@@ -317,8 +351,8 @@ impl TerminalPrinter {
         != swc_ecma_ast::Accessibility::Private
     }) {
       let function_def = node.function_def.clone();
-      println!(
-        "{} {}{}({}): {}",
+      details.push_str(&format!(
+        "{} {}{}({}): {}\n",
         match node
           .accessibility
           .unwrap_or(swc_ecma_ast::Accessibility::Public)
@@ -335,41 +369,53 @@ impl TerminalPrinter {
         node.name,
         self.render_params(function_def.params),
         self.render_ts_type(function_def.return_type.unwrap())
-      );
+      ));
     }
-    println!();
+    details.push_str("\n");
+    details
   }
 
-  fn print_namespace_details(&self, node: doc::DocNode) {
+  fn format_namespace_details(&self, node: doc::DocNode) -> String {
+    let mut ns = String::new();
+
     let elements = node.namespace_def.unwrap().elements;
     for node in elements {
-      self.print_signature(&node, 0);
+      ns.push_str(&self.format_signature(&node, 0));
     }
-    println!();
+    ns.push_str("\n");
+    ns
   }
 
-  fn print_function_signature(&self, node: &doc::DocNode, indent: i64) {
-    self.print_indent(indent);
+  fn format_function_signature(
+    &self,
+    node: &doc::DocNode,
+    indent: i64,
+  ) -> String {
+    self.format_indent(indent);
     let function_def = node.function_def.clone().unwrap();
     let return_type = function_def.return_type.unwrap();
-    println!(
-      "function {}({}): {}",
+    format!(
+      "function {}({}): {}\n",
       node.name,
       self.render_params(function_def.params),
       self.render_ts_type(return_type).as_str()
-    );
+    )
   }
 
-  fn print_class_signature(&self, node: &doc::DocNode, indent: i64) {
-    self.print_indent(indent);
-    println!("class {}", node.name);
+  fn format_class_signature(&self, node: &doc::DocNode, indent: i64) -> String {
+    self.format_indent(indent);
+    format!("class {}\n", node.name)
   }
 
-  fn print_variable_signature(&self, node: &doc::DocNode, indent: i64) {
-    self.print_indent(indent);
+  fn format_variable_signature(
+    &self,
+    node: &doc::DocNode,
+    indent: i64,
+  ) -> String {
+    self.format_indent(indent);
     let variable_def = node.variable_def.clone().unwrap();
-    println!(
-      "{} {}{}",
+    format!(
+      "{} {}{}\n",
       match variable_def.kind {
         swc_ecma_ast::VarDeclKind::Const => "const".to_string(),
         swc_ecma_ast::VarDeclKind::Let => "let".to_string(),
@@ -381,26 +427,38 @@ impl TerminalPrinter {
       } else {
         "".to_string()
       }
-    );
+    )
   }
 
-  fn print_enum_signature(&self, node: &doc::DocNode, indent: i64) {
-    self.print_indent(indent);
-    println!("enum {}", node.name);
+  fn format_enum_signature(&self, node: &doc::DocNode, indent: i64) -> String {
+    self.format_indent(indent);
+    format!("enum {}\n", node.name)
   }
 
-  fn print_interface_signature(&self, node: &doc::DocNode, indent: i64) {
-    self.print_indent(indent);
-    println!("interface {}", node.name);
+  fn format_interface_signature(
+    &self,
+    node: &doc::DocNode,
+    indent: i64,
+  ) -> String {
+    self.format_indent(indent);
+    format!("interface {}\n", node.name)
   }
 
-  fn print_type_alias_signature(&self, node: &doc::DocNode, indent: i64) {
-    self.print_indent(indent);
-    println!("type {}", node.name);
+  fn format_type_alias_signature(
+    &self,
+    node: &doc::DocNode,
+    indent: i64,
+  ) -> String {
+    self.format_indent(indent);
+    format!("type {}\n", node.name)
   }
 
-  fn print_namespace_signature(&self, node: &doc::DocNode, indent: i64) {
-    self.print_indent(indent);
-    println!("namespace {}", node.name);
+  fn format_namespace_signature(
+    &self,
+    node: &doc::DocNode,
+    indent: i64,
+  ) -> String {
+    self.format_indent(indent);
+    format!("namespace {}\n", node.name)
   }
 }
