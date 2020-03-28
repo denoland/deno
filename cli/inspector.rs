@@ -294,6 +294,7 @@ pub struct DenoInspector {
   interrupted: Arc<AtomicBool>,
   isolate_handle: v8::IsolateHandle,
   interrupting_waker: std::task::Waker,
+  interrupt_depth: usize,
 }
 
 impl DenoInspector {
@@ -319,6 +320,7 @@ impl DenoInspector {
       interrupted: Arc::new(AtomicBool::new(false)),
       isolate_handle,
       interrupting_waker: NoopWaker::new(),
+      interrupt_depth: 0,
     });
     deno_inspector.interrupting_waker =
       InterruptingWaker::new(&deno_inspector, &NoopWaker::new());
@@ -351,13 +353,15 @@ impl DenoInspector {
     _isolate: &mut v8::Isolate,
     self_ptr: *mut c_void,
   ) {
-    eprintln!("Interrupt!");
     let self_ = unsafe { &mut *(self_ptr as *mut Self) };
-    let _ = self_.poll_without_waker();
+    if self_.interrupted.swap(false, Ordering::AcqRel) {
+      let _ = self_.poll_without_waker();
+    }
   }
 
   fn poll_without_waker(&mut self) -> Poll<<Self as Future>::Output> {
-    eprintln!("interrupted poll");
+    self.interrupt_depth += 1;
+    eprintln!("+ START interrupt depth={}", self.interrupt_depth);
     let _ = loop {
       match self.frontend_to_inspector_rx.try_recv() {
         Ok(msg) => self.dispatch_frontend_to_inspector_msg(msg),
@@ -366,13 +370,15 @@ impl DenoInspector {
       }
     };
     let cx = &mut Context::from_waker(&self.interrupting_waker);
-    loop {
+    let r = loop {
       match self.sessions2.poll_next_unpin(cx) {
         Poll::Ready(Some(_)) => {}
-        _ if self.interrupted.swap(false, Ordering::AcqRel) => {}
         _ => break Poll::Pending,
       }
-    }
+    };
+    eprintln!("- END interrupt depth={}", self.interrupt_depth);
+    self.interrupt_depth -= 1;
+    r
   }
 }
 
@@ -417,6 +423,8 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   }
 
   fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
+    eprintln!("!!! run_message_loop_on_pause START");
+
     assert_eq!(context_group_id, CONTEXT_GROUP_ID);
     assert!(!self.paused);
     self.paused = true;
@@ -431,10 +439,13 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
         _ => Poll::Ready(()),
       });
     executor::block_on(dispatch_messages_while_paused);
+
+    eprintln!("!!! run_message_loop_on_pause END");
   }
 
   fn quit_message_loop_on_pause(&mut self) {
     self.paused = false;
+    eprintln!("!!! quit_message_loop_on_pause");
   }
 
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
@@ -499,6 +510,7 @@ impl DenoInspectorHandle {
 
   pub fn interrupt(&self) {
     if !self.interrupted.swap(true, Ordering::AcqRel) {
+      eprintln!("Request interrupt");
       self.isolate_handle.request_interrupt(
         DenoInspector::poll_interrupt,
         self.deno_inspector_ptr,
@@ -540,22 +552,24 @@ impl DenoInspectorSession {
     inspector: &mut v8::inspector::V8Inspector,
     websocket: ws::WebSocket,
   ) -> Box<Self> {
-    let (mut channel_tx, mut channel_rx) = unbounded::<MessageResult>();
-    let (mut websocket_tx, websocket_rx) = websocket.split();
-    let mut tx_pump = channel_rx.forward(websocket_tx);
+    new_box_with(move |channel_address| {
+      let (mut channel_tx, mut channel_rx) = unbounded::<MessageResult>();
+      let (mut websocket_tx, websocket_rx) = websocket.split();
+      let mut tx_pump = channel_rx.forward(websocket_tx);
 
-    let empty_view = v8::inspector::StringView::empty();
+      let empty_view = v8::inspector::StringView::empty();
 
-    new_box_with(move |address| {
+      let session = inspector.connect(
+        CONTEXT_GROUP_ID,
+        // Todo(piscisaureus): V8Inspector::connect() should require that
+        // the 'channel' argument cannot move.
+        unsafe { &mut *channel_address },
+        &empty_view,
+      );
+
       Self {
         channel: v8::inspector::ChannelBase::new::<Self>(),
-        session: inspector.connect(
-          CONTEXT_GROUP_ID,
-          // Todo(piscisaureus): V8Inspector::connect() should require that
-          // the 'channel' argument cannot move.
-          unsafe { &mut *address },
-          &empty_view,
-        ),
+        session,
         tx: channel_tx,
         rx: websocket_rx,
         tx_pump,
