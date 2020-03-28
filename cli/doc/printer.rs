@@ -1,4 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+// TODO(ry) This module builds up output by appending to a string. Instead it
+// should either use a formatting trait
+// https://doc.rust-lang.org/std/fmt/index.html#formatting-traits
+// Or perhaps implement a Serializer for serde
+// https://docs.serde.rs/serde/ser/trait.Serializer.html
+
 use crate::doc;
 use crate::doc::ts_type::TsTypeDefKind;
 use crate::doc::DocNodeKind;
