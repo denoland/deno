@@ -112,6 +112,18 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
+fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
+  use std::io::ErrorKind;
+
+  match std::io::stdout().write_all(bytes) {
+    Ok(()) => Ok(()),
+    Err(e) => match e.kind() {
+      ErrorKind::BrokenPipe => Ok(()),
+      _ => Err(e),
+    },
+  }
+}
+
 fn create_main_worker(
   global_state: GlobalState,
   main_module: ModuleSpecifier,
@@ -378,8 +390,7 @@ async fn doc_command(
 
   if json {
     let json_string = serde_json::to_string_pretty(&doc_nodes).unwrap();
-    println!("{}", json_string);
-    return Ok(());
+    return write_to_stdout_ignore_sigpipe(json_string.as_bytes());
   }
 
   let printer = doc::TerminalPrinter::new();
@@ -396,8 +407,7 @@ async fn doc_command(
     printer.format(doc_nodes)
   };
 
-  println!("{}", details);
-  Ok(())
+  write_to_stdout_ignore_sigpipe(details.as_bytes())
 }
 
 async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
@@ -549,9 +559,7 @@ pub fn main() {
         crate::js::SHARED_GLOBALS_LIB,
         crate::js::WINDOW_LIB
       );
-      // TODO(ry) Only ignore SIGPIPE. Currently ignoring all errors.
-      let _r = std::io::stdout().write_all(types.as_bytes());
-      return;
+      write_to_stdout_ignore_sigpipe(types.as_bytes())
     }
     DenoSubcommand::Upgrade { force, dry_run } => {
       upgrade_command(dry_run, force).boxed_local()
