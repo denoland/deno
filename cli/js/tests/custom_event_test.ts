@@ -7,7 +7,7 @@ unitTest(function customEventInitializedWithDetail(): void {
   const customEventInit = {
     bubbles: true,
     cancelable: true,
-    detail
+    detail,
   } as CustomEventInit;
   const event = new CustomEvent(type, customEventInit);
 

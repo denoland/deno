@@ -14,7 +14,7 @@ import {
   readFrame,
   unmask,
   writeFrame,
-  createWebSocket
+  createWebSocket,
 } from "./mod.ts";
 import { encode, decode } from "../strings/mod.ts";
 import Writer = Deno.Writer;
@@ -50,7 +50,7 @@ test("[ws] read masked text frame", async () => {
         0x9f,
         0x4d,
         0x51,
-        0x58
+        0x58,
       ])
     )
   );
@@ -136,8 +136,8 @@ test("[ws] acceptable", () => {
   const ret = acceptable({
     headers: new Headers({
       upgrade: "websocket",
-      "sec-websocket-key": "aaa"
-    })
+      "sec-websocket-key": "aaa",
+    }),
   });
   assertEquals(ret, true);
 
@@ -148,12 +148,12 @@ test("[ws] acceptable", () => {
         ["host", "127.0.0.1:9229"],
         [
           "sec-websocket-extensions",
-          "permessage-deflate; client_max_window_bits"
+          "permessage-deflate; client_max_window_bits",
         ],
         ["sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ=="],
         ["sec-websocket-version", "13"],
-        ["upgrade", "WebSocket"]
-      ])
+        ["upgrade", "WebSocket"],
+      ]),
     })
   );
 });
@@ -161,25 +161,25 @@ test("[ws] acceptable", () => {
 test("[ws] acceptable should return false when headers invalid", () => {
   assertEquals(
     acceptable({
-      headers: new Headers({ "sec-websocket-key": "aaa" })
+      headers: new Headers({ "sec-websocket-key": "aaa" }),
     }),
     false
   );
   assertEquals(
     acceptable({
-      headers: new Headers({ upgrade: "websocket" })
+      headers: new Headers({ upgrade: "websocket" }),
     }),
     false
   );
   assertEquals(
     acceptable({
-      headers: new Headers({ upgrade: "invalid", "sec-websocket-key": "aaa" })
+      headers: new Headers({ upgrade: "invalid", "sec-websocket-key": "aaa" }),
     }),
     false
   );
   assertEquals(
     acceptable({
-      headers: new Headers({ upgrade: "websocket", "sec-websocket-ky": "" })
+      headers: new Headers({ upgrade: "websocket", "sec-websocket-ky": "" }),
     }),
     false
   );
@@ -205,7 +205,7 @@ test("[ws] write and read masked frame", async () => {
       isLastFrame: true,
       mask,
       opcode: OpCode.TextFrame,
-      payload: encode(msg)
+      payload: encode(msg),
     },
     buf
   );
@@ -282,19 +282,19 @@ function dummyConn(r: Reader, w: Writer): Conn {
     write: (x): Promise<number> => w.write(x),
     close: (): void => {},
     localAddr: { transport: "tcp", hostname: "0.0.0.0", port: 0 },
-    remoteAddr: { transport: "tcp", hostname: "0.0.0.0", port: 0 }
+    remoteAddr: { transport: "tcp", hostname: "0.0.0.0", port: 0 },
   };
 }
 
 function delayedWriter(ms: number, dest: Writer): Writer {
   return {
     write(p: Uint8Array): Promise<number> {
-      return new Promise<number>(resolve => {
+      return new Promise<number>((resolve) => {
         setTimeout(async (): Promise<void> => {
           resolve(await dest.write(p));
         }, ms);
       });
-    }
+    },
   };
 }
 test({
@@ -308,7 +308,7 @@ test({
       sock.send("first"),
       sock.send("second"),
       sock.ping(),
-      sock.send(new Uint8Array([3]))
+      sock.send(new Uint8Array([3])),
     ]);
     const bufr = new BufReader(buf);
     const first = await readFrame(bufr);
@@ -322,7 +322,7 @@ test({
     assertEquals(ping.opcode, OpCode.Ping);
     assertEquals(third.opcode, OpCode.BinaryFrame);
     assertEquals(bytes.equal(third.payload, new Uint8Array([3])), true);
-  }
+  },
 });
 
 test("[ws] createSecKeyHasCorrectLength", () => {
@@ -337,7 +337,7 @@ test("[ws] WebSocket should throw `Deno.errors.ConnectionReset` when peer closed
   const eofReader: Deno.Reader = {
     read(_: Uint8Array): Promise<number | Deno.EOF> {
       return Promise.resolve(Deno.EOF);
-    }
+    },
   };
   const conn = dummyConn(eofReader, buf);
   const sock = createWebSocket({ conn });
@@ -355,7 +355,7 @@ test("[ws] WebSocket shouldn't throw `Deno.errors.UnexpectedEof` on recive()", a
   const eofReader: Deno.Reader = {
     read(_: Uint8Array): Promise<number | Deno.EOF> {
       return Promise.resolve(Deno.EOF);
-    }
+    },
   };
   const conn = dummyConn(eofReader, buf);
   const sock = createWebSocket({ conn });
@@ -373,10 +373,10 @@ test({
     let timer: number | undefined;
     const lazyWriter: Deno.Writer = {
       write(_: Uint8Array): Promise<number> {
-        return new Promise(resolve => {
+        return new Promise((resolve) => {
           timer = setTimeout(() => resolve(0), 1000);
         });
-      }
+      },
     };
     const conn = dummyConn(buf, lazyWriter);
     const sock = createWebSocket({ conn });
@@ -384,7 +384,7 @@ test({
     const p = Promise.all([
       sock.send("hello").catch(onError),
       sock.send(new Uint8Array([1, 2])).catch(onError),
-      sock.ping().catch(onError)
+      sock.ping().catch(onError),
     ]);
     sock.closeForce();
     assertEquals(sock.isClosed, true);
@@ -396,5 +396,5 @@ test({
     // Wait for another event loop turn for `timeout` op promise
     // to resolve, otherwise we'll get "op leak".
     await delay(10);
-  }
+  },
 });

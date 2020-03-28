@@ -6,7 +6,7 @@ import {
   isGlob,
   isWindows,
   joinGlobs,
-  normalize
+  normalize,
 } from "../path/mod.ts";
 import { WalkInfo, walk, walkSync } from "./walk.ts";
 import { assert } from "../testing/asserts.ts";
@@ -38,7 +38,7 @@ function split(path: string): SplitPath {
     segments,
     isAbsolute: isAbsolute_,
     hasTrailingSep: !!path.match(new RegExp(`${s}$`)),
-    winRoot: isWindows && isAbsolute_ ? segments.shift() : undefined
+    winRoot: isWindows && isAbsolute_ ? segments.shift() : undefined,
   };
 }
 
@@ -59,7 +59,7 @@ export async function* expandGlob(
     exclude = [],
     includeDirs = true,
     extended = false,
-    globstar = false
+    globstar = false,
   }: ExpandGlobOptions = {}
 ): AsyncIterableIterator<WalkInfo> {
   const globOptions: GlobOptions = { extended, globstar };
@@ -110,7 +110,7 @@ export async function* expandGlob(
     } else if (globSegment == "**") {
       return yield* walk(walkInfo.filename, {
         includeFiles: false,
-        skip: excludePatterns
+        skip: excludePatterns,
       });
     }
     yield* walk(walkInfo.filename, {
@@ -119,9 +119,9 @@ export async function* expandGlob(
         globToRegExp(
           joinGlobs([walkInfo.filename, globSegment], globOptions),
           globOptions
-        )
+        ),
       ],
-      skip: excludePatterns
+      skip: excludePatterns,
     });
   }
 
@@ -138,7 +138,7 @@ export async function* expandGlob(
     currentMatches = [...nextMatchMap].sort().map(
       ([filename, info]): WalkInfo => ({
         filename,
-        info
+        info,
       })
     );
   }
@@ -163,7 +163,7 @@ export function* expandGlobSync(
     exclude = [],
     includeDirs = true,
     extended = false,
-    globstar = false
+    globstar = false,
   }: ExpandGlobOptions = {}
 ): IterableIterator<WalkInfo> {
   const globOptions: GlobOptions = { extended, globstar };
@@ -214,7 +214,7 @@ export function* expandGlobSync(
     } else if (globSegment == "**") {
       return yield* walkSync(walkInfo.filename, {
         includeFiles: false,
-        skip: excludePatterns
+        skip: excludePatterns,
       });
     }
     yield* walkSync(walkInfo.filename, {
@@ -223,9 +223,9 @@ export function* expandGlobSync(
         globToRegExp(
           joinGlobs([walkInfo.filename, globSegment], globOptions),
           globOptions
-        )
+        ),
       ],
-      skip: excludePatterns
+      skip: excludePatterns,
     });
   }
 
@@ -242,7 +242,7 @@ export function* expandGlobSync(
     currentMatches = [...nextMatchMap].sort().map(
       ([filename, info]): WalkInfo => ({
         filename,
-        info
+        info,
       })
     );
   }

@@ -3,7 +3,7 @@ import { unitTest, assert } from "./test_util.ts";
 
 unitTest(function internalsExists(): void {
   const {
-    stringifyArgs
+    stringifyArgs,
     // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
   } = Deno[Deno.symbols.internal];
   assert(!!stringifyArgs);

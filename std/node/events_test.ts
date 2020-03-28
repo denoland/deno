@@ -3,7 +3,7 @@ import {
   assert,
   assertEquals,
   fail,
-  assertThrows
+  assertThrows,
 } from "../testing/asserts.ts";
 import EventEmitter, { WrappedFunction, once, on } from "./events.ts";
 
@@ -29,7 +29,7 @@ test({
     eventsFired = [];
     testEmitter.emit("event");
     assertEquals(eventsFired, ["event"]);
-  }
+  },
 });
 
 test({
@@ -41,7 +41,7 @@ test({
     testEmitter.on("removeListener", () => {
       eventsFired.push("removeListener");
     });
-    const eventFunction = function(): void {
+    const eventFunction = function (): void {
       eventsFired.push("event");
     };
     testEmitter.on("event", eventFunction);
@@ -49,7 +49,7 @@ test({
     assertEquals(eventsFired, []);
     testEmitter.removeListener("event", eventFunction);
     assertEquals(eventsFired, ["removeListener"]);
-  }
+  },
 });
 
 test({
@@ -62,7 +62,7 @@ test({
     EventEmitter.defaultMaxListeners = 20;
     assertEquals(EventEmitter.defaultMaxListeners, 20);
     EventEmitter.defaultMaxListeners = 10; //reset back to original value
-  }
+  },
 });
 
 test({
@@ -73,7 +73,7 @@ test({
     assertEquals(1, testEmitter.listenerCount("event"));
     testEmitter.on("event", shouldNeverBeEmitted);
     assertEquals(2, testEmitter.listenerCount("event"));
-  }
+  },
 });
 
 test({
@@ -100,7 +100,7 @@ test({
     );
     testEmitter.emit("event", 1, 2, 3);
     assertEquals(eventsFired, ["event(1)", "event(1, 2)", "event(1, 2, 3)"]);
-  }
+  },
 });
 
 test({
@@ -112,7 +112,7 @@ test({
     const sym = Symbol("symbol");
     testEmitter.on(sym, shouldNeverBeEmitted);
     assertEquals(testEmitter.eventNames(), ["event", sym]);
-  }
+  },
 });
 
 test({
@@ -122,7 +122,7 @@ test({
     assertEquals(testEmitter.getMaxListeners(), 10);
     testEmitter.setMaxListeners(20);
     assertEquals(testEmitter.getMaxListeners(), 20);
-  }
+  },
 });
 
 test({
@@ -135,9 +135,9 @@ test({
     testEmitter.on("event", testFunction);
     assertEquals(testEmitter.listeners("event"), [
       shouldNeverBeEmitted,
-      testFunction
+      testFunction,
     ]);
-  }
+  },
 });
 
 test({
@@ -148,7 +148,7 @@ test({
     assertEquals(testEmitter.listenerCount("event"), 1);
     testEmitter.off("event", shouldNeverBeEmitted);
     assertEquals(testEmitter.listenerCount("event"), 0);
-  }
+  },
 });
 
 test({
@@ -159,7 +159,7 @@ test({
       .on("event", shouldNeverBeEmitted)
       .on("event", shouldNeverBeEmitted);
     assertEquals(testEmitter.listenerCount("event"), 2);
-  }
+  },
 });
 
 test({
@@ -183,7 +183,7 @@ test({
     testEmitter.emit("single event");
     testEmitter.emit("single event");
     assertEquals(eventsFired, ["single event"]);
-  }
+  },
 });
 
 test({
@@ -203,7 +203,7 @@ test({
     });
     testEmitter.emit("event");
     assertEquals(eventsFired, ["third", "first", "second"]);
-  }
+  },
 });
 
 test({
@@ -223,7 +223,7 @@ test({
     testEmitter.emit("event");
     testEmitter.emit("event");
     assertEquals(eventsFired, ["third", "first", "second", "first", "second"]);
-  }
+  },
 });
 
 test({
@@ -242,7 +242,7 @@ test({
 
     assertEquals(testEmitter.listenerCount("event"), 0);
     assertEquals(testEmitter.listenerCount("other event"), 0);
-  }
+  },
 });
 
 test({
@@ -265,7 +265,7 @@ test({
 
     assertEquals(testEmitter.listenerCount("event"), 0);
     assertEquals(testEmitter.listenerCount("other event"), 0);
-  }
+  },
 });
 
 test({
@@ -284,7 +284,7 @@ test({
     testEmitter.removeListener("non-existant event", madeUpEvent);
 
     assertEquals(testEmitter.listenerCount("event"), 1);
-  }
+  },
 });
 
 test({
@@ -307,7 +307,7 @@ test({
     eventsProcessed = [];
     testEmitter.emit("event");
     assertEquals(eventsProcessed, ["A"]);
-  }
+  },
 });
 
 test({
@@ -330,7 +330,7 @@ test({
       (rawListenersForOnceEvent[0] as WrappedFunction).listener,
       listenerB
     );
-  }
+  },
 });
 
 test({
@@ -353,7 +353,7 @@ test({
     wrappedFn(); // executing the wrapped listener function will remove it from the event
     assertEquals(eventsProcessed, ["A"]);
     assertEquals(testEmitter.listeners("once-event").length, 0);
-  }
+  },
 });
 
 test({
@@ -366,7 +366,7 @@ test({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const valueArr: any[] = await once(ee, "event");
     assertEquals(valueArr, [42, "foo"]);
-  }
+  },
 });
 
 test({
@@ -380,7 +380,7 @@ test({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const eventObj: any[] = await once(et, "event");
     assert(!eventObj[0].isTrusted);
-  }
+  },
 });
 
 test({
@@ -402,7 +402,7 @@ test({
       Error,
       "must be 'an integer'"
     );
-  }
+  },
 });
 
 test({
@@ -440,7 +440,7 @@ test({
     });
     ee.emit("error");
     assertEquals(events, ["errorMonitor event", "error"]);
-  }
+  },
 });
 
 test({
@@ -468,7 +468,7 @@ test({
     }
     assertEquals(ee.listenerCount("foo"), 0);
     assertEquals(ee.listenerCount("error"), 0);
-  }
+  },
 });
 
 test({
@@ -493,7 +493,7 @@ test({
       assertEquals(err, _err);
     }
     assertEquals(thrown, true);
-  }
+  },
 });
 
 test({
@@ -522,7 +522,7 @@ test({
     assertEquals(thrown, true);
     assertEquals(ee.listenerCount("foo"), 0);
     assertEquals(ee.listenerCount("error"), 0);
-  }
+  },
 });
 
 test({
@@ -548,7 +548,7 @@ test({
 
     assertEquals(ee.listenerCount("foo"), 0);
     assertEquals(ee.listenerCount("error"), 0);
-  }
+  },
 });
 
 test({
@@ -557,7 +557,7 @@ test({
     const ee = new EventEmitter();
     const iterable = on(ee, "foo");
 
-    setTimeout(function() {
+    setTimeout(function () {
       ee.emit("foo", "bar");
       ee.emit("foo", 42);
       iterable.return();
@@ -566,29 +566,29 @@ test({
     const results = await Promise.all([
       iterable.next(),
       iterable.next(),
-      iterable.next()
+      iterable.next(),
     ]);
 
     assertEquals(results, [
       {
         value: ["bar"],
-        done: false
+        done: false,
       },
       {
         value: [42],
-        done: false
+        done: false,
       },
       {
         value: undefined,
-        done: true
-      }
+        done: true,
+      },
     ]);
 
     assertEquals(await iterable.next(), {
       value: undefined,
-      done: true
+      done: true,
     });
-  }
+  },
 });
 
 test({
@@ -620,5 +620,5 @@ test({
     assertEquals(expected.length, 0);
     assertEquals(ee.listenerCount("foo"), 0);
     assertEquals(ee.listenerCount("error"), 0);
-  }
+  },
 });

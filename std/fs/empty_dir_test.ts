@@ -4,7 +4,7 @@ import {
   assertEquals,
   assertStrContains,
   assertThrows,
-  assertThrowsAsync
+  assertThrowsAsync,
 } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { emptyDir, emptyDirSync } from "./empty_dir.ts";
@@ -137,59 +137,59 @@ const scenes: Scenes[] = [
     read: false,
     write: false,
     async: true,
-    output: "run again with the --allow-read flag"
+    output: "run again with the --allow-read flag",
   },
   {
     read: false,
     write: false,
     async: false,
-    output: "run again with the --allow-read flag"
+    output: "run again with the --allow-read flag",
   },
   // 2
   {
     read: true,
     write: false,
     async: true,
-    output: "run again with the --allow-write flag"
+    output: "run again with the --allow-write flag",
   },
   {
     read: true,
     write: false,
     async: false,
-    output: "run again with the --allow-write flag"
+    output: "run again with the --allow-write flag",
   },
   // 3
   {
     read: false,
     write: true,
     async: true,
-    output: "run again with the --allow-read flag"
+    output: "run again with the --allow-read flag",
   },
   {
     read: false,
     write: true,
     async: false,
-    output: "run again with the --allow-read flag"
+    output: "run again with the --allow-read flag",
   },
   // 4
   {
     read: true,
     write: true,
     async: true,
-    output: "success"
+    output: "success",
   },
   {
     read: true,
     write: true,
     async: false,
-    output: "success"
-  }
+    output: "success",
+  },
 ];
 for (const s of scenes) {
   let title = `test ${s.async ? "emptyDir" : "emptyDirSync"}`;
   title += `("testdata/testfolder") ${s.read ? "with" : "without"}`;
   title += ` --allow-read & ${s.write ? "with" : "without"} --allow-write`;
-  Deno.test(`[fs] emptyDirPermission ${title}`, async function(): Promise<
+  Deno.test(`[fs] emptyDirPermission ${title}`, async function (): Promise<
     void
   > {
     const testfolder = path.join(testdataDir, "testfolder");
@@ -221,7 +221,7 @@ for (const s of scenes) {
         const p = Deno.run({
           stdout: "piped",
           cwd: testdataDir,
-          cmd: args
+          cmd: args,
         });
 
         assert(p.stdout);

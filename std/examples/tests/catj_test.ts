@@ -12,7 +12,7 @@ Deno.test("[examples/catj] print an array", async () => {
       ".[1] = 100",
       '.[2].key = "value"',
       '.[2].array[0] = "foo"',
-      '.[2].array[1] = "bar"'
+      '.[2].array[1] = "bar"',
     ].join("\n");
 
     assertStrictEq(actual, expected);
@@ -31,7 +31,7 @@ Deno.test("[examples/catj] print an object", async () => {
     const expected = [
       '.string = "foobar"',
       ".number = 123",
-      '.array[0].message = "hello"'
+      '.array[0].message = "hello"',
     ].join("\n");
 
     assertStrictEq(actual, expected);
@@ -81,6 +81,6 @@ function catj(...files: string[]): Deno.Process {
     cwd: "examples",
     stdin: "piped",
     stdout: "piped",
-    env: { NO_COLOR: "true" }
+    env: { NO_COLOR: "true" },
   });
 }

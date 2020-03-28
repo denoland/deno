@@ -20,7 +20,7 @@ Deno.test({
     const expected = { test: "toto", foo: { bar: true, baz: 1, qux: null } };
 
     assertEquals(parse(yaml), expected);
-  }
+  },
 });
 
 Deno.test({
@@ -40,17 +40,17 @@ name: Eve
     const expected = [
       {
         id: 1,
-        name: "Alice"
+        name: "Alice",
       },
       {
         id: 2,
-        name: "Bob"
+        name: "Bob",
       },
       {
         id: 3,
-        name: "Eve"
-      }
+        name: "Eve",
+      },
     ];
     assertEquals(parseAll(yaml), expected);
-  }
+  },
 });

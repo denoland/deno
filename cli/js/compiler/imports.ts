@@ -34,7 +34,7 @@ function resolvePath(...pathSegments: string[]): string {
     resolvedPath,
     !resolvedAbsolute,
     "/",
-    code => code === CHAR_FORWARD_SLASH
+    (code) => code === CHAR_FORWARD_SLASH
   );
 
   if (resolvedAbsolute) {
@@ -120,7 +120,7 @@ export function processLocalImports(
         url: moduleName,
         filename: moduleName,
         sourceCode: sources[moduleName],
-        mediaType: getMediaType(moduleName)
+        mediaType: getMediaType(moduleName),
       });
     sourceFile.cache(specifiers[i][0], referrer);
     if (!sourceFile.processed) {

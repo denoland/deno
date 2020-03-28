@@ -21,6 +21,6 @@ pad("denosorusrex", 6, {
   side: "left",
   strict: true,
   strictSide: "right",
-  strictChar: "..."
+  strictChar: "...",
 }); // output : "den..."
 ```

@@ -14,7 +14,7 @@ function normalizeUrl(rootName: string): string {
       path,
       false,
       "/",
-      code => code === CHAR_FORWARD_SLASH
+      (code) => code === CHAR_FORWARD_SLASH
     )}`;
   } else {
     return rootName;
@@ -29,7 +29,7 @@ export function buildBundle(
   // when outputting to AMD and a single outfile, TypeScript makes up the module
   // specifiers which are used to define the modules, and doesn't expose them
   // publicly, so we have to try to replicate
-  const sources = sourceFiles.map(sf => sf.fileName);
+  const sources = sourceFiles.map((sf) => sf.fileName);
   const sharedPath = commonPath(sources);
   rootName = normalizeUrl(rootName)
     .replace(sharedPath, "")
@@ -79,7 +79,7 @@ export function setRootExports(program: ts.Program, rootModule: string): void {
     // that when there isn't.  There appears to be no clean way of figuring that
     // out, so inspecting SymbolFlags that might be present that are type only
     .filter(
-      sym =>
+      (sym) =>
         sym.flags & ts.SymbolFlags.Class ||
         !(
           sym.flags & ts.SymbolFlags.Interface ||
@@ -94,5 +94,5 @@ export function setRootExports(program: ts.Program, rootModule: string): void {
           sym.flags & ts.SymbolFlags.TypeAliasExcludes
         )
     )
-    .map(sym => sym.getName());
+    .map((sym) => sym.getName());
 }

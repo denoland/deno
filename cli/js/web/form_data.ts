@@ -8,7 +8,7 @@ import { requiredArguments } from "./util.ts";
 const dataSymbol = Symbol("data");
 
 class FormDataBase {
-  private [dataSymbol]: Array<[string, domTypes.FormDataEntryValue]> = [];
+  [dataSymbol]: Array<[string, domTypes.FormDataEntryValue]> = [];
 
   append(name: string, value: string): void;
   append(name: string, value: blob.DenoBlob, filename?: string): void;
@@ -17,7 +17,7 @@ class FormDataBase {
     name = String(name);
     if (value instanceof blob.DenoBlob) {
       const dfile = new domFile.DomFileImpl([value], filename || name, {
-        type: value.type
+        type: value.type,
       });
       this[dataSymbol].push([name, dfile]);
     } else {
@@ -84,7 +84,7 @@ class FormDataBase {
         if (!found) {
           if (value instanceof blob.DenoBlob) {
             const dfile = new domFile.DomFileImpl([value], filename || name, {
-              type: value.type
+              type: value.type,
             });
             this[dataSymbol][i][1] = dfile;
           } else {
@@ -103,7 +103,7 @@ class FormDataBase {
     if (!found) {
       if (value instanceof blob.DenoBlob) {
         const dfile = new domFile.DomFileImpl([value], filename || name, {
-          type: value.type
+          type: value.type,
         });
         this[dataSymbol].push([name, dfile]);
       } else {

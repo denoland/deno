@@ -14,7 +14,7 @@ import {
   decode,
   decodeString,
   errLength,
-  errInvalidByte
+  errInvalidByte,
 } from "./hex.ts";
 
 function toByte(s: string): number {
@@ -29,7 +29,7 @@ const testCases = [
   ["f0f1f2f3f4f5f6f7", [0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7]],
   ["f8f9fafbfcfdfeff", [0xf8, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0xff]],
   ["67", Array.from(new TextEncoder().encode("g"))],
-  ["e3a1", [0xe3, 0xa1]]
+  ["e3a1", [0xe3, 0xa1]],
 ];
 
 const errCases = [
@@ -42,7 +42,7 @@ const errCases = [
   ["0g", "", errInvalidByte(new TextEncoder().encode("g")[0])],
   ["00gg", "\x00", errInvalidByte(new TextEncoder().encode("g")[0])],
   ["0\x01", "", errInvalidByte(new TextEncoder().encode("\x01")[0])],
-  ["ffeed", "\xff\xee", errLength()]
+  ["ffeed", "\xff\xee", errLength()],
 ];
 
 Deno.test({
@@ -53,7 +53,7 @@ Deno.test({
     assertEquals(encodedLen(2), 4);
     assertEquals(encodedLen(3), 6);
     assertEquals(encodedLen(4), 8);
-  }
+  },
 });
 
 Deno.test({
@@ -88,7 +88,7 @@ Deno.test({
       assertEquals(dest.length, n);
       assertEquals(new TextDecoder().decode(dest), enc);
     }
-  }
+  },
 });
 
 Deno.test({
@@ -97,7 +97,7 @@ Deno.test({
     for (const [enc, dec] of testCases) {
       assertEquals(encodeToString(new Uint8Array(dec as number[])), enc);
     }
-  }
+  },
 });
 
 Deno.test({
@@ -108,7 +108,7 @@ Deno.test({
     assertEquals(decodedLen(4), 2);
     assertEquals(decodedLen(6), 3);
     assertEquals(decodedLen(8), 4);
-  }
+  },
 });
 
 Deno.test({
@@ -117,7 +117,7 @@ Deno.test({
     // Case for decoding uppercase hex characters, since
     // Encode always uses lowercase.
     const extraTestcase = [
-      ["F8F9FAFBFCFDFEFF", [0xf8, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0xff]]
+      ["F8F9FAFBFCFDFEFF", [0xf8, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0xff]],
     ];
 
     const cases = testCases.concat(extraTestcase);
@@ -129,7 +129,7 @@ Deno.test({
       assertEquals(err, undefined);
       assertEquals(Array.from(dest), Array.from(dec as number[]));
     }
-  }
+  },
 });
 
 Deno.test({
@@ -140,7 +140,7 @@ Deno.test({
 
       assertEquals(dec, Array.from(dst));
     }
-  }
+  },
 });
 
 Deno.test({
@@ -155,7 +155,7 @@ Deno.test({
       );
       assertEquals(err, expectedErr);
     }
-  }
+  },
 });
 
 Deno.test({
@@ -175,5 +175,5 @@ Deno.test({
         assertEquals(new TextDecoder("ascii").decode(out), output as string);
       }
     }
-  }
+  },
 });

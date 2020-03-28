@@ -174,7 +174,7 @@ function createArrayString(
     displayName: "",
     delims: ["[", "]"],
     entryHandler: (el, ctx, level, maxLevel): string =>
-      stringifyWithQuotes(el, ctx, level + 1, maxLevel)
+      stringifyWithQuotes(el, ctx, level + 1, maxLevel),
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
@@ -191,7 +191,7 @@ function createTypedArrayString(
     displayName: typedArrayName,
     delims: ["[", "]"],
     entryHandler: (el, ctx, level, maxLevel): string =>
-      stringifyWithQuotes(el, ctx, level + 1, maxLevel)
+      stringifyWithQuotes(el, ctx, level + 1, maxLevel),
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
@@ -207,7 +207,7 @@ function createSetString(
     displayName: "Set",
     delims: ["{", "}"],
     entryHandler: (el, ctx, level, maxLevel): string =>
-      stringifyWithQuotes(el, ctx, level + 1, maxLevel)
+      stringifyWithQuotes(el, ctx, level + 1, maxLevel),
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
@@ -230,7 +230,7 @@ function createMapString(
         level + 1,
         maxLevel
       )} => ${stringifyWithQuotes(val, ctx, level + 1, maxLevel)}`;
-    }
+    },
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
@@ -494,10 +494,12 @@ const timerMap = new Map<string, number>();
 const isConsoleInstance = Symbol("isConsoleInstance");
 
 export class Console {
+  #printFunc: PrintFunc;
   indentLevel: number;
   [isConsoleInstance] = false;
 
-  constructor(private printFunc: PrintFunc) {
+  constructor(printFunc: PrintFunc) {
+    this.#printFunc = printFunc;
     this.indentLevel = 0;
     this[isConsoleInstance] = true;
 
@@ -511,9 +513,9 @@ export class Console {
   }
 
   log = (...args: unknown[]): void => {
-    this.printFunc(
+    this.#printFunc(
       stringifyArgs(args, {
-        indentLevel: this.indentLevel
+        indentLevel: this.indentLevel,
       }) + "\n",
       false
     );
@@ -523,15 +525,15 @@ export class Console {
   info = this.log;
 
   dir = (obj: unknown, options: InspectOptions = {}): void => {
-    this.printFunc(stringifyArgs([obj], options) + "\n", false);
+    this.#printFunc(stringifyArgs([obj], options) + "\n", false);
   };
 
   dirxml = this.dir;
 
   warn = (...args: unknown[]): void => {
-    this.printFunc(
+    this.#printFunc(
       stringifyArgs(args, {
-        indentLevel: this.indentLevel
+        indentLevel: this.indentLevel,
       }) + "\n",
       true
     );
@@ -604,7 +606,7 @@ export class Console {
       this.log(cliTable(header, body));
     const createColumn = (value: unknown, shift?: number): string[] => [
       ...(shift ? [...new Array(shift)].map((): string => "") : []),
-      stringifyValue(value)
+      stringifyValue(value),
     ];
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -660,8 +662,8 @@ export class Console {
       indexKey,
       ...(properties || [
         ...headerKeys,
-        !isMap && values.length > 0 && valuesKey
-      ])
+        !isMap && values.length > 0 && valuesKey,
+      ]),
     ].filter(Boolean) as string[];
     const body = [indexKeys, ...bodyValues, values];
 
@@ -733,7 +735,7 @@ export class Console {
     const message = stringifyArgs(args, { indentLevel: 0 });
     const err = {
       name: "Trace",
-      message
+      message,
     };
     // @ts-ignore
     Error.captureStackTrace(err, this.trace);

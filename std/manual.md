@@ -366,7 +366,7 @@ Example:
 ```ts
 // create subprocess
 const p = Deno.run({
-  cmd: ["echo", "hello"]
+  cmd: ["echo", "hello"],
 });
 
 // await its completion
@@ -398,10 +398,10 @@ const p = Deno.run({
     "run",
     "--allow-read",
     "https://deno.land/std/examples/cat.ts",
-    ...fileNames
+    ...fileNames,
   ],
   stdout: "piped",
-  stderr: "piped"
+  stderr: "piped",
 });
 
 const { code } = await p.status();
@@ -557,7 +557,7 @@ assertion library across a large project. Rather than importing
 export {
   assert,
   assertEquals,
-  assertStrContains
+  assertStrContains,
 } from "https://deno.land/std/testing/asserts.ts";
 ```
 
@@ -676,10 +676,10 @@ TypeScript `"dom"` library:
 const [errors, emitted] = await Deno.compile(
   "main.ts",
   {
-    "main.ts": `document.getElementById("foo");\n`
+    "main.ts": `document.getElementById("foo");\n`,
   },
   {
-    lib: ["dom", "esnext"]
+    lib: ["dom", "esnext"],
   }
 );
 ```
@@ -716,10 +716,10 @@ lib in the array. For example:
 const [errors, emitted] = await Deno.compile(
   "main.ts",
   {
-    "main.ts": `document.getElementById("foo");\n`
+    "main.ts": `document.getElementById("foo");\n`,
   },
   {
-    lib: ["dom", "esnext", "deno.ns"]
+    lib: ["dom", "esnext", "deno.ns"],
   }
 );
 ```
@@ -745,7 +745,7 @@ It would compiler without errors like this:
 
 ```ts
 const [errors, emitted] = await Deno.compile("./main.ts", undefined, {
-  lib: ["esnext"]
+  lib: ["esnext"],
 });
 ```
 
@@ -1059,7 +1059,7 @@ An example of providing sources:
 ```ts
 const [diagnostics, emitMap] = await Deno.compile("/foo.ts", {
   "/foo.ts": `import * as bar from "./bar.ts";\nconsole.log(bar);\n`,
-  "/bar.ts": `export const bar = "bar";\n`
+  "/bar.ts": `export const bar = "bar";\n`,
 });
 
 assert(diagnostics == null); // ensuring no diagnostics are returned
@@ -1104,7 +1104,7 @@ An example of providing sources:
 ```ts
 const [diagnostics, emit] = await Deno.bundle("/foo.ts", {
   "/foo.ts": `import * as bar from "./bar.ts";\nconsole.log(bar);\n`,
-  "/bar.ts": `export const bar = "bar";\n`
+  "/bar.ts": `export const bar = "bar";\n`,
 });
 
 assert(diagnostics == null); // ensuring no diagnostics are returned
@@ -1145,7 +1145,7 @@ An example:
 
 ```ts
 const result = await Deno.transpileOnly({
-  "/foo.ts": `enum Foo { Foo, Bar, Baz };\n`
+  "/foo.ts": `enum Foo { Foo, Bar, Baz };\n`,
 });
 
 console.log(result["/foo.ts"].source);

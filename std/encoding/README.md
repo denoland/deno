@@ -39,7 +39,7 @@ const string = "a,b,c\nd,e,f";
 
 console.log(
   await parseCsv(string, {
-    header: false
+    header: false,
   })
 );
 // output:
@@ -161,9 +161,9 @@ import { stringify } from "./parser.ts";
 const obj = {
   bin: [
     { name: "deno", path: "cli/main.rs" },
-    { name: "deno_core", path: "src/foo.rs" }
+    { name: "deno_core", path: "src/foo.rs" },
   ],
-  nib: [{ name: "node", path: "not_found" }]
+  nib: [{ name: "node", path: "not_found" }],
 };
 const tomlString = stringify(obj);
 ```
