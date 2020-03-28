@@ -993,7 +993,7 @@ fn inspect_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     if let Some(host) = matches.value_of("inspect") {
       Some(host.to_string())
     } else {
-      try_ports = true;
+      try_ports = true; // only try ports if not explicitly specify.
       Some(DEFAULT.to_string())
     }
   } else {
@@ -1003,7 +1003,7 @@ fn inspect_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     if let Some(host) = matches.value_of("inspect-brk") {
       Some(host.to_string())
     } else {
-      try_ports = true;
+      try_ports = true; // only try ports if not explicitly specify.
       Some(DEFAULT.to_string())
     }
   } else {

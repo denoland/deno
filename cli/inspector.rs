@@ -33,6 +33,7 @@ use warp::filters::ws;
 use warp::Filter;
 
 const CONTEXT_GROUP_ID: i32 = 1;
+const MAX_PORT_TRIES: i32 = 50;
 
 /// Owned by GloalState, this channel end can be used by any isolate thread
 /// to register it's inspector with the inspector server.
@@ -88,13 +89,17 @@ pub struct InspectorServer {
 }
 
 impl InspectorServer {
-  pub fn new(host: &str, brk: bool, use_first_free_port: bool) -> Self {
+  pub fn new(host: &str, brk: bool, try_free_ports: bool) -> Self {
     if brk {
       todo!("--inspect-brk not yet supported");
     }
+    // Arc<Mutex<>> is still needed even with channel possibly sending value back,
+    // due to later server messages will rely on message, meaning more than 1
+    // thread will access it.
     let address = Arc::new(Mutex::new(host.parse::<SocketAddrV4>().unwrap()));
     let (server_msg_tx, server_msg_rx) = mpsc::unbounded_channel::<ServerMsg>();
-    // Oneshot wait for address ready.
+    // Oneshot wait for address ready. Due to possibility of port tries,
+    // the address is not yet set in stone until server starts.
     let (addr_ready_tx, addr_ready_rx) = std::sync::mpsc::sync_channel::<()>(1);
     let address_ = address.clone();
     let thread_handle = std::thread::spawn(move || {
@@ -102,10 +107,10 @@ impl InspectorServer {
         address_,
         addr_ready_tx,
         server_msg_rx,
-        use_first_free_port,
+        try_free_ports,
       ));
     });
-    // Wait for final address to settle.
+    // Wait for final address to settle (after server starts).
     let _ = addr_ready_rx.recv();
     Self {
       address,
@@ -181,7 +186,7 @@ async fn server(
   address: Arc<Mutex<SocketAddrV4>>,
   addr_ready_tx: std::sync::mpsc::SyncSender<()>,
   mut server_msg_rx: ServerMsgRx,
-  use_first_free_port: bool,
+  try_free_ports: bool,
 ) {
   let inspector_map = HashMap::<Uuid, InspectorInfo>::new();
   let inspector_map = Arc::new(std::sync::Mutex::new(inspector_map));
@@ -309,9 +314,9 @@ async fn server(
     match maybe_handler {
       Ok((_, srv)) => return Ok(srv),
       Err(e) => {
-        if use_first_free_port {
-          for _ in 0..30 {
-            // max try subsequent 30 ports
+        if try_free_ports {
+          for _ in 0..MAX_PORT_TRIES {
+            // max try subsequent 50 ports
             addr.set_port(addr.port() + 1);
             if let Ok((_, srv)) =
               warp::serve(routes.clone()).try_bind_ephemeral(addr)
@@ -323,10 +328,8 @@ async fn server(
               return Ok(srv);
             }
           }
-          return Err(e);
-        } else {
-          return Err(e);
         }
+        return Err(e);
       }
     }
   }

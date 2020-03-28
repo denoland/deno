@@ -1985,6 +1985,80 @@ fn extract_ws_url_from_stderr(
 
 #[cfg(not(target_os = "linux"))] // TODO(ry) broken on github actions.
 #[tokio::test]
+async fn inspector_try_ports() {
+  let script = deno::test_util::root_path()
+    .join("cli")
+    .join("tests")
+    .join("inspector1.js");
+  // Child 1 and 2 are expected to be running fine,
+  // since they will be finding the next free port.
+  let mut child1 = util::deno_cmd()
+    .arg("run")
+    .arg("--inspect")
+    .arg(script.clone())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let mut child2 = util::deno_cmd()
+    .arg("run")
+    .arg("--inspect")
+    .arg(script)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let ws_url_1 = extract_ws_url_from_stderr(child1.stderr.as_mut().unwrap());
+  println!("ws_url 1 {}", ws_url_1);
+  let ws_url_2 = extract_ws_url_from_stderr(child2.stderr.as_mut().unwrap());
+  println!("ws_url 2 {}", ws_url_2);
+  assert_ne!(ws_url_1, ws_url_2);
+  child1.kill().unwrap();
+  child2.kill().unwrap();
+}
+
+#[cfg(not(target_os = "linux"))] // TODO(ry) broken on github actions.
+#[tokio::test]
+async fn inspector_explicit_no_try_port() {
+  let script = deno::test_util::root_path()
+    .join("cli")
+    .join("tests")
+    .join("inspector1.js");
+  let mut child1 = util::deno_cmd()
+    .arg("run")
+    .arg("--inspect")
+    .arg(script.clone())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let ws_url_1 = extract_ws_url_from_stderr(child1.stderr.as_mut().unwrap());
+  println!("ws_url {}", ws_url_1);
+
+  let mut child2 = util::deno_cmd()
+    .arg("run")
+    .arg(format!(
+      "--inspect={}:{}",
+      ws_url_1.host_str().unwrap(),
+      ws_url_1.port().unwrap()
+    ))
+    .arg(script)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  use std::io::Read;
+  let mut stderr_str_2 = String::new();
+  child2
+    .stderr
+    .as_mut()
+    .unwrap()
+    .read_to_string(&mut stderr_str_2)
+    .unwrap();
+  assert!(stderr_str_2.contains("Cannot start inspector server"));
+  child1.kill().unwrap();
+  let _ = child2.kill();
+}
+
+#[cfg(not(target_os = "linux"))] // TODO(ry) broken on github actions.
+#[tokio::test]
 async fn inspector_connect() {
   let script = deno::test_util::root_path()
     .join("cli")
@@ -1992,9 +2066,7 @@ async fn inspector_connect() {
     .join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
-    // Warning: each inspector test should be on its own port to avoid
-    // conflicting with another inspector test.
-    .arg("--inspect=127.0.0.1:9229")
+    .arg("--inspect")
     .arg(script)
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -2019,9 +2091,7 @@ async fn inspector_pause() {
     .join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
-    // Warning: each inspector test should be on its own port to avoid
-    // conflicting with another inspector test.
-    .arg("--inspect=127.0.0.1:9230")
+    .arg("--inspect")
     .arg(script)
     .stderr(std::process::Stdio::piped())
     .spawn()
