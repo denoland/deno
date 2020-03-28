@@ -10,6 +10,7 @@
 // unnecessary and can result in unnecessary copying. Instead they should take
 // references.
 
+use crate::colors;
 use crate::doc;
 use crate::doc::ts_type::TsTypeDefKind;
 use crate::doc::DocNodeKind;
@@ -22,8 +23,11 @@ pub fn format_details(node: doc::DocNode) -> String {
   let mut details = String::new();
 
   details.push_str(&format!(
-    "Defined in {}:{}:{}.\n",
-    node.location.filename, node.location.line, node.location.col
+    "{}",
+    colors::gray(format!(
+      "Defined in {}:{}:{} \n\n",
+      node.location.filename, node.location.line, node.location.col
+    ))
   ));
 
   details.push_str(&format_signature(&node, 0));
@@ -275,11 +279,12 @@ fn render_ts_type(ts_type: doc::ts_type::TsTypeDef) -> String {
   }
 }
 
-fn format_indent(indent: i64) -> String {
+fn add_indent(string: String, indent: i64) -> String {
   let mut indent_str = String::new();
-  for _ in 0..indent {
-    indent_str.push_str(" ");
+  for _ in 0..(indent * 2) {
+    indent_str += " ";
   }
+  indent_str += string.as_str();
   indent_str
 }
 
@@ -291,15 +296,13 @@ fn format_jsdoc(jsdoc: String, truncated: bool, indent: i64) -> String {
 
   if truncated {
     let first_line = lines.next().unwrap_or_else(|| "".to_string());
-    js_doc.push_str(&format_indent(indent + 1));
-    js_doc.push_str(&format!("{}\n", first_line));
+    js_doc.push_str(&add_indent(format!("{}\n", first_line), indent + 1));
   } else {
     for line in lines {
-      js_doc.push_str(&format_indent(indent + 1));
-      js_doc.push_str(&format!("{}\n", line));
+      js_doc.push_str(&add_indent(format!("{}\n", line), indent + 1));
     }
   }
-  js_doc
+  format!("{}", colors::gray(js_doc))
 }
 
 fn format_class_details(node: doc::DocNode) -> String {
@@ -307,10 +310,14 @@ fn format_class_details(node: doc::DocNode) -> String {
 
   let class_def = node.class_def.unwrap();
   for node in class_def.constructors {
-    details.push_str(&format!(
-      "constructor {}({})\n",
-      node.name,
-      render_params(node.params),
+    details.push_str(&add_indent(
+      format!(
+        "{} {}({})\n",
+        colors::magenta("constructor".to_string()),
+        colors::bold(node.name),
+        render_params(node.params),
+      ),
+      1,
     ));
   }
   for node in class_def.properties.iter().filter(|node| {
@@ -319,18 +326,22 @@ fn format_class_details(node: doc::DocNode) -> String {
       .unwrap_or(swc_ecma_ast::Accessibility::Public)
       != swc_ecma_ast::Accessibility::Private
   }) {
-    details.push_str(&format!(
-      "{} {}: {}\n",
-      match node
-        .accessibility
-        .unwrap_or(swc_ecma_ast::Accessibility::Public)
-      {
-        swc_ecma_ast::Accessibility::Protected => "protected".to_string(),
-        swc_ecma_ast::Accessibility::Public => "public".to_string(),
-        _ => "".to_string(),
-      },
-      node.name,
-      render_ts_type(node.ts_type.clone().unwrap())
+    details.push_str(&add_indent(
+      format!(
+        "{}{}: {}\n",
+        colors::magenta(
+          match node
+            .accessibility
+            .unwrap_or(swc_ecma_ast::Accessibility::Public)
+          {
+            swc_ecma_ast::Accessibility::Protected => "protected ".to_string(),
+            _ => "".to_string(),
+          }
+        ),
+        colors::bold(node.name.clone()),
+        render_ts_type(node.ts_type.clone().unwrap())
+      ),
+      1,
     ));
   }
   for node in class_def.methods.iter().filter(|node| {
@@ -340,24 +351,28 @@ fn format_class_details(node: doc::DocNode) -> String {
       != swc_ecma_ast::Accessibility::Private
   }) {
     let function_def = node.function_def.clone();
-    details.push_str(&format!(
-      "{} {}{}({}): {}\n",
-      match node
-        .accessibility
-        .unwrap_or(swc_ecma_ast::Accessibility::Public)
-      {
-        swc_ecma_ast::Accessibility::Protected => "protected".to_string(),
-        swc_ecma_ast::Accessibility::Public => "public".to_string(),
-        _ => "".to_string(),
-      },
-      match node.kind {
-        swc_ecma_ast::MethodKind::Getter => "get ".to_string(),
-        swc_ecma_ast::MethodKind::Setter => "set ".to_string(),
-        _ => "".to_string(),
-      },
-      node.name,
-      render_params(function_def.params),
-      render_ts_type(function_def.return_type.unwrap())
+    details.push_str(&add_indent(
+      format!(
+        "{}{}{}({}): {}\n",
+        colors::magenta(
+          match node
+            .accessibility
+            .unwrap_or(swc_ecma_ast::Accessibility::Public)
+          {
+            swc_ecma_ast::Accessibility::Protected => "protected ".to_string(),
+            _ => "".to_string(),
+          }
+        ),
+        colors::magenta(match node.kind {
+          swc_ecma_ast::MethodKind::Getter => "get ".to_string(),
+          swc_ecma_ast::MethodKind::Setter => "set ".to_string(),
+          _ => "".to_string(),
+        }),
+        colors::bold(node.name.clone()),
+        render_params(function_def.params),
+        render_ts_type(function_def.return_type.unwrap())
+      ),
+      1,
     ));
   }
   details.push_str("\n");
@@ -369,64 +384,102 @@ fn format_namespace_details(node: doc::DocNode) -> String {
 
   let elements = node.namespace_def.unwrap().elements;
   for node in elements {
-    ns.push_str(&format_signature(&node, 0));
+    ns.push_str(&format_signature(&node, 1));
   }
   ns.push_str("\n");
   ns
 }
 
 fn format_function_signature(node: &doc::DocNode, indent: i64) -> String {
-  format_indent(indent);
   let function_def = node.function_def.clone().unwrap();
   let return_type = function_def.return_type.unwrap();
-  format!(
-    "function {}({}): {}\n",
-    node.name,
-    render_params(function_def.params),
-    render_ts_type(return_type).as_str()
+  add_indent(
+    format!(
+      "{} {}{}\n",
+      colors::magenta("function".to_string()),
+      colors::bold(node.name.clone()),
+      format!(
+        "({}): {}",
+        render_params(function_def.params),
+        render_ts_type(return_type).as_str()
+      )
+    ),
+    indent,
   )
 }
 
 fn format_class_signature(node: &doc::DocNode, indent: i64) -> String {
-  format_indent(indent);
-  format!("class {}\n", node.name)
+  add_indent(
+    format!(
+      "{} {}\n",
+      colors::magenta("class".to_string()),
+      colors::bold(node.name.clone())
+    ),
+    indent,
+  )
 }
 
 fn format_variable_signature(node: &doc::DocNode, indent: i64) -> String {
-  format_indent(indent);
   let variable_def = node.variable_def.clone().unwrap();
-  format!(
-    "{} {}{}\n",
-    match variable_def.kind {
-      swc_ecma_ast::VarDeclKind::Const => "const".to_string(),
-      swc_ecma_ast::VarDeclKind::Let => "let".to_string(),
-      swc_ecma_ast::VarDeclKind::Var => "var".to_string(),
-    },
-    node.name,
-    if variable_def.ts_type.is_some() {
-      format!(": {}", render_ts_type(variable_def.ts_type.unwrap()))
-    } else {
-      "".to_string()
-    }
+  add_indent(
+    format!(
+      "{} {}{}\n",
+      colors::magenta(match variable_def.kind {
+        swc_ecma_ast::VarDeclKind::Const => "const".to_string(),
+        swc_ecma_ast::VarDeclKind::Let => "let".to_string(),
+        swc_ecma_ast::VarDeclKind::Var => "var".to_string(),
+      }),
+      colors::bold(node.name.clone()),
+      if variable_def.ts_type.is_some() {
+        format!(": {}", render_ts_type(variable_def.ts_type.unwrap()))
+      } else {
+        "".to_string()
+      }
+    ),
+    indent,
   )
 }
 
 fn format_enum_signature(node: &doc::DocNode, indent: i64) -> String {
-  format_indent(indent);
-  format!("enum {}\n", node.name)
+  add_indent(
+    format!(
+      "{} {}\n",
+      colors::magenta("enum".to_string()),
+      colors::bold(node.name.clone())
+    ),
+    indent,
+  )
 }
 
 fn format_interface_signature(node: &doc::DocNode, indent: i64) -> String {
-  format_indent(indent);
-  format!("interface {}\n", node.name)
+  add_indent(
+    format!(
+      "{} {}\n",
+      colors::magenta("interface".to_string()),
+      colors::bold(node.name.clone())
+    ),
+    indent,
+  )
 }
 
 fn format_type_alias_signature(node: &doc::DocNode, indent: i64) -> String {
-  format_indent(indent);
-  format!("type {}\n", node.name)
+  add_indent(
+    format!(
+      "{} {}\n",
+      colors::magenta("type".to_string()),
+      colors::bold(node.name.clone())
+    ),
+    indent,
+  )
 }
 
 fn format_namespace_signature(node: &doc::DocNode, indent: i64) -> String {
-  format_indent(indent);
-  format!("namespace {}\n", node.name)
+  add_indent(
+    format!(
+      "{} {}\n",
+      colors::magenta("namespace".to_string()),
+      colors::bold(node.name.clone())
+    ),
+    indent,
+  )
 }
