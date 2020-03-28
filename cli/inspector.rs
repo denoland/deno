@@ -602,7 +602,7 @@ impl Future for DenoInspectorSession {
     use Poll::*;
     let mut self_ = self.as_mut();
 
-    let r = loop {
+    let rx_poll = loop {
       match self_.rx.poll_next_unpin(cx) {
         Ready(Some(Ok(msg))) => self_.dispatch_inbound(msg),
         Ready(None) => break Ready(Ok(())),
@@ -611,14 +611,15 @@ impl Future for DenoInspectorSession {
       }
     };
 
-    let s = self_.tx_pump.poll_unpin(cx);
+    let tx_poll = self_.tx_pump.poll_unpin(cx);
 
-    match (r, s) {
-      (v @ Ready(Err(_)), _) => v,
-      (_, v @ Ready(Err(_))) => v,
-      (v @ Ready(Ok(_)), Ready(Ok(_))) => v,
+    let r = match (rx_poll, tx_poll) {
+      (Ready(r1), Ready(r2)) => Ready(r1.and(r2)),
       _ => Pending,
-    }
+    };
+
+    eprintln!("Client state: {:?}", r);
+    r
   }
 }
 
