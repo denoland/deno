@@ -5,16 +5,21 @@
 
 use deno_core::v8;
 use futures;
+use futures::channel;
+use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::executor;
 use futures::future;
 use futures::sink;
+use futures::stream::Forward;
 use futures::stream::FuturesOrdered;
 use futures::stream::FuturesUnordered;
-use futures::channel::mpsc;
 use futures::stream::SplitSink;
+use futures::stream::SplitStream;
 use futures::FutureExt;
 use futures::SinkExt;
 use futures::StreamExt;
+use futures::TryFutureExt;
+use futures::TryStreamExt;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::future::Future;
@@ -357,8 +362,6 @@ impl DenoInspector {
       match self.frontend_to_inspector_rx.try_recv() {
         Ok(msg) => self.dispatch_frontend_to_inspector_msg(msg),
         Err(TryRecvError::Closed) => break Poll::Ready(()),
-        Err(TryRecvError::Empty)
-          if self.interrupted.swap(false, Ordering::AcqRel) => {}
         Err(TryRecvError::Empty) => break Poll::Pending,
       }
     };
@@ -366,6 +369,7 @@ impl DenoInspector {
     loop {
       match self.sessions2.poll_next_unpin(cx) {
         Poll::Ready(Some(_)) => {}
+        _ if self.interrupted.swap(false, Ordering::AcqRel) => {}
         _ => break Poll::Pending,
       }
     }
@@ -510,53 +514,39 @@ fn handle_session(
   inspector: &'_ mut v8::inspector::V8Inspector,
   websocket: ws::WebSocket,
 ) -> Pin<Box<dyn Future<Output = ()>>> {
-  let (mut tx, mut rx) = websocket.split();
-
-  let mut tx_queue = FuturesOrdered::<
-    sink::Send<SplitSink<ws::WebSocket, ws::Message>, ws::Message>,
-  >::new();
-
-  let mut send = |mut msg: v8::UniquePtr<v8::inspector::StringBuffer>| {
-    let mut msg = msg.unwrap();
-    let msg = msg.string().to_string();
-    let msg = ws::Message::text(msg);
-    let _ = tx.send(msg);
-  };
-
-  let mut session = DenoInspectorSession::new(inspector, &mut send);
-
-  let tx_handler = async move {
-    let _ = tx_queue.next().await;
-  };
-
-  let rx_handler = async move {
-    while let Some(Ok(msg)) = rx.next().await {
-      let bytes = msg.as_bytes();
-      let string_view = v8::inspector::StringView::from(bytes);
-      session.dispatch_protocol_message(&string_view);
-    }
-  };
-
-  async {
-    rx_handler.await;
-    tx_handler.await;
-  }
-  .boxed_local()
+  let mut session = DenoInspectorSession::new(inspector, websocket);
+  session
+    .unwrap_or_else(|err| eprintln!("Debugger disconnected: {:?}", err))
+    .boxed_local()
 }
 
-struct DenoInspectorSession<'a> {
+type MessageResult = Result<ws::Message, warp::Error>;
+
+struct DenoInspectorSession {
   channel: v8::inspector::ChannelBase,
-  outbound_tx: UnboundedSender<ws::Message>,
-  outbound_rx: UnboundedReceiver<ws::Message>
+  session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
+  // Internal channel/queue that temporarily stores messages sent by V8 to
+  // the front-end, before they are sent over the websocket.
+  tx: UnboundedSender<MessageResult>,
+  rx: SplitStream<ws::WebSocket>,
+  tx_pump: Forward<
+    UnboundedReceiver<MessageResult>,
+    SplitSink<ws::WebSocket, ws::Message>,
+  >,
 }
 
-impl<'a> DenoInspectorSession<'a> {
+impl DenoInspectorSession {
   pub fn new(
     inspector: &mut v8::inspector::V8Inspector,
+    websocket: ws::WebSocket,
   ) -> Box<Self> {
-    new_box_with(|address| {
-      let (outbound_tx, outbound_rx) = unbounded::<ws:Message>();
-      let empty_view = v8::inspector::StringView::empty();
+    let (mut channel_tx, mut channel_rx) = unbounded::<MessageResult>();
+    let (mut websocket_tx, websocket_rx) = websocket.split();
+    let mut tx_pump = channel_rx.forward(websocket_tx);
+
+    let empty_view = v8::inspector::StringView::empty();
+
+    new_box_with(move |address| {
       Self {
         channel: v8::inspector::ChannelBase::new::<Self>(),
         session: inspector.connect(
@@ -566,27 +556,59 @@ impl<'a> DenoInspectorSession<'a> {
           unsafe { &mut *address },
           &empty_view,
         ),
-        outbound_tx,
-        outbound_tx
+        tx: channel_tx,
+        rx: websocket_rx,
+        tx_pump,
       }
     })
   }
 
-  fn receive_inbound(&mut self, msg: ws::Message) {
-      let bytes = msg.as_bytes();
-      let string_view = v8::inspector::StringView::from(bytes);
-      self.session.dispatch_protocol_message(&string_view);
+  fn dispatch_inbound(&mut self, msg: ws::Message) {
+    let bytes = msg.as_bytes();
+    let string_view = v8::inspector::StringView::from(bytes);
+    self.session.dispatch_protocol_message(&string_view);
   }
 
-  fn send_outbound(&mut self, msg: v8::UniquePtr<v8::inspector::StringBuffer>)  {
+  fn send_outbound(&mut self, msg: v8::UniquePtr<v8::inspector::StringBuffer>) {
     let mut msg = msg.unwrap();
     let msg = msg.string().to_string();
     let msg = ws::Message::text(msg);
-    self.outbound_tx.unbounded_send(msg).expect("internal channel failed");
+    let msg = Ok(msg);
+    self
+      .tx
+      .unbounded_send(msg)
+      .expect("unbounded_send() failed");
   }
 }
 
-impl<'a> v8::inspector::ChannelImpl for DenoInspectorSession<'a> {
+impl Future for DenoInspectorSession {
+  type Output = Result<(), warp::Error>;
+
+  fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    use Poll::*;
+    let mut self_ = self.as_mut();
+
+    let r = loop {
+      match self_.rx.poll_next_unpin(cx) {
+        Ready(Some(Ok(msg))) => self_.dispatch_inbound(msg),
+        Ready(None) => break Ready(Ok(())),
+        Ready(Some(Err(e))) => break Ready(Err(e)),
+        Pending => break Pending,
+      }
+    };
+
+    let s = self_.tx_pump.poll_unpin(cx);
+
+    match (r, s) {
+      (v @ Ready(Err(_)), _) => v,
+      (_, v @ Ready(Err(_))) => v,
+      (v @ Ready(Ok(_)), Ready(Ok(_))) => v,
+      _ => Pending,
+    }
+  }
+}
+
+impl v8::inspector::ChannelImpl for DenoInspectorSession {
   fn base(&self) -> &v8::inspector::ChannelBase {
     &self.channel
   }
@@ -611,8 +633,6 @@ impl<'a> v8::inspector::ChannelImpl for DenoInspectorSession<'a> {
   }
 
   fn flush_protocol_notifications(&mut self) {}
-
-  async fn 
 }
 
 // TODO impl From or Into
