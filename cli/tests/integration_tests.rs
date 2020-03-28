@@ -1468,7 +1468,7 @@ itest!(cafile_eval {
   http_server: true,
 });
 
-itest!(cafile_info {
+itest_ignore!(cafile_info {
   args:
     "info --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
   output: "cafile_info.ts.out",
