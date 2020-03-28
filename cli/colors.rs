@@ -3,7 +3,7 @@ use regex::Regex;
 use std::env;
 use std::fmt;
 use std::io::Write;
-use termcolor::Color::{Ansi256, Black, Red, White};
+use termcolor::Color::{Ansi256, Black, Magenta, Red, White};
 use termcolor::{Ansi, ColorSpec, WriteColor};
 
 #[cfg(windows)]
@@ -85,6 +85,12 @@ pub fn red(s: String) -> impl fmt::Display {
 pub fn green(s: String) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Ansi256(10)));
+  style(&s, style_spec)
+}
+
+pub fn magenta(s: String) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_fg(Some(Magenta));
   style(&s, style_spec)
 }
 
