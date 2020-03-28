@@ -2072,6 +2072,44 @@ async fn inspector_pause() {
   child.kill().unwrap();
 }
 
+#[cfg(not(target_os = "linux"))] // TODO(ry) broken on github actions.
+#[tokio::test]
+async fn inspector_port_collision() {
+  let script = deno::test_util::root_path()
+    .join("cli")
+    .join("tests")
+    .join("inspector1.js");
+  let mut child1 = util::deno_cmd()
+    .arg("run")
+    .arg("--inspect=127.0.0.1:9231")
+    .arg(script.clone())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let ws_url_1 = extract_ws_url_from_stderr(child1.stderr.as_mut().unwrap());
+  println!("ws_url {}", ws_url_1);
+
+  let mut child2 = util::deno_cmd()
+    .arg("run")
+    .arg("--inspect=127.0.0.1:9231")
+    .arg(script)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  use std::io::Read;
+  let mut stderr_str_2 = String::new();
+  child2
+    .stderr
+    .as_mut()
+    .unwrap()
+    .read_to_string(&mut stderr_str_2)
+    .unwrap();
+  assert!(stderr_str_2.contains("Cannot start inspector server"));
+  child1.kill().unwrap();
+  let _ = child2.kill();
+}
+
 mod util {
   use deno::colors::strip_ansi_codes;
   pub use deno::test_util::*;

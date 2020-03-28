@@ -283,7 +283,12 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
   });
 
   let routes = websocket.or(version).or(json_list);
-  let web_handler = warp::serve(routes).bind(address);
+  let (_, web_handler) = warp::serve(routes)
+    .try_bind_ephemeral(address)
+    .unwrap_or_else(|e| {
+      eprintln!("Cannot start inspector server: {}", e);
+      std::process::exit(1);
+    });
 
   future::join(msg_handler, web_handler).await;
 }
