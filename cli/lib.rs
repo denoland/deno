@@ -389,26 +389,24 @@ async fn doc_command(
   };
 
   if json {
-    let json_string = serde_json::to_string_pretty(&doc_nodes).unwrap();
-    return write_to_stdout_ignore_sigpipe(json_string.as_bytes())
+    let writer = std::io::BufWriter::new(std::io::stdout());
+    return serde_json::to_writer_pretty(writer, &doc_nodes)
       .map_err(ErrBox::from);
-  }
-
-  let printer = doc::TerminalPrinter::new();
-
-  let details = if let Some(filter) = maybe_filter {
-    let node = doc::find_node_by_name_recursively(doc_nodes, filter.clone());
-    if let Some(node) = node {
-      printer.format_details(node)
-    } else {
-      eprintln!("Node {} was not found!", filter);
-      std::process::exit(1);
-    }
   } else {
-    printer.format(doc_nodes)
-  };
+    let details = if let Some(filter) = maybe_filter {
+      let node = doc::find_node_by_name_recursively(doc_nodes, filter.clone());
+      if let Some(node) = node {
+        doc::printer::format_details(node)
+      } else {
+        eprintln!("Node {} was not found!", filter);
+        std::process::exit(1);
+      }
+    } else {
+      doc::printer::format(doc_nodes)
+    };
 
-  write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(ErrBox::from)
+    write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(ErrBox::from)
+  }
 }
 
 async fn run_repl(flags: Flags) -> Result<(), ErrBox> {

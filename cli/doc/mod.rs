@@ -7,7 +7,7 @@ pub mod module;
 pub mod namespace;
 mod node;
 pub mod parser;
-mod printer;
+pub mod printer;
 pub mod ts_type;
 pub mod type_alias;
 pub mod variable;
@@ -17,7 +17,6 @@ pub use node::DocNodeKind;
 pub use node::Location;
 pub use node::ParamDef;
 pub use parser::DocParser;
-pub use printer::TerminalPrinter;
 
 #[cfg(test)]
 mod tests;

@@ -67,7 +67,7 @@ semver-parser = "0.9.0"
 # of "swc_*" as dprint-plugin-typescript
 swc_common = "=0.5.9"
 swc_ecma_ast = "=0.18.1"
-swc_ecma_parser = "=0.21.6"
+swc_ecma_parser = "=0.21.8"
 swc_ecma_parser_macros = "=0.4.1"
 uuid = { version = "0.8", features = ["v4"] }
 
