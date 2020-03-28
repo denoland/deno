@@ -390,8 +390,7 @@ async fn doc_command(
 
   if json {
     let writer = std::io::BufWriter::new(std::io::stdout());
-    return serde_json::to_writer_pretty(writer, &doc_nodes)
-      .map_err(ErrBox::from);
+    serde_json::to_writer_pretty(writer, &doc_nodes).map_err(ErrBox::from)
   } else {
     let details = if let Some(filter) = maybe_filter {
       let node = doc::find_node_by_name_recursively(doc_nodes, filter.clone());

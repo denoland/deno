@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::DocParser;
-use super::TerminalPrinter;
 use serde_json;
 use serde_json::json;
 
@@ -61,9 +60,8 @@ export function foo(a: string, b: number): void {
   });
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
-  let printer = TerminalPrinter::new();
-  let expected_str = "function foo(a: string, b: number): void\n Hello there, this is a multiline JSdoc.\n\n";
-  assert_eq!(printer.format(entries), expected_str);
+
+  assert!(super::printer::format(entries).contains("Hello there"));
 }
 
 #[test]
@@ -91,9 +89,8 @@ fn export_const() {
   });
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
-  let printer = TerminalPrinter::new();
-  let expected_text = "const fizzBuzz\n Something about fizzBuzz\n\n";
-  assert_eq!(printer.format(entries), expected_text);
+
+  assert!(super::printer::format(entries).contains("Something about fizzBuzz"));
 }
 
 #[test]
@@ -301,9 +298,8 @@ export class Foobar extends Fizz implements Buzz {
   let entry = &entries[0];
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
-  let printer = TerminalPrinter::new();
-  let expected_text = "class Foobar\n Class doc\n\n";
-  assert_eq!(printer.format(entries), expected_text);
+
+  assert!(super::printer::format(entries).contains("class Foobar"));
 }
 
 #[test]
@@ -384,9 +380,8 @@ export interface Reader {
   });
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
-  let printer = TerminalPrinter::new();
-  let expected_text = "interface Reader\n Interface js doc\n\n";
-  assert_eq!(printer.format(entries), expected_text);
+
+  assert!(super::printer::format(entries).contains("interface Reader"));
 }
 
 #[test]
@@ -428,9 +423,8 @@ export type NumberArray = Array<number>;
   });
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
-  let printer = TerminalPrinter::new();
-  let expected_text = "type NumberArray\n Array holding numbers\n\n";
-  assert_eq!(printer.format(entries), expected_text);
+
+  assert!(super::printer::format(entries).contains("Array holding numbers"));
 }
 
 #[test]
@@ -475,9 +469,10 @@ export enum Hello {
   });
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
-  let printer = TerminalPrinter::new();
-  let expected_text = "enum Hello\n Some enum for good measure\n\n";
-  assert_eq!(printer.format(entries), expected_text);
+
+  assert!(super::printer::format(entries.clone())
+    .contains("Some enum for good measure"));
+  assert!(super::printer::format(entries).contains("enum Hello"));
 }
 
 #[test]
@@ -569,7 +564,5 @@ export namespace RootNs {
   });
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
-  let printer = TerminalPrinter::new();
-  let expected_text = "namespace RootNs\n Namespace JSdoc\n\nconst a\n\nnamespace NestedNs\n  Nested namespace JSDoc\n\nenum Foo\n\n\n\n";
-  assert_eq!(printer.format(entries), expected_text);
+  assert!(super::printer::format(entries).contains("namespace RootNs"));
 }

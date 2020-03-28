@@ -6,6 +6,10 @@
 // Or perhaps implement a Serializer for serde
 // https://docs.serde.rs/serde/ser/trait.Serializer.html
 
+// TODO(ry) The methods in this module take ownership of the DocNodes, this is
+// unnecessary and can result in unnecessary copying. Instead they should take
+// references.
+
 use crate::doc;
 use crate::doc::ts_type::TsTypeDefKind;
 use crate::doc::DocNodeKind;
