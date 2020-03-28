@@ -6,12 +6,12 @@ import {
   join,
   joinGlobs,
   normalize,
-  relative
+  relative,
 } from "../path/mod.ts";
 import {
   ExpandGlobOptions,
   expandGlob,
-  expandGlobSync
+  expandGlobSync,
 } from "./expand_glob.ts";
 
 async function expandGlobArray(
@@ -48,7 +48,7 @@ const EG_OPTIONS: ExpandGlobOptions = {
   root: urlToFilePath(new URL(join("testdata", "glob"), import.meta.url)),
   includeDirs: true,
   extended: false,
-  globstar: false
+  globstar: false,
 };
 
 Deno.test(async function expandGlobWildcard(): Promise<void> {
@@ -57,7 +57,7 @@ Deno.test(async function expandGlobWildcard(): Promise<void> {
     "abc",
     "abcdef",
     "abcdefghi",
-    "subdir"
+    "subdir",
   ]);
 });
 
@@ -72,7 +72,7 @@ Deno.test(async function expandGlobParent(): Promise<void> {
     "abc",
     "abcdef",
     "abcdefghi",
-    "subdir"
+    "subdir",
   ]);
 });
 
@@ -80,16 +80,16 @@ Deno.test(async function expandGlobExt(): Promise<void> {
   const options = { ...EG_OPTIONS, extended: true };
   assertEquals(await expandGlobArray("abc?(def|ghi)", options), [
     "abc",
-    "abcdef"
+    "abcdef",
   ]);
   assertEquals(await expandGlobArray("abc*(def|ghi)", options), [
     "abc",
     "abcdef",
-    "abcdefghi"
+    "abcdefghi",
   ]);
   assertEquals(await expandGlobArray("abc+(def|ghi)", options), [
     "abcdef",
-    "abcdefghi"
+    "abcdefghi",
   ]);
   assertEquals(await expandGlobArray("abc@(def|ghi)", options), ["abcdef"]);
   assertEquals(await expandGlobArray("abc{def,ghi}", options), ["abcdef"]);
@@ -123,7 +123,7 @@ Deno.test(async function expandGlobPermError(): Promise<void> {
     cmd: [execPath(), exampleUrl.toString()],
     stdin: "null",
     stdout: "piped",
-    stderr: "piped"
+    stderr: "piped",
   });
   assertEquals(await p.status(), { code: 1, success: false });
   assertEquals(decode(await p.output()), "");

@@ -12,7 +12,7 @@ import {
   acceptWebSocket,
   isWebSocketCloseEvent,
   isWebSocketPingEvent,
-  WebSocket
+  WebSocket,
 } from "https://deno.land/std/ws/mod.ts";
 
 /** websocket echo server */
@@ -24,7 +24,7 @@ for await (const req of serve(`:${port}`)) {
     conn,
     headers,
     bufReader: req.r,
-    bufWriter: req.w
+    bufWriter: req.w,
   })
     .then(
       async (sock: WebSocket): Promise<void> => {
@@ -73,7 +73,7 @@ import {
   connectWebSocket,
   isWebSocketCloseEvent,
   isWebSocketPingEvent,
-  isWebSocketPongEvent
+  isWebSocketPongEvent,
 } from "https://deno.land/std/ws/mod.ts";
 import { encode } from "https://deno.land/std/strings/mod.ts";
 import { BufReader } from "https://deno.land/std/io/bufio.ts";
@@ -84,7 +84,7 @@ const endpoint = Deno.args[0] || "ws://127.0.0.1:8080";
 /** simple websocket cli */
 const sock = await connectWebSocket(endpoint);
 console.log(green("ws connected! (type 'close' to quit)"));
-(async function(): Promise<void> {
+(async function (): Promise<void> {
   for await (const msg of sock.receive()) {
     if (typeof msg === "string") {
       console.log(yellow("< " + msg));

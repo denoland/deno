@@ -17,7 +17,7 @@ class FsEvents implements AsyncIterableIterator<FsEvent> {
 
   next(): Promise<IteratorResult<FsEvent>> {
     return sendAsync("op_fs_events_poll", {
-      rid: this.rid
+      rid: this.rid,
     });
   }
 

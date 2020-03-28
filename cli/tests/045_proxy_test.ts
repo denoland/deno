@@ -17,7 +17,7 @@ async function proxyRequest(req: ServerRequest): Promise<void> {
   console.log(`Proxy request to: ${req.url}`);
   const resp = await fetch(req.url, {
     method: req.method,
-    headers: req.headers
+    headers: req.headers,
   });
   req.respond(resp);
 }
@@ -27,8 +27,8 @@ async function testFetch(): Promise<void> {
     cmd: [Deno.execPath(), "--reload", "--allow-net", "045_proxy_client.ts"],
     stdout: "piped",
     env: {
-      HTTP_PROXY: `http://${addr}`
-    }
+      HTTP_PROXY: `http://${addr}`,
+    },
   });
 
   const status = await c.status();
@@ -42,12 +42,12 @@ async function testModuleDownload(): Promise<void> {
       Deno.execPath(),
       "--reload",
       "fetch",
-      "http://localhost:4545/std/examples/colors.ts"
+      "http://localhost:4545/std/examples/colors.ts",
     ],
     stdout: "piped",
     env: {
-      HTTP_PROXY: `http://${addr}`
-    }
+      HTTP_PROXY: `http://${addr}`,
+    },
   });
 
   const httpStatus = await http.status();

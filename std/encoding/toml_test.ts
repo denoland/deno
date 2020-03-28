@@ -29,12 +29,12 @@ Deno.test({
         str6: "The quick brown\nfox jumps over\nthe lazy dog.",
         lines:
           "The first newline is\ntrimmed in raw strings.\n   All other " +
-          "whitespace\n   is preserved."
-      }
+          "whitespace\n   is preserved.",
+      },
     };
     const actual = parseFile(path.join(testFilesDir, "string.toml"));
     assertEquals(actual, expected);
-  }
+  },
 });
 
 Deno.test({
@@ -43,7 +43,7 @@ Deno.test({
     const expected = { boolean: { bool1: true, bool2: false } };
     const actual = parseFile(path.join(testFilesDir, "CRLF.toml"));
     assertEquals(actual, expected);
-  }
+  },
 });
 
 Deno.test({
@@ -52,7 +52,7 @@ Deno.test({
     const expected = { boolean: { bool1: true, bool2: false } };
     const actual = parseFile(path.join(testFilesDir, "boolean.toml"));
     assertEquals(actual, expected);
-  }
+  },
 });
 
 Deno.test({
@@ -72,12 +72,12 @@ Deno.test({
         hex3: "0xdead_beef",
         oct1: "0o01234567",
         oct2: "0o755",
-        bin1: "0b11010110"
-      }
+        bin1: "0b11010110",
+      },
     };
     const actual = parseFile(path.join(testFilesDir, "integer.toml"));
     assertEquals(actual, expected);
-  }
+  },
 });
 
 Deno.test({
@@ -98,12 +98,12 @@ Deno.test({
         sf3: -Infinity,
         sf4: NaN,
         sf5: NaN,
-        sf6: NaN
-      }
+        sf6: NaN,
+      },
     };
     const actual = parseFile(path.join(testFilesDir, "float.toml"));
     assertEquals(actual, expected);
-  }
+  },
 });
 
 Deno.test({
@@ -113,14 +113,14 @@ Deno.test({
       arrays: {
         data: [
           ["gamma", "delta"],
-          [1, 2]
+          [1, 2],
         ],
-        hosts: ["alpha", "omega"]
-      }
+        hosts: ["alpha", "omega"],
+      },
     };
     const actual = parseFile(path.join(testFilesDir, "arrays.toml"));
     assertEquals(actual, expected);
-  }
+  },
 });
 
 Deno.test({
@@ -133,27 +133,27 @@ Deno.test({
             in: {
               the: {
                 toml: {
-                  name: "Tom Preston-Werner"
-                }
-              }
-            }
-          }
-        }
+                  name: "Tom Preston-Werner",
+                },
+              },
+            },
+          },
+        },
       },
       servers: {
         alpha: {
           ip: "10.0.0.1",
-          dc: "eqdc10"
+          dc: "eqdc10",
         },
         beta: {
           ip: "10.0.0.2",
-          dc: "eqdc20"
-        }
-      }
+          dc: "eqdc20",
+        },
+      },
     };
     const actual = parseFile(path.join(testFilesDir, "table.toml"));
     assertEquals(actual, expected);
-  }
+  },
 });
 
 Deno.test({
@@ -164,11 +164,11 @@ Deno.test({
       not: "[node]",
       regex: "<ic*s*>",
       NANI: "何?!",
-      comment: "Comment inside # the comment"
+      comment: "Comment inside # the comment",
     };
     const actual = parseFile(path.join(testFilesDir, "simple.toml"));
     assertEquals(actual, expected);
-  }
+  },
 });
 
 Deno.test({
@@ -182,12 +182,12 @@ Deno.test({
         odt4: new Date("1979-05-27 07:32:00Z"),
         ld1: new Date("1979-05-27"),
         lt1: "07:32:00",
-        lt2: "00:32:00.999999"
-      }
+        lt2: "00:32:00.999999",
+      },
     };
     const actual = parseFile(path.join(testFilesDir, "datetime.toml"));
     assertEquals(actual, expected);
-  }
+  },
 });
 
 Deno.test({
@@ -200,39 +200,39 @@ Deno.test({
             malevolant: {
               creation: {
                 drum: {
-                  kit: "Tama"
-                }
-              }
-            }
+                  kit: "Tama",
+                },
+              },
+            },
           },
           derek: {
-            roddy: "drummer"
-          }
+            roddy: "drummer",
+          },
         },
         name: {
           first: "Tom",
-          last: "Preston-Werner"
+          last: "Preston-Werner",
         },
         point: {
           x: 1,
-          y: 2
+          y: 2,
         },
         dog: {
           type: {
-            name: "pug"
-          }
+            name: "pug",
+          },
         },
         "tosin.abasi": "guitarist",
         animal: {
           as: {
-            leaders: "tosin"
-          }
-        }
-      }
+            leaders: "tosin",
+          },
+        },
+      },
     };
     const actual = parseFile(path.join(testFilesDir, "inlineTable.toml"));
     assertEquals(actual, expected);
-  }
+  },
 });
 
 Deno.test({
@@ -241,13 +241,13 @@ Deno.test({
     const expected = {
       bin: [
         { name: "deno", path: "cli/main.rs" },
-        { name: "deno_core", path: "src/foo.rs" }
+        { name: "deno_core", path: "src/foo.rs" },
       ],
-      nib: [{ name: "node", path: "not_found" }]
+      nib: [{ name: "node", path: "not_found" }],
     };
     const actual = parseFile(path.join(testFilesDir, "arrayTable.toml"));
     assertEquals(actual, expected);
-  }
+  },
 });
 
 Deno.test({
@@ -286,14 +286,14 @@ Deno.test({
         "tokio-io": "0.1.11",
         "tokio-process": "0.2.3",
         "tokio-threadpool": "0.1.11",
-        url: "1.7.2"
+        url: "1.7.2",
       },
-      target: { "cfg(windows)": { dependencies: { winapi: "0.3.6" } } }
+      target: { "cfg(windows)": { dependencies: { winapi: "0.3.6" } } },
     };
     /* eslint-enable @typescript-eslint/camelcase */
     const actual = parseFile(path.join(testFilesDir, "cargo.toml"));
     assertEquals(actual, expected);
-  }
+  },
 });
 
 Deno.test({
@@ -303,15 +303,15 @@ Deno.test({
       foo: { bar: "deno" },
       this: { is: { nested: "denonono" } },
       "https://deno.land/std": {
-        $: "doller"
+        $: "doller",
       },
       "##": {
         deno: {
           "https://deno.land": {
             proto: "https",
-            ":80": "port"
-          }
-        }
+            ":80": "port",
+          },
+        },
       },
       arrayObjects: [{ stuff: "in" }, {}, { the: "array" }],
       deno: "is",
@@ -347,9 +347,9 @@ Deno.test({
       sf6: NaN,
       data: [
         ["gamma", "delta"],
-        [1, 2]
+        [1, 2],
       ],
-      hosts: ["alpha", "omega"]
+      hosts: ["alpha", "omega"],
     };
     const expected = `deno    = "is"
 not     = "[node]"
@@ -408,5 +408,5 @@ the     = "array"
 `;
     const actual = stringify(src);
     assertEquals(actual, expected);
-  }
+  },
 });

@@ -11,7 +11,7 @@ async function startServer(): Promise<Deno.Process> {
   const server = Deno.run({
     cmd: [Deno.execPath(), "--allow-net", "--allow-read", "server.ts"],
     cwd: "examples/chat",
-    stdout: "piped"
+    stdout: "piped",
   });
   try {
     assert(server.stdout != null);
@@ -45,7 +45,7 @@ test({
       server.stdout!.close();
     }
     await delay(10);
-  }
+  },
 });
 
 test({
@@ -65,5 +65,5 @@ test({
       server.stdout!.close();
       ws!.conn.close();
     }
-  }
+  },
 });

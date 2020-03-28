@@ -4,7 +4,7 @@ if (self.name !== "jsWorker") {
   throw Error(`Bad worker name: ${self.name}, expected jsWorker`);
 }
 
-onmessage = function(e) {
+onmessage = function (e) {
   if (thrown === false) {
     thrown = true;
     throw new SyntaxError("[test error]");
@@ -14,6 +14,6 @@ onmessage = function(e) {
   close();
 };
 
-onerror = function() {
+onerror = function () {
   return false;
 };

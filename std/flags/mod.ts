@@ -85,7 +85,7 @@ function isNumber(x: unknown): boolean {
 
 function hasKey(obj: NestedMapping, keys: string[]): boolean {
   let o = obj;
-  keys.slice(0, -1).forEach(key => {
+  keys.slice(0, -1).forEach((key) => {
     o = (get(o, key) ?? {}) as NestedMapping;
   });
 
@@ -107,14 +107,14 @@ export function parse(
     default: defaults = {},
     stopEarly = false,
     string = [],
-    unknown = (i: unknown): unknown => i
+    unknown = (i: unknown): unknown => i,
   }: ArgParsingOptions = {}
 ): Args {
   const flags: Flags = {
     bools: {},
     strings: {},
     unknownFn: unknown,
-    allBools: false
+    allBools: false,
   };
 
   if (boolean !== undefined) {
@@ -139,7 +139,7 @@ export function parse(
         aliases[key] = val;
       }
       for (const alias of getForce(aliases, key)) {
-        aliases[alias] = [key].concat(aliases[key].filter(y => alias !== y));
+        aliases[alias] = [key].concat(aliases[key].filter((y) => alias !== y));
       }
     }
   }
@@ -171,7 +171,7 @@ export function parse(
 
   function setKey(obj: NestedMapping, keys: string[], value: unknown): void {
     let o = obj;
-    keys.slice(0, -1).forEach(function(key): void {
+    keys.slice(0, -1).forEach(function (key): void {
       if (get(o, key) === undefined) {
         o[key] = {};
       }
@@ -214,7 +214,7 @@ export function parse(
 
   function aliasIsBoolean(key: string): boolean {
     return getForce(aliases, key).some(
-      x => typeof get(flags.bools, x) === "boolean"
+      (x) => typeof get(flags.bools, x) === "boolean"
     );
   }
 

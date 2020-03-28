@@ -39,7 +39,7 @@ export const nil = new Type("tag:yaml.org,2002:null", {
     },
     camelcase(): string {
       return "Null";
-    }
+    },
   },
-  resolve: resolveYamlNull
+  resolve: resolveYamlNull,
 });

@@ -37,7 +37,7 @@ function code(open: number, close: number): Code {
   return {
     open: `\x1b[${open}m`,
     close: `\x1b[${close}m`,
-    regexp: new RegExp(`\\x1b\\[${close}m`, "g")
+    regexp: new RegExp(`\\x1b\\[${close}m`, "g"),
   };
 }
 

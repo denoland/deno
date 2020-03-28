@@ -21,11 +21,11 @@ export function applySourceMap(location: Location): Location {
   const res = sendSync("op_apply_source_map", {
     filename,
     line: line - 1,
-    column: column - 1
+    column: column - 1,
   });
   return {
     filename: res.filename,
     line: res.line + 1,
-    column: res.column + 1
+    column: res.column + 1,
   };
 }

@@ -11,5 +11,5 @@ function resolveYamlMerge(data: string): boolean {
 
 export const merge = new Type("tag:yaml.org,2002:merge", {
   kind: "scalar",
-  resolve: resolveYamlMerge
+  resolve: resolveYamlMerge,
 });

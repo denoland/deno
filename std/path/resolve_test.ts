@@ -20,8 +20,8 @@ const windowsTests =
     [["c:/", "///some//dir"], "c:\\some\\dir"],
     [
       ["C:\\foo\\tmp.3\\", "..\\tmp.3\\cycles\\root.js"],
-      "C:\\foo\\tmp.3\\cycles\\root.js"
-    ]
+      "C:\\foo\\tmp.3\\cycles\\root.js",
+    ],
   ];
 const posixTests =
   // arguments                    result
@@ -31,11 +31,11 @@ const posixTests =
     [["a/b/c/", "../../.."], cwd()],
     [["."], cwd()],
     [["/some/dir", ".", "/absolute/"], "/absolute"],
-    [["/foo/tmp.3/", "../tmp.3/cycles/root.js"], "/foo/tmp.3/cycles/root.js"]
+    [["/foo/tmp.3/", "../tmp.3/cycles/root.js"], "/foo/tmp.3/cycles/root.js"],
   ];
 
 test(function resolve() {
-  posixTests.forEach(function(p) {
+  posixTests.forEach(function (p) {
     const _p = p[0] as string[];
     const actual = path.posix.resolve.apply(null, _p);
     assertEquals(actual, p[1]);
@@ -43,7 +43,7 @@ test(function resolve() {
 });
 
 test(function resolveWin32() {
-  windowsTests.forEach(function(p) {
+  windowsTests.forEach(function (p) {
     const _p = p[0] as string[];
     const actual = path.win32.resolve.apply(null, _p);
     assertEquals(actual, p[1]);

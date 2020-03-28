@@ -7,7 +7,7 @@ interface FarthestPoint {
 export enum DiffType {
   removed = "removed",
   common = "common",
-  added = "added"
+  added = "added",
 }
 
 export interface DiffResult<T> {
@@ -60,12 +60,12 @@ export default function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
       ...A.map(
         (a): DiffResult<typeof a> => ({
           type: swapped ? DiffType.added : DiffType.removed,
-          value: a
+          value: a,
         })
       ),
       ...suffixCommon.map(
         (c): DiffResult<typeof c> => ({ type: DiffType.common, value: c })
-      )
+      ),
     ];
   }
   const offset = N;
@@ -107,13 +107,13 @@ export default function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
       if (type === REMOVED) {
         result.unshift({
           type: swapped ? DiffType.removed : DiffType.added,
-          value: B[b]
+          value: B[b],
         });
         b -= 1;
       } else if (type === ADDED) {
         result.unshift({
           type: swapped ? DiffType.added : DiffType.removed,
-          value: A[a]
+          value: A[a],
         });
         a -= 1;
       } else {
@@ -133,8 +133,9 @@ export default function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
     k: number,
     M: number
   ): FarthestPoint {
-    if (slide && slide.y === -1 && down && down.y === -1)
+    if (slide && slide.y === -1 && down && down.y === -1) {
       return { y: 0, id: 0 };
+    }
     if (
       (down && down.y === -1) ||
       k === M ||
@@ -215,6 +216,6 @@ export default function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
     ...backTrace(A, B, fp[delta + offset], swapped),
     ...suffixCommon.map(
       (c): DiffResult<typeof c> => ({ type: DiffType.common, value: c })
-    )
+    ),
   ];
 }

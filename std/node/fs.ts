@@ -24,5 +24,5 @@ export {
   readFile,
   readFileSync,
   readlink,
-  readlinkSync
+  readlinkSync,
 };

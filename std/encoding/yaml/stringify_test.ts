@@ -16,14 +16,14 @@ Deno.test({
           "a",
           "b",
           {
-            a: false
+            a: false,
           },
           {
-            a: false
-          }
-        ]
+            a: false,
+          },
+        ],
       },
-      test: "foobar"
+      test: "foobar",
     };
 
     const ASSERTS = `foo:
@@ -37,5 +37,5 @@ test: foobar
 `;
 
     assertEquals(stringify(FIXTURE), ASSERTS);
-  }
+  },
 });

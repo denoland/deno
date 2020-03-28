@@ -38,7 +38,7 @@ declare namespace Deno {
   enum TestStatus {
     Passed = "passed",
     Failed = "failed",
-    Ignored = "ignored"
+    Ignored = "ignored",
   }
 
   interface TestResult {
@@ -60,7 +60,7 @@ declare namespace Deno {
     Start = "start",
     TestStart = "testStart",
     TestEnd = "testEnd",
-    End = "end"
+    End = "end",
   }
 
   interface TestEventStart {
@@ -402,7 +402,7 @@ declare namespace Deno {
   export enum SeekMode {
     SEEK_START = 0,
     SEEK_CURRENT = 1,
-    SEEK_END = 2
+    SEEK_END = 2,
   }
 
   /** **UNSTABLE**: might make `Reader` into iterator of some sort. */
@@ -766,12 +766,6 @@ declare namespace Deno {
    *
    * Based on [Go Buffer](https://golang.org/pkg/bytes/#Buffer). */
   export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
-    private buf;
-    private off;
-    private _tryGrowByReslice;
-    private _reslice;
-    private _grow;
-
     constructor(ab?: ArrayBuffer);
     /** Returns a slice holding the unread portion of the buffer.
      *
@@ -1603,7 +1597,7 @@ declare namespace Deno {
   export enum ShutdownMode {
     Read = 0,
     Write,
-    ReadWrite // TODO(ry) panics on ReadWrite.
+    ReadWrite, // TODO(ry) panics on ReadWrite.
   }
 
   /** **UNSTABLE**: Maybe should remove `how` parameter maybe remove
@@ -1998,7 +1992,7 @@ declare namespace Deno {
     SIGWINCH = 28,
     SIGIO = 29,
     SIGPWR = 30,
-    SIGSYS = 31
+    SIGSYS = 31,
   }
   enum MacOSSignal {
     SIGHUP = 1,
@@ -2031,7 +2025,7 @@ declare namespace Deno {
     SIGWINCH = 28,
     SIGINFO = 29,
     SIGUSR1 = 30,
-    SIGUSR2 = 31
+    SIGUSR2 = 31,
   }
 
   /** **UNSTABLE**: make platform independent.
@@ -2108,7 +2102,7 @@ declare namespace Deno {
     Info = 2,
     Error = 3,
     Warning = 4,
-    Suggestion = 5
+    Suggestion = 5,
   }
 
   export interface DiagnosticMessageChain {
