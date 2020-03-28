@@ -71,7 +71,7 @@ impl TerminalPrinter {
   }
 
   fn format_(&self, doc_nodes: Vec<doc::DocNode>, indent: i64) -> String {
-    let mut sorted = doc_nodes.clone();
+    let mut sorted = doc_nodes;
     sorted.sort_unstable_by(|a, b| {
       let kind_cmp = self.kind_order(&a.kind).cmp(&self.kind_order(&b.kind));
       if kind_cmp == core::cmp::Ordering::Equal {

@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::DocParser;
+use super::TerminalPrinter;
 use serde_json;
 use serde_json::json;
 
@@ -60,6 +61,9 @@ export function foo(a: string, b: number): void {
   });
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
+  let printer = TerminalPrinter::new();
+  let expected_str = "function foo(a: string, b: number): void\n Hello there, this is a multiline JSdoc.\n\n";
+  assert_eq!(printer.format(entries), expected_str);
 }
 
 #[test]
@@ -87,6 +91,9 @@ fn export_const() {
   });
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
+  let printer = TerminalPrinter::new();
+  let expected_text = "const fizzBuzz\n Something about fizzBuzz\n\n";
+  assert_eq!(printer.format(entries), expected_text);
 }
 
 #[test]
@@ -294,6 +301,9 @@ export class Foobar extends Fizz implements Buzz {
   let entry = &entries[0];
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
+  let printer = TerminalPrinter::new();
+  let expected_text = "class Foobar\n Class doc\n\n";
+  assert_eq!(printer.format(entries), expected_text);
 }
 
 #[test]
@@ -374,6 +384,9 @@ export interface Reader {
   });
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
+  let printer = TerminalPrinter::new();
+  let expected_text = "interface Reader\n Interface js doc\n\n";
+  assert_eq!(printer.format(entries), expected_text);
 }
 
 #[test]
@@ -415,6 +428,9 @@ export type NumberArray = Array<number>;
   });
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
+  let printer = TerminalPrinter::new();
+  let expected_text = "type NumberArray\n Array holding numbers\n\n";
+  assert_eq!(printer.format(entries), expected_text);
 }
 
 #[test]
@@ -459,4 +475,101 @@ export enum Hello {
   });
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
+  let printer = TerminalPrinter::new();
+  let expected_text = "enum Hello\n Some enum for good measure\n\n";
+  assert_eq!(printer.format(entries), expected_text);
+}
+
+#[test]
+fn export_namespace() {
+  let source_code = r#"
+/** Namespace JSdoc */
+export namespace RootNs {
+    export const a = "a";
+
+    /** Nested namespace JSDoc */
+    export namespace NestedNs {
+      export enum Foo {
+        a = 1,
+        b = 2,
+        c = 3,
+      }
+    }
+}
+    "#;
+  let entries = DocParser::default()
+    .parse("test.ts".to_string(), source_code.to_string())
+    .unwrap();
+  assert_eq!(entries.len(), 1);
+  let entry = &entries[0];
+  let expected_json = json!({
+    "kind": "namespace",
+    "name": "RootNs",
+    "location": {
+      "filename": "test.ts",
+      "line": 3,
+      "col": 0
+    },
+    "jsDoc": "Namespace JSdoc",
+    "namespaceDef": {
+      "elements": [
+        {
+          "kind": "variable",
+          "name": "a",
+          "location": {
+            "filename": "test.ts",
+            "line": 4,
+            "col": 4
+          },
+          "jsDoc": null,
+          "variableDef": {
+            "tsType": null,
+            "kind": "const"
+          }
+        },
+        {
+          "kind": "namespace",
+          "name": "NestedNs",
+          "location": {
+            "filename": "test.ts",
+            "line": 7,
+            "col": 4
+          },
+          "jsDoc": "Nested namespace JSDoc",
+          "namespaceDef": {
+            "elements": [
+              {
+                "kind": "enum",
+                "name": "Foo",
+                "location": {
+                  "filename": "test.ts",
+                  "line": 8,
+                  "col": 6
+                },
+                "jsDoc": null,
+                "enumDef": {
+                  "members": [
+                    {
+                      "name": "a"
+                    },
+                    {
+                      "name": "b"
+                    },
+                    {
+                      "name": "c"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  });
+  let actual = serde_json::to_value(entry).unwrap();
+  assert_eq!(actual, expected_json);
+  let printer = TerminalPrinter::new();
+  let expected_text = "namespace RootNs\n Namespace JSdoc\n\nconst a\n\nnamespace NestedNs\n  Nested namespace JSDoc\n\nenum Foo\n\n\n\n";
+  assert_eq!(printer.format(entries), expected_text);
 }

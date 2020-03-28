@@ -390,7 +390,8 @@ async fn doc_command(
 
   if json {
     let json_string = serde_json::to_string_pretty(&doc_nodes).unwrap();
-    return write_to_stdout_ignore_sigpipe(json_string.as_bytes());
+    return write_to_stdout_ignore_sigpipe(json_string.as_bytes())
+      .map_err(ErrBox::from);
   }
 
   let printer = doc::TerminalPrinter::new();
@@ -407,7 +408,7 @@ async fn doc_command(
     printer.format(doc_nodes)
   };
 
-  write_to_stdout_ignore_sigpipe(details.as_bytes())
+  write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(ErrBox::from)
 }
 
 async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
@@ -549,7 +550,10 @@ pub fn main() {
       allow_none,
     } => test_command(flags, include, fail_fast, allow_none).boxed_local(),
     DenoSubcommand::Completions { buf } => {
-      print!("{}", std::str::from_utf8(&buf).unwrap());
+      if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
+        eprintln!("{}", e);
+        std::process::exit(1);
+      }
       return;
     }
     DenoSubcommand::Types => {
@@ -559,7 +563,11 @@ pub fn main() {
         crate::js::SHARED_GLOBALS_LIB,
         crate::js::WINDOW_LIB
       );
-      write_to_stdout_ignore_sigpipe(types.as_bytes())
+      if let Err(e) = write_to_stdout_ignore_sigpipe(types.as_bytes()) {
+        eprintln!("{}", e);
+        std::process::exit(1);
+      }
+      return;
     }
     DenoSubcommand::Upgrade { force, dry_run } => {
       upgrade_command(dry_run, force).boxed_local()
