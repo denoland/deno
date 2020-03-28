@@ -315,14 +315,14 @@ export function serve(addr: string | HTTPOptions): Server {
 export function listenAndServe(
   addr: string | HTTPOptions,
   handler: (req: ServerRequest) => void
-): Server {
+): [Server, Promise<void>] {
   const server = serve(addr);
-  (async function(): Promise<void> {
-    for await (const request of server) {
-      handler(request);
+  const p = (async (): Promise<void> => {
+    for await (const req of server) {
+      handler(req);
     }
   })();
-  return server;
+  return [server, p];
 }
 
 /** Options for creating an HTTPS server. */
@@ -378,14 +378,14 @@ export function serveTLS(options: HTTPSOptions): Server {
 export function listenAndServeTLS(
   options: HTTPSOptions,
   handler: (req: ServerRequest) => void
-): Server {
-  const server = serveTLS(options);
-  (async function(): Promise<void> {
-    for await (const request of server) {
-      handler(request);
+): [Server, Promise<void>] {
+  const server = serve(options);
+  const p = (async (): Promise<void> => {
+    for await (const req of server) {
+      handler(req);
     }
   })();
-  return server;
+  return [server, p];
 }
 
 /**

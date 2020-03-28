@@ -529,8 +529,9 @@ test({
     const port = 4502;
     let server: Server | undefined;
     let conn: Deno.Conn | undefined;
+    let p: Promise<void> | undefined;
     try {
-      server = listenAndServe({ port }, req => req.respond({}));
+      [server, p] = listenAndServe({ port }, req => req.respond({}));
       conn = await Deno.connect({ port });
       const w = new BufWriter(conn);
       const r = new BufReader(conn);
@@ -558,6 +559,7 @@ test({
     } finally {
       server?.close();
       conn?.close();
+      await p;
     }
   }
 });
@@ -569,8 +571,9 @@ test({
     const port = 4504;
     let server: Server | undefined;
     let conn: Deno.Conn | undefined;
+    let p: Promise<void> | undefined;
     try {
-      server = listenAndServe({ port, readTimeout: 1000 }, req =>
+      [server, p] = listenAndServe({ port, readTimeout: 1000 }, req =>
         req.respond({})
       );
       conn = await Deno.connect({ port });
@@ -597,6 +600,7 @@ test({
     } finally {
       server?.close();
       conn?.close();
+      await p;
     }
   }
 });
