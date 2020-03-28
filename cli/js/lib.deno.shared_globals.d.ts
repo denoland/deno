@@ -18,8 +18,8 @@ declare interface WindowOrWorkerGlobalScope {
   clearInterval: typeof __timers.clearInterval;
   clearTimeout: typeof __timers.clearTimeout;
   fetch: typeof __fetch.fetch;
-  queueMicrotask: (task: () => void) => void;
   setInterval: typeof __timers.setInterval;
+  queueMicrotask: typeof __timers.queueMicrotask;
   setTimeout: typeof __timers.setTimeout;
   // properties
   console: __console.Console;
@@ -232,6 +232,7 @@ declare const clearTimeout: typeof __timers.clearTimeout;
 declare const fetch: typeof __fetch.fetch;
 declare const setInterval: typeof __timers.setInterval;
 declare const setTimeout: typeof __timers.setTimeout;
+declare const queueMicrotask: typeof __timers.queueMicrotask;
 
 declare const console: __console.Console;
 declare const Blob: typeof __blob.DenoBlob;
@@ -886,7 +887,7 @@ declare namespace __blob {
 }
 
 declare namespace __console {
-  type ConsoleOptions = Partial<{
+  type InspectOptions = Partial<{
     showHidden: boolean;
     depth: number;
     colors: boolean;
@@ -969,7 +970,7 @@ declare namespace __console {
    * `inspect()` converts input into string that has the same format
    * as printed by `console.log(...)`;
    */
-  export function inspect(value: unknown, options?: ConsoleOptions): string;
+  export function inspect(value: unknown, options?: InspectOptions): string;
 }
 
 declare namespace __event {
@@ -1327,6 +1328,7 @@ declare namespace __timers {
   ): number;
   export function clearTimeout(id?: number): void;
   export function clearInterval(id?: number): void;
+  export function queueMicrotask(func: Function): void;
 }
 
 declare namespace __urlSearchParams {

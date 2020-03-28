@@ -101,6 +101,8 @@ pub struct Flags {
   pub no_prompts: bool,
   pub no_remote: bool,
   pub cached_only: bool,
+  pub inspect: Option<String>,
+  pub inspect_brk: Option<String>,
   pub seed: Option<u64>,
   pub v8_flags: Option<Vec<String>>,
 
@@ -474,6 +476,7 @@ fn run_test_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   no_remote_arg_parse(flags, matches);
   permission_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
+  inspect_arg_parse(flags, matches);
 
   if matches.is_present("cached-only") {
     flags.cached_only = true;
@@ -825,7 +828,7 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
 }
 
 fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
-  permission_args(app)
+  permission_args(inspect_args(app))
     .arg(importmap_arg())
     .arg(reload_arg())
     .arg(config_arg())
@@ -954,6 +957,54 @@ fn ca_file_arg<'a, 'b>() -> Arg<'a, 'b> {
 }
 fn ca_file_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.ca_file = matches.value_of("cert").map(ToOwned::to_owned);
+}
+
+fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
+  app
+    .arg(
+      Arg::with_name("inspect")
+        .long("inspect")
+        .value_name("HOST:PORT")
+        .help("activate inspector on host:port (default: 127.0.0.1:9229)")
+        .min_values(0)
+        .max_values(1)
+        .require_equals(true)
+        .takes_value(true),
+    )
+    .arg(
+      Arg::with_name("inspect-brk")
+        .long("inspect-brk")
+        .value_name("HOST:PORT")
+        .help(
+          "activate inspector on host:port and break at start of user script",
+        )
+        .min_values(0)
+        .max_values(1)
+        .require_equals(true)
+        .takes_value(true),
+    )
+}
+
+fn inspect_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  const DEFAULT: &str = "127.0.0.1:9229";
+  flags.inspect = if matches.is_present("inspect") {
+    if let Some(host) = matches.value_of("inspect") {
+      Some(host.to_string())
+    } else {
+      Some(DEFAULT.to_string())
+    }
+  } else {
+    None
+  };
+  flags.inspect_brk = if matches.is_present("inspect-brk") {
+    if let Some(host) = matches.value_of("inspect-brk") {
+      Some(host.to_string())
+    } else {
+      Some(DEFAULT.to_string())
+    }
+  } else {
+    None
+  };
 }
 
 fn reload_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -2323,6 +2374,41 @@ fn repl_with_cafile() {
       allow_run: true,
       allow_plugin: true,
       allow_hrtime: true,
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn inspect_default_host() {
+  let r = flags_from_vec_safe(svec!["deno", "run", "--inspect", "foo.js"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Run {
+        script: "foo.js".to_string(),
+      },
+      inspect: Some("127.0.0.1:9229".to_string()),
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn inspect_custom_host() {
+  let r = flags_from_vec_safe(svec![
+    "deno",
+    "run",
+    "--inspect=deno.land:80",
+    "foo.js"
+  ]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Run {
+        script: "foo.js".to_string(),
+      },
+      inspect: Some("deno.land:80".to_string()),
       ..Flags::default()
     }
   );

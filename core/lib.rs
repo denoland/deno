@@ -21,7 +21,7 @@ mod plugins;
 mod resources;
 mod shared_queue;
 
-use rusty_v8 as v8;
+pub use rusty_v8 as v8;
 
 pub use crate::any_error::*;
 pub use crate::es_isolate::*;
