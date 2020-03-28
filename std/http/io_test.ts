@@ -12,13 +12,16 @@ import {
   readTrailers,
   parseHTTPVersion,
   readRequest,
-  writeResponse
+  writeResponse,
+  parseKeepAlive,
+  KeepAlive
 } from "./io.ts";
 import { encode, decode } from "../strings/mod.ts";
 import { BufReader, ReadLineResult } from "../io/bufio.ts";
 import { chunkedBodyReader } from "./io.ts";
-import { Response, ServerRequestParams } from "./server.ts";
+import { Response, ServerRequest } from "./server.ts";
 import { StringReader } from "../io/readers.ts";
+import { mockConn } from "./testing.ts";
 const { Buffer, test } = Deno;
 
 test("bodyReader", async () => {
@@ -349,7 +352,7 @@ malformedHeader
   const reader = new BufReader(new StringReader(input));
   let err;
   try {
-    await readRequest(reader);
+    await readRequest(mockConn(), { r: reader });
   } catch (e) {
     err = e;
   }
@@ -425,28 +428,41 @@ test(async function testReadRequestError(): Promise<void> {
   for (const test of testCases) {
     const reader = new BufReader(new StringReader(test.in));
     let err;
-    let req: ServerRequestParams | Deno.EOF | undefined;
+    let req: ServerRequest | Deno.EOF | undefined;
     try {
-      req = await readRequest(reader);
+      req = await readRequest(mockConn(), { r: reader });
     } catch (e) {
       err = e;
     }
     if (test.err === Deno.EOF) {
       assertEquals(req, Deno.EOF);
     } else if (typeof test.err === "string") {
-      console.log(test);
       assertEquals(err.message, test.err);
     } else if (test.err) {
       assert(err instanceof (test.err as typeof Deno.errors.UnexpectedEof));
     } else {
-      assert(req !== Deno.EOF);
-      assert(req != null);
+      assert(req instanceof ServerRequest);
       assert(test.headers);
       assertEquals(err, undefined);
       assertNotEquals(req, Deno.EOF);
       for (const h of test.headers) {
         assertEquals(req.headers.get(h.key), h.value);
       }
+    }
+  }
+});
+
+test({
+  name: "parseKeepAlive",
+  fn() {
+    const cases: Array<[string, KeepAlive]> = [
+      ["timeout=1, max=1", { timeout: 1, max: 1 }],
+      ["timeout=1", { timeout: 1 }],
+      ["max=1", { max: 1 }],
+      ["", {}]
+    ];
+    for (const [value, result] of cases) {
+      assertEquals(parseKeepAlive(value), result);
     }
   }
 });

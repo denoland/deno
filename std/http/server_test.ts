@@ -13,11 +13,17 @@ import {
   assertStrContains,
   assertThrowsAsync
 } from "../testing/asserts.ts";
-import { Response, Server, serve } from "./server.ts";
+import { Response, Server, serve, listenAndServe } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay } from "../util/async.ts";
 import { encode, decode } from "../strings/mod.ts";
 import { mockRequest } from "./testing.ts";
+import {
+  writeRequest,
+  readResponse,
+  ClientResponse,
+  ClientRequest
+} from "./io.ts";
 
 const { Buffer, test } = Deno;
 
@@ -514,5 +520,83 @@ test({
     );
     conn.close();
     await p;
+  }
+});
+
+test({
+  name: "[http] Server should handle keep-alive timeout from client",
+  async fn(): Promise<void> {
+    const port = 4502;
+    let server: Server | undefined;
+    let conn: Deno.Conn | undefined;
+    try {
+      server = listenAndServe({ port }, req => req.respond({}));
+      conn = await Deno.connect({ port });
+      const w = new BufWriter(conn);
+      const r = new BufReader(conn);
+      const send = async (
+        req: ClientRequest
+      ): Promise<ClientResponse | Deno.EOF> => {
+        await writeRequest(w, req);
+        return readResponse(r);
+      };
+      const url = "http://localhost:" + port;
+      const req: ClientRequest = {
+        url,
+        method: "GET",
+        headers: new Headers({
+          "keep-alive": "timeout=1"
+        })
+      };
+      const resp = await send(req);
+      assert(resp !== Deno.EOF);
+      assertEquals(resp.status, 200);
+      await delay(1000);
+      await assertThrowsAsync(async () => {
+        await send(req);
+      }, Deno.errors.ConnectionReset);
+    } finally {
+      server?.close();
+      conn?.close();
+    }
+  }
+});
+
+test({
+  name:
+    "[http] Server should abort connection if read op from client is timed out",
+  async fn(): Promise<void> {
+    const port = 4504;
+    let server: Server | undefined;
+    let conn: Deno.Conn | undefined;
+    try {
+      server = listenAndServe({ port, readTimeout: 1000 }, req =>
+        req.respond({})
+      );
+      conn = await Deno.connect({ port });
+      const w = new BufWriter(conn);
+      const r = new BufReader(conn);
+      const send = async (
+        req: ClientRequest
+      ): Promise<ClientResponse | Deno.EOF> => {
+        await writeRequest(w, req);
+        return readResponse(r);
+      };
+      const url = "http://localhost:" + port;
+      const req: ClientRequest = {
+        url,
+        method: "GET"
+      };
+      const resp = await send(req);
+      assert(resp !== Deno.EOF);
+      assertEquals(resp.status, 200);
+      await delay(1000);
+      await assertThrowsAsync(async () => {
+        await send(req);
+      }, Deno.errors.ConnectionReset);
+    } finally {
+      server?.close();
+      conn?.close();
+    }
   }
 });

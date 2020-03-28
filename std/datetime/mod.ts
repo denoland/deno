@@ -153,7 +153,6 @@ export function toIMF(date: Date): string {
 }
 
 export enum TimeUnits {
-  microSeconds = 1 / 10,
   milliSeconds = 1,
   seconds = 1000,
   minutes = 1000 * 60,

@@ -1,10 +1,11 @@
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { assert } from "../testing/asserts.ts";
-import { encoder } from "../strings/mod.ts";
+import { encoder, encode } from "../strings/mod.ts";
 import { Response, ServerRequest } from "./server.ts";
 import { STATUS_TEXT } from "./http_status.ts";
 import { letTimeout } from "../util/async.ts";
+import { bytesReader } from "../io/readers.ts";
 
 /** Reader that returns EOF everytime */
 export function emptyReader(): Deno.Reader {
@@ -236,6 +237,55 @@ export function setContentLength(r: Response): void {
   }
 }
 
+export interface ClientResponse {
+  proto: string;
+  status: number;
+  statusText: string;
+  headers: Headers;
+  body: Deno.Reader;
+  finalize(): Promise<void>;
+}
+
+export async function readResponse(
+  r: Deno.Reader,
+  { timeout }: { timeout?: number } = {}
+): Promise<ClientResponse> {
+  const reader = BufReader.create(r);
+  const tp = new TextProtoReader(reader);
+  // First line: HTTP/1,1 200 OK
+  const line = await letTimeout(tp.readLine(), timeout);
+  if (line === Deno.EOF) {
+    throw Deno.errors.UnexpectedEof;
+  }
+  const [proto, status, statusText] = line.split(" ", 3);
+  const headers = await letTimeout(tp.readMIMEHeader(), timeout);
+  if (headers === Deno.EOF) {
+    throw Deno.errors.UnexpectedEof;
+  }
+  const contentLength = headers.get("content-length");
+  const isChunked = headers.get("transfer-encoding")?.match(/^chunked/);
+  let body: Deno.Reader;
+  if (isChunked) {
+    body = chunkedBodyReader(headers, reader);
+  } else if (contentLength != null) {
+    body = bodyReader(parseInt(contentLength), reader);
+  } else {
+    throw new Error("unknown conetnt-lengh or transfer-encoding");
+  }
+  const finalize = async (): Promise<void> => {
+    const buf = new Uint8Array(1024);
+    while ((await body.read(buf)) !== Deno.EOF) {}
+  };
+  return {
+    proto,
+    status: parseInt(status),
+    statusText,
+    headers,
+    body,
+    finalize
+  };
+}
+
 export async function writeResponse(
   w: Deno.Writer,
   r: Response
@@ -380,6 +430,63 @@ export async function readRequest(
   });
 }
 
+export interface ClientRequest {
+  url: string;
+  method: string;
+  headers?: Headers;
+  body?: string | Uint8Array | Deno.Reader;
+  trailers?: () => Promise<Headers> | Headers;
+}
+
+export async function writeRequest(
+  w: Deno.Writer,
+  req: ClientRequest
+): Promise<void> {
+  const lines: string[] = [`${req.method} ${req.url} HTTP/1.1`];
+  const headers = req.headers ?? new Headers();
+  if (!headers.has("host")) {
+    const u = new URL(req.url);
+    headers.set("host", u.hostname);
+  }
+  let body: Deno.Reader | undefined;
+  let isChunked = false;
+  if (typeof req.body === "string") {
+    const text = encode(req.body);
+    headers.set("content-length", "" + text.byteLength);
+    body = bytesReader(text);
+  } else if (req.body instanceof Uint8Array) {
+    headers.set("content-length", "" + req.body.byteLength);
+    body = bytesReader(req.body);
+  } else if (req.body) {
+    const te = headers.get("transfer-encoding");
+    isChunked = true;
+    if (!te?.match("chunked")) {
+      headers.set("transfer-encoding", "chunked");
+      headers.delete("content-length");
+    }
+    body = req.body;
+  }
+  fixLength(req.method, headers);
+  for (const [k, v] of headers) {
+    lines.push(`${k}: ${v}`);
+  }
+  lines.push("\r\n");
+  const bufw = BufWriter.create(w);
+  await bufw.write(encode(lines.join("\r\n")));
+  await bufw.flush();
+  if (body) {
+    if (isChunked) {
+      await writeChunkedBody(bufw, body);
+    } else {
+      await Deno.copy(bufw, body);
+    }
+  }
+  if (req.trailers) {
+    writeTrailers(bufw, headers, await req.trailers());
+  }
+  await bufw.flush();
+}
+
 function fixLength(method: string, headers: Headers): void {
   const contentLength = headers.get("Content-Length");
   if (contentLength) {
@@ -413,15 +520,14 @@ export type KeepAlive = {
 };
 
 export function parseKeepAlive(value: string): KeepAlive {
-  let timeout: number | undefined;
-  let max: number | undefined;
+  const result: KeepAlive = {};
   const kv = value.split(",").map(s => s.trim().split("="));
   for (const [key, value] of kv) {
     if (key === "timeout") {
-      timeout = parseInt(value);
+      result.timeout = parseInt(value);
     } else if (key === "max") {
-      max = parseInt(value);
+      result.max = parseInt(value);
     }
   }
-  return { timeout, max };
+  return result;
 }

@@ -20,6 +20,7 @@ import {
 import Listener = Deno.Listener;
 import Conn = Deno.Conn;
 import Reader = Deno.Reader;
+import { TimeUnits } from "../datetime/mod.ts";
 const { listen, listenTLS } = Deno;
 
 export class ServerRequest {
@@ -149,17 +150,13 @@ export class ServerRequest {
   }
 }
 
-export type ServerOptions = {
-  /** Timeout for each readoperation. ms */
-  readTimeout?: number;
-};
 export class Server implements AsyncIterable<ServerRequest> {
   private closing = false;
   private connections: Conn[] = [];
   readTimeout?: number;
 
-  constructor(public listener: Listener, opts?: ServerOptions) {
-    if (opts?.readTimeout != null) {
+  constructor(public listener: Listener, opts?: ServeOptions) {
+    if (typeof opts?.readTimeout === "number") {
       assert(opts.readTimeout > 0, "readTimeout must be greater than zero");
       this.readTimeout = opts.readTimeout;
     }
@@ -186,23 +183,20 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     const r = new BufReader(conn);
     const w = new BufWriter(conn);
-    let req: ServerRequest;
+    let req: ServerRequest | Deno.EOF;
     let keepAlive: KeepAlive | undefined;
     while (!this.closing) {
       try {
-        const timeout = keepAlive?.timeout ?? this.readTimeout;
-        const params = await readRequest(conn, { w, r, timeout });
-        if (params === Deno.EOF) {
-          break;
+        let timeout = this.readTimeout;
+        if (keepAlive?.timeout) {
+          timeout = keepAlive.timeout * TimeUnits.seconds;
         }
-        req = new ServerRequest({
-          ...params,
-          conn,
-          r,
-          w,
-          timeout
-        });
+        req = await readRequest(conn, { w, r, timeout });
       } catch (e) {
+        break;
+      }
+
+      if (req === Deno.EOF) {
         break;
       }
 
@@ -211,7 +205,6 @@ export class Server implements AsyncIterable<ServerRequest> {
         keepAlive = parseKeepAlive(ka);
       }
 
-      req.w = w;
       yield req;
 
       // Wait for the request to be processed before we accept a new request on
@@ -279,8 +272,11 @@ export class Server implements AsyncIterable<ServerRequest> {
   }
 }
 
+export type ServeOptions = {
+  readTimeout?: number;
+};
 /** Options for creating an HTTP server. */
-export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
+export type HTTPOptions = Omit<Deno.ListenOptions, "transport"> & ServeOptions;
 
 /**
  * Create a HTTP server
@@ -293,13 +289,15 @@ export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
  *     }
  */
 export function serve(addr: string | HTTPOptions): Server {
+  const serveOpts: ServeOptions = {};
   if (typeof addr === "string") {
     const [hostname, port] = addr.split(":");
     addr = { hostname, port: Number(port) };
+  } else {
+    serveOpts.readTimeout = addr.readTimeout;
   }
-
   const listener = listen(addr);
-  return new Server(listener);
+  return new Server(listener, serveOpts);
 }
 
 /**
@@ -314,19 +312,22 @@ export function serve(addr: string | HTTPOptions): Server {
  * @param options Server configuration
  * @param handler Request handler
  */
-export async function listenAndServe(
+export function listenAndServe(
   addr: string | HTTPOptions,
   handler: (req: ServerRequest) => void
-): Promise<void> {
+): Server {
   const server = serve(addr);
-
-  for await (const request of server) {
-    handler(request);
-  }
+  (async function(): Promise<void> {
+    for await (const request of server) {
+      handler(request);
+    }
+  })();
+  return server;
 }
 
 /** Options for creating an HTTPS server. */
-export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
+export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport"> &
+  ServeOptions;
 
 /**
  * Create an HTTPS server with given options
@@ -351,7 +352,10 @@ export function serveTLS(options: HTTPSOptions): Server {
     transport: "tcp"
   };
   const listener = listenTLS(tlsOptions);
-  return new Server(listener);
+  const serveOpts: ServeOptions = {
+    readTimeout: options.readTimeout
+  };
+  return new Server(listener, serveOpts);
 }
 
 /**
@@ -371,15 +375,17 @@ export function serveTLS(options: HTTPSOptions): Server {
  * @param options Server configuration
  * @param handler Request handler
  */
-export async function listenAndServeTLS(
+export function listenAndServeTLS(
   options: HTTPSOptions,
   handler: (req: ServerRequest) => void
-): Promise<void> {
+): Server {
   const server = serveTLS(options);
-
-  for await (const request of server) {
-    handler(request);
-  }
+  (async function(): Promise<void> {
+    for await (const request of server) {
+      handler(request);
+    }
+  })();
+  return server;
 }
 
 /**

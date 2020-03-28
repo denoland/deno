@@ -1,7 +1,19 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { test } = Deno;
-import { assert, assertEquals, assertStrictEq } from "../testing/asserts.ts";
-import { collectUint8Arrays, deferred, MuxAsyncIterator } from "./async.ts";
+import {
+  assert,
+  assertEquals,
+  assertStrictEq,
+  assertThrowsAsync
+} from "../testing/asserts.ts";
+import {
+  collectUint8Arrays,
+  deferred,
+  MuxAsyncIterator,
+  letTimeout,
+  delay,
+  TimeoutError
+} from "./async.ts";
 
 test(function asyncDeferred(): Promise<void> {
   const d = deferred<number>();
@@ -72,5 +84,18 @@ test(async function collectUint8Arrays4(): Promise<void> {
   assertStrictEq(result.length, 6);
   for (let i = 0; i < 6; i++) {
     assertStrictEq(result[i], i + 1);
+  }
+});
+
+test({
+  name: "letTimeout",
+  async fn() {
+    const d = deferred();
+    const wait = delay(20);
+    wait.then(d.resolve).catch(d.resolve);
+    await assertThrowsAsync(() => {
+      return letTimeout(delay(20), 10);
+    }, TimeoutError);
+    await d;
   }
 });

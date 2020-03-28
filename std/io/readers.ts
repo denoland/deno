@@ -2,7 +2,7 @@
 type Reader = Deno.Reader;
 import { encode } from "../strings/mod.ts";
 
-/** Reader utility for strings */
+/** @deprecated Use stringReader() */
 export class StringReader implements Reader {
   private offs = 0;
   private buf = new Uint8Array(encode(this.s));
@@ -39,4 +39,26 @@ export class MultiReader implements Reader {
     }
     return result;
   }
+}
+
+export function stringReader(s: string): Reader {
+  return bytesReader(encode(s));
+}
+
+export function bytesReader(buf: Uint8Array): Reader {
+  let offs = 0;
+  function read(p: Uint8Array): Promise<number | Deno.EOF> {
+    try {
+      const n = Math.min(p.byteLength, buf.byteLength - offs);
+      p.set(buf.subarray(offs, offs + n));
+      offs += n;
+      if (n === 0) {
+        return Promise.resolve(Deno.EOF);
+      }
+      return Promise.resolve(n);
+    } catch (e) {
+      return Promise.reject(e);
+    }
+  }
+  return { read };
 }
