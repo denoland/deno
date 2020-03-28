@@ -30,25 +30,27 @@ export class ServerRequest {
     headers,
     conn,
     r,
+    w,
     timeout
   }: {
-    method: string;
     url: string;
+    method: string;
     proto: string;
     headers: Headers;
     conn: Deno.Conn;
     r: BufReader;
+    w: BufWriter;
     timeout?: number;
   }) {
     this.conn = conn;
     this.r = r;
+    this.w = w;
     this.method = method;
     this.url = url;
     this.proto = proto;
     this.timeout = timeout;
     [this.protoMinor, this.protoMajor] = parseHTTPVersion(this.proto);
     this.headers = headers;
-    this.fixContentLength();
   }
   url: string;
   method: string;
@@ -58,7 +60,7 @@ export class ServerRequest {
   headers: Headers;
   conn: Conn;
   r: BufReader;
-  w!: BufWriter;
+  w: BufWriter;
   timeout?: number;
   done: Deferred<Error | undefined> = deferred();
 
@@ -113,33 +115,6 @@ export class ServerRequest {
       }
     }
     return this._body;
-  }
-
-  fixContentLength(): void {
-    const contentLength = this.headers.get("Content-Length");
-    if (contentLength) {
-      const arrClen = contentLength.split(",");
-      if (arrClen.length > 1) {
-        const distinct = [...new Set(arrClen.map((e): string => e.trim()))];
-        if (distinct.length > 1) {
-          throw Error("cannot contain multiple Content-Length headers");
-        } else {
-          this.headers.set("Content-Length", distinct[0]);
-        }
-      }
-      const c = this.headers.get("Content-Length");
-      if (this.method === "HEAD" && c && c !== "0") {
-        throw Error("http: method cannot contain a Content-Length");
-      }
-      if (c && this.headers.has("transfer-encoding")) {
-        // A sender MUST NOT send a Content-Length header field in any message
-        // that contains a Transfer-Encoding header field.
-        // rfc: https://tools.ietf.org/html/rfc7230#section-3.3.2
-        throw new Error(
-          "http: Transfer-Encoding and Content-Length cannot be send together"
-        );
-      }
-    }
   }
 
   async respond(r: Response): Promise<void> {
@@ -209,20 +184,25 @@ export class Server implements AsyncIterable<ServerRequest> {
   private async *iterateHttpRequests(
     conn: Conn
   ): AsyncIterableIterator<ServerRequest> {
-    const bufr = new BufReader(conn);
+    const r = new BufReader(conn);
     const w = new BufWriter(conn);
-    let req: ServerRequest | Deno.EOF = Deno.EOF;
-    let err: Error | undefined;
+    let req: ServerRequest;
     let keepAlive: KeepAlive | undefined;
     while (!this.closing) {
       try {
         const timeout = keepAlive?.timeout ?? this.readTimeout;
-        req = await readRequest(conn, bufr, { timeout });
+        const params = await readRequest(conn, { w, r, timeout });
+        if (params === Deno.EOF) {
+          break;
+        }
+        req = new ServerRequest({
+          ...params,
+          conn,
+          r,
+          w,
+          timeout
+        });
       } catch (e) {
-        err = e;
-      }
-
-      if (err != null || req === Deno.EOF) {
         break;
       }
 

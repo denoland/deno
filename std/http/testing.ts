@@ -1,5 +1,5 @@
 import { ServerRequest } from "./server.ts";
-import { BufReader } from "../io/bufio.ts";
+import { BufReader, BufWriter } from "../io/bufio.ts";
 
 /** Create dummy Deno.Conn object with given base properties */
 export function mockConn(base: Partial<Deno.Conn> = {}): Deno.Conn {
@@ -37,8 +37,8 @@ export function mockRequest(p: Partial<ServerRequest> = {}): ServerRequest {
     proto: proto ?? "HTTP/1.1",
     headers: headers ?? new Headers(),
     conn: conn ?? mockConn(),
-    r: r ?? new BufReader(conn)
+    r: r ?? new BufReader(conn),
+    w: w ?? new BufWriter(conn)
   });
-  if (w) req.w = w;
   return req;
 }

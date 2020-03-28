@@ -17,9 +17,8 @@ import {
 import { encode, decode } from "../strings/mod.ts";
 import { BufReader, ReadLineResult } from "../io/bufio.ts";
 import { chunkedBodyReader } from "./io.ts";
-import { ServerRequest, Response } from "./server.ts";
+import { Response, ServerRequestParams } from "./server.ts";
 import { StringReader } from "../io/readers.ts";
-import { mockConn } from "./testing.ts";
 const { Buffer, test } = Deno;
 
 test("bodyReader", async () => {
@@ -350,7 +349,7 @@ malformedHeader
   const reader = new BufReader(new StringReader(input));
   let err;
   try {
-    await readRequest(mockConn(), reader);
+    await readRequest(reader);
   } catch (e) {
     err = e;
   }
@@ -426,20 +425,22 @@ test(async function testReadRequestError(): Promise<void> {
   for (const test of testCases) {
     const reader = new BufReader(new StringReader(test.in));
     let err;
-    let req: ServerRequest | Deno.EOF | undefined;
+    let req: ServerRequestParams | Deno.EOF | undefined;
     try {
-      req = await readRequest(mockConn(), reader);
+      req = await readRequest(reader);
     } catch (e) {
       err = e;
     }
     if (test.err === Deno.EOF) {
       assertEquals(req, Deno.EOF);
     } else if (typeof test.err === "string") {
+      console.log(test);
       assertEquals(err.message, test.err);
     } else if (test.err) {
       assert(err instanceof (test.err as typeof Deno.errors.UnexpectedEof));
     } else {
-      assert(req instanceof ServerRequest);
+      assert(req !== Deno.EOF);
+      assert(req != null);
       assert(test.headers);
       assertEquals(err, undefined);
       assertNotEquals(req, Deno.EOF);
