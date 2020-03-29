@@ -488,7 +488,6 @@ for (const t of testCases) {
               lazyQuotes: lazyquote
             }
           );
-          console.log(actual);
         } catch (e) {
           err = e;
         }
@@ -624,3 +623,12 @@ for (const testCase of parseTestCases) {
     }
   });
 }
+
+import { TextProtoReader } from "../textproto/mod.ts"
+
+Deno.test(async function readHugeLine() {
+  const input = "@".repeat(5000) + "," + "*".repeat(5000);
+  const reader = new TextProtoReader(new BufReader(new StringReader(input)));
+  const out = await reader.readLine();
+  assertEquals(out, input);
+});
