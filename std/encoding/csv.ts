@@ -83,7 +83,7 @@ async function read(
   const quoteLen = quote.length;
   const commaLen = opt.comma.length;
   let recordBuffer = "";
-  let fieldIndexes = [] as number[];
+  const fieldIndexes = [] as number[];
   parseField: for (;;) {
     if (opt.trimLeadingSpace) {
       line = line.trimLeft();
@@ -100,7 +100,7 @@ async function read(
       }
       // Check to make sure a quote does not appear in field.
       if (!opt.lazyQuotes) {
-        let j = field.indexOf(quote);
+        const j = field.indexOf(quote);
         if (j >= 0) {
           quoteError = ErrBareQuote;
           break parseField;
@@ -117,7 +117,7 @@ async function read(
       // Quoted string field
       line = line.substring(quoteLen);
       for (;;) {
-        let i = line.indexOf(quote);
+        const i = line.indexOf(quote);
         if (i >= 0) {
           // Hit next quote.
           recordBuffer += line.substring(0, i);
@@ -172,7 +172,7 @@ async function read(
   if (quoteError) {
     throw new ParseError(Startline, lineIndex, quoteError);
   }
-  let result = [] as string[];
+  const result = [] as string[];
   let preIdx = 0;
   for (const i of fieldIndexes) {
     result.push(recordBuffer.slice(preIdx, i));
