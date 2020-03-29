@@ -146,6 +146,6 @@ export function timeoutReader(r: Deno.Reader, timeoutMs: number): Deno.Reader {
   return {
     read(p: Uint8Array): Promise<number | Deno.EOF> {
       return letTimeout(r.read(p), timeoutMs);
-    }
+    },
   };
 }

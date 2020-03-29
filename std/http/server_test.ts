@@ -22,7 +22,7 @@ import {
   writeRequest,
   readResponse,
   ClientResponse,
-  ClientRequest
+  ClientRequest,
 } from "./io.ts";
 
 const { Buffer, test } = Deno;
@@ -64,7 +64,7 @@ test(async function responseWrite(): Promise<void> {
     const buf = new Buffer();
     const bufw = new BufWriter(buf);
     const request = mockRequest({
-      w: bufw
+      w: bufw,
     });
     await request.respond(testCase.response);
     assertEquals(buf.toString(), testCase.raw);
@@ -531,7 +531,7 @@ test({
     let conn: Deno.Conn | undefined;
     let p: Promise<void> | undefined;
     try {
-      [server, p] = listenAndServe({ port }, req => req.respond({}));
+      [server, p] = listenAndServe({ port }, (req) => req.respond({}));
       conn = await Deno.connect({ port });
       const w = new BufWriter(conn);
       const r = new BufReader(conn);
@@ -546,8 +546,8 @@ test({
         url,
         method: "GET",
         headers: new Headers({
-          "keep-alive": "timeout=1"
-        })
+          "keep-alive": "timeout=1",
+        }),
       };
       const resp = await send(req);
       assert(resp !== Deno.EOF);
@@ -561,7 +561,7 @@ test({
       conn?.close();
       await p;
     }
-  }
+  },
 });
 
 test({
@@ -573,7 +573,7 @@ test({
     let conn: Deno.Conn | undefined;
     let p: Promise<void> | undefined;
     try {
-      [server, p] = listenAndServe({ port, readTimeout: 1000 }, req =>
+      [server, p] = listenAndServe({ port, readTimeout: 1000 }, (req) =>
         req.respond({})
       );
       conn = await Deno.connect({ port });
@@ -588,7 +588,7 @@ test({
       const url = "http://localhost:" + port;
       const req: ClientRequest = {
         url,
-        method: "GET"
+        method: "GET",
       };
       const resp = await send(req);
       assert(resp !== Deno.EOF);
@@ -602,5 +602,5 @@ test({
       conn?.close();
       await p;
     }
-  }
+  },
 });

@@ -14,7 +14,7 @@ import {
   readRequest,
   writeResponse,
   parseKeepAlive,
-  KeepAlive
+  KeepAlive,
 } from "./io.ts";
 import { encode, decode } from "../strings/mod.ts";
 import { BufReader, ReadLineResult } from "../io/bufio.ts";
@@ -459,10 +459,10 @@ test({
       ["timeout=1, max=1", { timeout: 1, max: 1 }],
       ["timeout=1", { timeout: 1 }],
       ["max=1", { max: 1 }],
-      ["", {}]
+      ["", {}],
     ];
     for (const [value, result] of cases) {
       assertEquals(parseKeepAlive(value), result);
     }
-  }
+  },
 });

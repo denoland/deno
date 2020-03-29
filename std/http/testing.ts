@@ -38,7 +38,7 @@ export function mockRequest(p: Partial<ServerRequest> = {}): ServerRequest {
     headers: headers ?? new Headers(),
     conn: conn ?? mockConn(),
     r: r ?? new BufReader(conn),
-    w: w ?? new BufWriter(conn)
+    w: w ?? new BufWriter(conn),
   });
   return req;
 }

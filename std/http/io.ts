@@ -282,7 +282,7 @@ export async function readResponse(
     statusText,
     headers,
     body,
-    finalize
+    finalize,
   };
 }
 
@@ -426,7 +426,7 @@ export async function readRequest(
     w,
     r,
     conn,
-    timeout
+    timeout,
   });
 }
 
@@ -521,7 +521,7 @@ export type KeepAlive = {
 
 export function parseKeepAlive(value: string): KeepAlive {
   const result: KeepAlive = {};
-  const kv = value.split(",").map(s => s.trim().split("="));
+  const kv = value.split(",").map((s) => s.trim().split("="));
   for (const [key, value] of kv) {
     if (key === "timeout") {
       result.timeout = parseInt(value);

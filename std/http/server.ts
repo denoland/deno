@@ -5,7 +5,7 @@ import {
   deferred,
   Deferred,
   MuxAsyncIterator,
-  timeoutReader
+  timeoutReader,
 } from "../util/async.ts";
 import {
   bodyReader,
@@ -15,7 +15,7 @@ import {
   readRequest,
   KeepAlive,
   parseKeepAlive,
-  parseHTTPVersion
+  parseHTTPVersion,
 } from "./io.ts";
 import Listener = Deno.Listener;
 import Conn = Deno.Conn;
@@ -32,7 +32,7 @@ export class ServerRequest {
     conn,
     r,
     w,
-    timeout
+    timeout,
   }: {
     url: string;
     method: string;
@@ -353,7 +353,7 @@ export function serveTLS(options: HTTPSOptions): Server {
   };
   const listener = listenTLS(tlsOptions);
   const serveOpts: ServeOptions = {
-    readTimeout: options.readTimeout
+    readTimeout: options.readTimeout,
   };
   return new Server(listener, serveOpts);
 }

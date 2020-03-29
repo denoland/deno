@@ -4,7 +4,7 @@ import {
   assert,
   assertEquals,
   assertStrictEq,
-  assertThrowsAsync
+  assertThrowsAsync,
 } from "../testing/asserts.ts";
 import {
   collectUint8Arrays,
@@ -12,7 +12,7 @@ import {
   MuxAsyncIterator,
   letTimeout,
   delay,
-  TimeoutError
+  TimeoutError,
 } from "./async.ts";
 
 test(function asyncDeferred(): Promise<void> {
@@ -97,5 +97,5 @@ test({
       return letTimeout(delay(20), 10);
     }, TimeoutError);
     await d;
-  }
+  },
 });
