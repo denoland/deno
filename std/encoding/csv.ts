@@ -221,7 +221,7 @@ export async function readMatrix(
   opt: ReadOptions = {
     comma: ",",
     trimLeadingSpace: false,
-    lazyQuotes: false
+    lazyQuotes: false,
   }
 ): Promise<string[][]> {
   const result: string[][] = [];
@@ -298,7 +298,7 @@ export interface ParseOptions extends ReadOptions {
 export async function parse(
   input: string | BufReader,
   opt: ParseOptions = {
-    header: false
+    header: false,
   }
 ): Promise<unknown[]> {
   let r: string[][];
@@ -318,7 +318,7 @@ export async function parse(
         headers = h.map(
           (e): HeaderOptions => {
             return {
-              name: e
+              name: e,
             };
           }
         );
@@ -329,7 +329,7 @@ export async function parse(
       headers = head.map(
         (e): HeaderOptions => {
           return {
-            name: e
+            name: e,
           };
         }
       );
