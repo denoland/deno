@@ -37,6 +37,9 @@ export enum FileType {
 
 // @internal
 export class FileInfoImpl implements FileInfo {
+  readonly #isFile: boolean;
+  readonly #isDir: boolean;
+  readonly #isSymlink: boolean;
   size: number;
   modified: number | null;
   accessed: number | null;
