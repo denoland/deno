@@ -15,19 +15,24 @@ import {
   writeResponse,
   parseKeepAlive,
   KeepAlive,
+  writeRequest,
+  readResponse,
 } from "./io.ts";
 import { encode, decode } from "../strings/mod.ts";
 import { BufReader, ReadLineResult } from "../io/bufio.ts";
 import { chunkedBodyReader } from "./io.ts";
-import { Response, ServerRequest } from "./server.ts";
+import { ServerResponse, ServerRequest } from "./server.ts";
 import { StringReader } from "../io/readers.ts";
 import { mockConn } from "./testing.ts";
+import { ClientRequest } from "./client.ts";
 const { Buffer, test } = Deno;
 
+const kBuf = new Uint8Array(1);
 test("bodyReader", async () => {
   const text = "Hello, Deno";
   const r = bodyReader(text.length, new BufReader(new Buffer(encode(text))));
   assertEquals(decode(await Deno.readAll(r)), text);
+  assertEquals(await r.read(kBuf), Deno.EOF);
 });
 function chunkify(n: number, char: string): string {
   const v = Array.from({ length: n })
@@ -55,6 +60,7 @@ test("chunkedBodyReader", async () => {
   }
   const exp = "aaabbbbbcccccccccccdddddddddddddddddddddd";
   assertEquals(dest.toString(), exp);
+  assertEquals(await r.read(kBuf), Deno.EOF);
 });
 
 test("chunkedBodyReader with trailers", async () => {
@@ -81,6 +87,7 @@ test("chunkedBodyReader with trailers", async () => {
   assertEquals(h.has("trailer"), false);
   assertEquals(h.get("deno"), "land");
   assertEquals(h.get("node"), "js");
+  assertEquals(await r.read(kBuf), Deno.EOF);
 });
 
 test("readTrailers", async () => {
@@ -216,7 +223,7 @@ test(async function writeUint8ArrayResponse(): Promise<void> {
   const shortText = "Hello";
 
   const body = new TextEncoder().encode(shortText);
-  const res: Response = { body };
+  const res: ServerResponse = { body };
 
   const buf = new Deno.Buffer();
   await writeResponse(buf, res);
@@ -248,7 +255,7 @@ test(async function writeUint8ArrayResponse(): Promise<void> {
 test(async function writeStringResponse(): Promise<void> {
   const body = "Hello";
 
-  const res: Response = { body };
+  const res: ServerResponse = { body };
 
   const buf = new Deno.Buffer();
   await writeResponse(buf, res);
@@ -281,7 +288,7 @@ test(async function writeStringReaderResponse(): Promise<void> {
   const shortText = "Hello";
 
   const body = new StringReader(shortText);
-  const res: Response = { body };
+  const res: ServerResponse = { body };
 
   const buf = new Deno.Buffer();
   await writeResponse(buf, res);
@@ -451,6 +458,149 @@ test(async function testReadRequestError(): Promise<void> {
     }
   }
 });
+
+const writeRequestCases: Array<[string, ClientRequest]> = [
+  [
+    "request_get",
+    {
+      url: "https://deno.land/index.html?deno=land&msg=gogo",
+      method: "GET",
+      headers: new Headers({
+        "content-type": "text/plain",
+      }),
+    },
+  ],
+  [
+    "request_get_capital",
+    {
+      url: "https://deno.land/About/Index.html?deno=land&msg=gogo",
+      method: "GET",
+      headers: new Headers({
+        "content-type": "text/plain",
+      }),
+    },
+  ],
+  // ["request_get_encoded", {
+  //   url: "https://deno.land/でのくに?deno=🦕",
+  //   method: "GET",
+  //   headers: new Headers({
+  //     "content-type": "text/plain"
+  //   })
+  // }],
+  [
+    "request_post",
+    {
+      url: "https://deno.land/index.html",
+      method: "POST",
+      headers: new Headers({
+        "content-type": "text/plain",
+      }),
+      body:
+        "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio",
+    },
+  ],
+  [
+    "request_post_chunked",
+    {
+      url: "https://deno.land/index.html",
+      method: "POST",
+      headers: new Headers({
+        "content-type": "text/plain",
+        "transfer-encoding": "chunked",
+      }),
+      body:
+        "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio",
+    },
+  ],
+  [
+    "request_post_chunked_trailers",
+    {
+      url: "https://deno.land/index.html",
+      method: "POST",
+      headers: new Headers({
+        "content-type": "text/plain",
+        "transfer-encoding": "chunked",
+        trailer: "x-deno, x-node",
+      }),
+      body:
+        "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio",
+      trailers: (): Headers =>
+        new Headers({
+          "x-deno": "land",
+          "x-node": "js",
+        }),
+    },
+  ],
+];
+
+for (const [file, req] of writeRequestCases) {
+  test({
+    name: `[http/io] writeRequest ${file}`,
+    async fn() {
+      const dest = new Deno.Buffer();
+      await writeRequest(dest, req);
+      const exp = decode(await Deno.readFile(`http/testdata/${file}.txt`));
+      assertEquals(dest.toString(), exp);
+    },
+  });
+}
+
+const readResponseCases: Array<[
+  string,
+  { status: number; headers: Headers; body: string; trailers: Headers }
+]> = [
+  [
+    "response",
+    {
+      status: 200,
+      headers: new Headers({
+        "content-type": "text/plain",
+        "content-length": "69",
+      }),
+      body:
+        "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio",
+      trailers: new Headers(),
+    },
+  ],
+  [
+    "response_chunked",
+    {
+      status: 200,
+      headers: new Headers({
+        "content-type": "text/plain",
+        "transfer-encoding": "chunked",
+        trailer: "x-deno, x-node",
+      }),
+      body:
+        "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio",
+      trailers: new Headers({
+        "x-deno": "land",
+        "x-node": "js",
+      }),
+    },
+  ],
+];
+
+for (const [filepath, resp] of readResponseCases) {
+  test({
+    name: `[http] readReponse ${filepath}`,
+    async fn() {
+      const file = await Deno.open(`http/testdata/${filepath}.txt`);
+      const act = await readResponse(file);
+      assertEquals(act.status, resp.status);
+      for (const [k, v] of resp.headers) {
+        assertEquals(act.headers.get(k), v);
+      }
+      assertEquals(decode(await Deno.readAll(act.body)), resp.body);
+      // await act.finalize();
+      // console.log([...act.headers.entries()])
+      for (const [k, v] of resp.trailers) {
+        assertEquals(act.headers.get(k), v);
+      }
+      file.close();
+    },
+  });
+}
 
 test({
   name: "parseKeepAlive",

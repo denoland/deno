@@ -2,19 +2,11 @@ import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { assert } from "../testing/asserts.ts";
 import { encoder, encode } from "../strings/mod.ts";
-import { Response, ServerRequest } from "./server.ts";
+import { ServerResponse, ServerRequest } from "./server.ts";
 import { STATUS_TEXT } from "./http_status.ts";
 import { letTimeout } from "../util/async.ts";
 import { bytesReader } from "../io/readers.ts";
-
-/** Reader that returns EOF everytime */
-export function emptyReader(): Deno.Reader {
-  return {
-    read(_: Uint8Array): Promise<number | Deno.EOF> {
-      return Promise.resolve(Deno.EOF);
-    },
-  };
-}
+import { ClientResponse, ClientRequest } from "./client.ts";
 
 /** Reader for HTTP/1.1 fixed size body part */
 export function bodyReader(contentLength: number, r: BufReader): Deno.Reader {
@@ -190,7 +182,7 @@ export async function writeTrailers(
 ): Promise<void> {
   const trailer = headers.get("trailer");
   if (trailer === null) {
-    throw new Error('response headers must have "trailer" header field');
+    throw new Error('headers must have "trailer" header field');
   }
   const transferEncoding = headers.get("transfer-encoding");
   if (transferEncoding === null || !transferEncoding.match(/^chunked/)) {
@@ -219,7 +211,7 @@ export async function writeTrailers(
   await writer.flush();
 }
 
-export function setContentLength(r: Response): void {
+export function setContentLength(r: ServerResponse): void {
   if (!r.headers) {
     r.headers = new Headers();
   }
@@ -235,15 +227,6 @@ export function setContentLength(r: Response): void {
       }
     }
   }
-}
-
-export interface ClientResponse {
-  proto: string;
-  status: number;
-  statusText: string;
-  headers: Headers;
-  body: Deno.Reader;
-  finalize(): Promise<void>;
 }
 
 export async function readResponse(
@@ -272,9 +255,11 @@ export async function readResponse(
   } else {
     throw new Error("unknown conetnt-lengh or transfer-encoding");
   }
+  let finalized = false;
   const finalize = async (): Promise<void> => {
-    const buf = new Uint8Array(1024);
-    while ((await body.read(buf)) !== Deno.EOF) {}
+    if (finalized) return;
+    await Deno.readAll(body);
+    finalized = true;
   };
   return {
     proto,
@@ -288,7 +273,7 @@ export async function readResponse(
 
 export async function writeResponse(
   w: Deno.Writer,
-  r: Response
+  r: ServerResponse
 ): Promise<void> {
   const protoMajor = 1;
   const protoMinor = 1;
@@ -332,11 +317,11 @@ export async function writeResponse(
   } else {
     await writeChunkedBody(writer, r.body);
   }
+  await writer.flush();
   if (r.trailers) {
     const t = await r.trailers();
     await writeTrailers(writer, headers, t);
   }
-  await writer.flush();
 }
 
 /**
@@ -430,41 +415,25 @@ export async function readRequest(
   });
 }
 
-export interface ClientRequest {
-  url: string;
-  method: string;
-  headers?: Headers;
-  body?: string | Uint8Array | Deno.Reader;
-  trailers?: () => Promise<Headers> | Headers;
-}
-
 export async function writeRequest(
   w: Deno.Writer,
   req: ClientRequest
 ): Promise<void> {
-  const lines: string[] = [`${req.method} ${req.url} HTTP/1.1`];
+  const url = new URL(req.url);
   const headers = req.headers ?? new Headers();
   if (!headers.has("host")) {
-    const u = new URL(req.url);
-    headers.set("host", u.hostname);
+    headers.set("host", url.hostname);
   }
+  let pathname = url.pathname;
+  const query = url.searchParams.toString();
+  if (query) {
+    pathname += `?${query}`;
+  }
+  const lines: string[] = [`${req.method} ${pathname} HTTP/1.1`];
   let body: Deno.Reader | undefined;
-  let isChunked = false;
-  if (typeof req.body === "string") {
-    const text = encode(req.body);
-    headers.set("content-length", "" + text.byteLength);
-    body = bytesReader(text);
-  } else if (req.body instanceof Uint8Array) {
-    headers.set("content-length", "" + req.body.byteLength);
-    body = bytesReader(req.body);
-  } else if (req.body) {
-    const te = headers.get("transfer-encoding");
-    isChunked = true;
-    if (!te?.match("chunked")) {
-      headers.set("transfer-encoding", "chunked");
-      headers.delete("content-length");
-    }
-    body = req.body;
+  let contentLength: number | undefined;
+  if (req.body) {
+    [body, contentLength] = setupBody(headers, req.body);
   }
   fixLength(req.method, headers);
   for (const [k, v] of headers) {
@@ -475,16 +444,67 @@ export async function writeRequest(
   await bufw.write(encode(lines.join("\r\n")));
   await bufw.flush();
   if (body) {
-    if (isChunked) {
+    if (contentLength == null) {
       await writeChunkedBody(bufw, body);
     } else {
       await Deno.copy(bufw, body);
     }
+    await bufw.flush();
   }
   if (req.trailers) {
     writeTrailers(bufw, headers, await req.trailers());
   }
-  await bufw.flush();
+}
+
+export function setupBody(
+  headers: Headers,
+  body: string | Uint8Array | Deno.Reader
+): [Deno.Reader, number | undefined] {
+  const [r, len] = bodyToReader(body, headers);
+  const transferEncoding = headers.get("transfer-encoding");
+  let chunked = transferEncoding?.match(/^chunked/) != null;
+  if (!chunked && typeof len === "number") {
+    headers.set("content-length", `${len}`);
+  }
+  if (typeof body === "string") {
+    if (!headers.has("content-type")) {
+      headers.set("content-type", "text/plain; charset=UTF-8");
+    }
+  } else if (body instanceof Uint8Array) {
+    // noop
+  } else {
+    if (!headers.has("content-length") && !headers.has("transfer-encoding")) {
+      headers.set("transfer-encoding", "chunked");
+      chunked = true;
+    }
+  }
+  if (!headers.has("content-type")) {
+    headers.set("content-type", "application/octet-stream");
+  }
+  if (chunked) {
+    headers.delete("content-length");
+  } else {
+    headers.delete("transfer-encoding");
+  }
+  return [r, chunked ? undefined : len];
+}
+
+function bodyToReader(
+  body: string | Uint8Array | Deno.Reader,
+  headers: Headers
+): [Deno.Reader, number | undefined] {
+  if (typeof body === "string") {
+    const bin = encode(body);
+    return [bytesReader(bin), bin.byteLength];
+  } else if (body instanceof Uint8Array) {
+    return [bytesReader(body), body.byteLength];
+  } else {
+    const cl = headers.get("content-length");
+    if (cl) {
+      return [body, parseInt(cl)];
+    }
+    return [body, undefined];
+  }
 }
 
 function fixLength(method: string, headers: Headers): void {

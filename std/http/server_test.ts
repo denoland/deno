@@ -13,22 +13,18 @@ import {
   assertStrContains,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
-import { Response, Server, serve, listenAndServe } from "./server.ts";
+import { ServerResponse, Server, serve, listenAndServe } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay } from "../util/async.ts";
 import { encode, decode } from "../strings/mod.ts";
 import { mockRequest } from "./testing.ts";
-import {
-  writeRequest,
-  readResponse,
-  ClientResponse,
-  ClientRequest,
-} from "./io.ts";
+import { writeRequest, readResponse } from "./io.ts";
+import { ClientRequest, ClientResponse } from "./client.ts";
 
 const { Buffer, test } = Deno;
 
 interface ResponseTest {
-  response: Response;
+  response: ServerResponse;
   raw: string;
 }
 

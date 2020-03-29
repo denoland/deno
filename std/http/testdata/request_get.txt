@@ -1,0 +1,4 @@
+GET /index.html?deno=land&msg=gogo HTTP/1.1
+content-type: text/plain
+host: deno.land
+

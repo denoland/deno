@@ -62,3 +62,12 @@ export function bytesReader(buf: Uint8Array): Reader {
   }
   return { read };
 }
+
+/** Reader that returns EOF everytime */
+export function emptyReader(): Deno.Reader {
+  return {
+    read(_: Uint8Array): Promise<number | Deno.EOF> {
+      return Promise.resolve(Deno.EOF);
+    },
+  };
+}

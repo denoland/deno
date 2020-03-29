@@ -1,0 +1,4 @@
+GET /%E3%81%A7%E3%81%AE%E3%81%8F%E3%81%AB?deno=%F0%9F%A6%95 HTTP/1.1
+content-type: text/plain
+host: deno.land
+
