@@ -99,3 +99,12 @@ test({
     await d;
   },
 });
+
+test({
+  name: "letTimouet without timeout",
+  async fn() {
+    const p = Promise.resolve(true);
+    const v = await letTimeout(p);
+    assertEquals(v, true);
+  },
+});
