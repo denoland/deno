@@ -6,7 +6,7 @@ import {
   equal,
   hasPrefix,
   repeat,
-  concat
+  concat,
 } from "./mod.ts";
 import { assertEquals, assertThrows, assert } from "../testing/asserts.ts";
 import { encode, decode } from "../strings/mod.ts";
@@ -58,7 +58,7 @@ Deno.test("[bytes] repeat", () => {
     ["-", "", 0],
     ["-", "-", -1, "bytes: negative repeat count"],
     ["-", "----------", 10],
-    ["abc ", "abc abc abc ", 3]
+    ["abc ", "abc abc abc ", 3],
   ];
   for (const [input, output, count, errMsg] of repeatTestCase) {
     if (errMsg) {

@@ -34,7 +34,7 @@ test({
     t.equal(typeof globrex, "function", "constructor is a typeof function");
     t.equal(res instanceof Object, true, "returns object");
     t.equal(res.regex.toString(), "/^.*\\.js$/", "returns regex object");
-  }
+  },
 });
 
 test({
@@ -64,7 +64,7 @@ test({
       true,
       "match zero characters"
     );
-  }
+  },
 });
 
 test({
@@ -72,7 +72,7 @@ test({
   fn(): void {
     t.equal(
       match("*.min.js", "http://example.com/jquery.min.js", {
-        globstar: false
+        globstar: false,
       }),
       true,
       "complex match"
@@ -84,7 +84,7 @@ test({
     );
     t.equal(
       match("*/js/*.js", "http://example.com/js/jquery.min.js", {
-        globstar: false
+        globstar: false,
       }),
       true,
       "complex match"
@@ -171,11 +171,11 @@ test({
     t.equal(match("/js*jq*.js", "http://example.com/js/jquery.min.js"), false);
     t.equal(
       match("/js*jq*.js", "http://example.com/js/jquery.min.js", {
-        flags: "g"
+        flags: "g",
       }),
       true
     );
-  }
+  },
 });
 
 test({
@@ -215,7 +215,7 @@ test({
 
     tester(true);
     tester(false);
-  }
+  },
 });
 
 test({
@@ -246,7 +246,7 @@ test({
 
     tester(true);
     tester(false);
-  }
+  },
 });
 
 test({
@@ -304,7 +304,7 @@ test({
       match("[[:digit:]b]/bar.txt", "a/bar.txt", { extended: true }),
       false
     );
-  }
+  },
 });
 
 test({
@@ -320,7 +320,7 @@ test({
         match("foo{bar,baaz}", "foobaaz", {
           extended: true,
           globstar,
-          flag: "g"
+          flag: "g",
         }),
         true
       );
@@ -328,7 +328,7 @@ test({
         match("foo{bar,baaz}", "foobar", {
           extended: true,
           globstar,
-          flag: "g"
+          flag: "g",
         }),
         true
       );
@@ -336,7 +336,7 @@ test({
         match("foo{bar,baaz}", "foobuzz", {
           extended: true,
           globstar,
-          flag: "g"
+          flag: "g",
         }),
         false
       );
@@ -344,7 +344,7 @@ test({
         match("foo{bar,b*z}", "foobuzz", {
           extended: true,
           globstar,
-          flag: "g"
+          flag: "g",
         }),
         true
       );
@@ -352,7 +352,7 @@ test({
 
     tester(true);
     tester(false);
-  }
+  },
 });
 
 test({
@@ -444,7 +444,7 @@ test({
 
     tester(true);
     tester(false);
-  }
+  },
 });
 
 test({
@@ -471,7 +471,7 @@ test({
         match("http://foo.com/**", "http://foo.com/bar/baz/jquery.min.js", {
           extended: true,
           globstar,
-          flags: "g"
+          flags: "g",
         }),
         true
       );
@@ -479,7 +479,7 @@ test({
 
     tester(true);
     tester(false);
-  }
+  },
 });
 
 test({
@@ -496,7 +496,7 @@ test({
 
     tester(true);
     tester(false);
-  }
+  },
 });
 
 test({
@@ -574,25 +574,25 @@ test({
     t.equal(
       match("http://foo.com/*", "http://foo.com/bar/baz/jquery.min.js", {
         extended: true,
-        globstar: true
+        globstar: true,
       }),
       false
     );
     t.equal(
       match("http://foo.com/*", "http://foo.com/bar/baz/jquery.min.js", {
-        globstar: true
+        globstar: true,
       }),
       false
     );
     t.equal(
       match("http://foo.com/*", "http://foo.com/bar/baz/jquery.min.js", {
-        globstar: false
+        globstar: false,
       }),
       true
     );
     t.equal(
       match("http://foo.com/**", "http://foo.com/bar/baz/jquery.min.js", {
-        globstar: true
+        globstar: true,
       }),
       true
     );
@@ -636,7 +636,7 @@ test({
       ),
       false
     );
-  }
+  },
 });
 
 test({
@@ -689,7 +689,7 @@ test({
       match("?(ba[!zr]|qux)baz.txt", "bazbaz.txt", { extended: true }),
       false
     );
-  }
+  },
 });
 
 test({
@@ -715,18 +715,18 @@ test({
     t.equal(
       match("*(foo|bar)/**/*.txt", "foo/hello/world/bar.txt", {
         extended: true,
-        globstar: true
+        globstar: true,
       }),
       true
     );
     t.equal(
       match("*(foo|bar)/**/*.txt", "foo/world/bar.txt", {
         extended: true,
-        globstar: true
+        globstar: true,
       }),
       true
     );
-  }
+  },
 });
 
 test({
@@ -736,7 +736,7 @@ test({
     t.equal(match("+foo.txt", "+foo.txt", { extended: true }), true);
     t.equal(match("+(foo).txt", ".txt", { extended: true }), false);
     t.equal(match("+(foo|bar).txt", "foobar.txt", { extended: true }), true);
-  }
+  },
 });
 
 test({
@@ -757,7 +757,7 @@ test({
       match("@(foo|baz)bar.txt", "toofoobar.txt", { extended: true }),
       false
     );
-  }
+  },
 });
 
 test({
@@ -774,7 +774,7 @@ test({
       match("!({foo,bar})baz.txt", "foobaz.txt", { extended: true }),
       false
     );
-  }
+  },
 });
 
 test({
@@ -783,7 +783,7 @@ test({
     t.equal(match("foo//bar.txt", "foo/bar.txt"), true);
     t.equal(match("foo///bar.txt", "foo/bar.txt"), true);
     t.equal(match("foo///bar.txt", "foo/bar.txt", { strict: true }), false);
-  }
+  },
 });
 
 test({
@@ -791,7 +791,7 @@ test({
   fn(): void {
     t.equal(
       match("**/*/?yfile.{md,js,txt}", "foo/bar/baz/myfile.md", {
-        extended: true
+        extended: true,
       }),
       true
     );
@@ -823,5 +823,5 @@ test({
       match("[[:digit:]_.]/file.js", "z/file.js", { extended: true }),
       false
     );
-  }
+  },
 });

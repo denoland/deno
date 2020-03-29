@@ -41,7 +41,7 @@ test({
     fileInfo.blocks = 5;
     assert(new Dirent(fileInfo).isBlockDevice());
     assert(!new Dirent(fileInfo).isCharacterDevice());
-  }
+  },
 });
 
 test({
@@ -51,7 +51,7 @@ test({
     fileInfo.blocks = null;
     assert(new Dirent(fileInfo).isCharacterDevice());
     assert(!new Dirent(fileInfo).isBlockDevice());
-  }
+  },
 });
 
 test({
@@ -64,7 +64,7 @@ test({
     assert(new Dirent(fileInfo).isDirectory());
     assert(!new Dirent(fileInfo).isFile());
     assert(!new Dirent(fileInfo).isSymbolicLink());
-  }
+  },
 });
 
 test({
@@ -77,7 +77,7 @@ test({
     assert(!new Dirent(fileInfo).isDirectory());
     assert(new Dirent(fileInfo).isFile());
     assert(!new Dirent(fileInfo).isSymbolicLink());
-  }
+  },
 });
 
 test({
@@ -90,7 +90,7 @@ test({
     assert(!new Dirent(fileInfo).isDirectory());
     assert(!new Dirent(fileInfo).isFile());
     assert(new Dirent(fileInfo).isSymbolicLink());
-  }
+  },
 });
 
 test({
@@ -99,7 +99,7 @@ test({
     const fileInfo: FileInfoMock = new FileInfoMock();
     fileInfo.name = "my_file";
     assertEquals(new Dirent(fileInfo).name, "my_file");
-  }
+  },
 });
 
 test({
@@ -120,5 +120,5 @@ test({
       Error,
       "does not yet support"
     );
-  }
+  },
 });

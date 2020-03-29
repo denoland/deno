@@ -3,11 +3,11 @@ enum State {
   PERCENT,
   POSITIONAL,
   PRECISION,
-  WIDTH
+  WIDTH,
 }
 enum WorP {
   WIDTH,
-  PRECISION
+  PRECISION,
 }
 
 class Flags {
@@ -34,7 +34,7 @@ enum F {
   mantissa,
   fractional,
   esign,
-  exponent
+  exponent,
 }
 
 class Printf {

@@ -16,7 +16,7 @@ Deno.test({
     const process = Deno.run({
       cmd: [Deno.execPath(), "--allow-net", "curl.ts", "http://localhost:8081"],
       cwd: "examples",
-      stdout: "piped"
+      stdout: "piped",
     });
 
     try {
@@ -30,5 +30,5 @@ Deno.test({
       process.close();
       await serverPromise;
     }
-  }
+  },
 });

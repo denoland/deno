@@ -34,7 +34,7 @@ const rawTypeSizes = {
   int64: 8,
   uint64: 8,
   float32: 4,
-  float64: 8
+  float64: 8,
 };
 
 /** Returns the number of bytes required to store the given data-type. */

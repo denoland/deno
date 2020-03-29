@@ -114,7 +114,7 @@ unitTest(function dispatchEventShouldNotThrowError(): void {
     const target = new EventTarget();
     const event = new Event("hasOwnProperty", {
       bubbles: true,
-      cancelable: false
+      cancelable: false,
     });
     const listener = (): void => {};
     target.addEventListener("hasOwnProperty", listener);
@@ -130,7 +130,7 @@ unitTest(function eventTargetThisShouldDefaultToWindow(): void {
   const {
     addEventListener,
     dispatchEvent,
-    removeEventListener
+    removeEventListener,
   } = EventTarget.prototype;
   let n = 1;
   const event = new Event("hello");
@@ -164,7 +164,7 @@ unitTest(function eventTargetShouldAcceptEventListenerObject(): void {
     handleEvent(e: Event): void {
       assertEquals(e, event);
       ++callCount;
-    }
+    },
   };
 
   target.addEventListener("foo", listener);
@@ -213,7 +213,7 @@ unitTest(
       handleEvent(e: Event): void {
         assertEquals(e, event);
         ++callCount;
-      }
+      },
     };
 
     target.addEventListener("foo", listener);

@@ -11,7 +11,7 @@ import { assert } from "./util.ts";
 const RED_FAILED = red("FAILED");
 const GREEN_OK = green("ok");
 const YELLOW_IGNORED = yellow("ignored");
-const disabledConsole = new Console((_x: string, _isErr?: boolean): void => {});
+const disabledConsole = new Console((): void => {});
 
 function formatDuration(time = 0): string {
   const timeStr = `(${time}ms)`;
@@ -140,7 +140,7 @@ export interface RunTestsOptions {
 enum TestStatus {
   Passed = "passed",
   Failed = "failed",
-  Ignored = "ignored"
+  Ignored = "ignored",
 }
 
 interface TestResult {
@@ -154,7 +154,7 @@ export enum TestEvent {
   Start = "start",
   TestStart = "testStart",
   TestEnd = "testEnd",
-  End = "end"
+  End = "end",
 }
 
 interface TestEventStart {
@@ -188,7 +188,7 @@ class TestApi {
     ignored: 0,
     measured: 0,
     passed: 0,
-    failed: 0
+    failed: 0,
   };
 
   constructor(
@@ -205,7 +205,7 @@ class TestApi {
   > {
     yield {
       kind: TestEvent.Start,
-      tests: this.testsToRun.length
+      tests: this.testsToRun.length,
     };
 
     const results: TestResult[] = [];
@@ -243,7 +243,7 @@ class TestApi {
       kind: TestEvent.End,
       stats: this.stats,
       results,
-      duration
+      duration,
     };
   }
 }
@@ -283,33 +283,15 @@ interface TestReporter {
 }
 
 export class ConsoleTestReporter implements TestReporter {
-  private encoder: TextEncoder;
-
-  constructor() {
-    this.encoder = new TextEncoder();
-  }
-
-  private log(msg: string, noNewLine = false): Promise<void> {
-    if (!noNewLine) {
-      msg += "\n";
-    }
-
-    // Using `stdout` here because it doesn't force new lines
-    // compared to `console.log`; `core.print` on the other hand
-    // is line-buffered and doesn't output message without newline
-    stdout.writeSync(this.encoder.encode(msg));
-    return Promise.resolve();
-  }
-
   start(event: TestEventStart): Promise<void> {
-    this.log(`running ${event.tests} tests`);
+    ConsoleTestReporter.log(`running ${event.tests} tests`);
     return Promise.resolve();
   }
 
   testStart(event: TestEventTestStart): Promise<void> {
     const { name } = event;
 
-    this.log(`test ${name} ... `, true);
+    ConsoleTestReporter.log(`test ${name} ... `, true);
     return Promise.resolve();
   }
 
@@ -318,13 +300,19 @@ export class ConsoleTestReporter implements TestReporter {
 
     switch (result.status) {
       case TestStatus.Passed:
-        this.log(`${GREEN_OK} ${formatDuration(result.duration)}`);
+        ConsoleTestReporter.log(
+          `${GREEN_OK} ${formatDuration(result.duration)}`
+        );
         break;
       case TestStatus.Failed:
-        this.log(`${RED_FAILED} ${formatDuration(result.duration)}`);
+        ConsoleTestReporter.log(
+          `${RED_FAILED} ${formatDuration(result.duration)}`
+        );
         break;
       case TestStatus.Ignored:
-        this.log(`${YELLOW_IGNORED} ${formatDuration(result.duration)}`);
+        ConsoleTestReporter.log(
+          `${YELLOW_IGNORED} ${formatDuration(result.duration)}`
+        );
         break;
     }
 
@@ -334,25 +322,25 @@ export class ConsoleTestReporter implements TestReporter {
   end(event: TestEventEnd): Promise<void> {
     const { stats, duration, results } = event;
     // Attempting to match the output of Rust's test runner.
-    const failedTests = results.filter(r => r.error);
+    const failedTests = results.filter((r) => r.error);
 
     if (failedTests.length > 0) {
-      this.log(`\nfailures:\n`);
+      ConsoleTestReporter.log(`\nfailures:\n`);
 
       for (const result of failedTests) {
-        this.log(`${result.name}`);
-        this.log(`${stringifyArgs([result.error!])}`);
-        this.log("");
+        ConsoleTestReporter.log(`${result.name}`);
+        ConsoleTestReporter.log(`${stringifyArgs([result.error!])}`);
+        ConsoleTestReporter.log("");
       }
 
-      this.log(`failures:\n`);
+      ConsoleTestReporter.log(`failures:\n`);
 
       for (const result of failedTests) {
-        this.log(`\t${result.name}`);
+        ConsoleTestReporter.log(`\t${result.name}`);
       }
     }
 
-    this.log(
+    ConsoleTestReporter.log(
       `\ntest result: ${stats.failed ? RED_FAILED : GREEN_OK}. ` +
         `${stats.passed} passed; ${stats.failed} failed; ` +
         `${stats.ignored} ignored; ${stats.measured} measured; ` +
@@ -360,6 +348,20 @@ export class ConsoleTestReporter implements TestReporter {
         `${formatDuration(duration)}\n`
     );
 
+    return Promise.resolve();
+  }
+
+  static encoder = new TextEncoder();
+
+  static log(msg: string, noNewLine = false): Promise<void> {
+    if (!noNewLine) {
+      msg += "\n";
+    }
+
+    // Using `stdout` here because it doesn't force new lines
+    // compared to `console.log`; `core.print` on the other hand
+    // is line-buffered and doesn't output message without newline
+    stdout.writeSync(ConsoleTestReporter.encoder.encode(msg));
     return Promise.resolve();
   }
 }
@@ -370,7 +372,7 @@ export async function runTests({
   only = undefined,
   skip = undefined,
   disableLog = false,
-  reporter = undefined
+  reporter = undefined,
 }: RunTestsOptions = {}): Promise<{
   results: TestResult[];
   stats: TestStats;

@@ -14,7 +14,7 @@ test({
     const originalUserId: number | null = (await Deno.lstat(tempFile)).uid;
     const originalGroupId: number | null = (await Deno.lstat(tempFile)).gid;
     await new Promise((resolve, reject) => {
-      chown(tempFile, originalUserId!, originalGroupId!, err => {
+      chown(tempFile, originalUserId!, originalGroupId!, (err) => {
         if (err) reject(err);
         else resolve();
       });
@@ -31,7 +31,7 @@ test({
       .finally(() => {
         Deno.removeSync(tempFile);
       });
-  }
+  },
 });
 
 test({
@@ -48,5 +48,5 @@ test({
     assertEquals(newUserId, originalUserId);
     assertEquals(newGroupId, originalGroupId);
     Deno.removeSync(tempFile);
-  }
+  },
 });

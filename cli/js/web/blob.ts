@@ -124,12 +124,8 @@ function processBlobParts(
   return bytes;
 }
 
-// A WeakMap holding blob to byte array mapping.
-// Ensures it does not impact garbage collection.
-export const blobBytesWeakMap = new WeakMap<domTypes.Blob, Uint8Array>();
-
 export class DenoBlob implements domTypes.Blob {
-  private readonly [bytesSymbol]: Uint8Array;
+  [bytesSymbol]: Uint8Array;
   readonly size: number = 0;
   readonly type: string = "";
 
@@ -165,14 +161,11 @@ export class DenoBlob implements domTypes.Blob {
     this[bytesSymbol] = bytes;
     this.size = bytes.byteLength;
     this.type = normalizedType;
-
-    // Register bytes for internal private use.
-    blobBytesWeakMap.set(this, bytes);
   }
 
   slice(start?: number, end?: number, contentType?: string): DenoBlob {
     return new DenoBlob([this[bytesSymbol].slice(start, end)], {
-      type: contentType || this.type
+      type: contentType || this.type,
     });
   }
 }

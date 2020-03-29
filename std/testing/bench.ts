@@ -65,7 +65,7 @@ function createBenchmarkTimer(clock: BenchmarkClock): BenchmarkTimer {
     },
     stop(): void {
       clock.stop = performance.now();
-    }
+    },
   };
 }
 
@@ -84,7 +84,7 @@ export function bench(
     candidates.push({
       name: benchmark.name,
       runs: verifyOr1Run(benchmark.runs),
-      func: benchmark.func
+      func: benchmark.func,
     });
   }
 }
@@ -92,7 +92,7 @@ export function bench(
 /** Runs all registered and non-skipped benchmarks serially. */
 export async function runBenchmarks({
   only = /[^\s]/,
-  skip = /^\s*$/
+  skip = /^\s*$/,
 }: BenchmarkRunOptions = {}): Promise<void> {
   // Filtering candidates by the "only" and "skip" constraint
   const benchmarks: BenchmarkDefinition[] = candidates.filter(

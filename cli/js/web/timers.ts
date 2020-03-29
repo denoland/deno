@@ -223,7 +223,7 @@ function setTimer(
     delay,
     due: now + delay,
     repeat,
-    scheduled: false
+    scheduled: false,
   };
   // Register the timer's existence in the id-to-timer map.
   idMap.set(timer.id, timer);

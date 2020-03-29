@@ -31,7 +31,7 @@ export function immutableDefine(
   Object.defineProperty(o, p, {
     value,
     configurable: false,
-    writable: false
+    writable: false,
   });
 }
 
@@ -52,4 +52,19 @@ export function hasOwnProperty<T>(obj: T, v: PropertyKey): boolean {
     return false;
   }
   return Object.prototype.hasOwnProperty.call(obj, v);
+}
+
+/** Returns whether o is iterable.
+ *
+ * @internal */
+export function isIterable<T, P extends keyof T, K extends T[P]>(
+  o: T
+): o is T & Iterable<[P, K]> {
+  // checks for null and undefined
+  if (o == null) {
+    return false;
+  }
+  return (
+    typeof ((o as unknown) as Iterable<[P, K]>)[Symbol.iterator] === "function"
+  );
 }

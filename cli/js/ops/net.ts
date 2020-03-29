@@ -19,7 +19,7 @@ export enum ShutdownMode {
   // Corresponding to SHUT_RD, SHUT_WR, SHUT_RDWR
   Read = 0,
   Write,
-  ReadWrite // unused
+  ReadWrite, // unused
 }
 
 export function shutdown(rid: number, how: ShutdownMode): void {

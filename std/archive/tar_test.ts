@@ -23,7 +23,7 @@ Deno.test(async function createTarArchive(): Promise<void> {
   const content = new TextEncoder().encode("hello tar world!");
   await tar.append("output.txt", {
     reader: new Deno.Buffer(content),
-    contentSize: content.byteLength
+    contentSize: content.byteLength,
   });
 
   // put a file
@@ -49,7 +49,7 @@ Deno.test(async function deflateTarArchive(): Promise<void> {
   const content = new TextEncoder().encode(text);
   await tar.append(fileName, {
     reader: new Deno.Buffer(content),
-    contentSize: content.byteLength
+    contentSize: content.byteLength,
   });
 
   // read data from a tar archive
@@ -73,7 +73,7 @@ Deno.test(async function appendFileWithLongNameToTarArchive(): Promise<void> {
   const content = new TextEncoder().encode(text);
   await tar.append(fileName, {
     reader: new Deno.Buffer(content),
-    contentSize: content.byteLength
+    contentSize: content.byteLength,
   });
 
   // read data from a tar archive

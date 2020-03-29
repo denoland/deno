@@ -6,42 +6,42 @@ test({
   name: "build architecture is a string",
   fn() {
     assertEquals(typeof os.arch(), "string");
-  }
+  },
 });
 
 test({
   name: "home directory is a string",
   fn() {
     assertEquals(typeof os.homedir(), "string");
-  }
+  },
 });
 
 test({
   name: "tmp directory is a string",
   fn() {
     assertEquals(typeof os.tmpdir(), "string");
-  }
+  },
 });
 
 test({
   name: "hostname is a string",
   fn() {
     assertEquals(typeof os.hostname(), "string");
-  }
+  },
 });
 
 test({
   name: "platform is a string",
   fn() {
     assertEquals(typeof os.platform(), "string");
-  }
+  },
 });
 
 test({
   name: "release is a string",
   fn() {
     assertEquals(typeof os.release(), "string");
-  }
+  },
 });
 
 test({
@@ -61,7 +61,7 @@ test({
       Error,
       "must be >= -2147483648 && <= 2147483647"
     );
-  }
+  },
 });
 
 test({
@@ -81,7 +81,7 @@ test({
       Error,
       "pid must be >= -2147483648 && <= 2147483647"
     );
-  }
+  },
 });
 
 test({
@@ -115,7 +115,7 @@ test({
       Error,
       "priority must be >= -20 && <= 19"
     );
-  }
+  },
 });
 
 test({
@@ -150,7 +150,7 @@ test({
       Error,
       "priority must be >= -20 && <= 19"
     );
-  }
+  },
 });
 
 test({
@@ -160,21 +160,21 @@ test({
     assertEquals(os.constants.signals.SIGKILL, Deno.Signal.SIGKILL);
     assertEquals(os.constants.signals.SIGCONT, Deno.Signal.SIGCONT);
     assertEquals(os.constants.signals.SIGXFSZ, Deno.Signal.SIGXFSZ);
-  }
+  },
 });
 
 test({
   name: "EOL is as expected",
   fn() {
     assert(os.EOL == "\r\n" || os.EOL == "\n");
-  }
+  },
 });
 
 test({
   name: "Endianness is determined",
   fn() {
     assert(["LE", "BE"].includes(os.endianness()));
-  }
+  },
 });
 
 test({
@@ -185,7 +185,7 @@ test({
     assertEquals(typeof result[0], "number");
     assertEquals(typeof result[1], "number");
     assertEquals(typeof result[2], "number");
-  }
+  },
 });
 
 test({
@@ -196,7 +196,7 @@ test({
     assertEquals(`${os.homedir}`, os.homedir());
     assertEquals(`${os.hostname}`, os.hostname());
     assertEquals(`${os.platform}`, os.platform());
-  }
+  },
 });
 
 test({
@@ -265,5 +265,5 @@ test({
       Error,
       "Not implemented"
     );
-  }
+  },
 });

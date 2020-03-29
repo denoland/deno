@@ -12,21 +12,21 @@ Deno.test({
   name: "[EOL] Detect CR LF",
   fn(): void {
     assertEquals(detect(CRLFinput), EOL.CRLF);
-  }
+  },
 });
 
 Deno.test({
   name: "[EOL] Detect LF",
   fn(): void {
     assertEquals(detect(LFinput), EOL.LF);
-  }
+  },
 });
 
 Deno.test({
   name: "[EOL] Detect No New Line",
   fn(): void {
     assertEquals(detect(NoNLinput), null);
-  }
+  },
 });
 
 Deno.test({
@@ -34,7 +34,7 @@ Deno.test({
   fn(): void {
     assertEquals(detect(Mixedinput), EOL.CRLF);
     assertEquals(detect(Mixedinput2), EOL.CRLF);
-  }
+  },
 });
 
 Deno.test({
@@ -50,5 +50,5 @@ Deno.test({
     assertEquals(format(Mixedinput, EOL.LF), LFinput);
     assertEquals(format(Mixedinput2, EOL.CRLF), CRLFinput);
     assertEquals(format(Mixedinput2, EOL.LF), LFinput);
-  }
+  },
 });

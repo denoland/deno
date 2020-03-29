@@ -45,7 +45,7 @@ function compileMap(...typesList: Type[][]): TypeMap {
     fallback: {},
     mapping: {},
     scalar: {},
-    sequence: {}
+    sequence: {},
   };
 
   for (const types of typesList) {

@@ -22,7 +22,7 @@ unitTest(
 unitTest(
   {
     ignore: Deno.build.os === "win",
-    perms: { read: true, write: true }
+    perms: { read: true, write: true },
   },
   function chmodSyncSymlinkSuccess(): void {
     const enc = new TextEncoder();
@@ -94,7 +94,7 @@ unitTest(
 unitTest(
   {
     ignore: Deno.build.os === "win",
-    perms: { read: true, write: true }
+    perms: { read: true, write: true },
   },
   async function chmodSymlinkSuccess(): Promise<void> {
     const enc = new TextEncoder();

@@ -12,5 +12,5 @@ import { core } from "./core.ts";
 export const def = new Schema({
   explicit: [binary, omap, pairs, set],
   implicit: [timestamp, merge],
-  include: [core]
+  include: [core],
 });
