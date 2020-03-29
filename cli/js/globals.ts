@@ -2,6 +2,7 @@
 
 import * as blob from "./web/blob.ts";
 import * as consoleTypes from "./web/console.ts";
+import * as promiseTypes from "./web/promise.ts";
 import * as customEvent from "./web/custom_event.ts";
 import * as domTypes from "./web/dom_types.ts";
 import * as domFile from "./web/dom_file.ts";
@@ -101,6 +102,18 @@ declare global {
     ): [unknown, EvalErrorInfo | null];
 
     formatError: (e: Error) => string;
+
+    /**
+     * Get promise details as two elements array.
+     *
+     * First element is the `PromiseState`.
+     * If promise isn't pending, second element would be the result of the promise.
+     * Otherwise, second element would be undefined.
+     *
+     * Throws `TypeError` if argument isn't a promise
+     *
+     */
+    getPromiseDetails<T>(promise: Promise<T>): promiseTypes.PromiseDetails<T>;
 
     decode(bytes: Uint8Array): string;
     encode(text: string): Uint8Array;
