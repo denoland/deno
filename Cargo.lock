@@ -459,7 +459,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "atty",
  "base64 0.11.0",
@@ -493,6 +493,10 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "sourcemap",
+ "swc_common",
+ "swc_ecma_ast",
+ "swc_ecma_parser",
+ "swc_ecma_parser_macros",
  "sys-info",
  "tempfile",
  "termcolor",
@@ -511,7 +515,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "derive_deref",
  "downcast-rs",
@@ -527,7 +531,7 @@ dependencies = [
 
 [[package]]
 name = "deno_typescript"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "deno_core",
  "serde",

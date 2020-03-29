@@ -31,6 +31,11 @@ pub enum DenoSubcommand {
   Completions {
     buf: Box<[u8]>,
   },
+  Doc {
+    json: bool,
+    source_file: String,
+    filter: Option<String>,
+  },
   Eval {
     code: String,
     as_typescript: bool,
@@ -258,6 +263,8 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
     test_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("upgrade") {
     upgrade_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("doc") {
+    doc_parse(&mut flags, m);
   } else {
     unimplemented!();
   }
@@ -311,6 +318,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
     .subcommand(upgrade_subcommand())
+    .subcommand(doc_subcommand())
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
 }
@@ -550,6 +558,22 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Upgrade { dry_run, force };
 }
 
+fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  reload_arg_parse(flags, matches);
+  let source_file = matches.value_of("source_file").map(String::from).unwrap();
+  let json = matches.is_present("json");
+  let filter = if matches.is_present("filter") {
+    Some(matches.value_of("filter").unwrap().to_string())
+  } else {
+    None
+  };
+  flags.subcommand = DenoSubcommand::Doc {
+    source_file,
+    json,
+    filter,
+  };
+}
+
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("types")
     .about("Print runtime TypeScript declarations")
@@ -767,6 +791,43 @@ and is used to replace the current executable.",
         .long("force")
         .short("f")
         .help("Replace current exe even if not out-of-date"),
+    )
+}
+
+fn doc_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("doc")
+    .about("Show documentation for module")
+    .long_about(
+      "Show documentation for module.
+
+Output documentation to terminal:
+    deno doc ./path/to/module.ts
+
+Show detail of symbol:
+    deno doc ./path/to/module.ts MyClass.someField
+
+Output documentation in JSON format:
+    deno doc --json ./path/to/module.ts",
+    )
+    .arg(reload_arg())
+    .arg(
+      Arg::with_name("json")
+        .long("json")
+        .help("Output documentation in JSON format.")
+        .takes_value(false),
+    )
+    .arg(
+      Arg::with_name("source_file")
+        .takes_value(true)
+        .required(true),
+    )
+    .arg(
+      Arg::with_name("filter")
+        .help("Dot separated path to symbol.")
+        .takes_value(true)
+        .required(false)
+        .conflicts_with("json")
+        .conflicts_with("pretty"),
     )
 }
 
@@ -1219,6 +1280,7 @@ fn arg_hacks(mut args: Vec<String>) -> Vec<String> {
   let subcommands = sset![
     "bundle",
     "completions",
+    "doc",
     "eval",
     "fetch",
     "fmt",
@@ -2374,6 +2436,41 @@ fn repl_with_cafile() {
       allow_run: true,
       allow_plugin: true,
       allow_hrtime: true,
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn doc() {
+  let r =
+    flags_from_vec_safe(svec!["deno", "doc", "--json", "path/to/module.ts"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Doc {
+        json: true,
+        source_file: "path/to/module.ts".to_string(),
+        filter: None,
+      },
+      ..Flags::default()
+    }
+  );
+
+  let r = flags_from_vec_safe(svec![
+    "deno",
+    "doc",
+    "path/to/module.ts",
+    "SomeClass.someField"
+  ]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Doc {
+        json: false,
+        source_file: "path/to/module.ts".to_string(),
+        filter: Some("SomeClass.someField".to_string()),
+      },
       ..Flags::default()
     }
   );

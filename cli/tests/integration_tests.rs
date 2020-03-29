@@ -1468,7 +1468,7 @@ itest!(cafile_eval {
   http_server: true,
 });
 
-itest!(cafile_info {
+itest_ignore!(cafile_info {
   args:
     "info --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
   output: "cafile_info.ts.out",
@@ -2070,6 +2070,44 @@ async fn inspector_pause() {
   assert_eq!(msg, r#"{"id":31,"result":{}}"#);
 
   child.kill().unwrap();
+}
+
+#[cfg(not(target_os = "linux"))] // TODO(ry) broken on github actions.
+#[tokio::test]
+async fn inspector_port_collision() {
+  let script = deno::test_util::root_path()
+    .join("cli")
+    .join("tests")
+    .join("inspector1.js");
+  let mut child1 = util::deno_cmd()
+    .arg("run")
+    .arg("--inspect=127.0.0.1:9231")
+    .arg(script.clone())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let ws_url_1 = extract_ws_url_from_stderr(child1.stderr.as_mut().unwrap());
+  println!("ws_url {}", ws_url_1);
+
+  let mut child2 = util::deno_cmd()
+    .arg("run")
+    .arg("--inspect=127.0.0.1:9231")
+    .arg(script)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  use std::io::Read;
+  let mut stderr_str_2 = String::new();
+  child2
+    .stderr
+    .as_mut()
+    .unwrap()
+    .read_to_string(&mut stderr_str_2)
+    .unwrap();
+  assert!(stderr_str_2.contains("Cannot start inspector server"));
+  child1.kill().unwrap();
+  let _ = child2.kill();
 }
 
 mod util {

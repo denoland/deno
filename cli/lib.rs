@@ -27,6 +27,7 @@ pub mod compilers;
 pub mod deno_dir;
 pub mod diagnostics;
 mod disk_cache;
+mod doc;
 mod file_fetcher;
 pub mod flags;
 mod fmt;
@@ -109,6 +110,18 @@ impl log::Log for Logger {
     }
   }
   fn flush(&self) {}
+}
+
+fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
+  use std::io::ErrorKind;
+
+  match std::io::stdout().write_all(bytes) {
+    Ok(()) => Ok(()),
+    Err(e) => match e.kind() {
+      ErrorKind::BrokenPipe => Ok(()),
+      _ => Err(e),
+    },
+  }
 }
 
 fn create_main_worker(
@@ -344,6 +357,57 @@ async fn bundle_command(
   bundle_result
 }
 
+async fn doc_command(
+  flags: Flags,
+  source_file: String,
+  json: bool,
+  maybe_filter: Option<String>,
+) -> Result<(), ErrBox> {
+  let global_state = GlobalState::new(flags.clone())?;
+  let module_specifier =
+    ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
+  let source_file = global_state
+    .file_fetcher
+    .fetch_source_file(&module_specifier, None)
+    .await?;
+  let source_code = String::from_utf8(source_file.source_code)?;
+
+  let doc_parser = doc::DocParser::default();
+  let parse_result =
+    doc_parser.parse(module_specifier.to_string(), source_code);
+
+  let doc_nodes = match parse_result {
+    Ok(nodes) => nodes,
+    Err(e) => {
+      eprintln!("Failed to parse documentation:");
+      for diagnostic in e {
+        eprintln!("{}", diagnostic.message());
+      }
+
+      std::process::exit(1);
+    }
+  };
+
+  if json {
+    let writer = std::io::BufWriter::new(std::io::stdout());
+    serde_json::to_writer_pretty(writer, &doc_nodes).map_err(ErrBox::from)
+  } else {
+    let details = if let Some(filter) = maybe_filter {
+      let node = doc::find_node_by_name_recursively(doc_nodes, filter.clone());
+      if let Some(node) = node {
+        doc::printer::format_details(node)
+      } else {
+        eprintln!("Node {} was not found!", filter);
+        std::process::exit(1);
+      }
+    } else {
+      doc::printer::format(doc_nodes)
+    };
+
+    write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(ErrBox::from)
+  }
+}
+
 async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$repl.ts").unwrap();
@@ -451,6 +515,11 @@ pub fn main() {
       source_file,
       out_file,
     } => bundle_command(flags, source_file, out_file).boxed_local(),
+    DenoSubcommand::Doc {
+      source_file,
+      json,
+      filter,
+    } => doc_command(flags, source_file, json, filter).boxed_local(),
     DenoSubcommand::Eval {
       code,
       as_typescript,
@@ -478,7 +547,10 @@ pub fn main() {
       allow_none,
     } => test_command(flags, include, fail_fast, allow_none).boxed_local(),
     DenoSubcommand::Completions { buf } => {
-      print!("{}", std::str::from_utf8(&buf).unwrap());
+      if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
+        eprintln!("{}", e);
+        std::process::exit(1);
+      }
       return;
     }
     DenoSubcommand::Types => {
@@ -488,8 +560,10 @@ pub fn main() {
         crate::js::SHARED_GLOBALS_LIB,
         crate::js::WINDOW_LIB
       );
-      // TODO(ry) Only ignore SIGPIPE. Currently ignoring all errors.
-      let _r = std::io::stdout().write_all(types.as_bytes());
+      if let Err(e) = write_to_stdout_ignore_sigpipe(types.as_bytes()) {
+        eprintln!("{}", e);
+        std::process::exit(1);
+      }
       return;
     }
     DenoSubcommand::Upgrade { force, dry_run } => {
