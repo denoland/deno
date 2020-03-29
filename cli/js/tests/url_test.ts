@@ -213,6 +213,19 @@ unitTest(function createBadUrl(): void {
   });
 });
 
+unitTest(
+  {
+    // TODO this is standard behavior of URL
+    ignore: true,
+  },
+  function pathnameShouldEncodeComponents() {
+    const url = new URL("http://🦕.com/🦖?q=🎉");
+    assertEquals(url.host, "xn--lt9h.com");
+    assertEquals(url.pathname, "/%F0%9F%A6%96");
+    assertEquals(url.search, "?q=%F0%9F%8E%89");
+  }
+);
+
 if (import.meta.main) {
   Deno.runTests();
 }
