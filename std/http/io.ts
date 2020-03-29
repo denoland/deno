@@ -4,9 +4,10 @@ import { assert } from "../testing/asserts.ts";
 import { encoder, encode } from "../strings/mod.ts";
 import { ServerResponse, ServerRequest } from "./server.ts";
 import { STATUS_TEXT } from "./http_status.ts";
-import { letTimeout } from "../util/async.ts";
+import { letTimeout, timeoutReader } from "../util/async.ts";
 import { bytesReader } from "../io/readers.ts";
 import { ClientResponse, ClientRequest } from "./client.ts";
+import { readUntilEOF } from "../io/ioutil.ts";
 
 /** Reader for HTTP/1.1 fixed size body part */
 export function bodyReader(contentLength: number, r: BufReader): Deno.Reader {
@@ -253,12 +254,15 @@ export async function readResponse(
   } else if (contentLength != null) {
     body = bodyReader(parseInt(contentLength), reader);
   } else {
-    throw new Error("unknown conetnt-lengh or transfer-encoding");
+    throw new Error("No conetnt-length or unknown transfer-encoding");
+  }
+  if (timeout != null) {
+    body = timeoutReader(body, timeout);
   }
   let finalized = false;
   const finalize = async (): Promise<void> => {
     if (finalized) return;
-    await Deno.readAll(body);
+    await readUntilEOF(body);
     finalized = true;
   };
   return {

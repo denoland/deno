@@ -77,3 +77,11 @@ export function sliceLongToBytes(d: number, dest = new Array(8)): number[] {
   }
   return dest;
 }
+
+export async function readUntilEOF(
+  r: Deno.Reader,
+  bufSize = 1024
+): Promise<void> {
+  const buf = new Uint8Array(bufSize);
+  while ((await r.read(buf)) !== Deno.EOF) {}
+}

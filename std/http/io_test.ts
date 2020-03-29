@@ -22,9 +22,11 @@ import { encode, decode } from "../strings/mod.ts";
 import { BufReader, ReadLineResult } from "../io/bufio.ts";
 import { chunkedBodyReader } from "./io.ts";
 import { ServerResponse, ServerRequest } from "./server.ts";
-import { StringReader } from "../io/readers.ts";
+import { StringReader, stringReader, multiReader } from "../io/readers.ts";
 import { mockConn } from "./testing.ts";
 import { ClientRequest } from "./client.ts";
+import { TimeoutError, deferred } from "../util/async.ts";
+import { readUntilEOF } from "../io/ioutil.ts";
 const { Buffer, test } = Deno;
 
 const kBuf = new Uint8Array(1);
@@ -459,6 +461,52 @@ test("[http/io] testReadRequestError", async function (): Promise<void> {
   }
 });
 
+test({
+  name: "[http/io] readRequest read header timeout",
+  async fn() {
+    const conn = mockConn();
+    const d = deferred();
+    conn.read = async (_: Uint8Array): Promise<number | Deno.EOF> => {
+      await d;
+      return Deno.EOF;
+    };
+    await assertThrowsAsync(async () => {
+      await readRequest(conn, { timeout: 100 });
+    }, TimeoutError);
+    d.resolve();
+  },
+});
+
+test({
+  name: "[http/io] ServerRequest body timeout",
+  async fn() {
+    const d = deferred();
+    const body = {
+      async read(_: Uint8Array): Promise<number | Deno.EOF> {
+        await d;
+        return Deno.EOF;
+      },
+    };
+    const conn = mockConn();
+    const head = [
+      "POST / HTTP/1.1",
+      "host: deno.land",
+      "content-length: 20",
+      "\r\n",
+    ].join("\r\n");
+    const r = multiReader(stringReader(head), body);
+    conn.read = r.read;
+    const req = await readRequest(conn, { timeout: 100 });
+    assert(req != Deno.EOF);
+    assertEquals(req.headers.get("content-length"), "20");
+    assert(req.body != null);
+    await assertThrowsAsync(async () => {
+      await readUntilEOF(req.body);
+    }, TimeoutError);
+    d.resolve();
+  },
+});
+
 const writeRequestCases: Array<[string, ClientRequest]> = [
   [
     "request_get",
@@ -601,6 +649,27 @@ for (const [filepath, resp] of readResponseCases) {
     },
   });
 }
+
+test({
+  name: `[http/io] readResponse body timeout`,
+  async fn() {
+    const head = ["HTTP/1.1 200 OK", "content-length: 20", "\r\n"].join("\r\n");
+    const d = deferred();
+    const body = {
+      async read(_: Uint8Array): Promise<number | Deno.EOF> {
+        await d;
+        return Deno.EOF;
+      },
+    };
+    const r = multiReader(stringReader(head), body);
+    const resp = await readResponse(r, { timeout: 100 });
+    assertEquals(resp.headers.get("content-length"), "20");
+    await assertThrowsAsync(async () => {
+      await readUntilEOF(resp.body);
+    }, TimeoutError);
+    d.resolve();
+  },
+});
 
 test({
   name: "[http/io] parseKeepAlive",

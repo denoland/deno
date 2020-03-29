@@ -18,6 +18,7 @@ import {
 } from "./io.ts";
 import { TimeUnits } from "../datetime/mod.ts";
 import { emptyReader } from "../io/readers.ts";
+import { readUntilEOF } from "../io/ioutil.ts";
 
 export class ServerRequest {
   constructor({
@@ -139,9 +140,7 @@ export class ServerRequest {
   async finalize(): Promise<void> {
     if (this.finalized) return;
     // Consume unread body
-    const body = this.body;
-    const buf = new Uint8Array(1024);
-    while ((await body.read(buf)) !== Deno.EOF) {}
+    await readUntilEOF(this.body);
     this.finalized = true;
   }
 }
