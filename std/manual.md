@@ -1133,7 +1133,7 @@ is "erase" any types from the modules and emit JavaScript. There is no type
 checking and no resolution of dependencies. It accepts up to two arguments, the
 first is a hash where the key is the module name and the value is the content.
 The only purpose of the module name is when putting information into a source
-map, of what the source file name was. The second argument are optional
+map, of what the source file name was. The second argument contains optional
 `options` of the type `Deno.CompilerOptions`. The function resolves with a map
 where the key is the source module name supplied, and the value is an object
 with a property of `source` and optionally `map`. The first is the output
@@ -1635,7 +1635,7 @@ together.
 #### Utilize JSDoc
 
 All publicly exposed APIs and types, both via the `deno` module as well as the
-global `window` namespace should have JSDoc documentation. This documentation is
+global/`window` namespace should have JSDoc documentation. This documentation is
 parsed and available to the TypeScript compiler, and therefore easy to provide
 further downstream. JSDoc blocks come just prior to the statement they apply to
 and are denoted by a leading `/**` before terminating with a `*/`. For example:
