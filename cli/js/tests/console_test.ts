@@ -552,6 +552,32 @@ unitTest(function consoleTestStringifyIterable() {
  ... 100 more items
 }`
   );
+
+  const withEmptyEl = Array(10);
+  withEmptyEl.fill(0, 4, 6);
+  assertEquals(
+    stringify(withEmptyEl),
+    `[ <4 empty items>, 0, 0, <4 empty items> ]`
+  );
+
+  const lWithEmptyEl = Array(200);
+  lWithEmptyEl.fill(0, 50, 80);
+  assertEquals(
+    stringify(lWithEmptyEl),
+    `[
+  <50 empty items>, 0,                 0,
+  0,                0,                 0,
+  0,                0,                 0,
+  0,                0,                 0,
+  0,                0,                 0,
+  0,                0,                 0,
+  0,                0,                 0,
+  0,                0,                 0,
+  0,                0,                 0,
+  0,                0,                 0,
+  0,                <120 empty items>
+]`
+  );
 });
 
 unitTest(function consoleTestWithCustomInspector(): void {

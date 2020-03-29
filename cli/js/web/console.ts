@@ -80,16 +80,19 @@ interface IterablePrintConfig<T> {
   displayName: string;
   delims: [string, string];
   entryHandler: (
-    entry: T,
+    entry: [unknown, T],
     ctx: ConsoleContext,
     level: number,
-    maxLevel: number
+    maxLevel: number,
+    next: () => IteratorResult<[unknown, T], unknown>
   ) => string;
   group: boolean;
 }
-
+type IterableEntries<T> = Iterable<T> & {
+  entries(): IterableIterator<[unknown, T]>;
+};
 function createIterableString<T>(
-  value: Iterable<T>,
+  value: IterableEntries<T>,
   ctx: ConsoleContext,
   level: number,
   maxLevel: number,
@@ -101,17 +104,24 @@ function createIterableString<T>(
   ctx.add(value);
 
   const entries: string[] = [];
-  // In cases e.g. Uint8Array.prototype
-  try {
-    for (const el of value) {
-      entries.push(config.entryHandler(el, ctx, level + 1, maxLevel));
+
+  const iter = value.entries();
+  let entriesLength = 0;
+  const next = (): IteratorResult<[unknown, T], unknown> => {
+    return iter.next();
+  };
+  for (const el of iter) {
+    if (entriesLength < MAX_ITERABLE_LENGTH) {
+      entries.push(
+        config.entryHandler(el, ctx, level + 1, maxLevel, next.bind(iter))
+      );
     }
-  } catch (e) {}
+    entriesLength++;
+  }
   ctx.delete(value);
 
-  if (entries.length > MAX_ITERABLE_LENGTH) {
-    const nmore = entries.length - MAX_ITERABLE_LENGTH;
-    entries.length = MAX_ITERABLE_LENGTH;
+  if (entriesLength > MAX_ITERABLE_LENGTH) {
+    const nmore = entriesLength - MAX_ITERABLE_LENGTH;
     entries.push(`... ${nmore} more items`);
   }
 
@@ -317,8 +327,22 @@ function createArrayString(
     typeName: "Array",
     displayName: "",
     delims: ["[", "]"],
-    entryHandler: (el, ctx, level, maxLevel): string =>
-      stringifyWithQuotes(el, ctx, level + 1, maxLevel),
+    entryHandler: (entry, ctx, level, maxLevel, next): string => {
+      const [index, val] = entry as [number, unknown];
+      let i = index;
+      if (!value.hasOwnProperty(i)) {
+        i++;
+        while (!value.hasOwnProperty(i) && i < value.length) {
+          next();
+          i++;
+        }
+        const emptyItems = i - index;
+        const ending = emptyItems > 1 ? "s" : "";
+        return `<${emptyItems} empty item${ending}>`;
+      } else {
+        return stringifyWithQuotes(val, ctx, level + 1, maxLevel);
+      }
+    },
     group: true,
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
@@ -336,8 +360,10 @@ function createTypedArrayString(
     typeName: typedArrayName,
     displayName: `${typedArrayName}(${valueLength})`,
     delims: ["[", "]"],
-    entryHandler: (el, ctx, level, maxLevel): string =>
-      stringifyWithQuotes(el, ctx, level + 1, maxLevel),
+    entryHandler: (entry, ctx, level, maxLevel): string => {
+      const [_, val] = entry;
+      return stringifyWithQuotes(val, ctx, level + 1, maxLevel);
+    },
     group: true,
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
@@ -353,8 +379,10 @@ function createSetString(
     typeName: "Set",
     displayName: "Set",
     delims: ["{", "}"],
-    entryHandler: (el, ctx, level, maxLevel): string =>
-      stringifyWithQuotes(el, ctx, level + 1, maxLevel),
+    entryHandler: (entry, ctx, level, maxLevel): string => {
+      const [_, val] = entry;
+      return stringifyWithQuotes(val, ctx, level + 1, maxLevel);
+    },
     group: false,
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
@@ -366,12 +394,12 @@ function createMapString(
   level: number,
   maxLevel: number
 ): string {
-  const printConfig: IterablePrintConfig<[unknown, unknown]> = {
+  const printConfig: IterablePrintConfig<[unknown]> = {
     typeName: "Map",
     displayName: "Map",
     delims: ["{", "}"],
-    entryHandler: (el, ctx, level, maxLevel): string => {
-      const [key, val] = el;
+    entryHandler: (entry, ctx, level, maxLevel): string => {
+      const [key, val] = entry;
       return `${stringifyWithQuotes(
         key,
         ctx,
@@ -381,6 +409,7 @@ function createMapString(
     },
     group: false,
   };
+  //@ts-ignore
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
 
