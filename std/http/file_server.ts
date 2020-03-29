@@ -8,7 +8,7 @@
 
 const { args, stat, readdir, open, exit } = Deno;
 import { posix } from "../path/mod.ts";
-import { listenAndServe, ServerRequest, Response } from "./server.ts";
+import { listenAndServe, ServerRequest, ServerResponse } from "./server.ts";
 import { parse } from "../flags/mod.ts";
 import { assert } from "../testing/asserts.ts";
 import { setContentLength } from "./io.ts";
@@ -99,7 +99,7 @@ function fileLenToString(len: number): string {
 async function serveFile(
   req: ServerRequest,
   filePath: string
-): Promise<Response> {
+): Promise<ServerResponse> {
   const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
   const headers = new Headers();
   headers.set("content-length", fileInfo.size.toString());
@@ -117,7 +117,7 @@ async function serveFile(
 async function serveDir(
   req: ServerRequest,
   dirPath: string
-): Promise<Response> {
+): Promise<ServerResponse> {
   const dirUrl = `/${posix.relative(target, dirPath)}`;
   const listEntry: EntryInfo[] = [];
   const fileInfos = await readdir(dirPath);
@@ -158,7 +158,7 @@ async function serveDir(
   return res;
 }
 
-function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
+function serveFallback(req: ServerRequest, e: Error): Promise<ServerResponse> {
   if (e instanceof Deno.errors.NotFound) {
     return Promise.resolve({
       status: 404,
@@ -172,14 +172,14 @@ function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
   }
 }
 
-function serverLog(req: ServerRequest, res: Response): void {
+function serverLog(req: ServerRequest, res: ServerResponse): void {
   const d = new Date().toISOString();
   const dateFmt = `[${d.slice(0, 10)} ${d.slice(11, 19)}]`;
   const s = `${dateFmt} "${req.method} ${req.url} ${req.proto}" ${res.status}`;
   console.log(s);
 }
 
-function setCORS(res: Response): void {
+function setCORS(res: ServerResponse): void {
   if (!res.headers) {
     res.headers = new Headers();
   }
@@ -309,7 +309,7 @@ listenAndServe(
     }
     const fsPath = posix.join(target, normalizedUrl);
 
-    let response: Response | undefined;
+    let response: ServerResponse | undefined;
     try {
       const info = await stat(fsPath);
       if (info.isDirectory()) {

@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Structured similarly to Go's cookie.go
 // https://github.com/golang/go/blob/master/src/net/http/cookie.go
-import { ServerRequest, Response } from "./server.ts";
+import { ServerRequest, ServerResponse } from "./server.ts";
 import { assert } from "../testing/asserts.ts";
 import { toIMF } from "../datetime/mod.ts";
 
@@ -108,7 +108,7 @@ export function getCookies(req: ServerRequest): Cookies {
  *     setCookie(response, { name: 'deno', value: 'runtime',
  *        httpOnly: true, secure: true, maxAge: 2, domain: "deno.land" });
  */
-export function setCookie(res: Response, cookie: Cookie): void {
+export function setCookie(res: ServerResponse, cookie: Cookie): void {
   if (!res.headers) {
     res.headers = new Headers();
   }
@@ -126,7 +126,7 @@ export function setCookie(res: Response, cookie: Cookie): void {
  *
  *     delCookie(res,'foo');
  */
-export function delCookie(res: Response, name: string): void {
+export function delCookie(res: ServerResponse, name: string): void {
   setCookie(res, {
     name: name,
     value: "",

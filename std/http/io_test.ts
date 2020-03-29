@@ -28,7 +28,7 @@ import { ClientRequest } from "./client.ts";
 const { Buffer, test } = Deno;
 
 const kBuf = new Uint8Array(1);
-test("bodyReader", async () => {
+test("[http/io] bodyReader", async () => {
   const text = "Hello, Deno";
   const r = bodyReader(text.length, new BufReader(new Buffer(encode(text))));
   assertEquals(decode(await Deno.readAll(r)), text);
@@ -40,7 +40,7 @@ function chunkify(n: number, char: string): string {
     .join("");
   return `${n.toString(16)}\r\n${v}\r\n`;
 }
-test("chunkedBodyReader", async () => {
+test("[http/io] chunkedBodyReader", async () => {
   const body = [
     chunkify(3, "a"),
     chunkify(5, "b"),
@@ -63,7 +63,7 @@ test("chunkedBodyReader", async () => {
   assertEquals(await r.read(kBuf), Deno.EOF);
 });
 
-test("chunkedBodyReader with trailers", async () => {
+test("[http/io] chunkedBodyReader with trailers", async () => {
   const body = [
     chunkify(3, "a"),
     chunkify(5, "b"),
@@ -90,7 +90,7 @@ test("chunkedBodyReader with trailers", async () => {
   assertEquals(await r.read(kBuf), Deno.EOF);
 });
 
-test("readTrailers", async () => {
+test("[http/io] readTrailers", async () => {
   const h = new Headers({
     trailer: "deno,node",
   });
@@ -101,7 +101,7 @@ test("readTrailers", async () => {
   assertEquals(h.get("node"), "js");
 });
 
-test("readTrailer should throw if undeclared headers found in trailer", async () => {
+test("[http/io] readTrailer should throw if undeclared headers found in trailer", async () => {
   const patterns = [
     ["deno,node", "deno: land\r\nnode: js\r\ngo: lang\r\n\r\n"],
     ["deno", "node: js\r\n\r\n"],
@@ -121,7 +121,7 @@ test("readTrailer should throw if undeclared headers found in trailer", async ()
   }
 });
 
-test("readTrailer should throw if trailer contains prohibited fields", async () => {
+test("[http/io] readTrailer should throw if trailer contains prohibited fields", async () => {
   for (const f of ["content-length", "trailer", "transfer-encoding"]) {
     const h = new Headers({
       trailer: f,
@@ -136,7 +136,7 @@ test("readTrailer should throw if trailer contains prohibited fields", async () 
   }
 });
 
-test("writeTrailer", async () => {
+test("[http/io] writeTrailer", async () => {
   const w = new Buffer();
   await writeTrailers(
     w,
@@ -146,7 +146,7 @@ test("writeTrailer", async () => {
   assertEquals(w.toString(), "deno: land\r\nnode: js\r\n\r\n");
 });
 
-test("writeTrailer should throw", async () => {
+test("[http/io] writeTrailer should throw", async () => {
   const w = new Buffer();
   await assertThrowsAsync(
     () => {
@@ -189,7 +189,7 @@ test("writeTrailer should throw", async () => {
 });
 
 // Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request_test.go#L535-L565
-test("parseHttpVersion", (): void => {
+test("[http/io] parseHttpVersion", (): void => {
   const testCases = [
     { in: "HTTP/0.9", want: [0, 9] },
     { in: "HTTP/1.0", want: [1, 0] },
@@ -219,7 +219,7 @@ test("parseHttpVersion", (): void => {
   }
 });
 
-test(async function writeUint8ArrayResponse(): Promise<void> {
+test("[http/io] writeUint8ArrayResponse", async function (): Promise<void> {
   const shortText = "Hello";
 
   const body = new TextEncoder().encode(shortText);
@@ -252,7 +252,7 @@ test(async function writeUint8ArrayResponse(): Promise<void> {
   assertEquals(eof, Deno.EOF);
 });
 
-test(async function writeStringResponse(): Promise<void> {
+test("[http/io] writeStringResponse", async function (): Promise<void> {
   const body = "Hello";
 
   const res: ServerResponse = { body };
@@ -284,7 +284,7 @@ test(async function writeStringResponse(): Promise<void> {
   assertEquals(eof, Deno.EOF);
 });
 
-test(async function writeStringReaderResponse(): Promise<void> {
+test("[http/io] writeStringReaderResponse", async function (): Promise<void> {
   const shortText = "Hello";
 
   const body = new StringReader(shortText);
@@ -322,7 +322,7 @@ test(async function writeStringReaderResponse(): Promise<void> {
   assertEquals(r.more, false);
 });
 
-test("writeResponse with trailer", async () => {
+test("[http/io] writeResponse with trailer", async () => {
   const w = new Buffer();
   const body = new StringReader("Hello");
   await writeResponse(w, {
@@ -352,7 +352,7 @@ test("writeResponse with trailer", async () => {
   assertEquals(ret, exp);
 });
 
-test(async function readRequestError(): Promise<void> {
+test("[http/io] readRequestError", async function (): Promise<void> {
   const input = `GET / HTTP/1.1
 malformedHeader
 `;
@@ -370,7 +370,7 @@ malformedHeader
 // Ported from Go
 // https://github.com/golang/go/blob/go1.12.5/src/net/http/request_test.go#L377-L443
 // TODO(zekth) fix tests
-test(async function testReadRequestError(): Promise<void> {
+test("[http/io] testReadRequestError", async function (): Promise<void> {
   const testCases = [
     {
       in: "GET / HTTP/1.1\r\nheader: foo\r\n\r\n",
@@ -583,7 +583,7 @@ const readResponseCases: Array<[
 
 for (const [filepath, resp] of readResponseCases) {
   test({
-    name: `[http] readReponse ${filepath}`,
+    name: `[http/io] readReponse ${filepath}`,
     async fn() {
       const file = await Deno.open(`http/testdata/${filepath}.txt`);
       const act = await readResponse(file);
@@ -603,7 +603,7 @@ for (const [filepath, resp] of readResponseCases) {
 }
 
 test({
-  name: "parseKeepAlive",
+  name: "[http/io] parseKeepAlive",
   fn() {
     const cases: Array<[string, KeepAlive]> = [
       ["timeout=1, max=1", { timeout: 1, max: 1 }],
