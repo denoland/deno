@@ -58,7 +58,7 @@ function chkOptions(opt: ReadOptions): void {
   }
 }
 
-async function read(
+async function readRecord(
   Startline: number,
   reader: BufReader,
   opt: ReadOptions = { comma: ",", trimLeadingSpace: false }
@@ -232,7 +232,7 @@ export async function readMatrix(
   chkOptions(opt);
 
   for (;;) {
-    const r = await read(lineIndex, reader, opt);
+    const r = await readRecord(lineIndex, reader, opt);
     if (r === Deno.EOF) break;
     lineResult = r;
     lineIndex++;
