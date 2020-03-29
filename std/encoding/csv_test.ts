@@ -1,5 +1,9 @@
 // Test ported from Golang
 // https://github.com/golang/go/blob/2cc15b1/src/encoding/csv/reader_test.go
+// Copyright 2011 The Go Authors. All rights reserved. BSD license.
+// https://github.com/golang/go/blob/master/LICENSE
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { assertEquals, assert } from "../testing/asserts.ts";
 import {
   readMatrix,

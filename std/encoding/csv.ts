@@ -1,5 +1,7 @@
 // Ported from Go:
 // https://github.com/golang/go/blob/go1.12.5/src/encoding/csv/
+// Copyright 2011 The Go Authors. All rights reserved. BSD license.
+// https://github.com/golang/go/blob/master/LICENSE
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { BufReader } from "../io/bufio.ts";
