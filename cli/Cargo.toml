@@ -57,6 +57,7 @@ termcolor = "1.1.0"
 tokio = { version = "0.2.13", features = ["rt-core", "tcp", "udp", "uds", "process", "fs", "blocking", "sync", "io-std", "macros", "time"] }
 tokio-rustls = "0.13.0"
 url = "2.1.1"
+uname = "0.1.1"
 utime = "0.2.1"
 webpki = "0.21.2"
 webpki-roots = "0.19.0"

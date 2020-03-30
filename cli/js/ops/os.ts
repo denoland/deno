@@ -14,6 +14,10 @@ export function osRelease(): string {
   return sendSync("op_os_release");
 }
 
+export function type(): string {
+  return sendSync("op_type");
+}
+
 export function exit(code = 0): never {
   sendSync("op_exit", { code });
   throw new Error("Code not reachable");

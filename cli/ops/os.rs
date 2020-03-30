@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::env;
 use std::io::{Error, ErrorKind};
 use sys_info;
+use uname::uname;
 use url::Url;
 
 pub fn init(i: &mut Isolate, s: &State) {
@@ -18,6 +19,7 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_get_dir", s.stateful_json_op(op_get_dir));
   i.register_op("op_hostname", s.stateful_json_op(op_hostname));
   i.register_op("op_loadavg", s.stateful_json_op(op_loadavg));
+  i.register_op("op_type", s.stateful_json_op(op_type));
   i.register_op("op_os_release", s.stateful_json_op(op_os_release));
 }
 
@@ -174,6 +176,16 @@ fn op_hostname(
   state.check_env()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
   Ok(JsonOp::Sync(json!(hostname)))
+}
+
+fn op_type(
+  state: &State,
+  _args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) ->  Result<JsonOp, OpError> {
+  state.check_env()?;
+  let info = uname().unwrap().sysname;
+  Ok(JsonOp::Sync(json!(info)))
 }
 
 fn op_os_release(

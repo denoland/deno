@@ -335,3 +335,15 @@ unitTest({ perms: { env: false } }, function releasePerm(): void {
   }
   assert(caughtError);
 });
+
+unitTest({ perms: { env: true } }, function osType(): void {
+    const typeMatrix = {
+      'linux': 'Linux',
+      'mac': 'Darwin',
+      'win': 'Windows_NT',
+    };
+
+    assertNotEquals(Deno.type(), "");
+    assertEquals(Deno.type(), typeMatrix[Deno.build.os]);
+  }
+);

@@ -85,6 +85,7 @@ export {
   execPath,
   hostname,
   loadavg,
+  type,
   osRelease,
 } from "./ops/os.ts";
 export {

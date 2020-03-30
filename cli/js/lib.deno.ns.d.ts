@@ -836,6 +836,12 @@ declare namespace Deno {
   /** Read `r` until `Deno.EOF` and returns the content as `Uint8Array`. */
   export function readAllSync(r: SyncReader): Uint8Array;
 
+  /** Returns the operating system name as returned by uname(3).
+   *
+   *       console.log(Deno.type());
+   */
+  export function type(): string;
+
   /** Write all the content of `arr` to `w`. */
   export function writeAll(w: Writer, arr: Uint8Array): Promise<void>;
 
