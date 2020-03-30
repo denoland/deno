@@ -6,6 +6,23 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.38.0 / 2020.03.28
+
+- feat: Add "deno doc" subcommand (#4500)
+- feat: Support --inspect, Chrome Devtools support (#4484)
+- feat: Support Unix Domain Sockets (#4176)
+- feat: add queueMicrotask to d.ts (#4477)
+- feat: window.close() (#4474)
+- fix(console): replace object abbreviation with line breaking (#4425)
+- fix: add fsEvent notify::Error casts (#4488)
+- fix: hide source line if error message longer than 150 chars (#4487)
+- fix: parsing bug (#4483)
+- fix: remove extra dot in Permission request output (#4471)
+- refactor: rename ConsoleOptions to InspectOptions (#4493)
+- upgrade: dprint 0.9.6 (#4509, #4491)
+- upgrade: prettier 2 for internal code formatting (#4498)
+- upgrade: rusty_v8 to v0.3.9 (#4505)
+
 ### v0.37.1 / 2020.03.23
 
 - fix: Statically link the C runtime library on Windows (#4469)

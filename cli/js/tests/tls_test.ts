@@ -3,7 +3,7 @@ import {
   assert,
   assertEquals,
   createResolvable,
-  unitTest
+  unitTest,
 } from "./test_util.ts";
 import { BufWriter, BufReader } from "../../../std/io/bufio.ts";
 import { TextProtoReader } from "../../../std/textproto/mod.ts";
@@ -28,7 +28,7 @@ unitTest(async function connectTLSCertFileNoReadPerm(): Promise<void> {
     await Deno.connectTLS({
       hostname: "github.com",
       port: 443,
-      certFile: "cli/tests/tls/RootCA.crt"
+      certFile: "cli/tests/tls/RootCA.crt",
     });
   } catch (e) {
     err = e;
@@ -45,13 +45,13 @@ unitTest(
       hostname: "localhost",
       port: 4500,
       certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key"
+      keyFile: "cli/tests/tls/localhost.key",
     };
 
     try {
       Deno.listenTLS({
         ...options,
-        certFile: "./non/existent/file"
+        certFile: "./non/existent/file",
       });
     } catch (e) {
       err = e;
@@ -61,7 +61,7 @@ unitTest(
     try {
       Deno.listenTLS({
         ...options,
-        keyFile: "./non/existent/file"
+        keyFile: "./non/existent/file",
       });
     } catch (e) {
       err = e;
@@ -77,7 +77,7 @@ unitTest({ perms: { net: true } }, function listenTLSNoReadPerm(): void {
       hostname: "localhost",
       port: 4500,
       certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key"
+      keyFile: "cli/tests/tls/localhost.key",
     });
   } catch (e) {
     err = e;
@@ -88,7 +88,7 @@ unitTest({ perms: { net: true } }, function listenTLSNoReadPerm(): void {
 
 unitTest(
   {
-    perms: { read: true, write: true, net: true }
+    perms: { read: true, write: true, net: true },
   },
   function listenTLSEmptyKeyFile(): void {
     let err;
@@ -96,19 +96,19 @@ unitTest(
       hostname: "localhost",
       port: 4500,
       certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key"
+      keyFile: "cli/tests/tls/localhost.key",
     };
 
     const testDir = Deno.makeTempDirSync();
     const keyFilename = testDir + "/key.pem";
     Deno.writeFileSync(keyFilename, new Uint8Array([]), {
-      mode: 0o666
+      mode: 0o666,
     });
 
     try {
       Deno.listenTLS({
         ...options,
-        keyFile: keyFilename
+        keyFile: keyFilename,
       });
     } catch (e) {
       err = e;
@@ -125,19 +125,19 @@ unitTest(
       hostname: "localhost",
       port: 4500,
       certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key"
+      keyFile: "cli/tests/tls/localhost.key",
     };
 
     const testDir = Deno.makeTempDirSync();
     const certFilename = testDir + "/cert.crt";
     Deno.writeFileSync(certFilename, new Uint8Array([]), {
-      mode: 0o666
+      mode: 0o666,
     });
 
     try {
       Deno.listenTLS({
         ...options,
-        certFile: certFilename
+        certFile: certFilename,
       });
     } catch (e) {
       err = e;
@@ -157,7 +157,7 @@ unitTest(
       hostname,
       port,
       certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key"
+      keyFile: "cli/tests/tls/localhost.key",
     });
 
     const response = encoder.encode(
@@ -180,7 +180,7 @@ unitTest(
     const conn = await Deno.connectTLS({
       hostname,
       port,
-      certFile: "cli/tests/tls/RootCA.pem"
+      certFile: "cli/tests/tls/RootCA.pem",
     });
     assert(conn.rid > 0);
     const w = new BufWriter(conn);

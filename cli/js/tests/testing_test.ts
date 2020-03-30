@@ -18,7 +18,7 @@ unitTest(function nameOfTestCaseCantBeEmpty(): void {
     () => {
       Deno.test({
         name: "",
-        fn: () => {}
+        fn: () => {},
       });
     },
     TypeError,
@@ -29,7 +29,7 @@ unitTest(function nameOfTestCaseCantBeEmpty(): void {
 unitTest(function testFnCantBeAnonymous(): void {
   assertThrows(
     () => {
-      Deno.test(function() {});
+      Deno.test(function () {});
     },
     TypeError,
     "The test function can't be anonymous"

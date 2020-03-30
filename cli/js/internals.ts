@@ -11,6 +11,6 @@ export const internalObject: { [key: string]: any } = {};
 export function exposeForTest(name: string, value: any): void {
   Object.defineProperty(internalObject, name, {
     value,
-    enumerable: false
+    enumerable: false,
   });
 }

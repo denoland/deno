@@ -145,7 +145,7 @@ export function toIMF(date: Date): string {
     "Sep",
     "Oct",
     "Nov",
-    "Dec"
+    "Dec",
   ];
   return `${days[date.getUTCDay()]}, ${d} ${
     months[date.getUTCMonth()]

@@ -17,8 +17,8 @@ export function intoCallbackAPI<T>(
   ...args: any[]
 ): void {
   func(...args)
-    .then(value => cb && cb(null, value))
-    .catch(err => cb && cb(err, null));
+    .then((value) => cb && cb(null, value))
+    .catch((err) => cb && cb(err, null));
 }
 
 export function intoCallbackAPIWithIntercept<T1, T2>(
@@ -30,6 +30,6 @@ export function intoCallbackAPIWithIntercept<T1, T2>(
   ...args: any[]
 ): void {
   func(...args)
-    .then(value => cb && cb(null, interceptor(value)))
-    .catch(err => cb && cb(err, null));
+    .then((value) => cb && cb(null, interceptor(value)))
+    .catch((err) => cb && cb(err, null));
 }

@@ -18,7 +18,7 @@ test(function padTest(): void {
     pad("denosorusrex", 4, {
       char: "*",
       side: "right",
-      strict: false
+      strict: false,
     }),
     expected4
   );
@@ -27,7 +27,7 @@ test(function padTest(): void {
       char: "*",
       side: "left",
       strict: true,
-      strictSide: "right"
+      strictSide: "right",
     }),
     expected5
   );
@@ -36,7 +36,7 @@ test(function padTest(): void {
       char: "*",
       side: "left",
       strict: true,
-      strictSide: "left"
+      strictSide: "left",
     }),
     expected6
   );
@@ -46,7 +46,7 @@ test(function padTest(): void {
       side: "left",
       strict: true,
       strictSide: "right",
-      strictChar: "..."
+      strictChar: "...",
     }),
     expected7
   );
@@ -56,7 +56,7 @@ test(function padTest(): void {
       side: "left",
       strict: true,
       strictSide: "left",
-      strictChar: "..."
+      strictChar: "...",
     }),
     expected8
   );
@@ -66,7 +66,7 @@ test(function padTest(): void {
       side: "left",
       strict: true,
       strictSide: "right",
-      strictChar: "..."
+      strictChar: "...",
     }),
     expected2
   );

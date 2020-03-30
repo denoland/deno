@@ -8,7 +8,7 @@ Deno.test("[examples/echo_server]", async () => {
   const process = Deno.run({
     cmd: [Deno.execPath(), "--allow-net", "echo_server.ts"],
     cwd: "examples",
-    stdout: "piped"
+    stdout: "piped",
   });
 
   let conn: Deno.Conn | undefined;

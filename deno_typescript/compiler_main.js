@@ -93,7 +93,7 @@ function decodeAscii(ui8) {
  * @param {string} str
  */
 function encode(str) {
-  const charCodes = str.split("").map(c => c.charCodeAt(0));
+  const charCodes = str.split("").map((c) => c.charCodeAt(0));
   const ui8 = new Uint8Array(charCodes);
   return ui8;
 }
@@ -185,7 +185,7 @@ class Host {
     const { sourceCode } = dispatch("op_load_module", {
       moduleUrl,
       languageVersion,
-      shouldCreateNewSourceFile
+      shouldCreateNewSourceFile,
     });
 
     const sourceFile = ts.createSourceFile(
@@ -260,10 +260,10 @@ class Host {
     /** @type {string[]} */
     const resolvedNames = dispatch("op_resolve_module_names", {
       moduleNames,
-      containingFile
+      containingFile,
     });
     /** @type {ts.ResolvedModule[]} */
-    const r = resolvedNames.map(resolvedFileName => {
+    const r = resolvedNames.map((resolvedFileName) => {
       const extension = getExtension(resolvedFileName);
       if (!moduleMap.has(resolvedFileName)) {
         // If we match the external specifier regex, we will then create an internal
@@ -299,7 +299,7 @@ function configure(configurationText) {
   );
   return {
     options,
-    diagnostics: errors.length ? errors : undefined
+    diagnostics: errors.length ? errors : undefined,
   };
 }
 

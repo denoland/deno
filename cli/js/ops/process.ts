@@ -1,8 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 import { assert } from "../util.ts";
+import { build } from "../build.ts";
 
 export function kill(pid: number, signo: number): void {
+  if (build.os === "win") {
+    throw new Error("Not yet implemented");
+  }
   sendSync("op_kill", { pid, signo });
 }
 

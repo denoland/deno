@@ -30,7 +30,7 @@ export default class Dir {
       try {
         if (this.initializationOfDirectoryFilesIsRequired()) {
           const denoFiles: Deno.FileInfo[] = await Deno.readdir(this.path);
-          this.files = denoFiles.map(file => new Dirent(file));
+          this.files = denoFiles.map((file) => new Dirent(file));
         }
         const nextFile = this.files.pop();
         if (nextFile) {
@@ -55,7 +55,7 @@ export default class Dir {
   readSync(): Dirent | null {
     if (this.initializationOfDirectoryFilesIsRequired()) {
       this.files.push(
-        ...Deno.readdirSync(this.path).map(file => new Dirent(file))
+        ...Deno.readdirSync(this.path).map((file) => new Dirent(file))
       );
     }
     const dirent: Dirent | undefined = this.files.pop();

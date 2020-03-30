@@ -7,7 +7,7 @@ import {
   readInt,
   readLong,
   readShort,
-  sliceLongToBytes
+  sliceLongToBytes,
 } from "./ioutil.ts";
 import { BufReader } from "./bufio.ts";
 import { stringsReader } from "./util.ts";

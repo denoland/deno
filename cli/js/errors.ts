@@ -22,7 +22,7 @@ export enum ErrorKind {
   Http = 19,
   URIError = 20,
   TypeError = 21,
-  Other = 22
+  Other = 22,
 }
 
 export function getErrorClass(kind: ErrorKind): { new (msg: string): Error } {
@@ -190,5 +190,5 @@ export const errors = {
   WriteZero: WriteZero,
   UnexpectedEof: UnexpectedEof,
   BadResource: BadResource,
-  Http: Http
+  Http: Http,
 };

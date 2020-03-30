@@ -3,7 +3,7 @@
 /** EndOfLine character enum */
 export enum EOL {
   LF = "\n",
-  CRLF = "\r\n"
+  CRLF = "\r\n",
 }
 
 const regDetect = /(?:\r?\n)/g;

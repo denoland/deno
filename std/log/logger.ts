@@ -34,7 +34,7 @@ export class Logger {
       args: args,
       datetime: new Date(),
       level: level,
-      levelName: getLevelName(level)
+      levelName: getLevelName(level),
     };
     this.handlers.forEach((handler): void => {
       handler.handle(record);

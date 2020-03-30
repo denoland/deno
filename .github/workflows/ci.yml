@@ -35,7 +35,6 @@ jobs:
     env:
       CARGO_INCREMENTAL: 0
       RUST_BACKTRACE: full
-      V8_BINARY: true
 
     steps:
       - name: Configure git

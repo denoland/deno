@@ -8,7 +8,7 @@ import {
   registerUnitTests,
   SocketReporter,
   fmtPerms,
-  parseArgs
+  parseArgs,
 } from "./test_util.ts";
 
 interface PermissionSetTestResult {
@@ -27,7 +27,7 @@ const PERMISSIONS: Deno.PermissionName[] = [
   "env",
   "run",
   "plugin",
-  "hrtime"
+  "hrtime",
 ];
 
 /**
@@ -69,7 +69,7 @@ async function workerRunnerMain(
     failFast: false,
     exitOnFail: false,
     reporter: socketReporter,
-    only: filter
+    only: filter,
   });
 }
 
@@ -93,7 +93,7 @@ function spawnWorkerRunner(
     "cli/js/tests/unit_test_runner.ts",
     "--worker",
     `--addr=${addr}`,
-    `--perms=${permStr}`
+    `--perms=${permStr}`,
   ];
 
   if (filter) {
@@ -107,7 +107,7 @@ function spawnWorkerRunner(
     cmd,
     stdin: ioMode,
     stdout: ioMode,
-    stderr: ioMode
+    stderr: ioMode,
   });
 
   return p;
@@ -177,7 +177,7 @@ async function runTestsForPermissionSet(
     permsStr: permsFmt,
     duration: endEvent.duration,
     stats: endEvent.stats,
-    results: endEvent.results
+    results: endEvent.results,
   };
 }
 
@@ -223,7 +223,7 @@ async function masterRunnerMain(
       kind: Deno.TestEvent.End,
       stats,
       duration,
-      results
+      results,
     });
     testsPassed = testsPassed && testResult.passed;
   }
@@ -288,7 +288,7 @@ function assertOrHelp(expr: unknown): asserts expr {
 async function main(): Promise<void> {
   const args = parseArgs(Deno.args, {
     boolean: ["master", "worker", "verbose"],
-    "--": true
+    "--": true,
   });
 
   if (args.help) {
@@ -315,7 +315,7 @@ async function main(): Promise<void> {
   await Deno.runTests({
     failFast: false,
     exitOnFail: true,
-    only: filter
+    only: filter,
   });
 }
 

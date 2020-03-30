@@ -10,7 +10,7 @@ test({
     const tempFile: string = await Deno.makeTempFile();
     const originalFileMode: number | null = (await Deno.lstat(tempFile)).mode;
     await new Promise((resolve, reject) => {
-      chmod(tempFile, 0o777, err => {
+      chmod(tempFile, 0o777, (err) => {
         if (err) reject(err);
         else resolve();
       });
@@ -26,7 +26,7 @@ test({
       .finally(() => {
         Deno.removeSync(tempFile);
       });
-  }
+  },
 });
 
 test({
@@ -41,5 +41,5 @@ test({
     assert(newFileMode && originalFileMode);
     assert(newFileMode === 33279 && newFileMode > originalFileMode);
     Deno.removeSync(tempFile);
-  }
+  },
 });

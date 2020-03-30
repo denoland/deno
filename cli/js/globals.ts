@@ -160,7 +160,7 @@ export function writable(value: unknown): PropertyDescriptor {
     value,
     writable: true,
     enumerable: true,
-    configurable: true
+    configurable: true,
   };
 }
 
@@ -168,14 +168,22 @@ export function nonEnumerable(value: unknown): PropertyDescriptor {
   return {
     value,
     writable: true,
-    configurable: true
+    configurable: true,
   };
 }
 
 export function readOnly(value: unknown): PropertyDescriptor {
   return {
     value,
-    enumerable: true
+    enumerable: true,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getterOnly(getter: () => any): PropertyDescriptor {
+  return {
+    get: getter,
+    enumerable: true,
   };
 }
 
@@ -188,7 +196,7 @@ export const windowOrWorkerGlobalScopeMethods = {
   fetch: writable(fetchTypes.fetch),
   // queueMicrotask is bound in Rust
   setInterval: writable(timers.setInterval),
-  setTimeout: writable(timers.setTimeout)
+  setTimeout: writable(timers.setTimeout),
 };
 
 // Other properties shared between WindowScope and WorkerGlobalScope
@@ -208,7 +216,7 @@ export const windowOrWorkerGlobalScopeProperties = {
   Request: nonEnumerable(request.Request),
   Response: nonEnumerable(fetchTypes.Response),
   performance: writable(new performanceUtil.Performance()),
-  Worker: nonEnumerable(workers.WorkerImpl)
+  Worker: nonEnumerable(workers.WorkerImpl),
 };
 
 export const eventTargetProperties = {
@@ -225,5 +233,5 @@ export const eventTargetProperties = {
   dispatchEvent: readOnly(eventTarget.EventTarget.prototype.dispatchEvent),
   removeEventListener: readOnly(
     eventTarget.EventTarget.prototype.removeEventListener
-  )
+  ),
 };

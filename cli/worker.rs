@@ -106,10 +106,7 @@ impl Worker {
     let mut isolate = deno_core::EsIsolate::new(loader, startup_data, false);
 
     let global_state = state.borrow().global_state.clone();
-    eprintln!(
-      "Worker::new, inspector_server={:?}",
-      global_state.inspector_server.is_some()
-    );
+
     let inspector = global_state
       .inspector_server
       .as_ref()

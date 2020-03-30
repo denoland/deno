@@ -9,7 +9,7 @@ console.log(`http://${addr}/`);
 for await (const req of server) {
   const res = {
     body,
-    headers: new Headers()
+    headers: new Headers(),
   };
   res.headers.set("Date", new Date().toUTCString());
   res.headers.set("Connection", "keep-alive");

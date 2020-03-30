@@ -1,5 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+// The documentation for the inspector API is sparse, but these are helpful:
+// https://chromedevtools.github.io/devtools-protocol/
+// https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
+
 #![allow(dead_code)]
 #![allow(warnings)]
 
@@ -321,6 +325,7 @@ impl DenoInspector {
 
       let inspector_waker = InspectorWaker::new(InspectorWakeState {
         woken: false,
+      frontend_to_inspector_rx,
         paused: false,
         parent_waker: None,
         parked_thread: None,
@@ -330,11 +335,19 @@ impl DenoInspector {
       });
 
       Self {
+    deno_inspector.inspector.context_created(
         v8_inspector_client,
+      CONTEXT_GROUP_ID,
         v8_inspector,
+    );
         session_handler,
         inspector_waker,
       }
+
+  pub fn connect(
+    &mut self,
+    session_uuid: Uuid,
+    session_to_frontend_tx: SessionToFrontendTx,
     });
 
     self_.register_current_context(scope);
@@ -424,6 +437,9 @@ impl DenoInspector {
   }
 }
 
+/// DenoInspector implements a Future so that it can poll for incoming messages
+/// from the WebSocket server. Since a Worker ownes a DenoInspector, and because
+/// a Worker is a Future too, Worker::poll will call this.
 impl Future for DenoInspector {
   type Output = ();
 
@@ -485,6 +501,7 @@ impl Drop for DenoInspector {
   }
 }
 
+/// sub-class of v8::inspector::Channel
 struct DenoInspectorSession {
   channel: v8::inspector::ChannelBase,
   session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
