@@ -45,6 +45,9 @@ lazy_static! {
       v8::ExternalReference {
         function: decode.map_fn_to()
       },
+      v8::ExternalReference {
+        function: get_proxy_details.map_fn_to(),
+      }
     ]);
 }
 
@@ -193,6 +196,17 @@ pub fn initialize_context<'s>(
     context,
     v8::String::new(scope, "decode").unwrap().into(),
     decode_val.into(),
+  );
+
+  let mut get_proxy_details_tmpl =
+    v8::FunctionTemplate::new(scope, get_proxy_details);
+  let get_proxy_details_val = get_proxy_details_tmpl
+    .get_function(scope, context)
+    .unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "getProxyDetails").unwrap().into(),
+    get_proxy_details_val.into(),
   );
 
   core_val.set_accessor(
@@ -760,4 +774,48 @@ pub fn module_resolve_callback<'s>(
   }
 
   None
+}
+
+// Returns proxy details or raises the TypeError, if argument passed isn't a Proxy.
+// Proxy details is a two elements array.
+// proxy_details = [Target, Handler]
+fn get_proxy_details(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let deno_isolate: &mut Isolate =
+    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
+  assert!(!deno_isolate.global_context.is_empty());
+  let context = deno_isolate.global_context.get(scope).unwrap();
+
+  let mut proxy = match v8::Local::<v8::Proxy>::try_from(args.get(0)) {
+    Ok(val) => val,
+    Err(_) => {
+      let msg = v8::String::new(scope, "Invalid argument").unwrap();
+      let exception = v8::Exception::type_error(scope, msg);
+      scope.isolate().throw_exception(exception);
+      return;
+    }
+  };
+
+  let proxy_details = v8::Array::new(scope, 2);
+  
+  let target = proxy.target();
+  proxy_details.set(
+    context,
+    v8::Integer::new(scope, 0).into(),
+    target
+  ); 
+
+  if args.get(1).is_true() {
+    let handler = proxy.handler();
+    proxy_details.set(
+      context,
+      v8::Integer::new(scope, 1).into(),
+      handler
+    );
+  }
+
+  rv.set(proxy_details.into());
 }
