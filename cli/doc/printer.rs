@@ -90,12 +90,8 @@ fn format_(doc_nodes: Vec<doc::DocNode>, indent: i64) -> String {
 
   for node in sorted {
     output.push_str(&format_signature(&node, indent));
-    if node.js_doc.is_some() {
-      output.push_str(&format_jsdoc(
-        node.js_doc.as_ref().unwrap().to_string(),
-        true,
-        indent,
-      ));
+    if let Some(js_doc) = node.js_doc {
+      output.push_str(&format_jsdoc(js_doc, true, indent));
     }
     output.push_str("\n");
     if DocNodeKind::Namespace == node.kind {
@@ -115,9 +111,9 @@ fn render_params(params: Vec<doc::ParamDef>) -> String {
   if !params.is_empty() {
     for param in params {
       rendered += param.name.as_str();
-      if param.ts_type.is_some() {
+      if let Some(ts_type) = param.ts_type {
         rendered += ": ";
-        rendered += render_ts_type(param.ts_type.unwrap()).as_str();
+        rendered += render_ts_type(ts_type).as_str();
       }
       rendered += ", ";
     }
@@ -215,25 +211,40 @@ fn render_ts_type(ts_type: doc::ts_type::TsTypeDef) -> String {
       let type_literal = ts_type.type_literal.unwrap();
       for node in type_literal.call_signatures {
         output += format!(
-          "({}): {}, ",
+          "({}){}, ",
           render_params(node.params),
-          render_ts_type(node.ts_type.unwrap())
+          if let Some(ts_type) = node.ts_type {
+            format!(": {}", render_ts_type(ts_type))
+          } else {
+            "".to_string()
+          }
         )
         .as_str()
       }
       for node in type_literal.methods {
         output += format!(
-          "{}({}): {}, ",
+          "{}({}){}, ",
           node.name,
           render_params(node.params),
-          render_ts_type(node.return_type.unwrap())
+          if let Some(return_type) = node.return_type {
+            format!(": {}", render_ts_type(return_type))
+          } else {
+            "".to_string()
+          }
         )
         .as_str()
       }
       for node in type_literal.properties {
-        output +=
-          format!("{}: {}, ", node.name, render_ts_type(node.ts_type.unwrap()))
-            .as_str()
+        output += format!(
+          "{}{}, ",
+          node.name,
+          if let Some(ts_type) = node.ts_type {
+            format!(": {}", render_ts_type(ts_type))
+          } else {
+            "".to_string()
+          }
+        )
+        .as_str()
       }
       if !output.is_empty() {
         output.truncate(output.len() - 2);
@@ -250,9 +261,8 @@ fn render_ts_type(ts_type: doc::ts_type::TsTypeDef) -> String {
     TsTypeDefKind::TypeRef => {
       let type_ref = ts_type.type_ref.unwrap();
       let mut final_output = type_ref.type_name;
-      if type_ref.type_params.is_some() {
+      if let Some(type_params) = type_ref.type_params {
         let mut output = "".to_string();
-        let type_params = type_ref.type_params.unwrap();
         if !type_params.is_empty() {
           for ts_type in type_params {
             output += render_ts_type(ts_type).as_str();
@@ -328,7 +338,7 @@ fn format_class_details(node: doc::DocNode) -> String {
   }) {
     details.push_str(&add_indent(
       format!(
-        "{}{}: {}\n",
+        "{}{}{}\n",
         colors::magenta(
           match node
             .accessibility
@@ -339,7 +349,11 @@ fn format_class_details(node: doc::DocNode) -> String {
           }
         ),
         colors::bold(node.name.clone()),
-        render_ts_type(node.ts_type.clone().unwrap())
+        if let Some(ts_type) = node.ts_type.clone() {
+          format!(": {}", render_ts_type(ts_type))
+        } else {
+          "".to_string()
+        }
       ),
       1,
     ));
@@ -353,7 +367,7 @@ fn format_class_details(node: doc::DocNode) -> String {
     let function_def = node.function_def.clone();
     details.push_str(&add_indent(
       format!(
-        "{}{}{}({}): {}\n",
+        "{}{}{}({}){}\n",
         colors::magenta(
           match node
             .accessibility
@@ -370,7 +384,11 @@ fn format_class_details(node: doc::DocNode) -> String {
         }),
         colors::bold(node.name.clone()),
         render_params(function_def.params),
-        render_ts_type(function_def.return_type.unwrap())
+        if let Some(return_type) = function_def.return_type {
+          format!(": {}", render_ts_type(return_type))
+        } else {
+          "".to_string()
+        }
       ),
       1,
     ));
@@ -392,17 +410,17 @@ fn format_namespace_details(node: doc::DocNode) -> String {
 
 fn format_function_signature(node: &doc::DocNode, indent: i64) -> String {
   let function_def = node.function_def.clone().unwrap();
-  let return_type = function_def.return_type.unwrap();
   add_indent(
     format!(
-      "{} {}{}\n",
+      "{} {}({}){}\n",
       colors::magenta("function".to_string()),
       colors::bold(node.name.clone()),
-      format!(
-        "({}): {}",
-        render_params(function_def.params),
-        render_ts_type(return_type).as_str()
-      )
+      render_params(function_def.params),
+      if let Some(return_type) = function_def.return_type {
+        format!(": {}", render_ts_type(return_type).as_str())
+      } else {
+        "".to_string()
+      }
     ),
     indent,
   )
@@ -430,8 +448,8 @@ fn format_variable_signature(node: &doc::DocNode, indent: i64) -> String {
         swc_ecma_ast::VarDeclKind::Var => "var".to_string(),
       }),
       colors::bold(node.name.clone()),
-      if variable_def.ts_type.is_some() {
-        format!(": {}", render_ts_type(variable_def.ts_type.unwrap()))
+      if let Some(ts_type) = variable_def.ts_type {
+        format!(": {}", render_ts_type(ts_type))
       } else {
         "".to_string()
       }
