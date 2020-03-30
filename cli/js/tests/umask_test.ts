@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { unitTest, assertEquals } from "./test_util.ts";
 
 unitTest(
   {
@@ -11,6 +11,5 @@ unitTest(
     const finalMask = Deno.umask();
     assertEquals(newMask, 0o020);
     assertEquals(finalMask, prevMask);
-    assert(prevMask & 0o002);
   }
 );
