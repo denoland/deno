@@ -590,3 +590,49 @@ export namespace RootNs {
       .contains("namespace RootNs")
   );
 }
+
+#[test]
+fn optional_return_type() {
+  let source_code = r#"
+  export function foo(a: number) {
+    return a;
+  }
+    "#;
+  let entries = DocParser::default()
+    .parse("test.ts".to_string(), source_code.to_string())
+    .unwrap();
+  assert_eq!(entries.len(), 1);
+  let entry = &entries[0];
+  let expected_json = json!({
+    "kind": "function",
+    "name": "foo",
+    "location": {
+      "filename": "test.ts",
+      "line": 2,
+      "col": 2
+    },
+    "jsDoc": null,
+    "functionDef": {
+      "params": [
+          {
+            "name": "a",
+            "tsType": {
+              "keyword": "number",
+              "kind": "keyword",
+              "repr": "number",
+            },
+          }
+      ],
+      "returnType": null,
+      "isAsync": false,
+      "isGenerator": false
+    }
+  });
+  let actual = serde_json::to_value(entry).unwrap();
+  assert_eq!(actual, expected_json);
+
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("function foo(a: number)")
+  );
+}
