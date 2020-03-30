@@ -776,7 +776,7 @@ pub fn module_resolve_callback<'s>(
   None
 }
 
-// Returns promise details or undefined, if argument passed isn't a Promise.
+// Returns promise details or throw TypeError, if argument passed isn't a Promise.
 // Promise details is a two elements array.
 // promise_details = [State, Result]
 // State = enum { Pending = 0, Fulfilled = 1, Rejected = 2}
