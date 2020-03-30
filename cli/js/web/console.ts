@@ -13,16 +13,11 @@ type InspectOptions = Partial<{
   indentLevel: number;
 }>;
 
-// Default depth of logging nested objects
-const DEFAULT_MAX_DEPTH = 4;
-
+const DEFAULT_MAX_DEPTH = 4; // Default depth of logging nested objects
 const LINE_BREAKING_LENGTH = 80;
-
 const MAX_ITERABLE_LENGTH = 100;
 const MIN_GROUP_LENGTH = 6;
-
 const STR_ABBREVIATE_SIZE = 100;
-
 // Char codes
 const CHAR_PERCENT = 37; /* % */
 const CHAR_LOWERCASE_S = 115; /* s */
@@ -32,6 +27,7 @@ const CHAR_LOWERCASE_F = 102; /* f */
 const CHAR_LOWERCASE_O = 111; /* o */
 const CHAR_UPPERCASE_O = 79; /* O */
 const CHAR_LOWERCASE_C = 99; /* c */
+
 export class CSI {
   static kClear = "\x1b[1;1H";
   static kClearScreenDown = "\x1b[0J";
