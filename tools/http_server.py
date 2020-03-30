@@ -352,6 +352,9 @@ def spawn():
         yield servers
     finally:
         for s in servers:
+            # Make sure all servers still running,
+            # if not assume there was an error
+            assert s.thread.is_alive()
             s.server.shutdown()
 
 
