@@ -11,10 +11,10 @@ import { assert } from "../testing/asserts.ts";
 
 const INVALID_RUNE = ["\r", "\n", '"'];
 
-export const ErrBareQuote = 'bare " in non-quoted-field';
-export const ErrQuote = 'extraneous or missing " in quoted-field';
-export const ErrInvalidDelim = "Invalid Delimiter";
-export const ErrFieldCount = "wrong number of fields";
+export const ERR_BARE_QUOTE = 'bare " in non-quoted-field';
+export const ERR_QUOTE = 'extraneous or missing " in quoted-field';
+export const ERR_INVALID_DELIM = "Invalid Delimiter";
+export const ERR_FIELD_COUNT = "wrong number of fields";
 
 export class ParseError extends Error {
   StartLine: number;
@@ -56,7 +56,7 @@ function chkOptions(opt: ReadOptions): void {
     (typeof opt.comment === "string" && INVALID_RUNE.includes(opt.comment)) ||
     opt.comma === opt.comment
   ) {
-    throw new Error(ErrInvalidDelim);
+    throw new Error(ERR_INVALID_DELIM);
   }
 }
 
@@ -102,7 +102,7 @@ async function readRecord(
       if (!opt.lazyQuotes) {
         const j = field.indexOf(quote);
         if (j >= 0) {
-          quoteError = ErrBareQuote;
+          quoteError = ERR_BARE_QUOTE;
           break parseField;
         }
       }
@@ -140,7 +140,7 @@ async function readRecord(
             recordBuffer += quote;
           } else {
             // `"*` sequence (invalid non-escaped quote).
-            quoteError = ErrQuote;
+            quoteError = ERR_QUOTE;
             break parseField;
           }
         } else if (line.length > 0 || !(await isEOF(tp))) {
@@ -149,7 +149,7 @@ async function readRecord(
           const r = await readLine(tp);
           if (r === Deno.EOF) {
             if (!opt.lazyQuotes) {
-              quoteError = ErrQuote;
+              quoteError = ERR_QUOTE;
               break parseField;
             }
             fieldIndexes.push(recordBuffer.length);
@@ -160,7 +160,7 @@ async function readRecord(
         } else {
           // Abrupt end of file (EOF on error).
           if (!opt.lazyQuotes) {
-            quoteError = ErrQuote;
+            quoteError = ERR_QUOTE;
             break parseField;
           }
           fieldIndexes.push(recordBuffer.length);
@@ -244,7 +244,7 @@ export async function readMatrix(
 
     if (lineResult.length > 0) {
       if (_nbFields && _nbFields !== lineResult.length) {
-        throw new ParseError(lineIndex, lineIndex, ErrFieldCount);
+        throw new ParseError(lineIndex, lineIndex, ERR_FIELD_COUNT);
       }
       result.push(lineResult);
     }

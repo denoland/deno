@@ -8,10 +8,10 @@ import { assertEquals, assert } from "../testing/asserts.ts";
 import {
   readMatrix,
   parse,
-  ErrBareQuote,
-  ErrQuote,
-  ErrInvalidDelim,
-  ErrFieldCount,
+  ERR_BARE_QUOTE,
+  ERR_QUOTE,
+  ERR_INVALID_DELIM,
+  ERR_FIELD_COUNT,
 } from "./csv.ts";
 import { StringReader } from "../io/readers.ts";
 import { BufReader } from "../io/bufio.ts";
@@ -133,7 +133,7 @@ field"`,
   {
     Name: "BadDoubleQuotes",
     Input: `a""b,c`,
-    Error: ErrBareQuote,
+    Error: ERR_BARE_QUOTE,
     // Error: &ParseError{StartLine: 1, Line: 1, Column: 1, Err: ErrBareQuote},
   },
   {
@@ -145,23 +145,23 @@ field"`,
   {
     Name: "BadBareQuote",
     Input: `a "word","b"`,
-    Error: ErrBareQuote,
+    Error: ERR_BARE_QUOTE,
     // &ParseError{StartLine: 1, Line: 1, Column: 2, Err: ErrBareQuote}
   },
   {
     Name: "BadTrailingQuote",
     Input: `"a word",b"`,
-    Error: ErrBareQuote,
+    Error: ERR_BARE_QUOTE,
   },
   {
     Name: "ExtraneousQuote",
     Input: `"a "word","b"`,
-    Error: ErrQuote,
+    Error: ERR_QUOTE,
   },
   {
     Name: "BadFieldCount",
     Input: "a,b,c\nd,e",
-    Error: ErrFieldCount,
+    Error: ERR_FIELD_COUNT,
     UseFieldsPerRecord: true,
     FieldsPerRecord: 0,
   },
@@ -171,7 +171,7 @@ field"`,
     // Error: &ParseError{StartLine: 1, Line: 1, Err: ErrFieldCount},
     UseFieldsPerRecord: true,
     FieldsPerRecord: 2,
-    Error: ErrFieldCount,
+    Error: ERR_FIELD_COUNT,
   },
   {
     Name: "FieldCount",
@@ -265,13 +265,13 @@ x,,,
   {
     Name: "StartLine1", // Issue 19019
     Input: 'a,"b\nc"d,e',
-    Error: ErrQuote,
+    Error: ERR_QUOTE,
     // Error: &ParseError{StartLine: 1, Line: 2, Column: 1, Err: ErrQuote},
   },
   {
     Name: "StartLine2",
     Input: 'a,b\n"d\n\n,e',
-    Error: ErrQuote,
+    Error: ERR_QUOTE,
     // Error: &ParseError{StartLine: 2, Line: 5, Column: 0, Err: ErrQuote},
   },
   {
@@ -297,7 +297,7 @@ x,,,
   {
     Name: "QuotedTrailingCRCR",
     Input: '"field"\r\r',
-    Error: ErrQuote,
+    Error: ERR_QUOTE,
     // Error: &ParseError{StartLine: 1, Line: 1, Column: 6, Err: ErrQuote},
   },
   {
@@ -390,7 +390,7 @@ x,,,
   {
     Name: "QuoteWithTrailingCRLF",
     Input: '"foo"bar"\r\n',
-    Error: ErrQuote,
+    Error: ERR_QUOTE,
     // Error: &ParseError{StartLine: 1, Line: 1, Column: 4, Err: ErrQuote},
   },
   {
@@ -412,7 +412,7 @@ x,,,
   {
     Name: "OddQuotes",
     Input: `"""""""`,
-    Error: ErrQuote,
+    Error: ERR_QUOTE,
     // Error:" &ParseError{StartLine: 1, Line: 1, Column: 7, Err: ErrQuote}",
   },
   {
@@ -424,33 +424,33 @@ x,,,
   {
     Name: "BadComma1",
     Comma: "\n",
-    Error: ErrInvalidDelim,
+    Error: ERR_INVALID_DELIM,
   },
   {
     Name: "BadComma2",
     Comma: "\r",
-    Error: ErrInvalidDelim,
+    Error: ERR_INVALID_DELIM,
   },
   {
     Name: "BadComma3",
     Comma: '"',
-    Error: ErrInvalidDelim,
+    Error: ERR_INVALID_DELIM,
   },
   {
     Name: "BadComment1",
     Comment: "\n",
-    Error: ErrInvalidDelim,
+    Error: ERR_INVALID_DELIM,
   },
   {
     Name: "BadComment2",
     Comment: "\r",
-    Error: ErrInvalidDelim,
+    Error: ERR_INVALID_DELIM,
   },
   {
     Name: "BadCommaComment",
     Comma: "X",
     Comment: "X",
-    Error: ErrInvalidDelim,
+    Error: ERR_INVALID_DELIM,
   },
 ];
 for (const t of testCases) {
