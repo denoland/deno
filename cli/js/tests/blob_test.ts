@@ -38,7 +38,7 @@ unitTest(function blobShouldNotThrowError(): void {
   try {
     const options1: object = {
       ending: "utf8",
-      hasOwnProperty: "hasOwnProperty"
+      hasOwnProperty: "hasOwnProperty",
     };
     const options2: object = Object.create(null);
     new Blob(["Hello World"], options1);
@@ -52,7 +52,7 @@ unitTest(function blobShouldNotThrowError(): void {
 
 unitTest(function nativeEndLine(): void {
   const options: object = {
-    ending: "native"
+    ending: "native",
   };
   const blob = new Blob(["Hello\nWorld"], options);
 

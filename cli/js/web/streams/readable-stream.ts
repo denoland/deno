@@ -11,18 +11,18 @@ import {
   QueuingStrategy,
   QueuingStrategySizeCallback,
   UnderlyingSource,
-  UnderlyingByteSource
+  UnderlyingByteSource,
 } from "../dom_types.ts";
 
 import {
   ReadableStreamDefaultController,
-  setUpReadableStreamDefaultControllerFromUnderlyingSource
+  setUpReadableStreamDefaultControllerFromUnderlyingSource,
 } from "./readable-stream-default-controller.ts";
 import { ReadableStreamDefaultReader } from "./readable-stream-default-reader.ts";
 
 import {
   ReadableByteStreamController,
-  setUpReadableByteStreamControllerFromUnderlyingSource
+  setUpReadableByteStreamControllerFromUnderlyingSource,
 } from "./readable-byte-stream-controller.ts";
 import { SDReadableStreamBYOBReader } from "./readable-stream-byob-reader.ts";
 
@@ -123,7 +123,7 @@ export class SDReadableStream<OutputType>
     return rs.readableStreamCancel(this, reason);
   }
 
-  tee(): Array<SDReadableStream<OutputType>> {
+  tee(): [SDReadableStream<OutputType>, SDReadableStream<OutputType>] {
     return readableStreamTee(this, false);
   }
 
@@ -280,7 +280,9 @@ export function readableStreamTee<OutputType>(
   let branch2: SDReadableStream<OutputType>;
 
   let cancelResolve: (reason: shared.ErrorResult) => void;
-  const cancelPromise = new Promise<void>(resolve => (cancelResolve = resolve));
+  const cancelPromise = new Promise<void>(
+    (resolve) => (cancelResolve = resolve)
+  );
 
   const pullAlgorithm = (): Promise<void> => {
     return rs
@@ -362,7 +364,7 @@ export function readableStreamTee<OutputType>(
     cancel2Algorithm
   );
 
-  reader[rs.closedPromise_].promise.catch(error => {
+  reader[rs.closedPromise_].promise.catch((error) => {
     if (!closedOrErrored) {
       rs.readableStreamDefaultControllerError(
         branch1![

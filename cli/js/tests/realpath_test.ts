@@ -15,7 +15,7 @@ unitTest({ perms: { read: true } }, function realpathSyncSuccess(): void {
 unitTest(
   {
     ignore: Deno.build.os === "win",
-    perms: { read: true, write: true }
+    perms: { read: true, write: true },
   },
   function realpathSyncSymlink(): void {
     const testDir = Deno.makeTempDirSync();
@@ -67,7 +67,7 @@ unitTest({ perms: { read: true } }, async function realpathSuccess(): Promise<
 unitTest(
   {
     ignore: Deno.build.os === "win",
-    perms: { read: true, write: true }
+    perms: { read: true, write: true },
   },
   async function realpathSymlink(): Promise<void> {
     const testDir = Deno.makeTempDirSync();

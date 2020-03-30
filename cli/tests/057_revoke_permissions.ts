@@ -7,7 +7,7 @@ const knownPermissions: Deno.PermissionName[] = [
   "net",
   "env",
   "plugin",
-  "hrtime"
+  "hrtime",
 ];
 
 export function assert(cond: unknown): asserts cond {

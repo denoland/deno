@@ -8,7 +8,7 @@ import {
   registerUnitTests,
   fmtPerms,
   parseArgs,
-  reportToConn
+  reportToConn,
 } from "./test_util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -29,7 +29,7 @@ const PERMISSIONS: Deno.PermissionName[] = [
   "env",
   "run",
   "plugin",
-  "hrtime"
+  "hrtime",
 ];
 
 /**
@@ -69,7 +69,7 @@ async function workerRunnerMain(
   await Deno.runTests({
     exitOnFail: false,
     only: filter,
-    onMessage: reportToConn.bind(null, conn)
+    onMessage: reportToConn.bind(null, conn),
   });
 }
 
@@ -93,7 +93,7 @@ function spawnWorkerRunner(
     "cli/js/tests/unit_test_runner.ts",
     "--worker",
     `--addr=${addr}`,
-    `--perms=${permStr}`
+    `--perms=${permStr}`,
   ];
 
   if (filter) {
@@ -107,7 +107,7 @@ function spawnWorkerRunner(
     cmd,
     stdin: ioMode,
     stdout: ioMode,
-    stderr: ioMode
+    stderr: ioMode,
   });
 
   return p;
@@ -167,7 +167,7 @@ async function runTestsForPermissionSet(
     perms,
     passed,
     permsStr: permsFmt,
-    endMessage
+    endMessage,
   };
 }
 
@@ -271,7 +271,7 @@ function assertOrHelp(expr: unknown): asserts expr {
 async function main(): Promise<void> {
   const args = parseArgs(Deno.args, {
     boolean: ["master", "worker", "verbose"],
-    "--": true
+    "--": true,
   });
 
   if (args.help) {
@@ -297,7 +297,7 @@ async function main(): Promise<void> {
   await registerUnitTests();
   await Deno.runTests({
     only: filter,
-    reportToConsole: true
+    reportToConsole: true,
   });
 }
 

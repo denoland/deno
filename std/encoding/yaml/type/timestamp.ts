@@ -92,5 +92,5 @@ export const timestamp = new Type("tag:yaml.org,2002:timestamp", {
   instanceOf: Date,
   kind: "scalar",
   represent: representYamlTimestamp,
-  resolve: resolveYamlTimestamp
+  resolve: resolveYamlTimestamp,
 });

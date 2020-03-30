@@ -33,7 +33,7 @@ export const bool = new Type("tag:yaml.org,2002:bool", {
     },
     camelcase(object: boolean): string {
       return object ? "True" : "False";
-    }
+    },
   },
-  resolve: resolveYamlBoolean
+  resolve: resolveYamlBoolean,
 });

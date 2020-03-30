@@ -75,7 +75,7 @@ export async function* findTestModules(
     exclude: excludePaths,
     includeDirs: true,
     extended: true,
-    globstar: true
+    globstar: true,
   };
 
   async function* expandDirectory(d: string): AsyncIterableIterator<string> {
@@ -83,7 +83,7 @@ export async function* findTestModules(
       for await (const walkInfo of expandGlob(dirGlob, {
         ...expandGlobOpts,
         root: d,
-        includeDirs: false
+        includeDirs: false,
       })) {
         yield filePathToUrl(walkInfo.filename);
       }
@@ -170,7 +170,7 @@ export async function runTestModules({
   exitOnFail = false,
   only = /[^\s]/,
   skip = /^\s*$/,
-  disableLog = false
+  disableLog = false,
 }: RunTestModulesOptions = {}): Promise<void> {
   let moduleCount = 0;
   const testModules = [];
@@ -236,7 +236,7 @@ export async function runTestModules({
     only,
     skip,
     disableLog,
-    reportToConsole: true
+    reportToConsole: true,
   });
 }
 
@@ -248,14 +248,14 @@ async function main(): Promise<void> {
       exclude: ["e"],
       failfast: ["f"],
       help: ["h"],
-      quiet: ["q"]
+      quiet: ["q"],
     },
     default: {
       "allow-none": false,
       failfast: false,
       help: false,
-      quiet: false
-    }
+      quiet: false,
+    },
   });
   if (parsedArgs.help) {
     return showHelp();
@@ -278,7 +278,7 @@ async function main(): Promise<void> {
       exclude,
       allowNone,
       disableLog,
-      exitOnFail: true
+      exitOnFail: true,
     });
   } catch (error) {
     if (!disableLog) {

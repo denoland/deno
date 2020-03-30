@@ -12,7 +12,7 @@ import { assert } from "./util.ts";
 const RED_FAILED = red("FAILED");
 const GREEN_OK = green("ok");
 const YELLOW_IGNORED = yellow("ignored");
-const disabledConsole = new Console((_x: string, _isErr?: boolean): void => {});
+const disabledConsole = new Console((): void => {});
 
 function formatDuration(time = 0): string {
   const timeStr = `(${time}ms)`;
@@ -216,7 +216,7 @@ class TestApi {
     ignored: 0,
     measured: 0,
     passed: 0,
-    failed: 0
+    failed: 0,
   };
 
   constructor(
@@ -236,7 +236,7 @@ class TestApi {
     for (const test of this.testsToRun) {
       const endMessage: Partial<TestMessage["testEnd"]> = {
         name: test.name,
-        duration: 0
+        duration: 0,
       };
       yield { testStart: { ...test } };
       if (test.ignore) {
@@ -313,7 +313,7 @@ export async function runTests({
   skip = undefined,
   disableLog = false,
   reportToConsole: reportToConsole_ = false,
-  onMessage = undefined
+  onMessage = undefined,
 }: RunTestsOptions = {}): Promise<TestMessage["end"]> {
   const filterFn = createFilterFn(only, skip);
   const testApi = new TestApi(TEST_REGISTRY, filterFn, failFast);

@@ -3231,9 +3231,7 @@ declare namespace React {
 
 // naked 'any' type in a conditional type will short circuit and union both the then/else branches
 // so boolean is only resolved for T = any
-type IsExactlyAny<T> = boolean extends (T extends never
-? true
-: false)
+type IsExactlyAny<T> = boolean extends (T extends never ? true : false)
   ? true
   : false;
 

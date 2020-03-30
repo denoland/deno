@@ -10,7 +10,7 @@ export {
   assertStrictEq,
   assertStrContains,
   unreachable,
-  fail
+  fail,
 } from "../../../std/testing/asserts.ts";
 export { readLines } from "../../../std/io/bufio.ts";
 export { parse as parseArgs } from "../../../std/flags/mod.ts";
@@ -28,7 +28,7 @@ export interface Permissions {
 export function fmtPerms(perms: Permissions): string {
   const p = Object.keys(perms)
     .filter((e): boolean => perms[e as keyof Permissions] === true)
-    .map(key => `--allow-${key}`);
+    .map((key) => `--allow-${key}`);
 
   if (p.length) {
     return p.join(" ");
@@ -48,7 +48,7 @@ export async function getProcessPermissions(): Promise<Permissions> {
     net: await isGranted("net"),
     env: await isGranted("env"),
     plugin: await isGranted("plugin"),
-    hrtime: await isGranted("hrtime")
+    hrtime: await isGranted("hrtime"),
   };
 }
 
@@ -108,7 +108,7 @@ function normalizeTestPermissions(perms: UnitTestPermissions): Permissions {
     run: !!perms.run,
     env: !!perms.env,
     plugin: !!perms.plugin,
-    hrtime: !!perms.hrtime
+    hrtime: !!perms.hrtime,
   };
 }
 
@@ -172,7 +172,7 @@ export function unitTest(
     name,
     fn,
     ignore: !!options.ignore,
-    perms: normalizedPerms
+    perms: normalizedPerms,
   };
 
   REGISTERED_UNIT_TESTS.push(unitTestDefinition);
@@ -204,17 +204,17 @@ function serializeTestMessage(message: Deno.TestMessage): string {
   return JSON.stringify({
     start: message.start && {
       ...message.start,
-      tests: message.start.tests.map(test => ({ ...test, fn: null }))
+      tests: message.start.tests.map((test) => ({ ...test, fn: null })),
     },
     testStart: message.testStart && { ...message.testStart, fn: null },
     testEnd: message.testEnd && {
       ...message.testEnd,
-      error: String(message.testEnd.error?.stack)
+      error: String(message.testEnd.error?.stack),
     },
     end: message.end && {
       ...message.end,
-      errors: message.end.errors.map(([n, e]) => [n, e.stack])
-    }
+      errors: message.end.errors.map(([n, e]) => [n, e.stack]),
+    },
   });
 }
 
@@ -240,7 +240,7 @@ unitTest(function permissionsMatches(): void {
         env: false,
         run: false,
         plugin: false,
-        hrtime: false
+        hrtime: false,
       },
       normalizeTestPermissions({ read: true })
     )
@@ -255,7 +255,7 @@ unitTest(function permissionsMatches(): void {
         env: false,
         run: false,
         plugin: false,
-        hrtime: false
+        hrtime: false,
       },
       normalizeTestPermissions({})
     )
@@ -270,7 +270,7 @@ unitTest(function permissionsMatches(): void {
         env: true,
         run: true,
         plugin: true,
-        hrtime: true
+        hrtime: true,
       },
       normalizeTestPermissions({ read: true })
     ),
@@ -286,7 +286,7 @@ unitTest(function permissionsMatches(): void {
         env: false,
         run: false,
         plugin: false,
-        hrtime: false
+        hrtime: false,
       },
       normalizeTestPermissions({ read: true })
     ),
@@ -302,7 +302,7 @@ unitTest(function permissionsMatches(): void {
         env: true,
         run: true,
         plugin: true,
-        hrtime: true
+        hrtime: true,
       },
       {
         read: true,
@@ -311,7 +311,7 @@ unitTest(function permissionsMatches(): void {
         env: true,
         run: true,
         plugin: true,
-        hrtime: true
+        hrtime: true,
       }
     )
   );
@@ -325,9 +325,9 @@ unitTest(
   { perms: { read: true } },
   function assertAllUnitTestFilesImported(): void {
     const directoryTestFiles = Deno.readdirSync("./cli/js/tests/")
-      .map(k => k.name)
+      .map((k) => k.name)
       .filter(
-        file =>
+        (file) =>
           file!.endsWith(".ts") &&
           !file!.endsWith("unit_tests.ts") &&
           !file!.endsWith("test_util.ts") &&
@@ -339,12 +339,12 @@ unitTest(
     const importLines = new TextDecoder("utf-8")
       .decode(unitTestsFile)
       .split("\n")
-      .filter(line => line.startsWith("import"));
+      .filter((line) => line.startsWith("import"));
     const importedTestFiles = importLines.map(
-      relativeFilePath => relativeFilePath.match(/\/([^\/]+)";/)![1]
+      (relativeFilePath) => relativeFilePath.match(/\/([^\/]+)";/)![1]
     );
 
-    directoryTestFiles.forEach(dirFile => {
+    directoryTestFiles.forEach((dirFile) => {
       if (!importedTestFiles.includes(dirFile!)) {
         throw new Error(
           "cil/js/tests/unit_tests.ts is missing import of test file: cli/js/" +

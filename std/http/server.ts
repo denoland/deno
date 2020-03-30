@@ -7,7 +7,7 @@ import {
   chunkedBodyReader,
   emptyReader,
   writeResponse,
-  readRequest
+  readRequest,
 } from "./io.ts";
 import Listener = Deno.Listener;
 import Conn = Deno.Conn;
@@ -298,7 +298,7 @@ export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
 export function serveTLS(options: HTTPSOptions): Server {
   const tlsOptions: Deno.ListenTLSOptions = {
     ...options,
-    transport: "tcp"
+    transport: "tcp",
   };
   const listener = listenTLS(tlsOptions);
   return new Server(listener);

@@ -459,7 +459,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "atty",
  "base64 0.11.0",
@@ -493,6 +493,10 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "sourcemap",
+ "swc_common",
+ "swc_ecma_ast",
+ "swc_ecma_parser",
+ "swc_ecma_parser_macros",
  "sys-info",
  "tempfile",
  "termcolor",
@@ -511,7 +515,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "derive_deref",
  "downcast-rs",
@@ -527,7 +531,7 @@ dependencies = [
 
 [[package]]
 name = "deno_typescript"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -616,9 +620,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.9.5"
+version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b40a2ed665c9cb3192b689bcfc6934a1dbe16009e363c84b6db19ce1c36ef274"
+checksum = "66d1fc740f63f2fd73c63d4c55632f81fa41ec84ae531258e0e1e014bb3eb30a"
 dependencies = [
  "dprint-core",
  "serde",
@@ -2071,9 +2075,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.3.8"
+version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eebb25415f6eedee924beffe4386375adafeaa69694383139c77336e88d204c3"
+checksum = "fee528081d3eb7efe829a0021063df092a241837f3c063fb825bf7aa8858f80c"
 dependencies = [
  "bitflags",
  "cargo_gn",
@@ -2435,9 +2439,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_parser"
-version = "0.21.6"
+version = "0.21.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "701e681b7783c5b9d3df9e18592494ca3cba7a2fa8fc98d4d4f423ae993df155"
+checksum = "c7fd022bbe8fdd94649a0165a53dc7fbd850370a40609b9c3fddd404b99427fb"
 dependencies = [
  "either",
  "enum_kind",

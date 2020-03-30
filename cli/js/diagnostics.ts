@@ -10,7 +10,7 @@ export enum DiagnosticCategory {
   Info = 2,
   Error = 3,
   Warning = 4,
-  Suggestion = 5
+  Suggestion = 5,
 }
 
 export interface DiagnosticMessageChain {

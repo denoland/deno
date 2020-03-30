@@ -21,12 +21,12 @@ import {
   defaultBundlerOptions,
   defaultRuntimeCompileOptions,
   defaultTranspileOptions,
-  Host
+  Host,
 } from "./compiler/host.ts";
 import {
   processImports,
   processLocalImports,
-  resolveModules
+  resolveModules,
 } from "./compiler/imports.ts";
 import {
   createWriteFile,
@@ -35,7 +35,7 @@ import {
   ignoredDiagnostics,
   WriteFileState,
   processConfigureResponse,
-  base64ToUint8Array
+  base64ToUint8Array,
 } from "./compiler/util.ts";
 import { Diagnostic, DiagnosticItem } from "./diagnostics.ts";
 import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
@@ -93,7 +93,7 @@ async function compile(
   const { bundle, config, configPath, outFile, rootNames, target } = request;
   util.log(">>> compile start", {
     rootNames,
-    type: CompilerRequestType[request.type]
+    type: CompilerRequestType[request.type],
   });
 
   // When a programme is emitted, TypeScript will call `writeFile` with
@@ -108,14 +108,14 @@ async function compile(
     bundle,
     host: undefined,
     outFile,
-    rootNames
+    rootNames,
   };
   const writeFile = createWriteFile(state);
 
   const host = (state.host = new Host({
     bundle,
     target,
-    writeFile
+    writeFile,
   }));
   let diagnostics: readonly ts.Diagnostic[] | undefined;
 
@@ -129,7 +129,7 @@ async function compile(
   // requesting those from the privileged side, populating the in memory
   // cache which will be used by the host, before resolving.
   const resolvedRootModules = await processImports(
-    rootNames.map(rootName => [rootName, rootName]),
+    rootNames.map((rootName) => [rootName, rootName]),
     undefined,
     bundle || host.getCompilationSettings().checkJs
   );
@@ -143,7 +143,7 @@ async function compile(
       rootNames,
       options,
       host,
-      oldProgram: TS_SNAPSHOT_PROGRAM
+      oldProgram: TS_SNAPSHOT_PROGRAM,
     });
 
     diagnostics = ts
@@ -171,12 +171,12 @@ async function compile(
     emitSkipped,
     diagnostics: diagnostics.length
       ? fromTypeScriptDiagnostic(diagnostics)
-      : undefined
+      : undefined,
   };
 
   util.log("<<< compile end", {
     rootNames,
-    type: CompilerRequestType[request.type]
+    type: CompilerRequestType[request.type],
   });
 
   return result;
@@ -190,7 +190,7 @@ async function runtimeCompile(
   util.log(">>> runtime compile start", {
     rootName,
     bundle,
-    sources: sources ? Object.keys(sources) : undefined
+    sources: sources ? Object.keys(sources) : undefined,
   });
 
   // resolve the root name, if there are sources, the root name does not
@@ -232,7 +232,7 @@ async function runtimeCompile(
     const resolvedNames = resolveModules(additionalFiles);
     rootNames.push(
       ...(await processImports(
-        resolvedNames.map(rn => [rn, rn]),
+        resolvedNames.map((rn) => [rn, rn]),
         undefined,
         checkJsImports
       ))
@@ -246,14 +246,14 @@ async function runtimeCompile(
     rootNames,
     sources,
     emitMap: {},
-    emitBundle: undefined
+    emitBundle: undefined,
   };
   const writeFile = createWriteFile(state);
 
   const host = (state.host = new Host({
     bundle,
     target,
-    writeFile
+    writeFile,
   }));
   const compilerOptions = [defaultRuntimeCompileOptions];
   if (convertedOptions) {
@@ -268,7 +268,7 @@ async function runtimeCompile(
     rootNames,
     options: host.getCompilationSettings(),
     host,
-    oldProgram: TS_SNAPSHOT_PROGRAM
+    oldProgram: TS_SNAPSHOT_PROGRAM,
   });
 
   if (bundle) {
@@ -288,7 +288,7 @@ async function runtimeCompile(
     rootName,
     sources: sources ? Object.keys(sources) : undefined,
     bundle,
-    emitMap: Object.keys(state.emitMap)
+    emitMap: Object.keys(state.emitMap),
   });
 
   const maybeDiagnostics = diagnostics.length
@@ -320,7 +320,7 @@ function runtimeTranspile(
       inputText,
       {
         fileName,
-        compilerOptions
+        compilerOptions,
       }
     );
     result[fileName] = { source, map };
@@ -329,7 +329,7 @@ function runtimeTranspile(
 }
 
 async function tsCompilerOnMessage({
-  data: request
+  data: request,
 }: {
   data: CompilerRequest;
 }): Promise<void> {
@@ -364,7 +364,7 @@ async function tsCompilerOnMessage({
 }
 
 async function wasmCompilerOnMessage({
-  data: binary
+  data: binary,
 }: {
   data: string;
 }): Promise<void> {
@@ -411,12 +411,12 @@ Object.defineProperties(globalThis, {
     value: bootstrapWasmCompilerRuntime,
     enumerable: false,
     writable: false,
-    configurable: false
+    configurable: false,
   },
   bootstrapTsCompilerRuntime: {
     value: bootstrapTsCompilerRuntime,
     enumerable: false,
     writable: false,
-    configurable: false
-  }
+    configurable: false,
+  },
 });

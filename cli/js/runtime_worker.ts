@@ -14,7 +14,7 @@ import {
   nonEnumerable,
   windowOrWorkerGlobalScopeMethods,
   windowOrWorkerGlobalScopeProperties,
-  eventTargetProperties
+  eventTargetProperties,
 } from "./globals.ts";
 import * as webWorkerOps from "./ops/web_worker.ts";
 import { LocationImpl } from "./web/location.ts";
@@ -85,7 +85,7 @@ export const workerRuntimeGlobalProperties = {
   // TODO: should be readonly?
   close: nonEnumerable(close),
   postMessage: writable(postMessage),
-  workerMessageRecvCallback: nonEnumerable(workerMessageRecvCallback)
+  workerMessageRecvCallback: nonEnumerable(workerMessageRecvCallback),
 };
 
 export function bootstrapWorkerRuntime(name: string): void {

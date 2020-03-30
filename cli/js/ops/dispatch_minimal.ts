@@ -54,7 +54,7 @@ export function recordFromBufMinimal(ui8: Uint8Array): RecordMinimal {
     promiseId,
     arg,
     result,
-    err
+    err,
   };
 }
 

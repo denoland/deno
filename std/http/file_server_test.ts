@@ -14,10 +14,10 @@ async function startFileServer(): Promise<void> {
       "--allow-net",
       "http/file_server.ts",
       ".",
-      "--cors"
+      "--cors",
     ],
     stdout: "piped",
-    stderr: "null"
+    stderr: "null",
   });
   // Once fileServer is ready it will write to its stdout.
   assert(fileServer.stdout != null);
@@ -106,7 +106,7 @@ test(async function servePermissionDenied(): Promise<void> {
   const deniedServer = Deno.run({
     cmd: [Deno.execPath(), "run", "--allow-net", "http/file_server.ts"],
     stdout: "piped",
-    stderr: "piped"
+    stderr: "piped",
   });
   assert(deniedServer.stdout != null);
   const reader = new TextProtoReader(new BufReader(deniedServer.stdout));
@@ -132,7 +132,7 @@ test(async function servePermissionDenied(): Promise<void> {
 test(async function printHelp(): Promise<void> {
   const helpProcess = Deno.run({
     cmd: [Deno.execPath(), "run", "http/file_server.ts", "--help"],
-    stdout: "piped"
+    stdout: "piped",
   });
   assert(helpProcess.stdout != null);
   const r = new TextProtoReader(new BufReader(helpProcess.stdout));

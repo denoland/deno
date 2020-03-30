@@ -1,9 +1,28 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-export type TypedArray = Uint8Array | Float32Array | Int32Array;
-const TypedArrayConstructor = Object.getPrototypeOf(Uint8Array);
+export type TypedArray =
+  | Int8Array
+  | Uint8Array
+  | Uint8ClampedArray
+  | Int16Array
+  | Uint16Array
+  | Int32Array
+  | Uint32Array
+  | Float32Array
+  | Float64Array;
+
 export function isTypedArray(x: unknown): x is TypedArray {
-  return x instanceof TypedArrayConstructor;
+  return (
+    x instanceof Int8Array ||
+    x instanceof Uint8Array ||
+    x instanceof Uint8ClampedArray ||
+    x instanceof Int16Array ||
+    x instanceof Uint16Array ||
+    x instanceof Int32Array ||
+    x instanceof Uint32Array ||
+    x instanceof Float32Array ||
+    x instanceof Float64Array
+  );
 }
 
 // @internal
@@ -31,7 +50,7 @@ export function immutableDefine(
   Object.defineProperty(o, p, {
     value,
     configurable: false,
-    writable: false
+    writable: false,
   });
 }
 
@@ -52,4 +71,19 @@ export function hasOwnProperty<T>(obj: T, v: PropertyKey): boolean {
     return false;
   }
   return Object.prototype.hasOwnProperty.call(obj, v);
+}
+
+/** Returns whether o is iterable.
+ *
+ * @internal */
+export function isIterable<T, P extends keyof T, K extends T[P]>(
+  o: T
+): o is T & Iterable<[P, K]> {
+  // checks for null and undefined
+  if (o == null) {
+    return false;
+  }
+  return (
+    typeof ((o as unknown) as Iterable<[P, K]>)[Symbol.iterator] === "function"
+  );
 }

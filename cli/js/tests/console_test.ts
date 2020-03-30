@@ -6,14 +6,14 @@ import { assert, assertEquals, unitTest } from "./test_util.ts";
 const {
   inspect,
   writeSync,
-  stdout
+  stdout,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } = Deno as any;
 
 const customInspect = Deno.symbols.customInspect;
 const {
   Console,
-  stringifyArgs
+  stringifyArgs,
   // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.symbols.internal];
 
@@ -37,7 +37,7 @@ unitTest(function consoleHasRightInstance(): void {
 });
 
 unitTest(function consoleTestAssertShouldNotThrowError(): void {
-  mockConsole(console => {
+  mockConsole((console) => {
     console.assert(true);
     let hasThrown = undefined;
     try {
@@ -92,7 +92,7 @@ unitTest(function consoleTestStringifyCircular(): void {
     arrowFunc: () => {},
     extendedClass: new Extended(),
     nFunc: new Function(),
-    extendedCstr: Extended
+    extendedCstr: Extended,
   };
 
   const circularObj = {
@@ -105,7 +105,7 @@ unitTest(function consoleTestStringifyCircular(): void {
     nested: nestedObj,
     emptyObj: {},
     arr: [1, "s", false, null, nestedObj],
-    baseClass: new Base()
+    baseClass: new Base(),
   };
 
   nestedObj.o = circularObj;
@@ -154,7 +154,7 @@ unitTest(function consoleTestStringifyCircular(): void {
     stringify(
       new Map([
         [1, "one"],
-        [2, "two"]
+        [2, "two"],
       ])
     ),
     `Map { 1 => "one", 2 => "two" }`
@@ -181,8 +181,11 @@ unitTest(function consoleTestStringifyCircular(): void {
     stringify(async function* agf() {}),
     "[AsyncGeneratorFunction: agf]"
   );
-  assertEquals(stringify(new Uint8Array([1, 2, 3])), "Uint8Array [ 1, 2, 3 ]");
-  assertEquals(stringify(Uint8Array.prototype), "TypedArray []");
+  assertEquals(
+    stringify(new Uint8Array([1, 2, 3])),
+    "Uint8Array(3) [ 1, 2, 3 ]"
+  );
+  assertEquals(stringify(Uint8Array.prototype), "TypedArray {}");
   assertEquals(
     stringify({ a: { b: { c: { d: new Set([1]) } } } }),
     "{ a: { b: { c: { d: [Set] } } } }"
@@ -192,7 +195,6 @@ unitTest(function consoleTestStringifyCircular(): void {
   assertEquals(
     stringify(console),
     `{
- printFunc: [Function],
  log: [Function],
  debug: [Function],
  info: [Function],
@@ -261,8 +263,8 @@ unitTest(function consoleTestStringifyLargeObject(): void {
       g: 10,
       asd: 2,
       asda: 3,
-      x: { a: "asd", x: 3 }
-    }
+      x: { a: "asd", x: 3 },
+    },
   };
   assertEquals(
     stringify(obj),
@@ -281,6 +283,300 @@ unitTest(function consoleTestStringifyLargeObject(): void {
   x: { a: "asd", x: 3 }
  }
 }`
+  );
+});
+
+unitTest(function consoleTestStringifyIterable() {
+  const shortArray = [1, 2, 3, 4, 5];
+  assertEquals(stringify(shortArray), "[ 1, 2, 3, 4, 5 ]");
+
+  const longArray = new Array(200).fill(0);
+  assertEquals(
+    stringify(longArray),
+    `[
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ... 100 more items
+]`
+  );
+
+  const obj = { a: "a", longArray };
+  assertEquals(
+    stringify(obj),
+    `{
+ a: "a",
+ longArray: [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ... 100 more items
+  ]
+}`
+  );
+
+  const shortMap = new Map([
+    ["a", 0],
+    ["b", 1],
+  ]);
+  assertEquals(stringify(shortMap), `Map { "a" => 0, "b" => 1 }`);
+
+  const longMap = new Map();
+  for (const key of Array(200).keys()) {
+    longMap.set(`${key}`, key);
+  }
+  assertEquals(
+    stringify(longMap),
+    `Map {
+ "0" => 0,
+ "1" => 1,
+ "2" => 2,
+ "3" => 3,
+ "4" => 4,
+ "5" => 5,
+ "6" => 6,
+ "7" => 7,
+ "8" => 8,
+ "9" => 9,
+ "10" => 10,
+ "11" => 11,
+ "12" => 12,
+ "13" => 13,
+ "14" => 14,
+ "15" => 15,
+ "16" => 16,
+ "17" => 17,
+ "18" => 18,
+ "19" => 19,
+ "20" => 20,
+ "21" => 21,
+ "22" => 22,
+ "23" => 23,
+ "24" => 24,
+ "25" => 25,
+ "26" => 26,
+ "27" => 27,
+ "28" => 28,
+ "29" => 29,
+ "30" => 30,
+ "31" => 31,
+ "32" => 32,
+ "33" => 33,
+ "34" => 34,
+ "35" => 35,
+ "36" => 36,
+ "37" => 37,
+ "38" => 38,
+ "39" => 39,
+ "40" => 40,
+ "41" => 41,
+ "42" => 42,
+ "43" => 43,
+ "44" => 44,
+ "45" => 45,
+ "46" => 46,
+ "47" => 47,
+ "48" => 48,
+ "49" => 49,
+ "50" => 50,
+ "51" => 51,
+ "52" => 52,
+ "53" => 53,
+ "54" => 54,
+ "55" => 55,
+ "56" => 56,
+ "57" => 57,
+ "58" => 58,
+ "59" => 59,
+ "60" => 60,
+ "61" => 61,
+ "62" => 62,
+ "63" => 63,
+ "64" => 64,
+ "65" => 65,
+ "66" => 66,
+ "67" => 67,
+ "68" => 68,
+ "69" => 69,
+ "70" => 70,
+ "71" => 71,
+ "72" => 72,
+ "73" => 73,
+ "74" => 74,
+ "75" => 75,
+ "76" => 76,
+ "77" => 77,
+ "78" => 78,
+ "79" => 79,
+ "80" => 80,
+ "81" => 81,
+ "82" => 82,
+ "83" => 83,
+ "84" => 84,
+ "85" => 85,
+ "86" => 86,
+ "87" => 87,
+ "88" => 88,
+ "89" => 89,
+ "90" => 90,
+ "91" => 91,
+ "92" => 92,
+ "93" => 93,
+ "94" => 94,
+ "95" => 95,
+ "96" => 96,
+ "97" => 97,
+ "98" => 98,
+ "99" => 99,
+ ... 100 more items
+}`
+  );
+
+  const shortSet = new Set([1, 2, 3]);
+  assertEquals(stringify(shortSet), `Set { 1, 2, 3 }`);
+  const longSet = new Set();
+  for (const key of Array(200).keys()) {
+    longSet.add(key);
+  }
+  assertEquals(
+    stringify(longSet),
+    `Set {
+ 0,
+ 1,
+ 2,
+ 3,
+ 4,
+ 5,
+ 6,
+ 7,
+ 8,
+ 9,
+ 10,
+ 11,
+ 12,
+ 13,
+ 14,
+ 15,
+ 16,
+ 17,
+ 18,
+ 19,
+ 20,
+ 21,
+ 22,
+ 23,
+ 24,
+ 25,
+ 26,
+ 27,
+ 28,
+ 29,
+ 30,
+ 31,
+ 32,
+ 33,
+ 34,
+ 35,
+ 36,
+ 37,
+ 38,
+ 39,
+ 40,
+ 41,
+ 42,
+ 43,
+ 44,
+ 45,
+ 46,
+ 47,
+ 48,
+ 49,
+ 50,
+ 51,
+ 52,
+ 53,
+ 54,
+ 55,
+ 56,
+ 57,
+ 58,
+ 59,
+ 60,
+ 61,
+ 62,
+ 63,
+ 64,
+ 65,
+ 66,
+ 67,
+ 68,
+ 69,
+ 70,
+ 71,
+ 72,
+ 73,
+ 74,
+ 75,
+ 76,
+ 77,
+ 78,
+ 79,
+ 80,
+ 81,
+ 82,
+ 83,
+ 84,
+ 85,
+ 86,
+ 87,
+ 88,
+ 89,
+ 90,
+ 91,
+ 92,
+ 93,
+ 94,
+ 95,
+ 96,
+ 97,
+ 98,
+ 99,
+ ... 100 more items
+}`
+  );
+
+  const withEmptyEl = Array(10);
+  withEmptyEl.fill(0, 4, 6);
+  assertEquals(
+    stringify(withEmptyEl),
+    `[ <4 empty items>, 0, 0, <4 empty items> ]`
+  );
+
+  const lWithEmptyEl = Array(200);
+  lWithEmptyEl.fill(0, 50, 80);
+  assertEquals(
+    stringify(lWithEmptyEl),
+    `[
+  <50 empty items>, 0,                 0,
+  0,                0,                 0,
+  0,                0,                 0,
+  0,                0,                 0,
+  0,                0,                 0,
+  0,                0,                 0,
+  0,                0,                 0,
+  0,                0,                 0,
+  0,                0,                 0,
+  0,                0,                 0,
+  0,                <120 empty items>
+]`
   );
 });
 
@@ -394,14 +690,14 @@ unitTest(function consoleTestWithVariousOrInvalidFormatSpecifier(): void {
 
 unitTest(function consoleTestCallToStringOnLabel(): void {
   const methods = ["count", "countReset", "time", "timeLog", "timeEnd"];
-  mockConsole(console => {
+  mockConsole((console) => {
     for (const method of methods) {
       let hasCalled = false;
       // @ts-ignore
       console[method]({
         toString(): void {
           hasCalled = true;
-        }
+        },
       });
       assertEquals(hasCalled, true);
     }
@@ -446,7 +742,7 @@ unitTest(function consoleTestClear(): void {
 
 // Test bound this issue
 unitTest(function consoleDetachedLog(): void {
-  mockConsole(console => {
+  mockConsole((console) => {
     const log = console.log;
     const dir = console.dir;
     const dirxml = console.dirxml;
@@ -635,7 +931,7 @@ unitTest(function consoleTable(): void {
     console.table(
       new Map([
         [1, "one"],
-        [2, "two"]
+        [2, "two"],
       ])
     );
     assertEquals(
@@ -655,7 +951,7 @@ unitTest(function consoleTable(): void {
       b: { c: { d: 10 }, e: [1, 2, [5, 6]] },
       f: "test",
       g: new Set([1, 2, 3, "test"]),
-      h: new Map([[1, "one"]])
+      h: new Map([[1, "one"]]),
     });
     assertEquals(
       out.toString(),
@@ -677,7 +973,7 @@ unitTest(function consoleTable(): void {
       "test",
       false,
       { a: 10 },
-      ["test", { b: 20, c: "test" }]
+      ["test", { b: 20, c: "test" }],
     ]);
     assertEquals(
       out.toString(),
@@ -745,7 +1041,7 @@ unitTest(function consoleTable(): void {
 
 // console.log(Error) test
 unitTest(function consoleLogShouldNotThrowError(): void {
-  mockConsole(console => {
+  mockConsole((console) => {
     let result = 0;
     try {
       console.log(new Error("foo"));
