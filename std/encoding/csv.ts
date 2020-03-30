@@ -97,8 +97,6 @@ async function readRecord(
       let field = line;
       if (i >= 0) {
         field = field.substring(0, i);
-      } else {
-        field = field.substring(0, field.length - lengthNL(field));
       }
       // Check to make sure a quote does not appear in field.
       if (!opt.lazyQuotes) {
@@ -133,7 +131,7 @@ async function readRecord(
             line = line.substring(commaLen);
             fieldIndexes.push(recordBuffer.length);
             continue parseField;
-          } else if (lengthNL(line) === line.length) {
+          } else if (0 === line.length) {
             // `"\n` sequence (end of line).
             fieldIndexes.push(recordBuffer.length);
             break parseField;
@@ -209,13 +207,6 @@ async function readLine(tp: TextProtoReader): Promise<string | Deno.EOF> {
   }
 
   return line;
-}
-
-function lengthNL(s: string): number {
-  if (s.length > 0 && s[s.length - 1] === "\n") {
-    return 1;
-  }
-  return 0;
 }
 
 export async function readMatrix(
