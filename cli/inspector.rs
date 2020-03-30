@@ -23,6 +23,9 @@ use futures::Stream;
 use futures::StreamExt;
 use futures::TryFutureExt;
 use futures::TryStreamExt;
+use std::cell::BorrowMutError;
+use std::cell::RefCell;
+use std::cell::RefMut;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::future::Future;
@@ -60,36 +63,6 @@ type ServerMsgRx = mpsc::UnboundedReceiver<ServerMsg>;
 enum ServerMsg {
   AddInspector(InspectorInfo),
 }
-
-/// Owned by the web socket server. Relays incoming websocket connections and
-/// messages to the isolate/inspector thread.
-type FrontendToInspectorTx = mpsc::UnboundedSender<FrontendToInspectorMsg>;
-/// Owned by the isolate/worker. Receives incoming websocket connections and
-/// messages from the inspector server thread.
-type FrontendToInspectorRx = mpsc::UnboundedReceiver<FrontendToInspectorMsg>;
-/// Messages sent over the FrontendToInspectorTx/FrontendToInspectorRx channel.
-pub enum FrontendToInspectorMsg {
-  WsConnection {
-    session_uuid: Uuid,
-    websocket: ws::WebSocket,
-  },
-  //WsIncoming {
-  //  session_uuid: Uuid,
-  //  msg: ws::Message,
-  //},
-}
-
-/// Owned by the deno inspector session, used to forward messages from the
-/// inspector channel on the isolate thread to the websocket that is owned by
-/// the inspector server.
-type SessionToFrontendTx = mpsc::UnboundedSender<ws::Message>;
-/// Owned by the inspector server. Messages arriving on this channel, coming
-/// from the inspector session on the isolate thread are forwarded over the
-/// websocket to the devtools frontend.
-type SessionToFrontendRx = mpsc::UnboundedReceiver<ws::Message>;
-
-type FrontendToSessionTx = mpsc::UnboundedSender<ws::Message>;
-type FrontendToSessionRx = mpsc::UnboundedReceiver<ws::Message>;
 
 /// Stored in a UUID hashmap, used by WS server. Clonable.
 #[derive(Clone)]
@@ -226,21 +199,6 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
           .unwrap_or_else(|_| {
             panic!("sending message to frontend_to_inspector_tx failed");
           });
-
-        // inspector_info.inspector_handle.interrupt();
-
-        //let pump_to_inspector = async {
-        //  while let Some(Ok(msg)) = ws_rx.next().await {
-        //    inspector_info
-        //      .frontend_to_inspector_tx
-        //      .send(FrontendToInspectorMsg::WsIncoming { msg, session_uuid })
-        //      .unwrap_or_else(|_| {
-        //        panic!("sending message to frontend_to_inspector_tx failed");
-        //      });
-        //
-        //    inspector_info.inspector_handle.interrupt();
-        //  }
-        //};
       })
     });
 
@@ -280,66 +238,13 @@ async fn server(address: SocketAddrV4, mut server_msg_rx: ServerMsgRx) {
   future::join(msg_handler, web_handler).await;
 }
 
-/*
-struct DenoInspectorWaker {
-  default_loop_waker: AtomicWaker,
-  paused_loop_waker: AtomicWaker,
-  isolate_handle: v8::IsolateHandle,
-  interrupt_requested: AtomicBool,
-  waiting_for_poll: AtomicBool
-  waker: Option<Waker>
-}
-
-impl DenoInspectorWaker {
-  pub fn new(isolate_handle: v8::IsolateHandle) -> Arc<Self> {
-    let mut arc_self = Arc::new(Self {
-      default_loop_waker: AtomicWaker::new(),
-      paused_loop_waker: AtomicWaker::new(),
-      isolate_handle,
-      interrupt_requested: AtomicBool::new(false),
-      waiting_for_poll: AtomicBool::new(false),
-      waker: None
-    });
-
-    arc_self.waker = task::waker(arc_self.clone());
-    std::mem::forget(arc_self.clone());
-    assert_eq!(Arc::strong_count(&arc_self), 1);
-
-    arc_self
-  }
-
-  pub fn begin_poll(&self) -> bool {
-    self.waiting_for_poll.swap(false, Ordering::AcqRel);
-  }
-
-  pub fn set_default_loop_waker(&self, waker: &Waker) {
-    self.default_loop_waker.register(waker);
-  }
-
-  pub fn set_paused_loop_waker(&self, waker: &Waker) {
-    self.paused_loop_waker.register(waker);
-  }
-
-  pub fn waker(arc_self: &Arc<Self>) -> Waker {
-    task::waker(arc_self.clone)
-  }
-}
-
-impl ArcWake for DenoInspectorWaker {
-  fn wake_by_ref(arc_self: &Arc<Self>) {
-
-  }
-}
-*/
-
 /// Thread-safe state associated with a DenoInspector instance.
 struct InspectorStateInner {
   woken: bool,
-  polling: bool,
   blocked: bool,
   paused: bool,
   interrupt_requested: bool,
-  inspector: *mut DenoInspector,
+  inspector: *const DenoInspector,
   isolate_handle: v8::IsolateHandle,
   isolate_thread: thread::Thread,
   parent_waker: Option<task::Waker>,
@@ -350,7 +255,7 @@ unsafe impl Send for InspectorStateInner {}
 struct InspectorState(Mutex<Option<InspectorStateInner>>);
 
 impl InspectorState {
-  fn new_arc(state: InspectorStateInner) -> Arc<Self> {
+  fn new(state: InspectorStateInner) -> Arc<Self> {
     Arc::new(Self(Mutex::new(Some(state))))
   }
 
@@ -370,39 +275,15 @@ impl InspectorState {
   }
 }
 
-fn debug_state(label: &'static str, state: &InspectorStateInner) {
-  return;
-  let main_thread = thread::current().id() == state.isolate_thread.id();
-  eprintln!(
-    r#"{}:
-  main_thread: {:?}
-  woken: {:?}
-  polling: {:?}
-  blocked: {:?}
-  paused: {:?}
-  interrupt_requested: {:?}"#,
-    label,
-    main_thread,
-    state.woken,
-    state.polling,
-    state.blocked,
-    state.paused,
-    state.interrupt_requested
-  );
-}
-
 impl task::ArcWake for InspectorState {
   fn wake_by_ref(arc_self: &Arc<Self>) {
     arc_self.map(|state| {
-      debug_state("wake_by_ref before", state);
       state.woken = true;
       if state.blocked {
         // Wake the isolate thread.
         assert_ne!(state.isolate_thread.id(), thread::current().id());
         state.blocked = false;
         state.isolate_thread.unpark();
-      } else if state.polling {
-        // The thread is already polling, nothing further to do.
       } else {
         // Wake the main event loop.
         state.parent_waker.take().map(|w| w.wake());
@@ -410,20 +291,17 @@ impl task::ArcWake for InspectorState {
         state.interrupt_requested = state.interrupt_requested
           || state.isolate_handle.request_interrupt(
             DenoInspector::poll_interrupt,
-            state.inspector as *mut c_void,
+            state.inspector as *const c_void as *mut c_void,
           );
       }
-      debug_state("wake_by_ref after", state);
     });
   }
 }
 
 pub struct DenoInspector {
-  //inspector: v8::UniqueRef<v8::inspector::V8Inspector>,
   client: v8::inspector::V8InspectorClientBase,
-  state: Arc<InspectorState>,
-  waker: Waker,
-  handler: Pin<Box<dyn Future<Output = ()>>>,
+  waker_state: Arc<InspectorState>,
+  handler: RefCell<Pin<Box<dyn Future<Output = ()>>>>,
 }
 
 impl DenoInspector {
@@ -434,9 +312,8 @@ impl DenoInspector {
     let mut self_ = new_box_with(|address| {
       let client = v8::inspector::V8InspectorClientBase::new::<Self>();
 
-      let state = InspectorState::new_arc(InspectorStateInner {
+      let waker_state = InspectorState::new(InspectorStateInner {
         woken: false,
-        polling: false,
         blocked: false,
         paused: false,
         interrupt_requested: false,
@@ -446,41 +323,33 @@ impl DenoInspector {
         parent_waker: None,
       });
 
-      let waker = task::waker(state.clone());
+      let mut v8_inspector =
+        v8::inspector::V8Inspector::create(scope, unsafe { &mut *address });
 
-      let handler = async {
-        unimplemented!(); // Temporary placeholder.
+      let mut scope = v8::HandleScope::new(scope);
+      let scope = scope.enter();
+      if let Some(context) = scope.get_current_context() {
+        let empty_view = v8::inspector::StringView::empty();
+        v8_inspector.context_created(context, CONTEXT_GROUP_ID, &empty_view);
       }
-      .boxed_local();
+
+      let handler =
+        connections_rx.for_each_concurrent(None, move |websocket| {
+          DenoInspectorSession::new(&mut v8_inspector, websocket)
+            .unwrap_or_else(|err| {
+              eprintln!("Inspector session disconnected: {:?}", err)
+            })
+        });
+      let handler = RefCell::new(handler.boxed_local());
 
       Self {
-        //inspector,
         client,
-        state,
-        waker,
+        waker_state,
         handler,
       }
     });
 
-    let mut v8_inspector =
-      v8::inspector::V8Inspector::create(scope, &mut *self_);
-
-    let mut scope = v8::HandleScope::new(scope);
-    let scope = scope.enter();
-    if let Some(context) = scope.get_current_context() {
-      let empty_view = v8::inspector::StringView::empty();
-      v8_inspector.context_created(context, CONTEXT_GROUP_ID, &empty_view);
-    }
-
-    self_.handler = connections_rx
-      .for_each_concurrent(None, move |websocket| {
-        DenoInspectorSession::new(&mut v8_inspector, websocket).unwrap_or_else(
-          |err| eprintln!("Inspector session disconnected: {:?}", err),
-        )
-      })
-      .boxed_local();
-
-    self_.poll_impl(None);
+    self_.try_poll().expect("Inspector could not be polled");
 
     self_
   }
@@ -489,35 +358,43 @@ impl DenoInspector {
     _isolate: &mut v8::Isolate,
     self_ptr: *mut c_void,
   ) {
-    let self_ = unsafe { &mut *(self_ptr as *mut Self) };
-    let re_entry = self_
-      .state
-      .map(|state| {
-        state.interrupt_requested = false;
-        state.polling
-      })
-      .unwrap();
-    if !re_entry {
-      let _ = self_.poll_impl(None);
-    }
+    let self_ = unsafe { &*(self_ptr as *const _ as *const Self) };
+    self_.waker_state.map(|state| {
+      state.interrupt_requested = false;
+    });
+    let _ = self_.try_poll();
   }
 
-  fn poll_impl(&mut self, parent_waker: Option<&Waker>) -> Poll<()> {
-    let mut cx = Context::from_waker(&self.waker);
+  fn try_poll(&self) -> Result<Poll<()>, BorrowMutError> {
+    let Self {
+      handler,
+      waker_state,
+      ..
+    } = self;
+    // If try_borrow_mut() fails, this means we've attempted to re-enter
+    // the poll function. This is expected under certain circumstances, however
+    // if we actually went through with it it would lead to a crash.
+    let mut handler = handler.try_borrow_mut()?;
+    let poll_result = Self::do_poll(handler.as_mut(), waker_state);
+    Ok(poll_result)
+  }
+
+  fn do_poll(
+    mut handler: Pin<&mut dyn Future<Output = ()>>,
+    waker_state: &Arc<InspectorState>,
+  ) -> Poll<()> {
+    let waker_ref = task::waker_ref(&waker_state);
+    let mut cx = Context::from_waker(&waker_ref);
+
     loop {
-      self.state.map(|state| {
-        debug_state("poll loop pre-update start", state);
+      waker_state.map(|state| {
         state.woken = false;
-        state.polling = true;
-        debug_state("poll loop pre-update end", state);
       });
 
-      let result = self.handler.poll_unpin(&mut cx);
+      let result = handler.poll_unpin(&mut cx);
 
-      let (should_continue, should_block) = self
-        .state
+      let (should_continue, should_block) = waker_state
         .map(|state| {
-          debug_state("poll loop post-update start", state);
           if state.woken {
             (true, false)
           } else if state.paused {
@@ -525,15 +402,10 @@ impl DenoInspector {
             state.blocked = true;
             (true, true)
           } else {
-            state.polling = false;
-            parent_waker.map(|w| state.parent_waker.replace(w.clone()));
             (false, false)
           }
         })
         .unwrap();
-      self
-        .state
-        .map(|state| debug_state("poll loop post-update end", state));
 
       if !should_continue {
         break result;
@@ -549,14 +421,25 @@ impl Future for DenoInspector {
 
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
     let mut self_ = self.as_mut();
-    eprintln!("POLL!");
-    self_.poll_impl(Some(cx.waker()))
+    self_
+      .waker_state
+      .map(|state| {
+        let parent_waker = cx.waker();
+        match &mut state.parent_waker {
+          Some(pw) if pw.will_wake(parent_waker) => {}
+          pw => {
+            pw.replace(parent_waker.clone());
+          }
+        };
+      })
+      .unwrap();
+    self_.try_poll().expect("Inspector could not be polled")
   }
 }
 
 impl Drop for DenoInspector {
   fn drop(&mut self) {
-    self.state.drop_inspector();
+    self.waker_state.drop_inspector();
   }
 }
 
@@ -571,218 +454,31 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
 
   fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
     eprintln!("!!! run_message_loop_on_pause START");
-
     assert_eq!(context_group_id, CONTEXT_GROUP_ID);
-    let re_entry = self
-      .state
-      .map(|state| {
-        state.paused = true;
-        state.polling
-      })
-      .unwrap();
-    if !re_entry {
-      self.poll_impl(None);
-    }
-
+    self.waker_state.map(|state| state.paused = true);
+    let _ = self.try_poll();
     eprintln!("!!! run_message_loop_on_pause END");
   }
 
   fn quit_message_loop_on_pause(&mut self) {
     eprintln!("!!! quit_message_loop_on_pause");
-    self.state.map(|state| state.paused = false);
+    self.waker_state.map(|state| state.paused = false);
   }
 
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
     assert_eq!(context_group_id, CONTEXT_GROUP_ID);
   }
 }
-
-/*
-  fn poll_without_waker(&mut self) -> Poll<<Self as Future>::Output> {
-    self.interrupt_depth += 1;
-    eprintln!("+ START interrupt depth={}", self.interrupt_depth);
-    let _ = loop {
-      match self.frontend_to_inspector_rx.try_recv() {
-        Ok(msg) => self.dispatch_frontend_to_inspector_msg(msg),
-        Err(TryRecvError::Closed) => break Poll::Ready(()),
-        Err(TryRecvError::Empty) => break Poll::Pending,
-      }
-    };
-    let cx = &mut Context::from_waker(&self.interrupting_waker);
-    let r = loop {
-      match self.sessions2.poll_next_unpin(cx) {
-        Poll::Ready(Some(_)) => {}
-        _ => break Poll::Pending,
-      }
-    };
-    eprintln!("- END interrupt depth={}", self.interrupt_depth);
-    self.interrupt_depth -= 1;
-    r
-  }
-}
-
-/// DenoInspector implements a Future so that it can poll for incoming messages
-/// from the WebSocket server. Since a Worker ownes a DenoInspector, and because
-/// a Worker is a Future too, Worker::poll will call this.
-impl Future for DenoInspector {
-  type Output = ();
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let self_ = self.get_mut();
-
-    let waker = InterruptingWaker::new(&self_, cx.waker());
-    self_.interrupting_waker = waker.clone();
-    let cx = &mut Context::from_waker(&waker);
-
-    eprintln!("poll sessions2");
-    let _ = loop {
-      match self_.sessions2.poll_next_unpin(cx) {
-        Poll::Ready(Some(_)) => {}
-        _ => break (), //Poll::Pending,
-      }
-    };
-    loop {
-      match self_.frontend_to_inspector_rx.poll_recv(cx) {
-        Poll::Ready(Some(msg)) => self_.dispatch_frontend_to_inspector_msg(msg),
-        Poll::Ready(None) => break Poll::Ready(()),
-        Poll::Pending if self_.interrupted.swap(false, Ordering::AcqRel) => {}
-        Poll::Pending => break Poll::Pending,
-      }
-    }
-  }
-}
-
-impl v8::inspector::V8InspectorClientImpl for DenoInspector {
-  fn base(&self) -> &v8::inspector::V8InspectorClientBase {
-    &self.client
-  }
-
-  fn base_mut(&mut self) -> &mut v8::inspector::V8InspectorClientBase {
-    &mut self.client
-  }
-
-  fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
-    eprintln!("!!! run_message_loop_on_pause START");
-
-    assert_eq!(context_group_id, CONTEXT_GROUP_ID);
-    assert!(!self.paused);
-    self.paused = true;
-
-    // Creating a new executor and calling block_on generally causes a panic.
-    // In this case it works because the outer executor is provided by tokio
-    // and the one created here comes from the 'futures' crate, and they don't
-    // see each other.
-    let dispatch_messages_while_paused =
-      future::poll_fn(|cx| match self.poll_unpin(cx) {
-        Poll::Pending if self.paused => Poll::Pending,
-        _ => Poll::Ready(()),
-      });
-    executor::block_on(dispatch_messages_while_paused);
-
-    eprintln!("!!! run_message_loop_on_pause END");
-  }
-
-  fn quit_message_loop_on_pause(&mut self) {
-    self.paused = false;
-    eprintln!("!!! quit_message_loop_on_pause");
-  }
-
-  fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
-    assert_eq!(context_group_id, CONTEXT_GROUP_ID);
-  }
-}
-
-struct InterruptingWaker {
-  inspector_handle: DenoInspectorHandle,
-  downstream_waker: Waker,
-}
-
-impl InterruptingWaker {
-  pub fn new(
-    deno_inspector: &DenoInspector,
-    downstream_waker: &Waker,
-  ) -> std::task::Waker {
-    let w = Self {
-      inspector_handle: DenoInspectorHandle::new(deno_inspector),
-      downstream_waker: downstream_waker.clone(),
-    };
-    futures::task::waker(Arc::new(w))
-  }
-}
-
-impl futures::task::ArcWake for InterruptingWaker {
-  fn wake_by_ref(arc_self: &Arc<Self>) {
-    eprintln!("wake!");
-    arc_self.downstream_waker.wake_by_ref();
-    arc_self.inspector_handle.interrupt();
-  }
-}
-
-struct NoopWaker;
-
-impl NoopWaker {
-  pub fn new() -> std::task::Waker {
-    futures::task::waker(Arc::new(Self))
-  }
-}
-
-impl futures::task::ArcWake for NoopWaker {
-  fn wake_by_ref(_: &Arc<Self>) {}
-}
-
-#[derive(Clone)]
-struct DenoInspectorHandle {
-  deno_inspector_ptr: *mut c_void,
-  isolate_handle: v8::IsolateHandle,
-  interrupted: Arc<AtomicBool>,
-}
-
-impl DenoInspectorHandle {
-  pub fn new(deno_inspector: &DenoInspector) -> Self {
-    Self {
-      deno_inspector_ptr: deno_inspector as *const DenoInspector
-        as *const c_void as *mut c_void,
-      isolate_handle: deno_inspector.isolate_handle.clone(),
-      interrupted: deno_inspector.interrupted.clone(),
-    }
-  }
-
-  pub fn interrupt(&self) {
-    if !self.interrupted.swap(true, Ordering::AcqRel) {
-      eprintln!("Request interrupt");
-      self.isolate_handle.request_interrupt(
-        DenoInspector::poll_interrupt,
-        self.deno_inspector_ptr,
-      );
-    }
-  }
-}
-
-unsafe impl Send for DenoInspectorHandle {}
-unsafe impl Sync for DenoInspectorHandle {}
-
-fn handle_session(
-  inspector: &'_ mut v8::inspector::V8Inspector,
-  websocket: ws::WebSocket,
-) -> Pin<Box<dyn Future<Output = ()>>> {
-  let mut session = DenoInspectorSession::new(inspector, websocket);
-  session
-    .unwrap_or_else(|err| eprintln!("Debugger disconnected: {:?}", err))
-    .boxed_local()
-}
-*/
-
-type MessageResult = Result<ws::Message, warp::Error>;
 
 struct DenoInspectorSession {
   channel: v8::inspector::ChannelBase,
   session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
   // Internal channel/queue that temporarily stores messages sent by V8 to
   // the front-end, before they are sent over the websocket.
-  tx: UnboundedSender<MessageResult>,
+  tx: UnboundedSender<Result<ws::Message, warp::Error>>,
   rx: SplitStream<ws::WebSocket>,
   tx_pump: Forward<
-    UnboundedReceiver<MessageResult>,
+    UnboundedReceiver<Result<ws::Message, warp::Error>>,
     SplitSink<ws::WebSocket, ws::Message>,
   >,
 }
@@ -793,7 +489,8 @@ impl DenoInspectorSession {
     websocket: ws::WebSocket,
   ) -> Box<Self> {
     new_box_with(move |channel_address| {
-      let (mut channel_tx, mut channel_rx) = unbounded::<MessageResult>();
+      let (mut channel_tx, mut channel_rx) =
+        unbounded::<Result<ws::Message, warp::Error>>();
       let (mut websocket_tx, websocket_rx) = websocket.split();
       let mut tx_pump = channel_rx.forward(websocket_tx);
 
@@ -854,13 +551,10 @@ impl Future for DenoInspectorSession {
 
     let tx_poll = self_.tx_pump.poll_unpin(cx);
 
-    let r = match (rx_poll, tx_poll) {
+    match (rx_poll, tx_poll) {
       (Ready(r1), Ready(r2)) => Ready(r1.and(r2)),
       _ => Pending,
-    };
-
-    eprintln!("Client state: {:?}", r);
-    r
+    }
   }
 }
 
@@ -889,15 +583,6 @@ impl v8::inspector::ChannelImpl for DenoInspectorSession {
   }
 
   fn flush_protocol_notifications(&mut self) {}
-}
-
-// TODO impl From or Into
-fn v8_to_ws_msg(
-  message: v8::UniquePtr<v8::inspector::StringBuffer>,
-) -> ws::Message {
-  let mut x = message.unwrap();
-  let s = x.string().to_string();
-  ws::Message::text(s)
 }
 
 fn new_box_with<T>(new_fn: impl FnOnce(*mut T) -> T) -> Box<T> {
