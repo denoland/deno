@@ -314,7 +314,7 @@ export async function runTests({
   disableLog = false,
   reportToConsole: reportToConsole_ = true,
   onMessage = undefined,
-}: RunTestsOptions = {}): Promise<TestMessage["end"]> {
+}: RunTestsOptions = {}): Promise<TestMessage["end"] & {}> {
   const filterFn = createFilterFn(only, skip);
   const testApi = new TestApi(TEST_REGISTRY, filterFn, failFast);
 
