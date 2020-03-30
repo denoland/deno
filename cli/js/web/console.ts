@@ -13,13 +13,11 @@ type InspectOptions = Partial<{
   indentLevel: number;
 }>;
 
-// Default depth of logging nested objects
-const DEFAULT_MAX_DEPTH = 4;
-
+const DEFAULT_MAX_DEPTH = 4; // Default depth of logging nested objects
 const LINE_BREAKING_LENGTH = 80;
-
+const MAX_ITERABLE_LENGTH = 100;
+const MIN_GROUP_LENGTH = 6;
 const STR_ABBREVIATE_SIZE = 100;
-
 // Char codes
 const CHAR_PERCENT = 37; /* % */
 const CHAR_LOWERCASE_S = 115; /* s */
@@ -29,6 +27,7 @@ const CHAR_LOWERCASE_F = 102; /* f */
 const CHAR_LOWERCASE_O = 111; /* o */
 const CHAR_UPPERCASE_O = 79; /* O */
 const CHAR_LOWERCASE_C = 99; /* c */
+
 export class CSI {
   static kClear = "\x1b[1;1H";
   static kClearScreenDown = "\x1b[0J";
@@ -77,15 +76,19 @@ interface IterablePrintConfig<T> {
   displayName: string;
   delims: [string, string];
   entryHandler: (
-    entry: T,
+    entry: [unknown, T],
     ctx: ConsoleContext,
     level: number,
-    maxLevel: number
+    maxLevel: number,
+    next: () => IteratorResult<[unknown, T], unknown>
   ) => string;
+  group: boolean;
 }
-
+type IterableEntries<T> = Iterable<T> & {
+  entries(): IterableIterator<[unknown, T]>;
+};
 function createIterableString<T>(
-  value: Iterable<T>,
+  value: IterableEntries<T>,
   ctx: ConsoleContext,
   level: number,
   maxLevel: number,
@@ -97,16 +100,163 @@ function createIterableString<T>(
   ctx.add(value);
 
   const entries: string[] = [];
-  // In cases e.g. Uint8Array.prototype
-  try {
-    for (const el of value) {
-      entries.push(config.entryHandler(el, ctx, level + 1, maxLevel));
+
+  const iter = value.entries();
+  let entriesLength = 0;
+  const next = (): IteratorResult<[unknown, T], unknown> => {
+    return iter.next();
+  };
+  for (const el of iter) {
+    if (entriesLength < MAX_ITERABLE_LENGTH) {
+      entries.push(
+        config.entryHandler(el, ctx, level + 1, maxLevel, next.bind(iter))
+      );
     }
-  } catch (e) {}
+    entriesLength++;
+  }
   ctx.delete(value);
+
+  if (entriesLength > MAX_ITERABLE_LENGTH) {
+    const nmore = entriesLength - MAX_ITERABLE_LENGTH;
+    entries.push(`... ${nmore} more items`);
+  }
+
   const iPrefix = `${config.displayName ? config.displayName + " " : ""}`;
-  const iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
+
+  let iContent: string;
+  if (config.group && entries.length > MIN_GROUP_LENGTH) {
+    const groups = groupEntries(entries, level, value);
+    const initIndentation = `\n${"  ".repeat(level + 1)}`;
+    const entryIndetation = `,\n${"  ".repeat(level + 1)}`;
+    const closingIndentation = `\n${"  ".repeat(level)}`;
+
+    iContent = `${initIndentation}${groups.join(
+      entryIndetation
+    )}${closingIndentation}`;
+  } else {
+    iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
+    if (iContent.length > LINE_BREAKING_LENGTH) {
+      const initIndentation = `\n${" ".repeat(level + 1)}`;
+      const entryIndetation = `,\n${" ".repeat(level + 1)}`;
+      const closingIndentation = `\n`;
+
+      iContent = `${initIndentation}${entries.join(
+        entryIndetation
+      )}${closingIndentation}`;
+    }
+  }
+
   return `${iPrefix}${config.delims[0]}${iContent}${config.delims[1]}`;
+}
+
+// Ported from Node.js
+// Copyright Node.js contributors. All rights reserved.
+function groupEntries<T>(
+  entries: string[],
+  level: number,
+  value: Iterable<T>
+): string[] {
+  let totalLength = 0;
+  let maxLength = 0;
+  let entriesLength = entries.length;
+  if (MAX_ITERABLE_LENGTH < entriesLength) {
+    // This makes sure the "... n more items" part is not taken into account.
+    entriesLength--;
+  }
+  const separatorSpace = 2; // Add 1 for the space and 1 for the separator.
+  const dataLen = new Array(entriesLength);
+  // Calculate the total length of all output entries and the individual max
+  // entries length of all output entries. In future colors should be taken
+  // here into the account
+  for (let i = 0; i < entriesLength; i++) {
+    const len = entries[i].length;
+    dataLen[i] = len;
+    totalLength += len + separatorSpace;
+    if (maxLength < len) maxLength = len;
+  }
+  // Add two to `maxLength` as we add a single whitespace character plus a comma
+  // in-between two entries.
+  const actualMax = maxLength + separatorSpace;
+  // Check if at least three entries fit next to each other and prevent grouping
+  // of arrays that contains entries of very different length (i.e., if a single
+  // entry is longer than 1/5 of all other entries combined). Otherwise the
+  // space in-between small entries would be enormous.
+  if (
+    actualMax * 3 + (level + 1) < LINE_BREAKING_LENGTH &&
+    (totalLength / actualMax > 5 || maxLength <= 6)
+  ) {
+    const approxCharHeights = 2.5;
+    const averageBias = Math.sqrt(actualMax - totalLength / entries.length);
+    const biasedMax = Math.max(actualMax - 3 - averageBias, 1);
+    // Dynamically check how many columns seem possible.
+    const columns = Math.min(
+      // Ideally a square should be drawn. We expect a character to be about 2.5
+      // times as high as wide. This is the area formula to calculate a square
+      // which contains n rectangles of size `actualMax * approxCharHeights`.
+      // Divide that by `actualMax` to receive the correct number of columns.
+      // The added bias increases the columns for short entries.
+      Math.round(
+        Math.sqrt(approxCharHeights * biasedMax * entriesLength) / biasedMax
+      ),
+      // Do not exceed the breakLength.
+      Math.floor((LINE_BREAKING_LENGTH - (level + 1)) / actualMax),
+      // Limit the columns to a maximum of fifteen.
+      15
+    );
+    // Return with the original output if no grouping should happen.
+    if (columns <= 1) {
+      return entries;
+    }
+    const tmp = [];
+    const maxLineLength = [];
+    for (let i = 0; i < columns; i++) {
+      let lineMaxLength = 0;
+      for (let j = i; j < entries.length; j += columns) {
+        if (dataLen[j] > lineMaxLength) lineMaxLength = dataLen[j];
+      }
+      lineMaxLength += separatorSpace;
+      maxLineLength[i] = lineMaxLength;
+    }
+    let order = "padStart";
+    if (value !== undefined) {
+      for (let i = 0; i < entries.length; i++) {
+        //@ts-ignore
+        if (typeof value[i] !== "number" && typeof value[i] !== "bigint") {
+          order = "padEnd";
+          break;
+        }
+      }
+    }
+    // Each iteration creates a single line of grouped entries.
+    for (let i = 0; i < entriesLength; i += columns) {
+      // The last lines may contain less entries than columns.
+      const max = Math.min(i + columns, entriesLength);
+      let str = "";
+      let j = i;
+      for (; j < max - 1; j++) {
+        // In future, colors should be taken here into the account
+        const padding = maxLineLength[j - i];
+        //@ts-ignore
+        str += `${entries[j]}, `[order](padding, " ");
+      }
+      if (order === "padStart") {
+        const padding =
+          maxLineLength[j - i] +
+          entries[j].length -
+          dataLen[j] -
+          separatorSpace;
+        str += entries[j].padStart(padding, " ");
+      } else {
+        str += entries[j];
+      }
+      tmp.push(str);
+    }
+    if (MAX_ITERABLE_LENGTH < entries.length) {
+      tmp.push(entries[entriesLength]);
+    }
+    entries = tmp;
+  }
+  return entries;
 }
 
 function stringify(
@@ -173,8 +323,23 @@ function createArrayString(
     typeName: "Array",
     displayName: "",
     delims: ["[", "]"],
-    entryHandler: (el, ctx, level, maxLevel): string =>
-      stringifyWithQuotes(el, ctx, level + 1, maxLevel),
+    entryHandler: (entry, ctx, level, maxLevel, next): string => {
+      const [index, val] = entry as [number, unknown];
+      let i = index;
+      if (!value.hasOwnProperty(i)) {
+        i++;
+        while (!value.hasOwnProperty(i) && i < value.length) {
+          next();
+          i++;
+        }
+        const emptyItems = i - index;
+        const ending = emptyItems > 1 ? "s" : "";
+        return `<${emptyItems} empty item${ending}>`;
+      } else {
+        return stringifyWithQuotes(val, ctx, level + 1, maxLevel);
+      }
+    },
+    group: true,
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
@@ -186,12 +351,16 @@ function createTypedArrayString(
   level: number,
   maxLevel: number
 ): string {
+  const valueLength = value.length;
   const printConfig: IterablePrintConfig<unknown> = {
     typeName: typedArrayName,
-    displayName: typedArrayName,
+    displayName: `${typedArrayName}(${valueLength})`,
     delims: ["[", "]"],
-    entryHandler: (el, ctx, level, maxLevel): string =>
-      stringifyWithQuotes(el, ctx, level + 1, maxLevel),
+    entryHandler: (entry, ctx, level, maxLevel): string => {
+      const [_, val] = entry;
+      return stringifyWithQuotes(val, ctx, level + 1, maxLevel);
+    },
+    group: true,
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
@@ -206,8 +375,11 @@ function createSetString(
     typeName: "Set",
     displayName: "Set",
     delims: ["{", "}"],
-    entryHandler: (el, ctx, level, maxLevel): string =>
-      stringifyWithQuotes(el, ctx, level + 1, maxLevel),
+    entryHandler: (entry, ctx, level, maxLevel): string => {
+      const [_, val] = entry;
+      return stringifyWithQuotes(val, ctx, level + 1, maxLevel);
+    },
+    group: false,
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
@@ -218,12 +390,12 @@ function createMapString(
   level: number,
   maxLevel: number
 ): string {
-  const printConfig: IterablePrintConfig<[unknown, unknown]> = {
+  const printConfig: IterablePrintConfig<[unknown]> = {
     typeName: "Map",
     displayName: "Map",
     delims: ["{", "}"],
-    entryHandler: (el, ctx, level, maxLevel): string => {
-      const [key, val] = el;
+    entryHandler: (entry, ctx, level, maxLevel): string => {
+      const [key, val] = entry;
       return `${stringifyWithQuotes(
         key,
         ctx,
@@ -231,7 +403,9 @@ function createMapString(
         maxLevel
       )} => ${stringifyWithQuotes(val, ctx, level + 1, maxLevel)}`;
     },
+    group: false,
   };
+  //@ts-ignore
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
 
