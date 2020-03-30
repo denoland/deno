@@ -37,11 +37,11 @@ function _class(obj: unknown): string {
 }
 
 function isEOL(c: number): boolean {
-  return c === 0x0a /* LF */ || c === 0x0d /* CR */;
+  return c === 0x0a || /* LF */ c === 0x0d /* CR */;
 }
 
 function isWhiteSpace(c: number): boolean {
-  return c === 0x09 /* Tab */ || c === 0x20 /* Space */;
+  return c === 0x09 || /* Tab */ c === 0x20 /* Space */;
 }
 
 function isWsOrEol(c: number): boolean {
@@ -64,13 +64,13 @@ function isFlowIndicator(c: number): boolean {
 }
 
 function fromHexCode(c: number): number {
-  if (0x30 /* 0 */ <= c && c <= 0x39 /* 9 */) {
+  if (0x30 <= /* 0 */ c && c <= 0x39 /* 9 */) {
     return c - 0x30;
   }
 
   const lc = c | 0x20;
 
-  if (0x61 /* a */ <= lc && lc <= 0x66 /* f */) {
+  if (0x61 <= /* a */ lc && lc <= 0x66 /* f */) {
     return lc - 0x61 + 10;
   }
 
@@ -91,7 +91,7 @@ function escapedHexLen(c: number): number {
 }
 
 function fromDecimalCode(c: number): number {
-  if (0x30 /* 0 */ <= c && c <= 0x39 /* 9 */) {
+  if (0x30 <= /* 0 */ c && c <= 0x39 /* 9 */) {
     return c - 0x30;
   }
 
@@ -251,7 +251,7 @@ const directiveHandlers: DirectiveHandlers = {
       state.tagMap = {};
     }
     state.tagMap[handle] = prefix;
-  }
+  },
 };
 
 function captureSegment(
@@ -414,7 +414,7 @@ function skipSeparationSpace(
     if (allowComments && ch === 0x23 /* # */) {
       do {
         ch = state.input.charCodeAt(++state.position);
-      } while (ch !== 0x0a /* LF */ && ch !== 0x0d /* CR */ && ch !== 0);
+      } while (ch !== 0x0a && /* LF */ ch !== 0x0d && /* CR */ ch !== 0);
     }
 
     if (isEOL(ch)) {
@@ -451,7 +451,7 @@ function testDocumentSeparator(state: LoaderState): boolean {
   // Condition state.position === state.lineStart is tested
   // in parent on each call, for efficiency. No needs to test here again.
   if (
-    (ch === 0x2d /* - */ || ch === 0x2e) /* . */ &&
+    (ch === 0x2d || /* - */ ch === 0x2e) /* . */ &&
     ch === state.input.charCodeAt(_position + 1) &&
     ch === state.input.charCodeAt(_position + 2)
   ) {
@@ -503,7 +503,7 @@ function readPlainScalar(
   }
 
   let following: number;
-  if (ch === 0x3f /* ? */ || ch === 0x2d /* - */) {
+  if (ch === 0x3f || /* ? */ ch === 0x2d /* - */) {
     following = state.input.charCodeAt(state.position + 1);
 
     if (
@@ -869,7 +869,7 @@ function readBlockScalar(state: LoaderState, nodeIndent: number): boolean {
   while (ch !== 0) {
     ch = state.input.charCodeAt(++state.position);
 
-    if (ch === 0x2b /* + */ || ch === 0x2d /* - */) {
+    if (ch === 0x2b || /* + */ ch === 0x2d /* - */) {
       if (CHOMPING_CLIP === chomping) {
         chomping = ch === 0x2b /* + */ ? CHOMPING_KEEP : CHOMPING_STRIP;
       } else {
@@ -1103,7 +1103,7 @@ function readBlockMapping(
     // Explicit notation case. There are two separate blocks:
     // first for the key (denoted by "?") and second for the value (denoted by ":")
     //
-    if ((ch === 0x3f /* ? */ || ch === 0x3a) /* : */ && isWsOrEol(following)) {
+    if ((ch === 0x3f || /* ? */ ch === 0x3a) && /* : */ isWsOrEol(following)) {
       if (ch === 0x3f /* ? */) {
         if (atExplicitKey) {
           storeMappingPair(

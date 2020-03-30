@@ -19,7 +19,7 @@ const tableChars = {
   rightMiddle: "┤",
   left: "│ ",
   right: " │",
-  middle: " │ "
+  middle: " │ ",
 };
 
 const colorRegExp = /\u001b\[\d\d?m/g;

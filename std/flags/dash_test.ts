@@ -22,7 +22,7 @@ Deno.test(function moveArgsAfterDoubleDashIntoOwnArray(): void {
     {
       name: "John",
       _: ["before"],
-      "--": ["after"]
+      "--": ["after"],
     }
   );
 });

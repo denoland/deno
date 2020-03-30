@@ -3,7 +3,7 @@ import {
   unitTest,
   assert,
   assertEquals,
-  assertStrContains
+  assertStrContains,
 } from "./test_util.ts";
 
 unitTest(function filesStdioFileDescriptors(): void {
@@ -46,15 +46,17 @@ unitTest(async function readerToAsyncIterator(): Promise<void> {
   const encoder = new TextEncoder();
 
   class TestReader implements Deno.Reader {
-    private offset = 0;
-    private buf = new Uint8Array(encoder.encode(this.s));
+    #offset = 0;
+    #buf: Uint8Array;
 
-    constructor(private readonly s: string) {}
+    constructor(s: string) {
+      this.#buf = new Uint8Array(encoder.encode(s));
+    }
 
     read(p: Uint8Array): Promise<number | Deno.EOF> {
-      const n = Math.min(p.byteLength, this.buf.byteLength - this.offset);
-      p.set(this.buf.slice(this.offset, this.offset + n));
-      this.offset += n;
+      const n = Math.min(p.byteLength, this.#buf.byteLength - this.#offset);
+      p.set(this.#buf.slice(this.#offset, this.#offset + n));
+      this.#offset += n;
 
       if (n === 0) {
         return Promise.resolve(Deno.EOF);
@@ -76,14 +78,14 @@ unitTest(async function readerToAsyncIterator(): Promise<void> {
 
 unitTest(
   {
-    perms: { read: true, write: true }
+    perms: { read: true, write: true },
   },
   function openSyncMode(): void {
     const path = Deno.makeTempDirSync() + "/test_openSync.txt";
     const file = Deno.openSync(path, {
       write: true,
       createNew: true,
-      mode: 0o626
+      mode: 0o626,
     });
     file.close();
     const pathInfo = Deno.statSync(path);
@@ -95,14 +97,14 @@ unitTest(
 
 unitTest(
   {
-    perms: { read: true, write: true }
+    perms: { read: true, write: true },
   },
   async function openMode(): Promise<void> {
     const path = (await Deno.makeTempDir()) + "/test_open.txt";
     const file = await Deno.open(path, {
       write: true,
       createNew: true,
-      mode: 0o626
+      mode: 0o626,
     });
     file.close();
     const pathInfo = Deno.statSync(path);
@@ -198,7 +200,7 @@ unitTest(
     const w = {
       write: true,
       truncate: true,
-      create: true
+      create: true,
     };
     const file = await Deno.open(filename, w);
 

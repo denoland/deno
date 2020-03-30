@@ -1,5 +1,7 @@
 // Derived from https://github.com/vadimg/js_bintrees. MIT Licensed.
 
+import { assert } from "./util.ts";
+
 class RBNode<T> {
   public left: this | null;
   public right: this | null;
@@ -24,16 +26,18 @@ class RBNode<T> {
   }
 }
 
-class RBTree<T> {
-  private root: RBNode<T> | null;
+export class RBTree<T> {
+  #comparator: (a: T, b: T) => number;
+  #root: RBNode<T> | null;
 
-  constructor(private comparator: (a: T, b: T) => number) {
-    this.root = null;
+  constructor(comparator: (a: T, b: T) => number) {
+    this.#comparator = comparator;
+    this.#root = null;
   }
 
-  // returns null if tree is empty
+  /** Returns `null` if tree is empty. */
   min(): T | null {
-    let res = this.root;
+    let res = this.#root;
     if (res === null) {
       return null;
     }
@@ -43,11 +47,11 @@ class RBTree<T> {
     return res.data;
   }
 
-  // returns node data if found, null otherwise
+  /** Returns node `data` if found, `null` otherwise. */
   find(data: T): T | null {
-    let res = this.root;
+    let res = this.#root;
     while (res !== null) {
-      const c = this.comparator(data, res.data!);
+      const c = this.#comparator(data, res.data);
       if (c === 0) {
         return res.data;
       } else {
@@ -57,13 +61,13 @@ class RBTree<T> {
     return null;
   }
 
-  // returns true if inserted, false if duplicate
+  /** returns `true` if inserted, `false` if duplicate. */
   insert(data: T): boolean {
     let ret = false;
 
-    if (this.root === null) {
+    if (this.#root === null) {
       // empty tree
-      this.root = new RBNode(data);
+      this.#root = new RBNode(data);
       ret = true;
     } else {
       const head = new RBNode((null as unknown) as T); // fake tree root
@@ -75,8 +79,8 @@ class RBTree<T> {
       let gp = null; // grandparent
       let ggp = head; // grand-grand-parent
       let p: RBNode<T> | null = null; // parent
-      let node: RBNode<T> | null = this.root;
-      ggp.right = this.root;
+      let node: RBNode<T> | null = this.#root;
+      ggp.right = this.#root;
 
       // search down
       while (true) {
@@ -96,14 +100,15 @@ class RBTree<T> {
         if (isRed(node) && isRed(p)) {
           const dir2 = ggp.right === gp;
 
+          assert(gp);
           if (node === p!.getChild(last)) {
-            ggp.setChild(dir2, singleRotate(gp!, !last));
+            ggp.setChild(dir2, singleRotate(gp, !last));
           } else {
-            ggp.setChild(dir2, doubleRotate(gp!, !last));
+            ggp.setChild(dir2, doubleRotate(gp, !last));
           }
         }
 
-        const cmp = this.comparator(node.data!, data);
+        const cmp = this.#comparator(node.data, data);
 
         // stop if found
         if (cmp === 0) {
@@ -123,24 +128,24 @@ class RBTree<T> {
       }
 
       // update root
-      this.root = head.right;
+      this.#root = head.right;
     }
 
     // make root black
-    this.root!.red = false;
+    this.#root!.red = false;
 
     return ret;
   }
 
-  // returns true if removed, false if not found
+  /** Returns `true` if removed, `false` if not found. */
   remove(data: T): boolean {
-    if (this.root === null) {
+    if (this.#root === null) {
       return false;
     }
 
     const head = new RBNode((null as unknown) as T); // fake tree root
     let node = head;
-    node.right = this.root;
+    node.right = this.#root;
     let p = null; // parent
     let gp = null; // grand parent
     let found = null; // found item
@@ -154,7 +159,7 @@ class RBTree<T> {
       p = node;
       node = node.getChild(dir)!;
 
-      const cmp = this.comparator(data, node.data);
+      const cmp = this.#comparator(data, node.data);
 
       dir = cmp > 0;
 
@@ -181,7 +186,8 @@ class RBTree<T> {
               sibling.red = true;
               node.red = true;
             } else {
-              const dir2 = gp!.right === p;
+              assert(gp);
+              const dir2 = gp.right === p;
 
               if (isRed(sibling.getChild(last))) {
                 gp!.setChild(dir2, doubleRotate(p, last));
@@ -190,11 +196,14 @@ class RBTree<T> {
               }
 
               // ensure correct coloring
-              const gpc = gp!.getChild(dir2)!;
+              const gpc = gp.getChild(dir2);
+              assert(gpc);
               gpc.red = true;
               node.red = true;
-              gpc.left!.red = false;
-              gpc.right!.red = false;
+              assert(gpc.left);
+              gpc.left.red = false;
+              assert(gpc.right);
+              gpc.right.red = false;
             }
           }
         }
@@ -204,13 +213,14 @@ class RBTree<T> {
     // replace and remove if found
     if (found !== null) {
       found.data = node.data;
-      p!.setChild(p!.right === node, node.getChild(node.left === null));
+      assert(p);
+      p.setChild(p.right === node, node.getChild(node.left === null));
     }
 
     // update root and make it black
-    this.root = head.right;
-    if (this.root !== null) {
-      this.root.red = false;
+    this.#root = head.right;
+    if (this.#root !== null) {
+      this.#root.red = false;
     }
 
     return found !== null;
@@ -222,7 +232,8 @@ function isRed<T>(node: RBNode<T> | null): boolean {
 }
 
 function singleRotate<T>(root: RBNode<T>, dir: boolean | number): RBNode<T> {
-  const save = root.getChild(!dir)!;
+  const save = root.getChild(!dir);
+  assert(save);
 
   root.setChild(!dir, save.getChild(dir));
   save.setChild(dir, root);
@@ -237,5 +248,3 @@ function doubleRotate<T>(root: RBNode<T>, dir: boolean | number): RBNode<T> {
   root.setChild(!dir, singleRotate(root.getChild(!dir)!, !dir));
   return singleRotate(root, dir);
 }
-
-export { RBTree };

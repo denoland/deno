@@ -39,7 +39,7 @@ export function parseTypeDirectives(
     directives.push({
       fileName,
       pos,
-      end: pos + matchString.length
+      end: pos + matchString.length,
     });
   }
   if (!directives.length) {
@@ -60,7 +60,7 @@ export function parseTypeDirectives(
       const target: FileReference = {
         fileName: targetFileName,
         pos: targetPos,
-        end: targetPos + targetFileName.length
+        end: targetPos + targetFileName.length,
       };
       results.set(target, fileName);
     }

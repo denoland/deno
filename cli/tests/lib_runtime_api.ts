@@ -1,10 +1,10 @@
 const [errors, program] = await Deno.compile(
   "main.ts",
   {
-    "main.ts": `document.getElementById("foo");`
+    "main.ts": `document.getElementById("foo");`,
   },
   {
-    lib: ["dom", "esnext"]
+    lib: ["dom", "esnext"],
   }
 );
 

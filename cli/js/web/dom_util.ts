@@ -2,6 +2,23 @@
 // Utility functions for DOM nodes
 import * as domTypes from "./dom_types.ts";
 
+export function getDOMStringList(arr: string[]): domTypes.DOMStringList {
+  Object.defineProperties(arr, {
+    contains: {
+      value(searchElement: string): boolean {
+        return arr.includes(searchElement);
+      },
+      enumerable: true,
+    },
+    item: {
+      value(idx: number): string | null {
+        return idx in arr ? arr[idx] : null;
+      },
+    },
+  });
+  return (arr as unknown) as domTypes.DOMStringList;
+}
+
 export function isNode(nodeImpl: domTypes.EventTarget | null): boolean {
   return Boolean(nodeImpl && "nodeType" in nodeImpl);
 }

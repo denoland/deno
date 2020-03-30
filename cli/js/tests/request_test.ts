@@ -6,8 +6,8 @@ unitTest(function fromInit(): void {
     body: "ahoyhoy",
     method: "POST",
     headers: {
-      "test-header": "value"
-    }
+      "test-header": "value",
+    },
   });
 
   // @ts-ignore
@@ -34,7 +34,7 @@ unitTest(async function cloneRequestBodyStream(): Promise<void> {
   // hack to get a stream
   const stream = new Request("", { body: "a test body" }).body;
   const r1 = new Request("https://example.com", {
-    body: stream
+    body: stream,
   });
 
   const r2 = r1.clone();

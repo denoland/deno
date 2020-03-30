@@ -10,13 +10,13 @@ console.log(
         "a",
         "b",
         {
-          a: false
+          a: false,
         },
         {
-          a: false
-        }
-      ]
+          a: false,
+        },
+      ],
     },
-    test: "foobar"
+    test: "foobar",
   })
 );

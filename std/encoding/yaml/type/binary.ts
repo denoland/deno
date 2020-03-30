@@ -135,5 +135,5 @@ export const binary = new Type("tag:yaml.org,2002:binary", {
   kind: "scalar",
   predicate: isBinary,
   represent: representYamlBinary,
-  resolve: resolveYamlBinary
+  resolve: resolveYamlBinary,
 });

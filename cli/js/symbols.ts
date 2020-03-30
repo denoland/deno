@@ -4,5 +4,5 @@ import { customInspect } from "./web/console.ts";
 
 export const symbols = {
   internal: internalSymbol,
-  customInspect
+  customInspect,
 };

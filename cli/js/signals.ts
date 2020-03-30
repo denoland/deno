@@ -34,7 +34,7 @@ enum LinuxSignal {
   SIGWINCH = 28,
   SIGIO = 29,
   SIGPWR = 30,
-  SIGSYS = 31
+  SIGSYS = 31,
 }
 
 // From `kill -l`
@@ -69,7 +69,7 @@ enum MacOSSignal {
   SIGWINCH = 28,
   SIGINFO = 29,
   SIGUSR1 = 30,
-  SIGUSR2 = 31
+  SIGUSR2 = 31,
 }
 
 export const Signal: { [key: string]: number } = {};
@@ -122,39 +122,40 @@ export const signals = {
   },
   windowChange(): SignalStream {
     return signal(Signal.SIGWINCH);
-  }
+  },
 };
 
 export class SignalStream
   implements AsyncIterableIterator<void>, PromiseLike<void> {
-  private rid: number;
-  private pollingPromise: Promise<boolean> = Promise.resolve(false);
-  private disposed = false;
+  #disposed = false;
+  #pollingPromise: Promise<boolean> = Promise.resolve(false);
+  #rid: number;
+
   constructor(signo: number) {
-    this.rid = bindSignal(signo).rid;
-    this.loop();
+    this.#rid = bindSignal(signo).rid;
+    this.#loop();
   }
 
-  private async pollSignal(): Promise<boolean> {
-    const res = await pollSignal(this.rid);
+  #pollSignal = async (): Promise<boolean> => {
+    const res = await pollSignal(this.#rid);
     return res.done;
-  }
+  };
 
-  private async loop(): Promise<void> {
+  #loop = async (): Promise<void> => {
     do {
-      this.pollingPromise = this.pollSignal();
-    } while (!(await this.pollingPromise) && !this.disposed);
-  }
+      this.#pollingPromise = this.#pollSignal();
+    } while (!(await this.#pollingPromise) && !this.#disposed);
+  };
 
   then<T, S>(
     f: (v: void) => T | Promise<T>,
     g?: (v: Error) => S | Promise<S>
   ): Promise<T | S> {
-    return this.pollingPromise.then((_): void => {}).then(f, g);
+    return this.#pollingPromise.then(() => {}).then(f, g);
   }
 
   async next(): Promise<IteratorResult<void>> {
-    return { done: await this.pollingPromise, value: undefined };
+    return { done: await this.#pollingPromise, value: undefined };
   }
 
   [Symbol.asyncIterator](): AsyncIterableIterator<void> {
@@ -162,10 +163,10 @@ export class SignalStream
   }
 
   dispose(): void {
-    if (this.disposed) {
+    if (this.#disposed) {
       throw new Error("The stream has already been disposed.");
     }
-    this.disposed = true;
-    unbindSignal(this.rid);
+    this.#disposed = true;
+    unbindSignal(this.#rid);
   }
 }
