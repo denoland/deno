@@ -213,7 +213,10 @@ function serializeTestMessage(message: Deno.TestMessage): string {
     },
     end: message.end && {
       ...message.end,
-      errors: message.end.errors.map(([n, e]) => [n, e.stack]),
+      results: message.end.results.map((result) => ({
+        ...result,
+        error: result.error?.stack,
+      })),
     },
   });
 }

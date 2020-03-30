@@ -68,10 +68,8 @@ pub fn render_test_file(modules: Vec<Url>, fail_fast: bool) -> String {
     test_file.push_str(&format!("import \"{}\";\n", module.to_string()));
   }
 
-  let run_tests_cmd = format!(
-    "Deno.runTests({{ failFast: {} }});\n",
-    fail_fast
-  );
+  let run_tests_cmd =
+    format!("Deno.runTests({{ failFast: {} }});\n", fail_fast);
   test_file.push_str(&run_tests_cmd);
 
   test_file

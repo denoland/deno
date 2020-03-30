@@ -53,7 +53,7 @@ declare namespace Deno {
       passed: number;
       failed: number;
       duration: number;
-      errors: Array<[string, Error]>;
+      results: Array<TestMessage["testEnd"] & {}>;
     };
   }
 
@@ -78,7 +78,9 @@ declare namespace Deno {
   }
 
   /** Run registered tests and iterate through messages. */
-  export function runTests(opts?: RunTestsOptions): Promise<TestMessage["end"]> & {};
+  export function runTests(
+    opts?: RunTestsOptions
+  ): Promise<TestMessage["end"]> & {};
 
   /** Returns an array containing the 1, 5, and 15 minute load averages. The
    * load average is a measure of CPU and IO utilization of the last one, five,

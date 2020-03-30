@@ -142,7 +142,7 @@ export interface TestMessage {
     passed: number;
     failed: number;
     duration: number;
-    errors: Array<[string, Error]>;
+    results: Array<TestMessage["testEnd"] & {}>;
   };
 }
 
@@ -180,18 +180,19 @@ function reportToConsole(message: TestMessage): void {
         break;
     }
   } else if (message.end != null) {
-    if (message.end.errors.length > 0) {
+    const failures = message.end.results.filter((m) => m.error != null);
+    if (failures.length > 0) {
       log(`\nfailures:\n`);
 
-      for (const [name, error] of message.end.errors) {
+      for (const { name, error } of failures) {
         log(name);
-        log(stringifyArgs([error]));
+        log(stringifyArgs([error!]));
         log("");
       }
 
       log(`failures:\n`);
 
-      for (const [name] of message.end.errors) {
+      for (const { name } of failures) {
         log(`\t${name}`);
       }
     }
@@ -231,10 +232,10 @@ class TestApi {
   async *[Symbol.asyncIterator](): AsyncIterator<TestMessage> {
     yield { start: { tests: this.testsToRun } };
 
-    const errors: Array<[string, Error]> = [];
+    const results: Array<TestMessage["testEnd"] & {}> = [];
     const suiteStart = +new Date();
     for (const test of this.testsToRun) {
-      const endMessage: Partial<TestMessage["testEnd"]> = {
+      const endMessage: Partial<TestMessage["testEnd"] & {}> = {
         name: test.name,
         duration: 0,
       };
@@ -251,12 +252,11 @@ class TestApi {
         } catch (err) {
           endMessage.status = "failed";
           endMessage.error = err;
-          errors.push([test.name, err]);
           this.stats.failed++;
-        } finally {
-          endMessage.duration = +new Date() - start;
         }
+        endMessage.duration = +new Date() - start;
       }
+      results.push(endMessage as TestMessage["testEnd"] & {});
       yield { testEnd: endMessage as TestMessage["testEnd"] };
       if (this.failFast && endMessage.error != null) {
         break;
@@ -265,7 +265,7 @@ class TestApi {
 
     const duration = +new Date() - suiteStart;
 
-    yield { end: { ...this.stats, duration, errors } };
+    yield { end: { ...this.stats, duration, results } };
   }
 }
 
