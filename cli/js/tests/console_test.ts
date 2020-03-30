@@ -580,6 +580,27 @@ unitTest(function consoleTestStringifyIterable() {
   );
 });
 
+unitTest(async function consoleTestStringifyPromises(): Promise<void> {
+  const pendingPromise = new Promise((_res, _rej) => {});
+  assertEquals(stringify(pendingPromise), "Promise { <pending> }");
+
+  const resolvedPromise = new Promise((res, _rej) => {
+    res("Resolved!");
+  });
+  assertEquals(stringify(resolvedPromise), `Promise { "Resolved!" }`);
+
+  let rejectedPromise;
+  try {
+    rejectedPromise = new Promise((_, rej) => {
+      rej(Error("Whoops"));
+    });
+    await rejectedPromise;
+  } catch (err) {}
+  const strLines = stringify(rejectedPromise).split("\n");
+  assertEquals(strLines[0], "Promise {");
+  assertEquals(strLines[1], " <rejected> Error: Whoops");
+});
+
 unitTest(function consoleTestWithCustomInspector(): void {
   class A {
     [customInspect](): string {

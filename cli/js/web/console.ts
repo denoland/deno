@@ -4,6 +4,7 @@ import { TextEncoder } from "./text_encoding.ts";
 import { File, stdout } from "../files.ts";
 import { cliTable } from "./console_table.ts";
 import { exposeForTest } from "../internals.ts";
+import { PromiseState } from "./promise.ts";
 
 type ConsoleContext = Set<unknown>;
 type InspectOptions = Partial<{
@@ -27,6 +28,8 @@ const CHAR_LOWERCASE_F = 102; /* f */
 const CHAR_LOWERCASE_O = 111; /* o */
 const CHAR_UPPERCASE_O = 79; /* O */
 const CHAR_LOWERCASE_C = 99; /* c */
+
+const PROMISE_STRING_BASE_LENGTH = 12;
 
 export class CSI {
   static kClear = "\x1b[1;1H";
@@ -442,7 +445,34 @@ function createNumberWrapperString(value: Number): string {
 
 /* eslint-enable @typescript-eslint/ban-types */
 
-// TODO: Promise, requires v8 bindings to get info
+function createPromiseString(
+  value: Promise<unknown>,
+  ctx: ConsoleContext,
+  level: number,
+  maxLevel: number
+): string {
+  const [state, result] = Deno.core.getPromiseDetails(value);
+
+  if (state === PromiseState.Pending) {
+    return "Promise { <pending> }";
+  }
+
+  const prefix = state === PromiseState.Fulfilled ? "" : "<rejected> ";
+
+  const str = `${prefix}${stringifyWithQuotes(
+    result,
+    ctx,
+    level + 1,
+    maxLevel
+  )}`;
+
+  if (str.length + PROMISE_STRING_BASE_LENGTH > LINE_BREAKING_LENGTH) {
+    return `Promise {\n${" ".repeat(level + 1)}${str}\n}`;
+  }
+
+  return `Promise { ${str} }`;
+}
+
 // TODO: Proxy
 
 function createRawObjectString(
@@ -531,6 +561,8 @@ function createObjectString(
     return createBooleanWrapperString(value);
   } else if (value instanceof String) {
     return createStringWrapperString(value);
+  } else if (value instanceof Promise) {
+    return createPromiseString(value, ...args);
   } else if (value instanceof RegExp) {
     return createRegExpString(value);
   } else if (value instanceof Date) {
