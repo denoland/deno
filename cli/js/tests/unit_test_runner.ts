@@ -69,6 +69,7 @@ async function workerRunnerMain(
   await Deno.runTests({
     exitOnFail: false,
     only: filter,
+    reportToConsole: false,
     onMessage: reportToConn.bind(null, conn),
   });
 }
@@ -295,10 +296,7 @@ async function main(): Promise<void> {
 
   // Running tests matching current process permissions
   await registerUnitTests();
-  await Deno.runTests({
-    only: filter,
-    reportToConsole: true,
-  });
+  await Deno.runTests({ only: filter });
 }
 
 main();

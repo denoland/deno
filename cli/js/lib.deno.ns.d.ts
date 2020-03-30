@@ -71,7 +71,7 @@ declare namespace Deno {
     skip?: string | RegExp;
     /** Disable logging of the results. Defaults to `false`. */
     disableLog?: boolean;
-    /** If true, report results to the console as is done for `deno test`. Defaults to `false`. */
+    /** If true, report results to the console as is done for `deno test`. Defaults to `true`. */
     reportToConsole?: boolean;
     /** Called for each message received from the test run. */
     onMessage?: (message: TestMessage) => void | Promise<void>;

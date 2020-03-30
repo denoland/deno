@@ -236,7 +236,6 @@ export async function runTestModules({
     only,
     skip,
     disableLog,
-    reportToConsole: true,
   });
 }
 

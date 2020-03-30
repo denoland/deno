@@ -312,7 +312,7 @@ export async function runTests({
   only = undefined,
   skip = undefined,
   disableLog = false,
-  reportToConsole: reportToConsole_ = false,
+  reportToConsole: reportToConsole_ = true,
   onMessage = undefined,
 }: RunTestsOptions = {}): Promise<TestMessage["end"]> {
   const filterFn = createFilterFn(only, skip);
