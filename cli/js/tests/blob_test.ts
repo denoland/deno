@@ -59,4 +59,7 @@ unitTest(function nativeEndLine(): void {
   assertEquals(blob.size, Deno.build.os === "win" ? 12 : 11);
 });
 
-// TODO(qti3e) Test the stored data in a Blob after implementing FileReader API.
+unitTest(async function blobText(): void {
+  const blob = new Blob(["Hello World"]);
+  assertEquals(await blob.text(), "Hello World");
+});
