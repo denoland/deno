@@ -178,3 +178,14 @@ test({
     assertEquals(m.get("Content-Disposition"), 'form-data; name="test"');
   },
 });
+
+test({
+  name: "[textproto] #4521 issue",
+  async fn() {
+    const input = "abcdefghijklmnopqrstuvwxyz";
+    const bufSize = 25;
+    const tp = new TextProtoReader(new BufReader(stringsReader(input), bufSize));
+    const line = await tp.readLine();
+    assertEquals(line, input);
+  },
+});
