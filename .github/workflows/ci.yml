@@ -163,26 +163,17 @@ jobs:
         if: startsWith(matrix.config.os, 'ubuntu') && matrix.config.kind == 'test_release'
         run: |
           cd target/release
-          # New filename
           zip -r deno-x86_64-unknown-linux-gnu.zip deno
-          # Old filename (remove once deno_install updated)
-          gzip -f -S _linux_x64.gz deno
 
       - name: Pre-release (mac)
         if: startsWith(matrix.config.os, 'macOS') && matrix.config.kind == 'test_release'
         run: |
           cd target/release
-          # New filename
           zip -r deno-x86_64-apple-darwin.zip deno
-          # Old filename (remove once deno_install updated)
-          gzip -f -S _osx_x64.gz deno
 
       - name: Pre-release (windows)
         if: startsWith(matrix.config.os, 'windows') && matrix.config.kind == 'test_release'
         run: |
-          # Old filename (remove once deno_install updated)
-          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno_win_x64.zip
-          # New filename
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
 
       - name: Release
@@ -192,11 +183,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           files: |
-            # Old filenames (remove once deno_install updated)
-            target/release/deno_win_x64.zip
-            target/release/deno_linux_x64.gz
-            target/release/deno_osx_x64.gz
-            # New filenames
             target/release/deno-x86_64-pc-windows-msvc.zip
             target/release/deno-x86_64-unknown-linux-gnu.zip
             target/release/deno-x86_64-apple-darwin.zip
