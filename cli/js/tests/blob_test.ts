@@ -34,7 +34,7 @@ unitTest(function blobSlice(): void {
 
 unitTest(function blobInvalidType(): void {
   const blob = new Blob(["foo"], {
-    type = "\u0521",
+    type: "\u0521",
   });
 
   assertEquals(blob.type, "");
