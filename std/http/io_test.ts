@@ -507,37 +507,58 @@ test({
   },
 });
 
-const writeRequestCases: Array<[string, ClientRequest]> = [
-  [
-    "request_get",
-    {
+const writeRequestCases: Array<{
+  title: string;
+  exp: string[];
+  req: ClientRequest;
+  ignore?: boolean;
+}> = [
+  {
+    title: "request_get",
+    exp: [
+      "GET /index.html?deno=land&msg=gogo HTTP/1.1",
+      "content-type: text/plain",
+      "host: deno.land",
+      "\r\n",
+    ],
+    req: {
       url: "https://deno.land/index.html?deno=land&msg=gogo",
       method: "GET",
       headers: new Headers({
         "content-type": "text/plain",
       }),
     },
-  ],
-  [
-    "request_get_capital",
-    {
-      url: "https://deno.land/About/Index.html?deno=land&msg=gogo",
+  },
+  // FIXME (keroxp)
+  {
+    title: "request_get_encoded",
+    exp: [
+      "GET /%F0%9F%A6%96?q=%F0%9F%8E%89 HTTP/1.1",
+      "content-type: text/plain",
+      "host: deno.land",
+      "\r\n",
+    ],
+    req: {
+      url: "https://deno.land/🦖?q=🎉",
       method: "GET",
       headers: new Headers({
         "content-type": "text/plain",
       }),
     },
-  ],
-  // ["request_get_encoded", {
-  //   url: "https://deno.land/でのくに?deno=🦕",
-  //   method: "GET",
-  //   headers: new Headers({
-  //     "content-type": "text/plain"
-  //   })
-  // }],
-  [
-    "request_post",
-    {
+    // FIXME(keroxp)
+    ignore: true,
+  },
+  {
+    title: "request_post",
+    exp: [
+      "POST /index.html HTTP/1.1",
+      "content-type: text/plain",
+      "host: deno.land",
+      "content-length: 69",
+      "",
+      "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio",
+    ],
+    req: {
       url: "https://deno.land/index.html",
       method: "POST",
       headers: new Headers({
@@ -546,10 +567,21 @@ const writeRequestCases: Array<[string, ClientRequest]> = [
       body:
         "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio",
     },
-  ],
-  [
-    "request_post_chunked",
-    {
+  },
+  {
+    title: "request_post_chunked",
+    exp: [
+      "POST /index.html HTTP/1.1",
+      "content-type: text/plain",
+      "transfer-encoding: chunked",
+      "host: deno.land",
+      "",
+      "45",
+      "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio",
+      "0",
+      "\r\n",
+    ],
+    req: {
       url: "https://deno.land/index.html",
       method: "POST",
       headers: new Headers({
@@ -559,10 +591,25 @@ const writeRequestCases: Array<[string, ClientRequest]> = [
       body:
         "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio",
     },
-  ],
-  [
-    "request_post_chunked_trailers",
-    {
+  },
+  {
+    title: "request_post_chunked_trailers",
+    exp: [
+      "POST /index.html HTTP/1.1",
+      "content-type: text/plain",
+      "transfer-encoding: chunked",
+      "trailer: x-deno, x-node",
+      "host: deno.land",
+      "",
+      "45",
+      "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio",
+      "0",
+      "",
+      "x-deno: land",
+      "x-node: js",
+      "\r\n",
+    ],
+    req: {
       url: "https://deno.land/index.html",
       method: "POST",
       headers: new Headers({
@@ -578,17 +625,17 @@ const writeRequestCases: Array<[string, ClientRequest]> = [
           "x-node": "js",
         }),
     },
-  ],
+  },
 ];
 
-for (const [file, req] of writeRequestCases) {
+for (const { title, exp, req, ignore } of writeRequestCases) {
   test({
-    name: `[http/io] writeRequest ${file}`,
+    name: `[http/io] writeRequest ${title}`,
+    ignore,
     async fn() {
       const dest = new Deno.Buffer();
       await writeRequest(dest, req);
-      const exp = decode(await Deno.readFile(`http/testdata/${file}.txt`));
-      assertEquals(decode(dest.bytes()), exp);
+      assertEquals(dest.toString(), exp.join("\r\n"));
     },
   });
 }

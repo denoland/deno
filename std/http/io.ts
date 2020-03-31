@@ -456,7 +456,7 @@ export async function writeRequest(
     await bufw.flush();
   }
   if (req.trailers) {
-    writeTrailers(bufw, headers, await req.trailers());
+    await writeTrailers(bufw, headers, await req.trailers());
   }
 }
 
