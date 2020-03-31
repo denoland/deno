@@ -17,8 +17,8 @@ export function mockConn(base: Partial<Deno.Conn> = {}): Deno.Conn {
     read: (): Promise<number | Deno.EOF> => {
       return Promise.resolve(0);
     },
-    write: (): Promise<number> => {
-      return Promise.resolve(-1);
+    write: (p: Uint8Array): Promise<number> => {
+      return Promise.resolve(p.length);
     },
     close: (): void => {},
     ...base,
