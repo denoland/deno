@@ -1,15 +1,21 @@
 // Test ported from Golang
 // https://github.com/golang/go/blob/2cc15b1/src/encoding/csv/reader_test.go
+// Copyright 2011 The Go Authors. All rights reserved. BSD license.
+// https://github.com/golang/go/blob/master/LICENSE
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { assertEquals, assert } from "../testing/asserts.ts";
-import { readMatrix, parse } from "./csv.ts";
+import {
+  readMatrix,
+  parse,
+  ERR_BARE_QUOTE,
+  ERR_QUOTE,
+  ERR_INVALID_DELIM,
+  ERR_FIELD_COUNT,
+} from "./csv.ts";
 import { StringReader } from "../io/readers.ts";
 import { BufReader } from "../io/bufio.ts";
 
-const ErrInvalidDelim = "Invalid Delimiter";
-const ErrFieldCount = "wrong number of fields";
-const ErrBareQuote = 'bare " in non-quoted-field';
-
-// TODO(zekth): Activate remaining tests
 const testCases = [
   {
     Name: "Simple",
@@ -43,7 +49,6 @@ zzz,yyy,xxx`,
       ["a,a", `bbb`, "ccc"],
       ["zzz", "yyy", "xxx"],
     ],
-    ignore: true,
   },
   {
     Name: "NoEOLTest",
@@ -62,8 +67,7 @@ zzz,yyy,xxx`,
 line","one line","three
 line
 field"`,
-    Output: [["two\nline"], ["one line"], ["three\nline\nfield"]],
-    ignore: true,
+    Output: [["two\nline", "one line", "three\nline\nfield"]],
   },
   {
     Name: "BlankLine",
@@ -129,7 +133,7 @@ field"`,
   {
     Name: "BadDoubleQuotes",
     Input: `a""b,c`,
-    Error: ErrBareQuote,
+    Error: ERR_BARE_QUOTE,
     // Error: &ParseError{StartLine: 1, Line: 1, Column: 1, Err: ErrBareQuote},
   },
   {
@@ -141,23 +145,23 @@ field"`,
   {
     Name: "BadBareQuote",
     Input: `a "word","b"`,
-    Error: ErrBareQuote,
+    Error: ERR_BARE_QUOTE,
     // &ParseError{StartLine: 1, Line: 1, Column: 2, Err: ErrBareQuote}
   },
   {
     Name: "BadTrailingQuote",
     Input: `"a word",b"`,
-    Error: ErrBareQuote,
+    Error: ERR_BARE_QUOTE,
   },
   {
     Name: "ExtraneousQuote",
     Input: `"a "word","b"`,
-    Error: ErrBareQuote,
+    Error: ERR_QUOTE,
   },
   {
     Name: "BadFieldCount",
     Input: "a,b,c\nd,e",
-    Error: ErrFieldCount,
+    Error: ERR_FIELD_COUNT,
     UseFieldsPerRecord: true,
     FieldsPerRecord: 0,
   },
@@ -167,7 +171,7 @@ field"`,
     // Error: &ParseError{StartLine: 1, Line: 1, Err: ErrFieldCount},
     UseFieldsPerRecord: true,
     FieldsPerRecord: 2,
-    Error: ErrFieldCount,
+    Error: ERR_FIELD_COUNT,
   },
   {
     Name: "FieldCount",
@@ -261,22 +265,19 @@ x,,,
   {
     Name: "StartLine1", // Issue 19019
     Input: 'a,"b\nc"d,e',
-    Error: true,
+    Error: ERR_QUOTE,
     // Error: &ParseError{StartLine: 1, Line: 2, Column: 1, Err: ErrQuote},
-    ignore: true,
   },
   {
     Name: "StartLine2",
     Input: 'a,b\n"d\n\n,e',
-    Error: true,
+    Error: ERR_QUOTE,
     // Error: &ParseError{StartLine: 2, Line: 5, Column: 0, Err: ErrQuote},
-    ignore: true,
   },
   {
     Name: "CRLFInQuotedField", // Issue 21201
     Input: 'A,"Hello\r\nHi",B\r\n',
     Output: [["A", "Hello\nHi", "B"]],
-    ignore: true,
   },
   {
     Name: "BinaryBlobField", // Issue 19410
@@ -287,32 +288,27 @@ x,,,
     Name: "TrailingCR",
     Input: "field1,field2\r",
     Output: [["field1", "field2"]],
-    ignore: true,
   },
   {
     Name: "QuotedTrailingCR",
     Input: '"field"\r',
-    Output: [['"field"']],
-    ignore: true,
+    Output: [["field"]],
   },
   {
     Name: "QuotedTrailingCRCR",
     Input: '"field"\r\r',
-    Error: true,
+    Error: ERR_QUOTE,
     // Error: &ParseError{StartLine: 1, Line: 1, Column: 6, Err: ErrQuote},
-    ignore: true,
   },
   {
     Name: "FieldCR",
     Input: "field\rfield\r",
     Output: [["field\rfield"]],
-    ignore: true,
   },
   {
     Name: "FieldCRCR",
     Input: "field\r\rfield\r\r",
     Output: [["field\r\rfield\r"]],
-    ignore: true,
   },
   {
     Name: "FieldCRCRLF",
@@ -328,7 +324,6 @@ x,,,
     Name: "FieldCRCRLFCRCR",
     Input: "field\r\r\n\r\rfield\r\r\n\r\r",
     Output: [["field\r"], ["\r\rfield\r"], ["\r"]],
-    ignore: true,
   },
   {
     Name: "MultiFieldCRCRLFCRCR",
@@ -338,7 +333,6 @@ x,,,
       ["\r\rfield1", "field2\r"],
       ["\r\r", ""],
     ],
-    ignore: true,
   },
   {
     Name: "NonASCIICommaAndComment",
@@ -374,12 +368,11 @@ x,,,
     Name: "QuotedFieldMultipleLF",
     Input: '"\n\n\n\n"',
     Output: [["\n\n\n\n"]],
-    ignore: true,
   },
   {
     Name: "MultipleCRLF",
     Input: "\r\n\r\n\r\n\r\n",
-    ignore: true,
+    Output: [],
   },
   /**
    * The implementation may read each line in several chunks if
@@ -392,12 +385,12 @@ x,,,
       "#ignore\n".repeat(10000) + "@".repeat(5000) + "," + "*".repeat(5000),
     Output: [["@".repeat(5000), "*".repeat(5000)]],
     Comment: "#",
-    ignore: true,
+    ignore: true, // TODO(#4521)
   },
   {
     Name: "QuoteWithTrailingCRLF",
     Input: '"foo"bar"\r\n',
-    Error: ErrBareQuote,
+    Error: ERR_QUOTE,
     // Error: &ParseError{StartLine: 1, Line: 1, Column: 4, Err: ErrQuote},
   },
   {
@@ -410,58 +403,54 @@ x,,,
     Name: "DoubleQuoteWithTrailingCRLF",
     Input: '"foo""bar"\r\n',
     Output: [[`foo"bar`]],
-    ignore: true,
   },
   {
     Name: "EvenQuotes",
     Input: `""""""""`,
     Output: [[`"""`]],
-    ignore: true,
   },
   {
     Name: "OddQuotes",
     Input: `"""""""`,
-    Error: true,
+    Error: ERR_QUOTE,
     // Error:" &ParseError{StartLine: 1, Line: 1, Column: 7, Err: ErrQuote}",
-    ignore: true,
   },
   {
     Name: "LazyOddQuotes",
     Input: `"""""""`,
     Output: [[`"""`]],
     LazyQuotes: true,
-    ignore: true,
   },
   {
     Name: "BadComma1",
     Comma: "\n",
-    Error: ErrInvalidDelim,
+    Error: ERR_INVALID_DELIM,
   },
   {
     Name: "BadComma2",
     Comma: "\r",
-    Error: ErrInvalidDelim,
+    Error: ERR_INVALID_DELIM,
   },
   {
     Name: "BadComma3",
     Comma: '"',
-    Error: ErrInvalidDelim,
+    Error: ERR_INVALID_DELIM,
   },
   {
     Name: "BadComment1",
     Comment: "\n",
-    Error: ErrInvalidDelim,
+    Error: ERR_INVALID_DELIM,
   },
   {
     Name: "BadComment2",
     Comment: "\r",
-    Error: ErrInvalidDelim,
+    Error: ERR_INVALID_DELIM,
   },
   {
     Name: "BadCommaComment",
     Comma: "X",
     Comment: "X",
-    Error: ErrInvalidDelim,
+    Error: ERR_INVALID_DELIM,
   },
 ];
 for (const t of testCases) {

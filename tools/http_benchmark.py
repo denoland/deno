@@ -186,6 +186,10 @@ def run(server_cmd, port, merge_env=None, origin_cmd=None):
         print output
         return stats
     finally:
+        server_retcode = server.poll()
+        if server_retcode is not None and server_retcode != 0:
+            print "server ended with error"
+            sys.exit(1)
         server.kill()
         if origin is not None:
             origin.kill()
