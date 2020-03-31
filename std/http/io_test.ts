@@ -588,7 +588,7 @@ for (const [file, req] of writeRequestCases) {
       const dest = new Deno.Buffer();
       await writeRequest(dest, req);
       const exp = decode(await Deno.readFile(`http/testdata/${file}.txt`));
-      assertEquals(dest.toString(), exp);
+      assertEquals(decode(dest.bytes()), exp);
     },
   });
 }

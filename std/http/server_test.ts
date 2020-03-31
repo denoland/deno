@@ -157,7 +157,7 @@ test("ServerRequest.finalize() should consume unread body / content-length", asy
   await req.finalize();
   assertEquals(tr.total, text.length);
 });
-test("ServerRequest.finalize() should consume unread body / chunked, trailers", async () => {
+test("[http] ServerRequest.finalize() should consume unread body / chunked, trailers", async () => {
   const text = [
     "5",
     "Hello",
@@ -349,7 +349,7 @@ test(async function requestBodyReaderWithTransferEncoding(): Promise<void> {
 });
 
 test({
-  name: "destroyed connection",
+  name: "[http] destroyed connection",
   // FIXME(bartlomieju): hangs on windows, cause can't do `Deno.kill`
   ignore: true,
   fn: async (): Promise<void> => {
@@ -390,7 +390,7 @@ test({
 });
 
 test({
-  name: "serveTLS",
+  name: "[http] serveTLS",
   // FIXME(bartlomieju): hangs on windows, cause can't do `Deno.kill`
   ignore: true,
   fn: async (): Promise<void> => {
@@ -446,7 +446,7 @@ test({
   },
 });
 
-test("close server while iterating", async (): Promise<void> => {
+test("[http] close server while iterating", async (): Promise<void> => {
   const server = serve(":8123");
   const nextWhileClosing = server[Symbol.asyncIterator]().next();
   server.close();
@@ -488,7 +488,7 @@ test({
 });
 
 test({
-  name: "respond error closes connection",
+  name: "[http] respond error closes connection",
   async fn(): Promise<void> {
     const serverRoutine = async (): Promise<void> => {
       const server = serve(":8124");
@@ -551,7 +551,9 @@ test({
       await delay(1000);
       await assertThrowsAsync(async () => {
         await send(req);
-      }, Deno.errors.ConnectionReset);
+        // TODO (keroxp) It should be Deno.errors.ConnectionReset
+        // But it varies between OS
+      }, Error);
     } finally {
       server?.close();
       conn?.close();
