@@ -248,9 +248,6 @@ export class BufReader implements Reader {
     try {
       line = await this.readSlice(LF);
     } catch (err) {
-      if (!err?.partial) {
-        throw err;
-      }
       let { partial } = err;
       assert(
         partial instanceof Uint8Array,
@@ -315,7 +312,7 @@ export class BufReader implements Reader {
    */
   async readSlice(delim: number): Promise<Uint8Array | Deno.EOF> {
     let s = 0; // search start index
-    let slice: Uint8Array | undefined;
+    let slice = new Uint8Array();
 
     while (true) {
       // Search buffer.

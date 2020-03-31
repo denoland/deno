@@ -531,9 +531,7 @@ test({
       conn = await Deno.connect({ port });
       const w = new BufWriter(conn);
       const r = new BufReader(conn);
-      const send = async (
-        req: ClientRequest
-      ): Promise<ClientResponse | Deno.EOF> => {
+      const send = async (req: ClientRequest): Promise<ClientResponse> => {
         await writeRequest(w, req);
         return readResponse(r);
       };
@@ -546,14 +544,13 @@ test({
         }),
       };
       const resp = await send(req);
-      assert(resp !== Deno.EOF);
       assertEquals(resp.status, 200);
       await delay(1000);
       await assertThrowsAsync(async () => {
         await send(req);
         // TODO (keroxp) It should be Deno.errors.ConnectionReset
         // But it varies between OS
-      }, Error);
+      }, Deno.errors.ConnectionReset);
     } finally {
       server?.close();
       conn?.close();
@@ -577,9 +574,7 @@ test({
       conn = await Deno.connect({ port });
       const w = new BufWriter(conn);
       const r = new BufReader(conn);
-      const send = async (
-        req: ClientRequest
-      ): Promise<ClientResponse | Deno.EOF> => {
+      const send = async (req: ClientRequest): Promise<ClientResponse> => {
         await writeRequest(w, req);
         return readResponse(r);
       };
@@ -589,7 +584,6 @@ test({
         method: "GET",
       };
       const resp = await send(req);
-      assert(resp !== Deno.EOF);
       assertEquals(resp.status, 200);
       await delay(1000);
       await assertThrowsAsync(async () => {
