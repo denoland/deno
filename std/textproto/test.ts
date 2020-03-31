@@ -184,7 +184,9 @@ test({
   async fn() {
     const input = "abcdefghijklmnopqrstuvwxyz";
     const bufSize = 25;
-    const tp = new TextProtoReader(new BufReader(stringsReader(input), bufSize));
+    const tp = new TextProtoReader(
+      new BufReader(stringsReader(input), bufSize)
+    );
     const line = await tp.readLine();
     assertEquals(line, input);
   },
