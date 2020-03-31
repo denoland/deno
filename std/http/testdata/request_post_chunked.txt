@@ -1,9 +1,0 @@
-POST /index.html HTTP/1.1
-content-type: text/plain
-transfer-encoding: chunked
-host: deno.land
-
-45
-A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio
-0
-
