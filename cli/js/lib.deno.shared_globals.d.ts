@@ -268,7 +268,7 @@ declare const removeEventListener: (
 ) => void;
 
 declare type Blob = __domTypes.Blob;
-declare type Body = __domTypes.Body;
+declare type Body = __fetch.Body;
 declare type File = __domTypes.DomFile;
 declare type CustomEventInit = __domTypes.CustomEventInit;
 declare type CustomEvent = __domTypes.CustomEvent;
@@ -283,7 +283,7 @@ declare type FormData = __domTypes.FormData;
 declare type TextEncoder = __textEncoding.TextEncoder;
 declare type TextDecoder = __textEncoding.TextDecoder;
 declare type Request = __domTypes.Request;
-declare type Response = __domTypes.Response;
+declare type Response = __fetch.Response;
 declare type Worker = __workers.Worker;
 
 declare interface ImportMeta {

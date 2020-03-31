@@ -536,3 +536,18 @@ unitTest(function responseConstructionHeaderRemoval(): void {
   );
   assert(res.headers.get("Set-Cookie") != "mysessionid");
 });
+
+unitTest(
+  {
+    perms: {
+      net: true,
+    },
+  },
+  async function responseBodyType(): Promise<void> {
+    const response: Response = await fetch("http://localhost:4545/", {
+      method: "GET",
+    });
+    // should not be __domTypes.(Response|Body)
+    response.body.close();
+  }
+);
