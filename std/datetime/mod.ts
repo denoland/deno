@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { pad } from "../strings/pad.ts";
 import { assert } from "../testing/asserts.ts";
 
 export type DateFormat = "mm-dd-yyyy" | "dd-mm-yyyy" | "yyyy-mm-dd";
@@ -125,7 +124,7 @@ export function currentDayOfYear(): number {
  */
 export function toIMF(date: Date): string {
   function dtPad(v: string, lPad = 2): string {
-    return pad(v, lPad, { char: "0" });
+    return v.padStart(lPad, "0");
   }
   const d = dtPad(date.getUTCDate().toString());
   const h = dtPad(date.getUTCHours().toString());

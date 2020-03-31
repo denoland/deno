@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { deepAssign } from "../util/deep_assign.ts";
-import { pad } from "../strings/pad.ts";
 import { assert } from "../testing/asserts.ts";
 
 class KeyValuePair {
@@ -514,7 +513,7 @@ class Dumper {
   }
   _dateDeclaration(keys: string[], value: Date): string {
     function dtPad(v: string, lPad = 2): string {
-      return pad(v, lPad, { char: "0" });
+      return v.padStart(lPad, "0");
     }
     const m = dtPad((value.getUTCMonth() + 1).toString());
     const d = dtPad(value.getUTCDate().toString());
@@ -542,7 +541,7 @@ class Dumper {
       } else {
         const m = rDeclaration.exec(l);
         if (m) {
-          out.push(l.replace(m[1], pad(m[1], this.maxPad, { side: "right" })));
+          out.push(l.replace(m[1], m[1].padEnd(this.maxPad)));
         } else {
           out.push(l);
         }
