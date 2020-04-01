@@ -649,7 +649,7 @@ declare namespace Deno {
    */
   export function create(path: string): Promise<File>;
 
-  /** Synchronously read from a resource ID (`rid`) into an array buffer.
+  /** Synchronously read from a resource ID (`rid`) into an array buffer (`buffer`).
    *
    * Returns either the number of bytes read during the operation or End Of File
    * (`Symbol(EOF)`) if there was nothing to read.
@@ -661,9 +661,9 @@ declare namespace Deno {
    *      const text = new TextDecoder().decode(buf);  // "hello world"
    *      Deno.close(file.rid);
    */
-  export function readSync(rid: number, p: Uint8Array): number | EOF;
+  export function readSync(rid: number, buffer: Uint8Array): number | EOF;
 
-  /** Read from a resource ID (`rid`) into an array buffer.
+  /** Read from a resource ID (`rid`) into an array buffer (`buffer`).
    *
    * Resolves to either the number of bytes read during the operation or End Of
    * File (`Symbol(EOF)`) if there was nothing to read.
@@ -675,9 +675,10 @@ declare namespace Deno {
    *      const text = new TextDecoder().decode(buf);  // "hello world"
    *      Deno.close(file.rid);
    */
-  export function read(rid: number, p: Uint8Array): Promise<number | EOF>;
+  export function read(rid: number, buffer: Uint8Array): Promise<number | EOF>;
 
-  /** Synchronously write to the resource ID (`rid`) the contents of the array buffer.
+  /** Synchronously write to the resource ID (`rid`) the contents of the array
+   * buffer (`data`).
    *
    * Returns the number of bytes written.
    *
@@ -687,9 +688,9 @@ declare namespace Deno {
    *       const bytesWritten = Deno.writeSync(file.rid, data); // 11
    *       Deno.close(file.rid);
    */
-  export function writeSync(rid: number, p: Uint8Array): number;
+  export function writeSync(rid: number, data: Uint8Array): number;
 
-  /** Write to the resource ID (`rid`) the contents of the array buffer.
+  /** Write to the resource ID (`rid`) the contents of the array buffer (`data`).
    *
    * Resolves to the number of bytes written.
    *
@@ -699,7 +700,7 @@ declare namespace Deno {
    *      const bytesWritten = await Deno.write(file.rid, data); // 11
    *      Deno.close(file.rid);
    */
-  export function write(rid: number, p: Uint8Array): Promise<number>;
+  export function write(rid: number, data: Uint8Array): Promise<number>;
 
   /** Synchronously seek a resource ID (`rid`) to the given `offset` under mode
    * given by `whence`.  The current position within the resource is returned.
