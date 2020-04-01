@@ -1,5 +1,11 @@
-import { sprintf } from "./sprintf.ts";
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+//
+// A number of test-cases based on:
+//
+//   https://golang.org/src/fmt/fmt_test.go
+//   BSD: Copyright (c) 2009 The Go Authors. All rights reserved.
 
+import { sprintf } from "./printf.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { cyan, yellow } from "./colors.ts";
 
