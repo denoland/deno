@@ -298,7 +298,7 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): string {
   return html;
 }
 
-function main(): Promise<void> {
+function main(): void {
   listenAndServe(
     addr,
     async (req): Promise<void> => {
