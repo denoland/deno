@@ -6,18 +6,20 @@ import {
   permissionCombinations,
   Permissions,
   registerUnitTests,
-  SocketReporter,
   fmtPerms,
   parseArgs,
+  reportToConn,
 } from "./test_util.ts";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const reportToConsole = (Deno as any)[Deno.symbols.internal]
+  .reportToConsole as (message: Deno.TestMessage) => void;
 
 interface PermissionSetTestResult {
   perms: Permissions;
   passed: boolean;
-  stats: Deno.TestStats;
+  endMessage: Deno.TestMessage["end"];
   permsStr: string;
-  duration: number;
-  results: Deno.TestResult[];
 }
 
 const PERMISSIONS: Deno.PermissionName[] = [
@@ -59,17 +61,16 @@ async function workerRunnerMain(
   }
   // Setup reporter
   const conn = await Deno.connect(addr);
-  const socketReporter = new SocketReporter(conn);
   // Drop current process permissions to requested set
   await dropWorkerPermissions(perms);
   // Register unit tests that match process permissions
   await registerUnitTests();
   // Execute tests
   await Deno.runTests({
-    failFast: false,
     exitOnFail: false,
-    reporter: socketReporter,
     only: filter,
+    reportToConsole: false,
+    onMessage: reportToConn.bind(null, conn),
   });
 }
 
@@ -117,7 +118,6 @@ async function runTestsForPermissionSet(
   listener: Deno.Listener,
   addrStr: string,
   verbose: boolean,
-  reporter: Deno.ConsoleTestReporter,
   perms: Permissions,
   filter?: string
 ): Promise<PermissionSetTestResult> {
@@ -128,22 +128,16 @@ async function runTestsForPermissionSet(
   const conn = await listener.accept();
 
   let expectedPassedTests;
-  let endEvent;
+  let endMessage: Deno.TestMessage["end"];
 
   try {
     for await (const line of readLines(conn)) {
-      const msg = JSON.parse(line);
-
-      if (msg.kind === Deno.TestEvent.Start) {
-        expectedPassedTests = msg.tests;
-        await reporter.start(msg);
-      } else if (msg.kind === Deno.TestEvent.TestStart) {
-        await reporter.testStart(msg);
-      } else if (msg.kind === Deno.TestEvent.TestEnd) {
-        await reporter.testEnd(msg);
-      } else {
-        endEvent = msg;
-        await reporter.end(msg);
+      const message = JSON.parse(line) as Deno.TestMessage;
+      reportToConsole(message);
+      if (message.start != null) {
+        expectedPassedTests = message.start.tests.length;
+      } else if (message.end != null) {
+        endMessage = message.end;
       }
     }
   } finally {
@@ -151,11 +145,11 @@ async function runTestsForPermissionSet(
     conn.close();
   }
 
-  if (expectedPassedTests === undefined) {
+  if (expectedPassedTests == null) {
     throw new Error("Worker runner didn't report start");
   }
 
-  if (endEvent === undefined) {
+  if (endMessage == null) {
     throw new Error("Worker runner didn't report end");
   }
 
@@ -168,16 +162,13 @@ async function runTestsForPermissionSet(
 
   workerProcess.close();
 
-  const passed =
-    expectedPassedTests === endEvent.stats.passed + endEvent.stats.ignored;
+  const passed = expectedPassedTests === endMessage.passed + endMessage.ignored;
 
   return {
     perms,
     passed,
     permsStr: permsFmt,
-    duration: endEvent.duration,
-    stats: endEvent.stats,
-    results: endEvent.results,
+    endMessage,
   };
 }
 
@@ -195,7 +186,6 @@ async function masterRunnerMain(
   }
 
   const testResults = new Set<PermissionSetTestResult>();
-  const consoleReporter = new Deno.ConsoleTestReporter();
   const addr = { hostname: "127.0.0.1", port: 4510 };
   const addrStr = `${addr.hostname}:${addr.port}`;
   const listener = Deno.listen(addr);
@@ -205,7 +195,6 @@ async function masterRunnerMain(
       listener,
       addrStr,
       verbose,
-      consoleReporter,
       perms,
       filter
     );
@@ -217,14 +206,9 @@ async function masterRunnerMain(
   let testsPassed = true;
 
   for (const testResult of testResults) {
-    const { permsStr, stats, duration, results } = testResult;
+    const { permsStr, endMessage } = testResult;
     console.log(`Summary for ${permsStr}`);
-    await consoleReporter.end({
-      kind: Deno.TestEvent.End,
-      stats,
-      duration,
-      results,
-    });
+    reportToConsole({ end: endMessage });
     testsPassed = testsPassed && testResult.passed;
   }
 
@@ -312,11 +296,7 @@ async function main(): Promise<void> {
 
   // Running tests matching current process permissions
   await registerUnitTests();
-  await Deno.runTests({
-    failFast: false,
-    exitOnFail: true,
-    only: filter,
-  });
+  await Deno.runTests({ only: filter });
 }
 
 main();

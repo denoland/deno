@@ -46,8 +46,6 @@ Deno.test({
     assertEquals({ hello: "world" }, { hello: "world" });
   },
 });
-
-await Deno.runTests();
 ```
 
 Short syntax (named function instead of object):
