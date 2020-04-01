@@ -8,7 +8,7 @@
 
 const { args, stat, readdir, open, exit } = Deno;
 import { contentType } from "../media_types/mod.ts";
-import { posix, basename } from "../path/mod.ts";
+import { posix, extname } from "../path/mod.ts";
 import { listenAndServe, ServerRequest, Response } from "./server.ts";
 import { parse } from "../flags/mod.ts";
 import { assert } from "../testing/asserts.ts";
@@ -104,7 +104,7 @@ export async function serveFile(
   const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
   const headers = new Headers();
   headers.set("content-length", fileInfo.size.toString());
-  const contentTypeValue = contentType(basename(filePath));
+  const contentTypeValue = contentType(extname(filePath));
   if (contentTypeValue) {
     headers.set("content-type", contentTypeValue);
   }
@@ -298,7 +298,7 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): string {
   return html;
 }
 
-async function main(): Promise<void> {
+function main(): Promise<void> {
   listenAndServe(
     addr,
     async (req): Promise<void> => {
@@ -338,5 +338,5 @@ async function main(): Promise<void> {
 }
 
 if (import.meta.main) {
-  await main();
+  main();
 }
