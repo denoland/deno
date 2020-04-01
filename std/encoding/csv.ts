@@ -1,5 +1,7 @@
 // Ported from Go:
 // https://github.com/golang/go/blob/go1.12.5/src/encoding/csv/
+// Copyright 2011 The Go Authors. All rights reserved. BSD license.
+// https://github.com/golang/go/blob/master/LICENSE
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { BufReader } from "../io/bufio.ts";
@@ -8,6 +10,11 @@ import { StringReader } from "../io/readers.ts";
 import { assert } from "../testing/asserts.ts";
 
 const INVALID_RUNE = ["\r", "\n", '"'];
+
+export const ERR_BARE_QUOTE = 'bare " in non-quoted-field';
+export const ERR_QUOTE = 'extraneous or missing " in quoted-field';
+export const ERR_INVALID_DELIM = "Invalid Delimiter";
+export const ERR_FIELD_COUNT = "wrong number of fields";
 
 export class ParseError extends Error {
   StartLine: number;
@@ -49,23 +56,146 @@ function chkOptions(opt: ReadOptions): void {
     (typeof opt.comment === "string" && INVALID_RUNE.includes(opt.comment)) ||
     opt.comma === opt.comment
   ) {
-    throw new Error("Invalid Delimiter");
+    throw new Error(ERR_INVALID_DELIM);
   }
 }
 
-async function read(
+async function readRecord(
   Startline: number,
   reader: BufReader,
   opt: ReadOptions = { comma: ",", trimLeadingSpace: false }
 ): Promise<string[] | Deno.EOF> {
   const tp = new TextProtoReader(reader);
-  let line: string;
-  let result: string[] = [];
   const lineIndex = Startline;
+  let line = await readLine(tp);
 
+  if (line === Deno.EOF) return Deno.EOF;
+  if (line.length === 0) {
+    return [];
+  }
+  // line starting with comment character is ignored
+  if (opt.comment && line[0] === opt.comment) {
+    return [];
+  }
+
+  assert(opt.comma != null);
+
+  let quoteError: string | null = null;
+  const quote = '"';
+  const quoteLen = quote.length;
+  const commaLen = opt.comma.length;
+  let recordBuffer = "";
+  const fieldIndexes = [] as number[];
+  parseField: for (;;) {
+    if (opt.trimLeadingSpace) {
+      line = line.trimLeft();
+    }
+
+    if (line.length === 0 || !line.startsWith(quote)) {
+      // Non-quoted string field
+      const i = line.indexOf(opt.comma);
+      let field = line;
+      if (i >= 0) {
+        field = field.substring(0, i);
+      }
+      // Check to make sure a quote does not appear in field.
+      if (!opt.lazyQuotes) {
+        const j = field.indexOf(quote);
+        if (j >= 0) {
+          quoteError = ERR_BARE_QUOTE;
+          break parseField;
+        }
+      }
+      recordBuffer += field;
+      fieldIndexes.push(recordBuffer.length);
+      if (i >= 0) {
+        line = line.substring(i + commaLen);
+        continue parseField;
+      }
+      break parseField;
+    } else {
+      // Quoted string field
+      line = line.substring(quoteLen);
+      for (;;) {
+        const i = line.indexOf(quote);
+        if (i >= 0) {
+          // Hit next quote.
+          recordBuffer += line.substring(0, i);
+          line = line.substring(i + quoteLen);
+          if (line.startsWith(quote)) {
+            // `""` sequence (append quote).
+            recordBuffer += quote;
+            line = line.substring(quoteLen);
+          } else if (line.startsWith(opt.comma)) {
+            // `","` sequence (end of field).
+            line = line.substring(commaLen);
+            fieldIndexes.push(recordBuffer.length);
+            continue parseField;
+          } else if (0 === line.length) {
+            // `"\n` sequence (end of line).
+            fieldIndexes.push(recordBuffer.length);
+            break parseField;
+          } else if (opt.lazyQuotes) {
+            // `"` sequence (bare quote).
+            recordBuffer += quote;
+          } else {
+            // `"*` sequence (invalid non-escaped quote).
+            quoteError = ERR_QUOTE;
+            break parseField;
+          }
+        } else if (line.length > 0 || !(await isEOF(tp))) {
+          // Hit end of line (copy all data so far).
+          recordBuffer += line;
+          const r = await readLine(tp);
+          if (r === Deno.EOF) {
+            if (!opt.lazyQuotes) {
+              quoteError = ERR_QUOTE;
+              break parseField;
+            }
+            fieldIndexes.push(recordBuffer.length);
+            break parseField;
+          }
+          recordBuffer += "\n"; // preserve line feed (This is because TextProtoReader removes it.)
+          line = r;
+        } else {
+          // Abrupt end of file (EOF on error).
+          if (!opt.lazyQuotes) {
+            quoteError = ERR_QUOTE;
+            break parseField;
+          }
+          fieldIndexes.push(recordBuffer.length);
+          break parseField;
+        }
+      }
+    }
+  }
+  if (quoteError) {
+    throw new ParseError(Startline, lineIndex, quoteError);
+  }
+  const result = [] as string[];
+  let preIdx = 0;
+  for (const i of fieldIndexes) {
+    result.push(recordBuffer.slice(preIdx, i));
+    preIdx = i;
+  }
+  return result;
+}
+
+async function isEOF(tp: TextProtoReader): Promise<boolean> {
+  return (await tp.r.peek(0)) === Deno.EOF;
+}
+
+async function readLine(tp: TextProtoReader): Promise<string | Deno.EOF> {
+  let line: string;
   const r = await tp.readLine();
   if (r === Deno.EOF) return Deno.EOF;
   line = r;
+
+  // For backwards compatibility, drop trailing \r before EOF.
+  if ((await isEOF(tp)) && line.length > 0 && line[line.length - 1] === "\r") {
+    line = line.substring(0, line.length - 1);
+  }
+
   // Normalize \r\n to \n on all input lines.
   if (
     line.length >= 2 &&
@@ -76,41 +206,7 @@ async function read(
     line = line + "\n";
   }
 
-  const trimmedLine = line.trimLeft();
-  if (trimmedLine.length === 0) {
-    return [];
-  }
-
-  // line starting with comment character is ignored
-  if (opt.comment && trimmedLine[0] === opt.comment) {
-    return [];
-  }
-
-  assert(opt.comma != null);
-  result = line.split(opt.comma);
-
-  let quoteError = false;
-  result = result.map((r): string => {
-    if (opt.trimLeadingSpace) {
-      r = r.trimLeft();
-    }
-    if (r[0] === '"' && r[r.length - 1] === '"') {
-      r = r.substring(1, r.length - 1);
-    } else if (r[0] === '"') {
-      r = r.substring(1, r.length);
-    }
-
-    if (!opt.lazyQuotes) {
-      if (r[0] !== '"' && r.indexOf('"') !== -1) {
-        quoteError = true;
-      }
-    }
-    return r;
-  });
-  if (quoteError) {
-    throw new ParseError(Startline, lineIndex, 'bare " in non-quoted-field');
-  }
-  return result;
+  return line;
 }
 
 export async function readMatrix(
@@ -129,7 +225,7 @@ export async function readMatrix(
   chkOptions(opt);
 
   for (;;) {
-    const r = await read(lineIndex, reader, opt);
+    const r = await readRecord(lineIndex, reader, opt);
     if (r === Deno.EOF) break;
     lineResult = r;
     lineIndex++;
@@ -148,7 +244,7 @@ export async function readMatrix(
 
     if (lineResult.length > 0) {
       if (_nbFields && _nbFields !== lineResult.length) {
-        throw new ParseError(lineIndex, lineIndex, "wrong number of fields");
+        throw new ParseError(lineIndex, lineIndex, ERR_FIELD_COUNT);
       }
       result.push(lineResult);
     }

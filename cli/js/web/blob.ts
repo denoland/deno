@@ -139,24 +139,23 @@ export class DenoBlob implements domTypes.Blob {
     }
 
     const { ending = "transparent", type = "" } = options ?? {};
-    if (!containsOnlyASCII(type)) {
-      const errMsg = "The 'type' property must consist of ASCII characters.";
-      throw new SyntaxError(errMsg);
-    }
-
-    const bytes = processBlobParts(blobParts!, { ending, type });
     // Normalize options.type.
     let normalizedType = type;
-    if (type.length) {
-      for (let i = 0; i < type.length; ++i) {
-        const char = type[i];
-        if (char < "\u0020" || char > "\u007E") {
-          normalizedType = "";
-          break;
+    if (!containsOnlyASCII(type)) {
+      normalizedType = "";
+    } else {
+      if (type.length) {
+        for (let i = 0; i < type.length; ++i) {
+          const char = type[i];
+          if (char < "\u0020" || char > "\u007E") {
+            normalizedType = "";
+            break;
+          }
         }
+        normalizedType = type.toLowerCase();
       }
-      normalizedType = type.toLowerCase();
     }
+    const bytes = processBlobParts(blobParts!, { ending, type });
     // Set Blob object's properties.
     this[bytesSymbol] = bytes;
     this.size = bytes.byteLength;
