@@ -32,6 +32,14 @@ unitTest(function blobSlice(): void {
   assertEquals(b4.size, blob.size);
 });
 
+unitTest(function blobInvalidType(): void {
+  const blob = new Blob(["foo"], {
+    type: "\u0521",
+  });
+
+  assertEquals(blob.type, "");
+});
+
 unitTest(function blobShouldNotThrowError(): void {
   let hasThrown = false;
 
