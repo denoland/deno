@@ -5,12 +5,13 @@
 // https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
 
 #![allow(clippy::option_map_unit_fn)]
-#![allow(clippy::single_match)]
 
+use core::convert::Infallible as Never; // Alias for the future `!` type.
 use deno_core::v8;
 use futures::channel::mpsc;
 use futures::channel::mpsc::UnboundedReceiver;
 use futures::channel::mpsc::UnboundedSender;
+use futures::channel::oneshot;
 use futures::future::Future;
 use futures::prelude::*;
 use futures::task;
@@ -19,6 +20,7 @@ use std::cell::BorrowMutError;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::mem::replace;
 use std::mem::MaybeUninit;
 use std::net::SocketAddrV4;
 use std::ops::Deref;
@@ -38,7 +40,15 @@ use warp::Filter;
 /// Owned by GlobalState.
 pub struct InspectorServer {
   thread_handle: Option<thread::JoinHandle<()>>,
-  new_inspector_tx: Option<UnboundedSender<UnboundedSender<WebSocket>>>,
+  register_inspector_tx: Option<UnboundedSender<InspectorInfo>>,
+}
+
+/// Inspector information that is sent from the isolate thread to the server
+/// thread when a new inspector is created.
+pub struct InspectorInfo {
+  thread_name: Option<String>,
+  new_session_tx: UnboundedSender<WebSocket>,
+  canary_rx: oneshot::Receiver<Never>,
 }
 
 impl InspectorServer {
@@ -47,14 +57,14 @@ impl InspectorServer {
       todo!("--inspect-brk not yet supported");
     }
     let address = host.parse::<SocketAddrV4>().unwrap();
-    let (new_inspector_tx, new_inspector_rx) =
-      mpsc::unbounded::<UnboundedSender<WebSocket>>();
+    let (register_inspector_tx, register_inspector_rx) =
+      mpsc::unbounded::<InspectorInfo>();
     let thread_handle = thread::spawn(move || {
-      crate::tokio_util::run_basic(server(address, new_inspector_rx));
+      crate::tokio_util::run_basic(server(address, register_inspector_rx));
     });
     Self {
       thread_handle: Some(thread_handle),
-      new_inspector_tx: Some(new_inspector_tx),
+      register_inspector_tx: Some(register_inspector_tx),
     }
   }
 
@@ -77,14 +87,22 @@ impl InspectorServer {
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
+    let thread_name = thread::current().name().map(|n| n.to_owned());
     let (new_session_tx, new_session_rx) = mpsc::unbounded::<WebSocket>();
-    let inspector = crate::inspector::DenoInspector::new(scope, new_session_rx);
+    let (canary_tx, canary_rx) = oneshot::channel::<Never>();
+    let inspector = DenoInspector::new(scope, new_session_rx, canary_tx);
+
+    let inspector_info = InspectorInfo {
+      thread_name,
+      new_session_tx,
+      canary_rx,
+    };
 
     self
-      .new_inspector_tx
+      .register_inspector_tx
       .as_ref()
       .unwrap()
-      .unbounded_send(new_session_tx)
+      .unbounded_send(inspector_info)
       .unwrap_or_else(|_| {
         panic!("sending message to inspector server thread failed");
       });
@@ -95,7 +113,7 @@ impl InspectorServer {
 
 impl Drop for InspectorServer {
   fn drop(&mut self) {
-    self.new_inspector_tx.take();
+    self.register_inspector_tx.take();
     self.thread_handle.take().unwrap().join().unwrap();
     panic!("TODO: this drop is never called");
   }
@@ -107,26 +125,35 @@ fn websocket_debugger_url(address: &SocketAddrV4, uuid: &Uuid) -> String {
 
 async fn server(
   address: SocketAddrV4,
-  new_inspector_rx: UnboundedReceiver<UnboundedSender<WebSocket>>,
+  register_inspector_rx: UnboundedReceiver<InspectorInfo>,
 ) {
-  let inspector_map = HashMap::<Uuid, UnboundedSender<WebSocket>>::new();
+  let inspector_map = HashMap::<Uuid, InspectorInfo>::new();
   let inspector_map = Arc::new(std::sync::Mutex::new(inspector_map));
 
   let inspector_map_ = inspector_map.clone();
-  let new_inspector_handler = new_inspector_rx
-    .map(|new_session_tx| {
+  let register_inspector_handler = register_inspector_rx
+    .map(|info| {
       let uuid = Uuid::new_v4();
       inspector_map_
         .lock()
         .unwrap()
-        .insert(uuid, new_session_tx)
+        .insert(uuid, info)
         .map(|_| panic!("Inspector UUID already in map"));
       eprintln!(
         "Debugger listening on {}",
         websocket_debugger_url(&address, &uuid)
       );
     })
-    .fold((), |_, _| future::ready(()));
+    .collect::<()>();
+
+  let inspector_map_ = inspector_map_.clone();
+  let deregister_inspector_handler = future::poll_fn(|cx| {
+    inspector_map_
+      .lock()
+      .unwrap()
+      .retain(|_, info| info.canary_rx.poll_unpin(cx) == Poll::Pending);
+    Poll::<Never>::Pending
+  });
 
   let inspector_map_ = inspector_map.clone();
   let websocket_route = warp::path("ws")
@@ -137,12 +164,16 @@ async fn server(
         Uuid::parse_str(&uuid)
           .ok()
           .and_then(|uuid| {
-            inspector_map_.lock().unwrap().get(&uuid).map(Clone::clone)
-          })
-          .map(|new_session_tx| {
-            ws.on_upgrade(move |websocket| async move {
-              let _ = new_session_tx.unbounded_send(websocket);
-            })
+            inspector_map_
+              .lock()
+              .unwrap()
+              .get(&uuid)
+              .map(|info| info.new_session_tx.clone())
+              .map(|new_session_tx| {
+                ws.on_upgrade(move |websocket| async move {
+                  let _ = new_session_tx.unbounded_send(websocket);
+                })
+              })
           })
           .ok_or_else(warp::reject::not_found),
       )
@@ -157,35 +188,51 @@ async fn server(
   });
 
   let inspector_map_ = inspector_map.clone();
-  let json_list_route =
-    warp::path("json")
-      .map(move || {
-        let g = inspector_map_.lock().unwrap();
-        let json_values = g.iter().map(|(uuid, _)| {
-          let url = websocket_debugger_url(&address, uuid);
-          json!({
-            "description": "deno",
-            "devtoolsFrontendUrl": format!("chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws={}", url),
-            "faviconUrl": "https://deno.land/favicon.ico",
-            "id": uuid.to_string(),
-            "title": format!("deno[{}]", std::process::id()),
-            "type": "deno",
-            "url": "file://",
-            "webSocketDebuggerUrl": url,
-          })
-        }).collect::<Vec<_>>();
-        warp::reply::json(&json!(json_values))
-      });
+  let json_list_route = warp::path("json").map(move || {
+    let json_values = inspector_map_
+      .lock()
+      .unwrap()
+      .iter()
+      .map(|(uuid, info)| {
+        let ws_debugger_url = websocket_debugger_url(&address, uuid);
+        let frontend_url = format!("chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws={}", ws_debugger_url);
+        let title = format!(
+          "[{}] deno{}",
+          std::process::id(),
+          info
+            .thread_name
+            .as_ref()
+            .map(|n| format!(" - {}", n))
+            .unwrap_or_default()
+        );
+        json!({
+          "description": "deno",
+          "devtoolsFrontendUrl": frontend_url,
+          "faviconUrl": "https://deno.land/favicon.ico",
+          "id": uuid.to_string(),
+          "title": title,
+          "type": "deno",
+          "url": "file://",
+          "webSocketDebuggerUrl": ws_debugger_url,
+        })
+      })
+      .collect::<Vec<_>>();
+    warp::reply::json(&json!(json_values))
+  });
 
   let routes = websocket_route.or(json_version_route).or(json_list_route);
   let (_, web_handler) = warp::serve(routes)
     .try_bind_ephemeral(address)
     .unwrap_or_else(|e| {
-      eprintln!("Cannot start inspector server: {}.", e);
-      std::process::exit(1);
+      panic!("Cannot start inspector server: {}.", e);
     });
 
-  future::join(new_inspector_handler, web_handler).await;
+  future::join3(
+    register_inspector_handler,
+    deregister_inspector_handler,
+    web_handler,
+  )
+  .await;
 }
 
 #[derive(Clone, Copy)]
@@ -209,6 +256,7 @@ pub struct DenoInspector {
   v8_inspector: v8::UniqueRef<v8::inspector::V8Inspector>,
   session_handler: RefCell<Pin<Box<dyn Future<Output = ()>>>>,
   inspector_waker: Arc<InspectorWaker>,
+  _canary_tx: oneshot::Sender<Never>,
 }
 
 impl Deref for DenoInspector {
@@ -226,9 +274,20 @@ impl DerefMut for DenoInspector {
 
 impl Drop for DenoInspector {
   fn drop(&mut self) {
+    // Since the  waker is cloneable, it might outlive the inspector itself.
+    // Set the poll state to 'dropped' so it doesn't attempt to request an
+    // interrupt from the isolate.
     self
       .inspector_waker
       .update(|w| w.state = PollState::Dropped);
+    // V8 automatically deletes all sessions when an Inspector instance is
+    // deleted, however InspectorSession also has a drop handler that cleans
+    // up after itself. To avoid a double free, make sure the inspector is
+    // dropped last.
+    replace(
+      &mut *self.session_handler.borrow_mut(),
+      async {}.boxed_local(),
+    );
   }
 }
 
@@ -273,6 +332,7 @@ impl DenoInspector {
   pub fn new(
     scope: &mut impl v8::InIsolate,
     new_session_rx: impl Stream<Item = WebSocket> + 'static,
+    canary_tx: oneshot::Sender<Never>,
   ) -> Box<Self> {
     let mut self_ = new_box_with(|address| {
       let v8_inspector_client =
@@ -292,6 +352,7 @@ impl DenoInspector {
         v8_inspector,
         session_handler,
         inspector_waker,
+        _canary_tx: canary_tx,
       }
     });
 
@@ -335,10 +396,9 @@ impl DenoInspector {
     self.inspector_waker.update(|w| {
       // Set 'on_pause' flag if this function was called by the
       // run_message_loop_on_pause() function.
-      match entry {
-        PollEntry::Pause => w.on_pause = true,
-        _ => {}
-      };
+      if let PollEntry::Pause = entry {
+        w.on_pause = true;
+      }
       // Set state to 'polling'.
       match w.state {
         PollState::Idle | PollState::Woken => w.state = PollState::Polling,
