@@ -8,20 +8,13 @@
 #![allow(clippy::single_match)]
 
 use deno_core::v8;
-use futures;
 use futures::channel::mpsc;
 use futures::channel::mpsc::UnboundedReceiver;
 use futures::channel::mpsc::UnboundedSender;
-use futures::future;
 use futures::future::Future;
-use futures::stream::Forward;
-use futures::stream::SplitSink;
-use futures::stream::SplitStream;
+use futures::prelude::*;
 use futures::task;
 use futures::task::Poll;
-use futures::FutureExt;
-use futures::Stream;
-use futures::StreamExt;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -322,14 +315,8 @@ impl DenoInspector {
     new_session_rx: impl Stream<Item = WebSocket> + 'static,
   ) -> RefCell<Pin<Box<dyn Future<Output = ()>>>> {
     let fut = new_session_rx
-      .for_each_concurrent(None, move |websocket| async move {
-        let session =
-          DenoInspectorSession::new(unsafe { &mut *self_ }, websocket);
-        eprintln!("Inspector session started.");
-        match session.await {
-          Ok(_) => eprintln!("Inspector session ended."),
-          Err(err) => eprintln!("Inspector session ended: {}.", err),
-        };
+      .for_each_concurrent(None, move |websocket| {
+        DenoInspectorSession::new(unsafe { &mut *self_ }, websocket)
       })
       .boxed_local();
     RefCell::new(fut)
@@ -491,92 +478,98 @@ impl task::ArcWake for InspectorWaker {
 struct DenoInspectorSession {
   v8_channel: v8::inspector::ChannelBase,
   v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
-  // Internal v8_channel/queue that temporarily stores messages sent by V8 to
+  message_handler: Pin<Box<dyn Future<Output = ()> + 'static>>,
+  // Internal channel/queue that temporarily stores messages sent by V8 to
   // the front-end, before they are sent over the websocket.
-  tx: UnboundedSender<Result<ws::Message, warp::Error>>,
-  rx: SplitStream<WebSocket>,
-  tx_pump: Forward<
-    UnboundedReceiver<Result<ws::Message, warp::Error>>,
-    SplitSink<WebSocket, ws::Message>,
-  >,
+  outbound_queue_tx:
+    UnboundedSender<v8::UniquePtr<v8::inspector::StringBuffer>>,
+}
+
+impl Deref for DenoInspectorSession {
+  type Target = v8::inspector::V8InspectorSession;
+  fn deref(&self) -> &Self::Target {
+    &self.v8_session
+  }
+}
+
+impl DerefMut for DenoInspectorSession {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.v8_session
+  }
 }
 
 impl DenoInspectorSession {
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
-    inspector: &mut v8::inspector::V8Inspector,
+    v8_inspector: &mut v8::inspector::V8Inspector,
     websocket: WebSocket,
   ) -> Box<Self> {
-    new_box_with(move |channel_address| {
-      let (channel_tx, channel_rx) =
-        mpsc::unbounded::<Result<ws::Message, warp::Error>>();
-      let (websocket_tx, websocket_rx) = websocket.split();
-      let tx_pump = channel_rx.forward(websocket_tx);
+    new_box_with(move |address| {
+      let v8_channel = v8::inspector::ChannelBase::new::<Self>();
 
       let empty_view = v8::inspector::StringView::empty();
-
-      let v8_session = inspector.connect(
+      let v8_session = v8_inspector.connect(
         Self::CONTEXT_GROUP_ID,
         // Todo(piscisaureus): V8Inspector::connect() should require that
         // the 'v8_channel' argument cannot move.
-        unsafe { &mut *channel_address },
+        unsafe { &mut *address },
         &empty_view,
       );
 
+      let (outbound_queue_tx, outbound_queue_rx) =
+        mpsc::unbounded::<v8::UniquePtr<v8::inspector::StringBuffer>>();
+
+      let message_handler =
+        Self::create_message_handler(address, websocket, outbound_queue_rx);
+
       Self {
-        v8_channel: v8::inspector::ChannelBase::new::<Self>(),
+        v8_channel,
         v8_session,
-        tx: channel_tx,
-        rx: websocket_rx,
-        tx_pump,
+        message_handler,
+        outbound_queue_tx,
       }
     })
   }
 
-  fn dispatch_inbound(&mut self, msg: ws::Message) {
-    let bytes = msg.as_bytes();
-    let string_view = v8::inspector::StringView::from(bytes);
-    self.v8_session.dispatch_protocol_message(&string_view);
-  }
+  fn create_message_handler(
+    self_: *mut Self,
+    websocket: WebSocket,
+    outbound_queue_rx: UnboundedReceiver<
+      v8::UniquePtr<v8::inspector::StringBuffer>,
+    >,
+  ) -> Pin<Box<dyn Future<Output = ()> + 'static>> {
+    let (websocket_tx, websocket_rx) = websocket.split();
 
-  fn send_outbound(&mut self, msg: v8::UniquePtr<v8::inspector::StringBuffer>) {
-    let mut msg = msg.unwrap();
-    let msg = msg.string().to_string();
-    let msg = ws::Message::text(msg);
-    let msg = Ok(msg);
-    self
-      .tx
-      .unbounded_send(msg)
-      .expect("unbounded_send() failed");
-  }
-}
+    // Receive messages from the websocket and dispatch them to the V8 session.
+    let inbound_pump = websocket_rx
+      .map_ok(move |msg| {
+        let msg = msg.as_bytes();
+        let msg = v8::inspector::StringView::from(msg);
+        unsafe { &mut *self_ }.dispatch_protocol_message(&msg);
+      })
+      .try_collect::<()>();
 
-impl Future for DenoInspectorSession {
-  type Output = Result<(), warp::Error>;
+    // Convert and forward messages from the outbound message queue to the
+    // websocket.
+    let outbound_pump = outbound_queue_rx
+      .map(move |msg| {
+        let msg = msg.unwrap().string().to_string();
+        let msg = ws::Message::text(msg);
+        Ok(msg)
+      })
+      .forward(websocket_tx);
 
-  fn poll(
-    mut self: Pin<&mut Self>,
-    cx: &mut task::Context,
-  ) -> Poll<Self::Output> {
-    use Poll::*;
-    let mut self_ = self.as_mut();
+    let disconnect_future = future::try_join(inbound_pump, outbound_pump);
 
-    let rx_poll = loop {
-      match self_.rx.poll_next_unpin(cx) {
-        Ready(Some(Ok(msg))) => self_.dispatch_inbound(msg),
-        Ready(None) => break Ready(Ok(())),
-        Ready(Some(Err(e))) => break Ready(Err(e)),
-        Pending => break Pending,
-      }
-    };
-
-    let tx_poll = self_.tx_pump.poll_unpin(cx);
-
-    match (rx_poll, tx_poll) {
-      (Ready(r1), Ready(r2)) => Ready(r1.and(r2)),
-      _ => Pending,
+    async move {
+      eprintln!("Inspector session started.");
+      match disconnect_future.await {
+        Ok(_) => eprintln!("Inspector session ended."),
+        Err(err) => eprintln!("Inspector session ended: {}.", err),
+      };
     }
+    .boxed_local()
   }
 }
 
@@ -594,17 +587,27 @@ impl v8::inspector::ChannelImpl for DenoInspectorSession {
     _call_id: i32,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    self.send_outbound(message);
+    let _ = self.outbound_queue_tx.unbounded_send(message);
   }
 
   fn send_notification(
     &mut self,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    self.send_outbound(message);
+    let _ = self.outbound_queue_tx.unbounded_send(message);
   }
 
   fn flush_protocol_notifications(&mut self) {}
+}
+
+impl Future for DenoInspectorSession {
+  type Output = ();
+  fn poll(
+    mut self: Pin<&mut Self>,
+    cx: &mut task::Context,
+  ) -> Poll<Self::Output> {
+    self.message_handler.poll_unpin(cx)
+  }
 }
 
 fn new_box_with<T>(new_fn: impl FnOnce(*mut T) -> T) -> Box<T> {
