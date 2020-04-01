@@ -379,6 +379,7 @@ impl State {
       GlobalState::mock(vec!["deno".to_string()]),
       None,
       module_specifier,
+      DebugType::Main,
     )
     .unwrap()
   }
