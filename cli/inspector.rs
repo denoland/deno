@@ -4,56 +4,37 @@
 // https://chromedevtools.github.io/devtools-protocol/
 // https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
 
-//#![allow(dead_code)]
-//#![allow(warnings)]
+#![allow(clippy::option_map_unit_fn)]
+#![allow(clippy::single_match)]
 
-use crate::tokio_util;
-use crate::ErrBox;
 use deno_core::v8;
 use futures;
-use futures::channel;
 use futures::channel::mpsc;
 use futures::channel::mpsc::UnboundedReceiver;
 use futures::channel::mpsc::UnboundedSender;
-use futures::executor;
 use futures::future;
-use futures::future::IntoFuture;
-use futures::sink;
+use futures::future::Future;
 use futures::stream::Forward;
-use futures::stream::FuturesOrdered;
-use futures::stream::FuturesUnordered;
 use futures::stream::SplitSink;
 use futures::stream::SplitStream;
 use futures::task;
-use futures::task::AtomicWaker;
+use futures::task::Poll;
 use futures::FutureExt;
-use futures::SinkExt;
 use futures::Stream;
 use futures::StreamExt;
-use futures::TryFutureExt;
-use futures::TryStreamExt;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
-use std::cell::RefMut;
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::future::Future;
-use std::mem::replace;
 use std::mem::MaybeUninit;
 use std::net::SocketAddrV4;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::ptr;
-use std::ptr::null;
 use std::ptr::NonNull;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::task::Context;
-use std::task::Poll;
-use std::task::Waker;
 use std::thread;
 use uuid::Uuid;
 use warp;
@@ -63,7 +44,6 @@ use warp::Filter;
 
 /// Owned by GlobalState.
 pub struct InspectorServer {
-  address: SocketAddrV4,
   thread_handle: Option<thread::JoinHandle<()>>,
   new_inspector_tx: Option<UnboundedSender<UnboundedSender<WebSocket>>>,
 }
@@ -77,10 +57,9 @@ impl InspectorServer {
     let (new_inspector_tx, new_inspector_rx) =
       mpsc::unbounded::<UnboundedSender<WebSocket>>();
     let thread_handle = thread::spawn(move || {
-      tokio_util::run_basic(server(address, new_inspector_rx));
+      crate::tokio_util::run_basic(server(address, new_inspector_rx));
     });
     Self {
-      address,
       thread_handle: Some(thread_handle),
       new_inspector_tx: Some(new_inspector_tx),
     }
@@ -98,7 +77,7 @@ impl InspectorServer {
       ..
     } = isolate;
     let v8_isolate = v8_isolate.as_mut().unwrap();
-    let isolate_handle = v8_isolate.thread_safe_handle();
+    let _isolate_handle = v8_isolate.thread_safe_handle();
 
     let mut hs = v8::HandleScope::new(v8_isolate);
     let scope = hs.enter();
@@ -130,13 +109,13 @@ impl Drop for InspectorServer {
   }
 }
 
-fn websocket_debugger_url(address: SocketAddrV4, uuid: &Uuid) -> String {
+fn websocket_debugger_url(address: &SocketAddrV4, uuid: &Uuid) -> String {
   format!("ws://{}:{}/ws/{}", address.ip(), address.port(), uuid)
 }
 
 async fn server(
   address: SocketAddrV4,
-  mut new_inspector_rx: UnboundedReceiver<UnboundedSender<WebSocket>>,
+  new_inspector_rx: UnboundedReceiver<UnboundedSender<WebSocket>>,
 ) {
   let inspector_map = HashMap::<Uuid, UnboundedSender<WebSocket>>::new();
   let inspector_map = Arc::new(std::sync::Mutex::new(inspector_map));
@@ -152,7 +131,7 @@ async fn server(
         .map(|_| panic!("Inspector UUID already in map"));
       eprintln!(
         "Debugger listening on {}",
-        websocket_debugger_url(address, &uuid)
+        websocket_debugger_url(&address, &uuid)
       );
     })
     .fold((), |_, _| future::ready(()));
@@ -182,8 +161,8 @@ async fn server(
     warp::path("json")
       .map(move || {
         let g = inspector_map_.lock().unwrap();
-        let json_values: Vec<serde_json::Value> = g.iter().map(|(uuid, _)| {
-          let url = websocket_debugger_url(address, uuid);
+        let json_values = g.iter().map(|(uuid, _)| {
+          let url = websocket_debugger_url(&address, uuid);
           json!({
             "description": "deno",
             "devtoolsFrontendUrl": format!("chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws={}", url),
@@ -194,7 +173,7 @@ async fn server(
             "url": "file://",
             "webSocketDebuggerUrl": url,
           })
-        }).collect();
+        }).collect::<Vec<_>>();
         warp::reply::json(&json!(json_values))
       });
 
@@ -228,7 +207,7 @@ enum PollState {
 
 #[derive(Clone)]
 enum PollEntry<'a> {
-  Future(&'a Waker),
+  Future(&'a task::Waker),
   Pause,
   Other,
 }
@@ -289,7 +268,7 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
 /// a Worker is a Future too, Worker::poll will call this.
 impl Future for DenoInspector {
   type Output = ();
-  fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
+  fn poll(self: Pin<&mut Self>, cx: &mut task::Context) -> Poll<()> {
     self
       .poll_session_handler(PollEntry::Future(cx.waker()))
       .unwrap()
@@ -307,7 +286,7 @@ impl DenoInspector {
       let v8_inspector_client =
         v8::inspector::V8InspectorClientBase::new::<Self>();
 
-      let mut v8_inspector =
+      let v8_inspector =
         v8::inspector::V8Inspector::create(scope, unsafe { &mut *address });
 
       let session_handler =
@@ -325,7 +304,7 @@ impl DenoInspector {
     });
 
     self_.register_current_context(scope);
-    self_.poll_session_handler(PollEntry::Other).unwrap();
+    let _ = self_.poll_session_handler(PollEntry::Other).unwrap();
 
     self_
   }
@@ -359,7 +338,7 @@ impl DenoInspector {
 
   fn poll_session_handler(
     &self,
-    mut entry: PollEntry,
+    entry: PollEntry,
   ) -> Result<Poll<()>, BorrowMutError> {
     // The session handler's poll() function is not re-entrant. However it is
     // possible that poll_session_handler() gets re-entered, for example when an
@@ -427,13 +406,13 @@ impl DenoInspector {
             w.state
           });
           match new_state {
-            PollState::Idle => break Ok(Poll::Pending), // Yield to task.
+            PollState::Idle => break Ok(result), // Yield to task.
             PollState::Polling => {} // Poll the session handler again.
             PollState::Parked => thread::park(), // Park the thread.
             _ => unreachable!(),
           };
         }
-        Poll::Ready(r) => break Ok(Poll::Ready(r)), // Session has ended.
+        Poll::Ready(_) => break Ok(result), // Session has ended.
       }
     }
   }
@@ -490,11 +469,11 @@ impl task::ArcWake for InspectorWaker {
               w.isolate_handle.request_interrupt(handle_interrupt, arg);
             });
           extern "C" fn handle_interrupt(
-            isolate: &mut v8::Isolate,
+            _isolate: &mut v8::Isolate,
             arg: *mut c_void,
           ) {
             let inspector = unsafe { &*(arg as *mut DenoInspector) };
-            inspector.poll_session_handler(PollEntry::Other);
+            let _ = inspector.poll_session_handler(PollEntry::Other);
           }
         }
         PollState::Parked => {
@@ -531,10 +510,10 @@ impl DenoInspectorSession {
     websocket: WebSocket,
   ) -> Box<Self> {
     new_box_with(move |channel_address| {
-      let (mut channel_tx, mut channel_rx) =
+      let (channel_tx, channel_rx) =
         mpsc::unbounded::<Result<ws::Message, warp::Error>>();
-      let (mut websocket_tx, websocket_rx) = websocket.split();
-      let mut tx_pump = channel_rx.forward(websocket_tx);
+      let (websocket_tx, websocket_rx) = websocket.split();
+      let tx_pump = channel_rx.forward(websocket_tx);
 
       let empty_view = v8::inspector::StringView::empty();
 
@@ -578,7 +557,10 @@ impl DenoInspectorSession {
 impl Future for DenoInspectorSession {
   type Output = Result<(), warp::Error>;
 
-  fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+  fn poll(
+    mut self: Pin<&mut Self>,
+    cx: &mut task::Context,
+  ) -> Poll<Self::Output> {
     use Poll::*;
     let mut self_ = self.as_mut();
 
