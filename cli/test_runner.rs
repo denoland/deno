@@ -61,15 +61,24 @@ pub fn prepare_test_modules_urls(
   Ok(prepared)
 }
 
-pub fn render_test_file(modules: Vec<Url>, fail_fast: bool) -> String {
+pub fn render_test_file(
+  modules: Vec<Url>,
+  fail_fast: bool,
+  filter: Option<String>,
+) -> String {
   let mut test_file = "".to_string();
 
   for module in modules {
     test_file.push_str(&format!("import \"{}\";\n", module.to_string()));
   }
 
-  let run_tests_cmd =
-    format!("Deno.runTests({{ failFast: {} }});\n", fail_fast);
+  let run_tests_cmd = format!(
+    "Deno.runTests({});\n",
+    json!({
+      "failFast": fail_fast,
+      "only": filter,
+    })
+  );
   test_file.push_str(&run_tests_cmd);
 
   test_file

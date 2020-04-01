@@ -270,17 +270,17 @@ class TestApi {
 }
 
 function createFilterFn(
-  only: undefined | string | RegExp,
+  filter: undefined | string | RegExp,
   skip: undefined | string | RegExp
 ): (def: TestDefinition) => boolean {
   return (def: TestDefinition): boolean => {
     let passes = true;
 
-    if (only) {
-      if (only instanceof RegExp) {
-        passes = passes && only.test(def.name);
+    if (filter) {
+      if (filter instanceof RegExp) {
+        passes = passes && filter.test(def.name);
       } else {
-        passes = passes && def.name.includes(only);
+        passes = passes && def.name.includes(filter);
       }
     }
 
@@ -299,7 +299,7 @@ function createFilterFn(
 export interface RunTestsOptions {
   exitOnFail?: boolean;
   failFast?: boolean;
-  only?: string | RegExp;
+  filter?: string | RegExp;
   skip?: string | RegExp;
   disableLog?: boolean;
   reportToConsole?: boolean;
@@ -309,13 +309,13 @@ export interface RunTestsOptions {
 export async function runTests({
   exitOnFail = true,
   failFast = false,
-  only = undefined,
+  filter = undefined,
   skip = undefined,
   disableLog = false,
   reportToConsole: reportToConsole_ = true,
   onMessage = undefined,
 }: RunTestsOptions = {}): Promise<TestMessage["end"] & {}> {
-  const filterFn = createFilterFn(only, skip);
+  const filterFn = createFilterFn(filter, skip);
   const testApi = new TestApi(TEST_REGISTRY, filterFn, failFast);
 
   // @ts-ignore
