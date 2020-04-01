@@ -7,6 +7,7 @@
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
 const { args, stat, readdir, open, exit } = Deno;
+import { contentType } from "../media_types/mod.ts";
 import { posix } from "../path/mod.ts";
 import { listenAndServe, ServerRequest, Response } from "./server.ts";
 import { parse } from "../flags/mod.ts";
@@ -103,7 +104,10 @@ async function serveFile(
   const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
   const headers = new Headers();
   headers.set("content-length", fileInfo.size.toString());
-  headers.set("content-type", "text/plain; charset=utf-8");
+  const contentTypeValue = contentType(filePath);
+  if (contentTypeValue) {
+    headers.set("content-type", contentTypeValue);
+  }
 
   const res = {
     status: 200,
