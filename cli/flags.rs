@@ -406,6 +406,7 @@ fn completions_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   v8_flags_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
+  inspect_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Repl;
   flags.allow_net = true;
   flags.allow_env = true;
@@ -419,6 +420,7 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   v8_flags_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
+  inspect_arg_parse(flags, matches);
   flags.allow_net = true;
   flags.allow_env = true;
   flags.allow_run = true;
@@ -612,7 +614,7 @@ Format stdin and write to stdout:
 }
 
 fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
-  SubCommand::with_name("repl")
+  inspect_args(SubCommand::with_name("repl"))
     .about("Read Eval Print Loop")
     .arg(v8_flags_arg())
     .arg(ca_file_arg())
@@ -692,7 +694,7 @@ fn completions_subcommand<'a, 'b>() -> App<'a, 'b> {
 }
 
 fn eval_subcommand<'a, 'b>() -> App<'a, 'b> {
-  SubCommand::with_name("eval")
+  inspect_args(SubCommand::with_name("eval"))
     .arg(ca_file_arg())
     .about("Eval script")
     .long_about(
@@ -2353,6 +2355,34 @@ fn eval_with_cafile() {
 }
 
 #[test]
+fn eval_with_inspect() {
+  let r = flags_from_vec_safe(svec![
+    "deno",
+    "eval",
+    "--inspect",
+    "const foo = 'bar'"
+  ]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Eval {
+        code: "const foo = 'bar'".to_string(),
+        as_typescript: false,
+      },
+      inspect: Some("127.0.0.1:9229".to_string()),
+      allow_net: true,
+      allow_env: true,
+      allow_run: true,
+      allow_read: true,
+      allow_write: true,
+      allow_plugin: true,
+      allow_hrtime: true,
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
 fn fetch_with_cafile() {
   let r = flags_from_vec_safe(svec![
     "deno",
@@ -2429,6 +2459,26 @@ fn repl_with_cafile() {
     Flags {
       subcommand: DenoSubcommand::Repl {},
       ca_file: Some("example.crt".to_owned()),
+      allow_read: true,
+      allow_write: true,
+      allow_net: true,
+      allow_env: true,
+      allow_run: true,
+      allow_plugin: true,
+      allow_hrtime: true,
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn repl_with_inspect() {
+  let r = flags_from_vec_safe(svec!["deno", "repl", "--inspect"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Repl {},
+      inspect: Some("127.0.0.1:9229".to_string()),
       allow_read: true,
       allow_write: true,
       allow_net: true,
