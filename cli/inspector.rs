@@ -69,10 +69,7 @@ impl InspectorInfo {
 }
 
 impl InspectorServer {
-  pub fn new(host: &str, brk: bool) -> Self {
-    if brk {
-      todo!("--inspect-brk not yet supported");
-    }
+  pub fn new(host: &str) -> Self {
     let address = host.parse::<SocketAddr>().unwrap();
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
@@ -90,6 +87,7 @@ impl InspectorServer {
   pub fn add_inspector(
     &self,
     isolate: &mut deno_core::Isolate,
+    wait_for_debugger: bool,
   ) -> Box<DenoInspector> {
     let deno_core::Isolate {
       v8_isolate,
@@ -108,7 +106,6 @@ impl InspectorServer {
     let thread_name = thread::current().name().map(|n| n.to_owned());
     let (new_session_tx, new_session_rx) = mpsc::unbounded::<WebSocket>();
     let (canary_tx, canary_rx) = oneshot::channel::<Never>();
-    let inspector = DenoInspector::new(scope, new_session_rx, canary_tx);
 
     let inspector_info = InspectorInfo {
       uuid,
@@ -126,7 +123,10 @@ impl InspectorServer {
         panic!("sending message to inspector server thread failed");
       });
 
-    inspector
+    // Note: DenoInspector::new() might block if it needs to wait for a
+    // debugger front-end to connect. Therefore the server thread needs to be
+    // nofified *before* creating the inspector.
+    DenoInspector::new(scope, new_session_rx, canary_tx, wait_for_debugger)
   }
 }
 
@@ -275,6 +275,13 @@ async fn server(
   }
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum RunMode {
+  Running,
+  OnPause,
+  WaitingForDebugger,
+}
+
 #[derive(Clone, Copy)]
 enum PollState {
   Idle,
@@ -284,11 +291,11 @@ enum PollState {
   Dropped,
 }
 
-#[derive(Clone)]
 enum PollEntry<'a> {
+  Start(bool),
   Future(&'a task::Waker),
   Pause,
-  Other,
+  Interrupt,
 }
 
 pub struct DenoInspector {
@@ -319,7 +326,7 @@ impl Drop for DenoInspector {
     // interrupt from the isolate.
     self
       .inspector_waker
-      .update(|w| w.state = PollState::Dropped);
+      .update(|w| w.poll_state = PollState::Dropped);
     // V8 automatically deletes all sessions when an Inspector instance is
     // deleted, however InspectorSession also has a drop handler that cleans
     // up after itself. To avoid a double free, make sure the inspector is
@@ -346,11 +353,19 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   }
 
   fn quit_message_loop_on_pause(&mut self) {
-    self.inspector_waker.update(|w| w.on_pause = false);
+    self
+      .inspector_waker
+      .update(|w| w.run_mode = RunMode::Running);
   }
 
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
     assert_eq!(context_group_id, DenoInspectorSession::CONTEXT_GROUP_ID);
+    schedule_pause_on_next_statement(&mut self.v8_inspector);
+    self.inspector_waker.update(|w| {
+      if let RunMode::WaitingForDebugger = w.run_mode {
+        w.run_mode = RunMode::Running;
+      }
+    });
   }
 }
 
@@ -373,6 +388,7 @@ impl DenoInspector {
     scope: &mut impl v8::InIsolate,
     new_session_rx: impl Stream<Item = WebSocket> + 'static,
     canary_tx: oneshot::Sender<Never>,
+    wait_for_frontend: bool,
   ) -> Box<Self> {
     let mut self_ = new_box_with(|self_ptr| {
       let v8_inspector_client =
@@ -397,7 +413,9 @@ impl DenoInspector {
     });
 
     self_.register_current_context(scope);
-    let _ = self_.poll_session_handler(PollEntry::Other).unwrap();
+    let _ = self_
+      .poll_session_handler(PollEntry::Start(wait_for_frontend))
+      .unwrap();
 
     self_
   }
@@ -434,14 +452,19 @@ impl DenoInspector {
     let mut session_handler = self.session_handler.try_borrow_mut()?;
 
     self.inspector_waker.update(|w| {
-      // Set 'on_pause' flag if this function was called by the
-      // run_message_loop_on_pause() function.
-      if let PollEntry::Pause = entry {
-        w.on_pause = true;
+      // Update the run mode if we got here after receiving a 'pause' event,
+      // or when the isolate has just started and we need to wait for a
+      // debugger session to connect.
+      match entry {
+        PollEntry::Start(wait) if wait => {
+          w.run_mode = RunMode::WaitingForDebugger
+        }
+        PollEntry::Pause => w.run_mode = RunMode::OnPause,
+        _ => {}
       }
       // Set state to 'polling'.
-      match w.state {
-        PollState::Idle | PollState::Woken => w.state = PollState::Polling,
+      match w.poll_state {
+        PollState::Idle | PollState::Woken => w.poll_state = PollState::Polling,
         _ => unreachable!(),
       };
     });
@@ -457,18 +480,18 @@ impl DenoInspector {
       match result {
         Poll::Pending => {
           let new_state = self.inspector_waker.update(|w| {
-            match w.state {
+            match w.poll_state {
               PollState::Woken => {
                 // The inspector was woken while the session handler was being
                 // polled, so we poll it another time.
-                w.state = PollState::Polling;
+                w.poll_state = PollState::Polling;
               }
-              PollState::Polling if !w.on_pause => {
+              PollState::Polling if w.run_mode == RunMode::Running => {
                 // The session handler doesn't need to be polled any longer, and
                 // there's no reason to block (execution is not paused), so
                 // we're going to return from the poll_session_handler()
                 // function.
-                w.state = PollState::Idle;
+                w.poll_state = PollState::Idle;
                 // Register the task waker that can be used to wake the parent
                 // task that will poll the inspector future.
                 if let PollEntry::Future(task_waker) = entry {
@@ -478,17 +501,17 @@ impl DenoInspector {
                 // to request an interrupt from the isolate.
                 w.inspector_ptr = NonNull::new(self as *const _ as *mut Self);
               }
-              PollState::Polling if w.on_pause => {
+              PollState::Polling if w.run_mode != RunMode::Running => {
                 // Isolate execution has been paused but there are no more
                 // events to process, so this thread will be parked. Therefore,
                 // store the current thread handle in the waker so it knows
                 // which thread to unpark when new events arrive.
-                w.state = PollState::Parked;
+                w.poll_state = PollState::Parked;
                 w.parked_thread.replace(thread::current());
               }
               _ => unreachable!(),
             };
-            w.state
+            w.poll_state
           });
           match new_state {
             PollState::Idle => break Ok(result), // Yield to task.
@@ -504,8 +527,8 @@ impl DenoInspector {
 }
 
 struct InspectorWakerInner {
-  state: PollState,
-  on_pause: bool,
+  run_mode: RunMode,
+  poll_state: PollState,
   task_waker: Option<task::Waker>,
   parked_thread: Option<thread::Thread>,
   inspector_ptr: Option<NonNull<DenoInspector>>,
@@ -519,8 +542,8 @@ struct InspectorWaker(Mutex<InspectorWakerInner>);
 impl InspectorWaker {
   fn new(isolate_handle: v8::IsolateHandle) -> Arc<Self> {
     let inner = InspectorWakerInner {
-      state: PollState::Idle,
-      on_pause: false,
+      run_mode: RunMode::Running,
+      poll_state: PollState::Idle,
       task_waker: None,
       parked_thread: None,
       inspector_ptr: None,
@@ -541,7 +564,7 @@ impl InspectorWaker {
 impl task::ArcWake for InspectorWaker {
   fn wake_by_ref(arc_self: &Arc<Self>) {
     arc_self.update(|w| {
-      match w.state {
+      match w.poll_state {
         PollState::Idle => {
           // Wake the task, if any, that has polled the Inspector future last.
           w.task_waker.take().map(|waker| waker.wake());
@@ -558,7 +581,7 @@ impl task::ArcWake for InspectorWaker {
             arg: *mut c_void,
           ) {
             let inspector = unsafe { &*(arg as *mut DenoInspector) };
-            let _ = inspector.poll_session_handler(PollEntry::Other);
+            let _ = inspector.poll_session_handler(PollEntry::Interrupt);
           }
         }
         PollState::Parked => {
@@ -569,7 +592,7 @@ impl task::ArcWake for InspectorWaker {
         }
         _ => {}
       };
-      w.state = PollState::Woken;
+      w.poll_state = PollState::Woken;
     });
   }
 }
@@ -714,4 +737,65 @@ fn new_box_with<T>(new_fn: impl FnOnce(*mut T) -> T) -> Box<T> {
   let p = Box::into_raw(b) as *mut T;
   unsafe { ptr::write(p, new_fn(p)) };
   unsafe { Box::from_raw(p) }
+}
+
+// TODO: REMOVE ASAP! This is a total hack to work around a missing binding
+// in rusty_v8, `V8InspectorSession::schedulePauseOnNextStatement`.
+use schedule_pause_on_next_statement_hack::schedule_pause_on_next_statement;
+mod schedule_pause_on_next_statement_hack {
+  use super::*;
+  pub fn schedule_pause_on_next_statement(
+    v8_inspector: &mut v8::inspector::V8Inspector,
+  ) {
+    let mut session = HelperSession::new(v8_inspector);
+    let messages = &[
+      r#"{"id":1,"method":"Debugger.enable"}"#,
+      r#"{"id":2,"method":"Debugger.pause"}"#,
+    ];
+    for msg in messages {
+      let msg = v8::inspector::StringView::from(msg.as_bytes());
+      session.v8_session.dispatch_protocol_message(&msg);
+    }
+  }
+  struct HelperSession {
+    v8_channel: v8::inspector::ChannelBase,
+    v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
+  }
+  impl HelperSession {
+    fn new(v8_inspector: &mut v8::inspector::V8Inspector) -> Box<Self> {
+      new_box_with(move |self_ptr| {
+        let v8_channel = v8::inspector::ChannelBase::new::<Self>();
+        let empty_view = v8::inspector::StringView::empty();
+        let v8_session = v8_inspector.connect(
+          DenoInspectorSession::CONTEXT_GROUP_ID,
+          unsafe { &mut *self_ptr },
+          &empty_view,
+        );
+        Self {
+          v8_channel,
+          v8_session,
+        }
+      })
+    }
+  }
+  impl v8::inspector::ChannelImpl for HelperSession {
+    fn base(&self) -> &v8::inspector::ChannelBase {
+      &self.v8_channel
+    }
+    fn base_mut(&mut self) -> &mut v8::inspector::ChannelBase {
+      &mut self.v8_channel
+    }
+    fn send_response(
+      &mut self,
+      _call_id: i32,
+      _message: v8::UniquePtr<v8::inspector::StringBuffer>,
+    ) {
+    }
+    fn send_notification(
+      &mut self,
+      _message: v8::UniquePtr<v8::inspector::StringBuffer>,
+    ) {
+    }
+    fn flush_protocol_notifications(&mut self) {}
+  }
 }

@@ -33,6 +33,13 @@ use std::str;
 use std::thread::JoinHandle;
 use std::time::Instant;
 
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum DebugType {
+  Main, // Can be debugged, will wait for debugger when --inspect-brk given.
+  Dependent, // Can be debugged, never waits for debugger.
+  Internal, // No inspector instance is created.
+}
+
 #[derive(Clone)]
 pub struct State(Rc<RefCell<StateInner>>);
 
@@ -59,6 +66,7 @@ pub struct StateInner {
   pub seeded_rng: Option<StdRng>,
   pub resource_table: ResourceTable,
   pub target_lib: TargetLib,
+  pub debug_type: DebugType,
 }
 
 impl State {
@@ -230,6 +238,7 @@ impl State {
     global_state: GlobalState,
     shared_permissions: Option<DenoPermissions>,
     main_module: ModuleSpecifier,
+    debug_type: DebugType,
   ) -> Result<Self, ErrBox> {
     let import_map: Option<ImportMap> =
       match global_state.flags.import_map_path.as_ref() {
@@ -259,9 +268,9 @@ impl State {
       next_worker_id: 0,
       start_time: Instant::now(),
       seeded_rng,
-
       resource_table: ResourceTable::default(),
       target_lib: TargetLib::Main,
+      debug_type,
     }));
 
     Ok(Self(state))
@@ -295,9 +304,9 @@ impl State {
       next_worker_id: 0,
       start_time: Instant::now(),
       seeded_rng,
-
       resource_table: ResourceTable::default(),
       target_lib: TargetLib::Worker,
+      debug_type: DebugType::Dependent,
     }));
 
     Ok(Self(state))

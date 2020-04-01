@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
 use crate::ops;
+use crate::state::DebugType;
 use crate::state::State;
 use deno_core;
 use deno_core::Buf;
@@ -107,10 +108,21 @@ impl Worker {
 
     let global_state = state.borrow().global_state.clone();
 
-    let inspector = global_state
-      .inspector_server
-      .as_ref()
-      .map(|s| s.add_inspector(&mut *isolate));
+    let inspector_server = match state.borrow().debug_type {
+      DebugType::Main | DebugType::Dependent => {
+        global_state.inspector_server.as_ref()
+      }
+      DebugType::Internal => None,
+    };
+    let wait_for_debugger = inspector_server.is_some()
+      && global_state.flags.inspect_brk.is_some()
+      && match state.borrow().debug_type {
+        DebugType::Main => true,
+        DebugType::Dependent => false,
+        DebugType::Internal => unreachable!(),
+      };
+    let inspector = inspector_server
+      .map(|s| s.add_inspector(&mut *isolate, wait_for_debugger));
 
     isolate.set_js_error_create_fn(move |core_js_error| {
       JSError::create(core_js_error, &global_state.ts_compiler)
@@ -287,8 +299,13 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
-    let state =
-      State::new(global_state, None, module_specifier.clone()).unwrap();
+    let state = State::new(
+      global_state,
+      None,
+      module_specifier.clone(),
+      DebugType::Main,
+    )
+    .unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -316,8 +333,13 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
-    let state =
-      State::new(global_state, None, module_specifier.clone()).unwrap();
+    let state = State::new(
+      global_state,
+      None,
+      module_specifier.clone(),
+      DebugType::Main,
+    )
+    .unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -354,8 +376,13 @@ mod tests {
       ..flags::Flags::default()
     };
     let global_state = GlobalState::new(flags).unwrap();
-    let state =
-      State::new(global_state.clone(), None, module_specifier.clone()).unwrap();
+    let state = State::new(
+      global_state.clone(),
+      None,
+      module_specifier.clone(),
+      DebugType::Main,
+    )
+    .unwrap();
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),

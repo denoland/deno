@@ -84,13 +84,11 @@ impl GlobalState {
       None
     };
 
-    let inspector_server = if let Some(ref host) = flags.inspect {
-      Some(InspectorServer::new(host, false))
-    } else if let Some(ref host) = flags.inspect_brk {
-      Some(InspectorServer::new(host, true))
-    } else {
-      None
-    };
+    let inspector_server = flags
+      .inspect
+      .as_ref()
+      .or(flags.inspect_brk.as_ref())
+      .map(|host| InspectorServer::new(host));
 
     let inner = GlobalStateInner {
       inspector_server,
