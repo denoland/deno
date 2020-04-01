@@ -156,6 +156,14 @@ async fn server(
       )
     });
 
+  let json_version_route = warp::path!("json" / "version").map(|| {
+    warp::reply::json(&json!({
+      "Browser": format!("Deno/{}", crate::version::DENO),
+      "Protocol-Version": "1.3",
+      "V8-Version": crate::version::v8(),
+    }))
+  });
+
   let inspector_map_ = inspector_map.clone();
   let json_list_route =
     warp::path("json")
@@ -177,19 +185,11 @@ async fn server(
         warp::reply::json(&json!(json_values))
       });
 
-  let version_route = warp::path!("json" / "version").map(|| {
-    warp::reply::json(&json!({
-      "Browser": format!("Deno/{}", crate::version::DENO),
-      "Protocol-Version": "1.3",
-      "V8-Version": crate::version::v8(),
-    }))
-  });
-
-  let routes = websocket_route.or(version_route).or(json_list_route);
+  let routes = websocket_route.or(json_version_route).or(json_list_route);
   let (_, web_handler) = warp::serve(routes)
     .try_bind_ephemeral(address)
     .unwrap_or_else(|e| {
-      eprintln!("Cannot start inspector server: {}", e);
+      eprintln!("Cannot start inspector server: {}.", e);
       std::process::exit(1);
     });
 
@@ -418,8 +418,6 @@ impl DenoInspector {
   }
 }
 
-unsafe impl Send for InspectorWakerInner {}
-
 struct InspectorWakerInner {
   state: PollState,
   on_pause: bool,
@@ -428,6 +426,8 @@ struct InspectorWakerInner {
   inspector_address: Option<NonNull<DenoInspector>>,
   isolate_handle: v8::IsolateHandle,
 }
+
+unsafe impl Send for InspectorWakerInner {}
 
 struct InspectorWaker(Mutex<InspectorWakerInner>);
 
@@ -544,7 +544,6 @@ impl DenoInspectorSession {
   fn send_outbound(&mut self, msg: v8::UniquePtr<v8::inspector::StringBuffer>) {
     let mut msg = msg.unwrap();
     let msg = msg.string().to_string();
-    eprintln!("tx: {}", &msg);
     let msg = ws::Message::text(msg);
     let msg = Ok(msg);
     self
