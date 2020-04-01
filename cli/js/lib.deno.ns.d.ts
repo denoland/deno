@@ -12,10 +12,8 @@ declare namespace Deno {
    * See: https://no-color.org/ */
   export let noColor: boolean;
 
-  export type TestFunction = () => void | Promise<void>;
-
   export interface TestDefinition {
-    fn: TestFunction;
+    fn: () => void | Promise<void>;
     name: string;
     ignore?: boolean;
     disableOpSanitizer?: boolean;
@@ -70,7 +68,7 @@ declare namespace Deno {
    *          assertEquals(decoder.decode(data), "Hello world")
    *        });
    **/
-  export function test(fn: TestFunction): void;
+  export function test(fn: () => void | Promise<void>): void;
 
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module, or explicitly
@@ -88,78 +86,37 @@ declare namespace Deno {
    *          assertEquals(decoder.decode(data), "Hello world")
    *        });
    * */
-  export function test(name: string, fn: TestFunction): void;
+  export function test(name: string, fn: () => void | Promise<void>): void;
 
-  enum TestStatus {
-    Passed = "passed",
-    Failed = "failed",
-    Ignored = "ignored",
-  }
-
-  interface TestResult {
-    name: string;
-    status: TestStatus;
-    duration?: number;
-    error?: Error;
-  }
-
-  interface TestStats {
-    filtered: number;
-    ignored: number;
-    measured: number;
-    passed: number;
-    failed: number;
-  }
-
-  export enum TestEvent {
-    Start = "start",
-    TestStart = "testStart",
-    TestEnd = "testEnd",
-    End = "end",
-  }
-
-  interface TestEventStart {
-    kind: TestEvent.Start;
-    tests: number;
-  }
-
-  interface TestEventTestStart {
-    kind: TestEvent.TestStart;
-    name: string;
-  }
-
-  interface TestEventTestEnd {
-    kind: TestEvent.TestEnd;
-    result: TestResult;
-  }
-
-  interface TestEventEnd {
-    kind: TestEvent.End;
-    stats: TestStats;
-    duration: number;
-    results: TestResult[];
-  }
-
-  interface TestReporter {
-    start(event: TestEventStart): Promise<void>;
-    testStart(msg: TestEventTestStart): Promise<void>;
-    testEnd(msg: TestEventTestEnd): Promise<void>;
-    end(event: TestEventEnd): Promise<void>;
-  }
-
-  export class ConsoleTestReporter implements TestReporter {
-    constructor();
-    start(event: TestEventStart): Promise<void>;
-    testStart(msg: TestEventTestStart): Promise<void>;
-    testEnd(msg: TestEventTestEnd): Promise<void>;
-    end(event: TestEventEnd): Promise<void>;
+  export interface TestMessage {
+    start?: {
+      tests: TestDefinition[];
+    };
+    testStart?: {
+      [P in keyof TestDefinition]: TestDefinition[P];
+    };
+    testEnd?: {
+      name: string;
+      status: "passed" | "failed" | "ignored";
+      duration: number;
+      error?: Error;
+    };
+    end?: {
+      filtered: number;
+      ignored: number;
+      measured: number;
+      passed: number;
+      failed: number;
+      duration: number;
+      results: Array<TestMessage["testEnd"] & {}>;
+    };
   }
 
   export interface RunTestsOptions {
     /** If `true`, Deno will exit with status code 1 if there was
      * test failure. Defaults to `true`. */
     exitOnFail?: boolean;
-    /** If `true`, Deno will exit upon first test failure Defaults to `false`. */
+    /** If `true`, Deno will exit upon first test failure. Defaults to `false`. */
     failFast?: boolean;
     /** String or RegExp used to filter test to run. Only test with names
      * matching provided `String` or `RegExp` will be run. */
@@ -169,8 +126,10 @@ declare namespace Deno {
     skip?: string | RegExp;
     /** Disable logging of the results. Defaults to `false`. */
     disableLog?: boolean;
-    /** Custom reporter class. If not provided uses console reporter. */
-    reporter?: TestReporter;
+    /** If true, report results to the console as is done for `deno test`. Defaults to `true`. */
+    reportToConsole?: boolean;
+    /** Called for each message received from the test run. */
+    onMessage?: (message: TestMessage) => void | Promise<void>;
   }
 
   /** Run any tests which have been registered via `Deno.test()`. Always resolves
@@ -193,11 +152,7 @@ declare namespace Deno {
    */
   export function runTests(
     opts?: RunTestsOptions
-  ): Promise<{
-    results: TestResult[];
-    stats: TestStats;
-    duration: number;
-  }>;
+  ): Promise<TestMessage["end"]> & {};
 
   /** Returns an array containing the 1, 5, and 15 minute load averages. The
    * load average is a measure of CPU and IO utilization of the last one, five,
