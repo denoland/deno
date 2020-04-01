@@ -27,6 +27,7 @@ test(function testContentType(): void {
     "text/html; charset=iso-8859-1"
   );
   assertEquals(contentType(".htaccess"), undefined);
+  assertEquals(contentType("file.ts"), "application/typescript");
 });
 
 test(function testExtension(): void {
