@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
+use crate::inspector::DenoInspector;
 use crate::ops;
 use crate::state::DebugType;
 use crate::state::State;
@@ -98,7 +99,7 @@ pub struct Worker {
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
-  inspector: Option<Box<crate::inspector::DenoInspector>>,
+  inspector: Option<Box<DenoInspector>>,
 }
 
 impl Worker {
@@ -108,21 +109,18 @@ impl Worker {
 
     let global_state = state.borrow().global_state.clone();
 
-    let inspector_server = match state.borrow().debug_type {
-      DebugType::Main | DebugType::Dependent => {
-        global_state.inspector_server.as_ref()
-      }
-      DebugType::Internal => None,
-    };
-    let wait_for_debugger = inspector_server.is_some()
-      && global_state.flags.inspect_brk.is_some()
-      && match state.borrow().debug_type {
-        DebugType::Main => true,
-        DebugType::Dependent => false,
-        DebugType::Internal => unreachable!(),
-      };
-    let inspector = inspector_server
-      .map(|s| s.add_inspector(&mut *isolate, wait_for_debugger));
+    let inspect = global_state.flags.inspect.as_ref();
+    let inspect_brk = global_state.flags.inspect_brk.as_ref();
+    let inspector = inspect
+      .or(inspect_brk)
+      .and_then(|host| match state.borrow().debug_type {
+        DebugType::Main if inspect_brk.is_some() => Some((host, true)),
+        DebugType::Main | DebugType::Dependent => Some((host, false)),
+        DebugType::Internal => None,
+      })
+      .map(|(host, wait_for_debugger)| {
+        DenoInspector::new(&mut isolate, *host, wait_for_debugger)
+      });
 
     isolate.set_js_error_create_fn(move |core_js_error| {
       JSError::create(core_js_error, &global_state.ts_compiler)

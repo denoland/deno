@@ -7,6 +7,7 @@
 #![allow(clippy::option_map_unit_fn)]
 
 use core::convert::Infallible as Never; // Alias for the future `!` type.
+use deno_core;
 use deno_core::v8;
 use futures::channel::mpsc;
 use futures::channel::mpsc::UnboundedReceiver;
@@ -19,7 +20,6 @@ use futures::task;
 use futures::task::Poll;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
-use std::cmp::max;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::mem::replace;
@@ -33,6 +33,7 @@ use std::ptr;
 use std::ptr::NonNull;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::Once;
 use std::thread;
 use uuid::Uuid;
 use warp;
@@ -40,10 +41,42 @@ use warp::filters::ws;
 use warp::filters::ws::WebSocket;
 use warp::Filter;
 
-/// Owned by GlobalState.
-pub struct InspectorServer {
-  thread_handle: Option<thread::JoinHandle<()>>,
-  register_inspector_tx: Option<UnboundedSender<InspectorInfo>>,
+struct InspectorServer {
+  host: SocketAddr,
+  register_inspector_tx: UnboundedSender<InspectorInfo>,
+}
+
+impl InspectorServer {
+  // Returns the global InspectorServer instance. If the server is not yet
+  // running, this function starts it.
+  pub fn global(host: SocketAddr) -> &'static InspectorServer {
+    let instance = unsafe {
+      static mut INSTANCE: Option<InspectorServer> = None;
+      static INIT: Once = Once::new();
+      INIT.call_once(|| {
+        INSTANCE.replace(Self::new(host));
+      });
+      INSTANCE.as_ref().unwrap()
+    };
+    assert_eq!(host, instance.host);
+    instance
+  }
+
+  fn new(host: SocketAddr) -> Self {
+    let (register_inspector_tx, register_inspector_rx) =
+      mpsc::unbounded::<InspectorInfo>();
+    thread::spawn(move || {
+      crate::tokio_util::run_basic(server(host, register_inspector_rx))
+    });
+    Self {
+      host,
+      register_inspector_tx,
+    }
+  }
+
+  pub fn register_inspector(&self, info: InspectorInfo) {
+    self.register_inspector_tx.unbounded_send(info).unwrap();
+  }
 }
 
 /// Inspector information that is sent from the isolate thread to the server
@@ -56,108 +89,32 @@ pub struct InspectorInfo {
 }
 
 impl InspectorInfo {
-  fn get_websocket_debugger_url(&self, address: &SocketAddr) -> String {
-    format!("ws://{}/ws/{}", address, &self.uuid)
+  fn get_websocket_debugger_url(&self, host: &SocketAddr) -> String {
+    format!("ws://{}/ws/{}", host, &self.uuid)
   }
 
-  fn get_frontend_url(&self, address: &SocketAddr) -> String {
+  fn get_frontend_url(&self, host: &SocketAddr) -> String {
     format!(
-      "devtools://devtools/bundled/inspector.html?remotefrontend=true&v8only=true&ws={}/ws/{}",
-      address, &self.uuid
+      "chrome-devtools://devtools/bundled/inspector.html?v8only=true&ws={}/ws/{}",
+      host, &self.uuid
     )
   }
 }
 
-impl InspectorServer {
-  pub fn new(host: &str) -> Self {
-    let address = host.parse::<SocketAddr>().unwrap();
-    let (register_inspector_tx, register_inspector_rx) =
-      mpsc::unbounded::<InspectorInfo>();
-    let thread_handle = thread::spawn(move || {
-      crate::tokio_util::run_basic(server(address, register_inspector_rx))
-    });
-    Self {
-      thread_handle: Some(thread_handle),
-      register_inspector_tx: Some(register_inspector_tx),
-    }
-  }
-
-  /// Each worker/isolate to be debugged should call this exactly one.
-  /// Called from worker's thread.
-  pub fn add_inspector(
-    &self,
-    isolate: &mut deno_core::Isolate,
-    wait_for_debugger: bool,
-  ) -> Box<DenoInspector> {
-    let deno_core::Isolate {
-      v8_isolate,
-      global_context,
-      ..
-    } = isolate;
-
-    let v8_isolate = v8_isolate.as_mut().unwrap();
-    let mut hs = v8::HandleScope::new(v8_isolate);
-    let scope = hs.enter();
-    let context = global_context.get(scope).unwrap();
-    let mut cs = v8::ContextScope::new(scope, context);
-    let scope = cs.enter();
-
-    let uuid = Uuid::new_v4();
-    let thread_name = thread::current().name().map(|n| n.to_owned());
-    let (new_session_tx, new_session_rx) = mpsc::unbounded::<WebSocket>();
-    let (canary_tx, canary_rx) = oneshot::channel::<Never>();
-
-    let inspector_info = InspectorInfo {
-      uuid,
-      thread_name,
-      new_session_tx,
-      canary_rx,
-    };
-
-    self
-      .register_inspector_tx
-      .as_ref()
-      .unwrap()
-      .unbounded_send(inspector_info)
-      .unwrap_or_else(|_| {
-        panic!("sending message to inspector server thread failed");
-      });
-
-    // Note: DenoInspector::new() might block if it needs to wait for a
-    // debugger front-end to connect. Therefore the server thread needs to be
-    // nofified *before* creating the inspector.
-    DenoInspector::new(scope, new_session_rx, canary_tx, wait_for_debugger)
-  }
-}
-
-impl Drop for InspectorServer {
-  fn drop(&mut self) {
-    self.register_inspector_tx.take();
-    self.thread_handle.take().unwrap().join().unwrap();
-    panic!("TODO: this drop is never called");
-  }
-}
-
 async fn server(
-  address: SocketAddr,
+  host: SocketAddr,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
 ) {
-  // TODO: wrap `address` and `inspector_map` in an Rc<RefCell<T>> instead.
-  // This is currently not possible because warp requires all filters to
-  // implement Send, which should not be necessary because we are using a
-  // single-threaded runtime.
-  let address = Arc::new(Mutex::new(address));
+  // TODO: `inspector_map` in an Rc<RefCell<T>> instead. This is currently not
+  // possible because warp requires all filters to implement Send, which should
+  // not be necessary because we are using a single-threaded runtime.
   let inspector_map = HashMap::<Uuid, InspectorInfo>::new();
   let inspector_map = Arc::new(Mutex::new(inspector_map));
 
-  let address_ = address.clone();
   let inspector_map_ = inspector_map.clone();
   let mut register_inspector_handler = register_inspector_rx
     .map(|info| {
-      eprintln!(
-        "Inspector listening at {}",
-        info.get_frontend_url(&*address_.lock().unwrap())
-      );
+      eprintln!("Inspector listening at {}", info.get_frontend_url(&host));
       inspector_map_
         .lock()
         .unwrap()
@@ -208,10 +165,8 @@ async fn server(
     }))
   });
 
-  let address_ = address.clone();
   let inspector_map_ = inspector_map.clone();
   let json_list_route = warp::path("json").map(move || {
-    let address = *address_.lock().unwrap();
     let json_values = inspector_map_
       .lock()
       .unwrap()
@@ -228,13 +183,13 @@ async fn server(
         );
         json!({
           "description": "deno",
-          "devtoolsFrontendUrl": info.get_frontend_url(&address),
+          "devtoolsFrontendUrl": info.get_frontend_url(&host),
           "faviconUrl": "https://deno.land/favicon.ico",
           "id": info.uuid.to_string(),
           "title": title,
           "type": "deno",
           "url": "file://",
-          "webSocketDebuggerUrl": info.get_websocket_debugger_url(&address),
+          "webSocketDebuggerUrl": info.get_websocket_debugger_url(&host),
         })
       })
       .collect::<Vec<_>>();
@@ -243,30 +198,14 @@ async fn server(
 
   let server_routes =
     websocket_route.or(json_version_route).or(json_list_route);
-
-  let mut server_handler = {
-    let address = &mut *address.lock().unwrap();
-    let mut port = address.port();
-    let max_port = max(port + 64, u16::max_value() - 1);
-    let mut first_error = None;
-    loop {
-      let server = warp::serve(server_routes.clone());
-      match server.try_bind_ephemeral(*address) {
-        Ok((_, fut)) => break fut,
-        Err(err) => {
-          let err = first_error.get_or_insert(err);
-          if port < max_port {
-            port += 1;
-            address.set_port(port);
-          } else {
-            eprintln!("Cannot start inspector server: {}.", err);
-            process::exit(1);
-          }
-        }
-      };
-    }
-  }
-  .fuse();
+  let mut server_handler = warp::serve(server_routes)
+    .try_bind_ephemeral(host)
+    .map(|(_, fut)| fut)
+    .unwrap_or_else(|err| {
+      eprintln!("Cannot start inspector server: {}.", err);
+      process::exit(1);
+    })
+    .fuse();
 
   select! {
     _ = register_inspector_handler => (),
@@ -292,8 +231,8 @@ enum PollState {
 }
 
 enum PollEntry<'a> {
-  Start(bool),
-  Future(&'a task::Waker),
+  InspectorCreated(bool),
+  FuturePolled(&'a task::Waker),
   Pause,
   Interrupt,
 }
@@ -360,12 +299,17 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
 
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
     assert_eq!(context_group_id, DenoInspectorSession::CONTEXT_GROUP_ID);
-    schedule_pause_on_next_statement(&mut self.v8_inspector);
-    self.inspector_waker.update(|w| {
+    let was_waiting_for_debugger = self.inspector_waker.update(|w| {
       if let RunMode::WaitingForDebugger = w.run_mode {
         w.run_mode = RunMode::Running;
+        true
+      } else {
+        false
       }
     });
+    if was_waiting_for_debugger {
+      schedule_pause_on_next_statement(&mut self.v8_inspector);
+    }
   }
 }
 
@@ -376,7 +320,7 @@ impl Future for DenoInspector {
   type Output = ();
   fn poll(self: Pin<&mut Self>, cx: &mut task::Context) -> Poll<()> {
     self
-      .poll_session_handler(PollEntry::Future(cx.waker()))
+      .poll_session_handler(PollEntry::FuturePolled(cx.waker()))
       .unwrap()
   }
 }
@@ -385,24 +329,33 @@ impl DenoInspector {
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
-    scope: &mut impl v8::InIsolate,
-    new_session_rx: impl Stream<Item = WebSocket> + 'static,
-    canary_tx: oneshot::Sender<Never>,
-    wait_for_frontend: bool,
+    isolate: &mut deno_core::Isolate,
+    host: SocketAddr,
+    wait_for_debugger: bool,
   ) -> Box<Self> {
+    let deno_core::Isolate {
+      v8_isolate,
+      global_context,
+      ..
+    } = isolate;
+
+    let v8_isolate = v8_isolate.as_mut().unwrap();
+    let mut hs = v8::HandleScope::new(v8_isolate);
+    let scope = hs.enter();
+
+    let (new_session_tx, new_session_rx) = mpsc::unbounded::<WebSocket>();
+    let (canary_tx, canary_rx) = oneshot::channel::<Never>();
+
+    // Create DenoInspector instance.
     let mut self_ = new_box_with(|self_ptr| {
       let v8_inspector_client =
         v8::inspector::V8InspectorClientBase::new::<Self>();
-
       let v8_inspector =
         v8::inspector::V8Inspector::create(scope, unsafe { &mut *self_ptr });
-
       let session_handler =
         Self::create_session_handler(self_ptr, new_session_rx);
-
       let inspector_waker =
         InspectorWaker::new(scope.isolate().thread_safe_handle());
-
       Self {
         v8_inspector_client,
         v8_inspector,
@@ -412,21 +365,31 @@ impl DenoInspector {
       }
     });
 
-    self_.register_current_context(scope);
+    // Tell the inspector about the global context.
+    let context = global_context.get(scope).unwrap();
+    let context_name = v8::inspector::StringView::from(&b"global context"[..]);
+    self_.context_created(context, Self::CONTEXT_GROUP_ID, &context_name);
+
+    // Register this inspector with the server thread.
+    // Note: poll_session_handler() might block if we need to wait for a
+    // debugger front-end to connect. Therefore the server thread must to be
+    // nofified *before* polling.
+    let server = InspectorServer::global(host);
+    let info = InspectorInfo {
+      uuid: Uuid::new_v4(),
+      thread_name: thread::current().name().map(|n| n.to_owned()),
+      new_session_tx,
+      canary_rx,
+    };
+    server.register_inspector(info);
+
+    // Poll the session handler so we will get notified whenever there is
+    // incoming debugger activity.
     let _ = self_
-      .poll_session_handler(PollEntry::Start(wait_for_frontend))
+      .poll_session_handler(PollEntry::InspectorCreated(wait_for_debugger))
       .unwrap();
 
     self_
-  }
-
-  fn register_current_context(&mut self, scope: &mut impl v8::InIsolate) {
-    let mut scope = v8::HandleScope::new(scope);
-    let scope = scope.enter();
-    if let Some(context) = scope.get_current_context() {
-      let empty_view = v8::inspector::StringView::empty();
-      self.context_created(context, Self::CONTEXT_GROUP_ID, &empty_view);
-    }
   }
 
   fn create_session_handler(
@@ -456,7 +419,7 @@ impl DenoInspector {
       // or when the isolate has just started and we need to wait for a
       // debugger session to connect.
       match entry {
-        PollEntry::Start(wait) if wait => {
+        PollEntry::InspectorCreated(wait) if wait => {
           w.run_mode = RunMode::WaitingForDebugger
         }
         PollEntry::Pause => w.run_mode = RunMode::OnPause,
@@ -494,10 +457,10 @@ impl DenoInspector {
                 w.poll_state = PollState::Idle;
                 // Register the task waker that can be used to wake the parent
                 // task that will poll the inspector future.
-                if let PollEntry::Future(task_waker) = entry {
+                if let PollEntry::FuturePolled(task_waker) = entry {
                   w.task_waker.replace(task_waker.clone());
                 }
-                // Register the address of the inspector which allows the waker
+                // Register the host of the inspector which allows the waker
                 // to request an interrupt from the isolate.
                 w.inspector_ptr = NonNull::new(self as *const _ as *mut Self);
               }
