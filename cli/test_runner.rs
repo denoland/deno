@@ -73,9 +73,9 @@ pub fn render_test_file(
   }
 
   let options = if let Some(filter) = filter {
-    json!({ "failFast": fail_fast })
+    json!({ "failFast": fail_fast, "filter": filter })
   } else {
-    json!({ "failFast": fail_fast, "filter", filter })
+    json!({ "failFast": fail_fast })
   };
 
   let run_tests_cmd = format!("Deno.runTests({});\n", options);
