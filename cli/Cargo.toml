@@ -71,7 +71,6 @@ swc_ecma_parser = "=0.21.8"
 swc_ecma_parser_macros = "=0.4.1"
 uuid = { version = "0.8", features = ["v4"] }
 
-
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.8"
 fwdansi = "1.1.0"

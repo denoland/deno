@@ -66,7 +66,7 @@ impl InspectorServer {
   }
 
   /// Each worker/isolate to be debugged should call this exactly one.
-  /// Called from worker's thread
+  /// Called from worker's thread.
   pub fn add_inspector(
     &self,
     isolate: &mut deno_core::Isolate,
@@ -76,16 +76,15 @@ impl InspectorServer {
       global_context,
       ..
     } = isolate;
-    let v8_isolate = v8_isolate.as_mut().unwrap();
-    let _isolate_handle = v8_isolate.thread_safe_handle();
 
+    let v8_isolate = v8_isolate.as_mut().unwrap();
     let mut hs = v8::HandleScope::new(v8_isolate);
     let scope = hs.enter();
     let context = global_context.get(scope).unwrap();
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
-    let (new_session_tx, new_session_rx) = mpsc::unbounded::<WebSocket>();
 
+    let (new_session_tx, new_session_rx) = mpsc::unbounded::<WebSocket>();
     let inspector = crate::inspector::DenoInspector::new(scope, new_session_rx);
 
     self
