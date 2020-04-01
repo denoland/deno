@@ -1,7 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types.ts";
-import { TextEncoder } from "./text_encoding.ts";
+import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { build } from "../build.ts";
+import { ReadableStream } from "./streams/mod.ts";
+import { Buffer } from "../buffer.ts";
 
 export const bytesSymbol = Symbol("bytes");
 
@@ -124,6 +126,39 @@ function processBlobParts(
   return bytes;
 }
 
+function getStream(blobBytes: Uint8Array): domTypes.ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(blobBytes);
+    },
+  }) as domTypes.ReadableStream<Uint8Array>;
+}
+
+async function readBytes(
+  reader: domTypes.ReadableStreamReader<Uint8Array>
+): Promise<ArrayBuffer> {
+  const bytes = new Buffer();
+  while (true) {
+    try {
+      const { done, value } = await reader.read();
+      if (done === false && value instanceof Uint8Array) {
+        bytes.grow(value.length);
+        await bytes.write(value);
+      } else if (done === true) {
+        return Promise.resolve(bytes.bytes().buffer.slice(0, bytes.length));
+      } else {
+        return Promise.reject(new TypeError());
+      }
+    } catch (e) {
+      return Promise.reject(e);
+    }
+  }
+}
+
+// A WeakMap holding blob to byte array mapping.
+// Ensures it does not impact garbage collection.
+export const blobBytesWeakMap = new WeakMap<domTypes.Blob, Uint8Array>();
+
 export class DenoBlob implements domTypes.Blob {
   [bytesSymbol]: Uint8Array;
   readonly size: number = 0;
@@ -167,5 +202,19 @@ export class DenoBlob implements domTypes.Blob {
     return new DenoBlob([this[bytesSymbol].slice(start, end)], {
       type: contentType || this.type,
     });
+  }
+
+  stream(): domTypes.ReadableStream<Uint8Array> {
+    return getStream(this[bytesSymbol]);
+  }
+
+  async text(): Promise<string> {
+    const reader = getStream(this[bytesSymbol]).getReader();
+    const decoder = new TextDecoder();
+    return decoder.decode(await readBytes(reader));
+  }
+
+  async arrayBuffer(): Promise<ArrayBuffer> {
+    return readBytes(getStream(this[bytesSymbol]).getReader());
   }
 }
