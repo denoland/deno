@@ -9,7 +9,7 @@ import {
   concat,
 } from "./mod.ts";
 import { assertEquals, assertThrows, assert } from "../testing/asserts.ts";
-import { encode, decode } from "../strings/mod.ts";
+import { encode, decode } from "../encoding/utf8.ts";
 
 Deno.test("[bytes] findIndex1", () => {
   const i = findIndex(

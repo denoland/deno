@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { decode, encode } from "../strings/mod.ts";
+import { decode, encode } from "../encoding/utf8.ts";
 import { hasOwnProperty } from "../util/has_own_property.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { readLong, readShort, sliceLongToBytes } from "../io/ioutil.ts";
