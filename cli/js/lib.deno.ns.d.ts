@@ -68,7 +68,7 @@ declare namespace Deno {
    *          assertEquals(decoder.decode(data), "Hello world")
    *        });
    **/
-  export function test(fn: TestFunction): void;
+  export function test(fn: () => void | Promise<void>): void;
 
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module, or explicitly
@@ -86,7 +86,7 @@ declare namespace Deno {
    *          assertEquals(decoder.decode(data), "Hello world")
    *        });
    * */
-  export function test(name: string, fn: TestFunction): void;
+  export function test(name: string, fn: () => void | Promise<void>): void;
 
   export interface TestMessage {
     start?: {
