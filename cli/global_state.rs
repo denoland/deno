@@ -87,7 +87,7 @@ impl GlobalState {
     let inspector_server = flags
       .inspect
       .as_ref()
-      .or(flags.inspect_brk.as_ref())
+      .or_else(|| flags.inspect_brk.as_ref())
       .map(|host| InspectorServer::new(host));
 
     let inner = GlobalStateInner {
