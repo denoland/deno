@@ -268,7 +268,7 @@ declare const removeEventListener: (
 ) => void;
 
 declare type Blob = __domTypes.Blob;
-declare type Body = __fetch.Body;
+declare type Body = __domTypes.Body;
 declare type File = __domTypes.DomFile;
 declare type CustomEventInit = __domTypes.CustomEventInit;
 declare type CustomEvent = __domTypes.CustomEvent;
