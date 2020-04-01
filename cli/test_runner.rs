@@ -72,13 +72,13 @@ pub fn render_test_file(
     test_file.push_str(&format!("import \"{}\";\n", module.to_string()));
   }
 
-  let run_tests_cmd = format!(
-    "Deno.runTests({});\n",
-    json!({
-      "failFast": fail_fast,
-      "filter": filter,
-    })
-  );
+  let options = if let Some(filter) = filter {
+    json!({ "failFast": fail_fast })
+  } else {
+    json!({ "failFast": fail_fast, "filter", filter })
+  };
+
+  let run_tests_cmd = format!("Deno.runTests({});\n", options);
   test_file.push_str(&run_tests_cmd);
 
   test_file
