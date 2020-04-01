@@ -3,7 +3,7 @@ const { Buffer, mkdir, open } = Deno;
 type File = Deno.File;
 type Reader = Deno.Reader;
 import * as path from "../path/mod.ts";
-import { encode } from "../strings/mod.ts";
+import { encode } from "../encoding/utf8.ts";
 
 // `off` is the offset into `dst` where it will at which to begin writing values
 // from `src`.

@@ -16,7 +16,7 @@ import {
 import { Response, ServerRequest, Server, serve } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay } from "../util/async.ts";
-import { encode, decode } from "../strings/mod.ts";
+import { encode, decode } from "../encoding/utf8.ts";
 import { mockConn } from "./mock.ts";
 
 const { Buffer, test } = Deno;

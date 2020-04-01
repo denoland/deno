@@ -1,7 +1,7 @@
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { assert } from "../testing/asserts.ts";
-import { encoder } from "../strings/mod.ts";
+import { encoder } from "../encoding/utf8.ts";
 import { ServerRequest, Response } from "./server.ts";
 import { STATUS_TEXT } from "./http_status.ts";
 
