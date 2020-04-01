@@ -120,12 +120,8 @@ impl Drop for InspectorServer {
   }
 }
 
-fn websocket_debugger_url(address: &SocketAddrV4, uuid: &Uuid) -> String {
-  format!("ws://{}:{}/ws/{}", address.ip(), address.port(), uuid)
-}
-
 async fn server(
-  address: SocketAddrV4,
+  mut address: SocketAddrV4,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
 ) {
   let inspector_map = HashMap::<Uuid, InspectorInfo>::new();
@@ -140,10 +136,6 @@ async fn server(
         .unwrap()
         .insert(uuid, info)
         .map(|_| panic!("Inspector UUID already in map"));
-      eprintln!(
-        "Debugger listening on {}",
-        websocket_debugger_url(&address, &uuid)
-      );
     })
     .collect::<()>();
 
@@ -196,8 +188,8 @@ async fn server(
       .unwrap()
       .iter()
       .map(|(uuid, info)| {
-        let ws_debugger_url = websocket_debugger_url(&address, uuid);
-        let frontend_url = format!("chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws={}", ws_debugger_url);
+        let websocket_debugger_url = format!("ws://{}:{}/ws/{}", address.ip(), address.port(), &uuid);
+        let frontend_url = format!("chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws={}", websocket_debugger_url);
         let title = format!(
           "[{}] deno{}",
           std::process::id(),
@@ -215,26 +207,42 @@ async fn server(
           "title": title,
           "type": "deno",
           "url": "file://",
-          "webSocketDebuggerUrl": ws_debugger_url,
+          "webSocketDebuggerUrl": websocket_debugger_url,
         })
       })
       .collect::<Vec<_>>();
     warp::reply::json(&json!(json_values))
   });
 
-  let routes = websocket_route.or(json_version_route).or(json_list_route);
-  let mut web_handler = warp::serve(routes)
-    .try_bind_ephemeral(address)
-    .map(|(_, server_future)| server_future)
-    .unwrap_or_else(|err| {
-      panic!("Cannot start inspector server: {}.", err);
-    })
-    .fuse();
+  let server_routes =
+    websocket_route.or(json_version_route).or(json_list_route);
+  let mut port = address.port();
+  let max_port = std::cmp::max(port + 64, u16::max_value() - 1);
+  let mut first_error = None;
+  let mut server_handler = loop {
+    let server = warp::serve(server_routes.clone());
+    match server.try_bind_ephemeral(address) {
+      Ok((_, fut)) => break fut,
+      Err(err) => {
+        let err = first_error.get_or_insert(err);
+        if port < max_port {
+          port += 1;
+          address.set_port(port);
+        } else {
+          eprintln!("Cannot start inspector server: {}.", err);
+          std::process::exit(1);
+        }
+      }
+    };
+  }
+  .fuse();
+
+  eprintln!("Inspector server listening on {}.", address);
 
   select! {
     _ = register_inspector_handler => (),
     _ = deregister_inspector_handler => panic!(),
-    _ = web_handler => panic!(),
+    _ = server_handler => panic!(),
   }
 }
 
@@ -337,15 +345,15 @@ impl DenoInspector {
     new_session_rx: impl Stream<Item = WebSocket> + 'static,
     canary_tx: oneshot::Sender<Never>,
   ) -> Box<Self> {
-    let mut self_ = new_box_with(|address| {
+    let mut self_ = new_box_with(|self_ptr| {
       let v8_inspector_client =
         v8::inspector::V8InspectorClientBase::new::<Self>();
 
       let v8_inspector =
-        v8::inspector::V8Inspector::create(scope, unsafe { &mut *address });
+        v8::inspector::V8Inspector::create(scope, unsafe { &mut *self_ptr });
 
       let session_handler =
-        Self::create_session_handler(address, new_session_rx);
+        Self::create_session_handler(self_ptr, new_session_rx);
 
       let inspector_waker =
         InspectorWaker::new(scope.isolate().thread_safe_handle());
@@ -439,8 +447,7 @@ impl DenoInspector {
                 }
                 // Register the address of the inspector which allows the waker
                 // to request an interrupt from the isolate.
-                w.inspector_address =
-                  NonNull::new(self as *const _ as *mut Self);
+                w.inspector_ptr = NonNull::new(self as *const _ as *mut Self);
               }
               PollState::Polling if w.on_pause => {
                 // Isolate execution has been paused but there are no more
@@ -472,7 +479,7 @@ struct InspectorWakerInner {
   on_pause: bool,
   task_waker: Option<task::Waker>,
   parked_thread: Option<thread::Thread>,
-  inspector_address: Option<NonNull<DenoInspector>>,
+  inspector_ptr: Option<NonNull<DenoInspector>>,
   isolate_handle: v8::IsolateHandle,
 }
 
@@ -487,7 +494,7 @@ impl InspectorWaker {
       on_pause: false,
       task_waker: None,
       parked_thread: None,
-      inspector_address: None,
+      inspector_ptr: None,
       isolate_handle,
     };
     Arc::new(Self(Mutex::new(inner)))
@@ -511,9 +518,9 @@ impl task::ArcWake for InspectorWaker {
           w.task_waker.take().map(|waker| waker.wake());
           // Request an interrupt from the isolate if it's running and there's
           // not unhandled interrupt request in flight.
-          w.inspector_address
+          w.inspector_ptr
             .take()
-            .map(|address| address.as_ptr() as *mut c_void)
+            .map(|ptr| ptr.as_ptr() as *mut c_void)
             .map(|arg| {
               w.isolate_handle.request_interrupt(handle_interrupt, arg);
             });
@@ -568,7 +575,7 @@ impl DenoInspectorSession {
     v8_inspector: &mut v8::inspector::V8Inspector,
     websocket: WebSocket,
   ) -> Box<Self> {
-    new_box_with(move |address| {
+    new_box_with(move |self_ptr| {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
 
       let empty_view = v8::inspector::StringView::empty();
@@ -576,7 +583,7 @@ impl DenoInspectorSession {
         Self::CONTEXT_GROUP_ID,
         // Todo(piscisaureus): V8Inspector::connect() should require that
         // the 'v8_channel' argument cannot move.
-        unsafe { &mut *address },
+        unsafe { &mut *self_ptr },
         &empty_view,
       );
 
@@ -584,7 +591,7 @@ impl DenoInspectorSession {
         mpsc::unbounded::<v8::UniquePtr<v8::inspector::StringBuffer>>();
 
       let message_handler =
-        Self::create_message_handler(address, websocket, outbound_queue_rx);
+        Self::create_message_handler(self_ptr, websocket, outbound_queue_rx);
 
       Self {
         v8_channel,
