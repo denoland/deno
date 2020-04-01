@@ -7,7 +7,8 @@
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
 const { args, stat, readdir, open, exit } = Deno;
-import { posix } from "../path/mod.ts";
+import { contentType } from "../media_types/mod.ts";
+import { posix, extname } from "../path/mod.ts";
 import { listenAndServe, ServerRequest, Response } from "./server.ts";
 import { parse } from "../flags/mod.ts";
 import { assert } from "../testing/asserts.ts";
@@ -96,21 +97,22 @@ function fileLenToString(len: number): string {
   return `${(len / base).toFixed(2)}${suffix[suffixIndex]}`;
 }
 
-async function serveFile(
+export async function serveFile(
   req: ServerRequest,
   filePath: string
 ): Promise<Response> {
   const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
   const headers = new Headers();
   headers.set("content-length", fileInfo.size.toString());
-  headers.set("content-type", "text/plain; charset=utf-8");
-
-  const res = {
+  const contentTypeValue = contentType(extname(filePath));
+  if (contentTypeValue) {
+    headers.set("content-type", contentTypeValue);
+  }
+  return {
     status: 200,
     body: file,
     headers,
   };
-  return res;
 }
 
 // TODO: simplify this after deno.stat and deno.readdir are fixed
@@ -296,39 +298,45 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): string {
   return html;
 }
 
-listenAndServe(
-  addr,
-  async (req): Promise<void> => {
-    let normalizedUrl = posix.normalize(req.url);
-    try {
-      normalizedUrl = decodeURIComponent(normalizedUrl);
-    } catch (e) {
-      if (!(e instanceof URIError)) {
-        throw e;
+function main(): void {
+  listenAndServe(
+    addr,
+    async (req): Promise<void> => {
+      let normalizedUrl = posix.normalize(req.url);
+      try {
+        normalizedUrl = decodeURIComponent(normalizedUrl);
+      } catch (e) {
+        if (!(e instanceof URIError)) {
+          throw e;
+        }
+      }
+      const fsPath = posix.join(target, normalizedUrl);
+
+      let response: Response | undefined;
+      try {
+        const info = await stat(fsPath);
+        if (info.isDirectory()) {
+          response = await serveDir(req, fsPath);
+        } else {
+          response = await serveFile(req, fsPath);
+        }
+      } catch (e) {
+        console.error(e.message);
+        response = await serveFallback(req, e);
+      } finally {
+        if (CORSEnabled) {
+          assert(response);
+          setCORS(response);
+        }
+        serverLog(req, response!);
+        req.respond(response!);
       }
     }
-    const fsPath = posix.join(target, normalizedUrl);
+  );
 
-    let response: Response | undefined;
-    try {
-      const info = await stat(fsPath);
-      if (info.isDirectory()) {
-        response = await serveDir(req, fsPath);
-      } else {
-        response = await serveFile(req, fsPath);
-      }
-    } catch (e) {
-      console.error(e.message);
-      response = await serveFallback(req, e);
-    } finally {
-      if (CORSEnabled) {
-        assert(response);
-        setCORS(response);
-      }
-      serverLog(req, response!);
-      req.respond(response!);
-    }
-  }
-);
+  console.log(`HTTP server listening on http://${addr}/`);
+}
 
-console.log(`HTTP server listening on http://${addr}/`);
+if (import.meta.main) {
+  main();
+}
