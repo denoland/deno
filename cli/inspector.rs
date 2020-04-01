@@ -44,6 +44,7 @@ use warp::Filter;
 struct InspectorServer {
   host: SocketAddr,
   register_inspector_tx: UnboundedSender<InspectorInfo>,
+  _thread_handle: thread::JoinHandle<()>,
 }
 
 impl InspectorServer {
@@ -65,12 +66,13 @@ impl InspectorServer {
   fn new(host: SocketAddr) -> Self {
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
-    thread::spawn(move || {
+    let thread_handle = thread::spawn(move || {
       crate::tokio_util::run_basic(server(host, register_inspector_rx))
     });
     Self {
       host,
       register_inspector_tx,
+      _thread_handle: thread_handle,
     }
   }
 
@@ -114,7 +116,10 @@ async fn server(
   let inspector_map_ = inspector_map.clone();
   let mut register_inspector_handler = register_inspector_rx
     .map(|info| {
-      eprintln!("Inspector listening at {}", info.get_frontend_url(&host));
+      eprintln!(
+        "Debugger listening on {}",
+        info.get_websocket_debugger_url(&host)
+      );
       inspector_map_
         .lock()
         .unwrap()
@@ -648,10 +653,10 @@ impl DenoInspectorSession {
     let disconnect_future = future::try_join(inbound_pump, outbound_pump);
 
     async move {
-      eprintln!("Inspector session started.");
+      eprintln!("Debugger session started.");
       match disconnect_future.await {
-        Ok(_) => eprintln!("Inspector session ended."),
-        Err(err) => eprintln!("Inspector session ended: {}.", err),
+        Ok(_) => eprintln!("Debugger session ended."),
+        Err(err) => eprintln!("Debugger session ended: {}.", err),
       };
     }
     .boxed_local()

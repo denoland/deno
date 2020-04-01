@@ -1055,7 +1055,7 @@ fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
 fn inspect_arg_validate(val: String) -> Result<(), String> {
   match val.parse::<SocketAddr>() {
     Ok(_) => Ok(()),
-    Err(_) => Err(format!("Invalid inspector host address: '{}'", &val)),
+    Err(e) => Err(e.to_string()),
   }
 }
 
@@ -2547,26 +2547,6 @@ fn inspect_default_host() {
         script: "foo.js".to_string(),
       },
       inspect: Some("127.0.0.1:9229".parse().unwrap()),
-      ..Flags::default()
-    }
-  );
-}
-
-#[test]
-fn inspect_custom_host() {
-  let r = flags_from_vec_safe(svec![
-    "deno",
-    "run",
-    "--inspect=deno.land:80",
-    "foo.js"
-  ]);
-  assert_eq!(
-    r.unwrap(),
-    Flags {
-      subcommand: DenoSubcommand::Run {
-        script: "foo.js".to_string(),
-      },
-      inspect: Some("deno.land:80".parse().unwrap()),
       ..Flags::default()
     }
   );
