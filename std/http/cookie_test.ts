@@ -206,5 +206,13 @@ test({
       res.headers.get("Set-Cookie"),
       "__Host-Kitty=Meow; Secure; Path=/"
     );
+
+    res.headers = new Headers();
+    setCookie(res, { name: "cookie-1", value: "value-1", secure: true });
+    setCookie(res, { name: "cookie-2", value: "value-2", maxAge: 3600 });
+    assertEquals(
+      res.headers.get("Set-Cookie"),
+      "cookie-1=value-1; Secure, cookie-2=value-2; Max-Age=3600"
+    );
   },
 });
