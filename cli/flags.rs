@@ -2380,7 +2380,7 @@ fn eval_with_inspect() {
         code: "const foo = 'bar'".to_string(),
         as_typescript: false,
       },
-      inspect: Some("127.0.0.1:9229".to_string()),
+      inspect: Some("127.0.0.1:9229".parse().unwrap()),
       allow_net: true,
       allow_env: true,
       allow_run: true,
@@ -2489,7 +2489,7 @@ fn repl_with_inspect() {
     r.unwrap(),
     Flags {
       subcommand: DenoSubcommand::Repl {},
-      inspect: Some("127.0.0.1:9229".to_string()),
+      inspect: Some("127.0.0.1:9229".parse().unwrap()),
       allow_read: true,
       allow_write: true,
       allow_net: true,
@@ -2546,7 +2546,7 @@ fn inspect_default_host() {
       subcommand: DenoSubcommand::Run {
         script: "foo.js".to_string(),
       },
-      inspect: Some("127.0.0.1:9229".to_string()),
+      inspect: Some("127.0.0.1:9229".parse().unwrap()),
       ..Flags::default()
     }
   );
@@ -2566,7 +2566,7 @@ fn inspect_custom_host() {
       subcommand: DenoSubcommand::Run {
         script: "foo.js".to_string(),
       },
-      inspect: Some("deno.land:80".to_string()),
+      inspect: Some("deno.land:80".parse().unwrap()),
       ..Flags::default()
     }
   );
