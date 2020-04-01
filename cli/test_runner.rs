@@ -76,7 +76,7 @@ pub fn render_test_file(
     "Deno.runTests({});\n",
     json!({
       "failFast": fail_fast,
-      "only": filter,
+      "filter": filter,
     })
   );
   test_file.push_str(&run_tests_cmd);
