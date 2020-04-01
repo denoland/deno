@@ -33,7 +33,7 @@ pub mod flags;
 mod fmt;
 pub mod fmt_errors;
 mod fs;
-mod global_state;
+pub mod global_state;
 mod global_timer;
 pub mod http_cache;
 mod http_util;
