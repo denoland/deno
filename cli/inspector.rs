@@ -4,14 +4,17 @@
 // https://chromedevtools.github.io/devtools-protocol/
 // https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
 
-#![allow(dead_code)]
-#![allow(warnings)]
+//#![allow(dead_code)]
+//#![allow(warnings)]
 
+use crate::tokio_util;
 use crate::ErrBox;
 use deno_core::v8;
 use futures;
 use futures::channel;
 use futures::channel::mpsc;
+use futures::channel::mpsc::UnboundedReceiver;
+use futures::channel::mpsc::UnboundedSender;
 use futures::executor;
 use futures::future;
 use futures::future::IntoFuture;
@@ -55,16 +58,14 @@ use std::thread;
 use uuid::Uuid;
 use warp;
 use warp::filters::ws;
+use warp::filters::ws::WebSocket;
 use warp::Filter;
-
-/// Stored in a UUID hashmap, used by WS server. Clonable.
-type InspectorInfo = mpsc::UnboundedSender<ws::WebSocket>;
 
 /// Owned by GlobalState.
 pub struct InspectorServer {
   address: SocketAddrV4,
   thread_handle: Option<thread::JoinHandle<()>>,
-  new_inspector_tx: Option<mpsc::UnboundedSender<InspectorInfo>>,
+  new_inspector_tx: Option<UnboundedSender<UnboundedSender<WebSocket>>>,
 }
 
 impl InspectorServer {
@@ -74,9 +75,9 @@ impl InspectorServer {
     }
     let address = host.parse::<SocketAddrV4>().unwrap();
     let (new_inspector_tx, new_inspector_rx) =
-      mpsc::unbounded::<InspectorInfo>();
+      mpsc::unbounded::<UnboundedSender<WebSocket>>();
     let thread_handle = thread::spawn(move || {
-      crate::tokio_util::run_basic(server(address, new_inspector_rx));
+      tokio_util::run_basic(server(address, new_inspector_rx));
     });
     Self {
       address,
@@ -104,7 +105,7 @@ impl InspectorServer {
     let context = global_context.get(scope).unwrap();
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
-    let (new_session_tx, new_session_rx) = mpsc::unbounded::<ws::WebSocket>();
+    let (new_session_tx, new_session_rx) = mpsc::unbounded::<WebSocket>();
 
     let inspector = crate::inspector::DenoInspector::new(scope, new_session_rx);
 
@@ -135,9 +136,9 @@ fn websocket_debugger_url(address: SocketAddrV4, uuid: &Uuid) -> String {
 
 async fn server(
   address: SocketAddrV4,
-  mut new_inspector_rx: mpsc::UnboundedReceiver<InspectorInfo>,
+  mut new_inspector_rx: UnboundedReceiver<UnboundedSender<WebSocket>>,
 ) {
-  let inspector_map = HashMap::<Uuid, InspectorInfo>::new();
+  let inspector_map = HashMap::<Uuid, UnboundedSender<WebSocket>>::new();
   let inspector_map = Arc::new(std::sync::Mutex::new(inspector_map));
 
   let inspector_map_ = inspector_map.clone();
@@ -159,23 +160,23 @@ async fn server(
   let inspector_map_ = inspector_map.clone();
   let websocket_route = warp::path("ws")
     .and(warp::path::param())
-    .and_then(move |uuid: String| {
-      let r = Uuid::parse_str(&uuid)
-        .ok()
-        .and_then(|uuid| {
-          inspector_map_.lock().unwrap().get(&uuid).map(Clone::clone)
-        })
-        .ok_or_else(warp::reject::not_found);
-      future::ready(r)
-    })
     .and(warp::ws())
-    .map(
-      |new_session_tx: mpsc::UnboundedSender<_>, ws: warp::ws::Ws| {
-        ws.on_upgrade(move |websocket| async move {
-          let _ = new_session_tx.unbounded_send(websocket);
-        })
-      },
-    );
+    .and_then(move |uuid: String, ws: warp::ws::Ws| {
+      future::ready(
+        Uuid::parse_str(&uuid)
+          .ok()
+          .and_then(|uuid| {
+            inspector_map_.lock().unwrap().get(&uuid).map(Clone::clone)
+          })
+          .map(|new_session_tx| {
+            ws.on_upgrade(move |websocket| async move {
+              let _ = new_session_tx.unbounded_send(websocket);
+            })
+          })
+          .ok_or_else(warp::reject::not_found),
+      )
+    });
+
   let inspector_map_ = inspector_map.clone();
   let json_list_route =
     warp::path("json")
@@ -300,7 +301,7 @@ impl DenoInspector {
 
   pub fn new(
     scope: &mut impl v8::InIsolate,
-    new_session_rx: impl Stream<Item = ws::WebSocket> + 'static,
+    new_session_rx: impl Stream<Item = WebSocket> + 'static,
   ) -> Box<Self> {
     let mut self_ = new_box_with(|address| {
       let v8_inspector_client =
@@ -340,7 +341,7 @@ impl DenoInspector {
 
   fn create_session_handler(
     self_: *mut Self,
-    new_session_rx: impl Stream<Item = ws::WebSocket> + 'static,
+    new_session_rx: impl Stream<Item = WebSocket> + 'static,
   ) -> RefCell<Pin<Box<dyn Future<Output = ()>>>> {
     let fut = new_session_rx
       .for_each_concurrent(None, move |websocket| async move {
@@ -510,15 +511,15 @@ impl task::ArcWake for InspectorWaker {
 }
 
 struct DenoInspectorSession {
-  channel: v8::inspector::ChannelBase,
-  session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
-  // Internal channel/queue that temporarily stores messages sent by V8 to
+  v8_channel: v8::inspector::ChannelBase,
+  v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
+  // Internal v8_channel/queue that temporarily stores messages sent by V8 to
   // the front-end, before they are sent over the websocket.
-  tx: mpsc::UnboundedSender<Result<ws::Message, warp::Error>>,
-  rx: SplitStream<ws::WebSocket>,
+  tx: UnboundedSender<Result<ws::Message, warp::Error>>,
+  rx: SplitStream<WebSocket>,
   tx_pump: Forward<
-    mpsc::UnboundedReceiver<Result<ws::Message, warp::Error>>,
-    SplitSink<ws::WebSocket, ws::Message>,
+    UnboundedReceiver<Result<ws::Message, warp::Error>>,
+    SplitSink<WebSocket, ws::Message>,
   >,
 }
 
@@ -527,7 +528,7 @@ impl DenoInspectorSession {
 
   pub fn new(
     inspector: &mut v8::inspector::V8Inspector,
-    websocket: ws::WebSocket,
+    websocket: WebSocket,
   ) -> Box<Self> {
     new_box_with(move |channel_address| {
       let (mut channel_tx, mut channel_rx) =
@@ -537,17 +538,17 @@ impl DenoInspectorSession {
 
       let empty_view = v8::inspector::StringView::empty();
 
-      let session = inspector.connect(
+      let v8_session = inspector.connect(
         Self::CONTEXT_GROUP_ID,
         // Todo(piscisaureus): V8Inspector::connect() should require that
-        // the 'channel' argument cannot move.
+        // the 'v8_channel' argument cannot move.
         unsafe { &mut *channel_address },
         &empty_view,
       );
 
       Self {
-        channel: v8::inspector::ChannelBase::new::<Self>(),
-        session,
+        v8_channel: v8::inspector::ChannelBase::new::<Self>(),
+        v8_session,
         tx: channel_tx,
         rx: websocket_rx,
         tx_pump,
@@ -558,7 +559,7 @@ impl DenoInspectorSession {
   fn dispatch_inbound(&mut self, msg: ws::Message) {
     let bytes = msg.as_bytes();
     let string_view = v8::inspector::StringView::from(bytes);
-    self.session.dispatch_protocol_message(&string_view);
+    self.v8_session.dispatch_protocol_message(&string_view);
   }
 
   fn send_outbound(&mut self, msg: v8::UniquePtr<v8::inspector::StringBuffer>) {
@@ -601,11 +602,11 @@ impl Future for DenoInspectorSession {
 
 impl v8::inspector::ChannelImpl for DenoInspectorSession {
   fn base(&self) -> &v8::inspector::ChannelBase {
-    &self.channel
+    &self.v8_channel
   }
 
   fn base_mut(&mut self) -> &mut v8::inspector::ChannelBase {
-    &mut self.channel
+    &mut self.v8_channel
   }
 
   fn send_response(
