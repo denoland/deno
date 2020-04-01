@@ -460,7 +460,7 @@ async fn test_command(
     return Ok(());
   }
 
-  let test_file_path = cwd.join(".deno.test.js");
+  let test_file_path = cwd.join(".deno.test.ts");
   let test_file_url =
     Url::from_file_path(&test_file_path).expect("Should be valid file url");
   let test_file =
@@ -474,7 +474,7 @@ async fn test_command(
     filename: test_file_url.to_file_path().unwrap(),
     url: test_file_url,
     types_url: None,
-    media_type: MediaType::JavaScript,
+    media_type: MediaType::TypeScript,
     source_code: test_file.clone().into_bytes(),
   };
   // Save our fake file into file fetcher cache
