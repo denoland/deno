@@ -14,6 +14,7 @@ use futures::channel::mpsc::UnboundedSender;
 use futures::channel::oneshot;
 use futures::future::Future;
 use futures::prelude::*;
+use futures::select;
 use futures::task;
 use futures::task::Poll;
 use std::cell::BorrowMutError;
@@ -60,7 +61,7 @@ impl InspectorServer {
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
     let thread_handle = thread::spawn(move || {
-      crate::tokio_util::run_basic(server(address, register_inspector_rx));
+      crate::tokio_util::run_basic(server(address, register_inspector_rx))
     });
     Self {
       thread_handle: Some(thread_handle),
@@ -131,7 +132,7 @@ async fn server(
   let inspector_map = Arc::new(std::sync::Mutex::new(inspector_map));
 
   let inspector_map_ = inspector_map.clone();
-  let register_inspector_handler = register_inspector_rx
+  let mut register_inspector_handler = register_inspector_rx
     .map(|info| {
       let uuid = Uuid::new_v4();
       inspector_map_
@@ -147,13 +148,14 @@ async fn server(
     .collect::<()>();
 
   let inspector_map_ = inspector_map_.clone();
-  let deregister_inspector_handler = future::poll_fn(|cx| {
+  let mut deregister_inspector_handler = future::poll_fn(|cx| {
     inspector_map_
       .lock()
       .unwrap()
       .retain(|_, info| info.canary_rx.poll_unpin(cx) == Poll::Pending);
     Poll::<Never>::Pending
-  });
+  })
+  .fuse();
 
   let inspector_map_ = inspector_map.clone();
   let websocket_route = warp::path("ws")
@@ -221,18 +223,19 @@ async fn server(
   });
 
   let routes = websocket_route.or(json_version_route).or(json_list_route);
-  let (_, web_handler) = warp::serve(routes)
+  let mut web_handler = warp::serve(routes)
     .try_bind_ephemeral(address)
-    .unwrap_or_else(|e| {
-      panic!("Cannot start inspector server: {}.", e);
-    });
+    .map(|(_, server_future)| server_future)
+    .unwrap_or_else(|err| {
+      panic!("Cannot start inspector server: {}.", err);
+    })
+    .fuse();
 
-  future::join3(
-    register_inspector_handler,
-    deregister_inspector_handler,
-    web_handler,
-  )
-  .await;
+  select! {
+    _ = register_inspector_handler => (),
+    _ = deregister_inspector_handler => panic!(),
+    _ = web_handler => panic!(),
+  }
 }
 
 #[derive(Clone, Copy)]
