@@ -19,14 +19,16 @@ use futures::task;
 use futures::task::Poll;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
+use std::cmp::max;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::mem::replace;
 use std::mem::MaybeUninit;
-use std::net::SocketAddrV4;
+use std::net::SocketAddr;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
+use std::process;
 use std::ptr;
 use std::ptr::NonNull;
 use std::sync::Arc;
@@ -47,9 +49,23 @@ pub struct InspectorServer {
 /// Inspector information that is sent from the isolate thread to the server
 /// thread when a new inspector is created.
 pub struct InspectorInfo {
+  uuid: Uuid,
   thread_name: Option<String>,
   new_session_tx: UnboundedSender<WebSocket>,
   canary_rx: oneshot::Receiver<Never>,
+}
+
+impl InspectorInfo {
+  fn get_websocket_debugger_url(&self, address: &SocketAddr) -> String {
+    format!("ws://{}/ws/{}", address, &self.uuid)
+  }
+
+  fn get_frontend_url(&self, address: &SocketAddr) -> String {
+    format!(
+      "devtools://devtools/bundled/inspector.html?remotefrontend=true&v8only=true&ws={}/ws/{}",
+      address, &self.uuid
+    )
+  }
 }
 
 impl InspectorServer {
@@ -57,7 +73,7 @@ impl InspectorServer {
     if brk {
       todo!("--inspect-brk not yet supported");
     }
-    let address = host.parse::<SocketAddrV4>().unwrap();
+    let address = host.parse::<SocketAddr>().unwrap();
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
     let thread_handle = thread::spawn(move || {
@@ -88,12 +104,14 @@ impl InspectorServer {
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
+    let uuid = Uuid::new_v4();
     let thread_name = thread::current().name().map(|n| n.to_owned());
     let (new_session_tx, new_session_rx) = mpsc::unbounded::<WebSocket>();
     let (canary_tx, canary_rx) = oneshot::channel::<Never>();
     let inspector = DenoInspector::new(scope, new_session_rx, canary_tx);
 
     let inspector_info = InspectorInfo {
+      uuid,
       thread_name,
       new_session_tx,
       canary_rx,
@@ -121,20 +139,29 @@ impl Drop for InspectorServer {
 }
 
 async fn server(
-  mut address: SocketAddrV4,
+  address: SocketAddr,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
 ) {
+  // TODO: wrap `address` and `inspector_map` in an Rc<RefCell<T>> instead.
+  // This is currently not possible because warp requires all filters to
+  // implement Send, which should not be necessary because we are using a
+  // single-threaded runtime.
+  let address = Arc::new(Mutex::new(address));
   let inspector_map = HashMap::<Uuid, InspectorInfo>::new();
-  let inspector_map = Arc::new(std::sync::Mutex::new(inspector_map));
+  let inspector_map = Arc::new(Mutex::new(inspector_map));
 
+  let address_ = address.clone();
   let inspector_map_ = inspector_map.clone();
   let mut register_inspector_handler = register_inspector_rx
     .map(|info| {
-      let uuid = Uuid::new_v4();
+      eprintln!(
+        "Inspector listening at {}",
+        info.get_frontend_url(&*address_.lock().unwrap())
+      );
       inspector_map_
         .lock()
         .unwrap()
-        .insert(uuid, info)
+        .insert(info.uuid, info)
         .map(|_| panic!("Inspector UUID already in map"));
     })
     .collect::<()>();
@@ -181,18 +208,18 @@ async fn server(
     }))
   });
 
+  let address_ = address.clone();
   let inspector_map_ = inspector_map.clone();
   let json_list_route = warp::path("json").map(move || {
+    let address = *address_.lock().unwrap();
     let json_values = inspector_map_
       .lock()
       .unwrap()
-      .iter()
-      .map(|(uuid, info)| {
-        let websocket_debugger_url = format!("ws://{}:{}/ws/{}", address.ip(), address.port(), &uuid);
-        let frontend_url = format!("chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws={}", websocket_debugger_url);
+      .values()
+      .map(|info| {
         let title = format!(
           "[{}] deno{}",
-          std::process::id(),
+          process::id(),
           info
             .thread_name
             .as_ref()
@@ -201,13 +228,13 @@ async fn server(
         );
         json!({
           "description": "deno",
-          "devtoolsFrontendUrl": frontend_url,
+          "devtoolsFrontendUrl": info.get_frontend_url(&address),
           "faviconUrl": "https://deno.land/favicon.ico",
-          "id": uuid.to_string(),
+          "id": info.uuid.to_string(),
           "title": title,
           "type": "deno",
           "url": "file://",
-          "webSocketDebuggerUrl": websocket_debugger_url,
+          "webSocketDebuggerUrl": info.get_websocket_debugger_url(&address),
         })
       })
       .collect::<Vec<_>>();
@@ -216,28 +243,30 @@ async fn server(
 
   let server_routes =
     websocket_route.or(json_version_route).or(json_list_route);
-  let mut port = address.port();
-  let max_port = std::cmp::max(port + 64, u16::max_value() - 1);
-  let mut first_error = None;
-  let mut server_handler = loop {
-    let server = warp::serve(server_routes.clone());
-    match server.try_bind_ephemeral(address) {
-      Ok((_, fut)) => break fut,
-      Err(err) => {
-        let err = first_error.get_or_insert(err);
-        if port < max_port {
-          port += 1;
-          address.set_port(port);
-        } else {
-          eprintln!("Cannot start inspector server: {}.", err);
-          std::process::exit(1);
+
+  let mut server_handler = {
+    let address = &mut *address.lock().unwrap();
+    let mut port = address.port();
+    let max_port = max(port + 64, u16::max_value() - 1);
+    let mut first_error = None;
+    loop {
+      let server = warp::serve(server_routes.clone());
+      match server.try_bind_ephemeral(*address) {
+        Ok((_, fut)) => break fut,
+        Err(err) => {
+          let err = first_error.get_or_insert(err);
+          if port < max_port {
+            port += 1;
+            address.set_port(port);
+          } else {
+            eprintln!("Cannot start inspector server: {}.", err);
+            process::exit(1);
+          }
         }
-      }
-    };
+      };
+    }
   }
   .fuse();
-
-  eprintln!("Inspector server listening on {}.", address);
 
   select! {
     _ = register_inspector_handler => (),
