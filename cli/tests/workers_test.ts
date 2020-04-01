@@ -31,15 +31,15 @@ Deno.test({
   name: "workersBasic",
   // FIXME(bartlomieju):
   disableOpSanitizer: true,
-  fn: async function(): Promise<void> {
+  fn: async function (): Promise<void> {
     const promise = createResolvable();
     const jsWorker = new Worker("../tests/subdir/test_worker.js", {
       type: "module",
-      name: "jsWorker"
+      name: "jsWorker",
     });
     const tsWorker = new Worker("../tests/subdir/test_worker.ts", {
       type: "module",
-      name: "tsWorker"
+      name: "tsWorker",
     });
 
     tsWorker.onmessage = (e): void => {
@@ -59,19 +59,19 @@ Deno.test({
 
     jsWorker.postMessage("Hello World");
     await promise;
-  }
+  },
 });
 
 Deno.test({
   name: "nestedWorker",
   // FIXME(bartlomieju):
   disableOpSanitizer: true,
-  fn: async function(): Promise<void> {
+  fn: async function (): Promise<void> {
     const promise = createResolvable();
 
     const nestedWorker = new Worker("../tests/subdir/nested_worker.js", {
       type: "module",
-      name: "nested"
+      name: "nested",
     });
 
     nestedWorker.onmessage = (e): void => {
@@ -81,17 +81,17 @@ Deno.test({
 
     nestedWorker.postMessage("Hello World");
     await promise;
-  }
+  },
 });
 
 Deno.test({
   name: "workerThrowsWhenExecuting",
   // FIXME(bartlomieju):
   disableOpSanitizer: true,
-  fn: async function(): Promise<void> {
+  fn: async function (): Promise<void> {
     const promise = createResolvable();
     const throwingWorker = new Worker("../tests/subdir/throwing_worker.js", {
-      type: "module"
+      type: "module",
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -102,18 +102,18 @@ Deno.test({
     };
 
     await promise;
-  }
+  },
 });
 
 Deno.test({
   name: "workerCanUseFetch",
   // FIXME(bartlomieju):
   disableOpSanitizer: true,
-  fn: async function(): Promise<void> {
+  fn: async function (): Promise<void> {
     const promise = createResolvable();
 
     const fetchingWorker = new Worker("../tests/subdir/fetching_worker.js", {
-      type: "module"
+      type: "module",
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -129,5 +129,5 @@ Deno.test({
     };
 
     await promise;
-  }
+  },
 });

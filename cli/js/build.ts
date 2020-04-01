@@ -13,7 +13,7 @@ export interface BuildInfo {
 
 export const build: BuildInfo = {
   arch: "" as Arch,
-  os: "" as OperatingSystem
+  os: "" as OperatingSystem,
 };
 
 export function setBuildInfo(os: OperatingSystem, arch: Arch): void {

@@ -6,7 +6,7 @@ Deno.test(function parseArgs(): void {
   assertEquals(parse(["--no-moo"]), { moo: false, _: [] });
   assertEquals(parse(["-v", "a", "-v", "b", "-v", "c"]), {
     v: ["a", "b", "c"],
-    _: []
+    _: [],
   });
 });
 
@@ -28,7 +28,7 @@ Deno.test(function comprehensive(): void {
       "--multi=baz",
       "--",
       "--not-a-flag",
-      "eek"
+      "eek",
     ]),
     {
       c: true,
@@ -42,7 +42,7 @@ Deno.test(function comprehensive(): void {
       multi: ["quux", "baz"],
       meep: false,
       name: "meowmers",
-      _: ["bare", "--not-a-flag", "eek"]
+      _: ["bare", "--not-a-flag", "eek"],
     }
   );
 });
@@ -56,13 +56,13 @@ Deno.test(function flagBoolean(): void {
 Deno.test(function flagBooleanValue(): void {
   const argv = parse(["--verbose", "false", "moo", "-t", "true"], {
     boolean: ["t", "verbose"],
-    default: { verbose: true }
+    default: { verbose: true },
   });
 
   assertEquals(argv, {
     verbose: false,
     t: true,
-    _: ["moo"]
+    _: ["moo"],
   });
 
   assertEquals(typeof argv.verbose, "boolean");
@@ -110,7 +110,7 @@ Deno.test(function emptyStrings(): void {
   assertEquals(typeof str, "string");
 
   const letters = parse(["-art"], {
-    string: ["a", "t"]
+    string: ["a", "t"],
   });
 
   assertEquals(letters.a, "");
@@ -121,7 +121,7 @@ Deno.test(function emptyStrings(): void {
 Deno.test(function stringAndAlias(): void {
   const x = parse(["--str", "000123"], {
     string: "s",
-    alias: { s: "str" }
+    alias: { s: "str" },
   });
 
   assertEquals(x.str, "000123");
@@ -131,7 +131,7 @@ Deno.test(function stringAndAlias(): void {
 
   const y = parse(["-s", "000123"], {
     string: "str",
-    alias: { str: "s" }
+    alias: { str: "s" },
   });
 
   assertEquals(y.str, "000123");
@@ -146,13 +146,13 @@ Deno.test(function slashBreak(): void {
     x: true,
     y: true,
     z: "/foo/bar/baz",
-    _: []
+    _: [],
   });
 });
 
 Deno.test(function alias(): void {
   const argv = parse(["-f", "11", "--zoom", "55"], {
-    alias: { z: "zoom" }
+    alias: { z: "zoom" },
   });
   assertEquals(argv.zoom, 55);
   assertEquals(argv.z, argv.zoom);
@@ -161,7 +161,7 @@ Deno.test(function alias(): void {
 
 Deno.test(function multiAlias(): void {
   const argv = parse(["-f", "11", "--zoom", "55"], {
-    alias: { z: ["zm", "zoom"] }
+    alias: { z: ["zm", "zoom"] },
   });
   assertEquals(argv.zoom, 55);
   assertEquals(argv.z, argv.zoom);
@@ -178,7 +178,7 @@ Deno.test(function nestedDottedObjects(): void {
     "--foo.quux.quibble",
     "5",
     "--foo.quux.oO",
-    "--beep.boop"
+    "--beep.boop",
   ]);
 
   assertEquals(argv.foo, {
@@ -186,8 +186,8 @@ Deno.test(function nestedDottedObjects(): void {
     baz: 4,
     quux: {
       quibble: 5,
-      oO: true
-    }
+      oO: true,
+    },
   });
   assertEquals(argv.beep, { boop: true });
 });

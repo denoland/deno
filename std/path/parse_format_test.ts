@@ -24,15 +24,14 @@ const winPaths = [
   ["C:\\", "C:\\"],
   ["C:\\abc", "C:\\"],
   ["", ""],
-
   // unc
   ["\\\\server\\share\\file_path", "\\\\server\\share\\"],
   [
     "\\\\server two\\shared folder\\file path.zip",
-    "\\\\server two\\shared folder\\"
+    "\\\\server two\\shared folder\\",
   ],
   ["\\\\teela\\admin$\\system32", "\\\\teela\\admin$\\"],
-  ["\\\\?\\UNC\\server\\share", "\\\\?\\UNC\\"]
+  ["\\\\?\\UNC\\server\\share", "\\\\?\\UNC\\"],
 ];
 
 const winSpecialCaseParseTests = [["/foo/bar", { root: "/" }]];
@@ -44,7 +43,7 @@ const winSpecialCaseFormatTests = [
   [{ name: "index", ext: ".html" }, "index.html"],
   [{ dir: "some\\dir", name: "index", ext: ".html" }, "some\\dir\\index.html"],
   [{ root: "C:\\", name: "index", ext: ".html" }, "C:\\index.html"],
-  [{}, ""]
+  [{}, ""],
 ];
 
 const unixPaths = [
@@ -68,7 +67,7 @@ const unixPaths = [
   ["/.", "/"],
   ["/.foo", "/"],
   ["/.foo.bar", "/"],
-  ["/foo/bar.baz", "/"]
+  ["/foo/bar.baz", "/"],
 ];
 
 const unixSpecialCaseFormatTests = [
@@ -78,11 +77,11 @@ const unixSpecialCaseFormatTests = [
   [{ name: "index", ext: ".html" }, "index.html"],
   [{ dir: "some/dir", name: "index", ext: ".html" }, "some/dir/index.html"],
   [{ root: "/", name: "index", ext: ".html" }, "/index.html"],
-  [{}, ""]
+  [{}, ""],
 ];
 
 function checkParseFormat(path: any, paths: any): void {
-  paths.forEach(function(p: Array<Record<string, unknown>>) {
+  paths.forEach(function (p: Array<Record<string, unknown>>) {
     const element = p[0];
     const output = path.parse(element);
     assertEquals(typeof output.root, "string");
@@ -98,18 +97,18 @@ function checkParseFormat(path: any, paths: any): void {
 }
 
 function checkSpecialCaseParseFormat(path: any, testCases: any): void {
-  testCases.forEach(function(testCase: Array<Record<string, unknown>>) {
+  testCases.forEach(function (testCase: Array<Record<string, unknown>>) {
     const element = testCase[0];
     const expect = testCase[1];
     const output = path.parse(element);
-    Object.keys(expect).forEach(function(key) {
+    Object.keys(expect).forEach(function (key) {
       assertEquals(output[key], expect[key]);
     });
   });
 }
 
 function checkFormat(path: any, testCases: unknown[][]): void {
-  testCases.forEach(function(testCase) {
+  testCases.forEach(function (testCase) {
     assertEquals(path.format(testCase[0]), testCase[1]);
   });
 }
@@ -138,7 +137,7 @@ const windowsTrailingTests = [
   ["\\\\", { root: "\\", dir: "\\", base: "", ext: "", name: "" }],
   [
     "c:\\foo\\\\\\",
-    { root: "c:\\", dir: "c:\\", base: "foo", ext: "", name: "foo" }
+    { root: "c:\\", dir: "c:\\", base: "foo", ext: "", name: "foo" },
   ],
   [
     "D:\\foo\\\\\\bar.baz",
@@ -147,9 +146,9 @@ const windowsTrailingTests = [
       dir: "D:\\foo\\\\",
       base: "bar.baz",
       ext: ".baz",
-      name: "bar"
-    }
-  ]
+      name: "bar",
+    },
+  ],
 ];
 
 const posixTrailingTests = [
@@ -159,12 +158,12 @@ const posixTrailingTests = [
   ["/foo///", { root: "/", dir: "/", base: "foo", ext: "", name: "foo" }],
   [
     "/foo///bar.baz",
-    { root: "/", dir: "/foo//", base: "bar.baz", ext: ".baz", name: "bar" }
-  ]
+    { root: "/", dir: "/foo//", base: "bar.baz", ext: ".baz", name: "bar" },
+  ],
 ];
 
 test(function parseTrailingWin32() {
-  windowsTrailingTests.forEach(function(p) {
+  windowsTrailingTests.forEach(function (p) {
     const actual = path.win32.parse(p[0] as string);
     const expected = p[1];
     assertEquals(actual, expected);
@@ -172,7 +171,7 @@ test(function parseTrailingWin32() {
 });
 
 test(function parseTrailing() {
-  posixTrailingTests.forEach(function(p) {
+  posixTrailingTests.forEach(function (p) {
     const actual = path.posix.parse(p[0] as string);
     const expected = p[1];
     assertEquals(actual, expected);

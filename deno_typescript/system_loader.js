@@ -12,14 +12,14 @@ let System, __instantiateAsync, __instantiate;
   System = {
     register(id, d, f) {
       r.set(id, { d, f, exp: {} });
-    }
+    },
   };
 
   function gC(id, main) {
     return {
       id,
-      import: async id => r.get(id)?.exp,
-      meta: { url: id, main }
+      import: async (id) => r.get(id)?.exp,
+      meta: { url: id, main },
     };
   }
 
@@ -30,7 +30,7 @@ let System, __instantiateAsync, __instantiate;
         Object.defineProperty(exp, id, {
           value,
           writable: true,
-          enumerable: true
+          enumerable: true,
         });
       }
     };
@@ -73,13 +73,13 @@ let System, __instantiateAsync, __instantiate;
     return m.exp;
   }
 
-  __instantiateAsync = async m => {
+  __instantiateAsync = async (m) => {
     System = __instantiateAsync = __instantiate = undefined;
     rF(m);
     return gExpA(m);
   };
 
-  __instantiate = m => {
+  __instantiate = (m) => {
     System = __instantiateAsync = __instantiate = undefined;
     rF(m);
     return gExp(m);

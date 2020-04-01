@@ -17,10 +17,10 @@ Deno.test(function _isSubdir(): void {
     ["first", "first/second", true, path.posix.sep],
     ["../first", "../first/second", true, path.posix.sep],
     ["c:\\first", "c:\\first", false, path.win32.sep],
-    ["c:\\first", "c:\\first\\second", true, path.win32.sep]
+    ["c:\\first", "c:\\first\\second", true, path.win32.sep],
   ];
 
-  pairs.forEach(function(p): void {
+  pairs.forEach(function (p): void {
     const src = p[0] as string;
     const dest = p[1] as string;
     const expected = p[2] as boolean;
@@ -36,10 +36,10 @@ Deno.test(function _isSubdir(): void {
 Deno.test(function _getFileInfoType(): void {
   const pairs = [
     [path.join(testdataDir, "file_type_1"), "file"],
-    [path.join(testdataDir, "file_type_dir_1"), "dir"]
+    [path.join(testdataDir, "file_type_dir_1"), "dir"],
   ];
 
-  pairs.forEach(function(p): void {
+  pairs.forEach(function (p): void {
     const filePath = p[0] as string;
     const type = p[1] as PathType;
     switch (type) {

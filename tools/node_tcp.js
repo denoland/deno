@@ -8,11 +8,11 @@ const response = Buffer.from(
   "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
 );
 
-Server(socket => {
-  socket.on("data", _ => {
+Server((socket) => {
+  socket.on("data", (_) => {
     socket.write(response);
   });
-  socket.on("error", _ => {
+  socket.on("error", (_) => {
     socket.destroy();
   });
 }).listen(port);

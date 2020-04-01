@@ -12,5 +12,5 @@ Deno.test({
     assert(validate(u), `generated ${u} should be valid`);
     assert(validate(t), `${t} should be valid`);
     assert(!validate(n), `${n} should not be valid`);
-  }
+  },
 });

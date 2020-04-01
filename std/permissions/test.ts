@@ -10,9 +10,9 @@ test({
   async fn() {
     assertEquals(await grant({ name: "net" }, { name: "env" }), [
       { name: "net" },
-      { name: "env" }
+      { name: "env" },
     ]);
-  }
+  },
 });
 
 test({
@@ -20,28 +20,28 @@ test({
   async fn() {
     assertEquals(await grant([{ name: "net" }, { name: "env" }]), [
       { name: "net" },
-      { name: "env" }
+      { name: "env" },
     ]);
-  }
+  },
 });
 
 test({
   name: "grant logic",
   async fn() {
     assert(await grant({ name: "net" }));
-  }
+  },
 });
 
 test({
   name: "grantOrThrow basic",
   async fn() {
     await grantOrThrow({ name: "net" }, { name: "env" });
-  }
+  },
 });
 
 test({
   name: "grantOrThrow array",
   async fn() {
     await grantOrThrow([{ name: "net" }, { name: "env" }]);
-  }
+  },
 });

@@ -56,6 +56,6 @@ if (Deno.build.os !== "win") {
       // yet resolved, delay to next turn of event loop otherwise,
       // we'll be leaking resources.
       await delay(10);
-    }
+    },
   });
 }

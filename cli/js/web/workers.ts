@@ -4,13 +4,12 @@ import {
   createWorker,
   hostTerminateWorker,
   hostPostMessage,
-  hostGetMessage
+  hostGetMessage,
 } from "../ops/worker_host.ts";
 import { log } from "../util.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 /*
 import { blobURLMap } from "./web/url.ts";
-import { blobBytesWeakMap } from "./web/blob.ts";
 */
 import { Event } from "./event.ts";
 import { EventTarget } from "./event_target.ts";
@@ -48,13 +47,13 @@ export interface WorkerOptions {
 }
 
 export class WorkerImpl extends EventTarget implements Worker {
-  private readonly id: number;
-  private isClosing = false;
+  readonly #id: number;
+  #name: string;
+  #terminated = false;
+
   public onerror?: (e: any) => void;
   public onmessage?: (data: any) => void;
   public onmessageerror?: () => void;
-  private name: string;
-  private terminated = false;
 
   constructor(specifier: string, options?: WorkerOptions) {
     super();
@@ -66,7 +65,7 @@ export class WorkerImpl extends EventTarget implements Worker {
       );
     }
 
-    this.name = name;
+    this.#name = name;
     const hasSourceCode = false;
     const sourceCode = decoder.decode(new Uint8Array());
 
@@ -92,11 +91,11 @@ export class WorkerImpl extends EventTarget implements Worker {
       sourceCode,
       options?.name
     );
-    this.id = id;
+    this.#id = id;
     this.poll();
   }
 
-  private handleError(e: any): boolean {
+  #handleError = (e: any): boolean => {
     // TODO: this is being handled in a type unsafe way, it should be type safe
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const event = new Event("error", { cancelable: true }) as any;
@@ -115,14 +114,14 @@ export class WorkerImpl extends EventTarget implements Worker {
     }
 
     return handled;
-  }
+  };
 
   async poll(): Promise<void> {
-    while (!this.terminated) {
-      const event = await hostGetMessage(this.id);
+    while (!this.#terminated) {
+      const event = await hostGetMessage(this.#id);
 
       // If terminate was called then we ignore all messages
-      if (this.terminated) {
+      if (this.#terminated) {
         return;
       }
 
@@ -137,15 +136,15 @@ export class WorkerImpl extends EventTarget implements Worker {
       }
 
       if (type === "error") {
-        if (!this.handleError(event.error)) {
+        if (!this.#handleError(event.error)) {
           throw Error(event.error.message);
         }
         continue;
       }
 
       if (type === "close") {
-        log(`Host got "close" message from worker: ${this.name}`);
-        this.terminated = true;
+        log(`Host got "close" message from worker: ${this.#name}`);
+        this.#terminated = true;
         return;
       }
 
@@ -154,17 +153,17 @@ export class WorkerImpl extends EventTarget implements Worker {
   }
 
   postMessage(data: any): void {
-    if (this.terminated) {
+    if (this.#terminated) {
       return;
     }
 
-    hostPostMessage(this.id, encodeMessage(data));
+    hostPostMessage(this.#id, encodeMessage(data));
   }
 
   terminate(): void {
-    if (!this.terminated) {
-      this.terminated = true;
-      hostTerminateWorker(this.id);
+    if (!this.#terminated) {
+      this.#terminated = true;
+      hostTerminateWorker(this.#id);
     }
   }
 }

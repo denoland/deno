@@ -5,7 +5,7 @@ export const LogLevel: Record<string, number> = {
   INFO: 20,
   WARNING: 30,
   ERROR: 40,
-  CRITICAL: 50
+  CRITICAL: 50,
 };
 
 const byLevel = {
@@ -14,7 +14,7 @@ const byLevel = {
   [LogLevel.INFO]: "INFO",
   [LogLevel.WARNING]: "WARNING",
   [LogLevel.ERROR]: "ERROR",
-  [LogLevel.CRITICAL]: "CRITICAL"
+  [LogLevel.CRITICAL]: "CRITICAL",
 };
 
 export function getLevelByName(name: string): number {

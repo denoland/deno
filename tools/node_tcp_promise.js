@@ -15,8 +15,8 @@ function write(socket, buffer) {
   return Promise.resolve(p);
 }
 
-Server(async socket => {
-  socket.on("error", _ => {
+Server(async (socket) => {
+  socket.on("error", (_) => {
     socket.destroy();
   });
   for await (const _ of socket) {

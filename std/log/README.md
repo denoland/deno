@@ -21,22 +21,22 @@ await log.setup({
     file: new log.handlers.FileHandler("WARNING", {
       filename: "./log.txt",
       // you can change format of output message
-      formatter: "{levelName} {msg}"
-    })
+      formatter: "{levelName} {msg}",
+    }),
   },
 
   loggers: {
     // configure default logger available via short-hand methods above
     default: {
       level: "DEBUG",
-      handlers: ["console", "file"]
+      handlers: ["console", "file"],
     },
 
     tasks: {
       level: "ERROR",
-      handlers: ["console"]
-    }
-  }
+      handlers: ["console"],
+    },
+  },
 });
 
 let logger;

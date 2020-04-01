@@ -13,13 +13,13 @@ export function signal(
 
   const streams = signos.map(Deno.signal);
 
-  streams.forEach(stream => {
+  streams.forEach((stream) => {
     mux.add(stream);
   });
 
   // Create dispose method for the muxer of signal streams.
   const dispose = (): void => {
-    streams.forEach(stream => {
+    streams.forEach((stream) => {
       stream.dispose();
     });
   };

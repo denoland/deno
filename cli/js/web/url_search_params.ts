@@ -1,33 +1,61 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { URL } from "./url.ts";
-import { requiredArguments } from "./util.ts";
+import * as domTypes from "./dom_types.ts";
+import { URL, parts } from "./url.ts";
+import { isIterable, requiredArguments } from "./util.ts";
 
-// Returns whether o is iterable.
-// @internal
-export function isIterable<T, P extends keyof T, K extends T[P]>(
-  o: T
-): o is T & Iterable<[P, K]> {
-  // checks for null and undefined
-  if (o == null) {
-    return false;
+/** @internal */
+export const urls = new WeakMap<URLSearchParams, URL | null>();
+
+function handleStringInitialization(
+  searchParams: URLSearchParams,
+  init: string
+): void {
+  // Overload: USVString
+  // If init is a string and starts with U+003F (?),
+  // remove the first code point from init.
+  if (init.charCodeAt(0) === 0x003f) {
+    init = init.slice(1);
   }
-  return (
-    typeof ((o as unknown) as Iterable<[P, K]>)[Symbol.iterator] === "function"
-  );
+
+  for (const pair of init.split("&")) {
+    // Empty params are ignored
+    if (pair.length === 0) {
+      continue;
+    }
+    const position = pair.indexOf("=");
+    const name = pair.slice(0, position === -1 ? pair.length : position);
+    const value = pair.slice(name.length + 1);
+    searchParams.append(decodeURIComponent(name), decodeURIComponent(value));
+  }
 }
 
-export class URLSearchParams {
-  private params: Array<[string, string]> = [];
-  private url: URL | null = null;
+function handleArrayInitialization(
+  searchParams: URLSearchParams,
+  init: string[][] | Iterable<[string, string]>
+): void {
+  // Overload: sequence<sequence<USVString>>
+  for (const tuple of init) {
+    // If pair does not contain exactly two items, then throw a TypeError.
+    if (tuple.length !== 2) {
+      throw new TypeError(
+        "URLSearchParams.constructor tuple array argument must only contain pair elements"
+      );
+    }
+    searchParams.append(tuple[0], tuple[1]);
+  }
+}
+
+export class URLSearchParams implements domTypes.URLSearchParams {
+  #params: Array<[string, string]> = [];
 
   constructor(init: string | string[][] | Record<string, string> = "") {
     if (typeof init === "string") {
-      this._handleStringInitialization(init);
+      handleStringInitialization(this, init);
       return;
     }
 
     if (Array.isArray(init) || isIterable(init)) {
-      this._handleArrayInitialization(init);
+      handleArrayInitialization(this, init);
       return;
     }
 
@@ -36,7 +64,7 @@ export class URLSearchParams {
     }
 
     if (init instanceof URLSearchParams) {
-      this.params = init.params;
+      this.#params = [...init.#params];
       return;
     }
 
@@ -44,10 +72,13 @@ export class URLSearchParams {
     for (const key of Object.keys(init)) {
       this.append(key, init[key]);
     }
+
+    urls.set(this, null);
   }
 
-  private updateSteps(): void {
-    if (this.url === null) {
+  #updateSteps = (): void => {
+    const url = urls.get(this);
+    if (url == null) {
       return;
     }
 
@@ -56,35 +87,34 @@ export class URLSearchParams {
       query = null;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (this.url as any)._parts.query = query;
-  }
+    parts.get(url)!.query = query;
+  };
 
   append(name: string, value: string): void {
     requiredArguments("URLSearchParams.append", arguments.length, 2);
-    this.params.push([String(name), String(value)]);
-    this.updateSteps();
+    this.#params.push([String(name), String(value)]);
+    this.#updateSteps();
   }
 
   delete(name: string): void {
     requiredArguments("URLSearchParams.delete", arguments.length, 1);
     name = String(name);
     let i = 0;
-    while (i < this.params.length) {
-      if (this.params[i][0] === name) {
-        this.params.splice(i, 1);
+    while (i < this.#params.length) {
+      if (this.#params[i][0] === name) {
+        this.#params.splice(i, 1);
       } else {
         i++;
       }
     }
-    this.updateSteps();
+    this.#updateSteps();
   }
 
   getAll(name: string): string[] {
     requiredArguments("URLSearchParams.getAll", arguments.length, 1);
     name = String(name);
     const values = [];
-    for (const entry of this.params) {
+    for (const entry of this.#params) {
       if (entry[0] === name) {
         values.push(entry[1]);
       }
@@ -96,7 +126,7 @@ export class URLSearchParams {
   get(name: string): string | null {
     requiredArguments("URLSearchParams.get", arguments.length, 1);
     name = String(name);
-    for (const entry of this.params) {
+    for (const entry of this.#params) {
       if (entry[0] === name) {
         return entry[1];
       }
@@ -108,7 +138,7 @@ export class URLSearchParams {
   has(name: string): boolean {
     requiredArguments("URLSearchParams.has", arguments.length, 1);
     name = String(name);
-    return this.params.some((entry): boolean => entry[0] === name);
+    return this.#params.some((entry) => entry[0] === name);
   }
 
   set(name: string, value: string): void {
@@ -121,14 +151,14 @@ export class URLSearchParams {
     value = String(value);
     let found = false;
     let i = 0;
-    while (i < this.params.length) {
-      if (this.params[i][0] === name) {
+    while (i < this.#params.length) {
+      if (this.#params[i][0] === name) {
         if (!found) {
-          this.params[i][1] = value;
+          this.#params[i][1] = value;
           found = true;
           i++;
         } else {
-          this.params.splice(i, 1);
+          this.#params.splice(i, 1);
         }
       } else {
         i++;
@@ -141,14 +171,12 @@ export class URLSearchParams {
       this.append(name, value);
     }
 
-    this.updateSteps();
+    this.#updateSteps();
   }
 
   sort(): void {
-    this.params = this.params.sort((a, b): number =>
-      a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1
-    );
-    this.updateSteps();
+    this.#params.sort((a, b) => (a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1));
+    this.#updateSteps();
   }
 
   forEach(
@@ -168,66 +196,31 @@ export class URLSearchParams {
   }
 
   *keys(): IterableIterator<string> {
-    for (const entry of this.params) {
-      yield entry[0];
+    for (const [key] of this.#params) {
+      yield key;
     }
   }
 
   *values(): IterableIterator<string> {
-    for (const entry of this.params) {
-      yield entry[1];
+    for (const [, value] of this.#params) {
+      yield value;
     }
   }
 
   *entries(): IterableIterator<[string, string]> {
-    yield* this.params;
+    yield* this.#params;
   }
 
   *[Symbol.iterator](): IterableIterator<[string, string]> {
-    yield* this.params;
+    yield* this.#params;
   }
 
   toString(): string {
-    return this.params
+    return this.#params
       .map(
-        (tuple): string =>
+        (tuple) =>
           `${encodeURIComponent(tuple[0])}=${encodeURIComponent(tuple[1])}`
       )
       .join("&");
-  }
-
-  private _handleStringInitialization(init: string): void {
-    // Overload: USVString
-    // If init is a string and starts with U+003F (?),
-    // remove the first code point from init.
-    if (init.charCodeAt(0) === 0x003f) {
-      init = init.slice(1);
-    }
-
-    for (const pair of init.split("&")) {
-      // Empty params are ignored
-      if (pair.length === 0) {
-        continue;
-      }
-      const position = pair.indexOf("=");
-      const name = pair.slice(0, position === -1 ? pair.length : position);
-      const value = pair.slice(name.length + 1);
-      this.append(decodeURIComponent(name), decodeURIComponent(value));
-    }
-  }
-
-  private _handleArrayInitialization(
-    init: string[][] | Iterable<[string, string]>
-  ): void {
-    // Overload: sequence<sequence<USVString>>
-    for (const tuple of init) {
-      // If pair does not contain exactly two items, then throw a TypeError.
-      if (tuple.length !== 2) {
-        throw new TypeError(
-          "URLSearchParams.constructor tuple array argument must only contain pair elements"
-        );
-      }
-      this.append(tuple[0], tuple[1]);
-    }
   }
 }

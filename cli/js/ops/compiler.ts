@@ -24,7 +24,7 @@ export function fetchSourceFiles(
 > {
   return sendAsync("op_fetch_source_files", {
     specifiers,
-    referrer
+    referrer,
   });
 }
 
@@ -47,6 +47,6 @@ export function cache(
   sendSync("op_cache", {
     extension,
     moduleId,
-    contents
+    contents,
   });
 }

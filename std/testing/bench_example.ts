@@ -16,7 +16,7 @@ bench({
     b.start();
     for (let i = 0; i < 1e6; i++);
     b.stop();
-  }
+  },
 });
 
 // Itsabug

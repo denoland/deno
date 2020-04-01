@@ -13,7 +13,7 @@ Deno.test(function booleanAndAliasIsNotUnknown(): void {
   const opts = {
     alias: { h: "herp" },
     boolean: "h",
-    unknown: unknownFn
+    unknown: unknownFn,
   };
   parse(aliased, opts);
   parse(regular, opts);
@@ -29,12 +29,12 @@ Deno.test(function flagBooleanTrueAnyDoubleHyphenArgumentIsNotUnknown(): void {
   }
   const argv = parse(["--honk", "--tacos=good", "cow", "-p", "55"], {
     boolean: true,
-    unknown: unknownFn
+    unknown: unknownFn,
   });
   assertEquals(unknown, ["--tacos=good", "cow", "-p"]);
   assertEquals(argv, {
     honk: true,
-    _: []
+    _: [],
   });
 });
 
@@ -49,7 +49,7 @@ Deno.test(function stringAndAliasIsNotUnkown(): void {
   const opts = {
     alias: { h: "herp" },
     string: "h",
-    unknown: unknownFn
+    unknown: unknownFn,
   };
   parse(aliased, opts);
   parse(regular, opts);
@@ -68,7 +68,7 @@ Deno.test(function defaultAndAliasIsNotUnknown(): void {
   const opts = {
     default: { h: "bar" },
     alias: { h: "herp" },
-    unknown: unknownFn
+    unknown: unknownFn,
   };
   parse(aliased, opts);
   parse(regular, opts);
@@ -85,13 +85,13 @@ Deno.test(function valueFollowingDoubleHyphenIsNotUnknown(): void {
   const aliased = ["--bad", "--", "good", "arg"];
   const opts = {
     "--": true,
-    unknown: unknownFn
+    unknown: unknownFn,
   };
   const argv = parse(aliased, opts);
 
   assertEquals(unknown, ["--bad"]);
   assertEquals(argv, {
     "--": ["good", "arg"],
-    _: []
+    _: [],
   });
 });

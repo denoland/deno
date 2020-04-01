@@ -217,7 +217,7 @@ impl DenoPermissions {
   pub fn request_run(&mut self) -> PermissionState {
     self
       .allow_run
-      .request("Deno requests to access to run a subprocess.")
+      .request("Deno requests to access to run a subprocess")
   }
 
   pub fn request_read(&mut self, path: &Option<&Path>) -> PermissionState {
@@ -225,9 +225,9 @@ impl DenoPermissions {
       return PermissionState::Allow;
     };
     self.allow_read.request(&match path {
-      None => "Deno requests read access.".to_string(),
+      None => "Deno requests read access".to_string(),
       Some(path) => {
-        format!("Deno requests read access to \"{}\".", path.display())
+        format!("Deno requests read access to \"{}\"", path.display())
       }
     })
   }
@@ -237,9 +237,9 @@ impl DenoPermissions {
       return PermissionState::Allow;
     };
     self.allow_write.request(&match path {
-      None => "Deno requests write access.".to_string(),
+      None => "Deno requests write access".to_string(),
       Some(path) => {
-        format!("Deno requests write access to \"{}\".", path.display())
+        format!("Deno requests write access to \"{}\"", path.display())
       }
     })
   }
@@ -250,8 +250,8 @@ impl DenoPermissions {
   ) -> Result<PermissionState, OpError> {
     if self.get_state_net_url(url)? == PermissionState::Ask {
       return Ok(self.allow_net.request(&match url {
-        None => "Deno requests network access.".to_string(),
-        Some(url) => format!("Deno requests network access to \"{}\".", url),
+        None => "Deno requests network access".to_string(),
+        Some(url) => format!("Deno requests network access to \"{}\"", url),
       }));
     };
     self.get_state_net_url(url)
@@ -260,17 +260,17 @@ impl DenoPermissions {
   pub fn request_env(&mut self) -> PermissionState {
     self
       .allow_env
-      .request("Deno requests to access to environment variables.")
+      .request("Deno requests to access to environment variables")
   }
 
   pub fn request_hrtime(&mut self) -> PermissionState {
     self
       .allow_hrtime
-      .request("Deno requests to access to high precision time.")
+      .request("Deno requests to access to high precision time")
   }
 
   pub fn request_plugin(&mut self) -> PermissionState {
-    self.allow_plugin.request("Deno requests to open plugins.")
+    self.allow_plugin.request("Deno requests to open plugins")
   }
 
   pub fn get_permission_state(

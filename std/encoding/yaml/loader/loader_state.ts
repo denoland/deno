@@ -56,7 +56,7 @@ export class LoaderState extends State {
       onWarning,
       legacy = false,
       json = false,
-      listener = null
+      listener = null,
     }: LoaderStateOptions
   ) {
     super(schema);

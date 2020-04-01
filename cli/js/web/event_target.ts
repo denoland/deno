@@ -7,7 +7,7 @@ import {
   isShadowRoot,
   isShadowInclusiveAncestor,
   isSlotable,
-  retarget
+  retarget,
 } from "./dom_util.ts";
 
 // https://dom.spec.whatwg.org/#get-the-parent
@@ -70,7 +70,7 @@ export class EventTarget implements domTypes.EventTarget {
 
     listeners[type].push({
       callback,
-      options: normalizedOptions
+      options: normalizedOptions,
     });
   }
 
@@ -438,7 +438,7 @@ const eventTargetHelpers = {
       const returnValue: domTypes.AddEventListenerOptions = {
         capture: Boolean(options),
         once: false,
-        passive: false
+        passive: false,
       };
 
       return returnValue;
@@ -452,7 +452,7 @@ const eventTargetHelpers = {
   ): domTypes.EventListenerOptions {
     if (typeof options === "boolean" || typeof options === "undefined") {
       const returnValue: domTypes.EventListenerOptions = {
-        capture: Boolean(options)
+        capture: Boolean(options),
       };
 
       return returnValue;
@@ -481,17 +481,17 @@ const eventTargetHelpers = {
       relatedTarget,
       touchTargetList: touchTargets,
       rootOfClosedTree,
-      slotInClosedTree
+      slotInClosedTree,
     });
-  }
+  },
 };
 
 Reflect.defineProperty(EventTarget.prototype, "addEventListener", {
-  enumerable: true
+  enumerable: true,
 });
 Reflect.defineProperty(EventTarget.prototype, "removeEventListener", {
-  enumerable: true
+  enumerable: true,
 });
 Reflect.defineProperty(EventTarget.prototype, "dispatchEvent", {
-  enumerable: true
+  enumerable: true,
 });

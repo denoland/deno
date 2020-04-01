@@ -10,7 +10,7 @@ import {
   QueuingStrategy,
   QueuingStrategySizeCallback,
   UnderlyingSource,
-  UnderlyingByteSource
+  UnderlyingByteSource,
 } from "../dom_types.ts";
 
 // ReadableStreamDefaultController
@@ -345,7 +345,7 @@ export function readableStreamCancel<OutputType>(
   const sourceCancelPromise = stream[readableStreamController_][cancelSteps_](
     reason
   );
-  return sourceCancelPromise.then(_ => undefined);
+  return sourceCancelPromise.then((_) => undefined);
 }
 
 export function readableStreamClose<OutputType>(
@@ -558,13 +558,13 @@ export function setUpReadableStreamDefaultController<OutputType>(
 
   const startResult = startAlgorithm();
   Promise.resolve(startResult).then(
-    _ => {
+    (_) => {
       controller[started_] = true;
       // Assert: controller.[[pulling]] is false.
       // Assert: controller.[[pullAgain]] is false.
       readableStreamDefaultControllerCallPullIfNeeded(controller);
     },
-    error => {
+    (error) => {
       readableStreamDefaultControllerError(controller, error);
     }
   );
@@ -678,14 +678,14 @@ export function readableStreamDefaultControllerCallPullIfNeeded<OutputType>(
 
   controller[pulling_] = true;
   controller[pullAlgorithm_](controller).then(
-    _ => {
+    (_) => {
       controller[pulling_] = false;
       if (controller[pullAgain_]) {
         controller[pullAgain_] = false;
         readableStreamDefaultControllerCallPullIfNeeded(controller);
       }
     },
-    error => {
+    (error) => {
       readableStreamDefaultControllerError(controller, error);
     }
   );
@@ -768,13 +768,13 @@ export function setUpReadableByteStreamController(
   // Let startResult be the result of performing startAlgorithm.
   const startResult = startAlgorithm();
   Promise.resolve(startResult).then(
-    _ => {
+    (_) => {
       controller[started_] = true;
       // Assert: controller.[[pulling]] is false.
       // Assert: controller.[[pullAgain]] is false.
       readableByteStreamControllerCallPullIfNeeded(controller);
     },
-    error => {
+    (error) => {
       readableByteStreamControllerError(controller, error);
     }
   );
@@ -811,14 +811,14 @@ export function readableByteStreamControllerCallPullIfNeeded(
   // Assert: controller.[[pullAgain]] is false.
   controller[pulling_] = true;
   controller[pullAlgorithm_](controller).then(
-    _ => {
+    (_) => {
       controller[pulling_] = false;
       if (controller[pullAgain_]) {
         controller[pullAgain_] = false;
         readableByteStreamControllerCallPullIfNeeded(controller);
       }
     },
-    error => {
+    (error) => {
       readableByteStreamControllerError(controller, error);
     }
   );
@@ -1122,7 +1122,7 @@ export function readableByteStreamControllerPullInto(
     bytesFilled: 0,
     elementSize,
     ctor,
-    readerType: "byob"
+    readerType: "byob",
   };
 
   if (controller[pendingPullIntos_].length > 0) {

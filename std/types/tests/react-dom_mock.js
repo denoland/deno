@@ -3,7 +3,7 @@
 const ReactDOM = {
   render(element) {
     return JSON.stringify(element);
-  }
+  },
 };
 
 export default ReactDOM;

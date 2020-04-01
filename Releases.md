@@ -6,6 +6,63 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.38.0 / 2020.03.28
+
+- feat: Add "deno doc" subcommand (#4500)
+- feat: Support --inspect, Chrome Devtools support (#4484)
+- feat: Support Unix Domain Sockets (#4176)
+- feat: add queueMicrotask to d.ts (#4477)
+- feat: window.close() (#4474)
+- fix(console): replace object abbreviation with line breaking (#4425)
+- fix: add fsEvent notify::Error casts (#4488)
+- fix: hide source line if error message longer than 150 chars (#4487)
+- fix: parsing bug (#4483)
+- fix: remove extra dot in Permission request output (#4471)
+- refactor: rename ConsoleOptions to InspectOptions (#4493)
+- upgrade: dprint 0.9.6 (#4509, #4491)
+- upgrade: prettier 2 for internal code formatting (#4498)
+- upgrade: rusty_v8 to v0.3.9 (#4505)
+
+### v0.37.1 / 2020.03.23
+
+- fix: Statically link the C runtime library on Windows (#4469)
+
+### v0.37.0 / 2020.03.23
+
+- BREAKING CHANGE: FileInfo.len renamed to FileName.size (#4338)
+- BREAKING CHANGE: Rename Deno.run's args to cmd (#4444)
+- feat(ci): Releases should all use zip and LLVM target triples (#4460)
+- feat(console): Symbol.toStringTag and display Object symbol entries (#4388)
+- feat(std/node): Add chmod Node polyfill (#4358)
+- feat(std/node): Add node querystring polyfill (#4370)
+- feat(std/node): Node polyfill for fs.chown and fs.close (#4377)
+- feat(std/permissions): Add helper functions for permissions to std (#4258)
+- feat(std/types): Provide types for React and ReactDOM (#4376)
+- feat(test): Add option to skip tests (#4351)
+- feat(test): Add support for jsx/tsx for deno test (#4369)
+- feat: Add mode option to open/create (#4289)
+- feat: Deno.test() sanitizes ops and resources (#4399)
+- feat: Fetch should accept a FormData body (#4363)
+- feat: First pass at "deno upgrade" (#4328)
+- feat: Prvode way to build Deno without building V8 from source (#4412)
+- feat: Remove `Object.prototype.__proto__` (#4341)
+- fix(std/http): Close open connections on server close (#3679)
+- fix(std/http): Properly await ops in a server test (#4436)
+- fix(std/http): Remove bad error handling (#4435)
+- fix(std/node): Node polyfill fsAppend rework (#4322)
+- fix(std/node): Stack traces for modules imported via require (#4035)
+- fix: Importing JSON doesn't work in bundles (#4404)
+- fix: Simplify timer with macrotask callback (#4385)
+- fix: Test runner ConnectionReset bug (#4424)
+- fix: chmod should throw on Windows (#4446)
+- fix: fetch closes unused body (#4393)
+- perf: Optimize TextEncoder and TextDecoder (#4430, #4349)
+- refactor: Improve test runner (#4336, #4352, #4356, #4371)
+- refactor: Remove std/testing/runner.ts, use deno test (#4397, #4392)
+- upgrade: Rust 1.42.0 (#4331)
+- upgrade: Rust crates (#4412)
+- upgrade: to rusty_v8 0.3.5 / v8 8.2.308 (#4364)
+
 ### v0.36.0 / 2020.03.11
 
 - BREAKING CHANGE: Remove Deno.errors.Other (#4249)

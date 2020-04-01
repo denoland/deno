@@ -15,7 +15,7 @@ unitTest(
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
     Deno.writeFileSync(filename, new TextEncoder().encode("hello"), {
-      mode: 0o666
+      mode: 0o666,
     });
 
     const atime = 1000;
@@ -115,7 +115,7 @@ unitTest(
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
     Deno.writeFileSync(filename, new TextEncoder().encode("hello"), {
-      mode: 0o666
+      mode: 0o666,
     });
 
     const atime = 1000;

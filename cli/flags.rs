@@ -31,6 +31,11 @@ pub enum DenoSubcommand {
   Completions {
     buf: Box<[u8]>,
   },
+  Doc {
+    json: bool,
+    source_file: String,
+    filter: Option<String>,
+  },
   Eval {
     code: String,
     as_typescript: bool,
@@ -63,6 +68,10 @@ pub enum DenoSubcommand {
     include: Option<Vec<String>>,
   },
   Types,
+  Upgrade {
+    dry_run: bool,
+    force: bool,
+  },
 }
 
 impl Default for DenoSubcommand {
@@ -97,6 +106,8 @@ pub struct Flags {
   pub no_prompts: bool,
   pub no_remote: bool,
   pub cached_only: bool,
+  pub inspect: Option<String>,
+  pub inspect_brk: Option<String>,
   pub seed: Option<u64>,
   pub v8_flags: Option<Vec<String>>,
 
@@ -250,6 +261,10 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
     completions_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("test") {
     test_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("upgrade") {
+    upgrade_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("doc") {
+    doc_parse(&mut flags, m);
   } else {
     unimplemented!();
   }
@@ -302,6 +317,8 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(run_subcommand())
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
+    .subcommand(upgrade_subcommand())
+    .subcommand(doc_subcommand())
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
 }
@@ -467,6 +484,7 @@ fn run_test_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   no_remote_arg_parse(flags, matches);
   permission_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
+  inspect_arg_parse(flags, matches);
 
   if matches.is_present("cached-only") {
     flags.cached_only = true;
@@ -531,6 +549,28 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     fail_fast: failfast,
     include,
     allow_none,
+  };
+}
+
+fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  let dry_run = matches.is_present("dry-run");
+  let force = matches.is_present("force");
+  flags.subcommand = DenoSubcommand::Upgrade { dry_run, force };
+}
+
+fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  reload_arg_parse(flags, matches);
+  let source_file = matches.value_of("source_file").map(String::from).unwrap();
+  let json = matches.is_present("json");
+  let filter = if matches.is_present("filter") {
+    Some(matches.value_of("filter").unwrap().to_string())
+  } else {
+    None
+  };
+  flags.subcommand = DenoSubcommand::Doc {
+    source_file,
+    json,
+    filter,
   };
 }
 
@@ -731,6 +771,66 @@ Future runs of this module will trigger no downloads or compilation unless
     )
 }
 
+fn upgrade_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("upgrade")
+    .about("Upgrade deno executable to newest version")
+    .long_about(
+      "Upgrade deno executable to newest available version.
+
+The latest version is downloaded from
+https://github.com/denoland/deno/releases
+and is used to replace the current executable.",
+    )
+    .arg(
+      Arg::with_name("dry-run")
+        .long("dry-run")
+        .help("Perform all checks without replacing old exe"),
+    )
+    .arg(
+      Arg::with_name("force")
+        .long("force")
+        .short("f")
+        .help("Replace current exe even if not out-of-date"),
+    )
+}
+
+fn doc_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("doc")
+    .about("Show documentation for module")
+    .long_about(
+      "Show documentation for module.
+
+Output documentation to terminal:
+    deno doc ./path/to/module.ts
+
+Show detail of symbol:
+    deno doc ./path/to/module.ts MyClass.someField
+
+Output documentation in JSON format:
+    deno doc --json ./path/to/module.ts",
+    )
+    .arg(reload_arg())
+    .arg(
+      Arg::with_name("json")
+        .long("json")
+        .help("Output documentation in JSON format.")
+        .takes_value(false),
+    )
+    .arg(
+      Arg::with_name("source_file")
+        .takes_value(true)
+        .required(true),
+    )
+    .arg(
+      Arg::with_name("filter")
+        .help("Dot separated path to symbol.")
+        .takes_value(true)
+        .required(false)
+        .conflicts_with("json")
+        .conflicts_with("pretty"),
+    )
+}
+
 fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
   app
     .arg(
@@ -789,7 +889,7 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
 }
 
 fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
-  permission_args(app)
+  permission_args(inspect_args(app))
     .arg(importmap_arg())
     .arg(reload_arg())
     .arg(config_arg())
@@ -918,6 +1018,54 @@ fn ca_file_arg<'a, 'b>() -> Arg<'a, 'b> {
 }
 fn ca_file_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.ca_file = matches.value_of("cert").map(ToOwned::to_owned);
+}
+
+fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
+  app
+    .arg(
+      Arg::with_name("inspect")
+        .long("inspect")
+        .value_name("HOST:PORT")
+        .help("activate inspector on host:port (default: 127.0.0.1:9229)")
+        .min_values(0)
+        .max_values(1)
+        .require_equals(true)
+        .takes_value(true),
+    )
+    .arg(
+      Arg::with_name("inspect-brk")
+        .long("inspect-brk")
+        .value_name("HOST:PORT")
+        .help(
+          "activate inspector on host:port and break at start of user script",
+        )
+        .min_values(0)
+        .max_values(1)
+        .require_equals(true)
+        .takes_value(true),
+    )
+}
+
+fn inspect_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  const DEFAULT: &str = "127.0.0.1:9229";
+  flags.inspect = if matches.is_present("inspect") {
+    if let Some(host) = matches.value_of("inspect") {
+      Some(host.to_string())
+    } else {
+      Some(DEFAULT.to_string())
+    }
+  } else {
+    None
+  };
+  flags.inspect_brk = if matches.is_present("inspect-brk") {
+    if let Some(host) = matches.value_of("inspect-brk") {
+      Some(host.to_string())
+    } else {
+      Some(DEFAULT.to_string())
+    }
+  } else {
+    None
+  };
 }
 
 fn reload_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -1132,6 +1280,7 @@ fn arg_hacks(mut args: Vec<String>) -> Vec<String> {
   let subcommands = sset![
     "bundle",
     "completions",
+    "doc",
     "eval",
     "fetch",
     "fmt",
@@ -1142,7 +1291,8 @@ fn arg_hacks(mut args: Vec<String>) -> Vec<String> {
     "types",
     "install",
     "help",
-    "version"
+    "version",
+    "upgrade"
   ];
   let modifier_flags = sset!["-h", "--help", "-V", "--version"];
   // deno [subcommand|behavior modifier flags] -> do nothing
@@ -1186,6 +1336,23 @@ mod tests {
     assert_eq!(args3, ["deno", "run", "script.js"]);
     let args4 = arg_hacks(svec!["deno", "-A", "script.js", "-L=info"]);
     assert_eq!(args4, ["deno", "run", "-A", "script.js", "-L=info"]);
+  }
+
+  #[test]
+  fn upgrade() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "upgrade", "--dry-run", "--force"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Upgrade {
+          force: true,
+          dry_run: true,
+        },
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
@@ -2269,6 +2436,76 @@ fn repl_with_cafile() {
       allow_run: true,
       allow_plugin: true,
       allow_hrtime: true,
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn doc() {
+  let r =
+    flags_from_vec_safe(svec!["deno", "doc", "--json", "path/to/module.ts"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Doc {
+        json: true,
+        source_file: "path/to/module.ts".to_string(),
+        filter: None,
+      },
+      ..Flags::default()
+    }
+  );
+
+  let r = flags_from_vec_safe(svec![
+    "deno",
+    "doc",
+    "path/to/module.ts",
+    "SomeClass.someField"
+  ]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Doc {
+        json: false,
+        source_file: "path/to/module.ts".to_string(),
+        filter: Some("SomeClass.someField".to_string()),
+      },
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn inspect_default_host() {
+  let r = flags_from_vec_safe(svec!["deno", "run", "--inspect", "foo.js"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Run {
+        script: "foo.js".to_string(),
+      },
+      inspect: Some("127.0.0.1:9229".to_string()),
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn inspect_custom_host() {
+  let r = flags_from_vec_safe(svec![
+    "deno",
+    "run",
+    "--inspect=deno.land:80",
+    "foo.js"
+  ]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Run {
+        script: "foo.js".to_string(),
+      },
+      inspect: Some("deno.land:80".to_string()),
       ..Flags::default()
     }
   );

@@ -4,7 +4,7 @@ import {
   assert,
   assertEquals,
   assertThrows,
-  createResolvable
+  createResolvable,
 } from "./test_util.ts";
 
 function defer(n: number): Promise<void> {

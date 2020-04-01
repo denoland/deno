@@ -21,7 +21,7 @@ unitTest(function atobWithAsciiWhitespace(): void {
     "aGVsbG8gd29ybGQ=\n",
     "aGVsbG\t8gd29ybGQ=",
     `aGVsbG\t8g
-                d29ybGQ=`
+                d29ybGQ=`,
   ];
 
   for (const encoded of encodedList) {

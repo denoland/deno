@@ -3,7 +3,7 @@ import { unitTest, assertEquals } from "./test_util.ts";
 
 unitTest(
   {
-    ignore: Deno.build.os === "win"
+    ignore: Deno.build.os === "win",
   },
   function umaskSuccess(): void {
     const prevMask = Deno.umask(0o020);
@@ -11,6 +11,5 @@ unitTest(
     const finalMask = Deno.umask();
     assertEquals(newMask, 0o020);
     assertEquals(finalMask, prevMask);
-    assertEquals(prevMask, 0o022);
   }
 );

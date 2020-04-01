@@ -36,6 +36,6 @@ export function open(
     path,
     options,
     openMode,
-    mode
+    mode,
   });
 }

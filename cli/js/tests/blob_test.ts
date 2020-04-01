@@ -32,13 +32,21 @@ unitTest(function blobSlice(): void {
   assertEquals(b4.size, blob.size);
 });
 
+unitTest(function blobInvalidType(): void {
+  const blob = new Blob(["foo"], {
+    type: "\u0521",
+  });
+
+  assertEquals(blob.type, "");
+});
+
 unitTest(function blobShouldNotThrowError(): void {
   let hasThrown = false;
 
   try {
     const options1: object = {
       ending: "utf8",
-      hasOwnProperty: "hasOwnProperty"
+      hasOwnProperty: "hasOwnProperty",
     };
     const options2: object = Object.create(null);
     new Blob(["Hello World"], options1);
@@ -52,7 +60,7 @@ unitTest(function blobShouldNotThrowError(): void {
 
 unitTest(function nativeEndLine(): void {
   const options: object = {
-    ending: "native"
+    ending: "native",
   };
   const blob = new Blob(["Hello\nWorld"], options);
 

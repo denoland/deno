@@ -4,7 +4,7 @@ import {
   acceptWebSocket,
   isWebSocketCloseEvent,
   isWebSocketPingEvent,
-  WebSocket
+  WebSocket,
 } from "./mod.ts";
 
 /** websocket echo server */
@@ -16,7 +16,7 @@ for await (const req of serve(`:${port}`)) {
     conn,
     headers,
     bufReader: req.r,
-    bufWriter: req.w
+    bufWriter: req.w,
   })
     .then(
       async (sock: WebSocket): Promise<void> => {

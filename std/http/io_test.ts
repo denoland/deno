@@ -4,7 +4,7 @@ import {
   assertEquals,
   assert,
   assertNotEOF,
-  assertNotEquals
+  assertNotEquals,
 } from "../testing/asserts.ts";
 import {
   bodyReader,
@@ -12,7 +12,7 @@ import {
   readTrailers,
   parseHTTPVersion,
   readRequest,
-  writeResponse
+  writeResponse,
 } from "./io.ts";
 import { encode, decode } from "../strings/mod.ts";
 import { BufReader, ReadLineResult } from "../io/bufio.ts";
@@ -39,7 +39,7 @@ test("chunkedBodyReader", async () => {
     chunkify(5, "b"),
     chunkify(11, "c"),
     chunkify(22, "d"),
-    chunkify(0, "")
+    chunkify(0, ""),
   ].join("");
   const h = new Headers();
   const r = chunkedBodyReader(h, new BufReader(new Buffer(encode(body))));
@@ -64,10 +64,10 @@ test("chunkedBodyReader with trailers", async () => {
     chunkify(0, ""),
     "deno: land\r\n",
     "node: js\r\n",
-    "\r\n"
+    "\r\n",
   ].join("");
   const h = new Headers({
-    trailer: "deno,node"
+    trailer: "deno,node",
   });
   const r = chunkedBodyReader(h, new BufReader(new Buffer(encode(body))));
   assertEquals(h.has("trailer"), true);
@@ -83,7 +83,7 @@ test("chunkedBodyReader with trailers", async () => {
 
 test("readTrailers", async () => {
   const h = new Headers({
-    trailer: "deno,node"
+    trailer: "deno,node",
   });
   const trailer = ["deno: land", "node: js", "", ""].join("\r\n");
   await readTrailers(h, new BufReader(new Buffer(encode(trailer))));
@@ -96,11 +96,11 @@ test("readTrailer should throw if undeclared headers found in trailer", async ()
   const patterns = [
     ["deno,node", "deno: land\r\nnode: js\r\ngo: lang\r\n\r\n"],
     ["deno", "node: js\r\n\r\n"],
-    ["deno", "node:js\r\ngo: lang\r\n\r\n"]
+    ["deno", "node:js\r\ngo: lang\r\n\r\n"],
   ];
   for (const [header, trailer] of patterns) {
     const h = new Headers({
-      trailer: header
+      trailer: header,
     });
     await assertThrowsAsync(
       async () => {
@@ -115,7 +115,7 @@ test("readTrailer should throw if undeclared headers found in trailer", async ()
 test("readTrailer should throw if trailer contains prohibited fields", async () => {
   for (const f of ["content-length", "trailer", "transfer-encoding"]) {
     const h = new Headers({
-      trailer: f
+      trailer: f,
     });
     await assertThrowsAsync(
       async () => {
@@ -192,7 +192,7 @@ test("parseHttpVersion", (): void => {
     { in: "HTTP/-1.0", err: true },
     { in: "HTTP/0.-1", err: true },
     { in: "HTTP/", err: true },
-    { in: "HTTP/1,0", err: true }
+    { in: "HTTP/1,0", err: true },
   ];
   for (const t of testCases) {
     let r, err;
@@ -320,10 +320,10 @@ test("writeResponse with trailer", async () => {
     status: 200,
     headers: new Headers({
       "transfer-encoding": "chunked",
-      trailer: "deno,node"
+      trailer: "deno,node",
     }),
     body,
-    trailers: () => new Headers({ deno: "land", node: "js" })
+    trailers: () => new Headers({ deno: "land", node: "js" }),
   });
   const ret = w.toString();
   const exp = [
@@ -338,7 +338,7 @@ test("writeResponse with trailer", async () => {
     "deno: land",
     "node: js",
     "",
-    ""
+    "",
   ].join("\r\n");
   assertEquals(ret, exp);
 });
@@ -365,20 +365,20 @@ test(async function testReadRequestError(): Promise<void> {
   const testCases = [
     {
       in: "GET / HTTP/1.1\r\nheader: foo\r\n\r\n",
-      headers: [{ key: "header", value: "foo" }]
+      headers: [{ key: "header", value: "foo" }],
     },
     {
       in: "GET / HTTP/1.1\r\nheader:foo\r\n",
-      err: Deno.errors.UnexpectedEof
+      err: Deno.errors.UnexpectedEof,
     },
     { in: "", err: Deno.EOF },
     {
       in: "HEAD / HTTP/1.1\r\nContent-Length:4\r\n\r\n",
-      err: "http: method cannot contain a Content-Length"
+      err: "http: method cannot contain a Content-Length",
     },
     {
       in: "HEAD / HTTP/1.1\r\n\r\n",
-      headers: []
+      headers: [],
     },
     // Multiple Content-Length values should either be
     // deduplicated if same or reject otherwise
@@ -387,23 +387,23 @@ test(async function testReadRequestError(): Promise<void> {
       in:
         "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 0\r\n\r\n" +
         "Gopher hey\r\n",
-      err: "cannot contain multiple Content-Length headers"
+      err: "cannot contain multiple Content-Length headers",
     },
     {
       in:
         "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 6\r\n\r\n" +
         "Gopher\r\n",
-      err: "cannot contain multiple Content-Length headers"
+      err: "cannot contain multiple Content-Length headers",
     },
     {
       in:
         "PUT / HTTP/1.1\r\nContent-Length: 6 \r\nContent-Length: 6\r\n" +
         "Content-Length:6\r\n\r\nGopher\r\n",
-      headers: [{ key: "Content-Length", value: "6" }]
+      headers: [{ key: "Content-Length", value: "6" }],
     },
     {
       in: "PUT / HTTP/1.1\r\nContent-Length: 1\r\nContent-Length: 6 \r\n\r\n",
-      err: "cannot contain multiple Content-Length headers"
+      err: "cannot contain multiple Content-Length headers",
     },
     // Setting an empty header is swallowed by textproto
     // see: readMIMEHeader()
@@ -413,15 +413,15 @@ test(async function testReadRequestError(): Promise<void> {
     // },
     {
       in: "HEAD / HTTP/1.1\r\nContent-Length:0\r\nContent-Length: 0\r\n\r\n",
-      headers: [{ key: "Content-Length", value: "0" }]
+      headers: [{ key: "Content-Length", value: "0" }],
     },
     {
       in:
         "POST / HTTP/1.1\r\nContent-Length:0\r\ntransfer-encoding: " +
         "chunked\r\n\r\n",
       headers: [],
-      err: "http: Transfer-Encoding and Content-Length cannot be send together"
-    }
+      err: "http: Transfer-Encoding and Content-Length cannot be send together",
+    },
   ];
   for (const test of testCases) {
     const reader = new BufReader(new StringReader(test.in));

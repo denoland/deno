@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as urlSearchParams from "./url_search_params.ts";
-import * as domTypes from "./dom_types.ts";
-import { getRandomValues } from "../ops/get_random_values.ts";
 import { customInspect } from "./console.ts";
+import * as domTypes from "./dom_types.ts";
+import { urls, URLSearchParams } from "./url_search_params.ts";
+import { getRandomValues } from "../ops/get_random_values.ts";
 
 interface URLParts {
   protocol: string;
@@ -24,7 +24,7 @@ const patterns = {
 
   authentication: "(?:([^:]*)(?::([^@]*))?@)",
   hostname: "([^:]+)",
-  port: "(?::(\\d+))"
+  port: "(?::(\\d+))",
 };
 
 const urlRegExp = new RegExp(
@@ -35,10 +35,10 @@ const authorityRegExp = new RegExp(
   `^${patterns.authentication}?${patterns.hostname}${patterns.port}?$`
 );
 
-const searchParamsMethods: Array<keyof urlSearchParams.URLSearchParams> = [
+const searchParamsMethods: Array<keyof URLSearchParams> = [
   "append",
   "delete",
-  "set"
+  "set",
 ];
 
 function parse(url: string): URLParts | undefined {
@@ -57,7 +57,7 @@ function parse(url: string): URLParts | undefined {
         port: authorityMatch[4] || "",
         path: urlMatch[3] || "",
         query: urlMatch[4] || "",
-        hash: urlMatch[5] || ""
+        hash: urlMatch[5] || "",
       };
     }
   }
@@ -136,9 +136,11 @@ function resolvePathFromBase(path: string, basePath: string): string {
   return normalizePath(prefix + suffix);
 }
 
-export class URL {
-  private _parts: URLParts;
-  private _searchParams!: urlSearchParams.URLSearchParams;
+/** @internal */
+export const parts = new WeakMap<URL, URLParts>();
+
+export class URL implements domTypes.URL {
+  #searchParams!: URLSearchParams;
 
   [customInspect](): string {
     const keys = [
@@ -152,7 +154,7 @@ export class URL {
       "port",
       "pathname",
       "hash",
-      "search"
+      "search",
     ];
     const objectString = keys
       .map((key: string) => `${key}: "${this[key as keyof this] || ""}"`)
@@ -160,8 +162,8 @@ export class URL {
     return `URL { ${objectString} }`;
   }
 
-  private _updateSearchParams(): void {
-    const searchParams = new urlSearchParams.URLSearchParams(this.search);
+  #updateSearchParams = (): void => {
+    const searchParams = new URLSearchParams(this.search);
 
     for (const methodName of searchParamsMethods) {
       /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -172,27 +174,25 @@ export class URL {
       };
       /* eslint-enable */
     }
-    this._searchParams = searchParams;
+    this.#searchParams = searchParams;
 
-    // convert to `any` that has avoided the private limit
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (this._searchParams as any).url = this;
-  }
+    urls.set(searchParams, this);
+  };
 
   get hash(): string {
-    return this._parts.hash;
+    return parts.get(this)!.hash;
   }
 
   set hash(value: string) {
     value = unescape(String(value));
     if (!value) {
-      this._parts.hash = "";
+      parts.get(this)!.hash = "";
     } else {
       if (value.charAt(0) !== "#") {
         value = `#${value}`;
       }
       // hashes can contain % and # unescaped
-      this._parts.hash = escape(value)
+      parts.get(this)!.hash = escape(value)
         .replace(/%25/g, "%")
         .replace(/%23/g, "#");
     }
@@ -205,17 +205,17 @@ export class URL {
   set host(value: string) {
     value = String(value);
     const url = new URL(`http://${value}`);
-    this._parts.hostname = url.hostname;
-    this._parts.port = url.port;
+    parts.get(this)!.hostname = url.hostname;
+    parts.get(this)!.port = url.port;
   }
 
   get hostname(): string {
-    return this._parts.hostname;
+    return parts.get(this)!.hostname;
   }
 
   set hostname(value: string) {
     value = String(value);
-    this._parts.hostname = encodeURIComponent(value);
+    parts.get(this)!.hostname = encodeURIComponent(value);
   }
 
   get href(): string {
@@ -234,8 +234,8 @@ export class URL {
     value = String(value);
     if (value !== this.href) {
       const url = new URL(value);
-      this._parts = { ...url._parts };
-      this._updateSearchParams();
+      parts.set(this, { ...parts.get(url)! });
+      this.#updateSearchParams();
     }
   }
 
@@ -247,16 +247,16 @@ export class URL {
   }
 
   get password(): string {
-    return this._parts.password;
+    return parts.get(this)!.password;
   }
 
   set password(value: string) {
     value = String(value);
-    this._parts.password = encodeURIComponent(value);
+    parts.get(this)!.password = encodeURIComponent(value);
   }
 
   get pathname(): string {
-    return this._parts.path ? this._parts.path : "/";
+    return parts.get(this)?.path || "/";
   }
 
   set pathname(value: string) {
@@ -265,22 +265,22 @@ export class URL {
       value = `/${value}`;
     }
     // paths can contain % unescaped
-    this._parts.path = escape(value).replace(/%25/g, "%");
+    parts.get(this)!.path = escape(value).replace(/%25/g, "%");
   }
 
   get port(): string {
-    return this._parts.port;
+    return parts.get(this)!.port;
   }
 
   set port(value: string) {
     const port = parseInt(String(value), 10);
-    this._parts.port = isNaN(port)
+    parts.get(this)!.port = isNaN(port)
       ? ""
       : Math.max(0, port % 2 ** 16).toString();
   }
 
   get protocol(): string {
-    return `${this._parts.protocol}:`;
+    return `${parts.get(this)!.protocol}:`;
   }
 
   set protocol(value: string) {
@@ -289,16 +289,17 @@ export class URL {
       if (value.charAt(value.length - 1) === ":") {
         value = value.slice(0, -1);
       }
-      this._parts.protocol = encodeURIComponent(value);
+      parts.get(this)!.protocol = encodeURIComponent(value);
     }
   }
 
   get search(): string {
-    if (this._parts.query === null || this._parts.query === "") {
+    const query = parts.get(this)!.query;
+    if (query === null || query === "") {
       return "";
     }
 
-    return this._parts.query;
+    return query;
   }
 
   set search(value: string) {
@@ -313,27 +314,27 @@ export class URL {
       query = value;
     }
 
-    this._parts.query = query;
-    this._updateSearchParams();
+    parts.get(this)!.query = query;
+    this.#updateSearchParams();
   }
 
   get username(): string {
-    return this._parts.username;
+    return parts.get(this)!.username;
   }
 
   set username(value: string) {
     value = String(value);
-    this._parts.username = encodeURIComponent(value);
+    parts.get(this)!.username = encodeURIComponent(value);
   }
 
-  get searchParams(): urlSearchParams.URLSearchParams {
-    return this._searchParams;
+  get searchParams(): URLSearchParams {
+    return this.#searchParams;
   }
 
   constructor(url: string, base?: string | URL) {
     let baseParts: URLParts | undefined;
     if (base) {
-      baseParts = typeof base === "string" ? parse(base) : base._parts;
+      baseParts = typeof base === "string" ? parse(base) : parts.get(base);
       if (!baseParts || baseParts.protocol == "") {
         throw new TypeError("Invalid base URL.");
       }
@@ -345,9 +346,9 @@ export class URL {
     }
 
     if (urlParts.protocol) {
-      this._parts = urlParts;
+      parts.set(this, urlParts);
     } else if (baseParts) {
-      this._parts = {
+      parts.set(this, {
         protocol: baseParts.protocol,
         username: baseParts.username,
         password: baseParts.password,
@@ -355,12 +356,12 @@ export class URL {
         port: baseParts.port,
         path: resolvePathFromBase(urlParts.path, baseParts.path || "/"),
         query: urlParts.query,
-        hash: urlParts.hash
-      };
+        hash: urlParts.hash,
+      });
     } else {
       throw new TypeError("URL requires a base URL.");
     }
-    this._updateSearchParams();
+    this.#updateSearchParams();
   }
 
   toString(): string {

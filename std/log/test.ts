@@ -20,7 +20,7 @@ test(async function defaultHandlers(): Promise<void> {
     INFO: log.info,
     WARNING: log.warning,
     ERROR: log.error,
-    CRITICAL: log.critical
+    CRITICAL: log.critical,
   };
 
   for (const levelName in LogLevel) {
@@ -33,14 +33,14 @@ test(async function defaultHandlers(): Promise<void> {
 
     await log.setup({
       handlers: {
-        default: handler
+        default: handler,
       },
       loggers: {
         default: {
           level: levelName,
-          handlers: ["default"]
-        }
-      }
+          handlers: ["default"],
+        },
+      },
     });
 
     logger("foo");
@@ -55,14 +55,14 @@ test(async function getLogger(): Promise<void> {
 
   await log.setup({
     handlers: {
-      default: handler
+      default: handler,
     },
     loggers: {
       default: {
         level: "DEBUG",
-        handlers: ["default"]
-      }
-    }
+        handlers: ["default"],
+      },
+    },
   });
 
   const logger = log.getLogger();
@@ -76,14 +76,14 @@ test(async function getLoggerWithName(): Promise<void> {
 
   await log.setup({
     handlers: {
-      foo: fooHandler
+      foo: fooHandler,
     },
     loggers: {
       bar: {
         level: "INFO",
-        handlers: ["foo"]
-      }
-    }
+        handlers: ["foo"],
+      },
+    },
   });
 
   const logger = log.getLogger("bar");
@@ -95,7 +95,7 @@ test(async function getLoggerWithName(): Promise<void> {
 test(async function getLoggerUnknown(): Promise<void> {
   await log.setup({
     handlers: {},
-    loggers: {}
+    loggers: {},
   });
 
   const logger = log.getLogger("nonexistent");

@@ -8,7 +8,7 @@ import {
   SeekMode,
   SyncReader,
   SyncWriter,
-  SyncSeeker
+  SyncSeeker,
 } from "./io.ts";
 import { close } from "./ops/resources.ts";
 import { read, readSync, write, writeSync } from "./ops/io.ts";
@@ -18,7 +18,7 @@ import {
   open as opOpen,
   openSync as opOpenSync,
   OpenOptions,
-  OpenMode
+  OpenMode,
 } from "./ops/fs/open.ts";
 export { OpenOptions, OpenMode } from "./ops/fs/open.ts";
 
@@ -119,7 +119,7 @@ export const stdout = new File(1);
 export const stderr = new File(2);
 
 function checkOpenOptions(options: OpenOptions): void {
-  if (Object.values(options).filter(val => val === true).length === 0) {
+  if (Object.values(options).filter((val) => val === true).length === 0) {
     throw new Error("OpenOptions requires at least one option to be true");
   }
 

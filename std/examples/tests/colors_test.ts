@@ -6,7 +6,7 @@ Deno.test("[examples/colors] print a colored text", async () => {
   const process = Deno.run({
     cmd: [Deno.execPath(), "colors.ts"],
     cwd: "examples",
-    stdout: "piped"
+    stdout: "piped",
   });
   try {
     const output = await process.output();

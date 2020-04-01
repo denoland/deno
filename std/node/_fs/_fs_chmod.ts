@@ -24,7 +24,7 @@ export function chmod(
     .then(() => {
       callback();
     })
-    .catch(err => {
+    .catch((err) => {
       callback(err);
     });
 }

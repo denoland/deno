@@ -5,7 +5,7 @@ type Reader = Deno.Reader;
 
 /* eslint-disable-next-line max-len */
 // See https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncFunction.
-const AsyncFunction = Object.getPrototypeOf(async function(): Promise<void> {})
+const AsyncFunction = Object.getPrototypeOf(async function (): Promise<void> {})
   .constructor;
 
 /* eslint-disable max-len */
@@ -59,12 +59,12 @@ async function main(): Promise<void> {
     alias: {
       delim: ["d"],
       replvar: ["I"],
-      help: ["h"]
+      help: ["h"],
     },
     default: {
       delim: DEFAULT_DELIMITER,
-      replvar: "$"
-    }
+      replvar: "$",
+    },
   });
   if (parsedArgs._.length != 1) {
     console.error(HELP_MSG);

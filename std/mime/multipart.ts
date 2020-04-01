@@ -305,7 +305,7 @@ export class MultipartReader {
         const ext = extname(p.fileName);
         const { file, filepath } = await tempFile(".", {
           prefix: "multipart-",
-          postfix: ext
+          postfix: ext,
         });
         try {
           const size = await copyN(
@@ -318,7 +318,7 @@ export class MultipartReader {
             filename: p.fileName,
             type: contentType,
             tempfile: filepath,
-            size
+            size,
           };
         } catch (e) {
           await remove(filepath);
@@ -328,7 +328,7 @@ export class MultipartReader {
           filename: p.fileName,
           type: contentType,
           content: buf.bytes(),
-          size: buf.length
+          size: buf.length,
         };
         maxMemory -= n;
         maxValueBytes -= n;

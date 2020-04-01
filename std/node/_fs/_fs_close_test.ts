@@ -11,7 +11,7 @@ test({
 
     assert(Deno.resources()[file.rid]);
     await new Promise((resolve, reject) => {
-      close(file.rid, err => {
+      close(file.rid, (err) => {
         if (err) reject();
         else resolve();
       });
@@ -25,7 +25,7 @@ test({
       .finally(async () => {
         await Deno.remove(tempFile);
       });
-  }
+  },
 });
 
 test({
@@ -38,5 +38,5 @@ test({
     closeSync(file.rid);
     assert(!Deno.resources()[file.rid]);
     Deno.removeSync(tempFile);
-  }
+  },
 });

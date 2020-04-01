@@ -48,7 +48,7 @@ export function pad(
     strict: false,
     side: "left",
     strictChar: "",
-    strictSide: "right"
+    strictSide: "right",
   }
 ): string {
   let out = input;

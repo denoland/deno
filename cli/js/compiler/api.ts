@@ -157,7 +157,7 @@ export async function transpileOnly(
   util.log("Deno.transpileOnly", { sources: Object.keys(sources), options });
   const payload = {
     sources,
-    options: JSON.stringify(options)
+    options: JSON.stringify(options),
   };
   const result = await runtimeCompilerOps.transpile(payload);
   return JSON.parse(result);
@@ -172,12 +172,12 @@ export async function compile(
     rootName: sources ? rootName : checkRelative(rootName),
     sources,
     options: JSON.stringify(options),
-    bundle: false
+    bundle: false,
   };
   util.log("Deno.compile", {
     rootName: payload.rootName,
     sources: !!sources,
-    options
+    options,
   });
   const result = await runtimeCompilerOps.compile(payload);
   return JSON.parse(result);
@@ -192,12 +192,12 @@ export async function bundle(
     rootName: sources ? rootName : checkRelative(rootName),
     sources,
     options: JSON.stringify(options),
-    bundle: true
+    bundle: true,
   };
   util.log("Deno.bundle", {
     rootName: payload.rootName,
     sources: !!sources,
-    options
+    options,
   });
   const result = await runtimeCompilerOps.compile(payload);
   return JSON.parse(result);

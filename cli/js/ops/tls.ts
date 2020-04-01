@@ -1,9 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendAsync, sendSync } from "./dispatch_json.ts";
-import { Transport } from "./net.ts";
 
 export interface ConnectTLSRequest {
-  transport: Transport;
+  transport: "tcp";
   hostname: string;
   port: number;
   certFile?: string;
@@ -14,12 +13,12 @@ interface ConnectTLSResponse {
   localAddr: {
     hostname: string;
     port: number;
-    transport: Transport;
+    transport: "tcp";
   };
   remoteAddr: {
     hostname: string;
     port: number;
-    transport: Transport;
+    transport: "tcp";
   };
 }
 
@@ -34,12 +33,12 @@ interface AcceptTLSResponse {
   localAddr: {
     hostname: string;
     port: number;
-    transport: Transport;
+    transport: "tcp";
   };
   remoteAddr: {
     hostname: string;
     port: number;
-    transport: Transport;
+    transport: "tcp";
   };
 }
 
@@ -50,7 +49,7 @@ export function acceptTLS(rid: number): Promise<AcceptTLSResponse> {
 export interface ListenTLSRequest {
   port: number;
   hostname: string;
-  transport: Transport;
+  transport: "tcp";
   certFile: string;
   keyFile: string;
 }
@@ -60,7 +59,7 @@ interface ListenTLSResponse {
   localAddr: {
     hostname: string;
     port: number;
-    transport: Transport;
+    transport: "tcp";
   };
 }
 

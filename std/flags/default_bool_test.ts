@@ -5,7 +5,7 @@ import { parse } from "./mod.ts";
 Deno.test(function booleanDefaultTrue(): void {
   const argv = parse([], {
     boolean: "sometrue",
-    default: { sometrue: true }
+    default: { sometrue: true },
   });
   assertEquals(argv.sometrue, true);
 });
@@ -13,7 +13,7 @@ Deno.test(function booleanDefaultTrue(): void {
 Deno.test(function booleanDefaultFalse(): void {
   const argv = parse([], {
     boolean: "somefalse",
-    default: { somefalse: false }
+    default: { somefalse: false },
   });
   assertEquals(argv.somefalse, false);
 });
@@ -21,12 +21,12 @@ Deno.test(function booleanDefaultFalse(): void {
 Deno.test(function booleanDefaultNull(): void {
   const argv = parse([], {
     boolean: "maybe",
-    default: { maybe: null }
+    default: { maybe: null },
   });
   assertEquals(argv.maybe, null);
   const argv2 = parse(["--maybe"], {
     boolean: "maybe",
-    default: { maybe: null }
+    default: { maybe: null },
   });
   assertEquals(argv2.maybe, true);
 });

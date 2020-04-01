@@ -13,21 +13,21 @@ test({
       calledBack = true;
     });
     assert(calledBack);
-  }
+  },
 });
 
 test({
   name: "Closing current directory without callback returns void Promise",
   async fn() {
     await new Dir(".").close();
-  }
+  },
 });
 
 test({
   name: "Closing current directory synchronously works",
   fn() {
     new Dir(".").closeSync();
-  }
+  },
 });
 
 test({
@@ -37,7 +37,7 @@ test({
 
     const enc: Uint8Array = new TextEncoder().encode("std/node");
     assertEquals(new Dir(enc).path, "std/node");
-  }
+  },
 });
 
 test({
@@ -64,7 +64,7 @@ test({
     } finally {
       Deno.removeSync(testDir);
     }
-  }
+  },
 });
 
 test({
@@ -103,7 +103,7 @@ test({
     } finally {
       Deno.removeSync(testDir, { recursive: true });
     }
-  }
+  },
 });
 
 test({
@@ -132,7 +132,7 @@ test({
     } finally {
       Deno.removeSync(testDir, { recursive: true });
     }
-  }
+  },
 });
 
 test({
@@ -158,5 +158,5 @@ test({
     } finally {
       Deno.removeSync(testDir, { recursive: true });
     }
-  }
+  },
 });

@@ -1,12 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { URL } from "./url.ts";
 import { notImplemented } from "../util.ts";
-import { Location } from "./dom_types.ts";
+import { DOMStringList, Location } from "./dom_types.ts";
+import { getDOMStringList } from "./dom_util.ts";
 
 export class LocationImpl implements Location {
+  #url: URL;
+
   constructor(url: string) {
     const u = new URL(url);
-    this.url = u;
+    this.#url = u;
     this.hash = u.hash;
     this.host = u.host;
     this.href = u.href;
@@ -18,13 +21,11 @@ export class LocationImpl implements Location {
     this.search = u.search;
   }
 
-  private url: URL;
-
   toString(): string {
-    return this.url.toString();
+    return this.#url.toString();
   }
 
-  readonly ancestorOrigins: string[] = [];
+  readonly ancestorOrigins: DOMStringList = getDOMStringList([]);
   hash: string;
   host: string;
   hostname: string;
@@ -45,6 +46,8 @@ export class LocationImpl implements Location {
   }
 }
 
+/** Sets the `window.location` at runtime.
+ * @internal */
 export function setLocation(url: string): void {
   globalThis.location = new LocationImpl(url);
   Object.freeze(globalThis.location);

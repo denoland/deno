@@ -108,7 +108,7 @@ async function serveFile(
   const res = {
     status: 200,
     body: file,
-    headers
+    headers,
   };
   return res;
 }
@@ -137,7 +137,7 @@ async function serveDir(
       mode: modeToString(fileInfo.isDirectory(), mode),
       size: fileInfo.isFile() ? fileLenToString(fileInfo.size) : "",
       name: fileInfo.name ?? "",
-      url: fileUrl
+      url: fileUrl,
     });
   }
   listEntry.sort((a, b) =>
@@ -152,7 +152,7 @@ async function serveDir(
   const res = {
     status: 200,
     body: page,
-    headers
+    headers,
   };
   setContentLength(res);
   return res;
@@ -162,12 +162,12 @@ function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
   if (e instanceof Deno.errors.NotFound) {
     return Promise.resolve({
       status: 404,
-      body: encoder.encode("Not found")
+      body: encoder.encode("Not found"),
     });
   } else {
     return Promise.resolve({
       status: 500,
-      body: encoder.encode("Internal server error")
+      body: encoder.encode("Internal server error"),
     });
   }
 }
@@ -258,19 +258,20 @@ function dirViewerTemplate(dirname: string, entries: EntryInfo[]): string {
               <th>Name</th>
             </tr>
             ${entries.map(
-              entry => html`
-                <tr>
-                  <td class="mode">
-                    ${entry.mode}
-                  </td>
-                  <td>
-                    ${entry.size}
-                  </td>
-                  <td>
-                    <a href="${entry.url}">${entry.name}</a>
-                  </td>
-                </tr>
-              `
+              (entry) =>
+                html`
+                  <tr>
+                    <td class="mode">
+                      ${entry.mode}
+                    </td>
+                    <td>
+                      ${entry.size}
+                    </td>
+                    <td>
+                      <a href="${entry.url}">${entry.name}</a>
+                    </td>
+                  </tr>
+                `
             )}
           </table>
         </main>

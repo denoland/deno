@@ -72,7 +72,7 @@ export function DomIterableMixin<K, V, TBase extends Constructor>(
   // we want the Base class name to be the name of the class.
   Object.defineProperty(DomIterable, "name", {
     value: Base.name,
-    configurable: true
+    configurable: true,
   });
 
   return DomIterable;

@@ -18,6 +18,7 @@ use crate::import_map::ImportMapError;
 use deno_core::ErrBox;
 use deno_core::ModuleResolutionError;
 use dlopen;
+use notify;
 use reqwest;
 use rustyline::error::ReadlineError;
 use std;
@@ -349,6 +350,30 @@ impl From<&dlopen::Error> for OpError {
   }
 }
 
+impl From<notify::Error> for OpError {
+  fn from(error: notify::Error) -> Self {
+    OpError::from(&error)
+  }
+}
+
+impl From<&notify::Error> for OpError {
+  fn from(error: &notify::Error) -> Self {
+    use notify::ErrorKind::*;
+    let kind = match error.kind {
+      Generic(_) => ErrorKind::Other,
+      Io(ref e) => return e.into(),
+      PathNotFound => ErrorKind::NotFound,
+      WatchNotFound => ErrorKind::NotFound,
+      InvalidConfig(_) => ErrorKind::InvalidData,
+    };
+
+    Self {
+      kind,
+      msg: error.to_string(),
+    }
+  }
+}
+
 impl From<ErrBox> for OpError {
   fn from(error: ErrBox) -> Self {
     #[cfg(unix)]
@@ -384,6 +409,7 @@ impl From<ErrBox> for OpError {
           .map(|e| e.into())
       })
       .or_else(|| error.downcast_ref::<dlopen::Error>().map(|e| e.into()))
+      .or_else(|| error.downcast_ref::<notify::Error>().map(|e| e.into()))
       .or_else(|| unix_error_kind(&error))
       .unwrap_or_else(|| {
         panic!("Can't downcast {:?} to OpError", error);

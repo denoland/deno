@@ -19,10 +19,10 @@ Deno.test(async function catSmoke(): Promise<void> {
       "run",
       "--allow-read",
       "examples/cat.ts",
-      "README.md"
+      "README.md",
     ],
     stdout: "null",
-    stderr: "null"
+    stderr: "null",
   });
   const s = await p.status();
   assertEquals(s.code, 0);

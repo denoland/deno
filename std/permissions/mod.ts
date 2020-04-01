@@ -5,7 +5,7 @@ const { PermissionDenied } = Deno.errors;
 function getPermissionString(descriptors: Deno.PermissionDescriptor[]): string {
   return descriptors.length
     ? `  ${descriptors
-        .map(pd => {
+        .map((pd) => {
           switch (pd.name) {
             case "read":
             case "write":

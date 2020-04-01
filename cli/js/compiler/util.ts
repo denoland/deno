@@ -33,7 +33,7 @@ export interface WriteFileState {
 export enum CompilerRequestType {
   Compile = 0,
   RuntimeCompile = 1,
-  RuntimeTranspile = 2
+  RuntimeTranspile = 2,
 }
 
 export const OUT_DIR = "$deno$";
@@ -255,7 +255,7 @@ export function convertCompilerOptions(
   }
   return {
     options: out as ts.CompilerOptions,
-    files: files.length ? files : undefined
+    files: files.length ? files : undefined,
   };
 }
 
@@ -287,7 +287,7 @@ export const ignoredDiagnostics = [
   // TS7016: Could not find a declaration file for module '...'. '...'
   // implicitly has an 'any' type.  This is due to `allowJs` being off by
   // default but importing of a JavaScript module.
-  7016
+  7016,
 ];
 
 export function processConfigureResponse(

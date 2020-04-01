@@ -113,7 +113,7 @@ export function run({
   env = {},
   stdout = "inherit",
   stderr = "inherit",
-  stdin = "inherit"
+  stdin = "inherit",
 }: RunOptions): Process {
   const res = runOp({
     cmd: cmd.map(String),
@@ -124,7 +124,7 @@ export function run({
     stderr: isRid(stderr) ? "" : stderr,
     stdinRid: isRid(stdin) ? stdin : 0,
     stdoutRid: isRid(stdout) ? stdout : 0,
-    stderrRid: isRid(stderr) ? stderr : 0
+    stderrRid: isRid(stderr) ? stderr : 0,
   }) as RunResponse;
   return new Process(res);
 }

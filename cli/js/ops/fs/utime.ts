@@ -14,7 +14,7 @@ export function utimeSync(
     path,
     // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
     atime: toSecondsFromEpoch(atime),
-    mtime: toSecondsFromEpoch(mtime)
+    mtime: toSecondsFromEpoch(mtime),
   });
 }
 
@@ -27,6 +27,6 @@ export async function utime(
     path,
     // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
     atime: toSecondsFromEpoch(atime),
-    mtime: toSecondsFromEpoch(mtime)
+    mtime: toSecondsFromEpoch(mtime),
   });
 }

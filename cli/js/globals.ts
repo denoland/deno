@@ -2,6 +2,7 @@
 
 import * as blob from "./web/blob.ts";
 import * as consoleTypes from "./web/console.ts";
+import * as promiseTypes from "./web/promise.ts";
 import * as customEvent from "./web/custom_event.ts";
 import * as domTypes from "./web/dom_types.ts";
 import * as domFile from "./web/dom_file.ts";
@@ -102,6 +103,18 @@ declare global {
 
     formatError: (e: Error) => string;
 
+    /**
+     * Get promise details as two elements array.
+     *
+     * First element is the `PromiseState`.
+     * If promise isn't pending, second element would be the result of the promise.
+     * Otherwise, second element would be undefined.
+     *
+     * Throws `TypeError` if argument isn't a promise
+     *
+     */
+    getPromiseDetails<T>(promise: Promise<T>): promiseTypes.PromiseDetails<T>;
+
     decode(bytes: Uint8Array): string;
     encode(text: string): Uint8Array;
   }
@@ -160,7 +173,7 @@ export function writable(value: unknown): PropertyDescriptor {
     value,
     writable: true,
     enumerable: true,
-    configurable: true
+    configurable: true,
   };
 }
 
@@ -168,14 +181,22 @@ export function nonEnumerable(value: unknown): PropertyDescriptor {
   return {
     value,
     writable: true,
-    configurable: true
+    configurable: true,
   };
 }
 
 export function readOnly(value: unknown): PropertyDescriptor {
   return {
     value,
-    enumerable: true
+    enumerable: true,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getterOnly(getter: () => any): PropertyDescriptor {
+  return {
+    get: getter,
+    enumerable: true,
   };
 }
 
@@ -188,7 +209,7 @@ export const windowOrWorkerGlobalScopeMethods = {
   fetch: writable(fetchTypes.fetch),
   // queueMicrotask is bound in Rust
   setInterval: writable(timers.setInterval),
-  setTimeout: writable(timers.setTimeout)
+  setTimeout: writable(timers.setTimeout),
 };
 
 // Other properties shared between WindowScope and WorkerGlobalScope
@@ -208,7 +229,7 @@ export const windowOrWorkerGlobalScopeProperties = {
   Request: nonEnumerable(request.Request),
   Response: nonEnumerable(fetchTypes.Response),
   performance: writable(new performanceUtil.Performance()),
-  Worker: nonEnumerable(workers.WorkerImpl)
+  Worker: nonEnumerable(workers.WorkerImpl),
 };
 
 export const eventTargetProperties = {
@@ -225,5 +246,5 @@ export const eventTargetProperties = {
   dispatchEvent: readOnly(eventTarget.EventTarget.prototype.dispatchEvent),
   removeEventListener: readOnly(
     eventTarget.EventTarget.prototype.removeEventListener
-  )
+  ),
 };

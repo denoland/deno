@@ -54,7 +54,7 @@ export function globrex(
     globstar = false,
     strict = false,
     filepath = false,
-    flags = ""
+    flags = "",
   }: GlobrexOptions = {}
 ): GlobrexResult {
   const sepPattern = new RegExp(`^${SEP}${strict ? "" : "+"}$`);
@@ -319,7 +319,7 @@ export function globrex(
       globstar: new RegExp(
         !flags.includes("g") ? `^${GLOBSTAR_SEGMENT}$` : GLOBSTAR_SEGMENT,
         flags
-      )
+      ),
     };
   }
 

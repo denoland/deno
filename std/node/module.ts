@@ -108,7 +108,7 @@ class Module {
   // Proxy related code removed.
   static wrapper = [
     "(function (exports, require, module, __filename, __dirname) { ",
-    "\n});"
+    "\n});",
   ];
 
   // Loads a module at the given file path. Returns that module's
@@ -235,7 +235,9 @@ class Module {
             const lookupPaths = Module._resolveLookupPaths(request, fakeParent);
 
             for (let j = 0; j < lookupPaths!.length; j++) {
-              if (!paths.includes(lookupPaths![j])) paths.push(lookupPaths![j]);
+              if (!paths.includes(lookupPaths![j])) {
+                paths.push(lookupPaths![j]);
+              }
             }
           }
         }
@@ -357,8 +359,9 @@ class Module {
         const cachedModule = Module._cache[filename];
         if (cachedModule !== undefined) {
           updateChildren(parent, cachedModule, true);
-          if (!cachedModule.loaded)
+          if (!cachedModule.loaded) {
             return getExportsForCircularRequire(cachedModule);
+          }
           return cachedModule.exports;
         }
         delete relativeResolveCache[relResolveCacheIdentifier];
@@ -370,8 +373,9 @@ class Module {
     const cachedModule = Module._cache[filename];
     if (cachedModule !== undefined) {
       updateChildren(parent, cachedModule, true);
-      if (!cachedModule.loaded)
+      if (!cachedModule.loaded) {
         return getExportsForCircularRequire(cachedModule);
+      }
       return cachedModule.exports;
     }
 
@@ -436,8 +440,9 @@ class Module {
       if (
         from.charCodeAt(from.length - 1) === CHAR_BACKWARD_SLASH &&
         from.charCodeAt(from.length - 2) === CHAR_COLON
-      )
+      ) {
         return [from + "node_modules"];
+      }
 
       const paths = [];
       for (let i = from.length - 1, p = 0, last = from.length; i >= 0; --i) {
@@ -663,7 +668,7 @@ function readPackage(requestPath: string): PackageInfo | null {
       name: parsed.name,
       main: parsed.main,
       exports: parsed.exports,
-      type: parsed.type
+      type: parsed.type,
     };
     packageJsonCache.set(jsonPath, filtered);
     return filtered;
@@ -685,11 +690,12 @@ function readPackageScope(
     checkPath = checkPath.slice(0, separatorIndex);
     if (checkPath.endsWith(path.sep + "node_modules")) return false;
     const pjson = readPackage(checkPath);
-    if (pjson)
+    if (pjson) {
       return {
         path: checkPath,
-        data: pjson
+        data: pjson,
       };
+    }
   }
   return false;
 }
@@ -822,11 +828,13 @@ function applyExports(basePath: string, expansion: string): string {
   const mappingKey = `.${expansion}`;
 
   let pkgExports = readPackageExports(basePath);
-  if (pkgExports === undefined || pkgExports === null)
+  if (pkgExports === undefined || pkgExports === null) {
     return path.resolve(basePath, mappingKey);
+  }
 
-  if (isConditionalDotExportSugar(pkgExports, basePath))
+  if (isConditionalDotExportSugar(pkgExports, basePath)) {
     pkgExports = { ".": pkgExports };
+  }
 
   if (typeof pkgExports === "object") {
     if (pkgExports.hasOwnProperty(mappingKey)) {
@@ -1005,11 +1013,12 @@ const CircularRequirePrototypeWarningProxy = new Proxy(
     },
 
     getOwnPropertyDescriptor(target, prop): PropertyDescriptor | undefined {
-      if (target.hasOwnProperty(prop))
+      if (target.hasOwnProperty(prop)) {
         return Object.getOwnPropertyDescriptor(target, prop);
+      }
       emitCircularRequireWarning(prop);
       return undefined;
-    }
+    },
   }
 );
 
@@ -1230,16 +1239,21 @@ function pathToFileURL(filepath: string): URL {
     (filePathLast === CHAR_FORWARD_SLASH ||
       (isWindows && filePathLast === CHAR_BACKWARD_SLASH)) &&
     resolved[resolved.length - 1] !== path.sep
-  )
+  ) {
     resolved += "/";
+  }
   const outURL = new URL("file://");
   if (resolved.includes("%")) resolved = resolved.replace(percentRegEx, "%25");
   // In posix, "/" is a valid character in paths
-  if (!isWindows && resolved.includes("\\"))
+  if (!isWindows && resolved.includes("\\")) {
     resolved = resolved.replace(backslashRegEx, "%5C");
-  if (resolved.includes("\n")) resolved = resolved.replace(newlineRegEx, "%0A");
-  if (resolved.includes("\r"))
+  }
+  if (resolved.includes("\n")) {
+    resolved = resolved.replace(newlineRegEx, "%0A");
+  }
+  if (resolved.includes("\r")) {
     resolved = resolved.replace(carriageReturnRegEx, "%0D");
+  }
   if (resolved.includes("\t")) resolved = resolved.replace(tabRegEx, "%09");
   outURL.pathname = resolved;
   return outURL;

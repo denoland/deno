@@ -9,6 +9,7 @@ import { writeResponse } from "../http/io.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { Deferred, deferred } from "../util/async.ts";
 import { assertNotEOF } from "../testing/asserts.ts";
+import { concat } from "../bytes/mod.ts";
 import Conn = Deno.Conn;
 import Writer = Deno.Writer;
 
@@ -18,7 +19,7 @@ export enum OpCode {
   BinaryFrame = 0x2,
   Close = 0x8,
   Ping = 0x9,
-  Pong = 0xa
+  Pong = 0xa,
 }
 
 export type WebSocketEvent =
@@ -56,20 +57,6 @@ export function isWebSocketPongEvent(
 }
 
 export type WebSocketMessage = string | Uint8Array;
-
-// TODO move this to common/util module
-export function append(a: Uint8Array, b: Uint8Array): Uint8Array {
-  if (a == null || !a.length) {
-    return b;
-  }
-  if (b == null || !b.length) {
-    return a;
-  }
-  const output = new Uint8Array(a.length + b.length);
-  output.set(a, 0);
-  output.set(b, a.length);
-  return output;
-}
 
 export interface WebSocketFrame {
   isLastFrame: boolean;
@@ -138,20 +125,20 @@ export async function writeFrame(
       0x80 | frame.opcode,
       hasMask | 0b01111110,
       payloadLength >>> 8,
-      payloadLength & 0x00ff
+      payloadLength & 0x00ff,
     ]);
   } else {
     header = new Uint8Array([
       0x80 | frame.opcode,
       hasMask | 0b01111111,
-      ...sliceLongToBytes(payloadLength)
+      ...sliceLongToBytes(payloadLength),
     ]);
   }
   if (frame.mask) {
-    header = append(header, frame.mask);
+    header = concat(header, frame.mask);
   }
   unmask(frame.payload, frame.mask);
-  header = append(header, frame.payload);
+  header = concat(header, frame.payload);
   const w = BufWriter.create(writer);
   await w.write(header);
   await w.flush();
@@ -199,7 +186,7 @@ export async function readFrame(buf: BufReader): Promise<WebSocketFrame> {
     isLastFrame,
     opcode,
     mask,
-    payload
+    payload,
   };
 }
 
@@ -222,7 +209,7 @@ class WebSocketImpl implements WebSocket {
     conn,
     bufReader,
     bufWriter,
-    mask
+    mask,
   }: {
     conn: Conn;
     bufReader?: BufReader;
@@ -284,7 +271,7 @@ class WebSocketImpl implements WebSocket {
           await this.enqueue({
             opcode: OpCode.Pong,
             payload: frame.payload,
-            isLastFrame: true
+            isLastFrame: true,
           });
           yield ["ping", frame.payload] as WebSocketPingEvent;
           break;
@@ -303,7 +290,7 @@ class WebSocketImpl implements WebSocket {
     const { d, frame } = entry;
     writeFrame(frame, this.bufWriter)
       .then(() => d.resolve())
-      .catch(e => d.reject(e))
+      .catch((e) => d.reject(e))
       .finally(() => {
         this.sendQueue.shift();
         this.dequeue();
@@ -331,7 +318,7 @@ class WebSocketImpl implements WebSocket {
       isLastFrame,
       opcode,
       payload,
-      mask: this.mask
+      mask: this.mask,
     };
     return this.enqueue(frame);
   }
@@ -342,7 +329,7 @@ class WebSocketImpl implements WebSocket {
       isLastFrame: true,
       opcode: OpCode.Ping,
       mask: this.mask,
-      payload
+      payload,
     };
     return this.enqueue(frame);
   }
@@ -368,7 +355,7 @@ class WebSocketImpl implements WebSocket {
         isLastFrame: true,
         opcode: OpCode.Close,
         mask: this.mask,
-        payload
+        payload,
       });
     } catch (e) {
       throw e;
@@ -391,7 +378,7 @@ class WebSocketImpl implements WebSocket {
       this._isClosed = true;
       const rest = this.sendQueue;
       this.sendQueue = [];
-      rest.forEach(e =>
+      rest.forEach((e) =>
         e.d.reject(
           new Deno.errors.ConnectionReset("Socket has already been closed")
         )
@@ -444,8 +431,8 @@ export async function acceptWebSocket(req: {
       headers: new Headers({
         Upgrade: "websocket",
         Connection: "Upgrade",
-        "Sec-WebSocket-Accept": secAccept
-      })
+        "Sec-WebSocket-Accept": secAccept,
+      }),
     });
     return sock;
   }
@@ -556,7 +543,7 @@ export async function connectWebSocket(
     conn,
     bufWriter,
     bufReader,
-    mask: createMask()
+    mask: createMask(),
   });
 }
 

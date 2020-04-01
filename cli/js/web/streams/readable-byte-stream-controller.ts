@@ -148,7 +148,7 @@ export class ReadableByteStreamController
         bytesFilled: 0,
         elementSize: 1,
         ctor: Uint8Array,
-        readerType: "default"
+        readerType: "default",
       };
       this[rs.pendingPullIntos_].push(pullIntoDescriptor);
     }

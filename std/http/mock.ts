@@ -4,12 +4,12 @@ export function mockConn(base: Partial<Deno.Conn> = {}): Deno.Conn {
     localAddr: {
       transport: "tcp",
       hostname: "",
-      port: 0
+      port: 0,
     },
     remoteAddr: {
       transport: "tcp",
       hostname: "",
-      port: 0
+      port: 0,
     },
     rid: -1,
     closeRead: (): void => {},
@@ -21,6 +21,6 @@ export function mockConn(base: Partial<Deno.Conn> = {}): Deno.Conn {
       return Promise.resolve(-1);
     },
     close: (): void => {},
-    ...base
+    ...base,
   };
 }

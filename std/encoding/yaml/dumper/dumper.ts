@@ -73,7 +73,7 @@ const DEPRECATED_BOOLEANS_SYNTAX = [
   "NO",
   "off",
   "Off",
-  "OFF"
+  "OFF",
 ];
 
 function encodeHex(character: number): string {

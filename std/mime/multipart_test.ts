@@ -5,7 +5,7 @@ import {
   assert,
   assertEquals,
   assertThrows,
-  assertThrowsAsync
+  assertThrowsAsync,
 } from "../testing/asserts.ts";
 const { test } = Deno;
 import * as path from "../path/mod.ts";
@@ -15,7 +15,7 @@ import {
   MultipartWriter,
   isFormFile,
   matchAfterPrefix,
-  scanUntilBoundary
+  scanUntilBoundary,
 } from "./multipart.ts";
 import { StringWriter } from "../io/writers.ts";
 

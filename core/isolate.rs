@@ -159,11 +159,11 @@ type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 /// as arguments. An async Op corresponds exactly to a Promise in JavaScript.
 #[allow(unused)]
 pub struct Isolate {
-  pub(crate) v8_isolate: Option<v8::OwnedIsolate>,
+  pub v8_isolate: Option<v8::OwnedIsolate>,
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
   snapshot: Option<SnapshotConfig>,
-  pub(crate) global_context: v8::Global<v8::Context>,
+  pub global_context: v8::Global<v8::Context>,
   pub(crate) shared_ab: v8::Global<v8::SharedArrayBuffer>,
   pub(crate) js_recv_cb: v8::Global<v8::Function>,
   pub(crate) js_macrotask_cb: v8::Global<v8::Function>,

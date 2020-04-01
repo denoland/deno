@@ -13,12 +13,12 @@ Object.defineProperties(globalThis, {
     value: bootstrapMainRuntime,
     enumerable: false,
     writable: false,
-    configurable: false
+    configurable: false,
   },
   bootstrapWorkerRuntime: {
     value: bootstrapWorkerRuntime,
     enumerable: false,
     writable: false,
-    configurable: false
-  }
+    configurable: false,
+  },
 });

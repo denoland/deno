@@ -14,17 +14,21 @@ interface PluginOp {
 }
 
 class PluginOpImpl implements PluginOp {
-  constructor(private readonly opId: number) {}
+  readonly #opId: number;
+
+  constructor(opId: number) {
+    this.#opId = opId;
+  }
 
   dispatch(
     control: Uint8Array,
     zeroCopy?: ArrayBufferView | null
   ): Uint8Array | null {
-    return core.dispatch(this.opId, control, zeroCopy);
+    return core.dispatch(this.#opId, control, zeroCopy);
   }
 
   setAsyncHandler(handler: AsyncHandler): void {
-    core.setAsyncHandler(this.opId, handler);
+    core.setAsyncHandler(this.#opId, handler);
   }
 }
 
@@ -37,16 +41,16 @@ interface Plugin {
 }
 
 class PluginImpl implements Plugin {
-  private _ops: { [name: string]: PluginOp } = {};
+  #ops: { [name: string]: PluginOp } = {};
 
-  constructor(private readonly rid: number, ops: { [name: string]: number }) {
+  constructor(_rid: number, ops: { [name: string]: number }) {
     for (const op in ops) {
-      this._ops[op] = new PluginOpImpl(ops[op]);
+      this.#ops[op] = new PluginOpImpl(ops[op]);
     }
   }
 
   get ops(): { [name: string]: PluginOp } {
-    return Object.assign({}, this._ops);
+    return Object.assign({}, this.#ops);
   }
 }
 

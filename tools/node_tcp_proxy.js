@@ -1,6 +1,6 @@
 const net = require("net");
 
-process.on("uncaughtException", function(error) {
+process.on("uncaughtException", function (error) {
   console.error(error);
 });
 
@@ -14,46 +14,46 @@ const remoteport = process.argv[3];
 
 const remotehost = "127.0.0.1";
 
-const server = net.createServer(function(localsocket) {
+const server = net.createServer(function (localsocket) {
   const remotesocket = new net.Socket();
 
   remotesocket.connect(remoteport, remotehost);
 
-  localsocket.on("data", function(data) {
+  localsocket.on("data", function (data) {
     const flushed = remotesocket.write(data);
     if (!flushed) {
       localsocket.pause();
     }
   });
 
-  remotesocket.on("data", function(data) {
+  remotesocket.on("data", function (data) {
     const flushed = localsocket.write(data);
     if (!flushed) {
       remotesocket.pause();
     }
   });
 
-  localsocket.on("drain", function() {
+  localsocket.on("drain", function () {
     remotesocket.resume();
   });
 
-  remotesocket.on("drain", function() {
+  remotesocket.on("drain", function () {
     localsocket.resume();
   });
 
-  localsocket.on("close", function() {
+  localsocket.on("close", function () {
     remotesocket.end();
   });
 
-  remotesocket.on("close", function() {
+  remotesocket.on("close", function () {
     localsocket.end();
   });
 
-  localsocket.on("error", function() {
+  localsocket.on("error", function () {
     localsocket.end();
   });
 
-  remotesocket.on("error", function() {
+  remotesocket.on("error", function () {
     remotesocket.end();
   });
 });

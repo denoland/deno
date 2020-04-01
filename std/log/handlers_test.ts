@@ -21,8 +21,8 @@ test(function simpleHandler(): void {
         "INFO info-test",
         "WARNING warning-test",
         "ERROR error-test",
-        "CRITICAL critical-test"
-      ]
+        "CRITICAL critical-test",
+      ],
     ],
     [
       LogLevel.INFO,
@@ -30,15 +30,15 @@ test(function simpleHandler(): void {
         "INFO info-test",
         "WARNING warning-test",
         "ERROR error-test",
-        "CRITICAL critical-test"
-      ]
+        "CRITICAL critical-test",
+      ],
     ],
     [
       LogLevel.WARNING,
-      ["WARNING warning-test", "ERROR error-test", "CRITICAL critical-test"]
+      ["WARNING warning-test", "ERROR error-test", "CRITICAL critical-test"],
     ],
     [LogLevel.ERROR, ["ERROR error-test", "CRITICAL critical-test"]],
-    [LogLevel.CRITICAL, ["CRITICAL critical-test"]]
+    [LogLevel.CRITICAL, ["CRITICAL critical-test"]],
   ]);
 
   for (const [testCase, messages] of cases.entries()) {
@@ -52,7 +52,7 @@ test(function simpleHandler(): void {
         args: [],
         datetime: new Date(),
         level: level,
-        levelName: levelName
+        levelName: levelName,
       });
     }
 
@@ -64,7 +64,7 @@ test(function simpleHandler(): void {
 
 test(function testFormatterAsString(): void {
   const handler = new TestHandler("DEBUG", {
-    formatter: "test {levelName} {msg}"
+    formatter: "test {levelName} {msg}",
   });
 
   handler.handle({
@@ -72,7 +72,7 @@ test(function testFormatterAsString(): void {
     args: [],
     datetime: new Date(),
     level: LogLevel.DEBUG,
-    levelName: "DEBUG"
+    levelName: "DEBUG",
   });
 
   assertEquals(handler.messages, ["test DEBUG Hello, world!"]);
@@ -81,7 +81,7 @@ test(function testFormatterAsString(): void {
 test(function testFormatterAsFunction(): void {
   const handler = new TestHandler("DEBUG", {
     formatter: (logRecord): string =>
-      `fn formmatter ${logRecord.levelName} ${logRecord.msg}`
+      `fn formmatter ${logRecord.levelName} ${logRecord.msg}`,
   });
 
   handler.handle({
@@ -89,7 +89,7 @@ test(function testFormatterAsFunction(): void {
     args: [],
     datetime: new Date(),
     level: LogLevel.ERROR,
-    levelName: "ERROR"
+    levelName: "ERROR",
   });
 
   assertEquals(handler.messages, ["fn formmatter ERROR Hello, world!"]);

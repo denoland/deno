@@ -12,7 +12,7 @@ export function createWorker(
     specifier,
     hasSourceCode,
     sourceCode,
-    name
+    name,
   });
 }
 

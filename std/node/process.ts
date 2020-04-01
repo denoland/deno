@@ -4,7 +4,7 @@ const version = `v${Deno.version.deno}`;
 
 const versions = {
   node: Deno.version.deno,
-  ...Deno.version
+  ...Deno.version,
 };
 
 const osToPlatform = (os: Deno.OperatingSystem): string =>
@@ -38,5 +38,5 @@ export const process = {
   get argv(): string[] {
     // Deno.execPath() also requires --allow-env
     return [Deno.execPath(), ...Deno.args];
-  }
+  },
 };

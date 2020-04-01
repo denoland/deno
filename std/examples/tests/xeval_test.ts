@@ -5,7 +5,7 @@ import { decode, encode } from "../../strings/mod.ts";
 import {
   assertEquals,
   assertStrContains,
-  assert
+  assert,
 } from "../../testing/asserts.ts";
 const { execPath, run } = Deno;
 
@@ -18,7 +18,7 @@ Deno.test(async function xevalSuccess(): Promise<void> {
 Deno.test(async function xevalDelimiter(): Promise<void> {
   const chunks: string[] = [];
   await xeval(stringsReader("!MADMADAMADAM!"), ($): number => chunks.push($), {
-    delimiter: "MADAM"
+    delimiter: "MADAM",
   });
   assertEquals(chunks, ["!MAD", "ADAM!"]);
 });
@@ -27,12 +27,12 @@ const xevalPath = "examples/xeval.ts";
 
 Deno.test({
   name: "xevalCliReplvar",
-  fn: async function(): Promise<void> {
+  fn: async function (): Promise<void> {
     const p = run({
       cmd: [execPath(), xevalPath, "--replvar=abc", "console.log(abc)"],
       stdin: "piped",
       stdout: "piped",
-      stderr: "null"
+      stderr: "null",
     });
     assert(p.stdin != null);
     await p.stdin.write(encode("hello"));
@@ -40,7 +40,7 @@ Deno.test({
     assertEquals(await p.status(), { code: 0, success: true });
     assertEquals(decode(await p.output()).trimEnd(), "hello");
     p.close();
-  }
+  },
 });
 
 Deno.test(async function xevalCliSyntaxError(): Promise<void> {
@@ -48,7 +48,7 @@ Deno.test(async function xevalCliSyntaxError(): Promise<void> {
     cmd: [execPath(), xevalPath, "("],
     stdin: "null",
     stdout: "piped",
-    stderr: "piped"
+    stderr: "piped",
   });
   assertEquals(await p.status(), { code: 1, success: false });
   assertEquals(decode(await p.output()), "");

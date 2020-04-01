@@ -45,6 +45,9 @@ lazy_static! {
       v8::ExternalReference {
         function: decode.map_fn_to()
       },
+      v8::ExternalReference {
+        function: get_promise_details.map_fn_to(),
+      }
     ]);
 }
 
@@ -193,6 +196,17 @@ pub fn initialize_context<'s>(
     context,
     v8::String::new(scope, "decode").unwrap().into(),
     decode_val.into(),
+  );
+
+  let mut get_promise_details_tmpl =
+    v8::FunctionTemplate::new(scope, get_promise_details);
+  let get_promise_details_val = get_promise_details_tmpl
+    .get_function(scope, context)
+    .unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "getPromiseDetails").unwrap().into(),
+    get_promise_details_val.into(),
   );
 
   core_val.set_accessor(
@@ -760,4 +774,69 @@ pub fn module_resolve_callback<'s>(
   }
 
   None
+}
+
+// Returns promise details or throw TypeError, if argument passed isn't a Promise.
+// Promise details is a two elements array.
+// promise_details = [State, Result]
+// State = enum { Pending = 0, Fulfilled = 1, Rejected = 2}
+// Result = PromiseResult<T> | PromiseError
+fn get_promise_details(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let deno_isolate: &mut Isolate =
+    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
+  assert!(!deno_isolate.global_context.is_empty());
+  let context = deno_isolate.global_context.get(scope).unwrap();
+
+  let mut promise = match v8::Local::<v8::Promise>::try_from(args.get(0)) {
+    Ok(val) => val,
+    Err(_) => {
+      let msg = v8::String::new(scope, "Invalid argument").unwrap();
+      let exception = v8::Exception::type_error(scope, msg);
+      scope.isolate().throw_exception(exception);
+      return;
+    }
+  };
+
+  let promise_details = v8::Array::new(scope, 2);
+
+  match promise.state() {
+    v8::PromiseState::Pending => {
+      promise_details.set(
+        context,
+        v8::Integer::new(scope, 0).into(),
+        v8::Integer::new(scope, 0).into(),
+      );
+      rv.set(promise_details.into());
+    }
+    v8::PromiseState::Fulfilled => {
+      promise_details.set(
+        context,
+        v8::Integer::new(scope, 0).into(),
+        v8::Integer::new(scope, 1).into(),
+      );
+      promise_details.set(
+        context,
+        v8::Integer::new(scope, 1).into(),
+        promise.result(scope),
+      );
+      rv.set(promise_details.into());
+    }
+    v8::PromiseState::Rejected => {
+      promise_details.set(
+        context,
+        v8::Integer::new(scope, 0).into(),
+        v8::Integer::new(scope, 2).into(),
+      );
+      promise_details.set(
+        context,
+        v8::Integer::new(scope, 1).into(),
+        promise.result(scope),
+      );
+      rv.set(promise_details.into());
+    }
+  }
 }

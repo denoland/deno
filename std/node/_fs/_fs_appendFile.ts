@@ -55,7 +55,7 @@ export function appendFile(
       closeRidIfNecessary(typeof pathOrRid === "string", rid);
       callbackFn();
     })
-    .catch(err => {
+    .catch((err) => {
       closeRidIfNecessary(typeof pathOrRid === "string", rid);
       callbackFn(err);
     });

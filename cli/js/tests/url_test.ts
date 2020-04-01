@@ -98,6 +98,12 @@ unitTest(function urlModifyHref(): void {
   assertEquals(url.hash, "#qux");
 });
 
+unitTest(function urlNormalize(): void {
+  const url = new URL("http://example.com");
+  assertEquals(url.pathname, "/");
+  assertEquals(url.href, "http://example.com/");
+});
+
 unitTest(function urlModifyPathname(): void {
   const url = new URL("http://foo.bar/baz%qat/qux%quux");
   assertEquals(url.pathname, "/baz%qat/qux%quux");
@@ -183,7 +189,7 @@ unitTest(function sortingNonExistentParamRemovesQuestionMarkFromURL(): void {
 unitTest(
   {
     // FIXME(bartlomieju)
-    ignore: true
+    ignore: true,
   },
   function customInspectFunction(): void {
     const url = new URL("http://example.com/?");

@@ -9,6 +9,7 @@ use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
 use crate::http_cache;
+use crate::inspector::InspectorServer;
 use crate::lockfile::Lockfile;
 use crate::msg;
 use crate::permissions::DenoPermissions;
@@ -42,6 +43,7 @@ pub struct GlobalStateInner {
   pub wasm_compiler: WasmCompiler,
   pub lockfile: Option<Mutex<Lockfile>>,
   pub compiler_starts: AtomicUsize,
+  pub inspector_server: Option<InspectorServer>,
   compile_lock: AsyncMutex<()>,
 }
 
@@ -82,7 +84,16 @@ impl GlobalState {
       None
     };
 
+    let inspector_server = if let Some(ref host) = flags.inspect {
+      Some(InspectorServer::new(host, false))
+    } else if let Some(ref host) = flags.inspect_brk {
+      Some(InspectorServer::new(host, true))
+    } else {
+      None
+    };
+
     let inner = GlobalStateInner {
+      inspector_server,
       dir,
       permissions: DenoPermissions::from_flags(&flags),
       flags,

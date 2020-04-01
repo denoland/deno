@@ -67,7 +67,7 @@ test(function logFunctions(): void {
     "INFO bar",
     "WARNING baz",
     "ERROR boo",
-    "CRITICAL doo"
+    "CRITICAL doo",
   ]);
 
   handler = doLog("INFO");
@@ -76,7 +76,7 @@ test(function logFunctions(): void {
     "INFO bar",
     "WARNING baz",
     "ERROR boo",
-    "CRITICAL doo"
+    "CRITICAL doo",
   ]);
 
   handler = doLog("WARNING");

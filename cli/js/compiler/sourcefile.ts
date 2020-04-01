@@ -12,7 +12,7 @@ export enum MediaType {
   TSX = 3,
   Json = 4,
   Wasm = 5,
-  Unknown = 6
+  Unknown = 6,
 }
 
 export interface SourceFileJson {
@@ -50,6 +50,11 @@ function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
   }
 }
 
+/** A global cache of module source files that have been loaded. */
+const moduleCache: Map<string, SourceFile> = new Map();
+/** A map of maps which cache source files for quicker modules resolution. */
+const specifierCache: Map<string, Map<string, SourceFile>> = new Map();
+
 export class SourceFile {
   extension!: ts.Extension;
   filename!: string;
@@ -63,20 +68,20 @@ export class SourceFile {
   url!: string;
 
   constructor(json: SourceFileJson) {
-    if (SourceFile._moduleCache.has(json.url)) {
+    if (moduleCache.has(json.url)) {
       throw new TypeError("SourceFile already exists");
     }
     Object.assign(this, json);
     this.extension = getExtension(this.url, this.mediaType);
-    SourceFile._moduleCache.set(this.url, this);
+    moduleCache.set(this.url, this);
   }
 
   cache(moduleSpecifier: string, containingFile?: string): void {
     containingFile = containingFile || "";
-    let innerCache = SourceFile._specifierCache.get(containingFile);
+    let innerCache = specifierCache.get(containingFile);
     if (!innerCache) {
       innerCache = new Map();
-      SourceFile._specifierCache.set(containingFile, innerCache);
+      specifierCache.set(containingFile, innerCache);
     }
     innerCache.set(moduleSpecifier, this);
   }
@@ -112,14 +117,14 @@ export class SourceFile {
       importedFiles,
       referencedFiles,
       libReferenceDirectives,
-      typeReferenceDirectives
+      typeReferenceDirectives,
     } = preProcessedFileInfo;
     const typeDirectives = parseTypeDirectives(this.sourceCode);
     if (typeDirectives) {
       for (const importedFile of importedFiles) {
         files.push([
           importedFile.fileName,
-          getMappedModuleName(importedFile, typeDirectives)
+          getMappedModuleName(importedFile, typeDirectives),
         ]);
       }
     } else if (
@@ -145,18 +150,11 @@ export class SourceFile {
     return files;
   }
 
-  private static _moduleCache: Map<string, SourceFile> = new Map();
-
-  private static _specifierCache: Map<
-    string,
-    Map<string, SourceFile>
-  > = new Map();
-
   static getUrl(
     moduleSpecifier: string,
     containingFile: string
   ): string | undefined {
-    const containingCache = this._specifierCache.get(containingFile);
+    const containingCache = specifierCache.get(containingFile);
     if (containingCache) {
       const sourceFile = containingCache.get(moduleSpecifier);
       return sourceFile && sourceFile.url;
@@ -165,10 +163,10 @@ export class SourceFile {
   }
 
   static get(url: string): SourceFile | undefined {
-    return this._moduleCache.get(url);
+    return moduleCache.get(url);
   }
 
   static has(url: string): boolean {
-    return this._moduleCache.has(url);
+    return moduleCache.has(url);
   }
 }

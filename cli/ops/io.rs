@@ -148,6 +148,8 @@ pub enum StreamResource {
   Stderr(tokio::io::Stderr),
   FsFile(tokio::fs::File, FileMetadata),
   TcpStream(tokio::net::TcpStream),
+  #[cfg(not(windows))]
+  UnixStream(tokio::net::UnixStream),
   ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
   ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
   HttpBody(Box<HttpBody>),
@@ -183,6 +185,8 @@ impl DenoAsyncRead for StreamResource {
       FsFile(f, _) => f,
       Stdin(f, _) => f,
       TcpStream(f) => f,
+      #[cfg(not(windows))]
+      UnixStream(f) => f,
       ClientTlsStream(f) => f,
       ServerTlsStream(f) => f,
       ChildStdout(f) => f,
@@ -262,6 +266,8 @@ impl DenoAsyncWrite for StreamResource {
       Stdout(f) => f,
       Stderr(f) => f,
       TcpStream(f) => f,
+      #[cfg(not(windows))]
+      UnixStream(f) => f,
       ClientTlsStream(f) => f,
       ServerTlsStream(f) => f,
       ChildStdin(f) => f,
@@ -279,6 +285,8 @@ impl DenoAsyncWrite for StreamResource {
       Stdout(f) => f,
       Stderr(f) => f,
       TcpStream(f) => f,
+      #[cfg(not(windows))]
+      UnixStream(f) => f,
       ClientTlsStream(f) => f,
       ServerTlsStream(f) => f,
       ChildStdin(f) => f,

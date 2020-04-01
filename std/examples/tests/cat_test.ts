@@ -9,10 +9,10 @@ Deno.test("[examples/cat] print multiple files", async () => {
       "--allow-read",
       "cat.ts",
       "testdata/cat/hello.txt",
-      "testdata/cat/world.txt"
+      "testdata/cat/world.txt",
     ],
     cwd: "examples",
-    stdout: "piped"
+    stdout: "piped",
   });
 
   try {

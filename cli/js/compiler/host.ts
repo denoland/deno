@@ -9,7 +9,7 @@ import * as util from "../util.ts";
 export enum CompilerHostTarget {
   Main = "main",
   Runtime = "runtime",
-  Worker = "worker"
+  Worker = "worker",
 }
 
 export interface CompilerHostOptions {
@@ -32,7 +32,7 @@ export const defaultBundlerOptions: ts.CompilerOptions = {
   outDir: undefined,
   outFile: `${OUT_DIR}/bundle.js`,
   // disabled until we have effective way to modify source maps
-  sourceMap: false
+  sourceMap: false,
 };
 
 export const defaultCompileOptions: ts.CompilerOptions = {
@@ -47,11 +47,11 @@ export const defaultCompileOptions: ts.CompilerOptions = {
   sourceMap: true,
   strict: true,
   stripComments: true,
-  target: ts.ScriptTarget.ESNext
+  target: ts.ScriptTarget.ESNext,
 };
 
 export const defaultRuntimeCompileOptions: ts.CompilerOptions = {
-  outDir: undefined
+  outDir: undefined,
 };
 
 export const defaultTranspileOptions: ts.CompilerOptions = {
@@ -59,7 +59,7 @@ export const defaultTranspileOptions: ts.CompilerOptions = {
   module: ts.ModuleKind.ESNext,
   sourceMap: true,
   scriptComments: true,
-  target: ts.ScriptTarget.ESNext
+  target: ts.ScriptTarget.ESNext,
 };
 
 const ignoredCompilerOptions: readonly string[] = [
@@ -117,43 +117,41 @@ const ignoredCompilerOptions: readonly string[] = [
   "types",
   "typeRoots",
   "version",
-  "watch"
+  "watch",
 ];
 
-export class Host implements ts.CompilerHost {
-  private readonly _options = defaultCompileOptions;
-
-  private _target: CompilerHostTarget;
-
-  private _writeFile: WriteFileCallback;
-
-  private _getAsset(filename: string): SourceFile {
-    const lastSegment = filename.split("/").pop()!;
-    const url = ts.libMap.has(lastSegment)
-      ? ts.libMap.get(lastSegment)!
-      : lastSegment;
-    const sourceFile = SourceFile.get(url);
-    if (sourceFile) {
-      return sourceFile;
-    }
-    const name = url.includes(".") ? url : `${url}.d.ts`;
-    const sourceCode = getAsset(name);
-    return new SourceFile({
-      url,
-      filename: `${ASSETS}/${name}`,
-      mediaType: MediaType.TypeScript,
-      sourceCode
-    });
+function getAssetInternal(filename: string): SourceFile {
+  const lastSegment = filename.split("/").pop()!;
+  const url = ts.libMap.has(lastSegment)
+    ? ts.libMap.get(lastSegment)!
+    : lastSegment;
+  const sourceFile = SourceFile.get(url);
+  if (sourceFile) {
+    return sourceFile;
   }
+  const name = url.includes(".") ? url : `${url}.d.ts`;
+  const sourceCode = getAsset(name);
+  return new SourceFile({
+    url,
+    filename: `${ASSETS}/${name}`,
+    mediaType: MediaType.TypeScript,
+    sourceCode,
+  });
+}
+
+export class Host implements ts.CompilerHost {
+  readonly #options = defaultCompileOptions;
+  #target: CompilerHostTarget;
+  #writeFile: WriteFileCallback;
 
   /* Deno specific APIs */
 
   constructor({ bundle = false, target, writeFile }: CompilerHostOptions) {
-    this._target = target;
-    this._writeFile = writeFile;
+    this.#target = target;
+    this.#writeFile = writeFile;
     if (bundle) {
       // options we need to change when we are generating a bundle
-      Object.assign(this._options, defaultBundlerOptions);
+      Object.assign(this.#options, defaultBundlerOptions);
     }
   }
 
@@ -175,22 +173,22 @@ export class Host implements ts.CompilerHost {
     for (const key of Object.keys(options)) {
       if (
         ignoredCompilerOptions.includes(key) &&
-        (!(key in this._options) || options[key] !== this._options[key])
+        (!(key in this.#options) || options[key] !== this.#options[key])
       ) {
         ignoredOptions.push(key);
         delete options[key];
       }
     }
-    Object.assign(this._options, options);
+    Object.assign(this.#options, options);
     return {
       ignoredOptions: ignoredOptions.length ? ignoredOptions : undefined,
-      diagnostics: errors.length ? errors : undefined
+      diagnostics: errors.length ? errors : undefined,
     };
   }
 
   mergeOptions(...options: ts.CompilerOptions[]): ts.CompilerOptions {
-    Object.assign(this._options, ...options);
-    return Object.assign({}, this._options);
+    Object.assign(this.#options, ...options);
+    return Object.assign({}, this.#options);
   }
 
   /* TypeScript CompilerHost APIs */
@@ -205,7 +203,7 @@ export class Host implements ts.CompilerHost {
 
   getCompilationSettings(): ts.CompilerOptions {
     util.log("compiler::host.getCompilationSettings()");
-    return this._options;
+    return this.#options;
   }
 
   getCurrentDirectory(): string {
@@ -214,7 +212,7 @@ export class Host implements ts.CompilerHost {
 
   getDefaultLibFileName(_options: ts.CompilerOptions): string {
     util.log("compiler::host.getDefaultLibFileName()");
-    switch (this._target) {
+    switch (this.#target) {
       case CompilerHostTarget.Main:
       case CompilerHostTarget.Runtime:
         return `${ASSETS}/lib.deno.window.d.ts`;
@@ -237,7 +235,7 @@ export class Host implements ts.CompilerHost {
     try {
       assert(!shouldCreateNewSourceFile);
       const sourceFile = fileName.startsWith(ASSETS)
-        ? this._getAsset(fileName)
+        ? getAssetInternal(fileName)
         : SourceFile.get(fileName);
       assert(sourceFile != null);
       if (!sourceFile.tsSourceFile) {
@@ -278,12 +276,12 @@ export class Host implements ts.CompilerHost {
   ): Array<ts.ResolvedModuleFull | undefined> {
     util.log("compiler::host.resolveModuleNames", {
       moduleNames,
-      containingFile
+      containingFile,
     });
-    return moduleNames.map(specifier => {
+    return moduleNames.map((specifier) => {
       const url = SourceFile.getUrl(specifier, containingFile);
       const sourceFile = specifier.startsWith(ASSETS)
-        ? this._getAsset(specifier)
+        ? getAssetInternal(specifier)
         : url
         ? SourceFile.get(url)
         : undefined;
@@ -293,7 +291,7 @@ export class Host implements ts.CompilerHost {
       return {
         resolvedFileName: sourceFile.url,
         isExternalLibraryImport: specifier.startsWith(ASSETS),
-        extension: sourceFile.extension
+        extension: sourceFile.extension,
       };
     });
   }
@@ -310,6 +308,6 @@ export class Host implements ts.CompilerHost {
     sourceFiles?: readonly ts.SourceFile[]
   ): void {
     util.log("compiler::host.writeFile", fileName);
-    this._writeFile(fileName, data, sourceFiles);
+    this.#writeFile(fileName, data, sourceFiles);
   }
 }

@@ -67,7 +67,7 @@ export async function* walk(
     followSymlinks = false,
     exts = undefined,
     match = undefined,
-    skip = undefined
+    skip = undefined,
   }: WalkOptions = {}
 ): AsyncIterableIterator<WalkInfo> {
   if (maxDepth < 0) {
@@ -105,7 +105,7 @@ export async function* walk(
         followSymlinks,
         exts,
         match,
-        skip
+        skip,
       });
     }
   }
@@ -121,7 +121,7 @@ export function* walkSync(
     followSymlinks = false,
     exts = undefined,
     match = undefined,
-    skip = undefined
+    skip = undefined,
   }: WalkOptions = {}
 ): IterableIterator<WalkInfo> {
   if (maxDepth < 0) {
@@ -158,7 +158,7 @@ export function* walkSync(
         followSymlinks,
         exts,
         match,
-        skip
+        skip,
       });
     }
   }

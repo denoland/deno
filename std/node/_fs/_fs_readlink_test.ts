@@ -25,7 +25,7 @@ test({
 
     assertEquals(typeof data, "string");
     assertEquals(data as string, oldname);
-  }
+  },
 });
 
 test({
@@ -43,7 +43,7 @@ test({
 
     assert(data instanceof Uint8Array);
     assertEquals(new TextDecoder().decode(data as Uint8Array), oldname);
-  }
+  },
 });
 
 test({
@@ -53,7 +53,7 @@ test({
     const data = readlinkSync(newname);
     assertEquals(typeof data, "string");
     assertEquals(data as string, oldname);
-  }
+  },
 });
 
 test({
@@ -63,5 +63,5 @@ test({
     const data = readlinkSync(newname, { encoding: "buffer" });
     assert(data instanceof Uint8Array);
     assertEquals(new TextDecoder().decode(data as Uint8Array), oldname);
-  }
+  },
 });

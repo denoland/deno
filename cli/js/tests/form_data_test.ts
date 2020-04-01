@@ -88,7 +88,7 @@ unitTest(function formDataSetEmptyBlobSuccess(): void {
 unitTest(function formDataParamsForEachSuccess(): void {
   const init = [
     ["a", "54"],
-    ["b", "true"]
+    ["b", "true"],
   ];
   const formData = new FormData();
   for (const [name, value] of init) {
@@ -110,7 +110,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
     "getAll",
     "get",
     "has",
-    "forEach"
+    "forEach",
   ] as const;
 
   const methodRequireTwoParams = ["append", "set"] as const;

@@ -31,7 +31,7 @@ parseDateTime("16:34 01-20-2019", "hh:mm mm-dd-yyyy") // output : new Date(2019,
 ```ts
 import {
   dayOfYear,
-  currentDayOfYear
+  currentDayOfYear,
 } from "https://deno.land/std/datetime/mod.ts";
 
 dayOfYear(new Date("2019-03-11T03:24:00")); // output: 70

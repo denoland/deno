@@ -125,14 +125,13 @@ export enum Status {
   /** RFC 2774, 7 */
   NotExtended = 510,
   /** RFC 6585, 6 */
-  NetworkAuthenticationRequired = 511
+  NetworkAuthenticationRequired = 511,
 }
 
 export const STATUS_TEXT = new Map<Status, string>([
   [Status.Continue, "Continue"],
   [Status.SwitchingProtocols, "Switching Protocols"],
   [Status.Processing, "Processing"],
-
   [Status.OK, "OK"],
   [Status.Created, "Created"],
   [Status.Accepted, "Accepted"],
@@ -143,7 +142,6 @@ export const STATUS_TEXT = new Map<Status, string>([
   [Status.MultiStatus, "Multi-Status"],
   [Status.AlreadyReported, "Already Reported"],
   [Status.IMUsed, "IM Used"],
-
   [Status.MultipleChoices, "Multiple Choices"],
   [Status.MovedPermanently, "Moved Permanently"],
   [Status.Found, "Found"],
@@ -152,7 +150,6 @@ export const STATUS_TEXT = new Map<Status, string>([
   [Status.UseProxy, "Use Proxy"],
   [Status.TemporaryRedirect, "Temporary Redirect"],
   [Status.PermanentRedirect, "Permanent Redirect"],
-
   [Status.BadRequest, "Bad Request"],
   [Status.Unauthorized, "Unauthorized"],
   [Status.PaymentRequired, "Payment Required"],
@@ -181,7 +178,6 @@ export const STATUS_TEXT = new Map<Status, string>([
   [Status.TooManyRequests, "Too Many Requests"],
   [Status.RequestHeaderFieldsTooLarge, "Request Header Fields Too Large"],
   [Status.UnavailableForLegalReasons, "Unavailable For Legal Reasons"],
-
   [Status.InternalServerError, "Internal Server Error"],
   [Status.NotImplemented, "Not Implemented"],
   [Status.BadGateway, "Bad Gateway"],
@@ -192,5 +188,5 @@ export const STATUS_TEXT = new Map<Status, string>([
   [Status.InsufficientStorage, "Insufficient Storage"],
   [Status.LoopDetected, "Loop Detected"],
   [Status.NotExtended, "Not Extended"],
-  [Status.NetworkAuthenticationRequired, "Network Authentication Required"]
+  [Status.NetworkAuthenticationRequired, "Network Authentication Required"],
 ]);

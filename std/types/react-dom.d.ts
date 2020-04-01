@@ -30,7 +30,7 @@ import {
   DOMAttributes,
   DOMElement,
   ReactNode,
-  ReactPortal
+  ReactPortal,
 } from "./react.d.ts";
 
 export function findDOMNode(

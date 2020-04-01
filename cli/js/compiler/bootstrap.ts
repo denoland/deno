@@ -9,7 +9,7 @@ import { getAsset } from "./util.ts";
 // load all type definitions and snapshot them.
 const host = new Host({
   target: CompilerHostTarget.Main,
-  writeFile(): void {}
+  writeFile(): void {},
 });
 const options = host.getCompilationSettings();
 
@@ -34,7 +34,7 @@ host.getSourceFile(
 export const TS_SNAPSHOT_PROGRAM = ts.createProgram({
   rootNames: [`${ASSETS}/bootstrap.ts`],
   options,
-  host
+  host,
 });
 
 export const SYSTEM_LOADER = getAsset("system_loader.js");

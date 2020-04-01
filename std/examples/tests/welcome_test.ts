@@ -6,7 +6,7 @@ Deno.test("[examples/welcome] print a welcome message", async () => {
   const process = Deno.run({
     cmd: [Deno.execPath(), "welcome.ts"],
     cwd: "examples",
-    stdout: "piped"
+    stdout: "piped",
   });
   try {
     const output = await process.output();

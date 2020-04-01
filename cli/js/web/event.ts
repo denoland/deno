@@ -39,11 +39,11 @@ export class Event implements domTypes.Event {
       isTrusted: false,
       relatedTarget: null,
       target: null,
-      timeStamp: Date.now()
+      timeStamp: Date.now(),
     });
     Reflect.defineProperty(this, "isTrusted", {
       enumerable: true,
-      get: isTrusted
+      get: isTrusted,
     });
   }
 
@@ -90,7 +90,7 @@ export class Event implements domTypes.Event {
       isTrusted: this.isTrusted,
       relatedTarget: this.relatedTarget,
       target: this.target,
-      timeStamp: this.timeStamp
+      timeStamp: this.timeStamp,
     });
   }
 
@@ -121,7 +121,7 @@ export class Event implements domTypes.Event {
       isTrusted: this.isTrusted,
       relatedTarget: this.relatedTarget,
       target: this.target,
-      timeStamp: this.timeStamp
+      timeStamp: this.timeStamp,
     });
   }
 
@@ -156,7 +156,7 @@ export class Event implements domTypes.Event {
       isTrusted: this.isTrusted,
       relatedTarget: value,
       target: this.target,
-      timeStamp: this.timeStamp
+      timeStamp: this.timeStamp,
     });
   }
 
@@ -175,7 +175,7 @@ export class Event implements domTypes.Event {
       isTrusted: this.isTrusted,
       relatedTarget: this.relatedTarget,
       target: value,
-      timeStamp: this.timeStamp
+      timeStamp: this.timeStamp,
     });
   }
 
@@ -200,8 +200,8 @@ export class Event implements domTypes.Event {
         rootOfClosedTree: false,
         slotInClosedTree: false,
         target: null,
-        touchTargetList: []
-      }
+        touchTargetList: [],
+      },
     ];
 
     let currentTargetIndex = 0;
@@ -242,7 +242,7 @@ export class Event implements domTypes.Event {
           rootOfClosedTree: false,
           slotInClosedTree: false,
           target: null,
-          touchTargetList: []
+          touchTargetList: [],
         });
       }
 
@@ -277,7 +277,7 @@ export class Event implements domTypes.Event {
           rootOfClosedTree: false,
           slotInClosedTree: false,
           target: null,
-          touchTargetList: []
+          touchTargetList: [],
         });
       }
 
@@ -314,7 +314,7 @@ Reflect.defineProperty(Event.prototype, "cancelable", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "composed", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "currentTarget", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "defaultPrevented", {
-  enumerable: true
+  enumerable: true,
 });
 Reflect.defineProperty(Event.prototype, "dispatched", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "eventPhase", { enumerable: true });

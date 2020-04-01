@@ -7,7 +7,7 @@ import {
   assertEquals,
   assert,
   assertStrContains,
-  unitTest
+  unitTest,
 } from "./test_util.ts";
 
 const { Buffer, readAll, readAllSync, writeAll, writeAllSync } = Deno;

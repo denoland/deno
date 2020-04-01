@@ -11,7 +11,7 @@ test({
     assert(util.isBoolean(false));
     assert(!util.isBoolean("deno"));
     assert(!util.isBoolean("true"));
-  }
+  },
 });
 
 test({
@@ -22,7 +22,7 @@ test({
     assert(!util.isNull(n));
     assert(!util.isNull(0));
     assert(!util.isNull({}));
-  }
+  },
 });
 
 test({
@@ -33,7 +33,7 @@ test({
     assert(util.isNullOrUndefined(n));
     assert(!util.isNullOrUndefined({}));
     assert(!util.isNullOrUndefined("undefined"));
-  }
+  },
 });
 
 test({
@@ -43,7 +43,7 @@ test({
     assert(util.isNumber(new Number(666)));
     assert(!util.isNumber("999"));
     assert(!util.isNumber(null));
-  }
+  },
 });
 
 test({
@@ -52,7 +52,7 @@ test({
     assert(util.isString("deno"));
     assert(util.isString(new String("DIO")));
     assert(!util.isString(1337));
-  }
+  },
 });
 
 test({
@@ -61,7 +61,7 @@ test({
     assert(util.isSymbol(Symbol()));
     assert(!util.isSymbol(123));
     assert(!util.isSymbol("string"));
-  }
+  },
 });
 
 test({
@@ -71,7 +71,7 @@ test({
     assert(util.isUndefined(t));
     assert(!util.isUndefined("undefined"));
     assert(!util.isUndefined({}));
-  }
+  },
 });
 
 test({
@@ -81,7 +81,7 @@ test({
     assert(util.isObject(dio));
     assert(util.isObject(new RegExp(/Toki Wo Tomare/)));
     assert(!util.isObject("Jotaro"));
-  }
+  },
 });
 
 test({
@@ -93,17 +93,17 @@ test({
     assert(util.isError(java));
     assert(util.isError(nodejs));
     assert(!util.isError(deno));
-  }
+  },
 });
 
 test({
   name: "[util] isFunction",
   fn() {
-    const f = function(): void {};
+    const f = function (): void {};
     assert(util.isFunction(f));
     assert(!util.isFunction({}));
     assert(!util.isFunction(new RegExp(/f/)));
-  }
+  },
 });
 
 test({
@@ -113,7 +113,7 @@ test({
     assert(util.isRegExp(/fuManchu/));
     assert(!util.isRegExp({ evil: "eye" }));
     assert(!util.isRegExp(null));
-  }
+  },
 });
 
 test({
@@ -122,5 +122,5 @@ test({
     assert(util.isArray([]));
     assert(!util.isArray({ yaNo: "array" }));
     assert(!util.isArray(null));
-  }
+  },
 });

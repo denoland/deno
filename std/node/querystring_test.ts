@@ -10,11 +10,11 @@ test({
         a: "hello",
         b: 5,
         c: true,
-        d: ["foo", "bar"]
+        d: ["foo", "bar"],
       }),
       "a=hello&b=5&c=true&d=foo&d=bar"
     );
-  }
+  },
 });
 
 test({
@@ -24,7 +24,7 @@ test({
       a: "hello",
       b: "5",
       c: "true",
-      d: ["foo", "bar"]
+      d: ["foo", "bar"],
     });
-  }
+  },
 });

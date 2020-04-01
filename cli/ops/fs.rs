@@ -256,7 +256,7 @@ fn op_umask(
   #[cfg(not(unix))]
   {
     let _ = args.mask; // avoid unused warning.
-    return Err(OpError::not_implemented());
+    Err(OpError::not_implemented())
   }
   #[cfg(unix)]
   {
@@ -360,7 +360,7 @@ fn op_chmod(
     {
       // Still check file/dir exists on Windows
       let _metadata = std::fs::metadata(&path)?;
-      return Err(OpError::not_implemented());
+      Err(OpError::not_implemented())
     }
   })
 }
@@ -400,7 +400,7 @@ fn op_chown(
     {
       // Still check file/dir exists on Windows
       let _metadata = std::fs::metadata(&path)?;
-      return Err(OpError::not_implemented());
+      Err(OpError::not_implemented())
     }
   })
 }
@@ -509,6 +509,7 @@ fn get_stat_json(
   use std::os::unix::fs::MetadataExt;
   let mut json_val = json!({
     "isFile": metadata.is_file(),
+    "isDirectory": metadata.is_dir(),
     "isSymlink": metadata.file_type().is_symlink(),
     "size": metadata.len(),
     // In seconds. Available on both Unix or Windows.
@@ -731,7 +732,7 @@ fn op_symlink(
       // Unlike with chmod/chown, here we don't
       // require `oldpath` to exist on Windows
       let _ = oldpath; // avoid unused warning
-      return Err(OpError::not_implemented());
+      Err(OpError::not_implemented())
     }
   })
 }
