@@ -6,7 +6,7 @@
 import { BufReader } from "../io/bufio.ts";
 import { charCode } from "../io/util.ts";
 import { concat } from "../bytes/mod.ts";
-import { decode } from "../strings/mod.ts";
+import { decode } from "../encoding/utf8.ts";
 
 function str(buf: Uint8Array | null | undefined): string {
   if (buf == null) {

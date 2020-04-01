@@ -16,7 +16,7 @@ import {
   writeFrame,
   createWebSocket,
 } from "./mod.ts";
-import { encode, decode } from "../strings/mod.ts";
+import { encode, decode } from "../encoding/utf8.ts";
 import Writer = Deno.Writer;
 import Reader = Deno.Reader;
 import Conn = Deno.Conn;
