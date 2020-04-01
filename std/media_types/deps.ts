@@ -11,5 +11,5 @@ interface DB {
   };
 }
 
-import _db from "./db_c50e0d1.json";
+import _db from "./db.json";
 export const db: DB = _db;
