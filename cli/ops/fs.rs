@@ -929,8 +929,9 @@ fn op_utime(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_utime {} {} {}", args.path, args.atime, args.mtime);
-    utime::set_file_times(args.path, args.atime, args.mtime)?;
+    debug!("op_utime {} {} {}", path.display(), args.atime, args.mtime);
+    use utime::set_file_times;
+    set_file_times(&path, args.atime, args.mtime)?;
     Ok(json!({}))
   })
 }
