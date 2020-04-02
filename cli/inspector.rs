@@ -294,9 +294,9 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   }
 }
 
-/// DenoInspector implements a Future so that it can poll for new_incoming messages
-/// from the WebSocket server. Since a Worker ownes a DenoInspector, and because
-/// a Worker is a Future too, Worker::poll will call this.
+/// DenoInspector implements a Future so that it can poll for new incoming
+/// connections and messages from the WebSocket server. The Worker that owns
+/// this DenoInspector will call our poll function from Worker::poll().
 impl Future for DenoInspector {
   type Output = ();
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
