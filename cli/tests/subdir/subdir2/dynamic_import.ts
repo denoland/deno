@@ -1,5 +1,5 @@
 (async (): Promise<void> => {
-  const { printHello } = await import("../print_hello.ts");
+  const { printHello } = await import("../mod2.ts");
   printHello();
 })();
 

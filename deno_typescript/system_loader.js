@@ -31,7 +31,7 @@ let System, __instantiateAsync, __instantiate;
       if (s < sa.length) oa.push(...sa.slice(s));
       id = oa.reverse().join("/");
     }
-    return r.has(id) ? r.get(id).exp : import(mid);
+    return r.has(id) ? gExpA(id) : import(mid);
   }
 
   function gC(id, main) {
