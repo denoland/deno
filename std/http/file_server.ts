@@ -40,7 +40,7 @@ const CORSEnabled = serverArgs.cors ? true : false;
 const target = posix.resolve(serverArgs._[1] ?? "");
 const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4500}`;
 
-const MEDIA_TYPES = {
+const MEDIA_TYPES: { [key: string]: string } = {
   ".md": "text/markdown",
   ".html": "text/html",
   ".htm": "text/html",
@@ -55,7 +55,7 @@ const MEDIA_TYPES = {
 };
 
 /** Returns the content-type based on the extension of a path. */
-function contentType(path: string): string {
+function contentType(path: string): string | undefined {
   return MEDIA_TYPES[extname(path)];
 }
 
