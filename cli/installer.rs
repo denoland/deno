@@ -94,7 +94,11 @@ fn get_installer_dir() -> Result<PathBuf, Error> {
   let home_path = if !home.is_empty() { home } else { user_profile };
 
   let mut home_path = PathBuf::from(home_path);
-  home_path.push(".deno");
+  if cfg!(target_os = "windows") {
+    home_path.push(".deno");
+  } else {
+    home_path.push(".local");
+  }
   home_path.push("bin");
   Ok(home_path)
 }
@@ -227,10 +231,11 @@ mod tests {
     )
     .expect("Install failed");
 
-    let mut file_path = temp_dir.path().join(".deno/bin/echo_test");
-    if cfg!(windows) {
-      file_path = file_path.with_extension("cmd");
-    }
+    let file_path = if cfg!(windows) {
+      temp_dir.path().join(".deno/bin/echo_test.cmd")
+    } else {
+      temp_dir.path().join(".local/bin/echo_test")
+    };
 
     assert!(file_path.exists());
 

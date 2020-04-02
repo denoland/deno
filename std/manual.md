@@ -874,14 +874,13 @@ Or you could import it into another ES module to consume:
 
 ### Installing executable scripts
 
-Deno provides ability to easily install and distribute executable code via
-`deno install` command.
+Deno provides `deno install` to easily install and distribute executable code.
 
 `deno install [FLAGS...] [EXE_NAME] [URL] [SCRIPT_ARGS...]` will install the
 script available at `URL` under the name `EXE_NAME`.
 
-This command is a thin wrapper that creates executable shell scripts which
-invoke `deno` with specified permissions and CLI flags.
+This command creates a thin, executable shell script which invokes `deno` using
+the specified CLI flags and main module.
 
 Example:
 
@@ -889,19 +888,19 @@ Example:
 $ deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
 [1/1] Compiling https://deno.land/std/http/file_server.ts
 
-✅ Successfully installed file_server.
-/Users/deno/.deno/bin/file_server
+✅ Successfully installed file_server
+/Users/deno/.local/bin/file_server
 ```
 
-By default scripts are installed at `$HOME/.deno/bin` or
-`$USERPROFILE/.deno/bin` and one of that directories must be added to the path
-manually.
+The default installation directory is `$HOME/.local/bin` on Linux/macOS and
+`$HOME/.deno/bin` on Windows. These must be added to the path manually if not
+already.
 
 ```shell
-$ echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc
+$ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 ```
 
-Installation directory can be changed using `-d/--dir` flag:
+To change the installation directory, use `-d/--dir`:
 
 ```shell
 $ deno install --allow-net --allow-read --dir /usr/local/bin file_server https://deno.land/std/http/file_server.ts
@@ -916,13 +915,11 @@ Example:
 $ deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts 8080
 ```
 
-Above command creates an executable called `file_server` that runs with write
+The above command creates an executable called `file_server` that runs with write
 and read permissions and binds to port 8080.
 
-It is a good practice to use `import.meta.main` idiom for an entry point for
-executable file. See
-[Testing if current file is the main program](#testing-if-current-file-is-the-main-program)
-section.
+For good practice, use the [`import.meta.main`](#testing-if-current-file-is-the-main-program)
+idiom to specify the entry point in an executable script.
 
 Example:
 

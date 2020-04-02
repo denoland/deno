@@ -625,7 +625,7 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
           Arg::with_name("dir")
             .long("dir")
             .short("d")
-            .help("Installation directory (defaults to $HOME/.deno/bin)")
+            .help("Installation directory (defaults to $HOME/.local/bin or $HOME/.deno/bin on Windows)")
             .takes_value(true)
             .multiple(false))
         .arg(
@@ -648,11 +648,12 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
         .about("Install script as executable")
         .long_about(
 "Installs a script as executable. The default installation directory is
-$HOME/.deno/bin and it must be added to the path manually.
+$HOME/.local/bin on Linux/macOS and $HOME/.deno/bin on Windows. These must be
+added to the path manually if not already.
   deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
   deno install colors https://deno.land/std/examples/colors.ts
 
-To change installation directory use -d/--dir flag:
+To change the installation directory, use -d/--dir:
   deno install --allow-net --allow-read -d /usr/local/bin file_server https://deno.land/std/http/file_server.ts")
 }
 
