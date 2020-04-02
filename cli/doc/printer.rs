@@ -428,14 +428,15 @@ fn format_function_signature(node: &doc::DocNode, indent: i64) -> String {
 
 fn format_class_signature(node: &doc::DocNode, indent: i64) -> String {
   let class_def = node.class_def.clone().unwrap();
-  let mut super_suffix = String::from("");
-  if class_def.super_class.is_some() {
-    super_suffix = format!(
+  let super_suffix = if class_def.super_class.is_some() {
+    format!(
       " {} {}",
       colors::magenta("extends".to_string()),
       colors::bold(class_def.super_class.unwrap())
-    );
-  }
+    )
+  } else {
+    String::from("")
+  };
 
   add_indent(
     format!(
