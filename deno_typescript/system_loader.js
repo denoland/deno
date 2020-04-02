@@ -15,10 +15,29 @@ let System, __instantiateAsync, __instantiate;
     },
   };
 
+  async function dI(mid, src) {
+    let id = mid.replace(/\.\w+$/i, "");
+    if (id.includes("./")) {
+      const [o, ...ia] = id.split("/").reverse(),
+        [, ...sa] = src.split("/").reverse(),
+        oa = [o];
+      let s = 0,
+        i;
+      while ((i = ia.shift())) {
+        if (i === "..") s++;
+        else if (i === ".") break;
+        else oa.push(i);
+      }
+      if (s < sa.length) oa.push(...sa.slice(s));
+      id = oa.reverse().join("/");
+    }
+    return r.has(id) ? gExpA(id) : import(mid);
+  }
+
   function gC(id, main) {
     return {
       id,
-      import: async (id) => r.get(id)?.exp,
+      import: (m) => dI(m, id),
       meta: { url: id, main },
     };
   }

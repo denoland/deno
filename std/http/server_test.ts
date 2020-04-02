@@ -16,7 +16,7 @@ import {
 import { ServerResponse, Server, serve, listenAndServe } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay } from "../util/async.ts";
-import { encode, decode } from "../strings/mod.ts";
+import { encode, decode } from "../encoding/utf8.ts";
 import { mockRequest } from "./testing.ts";
 import { writeRequest, readResponse } from "./io.ts";
 import { ClientRequest, ClientResponse } from "./client.ts";

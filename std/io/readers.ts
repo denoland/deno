@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { encode } from "../strings/mod.ts";
+import { encode } from "../encoding/utf8.ts";
 
 /** @deprecated Use stringReader() */
 export class StringReader implements Deno.Reader {

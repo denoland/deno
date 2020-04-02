@@ -7,7 +7,7 @@ const isWindows = Deno.build.os == "win";
 
 export function testWalk(
   setup: (arg0: string) => void | Promise<void>,
-  t: Deno.TestFunction,
+  t: () => void | Promise<void>,
   ignore = false
 ): void {
   const name = t.name;

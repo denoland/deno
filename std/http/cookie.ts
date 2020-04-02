@@ -115,7 +115,7 @@ export function setCookie(res: ServerResponse, cookie: Cookie): void {
   // TODO (zekth) : Add proper parsing of Set-Cookie headers
   // Parsing cookie headers to make consistent set-cookie header
   // ref: https://tools.ietf.org/html/rfc6265#section-4.1.1
-  res.headers.set("Set-Cookie", toString(cookie));
+  res.headers.append("Set-Cookie", toString(cookie));
 }
 
 /**

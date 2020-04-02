@@ -1,7 +1,7 @@
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { assert } from "../testing/asserts.ts";
-import { encoder, encode } from "../strings/mod.ts";
+import { encoder, encode } from "../encoding/utf8.ts";
 import { ServerResponse, ServerRequest } from "./server.ts";
 import { STATUS_TEXT } from "./http_status.ts";
 import { letTimeout, timeoutReader } from "../util/async.ts";

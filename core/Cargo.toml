@@ -19,7 +19,7 @@ futures = { version = "0.3.4", features = ["thread-pool", "compat"] }
 lazy_static = "1.4.0"
 libc = "0.2.68"
 log = "0.4.8"
-rusty_v8 = "0.3.9"
+rusty_v8 = "0.3.10"
 serde_json = "1.0.48"
 url = "2.1.1"
 
