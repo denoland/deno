@@ -5,7 +5,6 @@ import {
   assert,
   assertNotEOF,
   assertNotEquals,
-  assertMatch,
 } from "../testing/asserts.ts";
 import {
   bodyReader,
@@ -361,7 +360,6 @@ malformedHeader
 `;
   const reader = new BufReader(new StringReader(input));
   let err;
-  let responseString: string;
   try {
     await readRequest(mockConn(), { r: reader });
   } catch (e) {
@@ -369,10 +367,6 @@ malformedHeader
   }
   assert(err instanceof Error);
   assertEquals(err.message, "malformed MIME header line: malformedHeader");
-  assertMatch(
-    responseString!,
-    /^HTTP\/1\.1 400 Bad Request\r\ncontent-length: \d+\r\n\r\n.*\r\n\r\n$/ms
-  );
 });
 
 // Ported from Go

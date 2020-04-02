@@ -2,8 +2,8 @@
 import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { ServerRequest } from "./server.ts";
 import { serveFile } from "./file_server.ts";
+import { mockRequest } from "./testing.ts";
 const { test } = Deno;
 let fileServer: Deno.Process;
 
@@ -145,7 +145,7 @@ test(async function printHelp(): Promise<void> {
 });
 
 test("contentType", async () => {
-  const request = new ServerRequest();
+  const request = mockRequest();
   const response = await serveFile(request, "http/testdata/hello.html");
   const contentType = response.headers!.get("content-type");
   assertEquals(contentType, "text/html; charset=utf-8");
