@@ -74,7 +74,7 @@ unitTest(async function blobText(): Promise<void> {
   assertEquals(await blob.text(), "Hello World");
 });
 
-unitTest(async function blobStream(): Promise <void> {
+unitTest(async function blobStream(): Promise<void> {
   const blob = new Blob(["Hello World"]);
   const stream = blob.stream();
   assert(stream instanceof ReadableStream);
@@ -82,9 +82,9 @@ unitTest(async function blobStream(): Promise <void> {
   let bytes = new Uint8Array();
   const read = async (): Promise<void> => {
     const { done, value } = await reader.read();
-    bytes = concat(bytes, value)
+    bytes = concat(bytes, value);
     if (!done) await read();
-  }
+  };
   await read();
   assertEquals(decode(bytes), "Hello World");
 });

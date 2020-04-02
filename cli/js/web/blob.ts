@@ -126,11 +126,11 @@ function processBlobParts(
 
 function getStream(blobBytes: Uint8Array): domTypes.ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
-    start: (controller) => {
+    start: (controller): void => {
       controller.enqueue(blobBytes);
       controller.close();
     },
-  })
+  });
 }
 
 async function readBytes(
@@ -218,7 +218,7 @@ export class DenoBlob implements domTypes.Blob {
     return decoder.decode(await readBytes(reader));
   }
 
-  async arrayBuffer(): Promise<ArrayBuffer> {
+  arrayBuffer(): Promise<ArrayBuffer> {
     return readBytes(getStream(this[bytesSymbol]).getReader());
   }
 }

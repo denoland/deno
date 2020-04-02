@@ -34,7 +34,7 @@ declare interface WindowOrWorkerGlobalScope {
   FormData: __domTypes.FormDataConstructor;
   TextEncoder: typeof __textEncoding.TextEncoder;
   TextDecoder: typeof __textEncoding.TextDecoder;
-  ReadableStream:  __domTypes.ReadableStreamConstructor;
+  ReadableStream: __domTypes.ReadableStreamConstructor;
   Request: __domTypes.RequestConstructor;
   Response: typeof __fetch.Response;
   performance: __performanceUtil.Performance;
@@ -600,7 +600,7 @@ declare namespace __domTypes {
   }
 
   export interface ReadableStreamConstructor<R = any> {
-    new(src?: UnderlyingSource<R>): ReadableStream<R>
+    new (src?: UnderlyingSource<R>): ReadableStream<R>;
     prototype: ReadableStream<R>;
   }
 
