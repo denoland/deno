@@ -5,6 +5,7 @@ import {
   assert,
   assertNotEOF,
   assertNotEquals,
+  assertMatch,
 } from "../testing/asserts.ts";
 import {
   bodyReader,
@@ -14,7 +15,7 @@ import {
   readRequest,
   writeResponse,
 } from "./io.ts";
-import { encode, decode } from "../strings/mod.ts";
+import { encode, decode } from "../encoding/utf8.ts";
 import { BufReader, ReadLineResult } from "../io/bufio.ts";
 import { chunkedBodyReader } from "./io.ts";
 import { ServerRequest, Response } from "./server.ts";
@@ -349,13 +350,28 @@ malformedHeader
 `;
   const reader = new BufReader(new StringReader(input));
   let err;
+  let responseString: string;
   try {
-    await readRequest(mockConn(), reader);
+    // Capture whatever `readRequest()` attempts to write to the connection on
+    // error. We expect it to be a 400 response.
+    await readRequest(
+      mockConn({
+        write(p: Uint8Array): Promise<number> {
+          responseString = decode(p);
+          return Promise.resolve(p.length);
+        },
+      }),
+      reader
+    );
   } catch (e) {
     err = e;
   }
   assert(err instanceof Error);
   assertEquals(err.message, "malformed MIME header line: malformedHeader");
+  assertMatch(
+    responseString!,
+    /^HTTP\/1\.1 400 Bad Request\r\ncontent-length: \d+\r\n\r\n.*\r\n\r\n$/ms
+  );
 });
 
 // Ported from Go

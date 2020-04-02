@@ -146,14 +146,14 @@ export class Server implements AsyncIterable<ServerRequest> {
   private async *iterateHttpRequests(
     conn: Conn
   ): AsyncIterableIterator<ServerRequest> {
-    const bufr = new BufReader(conn);
-    const w = new BufWriter(conn);
+    const reader = new BufReader(conn);
+    const writer = new BufWriter(conn);
     let req: ServerRequest | Deno.EOF = Deno.EOF;
     let err: Error | undefined;
 
     while (!this.closing) {
       try {
-        req = await readRequest(conn, bufr);
+        req = await readRequest(conn, reader, writer);
       } catch (e) {
         err = e;
       }
@@ -161,7 +161,6 @@ export class Server implements AsyncIterable<ServerRequest> {
         break;
       }
 
-      req.w = w;
       yield req;
 
       // Wait for the request to be processed before we accept a new request on

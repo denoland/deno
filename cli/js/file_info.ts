@@ -25,6 +25,7 @@ export interface FileInfo {
 // @internal
 export class FileInfoImpl implements FileInfo {
   readonly #isFile: boolean;
+  readonly #isDirectory: boolean;
   readonly #isSymlink: boolean;
   size: number;
   modified: number | null;
@@ -53,6 +54,7 @@ export class FileInfoImpl implements FileInfo {
     const { dev, ino, mode, nlink, uid, gid, rdev, blksize, blocks } = res;
 
     this.#isFile = res.isFile;
+    this.#isDirectory = res.isDirectory;
     this.#isSymlink = res.isSymlink;
     this.size = res.size;
     this.modified = modified ? modified : null;
@@ -76,7 +78,7 @@ export class FileInfoImpl implements FileInfo {
   }
 
   isDirectory(): boolean {
-    return !this.#isFile && !this.#isSymlink;
+    return this.#isDirectory;
   }
 
   isSymlink(): boolean {
