@@ -164,6 +164,7 @@ jobs:
         run: |
           cd target/release
           zip -r deno-x86_64-unknown-linux-gnu.zip deno
+          ./deno types > lib.deno.d.ts
 
       - name: Pre-release (mac)
         if: startsWith(matrix.config.os, 'macOS') && matrix.config.kind == 'test_release'
@@ -187,6 +188,7 @@ jobs:
             target/release/deno-x86_64-unknown-linux-gnu.zip
             target/release/deno-x86_64-apple-darwin.zip
             target/release/deno_src.tar.gz
+            target/release/lib.deno.d.ts
           draft: true
 
       - name: Publish
