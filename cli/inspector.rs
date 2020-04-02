@@ -18,6 +18,7 @@ use futures::prelude::*;
 use futures::select;
 use futures::stream::FuturesUnordered;
 use futures::task;
+use futures::task::Context;
 use futures::task::Poll;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
@@ -232,13 +233,6 @@ enum PollState {
   Dropped,
 }
 
-enum PollEntry<'a> {
-  InspectorCreated(bool),
-  FuturePolled(&'a task::Waker),
-  Pause,
-  Interrupt,
-}
-
 pub struct DenoInspector {
   v8_inspector_client: v8::inspector::V8InspectorClientBase,
   v8_inspector: v8::UniqueRef<v8::inspector::V8Inspector>,
@@ -287,7 +281,7 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
     assert_eq!(context_group_id, DenoInspectorSession::CONTEXT_GROUP_ID);
     self.flags.borrow_mut().on_pause = true;
-    let _ = self.poll_session_handler(PollEntry::Pause);
+    let _ = self.poll_sessions(None);
   }
 
   fn quit_message_loop_on_pause(&mut self) {
@@ -305,10 +299,8 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
 /// a Worker is a Future too, Worker::poll will call this.
 impl Future for DenoInspector {
   type Output = ();
-  fn poll(self: Pin<&mut Self>, cx: &mut task::Context) -> Poll<()> {
-    self
-      .poll_session_handler(PollEntry::FuturePolled(cx.waker()))
-      .unwrap()
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
+    self.poll_sessions(Some(cx)).unwrap()
   }
 }
 
@@ -339,9 +331,11 @@ impl DenoInspector {
         v8::inspector::V8InspectorClientBase::new::<Self>();
       let v8_inspector =
         v8::inspector::V8Inspector::create(scope, unsafe { &mut *self_ptr });
+
       let sessions = InspectorSessions::new(self_ptr, new_websocket_rx);
       let flags = InspectorFlags::new(wait_for_debugger);
       let waker = InspectorWaker::new(scope.isolate().thread_safe_handle());
+
       Self {
         v8_inspector_client,
         v8_inspector,
@@ -358,7 +352,7 @@ impl DenoInspector {
     self_.context_created(context, Self::CONTEXT_GROUP_ID, &context_name);
 
     // Register this inspector with the server thread.
-    // Note: poll_session_handler() might block if we need to wait for a
+    // Note: poll_sessions() might block if we need to wait for a
     // debugger front-end to connect. Therefore the server thread must to be
     // nofified *before* polling.
     let server = InspectorServer::global(host);
@@ -372,21 +366,19 @@ impl DenoInspector {
 
     // Poll the session handler so we will get notified whenever there is
     // new_incoming debugger activity.
-    let _ = self_
-      .poll_session_handler(PollEntry::InspectorCreated(wait_for_debugger))
-      .unwrap();
+    let _ = self_.poll_sessions(None).unwrap();
 
     self_
   }
 
-  fn poll_session_handler(
+  fn poll_sessions(
     &self,
-    entry: PollEntry,
+    mut invoker_cx: Option<&mut Context>,
   ) -> Result<Poll<()>, BorrowMutError> {
-    // The session handler's poll() function is not re-entrant. However it is
-    // possible that poll_session_handler() gets re-entered, for example when an
-    // interrupt request is honored while the inspector future is polled by
-    // the task executor. When this happens, return an error.
+    // The futures this function uses do not have re-entrant poll() functions.
+    // However it is can happpen that poll_sessions() gets re-entered, e.g.
+    // when an interrupt request is honored while the inspector future is polled
+    // by the task executor. We let the caller know by returning some error.
     let mut sessions = self.sessions.try_borrow_mut()?;
 
     self.waker.update(|w| {
@@ -396,14 +388,14 @@ impl DenoInspector {
       };
     });
 
-    // Create a new task::Context object that will make downstream futures
+    // Create a new Context object that will make downstream futures
     // use the InspectorWaker when they are ready to be polled again.
     let waker_ref = task::waker_ref(&self.waker);
-    let cx = &mut task::Context::from_waker(&waker_ref);
+    let cx = &mut Context::from_waker(&waker_ref);
 
     loop {
       loop {
-        // Finish any on-going handshakes first.
+        // Do one "handshake" with a newly connected session at a time.
         if let Some(session) = &mut sessions.handshake {
           let poll_result = session.poll_unpin(cx);
           let handshake_done =
@@ -435,7 +427,7 @@ impl DenoInspector {
           Poll::Pending => {}
         }
 
-        // Poll established futures.
+        // Poll established sessions.
         match sessions.established.poll_next_unpin(cx) {
           Poll::Ready(Some(_)) => continue,
           Poll::Ready(None) => break,
@@ -443,7 +435,7 @@ impl DenoInspector {
         };
       }
 
-      let should_park = sessions.handshake.is_some()
+      let should_block = sessions.handshake.is_some()
         || self.flags.borrow().on_pause
         || self.flags.borrow().waiting_for_session;
 
@@ -454,22 +446,21 @@ impl DenoInspector {
             // polled, so we poll it another time.
             w.poll_state = PollState::Polling;
           }
-          PollState::Polling if !should_park => {
+          PollState::Polling if !should_block => {
             // The session handler doesn't need to be polled any longer, and
-            // there's no reason to block (execution is not paused), so
-            // we're going to return from the poll_session_handler()
-            // function.
+            // there's no reason to block (execution is not paused), so this
+            // function is about to return.
             w.poll_state = PollState::Idle;
             // Register the task waker that can be used to wake the parent
             // task that will poll the inspector future.
-            if let PollEntry::FuturePolled(task_waker) = entry {
-              w.task_waker.replace(task_waker.clone());
+            if let Some(cx) = invoker_cx.take() {
+              w.task_waker.replace(cx.waker().clone());
             }
-            // Register the host of the inspector which allows the waker
+            // Register the address of the inspector, which allows the waker
             // to request an interrupt from the isolate.
             w.inspector_ptr = NonNull::new(self as *const _ as *mut Self);
           }
-          PollState::Polling if should_park => {
+          PollState::Polling if should_block => {
             // Isolate execution has been paused but there are no more
             // events to process, so this thread will be parked. Therefore,
             // store the current thread handle in the waker so it knows
@@ -520,11 +511,10 @@ impl InspectorSessions {
     inspector: *mut DenoInspector,
     new_websocket_rx: UnboundedReceiver<WebSocket>,
   ) -> RefCell<Self> {
+    let v8_inspector = unsafe { &mut **inspector };
     let self_ = Self {
       new_incoming: new_websocket_rx
-        .map(move |websocket| {
-          DenoInspectorSession::new(unsafe { &mut **inspector }, websocket)
-        })
+        .map(move |ws| DenoInspectorSession::new(v8_inspector, ws))
         .boxed_local(),
       handshake: None,
       established: FuturesUnordered::new(),
@@ -597,7 +587,7 @@ impl task::ArcWake for InspectorWaker {
             arg: *mut c_void,
           ) {
             let inspector = unsafe { &*(arg as *mut DenoInspector) };
-            let _ = inspector.poll_session_handler(PollEntry::Interrupt);
+            let _ = inspector.poll_sessions(None);
           }
         }
         PollState::Parked => {
@@ -751,10 +741,7 @@ impl v8::inspector::ChannelImpl for DenoInspectorSession {
 
 impl Future for DenoInspectorSession {
   type Output = ();
-  fn poll(
-    mut self: Pin<&mut Self>,
-    cx: &mut task::Context,
-  ) -> Poll<Self::Output> {
+  fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     self.message_handler.poll_unpin(cx)
   }
 }
