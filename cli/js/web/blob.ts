@@ -2,8 +2,6 @@
 import * as domTypes from "./dom_types.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { build } from "../build.ts";
-import { ReadableStream } from "./streams/mod.ts";
-import { Buffer } from "../buffer.ts";
 
 export const bytesSymbol = Symbol("bytes");
 
@@ -127,25 +125,32 @@ function processBlobParts(
 }
 
 function getStream(blobBytes: Uint8Array): domTypes.ReadableStream<Uint8Array> {
-  return new ReadableStream({
-    start(controller) {
+  return new ReadableStream<Uint8Array>({
+    start: (controller) => {
       controller.enqueue(blobBytes);
+      controller.close();
     },
-  }) as domTypes.ReadableStream<Uint8Array>;
+  })
 }
 
 async function readBytes(
   reader: domTypes.ReadableStreamReader<Uint8Array>
 ): Promise<ArrayBuffer> {
-  const bytes = new Buffer();
+  const chunks: Uint8Array[] = [];
   while (true) {
     try {
       const { done, value } = await reader.read();
-      if (done === false && value instanceof Uint8Array) {
-        bytes.grow(value.length);
-        await bytes.write(value);
-      } else if (done === true) {
-        return Promise.resolve(bytes.bytes().buffer.slice(0, bytes.length));
+      if (!done && value instanceof Uint8Array) {
+        chunks.push(value);
+      } else if (done) {
+        const size = chunks.reduce((p, i) => p + i.byteLength, 0);
+        const bytes = new Uint8Array(size);
+        let offs = 0;
+        for (const chunk of chunks) {
+          bytes.set(chunk, offs);
+          offs += chunk.byteLength;
+        }
+        return Promise.resolve(bytes);
       } else {
         return Promise.reject(new TypeError());
       }
