@@ -219,8 +219,8 @@ async fn server(
 
   select! {
     _ = register_inspector_handler => (),
-    _ = deregister_inspector_handler => panic!(),
-    _ = server_handler => panic!(),
+    _ = deregister_inspector_handler => unreachable!!(),
+    _ = server_handler => unreachable!(),
   }
 }
 
