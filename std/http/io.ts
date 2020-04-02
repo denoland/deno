@@ -342,38 +342,17 @@ export function parseHTTPVersion(vers: string): [number, number] {
 
 export async function readRequest(
   conn: Deno.Conn,
-  // The reader and writer buffers may be constructed externally so they can be
-  // shared by requests on the same connection -- see `Server`.
-  reader?: BufReader,
-  writer?: BufWriter
+  bufr: BufReader
 ): Promise<ServerRequest | Deno.EOF> {
-  reader = reader ?? new BufReader(conn);
-  writer = writer ?? new BufWriter(conn);
-  const tp = new TextProtoReader(reader);
-  let firstLine: string | Deno.EOF;
-  let headers: Headers | Deno.EOF;
-  try {
-    firstLine = await tp.readLine(); // e.g. GET /index.html HTTP/1.0
-    if (firstLine == Deno.EOF) {
-      return Deno.EOF;
-    }
-    headers = await tp.readMIMEHeader();
-    if (headers == Deno.EOF) {
-      throw new Deno.errors.UnexpectedEof();
-    }
-  } catch (error) {
-    // An error was thrown while parsing request headers.
-    await writeResponse(writer, {
-      status: 400,
-      body: encoder.encode(`${error.message}\r\n\r\n`),
-    });
-    throw error;
-  }
+  const tp = new TextProtoReader(bufr);
+  const firstLine = await tp.readLine(); // e.g. GET /index.html HTTP/1.0
+  if (firstLine === Deno.EOF) return Deno.EOF;
+  const headers = await tp.readMIMEHeader();
+  if (headers === Deno.EOF) throw new Deno.errors.UnexpectedEof();
 
   const req = new ServerRequest();
   req.conn = conn;
-  req.r = reader;
-  req.w = writer;
+  req.r = bufr;
   [req.method, req.url, req.proto] = firstLine.split(" ", 3);
   [req.protoMinor, req.protoMajor] = parseHTTPVersion(req.proto);
   req.headers = headers;
