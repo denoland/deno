@@ -34,6 +34,17 @@ module specifier, a reference to the dynamic `import()` and the equivalent of
 and its value, or an object record of keys of the named exports and the values
 of the exports.
 
+Currently, TypeScript does not re-write dynamic imports which resolve to static
+strings (see
+[microsoft/TypeScript#37429](https://github.com/microsoft/TypeScript/issues/37429)),
+which means the import specifier for a dynamic import which has been
+incorporated in the bundle does not automatically match a module specifier that
+has been registered in the bundle. The `di()` function provides the capability
+to try to identify relative import specifiers and resolve them to a specifier
+inside the bundle. If it does this, it resolves with the exports of the module,
+otherwise it simply passes the module specifier to `import()` and returns the
+resulting promise.
+
 The running of the factories is handled by `rF()`. When the factory is run, it
 returns an object with two keys, `execute` and `setters`. `execute` is a
 function which finalises that instantiation of the module, and `setters` which
