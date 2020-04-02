@@ -7,6 +7,9 @@ extern crate nix;
 extern crate pty;
 extern crate tempfile;
 
+use futures::prelude::*;
+use std::io::BufRead;
+use std::mem::drop;
 use std::process::Command;
 use tempfile::TempDir;
 
@@ -2003,7 +2006,6 @@ fn test_permissions_net_listen_allow_localhost() {
 fn extract_ws_url_from_stderr(
   stderr: &mut std::process::ChildStderr,
 ) -> url::Url {
-  use std::io::BufRead;
   let mut stderr = std::io::BufReader::new(stderr);
   let mut stderr_first_line = String::from("");
   let _ = stderr.read_line(&mut stderr_first_line).unwrap();
@@ -2026,7 +2028,7 @@ async fn inspector_connect() {
     .arg("run")
     // Warning: each inspector test should be on its own port to avoid
     // conflicting with another inspector test.
-    .arg("--inspect=127.0.0.1:9229")
+    .arg("--inspect=127.0.0.1:9228")
     .arg(script)
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -2039,6 +2041,98 @@ async fn inspector_connect() {
     .await
     .expect("Can't connect");
   assert_eq!("101 Switching Protocols", response.status().to_string());
+  child.kill().unwrap();
+}
+
+enum TestStep {
+  StdOut(&'static str),
+  WsRecv(&'static str),
+  WsSend(&'static str),
+  WsClose,
+}
+
+#[tokio::test]
+async fn inspector_break_on_first_line() {
+  let script = deno::test_util::root_path()
+    .join("cli")
+    .join("tests")
+    .join("inspector2.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    // Warning: each inspector test should be on its own port to avoid
+    // conflicting with another inspector test.
+    .arg("--inspect-brk=127.0.0.1:9229")
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let ws_url = extract_ws_url_from_stderr(stderr);
+  let (socket, response) = tokio_tungstenite::connect_async(ws_url)
+    .await
+    .expect("Can't connect");
+  assert_eq!(response.status(), 101); // Switching protocols.
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines = std::io::BufReader::new(stdout)
+    .lines()
+    .map(|line| line.unwrap())
+    .inspect(|l| eprintln!("$ {}", &l));
+
+  let (mut socket_tx, socket_rx) = socket.split();
+  let mut socket_rx = socket_rx
+    .map(|msg| msg.unwrap().to_string())
+    .inspect(|m| eprintln!("< {}", &m));
+
+  use TestStep::*;
+  let test_steps = vec![
+    WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
+    WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
+    WsRecv(
+      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+    ),
+    WsRecv(r#"{"id":1,"result":{}}"#),
+    WsRecv(r#"{"id":2,"result":{"debuggerId":"#),
+    WsSend(r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#),
+    WsRecv(r#"{"id":3,"result":{}}"#),
+    WsRecv(r#"{"method":"Debugger.paused","#),
+    WsSend(
+      r#"{"id":4,"method":"Runtime.compileScript","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\");","sourceURL":"","persistScript":false,"executionContextId":1}}"#,
+    ),
+    WsRecv(r#"{"id":4,"result":{}}"#),
+    WsSend(
+      r#"{"id":5,"method":"Debugger.evaluateOnCallFrame","params":{"callFrameId":"{\"ordinal\":0,\"injectedScriptId\":1}","expression":"Deno.core.print(\"hello from the inspector\\n\");\n","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"returnByValue":false,"generatePreview":true}}"#,
+    ),
+    WsRecv(r#"{"id":5,"result":{"result":{"type":"undefined"}}}"#),
+    StdOut("hello from the inspector"),
+    WsSend(r#"{"id":6,"method":"Debugger.resume"}"#),
+    WsRecv(r#"{"id":6,"result":{}}"#),
+    WsRecv(r#"{"method":"Debugger.resumed","params":{}}"#),
+    WsClose,
+    StdOut("hello from the script"),
+  ];
+
+  for step in test_steps {
+    match step {
+      StdOut(s) => assert_eq!(&stdout_lines.next().unwrap(), s),
+      WsRecv(s) => loop {
+        match socket_rx.next().await {
+          Some(msg)
+            if msg.starts_with(r#"{"method":"Debugger.scriptParsed","#) => {}
+          Some(msg) => break assert!(msg.starts_with(s)),
+          None => panic!("Unexpected end of stream."),
+        };
+      },
+      WsClose => socket_tx.close().await.unwrap(),
+      WsSend(s) => {
+        eprintln!("> {}", s);
+        socket_tx.send(s.into()).await.unwrap();
+      }
+    }
+  }
+
   child.kill().unwrap();
 }
 
@@ -2082,7 +2176,6 @@ async fn inspector_pause() {
     unreachable!()
   }
 
-  use futures::sink::SinkExt;
   socket
     .send(r#"{"id":6,"method":"Debugger.enable"}"#.into())
     .await
