@@ -39,10 +39,7 @@ export const extensions = new Map<string, string[]>();
 export const types = new Map<string, string>();
 
 /** Internal function to populate the maps based on the Mime DB */
-function populateMaps(
-  extensions: Map<string, string[]>,
-  types: Map<string, string>
-): void {
+function populateMaps(): void {
   const preference = ["nginx", "apache", undefined, "iana"];
 
   for (const type of Object.keys(db)) {
@@ -76,7 +73,7 @@ function populateMaps(
 }
 
 // Populate the maps upon module load
-populateMaps(extensions, types);
+populateMaps();
 
 /** Given a media type return any default charset string.  Returns `undefined`
  * if not resolvable.
@@ -98,9 +95,7 @@ export function charset(type: string): string | undefined {
   }
 }
 
-/** Given an extension, lookup the appropriate media type for that extension.
- * Likely you should be using `contentType()` though instead.
- */
+/** Given a path, lookup the appropriate media type for that extension.  */
 export function lookup(path: string): string | undefined {
   const extension = extname("x." + path)
     .toLowerCase()
@@ -109,23 +104,16 @@ export function lookup(path: string): string | undefined {
   return types.get(extension);
 }
 
-/** Given an extension or media type, return the full `Content-Type` header
+/** Given a partial media type, return the full `Content-Type` header
  * string.  Returns `undefined` if not resolvable.
  */
-export function contentType(str: string): string | undefined {
-  let mime = str.includes("/") ? str : lookup(str);
-
-  if (!mime) {
-    return;
-  }
-
+export function normalizeContentType(mime: string): string | undefined {
   if (!mime.includes("charset")) {
     const cs = charset(mime);
     if (cs) {
       mime += `; charset=${cs.toLowerCase()}`;
     }
   }
-
   return mime;
 }
 

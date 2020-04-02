@@ -4,7 +4,7 @@ const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import {
   lookup,
-  contentType,
+  normalizeContentType,
   extension,
   charset,
   extensions,
@@ -16,18 +16,15 @@ test(function testLookup(): void {
   assertEquals(lookup(".md"), "text/markdown");
   assertEquals(lookup("folder/file.js"), "application/javascript");
   assertEquals(lookup("folder/.htaccess"), undefined);
+  assertEquals(lookup("file.ts"), "application/typescript");
 });
 
-test(function testContentType(): void {
-  assertEquals(contentType("markdown"), "text/markdown; charset=utf-8");
-  assertEquals(contentType("file.json"), "application/json; charset=utf-8");
-  assertEquals(contentType("text/html"), "text/html; charset=utf-8");
+test(function testNormalizeContentType(): void {
+  assertEquals(normalizeContentType("text/html"), "text/html; charset=utf-8");
   assertEquals(
-    contentType("text/html; charset=iso-8859-1"),
+    normalizeContentType("text/html; charset=iso-8859-1"),
     "text/html; charset=iso-8859-1"
   );
-  assertEquals(contentType(".htaccess"), undefined);
-  assertEquals(contentType("file.ts"), "application/typescript");
 });
 
 test(function testExtension(): void {
