@@ -15,7 +15,7 @@ import {
   readRequest,
   writeResponse,
 } from "./io.ts";
-import { encode, decode } from "../strings/mod.ts";
+import { encode, decode } from "../encoding/utf8.ts";
 import { BufReader, ReadLineResult } from "../io/bufio.ts";
 import { chunkedBodyReader } from "./io.ts";
 import { ServerRequest, Response } from "./server.ts";

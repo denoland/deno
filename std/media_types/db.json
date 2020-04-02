@@ -1537,6 +1537,9 @@
   "application/tve-trigger": {
     "source": "iana"
   },
+  "application/typescript": {
+    "extensions": ["ts"]
+  },
   "application/tzif": {
     "source": "iana"
   },
@@ -7717,10 +7720,6 @@
   },
   "video/mp2p": {
     "source": "iana"
-  },
-  "video/mp2t": {
-    "source": "iana",
-    "extensions": ["ts"]
   },
   "video/mp4": {
     "source": "iana",
