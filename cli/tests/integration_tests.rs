@@ -491,6 +491,38 @@ fn bundle_js() {
 }
 
 #[test]
+fn bundle_dynamic_import() {
+  let dynamic_import =
+    util::root_path().join("cli/tests/subdir/subdir2/dynamic_import.ts");
+  assert!(dynamic_import.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("dynamic_import.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(dynamic_import)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&bundle)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the test.ts program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello"));
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
 fn repl_test_console_log() {
   let (out, err) = util::run_and_collect_output(
     true,
