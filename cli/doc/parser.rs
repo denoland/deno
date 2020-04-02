@@ -23,6 +23,8 @@ use swc_ecma_parser::Syntax;
 use swc_ecma_parser::TsConfig;
 
 use super::DocNode;
+use super::DocNodeKind;
+use super::Location;
 
 pub type SwcDiagnostics = Vec<Diagnostic>;
 
@@ -141,14 +143,202 @@ impl DocParser {
     }
   }
 
+  pub fn get_doc_node_for_stmt(
+    &self,
+    stmt: &swc_ecma_ast::Stmt,
+  ) -> Option<DocNode> {
+    use swc_ecma_ast::Stmt;
+
+    match stmt {
+      Stmt::Decl(decl) => self.get_doc_node_for_decl(decl),
+      _ => None,
+    }
+  }
+
+  fn details_for_span(&self, span: Span) -> (Option<String>, Location) {
+    let js_doc = self.js_doc_for_span(span);
+    let location = self.source_map.lookup_char_pos(span.lo()).into();
+    (js_doc, location)
+  }
+
+  pub fn get_doc_node_for_decl(
+    &self,
+    decl: &swc_ecma_ast::Decl,
+  ) -> Option<DocNode> {
+    use swc_ecma_ast::Decl;
+
+    match decl {
+      Decl::Class(class_decl) => {
+        if !class_decl.declare {
+          return None;
+        }
+        let (name, class_def) =
+          super::class::get_doc_for_class_decl(self, class_decl);
+        let (js_doc, location) = self.details_for_span(class_decl.class.span);
+        Some(DocNode {
+          kind: DocNodeKind::Class,
+          name,
+          location,
+          js_doc,
+          class_def: Some(class_def),
+          function_def: None,
+          variable_def: None,
+          enum_def: None,
+          type_alias_def: None,
+          namespace_def: None,
+          interface_def: None,
+        })
+      }
+      Decl::Fn(fn_decl) => {
+        if !fn_decl.declare {
+          return None;
+        }
+        let (name, function_def) =
+          super::function::get_doc_for_fn_decl(self, fn_decl);
+        let (js_doc, location) = self.details_for_span(fn_decl.function.span);
+        Some(DocNode {
+          kind: DocNodeKind::Function,
+          name,
+          location,
+          js_doc,
+          function_def: Some(function_def),
+          class_def: None,
+          variable_def: None,
+          enum_def: None,
+          type_alias_def: None,
+          namespace_def: None,
+          interface_def: None,
+        })
+      }
+      Decl::Var(var_decl) => {
+        if !var_decl.declare {
+          return None;
+        }
+        let (name, var_def) =
+          super::variable::get_doc_for_var_decl(self, var_decl);
+        let (js_doc, location) = self.details_for_span(var_decl.span);
+        Some(DocNode {
+          kind: DocNodeKind::Variable,
+          name,
+          location,
+          js_doc,
+          variable_def: Some(var_def),
+          function_def: None,
+          class_def: None,
+          enum_def: None,
+          type_alias_def: None,
+          namespace_def: None,
+          interface_def: None,
+        })
+      }
+      Decl::TsInterface(ts_interface_decl) => {
+        if !ts_interface_decl.declare {
+          return None;
+        }
+        let (name, interface_def) =
+          super::interface::get_doc_for_ts_interface_decl(
+            self,
+            ts_interface_decl,
+          );
+        let (js_doc, location) = self.details_for_span(ts_interface_decl.span);
+        Some(DocNode {
+          kind: DocNodeKind::Interface,
+          name,
+          location,
+          js_doc,
+          interface_def: Some(interface_def),
+          variable_def: None,
+          function_def: None,
+          class_def: None,
+          enum_def: None,
+          type_alias_def: None,
+          namespace_def: None,
+        })
+      }
+      Decl::TsTypeAlias(ts_type_alias) => {
+        if !ts_type_alias.declare {
+          return None;
+        }
+        let (name, type_alias_def) =
+          super::type_alias::get_doc_for_ts_type_alias_decl(
+            self,
+            ts_type_alias,
+          );
+        let (js_doc, location) = self.details_for_span(ts_type_alias.span);
+        Some(DocNode {
+          kind: DocNodeKind::TypeAlias,
+          name,
+          location,
+          js_doc,
+          type_alias_def: Some(type_alias_def),
+          interface_def: None,
+          variable_def: None,
+          function_def: None,
+          class_def: None,
+          enum_def: None,
+          namespace_def: None,
+        })
+      }
+      Decl::TsEnum(ts_enum) => {
+        if !ts_enum.declare {
+          return None;
+        }
+        let (name, enum_def) =
+          super::r#enum::get_doc_for_ts_enum_decl(self, ts_enum);
+        let (js_doc, location) = self.details_for_span(ts_enum.span);
+        Some(DocNode {
+          kind: DocNodeKind::Enum,
+          name,
+          location,
+          js_doc,
+          enum_def: Some(enum_def),
+          type_alias_def: None,
+          interface_def: None,
+          variable_def: None,
+          function_def: None,
+          class_def: None,
+          namespace_def: None,
+        })
+      }
+      Decl::TsModule(ts_module) => {
+        if !ts_module.declare {
+          return None;
+        }
+        let (name, namespace_def) =
+          super::namespace::get_doc_for_ts_module(self, ts_module);
+        let (js_doc, location) = self.details_for_span(ts_module.span);
+        Some(DocNode {
+          kind: DocNodeKind::Namespace,
+          name,
+          location,
+          js_doc,
+          namespace_def: Some(namespace_def),
+          enum_def: None,
+          type_alias_def: None,
+          interface_def: None,
+          variable_def: None,
+          function_def: None,
+          class_def: None,
+        })
+      }
+    }
+  }
+
   pub fn get_doc_nodes_for_module_body(
     &self,
     module_body: Vec<swc_ecma_ast::ModuleItem>,
   ) -> Vec<DocNode> {
     let mut doc_entries: Vec<DocNode> = vec![];
     for node in module_body.iter() {
-      if let swc_ecma_ast::ModuleItem::ModuleDecl(module_decl) = node {
-        doc_entries.extend(self.get_doc_nodes_for_module_decl(module_decl));
+      match node {
+        swc_ecma_ast::ModuleItem::ModuleDecl(module_decl) => {
+          doc_entries.extend(self.get_doc_nodes_for_module_decl(module_decl));
+        }
+        swc_ecma_ast::ModuleItem::Stmt(stmt) => {
+          if let Some(doc_node) = self.get_doc_node_for_stmt(stmt) {
+            doc_entries.push(doc_node);
+          }
+        }
       }
     }
     doc_entries
