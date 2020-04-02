@@ -1022,7 +1022,8 @@ declare namespace Deno {
      * directories will also be created (as with the shell command `mkdir -p`).
      * Intermediate directories are created with the same permissions.
      * When recursive is set to `true`, succeeds silently (without changing any
-     * permissions) if a directory already exists at the path. */
+     * permissions) if a directory already exists at the path, or if the path
+     * is a symlink to an existing directory. */
     recursive?: boolean;
     /** Permissions to use when creating the directory (defaults to `0o777`,
      * before the process's umask).
@@ -1036,7 +1037,7 @@ declare namespace Deno {
    *       Deno.mkdirSync("nested/directories", { recursive: true });
    *       Deno.mkdirSync("restricted_access_dir", { mode: 0o700 });
    *
-   * Throws error if the directory already exists.
+   * Defaults to throwing error if the directory already exists.
    *
    * Requires `allow-write` permission. */
   export function mkdirSync(path: string, options?: MkdirOptions): void;
@@ -1054,7 +1055,7 @@ declare namespace Deno {
    *       await Deno.mkdir("nested/directories", { recursive: true });
    *       await Deno.mkdir("restricted_access_dir", { mode: 0o700 });
    *
-   * Throws error if the directory already exists.
+   * Defaults to throwing error if the directory already exists.
    *
    * Requires `allow-write` permission. */
   export function mkdir(path: string, options?: MkdirOptions): Promise<void>;
