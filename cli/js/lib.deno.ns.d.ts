@@ -120,7 +120,7 @@ declare namespace Deno {
     failFast?: boolean;
     /** String or RegExp used to filter test to run. Only test with names
      * matching provided `String` or `RegExp` will be run. */
-    only?: string | RegExp;
+    filter?: string | RegExp;
     /** String or RegExp used to skip tests to run. Tests with names
      * matching provided `String` or `RegExp` will not be run. */
     skip?: string | RegExp;
