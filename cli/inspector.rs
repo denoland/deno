@@ -4,7 +4,6 @@
 // https://chromedevtools.github.io/devtools-protocol/
 // https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
 
-#![allow(dead_code)]
 #![allow(clippy::option_map_unit_fn)]
 
 use core::convert::Infallible as Never; // Alias for the future `!` type.
@@ -243,7 +242,7 @@ enum PollEntry<'a> {
 pub struct DenoInspector {
   v8_inspector_client: v8::inspector::V8InspectorClientBase,
   v8_inspector: v8::UniqueRef<v8::inspector::V8Inspector>,
-  session_set: RefCell<InspectorSessionSet>,
+  sessions: RefCell<InspectorSessions>,
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
   _canary_tx: oneshot::Sender<Never>,
@@ -272,7 +271,7 @@ impl Drop for DenoInspector {
     // deleted, however InspectorSession also has a drop handler that cleans
     // up after itself. To avoid a double free, make sure the inspector is
     // dropped last.
-    self.session_set.borrow_mut().empty();
+    self.sessions.borrow_mut().clear();
   }
 }
 
@@ -301,7 +300,7 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   }
 }
 
-/// DenoInspector implements a Future so that it can poll for incoming messages
+/// DenoInspector implements a Future so that it can poll for new_incoming messages
 /// from the WebSocket server. Since a Worker ownes a DenoInspector, and because
 /// a Worker is a Future too, Worker::poll will call this.
 impl Future for DenoInspector {
@@ -340,13 +339,13 @@ impl DenoInspector {
         v8::inspector::V8InspectorClientBase::new::<Self>();
       let v8_inspector =
         v8::inspector::V8Inspector::create(scope, unsafe { &mut *self_ptr });
-      let session_set = InspectorSessionSet::new(new_websocket_rx);
+      let sessions = InspectorSessions::new(self_ptr, new_websocket_rx);
       let flags = InspectorFlags::new(wait_for_debugger);
       let waker = InspectorWaker::new(scope.isolate().thread_safe_handle());
       Self {
         v8_inspector_client,
         v8_inspector,
-        session_set,
+        sessions,
         flags,
         waker,
         _canary_tx: canary_tx,
@@ -372,7 +371,7 @@ impl DenoInspector {
     server.register_inspector(info);
 
     // Poll the session handler so we will get notified whenever there is
-    // incoming debugger activity.
+    // new_incoming debugger activity.
     let _ = self_
       .poll_session_handler(PollEntry::InspectorCreated(wait_for_debugger))
       .unwrap();
@@ -388,7 +387,7 @@ impl DenoInspector {
     // possible that poll_session_handler() gets re-entered, for example when an
     // interrupt request is honored while the inspector future is polled by
     // the task executor. When this happens, return an error.
-    let mut session_set = self.session_set.try_borrow_mut()?;
+    let mut sessions = self.sessions.try_borrow_mut()?;
 
     self.waker.update(|w| {
       match w.poll_state {
@@ -405,59 +404,46 @@ impl DenoInspector {
     loop {
       loop {
         // Finish any on-going handshakes first.
-        if let Some(session) = &mut session_set.handshake_session {
+        if let Some(session) = &mut sessions.handshake {
           let poll_result = session.poll_unpin(cx);
           let handshake_done =
             replace(&mut self.flags.borrow_mut().session_handshake_done, false);
           match poll_result {
-            Poll::Ready(_) => {
-              session_set.handshake_session.take();
-            }
             Poll::Pending if handshake_done => {
-              let mut session = session_set.handshake_session.take().unwrap();
-              let reason = v8::inspector::StringView::from(
-                &b"break on first statement"[..],
-              );
-              let detail = v8::inspector::StringView::empty();
+              let mut session = sessions.handshake.take().unwrap();
               if replace(
                 &mut self.flags.borrow_mut().waiting_for_session,
                 false,
               ) {
-                session.schedule_pause_on_next_statement(&reason, &detail);
+                session.break_on_first_statement();
               }
-              session_set.established_sessions.push(session);
+              sessions.established.push(session);
             }
+            Poll::Ready(_) => sessions.handshake = None,
             Poll::Pending => break,
           };
         }
 
         // Accept new connections.
-        match session_set
-          .new_websocket_rx
-          .select_next_some()
-          .poll_unpin(cx)
-        {
-          Poll::Ready(websocket) => {
-            let session = DenoInspectorSession::new(
-              unsafe { &mut *(self as *const _ as *mut Self) },
-              websocket,
-            );
-            let prev = session_set.handshake_session.replace(session);
+        match sessions.new_incoming.poll_next_unpin(cx) {
+          Poll::Ready(Some(session)) => {
+            let prev = sessions.handshake.replace(session);
             assert!(prev.is_none());
             continue;
           }
+          Poll::Ready(None) => {}
           Poll::Pending => {}
         }
 
         // Poll established futures.
-        match session_set.established_sessions.poll_next_unpin(cx) {
+        match sessions.established.poll_next_unpin(cx) {
           Poll::Ready(Some(_)) => continue,
           Poll::Ready(None) => break,
           Poll::Pending => break,
         };
       }
 
-      let should_park = session_set.handshake_session.is_some()
+      let should_park = sessions.handshake.is_some()
         || self.flags.borrow().on_pause
         || self.flags.borrow().waiting_for_session;
 
@@ -522,26 +508,39 @@ impl InspectorFlags {
   }
 }
 
-struct InspectorSessionSet {
-  new_websocket_rx: UnboundedReceiver<WebSocket>,
-  handshake_session: Option<Box<DenoInspectorSession>>,
-  established_sessions: FuturesUnordered<Box<DenoInspectorSession>>,
+struct InspectorSessions {
+  new_incoming:
+    Pin<Box<dyn Stream<Item = Box<DenoInspectorSession>> + 'static>>,
+  handshake: Option<Box<DenoInspectorSession>>,
+  established: FuturesUnordered<Box<DenoInspectorSession>>,
 }
 
-impl InspectorSessionSet {
-  fn new(new_websocket_rx: UnboundedReceiver<WebSocket>) -> RefCell<Self> {
+impl InspectorSessions {
+  fn new(
+    inspector: *mut DenoInspector,
+    new_websocket_rx: UnboundedReceiver<WebSocket>,
+  ) -> RefCell<Self> {
     let self_ = Self {
-      new_websocket_rx,
-      handshake_session: None,
-      established_sessions: FuturesUnordered::new(),
+      new_incoming: new_websocket_rx
+        .map(move |websocket| {
+          DenoInspectorSession::new(unsafe { &mut **inspector }, websocket)
+        })
+        .boxed_local(),
+      handshake: None,
+      established: FuturesUnordered::new(),
     };
     RefCell::new(self_)
   }
 
-  fn empty(&mut self) {
-    self.new_websocket_rx.close();
-    self.handshake_session.take();
-    let _ = replace(&mut self.established_sessions, FuturesUnordered::new());
+  fn clear(&mut self) {
+    let _ = replace(
+      self,
+      Self {
+        new_incoming: stream::empty().boxed_local(),
+        handshake: None,
+        established: FuturesUnordered::new(),
+      },
+    );
   }
 }
 
@@ -641,20 +640,22 @@ impl DenoInspectorSession {
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
-    v8_inspector: &mut v8::inspector::V8Inspector,
+    v8_inspector: *mut v8::inspector::V8Inspector,
     websocket: WebSocket,
   ) -> Box<Self> {
     new_box_with(move |self_ptr| {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
 
       let empty_view = v8::inspector::StringView::empty();
-      let v8_session = v8_inspector.connect(
-        Self::CONTEXT_GROUP_ID,
-        // Todo(piscisaureus): V8Inspector::connect() should require that
-        // the 'v8_channel' argument cannot move.
-        unsafe { &mut *self_ptr },
-        &empty_view,
-      );
+      let v8_session = unsafe {
+        v8_inspector.as_mut().unwrap().connect(
+          Self::CONTEXT_GROUP_ID,
+          // Todo(piscisaureus): V8Inspector::connect() should require that
+          // the 'v8_channel' argument cannot move.
+          &mut *self_ptr,
+          &empty_view,
+        )
+      };
 
       let (outbound_queue_tx, outbound_queue_rx) =
         mpsc::unbounded::<v8::UniquePtr<v8::inspector::StringBuffer>>();
@@ -685,7 +686,7 @@ impl DenoInspectorSession {
       .map_ok(move |msg| {
         let msg = msg.as_bytes();
         let msg = v8::inspector::StringView::from(msg);
-        eprintln!("< {}", msg.to_string());
+        // eprintln!("< {}", msg.to_string());
         unsafe { &mut *self_ }.dispatch_protocol_message(&msg);
       })
       .try_collect::<()>();
@@ -695,7 +696,7 @@ impl DenoInspectorSession {
     let outbound_pump = outbound_queue_rx
       .map(move |msg| {
         let msg = msg.unwrap().string().to_string();
-        eprintln!("> {}", &msg);
+        // eprintln!("> {}", &msg);
         let msg = ws::Message::text(msg);
         Ok(msg)
       })
@@ -711,6 +712,13 @@ impl DenoInspectorSession {
       };
     }
     .boxed_local()
+  }
+
+  pub fn break_on_first_statement(&mut self) {
+    let reason =
+      v8::inspector::StringView::from(&b"break on first statement"[..]);
+    let detail = v8::inspector::StringView::empty();
+    self.schedule_pause_on_next_statement(&reason, &detail);
   }
 }
 
