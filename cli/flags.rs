@@ -2401,7 +2401,7 @@ mod tests {
           code: "const foo = 'bar'".to_string(),
           as_typescript: false,
         },
-      inspect: Some("127.0.0.1:9229".parse().unwrap()),
+        inspect: Some("127.0.0.1:9229".parse().unwrap()),
         allow_net: true,
         allow_env: true,
         allow_run: true,
@@ -2510,7 +2510,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Repl {},
-      inspect: Some("127.0.0.1:9229".parse().unwrap()),
+        inspect: Some("127.0.0.1:9229".parse().unwrap()),
         allow_read: true,
         allow_write: true,
         allow_net: true,
@@ -2567,7 +2567,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "foo.js".to_string(),
         },
-      inspect: Some("127.0.0.1:9229".parse().unwrap()),
+        inspect: Some("127.0.0.1:9229".parse().unwrap()),
         ..Flags::default()
       }
     );
