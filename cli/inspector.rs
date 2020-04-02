@@ -25,6 +25,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::mem::replace;
+use std::mem::take;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::ops::Deref;
@@ -219,7 +220,7 @@ async fn server(
 
   select! {
     _ = register_inspector_handler => (),
-    _ = deregister_inspector_handler => unreachable!!(),
+    _ = deregister_inspector_handler => unreachable!(),
     _ = server_handler => unreachable!(),
   }
 }
@@ -265,7 +266,7 @@ impl Drop for DenoInspector {
     // deleted, however InspectorSession also has a drop handler that cleans
     // up after itself. To avoid a double free, make sure the inspector is
     // dropped last.
-    self.sessions.borrow_mut().clear();
+    take(&mut *self.sessions.borrow_mut());
   }
 }
 
@@ -512,25 +513,24 @@ impl InspectorSessions {
     new_websocket_rx: UnboundedReceiver<WebSocket>,
   ) -> RefCell<Self> {
     let v8_inspector = unsafe { &mut **inspector };
+    let new_incoming = new_websocket_rx
+      .map(move |websocket| DenoInspectorSession::new(v8_inspector, websocket))
+      .boxed_local();
     let self_ = Self {
-      new_incoming: new_websocket_rx
-        .map(move |ws| DenoInspectorSession::new(v8_inspector, ws))
-        .boxed_local(),
-      handshake: None,
-      established: FuturesUnordered::new(),
+      new_incoming,
+      ..Default::default()
     };
     RefCell::new(self_)
   }
+}
 
-  fn clear(&mut self) {
-    let _ = replace(
-      self,
-      Self {
-        new_incoming: stream::empty().boxed_local(),
-        handshake: None,
-        established: FuturesUnordered::new(),
-      },
-    );
+impl Default for InspectorSessions {
+  fn default() -> Self {
+    Self {
+      new_incoming: stream::empty().boxed_local(),
+      handshake: None,
+      established: FuturesUnordered::new(),
+    }
   }
 }
 
