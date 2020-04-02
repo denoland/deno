@@ -330,10 +330,11 @@ impl DenoInspector {
     let mut self_ = new_box_with(|self_ptr| {
       let v8_inspector_client =
         v8::inspector::V8InspectorClientBase::new::<Self>();
-      let v8_inspector =
+      let mut v8_inspector =
         v8::inspector::V8Inspector::create(scope, unsafe { &mut *self_ptr });
 
-      let sessions = InspectorSessions::new(self_ptr, new_websocket_rx);
+      let sessions =
+        InspectorSessions::new(&mut v8_inspector, new_websocket_rx);
       let flags = InspectorFlags::new(wait_for_debugger);
       let waker = InspectorWaker::new(scope.isolate().thread_safe_handle());
 
@@ -509,10 +510,10 @@ struct InspectorSessions {
 
 impl InspectorSessions {
   fn new(
-    inspector: *mut DenoInspector,
+    v8_inspector: &mut v8::inspector::V8Inspector,
     new_websocket_rx: UnboundedReceiver<WebSocket>,
   ) -> RefCell<Self> {
-    let v8_inspector = unsafe { &mut **inspector };
+    let v8_inspector = v8_inspector as *mut _;
     let new_incoming = new_websocket_rx
       .map(move |websocket| DenoInspectorSession::new(v8_inspector, websocket))
       .boxed_local();
