@@ -819,10 +819,15 @@ declare namespace Deno {
      * exist at the specified path. Requires write or append access to be
      * used. */
     create?: boolean;
-    /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
-     * allowed to exist at the target location. Requires write or append
-     * access to be used. When createNew is set to `true`, create and truncate
-     * are ignored. */
+    /** Defaults to `false`. If set to `true`, an AlreadyExists error will be
+     * thrown if any file, directory, or symlink exists at the target location.
+     * This option is useful because it is atomic: otherwise between checking
+     * whether a file exists and creating a new one, the file may have been
+     * created by another process (a TOCTOU race condition/attack).
+     *
+     * Requires write or append access to be used.
+     *
+     * When createNew is set to `true`, create and truncate are ignored. */
     createNew?: boolean;
     /** Permissions to use if creating the file (defaults to `0o666`, before
      * the process's umask).
@@ -1572,9 +1577,13 @@ declare namespace Deno {
     /** Defaults to `false`. If set to `true`, will append to a file instead of
      * overwriting previous contents. */
     append?: boolean;
-    /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
-     * allowed to exist at the target location. When createNew is set to `true`,
-     * create is ignored. */
+    /** Defaults to `false`. If set to `true`, an AlreadyExists error will be
+     * thrown if any file, directory, or symlink exists at the target location.
+     * This option is useful because it is atomic: otherwise between checking
+     * whether a file exists and creating a new one, the file may have been
+     * created by another process (a TOCTOU race condition/attack).
+     *
+     * When createNew is set to `true`, create is ignored. */
     createNew?: boolean;
     /** Sets the option to allow creating a new file, if one doesn't already
      * exist at the specified path (defaults to `true`). */
