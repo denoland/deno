@@ -14,7 +14,7 @@ const GREEN_OK = green("ok");
 const YELLOW_IGNORED = yellow("ignored");
 const disabledConsole = new Console((): void => {});
 
-function defer(n: number): Promise<void> {
+function delay(n: number): Promise<void> {
   return new Promise((resolve: () => void, _) => {
     setTimeout(resolve, n);
   });
@@ -34,10 +34,10 @@ function assertOps(fn: () => void | Promise<void>): () => void | Promise<void> {
   return async function asyncOpSanitizer(): Promise<void> {
     const pre = metrics();
     await fn();
-    // Defer till next event loop turn - that way timeouts and intervals
+    // Defer until next event loop turn - that way timeouts and intervals
     // cleared can actually be removed from resource table, otherwise
     // false positives may occur (https://github.com/denoland/deno/issues/4591)
-    await defer(0);
+    await delay(0);
     const post = metrics();
     // We're checking diff because one might spawn HTTP server in the background
     // that will be a pending async op before test starts.
