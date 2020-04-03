@@ -11,6 +11,7 @@ jobs:
     runs-on: ${{ matrix.config.os }}
     timeout-minutes: 60
     strategy:
+      fail-fast: false
       matrix:
         config:
           - os: macOS-latest
