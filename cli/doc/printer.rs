@@ -428,11 +428,11 @@ fn format_function_signature(node: &doc::DocNode, indent: i64) -> String {
 
 fn format_class_signature(node: &doc::DocNode, indent: i64) -> String {
   let class_def = node.class_def.clone().unwrap();
-  let super_suffix = if class_def.super_class.is_some() {
+  let super_suffix = if let Some(super_class) = class_def.super_class {
     format!(
       " {} {}",
       colors::magenta("extends".to_string()),
-      colors::bold(class_def.super_class.unwrap())
+      super_class
     )
   } else {
     String::from("")
