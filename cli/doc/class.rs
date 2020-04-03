@@ -1,9 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::swc_common::SourceMap;
+use crate::swc_common::Spanned;
+use crate::swc_ecma_ast;
 use serde::Serialize;
-use swc_common;
-use swc_common::SourceMap;
-use swc_common::Spanned;
-use swc_ecma_ast;
 
 use super::function::function_to_function_def;
 use super::function::FunctionDef;
@@ -68,7 +67,7 @@ fn prop_name_to_string(
   source_map: &SourceMap,
   prop_name: &swc_ecma_ast::PropName,
 ) -> String {
-  use swc_ecma_ast::PropName;
+  use crate::swc_ecma_ast::PropName;
   match prop_name {
     PropName::Ident(ident) => ident.sym.to_string(),
     PropName::Str(str_) => str_.value.to_string(),
@@ -89,7 +88,7 @@ pub fn get_doc_for_class_decl(
 
   let super_class: Option<String> = match &class_decl.class.super_class {
     Some(boxed) => {
-      use swc_ecma_ast::Expr;
+      use crate::swc_ecma_ast::Expr;
       let expr: &Expr = &**boxed;
       match expr {
         Expr::Ident(ident) => Some(ident.sym.to_string()),
@@ -107,7 +106,7 @@ pub fn get_doc_for_class_decl(
     .collect();
 
   for member in &class_decl.class.body {
-    use swc_ecma_ast::ClassMember::*;
+    use crate::swc_ecma_ast::ClassMember::*;
 
     match member {
       Constructor(ctor) => {
@@ -118,8 +117,8 @@ pub fn get_doc_for_class_decl(
         let mut params = vec![];
 
         for param in &ctor.params {
-          use swc_ecma_ast::Pat;
-          use swc_ecma_ast::PatOrTsParamProp::*;
+          use crate::swc_ecma_ast::Pat;
+          use crate::swc_ecma_ast::PatOrTsParamProp::*;
 
           let param_def = match param {
             Pat(pat) => match pat {
@@ -188,7 +187,7 @@ pub fn get_doc_for_class_decl(
           .as_ref()
           .map(|rt| ts_type_ann_to_def(&doc_parser.source_map, rt));
 
-        use swc_ecma_ast::Expr;
+        use crate::swc_ecma_ast::Expr;
         let prop_name = match &*class_prop.key {
           Expr::Ident(ident) => ident.sym.to_string(),
           _ => "<TODO>".to_string(),

@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::swc_ecma_ast;
 use serde::Serialize;
-use swc_ecma_ast;
 
 use super::parser::DocParser;
 use super::ts_type::TsTypeDef;

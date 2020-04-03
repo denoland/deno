@@ -493,10 +493,6 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "sourcemap",
- "swc_common",
- "swc_ecma_ast",
- "swc_ecma_parser",
- "swc_ecma_parser_macros",
  "sys-info",
  "tempfile",
  "termcolor",
@@ -620,16 +616,15 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.9.6"
+version = "0.9.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66d1fc740f63f2fd73c63d4c55632f81fa41ec84ae531258e0e1e014bb3eb30a"
+checksum = "1e048086c7d61c4004c3305511553e7891c729c727acb31e8260a6f3d1d5b6c6"
 dependencies = [
  "dprint-core",
  "serde",
  "swc_common",
  "swc_ecma_ast",
  "swc_ecma_parser",
- "swc_ecma_parser_macros",
 ]
 
 [[package]]
@@ -2439,9 +2434,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_parser"
-version = "0.21.8"
+version = "0.21.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7fd022bbe8fdd94649a0165a53dc7fbd850370a40609b9c3fddd404b99427fb"
+checksum = "b59bca66689a8e1417c5c7ee3e969bb4a933af8fb00ddbc75a89dfcf5d8df4f8"
 dependencies = [
  "either",
  "enum_kind",
