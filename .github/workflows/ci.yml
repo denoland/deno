@@ -11,7 +11,6 @@ jobs:
     runs-on: ${{ matrix.config.os }}
     timeout-minutes: 60
     strategy:
-      fail-fast: false
       matrix:
         config:
           - os: macOS-latest
@@ -30,8 +29,8 @@ jobs:
       # Always run master branch builds to completion. This allows the cache to
       # stay mostly up-to-date in situations where a single job fails due to
       # e.g. a flaky test.
-      fail-fast:
-        ${{ github.event_name != 'push' || github.ref != 'refs/heads/master' }}
+      fail-fast: false
+      # ${{ github.event_name != 'push' || github.ref != 'refs/heads/master' }}
 
     env:
       CARGO_INCREMENTAL: 0
