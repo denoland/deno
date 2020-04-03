@@ -924,14 +924,16 @@ fn op_utime(
 ) -> Result<JsonOp, OpError> {
   let args: UtimeArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
+  let atime = args.atime;
+  let mtime = args.mtime;
 
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_utime {} {} {}", path.display(), args.atime, args.mtime);
+    debug!("op_utime {} {} {}", path.display(), atime, mtime);
     use utime::set_file_times;
-    set_file_times(&path, args.atime, args.mtime)?;
+    set_file_times(&path, atime, mtime)?;
     Ok(json!({}))
   })
 }
