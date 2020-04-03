@@ -331,11 +331,10 @@ impl DenoInspector {
     let mut self_ = new_box_with(|self_ptr| {
       let v8_inspector_client =
         v8::inspector::V8InspectorClientBase::new::<Self>();
-      let mut v8_inspector =
+      let v8_inspector =
         v8::inspector::V8Inspector::create(scope, unsafe { &mut *self_ptr });
 
-      let sessions =
-        InspectorSessions::new(&mut v8_inspector, new_websocket_rx);
+      let sessions = InspectorSessions::new(self_ptr, new_websocket_rx);
       let flags = InspectorFlags::new(wait_for_debugger);
       let waker = InspectorWaker::new(scope.isolate().thread_safe_handle());
 
@@ -511,12 +510,11 @@ struct InspectorSessions {
 
 impl InspectorSessions {
   fn new(
-    v8_inspector: &mut v8::inspector::V8Inspector,
+    inspector_ptr: *mut DenoInspector,
     new_websocket_rx: UnboundedReceiver<WebSocket>,
   ) -> RefCell<Self> {
-    let v8_inspector = v8_inspector as *mut _;
     let new_incoming = new_websocket_rx
-      .map(move |websocket| DenoInspectorSession::new(v8_inspector, websocket))
+      .map(move |websocket| DenoInspectorSession::new(inspector_ptr, websocket))
       .boxed_local();
     let self_ = Self {
       new_incoming,
@@ -632,22 +630,20 @@ impl DenoInspectorSession {
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
-    v8_inspector: *mut v8::inspector::V8Inspector,
+    inspector_ptr: *mut DenoInspector,
     websocket: WebSocket,
   ) -> Box<Self> {
     new_box_with(move |self_ptr| {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
 
       let empty_view = v8::inspector::StringView::empty();
-      let v8_session = unsafe {
-        v8_inspector.as_mut().unwrap().connect(
-          Self::CONTEXT_GROUP_ID,
-          // Todo(piscisaureus): V8Inspector::connect() should require that
-          // the 'v8_channel' argument cannot move.
-          &mut *self_ptr,
-          &empty_view,
-        )
-      };
+      let v8_session = unsafe { &mut *inspector_ptr }.connect(
+        Self::CONTEXT_GROUP_ID,
+        // Todo(piscisaureus): V8Inspector::connect() should require that
+        // the 'v8_channel' argument cannot move.
+        unsafe { &mut *self_ptr },
+        &empty_view,
+      );
 
       let (outbound_queue_tx, outbound_queue_rx) =
         mpsc::unbounded::<v8::UniquePtr<v8::inspector::StringBuffer>>();
@@ -665,7 +661,7 @@ impl DenoInspectorSession {
   }
 
   fn create_message_handler(
-    self_: *mut Self,
+    self_ptr: *mut Self,
     websocket: WebSocket,
     outbound_queue_rx: UnboundedReceiver<
       v8::UniquePtr<v8::inspector::StringBuffer>,
@@ -678,7 +674,7 @@ impl DenoInspectorSession {
       .map_ok(move |msg| {
         let msg = msg.as_bytes();
         let msg = v8::inspector::StringView::from(msg);
-        unsafe { &mut *self_ }.dispatch_protocol_message(&msg);
+        unsafe { &mut *self_ptr }.dispatch_protocol_message(&msg);
       })
       .try_collect::<()>();
 
