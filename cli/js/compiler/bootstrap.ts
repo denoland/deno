@@ -31,6 +31,18 @@ host.getSourceFile(
   ts.ScriptTarget.ESNext
 );
 
+export const features = [...globalThis.__features];
+
+// bootstrap unstable libraries
+if (features.includes("unstable")) {
+  ts.libs.push("deno.unstable");
+  ts.libMap.set("deno.unstable", "lib.deno.unstable.d.ts");
+  host.getSourceFile(
+    `${ASSETS}/lib.deno.unstable.d.ts`,
+    ts.ScriptTarget.ESNext
+  );
+}
+
 export const TS_SNAPSHOT_PROGRAM = ts.createProgram({
   rootNames: [`${ASSETS}/bootstrap.ts`],
   options,

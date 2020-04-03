@@ -16,6 +16,10 @@ import {
   windowOrWorkerGlobalScopeProperties,
   eventTargetProperties,
 } from "./globals.ts";
+import {
+  unstableGlobalMethods,
+  unstableGlobalProperties,
+} from "./globals_unstable.ts";
 import * as webWorkerOps from "./ops/web_worker.ts";
 import { LocationImpl } from "./web/location.ts";
 import { log, assert, immutableDefine } from "./util.ts";
@@ -37,6 +41,8 @@ export function postMessage(data: any): void {
 
 let isClosing = false;
 let hasBootstrapped = false;
+const features = globalThis.__features;
+delete globalThis.__features;
 
 export function close(): void {
   if (isClosing) {
@@ -99,6 +105,13 @@ export function bootstrapWorkerRuntime(name: string): void {
   Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
   Object.defineProperties(globalThis, eventTargetProperties);
   Object.defineProperties(globalThis, { name: readOnly(name) });
+
+  // Exposes global unstable features.
+  if (features.includes("unstable")) {
+    Object.defineProperties(globalThis, unstableGlobalMethods);
+    Object.defineProperties(globalThis, unstableGlobalProperties);
+  }
+
   const s = runtime.start(name);
 
   const location = new LocationImpl(s.location);

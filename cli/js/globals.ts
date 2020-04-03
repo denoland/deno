@@ -154,6 +154,8 @@ declare global {
       ) => boolean | void)
     | undefined;
 
+  var __features: string[];
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   var onmessage: ((e: { data: any }) => Promise<void> | void) | undefined;
   // Called in compiler

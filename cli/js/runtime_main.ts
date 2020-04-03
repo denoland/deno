@@ -7,7 +7,8 @@
 //  - `bootstrapMainRuntime` - must be called once, when Isolate is created.
 //   It sets up runtime by providing globals for `WindowScope` and adds `Deno` global.
 
-import * as Deno from "./deno.ts";
+import * as denoNs from "./deno.ts";
+import * as denoNsUnstable from "./deno_unstable.ts";
 import * as domTypes from "./web/dom_types.ts";
 import * as csprng from "./ops/get_random_values.ts";
 import { exit } from "./ops/os.ts";
@@ -19,6 +20,10 @@ import {
   windowOrWorkerGlobalScopeProperties,
   eventTargetProperties,
 } from "./globals.ts";
+import {
+  unstableGlobalMethods,
+  unstableGlobalProperties,
+} from "./globals_unstable.ts";
 import { internalObject } from "./internals.ts";
 import { setSignals } from "./signals.ts";
 import { replLoop } from "./repl.ts";
@@ -31,8 +36,8 @@ import { log, immutableDefine } from "./util.ts";
 // TODO: factor out `Deno` global assignment to separate function
 // Add internal object to Deno object.
 // This is not exposed as part of the Deno types.
-// @ts-ignore
-Deno[symbols.internal] = internalObject;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(denoNs as any)[symbols.internal] = internalObject;
 
 let windowIsClosing = false;
 
@@ -67,6 +72,8 @@ export const mainRuntimeGlobalProperties = {
 };
 
 let hasBootstrapped = false;
+const features = globalThis.__features;
+delete globalThis.__features;
 
 export function bootstrapMainRuntime(): void {
   if (hasBootstrapped) {
@@ -78,6 +85,13 @@ export function bootstrapMainRuntime(): void {
   Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
   Object.defineProperties(globalThis, eventTargetProperties);
   Object.defineProperties(globalThis, mainRuntimeGlobalProperties);
+
+  // Exposes global unstable features.
+  if (features.includes("unstable")) {
+    Object.defineProperties(globalThis, unstableGlobalMethods);
+    Object.defineProperties(globalThis, unstableGlobalProperties);
+  }
+
   // Registers the handler for window.onload function.
   globalThis.addEventListener("load", (e: domTypes.Event): void => {
     const { onload } = globalThis;
@@ -106,14 +120,20 @@ export function bootstrapMainRuntime(): void {
   });
   // Setup `Deno` global - we're actually overriding already
   // existing global `Deno` with `Deno` namespace from "./deno.ts".
-  immutableDefine(globalThis, "Deno", Deno);
+  immutableDefine(globalThis, "Deno", denoNs);
+
+  // Exposes `Deno` namespace unstable features.
+  if (features.includes("unstable")) {
+    Object.assign(globalThis.Deno, denoNsUnstable);
+  }
   Object.freeze(globalThis.Deno);
   Object.freeze(globalThis.Deno.core);
   Object.freeze(globalThis.Deno.core.sharedQueue);
   setSignals();
 
+  log("features", features);
   log("cwd", s.cwd);
-  log("args", Deno.args);
+  log("args", denoNs.args);
 
   if (s.repl) {
     replLoop();

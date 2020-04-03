@@ -14,7 +14,7 @@
 import "./compiler/ts_global.d.ts";
 
 import { TranspileOnlyResult } from "./compiler/api.ts";
-import { TS_SNAPSHOT_PROGRAM } from "./compiler/bootstrap.ts";
+import { TS_SNAPSHOT_PROGRAM, features } from "./compiler/bootstrap.ts";
 import { setRootExports } from "./compiler/bundler.ts";
 import {
   CompilerHostTarget,
@@ -118,6 +118,17 @@ async function compile(
     writeFile,
   }));
   let diagnostics: readonly ts.Diagnostic[] | undefined;
+
+  if (features.includes("unstable")) {
+    host.mergeOptions({
+      lib: [
+        target === CompilerHostTarget.Worker
+          ? "lib.deno.worker.d.ts"
+          : "lib.deno.window.d.ts",
+        "lib.deno.unstable.d.ts",
+      ],
+    });
+  }
 
   // if there is a configuration supplied, we need to parse that
   if (config && config.length && configPath) {

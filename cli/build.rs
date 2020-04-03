@@ -37,6 +37,11 @@ fn main() {
 
   // Main snapshot
   let root_names = vec![c.join("js/main.ts")];
+  let features = if cfg!(feature = "unstable") {
+    vec!["unstable".to_string()]
+  } else {
+    vec![]
+  };
   let bundle_path = o.join("CLI_SNAPSHOT.js");
   let snapshot_path = o.join("CLI_SNAPSHOT.bin");
 
@@ -55,11 +60,17 @@ fn main() {
     &snapshot_path,
     &bundle_path,
     &main_module_name,
+    &features,
   )
   .expect("Failed to create snapshot");
 
   // Compiler snapshot
   let root_names = vec![c.join("js/compiler.ts")];
+  let features = if cfg!(feature = "unstable") {
+    vec!["unstable".to_string()]
+  } else {
+    vec![]
+  };
   let bundle_path = o.join("COMPILER_SNAPSHOT.js");
   let snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
 
@@ -90,6 +101,12 @@ fn main() {
     "lib.deno.ns.d.ts".to_string(),
     c.join("js/lib.deno.ns.d.ts"),
   );
+  if cfg!(feature = "unstable") {
+    custom_libs.insert(
+      "lib.deno.unstable.d.ts".to_string(),
+      c.join("js/lib.deno.unstable.d.ts"),
+    );
+  }
   runtime_isolate.register_op(
     "op_fetch_asset",
     deno_typescript::op_fetch_asset(custom_libs),
@@ -100,6 +117,7 @@ fn main() {
     &snapshot_path,
     &bundle_path,
     &main_module_name,
+    &features,
   )
   .expect("Failed to create snapshot");
 }

@@ -21,6 +21,8 @@ pub static SHARED_GLOBALS_LIB: &str =
   include_str!("js/lib.deno.shared_globals.d.ts");
 pub static WINDOW_LIB: &str = include_str!("js/lib.deno.window.d.ts");
 
+pub static UNSTABLE_LIB: &str = include_str!("js/lib.deno.unstable.d.ts");
+
 #[test]
 fn cli_snapshot() {
   let mut isolate = deno_core::Isolate::new(

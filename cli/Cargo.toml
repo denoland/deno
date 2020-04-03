@@ -79,3 +79,8 @@ tokio-tungstenite = { version = "0.10", features = ["connect"] }
 
 [target.'cfg(unix)'.dev-dependencies]
 pty = "0.2.2"
+
+[features]
+default = []
+# Enable unstable APIs within the CLI
+unstable = []
