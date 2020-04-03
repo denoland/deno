@@ -438,12 +438,24 @@ fn format_class_signature(node: &doc::DocNode, indent: i64) -> String {
     String::from("")
   };
 
+  let implements = &class_def.implements;
+  let implements_suffix = if !implements.is_empty() {
+    format!(
+      " {} {}",
+      colors::magenta("implements".to_string()),
+      colors::bold(implements.join(", "))
+    )
+  } else {
+    String::from("")
+  };
+
   add_indent(
     format!(
-      "{} {}{}\n",
+      "{} {}{}{}\n",
       colors::magenta("class".to_string()),
       colors::bold(node.name.clone()),
-      super_suffix
+      super_suffix,
+      implements_suffix,
     ),
     indent,
   )
