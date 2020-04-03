@@ -41,6 +41,10 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_utime", s.stateful_json_op(op_utime));
 }
 
+fn into_string(s: std::ffi::OsString) -> Result<String, OpError> {
+  s.into_string().map_err(|_| OpError::invalid_utf8())
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OpenArgs {
@@ -597,7 +601,7 @@ fn op_realpath(
     // CreateFile and GetFinalPathNameByHandle on Windows
     let realpath = std::fs::canonicalize(&path)?;
     let mut realpath_str =
-      realpath.to_str().unwrap().to_owned().replace("\\", "/");
+      into_string(realpath.into_os_string())?.replace("\\", "/");
     if cfg!(windows) {
       realpath_str = realpath_str.trim_start_matches("//?/").to_string();
     }
@@ -630,9 +634,8 @@ fn op_read_dir(
         let entry = entry.unwrap();
         let metadata = entry.metadata().unwrap();
         // Not all filenames can be encoded as UTF-8. Skip those for now.
-        if let Some(filename) = entry.file_name().to_str() {
-          let filename = Some(filename.to_owned());
-          Some(get_stat_json(metadata, filename).unwrap())
+        if let Ok(filename) = into_string(entry.file_name()) {
+          Some(get_stat_json(metadata, Some(filename)).unwrap())
         } else {
           None
         }
@@ -759,10 +762,9 @@ fn op_read_link(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_read_link {}", path.display());
-    let path = std::fs::read_link(&path)?;
-    let path_str = path.to_str().unwrap();
-
-    Ok(json!(path_str))
+    let target = std::fs::read_link(&path)?.into_os_string();
+    let targetstr = into_string(target)?;
+    Ok(json!(targetstr))
   })
 }
 
@@ -873,7 +875,7 @@ fn op_make_temp_dir(
       suffix.as_ref().map(|x| &**x),
       true,
     )?;
-    let path_str = path.to_str().unwrap();
+    let path_str = into_string(path.into_os_string())?;
 
     Ok(json!(path_str))
   })
@@ -904,7 +906,7 @@ fn op_make_temp_file(
       suffix.as_ref().map(|x| &**x),
       false,
     )?;
-    let path_str = path.to_str().unwrap();
+    let path_str = into_string(path.into_os_string())?;
 
     Ok(json!(path_str))
   })
@@ -943,6 +945,6 @@ fn op_cwd(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let path = current_dir()?;
-  let path_str = path.into_os_string().into_string().unwrap();
+  let path_str = into_string(path.into_os_string())?;
   Ok(JsonOp::Sync(json!(path_str)))
 }
