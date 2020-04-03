@@ -39,8 +39,7 @@ test("file_server serveFile", async (): Promise<void> => {
     const res = await fetch("http://localhost:4500/README.md");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
-    assert(res.headers.has("content-type"));
-    assert(res.headers.get("content-type")!.includes("charset=utf-8"));
+    assertEquals(res.headers.get("content-type"), "text/markdown");
     const downloadedFile = await res.text();
     const localFile = new TextDecoder().decode(
       await Deno.readFile("README.md")
@@ -148,6 +147,6 @@ test("contentType", async () => {
   const request = new ServerRequest();
   const response = await serveFile(request, "http/testdata/hello.html");
   const contentType = response.headers!.get("content-type");
-  assertEquals(contentType, "text/html; charset=utf-8");
+  assertEquals(contentType, "text/html");
   (response.body as Deno.File).close();
 });
