@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { encode } from "../encoding/utf8.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { assert } from "../testing/asserts.ts";
 import { deferred, Deferred, MuxAsyncIterator } from "../util/async.ts";
@@ -148,16 +149,25 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     const bufr = new BufReader(conn);
     const w = new BufWriter(conn);
-    let req: ServerRequest | Deno.EOF = Deno.EOF;
-    let err: Error | undefined;
 
     while (!this.closing) {
+      let req: ServerRequest | Deno.EOF;
       try {
         req = await readRequest(conn, bufr);
-      } catch (e) {
-        err = e;
+      } catch (error) {
+        if (
+          error instanceof Deno.errors.InvalidData ||
+          error instanceof Deno.errors.UnexpectedEof
+        ) {
+          // An error was thrown while parsing request headers.
+          await writeResponse(w, {
+            status: 400,
+            body: encode(`${error.message}\r\n\r\n`),
+          });
+        }
+        break;
       }
-      if (err != null || req === Deno.EOF) {
+      if (req == Deno.EOF) {
         break;
       }
 
