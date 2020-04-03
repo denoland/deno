@@ -36,7 +36,7 @@ function assertOps(fn: () => void | Promise<void>): () => void | Promise<void> {
     await fn();
     // Defer till next event loop turn - that way timeouts and intervals
     // cleared can actually be removed from resource table, otherwise
-    // false positives may occur (4591)
+    // false positives may occur (https://github.com/denoland/deno/issues/4591)
     await defer(0);
     const post = metrics();
     // We're checking diff because one might spawn HTTP server in the background
