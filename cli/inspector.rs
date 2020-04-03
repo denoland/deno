@@ -1,10 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// The documentation for the inspector API is sparse, but these are helpful:
-// https://chromedevtools.github.io/devtools-protocol/
-// https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
-
-#![allow(clippy::option_map_unit_fn)]
+//! The documentation for the inspector API is sparse, but these are helpful:
+//! https://chromedevtools.github.io/devtools-protocol/
+//! https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
 
 use core::convert::Infallible as Never; // Alias for the future `!` type.
 use deno_core;
@@ -155,8 +153,9 @@ async fn server(
         info.get_websocket_debugger_url()
       );
       let mut g = inspector_map_.lock().unwrap();
-      g.insert(info.uuid, info)
-        .map(|_| panic!("Inspector UUID already in map"));
+      if g.insert(info.uuid, info).is_some() {
+        panic!("Inspector UUID already in map");
+      }
     })
     .collect::<()>();
 
@@ -573,15 +572,18 @@ impl task::ArcWake for InspectorWaker {
       match w.poll_state {
         PollState::Idle => {
           // Wake the task, if any, that has polled the Inspector future last.
-          w.task_waker.take().map(|waker| waker.wake());
+          if let Some(waker) = w.task_waker.take() {
+            waker.wake()
+          }
           // Request an interrupt from the isolate if it's running and there's
           // not unhandled interrupt request in flight.
-          w.inspector_ptr
+          if let Some(arg) = w
+            .inspector_ptr
             .take()
             .map(|ptr| ptr.as_ptr() as *mut c_void)
-            .map(|arg| {
-              w.isolate_handle.request_interrupt(handle_interrupt, arg);
-            });
+          {
+            w.isolate_handle.request_interrupt(handle_interrupt, arg);
+          }
           extern "C" fn handle_interrupt(
             _isolate: &mut v8::Isolate,
             arg: *mut c_void,

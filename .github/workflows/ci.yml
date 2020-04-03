@@ -29,8 +29,8 @@ jobs:
       # Always run master branch builds to completion. This allows the cache to
       # stay mostly up-to-date in situations where a single job fails due to
       # e.g. a flaky test.
-      fail-fast: false
-      # ${{ github.event_name != 'push' || github.ref != 'refs/heads/master' }}
+      fail-fast:
+        ${{ github.event_name != 'push' || github.ref != 'refs/heads/master' }}
 
     env:
       CARGO_INCREMENTAL: 0
