@@ -1,26 +1,30 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::swc_common;
+use crate::swc_common::comments::CommentKind;
+use crate::swc_common::comments::Comments;
+use crate::swc_common::errors::Diagnostic;
+use crate::swc_common::errors::DiagnosticBuilder;
+use crate::swc_common::errors::Emitter;
+use crate::swc_common::errors::Handler;
+use crate::swc_common::errors::HandlerFlags;
+use crate::swc_common::FileName;
+use crate::swc_common::Globals;
+use crate::swc_common::SourceMap;
+use crate::swc_common::Span;
+use crate::swc_ecma_ast;
+use crate::swc_ecma_ast::Decl;
+use crate::swc_ecma_ast::ModuleDecl;
+use crate::swc_ecma_ast::Stmt;
+use crate::swc_ecma_parser::lexer::Lexer;
+use crate::swc_ecma_parser::JscTarget;
+use crate::swc_ecma_parser::Parser;
+use crate::swc_ecma_parser::Session;
+use crate::swc_ecma_parser::SourceFileInput;
+use crate::swc_ecma_parser::Syntax;
+use crate::swc_ecma_parser::TsConfig;
 use regex::Regex;
 use std::sync::Arc;
 use std::sync::RwLock;
-use swc_common;
-use swc_common::comments::CommentKind;
-use swc_common::comments::Comments;
-use swc_common::errors::Diagnostic;
-use swc_common::errors::DiagnosticBuilder;
-use swc_common::errors::Emitter;
-use swc_common::errors::Handler;
-use swc_common::errors::HandlerFlags;
-use swc_common::FileName;
-use swc_common::Globals;
-use swc_common::SourceMap;
-use swc_common::Span;
-use swc_ecma_parser::lexer::Lexer;
-use swc_ecma_parser::JscTarget;
-use swc_ecma_parser::Parser;
-use swc_ecma_parser::Session;
-use swc_ecma_parser::SourceFileInput;
-use swc_ecma_parser::Syntax;
-use swc_ecma_parser::TsConfig;
 
 use super::DocNode;
 use super::DocNodeKind;
@@ -118,10 +122,8 @@ impl DocParser {
 
   pub fn get_doc_nodes_for_module_decl(
     &self,
-    module_decl: &swc_ecma_ast::ModuleDecl,
+    module_decl: &ModuleDecl,
   ) -> Vec<DocNode> {
-    use swc_ecma_ast::ModuleDecl;
-
     match module_decl {
       ModuleDecl::ExportDecl(export_decl) => {
         vec![super::module::get_doc_node_for_export_decl(
@@ -143,12 +145,7 @@ impl DocParser {
     }
   }
 
-  pub fn get_doc_node_for_stmt(
-    &self,
-    stmt: &swc_ecma_ast::Stmt,
-  ) -> Option<DocNode> {
-    use swc_ecma_ast::Stmt;
-
+  pub fn get_doc_node_for_stmt(&self, stmt: &Stmt) -> Option<DocNode> {
     match stmt {
       Stmt::Decl(decl) => self.get_doc_node_for_decl(decl),
       _ => None,
@@ -161,12 +158,7 @@ impl DocParser {
     (js_doc, location)
   }
 
-  pub fn get_doc_node_for_decl(
-    &self,
-    decl: &swc_ecma_ast::Decl,
-  ) -> Option<DocNode> {
-    use swc_ecma_ast::Decl;
-
+  pub fn get_doc_node_for_decl(&self, decl: &Decl) -> Option<DocNode> {
     match decl {
       Decl::Class(class_decl) => {
         if !class_decl.declare {

@@ -1,27 +1,27 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::ParamDef;
+use crate::swc_common::SourceMap;
+use crate::swc_ecma_ast;
+use crate::swc_ecma_ast::TsArrayType;
+use crate::swc_ecma_ast::TsConditionalType;
+use crate::swc_ecma_ast::TsFnOrConstructorType;
+use crate::swc_ecma_ast::TsIndexedAccessType;
+use crate::swc_ecma_ast::TsKeywordType;
+use crate::swc_ecma_ast::TsLit;
+use crate::swc_ecma_ast::TsLitType;
+use crate::swc_ecma_ast::TsOptionalType;
+use crate::swc_ecma_ast::TsParenthesizedType;
+use crate::swc_ecma_ast::TsRestType;
+use crate::swc_ecma_ast::TsThisType;
+use crate::swc_ecma_ast::TsTupleType;
+use crate::swc_ecma_ast::TsType;
+use crate::swc_ecma_ast::TsTypeAnn;
+use crate::swc_ecma_ast::TsTypeLit;
+use crate::swc_ecma_ast::TsTypeOperator;
+use crate::swc_ecma_ast::TsTypeQuery;
+use crate::swc_ecma_ast::TsTypeRef;
+use crate::swc_ecma_ast::TsUnionOrIntersectionType;
 use serde::Serialize;
-use swc_common::SourceMap;
-use swc_ecma_ast;
-use swc_ecma_ast::TsArrayType;
-use swc_ecma_ast::TsConditionalType;
-use swc_ecma_ast::TsFnOrConstructorType;
-use swc_ecma_ast::TsIndexedAccessType;
-use swc_ecma_ast::TsKeywordType;
-use swc_ecma_ast::TsLit;
-use swc_ecma_ast::TsLitType;
-use swc_ecma_ast::TsOptionalType;
-use swc_ecma_ast::TsParenthesizedType;
-use swc_ecma_ast::TsRestType;
-use swc_ecma_ast::TsThisType;
-use swc_ecma_ast::TsTupleType;
-use swc_ecma_ast::TsType;
-use swc_ecma_ast::TsTypeAnn;
-use swc_ecma_ast::TsTypeLit;
-use swc_ecma_ast::TsTypeOperator;
-use swc_ecma_ast::TsTypeQuery;
-use swc_ecma_ast::TsTypeRef;
-use swc_ecma_ast::TsUnionOrIntersectionType;
 
 // pub enum TsType {
 //  *      TsKeywordType(TsKeywordType),
@@ -119,7 +119,7 @@ impl Into<TsTypeDef> for &TsTupleType {
 
 impl Into<TsTypeDef> for &TsUnionOrIntersectionType {
   fn into(self) -> TsTypeDef {
-    use swc_ecma_ast::TsUnionOrIntersectionType::*;
+    use crate::swc_ecma_ast::TsUnionOrIntersectionType::*;
 
     match self {
       TsUnionType(union_type) => {
@@ -158,7 +158,7 @@ impl Into<TsTypeDef> for &TsUnionOrIntersectionType {
 
 impl Into<TsTypeDef> for &TsKeywordType {
   fn into(self) -> TsTypeDef {
-    use swc_ecma_ast::TsKeywordTypeKind::*;
+    use crate::swc_ecma_ast::TsKeywordTypeKind::*;
 
     let keyword_str = match self.kind {
       TsAnyKeyword => "any",
@@ -248,7 +248,7 @@ impl Into<TsTypeDef> for &TsThisType {
 }
 
 fn ts_entity_name_to_name(entity_name: &swc_ecma_ast::TsEntityName) -> String {
-  use swc_ecma_ast::TsEntityName::*;
+  use crate::swc_ecma_ast::TsEntityName::*;
 
   match entity_name {
     Ident(ident) => ident.sym.to_string(),
@@ -262,7 +262,7 @@ fn ts_entity_name_to_name(entity_name: &swc_ecma_ast::TsEntityName) -> String {
 
 impl Into<TsTypeDef> for &TsTypeQuery {
   fn into(self) -> TsTypeDef {
-    use swc_ecma_ast::TsTypeQueryExpr::*;
+    use crate::swc_ecma_ast::TsTypeQueryExpr::*;
 
     let type_name = match &self.expr_name {
       TsEntityName(entity_name) => ts_entity_name_to_name(&*entity_name),
@@ -331,14 +331,14 @@ impl Into<TsTypeDef> for &TsTypeLit {
     let mut call_signatures = vec![];
 
     for type_element in &self.members {
-      use swc_ecma_ast::TsTypeElement::*;
+      use crate::swc_ecma_ast::TsTypeElement::*;
 
       match &type_element {
         TsMethodSignature(ts_method_sig) => {
           let mut params = vec![];
 
           for param in &ts_method_sig.params {
-            use swc_ecma_ast::TsFnParam::*;
+            use crate::swc_ecma_ast::TsFnParam::*;
 
             let param_def = match param {
               Ident(ident) => {
@@ -380,7 +380,7 @@ impl Into<TsTypeDef> for &TsTypeLit {
           let mut params = vec![];
 
           for param in &ts_prop_sig.params {
-            use swc_ecma_ast::TsFnParam::*;
+            use crate::swc_ecma_ast::TsFnParam::*;
 
             let param_def = match param {
               Ident(ident) => {
@@ -418,7 +418,7 @@ impl Into<TsTypeDef> for &TsTypeLit {
         TsCallSignatureDecl(ts_call_sig) => {
           let mut params = vec![];
           for param in &ts_call_sig.params {
-            use swc_ecma_ast::TsFnParam::*;
+            use crate::swc_ecma_ast::TsFnParam::*;
 
             let param_def = match param {
               Ident(ident) => {
@@ -486,14 +486,14 @@ impl Into<TsTypeDef> for &TsConditionalType {
 
 impl Into<TsTypeDef> for &TsFnOrConstructorType {
   fn into(self) -> TsTypeDef {
-    use swc_ecma_ast::TsFnOrConstructorType::*;
+    use crate::swc_ecma_ast::TsFnOrConstructorType::*;
 
     let fn_def = match self {
       TsFnType(ts_fn_type) => {
         let mut params = vec![];
 
         for param in &ts_fn_type.params {
-          use swc_ecma_ast::TsFnParam::*;
+          use crate::swc_ecma_ast::TsFnParam::*;
 
           let param_def = match param {
             Ident(ident) => {
@@ -527,7 +527,7 @@ impl Into<TsTypeDef> for &TsFnOrConstructorType {
         let mut params = vec![];
 
         for param in &ctor_type.params {
-          use swc_ecma_ast::TsFnParam::*;
+          use crate::swc_ecma_ast::TsFnParam::*;
 
           let param_def = match param {
             Ident(ident) => {
@@ -569,7 +569,7 @@ impl Into<TsTypeDef> for &TsFnOrConstructorType {
 
 impl Into<TsTypeDef> for &TsType {
   fn into(self) -> TsTypeDef {
-    use swc_ecma_ast::TsType::*;
+    use crate::swc_ecma_ast::TsType::*;
 
     match self {
       TsKeywordType(ref keyword_type) => keyword_type.into(),
@@ -787,7 +787,7 @@ pub fn ts_type_ann_to_def(
   source_map: &SourceMap,
   type_ann: &TsTypeAnn,
 ) -> TsTypeDef {
-  use swc_ecma_ast::TsType::*;
+  use crate::swc_ecma_ast::TsType::*;
 
   match &*type_ann.type_ann {
     TsKeywordType(keyword_type) => keyword_type.into(),

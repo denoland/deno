@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::swc_ecma_ast;
 use serde::Serialize;
-use swc_ecma_ast;
 
 use super::parser::DocParser;
 
@@ -24,7 +24,7 @@ pub fn get_doc_for_ts_enum_decl(
   let mut members = vec![];
 
   for enum_member in &enum_decl.members {
-    use swc_ecma_ast::TsEnumMemberId::*;
+    use crate::swc_ecma_ast::TsEnumMemberId::*;
 
     let member_name = match &enum_member.id {
       Ident(ident) => ident.sym.to_string(),
