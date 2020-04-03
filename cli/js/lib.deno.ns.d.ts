@@ -1283,8 +1283,7 @@ declare namespace Deno {
    *
    *       Deno.renameSync("old/path", "new/path");
    *
-   * On Unix, this operation is like `mv -T` in not following symlinks at
-   * either path.
+   * On Unix, this operation does not follow symlinks at either path.
    *
    * It varies between platforms when the operation throws errors, and if so what
    * they are. It's always an error to rename anything to a non-empty directory.
@@ -1299,8 +1298,7 @@ declare namespace Deno {
    *
    *       await Deno.rename("old/path", "new/path");
    *
-   * On Unix, this operation is like `mv -T` in not following symlinks at
-   * either path.
+   * On Unix, this operation does not follow symlinks at either path.
    *
    * It varies between platforms when the operation throws errors, and if so what
    * they are. It's always an error to rename anything to a non-empty directory.
