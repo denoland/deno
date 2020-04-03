@@ -60,6 +60,7 @@ pub struct ClassDef {
   pub constructors: Vec<ClassConstructorDef>,
   pub properties: Vec<ClassPropertyDef>,
   pub methods: Vec<ClassMethodDef>,
+  pub super_class: Option<String>,
 }
 
 fn prop_name_to_string(
@@ -84,6 +85,18 @@ pub fn get_doc_for_class_decl(
   let mut constructors = vec![];
   let mut methods = vec![];
   let mut properties = vec![];
+
+  let super_class: Option<String> = match &class_decl.class.super_class {
+    Some(boxed) => {
+      use swc_ecma_ast::Expr;
+      let expr: &Expr = &**boxed;
+      match expr {
+        Expr::Ident(ident) => Some(ident.sym.to_string()),
+        _ => None,
+      }
+    }
+    None => None,
+  };
 
   for member in &class_decl.class.body {
     use swc_ecma_ast::ClassMember::*;
@@ -198,6 +211,7 @@ pub fn get_doc_for_class_decl(
   let class_name = class_decl.ident.sym.to_string();
   let class_def = ClassDef {
     is_abstract: class_decl.class.is_abstract,
+    super_class,
     constructors,
     properties,
     methods,

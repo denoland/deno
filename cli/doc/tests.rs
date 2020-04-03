@@ -8,9 +8,9 @@ use serde_json::json;
 fn export_fn() {
   let source_code = r#"/**
 * Hello there, this is a multiline JSdoc.
-* 
+*
 * It has many lines
-* 
+*
 * Or not that many?
 */
 export function foo(a: string, b: number): void {
@@ -139,6 +139,7 @@ export class Foobar extends Fizz implements Buzz {
     "jsDoc": "Class doc",
     "classDef": {
       "isAbstract": false,
+      "superClass": "Fizz",
       "constructors": [
         {
           "jsDoc": "Constructor js doc",
@@ -308,7 +309,7 @@ export class Foobar extends Fizz implements Buzz {
 
   assert!(
     colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("class Foobar")
+      .contains("class Foobar extends Fizz")
   );
 }
 
