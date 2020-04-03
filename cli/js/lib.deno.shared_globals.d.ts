@@ -34,6 +34,7 @@ declare interface WindowOrWorkerGlobalScope {
   FormData: __domTypes.FormDataConstructor;
   TextEncoder: typeof __textEncoding.TextEncoder;
   TextDecoder: typeof __textEncoding.TextDecoder;
+  ReadableStream: __domTypes.ReadableStreamConstructor;
   Request: __domTypes.RequestConstructor;
   Response: typeof __fetch.Response;
   performance: __performanceUtil.Performance;
@@ -250,6 +251,7 @@ declare const location: __domTypes.Location;
 declare const FormData: __domTypes.FormDataConstructor;
 declare const TextEncoder: typeof __textEncoding.TextEncoder;
 declare const TextDecoder: typeof __textEncoding.TextDecoder;
+declare const ReadableStream: __domTypes.ReadableStreamConstructor;
 declare const Request: __domTypes.RequestConstructor;
 declare const Response: typeof __fetch.Response;
 declare const performance: __performanceUtil.Performance;
@@ -282,6 +284,7 @@ declare type Headers = __domTypes.Headers;
 declare type FormData = __domTypes.FormData;
 declare type TextEncoder = __textEncoding.TextEncoder;
 declare type TextDecoder = __textEncoding.TextDecoder;
+declare type ReadableStream<R = any> = __domTypes.ReadableStream<R>;
 declare type Request = __domTypes.Request;
 declare type Response = __domTypes.Response;
 declare type Worker = __workers.Worker;
@@ -551,6 +554,27 @@ declare namespace __domTypes {
     preventClose?: boolean;
     signal?: AbortSignal;
   }
+  export interface UnderlyingSource<R = any> {
+    cancel?: ReadableStreamErrorCallback;
+    pull?: ReadableStreamDefaultControllerCallback<R>;
+    start?: ReadableStreamDefaultControllerCallback<R>;
+    type?: undefined;
+  }
+  export interface ReadableStreamErrorCallback {
+    (reason: any): void | PromiseLike<void>;
+  }
+
+  export interface ReadableStreamDefaultControllerCallback<R> {
+    (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
+  }
+
+  export interface ReadableStreamDefaultController<R> {
+    readonly desiredSize: number;
+    enqueue(chunk?: R): void;
+    close(): void;
+    error(e?: any): void;
+  }
+
   /** This Streams API interface represents a readable stream of byte data. The
    * Fetch API offers a concrete instance of a ReadableStream through the body
    * property of a Response object. */
@@ -574,6 +598,12 @@ declare namespace __domTypes {
     */
     tee(): [ReadableStream<R>, ReadableStream<R>];
   }
+
+  export interface ReadableStreamConstructor<R = any> {
+    new (src?: UnderlyingSource<R>): ReadableStream<R>;
+    prototype: ReadableStream<R>;
+  }
+
   export interface ReadableStreamReader<R = any> {
     cancel(reason: any): Promise<void>;
     read(): Promise<ReadableStreamReadResult<R>>;
@@ -939,6 +969,9 @@ declare namespace __blob {
       options?: __domTypes.BlobPropertyBag
     );
     slice(start?: number, end?: number, contentType?: string): DenoBlob;
+    stream(): __domTypes.ReadableStream<Uint8Array>;
+    text(): Promise<string>;
+    arrayBuffer(): Promise<ArrayBuffer>;
   }
 }
 
