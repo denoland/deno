@@ -40,7 +40,7 @@ const CORSEnabled = serverArgs.cors ? true : false;
 const target = posix.resolve(serverArgs._[1] ?? "");
 const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4500}`;
 
-const MEDIA_TYPES: { [key: string]: string } = {
+const MEDIA_TYPES: Record<string, string> = {
   ".md": "text/markdown",
   ".html": "text/html",
   ".htm": "text/html",
