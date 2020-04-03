@@ -8,6 +8,7 @@ use swc_ecma_ast;
 use super::function::function_to_function_def;
 use super::function::FunctionDef;
 use super::parser::DocParser;
+use super::ts_type::ts_entity_name_to_name;
 use super::ts_type::ts_type_ann_to_def;
 use super::ts_type::TsTypeDef;
 use super::Location;
@@ -54,13 +55,13 @@ pub struct ClassMethodDef {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ClassDef {
-  // TODO: decorators, super_class, implements,
-  // type_params, super_type_params
+  // TODO: decorators, type_params, super_type_params
   pub is_abstract: bool,
   pub constructors: Vec<ClassConstructorDef>,
   pub properties: Vec<ClassPropertyDef>,
   pub methods: Vec<ClassMethodDef>,
   pub super_class: Option<String>,
+  pub implements: Vec<String>,
 }
 
 fn prop_name_to_string(
@@ -97,6 +98,13 @@ pub fn get_doc_for_class_decl(
     }
     None => None,
   };
+
+  let implements: Vec<String> = class_decl
+    .class
+    .implements
+    .iter()
+    .map(|expr| ts_entity_name_to_name(&expr.expr))
+    .collect();
 
   for member in &class_decl.class.body {
     use swc_ecma_ast::ClassMember::*;
@@ -212,6 +220,7 @@ pub fn get_doc_for_class_decl(
   let class_def = ClassDef {
     is_abstract: class_decl.class.is_abstract,
     super_class,
+    implements,
     constructors,
     properties,
     methods,

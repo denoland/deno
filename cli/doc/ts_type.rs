@@ -247,7 +247,9 @@ impl Into<TsTypeDef> for &TsThisType {
   }
 }
 
-fn ts_entity_name_to_name(entity_name: &swc_ecma_ast::TsEntityName) -> String {
+pub fn ts_entity_name_to_name(
+  entity_name: &swc_ecma_ast::TsEntityName,
+) -> String {
   use swc_ecma_ast::TsEntityName::*;
 
   match entity_name {
