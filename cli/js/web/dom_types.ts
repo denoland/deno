@@ -277,6 +277,9 @@ export interface Blob {
   readonly size: number;
   readonly type: string;
   slice(start?: number, end?: number, contentType?: string): Blob;
+  stream(): ReadableStream;
+  text(): Promise<string>;
+  arrayBuffer(): Promise<ArrayBuffer>;
 }
 
 export interface Body {
@@ -315,6 +318,24 @@ export interface PipeOptions {
   preventCancel?: boolean;
   preventClose?: boolean;
   signal?: AbortSignal;
+}
+
+export interface UnderlyingSource<R = any> {
+  cancel?: ReadableStreamErrorCallback;
+  pull?: ReadableStreamDefaultControllerCallback<R>;
+  start?: ReadableStreamDefaultControllerCallback<R>;
+  type?: undefined;
+}
+export interface ReadableStreamErrorCallback {
+  (reason: any): void | PromiseLike<void>;
+}
+
+export interface ReadableStreamDefaultControllerCallback<R> {
+  (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
+}
+
+export interface ReadableStreamConstructor {
+  new <R = any>(source?: UnderlyingSource<R>): ReadableStream<R>;
 }
 
 export interface ReadableStream<R = any> {
