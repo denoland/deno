@@ -2,6 +2,7 @@
 import * as domTypes from "./dom_types.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { build } from "../build.ts";
+import { ReadableStream } from "./streams/mod.ts";
 
 export const bytesSymbol = Symbol("bytes");
 
@@ -114,7 +115,6 @@ function processBlobParts(
     .reduce((a, b): number => a + b, 0);
   const ab = new ArrayBuffer(byteLength);
   const bytes = new Uint8Array(ab);
-
   let courser = 0;
   for (const u8 of uint8Arrays) {
     bytes.set(u8, courser);
@@ -126,11 +126,13 @@ function processBlobParts(
 
 function getStream(blobBytes: Uint8Array): domTypes.ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
-    start: (controller): void => {
+    start: (
+      controller: domTypes.ReadableStreamDefaultController<Uint8Array>
+    ): void => {
       controller.enqueue(blobBytes);
       controller.close();
     },
-  });
+  }) as domTypes.ReadableStream<Uint8Array>;
 }
 
 async function readBytes(

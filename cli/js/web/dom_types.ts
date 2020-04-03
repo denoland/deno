@@ -320,6 +320,24 @@ export interface PipeOptions {
   signal?: AbortSignal;
 }
 
+export interface UnderlyingSource<R = any> {
+  cancel?: ReadableStreamErrorCallback;
+  pull?: ReadableStreamDefaultControllerCallback<R>;
+  start?: ReadableStreamDefaultControllerCallback<R>;
+  type?: undefined;
+}
+export interface ReadableStreamErrorCallback {
+  (reason: any): void | PromiseLike<void>;
+}
+
+export interface ReadableStreamDefaultControllerCallback<R> {
+  (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
+}
+
+export interface ReadableStreamConstructor {
+  new <R = any>(source?: UnderlyingSource<R>): ReadableStream<R>;
+}
+
 export interface ReadableStream<R = any> {
   readonly locked: boolean;
   cancel(reason?: any): Promise<void>;

@@ -969,7 +969,7 @@ declare namespace __blob {
       options?: __domTypes.BlobPropertyBag
     );
     slice(start?: number, end?: number, contentType?: string): DenoBlob;
-    stream(): __domTypes.ReadableStream;
+    stream(): __domTypes.ReadableStream<Uint8Array>;
     text(): Promise<string>;
     arrayBuffer(): Promise<ArrayBuffer>;
   }
