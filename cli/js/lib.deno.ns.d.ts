@@ -703,7 +703,8 @@ declare namespace Deno {
   export function write(rid: number, data: Uint8Array): Promise<number>;
 
   /** Synchronously seek a resource ID (`rid`) to the given `offset` under mode
-   * given by `whence`.  The current position within the resource is returned.
+   * given by `whence`.  The new position within the resource (bytes from the
+   * start) is returned.
    *
    *        const file = Deno.openSync('hello.txt', {read: true, write: true, truncate: true, create: true});
    *        Deno.writeSync(file.rid, new TextEncoder().encode("Hello world"));
@@ -731,7 +732,7 @@ declare namespace Deno {
   ): number;
 
   /** Seek a resource ID (`rid`) to the given `offset` under mode given by `whence`.
-   * The call resolves to the current position within the resource.
+   * The call resolves to the new position within the resource (bytes from the start).
    *
    *        const file = await Deno.open('hello.txt', {read: true, write: true, truncate: true, create: true});
    *        await Deno.write(file.rid, new TextEncoder().encode("Hello world"));
