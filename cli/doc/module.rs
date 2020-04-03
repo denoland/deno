@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use swc_common;
-use swc_common::Spanned;
-use swc_ecma_ast;
+use crate::swc_common::Spanned;
+use crate::swc_ecma_ast;
 
 use super::parser::DocParser;
 use super::DocNode;
@@ -12,7 +11,7 @@ pub fn get_doc_node_for_export_decl(
   export_decl: &swc_ecma_ast::ExportDecl,
 ) -> DocNode {
   let export_span = export_decl.span();
-  use swc_ecma_ast::Decl;
+  use crate::swc_ecma_ast::Decl;
 
   let js_doc = doc_parser.js_doc_for_span(export_span);
   let location = doc_parser
@@ -165,7 +164,7 @@ pub fn get_doc_nodes_for_named_export(
     .specifiers
     .iter()
     .map(|export_specifier| {
-      use swc_ecma_ast::ExportSpecifier::*;
+      use crate::swc_ecma_ast::ExportSpecifier::*;
 
       match export_specifier {
         Named(named_export_specifier) => {

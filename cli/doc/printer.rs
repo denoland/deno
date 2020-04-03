@@ -14,6 +14,7 @@ use crate::colors;
 use crate::doc;
 use crate::doc::ts_type::TsTypeDefKind;
 use crate::doc::DocNodeKind;
+use crate::swc_ecma_ast;
 
 pub fn format(doc_nodes: Vec<doc::DocNode>) -> String {
   format_(doc_nodes, 0)

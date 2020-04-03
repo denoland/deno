@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::swc_ecma_ast;
 use serde::Serialize;
-use swc_ecma_ast;
 
 use super::parser::DocParser;
 use super::ts_type::ts_type_ann_to_def;
@@ -52,8 +52,8 @@ pub struct InterfaceDef {
 }
 
 fn expr_to_name(expr: &swc_ecma_ast::Expr) -> String {
-  use swc_ecma_ast::Expr::*;
-  use swc_ecma_ast::ExprOrSuper::*;
+  use crate::swc_ecma_ast::Expr::*;
+  use crate::swc_ecma_ast::ExprOrSuper::*;
 
   match expr {
     Ident(ident) => ident.sym.to_string(),
@@ -80,7 +80,7 @@ pub fn get_doc_for_ts_interface_decl(
   let mut call_signatures = vec![];
 
   for type_element in &interface_decl.body.body {
-    use swc_ecma_ast::TsTypeElement::*;
+    use crate::swc_ecma_ast::TsTypeElement::*;
 
     match &type_element {
       TsMethodSignature(ts_method_sig) => {
@@ -89,7 +89,7 @@ pub fn get_doc_for_ts_interface_decl(
         let mut params = vec![];
 
         for param in &ts_method_sig.params {
-          use swc_ecma_ast::TsFnParam::*;
+          use crate::swc_ecma_ast::TsFnParam::*;
 
           let param_def = match param {
             Ident(ident) => {
@@ -141,7 +141,7 @@ pub fn get_doc_for_ts_interface_decl(
         let mut params = vec![];
 
         for param in &ts_prop_sig.params {
-          use swc_ecma_ast::TsFnParam::*;
+          use crate::swc_ecma_ast::TsFnParam::*;
 
           let param_def = match param {
             Ident(ident) => {
@@ -188,7 +188,7 @@ pub fn get_doc_for_ts_interface_decl(
 
         let mut params = vec![];
         for param in &ts_call_sig.params {
-          use swc_ecma_ast::TsFnParam::*;
+          use crate::swc_ecma_ast::TsFnParam::*;
 
           let param_def = match param {
             Ident(ident) => {

@@ -61,6 +61,10 @@ pub mod version;
 mod web_worker;
 pub mod worker;
 
+pub use dprint_plugin_typescript::swc_common;
+pub use dprint_plugin_typescript::swc_ecma_ast;
+pub use dprint_plugin_typescript::swc_ecma_parser;
+
 use crate::compilers::TargetLib;
 use crate::file_fetcher::SourceFile;
 use crate::global_state::GlobalState;
