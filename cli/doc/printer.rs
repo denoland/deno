@@ -427,11 +427,23 @@ fn format_function_signature(node: &doc::DocNode, indent: i64) -> String {
 }
 
 fn format_class_signature(node: &doc::DocNode, indent: i64) -> String {
+  let class_def = node.class_def.clone().unwrap();
+  let super_suffix = if let Some(super_class) = class_def.super_class {
+    format!(
+      " {} {}",
+      colors::magenta("extends".to_string()),
+      colors::bold(super_class)
+    )
+  } else {
+    String::from("")
+  };
+
   add_indent(
     format!(
-      "{} {}\n",
+      "{} {}{}\n",
       colors::magenta("class".to_string()),
-      colors::bold(node.name.clone())
+      colors::bold(node.name.clone()),
+      super_suffix
     ),
     indent,
   )
