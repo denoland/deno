@@ -432,7 +432,7 @@ fn format_class_signature(node: &doc::DocNode, indent: i64) -> String {
     format!(
       " {} {}",
       colors::magenta("extends".to_string()),
-      super_class
+      colors::bold(super_class)
     )
   } else {
     String::from("")

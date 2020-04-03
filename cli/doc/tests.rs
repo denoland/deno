@@ -309,7 +309,7 @@ export class Foobar extends Fizz implements Buzz {
 
   assert!(
     colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("class Foobar")
+      .contains("class Foobar extends Fizz")
   );
 }
 
