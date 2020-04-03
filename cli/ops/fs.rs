@@ -226,12 +226,14 @@ fn op_seek(
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  let is_sync = args.promise_id.is_none();
   let fut = async move {
+    debug!("op_seek {} {} {}", rid, offset, whence);
     let pos = file.seek(seek_from).await?;
     Ok(json!(pos))
   };
 
-  if args.promise_id.is_none() {
+  if is_sync {
     let buf = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(buf))
   } else {
