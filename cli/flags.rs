@@ -7,6 +7,7 @@ use clap::ArgMatches;
 use clap::SubCommand;
 use log::Level;
 use std::collections::HashSet;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 /// Creates vector of strings, Vec<String>
@@ -107,8 +108,8 @@ pub struct Flags {
   pub no_prompts: bool,
   pub no_remote: bool,
   pub cached_only: bool,
-  pub inspect: Option<String>,
-  pub inspect_brk: Option<String>,
+  pub inspect: Option<SocketAddr>,
+  pub inspect_brk: Option<SocketAddr>,
   pub seed: Option<u64>,
   pub v8_flags: Option<Vec<String>>,
 
@@ -1021,6 +1022,7 @@ fn ca_file_arg<'a, 'b>() -> Arg<'a, 'b> {
     .help("Load certificate authority from PEM encoded file")
     .takes_value(true)
 }
+
 fn ca_file_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.ca_file = matches.value_of("cert").map(ToOwned::to_owned);
 }
@@ -1035,7 +1037,8 @@ fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .min_values(0)
         .max_values(1)
         .require_equals(true)
-        .takes_value(true),
+        .takes_value(true)
+        .validator(inspect_arg_validate),
     )
     .arg(
       Arg::with_name("inspect-brk")
@@ -1047,26 +1050,34 @@ fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .min_values(0)
         .max_values(1)
         .require_equals(true)
-        .takes_value(true),
+        .takes_value(true)
+        .validator(inspect_arg_validate),
     )
 }
 
+fn inspect_arg_validate(val: String) -> Result<(), String> {
+  match val.parse::<SocketAddr>() {
+    Ok(_) => Ok(()),
+    Err(e) => Err(e.to_string()),
+  }
+}
+
 fn inspect_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  const DEFAULT: &str = "127.0.0.1:9229";
+  let default = || "127.0.0.1:9229".parse::<SocketAddr>().unwrap();
   flags.inspect = if matches.is_present("inspect") {
     if let Some(host) = matches.value_of("inspect") {
-      Some(host.to_string())
+      Some(host.parse().unwrap())
     } else {
-      Some(DEFAULT.to_string())
+      Some(default())
     }
   } else {
     None
   };
   flags.inspect_brk = if matches.is_present("inspect-brk") {
     if let Some(host) = matches.value_of("inspect-brk") {
-      Some(host.to_string())
+      Some(host.parse().unwrap())
     } else {
-      Some(DEFAULT.to_string())
+      Some(default())
     }
   } else {
     None
@@ -2390,7 +2401,7 @@ mod tests {
           code: "const foo = 'bar'".to_string(),
           as_typescript: false,
         },
-        inspect: Some("127.0.0.1:9229".to_string()),
+        inspect: Some("127.0.0.1:9229".parse().unwrap()),
         allow_net: true,
         allow_env: true,
         allow_run: true,
@@ -2499,7 +2510,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Repl {},
-        inspect: Some("127.0.0.1:9229".to_string()),
+        inspect: Some("127.0.0.1:9229".parse().unwrap()),
         allow_read: true,
         allow_write: true,
         allow_net: true,
@@ -2556,27 +2567,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "foo.js".to_string(),
         },
-        inspect: Some("127.0.0.1:9229".to_string()),
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn inspect_custom_host() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "run",
-      "--inspect=deno.land:80",
-      "foo.js"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run {
-          script: "foo.js".to_string(),
-        },
-        inspect: Some("deno.land:80".to_string()),
+        inspect: Some("127.0.0.1:9229".parse().unwrap()),
         ..Flags::default()
       }
     );

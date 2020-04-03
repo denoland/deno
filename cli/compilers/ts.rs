@@ -255,8 +255,9 @@ impl TsCompiler {
   fn setup_worker(global_state: GlobalState) -> CompilerWorker {
     let entry_point =
       ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
-    let worker_state = State::new(global_state.clone(), None, entry_point)
-      .expect("Unable to create worker state");
+    let worker_state =
+      State::new(global_state.clone(), None, entry_point, DebugType::Internal)
+        .expect("Unable to create worker state");
 
     // Count how many times we start the compiler worker.
     global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);

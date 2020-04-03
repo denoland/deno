@@ -70,6 +70,7 @@ use crate::file_fetcher::SourceFile;
 use crate::global_state::GlobalState;
 use crate::msg::MediaType;
 use crate::ops::io::get_stdio;
+use crate::state::DebugType;
 use crate::state::State;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
@@ -132,7 +133,7 @@ fn create_main_worker(
   global_state: GlobalState,
   main_module: ModuleSpecifier,
 ) -> Result<MainWorker, ErrBox> {
-  let state = State::new(global_state, None, main_module)?;
+  let state = State::new(global_state, None, main_module, DebugType::Main)?;
 
   {
     let mut s = state.borrow_mut();
