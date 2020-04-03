@@ -2002,7 +2002,6 @@ fn test_permissions_net_listen_allow_localhost() {
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
 
-#[cfg(not(target_os = "linux"))] // TODO(ry) broken on github actions.
 fn extract_ws_url_from_stderr(
   stderr: &mut std::process::ChildStderr,
 ) -> url::Url {
@@ -2048,7 +2047,6 @@ enum TestStep {
   StdOut(&'static str),
   WsRecv(&'static str),
   WsSend(&'static str),
-  WsClose,
 }
 
 #[tokio::test]
@@ -2075,16 +2073,10 @@ async fn inspector_break_on_first_line() {
     .expect("Can't connect");
   assert_eq!(response.status(), 101); // Switching protocols.
 
-  let stdout = child.stdout.as_mut().unwrap();
-  let mut stdout_lines = std::io::BufReader::new(stdout)
-    .lines()
-    .map(|line| line.unwrap())
-    .inspect(|l| eprintln!("$ {}", &l));
+  let (mut socket_tx, mut socket_rx) = socket.split();
 
-  let (mut socket_tx, socket_rx) = socket.split();
-  let mut socket_rx = socket_rx
-    .map(|msg| msg.unwrap().to_string())
-    .inspect(|m| eprintln!("< {}", &m));
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines = std::io::BufReader::new(stdout).lines();
 
   use TestStep::*;
   let test_steps = vec![
@@ -2099,37 +2091,32 @@ async fn inspector_break_on_first_line() {
     WsRecv(r#"{"id":3,"result":{}}"#),
     WsRecv(r#"{"method":"Debugger.paused","#),
     WsSend(
-      r#"{"id":4,"method":"Runtime.compileScript","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\");","sourceURL":"","persistScript":false,"executionContextId":1}}"#,
-    ),
-    WsRecv(r#"{"id":4,"result":{}}"#),
-    WsSend(
-      r#"{"id":5,"method":"Debugger.evaluateOnCallFrame","params":{"callFrameId":"{\"ordinal\":0,\"injectedScriptId\":1}","expression":"Deno.core.print(\"hello from the inspector\\n\");\n","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"returnByValue":false,"generatePreview":true}}"#,
+      r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true,"generatePreview":true}}"#,
     ),
     WsRecv(r#"{"id":5,"result":{"result":{"type":"undefined"}}}"#),
     StdOut("hello from the inspector"),
     WsSend(r#"{"id":6,"method":"Debugger.resume"}"#),
     WsRecv(r#"{"id":6,"result":{}}"#),
-    WsRecv(r#"{"method":"Debugger.resumed","params":{}}"#),
-    WsClose,
     StdOut("hello from the script"),
   ];
 
   for step in test_steps {
     match step {
-      StdOut(s) => assert_eq!(&stdout_lines.next().unwrap(), s),
-      WsRecv(s) => loop {
-        match socket_rx.next().await {
-          Some(msg)
-            if msg.starts_with(r#"{"method":"Debugger.scriptParsed","#) => {}
-          Some(msg) => break assert!(msg.starts_with(s)),
-          None => panic!("Unexpected end of stream."),
-        };
+      StdOut(s) => match stdout_lines.next() {
+        Some(Ok(line)) => assert_eq!(line, s),
+        other => panic!(other),
       },
-      WsClose => socket_tx.close().await.unwrap(),
-      WsSend(s) => {
-        eprintln!("> {}", s);
-        socket_tx.send(s.into()).await.unwrap();
-      }
+      WsRecv(s) => loop {
+        let msg = match socket_rx.next().await {
+          Some(Ok(msg)) => msg.to_string(),
+          other => panic!(other),
+        };
+        if !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#) {
+          assert!(msg.starts_with(s));
+          break;
+        }
+      },
+      WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
     }
   }
 
@@ -2153,7 +2140,6 @@ async fn inspector_pause() {
     .spawn()
     .unwrap();
   let ws_url = extract_ws_url_from_stderr(child.stderr.as_mut().unwrap());
-  println!("ws_url {}", ws_url);
   // We use tokio_tungstenite as a websocket client because warp (which is
   // a dependency of Deno) uses it.
   let (mut socket, _) = tokio_tungstenite::connect_async(ws_url)

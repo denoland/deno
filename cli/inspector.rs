@@ -677,7 +677,6 @@ impl DenoInspectorSession {
       .map_ok(move |msg| {
         let msg = msg.as_bytes();
         let msg = v8::inspector::StringView::from(msg);
-        // eprintln!("< {}", msg.to_string());
         unsafe { &mut *self_ }.dispatch_protocol_message(&msg);
       })
       .try_collect::<()>();
@@ -687,7 +686,6 @@ impl DenoInspectorSession {
     let outbound_pump = outbound_queue_rx
       .map(move |msg| {
         let msg = msg.unwrap().string().to_string();
-        // eprintln!("> {}", &msg);
         let msg = ws::Message::text(msg);
         Ok(msg)
       })
