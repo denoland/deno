@@ -1769,9 +1769,13 @@ declare namespace Deno {
   }
 
   export interface TruncateOptions {
-    /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
-     * allowed to exist at the target location. When createNew is set to `true`,
-     * create is ignored. */
+    /** Defaults to `false`. If set to `true`, an AlreadyExists error will be
+     * thrown if any file, directory, or symlink exists at the target location.
+     * This option is useful because it is atomic: otherwise between checking
+     * whether a file exists and creating a new one, the file may have been
+     * created by another process (a TOCTOU race condition/attack).
+     *
+     * When createNew is set to `true`, create is ignored. */
     createNew?: boolean;
     /** Sets the option to allow creating a new file, if one doesn't already
      * exist at the specified path (defaults to `true`). */
