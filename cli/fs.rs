@@ -80,6 +80,7 @@ pub fn normalize_path(path: &Path) -> PathBuf {
   ret
 }
 
+// Permission checks require paths to be absolute. See #4611.
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, ErrBox> {
   let resolved_path = if path.is_absolute() {
     path.to_owned()
