@@ -104,6 +104,10 @@ impl OpError {
   pub fn bad_resource_id() -> OpError {
     Self::new(ErrorKind::BadResource, "Bad resource ID".to_string())
   }
+
+  pub fn invalid_utf8() -> OpError {
+    Self::new(ErrorKind::InvalidData, "invalid utf8".to_string())
+  }
 }
 
 impl Error for OpError {}
