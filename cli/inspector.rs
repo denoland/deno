@@ -106,7 +106,7 @@ impl InspectorInfo {
       "id": self.uuid.to_string(),
       "title": self.get_title(),
       "type": "deno",
-      "url": "file://",
+      // TODO(ry): "url": "file://",
       "webSocketDebuggerUrl": self.get_websocket_debugger_url(),
     })
   }
