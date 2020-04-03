@@ -120,7 +120,7 @@ declare namespace Deno {
     failFast?: boolean;
     /** String or RegExp used to filter test to run. Only test with names
      * matching provided `String` or `RegExp` will be run. */
-    only?: string | RegExp;
+    filter?: string | RegExp;
     /** String or RegExp used to skip tests to run. Tests with names
      * matching provided `String` or `RegExp` will not be run. */
     skip?: string | RegExp;
@@ -1022,7 +1022,8 @@ declare namespace Deno {
      * directories will also be created (as with the shell command `mkdir -p`).
      * Intermediate directories are created with the same permissions.
      * When recursive is set to `true`, succeeds silently (without changing any
-     * permissions) if a directory already exists at the path. */
+     * permissions) if a directory already exists at the path, or if the path
+     * is a symlink to an existing directory. */
     recursive?: boolean;
     /** Permissions to use when creating the directory (defaults to `0o777`,
      * before the process's umask).
@@ -1036,7 +1037,7 @@ declare namespace Deno {
    *       Deno.mkdirSync("nested/directories", { recursive: true });
    *       Deno.mkdirSync("restricted_access_dir", { mode: 0o700 });
    *
-   * Throws error if the directory already exists.
+   * Defaults to throwing error if the directory already exists.
    *
    * Requires `allow-write` permission. */
   export function mkdirSync(path: string, options?: MkdirOptions): void;
@@ -1054,7 +1055,7 @@ declare namespace Deno {
    *       await Deno.mkdir("nested/directories", { recursive: true });
    *       await Deno.mkdir("restricted_access_dir", { mode: 0o700 });
    *
-   * Throws error if the directory already exists.
+   * Defaults to throwing error if the directory already exists.
    *
    * Requires `allow-write` permission. */
   export function mkdir(path: string, options?: MkdirOptions): Promise<void>;
@@ -1283,8 +1284,10 @@ declare namespace Deno {
    *
    *       Deno.renameSync("old/path", "new/path");
    *
-   * Throws error if attempting to rename to a directory which exists and is not
-   * empty.
+   * On Unix, this operation does not follow symlinks at either path.
+   *
+   * It varies between platforms when the operation throws errors, and if so what
+   * they are. It's always an error to rename anything to a non-empty directory.
    *
    * Requires `allow-read` and `allow-write` permissions. */
   export function renameSync(oldpath: string, newpath: string): void;
@@ -1296,10 +1299,12 @@ declare namespace Deno {
    *
    *       await Deno.rename("old/path", "new/path");
    *
-   * Throws error if attempting to rename to a directory which exists and is not
-   * empty.
+   * On Unix, this operation does not follow symlinks at either path.
    *
-   * Requires `allow-read` and `allow-write`. */
+   * It varies between platforms when the operation throws errors, and if so what
+   * they are. It's always an error to rename anything to a non-empty directory.
+   *
+   * Requires `allow-read` and `allow-write` permission. */
   export function rename(oldpath: string, newpath: string): Promise<void>;
 
   /** Synchronously reads and returns the entire contents of a file as an array
