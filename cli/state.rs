@@ -35,9 +35,12 @@ use std::time::Instant;
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum DebugType {
-  Main, // Can be debugged, will wait for debugger when --inspect-brk given.
-  Dependent, // Can be debugged, never waits for debugger.
-  Internal, // No inspector instance is created.
+  /// Can be debugged, will wait for debugger when --inspect-brk given.
+  Main,
+  /// Can be debugged, never waits for debugger.
+  Dependent,
+  /// No inspector instance is created.
+  Internal,
 }
 
 #[derive(Clone)]
