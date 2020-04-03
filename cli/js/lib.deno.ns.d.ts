@@ -1284,8 +1284,10 @@ declare namespace Deno {
    *
    *       Deno.renameSync("old/path", "new/path");
    *
-   * Throws error if attempting to rename to a directory which exists and is not
-   * empty.
+   * On Unix, this operation does not follow symlinks at either path.
+   *
+   * It varies between platforms when the operation throws errors, and if so what
+   * they are. It's always an error to rename anything to a non-empty directory.
    *
    * Requires `allow-read` and `allow-write` permissions. */
   export function renameSync(oldpath: string, newpath: string): void;
@@ -1297,10 +1299,12 @@ declare namespace Deno {
    *
    *       await Deno.rename("old/path", "new/path");
    *
-   * Throws error if attempting to rename to a directory which exists and is not
-   * empty.
+   * On Unix, this operation does not follow symlinks at either path.
    *
-   * Requires `allow-read` and `allow-write`. */
+   * It varies between platforms when the operation throws errors, and if so what
+   * they are. It's always an error to rename anything to a non-empty directory.
+   *
+   * Requires `allow-read` and `allow-write` permission. */
   export function rename(oldpath: string, newpath: string): Promise<void>;
 
   /** Synchronously reads and returns the entire contents of a file as an array
