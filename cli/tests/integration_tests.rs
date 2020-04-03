@@ -9,7 +9,6 @@ extern crate tempfile;
 
 use futures::prelude::*;
 use std::io::BufRead;
-use std::mem::drop;
 use std::process::Command;
 use tempfile::TempDir;
 
@@ -2091,7 +2090,7 @@ async fn inspector_break_on_first_line() {
     WsRecv(r#"{"id":3,"result":{}}"#),
     WsRecv(r#"{"method":"Debugger.paused","#),
     WsSend(
-      r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true,"generatePreview":true}}"#,
+      r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
     ),
     WsRecv(r#"{"id":5,"result":{"result":{"type":"undefined"}}}"#),
     StdOut("hello from the inspector"),

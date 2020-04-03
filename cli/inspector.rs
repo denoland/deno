@@ -51,18 +51,27 @@ struct InspectorServer {
 }
 
 impl InspectorServer {
-  // Returns the global InspectorServer instance. If the server is not yet
-  // running, this function starts it.
-  pub fn global(host: SocketAddr) -> &'static InspectorServer {
+  /// Registers an Inspector instance with the inspector server. If the server
+  /// is not running yet, it'll  be started first.
+  pub fn register_inspector(info: InspectorInfo) {
+    let self_ = Self::global(&info.host);
+    self_.register_inspector_tx.unbounded_send(info).unwrap();
+  }
+
+  /// Returns the global InspectorServer instance. If the server is not yet
+  /// running, this function starts it.
+  fn global(host: &SocketAddr) -> &'static InspectorServer {
     let instance = unsafe {
       static mut INSTANCE: Option<InspectorServer> = None;
       static INIT: Once = Once::new();
       INIT.call_once(|| {
-        INSTANCE.replace(Self::new(host));
+        INSTANCE.replace(Self::new(*host));
       });
       INSTANCE.as_ref().unwrap()
     };
-    assert_eq!(host, instance.host);
+    // We only start a single server, so all inspectors must bind to the same
+    // host:port combination.
+    assert_eq!(host, &instance.host);
     instance
   }
 
@@ -78,15 +87,12 @@ impl InspectorServer {
       _thread_handle: thread_handle,
     }
   }
-
-  pub fn register_inspector(&self, info: InspectorInfo) {
-    self.register_inspector_tx.unbounded_send(info).unwrap();
-  }
 }
 
 /// Inspector information that is sent from the isolate thread to the server
 /// thread when a new inspector is created.
-pub struct InspectorInfo {
+struct InspectorInfo {
+  host: SocketAddr,
   uuid: Uuid,
   thread_name: Option<String>,
   new_websocket_tx: UnboundedSender<WebSocket>,
@@ -94,14 +100,27 @@ pub struct InspectorInfo {
 }
 
 impl InspectorInfo {
-  fn get_websocket_debugger_url(&self, host: &SocketAddr) -> String {
-    format!("ws://{}/ws/{}", host, &self.uuid)
+  fn get_json_metadata(&self) -> serde_json::Value {
+    json!({
+      "description": "deno",
+      "devtoolsFrontendUrl": self.get_frontend_url(),
+      "faviconUrl": "https://deno.land/favicon.ico",
+      "id": self.uuid.to_string(),
+      "title": self.get_title(),
+      "type": "deno",
+      "url": "file://",
+      "webSocketDebuggerUrl": self.get_websocket_debugger_url(),
+    })
   }
 
-  fn get_frontend_url(&self, host: &SocketAddr) -> String {
+  fn get_websocket_debugger_url(&self) -> String {
+    format!("ws://{}/ws/{}", &self.host, &self.uuid)
+  }
+
+  fn get_frontend_url(&self) -> String {
     format!(
       "chrome-devtools://devtools/bundled/inspector.html?v8only=true&ws={}/ws/{}",
-      host, &self.uuid
+      &self.host, &self.uuid
     )
   }
 
@@ -133,22 +152,18 @@ async fn server(
     .map(|info| {
       eprintln!(
         "Debugger listening on {}",
-        info.get_websocket_debugger_url(&host)
+        info.get_websocket_debugger_url()
       );
-      inspector_map_
-        .lock()
-        .unwrap()
-        .insert(info.uuid, info)
+      let mut g = inspector_map_.lock().unwrap();
+      g.insert(info.uuid, info)
         .map(|_| panic!("Inspector UUID already in map"));
     })
     .collect::<()>();
 
   let inspector_map_ = inspector_map_.clone();
   let mut deregister_inspector_handler = future::poll_fn(|cx| {
-    inspector_map_
-      .lock()
-      .unwrap()
-      .retain(|_, info| info.canary_rx.poll_unpin(cx) == Poll::Pending);
+    let mut g = inspector_map_.lock().unwrap();
+    g.retain(|_, info| info.canary_rx.poll_unpin(cx) == Poll::Pending);
     Poll::<Never>::Pending
   })
   .fuse();
@@ -162,16 +177,14 @@ async fn server(
         Uuid::parse_str(&uuid)
           .ok()
           .and_then(|uuid| {
-            inspector_map_
-              .lock()
-              .unwrap()
-              .get(&uuid)
-              .map(|info| info.new_websocket_tx.clone())
-              .map(|new_websocket_tx| {
+            let g = inspector_map_.lock().unwrap();
+            g.get(&uuid).map(|info| info.new_websocket_tx.clone()).map(
+              |new_websocket_tx| {
                 ws.on_upgrade(move |websocket| async move {
                   let _ = new_websocket_tx.unbounded_send(websocket);
                 })
-              })
+              },
+            )
           })
           .ok_or_else(warp::reject::not_found),
       )
@@ -187,22 +200,10 @@ async fn server(
 
   let inspector_map_ = inspector_map.clone();
   let json_list_route = warp::path("json").map(move || {
-    let json_values = inspector_map_
-      .lock()
-      .unwrap()
+    let g = inspector_map_.lock().unwrap();
+    let json_values = g
       .values()
-      .map(|info| {
-        json!({
-          "description": "deno",
-          "devtoolsFrontendUrl": info.get_frontend_url(&host),
-          "faviconUrl": "https://deno.land/favicon.ico",
-          "id": info.uuid.to_string(),
-          "title": info.get_title(),
-          "type": "deno",
-          "url": "file://",
-          "webSocketDebuggerUrl": info.get_websocket_debugger_url(&host),
-        })
-      })
+      .map(|info| info.get_json_metadata())
       .collect::<Vec<_>>();
     warp::reply::json(&json!(json_values))
   });
@@ -357,14 +358,14 @@ impl DenoInspector {
     // Note: poll_sessions() might block if we need to wait for a
     // debugger front-end to connect. Therefore the server thread must to be
     // nofified *before* polling.
-    let server = InspectorServer::global(host);
     let info = InspectorInfo {
+      host,
       uuid: Uuid::new_v4(),
       thread_name: thread::current().name().map(|n| n.to_owned()),
       new_websocket_tx,
       canary_rx,
     };
-    server.register_inspector(info);
+    InspectorServer::register_inspector(info);
 
     // Poll the session handler so we will get notified whenever there is
     // new_incoming debugger activity.
@@ -559,12 +560,12 @@ impl InspectorWaker {
     Arc::new(Self(Mutex::new(inner)))
   }
 
-  fn update<F, R>(&self, f: F) -> R
+  fn update<F, R>(&self, update_fn: F) -> R
   where
     F: FnOnce(&mut InspectorWakerInner) -> R,
   {
-    let mut guard = self.0.lock().unwrap();
-    f(&mut guard)
+    let mut g = self.0.lock().unwrap();
+    update_fn(&mut g)
   }
 }
 
@@ -704,8 +705,7 @@ impl DenoInspectorSession {
   }
 
   pub fn break_on_first_statement(&mut self) {
-    let reason =
-      v8::inspector::StringView::from(&b"break on first statement"[..]);
+    let reason = v8::inspector::StringView::from(&b"debugCommand"[..]);
     let detail = v8::inspector::StringView::empty();
     self.schedule_pause_on_next_statement(&reason, &detail);
   }
