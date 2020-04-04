@@ -166,18 +166,18 @@ pub async fn build_module_graph(
 ) -> Result<Vec<String>, ErrBox> {
   let root_specifier =
     ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
-  
 
   loop {
     let source_file = global_state
-        .file_fetcher
-        .fetch_source_file(&module_specifier, None)
-        .await?;
+      .file_fetcher
+      .fetch_source_file(&module_specifier, None)
+      .await?;
   }
-  
-    
+
   let source_code = String::from_utf8(source_file.source_code)?;
 
   let import_parser = ImportParser::default();
-  import_parser.parse_source_file(module_specifier.to_string(), source_code)?;
+  let imports = import_parser
+    .parse_source_file(module_specifier.to_string(), source_code)
+    .expect("Failed to parse import specifiers");
 }
