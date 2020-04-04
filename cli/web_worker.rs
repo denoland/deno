@@ -3,7 +3,6 @@ use crate::ops;
 use crate::state::State;
 use crate::worker::Worker;
 use crate::worker::WorkerEvent;
-use deno_core;
 use deno_core::ErrBox;
 use deno_core::StartupData;
 use futures::future::FutureExt;

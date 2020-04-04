@@ -7,7 +7,6 @@ use crate::state::State;
 use deno_core::*;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
-use std;
 use std::convert::From;
 use std::fs::File;
 use std::io::BufReader;
@@ -16,7 +15,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
-use tokio;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_rustls::{rustls::ClientConfig, TlsConnector};
@@ -27,9 +25,7 @@ use tokio_rustls::{
   },
   TlsAcceptor,
 };
-use webpki;
 use webpki::DNSNameRef;
-use webpki_roots;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_connect_tls", s.stateful_json_op(op_connect_tls));

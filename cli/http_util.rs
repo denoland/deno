@@ -3,7 +3,6 @@ use crate::version;
 use bytes::Bytes;
 use deno_core::ErrBox;
 use futures::future::FutureExt;
-use reqwest;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderValue;
 use reqwest::header::IF_NONE_MATCH;
