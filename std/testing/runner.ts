@@ -168,7 +168,6 @@ export async function runTestModules({
   exclude = [],
   allowNone = false,
   exitOnFail = false,
-  only = /[^\s]/,
   skip = /^\s*$/,
   disableLog = false,
 }: RunTestModulesOptions = {}): Promise<void> {
@@ -233,7 +232,6 @@ export async function runTestModules({
 
   await Deno.runTests({
     exitOnFail,
-    only,
     skip,
     disableLog,
   });
