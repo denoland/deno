@@ -11,7 +11,6 @@ use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
 use log::info;
 use regex::Regex;
-use reqwest;
 use std::collections::HashMap;
 use std::fs;
 use std::future::Future;

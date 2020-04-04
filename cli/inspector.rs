@@ -5,7 +5,6 @@
 //! https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
 
 use core::convert::Infallible as Never; // Alias for the future `!` type.
-use deno_core;
 use deno_core::v8;
 use futures::channel::mpsc;
 use futures::channel::mpsc::UnboundedReceiver;
@@ -37,7 +36,6 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::thread;
 use uuid::Uuid;
-use warp;
 use warp::filters::ws;
 use warp::filters::ws::WebSocket;
 use warp::Filter;

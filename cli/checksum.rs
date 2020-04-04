@@ -1,4 +1,3 @@
-use ring;
 use std::fmt::Write;
 
 pub fn gen(v: Vec<&[u8]>) -> String {

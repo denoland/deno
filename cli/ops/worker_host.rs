@@ -12,10 +12,8 @@ use crate::web_worker::WebWorker;
 use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
 use deno_core::*;
-use futures;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
-use std;
 use std::convert::From;
 use std::thread::JoinHandle;
 

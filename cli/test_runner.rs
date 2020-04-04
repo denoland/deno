@@ -3,7 +3,6 @@
 use crate::fs as deno_fs;
 use crate::installer::is_remote_url;
 use deno_core::ErrBox;
-use std;
 use std::path::Path;
 use std::path::PathBuf;
 use url::Url;

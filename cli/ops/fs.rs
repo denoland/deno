@@ -13,7 +13,6 @@ use std::env::{current_dir, set_current_dir, temp_dir};
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
-use tokio;
 
 use rand::{thread_rng, Rng};
 

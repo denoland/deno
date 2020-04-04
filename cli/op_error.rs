@@ -17,16 +17,11 @@
 use crate::import_map::ImportMapError;
 use deno_core::ErrBox;
 use deno_core::ModuleResolutionError;
-use dlopen;
-use notify;
-use reqwest;
 use rustyline::error::ReadlineError;
-use std;
 use std::env::VarError;
 use std::error::Error;
 use std::fmt;
 use std::io;
-use url;
 
 // Warning! The values in this enum are duplicated in js/errors.ts
 // Update carefully!

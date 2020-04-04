@@ -14,7 +14,6 @@ use crate::msg;
 use crate::permissions::DenoPermissions;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use std;
 use std::env;
 use std::ops::Deref;
 use std::sync::atomic::AtomicUsize;

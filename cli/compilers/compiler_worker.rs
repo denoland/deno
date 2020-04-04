@@ -3,7 +3,6 @@ use crate::ops;
 use crate::state::State;
 use crate::web_worker::WebWorker;
 use core::task::Context;
-use deno_core;
 use deno_core::ErrBox;
 use deno_core::StartupData;
 use futures::future::Future;

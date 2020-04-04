@@ -3,7 +3,6 @@
 use crate::colors;
 use crate::source_maps::apply_source_map;
 use crate::source_maps::SourceMapGetter;
-use deno_core;
 use deno_core::ErrBox;
 use deno_core::JSStackFrame;
 use std::error::Error;

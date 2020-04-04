@@ -9,7 +9,6 @@ use futures::future::FutureExt;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::Method;
-use std;
 use std::convert::From;
 
 pub fn init(i: &mut Isolate, s: &State) {
