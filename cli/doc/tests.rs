@@ -33,6 +33,7 @@ impl DocFileLoader for TestLoader {
     &self,
     specifier: &str,
   ) -> Pin<Box<dyn Future<Output = Result<String, OpError>>>> {
+    eprintln!("specifier {:#?}", specifier);
     let res = match self.files.get(specifier) {
       Some(source_code) => Ok(source_code.to_string()),
       None => Err(OpError::other("not found".to_string())),
@@ -57,7 +58,7 @@ export function foo(a: string, b: number): void {
 "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -112,7 +113,7 @@ async fn export_const() {
     "/** Something about fizzBuzz */\nexport const fizzBuzz = \"fizzBuzz\";\n";
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -164,7 +165,7 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
 "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let expected_json = json!({
     "kind": "class",
@@ -365,7 +366,7 @@ export interface Reader {
     "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -445,7 +446,7 @@ export type NumberArray = Array<number>;
     "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -497,7 +498,7 @@ export enum Hello {
     "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -555,7 +556,7 @@ export namespace RootNs {
     "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -650,7 +651,7 @@ declare namespace RootNs {
     "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -734,7 +735,7 @@ async fn optional_return_type() {
     "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -777,7 +778,7 @@ async fn reexports() {
 /**
  * JSDoc for const
  */
-export foo = "foo";
+export const foo = "foo";
 "#;
   let test_source_code = r#"
 export { foo as fooConst } from "./reexport.ts";
@@ -788,10 +789,16 @@ export function fooFn(a: number) {
 }
 "#;
   let loader = TestLoader::new(vec![
-    ("test.ts".to_string(), test_source_code.to_string()),
-    ("reexport.ts".to_string(), reexport_source_code.to_string()),
+    ("file:///test.ts".to_string(), test_source_code.to_string()),
+    (
+      "file:///reexport.ts".to_string(),
+      reexport_source_code.to_string(),
+    ),
   ]);
-  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader)
+    .parse_with_reexports("file:///test.ts")
+    .await
+    .unwrap();
   assert_eq!(entries.len(), 2);
 
   let expected_json = json!([
@@ -799,7 +806,7 @@ export function fooFn(a: number) {
       "kind": "variable",
       "name": "fooConst",
       "location": {
-        "filename": "reexport.ts",
+        "filename": "file:///reexport.ts",
         "line": 5,
         "col": 0
       },
@@ -813,11 +820,11 @@ export function fooFn(a: number) {
       "kind": "function",
       "name": "fooFn",
       "location": {
-        "filename": "test.ts",
-        "line": 2,
-        "col": 2
+        "filename": "file:///test.ts",
+        "line": 5,
+        "col": 0
       },
-      "jsDoc": null,
+      "jsDoc": "JSDoc for function",
       "functionDef": {
         "params": [
             {

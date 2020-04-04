@@ -26,14 +26,17 @@ use regex::Regex;
 use std::sync::Arc;
 use std::sync::RwLock;
 
+use super::namespace::NamespaceDef;
 use super::node;
 use super::node::ModuleDoc;
 use super::DocNode;
 use super::DocNodeKind;
 use super::Location;
 use crate::op_error::OpError;
+use deno_core::ModuleSpecifier;
 
 use futures::Future;
+use std::collections::HashMap;
 use std::pin::Pin;
 
 pub type SwcDiagnostics = Vec<Diagnostic>;
@@ -55,20 +58,18 @@ impl From<BufferedError> for Vec<Diagnostic> {
 }
 
 pub trait DocFileLoader {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+  ) -> Result<ModuleSpecifier, OpError> {
+    ModuleSpecifier::resolve_import(specifier, referrer).map_err(OpError::from)
+  }
+
   fn load_source_code(
     &self,
     specifier: &str,
   ) -> Pin<Box<dyn Future<Output = Result<String, OpError>>>>;
-}
-
-struct NoopLoader;
-impl DocFileLoader for NoopLoader {
-  fn load_source_code(
-    &self,
-    _specifier: &str,
-  ) -> Pin<Box<dyn Future<Output = Result<String, OpError>>>> {
-    todo!()
-  }
 }
 
 pub struct DocParser {
@@ -81,7 +82,6 @@ pub struct DocParser {
 }
 
 impl DocParser {
-  #[allow(unused)]
   pub fn new(loader: Box<dyn DocFileLoader>) -> Self {
     let buffered_error = BufferedError::default();
 
@@ -96,28 +96,6 @@ impl DocParser {
 
     DocParser {
       loader,
-      buffered_error,
-      source_map: Arc::new(SourceMap::default()),
-      handler,
-      comments: Comments::default(),
-      globals: Globals::new(),
-    }
-  }
-
-  pub fn default() -> Self {
-    let buffered_error = BufferedError::default();
-
-    let handler = Handler::with_emitter_and_flags(
-      Box::new(buffered_error.clone()),
-      HandlerFlags {
-        dont_buffer_diagnostics: true,
-        can_emit_warnings: true,
-        ..Default::default()
-      },
-    );
-
-    DocParser {
-      loader: Box::new(NoopLoader),
       buffered_error,
       source_map: Arc::new(SourceMap::default()),
       handler,
@@ -174,8 +152,7 @@ impl DocParser {
     })
   }
 
-  #[allow(unused)]
-  pub async fn new_parse(
+  pub async fn parse(
     &self,
     file_name: &str,
   ) -> Result<Vec<DocNode>, SwcDiagnostics> {
@@ -186,50 +163,115 @@ impl DocParser {
       .expect("Failed to load source code");
 
     let module_doc = self.parse_module(file_name, &source_code)?;
-    eprintln!("entries: {:#?}", module_doc);
     Ok(module_doc.exports)
   }
 
-  pub fn parse(
+  async fn flatten_reexports(
     &self,
-    file_name: String,
-    source_code: String,
+    reexports: &[node::Reexport],
+    referrer: &str,
   ) -> Result<Vec<DocNode>, SwcDiagnostics> {
-    swc_common::GLOBALS.set(&self.globals, || {
-      let swc_source_file = self
-        .source_map
-        .new_source_file(FileName::Custom(file_name), source_code);
+    let mut by_src: HashMap<String, Vec<node::Reexport>> = HashMap::new();
 
-      let buffered_err = self.buffered_error.clone();
-      let session = Session {
-        handler: &self.handler,
-      };
+    let mut processed_reexports: Vec<DocNode> = vec![];
 
-      let mut ts_config = TsConfig::default();
-      ts_config.dynamic_import = true;
-      let syntax = Syntax::Typescript(ts_config);
+    for reexport in reexports {
+      if by_src.get(&reexport.src).is_none() {
+        by_src.insert(reexport.src.to_string(), vec![]);
+      }
 
-      let lexer = Lexer::new(
-        session,
-        syntax,
-        JscTarget::Es2019,
-        SourceFileInput::from(&*swc_source_file),
-        Some(&self.comments),
-      );
+      let bucket = by_src.get_mut(&reexport.src).unwrap();
+      bucket.push(reexport.clone());
+    }
 
-      let mut parser = Parser::new_from(session, lexer);
+    for specifier in by_src.keys() {
+      let resolved_specifier = self
+        .loader
+        .resolve(specifier, referrer)
+        .expect("Failed to resolve specifier");
+      let doc_nodes = self.parse(&resolved_specifier.to_string()).await?;
+      let reexports_for_specifier = by_src.get(specifier).unwrap();
 
-      let module =
-        parser
-          .parse_module()
-          .map_err(move |mut err: DiagnosticBuilder| {
-            err.cancel();
-            SwcDiagnostics::from(buffered_err)
-          })?;
+      for reexport in reexports_for_specifier {
+        match &reexport.kind {
+          node::ReexportKind::All => {
+            processed_reexports.extend(doc_nodes.clone())
+          }
+          node::ReexportKind::Namespace(ns_name) => {
+            let ns_def = NamespaceDef {
+              elements: doc_nodes.clone(),
+            };
+            let ns_doc_node = DocNode {
+              kind: DocNodeKind::Namespace,
+              name: ns_name.to_string(),
+              location: Location {
+                filename: specifier.to_string(),
+                line: 1,
+                col: 0,
+              },
+              js_doc: None,
+              namespace_def: Some(ns_def),
+              enum_def: None,
+              type_alias_def: None,
+              interface_def: None,
+              variable_def: None,
+              function_def: None,
+              class_def: None,
+            };
+            processed_reexports.push(ns_doc_node);
+          }
+          node::ReexportKind::Named(ident, maybe_alias) => {
+            let doc_node = doc_nodes
+              .clone()
+              .iter()
+              .find(|node| &node.name == ident)
+              .unwrap()
+              .clone();
 
-      let doc_entries = self.get_doc_nodes_for_module_body(module.body);
-      Ok(doc_entries)
-    })
+            let doc_node = if let Some(alias) = maybe_alias {
+              DocNode {
+                name: alias.to_string(),
+                ..doc_node
+              }
+            } else {
+              doc_node
+            };
+
+            processed_reexports.push(doc_node);
+          }
+          node::ReexportKind::Default => {
+            // TODO: handle default export from child module
+          }
+        }
+      }
+    }
+
+    Ok(processed_reexports)
+  }
+
+  pub async fn parse_with_reexports(
+    &self,
+    file_name: &str,
+  ) -> Result<Vec<DocNode>, SwcDiagnostics> {
+    let source_code = self
+      .loader
+      .load_source_code(file_name)
+      .await
+      .expect("Failed to load source code");
+
+    let module_doc = self.parse_module(file_name, &source_code)?;
+
+    let flattened_docs = if !module_doc.reexports.is_empty() {
+      let mut flattenned_reexports = self
+        .flatten_reexports(&module_doc.reexports, file_name)
+        .await?;
+      flattenned_reexports.extend(module_doc.exports);
+      flattenned_reexports
+    } else {
+      module_doc.exports
+    };
+
+    Ok(flattened_docs)
   }
 
   pub fn get_doc_nodes_for_module_exports(
