@@ -26,6 +26,9 @@ use regex::Regex;
 use std::sync::Arc;
 use std::sync::RwLock;
 
+use deno_core::ModuleLoader;
+use deno_core::ModuleSpecifier;
+
 use super::DocNode;
 use super::DocNodeKind;
 use super::Location;
@@ -49,6 +52,7 @@ impl From<BufferedError> for Vec<Diagnostic> {
 }
 
 pub struct DocParser {
+  pub loader: Box<dyn ModuleLoader>,
   pub buffered_error: BufferedError,
   pub source_map: Arc<SourceMap>,
   pub handler: Handler,
@@ -57,7 +61,7 @@ pub struct DocParser {
 }
 
 impl DocParser {
-  pub fn default() -> Self {
+  pub fn new(loader: Box<dyn ModuleLoader>) -> Self {
     let buffered_error = BufferedError::default();
 
     let handler = Handler::with_emitter_and_flags(
@@ -70,6 +74,7 @@ impl DocParser {
     );
 
     DocParser {
+      loader,
       buffered_error,
       source_map: Arc::new(SourceMap::default()),
       handler,
@@ -78,6 +83,64 @@ impl DocParser {
     }
   }
 
+  pub fn new_parse(
+    &self,
+    file_path: &str,
+    parse_reexports: bool,
+  ) -> Result<Vec<DocNode>, SwcDiagnostics> {
+    swc_common::GLOBALS.set(&self.globals, || {
+      let module_specifier =
+        ModuleSpecifier::resolve_url_or_path(file_path).expect("Bad specifier");
+      let source_file = futures::executor::block_on(self.loader.load(
+        &module_specifier,
+        None,
+        false,
+      ))
+      .expect("Failed to load");
+      let swc_source_file = self.source_map.new_source_file(
+        FileName::Custom(file_path.to_string()),
+        source_file.code,
+      );
+
+      let buffered_err = self.buffered_error.clone();
+      let session = Session {
+        handler: &self.handler,
+      };
+
+      let mut ts_config = TsConfig::default();
+      ts_config.dynamic_import = true;
+      let syntax = Syntax::Typescript(ts_config);
+
+      let lexer = Lexer::new(
+        session,
+        syntax,
+        JscTarget::Es2019,
+        SourceFileInput::from(&*swc_source_file),
+        Some(&self.comments),
+      );
+
+      let mut parser = Parser::new_from(session, lexer);
+
+      let module =
+        parser
+          .parse_module()
+          .map_err(move |mut err: DiagnosticBuilder| {
+            err.cancel();
+            SwcDiagnostics::from(buffered_err)
+          })?;
+
+      let mut doc_entries =
+        self.get_doc_nodes_for_module_body(module.body.clone());
+      if parse_reexports {
+        let reexports_entries =
+          self.get_reexports_entries(file_path, module.body);
+        doc_entries.extend(reexports_entries);
+      }
+      Ok(doc_entries)
+    })
+  }
+
+  #[allow(unused)]
   pub fn parse(
     &self,
     file_name: String,
@@ -120,28 +183,41 @@ impl DocParser {
     })
   }
 
+  pub fn get_reexports_entries(
+    &self,
+    referrer: &str,
+    module_body: Vec<swc_ecma_ast::ModuleItem>,
+  ) -> Vec<DocNode> {
+    let mut doc_entries: Vec<DocNode> = vec![];
+    for node in module_body.iter() {
+      if let swc_ecma_ast::ModuleItem::ModuleDecl(module_decl) = node {
+        let docs = match module_decl {
+          ModuleDecl::ExportNamed(named_export) => {
+            super::module::get_doc_nodes_for_named_export(
+              self,
+              named_export,
+              referrer,
+            )
+          }
+          _ => vec![],
+        };
+        doc_entries.extend(docs);
+      }
+    }
+    doc_entries
+  }
+
   pub fn get_doc_nodes_for_module_decl(
     &self,
     module_decl: &ModuleDecl,
   ) -> Vec<DocNode> {
-    match module_decl {
-      ModuleDecl::ExportDecl(export_decl) => {
-        vec![super::module::get_doc_node_for_export_decl(
-          self,
-          export_decl,
-        )]
-      }
-      ModuleDecl::ExportNamed(_named_export) => {
-        vec![]
-        // TODO(bartlomieju):
-        // super::module::get_doc_nodes_for_named_export(self, named_export)
-      }
-      ModuleDecl::ExportDefaultDecl(_) => vec![],
-      ModuleDecl::ExportDefaultExpr(_) => vec![],
-      ModuleDecl::ExportAll(_) => vec![],
-      ModuleDecl::TsExportAssignment(_) => vec![],
-      ModuleDecl::TsNamespaceExport(_) => vec![],
-      _ => vec![],
+    if let ModuleDecl::ExportDecl(export_decl) = module_decl {
+      vec![super::module::get_doc_node_for_export_decl(
+        self,
+        export_decl,
+      )]
+    } else {
+      vec![]
     }
   }
 

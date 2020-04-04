@@ -371,15 +371,15 @@ async fn doc_command(
   let global_state = GlobalState::new(flags.clone())?;
   let module_specifier =
     ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
-  let source_file = global_state
-    .file_fetcher
-    .fetch_source_file(&module_specifier, None)
-    .await?;
-  let source_code = String::from_utf8(source_file.source_code)?;
+  let module_loader = State::new(
+    global_state,
+    None,
+    module_specifier.clone(),
+    DebugType::Main,
+  )?;
 
-  let doc_parser = doc::DocParser::default();
-  let parse_result =
-    doc_parser.parse(module_specifier.to_string(), source_code);
+  let doc_parser = doc::DocParser::new(Box::new(module_loader));
+  let parse_result = doc_parser.new_parse(&module_specifier.to_string(), true);
 
   let doc_nodes = match parse_result {
     Ok(nodes) => nodes,

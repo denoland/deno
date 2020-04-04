@@ -2,9 +2,11 @@
 use crate::swc_common::Spanned;
 use crate::swc_ecma_ast;
 
+use super::namespace::NamespaceDef;
 use super::parser::DocParser;
 use super::DocNode;
 use super::DocNodeKind;
+use super::Location;
 
 pub fn get_doc_node_for_export_decl(
   doc_parser: &DocParser,
@@ -152,37 +154,71 @@ pub fn get_doc_node_for_export_decl(
 pub fn get_doc_nodes_for_named_export(
   doc_parser: &DocParser,
   named_export: &swc_ecma_ast::NamedExport,
+  referrer: &str,
 ) -> Vec<DocNode> {
   let file_name = named_export.src.as_ref().expect("").value.to_string();
-  // TODO: resolve specifier
-  let source_code =
-    std::fs::read_to_string(&file_name).expect("Failed to read file");
+  let resolved_specifier = doc_parser
+    .loader
+    .resolve(&file_name, referrer, false)
+    .expect("Failed to resolve specifier");
+
+  let mut reexported_doc_nodes: Vec<DocNode> = vec![];
+
+  // Now parse that module, but skip parsing its reexports
   let doc_nodes = doc_parser
-    .parse(file_name, source_code)
+    .new_parse(&file_name, false)
     .expect("Failed to print docs");
-  let reexports: Vec<String> = named_export
-    .specifiers
-    .iter()
-    .map(|export_specifier| {
-      use crate::swc_ecma_ast::ExportSpecifier::*;
 
-      match export_specifier {
-        Named(named_export_specifier) => {
-          Some(named_export_specifier.orig.sym.to_string())
+  // Filter out not needed nodes and then
+  // rename nodes if needed.
+  for export_specifier in &named_export.specifiers {
+    use crate::swc_ecma_ast::ExportSpecifier::*;
+
+    match export_specifier {
+      Named(named_export_specifier) => {
+        let original_name = named_export_specifier.orig.sym.to_string();
+
+        let mut named_export_node = doc_nodes
+          .iter()
+          .find(|doc_node| doc_node.name == original_name)
+          .expect("Node module not found")
+          .clone();
+
+        if let Some(alias) = &named_export_specifier.exported {
+          named_export_node.name = alias.sym.to_string();
         }
-        // TODO:
-        Namespace(_) => None,
-        Default(_) => None,
+
+        reexported_doc_nodes.push(named_export_node);
       }
-    })
-    .filter(|s| s.is_some())
-    .map(|s| s.unwrap())
-    .collect();
+      Namespace(ns_export_specifier) => {
+        let ns_name = ns_export_specifier.name.sym.to_string();
+        let location = Location {
+          filename: resolved_specifier.to_string(),
+          line: 0,
+          col: 0,
+        };
+        let ns_def = NamespaceDef {
+          elements: doc_nodes.clone(),
+        };
+        let ns_doc_node = DocNode {
+          kind: DocNodeKind::Namespace,
+          name: ns_name,
+          location,
+          js_doc: None,
+          namespace_def: Some(ns_def),
+          function_def: None,
+          variable_def: None,
+          enum_def: None,
+          class_def: None,
+          type_alias_def: None,
+          interface_def: None,
+        };
+        reexported_doc_nodes.push(ns_doc_node);
+      }
+      // TODO: not handled
+      Default(_) => {}
+    }
+  }
 
-  let reexports_docs: Vec<DocNode> = doc_nodes
-    .into_iter()
-    .filter(|doc_node| reexports.contains(&doc_node.name))
-    .collect();
-
-  reexports_docs
+  reexported_doc_nodes
 }
