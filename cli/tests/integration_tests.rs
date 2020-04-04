@@ -2015,7 +2015,6 @@ fn extract_ws_url_from_stderr(
   url::Url::parse(ws_url).unwrap()
 }
 
-#[cfg(not(target_os = "linux"))] // TODO(ry) broken on github actions.
 #[tokio::test]
 async fn inspector_connect() {
   let script = deno::test_util::root_path()
@@ -2122,7 +2121,6 @@ async fn inspector_break_on_first_line() {
   child.kill().unwrap();
 }
 
-#[cfg(not(target_os = "linux"))] // TODO(ry) broken on github actions.
 #[tokio::test]
 async fn inspector_pause() {
   let script = deno::test_util::root_path()
@@ -2182,7 +2180,6 @@ async fn inspector_pause() {
   child.kill().unwrap();
 }
 
-#[cfg(not(target_os = "linux"))] // TODO(ry) broken on github actions.
 #[tokio::test]
 async fn inspector_port_collision() {
   let script = deno::test_util::root_path()
