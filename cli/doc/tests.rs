@@ -770,3 +770,76 @@ async fn optional_return_type() {
       .contains("function foo(a: number)")
   );
 }
+
+#[tokio::test]
+async fn reexports() {
+  let reexport_source_code = r#"
+/**
+ * JSDoc for const
+ */
+export foo = "foo";
+"#;
+  let test_source_code = r#"
+export { foo as fooConst } from "./reexport.ts";
+
+/** JSDoc for function */
+export function fooFn(a: number) {
+  return a;
+}
+"#;
+  let loader = TestLoader::new(vec![
+    ("test.ts".to_string(), test_source_code.to_string()),
+    ("reexport.ts".to_string(), reexport_source_code.to_string()),
+  ]);
+  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
+  assert_eq!(entries.len(), 2);
+
+  let expected_json = json!([
+    {
+      "kind": "variable",
+      "name": "fooConst",
+      "location": {
+        "filename": "reexport.ts",
+        "line": 5,
+        "col": 0
+      },
+      "jsDoc": "JSDoc for const",
+      "variableDef": {
+        "tsType": null,
+        "kind": "const"
+      }
+    },
+    {
+      "kind": "function",
+      "name": "fooFn",
+      "location": {
+        "filename": "test.ts",
+        "line": 2,
+        "col": 2
+      },
+      "jsDoc": null,
+      "functionDef": {
+        "params": [
+            {
+              "name": "a",
+              "tsType": {
+                "keyword": "number",
+                "kind": "keyword",
+                "repr": "number",
+              },
+            }
+        ],
+        "returnType": null,
+        "isAsync": false,
+        "isGenerator": false
+      }
+    }
+  ]);
+  let actual = serde_json::to_value(entries.clone()).unwrap();
+  assert_eq!(actual, expected_json);
+
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("function fooFn(a: number)")
+  );
+}

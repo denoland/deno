@@ -48,6 +48,32 @@ impl Into<Location> for swc_common::Loc {
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub enum ReexportKind {
+  All,
+  Namespace(String),
+  Default,
+  // (identifier, optional alias)
+  // export { foo } from "./";
+  // export { foo as bar } from "./";
+  Named(String, Option<String>),
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Reexport {
+  pub kind: ReexportKind,
+  pub src: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ModuleDoc {
+  pub exports: Vec<DocNode>,
+  pub reexports: Vec<Reexport>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct DocNode {
   pub kind: DocNodeKind,
   pub name: String,

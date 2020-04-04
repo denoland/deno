@@ -26,6 +26,8 @@ use regex::Regex;
 use std::sync::Arc;
 use std::sync::RwLock;
 
+use super::node;
+use super::node::ModuleDoc;
 use super::DocNode;
 use super::DocNodeKind;
 use super::Location;
@@ -124,21 +126,16 @@ impl DocParser {
     }
   }
 
-  #[allow(unused)]
-  pub async fn new_parse(
+  fn parse_module(
     &self,
     file_name: &str,
-  ) -> Result<Vec<DocNode>, SwcDiagnostics> {
-    let source_code = self
-      .loader
-      .load_source_code(file_name)
-      .await
-      .expect("Failed to load source code");
-
+    source_code: &str,
+  ) -> Result<ModuleDoc, SwcDiagnostics> {
     swc_common::GLOBALS.set(&self.globals, || {
-      let swc_source_file = self
-        .source_map
-        .new_source_file(FileName::Custom(file_name.to_string()), source_code);
+      let swc_source_file = self.source_map.new_source_file(
+        FileName::Custom(file_name.to_string()),
+        source_code.to_string(),
+      );
 
       let buffered_err = self.buffered_error.clone();
       let session = Session {
@@ -167,9 +164,30 @@ impl DocParser {
             SwcDiagnostics::from(buffered_err)
           })?;
 
-      let doc_entries = self.get_doc_nodes_for_module_body(module.body);
-      Ok(doc_entries)
+      let doc_entries = self.get_doc_nodes_for_module_body(module.body.clone());
+      let reexports = self.get_reexports_for_module_body(module.body);
+      let module_doc = ModuleDoc {
+        exports: doc_entries,
+        reexports,
+      };
+      Ok(module_doc)
     })
+  }
+
+  #[allow(unused)]
+  pub async fn new_parse(
+    &self,
+    file_name: &str,
+  ) -> Result<Vec<DocNode>, SwcDiagnostics> {
+    let source_code = self
+      .loader
+      .load_source_code(file_name)
+      .await
+      .expect("Failed to load source code");
+
+    let module_doc = self.parse_module(file_name, &source_code)?;
+    eprintln!("entries: {:#?}", module_doc);
+    Ok(module_doc.exports)
   }
 
   pub fn parse(
@@ -214,7 +232,7 @@ impl DocParser {
     })
   }
 
-  pub fn get_doc_nodes_for_module_decl(
+  pub fn get_doc_nodes_for_module_exports(
     &self,
     module_decl: &ModuleDecl,
   ) -> Vec<DocNode> {
@@ -225,16 +243,6 @@ impl DocParser {
           export_decl,
         )]
       }
-      ModuleDecl::ExportNamed(_named_export) => {
-        vec![]
-        // TODO(bartlomieju):
-        // super::module::get_doc_nodes_for_named_export(self, named_export)
-      }
-      ModuleDecl::ExportDefaultDecl(_) => vec![],
-      ModuleDecl::ExportDefaultExpr(_) => vec![],
-      ModuleDecl::ExportAll(_) => vec![],
-      ModuleDecl::TsExportAssignment(_) => vec![],
-      ModuleDecl::TsNamespaceExport(_) => vec![],
       _ => vec![],
     }
   }
@@ -410,6 +418,67 @@ impl DocParser {
     }
   }
 
+  pub fn get_reexports_for_module_body(
+    &self,
+    module_body: Vec<swc_ecma_ast::ModuleItem>,
+  ) -> Vec<node::Reexport> {
+    use swc_ecma_ast::ExportSpecifier::*;
+
+    let mut reexports: Vec<node::Reexport> = vec![];
+
+    for node in module_body.iter() {
+      if let swc_ecma_ast::ModuleItem::ModuleDecl(module_decl) = node {
+        let r = match module_decl {
+          ModuleDecl::ExportNamed(named_export) => {
+            if let Some(src) = &named_export.src {
+              let src_str = src.value.to_string();
+              named_export
+                .specifiers
+                .iter()
+                .map(|export_specifier| match export_specifier {
+                  Namespace(ns_export) => node::Reexport {
+                    kind: node::ReexportKind::Namespace(
+                      ns_export.name.sym.to_string(),
+                    ),
+                    src: src_str.to_string(),
+                  },
+                  Default(_) => node::Reexport {
+                    kind: node::ReexportKind::Default,
+                    src: src_str.to_string(),
+                  },
+                  Named(named_export) => {
+                    let ident = named_export.orig.sym.to_string();
+                    let maybe_alias =
+                      named_export.exported.as_ref().map(|e| e.sym.to_string());
+                    let kind = node::ReexportKind::Named(ident, maybe_alias);
+                    node::Reexport {
+                      kind,
+                      src: src_str.to_string(),
+                    }
+                  }
+                })
+                .collect::<Vec<node::Reexport>>()
+            } else {
+              vec![]
+            }
+          }
+          ModuleDecl::ExportAll(export_all) => {
+            let reexport = node::Reexport {
+              kind: node::ReexportKind::All,
+              src: export_all.src.value.to_string(),
+            };
+            vec![reexport]
+          }
+          _ => vec![],
+        };
+
+        reexports.extend(r);
+      }
+    }
+
+    reexports
+  }
+
   pub fn get_doc_nodes_for_module_body(
     &self,
     module_body: Vec<swc_ecma_ast::ModuleItem>,
@@ -418,7 +487,8 @@ impl DocParser {
     for node in module_body.iter() {
       match node {
         swc_ecma_ast::ModuleItem::ModuleDecl(module_decl) => {
-          doc_entries.extend(self.get_doc_nodes_for_module_decl(module_decl));
+          doc_entries
+            .extend(self.get_doc_nodes_for_module_exports(module_decl));
         }
         swc_ecma_ast::ModuleItem::Stmt(stmt) => {
           if let Some(doc_node) = self.get_doc_node_for_stmt(stmt) {
