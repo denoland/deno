@@ -115,6 +115,10 @@ function printSymbol(val: symbol): string {
   return symbolToString.call(val).replace(SYMBOL_REGEXP, "Symbol($1)");
 }
 
+function printBigInt(val: bigint): string {
+  return val.toString() + "n";
+}
+
 function printError(val: Error): string {
   return "[" + errorToString.call(val) + "]";
 }
@@ -154,6 +158,9 @@ function printBasicValue(
   }
   if (typeOf === "symbol") {
     return printSymbol(val);
+  }
+  if (typeOf === "bigint") {
+    return printBigInt(val);
   }
 
   const toStringed = toString.call(val);
