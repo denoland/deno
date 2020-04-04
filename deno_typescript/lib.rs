@@ -197,7 +197,7 @@ pub fn mksnapshot_bundle(
   snapshot_filename: &Path,
   bundle_filename: &Path,
   main_module_name: &str,
-  features: &Vec<String>,
+  features: &[String],
 ) -> Result<(), ErrBox> {
   js_check(isolate.execute("system_loader.js", SYSTEM_LOADER));
   let source_code_vec = std::fs::read(bundle_filename).unwrap();
@@ -222,7 +222,7 @@ pub fn mksnapshot_bundle_ts(
   snapshot_filename: &Path,
   bundle_filename: &Path,
   main_module_name: &str,
-  features: &Vec<String>,
+  features: &[String],
 ) -> Result<(), ErrBox> {
   js_check(isolate.execute("typescript.js", TYPESCRIPT_CODE));
   mksnapshot_bundle(
