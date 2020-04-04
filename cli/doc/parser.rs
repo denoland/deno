@@ -29,6 +29,10 @@ use std::sync::RwLock;
 use super::DocNode;
 use super::DocNodeKind;
 use super::Location;
+use crate::op_error::OpError;
+
+use futures::Future;
+use std::pin::Pin;
 
 pub type SwcDiagnostics = Vec<Diagnostic>;
 
@@ -48,7 +52,25 @@ impl From<BufferedError> for Vec<Diagnostic> {
   }
 }
 
+pub trait DocFileLoader {
+  fn load_source_code(
+    &self,
+    specifier: &str,
+  ) -> Pin<Box<dyn Future<Output = Result<String, OpError>>>>;
+}
+
+struct NoopLoader;
+impl DocFileLoader for NoopLoader {
+  fn load_source_code(
+    &self,
+    _specifier: &str,
+  ) -> Pin<Box<dyn Future<Output = Result<String, OpError>>>> {
+    todo!()
+  }
+}
+
 pub struct DocParser {
+  pub loader: Box<dyn DocFileLoader>,
   pub buffered_error: BufferedError,
   pub source_map: Arc<SourceMap>,
   pub handler: Handler,
@@ -57,6 +79,29 @@ pub struct DocParser {
 }
 
 impl DocParser {
+  #[allow(unused)]
+  pub fn new(loader: Box<dyn DocFileLoader>) -> Self {
+    let buffered_error = BufferedError::default();
+
+    let handler = Handler::with_emitter_and_flags(
+      Box::new(buffered_error.clone()),
+      HandlerFlags {
+        dont_buffer_diagnostics: true,
+        can_emit_warnings: true,
+        ..Default::default()
+      },
+    );
+
+    DocParser {
+      loader,
+      buffered_error,
+      source_map: Arc::new(SourceMap::default()),
+      handler,
+      comments: Comments::default(),
+      globals: Globals::new(),
+    }
+  }
+
   pub fn default() -> Self {
     let buffered_error = BufferedError::default();
 
@@ -70,12 +115,61 @@ impl DocParser {
     );
 
     DocParser {
+      loader: Box::new(NoopLoader),
       buffered_error,
       source_map: Arc::new(SourceMap::default()),
       handler,
       comments: Comments::default(),
       globals: Globals::new(),
     }
+  }
+
+  #[allow(unused)]
+  pub async fn new_parse(
+    &self,
+    file_name: &str,
+  ) -> Result<Vec<DocNode>, SwcDiagnostics> {
+    let source_code = self
+      .loader
+      .load_source_code(file_name)
+      .await
+      .expect("Failed to load source code");
+
+    swc_common::GLOBALS.set(&self.globals, || {
+      let swc_source_file = self
+        .source_map
+        .new_source_file(FileName::Custom(file_name.to_string()), source_code);
+
+      let buffered_err = self.buffered_error.clone();
+      let session = Session {
+        handler: &self.handler,
+      };
+
+      let mut ts_config = TsConfig::default();
+      ts_config.dynamic_import = true;
+      let syntax = Syntax::Typescript(ts_config);
+
+      let lexer = Lexer::new(
+        session,
+        syntax,
+        JscTarget::Es2019,
+        SourceFileInput::from(&*swc_source_file),
+        Some(&self.comments),
+      );
+
+      let mut parser = Parser::new_from(session, lexer);
+
+      let module =
+        parser
+          .parse_module()
+          .map_err(move |mut err: DiagnosticBuilder| {
+            err.cancel();
+            SwcDiagnostics::from(buffered_err)
+          })?;
+
+      let doc_entries = self.get_doc_nodes_for_module_body(module.body);
+      Ok(doc_entries)
+    })
   }
 
   pub fn parse(

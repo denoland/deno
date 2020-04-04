@@ -4,8 +4,46 @@ use crate::colors;
 use serde_json;
 use serde_json::json;
 
-#[test]
-fn export_fn() {
+use super::parser::DocFileLoader;
+use crate::op_error::OpError;
+use std::collections::HashMap;
+
+use futures::Future;
+use futures::FutureExt;
+use std::pin::Pin;
+
+pub struct TestLoader {
+  files: HashMap<String, String>,
+}
+
+impl TestLoader {
+  pub fn new(files_vec: Vec<(String, String)>) -> Box<Self> {
+    let mut files = HashMap::new();
+
+    for file_tuple in files_vec {
+      files.insert(file_tuple.0, file_tuple.1);
+    }
+
+    Box::new(Self { files })
+  }
+}
+
+impl DocFileLoader for TestLoader {
+  fn load_source_code(
+    &self,
+    specifier: &str,
+  ) -> Pin<Box<dyn Future<Output = Result<String, OpError>>>> {
+    let res = match self.files.get(specifier) {
+      Some(source_code) => Ok(source_code.to_string()),
+      None => Err(OpError::other("not found".to_string())),
+    };
+
+    async move { res }.boxed_local()
+  }
+}
+
+#[tokio::test]
+async fn export_fn() {
   let source_code = r#"/**
 * Hello there, this is a multiline JSdoc.
 *
@@ -17,9 +55,9 @@ export function foo(a: string, b: number): void {
     console.log("Hello world");
 }
 "#;
-  let entries = DocParser::default()
-    .parse("test.ts".to_string(), source_code.to_string())
-    .unwrap();
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -68,13 +106,13 @@ export function foo(a: string, b: number): void {
   );
 }
 
-#[test]
-fn export_const() {
+#[tokio::test]
+async fn export_const() {
   let source_code =
     "/** Something about fizzBuzz */\nexport const fizzBuzz = \"fizzBuzz\";\n";
-  let entries = DocParser::default()
-    .parse("test.ts".to_string(), source_code.to_string())
-    .unwrap();
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -100,8 +138,8 @@ fn export_const() {
   );
 }
 
-#[test]
-fn export_class() {
+#[tokio::test]
+async fn export_class() {
   let source_code = r#"
 /** Class doc */
 export class Foobar extends Fizz implements Buzz, Aldrin {
@@ -124,9 +162,9 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
     }
 }
 "#;
-  let entries = DocParser::default()
-    .parse("test.ts".to_string(), source_code.to_string())
-    .unwrap();
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let expected_json = json!({
     "kind": "class",
@@ -314,8 +352,8 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
   );
 }
 
-#[test]
-fn export_interface() {
+#[tokio::test]
+async fn export_interface() {
   let source_code = r#"
 /**
  * Interface js doc
@@ -325,9 +363,9 @@ export interface Reader {
     read(buf: Uint8Array, something: unknown): Promise<number>
 }
     "#;
-  let entries = DocParser::default()
-    .parse("test.ts".to_string(), source_code.to_string())
-    .unwrap();
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -399,15 +437,15 @@ export interface Reader {
   );
 }
 
-#[test]
-fn export_type_alias() {
+#[tokio::test]
+async fn export_type_alias() {
   let source_code = r#"
 /** Array holding numbers */
 export type NumberArray = Array<number>;
     "#;
-  let entries = DocParser::default()
-    .parse("test.ts".to_string(), source_code.to_string())
-    .unwrap();
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -445,8 +483,8 @@ export type NumberArray = Array<number>;
   );
 }
 
-#[test]
-fn export_enum() {
+#[tokio::test]
+async fn export_enum() {
   let source_code = r#"
 /**
  * Some enum for good measure
@@ -457,9 +495,9 @@ export enum Hello {
     Buzz = "buzz",
 }
     "#;
-  let entries = DocParser::default()
-    .parse("test.ts".to_string(), source_code.to_string())
-    .unwrap();
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -498,8 +536,8 @@ export enum Hello {
   );
 }
 
-#[test]
-fn export_namespace() {
+#[tokio::test]
+async fn export_namespace() {
   let source_code = r#"
 /** Namespace JSdoc */
 export namespace RootNs {
@@ -515,9 +553,9 @@ export namespace RootNs {
     }
 }
     "#;
-  let entries = DocParser::default()
-    .parse("test.ts".to_string(), source_code.to_string())
-    .unwrap();
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -593,8 +631,8 @@ export namespace RootNs {
   );
 }
 
-#[test]
-fn declare_namespace() {
+#[tokio::test]
+async fn declare_namespace() {
   let source_code = r#"
 /** Namespace JSdoc */
 declare namespace RootNs {
@@ -610,9 +648,9 @@ declare namespace RootNs {
     }
 }
     "#;
-  let entries = DocParser::default()
-    .parse("test.ts".to_string(), source_code.to_string())
-    .unwrap();
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -687,16 +725,16 @@ declare namespace RootNs {
       .contains("namespace RootNs")
   );
 }
-#[test]
-fn optional_return_type() {
+#[tokio::test]
+async fn optional_return_type() {
   let source_code = r#"
   export function foo(a: number) {
     return a;
   }
     "#;
-  let entries = DocParser::default()
-    .parse("test.ts".to_string(), source_code.to_string())
-    .unwrap();
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).new_parse("test.ts").await.unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
