@@ -4,7 +4,6 @@ use crate::inspector::DenoInspector;
 use crate::ops;
 use crate::state::DebugType;
 use crate::state::State;
-use deno_core;
 use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleId;

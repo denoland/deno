@@ -3,7 +3,6 @@ use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
-use atty;
 use deno_core::*;
 #[cfg(unix)]
 use nix::sys::termios;

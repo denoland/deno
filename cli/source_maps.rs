@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 //! This mod provides functions to remap a deno_core::deno_core::JSError based on a source map
-use deno_core;
 use deno_core::JSStackFrame;
 use sourcemap::SourceMap;
 use std::collections::HashMap;

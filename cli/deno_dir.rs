@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::disk_cache::DiskCache;
-use dirs;
-use std;
 use std::path::PathBuf;
 
 /// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them

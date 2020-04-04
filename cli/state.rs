@@ -22,7 +22,6 @@ use futures::future::TryFutureExt;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde_json::Value;
-use std;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Deref;

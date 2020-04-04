@@ -9,8 +9,6 @@ use super::dispatch_json::Deserialize;
 #[cfg(unix)]
 use futures::future::{poll_fn, FutureExt};
 #[cfg(unix)]
-use serde_json;
-#[cfg(unix)]
 use std::task::Waker;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, Signal, SignalKind};
