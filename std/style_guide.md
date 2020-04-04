@@ -2,15 +2,62 @@
 
 ## Table of Contents
 
-## Use TypeScript
+## Copyright Headers
 
-## Use the term "module" instead of "library" or "package"
+Most modules in the repository should have the following copyright header:
+
+```ts
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+```
+
+If the code originates elsewhere, ensure that the file has the proper copyright
+headers. We only allow MIT, BSD, and Apache licensed code.
+
+## Use underscores, not dashes in filenames.
+
+Example: Use `file_server.ts` instead of `file-server.ts`.
+
+## Add tests for new features.
+
+Each module should contain or be accompanied by tests for its public
+functionality.
+
+## TODO Comments
+
+TODO comments should usually include an issue or the author's github username in
+parentheses. Example:
+
+```ts
+// TODO(ry): Add tests.
+// TODO(#123): Support Windows.
+// FIXME(#349): Sometimes panics.
+```
+
+## Meta-programming is discouraged. Including the use of Proxy.
+
+Be explicit even when it means more code.
+
+There are some situations where it may make sense to use such techniques, but in
+the vast majority of cases it does not.
+
+## Rust
+
+Follow Rust conventions and be consistent with existing code.
+
+## Typescript
+
+The TypeScript portions of the codebase include `cli/js` for the built-ins and
+the standard library `std`.
+
+### Use TypeScript instead of JavaScript.
+
+### Use the term "module" instead of "library" or "package".
 
 For clarity and consistency avoid the terms "library" and "package". Instead use
 "module" to refer to a single JS or TS file and also to refer to a directory of
 TS/JS code.
 
-## Do not use the filename `index.ts` nor `index.js`
+### Do not use the filename `index.ts`/`index.js`.
 
 Deno does not treat "index.js" or "index.ts" in a special way. By using these
 filenames, it suggests that they can be left out of the module specifier when
@@ -20,28 +67,7 @@ If a directory of code needs a default entry point, use the filename `mod.ts`.
 The filename `mod.ts` follows Rust’s convention, is shorter than `index.ts`, and
 doesn’t come with any preconceived notions about how it might work.
 
-## Within `deno_std`, do not depend on external code
-
-`deno_std` is intended to be baseline functionality that all Deno programs can
-rely on. We want to guarantee to users that this code does not include
-potentially unreviewed third party code.
-
-## Within `deno_std`, minimize dependencies; do not make circular imports.
-
-Although `deno_std` is a standalone codebase, we must still be careful to keep
-the internal dependencies simple and manageable. In particular, be careful to
-not to introduce circular imports.
-
-## For consistency, use underscores, not dashes in filenames.
-
-Example: Instead of `file-server.ts` use `file_server.ts`.
-
-## Format code using prettier.
-
-More specifically, code should be wrapped at 80 columns and use 2-space
-indentation and use camel-case. Use `//format.ts` to invoke prettier.
-
-## Exported functions: max 2 args, put the rest into an options object.
+### Exported functions: max 2 args, put the rest into an options object.
 
 When designing function interfaces, stick to the following rules.
 
@@ -150,62 +176,19 @@ export interface PWrite {
 export function pwrite(options: PWrite) {}
 ```
 
-## TODO Comments
+### Minimize dependencies; do not make circular imports.
 
-TODO comments should include an issue or the author's github username in
-parentheses. Example:
+Although `cli/js` and `std` have no external dependencies, we must still be
+careful to keep internal dependencies simple and manageable. In particular, be
+careful to not to introduce circular imports.
 
-```ts
-// TODO(ry) Add tests.
-// TODO(#123) Support Windows.
-```
-
-## Copyright headers
-
-Most files in `deno_std` should have the following copyright header:
-
-```ts
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-```
-
-If the code originates elsewhere, ensure that the file has the proper copyright
-headers. We only allow MIT, BSD, and Apache licensed code in `deno_std`.
-
-## Top level functions should not use arrow syntax
-
-Top level functions should use the `function` keyword. Arrow syntax should be
-limited to closures.
-
-Bad
-
-```ts
-export const foo = (): string => {
-  return "bar";
-};
-```
-
-Good
-
-```ts
-export function foo(): string {
-  return "bar";
-}
-```
-
-## Meta-programming is discouraged. Including the use of Proxy.
-
-Be explicit even when it means more code.
-
-There are some situations where it may make sense to use such techniques, but in
-the vast majority of cases it does not.
-
-## If a filename starts with underscore, do not link to it: `_foo.ts`
+### If a filename starts with an underscore: `_foo.ts`, do not link to it.
 
 Sometimes there maybe situations where an internal module is necessary but its
 API is not meant to be stable or linked to. In this case prefix it with an
 underscore. By convention, only files in its own directory should import it.
 
-## Use JSDoc to document exported machinery
+### Use JSDoc for exported symbols.
 
 We strive for complete documentation. Every exported symbol ideally should have
 a documentation line.
@@ -240,8 +223,8 @@ not include the `type` as TypeScript is already strongly typed.
 
 ```ts
 /**
- * Function with non obvious param
- * @param foo Description of non obvious parameter
+ * Function with non obvious param.
+ * @param foo Description of non obvious parameter.
  */
 ```
 
@@ -249,14 +232,14 @@ Vertical spacing should be minimized whenever possible. Therefore single line
 comments should be written as:
 
 ```ts
-/** This is a good single line JSDoc */
+/** This is a good single line JSDoc. */
 ```
 
 And not
 
 ```ts
 /**
- * This is a bad single line JSDoc
+ * This is a bad single line JSDoc.
  */
 ```
 
@@ -276,13 +259,14 @@ the first column of the comment. For example:
 Code examples should not contain additional comments. It is already inside a
 comment. If it needs further comments it is not a good example.
 
-## Each module should come with tests
+### Each module should come with a test module.
 
-Each module should come with its test as a sibling with the name
-`modulename_test.ts`. For example the module `foo.ts` should come with its
-sibling `foo_test.ts`.
+Every module with public functionality `foo.ts` should come with a test module
+`foo_test.ts`. A test for a `cli/js` module should go in `cli/js/tests` due to
+their different contexts, otherwise it should just be a sibling to the tested
+module.
 
-## Unit Tests should be explicit
+### Unit Tests should be explicit.
 
 For a better understanding of the tests, function should be correctly named as
 its prompted throughout the test command. Like:
@@ -301,3 +285,32 @@ Deno.test(function myTestFunction() {
   assertEquals(foo(), { bar: "bar" });
 });
 ```
+
+### Top level functions should not use arrow syntax.
+
+Top level functions should use the `function` keyword. Arrow syntax should be
+limited to closures.
+
+Bad
+
+```ts
+export const foo = (): string => {
+  return "bar";
+};
+```
+
+Good
+
+```ts
+export function foo(): string {
+  return "bar";
+}
+```
+
+### `std`
+
+#### Do not depend on external code.
+
+`https://deno.land/std/` is intended to be baseline functionality that all Deno
+programs can rely on. We want to guarantee to users that this code does not
+include potentially unreviewed third party code.
