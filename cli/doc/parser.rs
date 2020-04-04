@@ -1,4 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::futures::FutureExt;
+use crate::module_graph::get_module_imports;
+use crate::op_error::OpError;
 use crate::swc_common;
 use crate::swc_common::comments::CommentKind;
 use crate::swc_common::comments::Comments;
@@ -22,6 +25,8 @@ use crate::swc_ecma_parser::Session;
 use crate::swc_ecma_parser::SourceFileInput;
 use crate::swc_ecma_parser::Syntax;
 use crate::swc_ecma_parser::TsConfig;
+use deno_core::ErrBox;
+use futures::future::try_join_all;
 use regex::Regex;
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -83,24 +88,59 @@ impl DocParser {
     }
   }
 
+  pub async fn hydrate_source_map(
+    &self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Result<(), ErrBox> {
+    let source_file = self
+      .loader
+      .load(&module_specifier, None, false)
+      .await
+      .expect("Failed to load root file");
+    self.source_map.new_source_file(
+      FileName::Custom(module_specifier.to_string()),
+      source_file.code.to_string(),
+    );
+    let import_specifiers = get_module_imports(
+      source_file.module_url_specified.to_string(),
+      source_file.code,
+    );
+
+    let file_futures: Vec<_> = import_specifiers
+      .into_iter()
+      .map(|specifier| {
+        async move {
+          let resolved_specifier = self.loader
+            .resolve(&specifier, &module_specifier.to_string(), false)
+            .expect("Invalid specifier");
+          self.loader
+            .load(&resolved_specifier, Some(module_specifier.clone()), false)
+            .await
+        }
+        .boxed_local()
+      })
+      .collect();
+
+    let files = try_join_all(file_futures).await.map_err(OpError::from)?;
+
+    for file in files.into_iter() {
+      self
+        .source_map
+        .new_source_file(FileName::Custom(file.module_url_specified.to_string()), file.code);
+    }
+
+    Ok(())
+  }
+
   pub fn new_parse(
     &self,
     file_path: &str,
     parse_reexports: bool,
   ) -> Result<Vec<DocNode>, SwcDiagnostics> {
     swc_common::GLOBALS.set(&self.globals, || {
-      let module_specifier =
-        ModuleSpecifier::resolve_url_or_path(file_path).expect("Bad specifier");
-      let source_file = futures::executor::block_on(self.loader.load(
-        &module_specifier,
-        None,
-        false,
-      ))
-      .expect("Failed to load");
-      let swc_source_file = self.source_map.new_source_file(
-        FileName::Custom(file_path.to_string()),
-        source_file.code,
-      );
+      let swc_source_file = self.source_map.get_source_file(
+        &FileName::Custom(file_path.to_string()),
+      ).expect("Source map missing file");
 
       let buffered_err = self.buffered_error.clone();
       let session = Session {
@@ -198,7 +238,14 @@ impl DocParser {
               named_export,
               referrer,
             )
-          }
+          },
+          ModuleDecl::ExportAll(export_all) => {
+            super::module::get_doc_nodes_for_export_all(
+              self,
+              export_all,
+              referrer,
+            )
+          },
           _ => vec![],
         };
         doc_entries.extend(docs);

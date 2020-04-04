@@ -380,6 +380,7 @@ async fn doc_command(
   )?;
 
   let doc_parser = doc::DocParser::new(Box::new(module_loader));
+  doc_parser.hydrate_source_map(&module_specifier).await?;
   let parse_result = doc_parser.new_parse(&module_specifier.to_string(), true);
 
   let doc_nodes = match parse_result {

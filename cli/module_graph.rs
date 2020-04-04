@@ -1,6 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+#![allow(unused)]
+
 use crate::swc_common;
-use crate::swc_common::comments::CommentKind;
 use crate::swc_common::comments::Comments;
 use crate::swc_common::errors::Diagnostic;
 use crate::swc_common::errors::DiagnosticBuilder;
@@ -10,12 +12,9 @@ use crate::swc_common::errors::HandlerFlags;
 use crate::swc_common::FileName;
 use crate::swc_common::Globals;
 use crate::swc_common::SourceMap;
-use crate::swc_common::Span;
 use crate::swc_ecma_ast;
-use crate::swc_ecma_ast::Decl;
 use crate::swc_ecma_ast::ModuleDecl;
 use crate::swc_ecma_ast::ModuleItem;
-use crate::swc_ecma_ast::Stmt;
 use crate::swc_ecma_parser::lexer::Lexer;
 use crate::swc_ecma_parser::JscTarget;
 use crate::swc_ecma_parser::Parser;
@@ -23,7 +22,6 @@ use crate::swc_ecma_parser::Session;
 use crate::swc_ecma_parser::SourceFileInput;
 use crate::swc_ecma_parser::Syntax;
 use crate::swc_ecma_parser::TsConfig;
-use regex::Regex;
 use std::sync::Arc;
 use std::sync::RwLock;
 
@@ -122,11 +120,11 @@ impl ImportParser {
     module_decl: &ModuleDecl,
   ) -> Option<String> {
     match module_decl {
-      ModuleDecl::ImportDecl(import_decl) => {
+      ModuleDecl::Import(import_decl) => {
         Some(import_decl.src.value.to_string())
       }
       ModuleDecl::ExportNamed(named_export) => {
-        named_export.src.map(|s| s.value.to_string())
+        named_export.src.as_ref().map(|s| s.value.to_string())
       }
       ModuleDecl::ExportAll(export_all) => {
         Some(export_all.src.value.to_string())
@@ -144,7 +142,7 @@ impl ImportParser {
     for node in module_body.iter() {
       if let ModuleItem::ModuleDecl(module_decl) = node {
         if let Some(specifier) = self.get_import_for_module_decl(module_decl) {
-          import_specifiers.extend(specifier);
+          import_specifiers.push(specifier);
         }
       }
     }
@@ -153,31 +151,12 @@ impl ImportParser {
   }
 }
 
-pub fn get_module_imports(file_name: String, source: String) -> Vec<String> {
+pub fn get_module_imports(
+  file_name: String,
+  source_code: String,
+) -> Vec<String> {
   let import_parser = ImportParser::default();
   import_parser
     .parse_source_file(file_name, source_code)
     .expect("Failed to parse source file")
-}
-
-pub async fn build_module_graph(
-  global_state: GlobalState,
-  specifier: &str,
-) -> Result<Vec<String>, ErrBox> {
-  let root_specifier =
-    ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
-
-  loop {
-    let source_file = global_state
-      .file_fetcher
-      .fetch_source_file(&module_specifier, None)
-      .await?;
-  }
-
-  let source_code = String::from_utf8(source_file.source_code)?;
-
-  let import_parser = ImportParser::default();
-  let imports = import_parser
-    .parse_source_file(module_specifier.to_string(), source_code)
-    .expect("Failed to parse import specifiers");
 }

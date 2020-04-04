@@ -150,7 +150,26 @@ pub fn get_doc_node_for_export_decl(
   }
 }
 
-#[allow(unused)]
+pub fn get_doc_nodes_for_export_all(
+  doc_parser: &DocParser,
+  export_all: &swc_ecma_ast::ExportAll,
+  referrer: &str,
+) -> Vec<DocNode> {
+  let file_name = export_all.src.value.to_string();
+  let resolved_specifier = doc_parser
+    .loader
+    .resolve(&file_name, referrer, false)
+    .expect("Failed to resolve specifier");
+
+  // Now parse that module, but skip parsing its reexports
+  let doc_nodes = doc_parser
+    .new_parse(&resolved_specifier.to_string(), false)
+    .expect("Failed to print docs");
+
+  doc_nodes
+}
+
+
 pub fn get_doc_nodes_for_named_export(
   doc_parser: &DocParser,
   named_export: &swc_ecma_ast::NamedExport,
