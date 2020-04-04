@@ -22,7 +22,9 @@ fn with_io_context<T: AsRef<str>>(
 
 impl DiskCache {
   pub fn new(location: &Path) -> Self {
-    // TODO: ensure that 'location' is a directory
+    if !&location.is_dir() {
+      fs::create_dir_all(&location).ok();
+    }
     Self {
       location: location.to_owned(),
     }
@@ -131,6 +133,28 @@ impl DiskCache {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use tempfile::TempDir;
+
+  #[test]
+  fn test_create_cache_if_dir_exits() {
+    let cache_location = TempDir::new().unwrap();
+    let mut cache_path = cache_location.path().to_owned();
+    cache_path.push("foo");
+    DiskCache::new(&cache_path);
+    assert!(cache_path.is_dir());
+  }
+
+  #[test]
+  fn test_create_cache_if_dir_not_exits() {
+    let cache_location = if cfg!(target_os = "windows") {
+      PathBuf::from(r"C:\deno_dir\foo")
+    } else {
+      PathBuf::from("~/deno_dir/foo")
+    };
+    assert_eq!(cache_location.is_dir(), false);
+    DiskCache::new(&cache_location);
+    assert_eq!(cache_location.is_dir(), true);
+  }
 
   #[test]
   fn test_get_cache_filename() {
