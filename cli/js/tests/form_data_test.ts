@@ -76,8 +76,8 @@ unitTest(function formDataParamsSetSuccess(): void {
 unitTest(function fromDataUseDomFile(): void {
   const formData = new FormData();
   const file = new File(["foo"], "bar", {
-    type: "text/plain"
-  })
+    type: "text/plain",
+  });
   formData.append("file", file);
   assertEquals(formData.get("file"), file);
 });
