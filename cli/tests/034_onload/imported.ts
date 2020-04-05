@@ -1,8 +1,9 @@
-import { assert } from "../../../std/testing/asserts.ts";
 import "./nest_imported.ts";
 
 const handler = (e: Event): void => {
-  assert(!e.cancelable);
+  if (e.cancelable) {
+    throw new Error("e.cancelable should be false");
+  }
   console.log(`got ${e.type} event in event handler (imported)`);
 };
 

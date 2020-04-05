@@ -7,15 +7,15 @@ test fail3 ... FAILED [WILDCARD]
 failures:
 
 fail1
-AssertionError: fail1 assertion
+Error: fail1 assertion
 [WILDCARD]
 
 fail2
-AssertionError: fail2 assertion
+Error: fail2 assertion
 [WILDCARD]
 
 fail3
-AssertionError: fail3 assertion
+Error: fail3 assertion
 [WILDCARD]
 
 failures:
