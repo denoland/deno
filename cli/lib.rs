@@ -564,12 +564,22 @@ pub fn main() {
       return;
     }
     DenoSubcommand::Types => {
-      let types = format!(
-        "{}\n{}\n{}",
-        crate::js::DENO_NS_LIB,
-        crate::js::SHARED_GLOBALS_LIB,
-        crate::js::WINDOW_LIB
-      );
+      let types = if flags.unstable {
+        format!(
+          "{}\n{}\n{}\n{}",
+          crate::js::DENO_NS_LIB,
+          crate::js::SHARED_GLOBALS_LIB,
+          crate::js::WINDOW_LIB,
+          crate::js::UNSTABLE_NS_LIB,
+        )
+      } else {
+        format!(
+          "{}\n{}\n{}",
+          crate::js::DENO_NS_LIB,
+          crate::js::SHARED_GLOBALS_LIB,
+          crate::js::WINDOW_LIB,
+        )
+      };
       if let Err(e) = write_to_stdout_ignore_sigpipe(types.as_bytes()) {
         eprintln!("{}", e);
         std::process::exit(1);

@@ -16,6 +16,7 @@ import {
   windowOrWorkerGlobalScopeProperties,
   eventTargetProperties,
 } from "./globals.ts";
+import { unstableMethods, unstableProperties } from "./globals_unstable.ts";
 import * as webWorkerOps from "./ops/web_worker.ts";
 import { LocationImpl } from "./web/location.ts";
 import { log, assert, immutableDefine } from "./util.ts";
@@ -99,11 +100,16 @@ export function bootstrapWorkerRuntime(name: string): void {
   Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
   Object.defineProperties(globalThis, eventTargetProperties);
   Object.defineProperties(globalThis, { name: readOnly(name) });
-  const s = runtime.start(name);
+  const { location, unstableFlag } = runtime.start(name);
 
-  const location = new LocationImpl(s.location);
-  immutableDefine(globalThis, "location", location);
+  const location_ = new LocationImpl(location);
+  immutableDefine(globalThis, "location", location_);
   Object.freeze(globalThis.location);
+
+  if (unstableFlag) {
+    Object.defineProperties(globalThis, unstableMethods);
+    Object.defineProperties(globalThis, unstableProperties);
+  }
 
   // globalThis.Deno is not available in worker scope
   delete globalThis.Deno;

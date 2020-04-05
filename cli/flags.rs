@@ -89,33 +89,33 @@ pub struct Flags {
   pub argv: Vec<String>,
   pub subcommand: DenoSubcommand,
 
-  pub log_level: Option<Level>,
-  pub version: bool,
-  pub reload: bool,
+  pub allow_env: bool,
+  pub allow_hrtime: bool,
+  pub allow_net: bool,
+  pub allow_plugin: bool,
+  pub allow_read: bool,
+  pub allow_run: bool,
+  pub allow_write: bool,
+  pub cache_blacklist: Vec<String>,
+  pub ca_file: Option<String>,
+  pub cached_only: bool,
   pub config_path: Option<String>,
   pub import_map_path: Option<String>,
-  pub allow_read: bool,
-  pub read_whitelist: Vec<PathBuf>,
-  pub cache_blacklist: Vec<String>,
-  pub allow_write: bool,
-  pub write_whitelist: Vec<PathBuf>,
-  pub allow_net: bool,
-  pub net_whitelist: Vec<String>,
-  pub allow_env: bool,
-  pub allow_run: bool,
-  pub allow_plugin: bool,
-  pub allow_hrtime: bool,
-  pub no_prompts: bool,
-  pub no_remote: bool,
-  pub cached_only: bool,
   pub inspect: Option<SocketAddr>,
   pub inspect_brk: Option<SocketAddr>,
-  pub seed: Option<u64>,
-  pub v8_flags: Option<Vec<String>>,
-
   pub lock: Option<String>,
   pub lock_write: bool,
-  pub ca_file: Option<String>,
+  pub log_level: Option<Level>,
+  pub net_whitelist: Vec<String>,
+  pub no_prompts: bool,
+  pub no_remote: bool,
+  pub read_whitelist: Vec<PathBuf>,
+  pub reload: bool,
+  pub seed: Option<u64>,
+  pub unstable: bool,
+  pub v8_flags: Option<Vec<String>>,
+  pub version: bool,
+  pub write_whitelist: Vec<PathBuf>,
 }
 
 fn join_paths(whitelist: &[PathBuf], d: &str) -> String {
@@ -325,7 +325,8 @@ If the flag is set, restrict these messages to errors.",
     .after_help(ENV_VARIABLES_HELP)
 }
 
-fn types_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
+fn types_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  unstable_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Types;
 }
 
@@ -374,6 +375,7 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   ca_file_arg_parse(flags, matches);
+  unstable_arg_parse(flags, matches);
 
   let source_file = matches.value_of("source_file").unwrap().to_string();
 
@@ -409,6 +411,7 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   v8_flags_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   inspect_arg_parse(flags, matches);
+  unstable_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Repl;
   flags.allow_net = true;
   flags.allow_env = true;
@@ -423,6 +426,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   v8_flags_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   inspect_arg_parse(flags, matches);
+  unstable_arg_parse(flags, matches);
   flags.allow_net = true;
   flags.allow_env = true;
   flags.allow_run = true;
@@ -447,6 +451,7 @@ fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn fetch_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  unstable_arg_parse(flags, matches);
   reload_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
   importmap_arg_parse(flags, matches);
@@ -489,6 +494,7 @@ fn run_test_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   permission_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   inspect_arg_parse(flags, matches);
+  unstable_arg_parse(flags, matches);
 
   if matches.is_present("cached-only") {
     flags.cached_only = true;
@@ -577,6 +583,7 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("types")
+    .arg(unstable_arg())
     .about("Print runtime TypeScript declarations")
     .long_about(
       "Print runtime TypeScript declarations.
@@ -617,6 +624,7 @@ fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Read Eval Print Loop")
     .arg(v8_flags_arg())
     .arg(ca_file_arg())
+    .arg(unstable_arg())
 }
 
 fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -666,6 +674,7 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
     )
     .arg(Arg::with_name("out_file").takes_value(true).required(false))
     .arg(ca_file_arg())
+    .arg(unstable_arg())
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
@@ -715,6 +724,7 @@ This command has implicit access to all permissions (--allow-all).",
     )
     .arg(Arg::with_name("code").takes_value(true).required(true))
     .arg(v8_flags_arg())
+    .arg(unstable_arg())
 }
 
 fn info_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -759,6 +769,7 @@ fn fetch_subcommand<'a, 'b>() -> App<'a, 'b> {
         .min_values(1),
     )
     .arg(ca_file_arg())
+    .arg(unstable_arg())
     .about("Fetch the dependencies")
     .long_about(
       "Fetch and compile remote dependencies recursively.
@@ -899,6 +910,7 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
     .arg(no_remote_arg())
     .arg(v8_flags_arg())
     .arg(ca_file_arg())
+    .arg(unstable_arg())
     .arg(
       Arg::with_name("cached-only")
         .long("cached-only")
@@ -1163,6 +1175,18 @@ fn no_remote_arg<'a, 'b>() -> Arg<'a, 'b> {
 fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("no-remote") {
     flags.no_remote = true;
+  }
+}
+
+fn unstable_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("unstable")
+    .long("unstable")
+    .help("Enables unstable APIs")
+}
+
+fn unstable_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  if matches.is_present("unstable") {
+    flags.unstable = true;
   }
 }
 

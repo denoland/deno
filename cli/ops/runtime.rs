@@ -32,20 +32,21 @@ fn op_start(
   let gs = &state.global_state;
 
   Ok(JsonOp::Sync(json!({
+    "arch": BUILD_ARCH,
+    "args": gs.flags.argv.clone(),
     // TODO(bartlomieju): `cwd` field is not used in JS, remove?
     "cwd": &env::current_dir().unwrap(),
-    "pid": std::process::id(),
-    "args": gs.flags.argv.clone(),
-    "repl": gs.flags.subcommand == DenoSubcommand::Repl,
-    "location": state.main_module.to_string(),
     "debugFlag": gs.flags.log_level.map_or(false, |l| l == log::Level::Debug),
-    "versionFlag": gs.flags.version,
-    "v8Version": version::v8(),
     "denoVersion": version::DENO,
-    "tsVersion": version::TYPESCRIPT,
+    "location": state.main_module.to_string(),
     "noColor": !colors::use_color(),
     "os": BUILD_OS,
-    "arch": BUILD_ARCH,
+    "pid": std::process::id(),
+    "repl": gs.flags.subcommand == DenoSubcommand::Repl,
+    "tsVersion": version::TYPESCRIPT,
+    "unstableFlag": gs.flags.unstable,
+    "v8Version": version::v8(),
+    "versionFlag": gs.flags.version,
   })))
 }
 
