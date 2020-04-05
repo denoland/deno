@@ -1,5 +1,6 @@
 const { test } = Deno;
-import { assertEquals, assert, assertStrContains } from "../testing/asserts.ts";
+import { assertEquals, assertStrContains } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 import { createRequire } from "./module.ts";
 
 // TS compiler would try to resolve if function named "require"

@@ -2,11 +2,11 @@
 
 const { Buffer, copy, open, remove } = Deno;
 import {
-  assert,
   assertEquals,
   assertThrows,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 const { test } = Deno;
 import * as path from "../path/mod.ts";
 import {

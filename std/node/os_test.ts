@@ -1,5 +1,6 @@
 const { test } = Deno;
-import { assert, assertThrows, assertEquals } from "../testing/asserts.ts";
+import { assertThrows, assertEquals } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 import * as os from "./os.ts";
 
 test({

@@ -1,5 +1,5 @@
 const { test } = Deno;
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 import * as util from "./util.ts";
 
 test({

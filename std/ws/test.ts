@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { BufReader, BufWriter } from "../io/bufio.ts";
-import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
+import { assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 const { test } = Deno;
 import { TextProtoReader } from "../textproto/mod.ts";
 import * as bytes from "../bytes/mod.ts";

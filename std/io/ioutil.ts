@@ -2,7 +2,7 @@
 import { BufReader } from "./bufio.ts";
 type Reader = Deno.Reader;
 type Writer = Deno.Writer;
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 
 /** copy N size at the most.
  *  If read size is lesser than N, then returns nread

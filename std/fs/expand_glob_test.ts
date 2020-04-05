@@ -1,6 +1,7 @@
 const { cwd, execPath, run } = Deno;
 import { decode } from "../encoding/utf8.ts";
-import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
+import { assertEquals, assertStrContains } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 import {
   isWindows,
   join,

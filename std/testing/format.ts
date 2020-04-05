@@ -1,4 +1,4 @@
-import { assert } from "./asserts.ts";
+import { assert } from "../util/assert.ts";
 
 // This file is ported from pretty-format@24.0.0
 /**

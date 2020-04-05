@@ -1,8 +1,8 @@
 const { test } = Deno;
 import { readFile, readFileSync } from "./_fs_readFile.ts";
 import * as path from "../../path/mod.ts";
-import { assertEquals, assert } from "../../testing/asserts.ts";
-
+import { assertEquals } from "../../testing/asserts.ts";
+import { assert } from "../../util/assert.ts";
 const testData = path.resolve(
   path.join("node", "_fs", "testdata", "hello.txt")
 );

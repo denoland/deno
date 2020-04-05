@@ -1,20 +1,19 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import {
-  assert,
   assertNotEquals,
   assertStrContains,
   assertArrayContains,
   assertMatch,
   assertEquals,
   assertThrows,
-  AssertionError,
   equal,
   fail,
   unimplemented,
   unreachable,
 } from "./asserts.ts";
 import { red, green, white, gray, bold } from "../fmt/colors.ts";
+import { assert, AssertionError } from "../util/assert.ts";
 const { test } = Deno;
 
 test(function testingEqual(): void {

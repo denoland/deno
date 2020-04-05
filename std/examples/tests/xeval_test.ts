@@ -2,11 +2,9 @@
 import { xeval } from "../xeval.ts";
 import { stringsReader } from "../../io/util.ts";
 import { decode, encode } from "../../encoding/utf8.ts";
-import {
-  assertEquals,
-  assertStrContains,
-  assert,
-} from "../../testing/asserts.ts";
+import { assertEquals, assertStrContains } from "../../testing/asserts.ts";
+import { assert } from "../../util/assert.ts";
+
 const { execPath, run } = Deno;
 
 Deno.test(async function xevalSuccess(): Promise<void> {

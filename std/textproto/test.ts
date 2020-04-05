@@ -7,11 +7,11 @@ import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "./mod.ts";
 import { stringsReader } from "../io/util.ts";
 import {
-  assert,
   assertEquals,
   assertThrows,
   assertNotEOF,
 } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 const { test } = Deno;
 
 function reader(s: string): TextProtoReader {

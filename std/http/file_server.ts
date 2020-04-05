@@ -10,7 +10,7 @@ const { args, stat, readdir, open, exit } = Deno;
 import { posix, extname } from "../path/mod.ts";
 import { listenAndServe, ServerRequest, Response } from "./server.ts";
 import { parse } from "../flags/mod.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 import { setContentLength } from "./io.ts";
 
 interface EntryInfo {

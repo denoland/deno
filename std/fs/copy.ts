@@ -2,7 +2,7 @@
 import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { isSubdir, getFileInfoType } from "./utils.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 
 export interface CopyOptions {
   /**

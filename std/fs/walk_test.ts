@@ -1,7 +1,8 @@
 const { cwd, chdir, makeTempDir, mkdir, open, symlink } = Deno;
 const { remove } = Deno;
 import { walk, walkSync, WalkOptions, WalkInfo } from "./walk.ts";
-import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
+import { assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 
 const isWindows = Deno.build.os == "win";
 

@@ -5,12 +5,8 @@
 
 const { Buffer } = Deno;
 type Reader = Deno.Reader;
-import {
-  assert,
-  assertEquals,
-  fail,
-  assertNotEOF,
-} from "../testing/asserts.ts";
+import { assertEquals, fail, assertNotEOF } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 import {
   BufReader,
   BufWriter,

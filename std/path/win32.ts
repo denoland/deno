@@ -17,7 +17,7 @@ import {
   normalizeString,
   _format,
 } from "./utils.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 
 export const sep = "\\";
 export const delimiter = ";";

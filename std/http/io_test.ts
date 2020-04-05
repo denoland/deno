@@ -1,11 +1,10 @@
 import {
-  AssertionError,
   assertThrowsAsync,
   assertEquals,
-  assert,
   assertNotEOF,
   assertNotEquals,
 } from "../testing/asserts.ts";
+import { assert, AssertionError } from "../util/assert.ts";
 import {
   bodyReader,
   writeTrailers,

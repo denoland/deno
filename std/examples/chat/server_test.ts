@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals } from "../../testing/asserts.ts";
+import { assertEquals } from "../../testing/asserts.ts";
+import { assert } from "../../util/assert.ts";
 import { TextProtoReader } from "../../textproto/mod.ts";
 import { BufReader } from "../../io/bufio.ts";
 import { connectWebSocket, WebSocket } from "../../ws/mod.ts";

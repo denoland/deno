@@ -2,19 +2,13 @@
 import { red, green, white, gray, bold } from "../fmt/colors.ts";
 import diff, { DiffType, DiffResult } from "./diff.ts";
 import { format } from "./format.ts";
+import { AssertionError, assert } from "../util/assert.ts";
 
 const CAN_NOT_DISPLAY = "[Cannot display]";
 
 interface Constructor {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   new (...args: any[]): any;
-}
-
-export class AssertionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AssertionError";
-  }
 }
 
 function createStr(v: unknown): string {
@@ -126,13 +120,6 @@ export function equal(c: unknown, d: unknown): boolean {
     }
     return false;
   })(c, d);
-}
-
-/** Make an assertion, if not `true`, then throw. */
-export function assert(expr: unknown, msg = ""): asserts expr {
-  if (!expr) {
-    throw new AssertionError(msg);
-  }
 }
 
 /**

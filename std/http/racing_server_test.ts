@@ -1,4 +1,5 @@
-import { assert, assertEquals } from "../testing/asserts.ts";
+import { assertEquals } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 const { connect, run, test } = Deno;

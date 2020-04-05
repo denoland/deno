@@ -1,7 +1,7 @@
 import { SEP, SEP_PATTERN } from "./constants.ts";
 import { globrex } from "./globrex.ts";
 import { join, normalize } from "./mod.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 
 export interface GlobOptions {
   extended?: boolean;

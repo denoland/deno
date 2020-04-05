@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { test } = Deno;
-import { assertEquals, assert } from "../testing/asserts.ts";
+import { assertEquals } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 import { deepAssign } from "./deep_assign.ts";
 
 test(function deepAssignTest(): void {

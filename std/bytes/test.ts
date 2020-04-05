@@ -8,7 +8,8 @@ import {
   repeat,
   concat,
 } from "./mod.ts";
-import { assertEquals, assertThrows, assert } from "../testing/asserts.ts";
+import { assertEquals, assertThrows } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 import { encode, decode } from "../encoding/utf8.ts";
 
 Deno.test("[bytes] findIndex1", () => {

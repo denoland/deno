@@ -7,12 +7,12 @@
 
 import { TextProtoReader } from "../textproto/mod.ts";
 import {
-  assert,
   assertEquals,
   assertNotEOF,
   assertStrContains,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 import { Response, ServerRequest, Server, serve } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay } from "../util/async.ts";

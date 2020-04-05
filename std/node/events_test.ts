@@ -1,10 +1,6 @@
 const { test } = Deno;
-import {
-  assert,
-  assertEquals,
-  fail,
-  assertThrows,
-} from "../testing/asserts.ts";
+import { assertEquals, fail, assertThrows } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 import EventEmitter, { WrappedFunction, once, on } from "./events.ts";
 
 const shouldNeverBeEmitted: Function = () => {

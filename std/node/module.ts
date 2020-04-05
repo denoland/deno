@@ -30,7 +30,7 @@ import * as nodeEvents from "./events.ts";
 import * as nodeQueryString from "./querystring.ts";
 
 import * as path from "../path/mod.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 
 const CHAR_FORWARD_SLASH = "/".charCodeAt(0);
 const CHAR_BACKWARD_SLASH = "\\".charCodeAt(0);

@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  assert,
   assertEquals,
   assertStrContains,
   assertThrows,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 import * as path from "../path/mod.ts";
 import { emptyDir, emptyDirSync } from "./empty_dir.ts";
 

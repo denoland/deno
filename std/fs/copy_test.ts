@@ -3,8 +3,8 @@ import {
   assertEquals,
   assertThrows,
   assertThrowsAsync,
-  assert,
 } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 import * as path from "../path/mod.ts";
 import { copy, copySync } from "./copy.ts";
 import { exists, existsSync } from "./exists.ts";

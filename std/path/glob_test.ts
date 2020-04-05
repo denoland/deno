@@ -1,5 +1,6 @@
 const { mkdir, test } = Deno;
-import { assert, assertEquals } from "../testing/asserts.ts";
+import { assertEquals } from "../testing/asserts.ts";
+import { assert } from "../util/assert.ts";
 import { testWalk, touch, walkArray } from "../fs/walk_test.ts";
 import { globToRegExp, isGlob, joinGlobs, normalizeGlob } from "./glob.ts";
 import { SEP, join } from "./mod.ts";
