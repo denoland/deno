@@ -51,13 +51,13 @@ export interface ArgParsingOptions {
   /** A function which is invoked with a command line parameter not defined in
    * the `options` configuration object. If the function returns `false`, the
    * unknown option is not added to `parsedArgs`. */
-  unknown?: (i: unknown) => unknown;
+  unknown?: (arg: string, key?: string, value?: unknown) => unknown;
 }
 
 interface Flags {
   bools: Record<string, boolean>;
   strings: Record<string, boolean>;
-  unknownFn: (i: unknown) => unknown;
+  unknownFn: (arg: string, key?: string, value?: unknown) => unknown;
   allBools: boolean;
 }
 
@@ -107,7 +107,7 @@ export function parse(
     default: defaults = {},
     stopEarly = false,
     string = [],
-    unknown = (i: unknown): unknown => i,
+    unknown = (i: string): unknown => i,
   }: ArgParsingOptions = {}
 ): Args {
   const flags: Flags = {
@@ -198,7 +198,7 @@ export function parse(
     arg: string | undefined = undefined
   ): void {
     if (arg && flags.unknownFn && !argDefined(key, arg)) {
-      if (flags.unknownFn(arg) === false) return;
+      if (flags.unknownFn(arg, key, val) === false) return;
     }
 
     const value = !get(flags.strings, key) && isNumber(val) ? Number(val) : val;
