@@ -11,11 +11,18 @@ class FormDataBase {
   [dataSymbol]: Array<[string, domTypes.FormDataEntryValue]> = [];
 
   append(name: string, value: string): void;
+  append(name: string, value: domFile.DomFileImpl): void;
   append(name: string, value: blob.DenoBlob, filename?: string): void;
-  append(name: string, value: string | blob.DenoBlob, filename?: string): void {
+  append(
+    name: string,
+    value: string | blob.DenoBlob | domFile.DomFileImpl,
+    filename?: string
+  ): void {
     requiredArguments("FormData.append", arguments.length, 2);
     name = String(name);
-    if (value instanceof blob.DenoBlob) {
+    if (value instanceof domFile.DomFileImpl) {
+      this[dataSymbol].push([name, value]);
+    } else if (value instanceof blob.DenoBlob) {
       const dfile = new domFile.DomFileImpl([value], filename || name, {
         type: value.type,
       });
@@ -70,8 +77,13 @@ class FormDataBase {
   }
 
   set(name: string, value: string): void;
+  set(name: string, value: domFile.DomFileImpl): void;
   set(name: string, value: blob.DenoBlob, filename?: string): void;
-  set(name: string, value: string | blob.DenoBlob, filename?: string): void {
+  set(
+    name: string,
+    value: string | blob.DenoBlob | domFile.DomFileImpl,
+    filename?: string
+  ): void {
     requiredArguments("FormData.set", arguments.length, 2);
     name = String(name);
 
@@ -82,7 +94,9 @@ class FormDataBase {
     while (i < this[dataSymbol].length) {
       if (this[dataSymbol][i][0] === name) {
         if (!found) {
-          if (value instanceof blob.DenoBlob) {
+          if (value instanceof domFile.DomFileImpl) {
+            this[dataSymbol][i][1] = value;
+          } else if (value instanceof blob.DenoBlob) {
             const dfile = new domFile.DomFileImpl([value], filename || name, {
               type: value.type,
             });
@@ -101,7 +115,9 @@ class FormDataBase {
 
     // Otherwise, append entry to the context object’s entry list.
     if (!found) {
-      if (value instanceof blob.DenoBlob) {
+      if (value instanceof domFile.DomFileImpl) {
+        this[dataSymbol].push([name, value]);
+      } else if (value instanceof blob.DenoBlob) {
         const dfile = new domFile.DomFileImpl([value], filename || name, {
           type: value.type,
         });
