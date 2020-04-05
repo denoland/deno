@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { assertEquals } from "../../../std/testing/asserts.ts";
-import { assert } from "../util.ts";
+import { assert } from "../../../std/util/assert.ts";
 export {
   assertThrows,
   assertEquals,
