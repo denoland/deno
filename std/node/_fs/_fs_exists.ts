@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
 type ExitsCallback = (exists: boolean) => void;
 
 /* Deprecated in node api */
@@ -9,13 +8,13 @@ export function exists(path: string, callback: ExitsCallback): void {
       await Deno.lstat(path);
       resolve();
     } catch (err) {
-      reject(err);
+      reject();
     }
   })
     .then(() => {
       callback(true);
     })
-    .catch((err) => {
+    .catch(() => {
       callback(false);
     });
 }
