@@ -146,11 +146,10 @@ mod tests {
 
   #[test]
   fn test_create_cache_if_dir_not_exits() {
-    let cache_location = if cfg!(target_os = "windows") {
-      PathBuf::from(r"C:\deno_dir\foo")
-    } else {
-      PathBuf::from("~/deno_dir/foo")
-    };
+    let temp_dir = TempDir::new().unwrap();
+    let mut cache_location = temp_dir.path().to_owned();
+    assert!(fs::remove_dir(&cache_location).is_ok());
+    cache_location.push("foo");
     assert_eq!(cache_location.is_dir(), false);
     DiskCache::new(&cache_location);
     assert_eq!(cache_location.is_dir(), true);
