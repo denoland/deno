@@ -28,7 +28,6 @@ Here are the dedicated documentations of modules:
 - [fs](fs/README.md)
 - [http](http/README.md)
 - [log](log/README.md)
-- [media_types](media_types/README.md)
 - [strings](strings/README.md)
 - [testing](testing/README.md)
 - [uuid](uuid/README.md)
