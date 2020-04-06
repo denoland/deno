@@ -176,8 +176,8 @@ export class Server implements AsyncIterable<ServerRequest> {
 
       // Wait for the request to be processed before we accept a new request on
       // this connection.
-      const procError = await request.done;
-      if (procError) {
+      const responseError = await request.done;
+      if (responseError) {
         // Something bad happened during response.
         // (likely other side closed during pipelined req)
         // req.done implies this connection already closed, so we can just return.
