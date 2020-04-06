@@ -369,7 +369,7 @@ impl State {
         self.check_read(Path::new(&path))?;
         Ok(())
       }
-      _ => unreachable!(),
+      _ => Err(OpError::other("Provide valid URI protocol scheme in dynamic import path. Valid protocol schemas: http://, https://, file://".to_string()))
     }
   }
 
