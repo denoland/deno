@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::op_error::OpError;
 use crate::swc_common;
 use crate::swc_common::comments::CommentKind;
 use crate::swc_common::comments::Comments;
@@ -22,10 +23,15 @@ use crate::swc_ecma_parser::Session;
 use crate::swc_ecma_parser::SourceFileInput;
 use crate::swc_ecma_parser::Syntax;
 use crate::swc_ecma_parser::TsConfig;
+
 use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
+use futures::Future;
 use regex::Regex;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::RwLock;
 
@@ -35,12 +41,7 @@ use super::node::ModuleDoc;
 use super::DocNode;
 use super::DocNodeKind;
 use super::Location;
-use crate::op_error::OpError;
-use deno_core::ModuleSpecifier;
 
-use futures::Future;
-use std::collections::HashMap;
-use std::pin::Pin;
 #[derive(Clone, Debug)]
 pub struct SwcDiagnosticBuffer {
   pub diagnostics: Vec<Diagnostic>,
@@ -206,10 +207,7 @@ impl DocParser {
     }
 
     for specifier in by_src.keys() {
-      let resolved_specifier = self
-        .loader
-        .resolve(specifier, referrer)
-        .expect("Failed to resolve specifier");
+      let resolved_specifier = self.loader.resolve(specifier, referrer)?;
       let doc_nodes = self.parse(&resolved_specifier.to_string()).await?;
       let reexports_for_specifier = by_src.get(specifier).unwrap();
 
@@ -242,9 +240,9 @@ impl DocParser {
             processed_reexports.push(ns_doc_node);
           }
           node::ReexportKind::Named(ident, maybe_alias) => {
-            // Try to find reexport. NOTE: reexport might be another reexport, for now
-            // we're just finding reexports one-level deep
-
+            // Try to find reexport.
+            // NOTE: the reexport might actually be reexport from another
+            // module; for now we're skipping nested reexports.
             let maybe_doc_node =
               doc_nodes.iter().find(|node| &node.name == ident);
 
