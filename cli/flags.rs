@@ -1442,6 +1442,22 @@ mod tests {
   }
 
   #[test]
+  fn run_unstable() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "run", "--unstable", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        unstable: true,
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn run_v8_flags() {
     let r = flags_from_vec_safe(svec![
       "deno",
@@ -1634,11 +1650,40 @@ mod tests {
   }
 
   #[test]
+  fn types_unstable() {
+    let r = flags_from_vec_safe(svec!["deno", "types", "--unstable"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        unstable: true,
+        subcommand: DenoSubcommand::Types,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn fetch() {
     let r = flags_from_vec_safe(svec!["deno", "fetch", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
+        subcommand: DenoSubcommand::Fetch {
+          files: svec!["script.ts"],
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn fetch_unstable() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "fetch", "--unstable", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        unstable: true,
         subcommand: DenoSubcommand::Fetch {
           files: svec!["script.ts"],
         },
@@ -1742,6 +1787,34 @@ mod tests {
   }
 
   #[test]
+  fn eval_unstable() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "eval",
+      "--unstable",
+      "'console.log(\"hello\")'"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        unstable: true,
+        subcommand: DenoSubcommand::Eval {
+          code: "'console.log(\"hello\")'".to_string(),
+          as_typescript: false,
+        },
+        allow_net: true,
+        allow_env: true,
+        allow_run: true,
+        allow_read: true,
+        allow_write: true,
+        allow_plugin: true,
+        allow_hrtime: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn eval_with_v8_flags() {
     let r =
       flags_from_vec_safe(svec!["deno", "eval", "--v8-flags=--help", "42"]);
@@ -1771,6 +1844,26 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
+        subcommand: DenoSubcommand::Repl,
+        allow_net: true,
+        allow_env: true,
+        allow_run: true,
+        allow_read: true,
+        allow_write: true,
+        allow_plugin: true,
+        allow_hrtime: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn repl_unstable() {
+    let r = flags_from_vec_safe(svec!["deno", "repl", "--unstable"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        unstable: true,
         subcommand: DenoSubcommand::Repl,
         allow_net: true,
         allow_env: true,
@@ -1915,6 +2008,23 @@ mod tests {
           out_file: Some(PathBuf::from("bundle.js")),
         },
         allow_write: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bundle_unstable() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "bundle", "--unstable", "source.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        unstable: true,
+        subcommand: DenoSubcommand::Bundle {
+          source_file: "source.ts".to_string(),
+          out_file: None,
+        },
         ..Flags::default()
       }
     );

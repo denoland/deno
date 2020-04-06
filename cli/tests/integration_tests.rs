@@ -1431,6 +1431,18 @@ itest!(unbuffered_stdout {
   output: "unbuffered_stdout.ts.out",
 });
 
+itest!(unstable_disabled {
+  args: "run --reload unstable.ts",
+  check_stderr: true,
+  exit_code: 1,
+  output: "unstable_disabled.out",
+});
+
+itest!(unstable_enabled {
+  args: "run --reload --unstable unstable.ts",
+  output: "unstable_enabled.out",
+});
+
 // Cannot write the expression to evaluate as "console.log(typeof gc)"
 // because itest! splits args on whitespace.
 itest!(eval_v8_flags {
