@@ -147,45 +147,45 @@ export class Server implements AsyncIterable<ServerRequest> {
   private async *iterateHttpRequests(
     conn: Conn
   ): AsyncIterableIterator<ServerRequest> {
-    const bufr = new BufReader(conn);
-    const w = new BufWriter(conn);
+    const reader = new BufReader(conn);
+    const writer = new BufWriter(conn);
 
     while (!this.closing) {
-      let req: ServerRequest | Deno.EOF;
+      let request: ServerRequest | Deno.EOF;
       try {
-        req = await readRequest(conn, bufr);
+        request = await readRequest(conn, reader);
       } catch (error) {
         if (
           error instanceof Deno.errors.InvalidData ||
           error instanceof Deno.errors.UnexpectedEof
         ) {
           // An error was thrown while parsing request headers.
-          await writeResponse(w, {
+          await writeResponse(writer, {
             status: 400,
             body: encode(`${error.message}\r\n\r\n`),
           });
         }
         break;
       }
-      if (req == Deno.EOF) {
+      if (request == Deno.EOF) {
         break;
       }
 
-      req.w = w;
-      yield req;
+      request.w = writer;
+      yield request;
 
       // Wait for the request to be processed before we accept a new request on
       // this connection.
-      const procError = await req.done;
+      const procError = await request.done;
       if (procError) {
         // Something bad happened during response.
         // (likely other side closed during pipelined req)
         // req.done implies this connection already closed, so we can just return.
-        this.untrackConnection(req.conn);
+        this.untrackConnection(request.conn);
         return;
       }
       // Consume unread body and trailers if receiver didn't consume those data
-      await req.finalize();
+      await request.finalize();
     }
 
     this.untrackConnection(conn);
