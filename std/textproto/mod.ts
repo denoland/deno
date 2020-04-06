@@ -17,7 +17,7 @@ function str(buf: Uint8Array | null | undefined): string {
 }
 
 export class TextProtoReader {
-  constructor(readonly r: BufReader) { }
+  constructor(readonly r: BufReader) {}
 
   /** readLine() reads a single line from the TextProtoReader,
    * eliding the final \n or \r\n from the returned string.
@@ -108,7 +108,7 @@ export class TextProtoReader {
       // example: "Audio Mode" => invalid due to space in the key
       try {
         m.append(key, value);
-      } catch { }
+      } catch {}
     }
   }
 
