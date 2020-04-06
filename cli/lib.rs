@@ -377,18 +377,14 @@ async fn doc_command(
   let module_specifier =
     ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
 
-  struct SourceFileFetcherWrap {
-    file_fetcher: SourceFileFetcher,
-  }
-
-  impl DocFileLoader for SourceFileFetcherWrap {
+  impl DocFileLoader for SourceFileFetcher {
     fn load_source_code(
       &self,
       specifier: &str,
     ) -> Pin<Box<dyn Future<Output = Result<String, OpError>>>> {
       let specifier =
         ModuleSpecifier::resolve_url_or_path(specifier).expect("Bad specifier");
-      let fetcher = self.file_fetcher.clone();
+      let fetcher = self.clone();
 
       async move {
         let source_file = fetcher.fetch_source_file(&specifier, None).await?;
@@ -399,9 +395,7 @@ async fn doc_command(
     }
   }
 
-  let loader = Box::new(SourceFileFetcherWrap {
-    file_fetcher: global_state.file_fetcher.clone(),
-  });
+  let loader = Box::new(global_state.file_fetcher.clone());
   let doc_parser = doc::DocParser::new(loader);
   let parse_result = doc_parser
     .parse_with_reexports(&module_specifier.to_string())
