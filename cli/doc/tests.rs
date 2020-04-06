@@ -774,7 +774,15 @@ async fn optional_return_type() {
 
 #[tokio::test]
 async fn reexports() {
+  let nested_reexport_source_code = r#"
+/**
+  * JSDoc for bar
+  */
+export const bar = "bar";
+"#;
   let reexport_source_code = r#"
+import { bar } from "./nested_reexport.ts";
+
 /**
  * JSDoc for const
  */
@@ -794,6 +802,10 @@ export function fooFn(a: number) {
       "file:///reexport.ts".to_string(),
       reexport_source_code.to_string(),
     ),
+    (
+      "file:///nested_reexport.ts".to_string(),
+      nested_reexport_source_code.to_string(),
+    ),
   ]);
   let entries = DocParser::new(loader)
     .parse_with_reexports("file:///test.ts")
@@ -807,7 +819,7 @@ export function fooFn(a: number) {
       "name": "fooConst",
       "location": {
         "filename": "file:///reexport.ts",
-        "line": 5,
+        "line": 7,
         "col": 0
       },
       "jsDoc": "JSDoc for const",

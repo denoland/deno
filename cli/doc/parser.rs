@@ -22,7 +22,10 @@ use crate::swc_ecma_parser::Session;
 use crate::swc_ecma_parser::SourceFileInput;
 use crate::swc_ecma_parser::Syntax;
 use crate::swc_ecma_parser::TsConfig;
+use deno_core::ErrBox;
 use regex::Regex;
+use std::error::Error;
+use std::fmt;
 use std::sync::Arc;
 use std::sync::RwLock;
 
@@ -38,20 +41,45 @@ use deno_core::ModuleSpecifier;
 use futures::Future;
 use std::collections::HashMap;
 use std::pin::Pin;
+#[derive(Clone, Debug)]
+pub struct SwcDiagnosticBuffer {
+  pub diagnostics: Vec<Diagnostic>,
+}
 
-pub type SwcDiagnostics = Vec<Diagnostic>;
+impl Error for SwcDiagnosticBuffer {}
 
-#[derive(Clone, Default)]
-pub struct BufferedError(Arc<RwLock<SwcDiagnostics>>);
+impl fmt::Display for SwcDiagnosticBuffer {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    let msg = self
+      .diagnostics
+      .iter()
+      .map(|d| d.message())
+      .collect::<Vec<String>>()
+      .join(",");
 
-impl Emitter for BufferedError {
-  fn emit(&mut self, db: &DiagnosticBuilder) {
-    self.0.write().unwrap().push((**db).clone());
+    f.pad(&msg)
   }
 }
 
-impl From<BufferedError> for Vec<Diagnostic> {
-  fn from(buf: BufferedError) -> Self {
+#[derive(Clone)]
+pub struct SwcErrorBuffer(Arc<RwLock<SwcDiagnosticBuffer>>);
+
+impl SwcErrorBuffer {
+  pub fn default() -> Self {
+    Self(Arc::new(RwLock::new(SwcDiagnosticBuffer {
+      diagnostics: vec![],
+    })))
+  }
+}
+
+impl Emitter for SwcErrorBuffer {
+  fn emit(&mut self, db: &DiagnosticBuilder) {
+    self.0.write().unwrap().diagnostics.push((**db).clone());
+  }
+}
+
+impl From<SwcErrorBuffer> for SwcDiagnosticBuffer {
+  fn from(buf: SwcErrorBuffer) -> Self {
     let s = buf.0.read().unwrap();
     s.clone()
   }
@@ -74,7 +102,7 @@ pub trait DocFileLoader {
 
 pub struct DocParser {
   pub loader: Box<dyn DocFileLoader>,
-  pub buffered_error: BufferedError,
+  pub buffered_error: SwcErrorBuffer,
   pub source_map: Arc<SourceMap>,
   pub handler: Handler,
   pub comments: Comments,
@@ -83,7 +111,7 @@ pub struct DocParser {
 
 impl DocParser {
   pub fn new(loader: Box<dyn DocFileLoader>) -> Self {
-    let buffered_error = BufferedError::default();
+    let buffered_error = SwcErrorBuffer::default();
 
     let handler = Handler::with_emitter_and_flags(
       Box::new(buffered_error.clone()),
@@ -108,7 +136,7 @@ impl DocParser {
     &self,
     file_name: &str,
     source_code: &str,
-  ) -> Result<ModuleDoc, SwcDiagnostics> {
+  ) -> Result<ModuleDoc, SwcDiagnosticBuffer> {
     swc_common::GLOBALS.set(&self.globals, || {
       let swc_source_file = self.source_map.new_source_file(
         FileName::Custom(file_name.to_string()),
@@ -139,7 +167,7 @@ impl DocParser {
           .parse_module()
           .map_err(move |mut err: DiagnosticBuilder| {
             err.cancel();
-            SwcDiagnostics::from(buffered_err)
+            SwcDiagnosticBuffer::from(buffered_err)
           })?;
 
       let doc_entries = self.get_doc_nodes_for_module_body(module.body.clone());
@@ -152,15 +180,8 @@ impl DocParser {
     })
   }
 
-  pub async fn parse(
-    &self,
-    file_name: &str,
-  ) -> Result<Vec<DocNode>, SwcDiagnostics> {
-    let source_code = self
-      .loader
-      .load_source_code(file_name)
-      .await
-      .expect("Failed to load source code");
+  pub async fn parse(&self, file_name: &str) -> Result<Vec<DocNode>, ErrBox> {
+    let source_code = self.loader.load_source_code(file_name).await?;
 
     let module_doc = self.parse_module(file_name, &source_code)?;
     Ok(module_doc.exports)
@@ -170,7 +191,7 @@ impl DocParser {
     &self,
     reexports: &[node::Reexport],
     referrer: &str,
-  ) -> Result<Vec<DocNode>, SwcDiagnostics> {
+  ) -> Result<Vec<DocNode>, ErrBox> {
     let mut by_src: HashMap<String, Vec<node::Reexport>> = HashMap::new();
 
     let mut processed_reexports: Vec<DocNode> = vec![];
@@ -221,23 +242,25 @@ impl DocParser {
             processed_reexports.push(ns_doc_node);
           }
           node::ReexportKind::Named(ident, maybe_alias) => {
-            let doc_node = doc_nodes
-              .clone()
-              .iter()
-              .find(|node| &node.name == ident)
-              .unwrap()
-              .clone();
+            // Try to find reexport. NOTE: reexport might be another reexport, for now
+            // we're just finding reexports one-level deep
 
-            let doc_node = if let Some(alias) = maybe_alias {
-              DocNode {
-                name: alias.to_string(),
-                ..doc_node
-              }
-            } else {
-              doc_node
-            };
+            let maybe_doc_node =
+              doc_nodes.iter().find(|node| &node.name == ident);
 
-            processed_reexports.push(doc_node);
+            if let Some(doc_node) = maybe_doc_node {
+              let doc_node = doc_node.clone();
+              let doc_node = if let Some(alias) = maybe_alias {
+                DocNode {
+                  name: alias.to_string(),
+                  ..doc_node
+                }
+              } else {
+                doc_node
+              };
+
+              processed_reexports.push(doc_node);
+            }
           }
           node::ReexportKind::Default => {
             // TODO: handle default export from child module
@@ -252,12 +275,8 @@ impl DocParser {
   pub async fn parse_with_reexports(
     &self,
     file_name: &str,
-  ) -> Result<Vec<DocNode>, SwcDiagnostics> {
-    let source_code = self
-      .loader
-      .load_source_code(file_name)
-      .await
-      .expect("Failed to load source code");
+  ) -> Result<Vec<DocNode>, ErrBox> {
+    let source_code = self.loader.load_source_code(file_name).await?;
 
     let module_doc = self.parse_module(file_name, &source_code)?;
 

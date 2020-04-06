@@ -410,11 +410,7 @@ async fn doc_command(
   let doc_nodes = match parse_result {
     Ok(nodes) => nodes,
     Err(e) => {
-      eprintln!("Failed to parse documentation:");
-      for diagnostic in e {
-        eprintln!("{}", diagnostic.message());
-      }
-
+      eprintln!("{}", e);
       std::process::exit(1);
     }
   };
