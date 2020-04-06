@@ -1415,6 +1415,13 @@ itest!(type_directives_02 {
   output: "type_directives_02.ts.out",
 });
 
+itest!(type_directives_js_main {
+  args: "run --reload -L debug type_directives_js_main.js",
+  output: "type_directives_js_main.js.out",
+  check_stderr: true,
+  exit_code: 0,
+});
+
 itest!(types {
   args: "types",
   output: "types.out",
