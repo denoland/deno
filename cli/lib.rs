@@ -282,7 +282,7 @@ async fn install_command(
     .map_err(ErrBox::from)
 }
 
-async fn fetch_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
+async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$fetch.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
@@ -531,8 +531,8 @@ pub fn main() {
       code,
       as_typescript,
     } => eval_command(flags, code, as_typescript).boxed_local(),
-    DenoSubcommand::Fetch { files } => {
-      fetch_command(flags, files).boxed_local()
+    DenoSubcommand::Cache { files } => {
+      cache_command(flags, files).boxed_local()
     }
     DenoSubcommand::Fmt { check, files } => {
       async move { fmt::format(files, check) }.boxed_local()
