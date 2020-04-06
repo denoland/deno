@@ -74,22 +74,16 @@ export class TextProtoReader {
       if (kv === Deno.EOF) throw new Deno.errors.UnexpectedEof();
       if (kv.byteLength === 0) return m;
 
-      // Key ends at first colon; should not have trailing spaces
-      // but they appear in the wild, violating specs, so we remove
-      // them if present.
+      // Key ends at first colon
       let i = kv.indexOf(charCode(":"));
       if (i < 0) {
         throw new Deno.errors.InvalidData(
           `malformed MIME header line: ${str(kv)}`
         );
       }
-      let endKey = i;
-      while (endKey > 0 && kv[endKey - 1] == charCode(" ")) {
-        endKey--;
-      }
 
       //let key = canonicalMIMEHeaderKey(kv.subarray(0, endKey));
-      const key = str(kv.subarray(0, endKey));
+      const key = str(kv.subarray(0, i));
 
       // As per RFC 7230 field-name is a token,
       // tokens consist of one or more chars.
