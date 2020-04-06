@@ -1,5 +1,5 @@
 {
-    "imports": {
-        "mod2": "./subdir/subdir2/mod2.ts"
-    }
+  "imports": {
+    "mod2": "./subdir/subdir2/mod2.ts"
+  }
 }
