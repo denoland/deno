@@ -3,6 +3,7 @@ const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import { LogLevel, getLevelName, getLevelByName } from "./levels.ts";
 import { BaseHandler } from "./handlers.ts";
+import { LogRecord } from "./logger.ts";
 
 class TestHandler extends BaseHandler {
   public messages: string[] = [];
@@ -47,13 +48,7 @@ test(function simpleHandler(): void {
 
     for (const levelName in LogLevel) {
       const level = getLevelByName(levelName);
-      handler.handle({
-        msg: `${levelName.toLowerCase()}-test`,
-        args: [],
-        datetime: new Date(),
-        level: level,
-        levelName: levelName,
-      });
+      handler.handle(new LogRecord(`${levelName.toLowerCase()}-test`, [], level));
     }
 
     assertEquals(handler.level, testCase);
@@ -67,13 +62,7 @@ test(function testFormatterAsString(): void {
     formatter: "test {levelName} {msg}",
   });
 
-  handler.handle({
-    msg: "Hello, world!",
-    args: [],
-    datetime: new Date(),
-    level: LogLevel.DEBUG,
-    levelName: "DEBUG",
-  });
+  handler.handle(new LogRecord("Hello, world!", [], LogLevel.DEBUG));
 
   assertEquals(handler.messages, ["test DEBUG Hello, world!"]);
 });
@@ -84,13 +73,7 @@ test(function testFormatterAsFunction(): void {
       `fn formmatter ${logRecord.levelName} ${logRecord.msg}`,
   });
 
-  handler.handle({
-    msg: "Hello, world!",
-    args: [],
-    datetime: new Date(),
-    level: LogLevel.ERROR,
-    levelName: "ERROR",
-  });
+  handler.handle(new LogRecord("Hello, world!", [], LogLevel.ERROR));
 
   assertEquals(handler.messages, ["fn formmatter ERROR Hello, world!"]);
 });
