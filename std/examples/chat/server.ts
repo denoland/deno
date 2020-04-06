@@ -46,7 +46,7 @@ listenAndServe({ port: 8080 }, async (req) => {
       });
     } else {
       // server launched by deno run ./server.ts
-      const file = await Deno.open(u.pathname);
+      const file = await Deno.open("./index.html");
       req.respond({
         status: 200,
         headers: new Headers({
