@@ -9,7 +9,6 @@
 const { args, stat, readdir, open, exit } = Deno;
 import { posix, extname } from "../path/mod.ts";
 import { listenAndServe, ServerRequest, ServerResponse } from "./server.ts";
-import { contentType } from "../media_types/mod.ts";
 import { parse } from "../flags/mod.ts";
 import { assert } from "../testing/asserts.ts";
 import { setContentLength } from "./io.ts";
