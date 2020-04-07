@@ -7,7 +7,7 @@ const fetchProc = Deno.run({
   stderr: "null",
   cmd: [
     Deno.execPath(),
-    "fetch",
+    "cache",
     "--reload",
     "--lock=lock_write_fetch.json",
     "--lock-write",
@@ -23,7 +23,7 @@ const fetchCheckProc = Deno.run({
   stderr: "null",
   cmd: [
     Deno.execPath(),
-    "fetch",
+    "cache",
     "--lock=lock_write_fetch.json",
     "https_import.ts",
   ],

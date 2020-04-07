@@ -41,7 +41,7 @@ pub enum DenoSubcommand {
     code: String,
     as_typescript: bool,
   },
-  Fetch {
+  Cache {
     files: Vec<String>,
   },
   Fmt {
@@ -247,8 +247,8 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
     fmt_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("types") {
     types_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("fetch") {
-    fetch_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("cache") {
+    cache_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("info") {
     info_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("eval") {
@@ -311,7 +311,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(bundle_subcommand())
     .subcommand(completions_subcommand())
     .subcommand(eval_subcommand())
-    .subcommand(fetch_subcommand())
+    .subcommand(cache_subcommand())
     .subcommand(fmt_subcommand())
     .subcommand(info_subcommand())
     .subcommand(install_subcommand())
@@ -447,7 +447,7 @@ fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 }
 
-fn fetch_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
   importmap_arg_parse(flags, matches);
@@ -459,7 +459,7 @@ fn fetch_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     .unwrap()
     .map(String::from)
     .collect();
-  flags.subcommand = DenoSubcommand::Fetch { files };
+  flags.subcommand = DenoSubcommand::Cache { files };
 }
 
 fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -746,8 +746,8 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     .arg(ca_file_arg())
 }
 
-fn fetch_subcommand<'a, 'b>() -> App<'a, 'b> {
-  SubCommand::with_name("fetch")
+fn cache_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("cache")
     .arg(reload_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
@@ -761,13 +761,13 @@ fn fetch_subcommand<'a, 'b>() -> App<'a, 'b> {
         .min_values(1),
     )
     .arg(ca_file_arg())
-    .about("Fetch the dependencies")
+    .about("Cache the dependencies")
     .long_about(
-      "Fetch and compile remote dependencies recursively.
+      "Cache and compile remote dependencies recursively.
 
 Download and compile a module with all of its static dependencies and save them
 in the local cache, without running any code:
-  deno fetch https://deno.land/std/http/file_server.ts
+  deno cache https://deno.land/std/http/file_server.ts
 
 Future runs of this module will trigger no downloads or compilation unless
 --reload is specified.",
@@ -1300,7 +1300,7 @@ fn arg_hacks(mut args: Vec<String>) -> Vec<String> {
     "completions",
     "doc",
     "eval",
-    "fetch",
+    "cache",
     "fmt",
     "test",
     "info",
@@ -1612,12 +1612,12 @@ mod tests {
   }
 
   #[test]
-  fn fetch() {
-    let r = flags_from_vec_safe(svec!["deno", "fetch", "script.ts"]);
+  fn cache() {
+    let r = flags_from_vec_safe(svec!["deno", "cache", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Fetch {
+        subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts"],
         },
         ..Flags::default()
@@ -1938,17 +1938,17 @@ mod tests {
   }
 
   #[test]
-  fn fetch_importmap() {
+  fn cache_importmap() {
     let r = flags_from_vec_safe(svec![
       "deno",
-      "fetch",
+      "cache",
       "--importmap=importmap.json",
       "script.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Fetch {
+        subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts"],
         },
         import_map_path: Some("importmap.json".to_owned()),
@@ -1958,13 +1958,13 @@ mod tests {
   }
 
   #[test]
-  fn fetch_multiple() {
+  fn cache_multiple() {
     let r =
-      flags_from_vec_safe(svec!["deno", "fetch", "script.ts", "script_two.ts"]);
+      flags_from_vec_safe(svec!["deno", "cache", "script.ts", "script_two.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Fetch {
+        subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts", "script_two.ts"],
         },
         ..Flags::default()
@@ -2417,10 +2417,10 @@ mod tests {
   }
 
   #[test]
-  fn fetch_with_cafile() {
+  fn cache_with_cafile() {
     let r = flags_from_vec_safe(svec![
       "deno",
-      "fetch",
+      "cache",
       "--cert",
       "example.crt",
       "script.ts",
@@ -2429,7 +2429,7 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Fetch {
+        subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts", "script_two.ts"],
         },
         ca_file: Some("example.crt".to_owned()),
