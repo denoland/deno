@@ -28,7 +28,6 @@ declare interface WindowOrWorkerGlobalScope {
   ReadableStream: __domTypes.ReadableStreamConstructor;
   Request: __domTypes.RequestConstructor;
   Response: typeof __fetch.Response;
-  performance: __performanceUtil.Performance;
   Worker: typeof __workers.WorkerImpl;
   location: __domTypes.Location;
 
@@ -252,7 +251,6 @@ declare const FormData: __domTypes.FormDataConstructor;
 declare const ReadableStream: __domTypes.ReadableStreamConstructor;
 declare const Request: __domTypes.RequestConstructor;
 declare const Response: typeof __fetch.Response;
-declare const performance: __performanceUtil.Performance;
 declare const Worker: typeof __workers.WorkerImpl;
 
 declare const addEventListener: (
@@ -1537,17 +1535,15 @@ declare namespace __workers {
   }
 }
 
-declare namespace __performanceUtil {
-  export class Performance {
-    /** Returns a current time from Deno's start in milliseconds.
-     *
-     * Use the flag --allow-hrtime return a precise value.
-     *
-     *       const t = performance.now();
-     *       console.log(`${t} ms since start!`);
-     */
-    now(): number;
-  }
+declare namespace performance {
+  /** Returns a current time from Deno's start in milliseconds.
+   *
+   * Use the flag --allow-hrtime return a precise value.
+   *
+   *       const t = performance.now();
+   *       console.log(`${t} ms since start!`);
+   */
+  export function now(): number;
 }
 
 /* eslint-enable @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-interface, @typescript-eslint/no-explicit-any */
