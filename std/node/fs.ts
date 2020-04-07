@@ -31,6 +31,4 @@ export {
   readlinkSync,
   mkdir,
   mkdirSync,
-  exists,
-  existsSync,
 };
