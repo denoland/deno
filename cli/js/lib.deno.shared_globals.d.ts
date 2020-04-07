@@ -1475,7 +1475,7 @@ interface URLSearchParams {
   toString(): string;
 }
 
-declare var URLSearchParams: {
+declare const URLSearchParams: {
   prototype: URLSearchParams;
   new (
     init?: string[][] | Record<string, string> | string | URLSearchParams
@@ -1501,7 +1501,7 @@ interface URL {
   toJSON(): string;
 }
 
-declare var URL: {
+declare const URL: {
   prototype: URL;
   new (url: string, base?: string | URL): URL;
   createObjectURL(object: any): string;
