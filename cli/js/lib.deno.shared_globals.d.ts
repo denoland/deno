@@ -13,14 +13,7 @@
 
 declare interface WindowOrWorkerGlobalScope {
   // methods
-  atob: typeof __textEncoding.atob;
-  btoa: typeof __textEncoding.btoa;
-  clearInterval: typeof __timers.clearInterval;
-  clearTimeout: typeof __timers.clearTimeout;
   fetch: typeof __fetch.fetch;
-  setInterval: typeof __timers.setInterval;
-  queueMicrotask: typeof __timers.queueMicrotask;
-  setTimeout: typeof __timers.setTimeout;
   // properties
   console: __console.Console;
   Blob: typeof __blob.DenoBlob;
@@ -28,17 +21,11 @@ declare interface WindowOrWorkerGlobalScope {
   CustomEvent: typeof __customEvent.CustomEvent;
   Event: typeof __event.Event;
   EventTarget: typeof __eventTarget.EventTarget;
-  URL: typeof __url.URL;
-  URLSearchParams: typeof __urlSearchParams.URLSearchParams;
   Headers: __domTypes.HeadersConstructor;
   FormData: __domTypes.FormDataConstructor;
-  TextEncoder: typeof __textEncoding.TextEncoder;
-  TextDecoder: typeof __textEncoding.TextDecoder;
   ReadableStream: __domTypes.ReadableStreamConstructor;
   Request: __domTypes.RequestConstructor;
   Response: typeof __fetch.Response;
-  performance: __performanceUtil.Performance;
-  Worker: typeof __workers.WorkerImpl;
   location: __domTypes.Location;
 
   addEventListener: (
@@ -226,14 +213,23 @@ declare namespace WebAssembly {
   }
 }
 
-declare const atob: typeof __textEncoding.atob;
-declare const btoa: typeof __textEncoding.btoa;
-declare const clearInterval: typeof __timers.clearInterval;
-declare const clearTimeout: typeof __timers.clearTimeout;
 declare const fetch: typeof __fetch.fetch;
-declare const setInterval: typeof __timers.setInterval;
-declare const setTimeout: typeof __timers.setTimeout;
-declare const queueMicrotask: typeof __timers.queueMicrotask;
+
+/** Sets a timer which executes a function once after the timer expires. */
+declare function setTimeout(
+  cb: (...args: unknown[]) => void,
+  delay?: number,
+  ...args: unknown[]
+): number;
+/** Repeatedly calls a function , with a fixed time delay between each call. */
+declare function setInterval(
+  cb: (...args: unknown[]) => void,
+  delay?: number,
+  ...args: unknown[]
+): number;
+declare function clearTimeout(id?: number): void;
+declare function clearInterval(id?: number): void;
+declare function queueMicrotask(func: Function): void;
 
 declare const console: __console.Console;
 declare const Blob: typeof __blob.DenoBlob;
@@ -244,18 +240,12 @@ declare const EventInit: typeof __event.EventInit;
 declare const Event: typeof __event.Event;
 declare const EventListener: __domTypes.EventListener;
 declare const EventTarget: typeof __eventTarget.EventTarget;
-declare const URL: typeof __url.URL;
-declare const URLSearchParams: typeof __urlSearchParams.URLSearchParams;
 declare const Headers: __domTypes.HeadersConstructor;
 declare const location: __domTypes.Location;
 declare const FormData: __domTypes.FormDataConstructor;
-declare const TextEncoder: typeof __textEncoding.TextEncoder;
-declare const TextDecoder: typeof __textEncoding.TextDecoder;
 declare const ReadableStream: __domTypes.ReadableStreamConstructor;
 declare const Request: __domTypes.RequestConstructor;
 declare const Response: typeof __fetch.Response;
-declare const performance: __performanceUtil.Performance;
-declare const Worker: typeof __workers.WorkerImpl;
 
 declare const addEventListener: (
   type: string,
@@ -278,16 +268,11 @@ declare type EventInit = __domTypes.EventInit;
 declare type Event = __domTypes.Event;
 declare type EventListener = __domTypes.EventListener;
 declare type EventTarget = __domTypes.EventTarget;
-declare type URL = __url.URL;
-declare type URLSearchParams = __domTypes.URLSearchParams;
 declare type Headers = __domTypes.Headers;
 declare type FormData = __domTypes.FormData;
-declare type TextEncoder = __textEncoding.TextEncoder;
-declare type TextDecoder = __textEncoding.TextDecoder;
 declare type ReadableStream<R = any> = __domTypes.ReadableStream<R>;
 declare type Request = __domTypes.Request;
 declare type Response = __domTypes.Response;
-declare type Worker = __workers.Worker;
 
 declare interface ImportMeta {
   url: string;
@@ -1355,229 +1340,198 @@ declare namespace __fetch {
   }
   /** Fetch a resource from the network. */
   export function fetch(
-    input: __domTypes.Request | __url.URL | string,
+    input: __domTypes.Request | URL | string,
     init?: __domTypes.RequestInit
   ): Promise<Response>;
 }
 
-declare namespace __textEncoding {
-  export function atob(s: string): string;
-  /** Creates a base-64 ASCII string from the input string. */
-  export function btoa(s: string): string;
-  export interface TextDecodeOptions {
-    stream?: false;
-  }
-  export interface TextDecoderOptions {
-    fatal?: boolean;
-    ignoreBOM?: boolean;
-  }
-  export class TextDecoder {
-    /** Returns encoding's name, lowercased. */
-    readonly encoding: string;
-    /** Returns `true` if error mode is "fatal", and `false` otherwise. */
-    readonly fatal: boolean;
-    /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
-    readonly ignoreBOM = false;
-    constructor(label?: string, options?: TextDecoderOptions);
-    /** Returns the result of running encoding's decoder. */
-    decode(
-      input?: __domTypes.BufferSource,
-      options?: TextDecodeOptions
-    ): string;
-    readonly [Symbol.toStringTag]: string;
-  }
-  interface TextEncoderEncodeIntoResult {
-    read: number;
-    written: number;
-  }
-  export class TextEncoder {
-    /** Returns "utf-8". */
-    readonly encoding = "utf-8";
-    /** Returns the result of running UTF-8's encoder. */
-    encode(input?: string): Uint8Array;
-    encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
-    readonly [Symbol.toStringTag]: string;
-  }
+declare function atob(s: string): string;
+
+/** Creates a base-64 ASCII string from the input string. */
+declare function btoa(s: string): string;
+
+declare class TextDecoder {
+  /** Returns encoding's name, lowercased. */
+  readonly encoding: string;
+  /** Returns `true` if error mode is "fatal", and `false` otherwise. */
+  readonly fatal: boolean;
+  /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
+  readonly ignoreBOM = false;
+  constructor(
+    label?: string,
+    options?: { fatal?: boolean; ignoreBOM?: boolean }
+  );
+  /** Returns the result of running encoding's decoder. */
+  decode(input?: __domTypes.BufferSource, options?: { stream?: false }): string;
+  readonly [Symbol.toStringTag]: string;
 }
 
-declare namespace __timers {
-  export type Args = unknown[];
-  /** Sets a timer which executes a function once after the timer expires. */
-  export function setTimeout(
-    cb: (...args: Args) => void,
-    delay?: number,
-    ...args: Args
-  ): number;
-  /** Repeatedly calls a function , with a fixed time delay between each call. */
-  export function setInterval(
-    cb: (...args: Args) => void,
-    delay?: number,
-    ...args: Args
-  ): number;
-  export function clearTimeout(id?: number): void;
-  export function clearInterval(id?: number): void;
-  export function queueMicrotask(func: Function): void;
+declare class TextEncoder {
+  /** Returns "utf-8". */
+  readonly encoding = "utf-8";
+  /** Returns the result of running UTF-8's encoder. */
+  encode(input?: string): Uint8Array;
+  encodeInto(
+    input: string,
+    dest: Uint8Array
+  ): { read: number; written: number };
+  readonly [Symbol.toStringTag]: string;
 }
 
-declare namespace __urlSearchParams {
-  export class URLSearchParams {
-    constructor(init?: string | string[][] | Record<string, string>);
-    /** Appends a specified key/value pair as a new search parameter.
-     *
-     *       searchParams.append('name', 'first');
-     *       searchParams.append('name', 'second');
-     */
-    append(name: string, value: string): void;
-    /** Deletes the given search parameter and its associated value,
-     * from the list of all search parameters.
-     *
-     *       searchParams.delete('name');
-     */
-    delete(name: string): void;
-    /** Returns all the values associated with a given search parameter
-     * as an array.
-     *
-     *       searchParams.getAll('name');
-     */
-    getAll(name: string): string[];
-    /** Returns the first value associated to the given search parameter.
-     *
-     *       searchParams.get('name');
-     */
-    get(name: string): string | null;
-    /** Returns a Boolean that indicates whether a parameter with the
-     * specified name exists.
-     *
-     *       searchParams.has('name');
-     */
-    has(name: string): boolean;
-    /** Sets the value associated with a given search parameter to the
-     * given value. If there were several matching values, this method
-     * deletes the others. If the search parameter doesn't exist, this
-     * method creates it.
-     *
-     *       searchParams.set('name', 'value');
-     */
-    set(name: string, value: string): void;
-    /** Sort all key/value pairs contained in this object in place and
-     * return undefined. The sort order is according to Unicode code
-     * points of the keys.
-     *
-     *       searchParams.sort();
-     */
-    sort(): void;
-    /** Calls a function for each element contained in this object in
-     * place and return undefined. Optionally accepts an object to use
-     * as this when executing callback as second argument.
-     *
-     *       searchParams.forEach((value, key, parent) => {
-     *         console.log(value, key, parent);
-     *       });
-     *
-     */
-    forEach(
-      callbackfn: (value: string, key: string, parent: this) => void,
-      thisArg?: any
-    ): void;
-    /** Returns an iterator allowing to go through all keys contained
-     * in this object.
-     *
-     *       for (const key of searchParams.keys()) {
-     *         console.log(key);
-     *       }
-     */
-    keys(): IterableIterator<string>;
-    /** Returns an iterator allowing to go through all values contained
-     * in this object.
-     *
-     *       for (const value of searchParams.values()) {
-     *         console.log(value);
-     *       }
-     */
-    values(): IterableIterator<string>;
-    /** Returns an iterator allowing to go through all key/value
-     * pairs contained in this object.
-     *
-     *       for (const [key, value] of searchParams.entries()) {
-     *         console.log(key, value);
-     *       }
-     */
-    entries(): IterableIterator<[string, string]>;
-    /** Returns an iterator allowing to go through all key/value
-     * pairs contained in this object.
-     *
-     *       for (const [key, value] of searchParams[Symbol.iterator]()) {
-     *         console.log(key, value);
-     *       }
-     */
-    [Symbol.iterator](): IterableIterator<[string, string]>;
-    /** Returns a query string suitable for use in a URL.
-     *
-     *        searchParams.toString();
-     */
-    toString(): string;
-  }
+interface URLSearchParams {
+  /** Appends a specified key/value pair as a new search parameter.
+   *
+   *       searchParams.append('name', 'first');
+   *       searchParams.append('name', 'second');
+   */
+  append(name: string, value: string): void;
+  /** Deletes the given search parameter and its associated value,
+   * from the list of all search parameters.
+   *
+   *       searchParams.delete('name');
+   */
+  delete(name: string): void;
+  /** Returns all the values associated with a given search parameter
+   * as an array.
+   *
+   *       searchParams.getAll('name');
+   */
+  getAll(name: string): string[];
+  /** Returns the first value associated to the given search parameter.
+   *
+   *       searchParams.get('name');
+   */
+  get(name: string): string | null;
+  /** Returns a Boolean that indicates whether a parameter with the
+   * specified name exists.
+   *
+   *       searchParams.has('name');
+   */
+  has(name: string): boolean;
+  /** Sets the value associated with a given search parameter to the
+   * given value. If there were several matching values, this method
+   * deletes the others. If the search parameter doesn't exist, this
+   * method creates it.
+   *
+   *       searchParams.set('name', 'value');
+   */
+  set(name: string, value: string): void;
+  /** Sort all key/value pairs contained in this object in place and
+   * return undefined. The sort order is according to Unicode code
+   * points of the keys.
+   *
+   *       searchParams.sort();
+   */
+  sort(): void;
+  /** Calls a function for each element contained in this object in
+   * place and return undefined. Optionally accepts an object to use
+   * as this when executing callback as second argument.
+   *
+   *       searchParams.forEach((value, key, parent) => {
+   *         console.log(value, key, parent);
+   *       });
+   *
+   */
+  forEach(
+    callbackfn: (value: string, key: string, parent: this) => void,
+    thisArg?: any
+  ): void;
+  /** Returns an iterator allowing to go through all keys contained
+   * in this object.
+   *
+   *       for (const key of searchParams.keys()) {
+   *         console.log(key);
+   *       }
+   */
+  keys(): IterableIterator<string>;
+  /** Returns an iterator allowing to go through all values contained
+   * in this object.
+   *
+   *       for (const value of searchParams.values()) {
+   *         console.log(value);
+   *       }
+   */
+  values(): IterableIterator<string>;
+  /** Returns an iterator allowing to go through all key/value
+   * pairs contained in this object.
+   *
+   *       for (const [key, value] of searchParams.entries()) {
+   *         console.log(key, value);
+   *       }
+   */
+  entries(): IterableIterator<[string, string]>;
+  /** Returns an iterator allowing to go through all key/value
+   * pairs contained in this object.
+   *
+   *       for (const [key, value] of searchParams[Symbol.iterator]()) {
+   *         console.log(key, value);
+   *       }
+   */
+  [Symbol.iterator](): IterableIterator<[string, string]>;
+  /** Returns a query string suitable for use in a URL.
+   *
+   *        searchParams.toString();
+   */
+  toString(): string;
 }
 
-declare namespace __url {
-  export interface URL {
-    hash: string;
-    host: string;
-    hostname: string;
-    href: string;
-    readonly origin: string;
-    password: string;
-    pathname: string;
-    port: string;
-    protocol: string;
-    search: string;
-    readonly searchParams: __urlSearchParams.URLSearchParams;
-    username: string;
-    toString(): string;
-    toJSON(): string;
-  }
+declare const URLSearchParams: {
+  prototype: URLSearchParams;
+  new (
+    init?: string[][] | Record<string, string> | string | URLSearchParams
+  ): URLSearchParams;
+  toString(): string;
+};
 
-  export const URL: {
-    prototype: URL;
-    new (url: string, base?: string | URL): URL;
-    createObjectURL(object: __domTypes.Blob): string;
-    revokeObjectURL(url: string): void;
-  };
+/** The URL interface represents an object providing static methods used for creating object URLs. */
+interface URL {
+  hash: string;
+  host: string;
+  hostname: string;
+  href: string;
+  toString(): string;
+  readonly origin: string;
+  password: string;
+  pathname: string;
+  port: string;
+  protocol: string;
+  search: string;
+  readonly searchParams: URLSearchParams;
+  username: string;
+  toJSON(): string;
 }
 
-declare namespace __workers {
-  export interface Worker {
-    onerror?: (e: Event) => void;
-    onmessage?: (e: { data: any }) => void;
-    onmessageerror?: () => void;
-    postMessage(data: any): void;
-    terminate(): void;
-  }
-  export interface WorkerOptions {
-    type?: "classic" | "module";
-    name?: string;
-  }
-  export class WorkerImpl implements Worker {
-    onerror?: (e: Event) => void;
-    onmessage?: (data: any) => void;
-    onmessageerror?: () => void;
-    constructor(specifier: string, options?: WorkerOptions);
-    postMessage(data: any): void;
-    terminate(): void;
-  }
+declare const URL: {
+  prototype: URL;
+  new (url: string, base?: string | URL): URL;
+  createObjectURL(object: any): string;
+  revokeObjectURL(url: string): void;
+};
+
+declare class Worker {
+  onerror?: (e: Event) => void;
+  onmessage?: (data: any) => void;
+  onmessageerror?: () => void;
+  constructor(
+    specifier: string,
+    options?: {
+      type?: "classic" | "module";
+      name?: string;
+    }
+  );
+  postMessage(data: any): void;
+  terminate(): void;
 }
 
-declare namespace __performanceUtil {
-  export class Performance {
-    /** Returns a current time from Deno's start in milliseconds.
-     *
-     * Use the flag --allow-hrtime return a precise value.
-     *
-     *       const t = performance.now();
-     *       console.log(`${t} ms since start!`);
-     */
-    now(): number;
-  }
+declare namespace performance {
+  /** Returns a current time from Deno's start in milliseconds.
+   *
+   * Use the flag --allow-hrtime return a precise value.
+   *
+   *       const t = performance.now();
+   *       console.log(`${t} ms since start!`);
+   */
+  export function now(): number;
 }
 
 /* eslint-enable @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-interface, @typescript-eslint/no-explicit-any */
