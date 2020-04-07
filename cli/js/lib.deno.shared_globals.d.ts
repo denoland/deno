@@ -21,8 +21,6 @@ declare interface WindowOrWorkerGlobalScope {
   CustomEvent: typeof __customEvent.CustomEvent;
   Event: typeof __event.Event;
   EventTarget: typeof __eventTarget.EventTarget;
-  URL: typeof __url.URL;
-  URLSearchParams: typeof __urlSearchParams.URLSearchParams;
   Headers: __domTypes.HeadersConstructor;
   FormData: __domTypes.FormDataConstructor;
   ReadableStream: __domTypes.ReadableStreamConstructor;
@@ -242,8 +240,6 @@ declare const EventInit: typeof __event.EventInit;
 declare const Event: typeof __event.Event;
 declare const EventListener: __domTypes.EventListener;
 declare const EventTarget: typeof __eventTarget.EventTarget;
-declare const URL: typeof __url.URL;
-declare const URLSearchParams: typeof __urlSearchParams.URLSearchParams;
 declare const Headers: __domTypes.HeadersConstructor;
 declare const location: __domTypes.Location;
 declare const FormData: __domTypes.FormDataConstructor;
@@ -272,8 +268,6 @@ declare type EventInit = __domTypes.EventInit;
 declare type Event = __domTypes.Event;
 declare type EventListener = __domTypes.EventListener;
 declare type EventTarget = __domTypes.EventTarget;
-declare type URL = __url.URL;
-declare type URLSearchParams = __domTypes.URLSearchParams;
 declare type Headers = __domTypes.Headers;
 declare type FormData = __domTypes.FormData;
 declare type ReadableStream<R = any> = __domTypes.ReadableStream<R>;
@@ -1346,7 +1340,7 @@ declare namespace __fetch {
   }
   /** Fetch a resource from the network. */
   export function fetch(
-    input: __domTypes.Request | __url.URL | string,
+    input: __domTypes.Request | URL | string,
     init?: __domTypes.RequestInit
   ): Promise<Response>;
 }
@@ -1384,131 +1378,135 @@ declare class TextEncoder {
   readonly [Symbol.toStringTag]: string;
 }
 
-declare namespace __urlSearchParams {
-  export class URLSearchParams {
-    constructor(init?: string | string[][] | Record<string, string>);
-    /** Appends a specified key/value pair as a new search parameter.
-     *
-     *       searchParams.append('name', 'first');
-     *       searchParams.append('name', 'second');
-     */
-    append(name: string, value: string): void;
-    /** Deletes the given search parameter and its associated value,
-     * from the list of all search parameters.
-     *
-     *       searchParams.delete('name');
-     */
-    delete(name: string): void;
-    /** Returns all the values associated with a given search parameter
-     * as an array.
-     *
-     *       searchParams.getAll('name');
-     */
-    getAll(name: string): string[];
-    /** Returns the first value associated to the given search parameter.
-     *
-     *       searchParams.get('name');
-     */
-    get(name: string): string | null;
-    /** Returns a Boolean that indicates whether a parameter with the
-     * specified name exists.
-     *
-     *       searchParams.has('name');
-     */
-    has(name: string): boolean;
-    /** Sets the value associated with a given search parameter to the
-     * given value. If there were several matching values, this method
-     * deletes the others. If the search parameter doesn't exist, this
-     * method creates it.
-     *
-     *       searchParams.set('name', 'value');
-     */
-    set(name: string, value: string): void;
-    /** Sort all key/value pairs contained in this object in place and
-     * return undefined. The sort order is according to Unicode code
-     * points of the keys.
-     *
-     *       searchParams.sort();
-     */
-    sort(): void;
-    /** Calls a function for each element contained in this object in
-     * place and return undefined. Optionally accepts an object to use
-     * as this when executing callback as second argument.
-     *
-     *       searchParams.forEach((value, key, parent) => {
-     *         console.log(value, key, parent);
-     *       });
-     *
-     */
-    forEach(
-      callbackfn: (value: string, key: string, parent: this) => void,
-      thisArg?: any
-    ): void;
-    /** Returns an iterator allowing to go through all keys contained
-     * in this object.
-     *
-     *       for (const key of searchParams.keys()) {
-     *         console.log(key);
-     *       }
-     */
-    keys(): IterableIterator<string>;
-    /** Returns an iterator allowing to go through all values contained
-     * in this object.
-     *
-     *       for (const value of searchParams.values()) {
-     *         console.log(value);
-     *       }
-     */
-    values(): IterableIterator<string>;
-    /** Returns an iterator allowing to go through all key/value
-     * pairs contained in this object.
-     *
-     *       for (const [key, value] of searchParams.entries()) {
-     *         console.log(key, value);
-     *       }
-     */
-    entries(): IterableIterator<[string, string]>;
-    /** Returns an iterator allowing to go through all key/value
-     * pairs contained in this object.
-     *
-     *       for (const [key, value] of searchParams[Symbol.iterator]()) {
-     *         console.log(key, value);
-     *       }
-     */
-    [Symbol.iterator](): IterableIterator<[string, string]>;
-    /** Returns a query string suitable for use in a URL.
-     *
-     *        searchParams.toString();
-     */
-    toString(): string;
-  }
+interface URLSearchParams {
+  /** Appends a specified key/value pair as a new search parameter.
+   *
+   *       searchParams.append('name', 'first');
+   *       searchParams.append('name', 'second');
+   */
+  append(name: string, value: string): void;
+  /** Deletes the given search parameter and its associated value,
+   * from the list of all search parameters.
+   *
+   *       searchParams.delete('name');
+   */
+  delete(name: string): void;
+  /** Returns all the values associated with a given search parameter
+   * as an array.
+   *
+   *       searchParams.getAll('name');
+   */
+  getAll(name: string): string[];
+  /** Returns the first value associated to the given search parameter.
+   *
+   *       searchParams.get('name');
+   */
+  get(name: string): string | null;
+  /** Returns a Boolean that indicates whether a parameter with the
+   * specified name exists.
+   *
+   *       searchParams.has('name');
+   */
+  has(name: string): boolean;
+  /** Sets the value associated with a given search parameter to the
+   * given value. If there were several matching values, this method
+   * deletes the others. If the search parameter doesn't exist, this
+   * method creates it.
+   *
+   *       searchParams.set('name', 'value');
+   */
+  set(name: string, value: string): void;
+  /** Sort all key/value pairs contained in this object in place and
+   * return undefined. The sort order is according to Unicode code
+   * points of the keys.
+   *
+   *       searchParams.sort();
+   */
+  sort(): void;
+  /** Calls a function for each element contained in this object in
+   * place and return undefined. Optionally accepts an object to use
+   * as this when executing callback as second argument.
+   *
+   *       searchParams.forEach((value, key, parent) => {
+   *         console.log(value, key, parent);
+   *       });
+   *
+   */
+  forEach(
+    callbackfn: (value: string, key: string, parent: this) => void,
+    thisArg?: any
+  ): void;
+  /** Returns an iterator allowing to go through all keys contained
+   * in this object.
+   *
+   *       for (const key of searchParams.keys()) {
+   *         console.log(key);
+   *       }
+   */
+  keys(): IterableIterator<string>;
+  /** Returns an iterator allowing to go through all values contained
+   * in this object.
+   *
+   *       for (const value of searchParams.values()) {
+   *         console.log(value);
+   *       }
+   */
+  values(): IterableIterator<string>;
+  /** Returns an iterator allowing to go through all key/value
+   * pairs contained in this object.
+   *
+   *       for (const [key, value] of searchParams.entries()) {
+   *         console.log(key, value);
+   *       }
+   */
+  entries(): IterableIterator<[string, string]>;
+  /** Returns an iterator allowing to go through all key/value
+   * pairs contained in this object.
+   *
+   *       for (const [key, value] of searchParams[Symbol.iterator]()) {
+   *         console.log(key, value);
+   *       }
+   */
+  [Symbol.iterator](): IterableIterator<[string, string]>;
+  /** Returns a query string suitable for use in a URL.
+   *
+   *        searchParams.toString();
+   */
+  toString(): string;
 }
 
-declare namespace __url {
-  export interface URL {
-    hash: string;
-    host: string;
-    hostname: string;
-    href: string;
-    readonly origin: string;
-    password: string;
-    pathname: string;
-    port: string;
-    protocol: string;
-    search: string;
-    readonly searchParams: __urlSearchParams.URLSearchParams;
-    username: string;
-    toString(): string;
-    toJSON(): string;
-  }
+declare const URLSearchParams: {
+  prototype: URLSearchParams;
+  new (
+    init?: string[][] | Record<string, string> | string | URLSearchParams
+  ): URLSearchParams;
+  toString(): string;
+};
 
-  export const URL: {
-    prototype: URL;
-    new (url: string, base?: string | URL): URL;
-    createObjectURL(object: __domTypes.Blob): string;
-    revokeObjectURL(url: string): void;
-  };
+/** The URL interface represents an object providing static methods used for creating object URLs. */
+interface URL {
+  hash: string;
+  host: string;
+  hostname: string;
+  href: string;
+  toString(): string;
+  readonly origin: string;
+  password: string;
+  pathname: string;
+  port: string;
+  protocol: string;
+  search: string;
+  readonly searchParams: URLSearchParams;
+  username: string;
+  toJSON(): string;
 }
+
+declare const URL: {
+  prototype: URL;
+  new (url: string, base?: string | URL): URL;
+  createObjectURL(object: any): string;
+  revokeObjectURL(url: string): void;
+};
 
 declare class Worker {
   onerror?: (e: Event) => void;
