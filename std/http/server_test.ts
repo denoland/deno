@@ -9,6 +9,7 @@ import { TextProtoReader } from "../textproto/mod.ts";
 import {
   assert,
   assertEquals,
+  assertMatch,
   assertNotEOF,
   assertStrContains,
   assertThrowsAsync,
@@ -517,5 +518,29 @@ test({
     );
     conn.close();
     await p;
+  },
+});
+
+test({
+  name: "[http] request error gets 400 response",
+  async fn(): Promise<void> {
+    const server = serve(":8124");
+    const entry = server[Symbol.asyncIterator]().next();
+    const conn = await Deno.connect({
+      hostname: "127.0.0.1",
+      port: 8124,
+    });
+    await Deno.writeAll(
+      conn,
+      encode("GET / HTTP/1.1\r\nmalformedHeader\r\n\r\n\r\n\r\n")
+    );
+    const responseString = decode(await Deno.readAll(conn));
+    assertMatch(
+      responseString,
+      /^HTTP\/1\.1 400 Bad Request\r\ncontent-length: \d+\r\n\r\n.*\r\n\r\n$/ms
+    );
+    conn.close();
+    server.close();
+    assert((await entry).done);
   },
 });
