@@ -525,6 +525,50 @@ fn bundle_dynamic_import() {
 }
 
 #[test]
+fn bundle_import_map() {
+  let import = util::root_path().join("cli/tests/bundle_im.ts");
+  let import_map_path = util::root_path().join("cli/tests/bundle_im.json");
+  assert!(import.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("import_map.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg("--importmap")
+    .arg(import_map_path)
+    .arg(import)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  // Now we try to use that bundle from another module.
+  let test = t.path().join("test.js");
+  std::fs::write(
+    &test,
+    "
+      import { printHello3 } from \"./import_map.bundle.js\";
+      printHello3(); ",
+  )
+  .expect("error writing file");
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&test)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the test.ts program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello"));
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
 fn repl_test_console_log() {
   let (out, err) = util::run_and_collect_output(
     true,
