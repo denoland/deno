@@ -12,10 +12,10 @@ const testNotAvailableData = path.resolve(
 );
 
 test(async function existsFile() {
-  const availableFile = await new Promise((resolve, reject) => {
+  const availableFile = await new Promise((resolve) => {
     exists(testAvailableData, (exists: boolean) => resolve(exists));
   });
-  const notAvailableFile = await new Promise((resolve, reject) => {
+  const notAvailableFile = await new Promise((resolve) => {
     exists(testNotAvailableData, (exists: boolean) => resolve(exists));
   });
   assertEquals(availableFile, true);

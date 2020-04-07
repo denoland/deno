@@ -12,8 +12,8 @@ export function mkdir(
   options?: MkdirOptions | CallbackWithError,
   callback?: CallbackWithError
 ): void {
-  let mode: number = 0o777;
-  let recursive: boolean = false;
+  let mode = 0o777;
+  let recursive = false;
 
   if (typeof options == "function") {
     callback == options;
@@ -50,8 +50,8 @@ export function mkdir(
 }
 
 export function mkdirSync(path: Path, options?: MkdirOptions): void {
-  let mode: number = 0o777;
-  let recursive: boolean = false;
+  let mode = 0o777;
+  let recursive = false;
 
   if (typeof options === "number") {
     mode = options;
