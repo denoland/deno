@@ -13,8 +13,6 @@
 
 declare interface WindowOrWorkerGlobalScope {
   // methods
-  atob: typeof __textEncoding.atob;
-  btoa: typeof __textEncoding.btoa;
   fetch: typeof __fetch.fetch;
   // properties
   console: __console.Console;
@@ -27,8 +25,6 @@ declare interface WindowOrWorkerGlobalScope {
   URLSearchParams: typeof __urlSearchParams.URLSearchParams;
   Headers: __domTypes.HeadersConstructor;
   FormData: __domTypes.FormDataConstructor;
-  TextEncoder: typeof __textEncoding.TextEncoder;
-  TextDecoder: typeof __textEncoding.TextDecoder;
   ReadableStream: __domTypes.ReadableStreamConstructor;
   Request: __domTypes.RequestConstructor;
   Response: typeof __fetch.Response;
@@ -221,8 +217,6 @@ declare namespace WebAssembly {
   }
 }
 
-declare const atob: typeof __textEncoding.atob;
-declare const btoa: typeof __textEncoding.btoa;
 declare const fetch: typeof __fetch.fetch;
 
 /** Sets a timer which executes a function once after the timer expires. */
@@ -255,8 +249,6 @@ declare const URLSearchParams: typeof __urlSearchParams.URLSearchParams;
 declare const Headers: __domTypes.HeadersConstructor;
 declare const location: __domTypes.Location;
 declare const FormData: __domTypes.FormDataConstructor;
-declare const TextEncoder: typeof __textEncoding.TextEncoder;
-declare const TextDecoder: typeof __textEncoding.TextDecoder;
 declare const ReadableStream: __domTypes.ReadableStreamConstructor;
 declare const Request: __domTypes.RequestConstructor;
 declare const Response: typeof __fetch.Response;
@@ -288,8 +280,6 @@ declare type URL = __url.URL;
 declare type URLSearchParams = __domTypes.URLSearchParams;
 declare type Headers = __domTypes.Headers;
 declare type FormData = __domTypes.FormData;
-declare type TextEncoder = __textEncoding.TextEncoder;
-declare type TextDecoder = __textEncoding.TextDecoder;
 declare type ReadableStream<R = any> = __domTypes.ReadableStream<R>;
 declare type Request = __domTypes.Request;
 declare type Response = __domTypes.Response;
@@ -1366,44 +1356,37 @@ declare namespace __fetch {
   ): Promise<Response>;
 }
 
-declare namespace __textEncoding {
-  export function atob(s: string): string;
-  /** Creates a base-64 ASCII string from the input string. */
-  export function btoa(s: string): string;
-  export interface TextDecodeOptions {
-    stream?: false;
-  }
-  export interface TextDecoderOptions {
-    fatal?: boolean;
-    ignoreBOM?: boolean;
-  }
-  export class TextDecoder {
-    /** Returns encoding's name, lowercased. */
-    readonly encoding: string;
-    /** Returns `true` if error mode is "fatal", and `false` otherwise. */
-    readonly fatal: boolean;
-    /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
-    readonly ignoreBOM = false;
-    constructor(label?: string, options?: TextDecoderOptions);
-    /** Returns the result of running encoding's decoder. */
-    decode(
-      input?: __domTypes.BufferSource,
-      options?: TextDecodeOptions
-    ): string;
-    readonly [Symbol.toStringTag]: string;
-  }
-  interface TextEncoderEncodeIntoResult {
-    read: number;
-    written: number;
-  }
-  export class TextEncoder {
-    /** Returns "utf-8". */
-    readonly encoding = "utf-8";
-    /** Returns the result of running UTF-8's encoder. */
-    encode(input?: string): Uint8Array;
-    encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
-    readonly [Symbol.toStringTag]: string;
-  }
+declare function atob(s: string): string;
+
+/** Creates a base-64 ASCII string from the input string. */
+declare function btoa(s: string): string;
+
+declare class TextDecoder {
+  /** Returns encoding's name, lowercased. */
+  readonly encoding: string;
+  /** Returns `true` if error mode is "fatal", and `false` otherwise. */
+  readonly fatal: boolean;
+  /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
+  readonly ignoreBOM = false;
+  constructor(
+    label?: string,
+    options?: { fatal?: boolean; ignoreBOM?: boolean }
+  );
+  /** Returns the result of running encoding's decoder. */
+  decode(input?: __domTypes.BufferSource, options?: { stream?: false }): string;
+  readonly [Symbol.toStringTag]: string;
+}
+
+declare class TextEncoder {
+  /** Returns "utf-8". */
+  readonly encoding = "utf-8";
+  /** Returns the result of running UTF-8's encoder. */
+  encode(input?: string): Uint8Array;
+  encodeInto(
+    input: string,
+    dest: Uint8Array
+  ): { read: number; written: number };
+  readonly [Symbol.toStringTag]: string;
 }
 
 declare namespace __urlSearchParams {
