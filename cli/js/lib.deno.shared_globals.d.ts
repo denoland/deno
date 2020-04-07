@@ -28,7 +28,6 @@ declare interface WindowOrWorkerGlobalScope {
   ReadableStream: __domTypes.ReadableStreamConstructor;
   Request: __domTypes.RequestConstructor;
   Response: typeof __fetch.Response;
-  Worker: typeof __workers.WorkerImpl;
   location: __domTypes.Location;
 
   addEventListener: (
@@ -251,7 +250,6 @@ declare const FormData: __domTypes.FormDataConstructor;
 declare const ReadableStream: __domTypes.ReadableStreamConstructor;
 declare const Request: __domTypes.RequestConstructor;
 declare const Response: typeof __fetch.Response;
-declare const Worker: typeof __workers.WorkerImpl;
 
 declare const addEventListener: (
   type: string,
@@ -281,7 +279,6 @@ declare type FormData = __domTypes.FormData;
 declare type ReadableStream<R = any> = __domTypes.ReadableStream<R>;
 declare type Request = __domTypes.Request;
 declare type Response = __domTypes.Response;
-declare type Worker = __workers.Worker;
 
 declare interface ImportMeta {
   url: string;
@@ -1513,26 +1510,19 @@ declare namespace __url {
   };
 }
 
-declare namespace __workers {
-  export interface Worker {
-    onerror?: (e: Event) => void;
-    onmessage?: (e: { data: any }) => void;
-    onmessageerror?: () => void;
-    postMessage(data: any): void;
-    terminate(): void;
-  }
-  export interface WorkerOptions {
-    type?: "classic" | "module";
-    name?: string;
-  }
-  export class WorkerImpl implements Worker {
-    onerror?: (e: Event) => void;
-    onmessage?: (data: any) => void;
-    onmessageerror?: () => void;
-    constructor(specifier: string, options?: WorkerOptions);
-    postMessage(data: any): void;
-    terminate(): void;
-  }
+declare class Worker {
+  onerror?: (e: Event) => void;
+  onmessage?: (data: any) => void;
+  onmessageerror?: () => void;
+  constructor(
+    specifier: string,
+    options?: {
+      type?: "classic" | "module";
+      name?: string;
+    }
+  );
+  postMessage(data: any): void;
+  terminate(): void;
 }
 
 declare namespace performance {
