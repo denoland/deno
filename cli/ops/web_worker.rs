@@ -5,10 +5,8 @@ use crate::ops::json_op;
 use crate::state::State;
 use crate::worker::WorkerEvent;
 use deno_core::*;
-use futures;
 use futures::channel::mpsc;
 use futures::sink::SinkExt;
-use std;
 use std::convert::From;
 
 pub fn web_worker_op<D>(

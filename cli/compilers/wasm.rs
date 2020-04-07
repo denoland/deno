@@ -12,7 +12,6 @@ use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use serde_derive::Deserialize;
-use serde_json;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -56,8 +55,9 @@ impl WasmCompiler {
     let entry_point =
       ModuleSpecifier::resolve_url_or_path("./__$deno$wasm_compiler.ts")
         .unwrap();
-    let worker_state = State::new(global_state.clone(), None, entry_point)
-      .expect("Unable to create worker state");
+    let worker_state =
+      State::new(global_state.clone(), None, entry_point, DebugType::Internal)
+        .expect("Unable to create worker state");
 
     // Count how many times we start the compiler worker.
     global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);

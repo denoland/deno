@@ -41,6 +41,25 @@ const CORSEnabled = serverArgs.cors ? true : false;
 const target = posix.resolve(serverArgs._[1] ?? "");
 const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4500}`;
 
+const MEDIA_TYPES: Record<string, string> = {
+  ".md": "text/markdown",
+  ".html": "text/html",
+  ".htm": "text/html",
+  ".json": "application/json",
+  ".map": "application/json",
+  ".txt": "text/plain",
+  ".ts": "application/typescript",
+  ".tsx": "application/typescript",
+  ".js": "application/javascript",
+  ".jsx": "application/jsx",
+  ".gz": "application/gzip",
+};
+
+/** Returns the content-type based on the extension of a path. */
+function contentType(path: string): string | undefined {
+  return MEDIA_TYPES[extname(path)];
+}
+
 if (serverArgs.h ?? serverArgs.help) {
   console.log(`Deno File Server
   Serves a local directory in HTTP.
@@ -104,7 +123,7 @@ export async function serveFile(
   const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
   const headers = new Headers();
   headers.set("content-length", fileInfo.size.toString());
-  const contentTypeValue = contentType(extname(filePath));
+  const contentTypeValue = contentType(filePath);
   if (contentTypeValue) {
     headers.set("content-type", contentTypeValue);
   }

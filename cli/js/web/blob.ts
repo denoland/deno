@@ -1,7 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types.ts";
-import { TextEncoder } from "./text_encoding.ts";
+import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { build } from "../build.ts";
+import { ReadableStream } from "./streams/mod.ts";
 
 export const bytesSymbol = Symbol("bytes");
 
@@ -114,7 +115,6 @@ function processBlobParts(
     .reduce((a, b): number => a + b, 0);
   const ab = new ArrayBuffer(byteLength);
   const bytes = new Uint8Array(ab);
-
   let courser = 0;
   for (const u8 of uint8Arrays) {
     bytes.set(u8, courser);
@@ -123,6 +123,48 @@ function processBlobParts(
 
   return bytes;
 }
+
+function getStream(blobBytes: Uint8Array): domTypes.ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start: (
+      controller: domTypes.ReadableStreamDefaultController<Uint8Array>
+    ): void => {
+      controller.enqueue(blobBytes);
+      controller.close();
+    },
+  }) as domTypes.ReadableStream<Uint8Array>;
+}
+
+async function readBytes(
+  reader: domTypes.ReadableStreamReader<Uint8Array>
+): Promise<ArrayBuffer> {
+  const chunks: Uint8Array[] = [];
+  while (true) {
+    try {
+      const { done, value } = await reader.read();
+      if (!done && value instanceof Uint8Array) {
+        chunks.push(value);
+      } else if (done) {
+        const size = chunks.reduce((p, i) => p + i.byteLength, 0);
+        const bytes = new Uint8Array(size);
+        let offs = 0;
+        for (const chunk of chunks) {
+          bytes.set(chunk, offs);
+          offs += chunk.byteLength;
+        }
+        return Promise.resolve(bytes);
+      } else {
+        return Promise.reject(new TypeError());
+      }
+    } catch (e) {
+      return Promise.reject(e);
+    }
+  }
+}
+
+// A WeakMap holding blob to byte array mapping.
+// Ensures it does not impact garbage collection.
+export const blobBytesWeakMap = new WeakMap<domTypes.Blob, Uint8Array>();
 
 export class DenoBlob implements domTypes.Blob {
   [bytesSymbol]: Uint8Array;
@@ -166,5 +208,19 @@ export class DenoBlob implements domTypes.Blob {
     return new DenoBlob([this[bytesSymbol].slice(start, end)], {
       type: contentType || this.type,
     });
+  }
+
+  stream(): domTypes.ReadableStream<Uint8Array> {
+    return getStream(this[bytesSymbol]);
+  }
+
+  async text(): Promise<string> {
+    const reader = getStream(this[bytesSymbol]).getReader();
+    const decoder = new TextDecoder();
+    return decoder.decode(await readBytes(reader));
+  }
+
+  arrayBuffer(): Promise<ArrayBuffer> {
+    return readBytes(getStream(this[bytesSymbol]).getReader());
   }
 }

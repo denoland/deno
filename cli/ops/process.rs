@@ -5,11 +5,9 @@ use crate::op_error::OpError;
 use crate::signal::kill;
 use crate::state::State;
 use deno_core::*;
-use futures;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::TryFutureExt;
-use std;
 use std::convert::From;
 use tokio::process::Command;
 

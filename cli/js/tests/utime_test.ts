@@ -60,6 +60,31 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
+  function utimeSyncFileDateSuccess() {
+    const testDir = Deno.makeTempDirSync();
+    const filename = testDir + "/file.txt";
+    Deno.writeFileSync(filename, new TextEncoder().encode("hello"), {
+      mode: 0o666,
+    });
+    const atime = new Date();
+    const mtime = new Date();
+    Deno.utimeSync(filename, atime, mtime);
+
+    const fileInfo = Deno.statSync(filename);
+    // atime and mtime must be scaled by a factor of 1000 to be recorded in seconds
+    assertFuzzyTimestampEquals(
+      fileInfo.accessed,
+      Math.trunc(atime.valueOf() / 1000)
+    );
+    assertFuzzyTimestampEquals(
+      fileInfo.modified,
+      Math.trunc(mtime.valueOf() / 1000)
+    );
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
   function utimeSyncLargeNumberSuccess(): void {
     const testDir = Deno.makeTempDirSync();
 
@@ -155,6 +180,32 @@ unitTest(
     const dirInfo = Deno.statSync(testDir);
     assertFuzzyTimestampEquals(dirInfo.accessed, atime);
     assertFuzzyTimestampEquals(dirInfo.modified, mtime);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function utimeFileDateSuccess(): Promise<void> {
+    const testDir = Deno.makeTempDirSync();
+    const filename = testDir + "/file.txt";
+    Deno.writeFileSync(filename, new TextEncoder().encode("hello"), {
+      mode: 0o666,
+    });
+
+    const atime = new Date();
+    const mtime = new Date();
+    await Deno.utime(filename, atime, mtime);
+
+    const fileInfo = Deno.statSync(filename);
+    // The dates must be scaled by a factored of 1000 to make them seconds
+    assertFuzzyTimestampEquals(
+      fileInfo.accessed,
+      Math.trunc(atime.valueOf() / 1000)
+    );
+    assertFuzzyTimestampEquals(
+      fileInfo.modified,
+      Math.trunc(mtime.valueOf() / 1000)
+    );
   }
 );
 

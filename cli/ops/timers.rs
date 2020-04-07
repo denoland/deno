@@ -4,7 +4,6 @@ use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::*;
 use futures::future::FutureExt;
-use std;
 use std::time::Duration;
 use std::time::Instant;
 

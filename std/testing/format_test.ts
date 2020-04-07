@@ -581,6 +581,14 @@ test({
 });
 
 test({
+  name: "prints a bigint",
+  fn(): void {
+    const val = 12345n;
+    assertEquals(format(val), "12345n");
+  },
+});
+
+test({
   name: "prints undefined",
   fn(): void {
     const val = undefined;

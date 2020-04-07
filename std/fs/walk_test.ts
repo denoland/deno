@@ -255,7 +255,7 @@ testWalk(
       await symlink(d + "/b", d + "/a/bb");
     } catch (err) {
       assert(isWindows);
-      assert(err.message, "Not implemented");
+      assertEquals(err.message, "Not implemented");
     }
   },
   async function symlink(): Promise<void> {

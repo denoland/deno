@@ -92,7 +92,7 @@ export class WorkerImpl extends EventTarget implements Worker {
       options?.name
     );
     this.#id = id;
-    this.poll();
+    this.#poll();
   }
 
   #handleError = (e: any): boolean => {
@@ -116,7 +116,7 @@ export class WorkerImpl extends EventTarget implements Worker {
     return handled;
   };
 
-  async poll(): Promise<void> {
+  #poll = async (): Promise<void> => {
     while (!this.#terminated) {
       const event = await hostGetMessage(this.#id);
 
@@ -150,7 +150,7 @@ export class WorkerImpl extends EventTarget implements Worker {
 
       throw new Error(`Unknown worker event: "${type}"`);
     }
-  }
+  };
 
   postMessage(data: any): void {
     if (this.#terminated) {

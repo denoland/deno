@@ -13,7 +13,6 @@ use futures::channel::oneshot;
 use futures::future::FutureExt;
 use std::future::Future;
 use std::time::Instant;
-use tokio;
 
 #[derive(Default)]
 pub struct GlobalTimer {

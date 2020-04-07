@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::swc_ecma_ast;
 use serde::Serialize;
-use swc_ecma_ast;
 
 use super::parser::DocParser;
 use super::ts_type::ts_type_ann_to_def;
@@ -24,7 +24,7 @@ pub fn function_to_function_def(
   let mut params = vec![];
 
   for param in &function.params {
-    use swc_ecma_ast::Pat;
+    use crate::swc_ecma_ast::Pat;
 
     let param_def = match param {
       Pat::Ident(ident) => {

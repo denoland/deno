@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { encode } from "../encoding/utf8.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { assert } from "../testing/asserts.ts";
 import {
@@ -178,42 +179,52 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     const r = new BufReader(conn);
     const w = new BufWriter(conn);
-    let req: ServerRequest | Deno.EOF;
     let keepAlive: KeepAlive | undefined;
     while (!this.closing) {
+      let request: ServerRequest | Deno.EOF;
       try {
         let timeout = this.readTimeout;
         if (keepAlive?.timeout) {
           timeout = keepAlive.timeout * TimeUnits.seconds;
         }
-        req = await readRequest(conn, { w, r, timeout });
-      } catch (e) {
+        request = await readRequest(conn, { w, r, timeout });
+      } catch (error) {
+        if (
+          error instanceof Deno.errors.InvalidData ||
+          error instanceof Deno.errors.UnexpectedEof
+        ) {
+          // An error was thrown while parsing request headers.
+          await writeResponse(w, {
+            status: 400,
+            body: encode(`${error.message}\r\n\r\n`),
+          });
+        }
         break;
       }
 
-      if (req === Deno.EOF) {
+      if (request === Deno.EOF) {
         break;
       }
 
-      const ka = req.headers.get("keep-alive");
+      const ka = request.headers.get("keep-alive");
       if (ka) {
         keepAlive = parseKeepAlive(ka);
       }
 
-      yield req;
+      yield request;
 
       // Wait for the request to be processed before we accept a new request on
       // this connection.
-      const procError = await req.done;
-      if (procError) {
+      const responseError = await request.done;
+      if (responseError) {
         // Something bad happened during response.
         // (likely other side closed during pipelined req)
         // req.done implies this connection already closed, so we can just return.
-        this.untrackConnection(req.conn);
+        this.untrackConnection(request.conn);
         return;
       }
       // Consume unread body and trailers if receiver didn't consume those data
-      await req.finalize();
+      await request.finalize();
     }
 
     this.untrackConnection(conn);

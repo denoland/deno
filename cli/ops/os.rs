@@ -6,7 +6,6 @@ use deno_core::*;
 use std::collections::HashMap;
 use std::env;
 use std::io::{Error, ErrorKind};
-use sys_info;
 use url::Url;
 
 pub fn init(i: &mut Isolate, s: &State) {
