@@ -66,9 +66,12 @@ pub use dprint_plugin_typescript::swc_ecma_ast;
 pub use dprint_plugin_typescript::swc_ecma_parser;
 
 use crate::compilers::TargetLib;
+use crate::doc::parser::DocFileLoader;
 use crate::file_fetcher::SourceFile;
+use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::msg::MediaType;
+use crate::op_error::OpError;
 use crate::ops::io::get_stdio;
 use crate::state::DebugType;
 use crate::state::State;
@@ -79,12 +82,14 @@ use deno_core::ModuleSpecifier;
 use flags::DenoSubcommand;
 use flags::Flags;
 use futures::future::FutureExt;
+use futures::Future;
 use log::Level;
 use log::Metadata;
 use log::Record;
 use std::env;
 use std::io::Write;
 use std::path::PathBuf;
+use std::pin::Pin;
 use upgrade::upgrade_command;
 use url::Url;
 
@@ -371,24 +376,35 @@ async fn doc_command(
   let global_state = GlobalState::new(flags.clone())?;
   let module_specifier =
     ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
-  let source_file = global_state
-    .file_fetcher
-    .fetch_source_file(&module_specifier, None)
-    .await?;
-  let source_code = String::from_utf8(source_file.source_code)?;
 
-  let doc_parser = doc::DocParser::default();
-  let parse_result =
-    doc_parser.parse(module_specifier.to_string(), source_code);
+  impl DocFileLoader for SourceFileFetcher {
+    fn load_source_code(
+      &self,
+      specifier: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<String, OpError>>>> {
+      let specifier =
+        ModuleSpecifier::resolve_url_or_path(specifier).expect("Bad specifier");
+      let fetcher = self.clone();
+
+      async move {
+        let source_file = fetcher.fetch_source_file(&specifier, None).await?;
+        String::from_utf8(source_file.source_code)
+          .map_err(|_| OpError::other("failed to parse".to_string()))
+      }
+      .boxed_local()
+    }
+  }
+
+  let loader = Box::new(global_state.file_fetcher.clone());
+  let doc_parser = doc::DocParser::new(loader);
+  let parse_result = doc_parser
+    .parse_with_reexports(&module_specifier.to_string())
+    .await;
 
   let doc_nodes = match parse_result {
     Ok(nodes) => nodes,
     Err(e) => {
-      eprintln!("Failed to parse documentation:");
-      for diagnostic in e {
-        eprintln!("{}", diagnostic.message());
-      }
-
+      eprintln!("{}", e);
       std::process::exit(1);
     }
   };
