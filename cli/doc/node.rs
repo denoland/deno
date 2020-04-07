@@ -49,15 +49,15 @@ impl Into<Location> for swc_common::Loc {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub enum ReexportKind {
-  // export * from "./path/to/module.js";
+  /// export * from "./path/to/module.js";
   All,
-  // export * as someNamespace from "./path/to/module.js";
+  /// export * as someNamespace from "./path/to/module.js";
   Namespace(String),
-  // export default from "./path/to/module.js";
+  /// export default from "./path/to/module.js";
   Default,
-  // (identifier, optional alias)
-  // export { foo } from "./path/to/module.js";
-  // export { foo as bar } from "./path/to/module.js";
+  /// (identifier, optional alias)
+  /// export { foo } from "./path/to/module.js";
+  /// export { foo as bar } from "./path/to/module.js";
   Named(String, Option<String>),
 }
 
