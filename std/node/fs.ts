@@ -27,5 +27,5 @@ export {
   readlink,
   readlinkSync,
   exists,
-  existsSync
+  existsSync,
 };

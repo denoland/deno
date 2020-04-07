@@ -1,14 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 type ExitsCallback = (exists: boolean) => void;
 
 /* Deprecated in node api */
+
 export function exists(path: string, callback: ExitsCallback): void {
   new Promise(async (resolve, reject) => {
     try {
       await Deno.lstat(path);
       resolve();
     } catch (err) {
-      reject();
+      reject(err);
     }
   })
     .then(() => {
