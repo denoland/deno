@@ -15,12 +15,7 @@ declare interface WindowOrWorkerGlobalScope {
   // methods
   atob: typeof __textEncoding.atob;
   btoa: typeof __textEncoding.btoa;
-  clearInterval: typeof __timers.clearInterval;
-  clearTimeout: typeof __timers.clearTimeout;
   fetch: typeof __fetch.fetch;
-  setInterval: typeof __timers.setInterval;
-  queueMicrotask: typeof __timers.queueMicrotask;
-  setTimeout: typeof __timers.setTimeout;
   // properties
   console: __console.Console;
   Blob: typeof __blob.DenoBlob;
@@ -228,12 +223,23 @@ declare namespace WebAssembly {
 
 declare const atob: typeof __textEncoding.atob;
 declare const btoa: typeof __textEncoding.btoa;
-declare const clearInterval: typeof __timers.clearInterval;
-declare const clearTimeout: typeof __timers.clearTimeout;
 declare const fetch: typeof __fetch.fetch;
-declare const setInterval: typeof __timers.setInterval;
-declare const setTimeout: typeof __timers.setTimeout;
-declare const queueMicrotask: typeof __timers.queueMicrotask;
+
+/** Sets a timer which executes a function once after the timer expires. */
+declare function setTimeout(
+  cb: (...args: unknown[]) => void,
+  delay?: number,
+  ...args: unknown[]
+): number;
+/** Repeatedly calls a function , with a fixed time delay between each call. */
+declare function setInterval(
+  cb: (...args: unknown[]) => void,
+  delay?: number,
+  ...args: unknown[]
+): number;
+declare function clearTimeout(id?: number): void;
+declare function clearInterval(id?: number): void;
+declare function queueMicrotask(func: Function): void;
 
 declare const console: __console.Console;
 declare const Blob: typeof __blob.DenoBlob;
@@ -1398,25 +1404,6 @@ declare namespace __textEncoding {
     encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
     readonly [Symbol.toStringTag]: string;
   }
-}
-
-declare namespace __timers {
-  export type Args = unknown[];
-  /** Sets a timer which executes a function once after the timer expires. */
-  export function setTimeout(
-    cb: (...args: Args) => void,
-    delay?: number,
-    ...args: Args
-  ): number;
-  /** Repeatedly calls a function , with a fixed time delay between each call. */
-  export function setInterval(
-    cb: (...args: Args) => void,
-    delay?: number,
-    ...args: Args
-  ): number;
-  export function clearTimeout(id?: number): void;
-  export function clearInterval(id?: number): void;
-  export function queueMicrotask(func: Function): void;
 }
 
 declare namespace __urlSearchParams {
