@@ -327,6 +327,9 @@ pub fn trace_serializer() {
 pub fn op_fetch_asset<S: ::std::hash::BuildHasher>(
   custom_assets: HashMap<String, PathBuf, S>,
 ) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp {
+  for (_, path) in custom_assets.iter() {
+    println!("cargo:rerun-if-changed={}", path.display());
+  }
   move |control: &[u8], zero_copy_buf: Option<ZeroCopyBuf>| -> CoreOp {
     assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in this op.
     let name = std::str::from_utf8(control).unwrap();
