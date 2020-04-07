@@ -1036,7 +1036,7 @@ three methods in the `Deno` namespace that provide this access.
 
 ### `Deno.compile()`
 
-This works similar to `deno fetch` in that it can fetch code, compile it, but
+This works similar to `deno cache` in that it can fetch and cache the code, compile it, but
 not run it. It takes up to three arguments, the `rootName`, optionally
 `sources`, and optionally `options`. The `rootName` is the root module which
 will be used to generate the resulting program. This is like the module name you
