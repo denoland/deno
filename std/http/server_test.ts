@@ -600,9 +600,8 @@ test({
       conn?.close();
       await p;
     }
-  }
+  },
 });
-
 
 test({
   name: "[http] request error gets 400 response",
