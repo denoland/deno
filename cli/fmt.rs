@@ -115,12 +115,6 @@ fn format_source_files(
       }
     }
   }
-
-  let f = if not_formatted_files.len() == 1 {
-    "file"
-  } else {
-    "files"
-  };
   debug!(
     "Formatted {} {}",
     not_formatted_files.len(),
