@@ -6,12 +6,14 @@ use serde::Serialize;
 
 use super::function::function_to_function_def;
 use super::function::FunctionDef;
+use super::params::pat_to_param_def;
 use super::parser::DocParser;
 use super::ts_type::ts_entity_name_to_name;
 use super::ts_type::ts_type_ann_to_def;
 use super::ts_type::TsTypeDef;
 use super::Location;
 use super::ParamDef;
+use super::ParamKind;
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -117,29 +119,13 @@ pub fn get_doc_for_class_decl(
         let mut params = vec![];
 
         for param in &ctor.params {
-          use crate::swc_ecma_ast::Pat;
           use crate::swc_ecma_ast::PatOrTsParamProp::*;
 
           let param_def = match param {
-            Pat(pat) => match pat {
-              Pat::Ident(ident) => {
-                let ts_type = ident
-                  .type_ann
-                  .as_ref()
-                  .map(|rt| ts_type_ann_to_def(&doc_parser.source_map, rt));
-
-                ParamDef {
-                  name: ident.sym.to_string(),
-                  ts_type,
-                }
-              }
-              _ => ParamDef {
-                name: "<TODO>".to_string(),
-                ts_type: None,
-              },
-            },
+            Pat(pat) => pat_to_param_def(pat),
             TsParamProp(_) => ParamDef {
               name: "<TODO>".to_string(),
+              kind: ParamKind::Identifier,
               ts_type: None,
             },
           };
@@ -162,8 +148,7 @@ pub fn get_doc_for_class_decl(
         let method_js_doc = doc_parser.js_doc_for_span(class_method.span());
         let method_name =
           prop_name_to_string(&doc_parser.source_map, &class_method.key);
-        let fn_def =
-          function_to_function_def(doc_parser, &class_method.function);
+        let fn_def = function_to_function_def(&class_method.function);
         let method_def = ClassMethodDef {
           js_doc: method_js_doc,
           accessibility: class_method.accessibility,
@@ -185,7 +170,7 @@ pub fn get_doc_for_class_decl(
         let ts_type = class_prop
           .type_ann
           .as_ref()
-          .map(|rt| ts_type_ann_to_def(&doc_parser.source_map, rt));
+          .map(|rt| ts_type_ann_to_def(rt));
 
         use crate::swc_ecma_ast::Expr;
         let prop_name = match &*class_prop.key {

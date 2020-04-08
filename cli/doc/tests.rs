@@ -52,7 +52,7 @@ async fn export_fn() {
 *
 * Or not that many?
 */
-export function foo(a: string, b: number): void {
+export function foo(a: string, b: number, cb: (...cbArgs: unknown[]) => void, ...args: unknown[]): void {
     console.log("Hello world");
 }
 "#;
@@ -68,6 +68,7 @@ export function foo(a: string, b: number): void {
       "params": [
           {
             "name": "a",
+            "kind": "identifier",
             "tsType": {
               "keyword": "string",
               "kind": "keyword",
@@ -76,12 +77,55 @@ export function foo(a: string, b: number): void {
           },
           {
             "name": "b",
+            "kind": "identifier",
             "tsType": {
               "keyword": "number",
               "kind": "keyword",
               "repr": "number",
             },
           },
+          {
+            "name": "cb",
+            "kind": "identifier",
+            "tsType": {
+              "repr": "",
+              "kind": "fnOrConstructor",
+              "fnOrConstructor": {
+                "constructor": false,
+                "tsType": {
+                  "keyword": "void",
+                  "kind": "keyword",
+                  "repr": "void"
+                },
+                "params": [{
+                  "kind": "rest",
+                  "name": "cbArgs",
+                  "tsType": {
+                    "repr": "",
+                    "kind": "array",
+                    "array": {
+                        "repr": "unknown",
+                        "kind": "keyword",
+                        "keyword": "unknown"
+                    }
+                  },
+                }]
+              }
+            },
+          },
+          {
+            "name": "args",
+            "kind": "rest",
+            "tsType": {
+              "repr": "",
+              "kind": "array",
+              "array": {
+                  "repr": "unknown",
+                  "kind": "keyword",
+                  "keyword": "unknown"
+              }
+            }
+          }
       ],
       "returnType": {
         "keyword": "void",
@@ -98,6 +142,7 @@ export function foo(a: string, b: number): void {
     },
     "name": "foo",
   });
+
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
 
@@ -188,6 +233,7 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
           "params": [
             {
               "name": "name",
+              "kind": "identifier",
               "tsType": {
                 "repr": "string",
                 "kind": "keyword",
@@ -196,10 +242,12 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
             },
             {
               "name": "<TODO>",
+              "kind": "identifier",
               "tsType": null
             },
             {
               "name": "<TODO>",
+              "kind": "identifier",
               "tsType": null
             }
           ],
@@ -391,6 +439,7 @@ export interface Reader {
             "params": [
               {
                 "name": "buf",
+                "kind": "identifier",
                 "tsType": {
                   "repr": "Uint8Array",
                   "kind": "typeRef",
@@ -402,6 +451,7 @@ export interface Reader {
               },
               {
                 "name": "something",
+                "kind": "identifier",
                 "tsType": {
                   "repr": "unknown",
                   "kind": "keyword",
@@ -751,6 +801,7 @@ async fn optional_return_type() {
       "params": [
           {
             "name": "a",
+            "kind": "identifier",
             "tsType": {
               "keyword": "number",
               "kind": "keyword",
@@ -841,6 +892,7 @@ export function fooFn(a: number) {
         "params": [
             {
               "name": "a",
+              "kind": "identifier",
               "tsType": {
                 "keyword": "number",
                 "kind": "keyword",
