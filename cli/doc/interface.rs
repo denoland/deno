@@ -2,27 +2,29 @@
 use crate::swc_ecma_ast;
 use serde::Serialize;
 
+use super::params::ts_fn_param_to_param_def;
 use super::parser::DocParser;
 use super::ts_type::ts_type_ann_to_def;
 use super::ts_type::TsTypeDef;
+use super::ts_type_param::maybe_type_param_decl_to_type_param_defs;
+use super::ts_type_param::TsTypeParamDef;
 use super::Location;
 use super::ParamDef;
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InterfaceMethodDef {
-  // TODO: type_params
   pub name: String,
   pub location: Location,
   pub js_doc: Option<String>,
   pub params: Vec<ParamDef>,
   pub return_type: Option<TsTypeDef>,
+  pub type_params: Vec<TsTypeParamDef>,
 }
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InterfacePropertyDef {
-  // TODO: type_params
   pub name: String,
   pub location: Location,
   pub js_doc: Option<String>,
@@ -30,25 +32,27 @@ pub struct InterfacePropertyDef {
   pub computed: bool,
   pub optional: bool,
   pub ts_type: Option<TsTypeDef>,
+  pub type_params: Vec<TsTypeParamDef>,
 }
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InterfaceCallSignatureDef {
-  // TODO: type_params
   pub location: Location,
   pub js_doc: Option<String>,
   pub params: Vec<ParamDef>,
   pub ts_type: Option<TsTypeDef>,
+  pub type_params: Vec<TsTypeParamDef>,
 }
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InterfaceDef {
-  // TODO: extends, type params
+  // TODO(bartlomieju): extends
   pub methods: Vec<InterfaceMethodDef>,
   pub properties: Vec<InterfacePropertyDef>,
   pub call_signatures: Vec<InterfaceCallSignatureDef>,
+  pub type_params: Vec<TsTypeParamDef>,
 }
 
 fn expr_to_name(expr: &swc_ecma_ast::Expr) -> String {
@@ -89,26 +93,7 @@ pub fn get_doc_for_ts_interface_decl(
         let mut params = vec![];
 
         for param in &ts_method_sig.params {
-          use crate::swc_ecma_ast::TsFnParam::*;
-
-          let param_def = match param {
-            Ident(ident) => {
-              let ts_type = ident
-                .type_ann
-                .as_ref()
-                .map(|rt| ts_type_ann_to_def(&doc_parser.source_map, rt));
-
-              ParamDef {
-                name: ident.sym.to_string(),
-                ts_type,
-              }
-            }
-            _ => ParamDef {
-              name: "<TODO>".to_string(),
-              ts_type: None,
-            },
-          };
-
+          let param_def = ts_fn_param_to_param_def(param);
           params.push(param_def);
         }
 
@@ -117,7 +102,11 @@ pub fn get_doc_for_ts_interface_decl(
         let maybe_return_type = ts_method_sig
           .type_ann
           .as_ref()
-          .map(|rt| ts_type_ann_to_def(&doc_parser.source_map, rt));
+          .map(|rt| ts_type_ann_to_def(rt));
+
+        let type_params = maybe_type_param_decl_to_type_param_defs(
+          ts_method_sig.type_params.as_ref(),
+        );
 
         let method_def = InterfaceMethodDef {
           name,
@@ -128,6 +117,7 @@ pub fn get_doc_for_ts_interface_decl(
             .into(),
           params,
           return_type: maybe_return_type,
+          type_params,
         };
         methods.push(method_def);
       }
@@ -141,33 +131,18 @@ pub fn get_doc_for_ts_interface_decl(
         let mut params = vec![];
 
         for param in &ts_prop_sig.params {
-          use crate::swc_ecma_ast::TsFnParam::*;
-
-          let param_def = match param {
-            Ident(ident) => {
-              let ts_type = ident
-                .type_ann
-                .as_ref()
-                .map(|rt| ts_type_ann_to_def(&doc_parser.source_map, rt));
-
-              ParamDef {
-                name: ident.sym.to_string(),
-                ts_type,
-              }
-            }
-            _ => ParamDef {
-              name: "<TODO>".to_string(),
-              ts_type: None,
-            },
-          };
-
+          let param_def = ts_fn_param_to_param_def(param);
           params.push(param_def);
         }
 
         let ts_type = ts_prop_sig
           .type_ann
           .as_ref()
-          .map(|rt| ts_type_ann_to_def(&doc_parser.source_map, rt));
+          .map(|rt| ts_type_ann_to_def(rt));
+
+        let type_params = maybe_type_param_decl_to_type_param_defs(
+          ts_prop_sig.type_params.as_ref(),
+        );
 
         let prop_def = InterfacePropertyDef {
           name,
@@ -180,6 +155,7 @@ pub fn get_doc_for_ts_interface_decl(
           ts_type,
           computed: ts_prop_sig.computed,
           optional: ts_prop_sig.optional,
+          type_params,
         };
         properties.push(prop_def);
       }
@@ -188,33 +164,18 @@ pub fn get_doc_for_ts_interface_decl(
 
         let mut params = vec![];
         for param in &ts_call_sig.params {
-          use crate::swc_ecma_ast::TsFnParam::*;
-
-          let param_def = match param {
-            Ident(ident) => {
-              let ts_type = ident
-                .type_ann
-                .as_ref()
-                .map(|rt| ts_type_ann_to_def(&doc_parser.source_map, rt));
-
-              ParamDef {
-                name: ident.sym.to_string(),
-                ts_type,
-              }
-            }
-            _ => ParamDef {
-              name: "<TODO>".to_string(),
-              ts_type: None,
-            },
-          };
-
+          let param_def = ts_fn_param_to_param_def(param);
           params.push(param_def);
         }
 
         let ts_type = ts_call_sig
           .type_ann
           .as_ref()
-          .map(|rt| ts_type_ann_to_def(&doc_parser.source_map, rt));
+          .map(|rt| ts_type_ann_to_def(rt));
+
+        let type_params = maybe_type_param_decl_to_type_param_defs(
+          ts_call_sig.type_params.as_ref(),
+        );
 
         let call_sig_def = InterfaceCallSignatureDef {
           js_doc: call_sig_js_doc,
@@ -224,6 +185,7 @@ pub fn get_doc_for_ts_interface_decl(
             .into(),
           params,
           ts_type,
+          type_params,
         };
         call_signatures.push(call_sig_def);
       }
@@ -233,10 +195,15 @@ pub fn get_doc_for_ts_interface_decl(
     }
   }
 
+  let type_params = maybe_type_param_decl_to_type_param_defs(
+    interface_decl.type_params.as_ref(),
+  );
+
   let interface_def = InterfaceDef {
     methods,
     properties,
     call_signatures,
+    type_params,
   };
 
   (interface_name, interface_def)

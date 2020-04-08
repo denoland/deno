@@ -2,7 +2,6 @@
 use crate::swc_ecma_ast;
 use serde::Serialize;
 
-use super::parser::DocParser;
 use super::ts_type::ts_type_ann_to_def;
 use super::ts_type::TsTypeDef;
 
@@ -13,12 +12,12 @@ pub struct VariableDef {
   pub kind: swc_ecma_ast::VarDeclKind,
 }
 
+// TODO: change this function to return Vec<(String, VariableDef)> as single
+// var declaration can have multiple declarators
 pub fn get_doc_for_var_decl(
-  doc_parser: &DocParser,
   var_decl: &swc_ecma_ast::VarDecl,
 ) -> (String, VariableDef) {
   assert!(!var_decl.decls.is_empty());
-  // TODO: support multiple declarators
   let var_declarator = var_decl.decls.get(0).unwrap();
 
   let var_name = match &var_declarator.name {
@@ -27,10 +26,9 @@ pub fn get_doc_for_var_decl(
   };
 
   let maybe_ts_type = match &var_declarator.name {
-    swc_ecma_ast::Pat::Ident(ident) => ident
-      .type_ann
-      .as_ref()
-      .map(|rt| ts_type_ann_to_def(&doc_parser.source_map, rt)),
+    swc_ecma_ast::Pat::Ident(ident) => {
+      ident.type_ann.as_ref().map(|rt| ts_type_ann_to_def(rt))
+    }
     _ => None,
   };
 
