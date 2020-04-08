@@ -153,6 +153,72 @@ export function foo(a: string, b: number, cb: (...cbArgs: unknown[]) => void, ..
 }
 
 #[tokio::test]
+async fn export_fn2() {
+  let source_code = r#"
+export function foo([e,,f, ...g]: number[], { c, d: asdf, i = "asdf", ...rest}, { a: string, b: number} = {}): void {
+    console.log("Hello world");
+}
+"#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  assert_eq!(entries.len(), 1);
+  let entry = &entries[0];
+  let expected_json = json!({
+    "functionDef": {
+      "isAsync": false,
+      "isGenerator": false,
+      "params": [
+        {
+          "name": "",
+          "kind": "array",
+          "tsType": {
+            "repr": "",
+            "kind": "array",
+            "array": {
+                "repr": "number",
+                "kind": "keyword",
+                "keyword": "number"
+            }
+          }
+        },
+        {
+          "name": "",
+          "kind": "object",
+          "tsType": null
+        },
+        {
+          "name": "",
+          "kind": "assign",
+          "tsType": null
+        },
+      ],
+      "returnType": {
+        "keyword": "void",
+        "kind": "keyword",
+        "repr": "void",
+      },
+    },
+    "jsDoc": null,
+    "kind": "function",
+    "location": {
+      "col": 0,
+      "filename": "test.ts",
+      "line": 2,
+    },
+    "name": "foo",
+  });
+
+  let actual = serde_json::to_value(entry).unwrap();
+  assert_eq!(actual, expected_json);
+
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("foo")
+  );
+}
+
+#[tokio::test]
 async fn export_const() {
   let source_code =
     "/** Something about fizzBuzz */\nexport const fizzBuzz = \"fizzBuzz\";\n";
@@ -241,14 +307,22 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
               }
             },
             {
-              "name": "<TODO>",
+              "name": "private2",
               "kind": "identifier",
-              "tsType": null
+              "tsType": {
+                "repr": "number",
+                "kind": "keyword",
+                "keyword": "number"
+              }
             },
             {
-              "name": "<TODO>",
+              "name": "protected2",
               "kind": "identifier",
-              "tsType": null
+              "tsType": {
+                "repr": "number",
+                "kind": "keyword",
+                "keyword": "number"
+              }
             }
           ],
           "location": {

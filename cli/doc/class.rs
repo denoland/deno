@@ -6,6 +6,8 @@ use serde::Serialize;
 
 use super::function::function_to_function_def;
 use super::function::FunctionDef;
+use super::params::assign_pat_to_param_def;
+use super::params::ident_to_param_def;
 use super::params::pat_to_param_def;
 use super::parser::DocParser;
 use super::ts_type::ts_entity_name_to_name;
@@ -13,7 +15,6 @@ use super::ts_type::ts_type_ann_to_def;
 use super::ts_type::TsTypeDef;
 use super::Location;
 use super::ParamDef;
-use super::ParamKind;
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -123,11 +124,16 @@ pub fn get_doc_for_class_decl(
 
           let param_def = match param {
             Pat(pat) => pat_to_param_def(pat),
-            TsParamProp(_) => ParamDef {
-              name: "<TODO>".to_string(),
-              kind: ParamKind::Identifier,
-              ts_type: None,
-            },
+            TsParamProp(ts_param_prop) => {
+              use swc_ecma_ast::TsParamPropParam;
+
+              match &ts_param_prop.param {
+                TsParamPropParam::Ident(ident) => ident_to_param_def(ident),
+                TsParamPropParam::Assign(assign_pat) => {
+                  assign_pat_to_param_def(assign_pat)
+                }
+              }
+            }
           };
           params.push(param_def);
         }

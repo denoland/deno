@@ -19,6 +19,9 @@ pub enum DocNodeKind {
 pub enum ParamKind {
   Identifier,
   Rest,
+  Array,
+  Object,
+  Assign,
 }
 
 #[derive(Debug, Serialize, Clone)]
