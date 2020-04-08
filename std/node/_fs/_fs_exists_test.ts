@@ -6,9 +6,11 @@ import * as path from "../../path/mod.ts";
 
 const { test } = Deno;
 
-const testAvailableData = path.resolve(path.join("testdata", "hello.txt"));
+const testAvailableData = path.resolve("_fs", "testdata", "hello.txt");
 const testNotAvailableData = path.resolve(
-  path.join("testdata", "notAvailable.txt")
+  "_fs",
+  "testdata",
+  "notAvailable.txt"
 );
 
 test(async function existsFile() {
