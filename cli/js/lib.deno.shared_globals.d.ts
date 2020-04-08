@@ -16,7 +16,6 @@ declare interface WindowOrWorkerGlobalScope {
   fetch: typeof __fetch.fetch;
   // properties
   console: __console.Console;
-  Blob: typeof __blob.DenoBlob;
   File: __domTypes.DomFileConstructor;
   CustomEvent: typeof __customEvent.CustomEvent;
   Event: typeof __event.Event;
@@ -42,7 +41,7 @@ declare namespace WebAssembly {
    * function is useful if it is necessary to a compile a module before it can
    * be instantiated (otherwise, the `WebAssembly.instantiate()` function
    * should be used). */
-  function compile(bufferSource: __domTypes.BufferSource): Promise<Module>;
+  function compile(bufferSource: BufferSource): Promise<Module>;
 
   /** Compiles a `WebAssembly.Module` directly from a streamed underlying
    * source. This function is useful if it is necessary to a compile a module
@@ -57,7 +56,7 @@ declare namespace WebAssembly {
    * The returned `Promise` resolves to both a compiled `WebAssembly.Module` and
    * its first `WebAssembly.Instance`. */
   function instantiate(
-    bufferSource: __domTypes.BufferSource,
+    bufferSource: BufferSource,
     importObject?: object
   ): Promise<WebAssemblyInstantiatedSource>;
 
@@ -79,7 +78,7 @@ declare namespace WebAssembly {
 
   /** Validates a given typed array of WebAssembly binary code, returning
    * whether the bytes form a valid wasm module (`true`) or not (`false`). */
-  function validate(bufferSource: __domTypes.BufferSource): boolean;
+  function validate(bufferSource: BufferSource): boolean;
 
   type ImportExportKind = "function" | "table" | "memory" | "global";
 
@@ -94,7 +93,7 @@ declare namespace WebAssembly {
   }
 
   class Module {
-    constructor(bufferSource: __domTypes.BufferSource);
+    constructor(bufferSource: BufferSource);
 
     /** Given a `Module` and string, returns a copy of the contents of all
      * custom sections in the module with the given string name. */
@@ -220,7 +219,6 @@ declare function clearInterval(id?: number): void;
 declare function queueMicrotask(func: Function): void;
 
 declare const console: __console.Console;
-declare const Blob: typeof __blob.DenoBlob;
 declare const File: __domTypes.DomFileConstructor;
 declare const CustomEventInit: typeof __customEvent.CustomEventInit;
 declare const CustomEvent: typeof __customEvent.CustomEvent;
@@ -249,7 +247,6 @@ declare function removeEventListener(
   options?: boolean | __domTypes.EventListenerOptions | undefined
 ): void;
 
-declare type Blob = __domTypes.Blob;
 declare type Body = __domTypes.Body;
 declare type File = __domTypes.DomFile;
 declare type CustomEventInit = __domTypes.CustomEventInit;
@@ -270,7 +267,6 @@ declare interface ImportMeta {
 }
 
 declare namespace __domTypes {
-  export type BufferSource = ArrayBufferView | ArrayBuffer;
   export type HeadersInit =
     | Headers
     | Array<[string, string]>
@@ -294,7 +290,6 @@ declare namespace __domTypes {
     | "origin-only"
     | "origin-when-cross-origin"
     | "unsafe-url";
-  export type BlobPart = BufferSource | Blob | string;
   export type FormDataEntryValue = DomFile | string;
   export interface DomIterable<K, V> {
     keys(): IterableIterator<K>;
@@ -305,11 +300,6 @@ declare namespace __domTypes {
       callback: (value: V, key: K, parent: this) => void,
       thisArg?: any
     ): void;
-  }
-  type EndingType = "transparent" | "native";
-  export interface BlobPropertyBag {
-    type?: string;
-    ending?: EndingType;
   }
   interface AbortSignalEventMap {
     abort: ProgressEvent;
@@ -618,19 +608,6 @@ declare namespace __domTypes {
     new (): FormData;
     prototype: FormData;
   }
-  /** A blob object represents a file-like object of immutable, raw data. */
-  export interface Blob {
-    /** The size, in bytes, of the data contained in the `Blob` object. */
-    readonly size: number;
-    /** A string indicating the media type of the data contained in the `Blob`.
-     * If the type is unknown, this string is empty.
-     */
-    readonly type: string;
-    /** Returns a new `Blob` object containing the data in the specified range of
-     * bytes of the source `Blob`.
-     */
-    slice(start?: number, end?: number, contentType?: string): Blob;
-  }
   export interface Body {
     /** A simple getter used to expose a `ReadableStream` of the body contents. */
     readonly body: ReadableStream<Uint8Array> | null;
@@ -934,21 +911,28 @@ declare namespace __domTypes {
   }
 }
 
-declare namespace __blob {
-  export class DenoBlob implements __domTypes.Blob {
+type BufferSource = ArrayBufferView | ArrayBuffer;
+type BlobPart = BufferSource | Blob | string;
+
+interface BlobPropertyBag {
+  type?: string;
+  ending?: "transparent" | "native";
+}
+
+/** A file-like object of immutable, raw data. Blobs represent data that isn't necessarily in a JavaScript-native format. The File interface is based on Blob, inheriting blob functionality and expanding it to support files on the user's system. */
+interface Blob {
     readonly size: number;
     readonly type: string;
-    /** A blob object represents a file-like object of immutable, raw data. */
-    constructor(
-      blobParts?: __domTypes.BlobPart[],
-      options?: __domTypes.BlobPropertyBag
-    );
-    slice(start?: number, end?: number, contentType?: string): DenoBlob;
-    stream(): __domTypes.ReadableStream<Uint8Array>;
-    text(): Promise<string>;
     arrayBuffer(): Promise<ArrayBuffer>;
-  }
+    slice(start?: number, end?: number, contentType?: string): Blob;
+    stream(): ReadableStream;
+    text(): Promise<string>;
 }
+
+declare const Blob: {
+    prototype: Blob;
+    new(blobParts?: BlobPart[], options?: BlobPropertyBag): Blob;
+};
 
 declare namespace __console {
   type InspectOptions = Partial<{
@@ -1193,7 +1177,7 @@ declare namespace __fetch {
     readonly body: __domTypes.ReadableStream<Uint8Array>;
     constructor(rid: number, contentType: string);
     arrayBuffer(): Promise<ArrayBuffer>;
-    blob(): Promise<__domTypes.Blob>;
+    blob(): Promise<Blob>;
     formData(): Promise<__domTypes.FormData>;
     json(): Promise<any>;
     text(): Promise<string>;
@@ -1227,7 +1211,7 @@ declare namespace __fetch {
       body_?: null | Body
     );
     arrayBuffer(): Promise<ArrayBuffer>;
-    blob(): Promise<__domTypes.Blob>;
+    blob(): Promise<Blob>;
     formData(): Promise<__domTypes.FormData>;
     json(): Promise<any>;
     text(): Promise<string>;
@@ -1259,7 +1243,7 @@ declare class TextDecoder {
     options?: { fatal?: boolean; ignoreBOM?: boolean }
   );
   /** Returns the result of running encoding's decoder. */
-  decode(input?: __domTypes.BufferSource, options?: { stream?: false }): string;
+  decode(input?: BufferSource, options?: { stream?: false }): string;
   readonly [Symbol.toStringTag]: string;
 }
 
