@@ -52,7 +52,7 @@ async fn export_fn() {
 *
 * Or not that many?
 */
-export function foo(a: string, b: number): void {
+export function foo(a: string, b: number, cb: (...cbArgs: unknown[]) => void, ...args: unknown[]): void {
     console.log("Hello world");
 }
 "#;
@@ -65,9 +65,11 @@ export function foo(a: string, b: number): void {
     "functionDef": {
       "isAsync": false,
       "isGenerator": false,
+      "typeParams": [],
       "params": [
           {
             "name": "a",
+            "kind": "identifier",
             "tsType": {
               "keyword": "string",
               "kind": "keyword",
@@ -76,12 +78,56 @@ export function foo(a: string, b: number): void {
           },
           {
             "name": "b",
+            "kind": "identifier",
             "tsType": {
               "keyword": "number",
               "kind": "keyword",
               "repr": "number",
             },
           },
+          {
+            "name": "cb",
+            "kind": "identifier",
+            "tsType": {
+              "repr": "",
+              "kind": "fnOrConstructor",
+              "fnOrConstructor": {
+                "constructor": false,
+                "tsType": {
+                  "keyword": "void",
+                  "kind": "keyword",
+                  "repr": "void"
+                },
+                "typeParams": [],
+                "params": [{
+                  "kind": "rest",
+                  "name": "cbArgs",
+                  "tsType": {
+                    "repr": "",
+                    "kind": "array",
+                    "array": {
+                        "repr": "unknown",
+                        "kind": "keyword",
+                        "keyword": "unknown"
+                    }
+                  },
+                }]
+              }
+            },
+          },
+          {
+            "name": "args",
+            "kind": "rest",
+            "tsType": {
+              "repr": "",
+              "kind": "array",
+              "array": {
+                  "repr": "unknown",
+                  "kind": "keyword",
+                  "keyword": "unknown"
+              }
+            }
+          }
       ],
       "returnType": {
         "keyword": "void",
@@ -98,12 +144,92 @@ export function foo(a: string, b: number): void {
     },
     "name": "foo",
   });
+
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
 
   assert!(
     colors::strip_ansi_codes(super::printer::format(entries).as_str())
       .contains("Hello there")
+  );
+}
+
+#[tokio::test]
+async fn export_fn2() {
+  let source_code = r#"
+interface AssignOpts {
+  a: string;
+  b: number;
+}
+
+export function foo([e,,f, ...g]: number[], { c, d: asdf, i = "asdf", ...rest}, ops: AssignOpts = {}): void {
+    console.log("Hello world");
+}
+"#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  assert_eq!(entries.len(), 1);
+  let entry = &entries[0];
+  let expected_json = json!({
+    "functionDef": {
+      "isAsync": false,
+      "isGenerator": false,
+      "typeParams": [],
+      "params": [
+        {
+          "name": "",
+          "kind": "array",
+          "tsType": {
+            "repr": "",
+            "kind": "array",
+            "array": {
+                "repr": "number",
+                "kind": "keyword",
+                "keyword": "number"
+            }
+          }
+        },
+        {
+          "name": "",
+          "kind": "object",
+          "tsType": null
+        },
+        {
+          "name": "ops",
+          "kind": "identifier",
+          "tsType": {
+            "repr": "AssignOpts",
+            "kind": "typeRef",
+            "typeRef": {
+              "typeName": "AssignOpts",
+              "typeParams": null,
+            }
+          }
+        },
+      ],
+      "returnType": {
+        "keyword": "void",
+        "kind": "keyword",
+        "repr": "void",
+      },
+    },
+    "jsDoc": null,
+    "kind": "function",
+    "location": {
+      "col": 0,
+      "filename": "test.ts",
+      "line": 7,
+    },
+    "name": "foo",
+  });
+
+  let actual = serde_json::to_value(entry).unwrap();
+  assert_eq!(actual, expected_json);
+
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("foo")
   );
 }
 
@@ -180,6 +306,7 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
       "isAbstract": false,
       "superClass": "Fizz",
       "implements": ["Buzz", "Aldrin"],
+      "typeParams": [],
       "constructors": [
         {
           "jsDoc": "Constructor js doc",
@@ -188,6 +315,7 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
           "params": [
             {
               "name": "name",
+              "kind": "identifier",
               "tsType": {
                 "repr": "string",
                 "kind": "keyword",
@@ -195,12 +323,22 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
               }
             },
             {
-              "name": "<TODO>",
-              "tsType": null
+              "name": "private2",
+              "kind": "identifier",
+              "tsType": {
+                "repr": "number",
+                "kind": "keyword",
+                "keyword": "number"
+              }
             },
             {
-              "name": "<TODO>",
-              "tsType": null
+              "name": "protected2",
+              "kind": "identifier",
+              "tsType": {
+                "repr": "number",
+                "kind": "keyword",
+                "keyword": "number"
+              }
             }
           ],
           "location": {
@@ -308,6 +446,7 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
                   "typeName": "Promise"
                 }
             },
+            "typeParams": [],
             "isAsync": true,
             "isGenerator": false
           },
@@ -326,20 +465,21 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
           "kind": "method",
           "functionDef": {
             "params": [],
-              "returnType": {
-                "repr": "void",
-                "kind": "keyword",
-                "keyword": "void"
-              },
-              "isAsync": false,
-              "isGenerator": false
+            "returnType": {
+              "repr": "void",
+              "kind": "keyword",
+              "keyword": "void"
             },
-            "location": {
-              "filename": "test.ts",
-              "line": 18,
-              "col": 4
-            }
+            "isAsync": false,
+            "isGenerator": false,
+            "typeParams": []
+          },
+          "location": {
+            "filename": "test.ts",
+            "line": 18,
+            "col": 4
           }
+        }
       ]
     }
   });
@@ -391,6 +531,7 @@ export interface Reader {
             "params": [
               {
                 "name": "buf",
+                "kind": "identifier",
                 "tsType": {
                   "repr": "Uint8Array",
                   "kind": "typeRef",
@@ -402,6 +543,7 @@ export interface Reader {
               },
               {
                 "name": "something",
+                "kind": "identifier",
                 "tsType": {
                   "repr": "unknown",
                   "kind": "keyword",
@@ -409,6 +551,7 @@ export interface Reader {
                 }
               }
             ],
+            "typeParams": [],
             "returnType": {
               "repr": "Promise",
               "kind": "typeRef",
@@ -426,7 +569,8 @@ export interface Reader {
           }
         ],
         "properties": [],
-        "callSignatures": []
+        "callSignatures": [],
+        "typeParams": [],
     }
   });
   let actual = serde_json::to_value(entry).unwrap();
@@ -435,6 +579,65 @@ export interface Reader {
   assert!(
     colors::strip_ansi_codes(super::printer::format(entries).as_str())
       .contains("interface Reader")
+  );
+}
+
+#[tokio::test]
+async fn export_interface2() {
+  let source_code = r#"
+export interface TypedIface<T> {
+    something(): T
+}
+    "#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  assert_eq!(entries.len(), 1);
+  let entry = &entries[0];
+  let expected_json = json!({
+      "kind": "interface",
+      "name": "TypedIface",
+      "location": {
+        "filename": "test.ts",
+        "line": 2,
+        "col": 0
+      },
+      "jsDoc": null,
+      "interfaceDef": {
+        "methods": [
+          {
+            "name": "something",
+            "location": {
+              "filename": "test.ts",
+              "line": 3,
+              "col": 4
+            },
+            "jsDoc": null,
+            "params": [],
+            "typeParams": [],
+            "returnType": {
+              "repr": "T",
+              "kind": "typeRef",
+              "typeRef": {
+                "typeParams": null,
+                "typeName": "T"
+              }
+            }
+          }
+        ],
+        "properties": [],
+        "callSignatures": [],
+        "typeParams": [
+          { "name": "T" }
+        ],
+    }
+  });
+  let actual = serde_json::to_value(entry).unwrap();
+  assert_eq!(actual, expected_json);
+
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("interface TypedIface")
   );
 }
 
@@ -459,6 +662,7 @@ export type NumberArray = Array<number>;
     },
     "jsDoc": "Array holding numbers",
     "typeAliasDef": {
+      "typeParams": [],
       "tsType": {
         "repr": "Array",
         "kind": "typeRef",
@@ -751,6 +955,7 @@ async fn optional_return_type() {
       "params": [
           {
             "name": "a",
+            "kind": "identifier",
             "tsType": {
               "keyword": "number",
               "kind": "keyword",
@@ -758,6 +963,7 @@ async fn optional_return_type() {
             },
           }
       ],
+      "typeParams": [],
       "returnType": null,
       "isAsync": false,
       "isGenerator": false
@@ -841,6 +1047,7 @@ export function fooFn(a: number) {
         "params": [
             {
               "name": "a",
+              "kind": "identifier",
               "tsType": {
                 "keyword": "number",
                 "kind": "keyword",
@@ -848,6 +1055,7 @@ export function fooFn(a: number) {
               },
             }
         ],
+        "typeParams": [],
         "returnType": null,
         "isAsync": false,
         "isGenerator": false

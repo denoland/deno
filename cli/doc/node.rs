@@ -16,8 +16,18 @@ pub enum DocNodeKind {
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub enum ParamKind {
+  Identifier,
+  Rest,
+  Array,
+  Object,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ParamDef {
   pub name: String,
+  pub kind: ParamKind,
   pub ts_type: Option<super::ts_type::TsTypeDef>,
 }
 

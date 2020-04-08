@@ -347,7 +347,7 @@ impl DocParser {
           return None;
         }
         let (name, function_def) =
-          super::function::get_doc_for_fn_decl(self, fn_decl);
+          super::function::get_doc_for_fn_decl(fn_decl);
         let (js_doc, location) = self.details_for_span(fn_decl.function.span);
         Some(DocNode {
           kind: DocNodeKind::Function,
@@ -367,8 +367,7 @@ impl DocParser {
         if !var_decl.declare {
           return None;
         }
-        let (name, var_def) =
-          super::variable::get_doc_for_var_decl(self, var_decl);
+        let (name, var_def) = super::variable::get_doc_for_var_decl(var_decl);
         let (js_doc, location) = self.details_for_span(var_decl.span);
         Some(DocNode {
           kind: DocNodeKind::Variable,
