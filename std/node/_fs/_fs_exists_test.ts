@@ -2,11 +2,13 @@
 
 import { assertEquals } from "../../testing/asserts.ts";
 import { exists, existsSync } from "./_fs_exists.ts";
+import * as path from "../../path/mod.ts";
 
 const { test } = Deno;
 
-const testAvailableData = "./testdata/hello.txt";
-const testNotAvailableData = "./notAvailable.txt";
+const testDir = path.resolve("_fs", "testdata");
+const testAvailableData = path.join(testDir, "hello.txt");
+const testNotAvailableData = path.join(testDir, "notAvailable.txt");
 
 test(async function existsFile() {
   const availableFile = await new Promise((resolve) => {
