@@ -6,6 +6,7 @@ use super::params::ts_fn_param_to_param_def;
 use super::parser::DocParser;
 use super::ts_type::ts_type_ann_to_def;
 use super::ts_type::TsTypeDef;
+use super::ts_type_param::TsTypeParamDef;
 use super::Location;
 use super::ParamDef;
 
@@ -46,10 +47,11 @@ pub struct InterfaceCallSignatureDef {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InterfaceDef {
-  // TODO: extends, type params
+  // TODO: extends
   pub methods: Vec<InterfaceMethodDef>,
   pub properties: Vec<InterfacePropertyDef>,
   pub call_signatures: Vec<InterfaceCallSignatureDef>,
+  pub type_params: Vec<TsTypeParamDef>,
 }
 
 fn expr_to_name(expr: &swc_ecma_ast::Expr) -> String {
@@ -177,10 +179,22 @@ pub fn get_doc_for_ts_interface_decl(
     }
   }
 
+  let type_params =
+    if let Some(type_params_decl) = interface_decl.type_params.as_ref() {
+      type_params_decl
+        .params
+        .iter()
+        .map(|type_param| type_param.into())
+        .collect::<Vec<TsTypeParamDef>>()
+    } else {
+      vec![]
+    };
+
   let interface_def = InterfaceDef {
     methods,
     properties,
     call_signatures,
+    type_params,
   };
 
   (interface_name, interface_def)

@@ -562,7 +562,8 @@ export interface Reader {
           }
         ],
         "properties": [],
-        "callSignatures": []
+        "callSignatures": [],
+        "typeParams": [],
     }
   });
   let actual = serde_json::to_value(entry).unwrap();
@@ -571,6 +572,64 @@ export interface Reader {
   assert!(
     colors::strip_ansi_codes(super::printer::format(entries).as_str())
       .contains("interface Reader")
+  );
+}
+
+#[tokio::test]
+async fn export_interface2() {
+  let source_code = r#"
+export interface TypedIface<T> {
+    something(): T
+}
+    "#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  assert_eq!(entries.len(), 1);
+  let entry = &entries[0];
+  let expected_json = json!({
+      "kind": "interface",
+      "name": "TypedIface",
+      "location": {
+        "filename": "test.ts",
+        "line": 2,
+        "col": 0
+      },
+      "jsDoc": null,
+      "interfaceDef": {
+        "methods": [
+          {
+            "name": "something",
+            "location": {
+              "filename": "test.ts",
+              "line": 3,
+              "col": 4
+            },
+            "jsDoc": null,
+            "params": [],
+            "returnType": {
+              "repr": "T",
+              "kind": "typeRef",
+              "typeRef": {
+                "typeParams": null,
+                "typeName": "T"
+              }
+            }
+          }
+        ],
+        "properties": [],
+        "callSignatures": [],
+        "typeParams": [
+          { "name": "T" }
+        ],
+    }
+  });
+  let actual = serde_json::to_value(entry).unwrap();
+  assert_eq!(actual, expected_json);
+
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("interface TypedIface")
   );
 }
 

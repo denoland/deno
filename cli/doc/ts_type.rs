@@ -641,7 +641,6 @@ pub struct TsTypeDef {
 
   pub kind: Option<TsTypeDefKind>,
 
-  // TODO: make this struct more conrete
   #[serde(skip_serializing_if = "Option::is_none")]
   pub keyword: Option<String>,
 

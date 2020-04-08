@@ -12,11 +12,12 @@ pub struct VariableDef {
   pub kind: swc_ecma_ast::VarDeclKind,
 }
 
+// TODO: change this function to return Vec<(String, VariableDef)> as single
+// var declaration can have multiple declarators
 pub fn get_doc_for_var_decl(
   var_decl: &swc_ecma_ast::VarDecl,
 ) -> (String, VariableDef) {
   assert!(!var_decl.decls.is_empty());
-  // TODO: support multiple declarators
   let var_declarator = var_decl.decls.get(0).unwrap();
 
   let var_name = match &var_declarator.name {

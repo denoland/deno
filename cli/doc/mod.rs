@@ -10,6 +10,7 @@ pub mod params;
 pub mod parser;
 pub mod printer;
 pub mod ts_type;
+pub mod ts_type_param;
 pub mod type_alias;
 pub mod variable;
 
