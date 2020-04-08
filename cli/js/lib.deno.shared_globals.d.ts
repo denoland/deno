@@ -285,10 +285,6 @@ declare namespace __domTypes {
     | Headers
     | Array<[string, string]>
     | Record<string, string>;
-  export type URLSearchParamsInit =
-    | string
-    | string[][]
-    | Record<string, string>;
   type BodyInit =
     | Blob
     | BufferSource
@@ -363,52 +359,6 @@ declare namespace __domTypes {
     lengthComputable?: boolean;
     loaded?: number;
     total?: number;
-  }
-  export interface URLSearchParams extends DomIterable<string, string> {
-    /**
-     * Appends a specified key/value pair as a new search parameter.
-     */
-    append(name: string, value: string): void;
-    /**
-     * Deletes the given search parameter, and its associated value,
-     * from the list of all search parameters.
-     */
-    delete(name: string): void;
-    /**
-     * Returns the first value associated to the given search parameter.
-     */
-    get(name: string): string | null;
-    /**
-     * Returns all the values association with a given search parameter.
-     */
-    getAll(name: string): string[];
-    /**
-     * Returns a Boolean indicating if such a search parameter exists.
-     */
-    has(name: string): boolean;
-    /**
-     * Sets the value associated to a given search parameter to the given value.
-     * If there were several values, delete the others.
-     */
-    set(name: string, value: string): void;
-    /**
-     * Sort all key/value pairs contained in this object in place
-     * and return undefined. The sort order is according to Unicode
-     * code points of the keys.
-     */
-    sort(): void;
-    /**
-     * Returns a query string suitable for use in a URL.
-     */
-    toString(): string;
-    /**
-     * Iterates over each name-value pair in the query
-     * and invokes the given function.
-     */
-    forEach(
-      callbackfn: (value: string, key: string, parent: this) => void,
-      thisArg?: any
-    ): void;
   }
   export interface EventInit {
     bubbles?: boolean;
@@ -1288,33 +1238,40 @@ declare class TextEncoder {
 interface URLSearchParams {
   /** Appends a specified key/value pair as a new search parameter.
    *
+   *       let searchParams = new URLSearchParams();
    *       searchParams.append('name', 'first');
    *       searchParams.append('name', 'second');
    */
   append(name: string, value: string): void;
+
   /** Deletes the given search parameter and its associated value,
    * from the list of all search parameters.
    *
+   *       let searchParams = new URLSearchParams([['name', 'value']]);
    *       searchParams.delete('name');
    */
   delete(name: string): void;
+
   /** Returns all the values associated with a given search parameter
    * as an array.
    *
    *       searchParams.getAll('name');
    */
   getAll(name: string): string[];
+
   /** Returns the first value associated to the given search parameter.
    *
    *       searchParams.get('name');
    */
   get(name: string): string | null;
+
   /** Returns a Boolean that indicates whether a parameter with the
    * specified name exists.
    *
    *       searchParams.has('name');
    */
   has(name: string): boolean;
+
   /** Sets the value associated with a given search parameter to the
    * given value. If there were several matching values, this method
    * deletes the others. If the search parameter doesn't exist, this
@@ -1323,6 +1280,7 @@ interface URLSearchParams {
    *       searchParams.set('name', 'value');
    */
   set(name: string, value: string): void;
+
   /** Sort all key/value pairs contained in this object in place and
    * return undefined. The sort order is according to Unicode code
    * points of the keys.
@@ -1330,11 +1288,13 @@ interface URLSearchParams {
    *       searchParams.sort();
    */
   sort(): void;
+
   /** Calls a function for each element contained in this object in
    * place and return undefined. Optionally accepts an object to use
    * as this when executing callback as second argument.
    *
-   *       searchParams.forEach((value, key, parent) => {
+   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   *       params.forEach((value, key, parent) => {
    *         console.log(value, key, parent);
    *       });
    *
@@ -1343,38 +1303,47 @@ interface URLSearchParams {
     callbackfn: (value: string, key: string, parent: this) => void,
     thisArg?: any
   ): void;
+
   /** Returns an iterator allowing to go through all keys contained
    * in this object.
    *
-   *       for (const key of searchParams.keys()) {
+   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   *       for (const key of params.keys()) {
    *         console.log(key);
    *       }
    */
   keys(): IterableIterator<string>;
+
   /** Returns an iterator allowing to go through all values contained
    * in this object.
    *
-   *       for (const value of searchParams.values()) {
+   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   *       for (const value of params.values()) {
    *         console.log(value);
    *       }
    */
   values(): IterableIterator<string>;
+
   /** Returns an iterator allowing to go through all key/value
    * pairs contained in this object.
    *
-   *       for (const [key, value] of searchParams.entries()) {
+   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   *       for (const [key, value] of params.entries()) {
    *         console.log(key, value);
    *       }
    */
   entries(): IterableIterator<[string, string]>;
+
   /** Returns an iterator allowing to go through all key/value
    * pairs contained in this object.
    *
-   *       for (const [key, value] of searchParams[Symbol.iterator]()) {
+   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   *       for (const [key, value] of params) {
    *         console.log(key, value);
    *       }
    */
   [Symbol.iterator](): IterableIterator<[string, string]>;
+
   /** Returns a query string suitable for use in a URL.
    *
    *        searchParams.toString();
