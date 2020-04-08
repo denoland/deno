@@ -20,7 +20,7 @@ lazy_static = "1.4.0"
 libc = "0.2.68"
 log = "0.4.8"
 rusty_v8 = "0.3.10"
-serde_json = "1.0.48"
+serde_json = "1.0.50"
 url = "2.1.1"
 
 [[example]]
@@ -30,4 +30,4 @@ path = "examples/http_bench.rs"
 # These dependendencies are only used for deno_core_http_bench.
 [dev-dependencies]
 derive_deref = "1.1.0"
-tokio = { version = "0.2.13", features = ["rt-core", "tcp"] }
+tokio = { version = "0.2.16", features = ["rt-core", "tcp"] }
