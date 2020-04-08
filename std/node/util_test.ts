@@ -132,8 +132,8 @@ test({
     const booleanType = true;
     const integerType = 2;
     const symbolType = Symbol("anything");
-    
-    const functionType = function doBest(){};
+
+    const functionType = function doBest(): any {};
     const objectType = { name: "ali" };
     const arrayType = [1, 2, 3];
 
