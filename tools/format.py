@@ -18,6 +18,7 @@ def main():
 
     did_fmt = False
     if args.js:
+        dprint()
         prettier()
         did_fmt = True
     if args.py:
@@ -37,8 +38,16 @@ def prettier():
     print "prettier"
     script = os.path.join(third_party_path, "node_modules", "prettier",
                           "bin-prettier.js")
-    source_files = git_ls_files(root_path, ["*.js", "*.json", "*.ts", "*.md"])
+    source_files = git_ls_files(root_path, ["*.json", "*.md"])
     run(["node", script, "--write", "--loglevel=error", "--"] + source_files,
+        shell=False,
+        quiet=True)
+
+def dprint():
+    print "dprint"
+    config = os.path.join(root_path, "tools", "dprint_config.json")
+    source_files = git_ls_files(root_path, ["*.js", "*.ts"])
+    run(["dprint", "--config", config] + source_files,
         shell=False,
         quiet=True)
 

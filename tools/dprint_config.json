@@ -1,0 +1,6 @@
+{
+  "lineWidth": "80",
+  "indentWidth": "2",
+  "nextControlFlowPosition": "sameLine",
+  "bracePosition": "sameLine"
+}
