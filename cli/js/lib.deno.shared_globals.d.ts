@@ -15,7 +15,6 @@ declare interface WindowOrWorkerGlobalScope {
   // methods
   fetch: typeof __fetch.fetch;
   // properties
-  console: __console.Console;
   File: __domTypes.DomFileConstructor;
   CustomEvent: typeof __customEvent.CustomEvent;
   Event: typeof __event.Event;
@@ -218,7 +217,7 @@ declare function clearTimeout(id?: number): void;
 declare function clearInterval(id?: number): void;
 declare function queueMicrotask(func: Function): void;
 
-declare const console: __console.Console;
+declare const console: Console;
 declare const File: __domTypes.DomFileConstructor;
 declare const CustomEventInit: typeof __customEvent.CustomEventInit;
 declare const CustomEvent: typeof __customEvent.CustomEvent;
@@ -934,90 +933,70 @@ declare const Blob: {
   new (blobParts?: BlobPart[], options?: BlobPropertyBag): Blob;
 };
 
-declare namespace __console {
-  type InspectOptions = Partial<{
-    showHidden: boolean;
-    depth: number;
-    colors: boolean;
-    indentLevel: number;
-  }>;
-  export class CSI {
-    static kClear: string;
-    static kClearScreenDown: string;
-  }
-  const isConsoleInstance: unique symbol;
-  export class Console {
-    indentLevel: number;
-    [isConsoleInstance]: boolean;
-    /** Writes the arguments to stdout */
-    log: (...args: unknown[]) => void;
-    /** Writes the arguments to stdout */
-    debug: (...args: unknown[]) => void;
-    /** Writes the arguments to stdout */
-    info: (...args: unknown[]) => void;
-    /** Writes the properties of the supplied `obj` to stdout */
-    dir: (
-      obj: unknown,
-      options?: Partial<{
-        showHidden: boolean;
-        depth: number;
-        colors: boolean;
-        indentLevel: number;
-      }>
-    ) => void;
+declare const isConsoleInstance: unique symbol;
 
-    /** From MDN:
-     * Displays an interactive tree of the descendant elements of
-     * the specified XML/HTML element. If it is not possible to display
-     * as an element the JavaScript Object view is shown instead.
-     * The output is presented as a hierarchical listing of expandable
-     * nodes that let you see the contents of child nodes.
-     *
-     * Since we write to stdout, we can't display anything interactive
-     * we just fall back to `console.dir`.
-     */
-    dirxml: (
-      obj: unknown,
-      options?: Partial<{
-        showHidden: boolean;
-        depth: number;
-        colors: boolean;
-        indentLevel: number;
-      }>
-    ) => void;
+declare class Console {
+  indentLevel: number;
+  [isConsoleInstance]: boolean;
+  /** Writes the arguments to stdout */
+  log: (...args: unknown[]) => void;
+  /** Writes the arguments to stdout */
+  debug: (...args: unknown[]) => void;
+  /** Writes the arguments to stdout */
+  info: (...args: unknown[]) => void;
+  /** Writes the properties of the supplied `obj` to stdout */
+  dir: (
+    obj: unknown,
+    options?: Partial<{
+      showHidden: boolean;
+      depth: number;
+      colors: boolean;
+      indentLevel: number;
+    }>
+  ) => void;
 
-    /** Writes the arguments to stdout */
-    warn: (...args: unknown[]) => void;
-    /** Writes the arguments to stdout */
-    error: (...args: unknown[]) => void;
-    /** Writes an error message to stdout if the assertion is `false`. If the
-     * assertion is `true`, nothing happens.
-     *
-     * ref: https://console.spec.whatwg.org/#assert
-     */
-    assert: (condition?: boolean, ...args: unknown[]) => void;
-    count: (label?: string) => void;
-    countReset: (label?: string) => void;
-    table: (data: unknown, properties?: string[] | undefined) => void;
-    time: (label?: string) => void;
-    timeLog: (label?: string, ...args: unknown[]) => void;
-    timeEnd: (label?: string) => void;
-    group: (...label: unknown[]) => void;
-    groupCollapsed: (...label: unknown[]) => void;
-    groupEnd: () => void;
-    clear: () => void;
-    trace: (...args: unknown[]) => void;
-    static [Symbol.hasInstance](instance: Console): boolean;
-  }
-  /** A symbol which can be used as a key for a custom method which will be called
-   * when `Deno.inspect()` is called, or when the object is logged to the console.
+  /** From MDN:
+   * Displays an interactive tree of the descendant elements of
+   * the specified XML/HTML element. If it is not possible to display
+   * as an element the JavaScript Object view is shown instead.
+   * The output is presented as a hierarchical listing of expandable
+   * nodes that let you see the contents of child nodes.
+   *
+   * Since we write to stdout, we can't display anything interactive
+   * we just fall back to `console.dir`.
    */
-  export const customInspect: unique symbol;
-  /**
-   * `inspect()` converts input into string that has the same format
-   * as printed by `console.log(...)`;
+  dirxml: (
+    obj: unknown,
+    options?: Partial<{
+      showHidden: boolean;
+      depth: number;
+      colors: boolean;
+      indentLevel: number;
+    }>
+  ) => void;
+
+  /** Writes the arguments to stdout */
+  warn: (...args: unknown[]) => void;
+  /** Writes the arguments to stdout */
+  error: (...args: unknown[]) => void;
+  /** Writes an error message to stdout if the assertion is `false`. If the
+   * assertion is `true`, nothing happens.
+   *
+   * ref: https://console.spec.whatwg.org/#assert
    */
-  export function inspect(value: unknown, options?: InspectOptions): string;
+  assert: (condition?: boolean, ...args: unknown[]) => void;
+  count: (label?: string) => void;
+  countReset: (label?: string) => void;
+  table: (data: unknown, properties?: string[] | undefined) => void;
+  time: (label?: string) => void;
+  timeLog: (label?: string, ...args: unknown[]) => void;
+  timeEnd: (label?: string) => void;
+  group: (...label: unknown[]) => void;
+  groupCollapsed: (...label: unknown[]) => void;
+  groupEnd: () => void;
+  clear: () => void;
+  trace: (...args: unknown[]) => void;
+  static [Symbol.hasInstance](instance: Console): boolean;
 }
 
 declare namespace __event {
