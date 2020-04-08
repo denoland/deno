@@ -46,10 +46,6 @@ export function isRegExp(value: unknown): boolean {
   return value instanceof RegExp;
 }
 
-export function isBuffer(value: unknown): boolean {
-  return value instanceof Deno.Buffer;
-}
-
 export function isPrimitive(value: unknown): boolean {
   return (
     value === null || (typeof value !== "object" && typeof value !== "function")
