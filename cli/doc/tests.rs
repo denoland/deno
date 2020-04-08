@@ -65,6 +65,7 @@ export function foo(a: string, b: number, cb: (...cbArgs: unknown[]) => void, ..
     "functionDef": {
       "isAsync": false,
       "isGenerator": false,
+      "typeParams": [],
       "params": [
           {
             "name": "a",
@@ -97,6 +98,7 @@ export function foo(a: string, b: number, cb: (...cbArgs: unknown[]) => void, ..
                   "kind": "keyword",
                   "repr": "void"
                 },
+                "typeParams": [],
                 "params": [{
                   "kind": "rest",
                   "name": "cbArgs",
@@ -173,6 +175,7 @@ export function foo([e,,f, ...g]: number[], { c, d: asdf, i = "asdf", ...rest}, 
     "functionDef": {
       "isAsync": false,
       "isGenerator": false,
+      "typeParams": [],
       "params": [
         {
           "name": "",
@@ -303,6 +306,7 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
       "isAbstract": false,
       "superClass": "Fizz",
       "implements": ["Buzz", "Aldrin"],
+      "typeParams": [],
       "constructors": [
         {
           "jsDoc": "Constructor js doc",
@@ -442,6 +446,7 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
                   "typeName": "Promise"
                 }
             },
+            "typeParams": [],
             "isAsync": true,
             "isGenerator": false
           },
@@ -460,20 +465,21 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
           "kind": "method",
           "functionDef": {
             "params": [],
-              "returnType": {
-                "repr": "void",
-                "kind": "keyword",
-                "keyword": "void"
-              },
-              "isAsync": false,
-              "isGenerator": false
+            "returnType": {
+              "repr": "void",
+              "kind": "keyword",
+              "keyword": "void"
             },
-            "location": {
-              "filename": "test.ts",
-              "line": 18,
-              "col": 4
-            }
+            "isAsync": false,
+            "isGenerator": false,
+            "typeParams": []
+          },
+          "location": {
+            "filename": "test.ts",
+            "line": 18,
+            "col": 4
           }
+        }
       ]
     }
   });
@@ -545,6 +551,7 @@ export interface Reader {
                 }
               }
             ],
+            "typeParams": [],
             "returnType": {
               "repr": "Promise",
               "kind": "typeRef",
@@ -607,6 +614,7 @@ export interface TypedIface<T> {
             },
             "jsDoc": null,
             "params": [],
+            "typeParams": [],
             "returnType": {
               "repr": "T",
               "kind": "typeRef",
@@ -654,6 +662,7 @@ export type NumberArray = Array<number>;
     },
     "jsDoc": "Array holding numbers",
     "typeAliasDef": {
+      "typeParams": [],
       "tsType": {
         "repr": "Array",
         "kind": "typeRef",
@@ -954,6 +963,7 @@ async fn optional_return_type() {
             },
           }
       ],
+      "typeParams": [],
       "returnType": null,
       "isAsync": false,
       "isGenerator": false
@@ -1045,6 +1055,7 @@ export function fooFn(a: number) {
               },
             }
         ],
+        "typeParams": [],
         "returnType": null,
         "isAsync": false,
         "isGenerator": false

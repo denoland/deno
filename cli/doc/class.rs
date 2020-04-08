@@ -13,6 +13,8 @@ use super::parser::DocParser;
 use super::ts_type::ts_entity_name_to_name;
 use super::ts_type::ts_type_ann_to_def;
 use super::ts_type::TsTypeDef;
+use super::ts_type_param::maybe_type_param_decl_to_type_param_defs;
+use super::ts_type_param::TsTypeParamDef;
 use super::Location;
 use super::ParamDef;
 
@@ -43,8 +45,6 @@ pub struct ClassPropertyDef {
 #[serde(rename_all = "camelCase")]
 pub struct ClassMethodDef {
   pub js_doc: Option<String>,
-  //   pub ts_type: Option<TsTypeDef>,
-  //   pub readonly: bool,
   pub accessibility: Option<swc_ecma_ast::Accessibility>,
   pub is_abstract: bool,
   pub is_static: bool,
@@ -57,13 +57,14 @@ pub struct ClassMethodDef {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ClassDef {
-  // TODO: decorators, type_params, super_type_params
+  // TODO(bartlomieju): decorators, super_type_params
   pub is_abstract: bool,
   pub constructors: Vec<ClassConstructorDef>,
   pub properties: Vec<ClassPropertyDef>,
   pub methods: Vec<ClassMethodDef>,
   pub super_class: Option<String>,
   pub implements: Vec<String>,
+  pub type_params: Vec<TsTypeParamDef>,
 }
 
 fn prop_name_to_string(
@@ -199,13 +200,16 @@ pub fn get_doc_for_class_decl(
         };
         properties.push(prop_def);
       }
-      // TODO:
+      // TODO(bartlomieju):
       TsIndexSignature(_) => {}
       PrivateMethod(_) => {}
       PrivateProp(_) => {}
     }
   }
 
+  let type_params = maybe_type_param_decl_to_type_param_defs(
+    class_decl.class.type_params.as_ref(),
+  );
   let class_name = class_decl.ident.sym.to_string();
   let class_def = ClassDef {
     is_abstract: class_decl.class.is_abstract,
@@ -214,6 +218,7 @@ pub fn get_doc_for_class_decl(
     constructors,
     properties,
     methods,
+    type_params,
   };
 
   (class_name, class_def)

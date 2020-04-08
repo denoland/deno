@@ -6,6 +6,7 @@ use super::params::ts_fn_param_to_param_def;
 use super::parser::DocParser;
 use super::ts_type::ts_type_ann_to_def;
 use super::ts_type::TsTypeDef;
+use super::ts_type_param::maybe_type_param_decl_to_type_param_defs;
 use super::ts_type_param::TsTypeParamDef;
 use super::Location;
 use super::ParamDef;
@@ -13,18 +14,17 @@ use super::ParamDef;
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InterfaceMethodDef {
-  // TODO: type_params
   pub name: String,
   pub location: Location,
   pub js_doc: Option<String>,
   pub params: Vec<ParamDef>,
   pub return_type: Option<TsTypeDef>,
+  pub type_params: Vec<TsTypeParamDef>,
 }
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InterfacePropertyDef {
-  // TODO: type_params
   pub name: String,
   pub location: Location,
   pub js_doc: Option<String>,
@@ -32,22 +32,23 @@ pub struct InterfacePropertyDef {
   pub computed: bool,
   pub optional: bool,
   pub ts_type: Option<TsTypeDef>,
+  pub type_params: Vec<TsTypeParamDef>,
 }
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InterfaceCallSignatureDef {
-  // TODO: type_params
   pub location: Location,
   pub js_doc: Option<String>,
   pub params: Vec<ParamDef>,
   pub ts_type: Option<TsTypeDef>,
+  pub type_params: Vec<TsTypeParamDef>,
 }
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InterfaceDef {
-  // TODO: extends
+  // TODO(bartlomieju): extends
   pub methods: Vec<InterfaceMethodDef>,
   pub properties: Vec<InterfacePropertyDef>,
   pub call_signatures: Vec<InterfaceCallSignatureDef>,
@@ -103,6 +104,10 @@ pub fn get_doc_for_ts_interface_decl(
           .as_ref()
           .map(|rt| ts_type_ann_to_def(rt));
 
+        let type_params = maybe_type_param_decl_to_type_param_defs(
+          ts_method_sig.type_params.as_ref(),
+        );
+
         let method_def = InterfaceMethodDef {
           name,
           js_doc: method_js_doc,
@@ -112,6 +117,7 @@ pub fn get_doc_for_ts_interface_decl(
             .into(),
           params,
           return_type: maybe_return_type,
+          type_params,
         };
         methods.push(method_def);
       }
@@ -134,6 +140,10 @@ pub fn get_doc_for_ts_interface_decl(
           .as_ref()
           .map(|rt| ts_type_ann_to_def(rt));
 
+        let type_params = maybe_type_param_decl_to_type_param_defs(
+          ts_prop_sig.type_params.as_ref(),
+        );
+
         let prop_def = InterfacePropertyDef {
           name,
           js_doc: prop_js_doc,
@@ -145,6 +155,7 @@ pub fn get_doc_for_ts_interface_decl(
           ts_type,
           computed: ts_prop_sig.computed,
           optional: ts_prop_sig.optional,
+          type_params,
         };
         properties.push(prop_def);
       }
@@ -162,6 +173,10 @@ pub fn get_doc_for_ts_interface_decl(
           .as_ref()
           .map(|rt| ts_type_ann_to_def(rt));
 
+        let type_params = maybe_type_param_decl_to_type_param_defs(
+          ts_call_sig.type_params.as_ref(),
+        );
+
         let call_sig_def = InterfaceCallSignatureDef {
           js_doc: call_sig_js_doc,
           location: doc_parser
@@ -170,6 +185,7 @@ pub fn get_doc_for_ts_interface_decl(
             .into(),
           params,
           ts_type,
+          type_params,
         };
         call_signatures.push(call_sig_def);
       }
@@ -179,16 +195,9 @@ pub fn get_doc_for_ts_interface_decl(
     }
   }
 
-  let type_params =
-    if let Some(type_params_decl) = interface_decl.type_params.as_ref() {
-      type_params_decl
-        .params
-        .iter()
-        .map(|type_param| type_param.into())
-        .collect::<Vec<TsTypeParamDef>>()
-    } else {
-      vec![]
-    };
+  let type_params = maybe_type_param_decl_to_type_param_defs(
+    interface_decl.type_params.as_ref(),
+  );
 
   let interface_def = InterfaceDef {
     methods,

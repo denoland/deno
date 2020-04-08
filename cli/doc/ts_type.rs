@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::params::ts_fn_param_to_param_def;
+use super::ts_type_param::maybe_type_param_decl_to_type_param_defs;
+use super::ts_type_param::TsTypeParamDef;
 use super::ParamDef;
 use crate::swc_ecma_ast;
 use crate::swc_ecma_ast::TsArrayType;
@@ -349,10 +351,14 @@ impl Into<TsTypeDef> for &TsTypeLit {
             .as_ref()
             .map(|rt| (&*rt.type_ann).into());
 
+          let type_params = maybe_type_param_decl_to_type_param_defs(
+            ts_method_sig.type_params.as_ref(),
+          );
           let method_def = LiteralMethodDef {
             name: "<TODO>".to_string(),
             params,
             return_type: maybe_return_type,
+            type_params,
           };
           methods.push(method_def);
         }
@@ -374,12 +380,16 @@ impl Into<TsTypeDef> for &TsTypeLit {
             .as_ref()
             .map(|rt| (&*rt.type_ann).into());
 
+          let type_params = maybe_type_param_decl_to_type_param_defs(
+            ts_prop_sig.type_params.as_ref(),
+          );
           let prop_def = LiteralPropertyDef {
             name,
             params,
             ts_type,
             computed: ts_prop_sig.computed,
             optional: ts_prop_sig.optional,
+            type_params,
           };
           properties.push(prop_def);
         }
@@ -395,7 +405,15 @@ impl Into<TsTypeDef> for &TsTypeLit {
             .as_ref()
             .map(|rt| (&*rt.type_ann).into());
 
-          let call_sig_def = LiteralCallSignatureDef { params, ts_type };
+          let type_params = maybe_type_param_decl_to_type_param_defs(
+            ts_call_sig.type_params.as_ref(),
+          );
+
+          let call_sig_def = LiteralCallSignatureDef {
+            params,
+            ts_type,
+            type_params,
+          };
           call_signatures.push(call_sig_def);
         }
         // TODO:
@@ -448,10 +466,15 @@ impl Into<TsTypeDef> for &TsFnOrConstructorType {
           params.push(param_def);
         }
 
+        let type_params = maybe_type_param_decl_to_type_param_defs(
+          ts_fn_type.type_params.as_ref(),
+        );
+
         TsFnOrConstructorDef {
           constructor: false,
           ts_type: ts_type_ann_to_def(&ts_fn_type.type_ann),
           params,
+          type_params,
         }
       }
       TsConstructorType(ctor_type) => {
@@ -462,10 +485,14 @@ impl Into<TsTypeDef> for &TsFnOrConstructorType {
           params.push(param_def);
         }
 
+        let type_params = maybe_type_param_decl_to_type_param_defs(
+          ctor_type.type_params.as_ref(),
+        );
         TsFnOrConstructorDef {
           constructor: true,
           ts_type: ts_type_ann_to_def(&ctor_type.type_ann),
-          params: vec![],
+          params,
+          type_params,
         }
       }
     };
@@ -547,10 +574,10 @@ pub struct TsTypeOperatorDef {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct TsFnOrConstructorDef {
-  // TODO: type_params
   pub constructor: bool,
   pub ts_type: TsTypeDef,
   pub params: Vec<ParamDef>,
+  pub type_params: Vec<TsTypeParamDef>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -573,35 +600,29 @@ pub struct TsIndexedAccessDef {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct LiteralMethodDef {
-  // TODO: type_params
   pub name: String,
-  // pub location: Location,
-  // pub js_doc: Option<String>,
   pub params: Vec<ParamDef>,
   pub return_type: Option<TsTypeDef>,
+  pub type_params: Vec<TsTypeParamDef>,
 }
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct LiteralPropertyDef {
-  // TODO: type_params
   pub name: String,
-  // pub location: Location,
-  // pub js_doc: Option<String>,
   pub params: Vec<ParamDef>,
   pub computed: bool,
   pub optional: bool,
   pub ts_type: Option<TsTypeDef>,
+  pub type_params: Vec<TsTypeParamDef>,
 }
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct LiteralCallSignatureDef {
-  // TODO: type_params
-  // pub location: Location,
-  // pub js_doc: Option<String>,
   pub params: Vec<ParamDef>,
   pub ts_type: Option<TsTypeDef>,
+  pub type_params: Vec<TsTypeParamDef>,
 }
 
 #[derive(Debug, Serialize, Clone)]
