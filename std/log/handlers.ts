@@ -89,6 +89,12 @@ export abstract class WriterHandler extends BaseHandler {
   protected _writer!: Writer;
   #encoder = new TextEncoder();
 
+  /** @deprecated - `this._writer.write()` is an async call.  Under heavy load
+   * testing has shown a significant loss of log messages being written.  Also,
+   * if the process terminates while writing a log, that log message is also
+   * lost.  It is recommended that handlers override this method with a
+   * synchronous implementation (see FileHandler).
+   */
   log(msg: string): void {
     this._writer.write(this.#encoder.encode(msg + "\n"));
   }
@@ -103,6 +109,7 @@ export class FileHandler extends WriterHandler {
   protected _file!: File;
   protected _filename: string;
   protected _mode: LogMode;
+  #encoder = new TextEncoder();
 
   constructor(levelName: string, options: FileHandlerOptions) {
     super(levelName, options);
@@ -116,8 +123,12 @@ export class FileHandler extends WriterHandler {
     this._writer = this._file;
   }
 
+  log(msg: string): void {
+    Deno.writeSync(this._file.rid, this.#encoder.encode(msg + "\n"));
+  }
+
   async destroy(): Promise<void> {
-    this._file.close();
+    await this._file.close();
   }
 }
 
@@ -127,8 +138,8 @@ interface RotatingFileHandlerOptions extends FileHandlerOptions {
 }
 
 export class RotatingFileHandler extends FileHandler {
-  #maxBytes:number;
-  #maxBackupCount:number;
+  #maxBytes: number;
+  #maxBackupCount: number;
 
   constructor(levelName: string, options: RotatingFileHandlerOptions) {
     super(levelName, options);
@@ -145,20 +156,22 @@ export class RotatingFileHandler extends FileHandler {
     }
     await super.setup();
 
-    if (this._mode === 'w') {
+    if (this._mode === "w") {
       // Remove old backups too as it doesn't make sense to start with a clean
       // log file, but old backups
-      for (let i=1; i <= this.#maxBackupCount; i++) {
-        if (await exists(this._filename + '.' + i)) {
-          await Deno.remove(this._filename + '.' + i);
+      for (let i = 1; i <= this.#maxBackupCount; i++) {
+        if (await exists(this._filename + "." + i)) {
+          await Deno.remove(this._filename + "." + i);
         }
       }
-    } else if (this._mode === 'x') {
+    } else if (this._mode === "x") {
       // Throw if any backups also exist
-      for (let i=1; i <= this.#maxBackupCount; i++) {
-        if (await exists(this._filename + '.' + i)) {
-          throw new Deno.errors.AlreadyExists("Backup log file " + 
-              this._filename + '.' + i + " already exits");
+      for (let i = 1; i <= this.#maxBackupCount; i++) {
+        if (await exists(this._filename + "." + i)) {
+          Deno.close(this._file.rid);
+          throw new Deno.errors.AlreadyExists(
+            "Backup log file " + this._filename + "." + i + " already exists"
+          );
         }
       }
     }
@@ -177,12 +190,12 @@ export class RotatingFileHandler extends FileHandler {
     return this.log(msg);
   }
 
-  rotateLogFiles():void {
+  rotateLogFiles(): void {
     close(this._file.rid);
 
-    for (let i=this.#maxBackupCount -1; i >= 0; i--) {
-      const source = this._filename + (i===0 ? '' : ('.' + i));
-      const dest = this._filename + '.' + (i + 1);
+    for (let i = this.#maxBackupCount - 1; i >= 0; i--) {
+      const source = this._filename + (i === 0 ? "" : "." + i);
+      const dest = this._filename + "." + (i + 1);
 
       if (existsSync(source)) {
         renameSync(source, dest);
