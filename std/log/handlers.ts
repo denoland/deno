@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { open, openSync, close, renameSync, seekSync } = Deno;
+const { open, openSync, close, renameSync, statSync } = Deno;
 type File = Deno.File;
 type Writer = Deno.Writer;
 import { getLevelByName, LogLevel } from "./levels.ts";
@@ -181,8 +181,7 @@ export class RotatingFileHandler extends FileHandler {
     if (this.level > logRecord.level) return;
 
     const msg = this.format(logRecord);
-    const currentFileSize = seekSync(this._file.rid, 0, Deno.SeekMode.SEEK_END);
-
+    const currentFileSize = statSync(this._filename).size;
     if (currentFileSize + msg.length > this.#maxBytes) {
       this.rotateLogFiles();
     }
