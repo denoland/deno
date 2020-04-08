@@ -57,16 +57,7 @@ fn array_pat_to_param_def(array_pat: &swc_ecma_ast::ArrayPat) -> ParamDef {
 pub fn assign_pat_to_param_def(
   assign_pat: &swc_ecma_ast::AssignPat,
 ) -> ParamDef {
-  let ts_type = assign_pat
-    .type_ann
-    .as_ref()
-    .map(|rt| ts_type_ann_to_def(rt));
-
-  ParamDef {
-    name: "".to_string(),
-    kind: ParamKind::Assign,
-    ts_type,
-  }
+  pat_to_param_def(&*assign_pat.left)
 }
 
 pub fn pat_to_param_def(pat: &swc_ecma_ast::Pat) -> ParamDef {

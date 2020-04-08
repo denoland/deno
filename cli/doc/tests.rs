@@ -155,7 +155,12 @@ export function foo(a: string, b: number, cb: (...cbArgs: unknown[]) => void, ..
 #[tokio::test]
 async fn export_fn2() {
   let source_code = r#"
-export function foo([e,,f, ...g]: number[], { c, d: asdf, i = "asdf", ...rest}, { a: string, b: number} = {}): void {
+interface AssignOpts {
+  a: string;
+  b: number;
+}
+
+export function foo([e,,f, ...g]: number[], { c, d: asdf, i = "asdf", ...rest}, ops: AssignOpts = {}): void {
     console.log("Hello world");
 }
 "#;
@@ -188,9 +193,16 @@ export function foo([e,,f, ...g]: number[], { c, d: asdf, i = "asdf", ...rest}, 
           "tsType": null
         },
         {
-          "name": "",
-          "kind": "assign",
-          "tsType": null
+          "name": "ops",
+          "kind": "identifier",
+          "tsType": {
+            "repr": "AssignOpts",
+            "kind": "typeRef",
+            "typeRef": {
+              "typeName": "AssignOpts",
+              "typeParams": null,
+            }
+          }
         },
       ],
       "returnType": {
@@ -204,7 +216,7 @@ export function foo([e,,f, ...g]: number[], { c, d: asdf, i = "asdf", ...rest}, 
     "location": {
       "col": 0,
       "filename": "test.ts",
-      "line": 2,
+      "line": 7,
     },
     "name": "foo",
   });

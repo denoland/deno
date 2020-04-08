@@ -21,7 +21,6 @@ pub enum ParamKind {
   Rest,
   Array,
   Object,
-  Assign,
 }
 
 #[derive(Debug, Serialize, Clone)]
