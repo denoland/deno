@@ -249,7 +249,6 @@ impl MainWorker {
       ops::timers::init(isolate, &state);
       ops::tty::init(isolate, &state);
       ops::worker_host::init(isolate, &state);
-      ops::web_worker::init(isolate, &state, &worker.internal_channels.sender);
     }
     Self(worker)
   }
