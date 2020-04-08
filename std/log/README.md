@@ -119,8 +119,8 @@ interface FileHandlerOptions {
 
 Behavior of the log modes is as follows:
 
-- `'a'` - Append new log messages to the end of an existing log file, or create
-  a new log file if none exists
+- `'a'` - Default mode. Appends new log messages to the end of an existing log
+  file, or create a new log file if none exists
 - `'w'` - Upon creation of the handler, any existing log file will be removed
   and a new one created.
 - `'x'` - This will create a new log file and throw an error if one already
@@ -160,6 +160,8 @@ interface RotatingFileHandlerOptions {
 
 Additional notes on `mode` as described above:
 
+- `'a'` Default mode. As above, this will pick up where the logs left off in
+  rotation, or create a new log file if it doesn't exist.
 - `'w'` in addition to starting with a clean `filename`, this mode will also
   cause any existing backups (up to `maxBackupCount`) to be deleted on setup
   giving a fully clean slate.
