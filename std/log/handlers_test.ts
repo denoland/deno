@@ -119,7 +119,7 @@ test({
         await fileHandler.setup();
       },
       Deno.errors.AlreadyExists,
-      "File exists"
+      "ile exists"
     );
     Deno.removeSync(LOG_FILE);
   },
