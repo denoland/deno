@@ -285,10 +285,6 @@ declare namespace __domTypes {
     | Headers
     | Array<[string, string]>
     | Record<string, string>;
-  export type URLSearchParamsInit =
-    | string
-    | string[][]
-    | Record<string, string>;
   type BodyInit =
     | Blob
     | BufferSource
@@ -363,52 +359,6 @@ declare namespace __domTypes {
     lengthComputable?: boolean;
     loaded?: number;
     total?: number;
-  }
-  export interface URLSearchParams extends DomIterable<string, string> {
-    /**
-     * Appends a specified key/value pair as a new search parameter.
-     */
-    append(name: string, value: string): void;
-    /**
-     * Deletes the given search parameter, and its associated value,
-     * from the list of all search parameters.
-     */
-    delete(name: string): void;
-    /**
-     * Returns the first value associated to the given search parameter.
-     */
-    get(name: string): string | null;
-    /**
-     * Returns all the values association with a given search parameter.
-     */
-    getAll(name: string): string[];
-    /**
-     * Returns a Boolean indicating if such a search parameter exists.
-     */
-    has(name: string): boolean;
-    /**
-     * Sets the value associated to a given search parameter to the given value.
-     * If there were several values, delete the others.
-     */
-    set(name: string, value: string): void;
-    /**
-     * Sort all key/value pairs contained in this object in place
-     * and return undefined. The sort order is according to Unicode
-     * code points of the keys.
-     */
-    sort(): void;
-    /**
-     * Returns a query string suitable for use in a URL.
-     */
-    toString(): string;
-    /**
-     * Iterates over each name-value pair in the query
-     * and invokes the given function.
-     */
-    forEach(
-      callbackfn: (value: string, key: string, parent: this) => void,
-      thisArg?: any
-    ): void;
   }
   export interface EventInit {
     bubbles?: boolean;
