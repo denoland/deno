@@ -27,18 +27,6 @@ declare interface WindowOrWorkerGlobalScope {
   Request: __domTypes.RequestConstructor;
   Response: typeof __fetch.Response;
   location: __domTypes.Location;
-
-  addEventListener: (
-    type: string,
-    callback: __domTypes.EventListenerOrEventListenerObject | null,
-    options?: boolean | __domTypes.AddEventListenerOptions | undefined
-  ) => void;
-  dispatchEvent: (event: __domTypes.Event) => boolean;
-  removeEventListener: (
-    type: string,
-    callback: __domTypes.EventListenerOrEventListenerObject | null,
-    options?: boolean | __domTypes.EventListenerOptions | undefined
-  ) => void;
 }
 
 // This follows the WebIDL at: https://webassembly.github.io/spec/js-api/
@@ -247,17 +235,19 @@ declare const ReadableStream: __domTypes.ReadableStreamConstructor;
 declare const Request: __domTypes.RequestConstructor;
 declare const Response: typeof __fetch.Response;
 
-declare const addEventListener: (
+declare function addEventListener(
   type: string,
   callback: __domTypes.EventListenerOrEventListenerObject | null,
   options?: boolean | __domTypes.AddEventListenerOptions | undefined
-) => void;
-declare const dispatchEvent: (event: __domTypes.Event) => boolean;
-declare const removeEventListener: (
+): void;
+
+declare function dispatchEvent(event: __domTypes.Event): boolean;
+
+declare function removeEventListener(
   type: string,
   callback: __domTypes.EventListenerOrEventListenerObject | null,
   options?: boolean | __domTypes.EventListenerOptions | undefined
-) => void;
+): void;
 
 declare type Blob = __domTypes.Blob;
 declare type Body = __domTypes.Body;
