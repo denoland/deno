@@ -133,7 +133,7 @@ test({
     const integerType = 2;
     const symbolType = Symbol("anything");
 
-    const functionType = function doBest(): any {};
+    const functionType = function doBest(): void {};
     const objectType = { name: "ali" };
     const arrayType = [1, 2, 3];
 
