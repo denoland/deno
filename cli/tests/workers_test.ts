@@ -145,7 +145,7 @@ Deno.test({
       testResult = e.data;
       if (testResult >= 10000) {
         busyWorker.terminate();
-        busyWorker.onmessage = (e): void => {
+        busyWorker.onmessage = (_e): void => {
           throw new Error("unreachable");
         };
         setTimeout(() => {
@@ -156,6 +156,31 @@ Deno.test({
     };
 
     busyWorker.postMessage("ping");
+    await promise;
+  },
+});
+
+Deno.test({
+  name: "worker race condition",
+  fn: async function (): Promise<void> {
+    // See issue for details
+    // https://github.com/denoland/deno/issues/4080
+    const promise = createResolvable();
+
+    const racyWorker = new Worker("../tests/subdir/racy_worker.js", {
+      type: "module",
+    });
+
+    racyWorker.onmessage = (e): void => {
+      assertEquals(e.data.buf.length, 999999);
+      racyWorker.onmessage = (_e): void => {
+        throw new Error("unreachable");
+      };
+      setTimeout(() => {
+        promise.resolve();
+      }, 100);
+    };
+
     await promise;
   },
 });
