@@ -2564,8 +2564,7 @@ mod tests {
       }
     );
 
-    let r =
-      flags_from_vec_safe(svec!["deno", "doc"]);
+    let r = flags_from_vec_safe(svec!["deno", "doc"]);
     assert_eq!(
       r.unwrap(),
       Flags {
