@@ -409,15 +409,15 @@ export class BufReader implements Reader {
  */
 export class BufWriter implements Writer {
   buf: Uint8Array;
-  n = 0;
+  usedBufferBytes = 0;
   err: Error | null = null;
 
-  /** return new BufWriter unless w is BufWriter */
-  static create(w: Writer, size: number = DEFAULT_BUF_SIZE): BufWriter {
-    return w instanceof BufWriter ? w : new BufWriter(w, size);
+  /** return new BufWriter unless writer is BufWriter */
+  static create(writer: Writer, size: number = DEFAULT_BUF_SIZE): BufWriter {
+    return writer instanceof BufWriter ? writer : new BufWriter(writer, size);
   }
 
-  constructor(private wr: Writer, size: number = DEFAULT_BUF_SIZE) {
+  constructor(private writer: Writer, size: number = DEFAULT_BUF_SIZE) {
     if (size <= 0) {
       size = DEFAULT_BUF_SIZE;
     }
@@ -430,83 +430,85 @@ export class BufWriter implements Writer {
   }
 
   /** Discards any unflushed buffered data, clears any error, and
-   * resets b to write its output to w.
+   * resets buffer to write its output to w.
    */
   reset(w: Writer): void {
     this.err = null;
-    this.n = 0;
-    this.wr = w;
+    this.usedBufferBytes = 0;
+    this.writer = w;
   }
 
   /** Flush writes any buffered data to the underlying io.Writer. */
   async flush(): Promise<void> {
     if (this.err !== null) throw this.err;
-    if (this.n === 0) return;
+    if (this.usedBufferBytes === 0) return;
 
-    let n = 0;
+    let numBytesWritten = 0;
     try {
-      n = await this.wr.write(this.buf.subarray(0, this.n));
+      numBytesWritten = await this.writer.write(
+        this.buf.subarray(0, this.usedBufferBytes)
+      );
     } catch (e) {
       this.err = e;
       throw e;
     }
 
-    if (n < this.n) {
-      if (n > 0) {
-        this.buf.copyWithin(0, n, this.n);
-        this.n -= n;
+    if (numBytesWritten < this.usedBufferBytes) {
+      if (numBytesWritten > 0) {
+        this.buf.copyWithin(0, numBytesWritten, this.usedBufferBytes);
+        this.usedBufferBytes -= numBytesWritten;
       }
       this.err = new Error("Short write");
       throw this.err;
     }
 
-    this.n = 0;
+    this.usedBufferBytes = 0;
   }
 
   /** Returns how many bytes are unused in the buffer. */
   available(): number {
-    return this.buf.byteLength - this.n;
+    return this.buf.byteLength - this.usedBufferBytes;
   }
 
   /** buffered returns the number of bytes that have been written into the
    * current buffer.
    */
   buffered(): number {
-    return this.n;
+    return this.usedBufferBytes;
   }
 
-  /** Writes the contents of p into the buffer.
+  /** Writes the contents of data into the buffer.
    * Returns the number of bytes written.
    */
-  async write(p: Uint8Array): Promise<number> {
+  async write(data: Uint8Array): Promise<number> {
     if (this.err !== null) throw this.err;
-    if (p.length === 0) return 0;
+    if (data.length === 0) return 0;
 
-    let nn = 0;
-    let n = 0;
-    while (p.byteLength > this.available()) {
+    let totalBytesWritten = 0;
+    let numBytesWritten = 0;
+    while (data.byteLength > this.available()) {
       if (this.buffered() === 0) {
         // Large write, empty buffer.
-        // Write directly from p to avoid copy.
+        // Write directly from data to avoid copy.
         try {
-          n = await this.wr.write(p);
+          numBytesWritten = await this.writer.write(data);
         } catch (e) {
           this.err = e;
           throw e;
         }
       } else {
-        n = copyBytes(this.buf, p, this.n);
-        this.n += n;
+        numBytesWritten = copyBytes(this.buf, data, this.usedBufferBytes);
+        this.usedBufferBytes += numBytesWritten;
         await this.flush();
       }
-      nn += n;
-      p = p.subarray(n);
+      totalBytesWritten += numBytesWritten;
+      data = data.subarray(numBytesWritten);
     }
 
-    n = copyBytes(this.buf, p, this.n);
-    this.n += n;
-    nn += n;
-    return nn;
+    numBytesWritten = copyBytes(this.buf, data, this.usedBufferBytes);
+    this.usedBufferBytes += numBytesWritten;
+    totalBytesWritten += numBytesWritten;
+    return totalBytesWritten;
   }
 }
 
