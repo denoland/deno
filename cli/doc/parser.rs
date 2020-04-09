@@ -184,6 +184,14 @@ impl DocParser {
   pub async fn parse(&self, file_name: &str) -> Result<Vec<DocNode>, ErrBox> {
     let source_code = self.loader.load_source_code(file_name).await?;
 
+    self.parse_source(file_name, source_code.as_str())
+  }
+
+  pub fn parse_source(
+    &self,
+    file_name: &str,
+    source_code: &str,
+  ) -> Result<Vec<DocNode>, ErrBox> {
     let module_doc = self.parse_module(file_name, &source_code)?;
     Ok(module_doc.exports)
   }
