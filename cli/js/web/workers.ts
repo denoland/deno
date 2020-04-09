@@ -119,13 +119,21 @@ export class WorkerImpl extends EventTarget implements Worker {
   #poll = async (): Promise<void> => {
     while (!this.#terminated) {
       const event = await hostGetMessage(this.#id);
-
+      console.log("worker event", event);
       // If terminate was called then we ignore all messages
       if (this.#terminated) {
         return;
       }
 
       const type = event.type;
+
+      if (type === "terminalError") {
+        this.#terminated = true;
+        if (!this.#handleError(event.error)) {
+          throw Error(event.error.message);
+        }
+        continue;
+      }
 
       if (type === "msg") {
         if (this.onmessage) {

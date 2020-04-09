@@ -4,12 +4,12 @@ use crate::inspector::DenoInspector;
 use crate::ops;
 use crate::state::DebugType;
 use crate::state::State;
+use deno_core::v8;
 use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
 use deno_core::StartupData;
-use deno_core::v8;
 use futures::channel::mpsc;
 use futures::future::select;
 use futures::future::Either;
@@ -25,19 +25,20 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use tokio::sync::Mutex as AsyncMutex;
 use url::Url;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 
 /// Events that are sent to host from child
 /// worker.
 pub enum WorkerEvent {
   Message(Buf),
   Error(ErrBox),
+  TerminalError(ErrBox),
 }
 
 pub struct WorkerChannelsInternal {
@@ -64,7 +65,12 @@ impl WorkerHandle {
     self.terminated.store(true, Ordering::Relaxed);
     self.isolate_handle.terminate_execution();
     let mut sender = self.terminate_tx.clone();
-    sender.send(()).map_err(ErrBox::from).await.expect("Failed to terminate");
+    sender
+      .send(())
+      .map_err(ErrBox::from)
+      .await
+      .expect("Failed to terminate");
+    eprintln!("called terminate");
   }
 
   /// Post message to worker as a host.
@@ -81,7 +87,10 @@ impl WorkerHandle {
   }
 }
 
-fn create_channels(isolate_handle: v8::IsolateHandle, terminated: Arc<AtomicBool>) -> (WorkerChannelsInternal, WorkerHandle) {
+fn create_channels(
+  isolate_handle: v8::IsolateHandle,
+  terminated: Arc<AtomicBool>,
+) -> (WorkerChannelsInternal, WorkerHandle) {
   let (in_tx, in_rx) = mpsc::channel::<Buf>(1);
   let (out_tx, out_rx) = mpsc::channel::<WorkerEvent>(1);
   let (terminate_tx, terminate_rx) = mpsc::channel::<()>(1);
@@ -148,8 +157,10 @@ impl Worker {
     });
 
     let terminated = Arc::new(AtomicBool::new(false));
-    let isolate_handle = isolate.v8_isolate.as_mut().unwrap().thread_safe_handle();
-    let (internal_channels, external_channels) = create_channels(isolate_handle, terminated.clone());
+    let isolate_handle =
+      isolate.v8_isolate.as_mut().unwrap().thread_safe_handle();
+    let (internal_channels, external_channels) =
+      create_channels(isolate_handle, terminated.clone());
 
     Self {
       name,
@@ -252,17 +263,16 @@ impl Future for Worker {
           Either::Left((x, _)) => {
             eprintln!("polled isolate");
             Poll::Ready(x)
-          },
+          }
           // terminate channel
           Either::Right((_, _)) => {
             eprintln!("polled terminate channel");
             Poll::Ready(Ok(()))
-          },
+          }
+        }
       }
-      },
       Poll::Pending => Poll::Pending,
     }
-  
   }
 }
 

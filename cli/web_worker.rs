@@ -5,10 +5,10 @@ use crate::worker::Worker;
 use crate::worker::WorkerEvent;
 use deno_core::ErrBox;
 use deno_core::StartupData;
+use futures::channel::oneshot;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
 use futures::SinkExt;
-use futures::channel::oneshot;
 use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -24,10 +24,8 @@ use std::task::Poll;
 /// `WebWorker`.
 pub struct WebWorker {
   worker: Worker,
-  is_ready: bool,
-  
-  #[allow(unused)]
   event_loop_idle: bool,
+
   #[allow(unused)]
   terminate_channel: (oneshot::Sender<()>, oneshot::Receiver<()>),
 }
@@ -52,7 +50,6 @@ impl WebWorker {
 
     Self {
       worker,
-      is_ready: false,
       event_loop_idle: false,
       terminate_channel,
     }
@@ -82,31 +79,28 @@ impl Future for WebWorker {
     use std::sync::atomic::Ordering;
     let terminated = worker.terminated.load(Ordering::Relaxed);
 
-    eprintln!("poll web worker");
+    eprintln!("poll web worker {}", worker.name);
+
     if terminated {
       return Poll::Ready(Ok(()));
     }
-    // TODO:
-    // if inner.terminated {
-    //   return Poll::Ready(Ok(()));
-    // }
 
     // TODO: rename `event_loop_idle`
-    if !inner.is_ready {
-      // TODO: select with terminate channel
-      // match select(worker, inner.terminate_channel.receiver).poll_unpin(cx) {
-
-      // }
-
-      eprintln!("poll web worker inner");
+    if !inner.event_loop_idle {
       match worker.poll_unpin(cx) {
         Poll::Ready(r) => {
+          let terminated = worker.terminated.load(Ordering::Relaxed);
+          eprintln!("poll web worker inner {} {}", terminated, worker.name);
+          if terminated {
+            return Poll::Ready(Ok(()));
+          }
+
           if let Err(e) = r {
             let mut sender = worker.internal_channels.sender.clone();
             futures::executor::block_on(sender.send(WorkerEvent::Error(e)))
               .expect("Failed to post message to host");
           }
-          inner.is_ready = true;
+          inner.event_loop_idle = true;
         }
         Poll::Pending => {}
       }
@@ -129,9 +123,6 @@ impl Future for WebWorker {
       }
     };
 
-    // let terminated = worker.terminated.load(Ordering::Relaxed);
-    eprintln!("poll web worker before message callback {:#?}", maybe_msg);
-
     if let Some(msg) = maybe_msg {
       // TODO: just add second value and then bind using rusty_v8
       // to get structured clone/transfer working
@@ -140,7 +131,7 @@ impl Future for WebWorker {
 
       eprintln!("execute result {:#?}", result);
       // Let worker be polled again
-      inner.is_ready = false;
+      inner.event_loop_idle = false;
       worker.waker.wake();
     }
 

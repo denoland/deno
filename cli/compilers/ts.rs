@@ -624,6 +624,7 @@ async fn execute_in_thread(
   let buf = match event {
     WorkerEvent::Message(buf) => Ok(buf),
     WorkerEvent::Error(error) => Err(error),
+    WorkerEvent::TerminalError(error) => Err(error),
   }?;
   // Shutdown worker and wait for thread to finish
   handle.sender.close_channel();

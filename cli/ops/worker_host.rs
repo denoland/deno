@@ -109,7 +109,7 @@ fn run_worker_thread(
 
     if let Err(e) = result {
       let mut sender = worker.internal_channels.sender.clone();
-      futures::executor::block_on(sender.send(WorkerEvent::Error(e)))
+      futures::executor::block_on(sender.send(WorkerEvent::TerminalError(e)))
         .expect("Failed to post message to host");
 
       // Failure to execute script is a terminal error, bye, bye.
@@ -197,6 +197,7 @@ fn op_host_terminate_worker(
   let mut state = state.borrow_mut();
   let (join_handle, worker_handle) =
     state.workers.remove(&id).expect("No worker handle found");
+  eprintln!("terminating child worker");
   futures::executor::block_on(worker_handle.terminate());
   join_handle.join().expect("Panic in worker thread");
   Ok(JsonOp::Sync(json!({})))
@@ -205,6 +206,28 @@ fn op_host_terminate_worker(
 fn serialize_worker_event(event: WorkerEvent) -> Value {
   match event {
     WorkerEvent::Message(buf) => json!({ "type": "msg", "data": buf }),
+    WorkerEvent::TerminalError(error) => {
+      let mut serialized_error = json!({
+        "type": "terminalError",
+        "error": {
+          "message": error.to_string(),
+        }
+      });
+
+      if let Ok(js_error) = error.downcast::<JSError>() {
+        serialized_error = json!({
+          "type": "terminalError",
+          "error": {
+            "message": js_error.message,
+            "fileName": js_error.script_resource_name,
+            "lineNumber": js_error.line_number,
+            "columnNumber": js_error.start_column,
+          }
+        });
+      }
+
+      serialized_error
+    }
     WorkerEvent::Error(error) => {
       let mut serialized_error = json!({
         "type": "error",
@@ -245,15 +268,33 @@ fn op_host_get_message(
     worker_handle.clone()
   };
   let state_ = state.clone();
+  eprintln!("get message");
   let op = async move {
     let response = match worker_handle.get_event().await {
-      Some(event) => serialize_worker_event(event),
+      Some(event) => {
+        // Terminal error means that worker should be removed from worker table.
+        if let WorkerEvent::TerminalError(_) = &event {
+          let mut state_ = state_.borrow_mut();
+          if let Some((join_handle, mut worker_handle)) =
+            state_.workers.remove(&id)
+          {
+            worker_handle.sender.close_channel();
+            join_handle.join().expect("Worker thread panicked");
+          }
+        }
+        serialize_worker_event(event)
+      }
       None => {
+        eprintln!("got empty message");
         let mut state_ = state_.borrow_mut();
-        let (join_handle, mut worker_handle) =
-          state_.workers.remove(&id).expect("No worker handle found");
-        worker_handle.sender.close_channel();
-        join_handle.join().expect("Worker thread panicked");
+        // Try to remove worker from workers table - NOTE: `Worker.terminate()` might have been called
+        // already meaning that we won't find worker in table - in that case ignore.
+        if let Some((join_handle, mut worker_handle)) =
+          state_.workers.remove(&id)
+        {
+          worker_handle.sender.close_channel();
+          join_handle.join().expect("Worker thread panicked");
+        }
         json!({ "type": "close" })
       }
     };
