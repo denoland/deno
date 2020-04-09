@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::fmt_errors::JSError;
-use crate::futures::SinkExt;
 use crate::global_state::GlobalState;
 use crate::op_error::OpError;
 use crate::permissions::DenoPermissions;
@@ -9,11 +8,10 @@ use crate::startup_data;
 use crate::state::State;
 use crate::tokio_util::create_basic_runtime;
 use crate::web_worker::WebWorker;
+use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
-use crate::worker::WorkerHandle;
 use deno_core::*;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use std::convert::From;
 use std::thread::JoinHandle;
 
@@ -58,9 +56,9 @@ fn run_worker_thread(
   specifier: ModuleSpecifier,
   has_source_code: bool,
   source_code: String,
-) -> Result<(JoinHandle<()>, WorkerHandle), ErrBox> {
+) -> Result<(JoinHandle<()>, WebWorkerHandle), ErrBox> {
   let (handle_sender, handle_receiver) =
-    std::sync::mpsc::sync_channel::<Result<WorkerHandle, ErrBox>>(1);
+    std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, ErrBox>>(1);
 
   let builder =
     std::thread::Builder::new().name(format!("deno-worker-{}", name));
@@ -78,6 +76,7 @@ fn run_worker_thread(
     }
 
     let mut worker = result.unwrap();
+    let name = worker.name.to_string();
     // Send thread safe handle to newly created worker to host thread
     handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
     drop(handle_sender);
@@ -96,6 +95,7 @@ fn run_worker_thread(
 
     // TODO: run with using select with terminate
 
+    eprintln!("executing {}", &name);
     // Execute provided source code immediately
     let result = if has_source_code {
       worker.execute(&source_code)
@@ -107,9 +107,12 @@ fn run_worker_thread(
       rt.block_on(load_future)
     };
 
+    eprintln!("executed {}", &name);
+
     if let Err(e) = result {
       let mut sender = worker.internal_channels.sender.clone();
-      futures::executor::block_on(sender.send(WorkerEvent::TerminalError(e)))
+      sender
+        .try_send(WorkerEvent::TerminalError(e))
         .expect("Failed to post message to host");
 
       // Failure to execute script is a terminal error, bye, bye.
@@ -120,6 +123,7 @@ fn run_worker_thread(
     // that means that we should store JoinHandle to thread to ensure
     // that it actually terminates.
     rt.block_on(worker).expect("Panic in event loop");
+    eprintln!("worker thread shuts down {}", &name);
   })?;
 
   let worker_handle = handle_receiver.recv().unwrap()?;
@@ -198,7 +202,7 @@ fn op_host_terminate_worker(
   let (join_handle, worker_handle) =
     state.workers.remove(&id).expect("No worker handle found");
   eprintln!("terminating child worker");
-  futures::executor::block_on(worker_handle.terminate());
+  worker_handle.terminate();
   join_handle.join().expect("Panic in worker thread");
   Ok(JsonOp::Sync(json!({})))
 }
@@ -278,6 +282,7 @@ fn op_host_get_message(
           if let Some((join_handle, mut worker_handle)) =
             state_.workers.remove(&id)
           {
+            eprintln!("terminal error closing");
             worker_handle.sender.close_channel();
             join_handle.join().expect("Worker thread panicked");
           }
@@ -292,6 +297,7 @@ fn op_host_get_message(
         if let Some((join_handle, mut worker_handle)) =
           state_.workers.remove(&id)
         {
+          eprintln!("empty message closing");
           worker_handle.sender.close_channel();
           join_handle.join().expect("Worker thread panicked");
         }
@@ -317,9 +323,8 @@ fn op_host_post_message(
   let state = state.borrow();
   let (_, worker_handle) =
     state.workers.get(&id).expect("No worker handle found");
-  let fut = worker_handle
+  worker_handle
     .post_message(msg)
-    .map_err(|e| OpError::other(e.to_string()));
-  futures::executor::block_on(fut)?;
+    .map_err(|e| OpError::other(e.to_string()))?;
   Ok(JsonOp::Sync(json!({})))
 }

@@ -3,18 +3,58 @@ use crate::ops;
 use crate::state::State;
 use crate::worker::Worker;
 use crate::worker::WorkerEvent;
+use crate::worker::WorkerHandle;
+use deno_core::v8;
 use deno_core::ErrBox;
 use deno_core::StartupData;
-use futures::channel::oneshot;
+use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
-use futures::SinkExt;
 use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+
+#[derive(Clone)]
+pub struct WebWorkerHandle {
+  worker_handle: WorkerHandle,
+  terminate_tx: mpsc::Sender<()>,
+  terminated: Arc<AtomicBool>,
+  isolate_handle: v8::IsolateHandle,
+}
+
+impl Deref for WebWorkerHandle {
+  type Target = WorkerHandle;
+  fn deref(&self) -> &Self::Target {
+    &self.worker_handle
+  }
+}
+
+impl DerefMut for WebWorkerHandle {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.worker_handle
+  }
+}
+
+impl WebWorkerHandle {
+  pub fn terminate(&self) {
+    eprintln!("calling terminate");
+    self.terminated.store(true, Ordering::Relaxed);
+    self.isolate_handle.terminate_execution();
+    let mut sender = self.terminate_tx.clone();
+    sender
+      .try_send(())
+      .map_err(ErrBox::from)
+      .expect("Failed to terminate");
+    eprintln!("called terminate");
+  }
+}
+
 /// This worker is implementation of `Worker` Web API
 ///
 /// At the moment this type of worker supports only
@@ -26,8 +66,10 @@ pub struct WebWorker {
   worker: Worker,
   event_loop_idle: bool,
 
-  #[allow(unused)]
-  terminate_channel: (oneshot::Sender<()>, oneshot::Receiver<()>),
+  pub terminated: Arc<AtomicBool>,
+  terminate_rx: mpsc::Receiver<()>,
+  terminate_tx: mpsc::Sender<()>,
+  isolate_handle: v8::IsolateHandle,
 }
 
 impl WebWorker {
@@ -46,12 +88,34 @@ impl WebWorker {
       ops::fetch::init(isolate, &state);
     }
 
-    let terminate_channel = oneshot::channel::<()>();
+    let terminated = Arc::new(AtomicBool::new(false));
+    let isolate_handle = worker
+      .isolate
+      .v8_isolate
+      .as_mut()
+      .unwrap()
+      .thread_safe_handle();
+    let (terminate_tx, terminate_rx) = mpsc::channel::<()>(1);
 
     Self {
       worker,
       event_loop_idle: false,
-      terminate_channel,
+      terminated,
+      terminate_tx,
+      terminate_rx,
+      isolate_handle,
+    }
+  }
+}
+
+impl WebWorker {
+  /// Returns a way to communicate with the Worker from other threads.
+  pub fn thread_safe_handle(&self) -> WebWorkerHandle {
+    WebWorkerHandle {
+      worker_handle: self.worker.thread_safe_handle(),
+      terminated: self.terminated.clone(),
+      isolate_handle: self.isolate_handle.clone(),
+      terminate_tx: self.terminate_tx.clone(),
     }
   }
 }
@@ -76,20 +140,18 @@ impl Future for WebWorker {
     let inner = self.get_mut();
     let worker = &mut inner.worker;
 
-    use std::sync::atomic::Ordering;
-    let terminated = worker.terminated.load(Ordering::Relaxed);
+    let terminated = inner.terminated.load(Ordering::Relaxed);
 
-    eprintln!("poll web worker {}", worker.name);
+    eprintln!("poll web worker {} {}", worker.name, terminated);
 
     if terminated {
       return Poll::Ready(Ok(()));
     }
 
-    // TODO: rename `event_loop_idle`
     if !inner.event_loop_idle {
       match worker.poll_unpin(cx) {
         Poll::Ready(r) => {
-          let terminated = worker.terminated.load(Ordering::Relaxed);
+          let terminated = inner.terminated.load(Ordering::Relaxed);
           eprintln!("poll web worker inner {} {}", terminated, worker.name);
           if terminated {
             return Poll::Ready(Ok(()));
@@ -97,13 +159,14 @@ impl Future for WebWorker {
 
           if let Err(e) = r {
             let mut sender = worker.internal_channels.sender.clone();
-            futures::executor::block_on(sender.send(WorkerEvent::Error(e)))
+            sender
+              .try_send(WorkerEvent::Error(e))
               .expect("Failed to post message to host");
           }
           inner.event_loop_idle = true;
         }
         Poll::Pending => {
-          let terminated = worker.terminated.load(Ordering::Relaxed);
+          let terminated = inner.terminated.load(Ordering::Relaxed);
           eprintln!(
             "poll web worker inner pending {} {}",
             terminated, worker.name
@@ -112,33 +175,31 @@ impl Future for WebWorker {
       }
     }
 
-    let maybe_msg = {
-      match worker.internal_channels.receiver.poll_next_unpin(cx) {
-        Poll::Ready(r) => match r {
-          Some(msg) => {
-            let msg_str = String::from_utf8(msg.to_vec()).unwrap();
-            debug!("received message from host: {}", msg_str);
-            Some(msg_str)
-          }
-          None => {
-            debug!("channel closed by host, worker event loop shuts down");
-            return Poll::Ready(Ok(()));
-          }
-        },
-        Poll::Pending => None,
+    if let Poll::Ready(r) = inner.terminate_rx.poll_next_unpin(cx) {
+      // terminate_rx should never be closed
+      assert!(r.is_some());
+      return Poll::Ready(Ok(()));
+    }
+
+    if let Poll::Ready(r) =
+      worker.internal_channels.receiver.poll_next_unpin(cx)
+    {
+      match r {
+        Some(msg) => {
+          let msg = String::from_utf8(msg.to_vec()).unwrap();
+          debug!("received message from host: {}", msg);
+          // TODO: just add second value and then bind using rusty_v8
+          // to get structured clone/transfer working
+          let script = format!("workerMessageRecvCallback({})", msg);
+          let result = worker.execute(&script);
+
+          eprintln!("execute result {:#?}", result);
+          // Let worker be polled again
+          inner.event_loop_idle = false;
+          worker.waker.wake();
+        }
+        None => unreachable!(),
       }
-    };
-
-    if let Some(msg) = maybe_msg {
-      // TODO: just add second value and then bind using rusty_v8
-      // to get structured clone/transfer working
-      let script = format!("workerMessageRecvCallback({})", msg);
-      let result = worker.execute(&script);
-
-      eprintln!("execute result {:#?}", result);
-      // Let worker be polled again
-      inner.event_loop_idle = false;
-      worker.waker.wake();
     }
 
     Poll::Pending

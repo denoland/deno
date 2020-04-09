@@ -11,7 +11,6 @@ onmessage = function (e) {
   }
 
   postMessage(e.data);
-  close();
 };
 
 onerror = function () {

@@ -31,6 +31,7 @@ Deno.test({
   name: "workersBasic",
   fn: async function (): Promise<void> {
     const promise = createResolvable();
+
     const jsWorker = new Worker("../tests/subdir/test_worker.js", {
       type: "module",
       name: "jsWorker",
@@ -44,7 +45,7 @@ Deno.test({
       assertEquals(e.data, "Hello World");
       promise.resolve();
     };
-
+    
     jsWorker.onmessage = (e): void => {
       assertEquals(e.data, "Hello World");
       tsWorker.postMessage("Hello World");
@@ -57,8 +58,8 @@ Deno.test({
 
     jsWorker.postMessage("Hello World");
     await promise;
-    // jsWorker.terminate();
-    // tsWorker.terminate();
+    tsWorker.terminate();
+    jsWorker.terminate();
   },
 });
 

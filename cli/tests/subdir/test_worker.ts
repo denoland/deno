@@ -4,5 +4,4 @@ if (self.name !== "tsWorker") {
 
 onmessage = function (e): void {
   postMessage(e.data);
-  close();
 };

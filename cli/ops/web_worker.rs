@@ -6,7 +6,6 @@ use crate::state::State;
 use crate::worker::WorkerEvent;
 use deno_core::*;
 use futures::channel::mpsc;
-use futures::sink::SinkExt;
 use std::convert::From;
 
 pub fn web_worker_op<D>(
@@ -47,20 +46,21 @@ fn op_worker_post_message(
 ) -> Result<JsonOp, OpError> {
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
   let mut sender = sender.clone();
-  let fut = sender.send(WorkerEvent::Message(d));
   eprintln!("sending message");
-  futures::executor::block_on(fut).expect("Failed to post message to host");
+  sender
+    .try_send(WorkerEvent::Message(d))
+    .expect("Failed to post message to host");
   eprintln!("message sent");
   Ok(JsonOp::Sync(json!({})))
 }
 
 /// Notify host that guest worker closes
 fn op_worker_close(
-  sender: &mpsc::Sender<WorkerEvent>,
+  _sender: &mpsc::Sender<WorkerEvent>,
   _args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
-  let mut sender = sender.clone();
-  sender.close_channel();
+  // let mut sender = sender.clone();
+  // sender.close_channel();
   Ok(JsonOp::Sync(json!({})))
 }

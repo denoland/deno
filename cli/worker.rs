@@ -4,20 +4,14 @@ use crate::inspector::DenoInspector;
 use crate::ops;
 use crate::state::DebugType;
 use crate::state::State;
-use deno_core::v8;
 use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
 use deno_core::StartupData;
 use futures::channel::mpsc;
-use futures::future::select;
-use futures::future::Either;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
-use futures::sink::SinkExt;
 use futures::stream::StreamExt;
-use futures::stream::StreamFuture;
 use futures::task::AtomicWaker;
 use std::env;
 use std::future::Future;
@@ -25,8 +19,6 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
@@ -44,39 +36,19 @@ pub enum WorkerEvent {
 pub struct WorkerChannelsInternal {
   pub sender: mpsc::Sender<WorkerEvent>,
   pub receiver: mpsc::Receiver<Buf>,
-
-  // TODO: turn into future?
-  #[allow(unused)]
-  terminate_rx: StreamFuture<mpsc::Receiver<()>>,
 }
 
 #[derive(Clone)]
 pub struct WorkerHandle {
   pub sender: mpsc::Sender<Buf>,
   pub receiver: Arc<AsyncMutex<mpsc::Receiver<WorkerEvent>>>,
-  terminate_tx: mpsc::Sender<()>,
-  terminated: Arc<AtomicBool>,
-  isolate_handle: v8::IsolateHandle,
 }
 
 impl WorkerHandle {
-  pub async fn terminate(&self) {
-    eprintln!("calling terminate");
-    self.terminated.store(true, Ordering::Relaxed);
-    self.isolate_handle.terminate_execution();
-    let mut sender = self.terminate_tx.clone();
-    sender
-      .send(())
-      .map_err(ErrBox::from)
-      .await
-      .expect("Failed to terminate");
-    eprintln!("called terminate");
-  }
-
   /// Post message to worker as a host.
-  pub async fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
+  pub fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
     let mut sender = self.sender.clone();
-    sender.send(buf).map_err(ErrBox::from).await
+    sender.try_send(buf).map_err(ErrBox::from)
   }
 
   // TODO: should use `try_lock` and return error if
@@ -87,24 +59,16 @@ impl WorkerHandle {
   }
 }
 
-fn create_channels(
-  isolate_handle: v8::IsolateHandle,
-  terminated: Arc<AtomicBool>,
-) -> (WorkerChannelsInternal, WorkerHandle) {
+fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
   let (in_tx, in_rx) = mpsc::channel::<Buf>(1);
   let (out_tx, out_rx) = mpsc::channel::<WorkerEvent>(1);
-  let (terminate_tx, terminate_rx) = mpsc::channel::<()>(1);
   let internal_channels = WorkerChannelsInternal {
     sender: out_tx,
     receiver: in_rx,
-    terminate_rx: terminate_rx.into_future(),
   };
   let external_channels = WorkerHandle {
     sender: in_tx,
     receiver: Arc::new(AsyncMutex::new(out_rx)),
-    terminate_tx,
-    terminated,
-    isolate_handle,
   };
   (internal_channels, external_channels)
 }
@@ -128,7 +92,6 @@ pub struct Worker {
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
-  pub terminated: Arc<AtomicBool>,
   inspector: Option<Box<DenoInspector>>,
 }
 
@@ -156,18 +119,13 @@ impl Worker {
       JSError::create(core_js_error, &global_state.ts_compiler)
     });
 
-    let terminated = Arc::new(AtomicBool::new(false));
-    let isolate_handle =
-      isolate.v8_isolate.as_mut().unwrap().thread_safe_handle();
-    let (internal_channels, external_channels) =
-      create_channels(isolate_handle, terminated.clone());
+    let (internal_channels, external_channels) = create_channels();
 
     Self {
       name,
       isolate,
       state,
       waker: AtomicWaker::new(),
-      terminated,
       internal_channels,
       external_channels,
       inspector,
@@ -242,40 +200,12 @@ impl Future for Worker {
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
 
-    let terminated = inner.terminated.load(Ordering::Relaxed);
-    eprintln!("terminated {}", terminated);
-    if terminated {
-      return Poll::Ready(Ok(()));
-    }
-
     if let Some(deno_inspector) = inner.inspector.as_mut() {
       // We always poll the inspector if it exists.
       let _ = deno_inspector.poll_unpin(cx);
     }
     inner.waker.register(cx.waker());
-
-    let terminate_rx = &mut inner.internal_channels.terminate_rx;
-
-    match select(&mut inner.isolate, terminate_rx).poll_unpin(cx) {
-      Poll::Ready(result) => {
-        match result {
-          // isolate
-          Either::Left((x, _)) => {
-            eprintln!("polled isolate");
-            Poll::Ready(x)
-          }
-          // terminate channel
-          Either::Right((_, _)) => {
-            eprintln!("polled terminate channel");
-            Poll::Ready(Ok(()))
-          }
-        }
-      }
-      Poll::Pending => {
-        eprintln!("isolate pending");
-        Poll::Pending
-      }
-    }
+    inner.isolate.poll_unpin(cx)
   }
 }
 
