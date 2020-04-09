@@ -627,9 +627,7 @@ async fn execute_in_thread(
     WorkerEvent::TerminalError(error) => Err(error),
   }?;
   // Shutdown worker and wait for thread to finish
-  eprintln!("terminate ts thread");
   handle.terminate();
-  eprintln!("terminated ts thread");
   join_handle.join().unwrap();
   Ok(buf)
 }
