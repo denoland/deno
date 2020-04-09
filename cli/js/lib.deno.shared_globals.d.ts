@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-interface, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
 
 /// <reference no-default-lib="true" />
 // TODO: we need to remove this, but Fetch::Response::Body implements Reader
@@ -16,9 +16,6 @@ declare interface WindowOrWorkerGlobalScope {
   fetch: typeof __fetch.fetch;
   // properties
   File: __domTypes.DomFileConstructor;
-  CustomEvent: typeof __customEvent.CustomEvent;
-  Event: typeof __event.Event;
-  EventTarget: typeof __eventTarget.EventTarget;
   Headers: __domTypes.HeadersConstructor;
   FormData: __domTypes.FormDataConstructor;
   ReadableStream: __domTypes.ReadableStreamConstructor;
@@ -219,12 +216,6 @@ declare function queueMicrotask(func: Function): void;
 
 declare const console: Console;
 declare const File: __domTypes.DomFileConstructor;
-declare const CustomEventInit: typeof __customEvent.CustomEventInit;
-declare const CustomEvent: typeof __customEvent.CustomEvent;
-declare const EventInit: typeof __event.EventInit;
-declare const Event: typeof __event.Event;
-declare const EventListener: __domTypes.EventListener;
-declare const EventTarget: typeof __eventTarget.EventTarget;
 declare const Headers: __domTypes.HeadersConstructor;
 declare const location: __domTypes.Location;
 declare const FormData: __domTypes.FormDataConstructor;
@@ -234,26 +225,20 @@ declare const Response: typeof __fetch.Response;
 
 declare function addEventListener(
   type: string,
-  callback: __domTypes.EventListenerOrEventListenerObject | null,
-  options?: boolean | __domTypes.AddEventListenerOptions | undefined
+  callback: EventListenerOrEventListenerObject | null,
+  options?: boolean | AddEventListenerOptions | undefined
 ): void;
 
-declare function dispatchEvent(event: __domTypes.Event): boolean;
+declare function dispatchEvent(event: Event): boolean;
 
 declare function removeEventListener(
   type: string,
-  callback: __domTypes.EventListenerOrEventListenerObject | null,
-  options?: boolean | __domTypes.EventListenerOptions | undefined
+  callback: EventListenerOrEventListenerObject | null,
+  options?: boolean | EventListenerOptions | undefined
 ): void;
 
 declare type Body = __domTypes.Body;
 declare type File = __domTypes.DomFile;
-declare type CustomEventInit = __domTypes.CustomEventInit;
-declare type CustomEvent = __domTypes.CustomEvent;
-declare type EventInit = __domTypes.EventInit;
-declare type Event = __domTypes.Event;
-declare type EventListener = __domTypes.EventListener;
-declare type EventTarget = __domTypes.EventTarget;
 declare type Headers = __domTypes.Headers;
 declare type FormData = __domTypes.FormData;
 declare type ReadableStream<R = any> = __domTypes.ReadableStream<R>;
@@ -296,108 +281,12 @@ declare namespace __domTypes {
       thisArg?: any
     ): void;
   }
-  interface AbortSignalEventMap {
-    abort: ProgressEvent;
-  }
-  export enum NodeType {
-    ELEMENT_NODE = 1,
-    TEXT_NODE = 3,
-    DOCUMENT_FRAGMENT_NODE = 11,
-  }
-  export interface EventListener {
-    (evt: Event): void | Promise<void>;
-  }
-  export interface EventListenerObject {
-    handleEvent(evt: Event): void | Promise<void>;
-  }
-  export type EventListenerOrEventListenerObject =
-    | EventListener
-    | EventListenerObject;
-  export interface EventTargetListener {
-    callback: EventListenerOrEventListenerObject;
-    options: AddEventListenerOptions;
-  }
-  export const eventTargetHost: unique symbol;
-  export const eventTargetListeners: unique symbol;
-  export const eventTargetMode: unique symbol;
-  export const eventTargetNodeType: unique symbol;
-  export interface EventTarget {
-    addEventListener(
-      type: string,
-      callback: EventListenerOrEventListenerObject | null,
-      options?: boolean | AddEventListenerOptions
-    ): void;
-    dispatchEvent(event: Event): boolean;
-    removeEventListener(
-      type: string,
-      callback?: EventListenerOrEventListenerObject | null,
-      options?: EventListenerOptions | boolean
-    ): void;
-  }
-  export interface ProgressEventInit extends EventInit {
-    lengthComputable?: boolean;
-    loaded?: number;
-    total?: number;
-  }
-  export interface EventInit {
-    bubbles?: boolean;
-    cancelable?: boolean;
-    composed?: boolean;
-  }
-  export interface CustomEventInit extends EventInit {
-    detail?: any;
-  }
-  export enum EventPhase {
-    NONE = 0,
-    CAPTURING_PHASE = 1,
-    AT_TARGET = 2,
-    BUBBLING_PHASE = 3,
-  }
-  export interface EventPath {
-    item: EventTarget;
-    itemInShadowTree: boolean;
-    relatedTarget: EventTarget | null;
-    rootOfClosedTree: boolean;
-    slotInClosedTree: boolean;
-    target: EventTarget | null;
-    touchTargetList: EventTarget[];
-  }
-  export interface Event {
-    readonly type: string;
-    target: EventTarget | null;
-    currentTarget: EventTarget | null;
-    composedPath(): EventPath[];
-    eventPhase: number;
-    stopPropagation(): void;
-    stopImmediatePropagation(): void;
-    readonly bubbles: boolean;
-    readonly cancelable: boolean;
-    preventDefault(): void;
-    readonly defaultPrevented: boolean;
-    readonly composed: boolean;
-    isTrusted: boolean;
-    readonly timeStamp: Date;
-    dispatched: boolean;
-    readonly initialized: boolean;
-    inPassiveListener: boolean;
-    cancelBubble: boolean;
-    cancelBubbleImmediately: boolean;
-    path: EventPath[];
-    relatedTarget: EventTarget | null;
-  }
-  export interface CustomEvent extends Event {
-    readonly detail: any;
-    initCustomEvent(
-      type: string,
-      bubbles?: boolean,
-      cancelable?: boolean,
-      detail?: any | null
-    ): void;
-  }
+
   export interface DomFile extends Blob {
     readonly lastModified: number;
     readonly name: string;
   }
+
   export interface DomFileConstructor {
     new (
       bits: BlobPart[],
@@ -409,18 +298,11 @@ declare namespace __domTypes {
   export interface FilePropertyBag extends BlobPropertyBag {
     lastModified?: number;
   }
-  interface ProgressEvent extends Event {
-    readonly lengthComputable: boolean;
-    readonly loaded: number;
-    readonly total: number;
+
+  interface AbortSignalEventMap {
+    abort: ProgressEvent;
   }
-  export interface EventListenerOptions {
-    capture?: boolean;
-  }
-  export interface AddEventListenerOptions extends EventListenerOptions {
-    once?: boolean;
-    passive?: boolean;
-  }
+
   interface AbortSignal extends EventTarget {
     readonly aborted: boolean;
     onabort: ((this: AbortSignal, ev: ProgressEvent) => any) | null;
@@ -949,151 +831,6 @@ declare class Console {
   static [Symbol.hasInstance](instance: Console): boolean;
 }
 
-declare namespace __event {
-  export const eventAttributes: WeakMap<object, any>;
-  export class EventInit implements __domTypes.EventInit {
-    bubbles: boolean;
-    cancelable: boolean;
-    composed: boolean;
-    constructor({
-      bubbles,
-      cancelable,
-      composed,
-    }?: {
-      bubbles?: boolean | undefined;
-      cancelable?: boolean | undefined;
-      composed?: boolean | undefined;
-    });
-  }
-  export class Event implements __domTypes.Event {
-    isTrusted: boolean;
-    private _canceledFlag;
-    private _dispatchedFlag;
-    private _initializedFlag;
-    private _inPassiveListenerFlag;
-    private _stopImmediatePropagationFlag;
-    private _stopPropagationFlag;
-    private _path;
-    constructor(type: string, eventInitDict?: __domTypes.EventInit);
-    readonly bubbles: boolean;
-    cancelBubble: boolean;
-    cancelBubbleImmediately: boolean;
-    readonly cancelable: boolean;
-    readonly composed: boolean;
-    currentTarget: __domTypes.EventTarget;
-    readonly defaultPrevented: boolean;
-    dispatched: boolean;
-    eventPhase: number;
-    readonly initialized: boolean;
-    inPassiveListener: boolean;
-    path: __domTypes.EventPath[];
-    relatedTarget: __domTypes.EventTarget;
-    target: __domTypes.EventTarget;
-    readonly timeStamp: Date;
-    readonly type: string;
-    /** Returns the event’s path (objects on which listeners will be
-     * invoked). This does not include nodes in shadow trees if the
-     * shadow root was created with its ShadowRoot.mode closed.
-     *
-     *      event.composedPath();
-     */
-    composedPath(): __domTypes.EventPath[];
-    /** Cancels the event (if it is cancelable).
-     * See https://dom.spec.whatwg.org/#set-the-canceled-flag
-     *
-     *      event.preventDefault();
-     */
-    preventDefault(): void;
-    /** Stops the propagation of events further along in the DOM.
-     *
-     *      event.stopPropagation();
-     */
-    stopPropagation(): void;
-    /** For this particular event, no other listener will be called.
-     * Neither those attached on the same element, nor those attached
-     * on elements which will be traversed later (in capture phase,
-     * for instance).
-     *
-     *      event.stopImmediatePropagation();
-     */
-    stopImmediatePropagation(): void;
-  }
-}
-
-declare namespace __customEvent {
-  export const customEventAttributes: WeakMap<object, any>;
-  export class CustomEventInit extends __event.EventInit
-    implements __domTypes.CustomEventInit {
-    detail: any;
-    constructor({
-      bubbles,
-      cancelable,
-      composed,
-      detail,
-    }: __domTypes.CustomEventInit);
-  }
-  export class CustomEvent extends __event.Event
-    implements __domTypes.CustomEvent {
-    constructor(type: string, customEventInitDict?: __domTypes.CustomEventInit);
-    readonly detail: any;
-    initCustomEvent(
-      type: string,
-      bubbles?: boolean,
-      cancelable?: boolean,
-      detail?: any
-    ): void;
-    readonly [Symbol.toStringTag]: string;
-  }
-}
-
-declare namespace __eventTarget {
-  export class EventListenerOptions implements __domTypes.EventListenerOptions {
-    _capture: boolean;
-    constructor({ capture }?: { capture?: boolean | undefined });
-    readonly capture: boolean;
-  }
-  export class AddEventListenerOptions extends EventListenerOptions
-    implements __domTypes.AddEventListenerOptions {
-    _passive: boolean;
-    _once: boolean;
-    constructor({
-      capture,
-      passive,
-      once,
-    }?: {
-      capture?: boolean | undefined;
-      passive?: boolean | undefined;
-      once?: boolean | undefined;
-    });
-    readonly passive: boolean;
-    readonly once: boolean;
-  }
-  export const eventTargetAssignedSlot: unique symbol;
-  export const eventTargetHasActivationBehavior: unique symbol;
-  export class EventTarget implements __domTypes.EventTarget {
-    [__domTypes.eventTargetHost]: __domTypes.EventTarget | null;
-    [__domTypes.eventTargetListeners]: {
-      [type in string]: __domTypes.EventListener[];
-    };
-    [__domTypes.eventTargetMode]: string;
-    [__domTypes.eventTargetNodeType]: __domTypes.NodeType;
-    private [eventTargetAssignedSlot];
-    private [eventTargetHasActivationBehavior];
-    addEventListener(
-      type: string,
-      callback: __domTypes.EventListenerOrEventListenerObject | null,
-      options?: __domTypes.AddEventListenerOptions | boolean
-    ): void;
-    removeEventListener(
-      type: string,
-      callback: __domTypes.EventListenerOrEventListenerObject | null,
-      options?: __domTypes.EventListenerOptions | boolean
-    ): void;
-    dispatchEvent(event: __domTypes.Event): boolean;
-    readonly [Symbol.toStringTag]: string;
-  }
-}
-
 declare namespace __fetch {
   class Body
     implements
@@ -1363,4 +1100,221 @@ declare namespace performance {
   export function now(): number;
 }
 
-/* eslint-enable @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-interface, @typescript-eslint/no-explicit-any */
+/** An event which takes place in the DOM. */
+interface Event {
+  /**
+   * Returns true or false depending on how event was initialized. True if
+   * event goes through its target's ancestors in reverse tree order, and
+   * false otherwise.
+   */
+  readonly bubbles: boolean;
+
+  // TODO(ry) Remove cancelBubbleImmediately - non-standard extension.
+  cancelBubbleImmediately: boolean;
+
+  cancelBubble: boolean;
+  /**
+   * Returns true or false depending on how event was initialized. Its return
+   * value does not always carry meaning, but true can indicate that part of
+   * the operation during which event was dispatched, can be canceled by
+   * invoking the preventDefault() method.
+   */
+  readonly cancelable: boolean;
+  /**
+   * Returns true or false depending on how event was initialized. True if
+   * event invokes listeners past a ShadowRoot node that is the root of its
+   * target, and false otherwise.
+   */
+  readonly composed: boolean;
+  /**
+   * Returns the object whose event listener's callback is currently being
+   * invoked.
+   */
+  readonly currentTarget: EventTarget | null;
+  /**
+   * Returns true if preventDefault() was invoked successfully to indicate
+   * cancelation, and false otherwise.
+   */
+  readonly defaultPrevented: boolean;
+  /**
+   * Returns the event's phase, which is one of NONE, CAPTURING_PHASE,
+   * AT_TARGET, and BUBBLING_PHASE.
+   */
+  readonly eventPhase: number;
+  /**
+   * Returns true if event was dispatched by the user agent, and false
+   * otherwise.
+   */
+  readonly isTrusted: boolean;
+  returnValue: boolean;
+  /** @deprecated */
+  readonly srcElement: EventTarget | null;
+  /**
+   * Returns the object to which event is dispatched (its target).
+   */
+  readonly target: EventTarget | null;
+  /**
+   * Returns the event's timestamp as the number of milliseconds measured
+   * relative to the time origin.
+   */
+  readonly timeStamp: number;
+  /**
+   * Returns the type of event, e.g. "click", "hashchange", or "submit".
+   */
+  readonly type: string;
+  /**
+   * Returns the invocation target objects of event's path (objects on which
+   * listeners will be invoked), except for any nodes in shadow trees of which
+   * the shadow root's mode is "closed" that are not reachable from event's
+   * currentTarget.
+   */
+  composedPath(): EventTarget[];
+  initEvent(type: string, bubbles?: boolean, cancelable?: boolean): void;
+  /**
+   * If invoked when the cancelable attribute value is true, and while
+   * executing a listener for the event with passive set to false, signals to
+   * the operation that caused event to be dispatched that it needs to be
+   * canceled.
+   */
+  preventDefault(): void;
+  /**
+   * Invoking this method prevents event from reaching any registered event
+   * listeners after the current one finishes running and, when dispatched in
+   * a tree, also prevents event from reaching any other objects.
+   */
+  stopImmediatePropagation(): void;
+  /**
+   * When dispatched in a tree, invoking this method prevents event from
+   * reaching any objects other than the current object.
+   */
+  stopPropagation(): void;
+  readonly AT_TARGET: number;
+  readonly BUBBLING_PHASE: number;
+  readonly CAPTURING_PHASE: number;
+  readonly NONE: number;
+}
+
+interface EventInit {
+  bubbles?: boolean;
+  cancelable?: boolean;
+  composed?: boolean;
+}
+
+declare const Event: {
+  prototype: Event;
+  new (type: string, eventInitDict?: EventInit): Event;
+  readonly AT_TARGET: number;
+  readonly BUBBLING_PHASE: number;
+  readonly CAPTURING_PHASE: number;
+  readonly NONE: number;
+};
+
+/**
+ * EventTarget is a DOM interface implemented by objects that can receive events
+ * and may have listeners for them.
+ */
+interface EventTarget {
+  /**
+   * Appends an event listener for events whose type attribute value is type.
+   * The callback argument sets the callback that will be invoked when the event
+   * is dispatched.
+   *
+   * The options argument sets listener-specific options. For compatibility this
+   * can be a boolean, in which case the method behaves exactly as if the value
+   * was specified as options's capture.
+   *
+   * When set to true, options's capture prevents callback from being invoked
+   * when the event's eventPhase attribute value is BUBBLING_PHASE. When false
+   * (or not present), callback will not be invoked when event's eventPhase
+   * attribute value is CAPTURING_PHASE. Either way, callback will be invoked if
+   * event's eventPhase attribute value is AT_TARGET.
+   *
+   * When set to true, options's passive indicates that the callback will not
+   * cancel the event by invoking preventDefault(). This is used to enable
+   * performance optimizations described in § 2.8 Observing event listeners.
+   *
+   * When set to true, options's once indicates that the callback will only be
+   * invoked once after which the event listener will be removed.
+   *
+   * The event listener is appended to target's event listener list and is not
+   * appended if it has the same type, callback, and capture.
+   */
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  /**
+   * Dispatches a synthetic event event to target and returns true if either
+   * event's cancelable attribute value is false or its preventDefault() method
+   * was not invoked, and false otherwise.
+   */
+  dispatchEvent(event: Event): boolean;
+  /**
+   * Removes the event listener in target's event listener list with the same
+   * type, callback, and options.
+   */
+  removeEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
+    options?: EventListenerOptions | boolean
+  ): void;
+}
+
+declare const EventTarget: {
+  prototype: EventTarget;
+  new (): EventTarget;
+};
+
+interface EventListener {
+  (evt: Event): void;
+}
+
+interface EventListenerObject {
+  handleEvent(evt: Event): void;
+}
+
+declare type EventListenerOrEventListenerObject =
+  | EventListener
+  | EventListenerObject;
+
+interface AddEventListenerOptions extends EventListenerOptions {
+  once?: boolean;
+  passive?: boolean;
+}
+
+interface EventListenerOptions {
+  capture?: boolean;
+}
+
+/** Events measuring progress of an underlying process, like an HTTP request
+ * (for an XMLHttpRequest, or the loading of the underlying resource of an
+ * <img>, <audio>, <video>, <style> or <link>). */
+interface ProgressEvent<T extends EventTarget = EventTarget> extends Event {
+  readonly lengthComputable: boolean;
+  readonly loaded: number;
+  readonly target: T | null;
+  readonly total: number;
+}
+
+interface CustomEvent<T = any> extends Event {
+  /**
+   * Returns any custom data event was created with. Typically used for synthetic events.
+   */
+  readonly detail: T;
+  initCustomEvent(
+    typeArg: string,
+    canBubbleArg: boolean,
+    cancelableArg: boolean,
+    detailArg: T
+  ): void;
+}
+
+interface CustomEventInit<T = any> extends EventInit {
+  detail?: T;
+}
+
+declare const CustomEvent: {
+  prototype: CustomEvent;
+  new <T>(typeArg: string, eventInitDict?: CustomEventInit<T>): CustomEvent<T>;
+};
