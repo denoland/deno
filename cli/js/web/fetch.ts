@@ -447,7 +447,7 @@ export class Response implements domTypes.Response {
     );
   }
 
-  redirect(url: URL | string, status: number): domTypes.Response {
+  static redirect(url: URL | string, status: number): domTypes.Response {
     if (![301, 302, 303, 307, 308].includes(status)) {
       throw new RangeError(
         "The redirection status must be one of 301, 302, 303, 307 and 308."
