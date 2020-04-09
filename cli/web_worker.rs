@@ -43,15 +43,16 @@ impl DerefMut for WebWorkerHandle {
 
 impl WebWorkerHandle {
   pub fn terminate(&self) {
-    eprintln!("calling terminate");
-    self.terminated.store(true, Ordering::Relaxed);
-    self.isolate_handle.terminate_execution();
-    let mut sender = self.terminate_tx.clone();
-    sender
-      .try_send(())
-      .map_err(ErrBox::from)
-      .expect("Failed to terminate");
-    eprintln!("called terminate");
+    let already_terminated = self.terminated.swap(true, Ordering::Relaxed);
+
+    if !already_terminated {
+      self.isolate_handle.terminate_execution();
+      let mut sender = self.terminate_tx.clone();
+      sender
+        .try_send(())
+        .map_err(ErrBox::from)
+        .expect("Failed to terminate");
+    }
   }
 }
 
@@ -76,17 +77,6 @@ impl WebWorker {
   pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let state_ = state.clone();
     let mut worker = Worker::new(name, startup_data, state_);
-    {
-      let isolate = &mut worker.isolate;
-      ops::runtime::init(isolate, &state);
-      ops::web_worker::init(isolate, &state, &worker.internal_channels.sender);
-      ops::worker_host::init(isolate, &state);
-      ops::io::init(isolate, &state);
-      ops::resources::init(isolate, &state);
-      ops::errors::init(isolate, &state);
-      ops::timers::init(isolate, &state);
-      ops::fetch::init(isolate, &state);
-    }
 
     let terminated = Arc::new(AtomicBool::new(false));
     let isolate_handle = worker
@@ -97,14 +87,35 @@ impl WebWorker {
       .thread_safe_handle();
     let (terminate_tx, terminate_rx) = mpsc::channel::<()>(1);
 
-    Self {
+    let mut web_worker = Self {
       worker,
       event_loop_idle: false,
       terminated,
       terminate_tx,
       terminate_rx,
       isolate_handle,
+    };
+
+    let handle = web_worker.thread_safe_handle();
+
+    {
+      let isolate = &mut web_worker.worker.isolate;
+      ops::runtime::init(isolate, &state);
+      ops::web_worker::init(
+        isolate,
+        &state,
+        &web_worker.worker.internal_channels.sender,
+        handle,
+      );
+      ops::worker_host::init(isolate, &state);
+      ops::io::init(isolate, &state);
+      ops::resources::init(isolate, &state);
+      ops::errors::init(isolate, &state);
+      ops::timers::init(isolate, &state);
+      ops::fetch::init(isolate, &state);
     }
+
+    web_worker
   }
 }
 
@@ -142,8 +153,6 @@ impl Future for WebWorker {
 
     let terminated = inner.terminated.load(Ordering::Relaxed);
 
-    eprintln!("poll web worker {} {}", worker.name, terminated);
-
     if terminated {
       return Poll::Ready(Ok(()));
     }
@@ -152,7 +161,6 @@ impl Future for WebWorker {
       match worker.poll_unpin(cx) {
         Poll::Ready(r) => {
           let terminated = inner.terminated.load(Ordering::Relaxed);
-          eprintln!("poll web worker inner {} {}", terminated, worker.name);
           if terminated {
             return Poll::Ready(Ok(()));
           }
@@ -165,13 +173,7 @@ impl Future for WebWorker {
           }
           inner.event_loop_idle = true;
         }
-        Poll::Pending => {
-          let terminated = inner.terminated.load(Ordering::Relaxed);
-          eprintln!(
-            "poll web worker inner pending {} {}",
-            terminated, worker.name
-          );
-        }
+        Poll::Pending => {}
       }
     }
 
@@ -188,13 +190,23 @@ impl Future for WebWorker {
         Some(msg) => {
           let msg = String::from_utf8(msg.to_vec()).unwrap();
           debug!("received message from host: {}", msg);
-          // TODO: just add second value and then bind using rusty_v8
-          // to get structured clone/transfer working
           let script = format!("workerMessageRecvCallback({})", msg);
-          let result = worker.execute(&script);
 
-          eprintln!("execute result {:#?}", result);
-          // Let worker be polled again
+          if let Err(e) = worker.execute(&script) {
+            // If execution was terminated during message callback then
+            // just ignore it
+            if inner.terminated.load(Ordering::Relaxed) {
+              return Poll::Ready(Ok(()));
+            }
+
+            // Otherwise forward error to host
+            let mut sender = worker.internal_channels.sender.clone();
+            sender
+              .try_send(WorkerEvent::Error(e))
+              .expect("Failed to post message to host");
+          }
+
+          // Let event loop be polled again
           inner.event_loop_idle = false;
           worker.waker.wake();
         }
@@ -213,7 +225,6 @@ mod tests {
   use crate::state::State;
   use crate::tokio_util;
   use crate::worker::WorkerEvent;
-  use crate::worker::WorkerHandle;
 
   fn create_test_worker() -> WebWorker {
     let state = State::mock("./hello.js");
@@ -228,7 +239,7 @@ mod tests {
   #[test]
   fn test_worker_messages() {
     let (handle_sender, handle_receiver) =
-      std::sync::mpsc::sync_channel::<WorkerHandle>(1);
+      std::sync::mpsc::sync_channel::<WebWorkerHandle>(1);
 
     let join_handle = std::thread::spawn(move || {
       let mut worker = create_test_worker();
@@ -255,13 +266,13 @@ mod tests {
 
     tokio_util::run_basic(async move {
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-      let r = handle.post_message(msg.clone()).await;
+      let r = handle.post_message(msg.clone());
       assert!(r.is_ok());
 
       let maybe_msg = handle.get_event().await;
       assert!(maybe_msg.is_some());
 
-      let r = handle.post_message(msg.clone()).await;
+      let r = handle.post_message(msg.clone());
       assert!(r.is_ok());
 
       let maybe_msg = handle.get_event().await;
@@ -277,7 +288,7 @@ mod tests {
         .to_string()
         .into_boxed_str()
         .into_boxed_bytes();
-      let r = handle.post_message(msg).await;
+      let r = handle.post_message(msg);
       assert!(r.is_ok());
       let event = handle.get_event().await;
       assert!(event.is_none());
@@ -289,7 +300,7 @@ mod tests {
   #[test]
   fn removed_from_resource_table_on_close() {
     let (handle_sender, handle_receiver) =
-      std::sync::mpsc::sync_channel::<WorkerHandle>(1);
+      std::sync::mpsc::sync_channel::<WebWorkerHandle>(1);
 
     let join_handle = std::thread::spawn(move || {
       let mut worker = create_test_worker();
@@ -304,7 +315,7 @@ mod tests {
 
     tokio_util::run_basic(async move {
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-      let r = handle.post_message(msg.clone()).await;
+      let r = handle.post_message(msg.clone());
       assert!(r.is_ok());
       let event = handle.get_event().await;
       assert!(event.is_none());

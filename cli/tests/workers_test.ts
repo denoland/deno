@@ -45,7 +45,7 @@ Deno.test({
       assertEquals(e.data, "Hello World");
       promise.resolve();
     };
-    
+
     jsWorker.onmessage = (e): void => {
       assertEquals(e.data, "Hello World");
       tsWorker.postMessage("Hello World");

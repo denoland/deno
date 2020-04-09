@@ -3,6 +3,7 @@ use super::dispatch_json::{JsonOp, Value};
 use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
+use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
 use deno_core::*;
 use futures::channel::mpsc;
@@ -24,7 +25,32 @@ where
         -> Result<JsonOp, OpError> { dispatcher(&sender, args, zero_copy) }
 }
 
-pub fn init(i: &mut Isolate, s: &State, sender: &mpsc::Sender<WorkerEvent>) {
+pub fn web_worker_op2<D>(
+  handle: WebWorkerHandle,
+  sender: mpsc::Sender<WorkerEvent>,
+  dispatcher: D,
+) -> impl Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>
+where
+  D: Fn(
+    WebWorkerHandle,
+    &mpsc::Sender<WorkerEvent>,
+    Value,
+    Option<ZeroCopyBuf>,
+  ) -> Result<JsonOp, OpError>,
+{
+  move |args: Value,
+        zero_copy: Option<ZeroCopyBuf>|
+        -> Result<JsonOp, OpError> {
+    dispatcher(handle.clone(), &sender, args, zero_copy)
+  }
+}
+
+pub fn init(
+  i: &mut Isolate,
+  s: &State,
+  sender: &mpsc::Sender<WorkerEvent>,
+  handle: WebWorkerHandle,
+) {
   i.register_op(
     "op_worker_post_message",
     s.core_op(json_op(web_worker_op(
@@ -34,7 +60,11 @@ pub fn init(i: &mut Isolate, s: &State, sender: &mpsc::Sender<WorkerEvent>) {
   );
   i.register_op(
     "op_worker_close",
-    s.core_op(json_op(web_worker_op(sender.clone(), op_worker_close))),
+    s.core_op(json_op(web_worker_op2(
+      handle,
+      sender.clone(),
+      op_worker_close,
+    ))),
   );
 }
 
@@ -46,21 +76,23 @@ fn op_worker_post_message(
 ) -> Result<JsonOp, OpError> {
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
   let mut sender = sender.clone();
-  eprintln!("sending message");
   sender
     .try_send(WorkerEvent::Message(d))
     .expect("Failed to post message to host");
-  eprintln!("message sent");
   Ok(JsonOp::Sync(json!({})))
 }
 
 /// Notify host that guest worker closes
 fn op_worker_close(
-  _sender: &mpsc::Sender<WorkerEvent>,
+  handle: WebWorkerHandle,
+  sender: &mpsc::Sender<WorkerEvent>,
   _args: Value,
   _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
-  // let mut sender = sender.clone();
-  // sender.close_channel();
+  let mut sender = sender.clone();
+  // Notify parent that we're finished
+  sender.close_channel();
+  // Terminate execution of current worker
+  handle.terminate();
   Ok(JsonOp::Sync(json!({})))
 }

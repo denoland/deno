@@ -95,7 +95,6 @@ fn run_worker_thread(
 
     // TODO: run with using select with terminate
 
-    eprintln!("executing {}", &name);
     // Execute provided source code immediately
     let result = if has_source_code {
       worker.execute(&source_code)
@@ -106,8 +105,6 @@ fn run_worker_thread(
 
       rt.block_on(load_future)
     };
-
-    eprintln!("executed {}", &name);
 
     if let Err(e) = result {
       let mut sender = worker.internal_channels.sender.clone();
@@ -123,7 +120,7 @@ fn run_worker_thread(
     // that means that we should store JoinHandle to thread to ensure
     // that it actually terminates.
     rt.block_on(worker).expect("Panic in event loop");
-    eprintln!("worker thread shuts down {}", &name);
+    debug!("Worker thread shuts down {}", &name);
   })?;
 
   let worker_handle = handle_receiver.recv().unwrap()?;
@@ -201,7 +198,6 @@ fn op_host_terminate_worker(
   let mut state = state.borrow_mut();
   let (join_handle, worker_handle) =
     state.workers.remove(&id).expect("No worker handle found");
-  eprintln!("terminating child worker");
   worker_handle.terminate();
   join_handle.join().expect("Panic in worker thread");
   Ok(JsonOp::Sync(json!({})))
@@ -272,7 +268,6 @@ fn op_host_get_message(
     worker_handle.clone()
   };
   let state_ = state.clone();
-  eprintln!("get message");
   let op = async move {
     let response = match worker_handle.get_event().await {
       Some(event) => {
@@ -282,7 +277,6 @@ fn op_host_get_message(
           if let Some((join_handle, mut worker_handle)) =
             state_.workers.remove(&id)
           {
-            eprintln!("terminal error closing");
             worker_handle.sender.close_channel();
             join_handle.join().expect("Worker thread panicked");
           }
@@ -290,14 +284,13 @@ fn op_host_get_message(
         serialize_worker_event(event)
       }
       None => {
-        eprintln!("got empty message");
+        // Worker shuts down
         let mut state_ = state_.borrow_mut();
         // Try to remove worker from workers table - NOTE: `Worker.terminate()` might have been called
         // already meaning that we won't find worker in table - in that case ignore.
         if let Some((join_handle, mut worker_handle)) =
           state_.workers.remove(&id)
         {
-          eprintln!("empty message closing");
           worker_handle.sender.close_channel();
           join_handle.join().expect("Worker thread panicked");
         }
