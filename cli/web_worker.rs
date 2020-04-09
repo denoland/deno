@@ -102,7 +102,13 @@ impl Future for WebWorker {
           }
           inner.event_loop_idle = true;
         }
-        Poll::Pending => {}
+        Poll::Pending => {
+          let terminated = worker.terminated.load(Ordering::Relaxed);
+          eprintln!(
+            "poll web worker inner pending {} {}",
+            terminated, worker.name
+          );
+        }
       }
     }
 

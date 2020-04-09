@@ -271,7 +271,10 @@ impl Future for Worker {
           }
         }
       }
-      Poll::Pending => Poll::Pending,
+      Poll::Pending => {
+        eprintln!("isolate pending");
+        Poll::Pending
+      }
     }
   }
 }

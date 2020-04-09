@@ -48,7 +48,9 @@ fn op_worker_post_message(
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
   let mut sender = sender.clone();
   let fut = sender.send(WorkerEvent::Message(d));
+  eprintln!("sending message");
   futures::executor::block_on(fut).expect("Failed to post message to host");
+  eprintln!("message sent");
   Ok(JsonOp::Sync(json!({})))
 }
 
