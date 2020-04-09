@@ -20,6 +20,13 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
+/// Wrapper for `WorkerHandle` that adds functionality
+/// for terminating workers.
+///
+/// This struct is used by host as well as worker itself.
+///
+/// Host uses it to communicate with worker and terminate it,
+/// while worker uses it only to finish execution on `self.close()`.
 #[derive(Clone)]
 pub struct WebWorkerHandle {
   worker_handle: WorkerHandle,
@@ -43,15 +50,17 @@ impl DerefMut for WebWorkerHandle {
 
 impl WebWorkerHandle {
   pub fn terminate(&self) {
+    // This function can be called multiple times by whomever holds
+    // the handle. However only a single "termination" should occur so
+    // we need a guard here.
     let already_terminated = self.terminated.swap(true, Ordering::Relaxed);
 
     if !already_terminated {
       self.isolate_handle.terminate_execution();
       let mut sender = self.terminate_tx.clone();
-      sender
-        .try_send(())
-        .map_err(ErrBox::from)
-        .expect("Failed to terminate");
+      // This call should be infallible hence the `expect`.
+      // This might change in the future.
+      sender.try_send(()).expect("Failed to terminate");
     }
   }
 }
@@ -66,11 +75,8 @@ impl WebWorkerHandle {
 pub struct WebWorker {
   worker: Worker,
   event_loop_idle: bool,
-
-  pub terminated: Arc<AtomicBool>,
   terminate_rx: mpsc::Receiver<()>,
-  terminate_tx: mpsc::Sender<()>,
-  isolate_handle: v8::IsolateHandle,
+  handle: WebWorkerHandle,
 }
 
 impl WebWorker {
@@ -87,13 +93,18 @@ impl WebWorker {
       .thread_safe_handle();
     let (terminate_tx, terminate_rx) = mpsc::channel::<()>(1);
 
+    let handle = WebWorkerHandle {
+      worker_handle: worker.thread_safe_handle(),
+      terminated,
+      isolate_handle,
+      terminate_tx,
+    };
+
     let mut web_worker = Self {
       worker,
       event_loop_idle: false,
-      terminated,
-      terminate_tx,
       terminate_rx,
-      isolate_handle,
+      handle,
     };
 
     let handle = web_worker.thread_safe_handle();
@@ -122,12 +133,7 @@ impl WebWorker {
 impl WebWorker {
   /// Returns a way to communicate with the Worker from other threads.
   pub fn thread_safe_handle(&self) -> WebWorkerHandle {
-    WebWorkerHandle {
-      worker_handle: self.worker.thread_safe_handle(),
-      terminated: self.terminated.clone(),
-      isolate_handle: self.isolate_handle.clone(),
-      terminate_tx: self.terminate_tx.clone(),
-    }
+    self.handle.clone()
   }
 }
 
@@ -151,7 +157,7 @@ impl Future for WebWorker {
     let inner = self.get_mut();
     let worker = &mut inner.worker;
 
-    let terminated = inner.terminated.load(Ordering::Relaxed);
+    let terminated = inner.handle.terminated.load(Ordering::Relaxed);
 
     if terminated {
       return Poll::Ready(Ok(()));
@@ -160,7 +166,7 @@ impl Future for WebWorker {
     if !inner.event_loop_idle {
       match worker.poll_unpin(cx) {
         Poll::Ready(r) => {
-          let terminated = inner.terminated.load(Ordering::Relaxed);
+          let terminated = inner.handle.terminated.load(Ordering::Relaxed);
           if terminated {
             return Poll::Ready(Ok(()));
           }
@@ -195,7 +201,7 @@ impl Future for WebWorker {
           if let Err(e) = worker.execute(&script) {
             // If execution was terminated during message callback then
             // just ignore it
-            if inner.terminated.load(Ordering::Relaxed) {
+            if inner.handle.terminated.load(Ordering::Relaxed) {
               return Poll::Ready(Ok(()));
             }
 

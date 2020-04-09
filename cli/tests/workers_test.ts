@@ -28,7 +28,7 @@ export function createResolvable<T>(): Resolvable<T> {
 }
 
 Deno.test({
-  name: "workersBasic",
+  name: "worker terminate",
   fn: async function (): Promise<void> {
     const promise = createResolvable();
 
@@ -64,7 +64,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "nestedWorker",
+  name: "worker nested",
   fn: async function (): Promise<void> {
     const promise = createResolvable();
 
@@ -85,7 +85,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "workerThrowsWhenExecuting",
+  name: "worker throws when executing",
   fn: async function (): Promise<void> {
     const promise = createResolvable();
     const throwingWorker = new Worker("../tests/subdir/throwing_worker.js", {
@@ -105,7 +105,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "workerCanUseFetch",
+  name: "worker fetch API",
   fn: async function (): Promise<void> {
     const promise = createResolvable();
 
@@ -131,7 +131,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "worker terminate",
+  name: "worker terminate busy loop",
   fn: async function (): Promise<void> {
     const promise = createResolvable();
 
