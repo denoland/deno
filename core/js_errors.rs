@@ -28,6 +28,13 @@ pub struct JSError {
   pub start_column: Option<i64>,
   pub end_column: Option<i64>,
   pub frames: Vec<JSStackFrame>,
+  // TODO: Remove this field. It is required because JSError::from_v8_exception
+  // will generally (but not always) return stack frames passed from
+  // `prepareStackTrace()` which have already been source-mapped, and we need a
+  // flag saying not to do it again. Note: applies to `frames` but not
+  // `source_line`.
+  pub already_source_mapped: bool,
+  // TODO(nayeemrmn): Support more CallSite fields.
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -75,7 +82,9 @@ impl JSError {
     let maybe_call_sites =
       get_property(scope, context, exception, "__callSiteEvals");
 
+    let already_source_mapped;
     let frames = if let Some(call_sites) = maybe_call_sites {
+      already_source_mapped = true;
       let call_sites: v8::Local<v8::Array> = call_sites.try_into().unwrap();
       let mut output: Vec<JSStackFrame> = vec![];
       for i in 0..call_sites.length() {
@@ -138,6 +147,7 @@ impl JSError {
       }
       output
     } else {
+      already_source_mapped = false;
       msg
         .get_stack_trace(scope)
         .map(|stack_trace| {
@@ -186,6 +196,7 @@ impl JSError {
       start_column: msg.get_start_column().try_into().ok(),
       end_column: msg.get_end_column().try_into().ok(),
       frames,
+      already_source_mapped,
     }
   }
 }
@@ -298,6 +309,7 @@ mod tests {
           is_async: false,
         },
       ],
+      already_source_mapped: true,
     };
     let actual = js_error.to_string();
     let expected = "Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2";

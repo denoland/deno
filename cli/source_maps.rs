@@ -49,11 +49,16 @@ pub fn apply_source_map<G: SourceMapGetter>(
 ) -> deno_core::JSError {
   let mut mappings_map: CachedMaps = HashMap::new();
 
-  let mut frames = Vec::<JSStackFrame>::new();
-  for frame in &js_error.frames {
-    let f = frame_apply_source_map(&frame, &mut mappings_map, getter);
-    frames.push(f);
-  }
+  let frames = if !js_error.already_source_mapped {
+    let mut frames = Vec::<JSStackFrame>::new();
+    for frame in &js_error.frames {
+      let f = frame_apply_source_map(&frame, &mut mappings_map, getter);
+      frames.push(f);
+    }
+    frames
+  } else {
+    js_error.frames.clone()
+  };
 
   let (script_resource_name, line_number, start_column) =
     get_maybe_orig_position(
@@ -98,6 +103,7 @@ pub fn apply_source_map<G: SourceMapGetter>(
     start_column,
     end_column,
     frames,
+    already_source_mapped: js_error.already_source_mapped,
   }
 }
 
@@ -106,6 +112,7 @@ fn frame_apply_source_map<G: SourceMapGetter>(
   mappings_map: &mut CachedMaps,
   getter: &G,
 ) -> JSStackFrame {
+  println!("{} {}", frame.line_number, frame.column);
   let (script_name, line_number, column) = get_orig_position(
     frame.script_name.to_string(),
     frame.line_number,
@@ -113,6 +120,7 @@ fn frame_apply_source_map<G: SourceMapGetter>(
     mappings_map,
     getter,
   );
+  println!("{} {}", line_number, column);
 
   JSStackFrame {
     script_name,
@@ -277,6 +285,7 @@ mod tests {
           is_async: false,
         },
       ],
+      already_source_mapped: false,
     };
     let getter = MockSourceMapGetter {};
     let actual = apply_source_map(&core_js_error, &getter);
@@ -316,6 +325,7 @@ mod tests {
           is_async: false,
         },
       ],
+      already_source_mapped: false,
     };
     assert_eq!(actual, expected);
   }
@@ -338,6 +348,7 @@ mod tests {
         is_constructor: false,
         is_async: false,
       }],
+      already_source_mapped: false,
     };
     let getter = MockSourceMapGetter {};
     let actual = apply_source_map(&e, &getter);
@@ -356,6 +367,7 @@ mod tests {
       start_column: Some(16),
       end_column: None,
       frames: vec![],
+      already_source_mapped: false,
     };
     let getter = MockSourceMapGetter {};
     let actual = apply_source_map(&e, &getter);

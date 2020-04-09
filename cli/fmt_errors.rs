@@ -305,6 +305,7 @@ mod tests {
           is_async: false,
         },
       ],
+      already_source_mapped: true,
     };
     let formatted_error = JSError(core_js_error).to_string();
     let actual = strip_ansi_codes(&formatted_error);
