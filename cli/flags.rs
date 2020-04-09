@@ -34,7 +34,7 @@ pub enum DenoSubcommand {
   },
   Doc {
     json: bool,
-    source_file: String,
+    source_file: Option<String>,
     filter: Option<String>,
   },
   Eval {
@@ -566,7 +566,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
-  let source_file = matches.value_of("source_file").map(String::from).unwrap();
+  let source_file = matches.value_of("source_file").map(String::from);
   let json = matches.is_present("json");
   let filter = matches.value_of("filter").map(String::from);
   flags.subcommand = DenoSubcommand::Doc {
@@ -581,7 +581,7 @@ fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Print runtime TypeScript declarations")
     .long_about(
       "Print runtime TypeScript declarations.
-  deno types > lib.deno_runtime.d.ts
+  deno types > lib.deno.d.ts
 
 The declaration file could be saved and used for typing information.",
     )
@@ -799,18 +799,22 @@ and is used to replace the current executable.",
 
 fn doc_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("doc")
-    .about("Show documentation for module")
+    .about("Show documentation for a module")
     .long_about(
-      "Show documentation for module.
+      "Show documentation for a module.
 
-Output documentation to terminal:
+Output documentation to standard output:
     deno doc ./path/to/module.ts
 
-Show detail of symbol:
+Output documentation in JSON format:
+    deno doc --json ./path/to/module.ts
+
+Target a specific symbol:
     deno doc ./path/to/module.ts MyClass.someField
 
-Output documentation in JSON format:
-    deno doc --json ./path/to/module.ts",
+Show documentation for runtime built-ins:
+    deno doc
+    deno doc --builtin Deno.Listener",
     )
     .arg(reload_arg())
     .arg(
@@ -819,11 +823,12 @@ Output documentation in JSON format:
         .help("Output documentation in JSON format.")
         .takes_value(false),
     )
-    .arg(
-      Arg::with_name("source_file")
-        .takes_value(true)
-        .required(true),
-    )
+    // TODO(nayeemrmn): Make `--builtin` a proper option. Blocked by
+    // https://github.com/clap-rs/clap/issues/1794. Currently `--builtin` is
+    // just a possible value of `source_file` so leading hyphens must be
+    // enabled.
+    .setting(clap::AppSettings::AllowLeadingHyphen)
+    .arg(Arg::with_name("source_file").takes_value(true))
     .arg(
       Arg::with_name("filter")
         .help("Dot separated path to symbol.")
@@ -2534,7 +2539,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Doc {
           json: true,
-          source_file: "path/to/module.ts".to_string(),
+          source_file: Some("path/to/module.ts".to_string()),
           filter: None,
         },
         ..Flags::default()
@@ -2552,8 +2557,35 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Doc {
           json: false,
-          source_file: "path/to/module.ts".to_string(),
+          source_file: Some("path/to/module.ts".to_string()),
           filter: Some("SomeClass.someField".to_string()),
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec_safe(svec!["deno", "doc"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Doc {
+          json: false,
+          source_file: None,
+          filter: None,
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r =
+      flags_from_vec_safe(svec!["deno", "doc", "--builtin", "Deno.Listener"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Doc {
+          json: false,
+          source_file: Some("--builtin".to_string()),
+          filter: Some("Deno.Listener".to_string()),
         },
         ..Flags::default()
       }
