@@ -89,13 +89,13 @@ impl JSError {
             .unwrap()
             .try_into()
             .unwrap();
-        let line_number = line_number.value();
+        let line_number = line_number.value() - 1;
         let column_number: v8::Local<v8::Integer> =
           get_property(scope, context, call_site, "columnNumber")
             .unwrap()
             .try_into()
             .unwrap();
-        let column_number = column_number.value();
+        let column_number = column_number.value() - 1;
         let file_name: Result<v8::Local<v8::String>, _> =
           get_property(scope, context, call_site, "fileName")
             .unwrap()
