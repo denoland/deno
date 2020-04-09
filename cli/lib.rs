@@ -383,7 +383,7 @@ async fn doc_command(
   maybe_filter: Option<String>,
 ) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
-  let source_file = source_file.unwrap_or_else(|| "$".to_string());
+  let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
 
   impl DocFileLoader for SourceFileFetcher {
     fn load_source_code(
@@ -406,7 +406,7 @@ async fn doc_command(
   let loader = Box::new(global_state.file_fetcher.clone());
   let doc_parser = doc::DocParser::new(loader);
 
-  let parse_result = if source_file == "$" {
+  let parse_result = if source_file == "--builtin" {
     doc_parser.parse_source("lib.deno.d.ts", get_types().as_str())
   } else {
     let module_specifier =

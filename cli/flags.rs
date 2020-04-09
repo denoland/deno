@@ -814,7 +814,7 @@ Target a specific symbol:
 
 Show documentation for runtime built-ins:
     deno doc
-    deno doc $ Deno.Listener",
+    deno doc --builtin Deno.Listener",
     )
     .arg(reload_arg())
     .arg(
@@ -823,6 +823,11 @@ Show documentation for runtime built-ins:
         .help("Output documentation in JSON format.")
         .takes_value(false),
     )
+    // TODO(nayeemrmn): Make `--builtin` a proper option. Blocked by
+    // https://github.com/clap-rs/clap/issues/1794. Currently `--builtin` is
+    // just a possible value of `source_file` so leading hyphens must be
+    // enabled.
+    .setting(clap::AppSettings::AllowLeadingHyphen)
     .arg(Arg::with_name("source_file").takes_value(true))
     .arg(
       Arg::with_name("filter")
@@ -2527,19 +2532,6 @@ mod tests {
 
   #[test]
   fn doc() {
-    let r = flags_from_vec_safe(svec!["deno", "doc"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Doc {
-          json: false,
-          source_file: None,
-          filter: None,
-        },
-        ..Flags::default()
-      }
-    );
-
     let r =
       flags_from_vec_safe(svec!["deno", "doc", "--json", "path/to/module.ts"]);
     assert_eq!(
@@ -2567,6 +2559,34 @@ mod tests {
           json: false,
           source_file: Some("path/to/module.ts".to_string()),
           filter: Some("SomeClass.someField".to_string()),
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r =
+      flags_from_vec_safe(svec!["deno", "doc"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Doc {
+          json: false,
+          source_file: None,
+          filter: None,
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r =
+      flags_from_vec_safe(svec!["deno", "doc", "--builtin", "Deno.Listener"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Doc {
+          json: false,
+          source_file: Some("--builtin".to_string()),
+          filter: Some("Deno.Listener".to_string()),
         },
         ..Flags::default()
       }
