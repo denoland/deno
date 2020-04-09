@@ -41,20 +41,14 @@ pub struct JSStackFrame {
   pub is_async: bool,
 }
 
-fn call_js_method<'s>(
-  scope: &mut impl v8::ToLocal<'s>,
+fn get_property<'a>(
+  scope: &mut impl v8::ToLocal<'a>,
   context: v8::Local<v8::Context>,
-  o: v8::Local<v8::Object>,
-  name: &str,
-) -> Option<v8::Local<'s, v8::Value>> {
-  let global: v8::Local<v8::Value> = context.global(scope).into();
-  let name_str = v8::String::new(scope, name).unwrap();
-  let func: v8::Local<v8::Function> = o
-    .get(scope, context, name_str.into())
-    .unwrap()
-    .try_into()
-    .unwrap();
-  return func.call(scope, context, global, &[o.clone().into()]);
+  object: v8::Local<v8::Object>,
+  key: &str,
+) -> Option<v8::Local<'a, v8::Value>> {
+  let key = v8::String::new(scope, key).unwrap();
+  object.get(scope, context, key.into())
 }
 
 impl JSError {
@@ -72,19 +66,78 @@ impl JSError {
     let scope = hs.enter();
     let context = { scope.get_current_context().unwrap() };
 
-    let exception2: Result<v8::Local<v8::Object>, _> =
-      exception.clone().try_into();
-    let exception2 = exception2.unwrap();
-    let stack_str = v8::String::new(scope, "stack").unwrap();
-    let _ = exception2.get(scope, context, stack_str.into());
-
-    let error_call_sites_str = v8::String::new(scope, "__callSites").unwrap();
-    let error_call_sites =
-      exception2.get(scope, context, error_call_sites_str.into());
-
     let msg = v8::Exception::create_message(scope, exception);
 
-    let frames = if error_call_sites.is_none() {
+    let exception: v8::Local<v8::Object> =
+      exception.clone().try_into().unwrap();
+    let _ = get_property(scope, context, exception, "stack");
+
+    let maybe_call_sites =
+      get_property(scope, context, exception, "__callSiteEvals");
+
+    let frames = if let Some(call_sites) = maybe_call_sites {
+      let call_sites: v8::Local<v8::Array> = call_sites.try_into().unwrap();
+      let mut output: Vec<JSStackFrame> = vec![];
+      for i in 0..call_sites.length() {
+        let call_site: v8::Local<v8::Object> = call_sites
+          .get_index(scope, context, i)
+          .unwrap()
+          .try_into()
+          .unwrap();
+        let line_number: v8::Local<v8::Integer> =
+          get_property(scope, context, call_site, "lineNumber")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let line_number = line_number.value();
+        let column_number: v8::Local<v8::Integer> =
+          get_property(scope, context, call_site, "columnNumber")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let column_number = column_number.value();
+        let file_name: Result<v8::Local<v8::String>, _> =
+          get_property(scope, context, call_site, "fileName")
+            .unwrap()
+            .try_into();
+        let file_name = file_name
+          .map_or_else(|_| String::new(), |s| s.to_rust_string_lossy(scope));
+        let function_name: Result<v8::Local<v8::String>, _> =
+          get_property(scope, context, call_site, "functionName")
+            .unwrap()
+            .try_into();
+        let function_name = function_name
+          .map_or_else(|_| String::new(), |s| s.to_rust_string_lossy(scope));
+        let is_constructor: v8::Local<v8::Boolean> =
+          get_property(scope, context, call_site, "isConstructor")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let is_constructor = is_constructor.is_true();
+        let is_eval: v8::Local<v8::Boolean> =
+          get_property(scope, context, call_site, "isEval")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let is_eval = is_eval.is_true();
+        let is_async: v8::Local<v8::Boolean> =
+          get_property(scope, context, call_site, "isAsync")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let is_async = is_async.is_true();
+        output.push(JSStackFrame {
+          line_number,
+          column: column_number,
+          script_name: file_name,
+          function_name,
+          is_constructor,
+          is_eval,
+          is_async,
+        });
+      }
+      output
+    } else {
       msg
         .get_stack_trace(scope)
         .map(|stack_trace| {
@@ -118,75 +171,6 @@ impl JSError {
             .collect::<Vec<_>>()
         })
         .unwrap_or_else(Vec::<_>::new)
-    } else {
-      let cs_arr: v8::Local<v8::Array> =
-        error_call_sites.unwrap().try_into().unwrap();
-      let mut output: Vec<JSStackFrame> = vec![];
-      for i in 0..cs_arr.length() {
-        let nth: v8::Local<v8::Object> = cs_arr
-          .get_index(scope, context, i)
-          .unwrap()
-          .try_into()
-          .unwrap();
-        let line_number_v8: v8::Local<v8::Integer> =
-          call_js_method(scope, context, nth, "getLineNumber")
-            .unwrap()
-            .try_into()
-            .unwrap();
-        let line_number = line_number_v8.value();
-        let column_v8: v8::Local<v8::Integer> =
-          call_js_method(scope, context, nth, "getColumnNumber")
-            .unwrap()
-            .try_into()
-            .unwrap();
-        let column = column_v8.value();
-        let script_name_v8: Result<v8::Local<v8::String>, _> =
-          call_js_method(scope, context, nth, "getFileName")
-            .unwrap()
-            .try_into();
-        let script_name = if let Ok(sname) = script_name_v8 {
-          sname.to_rust_string_lossy(scope)
-        } else {
-          String::new()
-        };
-        let function_name_v8: Result<v8::Local<v8::String>, _> =
-          call_js_method(scope, context, nth, "getFunctionName")
-            .unwrap()
-            .try_into();
-        let function_name = if let Ok(fname) = function_name_v8 {
-          fname.to_rust_string_lossy(scope)
-        } else {
-          String::new()
-        };
-        let is_constructor_v8: v8::Local<v8::Boolean> =
-          call_js_method(scope, context, nth, "isConstructor")
-            .unwrap()
-            .try_into()
-            .unwrap();
-        let is_constructor = is_constructor_v8.is_true();
-        let is_eval_v8: v8::Local<v8::Boolean> =
-          call_js_method(scope, context, nth, "isEval")
-            .unwrap()
-            .try_into()
-            .unwrap();
-        let is_eval = is_eval_v8.is_true();
-        let is_async_v8: v8::Local<v8::Boolean> =
-          call_js_method(scope, context, nth, "isAsync")
-            .unwrap()
-            .try_into()
-            .unwrap();
-        let is_async = is_async_v8.is_true();
-        output.push(JSStackFrame {
-          line_number,
-          column,
-          script_name,
-          function_name,
-          is_constructor,
-          is_eval,
-          is_async,
-        });
-      }
-      output
     };
 
     Self {

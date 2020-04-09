@@ -163,12 +163,52 @@ function callSiteToString(callSite: CallSite): string {
   return result;
 }
 
+interface CallSiteEval {
+  this: unknown;
+  typeName: string;
+  function: Function;
+  functionName: string;
+  methodName: string;
+  fileName: string;
+  lineNumber: number | null;
+  columnNumber: number | null;
+  evalOrigin: string | null;
+  isToplevel: boolean;
+  isEval: boolean;
+  isNative: boolean;
+  isConstructor: boolean;
+  isAsync: boolean;
+  isPromiseAll: boolean;
+  promiseIndex: number | null;
+}
+
+function evaluateCallSite(callSite: CallSite): CallSiteEval {
+  return {
+    this: callSite.getThis(),
+    typeName: callSite.getTypeName(),
+    function: callSite.getFunction(),
+    functionName: callSite.getFunctionName(),
+    methodName: callSite.getMethodName(),
+    fileName: callSite.getFileName(),
+    lineNumber: callSite.getLineNumber(),
+    columnNumber: callSite.getColumnNumber(),
+    evalOrigin: callSite.getEvalOrigin(),
+    isToplevel: callSite.isToplevel(),
+    isEval: callSite.isEval(),
+    isNative: callSite.isNative(),
+    isConstructor: callSite.isConstructor(),
+    isAsync: callSite.isAsync(),
+    isPromiseAll: callSite.isPromiseAll(),
+    promiseIndex: callSite.getPromiseIndex(),
+  };
+}
+
 function prepareStackTrace(
   error: Error,
   structuredStackTrace: CallSite[]
 ): string {
   // @ts-ignore
-  error["__callSites"] = [];
+  error["__callSiteEvals"] = [];
   const errorString =
     `${error.name}: ${error.message}\n` +
     structuredStackTrace
@@ -192,7 +232,7 @@ function prepareStackTrace(
       )
       .map((callSite): string => {
         // @ts-ignore
-        error["__callSites"].push(callSite); // Save callsites to self
+        error["__callSiteEvals"].push(evaluateCallSite(callSite));
         return `    at ${callSiteToString(callSite)}`;
       })
       .join("\n");

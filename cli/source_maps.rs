@@ -336,6 +336,7 @@ mod tests {
         function_name: "setLogDebug".to_string(),
         is_eval: false,
         is_constructor: false,
+        is_async: false,
       }],
     };
     let getter = MockSourceMapGetter {};
