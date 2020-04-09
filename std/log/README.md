@@ -126,6 +126,8 @@ Behavior of the log modes is as follows:
 - `'x'` - This will create a new log file and throw an error if one already
   exists
 
+This handler requires `--allow-write` permission on the log file.
+
 #### `RotatingFileHandler`
 
 This handler extends the functionality of the `FileHandler` by "rotating" the

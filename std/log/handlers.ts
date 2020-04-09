@@ -89,15 +89,7 @@ export abstract class WriterHandler extends BaseHandler {
   protected _writer!: Writer;
   #encoder = new TextEncoder();
 
-  /** @deprecated - `this._writer.write()` is an async call.  Under heavy load
-   * testing has shown a significant loss of log messages being written.  Also,
-   * if the process terminates while writing a log, that log message is also
-   * lost.  It is recommended that handlers override this method with a
-   * synchronous implementation (see FileHandler).
-   */
-  log(msg: string): void {
-    this._writer.write(this.#encoder.encode(msg + "\n"));
-  }
+  abstract log(msg: string): void;
 }
 
 interface FileHandlerOptions extends HandlerOptions {
