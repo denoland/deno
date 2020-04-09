@@ -127,6 +127,14 @@ export class WorkerImpl extends EventTarget implements Worker {
 
       const type = event.type;
 
+      if (type === "terminalError") {
+        this.#terminated = true;
+        if (!this.#handleError(event.error)) {
+          throw Error(event.error.message);
+        }
+        continue;
+      }
+
       if (type === "msg") {
         if (this.onmessage) {
           const message = decodeMessage(new Uint8Array(event.data));

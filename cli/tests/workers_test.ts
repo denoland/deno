@@ -28,11 +28,10 @@ export function createResolvable<T>(): Resolvable<T> {
 }
 
 Deno.test({
-  name: "workersBasic",
-  // FIXME(bartlomieju):
-  disableOpSanitizer: true,
+  name: "worker terminate",
   fn: async function (): Promise<void> {
     const promise = createResolvable();
+
     const jsWorker = new Worker("../tests/subdir/test_worker.js", {
       type: "module",
       name: "jsWorker",
@@ -59,13 +58,13 @@ Deno.test({
 
     jsWorker.postMessage("Hello World");
     await promise;
+    tsWorker.terminate();
+    jsWorker.terminate();
   },
 });
 
 Deno.test({
-  name: "nestedWorker",
-  // FIXME(bartlomieju):
-  disableOpSanitizer: true,
+  name: "worker nested",
   fn: async function (): Promise<void> {
     const promise = createResolvable();
 
@@ -81,13 +80,12 @@ Deno.test({
 
     nestedWorker.postMessage("Hello World");
     await promise;
+    nestedWorker.terminate();
   },
 });
 
 Deno.test({
-  name: "workerThrowsWhenExecuting",
-  // FIXME(bartlomieju):
-  disableOpSanitizer: true,
+  name: "worker throws when executing",
   fn: async function (): Promise<void> {
     const promise = createResolvable();
     const throwingWorker = new Worker("../tests/subdir/throwing_worker.js", {
@@ -102,13 +100,12 @@ Deno.test({
     };
 
     await promise;
+    throwingWorker.terminate();
   },
 });
 
 Deno.test({
-  name: "workerCanUseFetch",
-  // FIXME(bartlomieju):
-  disableOpSanitizer: true,
+  name: "worker fetch API",
   fn: async function (): Promise<void> {
     const promise = createResolvable();
 
@@ -126,6 +123,62 @@ Deno.test({
     fetchingWorker.onmessage = (e): void => {
       assert(e.data === "Done!");
       promise.resolve();
+    };
+
+    await promise;
+    fetchingWorker.terminate();
+  },
+});
+
+Deno.test({
+  name: "worker terminate busy loop",
+  fn: async function (): Promise<void> {
+    const promise = createResolvable();
+
+    const busyWorker = new Worker("../tests/subdir/busy_worker.js", {
+      type: "module",
+    });
+
+    let testResult = 0;
+
+    busyWorker.onmessage = (e): void => {
+      testResult = e.data;
+      if (testResult >= 10000) {
+        busyWorker.terminate();
+        busyWorker.onmessage = (_e): void => {
+          throw new Error("unreachable");
+        };
+        setTimeout(() => {
+          assertEquals(testResult, 10000);
+          promise.resolve();
+        }, 100);
+      }
+    };
+
+    busyWorker.postMessage("ping");
+    await promise;
+  },
+});
+
+Deno.test({
+  name: "worker race condition",
+  fn: async function (): Promise<void> {
+    // See issue for details
+    // https://github.com/denoland/deno/issues/4080
+    const promise = createResolvable();
+
+    const racyWorker = new Worker("../tests/subdir/racy_worker.js", {
+      type: "module",
+    });
+
+    racyWorker.onmessage = (e): void => {
+      assertEquals(e.data.buf.length, 999999);
+      racyWorker.onmessage = (_e): void => {
+        throw new Error("unreachable");
+      };
+      setTimeout(() => {
+        promise.resolve();
+      }, 100);
     };
 
     await promise;
