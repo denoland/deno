@@ -5,6 +5,7 @@ import {
   ConsoleHandler,
   WriterHandler,
   FileHandler,
+  RotatingFileHandler,
 } from "./handlers.ts";
 import { assert } from "../testing/asserts.ts";
 
@@ -47,6 +48,7 @@ export const handlers = {
   ConsoleHandler,
   WriterHandler,
   FileHandler,
+  RotatingFileHandler,
 };
 
 export function getLogger(name?: string): Logger {
