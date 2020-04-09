@@ -1314,7 +1314,7 @@ interface CustomEventInit<T = any> extends EventInit {
   detail?: T;
 }
 
-declare var CustomEvent: {
+declare const CustomEvent: {
   prototype: CustomEvent;
   new <T>(typeArg: string, eventInitDict?: CustomEventInit<T>): CustomEvent<T>;
 };
