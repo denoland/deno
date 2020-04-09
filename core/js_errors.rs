@@ -81,11 +81,12 @@ impl JSError {
 
     let maybe_call_sites =
       get_property(scope, context, exception, "__callSiteEvals");
+    let maybe_call_sites: Option<v8::Local<v8::Array>> =
+      maybe_call_sites.and_then(|a| a.try_into().ok());
 
     let already_source_mapped;
     let frames = if let Some(call_sites) = maybe_call_sites {
       already_source_mapped = true;
-      let call_sites: v8::Local<v8::Array> = call_sites.try_into().unwrap();
       let mut output: Vec<JSStackFrame> = vec![];
       for i in 0..call_sites.length() {
         let call_site: v8::Local<v8::Object> = call_sites

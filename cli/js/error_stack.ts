@@ -231,8 +231,11 @@ function prepareStackTrace(
         }
       )
       .map((callSite): string => {
-        // @ts-ignore
-        error["__callSiteEvals"].push(evaluateCallSite(callSite));
+        const callSiteEv = evaluateCallSite(callSite);
+        if (callSiteEv.lineNumber != null && callSiteEv.columnNumber != null) {
+          // @ts-ignore
+          error["__callSiteEvals"].push(callSiteEv);
+        }
         return `    at ${callSiteToString(callSite)}`;
       })
       .join("\n");
