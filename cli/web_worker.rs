@@ -8,6 +8,7 @@ use deno_core::StartupData;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
 use futures::SinkExt;
+use futures::channel::oneshot;
 use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -24,6 +25,11 @@ use std::task::Poll;
 pub struct WebWorker {
   worker: Worker,
   is_ready: bool,
+  
+  #[allow(unused)]
+  event_loop_idle: bool,
+  #[allow(unused)]
+  terminate_channel: (oneshot::Sender<()>, oneshot::Receiver<()>),
 }
 
 impl WebWorker {
@@ -42,9 +48,13 @@ impl WebWorker {
       ops::fetch::init(isolate, &state);
     }
 
+    let terminate_channel = oneshot::channel::<()>();
+
     Self {
       worker,
       is_ready: false,
+      event_loop_idle: false,
+      terminate_channel,
     }
   }
 }
@@ -69,7 +79,26 @@ impl Future for WebWorker {
     let inner = self.get_mut();
     let worker = &mut inner.worker;
 
+    use std::sync::atomic::Ordering;
+    let terminated = worker.terminated.load(Ordering::Relaxed);
+
+    eprintln!("poll web worker");
+    if terminated {
+      return Poll::Ready(Ok(()));
+    }
+    // TODO:
+    // if inner.terminated {
+    //   return Poll::Ready(Ok(()));
+    // }
+
+    // TODO: rename `event_loop_idle`
     if !inner.is_ready {
+      // TODO: select with terminate channel
+      // match select(worker, inner.terminate_channel.receiver).poll_unpin(cx) {
+
+      // }
+
+      eprintln!("poll web worker inner");
       match worker.poll_unpin(cx) {
         Poll::Ready(r) => {
           if let Err(e) = r {
@@ -100,13 +129,16 @@ impl Future for WebWorker {
       }
     };
 
+    // let terminated = worker.terminated.load(Ordering::Relaxed);
+    eprintln!("poll web worker before message callback {:#?}", maybe_msg);
+
     if let Some(msg) = maybe_msg {
       // TODO: just add second value and then bind using rusty_v8
       // to get structured clone/transfer working
       let script = format!("workerMessageRecvCallback({})", msg);
-      worker
-        .execute(&script)
-        .expect("Failed to execute message cb");
+      let result = worker.execute(&script);
+
+      eprintln!("execute result {:#?}", result);
       // Let worker be polled again
       inner.is_ready = false;
       worker.waker.wake();

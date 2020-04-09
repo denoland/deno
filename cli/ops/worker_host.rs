@@ -197,7 +197,7 @@ fn op_host_terminate_worker(
   let mut state = state.borrow_mut();
   let (join_handle, worker_handle) =
     state.workers.remove(&id).expect("No worker handle found");
-  worker_handle.terminate();
+  futures::executor::block_on(worker_handle.terminate());
   join_handle.join().expect("Panic in worker thread");
   Ok(JsonOp::Sync(json!({})))
 }
