@@ -75,12 +75,12 @@ impl JSError {
 
     let msg = v8::Exception::create_message(scope, exception);
 
-    let exception: v8::Local<v8::Object> =
-      exception.clone().try_into().unwrap();
-    let _ = get_property(scope, context, exception, "stack");
+    let exception: Option<v8::Local<v8::Object>> =
+      exception.clone().try_into().ok();
+    let _ = exception.map(|e| get_property(scope, context, e, "stack"));
 
-    let maybe_call_sites =
-      get_property(scope, context, exception, "__callSiteEvals");
+    let maybe_call_sites = exception
+      .and_then(|e| get_property(scope, context, e, "__callSiteEvals"));
     let maybe_call_sites: Option<v8::Local<v8::Array>> =
       maybe_call_sites.and_then(|a| a.try_into().ok());
 
