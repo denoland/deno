@@ -35,13 +35,14 @@ listenAndServe({ port: 8080 }, async (req) => {
     const u = new URL("./index.html", import.meta.url);
     if (u.protocol.startsWith("http")) {
       // server launched by deno run http(s)://.../server.ts,
-      fetch(u.href).then((resp) => {
+      fetch(u.href).then(async (resp) => {
+        const body = new Uint8Array(await resp.arrayBuffer());
         return req.respond({
           status: resp.status,
           headers: new Headers({
             "content-type": "text/html",
           }),
-          body: resp.body,
+          body,
         });
       });
     } else {
