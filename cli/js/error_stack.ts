@@ -140,7 +140,7 @@ function callSiteToString(callSite: CallSite): string {
     result += "async ";
   }
   if (isPromiseAll) {
-    result += `Promise.all (index ${callSite.getPromiseIndex})`;
+    result += `Promise.all (index ${callSite.getPromiseIndex()})`;
     return result;
   }
   if (isMethodCall) {
