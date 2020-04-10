@@ -140,7 +140,7 @@ function callSiteToString(callSite: CallSite): string {
     result += "async ";
   }
   if (isPromiseAll) {
-    result += `Promise.all (index ${callSite.getPromiseIndex})`;
+    result += `Promise.all (index ${callSite.getPromiseIndex()})`;
     return result;
   }
   if (isMethodCall) {
@@ -163,11 +163,52 @@ function callSiteToString(callSite: CallSite): string {
   return result;
 }
 
+interface CallSiteEval {
+  this: unknown;
+  typeName: string;
+  function: Function;
+  functionName: string;
+  methodName: string;
+  fileName: string;
+  lineNumber: number | null;
+  columnNumber: number | null;
+  evalOrigin: string | null;
+  isToplevel: boolean;
+  isEval: boolean;
+  isNative: boolean;
+  isConstructor: boolean;
+  isAsync: boolean;
+  isPromiseAll: boolean;
+  promiseIndex: number | null;
+}
+
+function evaluateCallSite(callSite: CallSite): CallSiteEval {
+  return {
+    this: callSite.getThis(),
+    typeName: callSite.getTypeName(),
+    function: callSite.getFunction(),
+    functionName: callSite.getFunctionName(),
+    methodName: callSite.getMethodName(),
+    fileName: callSite.getFileName(),
+    lineNumber: callSite.getLineNumber(),
+    columnNumber: callSite.getColumnNumber(),
+    evalOrigin: callSite.getEvalOrigin(),
+    isToplevel: callSite.isToplevel(),
+    isEval: callSite.isEval(),
+    isNative: callSite.isNative(),
+    isConstructor: callSite.isConstructor(),
+    isAsync: callSite.isAsync(),
+    isPromiseAll: callSite.isPromiseAll(),
+    promiseIndex: callSite.getPromiseIndex(),
+  };
+}
+
 function prepareStackTrace(
   error: Error,
   structuredStackTrace: CallSite[]
 ): string {
-  return (
+  Object.defineProperty(error, "__callSiteEvals", { value: [] });
+  const errorString =
     `${error.name}: ${error.message}\n` +
     structuredStackTrace
       .map(
@@ -188,9 +229,18 @@ function prepareStackTrace(
           return callSite;
         }
       )
-      .map((callSite): string => `    at ${callSiteToString(callSite)}`)
-      .join("\n")
-  );
+      .map((callSite): string => {
+        const callSiteEv = Object.freeze(evaluateCallSite(callSite));
+        if (callSiteEv.lineNumber != null && callSiteEv.columnNumber != null) {
+          // @ts-ignore
+          error["__callSiteEvals"].push(callSiteEv);
+        }
+        return `    at ${callSiteToString(callSite)}`;
+      })
+      .join("\n");
+  // @ts-ignore
+  Object.freeze(error["__callSiteEvals"]);
+  return errorString;
 }
 
 // @internal

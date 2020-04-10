@@ -49,11 +49,16 @@ pub fn apply_source_map<G: SourceMapGetter>(
 ) -> deno_core::JSError {
   let mut mappings_map: CachedMaps = HashMap::new();
 
-  let mut frames = Vec::<JSStackFrame>::new();
-  for frame in &js_error.frames {
-    let f = frame_apply_source_map(&frame, &mut mappings_map, getter);
-    frames.push(f);
-  }
+  let frames = if !js_error.already_source_mapped {
+    let mut frames = Vec::<JSStackFrame>::new();
+    for frame in &js_error.frames {
+      let f = frame_apply_source_map(&frame, &mut mappings_map, getter);
+      frames.push(f);
+    }
+    frames
+  } else {
+    js_error.frames.clone()
+  };
 
   let (script_resource_name, line_number, start_column) =
     get_maybe_orig_position(
@@ -98,6 +103,7 @@ pub fn apply_source_map<G: SourceMapGetter>(
     start_column,
     end_column,
     frames,
+    already_source_mapped: js_error.already_source_mapped,
   }
 }
 
@@ -121,6 +127,7 @@ fn frame_apply_source_map<G: SourceMapGetter>(
     column,
     is_eval: frame.is_eval,
     is_constructor: frame.is_constructor,
+    is_async: frame.is_async,
   }
 }
 
@@ -255,6 +262,7 @@ mod tests {
           function_name: "foo".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
         JSStackFrame {
           line_number: 5,
@@ -263,6 +271,7 @@ mod tests {
           function_name: "qat".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
         JSStackFrame {
           line_number: 1,
@@ -271,8 +280,10 @@ mod tests {
           function_name: "".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
       ],
+      already_source_mapped: false,
     };
     let getter = MockSourceMapGetter {};
     let actual = apply_source_map(&core_js_error, &getter);
@@ -291,6 +302,7 @@ mod tests {
           function_name: "foo".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
         JSStackFrame {
           line_number: 4,
@@ -299,6 +311,7 @@ mod tests {
           function_name: "qat".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
         JSStackFrame {
           line_number: 1,
@@ -307,8 +320,10 @@ mod tests {
           function_name: "".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
       ],
+      already_source_mapped: false,
     };
     assert_eq!(actual, expected);
   }
@@ -329,7 +344,9 @@ mod tests {
         function_name: "setLogDebug".to_string(),
         is_eval: false,
         is_constructor: false,
+        is_async: false,
       }],
+      already_source_mapped: false,
     };
     let getter = MockSourceMapGetter {};
     let actual = apply_source_map(&e, &getter);
@@ -348,6 +365,7 @@ mod tests {
       start_column: Some(16),
       end_column: None,
       frames: vec![],
+      already_source_mapped: false,
     };
     let getter = MockSourceMapGetter {};
     let actual = apply_source_map(&e, &getter);

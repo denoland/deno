@@ -155,9 +155,21 @@ fn format_stack_frame(frame: &JSStackFrame, is_internal_frame: bool) -> String {
     source_loc = colors::gray(source_loc).to_string();
   }
   if !frame.function_name.is_empty() {
-    format!("{} {} {}", at_prefix, function_name, source_loc)
+    if frame.is_async {
+      format!(
+        "{} {} {} {}",
+        at_prefix,
+        colors::gray("async".to_owned()).to_string(),
+        function_name,
+        source_loc
+      )
+    } else {
+      format!("{} {} {}", at_prefix, function_name, source_loc)
+    }
   } else if frame.is_eval {
     format!("{} eval {}", at_prefix, source_loc)
+  } else if frame.is_async {
+    format!("{} async {}", at_prefix, source_loc)
   } else {
     format!("{} {}", at_prefix, source_loc)
   }
@@ -272,6 +284,7 @@ mod tests {
           function_name: "foo".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
         JSStackFrame {
           line_number: 5,
@@ -280,6 +293,7 @@ mod tests {
           function_name: "qat".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
         JSStackFrame {
           line_number: 1,
@@ -288,8 +302,10 @@ mod tests {
           function_name: "".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
       ],
+      already_source_mapped: true,
     };
     let formatted_error = JSError(core_js_error).to_string();
     let actual = strip_ansi_codes(&formatted_error);
