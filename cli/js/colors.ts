@@ -62,3 +62,16 @@ export function white(str: string): string {
 export function gray(str: string): string {
   return run(str, code(90, 39));
 }
+
+// https://github.com/chalk/ansi-regex/blob/2b56fb0c7a07108e5b54241e8faec160d393aedb/index.js
+const ANSI_PATTERN = new RegExp(
+  [
+    "[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)",
+    "(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))",
+  ].join("|"),
+  "g"
+);
+
+export function stripColor(string: string): string {
+  return string.replace(ANSI_PATTERN, "");
+}
