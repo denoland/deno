@@ -3,8 +3,10 @@ import { assertEquals, assertThrows } from "../testing/asserts.ts";
 import { delay } from "../util/async.ts";
 import { signal, onSignal } from "./mod.ts";
 
-if (Deno.build.os !== "win") {
-  test("signal() throws when called with empty signals", (): void => {
+test({
+  name: "signal() throws when called with empty signals",
+  ignore: Deno.build.os === "win",
+  fn() {
     assertThrows(
       () => {
         // @ts-ignore
@@ -13,83 +15,77 @@ if (Deno.build.os !== "win") {
       Error,
       "No signals are given. You need to specify at least one signal to create a signal stream."
     );
-  });
+  },
+});
 
-  test({
-    name: "signal() iterates for multiple signals",
-    fn: async (): Promise<void> => {
-      // This prevents the program from exiting.
-      const t = setInterval(() => {}, 1000);
+test({
+  name: "signal() iterates for multiple signals",
+  ignore: Deno.build.os === "win",
+  fn: async (): Promise<void> => {
+    // This prevents the program from exiting.
+    const t = setInterval(() => {}, 1000);
 
-      let c = 0;
-      const sig = signal(
-        Deno.Signal.SIGUSR1,
-        Deno.Signal.SIGUSR2,
-        Deno.Signal.SIGINT
-      );
+    let c = 0;
+    const sig = signal(
+      Deno.Signal.SIGUSR1,
+      Deno.Signal.SIGUSR2,
+      Deno.Signal.SIGINT
+    );
 
-      setTimeout(async () => {
-        await delay(20);
-        Deno.kill(Deno.pid, Deno.Signal.SIGINT);
-        await delay(20);
-        Deno.kill(Deno.pid, Deno.Signal.SIGUSR2);
-        await delay(20);
-        Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
-        await delay(20);
-        Deno.kill(Deno.pid, Deno.Signal.SIGUSR2);
-        await delay(20);
-        Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
-        await delay(20);
-        Deno.kill(Deno.pid, Deno.Signal.SIGINT);
-        await delay(20);
-        sig.dispose();
-      });
-
-      for await (const _ of sig) {
-        c += 1;
-      }
-
-      assertEquals(c, 6);
-
-      clearTimeout(t);
-      // Clear timeout clears interval, but interval promise is not
-      // yet resolved, delay to next turn of event loop otherwise,
-      // we'll be leaking resources.
-      await delay(10);
-    },
-  });
-
-  test({
-    name: "onSignal() registers and disposes of event handler",
-    async fn() {
-      // This prevents the program from exiting.
-      const t = setInterval(() => {}, 1000);
-
-      let calledCount = 0;
-      const handle = onSignal(Deno.Signal.SIGINT, () => {
-        calledCount++;
-      });
-
-      await delay(20);
-      Deno.kill(Deno.pid, Deno.Signal.SIGINT);
+    setTimeout(async () => {
       await delay(20);
       Deno.kill(Deno.pid, Deno.Signal.SIGINT);
       await delay(20);
       Deno.kill(Deno.pid, Deno.Signal.SIGUSR2);
       await delay(20);
-      handle.dispose(); // stop monitoring SIGINT
+      Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
+      await delay(20);
+      Deno.kill(Deno.pid, Deno.Signal.SIGUSR2);
       await delay(20);
       Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
       await delay(20);
       Deno.kill(Deno.pid, Deno.Signal.SIGINT);
       await delay(20);
-      assertEquals(calledCount, 2);
+      sig.dispose();
+    });
 
-      clearTimeout(t);
-      // Clear timeout clears interval, but interval promise is not
-      // yet resolved, delay to next turn of event loop otherwise,
-      // we'll be leaking resources.
-      await delay(10);
-    },
-  });
-}
+    for await (const _ of sig) {
+      c += 1;
+    }
+
+    assertEquals(c, 6);
+
+    clearTimeout(t);
+  },
+});
+
+test({
+  name: "onSignal() registers and disposes of event handler",
+  ignore: Deno.build.os === "win",
+  async fn() {
+    // This prevents the program from exiting.
+    const t = setInterval(() => {}, 1000);
+
+    let calledCount = 0;
+    const handle = onSignal(Deno.Signal.SIGINT, () => {
+      calledCount++;
+    });
+
+    await delay(20);
+    Deno.kill(Deno.pid, Deno.Signal.SIGINT);
+    await delay(20);
+    Deno.kill(Deno.pid, Deno.Signal.SIGINT);
+    await delay(20);
+    Deno.kill(Deno.pid, Deno.Signal.SIGUSR2);
+    await delay(20);
+    handle.dispose(); // stop monitoring SIGINT
+    await delay(20);
+    Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
+    await delay(20);
+    Deno.kill(Deno.pid, Deno.Signal.SIGINT);
+    await delay(20);
+    assertEquals(calledCount, 2);
+
+    clearTimeout(t);
+  },
+});
