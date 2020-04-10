@@ -15,6 +15,9 @@ export type Disposable = { dispose: () => void };
  *         console.log("interrupt or usr1 signal received");
  *       }
  *
+ *       // At some other point in your code when finished listening:
+ *       sig.dispose();
+ *
  * @param signos - one or more `Deno.Signal`s to await on
  */
 export function signal(
