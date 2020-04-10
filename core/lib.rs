@@ -8,6 +8,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
+mod dispatch_json;
 mod any_error;
 mod bindings;
 mod es_isolate;
@@ -33,6 +34,7 @@ pub use crate::modules::*;
 pub use crate::ops::*;
 pub use crate::plugins::*;
 pub use crate::resources::*;
+pub use crate::dispatch_json::*;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()

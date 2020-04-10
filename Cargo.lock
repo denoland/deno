@@ -520,6 +520,8 @@ dependencies = [
  "libc",
  "log 0.4.8",
  "rusty_v8",
+ "serde",
+ "serde_derive",
  "serde_json",
  "tokio",
  "url 2.1.1",
