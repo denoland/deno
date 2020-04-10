@@ -5,6 +5,7 @@
 
 type Reader = Deno.Reader;
 type Writer = Deno.Writer;
+type SyncWriter = Deno.SyncWriter;
 import { charCode, copyBytes } from "./util.ts";
 import { assert } from "../testing/asserts.ts";
 
@@ -400,6 +401,40 @@ export class BufReader implements Reader {
   }
 }
 
+abstract class AbstractBufBase {
+  buf!: Uint8Array;
+  usedBufferBytes = 0;
+  err: Error | null = null;
+
+  /** Size returns the size of the underlying buffer in bytes. */
+  size(): number {
+    return this.buf.byteLength;
+  }
+
+  /** Returns how many bytes are unused in the buffer. */
+  available(): number {
+    return this.buf.byteLength - this.usedBufferBytes;
+  }
+
+  /** buffered returns the number of bytes that have been written into the
+   * current buffer.
+   */
+  buffered(): number {
+    return this.usedBufferBytes;
+  }
+
+  checkBytesWritten(numBytesWritten: number): void {
+    if (numBytesWritten < this.usedBufferBytes) {
+      if (numBytesWritten > 0) {
+        this.buf.copyWithin(0, numBytesWritten, this.usedBufferBytes);
+        this.usedBufferBytes -= numBytesWritten;
+      }
+      this.err = new Error("Short write");
+      throw this.err;
+    }
+  }
+}
+
 /** BufWriter implements buffering for an deno.Writer object.
  * If an error occurs writing to a Writer, no more data will be
  * accepted and all subsequent writes, and flush(), will return the error.
@@ -407,26 +442,18 @@ export class BufReader implements Reader {
  * flush() method to guarantee all data has been forwarded to
  * the underlying deno.Writer.
  */
-export class BufWriter implements Writer {
-  buf: Uint8Array;
-  usedBufferBytes = 0;
-  err: Error | null = null;
-
+export class BufWriter extends AbstractBufBase implements Writer {
   /** return new BufWriter unless writer is BufWriter */
   static create(writer: Writer, size: number = DEFAULT_BUF_SIZE): BufWriter {
     return writer instanceof BufWriter ? writer : new BufWriter(writer, size);
   }
 
   constructor(private writer: Writer, size: number = DEFAULT_BUF_SIZE) {
+    super();
     if (size <= 0) {
       size = DEFAULT_BUF_SIZE;
     }
     this.buf = new Uint8Array(size);
-  }
-
-  /** Size returns the size of the underlying buffer in bytes. */
-  size(): number {
-    return this.buf.byteLength;
   }
 
   /** Discards any unflushed buffered data, clears any error, and
@@ -453,28 +480,9 @@ export class BufWriter implements Writer {
       throw e;
     }
 
-    if (numBytesWritten < this.usedBufferBytes) {
-      if (numBytesWritten > 0) {
-        this.buf.copyWithin(0, numBytesWritten, this.usedBufferBytes);
-        this.usedBufferBytes -= numBytesWritten;
-      }
-      this.err = new Error("Short write");
-      throw this.err;
-    }
+    this.checkBytesWritten(numBytesWritten);
 
     this.usedBufferBytes = 0;
-  }
-
-  /** Returns how many bytes are unused in the buffer. */
-  available(): number {
-    return this.buf.byteLength - this.usedBufferBytes;
-  }
-
-  /** buffered returns the number of bytes that have been written into the
-   * current buffer.
-   */
-  buffered(): number {
-    return this.usedBufferBytes;
   }
 
   /** Writes the contents of data into the buffer.
@@ -500,6 +508,96 @@ export class BufWriter implements Writer {
         numBytesWritten = copyBytes(this.buf, data, this.usedBufferBytes);
         this.usedBufferBytes += numBytesWritten;
         await this.flush();
+      }
+      totalBytesWritten += numBytesWritten;
+      data = data.subarray(numBytesWritten);
+    }
+
+    numBytesWritten = copyBytes(this.buf, data, this.usedBufferBytes);
+    this.usedBufferBytes += numBytesWritten;
+    totalBytesWritten += numBytesWritten;
+    return totalBytesWritten;
+  }
+}
+
+/** BufWriterSync implements buffering for a deno.SyncWriter object.
+ * If an error occurs writing to a SyncWriter, no more data will be
+ * accepted and all subsequent writes, and flush(), will return the error.
+ * After all data has been written, the client should call the
+ * flush() method to guarantee all data has been forwarded to
+ * the underlying deno.SyncWriter.
+ */
+export class BufWriterSync extends AbstractBufBase implements SyncWriter {
+  /** return new BufWriterSync unless writer is BufWriterSync */
+  static create(
+    writer: SyncWriter,
+    size: number = DEFAULT_BUF_SIZE
+  ): BufWriterSync {
+    return writer instanceof BufWriterSync
+      ? writer
+      : new BufWriterSync(writer, size);
+  }
+
+  constructor(private writer: SyncWriter, size: number = DEFAULT_BUF_SIZE) {
+    super();
+    if (size <= 0) {
+      size = DEFAULT_BUF_SIZE;
+    }
+    this.buf = new Uint8Array(size);
+  }
+
+  /** Discards any unflushed buffered data, clears any error, and
+   * resets buffer to write its output to w.
+   */
+  reset(w: SyncWriter): void {
+    this.err = null;
+    this.usedBufferBytes = 0;
+    this.writer = w;
+  }
+
+  /** Flush writes any buffered data to the underlying io.SyncWriter. */
+  flush(): void {
+    if (this.err !== null) throw this.err;
+    if (this.usedBufferBytes === 0) return;
+
+    let numBytesWritten = 0;
+    try {
+      numBytesWritten = this.writer.writeSync(
+        this.buf.subarray(0, this.usedBufferBytes)
+      );
+    } catch (e) {
+      this.err = e;
+      throw e;
+    }
+
+    this.checkBytesWritten(numBytesWritten);
+
+    this.usedBufferBytes = 0;
+  }
+
+  /** Writes the contents of data into the buffer.
+   * Returns the number of bytes written.
+   */
+  writeSync(data: Uint8Array): number {
+    if (this.err !== null) throw this.err;
+    if (data.length === 0) return 0;
+
+    let totalBytesWritten = 0;
+    let numBytesWritten = 0;
+    while (data.byteLength > this.available()) {
+      if (this.buffered() === 0) {
+        // Large write, empty buffer.
+        // Write directly from data to avoid copy.
+        try {
+          numBytesWritten = this.writer.writeSync(data);
+        } catch (e) {
+          this.err = e;
+          throw e;
+        }
+      } else {
+        numBytesWritten = copyBytes(this.buf, data, this.usedBufferBytes);
+        this.usedBufferBytes += numBytesWritten;
+        this.flush();
       }
       totalBytesWritten += numBytesWritten;
       data = data.subarray(numBytesWritten);
