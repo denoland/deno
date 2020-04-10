@@ -12,15 +12,7 @@
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 
 declare interface WindowOrWorkerGlobalScope {
-  // methods
-  fetch: typeof __fetch.fetch;
-  // properties
-  File: __domTypes.DomFileConstructor;
-  Headers: __domTypes.HeadersConstructor;
-  FormData: __domTypes.FormDataConstructor;
   ReadableStream: __domTypes.ReadableStreamConstructor;
-  Request: __domTypes.RequestConstructor;
-  Response: typeof __fetch.Response;
   location: __domTypes.Location;
 }
 
@@ -43,9 +35,7 @@ declare namespace WebAssembly {
    * source. This function is useful if it is necessary to a compile a module
    * before it can be instantiated (otherwise, the
    * `WebAssembly.instantiateStreaming()` function should be used). */
-  function compileStreaming(
-    source: Promise<__domTypes.Response>
-  ): Promise<Module>;
+  function compileStreaming(source: Promise<Response>): Promise<Module>;
 
   /** Takes the WebAssembly binary code, in the form of a typed array or
    * `ArrayBuffer`, and performs both compilation and instantiation in one step.
@@ -68,7 +58,7 @@ declare namespace WebAssembly {
    * underlying source. This is the most efficient, optimized way to load wasm
    * code. */
   function instantiateStreaming(
-    source: Promise<__domTypes.Response>,
+    source: Promise<Response>,
     importObject?: object
   ): Promise<WebAssemblyInstantiatedSource>;
 
@@ -196,8 +186,6 @@ declare namespace WebAssembly {
   }
 }
 
-declare const fetch: typeof __fetch.fetch;
-
 /** Sets a timer which executes a function once after the timer expires. */
 declare function setTimeout(
   cb: (...args: unknown[]) => void,
@@ -215,13 +203,8 @@ declare function clearInterval(id?: number): void;
 declare function queueMicrotask(func: Function): void;
 
 declare const console: Console;
-declare const File: __domTypes.DomFileConstructor;
-declare const Headers: __domTypes.HeadersConstructor;
 declare const location: __domTypes.Location;
-declare const FormData: __domTypes.FormDataConstructor;
 declare const ReadableStream: __domTypes.ReadableStreamConstructor;
-declare const Request: __domTypes.RequestConstructor;
-declare const Response: typeof __fetch.Response;
 
 declare function addEventListener(
   type: string,
@@ -237,13 +220,7 @@ declare function removeEventListener(
   options?: boolean | EventListenerOptions | undefined
 ): void;
 
-declare type Body = __domTypes.Body;
-declare type File = __domTypes.DomFile;
-declare type Headers = __domTypes.Headers;
-declare type FormData = __domTypes.FormData;
 declare type ReadableStream<R = any> = __domTypes.ReadableStream<R>;
-declare type Request = __domTypes.Request;
-declare type Response = __domTypes.Response;
 
 declare interface ImportMeta {
   url: string;
@@ -251,26 +228,6 @@ declare interface ImportMeta {
 }
 
 declare namespace __domTypes {
-  export type HeadersInit =
-    | Headers
-    | Array<[string, string]>
-    | Record<string, string>;
-  type BodyInit =
-    | Blob
-    | BufferSource
-    | FormData
-    | URLSearchParams
-    | ReadableStream
-    | string;
-  export type RequestInfo = Request | string;
-  type ReferrerPolicy =
-    | ""
-    | "no-referrer"
-    | "no-referrer-when-downgrade"
-    | "origin-only"
-    | "origin-when-cross-origin"
-    | "unsafe-url";
-  export type FormDataEntryValue = DomFile | string;
   export interface DomIterable<K, V> {
     keys(): IterableIterator<K>;
     values(): IterableIterator<V>;
@@ -279,52 +236,6 @@ declare namespace __domTypes {
     forEach(
       callback: (value: V, key: K, parent: this) => void,
       thisArg?: any
-    ): void;
-  }
-
-  export interface DomFile extends Blob {
-    readonly lastModified: number;
-    readonly name: string;
-  }
-
-  export interface DomFileConstructor {
-    new (
-      bits: BlobPart[],
-      filename: string,
-      options?: FilePropertyBag
-    ): DomFile;
-    prototype: DomFile;
-  }
-  export interface FilePropertyBag extends BlobPropertyBag {
-    lastModified?: number;
-  }
-
-  interface AbortSignalEventMap {
-    abort: ProgressEvent;
-  }
-
-  interface AbortSignal extends EventTarget {
-    readonly aborted: boolean;
-    onabort: ((this: AbortSignal, ev: ProgressEvent) => any) | null;
-    addEventListener<K extends keyof AbortSignalEventMap>(
-      type: K,
-      listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-      options?: boolean | AddEventListenerOptions
-    ): void;
-    addEventListener(
-      type: string,
-      listener: EventListener,
-      options?: boolean | AddEventListenerOptions
-    ): void;
-    removeEventListener<K extends keyof AbortSignalEventMap>(
-      type: K,
-      listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-      options?: boolean | EventListenerOptions
-    ): void;
-    removeEventListener(
-      type: string,
-      listener: EventListener,
-      options?: boolean | EventListenerOptions
     ): void;
   }
   export interface ReadableStreamReadDoneResult<T> {
@@ -343,12 +254,6 @@ declare namespace __domTypes {
     cancel(reason?: any): Promise<void>;
     read(): Promise<ReadableStreamReadResult<R>>;
     releaseLock(): void;
-  }
-  export interface PipeOptions {
-    preventAbort?: boolean;
-    preventCancel?: boolean;
-    preventClose?: boolean;
-    signal?: AbortSignal;
   }
   export interface UnderlyingSource<R = any> {
     cancel?: ReadableStreamErrorCallback;
@@ -426,249 +331,6 @@ declare namespace __domTypes {
     close(): Promise<void>;
     releaseLock(): void;
     write(chunk: W): Promise<void>;
-  }
-  export interface FormData extends DomIterable<string, FormDataEntryValue> {
-    append(name: string, value: string | Blob, fileName?: string): void;
-    delete(name: string): void;
-    get(name: string): FormDataEntryValue | null;
-    getAll(name: string): FormDataEntryValue[];
-    has(name: string): boolean;
-    set(name: string, value: string | Blob, fileName?: string): void;
-  }
-  export interface FormDataConstructor {
-    new (): FormData;
-    prototype: FormData;
-  }
-  export interface Body {
-    /** A simple getter used to expose a `ReadableStream` of the body contents. */
-    readonly body: ReadableStream<Uint8Array> | null;
-    /** Stores a `Boolean` that declares whether the body has been used in a
-     * response yet.
-     */
-    readonly bodyUsed: boolean;
-    /** Takes a `Response` stream and reads it to completion. It returns a promise
-     * that resolves with an `ArrayBuffer`.
-     */
-    arrayBuffer(): Promise<ArrayBuffer>;
-    /** Takes a `Response` stream and reads it to completion. It returns a promise
-     * that resolves with a `Blob`.
-     */
-    blob(): Promise<Blob>;
-    /** Takes a `Response` stream and reads it to completion. It returns a promise
-     * that resolves with a `FormData` object.
-     */
-    formData(): Promise<FormData>;
-    /** Takes a `Response` stream and reads it to completion. It returns a promise
-     * that resolves with the result of parsing the body text as JSON.
-     */
-    json(): Promise<any>;
-    /** Takes a `Response` stream and reads it to completion. It returns a promise
-     * that resolves with a `USVString` (text).
-     */
-    text(): Promise<string>;
-  }
-  export interface Headers extends DomIterable<string, string> {
-    /** Appends a new value onto an existing header inside a `Headers` object, or
-     * adds the header if it does not already exist.
-     */
-    append(name: string, value: string): void;
-    /** Deletes a header from a `Headers` object. */
-    delete(name: string): void;
-    /** Returns an iterator allowing to go through all key/value pairs
-     * contained in this Headers object. The both the key and value of each pairs
-     * are ByteString objects.
-     */
-    entries(): IterableIterator<[string, string]>;
-    /** Returns a `ByteString` sequence of all the values of a header within a
-     * `Headers` object with a given name.
-     */
-    get(name: string): string | null;
-    /** Returns a boolean stating whether a `Headers` object contains a certain
-     * header.
-     */
-    has(name: string): boolean;
-    /** Returns an iterator allowing to go through all keys contained in
-     * this Headers object. The keys are ByteString objects.
-     */
-    keys(): IterableIterator<string>;
-    /** Sets a new value for an existing header inside a Headers object, or adds
-     * the header if it does not already exist.
-     */
-    set(name: string, value: string): void;
-    /** Returns an iterator allowing to go through all values contained in
-     * this Headers object. The values are ByteString objects.
-     */
-    values(): IterableIterator<string>;
-    forEach(
-      callbackfn: (value: string, key: string, parent: this) => void,
-      thisArg?: any
-    ): void;
-    /** The Symbol.iterator well-known symbol specifies the default
-     * iterator for this Headers object
-     */
-    [Symbol.iterator](): IterableIterator<[string, string]>;
-  }
-  export interface HeadersConstructor {
-    new (init?: HeadersInit): Headers;
-    prototype: Headers;
-  }
-  type RequestCache =
-    | "default"
-    | "no-store"
-    | "reload"
-    | "no-cache"
-    | "force-cache"
-    | "only-if-cached";
-  type RequestCredentials = "omit" | "same-origin" | "include";
-  type RequestDestination =
-    | ""
-    | "audio"
-    | "audioworklet"
-    | "document"
-    | "embed"
-    | "font"
-    | "image"
-    | "manifest"
-    | "object"
-    | "paintworklet"
-    | "report"
-    | "script"
-    | "sharedworker"
-    | "style"
-    | "track"
-    | "video"
-    | "worker"
-    | "xslt";
-  type RequestMode = "navigate" | "same-origin" | "no-cors" | "cors";
-  type RequestRedirect = "follow" | "error" | "manual";
-  type ResponseType =
-    | "basic"
-    | "cors"
-    | "default"
-    | "error"
-    | "opaque"
-    | "opaqueredirect";
-  export interface RequestInit {
-    body?: BodyInit | null;
-    cache?: RequestCache;
-    credentials?: RequestCredentials;
-    headers?: HeadersInit;
-    integrity?: string;
-    keepalive?: boolean;
-    method?: string;
-    mode?: RequestMode;
-    redirect?: RequestRedirect;
-    referrer?: string;
-    referrerPolicy?: ReferrerPolicy;
-    signal?: AbortSignal | null;
-    window?: any;
-  }
-  export interface ResponseInit {
-    headers?: HeadersInit;
-    status?: number;
-    statusText?: string;
-  }
-  export interface RequestConstructor {
-    new (input: RequestInfo, init?: RequestInit): Request;
-    prototype: Request;
-  }
-  export interface Request extends Body {
-    /** Returns the cache mode associated with request, which is a string
-     * indicating how the the request will interact with the browser's cache when
-     * fetching.
-     */
-    readonly cache?: RequestCache;
-    /** Returns the credentials mode associated with request, which is a string
-     * indicating whether credentials will be sent with the request always, never,
-     * or only when sent to a same-origin URL.
-     */
-    readonly credentials?: RequestCredentials;
-    /** Returns the kind of resource requested by request, (e.g., `document` or
-     * `script`).
-     */
-    readonly destination?: RequestDestination;
-    /** Returns a Headers object consisting of the headers associated with
-     * request.
-     *
-     * Note that headers added in the network layer by the user agent
-     * will not be accounted for in this object, (e.g., the `Host` header).
-     */
-    readonly headers: Headers;
-    /** Returns request's subresource integrity metadata, which is a cryptographic
-     * hash of the resource being fetched. Its value consists of multiple hashes
-     * separated by whitespace. [SRI]
-     */
-    readonly integrity?: string;
-    /** Returns a boolean indicating whether or not request is for a history
-     * navigation (a.k.a. back-forward navigation).
-     */
-    readonly isHistoryNavigation?: boolean;
-    /** Returns a boolean indicating whether or not request is for a reload
-     * navigation.
-     */
-    readonly isReloadNavigation?: boolean;
-    /** Returns a boolean indicating whether or not request can outlive the global
-     * in which it was created.
-     */
-    readonly keepalive?: boolean;
-    /** Returns request's HTTP method, which is `GET` by default. */
-    readonly method: string;
-    /** Returns the mode associated with request, which is a string indicating
-     * whether the request will use CORS, or will be restricted to same-origin
-     * URLs.
-     */
-    readonly mode?: RequestMode;
-    /** Returns the redirect mode associated with request, which is a string
-     * indicating how redirects for the request will be handled during fetching.
-     *
-     * A request will follow redirects by default.
-     */
-    readonly redirect?: RequestRedirect;
-    /** Returns the referrer of request. Its value can be a same-origin URL if
-     * explicitly set in init, the empty string to indicate no referrer, and
-     * `about:client` when defaulting to the global's default.
-     *
-     * This is used during fetching to determine the value of the `Referer`
-     * header of the request being made.
-     */
-    readonly referrer?: string;
-    /** Returns the referrer policy associated with request. This is used during
-     * fetching to compute the value of the request's referrer.
-     */
-    readonly referrerPolicy?: ReferrerPolicy;
-    /** Returns the signal associated with request, which is an AbortSignal object
-     * indicating whether or not request has been aborted, and its abort event
-     * handler.
-     */
-    readonly signal?: AbortSignal;
-    /** Returns the URL of request as a string. */
-    readonly url: string;
-    clone(): Request;
-  }
-  export interface Response extends Body {
-    /** Contains the `Headers` object associated with the response. */
-    readonly headers: Headers;
-    /** Contains a boolean stating whether the response was successful (status in
-     * the range 200-299) or not.
-     */
-    readonly ok: boolean;
-    /** Indicates whether or not the response is the result of a redirect; that
-     * is, its URL list has more than one entry.
-     */
-    readonly redirected: boolean;
-    /** Contains the status code of the response (e.g., `200` for a success). */
-    readonly status: number;
-    /** Contains the status message corresponding to the status code (e.g., `OK`
-     * for `200`).
-     */
-    readonly statusText: string;
-    readonly trailer: Promise<Headers>;
-    /** Contains the type of the response (e.g., `basic`, `cors`). */
-    readonly type: ResponseType;
-    /** Contains the URL of the response. */
-    readonly url: string;
-    /** Creates a clone of a `Response` object. */
-    clone(): Response;
   }
   export interface DOMStringList {
     /** Returns the number of strings in strings. */
@@ -765,6 +427,22 @@ declare const Blob: {
   new (blobParts?: BlobPart[], options?: BlobPropertyBag): Blob;
 };
 
+interface FilePropertyBag extends BlobPropertyBag {
+  lastModified?: number;
+}
+
+/** Provides information about files and allows JavaScript in a web page to
+ * access their content. */
+interface File extends Blob {
+  readonly lastModified: number;
+  readonly name: string;
+}
+
+declare const File: {
+  prototype: File;
+  new (fileBits: BlobPart[], fileName: string, options?: FilePropertyBag): File;
+};
+
 declare const isConsoleInstance: unique symbol;
 
 declare class Console {
@@ -831,66 +509,375 @@ declare class Console {
   static [Symbol.hasInstance](instance: Console): boolean;
 }
 
-declare namespace __fetch {
-  class Body
-    implements
-      __domTypes.Body,
-      __domTypes.ReadableStream<Uint8Array>,
-      Deno.ReadCloser {
-    readonly contentType: string;
-    bodyUsed: boolean;
-    readonly locked: boolean;
-    readonly body: __domTypes.ReadableStream<Uint8Array>;
-    constructor(rid: number, contentType: string);
-    arrayBuffer(): Promise<ArrayBuffer>;
-    blob(): Promise<Blob>;
-    formData(): Promise<__domTypes.FormData>;
-    json(): Promise<any>;
-    text(): Promise<string>;
-    read(p: Uint8Array): Promise<number | Deno.EOF>;
-    close(): void;
-    cancel(): Promise<void>;
-    getReader(options: { mode: "byob" }): __domTypes.ReadableStreamBYOBReader;
-    getReader(): __domTypes.ReadableStreamDefaultReader<Uint8Array>;
-    getReader(): __domTypes.ReadableStreamBYOBReader;
-    tee(): [__domTypes.ReadableStream, __domTypes.ReadableStream];
-    [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array>;
-  }
-  export class Response implements __domTypes.Response {
-    readonly url: string;
-    readonly status: number;
-    statusText: string;
-    readonly type: __domTypes.ResponseType;
-    readonly redirected: boolean;
-    headers: __domTypes.Headers;
-    readonly trailer: Promise<__domTypes.Headers>;
-    bodyUsed: boolean;
-    readonly body: Body;
-    constructor(
-      url: string,
-      status: number,
-      statusText: string,
-      headersList: Array<[string, string]>,
-      rid: number,
-      redirected_: boolean,
-      type_?: null | __domTypes.ResponseType,
-      body_?: null | Body
-    );
-    arrayBuffer(): Promise<ArrayBuffer>;
-    blob(): Promise<Blob>;
-    formData(): Promise<__domTypes.FormData>;
-    json(): Promise<any>;
-    text(): Promise<string>;
-    readonly ok: boolean;
-    clone(): __domTypes.Response;
-    redirect(url: URL | string, status: number): __domTypes.Response;
-  }
-  /** Fetch a resource from the network. */
-  export function fetch(
-    input: __domTypes.Request | URL | string,
-    init?: __domTypes.RequestInit
-  ): Promise<Response>;
+type FormDataEntryValue = File | string;
+
+/** Provides a way to easily construct a set of key/value pairs representing
+ * form fields and their values, which can then be easily sent using the
+ * XMLHttpRequest.send() method. It uses the same format a form would use if the
+ * encoding type were set to "multipart/form-data". */
+interface FormData extends __domTypes.DomIterable<string, FormDataEntryValue> {
+  append(name: string, value: string | Blob, fileName?: string): void;
+  delete(name: string): void;
+  get(name: string): FormDataEntryValue | null;
+  getAll(name: string): FormDataEntryValue[];
+  has(name: string): boolean;
+  set(name: string, value: string | Blob, fileName?: string): void;
 }
+
+declare const FormData: {
+  prototype: FormData;
+  // TODO(ry) FormData constructor is non-standard.
+  // new(form?: HTMLFormElement): FormData;
+  new (): FormData;
+};
+
+interface Body {
+  /** A simple getter used to expose a `ReadableStream` of the body contents. */
+  readonly body: ReadableStream<Uint8Array> | null;
+  /** Stores a `Boolean` that declares whether the body has been used in a
+   * response yet.
+   */
+  readonly bodyUsed: boolean;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with an `ArrayBuffer`.
+   */
+  arrayBuffer(): Promise<ArrayBuffer>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with a `Blob`.
+   */
+  blob(): Promise<Blob>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with a `FormData` object.
+   */
+  formData(): Promise<FormData>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with the result of parsing the body text as JSON.
+   */
+  json(): Promise<any>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with a `USVString` (text).
+   */
+  text(): Promise<string>;
+}
+
+type HeadersInit = Headers | string[][] | Record<string, string>;
+
+/** This Fetch API interface allows you to perform various actions on HTTP
+ * request and response headers. These actions include retrieving, setting,
+ * adding to, and removing. A Headers object has an associated header list,
+ * which is initially empty and consists of zero or more name and value pairs.
+ *  You can add to this using methods like append() (see Examples.) In all
+ * methods of this interface, header names are matched by case-insensitive byte
+ * sequence. */
+interface Headers {
+  append(name: string, value: string): void;
+  delete(name: string): void;
+  get(name: string): string | null;
+  has(name: string): boolean;
+  set(name: string, value: string): void;
+  forEach(
+    callbackfn: (value: string, key: string, parent: Headers) => void,
+    thisArg?: any
+  ): void;
+}
+
+interface Headers extends __domTypes.DomIterable<string, string> {
+  /** Appends a new value onto an existing header inside a `Headers` object, or
+   * adds the header if it does not already exist.
+   */
+  append(name: string, value: string): void;
+  /** Deletes a header from a `Headers` object. */
+  delete(name: string): void;
+  /** Returns an iterator allowing to go through all key/value pairs
+   * contained in this Headers object. The both the key and value of each pairs
+   * are ByteString objects.
+   */
+  entries(): IterableIterator<[string, string]>;
+  /** Returns a `ByteString` sequence of all the values of a header within a
+   * `Headers` object with a given name.
+   */
+  get(name: string): string | null;
+  /** Returns a boolean stating whether a `Headers` object contains a certain
+   * header.
+   */
+  has(name: string): boolean;
+  /** Returns an iterator allowing to go through all keys contained in
+   * this Headers object. The keys are ByteString objects.
+   */
+  keys(): IterableIterator<string>;
+  /** Sets a new value for an existing header inside a Headers object, or adds
+   * the header if it does not already exist.
+   */
+  set(name: string, value: string): void;
+  /** Returns an iterator allowing to go through all values contained in
+   * this Headers object. The values are ByteString objects.
+   */
+  values(): IterableIterator<string>;
+  forEach(
+    callbackfn: (value: string, key: string, parent: this) => void,
+    thisArg?: any
+  ): void;
+  /** The Symbol.iterator well-known symbol specifies the default
+   * iterator for this Headers object
+   */
+  [Symbol.iterator](): IterableIterator<[string, string]>;
+}
+
+declare const Headers: {
+  prototype: Headers;
+  new (init?: HeadersInit): Headers;
+};
+
+type RequestInfo = Request | string;
+type RequestCache =
+  | "default"
+  | "force-cache"
+  | "no-cache"
+  | "no-store"
+  | "only-if-cached"
+  | "reload";
+type RequestCredentials = "include" | "omit" | "same-origin";
+type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
+type RequestRedirect = "error" | "follow" | "manual";
+type ReferrerPolicy =
+  | ""
+  | "no-referrer"
+  | "no-referrer-when-downgrade"
+  | "origin"
+  | "origin-when-cross-origin"
+  | "same-origin"
+  | "strict-origin"
+  | "strict-origin-when-cross-origin"
+  | "unsafe-url";
+type BodyInit =
+  | Blob
+  | BufferSource
+  | FormData
+  | URLSearchParams
+  | ReadableStream<Uint8Array>
+  | string;
+type RequestDestination =
+  | ""
+  | "audio"
+  | "audioworklet"
+  | "document"
+  | "embed"
+  | "font"
+  | "image"
+  | "manifest"
+  | "object"
+  | "paintworklet"
+  | "report"
+  | "script"
+  | "sharedworker"
+  | "style"
+  | "track"
+  | "video"
+  | "worker"
+  | "xslt";
+
+interface RequestInit {
+  /**
+   * A BodyInit object or null to set request's body.
+   */
+  body?: BodyInit | null;
+  /**
+   * A string indicating how the request will interact with the browser's cache
+   * to set request's cache.
+   */
+  cache?: RequestCache;
+  /**
+   * A string indicating whether credentials will be sent with the request
+   * always, never, or only when sent to a same-origin URL. Sets request's
+   * credentials.
+   */
+  credentials?: RequestCredentials;
+  /**
+   * A Headers object, an object literal, or an array of two-item arrays to set
+   * request's headers.
+   */
+  headers?: HeadersInit;
+  /**
+   * A cryptographic hash of the resource to be fetched by request. Sets
+   * request's integrity.
+   */
+  integrity?: string;
+  /**
+   * A boolean to set request's keepalive.
+   */
+  keepalive?: boolean;
+  /**
+   * A string to set request's method.
+   */
+  method?: string;
+  /**
+   * A string to indicate whether the request will use CORS, or will be
+   * restricted to same-origin URLs. Sets request's mode.
+   */
+  mode?: RequestMode;
+  /**
+   * A string indicating whether request follows redirects, results in an error
+   * upon encountering a redirect, or returns the redirect (in an opaque
+   * fashion). Sets request's redirect.
+   */
+  redirect?: RequestRedirect;
+  /**
+   * A string whose value is a same-origin URL, "about:client", or the empty
+   * string, to set request's referrer.
+   */
+  referrer?: string;
+  /**
+   * A referrer policy to set request's referrerPolicy.
+   */
+  referrerPolicy?: ReferrerPolicy;
+  /**
+   * An AbortSignal to set request's signal.
+   */
+  signal?: AbortSignal | null;
+  /**
+   * Can only be null. Used to disassociate request from any Window.
+   */
+  window?: any;
+}
+
+/** This Fetch API interface represents a resource request. */
+interface Request extends Body {
+  /**
+   * Returns the cache mode associated with request, which is a string
+   * indicating how the request will interact with the browser's cache when
+   * fetching.
+   */
+  readonly cache: RequestCache;
+  /**
+   * Returns the credentials mode associated with request, which is a string
+   * indicating whether credentials will be sent with the request always, never,
+   * or only when sent to a same-origin URL.
+   */
+  readonly credentials: RequestCredentials;
+  /**
+   * Returns the kind of resource requested by request, e.g., "document" or "script".
+   */
+  readonly destination: RequestDestination;
+  /**
+   * Returns a Headers object consisting of the headers associated with request.
+   * Note that headers added in the network layer by the user agent will not be
+   * accounted for in this object, e.g., the "Host" header.
+   */
+  readonly headers: Headers;
+  /**
+   * Returns request's subresource integrity metadata, which is a cryptographic
+   * hash of the resource being fetched. Its value consists of multiple hashes
+   * separated by whitespace. [SRI]
+   */
+  readonly integrity: string;
+  /**
+   * Returns a boolean indicating whether or not request is for a history
+   * navigation (a.k.a. back-foward navigation).
+   */
+  readonly isHistoryNavigation: boolean;
+  /**
+   * Returns a boolean indicating whether or not request is for a reload
+   * navigation.
+   */
+  readonly isReloadNavigation: boolean;
+  /**
+   * Returns a boolean indicating whether or not request can outlive the global
+   * in which it was created.
+   */
+  readonly keepalive: boolean;
+  /**
+   * Returns request's HTTP method, which is "GET" by default.
+   */
+  readonly method: string;
+  /**
+   * Returns the mode associated with request, which is a string indicating
+   * whether the request will use CORS, or will be restricted to same-origin
+   * URLs.
+   */
+  readonly mode: RequestMode;
+  /**
+   * Returns the redirect mode associated with request, which is a string
+   * indicating how redirects for the request will be handled during fetching. A
+   * request will follow redirects by default.
+   */
+  readonly redirect: RequestRedirect;
+  /**
+   * Returns the referrer of request. Its value can be a same-origin URL if
+   * explicitly set in init, the empty string to indicate no referrer, and
+   * "about:client" when defaulting to the global's default. This is used during
+   * fetching to determine the value of the `Referer` header of the request
+   * being made.
+   */
+  readonly referrer: string;
+  /**
+   * Returns the referrer policy associated with request. This is used during
+   * fetching to compute the value of the request's referrer.
+   */
+  readonly referrerPolicy: ReferrerPolicy;
+  /**
+   * Returns the signal associated with request, which is an AbortSignal object
+   * indicating whether or not request has been aborted, and its abort event
+   * handler.
+   */
+  readonly signal: AbortSignal;
+  /**
+   * Returns the URL of request as a string.
+   */
+  readonly url: string;
+  clone(): Request;
+}
+
+declare const Request: {
+  prototype: Request;
+  new (input: RequestInfo, init?: RequestInit): Request;
+};
+
+type ResponseType =
+  | "basic"
+  | "cors"
+  | "default"
+  | "error"
+  | "opaque"
+  | "opaqueredirect";
+
+/** This Fetch API interface represents the response to a request. */
+interface Response extends Body {
+  readonly headers: Headers;
+  readonly ok: boolean;
+  readonly redirected: boolean;
+  readonly status: number;
+  readonly statusText: string;
+  readonly trailer: Promise<Headers>;
+  readonly type: ResponseType;
+  readonly url: string;
+  clone(): Response;
+}
+
+declare const Response: {
+  prototype: Response;
+
+  // TODO(#4667) Response constructor is non-standard.
+  // new(body?: BodyInit | null, init?: ResponseInit): Response;
+  new (
+    url: string,
+    status: number,
+    statusText: string,
+    headersList: Array<[string, string]>,
+    rid: number,
+    redirected_: boolean,
+    type_?: null | ResponseType,
+    body_?: null | Body
+  ): Response;
+
+  error(): Response;
+  redirect(url: string, status?: number): Response;
+};
+
+/** Fetch a resource from the network. */
+declare function fetch(
+  input: Request | URL | string,
+  init?: RequestInit
+): Promise<Response>;
 
 declare function atob(s: string): string;
 
@@ -1317,4 +1304,44 @@ interface CustomEventInit<T = any> extends EventInit {
 declare const CustomEvent: {
   prototype: CustomEvent;
   new <T>(typeArg: string, eventInitDict?: CustomEventInit<T>): CustomEvent<T>;
+};
+
+interface AbortSignalEventMap {
+  abort: Event;
+}
+
+/** A signal object that allows you to communicate with a DOM request (such as a
+ * Fetch) and abort it if required via an AbortController object. */
+interface AbortSignal extends EventTarget {
+  /**
+   * Returns true if this AbortSignal's AbortController has signaled to abort,
+   * and false otherwise.
+   */
+  readonly aborted: boolean;
+  onabort: ((this: AbortSignal, ev: Event) => any) | null;
+  addEventListener<K extends keyof AbortSignalEventMap>(
+    type: K,
+    listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  removeEventListener<K extends keyof AbortSignalEventMap>(
+    type: K,
+    listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
+    options?: boolean | EventListenerOptions
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions
+  ): void;
+}
+
+declare const AbortSignal: {
+  prototype: AbortSignal;
+  new (): AbortSignal;
 };
