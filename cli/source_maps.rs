@@ -112,7 +112,6 @@ fn frame_apply_source_map<G: SourceMapGetter>(
   mappings_map: &mut CachedMaps,
   getter: &G,
 ) -> JSStackFrame {
-  println!("{} {}", frame.line_number, frame.column);
   let (script_name, line_number, column) = get_orig_position(
     frame.script_name.to_string(),
     frame.line_number,
@@ -120,7 +119,6 @@ fn frame_apply_source_map<G: SourceMapGetter>(
     mappings_map,
     getter,
   );
-  println!("{} {}", line_number, column);
 
   JSStackFrame {
     script_name,
