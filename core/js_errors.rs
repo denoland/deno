@@ -18,7 +18,7 @@ use std::fmt;
 
 /// A `JSError` represents an exception coming from V8, with stack frames and
 /// line numbers. The deno_cli crate defines another `JSError` type, which wraps
-/// the one defined here, that adds source map support and colorful formatting.  
+/// the one defined here, that adds source map support and colorful formatting.
 #[derive(Debug, PartialEq, Clone)]
 pub struct JSError {
   pub message: String,
@@ -28,6 +28,12 @@ pub struct JSError {
   pub start_column: Option<i64>,
   pub end_column: Option<i64>,
   pub frames: Vec<JSStackFrame>,
+  // TODO: Remove this field. It is required because JSError::from_v8_exception
+  // will generally (but not always) return stack frames passed from
+  // `prepareStackTrace()` which have already been source-mapped, and we need a
+  // flag saying not to do it again. Note: applies to `frames` but not
+  // `source_line`.
+  pub already_source_mapped: bool,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -38,6 +44,18 @@ pub struct JSStackFrame {
   pub function_name: String,
   pub is_eval: bool,
   pub is_constructor: bool,
+  pub is_async: bool,
+  // TODO(nayeemrmn): Support more CallSite fields.
+}
+
+fn get_property<'a>(
+  scope: &mut impl v8::ToLocal<'a>,
+  context: v8::Local<v8::Context>,
+  object: v8::Local<v8::Object>,
+  key: &str,
+) -> Option<v8::Local<'a, v8::Value>> {
+  let key = v8::String::new(scope, key).unwrap();
+  object.get(scope, context, key.into())
 }
 
 impl JSError {
@@ -53,23 +71,85 @@ impl JSError {
     // handles below.
     let mut hs = v8::HandleScope::new(scope);
     let scope = hs.enter();
-    let context = scope.get_current_context().unwrap();
+    let context = { scope.get_current_context().unwrap() };
 
     let msg = v8::Exception::create_message(scope, exception);
 
-    Self {
-      message: msg.get(scope).to_rust_string_lossy(scope),
-      script_resource_name: msg
-        .get_script_resource_name(scope)
-        .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())
-        .map(|v| v.to_rust_string_lossy(scope)),
-      source_line: msg
-        .get_source_line(scope, context)
-        .map(|v| v.to_rust_string_lossy(scope)),
-      line_number: msg.get_line_number(context).and_then(|v| v.try_into().ok()),
-      start_column: msg.get_start_column().try_into().ok(),
-      end_column: msg.get_end_column().try_into().ok(),
-      frames: msg
+    let exception: Option<v8::Local<v8::Object>> =
+      exception.clone().try_into().ok();
+    let _ = exception.map(|e| get_property(scope, context, e, "stack"));
+
+    let maybe_call_sites = exception
+      .and_then(|e| get_property(scope, context, e, "__callSiteEvals"));
+    let maybe_call_sites: Option<v8::Local<v8::Array>> =
+      maybe_call_sites.and_then(|a| a.try_into().ok());
+
+    let already_source_mapped;
+    let frames = if let Some(call_sites) = maybe_call_sites {
+      already_source_mapped = true;
+      let mut output: Vec<JSStackFrame> = vec![];
+      for i in 0..call_sites.length() {
+        let call_site: v8::Local<v8::Object> = call_sites
+          .get_index(scope, context, i)
+          .unwrap()
+          .try_into()
+          .unwrap();
+        let line_number: v8::Local<v8::Integer> =
+          get_property(scope, context, call_site, "lineNumber")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let line_number = line_number.value() - 1;
+        let column_number: v8::Local<v8::Integer> =
+          get_property(scope, context, call_site, "columnNumber")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let column_number = column_number.value() - 1;
+        let file_name: Result<v8::Local<v8::String>, _> =
+          get_property(scope, context, call_site, "fileName")
+            .unwrap()
+            .try_into();
+        let file_name = file_name
+          .map_or_else(|_| String::new(), |s| s.to_rust_string_lossy(scope));
+        let function_name: Result<v8::Local<v8::String>, _> =
+          get_property(scope, context, call_site, "functionName")
+            .unwrap()
+            .try_into();
+        let function_name = function_name
+          .map_or_else(|_| String::new(), |s| s.to_rust_string_lossy(scope));
+        let is_constructor: v8::Local<v8::Boolean> =
+          get_property(scope, context, call_site, "isConstructor")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let is_constructor = is_constructor.is_true();
+        let is_eval: v8::Local<v8::Boolean> =
+          get_property(scope, context, call_site, "isEval")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let is_eval = is_eval.is_true();
+        let is_async: v8::Local<v8::Boolean> =
+          get_property(scope, context, call_site, "isAsync")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let is_async = is_async.is_true();
+        output.push(JSStackFrame {
+          line_number,
+          column: column_number,
+          script_name: file_name,
+          function_name,
+          is_constructor,
+          is_eval,
+          is_async,
+        });
+      }
+      output
+    } else {
+      already_source_mapped = false;
+      msg
         .get_stack_trace(scope)
         .map(|stack_trace| {
           (0..stack_trace.get_frame_count())
@@ -96,11 +176,28 @@ impl JSError {
                   .unwrap_or_else(|| "".to_owned()),
                 is_constructor: frame.is_constructor(),
                 is_eval: frame.is_eval(),
+                is_async: false,
               }
             })
             .collect::<Vec<_>>()
         })
-        .unwrap_or_else(Vec::<_>::new),
+        .unwrap_or_else(Vec::<_>::new)
+    };
+
+    Self {
+      message: msg.get(scope).to_rust_string_lossy(scope),
+      script_resource_name: msg
+        .get_script_resource_name(scope)
+        .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())
+        .map(|v| v.to_rust_string_lossy(scope)),
+      source_line: msg
+        .get_source_line(scope, context)
+        .map(|v| v.to_rust_string_lossy(scope)),
+      line_number: msg.get_line_number(context).and_then(|v| v.try_into().ok()),
+      start_column: msg.get_start_column().try_into().ok(),
+      end_column: msg.get_end_column().try_into().ok(),
+      frames,
+      already_source_mapped,
     }
   }
 }
@@ -127,6 +224,8 @@ fn format_stack_frame(frame: &JSStackFrame) -> String {
     format!("    at {} ({})", frame.function_name, source_loc)
   } else if frame.is_eval {
     format!("    at eval ({})", source_loc)
+  } else if frame.is_async {
+    format!("    at async ({})", source_loc)
   } else {
     format!("    at {}", source_loc)
   }
@@ -190,6 +289,7 @@ mod tests {
           function_name: "foo".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
         JSStackFrame {
           line_number: 5,
@@ -198,6 +298,7 @@ mod tests {
           function_name: "qat".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
         JSStackFrame {
           line_number: 1,
@@ -206,8 +307,10 @@ mod tests {
           function_name: "".to_string(),
           is_eval: false,
           is_constructor: false,
+          is_async: false,
         },
       ],
+      already_source_mapped: true,
     };
     let actual = js_error.to_string();
     let expected = "Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2";
