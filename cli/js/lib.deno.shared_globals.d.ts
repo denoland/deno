@@ -285,7 +285,7 @@ interface ReadableStream<R = any> {
 declare const ReadableStream: {
   prototype: ReadableStream;
   // TODO(ry) This doesn't match lib.dom.d.ts
-  new (src?: UnderlyingSource<R>): ReadableStream<R>;
+  new <R = any>(src?: UnderlyingSource<R>): ReadableStream<R>;
 };
 
 /** This Streams API interface provides a standard abstraction for writing streaming data to a destination, known as a sink. This object comes with built-in backpressure and queuing. */
@@ -295,15 +295,7 @@ interface WritableStream<W = any> {
   getWriter(): WritableStreamDefaultWriter<W>;
 }
 
-declare const WritableStream: {
-  prototype: WritableStream;
-  new <W = any>(
-    underlyingSink?: UnderlyingSink<W>,
-    strategy?: QueuingStrategy<W>
-  ): WritableStream<W>;
-};
-
-declare interface WritableStreamDefaultWriter<W = any> {
+interface WritableStreamDefaultWriter<W = any> {
   readonly closed: Promise<void>;
   readonly desiredSize: number | null;
   readonly ready: Promise<void>;
