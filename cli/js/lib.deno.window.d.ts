@@ -7,9 +7,9 @@
 /// <reference lib="deno.shared_globals" />
 /// <reference lib="esnext" />
 
-declare interface Window extends WindowOrWorkerGlobalScope {
-  window: Window & WindowOrWorkerGlobalScope & typeof globalThis;
-  self: Window & WindowOrWorkerGlobalScope & typeof globalThis;
+declare interface Window {
+  window: Window & typeof globalThis;
+  self: Window & typeof globalThis;
   onload: Function | undefined;
   onunload: Function | undefined;
   crypto: Crypto;
@@ -18,8 +18,8 @@ declare interface Window extends WindowOrWorkerGlobalScope {
   Deno: typeof Deno;
 }
 
-declare const window: Window & WindowOrWorkerGlobalScope & typeof globalThis;
-declare const self: Window & WindowOrWorkerGlobalScope & typeof globalThis;
+declare const window: Window & typeof globalThis;
+declare const self: Window & typeof globalThis;
 declare const onload: Function | undefined;
 declare const onunload: Function | undefined;
 declare const crypto: Crypto;
