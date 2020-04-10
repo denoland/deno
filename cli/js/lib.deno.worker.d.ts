@@ -1,15 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-interface, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.shared_globals" />
 /// <reference lib="esnext" />
 
-declare interface DedicatedWorkerGlobalScope extends WindowOrWorkerGlobalScope {
-  self: DedicatedWorkerGlobalScope &
-    WindowOrWorkerGlobalScope &
-    typeof globalThis;
+declare interface DedicatedWorkerGlobalScope {
+  self: DedicatedWorkerGlobalScope & typeof globalThis;
   onmessage: (e: { data: any }) => void;
   onerror: undefined | typeof onerror;
   name: typeof __workerMain.name;
@@ -17,9 +15,7 @@ declare interface DedicatedWorkerGlobalScope extends WindowOrWorkerGlobalScope {
   postMessage: typeof __workerMain.postMessage;
 }
 
-declare const self: DedicatedWorkerGlobalScope &
-  WindowOrWorkerGlobalScope &
-  typeof globalThis;
+declare const self: DedicatedWorkerGlobalScope & typeof globalThis;
 declare let onmessage: ((e: { data: any }) => Promise<void> | void) | undefined;
 declare let onerror:
   | ((
@@ -41,4 +37,4 @@ declare namespace __workerMain {
   export const name: string;
 }
 
-/* eslint-enable @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-interface, @typescript-eslint/no-explicit-any */
+/* eslint-enable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
