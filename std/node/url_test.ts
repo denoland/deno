@@ -25,6 +25,6 @@ test("[node/url] format url", function parseUrl() {
 
 test("[node/url] resolve url", function parseUrl() {
   assertEquals(resolve("/one/two/three", "four"), "/one/two/four");
-  assertEquals(resolve("http://deno.land/", "/one"), "http://deno.land/one");
-  assertEquals(resolve("http://deno.land/one", "/two"), "http://deno.land/two");
+  assertEquals(resolve("http://deno.land/", "/std"), "http://deno.land/std");
+  assertEquals(resolve("http://deno.land/std", "/x"), "http://deno.land/x");
 });
