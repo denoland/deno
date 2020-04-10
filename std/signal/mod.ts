@@ -1,8 +1,28 @@
 import { MuxAsyncIterator } from "../util/async.ts";
 
+export type Disposable = { dispose: () => void };
+
+/**
+ * Generates an AsyncIterable which can be awaited on for one or more signals.
+ * `dispose()` can be called when you are finished waiting on the events.
+ *
+ * Example:
+ *
+ *       const sig = signal(Deno.Signal.SIGUSR1, Deno.Signal.SIGINT);
+ *       setTimeout(() => {}, 5000); // Prevents exiting immediately
+ *
+ *       for await (const _ of sig) {
+ *         console.log("interrupt or usr1 signal received");
+ *       }
+ *
+ *       // At some other point in your code when finished listening:
+ *       sig.dispose();
+ *
+ * @param signos - one or more `Deno.Signal`s to await on
+ */
 export function signal(
   ...signos: [number, ...number[]]
-): AsyncIterable<void> & { dispose: () => void } {
+): AsyncIterable<void> & Disposable {
   const mux = new MuxAsyncIterator<void>();
 
   if (signos.length < 1) {
@@ -25,4 +45,28 @@ export function signal(
   };
 
   return Object.assign(mux, { dispose });
+}
+
+/**
+ * Registers a callback function to be called on triggering of a signal event.
+ *
+ *       const handle = onSignal(Deno.Signal.SIGINT, () => {
+ *         console.log('Received SIGINT');
+ *         handle.dispose();  // de-register from receiving further events
+ *       });
+ *
+ * @param signo One of Deno.Signal (e.g. Deno.Signal.SIGINT)
+ * @param callback Callback function triggered upon signal event
+ */
+export function onSignal(signo: number, callback: () => void): Disposable {
+  const sig = signal(signo);
+
+  //setTimeout allows `sig` to be returned before blocking on the await
+  setTimeout(async () => {
+    for await (const _ of sig) {
+      callback();
+    }
+  }, 0);
+
+  return sig;
 }
