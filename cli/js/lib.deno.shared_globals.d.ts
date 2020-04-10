@@ -1341,7 +1341,7 @@ interface AbortSignal extends EventTarget {
   ): void;
 }
 
-declare var AbortSignal: {
+declare const AbortSignal: {
   prototype: AbortSignal;
   new (): AbortSignal;
 };
