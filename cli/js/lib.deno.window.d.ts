@@ -12,6 +12,7 @@ declare interface Window {
   self: Window & typeof globalThis;
   onload: Function | undefined;
   onunload: Function | undefined;
+  location: Location;
   crypto: Crypto;
   close: () => void;
   closed: boolean;
