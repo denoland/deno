@@ -34,7 +34,6 @@ pub struct JSError {
   // flag saying not to do it again. Note: applies to `frames` but not
   // `source_line`.
   pub already_source_mapped: bool,
-  // TODO(nayeemrmn): Support more CallSite fields.
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -46,6 +45,7 @@ pub struct JSStackFrame {
   pub is_eval: bool,
   pub is_constructor: bool,
   pub is_async: bool,
+  // TODO(nayeemrmn): Support more CallSite fields.
 }
 
 fn get_property<'a>(
