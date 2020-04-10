@@ -97,7 +97,7 @@ test(async function serveWithUnorthodoxFilename(): Promise<void> {
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 200);
-    _ = res.text();
+    _ = await res.text();
   } finally {
     killFileServer();
   }
