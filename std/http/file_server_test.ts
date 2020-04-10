@@ -118,7 +118,7 @@ test(async function servePermissionDenied(): Promise<void> {
 
   try {
     const res = await fetch("http://localhost:4500/");
-    let _ = await res.text();
+    const _ = await res.text();
     assertStrContains(
       (await errReader.readLine()) as string,
       "run again with the --allow-read flag"
