@@ -38,7 +38,7 @@ test({
       const resp = await fetch("http://127.0.0.1:8080/");
       assertEquals(resp.status, 200);
       assertEquals(resp.headers.get("content-type"), "text/html");
-      const html = await resp.body.text();
+      const html = await resp.text();
       assert(html.includes("ws chat example"), "body is ok");
     } finally {
       server.close();

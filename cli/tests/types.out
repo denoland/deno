@@ -1,16 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 [WILDCARD]
-
-declare namespace Deno {
-[WILDCARD]
-}
-[WILDCARD]
-declare interface WindowOrWorkerGlobalScope {
-[WILDCARD]
-declare interface Window extends WindowOrWorkerGlobalScope {
-[WILDCARD]
-  Deno: typeof Deno;
-}
-
-declare const window: Window & WindowOrWorkerGlobalScope & typeof globalThis;
-[WILDCARD]
+declare namespace Deno [WILDCARD]
+declare const window: Window [WILDCARD]

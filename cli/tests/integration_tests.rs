@@ -96,7 +96,7 @@ fn fetch_test() {
   let output = Command::new(deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
-    .arg("fetch")
+    .arg("cache")
     .arg(module_url.to_string())
     .output()
     .expect("Failed to spawn script");
@@ -514,6 +514,50 @@ fn bundle_dynamic_import() {
     .current_dir(util::root_path())
     .arg("run")
     .arg(&bundle)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the test.ts program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello"));
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
+fn bundle_import_map() {
+  let import = util::root_path().join("cli/tests/bundle_im.ts");
+  let import_map_path = util::root_path().join("cli/tests/bundle_im.json");
+  assert!(import.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("import_map.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg("--importmap")
+    .arg(import_map_path)
+    .arg(import)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  // Now we try to use that bundle from another module.
+  let test = t.path().join("test.js");
+  std::fs::write(
+    &test,
+    "
+      import { printHello3 } from \"./import_map.bundle.js\";
+      printHello3(); ",
+  )
+  .expect("error writing file");
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&test)
     .output()
     .expect("failed to spawn script");
   // check the output of the test.ts program.
@@ -987,12 +1031,12 @@ itest_ignore!(_035_cached_only_flag {
 
 itest!(_036_import_map_fetch {
   args:
-    "fetch --reload --importmap=importmaps/import_map.json importmaps/test.ts",
+    "cache --reload --importmap=importmaps/import_map.json importmaps/test.ts",
   output: "036_import_map_fetch.out",
 });
 
 itest!(_037_fetch_multiple {
-  args: "fetch --reload fetch/test.ts fetch/other.ts",
+  args: "cache --reload fetch/test.ts fetch/other.ts",
   check_stderr: true,
   http_server: true,
   output: "037_fetch_multiple.out",
@@ -1415,6 +1459,13 @@ itest!(type_directives_02 {
   output: "type_directives_02.ts.out",
 });
 
+itest!(type_directives_js_main {
+  args: "run --reload -L debug type_directives_js_main.js",
+  output: "type_directives_js_main.js.out",
+  check_stderr: true,
+  exit_code: 0,
+});
+
 itest!(types {
   args: "types",
   output: "types.out",
@@ -1540,7 +1591,7 @@ fn cafile_fetch() {
   let output = Command::new(deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
-    .arg("fetch")
+    .arg("cache")
     .arg("--cert")
     .arg(cafile)
     .arg(module_url.to_string())

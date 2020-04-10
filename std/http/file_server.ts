@@ -47,10 +47,10 @@ const MEDIA_TYPES: Record<string, string> = {
   ".json": "application/json",
   ".map": "application/json",
   ".txt": "text/plain",
-  ".ts": "application/typescript",
-  ".tsx": "application/typescript",
+  ".ts": "text/typescript",
+  ".tsx": "text/tsx",
   ".js": "application/javascript",
-  ".jsx": "application/jsx",
+  ".jsx": "text/jsx",
   ".gz": "application/gzip",
 };
 

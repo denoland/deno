@@ -1,5 +1,9 @@
 [WILDCARD]error: Uncaught NotFound: Cannot resolve module "[WILDCARD]/non-existent" from "[WILDCARD]/error_006_import_ext_failure.ts"
 [WILDCARD]dispatch_json.ts:[WILDCARD]
-    at NotFound ([WILDCARD]errors.ts:[WILDCARD])
     at unwrapResponse ([WILDCARD]dispatch_json.ts:[WILDCARD])
     at sendAsync[WILDCARD] ([WILDCARD]dispatch_json.ts:[WILDCARD])
+    at async processImports ([WILDCARD]compiler/imports.ts:[WILDCARD])
+    at async processImports ([WILDCARD]compiler/imports.ts:[WILDCARD])
+    at async compile ([WILDCARD]compiler.ts:[WILDCARD])
+    at async tsCompilerOnMessage ([WILDCARD]compiler.ts:[WILDCARD])
+    at async workerMessageRecvCallback ([WILDCARD]runtime_worker.ts:[WILDCARD])

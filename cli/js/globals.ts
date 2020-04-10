@@ -25,7 +25,7 @@ import * as streams from "./web/streams/mod.ts";
 import { core } from "./core.ts";
 
 // This global augmentation is just enough types to be able to build Deno,
-// the runtime types are fully defined in `lib.deno_runtime.d.ts`.
+// the runtime types are fully defined in `lib.deno.*.d.ts`.
 declare global {
   interface CallSite {
     getThis(): unknown;

@@ -6,6 +6,29 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.40.0 / 2020.04.08
+
+- BREAKING: Rename 'deno fetch' subcommand to 'deno cache' (#4656)
+- BREAKING: Remove std/testing/runner.ts (#4649)
+- feat(std/flags): Pass key and value to unknown (#4637)
+- feat(std/http): Respond with 400 on request parse failure (#4614)
+- feat(std/node): Add exists and existsSync (#4655)
+- feat: Add File support in FormData (#4632)
+- feat: Expose ReadableStream and make Blob more standardized (#4581)
+- feat: add --importmap flag to deno bundle (#4651)
+- fix(#4546): Added Math.trunc to toSecondsFromEpoch to conform the result to
+  u64 (#4575)
+- fix(file_server): use text/typescript instead of application/typescript
+  (#4620)
+- fix(std/testing): format bigint (#4626)
+- fix: Drop headers with trailing whitespace in header name (#4642)
+- fix: Fetch reference types for JS files (#4652)
+- fix: Improve deno doc (#4672, #4625)
+- fix: On init create disk_cache directory if it doesn't already exists (#4617)
+- fix: Remove unnecessary namespaces in "deno types" (#4677, #4675, #4669,
+  #4668, #4665, #4663, #4662)
+- upgrade: Rust crates (#4679)
+
 ### v0.39.0 / 2020.04.03
 
 - BREAKING CHANGE: Move encode, decode helpers to /std/encoding/utf8.ts, delete

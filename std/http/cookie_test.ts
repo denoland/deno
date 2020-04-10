@@ -214,5 +214,9 @@ test({
       res.headers.get("Set-Cookie"),
       "cookie-1=value-1; Secure, cookie-2=value-2; Max-Age=3600"
     );
+
+    res.headers = new Headers();
+    setCookie(res, { name: "", value: "" });
+    assertEquals(res.headers.get("Set-Cookie"), null);
   },
 });
