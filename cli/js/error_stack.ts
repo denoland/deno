@@ -207,8 +207,7 @@ function prepareStackTrace(
   error: Error,
   structuredStackTrace: CallSite[]
 ): string {
-  // @ts-ignore
-  error["__callSiteEvals"] = [];
+  Object.defineProperty(error, "__callSiteEvals", { value: [] });
   const errorString =
     `${error.name}: ${error.message}\n` +
     structuredStackTrace
@@ -231,7 +230,7 @@ function prepareStackTrace(
         }
       )
       .map((callSite): string => {
-        const callSiteEv = evaluateCallSite(callSite);
+        const callSiteEv = Object.freeze(evaluateCallSite(callSite));
         if (callSiteEv.lineNumber != null && callSiteEv.columnNumber != null) {
           // @ts-ignore
           error["__callSiteEvals"].push(callSiteEv);
@@ -239,6 +238,8 @@ function prepareStackTrace(
         return `    at ${callSiteToString(callSite)}`;
       })
       .join("\n");
+  // @ts-ignore
+  Object.freeze(error["__callSiteEvals"]);
   return errorString;
 }
 
