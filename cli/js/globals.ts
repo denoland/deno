@@ -4,8 +4,9 @@ import * as blob from "./web/blob.ts";
 import * as consoleTypes from "./web/console.ts";
 import * as promiseTypes from "./web/promise.ts";
 import * as customEvent from "./web/custom_event.ts";
-import * as domTypes from "./web/dom_types.ts";
+import * as domException from "./web/dom_exception.ts";
 import * as domFile from "./web/dom_file.ts";
+import * as domTypes from "./web/dom_types.d.ts";
 import * as event from "./web/event.ts";
 import * as eventTarget from "./web/event_target.ts";
 import * as formData from "./web/form_data.ts";
@@ -219,6 +220,7 @@ export const windowOrWorkerGlobalScopeProperties = {
   Blob: nonEnumerable(blob.DenoBlob),
   File: nonEnumerable(domFile.DomFileImpl),
   CustomEvent: nonEnumerable(customEvent.CustomEvent),
+  DOMException: nonEnumerable(domException.DOMException),
   Event: nonEnumerable(event.Event),
   EventTarget: nonEnumerable(eventTarget.EventTarget),
   URL: nonEnumerable(url.URL),
@@ -234,14 +236,12 @@ export const windowOrWorkerGlobalScopeProperties = {
   Worker: nonEnumerable(workers.WorkerImpl),
 };
 
-export const eventTargetProperties = {
-  [domTypes.eventTargetHost]: nonEnumerable(null),
-  [domTypes.eventTargetListeners]: nonEnumerable({}),
-  [domTypes.eventTargetMode]: nonEnumerable(""),
-  [domTypes.eventTargetNodeType]: nonEnumerable(0),
-  [eventTarget.eventTargetAssignedSlot]: nonEnumerable(false),
-  [eventTarget.eventTargetHasActivationBehavior]: nonEnumerable(false),
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function setEventTargetData(value: any): void {
+  eventTarget.eventTargetData.set(value, eventTarget.getDefaultTargetData());
+}
 
+export const eventTargetProperties = {
   addEventListener: readOnly(
     eventTarget.EventTarget.prototype.addEventListener
   ),

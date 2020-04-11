@@ -17,7 +17,7 @@
 // import * as ts from "./transform-internals.ts";
 // import * as shared from "./shared-internals.ts";
 // import { TransformStreamDefaultController } from "./transform-stream-default-controller.ts";
-// import { QueuingStrategy } from "../dom_types.ts";
+// import { QueuingStrategy } from "../dom_types.d.ts";
 
 // export class TransformStream<InputType, OutputType> {
 //   [ts.backpressure_]: boolean | undefined; // Whether there was backpressure on [[readable]] the last time it was observed

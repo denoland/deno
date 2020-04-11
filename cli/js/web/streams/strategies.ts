@@ -4,7 +4,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // TODO reenable this lint here
 
-import { QueuingStrategy } from "../dom_types.ts";
+import { QueuingStrategy } from "../dom_types.d.ts";
 
 export class ByteLengthQueuingStrategy
   implements QueuingStrategy<ArrayBufferView> {
