@@ -183,3 +183,25 @@ Deno.test({
     await promise;
   },
 });
+
+Deno.test({
+  name: "worker with Deno",
+  fn: async function (): Promise<void> {
+    const promise = createResolvable();
+
+    const denoWorker = new Worker("../tests/subdir/deno_worker.js", {
+      type: "module",
+      deno: true,
+      name: "denoWorker",
+    });
+
+    denoWorker.onmessage = (e): void => {
+      assertEquals(e.data, "Hello World");
+      promise.resolve();
+    };
+
+    denoWorker.postMessage("Hello World");
+    await promise;
+    denoWorker.terminate();
+  },
+});

@@ -44,8 +44,8 @@ fn create_web_worker(
   let mut worker =
     WebWorker::new(startup_data::deno_isolate_init(), state, maybe_name);
   let script = format!(
-    "bootstrapWorkerRuntime({}, \"{}\")",
-    use_deno_namespace, worker.name
+    "bootstrapWorkerRuntime(\"{}\", {})",
+    worker.name, use_deno_namespace
   );
   worker.execute(&script)?;
 
@@ -145,7 +145,7 @@ struct CreateWorkerArgs {
   specifier: String,
   has_source_code: bool,
   source_code: String,
-  deno: bool,
+  use_deno_namespace: bool,
 }
 
 /// Create worker as the host
@@ -160,7 +160,7 @@ fn op_create_worker(
   let has_source_code = args.has_source_code;
   let source_code = args.source_code.clone();
   let maybe_worker_name = args.name;
-  let use_deno_namespace = args.deno;
+  let use_deno_namespace = args.use_deno_namespace;
   let parent_state = state.clone();
   let state = state.borrow();
   let global_state = state.global_state.clone();

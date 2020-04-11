@@ -16,11 +16,22 @@ import {
   windowOrWorkerGlobalScopeProperties,
   eventTargetProperties,
 } from "./globals.ts";
+import * as Deno from "./deno.ts";
 import * as webWorkerOps from "./ops/web_worker.ts";
 import { LocationImpl } from "./web/location.ts";
 import { log, assert, immutableDefine } from "./util.ts";
 import { TextEncoder } from "./web/text_encoding.ts";
 import * as runtime from "./runtime.ts";
+import { internalObject } from "./internals.ts";
+import { symbols } from "./symbols.ts";
+import { setSignals } from "./signals.ts";
+
+// FIXME(bartlomieju): duplicated in `runtime_main.ts`
+// TODO: factor out `Deno` global assignment to separate function
+// Add internal object to Deno object.
+// This is not exposed as part of the Deno types.
+// @ts-ignore
+Deno[symbols.internal] = internalObject;
 
 const encoder = new TextEncoder();
 
@@ -89,8 +100,8 @@ export const workerRuntimeGlobalProperties = {
 };
 
 export function bootstrapWorkerRuntime(
-  _useDenoNamespace: boolean,
-  name: string
+  name: string,
+  useDenoNamespace: boolean
 ): void {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
@@ -109,8 +120,21 @@ export function bootstrapWorkerRuntime(
   Object.freeze(globalThis.location);
 
   // TODO(bartlomieju): handle `useDenoNamespace`
-
-  // globalThis.Deno is not available in worker scope
-  delete globalThis.Deno;
-  assert(globalThis.Deno === undefined);
+  if (useDenoNamespace) {
+    Object.defineProperties(Deno, {
+      pid: readOnly(s.pid),
+      noColor: readOnly(s.noColor),
+      args: readOnly(Object.freeze(s.args)),
+    });
+    // Setup `Deno` global - we're actually overriding already
+    // existing global `Deno` with `Deno` namespace from "./deno.ts".
+    immutableDefine(globalThis, "Deno", Deno);
+    Object.freeze(globalThis.Deno);
+    Object.freeze(globalThis.Deno.core);
+    Object.freeze(globalThis.Deno.core.sharedQueue);
+    setSignals();
+  } else {
+    delete globalThis.Deno;
+    assert(globalThis.Deno === undefined);
+  }
 }

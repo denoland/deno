@@ -85,13 +85,14 @@ export class WorkerImpl extends EventTarget implements Worker {
       sourceCode = blobBytes!;
     }
     */
+    const useDenoNamespace = options?.deno ?? false;
 
     const { id } = createWorker(
       specifier,
       hasSourceCode,
       sourceCode,
-      options?.name,
-      options?.deno
+      useDenoNamespace,
+      options?.name
     );
     this.#id = id;
     this.#poll();

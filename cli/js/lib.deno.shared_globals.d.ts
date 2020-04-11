@@ -1043,6 +1043,7 @@ declare class Worker {
     options?: {
       type?: "classic" | "module";
       name?: string;
+      deno?: boolean;
     }
   );
   postMessage(message: any, transfer?: any): void;

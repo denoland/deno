@@ -244,7 +244,9 @@ mod tests {
       state,
       Some("TEST".to_string()),
     );
-    worker.execute("bootstrapWorkerRuntime(\"TEST\")").unwrap();
+    worker
+      .execute("bootstrapWorkerRuntime(\"TEST\", false)")
+      .unwrap();
     worker
   }
   #[test]
