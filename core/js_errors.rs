@@ -23,7 +23,7 @@ pub struct JSError {
   pub script_resource_name: Option<String>,
   pub line_number: Option<i64>,
   pub start_column: Option<i64>, // 0-based
-  pub end_column: Option<i64>, // 0-based
+  pub end_column: Option<i64>,   // 0-based
   pub frames: Vec<JSStackFrame>,
   pub formatted_frames: Vec<String>,
 }
