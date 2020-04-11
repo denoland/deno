@@ -206,7 +206,7 @@ async function runTestsInThreadForPermissionSet(
   });
 
   // @ts-ignore
-  worker.onmessage = function(e): void {
+  worker.onmessage = function (e): void {
     const message = JSON.parse(e.data.testMsg) as Deno.TestMessage;
     reportToConsole(message);
     if (message.start != null) {
@@ -251,7 +251,7 @@ async function threadedRunnerMain(
     console.log("\t" + fmtPerms(perms));
   }
 
-  const resultPromises: Promise<PermissionSetTestResult>[] = [];
+  const resultPromises: Array<Promise<PermissionSetTestResult>> = [];
 
   for (const perms of permissionCombinations.values()) {
     const resultPromise = runTestsInThreadForPermissionSet(
