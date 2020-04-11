@@ -35,17 +35,17 @@ fn create_web_worker(
   global_state: GlobalState,
   permissions: DenoPermissions,
   specifier: ModuleSpecifier,
-  use_deno_namespace: bool,
+  has_deno_namespace: bool,
   maybe_name: Option<String>,
 ) -> Result<WebWorker, ErrBox> {
   let state =
     State::new_for_worker(global_state, Some(permissions), specifier)?;
 
   let mut worker =
-    WebWorker::new(startup_data::deno_isolate_init(), state, maybe_name);
+    WebWorker::new(startup_data::deno_isolate_init(), state, maybe_name, has_deno_namespace);
   let script = format!(
     "bootstrapWorkerRuntime(\"{}\", {})",
-    worker.name, use_deno_namespace
+    worker.name, worker.has_deno_namespace
   );
   worker.execute(&script)?;
 
