@@ -25,8 +25,8 @@ fn format_source_name(
   line_number: i64,
   column_number: i64,
 ) -> String {
-  let line_number = line_number + 1;
-  let column_number = column_number + 1;
+  let line_number = line_number;
+  let column_number = column_number;
   let file_name_c = colors::cyan(file_name);
   let line_c = colors::yellow(line_number.to_string());
   let column_c = colors::yellow(column_number.to_string());
@@ -76,7 +76,7 @@ pub fn format_maybe_source_line(
 
   assert!(start_column.is_some());
   assert!(end_column.is_some());
-  let line_number = (1 + line_number.unwrap()).to_string();
+  let line_number = line_number.unwrap().to_string();
   let line_color = colors::black_on_white(line_number.to_string());
   let line_number_len = line_number.len();
   let line_padding =
@@ -93,12 +93,13 @@ pub fn format_maybe_source_line(
   } else {
     '~'
   };
-  for i in 0..end_column {
-    if i >= start_column {
-      s.push(underline_char);
-    } else {
-      s.push(' ');
-    }
+  dbg!(start_column);
+  dbg!(end_column);
+  for _i in 0..start_column {
+    s.push(' ');
+  }
+  for _i in 0..(end_column - start_column) {
+    s.push(underline_char);
   }
   let color_underline = if is_error {
     colors::red(s).to_string()
@@ -181,7 +182,7 @@ impl DisplayFormatter for JSError {
       format_maybe_source_name(
         e.script_resource_name.clone(),
         e.line_number,
-        e.start_column,
+        e.start_column.map(|n| n + 1),
       )
     )
   }
@@ -223,7 +224,7 @@ mod tests {
       Some(1),
       Some(2),
     );
-    assert_eq!(strip_ansi_codes(&actual), "file://foo/bar.ts:2:3");
+    assert_eq!(strip_ansi_codes(&actual), "file://foo/bar.ts:1:2");
   }
 
   #[test]
@@ -244,7 +245,7 @@ mod tests {
     );
     assert_eq!(
       strip_ansi_codes(&actual),
-      "\n\n9 console.log(\'foo\');\n          ~~~\n"
+      "\n\n8 console.log(\'foo\');\n          ~~~\n"
     );
   }
 

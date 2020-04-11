@@ -14,16 +14,14 @@ export interface Location {
 
 export function applySourceMap(location: Location): Location {
   const { fileName, lineNumber, columnNumber } = location;
-  // On this side, line/column are 1 based, but in the source maps, they are
-  // 0 based, so we have to convert back and forth
   const res = sendSync("op_apply_source_map", {
     fileName,
-    lineNumber: lineNumber - 1,
-    columnNumber: columnNumber - 1,
+    lineNumber: lineNumber,
+    columnNumber: columnNumber,
   });
   return {
     fileName: res.fileName,
-    lineNumber: res.lineNumber + 1,
-    columnNumber: res.columnNumber + 1,
+    lineNumber: res.lineNumber,
+    columnNumber: res.columnNumber,
   };
 }

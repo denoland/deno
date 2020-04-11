@@ -1,8 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// Note that source_map_mappings requires 0-indexed line and column numbers but
-// V8 Exceptions are 1-indexed.
-
 // TODO: This currently only applies to uncaught exceptions. It would be nice to
 // also have source maps for situations like this:
 //   const err = new Error("Boo!");
@@ -25,8 +22,8 @@ pub struct JSError {
   pub source_line: Option<String>,
   pub script_resource_name: Option<String>,
   pub line_number: Option<i64>,
-  pub start_column: Option<i64>,
-  pub end_column: Option<i64>,
+  pub start_column: Option<i64>, // 0-based
+  pub end_column: Option<i64>, // 0-based
   pub frames: Vec<JSStackFrame>,
   pub formatted_frames: Vec<String>,
 }
@@ -37,8 +34,8 @@ pub struct JSStackFrame {
   pub function_name: Option<String>,
   pub method_name: Option<String>,
   pub file_name: Option<String>,
-  pub line_number: Option<i64>,   // zero indexed
-  pub column_number: Option<i64>, // zero indexed
+  pub line_number: Option<i64>,
+  pub column_number: Option<i64>,
   pub eval_origin: Option<String>,
   pub is_top_level: Option<bool>,
   pub is_eval: bool,
@@ -132,13 +129,13 @@ impl JSError {
             .unwrap()
             .try_into()
             .ok();
-        let line_number = line_number.map(|n| n.value() - 1);
+        let line_number = line_number.map(|n| n.value());
         let column_number: Option<v8::Local<v8::Integer>> =
           get_property(scope, context, call_site, "columnNumber")
             .unwrap()
             .try_into()
             .ok();
-        let column_number = column_number.map(|n| n.value() - 1);
+        let column_number = column_number.map(|n| n.value());
         let eval_origin: Option<v8::Local<v8::String>> =
           get_property(scope, context, call_site, "evalOrigin")
             .unwrap()
@@ -242,8 +239,8 @@ fn format_source_loc(
   column_number: i64,
 ) -> String {
   // TODO match this style with how typescript displays errors.
-  let line_number = line_number + 1;
-  let column_number = column_number + 1;
+  let line_number = line_number;
+  let column_number = column_number;
   format!("{}:{}:{}", file_name, line_number, column_number)
 }
 
@@ -256,8 +253,8 @@ impl fmt::Display for JSError {
         assert!(self.start_column.is_some());
         let source_loc = format_source_loc(
           script_resource_name,
-          self.line_number.unwrap() - 1,
-          self.start_column.unwrap() - 1,
+          self.line_number.unwrap(),
+          self.start_column.unwrap(),
         );
         write!(f, "{}", source_loc)?;
       }

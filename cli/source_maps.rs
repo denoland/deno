@@ -79,7 +79,8 @@ pub fn apply_source_map<G: SourceMapGetter>(
     {
       getter.get_source_line(
         &js_error.script_resource_name.clone().unwrap(),
-        ln as usize,
+        // Getter expects 0-based line numbers, but ours are 1-based.
+        ln as usize - 1,
       )
     }
     _ => js_error.source_line.clone(),
@@ -106,13 +107,8 @@ fn get_maybe_orig_position<G: SourceMapGetter>(
 ) -> (Option<String>, Option<i64>, Option<i64>) {
   match (file_name, line_number, column_number) {
     (Some(file_name_v), Some(line_v), Some(column_v)) => {
-      let (file_name, line_number, column_number) = get_orig_position(
-        file_name_v,
-        line_v - 1,
-        column_v,
-        mappings_map,
-        getter,
-      );
+      let (file_name, line_number, column_number) =
+        get_orig_position(file_name_v, line_v, column_v, mappings_map, getter);
       (Some(file_name), Some(line_number), Some(column_number))
     }
     _ => (None, None, None),
@@ -129,6 +125,10 @@ pub fn get_orig_position<G: SourceMapGetter>(
   let maybe_source_map = get_mappings(&file_name, mappings_map, getter);
   let default_pos = (file_name, line_number, column_number);
 
+  // Lookup expects 0-based line and column numbers, but ours are 1-based.
+  let line_number = line_number - 1;
+  let column_number = column_number - 1;
+
   match maybe_source_map {
     None => default_pos,
     Some(source_map) => {
@@ -138,8 +138,8 @@ pub fn get_orig_position<G: SourceMapGetter>(
           None => default_pos,
           Some(original) => (
             original.to_string(),
-            i64::from(token.get_src_line()),
-            i64::from(token.get_src_col()),
+            i64::from(token.get_src_line()) + 1,
+            i64::from(token.get_src_col()) + 1,
           ),
         },
       }

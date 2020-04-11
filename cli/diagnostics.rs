@@ -232,9 +232,10 @@ impl DisplayFormatter for DiagnosticItem {
   }
 
   fn format_source_line(&self, level: usize) -> String {
+    // Formatter expects 1-based line numbers, but ours are 0-based.
     format_maybe_source_line(
       self.source_line.clone(),
-      self.line_number,
+      self.line_number.map(|n| n + 1),
       self.start_column,
       self.end_column,
       match self.category {
@@ -246,10 +247,11 @@ impl DisplayFormatter for DiagnosticItem {
   }
 
   fn format_source_name(&self) -> String {
+    // Formatter expects 1-based line and column numbers, but ours are 0-based.
     format_maybe_source_name(
       self.script_resource_name.clone(),
-      self.line_number,
-      self.start_column,
+      self.line_number.map(|n| n + 1),
+      self.start_column.map(|n| n + 1),
     )
   }
 }
