@@ -164,9 +164,9 @@ async function readBytes(
 
 // A WeakMap holding blob to byte array mapping.
 // Ensures it does not impact garbage collection.
-export const blobBytesWeakMap = new WeakMap<domTypes.Blob, Uint8Array>();
+export const blobBytesWeakMap = new WeakMap<Blob, Uint8Array>();
 
-export class DenoBlob implements domTypes.Blob {
+export class DenoBlob implements Blob {
   [bytesSymbol]: Uint8Array;
   readonly size: number = 0;
   readonly type: string = "";

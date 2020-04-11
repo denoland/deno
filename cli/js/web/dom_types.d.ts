@@ -362,15 +362,6 @@ export class FormData {
   values(): IterableIterator<FormDataEntryValue>;
 }
 
-export interface Blob {
-  readonly size: number;
-  readonly type: string;
-  slice(start?: number, end?: number, contentType?: string): Blob;
-  stream(): ReadableStream;
-  text(): Promise<string>;
-  arrayBuffer(): Promise<ArrayBuffer>;
-}
-
 export interface Body {
   readonly body: ReadableStream<Uint8Array> | null;
   readonly bodyUsed: boolean;
