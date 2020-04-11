@@ -80,7 +80,7 @@ class Body
     return this.#bodyPromise;
   }
 
-  async blob(): Promise<domTypes.Blob> {
+  async blob(): Promise<Blob> {
     const arrayBuffer = await this.arrayBuffer();
     return new DenoBlob([arrayBuffer], {
       type: this.contentType,
@@ -384,7 +384,7 @@ export class Response implements domTypes.Response {
     return this.body.arrayBuffer();
   }
 
-  blob(): Promise<domTypes.Blob> {
+  blob(): Promise<Blob> {
     if (this.#bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }

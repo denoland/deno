@@ -74,7 +74,7 @@ function generateUUID(): string {
 }
 
 // Keep it outside of URL to avoid any attempts of access.
-export const blobURLMap = new Map<string, domTypes.Blob>();
+export const blobURLMap = new Map<string, Blob>();
 
 function isAbsolutePath(path: string): boolean {
   return path.startsWith("/");
@@ -373,7 +373,7 @@ export class URL implements domTypes.URL {
   }
 
   // TODO(kevinkassimo): implement MediaSource version in the future.
-  static createObjectURL(b: domTypes.Blob): string {
+  static createObjectURL(b: Blob): string {
     const origin = globalThis.location.origin || "http://deno-opaque-origin";
     const key = `blob:${origin}/${generateUUID()}`;
     blobURLMap.set(key, b);
