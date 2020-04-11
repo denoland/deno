@@ -20,7 +20,6 @@ test({
     assertEquals(parsed.path, "/std/manual.md?future=deno");
     assertEquals(parsed.href, testUrl);
   },
-  ignore: build.os === "mac",
 });
 
 test({
@@ -28,7 +27,6 @@ test({
   fn: function parseUrl() {
     assertEquals(testUrl, format(parse(testUrl)));
   },
-  ignore: build.os === "mac",
 });
 
 test({
@@ -38,5 +36,4 @@ test({
     assertEquals(resolve("http://deno.land/", "/std"), "http://deno.land/std");
     assertEquals(resolve("http://deno.land/std", "/x"), "http://deno.land/x");
   },
-  ignore: build.os === "mac",
 });
