@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 //! This mod provides functions to remap a deno_core::deno_core::JSError based on a source map
-use deno_core::JSStackFrame;
 use sourcemap::SourceMap;
 use std::collections::HashMap;
 use std::str;
@@ -47,18 +46,9 @@ pub fn apply_source_map<G: SourceMapGetter>(
   js_error: &deno_core::JSError,
   getter: &G,
 ) -> deno_core::JSError {
+  // Note that js_error.frames has already been source mapped in
+  // prepareStackTrace().
   let mut mappings_map: CachedMaps = HashMap::new();
-
-  let frames = if !js_error.already_source_mapped {
-    let mut frames = Vec::<JSStackFrame>::new();
-    for frame in &js_error.frames {
-      let f = frame_apply_source_map(&frame, &mut mappings_map, getter);
-      frames.push(f);
-    }
-    frames
-  } else {
-    js_error.frames.clone()
-  };
 
   let (script_resource_name, line_number, start_column) =
     get_maybe_orig_position(
@@ -102,32 +92,8 @@ pub fn apply_source_map<G: SourceMapGetter>(
     line_number,
     start_column,
     end_column,
-    frames,
-    already_source_mapped: js_error.already_source_mapped,
-  }
-}
-
-fn frame_apply_source_map<G: SourceMapGetter>(
-  frame: &JSStackFrame,
-  mappings_map: &mut CachedMaps,
-  getter: &G,
-) -> JSStackFrame {
-  let (script_name, line_number, column) = get_orig_position(
-    frame.script_name.to_string(),
-    frame.line_number,
-    frame.column,
-    mappings_map,
-    getter,
-  );
-
-  JSStackFrame {
-    script_name,
-    function_name: frame.function_name.clone(),
-    line_number,
-    column,
-    is_eval: frame.is_eval,
-    is_constructor: frame.is_constructor,
-    is_async: frame.is_async,
+    frames: js_error.frames.clone(),
+    formatted_frames: js_error.formatted_frames.clone(),
   }
 }
 
@@ -246,116 +212,6 @@ mod tests {
   }
 
   #[test]
-  fn apply_source_map_1() {
-    let core_js_error = deno_core::JSError {
-      message: "Error: foo bar".to_string(),
-      source_line: None,
-      script_resource_name: None,
-      line_number: None,
-      start_column: None,
-      end_column: None,
-      frames: vec![
-        JSStackFrame {
-          line_number: 4,
-          column: 16,
-          script_name: "foo_bar.ts".to_string(),
-          function_name: "foo".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_async: false,
-        },
-        JSStackFrame {
-          line_number: 5,
-          column: 20,
-          script_name: "bar_baz.ts".to_string(),
-          function_name: "qat".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_async: false,
-        },
-        JSStackFrame {
-          line_number: 1,
-          column: 1,
-          script_name: "deno_main.js".to_string(),
-          function_name: "".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_async: false,
-        },
-      ],
-      already_source_mapped: false,
-    };
-    let getter = MockSourceMapGetter {};
-    let actual = apply_source_map(&core_js_error, &getter);
-    let expected = deno_core::JSError {
-      message: "Error: foo bar".to_string(),
-      source_line: None,
-      script_resource_name: None,
-      line_number: None,
-      start_column: None,
-      end_column: None,
-      frames: vec![
-        JSStackFrame {
-          line_number: 5,
-          column: 12,
-          script_name: "foo_bar.ts".to_string(),
-          function_name: "foo".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_async: false,
-        },
-        JSStackFrame {
-          line_number: 4,
-          column: 14,
-          script_name: "bar_baz.ts".to_string(),
-          function_name: "qat".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_async: false,
-        },
-        JSStackFrame {
-          line_number: 1,
-          column: 1,
-          script_name: "deno_main.js".to_string(),
-          function_name: "".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_async: false,
-        },
-      ],
-      already_source_mapped: false,
-    };
-    assert_eq!(actual, expected);
-  }
-
-  #[test]
-  fn apply_source_map_2() {
-    let e = deno_core::JSError {
-      message: "TypeError: baz".to_string(),
-      source_line: None,
-      script_resource_name: None,
-      line_number: None,
-      start_column: None,
-      end_column: None,
-      frames: vec![JSStackFrame {
-        line_number: 11,
-        column: 12,
-        script_name: "CLI_SNAPSHOT.js".to_string(),
-        function_name: "setLogDebug".to_string(),
-        is_eval: false,
-        is_constructor: false,
-        is_async: false,
-      }],
-      already_source_mapped: false,
-    };
-    let getter = MockSourceMapGetter {};
-    let actual = apply_source_map(&e, &getter);
-    assert_eq!(actual.message, "TypeError: baz");
-    // Because this is accessing the live bundle, this test might be more fragile
-    assert_eq!(actual.frames.len(), 1);
-  }
-
-  #[test]
   fn apply_source_map_line() {
     let e = deno_core::JSError {
       message: "TypeError: baz".to_string(),
@@ -365,7 +221,7 @@ mod tests {
       start_column: Some(16),
       end_column: None,
       frames: vec![],
-      already_source_mapped: false,
+      formatted_frames: vec![],
     };
     let getter = MockSourceMapGetter {};
     let actual = apply_source_map(&e, &getter);

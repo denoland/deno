@@ -1371,11 +1371,39 @@ itest!(error_018_hide_long_source_js {
   exit_code: 1,
 });
 
-itest!(error_stack {
-  args: "run --reload error_stack.ts",
+itest!(error_019_stack_function {
+  args: "error_019_stack_function.ts",
+  output: "error_019_stack_function.ts.out",
   check_stderr: true,
   exit_code: 1,
-  output: "error_stack.ts.out",
+});
+
+itest!(error_020_stack_constructor {
+  args: "error_020_stack_constructor.ts",
+  output: "error_020_stack_constructor.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
+itest!(error_021_stack_method {
+  args: "error_021_stack_method.ts",
+  output: "error_021_stack_method.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
+itest!(error_022_stack_custom_error {
+  args: "error_022_stack_custom_error.ts",
+  output: "error_022_stack_custom_error.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
+itest!(error_023_stack_async {
+  args: "error_023_stack_async.ts",
+  output: "error_023_stack_async.ts.out",
+  check_stderr: true,
+  exit_code: 1,
 });
 
 itest!(error_syntax {

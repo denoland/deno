@@ -9,16 +9,8 @@
 /// <reference lib="deno.ns" />
 /// <reference lib="esnext" />
 
-// https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
-
-declare interface WindowOrWorkerGlobalScope {
-  ReadableStream: __domTypes.ReadableStreamConstructor;
-  location: __domTypes.Location;
-}
-
 // This follows the WebIDL at: https://webassembly.github.io/spec/js-api/
 // and: https://webassembly.github.io/spec/web-api/
-
 declare namespace WebAssembly {
   interface WebAssemblyInstantiatedSource {
     module: Module;
@@ -203,8 +195,7 @@ declare function clearInterval(id?: number): void;
 declare function queueMicrotask(func: Function): void;
 
 declare const console: Console;
-declare const location: __domTypes.Location;
-declare const ReadableStream: __domTypes.ReadableStreamConstructor;
+declare const location: Location;
 
 declare function addEventListener(
   type: string,
@@ -220,188 +211,170 @@ declare function removeEventListener(
   options?: boolean | EventListenerOptions | undefined
 ): void;
 
-declare type ReadableStream<R = any> = __domTypes.ReadableStream<R>;
-
 declare interface ImportMeta {
   url: string;
   main: boolean;
 }
 
-declare namespace __domTypes {
-  export interface DomIterable<K, V> {
-    keys(): IterableIterator<K>;
-    values(): IterableIterator<V>;
-    entries(): IterableIterator<[K, V]>;
-    [Symbol.iterator](): IterableIterator<[K, V]>;
-    forEach(
-      callback: (value: V, key: K, parent: this) => void,
-      thisArg?: any
-    ): void;
-  }
-  export interface ReadableStreamReadDoneResult<T> {
-    done: true;
-    value?: T;
-  }
-  export interface ReadableStreamReadValueResult<T> {
-    done: false;
-    value: T;
-  }
-  export type ReadableStreamReadResult<T> =
-    | ReadableStreamReadValueResult<T>
-    | ReadableStreamReadDoneResult<T>;
-  export interface ReadableStreamDefaultReader<R = any> {
-    readonly closed: Promise<void>;
-    cancel(reason?: any): Promise<void>;
-    read(): Promise<ReadableStreamReadResult<R>>;
-    releaseLock(): void;
-  }
-  export interface UnderlyingSource<R = any> {
-    cancel?: ReadableStreamErrorCallback;
-    pull?: ReadableStreamDefaultControllerCallback<R>;
-    start?: ReadableStreamDefaultControllerCallback<R>;
-    type?: undefined;
-  }
-  export interface ReadableStreamErrorCallback {
-    (reason: any): void | PromiseLike<void>;
-  }
+interface DomIterable<K, V> {
+  keys(): IterableIterator<K>;
+  values(): IterableIterator<V>;
+  entries(): IterableIterator<[K, V]>;
+  [Symbol.iterator](): IterableIterator<[K, V]>;
+  forEach(
+    callback: (value: V, key: K, parent: this) => void,
+    thisArg?: any
+  ): void;
+}
 
-  export interface ReadableStreamDefaultControllerCallback<R> {
-    (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
-  }
+interface ReadableStreamReadDoneResult<T> {
+  done: true;
+  value?: T;
+}
 
-  export interface ReadableStreamDefaultController<R> {
-    readonly desiredSize: number;
-    enqueue(chunk?: R): void;
-    close(): void;
-    error(e?: any): void;
-  }
+interface ReadableStreamReadValueResult<T> {
+  done: false;
+  value: T;
+}
 
-  /** This Streams API interface represents a readable stream of byte data. The
-   * Fetch API offers a concrete instance of a ReadableStream through the body
-   * property of a Response object. */
-  export interface ReadableStream<R = any> {
-    readonly locked: boolean;
-    cancel(reason?: any): Promise<void>;
-    getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
-    getReader(): ReadableStreamDefaultReader<R>;
-    /* disabled for now
-    pipeThrough<T>(
-      {
-        writable,
-        readable
-      }: {
-        writable: WritableStream<R>;
-        readable: ReadableStream<T>;
-      },
-      options?: PipeOptions
-    ): ReadableStream<T>;
-    pipeTo(dest: WritableStream<R>, options?: PipeOptions): Promise<void>;
-    */
-    tee(): [ReadableStream<R>, ReadableStream<R>];
-  }
+type ReadableStreamReadResult<T> =
+  | ReadableStreamReadValueResult<T>
+  | ReadableStreamReadDoneResult<T>;
 
-  export interface ReadableStreamConstructor<R = any> {
-    new (src?: UnderlyingSource<R>): ReadableStream<R>;
-    prototype: ReadableStream<R>;
-  }
+interface ReadableStreamDefaultReader<R = any> {
+  readonly closed: Promise<void>;
+  cancel(reason?: any): Promise<void>;
+  read(): Promise<ReadableStreamReadResult<R>>;
+  releaseLock(): void;
+}
 
-  export interface ReadableStreamReader<R = any> {
-    cancel(reason: any): Promise<void>;
-    read(): Promise<ReadableStreamReadResult<R>>;
-    releaseLock(): void;
-  }
-  export interface ReadableStreamBYOBReader {
-    readonly closed: Promise<void>;
-    cancel(reason?: any): Promise<void>;
-    read<T extends ArrayBufferView>(
-      view: T
-    ): Promise<ReadableStreamReadResult<T>>;
-    releaseLock(): void;
-  }
-  export interface WritableStream<W = any> {
-    readonly locked: boolean;
-    abort(reason?: any): Promise<void>;
-    getWriter(): WritableStreamDefaultWriter<W>;
-  }
-  export interface WritableStreamDefaultWriter<W = any> {
-    readonly closed: Promise<void>;
-    readonly desiredSize: number | null;
-    readonly ready: Promise<void>;
-    abort(reason?: any): Promise<void>;
-    close(): Promise<void>;
-    releaseLock(): void;
-    write(chunk: W): Promise<void>;
-  }
-  export interface DOMStringList {
-    /** Returns the number of strings in strings. */
-    readonly length: number;
-    /** Returns true if strings contains string, and false otherwise. */
-    contains(string: string): boolean;
-    /** Returns the string with index index from strings. */
-    item(index: number): string | null;
-    [index: number]: string;
-  }
-  /** The location (URL) of the object it is linked to. Changes done on it are
-   * reflected on the object it relates to. Both the Document and Window
-   * interface have such a linked Location, accessible via Document.location and
-   * Window.location respectively. */
-  export interface Location {
-    /** Returns a DOMStringList object listing the origins of the ancestor
-     * browsing contexts, from the parent browsing context to the top-level
-     * browsing context. */
-    readonly ancestorOrigins: DOMStringList;
-    /** Returns the Location object's URL's fragment (includes leading "#" if
-     * non-empty).
-     *
-     * Can be set, to navigate to the same URL with a changed fragment (ignores
-     * leading "#"). */
-    hash: string;
-    /** Returns the Location object's URL's host and port (if different from the
-     * default port for the scheme).
-     *
-     * Can be set, to navigate to the same URL with a changed host and port. */
-    host: string;
-    /** Returns the Location object's URL's host.
-     *
-     * Can be set, to navigate to the same URL with a changed host. */
-    hostname: string;
-    /** Returns the Location object's URL.
-     *
-     * Can be set, to navigate to the given URL. */
-    href: string;
-    toString(): string;
-    /** Returns the Location object's URL's origin. */
-    readonly origin: string;
-    /** Returns the Location object's URL's path.
-     *
-     * Can be set, to navigate to the same URL with a changed path. */
-    pathname: string;
-    /** Returns the Location object's URL's port.
-     *
-     * Can be set, to navigate to the same URL with a changed port. */
-    port: string;
-    /** Returns the Location object's URL's scheme.
-     *
-     * Can be set, to navigate to the same URL with a changed scheme. */
-    protocol: string;
-    /** Returns the Location object's URL's query (includes leading "?" if
-     * non-empty).
-     *
-     * Can be set, to navigate to the same URL with a changed query (ignores
-     * leading "?"). */
-    search: string;
-    /**
-     * Navigates to the given URL.
-     */
-    assign(url: string): void;
-    /**
-     * Reloads the current page.
-     */
-    reload(): void;
-    /** Removes the current page from the session history and navigates to the
-     * given URL. */
-    replace(url: string): void;
-  }
+interface UnderlyingSource<R = any> {
+  cancel?: ReadableStreamErrorCallback;
+  pull?: ReadableStreamDefaultControllerCallback<R>;
+  start?: ReadableStreamDefaultControllerCallback<R>;
+  type?: undefined;
+}
+
+interface ReadableStreamErrorCallback {
+  (reason: any): void | PromiseLike<void>;
+}
+
+interface ReadableStreamDefaultControllerCallback<R> {
+  (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
+}
+
+interface ReadableStreamDefaultController<R> {
+  readonly desiredSize: number;
+  enqueue(chunk?: R): void;
+  close(): void;
+  error(e?: any): void;
+}
+
+/** This Streams API interface represents a readable stream of byte data. The
+ * Fetch API offers a concrete instance of a ReadableStream through the body
+ * property of a Response object. */
+interface ReadableStream<R = any> {
+  readonly locked: boolean;
+  cancel(reason?: any): Promise<void>;
+  // TODO(ry) It doesn't seem like Chrome supports this.
+  // getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
+  getReader(): ReadableStreamDefaultReader<R>;
+  tee(): [ReadableStream<R>, ReadableStream<R>];
+}
+
+declare const ReadableStream: {
+  prototype: ReadableStream;
+  // TODO(ry) This doesn't match lib.dom.d.ts
+  new <R = any>(src?: UnderlyingSource<R>): ReadableStream<R>;
+};
+
+/** This Streams API interface provides a standard abstraction for writing streaming data to a destination, known as a sink. This object comes with built-in backpressure and queuing. */
+interface WritableStream<W = any> {
+  readonly locked: boolean;
+  abort(reason?: any): Promise<void>;
+  getWriter(): WritableStreamDefaultWriter<W>;
+}
+
+interface WritableStreamDefaultWriter<W = any> {
+  readonly closed: Promise<void>;
+  readonly desiredSize: number | null;
+  readonly ready: Promise<void>;
+  abort(reason?: any): Promise<void>;
+  close(): Promise<void>;
+  releaseLock(): void;
+  write(chunk: W): Promise<void>;
+}
+
+interface DOMStringList {
+  /** Returns the number of strings in strings. */
+  readonly length: number;
+  /** Returns true if strings contains string, and false otherwise. */
+  contains(string: string): boolean;
+  /** Returns the string with index index from strings. */
+  item(index: number): string | null;
+  [index: number]: string;
+}
+
+/** The location (URL) of the object it is linked to. Changes done on it are
+ * reflected on the object it relates to. Both the Document and Window
+ * interface have such a linked Location, accessible via Document.location and
+ * Window.location respectively. */
+declare interface Location {
+  /** Returns a DOMStringList object listing the origins of the ancestor
+   * browsing contexts, from the parent browsing context to the top-level
+   * browsing context. */
+  readonly ancestorOrigins: DOMStringList;
+  /** Returns the Location object's URL's fragment (includes leading "#" if
+   * non-empty).
+   *
+   * Can be set, to navigate to the same URL with a changed fragment (ignores
+   * leading "#"). */
+  hash: string;
+  /** Returns the Location object's URL's host and port (if different from the
+   * default port for the scheme).
+   *
+   * Can be set, to navigate to the same URL with a changed host and port. */
+  host: string;
+  /** Returns the Location object's URL's host.
+   *
+   * Can be set, to navigate to the same URL with a changed host. */
+  hostname: string;
+  /** Returns the Location object's URL.
+   *
+   * Can be set, to navigate to the given URL. */
+  href: string;
+  toString(): string;
+  /** Returns the Location object's URL's origin. */
+  readonly origin: string;
+  /** Returns the Location object's URL's path.
+   *
+   * Can be set, to navigate to the same URL with a changed path. */
+  pathname: string;
+  /** Returns the Location object's URL's port.
+   *
+   * Can be set, to navigate to the same URL with a changed port. */
+  port: string;
+  /** Returns the Location object's URL's scheme.
+   *
+   * Can be set, to navigate to the same URL with a changed scheme. */
+  protocol: string;
+  /** Returns the Location object's URL's query (includes leading "?" if
+   * non-empty).
+   *
+   * Can be set, to navigate to the same URL with a changed query (ignores
+   * leading "?"). */
+  search: string;
+  /**
+   * Navigates to the given URL.
+   */
+  assign(url: string): void;
+  /**
+   * Reloads the current page.
+   */
+  reload(): void;
+  /** Removes the current page from the session history and navigates to the
+   * given URL. */
+  replace(url: string): void;
 }
 
 type BufferSource = ArrayBufferView | ArrayBuffer;
@@ -515,7 +488,7 @@ type FormDataEntryValue = File | string;
  * form fields and their values, which can then be easily sent using the
  * XMLHttpRequest.send() method. It uses the same format a form would use if the
  * encoding type were set to "multipart/form-data". */
-interface FormData extends __domTypes.DomIterable<string, FormDataEntryValue> {
+interface FormData extends DomIterable<string, FormDataEntryValue> {
   append(name: string, value: string | Blob, fileName?: string): void;
   delete(name: string): void;
   get(name: string): FormDataEntryValue | null;
@@ -581,7 +554,7 @@ interface Headers {
   ): void;
 }
 
-interface Headers extends __domTypes.DomIterable<string, string> {
+interface Headers extends DomIterable<string, string> {
   /** Appends a new value onto an existing header inside a `Headers` object, or
    * adds the header if it does not already exist.
    */
