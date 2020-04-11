@@ -8,6 +8,6 @@ Facebook's React library.
 ### Usage Examples
 
 ```typescript
-// @deno-types="https://deno.land/std/types/react-dom/@16.9/react-dom.d.ts"
+// @deno-types="https://deno.land/std/types/react-dom/v16.9.0/react-dom.d.ts"
 import ReactDOM from "https://cdn.pika.dev/_/react-dom@v16.9.0";
 ```
