@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types.d.ts";
-import { URL, parts } from "./url.ts";
+import { parts } from "./url.ts";
 import { isIterable, requiredArguments } from "./util.ts";
 
 /** @internal */
@@ -45,7 +44,7 @@ function handleArrayInitialization(
   }
 }
 
-export class URLSearchParams implements domTypes.URLSearchParams {
+export class URLSearchParamsImpl implements URLSearchParams {
   #params: Array<[string, string]> = [];
 
   constructor(init: string | string[][] | Record<string, string> = "") {
@@ -63,7 +62,7 @@ export class URLSearchParams implements domTypes.URLSearchParams {
       return;
     }
 
-    if (init instanceof URLSearchParams) {
+    if (init instanceof URLSearchParamsImpl) {
       this.#params = [...init.#params];
       return;
     }

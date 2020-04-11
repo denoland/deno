@@ -1,8 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import * as domTypes from "./dom_types.d.ts";
-
-export function getDOMStringList(arr: string[]): domTypes.DOMStringList {
+export function getDOMStringList(arr: string[]): DOMStringList {
   Object.defineProperties(arr, {
     contains: {
       value(searchElement: string): boolean {
@@ -16,5 +14,5 @@ export function getDOMStringList(arr: string[]): domTypes.DOMStringList {
       },
     },
   });
-  return arr as string[] & domTypes.DOMStringList;
+  return arr as string[] & DOMStringList;
 }

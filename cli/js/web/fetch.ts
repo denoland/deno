@@ -10,8 +10,6 @@ import { read } from "../ops/io.ts";
 import { close } from "../ops/resources.ts";
 import { Buffer } from "../buffer.ts";
 import { FormData } from "./form_data.ts";
-import { URL } from "./url.ts";
-import { URLSearchParams } from "./url_search_params.ts";
 import { fetch as opFetch, FetchResponse } from "../ops/fetch.ts";
 import { DomFileImpl } from "./dom_file.ts";
 

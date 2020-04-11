@@ -47,29 +47,6 @@ export interface ProgressEventInit extends EventInit {
   total?: number;
 }
 
-export class URLSearchParams {
-  constructor(
-    init?: string[][] | Record<string, string> | string | URLSearchParams
-  );
-  append(name: string, value: string): void;
-  delete(name: string): void;
-  get(name: string): string | null;
-  getAll(name: string): string[];
-  has(name: string): boolean;
-  set(name: string, value: string): void;
-  sort(): void;
-  toString(): string;
-  forEach(
-    callbackfn: (value: string, key: string, parent: this) => void,
-    thisArg?: any
-  ): void;
-  [Symbol.iterator](): IterableIterator<[string, string]>;
-  entries(): IterableIterator<[string, string]>;
-  keys(): IterableIterator<string>;
-  values(): IterableIterator<string>;
-  static toString(): string;
-}
-
 export interface UIEventInit extends EventInit {
   detail?: number;
   // adjust Window -> Node
@@ -653,49 +630,4 @@ export interface ResponseConstructor {
   new (body?: BodyInit | null, init?: ResponseInit): Response;
   error(): Response;
   redirect(url: string, status?: number): Response;
-}
-
-export class DOMStringList {
-  readonly length: number;
-  contains(string: string): boolean;
-  item(index: number): string | null;
-  [index: number]: string;
-  [Symbol.iterator](): IterableIterator<string>;
-}
-
-export class Location {
-  readonly ancestorOrigins: DOMStringList;
-  hash: string;
-  host: string;
-  hostname: string;
-  href: string;
-  toString(): string;
-  readonly origin: string;
-  pathname: string;
-  port: string;
-  protocol: string;
-  search: string;
-  assign(url: string): void;
-  reload(): void;
-  replace(url: string): void;
-}
-
-export class URL {
-  constructor(url: string, base?: string | URL);
-  hash: string;
-  host: string;
-  hostname: string;
-  href: string;
-  toString(): string;
-  readonly origin: string;
-  password: string;
-  pathname: string;
-  port: string;
-  protocol: string;
-  search: string;
-  readonly searchParams: URLSearchParams;
-  username: string;
-  toJSON(): string;
-  static createObjectURL(object: any): string;
-  static revokeObjectURL(url: string): void;
 }
