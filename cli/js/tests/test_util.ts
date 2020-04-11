@@ -200,7 +200,7 @@ const encoder = new TextEncoder();
 
 // Replace functions with null, errors with their stack strings, and JSONify.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function serializeTestMessage(message: Deno.TestMessage): string {
+function serializeTestMessage(message: Deno.TestMessage): string {
   return JSON.stringify({
     start: message.start && {
       ...message.start,
@@ -325,7 +325,7 @@ unitTest(function permissionsMatches(): void {
  * cli/js/tests/unit_tests.ts as it is easy to miss this out
  */
 unitTest(
-  { perms: { read: true }, ignore: true },
+  { perms: { read: true } },
   function assertAllUnitTestFilesImported(): void {
     const directoryTestFiles = Deno.readdirSync("./cli/js/tests/")
       .map((k) => k.name)

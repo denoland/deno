@@ -73,13 +73,13 @@ interface BasicValueOptions {
 const getConstructorName = (val: new (...args: any[]) => any): string =>
   (typeof val.constructor === "function" && val.constructor.name) || "Object";
 
-// /* global window */
-// /** Is val is equal to global window object?
-//  *  Works even if it does not exist :)
-//  * */
+/* global window */
+/** Is val is equal to global window object?
+ *  Works even if it does not exist :)
+ * */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-// const isWindow = (val: any): val is Window =>
-//   typeof window !== "undefined" && val === window;
+const isWindow = (val: any): val is Window =>
+  typeof window !== "undefined" && val === window;
 
 const SYMBOL_REGEXP = /^Symbol\((.*)\)(.*)$/;
 
@@ -509,8 +509,7 @@ function printComplexValue(
 
   // Avoid failure to serialize global window object in jsdom test environment.
   // For example, not even relevant if window is prop of React element.
-  // return hitMaxDepth || isWindow(val)
-  return hitMaxDepth
+  return hitMaxDepth || isWindow(val)
     ? "[" + getConstructorName(val) + "]"
     : (min ? "" : getConstructorName(val) + " ") +
         "{" +

@@ -82,6 +82,6 @@ unitTest(function testDomIterableScope(): void {
 
   checkScope(0, Object(0));
   checkScope("", Object(""));
-  checkScope(null, self);
-  checkScope(undefined, self);
+  checkScope(null, window);
+  checkScope(undefined, window);
 });

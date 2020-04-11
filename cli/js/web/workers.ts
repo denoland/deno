@@ -176,7 +176,7 @@ export class WorkerImpl extends EventTarget implements Worker {
   postMessage(message: any, transferOrOptions?: any): void {
     if (transferOrOptions) {
       throw new Error(
-        "Not yet implemented: `transfer` and `options` are not supported. Only plain, JSON-serializable messages are supported."
+        "Not yet implemented: `transfer` and `options` are not supported. Only JSON-serializable messages are supported."
       );
     }
 
