@@ -485,8 +485,12 @@ export class BufWriter extends AbstractBufBase implements Writer {
     this.usedBufferBytes = 0;
   }
 
-  /** Writes the contents of data into the buffer.
-   * Returns the number of bytes written.
+  /** Writes the contents of `data` into the buffer.  If the contents won't fully
+   * fit into the buffer, those bytes that can are copied into the buffer, the
+   * buffer is the flushed to the writer and the remaining bytes are copied into
+   * the now empty buffer.
+   *
+   * @return the number of bytes written to the buffer.
    */
   async write(data: Uint8Array): Promise<number> {
     if (this.err !== null) throw this.err;
@@ -575,8 +579,12 @@ export class BufWriterSync extends AbstractBufBase implements SyncWriter {
     this.usedBufferBytes = 0;
   }
 
-  /** Writes the contents of data into the buffer.
-   * Returns the number of bytes written.
+  /** Writes the contents of `data` into the buffer.  If the contents won't fully
+   * fit into the buffer, those bytes that can are copied into the buffer, the
+   * buffer is the flushed to the writer and the remaining bytes are copied into
+   * the now empty buffer.
+   *
+   * @return the number of bytes written to the buffer.
    */
   writeSync(data: Uint8Array): number {
     if (this.err !== null) throw this.err;
