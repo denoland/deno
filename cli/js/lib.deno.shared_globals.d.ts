@@ -1037,6 +1037,10 @@ declare const URL: {
   revokeObjectURL(url: string): void;
 };
 
+interface PostMessageOptions {
+  transfer?: any[];
+}
+
 declare class Worker {
   onerror?: (e: Event) => void;
   onmessage?: (data: any) => void;
@@ -1048,7 +1052,8 @@ declare class Worker {
       name?: string;
     }
   );
-  postMessage(data: any): void;
+  postMessage(message: any, transfer: ArrayBuffer[]): void;
+  postMessage(message: any, options?: PostMessageOptions): void;
   terminate(): void;
 }
 
