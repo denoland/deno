@@ -2,6 +2,7 @@
 use crate::*;
 use futures::future::FutureExt;
 use serde_derive::Deserialize;
+use serde_derive::Serialize;
 use serde_json::json;
 use serde_json::Value;
 use std::future::Future;
@@ -12,33 +13,16 @@ pub trait JsonError {
   fn message(&self) -> String;
 }
 
-pub type JsonResult = Result<Value, Box<dyn JsonError>>;
+pub type JsonResult<E> = Result<Value, E>;
 
-pub type AsyncJsonOp = Pin<Box<dyn Future<Output = JsonResult>>>;
+pub type AsyncJsonOp<E> = Pin<Box<dyn Future<Output = JsonResult<E>>>>;
 
-pub enum JsonOp {
+pub enum JsonOp<E: JsonError> {
   Sync(Value),
-  Async(AsyncJsonOp),
+  Async(AsyncJsonOp<E>),
   /// AsyncUnref is the variation of Async, which doesn't block the program
   /// exiting.
-  AsyncUnref(AsyncJsonOp),
-}
-
-fn serialize_result(promise_id: Option<u64>, result: JsonResult) -> Buf {
-  let value = match result {
-    Ok(v) => json!({ 
-      "ok": v, 
-      "promiseId": promise_id 
-    }),
-    Err(err) => json!({ 
-      "err": { 
-        "kind": err.kind(), 
-        "message": err.message() 
-      }, 
-      "promiseId": promise_id 
-    }),
-  };
-  serde_json::to_vec(&value).unwrap().into_boxed_slice()
+  AsyncUnref(AsyncJsonOp<E>),
 }
 
 impl JsonError for serde_json::Error {
@@ -57,15 +41,16 @@ struct AsyncArgs {
   promise_id: Option<u64>,
 }
 
-pub fn json_op<D>(d: D) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp
+pub fn json_op<D, E>(d: D) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp
 where
-  D: Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, Box<dyn JsonError>>,
+  E: JsonError + 'static,
+  D: Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp<E>, E>,
 {
   move |control: &[u8], zero_copy: Option<ZeroCopyBuf>| {
     let async_args: AsyncArgs = match serde_json::from_slice(control) {
       Ok(args) => args,
       Err(e) => {
-        let buf = serialize_result(None, Err(Box::new(e)));
+        let buf = serialize_result(None, Err(FinalJsonError::from(e)));
         return CoreOp::Sync(buf);
       }
     };
@@ -86,25 +71,64 @@ where
       Ok(JsonOp::Async(fut)) => {
         assert!(promise_id.is_some());
         let fut2 = fut.then(move |result| {
-          futures::future::ok(serialize_result(promise_id, result))
+          futures::future::ok(serialize_result(
+            promise_id,
+            result.map_err(FinalJsonError::from),
+          ))
         });
         CoreOp::Async(fut2.boxed_local())
       }
       Ok(JsonOp::AsyncUnref(fut)) => {
         assert!(promise_id.is_some());
         let fut2 = fut.then(move |result| {
-          futures::future::ok(serialize_result(promise_id, result))
+          futures::future::ok(serialize_result(
+            promise_id,
+            result.map_err(FinalJsonError::from),
+          ))
         });
         CoreOp::AsyncUnref(fut2.boxed_local())
       }
       Err(sync_err) => {
-        let buf = serialize_result(promise_id, Err(sync_err));
+        let buf =
+          serialize_result(promise_id, Err(FinalJsonError::from(sync_err)));
         if is_sync {
           CoreOp::Sync(buf)
         } else {
           CoreOp::Async(futures::future::ok(buf).boxed_local())
         }
       }
+    }
+  }
+}
+
+fn serialize_result(
+  promise_id: Option<u64>,
+  result: Result<Value, FinalJsonError>,
+) -> Buf {
+  let value = match result {
+    Ok(v) => json!({
+      "ok": v,
+      "promiseId": promise_id
+    }),
+    Err(err) => json!({
+      "err": err,
+      "promiseId": promise_id
+    }),
+  };
+  serde_json::to_vec(&value).unwrap().into_boxed_slice()
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct FinalJsonError {
+  pub kind: i32,
+  pub message: String,
+}
+
+impl<E: JsonError> From<E> for FinalJsonError {
+  fn from(e: E) -> FinalJsonError {
+    FinalJsonError {
+      kind: e.kind(),
+      message: e.message(),
     }
   }
 }

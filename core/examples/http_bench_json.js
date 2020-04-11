@@ -11,7 +11,7 @@ const responseBuf = new Uint8Array(
 
 /** Listens on 0.0.0.0:4500, returns rid. */
 function listen() {
-  return dispatchJson.sendSync("listen", { rid: -1 });
+  return dispatchJson.sendAsync("listen", { rid: -1 });
 }
 
 /** Accepts a connection, returns rid. */
@@ -57,14 +57,16 @@ async function main() {
   const errorFactory = (err) => {
     console.error("Op error", err);
   };
-  dispatchJson = createDispatchJson(Deno.core, errorFactory);  
-  for (const opName in Deno.core.ops()) {
-    Deno.core.setAsyncHandler(ops[opName], dispatchJson.handleAsyncMsgFromRust);
+  dispatchJson = createDispatchJson(Deno.core, errorFactory);
+  const ops = Deno.core.ops();
+
+  for (const opName in ops) {
+    Deno.core.setAsyncHandler(ops[opName], dispatchJson.asyncMsgFromRust);
   }
 
   Deno.core.print("http_bench_json.js start\n");
 
-  const listenerRid = listen();
+  const listenerRid = await listen();
   Deno.core.print(`listening http://127.0.0.1:4544/ rid=${listenerRid}\n`);
   while (true) {
     const rid = await accept(listenerRid);

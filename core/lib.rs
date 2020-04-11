@@ -8,9 +8,9 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
-mod dispatch_json;
 mod any_error;
 mod bindings;
+mod dispatch_json;
 mod es_isolate;
 mod flags;
 mod isolate;
@@ -25,6 +25,7 @@ mod shared_queue;
 pub use rusty_v8 as v8;
 
 pub use crate::any_error::*;
+pub use crate::dispatch_json::*;
 pub use crate::es_isolate::*;
 pub use crate::flags::v8_set_flags;
 pub use crate::isolate::*;
@@ -34,7 +35,6 @@ pub use crate::modules::*;
 pub use crate::ops::*;
 pub use crate::plugins::*;
 pub use crate::resources::*;
-pub use crate::dispatch_json::*;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()

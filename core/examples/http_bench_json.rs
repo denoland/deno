@@ -4,20 +4,19 @@ extern crate derive_deref;
 extern crate log;
 
 use deno_core::Isolate as CoreIsolate;
-use deno_core::*;
 use deno_core::JsonError;
-use serde_json::Value;
+use deno_core::*;
 use futures::future::poll_fn;
 use futures::prelude::*;
 use futures::task::Context;
 use futures::task::Poll;
-use std::cell::RefCell;
-use std::env;
+use serde_derive::Deserialize;
 use serde_json;
 use serde_json::json;
-use serde_derive::Deserialize;
-use std::io::Error;
-use std::io::ErrorKind;
+use serde_json::Value;
+use std::cell::RefCell;
+use std::env;
+use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -62,27 +61,46 @@ impl Isolate {
       state: Default::default(),
     };
 
-    isolate.core_isolate.register_op("listen", json_op(isolate.stateful_op(op_listen)));
-    isolate.core_isolate.register_op("accept", json_op(isolate.stateful_op(op_accept)));
-    isolate.core_isolate.register_op("read", json_op(isolate.stateful_op(op_read)));
-    isolate.core_isolate.register_op("write", json_op(isolate.stateful_op(op_write)));
-    isolate.core_isolate.register_op("close", json_op(isolate.stateful_op(op_close)));
+    isolate.register_op("listen", op_listen);
+    isolate.register_op("accept", op_accept);
+    isolate.register_op("read", op_read);
+    isolate.register_op("write", op_write);
+    isolate.register_op("close", op_close);
 
     isolate
+  }
+
+  fn register_op<D>(&mut self, name: &str, dispatcher: D)
+  where
+    D: Fn(
+        State,
+        Value,
+        Option<ZeroCopyBuf>,
+      ) -> Result<JsonOp<BenchError>, BenchError>
+      + 'static,
+  {
+    let wrapped_op = json_op(self.stateful_op(dispatcher));
+    self.core_isolate.register_op(name, wrapped_op);
   }
 
   fn stateful_op<D>(
     &mut self,
     dispatcher: D,
-  ) -> impl Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, Box<dyn JsonError>> 
+  ) -> impl Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp<BenchError>, BenchError>
   where
-    D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, Box<dyn JsonError>>
+    D: Fn(
+      State,
+      Value,
+      Option<ZeroCopyBuf>,
+    ) -> Result<JsonOp<BenchError>, BenchError>,
   {
     let state = self.state.clone();
 
     move |args: Value,
           zero_copy: Option<ZeroCopyBuf>|
-          -> Result<JsonOp, Box<dyn JsonError>> { dispatcher(&state, args, zero_copy) }
+          -> Result<JsonOp<BenchError>, BenchError> {
+      dispatcher(state.clone(), args, zero_copy)
+    }
   }
 }
 
@@ -103,27 +121,24 @@ fn op_close(
   state: State,
   args: Value,
   _buf: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, Box<dyn JsonError>> {
-  let args: RidArgs = serde_json::from_value(args).unwrap();
+) -> Result<JsonOp<BenchError>, BenchError> {
+  let args: RidArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   debug!("close rid={}", rid);
 
-  let op = async move {
-    let resource_table = &mut state.borrow_mut().resource_table;
-    if let None = resource_table.close(rid) {
-      return Err(bad_resource())
-    }
-    Ok(json!(0))
-  };
+  let resource_table = &mut state.borrow_mut().resource_table;
+  if resource_table.close(rid).is_none() {
+    return Err(BenchError::bad_rid());
+  }
 
-  Ok(JsonOp::Async(op.boxed_local()))
+  Ok(JsonOp::Sync(json!(0)))
 }
 
 fn op_listen(
   state: State,
   _args: Value,
   _buf: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, Box<dyn JsonError>> {
+) -> Result<JsonOp<BenchError>, BenchError> {
   debug!("listen");
 
   let op = async move {
@@ -133,6 +148,7 @@ fn op_listen(
     let rid = resource_table.add("tcpListener", Box::new(listener));
     Ok(json!(rid))
   };
+
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
@@ -140,8 +156,8 @@ fn op_accept(
   state: State,
   args: Value,
   _buf: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, Box<dyn JsonError>> {
-  let args: RidArgs = serde_json::from_value(args).unwrap();
+) -> Result<JsonOp<BenchError>, BenchError> {
+  let args: RidArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   debug!("accept rid={}", rid);
 
@@ -149,10 +165,14 @@ fn op_accept(
     let resource_table = &mut state.borrow_mut().resource_table;
     let listener = resource_table
       .get_mut::<TcpListener>(rid)
-      .ok_or_else(bad_resource).unwrap();
-    listener.poll_accept(cx).map_ok(|(stream, _addr)| {
-      resource_table.add("tcpStream", Box::new(stream))
-    })
+      .ok_or_else(BenchError::bad_rid)
+      .unwrap();
+    listener.poll_accept(cx).map_err(BenchError::from).map_ok(
+      |(stream, _addr)| {
+        let rid = resource_table.add("tcpStream", Box::new(stream));
+        json!(rid)
+      },
+    )
   });
 
   Ok(JsonOp::Async(op.boxed_local()))
@@ -162,8 +182,8 @@ fn op_read(
   state: State,
   args: Value,
   buf: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, Box<dyn JsonError>> {
-  let args: RidArgs = serde_json::from_value(args).unwrap();
+) -> Result<JsonOp<BenchError>, BenchError> {
+  let args: RidArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let mut buf = buf.unwrap();
   debug!("read rid={}", rid);
@@ -172,8 +192,12 @@ fn op_read(
     let resource_table = &mut state.borrow_mut().resource_table;
     let stream = resource_table
       .get_mut::<TcpStream>(rid)
-      .ok_or_else(bad_resource).unwrap();
-    Pin::new(stream).poll_read(cx, &mut buf)
+      .ok_or_else(BenchError::bad_rid)
+      .unwrap();
+    Pin::new(stream)
+      .poll_read(cx, &mut buf)
+      .map_err(BenchError::from)
+      .map_ok(|nread| json!(nread))
   });
 
   Ok(JsonOp::Async(op.boxed_local()))
@@ -183,8 +207,8 @@ fn op_write(
   state: State,
   args: Value,
   buf: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, Box<dyn JsonError>> {
-  let args: RidArgs = serde_json::from_value(args).unwrap();
+) -> Result<JsonOp<BenchError>, BenchError> {
+  let args: RidArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let buf = buf.unwrap();
   debug!("write rid={}", rid);
@@ -193,25 +217,65 @@ fn op_write(
     let resource_table = &mut state.borrow_mut().resource_table;
     let stream = resource_table
       .get_mut::<TcpStream>(rid)
-      .ok_or_else(bad_resource).unwrap();
-    Pin::new(stream).poll_write(cx, &buf)
+      .ok_or_else(BenchError::bad_rid)
+      .unwrap();
+    Pin::new(stream)
+      .poll_write(cx, &buf)
+      .map_err(BenchError::from)
+      .map_ok(|nwritten| json!(nwritten))
   });
 
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
-impl JsonError for Error {
-  fn kind(&self) -> i32 {
-    1
-  }
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum BenchErrorKind {
+  JsonError = 1,
+  BadResourceId = 2,
+  IoError = 3,
+}
 
-  fn message(&self) -> String {
-    self.to_string()
+#[derive(Debug)]
+struct BenchError {
+  kind: BenchErrorKind,
+  msg: String,
+}
+
+impl BenchError {
+  fn bad_rid() -> Self {
+    Self {
+      kind: BenchErrorKind::BadResourceId,
+      msg: "Bad resource id".to_string(),
+    }
   }
 }
 
-fn bad_resource() -> Box<Error> {
-  Box::new(Error::new(ErrorKind::NotFound, "bad resource id"))
+impl JsonError for BenchError {
+  fn kind(&self) -> i32 {
+    self.kind as i32
+  }
+
+  fn message(&self) -> String {
+    self.msg.clone()
+  }
+}
+
+impl From<serde_json::Error> for BenchError {
+  fn from(e: serde_json::Error) -> Self {
+    Self {
+      kind: BenchErrorKind::JsonError,
+      msg: e.to_string(),
+    }
+  }
+}
+
+impl From<io::Error> for BenchError {
+  fn from(e: io::Error) -> Self {
+    Self {
+      kind: BenchErrorKind::IoError,
+      msg: e.to_string(),
+    }
+  }
 }
 
 fn main() {
@@ -226,10 +290,16 @@ fn main() {
   // NOTE: `--help` arg will display V8 help and exit
   deno_core::v8_set_flags(env::args().collect());
 
-  let isolate = Isolate::new();
+  let mut isolate = Isolate::new();
 
-  isolate.core_isolate.execute("dispatch_json", include_str!("../dispatch_json.js")).expect("Failed to execute dispatch_json");
-  isolate.core_isolate.execute("http_bench_json", include_str!("http_bench_json.js")).expect("Failed to execute http_bench_json");
+  isolate
+    .core_isolate
+    .execute("dispatch_json", include_str!("../dispatch_json.js"))
+    .expect("Failed to execute dispatch_json");
+  isolate
+    .core_isolate
+    .execute("http_bench_json", include_str!("http_bench_json.js"))
+    .expect("Failed to execute http_bench_json");
 
   let mut runtime = tokio::runtime::Builder::new()
     .basic_scheduler()

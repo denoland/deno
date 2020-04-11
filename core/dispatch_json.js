@@ -2,11 +2,11 @@
 
 function assert(cond) {
   if (!cond) {
-    throw Error(msg);
+    throw Error("assert failed");
   }
 }
 
-export function createResolvable() {
+function createResolvable() {
   let resolve;
   let reject;
   const promise = new Promise((res, rej) => {
@@ -18,7 +18,8 @@ export function createResolvable() {
   return promise;
 }
 
-export function createDispatchJson(core, errorFactory) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function createDispatchJson(core, errorFactory) {
   // Using an object without a prototype because `Map` was causing GC problems.
   const promiseTable = Object.create(null);
   let _nextPromiseId = 1;
@@ -41,12 +42,12 @@ export function createDispatchJson(core, errorFactory) {
   function asyncMsgFromRust(resUi8) {
     const res = decode(resUi8);
     assert(res.promiseId != null);
-  
+
     const promise = promiseTable[res.promiseId];
     assert(promise != null);
     delete promiseTable[res.promiseId];
     promise.resolve(res);
-  };
+  }
 
   function sendSync(opName, args, zeroCopy) {
     const opId = OPS_CACHE[opName];
@@ -60,16 +61,16 @@ export function createDispatchJson(core, errorFactory) {
     if (res.err) {
       return errorFactory(res.err);
     }
-    assert(res.ok);
+    assert(typeof res.ok !== "undefined");
     return res.ok;
-  };
+  }
 
-  function sendAsync(opName, args, zeroCopy) {
+  async function sendAsync(opName, args, zeroCopy) {
     const opId = OPS_CACHE[opName];
     const promiseId = nextPromiseId();
     args = Object.assign(args, { promiseId });
     const promise = createResolvable();
-  
+
     const argsUi8 = encode(args);
     const buf = core.dispatch(opId, argsUi8, zeroCopy);
     if (buf) {
@@ -84,13 +85,13 @@ export function createDispatchJson(core, errorFactory) {
     if (res.err) {
       return errorFactory(res.err);
     }
-    assert(res.ok);
+    assert(typeof res.ok !== "undefined");
     return res.ok;
-  };
-  
+  }
+
   return {
     sendSync,
     sendAsync,
     asyncMsgFromRust,
-  }
+  };
 }
