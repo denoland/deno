@@ -41,10 +41,6 @@ export interface BlobPropertyBag {
   ending?: EndingType;
 }
 
-interface AbortSignalEventMap {
-  abort: ProgressEvent;
-}
-
 export interface ProgressEventInit extends EventInit {
   lengthComputable?: boolean;
   loaded?: number;
@@ -304,37 +300,6 @@ export interface DomFileConstructor {
 
 export interface FilePropertyBag extends BlobPropertyBag {
   lastModified?: number;
-}
-
-interface ProgressEvent extends Event {
-  readonly lengthComputable: boolean;
-  readonly loaded: number;
-  readonly total: number;
-}
-
-export interface AbortSignal extends EventTarget {
-  readonly aborted: boolean;
-  onabort: ((this: AbortSignal, ev: ProgressEvent) => any) | null;
-  addEventListener<K extends keyof AbortSignalEventMap>(
-    type: K,
-    listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-    options?: boolean | AddEventListenerOptions
-  ): void;
-  addEventListener(
-    type: string,
-    listener: EventListener,
-    options?: boolean | AddEventListenerOptions
-  ): void;
-  removeEventListener<K extends keyof AbortSignalEventMap>(
-    type: K,
-    listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-    options?: boolean | EventListenerOptions
-  ): void;
-  removeEventListener(
-    type: string,
-    listener: EventListener,
-    options?: boolean | EventListenerOptions
-  ): void;
 }
 
 export class FormData {
