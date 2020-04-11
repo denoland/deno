@@ -21,34 +21,34 @@ pub trait DisplayFormatter {
 }
 
 fn format_source_name(
-  script_name: String,
+  file_name: String,
   line_number: i64,
-  column: i64,
+  column_number: i64,
 ) -> String {
   let line_number = line_number + 1;
-  let column = column + 1;
-  let script_name_c = colors::cyan(script_name);
+  let column_number = column_number + 1;
+  let file_name_c = colors::cyan(file_name);
   let line_c = colors::yellow(line_number.to_string());
-  let column_c = colors::yellow(column.to_string());
-  format!("{}:{}:{}", script_name_c, line_c, column_c)
+  let column_c = colors::yellow(column_number.to_string());
+  format!("{}:{}:{}", file_name_c, line_c, column_c)
 }
 
-/// Formats optional source, line number and column into a single string.
+/// Formats optional source, line and column numbers into a single string.
 pub fn format_maybe_source_name(
-  script_name: Option<String>,
+  file_name: Option<String>,
   line_number: Option<i64>,
-  column: Option<i64>,
+  column_number: Option<i64>,
 ) -> String {
-  if script_name.is_none() {
+  if file_name.is_none() {
     return "".to_string();
   }
 
   assert!(line_number.is_some());
-  assert!(column.is_some());
+  assert!(column_number.is_some());
   format_source_name(
-    script_name.unwrap(),
+    file_name.unwrap(),
     line_number.unwrap(),
-    column.unwrap(),
+    column_number.unwrap(),
   )
 }
 

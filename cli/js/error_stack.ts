@@ -24,13 +24,13 @@ function patchCallSite(callSite: CallSite, location: Location): CallSite {
       return callSite.getMethodName();
     },
     getFileName(): string {
-      return location.filename;
+      return location.fileName;
     },
     getLineNumber(): number {
-      return location.line;
+      return location.lineNumber;
     },
     getColumnNumber(): number {
-      return location.column;
+      return location.columnNumber;
     },
     getEvalOrigin(): string | null {
       return callSite.getEvalOrigin();
@@ -227,16 +227,16 @@ function prepareStackTrace(
     structuredStackTrace
       .map(
         (callSite): CallSite => {
-          const filename = callSite.getFileName();
-          const line = callSite.getLineNumber();
-          const column = callSite.getColumnNumber();
-          if (filename && line != null && column != null) {
+          const fileName = callSite.getFileName();
+          const lineNumber = callSite.getLineNumber();
+          const columnNumber = callSite.getColumnNumber();
+          if (fileName && lineNumber != null && columnNumber != null) {
             return patchCallSite(
               callSite,
               applySourceMap({
-                filename,
-                line,
-                column,
+                fileName,
+                lineNumber,
+                columnNumber,
               })
             );
           }

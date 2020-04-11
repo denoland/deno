@@ -33,9 +33,9 @@ pub struct JSError {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct JSStackFrame {
-  pub line_number: i64, // zero indexed
-  pub column: i64,      // zero indexed
-  pub script_name: String,
+  pub line_number: i64,   // zero indexed
+  pub column_number: i64, // zero indexed
+  pub file_name: String,
   pub function_name: String,
   pub is_eval: bool,
   pub is_constructor: bool,
@@ -140,8 +140,8 @@ impl JSError {
         let is_async = is_async.is_true();
         frames.push(JSStackFrame {
           line_number,
-          column: column_number,
-          script_name: file_name,
+          column_number,
+          file_name,
           function_name,
           is_constructor,
           is_eval,
@@ -181,14 +181,14 @@ impl JSError {
 impl Error for JSError {}
 
 fn format_source_loc(
-  script_name: &str,
+  file_name: &str,
   line_number: i64,
-  column: i64,
+  column_number: i64,
 ) -> String {
   // TODO match this style with how typescript displays errors.
   let line_number = line_number + 1;
-  let column = column + 1;
-  format!("{}:{}:{}", script_name, line_number, column)
+  let column_number = column_number + 1;
+  format!("{}:{}:{}", file_name, line_number, column_number)
 }
 
 impl fmt::Display for JSError {
