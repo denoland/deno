@@ -4,6 +4,7 @@ use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
 use crate::op_error::OpError;
 use crate::permissions::DenoPermissions;
+use crate::permissions::PermissionState;
 use crate::startup_data;
 use crate::state::State;
 use crate::tokio_util::create_basic_runtime;
@@ -41,8 +42,12 @@ fn create_web_worker(
   let state =
     State::new_for_worker(global_state, Some(permissions), specifier)?;
 
-  let mut worker =
-    WebWorker::new(startup_data::deno_isolate_init(), state, maybe_name, has_deno_namespace);
+  let mut worker = WebWorker::new(
+    startup_data::deno_isolate_init(),
+    state,
+    maybe_name,
+    has_deno_namespace,
+  );
   let script = format!(
     "bootstrapWorkerRuntime(\"{}\", {})",
     worker.name, worker.has_deno_namespace
@@ -140,12 +145,32 @@ fn run_worker_thread(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct WorkerPermissions {
+  #[serde(default)]
+  read: bool,
+  #[serde(default)]
+  write: bool,
+  #[serde(default)]
+  net: bool,
+  #[serde(default)]
+  env: bool,
+  #[serde(default)]
+  run: bool,
+  #[serde(default)]
+  plugin: bool,
+  #[serde(default)]
+  hrtime: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CreateWorkerArgs {
   name: Option<String>,
   specifier: String,
   has_source_code: bool,
   source_code: String,
   use_deno_namespace: bool,
+  permissions: Option<WorkerPermissions>,
 }
 
 /// Create worker as the host
@@ -164,7 +189,22 @@ fn op_create_worker(
   let parent_state = state.clone();
   let state = state.borrow();
   let global_state = state.global_state.clone();
-  let permissions = state.permissions.clone();
+
+  // TODO(bartlomieju): assert that doesn't escalate parent permissions
+  let permissions = if let Some(p) = args.permissions {
+    DenoPermissions {
+      allow_read: PermissionState::from(p.read),
+      allow_write: PermissionState::from(p.write),
+      allow_net: PermissionState::from(p.net),
+      allow_env: PermissionState::from(p.env),
+      allow_run: PermissionState::from(p.run),
+      allow_plugin: PermissionState::from(p.plugin),
+      allow_hrtime: PermissionState::from(p.hrtime),
+      ..Default::default()
+    }
+  } else {
+    state.permissions.clone()
+  };
   let referrer = state.main_module.to_string();
   drop(state);
 

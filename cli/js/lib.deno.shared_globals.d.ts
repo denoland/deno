@@ -1044,6 +1044,15 @@ declare class Worker {
       type?: "classic" | "module";
       name?: string;
       deno?: boolean;
+      permissions?: {
+        read?: boolean;
+        write?: boolean;
+        net?: boolean;
+        env?: boolean;
+        run?: boolean;
+        plugin?: boolean;
+        hrtime?: boolean;
+      };
     }
   );
   postMessage(message: any, transfer?: any): void;

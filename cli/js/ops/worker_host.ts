@@ -7,7 +7,16 @@ export function createWorker(
   hasSourceCode: boolean,
   sourceCode: string,
   useDenoNamespace: boolean,
-  name?: string
+  name?: string,
+  permissions?: {
+    read?: boolean;
+    write?: boolean;
+    net?: boolean;
+    env?: boolean;
+    run?: boolean;
+    plugin?: boolean;
+    hrtime?: boolean;
+  }
 ): { id: number } {
   return sendSync("op_create_worker", {
     specifier,
@@ -15,6 +24,7 @@ export function createWorker(
     sourceCode,
     useDenoNamespace,
     name,
+    permissions,
   });
 }
 

@@ -156,16 +156,20 @@ unitTest(async function workerWithDenoNamespace(): Promise<void> {
 
   const denoWorker = new Worker("../../tests/subdir/deno_worker.js", {
     type: "module",
-    deno: true,
     name: "denoWorker",
+    deno: true,
+    permissions: {
+      read: true,
+      write: true,
+    },
   });
 
   denoWorker.onmessage = (e): void => {
     assertEquals(e.data, "Hello World");
+    denoWorker.terminate();
     promise.resolve();
   };
 
   denoWorker.postMessage("Hello World");
   await promise;
-  denoWorker.terminate();
 });

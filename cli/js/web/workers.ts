@@ -45,6 +45,15 @@ export interface WorkerOptions {
   type?: "classic" | "module";
   name?: string;
   deno?: boolean;
+  permissions?: {
+    read?: boolean;
+    write?: boolean;
+    net?: boolean;
+    env?: boolean;
+    run?: boolean;
+    plugin?: boolean;
+    hrtime?: boolean;
+  };
 }
 
 export class WorkerImpl extends EventTarget implements Worker {
@@ -92,7 +101,8 @@ export class WorkerImpl extends EventTarget implements Worker {
       hasSourceCode,
       sourceCode,
       useDenoNamespace,
-      options?.name
+      options?.name,
+      options?.permissions
     );
     this.#id = id;
     this.#poll();
