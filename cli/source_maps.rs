@@ -54,10 +54,12 @@ pub fn apply_source_map<G: SourceMapGetter>(
     get_maybe_orig_position(
       js_error.script_resource_name.clone(),
       js_error.line_number,
-      js_error.start_column,
+      // start_column is 0-based, we need 1-based here.
+      js_error.start_column.map(|n| n + 1),
       &mut mappings_map,
       getter,
     );
+  let start_column = start_column.map(|n| n - 1);
   // It is better to just move end_column to be the same distance away from
   // start column because sometimes the code point is not available in the
   // source file map.

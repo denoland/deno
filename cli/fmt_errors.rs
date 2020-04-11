@@ -93,8 +93,6 @@ pub fn format_maybe_source_line(
   } else {
     '~'
   };
-  dbg!(start_column);
-  dbg!(end_column);
   for _i in 0..start_column {
     s.push(' ');
   }
