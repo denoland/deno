@@ -156,7 +156,8 @@ fn op_fetch_source_files(
               .map_err(|e| OpError::other(e.to_string()))?
               .code
           }
-          _ => String::from_utf8(file.source_code).unwrap(),
+          _ => String::from_utf8(file.source_code)
+            .map_err(|_| OpError::invalid_utf8())?,
         };
         Ok::<_, OpError>(json!({
           "url": file.url.to_string(),
