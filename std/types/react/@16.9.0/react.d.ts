@@ -30,7 +30,7 @@
 
 import "./react_global.d.ts";
 
-import * as CSS from "../../csstype/@2.2.0/csstype.d.ts";
+import * as CSS from "https://cdn.jsdelivr.net/npm/csstype@2.2.0/index.d.ts";
 import * as PropTypes from "../../prop-types/@15.7.2/prop-types.d.ts";
 
 type NativeAnimationEvent = AnimationEvent;
