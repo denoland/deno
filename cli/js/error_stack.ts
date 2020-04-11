@@ -11,19 +11,19 @@ function patchCallSite(callSite: CallSite, location: Location): CallSite {
     getThis(): unknown {
       return callSite.getThis();
     },
-    getTypeName(): string {
+    getTypeName(): string | null {
       return callSite.getTypeName();
     },
-    getFunction(): Function {
+    getFunction(): Function | null {
       return callSite.getFunction();
     },
-    getFunctionName(): string {
+    getFunctionName(): string | null {
       return callSite.getFunctionName();
     },
-    getMethodName(): string {
+    getMethodName(): string | null {
       return callSite.getMethodName();
     },
-    getFileName(): string {
+    getFileName(): string | null {
       return location.fileName;
     },
     getLineNumber(): number {
@@ -35,7 +35,7 @@ function patchCallSite(callSite: CallSite, location: Location): CallSite {
     getEvalOrigin(): string | null {
       return callSite.getEvalOrigin();
     },
-    isToplevel(): boolean {
+    isToplevel(): boolean | null {
       return callSite.isToplevel();
     },
     isEval(): boolean {
@@ -176,15 +176,15 @@ function callSiteToString(callSite: CallSite, isInternal = false): string {
 
 interface CallSiteEval {
   this: unknown;
-  typeName: string;
-  function: Function;
-  functionName: string;
-  methodName: string;
-  fileName: string;
+  typeName: string | null;
+  function: Function | null;
+  functionName: string | null;
+  methodName: string | null;
+  fileName: string | null;
   lineNumber: number | null;
   columnNumber: number | null;
   evalOrigin: string | null;
-  isToplevel: boolean;
+  isToplevel: boolean | null;
   isEval: boolean;
   isNative: boolean;
   isConstructor: boolean;
