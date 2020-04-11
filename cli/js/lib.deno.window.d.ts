@@ -1,28 +1,28 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-interface, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.shared_globals" />
 /// <reference lib="esnext" />
 
-declare interface Window {
-  window: Window & typeof globalThis;
-  self: Window & typeof globalThis;
-  onload: Function | undefined;
-  onunload: Function | undefined;
+declare interface Window extends EventTarget {
+  readonly window: Window & typeof globalThis;
+  readonly self: Window & typeof globalThis;
+  onload: ((this: Window, ev: Event) => any) | null;
+  onunload: ((this: Window, ev: Event) => any) | null;
   location: Location;
   crypto: Crypto;
   close: () => void;
-  closed: boolean;
+  readonly closed: boolean;
   Deno: typeof Deno;
 }
 
 declare const window: Window & typeof globalThis;
 declare const self: Window & typeof globalThis;
-declare const onload: Function | undefined;
-declare const onunload: Function | undefined;
+declare const onload: ((this: Window, ev: Event) => any) | null;
+declare const onunload: ((this: Window, ev: Event) => any) | null;
 declare const crypto: Crypto;
 
 declare interface Crypto {
@@ -45,4 +45,4 @@ declare interface Crypto {
   ): T;
 }
 
-/* eslint-enable @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-interface, @typescript-eslint/no-explicit-any */
+/* eslint-enable @typescript-eslint/no-explicit-any */

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types.ts";
+import * as domTypes from "./dom_types.d.ts";
 import { URL, parts } from "./url.ts";
 import { isIterable, requiredArguments } from "./util.ts";
 

@@ -25,7 +25,7 @@
 
 import * as base64 from "./base64.ts";
 import { decodeUtf8 } from "./decode_utf8.ts";
-import * as domTypes from "./dom_types.ts";
+import * as domTypes from "./dom_types.d.ts";
 import { core } from "../core.ts";
 
 const CONTINUE = null;
@@ -348,7 +348,7 @@ encodingIndexes.set("windows-1252", [
   252,
   253,
   254,
-  255
+  255,
 ]);
 for (const [key, index] of encodingIndexes) {
   decoders.set(

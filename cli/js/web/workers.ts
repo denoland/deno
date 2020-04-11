@@ -11,8 +11,8 @@ import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 /*
 import { blobURLMap } from "./web/url.ts";
 */
-import { Event } from "./event.ts";
-import { EventTarget } from "./event_target.ts";
+import { EventImpl as Event } from "./event.ts";
+import { EventTargetImpl as EventTarget } from "./event_target.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

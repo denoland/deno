@@ -16,7 +16,7 @@
 // import * as shared from "./shared-internals.ts";
 // import * as q from "./queue-mixin.ts";
 // import { Queue } from "./queue.ts";
-// import { QueuingStrategySizeCallback } from "../dom_types.ts";
+// import { QueuingStrategySizeCallback } from "../dom_types.d.ts";
 
 // export class WritableStreamDefaultController<InputType>
 //   implements ws.WritableStreamDefaultController<InputType> {

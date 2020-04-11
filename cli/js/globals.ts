@@ -1,10 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+import "./lib.deno.shared_globals.d.ts";
+
 import * as blob from "./web/blob.ts";
 import * as consoleTypes from "./web/console.ts";
 import * as promiseTypes from "./web/promise.ts";
 import * as customEvent from "./web/custom_event.ts";
-import * as domTypes from "./web/dom_types.ts";
+import * as domException from "./web/dom_exception.ts";
 import * as domFile from "./web/dom_file.ts";
 import * as event from "./web/event.ts";
 import * as eventTarget from "./web/event_target.ts";
@@ -123,21 +125,13 @@ declare global {
   // Only `var` variables show up in the `globalThis` type when doing a global
   // scope augmentation.
   /* eslint-disable no-var */
-  var addEventListener: (
-    type: string,
-    callback: domTypes.EventListenerOrEventListenerObject | null,
-    options?: boolean | domTypes.AddEventListenerOptions | undefined
-  ) => void;
-  var queueMicrotask: (callback: () => void) => void;
-  var console: consoleTypes.Console;
-  var location: domTypes.Location;
 
   // Assigned to `window` global - main runtime
   var Deno: {
     core: DenoCore;
   };
-  var onload: ((e: domTypes.Event) => void) | undefined;
-  var onunload: ((e: domTypes.Event) => void) | undefined;
+  var onload: ((e: Event) => void) | undefined;
+  var onunload: ((e: Event) => void) | undefined;
   var bootstrapMainRuntime: (() => void) | undefined;
 
   // Assigned to `self` global - worker runtime and compiler
@@ -150,7 +144,7 @@ declare global {
         source: string,
         lineno: number,
         colno: number,
-        e: domTypes.Event
+        e: Event
       ) => boolean | void)
     | undefined;
 
@@ -163,9 +157,6 @@ declare global {
   // Assigned to `self` global - compiler
   var bootstrapTsCompilerRuntime: (() => void) | undefined;
   var bootstrapWasmCompilerRuntime: (() => void) | undefined;
-
-  var performance: performanceUtil.Performance;
-  var setTimeout: typeof timers.setTimeout;
   /* eslint-enable */
 }
 
@@ -218,9 +209,10 @@ export const windowOrWorkerGlobalScopeProperties = {
   console: writable(new consoleTypes.Console(core.print)),
   Blob: nonEnumerable(blob.DenoBlob),
   File: nonEnumerable(domFile.DomFileImpl),
-  CustomEvent: nonEnumerable(customEvent.CustomEvent),
-  Event: nonEnumerable(event.Event),
-  EventTarget: nonEnumerable(eventTarget.EventTarget),
+  CustomEvent: nonEnumerable(customEvent.CustomEventImpl),
+  DOMException: nonEnumerable(domException.DOMExceptionImpl),
+  Event: nonEnumerable(event.EventImpl),
+  EventTarget: nonEnumerable(eventTarget.EventTargetImpl),
   URL: nonEnumerable(url.URL),
   URLSearchParams: nonEnumerable(urlSearchParams.URLSearchParams),
   Headers: nonEnumerable(headers.Headers),
@@ -234,19 +226,17 @@ export const windowOrWorkerGlobalScopeProperties = {
   Worker: nonEnumerable(workers.WorkerImpl),
 };
 
-export const eventTargetProperties = {
-  [domTypes.eventTargetHost]: nonEnumerable(null),
-  [domTypes.eventTargetListeners]: nonEnumerable({}),
-  [domTypes.eventTargetMode]: nonEnumerable(""),
-  [domTypes.eventTargetNodeType]: nonEnumerable(0),
-  [eventTarget.eventTargetAssignedSlot]: nonEnumerable(false),
-  [eventTarget.eventTargetHasActivationBehavior]: nonEnumerable(false),
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function setEventTargetData(value: any): void {
+  eventTarget.eventTargetData.set(value, eventTarget.getDefaultTargetData());
+}
 
+export const eventTargetProperties = {
   addEventListener: readOnly(
-    eventTarget.EventTarget.prototype.addEventListener
+    eventTarget.EventTargetImpl.prototype.addEventListener
   ),
-  dispatchEvent: readOnly(eventTarget.EventTarget.prototype.dispatchEvent),
+  dispatchEvent: readOnly(eventTarget.EventTargetImpl.prototype.dispatchEvent),
   removeEventListener: readOnly(
-    eventTarget.EventTarget.prototype.removeEventListener
+    eventTarget.EventTargetImpl.prototype.removeEventListener
   ),
 };

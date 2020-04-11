@@ -1,45 +1,153 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types.ts";
-import { getPrivateValue, requiredArguments } from "./util.ts";
 
-// WeakMaps are recommended for private attributes (see MDN link below)
-// https://developer.mozilla.org/en-US/docs/Archive/Add-ons/Add-on_SDK/Guides/Contributor_s_Guide/Private_Properties#Using_WeakMaps
-export const eventAttributes = new WeakMap();
+import * as domTypes from "./dom_types.d.ts";
+import { defineEnumerableProps, requiredArguments } from "./util.ts";
+import { assert } from "../util.ts";
 
-function isTrusted(this: Event): boolean {
-  return getPrivateValue(this, eventAttributes, "isTrusted");
+/** Stores a non-accessible view of the event path which is used internally in
+ * the logic for determining the path of an event. */
+export interface EventPath {
+  item: EventTarget;
+  itemInShadowTree: boolean;
+  relatedTarget: EventTarget | null;
+  rootOfClosedTree: boolean;
+  slotInClosedTree: boolean;
+  target: EventTarget | null;
+  touchTargetList: EventTarget[];
 }
 
-export class Event implements domTypes.Event {
+interface EventAttributes {
+  type: string;
+  bubbles: boolean;
+  cancelable: boolean;
+  composed: boolean;
+  currentTarget: EventTarget | null;
+  eventPhase: number;
+  target: EventTarget | null;
+  timeStamp: number;
+}
+
+interface EventData {
+  dispatched: boolean;
+  inPassiveListener: boolean;
+  isTrusted: boolean;
+  path: EventPath[];
+  stopImmediatePropagation: boolean;
+}
+
+const eventData = new WeakMap<Event, EventData>();
+
+// accessors for non runtime visible data
+
+export function getDispatched(event: Event): boolean {
+  return Boolean(eventData.get(event)?.dispatched);
+}
+
+export function getPath(event: Event): EventPath[] {
+  return eventData.get(event)?.path ?? [];
+}
+
+export function getStopImmediatePropagation(event: Event): boolean {
+  return Boolean(eventData.get(event)?.stopImmediatePropagation);
+}
+
+export function setCurrentTarget(
+  event: Event,
+  value: EventTarget | null
+): void {
+  (event as EventImpl).currentTarget = value;
+}
+
+export function setDispatched(event: Event, value: boolean): void {
+  const data = eventData.get(event as Event);
+  if (data) {
+    data.dispatched = value;
+  }
+}
+
+export function setEventPhase(event: Event, value: number): void {
+  (event as EventImpl).eventPhase = value;
+}
+
+export function setInPassiveListener(event: Event, value: boolean): void {
+  const data = eventData.get(event as Event);
+  if (data) {
+    data.inPassiveListener = value;
+  }
+}
+
+export function setPath(event: Event, value: EventPath[]): void {
+  const data = eventData.get(event as Event);
+  if (data) {
+    data.path = value;
+  }
+}
+
+export function setRelatedTarget<T extends Event>(
+  event: T,
+  value: EventTarget | null
+): void {
+  if ("relatedTarget" in event) {
+    (event as T & {
+      relatedTarget: EventTarget | null;
+    }).relatedTarget = value;
+  }
+}
+
+export function setTarget(event: Event, value: EventTarget | null): void {
+  (event as EventImpl).target = value;
+}
+
+export function setStopImmediatePropagation(
+  event: Event,
+  value: boolean
+): void {
+  const data = eventData.get(event as Event);
+  if (data) {
+    data.stopImmediatePropagation = value;
+  }
+}
+
+// Type guards that widen the event type
+
+export function hasRelatedTarget(
+  event: Event
+): event is domTypes.FocusEvent | domTypes.MouseEvent {
+  return "relatedTarget" in event;
+}
+
+function isTrusted(this: Event): boolean {
+  return eventData.get(this)!.isTrusted;
+}
+
+export class EventImpl implements Event {
   // The default value is `false`.
   // Use `defineProperty` to define on each instance, NOT on the prototype.
   isTrusted!: boolean;
-  // Each event has the following associated flags
-  private _canceledFlag = false;
-  private _dispatchedFlag = false;
-  private _initializedFlag = false;
-  private _inPassiveListenerFlag = false;
-  private _stopImmediatePropagationFlag = false;
-  private _stopPropagationFlag = false;
 
-  // Property for objects on which listeners will be invoked
-  private _path: domTypes.EventPath[] = [];
+  #canceledFlag = false;
+  #stopPropagationFlag = false;
+  #attributes: EventAttributes;
 
-  constructor(type: string, eventInitDict: domTypes.EventInit = {}) {
+  constructor(type: string, eventInitDict: EventInit = {}) {
     requiredArguments("Event", arguments.length, 1);
     type = String(type);
-    this._initializedFlag = true;
-    eventAttributes.set(this, {
+    this.#attributes = {
       type,
-      bubbles: eventInitDict.bubbles || false,
-      cancelable: eventInitDict.cancelable || false,
-      composed: eventInitDict.composed || false,
+      bubbles: eventInitDict.bubbles ?? false,
+      cancelable: eventInitDict.cancelable ?? false,
+      composed: eventInitDict.composed ?? false,
       currentTarget: null,
-      eventPhase: domTypes.EventPhase.NONE,
-      isTrusted: false,
-      relatedTarget: null,
+      eventPhase: Event.NONE,
       target: null,
       timeStamp: Date.now(),
+    };
+    eventData.set(this, {
+      dispatched: false,
+      inPassiveListener: false,
+      isTrusted: false,
+      path: [],
+      stopImmediatePropagation: false,
     });
     Reflect.defineProperty(this, "isTrusted", {
       enumerable: true,
@@ -48,151 +156,100 @@ export class Event implements domTypes.Event {
   }
 
   get bubbles(): boolean {
-    return getPrivateValue(this, eventAttributes, "bubbles");
+    return this.#attributes.bubbles;
   }
 
   get cancelBubble(): boolean {
-    return this._stopPropagationFlag;
+    return this.#stopPropagationFlag;
   }
 
   set cancelBubble(value: boolean) {
-    this._stopPropagationFlag = value;
-  }
-
-  get cancelBubbleImmediately(): boolean {
-    return this._stopImmediatePropagationFlag;
-  }
-
-  set cancelBubbleImmediately(value: boolean) {
-    this._stopImmediatePropagationFlag = value;
+    this.#stopPropagationFlag = value;
   }
 
   get cancelable(): boolean {
-    return getPrivateValue(this, eventAttributes, "cancelable");
+    return this.#attributes.cancelable;
   }
 
   get composed(): boolean {
-    return getPrivateValue(this, eventAttributes, "composed");
+    return this.#attributes.composed;
   }
 
-  get currentTarget(): domTypes.EventTarget {
-    return getPrivateValue(this, eventAttributes, "currentTarget");
+  get currentTarget(): EventTarget | null {
+    return this.#attributes.currentTarget;
   }
 
-  set currentTarget(value: domTypes.EventTarget) {
-    eventAttributes.set(this, {
+  set currentTarget(value: EventTarget | null) {
+    this.#attributes = {
       type: this.type,
       bubbles: this.bubbles,
       cancelable: this.cancelable,
       composed: this.composed,
       currentTarget: value,
       eventPhase: this.eventPhase,
-      isTrusted: this.isTrusted,
-      relatedTarget: this.relatedTarget,
       target: this.target,
       timeStamp: this.timeStamp,
-    });
+    };
   }
 
   get defaultPrevented(): boolean {
-    return this._canceledFlag;
-  }
-
-  get dispatched(): boolean {
-    return this._dispatchedFlag;
-  }
-
-  set dispatched(value: boolean) {
-    this._dispatchedFlag = value;
+    return this.#canceledFlag;
   }
 
   get eventPhase(): number {
-    return getPrivateValue(this, eventAttributes, "eventPhase");
+    return this.#attributes.eventPhase;
   }
 
   set eventPhase(value: number) {
-    eventAttributes.set(this, {
+    this.#attributes = {
       type: this.type,
       bubbles: this.bubbles,
       cancelable: this.cancelable,
       composed: this.composed,
       currentTarget: this.currentTarget,
       eventPhase: value,
-      isTrusted: this.isTrusted,
-      relatedTarget: this.relatedTarget,
       target: this.target,
       timeStamp: this.timeStamp,
-    });
+    };
   }
 
   get initialized(): boolean {
-    return this._initializedFlag;
+    return true;
   }
 
-  set inPassiveListener(value: boolean) {
-    this._inPassiveListenerFlag = value;
+  get target(): EventTarget | null {
+    return this.#attributes.target;
   }
 
-  get path(): domTypes.EventPath[] {
-    return this._path;
-  }
-
-  set path(value: domTypes.EventPath[]) {
-    this._path = value;
-  }
-
-  get relatedTarget(): domTypes.EventTarget {
-    return getPrivateValue(this, eventAttributes, "relatedTarget");
-  }
-
-  set relatedTarget(value: domTypes.EventTarget) {
-    eventAttributes.set(this, {
+  set target(value: EventTarget | null) {
+    this.#attributes = {
       type: this.type,
       bubbles: this.bubbles,
       cancelable: this.cancelable,
       composed: this.composed,
       currentTarget: this.currentTarget,
       eventPhase: this.eventPhase,
-      isTrusted: this.isTrusted,
-      relatedTarget: value,
-      target: this.target,
-      timeStamp: this.timeStamp,
-    });
-  }
-
-  get target(): domTypes.EventTarget {
-    return getPrivateValue(this, eventAttributes, "target");
-  }
-
-  set target(value: domTypes.EventTarget) {
-    eventAttributes.set(this, {
-      type: this.type,
-      bubbles: this.bubbles,
-      cancelable: this.cancelable,
-      composed: this.composed,
-      currentTarget: this.currentTarget,
-      eventPhase: this.eventPhase,
-      isTrusted: this.isTrusted,
-      relatedTarget: this.relatedTarget,
       target: value,
       timeStamp: this.timeStamp,
-    });
+    };
   }
 
-  get timeStamp(): Date {
-    return getPrivateValue(this, eventAttributes, "timeStamp");
+  get timeStamp(): number {
+    return this.#attributes.timeStamp;
   }
 
   get type(): string {
-    return getPrivateValue(this, eventAttributes, "type");
+    return this.#attributes.type;
   }
 
-  composedPath(): domTypes.EventPath[] {
-    if (this._path.length === 0) {
+  composedPath(): EventTarget[] {
+    const path = eventData.get(this)!.path;
+    if (path.length === 0) {
       return [];
     }
 
-    const composedPath: domTypes.EventPath[] = [
+    assert(this.currentTarget);
+    const composedPath: EventPath[] = [
       {
         item: this.currentTarget,
         itemInShadowTree: false,
@@ -207,8 +264,8 @@ export class Event implements domTypes.Event {
     let currentTargetIndex = 0;
     let currentTargetHiddenSubtreeLevel = 0;
 
-    for (let index = this._path.length - 1; index >= 0; index--) {
-      const { item, rootOfClosedTree, slotInClosedTree } = this._path[index];
+    for (let index = path.length - 1; index >= 0; index--) {
+      const { item, rootOfClosedTree, slotInClosedTree } = path[index];
 
       if (rootOfClosedTree) {
         currentTargetHiddenSubtreeLevel++;
@@ -228,7 +285,7 @@ export class Event implements domTypes.Event {
     let maxHiddenLevel = currentTargetHiddenSubtreeLevel;
 
     for (let i = currentTargetIndex - 1; i >= 0; i--) {
-      const { item, rootOfClosedTree, slotInClosedTree } = this._path[i];
+      const { item, rootOfClosedTree, slotInClosedTree } = path[i];
 
       if (rootOfClosedTree) {
         currentHiddenLevel++;
@@ -258,12 +315,8 @@ export class Event implements domTypes.Event {
     currentHiddenLevel = currentTargetHiddenSubtreeLevel;
     maxHiddenLevel = currentTargetHiddenSubtreeLevel;
 
-    for (
-      let index = currentTargetIndex + 1;
-      index < this._path.length;
-      index++
-    ) {
-      const { item, rootOfClosedTree, slotInClosedTree } = this._path[index];
+    for (let index = currentTargetIndex + 1; index < path.length; index++) {
+      const { item, rootOfClosedTree, slotInClosedTree } = path[index];
 
       if (slotInClosedTree) {
         currentHiddenLevel++;
@@ -289,35 +342,65 @@ export class Event implements domTypes.Event {
         }
       }
     }
-
-    return composedPath;
+    return composedPath.map((p) => p.item);
   }
 
   preventDefault(): void {
-    if (this.cancelable && !this._inPassiveListenerFlag) {
-      this._canceledFlag = true;
+    if (this.cancelable && !eventData.get(this)!.inPassiveListener) {
+      this.#canceledFlag = true;
     }
   }
 
   stopPropagation(): void {
-    this._stopPropagationFlag = true;
+    this.#stopPropagationFlag = true;
   }
 
   stopImmediatePropagation(): void {
-    this._stopPropagationFlag = true;
-    this._stopImmediatePropagationFlag = true;
+    this.#stopPropagationFlag = true;
+    eventData.get(this)!.stopImmediatePropagation = true;
+  }
+
+  get NONE(): number {
+    return Event.NONE;
+  }
+
+  get CAPTURING_PHASE(): number {
+    return Event.CAPTURING_PHASE;
+  }
+
+  get AT_TARGET(): number {
+    return Event.AT_TARGET;
+  }
+
+  get BUBBLING_PHASE(): number {
+    return Event.BUBBLING_PHASE;
+  }
+
+  static get NONE(): number {
+    return 0;
+  }
+
+  static get CAPTURING_PHASE(): number {
+    return 1;
+  }
+
+  static get AT_TARGET(): number {
+    return 2;
+  }
+
+  static get BUBBLING_PHASE(): number {
+    return 3;
   }
 }
 
-Reflect.defineProperty(Event.prototype, "bubbles", { enumerable: true });
-Reflect.defineProperty(Event.prototype, "cancelable", { enumerable: true });
-Reflect.defineProperty(Event.prototype, "composed", { enumerable: true });
-Reflect.defineProperty(Event.prototype, "currentTarget", { enumerable: true });
-Reflect.defineProperty(Event.prototype, "defaultPrevented", {
-  enumerable: true,
-});
-Reflect.defineProperty(Event.prototype, "dispatched", { enumerable: true });
-Reflect.defineProperty(Event.prototype, "eventPhase", { enumerable: true });
-Reflect.defineProperty(Event.prototype, "target", { enumerable: true });
-Reflect.defineProperty(Event.prototype, "timeStamp", { enumerable: true });
-Reflect.defineProperty(Event.prototype, "type", { enumerable: true });
+defineEnumerableProps(EventImpl, [
+  "bubbles",
+  "cancelable",
+  "composed",
+  "currentTarget",
+  "defaultPrevented",
+  "eventPhase",
+  "target",
+  "timeStamp",
+  "type",
+]);
