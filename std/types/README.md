@@ -1,6 +1,7 @@
 # std/types
 
-Contains types for popular external packages that are compatible with Deno.
+Contains type definitions for popular external packages that are compatible with
+Deno.
 
 Because Deno only resolves fully qualified file names, type definitions that
 import other type definitions might not work with Deno. Also, when some type
@@ -27,6 +28,6 @@ import React from "https://dev.jspm.io/react@16.9.0";
 
 #### Notes:
 
-JSPM version of most libraries export everything through the default namespace,
-so most of the time it might not be suited to work along with this definition
-library.
+JSPM transformation of most libraries export everything through the default
+namespace, so most of the time it might not be suited to work along with this
+definition library.

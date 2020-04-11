@@ -1,5 +1,7 @@
 Types for Facebook's React DOM library.
 
+[![npm version](https://img.shields.io/npm/v/react-dom.svg?style=flat)](https://www.npmjs.com/package/react-dom)
+
 This package serves as the entry point to the DOM and server renderers for
 Facebook's React library.
 

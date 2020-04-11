@@ -1,5 +1,7 @@
 Types for Facebook's React library.
 
+[![npm version](https://img.shields.io/npm/v/react.svg?style=flat)](https://www.npmjs.com/package/react)
+
 React is a JavaScript library for building user interfaces.
 
 ### Usage Examples
