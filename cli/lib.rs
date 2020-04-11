@@ -148,11 +148,7 @@ fn create_main_worker(
     s.resource_table.add("stderr", Box::new(stderr));
   }
 
-  let mut worker = MainWorker::new(
-    "main".to_string(),
-    startup_data::deno_isolate_init(),
-    state,
-  );
+  let mut worker = MainWorker::new(startup_data::deno_isolate_init(), state);
   worker.execute("bootstrapMainRuntime()")?;
   Ok(worker)
 }

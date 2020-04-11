@@ -391,12 +391,12 @@ async function wasmCompilerOnMessage({
 }
 
 function bootstrapTsCompilerRuntime(): void {
-  bootstrapWorkerRuntime("TS");
+  bootstrapWorkerRuntime(false, "TS");
   globalThis.onmessage = tsCompilerOnMessage;
 }
 
 function bootstrapWasmCompilerRuntime(): void {
-  bootstrapWorkerRuntime("WASM");
+  bootstrapWorkerRuntime(false, "WASM");
   globalThis.onmessage = wasmCompilerOnMessage;
 }
 

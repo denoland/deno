@@ -88,7 +88,10 @@ export const workerRuntimeGlobalProperties = {
   workerMessageRecvCallback: nonEnumerable(workerMessageRecvCallback),
 };
 
-export function bootstrapWorkerRuntime(name: string): void {
+export function bootstrapWorkerRuntime(
+  _useDenoNamespace: boolean,
+  name: string
+): void {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
   }
@@ -104,6 +107,8 @@ export function bootstrapWorkerRuntime(name: string): void {
   const location = new LocationImpl(s.location);
   immutableDefine(globalThis, "location", location);
   Object.freeze(globalThis.location);
+
+  // TODO(bartlomieju): handle `useDenoNamespace`
 
   // globalThis.Deno is not available in worker scope
   delete globalThis.Deno;

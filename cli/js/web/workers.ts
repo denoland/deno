@@ -44,6 +44,7 @@ export interface Worker {
 export interface WorkerOptions {
   type?: "classic" | "module";
   name?: string;
+  deno?: boolean;
 }
 
 export class WorkerImpl extends EventTarget implements Worker {
@@ -89,7 +90,8 @@ export class WorkerImpl extends EventTarget implements Worker {
       specifier,
       hasSourceCode,
       sourceCode,
-      options?.name
+      options?.name,
+      options?.deno
     );
     this.#id = id;
     this.#poll();
@@ -160,12 +162,18 @@ export class WorkerImpl extends EventTarget implements Worker {
     }
   };
 
-  postMessage(data: any): void {
+  postMessage(message: any, transferOrOptions?: any): void {
+    if (transferOrOptions) {
+      throw new Error(
+        "Not yet implemented: `transfer` and `options` are not supported. Only plain, JSON-serializable messages are supported."
+      );
+    }
+
     if (this.#terminated) {
       return;
     }
 
-    hostPostMessage(this.#id, encodeMessage(data));
+    hostPostMessage(this.#id, encodeMessage(message));
   }
 
   terminate(): void {

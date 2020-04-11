@@ -1045,7 +1045,8 @@ declare class Worker {
       name?: string;
     }
   );
-  postMessage(data: any): void;
+  postMessage(message: any, transfer?: any): void;
+  postMessage(message: any, options?: any): void;
   terminate(): void;
 }
 

@@ -80,8 +80,13 @@ pub struct WebWorker {
 }
 
 impl WebWorker {
-  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
+  pub fn new(
+    startup_data: StartupData,
+    state: State,
+    maybe_name: Option<String>,
+  ) -> Self {
     let state_ = state.clone();
+    let name = maybe_name.unwrap_or_else(|| "".to_string());
     let mut worker = Worker::new(name, startup_data, state_);
 
     let terminated = Arc::new(AtomicBool::new(false));
@@ -235,9 +240,9 @@ mod tests {
   fn create_test_worker() -> WebWorker {
     let state = State::mock("./hello.js");
     let mut worker = WebWorker::new(
-      "TEST".to_string(),
       startup_data::deno_isolate_init(),
       state,
+      Some("TEST".to_string()),
     );
     worker.execute("bootstrapWorkerRuntime(\"TEST\")").unwrap();
     worker

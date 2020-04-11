@@ -218,9 +218,9 @@ impl Future for Worker {
 pub struct MainWorker(Worker);
 
 impl MainWorker {
-  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
+  pub fn new(startup_data: StartupData, state: State) -> Self {
     let state_ = state.clone();
-    let mut worker = Worker::new(name, startup_data, state_);
+    let mut worker = Worker::new("main".to_string(), startup_data, state_);
     {
       let op_registry = worker.isolate.op_registry.clone();
       let isolate = &mut worker.isolate;
@@ -299,8 +299,7 @@ mod tests {
     .unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
-      let mut worker =
-        MainWorker::new("TEST".to_string(), StartupData::None, state);
+      let mut worker = MainWorker::new(StartupData::None, state);
       let result = worker.execute_module(&module_specifier).await;
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
@@ -333,8 +332,7 @@ mod tests {
     .unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
-      let mut worker =
-        MainWorker::new("TEST".to_string(), StartupData::None, state);
+      let mut worker = MainWorker::new(StartupData::None, state);
       let result = worker.execute_module(&module_specifier).await;
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
@@ -374,11 +372,8 @@ mod tests {
       DebugType::Main,
     )
     .unwrap();
-    let mut worker = MainWorker::new(
-      "TEST".to_string(),
-      startup_data::deno_isolate_init(),
-      state.clone(),
-    );
+    let mut worker =
+      MainWorker::new(startup_data::deno_isolate_init(), state.clone());
     worker.execute("bootstrapMainRuntime()").unwrap();
     let result = worker.execute_module(&module_specifier).await;
     if let Err(err) = result {
@@ -396,11 +391,7 @@ mod tests {
 
   fn create_test_worker() -> MainWorker {
     let state = State::mock("./hello.js");
-    let mut worker = MainWorker::new(
-      "TEST".to_string(),
-      startup_data::deno_isolate_init(),
-      state,
-    );
+    let mut worker = MainWorker::new(startup_data::deno_isolate_init(), state);
     worker.execute("bootstrapMainRuntime()").unwrap();
     worker
   }

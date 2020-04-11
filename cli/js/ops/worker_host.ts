@@ -6,13 +6,15 @@ export function createWorker(
   specifier: string,
   hasSourceCode: boolean,
   sourceCode: string,
-  name?: string
+  name?: string,
+  useDenoNamespace?: boolean
 ): { id: number } {
   return sendSync("op_create_worker", {
     specifier,
     hasSourceCode,
     sourceCode,
     name,
+    useDenoNamespace,
   });
 }
 

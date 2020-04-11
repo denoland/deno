@@ -32,17 +32,21 @@ pub fn init(i: &mut Isolate, s: &State) {
 }
 
 fn create_web_worker(
-  name: String,
   global_state: GlobalState,
   permissions: DenoPermissions,
   specifier: ModuleSpecifier,
+  use_deno_namespace: bool,
+  maybe_name: Option<String>,
 ) -> Result<WebWorker, ErrBox> {
   let state =
     State::new_for_worker(global_state, Some(permissions), specifier)?;
 
   let mut worker =
-    WebWorker::new(name.to_string(), startup_data::deno_isolate_init(), state);
-  let script = format!("bootstrapWorkerRuntime(\"{}\")", name);
+    WebWorker::new(startup_data::deno_isolate_init(), state, maybe_name);
+  let script = format!(
+    "bootstrapWorkerRuntime({}, \"{}\")",
+    use_deno_namespace, worker.name
+  );
   worker.execute(&script)?;
 
   Ok(worker)
@@ -50,25 +54,32 @@ fn create_web_worker(
 
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
 fn run_worker_thread(
-  name: String,
   global_state: GlobalState,
   permissions: DenoPermissions,
   specifier: ModuleSpecifier,
   has_source_code: bool,
   source_code: String,
+  use_deno_namespace: bool,
+  maybe_name: Option<String>,
 ) -> Result<(JoinHandle<()>, WebWorkerHandle), ErrBox> {
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, ErrBox>>(1);
 
-  let builder =
-    std::thread::Builder::new().name(format!("deno-worker-{}", name));
+  // FIXME(bartlomieju): make thread name unique
+  let builder = std::thread::Builder::new().name("deno-worker".to_string());
+
   let join_handle = builder.spawn(move || {
     // Any error inside this block is terminal:
     // - JS worker is useless - meaning it throws an exception and can't do anything else,
     //  all action done upon it should be noops
     // - newly spawned thread exits
-    let result =
-      create_web_worker(name, global_state, permissions, specifier.clone());
+    let result = create_web_worker(
+      global_state,
+      permissions,
+      specifier.clone(),
+      use_deno_namespace,
+      maybe_name,
+    );
 
     if let Err(err) = result {
       handle_sender.send(Err(err)).unwrap();
@@ -134,6 +145,7 @@ struct CreateWorkerArgs {
   specifier: String,
   has_source_code: bool,
   source_code: String,
+  deno: bool,
 }
 
 /// Create worker as the host
@@ -147,7 +159,8 @@ fn op_create_worker(
   let specifier = args.specifier.clone();
   let has_source_code = args.has_source_code;
   let source_code = args.source_code.clone();
-  let args_name = args.name;
+  let maybe_worker_name = args.name;
+  let use_deno_namespace = args.deno;
   let parent_state = state.clone();
   let state = state.borrow();
   let global_state = state.global_state.clone();
@@ -157,18 +170,15 @@ fn op_create_worker(
 
   let module_specifier =
     ModuleSpecifier::resolve_import(&specifier, &referrer)?;
-  let worker_name = args_name.unwrap_or_else(|| {
-    // TODO(bartlomieju): change it to something more descriptive
-    format!("USER-WORKER-{}", specifier)
-  });
 
   let (join_handle, worker_handle) = run_worker_thread(
-    worker_name,
     global_state,
     permissions,
     module_specifier,
     has_source_code,
     source_code,
+    use_deno_namespace,
+    maybe_worker_name,
   )
   .map_err(|e| OpError::other(e.to_string()))?;
   // At this point all interactions with worker happen using thread
