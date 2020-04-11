@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types.ts";
+import * as domTypes from "./dom_types.d.ts";
 import * as blob from "./blob.ts";
 import * as domFile from "./dom_file.ts";
 import { DomIterableMixin } from "./dom_iterable.ts";

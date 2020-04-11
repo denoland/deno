@@ -4,7 +4,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // TODO don't disable this warning
 
-import { AbortSignal, QueuingStrategySizeCallback } from "../dom_types.ts";
+import { AbortSignal, QueuingStrategySizeCallback } from "../dom_types.d.ts";
 
 // common stream fields
 

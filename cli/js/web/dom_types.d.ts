@@ -23,7 +23,7 @@ export type HeadersInit =
   | Headers
   | Array<[string, string]>
   | Record<string, string>;
-export type URLSearchParamsInit = string | string[][] | Record<string, string>;
+
 type BodyInit =
   | Blob
   | BufferSource
@@ -31,7 +31,9 @@ type BodyInit =
   | URLSearchParams
   | ReadableStream
   | string;
+
 export type RequestInfo = Request | string;
+
 type ReferrerPolicy =
   | ""
   | "no-referrer"
@@ -39,21 +41,12 @@ type ReferrerPolicy =
   | "origin-only"
   | "origin-when-cross-origin"
   | "unsafe-url";
+
 export type BlobPart = BufferSource | Blob | string;
+
 export type FormDataEntryValue = DomFile | string;
 
-export interface DomIterable<K, V> {
-  keys(): IterableIterator<K>;
-  values(): IterableIterator<V>;
-  entries(): IterableIterator<[K, V]>;
-  [Symbol.iterator](): IterableIterator<[K, V]>;
-  forEach(
-    callback: (value: V, key: K, parent: this) => void,
-    thisArg?: any
-  ): void;
-}
-
-type EndingType = "transparent" | "native";
+export type EndingType = "transparent" | "native";
 
 export interface BlobPropertyBag {
   type?: string;
@@ -64,67 +57,16 @@ interface AbortSignalEventMap {
   abort: ProgressEvent;
 }
 
-// https://dom.spec.whatwg.org/#node
-export enum NodeType {
-  ELEMENT_NODE = 1,
-  TEXT_NODE = 3,
-  DOCUMENT_FRAGMENT_NODE = 11,
-}
-
-export const eventTargetHost: unique symbol = Symbol();
-export const eventTargetListeners: unique symbol = Symbol();
-export const eventTargetMode: unique symbol = Symbol();
-export const eventTargetNodeType: unique symbol = Symbol();
-
-export interface EventListener {
-  // Different from lib.dom.d.ts. Added Promise<void>
-  (evt: Event): void | Promise<void>;
-}
-
-export interface EventListenerObject {
-  // Different from lib.dom.d.ts. Added Promise<void>
-  handleEvent(evt: Event): void | Promise<void>;
-}
-
-export type EventListenerOrEventListenerObject =
-  | EventListener
-  | EventListenerObject;
-
-// This is actually not part of actual DOM types,
-// but an implementation specific thing on our custom EventTarget
-// (due to the presence of our custom symbols)
-export interface EventTargetListener {
-  callback: EventListenerOrEventListenerObject;
-  options: AddEventListenerOptions;
-}
-
-export interface EventTarget {
-  // TODO: below 4 symbol props should not present on EventTarget WebIDL.
-  // They should be implementation specific details.
-  [eventTargetHost]: EventTarget | null;
-  [eventTargetListeners]: { [type in string]: EventTargetListener[] };
-  [eventTargetMode]: string;
-  [eventTargetNodeType]: NodeType;
-  addEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject | null,
-    options?: boolean | AddEventListenerOptions
-  ): void;
-  dispatchEvent(event: Event): boolean;
-  removeEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject | null,
-    options?: EventListenerOptions | boolean
-  ): void;
-}
-
 export interface ProgressEventInit extends EventInit {
   lengthComputable?: boolean;
   loaded?: number;
   total?: number;
 }
 
-export interface URLSearchParams extends DomIterable<string, string> {
+export class URLSearchParams {
+  constructor(
+    init?: string[][] | Record<string, string> | string | URLSearchParams
+  );
   append(name: string, value: string): void;
   delete(name: string): void;
   get(name: string): string | null;
@@ -137,72 +79,229 @@ export interface URLSearchParams extends DomIterable<string, string> {
     callbackfn: (value: string, key: string, parent: this) => void,
     thisArg?: any
   ): void;
+  [Symbol.iterator](): IterableIterator<[string, string]>;
+  entries(): IterableIterator<[string, string]>;
+  keys(): IterableIterator<string>;
+  values(): IterableIterator<string>;
+  static toString(): string;
 }
 
-export interface EventInit {
-  bubbles?: boolean;
-  cancelable?: boolean;
+export interface UIEventInit extends EventInit {
+  detail?: number;
+  // adjust Window -> Node
+  view?: Node | null;
+}
+
+export class UIEvent extends Event {
+  constructor(type: string, eventInitDict?: UIEventInit);
+  readonly detail: number;
+  // adjust Window -> Node
+  readonly view: Node | null;
+}
+
+export interface FocusEventInit extends UIEventInit {
+  relatedTarget?: EventTarget | null;
+}
+
+export class FocusEvent extends UIEvent {
+  constructor(type: string, eventInitDict?: FocusEventInit);
+  readonly relatedTarget: EventTarget | null;
+}
+
+export interface EventModifierInit extends UIEventInit {
+  altKey?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  modifierAltGraph?: boolean;
+  modifierCapsLock?: boolean;
+  modifierFn?: boolean;
+  modifierFnLock?: boolean;
+  modifierHyper?: boolean;
+  modifierNumLock?: boolean;
+  modifierScrollLock?: boolean;
+  modifierSuper?: boolean;
+  modifierSymbol?: boolean;
+  modifierSymbolLock?: boolean;
+  shiftKey?: boolean;
+}
+
+export interface MouseEventInit extends EventModifierInit {
+  button?: number;
+  buttons?: number;
+  clientX?: number;
+  clientY?: number;
+  movementX?: number;
+  movementY?: number;
+  relatedTarget?: EventTarget | null;
+  screenX?: number;
+  screenY?: number;
+}
+
+export class MouseEvent extends UIEvent {
+  constructor(type: string, eventInitDict?: MouseEventInit);
+  readonly altKey: boolean;
+  readonly button: number;
+  readonly buttons: number;
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly ctrlKey: boolean;
+  readonly metaKey: boolean;
+  readonly movementX: number;
+  readonly movementY: number;
+  readonly offsetX: number;
+  readonly offsetY: number;
+  readonly pageX: number;
+  readonly pageY: number;
+  readonly relatedTarget: EventTarget | null;
+  readonly screenX: number;
+  readonly screenY: number;
+  readonly shiftKey: boolean;
+  readonly x: number;
+  readonly y: number;
+  getModifierState(keyArg: string): boolean;
+}
+
+interface GetRootNodeOptions {
   composed?: boolean;
 }
 
-export interface CustomEventInit extends EventInit {
-  detail?: any;
+export class Node extends EventTarget {
+  readonly baseURI: string;
+  readonly childNodes: NodeListOf<ChildNode>;
+  readonly firstChild: ChildNode | null;
+  readonly isConnected: boolean;
+  readonly lastChild: ChildNode | null;
+  readonly nextSibling: ChildNode | null;
+  readonly nodeName: string;
+  readonly nodeType: number;
+  nodeValue: string | null;
+  // adjusted: Document -> Node
+  readonly ownerDocument: Node | null;
+  // adjusted: HTMLElement -> Node
+  readonly parentElement: Node | null;
+  readonly parentNode: (Node & ParentNode) | null;
+  readonly previousSibling: ChildNode | null;
+  textContent: string | null;
+  appendChild<T extends Node>(newChild: T): T;
+  cloneNode(deep?: boolean): Node;
+  compareDocumentPosition(other: Node): number;
+  contains(other: Node | null): boolean;
+  getRootNode(options?: GetRootNodeOptions): Node;
+  hasChildNodes(): boolean;
+  insertBefore<T extends Node>(newChild: T, refChild: Node | null): T;
+  isDefaultNamespace(namespace: string | null): boolean;
+  isEqualNode(otherNode: Node | null): boolean;
+  isSameNode(otherNode: Node | null): boolean;
+  lookupNamespaceURI(prefix: string | null): string | null;
+  lookupPrefix(namespace: string | null): string | null;
+  normalize(): void;
+  removeChild<T extends Node>(oldChild: T): T;
+  replaceChild<T extends Node>(newChild: Node, oldChild: T): T;
+  readonly ATTRIBUTE_NODE: number;
+  readonly CDATA_SECTION_NODE: number;
+  readonly COMMENT_NODE: number;
+  readonly DOCUMENT_FRAGMENT_NODE: number;
+  readonly DOCUMENT_NODE: number;
+  readonly DOCUMENT_POSITION_CONTAINED_BY: number;
+  readonly DOCUMENT_POSITION_CONTAINS: number;
+  readonly DOCUMENT_POSITION_DISCONNECTED: number;
+  readonly DOCUMENT_POSITION_FOLLOWING: number;
+  readonly DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC: number;
+  readonly DOCUMENT_POSITION_PRECEDING: number;
+  readonly DOCUMENT_TYPE_NODE: number;
+  readonly ELEMENT_NODE: number;
+  readonly ENTITY_NODE: number;
+  readonly ENTITY_REFERENCE_NODE: number;
+  readonly NOTATION_NODE: number;
+  readonly PROCESSING_INSTRUCTION_NODE: number;
+  readonly TEXT_NODE: number;
+  static readonly ATTRIBUTE_NODE: number;
+  static readonly CDATA_SECTION_NODE: number;
+  static readonly COMMENT_NODE: number;
+  static readonly DOCUMENT_FRAGMENT_NODE: number;
+  static readonly DOCUMENT_NODE: number;
+  static readonly DOCUMENT_POSITION_CONTAINED_BY: number;
+  static readonly DOCUMENT_POSITION_CONTAINS: number;
+  static readonly DOCUMENT_POSITION_DISCONNECTED: number;
+  static readonly DOCUMENT_POSITION_FOLLOWING: number;
+  static readonly DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC: number;
+  static readonly DOCUMENT_POSITION_PRECEDING: number;
+  static readonly DOCUMENT_TYPE_NODE: number;
+  static readonly ELEMENT_NODE: number;
+  static readonly ENTITY_NODE: number;
+  static readonly ENTITY_REFERENCE_NODE: number;
+  static readonly NOTATION_NODE: number;
+  static readonly PROCESSING_INSTRUCTION_NODE: number;
+  static readonly TEXT_NODE: number;
 }
 
-export enum EventPhase {
-  NONE = 0,
-  CAPTURING_PHASE = 1,
-  AT_TARGET = 2,
-  BUBBLING_PHASE = 3,
+interface Slotable {
+  // adjusted: HTMLSlotElement -> Node
+  readonly assignedSlot: Node | null;
 }
 
-export interface EventPath {
-  item: EventTarget;
-  itemInShadowTree: boolean;
-  relatedTarget: EventTarget | null;
-  rootOfClosedTree: boolean;
-  slotInClosedTree: boolean;
-  target: EventTarget | null;
-  touchTargetList: EventTarget[];
+interface ChildNode extends Node {
+  after(...nodes: Array<Node | string>): void;
+  before(...nodes: Array<Node | string>): void;
+  remove(): void;
+  replaceWith(...nodes: Array<Node | string>): void;
 }
 
-export interface Event {
-  readonly type: string;
-  target: EventTarget | null;
-  currentTarget: EventTarget | null;
-  composedPath(): EventPath[];
-
-  eventPhase: number;
-
-  stopPropagation(): void;
-  stopImmediatePropagation(): void;
-
-  readonly bubbles: boolean;
-  readonly cancelable: boolean;
-  preventDefault(): void;
-  readonly defaultPrevented: boolean;
-  readonly composed: boolean;
-
-  isTrusted: boolean;
-  readonly timeStamp: Date;
-
-  dispatched: boolean;
-  readonly initialized: boolean;
-  inPassiveListener: boolean;
-  cancelBubble: boolean;
-  cancelBubbleImmediately: boolean;
-  path: EventPath[];
-  relatedTarget: EventTarget | null;
+interface ParentNode {
+  readonly childElementCount: number;
+  // not currently supported
+  // readonly children: HTMLCollection;
+  // adjusted: Element -> Node
+  readonly firstElementChild: Node | null;
+  // adjusted: Element -> Node
+  readonly lastElementChild: Node | null;
+  append(...nodes: Array<Node | string>): void;
+  prepend(...nodes: Array<Node | string>): void;
+  // not currently supported
+  // querySelector<K extends keyof HTMLElementTagNameMap>(
+  //   selectors: K,
+  // ): HTMLElementTagNameMap[K] | null;
+  // querySelector<K extends keyof SVGElementTagNameMap>(
+  //   selectors: K,
+  // ): SVGElementTagNameMap[K] | null;
+  // querySelector<E extends Element = Element>(selectors: string): E | null;
+  // querySelectorAll<K extends keyof HTMLElementTagNameMap>(
+  //   selectors: K,
+  // ): NodeListOf<HTMLElementTagNameMap[K]>;
+  // querySelectorAll<K extends keyof SVGElementTagNameMap>(
+  //   selectors: K,
+  // ): NodeListOf<SVGElementTagNameMap[K]>;
+  // querySelectorAll<E extends Element = Element>(
+  //   selectors: string,
+  // ): NodeListOf<E>;
 }
 
-export interface CustomEvent extends Event {
-  readonly detail: any;
-  initCustomEvent(
-    type: string,
-    bubbles?: boolean,
-    cancelable?: boolean,
-    detail?: any | null
+interface NodeList {
+  readonly length: number;
+  item(index: number): Node | null;
+  forEach(
+    callbackfn: (value: Node, key: number, parent: NodeList) => void,
+    thisArg?: any
   ): void;
+  [index: number]: Node;
+  [Symbol.iterator](): IterableIterator<Node>;
+  entries(): IterableIterator<[number, Node]>;
+  keys(): IterableIterator<number>;
+  values(): IterableIterator<Node>;
+}
+
+interface NodeListOf<TNode extends Node> extends NodeList {
+  length: number;
+  item(index: number): TNode;
+  forEach(
+    callbackfn: (value: TNode, key: number, parent: NodeListOf<TNode>) => void,
+    thisArg?: any
+  ): void;
+  [index: number]: TNode;
+  [Symbol.iterator](): IterableIterator<TNode>;
+  entries(): IterableIterator<[number, TNode]>;
+  keys(): IterableIterator<number>;
+  values(): IterableIterator<TNode>;
 }
 
 export interface DomFile extends Blob {
@@ -223,15 +322,6 @@ interface ProgressEvent extends Event {
   readonly lengthComputable: boolean;
   readonly loaded: number;
   readonly total: number;
-}
-
-export interface EventListenerOptions {
-  capture?: boolean;
-}
-
-export interface AddEventListenerOptions extends EventListenerOptions {
-  once?: boolean;
-  passive?: boolean;
 }
 
 export interface AbortSignal extends EventTarget {
@@ -259,18 +349,17 @@ export interface AbortSignal extends EventTarget {
   ): void;
 }
 
-export interface FormData extends DomIterable<string, FormDataEntryValue> {
+export class FormData {
   append(name: string, value: string | Blob, fileName?: string): void;
   delete(name: string): void;
   get(name: string): FormDataEntryValue | null;
   getAll(name: string): FormDataEntryValue[];
   has(name: string): boolean;
   set(name: string, value: string | Blob, fileName?: string): void;
-}
-
-export interface FormDataConstructor {
-  new (): FormData;
-  prototype: FormData;
+  [Symbol.iterator](): IterableIterator<[string, FormDataEntryValue]>;
+  entries(): IterableIterator<[string, FormDataEntryValue]>;
+  keys(): IterableIterator<string>;
+  values(): IterableIterator<FormDataEntryValue>;
 }
 
 export interface Blob {
@@ -493,6 +582,7 @@ export interface WritableStreamDefaultController {
   error(error?: any): void;
 }
 */
+
 export interface QueuingStrategy<T = any> {
   highWaterMark?: number;
   size?: QueuingStrategySizeCallback<T>;
@@ -502,25 +592,21 @@ export interface QueuingStrategySizeCallback<T = any> {
   (chunk: T): number;
 }
 
-export interface Headers extends DomIterable<string, string> {
+export class Headers {
+  constructor(init?: HeadersInit);
   append(name: string, value: string): void;
   delete(name: string): void;
-  entries(): IterableIterator<[string, string]>;
   get(name: string): string | null;
   has(name: string): boolean;
-  keys(): IterableIterator<string>;
   set(name: string, value: string): void;
-  values(): IterableIterator<string>;
   forEach(
     callbackfn: (value: string, key: string, parent: this) => void,
     thisArg?: any
   ): void;
   [Symbol.iterator](): IterableIterator<[string, string]>;
-}
-
-export interface HeadersConstructor {
-  new (init?: HeadersInit): Headers;
-  prototype: Headers;
+  entries(): IterableIterator<[string, string]>;
+  keys(): IterableIterator<string>;
+  values(): IterableIterator<string>;
 }
 
 type RequestCache =
@@ -582,11 +668,6 @@ export interface ResponseInit {
   statusText?: string;
 }
 
-export interface RequestConstructor {
-  new (input: RequestInfo, init?: RequestInit): Request;
-  prototype: Request;
-}
-
 export interface Request extends Body {
   readonly cache?: RequestCache;
   readonly credentials?: RequestCredentials;
@@ -606,6 +687,11 @@ export interface Request extends Body {
   clone(): Request;
 }
 
+export interface RequestConstructor {
+  new (input: RequestInfo, init?: RequestInit): Request;
+  prototype: Request;
+}
+
 export interface Response extends Body {
   readonly headers: Headers;
   readonly ok: boolean;
@@ -618,14 +704,22 @@ export interface Response extends Body {
   clone(): Response;
 }
 
-export interface DOMStringList {
+export interface ResponseConstructor {
+  prototype: Response;
+  new (body?: BodyInit | null, init?: ResponseInit): Response;
+  error(): Response;
+  redirect(url: string, status?: number): Response;
+}
+
+export class DOMStringList {
   readonly length: number;
   contains(string: string): boolean;
   item(index: number): string | null;
   [index: number]: string;
+  [Symbol.iterator](): IterableIterator<string>;
 }
 
-export interface Location {
+export class Location {
   readonly ancestorOrigins: DOMStringList;
   hash: string;
   host: string;
@@ -642,7 +736,8 @@ export interface Location {
   replace(url: string): void;
 }
 
-export interface URL {
+export class URL {
+  constructor(url: string, base?: string | URL);
   hash: string;
   host: string;
   hostname: string;
@@ -657,54 +752,6 @@ export interface URL {
   readonly searchParams: URLSearchParams;
   username: string;
   toJSON(): string;
-}
-
-export interface URLSearchParams {
-  /**
-   * Appends a specified key/value pair as a new search parameter.
-   */
-  append(name: string, value: string): void;
-  /**
-   * Deletes the given search parameter, and its associated value, from the list of all search parameters.
-   */
-  delete(name: string): void;
-  /**
-   * Returns the first value associated to the given search parameter.
-   */
-  get(name: string): string | null;
-  /**
-   * Returns all the values association with a given search parameter.
-   */
-  getAll(name: string): string[];
-  /**
-   * Returns a Boolean indicating if such a search parameter exists.
-   */
-  has(name: string): boolean;
-  /**
-   * Sets the value associated to a given search parameter to the given value. If there were several values, delete the others.
-   */
-  set(name: string, value: string): void;
-  sort(): void;
-  /**
-   * Returns a string containing a query string suitable for use in a URL. Does not include the question mark.
-   */
-  toString(): string;
-  forEach(
-    callbackfn: (value: string, key: string, parent: URLSearchParams) => void,
-    thisArg?: any
-  ): void;
-
-  [Symbol.iterator](): IterableIterator<[string, string]>;
-  /**
-   * Returns an array of key, value pairs for every entry in the search params.
-   */
-  entries(): IterableIterator<[string, string]>;
-  /**
-   * Returns a list of keys in the search params.
-   */
-  keys(): IterableIterator<string>;
-  /**
-   * Returns a list of values in the search params.
-   */
-  values(): IterableIterator<string>;
+  static createObjectURL(object: any): string;
+  static revokeObjectURL(url: string): void;
 }

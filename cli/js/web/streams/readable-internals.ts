@@ -11,7 +11,7 @@ import {
   QueuingStrategySizeCallback,
   UnderlyingSource,
   UnderlyingByteSource,
-} from "../dom_types.ts";
+} from "../dom_types.d.ts";
 
 // ReadableStreamDefaultController
 export const controlledReadableStream_ = Symbol("controlledReadableStream_");

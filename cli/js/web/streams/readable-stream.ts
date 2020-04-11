@@ -12,7 +12,7 @@ import {
   QueuingStrategySizeCallback,
   UnderlyingSource,
   UnderlyingByteSource,
-} from "../dom_types.ts";
+} from "../dom_types.d.ts";
 
 import {
   ReadableStreamDefaultController,

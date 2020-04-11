@@ -15,7 +15,7 @@
 // import * as shared from "./shared-internals.ts";
 // import * as q from "./queue-mixin.ts";
 
-// import { QueuingStrategy, QueuingStrategySizeCallback } from "../dom_types.ts";
+// import { QueuingStrategy, QueuingStrategySizeCallback } from "../dom_types.d.ts";
 
 // export const backpressure_ = Symbol("backpressure_");
 // export const closeRequest_ = Symbol("closeRequest_");

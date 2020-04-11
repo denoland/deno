@@ -19,7 +19,7 @@
 // import { createReadableStream } from "./readable-stream.ts";
 // import { createWritableStream } from "./writable-stream.ts";
 
-// import { QueuingStrategy, QueuingStrategySizeCallback } from "../dom_types.ts";
+// import { QueuingStrategy, QueuingStrategySizeCallback } from "../dom_types.d.ts";
 
 // export const state_ = Symbol("transformState_");
 // export const backpressure_ = Symbol("backpressure_");

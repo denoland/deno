@@ -35,18 +35,6 @@ unitTest(function constructedEventTargetCanBeUsedAsExpected(): void {
   assertEquals(callCount, 2);
 });
 
-// TODO(ry) Should AddEventListenerOptions and EventListenerOptions be exposed
-// from the public API?
-
-interface AddEventListenerOptions extends EventListenerOptions {
-  once?: boolean;
-  passive?: boolean;
-}
-
-interface EventListenerOptions {
-  capture?: boolean;
-}
-
 unitTest(function anEventTargetCanBeSubclassed(): void {
   class NicerEventTarget extends EventTarget {
     on(
