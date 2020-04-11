@@ -33,9 +33,9 @@ pub struct JSError {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct JSStackFrame {
-  pub line_number: i64,   // zero indexed
-  pub column_number: i64, // zero indexed
-  pub file_name: String,
+  pub line_number: Option<i64>,   // zero indexed
+  pub column_number: Option<i64>, // zero indexed
+  pub file_name: Option<String>,
   pub function_name: String,
   pub is_eval: bool,
   pub is_constructor: bool,
@@ -96,24 +96,24 @@ impl JSError {
           .unwrap()
           .try_into()
           .unwrap();
-        let line_number: v8::Local<v8::Integer> =
+        let line_number: Option<v8::Local<v8::Integer>> =
           get_property(scope, context, call_site, "lineNumber")
             .unwrap()
             .try_into()
-            .unwrap();
-        let line_number = line_number.value() - 1;
-        let column_number: v8::Local<v8::Integer> =
+            .ok();
+        let line_number = line_number.map(|n| n.value() - 1);
+        let column_number: Option<v8::Local<v8::Integer>> =
           get_property(scope, context, call_site, "columnNumber")
             .unwrap()
             .try_into()
-            .unwrap();
-        let column_number = column_number.value() - 1;
-        let file_name: Result<v8::Local<v8::String>, _> =
+            .ok();
+        let column_number = column_number.map(|n| n.value() - 1);
+        let file_name: Option<v8::Local<v8::String>> =
           get_property(scope, context, call_site, "fileName")
             .unwrap()
-            .try_into();
-        let file_name = file_name
-          .map_or_else(|_| String::new(), |s| s.to_rust_string_lossy(scope));
+            .try_into()
+            .ok();
+        let file_name = file_name.map(|s| s.to_rust_string_lossy(scope));
         let function_name: Result<v8::Local<v8::String>, _> =
           get_property(scope, context, call_site, "functionName")
             .unwrap()
