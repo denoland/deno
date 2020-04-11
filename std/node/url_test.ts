@@ -1,7 +1,7 @@
 import { assertEquals } from "../testing/asserts.ts";
 import { parse, format, resolve } from "./url.ts";
 
-const { test, build } = Deno;
+const { test } = Deno;
 const testUrl =
   "https://disizali:123456@deno.land:80/std/manual.md?future=deno#hash";
 
