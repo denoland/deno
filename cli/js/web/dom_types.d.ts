@@ -57,45 +57,10 @@ interface AbortSignalEventMap {
   abort: ProgressEvent;
 }
 
-export interface EventListener {
-  // Different from lib.dom.d.ts. Added Promise<void>
-  (evt: Event): void | Promise<void>;
-}
-
-export interface EventListenerObject {
-  // Different from lib.dom.d.ts. Added Promise<void>
-  handleEvent(evt: Event): void | Promise<void>;
-}
-
-export type EventListenerOrEventListenerObject =
-  | EventListener
-  | EventListenerObject;
-
-export class EventTarget {
-  addEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject | null,
-    options?: boolean | AddEventListenerOptions
-  ): void;
-  dispatchEvent(event: Event): boolean;
-  removeEventListener(
-    type: string,
-    callback: EventListenerOrEventListenerObject | null,
-    options?: EventListenerOptions | boolean
-  ): void;
-  readonly [Symbol.toStringTag]: string;
-}
-
 export interface ProgressEventInit extends EventInit {
   lengthComputable?: boolean;
   loaded?: number;
   total?: number;
-}
-
-export class DOMException {
-  constructor(message?: string, name?: string);
-  readonly message: string;
-  readonly name: string;
 }
 
 export class URLSearchParams {
@@ -119,48 +84,6 @@ export class URLSearchParams {
   keys(): IterableIterator<string>;
   values(): IterableIterator<string>;
   static toString(): string;
-}
-
-export interface EventInit {
-  bubbles?: boolean;
-  cancelable?: boolean;
-  composed?: boolean;
-}
-
-export interface CustomEventInit<T = any> extends EventInit {
-  detail?: T;
-}
-
-export class CustomEvent<T = any> extends Event {
-  constructor(typeArg: string, eventInitDict?: CustomEventInit<T>);
-  readonly detail: T;
-}
-
-export class Event {
-  constructor(type: string, eventInitDict?: EventInit);
-  readonly bubbles: boolean;
-  cancelBubble: boolean;
-  readonly cancelable: boolean;
-  readonly composed: boolean;
-  readonly currentTarget: EventTarget | null;
-  readonly defaultPrevented: boolean;
-  readonly eventPhase: number;
-  readonly isTrusted: boolean;
-  readonly target: EventTarget | null;
-  readonly timeStamp: number;
-  readonly type: string;
-  composedPath(): EventTarget[];
-  preventDefault(): void;
-  stopImmediatePropagation(): void;
-  stopPropagation(): void;
-  readonly AT_TARGET: number;
-  readonly BUBBLING_PHASE: number;
-  readonly CAPTURING_PHASE: number;
-  readonly NONE: number;
-  static readonly AT_TARGET: number;
-  static readonly BUBBLING_PHASE: number;
-  static readonly CAPTURING_PHASE: number;
-  static readonly NONE: number;
 }
 
 export interface UIEventInit extends EventInit {
@@ -399,15 +322,6 @@ interface ProgressEvent extends Event {
   readonly lengthComputable: boolean;
   readonly loaded: number;
   readonly total: number;
-}
-
-export interface EventListenerOptions {
-  capture?: boolean;
-}
-
-export interface AddEventListenerOptions extends EventListenerOptions {
-  once?: boolean;
-  passive?: boolean;
 }
 
 export interface AbortSignal extends EventTarget {

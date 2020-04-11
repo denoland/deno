@@ -7,13 +7,13 @@ import { assert } from "../util.ts";
 /** Stores a non-accessible view of the event path which is used internally in
  * the logic for determining the path of an event. */
 export interface EventPath {
-  item: domTypes.EventTarget;
+  item: EventTarget;
   itemInShadowTree: boolean;
-  relatedTarget: domTypes.EventTarget | null;
+  relatedTarget: EventTarget | null;
   rootOfClosedTree: boolean;
   slotInClosedTree: boolean;
-  target: domTypes.EventTarget | null;
-  touchTargetList: domTypes.EventTarget[];
+  target: EventTarget | null;
+  touchTargetList: EventTarget[];
 }
 
 interface EventAttributes {
@@ -21,9 +21,9 @@ interface EventAttributes {
   bubbles: boolean;
   cancelable: boolean;
   composed: boolean;
-  currentTarget: domTypes.EventTarget | null;
+  currentTarget: EventTarget | null;
   eventPhase: number;
-  target: domTypes.EventTarget | null;
+  target: EventTarget | null;
   timeStamp: number;
 }
 
@@ -39,73 +39,67 @@ const eventData = new WeakMap<Event, EventData>();
 
 // accessors for non runtime visible data
 
-export function getDispatched(event: domTypes.Event): boolean {
-  return Boolean(eventData.get(event as Event)?.dispatched);
+export function getDispatched(event: Event): boolean {
+  return Boolean(eventData.get(event)?.dispatched);
 }
 
-export function getPath(event: domTypes.Event): EventPath[] {
-  return eventData.get(event as Event)?.path ?? [];
+export function getPath(event: Event): EventPath[] {
+  return eventData.get(event)?.path ?? [];
 }
 
-export function getStopImmediatePropagation(event: domTypes.Event): boolean {
-  return Boolean(eventData.get(event as Event)?.stopImmediatePropagation);
+export function getStopImmediatePropagation(event: Event): boolean {
+  return Boolean(eventData.get(event)?.stopImmediatePropagation);
 }
 
 export function setCurrentTarget(
-  event: domTypes.Event,
-  value: domTypes.EventTarget | null
+  event: Event,
+  value: EventTarget | null
 ): void {
-  (event as Event).currentTarget = value;
+  (event as EventImpl).currentTarget = value;
 }
 
-export function setDispatched(event: domTypes.Event, value: boolean): void {
+export function setDispatched(event: Event, value: boolean): void {
   const data = eventData.get(event as Event);
   if (data) {
     data.dispatched = value;
   }
 }
 
-export function setEventPhase(event: domTypes.Event, value: number): void {
-  (event as Event).eventPhase = value;
+export function setEventPhase(event: Event, value: number): void {
+  (event as EventImpl).eventPhase = value;
 }
 
-export function setInPassiveListener(
-  event: domTypes.Event,
-  value: boolean
-): void {
+export function setInPassiveListener(event: Event, value: boolean): void {
   const data = eventData.get(event as Event);
   if (data) {
     data.inPassiveListener = value;
   }
 }
 
-export function setPath(event: domTypes.Event, value: EventPath[]): void {
+export function setPath(event: Event, value: EventPath[]): void {
   const data = eventData.get(event as Event);
   if (data) {
     data.path = value;
   }
 }
 
-export function setRelatedTarget<T extends domTypes.Event>(
+export function setRelatedTarget<T extends Event>(
   event: T,
-  value: domTypes.EventTarget | null
+  value: EventTarget | null
 ): void {
   if ("relatedTarget" in event) {
     (event as T & {
-      relatedTarget: domTypes.EventTarget | null;
+      relatedTarget: EventTarget | null;
     }).relatedTarget = value;
   }
 }
 
-export function setTarget(
-  event: domTypes.Event,
-  value: domTypes.EventTarget | null
-): void {
-  (event as Event).target = value;
+export function setTarget(event: Event, value: EventTarget | null): void {
+  (event as EventImpl).target = value;
 }
 
 export function setStopImmediatePropagation(
-  event: domTypes.Event,
+  event: Event,
   value: boolean
 ): void {
   const data = eventData.get(event as Event);
@@ -117,7 +111,7 @@ export function setStopImmediatePropagation(
 // Type guards that widen the event type
 
 export function hasRelatedTarget(
-  event: domTypes.Event
+  event: Event
 ): event is domTypes.FocusEvent | domTypes.MouseEvent {
   return "relatedTarget" in event;
 }
@@ -126,7 +120,7 @@ function isTrusted(this: Event): boolean {
   return eventData.get(this)!.isTrusted;
 }
 
-export class Event implements domTypes.Event {
+export class EventImpl implements Event {
   // The default value is `false`.
   // Use `defineProperty` to define on each instance, NOT on the prototype.
   isTrusted!: boolean;
@@ -135,7 +129,7 @@ export class Event implements domTypes.Event {
   #stopPropagationFlag = false;
   #attributes: EventAttributes;
 
-  constructor(type: string, eventInitDict: domTypes.EventInit = {}) {
+  constructor(type: string, eventInitDict: EventInit = {}) {
     requiredArguments("Event", arguments.length, 1);
     type = String(type);
     this.#attributes = {
@@ -181,11 +175,11 @@ export class Event implements domTypes.Event {
     return this.#attributes.composed;
   }
 
-  get currentTarget(): domTypes.EventTarget | null {
+  get currentTarget(): EventTarget | null {
     return this.#attributes.currentTarget;
   }
 
-  set currentTarget(value: domTypes.EventTarget | null) {
+  set currentTarget(value: EventTarget | null) {
     this.#attributes = {
       type: this.type,
       bubbles: this.bubbles,
@@ -223,11 +217,11 @@ export class Event implements domTypes.Event {
     return true;
   }
 
-  get target(): domTypes.EventTarget | null {
+  get target(): EventTarget | null {
     return this.#attributes.target;
   }
 
-  set target(value: domTypes.EventTarget | null) {
+  set target(value: EventTarget | null) {
     this.#attributes = {
       type: this.type,
       bubbles: this.bubbles,
@@ -248,7 +242,7 @@ export class Event implements domTypes.Event {
     return this.#attributes.type;
   }
 
-  composedPath(): domTypes.EventTarget[] {
+  composedPath(): EventTarget[] {
     const path = eventData.get(this)!.path;
     if (path.length === 0) {
       return [];
@@ -399,7 +393,7 @@ export class Event implements domTypes.Event {
   }
 }
 
-defineEnumerableProps(Event, [
+defineEnumerableProps(EventImpl, [
   "bubbles",
   "cancelable",
   "composed",

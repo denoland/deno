@@ -1,14 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types.d.ts";
-import * as event from "./event.ts";
+import { EventImpl as Event } from "./event.ts";
 import { requiredArguments } from "./util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export class CustomEvent<T = any> extends event.Event
-  implements domTypes.CustomEvent {
+export class CustomEventImpl<T = any> extends Event implements CustomEvent {
   #detail: T;
 
-  constructor(type: string, eventInitDict: domTypes.CustomEventInit<T> = {}) {
+  constructor(type: string, eventInitDict: CustomEventInit<T> = {}) {
     super(type, eventInitDict);
     requiredArguments("CustomEvent", arguments.length, 1);
     const { detail } = eventInitDict;
@@ -25,4 +23,6 @@ export class CustomEvent<T = any> extends event.Event
   }
 }
 
-Reflect.defineProperty(CustomEvent.prototype, "detail", { enumerable: true });
+Reflect.defineProperty(CustomEventImpl.prototype, "detail", {
+  enumerable: true,
+});

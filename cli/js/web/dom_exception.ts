@@ -1,8 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import * as domTypes from "./dom_types.d.ts";
-
-export class DOMException extends Error implements domTypes.DOMException {
+export class DOMExceptionImpl extends Error implements DOMException {
   #name: string;
 
   constructor(message = "", name = "Error") {

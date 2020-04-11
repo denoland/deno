@@ -1,12 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, no-var */
 
 /// <reference no-default-lib="true" />
-// TODO: we need to remove this, but Fetch::Response::Body implements Reader
-// which requires Deno.EOF, and we shouldn't be leaking that, but https_proxy
-// at the least requires the Reader interface on Body, which it shouldn't
-/// <reference lib="deno.ns" />
 /// <reference lib="esnext" />
 
 // This follows the WebIDL at: https://webassembly.github.io/spec/js-api/
@@ -195,8 +191,8 @@ declare function clearTimeout(id?: number): void;
 declare function clearInterval(id?: number): void;
 declare function queueMicrotask(func: Function): void;
 
-declare const console: Console;
-declare const location: Location;
+declare var console: Console;
+declare var location: Location;
 
 declare function addEventListener(
   type: string,
@@ -1114,7 +1110,6 @@ declare class Event {
    * the shadow root's mode is "closed" that are not reachable from event's
    * currentTarget. */
   composedPath(): EventTarget[];
-  initEvent(type: string, bubbles?: boolean, cancelable?: boolean): void;
   /** If invoked when the cancelable attribute value is true, and while
    * executing a listener for the event with passive set to false, signals to
    * the operation that caused event to be dispatched that it needs to be
@@ -1181,6 +1176,7 @@ declare class EventTarget {
     callback: EventListenerOrEventListenerObject | null,
     options?: EventListenerOptions | boolean
   ): void;
+  [Symbol.toStringTag]: string;
 }
 
 interface EventListener {

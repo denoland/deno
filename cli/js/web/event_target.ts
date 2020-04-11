@@ -5,10 +5,10 @@
 // parts still exists.  This means you will observe a lot of strange structures
 // and impossible logic branches based on what Deno currently supports.
 
-import { DOMException } from "./dom_exception.ts";
+import { DOMExceptionImpl as DOMException } from "./dom_exception.ts";
 import * as domTypes from "./dom_types.d.ts";
 import {
-  Event,
+  EventImpl as Event,
   EventPath,
   getDispatched,
   getPath,
@@ -35,21 +35,17 @@ const DOCUMENT_FRAGMENT_NODE = 11;
 /** Get the parent node, for event targets that have a parent.
  *
  * Ref: https://dom.spec.whatwg.org/#get-the-parent */
-function getParent(
-  eventTarget: domTypes.EventTarget
-): domTypes.EventTarget | null {
+function getParent(eventTarget: EventTarget): EventTarget | null {
   return isNode(eventTarget) ? eventTarget.parentNode : null;
 }
 
-function getRoot(
-  eventTarget: domTypes.EventTarget
-): domTypes.EventTarget | null {
+function getRoot(eventTarget: EventTarget): EventTarget | null {
   return isNode(eventTarget)
     ? eventTarget.getRootNode({ composed: true })
     : null;
 }
 
-function isNode<T extends domTypes.EventTarget>(
+function isNode<T extends EventTarget>(
   eventTarget: T | null
 ): eventTarget is T & domTypes.Node {
   return Boolean(eventTarget && "nodeType" in eventTarget);
@@ -57,8 +53,8 @@ function isNode<T extends domTypes.EventTarget>(
 
 // https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-ancestor
 function isShadowInclusiveAncestor(
-  ancestor: domTypes.EventTarget | null,
-  node: domTypes.EventTarget | null
+  ancestor: EventTarget | null,
+  node: EventTarget | null
 ): boolean {
   while (isNode(node)) {
     if (node === ancestor) {
@@ -75,7 +71,7 @@ function isShadowInclusiveAncestor(
   return false;
 }
 
-function isShadowRoot(nodeImpl: domTypes.EventTarget | null): boolean {
+function isShadowRoot(nodeImpl: EventTarget | null): boolean {
   return Boolean(
     nodeImpl &&
       isNode(nodeImpl) &&
@@ -84,7 +80,7 @@ function isShadowRoot(nodeImpl: domTypes.EventTarget | null): boolean {
   );
 }
 
-function isSlotable<T extends domTypes.EventTarget>(
+function isSlotable<T extends EventTarget>(
   nodeImpl: T | null
 ): nodeImpl is T & domTypes.Node & domTypes.Slotable {
   return Boolean(isNode(nodeImpl) && "assignedSlot" in nodeImpl);
@@ -97,11 +93,11 @@ function isSlotable<T extends domTypes.EventTarget>(
  * Ref: https://dom.spec.whatwg.org/#concept-event-path-append
  */
 function appendToEventPath(
-  eventImpl: domTypes.Event,
-  target: domTypes.EventTarget,
-  targetOverride: domTypes.EventTarget | null,
-  relatedTarget: domTypes.EventTarget | null,
-  touchTargets: domTypes.EventTarget[],
+  eventImpl: Event,
+  target: EventTarget,
+  targetOverride: EventTarget | null,
+  relatedTarget: EventTarget | null,
+  touchTargets: EventTarget[],
   slotInClosedTree: boolean
 ): void {
   const itemInShadowTree = isNode(target) && isShadowRoot(getRoot(target));
@@ -119,12 +115,12 @@ function appendToEventPath(
 }
 
 function dispatch(
-  targetImpl: domTypes.EventTarget,
-  eventImpl: domTypes.Event,
-  targetOverride?: domTypes.EventTarget
+  targetImpl: EventTarget,
+  eventImpl: Event,
+  targetOverride?: EventTarget
 ): boolean {
   let clearTargets = false;
-  let activationTarget: domTypes.EventTarget | null = null;
+  let activationTarget: EventTarget | null = null;
 
   setDispatched(eventImpl, true);
 
@@ -135,7 +131,7 @@ function dispatch(
   let relatedTarget = retarget(eventRelatedTarget, targetImpl);
 
   if (targetImpl !== relatedTarget || targetImpl === eventRelatedTarget) {
-    const touchTargets: domTypes.EventTarget[] = [];
+    const touchTargets: EventTarget[] = [];
 
     appendToEventPath(
       eventImpl,
@@ -291,7 +287,7 @@ function dispatch(
  *
  * Ref: https://dom.spec.whatwg.org/#concept-event-listener-inner-invoke */
 function innerInvokeEventListeners(
-  eventImpl: domTypes.Event,
+  eventImpl: Event,
   targetListeners: Record<string, Listener[]>
 ): boolean {
   let found = false;
@@ -362,10 +358,7 @@ function innerInvokeEventListeners(
 /** Invokes the listeners on a given event path with the supplied event.
  *
  * Ref: https://dom.spec.whatwg.org/#concept-event-listener-invoke */
-function invokeEventListeners(
-  tuple: EventPath,
-  eventImpl: domTypes.Event
-): void {
+function invokeEventListeners(tuple: EventPath, eventImpl: Event): void {
   const path = getPath(eventImpl);
   const tupleIndex = path.indexOf(tuple);
   for (let i = tupleIndex; i >= 0; i--) {
@@ -388,8 +381,8 @@ function invokeEventListeners(
 }
 
 function normalizeAddEventHandlerOptions(
-  options: boolean | domTypes.AddEventListenerOptions | undefined
-): domTypes.AddEventListenerOptions {
+  options: boolean | AddEventListenerOptions | undefined
+): AddEventListenerOptions {
   if (typeof options === "boolean" || typeof options === "undefined") {
     return {
       capture: Boolean(options),
@@ -402,8 +395,8 @@ function normalizeAddEventHandlerOptions(
 }
 
 function normalizeEventHandlerOptions(
-  options: boolean | domTypes.EventListenerOptions | undefined
-): domTypes.EventListenerOptions {
+  options: boolean | EventListenerOptions | undefined
+): EventListenerOptions {
   if (typeof options === "boolean" || typeof options === "undefined") {
     return {
       capture: Boolean(options),
@@ -416,10 +409,7 @@ function normalizeEventHandlerOptions(
 /** Retarget the target following the spec logic.
  *
  * Ref: https://dom.spec.whatwg.org/#retarget */
-function retarget(
-  a: domTypes.EventTarget | null,
-  b: domTypes.EventTarget
-): domTypes.EventTarget | null {
+function retarget(a: EventTarget | null, b: EventTarget): EventTarget | null {
   while (true) {
     if (!isNode(a)) {
       return a;
@@ -446,41 +436,39 @@ function retarget(
 interface EventTargetData {
   assignedSlot: boolean;
   hasActivationBehavior: boolean;
-  host: domTypes.EventTarget | null;
+  host: EventTarget | null;
   listeners: Record<string, Listener[]>;
   mode: string;
 }
 
 interface Listener {
-  callback: domTypes.EventListenerOrEventListenerObject;
-  options: domTypes.AddEventListenerOptions;
+  callback: EventListenerOrEventListenerObject;
+  options: AddEventListenerOptions;
 }
 
 // Accessors for non-public data
 
 export const eventTargetData = new WeakMap<EventTarget, EventTargetData>();
 
-function getAssignedSlot(target: domTypes.EventTarget): boolean {
+function getAssignedSlot(target: EventTarget): boolean {
   return Boolean(eventTargetData.get(target as EventTarget)?.assignedSlot);
 }
 
-function getHasActivationBehavior(target: domTypes.EventTarget): boolean {
+function getHasActivationBehavior(target: EventTarget): boolean {
   return Boolean(
     eventTargetData.get(target as EventTarget)?.hasActivationBehavior
   );
 }
 
-function getHost(target: domTypes.EventTarget): domTypes.EventTarget | null {
+function getHost(target: EventTarget): EventTarget | null {
   return eventTargetData.get(target as EventTarget)?.host ?? null;
 }
 
-function getListeners(
-  target: domTypes.EventTarget
-): Record<string, Listener[]> {
+function getListeners(target: EventTarget): Record<string, Listener[]> {
   return eventTargetData.get(target as EventTarget)?.listeners ?? {};
 }
 
-function getMode(target: domTypes.EventTarget): string | null {
+function getMode(target: EventTarget): string | null {
   return eventTargetData.get(target as EventTarget)?.mode ?? null;
 }
 
@@ -494,15 +482,15 @@ export function getDefaultTargetData(): Readonly<EventTargetData> {
   };
 }
 
-export class EventTarget implements domTypes.EventTarget {
+export class EventTargetImpl implements EventTarget {
   constructor() {
     eventTargetData.set(this, getDefaultTargetData());
   }
 
   public addEventListener(
     type: string,
-    callback: domTypes.EventListenerOrEventListenerObject | null,
-    options?: domTypes.AddEventListenerOptions | boolean
+    callback: EventListenerOrEventListenerObject | null,
+    options?: AddEventListenerOptions | boolean
   ): void {
     requiredArguments("EventTarget.addEventListener", arguments.length, 2);
     if (callback === null) {
@@ -533,8 +521,8 @@ export class EventTarget implements domTypes.EventTarget {
 
   public removeEventListener(
     type: string,
-    callback: domTypes.EventListenerOrEventListenerObject | null,
-    options?: domTypes.EventListenerOptions | boolean
+    callback: EventListenerOrEventListenerObject | null,
+    options?: EventListenerOptions | boolean
   ): void {
     requiredArguments("EventTarget.removeEventListener", arguments.length, 2);
 
@@ -564,7 +552,7 @@ export class EventTarget implements domTypes.EventTarget {
     }
   }
 
-  public dispatchEvent(event: domTypes.Event): boolean {
+  public dispatchEvent(event: Event): boolean {
     requiredArguments("EventTarget.dispatchEvent", arguments.length, 1);
     const self = this ?? globalThis;
 
@@ -588,12 +576,12 @@ export class EventTarget implements domTypes.EventTarget {
     return "EventTarget";
   }
 
-  protected getParent(_event: domTypes.Event): domTypes.EventTarget | null {
+  protected getParent(_event: Event): EventTarget | null {
     return null;
   }
 }
 
-defineEnumerableProps(EventTarget, [
+defineEnumerableProps(EventTargetImpl, [
   "addEventListener",
   "removeEventListener",
   "dispatchEvent",

@@ -83,7 +83,7 @@ interface GenericConstructor<T = any> {
   prototype: T;
 }
 
-/** A helper function which ensures getters are enumerable, as they normally
+/** A helper function which ensures accessors are enumerable, as they normally
  * are not. */
 export function defineEnumerableProps(
   Ctor: GenericConstructor,
