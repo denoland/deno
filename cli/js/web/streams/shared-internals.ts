@@ -4,18 +4,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // TODO don't disable this warning
 
-import { AbortSignal, QueuingStrategySizeCallback } from "../dom_types.d.ts";
+import { QueuingStrategySizeCallback } from "../dom_types.d.ts";
 
 // common stream fields
 
 export const state_ = Symbol("state_");
 export const storedError_ = Symbol("storedError_");
 
-// ---------
-
 export type ErrorResult = any;
-
-// ---------
 
 export function isInteger(value: number): boolean {
   if (!isFinite(value)) {

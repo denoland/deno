@@ -10,7 +10,6 @@ const { Headers } = headers;
 // only namespace imports work for now, plucking out what we need
 const { FormData } = formData;
 const { TextEncoder, TextDecoder } = encoding;
-const Blob = blob.DenoBlob;
 const DenoBlob = blob.DenoBlob;
 
 type ReadableStreamReader = domTypes.ReadableStreamReader;
@@ -21,8 +20,8 @@ interface ReadableStreamController {
 }
 
 export type BodySource =
-  | domTypes.Blob
-  | domTypes.BufferSource
+  | Blob
+  | BufferSource
   | domTypes.FormData
   | domTypes.URLSearchParams
   | domTypes.ReadableStream
@@ -161,8 +160,8 @@ export class Body implements domTypes.Body {
     return false;
   }
 
-  public async blob(): Promise<domTypes.Blob> {
-    return new Blob([await this.arrayBuffer()]);
+  public async blob(): Promise<Blob> {
+    return new DenoBlob([await this.arrayBuffer()]);
   }
 
   // ref: https://fetch.spec.whatwg.org/#body-mixin

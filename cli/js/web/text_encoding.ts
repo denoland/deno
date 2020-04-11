@@ -25,7 +25,6 @@
 
 import * as base64 from "./base64.ts";
 import { decodeUtf8 } from "./decode_utf8.ts";
-import * as domTypes from "./dom_types.d.ts";
 import { core } from "../core.ts";
 
 const CONTINUE = null;
@@ -449,7 +448,7 @@ export class TextDecoder {
   }
 
   decode(
-    input?: domTypes.BufferSource,
+    input?: BufferSource,
     options: TextDecodeOptions = { stream: false }
   ): string {
     if (options.stream) {

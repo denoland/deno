@@ -17,8 +17,6 @@ and limitations under the License.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export type BufferSource = ArrayBufferView | ArrayBuffer;
-
 export type HeadersInit =
   | Headers
   | Array<[string, string]>
@@ -34,16 +32,6 @@ type BodyInit =
 
 export type RequestInfo = Request | string;
 
-type ReferrerPolicy =
-  | ""
-  | "no-referrer"
-  | "no-referrer-when-downgrade"
-  | "origin-only"
-  | "origin-when-cross-origin"
-  | "unsafe-url";
-
-export type BlobPart = BufferSource | Blob | string;
-
 export type FormDataEntryValue = DomFile | string;
 
 export type EndingType = "transparent" | "native";
@@ -51,10 +39,6 @@ export type EndingType = "transparent" | "native";
 export interface BlobPropertyBag {
   type?: string;
   ending?: EndingType;
-}
-
-interface AbortSignalEventMap {
-  abort: ProgressEvent;
 }
 
 export interface ProgressEventInit extends EventInit {
@@ -318,37 +302,6 @@ export interface FilePropertyBag extends BlobPropertyBag {
   lastModified?: number;
 }
 
-interface ProgressEvent extends Event {
-  readonly lengthComputable: boolean;
-  readonly loaded: number;
-  readonly total: number;
-}
-
-export interface AbortSignal extends EventTarget {
-  readonly aborted: boolean;
-  onabort: ((this: AbortSignal, ev: ProgressEvent) => any) | null;
-  addEventListener<K extends keyof AbortSignalEventMap>(
-    type: K,
-    listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-    options?: boolean | AddEventListenerOptions
-  ): void;
-  addEventListener(
-    type: string,
-    listener: EventListener,
-    options?: boolean | AddEventListenerOptions
-  ): void;
-  removeEventListener<K extends keyof AbortSignalEventMap>(
-    type: K,
-    listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-    options?: boolean | EventListenerOptions
-  ): void;
-  removeEventListener(
-    type: string,
-    listener: EventListener,
-    options?: boolean | EventListenerOptions
-  ): void;
-}
-
 export class FormData {
   append(name: string, value: string | Blob, fileName?: string): void;
   delete(name: string): void;
@@ -360,15 +313,6 @@ export class FormData {
   entries(): IterableIterator<[string, FormDataEntryValue]>;
   keys(): IterableIterator<string>;
   values(): IterableIterator<FormDataEntryValue>;
-}
-
-export interface Blob {
-  readonly size: number;
-  readonly type: string;
-  slice(start?: number, end?: number, contentType?: string): Blob;
-  stream(): ReadableStream;
-  text(): Promise<string>;
-  arrayBuffer(): Promise<ArrayBuffer>;
 }
 
 export interface Body {
