@@ -40,7 +40,7 @@ const formatSymbol = Symbol("format");
 
 import { spliceOne } from "./_utils.ts";
 import * as querystring from "./querystring.ts";
-import * as path from "http://deno.land/std/node/path.ts";
+import * as path from "./path.ts";
 
 const { build } = Deno;
 const isWindows = build.os === "win";
