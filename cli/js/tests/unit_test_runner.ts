@@ -251,16 +251,18 @@ async function threadedRunnerMain(
     console.log("\t" + fmtPerms(perms));
   }
 
-  const testResults = new Set<PermissionSetTestResult>();
+  const resultPromises: Promise<PermissionSetTestResult>[] = [];
 
   for (const perms of permissionCombinations.values()) {
-    const result = await runTestsInThreadForPermissionSet(
+    const resultPromise = runTestsInThreadForPermissionSet(
       verbose,
       perms,
       filter
     );
-    testResults.add(result);
+    resultPromises.push(resultPromise);
   }
+
+  const testResults = await Promise.all(resultPromises);
 
   // if any run tests returned non-zero status then whole test
   // run should fail

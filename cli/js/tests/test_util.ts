@@ -325,7 +325,7 @@ unitTest(function permissionsMatches(): void {
  * cli/js/tests/unit_tests.ts as it is easy to miss this out
  */
 unitTest(
-  { perms: { read: true } },
+  { perms: { read: true }, ignore: true },
   function assertAllUnitTestFilesImported(): void {
     const directoryTestFiles = Deno.readdirSync("./cli/js/tests/")
       .map((k) => k.name)
