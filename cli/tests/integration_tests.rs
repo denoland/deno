@@ -975,12 +975,6 @@ itest!(deno_test {
   output: "deno_test.out",
 });
 
-itest!(workers {
-  args: "test --reload --allow-net workers_test.ts",
-  http_server: true,
-  output: "workers_test.out",
-});
-
 itest!(compiler_api {
   args: "test --reload compiler_api_test.ts",
   output: "compiler_api_test.out",
