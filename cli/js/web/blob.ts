@@ -63,7 +63,7 @@ function collectSequenceNotCRLF(
 }
 
 function toUint8Arrays(
-  blobParts: domTypes.BlobPart[],
+  blobParts: BlobPart[],
   doNormalizeLineEndingsToNative: boolean
 ): Uint8Array[] {
   const ret: Uint8Array[] = [];
@@ -102,7 +102,7 @@ function toUint8Arrays(
 }
 
 function processBlobParts(
-  blobParts: domTypes.BlobPart[],
+  blobParts: BlobPart[],
   options: domTypes.BlobPropertyBag
 ): Uint8Array {
   const normalizeLineEndingsToNative = options.ending === "native";
@@ -171,10 +171,7 @@ export class DenoBlob implements Blob {
   readonly size: number = 0;
   readonly type: string = "";
 
-  constructor(
-    blobParts?: domTypes.BlobPart[],
-    options?: domTypes.BlobPropertyBag
-  ) {
+  constructor(blobParts?: BlobPart[], options?: domTypes.BlobPropertyBag) {
     if (arguments.length === 0) {
       this[bytesSymbol] = new Uint8Array();
       return;

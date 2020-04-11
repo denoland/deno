@@ -7,7 +7,7 @@ export class DomFileImpl extends blob.DenoBlob implements domTypes.DomFile {
   name: string;
 
   constructor(
-    fileBits: domTypes.BlobPart[],
+    fileBits: BlobPart[],
     fileName: string,
     options?: domTypes.FilePropertyBag
   ) {

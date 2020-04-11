@@ -21,7 +21,7 @@ interface ReadableStreamController {
 
 export type BodySource =
   | Blob
-  | domTypes.BufferSource
+  | BufferSource
   | domTypes.FormData
   | domTypes.URLSearchParams
   | domTypes.ReadableStream

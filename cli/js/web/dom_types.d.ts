@@ -17,8 +17,6 @@ and limitations under the License.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export type BufferSource = ArrayBufferView | ArrayBuffer;
-
 export type HeadersInit =
   | Headers
   | Array<[string, string]>
@@ -33,16 +31,6 @@ type BodyInit =
   | string;
 
 export type RequestInfo = Request | string;
-
-type ReferrerPolicy =
-  | ""
-  | "no-referrer"
-  | "no-referrer-when-downgrade"
-  | "origin-only"
-  | "origin-when-cross-origin"
-  | "unsafe-url";
-
-export type BlobPart = BufferSource | Blob | string;
 
 export type FormDataEntryValue = DomFile | string;
 
