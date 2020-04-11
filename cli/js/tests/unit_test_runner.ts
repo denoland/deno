@@ -9,6 +9,7 @@ import {
   fmtPerms,
   parseArgs,
   reportToConn,
+  createResolvable,
 } from "./test_util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -172,6 +173,114 @@ async function runTestsForPermissionSet(
   };
 }
 
+async function runTestsInThreadForPermissionSet(
+  verbose: boolean,
+  perms: Permissions,
+  filter?: string
+): Promise<PermissionSetTestResult> {
+  const permsFmt = fmtPerms(perms);
+  console.log(`Running tests for: ${permsFmt}`);
+
+  const permStr = Object.keys(perms)
+    .filter((permName): boolean => {
+      return perms[permName as Deno.PermissionName] === true;
+    })
+    .join(",");
+
+  const resolvable = createResolvable();
+
+  const worker = new Worker("./unit_test_worker.ts", {
+    type: "module",
+    name: permStr,
+    deno: true,
+    permissions: perms,
+  });
+
+  let expectedPassedTests;
+  let endMessage: Deno.TestMessage["end"];
+
+  worker.postMessage({
+    cmd: "run",
+    filter: filter,
+    verbose: verbose,
+  });
+
+  // @ts-ignore
+  worker.onmessage = function(e): void {
+    const message = JSON.parse(e.data.testMsg) as Deno.TestMessage;
+    reportToConsole(message);
+    if (message.start != null) {
+      expectedPassedTests = message.start.tests.length;
+    } else if (message.end != null) {
+      endMessage = message.end;
+      worker.terminate();
+      resolvable.resolve();
+    }
+  };
+
+  await resolvable;
+
+  if (expectedPassedTests == null) {
+    throw new Error("Worker runner didn't report start");
+  }
+
+  if (endMessage == null) {
+    throw new Error("Worker runner didn't report end");
+  }
+
+  const passed = expectedPassedTests === endMessage.passed + endMessage.ignored;
+
+  return {
+    perms,
+    passed,
+    permsStr: permsFmt,
+    endMessage,
+  };
+}
+
+async function threadedRunnerMain(
+  verbose: boolean,
+  filter?: string
+): Promise<void> {
+  console.log(
+    "Discovered permission combinations for tests:",
+    permissionCombinations.size
+  );
+
+  for (const perms of permissionCombinations.values()) {
+    console.log("\t" + fmtPerms(perms));
+  }
+
+  const testResults = new Set<PermissionSetTestResult>();
+
+  for (const perms of permissionCombinations.values()) {
+    const result = await runTestsInThreadForPermissionSet(
+      verbose,
+      perms,
+      filter
+    );
+    testResults.add(result);
+  }
+
+  // if any run tests returned non-zero status then whole test
+  // run should fail
+  let testsPassed = true;
+
+  for (const testResult of testResults) {
+    const { permsStr, endMessage } = testResult;
+    console.log(`Summary for ${permsStr}`);
+    reportToConsole({ end: endMessage });
+    testsPassed = testsPassed && testResult.passed;
+  }
+
+  if (!testsPassed) {
+    console.error("Unit tests failed");
+    Deno.exit(1);
+  }
+
+  console.log("Unit tests passed");
+}
+
 async function masterRunnerMain(
   verbose: boolean,
   filter?: string
@@ -271,7 +380,7 @@ function assertOrHelp(expr: unknown): asserts expr {
 
 async function main(): Promise<void> {
   const args = parseArgs(Deno.args, {
-    boolean: ["master", "worker", "verbose"],
+    boolean: ["master", "worker", "threaded", "verbose"],
     "--": true,
   });
 
@@ -281,6 +390,10 @@ async function main(): Promise<void> {
   }
 
   const filter = args["--"][0];
+
+  if (args.threaded) {
+    return threadedRunnerMain(args.verbose, filter);
+  }
 
   // Master mode
   if (args.master) {

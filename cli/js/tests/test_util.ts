@@ -200,7 +200,7 @@ const encoder = new TextEncoder();
 
 // Replace functions with null, errors with their stack strings, and JSONify.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function serializeTestMessage(message: Deno.TestMessage): string {
+export function serializeTestMessage(message: Deno.TestMessage): string {
   return JSON.stringify({
     start: message.start && {
       ...message.start,

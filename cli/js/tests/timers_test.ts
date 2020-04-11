@@ -178,7 +178,7 @@ unitTest(async function timeoutCallbackThis(): Promise<void> {
   const { promise, resolve } = deferred();
   const obj = {
     foo(): void {
-      assertEquals(this, window);
+      assertEquals(this, self);
       resolve();
     },
   };
@@ -187,7 +187,7 @@ unitTest(async function timeoutCallbackThis(): Promise<void> {
 });
 
 unitTest(async function timeoutBindThis(): Promise<void> {
-  const thisCheckPassed = [null, undefined, window, globalThis];
+  const thisCheckPassed = [null, undefined, self, globalThis];
 
   const thisCheckFailed = [
     0,

@@ -138,7 +138,7 @@ unitTest(function dispatchEventShouldNotThrowError(): void {
   assertEquals(hasThrown, false);
 });
 
-unitTest(function eventTargetThisShouldDefaultToWindow(): void {
+unitTest(function eventTargetThisShouldDefaultToSelf(): void {
   const {
     addEventListener,
     dispatchEvent,
@@ -151,18 +151,18 @@ unitTest(function eventTargetThisShouldDefaultToWindow(): void {
   };
 
   addEventListener("hello", listener);
-  window.dispatchEvent(event);
+  self.dispatchEvent(event);
   assertEquals(n, 2);
   n = 1;
   removeEventListener("hello", listener);
-  window.dispatchEvent(event);
+  self.dispatchEvent(event);
   assertEquals(n, 1);
 
-  window.addEventListener("hello", listener);
+  self.addEventListener("hello", listener);
   dispatchEvent(event);
   assertEquals(n, 2);
   n = 1;
-  window.removeEventListener("hello", listener);
+  self.removeEventListener("hello", listener);
   dispatchEvent(event);
   assertEquals(n, 1);
 });

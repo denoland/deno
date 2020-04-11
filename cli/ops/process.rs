@@ -40,7 +40,7 @@ fn subprocess_stdio_map(s: &str) -> std::process::Stdio {
     "inherit" => std::process::Stdio::inherit(),
     "piped" => std::process::Stdio::piped(),
     "null" => std::process::Stdio::null(),
-    _ => unreachable!(),
+    bad => unreachable!(format!("bad stdio map {}", bad)),
   }
 }
 

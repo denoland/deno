@@ -3,6 +3,7 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
 use crate::op_error::OpError;
+use crate::ops::io::get_stdio;
 use crate::permissions::DenoPermissions;
 use crate::permissions::PermissionState;
 use crate::startup_data;
@@ -42,12 +43,21 @@ fn create_web_worker(
   let state =
     State::new_for_worker(global_state, Some(permissions), specifier)?;
 
+  if has_deno_namespace {
+    let mut s = state.borrow_mut();
+    let (stdin, stdout, stderr) = get_stdio();
+    s.resource_table.add("stdin", Box::new(stdin));
+    s.resource_table.add("stdout", Box::new(stdout));
+    s.resource_table.add("stderr", Box::new(stderr));
+  }
+
   let mut worker = WebWorker::new(
     startup_data::deno_isolate_init(),
     state,
     maybe_name,
     has_deno_namespace,
   );
+
   let script = format!(
     "bootstrapWorkerRuntime(\"{}\", {})",
     worker.name, worker.has_deno_namespace
