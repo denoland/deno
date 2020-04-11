@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { customInspect } from "./console.ts";
-import * as domTypes from "./dom_types.ts";
+import * as domTypes from "./dom_types.d.ts";
 import { urls, URLSearchParams } from "./url_search_params.ts";
 import { getRandomValues } from "../ops/get_random_values.ts";
 
