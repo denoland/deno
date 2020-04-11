@@ -23,7 +23,7 @@ export type BodySource =
   | Blob
   | BufferSource
   | domTypes.FormData
-  | domTypes.URLSearchParams
+  | URLSearchParams
   | domTypes.ReadableStream
   | string;
 

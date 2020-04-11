@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { customInspect } from "./console.ts";
-import * as domTypes from "./dom_types.d.ts";
-import { urls, URLSearchParams } from "./url_search_params.ts";
+import { urls } from "./url_search_params.ts";
 import { getRandomValues } from "../ops/get_random_values.ts";
 
 interface URLParts {
@@ -139,7 +138,7 @@ function resolvePathFromBase(path: string, basePath: string): string {
 /** @internal */
 export const parts = new WeakMap<URL, URLParts>();
 
-export class URL implements domTypes.URL {
+export class URLImpl implements URL {
   #searchParams!: URLSearchParams;
 
   [customInspect](): string {
