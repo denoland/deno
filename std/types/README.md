@@ -14,16 +14,16 @@ which points to the type definitions. We are working to have this available, but
 currently you would need to use the compiler hint of `@deno-types`. For example
 to import React:
 
-```ts
-// @deno-types="https://deno.land/std/types/react/@16.9.0/react.d.ts"
-import React from "https://cdn.pika.dev/_/react@v16.9.0";
+```typescript
+// @deno-types="https://deno.land/std/types/react/@16.13.1/react.d.ts"
+import React from "https://cdn.pika.dev/@pika/react@v16.13.1";
 ```
 
 or
 
-```ts
-// @deno-types="https://deno.land/std/types/react/@16.9.0/react.d.ts"
-import React from "https://dev.jspm.io/react@16.9.0";
+```typescript
+// @deno-types="https://deno.land/std/types/react/@16.13.1/react.d.ts"
+import React from "https://dev.jspm.io/react@16.13.1";
 ```
 
 #### Notes:

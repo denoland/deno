@@ -7,6 +7,6 @@ React is a JavaScript library for building user interfaces.
 ### Usage Examples
 
 ```typescript
-// @deno-types="https://deno.land/std/types/react/v16.9.0/react.d.ts"
-import React from "https://cdn.pika.dev/_/react@v16.9.0";
+// @deno-types="https://deno.land/std/types/react/v16.13.1/react.d.ts"
+import React from "https://cdn.pika.dev/@pika/react@v16.13.1";
 ```

@@ -30,7 +30,7 @@ import {
   DOMElement,
   ReactNode,
   ReactPortal,
-} from "../../react/v16.9.0/react.d.ts";
+} from "../../react/v16.13.1/react.d.ts";
 
 export function findDOMNode(
   instance: ReactInstance | null | undefined
