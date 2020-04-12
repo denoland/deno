@@ -251,7 +251,9 @@ test(function testingAssertFailWithWrongErrorClass(): void {
 const createHeader = (): string[] => [
   "",
   "",
-  `    ${gray(bold("[Diff]"))} ${red(bold("Left"))} / ${green(bold("Right"))}`,
+  `    ${gray(bold("[Diff]"))} ${red(bold("Actual"))} / ${green(
+    bold("Expected")
+  )}`,
   "",
   "",
 ];

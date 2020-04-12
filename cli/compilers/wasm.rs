@@ -6,13 +6,12 @@ use crate::global_state::GlobalState;
 use crate::startup_data;
 use crate::state::*;
 use crate::tokio_util;
+use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
-use crate::worker::WorkerHandle;
 use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use serde_derive::Deserialize;
-use serde_json;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -56,8 +55,9 @@ impl WasmCompiler {
     let entry_point =
       ModuleSpecifier::resolve_url_or_path("./__$deno$wasm_compiler.ts")
         .unwrap();
-    let worker_state = State::new(global_state.clone(), None, entry_point)
-      .expect("Unable to create worker state");
+    let worker_state =
+      State::new(global_state.clone(), None, entry_point, DebugType::Internal)
+        .expect("Unable to create worker state");
 
     // Count how many times we start the compiler worker.
     global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
@@ -118,7 +118,7 @@ async fn execute_in_thread(
   req: Buf,
 ) -> Result<Buf, ErrBox> {
   let (handle_sender, handle_receiver) =
-    std::sync::mpsc::sync_channel::<Result<WorkerHandle, ErrBox>>(1);
+    std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, ErrBox>>(1);
   let builder =
     std::thread::Builder::new().name("deno-wasm-compiler".to_string());
   let join_handle = builder.spawn(move || {
@@ -127,15 +127,16 @@ async fn execute_in_thread(
     drop(handle_sender);
     tokio_util::run_basic(worker).expect("Panic in event loop");
   })?;
-  let mut handle = handle_receiver.recv().unwrap()?;
-  handle.post_message(req).await?;
+  let handle = handle_receiver.recv().unwrap()?;
+  handle.post_message(req)?;
   let event = handle.get_event().await.expect("Compiler didn't respond");
   let buf = match event {
     WorkerEvent::Message(buf) => Ok(buf),
     WorkerEvent::Error(error) => Err(error),
+    WorkerEvent::TerminalError(error) => Err(error),
   }?;
   // Shutdown worker and wait for thread to finish
-  handle.sender.close_channel();
+  handle.terminate();
   join_handle.join().unwrap();
   Ok(buf)
 }

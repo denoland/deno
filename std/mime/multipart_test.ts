@@ -1,16 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-const { Buffer, copy, open, remove } = Deno;
+const { Buffer, copy, open, test } = Deno;
 import {
   assert,
   assertEquals,
   assertThrows,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
-const { test } = Deno;
 import * as path from "../path/mod.ts";
 import {
-  FormFile,
   MultipartReader,
   MultipartWriter,
   isFormFile,
@@ -173,46 +171,93 @@ test(async function multipartMultipartWriter3(): Promise<void> {
   );
 });
 
-test(async function multipartMultipartReader(): Promise<void> {
-  // FIXME: path resolution
-  const o = await open(path.resolve("./mime/testdata/sample.txt"));
-  const mr = new MultipartReader(
-    o,
-    "--------------------------434049563556637648550474"
-  );
-  const form = await mr.readForm(10 << 20);
-  assertEquals(form["foo"], "foo");
-  assertEquals(form["bar"], "bar");
-  const file = form["file"] as FormFile;
-  assertEquals(isFormFile(file), true);
-  assert(file.content !== void 0);
-  o.close();
+test({
+  name: "[mime/multipart] readForm() basic",
+  async fn() {
+    const o = await open(path.resolve("./mime/testdata/sample.txt"));
+    const mr = new MultipartReader(
+      o,
+      "--------------------------434049563556637648550474"
+    );
+    const form = await mr.readForm();
+    assertEquals(form.value("foo"), "foo");
+    assertEquals(form.value("bar"), "bar");
+    const file = form.file("file");
+    assert(isFormFile(file));
+    assert(file.content !== void 0);
+    o.close();
+  },
 });
 
-test(async function multipartMultipartReader2(): Promise<void> {
-  const o = await open(path.resolve("./mime/testdata/sample.txt"));
-  const mr = new MultipartReader(
-    o,
-    "--------------------------434049563556637648550474"
-  );
-  const form = await mr.readForm(20); //
-  try {
-    assertEquals(form["foo"], "foo");
-    assertEquals(form["bar"], "bar");
-    const file = form["file"] as FormFile;
-    assertEquals(file.type, "application/octet-stream");
-    assert(file.tempfile != null);
-    const f = await open(file.tempfile);
-    const w = new StringWriter();
-    await copy(w, f);
-    const json = JSON.parse(w.toString());
-    assertEquals(json["compilerOptions"]["target"], "es2018");
-    f.close();
-  } finally {
-    const file = form["file"] as FormFile;
-    if (file.tempfile) {
-      await remove(file.tempfile);
+test({
+  name: "[mime/multipart] readForm() should store big file in temp file",
+  async fn() {
+    const o = await open(path.resolve("./mime/testdata/sample.txt"));
+    const mr = new MultipartReader(
+      o,
+      "--------------------------434049563556637648550474"
+    );
+    // use low-memory to write "file" into temp file.
+    const form = await mr.readForm(20);
+    try {
+      assertEquals(form.value("foo"), "foo");
+      assertEquals(form.value("bar"), "bar");
+      const file = form.file("file");
+      assert(file != null);
+      assertEquals(file.type, "application/octet-stream");
+      assert(file.tempfile != null);
+      const f = await open(file.tempfile);
+      const w = new StringWriter();
+      await copy(w, f);
+      const json = JSON.parse(w.toString());
+      assertEquals(json["compilerOptions"]["target"], "es2018");
+      f.close();
+    } finally {
+      await form.removeAll();
+      o.close();
     }
+  },
+});
+
+test({
+  name: "[mime/multipart] removeAll() should remove all tempfiles",
+  async fn() {
+    const o = await open(path.resolve("./mime/testdata/sample.txt"));
+    const mr = new MultipartReader(
+      o,
+      "--------------------------434049563556637648550474"
+    );
+    const form = await mr.readForm(20);
+    const file = form.file("file");
+    assert(file != null);
+    const { tempfile, content } = file;
+    assert(tempfile != null);
+    assert(content == null);
+    const stat = await Deno.stat(tempfile);
+    assertEquals(stat.size, file.size);
+    await form.removeAll();
+    await assertThrowsAsync(async () => {
+      await Deno.stat(tempfile);
+    }, Deno.errors.NotFound);
     o.close();
-  }
+  },
+});
+
+test({
+  name: "[mime/multipart] entries()",
+  async fn() {
+    const o = await open(path.resolve("./mime/testdata/sample.txt"));
+    const mr = new MultipartReader(
+      o,
+      "--------------------------434049563556637648550474"
+    );
+    const form = await mr.readForm();
+    const map = new Map(form.entries());
+    assertEquals(map.get("foo"), "foo");
+    assertEquals(map.get("bar"), "bar");
+    const file = map.get("file");
+    assert(isFormFile(file));
+    assertEquals(file.filename, "tsconfig.json");
+    o.close();
+  },
 });

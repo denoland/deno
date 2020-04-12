@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::swc_common;
 use serde::Serialize;
-use swc_common;
 
 #[derive(Debug, PartialEq, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -16,8 +16,18 @@ pub enum DocNodeKind {
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub enum ParamKind {
+  Identifier,
+  Rest,
+  Array,
+  Object,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ParamDef {
   pub name: String,
+  pub kind: ParamKind,
   pub ts_type: Option<super::ts_type::TsTypeDef>,
 }
 
@@ -30,7 +40,7 @@ pub struct Location {
 
 impl Into<Location> for swc_common::Loc {
   fn into(self) -> Location {
-    use swc_common::FileName::*;
+    use crate::swc_common::FileName::*;
 
     let filename = match &self.file.name {
       Real(path_buf) => path_buf.to_string_lossy().to_string(),
@@ -44,6 +54,35 @@ impl Into<Location> for swc_common::Loc {
       col: self.col_display,
     }
   }
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub enum ReexportKind {
+  /// export * from "./path/to/module.js";
+  All,
+  /// export * as someNamespace from "./path/to/module.js";
+  Namespace(String),
+  /// export default from "./path/to/module.js";
+  Default,
+  /// (identifier, optional alias)
+  /// export { foo } from "./path/to/module.js";
+  /// export { foo as bar } from "./path/to/module.js";
+  Named(String, Option<String>),
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Reexport {
+  pub kind: ReexportKind,
+  pub src: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ModuleDoc {
+  pub exports: Vec<DocNode>,
+  pub reexports: Vec<Reexport>,
 }
 
 #[derive(Debug, Serialize, Clone)]

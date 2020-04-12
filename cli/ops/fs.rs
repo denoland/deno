@@ -13,7 +13,6 @@ use std::env::{current_dir, set_current_dir, temp_dir};
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
-use tokio;
 
 use rand::{thread_rng, Rng};
 
@@ -39,6 +38,10 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_make_temp_file", s.stateful_json_op(op_make_temp_file));
   i.register_op("op_cwd", s.stateful_json_op(op_cwd));
   i.register_op("op_utime", s.stateful_json_op(op_utime));
+}
+
+fn into_string(s: std::ffi::OsString) -> Result<String, OpError> {
+  s.into_string().map_err(|_| OpError::invalid_utf8())
 }
 
 #[derive(Deserialize)]
@@ -226,12 +229,14 @@ fn op_seek(
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  let is_sync = args.promise_id.is_none();
   let fut = async move {
+    debug!("op_seek {} {} {}", rid, offset, whence);
     let pos = file.seek(seek_from).await?;
     Ok(json!(pos))
   };
 
-  if args.promise_id.is_none() {
+  if is_sync {
     let buf = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(buf))
   } else {
@@ -509,6 +514,7 @@ fn get_stat_json(
   use std::os::unix::fs::MetadataExt;
   let mut json_val = json!({
     "isFile": metadata.is_file(),
+    "isDirectory": metadata.is_dir(),
     "isSymlink": metadata.file_type().is_symlink(),
     "size": metadata.len(),
     // In seconds. Available on both Unix or Windows.
@@ -594,7 +600,7 @@ fn op_realpath(
     // CreateFile and GetFinalPathNameByHandle on Windows
     let realpath = std::fs::canonicalize(&path)?;
     let mut realpath_str =
-      realpath.to_str().unwrap().to_owned().replace("\\", "/");
+      into_string(realpath.into_os_string())?.replace("\\", "/");
     if cfg!(windows) {
       realpath_str = realpath_str.trim_start_matches("//?/").to_string();
     }
@@ -627,9 +633,8 @@ fn op_read_dir(
         let entry = entry.unwrap();
         let metadata = entry.metadata().unwrap();
         // Not all filenames can be encoded as UTF-8. Skip those for now.
-        if let Some(filename) = entry.file_name().to_str() {
-          let filename = Some(filename.to_owned());
-          Some(get_stat_json(metadata, filename).unwrap())
+        if let Ok(filename) = into_string(entry.file_name()) {
+          Some(get_stat_json(metadata, Some(filename)).unwrap())
         } else {
           None
         }
@@ -756,10 +761,9 @@ fn op_read_link(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_read_link {}", path.display());
-    let path = std::fs::read_link(&path)?;
-    let path_str = path.to_str().unwrap();
-
-    Ok(json!(path_str))
+    let target = std::fs::read_link(&path)?.into_os_string();
+    let targetstr = into_string(target)?;
+    Ok(json!(targetstr))
   })
 }
 
@@ -870,7 +874,7 @@ fn op_make_temp_dir(
       suffix.as_ref().map(|x| &**x),
       true,
     )?;
-    let path_str = path.to_str().unwrap();
+    let path_str = into_string(path.into_os_string())?;
 
     Ok(json!(path_str))
   })
@@ -901,7 +905,7 @@ fn op_make_temp_file(
       suffix.as_ref().map(|x| &**x),
       false,
     )?;
-    let path_str = path.to_str().unwrap();
+    let path_str = into_string(path.into_os_string())?;
 
     Ok(json!(path_str))
   })
@@ -940,6 +944,6 @@ fn op_cwd(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let path = current_dir()?;
-  let path_str = path.into_os_string().into_string().unwrap();
+  let path_str = into_string(path.into_os_string())?;
   Ok(JsonOp::Sync(json!(path_str)))
 }

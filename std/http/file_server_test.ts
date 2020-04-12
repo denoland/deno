@@ -2,6 +2,8 @@
 import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
+import { ServerRequest } from "./server.ts";
+import { serveFile } from "./file_server.ts";
 const { test } = Deno;
 let fileServer: Deno.Process;
 
@@ -31,14 +33,13 @@ function killFileServer(): void {
   fileServer.stdout?.close();
 }
 
-test(async function serveFile(): Promise<void> {
+test("file_server serveFile", async (): Promise<void> => {
   await startFileServer();
   try {
     const res = await fetch("http://localhost:4500/README.md");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
-    assert(res.headers.has("content-type"));
-    assert(res.headers.get("content-type")!.includes("charset=utf-8"));
+    assertEquals(res.headers.get("content-type"), "text/markdown");
     const downloadedFile = await res.text();
     const localFile = new TextDecoder().decode(
       await Deno.readFile("README.md")
@@ -78,7 +79,7 @@ test(async function serveFallback(): Promise<void> {
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 404);
-    res.body.close();
+    const _ = await res.text();
   } finally {
     killFileServer();
   }
@@ -91,12 +92,12 @@ test(async function serveWithUnorthodoxFilename(): Promise<void> {
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 200);
-    res.body.close();
+    let _ = await res.text();
     res = await fetch("http://localhost:4500/http/testdata/test%20file.txt");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 200);
-    res.body.close();
+    _ = await res.text();
   } finally {
     killFileServer();
   }
@@ -117,7 +118,7 @@ test(async function servePermissionDenied(): Promise<void> {
 
   try {
     const res = await fetch("http://localhost:4500/");
-    res.body.close();
+    const _ = await res.text();
     assertStrContains(
       (await errReader.readLine()) as string,
       "run again with the --allow-read flag"
@@ -140,4 +141,12 @@ test(async function printHelp(): Promise<void> {
   assert(s !== Deno.EOF && s.includes("Deno File Server"));
   helpProcess.close();
   helpProcess.stdout.close();
+});
+
+test("contentType", async () => {
+  const request = new ServerRequest();
+  const response = await serveFile(request, "http/testdata/hello.html");
+  const contentType = response.headers!.get("content-type");
+  assertEquals(contentType, "text/html");
+  (response.body as Deno.File).close();
 });

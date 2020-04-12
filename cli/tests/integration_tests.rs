@@ -7,6 +7,8 @@ extern crate nix;
 extern crate pty;
 extern crate tempfile;
 
+use futures::prelude::*;
+use std::io::BufRead;
 use std::process::Command;
 use tempfile::TempDir;
 
@@ -94,7 +96,7 @@ fn fetch_test() {
   let output = Command::new(deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
-    .arg("fetch")
+    .arg("cache")
     .arg(module_url.to_string())
     .output()
     .expect("Failed to spawn script");
@@ -487,6 +489,82 @@ fn bundle_js() {
     .output()
     .expect("failed to spawn script");
   // check that nothing went to stderr
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
+fn bundle_dynamic_import() {
+  let dynamic_import =
+    util::root_path().join("cli/tests/subdir/subdir2/dynamic_import.ts");
+  assert!(dynamic_import.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("dynamic_import.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(dynamic_import)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&bundle)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the test.ts program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello"));
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
+fn bundle_import_map() {
+  let import = util::root_path().join("cli/tests/bundle_im.ts");
+  let import_map_path = util::root_path().join("cli/tests/bundle_im.json");
+  assert!(import.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("import_map.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg("--importmap")
+    .arg(import_map_path)
+    .arg(import)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  // Now we try to use that bundle from another module.
+  let test = t.path().join("test.js");
+  std::fs::write(
+    &test,
+    "
+      import { printHello3 } from \"./import_map.bundle.js\";
+      printHello3(); ",
+  )
+  .expect("error writing file");
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&test)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the test.ts program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello"));
   assert_eq!(output.stderr, b"");
 }
 
@@ -953,12 +1031,12 @@ itest_ignore!(_035_cached_only_flag {
 
 itest!(_036_import_map_fetch {
   args:
-    "fetch --reload --importmap=importmaps/import_map.json importmaps/test.ts",
+    "cache --reload --importmap=importmaps/import_map.json importmaps/test.ts",
   output: "036_import_map_fetch.out",
 });
 
 itest!(_037_fetch_multiple {
-  args: "fetch --reload fetch/test.ts fetch/other.ts",
+  args: "cache --reload fetch/test.ts fetch/other.ts",
   check_stderr: true,
   http_server: true,
   output: "037_fetch_multiple.out",
@@ -1293,11 +1371,39 @@ itest!(error_018_hide_long_source_js {
   exit_code: 1,
 });
 
-itest!(error_stack {
-  args: "run --reload error_stack.ts",
+itest!(error_019_stack_function {
+  args: "error_019_stack_function.ts",
+  output: "error_019_stack_function.ts.out",
   check_stderr: true,
   exit_code: 1,
-  output: "error_stack.ts.out",
+});
+
+itest!(error_020_stack_constructor {
+  args: "error_020_stack_constructor.ts",
+  output: "error_020_stack_constructor.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
+itest!(error_021_stack_method {
+  args: "error_021_stack_method.ts",
+  output: "error_021_stack_method.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
+itest!(error_022_stack_custom_error {
+  args: "error_022_stack_custom_error.ts",
+  output: "error_022_stack_custom_error.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
+itest!(error_023_stack_async {
+  args: "error_023_stack_async.ts",
+  output: "error_023_stack_async.ts.out",
+  check_stderr: true,
+  exit_code: 1,
 });
 
 itest!(error_syntax {
@@ -1379,6 +1485,13 @@ itest!(type_directives_01 {
 itest!(type_directives_02 {
   args: "run --reload -L debug type_directives_02.ts",
   output: "type_directives_02.ts.out",
+});
+
+itest!(type_directives_js_main {
+  args: "run --reload -L debug type_directives_js_main.js",
+  output: "type_directives_js_main.js.out",
+  check_stderr: true,
+  exit_code: 0,
 });
 
 itest!(types {
@@ -1506,7 +1619,7 @@ fn cafile_fetch() {
   let output = Command::new(deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
-    .arg("fetch")
+    .arg("cache")
     .arg("--cert")
     .arg(cafile)
     .arg(module_url.to_string())
@@ -1967,11 +2080,9 @@ fn test_permissions_net_listen_allow_localhost() {
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
 
-#[cfg(not(target_os = "linux"))] // TODO(ry) broken on github actions.
 fn extract_ws_url_from_stderr(
   stderr: &mut std::process::ChildStderr,
 ) -> url::Url {
-  use std::io::BufRead;
   let mut stderr = std::io::BufReader::new(stderr);
   let mut stderr_first_line = String::from("");
   let _ = stderr.read_line(&mut stderr_first_line).unwrap();
@@ -1983,7 +2094,6 @@ fn extract_ws_url_from_stderr(
   url::Url::parse(ws_url).unwrap()
 }
 
-#[cfg(not(target_os = "linux"))] // TODO(ry) broken on github actions.
 #[tokio::test]
 async fn inspector_connect() {
   let script = deno::test_util::root_path()
@@ -1994,7 +2104,7 @@ async fn inspector_connect() {
     .arg("run")
     // Warning: each inspector test should be on its own port to avoid
     // conflicting with another inspector test.
-    .arg("--inspect=127.0.0.1:9229")
+    .arg("--inspect=127.0.0.1:9228")
     .arg(script)
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -2010,7 +2120,86 @@ async fn inspector_connect() {
   child.kill().unwrap();
 }
 
-#[cfg(not(target_os = "linux"))] // TODO(ry) broken on github actions.
+enum TestStep {
+  StdOut(&'static str),
+  WsRecv(&'static str),
+  WsSend(&'static str),
+}
+
+#[tokio::test]
+async fn inspector_break_on_first_line() {
+  let script = deno::test_util::root_path()
+    .join("cli")
+    .join("tests")
+    .join("inspector2.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    // Warning: each inspector test should be on its own port to avoid
+    // conflicting with another inspector test.
+    .arg("--inspect-brk=127.0.0.1:9229")
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let ws_url = extract_ws_url_from_stderr(stderr);
+  let (socket, response) = tokio_tungstenite::connect_async(ws_url)
+    .await
+    .expect("Can't connect");
+  assert_eq!(response.status(), 101); // Switching protocols.
+
+  let (mut socket_tx, mut socket_rx) = socket.split();
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines = std::io::BufReader::new(stdout).lines();
+
+  use TestStep::*;
+  let test_steps = vec![
+    WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
+    WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
+    WsRecv(
+      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+    ),
+    WsRecv(r#"{"id":1,"result":{}}"#),
+    WsRecv(r#"{"id":2,"result":{"debuggerId":"#),
+    WsSend(r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#),
+    WsRecv(r#"{"id":3,"result":{}}"#),
+    WsRecv(r#"{"method":"Debugger.paused","#),
+    WsSend(
+      r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
+    ),
+    WsRecv(r#"{"id":5,"result":{"result":{"type":"undefined"}}}"#),
+    StdOut("hello from the inspector"),
+    WsSend(r#"{"id":6,"method":"Debugger.resume"}"#),
+    WsRecv(r#"{"id":6,"result":{}}"#),
+    StdOut("hello from the script"),
+  ];
+
+  for step in test_steps {
+    match step {
+      StdOut(s) => match stdout_lines.next() {
+        Some(Ok(line)) => assert_eq!(line, s),
+        other => panic!(other),
+      },
+      WsRecv(s) => loop {
+        let msg = match socket_rx.next().await {
+          Some(Ok(msg)) => msg.to_string(),
+          other => panic!(other),
+        };
+        if !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#) {
+          assert!(msg.starts_with(s));
+          break;
+        }
+      },
+      WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
+    }
+  }
+
+  child.kill().unwrap();
+}
+
 #[tokio::test]
 async fn inspector_pause() {
   let script = deno::test_util::root_path()
@@ -2027,7 +2216,6 @@ async fn inspector_pause() {
     .spawn()
     .unwrap();
   let ws_url = extract_ws_url_from_stderr(child.stderr.as_mut().unwrap());
-  println!("ws_url {}", ws_url);
   // We use tokio_tungstenite as a websocket client because warp (which is
   // a dependency of Deno) uses it.
   let (mut socket, _) = tokio_tungstenite::connect_async(ws_url)
@@ -2050,7 +2238,6 @@ async fn inspector_pause() {
     unreachable!()
   }
 
-  use futures::sink::SinkExt;
   socket
     .send(r#"{"id":6,"method":"Debugger.enable"}"#.into())
     .await
@@ -2072,7 +2259,6 @@ async fn inspector_pause() {
   child.kill().unwrap();
 }
 
-#[cfg(not(target_os = "linux"))] // TODO(ry) broken on github actions.
 #[tokio::test]
 async fn inspector_port_collision() {
   let script = deno::test_util::root_path()

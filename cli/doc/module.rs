@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use swc_common;
-use swc_common::Spanned;
-use swc_ecma_ast;
+use crate::swc_common::Spanned;
+use crate::swc_ecma_ast;
 
 use super::parser::DocParser;
 use super::DocNode;
@@ -12,7 +11,7 @@ pub fn get_doc_node_for_export_decl(
   export_decl: &swc_ecma_ast::ExportDecl,
 ) -> DocNode {
   let export_span = export_decl.span();
-  use swc_ecma_ast::Decl;
+  use crate::swc_ecma_ast::Decl;
 
   let js_doc = doc_parser.js_doc_for_span(export_span);
   let location = doc_parser
@@ -39,8 +38,7 @@ pub fn get_doc_node_for_export_decl(
       }
     }
     Decl::Fn(fn_decl) => {
-      let (name, function_def) =
-        super::function::get_doc_for_fn_decl(doc_parser, fn_decl);
+      let (name, function_def) = super::function::get_doc_for_fn_decl(fn_decl);
       DocNode {
         kind: DocNodeKind::Function,
         name,
@@ -56,8 +54,7 @@ pub fn get_doc_node_for_export_decl(
       }
     }
     Decl::Var(var_decl) => {
-      let (name, var_def) =
-        super::variable::get_doc_for_var_decl(doc_parser, var_decl);
+      let (name, var_def) = super::variable::get_doc_for_var_decl(var_decl);
       DocNode {
         kind: DocNodeKind::Variable,
         name,
@@ -147,43 +144,4 @@ pub fn get_doc_node_for_export_decl(
       }
     }
   }
-}
-
-#[allow(unused)]
-pub fn get_doc_nodes_for_named_export(
-  doc_parser: &DocParser,
-  named_export: &swc_ecma_ast::NamedExport,
-) -> Vec<DocNode> {
-  let file_name = named_export.src.as_ref().expect("").value.to_string();
-  // TODO: resolve specifier
-  let source_code =
-    std::fs::read_to_string(&file_name).expect("Failed to read file");
-  let doc_nodes = doc_parser
-    .parse(file_name, source_code)
-    .expect("Failed to print docs");
-  let reexports: Vec<String> = named_export
-    .specifiers
-    .iter()
-    .map(|export_specifier| {
-      use swc_ecma_ast::ExportSpecifier::*;
-
-      match export_specifier {
-        Named(named_export_specifier) => {
-          Some(named_export_specifier.orig.sym.to_string())
-        }
-        // TODO:
-        Namespace(_) => None,
-        Default(_) => None,
-      }
-    })
-    .filter(|s| s.is_some())
-    .map(|s| s.unwrap())
-    .collect();
-
-  let reexports_docs: Vec<DocNode> = doc_nodes
-    .into_iter()
-    .filter(|doc_node| reexports.contains(&doc_node.name))
-    .collect();
-
-  reexports_docs
 }

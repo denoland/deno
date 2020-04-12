@@ -17,16 +17,11 @@
 use crate::import_map::ImportMapError;
 use deno_core::ErrBox;
 use deno_core::ModuleResolutionError;
-use dlopen;
-use notify;
-use reqwest;
 use rustyline::error::ReadlineError;
-use std;
 use std::env::VarError;
 use std::error::Error;
 use std::fmt;
 use std::io;
-use url;
 
 // Warning! The values in this enum are duplicated in js/errors.ts
 // Update carefully!
@@ -103,6 +98,10 @@ impl OpError {
   // BadResource usually needs no additional detail, hence this helper.
   pub fn bad_resource_id() -> OpError {
     Self::new(ErrorKind::BadResource, "Bad resource ID".to_string())
+  }
+
+  pub fn invalid_utf8() -> OpError {
+    Self::new(ErrorKind::InvalidData, "invalid utf8".to_string())
   }
 }
 

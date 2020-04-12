@@ -212,7 +212,3 @@ unitTest(function createBadUrl(): void {
     new URL("0.0.0.0:8080");
   });
 });
-
-if (import.meta.main) {
-  Deno.runTests();
-}

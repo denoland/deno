@@ -2,7 +2,6 @@
 use crate::deno_dir::DenoDir;
 use crate::op_error::OpError;
 use deno_core::ErrBox;
-use rustyline;
 use std::fs;
 use std::path::PathBuf;
 

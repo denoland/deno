@@ -11,8 +11,8 @@ import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 /*
 import { blobURLMap } from "./web/url.ts";
 */
-import { Event } from "./event.ts";
-import { EventTarget } from "./event_target.ts";
+import { EventImpl as Event } from "./event.ts";
+import { EventTargetImpl as EventTarget } from "./event_target.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -92,7 +92,7 @@ export class WorkerImpl extends EventTarget implements Worker {
       options?.name
     );
     this.#id = id;
-    this.poll();
+    this.#poll();
   }
 
   #handleError = (e: any): boolean => {
@@ -116,7 +116,7 @@ export class WorkerImpl extends EventTarget implements Worker {
     return handled;
   };
 
-  async poll(): Promise<void> {
+  #poll = async (): Promise<void> => {
     while (!this.#terminated) {
       const event = await hostGetMessage(this.#id);
 
@@ -126,6 +126,14 @@ export class WorkerImpl extends EventTarget implements Worker {
       }
 
       const type = event.type;
+
+      if (type === "terminalError") {
+        this.#terminated = true;
+        if (!this.#handleError(event.error)) {
+          throw Error(event.error.message);
+        }
+        continue;
+      }
 
       if (type === "msg") {
         if (this.onmessage) {
@@ -150,7 +158,7 @@ export class WorkerImpl extends EventTarget implements Worker {
 
       throw new Error(`Unknown worker event: "${type}"`);
     }
-  }
+  };
 
   postMessage(data: any): void {
     if (this.#terminated) {

@@ -14,6 +14,7 @@ use crate::colors;
 use crate::doc;
 use crate::doc::ts_type::TsTypeDefKind;
 use crate::doc::DocNodeKind;
+use crate::swc_ecma_ast;
 
 pub fn format(doc_nodes: Vec<doc::DocNode>) -> String {
   format_(doc_nodes, 0)
@@ -427,11 +428,35 @@ fn format_function_signature(node: &doc::DocNode, indent: i64) -> String {
 }
 
 fn format_class_signature(node: &doc::DocNode, indent: i64) -> String {
+  let class_def = node.class_def.clone().unwrap();
+  let super_suffix = if let Some(super_class) = class_def.super_class {
+    format!(
+      " {} {}",
+      colors::magenta("extends".to_string()),
+      colors::bold(super_class)
+    )
+  } else {
+    String::from("")
+  };
+
+  let implements = &class_def.implements;
+  let implements_suffix = if !implements.is_empty() {
+    format!(
+      " {} {}",
+      colors::magenta("implements".to_string()),
+      colors::bold(implements.join(", "))
+    )
+  } else {
+    String::from("")
+  };
+
   add_indent(
     format!(
-      "{} {}\n",
+      "{} {}{}{}\n",
       colors::magenta("class".to_string()),
-      colors::bold(node.name.clone())
+      colors::bold(node.name.clone()),
+      super_suffix,
+      implements_suffix,
     ),
     indent,
   )

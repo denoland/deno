@@ -132,19 +132,21 @@ interface UnitTestDefinition extends Deno.TestDefinition {
   perms: Permissions;
 }
 
+type TestFunction = () => void | Promise<void>;
+
 export const REGISTERED_UNIT_TESTS: UnitTestDefinition[] = [];
 
-export function unitTest(fn: Deno.TestFunction): void;
-export function unitTest(options: UnitTestOptions, fn: Deno.TestFunction): void;
+export function unitTest(fn: TestFunction): void;
+export function unitTest(options: UnitTestOptions, fn: TestFunction): void;
 export function unitTest(
-  optionsOrFn: UnitTestOptions | Deno.TestFunction,
-  maybeFn?: Deno.TestFunction
+  optionsOrFn: UnitTestOptions | TestFunction,
+  maybeFn?: TestFunction
 ): void {
   assert(optionsOrFn, "At least one argument is required");
 
   let options: UnitTestOptions;
   let name: string;
-  let fn: Deno.TestFunction;
+  let fn: TestFunction;
 
   if (typeof optionsOrFn === "function") {
     options = {};
@@ -196,44 +198,38 @@ export function createResolvable<T>(): Resolvable<T> {
 
 const encoder = new TextEncoder();
 
-export class SocketReporter implements Deno.TestReporter {
-  #conn: Deno.Conn;
+// Replace functions with null, errors with their stack strings, and JSONify.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function serializeTestMessage(message: Deno.TestMessage): string {
+  return JSON.stringify({
+    start: message.start && {
+      ...message.start,
+      tests: message.start.tests.map((test) => ({ ...test, fn: null })),
+    },
+    testStart: message.testStart && { ...message.testStart, fn: null },
+    testEnd: message.testEnd && {
+      ...message.testEnd,
+      error: String(message.testEnd.error?.stack),
+    },
+    end: message.end && {
+      ...message.end,
+      results: message.end.results.map((result) => ({
+        ...result,
+        error: result.error?.stack,
+      })),
+    },
+  });
+}
 
-  constructor(conn: Deno.Conn) {
-    this.#conn = conn;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async write(msg: any): Promise<void> {
-    const encodedMsg = encoder.encode(JSON.stringify(msg) + "\n");
-    await Deno.writeAll(this.#conn, encodedMsg);
-  }
-
-  async start(msg: Deno.TestEventStart): Promise<void> {
-    await this.write(msg);
-  }
-
-  async testStart(msg: Deno.TestEventTestStart): Promise<void> {
-    await this.write(msg);
-  }
-
-  async testEnd(msg: Deno.TestEventTestEnd): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const serializedMsg: any = { ...msg };
-
-    // Error is a JS object, so we need to turn it into string to
-    // send over socket.
-    if (serializedMsg.result.error) {
-      serializedMsg.result.error = String(serializedMsg.result.error.stack);
-    }
-
-    await this.write(serializedMsg);
-  }
-
-  async end(msg: Deno.TestEventEnd): Promise<void> {
-    const encodedMsg = encoder.encode(JSON.stringify(msg));
-    await Deno.writeAll(this.#conn, encodedMsg);
-    this.#conn.closeWrite();
+export async function reportToConn(
+  conn: Deno.Conn,
+  message: Deno.TestMessage
+): Promise<void> {
+  const line = serializeTestMessage(message);
+  const encodedMsg = encoder.encode(line + (message.end == null ? "\n" : ""));
+  await Deno.writeAll(conn, encodedMsg);
+  if (message.end != null) {
+    conn.closeWrite();
   }
 }
 

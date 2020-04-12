@@ -31,7 +31,3 @@ unitTest(function formatDiagnosticError() {
   }
   assert(thrown);
 });
-
-if (import.meta.main) {
-  Deno.runTests();
-}

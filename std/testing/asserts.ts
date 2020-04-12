@@ -52,7 +52,9 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   messages.push("");
   messages.push("");
   messages.push(
-    `    ${gray(bold("[Diff]"))} ${red(bold("Left"))} / ${green(bold("Right"))}`
+    `    ${gray(bold("[Diff]"))} ${red(bold("Actual"))} / ${green(
+      bold("Expected")
+    )}`
   );
   messages.push("");
   messages.push("");

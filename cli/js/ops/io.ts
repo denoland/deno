@@ -10,14 +10,14 @@ import { OPS_CACHE } from "../runtime.ts";
 let OP_READ = -1;
 let OP_WRITE = -1;
 
-export function readSync(rid: number, p: Uint8Array): number | EOF {
-  if (p.length == 0) {
+export function readSync(rid: number, buffer: Uint8Array): number | EOF {
+  if (buffer.length == 0) {
     return 0;
   }
   if (OP_READ < 0) {
     OP_READ = OPS_CACHE["op_read"];
   }
-  const nread = sendSyncMinimal(OP_READ, rid, p);
+  const nread = sendSyncMinimal(OP_READ, rid, buffer);
   if (nread < 0) {
     throw new Error("read error");
   } else if (nread == 0) {
@@ -27,14 +27,17 @@ export function readSync(rid: number, p: Uint8Array): number | EOF {
   }
 }
 
-export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
-  if (p.length == 0) {
+export async function read(
+  rid: number,
+  buffer: Uint8Array
+): Promise<number | EOF> {
+  if (buffer.length == 0) {
     return 0;
   }
   if (OP_READ < 0) {
     OP_READ = OPS_CACHE["op_read"];
   }
-  const nread = await sendAsyncMinimal(OP_READ, rid, p);
+  const nread = await sendAsyncMinimal(OP_READ, rid, buffer);
   if (nread < 0) {
     throw new Error("read error");
   } else if (nread == 0) {
@@ -44,11 +47,11 @@ export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
   }
 }
 
-export function writeSync(rid: number, p: Uint8Array): number {
+export function writeSync(rid: number, data: Uint8Array): number {
   if (OP_WRITE < 0) {
     OP_WRITE = OPS_CACHE["op_write"];
   }
-  const result = sendSyncMinimal(OP_WRITE, rid, p);
+  const result = sendSyncMinimal(OP_WRITE, rid, data);
   if (result < 0) {
     throw new Error("write error");
   } else {
@@ -56,11 +59,11 @@ export function writeSync(rid: number, p: Uint8Array): number {
   }
 }
 
-export async function write(rid: number, p: Uint8Array): Promise<number> {
+export async function write(rid: number, data: Uint8Array): Promise<number> {
   if (OP_WRITE < 0) {
     OP_WRITE = OPS_CACHE["op_write"];
   }
-  const result = await sendAsyncMinimal(OP_WRITE, rid, p);
+  const result = await sendAsyncMinimal(OP_WRITE, rid, data);
   if (result < 0) {
     throw new Error("write error");
   } else {

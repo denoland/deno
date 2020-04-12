@@ -130,9 +130,6 @@ unitTest(
     assertEquals(c, 3);
 
     clearInterval(t);
-    // Defer for a moment to allow async op from `setInterval` to resolve;
-    // for more explanation see `FIXME` in `cli/js/timers.ts::setGlobalTimeout`
-    await defer(20);
     await resolvable;
   }
 );
@@ -153,9 +150,6 @@ unitTest(
     sig.dispose();
 
     clearInterval(t);
-    // Defer for a moment to allow async op from `setInterval` to resolve;
-    // for more explanation see `FIXME` in `cli/js/timers.ts::setGlobalTimeout`
-    await defer(20);
     await resolvable;
   }
 );

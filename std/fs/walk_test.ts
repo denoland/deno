@@ -7,7 +7,7 @@ const isWindows = Deno.build.os == "win";
 
 export function testWalk(
   setup: (arg0: string) => void | Promise<void>,
-  t: Deno.TestFunction,
+  t: () => void | Promise<void>,
   ignore = false
 ): void {
   const name = t.name;
@@ -255,7 +255,7 @@ testWalk(
       await symlink(d + "/b", d + "/a/bb");
     } catch (err) {
       assert(isWindows);
-      assert(err.message, "Not implemented");
+      assertEquals(err.message, "Not implemented");
     }
   },
   async function symlink(): Promise<void> {

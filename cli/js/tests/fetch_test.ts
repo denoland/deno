@@ -57,7 +57,7 @@ unitTest(async function fetchPerm(): Promise<void> {
 unitTest({ perms: { net: true } }, async function fetchUrl(): Promise<void> {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   assertEquals(response.url, "http://localhost:4545/cli/tests/fixture.json");
-  response.body.close();
+  const _json = await response.json();
 });
 
 unitTest({ perms: { net: true } }, async function fetchURL(): Promise<void> {
@@ -65,7 +65,7 @@ unitTest({ perms: { net: true } }, async function fetchURL(): Promise<void> {
     new URL("http://localhost:4545/cli/tests/fixture.json")
   );
   assertEquals(response.url, "http://localhost:4545/cli/tests/fixture.json");
-  response.body.close();
+  const _json = await response.json();
 });
 
 unitTest({ perms: { net: true } }, async function fetchHeaders(): Promise<
@@ -75,7 +75,7 @@ unitTest({ perms: { net: true } }, async function fetchHeaders(): Promise<
   const headers = response.headers;
   assertEquals(headers.get("Content-Type"), "application/json");
   assert(headers.get("Server")!.startsWith("SimpleHTTP"));
-  response.body.close();
+  const _json = await response.json();
 });
 
 unitTest({ perms: { net: true } }, async function fetchBlob(): Promise<void> {
@@ -93,12 +93,16 @@ unitTest({ perms: { net: true } }, async function fetchBodyUsed(): Promise<
   assertEquals(response.bodyUsed, false);
   assertThrows((): void => {
     // Assigning to read-only property throws in the strict mode.
+    // @ts-ignore
     response.bodyUsed = true;
   });
   await response.blob();
   assertEquals(response.bodyUsed, true);
 });
 
+// TODO(ry) response.body shouldn't be iterable. Instead we should use
+// response.body.getReader().
+/*
 unitTest({ perms: { net: true } }, async function fetchAsyncIterator(): Promise<
   void
 > {
@@ -110,8 +114,9 @@ unitTest({ perms: { net: true } }, async function fetchAsyncIterator(): Promise<
   }
 
   assertEquals(total, Number(headers.get("Content-Length")));
-  response.body.close();
+  const _json = await response.json();
 });
+*/
 
 unitTest({ perms: { net: true } }, async function responseClone(): Promise<
   void
@@ -506,16 +511,7 @@ unitTest(
 );
 
 unitTest(function responseRedirect(): void {
-  const response = new Response(
-    "example.com/beforeredirect",
-    200,
-    "OK",
-    [["This-Should", "Disappear"]],
-    -1,
-    false,
-    null
-  );
-  const redir = response.redirect("example.com/newLocation", 301);
+  const redir = Response.redirect("example.com/newLocation", 301);
   assertEquals(redir.status, 301);
   assertEquals(redir.statusText, "");
   assertEquals(redir.url, "");

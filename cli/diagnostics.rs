@@ -9,7 +9,6 @@ use crate::colors;
 use crate::fmt_errors::format_maybe_source_line;
 use crate::fmt_errors::format_maybe_source_name;
 use crate::fmt_errors::DisplayFormatter;
-use serde_json;
 use serde_json::value::Value;
 use std::error::Error;
 use std::fmt;

@@ -9,13 +9,11 @@ use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
 use crate::http_cache;
-use crate::inspector::InspectorServer;
 use crate::lockfile::Lockfile;
 use crate::msg;
 use crate::permissions::DenoPermissions;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use std;
 use std::env;
 use std::ops::Deref;
 use std::sync::atomic::AtomicUsize;
@@ -43,7 +41,6 @@ pub struct GlobalStateInner {
   pub wasm_compiler: WasmCompiler,
   pub lockfile: Option<Mutex<Lockfile>>,
   pub compiler_starts: AtomicUsize,
-  pub inspector_server: Option<InspectorServer>,
   compile_lock: AsyncMutex<()>,
 }
 
@@ -84,16 +81,7 @@ impl GlobalState {
       None
     };
 
-    let inspector_server = if let Some(ref host) = flags.inspect {
-      Some(InspectorServer::new(host, false))
-    } else if let Some(ref host) = flags.inspect_brk {
-      Some(InspectorServer::new(host, true))
-    } else {
-      None
-    };
-
     let inner = GlobalStateInner {
-      inspector_server,
       dir,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
@@ -150,6 +138,18 @@ impl GlobalState {
             .compile(state1.clone(), &out, target_lib)
             .await
         } else {
+          if let Some(types_url) = out.types_url.clone() {
+            let types_specifier = ModuleSpecifier::from(types_url);
+            state1
+              .file_fetcher
+              .fetch_source_file(
+                &types_specifier,
+                Some(module_specifier.clone()),
+              )
+              .await
+              .ok();
+          };
+
           state1.js_compiler.compile(out).await
         }
       }

@@ -2,8 +2,6 @@
 use crate::colors;
 use crate::flags::Flags;
 use crate::op_error::OpError;
-#[cfg(not(test))]
-use atty;
 use std::collections::HashSet;
 use std::fmt;
 #[cfg(not(test))]
