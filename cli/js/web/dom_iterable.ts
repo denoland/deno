@@ -1,11 +1,21 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { DomIterable } from "./dom_types.ts";
 import { requiredArguments } from "./util.ts";
 import { exposeForTest } from "../internals.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Constructor<T = {}> = new (...args: any[]) => T;
+export type Constructor<T = {}> = new (...args: any[]) => T;
+
+export interface DomIterable<K, V> {
+  keys(): IterableIterator<K>;
+  values(): IterableIterator<V>;
+  entries(): IterableIterator<[K, V]>;
+  [Symbol.iterator](): IterableIterator<[K, V]>;
+  forEach(
+    callback: (value: V, key: K, parent: this) => void,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    thisArg?: any
+  ): void;
+}
 
 export function DomIterableMixin<K, V, TBase extends Constructor>(
   Base: TBase,

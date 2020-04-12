@@ -11,8 +11,6 @@ use deno_core::ModuleSpecifier;
 use deno_core::StartupData;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
-use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use std::env;
@@ -32,6 +30,7 @@ use url::Url;
 pub enum WorkerEvent {
   Message(Buf),
   Error(ErrBox),
+  TerminalError(ErrBox),
 }
 
 pub struct WorkerChannelsInternal {
@@ -43,18 +42,13 @@ pub struct WorkerChannelsInternal {
 pub struct WorkerHandle {
   pub sender: mpsc::Sender<Buf>,
   pub receiver: Arc<AsyncMutex<mpsc::Receiver<WorkerEvent>>>,
-  // terminate_channel
 }
 
 impl WorkerHandle {
-  pub fn terminate(&self) {
-    todo!()
-  }
-
   /// Post message to worker as a host.
-  pub async fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
+  pub fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
     let mut sender = self.sender.clone();
-    sender.send(buf).map_err(ErrBox::from).await
+    sender.try_send(buf).map_err(ErrBox::from)
   }
 
   // TODO: should use `try_lock` and return error if
@@ -205,6 +199,7 @@ impl Future for Worker {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
+
     if let Some(deno_inspector) = inner.inspector.as_mut() {
       // We always poll the inspector if it exists.
       let _ = deno_inspector.poll_unpin(cx);
@@ -249,7 +244,6 @@ impl MainWorker {
       ops::timers::init(isolate, &state);
       ops::tty::init(isolate, &state);
       ops::worker_host::init(isolate, &state);
-      ops::web_worker::init(isolate, &state, &worker.internal_channels.sender);
     }
     Self(worker)
   }

@@ -1036,19 +1036,19 @@ three methods in the `Deno` namespace that provide this access.
 
 ### `Deno.compile()`
 
-This works similar to `deno fetch` in that it can fetch code, compile it, but
-not run it. It takes up to three arguments, the `rootName`, optionally
-`sources`, and optionally `options`. The `rootName` is the root module which
-will be used to generate the resulting program. This is like the module name you
-would pass on the command line in `deno --reload run example.ts`. The `sources`
-is a hash where the key is the fully qualified module name, and the value is the
-text source of the module. If `sources` is passed, Deno will resolve all the
-modules from within that hash and not attempt to resolve them outside of Deno.
-If `sources` are not provided, Deno will resolve modules as if the root module
-had been passed on the command line. Deno will also cache any of these
-resources. The `options` argument is a set of options of type
-`Deno.CompilerOptions`, which is a subset of the TypeScript compiler options
-containing the ones supported by Deno.
+This works similar to `deno cache` in that it can fetch and cache the code,
+compile it, but not run it. It takes up to three arguments, the `rootName`,
+optionally `sources`, and optionally `options`. The `rootName` is the root
+module which will be used to generate the resulting program. This is like the
+module name you would pass on the command line in
+`deno --reload run example.ts`. The `sources` is a hash where the key is the
+fully qualified module name, and the value is the text source of the module. If
+`sources` is passed, Deno will resolve all the modules from within that hash and
+not attempt to resolve them outside of Deno. If `sources` are not provided, Deno
+will resolve modules as if the root module had been passed on the command line.
+Deno will also cache any of these resources. The `options` argument is a set of
+options of type `Deno.CompilerOptions`, which is a subset of the TypeScript
+compiler options containing the ones supported by Deno.
 
 The method resolves with a tuple. The first argument contains any diagnostics
 (syntax or type errors) related to the code. The second argument is a map where

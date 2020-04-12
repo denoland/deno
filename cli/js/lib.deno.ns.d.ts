@@ -7,7 +7,7 @@ declare namespace Deno {
   /** The current process id of the runtime. */
   export let pid: number;
 
-  /** Reflects the NO_COLOR environment variable.
+  /** Reflects the `NO_COLOR` environment variable.
    *
    * See: https://no-color.org/ */
   export let noColor: boolean;
@@ -1043,13 +1043,6 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function mkdirSync(path: string, options?: MkdirOptions): void;
 
-  /** @deprecated */
-  export function mkdirSync(
-    path: string,
-    recursive?: boolean,
-    mode?: number
-  ): void;
-
   /** Creates a new directory with the specified path.
    *
    *       await Deno.mkdir("new_dir");
@@ -1060,13 +1053,6 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function mkdir(path: string, options?: MkdirOptions): Promise<void>;
-
-  /** @deprecated */
-  export function mkdir(
-    path: string,
-    recursive?: boolean,
-    mode?: number
-  ): Promise<void>;
 
   export interface MakeTempOptions {
     /** Directory where the temporary directory should be created (defaults to

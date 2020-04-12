@@ -124,3 +124,27 @@ test({
     assert(!util.isArray(null));
   },
 });
+
+test({
+  name: "[util] isPrimitive",
+  fn() {
+    const stringType = "hasti";
+    const booleanType = true;
+    const integerType = 2;
+    const symbolType = Symbol("anything");
+
+    const functionType = function doBest(): void {};
+    const objectType = { name: "ali" };
+    const arrayType = [1, 2, 3];
+
+    assert(util.isPrimitive(stringType));
+    assert(util.isPrimitive(booleanType));
+    assert(util.isPrimitive(integerType));
+    assert(util.isPrimitive(symbolType));
+    assert(util.isPrimitive(null));
+    assert(util.isPrimitive(undefined));
+    assert(!util.isPrimitive(functionType));
+    assert(!util.isPrimitive(arrayType));
+    assert(!util.isPrimitive(objectType));
+  },
+});

@@ -6,9 +6,11 @@ pub mod interface;
 pub mod module;
 pub mod namespace;
 mod node;
+pub mod params;
 pub mod parser;
 pub mod printer;
 pub mod ts_type;
+pub mod ts_type_param;
 pub mod type_alias;
 pub mod variable;
 
@@ -16,6 +18,7 @@ pub use node::DocNode;
 pub use node::DocNodeKind;
 pub use node::Location;
 pub use node::ParamDef;
+pub use node::ParamKind;
 pub use parser::DocParser;
 
 #[cfg(test)]

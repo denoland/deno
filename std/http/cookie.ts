@@ -22,9 +22,12 @@ export interface Cookie {
   unparsed?: string[];
 }
 
-export type SameSite = "Strict" | "Lax";
+export type SameSite = "Strict" | "Lax" | "None";
 
 function toString(cookie: Cookie): string {
+  if (!cookie.name) {
+    return "";
+  }
   const out: string[] = [];
   out.push(`${cookie.name}=${cookie.value}`);
 
@@ -115,7 +118,10 @@ export function setCookie(res: Response, cookie: Cookie): void {
   // TODO (zekth) : Add proper parsing of Set-Cookie headers
   // Parsing cookie headers to make consistent set-cookie header
   // ref: https://tools.ietf.org/html/rfc6265#section-4.1.1
-  res.headers.append("Set-Cookie", toString(cookie));
+  const v = toString(cookie);
+  if (v) {
+    res.headers.append("Set-Cookie", v);
+  }
 }
 
 /**

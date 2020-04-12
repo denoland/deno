@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types.ts";
+import * as domTypes from "./dom_types.d.ts";
 import { DomIterableMixin } from "./dom_iterable.ts";
 import { requiredArguments } from "./util.ts";
 import { customInspect } from "./console.ts";

@@ -40,22 +40,6 @@ fn get_config() -> dprint::configuration::Configuration {
   ConfigurationBuilder::new().prettier().build()
 }
 
-// TODO(ry) dprint seems to panic unnecessarally sometimes. Until it matures
-// we'll use a catch_unwind to avoid passing it on to our users.
-fn format_text_ignore_panic(
-  file_path_str: &str,
-  file_contents: &str,
-  config: &dprint::configuration::Configuration,
-) -> Result<Option<String>, String> {
-  let catch_result = std::panic::catch_unwind(|| {
-    dprint::format_text(file_path_str, file_contents, config)
-  });
-  match catch_result {
-    Ok(dprint_result) => dprint_result,
-    Err(e) => Err(format!("dprint panic '{}' {:?}", file_path_str, e)),
-  }
-}
-
 fn check_source_files(
   config: dprint::configuration::Configuration,
   paths: Vec<PathBuf>,
@@ -64,8 +48,9 @@ fn check_source_files(
 
   for file_path in paths {
     let file_path_str = file_path.to_string_lossy();
-    let file_contents = fs::read_to_string(&file_path).unwrap();
-    match format_text_ignore_panic(&file_path_str, &file_contents, &config) {
+    let file_contents = fs::read_to_string(&file_path)?;
+    let r = dprint::format_text(&file_path_str, &file_contents, &config);
+    match r {
       Ok(None) => {
         // nothing to format, pass
       }
@@ -84,19 +69,22 @@ fn check_source_files(
   if not_formatted_files.is_empty() {
     Ok(())
   } else {
-    let f = if not_formatted_files.len() == 1 {
-      "file"
-    } else {
-      "files"
-    };
     Err(
       OpError::other(format!(
         "Found {} not formatted {}",
         not_formatted_files.len(),
-        f,
+        files_str(not_formatted_files.len()),
       ))
       .into(),
     )
+  }
+}
+
+fn files_str(len: usize) -> &'static str {
+  if len == 1 {
+    "file"
+  } else {
+    "files"
   }
 }
 
@@ -109,9 +97,8 @@ fn format_source_files(
   for file_path in paths {
     let file_path_str = file_path.to_string_lossy();
     let file_contents = fs::read_to_string(&file_path)?;
-    let dprint_result =
-      format_text_ignore_panic(&file_path_str, &file_contents, &config);
-    match dprint_result {
+    let r = dprint::format_text(&file_path_str, &file_contents, &config);
+    match r {
       Ok(None) => {
         // nothing to format, pass
       }
@@ -128,13 +115,11 @@ fn format_source_files(
       }
     }
   }
-
-  let f = if not_formatted_files.len() == 1 {
-    "file"
-  } else {
-    "files"
-  };
-  debug!("Formatted {} {}", not_formatted_files.len(), f);
+  debug!(
+    "Formatted {} {}",
+    not_formatted_files.len(),
+    files_str(not_formatted_files.len()),
+  );
   Ok(())
 }
 

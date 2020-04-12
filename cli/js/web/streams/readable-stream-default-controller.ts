@@ -8,7 +8,10 @@ import * as rs from "./readable-internals.ts";
 import * as shared from "./shared-internals.ts";
 import * as q from "./queue-mixin.ts";
 import { Queue } from "./queue.ts";
-import { QueuingStrategySizeCallback, UnderlyingSource } from "../dom_types.ts";
+import {
+  QueuingStrategySizeCallback,
+  UnderlyingSource,
+} from "../dom_types.d.ts";
 
 export class ReadableStreamDefaultController<OutputType>
   implements rs.SDReadableStreamDefaultController<OutputType> {

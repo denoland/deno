@@ -10,7 +10,7 @@ class TestHandler extends BaseHandler {
   public records: LogRecord[] = [];
 
   handle(record: LogRecord): void {
-    this.records.push({ ...record });
+    this.records.push(record);
     super.handle(record);
   }
 

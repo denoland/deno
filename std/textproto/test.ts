@@ -94,7 +94,7 @@ test({
   },
 });
 
-// Test that we read slightly-bogus MIME headers seen in the wild,
+// Test that we don't read MIME headers seen in the wild,
 // with spaces before colons, and spaces in keys.
 test({
   name: "[textproto] Reader : MIME Header Non compliant",
@@ -109,9 +109,10 @@ test({
     const m = assertNotEOF(await r.readMIMEHeader());
     assertEquals(m.get("Foo"), "bar");
     assertEquals(m.get("Content-Language"), "en");
-    assertEquals(m.get("SID"), "0");
-    assertEquals(m.get("Privilege"), "127");
-    // Not a legal http header
+    // Make sure we drop headers with trailing whitespace
+    assertEquals(m.get("SID"), null);
+    assertEquals(m.get("Privilege"), null);
+    // Not legal http header
     assertThrows((): void => {
       assertEquals(m.get("Audio Mode"), "None");
     });
