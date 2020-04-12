@@ -17,7 +17,7 @@ test({
     });
     assert(!err);
     assert(existsSync(destFile));
-    Deno.remove(destFile);
+    Deno.removeSync(destFile);
   },
 });
 
