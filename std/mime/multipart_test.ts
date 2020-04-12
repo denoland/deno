@@ -236,7 +236,7 @@ test({
     const stat = await Deno.stat(tempfile);
     assertEquals(stat.size, file.size);
     await form.removeAll();
-    assertThrowsAsync(async () => {
+    await assertThrowsAsync(async () => {
       await Deno.stat(tempfile);
     }, Deno.errors.NotFound);
     o.close();
