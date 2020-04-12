@@ -5,7 +5,7 @@ import { CallbackWithError } from "./_fs_common.ts";
 export function copyFile(
   source: string,
   destination: string,
-  callback: CallbackWithError,
+  callback: CallbackWithError
 ): void {
   new Promise(async (resolve, reject) => {
     try {
