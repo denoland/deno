@@ -306,5 +306,10 @@ fn main() {
     .enable_all()
     .build()
     .unwrap();
-  runtime.block_on(isolate).expect("unexpected isolate error");
+  let result = runtime.block_on(isolate);
+
+  if let Err(e) = result {
+    eprintln!("{}", e.to_string());
+    std::process::exit(1);
+  }
 }

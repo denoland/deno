@@ -54,15 +54,13 @@ async function serve(rid) {
 let dispatchJson;
 
 async function main() {
-  const errorFactory = (err) => {
-    console.error("Op error", err);
-  };
-  dispatchJson = createDispatchJson(Deno.core, errorFactory);
-  const ops = Deno.core.ops();
-
-  for (const opName in ops) {
-    Deno.core.setAsyncHandler(ops[opName], dispatchJson.asyncMsgFromRust);
-  }
+  dispatchJson = createDispatchJson(
+    Deno.core,
+    (err) => {
+      throw new Error(`${err.kind} ${err.message}`);
+    },
+    ["read", "write", "accept", "listen", "close"]
+  );
 
   Deno.core.print("http_bench_json.js start\n");
 

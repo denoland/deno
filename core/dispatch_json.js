@@ -19,11 +19,15 @@ function createResolvable() {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-function createDispatchJson(core, errorFactory) {
+function createDispatchJson(core, errorFactory, opNames) {
   // Using an object without a prototype because `Map` was causing GC problems.
   const promiseTable = Object.create(null);
   let _nextPromiseId = 1;
   const OPS_CACHE = core.ops();
+
+  for (const opName of opNames) {
+    core.setAsyncHandler(OPS_CACHE[opName], asyncMsgFromRust);
+  }
 
   function nextPromiseId() {
     return _nextPromiseId++;
