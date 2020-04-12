@@ -11,7 +11,7 @@ test({
   name: "[std/node/fs] copy file",
   fn: async () => {
     const srouceFile = Deno.makeTempFileSync();
-    const err = await new Promise(async (resolve) => {
+    const err = await new Promise((resolve) => {
       copyFile(srouceFile, destFile, (err: Error | undefined) => resolve(err));
     });
     assert(!err);
