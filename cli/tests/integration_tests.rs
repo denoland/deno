@@ -2210,7 +2210,7 @@ async fn inspector_coverage() {
     .arg("run")
     // Warning: each inspector test should be on its own port to avoid
     // conflicting with another inspector test.
-    .arg("--inspect=127.0.0.1:9232")
+    .arg("--inspect-brk=127.0.0.1:9231")
     .arg(script)
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
