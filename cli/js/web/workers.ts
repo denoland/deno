@@ -17,6 +17,60 @@ import { EventTargetImpl as EventTarget } from "./event_target.ts";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
+export interface MessageEventInit extends EventInit {
+  data?: any;
+  origin?: string;
+  lastEventId?: string;
+}
+
+export class MessageEvent extends Event {
+  readonly data: any;
+  readonly origin: string;
+  readonly lastEventId: string;
+
+  constructor(type: string, eventInitDict?: MessageEventInit) {
+    super(type, {
+      bubbles: eventInitDict?.bubbles ?? false,
+      cancelable: eventInitDict?.cancelable ?? false,
+      composed: eventInitDict?.composed ?? false,
+    });
+
+    this.data = eventInitDict?.data ?? null;
+    this.origin = eventInitDict?.origin ?? "";
+    this.lastEventId = eventInitDict?.lastEventId ?? "";
+  }
+}
+
+export interface ErrorEventInit extends EventInit {
+  message?: string;
+  filename?: string;
+  lineno?: number;
+  colno?: number;
+  error?: any;
+}
+
+export class ErrorEvent extends Event {
+  readonly message: string;
+  readonly filename: string;
+  readonly lineno: number;
+  readonly colno: number;
+  readonly error: any;
+
+  constructor(type: string, eventInitDict?: ErrorEventInit) {
+    super(type, {
+      bubbles: eventInitDict?.bubbles ?? false,
+      cancelable: eventInitDict?.cancelable ?? false,
+      composed: eventInitDict?.composed ?? false,
+    });
+
+    this.message = eventInitDict?.message ?? "";
+    this.filename = eventInitDict?.filename ?? "";
+    this.lineno = eventInitDict?.lineno ?? 0;
+    this.colno = eventInitDict?.colno ?? 0;
+    this.error = eventInitDict?.error ?? null;
+  }
+}
+
 function encodeMessage(data: any): Uint8Array {
   const dataJson = JSON.stringify(data);
   return encoder.encode(dataJson);
@@ -27,16 +81,23 @@ function decodeMessage(dataIntArray: Uint8Array): any {
   return JSON.parse(dataJson);
 }
 
-interface WorkerEvent {
-  event: "error" | "msg" | "close";
+interface WorkerHostError {
+  message: string;
+  fileName?: string;
+  lineNumber?: number;
+  columnNumber?: number;
+}
+
+interface WorkerHostMessage {
+  type: "terminalError" | "error" | "msg";
   data?: any;
-  error?: any;
+  error?: WorkerHostError;
 }
 
 export interface Worker {
-  onerror?: (e: any) => void;
-  onmessage?: (e: { data: any }) => void;
-  onmessageerror?: () => void;
+  onerror?: (e: ErrorEvent) => void;
+  onmessage?: (e: MessageEvent) => void;
+  onmessageerror?: (e: MessageEvent) => void;
   postMessage(data: any): void;
   terminate(): void;
 }
@@ -51,9 +112,9 @@ export class WorkerImpl extends EventTarget implements Worker {
   #name: string;
   #terminated = false;
 
-  public onerror?: (e: any) => void;
-  public onmessage?: (data: any) => void;
-  public onmessageerror?: () => void;
+  public onerror?: (e: ErrorEvent) => void;
+  public onmessage?: (e: MessageEvent) => void;
+  public onmessageerror?: (e: MessageEvent) => void;
 
   constructor(specifier: string, options?: WorkerOptions) {
     super();
@@ -95,22 +156,51 @@ export class WorkerImpl extends EventTarget implements Worker {
     this.#poll();
   }
 
-  #handleError = (e: any): boolean => {
-    // TODO: this is being handled in a type unsafe way, it should be type safe
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const event = new Event("error", { cancelable: true }) as any;
-    event.message = e.message;
-    event.lineNumber = e.lineNumber ? e.lineNumber + 1 : null;
-    event.columnNumber = e.columnNumber ? e.columnNumber + 1 : null;
-    event.fileName = e.fileName;
-    event.error = null;
+  #handleMessage = (msgData: any): void => {
+    let data;
+    try {
+      data = decodeMessage(new Uint8Array(msgData));
+    } catch (e) {
+      const msgErrorEvent = new MessageEvent("messageerror", {
+        cancelable: false,
+        data,
+      });
+      if (this.onmessageerror) {
+        this.onmessageerror(msgErrorEvent);
+      }
+      return;
+    }
+
+    const msgEvent = new MessageEvent("message", {
+      cancelable: false,
+      data,
+    });
+
+    if (this.onmessage) {
+      this.onmessage(msgEvent);
+    }
+
+    this.dispatchEvent(msgEvent);
+  };
+
+  #handleError = (e: WorkerHostError): boolean => {
+    const event = new ErrorEvent("error", {
+      cancelable: true,
+      message: e.message,
+      lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
+      colno: e.columnNumber ? e.columnNumber + 1 : undefined,
+      filename: e.fileName,
+      error: null,
+    });
 
     let handled = false;
     if (this.onerror) {
       this.onerror(event);
-      if (event.defaultPrevented) {
-        handled = true;
-      }
+    }
+
+    this.dispatchEvent(event);
+    if (event.defaultPrevented) {
+      handled = true;
     }
 
     return handled;
@@ -118,7 +208,7 @@ export class WorkerImpl extends EventTarget implements Worker {
 
   #poll = async (): Promise<void> => {
     while (!this.#terminated) {
-      const event = await hostGetMessage(this.#id);
+      const event = (await hostGetMessage(this.#id)) as WorkerHostMessage;
 
       // If terminate was called then we ignore all messages
       if (this.#terminated) {
@@ -129,23 +219,20 @@ export class WorkerImpl extends EventTarget implements Worker {
 
       if (type === "terminalError") {
         this.#terminated = true;
-        if (!this.#handleError(event.error)) {
-          throw Error(event.error.message);
+        if (!this.#handleError(event.error!)) {
+          throw Error(event.error!.message);
         }
         continue;
       }
 
       if (type === "msg") {
-        if (this.onmessage) {
-          const message = decodeMessage(new Uint8Array(event.data));
-          this.onmessage({ data: message });
-        }
+        this.#handleMessage(event.data);
         continue;
       }
 
       if (type === "error") {
-        if (!this.#handleError(event.error)) {
-          throw Error(event.error.message);
+        if (!this.#handleError(event.error!)) {
+          throw Error(event.error!.message);
         }
         continue;
       }

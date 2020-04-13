@@ -1,9 +1,10 @@
-running 6 tests
+running 7 tests
 test worker terminate ... ok [WILDCARD]
 test worker nested ... ok [WILDCARD]
 test worker throws when executing ... ok [WILDCARD]
 test worker fetch API ... ok [WILDCARD]
 test worker terminate busy loop ... ok [WILDCARD]
 test worker race condition ... ok [WILDCARD]
+test worker is event listener ... ok [WILDCARD]
 
-test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
