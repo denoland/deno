@@ -7,25 +7,21 @@ export function formatDiagnostics(items: DiagnosticItem[]): string {
 }
 
 export interface Location {
-  filename: string;
-
-  line: number;
-
-  column: number;
+  fileName: string;
+  lineNumber: number;
+  columnNumber: number;
 }
 
 export function applySourceMap(location: Location): Location {
-  const { filename, line, column } = location;
-  // On this side, line/column are 1 based, but in the source maps, they are
-  // 0 based, so we have to convert back and forth
+  const { fileName, lineNumber, columnNumber } = location;
   const res = sendSync("op_apply_source_map", {
-    filename,
-    line: line - 1,
-    column: column - 1,
+    fileName,
+    lineNumber: lineNumber,
+    columnNumber: columnNumber,
   });
   return {
-    filename: res.filename,
-    line: res.line + 1,
-    column: res.column + 1,
+    fileName: res.fileName,
+    lineNumber: res.lineNumber,
+    columnNumber: res.columnNumber,
   };
 }

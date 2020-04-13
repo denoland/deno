@@ -11,31 +11,31 @@ function patchCallSite(callSite: CallSite, location: Location): CallSite {
     getThis(): unknown {
       return callSite.getThis();
     },
-    getTypeName(): string {
+    getTypeName(): string | null {
       return callSite.getTypeName();
     },
-    getFunction(): Function {
+    getFunction(): Function | null {
       return callSite.getFunction();
     },
-    getFunctionName(): string {
+    getFunctionName(): string | null {
       return callSite.getFunctionName();
     },
-    getMethodName(): string {
+    getMethodName(): string | null {
       return callSite.getMethodName();
     },
-    getFileName(): string {
-      return location.filename;
+    getFileName(): string | null {
+      return location.fileName;
     },
     getLineNumber(): number {
-      return location.line;
+      return location.lineNumber;
     },
     getColumnNumber(): number {
-      return location.column;
+      return location.columnNumber;
     },
     getEvalOrigin(): string | null {
       return callSite.getEvalOrigin();
     },
-    isToplevel(): boolean {
+    isToplevel(): boolean | null {
       return callSite.isToplevel();
     },
     isEval(): boolean {
@@ -176,15 +176,15 @@ function callSiteToString(callSite: CallSite, isInternal = false): string {
 
 interface CallSiteEval {
   this: unknown;
-  typeName: string;
-  function: Function;
-  functionName: string;
-  methodName: string;
-  fileName: string;
+  typeName: string | null;
+  function: Function | null;
+  functionName: string | null;
+  methodName: string | null;
+  fileName: string | null;
   lineNumber: number | null;
   columnNumber: number | null;
   evalOrigin: string | null;
-  isToplevel: boolean;
+  isToplevel: boolean | null;
   isEval: boolean;
   isNative: boolean;
   isConstructor: boolean;
@@ -227,16 +227,16 @@ function prepareStackTrace(
     structuredStackTrace
       .map(
         (callSite): CallSite => {
-          const filename = callSite.getFileName();
-          const line = callSite.getLineNumber();
-          const column = callSite.getColumnNumber();
-          if (filename && line != null && column != null) {
+          const fileName = callSite.getFileName();
+          const lineNumber = callSite.getLineNumber();
+          const columnNumber = callSite.getColumnNumber();
+          if (fileName && lineNumber != null && columnNumber != null) {
             return patchCallSite(
               callSite,
               applySourceMap({
-                filename,
-                line,
-                column,
+                fileName,
+                lineNumber,
+                columnNumber,
               })
             );
           }
@@ -244,16 +244,13 @@ function prepareStackTrace(
         }
       )
       .map((callSite): string => {
+        // @ts-ignore
+        error.__callSiteEvals.push(Object.freeze(evaluateCallSite(callSite)));
         const isInternal =
           callSite.getFileName()?.startsWith("$deno$") ?? false;
         const string = callSiteToString(callSite, isInternal);
-        const callSiteEv = Object.freeze(evaluateCallSite(callSite));
-        if (callSiteEv.lineNumber != null && callSiteEv.columnNumber != null) {
-          // @ts-ignore
-          error.__callSiteEvals.push(callSiteEv);
-          // @ts-ignore
-          error.__formattedFrames.push(string);
-        }
+        // @ts-ignore
+        error.__formattedFrames.push(string);
         return `    at ${colors.stripColor(string)}`;
       })
       .join("\n");

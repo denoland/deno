@@ -31,15 +31,15 @@ import { core } from "./core.ts";
 declare global {
   interface CallSite {
     getThis(): unknown;
-    getTypeName(): string;
-    getFunction(): Function;
-    getFunctionName(): string;
-    getMethodName(): string;
-    getFileName(): string;
+    getTypeName(): string | null;
+    getFunction(): Function | null;
+    getFunctionName(): string | null;
+    getMethodName(): string | null;
+    getFileName(): string | null;
     getLineNumber(): number | null;
     getColumnNumber(): number | null;
     getEvalOrigin(): string | null;
-    isToplevel(): boolean;
+    isToplevel(): boolean | null;
     isEval(): boolean;
     isNative(): boolean;
     isConstructor(): boolean;

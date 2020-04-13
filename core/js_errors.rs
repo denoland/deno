@@ -1,8 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// Note that source_map_mappings requires 0-indexed line and column numbers but
-// V8 Exceptions are 1-indexed.
-
 // TODO: This currently only applies to uncaught exceptions. It would be nice to
 // also have source maps for situations like this:
 //   const err = new Error("Boo!");
@@ -25,22 +22,28 @@ pub struct JSError {
   pub source_line: Option<String>,
   pub script_resource_name: Option<String>,
   pub line_number: Option<i64>,
-  pub start_column: Option<i64>,
-  pub end_column: Option<i64>,
+  pub start_column: Option<i64>, // 0-based
+  pub end_column: Option<i64>,   // 0-based
   pub frames: Vec<JSStackFrame>,
   pub formatted_frames: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct JSStackFrame {
-  pub line_number: i64, // zero indexed
-  pub column: i64,      // zero indexed
-  pub script_name: String,
-  pub function_name: String,
+  pub type_name: Option<String>,
+  pub function_name: Option<String>,
+  pub method_name: Option<String>,
+  pub file_name: Option<String>,
+  pub line_number: Option<i64>,
+  pub column_number: Option<i64>,
+  pub eval_origin: Option<String>,
+  pub is_top_level: Option<bool>,
   pub is_eval: bool,
+  pub is_native: bool,
   pub is_constructor: bool,
   pub is_async: bool,
-  // TODO(nayeemrmn): Support more CallSite fields.
+  pub is_promise_all: bool,
+  pub promise_index: Option<i64>,
 }
 
 fn get_property<'a>(
@@ -96,56 +99,106 @@ impl JSError {
           .unwrap()
           .try_into()
           .unwrap();
-        let line_number: v8::Local<v8::Integer> =
+        let type_name: Option<v8::Local<v8::String>> =
+          get_property(scope, context, call_site, "typeName")
+            .unwrap()
+            .try_into()
+            .ok();
+        let type_name = type_name.map(|s| s.to_rust_string_lossy(scope));
+        let function_name: Option<v8::Local<v8::String>> =
+          get_property(scope, context, call_site, "functionName")
+            .unwrap()
+            .try_into()
+            .ok();
+        let function_name =
+          function_name.map(|s| s.to_rust_string_lossy(scope));
+        let method_name: Option<v8::Local<v8::String>> =
+          get_property(scope, context, call_site, "methodName")
+            .unwrap()
+            .try_into()
+            .ok();
+        let method_name = method_name.map(|s| s.to_rust_string_lossy(scope));
+        let file_name: Option<v8::Local<v8::String>> =
+          get_property(scope, context, call_site, "fileName")
+            .unwrap()
+            .try_into()
+            .ok();
+        let file_name = file_name.map(|s| s.to_rust_string_lossy(scope));
+        let line_number: Option<v8::Local<v8::Integer>> =
           get_property(scope, context, call_site, "lineNumber")
             .unwrap()
             .try_into()
-            .unwrap();
-        let line_number = line_number.value() - 1;
-        let column_number: v8::Local<v8::Integer> =
+            .ok();
+        let line_number = line_number.map(|n| n.value());
+        let column_number: Option<v8::Local<v8::Integer>> =
           get_property(scope, context, call_site, "columnNumber")
             .unwrap()
             .try_into()
-            .unwrap();
-        let column_number = column_number.value() - 1;
-        let file_name: Result<v8::Local<v8::String>, _> =
-          get_property(scope, context, call_site, "fileName")
-            .unwrap()
-            .try_into();
-        let file_name = file_name
-          .map_or_else(|_| String::new(), |s| s.to_rust_string_lossy(scope));
-        let function_name: Result<v8::Local<v8::String>, _> =
-          get_property(scope, context, call_site, "functionName")
-            .unwrap()
-            .try_into();
-        let function_name = function_name
-          .map_or_else(|_| String::new(), |s| s.to_rust_string_lossy(scope));
-        let is_constructor: v8::Local<v8::Boolean> =
-          get_property(scope, context, call_site, "isConstructor")
+            .ok();
+        let column_number = column_number.map(|n| n.value());
+        let eval_origin: Option<v8::Local<v8::String>> =
+          get_property(scope, context, call_site, "evalOrigin")
             .unwrap()
             .try_into()
-            .unwrap();
-        let is_constructor = is_constructor.is_true();
+            .ok();
+        let eval_origin = eval_origin.map(|s| s.to_rust_string_lossy(scope));
+        let is_top_level: Option<v8::Local<v8::Boolean>> =
+          get_property(scope, context, call_site, "isTopLevel")
+            .unwrap()
+            .try_into()
+            .ok();
+        let is_top_level = is_top_level.map(|b| b.is_true());
         let is_eval: v8::Local<v8::Boolean> =
           get_property(scope, context, call_site, "isEval")
             .unwrap()
             .try_into()
             .unwrap();
         let is_eval = is_eval.is_true();
+        let is_native: v8::Local<v8::Boolean> =
+          get_property(scope, context, call_site, "isNative")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let is_native = is_native.is_true();
+        let is_constructor: v8::Local<v8::Boolean> =
+          get_property(scope, context, call_site, "isConstructor")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let is_constructor = is_constructor.is_true();
         let is_async: v8::Local<v8::Boolean> =
           get_property(scope, context, call_site, "isAsync")
             .unwrap()
             .try_into()
             .unwrap();
         let is_async = is_async.is_true();
+        let is_promise_all: v8::Local<v8::Boolean> =
+          get_property(scope, context, call_site, "isPromiseAll")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let is_promise_all = is_promise_all.is_true();
+        let promise_index: Option<v8::Local<v8::Integer>> =
+          get_property(scope, context, call_site, "columnNumber")
+            .unwrap()
+            .try_into()
+            .ok();
+        let promise_index = promise_index.map(|n| n.value());
         frames.push(JSStackFrame {
-          line_number,
-          column: column_number,
-          script_name: file_name,
+          type_name,
           function_name,
-          is_constructor,
+          method_name,
+          file_name,
+          line_number,
+          column_number,
+          eval_origin,
+          is_top_level,
           is_eval,
+          is_native,
+          is_constructor,
           is_async,
+          is_promise_all,
+          promise_index,
         });
         let formatted_frame: v8::Local<v8::String> = formatted_frames_v8
           .get_index(scope, context, i)
@@ -181,14 +234,14 @@ impl JSError {
 impl Error for JSError {}
 
 fn format_source_loc(
-  script_name: &str,
+  file_name: &str,
   line_number: i64,
-  column: i64,
+  column_number: i64,
 ) -> String {
   // TODO match this style with how typescript displays errors.
-  let line_number = line_number + 1;
-  let column = column + 1;
-  format!("{}:{}:{}", script_name, line_number, column)
+  let line_number = line_number;
+  let column_number = column_number;
+  format!("{}:{}:{}", file_name, line_number, column_number)
 }
 
 impl fmt::Display for JSError {
@@ -200,8 +253,8 @@ impl fmt::Display for JSError {
         assert!(self.start_column.is_some());
         let source_loc = format_source_loc(
           script_resource_name,
-          self.line_number.unwrap() - 1,
-          self.start_column.unwrap() - 1,
+          self.line_number.unwrap(),
+          self.start_column.unwrap(),
         );
         write!(f, "{}", source_loc)?;
       }
