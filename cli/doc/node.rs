@@ -28,6 +28,7 @@ pub enum ParamKind {
 pub struct ParamDef {
   pub name: String,
   pub kind: ParamKind,
+  pub optional: bool,
   pub ts_type: Option<super::ts_type::TsTypeDef>,
 }
 

@@ -17,6 +17,7 @@ pub struct InterfaceMethodDef {
   pub name: String,
   pub location: Location,
   pub js_doc: Option<String>,
+  pub optional: bool,
   pub params: Vec<ParamDef>,
   pub return_type: Option<TsTypeDef>,
   pub type_params: Vec<TsTypeParamDef>,
@@ -115,6 +116,7 @@ pub fn get_doc_for_ts_interface_decl(
             .source_map
             .lookup_char_pos(ts_method_sig.span.lo())
             .into(),
+          optional: ts_method_sig.optional,
           params,
           return_type: maybe_return_type,
           type_params,
