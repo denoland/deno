@@ -9,6 +9,7 @@
 declare interface DedicatedWorkerGlobalScope {
   self: DedicatedWorkerGlobalScope & typeof globalThis;
   onmessage: (e: { data: any }) => void;
+  location: Location;
   onerror: undefined | typeof onerror;
   name: typeof __workerMain.name;
   close: typeof __workerMain.close;

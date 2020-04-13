@@ -160,12 +160,18 @@ export class WorkerImpl extends EventTarget implements Worker {
     }
   };
 
-  postMessage(data: any): void {
+  postMessage(message: any, transferOrOptions?: any): void {
+    if (transferOrOptions) {
+      throw new Error(
+        "Not yet implemented: `transfer` and `options` are not supported."
+      );
+    }
+
     if (this.#terminated) {
       return;
     }
 
-    hostPostMessage(this.#id, encodeMessage(data));
+    hostPostMessage(this.#id, encodeMessage(message));
   }
 
   terminate(): void {
