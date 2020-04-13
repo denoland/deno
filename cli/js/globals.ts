@@ -216,7 +216,7 @@ export const windowOrWorkerGlobalScopeProperties = {
   URL: nonEnumerable(url.URLImpl),
   URLSearchParams: nonEnumerable(urlSearchParams.URLSearchParamsImpl),
   Headers: nonEnumerable(headers.HeadersImpl),
-  FormData: nonEnumerable(formData.FormData),
+  FormData: nonEnumerable(formData.FormDataImpl),
   TextEncoder: nonEnumerable(textEncoding.TextEncoder),
   TextDecoder: nonEnumerable(textEncoding.TextDecoder),
   ReadableStream: nonEnumerable(streams.ReadableStream),

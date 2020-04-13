@@ -27,8 +27,6 @@ type BodyInit =
 
 export type RequestInfo = Request | string;
 
-export type FormDataEntryValue = DomFile | string;
-
 export type EndingType = "transparent" | "native";
 
 export interface BlobPropertyBag {
@@ -272,19 +270,6 @@ export interface DomFileConstructor {
 
 export interface FilePropertyBag extends BlobPropertyBag {
   lastModified?: number;
-}
-
-export class FormData {
-  append(name: string, value: string | Blob, fileName?: string): void;
-  delete(name: string): void;
-  get(name: string): FormDataEntryValue | null;
-  getAll(name: string): FormDataEntryValue[];
-  has(name: string): boolean;
-  set(name: string, value: string | Blob, fileName?: string): void;
-  [Symbol.iterator](): IterableIterator<[string, FormDataEntryValue]>;
-  entries(): IterableIterator<[string, FormDataEntryValue]>;
-  keys(): IterableIterator<string>;
-  values(): IterableIterator<FormDataEntryValue>;
 }
 
 export interface Body {
