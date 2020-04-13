@@ -444,11 +444,11 @@ fn format_function_signature(node: &doc::DocNode, indent: i64) -> String {
 
 fn format_class_signature(node: &doc::DocNode, indent: i64) -> String {
   let class_def = node.class_def.clone().unwrap();
-  let super_suffix = if let Some(super_class) = class_def.super_class {
+  let extends_suffix = if let Some(extends) = class_def.extends {
     format!(
       " {} {}",
       colors::magenta("extends".to_string()),
-      colors::bold(super_class)
+      colors::bold(extends)
     )
   } else {
     String::from("")
@@ -470,7 +470,7 @@ fn format_class_signature(node: &doc::DocNode, indent: i64) -> String {
       "{} {}{}{}\n",
       colors::magenta("class".to_string()),
       colors::bold(node.name.clone()),
-      super_suffix,
+      extends_suffix,
       implements_suffix,
     ),
     indent,
@@ -510,11 +510,23 @@ fn format_enum_signature(node: &doc::DocNode, indent: i64) -> String {
 }
 
 fn format_interface_signature(node: &doc::DocNode, indent: i64) -> String {
+  let interface_def = node.interface_def.clone().unwrap();
+  let extends = &interface_def.extends;
+  let extends_suffix = if !extends.is_empty() {
+    format!(
+      " {} {}",
+      colors::magenta("extends".to_string()),
+      colors::bold(extends.join(", "))
+    )
+  } else {
+    String::from("")
+  };
   add_indent(
     format!(
-      "{} {}\n",
+      "{} {}{}\n",
       colors::magenta("interface".to_string()),
-      colors::bold(node.name.clone())
+      colors::bold(node.name.clone()),
+      extends_suffix
     ),
     indent,
   )
