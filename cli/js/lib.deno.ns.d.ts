@@ -1317,8 +1317,7 @@ declare namespace Deno {
   export function readFile(path: string): Promise<Uint8Array>;
 
   /** A FileInfo describes a file and is returned by `stat`, `lstat`,
-   * `statSync`, `lstatSync`. A list of FileInfo is returned by `readdir`,
-   * `readdirSync`. */
+   * `statSync`, `lstatSync`. */
   export interface FileInfo {
     /** The size of the file, in bytes. */
     size: number;
@@ -1384,6 +1383,11 @@ declare namespace Deno {
     isSymlink(): boolean;
   }
 
+  /** A list of NamedFileInfo is returned by `readdir` and `readdirSync`. */
+  export interface NamedFileInfo extends FileInfo {
+    name: string;
+  }
+
   /** Returns absolute normalized path, with symbolic links resolved.
    *
    *       // e.g. given /home/alice/file.txt and current directory /home/alice
@@ -1418,7 +1422,7 @@ declare namespace Deno {
    * Throws error if `path` is not a directory.
    *
    * Requires `allow-read` permission. */
-  export function readdirSync(path: string): FileInfo[];
+  export function readdirSync(path: string): NamedFileInfo[];
 
   /** UNSTABLE: This API is likely to change to return an `AsyncIterable`.
    *
@@ -1429,7 +1433,7 @@ declare namespace Deno {
    * Throws error if `path` is not a directory.
    *
    * Requires `allow-read` permission. */
-  export function readdir(path: string): Promise<FileInfo[]>;
+  export function readdir(path: string): Promise<NamedFileInfo[]>;
 
   /** Synchronously copies the contents and permissions of one file to another
    * specified path, by default creating a new file if needed, else overwriting.
