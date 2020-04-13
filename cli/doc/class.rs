@@ -64,7 +64,7 @@ pub struct ClassDef {
   pub constructors: Vec<ClassConstructorDef>,
   pub properties: Vec<ClassPropertyDef>,
   pub methods: Vec<ClassMethodDef>,
-  pub super_class: Option<String>,
+  pub extends: Option<String>,
   pub implements: Vec<String>,
   pub type_params: Vec<TsTypeParamDef>,
 }
@@ -92,7 +92,7 @@ pub fn get_doc_for_class_decl(
   let mut methods = vec![];
   let mut properties = vec![];
 
-  let super_class: Option<String> = match &class_decl.class.super_class {
+  let extends: Option<String> = match &class_decl.class.super_class {
     Some(boxed) => {
       use crate::swc_ecma_ast::Expr;
       let expr: &Expr = &**boxed;
@@ -217,7 +217,7 @@ pub fn get_doc_for_class_decl(
   let class_name = class_decl.ident.sym.to_string();
   let class_def = ClassDef {
     is_abstract: class_decl.class.is_abstract,
-    super_class,
+    extends,
     implements,
     constructors,
     properties,

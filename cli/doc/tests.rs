@@ -316,7 +316,7 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
     "jsDoc": "Class doc",
     "classDef": {
       "isAbstract": false,
-      "superClass": "Fizz",
+      "extends": "Fizz",
       "implements": ["Buzz", "Aldrin"],
       "typeParams": [],
       "constructors": [
@@ -522,10 +522,16 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
 #[tokio::test]
 async fn export_interface() {
   let source_code = r#"
+interface Foo {
+  foo(): void;
+}
+interface Bar {
+  bar(): void;
+}
 /**
  * Interface js doc
  */
-export interface Reader {
+export interface Reader extends Foo, Bar {
     /** Read n bytes */
     read?(buf: Uint8Array, something: unknown): Promise<number>
 }
@@ -540,17 +546,18 @@ export interface Reader {
       "name": "Reader",
       "location": {
         "filename": "test.ts",
-        "line": 5,
+        "line": 11,
         "col": 0
       },
       "jsDoc": "Interface js doc",
       "interfaceDef": {
+        "extends": ["Foo", "Bar"],
         "methods": [
           {
             "name": "read",
             "location": {
               "filename": "test.ts",
-              "line": 7,
+              "line": 13,
               "col": 4
             },
             "optional": true,
@@ -607,7 +614,7 @@ export interface Reader {
 
   assert!(
     colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("interface Reader")
+      .contains("interface Reader extends Foo, Bar")
   );
 }
 
@@ -633,6 +640,7 @@ export interface TypedIface<T> {
       },
       "jsDoc": null,
       "interfaceDef": {
+        "extends": [],
         "methods": [
           {
             "name": "something",
