@@ -1383,8 +1383,8 @@ declare namespace Deno {
     isSymlink(): boolean;
   }
 
-  /** A list of NamedFileInfo is returned by `readdir` and `readdirSync`. */
-  export interface NamedFileInfo extends FileInfo {
+  /** A list of DirEntry is returned by `readdir` and `readdirSync`. */
+  export interface DirEntry extends FileInfo {
     name: string;
   }
 
@@ -1422,7 +1422,7 @@ declare namespace Deno {
    * Throws error if `path` is not a directory.
    *
    * Requires `allow-read` permission. */
-  export function readdirSync(path: string): NamedFileInfo[];
+  export function readdirSync(path: string): DirEntry[];
 
   /** UNSTABLE: This API is likely to change to return an `AsyncIterable`.
    *
@@ -1433,7 +1433,7 @@ declare namespace Deno {
    * Throws error if `path` is not a directory.
    *
    * Requires `allow-read` permission. */
-  export function readdir(path: string): Promise<NamedFileInfo[]>;
+  export function readdir(path: string): Promise<DirEntry[]>;
 
   /** Synchronously copies the contents and permissions of one file to another
    * specified path, by default creating a new file if needed, else overwriting.
