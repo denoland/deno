@@ -1067,6 +1067,10 @@ declare class ErrorEvent extends Event {
   constructor(type: string, eventInitDict?: ErrorEventInit);
 }
 
+interface PostMessageOptions {
+  transfer?: any[];
+}
+
 declare class Worker extends EventTarget {
   onerror?: (e: ErrorEvent) => void;
   onmessage?: (e: MessageEvent) => void;
@@ -1078,7 +1082,8 @@ declare class Worker extends EventTarget {
       name?: string;
     }
   );
-  postMessage(data: any): void;
+  postMessage(message: any, transfer: ArrayBuffer[]): void;
+  postMessage(message: any, options?: PostMessageOptions): void;
   terminate(): void;
 }
 

@@ -1612,11 +1612,11 @@ declare namespace Deno {
   interface Location {
     /** The full url for the module, e.g. `file://some/file.ts` or
      * `https://some/file.ts`. */
-    filename: string;
+    fileName: string;
     /** The line number in the file. It is assumed to be 1-indexed. */
-    line: number;
+    lineNumber: number;
     /** The column number in the file. It is assumed to be 1-indexed. */
-    column: number;
+    columnNumber: number;
   }
 
   /** UNSTABLE: new API, yet to be vetted.
@@ -1636,9 +1636,9 @@ declare namespace Deno {
    * An example:
    *
    *       const orig = Deno.applySourceMap({
-   *         location: "file://my/module.ts",
-   *         line: 5,
-   *         column: 15
+   *         fileName: "file://my/module.ts",
+   *         lineNumber: 5,
+   *         columnNumber: 15
    *       });
    *       console.log(`${orig.filename}:${orig.line}:${orig.column}`);
    */
@@ -2175,11 +2175,17 @@ declare namespace Deno {
     kill(signo: number): void;
   }
 
-  export interface ProcessStatus {
-    success: boolean;
-    code?: number;
-    signal?: number;
-  }
+  export type ProcessStatus =
+    | {
+        success: true;
+        code: 0;
+        signal?: undefined;
+      }
+    | {
+        success: false;
+        code: number;
+        signal?: number;
+      };
 
   /** **UNSTABLE**: `args` has been recently renamed to `cmd` to differentiate from
    * `Deno.args`. */

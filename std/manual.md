@@ -41,7 +41,7 @@ programmer.
 
 Deno will always be distributed as a single executable. Given a URL to a Deno
 program, it is runnable with nothing more than
-[the 10 megabyte zipped executable](https://github.com/denoland/deno/releases).
+[the ~15 megabyte zipped executable](https://github.com/denoland/deno/releases).
 Deno explicitly takes on the role of both runtime and package manager. It uses a
 standard browser-compatible protocol for loading modules: URLs.
 
@@ -96,14 +96,14 @@ have been historically written with bash or python.
 - bundling (`deno bundle`)
 - runtime type info (`deno types`)
 - test runner (`deno test`)
-- command-line debugger (`--debug`) [coming soon](https://github.com/denoland/deno/issues/1120)
+- command-line debugger (`--debug`)
 - linter (`deno lint`) [coming soon](https://github.com/denoland/deno/issues/1880)
 
 <!-- prettier-ignore-end -->
 
 ## Setup
 
-Deno works on OSX, Linux, and Windows. Deno is a single binary executable. It
+Deno works on macOS, Linux, and Windows. Deno is a single binary executable. It
 has no external dependencies.
 
 ### Download and Install
@@ -123,19 +123,19 @@ Using PowerShell:
 iwr https://deno.land/x/install/install.ps1 -useb | iex
 ```
 
-Using [Scoop](https://scoop.sh/) (windows):
+Using [Scoop](https://scoop.sh/) (Windows):
 
 ```shell
 scoop install deno
 ```
 
-Using [Chocolatey](https://chocolatey.org/packages/deno) (windows):
+Using [Chocolatey](https://chocolatey.org/packages/deno) (Windows):
 
 ```shell
 choco install deno
 ```
 
-Using [Homebrew](https://formulae.brew.sh/formula/deno) (mac):
+Using [Homebrew](https://formulae.brew.sh/formula/deno) (macOS):
 
 ```shell
 brew install deno
@@ -151,7 +151,7 @@ Deno binaries can also be installed manually, by downloading a tarball or zip
 file at
 [github.com/denoland/deno/releases](https://github.com/denoland/deno/releases).
 These packages contain just a single executable file. You will have to set the
-executable bit on Mac and Linux.
+executable bit on macOS and Linux.
 
 Once it's installed and in your `$PATH`, try it:
 
