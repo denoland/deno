@@ -6,15 +6,15 @@ const { setPrepareStackTrace } = Deno[Deno.symbols.internal];
 
 interface CallSite {
   getThis(): unknown;
-  getTypeName(): string;
-  getFunction(): Function;
-  getFunctionName(): string;
-  getMethodName(): string;
-  getFileName(): string;
+  getTypeName(): string | null;
+  getFunction(): Function | null;
+  getFunctionName(): string | null;
+  getMethodName(): string | null;
+  getFileName(): string | null;
   getLineNumber(): number | null;
   getColumnNumber(): number | null;
   getEvalOrigin(): string | null;
-  isToplevel(): boolean;
+  isToplevel(): boolean | null;
   isEval(): boolean;
   isNative(): boolean;
   isConstructor(): boolean;
@@ -24,9 +24,9 @@ interface CallSite {
 }
 
 function getMockCallSite(
-  filename: string,
-  line: number | null,
-  column: number | null
+  fileName: string,
+  lineNumber: number | null,
+  columnNumber: number | null
 ): CallSite {
   return {
     getThis(): unknown {
@@ -45,13 +45,13 @@ function getMockCallSite(
       return "";
     },
     getFileName(): string {
-      return filename;
+      return fileName;
     },
     getLineNumber(): number | null {
-      return line;
+      return lineNumber;
     },
     getColumnNumber(): number | null {
-      return column;
+      return columnNumber;
     },
     getEvalOrigin(): null {
       return null;
@@ -98,11 +98,11 @@ unitTest(function prepareStackTrace(): void {
 
 unitTest(function applySourceMap(): void {
   const result = Deno.applySourceMap({
-    filename: "CLI_SNAPSHOT.js",
-    line: 23,
-    column: 0,
+    fileName: "CLI_SNAPSHOT.js",
+    lineNumber: 23,
+    columnNumber: 0,
   });
-  assert(result.filename.endsWith(".ts"));
-  assert(result.line != null);
-  assert(result.column != null);
+  assert(result.fileName.endsWith(".ts"));
+  assert(result.lineNumber != null);
+  assert(result.columnNumber != null);
 });

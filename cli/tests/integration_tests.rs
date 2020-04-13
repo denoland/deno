@@ -1406,6 +1406,13 @@ itest!(error_023_stack_async {
   exit_code: 1,
 });
 
+itest!(error_024_stack_promise_all {
+  args: "error_024_stack_promise_all.ts",
+  output: "error_024_stack_promise_all.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
 itest!(error_syntax {
   args: "run --reload error_syntax.js",
   check_stderr: true,
