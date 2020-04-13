@@ -35,6 +35,7 @@ pub struct ClassPropertyDef {
   pub ts_type: Option<TsTypeDef>,
   pub readonly: bool,
   pub accessibility: Option<swc_ecma_ast::Accessibility>,
+  pub optional: bool,
   pub is_abstract: bool,
   pub is_static: bool,
   pub name: String,
@@ -46,6 +47,7 @@ pub struct ClassPropertyDef {
 pub struct ClassMethodDef {
   pub js_doc: Option<String>,
   pub accessibility: Option<swc_ecma_ast::Accessibility>,
+  pub optional: bool,
   pub is_abstract: bool,
   pub is_static: bool,
   pub name: String,
@@ -159,6 +161,7 @@ pub fn get_doc_for_class_decl(
         let method_def = ClassMethodDef {
           js_doc: method_js_doc,
           accessibility: class_method.accessibility,
+          optional: class_method.is_optional,
           is_abstract: class_method.is_abstract,
           is_static: class_method.is_static,
           name: method_name,
@@ -189,6 +192,7 @@ pub fn get_doc_for_class_decl(
           js_doc: prop_js_doc,
           ts_type,
           readonly: class_prop.readonly,
+          optional: class_prop.is_optional,
           is_abstract: class_prop.is_abstract,
           is_static: class_prop.is_static,
           accessibility: class_prop.accessibility,

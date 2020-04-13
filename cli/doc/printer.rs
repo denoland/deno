@@ -112,6 +112,9 @@ fn render_params(params: Vec<doc::ParamDef>) -> String {
   if !params.is_empty() {
     for param in params {
       rendered += param.name.as_str();
+      if param.optional {
+        rendered += "?";
+      }
       if let Some(ts_type) = param.ts_type {
         rendered += ": ";
         rendered += render_ts_type(ts_type).as_str();
@@ -187,7 +190,9 @@ fn render_ts_type(ts_type: doc::ts_type::TsTypeDef) -> String {
         }
       }
     }
-    TsTypeDefKind::Optional => "_optional_".to_string(),
+    TsTypeDefKind::Optional => {
+      format!("{}?", render_ts_type(*ts_type.optional.unwrap()))
+    }
     TsTypeDefKind::Parenthesized => {
       format!("({})", render_ts_type(*ts_type.parenthesized.unwrap()))
     }
@@ -339,7 +344,7 @@ fn format_class_details(node: doc::DocNode) -> String {
   }) {
     details.push_str(&add_indent(
       format!(
-        "{}{}{}\n",
+        "{}{}{}{}\n",
         colors::magenta(
           match node
             .accessibility
@@ -350,6 +355,11 @@ fn format_class_details(node: doc::DocNode) -> String {
           }
         ),
         colors::bold(node.name.clone()),
+        if node.optional {
+          "?".to_string()
+        } else {
+          "".to_string()
+        },
         if let Some(ts_type) = node.ts_type.clone() {
           format!(": {}", render_ts_type(ts_type))
         } else {
@@ -368,7 +378,7 @@ fn format_class_details(node: doc::DocNode) -> String {
     let function_def = node.function_def.clone();
     details.push_str(&add_indent(
       format!(
-        "{}{}{}({}){}\n",
+        "{}{}{}{}({}){}\n",
         colors::magenta(
           match node
             .accessibility
@@ -384,6 +394,11 @@ fn format_class_details(node: doc::DocNode) -> String {
           _ => "".to_string(),
         }),
         colors::bold(node.name.clone()),
+        if node.optional {
+          "?".to_string()
+        } else {
+          "".to_string()
+        },
         render_params(function_def.params),
         if let Some(return_type) = function_def.return_type {
           format!(": {}", render_ts_type(return_type))
