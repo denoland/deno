@@ -282,7 +282,7 @@ async fn export_class() {
   let source_code = r#"
 /** Class doc */
 export class Foobar extends Fizz implements Buzz, Aldrin {
-    private private1: boolean;
+    private private1?: boolean;
     protected protected1: number;
     public public1: boolean;
     public2: number;
@@ -296,7 +296,7 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
     }
 
     /** Sync bar method */
-    bar(): void {
+    bar?(): void {
         //
     }
 }
@@ -373,6 +373,7 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
           },
           "readonly": false,
           "accessibility": "private",
+          "optional": true,
           "isAbstract": false,
           "isStatic": false,
           "name": "private1",
@@ -391,6 +392,7 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
           },
           "readonly": false,
           "accessibility": "protected",
+          "optional": false,
           "isAbstract": false,
           "isStatic": false,
           "name": "protected1",
@@ -409,6 +411,7 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
           },
           "readonly": false,
           "accessibility": "public",
+          "optional": false,
           "isAbstract": false,
           "isStatic": false,
           "name": "public1",
@@ -427,6 +430,7 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
           },
           "readonly": false,
           "accessibility": null,
+          "optional": false,
           "isAbstract": false,
           "isStatic": false,
           "name": "public2",
@@ -441,6 +445,7 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
         {
           "jsDoc": "Async foo method",
           "accessibility": null,
+          "optional": false,
           "isAbstract": false,
           "isStatic": false,
           "name": "foo",
@@ -474,6 +479,7 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
         {
           "jsDoc": "Sync bar method",
           "accessibility": null,
+          "optional": true,
           "isAbstract": false,
           "isStatic": false,
           "name": "bar",
@@ -501,6 +507,11 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
   let entry = &entries[0];
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
+
+  assert!(colors::strip_ansi_codes(
+    super::printer::format_details(entry.clone()).as_str()
+  )
+  .contains("bar?(): void"));
 
   assert!(
     colors::strip_ansi_codes(super::printer::format(entries).as_str())
