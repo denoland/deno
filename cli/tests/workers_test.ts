@@ -231,3 +231,30 @@ Deno.test({
     worker.terminate();
   },
 });
+
+Deno.test({
+  name: "worker scope is event listener",
+  fn: async function (): Promise<void> {
+    const promise1 = createResolvable();
+
+    const worker = new Worker("../tests/subdir/event_worker_scope.js", {
+      type: "module",
+    });
+
+    worker.onmessage = (e: MessageEvent): void => {
+      const { messageHandlersCalled, errorHandlersCalled } = e.data;
+      assertEquals(messageHandlersCalled, 4);
+      assertEquals(errorHandlersCalled, 4);
+      promise1.resolve();
+    };
+
+    worker.onerror = (_e): void => {
+      throw new Error("unreachable");
+    };
+
+    worker.postMessage("boom");
+    worker.postMessage("ping");
+    await promise1;
+    worker.terminate();
+  },
+});
