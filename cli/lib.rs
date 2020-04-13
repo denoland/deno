@@ -24,6 +24,7 @@ extern crate url;
 mod checksum;
 pub mod colors;
 pub mod compilers;
+mod coverage;
 pub mod deno_dir;
 pub mod diagnostics;
 mod disk_cache;
@@ -66,6 +67,7 @@ pub use dprint_plugin_typescript::swc_ecma_ast;
 pub use dprint_plugin_typescript::swc_ecma_parser;
 
 use crate::compilers::TargetLib;
+use crate::coverage::CoverageCollector;
 use crate::doc::parser::DocFileLoader;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
@@ -503,8 +505,20 @@ async fn test_command(
     test_runner::render_test_file(test_modules, fail_fast, filter);
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
+
+  // TODO(bartlomieju): 
+  // * for --coverage create new `tokio_tungstenite` connection here,
+  // probably on separate thread
+  // * ensure that --inspect flag is on so inspector is available
+
+  let inspector_url = Url::parse("ws://127.0.0.1:9229").unwrap();
+  let coverage_collector = CoverageCollector::new(inspector_url);
+
   let mut worker =
     create_main_worker(global_state.clone(), main_module.clone())?;
+
+  coverage_collector.connect();
+
   // Create a dummy source file.
   let source_file = SourceFile {
     filename: test_file_url.to_file_path().unwrap(),
@@ -521,11 +535,27 @@ async fn test_command(
     .global_state
     .file_fetcher
     .save_source_file_in_cache(&main_module, source_file);
+
+  // TODO: * start collecting coverage
+  coverage_collector.start_collecting();
+
   let execute_result = worker.execute_module(&main_module).await;
   execute_result?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   (&mut *worker).await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")
+  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+
+  // TODO(bartlomieju): 
+  // * stop collecting collecting coverage
+  // * wait for inspector client thread to join and return 
+  // coverage JSON struct
+  // * parse coverage report to CoverageParser together with list
+  // of test files and prepare a test/JSON report 
+  coverage_collector.stop_collecting();
+  let coverage_report = coverage_collector.get_report();
+  eprintln!("coverage report: {}", coverage_report);
+
+  Ok(())
 }
 
 pub fn main() {
