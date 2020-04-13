@@ -2175,11 +2175,17 @@ declare namespace Deno {
     kill(signo: number): void;
   }
 
-  export interface ProcessStatus {
-    success: boolean;
-    code?: number;
-    signal?: number;
-  }
+  export type ProcessStatus =
+    | {
+        success: true;
+        code: 0;
+        signal?: undefined;
+      }
+    | {
+        success: false;
+        code: number;
+        signal?: number;
+      };
 
   /** **UNSTABLE**: `args` has been recently renamed to `cmd` to differentiate from
    * `Deno.args`. */
