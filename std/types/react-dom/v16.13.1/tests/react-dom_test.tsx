@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// @deno-types="../react.d.ts"
+// @deno-types="../../../react/v16.13.1/react.d.ts"
 import React from "./react_mock.js";
 // @deno-types="../react-dom.d.ts"
 import ReactDOM from "./react-dom_mock.js";
 
-import { assertEquals } from "../../testing/asserts.ts";
+import { assertEquals } from "../../../../testing/asserts.ts";
 
 const { test } = Deno;
 

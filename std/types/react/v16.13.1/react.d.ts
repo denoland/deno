@@ -1,7 +1,6 @@
 // These types are adapted from
 // https://github.com/DefinitelyTyped/DefinitelyTyped to work under Deno.
 //
-// Type definitions for React 16.9
 // Project: http://facebook.github.io/react/
 // Definitions by: Asana <https://asana.com>
 //                 AssureSign <http://www.assuresign.com>
@@ -29,10 +28,10 @@
 
 /* eslint-disable */
 
-import "./react/react_global.d.ts";
+import "./react_global.d.ts";
 
-import * as CSS from "./react/csstype.d.ts";
-import * as PropTypes from "./react/prop-types.d.ts";
+import * as CSS from "https://cdn.jsdelivr.net/npm/csstype@2.2.0/index.d.ts";
+import * as PropTypes from "../../prop-types/v15.7.2/prop-types.d.ts";
 
 type NativeAnimationEvent = AnimationEvent;
 type NativeClipboardEvent = ClipboardEvent;
