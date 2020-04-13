@@ -15,10 +15,12 @@ import {
   windowOrWorkerGlobalScopeMethods,
   windowOrWorkerGlobalScopeProperties,
   eventTargetProperties,
+  setEventTargetData,
 } from "./globals.ts";
 import * as webWorkerOps from "./ops/web_worker.ts";
 import { LocationImpl } from "./web/location.ts";
 import { log, assert, immutableDefine } from "./util.ts";
+import { MessageEvent, ErrorEvent } from "./web/workers.ts";
 import { TextEncoder } from "./web/text_encoding.ts";
 import * as runtime from "./runtime.ts";
 
@@ -48,33 +50,50 @@ export function close(): void {
 }
 
 export async function workerMessageRecvCallback(data: string): Promise<void> {
-  let result: void | Promise<void>;
-  const event = { data };
+  const msgEvent = new MessageEvent("message", {
+    cancelable: false,
+    data,
+  });
 
   try {
-    //
     if (globalThis["onmessage"]) {
-      result = globalThis.onmessage!(event);
+      const result = globalThis.onmessage!(msgEvent);
       if (result && "then" in result) {
         await result;
       }
     }
-
-    // TODO: run the rest of liteners
+    globalThis.dispatchEvent(msgEvent);
   } catch (e) {
+    let handled = false;
+
+    const errorEvent = new ErrorEvent("error", {
+      cancelable: true,
+      message: e.message,
+      lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
+      colno: e.columnNumber ? e.columnNumber + 1 : undefined,
+      filename: e.fileName,
+      error: null,
+    });
+
     if (globalThis["onerror"]) {
-      const result = globalThis.onerror(
+      const ret = globalThis.onerror(
         e.message,
         e.fileName,
         e.lineNumber,
         e.columnNumber,
         e
       );
-      if (result === true) {
-        return;
-      }
+      handled = ret === true;
     }
-    throw e;
+
+    globalThis.dispatchEvent(errorEvent);
+    if (errorEvent.defaultPrevented) {
+      handled = true;
+    }
+
+    if (!handled) {
+      throw e;
+    }
   }
 }
 
@@ -99,6 +118,7 @@ export function bootstrapWorkerRuntime(name: string): void {
   Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
   Object.defineProperties(globalThis, eventTargetProperties);
   Object.defineProperties(globalThis, { name: readOnly(name) });
+  setEventTargetData(globalThis);
   const s = runtime.start(name);
 
   const location = new LocationImpl(s.location);
