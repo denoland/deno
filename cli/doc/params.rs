@@ -13,6 +13,7 @@ pub fn ident_to_param_def(ident: &swc_ecma_ast::Ident) -> ParamDef {
   ParamDef {
     name: ident.sym.to_string(),
     kind: ParamKind::Identifier,
+    optional: ident.optional,
     ts_type,
   }
 }
@@ -27,6 +28,7 @@ fn rest_pat_to_param_def(rest_pat: &swc_ecma_ast::RestPat) -> ParamDef {
   ParamDef {
     name,
     kind: ParamKind::Rest,
+    optional: false,
     ts_type,
   }
 }
@@ -40,6 +42,7 @@ fn object_pat_to_param_def(object_pat: &swc_ecma_ast::ObjectPat) -> ParamDef {
   ParamDef {
     name: "".to_string(),
     kind: ParamKind::Object,
+    optional: object_pat.optional,
     ts_type,
   }
 }
@@ -50,6 +53,7 @@ fn array_pat_to_param_def(array_pat: &swc_ecma_ast::ArrayPat) -> ParamDef {
   ParamDef {
     name: "".to_string(),
     kind: ParamKind::Array,
+    optional: array_pat.optional,
     ts_type,
   }
 }

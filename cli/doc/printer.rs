@@ -112,6 +112,9 @@ fn render_params(params: Vec<doc::ParamDef>) -> String {
   if !params.is_empty() {
     for param in params {
       rendered += param.name.as_str();
+      if param.optional {
+        rendered += "?";
+      }
       if let Some(ts_type) = param.ts_type {
         rendered += ": ";
         rendered += render_ts_type(ts_type).as_str();
@@ -187,7 +190,9 @@ fn render_ts_type(ts_type: doc::ts_type::TsTypeDef) -> String {
         }
       }
     }
-    TsTypeDefKind::Optional => "_optional_".to_string(),
+    TsTypeDefKind::Optional => {
+      format!("{}?", render_ts_type(*ts_type.optional.unwrap()))
+    }
     TsTypeDefKind::Parenthesized => {
       format!("({})", render_ts_type(*ts_type.parenthesized.unwrap()))
     }
