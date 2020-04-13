@@ -2179,6 +2179,7 @@ declare namespace Deno {
     | {
         success: true;
         code: 0;
+        signal?: undefined;
       }
     | {
         success: false;
