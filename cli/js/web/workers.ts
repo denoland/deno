@@ -89,7 +89,7 @@ export class WorkerImpl extends EventTarget implements Worker {
       specifier,
       hasSourceCode,
       sourceCode,
-      options?.name,
+      options?.name
     );
     this.#id = id;
     this.#poll();
