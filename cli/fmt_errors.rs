@@ -74,7 +74,11 @@ fn format_maybe_source_line(
     '~'
   };
   for _i in 0..start_column {
-    s.push(' ');
+    if source_line.chars().nth(_i as usize).unwrap() == '\t' {
+      s.push('\t');
+    } else {
+      s.push(' ');
+    }
   }
   for _i in 0..(end_column - start_column) {
     s.push(underline_char);

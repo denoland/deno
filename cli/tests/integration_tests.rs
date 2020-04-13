@@ -1429,6 +1429,13 @@ itest!(error_024_stack_promise_all {
   exit_code: 1,
 });
 
+itest!(error_025_tab_indent {
+  args: "error_025_tab_indent",
+  output: "error_025_tab_indent.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
 itest!(error_syntax {
   args: "run --reload error_syntax.js",
   check_stderr: true,
