@@ -223,15 +223,8 @@ def bundle_benchmark(deno_exe):
     return sizes
 
 
-def main(argv):
-    if len(argv) == 2:
-        build_dir = sys.argv[1]
-    elif len(argv) == 1:
-        build_dir = build_path()
-    else:
-        print "Usage: tools/benchmark.py [build_dir]"
-        sys.exit(1)
-
+def main():
+    build_dir = build_path()
     sha1 = run_output(["git", "rev-parse", "HEAD"],
                       exit_on_fail=True).out.strip()
     http_server.spawn()
@@ -271,4 +264,4 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    main(sys.argv)
+    main()

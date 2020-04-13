@@ -58,7 +58,7 @@ unitTest(function fileVariousFileBits(): void {
       new Blob(),
       new Uint8Array([0x50, 0x41]),
       new Uint16Array([0x5353]),
-      new Uint32Array([0x53534150])
+      new Uint32Array([0x53534150]),
     ],
     16
   );

@@ -83,7 +83,7 @@ unitTest(
   { perms: { write: true, read: true } },
   function removeSyncDanglingSymlinkSuccess(): void {
     const danglingSymlinkPath = Deno.makeTempDirSync() + "/dangling_symlink";
-    // TODO(#3832): Remove "Not Implemented" error checking when symlink creation is implemented for Windows
+    // TODO(#3832): Remove "not Implemented" error checking when symlink creation is implemented for Windows
     let errOnWindows;
     try {
       Deno.symlinkSync("unexistent_file", danglingSymlinkPath);
@@ -91,7 +91,7 @@ unitTest(
       errOnWindows = err;
     }
     if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.message, "Not implemented");
+      assertEquals(errOnWindows.message, "not implemented");
     } else {
       const pathInfo = Deno.lstatSync(danglingSymlinkPath);
       assert(pathInfo.isSymlink());
@@ -116,7 +116,7 @@ unitTest(
     const filePath = tempDir + "/test.txt";
     const validSymlinkPath = tempDir + "/valid_symlink";
     Deno.writeFileSync(filePath, data, { mode: 0o666 });
-    // TODO(#3832): Remove "Not Implemented" error checking when symlink creation is implemented for Windows
+    // TODO(#3832): Remove "not Implemented" error checking when symlink creation is implemented for Windows
     let errOnWindows;
     try {
       Deno.symlinkSync(filePath, validSymlinkPath);
@@ -124,7 +124,7 @@ unitTest(
       errOnWindows = err;
     }
     if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.message, "Not implemented");
+      assertEquals(errOnWindows.message, "not implemented");
     } else {
       const symlinkPathInfo = Deno.statSync(validSymlinkPath);
       assert(symlinkPathInfo.isFile());
@@ -319,7 +319,7 @@ unitTest(
   { perms: { write: true, read: true } },
   async function removeDanglingSymlinkSuccess(): Promise<void> {
     const danglingSymlinkPath = Deno.makeTempDirSync() + "/dangling_symlink";
-    // TODO(#3832): Remove "Not Implemented" error checking when symlink creation is implemented for Windows
+    // TODO(#3832): Remove "not Implemented" error checking when symlink creation is implemented for Windows
     let errOnWindows;
     try {
       Deno.symlinkSync("unexistent_file", danglingSymlinkPath);
@@ -327,7 +327,7 @@ unitTest(
       errOnWindows = e;
     }
     if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.message, "Not implemented");
+      assertEquals(errOnWindows.message, "not implemented");
     } else {
       const pathInfo = Deno.lstatSync(danglingSymlinkPath);
       assert(pathInfo.isSymlink());
@@ -352,7 +352,7 @@ unitTest(
     const filePath = tempDir + "/test.txt";
     const validSymlinkPath = tempDir + "/valid_symlink";
     Deno.writeFileSync(filePath, data, { mode: 0o666 });
-    // TODO(#3832): Remove "Not Implemented" error checking when symlink creation is implemented for Windows
+    // TODO(#3832): Remove "not Implemented" error checking when symlink creation is implemented for Windows
     let errOnWindows;
     try {
       Deno.symlinkSync(filePath, validSymlinkPath);
@@ -360,7 +360,7 @@ unitTest(
       errOnWindows = e;
     }
     if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.message, "Not implemented");
+      assertEquals(errOnWindows.message, "not implemented");
     } else {
       const symlinkPathInfo = Deno.statSync(validSymlinkPath);
       assert(symlinkPathInfo.isFile());

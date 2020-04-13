@@ -9,7 +9,7 @@ import {
   assertPath,
   normalizeString,
   isPosixPathSeparator,
-  _format
+  _format,
 } from "./utils.ts";
 
 export const sep = "/";
@@ -205,8 +205,9 @@ export function dirname(path: string): string {
 }
 
 export function basename(path: string, ext = ""): string {
-  if (ext !== undefined && typeof ext !== "string")
+  if (ext !== undefined && typeof ext !== "string") {
     throw new TypeError('"ext" argument must be a string');
+  }
   assertPath(path);
 
   let start = 0;

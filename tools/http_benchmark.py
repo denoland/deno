@@ -140,7 +140,8 @@ def http_benchmark(build_dir):
         "deno_tcp": deno_tcp(deno_exe),
         # "deno_udp": deno_udp(deno_exe),
         "deno_http": deno_http(deno_exe),
-        "deno_proxy": deno_http_proxy(deno_exe, hyper_hello_exe),
+        # TODO(ry) deno_proxy disabled to make fetch() standards compliant.
+        # "deno_proxy": deno_http_proxy(deno_exe, hyper_hello_exe),
         "deno_proxy_tcp": deno_tcp_proxy(deno_exe, hyper_hello_exe),
         # "deno_core_http_bench" was once called "deno_core_single"
         "deno_core_http_bench": deno_core_http_bench(deno_core_http_bench_exe),
@@ -186,6 +187,10 @@ def run(server_cmd, port, merge_env=None, origin_cmd=None):
         print output
         return stats
     finally:
+        server_retcode = server.poll()
+        if server_retcode is not None and server_retcode != 0:
+            print "server ended with error"
+            sys.exit(1)
         server.kill()
         if origin is not None:
             origin.kill()

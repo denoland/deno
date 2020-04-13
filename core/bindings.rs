@@ -10,6 +10,7 @@ use v8::MapFnTo;
 
 use std::convert::TryFrom;
 use std::option::Option;
+use url::Url;
 
 lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
@@ -24,6 +25,9 @@ lazy_static! {
         function: send.map_fn_to()
       },
       v8::ExternalReference {
+        function: set_macrotask_callback.map_fn_to()
+      },
+      v8::ExternalReference {
         function: eval_context.map_fn_to()
       },
       v8::ExternalReference {
@@ -35,6 +39,15 @@ lazy_static! {
       v8::ExternalReference {
         function: queue_microtask.map_fn_to()
       },
+      v8::ExternalReference {
+        function: encode.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: decode.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: get_promise_details.map_fn_to(),
+      }
     ]);
 }
 
@@ -138,6 +151,19 @@ pub fn initialize_context<'s>(
     send_val.into(),
   );
 
+  let mut set_macrotask_callback_tmpl =
+    v8::FunctionTemplate::new(scope, set_macrotask_callback);
+  let set_macrotask_callback_val = set_macrotask_callback_tmpl
+    .get_function(scope, context)
+    .unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "setMacrotaskCallback")
+      .unwrap()
+      .into(),
+    set_macrotask_callback_val.into(),
+  );
+
   let mut eval_context_tmpl = v8::FunctionTemplate::new(scope, eval_context);
   let eval_context_val =
     eval_context_tmpl.get_function(scope, context).unwrap();
@@ -154,6 +180,33 @@ pub fn initialize_context<'s>(
     context,
     v8::String::new(scope, "formatError").unwrap().into(),
     format_error_val.into(),
+  );
+
+  let mut encode_tmpl = v8::FunctionTemplate::new(scope, encode);
+  let encode_val = encode_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "encode").unwrap().into(),
+    encode_val.into(),
+  );
+
+  let mut decode_tmpl = v8::FunctionTemplate::new(scope, decode);
+  let decode_val = decode_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "decode").unwrap().into(),
+    decode_val.into(),
+  );
+
+  let mut get_promise_details_tmpl =
+    v8::FunctionTemplate::new(scope, get_promise_details);
+  let get_promise_details_val = get_promise_details_tmpl
+    .get_function(scope, context)
+    .unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "getPromiseDetails").unwrap().into(),
+    get_promise_details_val.into(),
   );
 
   core_val.set_accessor(
@@ -406,6 +459,27 @@ fn send(
   }
 }
 
+fn set_macrotask_callback(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let deno_isolate: &mut Isolate =
+    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
+
+  if !deno_isolate.js_macrotask_cb.is_empty() {
+    let msg =
+      v8::String::new(scope, "Deno.core.setMacrotaskCallback already called.")
+        .unwrap();
+    scope.isolate().throw_exception(msg.into());
+    return;
+  }
+
+  let macrotask_cb_fn =
+    v8::Local::<v8::Function>::try_from(args.get(0)).unwrap();
+  deno_isolate.js_macrotask_cb.set(scope, macrotask_cb_fn);
+}
+
 fn eval_context(
   scope: v8::FunctionCallbackScope,
   args: v8::FunctionCallbackArguments,
@@ -426,6 +500,9 @@ fn eval_context(
     }
   };
 
+  let url = v8::Local::<v8::String>::try_from(args.get(1))
+    .map(|n| Url::from_file_path(n.to_rust_string_lossy(scope)).unwrap());
+
   let output = v8::Array::new(scope, 2);
   /*
    output[0] = result
@@ -438,7 +515,9 @@ fn eval_context(
   */
   let mut try_catch = v8::TryCatch::new(scope);
   let tc = try_catch.enter();
-  let name = v8::String::new(scope, "<unknown>").unwrap();
+  let name =
+    v8::String::new(scope, url.as_ref().map_or("<unknown>", Url::as_str))
+      .unwrap();
   let origin = script_origin(scope, name);
   let maybe_script = v8::Script::compile(scope, context, source, Some(&origin));
 
@@ -551,6 +630,65 @@ fn format_error(
   rv.set(e.into())
 }
 
+fn encode(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let text = match v8::Local::<v8::String>::try_from(args.get(0)) {
+    Ok(s) => s,
+    Err(_) => {
+      let msg = v8::String::new(scope, "Invalid argument").unwrap();
+      let exception = v8::Exception::type_error(scope, msg);
+      scope.isolate().throw_exception(exception);
+      return;
+    }
+  };
+  let text_str = text.to_rust_string_lossy(scope);
+  let text_bytes = text_str.as_bytes().to_vec().into_boxed_slice();
+
+  let buf = if text_bytes.is_empty() {
+    let ab = v8::ArrayBuffer::new(scope, 0);
+    v8::Uint8Array::new(ab, 0, 0).expect("Failed to create UintArray8")
+  } else {
+    let buf_len = text_bytes.len();
+    let backing_store =
+      v8::ArrayBuffer::new_backing_store_from_boxed_slice(text_bytes);
+    let mut backing_store_shared = backing_store.make_shared();
+    let ab =
+      v8::ArrayBuffer::with_backing_store(scope, &mut backing_store_shared);
+    v8::Uint8Array::new(ab, 0, buf_len).expect("Failed to create UintArray8")
+  };
+
+  rv.set(buf.into())
+}
+
+fn decode(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let buf = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(0)) {
+    Ok(view) => {
+      let byte_offset = view.byte_offset();
+      let byte_length = view.byte_length();
+      let backing_store = view.buffer().unwrap().get_backing_store();
+      let buf = unsafe { &**backing_store.get() };
+      &buf[byte_offset..byte_offset + byte_length]
+    }
+    Err(..) => {
+      let msg = v8::String::new(scope, "Invalid argument").unwrap();
+      let exception = v8::Exception::type_error(scope, msg);
+      scope.isolate().throw_exception(exception);
+      return;
+    }
+  };
+
+  let text_str =
+    v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal).unwrap();
+  rv.set(text_str.into())
+}
+
 fn queue_microtask(
   scope: v8::FunctionCallbackScope,
   args: v8::FunctionCallbackArguments,
@@ -636,4 +774,69 @@ pub fn module_resolve_callback<'s>(
   }
 
   None
+}
+
+// Returns promise details or throw TypeError, if argument passed isn't a Promise.
+// Promise details is a two elements array.
+// promise_details = [State, Result]
+// State = enum { Pending = 0, Fulfilled = 1, Rejected = 2}
+// Result = PromiseResult<T> | PromiseError
+fn get_promise_details(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let deno_isolate: &mut Isolate =
+    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
+  assert!(!deno_isolate.global_context.is_empty());
+  let context = deno_isolate.global_context.get(scope).unwrap();
+
+  let mut promise = match v8::Local::<v8::Promise>::try_from(args.get(0)) {
+    Ok(val) => val,
+    Err(_) => {
+      let msg = v8::String::new(scope, "Invalid argument").unwrap();
+      let exception = v8::Exception::type_error(scope, msg);
+      scope.isolate().throw_exception(exception);
+      return;
+    }
+  };
+
+  let promise_details = v8::Array::new(scope, 2);
+
+  match promise.state() {
+    v8::PromiseState::Pending => {
+      promise_details.set(
+        context,
+        v8::Integer::new(scope, 0).into(),
+        v8::Integer::new(scope, 0).into(),
+      );
+      rv.set(promise_details.into());
+    }
+    v8::PromiseState::Fulfilled => {
+      promise_details.set(
+        context,
+        v8::Integer::new(scope, 0).into(),
+        v8::Integer::new(scope, 1).into(),
+      );
+      promise_details.set(
+        context,
+        v8::Integer::new(scope, 1).into(),
+        promise.result(scope),
+      );
+      rv.set(promise_details.into());
+    }
+    v8::PromiseState::Rejected => {
+      promise_details.set(
+        context,
+        v8::Integer::new(scope, 0).into(),
+        v8::Integer::new(scope, 2).into(),
+      );
+      promise_details.set(
+        context,
+        v8::Integer::new(scope, 1).into(),
+        promise.result(scope),
+      );
+      rv.set(promise_details.into());
+    }
+  }
 }

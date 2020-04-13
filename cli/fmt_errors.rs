@@ -3,12 +3,12 @@
 use crate::colors;
 use crate::source_maps::apply_source_map;
 use crate::source_maps::SourceMapGetter;
-use deno_core;
 use deno_core::ErrBox;
-use deno_core::JSStackFrame;
 use std::error::Error;
 use std::fmt;
 use std::ops::Deref;
+
+const SOURCE_ABBREV_THRESHOLD: usize = 150;
 
 /// A trait which specifies parts of a diagnostic like item needs to be able to
 /// generate to conform its display to other diagnostic like items
@@ -24,18 +24,13 @@ fn format_source_name(
   script_name: String,
   line_number: i64,
   column: i64,
-  is_internal: bool,
 ) -> String {
   let line_number = line_number + 1;
   let column = column + 1;
-  if is_internal {
-    format!("{}:{}:{}", script_name, line_number, column)
-  } else {
-    let script_name_c = colors::cyan(script_name);
-    let line_c = colors::yellow(line_number.to_string());
-    let column_c = colors::yellow(column.to_string());
-    format!("{}:{}:{}", script_name_c, line_c, column_c)
-  }
+  let script_name_c = colors::cyan(script_name);
+  let line_c = colors::yellow(line_number.to_string());
+  let column_c = colors::yellow(column.to_string());
+  format!("{}:{}:{}", script_name_c, line_c, column_c)
 }
 
 /// Formats optional source, line number and column into a single string.
@@ -54,7 +49,6 @@ pub fn format_maybe_source_name(
     script_name.unwrap(),
     line_number.unwrap(),
     column.unwrap(),
-    false,
   )
 }
 
@@ -74,8 +68,9 @@ pub fn format_maybe_source_line(
 
   let source_line = source_line.as_ref().unwrap();
   // sometimes source_line gets set with an empty string, which then outputs
-  // an empty source line when displayed, so need just short circuit here
-  if source_line.is_empty() {
+  // an empty source line when displayed, so need just short circuit here.
+  // Also short-circuit on error line too long.
+  if source_line.is_empty() || source_line.len() > SOURCE_ABBREV_THRESHOLD {
     return "".to_string();
   }
 
@@ -123,42 +118,6 @@ pub fn format_maybe_source_line(
 pub fn format_error_message(msg: String) -> String {
   let preamble = colors::red("error:".to_string());
   format!("{} {}", preamble, msg)
-}
-
-fn format_stack_frame(frame: &JSStackFrame, is_internal_frame: bool) -> String {
-  // Note when we print to string, we change from 0-indexed to 1-indexed.
-  let function_name = if is_internal_frame {
-    colors::italic_bold_gray(frame.function_name.clone()).to_string()
-  } else {
-    colors::italic_bold(frame.function_name.clone()).to_string()
-  };
-  let mut source_loc = format_source_name(
-    frame.script_name.clone(),
-    frame.line_number,
-    frame.column,
-    is_internal_frame,
-  );
-
-  // Each chunk of styled text is auto-resetted on end,
-  // which make nesting not working.
-  // Explicitly specify color for each section.
-  let mut at_prefix = "    at".to_owned();
-  if is_internal_frame {
-    at_prefix = colors::gray(at_prefix).to_string();
-  }
-  if !frame.function_name.is_empty() || frame.is_eval {
-    source_loc = format!("({})", source_loc); // wrap then style
-  }
-  if is_internal_frame {
-    source_loc = colors::gray(source_loc).to_string();
-  }
-  if !frame.function_name.is_empty() {
-    format!("{} {} {}", at_prefix, function_name, source_loc)
-  } else if frame.is_eval {
-    format!("{} eval {}", at_prefix, source_loc)
-  } else {
-    format!("{} {}", at_prefix, source_loc)
-  }
 }
 
 /// Wrapper around deno_core::JSError which provides color to_string.
@@ -237,10 +196,8 @@ impl fmt::Display for JSError {
       self.format_source_name(),
       self.format_source_line(0),
     )?;
-
-    for frame in &self.0.frames {
-      let is_internal_frame = frame.script_name.starts_with("$deno$");
-      write!(f, "\n{}", format_stack_frame(&frame, is_internal_frame))?;
+    for formatted_frame in &self.0.formatted_frames {
+      write!(f, "\n    at {}", formatted_frame)?;
     }
     Ok(())
   }
@@ -252,48 +209,6 @@ impl Error for JSError {}
 mod tests {
   use super::*;
   use crate::colors::strip_ansi_codes;
-
-  #[test]
-  fn js_error_to_string() {
-    let core_js_error = deno_core::JSError {
-      message: "Error: foo bar".to_string(),
-      source_line: None,
-      script_resource_name: None,
-      line_number: None,
-      start_column: None,
-      end_column: None,
-      frames: vec![
-        JSStackFrame {
-          line_number: 4,
-          column: 16,
-          script_name: "foo_bar.ts".to_string(),
-          function_name: "foo".to_string(),
-          is_eval: false,
-          is_constructor: false,
-        },
-        JSStackFrame {
-          line_number: 5,
-          column: 20,
-          script_name: "bar_baz.ts".to_string(),
-          function_name: "qat".to_string(),
-          is_eval: false,
-          is_constructor: false,
-        },
-        JSStackFrame {
-          line_number: 1,
-          column: 1,
-          script_name: "deno_main.js".to_string(),
-          function_name: "".to_string(),
-          is_eval: false,
-          is_constructor: false,
-        },
-      ],
-    };
-    let formatted_error = JSError(core_js_error).to_string();
-    let actual = strip_ansi_codes(&formatted_error);
-    let expected = "error: Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2";
-    assert_eq!(actual, expected);
-  }
 
   #[test]
   fn test_format_none_source_name() {

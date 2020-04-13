@@ -40,7 +40,7 @@ unitTest(function anEventTargetCanBeSubclassed(): void {
     on(
       type: string,
       callback: ((e: Event) => void) | null,
-      options?: __domTypes.AddEventListenerOptions
+      options?: AddEventListenerOptions
     ): void {
       this.addEventListener(type, callback, options);
     }
@@ -48,7 +48,7 @@ unitTest(function anEventTargetCanBeSubclassed(): void {
     off(
       type: string,
       callback: ((e: Event) => void) | null,
-      options?: __domTypes.EventListenerOptions
+      options?: EventListenerOptions
     ): void {
       this.removeEventListener(type, callback, options);
     }
@@ -114,7 +114,7 @@ unitTest(function dispatchEventShouldNotThrowError(): void {
     const target = new EventTarget();
     const event = new Event("hasOwnProperty", {
       bubbles: true,
-      cancelable: false
+      cancelable: false,
     });
     const listener = (): void => {};
     target.addEventListener("hasOwnProperty", listener);
@@ -130,7 +130,7 @@ unitTest(function eventTargetThisShouldDefaultToWindow(): void {
   const {
     addEventListener,
     dispatchEvent,
-    removeEventListener
+    removeEventListener,
   } = EventTarget.prototype;
   let n = 1;
   const event = new Event("hello");
@@ -164,7 +164,7 @@ unitTest(function eventTargetShouldAcceptEventListenerObject(): void {
     handleEvent(e: Event): void {
       assertEquals(e, event);
       ++callCount;
-    }
+    },
   };
 
   target.addEventListener("foo", listener);
@@ -185,7 +185,7 @@ unitTest(function eventTargetShouldAcceptAsyncFunction(): void {
   const event = new Event("foo", { bubbles: true, cancelable: false });
   let callCount = 0;
 
-  const listener = async (e: Event): Promise<void> => {
+  const listener = (e: Event): void => {
     assertEquals(e, event);
     ++callCount;
   };
@@ -210,10 +210,10 @@ unitTest(
     let callCount = 0;
 
     const listener = {
-      async handleEvent(e: Event): Promise<void> {
+      handleEvent(e: Event): void {
         assertEquals(e, event);
         ++callCount;
-      }
+      },
     };
 
     target.addEventListener("foo", listener);

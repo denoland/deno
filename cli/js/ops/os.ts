@@ -40,7 +40,7 @@ export function env(
     set(obj, prop: string, value: string): boolean {
       setEnv(prop, value);
       return Reflect.set(obj, prop, value);
-    }
+    },
   });
 }
 

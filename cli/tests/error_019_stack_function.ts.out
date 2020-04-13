@@ -1,0 +1,6 @@
+[WILDCARD]Error: function
+    at foo ([WILDCARD]tests/error_019_stack_function.ts:[WILDCARD])
+    at [WILDCARD]tests/error_019_stack_function.ts:[WILDCARD]
+error: Uncaught Error: function
+    at foo ([WILDCARD]tests/error_019_stack_function.ts:[WILDCARD])
+    at [WILDCARD]tests/error_019_stack_function.ts:[WILDCARD]

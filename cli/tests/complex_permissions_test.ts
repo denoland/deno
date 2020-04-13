@@ -4,23 +4,23 @@ const { args, readFileSync, writeFileSync, exit } = Deno;
 const name = args[0];
 const test: { [key: string]: Function } = {
   read(files: string[]): void {
-    files.forEach(file => readFileSync(file));
+    files.forEach((file) => readFileSync(file));
   },
   write(files: string[]): void {
-    files.forEach(file =>
+    files.forEach((file) =>
       writeFileSync(file, new Uint8Array(0), { append: true })
     );
   },
   netFetch(hosts: string[]): void {
-    hosts.forEach(host => fetch(host));
+    hosts.forEach((host) => fetch(host));
   },
   netListen(endpoints: string[]): void {
-    endpoints.forEach(endpoint => {
+    endpoints.forEach((endpoint) => {
       const [hostname, port] = endpoint.split(":");
       const listener = Deno.listen({
         transport: "tcp",
         hostname,
-        port: parseInt(port, 10)
+        port: parseInt(port, 10),
       });
       listener.close();
     });
@@ -31,11 +31,11 @@ const test: { [key: string]: Function } = {
       const listener = await Deno.connect({
         transport: "tcp",
         hostname,
-        port: parseInt(port, 10)
+        port: parseInt(port, 10),
       });
       listener.close();
     }
-  }
+  },
 };
 
 if (!test[name]) {

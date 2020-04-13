@@ -5,24 +5,14 @@
 
 import { BufReader } from "../io/bufio.ts";
 import { charCode } from "../io/util.ts";
+import { concat } from "../bytes/mod.ts";
+import { decode } from "../encoding/utf8.ts";
 
-const asciiDecoder = new TextDecoder();
 function str(buf: Uint8Array | null | undefined): string {
   if (buf == null) {
     return "";
   } else {
-    return asciiDecoder.decode(buf);
-  }
-}
-
-export function append(a: Uint8Array, b: Uint8Array): Uint8Array {
-  if (a == null) {
-    return b;
-  } else {
-    const output = new Uint8Array(a.length + b.length);
-    output.set(a, 0);
-    output.set(b, a.length);
-    return output;
+    return decode(buf);
   }
 }
 
@@ -84,22 +74,16 @@ export class TextProtoReader {
       if (kv === Deno.EOF) throw new Deno.errors.UnexpectedEof();
       if (kv.byteLength === 0) return m;
 
-      // Key ends at first colon; should not have trailing spaces
-      // but they appear in the wild, violating specs, so we remove
-      // them if present.
+      // Key ends at first colon
       let i = kv.indexOf(charCode(":"));
       if (i < 0) {
         throw new Deno.errors.InvalidData(
           `malformed MIME header line: ${str(kv)}`
         );
       }
-      let endKey = i;
-      while (endKey > 0 && kv[endKey - 1] == charCode(" ")) {
-        endKey--;
-      }
 
       //let key = canonicalMIMEHeaderKey(kv.subarray(0, endKey));
-      const key = str(kv.subarray(0, endKey));
+      const key = str(kv.subarray(0, i));
 
       // As per RFC 7230 field-name is a token,
       // tokens consist of one or more chars.
@@ -146,9 +130,7 @@ export class TextProtoReader {
         }
         return l;
       }
-
-      // @ts-ignore
-      line = append(line, l);
+      line = line ? concat(line, l) : l;
       if (!more) {
         break;
       }

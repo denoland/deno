@@ -4,12 +4,12 @@ import { assertStrictEq } from "../../testing/asserts.ts";
 Deno.test("[examples/welcome] print a welcome message", async () => {
   const decoder = new TextDecoder();
   const process = Deno.run({
-    args: [Deno.execPath(), "welcome.ts"],
+    cmd: [Deno.execPath(), "welcome.ts"],
     cwd: "examples",
-    stdout: "piped"
+    stdout: "piped",
   });
   try {
-    const output = await Deno.readAll(process.stdout!);
+    const output = await process.output();
     const actual = decoder.decode(output).trim();
     const expected = "Welcome to Deno 🦕";
     assertStrictEq(actual, expected);

@@ -1,0 +1,6 @@
+sync 1
+sync 2
+promise 1
+setTimeout 1
+Promise resolve in setTimeout 1
+setTimeout 2

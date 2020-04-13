@@ -8,7 +8,7 @@ interface Version {
 export const version: Version = {
   deno: "",
   v8: "",
-  typescript: ""
+  typescript: "",
 };
 
 export function setVersions(

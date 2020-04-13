@@ -13,7 +13,7 @@ unitTest(function urlSearchParamsInitString(): void {
 unitTest(function urlSearchParamsInitIterable(): void {
   const init = [
     ["a", "54"],
-    ["b", "true"]
+    ["b", "true"],
   ];
   const searchParams = new URLSearchParams(init);
   assertEquals(searchParams.toString(), "a=54&b=true");
@@ -94,7 +94,7 @@ unitTest(function urlSearchParamsSortSuccess(): void {
 unitTest(function urlSearchParamsForEachSuccess(): void {
   const init = [
     ["a", "54"],
-    ["b", "true"]
+    ["b", "true"],
   ];
   const searchParams = new URLSearchParams(init);
   let callNum = 0;
@@ -225,7 +225,7 @@ unitTest(function urlSearchParamsDeletingAppendedMultiple(): void {
 // ref: https://github.com/web-platform-tests/wpt/blob/master/url/urlsearchparams-constructor.any.js#L176-L182
 unitTest(function urlSearchParamsCustomSymbolIterator(): void {
   const params = new URLSearchParams();
-  params[Symbol.iterator] = function*(): IterableIterator<[string, string]> {
+  params[Symbol.iterator] = function* (): IterableIterator<[string, string]> {
     yield ["a", "b"];
   };
   const params1 = new URLSearchParams((params as unknown) as string[][]);
@@ -236,7 +236,7 @@ unitTest(
   function urlSearchParamsCustomSymbolIteratorWithNonStringParams(): void {
     const params = {};
     // @ts-ignore
-    params[Symbol.iterator] = function*(): IterableIterator<[number, number]> {
+    params[Symbol.iterator] = function* (): IterableIterator<[number, number]> {
       yield [1, 2];
     };
     const params1 = new URLSearchParams((params as unknown) as string[][]);

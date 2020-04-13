@@ -28,7 +28,7 @@ function runTestSync() {
   console.log(`Plugin Sync Response: ${textDecoder.decode(response)}`);
 }
 
-testAsync.setAsyncHandler(response => {
+testAsync.setAsyncHandler((response) => {
   console.log(`Plugin Async Response: ${textDecoder.decode(response)}`);
 });
 

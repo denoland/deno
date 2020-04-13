@@ -17,7 +17,7 @@ unitTest(
     }
     if (errOnWindows) {
       assertEquals(Deno.build.os, "win");
-      assertEquals(errOnWindows.message, "Not implemented");
+      assertEquals(errOnWindows.message, "not implemented");
     } else {
       const newNameInfoLStat = Deno.lstatSync(newname);
       const newNameInfoStat = Deno.statSync(newname);
@@ -54,7 +54,8 @@ unitTest(
     }
     if (err) {
       assertEquals(Deno.build.os, "win");
-      assertEquals(err.message, "Not implemented");
+      // from cli/js/util.ts:notImplemented
+      assertEquals(err.message, "not implemented");
     }
   }
 );
@@ -74,7 +75,7 @@ unitTest(
       errOnWindows = e;
     }
     if (errOnWindows) {
-      assertEquals(errOnWindows.message, "Not implemented");
+      assertEquals(errOnWindows.message, "not implemented");
     } else {
       const newNameInfoLStat = Deno.lstatSync(newname);
       const newNameInfoStat = Deno.statSync(newname);

@@ -10,5 +10,5 @@ export const map = new Type("tag:yaml.org,2002:map", {
   construct(data): Any {
     return data !== null ? data : {};
   },
-  kind: "mapping"
+  kind: "mapping",
 });

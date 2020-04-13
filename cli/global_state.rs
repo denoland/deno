@@ -14,7 +14,6 @@ use crate::msg;
 use crate::permissions::DenoPermissions;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use std;
 use std::env;
 use std::ops::Deref;
 use std::sync::atomic::AtomicUsize;
@@ -139,6 +138,18 @@ impl GlobalState {
             .compile(state1.clone(), &out, target_lib)
             .await
         } else {
+          if let Some(types_url) = out.types_url.clone() {
+            let types_specifier = ModuleSpecifier::from(types_url);
+            state1
+              .file_fetcher
+              .fetch_source_file(
+                &types_specifier,
+                Some(module_specifier.clone()),
+              )
+              .await
+              .ok();
+          };
+
           state1.js_compiler.compile(out).await
         }
       }

@@ -15,7 +15,7 @@ test({
       Error,
       "No callback function supplied"
     );
-  }
+  },
 });
 
 test({
@@ -48,12 +48,12 @@ test({
     assertThrows(
       () =>
         appendFileSync("some/path", "some data", {
-          encoding: "made-up-encoding"
+          encoding: "made-up-encoding",
         }),
       Error,
       "Only 'utf8' encoding is currently supported"
     );
-  }
+  },
 });
 
 test({
@@ -63,10 +63,10 @@ test({
     const file: Deno.File = await Deno.open(tempFile, {
       create: true,
       write: true,
-      read: true
+      read: true,
     });
     await new Promise((resolve, reject) => {
-      appendFile(file.rid, "hello world", err => {
+      appendFile(file.rid, "hello world", (err) => {
         if (err) reject();
         else resolve();
       });
@@ -82,7 +82,7 @@ test({
         Deno.close(file.rid);
         await Deno.remove(tempFile);
       });
-  }
+  },
 });
 
 test({
@@ -90,7 +90,7 @@ test({
   async fn() {
     const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
     await new Promise((resolve, reject) => {
-      appendFile("_fs_appendFile_test_file.txt", "hello world", err => {
+      appendFile("_fs_appendFile_test_file.txt", "hello world", (err) => {
         if (err) reject(err);
         else resolve();
       });
@@ -100,13 +100,13 @@ test({
         const data = await Deno.readFile("_fs_appendFile_test_file.txt");
         assertEquals(decoder.decode(data), "hello world");
       })
-      .catch(err => {
+      .catch((err) => {
         fail("No error was expected: " + err);
       })
       .finally(async () => {
         await Deno.remove("_fs_appendFile_test_file.txt");
       });
-  }
+  },
 });
 
 test({
@@ -116,7 +116,7 @@ test({
     const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
     const tempFile: string = await Deno.makeTempFile();
     await new Promise((resolve, reject) => {
-      appendFile(tempFile, "hello world", { flag: "ax" }, err => {
+      appendFile(tempFile, "hello world", { flag: "ax" }, (err) => {
         if (err) reject(err);
         else resolve();
       });
@@ -130,7 +130,7 @@ test({
       .finally(async () => {
         await Deno.remove(tempFile);
       });
-  }
+  },
 });
 
 test({
@@ -140,14 +140,14 @@ test({
     const file: Deno.File = Deno.openSync(tempFile, {
       create: true,
       write: true,
-      read: true
+      read: true,
     });
     appendFileSync(file.rid, "hello world");
     Deno.close(file.rid);
     const data = Deno.readFileSync(tempFile);
     assertEquals(decoder.decode(data), "hello world");
     Deno.removeSync(tempFile);
-  }
+  },
 });
 
 test({
@@ -159,7 +159,7 @@ test({
     const data = Deno.readFileSync("_fs_appendFile_test_file_sync.txt");
     assertEquals(decoder.decode(data), "hello world");
     Deno.removeSync("_fs_appendFile_test_file_sync.txt");
-  }
+  },
 });
 
 test({
@@ -175,5 +175,5 @@ test({
     );
     assertEquals(Deno.resources(), openResourcesBeforeAppend);
     Deno.removeSync(tempFile);
-  }
+  },
 });

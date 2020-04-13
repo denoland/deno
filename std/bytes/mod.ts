@@ -7,8 +7,8 @@ export function findIndex(a: Uint8Array, pat: Uint8Array): number {
   for (let i = 0; i < a.length; i++) {
     if (a[i] !== s) continue;
     const pin = i;
-    let matched = 1,
-      j = i;
+    let matched = 1;
+    let j = i;
     while (matched < pat.length) {
       j++;
       if (a[j] !== pat[j - pin]) {
@@ -29,8 +29,8 @@ export function findLastIndex(a: Uint8Array, pat: Uint8Array): number {
   for (let i = a.length - 1; i >= 0; i--) {
     if (a[i] !== e) continue;
     const pin = i;
-    let matched = 1,
-      j = i;
+    let matched = 1;
+    let j = i;
     while (matched < pat.length) {
       j--;
       if (a[j] !== pat[pat.length - 1 - (pin - j)]) {
@@ -93,4 +93,12 @@ export function repeat(b: Uint8Array, count: number): Uint8Array {
   }
 
   return nb;
+}
+
+/** Concatenate two binary arrays and return new one  */
+export function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const output = new Uint8Array(a.length + b.length);
+  output.set(a, 0);
+  output.set(b, a.length);
+  return output;
 }

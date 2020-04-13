@@ -4,7 +4,7 @@ import {
   assert,
   assertEquals,
   assertThrows,
-  createResolvable
+  createResolvable,
 } from "./test_util.ts";
 
 function defer(n: number): Promise<void> {
@@ -14,8 +14,8 @@ function defer(n: number): Promise<void> {
 }
 
 unitTest(
-  { skip: Deno.build.os !== "win" },
-  async function signalsNotImplemented(): Promise<void> {
+  { ignore: Deno.build.os !== "win" },
+  function signalsNotImplemented(): void {
     assertThrows(
       () => {
         Deno.signal(1);
@@ -104,7 +104,7 @@ unitTest(
 );
 
 unitTest(
-  { skip: Deno.build.os === "win", perms: { run: true, net: true } },
+  { ignore: Deno.build.os === "win", perms: { run: true, net: true } },
   async function signalStreamTest(): Promise<void> {
     const resolvable = createResolvable();
     // This prevents the program from exiting.
@@ -130,15 +130,12 @@ unitTest(
     assertEquals(c, 3);
 
     clearInterval(t);
-    // Defer for a moment to allow async op from `setInterval` to resolve;
-    // for more explanation see `FIXME` in `cli/js/timers.ts::setGlobalTimeout`
-    await defer(20);
     await resolvable;
   }
 );
 
 unitTest(
-  { skip: Deno.build.os === "win", perms: { run: true } },
+  { ignore: Deno.build.os === "win", perms: { run: true } },
   async function signalPromiseTest(): Promise<void> {
     const resolvable = createResolvable();
     // This prevents the program from exiting.
@@ -153,16 +150,13 @@ unitTest(
     sig.dispose();
 
     clearInterval(t);
-    // Defer for a moment to allow async op from `setInterval` to resolve;
-    // for more explanation see `FIXME` in `cli/js/timers.ts::setGlobalTimeout`
-    await defer(20);
     await resolvable;
   }
 );
 
 unitTest(
-  { skip: Deno.build.os === "win", perms: { run: true } },
-  async function signalShorthandsTest(): Promise<void> {
+  { ignore: Deno.build.os === "win", perms: { run: true } },
+  function signalShorthandsTest(): void {
     let s: Deno.SignalStream;
     s = Deno.signals.alarm(); // for SIGALRM
     assert(s instanceof Deno.SignalStream);

@@ -9,7 +9,7 @@ import * as q from "./queue-mixin.ts";
 import * as shared from "./shared-internals.ts";
 import { ReadableStreamBYOBRequest } from "./readable-stream-byob-request.ts";
 import { Queue } from "./queue.ts";
-import { UnderlyingByteSource } from "../dom_types.ts";
+import { UnderlyingByteSource } from "../dom_types.d.ts";
 
 export class ReadableByteStreamController
   implements rs.SDReadableByteStreamController {
@@ -148,7 +148,7 @@ export class ReadableByteStreamController
         bytesFilled: 0,
         elementSize: 1,
         ctor: Uint8Array,
-        readerType: "default"
+        readerType: "default",
       };
       this[rs.pendingPullIntos_].push(pullIntoDescriptor);
     }

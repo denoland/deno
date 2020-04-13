@@ -2,7 +2,7 @@ import * as formData from "./form_data.ts";
 import * as blob from "./blob.ts";
 import * as encoding from "./text_encoding.ts";
 import * as headers from "./headers.ts";
-import * as domTypes from "./dom_types.ts";
+import * as domTypes from "./dom_types.d.ts";
 import { ReadableStream } from "./streams/mod.ts";
 
 const { Headers } = headers;
@@ -10,7 +10,6 @@ const { Headers } = headers;
 // only namespace imports work for now, plucking out what we need
 const { FormData } = formData;
 const { TextEncoder, TextDecoder } = encoding;
-const Blob = blob.DenoBlob;
 const DenoBlob = blob.DenoBlob;
 
 type ReadableStreamReader = domTypes.ReadableStreamReader;
@@ -21,10 +20,10 @@ interface ReadableStreamController {
 }
 
 export type BodySource =
-  | domTypes.Blob
-  | domTypes.BufferSource
+  | Blob
+  | BufferSource
   | domTypes.FormData
-  | domTypes.URLSearchParams
+  | URLSearchParams
   | domTypes.ReadableStream
   | string;
 
@@ -124,7 +123,7 @@ export const BodyUsedError =
   "Failed to execute 'clone' on 'Body': body is already used";
 
 export class Body implements domTypes.Body {
-  protected _stream: domTypes.ReadableStream | null;
+  protected _stream: domTypes.ReadableStream<string | ArrayBuffer> | null;
 
   constructor(protected _bodySource: BodySource, readonly contentType: string) {
     validateBodyType(this, _bodySource);
@@ -148,8 +147,8 @@ export class Body implements domTypes.Body {
         start(controller: ReadableStreamController): void {
           controller.enqueue(bodySource);
           controller.close();
-        }
-      });
+        },
+      }) as domTypes.ReadableStream<ArrayBuffer | string>;
     }
     return this._stream;
   }
@@ -161,8 +160,8 @@ export class Body implements domTypes.Body {
     return false;
   }
 
-  public async blob(): Promise<domTypes.Blob> {
-    return new Blob([await this.arrayBuffer()]);
+  public async blob(): Promise<Blob> {
+    return new DenoBlob([await this.arrayBuffer()]);
   }
 
   // ref: https://fetch.spec.whatwg.org/#body-mixin
@@ -247,7 +246,7 @@ export class Body implements domTypes.Body {
         if (dispositionParams.has("filename")) {
           const filename = dispositionParams.get("filename")!;
           const blob = new DenoBlob([enc.encode(octets)], {
-            type: partContentType
+            type: partContentType,
           });
           // TODO: based on spec
           // https://xhr.spec.whatwg.org/#dom-formdata-append
@@ -306,7 +305,7 @@ export class Body implements domTypes.Body {
     return JSON.parse(raw);
   }
 
-  public async arrayBuffer(): Promise<ArrayBuffer> {
+  public arrayBuffer(): Promise<ArrayBuffer> {
     if (
       this._bodySource instanceof Int8Array ||
       this._bodySource instanceof Int16Array ||
@@ -318,20 +317,24 @@ export class Body implements domTypes.Body {
       this._bodySource instanceof Float32Array ||
       this._bodySource instanceof Float64Array
     ) {
-      return this._bodySource.buffer as ArrayBuffer;
+      return Promise.resolve(this._bodySource.buffer as ArrayBuffer);
     } else if (this._bodySource instanceof ArrayBuffer) {
-      return this._bodySource;
+      return Promise.resolve(this._bodySource);
     } else if (typeof this._bodySource === "string") {
       const enc = new TextEncoder();
-      return enc.encode(this._bodySource).buffer as ArrayBuffer;
+      return Promise.resolve(
+        enc.encode(this._bodySource).buffer as ArrayBuffer
+      );
     } else if (this._bodySource instanceof ReadableStream) {
       // @ts-ignore
       return bufferFromStream(this._bodySource.getReader());
     } else if (this._bodySource instanceof FormData) {
       const enc = new TextEncoder();
-      return enc.encode(this._bodySource.toString()).buffer as ArrayBuffer;
+      return Promise.resolve(
+        enc.encode(this._bodySource.toString()).buffer as ArrayBuffer
+      );
     } else if (!this._bodySource) {
-      return new ArrayBuffer(0);
+      return Promise.resolve(new ArrayBuffer(0));
     }
     throw new Error(
       `Body type not yet implemented: ${this._bodySource.constructor.name}`

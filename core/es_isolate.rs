@@ -424,9 +424,8 @@ impl EsIsolate {
 
     let is_main =
       load.state == LoadState::LoadingRoot && !load.is_dynamic_import();
-    let referrer_name = &module_url_found.to_string();
     let referrer_specifier =
-      ModuleSpecifier::resolve_url(referrer_name).unwrap();
+      ModuleSpecifier::resolve_url(&module_url_found).unwrap();
 
     // #A There are 3 cases to handle at this moment:
     // 1. Source code resolved result have the same module name as requested

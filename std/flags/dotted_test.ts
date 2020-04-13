@@ -5,7 +5,7 @@ import { parse } from "./mod.ts";
 Deno.test(function dottedAlias(): void {
   const argv = parse(["--a.b", "22"], {
     default: { "a.b": 11 },
-    alias: { "a.b": "aa.bb" }
+    alias: { "a.b": "aa.bb" },
   });
   assertEquals(argv.a.b, 22);
   assertEquals(argv.aa.bb, 22);

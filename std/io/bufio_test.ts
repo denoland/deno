@@ -9,7 +9,7 @@ import {
   assert,
   assertEquals,
   fail,
-  assertNotEOF
+  assertNotEOF,
 } from "../testing/asserts.ts";
 import {
   BufReader,
@@ -17,7 +17,7 @@ import {
   BufferFullError,
   PartialReadError,
   readStringDelim,
-  readLines
+  readLines,
 } from "./bufio.ts";
 import * as iotest from "./iotest.ts";
 import { charCode, copyBytes, stringsReader } from "./util.ts";
@@ -55,9 +55,9 @@ const readMakers: ReadMaker[] = [
   { name: "full", fn: (r): Reader => r },
   {
     name: "byte",
-    fn: (r): iotest.OneByteReader => new iotest.OneByteReader(r)
+    fn: (r): iotest.OneByteReader => new iotest.OneByteReader(r),
   },
-  { name: "half", fn: (r): iotest.HalfReader => new iotest.HalfReader(r) }
+  { name: "half", fn: (r): iotest.HalfReader => new iotest.HalfReader(r) },
   // TODO { name: "data+err", r => new iotest.DataErrReader(r) },
   // { name: "timeout", fn: r => new iotest.TimeoutReader(r) },
 ];
@@ -89,7 +89,7 @@ const bufreaders: NamedBufReader[] = [
   { name: "4", fn: (b: BufReader): Promise<string> => reads(b, 4) },
   { name: "5", fn: (b: BufReader): Promise<string> => reads(b, 5) },
   { name: "7", fn: (b: BufReader): Promise<string> => reads(b, 7) },
-  { name: "bytes", fn: readBytes }
+  { name: "bytes", fn: readBytes },
   // { name: "lines", fn: readLines },
 ];
 
@@ -104,7 +104,7 @@ const bufsizes: number[] = [
   93,
   128,
   1024,
-  4096
+  4096,
 ];
 
 Deno.test(async function bufioBufReader(): Promise<void> {
@@ -191,7 +191,7 @@ const testOutput = encoder.encode("0123456789abcdefghijklmnopqrstuvwxy");
 class TestReader implements Reader {
   constructor(private data: Uint8Array, private stride: number) {}
 
-  async read(buf: Uint8Array): Promise<number | Deno.EOF> {
+  read(buf: Uint8Array): Promise<number | Deno.EOF> {
     let nread = this.stride;
     if (nread > this.data.byteLength) {
       nread = this.data.byteLength;
@@ -200,11 +200,11 @@ class TestReader implements Reader {
       nread = buf.byteLength;
     }
     if (nread === 0) {
-      return Deno.EOF;
+      return Promise.resolve(Deno.EOF);
     }
     copyBytes(buf as Uint8Array, this.data);
     this.data = this.data.subarray(nread);
-    return nread;
+    return Promise.resolve(nread);
   }
 }
 

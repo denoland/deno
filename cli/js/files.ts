@@ -8,7 +8,7 @@ import {
   SeekMode,
   SyncReader,
   SyncWriter,
-  SyncSeeker
+  SyncSeeker,
 } from "./io.ts";
 import { close } from "./ops/resources.ts";
 import { read, readSync, write, writeSync } from "./ops/io.ts";
@@ -18,47 +18,51 @@ import {
   open as opOpen,
   openSync as opOpenSync,
   OpenOptions,
-  OpenMode
+  OpenMode,
 } from "./ops/fs/open.ts";
 export { OpenOptions, OpenMode } from "./ops/fs/open.ts";
 
-export function openSync(path: string, mode?: OpenOptions): File;
-export function openSync(path: string, mode?: OpenMode): File;
+export function openSync(path: string, options?: OpenOptions): File;
+export function openSync(path: string, openMode?: OpenMode): File;
+
+/**@internal*/
 export function openSync(
   path: string,
   modeOrOptions: OpenOptions | OpenMode = "r"
 ): File {
-  let mode = undefined;
+  let openMode = undefined;
   let options = undefined;
 
   if (typeof modeOrOptions === "string") {
-    mode = modeOrOptions;
+    openMode = modeOrOptions;
   } else {
     checkOpenOptions(modeOrOptions);
     options = modeOrOptions as OpenOptions;
   }
 
-  const rid = opOpenSync(path, mode as OpenMode, options);
+  const rid = opOpenSync(path, openMode as OpenMode, options);
   return new File(rid);
 }
 
 export async function open(path: string, options?: OpenOptions): Promise<File>;
-export async function open(path: string, mode?: OpenMode): Promise<File>;
+export async function open(path: string, openMode?: OpenMode): Promise<File>;
+
+/**@internal*/
 export async function open(
   path: string,
   modeOrOptions: OpenOptions | OpenMode = "r"
 ): Promise<File> {
-  let mode = undefined;
+  let openMode = undefined;
   let options = undefined;
 
   if (typeof modeOrOptions === "string") {
-    mode = modeOrOptions;
+    openMode = modeOrOptions;
   } else {
     checkOpenOptions(modeOrOptions);
     options = modeOrOptions as OpenOptions;
   }
 
-  const rid = await opOpen(path, mode as OpenMode, options);
+  const rid = await opOpen(path, openMode as OpenMode, options);
   return new File(rid);
 }
 
@@ -115,7 +119,7 @@ export const stdout = new File(1);
 export const stderr = new File(2);
 
 function checkOpenOptions(options: OpenOptions): void {
-  if (Object.values(options).filter(val => val === true).length === 0) {
+  if (Object.values(options).filter((val) => val === true).length === 0) {
     throw new Error("OpenOptions requires at least one option to be true");
   }
 

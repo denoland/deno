@@ -18,7 +18,7 @@ SharedQueue Binary Layout
 
 /* eslint-disable @typescript-eslint/no-use-before-define */
 
-(window => {
+((window) => {
   const GLOBAL_NAMESPACE = "Deno";
   const CORE_NAMESPACE = "core";
   const MAX_RECORDS = 100;
@@ -200,9 +200,9 @@ SharedQueue Binary Layout
       size,
       push,
       reset,
-      shift
+      shift,
     },
-    ops
+    ops,
   };
 
   assert(window[GLOBAL_NAMESPACE] != null);

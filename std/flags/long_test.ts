@@ -9,11 +9,11 @@ Deno.test(function longOpts(): void {
   assertEquals(parse(["--host", "localhost", "--port", "555"]), {
     host: "localhost",
     port: 555,
-    _: []
+    _: [],
   });
   assertEquals(parse(["--host=localhost", "--port=555"]), {
     host: "localhost",
     port: 555,
-    _: []
+    _: [],
   });
 });

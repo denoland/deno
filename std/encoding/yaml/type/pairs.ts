@@ -45,5 +45,5 @@ function constructYamlPairs(data: string): Any[] {
 export const pairs = new Type("tag:yaml.org,2002:pairs", {
   construct: constructYamlPairs,
   kind: "sequence",
-  resolve: resolveYamlPairs
+  resolve: resolveYamlPairs,
 });

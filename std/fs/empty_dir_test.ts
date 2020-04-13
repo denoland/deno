@@ -4,7 +4,7 @@ import {
   assertEquals,
   assertStrContains,
   assertThrows,
-  assertThrowsAsync
+  assertThrowsAsync,
 } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { emptyDir, emptyDirSync } from "./empty_dir.ts";
@@ -23,7 +23,7 @@ Deno.test(async function emptyDirIfItNotExist(): Promise<void> {
     assertEquals(stat.isDirectory(), true);
   } finally {
     // remove the test dir
-    Deno.remove(testDir, { recursive: true });
+    await Deno.remove(testDir, { recursive: true });
   }
 });
 
@@ -39,7 +39,7 @@ Deno.test(function emptyDirSyncIfItNotExist(): void {
     assertEquals(stat.isDirectory(), true);
   } finally {
     // remove the test dir
-    Deno.remove(testDir, { recursive: true });
+    Deno.removeSync(testDir, { recursive: true });
   }
 });
 
@@ -137,59 +137,59 @@ const scenes: Scenes[] = [
     read: false,
     write: false,
     async: true,
-    output: "run again with the --allow-read flag"
+    output: "run again with the --allow-read flag",
   },
   {
     read: false,
     write: false,
     async: false,
-    output: "run again with the --allow-read flag"
+    output: "run again with the --allow-read flag",
   },
   // 2
   {
     read: true,
     write: false,
     async: true,
-    output: "run again with the --allow-write flag"
+    output: "run again with the --allow-write flag",
   },
   {
     read: true,
     write: false,
     async: false,
-    output: "run again with the --allow-write flag"
+    output: "run again with the --allow-write flag",
   },
   // 3
   {
     read: false,
     write: true,
     async: true,
-    output: "run again with the --allow-read flag"
+    output: "run again with the --allow-read flag",
   },
   {
     read: false,
     write: true,
     async: false,
-    output: "run again with the --allow-read flag"
+    output: "run again with the --allow-read flag",
   },
   // 4
   {
     read: true,
     write: true,
     async: true,
-    output: "success"
+    output: "success",
   },
   {
     read: true,
     write: true,
     async: false,
-    output: "success"
-  }
+    output: "success",
+  },
 ];
 for (const s of scenes) {
   let title = `test ${s.async ? "emptyDir" : "emptyDirSync"}`;
   title += `("testdata/testfolder") ${s.read ? "with" : "without"}`;
   title += ` --allow-read & ${s.write ? "with" : "without"} --allow-write`;
-  Deno.test(`[fs] emptyDirPermission ${title}`, async function(): Promise<
+  Deno.test(`[fs] emptyDirPermission ${title}`, async function (): Promise<
     void
   > {
     const testfolder = path.join(testdataDir, "testfolder");
@@ -218,16 +218,15 @@ for (const s of scenes) {
         );
         args.push("testfolder");
 
-        const { stdout } = Deno.run({
+        const p = Deno.run({
           stdout: "piped",
           cwd: testdataDir,
-          args: args
+          cmd: args,
         });
 
-        assert(stdout);
-
-        const output = await Deno.readAll(stdout);
-
+        assert(p.stdout);
+        const output = await p.output();
+        p.close();
         assertStrContains(new TextDecoder().decode(output), s.output);
       } catch (err) {
         await Deno.remove(testfolder, { recursive: true });

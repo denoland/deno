@@ -3,7 +3,7 @@ import { StatResponse } from "./ops/fs/stat.ts";
 import { build } from "./build.ts";
 
 export interface FileInfo {
-  len: number;
+  size: number;
   modified: number | null;
   accessed: number | null;
   created: number | null;
@@ -24,9 +24,10 @@ export interface FileInfo {
 
 // @internal
 export class FileInfoImpl implements FileInfo {
-  private readonly _isFile: boolean;
-  private readonly _isSymlink: boolean;
-  len: number;
+  readonly #isFile: boolean;
+  readonly #isDirectory: boolean;
+  readonly #isSymlink: boolean;
+  size: number;
   modified: number | null;
   accessed: number | null;
   created: number | null;
@@ -43,28 +44,19 @@ export class FileInfoImpl implements FileInfo {
   blocks: number | null;
 
   /* @internal */
-  constructor(private _res: StatResponse) {
+  constructor(res: StatResponse) {
     const isUnix = build.os === "mac" || build.os === "linux";
-    const modified = this._res.modified;
-    const accessed = this._res.accessed;
-    const created = this._res.created;
-    const name = this._res.name;
+    const modified = res.modified;
+    const accessed = res.accessed;
+    const created = res.created;
+    const name = res.name;
     // Unix only
-    const {
-      dev,
-      ino,
-      mode,
-      nlink,
-      uid,
-      gid,
-      rdev,
-      blksize,
-      blocks
-    } = this._res;
+    const { dev, ino, mode, nlink, uid, gid, rdev, blksize, blocks } = res;
 
-    this._isFile = this._res.isFile;
-    this._isSymlink = this._res.isSymlink;
-    this.len = this._res.len;
+    this.#isFile = res.isFile;
+    this.#isDirectory = res.isDirectory;
+    this.#isSymlink = res.isSymlink;
+    this.size = res.size;
     this.modified = modified ? modified : null;
     this.accessed = accessed ? accessed : null;
     this.created = created ? created : null;
@@ -82,14 +74,14 @@ export class FileInfoImpl implements FileInfo {
   }
 
   isFile(): boolean {
-    return this._isFile;
+    return this.#isFile;
   }
 
   isDirectory(): boolean {
-    return !this._isFile && !this._isSymlink;
+    return this.#isDirectory;
   }
 
   isSymlink(): boolean {
-    return this._isSymlink;
+    return this.#isSymlink;
   }
 }

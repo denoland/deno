@@ -10,7 +10,7 @@ export type ProcessStdio = "inherit" | "piped" | "null";
 // TODO Maybe extend VSCode's 'CommandOptions'?
 // See https://code.visualstudio.com/docs/editor/tasks-appendix#_schema-for-tasksjson
 export interface RunOptions {
-  args: string[];
+  cmd: string[];
   cwd?: string;
   env?: { [key: string]: string };
   stdout?: ProcessStdio | number;
@@ -55,8 +55,8 @@ export class Process {
     }
   }
 
-  async status(): Promise<ProcessStatus> {
-    return await runStatus(this.rid);
+  status(): Promise<ProcessStatus> {
+    return runStatus(this.rid);
   }
 
   async output(): Promise<Uint8Array> {
@@ -108,15 +108,15 @@ interface RunResponse {
   stderrRid: number | null;
 }
 export function run({
-  args,
+  cmd,
   cwd = undefined,
   env = {},
   stdout = "inherit",
   stderr = "inherit",
-  stdin = "inherit"
+  stdin = "inherit",
 }: RunOptions): Process {
   const res = runOp({
-    args: args.map(String),
+    cmd: cmd.map(String),
     cwd,
     env: Object.entries(env),
     stdin: isRid(stdin) ? "" : stdin,
@@ -124,7 +124,7 @@ export function run({
     stderr: isRid(stderr) ? "" : stderr,
     stdinRid: isRid(stdin) ? stdin : 0,
     stdoutRid: isRid(stdout) ? stdout : 0,
-    stderrRid: isRid(stderr) ? stderr : 0
+    stderrRid: isRid(stderr) ? stderr : 0,
   }) as RunResponse;
   return new Process(res);
 }

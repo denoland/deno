@@ -14,7 +14,7 @@ Deno.test(function nums(): void {
     "10f",
     "--hex",
     "0xdeadbeef",
-    "789"
+    "789",
   ]);
   assertEquals(argv, {
     x: 1234,
@@ -22,7 +22,7 @@ Deno.test(function nums(): void {
     z: 1e7,
     w: "10f",
     hex: 0xdeadbeef,
-    _: [789]
+    _: [789],
   });
   assertEquals(typeof argv.x, "number");
   assertEquals(typeof argv.y, "number");

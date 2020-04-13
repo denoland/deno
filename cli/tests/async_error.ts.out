@@ -2,10 +2,10 @@
 before error
 world
 error: Uncaught Error: error
-[WILDCARD]tests/async_error.ts:4:9
+[WILDCARD]tests/async_error.ts:5:9
 
-4   throw Error("error");
+5   throw Error("error");
           ^
 
-    at foo ([WILDCARD]tests/async_error.ts:4:9)
-    at [WILDCARD]tests/async_error.ts:7:1
+    at foo ([WILDCARD]tests/async_error.ts:5:9)
+    at [WILDCARD]tests/async_error.ts:8:1

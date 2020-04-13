@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals } from "./test_util.ts";
 const {
-  stringifyArgs
+  stringifyArgs,
   // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.symbols.internal];
 
@@ -29,7 +29,7 @@ const headerDict: Record<string, string> = {
   name3: "value3",
   // @ts-ignore
   name4: undefined,
-  "Content-Type": "value4"
+  "Content-Type": "value4",
 };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const headerSeq: any[] = [];
@@ -142,7 +142,7 @@ const headerEntriesDict: Record<string, string> = {
   name: "value3",
   "content-Type": "value4",
   "Content-Typ": "value5",
-  "Content-Types": "value6"
+  "Content-Types": "value6",
 };
 
 unitTest(function headerForEachSuccess(): void {
@@ -346,7 +346,7 @@ unitTest(function customInspectReturnsCorrectHeadersFormat(): void {
   );
   const multiParamHeader = new Headers([
     ["Content-Type", "application/json"],
-    ["Content-Length", "1337"]
+    ["Content-Length", "1337"],
   ]);
   assertEquals(
     stringify(multiParamHeader),

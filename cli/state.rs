@@ -8,7 +8,7 @@ use crate::op_error::OpError;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
 use crate::permissions::DenoPermissions;
-use crate::worker::WorkerHandle;
+use crate::web_worker::WebWorkerHandle;
 use deno_core::Buf;
 use deno_core::CoreOp;
 use deno_core::ErrBox;
@@ -22,7 +22,6 @@ use futures::future::TryFutureExt;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde_json::Value;
-use std;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -32,6 +31,16 @@ use std::rc::Rc;
 use std::str;
 use std::thread::JoinHandle;
 use std::time::Instant;
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum DebugType {
+  /// Can be debugged, will wait for debugger when --inspect-brk given.
+  Main,
+  /// Can be debugged, never waits for debugger.
+  Dependent,
+  /// No inspector instance is created.
+  Internal,
+}
 
 #[derive(Clone)]
 pub struct State(Rc<RefCell<StateInner>>);
@@ -53,12 +62,13 @@ pub struct StateInner {
   pub import_map: Option<ImportMap>,
   pub metrics: Metrics,
   pub global_timer: GlobalTimer,
-  pub workers: HashMap<u32, (JoinHandle<()>, WorkerHandle)>,
+  pub workers: HashMap<u32, (JoinHandle<()>, WebWorkerHandle)>,
   pub next_worker_id: u32,
   pub start_time: Instant,
   pub seeded_rng: Option<StdRng>,
   pub resource_table: ResourceTable,
   pub target_lib: TargetLib,
+  pub debug_type: DebugType,
 }
 
 impl State {
@@ -230,6 +240,7 @@ impl State {
     global_state: GlobalState,
     shared_permissions: Option<DenoPermissions>,
     main_module: ModuleSpecifier,
+    debug_type: DebugType,
   ) -> Result<Self, ErrBox> {
     let import_map: Option<ImportMap> =
       match global_state.flags.import_map_path.as_ref() {
@@ -259,9 +270,9 @@ impl State {
       next_worker_id: 0,
       start_time: Instant::now(),
       seeded_rng,
-
       resource_table: ResourceTable::default(),
       target_lib: TargetLib::Main,
+      debug_type,
     }));
 
     Ok(Self(state))
@@ -295,9 +306,9 @@ impl State {
       next_worker_id: 0,
       start_time: Instant::now(),
       seeded_rng,
-
       resource_table: ResourceTable::default(),
       target_lib: TargetLib::Worker,
+      debug_type: DebugType::Dependent,
     }));
 
     Ok(Self(state))
@@ -370,6 +381,7 @@ impl State {
       GlobalState::mock(vec!["deno".to_string()]),
       None,
       module_specifier,
+      DebugType::Main,
     )
     .unwrap()
   }

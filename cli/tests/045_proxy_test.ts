@@ -17,18 +17,18 @@ async function proxyRequest(req: ServerRequest): Promise<void> {
   console.log(`Proxy request to: ${req.url}`);
   const resp = await fetch(req.url, {
     method: req.method,
-    headers: req.headers
+    headers: req.headers,
   });
   req.respond(resp);
 }
 
 async function testFetch(): Promise<void> {
   const c = Deno.run({
-    args: [Deno.execPath(), "--reload", "--allow-net", "045_proxy_client.ts"],
+    cmd: [Deno.execPath(), "--reload", "--allow-net", "045_proxy_client.ts"],
     stdout: "piped",
     env: {
-      HTTP_PROXY: `http://${addr}`
-    }
+      HTTP_PROXY: `http://${addr}`,
+    },
   });
 
   const status = await c.status();
@@ -38,16 +38,16 @@ async function testFetch(): Promise<void> {
 
 async function testModuleDownload(): Promise<void> {
   const http = Deno.run({
-    args: [
+    cmd: [
       Deno.execPath(),
       "--reload",
-      "fetch",
-      "http://localhost:4545/std/examples/colors.ts"
+      "cache",
+      "http://localhost:4545/std/examples/colors.ts",
     ],
     stdout: "piped",
     env: {
-      HTTP_PROXY: `http://${addr}`
-    }
+      HTTP_PROXY: `http://${addr}`,
+    },
   });
 
   const httpStatus = await http.status();

@@ -2,7 +2,7 @@
 import {
   assertEquals,
   assertThrowsAsync,
-  assertThrows
+  assertThrows,
 } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { readJson, readJsonSync } from "./read_json.ts";

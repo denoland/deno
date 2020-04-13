@@ -3,12 +3,12 @@ import {
   acceptWebSocket,
   acceptable,
   WebSocket,
-  isWebSocketCloseEvent
+  isWebSocketCloseEvent,
 } from "../../ws/mod.ts";
 
 const clients = new Map<number, WebSocket>();
 let clientId = 0;
-async function dispatch(msg: string): Promise<void> {
+function dispatch(msg: string): void {
   for (const client of clients.values()) {
     client.send(msg);
   }
@@ -29,19 +29,20 @@ async function wsHandler(ws: WebSocket): Promise<void> {
   }
 }
 
-listenAndServe({ port: 8080 }, async req => {
+listenAndServe({ port: 8080 }, async (req) => {
   if (req.method === "GET" && req.url === "/") {
     //Serve with hack
     const u = new URL("./index.html", import.meta.url);
     if (u.protocol.startsWith("http")) {
       // server launched by deno run http(s)://.../server.ts,
-      fetch(u.href).then(resp => {
+      fetch(u.href).then(async (resp) => {
+        const body = new Uint8Array(await resp.arrayBuffer());
         return req.respond({
           status: resp.status,
           headers: new Headers({
-            "content-type": "text/html"
+            "content-type": "text/html",
           }),
-          body: resp.body
+          body,
         });
       });
     } else {
@@ -50,9 +51,9 @@ listenAndServe({ port: 8080 }, async req => {
       req.respond({
         status: 200,
         headers: new Headers({
-          "content-type": "text/html"
+          "content-type": "text/html",
         }),
-        body: file
+        body: file,
       });
     }
   }
@@ -60,8 +61,8 @@ listenAndServe({ port: 8080 }, async req => {
     req.respond({
       status: 302,
       headers: new Headers({
-        location: "https://deno.land/favicon.ico"
-      })
+        location: "https://deno.land/favicon.ico",
+      }),
     });
   }
   if (req.method === "GET" && req.url === "/ws") {
@@ -70,7 +71,7 @@ listenAndServe({ port: 8080 }, async req => {
         conn: req.conn,
         bufReader: req.r,
         bufWriter: req.w,
-        headers: req.headers
+        headers: req.headers,
       }).then(wsHandler);
     }
   }

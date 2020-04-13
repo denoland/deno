@@ -3,7 +3,7 @@ import {
   assertEquals,
   assertThrows,
   assertThrowsAsync,
-  assert
+  assert,
 } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { copy, copySync } from "./copy.ts";
@@ -17,19 +17,16 @@ const testdataDir = path.resolve("fs", "testdata");
 // TODO(axetroy): Add test for Windows once symlink is implemented for Windows.
 const isWindows = Deno.build.os === "win";
 
-async function testCopy(
-  name: string,
-  cb: (tempDir: string) => Promise<void>
-): Promise<void> {
+function testCopy(name: string, cb: (tempDir: string) => Promise<void>): void {
   Deno.test({
     name,
     async fn(): Promise<void> {
       const tempDir = await Deno.makeTempDir({
-        prefix: "deno_std_copy_async_test_"
+        prefix: "deno_std_copy_async_test_",
       });
       await cb(tempDir);
       await Deno.remove(tempDir, { recursive: true });
-    }
+    },
   });
 }
 
@@ -38,11 +35,11 @@ function testCopySync(name: string, cb: (tempDir: string) => void): void {
     name,
     fn: (): void => {
       const tempDir = Deno.makeTempDirSync({
-        prefix: "deno_std_copy_sync_test_"
+        prefix: "deno_std_copy_sync_test_",
       });
       cb(tempDir);
       Deno.removeSync(tempDir, { recursive: true });
-    }
+    },
   });
 }
 
@@ -152,7 +149,7 @@ testCopy(
     // Copy with overwrite and preserve timestamps options.
     await copy(srcFile, destFile, {
       overwrite: true,
-      preserveTimestamps: true
+      preserveTimestamps: true,
     });
 
     const destStatInfo = await Deno.stat(destFile);
@@ -336,7 +333,7 @@ testCopySync(
     // Copy with overwrite and preserve timestamps options.
     copySync(srcFile, destFile, {
       overwrite: true,
-      preserveTimestamps: true
+      preserveTimestamps: true,
     });
 
     const destStatInfo = Deno.statSync(destFile);

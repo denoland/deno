@@ -136,9 +136,9 @@ fn op_fetch_source_files(
           }
           _ => f,
         };
-        // Special handling of Wasm files:
+        // Special handling of WASM and JSON files:
         // compile them into JS first!
-        // This allows TS to do correct export types.
+        // This allows TS to do correct export types as well as bundles.
         let source_code = match file.media_type {
           msg::MediaType::Wasm => {
             global_state
@@ -148,7 +148,16 @@ fn op_fetch_source_files(
               .map_err(|e| OpError::other(e.to_string()))?
               .code
           }
-          _ => String::from_utf8(file.source_code).unwrap(),
+          msg::MediaType::Json => {
+            global_state
+              .json_compiler
+              .compile(&file)
+              .await
+              .map_err(|e| OpError::other(e.to_string()))?
+              .code
+          }
+          _ => String::from_utf8(file.source_code)
+            .map_err(|_| OpError::invalid_utf8())?,
         };
         Ok::<_, OpError>(json!({
           "url": file.url.to_string(),

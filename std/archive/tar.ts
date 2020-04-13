@@ -104,68 +104,68 @@ struct posix_header {           // byte offset
 const ustarStructure: Array<{ field: string; length: number }> = [
   {
     field: "fileName",
-    length: 100
+    length: 100,
   },
   {
     field: "fileMode",
-    length: 8
+    length: 8,
   },
   {
     field: "uid",
-    length: 8
+    length: 8,
   },
   {
     field: "gid",
-    length: 8
+    length: 8,
   },
   {
     field: "fileSize",
-    length: 12
+    length: 12,
   },
   {
     field: "mtime",
-    length: 12
+    length: 12,
   },
   {
     field: "checksum",
-    length: 8
+    length: 8,
   },
   {
     field: "type",
-    length: 1
+    length: 1,
   },
   {
     field: "linkName",
-    length: 100
+    length: 100,
   },
   {
     field: "ustar",
-    length: 8
+    length: 8,
   },
   {
     field: "owner",
-    length: 32
+    length: 32,
   },
   {
     field: "group",
-    length: 32
+    length: 32,
   },
   {
     field: "majorNumber",
-    length: 8
+    length: 8,
   },
   {
     field: "minorNumber",
-    length: 8
+    length: 8,
   },
   {
     field: "fileNamePrefix",
-    length: 155
+    length: 155,
   },
   {
     field: "padding",
-    length: 12
-  }
+    length: 12,
+  },
 ];
 
 /**
@@ -175,7 +175,7 @@ function formatHeader(data: TarData): Uint8Array {
   const encoder = new TextEncoder(),
     buffer = clean(512);
   let offset = 0;
-  ustarStructure.forEach(function(value): void {
+  ustarStructure.forEach(function (value): void {
     const entry = encoder.encode(data[value.field as keyof TarData] || "");
     buffer.set(entry, offset);
     offset += value.length; // space it out with nulls
@@ -190,7 +190,7 @@ function formatHeader(data: TarData): Uint8Array {
 function parseHeader(buffer: Uint8Array): { [key: string]: Uint8Array } {
   const data: { [key: string]: Uint8Array } = {};
   let offset = 0;
-  ustarStructure.forEach(function(value): void {
+  ustarStructure.forEach(function (value): void {
     const arr = buffer.subarray(offset, offset + value.length);
     data[value.field] = arr;
     offset += value.length;
@@ -334,7 +334,7 @@ export class Tar {
       );
     }
 
-    const fileSize = info?.len ?? opts.contentSize;
+    const fileSize = info?.size ?? opts.contentSize;
     assert(fileSize != null, "fileSize must be set");
     const tarData: TarDataWithSource = {
       fileName,
@@ -350,7 +350,7 @@ export class Tar {
       owner: opts.owner || "",
       group: opts.group || "",
       filePath: opts.filePath,
-      reader: opts.reader
+      reader: opts.reader,
     };
 
     // calculate the checksum
@@ -358,7 +358,7 @@ export class Tar {
     const encoder = new TextEncoder();
     Object.keys(tarData)
       .filter((key): boolean => ["filePath", "reader"].indexOf(key) < 0)
-      .forEach(function(key): void {
+      .forEach(function (key): void {
         checksum += encoder
           .encode(tarData[key as keyof TarData])
           .reduce((p, c): number => p + c, 0);
@@ -424,7 +424,7 @@ export class Untar {
       decoder = new TextDecoder("ascii");
     Object.keys(header)
       .filter((key): boolean => key !== "checksum")
-      .forEach(function(key): void {
+      .forEach(function (key): void {
         checksum += header[key].reduce((p, c): number => p + c, 0);
       });
     checksum += encoder.encode("        ").reduce((p, c): number => p + c, 0);
@@ -440,7 +440,7 @@ export class Untar {
 
     // get meta data
     const meta: UntarOptions = {
-      fileName: decoder.decode(trim(header.fileName))
+      fileName: decoder.decode(trim(header.fileName)),
     };
     const fileNamePrefix = trim(header.fileNamePrefix);
     if (fileNamePrefix.byteLength > 0) {

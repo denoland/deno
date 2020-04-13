@@ -6,11 +6,18 @@
 // https://github.com/golang/go/blob/master/src/net/http/responsewrite_test.go
 
 import { TextProtoReader } from "../textproto/mod.ts";
-import { assert, assertEquals, assertNotEOF } from "../testing/asserts.ts";
-import { Response, ServerRequest, serve } from "./server.ts";
+import {
+  assert,
+  assertEquals,
+  assertMatch,
+  assertNotEOF,
+  assertStrContains,
+  assertThrowsAsync,
+} from "../testing/asserts.ts";
+import { Response, ServerRequest, Server, serve } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
-import { delay, deferred } from "../util/async.ts";
-import { encode, decode } from "../strings/mod.ts";
+import { delay } from "../util/async.ts";
+import { encode, decode } from "../encoding/utf8.ts";
 import { mockConn } from "./mock.ts";
 
 const { Buffer, test } = Deno;
@@ -24,27 +31,27 @@ const responseTests: ResponseTest[] = [
   // Default response
   {
     response: {},
-    raw: "HTTP/1.1 200 OK\r\n" + "content-length: 0" + "\r\n\r\n"
+    raw: "HTTP/1.1 200 OK\r\n" + "content-length: 0" + "\r\n\r\n",
   },
   // Empty body with status
   {
     response: {
-      status: 404
+      status: 404,
     },
-    raw: "HTTP/1.1 404 Not Found\r\n" + "content-length: 0" + "\r\n\r\n"
+    raw: "HTTP/1.1 404 Not Found\r\n" + "content-length: 0" + "\r\n\r\n",
   },
   // HTTP/1.1, chunked coding; empty trailer; close
   {
     response: {
       status: 200,
-      body: new Buffer(new TextEncoder().encode("abcdef"))
+      body: new Buffer(new TextEncoder().encode("abcdef")),
     },
 
     raw:
       "HTTP/1.1 200 OK\r\n" +
       "transfer-encoding: chunked\r\n\r\n" +
-      "6\r\nabcdef\r\n0\r\n\r\n"
-  }
+      "6\r\nabcdef\r\n0\r\n\r\n",
+  },
 ];
 
 test(async function responseWrite(): Promise<void> {
@@ -62,7 +69,7 @@ test(async function responseWrite(): Promise<void> {
   }
 });
 
-test(async function requestContentLength(): Promise<void> {
+test(function requestContentLength(): void {
   // Has content length
   {
     const req = new ServerRequest();
@@ -112,7 +119,7 @@ function totalReader(r: Deno.Reader): TotalReader {
     read,
     get total(): number {
       return _total;
-    }
+    },
   };
 }
 test(async function requestBodyWithContentLength(): Promise<void> {
@@ -163,7 +170,7 @@ test("ServerRequest.finalize() should consume unread body / chunked, trailers", 
     "deno: land",
     "node: js",
     "",
-    ""
+    "",
   ].join("\r\n");
   const req = new ServerRequest();
   req.headers = new Headers();
@@ -343,89 +350,102 @@ test(async function requestBodyReaderWithTransferEncoding(): Promise<void> {
   }
 });
 
-test("destroyed connection", async (): Promise<void> => {
-  // Runs a simple server as another process
-  const p = Deno.run({
-    args: [Deno.execPath(), "--allow-net", "http/testdata/simple_server.ts"],
-    stdout: "piped"
-  });
-
-  try {
-    const r = new TextProtoReader(new BufReader(p.stdout!));
-    const s = await r.readLine();
-    assert(s !== Deno.EOF && s.includes("server listening"));
+test({
+  name: "destroyed connection",
+  // FIXME(bartlomieju): hangs on windows, cause can't do `Deno.kill`
+  ignore: true,
+  fn: async (): Promise<void> => {
+    // Runs a simple server as another process
+    const p = Deno.run({
+      cmd: [Deno.execPath(), "--allow-net", "http/testdata/simple_server.ts"],
+      stdout: "piped",
+    });
 
     let serverIsRunning = true;
-    p.status()
+    const statusPromise = p
+      .status()
       .then((): void => {
         serverIsRunning = false;
       })
       .catch((_): void => {}); // Ignores the error when closing the process.
 
-    await delay(100);
-
-    // Reqeusts to the server and immediately closes the connection
-    const conn = await Deno.connect({ port: 4502 });
-    await conn.write(new TextEncoder().encode("GET / HTTP/1.0\n\n"));
-    conn.close();
-
-    // Waits for the server to handle the above (broken) request
-    await delay(100);
-
-    assert(serverIsRunning);
-  } finally {
-    // Stops the sever.
-    p.close();
-  }
+    try {
+      const r = new TextProtoReader(new BufReader(p.stdout!));
+      const s = await r.readLine();
+      assert(s !== Deno.EOF && s.includes("server listening"));
+      await delay(100);
+      // Reqeusts to the server and immediately closes the connection
+      const conn = await Deno.connect({ port: 4502 });
+      await conn.write(new TextEncoder().encode("GET / HTTP/1.0\n\n"));
+      conn.close();
+      // Waits for the server to handle the above (broken) request
+      await delay(100);
+      assert(serverIsRunning);
+    } finally {
+      // Stops the sever and allows `p.status()` promise to resolve
+      Deno.kill(p.pid, Deno.Signal.SIGKILL);
+      await statusPromise;
+      p.stdout!.close();
+      p.close();
+    }
+  },
 });
 
-test("serveTLS", async (): Promise<void> => {
-  // Runs a simple server as another process
-  const p = Deno.run({
-    args: [
-      Deno.execPath(),
-      "--allow-net",
-      "--allow-read",
-      "http/testdata/simple_https_server.ts"
-    ],
-    stdout: "piped"
-  });
-
-  try {
-    const r = new TextProtoReader(new BufReader(p.stdout!));
-    const s = await r.readLine();
-    assert(
-      s !== Deno.EOF && s.includes("server listening"),
-      "server must be started"
-    );
+test({
+  name: "serveTLS",
+  // FIXME(bartlomieju): hangs on windows, cause can't do `Deno.kill`
+  ignore: true,
+  fn: async (): Promise<void> => {
+    // Runs a simple server as another process
+    const p = Deno.run({
+      cmd: [
+        Deno.execPath(),
+        "--allow-net",
+        "--allow-read",
+        "http/testdata/simple_https_server.ts",
+      ],
+      stdout: "piped",
+    });
 
     let serverIsRunning = true;
-    p.status()
+    const statusPromise = p
+      .status()
       .then((): void => {
         serverIsRunning = false;
       })
       .catch((_): void => {}); // Ignores the error when closing the process.
 
-    // Requests to the server and immediately closes the connection
-    const conn = await Deno.connectTLS({
-      hostname: "localhost",
-      port: 4503,
-      certFile: "http/testdata/tls/RootCA.pem"
-    });
-    await Deno.writeAll(
-      conn,
-      new TextEncoder().encode("GET / HTTP/1.0\r\n\r\n")
-    );
-    const res = new Uint8Array(100);
-    const nread = assertNotEOF(await conn.read(res));
-    conn.close();
-    const resStr = new TextDecoder().decode(res.subarray(0, nread));
-    assert(resStr.includes("Hello HTTPS"));
-    assert(serverIsRunning);
-  } finally {
-    // Stops the sever.
-    p.close();
-  }
+    try {
+      const r = new TextProtoReader(new BufReader(p.stdout!));
+      const s = await r.readLine();
+      assert(
+        s !== Deno.EOF && s.includes("server listening"),
+        "server must be started"
+      );
+      // Requests to the server and immediately closes the connection
+      const conn = await Deno.connectTLS({
+        hostname: "localhost",
+        port: 4503,
+        certFile: "http/testdata/tls/RootCA.pem",
+      });
+      await Deno.writeAll(
+        conn,
+        new TextEncoder().encode("GET / HTTP/1.0\r\n\r\n")
+      );
+      const res = new Uint8Array(100);
+      const nread = assertNotEOF(await conn.read(res));
+      conn.close();
+      const resStr = new TextDecoder().decode(res.subarray(0, nread));
+      assert(resStr.includes("Hello HTTPS"));
+      assert(serverIsRunning);
+    } finally {
+      // Stops the sever and allows `p.status()` promise to resolve
+      Deno.kill(p.pid, Deno.Signal.SIGKILL);
+      await statusPromise;
+      p.stdout!.close();
+      p.close();
+    }
+  },
 });
 
 test("close server while iterating", async (): Promise<void> => {
@@ -438,65 +458,89 @@ test("close server while iterating", async (): Promise<void> => {
   assertEquals(await nextAfterClosing, { value: undefined, done: true });
 });
 
-// TODO(kevinkassimo): create a test that works on Windows.
-// The following test is to ensure that if an error occurs during respond
-// would result in connection closed. (such that fd/resource is freed).
-// On *nix, a delayed second attempt to write to a CLOSE_WAIT connection would
-// receive a RST and thus trigger an error during response for us to test.
-// We need to find a way to similarly trigger an error on Windows so that
-// we can test if connection is closed.
-if (Deno.build.os !== "win") {
-  test("respond error handling", async (): Promise<void> => {
-    const connClosedPromise = deferred();
+test({
+  name: "[http] close server while connection is open",
+  async fn(): Promise<void> {
+    async function iteratorReq(server: Server): Promise<void> {
+      for await (const req of server) {
+        await req.respond({ body: new TextEncoder().encode(req.url) });
+      }
+    }
+
+    const server = serve(":8123");
+    const p = iteratorReq(server);
+    const conn = await Deno.connect({ hostname: "127.0.0.1", port: 8123 });
+    await Deno.writeAll(
+      conn,
+      new TextEncoder().encode("GET /hello HTTP/1.1\r\n\r\n")
+    );
+    const res = new Uint8Array(100);
+    const nread = await conn.read(res);
+    assert(nread !== Deno.EOF);
+    const resStr = new TextDecoder().decode(res.subarray(0, nread));
+    assertStrContains(resStr, "/hello");
+    server.close();
+    await p;
+    // Client connection should still be open, verify that
+    // it's visible in resource table.
+    const resources = Deno.resources();
+    assertEquals(resources[conn.rid], "tcpStream");
+    conn.close();
+  },
+});
+
+test({
+  name: "respond error closes connection",
+  async fn(): Promise<void> {
     const serverRoutine = async (): Promise<void> => {
-      let reqCount = 0;
       const server = serve(":8124");
       // @ts-ignore
-      const serverRid = server.listener["rid"];
-      let connRid = -1;
       for await (const req of server) {
-        connRid = req.conn.rid;
-        reqCount++;
-        await Deno.readAll(req.body);
-        await connClosedPromise;
-        try {
+        await assertThrowsAsync(async () => {
           await req.respond({
-            body: new TextEncoder().encode("Hello World")
+            status: 12345,
+            body: new TextEncoder().encode("Hello World"),
           });
-          await delay(100);
-          req.done = deferred();
-          // This duplicate respond is to ensure we get a write failure from the
-          // other side. Our client would enter CLOSE_WAIT stage after close(),
-          // meaning first server .send (.respond) after close would still work.
-          // However, a second send would fail under RST, which is similar
-          // to the scenario where a failure happens during .respond
-          await req.respond({
-            body: new TextEncoder().encode("Hello World")
-          });
-        } catch {
-          break;
-        }
+        }, Deno.errors.InvalidData);
+        // The connection should be destroyed
+        assert(!(req.conn.rid in Deno.resources()));
+        server.close();
       }
-      server.close();
-      const resources = Deno.resources();
-      assert(reqCount === 1);
-      // Server should be gone
-      assert(!(serverRid in resources));
-      // The connection should be destroyed
-      assert(!(connRid in resources));
     };
     const p = serverRoutine();
     const conn = await Deno.connect({
       hostname: "127.0.0.1",
-      port: 8124
+      port: 8124,
     });
     await Deno.writeAll(
       conn,
       new TextEncoder().encode("GET / HTTP/1.1\r\n\r\n")
     );
-    conn.close(); // abruptly closing connection before response.
-    // conn on server side enters CLOSE_WAIT state.
-    connClosedPromise.resolve();
+    conn.close();
     await p;
-  });
-}
+  },
+});
+
+test({
+  name: "[http] request error gets 400 response",
+  async fn(): Promise<void> {
+    const server = serve(":8124");
+    const entry = server[Symbol.asyncIterator]().next();
+    const conn = await Deno.connect({
+      hostname: "127.0.0.1",
+      port: 8124,
+    });
+    await Deno.writeAll(
+      conn,
+      encode("GET / HTTP/1.1\r\nmalformedHeader\r\n\r\n\r\n\r\n")
+    );
+    const responseString = decode(await Deno.readAll(conn));
+    assertMatch(
+      responseString,
+      /^HTTP\/1\.1 400 Bad Request\r\ncontent-length: \d+\r\n\r\n.*\r\n\r\n$/ms
+    );
+    conn.close();
+    server.close();
+    assert((await entry).done);
+  },
+});

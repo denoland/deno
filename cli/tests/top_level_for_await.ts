@@ -1,3 +1,4 @@
+// eslint-disable-next-line require-await
 async function* asyncGenerator(): AsyncIterableIterator<number> {
   let i = 0;
   while (i < 3) {

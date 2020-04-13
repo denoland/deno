@@ -14,6 +14,8 @@ extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
 extern crate rand;
+extern crate regex;
+extern crate reqwest;
 extern crate serde;
 extern crate serde_derive;
 extern crate tokio;
@@ -25,16 +27,18 @@ pub mod compilers;
 pub mod deno_dir;
 pub mod diagnostics;
 mod disk_cache;
+mod doc;
 mod file_fetcher;
 pub mod flags;
 mod fmt;
 pub mod fmt_errors;
 mod fs;
-mod global_state;
+pub mod global_state;
 mod global_timer;
 pub mod http_cache;
 mod http_util;
 mod import_map;
+mod inspector;
 pub mod installer;
 mod js;
 mod lockfile;
@@ -52,16 +56,24 @@ pub mod state;
 mod test_runner;
 pub mod test_util;
 mod tokio_util;
+mod upgrade;
 pub mod version;
 mod web_worker;
 pub mod worker;
 
+pub use dprint_plugin_typescript::swc_common;
+pub use dprint_plugin_typescript::swc_ecma_ast;
+pub use dprint_plugin_typescript::swc_ecma_parser;
+
 use crate::compilers::TargetLib;
+use crate::doc::parser::DocFileLoader;
 use crate::file_fetcher::SourceFile;
-use crate::fs as deno_fs;
+use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::msg::MediaType;
+use crate::op_error::OpError;
 use crate::ops::io::get_stdio;
+use crate::state::DebugType;
 use crate::state::State;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
@@ -70,13 +82,15 @@ use deno_core::ModuleSpecifier;
 use flags::DenoSubcommand;
 use flags::Flags;
 use futures::future::FutureExt;
+use futures::Future;
 use log::Level;
 use log::Metadata;
 use log::Record;
 use std::env;
-use std::fs as std_fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::pin::Pin;
+use upgrade::upgrade_command;
 use url::Url;
 
 static LOGGER: Logger = Logger;
@@ -108,11 +122,23 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
+fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
+  use std::io::ErrorKind;
+
+  match std::io::stdout().write_all(bytes) {
+    Ok(()) => Ok(()),
+    Err(e) => match e.kind() {
+      ErrorKind::BrokenPipe => Ok(()),
+      _ => Err(e),
+    },
+  }
+}
+
 fn create_main_worker(
   global_state: GlobalState,
   main_module: ModuleSpecifier,
 ) -> Result<MainWorker, ErrBox> {
-  let state = State::new(global_state, None, main_module)?;
+  let state = State::new(global_state, None, main_module, DebugType::Main)?;
 
   {
     let mut s = state.borrow_mut();
@@ -225,6 +251,15 @@ async fn print_file_info(
   Ok(())
 }
 
+fn get_types() -> String {
+  format!(
+    "{}\n{}\n{}",
+    crate::js::DENO_NS_LIB,
+    crate::js::SHARED_GLOBALS_LIB,
+    crate::js::WINDOW_LIB
+  )
+}
+
 async fn info_command(
   flags: Flags,
   file: Option<String>,
@@ -261,7 +296,7 @@ async fn install_command(
     .map_err(ErrBox::from)
 }
 
-async fn fetch_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
+async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$fetch.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
@@ -341,6 +376,74 @@ async fn bundle_command(
   bundle_result
 }
 
+async fn doc_command(
+  flags: Flags,
+  source_file: Option<String>,
+  json: bool,
+  maybe_filter: Option<String>,
+) -> Result<(), ErrBox> {
+  let global_state = GlobalState::new(flags.clone())?;
+  let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
+
+  impl DocFileLoader for SourceFileFetcher {
+    fn load_source_code(
+      &self,
+      specifier: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<String, OpError>>>> {
+      let specifier =
+        ModuleSpecifier::resolve_url_or_path(specifier).expect("Bad specifier");
+      let fetcher = self.clone();
+
+      async move {
+        let source_file = fetcher.fetch_source_file(&specifier, None).await?;
+        String::from_utf8(source_file.source_code)
+          .map_err(|_| OpError::other("failed to parse".to_string()))
+      }
+      .boxed_local()
+    }
+  }
+
+  let loader = Box::new(global_state.file_fetcher.clone());
+  let doc_parser = doc::DocParser::new(loader);
+
+  let parse_result = if source_file == "--builtin" {
+    doc_parser.parse_source("lib.deno.d.ts", get_types().as_str())
+  } else {
+    let module_specifier =
+      ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
+    doc_parser
+      .parse_with_reexports(&module_specifier.to_string())
+      .await
+  };
+
+  let doc_nodes = match parse_result {
+    Ok(nodes) => nodes,
+    Err(e) => {
+      eprintln!("{}", e);
+      std::process::exit(1);
+    }
+  };
+
+  if json {
+    let writer = std::io::BufWriter::new(std::io::stdout());
+    serde_json::to_writer_pretty(writer, &doc_nodes).map_err(ErrBox::from)
+  } else {
+    let details = if let Some(filter) = maybe_filter {
+      let node = doc::find_node_by_name_recursively(doc_nodes, filter.clone());
+      if let Some(node) = node {
+        doc::printer::format_details(node)
+      } else {
+        eprintln!("Node {} was not found!", filter);
+        std::process::exit(1);
+      }
+    } else {
+      doc::printer::format(doc_nodes)
+    };
+
+    write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(ErrBox::from)
+  }
+}
+
 async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$repl.ts").unwrap();
@@ -378,6 +481,7 @@ async fn test_command(
   include: Option<Vec<String>>,
   fail_fast: bool,
   allow_none: bool,
+  filter: Option<String>,
 ) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
   let cwd = std::env::current_dir().expect("No current directory");
@@ -392,23 +496,32 @@ async fn test_command(
     return Ok(());
   }
 
-  let test_file = test_runner::render_test_file(test_modules, fail_fast);
   let test_file_path = cwd.join(".deno.test.ts");
   let test_file_url =
     Url::from_file_path(&test_file_path).expect("Should be valid file url");
+  let test_file =
+    test_runner::render_test_file(test_modules, fail_fast, filter);
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
-  // First create worker with specified test file and only then write
-  // file to disk. Then test file will be executed and removed
-  // immediately after. That way even if compilation/tests fail test
-  // file can be cleaned up.
   let mut worker =
     create_main_worker(global_state.clone(), main_module.clone())?;
-  deno_fs::write_file(&test_file_path, test_file.as_bytes(), 0o666)
-    .expect("Can't write test file");
+  // Create a dummy source file.
+  let source_file = SourceFile {
+    filename: test_file_url.to_file_path().unwrap(),
+    url: test_file_url,
+    types_url: None,
+    media_type: MediaType::TypeScript,
+    source_code: test_file.clone().into_bytes(),
+  };
+  // Save our fake file into file fetcher cache
+  // to allow module access by TS compiler (e.g. op_fetch_source_files)
+  worker
+    .state
+    .borrow()
+    .global_state
+    .file_fetcher
+    .save_source_file_in_cache(&main_module, source_file);
   let execute_result = worker.execute_module(&main_module).await;
-  // Remove temporary test file
-  std_fs::remove_file(&test_file_path).expect("Failed to remove temp file");
   execute_result?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   (&mut *worker).await?;
@@ -440,12 +553,17 @@ pub fn main() {
       source_file,
       out_file,
     } => bundle_command(flags, source_file, out_file).boxed_local(),
+    DenoSubcommand::Doc {
+      source_file,
+      json,
+      filter,
+    } => doc_command(flags, source_file, json, filter).boxed_local(),
     DenoSubcommand::Eval {
       code,
       as_typescript,
     } => eval_command(flags, code, as_typescript).boxed_local(),
-    DenoSubcommand::Fetch { files } => {
-      fetch_command(flags, files).boxed_local()
+    DenoSubcommand::Cache { files } => {
+      cache_command(flags, files).boxed_local()
     }
     DenoSubcommand::Fmt { check, files } => {
       async move { fmt::format(files, check) }.boxed_local()
@@ -465,21 +583,27 @@ pub fn main() {
       fail_fast,
       include,
       allow_none,
-    } => test_command(flags, include, fail_fast, allow_none).boxed_local(),
+      filter,
+    } => {
+      test_command(flags, include, fail_fast, allow_none, filter).boxed_local()
+    }
     DenoSubcommand::Completions { buf } => {
-      print!("{}", std::str::from_utf8(&buf).unwrap());
+      if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
+        eprintln!("{}", e);
+        std::process::exit(1);
+      }
       return;
     }
     DenoSubcommand::Types => {
-      let types = format!(
-        "{}\n{}\n{}",
-        crate::js::DENO_NS_LIB,
-        crate::js::SHARED_GLOBALS_LIB,
-        crate::js::WINDOW_LIB
-      );
-      // TODO(ry) Only ignore SIGPIPE. Currently ignoring all errors.
-      let _r = std::io::stdout().write_all(types.as_bytes());
+      let types = get_types();
+      if let Err(e) = write_to_stdout_ignore_sigpipe(types.as_bytes()) {
+        eprintln!("{}", e);
+        std::process::exit(1);
+      }
       return;
+    }
+    DenoSubcommand::Upgrade { force, dry_run } => {
+      upgrade_command(dry_run, force).boxed_local()
     }
     _ => unreachable!(),
   };

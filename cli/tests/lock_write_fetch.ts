@@ -5,14 +5,14 @@ try {
 const fetchProc = Deno.run({
   stdout: "null",
   stderr: "null",
-  args: [
+  cmd: [
     Deno.execPath(),
-    "fetch",
+    "cache",
     "--reload",
     "--lock=lock_write_fetch.json",
     "--lock-write",
-    "https_import.ts"
-  ]
+    "https_import.ts",
+  ],
 });
 
 const fetchCode = (await fetchProc.status()).code;
@@ -21,12 +21,12 @@ console.log(`fetch code: ${fetchCode}`);
 const fetchCheckProc = Deno.run({
   stdout: "null",
   stderr: "null",
-  args: [
+  cmd: [
     Deno.execPath(),
-    "fetch",
+    "cache",
     "--lock=lock_write_fetch.json",
-    "https_import.ts"
-  ]
+    "https_import.ts",
+  ],
 });
 
 const fetchCheckProcCode = (await fetchCheckProc.status()).code;
@@ -35,7 +35,7 @@ console.log(`fetch check code: ${fetchCheckProcCode}`);
 const runProc = Deno.run({
   stdout: "null",
   stderr: "null",
-  args: [Deno.execPath(), "--lock=lock_write_fetch.json", "https_import.ts"]
+  cmd: [Deno.execPath(), "--lock=lock_write_fetch.json", "https_import.ts"],
 });
 
 const runCode = (await runProc.status()).code;

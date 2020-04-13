@@ -47,19 +47,19 @@ export class PermissionStatus {
 }
 
 export class Permissions {
-  async query(desc: PermissionDescriptor): Promise<PermissionStatus> {
+  query(desc: PermissionDescriptor): Promise<PermissionStatus> {
     const state = permissionsOps.query(desc);
-    return new PermissionStatus(state);
+    return Promise.resolve(new PermissionStatus(state));
   }
 
-  async revoke(desc: PermissionDescriptor): Promise<PermissionStatus> {
+  revoke(desc: PermissionDescriptor): Promise<PermissionStatus> {
     const state = permissionsOps.revoke(desc);
-    return new PermissionStatus(state);
+    return Promise.resolve(new PermissionStatus(state));
   }
 
-  async request(desc: PermissionDescriptor): Promise<PermissionStatus> {
+  request(desc: PermissionDescriptor): Promise<PermissionStatus> {
     const state = permissionsOps.request(desc);
-    return new PermissionStatus(state);
+    return Promise.resolve(new PermissionStatus(state));
   }
 }
 

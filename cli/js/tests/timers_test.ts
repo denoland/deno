@@ -4,7 +4,7 @@ import {
   createResolvable,
   assert,
   assertEquals,
-  assertNotEquals
+  assertNotEquals,
 } from "./test_util.ts";
 
 function deferred(): {
@@ -23,11 +23,11 @@ function deferred(): {
   return {
     promise,
     resolve: resolve!,
-    reject: reject!
+    reject: reject!,
   };
 }
 
-async function waitForMs(ms: number): Promise<number> {
+function waitForMs(ms: number): Promise<number> {
   return new Promise((resolve: () => void): number => setTimeout(resolve, ms));
 }
 
@@ -127,6 +127,9 @@ unitTest(async function intervalSuccess(): Promise<void> {
   clearInterval(id);
   // count should increment twice
   assertEquals(count, 1);
+  // Similar false async leaking alarm.
+  // Force next round of polling.
+  await waitForMs(0);
 });
 
 unitTest(async function intervalCancelSuccess(): Promise<void> {
@@ -155,7 +158,7 @@ unitTest(async function intervalOrdering(): Promise<void> {
   assertEquals(timeouts, 1);
 });
 
-unitTest(async function intervalCancelInvalidSilentFail(): Promise<void> {
+unitTest(function intervalCancelInvalidSilentFail(): void {
   // Should silently fail (no panic)
   clearInterval(2147483647);
 });
@@ -177,7 +180,7 @@ unitTest(async function timeoutCallbackThis(): Promise<void> {
     foo(): void {
       assertEquals(this, window);
       resolve();
-    }
+    },
   };
   setTimeout(obj.foo, 1);
   await promise;
@@ -195,7 +198,7 @@ unitTest(async function timeoutBindThis(): Promise<void> {
     [],
     "foo",
     (): void => {},
-    Object.prototype
+    Object.prototype,
   ];
 
   for (const thisArg of thisCheckPassed) {
@@ -231,13 +234,13 @@ unitTest(async function timeoutBindThis(): Promise<void> {
   }
 });
 
-unitTest(async function clearTimeoutShouldConvertToNumber(): Promise<void> {
+unitTest(function clearTimeoutShouldConvertToNumber(): void {
   let called = false;
   const obj = {
     valueOf(): number {
       called = true;
       return 1;
-    }
+    },
   };
   clearTimeout((obj as unknown) as number);
   assert(called);
@@ -330,24 +333,36 @@ unitTest(async function timerNestedMicrotaskOrdering(): Promise<void> {
   s += "0";
   setTimeout(() => {
     s += "4";
-    setTimeout(() => (s += "8"));
-    Promise.resolve().then(() => {
-      setTimeout(() => {
-        s += "9";
-        resolve();
+    setTimeout(() => (s += "A"));
+    Promise.resolve()
+      .then(() => {
+        setTimeout(() => {
+          s += "B";
+          resolve();
+        });
+      })
+      .then(() => {
+        s += "5";
       });
-    });
   });
-  setTimeout(() => (s += "5"));
+  setTimeout(() => (s += "6"));
   Promise.resolve().then(() => (s += "2"));
   Promise.resolve().then(() =>
     setTimeout(() => {
-      s += "6";
-      Promise.resolve().then(() => (s += "7"));
+      s += "7";
+      Promise.resolve()
+        .then(() => (s += "8"))
+        .then(() => {
+          s += "9";
+        });
     })
   );
   Promise.resolve().then(() => Promise.resolve().then(() => (s += "3")));
   s += "1";
   await promise;
-  assertEquals(s, "0123456789");
+  assertEquals(s, "0123456789AB");
+});
+
+unitTest(function testQueueMicrotask() {
+  assertEquals(typeof queueMicrotask, "function");
 });

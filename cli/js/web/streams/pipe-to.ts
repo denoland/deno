@@ -18,7 +18,7 @@
 
 // import { ReadableStreamDefaultReader } from "./readable-stream-default-reader.ts";
 // import { WritableStreamDefaultWriter } from "./writable-stream-default-writer.ts";
-// import { PipeOptions } from "../dom_types.ts";
+// import { PipeOptions } from "../dom_types.d.ts";
 // import { Err } from "../errors.ts";
 
 // // add a wrapper to handle falsy rejections

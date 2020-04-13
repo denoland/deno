@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as util from "../util.ts";
-import { TextEncoder, TextDecoder } from "../web/text_encoding.ts";
 import { core } from "../core.ts";
 import { OPS_CACHE } from "../runtime.ts";
 import { ErrorKind, getErrorClass } from "../errors.ts";
@@ -30,13 +29,13 @@ function nextPromiseId(): number {
 }
 
 function decode(ui8: Uint8Array): JsonResponse {
-  const s = new TextDecoder().decode(ui8);
+  const s = core.decode(ui8);
   return JSON.parse(s) as JsonResponse;
 }
 
 function encode(args: object): Uint8Array {
   const s = JSON.stringify(args);
-  return new TextEncoder().encode(s);
+  return core.encode(s);
 }
 
 function unwrapResponse(res: JsonResponse): Ok {

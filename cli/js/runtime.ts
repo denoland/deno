@@ -7,6 +7,7 @@ import { setBuildInfo } from "./build.ts";
 import { setVersions } from "./version.ts";
 import { setPrepareStackTrace } from "./error_stack.ts";
 import { Start, start as startOp } from "./ops/runtime.ts";
+import { handleTimerMacrotask } from "./web/timers.ts";
 
 export let OPS_CACHE: { [name: string]: number };
 
@@ -27,6 +28,7 @@ export function initOps(): void {
   for (const [name, opId] of Object.entries(OPS_CACHE)) {
     core.setAsyncHandler(opId, getAsyncHandler(name));
   }
+  core.setMacrotaskCallback(handleTimerMacrotask);
 }
 
 export function start(source?: string): Start {

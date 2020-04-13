@@ -6,7 +6,7 @@ test({
   name: "empty",
   fn(): void {
     assertEquals(diff([], []), []);
-  }
+  },
 });
 
 test({
@@ -14,30 +14,30 @@ test({
   fn(): void {
     assertEquals(diff(["a"], ["b"]), [
       { type: "removed", value: "a" },
-      { type: "added", value: "b" }
+      { type: "added", value: "b" },
     ]);
-  }
+  },
 });
 
 test({
   name: '"a" vs "a"',
   fn(): void {
     assertEquals(diff(["a"], ["a"]), [{ type: "common", value: "a" }]);
-  }
+  },
 });
 
 test({
   name: '"a" vs ""',
   fn(): void {
     assertEquals(diff(["a"], []), [{ type: "removed", value: "a" }]);
-  }
+  },
 });
 
 test({
   name: '"" vs "a"',
   fn(): void {
     assertEquals(diff([], ["a"]), [{ type: "added", value: "a" }]);
-  }
+  },
 });
 
 test({
@@ -45,9 +45,9 @@ test({
   fn(): void {
     assertEquals(diff(["a"], ["a", "b"]), [
       { type: "common", value: "a" },
-      { type: "added", value: "b" }
+      { type: "added", value: "b" },
     ]);
-  }
+  },
 });
 
 test({
@@ -62,9 +62,9 @@ test({
       { type: "common", value: "n" },
       { type: "common", value: "g" },
       { type: "removed", value: "t" },
-      { type: "removed", value: "h" }
+      { type: "removed", value: "h" },
     ]);
-  }
+  },
 });
 
 test({
@@ -78,9 +78,9 @@ test({
       { type: "removed", value: "n" },
       { type: "removed", value: "g" },
       { type: "removed", value: "t" },
-      { type: "removed", value: "h" }
+      { type: "removed", value: "h" },
     ]);
-  }
+  },
 });
 
 test({
@@ -94,9 +94,9 @@ test({
       { type: "added", value: "n" },
       { type: "added", value: "g" },
       { type: "added", value: "t" },
-      { type: "added", value: "h" }
+      { type: "added", value: "h" },
     ]);
-  }
+  },
 });
 
 test({
@@ -105,7 +105,7 @@ test({
     assertEquals(diff(["abc", "c"], ["abc", "bcd", "c"]), [
       { type: "common", value: "abc" },
       { type: "added", value: "bcd" },
-      { type: "common", value: "c" }
+      { type: "common", value: "c" },
     ]);
-  }
+  },
 });

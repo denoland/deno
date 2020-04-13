@@ -1,4 +1,4 @@
-async function fn(): Promise<never> {
+function fn(): Promise<never> {
   throw new Error("message");
 }
 async function call(): Promise<void> {

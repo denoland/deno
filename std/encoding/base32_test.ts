@@ -6,7 +6,7 @@ import { encode, decode } from "./base32.ts";
 
 // Lifted from https://stackoverflow.com/questions/38987784
 const fromHexString = (hexString: string): Uint8Array =>
-  new Uint8Array(hexString.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+  new Uint8Array(hexString.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)));
 const toHexString = (bytes: Uint8Array): string =>
   bytes.reduce((str, byte) => str + byte.toString(16).padStart(2, "0"), "");
 
@@ -34,56 +34,56 @@ const testCases = [
   ["ddf80ebe21bf1b1e12a64c5cc6a74b5d92dd", "3X4A5PRBX4NR4EVGJROMNJ2LLWJN2==="],
   [
     "c0cae52c6f641ce04a7ee5b9a8fa8ded121bca",
-    "YDFOKLDPMQOOAST64W42R6UN5UJBXSQ="
+    "YDFOKLDPMQOOAST64W42R6UN5UJBXSQ=",
   ],
   [
     "872840a355c8c70586f462c9e669ee760cb3537e",
-    "Q4UEBI2VZDDQLBXUMLE6M2POOYGLGU36"
+    "Q4UEBI2VZDDQLBXUMLE6M2POOYGLGU36",
   ],
   [
     "5773fe22662818a120c5688824c935fe018208a496",
-    "K5Z74ITGFAMKCIGFNCECJSJV7YAYECFESY======"
+    "K5Z74ITGFAMKCIGFNCECJSJV7YAYECFESY======",
   ],
   [
     "416e23abc524d1b85736e2bea6cfecd5192789034a28",
-    "IFXCHK6FETI3QVZW4K7KNT7M2UMSPCIDJIUA===="
+    "IFXCHK6FETI3QVZW4K7KNT7M2UMSPCIDJIUA====",
   ],
   [
     "83d2386ebdd7e8e818ec00e3ccd882aa933b905b7e2e44",
-    "QPJDQ3V527UOQGHMADR4ZWECVKJTXEC3PYXEI==="
+    "QPJDQ3V527UOQGHMADR4ZWECVKJTXEC3PYXEI===",
   ],
   [
     "a2fa8b881f3b8024f52745763c4ae08ea12bdf8bef1a72f8",
-    "UL5IXCA7HOACJ5JHIV3DYSXAR2QSXX4L54NHF6A="
+    "UL5IXCA7HOACJ5JHIV3DYSXAR2QSXX4L54NHF6A=",
   ],
   [
     "b074ae8b9efde0f17f37bccadde006d039997b59c8efb05add",
-    "WB2K5C467XQPC7ZXXTFN3YAG2A4ZS62ZZDX3AWW5"
+    "WB2K5C467XQPC7ZXXTFN3YAG2A4ZS62ZZDX3AWW5",
   ],
   [
     "764fef941aee7e416dc204ae5ab9c5b9ce644567798e6849aea9",
-    "OZH67FA25Z7EC3OCASXFVOOFXHHGIRLHPGHGQSNOVE======"
+    "OZH67FA25Z7EC3OCASXFVOOFXHHGIRLHPGHGQSNOVE======",
   ],
   [
     "4995d9811f37f59797d7c3b9b9e5325aa78277415f70f4accf588c",
-    "JGK5TAI7G72ZPF6XYO43TZJSLKTYE52BL5YPJLGPLCGA===="
+    "JGK5TAI7G72ZPF6XYO43TZJSLKTYE52BL5YPJLGPLCGA====",
   ],
   [
     "24f0812ca8eed58374c11a7008f0b262698b72fd2792709208eaacb2",
-    "ETYICLFI53KYG5GBDJYAR4FSMJUYW4X5E6JHBEQI5KWLE==="
+    "ETYICLFI53KYG5GBDJYAR4FSMJUYW4X5E6JHBEQI5KWLE===",
   ],
   [
     "d70692543810d4bf50d81cf44a55801a557a388a341367c7ea077ca306",
-    "24DJEVBYCDKL6UGYDT2EUVMADJKXUOEKGQJWPR7KA56KGBQ="
+    "24DJEVBYCDKL6UGYDT2EUVMADJKXUOEKGQJWPR7KA56KGBQ=",
   ],
   [
     "6e08a89ca36b677ff8fe99e68a1241c8d8cef2570a5f60b6417d2538b30c",
-    "NYEKRHFDNNTX76H6THTIUESBZDMM54SXBJPWBNSBPUSTRMYM"
+    "NYEKRHFDNNTX76H6THTIUESBZDMM54SXBJPWBNSBPUSTRMYM",
   ],
   [
     "f2fc2319bd29457ccd01e8e194ee9bd7e97298b6610df4ab0f3d5baa0b2d7ccf69829edb74edef",
-    "6L6CGGN5FFCXZTIB5DQZJ3U327UXFGFWMEG7JKYPHVN2UCZNPTHWTAU63N2O33Y="
-  ]
+    "6L6CGGN5FFCXZTIB5DQZJ3U327UXFGFWMEG7JKYPHVN2UCZNPTHWTAU63N2O33Y=",
+  ],
 ];
 
 Deno.test({
@@ -92,7 +92,7 @@ Deno.test({
     for (const [bin, b32] of testCases) {
       assertEquals(encode(fromHexString(bin)), b32);
     }
-  }
+  },
 });
 
 Deno.test({
@@ -101,7 +101,7 @@ Deno.test({
     for (const [bin, b32] of testCases) {
       assertEquals(toHexString(decode(b32)), bin);
     }
-  }
+  },
 });
 
 Deno.test({
@@ -117,7 +117,7 @@ Deno.test({
       errorCaught = true;
     }
     assert(errorCaught);
-  }
+  },
 });
 
 Deno.test({
@@ -131,5 +131,5 @@ Deno.test({
       errorCaught = true;
     }
     assert(errorCaught);
-  }
+  },
 });

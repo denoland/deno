@@ -4,18 +4,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // TODO don't disable this warning
 
-import { AbortSignal, QueuingStrategySizeCallback } from "../dom_types.ts";
+import { QueuingStrategySizeCallback } from "../dom_types.d.ts";
 
 // common stream fields
 
 export const state_ = Symbol("state_");
 export const storedError_ = Symbol("storedError_");
 
-// ---------
-
 export type ErrorResult = any;
-
-// ---------
 
 export function isInteger(value: number): boolean {
   if (!isFinite(value)) {
@@ -223,7 +219,7 @@ export function createAlgorithmFromUnderlyingMethod<
   if (typeof method !== "function") {
     throw new TypeError(`Field "${methodName}" is not a function.`);
   }
-  return function(...fnArgs: any[]): any {
+  return function (...fnArgs: any[]): any {
     return promiseCall(method, obj, fnArgs.concat(extraArgs));
   };
 }
@@ -252,7 +248,7 @@ export function makeSizeAlgorithmFromSizeFunction<T>(
   if (typeof sizeFn !== "function" && typeof sizeFn !== "undefined") {
     throw new TypeError("size function must be undefined or a function");
   }
-  return function(chunk: T): number {
+  return function (chunk: T): number {
     if (typeof sizeFn === "function") {
       return sizeFn(chunk);
     }
@@ -265,7 +261,7 @@ export function makeSizeAlgorithmFromSizeFunction<T>(
 export const enum ControlledPromiseState {
   Pending,
   Resolved,
-  Rejected
+  Rejected,
 }
 
 export interface ControlledPromise<V> {
@@ -277,14 +273,14 @@ export interface ControlledPromise<V> {
 
 export function createControlledPromise<V>(): ControlledPromise<V> {
   const conProm = {
-    state: ControlledPromiseState.Pending
+    state: ControlledPromiseState.Pending,
   } as ControlledPromise<V>;
-  conProm.promise = new Promise<V>(function(resolve, reject) {
-    conProm.resolve = function(v?: V): void {
+  conProm.promise = new Promise<V>(function (resolve, reject) {
+    conProm.resolve = function (v?: V): void {
       conProm.state = ControlledPromiseState.Resolved;
       resolve(v);
     };
-    conProm.reject = function(e?: ErrorResult): void {
+    conProm.reject = function (e?: ErrorResult): void {
       conProm.state = ControlledPromiseState.Rejected;
       reject(e);
     };

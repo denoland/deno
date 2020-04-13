@@ -11,8 +11,8 @@ unitTest(function formatDiagnosticBasic() {
       scriptResourceName: "foo.ts",
       startColumn: 1,
       endColumn: 2,
-      code: 4000
-    }
+      code: 4000,
+    },
   ];
   const out = Deno.formatDiagnostics(fixture);
   assert(out.includes("Example error"));
@@ -31,7 +31,3 @@ unitTest(function formatDiagnosticError() {
   }
   assert(thrown);
 });
-
-if (import.meta.main) {
-  Deno.runTests();
-}

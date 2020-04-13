@@ -7,7 +7,7 @@ import {
   CHAR_DOT,
   CHAR_BACKWARD_SLASH,
   CHAR_COLON,
-  CHAR_QUESTION_MARK
+  CHAR_QUESTION_MARK,
 } from "./constants.ts";
 
 import {
@@ -15,7 +15,7 @@ import {
   isPathSeparator,
   isWindowsDeviceRoot,
   normalizeString,
-  _format
+  _format,
 } from "./utils.ts";
 import { assert } from "../testing/asserts.ts";
 
@@ -259,8 +259,9 @@ export function normalize(path: string): string {
     tail = "";
   }
   if (tail.length === 0 && !isAbsolute) tail = ".";
-  if (tail.length > 0 && isPathSeparator(path.charCodeAt(len - 1)))
+  if (tail.length > 0 && isPathSeparator(path.charCodeAt(len - 1))) {
     tail += "\\";
+  }
   if (device === undefined) {
     if (isAbsolute) {
       if (tail.length > 0) return `\\${tail}`;
@@ -459,8 +460,9 @@ export function relative(from: string, to: string): string {
 
   // Lastly, append the rest of the destination (`to`) path that comes after
   // the common path parts
-  if (out.length > 0) return out + toOrig.slice(toStart + lastCommonSep, toEnd);
-  else {
+  if (out.length > 0) {
+    return out + toOrig.slice(toStart + lastCommonSep, toEnd);
+  } else {
     toStart += lastCommonSep;
     if (toOrig.charCodeAt(toStart) === CHAR_BACKWARD_SLASH) ++toStart;
     return toOrig.slice(toStart, toEnd);
@@ -590,8 +592,9 @@ export function dirname(path: string): string {
 }
 
 export function basename(path: string, ext = ""): string {
-  if (ext !== undefined && typeof ext !== "string")
+  if (ext !== undefined && typeof ext !== "string") {
     throw new TypeError('"ext" argument must be a string');
+  }
 
   assertPath(path);
 

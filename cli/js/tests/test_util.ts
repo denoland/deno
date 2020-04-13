@@ -10,7 +10,7 @@ export {
   assertStrictEq,
   assertStrContains,
   unreachable,
-  fail
+  fail,
 } from "../../../std/testing/asserts.ts";
 export { readLines } from "../../../std/io/bufio.ts";
 export { parse as parseArgs } from "../../../std/flags/mod.ts";
@@ -28,7 +28,7 @@ export interface Permissions {
 export function fmtPerms(perms: Permissions): string {
   const p = Object.keys(perms)
     .filter((e): boolean => perms[e as keyof Permissions] === true)
-    .map(key => `--allow-${key}`);
+    .map((key) => `--allow-${key}`);
 
   if (p.length) {
     return p.join(" ");
@@ -48,7 +48,7 @@ export async function getProcessPermissions(): Promise<Permissions> {
     net: await isGranted("net"),
     env: await isGranted("env"),
     plugin: await isGranted("plugin"),
-    hrtime: await isGranted("hrtime")
+    hrtime: await isGranted("hrtime"),
   };
 }
 
@@ -92,10 +92,6 @@ export async function registerUnitTests(): Promise<void> {
   const processPerms = await getProcessPermissions();
 
   for (const unitTestDefinition of REGISTERED_UNIT_TESTS) {
-    if (unitTestDefinition.skip) {
-      continue;
-    }
-
     if (!permissionsMatch(processPerms, unitTestDefinition.perms)) {
       continue;
     }
@@ -112,48 +108,7 @@ function normalizeTestPermissions(perms: UnitTestPermissions): Permissions {
     run: !!perms.run,
     env: !!perms.env,
     plugin: !!perms.plugin,
-    hrtime: !!perms.hrtime
-  };
-}
-
-// Wrap `TestFunction` in additional assertion that makes sure
-// the test case does not leak async "ops" - ie. number of async
-// completed ops after the test is the same as number of dispatched
-// ops. Note that "unref" ops are ignored since in nature that are
-// optional.
-function assertOps(fn: Deno.TestFunction): Deno.TestFunction {
-  return async function asyncOpSanitizer(): Promise<void> {
-    const pre = Deno.metrics();
-    await fn();
-    const post = Deno.metrics();
-    // We're checking diff because one might spawn HTTP server in the background
-    // that will be a pending async op before test starts.
-    assertEquals(
-      post.opsDispatchedAsync - pre.opsDispatchedAsync,
-      post.opsCompletedAsync - pre.opsCompletedAsync,
-      `Test case is leaking async ops.
-    Before:
-      - dispatched: ${pre.opsDispatchedAsync}
-      - completed: ${pre.opsCompletedAsync}
-    After: 
-      - dispatched: ${post.opsDispatchedAsync}
-      - completed: ${post.opsCompletedAsync}`
-    );
-  };
-}
-
-// Wrap `TestFunction` in additional assertion that makes sure
-// the test case does not "leak" resources - ie. resource table after
-// the test has exactly the same contents as before the test.
-function assertResources(fn: Deno.TestFunction): Deno.TestFunction {
-  return async function resourceSanitizer(): Promise<void> {
-    const pre = Deno.resources();
-    await fn();
-    const post = Deno.resources();
-    const msg = `Test case is leaking resources.
-    Before: ${JSON.stringify(pre, null, 2)}
-    After: ${JSON.stringify(post, null, 2)}`;
-    assertEquals(pre, post, msg);
+    hrtime: !!perms.hrtime,
   };
 }
 
@@ -168,30 +123,30 @@ interface UnitTestPermissions {
 }
 
 interface UnitTestOptions {
-  skip?: boolean;
+  ignore?: boolean;
   perms?: UnitTestPermissions;
 }
 
-interface UnitTestDefinition {
-  name: string;
-  fn: Deno.TestFunction;
-  skip?: boolean;
+interface UnitTestDefinition extends Deno.TestDefinition {
+  ignore: boolean;
   perms: Permissions;
 }
 
+type TestFunction = () => void | Promise<void>;
+
 export const REGISTERED_UNIT_TESTS: UnitTestDefinition[] = [];
 
-export function unitTest(fn: Deno.TestFunction): void;
-export function unitTest(options: UnitTestOptions, fn: Deno.TestFunction): void;
+export function unitTest(fn: TestFunction): void;
+export function unitTest(options: UnitTestOptions, fn: TestFunction): void;
 export function unitTest(
-  optionsOrFn: UnitTestOptions | Deno.TestFunction,
-  maybeFn?: Deno.TestFunction
+  optionsOrFn: UnitTestOptions | TestFunction,
+  maybeFn?: TestFunction
 ): void {
   assert(optionsOrFn, "At least one argument is required");
 
   let options: UnitTestOptions;
   let name: string;
-  let fn: Deno.TestFunction;
+  let fn: TestFunction;
 
   if (typeof optionsOrFn === "function") {
     options = {};
@@ -210,18 +165,14 @@ export function unitTest(
     assert(name, "Missing test function name");
   }
 
-  if (options.skip) {
-    return;
-  }
-
   const normalizedPerms = normalizeTestPermissions(options.perms || {});
   registerPermCombination(normalizedPerms);
 
   const unitTestDefinition: UnitTestDefinition = {
     name,
-    fn: assertResources(assertOps(fn)),
-    skip: !!options.skip,
-    perms: normalizedPerms
+    fn,
+    ignore: !!options.ignore,
+    perms: normalizedPerms,
   };
 
   REGISTERED_UNIT_TESTS.push(unitTestDefinition);
@@ -245,42 +196,40 @@ export function createResolvable<T>(): Resolvable<T> {
   return Object.assign(promise, methods!) as Resolvable<T>;
 }
 
-export class SocketReporter implements Deno.TestReporter {
-  private encoder: TextEncoder;
+const encoder = new TextEncoder();
 
-  constructor(private conn: Deno.Conn) {
-    this.encoder = new TextEncoder();
-  }
+// Replace functions with null, errors with their stack strings, and JSONify.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function serializeTestMessage(message: Deno.TestMessage): string {
+  return JSON.stringify({
+    start: message.start && {
+      ...message.start,
+      tests: message.start.tests.map((test) => ({ ...test, fn: null })),
+    },
+    testStart: message.testStart && { ...message.testStart, fn: null },
+    testEnd: message.testEnd && {
+      ...message.testEnd,
+      error: String(message.testEnd.error?.stack),
+    },
+    end: message.end && {
+      ...message.end,
+      results: message.end.results.map((result) => ({
+        ...result,
+        error: result.error?.stack,
+      })),
+    },
+  });
+}
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async write(msg: any): Promise<void> {
-    const encodedMsg = this.encoder.encode(`${JSON.stringify(msg)}\n`);
-    await Deno.writeAll(this.conn, encodedMsg);
-  }
-
-  async start(msg: Deno.TestEventStart): Promise<void> {
-    await this.write(msg);
-  }
-
-  async result(msg: Deno.TestEventResult): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const serializedMsg: any = { ...msg };
-
-    // Error is a JS object, so we need to turn it into string to
-    // send over socket.
-    if (serializedMsg.result.error) {
-      serializedMsg.result.error = String(serializedMsg.result.error.stack);
-    }
-
-    await this.write(serializedMsg);
-  }
-
-  async end(msg: Deno.TestEventEnd): Promise<void> {
-    await this.write(msg);
-  }
-
-  close(): void {
-    this.conn.close();
+export async function reportToConn(
+  conn: Deno.Conn,
+  message: Deno.TestMessage
+): Promise<void> {
+  const line = serializeTestMessage(message);
+  const encodedMsg = encoder.encode(line + (message.end == null ? "\n" : ""));
+  await Deno.writeAll(conn, encodedMsg);
+  if (message.end != null) {
+    conn.closeWrite();
   }
 }
 
@@ -294,7 +243,7 @@ unitTest(function permissionsMatches(): void {
         env: false,
         run: false,
         plugin: false,
-        hrtime: false
+        hrtime: false,
       },
       normalizeTestPermissions({ read: true })
     )
@@ -309,7 +258,7 @@ unitTest(function permissionsMatches(): void {
         env: false,
         run: false,
         plugin: false,
-        hrtime: false
+        hrtime: false,
       },
       normalizeTestPermissions({})
     )
@@ -324,7 +273,7 @@ unitTest(function permissionsMatches(): void {
         env: true,
         run: true,
         plugin: true,
-        hrtime: true
+        hrtime: true,
       },
       normalizeTestPermissions({ read: true })
     ),
@@ -340,7 +289,7 @@ unitTest(function permissionsMatches(): void {
         env: false,
         run: false,
         plugin: false,
-        hrtime: false
+        hrtime: false,
       },
       normalizeTestPermissions({ read: true })
     ),
@@ -356,7 +305,7 @@ unitTest(function permissionsMatches(): void {
         env: true,
         run: true,
         plugin: true,
-        hrtime: true
+        hrtime: true,
       },
       {
         read: true,
@@ -365,7 +314,7 @@ unitTest(function permissionsMatches(): void {
         env: true,
         run: true,
         plugin: true,
-        hrtime: true
+        hrtime: true,
       }
     )
   );
@@ -377,11 +326,11 @@ unitTest(function permissionsMatches(): void {
  */
 unitTest(
   { perms: { read: true } },
-  async function assertAllUnitTestFilesImported(): Promise<void> {
+  function assertAllUnitTestFilesImported(): void {
     const directoryTestFiles = Deno.readdirSync("./cli/js/tests/")
-      .map(k => k.name)
+      .map((k) => k.name)
       .filter(
-        file =>
+        (file) =>
           file!.endsWith(".ts") &&
           !file!.endsWith("unit_tests.ts") &&
           !file!.endsWith("test_util.ts") &&
@@ -393,12 +342,12 @@ unitTest(
     const importLines = new TextDecoder("utf-8")
       .decode(unitTestsFile)
       .split("\n")
-      .filter(line => line.startsWith("import"));
+      .filter((line) => line.startsWith("import"));
     const importedTestFiles = importLines.map(
-      relativeFilePath => relativeFilePath.match(/\/([^\/]+)";/)![1]
+      (relativeFilePath) => relativeFilePath.match(/\/([^\/]+)";/)![1]
     );
 
-    directoryTestFiles.forEach(dirFile => {
+    directoryTestFiles.forEach((dirFile) => {
       if (!importedTestFiles.includes(dirFile!)) {
         throw new Error(
           "cil/js/tests/unit_tests.ts is missing import of test file: cli/js/" +

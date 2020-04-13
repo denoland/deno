@@ -1,7 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types.ts";
-import { TextEncoder } from "./text_encoding.ts";
+import * as domTypes from "./dom_types.d.ts";
+import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { build } from "../build.ts";
+import { ReadableStream } from "./streams/mod.ts";
 
 export const bytesSymbol = Symbol("bytes");
 
@@ -62,7 +63,7 @@ function collectSequenceNotCRLF(
 }
 
 function toUint8Arrays(
-  blobParts: domTypes.BlobPart[],
+  blobParts: BlobPart[],
   doNormalizeLineEndingsToNative: boolean
 ): Uint8Array[] {
   const ret: Uint8Array[] = [];
@@ -101,7 +102,7 @@ function toUint8Arrays(
 }
 
 function processBlobParts(
-  blobParts: domTypes.BlobPart[],
+  blobParts: BlobPart[],
   options: domTypes.BlobPropertyBag
 ): Uint8Array {
   const normalizeLineEndingsToNative = options.ending === "native";
@@ -114,7 +115,6 @@ function processBlobParts(
     .reduce((a, b): number => a + b, 0);
   const ab = new ArrayBuffer(byteLength);
   const bytes = new Uint8Array(ab);
-
   let courser = 0;
   for (const u8 of uint8Arrays) {
     bytes.set(u8, courser);
@@ -124,55 +124,100 @@ function processBlobParts(
   return bytes;
 }
 
+function getStream(blobBytes: Uint8Array): domTypes.ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start: (
+      controller: domTypes.ReadableStreamDefaultController<Uint8Array>
+    ): void => {
+      controller.enqueue(blobBytes);
+      controller.close();
+    },
+  }) as domTypes.ReadableStream<Uint8Array>;
+}
+
+async function readBytes(
+  reader: domTypes.ReadableStreamReader<Uint8Array>
+): Promise<ArrayBuffer> {
+  const chunks: Uint8Array[] = [];
+  while (true) {
+    try {
+      const { done, value } = await reader.read();
+      if (!done && value instanceof Uint8Array) {
+        chunks.push(value);
+      } else if (done) {
+        const size = chunks.reduce((p, i) => p + i.byteLength, 0);
+        const bytes = new Uint8Array(size);
+        let offs = 0;
+        for (const chunk of chunks) {
+          bytes.set(chunk, offs);
+          offs += chunk.byteLength;
+        }
+        return Promise.resolve(bytes);
+      } else {
+        return Promise.reject(new TypeError());
+      }
+    } catch (e) {
+      return Promise.reject(e);
+    }
+  }
+}
+
 // A WeakMap holding blob to byte array mapping.
 // Ensures it does not impact garbage collection.
-export const blobBytesWeakMap = new WeakMap<domTypes.Blob, Uint8Array>();
+export const blobBytesWeakMap = new WeakMap<Blob, Uint8Array>();
 
-export class DenoBlob implements domTypes.Blob {
-  private readonly [bytesSymbol]: Uint8Array;
+export class DenoBlob implements Blob {
+  [bytesSymbol]: Uint8Array;
   readonly size: number = 0;
   readonly type: string = "";
 
-  constructor(
-    blobParts?: domTypes.BlobPart[],
-    options?: domTypes.BlobPropertyBag
-  ) {
+  constructor(blobParts?: BlobPart[], options?: domTypes.BlobPropertyBag) {
     if (arguments.length === 0) {
       this[bytesSymbol] = new Uint8Array();
       return;
     }
 
     const { ending = "transparent", type = "" } = options ?? {};
-    if (!containsOnlyASCII(type)) {
-      const errMsg = "The 'type' property must consist of ASCII characters.";
-      throw new SyntaxError(errMsg);
-    }
-
-    const bytes = processBlobParts(blobParts!, { ending, type });
     // Normalize options.type.
     let normalizedType = type;
-    if (type.length) {
-      for (let i = 0; i < type.length; ++i) {
-        const char = type[i];
-        if (char < "\u0020" || char > "\u007E") {
-          normalizedType = "";
-          break;
+    if (!containsOnlyASCII(type)) {
+      normalizedType = "";
+    } else {
+      if (type.length) {
+        for (let i = 0; i < type.length; ++i) {
+          const char = type[i];
+          if (char < "\u0020" || char > "\u007E") {
+            normalizedType = "";
+            break;
+          }
         }
+        normalizedType = type.toLowerCase();
       }
-      normalizedType = type.toLowerCase();
     }
+    const bytes = processBlobParts(blobParts!, { ending, type });
     // Set Blob object's properties.
     this[bytesSymbol] = bytes;
     this.size = bytes.byteLength;
     this.type = normalizedType;
-
-    // Register bytes for internal private use.
-    blobBytesWeakMap.set(this, bytes);
   }
 
   slice(start?: number, end?: number, contentType?: string): DenoBlob {
     return new DenoBlob([this[bytesSymbol].slice(start, end)], {
-      type: contentType || this.type
+      type: contentType || this.type,
     });
+  }
+
+  stream(): domTypes.ReadableStream<Uint8Array> {
+    return getStream(this[bytesSymbol]);
+  }
+
+  async text(): Promise<string> {
+    const reader = getStream(this[bytesSymbol]).getReader();
+    const decoder = new TextDecoder();
+    return decoder.decode(await readBytes(reader));
+  }
+
+  arrayBuffer(): Promise<ArrayBuffer> {
+    return readBytes(getStream(this[bytesSymbol]).getReader());
   }
 }

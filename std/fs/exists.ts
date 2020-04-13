@@ -4,15 +4,16 @@ const { lstat, lstatSync } = Deno;
  * Test whether or not the given path exists by checking with the file system
  */
 export async function exists(filePath: string): Promise<boolean> {
-  return lstat(filePath)
-    .then((): boolean => true)
-    .catch((err: Error): boolean => {
-      if (err instanceof Deno.errors.NotFound) {
-        return false;
-      }
+  try {
+    await lstat(filePath);
+    return true;
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) {
+      return false;
+    }
 
-      throw err;
-    });
+    throw err;
+  }
 }
 
 /**

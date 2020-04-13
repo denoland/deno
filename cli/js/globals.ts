@@ -1,9 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+import "./lib.deno.shared_globals.d.ts";
+
 import * as blob from "./web/blob.ts";
 import * as consoleTypes from "./web/console.ts";
+import * as promiseTypes from "./web/promise.ts";
 import * as customEvent from "./web/custom_event.ts";
-import * as domTypes from "./web/dom_types.ts";
+import * as domException from "./web/dom_exception.ts";
 import * as domFile from "./web/dom_file.ts";
 import * as event from "./web/event.ts";
 import * as eventTarget from "./web/event_target.ts";
@@ -17,13 +20,14 @@ import * as urlSearchParams from "./web/url_search_params.ts";
 import * as workers from "./web/workers.ts";
 import * as performanceUtil from "./web/performance.ts";
 import * as request from "./web/request.ts";
+import * as streams from "./web/streams/mod.ts";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
 import { core } from "./core.ts";
 
 // This global augmentation is just enough types to be able to build Deno,
-// the runtime types are fully defined in `lib.deno_runtime.d.ts`.
+// the runtime types are fully defined in `lib.deno.*.d.ts`.
 declare global {
   interface CallSite {
     getThis(): unknown;
@@ -91,32 +95,43 @@ declare global {
       data?: ArrayBufferView
     ): null | Uint8Array;
 
+    setMacrotaskCallback(cb: () => boolean): void;
+
     shared: SharedArrayBuffer;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    evalContext(code: string): [any, EvalErrorInfo | null];
+    evalContext(
+      code: string,
+      scriptName?: string
+    ): [unknown, EvalErrorInfo | null];
 
     formatError: (e: Error) => string;
+
+    /**
+     * Get promise details as two elements array.
+     *
+     * First element is the `PromiseState`.
+     * If promise isn't pending, second element would be the result of the promise.
+     * Otherwise, second element would be undefined.
+     *
+     * Throws `TypeError` if argument isn't a promise
+     *
+     */
+    getPromiseDetails<T>(promise: Promise<T>): promiseTypes.PromiseDetails<T>;
+
+    decode(bytes: Uint8Array): string;
+    encode(text: string): Uint8Array;
   }
 
   // Only `var` variables show up in the `globalThis` type when doing a global
   // scope augmentation.
   /* eslint-disable no-var */
-  var addEventListener: (
-    type: string,
-    callback: domTypes.EventListenerOrEventListenerObject | null,
-    options?: boolean | domTypes.AddEventListenerOptions | undefined
-  ) => void;
-  var queueMicrotask: (callback: () => void) => void;
-  var console: consoleTypes.Console;
-  var location: domTypes.Location;
 
   // Assigned to `window` global - main runtime
   var Deno: {
     core: DenoCore;
   };
-  var onload: ((e: domTypes.Event) => void) | undefined;
-  var onunload: ((e: domTypes.Event) => void) | undefined;
+  var onload: ((e: Event) => void) | undefined;
+  var onunload: ((e: Event) => void) | undefined;
   var bootstrapMainRuntime: (() => void) | undefined;
 
   // Assigned to `self` global - worker runtime and compiler
@@ -129,7 +144,7 @@ declare global {
         source: string,
         lineno: number,
         colno: number,
-        e: domTypes.Event
+        e: Event
       ) => boolean | void)
     | undefined;
 
@@ -142,9 +157,6 @@ declare global {
   // Assigned to `self` global - compiler
   var bootstrapTsCompilerRuntime: (() => void) | undefined;
   var bootstrapWasmCompilerRuntime: (() => void) | undefined;
-
-  var performance: performanceUtil.Performance;
-  var setTimeout: typeof timers.setTimeout;
   /* eslint-enable */
 }
 
@@ -153,7 +165,7 @@ export function writable(value: unknown): PropertyDescriptor {
     value,
     writable: true,
     enumerable: true,
-    configurable: true
+    configurable: true,
   };
 }
 
@@ -161,14 +173,22 @@ export function nonEnumerable(value: unknown): PropertyDescriptor {
   return {
     value,
     writable: true,
-    configurable: true
+    configurable: true,
   };
 }
 
 export function readOnly(value: unknown): PropertyDescriptor {
   return {
     value,
-    enumerable: true
+    enumerable: true,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getterOnly(getter: () => any): PropertyDescriptor {
+  return {
+    get: getter,
+    enumerable: true,
   };
 }
 
@@ -181,7 +201,7 @@ export const windowOrWorkerGlobalScopeMethods = {
   fetch: writable(fetchTypes.fetch),
   // queueMicrotask is bound in Rust
   setInterval: writable(timers.setInterval),
-  setTimeout: writable(timers.setTimeout)
+  setTimeout: writable(timers.setTimeout),
 };
 
 // Other properties shared between WindowScope and WorkerGlobalScope
@@ -189,34 +209,34 @@ export const windowOrWorkerGlobalScopeProperties = {
   console: writable(new consoleTypes.Console(core.print)),
   Blob: nonEnumerable(blob.DenoBlob),
   File: nonEnumerable(domFile.DomFileImpl),
-  CustomEvent: nonEnumerable(customEvent.CustomEvent),
-  Event: nonEnumerable(event.Event),
-  EventTarget: nonEnumerable(eventTarget.EventTarget),
-  URL: nonEnumerable(url.URL),
-  URLSearchParams: nonEnumerable(urlSearchParams.URLSearchParams),
+  CustomEvent: nonEnumerable(customEvent.CustomEventImpl),
+  DOMException: nonEnumerable(domException.DOMExceptionImpl),
+  Event: nonEnumerable(event.EventImpl),
+  EventTarget: nonEnumerable(eventTarget.EventTargetImpl),
+  URL: nonEnumerable(url.URLImpl),
+  URLSearchParams: nonEnumerable(urlSearchParams.URLSearchParamsImpl),
   Headers: nonEnumerable(headers.Headers),
   FormData: nonEnumerable(formData.FormData),
   TextEncoder: nonEnumerable(textEncoding.TextEncoder),
   TextDecoder: nonEnumerable(textEncoding.TextDecoder),
+  ReadableStream: nonEnumerable(streams.ReadableStream),
   Request: nonEnumerable(request.Request),
   Response: nonEnumerable(fetchTypes.Response),
   performance: writable(new performanceUtil.Performance()),
-  Worker: nonEnumerable(workers.WorkerImpl)
+  Worker: nonEnumerable(workers.WorkerImpl),
 };
 
-export const eventTargetProperties = {
-  [domTypes.eventTargetHost]: nonEnumerable(null),
-  [domTypes.eventTargetListeners]: nonEnumerable({}),
-  [domTypes.eventTargetMode]: nonEnumerable(""),
-  [domTypes.eventTargetNodeType]: nonEnumerable(0),
-  [eventTarget.eventTargetAssignedSlot]: nonEnumerable(false),
-  [eventTarget.eventTargetHasActivationBehavior]: nonEnumerable(false),
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function setEventTargetData(value: any): void {
+  eventTarget.eventTargetData.set(value, eventTarget.getDefaultTargetData());
+}
 
+export const eventTargetProperties = {
   addEventListener: readOnly(
-    eventTarget.EventTarget.prototype.addEventListener
+    eventTarget.EventTargetImpl.prototype.addEventListener
   ),
-  dispatchEvent: readOnly(eventTarget.EventTarget.prototype.dispatchEvent),
+  dispatchEvent: readOnly(eventTarget.EventTargetImpl.prototype.dispatchEvent),
   removeEventListener: readOnly(
-    eventTarget.EventTarget.prototype.removeEventListener
-  )
+    eventTarget.EventTargetImpl.prototype.removeEventListener
+  ),
 };

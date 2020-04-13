@@ -9,7 +9,7 @@ test({
     const u = generate();
     assertEquals(typeof u, "string", "returns a string");
     assert(u !== "", "return string is not empty");
-  }
+  },
 });
 
 test({
@@ -19,5 +19,5 @@ test({
       const u = generate() as string;
       assert(validate(u), `${u} is not a valid uuid v4`);
     }
-  }
+  },
 });

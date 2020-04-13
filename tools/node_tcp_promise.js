@@ -8,18 +8,18 @@ const response = Buffer.from(
   "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
 );
 
-async function write(socket, buffer) {
+function write(socket, buffer) {
   const p = new Promise((resolve, _) => {
     socket.write(buffer, resolve);
   });
-  return p;
+  return Promise.resolve(p);
 }
 
-Server(async socket => {
-  socket.on("error", _ => {
+Server(async (socket) => {
+  socket.on("error", (_) => {
     socket.destroy();
   });
   for await (const _ of socket) {
-    write(socket, response);
+    await write(socket, response);
   }
 }).listen(port);

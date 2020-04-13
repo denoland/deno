@@ -4,7 +4,7 @@ import {
   assertEquals,
   assertNotEquals,
   assertThrows,
-  unitTest
+  unitTest,
 } from "./test_util.ts";
 
 unitTest({ perms: { env: true } }, function envSuccess(): void {
@@ -50,7 +50,7 @@ unitTest(function envPermissionDenied2(): void {
 // case-insensitive. Case normalization needs be done using the collation
 // that Windows uses, rather than naively using String.toLowerCase().
 unitTest(
-  { skip: Deno.build.os !== "win", perms: { env: true, run: true } },
+  { ignore: Deno.build.os !== "win", perms: { env: true, run: true } },
   async function envCaseInsensitive() {
     // Utility function that runs a Deno subprocess with the environment
     // specified in `inputEnv`. The subprocess reads the environment variables
@@ -65,9 +65,9 @@ unitTest(
         ${JSON.stringify(Object.keys(expectedEnv))}.map(k => Deno.env(k))
       )`;
       const proc = Deno.run({
-        args: [Deno.execPath(), "eval", src],
+        cmd: [Deno.execPath(), "eval", src],
         env: inputEnv,
-        stdout: "piped"
+        stdout: "piped",
       });
       const status = await proc.status();
       assertEquals(status.success, true);
@@ -134,121 +134,121 @@ unitTest({ perms: { env: true } }, function getDir(): void {
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: true }
-      ]
+        { os: "linux", shouldHaveValue: true },
+      ],
     },
     {
       kind: "cache",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: true }
-      ]
+        { os: "linux", shouldHaveValue: true },
+      ],
     },
     {
       kind: "executable",
       runtime: [
         { os: "mac", shouldHaveValue: false },
         { os: "win", shouldHaveValue: false },
-        { os: "linux", shouldHaveValue: true }
-      ]
+        { os: "linux", shouldHaveValue: true },
+      ],
     },
     {
       kind: "data",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: true }
-      ]
+        { os: "linux", shouldHaveValue: true },
+      ],
     },
     {
       kind: "data_local",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: true }
-      ]
+        { os: "linux", shouldHaveValue: true },
+      ],
     },
     {
       kind: "audio",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false }
-      ]
+        { os: "linux", shouldHaveValue: false },
+      ],
     },
     {
       kind: "desktop",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false }
-      ]
+        { os: "linux", shouldHaveValue: false },
+      ],
     },
     {
       kind: "document",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false }
-      ]
+        { os: "linux", shouldHaveValue: false },
+      ],
     },
     {
       kind: "download",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false }
-      ]
+        { os: "linux", shouldHaveValue: false },
+      ],
     },
     {
       kind: "font",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: false },
-        { os: "linux", shouldHaveValue: true }
-      ]
+        { os: "linux", shouldHaveValue: true },
+      ],
     },
     {
       kind: "picture",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false }
-      ]
+        { os: "linux", shouldHaveValue: false },
+      ],
     },
     {
       kind: "public",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false }
-      ]
+        { os: "linux", shouldHaveValue: false },
+      ],
     },
     {
       kind: "template",
       runtime: [
         { os: "mac", shouldHaveValue: false },
         { os: "win", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false }
-      ]
+        { os: "linux", shouldHaveValue: false },
+      ],
     },
     {
       kind: "tmp",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: true }
-      ]
+        { os: "linux", shouldHaveValue: true },
+      ],
     },
     {
       kind: "video",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false }
-      ]
-    }
+        { os: "linux", shouldHaveValue: false },
+      ],
+    },
   ];
 
   for (const s of scenes) {

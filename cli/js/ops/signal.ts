@@ -5,8 +5,8 @@ export function bindSignal(signo: number): { rid: number } {
   return sendSync("op_signal_bind", { signo });
 }
 
-export async function pollSignal(rid: number): Promise<{ done: boolean }> {
-  return await sendAsync("op_signal_poll", { rid });
+export function pollSignal(rid: number): Promise<{ done: boolean }> {
+  return sendAsync("op_signal_poll", { rid });
 }
 
 export function unbindSignal(rid: number): void {

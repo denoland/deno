@@ -2,7 +2,7 @@
 import { sendSync, sendAsync } from "../dispatch_json.ts";
 
 function toSecondsFromEpoch(v: number | Date): number {
-  return v instanceof Date ? v.valueOf() / 1000 : v;
+  return v instanceof Date ? Math.trunc(v.valueOf() / 1000) : v;
 }
 
 export function utimeSync(
@@ -14,7 +14,7 @@ export function utimeSync(
     path,
     // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
     atime: toSecondsFromEpoch(atime),
-    mtime: toSecondsFromEpoch(mtime)
+    mtime: toSecondsFromEpoch(mtime),
   });
 }
 
@@ -27,6 +27,6 @@ export async function utime(
     path,
     // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
     atime: toSecondsFromEpoch(atime),
-    mtime: toSecondsFromEpoch(mtime)
+    mtime: toSecondsFromEpoch(mtime),
   });
 }

@@ -7,7 +7,7 @@ import {
   readInt,
   readLong,
   readShort,
-  sliceLongToBytes
+  sliceLongToBytes,
 } from "./ioutil.ts";
 import { BufReader } from "./bufio.ts";
 import { stringsReader } from "./util.ts";
@@ -17,10 +17,10 @@ class BinaryReader implements Reader {
 
   constructor(private bytes: Uint8Array = new Uint8Array(0)) {}
 
-  async read(p: Uint8Array): Promise<number | Deno.EOF> {
+  read(p: Uint8Array): Promise<number | Deno.EOF> {
     p.set(this.bytes.subarray(this.index, p.byteLength));
     this.index += p.byteLength;
-    return p.byteLength;
+    return Promise.resolve(p.byteLength);
   }
 }
 
@@ -52,7 +52,7 @@ Deno.test(async function testReadLong2(): Promise<void> {
   assertEquals(long, 0x12345678);
 });
 
-Deno.test(async function testSliceLongToBytes(): Promise<void> {
+Deno.test(function testSliceLongToBytes(): void {
   const arr = sliceLongToBytes(0x1234567890abcdef);
   const actual = readLong(new BufReader(new BinaryReader(new Uint8Array(arr))));
   const expected = readLong(
@@ -65,7 +65,7 @@ Deno.test(async function testSliceLongToBytes(): Promise<void> {
   assertEquals(actual, expected);
 });
 
-Deno.test(async function testSliceLongToBytes2(): Promise<void> {
+Deno.test(function testSliceLongToBytes2(): void {
   const arr = sliceLongToBytes(0x12345678);
   assertEquals(arr, [0, 0, 0, 0, 0x12, 0x34, 0x56, 0x78]);
 });

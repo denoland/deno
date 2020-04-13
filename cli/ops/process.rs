@@ -5,11 +5,9 @@ use crate::op_error::OpError;
 use crate::signal::kill;
 use crate::state::State;
 use deno_core::*;
-use futures;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::TryFutureExt;
-use std;
 use std::convert::From;
 use tokio::process::Command;
 
@@ -49,7 +47,7 @@ fn subprocess_stdio_map(s: &str) -> std::process::Stdio {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RunArgs {
-  args: Vec<String>,
+  cmd: Vec<String>,
   cwd: Option<String>,
   env: Vec<(String, String)>,
   stdin: String,
@@ -74,7 +72,7 @@ fn op_run(
   state.check_run()?;
   let state_ = state.clone();
 
-  let args = run_args.args;
+  let args = run_args.cmd;
   let env = run_args.env;
   let cwd = run_args.cwd;
 

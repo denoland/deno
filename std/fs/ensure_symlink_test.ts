@@ -3,7 +3,7 @@
 import {
   assertEquals,
   assertThrows,
-  assertThrowsAsync
+  assertThrowsAsync,
 } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { ensureSymlink, ensureSymlinkSync } from "./ensure_symlink.ts";
@@ -15,13 +15,13 @@ Deno.test(async function ensureSymlinkIfItNotExist(): Promise<void> {
   const testDir = path.join(testdataDir, "link_file_1");
   const testFile = path.join(testDir, "test.txt");
 
-  assertThrowsAsync(
+  await assertThrowsAsync(
     async (): Promise<void> => {
       await ensureSymlink(testFile, path.join(testDir, "test1.txt"));
     }
   );
 
-  assertThrowsAsync(
+  await assertThrowsAsync(
     async (): Promise<void> => {
       await Deno.stat(testFile).then((): void => {
         throw new Error("test file should exists.");
@@ -56,7 +56,7 @@ Deno.test(async function ensureSymlinkIfItExist(): Promise<void> {
     await assertThrowsAsync(
       (): Promise<void> => ensureSymlink(testFile, linkFile),
       Error,
-      "Not implemented"
+      "not implemented"
     );
     await Deno.remove(testDir, { recursive: true });
     return;
@@ -85,7 +85,7 @@ Deno.test(function ensureSymlinkSyncIfItExist(): void {
     assertThrows(
       (): void => ensureSymlinkSync(testFile, linkFile),
       Error,
-      "Not implemented"
+      "not implemented"
     );
     Deno.removeSync(testDir, { recursive: true });
     return;
@@ -115,7 +115,7 @@ Deno.test(async function ensureSymlinkDirectoryIfItExist(): Promise<void> {
     await assertThrowsAsync(
       (): Promise<void> => ensureSymlink(testDir, linkDir),
       Error,
-      "Not implemented"
+      "not implemented"
     );
     await Deno.remove(testDir, { recursive: true });
     return;
@@ -147,7 +147,7 @@ Deno.test(function ensureSymlinkSyncDirectoryIfItExist(): void {
     assertThrows(
       (): void => ensureSymlinkSync(testDir, linkDir),
       Error,
-      "Not implemented"
+      "not implemented"
     );
     Deno.removeSync(testDir, { recursive: true });
     return;

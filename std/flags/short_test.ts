@@ -16,13 +16,13 @@ Deno.test(function short(): void {
     a: true,
     t: true,
     s: "meow",
-    _: []
+    _: [],
   });
   assertEquals(parse(["-h", "localhost"]), { h: "localhost", _: [] });
   assertEquals(parse(["-h", "localhost", "-p", "555"]), {
     h: "localhost",
     p: 555,
-    _: []
+    _: [],
   });
 });
 
@@ -31,7 +31,7 @@ Deno.test(function mixedShortBoolAndCapture(): void {
     f: true,
     p: 555,
     h: "localhost",
-    _: ["script.js"]
+    _: ["script.js"],
   });
 });
 
@@ -40,6 +40,6 @@ Deno.test(function shortAndLong(): void {
     f: true,
     p: 555,
     h: "localhost",
-    _: ["script.js"]
+    _: ["script.js"],
   });
 });

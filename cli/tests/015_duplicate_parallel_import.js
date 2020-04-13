@@ -5,7 +5,7 @@ const promises = new Array(100)
   .fill(null)
   .map(() => import("./subdir/mod1.ts"));
 
-Promise.all(promises).then(imports => {
+Promise.all(promises).then((imports) => {
   const mod = imports.reduce((first, cur) => {
     if (typeof first !== "object") {
       throw new Error("Expected an object.");

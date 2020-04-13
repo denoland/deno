@@ -5,7 +5,7 @@ import { unitTest, assertEquals, assert } from "./test_util.ts";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildBody(body: any): Body {
   const stub = new Request("", {
-    body: body
+    body: body,
   });
   return stub as Body;
 }
@@ -19,7 +19,7 @@ const intArrays = [
   Uint32Array,
   Uint8ClampedArray,
   Float32Array,
-  Float64Array
+  Float64Array,
 ];
 unitTest(async function arrayBufferFromByteArrays(): Promise<void> {
   const buffer = new TextEncoder().encode("ahoyhoy8").buffer;

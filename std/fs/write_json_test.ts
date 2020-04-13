@@ -2,7 +2,7 @@
 import {
   assertEquals,
   assertThrowsAsync,
-  assertThrows
+  assertThrows,
 } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { writeJson, writeJsonSync } from "./write_json.ts";
@@ -108,7 +108,7 @@ Deno.test(async function writeJsonWithReplacer(): Promise<void> {
         existsJsonFile,
         { a: "1", b: "2", c: "3" },
         {
-          replacer: ["a"]
+          replacer: ["a"],
         }
       );
       throw new Error("should write success");
@@ -226,7 +226,7 @@ Deno.test(function writeJsonWithReplacer(): void {
         existsJsonFile,
         { a: "1", b: "2", c: "3" },
         {
-          replacer: ["a"]
+          replacer: ["a"],
         }
       );
       throw new Error("should write success");

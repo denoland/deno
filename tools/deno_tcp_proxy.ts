@@ -10,7 +10,7 @@ const listener = Deno.listen({ hostname, port: Number(port) });
 async function handle(conn: Deno.Conn): Promise<void> {
   const origin = await Deno.connect({
     hostname: originHostname,
-    port: Number(originPort)
+    port: Number(originPort),
   });
   try {
     await Promise.all([Deno.copy(conn, origin), Deno.copy(origin, conn)]);

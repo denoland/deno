@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { concat } from "../../../std/bytes/mod.ts";
+import { decode } from "../../../std/encoding/utf8.ts";
 
 unitTest(function blobString(): void {
   const b1 = new Blob(["Hello World"]);
@@ -32,13 +34,21 @@ unitTest(function blobSlice(): void {
   assertEquals(b4.size, blob.size);
 });
 
+unitTest(function blobInvalidType(): void {
+  const blob = new Blob(["foo"], {
+    type: "\u0521",
+  });
+
+  assertEquals(blob.type, "");
+});
+
 unitTest(function blobShouldNotThrowError(): void {
   let hasThrown = false;
 
   try {
     const options1: object = {
       ending: "utf8",
-      hasOwnProperty: "hasOwnProperty"
+      hasOwnProperty: "hasOwnProperty",
     };
     const options2: object = Object.create(null);
     new Blob(["Hello World"], options1);
@@ -52,11 +62,31 @@ unitTest(function blobShouldNotThrowError(): void {
 
 unitTest(function nativeEndLine(): void {
   const options: object = {
-    ending: "native"
+    ending: "native",
   };
   const blob = new Blob(["Hello\nWorld"], options);
 
   assertEquals(blob.size, Deno.build.os === "win" ? 12 : 11);
 });
 
-// TODO(qti3e) Test the stored data in a Blob after implementing FileReader API.
+unitTest(async function blobText(): Promise<void> {
+  const blob = new Blob(["Hello World"]);
+  assertEquals(await blob.text(), "Hello World");
+});
+
+unitTest(async function blobStream(): Promise<void> {
+  const blob = new Blob(["Hello World"]);
+  const stream = blob.stream();
+  assert(stream instanceof ReadableStream);
+  const reader = stream.getReader();
+  let bytes = new Uint8Array();
+  const read = async (): Promise<void> => {
+    const { done, value } = await reader.read();
+    if (!done && value) {
+      bytes = concat(bytes, value);
+      return read();
+    }
+  };
+  await read();
+  assertEquals(decode(bytes), "Hello World");
+});

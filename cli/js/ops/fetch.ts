@@ -15,7 +15,7 @@ export interface FetchResponse {
   headers: Array<[string, string]>;
 }
 
-export async function fetch(
+export function fetch(
   args: FetchRequest,
   body: ArrayBufferView | undefined
 ): Promise<FetchResponse> {
@@ -24,5 +24,5 @@ export async function fetch(
     zeroCopy = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
   }
 
-  return await sendAsync("op_fetch", args, zeroCopy);
+  return sendAsync("op_fetch", args, zeroCopy);
 }

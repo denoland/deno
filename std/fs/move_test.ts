@@ -2,7 +2,7 @@
 import {
   assertEquals,
   assertThrows,
-  assertThrowsAsync
+  assertThrowsAsync,
 } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { move, moveSync } from "./move.ts";
@@ -68,7 +68,7 @@ Deno.test(async function moveFileIfDestExists(): Promise<void> {
   // write file content
   await Promise.all([
     Deno.writeFile(srcFile, srcContent),
-    Deno.writeFile(destFile, destContent)
+    Deno.writeFile(destFile, destContent),
   ]);
 
   // make sure the test file have been created
@@ -100,7 +100,7 @@ Deno.test(async function moveFileIfDestExists(): Promise<void> {
   // clean up
   await Promise.all([
     Deno.remove(srcDir, { recursive: true }),
-    Deno.remove(destDir, { recursive: true })
+    Deno.remove(destDir, { recursive: true }),
   ]);
 });
 
@@ -141,13 +141,13 @@ Deno.test(async function moveIfSrcAndDestDirectoryExistsAndOverwrite(): Promise<
 
   await Promise.all([
     Deno.mkdir(srcDir, { recursive: true }),
-    Deno.mkdir(destDir, { recursive: true })
+    Deno.mkdir(destDir, { recursive: true }),
   ]);
   assertEquals(await exists(srcDir), true);
   assertEquals(await exists(destDir), true);
   await Promise.all([
     Deno.writeFile(srcFile, srcContent),
-    Deno.writeFile(destFile, destContent)
+    Deno.writeFile(destFile, destContent),
   ]);
 
   await move(srcDir, destDir, { overwrite: true });

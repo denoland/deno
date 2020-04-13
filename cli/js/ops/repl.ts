@@ -6,6 +6,6 @@ export function startRepl(historyFile: string): number {
   return sendSync("op_repl_start", { historyFile });
 }
 
-export async function readline(rid: number, prompt: string): Promise<string> {
+export function readline(rid: number, prompt: string): Promise<string> {
   return sendAsync("op_repl_readline", { rid, prompt });
 }

@@ -4,7 +4,7 @@ import { bold, cyan, yellow } from "../colors.ts";
 import { CompilerOptions } from "./api.ts";
 import { buildBundle } from "./bundler.ts";
 import { ConfigureResponse, Host } from "./host.ts";
-import { SourceFile } from "./sourcefile.ts";
+import { MediaType, SourceFile } from "./sourcefile.ts";
 import { atob, TextEncoder } from "../web/text_encoding.ts";
 import * as compilerOps from "../ops/compiler.ts";
 import * as util from "../util.ts";
@@ -33,7 +33,7 @@ export interface WriteFileState {
 export enum CompilerRequestType {
   Compile = 0,
   RuntimeCompile = 1,
-  RuntimeTranspile = 2
+  RuntimeTranspile = 2,
 }
 
 export const OUT_DIR = "$deno$";
@@ -51,13 +51,13 @@ function cache(
     // NOTE: If it's a `.json` file we don't want to write it to disk.
     // JSON files are loaded and used by TS compiler to check types, but we don't want
     // to emit them to disk because output file is the same as input file.
-    if (sf.extension === ts.Extension.Json) {
+    if (sf.mediaType === MediaType.Json) {
       return;
     }
 
     // NOTE: JavaScript files are only cached to disk if `checkJs`
     // option in on
-    if (sf.extension === ts.Extension.Js && !checkJs) {
+    if (sf.mediaType === MediaType.JavaScript && !checkJs) {
       return;
     }
   }
@@ -255,7 +255,7 @@ export function convertCompilerOptions(
   }
   return {
     options: out as ts.CompilerOptions,
-    files: files.length ? files : undefined
+    files: files.length ? files : undefined,
   };
 }
 
@@ -287,7 +287,7 @@ export const ignoredDiagnostics = [
   // TS7016: Could not find a declaration file for module '...'. '...'
   // implicitly has an 'any' type.  This is due to `allowJs` being off by
   // default but importing of a JavaScript module.
-  7016
+  7016,
 ];
 
 export function processConfigureResponse(

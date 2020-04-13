@@ -3,7 +3,7 @@ import {
   unitTest,
   assert,
   assertEquals,
-  assertStrContains
+  assertStrContains,
 } from "./test_util.ts";
 
 unitTest(function filesStdioFileDescriptors(): void {
@@ -19,7 +19,7 @@ unitTest({ perms: { read: true } }, async function filesCopyToStdout(): Promise<
   const file = await Deno.open(filename);
   assert(file.rid > 2);
   const bytesWritten = await Deno.copy(Deno.stdout, file);
-  const fileSize = Deno.statSync(filename).len;
+  const fileSize = Deno.statSync(filename).size;
   assertEquals(bytesWritten, fileSize);
   console.log("bytes written", bytesWritten);
   file.close();
@@ -46,21 +46,23 @@ unitTest(async function readerToAsyncIterator(): Promise<void> {
   const encoder = new TextEncoder();
 
   class TestReader implements Deno.Reader {
-    private offset = 0;
-    private buf = new Uint8Array(encoder.encode(this.s));
+    #offset = 0;
+    #buf: Uint8Array;
 
-    constructor(private readonly s: string) {}
+    constructor(s: string) {
+      this.#buf = new Uint8Array(encoder.encode(s));
+    }
 
-    async read(p: Uint8Array): Promise<number | Deno.EOF> {
-      const n = Math.min(p.byteLength, this.buf.byteLength - this.offset);
-      p.set(this.buf.slice(this.offset, this.offset + n));
-      this.offset += n;
+    read(p: Uint8Array): Promise<number | Deno.EOF> {
+      const n = Math.min(p.byteLength, this.#buf.byteLength - this.#offset);
+      p.set(this.#buf.slice(this.#offset, this.#offset + n));
+      this.#offset += n;
 
       if (n === 0) {
-        return Deno.EOF;
+        return Promise.resolve(Deno.EOF);
       }
 
-      return n;
+      return Promise.resolve(n);
     }
   }
 
@@ -73,6 +75,44 @@ unitTest(async function readerToAsyncIterator(): Promise<void> {
 
   assertEquals(totalSize, 12);
 });
+
+unitTest(
+  {
+    perms: { read: true, write: true },
+  },
+  function openSyncMode(): void {
+    const path = Deno.makeTempDirSync() + "/test_openSync.txt";
+    const file = Deno.openSync(path, {
+      write: true,
+      createNew: true,
+      mode: 0o626,
+    });
+    file.close();
+    const pathInfo = Deno.statSync(path);
+    if (Deno.build.os !== "win") {
+      assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
+    }
+  }
+);
+
+unitTest(
+  {
+    perms: { read: true, write: true },
+  },
+  async function openMode(): Promise<void> {
+    const path = (await Deno.makeTempDir()) + "/test_open.txt";
+    const file = await Deno.open(path, {
+      write: true,
+      createNew: true,
+      mode: 0o626,
+    });
+    file.close();
+    const pathInfo = Deno.statSync(path);
+    if (Deno.build.os !== "win") {
+      assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
+    }
+  }
+);
 
 unitTest(
   { perms: { write: false } },
@@ -160,7 +200,7 @@ unitTest(
     const w = {
       write: true,
       truncate: true,
-      create: true
+      create: true,
     };
     const file = await Deno.open(filename, w);
 
@@ -234,12 +274,12 @@ unitTest(
     const f = await Deno.create(filename);
     let fileInfo = Deno.statSync(filename);
     assert(fileInfo.isFile());
-    assert(fileInfo.len === 0);
+    assert(fileInfo.size === 0);
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     await f.write(data);
     fileInfo = Deno.statSync(filename);
-    assert(fileInfo.len === 5);
+    assert(fileInfo.size === 5);
     f.close();
 
     // TODO: test different modes
@@ -258,11 +298,11 @@ unitTest(
     // assert file was created
     let fileInfo = Deno.statSync(filename);
     assert(fileInfo.isFile());
-    assertEquals(fileInfo.len, 0);
+    assertEquals(fileInfo.size, 0);
     // write some data
     await file.write(data);
     fileInfo = Deno.statSync(filename);
-    assertEquals(fileInfo.len, 13);
+    assertEquals(fileInfo.size, 13);
     // assert we can't read from file
     let thrown = false;
     try {
@@ -277,7 +317,7 @@ unitTest(
     // assert that existing file is truncated on open
     file = await Deno.open(filename, "w");
     file.close();
-    const fileSize = Deno.statSync(filename).len;
+    const fileSize = Deno.statSync(filename).size;
     assertEquals(fileSize, 0);
     await Deno.remove(tempDir, { recursive: true });
   }
@@ -296,11 +336,11 @@ unitTest(
     // assert file was created
     let fileInfo = Deno.statSync(filename);
     assert(fileInfo.isFile());
-    assertEquals(fileInfo.len, 0);
+    assertEquals(fileInfo.size, 0);
     // write some data
     await file.write(data);
     fileInfo = Deno.statSync(filename);
-    assertEquals(fileInfo.len, 13);
+    assertEquals(fileInfo.size, 13);
 
     const buf = new Uint8Array(20);
     // seeking from beginning of a file

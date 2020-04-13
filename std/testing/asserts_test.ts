@@ -12,7 +12,7 @@ import {
   equal,
   fail,
   unimplemented,
-  unreachable
+  unreachable,
 } from "./asserts.ts";
 import { red, green, white, gray, bold } from "../fmt/colors.ts";
 const { test } = Deno;
@@ -53,11 +53,11 @@ test(function testingEqual(): void {
     equal(
       new Map([
         ["foo", "bar"],
-        ["baz", "baz"]
+        ["baz", "baz"],
       ]),
       new Map([
         ["foo", "bar"],
-        ["baz", "baz"]
+        ["baz", "baz"],
       ])
     )
   );
@@ -77,11 +77,11 @@ test(function testingEqual(): void {
     equal(
       new Map([
         ["foo", "bar"],
-        ["baz", "qux"]
+        ["baz", "qux"],
       ]),
       new Map([
         ["baz", "qux"],
-        ["foo", "bar"]
+        ["foo", "bar"],
       ])
     )
   );
@@ -92,7 +92,7 @@ test(function testingEqual(): void {
       new Map([["foo", "bar"]]),
       new Map([
         ["foo", "bar"],
-        ["bar", "baz"]
+        ["bar", "baz"],
       ])
     )
   );
@@ -251,9 +251,11 @@ test(function testingAssertFailWithWrongErrorClass(): void {
 const createHeader = (): string[] => [
   "",
   "",
-  `    ${gray(bold("[Diff]"))} ${red(bold("Left"))} / ${green(bold("Right"))}`,
+  `    ${gray(bold("[Diff]"))} ${red(bold("Actual"))} / ${green(
+    bold("Expected")
+  )}`,
   "",
-  ""
+  "",
 ];
 
 const added: (s: string) => string = (s: string): string => green(bold(s));
@@ -267,7 +269,7 @@ test({
     assertEquals(10, 10);
     assertEquals("abc", "abc");
     assertEquals({ a: 10, b: { c: "1" } }, { a: 10, b: { c: "1" } });
-  }
+  },
 });
 
 test({
@@ -278,7 +280,7 @@ test({
       AssertionError,
       [...createHeader(), removed(`-   1`), added(`+   2`), ""].join("\n")
     );
-  }
+  },
 });
 
 test({
@@ -289,7 +291,7 @@ test({
       AssertionError,
       [...createHeader(), removed(`-   1`), added(`+   "1"`)].join("\n")
     );
-  }
+  },
 });
 
 test({
@@ -306,10 +308,10 @@ test({
         white('      "2",'),
         white("      3,"),
         white("    ]"),
-        ""
+        "",
       ].join("\n")
     );
-  }
+  },
 });
 
 test({
@@ -329,8 +331,8 @@ test({
         removed(`-     "b": "2",`),
         removed(`-     "c": 3,`),
         white("    }"),
-        ""
+        "",
       ].join("\n")
     );
-  }
+  },
 });

@@ -6,9 +6,9 @@ Deno.test("[examples/echo_server]", async () => {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   const process = Deno.run({
-    args: [Deno.execPath(), "--allow-net", "echo_server.ts"],
+    cmd: [Deno.execPath(), "--allow-net", "echo_server.ts"],
     cwd: "examples",
-    stdout: "piped"
+    stdout: "piped",
   });
 
   let conn: Deno.Conn | undefined;
@@ -38,6 +38,7 @@ Deno.test("[examples/echo_server]", async () => {
     assertStrictEq(actualResponse, expectedResponse);
   } finally {
     conn?.close();
+    process.stdout!.close();
     process.close();
   }
 });

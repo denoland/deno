@@ -3,8 +3,8 @@ import { FileOptions, isFileOptions, CallbackWithError } from "./_fs_common.ts";
 import { notImplemented } from "../_utils.ts";
 
 /**
- * TODO: Also accept 'data' parameter as a Node polyfill Buffer type once this
- * is implemented. See https://github.com/denoland/deno/issues/3403
+ * TODO: Also accept 'data' parameter as a Node polyfill Buffer or URL type once these
+ * are implemented. See https://github.com/denoland/deno/issues/3403
  */
 export function appendFile(
   pathOrRid: string | number,
@@ -55,7 +55,7 @@ export function appendFile(
       closeRidIfNecessary(typeof pathOrRid === "string", rid);
       callbackFn();
     })
-    .catch(err => {
+    .catch((err) => {
       closeRidIfNecessary(typeof pathOrRid === "string", rid);
       callbackFn(err);
     });
@@ -69,8 +69,8 @@ function closeRidIfNecessary(isPathString: boolean, rid: number): void {
 }
 
 /**
- * TODO: Also accept 'data' parameter as a Node polyfill Buffer type once this
- * is implemented. See https://github.com/denoland/deno/issues/3403
+ * TODO: Also accept 'data' parameter as a Node polyfill Buffer or URL type once these
+ * are implemented. See https://github.com/denoland/deno/issues/3403
  */
 export function appendFileSync(
   pathOrRid: string | number,

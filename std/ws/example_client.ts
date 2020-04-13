@@ -2,9 +2,9 @@ import {
   connectWebSocket,
   isWebSocketCloseEvent,
   isWebSocketPingEvent,
-  isWebSocketPongEvent
+  isWebSocketPongEvent,
 } from "../ws/mod.ts";
-import { encode } from "../strings/mod.ts";
+import { encode } from "../encoding/utf8.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { blue, green, red, yellow } from "../fmt/colors.ts";
@@ -13,7 +13,7 @@ const endpoint = Deno.args[0] || "ws://127.0.0.1:8080";
 /** simple websocket cli */
 const sock = await connectWebSocket(endpoint);
 console.log(green("ws connected! (type 'close' to quit)"));
-(async function(): Promise<void> {
+(async function (): Promise<void> {
   for await (const msg of sock.receive()) {
     if (typeof msg === "string") {
       console.log(yellow("< " + msg));

@@ -11,7 +11,7 @@ import { MultiReader } from "../io/readers.ts";
 import { extname } from "../path/mod.ts";
 import { tempFile } from "../io/util.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
-import { encoder } from "../strings/mod.ts";
+import { encoder } from "../encoding/utf8.ts";
 import { assertStrictEq, assert } from "../testing/asserts.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { hasOwnProperty } from "../util/has_own_property.ts";
@@ -251,6 +251,17 @@ function skipLWSPChar(u: Uint8Array): Uint8Array {
   return ret.slice(0, j);
 }
 
+export interface MultipartFormData {
+  file(key: string): FormFile | undefined;
+  value(key: string): string | undefined;
+  entries(): IterableIterator<[string, string | FormFile | undefined]>;
+  [Symbol.iterator](): IterableIterator<
+    [string, string | FormFile | undefined]
+  >;
+  /** Remove all tempfiles */
+  removeAll(): Promise<void>;
+}
+
 /** Reader for parsing multipart/form-data */
 export class MultipartReader {
   readonly newLine = encoder.encode("\r\n");
@@ -268,11 +279,11 @@ export class MultipartReader {
    * overflowed file data will be written to temporal files.
    * String field values are never written to files.
    * null value means parsing or writing to file was failed in some reason.
+   * @param maxMemory maximum memory size to store file in memory. bytes. @default 1048576 (1MB)
    *  */
-  async readForm(
-    maxMemory: number
-  ): Promise<{ [key: string]: null | string | FormFile }> {
-    const result = Object.create(null);
+  async readForm(maxMemory = 10 << 20): Promise<MultipartFormData> {
+    const fileMap = new Map<string, FormFile>();
+    const valueMap = new Map<string, string>();
     let maxValueBytes = maxMemory + (10 << 20);
     const buf = new Buffer(new Uint8Array(maxValueBytes));
     for (;;) {
@@ -292,11 +303,11 @@ export class MultipartReader {
           throw new RangeError("message too large");
         }
         const value = buf.toString();
-        result[p.formName] = value;
+        valueMap.set(p.formName, value);
         continue;
       }
       // file
-      let formFile: FormFile | null = null;
+      let formFile: FormFile | undefined;
       const n = await copy(buf, p);
       const contentType = p.headers.get("content-type");
       assert(contentType != null, "content-type must be set");
@@ -305,7 +316,7 @@ export class MultipartReader {
         const ext = extname(p.fileName);
         const { file, filepath } = await tempFile(".", {
           prefix: "multipart-",
-          postfix: ext
+          postfix: ext,
         });
         try {
           const size = await copyN(
@@ -318,7 +329,7 @@ export class MultipartReader {
             filename: p.fileName,
             type: contentType,
             tempfile: filepath,
-            size
+            size,
           };
         } catch (e) {
           await remove(filepath);
@@ -328,14 +339,16 @@ export class MultipartReader {
           filename: p.fileName,
           type: contentType,
           content: buf.bytes(),
-          size: buf.length
+          size: buf.length,
         };
         maxMemory -= n;
         maxValueBytes -= n;
       }
-      result[p.formName] = formFile;
+      if (formFile) {
+        fileMap.set(p.formName, formFile);
+      }
     }
-    return result;
+    return multipatFormData(fileMap, valueMap);
   }
 
   private currentPart: PartReader | undefined;
@@ -397,6 +410,43 @@ export class MultipartReader {
     const rest = line.slice(this.dashBoundary.length);
     return equal(skipLWSPChar(rest), this.newLine);
   }
+}
+
+function multipatFormData(
+  fileMap: Map<string, FormFile>,
+  valueMap: Map<string, string>
+): MultipartFormData {
+  function file(key: string): FormFile | undefined {
+    return fileMap.get(key);
+  }
+  function value(key: string): string | undefined {
+    return valueMap.get(key);
+  }
+  function* entries(): IterableIterator<
+    [string, string | FormFile | undefined]
+  > {
+    yield* fileMap;
+    yield* valueMap;
+  }
+  async function removeAll(): Promise<void> {
+    const promises: Array<Promise<void>> = [];
+    for (const val of fileMap.values()) {
+      if (!val.tempfile) continue;
+      promises.push(Deno.remove(val.tempfile));
+    }
+    await Promise.all(promises);
+  }
+  return {
+    file,
+    value,
+    entries,
+    removeAll,
+    [Symbol.iterator](): IterableIterator<
+      [string, string | FormFile | undefined]
+    > {
+      return entries();
+    },
+  };
 }
 
 class PartWriter implements Writer {

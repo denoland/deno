@@ -11,7 +11,7 @@ export type EOF = typeof EOF;
 export enum SeekMode {
   SEEK_START = 0,
   SEEK_CURRENT = 1,
-  SEEK_END = 2
+  SEEK_END = 2,
 }
 
 // Reader is the interface that wraps the basic read() method.
@@ -99,8 +99,8 @@ export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array> {
 
       return {
         value: b.subarray(0, result),
-        done: false
+        done: false,
       };
-    }
+    },
   };
 }

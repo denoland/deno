@@ -5,7 +5,7 @@ const requestBuf = new Uint8Array(64 * 1024);
 const responseBuf = new Uint8Array(
   "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
     .split("")
-    .map(c => c.charCodeAt(0))
+    .map((c) => c.charCodeAt(0))
 );
 const promiseMap = new Map();
 let nextPromiseId = 1;
@@ -84,21 +84,21 @@ function listen() {
 }
 
 /** Accepts a connection, returns rid. */
-async function accept(rid) {
-  return await sendAsync(ops["accept"], rid);
+function accept(rid) {
+  return sendAsync(ops["accept"], rid);
 }
 
 /**
  * Reads a packet from the rid, presumably an http request. data is ignored.
  * Returns bytes read.
  */
-async function read(rid, data) {
-  return await sendAsync(ops["read"], rid, data);
+function read(rid, data) {
+  return sendAsync(ops["read"], rid, data);
 }
 
 /** Writes a fixed HTTP response to the socket rid. Returns bytes written. */
-async function write(rid, data) {
-  return await sendAsync(ops["write"], rid, data);
+function write(rid, data) {
+  return sendAsync(ops["write"], rid, data);
 }
 
 function close(rid) {

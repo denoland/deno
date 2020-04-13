@@ -6,17 +6,20 @@ import {
   permissionCombinations,
   Permissions,
   registerUnitTests,
-  SocketReporter,
   fmtPerms,
-  parseArgs
+  parseArgs,
+  reportToConn,
 } from "./test_util.ts";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const reportToConsole = (Deno as any)[Deno.symbols.internal]
+  .reportToConsole as (message: Deno.TestMessage) => void;
 
 interface PermissionSetTestResult {
   perms: Permissions;
   passed: boolean;
-  stats: Deno.TestStats;
+  endMessage: Deno.TestMessage["end"];
   permsStr: string;
-  duration: number;
 }
 
 const PERMISSIONS: Deno.PermissionName[] = [
@@ -26,7 +29,7 @@ const PERMISSIONS: Deno.PermissionName[] = [
   "env",
   "run",
   "plugin",
-  "hrtime"
+  "hrtime",
 ];
 
 /**
@@ -58,20 +61,17 @@ async function workerRunnerMain(
   }
   // Setup reporter
   const conn = await Deno.connect(addr);
-  const socketReporter = new SocketReporter(conn);
   // Drop current process permissions to requested set
   await dropWorkerPermissions(perms);
   // Register unit tests that match process permissions
   await registerUnitTests();
   // Execute tests
   await Deno.runTests({
-    failFast: false,
     exitOnFail: false,
-    reporter: socketReporter,
-    only: filter
+    filter,
+    reportToConsole: false,
+    onMessage: reportToConn.bind(null, conn),
   });
-  // Notify parent process we're done
-  socketReporter.close();
 }
 
 function spawnWorkerRunner(
@@ -87,90 +87,69 @@ function spawnWorkerRunner(
     })
     .join(",");
 
-  const args = [
+  const cmd = [
     Deno.execPath(),
     "run",
     "-A",
     "cli/js/tests/unit_test_runner.ts",
     "--worker",
     `--addr=${addr}`,
-    `--perms=${permStr}`
+    `--perms=${permStr}`,
   ];
 
   if (filter) {
-    args.push("--");
-    args.push(filter);
+    cmd.push("--");
+    cmd.push(filter);
   }
 
   const ioMode = verbose ? "inherit" : "null";
 
   const p = Deno.run({
-    args,
+    cmd,
     stdin: ioMode,
     stdout: ioMode,
-    stderr: ioMode
+    stderr: ioMode,
   });
 
   return p;
 }
 
 async function runTestsForPermissionSet(
+  listener: Deno.Listener,
+  addrStr: string,
   verbose: boolean,
-  reporter: Deno.ConsoleTestReporter,
   perms: Permissions,
   filter?: string
 ): Promise<PermissionSetTestResult> {
   const permsFmt = fmtPerms(perms);
   console.log(`Running tests for: ${permsFmt}`);
-  const addr = { hostname: "127.0.0.1", port: 4510 };
-  const addrStr = `${addr.hostname}:${addr.port}`;
-  const workerListener = Deno.listen(addr);
-
   const workerProcess = spawnWorkerRunner(verbose, addrStr, perms, filter);
-
   // Wait for worker subprocess to go online
-  const conn = await workerListener.accept();
+  const conn = await listener.accept();
 
-  let err;
-  let hasThrown = false;
   let expectedPassedTests;
-  let endEvent;
+  let endMessage: Deno.TestMessage["end"];
 
   try {
     for await (const line of readLines(conn)) {
-      const msg = JSON.parse(line);
-
-      if (msg.kind === Deno.TestEvent.Start) {
-        expectedPassedTests = msg.tests;
-        await reporter.start(msg);
-        continue;
+      const message = JSON.parse(line) as Deno.TestMessage;
+      reportToConsole(message);
+      if (message.start != null) {
+        expectedPassedTests = message.start.tests.length;
+      } else if (message.end != null) {
+        endMessage = message.end;
       }
-
-      if (msg.kind === Deno.TestEvent.Result) {
-        await reporter.result(msg);
-        continue;
-      }
-
-      endEvent = msg;
-      await reporter.end(msg);
-      break;
     }
-  } catch (e) {
-    hasThrown = true;
-    err = e;
   } finally {
-    workerListener.close();
+    // Close socket to worker.
+    conn.close();
   }
 
-  if (hasThrown) {
-    throw err;
-  }
-
-  if (typeof expectedPassedTests === "undefined") {
+  if (expectedPassedTests == null) {
     throw new Error("Worker runner didn't report start");
   }
 
-  if (typeof endEvent === "undefined") {
+  if (endMessage == null) {
     throw new Error("Worker runner didn't report end");
   }
 
@@ -183,14 +162,13 @@ async function runTestsForPermissionSet(
 
   workerProcess.close();
 
-  const passed = expectedPassedTests === endEvent.stats.passed;
+  const passed = expectedPassedTests === endMessage.passed + endMessage.ignored;
 
   return {
     perms,
     passed,
     permsStr: permsFmt,
-    duration: endEvent.duration,
-    stats: endEvent.stats
+    endMessage,
   };
 }
 
@@ -208,12 +186,15 @@ async function masterRunnerMain(
   }
 
   const testResults = new Set<PermissionSetTestResult>();
-  const consoleReporter = new Deno.ConsoleTestReporter();
+  const addr = { hostname: "127.0.0.1", port: 4510 };
+  const addrStr = `${addr.hostname}:${addr.port}`;
+  const listener = Deno.listen(addr);
 
   for (const perms of permissionCombinations.values()) {
     const result = await runTestsForPermissionSet(
+      listener,
+      addrStr,
       verbose,
-      consoleReporter,
       perms,
       filter
     );
@@ -225,14 +206,9 @@ async function masterRunnerMain(
   let testsPassed = true;
 
   for (const testResult of testResults) {
-    const { permsStr, stats, duration } = testResult;
+    const { permsStr, endMessage } = testResult;
     console.log(`Summary for ${permsStr}`);
-    await consoleReporter.end({
-      kind: Deno.TestEvent.End,
-      stats,
-      duration,
-      results: []
-    });
+    reportToConsole({ end: endMessage });
     testsPassed = testsPassed && testResult.passed;
   }
 
@@ -265,11 +241,11 @@ Run worker process for given permissions:
 
 
 OPTIONS:
-  --master 
+  --master
     Run in master mode, spawning worker processes for
     each discovered permission combination
-    
-  --worker 
+
+  --worker
     Run in worker mode, requires "perms" and "addr" flags,
     should be run with "-A" flag; after setup worker will
     drop permissions to required set specified in "perms"
@@ -281,7 +257,7 @@ OPTIONS:
     Address of TCP socket for reporting
 
 ARGS:
-  -- <filter>... 
+  -- <filter>...
     Run only tests with names matching filter, must
     be used after "--"
 `;
@@ -296,7 +272,7 @@ function assertOrHelp(expr: unknown): asserts expr {
 async function main(): Promise<void> {
   const args = parseArgs(Deno.args, {
     boolean: ["master", "worker", "verbose"],
-    "--": true
+    "--": true,
   });
 
   if (args.help) {
@@ -308,23 +284,19 @@ async function main(): Promise<void> {
 
   // Master mode
   if (args.master) {
-    return await masterRunnerMain(args.verbose, filter);
+    return masterRunnerMain(args.verbose, filter);
   }
 
   // Worker mode
   if (args.worker) {
     assertOrHelp(typeof args.addr === "string");
     assertOrHelp(typeof args.perms === "string");
-    return await workerRunnerMain(args.addr, args.perms, filter);
+    return workerRunnerMain(args.addr, args.perms, filter);
   }
 
   // Running tests matching current process permissions
   await registerUnitTests();
-  await Deno.runTests({
-    failFast: false,
-    exitOnFail: true,
-    only: filter
-  });
+  await Deno.runTests({ filter });
 }
 
 main();

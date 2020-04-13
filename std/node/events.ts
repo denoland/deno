@@ -219,7 +219,7 @@ export default class EventEmitter {
     eventName: string | symbol,
     listener: Function
   ): WrappedFunction {
-    const wrapper = function(
+    const wrapper = function (
       this: {
         eventName: string | symbol;
         listener: Function;
@@ -235,7 +235,7 @@ export default class EventEmitter {
       eventName: eventName,
       listener: listener,
       rawListener: (wrapper as unknown) as WrappedFunction,
-      context: this
+      context: this,
     };
     const wrapped = (wrapper.bind(
       wrapperContext
@@ -462,7 +462,7 @@ export function on(
       }
 
       // Wait until an event happens
-      return new Promise(function(resolve, reject) {
+      return new Promise(function (resolve, reject) {
         unconsumedPromises.push({ resolve, reject });
       });
     },
@@ -489,7 +489,7 @@ export function on(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     [Symbol.asyncIterator](): any {
       return this;
-    }
+    },
   };
 
   emitter.on(event, eventHandler);

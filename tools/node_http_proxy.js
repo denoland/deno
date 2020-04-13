@@ -9,10 +9,10 @@ http
       port: originPort,
       path: req.url,
       method: req.method,
-      headers: req.headers
+      headers: req.headers,
     };
 
-    const proxy = http.request(options, proxyRes => {
+    const proxy = http.request(options, (proxyRes) => {
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
       proxyRes.pipe(res, { end: true });
     });

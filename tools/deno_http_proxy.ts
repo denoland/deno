@@ -9,7 +9,7 @@ async function proxyRequest(req: ServerRequest): Promise<void> {
   const url = `http://${originAddr}${req.url}`;
   const resp = await fetch(url, {
     method: req.method,
-    headers: req.headers
+    headers: req.headers,
   });
   req.respond(resp);
 }

@@ -17,20 +17,20 @@ const helpMsg = [
   "_       Get last evaluation result",
   "_error  Get last thrown error",
   "exit    Exit the REPL",
-  "help    Print this help message"
+  "help    Print this help message",
 ].join("\n");
 
 const replCommands = {
   exit: {
     get(): void {
       exit(0);
-    }
+    },
   },
   help: {
     get(): string {
       return helpMsg;
-    }
-  }
+    },
+  },
 };
 
 // Error messages that allow users to continue input
@@ -42,7 +42,7 @@ const recoverableErrorMessages = [
   "Missing initializer in const declaration", // const a
   "Missing catch or finally after try", // try {}
   "missing ) after argument list", // console.log(1
-  "Unterminated template literal" // `template
+  "Unterminated template literal", // `template
   // TODO(kevinkassimo): need a parser to handling errors such as:
   // "Missing } in template expression" // `${ or `${ a 123 }`
 ];
@@ -105,10 +105,10 @@ export async function replLoop(): Promise<void> {
         value: value,
         writable: true,
         enumerable: true,
-        configurable: true
+        configurable: true,
       });
       console.log("Last evaluation result is no longer saved to _.");
-    }
+    },
   });
 
   // Configure globalThis._error to give the last thrown error.
@@ -120,10 +120,10 @@ export async function replLoop(): Promise<void> {
         value: value,
         writable: true,
         enumerable: true,
-        configurable: true
+        configurable: true,
       });
       console.log("Last thrown error is no longer saved to _error.");
-    }
+    },
   });
 
   while (true) {

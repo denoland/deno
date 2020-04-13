@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert, createResolvable, notImplemented } from "../util.ts";
 import { isTypedArray } from "./util.ts";
-import * as domTypes from "./dom_types.ts";
+import * as domTypes from "./dom_types.d.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob.ts";
 import { Headers } from "./headers.ts";
@@ -10,9 +10,8 @@ import { read } from "../ops/io.ts";
 import { close } from "../ops/resources.ts";
 import { Buffer } from "../buffer.ts";
 import { FormData } from "./form_data.ts";
-import { URL } from "./url.ts";
-import { URLSearchParams } from "./url_search_params.ts";
 import { fetch as opFetch, FetchResponse } from "../ops/fetch.ts";
+import { DomFileImpl } from "./dom_file.ts";
 
 function getHeaderValueParams(value: string): Map<string, string> {
   const params = new Map();
@@ -31,52 +30,58 @@ function hasHeaderValueOf(s: string, value: string): boolean {
   return new RegExp(`^${value}[\t\s]*;?`).test(s);
 }
 
-class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
-  private _bodyUsed = false;
-  private _bodyPromise: null | Promise<ArrayBuffer> = null;
-  private _data: ArrayBuffer | null = null;
+class Body
+  implements domTypes.Body, domTypes.ReadableStream<Uint8Array>, io.ReadCloser {
+  #bodyUsed = false;
+  #bodyPromise: Promise<ArrayBuffer> | null = null;
+  #data: ArrayBuffer | null = null;
+  #rid: number;
   readonly locked: boolean = false; // TODO
-  readonly body: null | Body = this;
+  readonly body: domTypes.ReadableStream<Uint8Array>;
 
-  constructor(private rid: number, readonly contentType: string) {}
+  constructor(rid: number, readonly contentType: string) {
+    this.#rid = rid;
+    this.body = this;
+  }
 
-  private async _bodyBuffer(): Promise<ArrayBuffer> {
-    assert(this._bodyPromise == null);
+  #bodyBuffer = async (): Promise<ArrayBuffer> => {
+    assert(this.#bodyPromise == null);
     const buf = new Buffer();
     try {
       const nread = await buf.readFrom(this);
       const ui8 = buf.bytes();
       assert(ui8.byteLength === nread);
-      this._data = ui8.buffer.slice(
+      this.#data = ui8.buffer.slice(
         ui8.byteOffset,
         ui8.byteOffset + nread
       ) as ArrayBuffer;
-      assert(this._data.byteLength === nread);
+      assert(this.#data.byteLength === nread);
     } finally {
       this.close();
     }
 
-    return this._data;
-  }
+    return this.#data;
+  };
 
+  // eslint-disable-next-line require-await
   async arrayBuffer(): Promise<ArrayBuffer> {
     // If we've already bufferred the response, just return it.
-    if (this._data != null) {
-      return this._data;
+    if (this.#data != null) {
+      return this.#data;
     }
 
     // If there is no _bodyPromise yet, start it.
-    if (this._bodyPromise == null) {
-      this._bodyPromise = this._bodyBuffer();
+    if (this.#bodyPromise == null) {
+      this.#bodyPromise = this.#bodyBuffer();
     }
 
-    return this._bodyPromise;
+    return this.#bodyPromise;
   }
 
-  async blob(): Promise<domTypes.Blob> {
+  async blob(): Promise<Blob> {
     const arrayBuffer = await this.arrayBuffer();
     return new DenoBlob([arrayBuffer], {
-      type: this.contentType
+      type: this.contentType,
     });
   }
 
@@ -162,7 +167,7 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
         if (dispositionParams.has("filename")) {
           const filename = dispositionParams.get("filename")!;
           const blob = new DenoBlob([enc.encode(octets)], {
-            type: partContentType
+            type: partContentType,
           });
           // TODO: based on spec
           // https://xhr.spec.whatwg.org/#dom-formdata-append
@@ -218,19 +223,24 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
   }
 
   read(p: Uint8Array): Promise<number | io.EOF> {
-    this._bodyUsed = true;
-    return read(this.rid, p);
+    this.#bodyUsed = true;
+    return read(this.#rid, p);
   }
 
-  close(): void {
-    close(this.rid);
+  close(): Promise<void> {
+    close(this.#rid);
+    return Promise.resolve();
   }
 
-  async cancel(): Promise<void> {
+  cancel(): Promise<void> {
     return notImplemented();
   }
 
-  getReader(): domTypes.ReadableStreamReader {
+  getReader(options: { mode: "byob" }): domTypes.ReadableStreamBYOBReader;
+  getReader(): domTypes.ReadableStreamDefaultReader<Uint8Array>;
+  getReader():
+    | domTypes.ReadableStreamBYOBReader
+    | domTypes.ReadableStreamDefaultReader<Uint8Array> {
     return notImplemented();
   }
 
@@ -243,7 +253,24 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
   }
 
   get bodyUsed(): boolean {
-    return this._bodyUsed;
+    return this.#bodyUsed;
+  }
+
+  pipeThrough<T>(
+    _: {
+      writable: domTypes.WritableStream<Uint8Array>;
+      readable: domTypes.ReadableStream<T>;
+    },
+    _options?: domTypes.PipeOptions
+  ): domTypes.ReadableStream<T> {
+    return notImplemented();
+  }
+
+  pipeTo(
+    _dest: domTypes.WritableStream<Uint8Array>,
+    _options?: domTypes.PipeOptions
+  ): Promise<void> {
+    return notImplemented();
   }
 }
 
@@ -252,7 +279,7 @@ export class Response implements domTypes.Response {
   readonly redirected: boolean;
   headers: domTypes.Headers;
   readonly trailer: Promise<domTypes.Headers>;
-  readonly body: null | Body;
+  readonly body: Body | null;
 
   constructor(
     readonly url: string,
@@ -305,7 +332,7 @@ export class Response implements domTypes.Response {
           "Content-Type",
           "Expires",
           "Last-Modified",
-          "Pragma"
+          "Pragma",
         ].map((c: string) => c.toLowerCase());
         for (const h of this.headers) {
           /* Technically this is still not standards compliant because we are
@@ -334,50 +361,51 @@ export class Response implements domTypes.Response {
     this.redirected = redirected_;
   }
 
-  private bodyViewable(): boolean {
+  #bodyViewable = (): boolean => {
     if (
       this.type == "error" ||
       this.type == "opaque" ||
       this.type == "opaqueredirect" ||
       this.body == undefined
-    )
+    ) {
       return true;
+    }
     return false;
-  }
+  };
 
-  async arrayBuffer(): Promise<ArrayBuffer> {
+  arrayBuffer(): Promise<ArrayBuffer> {
     /* You have to do the null check here and not in the function because
      * otherwise TS complains about this.body potentially being null */
-    if (this.bodyViewable() || this.body == null) {
+    if (this.#bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
     return this.body.arrayBuffer();
   }
 
-  async blob(): Promise<domTypes.Blob> {
-    if (this.bodyViewable() || this.body == null) {
+  blob(): Promise<Blob> {
+    if (this.#bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
     return this.body.blob();
   }
 
-  async formData(): Promise<domTypes.FormData> {
-    if (this.bodyViewable() || this.body == null) {
+  formData(): Promise<domTypes.FormData> {
+    if (this.#bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
     return this.body.formData();
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async json(): Promise<any> {
-    if (this.bodyViewable() || this.body == null) {
+  json(): Promise<any> {
+    if (this.#bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
     return this.body.json();
   }
 
-  async text(): Promise<string> {
-    if (this.bodyViewable() || this.body == null) {
+  text(): Promise<string> {
+    if (this.#bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
     return this.body.text();
@@ -417,7 +445,7 @@ export class Response implements domTypes.Response {
     );
   }
 
-  redirect(url: URL | string, status: number): domTypes.Response {
+  static redirect(url: URL | string, status: number): domTypes.Response {
     if (![301, 302, 303, 307, 308].includes(status)) {
       throw new RangeError(
         "The redirection status must be one of 301, 302, 303, 307 and 308."
@@ -436,7 +464,7 @@ export class Response implements domTypes.Response {
   }
 }
 
-async function sendFetchReq(
+function sendFetchReq(
   url: string,
   method: string | null,
   headers: domTypes.Headers | null,
@@ -450,10 +478,10 @@ async function sendFetchReq(
   const args = {
     method,
     url,
-    headers: headerArray
+    headers: headerArray,
   };
 
-  return await opFetch(args, body);
+  return opFetch(args, body);
 }
 
 export async function fetch(
@@ -499,8 +527,48 @@ export async function fetch(
         } else if (init.body instanceof DenoBlob) {
           body = init.body[blobBytesSymbol];
           contentType = init.body.type;
+        } else if (init.body instanceof FormData) {
+          let boundary = "";
+          if (headers.has("content-type")) {
+            const params = getHeaderValueParams("content-type");
+            if (params.has("boundary")) {
+              boundary = params.get("boundary")!;
+            }
+          }
+          if (!boundary) {
+            boundary =
+              "----------" +
+              Array.from(Array(32))
+                .map(() => Math.random().toString(36)[2] || 0)
+                .join("");
+          }
+
+          let payload = "";
+          for (const [fieldName, fieldValue] of init.body.entries()) {
+            let part = `\r\n--${boundary}\r\n`;
+            part += `Content-Disposition: form-data; name=\"${fieldName}\"`;
+            if (fieldValue instanceof DomFileImpl) {
+              part += `; filename=\"${fieldValue.name}\"`;
+            }
+            part += "\r\n";
+            if (fieldValue instanceof DomFileImpl) {
+              part += `Content-Type: ${
+                fieldValue.type || "application/octet-stream"
+              }\r\n`;
+            }
+            part += "\r\n";
+            if (fieldValue instanceof DomFileImpl) {
+              part += new TextDecoder().decode(fieldValue[blobBytesSymbol]);
+            } else {
+              part += fieldValue;
+            }
+            payload += part;
+          }
+          payload += `\r\n--${boundary}--`;
+          body = new TextEncoder().encode(payload);
+          contentType = "multipart/form-data; boundary=" + boundary;
         } else {
-          // TODO: FormData, ReadableStream
+          // TODO: ReadableStream
           notImplemented();
         }
         if (contentType && !headers.has("content-type")) {
@@ -531,6 +599,9 @@ export async function fetch(
       redirected
     );
     if ([301, 302, 303, 307, 308].includes(response.status)) {
+      // We won't use body of received response, so close it now
+      // otherwise it will be kept in resource table.
+      close(fetchResponse.bodyRid);
       // We're in a redirect status
       switch ((init && init.redirect) || "follow") {
         case "error":

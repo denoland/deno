@@ -5,11 +5,11 @@ if (self.name !== "jsWorker") {
   throw Error(`Bad worker name: ${self.name}, expected jsWorker`);
 }
 
-onmessage = function(e) {
+onmessage = function (e) {
   postMessage(e.data);
   close();
 };
 
-onerror = function() {
+onerror = function () {
   return false;
 };

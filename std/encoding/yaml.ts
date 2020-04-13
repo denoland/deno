@@ -6,6 +6,6 @@
 export { ParseOptions, parse, parseAll } from "./yaml/parse.ts";
 export {
   DumpOptions as StringifyOptions,
-  stringify
+  stringify,
 } from "./yaml/stringify.ts";
 export * from "./yaml/schema/mod.ts";

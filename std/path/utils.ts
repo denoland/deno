@@ -9,7 +9,7 @@ import {
   CHAR_LOWERCASE_Z,
   CHAR_DOT,
   CHAR_FORWARD_SLASH,
-  CHAR_BACKWARD_SLASH
+  CHAR_BACKWARD_SLASH,
 } from "./constants.ts";
 
 export function assertPath(path: string): void {

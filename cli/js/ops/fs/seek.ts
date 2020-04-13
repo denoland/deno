@@ -10,10 +10,10 @@ export function seekSync(
   return sendSync("op_seek", { rid, offset, whence });
 }
 
-export async function seek(
+export function seek(
   rid: number,
   offset: number,
   whence: SeekMode
 ): Promise<number> {
-  return await sendAsync("op_seek", { rid, offset, whence });
+  return sendAsync("op_seek", { rid, offset, whence });
 }

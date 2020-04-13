@@ -49,11 +49,11 @@ const pairs = [
   ["file/", ""],
   ["file//", ""],
   ["file./", "."],
-  ["file.//", "."]
+  ["file.//", "."],
 ];
 
 test(function extname() {
-  pairs.forEach(function(p) {
+  pairs.forEach(function (p) {
     const input = p[0];
     const expected = p[1];
     assertEquals(expected, path.posix.extname(input));
@@ -71,7 +71,7 @@ test(function extname() {
 });
 
 test(function extnameWin32() {
-  pairs.forEach(function(p) {
+  pairs.forEach(function (p) {
     const input = p[0].replace(slashRE, "\\");
     const expected = p[1];
     assertEquals(expected, path.win32.extname(input));

@@ -52,7 +52,9 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   messages.push("");
   messages.push("");
   messages.push(
-    `    ${gray(bold("[Diff]"))} ${red(bold("Left"))} / ${green(bold("Right"))}`
+    `    ${gray(bold("[Diff]"))} ${red(bold("Actual"))} / ${green(
+      bold("Expected")
+    )}`
   );
   messages.push("");
   messages.push("");
@@ -66,7 +68,7 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
 }
 
 function isKeyedCollection(x: unknown): x is Set<unknown> {
-  return [Symbol.iterator, "size"].every(k => k in (x as Set<unknown>));
+  return [Symbol.iterator, "size"].every((k) => k in (x as Set<unknown>));
 }
 
 export function equal(c: unknown, d: unknown): boolean {
@@ -348,9 +350,9 @@ export async function assertThrowsAsync(
     await fn();
   } catch (e) {
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
-      msg = `Expected error to be instance of "${ErrorClass.name}"${
-        msg ? `: ${msg}` : "."
-      }`;
+      msg = `Expected error to be instance of "${ErrorClass.name}", but got "${
+        e.name
+      }"${msg ? `: ${msg}` : "."}`;
       throw new AssertionError(msg);
     }
     if (msgIncludes && !e.message.includes(msgIncludes)) {

@@ -3,7 +3,6 @@
 use crate::fs as deno_fs;
 use crate::installer::is_remote_url;
 use deno_core::ErrBox;
-use std;
 use std::path::Path;
 use std::path::PathBuf;
 use url::Url;
@@ -61,15 +60,24 @@ pub fn prepare_test_modules_urls(
   Ok(prepared)
 }
 
-pub fn render_test_file(modules: Vec<Url>, fail_fast: bool) -> String {
+pub fn render_test_file(
+  modules: Vec<Url>,
+  fail_fast: bool,
+  filter: Option<String>,
+) -> String {
   let mut test_file = "".to_string();
 
   for module in modules {
     test_file.push_str(&format!("import \"{}\";\n", module.to_string()));
   }
 
-  let run_tests_cmd =
-    format!("Deno.runTests({{ exitOnFail: {} }});\n", fail_fast);
+  let options = if let Some(filter) = filter {
+    json!({ "failFast": fail_fast, "filter": filter })
+  } else {
+    json!({ "failFast": fail_fast })
+  };
+
+  let run_tests_cmd = format!("Deno.runTests({});\n", options);
   test_file.push_str(&run_tests_cmd);
 
   test_file

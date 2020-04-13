@@ -4,7 +4,7 @@ import { assert, assertEquals } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { copyBytes, tempFile } from "./util.ts";
 
-test("[io/tuil] copyBytes", function(): void {
+test("[io/tuil] copyBytes", function (): void {
   const dst = new Uint8Array(4);
 
   dst.fill(0);
@@ -38,12 +38,16 @@ test("[io/tuil] copyBytes", function(): void {
   assertEquals(dst, Uint8Array.of(3, 4, 0, 0));
 });
 
-test("[io/util] tempfile", async function(): Promise<void> {
-  const f = await tempFile(".", {
-    prefix: "prefix-",
-    postfix: "-postfix"
-  });
-  const base = path.basename(f.filepath);
-  assert(!!base.match(/^prefix-.+?-postfix$/));
-  await remove(f.filepath);
+test({
+  name: "[io/util] tempfile",
+  fn: async function (): Promise<void> {
+    const f = await tempFile(".", {
+      prefix: "prefix-",
+      postfix: "-postfix",
+    });
+    const base = path.basename(f.filepath);
+    assert(!!base.match(/^prefix-.+?-postfix$/));
+    f.file.close();
+    await remove(f.filepath);
+  },
 });

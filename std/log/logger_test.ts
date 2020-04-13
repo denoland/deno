@@ -10,7 +10,7 @@ class TestHandler extends BaseHandler {
   public records: LogRecord[] = [];
 
   handle(record: LogRecord): void {
-    this.records.push({ ...record });
+    this.records.push(record);
     super.handle(record);
   }
 
@@ -67,7 +67,7 @@ test(function logFunctions(): void {
     "INFO bar",
     "WARNING baz",
     "ERROR boo",
-    "CRITICAL doo"
+    "CRITICAL doo",
   ]);
 
   handler = doLog("INFO");
@@ -76,7 +76,7 @@ test(function logFunctions(): void {
     "INFO bar",
     "WARNING baz",
     "ERROR boo",
-    "CRITICAL doo"
+    "CRITICAL doo",
   ]);
 
   handler = doLog("WARNING");

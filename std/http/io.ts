@@ -1,15 +1,15 @@
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { assert } from "../testing/asserts.ts";
-import { encoder } from "../strings/mod.ts";
+import { encoder } from "../encoding/utf8.ts";
 import { ServerRequest, Response } from "./server.ts";
 import { STATUS_TEXT } from "./http_status.ts";
 
 export function emptyReader(): Deno.Reader {
   return {
-    async read(_: Uint8Array): Promise<number | Deno.EOF> {
-      return Deno.EOF;
-    }
+    read(_: Uint8Array): Promise<number | Deno.EOF> {
+      return Promise.resolve(Deno.EOF);
+    },
   };
 }
 
@@ -83,7 +83,7 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
         } else {
           chunks.push({
             offset: 0,
-            data: restChunk
+            data: restChunk,
           });
         }
         return buf.byteLength;
@@ -116,7 +116,7 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
 const kProhibitedTrailerHeaders = [
   "transfer-encoding",
   "content-length",
-  "trailer"
+  "trailer",
 ];
 
 /**
@@ -147,7 +147,7 @@ function parseTrailer(field: string | null): Set<string> | undefined {
   if (field == null) {
     return undefined;
   }
-  const keys = field.split(",").map(v => v.trim());
+  const keys = field.split(",").map((v) => v.trim());
   if (keys.length === 0) {
     throw new Error("Empty trailer");
   }
@@ -196,7 +196,7 @@ export async function writeTrailers(
   const writer = BufWriter.create(w);
   const trailerHeaderFields = trailer
     .split(",")
-    .map(s => s.trim().toLowerCase());
+    .map((s) => s.trim().toLowerCase());
   for (const f of trailerHeaderFields) {
     assert(
       !kProhibitedTrailerHeaders.includes(f),
@@ -242,7 +242,7 @@ export async function writeResponse(
   const statusText = STATUS_TEXT.get(statusCode);
   const writer = BufWriter.create(w);
   if (!statusText) {
-    throw Error("bad status code");
+    throw new Deno.errors.InvalidData("Bad status code");
   }
   if (!r.body) {
     r.body = new Uint8Array();

@@ -18,7 +18,7 @@ use std::fmt;
 
 /// A `JSError` represents an exception coming from V8, with stack frames and
 /// line numbers. The deno_cli crate defines another `JSError` type, which wraps
-/// the one defined here, that adds source map support and colorful formatting.  
+/// the one defined here, that adds source map support and colorful formatting.
 #[derive(Debug, PartialEq, Clone)]
 pub struct JSError {
   pub message: String,
@@ -28,6 +28,7 @@ pub struct JSError {
   pub start_column: Option<i64>,
   pub end_column: Option<i64>,
   pub frames: Vec<JSStackFrame>,
+  pub formatted_frames: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -38,6 +39,18 @@ pub struct JSStackFrame {
   pub function_name: String,
   pub is_eval: bool,
   pub is_constructor: bool,
+  pub is_async: bool,
+  // TODO(nayeemrmn): Support more CallSite fields.
+}
+
+fn get_property<'a>(
+  scope: &mut impl v8::ToLocal<'a>,
+  context: v8::Local<v8::Context>,
+  object: v8::Local<v8::Object>,
+  key: &str,
+) -> Option<v8::Local<'a, v8::Value>> {
+  let key = v8::String::new(scope, key).unwrap();
+  object.get(scope, context, key.into())
 }
 
 impl JSError {
@@ -53,9 +66,99 @@ impl JSError {
     // handles below.
     let mut hs = v8::HandleScope::new(scope);
     let scope = hs.enter();
-    let context = scope.get_current_context().unwrap();
+    let context = { scope.get_current_context().unwrap() };
 
     let msg = v8::Exception::create_message(scope, exception);
+
+    let exception: Option<v8::Local<v8::Object>> =
+      exception.clone().try_into().ok();
+    let _ = exception.map(|e| get_property(scope, context, e, "stack"));
+
+    let maybe_call_sites = exception
+      .and_then(|e| get_property(scope, context, e, "__callSiteEvals"));
+    let maybe_call_sites: Option<v8::Local<v8::Array>> =
+      maybe_call_sites.and_then(|a| a.try_into().ok());
+
+    let (frames, formatted_frames) = if let Some(call_sites) = maybe_call_sites
+    {
+      let mut frames: Vec<JSStackFrame> = vec![];
+      let mut formatted_frames: Vec<String> = vec![];
+
+      let formatted_frames_v8 =
+        get_property(scope, context, exception.unwrap(), "__formattedFrames");
+      let formatted_frames_v8: v8::Local<v8::Array> = formatted_frames_v8
+        .and_then(|a| a.try_into().ok())
+        .expect("__formattedFrames should be defined if __callSiteEvals is.");
+
+      for i in 0..call_sites.length() {
+        let call_site: v8::Local<v8::Object> = call_sites
+          .get_index(scope, context, i)
+          .unwrap()
+          .try_into()
+          .unwrap();
+        let line_number: v8::Local<v8::Integer> =
+          get_property(scope, context, call_site, "lineNumber")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let line_number = line_number.value() - 1;
+        let column_number: v8::Local<v8::Integer> =
+          get_property(scope, context, call_site, "columnNumber")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let column_number = column_number.value() - 1;
+        let file_name: Result<v8::Local<v8::String>, _> =
+          get_property(scope, context, call_site, "fileName")
+            .unwrap()
+            .try_into();
+        let file_name = file_name
+          .map_or_else(|_| String::new(), |s| s.to_rust_string_lossy(scope));
+        let function_name: Result<v8::Local<v8::String>, _> =
+          get_property(scope, context, call_site, "functionName")
+            .unwrap()
+            .try_into();
+        let function_name = function_name
+          .map_or_else(|_| String::new(), |s| s.to_rust_string_lossy(scope));
+        let is_constructor: v8::Local<v8::Boolean> =
+          get_property(scope, context, call_site, "isConstructor")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let is_constructor = is_constructor.is_true();
+        let is_eval: v8::Local<v8::Boolean> =
+          get_property(scope, context, call_site, "isEval")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let is_eval = is_eval.is_true();
+        let is_async: v8::Local<v8::Boolean> =
+          get_property(scope, context, call_site, "isAsync")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let is_async = is_async.is_true();
+        frames.push(JSStackFrame {
+          line_number,
+          column: column_number,
+          script_name: file_name,
+          function_name,
+          is_constructor,
+          is_eval,
+          is_async,
+        });
+        let formatted_frame: v8::Local<v8::String> = formatted_frames_v8
+          .get_index(scope, context, i)
+          .unwrap()
+          .try_into()
+          .unwrap();
+        let formatted_frame = formatted_frame.to_rust_string_lossy(scope);
+        formatted_frames.push(formatted_frame)
+      }
+      (frames, formatted_frames)
+    } else {
+      (vec![], vec![])
+    };
 
     Self {
       message: msg.get(scope).to_rust_string_lossy(scope),
@@ -69,38 +172,8 @@ impl JSError {
       line_number: msg.get_line_number(context).and_then(|v| v.try_into().ok()),
       start_column: msg.get_start_column().try_into().ok(),
       end_column: msg.get_end_column().try_into().ok(),
-      frames: msg
-        .get_stack_trace(scope)
-        .map(|stack_trace| {
-          (0..stack_trace.get_frame_count())
-            .map(|i| {
-              let frame = stack_trace.get_frame(scope, i).unwrap();
-              JSStackFrame {
-                line_number: frame
-                  .get_line_number()
-                  .checked_sub(1)
-                  .and_then(|v| v.try_into().ok())
-                  .unwrap(),
-                column: frame
-                  .get_column()
-                  .checked_sub(1)
-                  .and_then(|v| v.try_into().ok())
-                  .unwrap(),
-                script_name: frame
-                  .get_script_name_or_source_url(scope)
-                  .map(|v| v.to_rust_string_lossy(scope))
-                  .unwrap_or_else(|| "<unknown>".to_owned()),
-                function_name: frame
-                  .get_function_name(scope)
-                  .map(|v| v.to_rust_string_lossy(scope))
-                  .unwrap_or_else(|| "".to_owned()),
-                is_constructor: frame.is_constructor(),
-                is_eval: frame.is_eval(),
-              }
-            })
-            .collect::<Vec<_>>()
-        })
-        .unwrap_or_else(Vec::<_>::new),
+      frames,
+      formatted_frames,
     }
   }
 }
@@ -116,20 +189,6 @@ fn format_source_loc(
   let line_number = line_number + 1;
   let column = column + 1;
   format!("{}:{}:{}", script_name, line_number, column)
-}
-
-fn format_stack_frame(frame: &JSStackFrame) -> String {
-  // Note when we print to string, we change from 0-indexed to 1-indexed.
-  let source_loc =
-    format_source_loc(&frame.script_name, frame.line_number, frame.column);
-
-  if !frame.function_name.is_empty() {
-    format!("    at {} ({})", frame.function_name, source_loc)
-  } else if frame.is_eval {
-    format!("    at eval ({})", source_loc)
-  } else {
-    format!("    at {}", source_loc)
-  }
 }
 
 impl fmt::Display for JSError {
@@ -162,55 +221,10 @@ impl fmt::Display for JSError {
 
     write!(f, "{}", self.message)?;
 
-    for frame in &self.frames {
-      write!(f, "\n{}", format_stack_frame(frame))?;
+    for formatted_frame in &self.formatted_frames {
+      // TODO: Strip ANSI color from formatted_frame.
+      write!(f, "\n    at {}", formatted_frame)?;
     }
     Ok(())
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn js_error_to_string() {
-    let js_error = JSError {
-      message: "Error: foo bar".to_string(),
-      source_line: None,
-      script_resource_name: None,
-      line_number: None,
-      start_column: None,
-      end_column: None,
-      frames: vec![
-        JSStackFrame {
-          line_number: 4,
-          column: 16,
-          script_name: "foo_bar.ts".to_string(),
-          function_name: "foo".to_string(),
-          is_eval: false,
-          is_constructor: false,
-        },
-        JSStackFrame {
-          line_number: 5,
-          column: 20,
-          script_name: "bar_baz.ts".to_string(),
-          function_name: "qat".to_string(),
-          is_eval: false,
-          is_constructor: false,
-        },
-        JSStackFrame {
-          line_number: 1,
-          column: 1,
-          script_name: "deno_main.js".to_string(),
-          function_name: "".to_string(),
-          is_eval: false,
-          is_constructor: false,
-        },
-      ],
-    };
-    let actual = js_error.to_string();
-    let expected = "Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2";
-    assert_eq!(actual, expected);
   }
 }

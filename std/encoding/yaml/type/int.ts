@@ -8,18 +8,18 @@ import { isNegativeZero, Any } from "../utils.ts";
 
 function isHexCode(c: number): boolean {
   return (
-    (0x30 /* 0 */ <= c && c <= 0x39) /* 9 */ ||
-    (0x41 /* A */ <= c && c <= 0x46) /* F */ ||
-    (0x61 /* a */ <= c && c <= 0x66) /* f */
+    (0x30 <= /* 0 */ c && c <= 0x39) /* 9 */ ||
+    (0x41 <= /* A */ c && c <= 0x46) /* F */ ||
+    (0x61 <= /* a */ c && c <= 0x66) /* f */
   );
 }
 
 function isOctCode(c: number): boolean {
-  return 0x30 /* 0 */ <= c && c <= 0x37 /* 7 */;
+  return 0x30 <= /* 0 */ c && c <= 0x37 /* 7 */;
 }
 
 function isDecCode(c: number): boolean {
-  return 0x30 /* 0 */ <= c && c <= 0x39 /* 9 */;
+  return 0x30 <= /* 0 */ c && c <= 0x39 /* 9 */;
 }
 
 function resolveYamlInteger(data: string): boolean {
@@ -175,17 +175,14 @@ export const int = new Type("tag:yaml.org,2002:int", {
     hexadecimal(obj: number): string {
       return obj >= 0
         ? `0x${obj.toString(16).toUpperCase()}`
-        : `-0x${obj
-            .toString(16)
-            .toUpperCase()
-            .slice(1)}`;
-    }
+        : `-0x${obj.toString(16).toUpperCase().slice(1)}`;
+    },
   },
   resolve: resolveYamlInteger,
   styleAliases: {
     binary: [2, "bin"],
     decimal: [10, "dec"],
     hexadecimal: [16, "hex"],
-    octal: [8, "oct"]
-  }
+    octal: [8, "oct"],
+  },
 });

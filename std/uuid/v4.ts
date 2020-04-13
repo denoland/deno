@@ -28,6 +28,6 @@ export function generate(): string {
     "-",
     ...bits.slice(8, 10),
     "-",
-    ...bits.slice(10)
+    ...bits.slice(10),
   ].join("");
 }

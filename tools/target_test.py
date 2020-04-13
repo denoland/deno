@@ -2,7 +2,7 @@ import os
 import sys
 
 from test_util import DenoTestCase, run_tests
-from util import build_mode, executable_suffix, tests_path, run, run_output
+from util import executable_suffix, tests_path, run, run_output
 
 
 class TestTarget(DenoTestCase):

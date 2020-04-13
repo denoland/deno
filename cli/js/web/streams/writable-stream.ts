@@ -16,7 +16,7 @@
 //   setUpWritableStreamDefaultControllerFromUnderlyingSink
 // } from "./writable-stream-default-controller.ts";
 // import { WritableStreamDefaultWriter } from "./writable-stream-default-writer.ts";
-// import { QueuingStrategy, QueuingStrategySizeCallback } from "../dom_types.ts";
+// import { QueuingStrategy, QueuingStrategySizeCallback } from "../dom_types.d.ts";
 
 // export class WritableStream<InputType> {
 //   [shared.state_]: ws.WritableStreamState;

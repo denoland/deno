@@ -11,27 +11,27 @@ unitTest(function nameOfTestCaseCantBeEmpty(): void {
     () => {
       Deno.test("", () => {});
     },
-    Error,
-    "The name of test case can't be empty"
+    TypeError,
+    "The test name can't be empty"
   );
   assertThrows(
     () => {
       Deno.test({
         name: "",
-        fn: () => {}
+        fn: () => {},
       });
     },
-    Error,
-    "The name of test case can't be empty"
+    TypeError,
+    "The test name can't be empty"
   );
 });
 
 unitTest(function testFnCantBeAnonymous(): void {
   assertThrows(
     () => {
-      Deno.test(function() {});
+      Deno.test(function () {});
     },
-    Error,
-    "Test function can't be anonymous"
+    TypeError,
+    "The test function can't be anonymous"
   );
 });

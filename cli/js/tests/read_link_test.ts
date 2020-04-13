@@ -18,9 +18,7 @@ unitTest(
   }
 );
 
-unitTest({ perms: { read: false } }, async function readlinkSyncPerm(): Promise<
-  void
-> {
+unitTest({ perms: { read: false } }, function readlinkSyncPerm(): void {
   let caughtError = false;
   try {
     Deno.readlinkSync("/symlink");

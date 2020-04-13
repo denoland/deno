@@ -27,7 +27,7 @@ It's built on V8, Rust, and Tokio.
   enabled).
 - Supports TypeScript out of the box.
 - Ships a single executable (`deno`).
-- Has built in utilities like a dependency inspector (`deno info`) and a code
+- Has built-in utilities like a dependency inspector (`deno info`) and a code
   formatter (`deno fmt`).
 - Has
   [a set of reviewed (audited) standard modules](https://github.com/denoland/deno/tree/master/std)
@@ -366,7 +366,7 @@ Example:
 ```ts
 // create subprocess
 const p = Deno.run({
-  args: ["echo", "hello"]
+  cmd: ["echo", "hello"],
 });
 
 // await its completion
@@ -393,15 +393,15 @@ you can use `"piped"` option.
 const fileNames = Deno.args;
 
 const p = Deno.run({
-  args: [
+  cmd: [
     "deno",
     "run",
     "--allow-read",
     "https://deno.land/std/examples/cat.ts",
-    ...fileNames
+    ...fileNames,
   ],
   stdout: "piped",
-  stderr: "piped"
+  stderr: "piped",
 });
 
 const { code } = await p.status();
@@ -557,7 +557,7 @@ assertion library across a large project. Rather than importing
 export {
   assert,
   assertEquals,
-  assertStrContains
+  assertStrContains,
 } from "https://deno.land/std/testing/asserts.ts";
 ```
 
@@ -592,7 +592,7 @@ for that module is located, you can specify the type definition at import. This
 takes the form of a compiler hint. Compiler hints inform Deno the location of
 `.d.ts` files and the JavaScript code that is imported that they relate to. The
 hint is `@deno-types` and when specified the value will be used in the compiler
-instead of the JavaScript module. For example if you had `foo.js`, but you know
+instead of the JavaScript module. For example, if you had `foo.js`, but you know
 that along side of it was `foo.d.ts` which was the types for the file, the code
 would look like this:
 
@@ -614,11 +614,11 @@ the program.
 #### Triple-slash reference directive in JavaScript files
 
 If you are hosting modules which you want to be consumed by Deno, and you want
-to inform Deno the location of the type definitions, you can utilise a
+to inform Deno about the location of the type definitions, you can utilise a
 triple-slash directive in the actual code. For example, if you have a JavaScript
-module, where you want to provide Deno with the location of the type definitions
-for that JavaScript file, which happens to be along side that file. You
-JavaScript module named `foo.js` might look like this:
+module and you would like to provide Deno with the location of the type
+definitions which happen to be alongside that file, your JavaScript module named
+`foo.js` might look like this:
 
 ```js
 /// <reference types="./foo.d.ts" />
@@ -667,19 +667,19 @@ that Deno supports. By default, the compiler runtime APIs which type check
 TypeScript also use these libraries (`Deno.compile()` and `Deno.bundle()`).
 
 But if you want to compile or bundle TypeScript for some other runtime, you may
-want to override the default libraries. In order to do this, the runtime APIs
-support the `lib` property in the compiler options. For example, if you had
-TypeScript code that is destined for the browser, you would want to use the
-TypeScript `"dom"` library:
+want to override the default libraries. To do this, the runtime APIs support the
+`lib` property in the compiler options. For example, if you had TypeScript code
+that is destined for the browser, you would want to use the TypeScript `"dom"`
+library:
 
 ```ts
-const [errors, emitted] = Deno.compile(
+const [errors, emitted] = await Deno.compile(
   "main.ts",
   {
-    "main.ts": `document.getElementById("foo");\n`
+    "main.ts": `document.getElementById("foo");\n`,
   },
   {
-    lib: ["dom", "esnext"]
+    lib: ["dom", "esnext"],
   }
 );
 ```
@@ -713,13 +713,13 @@ So to add the Deno namespace to a compilation, you would include the `deno.ns`
 lib in the array. For example:
 
 ```ts
-const [errors, emitted] = Deno.compile(
+const [errors, emitted] = await Deno.compile(
   "main.ts",
   {
-    "main.ts": `document.getElementById("foo");\n`
+    "main.ts": `document.getElementById("foo");\n`,
   },
   {
-    lib: ["dom", "esnext", "deno.ns"]
+    lib: ["dom", "esnext", "deno.ns"],
   }
 );
 ```
@@ -730,9 +730,9 @@ errors logged as part of the compilation.
 
 #### Using the triple slash reference
 
-You do not have to specify the `lib` in just the compiler options. Deno supports
+You do not have to specify the `lib` in the compiler options. Deno also supports
 [the triple-slash reference to a lib](https://www.typescriptlang.org/docs/handbook/triple-slash-directives.html#-reference-lib-).
-and could be embedded in the contents of the file. For example of you have a
+which can be embedded in the contents of the file. For example, if you have a
 `main.ts` like:
 
 ```ts
@@ -741,11 +741,11 @@ and could be embedded in the contents of the file. For example of you have a
 document.getElementById("foo");
 ```
 
-It would compiler without errors like this:
+It would compile without errors like this:
 
 ```ts
-const [errors, emitted] = Deno.compile("./main.ts", undefined, {
-  lib: ["esnext"]
+const [errors, emitted] = await Deno.compile("./main.ts", undefined, {
+  lib: ["esnext"],
 });
 ```
 
@@ -841,8 +841,8 @@ The bundle can just be run as any other module in Deno would:
 deno colors.bundle.js
 ```
 
-The output is a self contained ES Module, which any exports from the main module
-supplied on the command line will be available. For example if the main module
+The output is a self contained ES Module, where any exports from the main module
+supplied on the command line will be available. For example, if the main module
 looked something like this:
 
 ```ts
@@ -877,8 +877,8 @@ Or you could import it into another ES module to consume:
 Deno provides ability to easily install and distribute executable code via
 `deno install` command.
 
-`deno install [FLAGS...] [EXE_NAME] [URL] [SCRIPT_ARGS...]` will install script
-available at `URL` with name `EXE_NAME`.
+`deno install [FLAGS...] [EXE_NAME] [URL] [SCRIPT_ARGS...]` will install the
+script available at `URL` under the name `EXE_NAME`.
 
 This command is a thin wrapper that creates executable shell scripts which
 invoke `deno` with specified permissions and CLI flags.
@@ -937,8 +937,8 @@ if (import.meta.main) {
 }
 ```
 
-When you create executable script make sure to let users know by adding example
-installation command to your repository:
+When you create an executable script make sure to let users know by adding an
+example installation command to your repository:
 
 ```shell
 # Install using deno install
@@ -966,14 +966,14 @@ To update or create a lock use `--lock=lock.json --lock-write`.
 
 Deno supports [import maps](https://github.com/WICG/import-maps).
 
-One can use import map with `--importmap=<FILE>` CLI flag.
+You can use import map with the `--importmap=<FILE>` CLI flag.
 
 Current limitations:
 
 - single import map
 - no fallback URLs
 - Deno does not support `std:` namespace
-- Does supports only `file:`, `http:` and `https:` schemes
+- supports only `file:`, `http:` and `https:` schemes
 
 Example:
 
@@ -1031,35 +1031,35 @@ console.log(fib(20));
 
 ## Compiler API
 
-Deno supports runtime access to the built in TypeScript compiler. There are
+Deno supports runtime access to the built-in TypeScript compiler. There are
 three methods in the `Deno` namespace that provide this access.
 
 ### `Deno.compile()`
 
-This works similar to `deno fetch` in that it can fetch code, compile it, but
-not run it. It takes up to three arguments, the `rootName`, optionally
-`sources`, and optionally `options`. The `rootName` is the root module which
-will be used to generate the resulting program. This is like module name you
-would pass on the command line in `deno --reload run example.ts`. The `sources`
-is a hash where the key is the fully qualified module name, and the value is the
-text source of the module. If `sources` is passed, Deno will resolve all the
-modules from within that hash and not attempt to resolve them outside of Deno.
-If `sources` are not provided, Deno will resolve modules as if the root module
-had been passed on the command line. Deno will also cache any of these
-resources. The `options` argument is a set of options of type
-`Deno.CompilerOptions`, which is a subset of the TypeScript compiler options
-which can be supported by Deno.
+This works similar to `deno cache` in that it can fetch and cache the code,
+compile it, but not run it. It takes up to three arguments, the `rootName`,
+optionally `sources`, and optionally `options`. The `rootName` is the root
+module which will be used to generate the resulting program. This is like the
+module name you would pass on the command line in
+`deno --reload run example.ts`. The `sources` is a hash where the key is the
+fully qualified module name, and the value is the text source of the module. If
+`sources` is passed, Deno will resolve all the modules from within that hash and
+not attempt to resolve them outside of Deno. If `sources` are not provided, Deno
+will resolve modules as if the root module had been passed on the command line.
+Deno will also cache any of these resources. The `options` argument is a set of
+options of type `Deno.CompilerOptions`, which is a subset of the TypeScript
+compiler options containing the ones supported by Deno.
 
-The method resolves with a tuple where the first argument is any diagnostics
-(syntax or type errors) related to the code, and a map of the code, where the
-key would be the output filename and the value would be the content.
+The method resolves with a tuple. The first argument contains any diagnostics
+(syntax or type errors) related to the code. The second argument is a map where
+the keys are the output filenames and the values are the content.
 
 An example of providing sources:
 
 ```ts
 const [diagnostics, emitMap] = await Deno.compile("/foo.ts", {
   "/foo.ts": `import * as bar from "./bar.ts";\nconsole.log(bar);\n`,
-  "/bar.ts": `export const bar = "bar";\n`
+  "/bar.ts": `export const bar = "bar";\n`,
 });
 
 assert(diagnostics == null); // ensuring no diagnostics are returned
@@ -1078,7 +1078,7 @@ const [diagnostics, emitMap] = await Deno.compile(
 );
 ```
 
-We should get back in the `emitMap` a simple `console.log()` statement.
+In this case `emitMap` will contain a simple `console.log()` statement.
 
 ### `Deno.bundle()`
 
@@ -1097,14 +1097,14 @@ outside of Deno. If `sources` are not provided, Deno will resolve modules as if
 the root module had been passed on the command line. Deno will also cache any of
 these resources. The `options` argument is a set of options of type
 `Deno.CompilerOptions`, which is a subset of the TypeScript compiler options
-which can be supported by Deno.
+containing the ones supported by Deno.
 
 An example of providing sources:
 
 ```ts
 const [diagnostics, emit] = await Deno.bundle("/foo.ts", {
   "/foo.ts": `import * as bar from "./bar.ts";\nconsole.log(bar);\n`,
-  "/bar.ts": `export const bar = "bar";\n`
+  "/bar.ts": `export const bar = "bar";\n`,
 });
 
 assert(diagnostics == null); // ensuring no diagnostics are returned
@@ -1123,7 +1123,7 @@ const [diagnostics, emit] = await Deno.bundle(
 );
 ```
 
-We should get back in `emit` a self contained JavaScript ES module with all of
+In this case `emit` will be a self contained JavaScript ES module with all of
 its dependencies resolved and exporting the same exports as the source module.
 
 ### `Deno.transpileOnly()`
@@ -1131,21 +1131,20 @@ its dependencies resolved and exporting the same exports as the source module.
 This is based off of the TypeScript function `transpileModule()`. All this does
 is "erase" any types from the modules and emit JavaScript. There is no type
 checking and no resolution of dependencies. It accepts up to two arguments, the
-first is a hash where the key is the module name and the value is the contents.
+first is a hash where the key is the module name and the value is the content.
 The only purpose of the module name is when putting information into a source
-map, of what the source file name was. The second is optionally `options` which
-is of type `Deno.CompilerOptions`. This is a subset of options which can be
-supported by Deno. It resolves with a map where the key is the source module
-name supplied, and the value is an object with a property of `source` which is
-the output contents of the module, and optionally `map` which would be the
-source map. By default, source maps are output, but can be turned off via the
-`options` argument.
+map, of what the source file name was. The second argument contains optional
+`options` of the type `Deno.CompilerOptions`. The function resolves with a map
+where the key is the source module name supplied, and the value is an object
+with a property of `source` and optionally `map`. The first is the output
+contents of the module. The `map` property is the source map. Source maps are
+provided by default, but can be turned off via the `options` argument.
 
 An example:
 
 ```ts
 const result = await Deno.transpileOnly({
-  "/foo.ts": `enum Foo { Foo, Bar, Baz };\n`
+  "/foo.ts": `enum Foo { Foo, Bar, Baz };\n`,
 });
 
 console.log(result["/foo.ts"].source);
@@ -1157,20 +1156,19 @@ enumerable, and the map to be defined.
 
 ## TypeScript Compiler Options
 
-In Deno ecosystem, all strict flags are enabled in order to comply with
-TypeScript ideal of being `strict` by default. However, in order to provide a
+In the Deno ecosystem, all strict flags are enabled in order to comply with
+TypeScript's ideal of being `strict` by default. However, in order to provide a
 way to support customization a configuration file such as `tsconfig.json` might
 be provided to Deno on program execution.
 
-You do need to explicitly tell Deno where to look for this configuration, in
-order to do so you can use the `-c` argument when executing your application.
+You need to explicitly tell Deno where to look for this configuration by setting
+the `-c` argument when executing your application.
 
 ```bash
 deno -c tsconfig.json mod.ts
 ```
 
-Currently allowed settings, as well as their default values in Deno go as
-follows:
+Following are the currently allowed settings and their default values in Deno:
 
 ```json
 {
@@ -1210,8 +1208,8 @@ follows:
 }
 ```
 
-For documentation on allowed values and use cases please visit
-https://www.typescriptlang.org/docs/handbook/compiler-options.html
+For documentation on allowed values and use cases please visit the
+[typescript docs](https://www.typescriptlang.org/docs/handbook/compiler-options.html).
 
 **Note**: Any options not listed above are either not supported by Deno or are
 listed as deprecated/experimental in the TypeScript documentation.
@@ -1219,11 +1217,10 @@ listed as deprecated/experimental in the TypeScript documentation.
 ## Program lifecycle
 
 Deno supports browser compatible lifecycle events: `load` and `unload`. You can
-use these event to provide setup and cleanup code in your program.
+use these events to provide setup and cleanup code in your program.
 
-`load` event listener supports asynchronous functions and will await these
-functions. `unload` event listener supports only synchronous code. Both events
-are not cancellable.
+Listener for `load` events can be asynchronous and will be awaited. Listener for
+`unload` events need to be synchronous. Both events cannot be cancelled.
 
 Example:
 
@@ -1318,7 +1315,7 @@ console.log(resources());
 
 #### Metrics
 
-Metrics is Deno's internal counters for various statics.
+Metrics is Deno's internal counter for various statistics.
 
 ```shell
 > console.table(Deno.metrics())
@@ -1509,52 +1506,53 @@ Extra steps for Windows users:
 
 #### Prerequisites
 
-Deno has most of its dependencies in a git submodule to ensure reproducible
-builds. The following must be installed separately:
+The easiest way to build Deno is by using a precompiled version of V8:
 
-<!-- prettier-ignore-start -->
-<!-- see https://github.com/prettier/prettier/issues/3679 -->
+```
+cargo build -vv
+```
 
-1. [Rust](https://www.rust-lang.org/en-US/install.html)
-    - Ensure that your version is compatible with the one used in [CI](
-      https://github.com/denoland/deno/blob/master/.github/workflows/ci.yml).
-      This is updated frequently.
-2. [Python 2](https://www.python.org/downloads)
-    - Ensure that a suffix-less `python`/`python.exe` exists in your `PATH` and
-      it refers to Python 2, [not 3](
-      https://github.com/denoland/deno/issues/464#issuecomment-411795578).
+However if you want to build Deno and V8 from source code:
 
-Extra steps for Linux users:
+```
+V8_FROM_SOURCE=1 cargo build -vv
+```
 
-- Install glib-2.0 development files.
-    - Required by [rusty_v8](https://github.com/denoland/rusty_v8#build).
-    - On Ubuntu, run `sudo apt install libglib2.0-dev`.
+When building V8 from source, there are more dependencies:
 
-Extra steps for Mac users:
+[Python 2](https://www.python.org/downloads). Ensure that a suffix-less
+`python`/`python.exe` exists in your `PATH` and it refers to Python 2,
+[not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
 
-- Install [XCode](https://developer.apple.com/xcode/) :(
+For Linux users glib-2.0 development files must also be installed. (On Ubuntu,
+run `apt install libglib2.0-dev`.)
 
-Extra steps for Windows users:
+Mac users must have [XCode](https://developer.apple.com/xcode/) installed.
+
+For Windows users:
 
 1. Get [VS Community 2019](https://www.visualstudio.com/downloads/) with
    "Desktop development with C++" toolkit and make sure to select the following
    required tools listed below along with all C++ tools.
-    - Visual C++ tools for CMake
-    - Windows 10 SDK (10.0.17763.0)
-    - Testing tools core features - Build Tools
-    - Visual C++ ATL for x86 and x64
-    - Visual C++ MFC for x86 and x64
-    - C++/CLI support
-    - VC++ 2015.3 v14.00 (v140) toolset for desktop
+
+   - Visual C++ tools for CMake
+   - Windows 10 SDK (10.0.17763.0)
+   - Testing tools core features - Build Tools
+   - Visual C++ ATL for x86 and x64
+   - Visual C++ MFC for x86 and x64
+   - C++/CLI support
+   - VC++ 2015.3 v14.00 (v140) toolset for desktop
 
 2. Enable "Debugging Tools for Windows". Go to "Control Panel" → "Programs" →
    "Programs and Features" → Select "Windows Software Development Kit - Windows
    10" → "Change" → "Change" → Check "Debugging Tools For Windows" → "Change" ->
-   "Finish".
-   Or use:
-   [Debugging Tools for Windows](https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/) (Notice: it will download the files, you should install `X64 Debuggers And Tools-x64_en-us.msi` file manually.)
+   "Finish". Or use:
+   [Debugging Tools for Windows](https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/)
+   (Notice: it will download the files, you should install
+   `X64 Debuggers And Tools-x64_en-us.msi` file manually.)
 
-<!-- prettier-ignore-end -->
+See [rusty_v8's README](https://github.com/denoland/rusty_v8) for more details
+about the V8 build.
 
 #### Building
 
@@ -1586,8 +1584,7 @@ cargo test js_unit_tests
 Test `std/`:
 
 ```bash
-cd std
-cargo run -- -A testing/runner.ts --exclude "**/testdata"
+cargo test std_tests
 ```
 
 Lint the code:
@@ -1601,40 +1598,6 @@ Format the code:
 ```bash
 ./tools/format.py
 ```
-
-#### Other Useful Commands
-
-```bash
-# Call ninja manually.
-ninja -C target/debug
-
-# Build a release binary.
-cargo build --release
-
-# List executable targets.
-gn --root=core/libdeno ls target/debug "//:*" --as=output --type=executable
-
-# List build configuration.
-gn --root=core/libdeno args target/debug/ --list
-
-# Edit build configuration.
-gn --root=core/libdeno args target/debug/
-
-# Describe a target.
-gn --root=core/libdeno desc target/debug/ :deno
-gn help
-
-# Update third_party modules
-git submodule update
-
-# Skip downloading binary build tools and point the build
-# to the system provided ones (for packagers of deno ...).
-export DENO_BUILD_ARGS="clang_base_path=/usr clang_use_chrome_plugins=false"
-DENO_NO_BINARY_DOWNLOAD=1 DENO_GN_PATH=/usr/bin/gn cargo build
-```
-
-Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
-`DENO_DIR`, `DENO_GN_PATH`, `DENO_NO_BINARY_DOWNLOAD`.
 
 ### Submitting a Pull Request
 

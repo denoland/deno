@@ -4,19 +4,19 @@ import { assertStrictEq } from "../../testing/asserts.ts";
 Deno.test("[examples/cat] print multiple files", async () => {
   const decoder = new TextDecoder();
   const process = Deno.run({
-    args: [
+    cmd: [
       Deno.execPath(),
       "--allow-read",
       "cat.ts",
       "testdata/cat/hello.txt",
-      "testdata/cat/world.txt"
+      "testdata/cat/world.txt",
     ],
     cwd: "examples",
-    stdout: "piped"
+    stdout: "piped",
   });
 
   try {
-    const output = await Deno.readAll(process.stdout!);
+    const output = await process.output();
     const actual = decoder.decode(output).trim();
     assertStrictEq(actual, "Hello\nWorld");
   } finally {

@@ -73,6 +73,15 @@ unitTest(function formDataParamsSetSuccess(): void {
   assertEquals(formData.get("e"), "null");
 });
 
+unitTest(function fromDataUseDomFile(): void {
+  const formData = new FormData();
+  const file = new File(["foo"], "bar", {
+    type: "text/plain",
+  });
+  formData.append("file", file);
+  assertEquals(formData.get("file"), file);
+});
+
 unitTest(function formDataSetEmptyBlobSuccess(): void {
   const formData = new FormData();
   formData.set("a", new Blob([]), "blank.txt");
@@ -88,7 +97,7 @@ unitTest(function formDataSetEmptyBlobSuccess(): void {
 unitTest(function formDataParamsForEachSuccess(): void {
   const init = [
     ["a", "54"],
-    ["b", "true"]
+    ["b", "true"],
   ];
   const formData = new FormData();
   for (const [name, value] of init) {
@@ -110,7 +119,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
     "getAll",
     "get",
     "has",
-    "forEach"
+    "forEach",
   ] as const;
 
   const methodRequireTwoParams = ["append", "set"] as const;
