@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::error_exit;
 use crate::fs::resolve_from_cwd;
 use clap::App;
 use clap::AppSettings;
@@ -1232,17 +1233,15 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 // TODO(ry) move this to utility module and add test.
-/// Strips fragment part of URL. Panics on bad URL.
+/// Strips fragment part of URL.
 pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
   use url::Url;
   let mut out: Vec<String> = vec![];
   for urlstr in urls.iter() {
     use std::str::FromStr;
-    let result = Url::from_str(urlstr);
-    if result.is_err() {
-      panic!("Bad Url: {}", urlstr);
-    }
-    let mut url = result.unwrap();
+    let mut url = Url::from_str(urlstr).unwrap_or_else(|e| {
+      error_exit!("Unable to resolve URL '{}': {}", urlstr, e);
+    });
     url.set_fragment(None);
     let mut full_url = String::from(url.as_str());
     if full_url.len() > 1 && full_url.ends_with('/') {

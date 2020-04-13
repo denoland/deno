@@ -93,6 +93,14 @@ use std::pin::Pin;
 use upgrade::upgrade_command;
 use url::Url;
 
+#[macro_export]
+macro_rules! error_exit {
+  ($($arg:tt)*) => {
+    eprintln!($($arg)*);
+    std::process::exit(1);
+  };
+}
+
 static LOGGER: Logger = Logger;
 
 // TODO(ry) Switch to env_logger or other standard crate.
@@ -419,8 +427,7 @@ async fn doc_command(
   let doc_nodes = match parse_result {
     Ok(nodes) => nodes,
     Err(e) => {
-      eprintln!("{}", e);
-      std::process::exit(1);
+      error_exit!("{}", e);
     }
   };
 
@@ -433,8 +440,7 @@ async fn doc_command(
       if let Some(node) = node {
         doc::printer::format_details(node)
       } else {
-        eprintln!("Node {} was not found!", filter);
-        std::process::exit(1);
+        error_exit!("Node {} was not found!", filter);
       }
     } else {
       doc::printer::format(doc_nodes)
@@ -589,16 +595,14 @@ pub fn main() {
     }
     DenoSubcommand::Completions { buf } => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
-        eprintln!("{}", e);
-        std::process::exit(1);
+        error_exit!("{}", e);
       }
       return;
     }
     DenoSubcommand::Types => {
       let types = get_types();
       if let Err(e) = write_to_stdout_ignore_sigpipe(types.as_bytes()) {
-        eprintln!("{}", e);
-        std::process::exit(1);
+        error_exit!("{}", e);
       }
       return;
     }
@@ -610,7 +614,6 @@ pub fn main() {
 
   let result = tokio_util::run_basic(fut);
   if let Err(err) = result {
-    eprintln!("{}", err.to_string());
-    std::process::exit(1);
+    error_exit!("{}", err.to_string());
   }
 }
