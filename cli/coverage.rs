@@ -29,28 +29,37 @@ impl CoverageCollector {
 
     eprintln!("start");
     collector.socket.send(r#"{"id":1,"method":"Runtime.enable"}"#.into()).await.unwrap();
-    eprintln!("start1");
-    let msg = collector.socket.next().await.unwrap();
-    eprintln!("start2");
-    dbg!(msg);
     collector.socket.send(r#"{"id":2,"method":"Profiler.enable"}"#.into()).await.unwrap();
-    let msg = collector.socket.next().await.unwrap();
-    dbg!(msg);
     collector.socket.send(r#"{"id":3,"method":"Profiler.startPreciseCoverage", "params": {"callCount": false, "detailed": true } }"#.into()).await.unwrap();
-    let msg = collector.socket.next().await.unwrap();
-    dbg!(msg);
     collector.socket.send(r#"{"id":4,"method":"Runtime.runIfWaitingForDebugger" }"#.into()).await.unwrap();
-    let msg = collector.socket.next().await.unwrap();
-    dbg!(msg);
-
+    eprintln!("start1");
+    
     Ok(collector)
   }
 
-  pub async fn get_report(&mut self) -> Result<String, ErrBox> {
-    self.socket.send(r#"{"id":5,"method":"Runtime.takePreciseCoverage" }"#.into()).await.unwrap();
+  pub async fn stop_collecting(&mut self) -> Result<(), ErrBox> {
     let msg = self.socket.next().await.unwrap();
     dbg!(msg);
-    self.socket.send(r#"{"id":6,"method":"Runtime.stopPreciseCoverage" }"#.into()).await.unwrap();
+    let msg = self.socket.next().await.unwrap();
+    eprintln!("start2");
+    dbg!(msg);
+    let msg = self.socket.next().await.unwrap();
+    dbg!(msg);
+    let msg = self.socket.next().await.unwrap();
+    dbg!(msg);
+    let msg = self.socket.next().await.unwrap();
+    dbg!(msg);
+
+    self.socket.send(r#"{"id":5,"method":"Profiler.takePreciseCoverage" }"#.into()).await.unwrap();
+    self.socket.send(r#"{"id":6,"method":"Profiler.stopPreciseCoverage" }"#.into()).await.unwrap();
+    Ok(())
+  }
+
+  pub async fn get_report(&mut self) -> Result<String, ErrBox> {
+    dbg!("before recv");
+    let msg = self.socket.next().await.unwrap();
+    dbg!("after recv");
+    dbg!(msg);
     let msg = self.socket.next().await.unwrap();
     dbg!(msg);
 

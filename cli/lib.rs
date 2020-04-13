@@ -511,7 +511,7 @@ async fn test_command(
   // probably on separate thread
   // * ensure that --inspect flag is on so inspector is available
 
-  let inspector_url = Url::parse("ws://127.0.0.1:9229").unwrap();
+  let inspector_url = Url::parse("ws://127.0.0.1:9229/ws/463ebedf-b2f2-4a73-96b1-f1987cc22300").unwrap();
 
   let mut worker =
     create_main_worker(global_state.clone(), main_module.clone())?;
@@ -550,6 +550,13 @@ async fn test_command(
   // * parse coverage report to CoverageParser together with list
   // of test files and prepare a test/JSON report
   // coverage_collector.stop_collecting();
+  coverage_collector.stop_collecting().await?;
+  eprintln!("stop collecting");
+  (&mut *worker).await?;
+  (&mut *worker).await?;
+  (&mut *worker).await?;
+  (&mut *worker).await?;
+  eprintln!("polled worker");
   let coverage_report = coverage_collector.get_report().await?;
   eprintln!("coverage report: {}", coverage_report);
 
