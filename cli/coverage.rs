@@ -1,85 +1,59 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+#![allow(unused)]
+
+use crate::tokio_util;
+use deno_core::ErrBox;
+use std;
+use tokio_tungstenite;
 use url::Url;
+use crate::futures::StreamExt;
+use crate::futures::SinkExt;
 
 pub struct CoverageCollector {
-    url: Url,
+  msg_id: usize,
+  socket: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
 }
 
 impl CoverageCollector {
-    pub fn new(url: Url) -> Self {
-        Self {
-            url,
-        }
-    }
+  pub async fn connect(url: Url) -> Result<Self, ErrBox> {
+    let (socket, response) = tokio_tungstenite::connect_async(url)
+        .await
+        .expect("Can't connect");
+    assert_eq!(response.status(), 101);
 
-    pub fn connect(&self) {
-        todo!()
-    }
+    let mut collector = Self {
+        msg_id: 1,
+        socket,
+    };
 
-    pub fn start_collecting(&self) {
-        todo!()
-    }
+    eprintln!("start");
+    collector.socket.send(r#"{"id":1,"method":"Runtime.enable"}"#.into()).await.unwrap();
+    eprintln!("start1");
+    let msg = collector.socket.next().await.unwrap();
+    eprintln!("start2");
+    dbg!(msg);
+    collector.socket.send(r#"{"id":2,"method":"Profiler.enable"}"#.into()).await.unwrap();
+    let msg = collector.socket.next().await.unwrap();
+    dbg!(msg);
+    collector.socket.send(r#"{"id":3,"method":"Profiler.startPreciseCoverage", "params": {"callCount": false, "detailed": true } }"#.into()).await.unwrap();
+    let msg = collector.socket.next().await.unwrap();
+    dbg!(msg);
+    collector.socket.send(r#"{"id":4,"method":"Runtime.runIfWaitingForDebugger" }"#.into()).await.unwrap();
+    let msg = collector.socket.next().await.unwrap();
+    dbg!(msg);
 
-    pub fn stop_collecting(&self) {
-        todo!()
-    }
+    Ok(collector)
+  }
 
-    pub fn get_report(&self) -> String {
-        todo!()
-    }
+  pub async fn get_report(&mut self) -> Result<String, ErrBox> {
+    self.socket.send(r#"{"id":5,"method":"Runtime.takePreciseCoverage" }"#.into()).await.unwrap();
+    let msg = self.socket.next().await.unwrap();
+    dbg!(msg);
+    self.socket.send(r#"{"id":6,"method":"Runtime.stopPreciseCoverage" }"#.into()).await.unwrap();
+    let msg = self.socket.next().await.unwrap();
+    dbg!(msg);
+
+    todo!()
+  }
 }
-
-
-// pub fn run_coverage_collector_thread(
-
-// ) -> Result<(JoinHandle<()>, WebWorkerHandle), ErrBox> {
-//     let (handle_sender, handle_receiver) =
-//     std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, ErrBox>>(1);
-
-//     let builder =
-//     std::thread::Builder::new().name("deno-coverage-collector".to_string());
-
-//     let join_handle = std::thread::spawn(|| {
-//         let fut = async move {
-//           let (socket, response) = tokio_tungstenite::connect_async(inspector_url)
-//             .await
-//             .expect("Can't connect");
-//           assert_eq!(response.status(), 101);
-    
-//           let mut msg_id = 1;
-    
-//           let (mut socket_tx, mut socket_rx) = socket.split();
-    
-//           // let test_steps = vec![
-//           //   WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
-//           //   WsSend(r#"{"id":2,"method":"Profiler.enable"}"#),
-//           //   WsSend(
-//           //     r#"{"id":3,"method":"Profiler.startPreciseCoverage", "params": {"callCount": false, "detailed": true } }"#,
-//           //   ),
-//           //   WsRecv(
-//           //     r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-//           //   ),
-//           //   WsRecv(r#"{"id":1,"result":{}}"#),
-//           //   WsRecv(r#"{"id":2,"result":{}}"#),
-//           //   WsRecv(r#"{"id":3,"result":{"timestamp":"#),
-//           //   WsSend(r#"{"id":4,"method":"Runtime.runIfWaitingForDebugger"}"#),
-//           //   WsRecv(r#"{"id":4,"result":{}}"#),
-//           //   StdOut("hello a"),
-//           //   StdOut("hello b"),
-//           //   StdOut("hello b"),
-//           //   WsSend(r#"{"id":5,"method":"Profiler.takePreciseCoverage"}"#),
-//           //   WsSend(r#"{"id":6,"method":"Profiler.stopPreciseCoverage"}"#),
-//           //   WsRecv(r#"{"id":5,"result":{"result":[{"#),
-//           // ];
-    
-//           socket_tx.send(r#"{"id":1,"method":"Runtime.enable"}"#).await.unwrap();
-//           socket_tx.send(r#"{"id":2,"method":"Profiler.enable"}"#).await.unwrap();
-//           socket_tx.send(r#"{"id":3,"method":"Profiler.startPreciseCoverage", "params": {"callCount": false, "detailed": true } }"#).await.unwrap();
-    
-//         }.boxed_local();
-    
-//         tokio_util::run_basic(fut)
-//       });
-
-// }
-
-

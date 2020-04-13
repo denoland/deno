@@ -506,18 +506,15 @@ async fn test_command(
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
 
-  // TODO(bartlomieju): 
+  // TODO(bartlomieju):
   // * for --coverage create new `tokio_tungstenite` connection here,
   // probably on separate thread
   // * ensure that --inspect flag is on so inspector is available
 
   let inspector_url = Url::parse("ws://127.0.0.1:9229").unwrap();
-  let coverage_collector = CoverageCollector::new(inspector_url);
 
   let mut worker =
     create_main_worker(global_state.clone(), main_module.clone())?;
-
-  coverage_collector.connect();
 
   // Create a dummy source file.
   let source_file = SourceFile {
@@ -537,7 +534,8 @@ async fn test_command(
     .save_source_file_in_cache(&main_module, source_file);
 
   // TODO: * start collecting coverage
-  coverage_collector.start_collecting();
+  // coverage_collector.start_collecting();
+  let mut coverage_collector = CoverageCollector::connect(inspector_url).await?;
 
   let execute_result = worker.execute_module(&main_module).await;
   execute_result?;
@@ -545,14 +543,14 @@ async fn test_command(
   (&mut *worker).await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
 
-  // TODO(bartlomieju): 
+  // TODO(bartlomieju):
   // * stop collecting collecting coverage
-  // * wait for inspector client thread to join and return 
+  // * wait for inspector client thread to join and return
   // coverage JSON struct
   // * parse coverage report to CoverageParser together with list
-  // of test files and prepare a test/JSON report 
-  coverage_collector.stop_collecting();
-  let coverage_report = coverage_collector.get_report();
+  // of test files and prepare a test/JSON report
+  // coverage_collector.stop_collecting();
+  let coverage_report = coverage_collector.get_report().await?;
   eprintln!("coverage report: {}", coverage_report);
 
   Ok(())
