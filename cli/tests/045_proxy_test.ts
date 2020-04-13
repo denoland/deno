@@ -41,7 +41,7 @@ async function testModuleDownload(): Promise<void> {
     cmd: [
       Deno.execPath(),
       "--reload",
-      "fetch",
+      "cache",
       "http://localhost:4545/std/examples/colors.ts",
     ],
     stdout: "piped",

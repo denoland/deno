@@ -11,6 +11,7 @@ export type TypedArray =
   | Float32Array
   | Float64Array;
 
+// @internal
 export function isTypedArray(x: unknown): x is TypedArray {
   return (
     x instanceof Int8Array ||
@@ -54,19 +55,8 @@ export function immutableDefine(
   });
 }
 
-// Returns values from a WeakMap to emulate private properties in JavaScript
-export function getPrivateValue<
-  K extends object,
-  V extends object,
-  W extends keyof V
->(instance: K, weakMap: WeakMap<K, V>, key: W): V[W] {
-  if (weakMap.has(instance)) {
-    return weakMap.get(instance)![key];
-  }
-  throw new TypeError("Illegal invocation");
-}
-
-export function hasOwnProperty<T>(obj: T, v: PropertyKey): boolean {
+// @internal
+export function hasOwnProperty(obj: unknown, v: PropertyKey): boolean {
   if (obj == null) {
     return false;
   }
@@ -86,4 +76,20 @@ export function isIterable<T, P extends keyof T, K extends T[P]>(
   return (
     typeof ((o as unknown) as Iterable<[P, K]>)[Symbol.iterator] === "function"
   );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+interface GenericConstructor<T = any> {
+  prototype: T;
+}
+
+/** A helper function which ensures accessors are enumerable, as they normally
+ * are not. */
+export function defineEnumerableProps(
+  Ctor: GenericConstructor,
+  props: string[]
+): void {
+  for (const prop of props) {
+    Reflect.defineProperty(Ctor.prototype, prop, { enumerable: true });
+  }
 }

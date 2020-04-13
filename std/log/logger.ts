@@ -2,12 +2,26 @@
 import { LogLevel, getLevelByName, getLevelName } from "./levels.ts";
 import { BaseHandler } from "./handlers.ts";
 
-export interface LogRecord {
-  msg: string;
-  args: unknown[];
-  datetime: Date;
-  level: number;
-  levelName: string;
+export class LogRecord {
+  readonly msg: string;
+  #args: unknown[];
+  #datetime: Date;
+  readonly level: number;
+  readonly levelName: string;
+
+  constructor(msg: string, args: unknown[], level: number) {
+    this.msg = msg;
+    this.#args = [...args];
+    this.level = level;
+    this.#datetime = new Date();
+    this.levelName = getLevelName(level);
+  }
+  get args(): unknown[] {
+    return [...this.#args];
+  }
+  get datetime(): Date {
+    return new Date(this.#datetime.getTime());
+  }
 }
 
 export class Logger {
@@ -26,16 +40,8 @@ export class Logger {
   _log(level: number, msg: string, ...args: unknown[]): void {
     if (this.level > level) return;
 
-    // TODO: it'd be a good idea to make it immutable, so
-    // no handler mangles it by mistake
-    // TODO: iterpolate msg with values
-    const record: LogRecord = {
-      msg: msg,
-      args: args,
-      datetime: new Date(),
-      level: level,
-      levelName: getLevelName(level),
-    };
+    const record: LogRecord = new LogRecord(msg, args, level);
+
     this.handlers.forEach((handler): void => {
       handler.handle(record);
     });

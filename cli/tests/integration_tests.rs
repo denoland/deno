@@ -96,7 +96,7 @@ fn fetch_test() {
   let output = Command::new(deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
-    .arg("fetch")
+    .arg("cache")
     .arg(module_url.to_string())
     .output()
     .expect("Failed to spawn script");
@@ -1031,12 +1031,12 @@ itest_ignore!(_035_cached_only_flag {
 
 itest!(_036_import_map_fetch {
   args:
-    "fetch --reload --importmap=importmaps/import_map.json importmaps/test.ts",
+    "cache --reload --importmap=importmaps/import_map.json importmaps/test.ts",
   output: "036_import_map_fetch.out",
 });
 
 itest!(_037_fetch_multiple {
-  args: "fetch --reload fetch/test.ts fetch/other.ts",
+  args: "cache --reload fetch/test.ts fetch/other.ts",
   check_stderr: true,
   http_server: true,
   output: "037_fetch_multiple.out",
@@ -1371,11 +1371,39 @@ itest!(error_018_hide_long_source_js {
   exit_code: 1,
 });
 
-itest!(error_stack {
-  args: "run --reload error_stack.ts",
+itest!(error_019_stack_function {
+  args: "error_019_stack_function.ts",
+  output: "error_019_stack_function.ts.out",
   check_stderr: true,
   exit_code: 1,
-  output: "error_stack.ts.out",
+});
+
+itest!(error_020_stack_constructor {
+  args: "error_020_stack_constructor.ts",
+  output: "error_020_stack_constructor.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
+itest!(error_021_stack_method {
+  args: "error_021_stack_method.ts",
+  output: "error_021_stack_method.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
+itest!(error_022_stack_custom_error {
+  args: "error_022_stack_custom_error.ts",
+  output: "error_022_stack_custom_error.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
+itest!(error_023_stack_async {
+  args: "error_023_stack_async.ts",
+  output: "error_023_stack_async.ts.out",
+  check_stderr: true,
+  exit_code: 1,
 });
 
 itest!(error_syntax {
@@ -1591,7 +1619,7 @@ fn cafile_fetch() {
   let output = Command::new(deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
-    .arg("fetch")
+    .arg("cache")
     .arg("--cert")
     .arg(cafile)
     .arg(module_url.to_string())

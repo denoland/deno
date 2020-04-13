@@ -25,7 +25,6 @@
 
 import * as base64 from "./base64.ts";
 import { decodeUtf8 } from "./decode_utf8.ts";
-import * as domTypes from "./dom_types.ts";
 import { core } from "../core.ts";
 
 const CONTINUE = null;
@@ -348,7 +347,7 @@ encodingIndexes.set("windows-1252", [
   252,
   253,
   254,
-  255
+  255,
 ]);
 for (const [key, index] of encodingIndexes) {
   decoders.set(
@@ -449,7 +448,7 @@ export class TextDecoder {
   }
 
   decode(
-    input?: domTypes.BufferSource,
+    input?: BufferSource,
     options: TextDecodeOptions = { stream: false }
   ): string {
     if (options.stream) {

@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::flags::Flags;
+use log::Level;
 use regex::{Regex, RegexBuilder};
 use std::env;
 use std::fs;
@@ -159,6 +160,24 @@ pub fn install(
     executable_args.push("--cert".to_string());
     executable_args.push(ca_file)
   }
+  if let Some(log_level) = flags.log_level {
+    if log_level == Level::Error {
+      executable_args.push("--quiet".to_string());
+    } else {
+      executable_args.push("--log-level".to_string());
+      let log_level = match log_level {
+        Level::Debug => "debug",
+        Level::Info => "info",
+        _ => {
+          return Err(Error::new(
+            ErrorKind::Other,
+            format!("invalid log level {}", log_level),
+          ))
+        }
+      };
+      executable_args.push(log_level.to_string());
+    }
+  }
   executable_args.push(module_url.to_string());
   executable_args.extend_from_slice(&args);
 
@@ -280,6 +299,7 @@ mod tests {
       Flags {
         allow_net: true,
         allow_read: true,
+        log_level: Some(Level::Error),
         ..Flags::default()
       },
       Some(temp_dir.path().to_path_buf()),
@@ -297,7 +317,7 @@ mod tests {
 
     assert!(file_path.exists());
     let content = fs::read_to_string(file_path).unwrap();
-    assert!(content.contains(r#""run" "--allow-read" "--allow-net" "http://localhost:4545/cli/tests/echo_server.ts" "--foobar""#));
+    assert!(content.contains(r#""run" "--allow-read" "--allow-net" "--quiet" "http://localhost:4545/cli/tests/echo_server.ts" "--foobar""#));
   }
 
   #[test]

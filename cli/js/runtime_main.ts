@@ -8,7 +8,6 @@
 //   It sets up runtime by providing globals for `WindowScope` and adds `Deno` global.
 
 import * as Deno from "./deno.ts";
-import * as domTypes from "./web/dom_types.ts";
 import * as csprng from "./ops/get_random_values.ts";
 import { exit } from "./ops/os.ts";
 import {
@@ -18,6 +17,7 @@ import {
   windowOrWorkerGlobalScopeMethods,
   windowOrWorkerGlobalScopeProperties,
   eventTargetProperties,
+  setEventTargetData,
 } from "./globals.ts";
 import { internalObject } from "./internals.ts";
 import { setSignals } from "./signals.ts";
@@ -59,9 +59,9 @@ export const mainRuntimeGlobalProperties = {
   self: readOnly(globalThis),
   crypto: readOnly(csprng),
   // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
-  // it seems those two properties should be availble to workers as well
-  onload: writable(undefined),
-  onunload: writable(undefined),
+  // it seems those two properties should be available to workers as well
+  onload: writable(null),
+  onunload: writable(null),
   close: writable(windowClose),
   closed: getterOnly(() => windowIsClosing),
 };
@@ -78,15 +78,16 @@ export function bootstrapMainRuntime(): void {
   Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
   Object.defineProperties(globalThis, eventTargetProperties);
   Object.defineProperties(globalThis, mainRuntimeGlobalProperties);
+  setEventTargetData(globalThis);
   // Registers the handler for window.onload function.
-  globalThis.addEventListener("load", (e: domTypes.Event): void => {
+  globalThis.addEventListener("load", (e) => {
     const { onload } = globalThis;
     if (typeof onload === "function") {
       onload(e);
     }
   });
   // Registers the handler for window.onunload function.
-  globalThis.addEventListener("unload", (e: domTypes.Event): void => {
+  globalThis.addEventListener("unload", (e) => {
     const { onunload } = globalThis;
     if (typeof onunload === "function") {
       onunload(e);

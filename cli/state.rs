@@ -8,7 +8,7 @@ use crate::op_error::OpError;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
 use crate::permissions::DenoPermissions;
-use crate::worker::WorkerHandle;
+use crate::web_worker::WebWorkerHandle;
 use deno_core::Buf;
 use deno_core::CoreOp;
 use deno_core::ErrBox;
@@ -62,7 +62,7 @@ pub struct StateInner {
   pub import_map: Option<ImportMap>,
   pub metrics: Metrics,
   pub global_timer: GlobalTimer,
-  pub workers: HashMap<u32, (JoinHandle<()>, WorkerHandle)>,
+  pub workers: HashMap<u32, (JoinHandle<()>, WebWorkerHandle)>,
   pub next_worker_id: u32,
   pub start_time: Instant,
   pub seeded_rng: Option<StdRng>,

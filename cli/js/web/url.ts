@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { customInspect } from "./console.ts";
-import * as domTypes from "./dom_types.ts";
-import { urls, URLSearchParams } from "./url_search_params.ts";
+import { urls } from "./url_search_params.ts";
 import { getRandomValues } from "../ops/get_random_values.ts";
 
 interface URLParts {
@@ -74,7 +73,7 @@ function generateUUID(): string {
 }
 
 // Keep it outside of URL to avoid any attempts of access.
-export const blobURLMap = new Map<string, domTypes.Blob>();
+export const blobURLMap = new Map<string, Blob>();
 
 function isAbsolutePath(path: string): boolean {
   return path.startsWith("/");
@@ -139,7 +138,7 @@ function resolvePathFromBase(path: string, basePath: string): string {
 /** @internal */
 export const parts = new WeakMap<URL, URLParts>();
 
-export class URL implements domTypes.URL {
+export class URLImpl implements URL {
   #searchParams!: URLSearchParams;
 
   [customInspect](): string {
@@ -373,7 +372,7 @@ export class URL implements domTypes.URL {
   }
 
   // TODO(kevinkassimo): implement MediaSource version in the future.
-  static createObjectURL(b: domTypes.Blob): string {
+  static createObjectURL(b: Blob): string {
     const origin = globalThis.location.origin || "http://deno-opaque-origin";
     const key = `blob:${origin}/${generateUUID()}`;
     blobURLMap.set(key, b);

@@ -34,14 +34,14 @@ pub enum DenoSubcommand {
   },
   Doc {
     json: bool,
-    source_file: String,
+    source_file: Option<String>,
     filter: Option<String>,
   },
   Eval {
     code: String,
     as_typescript: bool,
   },
-  Fetch {
+  Cache {
     files: Vec<String>,
   },
   Fmt {
@@ -247,8 +247,8 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
     fmt_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("types") {
     types_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("fetch") {
-    fetch_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("cache") {
+    cache_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("info") {
     info_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("eval") {
@@ -311,7 +311,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(bundle_subcommand())
     .subcommand(completions_subcommand())
     .subcommand(eval_subcommand())
-    .subcommand(fetch_subcommand())
+    .subcommand(cache_subcommand())
     .subcommand(fmt_subcommand())
     .subcommand(info_subcommand())
     .subcommand(install_subcommand())
@@ -447,7 +447,7 @@ fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 }
 
-fn fetch_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
   importmap_arg_parse(flags, matches);
@@ -459,7 +459,7 @@ fn fetch_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     .unwrap()
     .map(String::from)
     .collect();
-  flags.subcommand = DenoSubcommand::Fetch { files };
+  flags.subcommand = DenoSubcommand::Cache { files };
 }
 
 fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -566,7 +566,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
-  let source_file = matches.value_of("source_file").map(String::from).unwrap();
+  let source_file = matches.value_of("source_file").map(String::from);
   let json = matches.is_present("json");
   let filter = matches.value_of("filter").map(String::from);
   flags.subcommand = DenoSubcommand::Doc {
@@ -581,7 +581,7 @@ fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Print runtime TypeScript declarations")
     .long_about(
       "Print runtime TypeScript declarations.
-  deno types > lib.deno_runtime.d.ts
+  deno types > lib.deno.d.ts
 
 The declaration file could be saved and used for typing information.",
     )
@@ -746,8 +746,8 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     .arg(ca_file_arg())
 }
 
-fn fetch_subcommand<'a, 'b>() -> App<'a, 'b> {
-  SubCommand::with_name("fetch")
+fn cache_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("cache")
     .arg(reload_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
@@ -761,13 +761,13 @@ fn fetch_subcommand<'a, 'b>() -> App<'a, 'b> {
         .min_values(1),
     )
     .arg(ca_file_arg())
-    .about("Fetch the dependencies")
+    .about("Cache the dependencies")
     .long_about(
-      "Fetch and compile remote dependencies recursively.
+      "Cache and compile remote dependencies recursively.
 
 Download and compile a module with all of its static dependencies and save them
 in the local cache, without running any code:
-  deno fetch https://deno.land/std/http/file_server.ts
+  deno cache https://deno.land/std/http/file_server.ts
 
 Future runs of this module will trigger no downloads or compilation unless
 --reload is specified.",
@@ -799,18 +799,22 @@ and is used to replace the current executable.",
 
 fn doc_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("doc")
-    .about("Show documentation for module")
+    .about("Show documentation for a module")
     .long_about(
-      "Show documentation for module.
+      "Show documentation for a module.
 
-Output documentation to terminal:
+Output documentation to standard output:
     deno doc ./path/to/module.ts
 
-Show detail of symbol:
+Output documentation in JSON format:
+    deno doc --json ./path/to/module.ts
+
+Target a specific symbol:
     deno doc ./path/to/module.ts MyClass.someField
 
-Output documentation in JSON format:
-    deno doc --json ./path/to/module.ts",
+Show documentation for runtime built-ins:
+    deno doc
+    deno doc --builtin Deno.Listener",
     )
     .arg(reload_arg())
     .arg(
@@ -819,11 +823,12 @@ Output documentation in JSON format:
         .help("Output documentation in JSON format.")
         .takes_value(false),
     )
-    .arg(
-      Arg::with_name("source_file")
-        .takes_value(true)
-        .required(true),
-    )
+    // TODO(nayeemrmn): Make `--builtin` a proper option. Blocked by
+    // https://github.com/clap-rs/clap/issues/1794. Currently `--builtin` is
+    // just a possible value of `source_file` so leading hyphens must be
+    // enabled.
+    .setting(clap::AppSettings::AllowLeadingHyphen)
+    .arg(Arg::with_name("source_file").takes_value(true))
     .arg(
       Arg::with_name("filter")
         .help("Dot separated path to symbol.")
@@ -1300,7 +1305,7 @@ fn arg_hacks(mut args: Vec<String>) -> Vec<String> {
     "completions",
     "doc",
     "eval",
-    "fetch",
+    "cache",
     "fmt",
     "test",
     "info",
@@ -1612,12 +1617,12 @@ mod tests {
   }
 
   #[test]
-  fn fetch() {
-    let r = flags_from_vec_safe(svec!["deno", "fetch", "script.ts"]);
+  fn cache() {
+    let r = flags_from_vec_safe(svec!["deno", "cache", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Fetch {
+        subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts"],
         },
         ..Flags::default()
@@ -1938,17 +1943,17 @@ mod tests {
   }
 
   #[test]
-  fn fetch_importmap() {
+  fn cache_importmap() {
     let r = flags_from_vec_safe(svec![
       "deno",
-      "fetch",
+      "cache",
       "--importmap=importmap.json",
       "script.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Fetch {
+        subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts"],
         },
         import_map_path: Some("importmap.json".to_owned()),
@@ -1958,13 +1963,13 @@ mod tests {
   }
 
   #[test]
-  fn fetch_multiple() {
+  fn cache_multiple() {
     let r =
-      flags_from_vec_safe(svec!["deno", "fetch", "script.ts", "script_two.ts"]);
+      flags_from_vec_safe(svec!["deno", "cache", "script.ts", "script_two.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Fetch {
+        subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts", "script_two.ts"],
         },
         ..Flags::default()
@@ -2417,10 +2422,10 @@ mod tests {
   }
 
   #[test]
-  fn fetch_with_cafile() {
+  fn cache_with_cafile() {
     let r = flags_from_vec_safe(svec![
       "deno",
-      "fetch",
+      "cache",
       "--cert",
       "example.crt",
       "script.ts",
@@ -2429,7 +2434,7 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Fetch {
+        subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts", "script_two.ts"],
         },
         ca_file: Some("example.crt".to_owned()),
@@ -2534,7 +2539,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Doc {
           json: true,
-          source_file: "path/to/module.ts".to_string(),
+          source_file: Some("path/to/module.ts".to_string()),
           filter: None,
         },
         ..Flags::default()
@@ -2552,8 +2557,35 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Doc {
           json: false,
-          source_file: "path/to/module.ts".to_string(),
+          source_file: Some("path/to/module.ts".to_string()),
           filter: Some("SomeClass.someField".to_string()),
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec_safe(svec!["deno", "doc"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Doc {
+          json: false,
+          source_file: None,
+          filter: None,
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r =
+      flags_from_vec_safe(svec!["deno", "doc", "--builtin", "Deno.Listener"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Doc {
+          json: false,
+          source_file: Some("--builtin".to_string()),
+          filter: Some("Deno.Listener".to_string()),
         },
         ..Flags::default()
       }
