@@ -1,7 +1,6 @@
 // These types are adapted from
 // https://github.com/DefinitelyTyped/DefinitelyTyped to work under Deno.
 //
-// Type definitions for React (react-dom) 16.9
 // Project: http://facebook.github.io/react/
 // Definitions by: Asana <https://asana.com>
 //                 AssureSign <http://www.assuresign.com>
@@ -31,7 +30,7 @@ import {
   DOMElement,
   ReactNode,
   ReactPortal,
-} from "./react.d.ts";
+} from "../../react/v16.13.1/react.d.ts";
 
 export function findDOMNode(
   instance: ReactInstance | null | undefined
