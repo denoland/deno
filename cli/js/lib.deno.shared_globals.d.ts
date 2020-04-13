@@ -1037,10 +1037,40 @@ declare const URL: {
   revokeObjectURL(url: string): void;
 };
 
+interface MessageEventInit extends EventInit {
+  data?: any;
+  origin?: string;
+  lastEventId?: string;
+}
+
+declare class MessageEvent extends Event {
+  readonly data: any;
+  readonly origin: string;
+  readonly lastEventId: string;
+  constructor(type: string, eventInitDict?: MessageEventInit);
+}
+
+interface ErrorEventInit extends EventInit {
+  message?: string;
+  filename?: string;
+  lineno?: number;
+  colno?: number;
+  error?: any;
+}
+
+declare class ErrorEvent extends Event {
+  readonly message: string;
+  readonly filename: string;
+  readonly lineno: number;
+  readonly colno: number;
+  readonly error: any;
+  constructor(type: string, eventInitDict?: ErrorEventInit);
+}
+
 declare class Worker extends EventTarget {
-  onerror?: (e: Event) => void;
-  onmessage?: (data: any) => void;
-  onmessageerror?: () => void;
+  onerror?: (e: ErrorEvent) => void;
+  onmessage?: (e: MessageEvent) => void;
+  onmessageerror?: (e: MessageEvent) => void;
   constructor(
     specifier: string,
     options?: {
