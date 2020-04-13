@@ -527,7 +527,7 @@ async fn export_interface() {
  */
 export interface Reader {
     /** Read n bytes */
-    read(buf: Uint8Array, something: unknown): Promise<number>
+    read?(buf: Uint8Array, something: unknown): Promise<number>
 }
     "#;
   let loader =
@@ -553,6 +553,7 @@ export interface Reader {
               "line": 7,
               "col": 4
             },
+            "optional": true,
             "jsDoc": "Read n bytes",
             "params": [
               {
@@ -641,6 +642,7 @@ export interface TypedIface<T> {
               "col": 4
             },
             "jsDoc": null,
+            "optional": false,
             "params": [],
             "typeParams": [],
             "returnType": {
