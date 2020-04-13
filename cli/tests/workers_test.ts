@@ -192,7 +192,7 @@ Deno.test(async function workerIsEventListener(): Promise<void> {
   const promise = createResolvable();
 
   const worker = new Worker("../tests/subdir/event_worker.js", {
-    type: "module"
+    type: "module",
   });
 
   worker.onmessage = (_e: Event): void => {

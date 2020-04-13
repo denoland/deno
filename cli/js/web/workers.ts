@@ -6,8 +6,7 @@ import {
   hostPostMessage,
   hostGetMessage,
 } from "../ops/worker_host.ts";
-import * as domTypes from "./dom_types.ts";
-import { log, notImplemented } from "../util.ts";
+import { log } from "../util.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 /*
 import { blobURLMap } from "./web/url.ts";
@@ -18,63 +17,38 @@ import { EventTargetImpl as EventTarget } from "./event_target.ts";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-function encodeMessage(data: any): Uint8Array {
-  const dataJson = JSON.stringify(data);
-  return encoder.encode(dataJson);
-}
-
-function decodeMessage(dataIntArray: Uint8Array): any {
-  const dataJson = decoder.decode(dataIntArray);
-  return JSON.parse(dataJson);
-}
-
-export interface PostMessageOptions {
-  transfer: object[];
-}
-export interface MessagePort extends EventTarget {
-  postMessage(message: any, transfer: object[]): void;
-  postMessage(message: any, options: PostMessageOptions): void;
-}
-export type MessageEventSource = MessagePort | Worker; // | WindowProxy
-export interface MessageEventInit extends domTypes.EventInit {
+export interface MessageEventInit extends EventInit {
   data?: any;
   origin?: string;
   lastEventId?: string;
-  source?: MessageEventSource | null;
-  ports?: MessagePort[];
 }
+
 export class MessageEvent extends Event {
   readonly data: any;
   readonly origin: string;
   readonly lastEventId: string;
-  readonly source: MessageEventSource | null;
-  //readonly ports: MessagePort[];
 
   constructor(type: string, eventInitDict?: MessageEventInit) {
     super(type, {
       bubbles: eventInitDict?.bubbles ?? false,
       cancelable: eventInitDict?.cancelable ?? false,
-      composed: eventInitDict?.composed ?? false
+      composed: eventInitDict?.composed ?? false,
     });
-
-    if (eventInitDict?.ports) {
-      notImplemented();
-    }
 
     this.data = eventInitDict?.data ?? null;
     this.origin = eventInitDict?.origin ?? "";
     this.lastEventId = eventInitDict?.lastEventId ?? "";
-    this.source = eventInitDict?.source ?? null;
   }
 }
 
-export interface ErrorEventInit extends domTypes.EventInit {
+export interface ErrorEventInit extends EventInit {
   message?: string;
   filename?: string;
   lineno?: number;
   colno?: number;
   error?: any;
 }
+
 export class ErrorEvent extends Event {
   readonly message: string;
   readonly filename: string;
@@ -86,7 +60,7 @@ export class ErrorEvent extends Event {
     super(type, {
       bubbles: eventInitDict?.bubbles ?? false,
       cancelable: eventInitDict?.cancelable ?? false,
-      composed: eventInitDict?.composed ?? false
+      composed: eventInitDict?.composed ?? false,
     });
 
     this.message = eventInitDict?.message ?? "";
@@ -95,6 +69,16 @@ export class ErrorEvent extends Event {
     this.colno = eventInitDict?.colno ?? 0;
     this.error = eventInitDict?.error ?? null;
   }
+}
+
+function encodeMessage(data: any): Uint8Array {
+  const dataJson = JSON.stringify(data);
+  return encoder.encode(dataJson);
+}
+
+function decodeMessage(dataIntArray: Uint8Array): any {
+  const dataJson = decoder.decode(dataIntArray);
+  return JSON.parse(dataJson);
 }
 
 interface WorkerEvent {
@@ -172,7 +156,7 @@ export class WorkerImpl extends EventTarget implements Worker {
       lineno: e.lineNumber ? e.lineNumber + 1 : null,
       colno: e.columnNumber ? e.columnNumber + 1 : null,
       filename: e.fileName,
-      error: null
+      error: null,
     });
 
     let handled = false;
@@ -214,7 +198,7 @@ export class WorkerImpl extends EventTarget implements Worker {
         }
         const ev = new MessageEvent("message", {
           cancelable: false,
-          data: event.data
+          data: event.data,
         });
 
         this.dispatchEvent(ev);
