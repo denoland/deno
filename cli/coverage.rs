@@ -9,6 +9,7 @@ use tokio_tungstenite;
 use url::Url;
 use crate::futures::StreamExt;
 use crate::futures::SinkExt;
+use serde::Deserialize;
 
 pub struct CoverageCollector {
   msg_id: usize,
@@ -55,14 +56,58 @@ impl CoverageCollector {
     Ok(())
   }
 
-  pub async fn get_report(&mut self) -> Result<String, ErrBox> {
+  pub async fn get_report(&mut self) -> Result<Vec<CoverageResult>, ErrBox> {
     dbg!("before recv");
     let msg = self.socket.next().await.unwrap();
     dbg!("after recv");
-    dbg!(msg);
+    let msg = msg.unwrap();
+    let msg_text = msg.to_text()?;
+
+    let coverage_result: CoverageResultMsg = serde_json::from_str(msg_text).unwrap();
+    // eprintln!("cover result {:#?}", coverage_result);
+
+    // dbg!(msg);
     let msg = self.socket.next().await.unwrap();
     dbg!(msg);
-
-    todo!()
+    
+    Ok(coverage_result.result.result)
   }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoverageRange {
+    pub start_offset: usize,
+    pub end_offset: usize,
+    pub count: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FunctionCoverageResult {
+    pub function_name: String,
+    pub ranges: Vec<CoverageRange>,
+    pub is_block_coverage: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoverageResult {
+    pub script_id: String,
+    pub url: String,
+    pub functions: Vec<FunctionCoverageResult>,
+}
+
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Res {
+    result: Vec<CoverageResult>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CoverageResultMsg {
+    id: usize,
+    result: Res,
 }

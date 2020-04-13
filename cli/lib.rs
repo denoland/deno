@@ -68,6 +68,7 @@ pub use dprint_plugin_typescript::swc_ecma_parser;
 
 use crate::compilers::TargetLib;
 use crate::coverage::CoverageCollector;
+use crate::coverage::CoverageResult;
 use crate::doc::parser::DocFileLoader;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
@@ -502,7 +503,7 @@ async fn test_command(
   let test_file_url =
     Url::from_file_path(&test_file_path).expect("Should be valid file url");
   let test_file =
-    test_runner::render_test_file(test_modules, fail_fast, filter);
+    test_runner::render_test_file(test_modules.clone(), fail_fast, filter);
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
 
@@ -558,7 +559,13 @@ async fn test_command(
   (&mut *worker).await?;
   eprintln!("polled worker");
   let coverage_report = coverage_collector.get_report().await?;
-  eprintln!("coverage report: {}", coverage_report);
+
+  let test_modules = test_modules.into_iter().map(|u| u.to_string()).collect::<Vec<String>>();
+  let filtered_report = coverage_report.into_iter().filter(|e| {
+    test_modules.contains(&e.url)
+  }).collect::<Vec<CoverageResult>>();
+  eprintln!("test modules {:#?}", test_modules);
+  eprintln!("coverage report: {:#?}", filtered_report);
 
   Ok(())
 }
