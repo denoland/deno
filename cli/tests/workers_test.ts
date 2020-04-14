@@ -34,7 +34,6 @@ Deno.test({
 
     const jsWorker = new Worker("../tests/subdir/test_worker.js", {
       type: "module",
-      name: "jsWorker",
     });
     const tsWorker = new Worker("../tests/subdir/test_worker.ts", {
       type: "module",
