@@ -273,7 +273,7 @@ class Body
 }
 
 export class Response implements domTypes.Response {
-  readonly type: domTypes.ResponseType;
+  readonly type: ResponseType;
   readonly redirected: boolean;
   headers: Headers;
   readonly trailer: Promise<Headers>;
@@ -286,7 +286,7 @@ export class Response implements domTypes.Response {
     headersList: Array<[string, string]>,
     rid: number,
     redirected_: boolean,
-    readonly type_: null | domTypes.ResponseType = "default",
+    readonly type_: null | ResponseType = "default",
     body_: null | Body = null
   ) {
     this.trailer = createResolvable();

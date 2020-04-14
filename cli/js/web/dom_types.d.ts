@@ -472,43 +472,6 @@ export interface QueuingStrategySizeCallback<T = any> {
   (chunk: T): number;
 }
 
-type RequestCache =
-  | "default"
-  | "no-store"
-  | "reload"
-  | "no-cache"
-  | "force-cache"
-  | "only-if-cached";
-type RequestCredentials = "omit" | "same-origin" | "include";
-type RequestDestination =
-  | ""
-  | "audio"
-  | "audioworklet"
-  | "document"
-  | "embed"
-  | "font"
-  | "image"
-  | "manifest"
-  | "object"
-  | "paintworklet"
-  | "report"
-  | "script"
-  | "sharedworker"
-  | "style"
-  | "track"
-  | "video"
-  | "worker"
-  | "xslt";
-type RequestMode = "navigate" | "same-origin" | "no-cors" | "cors";
-type RequestRedirect = "follow" | "nofollow" | "error" | "manual";
-export type ResponseType =
-  | "basic"
-  | "cors"
-  | "default"
-  | "error"
-  | "opaque"
-  | "opaqueredirect";
-
 export interface RequestInit {
   body?: BodyInit | null;
   cache?: RequestCache;
