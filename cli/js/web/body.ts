@@ -1,11 +1,9 @@
-import * as formData from "./form_data.ts";
 import * as blob from "./blob.ts";
 import * as encoding from "./text_encoding.ts";
 import * as domTypes from "./dom_types.d.ts";
 import { ReadableStream } from "./streams/mod.ts";
 
 // only namespace imports work for now, plucking out what we need
-const { FormData } = formData;
 const { TextEncoder, TextDecoder } = encoding;
 const DenoBlob = blob.DenoBlob;
 
@@ -19,7 +17,7 @@ interface ReadableStreamController {
 export type BodySource =
   | Blob
   | BufferSource
-  | domTypes.FormData
+  | FormData
   | URLSearchParams
   | domTypes.ReadableStream
   | string;
@@ -162,7 +160,7 @@ export class Body implements domTypes.Body {
   }
 
   // ref: https://fetch.spec.whatwg.org/#body-mixin
-  public async formData(): Promise<domTypes.FormData> {
+  public async formData(): Promise<FormData> {
     const formData = new FormData();
     const enc = new TextEncoder();
     if (hasHeaderValueOf(this.contentType, "multipart/form-data")) {

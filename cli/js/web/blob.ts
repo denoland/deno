@@ -103,7 +103,7 @@ function toUint8Arrays(
 
 function processBlobParts(
   blobParts: BlobPart[],
-  options: domTypes.BlobPropertyBag
+  options: BlobPropertyBag
 ): Uint8Array {
   const normalizeLineEndingsToNative = options.ending === "native";
   // ArrayBuffer.transfer is not yet implemented in V8, so we just have to
@@ -171,7 +171,7 @@ export class DenoBlob implements Blob {
   readonly size: number = 0;
   readonly type: string = "";
 
-  constructor(blobParts?: BlobPart[], options?: domTypes.BlobPropertyBag) {
+  constructor(blobParts?: BlobPart[], options?: BlobPropertyBag) {
     if (arguments.length === 0) {
       this[bytesSymbol] = new Uint8Array();
       return;
