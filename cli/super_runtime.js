@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-((globalThis) => {
+(() => {
   const GLOBAL_NAMESPACE = "Deno";
   const CORE_NAMESPACE = "core";
   // Available on start due to bindings.
-  const Deno = window[GLOBAL_NAMESPACE];
+  const Deno = globalThis[GLOBAL_NAMESPACE];
   const core = Deno[CORE_NAMESPACE];
 
   let logDebug = false;
@@ -466,6 +466,9 @@
   }
 
   class SingleByteDecoder {
+    #fatal = false;
+    #index = 0;
+
     constructor(index, { ignoreBOM = false, fatal = false } = {}) {
       if (ignoreBOM) {
         throw new TypeError("Ignoring the BOM is available only with utf-8.");
@@ -676,6 +679,8 @@
   }
 
   class Stream {
+    #tokens = [];
+
     constructor(tokens) {
       this.#tokens = [...tokens];
       this.#tokens.reverse();
@@ -715,6 +720,8 @@
   }
 
   class TextDecoder {
+    #encoding = "";
+
     get encoding() {
       return this.#encoding;
     }
@@ -1537,7 +1544,7 @@
   /** Returns whether o is iterable.
    *
    * @internal */
-  function isIterable(o: T) {
+  function isIterable(o) {
     // checks for null and undefined
     if (o == null) {
       return false;
@@ -1632,7 +1639,7 @@
 
     #canceledFlag = false;
     #stopPropagationFlag = false;
-    //   #attributes: EventAttributes;
+    #attributes = {};
 
     constructor(type, eventInitDict = {}) {
       requiredArguments("Event", arguments.length, 1);
@@ -1911,6 +1918,8 @@
   ]);
 
   class CustomEventImpl extends EventImpl {
+    #detail = "";
+
     constructor(type, eventInitDict = {}) {
       super(type, eventInitDict);
       requiredArguments("CustomEvent", arguments.length, 1);
@@ -1937,6 +1946,8 @@
   // parts still exists.  This means you will observe a lot of strange structures
   // and impossible logic branches based on what Deno currently supports.
   class DOMException extends Error {
+    #name = "";
+
     constructor(message = "", name = "Error") {
       super(message);
       this.#name = name;
@@ -2804,27 +2815,27 @@
   const parts = new WeakMap();
 
   class URLImpl {
-    //   #searchParams!: URLSearchParams;
+    #searchParams = undefined;
 
-    [customInspect]() {
-      const keys = [
-        "href",
-        "origin",
-        "protocol",
-        "username",
-        "password",
-        "host",
-        "hostname",
-        "port",
-        "pathname",
-        "hash",
-        "search",
-      ];
-      const objectString = keys
-        .map((key) => `${key}: "${this[key] || ""}"`)
-        .join(", ");
-      return `URL { ${objectString} }`;
-    }
+    // [customInspect]() {
+    //   const keys = [
+    //     "href",
+    //     "origin",
+    //     "protocol",
+    //     "username",
+    //     "password",
+    //     "host",
+    //     "hostname",
+    //     "port",
+    //     "pathname",
+    //     "hash",
+    //     "search",
+    //   ];
+    //   const objectString = keys
+    //     .map((key) => `${key}: "${this[key] || ""}"`)
+    //     .join(", ");
+    //   return `URL { ${objectString} }`;
+    // }
 
     #updateSearchParams = () => {
       const searchParams = new URLSearchParams(this.search);
@@ -3223,6 +3234,7 @@
   class SignalStream {
     #disposed = false;
     #pollingPromise = Promise.resolve(false);
+    #rid = undefined;
 
     constructor(signo) {
       this.#rid = bindSignal(signo).rid;
@@ -3362,52 +3374,6 @@
       enumerable: true,
     };
   }
-
-  // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
-  const windowOrWorkerGlobalScopeMethods = {
-    atob: writable(atob),
-    btoa: writable(btoa),
-    clearInterval: writable(clearInterval),
-    clearTimeout: writable(clearTimeout),
-    // fetch: writable(fetchTypes.fetch),
-    // queueMicrotask is bound in Rust
-    setInterval: writable(setInterval),
-    setTimeout: writable(setTimeout),
-  };
-
-  // Other properties shared between WindowScope and WorkerGlobalScope
-  const windowOrWorkerGlobalScopeProperties = {
-    console: writable(new Console(core.print)),
-    Blob: nonEnumerable(DenoBlob),
-    File: nonEnumerable(DomFileImpl),
-    CustomEvent: nonEnumerable(CustomEventImpl),
-    DOMException: nonEnumerable(DOMException),
-    Event: nonEnumerable(EventImpl),
-    EventTarget: nonEnumerable(EventTargetImpl),
-    URL: nonEnumerable(URLImpl),
-    URLSearchParams: nonEnumerable(URLSearchParamsImpl),
-    // Headers: nonEnumerable(headers.HeadersImpl),
-    // FormData: nonEnumerable(formData.FormDataImpl),
-    TextEncoder: nonEnumerable(TextEncoder),
-    TextDecoder: nonEnumerable(TextDecoder),
-    // ReadableStream: nonEnumerable(streams.ReadableStream),
-    // Request: nonEnumerable(request.Request),
-    // Response: nonEnumerable(fetchTypes.Response),
-    // performance: writable(new performanceUtil.Performance()),
-    // Worker: nonEnumerable(workers.WorkerImpl),
-  };
-
-  function setEventTargetData(value) {
-    eventTargetData.set(value, getDefaultTargetData());
-  }
-
-  const eventTargetProperties = {
-    addEventListener: readOnly(EventTargetImpl.prototype.addEventListener),
-    dispatchEvent: readOnly(EventTargetImpl.prototype.dispatchEvent),
-    removeEventListener: readOnly(
-      EventTargetImpl.prototype.removeEventListener
-    ),
-  };
 
   // Copyright Joyent, Inc. and other Node contributors. MIT license.
   // Forked from Node's lib/internal/cli_table.js
@@ -4393,7 +4359,7 @@
       }
     };
 
-    table = (data, properties?) => {
+    table = (data, properties) => {
       if (properties !== undefined && !Array.isArray(properties)) {
         throw new Error(
           "The 'properties' argument must be of type Array. " +
@@ -4770,6 +4736,8 @@
   }
 
   class LocationImpl {
+    #url = undefined;
+
     constructor(url) {
       const u = new URL(url);
       this.#url = u;
@@ -4827,7 +4795,10 @@
     }
   }
 
-  export class RBTree {
+  class RBTree {
+    #comparator = undefined;
+    #root = undefined;
+
     constructor(comparator) {
       this.#comparator = comparator;
       this.#root = null;
@@ -5331,7 +5302,7 @@
   }
 
   class Buffer {
-    //   #buf: Uint8Array; // contents are the bytes buf[off : len(buf)]
+    #buf = undefined; // contents are the bytes buf[off : len(buf)]
     #off = 0; // read at buf[off], write at buf[buf.byteLength]
 
     constructor(ab) {
@@ -5633,7 +5604,7 @@
       dir,
       env,
       exit,
-      metrics,
+      metrics: opMetrics,
       execPath,
       hostname,
       loadavg,
@@ -5679,6 +5650,53 @@
     }
   }
 
+  // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
+  const windowOrWorkerGlobalScopeMethods = {
+    atob: writable(atob),
+    btoa: writable(btoa),
+    clearInterval: writable(clearInterval),
+    clearTimeout: writable(clearTimeout),
+    // fetch: writable(fetchTypes.fetch),
+    // queueMicrotask is bound in Rust
+    setInterval: writable(setInterval),
+    setTimeout: writable(setTimeout),
+  };
+
+  // Other properties shared between WindowScope and WorkerGlobalScope
+  const windowOrWorkerGlobalScopeProperties = {
+    console: writable(new Console(core.print)),
+    Blob: nonEnumerable(DenoBlob),
+    File: nonEnumerable(DomFileImpl),
+    CustomEvent: nonEnumerable(CustomEventImpl),
+    DOMException: nonEnumerable(DOMException),
+    Event: nonEnumerable(EventImpl),
+    EventTarget: nonEnumerable(EventTargetImpl),
+    URL: nonEnumerable(URLImpl),
+    URLSearchParams: nonEnumerable(URLSearchParamsImpl),
+    // Headers: nonEnumerable(headers.HeadersImpl),
+    // FormData: nonEnumerable(formData.FormDataImpl),
+    TextEncoder: nonEnumerable(TextEncoder),
+    TextDecoder: nonEnumerable(TextDecoder),
+    // ReadableStream: nonEnumerable(streams.ReadableStream),
+    // Request: nonEnumerable(request.Request),
+    // Response: nonEnumerable(fetchTypes.Response),
+    // performance: writable(new performanceUtil.Performance()),
+    // Worker: nonEnumerable(workers.WorkerImpl),
+  };
+
+  function setEventTargetData(value) {
+    eventTargetData.set(value, getDefaultTargetData());
+  }
+
+  const eventTargetProperties = {
+    addEventListener: readOnly(EventTargetImpl.prototype.addEventListener),
+    dispatchEvent: readOnly(EventTargetImpl.prototype.dispatchEvent),
+    removeEventListener: readOnly(
+      EventTargetImpl.prototype.removeEventListener
+    ),
+  };
+
+
   const mainRuntimeGlobalProperties = {
     window: readOnly(globalThis),
     self: readOnly(globalThis),
@@ -5693,7 +5711,7 @@
 
   let hasBootstrapped = false;
 
-  function bootstrapMainRuntime() {
+  function bootstrapMainRuntimeFn() {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
@@ -5752,16 +5770,16 @@
 
   Object.defineProperties(globalThis, {
     bootstrapMainRuntime: {
-      value: bootstrapMainRuntime,
+      value: bootstrapMainRuntimeFn,
       enumerable: false,
       writable: false,
       configurable: false,
     },
-    bootstrapWorkerRuntime: {
-      value: bootstrapWorkerRuntime,
-      enumerable: false,
-      writable: false,
-      configurable: false,
-    },
+    // bootstrapWorkerRuntime: {
+    //   value: bootstrapWorkerRuntime,
+    //   enumerable: false,
+    //   writable: false,
+    //   configurable: false,
+    // },
   });
-})(globalThis);
+})();

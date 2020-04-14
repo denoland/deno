@@ -191,6 +191,25 @@ fn print_source_code(code: &str) {
   }
 }
 
+pub fn mksnapshot_bundle_new(
+  isolate: &mut Isolate,
+  snapshot_filename: &Path,
+  bundle_filename: &Path,
+  _main_module_name: &str,
+) -> Result<(), ErrBox> {
+  // js_check(isolate.execute("system_loader.js", SYSTEM_LOADER));
+  let source_code_vec = std::fs::read(bundle_filename).unwrap();
+  let bundle_source_code = std::str::from_utf8(&source_code_vec).unwrap();
+  js_check(
+    isolate.execute(&bundle_filename.to_string_lossy(), bundle_source_code),
+  );
+  // let script = &format!("__instantiate(\"{}\");", main_module_name);
+  // js_check(isolate.execute("anon", script));
+  write_snapshot(isolate, snapshot_filename)?;
+  Ok(())
+}
+
+
 /// Create a V8 snapshot.
 pub fn mksnapshot_bundle(
   isolate: &mut Isolate,

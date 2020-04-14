@@ -36,8 +36,7 @@ fn main() {
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   // Main snapshot
-  let root_names = vec![c.join("js/main.ts")];
-  let bundle_path = o.join("CLI_SNAPSHOT.js");
+  let bundle_path = PathBuf::from("super_runtime.js");
   let snapshot_path = o.join("CLI_SNAPSHOT.bin");
 
   let main_module_name = deno_typescript::compile_bundle(
@@ -50,7 +49,7 @@ fn main() {
 
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
 
-  deno_typescript::mksnapshot_bundle(
+  deno_typescript::mksnapshot_bundle_new(
     runtime_isolate,
     &snapshot_path,
     &bundle_path,
