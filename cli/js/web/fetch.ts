@@ -8,7 +8,6 @@ import * as io from "../io.ts";
 import { read } from "../ops/io.ts";
 import { close } from "../ops/resources.ts";
 import { Buffer } from "../buffer.ts";
-import { FormData } from "./form_data.ts";
 import { fetch as opFetch, FetchResponse } from "../ops/fetch.ts";
 import { DomFileImpl } from "./dom_file.ts";
 
@@ -85,7 +84,7 @@ class Body
   }
 
   // ref: https://fetch.spec.whatwg.org/#body-mixin
-  async formData(): Promise<domTypes.FormData> {
+  async formData(): Promise<FormData> {
     const formData = new FormData();
     const enc = new TextEncoder();
     if (hasHeaderValueOf(this.contentType, "multipart/form-data")) {
@@ -274,7 +273,7 @@ class Body
 }
 
 export class Response implements domTypes.Response {
-  readonly type: domTypes.ResponseType;
+  readonly type: ResponseType;
   readonly redirected: boolean;
   headers: Headers;
   readonly trailer: Promise<Headers>;
@@ -287,7 +286,7 @@ export class Response implements domTypes.Response {
     headersList: Array<[string, string]>,
     rid: number,
     redirected_: boolean,
-    readonly type_: null | domTypes.ResponseType = "default",
+    readonly type_: null | ResponseType = "default",
     body_: null | Body = null
   ) {
     this.trailer = createResolvable();
@@ -388,7 +387,7 @@ export class Response implements domTypes.Response {
     return this.body.blob();
   }
 
-  formData(): Promise<domTypes.FormData> {
+  formData(): Promise<FormData> {
     if (this.#bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }

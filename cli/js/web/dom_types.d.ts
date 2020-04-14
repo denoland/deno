@@ -27,15 +27,6 @@ type BodyInit =
 
 export type RequestInfo = Request | string;
 
-export type FormDataEntryValue = DomFile | string;
-
-export type EndingType = "transparent" | "native";
-
-export interface BlobPropertyBag {
-  type?: string;
-  ending?: EndingType;
-}
-
 export interface ProgressEventInit extends EventInit {
   lengthComputable?: boolean;
   loaded?: number;
@@ -260,33 +251,6 @@ interface NodeListOf<TNode extends Node> extends NodeList {
   values(): IterableIterator<TNode>;
 }
 
-export interface DomFile extends Blob {
-  readonly lastModified: number;
-  readonly name: string;
-}
-
-export interface DomFileConstructor {
-  new (bits: BlobPart[], filename: string, options?: FilePropertyBag): DomFile;
-  prototype: DomFile;
-}
-
-export interface FilePropertyBag extends BlobPropertyBag {
-  lastModified?: number;
-}
-
-export class FormData {
-  append(name: string, value: string | Blob, fileName?: string): void;
-  delete(name: string): void;
-  get(name: string): FormDataEntryValue | null;
-  getAll(name: string): FormDataEntryValue[];
-  has(name: string): boolean;
-  set(name: string, value: string | Blob, fileName?: string): void;
-  [Symbol.iterator](): IterableIterator<[string, FormDataEntryValue]>;
-  entries(): IterableIterator<[string, FormDataEntryValue]>;
-  keys(): IterableIterator<string>;
-  values(): IterableIterator<FormDataEntryValue>;
-}
-
 export interface Body {
   readonly body: ReadableStream<Uint8Array> | null;
   readonly bodyUsed: boolean;
@@ -442,62 +406,6 @@ export interface ReadableStreamBYOBRequest {
   respond(bytesWritten: number): void;
   respondWithNewView(view: ArrayBufferView): void;
 }
-/* TODO reenable these interfaces.  These are needed to enable WritableStreams in js/streams/
-export interface WritableStream<W = any> {
-  readonly locked: boolean;
-  abort(reason?: any): Promise<void>;
-  getWriter(): WritableStreamDefaultWriter<W>;
-}
-
-TODO reenable these interfaces.  These are needed to enable WritableStreams in js/streams/
-export interface UnderlyingSink<W = any> {
-  abort?: WritableStreamErrorCallback;
-  close?: WritableStreamDefaultControllerCloseCallback;
-  start?: WritableStreamDefaultControllerStartCallback;
-  type?: undefined;
-  write?: WritableStreamDefaultControllerWriteCallback<W>;
-}
-
-export interface PipeOptions {
-  preventAbort?: boolean;
-  preventCancel?: boolean;
-  preventClose?: boolean;
-  signal?: AbortSignal;
-}
-
-
-export interface WritableStreamDefaultWriter<W = any> {
-  readonly closed: Promise<void>;
-  readonly desiredSize: number | null;
-  readonly ready: Promise<void>;
-  abort(reason?: any): Promise<void>;
-  close(): Promise<void>;
-  releaseLock(): void;
-  write(chunk: W): Promise<void>;
-}
-
-export interface WritableStreamErrorCallback {
-  (reason: any): void | PromiseLike<void>;
-}
-
-export interface WritableStreamDefaultControllerCloseCallback {
-  (): void | PromiseLike<void>;
-}
-
-export interface WritableStreamDefaultControllerStartCallback {
-  (controller: WritableStreamDefaultController): void | PromiseLike<void>;
-}
-
-export interface WritableStreamDefaultControllerWriteCallback<W> {
-  (chunk: W, controller: WritableStreamDefaultController): void | PromiseLike<
-    void
-  >;
-}
-
-export interface WritableStreamDefaultController {
-  error(error?: any): void;
-}
-*/
 
 export interface QueuingStrategy<T = any> {
   highWaterMark?: number;
@@ -507,43 +415,6 @@ export interface QueuingStrategy<T = any> {
 export interface QueuingStrategySizeCallback<T = any> {
   (chunk: T): number;
 }
-
-type RequestCache =
-  | "default"
-  | "no-store"
-  | "reload"
-  | "no-cache"
-  | "force-cache"
-  | "only-if-cached";
-type RequestCredentials = "omit" | "same-origin" | "include";
-type RequestDestination =
-  | ""
-  | "audio"
-  | "audioworklet"
-  | "document"
-  | "embed"
-  | "font"
-  | "image"
-  | "manifest"
-  | "object"
-  | "paintworklet"
-  | "report"
-  | "script"
-  | "sharedworker"
-  | "style"
-  | "track"
-  | "video"
-  | "worker"
-  | "xslt";
-type RequestMode = "navigate" | "same-origin" | "no-cors" | "cors";
-type RequestRedirect = "follow" | "nofollow" | "error" | "manual";
-export type ResponseType =
-  | "basic"
-  | "cors"
-  | "default"
-  | "error"
-  | "opaque"
-  | "opaqueredirect";
 
 export interface RequestInit {
   body?: BodyInit | null;

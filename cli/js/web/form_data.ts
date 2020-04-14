@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types.d.ts";
 import * as blob from "./blob.ts";
 import * as domFile from "./dom_file.ts";
 import { DomIterableMixin } from "./dom_iterable.ts";
@@ -8,7 +7,7 @@ import { requiredArguments } from "./util.ts";
 const dataSymbol = Symbol("data");
 
 class FormDataBase {
-  [dataSymbol]: Array<[string, domTypes.FormDataEntryValue]> = [];
+  [dataSymbol]: Array<[string, FormDataEntryValue]> = [];
 
   append(name: string, value: string): void;
   append(name: string, value: domFile.DomFileImpl): void;
@@ -45,7 +44,7 @@ class FormDataBase {
     }
   }
 
-  getAll(name: string): domTypes.FormDataEntryValue[] {
+  getAll(name: string): FormDataEntryValue[] {
     requiredArguments("FormData.getAll", arguments.length, 1);
     name = String(name);
     const values = [];
@@ -58,7 +57,7 @@ class FormDataBase {
     return values;
   }
 
-  get(name: string): domTypes.FormDataEntryValue | null {
+  get(name: string): FormDataEntryValue | null {
     requiredArguments("FormData.get", arguments.length, 1);
     name = String(name);
     for (const entry of this[dataSymbol]) {
@@ -133,8 +132,8 @@ class FormDataBase {
   }
 }
 
-export class FormData extends DomIterableMixin<
+export class FormDataImpl extends DomIterableMixin<
   string,
-  domTypes.FormDataEntryValue,
+  FormDataEntryValue,
   typeof FormDataBase
 >(FormDataBase, dataSymbol) {}
