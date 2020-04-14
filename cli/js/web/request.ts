@@ -1,10 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as headers from "./headers.ts";
 import * as body from "./body.ts";
 import * as domTypes from "./dom_types.d.ts";
 import * as streams from "./streams/mod.ts";
 
-const { Headers } = headers;
 const { ReadableStream } = streams;
 
 function byteUpperCase(s: string): string {
@@ -32,7 +30,7 @@ export class Request extends body.Body implements domTypes.Request {
   public method: string;
   public url: string;
   public credentials?: "omit" | "same-origin" | "include";
-  public headers: domTypes.Headers;
+  public headers: Headers;
 
   constructor(input: domTypes.RequestInfo, init?: domTypes.RequestInit) {
     if (arguments.length < 1) {
@@ -62,7 +60,7 @@ export class Request extends body.Body implements domTypes.Request {
       b = "";
     }
 
-    let headers: domTypes.Headers;
+    let headers: Headers;
 
     // prefer headers from init
     if (init.headers) {

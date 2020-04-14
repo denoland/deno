@@ -4,7 +4,6 @@ import { isTypedArray } from "./util.ts";
 import * as domTypes from "./dom_types.d.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob.ts";
-import { Headers } from "./headers.ts";
 import * as io from "../io.ts";
 import { read } from "../ops/io.ts";
 import { close } from "../ops/resources.ts";
@@ -277,8 +276,8 @@ class Body
 export class Response implements domTypes.Response {
   readonly type: domTypes.ResponseType;
   readonly redirected: boolean;
-  headers: domTypes.Headers;
-  readonly trailer: Promise<domTypes.Headers>;
+  headers: Headers;
+  readonly trailer: Promise<Headers>;
   readonly body: Body | null;
 
   constructor(
@@ -467,7 +466,7 @@ export class Response implements domTypes.Response {
 function sendFetchReq(
   url: string,
   method: string | null,
-  headers: domTypes.Headers | null,
+  headers: Headers | null,
   body: ArrayBufferView | undefined
 ): Promise<FetchResponse> {
   let headerArray: Array<[string, string]> = [];
@@ -490,7 +489,7 @@ export async function fetch(
 ): Promise<Response> {
   let url: string;
   let method: string | null = null;
-  let headers: domTypes.Headers | null = null;
+  let headers: Headers | null = null;
   let body: ArrayBufferView | undefined;
   let redirected = false;
   let remRedirectCount = 20; // TODO: use a better way to handle

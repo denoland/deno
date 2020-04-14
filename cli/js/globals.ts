@@ -215,7 +215,7 @@ export const windowOrWorkerGlobalScopeProperties = {
   EventTarget: nonEnumerable(eventTarget.EventTargetImpl),
   URL: nonEnumerable(url.URLImpl),
   URLSearchParams: nonEnumerable(urlSearchParams.URLSearchParamsImpl),
-  Headers: nonEnumerable(headers.Headers),
+  Headers: nonEnumerable(headers.HeadersImpl),
   FormData: nonEnumerable(formData.FormData),
   TextEncoder: nonEnumerable(textEncoding.TextEncoder),
   TextDecoder: nonEnumerable(textEncoding.TextDecoder),
