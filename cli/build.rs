@@ -37,6 +37,7 @@ fn main() {
 
   // Main snapshot
   let bundle_path = PathBuf::from("super_runtime.js");
+  println!("cargo:rerun-if-changed={}", bundle_path.display());
   let snapshot_path = o.join("CLI_SNAPSHOT.bin");
 
   let main_module_name = deno_typescript::compile_bundle(

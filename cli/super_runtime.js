@@ -1071,7 +1071,7 @@
   };
 
   // Using an object without a prototype because `Map` was causing GC problems.
-  const promiseTableMin = Object.create(null);
+  const promiseTable = Object.create(null);
 
   // Note it's important that promiseId starts at 1 instead of 0, because sync
   // messages are indicated with promiseId 0. If we ever add wrap around logic for
@@ -1130,8 +1130,8 @@
   function asyncMsgFromRustMinimal(ui8) {
     const record = recordFromBufMinimal(ui8);
     const { promiseId } = record;
-    const promise = promiseTableMin[promiseId];
-    delete promiseTableMin[promiseId];
+    const promise = promiseTable[promiseId];
+    delete promiseTable[promiseId];
     assert(promise);
     promise.resolve(record);
   }
@@ -1149,7 +1149,7 @@
       promise.resolve(record);
     } else {
       // Async result.
-      promiseTableMin[promiseId] = promise;
+      promiseTable[promiseId] = promise;
     }
 
     const res = await promise;
@@ -1183,7 +1183,7 @@
   }
 
   function asyncMsgFromRustJson(resUi8) {
-    const res = decode(resUi8);
+    const res = jsonDecode(resUi8);
     assert(res.promiseId != null);
 
     const promise = promiseTable[res.promiseId];
@@ -1195,10 +1195,10 @@
   function sendSyncJson(opName, args = {}, zeroCopy) {
     const opId = OPS_CACHE[opName];
     log("sendSync", opName, opId);
-    const argsUi8 = encode(args);
+    const argsUi8 = jsonEncode(args);
     const resUi8 = core.dispatch(opId, argsUi8, zeroCopy);
     assert(resUi8 != null);
-    const res = decode(resUi8);
+    const res = jsonDecode(resUi8);
     assert(res.promiseId == null);
     return unwrapResponseJson(res);
   }
@@ -1210,11 +1210,11 @@
     args = Object.assign(args, { promiseId });
     const promise = createResolvable();
 
-    const argsUi8 = encode(args);
+    const argsUi8 = jsonEncode(args);
     const buf = core.dispatch(opId, argsUi8, zeroCopy);
     if (buf) {
       // Sync result.
-      const res = decode(buf);
+      const res = jsonDecode(buf);
       promise.resolve(res);
     } else {
       // Async result.
