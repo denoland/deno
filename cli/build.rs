@@ -36,6 +36,7 @@ fn main() {
   let bundle_path = PathBuf::from("rt.js");
   let snapshot_path = o.join("CLI_SNAPSHOT.bin");
 
+  println!("cargo:rerun-if-changed={}", bundle_path.display());
   assert!(bundle_path.exists());
 
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
@@ -52,6 +53,7 @@ fn main() {
   let bundle_path = PathBuf::from("tsrt.js");
   let snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
 
+  println!("cargo:rerun-if-changed={}", bundle_path.display());
   assert!(bundle_path.exists());
 
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
