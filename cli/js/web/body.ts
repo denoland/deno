@@ -1,11 +1,8 @@
 import * as formData from "./form_data.ts";
 import * as blob from "./blob.ts";
 import * as encoding from "./text_encoding.ts";
-import * as headers from "./headers.ts";
 import * as domTypes from "./dom_types.d.ts";
 import { ReadableStream } from "./streams/mod.ts";
-
-const { Headers } = headers;
 
 // only namespace imports work for now, plucking out what we need
 const { FormData } = formData;

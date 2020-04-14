@@ -17,11 +17,6 @@ and limitations under the License.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export type HeadersInit =
-  | Headers
-  | Array<[string, string]>
-  | Record<string, string>;
-
 type BodyInit =
   | Blob
   | BufferSource
@@ -511,23 +506,6 @@ export interface QueuingStrategy<T = any> {
 
 export interface QueuingStrategySizeCallback<T = any> {
   (chunk: T): number;
-}
-
-export class Headers {
-  constructor(init?: HeadersInit);
-  append(name: string, value: string): void;
-  delete(name: string): void;
-  get(name: string): string | null;
-  has(name: string): boolean;
-  set(name: string, value: string): void;
-  forEach(
-    callbackfn: (value: string, key: string, parent: this) => void,
-    thisArg?: any
-  ): void;
-  [Symbol.iterator](): IterableIterator<[string, string]>;
-  entries(): IterableIterator<[string, string]>;
-  keys(): IterableIterator<string>;
-  values(): IterableIterator<string>;
 }
 
 type RequestCache =
