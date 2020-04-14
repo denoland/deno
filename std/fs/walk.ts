@@ -4,7 +4,7 @@
 import { unimplemented, assert } from "../testing/asserts.ts";
 import { join } from "../path/mod.ts";
 const { readdir, readdirSync, stat, statSync } = Deno;
-type FileInfo = Deno.FileInfo;
+type DirEntry = Deno.DirEntry;
 
 export interface WalkOptions {
   maxDepth?: number;
@@ -36,7 +36,7 @@ function include(
 
 export interface WalkInfo {
   filename: string;
-  info: FileInfo;
+  info: DirEntry;
 }
 
 /** Walks the file tree rooted at root, yielding each file or directory in the
@@ -79,7 +79,7 @@ export async function* walk(
   if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
-  const ls: FileInfo[] = await readdir(root);
+  const ls: DirEntry[] = await readdir(root);
   for (const info of ls) {
     if (info.isSymlink()) {
       if (followSymlinks) {
@@ -133,7 +133,7 @@ export function* walkSync(
   if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
-  const ls: FileInfo[] = readdirSync(root);
+  const ls: DirEntry[] = readdirSync(root);
   for (const info of ls) {
     if (info.isSymlink()) {
       if (followSymlinks) {
