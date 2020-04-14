@@ -6,12 +6,9 @@ import {
   assertStrContains,
 } from "./test_util.ts";
 
-unitTest(
-  { ignore: true },
-  function formDataHasCorrectNameProp(): void {
-    assertEquals(FormData.name, "FormData");
-  }
-);
+unitTest({ ignore: true }, function formDataHasCorrectNameProp(): void {
+  assertEquals(FormData.name, "FormData");
+});
 
 unitTest(function formDataParamsAppendSuccess(): void {
   const formData = new FormData();
