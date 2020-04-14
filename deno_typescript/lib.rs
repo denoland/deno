@@ -152,7 +152,7 @@ pub fn compile_bundle(
       "listFiles": true,
       "module": "system",
       "outFile": bundle_filename,
-      "removeComments": true,
+      "removeComments": false,
       "sourceMap": true,
       "strict": true,
       "target": "esnext",
