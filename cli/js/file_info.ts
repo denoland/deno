@@ -47,7 +47,6 @@ export class FileInfoImpl implements FileInfo {
     const modified = res.modified;
     const accessed = res.accessed;
     const created = res.created;
-    const name = res.name;
     // Unix only
     const { dev, ino, mode, nlink, uid, gid, rdev, blksize, blocks } = res;
 
