@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use deno_core::include_crate_modules;
 use deno_core::Isolate;
 use deno_core::StartupData;
 use std::collections::HashMap;
@@ -20,8 +19,6 @@ fn main() {
     deno_typescript::ts_version()
   );
 
-  let extern_crate_modules = include_crate_modules![deno_core];
-
   // The generation of snapshots is slow and often unnecessary. Until we figure
   // out how to speed it up, or avoid it when unnecessary, this env var provides
   // an escape hatch for the impatient hacker in need of faster incremental
@@ -36,16 +33,9 @@ fn main() {
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   // Main snapshot
-  let root_names = vec![c.join("js/main.ts")];
-  let bundle_path = o.join("CLI_SNAPSHOT.js");
+  let bundle_path = PathBuf::from("rt.js");
   let snapshot_path = o.join("CLI_SNAPSHOT.bin");
 
-  let main_module_name = deno_typescript::compile_bundle(
-    &bundle_path,
-    root_names,
-    Some(extern_crate_modules.clone()),
-  )
-  .expect("Bundle compilation failed");
   assert!(bundle_path.exists());
 
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
@@ -54,21 +44,14 @@ fn main() {
     runtime_isolate,
     &snapshot_path,
     &bundle_path,
-    &main_module_name,
+    "cli/js/main.ts",
   )
   .expect("Failed to create snapshot");
 
   // Compiler snapshot
-  let root_names = vec![c.join("js/compiler.ts")];
-  let bundle_path = o.join("COMPILER_SNAPSHOT.js");
+  let bundle_path = PathBuf::from("tsrt.js");
   let snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
 
-  let main_module_name = deno_typescript::compile_bundle(
-    &bundle_path,
-    root_names,
-    Some(extern_crate_modules),
-  )
-  .expect("Bundle compilation failed");
   assert!(bundle_path.exists());
 
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
@@ -99,7 +82,7 @@ fn main() {
     runtime_isolate,
     &snapshot_path,
     &bundle_path,
-    &main_module_name,
+    "cli/js/compiler.ts",
   )
   .expect("Failed to create snapshot");
 }

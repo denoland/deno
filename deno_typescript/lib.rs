@@ -134,6 +134,7 @@ impl TSIsolate {
 /// alongside the bundle.
 ///
 /// To instantiate bundle use returned `module_name`.
+// TODO(ry) REMOVE
 pub fn compile_bundle(
   bundle_filename: &Path,
   root_names: Vec<PathBuf>,
