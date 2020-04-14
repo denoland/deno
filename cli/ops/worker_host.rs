@@ -42,10 +42,13 @@ fn create_web_worker(
     State::new_for_worker(global_state, Some(permissions), specifier)?;
 
   let mut worker =
-    WebWorker::new(name, startup_data::deno_isolate_init(), state);
+    WebWorker::new(name.to_string(), startup_data::deno_isolate_init(), state);
   // Instead of using name for log we use `worker-${id}` because
   // WebWorkers can have empty string as name.
-  let script = format!("bootstrapWorkerRuntime(\"worker-{}\")", worker_id);
+  let script = format!(
+    "bootstrapWorkerRuntime(\"{}\", \"worker-{}\")",
+    name, worker_id
+  );
   worker.execute(&script)?;
 
   Ok(worker)
