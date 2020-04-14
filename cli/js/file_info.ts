@@ -7,7 +7,6 @@ export interface FileInfo {
   modified: number | null;
   accessed: number | null;
   created: number | null;
-  name: string | null;
   dev: number | null;
   ino: number | null;
   mode: number | null;
@@ -31,7 +30,6 @@ export class FileInfoImpl implements FileInfo {
   modified: number | null;
   accessed: number | null;
   created: number | null;
-  name: string | null;
 
   dev: number | null;
   ino: number | null;
@@ -60,7 +58,6 @@ export class FileInfoImpl implements FileInfo {
     this.modified = modified ? modified : null;
     this.accessed = accessed ? accessed : null;
     this.created = created ? created : null;
-    this.name = name ? name : null;
     // Only non-null if on Unix
     this.dev = isUnix ? dev : null;
     this.ino = isUnix ? ino : null;
