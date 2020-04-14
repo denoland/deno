@@ -11994,8 +11994,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_97, context_97) {
     "use strict";
-    var dispatch_json_ts_36;
-    var __moduleName = context_97 && context_97.id;
+    let dispatch_json_ts_36;
+    const __moduleName = context_97 && context_97.id;
     function createWorker(specifier, hasSourceCode, sourceCode, name) {
       return dispatch_json_ts_36.sendSync("op_create_worker", {
         specifier,
@@ -12038,7 +12038,7 @@ System.register(
   ],
   function (exports_98, context_98) {
     "use strict";
-    var worker_host_ts_1,
+    let worker_host_ts_1,
       util_ts_20,
       text_encoding_ts_8,
       event_ts_3,
@@ -12048,7 +12048,7 @@ System.register(
       MessageEvent,
       ErrorEvent,
       WorkerImpl;
-    var __moduleName = context_98 && context_98.id;
+    const __moduleName = context_98 && context_98.id;
     function encodeMessage(data) {
       const dataJson = JSON.stringify(data);
       return encoder.encode(dataJson);
@@ -12254,8 +12254,8 @@ System.register(
   ["$deno$/ops/timers.ts"],
   function (exports_99, context_99) {
     "use strict";
-    var timers_ts_3, Performance;
-    var __moduleName = context_99 && context_99.id;
+    let timers_ts_3, Performance;
+    const __moduleName = context_99 && context_99.id;
     return {
       setters: [
         function (timers_ts_3_1) {
@@ -12283,7 +12283,7 @@ System.register(
   ],
   function (exports_100, context_100) {
     "use strict";
-    var blob,
+    let blob,
       encoding,
       mod_ts_2,
       TextEncoder,
@@ -12291,7 +12291,7 @@ System.register(
       DenoBlob,
       BodyUsedError,
       Body;
-    var __moduleName = context_100 && context_100.id;
+    const __moduleName = context_100 && context_100.id;
     function validateBodyType(owner, bodySource) {
       if (
         bodySource instanceof Int8Array ||
@@ -12625,8 +12625,8 @@ System.register(
   ["$deno$/web/body.ts", "$deno$/web/streams/mod.ts"],
   function (exports_101, context_101) {
     "use strict";
-    var body, streams, ReadableStream, Request;
-    var __moduleName = context_101 && context_101.id;
+    let body, streams, ReadableStream, Request;
+    const __moduleName = context_101 && context_101.id;
     function byteUpperCase(s) {
       return String(s).replace(/[a-z]/g, function byteUpperCaseReplace(c) {
         return c.toUpperCase();
@@ -12785,7 +12785,7 @@ System.register(
   ],
   function (exports_102, context_102) {
     "use strict";
-    var blob,
+    let blob,
       consoleTypes,
       customEvent,
       domException,
@@ -12807,7 +12807,7 @@ System.register(
       windowOrWorkerGlobalScopeMethods,
       windowOrWorkerGlobalScopeProperties,
       eventTargetProperties;
-    var __moduleName = context_102 && context_102.id;
+    const __moduleName = context_102 && context_102.id;
     function writable(value) {
       return {
         value,
@@ -12972,8 +12972,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_103, context_103) {
     "use strict";
-    var dispatch_json_ts_37;
-    var __moduleName = context_103 && context_103.id;
+    let dispatch_json_ts_37;
+    const __moduleName = context_103 && context_103.id;
     function startRepl(historyFile) {
       return dispatch_json_ts_37.sendSync("op_repl_start", { historyFile });
     }
@@ -13003,7 +13003,7 @@ System.register(
   ],
   function (exports_104, context_104) {
     "use strict";
-    var os_ts_3,
+    let os_ts_3,
       core_ts_8,
       console_ts_6,
       repl_ts_1,
@@ -13013,7 +13013,7 @@ System.register(
       recoverableErrorMessages,
       lastEvalResult,
       lastThrownError;
-    var __moduleName = context_104 && context_104.id;
+    const __moduleName = context_104 && context_104.id;
     function replLog(...args) {
       core_ts_8.core.print(console_ts_6.stringifyArgs(args) + "\n");
     }
@@ -13193,7 +13193,7 @@ System.register("$deno$/web/dom_util.ts", [], function (
   context_105
 ) {
   "use strict";
-  var __moduleName = context_105 && context_105.id;
+  const __moduleName = context_105 && context_105.id;
   function getDOMStringList(arr) {
     Object.defineProperties(arr, {
       contains: {
@@ -13221,8 +13221,8 @@ System.register(
   ["$deno$/util.ts", "$deno$/web/dom_util.ts"],
   function (exports_106, context_106) {
     "use strict";
-    var util_ts_21, dom_util_ts_1, LocationImpl;
-    var __moduleName = context_106 && context_106.id;
+    let util_ts_21, dom_util_ts_1, LocationImpl;
+    const __moduleName = context_106 && context_106.id;
     /** Sets the `window.location` at runtime.
      * @internal */
     function setLocation(url) {
@@ -13293,7 +13293,7 @@ System.register(
   ],
   function (exports_107, context_107) {
     "use strict";
-    var Deno,
+    let Deno,
       csprng,
       os_ts_4,
       globals_ts_1,
@@ -13308,7 +13308,7 @@ System.register(
       windowIsClosing,
       mainRuntimeGlobalProperties,
       hasBootstrapped;
-    var __moduleName = context_107 && context_107.id;
+    const __moduleName = context_107 && context_107.id;
     function windowClose() {
       if (!windowIsClosing) {
         windowIsClosing = true;
@@ -13451,8 +13451,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_108, context_108) {
     "use strict";
-    var dispatch_json_ts_38;
-    var __moduleName = context_108 && context_108.id;
+    let dispatch_json_ts_38;
+    const __moduleName = context_108 && context_108.id;
     function postMessage(data) {
       dispatch_json_ts_38.sendSync("op_worker_post_message", {}, data);
     }
@@ -13485,7 +13485,7 @@ System.register(
   ],
   function (exports_109, context_109) {
     "use strict";
-    var globals_ts_2,
+    let globals_ts_2,
       webWorkerOps,
       location_ts_2,
       util_ts_23,
@@ -13498,7 +13498,7 @@ System.register(
       isClosing,
       hasBootstrapped,
       workerRuntimeGlobalProperties;
-    var __moduleName = context_109 && context_109.id;
+    const __moduleName = context_109 && context_109.id;
     function postMessage(data) {
       const dataJson = JSON.stringify(data);
       const dataIntArray = encoder.encode(dataJson);
@@ -13640,8 +13640,8 @@ System.register(
   ["$deno$/runtime_main.ts", "$deno$/runtime_worker.ts"],
   function (exports_110, context_110) {
     "use strict";
-    var runtime_main_ts_1, runtime_worker_ts_1;
-    var __moduleName = context_110 && context_110.id;
+    let runtime_main_ts_1, runtime_worker_ts_1;
+    const __moduleName = context_110 && context_110.id;
     return {
       setters: [
         function (runtime_main_ts_1_1) {

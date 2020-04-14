@@ -13581,8 +13581,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_106, context_106) {
     "use strict";
-    var dispatch_json_ts_37;
-    var __moduleName = context_106 && context_106.id;
+    let dispatch_json_ts_37;
+    const __moduleName = context_106 && context_106.id;
     function createWorker(specifier, hasSourceCode, sourceCode, name) {
       return dispatch_json_ts_37.sendSync("op_create_worker", {
         specifier,
@@ -13625,7 +13625,7 @@ System.register(
   ],
   function (exports_107, context_107) {
     "use strict";
-    var worker_host_ts_1,
+    let worker_host_ts_1,
       util_ts_29,
       text_encoding_ts_10,
       event_ts_3,
@@ -13635,7 +13635,7 @@ System.register(
       MessageEvent,
       ErrorEvent,
       WorkerImpl;
-    var __moduleName = context_107 && context_107.id;
+    const __moduleName = context_107 && context_107.id;
     function encodeMessage(data) {
       const dataJson = JSON.stringify(data);
       return encoder.encode(dataJson);
@@ -13841,8 +13841,8 @@ System.register(
   ["$deno$/ops/timers.ts"],
   function (exports_108, context_108) {
     "use strict";
-    var timers_ts_3, Performance;
-    var __moduleName = context_108 && context_108.id;
+    let timers_ts_3, Performance;
+    const __moduleName = context_108 && context_108.id;
     return {
       setters: [
         function (timers_ts_3_1) {
@@ -13870,7 +13870,7 @@ System.register(
   ],
   function (exports_109, context_109) {
     "use strict";
-    var blob,
+    let blob,
       encoding,
       mod_ts_2,
       TextEncoder,
@@ -13878,7 +13878,7 @@ System.register(
       DenoBlob,
       BodyUsedError,
       Body;
-    var __moduleName = context_109 && context_109.id;
+    const __moduleName = context_109 && context_109.id;
     function validateBodyType(owner, bodySource) {
       if (
         bodySource instanceof Int8Array ||
@@ -14212,8 +14212,8 @@ System.register(
   ["$deno$/web/body.ts", "$deno$/web/streams/mod.ts"],
   function (exports_110, context_110) {
     "use strict";
-    var body, streams, ReadableStream, Request;
-    var __moduleName = context_110 && context_110.id;
+    let body, streams, ReadableStream, Request;
+    const __moduleName = context_110 && context_110.id;
     function byteUpperCase(s) {
       return String(s).replace(/[a-z]/g, function byteUpperCaseReplace(c) {
         return c.toUpperCase();
@@ -14372,7 +14372,7 @@ System.register(
   ],
   function (exports_111, context_111) {
     "use strict";
-    var blob,
+    let blob,
       consoleTypes,
       customEvent,
       domException,
@@ -14394,7 +14394,7 @@ System.register(
       windowOrWorkerGlobalScopeMethods,
       windowOrWorkerGlobalScopeProperties,
       eventTargetProperties;
-    var __moduleName = context_111 && context_111.id;
+    const __moduleName = context_111 && context_111.id;
     function writable(value) {
       return {
         value,
@@ -14559,8 +14559,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_112, context_112) {
     "use strict";
-    var dispatch_json_ts_38;
-    var __moduleName = context_112 && context_112.id;
+    let dispatch_json_ts_38;
+    const __moduleName = context_112 && context_112.id;
     function postMessage(data) {
       dispatch_json_ts_38.sendSync("op_worker_post_message", {}, data);
     }
@@ -14585,7 +14585,7 @@ System.register("$deno$/web/dom_util.ts", [], function (
   context_113
 ) {
   "use strict";
-  var __moduleName = context_113 && context_113.id;
+  const __moduleName = context_113 && context_113.id;
   function getDOMStringList(arr) {
     Object.defineProperties(arr, {
       contains: {
@@ -14613,8 +14613,8 @@ System.register(
   ["$deno$/util.ts", "$deno$/web/dom_util.ts"],
   function (exports_114, context_114) {
     "use strict";
-    var util_ts_30, dom_util_ts_1, LocationImpl;
-    var __moduleName = context_114 && context_114.id;
+    let util_ts_30, dom_util_ts_1, LocationImpl;
+    const __moduleName = context_114 && context_114.id;
     /** Sets the `window.location` at runtime.
      * @internal */
     function setLocation(url) {
@@ -14680,7 +14680,7 @@ System.register(
   ],
   function (exports_115, context_115) {
     "use strict";
-    var globals_ts_1,
+    let globals_ts_1,
       webWorkerOps,
       location_ts_1,
       util_ts_31,
@@ -14693,7 +14693,7 @@ System.register(
       isClosing,
       hasBootstrapped,
       workerRuntimeGlobalProperties;
-    var __moduleName = context_115 && context_115.id;
+    const __moduleName = context_115 && context_115.id;
     function postMessage(data) {
       const dataJson = JSON.stringify(data);
       const dataIntArray = encoder.encode(dataJson);
@@ -14847,7 +14847,7 @@ System.register(
   ],
   function (exports_116, context_116) {
     "use strict";
-    var bootstrap_ts_2,
+    let bootstrap_ts_2,
       bundler_ts_2,
       host_ts_2,
       imports_ts_1,
@@ -14856,7 +14856,7 @@ System.register(
       util_ts_33,
       util,
       runtime_worker_ts_1;
-    var __moduleName = context_116 && context_116.id;
+    const __moduleName = context_116 && context_116.id;
     async function compile(request) {
       const {
         bundle,
