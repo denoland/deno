@@ -2208,6 +2208,81 @@ async fn inspector_break_on_first_line() {
 }
 
 #[tokio::test]
+async fn inspector_coverage() {
+  let script = deno::test_util::root_path()
+    .join("cli")
+    .join("tests")
+    .join("inspector_coverage.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    // Warning: each inspector test should be on its own port to avoid
+    // conflicting with another inspector test.
+    .arg("--inspect-brk=127.0.0.1:9231")
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let ws_url = extract_ws_url_from_stderr(stderr);
+  let (socket, response) = tokio_tungstenite::connect_async(ws_url)
+    .await
+    .expect("Can't connect");
+  assert_eq!(response.status(), 101); // Switching protocols.
+
+  let (mut socket_tx, mut socket_rx) = socket.split();
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines = std::io::BufReader::new(stdout).lines();
+
+  use TestStep::*;
+  let test_steps = vec![
+    WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
+    WsSend(r#"{"id":2,"method":"Profiler.enable"}"#),
+    WsSend(
+      r#"{"id":3,"method":"Profiler.startPreciseCoverage", "params": {"callCount": false, "detailed": true } }"#,
+    ),
+    WsRecv(
+      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+    ),
+    WsRecv(r#"{"id":1,"result":{}}"#),
+    WsRecv(r#"{"id":2,"result":{}}"#),
+    WsRecv(r#"{"id":3,"result":{"timestamp":"#),
+    WsSend(r#"{"id":4,"method":"Runtime.runIfWaitingForDebugger"}"#),
+    WsRecv(r#"{"id":4,"result":{}}"#),
+    StdOut("hello a"),
+    StdOut("hello b"),
+    StdOut("hello b"),
+    WsSend(r#"{"id":5,"method":"Profiler.takePreciseCoverage"}"#),
+    WsSend(r#"{"id":6,"method":"Profiler.stopPreciseCoverage"}"#),
+    WsRecv(r#"{"id":5,"result":{"result":[{"#),
+  ];
+
+  for step in test_steps {
+    match step {
+      StdOut(s) => match stdout_lines.next() {
+        Some(Ok(line)) => assert_eq!(line, s),
+        other => panic!(other),
+      },
+      WsRecv(s) => loop {
+        let msg = match socket_rx.next().await {
+          Some(Ok(msg)) => msg.to_string(),
+          other => panic!(other),
+        };
+        if !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#) {
+          assert!(msg.starts_with(s));
+          break;
+        }
+      },
+      WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
+    }
+  }
+
+  child.kill().unwrap();
+}
+
+#[tokio::test]
 async fn inspector_pause() {
   let script = deno::test_util::root_path()
     .join("cli")
