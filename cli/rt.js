@@ -1,7 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-// Interfaces 100% copied from Go.
-// Documentation liberally lifted from them too.
-// Thank you! We love Go!
+/* eslint-disable @typescript-eslint/camelcase */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable no-var */
+/* eslint-disable no-unused-vars */
+/* eslint-disable camelcase */
+
 System.register("$deno$/io.ts", [], function (exports_1, context_1) {
   "use strict";
   var EOF, SeekMode;
@@ -13672,4 +13675,3 @@ System.register(
     };
   }
 );
-//# sourceMappingURL=CLI_SNAPSHOT.js.map

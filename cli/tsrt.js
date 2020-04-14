@@ -1,4 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+/* eslint-disable @typescript-eslint/camelcase */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable no-var */
+/* eslint-disable no-unused-vars */
+/* eslint-disable camelcase */
+
 System.register("$deno$/diagnostics.ts", [], function (exports_1, context_1) {
   "use strict";
   var DiagnosticCategory;
@@ -15176,4 +15183,3 @@ System.register(
     };
   }
 );
-//# sourceMappingURL=COMPILER_SNAPSHOT.js.map
