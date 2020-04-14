@@ -107,7 +107,10 @@ export const workerRuntimeGlobalProperties = {
   workerMessageRecvCallback: nonEnumerable(workerMessageRecvCallback),
 };
 
-export function bootstrapWorkerRuntime(name: string): void {
+export function bootstrapWorkerRuntime(
+  name: string,
+  internalName?: string
+): void {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
   }
@@ -119,7 +122,7 @@ export function bootstrapWorkerRuntime(name: string): void {
   Object.defineProperties(globalThis, eventTargetProperties);
   Object.defineProperties(globalThis, { name: readOnly(name) });
   setEventTargetData(globalThis);
-  const s = runtime.start(name);
+  const s = runtime.start(internalName ?? name);
 
   const location = new LocationImpl(s.location);
   immutableDefine(globalThis, "location", location);

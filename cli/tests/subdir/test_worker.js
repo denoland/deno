@@ -1,7 +1,7 @@
 let thrown = false;
 
-if (self.name !== "jsWorker") {
-  throw Error(`Bad worker name: ${self.name}, expected jsWorker`);
+if (self.name !== "") {
+  throw Error(`Bad worker name: ${self.name}, expected empty string.`);
 }
 
 onmessage = function (e) {
