@@ -1,15 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types.d.ts";
 import * as blob from "./blob.ts";
 
-export class DomFileImpl extends blob.DenoBlob implements domTypes.DomFile {
+export class DomFileImpl extends blob.DenoBlob implements File {
   lastModified: number;
   name: string;
 
   constructor(
     fileBits: BlobPart[],
     fileName: string,
-    options?: domTypes.FilePropertyBag
+    options?: FilePropertyBag
   ) {
     const { lastModified = Date.now(), ...blobPropertyBag } = options ?? {};
     super(fileBits, blobPropertyBag);

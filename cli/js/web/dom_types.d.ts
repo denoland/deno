@@ -27,13 +27,6 @@ type BodyInit =
 
 export type RequestInfo = Request | string;
 
-export type EndingType = "transparent" | "native";
-
-export interface BlobPropertyBag {
-  type?: string;
-  ending?: EndingType;
-}
-
 export interface ProgressEventInit extends EventInit {
   lengthComputable?: boolean;
   loaded?: number;
@@ -256,20 +249,6 @@ interface NodeListOf<TNode extends Node> extends NodeList {
   entries(): IterableIterator<[number, TNode]>;
   keys(): IterableIterator<number>;
   values(): IterableIterator<TNode>;
-}
-
-export interface DomFile extends Blob {
-  readonly lastModified: number;
-  readonly name: string;
-}
-
-export interface DomFileConstructor {
-  new (bits: BlobPart[], filename: string, options?: FilePropertyBag): DomFile;
-  prototype: DomFile;
-}
-
-export interface FilePropertyBag extends BlobPropertyBag {
-  lastModified?: number;
 }
 
 export interface Body {
