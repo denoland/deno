@@ -11,7 +11,7 @@ export interface DirEntry extends FileInfo {
 export class DirEntryImpl extends FileInfoImpl implements DirEntry {
   name: string;
 
-  constructor (res: StatResponse) {
+  constructor(res: StatResponse) {
     super(res);
     assert(res.name != null);
     this.name = res.name;
