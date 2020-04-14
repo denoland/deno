@@ -406,62 +406,6 @@ export interface ReadableStreamBYOBRequest {
   respond(bytesWritten: number): void;
   respondWithNewView(view: ArrayBufferView): void;
 }
-/* TODO reenable these interfaces.  These are needed to enable WritableStreams in js/streams/
-export interface WritableStream<W = any> {
-  readonly locked: boolean;
-  abort(reason?: any): Promise<void>;
-  getWriter(): WritableStreamDefaultWriter<W>;
-}
-
-TODO reenable these interfaces.  These are needed to enable WritableStreams in js/streams/
-export interface UnderlyingSink<W = any> {
-  abort?: WritableStreamErrorCallback;
-  close?: WritableStreamDefaultControllerCloseCallback;
-  start?: WritableStreamDefaultControllerStartCallback;
-  type?: undefined;
-  write?: WritableStreamDefaultControllerWriteCallback<W>;
-}
-
-export interface PipeOptions {
-  preventAbort?: boolean;
-  preventCancel?: boolean;
-  preventClose?: boolean;
-  signal?: AbortSignal;
-}
-
-
-export interface WritableStreamDefaultWriter<W = any> {
-  readonly closed: Promise<void>;
-  readonly desiredSize: number | null;
-  readonly ready: Promise<void>;
-  abort(reason?: any): Promise<void>;
-  close(): Promise<void>;
-  releaseLock(): void;
-  write(chunk: W): Promise<void>;
-}
-
-export interface WritableStreamErrorCallback {
-  (reason: any): void | PromiseLike<void>;
-}
-
-export interface WritableStreamDefaultControllerCloseCallback {
-  (): void | PromiseLike<void>;
-}
-
-export interface WritableStreamDefaultControllerStartCallback {
-  (controller: WritableStreamDefaultController): void | PromiseLike<void>;
-}
-
-export interface WritableStreamDefaultControllerWriteCallback<W> {
-  (chunk: W, controller: WritableStreamDefaultController): void | PromiseLike<
-    void
-  >;
-}
-
-export interface WritableStreamDefaultController {
-  error(error?: any): void;
-}
-*/
 
 export interface QueuingStrategy<T = any> {
   highWaterMark?: number;
