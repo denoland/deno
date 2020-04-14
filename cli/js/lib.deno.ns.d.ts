@@ -1333,8 +1333,6 @@ declare namespace Deno {
      * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may not
      * be available on all platforms. */
     created: number | null;
-    /** The file or directory name. */
-    name: string | null;
     /** ID of the device containing the file.
      *
      * _Linux/Mac OS only._ */
@@ -1385,6 +1383,7 @@ declare namespace Deno {
 
   /** A list of DirEntry is returned by `readdir` and `readdirSync`. */
   export interface DirEntry extends FileInfo {
+    /** The file or directory name. */
     name: string;
   }
 
