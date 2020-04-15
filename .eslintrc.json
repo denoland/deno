@@ -33,6 +33,12 @@
       }
     },
     {
+      "files": ["cli/rt.js", "cli/tsrt.js"],
+      "rules": {
+        "@typescript-eslint/camelcase": ["off"]
+      }
+    },
+    {
       "files": ["tools/node_*.js"],
       "rules": {
         "@typescript-eslint/no-var-requires": ["off"]

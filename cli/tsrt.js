@@ -10490,8 +10490,8 @@ System.register(
       let canceled2 = false;
       let reason1;
       let reason2;
-      let branch1;
-      let branch2;
+      const branch1 = {};
+      const branch2 = {};
       let cancelResolve;
       const cancelPromise = new Promise((resolve) => (cancelResolve = resolve));
       const pullAlgorithm = () => {
@@ -13876,7 +13876,6 @@ System.register(
       TextEncoder,
       TextDecoder,
       DenoBlob,
-      BodyUsedError,
       Body;
     const __moduleName = context_109 && context_109.id;
     function validateBodyType(owner, bodySource) {
@@ -13983,8 +13982,7 @@ System.register(
         DenoBlob = blob.DenoBlob;
         exports_109(
           "BodyUsedError",
-          (BodyUsedError =
-            "Failed to execute 'clone' on 'Body': body is already used")
+          ("Failed to execute 'clone' on 'Body': body is already used")
         );
         Body = class Body {
           constructor(_bodySource, contentType) {
@@ -14390,10 +14388,7 @@ System.register(
       performanceUtil,
       request,
       streams,
-      core_ts_8,
-      windowOrWorkerGlobalScopeMethods,
-      windowOrWorkerGlobalScopeProperties,
-      eventTargetProperties;
+      core_ts_8;
     const __moduleName = context_111 && context_111.id;
     function writable(value) {
       return {
@@ -14500,7 +14495,7 @@ System.register(
         // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
         exports_111(
           "windowOrWorkerGlobalScopeMethods",
-          (windowOrWorkerGlobalScopeMethods = {
+          ({
             atob: writable(textEncoding.atob),
             btoa: writable(textEncoding.btoa),
             clearInterval: writable(timers.clearInterval),
@@ -14514,7 +14509,7 @@ System.register(
         // Other properties shared between WindowScope and WorkerGlobalScope
         exports_111(
           "windowOrWorkerGlobalScopeProperties",
-          (windowOrWorkerGlobalScopeProperties = {
+          ({
             console: writable(new consoleTypes.Console(core_ts_8.core.print)),
             Blob: nonEnumerable(blob.DenoBlob),
             File: nonEnumerable(domFile.DomFileImpl),
@@ -14537,7 +14532,7 @@ System.register(
         );
         exports_111(
           "eventTargetProperties",
-          (eventTargetProperties = {
+          ({
             addEventListener: readOnly(
               eventTarget.EventTargetImpl.prototype.addEventListener
             ),
