@@ -229,7 +229,7 @@ impl SourceFileFetcher {
 
     // Local files are always fetched from disk bypassing cache entirely.
     if is_local_file {
-      return self.fetch_local_file(&module_url).map(|f| Some(f));
+      return self.fetch_local_file(&module_url).map(Some);
     }
 
     self.fetch_cached_remote_source(&module_url)
