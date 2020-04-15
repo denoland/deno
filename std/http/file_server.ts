@@ -140,8 +140,7 @@ async function serveDir(
 ): Promise<Response> {
   const dirUrl = `/${posix.relative(target, dirPath)}`;
   const listEntry: EntryInfo[] = [];
-  const dirEntries = await readdir(dirPath);
-  for (const dirEntry of dirEntries) {
+  for await (const dirEntry of readdir(dirPath)) {
     const filePath = posix.join(dirPath, dirEntry.name);
     const fileUrl = posix.join(dirUrl, dirEntry.name);
     if (dirEntry.name === "index.html" && dirEntry.isFile) {

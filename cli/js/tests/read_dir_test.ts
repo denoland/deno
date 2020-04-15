@@ -20,7 +20,7 @@ function assertSameContent(files: Deno.DirEntry[]): void {
 }
 
 unitTest({ perms: { read: true } }, function readdirSyncSuccess(): void {
-  const files = Deno.readdirSync("cli/tests/");
+  const files = [...Deno.readdirSync("cli/tests/")];
   assertSameContent(files);
 });
 
@@ -66,7 +66,10 @@ unitTest({ perms: { read: true } }, function readdirSyncNotFound(): void {
 unitTest({ perms: { read: true } }, async function readdirSuccess(): Promise<
   void
 > {
-  const files = await Deno.readdir("cli/tests/");
+  const files = [];
+  for await (const dirEntry of Deno.readdir("cli/tests/")) {
+    files.push(dirEntry);
+  }
   assertSameContent(files);
 });
 
@@ -75,7 +78,7 @@ unitTest({ perms: { read: false } }, async function readdirPerm(): Promise<
 > {
   let caughtError = false;
   try {
-    await Deno.readdir("tests/");
+    await Deno.readdir("tests/")[Symbol.asyncIterator]().next();
   } catch (e) {
     caughtError = true;
     assert(e instanceof Deno.errors.PermissionDenied);

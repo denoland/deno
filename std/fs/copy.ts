@@ -157,10 +157,7 @@ async function copyDir(
     await Deno.utime(dest, srcStatInfo.accessed, srcStatInfo.modified);
   }
 
-  const files = await Deno.readdir(src);
-
-  for (const file of files) {
-    assert(file.name != null, "file.name must be set");
+  for await (const file of Deno.readdir(src)) {
     const srcPath = path.join(src, file.name);
     const destPath = path.join(dest, path.basename(srcPath as string));
     if (file.isDirectory) {
@@ -188,9 +185,7 @@ function copyDirSync(src: string, dest: string, options: CopyOptions): void {
     Deno.utimeSync(dest, srcStatInfo.accessed, srcStatInfo.modified);
   }
 
-  const files = Deno.readdirSync(src);
-
-  for (const file of files) {
+  for (const file of Deno.readdirSync(src)) {
     assert(file.name != null, "file.name must be set");
     const srcPath = path.join(src, file.name);
     const destPath = path.join(dest, path.basename(srcPath as string));

@@ -78,8 +78,7 @@ export async function* walk(
   if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
-  const ls: Deno.DirEntry[] = await readdir(root);
-  for (const dirEntry of ls) {
+  for await (const dirEntry of readdir(root)) {
     if (dirEntry.isSymlink) {
       if (followSymlinks) {
         // TODO(ry) Re-enable followSymlinks.
@@ -131,8 +130,7 @@ export function* walkSync(
   if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
-  const ls: Deno.DirEntry[] = readdirSync(root);
-  for (const dirEntry of ls) {
+  for (const dirEntry of readdirSync(root)) {
     if (dirEntry.isSymlink) {
       if (followSymlinks) {
         unimplemented();

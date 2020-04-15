@@ -1409,28 +1409,29 @@ declare namespace Deno {
     name: string;
   }
 
-  /** UNSTABLE: This API is likely to change to return an iterable object instead
+  /** Synchronously reads the directory given by `path` and returns an iterable
+   * of `Deno.DirEntry`.
    *
-   * Synchronously reads the directory given by `path` and returns an array of
+   *       for (const dirEntry of Deno.readdirSync("/")) {
+   *         console.log(dirEntry.name);
+   *       }
+   *
+   * Throws error if `path` is not a directory.
+   *
+   * Requires `allow-read` permission. */
+  export function readdirSync(path: string): Iterable<DirEntry>;
+
+  /** Reads the directory given by `path` and returns an async iterable of
    * `Deno.DirEntry`.
    *
-   *       const files = Deno.readdirSync("/");
+   *       for await (const dirEntry of Deno.readdir("/")) {
+   *         console.log(dirEntry.name);
+   *       }
    *
    * Throws error if `path` is not a directory.
    *
    * Requires `allow-read` permission. */
-  export function readdirSync(path: string): DirEntry[];
-
-  /** UNSTABLE: This API is likely to change to return an `AsyncIterable`.
-   *
-   * Reads the directory given by `path` and resolves to an array of `Deno.DirEntry`.
-   *
-   *       const files = await Deno.readdir("/");
-   *
-   * Throws error if `path` is not a directory.
-   *
-   * Requires `allow-read` permission. */
-  export function readdir(path: string): Promise<DirEntry[]>;
+  export function readdir(path: string): AsyncIterable<DirEntry>;
 
   /** Synchronously copies the contents and permissions of one file to another
    * specified path, by default creating a new file if needed, else overwriting.

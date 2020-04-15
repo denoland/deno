@@ -18,10 +18,15 @@ function res(response: ReadDirResponse): DirEntry[] {
   );
 }
 
-export function readdirSync(path: string): DirEntry[] {
-  return res(sendSync("op_read_dir", { path }));
+export function readdirSync(path: string): Iterable<DirEntry> {
+  return res(sendSync("op_read_dir", { path }))[Symbol.iterator]();
 }
 
-export async function readdir(path: string): Promise<DirEntry[]> {
-  return res(await sendAsync("op_read_dir", { path }));
+export function readdir(path: string): AsyncIterable<DirEntry> {
+  const array = sendAsync("op_read_dir", { path }).then(res);
+  return {
+    async *[Symbol.asyncIterator](): AsyncIterableIterator<DirEntry> {
+      yield* await array;
+    },
+  };
 }
