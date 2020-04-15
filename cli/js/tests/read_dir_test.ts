@@ -1,9 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals } from "./test_util.ts";
 
-type FileInfo = Deno.FileInfo;
-
-function assertSameContent(files: FileInfo[]): void {
+function assertSameContent(files: Deno.DirEntry[]): void {
   let counter = 0;
 
   for (const file of files) {

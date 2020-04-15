@@ -2,7 +2,7 @@ const { test } = Deno;
 import { assert, assertEquals, assertThrows } from "../../testing/asserts.ts";
 import Dirent from "./_fs_dirent.ts";
 
-class FileInfoMock implements Deno.FileInfo {
+class DirEntryMock implements Deno.DirEntry {
   isFile = false;
   isDirectory = false;
   isSymlink = false;
@@ -25,7 +25,7 @@ class FileInfoMock implements Deno.FileInfo {
 test({
   name: "Block devices are correctly identified",
   fn() {
-    const fileInfo: FileInfoMock = new FileInfoMock();
+    const fileInfo: DirEntryMock = new DirEntryMock();
     fileInfo.blocks = 5;
     assert(new Dirent(fileInfo).isBlockDevice());
     assert(!new Dirent(fileInfo).isCharacterDevice());
@@ -35,7 +35,7 @@ test({
 test({
   name: "Character devices are correctly identified",
   fn() {
-    const fileInfo: FileInfoMock = new FileInfoMock();
+    const fileInfo: DirEntryMock = new DirEntryMock();
     fileInfo.blocks = null;
     assert(new Dirent(fileInfo).isCharacterDevice());
     assert(!new Dirent(fileInfo).isBlockDevice());
@@ -45,7 +45,7 @@ test({
 test({
   name: "Directories are correctly identified",
   fn() {
-    const fileInfo: FileInfoMock = new FileInfoMock();
+    const fileInfo: DirEntryMock = new DirEntryMock();
     fileInfo.isDirectory = true;
     fileInfo.isFile = false;
     fileInfo.isSymlink = false;
@@ -58,7 +58,7 @@ test({
 test({
   name: "Files are correctly identified",
   fn() {
-    const fileInfo: FileInfoMock = new FileInfoMock();
+    const fileInfo: DirEntryMock = new DirEntryMock();
     fileInfo.isDirectory = false;
     fileInfo.isFile = true;
     fileInfo.isSymlink = false;
@@ -71,7 +71,7 @@ test({
 test({
   name: "Symlinks are correctly identified",
   fn() {
-    const fileInfo: FileInfoMock = new FileInfoMock();
+    const fileInfo: DirEntryMock = new DirEntryMock();
     fileInfo.isDirectory = false;
     fileInfo.isFile = false;
     fileInfo.isSymlink = true;
@@ -84,7 +84,7 @@ test({
 test({
   name: "File name is correct",
   fn() {
-    const fileInfo: FileInfoMock = new FileInfoMock();
+    const fileInfo: DirEntryMock = new DirEntryMock();
     fileInfo.name = "my_file";
     assertEquals(new Dirent(fileInfo).name, "my_file");
   },
@@ -93,7 +93,7 @@ test({
 test({
   name: "Socket and FIFO pipes aren't yet available",
   fn() {
-    const fileInfo: FileInfoMock = new FileInfoMock();
+    const fileInfo: DirEntryMock = new DirEntryMock();
     assertThrows(
       () => {
         new Dirent(fileInfo).isFIFO();

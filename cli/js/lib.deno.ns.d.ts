@@ -1317,8 +1317,7 @@ declare namespace Deno {
   export function readFile(path: string): Promise<Uint8Array>;
 
   /** A FileInfo describes a file and is returned by `stat`, `lstat`,
-   * `statSync`, `lstatSync`. A list of FileInfo is returned by `readdir`,
-   * `readdirSync`. */
+   * `statSync`, `lstatSync`. */
   export interface FileInfo {
     /** True if this is info for a regular file. Mutually exclusive to
      * `FileInfo.isDirectory` and `FileInfo.isSymlink`. */
@@ -1343,8 +1342,6 @@ declare namespace Deno {
      * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may not
      * be available on all platforms. */
     created: number | null;
-    /** The file or directory name. */
-    name: string | null;
     /** ID of the device containing the file.
      *
      * _Linux/Mac OS only._ */
@@ -1408,28 +1405,32 @@ declare namespace Deno {
    * Requires `allow-read` permission. */
   export function realpath(path: string): Promise<string>;
 
+  export interface DirEntry extends FileInfo {
+    name: string;
+  }
+
   /** UNSTABLE: This API is likely to change to return an iterable object instead
    *
    * Synchronously reads the directory given by `path` and returns an array of
-   * `Deno.FileInfo`.
+   * `Deno.DirEntry`.
    *
    *       const files = Deno.readdirSync("/");
    *
    * Throws error if `path` is not a directory.
    *
    * Requires `allow-read` permission. */
-  export function readdirSync(path: string): FileInfo[];
+  export function readdirSync(path: string): DirEntry[];
 
   /** UNSTABLE: This API is likely to change to return an `AsyncIterable`.
    *
-   * Reads the directory given by `path` and resolves to an array of `Deno.FileInfo`.
+   * Reads the directory given by `path` and resolves to an array of `Deno.DirEntry`.
    *
    *       const files = await Deno.readdir("/");
    *
    * Throws error if `path` is not a directory.
    *
    * Requires `allow-read` permission. */
-  export function readdir(path: string): Promise<FileInfo[]>;
+  export function readdir(path: string): Promise<DirEntry[]>;
 
   /** Synchronously copies the contents and permissions of one file to another
    * specified path, by default creating a new file if needed, else overwriting.

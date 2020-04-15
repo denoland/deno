@@ -7,7 +7,6 @@ export interface FileInfo {
   modified: number | null;
   accessed: number | null;
   created: number | null;
-  name: string | null;
   dev: number | null;
   ino: number | null;
   mode: number | null;
@@ -30,6 +29,7 @@ export interface StatResponse {
   modified: number;
   accessed: number;
   created: number;
+  // Null for stat(), but exists for readdir().
   name: string | null;
   // Unix only members
   dev: number;
@@ -54,7 +54,6 @@ export function parseFileInfo(response: StatResponse): FileInfo {
     modified: response.modified ? response.modified : null,
     accessed: response.accessed ? response.accessed : null,
     created: response.created ? response.created : null,
-    name: response.name ? response.name : null,
     // Only non-null if on Unix
     dev: isUnix ? response.dev : null,
     ino: isUnix ? response.ino : null,

@@ -96,7 +96,7 @@ export {
 export { openPlugin } from "./plugins.ts";
 export { kill } from "./ops/process.ts";
 export { run, RunOptions, Process, ProcessStatus } from "./process.ts";
-export { readdirSync, readdir } from "./ops/fs/read_dir.ts";
+export { DirEntry, readdirSync, readdir } from "./ops/fs/read_dir.ts";
 export { readFileSync, readFile } from "./read_file.ts";
 export { readlinkSync, readlink } from "./ops/fs/read_link.ts";
 export { realpathSync, realpath } from "./ops/fs/realpath.ts";

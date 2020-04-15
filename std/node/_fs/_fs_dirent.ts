@@ -1,7 +1,7 @@
 import { notImplemented } from "../_utils.ts";
 
 export default class Dirent {
-  constructor(private entry: Deno.FileInfo) {}
+  constructor(private entry: Deno.DirEntry) {}
 
   isBlockDevice(): boolean {
     return this.entry.blocks != null;
