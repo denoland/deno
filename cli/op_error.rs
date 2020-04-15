@@ -108,7 +108,7 @@ impl OpError {
   pub fn resource_unavailable() -> OpError {
     Self::new(
       ErrorKind::InvalidData,
-      "resource is unavailable because it is in by a promise".to_string(),
+      "resource is unavailable because it is in use by a promise".to_string(),
     )
   }
 
