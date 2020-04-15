@@ -213,12 +213,6 @@ pub fn op_isatty(
     StreamResource::Stdin(_, _) => {
       Ok(JsonOp::Sync(json!(atty::is(atty::Stream::Stdin))))
     }
-    StreamResource::Stdout(_) => {
-      Ok(JsonOp::Sync(json!(atty::is(atty::Stream::Stdout))))
-    }
-    StreamResource::Stderr(_) => {
-      Ok(JsonOp::Sync(json!(atty::is(atty::Stream::Stderr))))
-    }
     StreamResource::FsFile(None) => todo!(),
     StreamResource::FsFile(Some((f, _))) => {
       let tokio_file = futures::executor::block_on(f.try_clone())?;

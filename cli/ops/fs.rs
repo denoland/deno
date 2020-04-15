@@ -224,9 +224,14 @@ fn op_seek(
   if is_sync {
     let mut s = state.borrow_mut();
     let pos =
-      blocking_fs_file_helper(&mut s.resource_table, rid, |std_file| {
-        use std::io::Seek;
-        std_file.seek(seek_from)
+      blocking_fs_file_helper(&mut s.resource_table, rid, |r| match r {
+        Ok(std_file) => {
+          use std::io::Seek;
+          std_file.seek(seek_from).map_err(OpError::from)
+        }
+        Err(_) => Err(OpError::type_error(
+          "cannot seek on this type of resource".to_string(),
+        )),
       })?;
     Ok(JsonOp::Sync(json!(pos)))
   } else {
@@ -235,9 +240,14 @@ fn op_seek(
     let fut = async move {
       let mut s = state.borrow_mut();
       let pos =
-        blocking_fs_file_helper(&mut s.resource_table, rid, |std_file| {
-          use std::io::Seek;
-          std_file.seek(seek_from)
+        blocking_fs_file_helper(&mut s.resource_table, rid, |r| match r {
+          Ok(std_file) => {
+            use std::io::Seek;
+            std_file.seek(seek_from).map_err(OpError::from)
+          }
+          Err(_) => Err(OpError::type_error(
+            "cannot seek on this type of resource".to_string(),
+          )),
         })?;
       Ok(json!(pos))
     };

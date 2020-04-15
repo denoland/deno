@@ -113,8 +113,8 @@ impl OpError {
   }
 
   // TODO(ry) Should this have its own ErrorKind code?
-  pub fn sync_not_allowed() -> OpError {
-    OpError::type_error("sync not allowed on this resource".to_string())
+  pub fn sync_not_allowed(msg: &str) -> OpError {
+    OpError::type_error(msg.to_string())
   }
 }
 

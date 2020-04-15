@@ -1,7 +1,6 @@
 use super::dispatch_minimal::MinimalOp;
 use crate::http_util::HttpBody;
 use crate::op_error::OpError;
-use crate::ops::io::StreamResource::FsFile;
 use crate::ops::minimal_op;
 use crate::state::State;
 use deno_core::*;
@@ -28,12 +27,14 @@ use std::os::windows::io::FromRawHandle;
 extern crate winapi;
 
 lazy_static! {
-  /// Due to portability issues on Windows handle to stdout is created from raw file descriptor.
-  /// The caveat of that approach is fact that when this handle is dropped underlying
-  /// file descriptor is closed - that is highly not desirable in case of stdout.
-  /// That's why we store this global handle that is then cloned when obtaining stdio
-  /// for process. In turn when resource table is dropped storing reference to that handle,
-  /// the handle itself won't be closed (so Deno.core.print) will still work.
+  /// Due to portability issues on Windows handle to stdout is created from raw
+  /// file descriptor.  The caveat of that approach is fact that when this
+  /// handle is dropped underlying file descriptor is closed - that is highly
+  /// not desirable in case of stdout.  That's why we store this global handle
+  /// that is then cloned when obtaining stdio for process. In turn when
+  /// resource table is dropped storing reference to that handle, the handle
+  /// itself won't be closed (so Deno.core.print) will still work.
+  // TODO(ry) It should be possible to close stdout.
   static ref STDOUT_HANDLE: std::fs::File = {
     #[cfg(not(windows))]
     let stdout = unsafe { std::fs::File::from_raw_fd(1) };
@@ -43,8 +44,18 @@ lazy_static! {
         winapi::um::winbase::STD_OUTPUT_HANDLE,
       ))
     };
-
     stdout
+  };
+  static ref STDERR_HANDLE: std::fs::File = {
+    #[cfg(not(windows))]
+    let stderr = unsafe { std::fs::File::from_raw_fd(2) };
+    #[cfg(windows)]
+    let stderr = unsafe {
+      std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
+        winapi::um::winbase::STD_ERROR_HANDLE,
+      ))
+    };
+    stderr
   };
 }
 
@@ -68,14 +79,14 @@ pub fn get_stdio() -> (
     tokio::io::stdin(),
     TTYMetadata::default(),
   ));
-  let stdout = StreamResourceHolder::new(StreamResource::Stdout({
-    let stdout = STDOUT_HANDLE
-      .try_clone()
-      .expect("Unable to clone stdout handle");
-    tokio::fs::File::from_std(stdout)
-  }));
-  let stderr =
-    StreamResourceHolder::new(StreamResource::Stderr(tokio::io::stderr()));
+  let stdout = StreamResourceHolder::new(StreamResource::FsFile(Some({
+    let stdout = STDOUT_HANDLE.try_clone().unwrap();
+    (tokio::fs::File::from_std(stdout), FileMetadata::default())
+  })));
+  let stderr = StreamResourceHolder::new(StreamResource::FsFile(Some({
+    let stderr = STDERR_HANDLE.try_clone().unwrap();
+    (tokio::fs::File::from_std(stderr), FileMetadata::default())
+  })));
 
   (stdin, stdout, stderr)
 }
@@ -145,8 +156,6 @@ impl StreamResourceHolder {
 
 pub enum StreamResource {
   Stdin(tokio::io::Stdin, TTYMetadata),
-  Stdout(tokio::fs::File),
-  Stderr(tokio::io::Stderr),
   FsFile(Option<(tokio::fs::File, FileMetadata)>),
   TcpStream(tokio::net::TcpStream),
   #[cfg(not(windows))]
@@ -219,9 +228,17 @@ pub fn op_read(
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
       let resource_table = &mut state.borrow_mut().resource_table;
-      blocking_fs_file_helper(resource_table, rid as u32, move |std_file| {
-        use std::io::Read;
-        std_file.read(&mut buf).map(|n: usize| n as i32)
+      blocking_fs_file_helper(resource_table, rid as u32, move |r| match r {
+        Ok(std_file) => {
+          use std::io::Read;
+          std_file
+            .read(&mut buf)
+            .map(|n: usize| n as i32)
+            .map_err(OpError::from)
+        }
+        Err(_) => Err(OpError::sync_not_allowed(
+          "sync read not allowed on this resource",
+        )),
       })
     })
   } else {
@@ -280,8 +297,6 @@ impl DenoAsyncWrite for StreamResource {
     let f: &mut dyn UnpinAsyncWrite = match self {
       FsFile(Some((f, _))) => f,
       FsFile(None) => return Poll::Pending,
-      Stdout(f) => f,
-      Stderr(f) => f,
       TcpStream(f) => f,
       #[cfg(not(windows))]
       UnixStream(f) => f,
@@ -300,8 +315,6 @@ impl DenoAsyncWrite for StreamResource {
     let f: &mut dyn UnpinAsyncWrite = match self {
       FsFile(Some((f, _))) => f,
       FsFile(None) => return Poll::Pending,
-      Stdout(f) => f,
-      Stderr(f) => f,
       TcpStream(f) => f,
       #[cfg(not(windows))]
       UnixStream(f) => f,
@@ -338,9 +351,17 @@ pub fn op_write(
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
       let resource_table = &mut state.borrow_mut().resource_table;
-      blocking_fs_file_helper(resource_table, rid as u32, |std_file| {
-        use std::io::Write;
-        std_file.write(&buf).map(|nwritten: usize| nwritten as i32)
+      blocking_fs_file_helper(resource_table, rid as u32, move |r| match r {
+        Ok(std_file) => {
+          use std::io::Write;
+          std_file
+            .write(&buf)
+            .map(|nwritten: usize| nwritten as i32)
+            .map_err(OpError::from)
+        }
+        Err(_) => Err(OpError::sync_not_allowed(
+          "sync read not allowed on this resource",
+        )),
       })
     })
   } else {
@@ -380,16 +401,15 @@ pub fn op_write(
 /// For many types of resources, it does not make sense to do blocking
 /// operations of the main thread - and we should not support it - such as for
 /// sockets.
-///
-/// Errors if rid is in use by another op/promise or does not correspond to a
-/// FsFile.
 pub fn blocking_fs_file_helper<F, T>(
   resource_table: &mut ResourceTable,
   rid: u32,
   mut f: F,
 ) -> Result<T, OpError>
 where
-  F: FnMut(&mut std::fs::File) -> Result<T, std::io::Error>,
+  F: FnMut(
+    Result<&mut std::fs::File, &mut StreamResource>,
+  ) -> Result<T, OpError>,
 {
   // First we look up the rid in the resource table.
   let mut r = resource_table.get_mut::<StreamResourceHolder>(rid);
@@ -397,30 +417,32 @@ where
     // Sync write only works for FsFile. It doesn't make sense to do this
     // for non-blocking sockets. So we error out if not FsFile.
     match &mut resource_holder.resource {
-      FsFile(option_file_metadata) => {
+      StreamResource::FsFile(option_file_metadata) => {
         // The object in the resource table is a tokio::fs::File - but in
         // order to do a blocking write on it, we must turn it into a
         // std::fs::File. Hopefully this code compiles down to nothing.
         let (tokio_file, metadata) = option_file_metadata.take().unwrap();
         match tokio_file.try_into_std() {
           Ok(mut std_file) => {
-            let result = f(&mut std_file).map_err(OpError::from);
+            let result = f(Ok(&mut std_file));
             // Turn the std_file handle back into a tokio file, put it back
             // in the resource table.
             let tokio_file = tokio::fs::File::from_std(std_file);
-            resource_holder.resource = FsFile(Some((tokio_file, metadata)));
+            resource_holder.resource =
+              StreamResource::FsFile(Some((tokio_file, metadata)));
             // return the result.
             result
           }
           Err(tokio_file) => {
             // This function will return an error containing the file if
             // some operation is in-flight.
-            resource_holder.resource = FsFile(Some((tokio_file, metadata)));
+            resource_holder.resource =
+              StreamResource::FsFile(Some((tokio_file, metadata)));
             Err(OpError::resource_unavailable())
           }
         }
       }
-      _ => Err(OpError::sync_not_allowed()),
+      _ => f(Err(&mut resource_holder.resource)),
     }
   } else {
     Err(OpError::bad_resource_id())
