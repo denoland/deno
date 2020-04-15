@@ -21,3 +21,8 @@ import ReactDOM from "https://dev.jspm.io/react-dom@16.13.1/server.js";
 
 React Dom Server is partially implemented due to current incompatibility with
 Node's Readable Streams.
+
+Non supported functions:
+
+1. renderToNodeStream
+1. renderToStaticNodeStream
