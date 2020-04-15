@@ -1,4 +1,5 @@
 use super::dispatch_json::JsonOp;
+use super::io::blocking_fs_file_helper;
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
 use crate::ops::json_op;
@@ -192,50 +193,37 @@ struct IsattyArgs {
 }
 
 pub fn op_isatty(
-  state_: &State,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: IsattyArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
-  let state = state_.borrow_mut();
-  if !state.resource_table.has(rid) {
-    return Err(OpError::bad_resource_id());
-  }
+  let resource_table = &mut state.borrow_mut().resource_table;
+  let isatty: bool =
+    blocking_fs_file_helper(resource_table, rid as u32, move |r| match r {
+      Ok(std_file) => {
+        #[cfg(windows)]
+        {
+          use winapi::um::consoleapi;
 
-  let resource_holder = state.resource_table.get::<StreamResourceHolder>(rid);
-  if resource_holder.is_none() {
-    return Ok(JsonOp::Sync(json!(false)));
-  }
-
-  match &resource_holder.unwrap().resource {
-    StreamResource::Stdin(_, _) => {
-      Ok(JsonOp::Sync(json!(atty::is(atty::Stream::Stdin))))
-    }
-    StreamResource::FsFile(None) => todo!(),
-    StreamResource::FsFile(Some((f, _))) => {
-      let tokio_file = futures::executor::block_on(f.try_clone())?;
-      let std_file = futures::executor::block_on(tokio_file.into_std());
-      #[cfg(windows)]
-      {
-        use winapi::um::consoleapi;
-
-        let handle = get_windows_handle(&std_file)?;
-        let mut test_mode: DWORD = 0;
-        // If I cannot get mode out of console, it is not a console.
-        let result =
-          unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 };
-        Ok(JsonOp::Sync(json!(result)))
+          let handle = get_windows_handle(&std_file)?;
+          let mut test_mode: DWORD = 0;
+          // If I cannot get mode out of console, it is not a console.
+          Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })
+        }
+        #[cfg(unix)]
+        {
+          use std::os::unix::io::AsRawFd;
+          let raw_fd = std_file.as_raw_fd();
+          Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
+        }
       }
-      #[cfg(unix)]
-      {
-        use std::os::unix::io::AsRawFd;
-        let raw_fd = std_file.as_raw_fd();
-        let result = unsafe { libc::isatty(raw_fd as libc::c_int) == 1 };
-        Ok(JsonOp::Sync(json!(result)))
-      }
-    }
-    _ => Ok(JsonOp::Sync(json!(false))),
-  }
+      Err(StreamResource::FsFile(_)) => unreachable!(),
+      Err(StreamResource::Stdin(_, _)) => Ok(atty::is(atty::Stream::Stdin)),
+      _ => Ok(false),
+    })
+    .unwrap();
+  Ok(JsonOp::Sync(json!(isatty)))
 }
