@@ -13870,13 +13870,7 @@ System.register(
   ],
   function (exports_109, context_109) {
     "use strict";
-    let blob,
-      encoding,
-      mod_ts_2,
-      TextEncoder,
-      TextDecoder,
-      DenoBlob,
-      Body;
+    let blob, encoding, mod_ts_2, TextEncoder, TextDecoder, DenoBlob, Body;
     const __moduleName = context_109 && context_109.id;
     function validateBodyType(owner, bodySource) {
       if (
@@ -13982,7 +13976,7 @@ System.register(
         DenoBlob = blob.DenoBlob;
         exports_109(
           "BodyUsedError",
-          ("Failed to execute 'clone' on 'Body': body is already used")
+          "Failed to execute 'clone' on 'Body': body is already used"
         );
         Body = class Body {
           constructor(_bodySource, contentType) {
@@ -14493,57 +14487,48 @@ System.register(
       ],
       execute: function () {
         // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
-        exports_111(
-          "windowOrWorkerGlobalScopeMethods",
-          ({
-            atob: writable(textEncoding.atob),
-            btoa: writable(textEncoding.btoa),
-            clearInterval: writable(timers.clearInterval),
-            clearTimeout: writable(timers.clearTimeout),
-            fetch: writable(fetchTypes.fetch),
-            // queueMicrotask is bound in Rust
-            setInterval: writable(timers.setInterval),
-            setTimeout: writable(timers.setTimeout),
-          })
-        );
+        exports_111("windowOrWorkerGlobalScopeMethods", {
+          atob: writable(textEncoding.atob),
+          btoa: writable(textEncoding.btoa),
+          clearInterval: writable(timers.clearInterval),
+          clearTimeout: writable(timers.clearTimeout),
+          fetch: writable(fetchTypes.fetch),
+          // queueMicrotask is bound in Rust
+          setInterval: writable(timers.setInterval),
+          setTimeout: writable(timers.setTimeout),
+        });
         // Other properties shared between WindowScope and WorkerGlobalScope
-        exports_111(
-          "windowOrWorkerGlobalScopeProperties",
-          ({
-            console: writable(new consoleTypes.Console(core_ts_8.core.print)),
-            Blob: nonEnumerable(blob.DenoBlob),
-            File: nonEnumerable(domFile.DomFileImpl),
-            CustomEvent: nonEnumerable(customEvent.CustomEventImpl),
-            DOMException: nonEnumerable(domException.DOMExceptionImpl),
-            Event: nonEnumerable(event.EventImpl),
-            EventTarget: nonEnumerable(eventTarget.EventTargetImpl),
-            URL: nonEnumerable(url.URLImpl),
-            URLSearchParams: nonEnumerable(urlSearchParams.URLSearchParamsImpl),
-            Headers: nonEnumerable(headers.HeadersImpl),
-            FormData: nonEnumerable(formData.FormDataImpl),
-            TextEncoder: nonEnumerable(textEncoding.TextEncoder),
-            TextDecoder: nonEnumerable(textEncoding.TextDecoder),
-            ReadableStream: nonEnumerable(streams.ReadableStream),
-            Request: nonEnumerable(request.Request),
-            Response: nonEnumerable(fetchTypes.Response),
-            performance: writable(new performanceUtil.Performance()),
-            Worker: nonEnumerable(workers.WorkerImpl),
-          })
-        );
-        exports_111(
-          "eventTargetProperties",
-          ({
-            addEventListener: readOnly(
-              eventTarget.EventTargetImpl.prototype.addEventListener
-            ),
-            dispatchEvent: readOnly(
-              eventTarget.EventTargetImpl.prototype.dispatchEvent
-            ),
-            removeEventListener: readOnly(
-              eventTarget.EventTargetImpl.prototype.removeEventListener
-            ),
-          })
-        );
+        exports_111("windowOrWorkerGlobalScopeProperties", {
+          console: writable(new consoleTypes.Console(core_ts_8.core.print)),
+          Blob: nonEnumerable(blob.DenoBlob),
+          File: nonEnumerable(domFile.DomFileImpl),
+          CustomEvent: nonEnumerable(customEvent.CustomEventImpl),
+          DOMException: nonEnumerable(domException.DOMExceptionImpl),
+          Event: nonEnumerable(event.EventImpl),
+          EventTarget: nonEnumerable(eventTarget.EventTargetImpl),
+          URL: nonEnumerable(url.URLImpl),
+          URLSearchParams: nonEnumerable(urlSearchParams.URLSearchParamsImpl),
+          Headers: nonEnumerable(headers.HeadersImpl),
+          FormData: nonEnumerable(formData.FormDataImpl),
+          TextEncoder: nonEnumerable(textEncoding.TextEncoder),
+          TextDecoder: nonEnumerable(textEncoding.TextDecoder),
+          ReadableStream: nonEnumerable(streams.ReadableStream),
+          Request: nonEnumerable(request.Request),
+          Response: nonEnumerable(fetchTypes.Response),
+          performance: writable(new performanceUtil.Performance()),
+          Worker: nonEnumerable(workers.WorkerImpl),
+        });
+        exports_111("eventTargetProperties", {
+          addEventListener: readOnly(
+            eventTarget.EventTargetImpl.prototype.addEventListener
+          ),
+          dispatchEvent: readOnly(
+            eventTarget.EventTargetImpl.prototype.dispatchEvent
+          ),
+          removeEventListener: readOnly(
+            eventTarget.EventTargetImpl.prototype.removeEventListener
+          ),
+        });
       },
     };
   }
