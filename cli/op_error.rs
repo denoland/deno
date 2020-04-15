@@ -50,6 +50,7 @@ pub enum ErrorKind {
   /// if no better context is available.
   /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error
   Other = 22,
+  Busy = 23,
 }
 
 #[derive(Debug)]
@@ -108,7 +109,7 @@ impl OpError {
     // TODO(ry) Is InvalidData the right error code here? BadResource? Should we
     // create a new one? What would be the corresponding posix situation?
     Self::new(
-      ErrorKind::InvalidData,
+      ErrorKind::Busy,
       "resource is unavailable because it is in use by a promise".to_string(),
     )
   }
