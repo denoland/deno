@@ -2,6 +2,8 @@
 
 import "./lib.deno.shared_globals.d.ts";
 
+import * as abortController from "./web/abort_controller.ts";
+import * as abortSignal from "./web/abort_signal.ts";
 import * as blob from "./web/blob.ts";
 import * as consoleTypes from "./web/console.ts";
 import * as promiseTypes from "./web/promise.ts";
@@ -73,7 +75,7 @@ declare global {
     dispatch(
       opId: number,
       control: Uint8Array,
-      zeroCopy?: ArrayBufferView | null
+      zeroCopy?: ArrayBufferView | null,
     ): Uint8Array | null;
     setAsyncHandler(opId: number, cb: (msg: Uint8Array) => void): void;
     sharedQueue: {
@@ -92,7 +94,7 @@ declare global {
     send(
       opId: number,
       control: null | ArrayBufferView,
-      data?: ArrayBufferView
+      data?: ArrayBufferView,
     ): null | Uint8Array;
 
     setMacrotaskCallback(cb: () => boolean): void;
@@ -101,7 +103,7 @@ declare global {
 
     evalContext(
       code: string,
-      scriptName?: string
+      scriptName?: string,
     ): [unknown, EvalErrorInfo | null];
 
     formatError: (e: Error) => string;
@@ -140,12 +142,12 @@ declare global {
     | undefined;
   var onerror:
     | ((
-        msg: string,
-        source: string,
-        lineno: number,
-        colno: number,
-        e: Event
-      ) => boolean | void)
+      msg: string,
+      source: string,
+      lineno: number,
+      colno: number,
+      e: Event,
+    ) => boolean | void)
     | undefined;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -207,6 +209,8 @@ export const windowOrWorkerGlobalScopeMethods = {
 // Other properties shared between WindowScope and WorkerGlobalScope
 export const windowOrWorkerGlobalScopeProperties = {
   console: writable(new consoleTypes.Console(core.print)),
+  AbortController: nonEnumerable(abortController.AbortControllerImpl),
+  AbortSignal: nonEnumerable(abortSignal.AbortSignalImpl),
   Blob: nonEnumerable(blob.DenoBlob),
   File: nonEnumerable(domFile.DomFileImpl),
   CustomEvent: nonEnumerable(customEvent.CustomEventImpl),
@@ -233,10 +237,10 @@ export function setEventTargetData(value: any): void {
 
 export const eventTargetProperties = {
   addEventListener: readOnly(
-    eventTarget.EventTargetImpl.prototype.addEventListener
+    eventTarget.EventTargetImpl.prototype.addEventListener,
   ),
   dispatchEvent: readOnly(eventTarget.EventTargetImpl.prototype.dispatchEvent),
   removeEventListener: readOnly(
-    eventTarget.EventTargetImpl.prototype.removeEventListener
+    eventTarget.EventTargetImpl.prototype.removeEventListener,
   ),
 };
