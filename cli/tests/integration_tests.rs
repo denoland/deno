@@ -2208,6 +2208,7 @@ async fn inspector_break_on_first_line() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn inspector_coverage() {
   let script = deno::test_util::root_path()
     .join("cli")
