@@ -1,14 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-/* eslint-disable @typescript-eslint/camelcase */
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable no-var */
-/* eslint-disable no-unused-vars */
-/* eslint-disable camelcase */
 
 System.register("$deno$/io.ts", [], function (exports_1, context_1) {
   "use strict";
-  var EOF, SeekMode;
-  var __moduleName = context_1 && context_1.id;
+  let EOF, SeekMode;
+  const __moduleName = context_1 && context_1.id;
   // https://golang.org/pkg/io/#Copy
   async function copy(dst, src) {
     let n = 0;
@@ -62,8 +57,8 @@ System.register("$deno$/io.ts", [], function (exports_1, context_1) {
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 System.register("$deno$/util.ts", [], function (exports_2, context_2) {
   "use strict";
-  var logDebug, logSource;
-  var __moduleName = context_2 && context_2.id;
+  let logDebug, logSource;
+  const __moduleName = context_2 && context_2.id;
   // @internal
   function setLogDebug(debug, source) {
     logDebug = debug;
@@ -132,8 +127,8 @@ System.register("$deno$/util.ts", [], function (exports_2, context_2) {
 // Copyright (c) 2014 Jameson Little. MIT License.
 System.register("$deno$/web/base64.ts", [], function (exports_3, context_3) {
   "use strict";
-  var lookup, revLookup, code;
-  var __moduleName = context_3 && context_3.id;
+  let lookup, revLookup, code;
+  const __moduleName = context_3 && context_3.id;
   function getLens(b64) {
     const len = b64.length;
     if (len % 4 > 0) {
@@ -291,7 +286,7 @@ System.register("$deno$/web/decode_utf8.ts", [], function (
   context_4
 ) {
   "use strict";
-  var __moduleName = context_4 && context_4.id;
+  const __moduleName = context_4 && context_4.id;
   function decodeUtf8(input, fatal, ignoreBOM) {
     let outString = "";
     // Prepare a buffer so that we don't have to do a lot of string concats, which
@@ -387,14 +382,13 @@ System.register("$deno$/web/decode_utf8.ts", [], function (
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 System.register("$deno$/core.ts", [], function (exports_5, context_5) {
   "use strict";
-  var core;
-  var __moduleName = context_5 && context_5.id;
+  const __moduleName = context_5 && context_5.id;
   return {
     setters: [],
     execute: function () {
       // This allows us to access core in API even if we
       // dispose window.Deno
-      exports_5("core", (core = globalThis.Deno.core));
+      exports_5("core", globalThis.Deno.core);
     },
   };
 });
@@ -427,7 +421,7 @@ System.register(
   ["$deno$/web/base64.ts", "$deno$/web/decode_utf8.ts", "$deno$/core.ts"],
   function (exports_6, context_6) {
     "use strict";
-    var base64,
+    let base64,
       decode_utf8_ts_1,
       core_ts_1,
       CONTINUE,
@@ -442,7 +436,7 @@ System.register(
       Stream,
       TextDecoder,
       TextEncoder;
-    var __moduleName = context_6 && context_6.id;
+    const __moduleName = context_6 && context_6.id;
     function decoderError(fatal) {
       if (fatal) {
         throw new TypeError("Decoder error.");
@@ -954,8 +948,8 @@ System.register(
   ["$deno$/io.ts", "$deno$/util.ts", "$deno$/web/text_encoding.ts"],
   function (exports_7, context_7) {
     "use strict";
-    var io_ts_1, util_ts_1, text_encoding_ts_1, MIN_READ, MAX_SIZE, Buffer;
-    var __moduleName = context_7 && context_7.id;
+    let io_ts_1, util_ts_1, text_encoding_ts_1, MIN_READ, MAX_SIZE, Buffer;
+    const __moduleName = context_7 && context_7.id;
     // `off` is the offset into `dst` where it will at which to begin writing values
     // from `src`.
     // Returns the number of bytes copied.
@@ -1179,8 +1173,8 @@ System.register(
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 System.register("$deno$/build.ts", [], function (exports_8, context_8) {
   "use strict";
-  var build;
-  var __moduleName = context_8 && context_8.id;
+  let build;
+  const __moduleName = context_8 && context_8.id;
   function setBuildInfo(os, arch) {
     build.os = os;
     build.arch = arch;
@@ -1203,7 +1197,7 @@ System.register("$deno$/build.ts", [], function (exports_8, context_8) {
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 System.register("$deno$/errors.ts", [], function (exports_9, context_9) {
   "use strict";
-  var ErrorKind,
+  let ErrorKind,
     NotFound,
     PermissionDenied,
     ConnectionRefused,
@@ -1220,9 +1214,8 @@ System.register("$deno$/errors.ts", [], function (exports_9, context_9) {
     WriteZero,
     UnexpectedEof,
     BadResource,
-    Http,
-    errors;
-  var __moduleName = context_9 && context_9.id;
+    Http;
+  const __moduleName = context_9 && context_9.id;
   function getErrorClass(kind) {
     switch (kind) {
       case ErrorKind.TypeError:
@@ -1400,7 +1393,7 @@ System.register("$deno$/errors.ts", [], function (exports_9, context_9) {
       };
       exports_9(
         "errors",
-        (errors = {
+        ({
           NotFound: NotFound,
           PermissionDenied: PermissionDenied,
           ConnectionRefused: ConnectionRefused,
@@ -1433,7 +1426,7 @@ System.register(
   ],
   function (exports_10, context_10) {
     "use strict";
-    var util,
+    let util,
       core_ts_2,
       text_encoding_ts_2,
       errors_ts_1,
@@ -1442,7 +1435,7 @@ System.register(
       decoder,
       scratch32,
       scratchBytes;
-    var __moduleName = context_10 && context_10.id;
+    const __moduleName = context_10 && context_10.id;
     function nextPromiseId() {
       return _nextPromiseId++;
     }
@@ -1550,8 +1543,8 @@ System.register(
 );
 System.register("$deno$/version.ts", [], function (exports_11, context_11) {
   "use strict";
-  var version;
-  var __moduleName = context_11 && context_11.id;
+  let version;
+  const __moduleName = context_11 && context_11.id;
   function setVersions(denoVersion, v8Version, tsVersion) {
     version.deno = denoVersion;
     version.v8 = v8Version;
@@ -1579,8 +1572,8 @@ System.register("$deno$/colors.ts", ["$deno$/deno.ts"], function (
   context_12
 ) {
   "use strict";
-  var deno_ts_1, enabled, ANSI_PATTERN;
-  var __moduleName = context_12 && context_12.id;
+  let deno_ts_1, enabled, ANSI_PATTERN;
+  const __moduleName = context_12 && context_12.id;
   function code(open, close) {
     return {
       open: `\x1b[${open}m`,
@@ -1655,8 +1648,8 @@ System.register("$deno$/colors.ts", ["$deno$/deno.ts"], function (
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 System.register("$deno$/diagnostics.ts", [], function (exports_13, context_13) {
   "use strict";
-  var DiagnosticCategory;
-  var __moduleName = context_13 && context_13.id;
+  let DiagnosticCategory;
+  const __moduleName = context_13 && context_13.id;
   return {
     setters: [],
     execute: function () {
@@ -1681,8 +1674,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_14, context_14) {
     "use strict";
-    var dispatch_json_ts_1;
-    var __moduleName = context_14 && context_14.id;
+    let dispatch_json_ts_1;
+    const __moduleName = context_14 && context_14.id;
     function formatDiagnostics(items) {
       return dispatch_json_ts_1.sendSync("op_format_diagnostic", { items });
     }
@@ -1713,8 +1706,8 @@ System.register(
 );
 System.register("$deno$/internals.ts", [], function (exports_15, context_15) {
   "use strict";
-  var internalSymbol, internalObject;
-  var __moduleName = context_15 && context_15.id;
+  let internalSymbol, internalObject;
+  const __moduleName = context_15 && context_15.id;
   // Register a field to internalObject for test access,
   // through Deno[Deno.symbols.internal][name].
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1746,8 +1739,8 @@ System.register(
   ],
   function (exports_16, context_16) {
     "use strict";
-    var colors, errors_ts_2, util_ts_2, internals_ts_1;
-    var __moduleName = context_16 && context_16.id;
+    let colors, errors_ts_2, util_ts_2, internals_ts_1;
+    const __moduleName = context_16 && context_16.id;
     function patchCallSite(callSite, location) {
       return {
         getThis() {
@@ -1998,8 +1991,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_17, context_17) {
     "use strict";
-    var dispatch_json_ts_2;
-    var __moduleName = context_17 && context_17.id;
+    let dispatch_json_ts_2;
+    const __moduleName = context_17 && context_17.id;
     function start() {
       return dispatch_json_ts_2.sendSync("op_start");
     }
@@ -2023,8 +2016,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_18, context_18) {
     "use strict";
-    var dispatch_json_ts_3;
-    var __moduleName = context_18 && context_18.id;
+    let dispatch_json_ts_3;
+    const __moduleName = context_18 && context_18.id;
     function stopGlobalTimer() {
       dispatch_json_ts_3.sendSync("op_global_timer_stop");
     }
@@ -2053,8 +2046,8 @@ System.register("$deno$/rbtree.ts", ["$deno$/util.ts"], function (
   context_19
 ) {
   "use strict";
-  var util_ts_3, RBNode, RBTree;
-  var __moduleName = context_19 && context_19.id;
+  let util_ts_3, RBNode, RBTree;
+  const __moduleName = context_19 && context_19.id;
   function isRed(node) {
     return node !== null && node.red;
   }
@@ -2275,7 +2268,7 @@ System.register(
   ["$deno$/util.ts", "$deno$/ops/timers.ts", "$deno$/rbtree.ts"],
   function (exports_20, context_20) {
     "use strict";
-    var util_ts_4,
+    let util_ts_4,
       timers_ts_1,
       rbtree_ts_1,
       console,
@@ -2286,7 +2279,7 @@ System.register(
       dueTree,
       pendingEvents,
       pendingFireTimers;
-    var __moduleName = context_20 && context_20.id;
+    const __moduleName = context_20 && context_20.id;
     function clearGlobalTimeout() {
       globalTimeoutDue = null;
       timers_ts_1.stopGlobalTimer();
@@ -2556,7 +2549,7 @@ System.register(
   ],
   function (exports_21, context_21) {
     "use strict";
-    var core_ts_3,
+    let core_ts_3,
       dispatchMinimal,
       dispatchJson,
       util,
@@ -2566,7 +2559,7 @@ System.register(
       runtime_ts_1,
       timers_ts_2,
       OPS_CACHE;
-    var __moduleName = context_21 && context_21.id;
+    const __moduleName = context_21 && context_21.id;
     function getAsyncHandler(opName) {
       switch (opName) {
         case "op_write":
@@ -2638,13 +2631,13 @@ System.register(
   ["$deno$/util.ts", "$deno$/core.ts", "$deno$/runtime.ts", "$deno$/errors.ts"],
   function (exports_22, context_22) {
     "use strict";
-    var util,
+    let util,
       core_ts_4,
       runtime_ts_2,
       errors_ts_3,
       promiseTable,
       _nextPromiseId;
-    var __moduleName = context_22 && context_22.id;
+    const __moduleName = context_22 && context_22.id;
     function nextPromiseId() {
       return _nextPromiseId++;
     }
@@ -2731,8 +2724,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_23, context_23) {
     "use strict";
-    var dispatch_json_ts_4;
-    var __moduleName = context_23 && context_23.id;
+    let dispatch_json_ts_4;
+    const __moduleName = context_23 && context_23.id;
     function chmodSync(path, mode) {
       dispatch_json_ts_4.sendSync("op_chmod", { path, mode });
     }
@@ -2756,8 +2749,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_24, context_24) {
     "use strict";
-    var dispatch_json_ts_5;
-    var __moduleName = context_24 && context_24.id;
+    let dispatch_json_ts_5;
+    const __moduleName = context_24 && context_24.id;
     function chownSync(path, uid, gid) {
       dispatch_json_ts_5.sendSync("op_chown", { path, uid, gid });
     }
@@ -2782,8 +2775,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_25, context_25) {
     "use strict";
-    var dispatch_json_ts_6;
-    var __moduleName = context_25 && context_25.id;
+    let dispatch_json_ts_6;
+    const __moduleName = context_25 && context_25.id;
     function compile(request) {
       return dispatch_json_ts_6.sendAsync("op_compile", request);
     }
@@ -2808,8 +2801,8 @@ System.register(
   ["$deno$/util.ts", "$deno$/ops/runtime_compiler.ts"],
   function (exports_26, context_26) {
     "use strict";
-    var util, runtimeCompilerOps;
-    var __moduleName = context_26 && context_26.id;
+    let util, runtimeCompilerOps;
+    const __moduleName = context_26 && context_26.id;
     function checkRelative(specifier) {
       return specifier.match(/^([\.\/\\]|https?:\/{2}|file:\/{2})/)
         ? specifier
@@ -2876,7 +2869,7 @@ System.register(
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 System.register("$deno$/web/util.ts", [], function (exports_27, context_27) {
   "use strict";
-  var __moduleName = context_27 && context_27.id;
+  const __moduleName = context_27 && context_27.id;
   // @internal
   function isTypedArray(x) {
     return (
@@ -2954,8 +2947,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_28, context_28) {
     "use strict";
-    var dispatch_json_ts_7;
-    var __moduleName = context_28 && context_28.id;
+    let dispatch_json_ts_7;
+    const __moduleName = context_28 && context_28.id;
     function resources() {
       const res = dispatch_json_ts_7.sendSync("op_resources");
       const resources = {};
@@ -2985,8 +2978,8 @@ System.register(
   ["$deno$/ops/dispatch_minimal.ts", "$deno$/io.ts", "$deno$/runtime.ts"],
   function (exports_29, context_29) {
     "use strict";
-    var dispatch_minimal_ts_1, io_ts_2, runtime_ts_3, OP_READ, OP_WRITE;
-    var __moduleName = context_29 && context_29.id;
+    let dispatch_minimal_ts_1, io_ts_2, runtime_ts_3, OP_READ, OP_WRITE;
+    const __moduleName = context_29 && context_29.id;
     function readSync(rid, buffer) {
       if (buffer.length == 0) {
         return 0;
@@ -3078,8 +3071,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_30, context_30) {
     "use strict";
-    var dispatch_json_ts_8;
-    var __moduleName = context_30 && context_30.id;
+    let dispatch_json_ts_8;
+    const __moduleName = context_30 && context_30.id;
     function seekSync(rid, offset, whence) {
       return dispatch_json_ts_8.sendSync("op_seek", { rid, offset, whence });
     }
@@ -3103,8 +3096,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_31, context_31) {
     "use strict";
-    var dispatch_json_ts_9;
-    var __moduleName = context_31 && context_31.id;
+    let dispatch_json_ts_9;
+    const __moduleName = context_31 && context_31.id;
     function openSync(path, openMode, options) {
       const mode = options?.mode;
       return dispatch_json_ts_9.sendSync("op_open", {
@@ -3145,7 +3138,7 @@ System.register(
   ],
   function (exports_32, context_32) {
     "use strict";
-    var resources_ts_1,
+    let resources_ts_1,
       io_ts_3,
       seek_ts_1,
       open_ts_1,
@@ -3153,7 +3146,7 @@ System.register(
       stdin,
       stdout,
       stderr;
-    var __moduleName = context_32 && context_32.id;
+    const __moduleName = context_32 && context_32.id;
     /**@internal*/
     function openSync(path, modeOrOptions = "r") {
       let openMode = undefined;
@@ -3267,8 +3260,8 @@ System.register(
   ["$deno$/web/text_encoding.ts", "$deno$/web/util.ts"],
   function (exports_33, context_33) {
     "use strict";
-    var text_encoding_ts_3, util_ts_5, encoder, tableChars, colorRegExp;
-    var __moduleName = context_33 && context_33.id;
+    let text_encoding_ts_3, util_ts_5, encoder, tableChars, colorRegExp;
+    const __moduleName = context_33 && context_33.id;
     function removeColors(str) {
       return str.replace(colorRegExp, "");
     }
@@ -3360,8 +3353,8 @@ System.register(
 );
 System.register("$deno$/web/promise.ts", [], function (exports_34, context_34) {
   "use strict";
-  var PromiseState;
-  var __moduleName = context_34 && context_34.id;
+  let PromiseState;
+  const __moduleName = context_34 && context_34.id;
   return {
     setters: [],
     execute: function () {
@@ -3386,7 +3379,7 @@ System.register(
   ],
   function (exports_35, context_35) {
     "use strict";
-    var _a,
+    let _a,
       util_ts_6,
       text_encoding_ts_4,
       files_ts_1,
@@ -3413,7 +3406,7 @@ System.register(
       isConsoleInstance,
       Console,
       customInspect;
-    var __moduleName = context_35 && context_35.id;
+    const __moduleName = context_35 && context_35.id;
     /* eslint-disable @typescript-eslint/no-use-before-define */
     function cursorTo(stream, _x, _y) {
       const uint8 = new text_encoding_ts_4.TextEncoder().encode(CSI.kClear);
@@ -4227,8 +4220,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_36, context_36) {
     "use strict";
-    var dispatch_json_ts_10;
-    var __moduleName = context_36 && context_36.id;
+    let dispatch_json_ts_10;
+    const __moduleName = context_36 && context_36.id;
     function copyFileSync(fromPath, toPath) {
       dispatch_json_ts_10.sendSync("op_copy_file", {
         from: fromPath,
@@ -4258,8 +4251,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_37, context_37) {
     "use strict";
-    var dispatch_json_ts_11;
-    var __moduleName = context_37 && context_37.id;
+    let dispatch_json_ts_11;
+    const __moduleName = context_37 && context_37.id;
     function cwd() {
       return dispatch_json_ts_11.sendSync("op_cwd");
     }
@@ -4283,8 +4276,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts", "$deno$/file_info.ts"],
   function (exports_38, context_38) {
     "use strict";
-    var dispatch_json_ts_12, file_info_ts_1;
-    var __moduleName = context_38 && context_38.id;
+    let dispatch_json_ts_12, file_info_ts_1;
+    const __moduleName = context_38 && context_38.id;
     async function lstat(path) {
       const res = await dispatch_json_ts_12.sendAsync("op_stat", {
         path,
@@ -4335,8 +4328,8 @@ System.register("$deno$/file_info.ts", ["$deno$/build.ts"], function (
   context_39
 ) {
   "use strict";
-  var build_ts_2, FileInfoImpl;
-  var __moduleName = context_39 && context_39.id;
+  let build_ts_2, FileInfoImpl;
+  const __moduleName = context_39 && context_39.id;
   return {
     setters: [
       function (build_ts_2_1) {
@@ -4407,8 +4400,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts", "$deno$/ops/resources.ts"],
   function (exports_40, context_40) {
     "use strict";
-    var dispatch_json_ts_13, resources_ts_2, FsEvents;
-    var __moduleName = context_40 && context_40.id;
+    let dispatch_json_ts_13, resources_ts_2, FsEvents;
+    const __moduleName = context_40 && context_40.id;
     function fsEvents(paths, options = { recursive: true }) {
       return new FsEvents(Array.isArray(paths) ? paths : [paths], options);
     }
@@ -4453,8 +4446,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_41, context_41) {
     "use strict";
-    var dispatch_json_ts_14;
-    var __moduleName = context_41 && context_41.id;
+    let dispatch_json_ts_14;
+    const __moduleName = context_41 && context_41.id;
     function linkSync(oldpath, newpath) {
       dispatch_json_ts_14.sendSync("op_link", { oldpath, newpath });
     }
@@ -4478,8 +4471,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_42, context_42) {
     "use strict";
-    var dispatch_json_ts_15;
-    var __moduleName = context_42 && context_42.id;
+    let dispatch_json_ts_15;
+    const __moduleName = context_42 && context_42.id;
     function makeTempDirSync(options = {}) {
       return dispatch_json_ts_15.sendSync("op_make_temp_dir", options);
     }
@@ -4511,8 +4504,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_43, context_43) {
     "use strict";
-    var dispatch_json_ts_16;
-    var __moduleName = context_43 && context_43.id;
+    let dispatch_json_ts_16;
+    const __moduleName = context_43 && context_43.id;
     function mkdirArgs(path, options) {
       const args = { path, recursive: false };
       if (options) {
@@ -4548,8 +4541,8 @@ System.register("$deno$/ops/net.ts", ["$deno$/ops/dispatch_json.ts"], function (
   context_44
 ) {
   "use strict";
-  var dispatch_json_ts_17, ShutdownMode;
-  var __moduleName = context_44 && context_44.id;
+  let dispatch_json_ts_17, ShutdownMode;
+  const __moduleName = context_44 && context_44.id;
   function shutdown(rid, how) {
     dispatch_json_ts_17.sendSync("op_shutdown", { rid, how });
   }
@@ -4606,14 +4599,14 @@ System.register(
   ],
   function (exports_45, context_45) {
     "use strict";
-    var errors_ts_4,
+    let errors_ts_4,
       io_ts_4,
       resources_ts_3,
       netOps,
       ConnImpl,
       ListenerImpl,
       DatagramImpl;
-    var __moduleName = context_45 && context_45.id;
+    const __moduleName = context_45 && context_45.id;
     function listen(options) {
       let res;
       if (options.transport === "unix" || options.transport === "unixpacket") {
@@ -4766,8 +4759,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts", "$deno$/errors.ts"],
   function (exports_46, context_46) {
     "use strict";
-    var dispatch_json_ts_18, errors_ts_5;
-    var __moduleName = context_46 && context_46.id;
+    let dispatch_json_ts_18, errors_ts_5;
+    const __moduleName = context_46 && context_46.id;
     function loadavg() {
       return dispatch_json_ts_18.sendSync("op_loadavg");
     }
@@ -4837,8 +4830,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_47, context_47) {
     "use strict";
-    var dispatch_json_ts_19;
-    var __moduleName = context_47 && context_47.id;
+    let dispatch_json_ts_19;
+    const __moduleName = context_47 && context_47.id;
     function query(desc) {
       return dispatch_json_ts_19.sendSync("op_query_permission", desc).state;
     }
@@ -4866,8 +4859,8 @@ System.register(
   ["$deno$/ops/permissions.ts"],
   function (exports_48, context_48) {
     "use strict";
-    var permissionsOps, PermissionStatus, Permissions, permissions;
-    var __moduleName = context_48 && context_48.id;
+    let permissionsOps, PermissionStatus, Permissions, permissions;
+    const __moduleName = context_48 && context_48.id;
     return {
       setters: [
         function (permissionsOps_1) {
@@ -4906,8 +4899,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_49, context_49) {
     "use strict";
-    var dispatch_json_ts_20;
-    var __moduleName = context_49 && context_49.id;
+    let dispatch_json_ts_20;
+    const __moduleName = context_49 && context_49.id;
     function openPlugin(filename) {
       return dispatch_json_ts_20.sendSync("op_open_plugin", { filename });
     }
@@ -4927,8 +4920,8 @@ System.register(
   ["$deno$/ops/plugins.ts", "$deno$/core.ts"],
   function (exports_50, context_50) {
     "use strict";
-    var plugins_ts_1, core_ts_5, PluginOpImpl, PluginImpl;
-    var __moduleName = context_50 && context_50.id;
+    let plugins_ts_1, core_ts_5, PluginOpImpl, PluginImpl;
+    const __moduleName = context_50 && context_50.id;
     function openPlugin(filename) {
       const response = plugins_ts_1.openPlugin(filename);
       return new PluginImpl(response.rid, response.ops);
@@ -4977,8 +4970,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts", "$deno$/util.ts", "$deno$/build.ts"],
   function (exports_51, context_51) {
     "use strict";
-    var dispatch_json_ts_21, util_ts_7, build_ts_3;
-    var __moduleName = context_51 && context_51.id;
+    let dispatch_json_ts_21, util_ts_7, build_ts_3;
+    const __moduleName = context_51 && context_51.id;
     function kill(pid, signo) {
       if (build_ts_3.build.os === "win") {
         throw new Error("Not yet implemented");
@@ -5021,8 +5014,8 @@ System.register(
   ],
   function (exports_52, context_52) {
     "use strict";
-    var files_ts_2, resources_ts_4, buffer_ts_1, process_ts_1, Process;
-    var __moduleName = context_52 && context_52.id;
+    let files_ts_2, resources_ts_4, buffer_ts_1, process_ts_1, Process;
+    const __moduleName = context_52 && context_52.id;
     async function runStatus(rid) {
       const res = await process_ts_1.runStatus(rid);
       if (res.gotSignal) {
@@ -5129,8 +5122,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts", "$deno$/file_info.ts"],
   function (exports_53, context_53) {
     "use strict";
-    var dispatch_json_ts_22, file_info_ts_2;
-    var __moduleName = context_53 && context_53.id;
+    let dispatch_json_ts_22, file_info_ts_2;
+    const __moduleName = context_53 && context_53.id;
     function res(response) {
       return response.entries.map((statRes) => {
         return new file_info_ts_2.FileInfoImpl(statRes);
@@ -5162,8 +5155,8 @@ System.register(
   ["$deno$/files.ts", "$deno$/buffer.ts"],
   function (exports_54, context_54) {
     "use strict";
-    var files_ts_3, buffer_ts_2;
-    var __moduleName = context_54 && context_54.id;
+    let files_ts_3, buffer_ts_2;
+    const __moduleName = context_54 && context_54.id;
     function readFileSync(path) {
       const file = files_ts_3.openSync(path);
       const contents = buffer_ts_2.readAllSync(file);
@@ -5196,8 +5189,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_55, context_55) {
     "use strict";
-    var dispatch_json_ts_23;
-    var __moduleName = context_55 && context_55.id;
+    let dispatch_json_ts_23;
+    const __moduleName = context_55 && context_55.id;
     function readlinkSync(path) {
       return dispatch_json_ts_23.sendSync("op_read_link", { path });
     }
@@ -5221,8 +5214,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_56, context_56) {
     "use strict";
-    var dispatch_json_ts_24;
-    var __moduleName = context_56 && context_56.id;
+    let dispatch_json_ts_24;
+    const __moduleName = context_56 && context_56.id;
     function realpathSync(path) {
       return dispatch_json_ts_24.sendSync("op_realpath", { path });
     }
@@ -5246,8 +5239,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_57, context_57) {
     "use strict";
-    var dispatch_json_ts_25;
-    var __moduleName = context_57 && context_57.id;
+    let dispatch_json_ts_25;
+    const __moduleName = context_57 && context_57.id;
     function removeSync(path, options = {}) {
       dispatch_json_ts_25.sendSync("op_remove", {
         path,
@@ -5277,8 +5270,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_58, context_58) {
     "use strict";
-    var dispatch_json_ts_26;
-    var __moduleName = context_58 && context_58.id;
+    let dispatch_json_ts_26;
+    const __moduleName = context_58 && context_58.id;
     function renameSync(oldpath, newpath) {
       dispatch_json_ts_26.sendSync("op_rename", { oldpath, newpath });
     }
@@ -5302,8 +5295,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_59, context_59) {
     "use strict";
-    var dispatch_json_ts_27;
-    var __moduleName = context_59 && context_59.id;
+    let dispatch_json_ts_27;
+    const __moduleName = context_59 && context_59.id;
     function bindSignal(signo) {
       return dispatch_json_ts_27.sendSync("op_signal_bind", { signo });
     }
@@ -5331,14 +5324,14 @@ System.register(
   ["$deno$/ops/signal.ts", "$deno$/build.ts"],
   function (exports_60, context_60) {
     "use strict";
-    var signal_ts_1,
+    let signal_ts_1,
       build_ts_4,
       LinuxSignal,
       MacOSSignal,
       Signal,
       signals,
       SignalStream;
-    var __moduleName = context_60 && context_60.id;
+    const __moduleName = context_60 && context_60.id;
     function setSignals() {
       if (build_ts_4.build.os === "mac") {
         Object.assign(Signal, MacOSSignal);
@@ -5519,8 +5512,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts", "$deno$/util.ts", "$deno$/build.ts"],
   function (exports_61, context_61) {
     "use strict";
-    var dispatch_json_ts_28, util, build_ts_5;
-    var __moduleName = context_61 && context_61.id;
+    let dispatch_json_ts_28, util, build_ts_5;
+    const __moduleName = context_61 && context_61.id;
     function symlinkSync(oldpath, newpath, type) {
       if (build_ts_5.build.os === "win" && type) {
         return util.notImplemented();
@@ -5556,8 +5549,8 @@ System.register("$deno$/ops/tls.ts", ["$deno$/ops/dispatch_json.ts"], function (
   context_62
 ) {
   "use strict";
-  var dispatch_json_ts_29;
-  var __moduleName = context_62 && context_62.id;
+  let dispatch_json_ts_29;
+  const __moduleName = context_62 && context_62.id;
   function connectTLS(args) {
     return dispatch_json_ts_29.sendAsync("op_connect_tls", args);
   }
@@ -5584,8 +5577,8 @@ System.register(
   ["$deno$/ops/tls.ts", "$deno$/net.ts"],
   function (exports_63, context_63) {
     "use strict";
-    var tlsOps, net_ts_1, TLSListenerImpl;
-    var __moduleName = context_63 && context_63.id;
+    let tlsOps, net_ts_1, TLSListenerImpl;
+    const __moduleName = context_63 && context_63.id;
     async function connectTLS({
       port,
       hostname = "127.0.0.1",
@@ -5647,8 +5640,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_64, context_64) {
     "use strict";
-    var dispatch_json_ts_30;
-    var __moduleName = context_64 && context_64.id;
+    let dispatch_json_ts_30;
+    const __moduleName = context_64 && context_64.id;
     function coerceLen(len) {
       if (!len) {
         return 0;
@@ -5687,8 +5680,8 @@ System.register("$deno$/ops/tty.ts", ["$deno$/ops/dispatch_json.ts"], function (
   context_65
 ) {
   "use strict";
-  var dispatch_json_ts_31;
-  var __moduleName = context_65 && context_65.id;
+  let dispatch_json_ts_31;
+  const __moduleName = context_65 && context_65.id;
   function isatty(rid) {
     return dispatch_json_ts_31.sendSync("op_isatty", { rid });
   }
@@ -5714,8 +5707,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_66, context_66) {
     "use strict";
-    var dispatch_json_ts_32;
-    var __moduleName = context_66 && context_66.id;
+    let dispatch_json_ts_32;
+    const __moduleName = context_66 && context_66.id;
     function umask(mask) {
       return dispatch_json_ts_32.sendSync("op_umask", { mask });
     }
@@ -5735,8 +5728,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_67, context_67) {
     "use strict";
-    var dispatch_json_ts_33;
-    var __moduleName = context_67 && context_67.id;
+    let dispatch_json_ts_33;
+    const __moduleName = context_67 && context_67.id;
     function toSecondsFromEpoch(v) {
       return v instanceof Date ? Math.trunc(v.valueOf() / 1000) : v;
     }
@@ -5779,8 +5772,8 @@ System.register(
   ],
   function (exports_68, context_68) {
     "use strict";
-    var stat_ts_1, files_ts_4, chmod_ts_1, buffer_ts_3, build_ts_6;
-    var __moduleName = context_68 && context_68.id;
+    let stat_ts_1, files_ts_4, chmod_ts_1, buffer_ts_3, build_ts_6;
+    const __moduleName = context_68 && context_68.id;
     function writeFileSync(path, data, options = {}) {
       if (options.create !== undefined) {
         const create = !!options.create;
@@ -5860,7 +5853,7 @@ System.register(
   ],
   function (exports_69, context_69) {
     "use strict";
-    var colors_ts_1,
+    let colors_ts_1,
       os_ts_1,
       console_ts_1,
       files_ts_5,
@@ -5876,7 +5869,7 @@ System.register(
       TEST_REGISTRY,
       encoder,
       TestApi;
-    var __moduleName = context_69 && context_69.id;
+    const __moduleName = context_69 && context_69.id;
     function delay(n) {
       return new Promise((resolve, _) => {
         setTimeout(resolve, n);
@@ -6179,8 +6172,8 @@ System.register(
   ["$deno$/internals.ts", "$deno$/web/console.ts"],
   function (exports_70, context_70) {
     "use strict";
-    var internals_ts_4, console_ts_2, symbols;
-    var __moduleName = context_70 && context_70.id;
+    let internals_ts_4, console_ts_2, symbols;
+    const __moduleName = context_70 && context_70.id;
     return {
       setters: [
         function (internals_ts_4_1) {
@@ -6254,8 +6247,7 @@ System.register(
   ],
   function (exports_71, context_71) {
     "use strict";
-    var args, pid, noColor;
-    var __moduleName = context_71 && context_71.id;
+    const __moduleName = context_71 && context_71.id;
     return {
       setters: [
         function (buffer_ts_4_1) {
@@ -6548,7 +6540,7 @@ System.register(
         },
       ],
       execute: function () {
-        exports_71("args", (args = []));
+        exports_71("args", ([]));
       },
     };
   }
@@ -6558,8 +6550,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts", "$deno$/util.ts"],
   function (exports_72, context_72) {
     "use strict";
-    var dispatch_json_ts_34, util_ts_9;
-    var __moduleName = context_72 && context_72.id;
+    let dispatch_json_ts_34, util_ts_9;
+    const __moduleName = context_72 && context_72.id;
     function getRandomValues(typedArray) {
       util_ts_9.assert(typedArray !== null, "Input must not be null");
       util_ts_9.assert(
@@ -6595,8 +6587,8 @@ System.register("$deno$/web/streams/shared-internals.ts", [], function (
   context_73
 ) {
   "use strict";
-  var state_, storedError_, objectCloneMemo, sharedArrayBufferSupported_;
-  var __moduleName = context_73 && context_73.id;
+  let objectCloneMemo, sharedArrayBufferSupported_;
+  const __moduleName = context_73 && context_73.id;
   function isInteger(value) {
     if (!isFinite(value)) {
       // covers NaN, +Infinity and -Infinity
@@ -6644,7 +6636,7 @@ System.register("$deno$/web/streams/shared-internals.ts", [], function (
     srcBuffer,
     srcByteOffset,
     srcLength,
-    cloneConstructor
+    _cloneConstructor
   ) {
     // this function fudges the return type but SharedArrayBuffer is disabled for a while anyway
     return srcBuffer.slice(srcByteOffset, srcByteOffset + srcLength);
@@ -6836,8 +6828,8 @@ System.register("$deno$/web/streams/shared-internals.ts", [], function (
     setters: [],
     execute: function () {
       // common stream fields
-      exports_73("state_", (state_ = Symbol("state_")));
-      exports_73("storedError_", (storedError_ = Symbol("storedError_")));
+      exports_73("state_", (Symbol("state_")));
+      exports_73("storedError_", (Symbol("storedError_")));
       // helper memoisation map for object values
       // weak so it doesn't keep memoized versions of old objects indefinitely.
       objectCloneMemo = new WeakMap();
@@ -6851,8 +6843,8 @@ System.register("$deno$/web/streams/queue.ts", [], function (
   context_74
 ) {
   "use strict";
-  var CHUNK_SIZE, QueueImpl;
-  var __moduleName = context_74 && context_74.id;
+  let CHUNK_SIZE, QueueImpl;
+  const __moduleName = context_74 && context_74.id;
   return {
     setters: [],
     execute: function () {
@@ -6907,8 +6899,8 @@ System.register(
   ["$deno$/web/streams/queue.ts", "$deno$/web/streams/shared-internals.ts"],
   function (exports_75, context_75) {
     "use strict";
-    var queue_ts_1, shared_internals_ts_1, queue_, queueTotalSize_;
-    var __moduleName = context_75 && context_75.id;
+    let queue_ts_1, shared_internals_ts_1, queue_, queueTotalSize_;
+    const __moduleName = context_75 && context_75.id;
     function dequeueValue(container) {
       // Assert: container has[[queue]] and[[queueTotalSize]] internal slots.
       // Assert: container.[[queue]] is not empty.
@@ -6979,7 +6971,7 @@ System.register(
   ],
   function (exports_76, context_76) {
     "use strict";
-    var shared,
+    let shared,
       q,
       controlledReadableStream_,
       pullAlgorithm_,
@@ -7004,7 +6996,7 @@ System.register(
       view_,
       reader_,
       readableStreamController_;
-    var __moduleName = context_76 && context_76.id;
+    const __moduleName = context_76 && context_76.id;
     // ---- Stream
     function initializeReadableStream(stream) {
       stream[shared.state_] = "readable";
@@ -8235,8 +8227,8 @@ System.register(
   ],
   function (exports_77, context_77) {
     "use strict";
-    var rs, shared, q, ReadableStreamDefaultController;
-    var __moduleName = context_77 && context_77.id;
+    let rs, shared, q, ReadableStreamDefaultController;
+    const __moduleName = context_77 && context_77.id;
     function setUpReadableStreamDefaultControllerFromUnderlyingSource(
       stream,
       underlyingSource,
@@ -8376,8 +8368,8 @@ System.register(
   ["$deno$/web/streams/readable-internals.ts"],
   function (exports_78, context_78) {
     "use strict";
-    var rs, ReadableStreamDefaultReader;
-    var __moduleName = context_78 && context_78.id;
+    let rs, ReadableStreamDefaultReader;
+    const __moduleName = context_78 && context_78.id;
     return {
       setters: [
         function (rs_2) {
@@ -8453,8 +8445,8 @@ System.register(
   ["$deno$/web/streams/readable-internals.ts"],
   function (exports_79, context_79) {
     "use strict";
-    var rs, ReadableStreamBYOBRequest;
-    var __moduleName = context_79 && context_79.id;
+    let rs, ReadableStreamBYOBRequest;
+    const __moduleName = context_79 && context_79.id;
     return {
       setters: [
         function (rs_3) {
@@ -8524,12 +8516,12 @@ System.register(
   ],
   function (exports_80, context_80) {
     "use strict";
-    var rs,
+    let rs,
       q,
       shared,
       readable_stream_byob_request_ts_1,
       ReadableByteStreamController;
-    var __moduleName = context_80 && context_80.id;
+    const __moduleName = context_80 && context_80.id;
     function setUpReadableByteStreamControllerFromUnderlyingSource(
       stream,
       underlyingByteSource,
@@ -8747,8 +8739,8 @@ System.register(
   ["$deno$/web/streams/readable-internals.ts"],
   function (exports_81, context_81) {
     "use strict";
-    var rs, SDReadableStreamBYOBReader;
-    var __moduleName = context_81 && context_81.id;
+    let rs, SDReadableStreamBYOBReader;
+    const __moduleName = context_81 && context_81.id;
     return {
       setters: [
         function (rs_5) {
@@ -8847,14 +8839,14 @@ System.register(
   ],
   function (exports_82, context_82) {
     "use strict";
-    var rs,
+    let rs,
       shared,
       readable_stream_default_controller_ts_1,
       readable_stream_default_reader_ts_1,
       readable_byte_stream_controller_ts_1,
       readable_stream_byob_reader_ts_1,
       SDReadableStream;
-    var __moduleName = context_82 && context_82.id;
+    const __moduleName = context_82 && context_82.id;
     function createReadableStream(
       startAlgorithm,
       pullAlgorithm,
@@ -9146,7 +9138,7 @@ System.register(
   ["$deno$/web/streams/readable-stream.ts"],
   function (exports_83, context_83) {
     "use strict";
-    var __moduleName = context_83 && context_83.id;
+    const __moduleName = context_83 && context_83.id;
     return {
       setters: [
         function (readable_stream_ts_1_1) {
@@ -9168,13 +9160,12 @@ System.register(
   ],
   function (exports_84, context_84) {
     "use strict";
-    var text_encoding_ts_6,
+    let text_encoding_ts_6,
       build_ts_8,
       mod_ts_1,
       bytesSymbol,
-      blobBytesWeakMap,
       DenoBlob;
-    var __moduleName = context_84 && context_84.id;
+    const __moduleName = context_84 && context_84.id;
     function containsOnlyASCII(str) {
       if (typeof str !== "string") {
         return false;
@@ -9321,7 +9312,7 @@ System.register(
         exports_84("bytesSymbol", (bytesSymbol = Symbol("bytes")));
         // A WeakMap holding blob to byte array mapping.
         // Ensures it does not impact garbage collection.
-        exports_84("blobBytesWeakMap", (blobBytesWeakMap = new WeakMap()));
+        exports_84("blobBytesWeakMap", (new WeakMap()));
         DenoBlob = class DenoBlob {
           constructor(blobParts, options) {
             this.size = 0;
@@ -9381,8 +9372,8 @@ System.register(
   ["$deno$/web/util.ts", "$deno$/util.ts"],
   function (exports_85, context_85) {
     "use strict";
-    var util_ts_10, util_ts_11, eventData, EventImpl;
-    var __moduleName = context_85 && context_85.id;
+    let util_ts_10, util_ts_11, eventData, EventImpl;
+    const __moduleName = context_85 && context_85.id;
     // accessors for non runtime visible data
     function getDispatched(event) {
       return Boolean(eventData.get(event)?.dispatched);
@@ -9710,8 +9701,8 @@ System.register(
   ["$deno$/web/event.ts", "$deno$/web/util.ts"],
   function (exports_86, context_86) {
     "use strict";
-    var event_ts_1, util_ts_12, CustomEventImpl;
-    var __moduleName = context_86 && context_86.id;
+    let event_ts_1, util_ts_12, CustomEventImpl;
+    const __moduleName = context_86 && context_86.id;
     return {
       setters: [
         function (event_ts_1_1) {
@@ -9753,8 +9744,8 @@ System.register("$deno$/web/dom_exception.ts", [], function (
   context_87
 ) {
   "use strict";
-  var DOMExceptionImpl;
-  var __moduleName = context_87 && context_87.id;
+  let DOMExceptionImpl;
+  const __moduleName = context_87 && context_87.id;
   return {
     setters: [],
     execute: function () {
@@ -9777,8 +9768,8 @@ System.register("$deno$/web/dom_file.ts", ["$deno$/web/blob.ts"], function (
   context_88
 ) {
   "use strict";
-  var blob, DomFileImpl;
-  var __moduleName = context_88 && context_88.id;
+  let blob, DomFileImpl;
+  const __moduleName = context_88 && context_88.id;
   return {
     setters: [
       function (blob_1) {
@@ -9809,13 +9800,13 @@ System.register(
   ["$deno$/web/dom_exception.ts", "$deno$/web/event.ts", "$deno$/web/util.ts"],
   function (exports_89, context_89) {
     "use strict";
-    var dom_exception_ts_1,
+    let dom_exception_ts_1,
       event_ts_2,
       util_ts_13,
       DOCUMENT_FRAGMENT_NODE,
       eventTargetData,
       EventTargetImpl;
-    var __moduleName = context_89 && context_89.id;
+    const __moduleName = context_89 && context_89.id;
     // DOM Logic Helper functions and type guards
     /** Get the parent node, for event targets that have a parent.
      *
@@ -10298,8 +10289,8 @@ System.register(
   ["$deno$/web/util.ts", "$deno$/internals.ts"],
   function (exports_90, context_90) {
     "use strict";
-    var util_ts_14, internals_ts_5;
-    var __moduleName = context_90 && context_90.id;
+    let util_ts_14, internals_ts_5;
+    const __moduleName = context_90 && context_90.id;
     function DomIterableMixin(Base, dataSymbol) {
       // we have to cast `this` as `any` because there is no way to describe the
       // Base class in a way where the Symbol `dataSymbol` is defined.  So the
@@ -10385,7 +10376,7 @@ System.register(
   ],
   function (exports_91, context_91) {
     "use strict";
-    var _a,
+    let _a,
       blob,
       domFile,
       dom_iterable_ts_1,
@@ -10393,7 +10384,7 @@ System.register(
       dataSymbol,
       FormDataBase,
       FormDataImpl;
-    var __moduleName = context_91 && context_91.id;
+    const __moduleName = context_91 && context_91.id;
     return {
       setters: [
         function (blob_2) {
@@ -10548,8 +10539,8 @@ System.register(
   ["$deno$/ops/dispatch_json.ts"],
   function (exports_92, context_92) {
     "use strict";
-    var dispatch_json_ts_35;
-    var __moduleName = context_92 && context_92.id;
+    let dispatch_json_ts_35;
+    const __moduleName = context_92 && context_92.id;
     function fetch(args, body) {
       let zeroCopy = undefined;
       if (body) {
@@ -10588,7 +10579,7 @@ System.register(
   ],
   function (exports_93, context_93) {
     "use strict";
-    var util_ts_16,
+    let util_ts_16,
       util_ts_17,
       text_encoding_ts_7,
       blob_ts_1,
@@ -10600,7 +10591,7 @@ System.register(
       dom_file_ts_1,
       Body,
       Response;
-    var __moduleName = context_93 && context_93.id;
+    const __moduleName = context_93 && context_93.id;
     function getHeaderValueParams(value) {
       const params = new Map();
       // Forced to do so for some Map constructor param mismatch
@@ -11227,7 +11218,7 @@ System.register(
   ["$deno$/web/dom_iterable.ts", "$deno$/web/util.ts", "$deno$/web/console.ts"],
   function (exports_94, context_94) {
     "use strict";
-    var dom_iterable_ts_2,
+    let dom_iterable_ts_2,
       util_ts_18,
       console_ts_4,
       invalidTokenRegex,
@@ -11235,7 +11226,7 @@ System.register(
       headerMap,
       HeadersBase,
       HeadersImpl;
-    var __moduleName = context_94 && context_94.id;
+    const __moduleName = context_94 && context_94.id;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     function isHeaders(value) {
       // eslint-disable-next-line @typescript-eslint/no-use-before-define
@@ -11387,8 +11378,8 @@ System.register(
   ["$deno$/web/url.ts", "$deno$/web/util.ts"],
   function (exports_95, context_95) {
     "use strict";
-    var url_ts_1, util_ts_19, urls, URLSearchParamsImpl;
-    var __moduleName = context_95 && context_95.id;
+    let url_ts_1, util_ts_19, urls, URLSearchParamsImpl;
+    const __moduleName = context_95 && context_95.id;
     function handleStringInitialization(searchParams, init) {
       // Overload: USVString
       // If init is a string and starts with U+003F (?),
@@ -11632,7 +11623,7 @@ System.register(
   ],
   function (exports_96, context_96) {
     "use strict";
-    var console_ts_5,
+    let console_ts_5,
       url_search_params_ts_1,
       get_random_values_ts_1,
       patterns,
@@ -11642,7 +11633,7 @@ System.register(
       blobURLMap,
       parts,
       URLImpl;
-    var __moduleName = context_96 && context_96.id;
+    const __moduleName = context_96 && context_96.id;
     function parse(url) {
       const urlMatch = urlRegExp.exec(url);
       if (urlMatch) {
