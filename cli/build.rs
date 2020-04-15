@@ -33,28 +33,22 @@ fn main() {
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   // Main snapshot
-  let bundle_path = PathBuf::from("rt.js");
+  let script_dir = PathBuf::from("rt/");
   let snapshot_path = o.join("CLI_SNAPSHOT.bin");
-
-  println!("cargo:rerun-if-changed={}", bundle_path.display());
-  assert!(bundle_path.exists());
-
+  assert!(script_dir.exists());
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
-
   deno_typescript::mksnapshot_bundle(
     runtime_isolate,
     &snapshot_path,
-    &bundle_path,
+    &script_dir,
     "cli/js/main.ts",
   )
   .expect("Failed to create snapshot");
 
   // Compiler snapshot
-  let bundle_path = PathBuf::from("tsrt.js");
+  let script_dir = PathBuf::from("tsrt/");
   let snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
-
-  println!("cargo:rerun-if-changed={}", bundle_path.display());
-  assert!(bundle_path.exists());
+  assert!(script_dir.exists());
 
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
 
@@ -83,7 +77,7 @@ fn main() {
   deno_typescript::mksnapshot_bundle_ts(
     runtime_isolate,
     &snapshot_path,
-    &bundle_path,
+    &script_dir,
     "cli/js/compiler.ts",
   )
   .expect("Failed to create snapshot");

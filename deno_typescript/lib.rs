@@ -38,15 +38,24 @@ fn print_source_code(code: &str) {
 pub fn mksnapshot_bundle(
   isolate: &mut Isolate,
   snapshot_filename: &Path,
-  bundle_filename: &Path,
+  script_dir: &Path,
   main_module_name: &str,
 ) -> Result<(), ErrBox> {
   js_check(isolate.execute("system_loader.js", SYSTEM_LOADER));
-  let source_code_vec = std::fs::read(bundle_filename).unwrap();
-  let bundle_source_code = std::str::from_utf8(&source_code_vec).unwrap();
-  js_check(
-    isolate.execute(&bundle_filename.to_string_lossy(), bundle_source_code),
-  );
+
+  for entry in fs::read_dir(script_dir)? {
+    let entry = entry?;
+    let p = entry.path();
+    if let Some(ext) = p.extension() {
+      if ext == "js" {
+        println!("cargo:rerun-if-changed={}", p.display());
+        let source_code_vec = std::fs::read(&p).unwrap();
+        let bundle_source_code = std::str::from_utf8(&source_code_vec).unwrap();
+        js_check(isolate.execute(&p.to_string_lossy(), bundle_source_code));
+      }
+    }
+  }
+
   let script = &format!("__instantiate(\"{}\");", main_module_name);
   js_check(isolate.execute("anon", script));
   write_snapshot(isolate, snapshot_filename)?;
@@ -58,16 +67,11 @@ pub fn mksnapshot_bundle(
 pub fn mksnapshot_bundle_ts(
   isolate: &mut Isolate,
   snapshot_filename: &Path,
-  bundle_filename: &Path,
+  script_dir: &Path,
   main_module_name: &str,
 ) -> Result<(), ErrBox> {
   js_check(isolate.execute("typescript.js", TYPESCRIPT_CODE));
-  mksnapshot_bundle(
-    isolate,
-    snapshot_filename,
-    bundle_filename,
-    main_module_name,
-  )
+  mksnapshot_bundle(isolate, snapshot_filename, script_dir, main_module_name)
 }
 
 fn write_snapshot(
