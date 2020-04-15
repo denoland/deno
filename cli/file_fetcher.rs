@@ -1314,8 +1314,8 @@ mod tests {
     let r = fetcher.fetch_source_file(&specifier, None).await;
     assert!(r.is_err());
 
-    let p =
-      std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/002_hello.ts");
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .join("tests/002_hello.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let r = fetcher.fetch_source_file(&specifier, None).await;
@@ -1333,8 +1333,8 @@ mod tests {
     let r = fetcher.fetch_source_file(&specifier, None).await;
     assert!(r.is_err());
 
-    let p =
-      std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/002_hello.ts");
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .join("tests/002_hello.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let r = fetcher.fetch_source_file(&specifier, None).await;

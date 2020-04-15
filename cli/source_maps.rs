@@ -18,7 +18,6 @@ pub trait SourceMapGetter {
 /// find a SourceMap.
 pub type CachedMaps = HashMap<String, Option<SourceMap>>;
 
-
 /// Apply a source map to a deno_core::JSError, returning a JSError where file
 /// names and line/column numbers point to the location in the original source,
 /// rather than the transpiled source code.
@@ -145,7 +144,8 @@ fn parse_map_string<G: SourceMapGetter>(
   file_name: &str,
   getter: &G,
 ) -> Option<SourceMap> {
-  getter.get_source_map(file_name)
+  getter
+    .get_source_map(file_name)
     .and_then(|raw_source_map| SourceMap::from_slice(&raw_source_map).ok())
 }
 
