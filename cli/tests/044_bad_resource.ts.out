@@ -1,6 +1,6 @@
 [WILDCARD]
 error: Uncaught BadResource: Bad resource ID
-[WILDCARD]dispatch_json.ts:[WILDCARD]
-    at unwrapResponse ([WILDCARD]dispatch_json.ts:[WILDCARD])
-    at Object.sendAsync ([WILDCARD]dispatch_json.ts:[WILDCARD])
+[WILDCARD]:[WILDCARD]
+    at unwrapResponse ([WILDCARD]:[WILDCARD])
+    at Object.sendAsync ([WILDCARD]:[WILDCARD])
     at async main ([WILDCARD]tests/044_bad_resource.ts:[WILDCARD])

@@ -80,7 +80,7 @@ function getMockCallSite(
   };
 }
 
-unitTest(function prepareStackTrace(): void {
+unitTest({ ignore: true }, function prepareStackTrace(): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const MockError = {} as any;
   setPrepareStackTrace(MockError);
@@ -96,7 +96,7 @@ unitTest(function prepareStackTrace(): void {
   assert(result.includes(".ts:"), "should remap to something in 'js/'");
 });
 
-unitTest(function applySourceMap(): void {
+unitTest({ ignore: true }, function applySourceMap(): void {
   const result = Deno.applySourceMap({
     fileName: "CLI_SNAPSHOT.js",
     lineNumber: 23,

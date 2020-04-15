@@ -43,9 +43,8 @@ class TestBenchmark(DenoTestCase):
     def test_binary_size(self):
         binary_size_dict = benchmark.get_binary_sizes(self.build_dir)
         assert binary_size_dict["deno"] > 0
-        assert binary_size_dict["CLI_SNAPSHOT.js"] > 0
-        assert binary_size_dict["CLI_SNAPSHOT.js.map"] > 0
         assert binary_size_dict["CLI_SNAPSHOT.bin"] > 0
+        assert binary_size_dict["COMPILER_SNAPSHOT.bin"] > 0
 
     @unittest.skipIf("linux" not in sys.platform,
                      "strace only supported on linux")
