@@ -104,17 +104,13 @@ impl OpError {
     Self::new(ErrorKind::InvalidData, "invalid utf8".to_string())
   }
 
-  // TODO(ry) Should this have its own ErrorKind code?
   pub fn resource_unavailable() -> OpError {
+    // TODO(ry) Is InvalidData the right error code here? BadResource? Should we
+    // create a new one? What would be the corresponding posix situation?
     Self::new(
       ErrorKind::InvalidData,
       "resource is unavailable because it is in use by a promise".to_string(),
     )
-  }
-
-  // TODO(ry) Should this have its own ErrorKind code?
-  pub fn sync_not_allowed(msg: &str) -> OpError {
-    OpError::type_error(msg.to_string())
   }
 }
 

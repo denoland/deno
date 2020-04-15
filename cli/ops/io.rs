@@ -193,7 +193,7 @@ impl DenoAsyncRead for StreamResource {
     use StreamResource::*;
     let f: &mut dyn UnpinAsyncRead = match self {
       FsFile(Some((f, _))) => f,
-      FsFile(None) => todo!(), // not ready
+      FsFile(None) => return Poll::Ready(Err(OpError::resource_unavailable())),
       Stdin(f, _) => f,
       TcpStream(f) => f,
       #[cfg(not(windows))]
@@ -236,8 +236,8 @@ pub fn op_read(
             .map(|n: usize| n as i32)
             .map_err(OpError::from)
         }
-        Err(_) => Err(OpError::sync_not_allowed(
-          "sync read not allowed on this resource",
+        Err(_) => Err(OpError::type_error(
+          "sync read not allowed on this resource".to_string(),
         )),
       })
     })
@@ -359,8 +359,8 @@ pub fn op_write(
             .map(|nwritten: usize| nwritten as i32)
             .map_err(OpError::from)
         }
-        Err(_) => Err(OpError::sync_not_allowed(
-          "sync read not allowed on this resource",
+        Err(_) => Err(OpError::type_error(
+          "sync read not allowed on this resource".to_string(),
         )),
       })
     })

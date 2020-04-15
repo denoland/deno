@@ -74,14 +74,16 @@ pub fn op_set_raw(
     // For now, only stdin.
     let handle = match &resource_holder.unwrap().resource {
       StreamResource::Stdin(_, _) => std::io::stdin().as_raw_handle(),
-      StreamResource::FsFile(None) => todo!(),
+      StreamResource::FsFile(None) => {
+        return Err(OpError::resource_unavailable())
+      }
       StreamResource::FsFile(Some((f, _))) => {
         let tokio_file = futures::executor::block_on(f.try_clone())?;
         let std_file = futures::executor::block_on(tokio_file.into_std());
         std_file.as_raw_handle()
       }
       _ => {
-        return Err(OpError::other("Not supported".to_owned()));
+        return Err(OpError::bad_resource_id());
       }
     };
 
@@ -129,7 +131,9 @@ pub fn op_set_raw(
             let std_file = futures::executor::block_on(tokio_file.into_std());
             (std_file.as_raw_fd(), &mut metadata.tty.mode)
           }
-          StreamResource::FsFile(None) => todo!(),
+          StreamResource::FsFile(None) => {
+            return Err(OpError::resource_unavailable())
+          }
           _ => {
             return Err(OpError::other("Not supported".to_owned()));
           }
@@ -173,9 +177,11 @@ pub fn op_set_raw(
             let std_file = futures::executor::block_on(tokio_file.into_std());
             (std_file.as_raw_fd(), &mut metadata.tty.mode)
           }
-          StreamResource::FsFile(None) => todo!(),
+          StreamResource::FsFile(None) => {
+            return Err(OpError::resource_unavailable());
+          }
           _ => {
-            return Err(OpError::other("Not supported".to_owned()));
+            return Err(OpError::bad_resource_id());
           }
         };
 
