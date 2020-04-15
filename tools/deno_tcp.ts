@@ -18,7 +18,9 @@ async function handle(conn: Deno.Conn): Promise<void> {
       }
       await conn.write(response);
     }
-  } finally {
+  } catch (e) {
+    console.log("error", e);
+  } finally { 
     conn.close();
   }
 }

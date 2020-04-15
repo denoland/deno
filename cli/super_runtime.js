@@ -5019,15 +5019,15 @@
   }
 
   function stopGlobalTimer() {
-    sendSync("op_global_timer_stop");
+    sendSyncJson("op_global_timer_stop");
   }
 
   async function startGlobalTimer(timeout) {
-    await sendAsync("op_global_timer", { timeout });
+    await sendAsyncJson("op_global_timer", { timeout });
   }
 
   function now() {
-    return sendSync("op_now");
+    return sendSyncJson("op_now");
   }
 
   // Timeout values > TIMEOUT_MAX are set to 1.
@@ -5500,96 +5500,1250 @@
     }
   }
 
+  function chmodSync(path, mode) {
+    sendSyncJson("op_chmod", { path, mode });
+  }
+
+  async function chmod(path, mode) {
+    await sendAsyncJson("op_chmod", { path, mode });
+  }
+
+  function chownSync(path, uid, gid) {
+    sendSyncJson("op_chown", { path, uid, gid });
+  }
+
+  async function chown(path, uid, gid) {
+    await sendAsyncJson("op_chown", { path, uid, gid });
+  }
+
+  function copyFileSync(fromPath, toPath) {
+    sendSyncJson("op_copy_file", { from: fromPath, to: toPath });
+  }
+
+  async function copyFile(fromPath, toPath) {
+    await sendAsyncJson("op_copy_file", { from: fromPath, to: toPath });
+  }
+
+  function cwd() {
+    return sendSyncJson("op_cwd");
+  }
+
+  function chdir(directory) {
+    sendSyncJson("op_chdir", { directory });
+  }
+
+  const netOps = (function () {
+    function shutdown(rid, how) {
+      sendSyncJson("op_shutdown", { rid, how });
+    }
+
+    function accept(rid, transport) {
+      return sendAsyncJson("op_accept", { rid, transport });
+    }
+
+    function listen(args) {
+      return sendSyncJson("op_listen", args);
+    }
+
+    function connect(args) {
+      return sendAsyncJson("op_connect", args);
+    }
+
+    function receive(rid, transport, zeroCopy) {
+      return sendAsyncJson("op_receive", { rid, transport }, zeroCopy);
+    }
+
+    async function send(args, zeroCopy) {
+      await sendAsyncJson("op_send", args, zeroCopy);
+    }
+
+    return {
+      accept,
+      shutdown,
+      listen,
+      connect,
+      receive,
+      send,
+    };
+  })();
+  class ConnImpl {
+    constructor(rid, remoteAddr, localAddr) {
+      this.rid = rid;
+      this.remoteAddr = remoteAddr;
+      this.localAddr = localAddr;
+    }
+
+    write(p) {
+      return write(this.rid, p);
+    }
+
+    read(p) {
+      return read(this.rid, p);
+    }
+
+    close() {
+      close(this.rid);
+    }
+
+    closeRead() {
+      netOps.shutdown(this.rid, netOps.ShutdownMode.Read);
+    }
+
+    closeWrite() {
+      netOps.shutdown(this.rid, netOps.ShutdownMode.Write);
+    }
+  }
+
+  class ListenerImpl {
+    constructor(rid, addr) {
+      this.rid = rid;
+      this.addr = addr;
+    }
+
+    async accept() {
+      const res = await netOps.accept(this.rid, this.addr.transport);
+      return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
+    }
+
+    close() {
+      close(this.rid);
+    }
+
+    async *[Symbol.asyncIterator]() {
+      while (true) {
+        try {
+          yield await this.accept();
+        } catch (error) {
+          if (error instanceof errors.BadResource) {
+            break;
+          }
+          throw error;
+        }
+      }
+    }
+  }
+
+  class DatagramImpl {
+    constructor(rid, addr, bufSize = 1024) {
+      this.rid = rid;
+      this.addr = addr;
+      this.bufSize = bufSize;
+    }
+
+    async receive(p) {
+      const buf = p || new Uint8Array(this.bufSize);
+      const { size, remoteAddr } = await netOps.receive(
+        this.rid,
+        this.addr.transport,
+        buf
+      );
+      const sub = buf.subarray(0, size);
+      return [sub, remoteAddr];
+    }
+
+    async send(p, addr) {
+      const remote = { hostname: "127.0.0.1", transport: "udp", ...addr };
+
+      const args = { ...remote, rid: this.rid };
+      await netOps.send(args, p);
+    }
+
+    close() {
+      close(this.rid);
+    }
+
+    async *[Symbol.asyncIterator]() {
+      while (true) {
+        try {
+          yield await this.receive();
+        } catch (error) {
+          if (error instanceof errors.BadResource) {
+            break;
+          }
+          throw error;
+        }
+      }
+    }
+  }
+
+  async function connect(options) {
+    let res;
+
+    if (options.transport === "unix") {
+      res = await netOps.connect(options);
+    } else {
+      res = await netOps.connect({
+        transport: "tcp",
+        hostname: "127.0.0.1",
+        ...options,
+      });
+    }
+
+    return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
+  }
+
+  function listen(options) {
+    let res;
+
+    if (options.transport === "unix" || options.transport === "unixpacket") {
+      res = netOps.listen(options);
+    } else {
+      res = netOps.listen({
+        transport: "tcp",
+        hostname: "127.0.0.1",
+        ...options,
+      });
+    }
+
+    if (
+      !options.transport ||
+      options.transport === "tcp" ||
+      options.transport === "unix"
+    ) {
+      return new ListenerImpl(res.rid, res.localAddr);
+    } else {
+      return new DatagramImpl(res.rid, res.localAddr);
+    }
+  }
+
+  async function copy(dst, src) {
+    let n = 0;
+    const b = new Uint8Array(32 * 1024);
+    let gotEOF = false;
+    while (gotEOF === false) {
+      const result = await src.read(b);
+      if (result === EOF) {
+        gotEOF = true;
+      } else {
+        n += await dst.write(b.subarray(0, result));
+      }
+    }
+    return n;
+  }
+
+  function toAsyncIterator(r) {
+    const b = new Uint8Array(1024);
+    return {
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+
+      async next() {
+        const result = await r.read(b);
+        if (result === EOF) {
+          return { value: new Uint8Array(), done: true };
+        }
+
+        return {
+          value: b.subarray(0, result),
+          done: false,
+        };
+      },
+    };
+  }
+
+  function linkSync(oldpath, newpath) {
+    sendSyncJson("op_link", { oldpath, newpath });
+  }
+
+  async function link(oldpath, newpath) {
+    await sendAsyncJson("op_link", { oldpath, newpath });
+  }
+
+  function formatDiagnostics(items) {
+    return sendSyncJson("op_format_diagnostic", { items });
+  }
+
+  function applySourceMap(location) {
+    const { fileName, lineNumber, columnNumber } = location;
+    const res = sendSyncJson("op_apply_source_map", {
+      fileName,
+      lineNumber: lineNumber,
+      columnNumber: columnNumber,
+    });
+    return {
+      fileName: res.fileName,
+      lineNumber: res.lineNumber,
+      columnNumber: res.columnNumber,
+    };
+  }
+
+  class FsEvents {
+    constructor(paths, options) {
+      const { recursive } = options;
+      this.rid = sendSyncJson("op_fs_events_open", { recursive, paths });
+    }
+
+    next() {
+      return sendAsyncJson("op_fs_events_poll", {
+        rid: this.rid,
+      });
+    }
+
+    return(value) {
+      close(this.rid);
+      return Promise.resolve({ value, done: true });
+    }
+
+    [Symbol.asyncIterator]() {
+      return this;
+    }
+  }
+
+  function fsEvents(paths, options = { recursive: true }) {
+    return new FsEvents(Array.isArray(paths) ? paths : [paths], options);
+  }
+
+  function makeTempDirSync(options = {}) {
+    return sendSyncJson("op_make_temp_dir", options);
+  }
+
+  function makeTempDir(options = {}) {
+    return sendAsyncJson("op_make_temp_dir", options);
+  }
+
+  function makeTempFileSync(options = {}) {
+    return sendSyncJson("op_make_temp_file", options);
+  }
+
+  function makeTempFile(options = {}) {
+    return sendAsyncJson("op_make_temp_file", options);
+  }
+
+  class PermissionStatus {
+    constructor(state) {
+      this.state = state;
+    }
+  }
+
+  class Permissions {
+    query(desc) {
+      const state = sendSyncJson("op_query_permission", desc).state;
+      return Promise.resolve(new PermissionStatus(state));
+    }
+
+    revoke(desc) {
+      const state = sendSyncJson("op_revoke_permission", desc).state;
+      return Promise.resolve(new PermissionStatus(state));
+    }
+
+    request(desc) {
+      const state = sendSyncJson("op_request_permission", desc).state;
+      return Promise.resolve(new PermissionStatus(state));
+    }
+  }
+
+  const permissions = new Permissions();
+
+  function mkdirArgs(path, options) {
+    const args = { path, recursive: false };
+    if (options) {
+      if (typeof options.recursive == "boolean") {
+        args.recursive = options.recursive;
+      }
+      if (options.mode) {
+        args.mode = options.mode;
+      }
+    }
+    return args;
+  }
+
+  function mkdirSync(path, options) {
+    sendSyncJson("op_mkdir", mkdirArgs(path, options));
+  }
+
+  async function mkdir(path, options) {
+    await sendAsyncJson("op_mkdir", mkdirArgs(path, options));
+  }
+
+  class FileInfoImpl {
+    #isFile = false;
+    #isDirectory = false;
+    #isSymlink = false;
+
+    /* @internal */
+    constructor(res) {
+      const isUnix = build.os === "mac" || build.os === "linux";
+      const modified = res.modified;
+      const accessed = res.accessed;
+      const created = res.created;
+      const name = res.name;
+      // Unix only
+      const { dev, ino, mode, nlink, uid, gid, rdev, blksize, blocks } = res;
+
+      this.#isFile = res.isFile;
+      this.#isDirectory = res.isDirectory;
+      this.#isSymlink = res.isSymlink;
+      this.size = res.size;
+      this.modified = modified ? modified : null;
+      this.accessed = accessed ? accessed : null;
+      this.created = created ? created : null;
+      this.name = name ? name : null;
+      // Only non-null if on Unix
+      this.dev = isUnix ? dev : null;
+      this.ino = isUnix ? ino : null;
+      this.mode = isUnix ? mode : null;
+      this.nlink = isUnix ? nlink : null;
+      this.uid = isUnix ? uid : null;
+      this.gid = isUnix ? gid : null;
+      this.rdev = isUnix ? rdev : null;
+      this.blksize = isUnix ? blksize : null;
+      this.blocks = isUnix ? blocks : null;
+    }
+
+    isFile() {
+      return this.#isFile;
+    }
+
+    isDirectory() {
+      return this.#isDirectory;
+    }
+
+    isSymlink() {
+      return this.#isSymlink;
+    }
+  }
+
+  function readdirRes(response) {
+    return response.entries.map((statRes) => {
+      return new FileInfoImpl(statRes);
+    });
+  }
+
+  function readdirSync(path) {
+    return readdirRes(sendSyncJson("op_read_dir", { path }));
+  }
+
+  async function readdir(path) {
+    return readdirRes(await sendAsyncJson("op_read_dir", { path }));
+  }
+
+  function readFileSync(path) {
+    const file = openSync(path);
+    const contents = readAllSync(file);
+    file.close();
+    return contents;
+  }
+
+  async function readFile(path) {
+    const file = await open(path);
+    const contents = await readAll(file);
+    file.close();
+    return contents;
+  }
+
+  function readlinkSync(path) {
+    return sendSyncJson("op_read_link", { path });
+  }
+
+  function readlink(path) {
+    return sendAsyncJson("op_read_link", { path });
+  }
+
+  function realpathSync(path) {
+    return sendSyncJson("op_realpath", { path });
+  }
+
+  function realpath(path) {
+    return sendAsyncJson("op_realpath", { path });
+  }
+
+  function removeSync(path, options = {}) {
+    sendSyncJson("op_remove", { path, recursive: !!options.recursive });
+  }
+
+  async function remove(path, options = {}) {
+    await sendAsyncJson("op_remove", { path, recursive: !!options.recursive });
+  }
+
+  function renameSync(oldpath, newpath) {
+    sendSyncJson("op_rename", { oldpath, newpath });
+  }
+
+  async function rename(oldpath, newpath) {
+    await sendAsyncJson("op_rename", { oldpath, newpath });
+  }
+
+  async function lstat(path) {
+    const res = await sendAsyncJson("op_stat", {
+      path,
+      lstat: true,
+    });
+    return new FileInfoImpl(res);
+  }
+
+  function lstatSync(path) {
+    const res = sendSyncJson("op_stat", {
+      path,
+      lstat: true,
+    });
+    return new FileInfoImpl(res);
+  }
+
+  async function stat(path) {
+    const res = await sendAsyncJson("op_stat", {
+      path,
+      lstat: false,
+    });
+    return new FileInfoImpl(res);
+  }
+
+  function statSync(path) {
+    const res = sendSyncJson("op_stat", {
+      path,
+      lstat: false,
+    });
+    return new FileInfoImpl(res);
+  }
+
+  function symlinkSync(oldpath, newpath, type) {
+    if (build.os === "win" && type) {
+      return notImplemented();
+    }
+    sendSyncJson("op_symlink", { oldpath, newpath });
+  }
+
+  async function symlink(oldpath, newpath, type) {
+    if (build.os === "win" && type) {
+      return notImplemented();
+    }
+    await sendAsyncJson("op_symlink", { oldpath, newpath });
+  }
+
+  function coerceLen(len) {
+    if (!len) {
+      return 0;
+    }
+
+    if (len < 0) {
+      return 0;
+    }
+
+    return len;
+  }
+
+  function truncateSync(path, len) {
+    sendSyncJson("op_truncate", { path, len: coerceLen(len) });
+  }
+
+  async function truncate(path, len) {
+    await sendAsyncJson("op_truncate", { path, len: coerceLen(len) });
+  }
+
+  function umask(mask) {
+    return sendSyncJson("op_umask", { mask });
+  }
+
+  function toSecondsFromEpoch(v) {
+    return v instanceof Date ? Math.trunc(v.valueOf() / 1000) : v;
+  }
+
+  function utimeSync(path, atime, mtime) {
+    sendSyncJson("op_utime", {
+      path,
+      // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
+      atime: toSecondsFromEpoch(atime),
+      mtime: toSecondsFromEpoch(mtime),
+    });
+  }
+
+  async function utime(path, atime, mtime) {
+    await sendAsyncJson("op_utime", {
+      path,
+      // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
+      atime: toSecondsFromEpoch(atime),
+      mtime: toSecondsFromEpoch(mtime),
+    });
+  }
+
+  function isatty(rid) {
+    return sendSyncJson("op_isatty", { rid });
+  }
+
+  function setRaw(rid, mode) {
+    sendSyncJson("op_set_raw", {
+      rid,
+      mode,
+    });
+  }
+
+  function writeFileSync(path, data, options = {}) {
+    if (options.create !== undefined) {
+      const create = !!options.create;
+      if (!create) {
+        // verify that file exists
+        statSync(path);
+      }
+    }
+
+    const openMode = !!options.append ? "a" : "w";
+    const file = openSync(path, openMode);
+
+    if (
+      options.mode !== undefined &&
+      options.mode !== null &&
+      build.os !== "win"
+    ) {
+      chmodSync(path, options.mode);
+    }
+
+    writeAllSync(file, data);
+    file.close();
+  }
+
+  async function writeFile(path, data, options = {}) {
+    if (options.create !== undefined) {
+      const create = !!options.create;
+      if (!create) {
+        // verify that file exists
+        await stat(path);
+      }
+    }
+
+    const openMode = !!options.append ? "a" : "w";
+    const file = await open(path, openMode);
+
+    if (
+      options.mode !== undefined &&
+      options.mode !== null &&
+      build.os !== "win"
+    ) {
+      await chmod(path, options.mode);
+    }
+
+    await writeAll(file, data);
+    file.close();
+  }
+
+  function runStatusOp(rid) {
+    return sendAsyncJson("op_run_status", { rid });
+  }
+
+  function kill(pid, signo) {
+    if (build.os === "win") {
+      throw new Error("Not yet implemented");
+    }
+    sendSyncJson("op_kill", { pid, signo });
+  }
+
+  function runOp(request) {
+    assert(request.cmd.length > 0);
+    return sendSyncJson("op_run", request);
+  }
+
+  async function runStatus(rid) {
+    const res = await runStatusOp(rid);
+
+    if (res.gotSignal) {
+      const signal = res.exitSignal;
+      return { signal, success: false };
+    } else {
+      const code = res.exitCode;
+      return { code, success: code === 0 };
+    }
+  }
+
+  class Process {
+    constructor(res) {
+      this.rid = res.rid;
+      this.pid = res.pid;
+
+      if (res.stdinRid && res.stdinRid > 0) {
+        this.stdin = new File(res.stdinRid);
+      }
+
+      if (res.stdoutRid && res.stdoutRid > 0) {
+        this.stdout = new File(res.stdoutRid);
+      }
+
+      if (res.stderrRid && res.stderrRid > 0) {
+        this.stderr = new File(res.stderrRid);
+      }
+    }
+
+    status() {
+      return runStatus(this.rid);
+    }
+
+    async output() {
+      if (!this.stdout) {
+        throw new Error("Process.output: stdout is undefined");
+      }
+      try {
+        return await readAll(this.stdout);
+      } finally {
+        this.stdout.close();
+      }
+    }
+
+    async stderrOutput() {
+      if (!this.stderr) {
+        throw new Error("Process.stderrOutput: stderr is undefined");
+      }
+      try {
+        return await readAll(this.stderr);
+      } finally {
+        this.stderr.close();
+      }
+    }
+
+    close() {
+      close(this.rid);
+    }
+
+    kill(signo) {
+      kill(this.pid, signo);
+    }
+  }
+
+  function isRid(arg) {
+    return !isNaN(arg);
+  }
+
+  function run({
+    cmd,
+    cwd = undefined,
+    env = {},
+    stdout = "inherit",
+    stderr = "inherit",
+    stdin = "inherit",
+  }) {
+    const res = runOp({
+      cmd: cmd.map(String),
+      cwd,
+      env: Object.entries(env),
+      stdin: isRid(stdin) ? "" : stdin,
+      stdout: isRid(stdout) ? "" : stdout,
+      stderr: isRid(stderr) ? "" : stderr,
+      stdinRid: isRid(stdin) ? stdin : 0,
+      stdoutRid: isRid(stdout) ? stdout : 0,
+      stderrRid: isRid(stderr) ? stderr : 0,
+    });
+    return new Process(res);
+  }
+
+  class PluginOpImpl {
+    #opId = 0;
+
+    constructor(opId) {
+      this.#opId = opId;
+    }
+
+    dispatch(control, zeroCopy) {
+      return core.dispatch(this.#opId, control, zeroCopy);
+    }
+
+    setAsyncHandler(handler) {
+      core.setAsyncHandler(this.#opId, handler);
+    }
+  }
+
+  class PluginImpl {
+    #ops = {};
+
+    constructor(_rid, ops) {
+      for (const op in ops) {
+        this.#ops[op] = new PluginOpImpl(ops[op]);
+      }
+    }
+
+    get ops() {
+      return Object.assign({}, this.#ops);
+    }
+  }
+
+  function openPlugin(filename) {
+    const response = openPluginOp(filename);
+    return new PluginImpl(response.rid, response.ops);
+  }
+
+  const tlsOps = (function () {
+    function connectTLS(args) {
+      return sendAsyncJson("op_connect_tls", args);
+    }
+
+    function acceptTLS(rid) {
+      return sendAsyncJson("op_accept_tls", { rid });
+    }
+
+    function listenTLS(args) {
+      return sendSyncJson("op_listen_tls", args);
+    }
+    return {
+      listenTLS,
+      acceptTLS,
+      connectTLS,
+    };
+  })();
+
+  async function connectTLS({
+    port,
+    hostname = "127.0.0.1",
+    transport = "tcp",
+    certFile = undefined,
+  }) {
+    const res = await tlsOps.connectTLS({
+      port,
+      hostname,
+      transport,
+      certFile,
+    });
+    return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
+  }
+
+  class TLSListenerImpl extends ListenerImpl {
+    async accept() {
+      const res = await tlsOps.acceptTLS(this.rid);
+      return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
+    }
+  }
+
+  function listenTLS({
+    port,
+    certFile,
+    keyFile,
+    hostname = "0.0.0.0",
+    transport = "tcp",
+  }) {
+    const res = tlsOps.listenTLS({
+      port,
+      certFile,
+      keyFile,
+      hostname,
+      transport,
+    });
+    return new TLSListenerImpl(res.rid, res.localAddr);
+  }
+
+  const runtimeCompilerOps = (function () {
+    function compile(request) {
+      return sendAsyncJson("op_compile", request);
+    }
+
+    function transpile(request) {
+      return sendAsyncJson("op_transpile", request);
+    }
+
+    return {
+      compile,
+      transpile,
+    };
+  })();
+
+  function checkRelative(specifier) {
+    return specifier.match(/^([\.\/\\]|https?:\/{2}|file:\/{2})/)
+      ? specifier
+      : `./${specifier}`;
+  }
+
+  async function transpileOnly(sources, options = {}) {
+    log("Deno.transpileOnly", { sources: Object.keys(sources), options });
+    const payload = {
+      sources,
+      options: JSON.stringify(options),
+    };
+    const result = await runtimeCompilerOps.transpile(payload);
+    return JSON.parse(result);
+  }
+
+  async function compile(rootName, sources, options = {}) {
+    const payload = {
+      rootName: sources ? rootName : checkRelative(rootName),
+      sources,
+      options: JSON.stringify(options),
+      bundle: false,
+    };
+    util.log("Deno.compile", {
+      rootName: payload.rootName,
+      sources: !!sources,
+      options,
+    });
+    const result = await runtimeCompilerOps.compile(payload);
+    return JSON.parse(result);
+  }
+
+  async function bundle(rootName, sources, options = {}) {
+    const payload = {
+      rootName: sources ? rootName : checkRelative(rootName),
+      sources,
+      options: JSON.stringify(options),
+      bundle: true,
+    };
+    util.log("Deno.bundle", {
+      rootName: payload.rootName,
+      sources: !!sources,
+      options,
+    });
+    const result = await runtimeCompilerOps.compile(payload);
+    return JSON.parse(result);
+  }
+
+  const RED_FAILED = "FAILED";
+  const GREEN_OK = "ok";
+  const YELLOW_IGNORED = "ignored";
+  const disabledConsole = new Console(() => {});
+
+  function delay(n) {
+    return new Promise((resolve, _) => {
+      setTimeout(resolve, n);
+    });
+  }
+
+  function formatDuration(time = 0) {
+    const timeStr = `(${time}ms)`;
+    return timeStr;
+  }
+
+  // Wrap test function in additional assertion that makes sure
+  // the test case does not leak async "ops" - ie. number of async
+  // completed ops after the test is the same as number of dispatched
+  // ops. Note that "unref" ops are ignored since in nature that are
+  // optional.
+  function assertOps(fn) {
+    return async function asyncOpSanitizer() {
+      const pre = metrics();
+      await fn();
+      // Defer until next event loop turn - that way timeouts and intervals
+      // cleared can actually be removed from resource table, otherwise
+      // false positives may occur (https://github.com/denoland/deno/issues/4591)
+      await delay(0);
+      const post = metrics();
+      // We're checking diff because one might spawn HTTP server in the background
+      // that will be a pending async op before test starts.
+      const dispatchedDiff = post.opsDispatchedAsync - pre.opsDispatchedAsync;
+      const completedDiff = post.opsCompletedAsync - pre.opsCompletedAsync;
+      assert(
+        dispatchedDiff === completedDiff,
+        `Test case is leaking async ops.
+  Before:
+    - dispatched: ${pre.opsDispatchedAsync}
+    - completed: ${pre.opsCompletedAsync}
+  After:
+    - dispatched: ${post.opsDispatchedAsync}
+    - completed: ${post.opsCompletedAsync}`
+      );
+    };
+  }
+
+  // Wrap test function in additional assertion that makes sure
+  // the test case does not "leak" resources - ie. resource table after
+  // the test has exactly the same contents as before the test.
+  function assertResources(fn) {
+    return async function resourceSanitizer() {
+      const pre = resources();
+      await fn();
+      const post = resources();
+
+      const preStr = JSON.stringify(pre, null, 2);
+      const postStr = JSON.stringify(post, null, 2);
+      const msg = `Test case is leaking resources.
+  Before: ${preStr}
+  After: ${postStr}`;
+      assert(preStr === postStr, msg);
+    };
+  }
+
+  const TEST_REGISTRY = [];
+
+  function test(t, fn) {
+    let testDef;
+
+    if (typeof t === "string") {
+      if (!fn || typeof fn != "function") {
+        throw new TypeError("Missing test function");
+      }
+      if (!t) {
+        throw new TypeError("The test name can't be empty");
+      }
+      testDef = { fn, name: t, ignore: false };
+    } else if (typeof t === "function") {
+      if (!t.name) {
+        throw new TypeError("The test function can't be anonymous");
+      }
+      testDef = { fn: t, name: t.name, ignore: false };
+    } else {
+      if (!t.fn) {
+        throw new TypeError("Missing test function");
+      }
+      if (!t.name) {
+        throw new TypeError("The test name can't be empty");
+      }
+      testDef = { ...t, ignore: Boolean(t.ignore) };
+    }
+
+    if (testDef.disableOpSanitizer !== true) {
+      testDef.fn = assertOps(testDef.fn);
+    }
+
+    if (testDef.disableResourceSanitizer !== true) {
+      testDef.fn = assertResources(testDef.fn);
+    }
+
+    TEST_REGISTRY.push(testDef);
+  }
+
+  function testLog(msg, noNewLine = false) {
+    if (!noNewLine) {
+      msg += "\n";
+    }
+
+    // Using `stdout` here because it doesn't force new lines
+    // compared to `console.log`; `core.print` on the other hand
+    // is line-buffered and doesn't output message without newline
+    stdout.writeSync(encoder.encode(msg));
+  }
+
+  function reportToConsole(message) {
+    if (message.start != null) {
+      testLog(`running ${message.start.tests.length} tests`);
+    } else if (message.testStart != null) {
+      const { name } = message.testStart;
+
+      testLog(`test ${name} ... `, true);
+      return;
+    } else if (message.testEnd != null) {
+      switch (message.testEnd.status) {
+        case "passed":
+          testLog(`${GREEN_OK} ${formatDuration(message.testEnd.duration)}`);
+          break;
+        case "failed":
+          testLog(`${RED_FAILED} ${formatDuration(message.testEnd.duration)}`);
+          break;
+        case "ignored":
+          testLog(
+            `${YELLOW_IGNORED} ${formatDuration(message.testEnd.duration)}`
+          );
+          break;
+      }
+    } else if (message.end != null) {
+      const failures = message.end.results.filter((m) => m.error != null);
+      if (failures.length > 0) {
+        testLog(`\nfailures:\n`);
+
+        for (const { name, error } of failures) {
+          testLog(name);
+          testLog(stringifyArgs([error]));
+          testLog("");
+        }
+
+        testLog(`failures:\n`);
+
+        for (const { name } of failures) {
+          testLog(`\t${name}`);
+        }
+      }
+      testLog(
+        `\ntest result: ${message.end.failed ? RED_FAILED : GREEN_OK}. ` +
+          `${message.end.passed} passed; ${message.end.failed} failed; ` +
+          `${message.end.ignored} ignored; ${message.end.measured} measured; ` +
+          `${message.end.filtered} filtered out ` +
+          `${formatDuration(message.end.duration)}\n`
+      );
+    }
+  }
+
+  exposeForTest("reportToConsole", reportToConsole);
+
+  // TODO: already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
+  // TODO: implements PromiseLike<RunTestsEndResult>
+  class TestApi {
+    constructor(tests, filterFn, failFast) {
+      this.tests = tests;
+      this.filterFn = filterFn;
+      this.failFast = failFast;
+      this.stats = {
+        filtered: 0,
+        ignored: 0,
+        measured: 0,
+        passed: 0,
+        failed: 0,
+      };
+      this.testsToRun = tests.filter(filterFn);
+      this.stats.filtered = tests.length - this.testsToRun.length;
+    }
+
+    async *[Symbol.asyncIterator]() {
+      yield { start: { tests: this.testsToRun } };
+
+      const results = [];
+      const suiteStart = +new Date();
+      for (const test of this.testsToRun) {
+        const endMessage = {
+          name: test.name,
+          duration: 0,
+        };
+        yield { testStart: { ...test } };
+        if (test.ignore) {
+          endMessage.status = "ignored";
+          this.stats.ignored++;
+        } else {
+          const start = +new Date();
+          try {
+            await test.fn();
+            endMessage.status = "passed";
+            this.stats.passed++;
+          } catch (err) {
+            endMessage.status = "failed";
+            endMessage.error = err;
+            this.stats.failed++;
+          }
+          endMessage.duration = +new Date() - start;
+        }
+        results.push(endMessage);
+        yield { testEnd: endMessage };
+        if (this.failFast && endMessage.error != null) {
+          break;
+        }
+      }
+
+      const duration = +new Date() - suiteStart;
+
+      yield { end: { ...this.stats, duration, results } };
+    }
+  }
+
+  function createFilterFn(filter, skip) {
+    return (def) => {
+      let passes = true;
+
+      if (filter) {
+        if (filter instanceof RegExp) {
+          passes = passes && filter.test(def.name);
+        } else {
+          passes = passes && def.name.includes(filter);
+        }
+      }
+
+      if (skip) {
+        if (skip instanceof RegExp) {
+          passes = passes && !skip.test(def.name);
+        } else {
+          passes = passes && !def.name.includes(skip);
+        }
+      }
+
+      return passes;
+    };
+  }
+
+  async function runTests({
+    exitOnFail = true,
+    failFast = false,
+    filter = undefined,
+    skip = undefined,
+    disableLog = false,
+    reportToConsole: reportToConsole_ = true,
+    onMessage = undefined,
+  } = {}) {
+    const filterFn = createFilterFn(filter, skip);
+    const testApi = new TestApi(TEST_REGISTRY, filterFn, failFast);
+
+    // @ts-ignore
+    const originalConsole = globalThis.console;
+
+    if (disableLog) {
+      // @ts-ignore
+      globalThis.console = disabledConsole;
+    }
+
+    let endMsg;
+
+    for await (const message of testApi) {
+      if (onMessage != null) {
+        await onMessage(message);
+      }
+      if (reportToConsole_) {
+        reportToConsole(message);
+      }
+      if (message.end != null) {
+        endMsg = message.end;
+      }
+    }
+
+    if (disableLog) {
+      // @ts-ignore
+      globalThis.console = originalConsole;
+    }
+
+    if (endMsg.failed > 0 && exitOnFail) {
+      exit(1);
+    }
+
+    return endMsg;
+  }
+
   const DenoNs = (function () {
     // Public deno module.
 
-    //   export { chmodSync, chmod } from "./ops/fs/chmod.ts";
-    //   export { chownSync, chown } from "./ops/fs/chown.ts";
-    //   export { transpileOnly, compile, bundle } from "./compiler/api.ts";
-    //   export { copyFileSync, copyFile } from "./ops/fs/copy_file.ts";
-    //   export {
-    //     Diagnostic,
-    //     DiagnosticCategory,
-    //     DiagnosticItem,
-    //     DiagnosticMessageChain,
-    //   } from "./diagnostics.ts";
-    //   export { chdir, cwd } from "./ops/fs/dir.ts";
-    //   export { applySourceMap, formatDiagnostics } from "./ops/errors.ts";
-    //   export { FileInfo } from "./file_info.ts";
-    //   export { FsEvent, fsEvents } from "./ops/fs_events.ts";
-    //   export {
-    //     EOF,
-    //     copy,
-    //     toAsyncIterator,
-    //     SeekMode,
-    //     Reader,
-    //     SyncReader,
-    //     Writer,
-    //     SyncWriter,
-    //     Closer,
-    //     Seeker,
-    //     SyncSeeker,
-    //     ReadCloser,
-    //     WriteCloser,
-    //     ReadSeeker,
-    //     WriteSeeker,
-    //     ReadWriteCloser,
-    //     ReadWriteSeeker,
-    //   } from "./io.ts";
-    //   export { linkSync, link } from "./ops/fs/link.ts";
-    //   export {
-    //     makeTempDirSync,
-    //     makeTempDir,
-    //     makeTempFileSync,
-    //     makeTempFile,
-    //     MakeTempOptions,
-    //   } from "./ops/fs/make_temp.ts";
-    //   export { mkdirSync, mkdir, MkdirOptions } from "./ops/fs/mkdir.ts";
-    //   export {
-    //     connect,
-    //     listen,
-    //     DatagramConn,
-    //     Listener,
-    //     Conn,
-    //     ShutdownMode,
-    //     shutdown,
-    //   } from "./net.ts";
-    //   export {
-    //     permissions,
-    //     PermissionName,
-    //     PermissionState,
-    //     PermissionStatus,
-    //     Permissions,
-    //   } from "./permissions.ts";
-    //   export { openPlugin } from "./plugins.ts";
-    //   export { kill } from "./ops/process.ts";
-    //   export { run, RunOptions, Process, ProcessStatus } from "./process.ts";
-    //   export { readdirSync, readdir } from "./ops/fs/read_dir.ts";
-    //   export { readFileSync, readFile } from "./read_file.ts";
-    //   export { readlinkSync, readlink } from "./ops/fs/read_link.ts";
-    //   export { realpathSync, realpath } from "./ops/fs/realpath.ts";
-    //   export { removeSync, remove, RemoveOptions } from "./ops/fs/remove.ts";
-    //   export { renameSync, rename } from "./ops/fs/rename.ts";
-    //   export { statSync, lstatSync, stat, lstat } from "./ops/fs/stat.ts";
-    //   export { symlinkSync, symlink } from "./ops/fs/symlink.ts";
-    //   export { connectTLS, listenTLS } from "./tls.ts";
-    //   export { truncateSync, truncate } from "./ops/fs/truncate.ts";
-    //   export { isatty, setRaw } from "./ops/tty.ts";
-    //   export { umask } from "./ops/fs/umask.ts";
-    //   export { utimeSync, utime } from "./ops/fs/utime.ts";
-    //   export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";
-    //   export {
-    //     RunTestsOptions,
-    //     TestDefinition,
-    //     TestMessage,
-    //     runTests,
-    //     test,
-    //   } from "./testing.ts";
-
     return {
+      test,
+      runTests,
+      chmod,
+      chmodSync,
+      chown,
+      compile,
+      bundle,
+      transpileOnly,
+      chownSync,
+      copyFile,
+      copyFileSync,
+      chdir,
+      cwd,
+      connect,
+      listen,
+      applySourceMap,
+      formatDiagnostics,
+      run,
+      Process,
+      kill,
+      shutdown: netOps.shutdown,
       Buffer,
       build,
+      connectTLS,
+      listenTLS,
+      openPlugin,
+      makeTempDirSync,
+      umask,
+      makeTempDir,
+      isatty,
+      setRaw,
+      makeTempFileSync,
+      makeTempFile,
+      remove,
+      removeSync,
+      utime,
+      utimeSync,
+      truncate,
+      truncateSync,
+      writeFile,
+      writeFileSync,
+      readlink,
+      rename,
+      renameSync,
+      statSync,
+      stat,
+      lstat,
+      lstatSync,
+      readlinkSync,
+      mkdir,
+      mkdirSync,
       readAll,
+      fsEvents,
+      copy,
+      symlink,
+      symlinkSync,
+      link,
+      realpath,
+      realpathSync,
+      linkSync,
+      toAsyncIterator,
+      Permissions,
+      readFile,
+      readFileSync,
+      PermissionStatus,
+      permissions,
+      readdir,
+      readdirSync,
       readAllSync,
       writeAll,
       writeAllSync,
@@ -5695,7 +6849,6 @@
       EventTargetImpl.prototype.removeEventListener
     ),
   };
-
 
   const mainRuntimeGlobalProperties = {
     window: readOnly(globalThis),

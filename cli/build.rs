@@ -40,12 +40,12 @@ fn main() {
   println!("cargo:rerun-if-changed={}", bundle_path.display());
   let snapshot_path = o.join("CLI_SNAPSHOT.bin");
 
-  let main_module_name = deno_typescript::compile_bundle(
-    &bundle_path,
-    root_names,
-    Some(extern_crate_modules.clone()),
-  )
-  .expect("Bundle compilation failed");
+  // let main_module_name = deno_typescript::compile_bundle(
+  //   &bundle_path,
+  //   root_names,
+  //   Some(extern_crate_modules.clone()),
+  // )
+  // .expect("Bundle compilation failed");
   assert!(bundle_path.exists());
 
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
@@ -54,7 +54,7 @@ fn main() {
     runtime_isolate,
     &snapshot_path,
     &bundle_path,
-    &main_module_name,
+    "asdf",
   )
   .expect("Failed to create snapshot");
 

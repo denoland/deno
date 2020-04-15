@@ -31,7 +31,8 @@ fn builtin_source_map(_: &str) -> Option<Vec<u8>> {
 #[cfg(not(feature = "check-only"))]
 fn builtin_source_map(file_name: &str) -> Option<Vec<u8>> {
   if file_name.ends_with("CLI_SNAPSHOT.js") {
-    Some(crate::js::CLI_SNAPSHOT_MAP.to_vec())
+    // Some(crate::js::CLI_SNAPSHOT_MAP.to_vec())
+    None
   } else if file_name.ends_with("COMPILER_SNAPSHOT.js") {
     Some(crate::js::COMPILER_SNAPSHOT_MAP.to_vec())
   } else {
