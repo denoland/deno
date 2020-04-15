@@ -36,7 +36,7 @@ fn main() {
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   // Main snapshot
-  let bundle_path = PathBuf::from("super_runtime.js");
+  let bundle_path = PathBuf::from("runtime.js");
   println!("cargo:rerun-if-changed={}", bundle_path.display());
   let snapshot_path = o.join("CLI_SNAPSHOT.bin");
 

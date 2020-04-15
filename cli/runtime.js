@@ -1266,15 +1266,10 @@
     });
   }
 
-  const symbols = {
-    internal: internalSymbol,
-    // customInspect,
-  };
-
   function opStart() {
     return sendSyncJson("op_start");
   }
-  function opMetrics() {
+  function metrics() {
     return sendSyncJson("op_metrics");
   }
 
@@ -1628,8 +1623,8 @@
     return "relatedTarget" in event;
   }
 
-  function isTrusted(this_) {
-    return eventData.get(this_).isTrusted;
+  function isTrusted(event) {
+    return eventData.get(event).isTrusted;
   }
 
   class EventImpl {
@@ -2207,6 +2202,429 @@
 
     return !eventImpl.defaultPrevented;
   }
+
+  const streams = (function () {
+    const shared = (function () {
+      const state_ = Symbol("state_");
+      const storedError_ = Symbol("storedError_");
+
+      function isInteger(value) {
+        if (!isFinite(value)) {
+          // covers NaN, +Infinity and -Infinity
+          return false;
+        }
+        const absValue = Math.abs(value);
+        return Math.floor(absValue) === absValue;
+      }
+
+      function isFiniteNonNegativeNumber(value) {
+        if (!(typeof value === "number" && isFinite(value))) {
+          // covers NaN, +Infinity and -Infinity
+          return false;
+        }
+        return value >= 0;
+      }
+
+      function isAbortSignal(signal) {
+        if (typeof signal !== "object" || signal === null) {
+          return false;
+        }
+        try {
+          // TODO
+          // calling signal.aborted() probably isn't the right way to perform this test
+          // https://github.com/stardazed/sd-streams/blob/master/packages/streams/src/shared-internals.ts#L41
+          signal.aborted();
+          return true;
+        } catch (err) {
+          return false;
+        }
+      }
+
+      function invokeOrNoop(o, p, args) {
+        // Assert: O is not undefined.
+        // Assert: IsPropertyKey(P) is true.
+        // Assert: args is a List.
+        const method = o[p]; // tslint:disable-line:ban-types
+        if (method === undefined) {
+          return undefined;
+        }
+        return Function.prototype.apply.call(method, o, args);
+      }
+
+      function cloneArrayBuffer(
+        srcBuffer,
+        srcByteOffset,
+        srcLength,
+        cloneConstructor
+      ) {
+        // this function fudges the return type but SharedArrayBuffer is disabled for a while anyway
+        return srcBuffer.slice(srcByteOffset, srcByteOffset + srcLength);
+      }
+
+      function transferArrayBuffer(buffer) {
+        // This would in a JS engine context detach the buffer's backing store and return
+        // a new ArrayBuffer with the same backing store, invalidating `buffer`,
+        // i.e. a move operation in C++ parlance.
+        // Sadly ArrayBuffer.transfer is yet to be implemented by a single browser vendor.
+        return buffer.slice(0); // copies instead of moves
+      }
+
+      function copyDataBlockBytes(
+        toBlock,
+        toIndex,
+        fromBlock,
+        fromIndex,
+        count
+      ) {
+        new Uint8Array(toBlock, toIndex, count).set(
+          new Uint8Array(fromBlock, fromIndex, count)
+        );
+      }
+
+      // helper memoisation map for object values
+      // weak so it doesn't keep memoized versions of old objects indefinitely.
+      const objectCloneMemo = new WeakMap();
+
+      let sharedArrayBufferSupported_;
+      function supportsSharedArrayBuffer() {
+        if (sharedArrayBufferSupported_ === undefined) {
+          try {
+            new SharedArrayBuffer(16);
+            sharedArrayBufferSupported_ = true;
+          } catch (e) {
+            sharedArrayBufferSupported_ = false;
+          }
+        }
+        return sharedArrayBufferSupported_;
+      }
+
+      function cloneValue(value) {
+        const valueType = typeof value;
+        switch (valueType) {
+          case "number":
+          case "string":
+          case "boolean":
+          case "undefined":
+          // @ts-ignore
+          case "bigint":
+            return value;
+          case "object": {
+            if (objectCloneMemo.has(value)) {
+              return objectCloneMemo.get(value);
+            }
+            if (value === null) {
+              return value;
+            }
+            if (value instanceof Date) {
+              return new Date(value.valueOf());
+            }
+            if (value instanceof RegExp) {
+              return new RegExp(value);
+            }
+            if (
+              supportsSharedArrayBuffer() &&
+              value instanceof SharedArrayBuffer
+            ) {
+              return value;
+            }
+            if (value instanceof ArrayBuffer) {
+              const cloned = cloneArrayBuffer(
+                value,
+                0,
+                value.byteLength,
+                ArrayBuffer
+              );
+              objectCloneMemo.set(value, cloned);
+              return cloned;
+            }
+            if (ArrayBuffer.isView(value)) {
+              const clonedBuffer = cloneValue(value.buffer);
+              // Use DataViewConstructor type purely for type-checking, can be a DataView or TypedArray.
+              // They use the same constructor signature, only DataView has a length in bytes and TypedArrays
+              // use a length in terms of elements, so we adjust for that.
+              let length;
+              if (value instanceof DataView) {
+                length = value.byteLength;
+              } else {
+                length = value.length;
+              }
+              return new value.constructor(
+                clonedBuffer,
+                value.byteOffset,
+                length
+              );
+            }
+            if (value instanceof Map) {
+              const clonedMap = new Map();
+              objectCloneMemo.set(value, clonedMap);
+              value.forEach((v, k) => clonedMap.set(k, cloneValue(v)));
+              return clonedMap;
+            }
+            if (value instanceof Set) {
+              const clonedSet = new Map();
+              objectCloneMemo.set(value, clonedSet);
+              value.forEach((v, k) => clonedSet.set(k, cloneValue(v)));
+              return clonedSet;
+            }
+
+            // generic object
+            const clonedObj = {};
+            objectCloneMemo.set(value, clonedObj);
+            const sourceKeys = Object.getOwnPropertyNames(value);
+            for (const key of sourceKeys) {
+              clonedObj[key] = cloneValue(value[key]);
+            }
+            return clonedObj;
+          }
+          case "symbol":
+          case "function":
+          default:
+            // TODO this should be a DOMException,
+            // https://github.com/stardazed/sd-streams/blob/master/packages/streams/src/shared-internals.ts#L171
+            throw new Error("Uncloneable value in stream");
+        }
+      }
+
+      function promiseCall(f, v, args) {
+        // tslint:disable-line:ban-types
+        try {
+          const result = Function.prototype.apply.call(f, v, args);
+          return Promise.resolve(result);
+        } catch (err) {
+          return Promise.reject(err);
+        }
+      }
+
+      function createAlgorithmFromUnderlyingMethod(obj, methodName, extraArgs) {
+        const method = obj[methodName];
+        if (method === undefined) {
+          return () => Promise.resolve(undefined);
+        }
+        if (typeof method !== "function") {
+          throw new TypeError(`Field "${methodName}" is not a function.`);
+        }
+        return function (...fnArgs) {
+          return promiseCall(method, obj, fnArgs.concat(extraArgs));
+        };
+      }
+
+      /*
+      Deprecated for now, all usages replaced by readableStreamCreateReadResult
+
+      function createIterResultObject<T>(value: T, done: boolean): IteratorResult<T> {
+        return { value, done };
+      }
+      */
+
+      function validateAndNormalizeHighWaterMark(hwm) {
+        const highWaterMark = Number(hwm);
+        if (isNaN(highWaterMark) || highWaterMark < 0) {
+          throw new RangeError(
+            "highWaterMark must be a valid, non-negative integer."
+          );
+        }
+        return highWaterMark;
+      }
+
+      function makeSizeAlgorithmFromSizeFunction(sizeFn) {
+        if (typeof sizeFn !== "function" && typeof sizeFn !== "undefined") {
+          throw new TypeError("size function must be undefined or a function");
+        }
+        return function (chunk) {
+          if (typeof sizeFn === "function") {
+            return sizeFn(chunk);
+          }
+          return 1;
+        };
+      }
+
+      // ----
+
+      const ControlledPromiseState = {
+        Pending: "Pending",
+        Resolved: "Resolved",
+        Rejected: "Rejected",
+      };
+
+      function createControlledPromise() {
+        const conProm = {
+          state: ControlledPromiseState.Pending,
+        };
+        conProm.promise = new Promise(function (resolve, reject) {
+          conProm.resolve = function (v) {
+            conProm.state = ControlledPromiseState.Resolved;
+            resolve(v);
+          };
+          conProm.reject = function (e) {
+            conProm.state = ControlledPromiseState.Rejected;
+            reject(e);
+          };
+        });
+        return conProm;
+      }
+
+      return {
+        state_,
+        storedError_,
+        isInteger,
+        isFiniteNonNegativeNumber,
+        isAbortSignal,
+        invokeOrNoop,
+        cloneArrayBuffer,
+        transferArrayBuffer,
+        copyDataBlockBytes,
+        cloneValue,
+        promiseCall,
+        createAlgorithmFromUnderlyingMethod,
+        validateAndNormalizeHighWaterMark,
+        makeSizeAlgorithmFromSizeFunction,
+        ControlledPromiseState,
+        createControlledPromise,
+      };
+    })();
+
+    class ReadableStream {
+      constructor(underlyingSource = {}, strategy = {}) {
+        rs.initializeReadableStream(this);
+
+        const sizeFunc = strategy.size;
+        const stratHWM = strategy.highWaterMark;
+        const sourceType = underlyingSource.type;
+
+        if (sourceType === undefined) {
+          const sizeAlgorithm = shared.makeSizeAlgorithmFromSizeFunction(
+            sizeFunc
+          );
+          const highWaterMark = shared.validateAndNormalizeHighWaterMark(
+            stratHWM === undefined ? 1 : stratHWM
+          );
+          setUpReadableStreamDefaultControllerFromUnderlyingSource(
+            this,
+            underlyingSource,
+            highWaterMark,
+            sizeAlgorithm
+          );
+        } else if (String(sourceType) === "bytes") {
+          if (sizeFunc !== undefined) {
+            throw new RangeError(
+              "bytes streams cannot have a strategy with a `size` field"
+            );
+          }
+          const highWaterMark = shared.validateAndNormalizeHighWaterMark(
+            stratHWM === undefined ? 0 : stratHWM
+          );
+          setUpReadableByteStreamControllerFromUnderlyingSource(
+            this,
+            underlyingSource,
+            highWaterMark
+          );
+        } else {
+          throw new RangeError(
+            "The underlying source's `type` field must be undefined or 'bytes'"
+          );
+        }
+      }
+
+      get locked() {
+        // return rs.isReadableStreamLocked(this);
+      }
+
+      getReader(options) {
+        // if (!rs.isReadableStream(this)) {
+        //   throw new TypeError();
+        // }
+        // if (options === undefined) {
+        //   options = {};
+        // }
+        // const { mode } = options;
+        // if (mode === undefined) {
+        //   return new ReadableStreamDefaultReader(this);
+        // } else if (String(mode) === "byob") {
+        //   return new SDReadableStreamBYOBReader(
+        //     (this as unknown)
+        //   );
+        // }
+        // throw RangeError("mode option must be undefined or `byob`");
+      }
+
+      cancel(reason) {
+        // if (!rs.isReadableStream(this)) {
+        //   return Promise.reject(new TypeError());
+        // }
+        // if (rs.isReadableStreamLocked(this)) {
+        //   return Promise.reject(new TypeError("Cannot cancel a locked stream"));
+        // }
+        // return rs.readableStreamCancel(this, reason);
+      }
+
+      tee() {
+        return readableStreamTee(this, false);
+      }
+
+      /* TODO reenable these methods when we bring in writableStreams and transport types
+      pipeThrough<ResultType>(
+        transform: rs.GenericTransformStream<OutputType, ResultType>,
+        options: PipeOptions = {}
+      ): rs.SDReadableStream<ResultType> {
+        const { readable, writable } = transform;
+        if (!rs.isReadableStream(this)) {
+          throw new TypeError();
+        }
+        if (!ws.isWritableStream(writable)) {
+          throw new TypeError("writable must be a WritableStream");
+        }
+        if (!rs.isReadableStream(readable)) {
+          throw new TypeError("readable must be a ReadableStream");
+        }
+        if (options.signal !== undefined && !shared.isAbortSignal(options.signal)) {
+          throw new TypeError("options.signal must be an AbortSignal instance");
+        }
+        if (rs.isReadableStreamLocked(this)) {
+          throw new TypeError("Cannot pipeThrough on a locked stream");
+        }
+        if (ws.isWritableStreamLocked(writable)) {
+          throw new TypeError("Cannot pipeThrough to a locked stream");
+        }
+  
+        const pipeResult = pipeTo(this, writable, options);
+        pipeResult.catch(() => {});
+  
+        return readable;
+      }
+  
+      pipeTo(
+        dest: ws.WritableStream<OutputType>,
+        options: PipeOptions = {}
+      ): Promise<void> {
+        if (!rs.isReadableStream(this)) {
+          return Promise.reject(new TypeError());
+        }
+        if (!ws.isWritableStream(dest)) {
+          return Promise.reject(
+            new TypeError("destination must be a WritableStream")
+          );
+        }
+        if (options.signal !== undefined && !shared.isAbortSignal(options.signal)) {
+          return Promise.reject(
+            new TypeError("options.signal must be an AbortSignal instance")
+          );
+        }
+        if (rs.isReadableStreamLocked(this)) {
+          return Promise.reject(new TypeError("Cannot pipe from a locked stream"));
+        }
+        if (ws.isWritableStreamLocked(dest)) {
+          return Promise.reject(new TypeError("Cannot pipe to a locked stream"));
+        }
+  
+        return pipeTo(this, dest, options);
+      }
+      */
+    }
+
+    return {
+      ReadableStream,
+    };
+  })();
 
   /** Inner invoking of the event listeners where the resolved listeners are
    * called.
@@ -6672,6 +7090,11 @@
     return endMsg;
   }
 
+  const symbols = {
+    internal: internalSymbol,
+    customInspect,
+  };
+
   const DenoNs = (function () {
     // Public deno module.
 
@@ -6700,6 +7123,7 @@
       Buffer,
       build,
       connectTLS,
+      EOF,
       listenTLS,
       openPlugin,
       makeTempDirSync,
@@ -6758,7 +7182,7 @@
       dir,
       env,
       exit,
-      metrics: opMetrics,
+      metrics,
       execPath,
       hostname,
       loadavg,
@@ -6804,13 +7228,1649 @@
     }
   }
 
+  function DomIterableMixin(Base, dataSymbol) {
+    // we have to cast `this` as `any` because there is no way to describe the
+    // Base class in a way where the Symbol `dataSymbol` is defined.  So the
+    // runtime code works, but we do lose a little bit of type safety.
+
+    // Additionally, we have to not use .keys() nor .values() since the internal
+    // slot differs in type - some have a Map, which yields [K, V] in
+    // Symbol.iterator, and some have an Array, which yields V, in this case
+    // [K, V] too as they are arrays of tuples.
+
+    const DomIterable = class extends Base {
+      *entries() {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const entry of this[dataSymbol]) {
+          yield entry;
+        }
+      }
+
+      *keys() {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const [key] of this[dataSymbol]) {
+          yield key;
+        }
+      }
+
+      *values() {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const [, value] of this[dataSymbol]) {
+          yield value;
+        }
+      }
+
+      forEach(
+        callbackfn,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        thisArg
+      ) {
+        requiredArguments(
+          `${this.constructor.name}.forEach`,
+          arguments.length,
+          1
+        );
+        callbackfn = callbackfn.bind(
+          thisArg == null ? globalThis : Object(thisArg)
+        );
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const [key, value] of this[dataSymbol]) {
+          callbackfn(value, key, this);
+        }
+      }
+
+      *[Symbol.iterator]() {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const entry of this[dataSymbol]) {
+          yield entry;
+        }
+      }
+    };
+
+    // we want the Base class name to be the name of the class.
+    Object.defineProperty(DomIterable, "name", {
+      value: Base.name,
+      configurable: true,
+    });
+
+    return DomIterable;
+  }
+
+  exposeForTest("DomIterableMixin", DomIterableMixin);
+
+  const dataSymbol = Symbol("data");
+
+  class FormDataBase {
+    [dataSymbol] = [];
+
+    append(name, value, filename) {
+      requiredArguments("FormData.append", arguments.length, 2);
+      name = String(name);
+      if (value instanceof DomFileImpl) {
+        this[dataSymbol].push([name, value]);
+      } else if (value instanceof DenoBlob) {
+        const dfile = new DomFileImpl([value], filename || name, {
+          type: value.type,
+        });
+        this[dataSymbol].push([name, dfile]);
+      } else {
+        this[dataSymbol].push([name, String(value)]);
+      }
+    }
+
+    delete(name) {
+      requiredArguments("FormData.delete", arguments.length, 1);
+      name = String(name);
+      let i = 0;
+      while (i < this[dataSymbol].length) {
+        if (this[dataSymbol][i][0] === name) {
+          this[dataSymbol].splice(i, 1);
+        } else {
+          i++;
+        }
+      }
+    }
+
+    getAll(name) {
+      requiredArguments("FormData.getAll", arguments.length, 1);
+      name = String(name);
+      const values = [];
+      for (const entry of this[dataSymbol]) {
+        if (entry[0] === name) {
+          values.push(entry[1]);
+        }
+      }
+
+      return values;
+    }
+
+    get(name) {
+      requiredArguments("FormData.get", arguments.length, 1);
+      name = String(name);
+      for (const entry of this[dataSymbol]) {
+        if (entry[0] === name) {
+          return entry[1];
+        }
+      }
+
+      return null;
+    }
+
+    has(name) {
+      requiredArguments("FormData.has", arguments.length, 1);
+      name = String(name);
+      return this[dataSymbol].some((entry) => entry[0] === name);
+    }
+
+    set(name, value, filename) {
+      requiredArguments("FormData.set", arguments.length, 2);
+      name = String(name);
+
+      // If there are any entries in the context object’s entry list whose name
+      // is name, replace the first such entry with entry and remove the others
+      let found = false;
+      let i = 0;
+      while (i < this[dataSymbol].length) {
+        if (this[dataSymbol][i][0] === name) {
+          if (!found) {
+            if (value instanceof DomFileImpl) {
+              this[dataSymbol][i][1] = value;
+            } else if (value instanceof DenoBlob) {
+              const dfile = new DomFileImpl([value], filename || name, {
+                type: value.type,
+              });
+              this[dataSymbol][i][1] = dfile;
+            } else {
+              this[dataSymbol][i][1] = String(value);
+            }
+            found = true;
+          } else {
+            this[dataSymbol].splice(i, 1);
+            continue;
+          }
+        }
+        i++;
+      }
+
+      // Otherwise, append entry to the context object’s entry list.
+      if (!found) {
+        if (value instanceof DomFileImpl) {
+          this[dataSymbol].push([name, value]);
+        } else if (value instanceof DenoBlob) {
+          const dfile = new DomFileImpl([value], filename || name, {
+            type: value.type,
+          });
+          this[dataSymbol].push([name, dfile]);
+        } else {
+          this[dataSymbol].push([name, String(value)]);
+        }
+      }
+    }
+
+    get [Symbol.toStringTag]() {
+      return "FormData";
+    }
+  }
+
+  class FormDataImpl extends DomIterableMixin(FormDataBase, dataSymbol) {}
+
+  // From node-fetch
+  // Copyright (c) 2016 David Frank. MIT License.
+  const invalidTokenRegex = /[^\^_`a-zA-Z\-0-9!#$%&'*+.|~]/;
+  const invalidHeaderCharRegex = /[^\t\x20-\x7e\x80-\xff]/;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function isHeaders(value) {
+    // eslint-disable-next-line @typescript-eslint/no-use-before-define
+    return value instanceof Headers;
+  }
+
+  const headerMap = Symbol("header map");
+
+  // TODO: headerGuard? Investigate if it is needed
+  // node-fetch did not implement this but it is in the spec
+  function normalizeParams(name, value) {
+    name = String(name).toLowerCase();
+    value = String(value).trim();
+    return [name, value];
+  }
+
+  // The following name/value validations are copied from
+  // https://github.com/bitinn/node-fetch/blob/master/src/headers.js
+  // Copyright (c) 2016 David Frank. MIT License.
+  function validateName(name) {
+    if (invalidTokenRegex.test(name) || name === "") {
+      throw new TypeError(`${name} is not a legal HTTP header name`);
+    }
+  }
+
+  function validateValue(value) {
+    if (invalidHeaderCharRegex.test(value)) {
+      throw new TypeError(`${value} is not a legal HTTP header value`);
+    }
+  }
+
+  // ref: https://fetch.spec.whatwg.org/#dom-headers
+  class HeadersBase {
+    constructor(init) {
+      if (init === null) {
+        throw new TypeError(
+          "Failed to construct 'Headers'; The provided value was not valid"
+        );
+      } else if (isHeaders(init)) {
+        this[headerMap] = new Map(init);
+      } else {
+        this[headerMap] = new Map();
+        if (Array.isArray(init)) {
+          for (const tuple of init) {
+            // If header does not contain exactly two items,
+            // then throw a TypeError.
+            // ref: https://fetch.spec.whatwg.org/#concept-headers-fill
+            requiredArguments(
+              "Headers.constructor tuple array argument",
+              tuple.length,
+              2
+            );
+
+            const [name, value] = normalizeParams(tuple[0], tuple[1]);
+            validateName(name);
+            validateValue(value);
+            const existingValue = this[headerMap].get(name);
+            this[headerMap].set(
+              name,
+              existingValue ? `${existingValue}, ${value}` : value
+            );
+          }
+        } else if (init) {
+          const names = Object.keys(init);
+          for (const rawName of names) {
+            const rawValue = init[rawName];
+            const [name, value] = normalizeParams(rawName, rawValue);
+            validateName(name);
+            validateValue(value);
+            this[headerMap].set(name, value);
+          }
+        }
+      }
+    }
+
+    [customInspect]() {
+      let headerSize = this[headerMap].size;
+      let output = "";
+      this[headerMap].forEach((value, key) => {
+        const prefix = headerSize === this[headerMap].size ? " " : "";
+        const postfix = headerSize === 1 ? " " : ", ";
+        output = output + `${prefix}${key}: ${value}${postfix}`;
+        headerSize--;
+      });
+      return `Headers {${output}}`;
+    }
+
+    // ref: https://fetch.spec.whatwg.org/#concept-headers-append
+    append(name, value) {
+      requiredArguments("Headers.append", arguments.length, 2);
+      const [newname, newvalue] = normalizeParams(name, value);
+      validateName(newname);
+      validateValue(newvalue);
+      const v = this[headerMap].get(newname);
+      const str = v ? `${v}, ${newvalue}` : newvalue;
+      this[headerMap].set(newname, str);
+    }
+
+    delete(name) {
+      requiredArguments("Headers.delete", arguments.length, 1);
+      const [newname] = normalizeParams(name);
+      validateName(newname);
+      this[headerMap].delete(newname);
+    }
+
+    get(name) {
+      requiredArguments("Headers.get", arguments.length, 1);
+      const [newname] = normalizeParams(name);
+      validateName(newname);
+      const value = this[headerMap].get(newname);
+      return value || null;
+    }
+
+    has(name) {
+      requiredArguments("Headers.has", arguments.length, 1);
+      const [newname] = normalizeParams(name);
+      validateName(newname);
+      return this[headerMap].has(newname);
+    }
+
+    set(name, value) {
+      requiredArguments("Headers.set", arguments.length, 2);
+      const [newname, newvalue] = normalizeParams(name, value);
+      validateName(newname);
+      validateValue(newvalue);
+      this[headerMap].set(newname, newvalue);
+    }
+
+    get [Symbol.toStringTag]() {
+      return "Headers";
+    }
+  }
+
+  // @internal
+  class HeadersImpl extends DomIterableMixin(HeadersBase, headerMap) {}
+
+  const request = (function () {
+    function validateBodyType(owner, bodySource) {
+      if (
+        bodySource instanceof Int8Array ||
+        bodySource instanceof Int16Array ||
+        bodySource instanceof Int32Array ||
+        bodySource instanceof Uint8Array ||
+        bodySource instanceof Uint16Array ||
+        bodySource instanceof Uint32Array ||
+        bodySource instanceof Uint8ClampedArray ||
+        bodySource instanceof Float32Array ||
+        bodySource instanceof Float64Array
+      ) {
+        return true;
+      } else if (bodySource instanceof ArrayBuffer) {
+        return true;
+      } else if (typeof bodySource === "string") {
+        return true;
+      } else if (bodySource instanceof ReadableStream) {
+        return true;
+      } else if (bodySource instanceof FormData) {
+        return true;
+      } else if (!bodySource) {
+        return true; // null body is fine
+      }
+      throw new Error(
+        `Bad ${owner.constructor.name} body type: ${bodySource.constructor.name}`
+      );
+    }
+
+    function concatenate(...arrays) {
+      let totalLength = 0;
+      for (const arr of arrays) {
+        totalLength += arr.length;
+      }
+      const result = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const arr of arrays) {
+        result.set(arr, offset);
+        offset += arr.length;
+      }
+      return result.buffer;
+    }
+
+    function bufferFromStream(stream) {
+      return new Promise((resolve, reject) => {
+        const parts = [];
+        const encoder = new TextEncoder();
+        // recurse
+        (function pump() {
+          stream
+            .read()
+            .then(({ done, value }) => {
+              if (done) {
+                return resolve(concatenate(...parts));
+              }
+
+              if (typeof value === "string") {
+                parts.push(encoder.encode(value));
+              } else if (value instanceof ArrayBuffer) {
+                parts.push(new Uint8Array(value));
+              } else if (!value) {
+                // noop for undefined
+              } else {
+                reject("unhandled type on stream read");
+              }
+
+              return pump();
+            })
+            .catch((err) => {
+              reject(err);
+            });
+        })();
+      });
+    }
+
+    function getHeaderValueParams(value) {
+      const params = new Map();
+      // Forced to do so for some Map constructor param mismatch
+      value
+        .split(";")
+        .slice(1)
+        .map((s) => s.trim().split("="))
+        .filter((arr) => arr.length > 1)
+        .map(([k, v]) => [k, v.replace(/^"([^"]*)"$/, "$1")])
+        .forEach(([k, v]) => params.set(k, v));
+      return params;
+    }
+
+    function hasHeaderValueOf(s, value) {
+      return new RegExp(`^${value}[\t\s]*;?`).test(s);
+    }
+
+    const BodyUsedError =
+      "Failed to execute 'clone' on 'Body': body is already used";
+
+    class Body {
+      constructor(_bodySource, contentType) {
+        validateBodyType(this, _bodySource);
+        this._bodySource = _bodySource;
+        this.contentType = contentType;
+        this._stream = null;
+      }
+
+      get body() {
+        if (this._stream) {
+          return this._stream;
+        }
+
+        if (this._bodySource instanceof ReadableStream) {
+          // @ts-ignore
+          this._stream = this._bodySource;
+        }
+        if (typeof this._bodySource === "string") {
+          const bodySource = this._bodySource;
+          this._stream = new ReadableStream({
+            start(controller) {
+              controller.enqueue(bodySource);
+              controller.close();
+            },
+          });
+        }
+        return this._stream;
+      }
+
+      get bodyUsed() {
+        if (this.body && this.body.locked) {
+          return true;
+        }
+        return false;
+      }
+
+      async blob() {
+        return new DenoBlob([await this.arrayBuffer()]);
+      }
+
+      // ref: https://fetch.spec.whatwg.org/#body-mixin
+      async formData() {
+        const formData = new FormData();
+        const enc = new TextEncoder();
+        if (hasHeaderValueOf(this.contentType, "multipart/form-data")) {
+          const params = getHeaderValueParams(this.contentType);
+          if (!params.has("boundary")) {
+            // TypeError is required by spec
+            throw new TypeError("multipart/form-data must provide a boundary");
+          }
+          // ref: https://tools.ietf.org/html/rfc2046#section-5.1
+          const boundary = params.get("boundary");
+          const dashBoundary = `--${boundary}`;
+          const delimiter = `\r\n${dashBoundary}`;
+          const closeDelimiter = `${delimiter}--`;
+
+          const body = await this.text();
+          let bodyParts;
+          const bodyEpilogueSplit = body.split(closeDelimiter);
+          if (bodyEpilogueSplit.length < 2) {
+            bodyParts = [];
+          } else {
+            // discard epilogue
+            const bodyEpilogueTrimmed = bodyEpilogueSplit[0];
+            // first boundary treated special due to optional prefixed \r\n
+            const firstBoundaryIndex = bodyEpilogueTrimmed.indexOf(
+              dashBoundary
+            );
+            if (firstBoundaryIndex < 0) {
+              throw new TypeError("Invalid boundary");
+            }
+            const bodyPreambleTrimmed = bodyEpilogueTrimmed
+              .slice(firstBoundaryIndex + dashBoundary.length)
+              .replace(/^[\s\r\n\t]+/, ""); // remove transport-padding CRLF
+            // trimStart might not be available
+            // Be careful! body-part allows trailing \r\n!
+            // (as long as it is not part of `delimiter`)
+            bodyParts = bodyPreambleTrimmed
+              .split(delimiter)
+              .map((s) => s.replace(/^[\s\r\n\t]+/, ""));
+            // TODO: LWSP definition is actually trickier,
+            // but should be fine in our case since without headers
+            // we should just discard the part
+          }
+          for (const bodyPart of bodyParts) {
+            const headers = new Headers();
+            const headerOctetSeperatorIndex = bodyPart.indexOf("\r\n\r\n");
+            if (headerOctetSeperatorIndex < 0) {
+              continue; // Skip unknown part
+            }
+            const headerText = bodyPart.slice(0, headerOctetSeperatorIndex);
+            const octets = bodyPart.slice(headerOctetSeperatorIndex + 4);
+
+            // TODO: use textproto.readMIMEHeader from deno_std
+            const rawHeaders = headerText.split("\r\n");
+            for (const rawHeader of rawHeaders) {
+              const sepIndex = rawHeader.indexOf(":");
+              if (sepIndex < 0) {
+                continue; // Skip this header
+              }
+              const key = rawHeader.slice(0, sepIndex);
+              const value = rawHeader.slice(sepIndex + 1);
+              headers.set(key, value);
+            }
+            if (!headers.has("content-disposition")) {
+              continue; // Skip unknown part
+            }
+            // Content-Transfer-Encoding Deprecated
+            const contentDisposition = headers.get("content-disposition");
+            const partContentType = headers.get("content-type") || "text/plain";
+            // TODO: custom charset encoding (needs TextEncoder support)
+            // const contentTypeCharset =
+            //   getHeaderValueParams(partContentType).get("charset") || "";
+            if (!hasHeaderValueOf(contentDisposition, "form-data")) {
+              continue; // Skip, might not be form-data
+            }
+            const dispositionParams = getHeaderValueParams(contentDisposition);
+            if (!dispositionParams.has("name")) {
+              continue; // Skip, unknown name
+            }
+            const dispositionName = dispositionParams.get("name");
+            if (dispositionParams.has("filename")) {
+              const filename = dispositionParams.get("filename");
+              const blob = new DenoBlob([enc.encode(octets)], {
+                type: partContentType,
+              });
+              // TODO: based on spec
+              // https://xhr.spec.whatwg.org/#dom-formdata-append
+              // https://xhr.spec.whatwg.org/#create-an-entry
+              // Currently it does not mention how I could pass content-type
+              // to the internally created file object...
+              formData.append(dispositionName, blob, filename);
+            } else {
+              formData.append(dispositionName, octets);
+            }
+          }
+          return formData;
+        } else if (
+          hasHeaderValueOf(
+            this.contentType,
+            "application/x-www-form-urlencoded"
+          )
+        ) {
+          // From https://github.com/github/fetch/blob/master/fetch.js
+          // Copyright (c) 2014-2016 GitHub, Inc. MIT License
+          const body = await this.text();
+          try {
+            body
+              .trim()
+              .split("&")
+              .forEach((bytes) => {
+                if (bytes) {
+                  const split = bytes.split("=");
+                  const name = split.shift().replace(/\+/g, " ");
+                  const value = split.join("=").replace(/\+/g, " ");
+                  formData.append(
+                    decodeURIComponent(name),
+                    decodeURIComponent(value)
+                  );
+                }
+              });
+          } catch (e) {
+            throw new TypeError("Invalid form urlencoded format");
+          }
+          return formData;
+        } else {
+          throw new TypeError("Invalid form data");
+        }
+      }
+
+      async text() {
+        if (typeof this._bodySource === "string") {
+          return this._bodySource;
+        }
+
+        const ab = await this.arrayBuffer();
+        const decoder = new TextDecoder("utf-8");
+        return decoder.decode(ab);
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async json() {
+        const raw = await this.text();
+        return JSON.parse(raw);
+      }
+
+      arrayBuffer() {
+        if (
+          this._bodySource instanceof Int8Array ||
+          this._bodySource instanceof Int16Array ||
+          this._bodySource instanceof Int32Array ||
+          this._bodySource instanceof Uint8Array ||
+          this._bodySource instanceof Uint16Array ||
+          this._bodySource instanceof Uint32Array ||
+          this._bodySource instanceof Uint8ClampedArray ||
+          this._bodySource instanceof Float32Array ||
+          this._bodySource instanceof Float64Array
+        ) {
+          return Promise.resolve(this._bodySource.buffer);
+        } else if (this._bodySource instanceof ArrayBuffer) {
+          return Promise.resolve(this._bodySource);
+        } else if (typeof this._bodySource === "string") {
+          const enc = new TextEncoder();
+          return Promise.resolve(enc.encode(this._bodySource).buffer);
+        } else if (this._bodySource instanceof ReadableStream) {
+          // @ts-ignore
+          return bufferFromStream(this._bodySource.getReader());
+        } else if (this._bodySource instanceof FormData) {
+          const enc = new TextEncoder();
+          return Promise.resolve(
+            enc.encode(this._bodySource.toString()).buffer
+          );
+        } else if (!this._bodySource) {
+          return Promise.resolve(new ArrayBuffer(0));
+        }
+        throw new Error(
+          `Body type not yet implemented: ${this._bodySource.constructor.name}`
+        );
+      }
+    }
+
+    function byteUpperCase(s) {
+      return String(s).replace(/[a-z]/g, function byteUpperCaseReplace(c) {
+        return c.toUpperCase();
+      });
+    }
+
+    function normalizeMethod(m) {
+      const u = byteUpperCase(m);
+      if (
+        u === "DELETE" ||
+        u === "GET" ||
+        u === "HEAD" ||
+        u === "OPTIONS" ||
+        u === "POST" ||
+        u === "PUT"
+      ) {
+        return u;
+      }
+      return m;
+    }
+
+    class Request extends Body {
+      constructor(input, init) {
+        if (arguments.length < 1) {
+          throw TypeError("Not enough arguments");
+        }
+
+        if (!init) {
+          init = {};
+        }
+
+        let b;
+
+        // prefer body from init
+        if (init.body) {
+          b = init.body;
+        } else if (input instanceof Request && input._bodySource) {
+          if (input.bodyUsed) {
+            throw TypeError(body.BodyUsedError);
+          }
+          b = input._bodySource;
+        } else if (typeof input === "object" && "body" in input && input.body) {
+          if (input.bodyUsed) {
+            throw TypeError(body.BodyUsedError);
+          }
+          b = input.body;
+        } else {
+          b = "";
+        }
+
+        let headers;
+
+        // prefer headers from init
+        if (init.headers) {
+          headers = new Headers(init.headers);
+        } else if (input instanceof Request) {
+          headers = input.headers;
+        } else {
+          headers = new Headers();
+        }
+
+        const contentType = headers.get("content-type") || "";
+        super(b, contentType);
+        this.headers = headers;
+
+        // readonly attribute ByteString method;
+        this.method = "GET";
+
+        // readonly attribute USVString url;
+        this.url = "";
+
+        // readonly attribute RequestCredentials credentials;
+        this.credentials = "omit";
+
+        if (input instanceof Request) {
+          if (input.bodyUsed) {
+            throw TypeError(body.BodyUsedError);
+          }
+          this.method = input.method;
+          this.url = input.url;
+          this.headers = new Headers(input.headers);
+          this.credentials = input.credentials;
+          this._stream = input._stream;
+        } else if (typeof input === "string") {
+          this.url = input;
+        }
+
+        if (init && "method" in init) {
+          this.method = normalizeMethod(init.method);
+        }
+
+        if (
+          init &&
+          "credentials" in init &&
+          init.credentials &&
+          ["omit", "same-origin", "include"].indexOf(init.credentials) !== -1
+        ) {
+          this.credentials = init.credentials;
+        }
+      }
+
+      clone() {
+        if (this.bodyUsed) {
+          throw TypeError(body.BodyUsedError);
+        }
+
+        const iterators = this.headers.entries();
+        const headersList = [];
+        for (const header of iterators) {
+          headersList.push(header);
+        }
+
+        let body2 = this._bodySource;
+
+        if (this._bodySource instanceof ReadableStream) {
+          const tees = this._bodySource.tee();
+          this._stream = this._bodySource = tees[0];
+          body2 = tees[1];
+        }
+
+        const cloned = new Request(this.url, {
+          body: body2,
+          method: this.method,
+          headers: new Headers(headersList),
+          credentials: this.credentials,
+        });
+        return cloned;
+      }
+    }
+
+    return { Request };
+  })();
+
+  const fetchTypes = (function () {
+    function opFetch(args, body) {
+      let zeroCopy = undefined;
+      if (body) {
+        zeroCopy = new Uint8Array(
+          body.buffer,
+          body.byteOffset,
+          body.byteLength
+        );
+      }
+
+      return sendAsyncJson("op_fetch", args, zeroCopy);
+    }
+
+    function getHeaderValueParams(value) {
+      const params = new Map();
+      // Forced to do so for some Map constructor param mismatch
+      value
+        .split(";")
+        .slice(1)
+        .map((s) => s.trim().split("="))
+        .filter((arr) => arr.length > 1)
+        .map(([k, v]) => [k, v.replace(/^"([^"]*)"$/, "$1")])
+        .forEach(([k, v]) => params.set(k, v));
+      return params;
+    }
+
+    function hasHeaderValueOf(s, value) {
+      return new RegExp(`^${value}[\t\s]*;?`).test(s);
+    }
+
+    class Body {
+      #bodyUsed = false;
+      #bodyPromise = null;
+      #data = null;
+      #rid = 0;
+
+      constructor(rid, contentType) {
+        this.#rid = rid;
+        this.body = this;
+        this.contentType = contentType;
+      }
+
+      #bodyBuffer = async () => {
+        assert(this.#bodyPromise == null);
+        const buf = new Buffer();
+        try {
+          const nread = await buf.readFrom(this);
+          const ui8 = buf.bytes();
+          assert(ui8.byteLength === nread);
+          this.#data = ui8.buffer.slice(ui8.byteOffset, ui8.byteOffset + nread);
+          assert(this.#data.byteLength === nread);
+        } finally {
+          this.close();
+        }
+
+        return this.#data;
+      };
+
+      // eslint-disable-next-line require-await
+      async arrayBuffer() {
+        // If we've already bufferred the response, just return it.
+        if (this.#data != null) {
+          return this.#data;
+        }
+
+        // If there is no _bodyPromise yet, start it.
+        if (this.#bodyPromise == null) {
+          this.#bodyPromise = this.#bodyBuffer();
+        }
+
+        return this.#bodyPromise;
+      }
+
+      async blob() {
+        const arrayBuffer = await this.arrayBuffer();
+        return new DenoBlob([arrayBuffer], {
+          type: this.contentType,
+        });
+      }
+
+      // ref: https://fetch.spec.whatwg.org/#body-mixin
+      async formData() {
+        const formData = new FormData();
+        const enc = new TextEncoder();
+        if (hasHeaderValueOf(this.contentType, "multipart/form-data")) {
+          const params = getHeaderValueParams(this.contentType);
+          if (!params.has("boundary")) {
+            // TypeError is required by spec
+            throw new TypeError("multipart/form-data must provide a boundary");
+          }
+          // ref: https://tools.ietf.org/html/rfc2046#section-5.1
+          const boundary = params.get("boundary");
+          const dashBoundary = `--${boundary}`;
+          const delimiter = `\r\n${dashBoundary}`;
+          const closeDelimiter = `${delimiter}--`;
+
+          const body = await this.text();
+          let bodyParts;
+          const bodyEpilogueSplit = body.split(closeDelimiter);
+          if (bodyEpilogueSplit.length < 2) {
+            bodyParts = [];
+          } else {
+            // discard epilogue
+            const bodyEpilogueTrimmed = bodyEpilogueSplit[0];
+            // first boundary treated special due to optional prefixed \r\n
+            const firstBoundaryIndex = bodyEpilogueTrimmed.indexOf(
+              dashBoundary
+            );
+            if (firstBoundaryIndex < 0) {
+              throw new TypeError("Invalid boundary");
+            }
+            const bodyPreambleTrimmed = bodyEpilogueTrimmed
+              .slice(firstBoundaryIndex + dashBoundary.length)
+              .replace(/^[\s\r\n\t]+/, ""); // remove transport-padding CRLF
+            // trimStart might not be available
+            // Be careful! body-part allows trailing \r\n!
+            // (as long as it is not part of `delimiter`)
+            bodyParts = bodyPreambleTrimmed
+              .split(delimiter)
+              .map((s) => s.replace(/^[\s\r\n\t]+/, ""));
+            // TODO: LWSP definition is actually trickier,
+            // but should be fine in our case since without headers
+            // we should just discard the part
+          }
+          for (const bodyPart of bodyParts) {
+            const headers = new Headers();
+            const headerOctetSeperatorIndex = bodyPart.indexOf("\r\n\r\n");
+            if (headerOctetSeperatorIndex < 0) {
+              continue; // Skip unknown part
+            }
+            const headerText = bodyPart.slice(0, headerOctetSeperatorIndex);
+            const octets = bodyPart.slice(headerOctetSeperatorIndex + 4);
+
+            // TODO: use textproto.readMIMEHeader from deno_std
+            const rawHeaders = headerText.split("\r\n");
+            for (const rawHeader of rawHeaders) {
+              const sepIndex = rawHeader.indexOf(":");
+              if (sepIndex < 0) {
+                continue; // Skip this header
+              }
+              const key = rawHeader.slice(0, sepIndex);
+              const value = rawHeader.slice(sepIndex + 1);
+              headers.set(key, value);
+            }
+            if (!headers.has("content-disposition")) {
+              continue; // Skip unknown part
+            }
+            // Content-Transfer-Encoding Deprecated
+            const contentDisposition = headers.get("content-disposition");
+            const partContentType = headers.get("content-type") || "text/plain";
+            // TODO: custom charset encoding (needs TextEncoder support)
+            // const contentTypeCharset =
+            //   getHeaderValueParams(partContentType).get("charset") || "";
+            if (!hasHeaderValueOf(contentDisposition, "form-data")) {
+              continue; // Skip, might not be form-data
+            }
+            const dispositionParams = getHeaderValueParams(contentDisposition);
+            if (!dispositionParams.has("name")) {
+              continue; // Skip, unknown name
+            }
+            const dispositionName = dispositionParams.get("name");
+            if (dispositionParams.has("filename")) {
+              const filename = dispositionParams.get("filename");
+              const blob = new DenoBlob([enc.encode(octets)], {
+                type: partContentType,
+              });
+              // TODO: based on spec
+              // https://xhr.spec.whatwg.org/#dom-formdata-append
+              // https://xhr.spec.whatwg.org/#create-an-entry
+              // Currently it does not mention how I could pass content-type
+              // to the internally created file object...
+              formData.append(dispositionName, blob, filename);
+            } else {
+              formData.append(dispositionName, octets);
+            }
+          }
+          return formData;
+        } else if (
+          hasHeaderValueOf(
+            this.contentType,
+            "application/x-www-form-urlencoded"
+          )
+        ) {
+          // From https://github.com/github/fetch/blob/master/fetch.js
+          // Copyright (c) 2014-2016 GitHub, Inc. MIT License
+          const body = await this.text();
+          try {
+            body
+              .trim()
+              .split("&")
+              .forEach((bytes) => {
+                if (bytes) {
+                  const split = bytes.split("=");
+                  const name = split.shift().replace(/\+/g, " ");
+                  const value = split.join("=").replace(/\+/g, " ");
+                  formData.append(
+                    decodeURIComponent(name),
+                    decodeURIComponent(value)
+                  );
+                }
+              });
+          } catch (e) {
+            throw new TypeError("Invalid form urlencoded format");
+          }
+          return formData;
+        } else {
+          throw new TypeError("Invalid form data");
+        }
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async json() {
+        const text = await this.text();
+        return JSON.parse(text);
+      }
+
+      async text() {
+        const ab = await this.arrayBuffer();
+        const decoder = new TextDecoder("utf-8");
+        return decoder.decode(ab);
+      }
+
+      read(p) {
+        this.#bodyUsed = true;
+        return read(this.#rid, p);
+      }
+
+      close() {
+        close(this.#rid);
+        return Promise.resolve();
+      }
+
+      cancel() {
+        return notImplemented();
+      }
+
+      getReader() {
+        return notImplemented();
+      }
+
+      tee() {
+        return notImplemented();
+      }
+
+      [Symbol.asyncIterator]() {
+        return io.toAsyncIterator(this);
+      }
+
+      get bodyUsed() {
+        return this.#bodyUsed;
+      }
+
+      pipeThrough(_, _options) {
+        return notImplemented();
+      }
+
+      pipeTo(_dest, _options) {
+        return notImplemented();
+      }
+    }
+
+    class Response {
+      constructor(
+        url,
+        status,
+        statusText,
+        headersList,
+        rid,
+        redirected_,
+        type_ = "default",
+        body_ = null
+      ) {
+        this.url = url;
+        this.status = status;
+        this.statusText = statusText;
+        this.trailer = createResolvable();
+        this.headers = new Headers(headersList);
+        const contentType = this.headers.get("content-type") || "";
+
+        if (body_ == null) {
+          this.body = new Body(rid, contentType);
+        } else {
+          this.body = body_;
+        }
+
+        if (type_ == null) {
+          this.type = "default";
+        } else {
+          this.type = type_;
+          if (type_ == "error") {
+            // spec: https://fetch.spec.whatwg.org/#concept-network-error
+            this.status = 0;
+            this.statusText = "";
+            this.headers = new Headers();
+            this.body = null;
+            /* spec for other Response types:
+              https://fetch.spec.whatwg.org/#concept-filtered-response-basic
+              Please note that type "basic" is not the same thing as "default".*/
+          } else if (type_ == "basic") {
+            for (const h of this.headers) {
+              /* Forbidden Response-Header Names:
+                https://fetch.spec.whatwg.org/#forbidden-response-header-name */
+              if (["set-cookie", "set-cookie2"].includes(h[0].toLowerCase())) {
+                this.headers.delete(h[0]);
+              }
+            }
+          } else if (type_ == "cors") {
+            /* CORS-safelisted Response-Header Names:
+                https://fetch.spec.whatwg.org/#cors-safelisted-response-header-name */
+            const allowedHeaders = [
+              "Cache-Control",
+              "Content-Language",
+              "Content-Length",
+              "Content-Type",
+              "Expires",
+              "Last-Modified",
+              "Pragma",
+            ].map((c) => c.toLowerCase());
+            for (const h of this.headers) {
+              /* Technically this is still not standards compliant because we are
+                supposed to allow headers allowed in the
+                'Access-Control-Expose-Headers' header in the 'internal response'
+                However, this implementation of response doesn't seem to have an
+                easy way to access the internal response, so we ignore that
+                header.
+                TODO(serverhiccups): change how internal responses are handled
+                so we can do this properly. */
+              if (!allowedHeaders.includes(h[0].toLowerCase())) {
+                this.headers.delete(h[0]);
+              }
+            }
+            /* TODO(serverhiccups): Once I fix the 'internal response' thing,
+              these actually need to treat the internal response differently */
+          } else if (type_ == "opaque" || type_ == "opaqueredirect") {
+            this.url = "";
+            this.status = 0;
+            this.statusText = "";
+            this.headers = new Headers();
+            this.body = null;
+          }
+        }
+
+        this.redirected = redirected_;
+      }
+
+      #bodyViewable = () => {
+        if (
+          this.type == "error" ||
+          this.type == "opaque" ||
+          this.type == "opaqueredirect" ||
+          this.body == undefined
+        ) {
+          return true;
+        }
+        return false;
+      };
+
+      arrayBuffer() {
+        /* You have to do the null check here and not in the function because
+         * otherwise TS complains about this.body potentially being null */
+        if (this.#bodyViewable() || this.body == null) {
+          return Promise.reject(new Error("Response body is null"));
+        }
+        return this.body.arrayBuffer();
+      }
+
+      blob() {
+        if (this.#bodyViewable() || this.body == null) {
+          return Promise.reject(new Error("Response body is null"));
+        }
+        return this.body.blob();
+      }
+
+      formData() {
+        if (this.#bodyViewable() || this.body == null) {
+          return Promise.reject(new Error("Response body is null"));
+        }
+        return this.body.formData();
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      json() {
+        if (this.#bodyViewable() || this.body == null) {
+          return Promise.reject(new Error("Response body is null"));
+        }
+        return this.body.json();
+      }
+
+      text() {
+        if (this.#bodyViewable() || this.body == null) {
+          return Promise.reject(new Error("Response body is null"));
+        }
+        return this.body.text();
+      }
+
+      get ok() {
+        return 200 <= this.status && this.status < 300;
+      }
+
+      get bodyUsed() {
+        if (this.body === null) return false;
+        return this.body.bodyUsed;
+      }
+
+      clone() {
+        if (this.bodyUsed) {
+          throw new TypeError(
+            "Failed to execute 'clone' on 'Response': Response body is already used"
+          );
+        }
+
+        const iterators = this.headers.entries();
+        const headersList = [];
+        for (const header of iterators) {
+          headersList.push(header);
+        }
+
+        return new Response(
+          this.url,
+          this.status,
+          this.statusText,
+          headersList,
+          -1,
+          this.redirected,
+          this.type,
+          this.body
+        );
+      }
+
+      static redirect(url, status) {
+        if (![301, 302, 303, 307, 308].includes(status)) {
+          throw new RangeError(
+            "The redirection status must be one of 301, 302, 303, 307 and 308."
+          );
+        }
+        return new Response(
+          "",
+          status,
+          "",
+          [["Location", typeof url === "string" ? url : url.toString()]],
+          -1,
+          false,
+          "default",
+          null
+        );
+      }
+    }
+
+    function sendFetchReq(url, method, headers, body) {
+      let headerArray = [];
+      if (headers) {
+        headerArray = Array.from(headers.entries());
+      }
+
+      const args = {
+        method,
+        url,
+        headers: headerArray,
+      };
+
+      return opFetch(args, body);
+    }
+
+    async function fetch(input, init) {
+      let url;
+      let method = null;
+      let headers = null;
+      let body;
+      let redirected = false;
+      let remRedirectCount = 20; // TODO: use a better way to handle
+
+      if (typeof input === "string" || input instanceof URL) {
+        url = typeof input === "string" ? input : input.href;
+        if (init != null) {
+          method = init.method || null;
+          if (init.headers) {
+            headers =
+              init.headers instanceof Headers
+                ? init.headers
+                : new Headers(init.headers);
+          } else {
+            headers = null;
+          }
+
+          // ref: https://fetch.spec.whatwg.org/#body-mixin
+          // Body should have been a mixin
+          // but we are treating it as a separate class
+          if (init.body) {
+            if (!headers) {
+              headers = new Headers();
+            }
+            let contentType = "";
+            if (typeof init.body === "string") {
+              body = new TextEncoder().encode(init.body);
+              contentType = "text/plain;charset=UTF-8";
+            } else if (isTypedArray(init.body)) {
+              body = init.body;
+            } else if (init.body instanceof URLSearchParams) {
+              body = new TextEncoder().encode(init.body.toString());
+              contentType = "application/x-www-form-urlencoded;charset=UTF-8";
+            } else if (init.body instanceof DenoBlob) {
+              body = init.body[bytesSymbol];
+              contentType = init.body.type;
+            } else if (init.body instanceof FormData) {
+              let boundary = "";
+              if (headers.has("content-type")) {
+                const params = getHeaderValueParams("content-type");
+                if (params.has("boundary")) {
+                  boundary = params.get("boundary");
+                }
+              }
+              if (!boundary) {
+                boundary =
+                  "----------" +
+                  Array.from(Array(32))
+                    .map(() => Math.random().toString(36)[2] || 0)
+                    .join("");
+              }
+
+              let payload = "";
+              for (const [fieldName, fieldValue] of init.body.entries()) {
+                let part = `\r\n--${boundary}\r\n`;
+                part += `Content-Disposition: form-data; name=\"${fieldName}\"`;
+                if (fieldValue instanceof DomFileImpl) {
+                  part += `; filename=\"${fieldValue.name}\"`;
+                }
+                part += "\r\n";
+                if (fieldValue instanceof DomFileImpl) {
+                  part += `Content-Type: ${
+                    fieldValue.type || "application/octet-stream"
+                  }\r\n`;
+                }
+                part += "\r\n";
+                if (fieldValue instanceof DomFileImpl) {
+                  part += new TextDecoder().decode(fieldValue[bytesSymbol]);
+                } else {
+                  part += fieldValue;
+                }
+                payload += part;
+              }
+              payload += `\r\n--${boundary}--`;
+              body = new TextEncoder().encode(payload);
+              contentType = "multipart/form-data; boundary=" + boundary;
+            } else {
+              // TODO: ReadableStream
+              notImplemented();
+            }
+            if (contentType && !headers.has("content-type")) {
+              headers.set("content-type", contentType);
+            }
+          }
+        }
+      } else {
+        url = input.url;
+        method = input.method;
+        headers = input.headers;
+
+        //@ts-ignore
+        if (input._bodySource) {
+          body = new DataView(await input.arrayBuffer());
+        }
+      }
+
+      while (remRedirectCount) {
+        const fetchResponse = await sendFetchReq(url, method, headers, body);
+
+        const response = new Response(
+          url,
+          fetchResponse.status,
+          fetchResponse.statusText,
+          fetchResponse.headers,
+          fetchResponse.bodyRid,
+          redirected
+        );
+        if ([301, 302, 303, 307, 308].includes(response.status)) {
+          // We won't use body of received response, so close it now
+          // otherwise it will be kept in resource table.
+          close(fetchResponse.bodyRid);
+          // We're in a redirect status
+          switch ((init && init.redirect) || "follow") {
+            case "error":
+              /* I suspect that deno will probably crash if you try to use that
+                rid, which suggests to me that Response needs to be refactored */
+              return new Response("", 0, "", [], -1, false, "error", null);
+            case "manual":
+              return new Response(
+                "",
+                0,
+                "",
+                [],
+                -1,
+                false,
+                "opaqueredirect",
+                null
+              );
+            case "follow":
+            default:
+              let redirectUrl = response.headers.get("Location");
+              if (redirectUrl == null) {
+                return response; // Unspecified
+              }
+              if (
+                !redirectUrl.startsWith("http://") &&
+                !redirectUrl.startsWith("https://")
+              ) {
+                redirectUrl =
+                  url.split("//")[0] +
+                  "//" +
+                  url.split("//")[1].split("/")[0] +
+                  redirectUrl; // TODO: handle relative redirection more gracefully
+              }
+              url = redirectUrl;
+              redirected = true;
+              remRedirectCount--;
+          }
+        } else {
+          return response;
+        }
+      }
+      // Return a network error due to too many redirections
+      throw notImplemented();
+    }
+
+    return {
+      fetch,
+      Response,
+    };
+  })();
+
+  class Performance {
+    now() {
+      const res = now();
+      return res.seconds * 1e3 + res.subsecNanos / 1e6;
+    }
+  }
+
+  function createWorker(specifier, hasSourceCode, sourceCode, name) {
+    return sendSyncJson("op_create_worker", {
+      specifier,
+      hasSourceCode,
+      sourceCode,
+      name,
+    });
+  }
+
+  function hostTerminateWorker(id) {
+    sendSyncJson("op_host_terminate_worker", { id });
+  }
+
+  function hostPostMessage(id, data) {
+    sendSyncJson("op_host_post_message", { id }, data);
+  }
+
+  function hostGetMessage(id) {
+    return sendAsyncJson("op_host_get_message", { id });
+  }
+
+  /*
+  import { blobURLMap } from "./web/url.ts";
+  */
+  class MessageEvent extends EventImpl {
+    constructor(type, eventInitDict) {
+      super(type, {
+        bubbles: eventInitDict?.bubbles ?? false,
+        cancelable: eventInitDict?.cancelable ?? false,
+        composed: eventInitDict?.composed ?? false,
+      });
+
+      this.data = eventInitDict?.data ?? null;
+      this.origin = eventInitDict?.origin ?? "";
+      this.lastEventId = eventInitDict?.lastEventId ?? "";
+    }
+  }
+
+  class ErrorEvent extends EventImpl {
+    constructor(type, eventInitDict) {
+      super(type, {
+        bubbles: eventInitDict?.bubbles ?? false,
+        cancelable: eventInitDict?.cancelable ?? false,
+        composed: eventInitDict?.composed ?? false,
+      });
+
+      this.message = eventInitDict?.message ?? "";
+      this.filename = eventInitDict?.filename ?? "";
+      this.lineno = eventInitDict?.lineno ?? 0;
+      this.colno = eventInitDict?.colno ?? 0;
+      this.error = eventInitDict?.error ?? null;
+    }
+  }
+
+  function encodeMessage(data) {
+    const dataJson = JSON.stringify(data);
+    return encoder.encode(dataJson);
+  }
+
+  function decodeMessage(dataIntArray) {
+    const dataJson = decoder.decode(dataIntArray);
+    return JSON.parse(dataJson);
+  }
+
+  class WorkerImpl extends EventTargetImpl {
+    #id = 0;
+    #name = "";
+    #terminated = false;
+
+    constructor(specifier, options) {
+      super();
+      const { type = "classic", name = "unknown" } = options ?? {};
+
+      if (type !== "module") {
+        throw new Error(
+          'Not yet implemented: only "module" type workers are supported'
+        );
+      }
+
+      this.#name = name;
+      const hasSourceCode = false;
+      const sourceCode = decoder.decode(new Uint8Array());
+
+      /* TODO(bartlomieju):
+      // Handle blob URL.
+      if (specifier.startsWith("blob:")) {
+        hasSourceCode = true;
+        const b = blobURLMap.get(specifier);
+        if (!b) {
+          throw new Error("No Blob associated with the given URL is found");
+        }
+        const blobBytes = blobBytesWeakMap.get(b!);
+        if (!blobBytes) {
+          throw new Error("Invalid Blob");
+        }
+        sourceCode = blobBytes!;
+      }
+      */
+
+      const { id } = createWorker(
+        specifier,
+        hasSourceCode,
+        sourceCode,
+        options?.name
+      );
+      this.#id = id;
+      this.#poll();
+    }
+
+    #handleMessage = (msgData) => {
+      let data;
+      try {
+        data = decodeMessage(new Uint8Array(msgData));
+      } catch (e) {
+        const msgErrorEvent = new MessageEvent("messageerror", {
+          cancelable: false,
+          data,
+        });
+        if (this.onmessageerror) {
+          this.onmessageerror(msgErrorEvent);
+        }
+        return;
+      }
+
+      const msgEvent = new MessageEvent("message", {
+        cancelable: false,
+        data,
+      });
+
+      if (this.onmessage) {
+        this.onmessage(msgEvent);
+      }
+
+      this.dispatchEvent(msgEvent);
+    };
+
+    #handleError = (e) => {
+      const event = new ErrorEvent("error", {
+        cancelable: true,
+        message: e.message,
+        lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
+        colno: e.columnNumber ? e.columnNumber + 1 : undefined,
+        filename: e.fileName,
+        error: null,
+      });
+
+      let handled = false;
+      if (this.onerror) {
+        this.onerror(event);
+      }
+
+      this.dispatchEvent(event);
+      if (event.defaultPrevented) {
+        handled = true;
+      }
+
+      return handled;
+    };
+
+    #poll = async () => {
+      while (!this.#terminated) {
+        const event = await hostGetMessage(this.#id);
+
+        // If terminate was called then we ignore all messages
+        if (this.#terminated) {
+          return;
+        }
+
+        const type = event.type;
+
+        if (type === "terminalError") {
+          this.#terminated = true;
+          if (!this.#handleError(event.error)) {
+            throw Error(event.error.message);
+          }
+          continue;
+        }
+
+        if (type === "msg") {
+          this.#handleMessage(event.data);
+          continue;
+        }
+
+        if (type === "error") {
+          if (!this.#handleError(event.error)) {
+            throw Error(event.error.message);
+          }
+          continue;
+        }
+
+        if (type === "close") {
+          log(`Host got "close" message from worker: ${this.#name}`);
+          this.#terminated = true;
+          return;
+        }
+
+        throw new Error(`Unknown worker event: "${type}"`);
+      }
+    };
+
+    postMessage(message, transferOrOptions) {
+      if (transferOrOptions) {
+        throw new Error(
+          "Not yet implemented: `transfer` and `options` are not supported."
+        );
+      }
+
+      if (this.#terminated) {
+        return;
+      }
+
+      hostPostMessage(this.#id, encodeMessage(message));
+    }
+
+    terminate() {
+      if (!this.#terminated) {
+        this.#terminated = true;
+        hostTerminateWorker(this.#id);
+      }
+    }
+  }
+
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScopeMethods = {
     atob: writable(atob),
     btoa: writable(btoa),
     clearInterval: writable(clearInterval),
     clearTimeout: writable(clearTimeout),
-    // fetch: writable(fetchTypes.fetch),
+    fetch: writable(fetchTypes.fetch),
     // queueMicrotask is bound in Rust
     setInterval: writable(setInterval),
     setTimeout: writable(setTimeout),
@@ -6827,15 +8887,15 @@
     EventTarget: nonEnumerable(EventTargetImpl),
     URL: nonEnumerable(URLImpl),
     URLSearchParams: nonEnumerable(URLSearchParamsImpl),
-    // Headers: nonEnumerable(headers.HeadersImpl),
-    // FormData: nonEnumerable(formData.FormDataImpl),
+    Headers: nonEnumerable(HeadersImpl),
+    FormData: nonEnumerable(FormDataImpl),
     TextEncoder: nonEnumerable(TextEncoder),
     TextDecoder: nonEnumerable(TextDecoder),
-    // ReadableStream: nonEnumerable(streams.ReadableStream),
-    // Request: nonEnumerable(request.Request),
-    // Response: nonEnumerable(fetchTypes.Response),
-    // performance: writable(new performanceUtil.Performance()),
-    // Worker: nonEnumerable(workers.WorkerImpl),
+    ReadableStream: nonEnumerable(streams.ReadableStream),
+    Request: nonEnumerable(request.Request),
+    Response: nonEnumerable(fetchTypes.Response),
+    performance: writable(new Performance()),
+    Worker: nonEnumerable(WorkerImpl),
   };
 
   function setEventTargetData(value) {
@@ -6917,6 +8977,109 @@
     }
   }
 
+  // TODO(bartlomieju): remove these funtions
+  // Stuff for workers
+  const onmessage = () => {};
+  const onerror = () => {};
+
+  function postMessage(data) {
+    const dataJson = JSON.stringify(data);
+    const dataIntArray = encoder.encode(dataJson);
+    webWorkerOps.postMessage(dataIntArray);
+  }
+
+  let isClosing = false;
+
+  function closeWorker() {
+    if (isClosing) {
+      return;
+    }
+
+    isClosing = true;
+    webWorkerOps.close();
+  }
+
+  async function workerMessageRecvCallback(data) {
+    const msgEvent = new MessageEvent("message", {
+      cancelable: false,
+      data,
+    });
+
+    try {
+      if (globalThis["onmessage"]) {
+        const result = globalThis.onmessage(msgEvent);
+        if (result && "then" in result) {
+          await result;
+        }
+      }
+      globalThis.dispatchEvent(msgEvent);
+    } catch (e) {
+      let handled = false;
+
+      const errorEvent = new ErrorEvent("error", {
+        cancelable: true,
+        message: e.message,
+        lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
+        colno: e.columnNumber ? e.columnNumber + 1 : undefined,
+        filename: e.fileName,
+        error: null,
+      });
+
+      if (globalThis["onerror"]) {
+        const ret = globalThis.onerror(
+          e.message,
+          e.fileName,
+          e.lineNumber,
+          e.columnNumber,
+          e
+        );
+        handled = ret === true;
+      }
+
+      globalThis.dispatchEvent(errorEvent);
+      if (errorEvent.defaultPrevented) {
+        handled = true;
+      }
+
+      if (!handled) {
+        throw e;
+      }
+    }
+  }
+
+  const workerRuntimeGlobalProperties = {
+    self: readOnly(globalThis),
+    onmessage: writable(onmessage),
+    onerror: writable(onerror),
+    // TODO: should be readonly?
+    close: nonEnumerable(closeWorker),
+    postMessage: writable(postMessage),
+    workerMessageRecvCallback: nonEnumerable(workerMessageRecvCallback),
+  };
+
+  function bootstrapWorkerRuntimeFn(name, internalName) {
+    if (hasBootstrapped) {
+      throw new Error("Worker runtime already bootstrapped");
+    }
+    log("bootstrapWorkerRuntime");
+    hasBootstrapped = true;
+    Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
+    Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
+    Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
+    Object.defineProperties(globalThis, eventTargetProperties);
+    Object.defineProperties(globalThis, { name: readOnly(name) });
+    setEventTargetData(globalThis);
+    const s = runtime.start(internalName ?? name);
+
+    const location = new LocationImpl(s.location);
+    immutableDefine(globalThis, "location", location);
+    Object.freeze(globalThis.location);
+
+    // globalThis.Deno is not available in worker scope
+    delete globalThis.Deno;
+    assert(globalThis.Deno === undefined);
+  }
+
   // Removes the `__proto__` for security reasons.  This intentionally makes
   // Deno non compliant with ECMA-262 Annex B.2.2.1
   delete Object.prototype.__proto__;
@@ -6928,11 +9091,11 @@
       writable: false,
       configurable: false,
     },
-    // bootstrapWorkerRuntime: {
-    //   value: bootstrapWorkerRuntime,
-    //   enumerable: false,
-    //   writable: false,
-    //   configurable: false,
-    // },
+    bootstrapWorkerRuntime: {
+      value: bootstrapWorkerRuntimeFn,
+      enumerable: false,
+      writable: false,
+      configurable: false,
+    },
   });
 })();

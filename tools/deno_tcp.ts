@@ -20,7 +20,7 @@ async function handle(conn: Deno.Conn): Promise<void> {
     }
   } catch (e) {
     console.log("error", e);
-  } finally { 
+  } finally {
     conn.close();
   }
 }
