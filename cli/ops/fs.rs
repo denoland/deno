@@ -1,16 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
+use super::io::blocking_fs_file_helper;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
 use crate::fs::resolve_from_cwd;
 use crate::op_error::OpError;
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
-use deno_core::*;
+use deno_core::Isolate;
+use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
-use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -206,9 +207,9 @@ fn op_seek(
   let whence = args.whence as u32;
   // Translate seek mode to Rust repr.
   let seek_from = match whence {
-    0 => SeekFrom::Start(offset as u64),
-    1 => SeekFrom::Current(i64::from(offset)),
-    2 => SeekFrom::End(i64::from(offset)),
+    0 => std::io::SeekFrom::Start(offset as u64),
+    1 => std::io::SeekFrom::Current(i64::from(offset)),
+    2 => std::io::SeekFrom::End(i64::from(offset)),
     _ => {
       return Err(OpError::type_error(format!(
         "Invalid seek mode: {}",
@@ -217,29 +218,29 @@ fn op_seek(
     }
   };
 
-  let state = state.borrow();
-  let resource_holder = state
-    .resource_table
-    .get::<StreamResourceHolder>(rid)
-    .ok_or_else(OpError::bad_resource_id)?;
-
-  let tokio_file = match resource_holder.resource {
-    StreamResource::FsFile(Some((ref file, _))) => file,
-    _ => return Err(OpError::bad_resource_id()),
-  };
-  let mut file = futures::executor::block_on(tokio_file.try_clone())?;
-
+  let state = state.clone();
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
-    debug!("op_seek {} {} {}", rid, offset, whence);
-    let pos = file.seek(seek_from).await?;
-    Ok(json!(pos))
-  };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let mut s = state.borrow_mut();
+    let pos =
+      blocking_fs_file_helper(&mut s.resource_table, rid, |std_file| {
+        use std::io::Seek;
+        std_file.seek(seek_from)
+      })?;
+    Ok(JsonOp::Sync(json!(pos)))
   } else {
+    // TODO(ry) This is a fake async op. We need to use poll_fn,
+    // tokio::fs::File::start_seek and tokio::fs::File::poll_complete
+    let fut = async move {
+      let mut s = state.borrow_mut();
+      let pos =
+        blocking_fs_file_helper(&mut s.resource_table, rid, |std_file| {
+          use std::io::Seek;
+          std_file.seek(seek_from)
+        })?;
+      Ok(json!(pos))
+    };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }

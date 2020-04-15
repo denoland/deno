@@ -201,10 +201,6 @@ impl DenoAsyncRead for StreamResource {
   }
 }
 
-fn sync_not_allowed() -> OpError {
-  OpError::type_error("sync not allowed on this resource".to_string())
-}
-
 pub fn op_read(
   state: &State,
   is_sync: bool,
@@ -220,7 +216,14 @@ pub fn op_read(
   let mut buf = zero_copy.unwrap();
 
   if is_sync {
-    todo!()
+    MinimalOp::Sync({
+      // First we look up the rid in the resource table.
+      let resource_table = &mut state.borrow_mut().resource_table;
+      blocking_fs_file_helper(resource_table, rid as u32, move |std_file| {
+        use std::io::Read;
+        std_file.read(&mut buf).map(|n: usize| n as i32)
+      })
+    })
   } else {
     MinimalOp::Async(
       poll_fn(move |cx| {
@@ -335,44 +338,10 @@ pub fn op_write(
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
       let resource_table = &mut state.borrow_mut().resource_table;
-      let mut r = resource_table.get_mut::<StreamResourceHolder>(rid as u32);
-      if let Some(ref mut resource_holder) = r {
-        // Sync write only works for FsFile. It doesn't make sense to do this
-        // for non-blocking sockets. So we error out if not FsFile.
-        match &mut resource_holder.resource {
-          FsFile(option_file_metadata) => {
-            // The object in the resource table is a tokio::fs::File - but in
-            // order to do a blocking write on it, we must turn it into a
-            // std::fs::File. Hopefully this code compiles down to nothing.
-            let (tokio_file, metadata) = option_file_metadata.take().unwrap();
-            match tokio_file.try_into_std() {
-              Ok(mut std_file) => {
-                // Actually perform the synchronous write.
-                use std::io::Write;
-                let result = std_file
-                  .write(&buf)
-                  .map(|nwritten: usize| nwritten as i32)
-                  .map_err(OpError::from);
-                // Turn the std_file handle back into a tokio file, put it back
-                // in the resource table.
-                let tokio_file = tokio::fs::File::from_std(std_file);
-                resource_holder.resource = FsFile(Some((tokio_file, metadata)));
-                // return the result.
-                result
-              }
-              Err(tokio_file) => {
-                // This function will return an error containing the file if
-                // some operation is in-flight.
-                resource_holder.resource = FsFile(Some((tokio_file, metadata)));
-                Err(OpError::resource_unavailable())
-              }
-            }
-          }
-          _ => Err(sync_not_allowed()),
-        }
-      } else {
-        Err(OpError::bad_resource_id())
-      }
+      blocking_fs_file_helper(resource_table, rid as u32, |std_file| {
+        use std::io::Write;
+        std_file.write(&buf).map(|nwritten: usize| nwritten as i32)
+      })
     })
   } else {
     MinimalOp::Async(
@@ -403,5 +372,57 @@ pub fn op_write(
       }
       .boxed_local(),
     )
+  }
+}
+
+/// Helper function for doing blocking fs ops on the main thread.
+///
+/// For many types of resources, it does not make sense to do blocking
+/// operations of the main thread - and we should not support it - such as for
+/// sockets.
+///
+/// Errors if rid is in use by another op/promise or does not correspond to a
+/// FsFile.
+pub fn blocking_fs_file_helper<F, T>(
+  resource_table: &mut ResourceTable,
+  rid: u32,
+  mut f: F,
+) -> Result<T, OpError>
+where
+  F: FnMut(&mut std::fs::File) -> Result<T, std::io::Error>,
+{
+  // First we look up the rid in the resource table.
+  let mut r = resource_table.get_mut::<StreamResourceHolder>(rid);
+  if let Some(ref mut resource_holder) = r {
+    // Sync write only works for FsFile. It doesn't make sense to do this
+    // for non-blocking sockets. So we error out if not FsFile.
+    match &mut resource_holder.resource {
+      FsFile(option_file_metadata) => {
+        // The object in the resource table is a tokio::fs::File - but in
+        // order to do a blocking write on it, we must turn it into a
+        // std::fs::File. Hopefully this code compiles down to nothing.
+        let (tokio_file, metadata) = option_file_metadata.take().unwrap();
+        match tokio_file.try_into_std() {
+          Ok(mut std_file) => {
+            let result = f(&mut std_file).map_err(OpError::from);
+            // Turn the std_file handle back into a tokio file, put it back
+            // in the resource table.
+            let tokio_file = tokio::fs::File::from_std(std_file);
+            resource_holder.resource = FsFile(Some((tokio_file, metadata)));
+            // return the result.
+            result
+          }
+          Err(tokio_file) => {
+            // This function will return an error containing the file if
+            // some operation is in-flight.
+            resource_holder.resource = FsFile(Some((tokio_file, metadata)));
+            Err(OpError::resource_unavailable())
+          }
+        }
+      }
+      _ => Err(OpError::sync_not_allowed()),
+    }
+  } else {
+    Err(OpError::bad_resource_id())
   }
 }

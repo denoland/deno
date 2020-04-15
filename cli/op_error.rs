@@ -104,11 +104,17 @@ impl OpError {
     Self::new(ErrorKind::InvalidData, "invalid utf8".to_string())
   }
 
+  // TODO(ry) Should this have its own ErrorKind code?
   pub fn resource_unavailable() -> OpError {
     Self::new(
       ErrorKind::InvalidData,
       "resource is unavailable because it is in by a promise".to_string(),
     )
+  }
+
+  // TODO(ry) Should this have its own ErrorKind code?
+  pub fn sync_not_allowed() -> OpError {
+    OpError::type_error("sync not allowed on this resource".to_string())
   }
 }
 

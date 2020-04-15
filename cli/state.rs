@@ -169,7 +169,6 @@ impl State {
     D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
   {
     let state = self.clone();
-
     move |args: Value,
           zero_copy: Option<ZeroCopyBuf>|
           -> Result<JsonOp, OpError> { dispatcher(&state, args, zero_copy) }
