@@ -16,7 +16,7 @@ export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
 
   addr: Addr;
 
-  [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]>;
+  [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
 }
 
 export interface Listener extends AsyncIterable<Conn> {
@@ -26,7 +26,7 @@ export interface Listener extends AsyncIterable<Conn> {
 
   addr: Addr;
 
-  [Symbol.asyncIterator](): AsyncIterator<Conn>;
+  [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
 }
 
 export class ConnImpl implements Conn {
@@ -69,7 +69,7 @@ export class ListenerImpl implements Listener {
     close(this.rid);
   }
 
-  async *[Symbol.asyncIterator](): AsyncIterator<Conn> {
+  async *[Symbol.asyncIterator](): AsyncIterableIterator<Conn> {
     while (true) {
       try {
         yield await this.accept();
@@ -112,7 +112,7 @@ export class DatagramImpl implements DatagramConn {
     close(this.rid);
   }
 
-  async *[Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]> {
+  async *[Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]> {
     while (true) {
       try {
         yield await this.receive();
