@@ -33,7 +33,7 @@
       }
     },
     {
-      "files": ["cli/rt.js", "cli/tsrt.js"],
+      "files": ["cli/js/rt/*.js", "cli/js/tsrt/*.js"],
       "rules": {
         "@typescript-eslint/camelcase": ["off"]
       }
