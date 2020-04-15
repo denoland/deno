@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "../dispatch_json.ts";
-import { FileInfo, FileInfoImpl } from "../../file_info.ts";
-import { StatResponse } from "./stat.ts";
+import { FileInfo, StatResponse, parseFileInfo } from "./stat.ts";
 
 interface ReadDirResponse {
   entries: StatResponse[];
@@ -10,7 +9,7 @@ interface ReadDirResponse {
 function res(response: ReadDirResponse): FileInfo[] {
   return response.entries.map(
     (statRes: StatResponse): FileInfo => {
-      return new FileInfoImpl(statRes);
+      return parseFileInfo(statRes);
     }
   );
 }

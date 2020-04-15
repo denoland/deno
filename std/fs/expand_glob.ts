@@ -95,7 +95,7 @@ export async function* expandGlob(
     walkInfo: WalkInfo,
     globSegment: string
   ): AsyncIterableIterator<WalkInfo> {
-    if (!walkInfo.info.isDirectory()) {
+    if (!walkInfo.info.isDirectory) {
       return;
     } else if (globSegment == "..") {
       const parentPath = joinGlobs([walkInfo.filename, ".."], globOptions);
@@ -143,13 +143,13 @@ export async function* expandGlob(
     );
   }
   if (hasTrailingSep) {
-    currentMatches = currentMatches.filter(({ info }): boolean =>
-      info.isDirectory()
+    currentMatches = currentMatches.filter(
+      ({ info }): boolean => info.isDirectory
     );
   }
   if (!includeDirs) {
     currentMatches = currentMatches.filter(
-      ({ info }): boolean => !info.isDirectory()
+      ({ info }): boolean => !info.isDirectory
     );
   }
   yield* currentMatches;
@@ -199,7 +199,7 @@ export function* expandGlobSync(
     walkInfo: WalkInfo,
     globSegment: string
   ): IterableIterator<WalkInfo> {
-    if (!walkInfo.info.isDirectory()) {
+    if (!walkInfo.info.isDirectory) {
       return;
     } else if (globSegment == "..") {
       const parentPath = joinGlobs([walkInfo.filename, ".."], globOptions);
@@ -247,13 +247,13 @@ export function* expandGlobSync(
     );
   }
   if (hasTrailingSep) {
-    currentMatches = currentMatches.filter(({ info }): boolean =>
-      info.isDirectory()
+    currentMatches = currentMatches.filter(
+      ({ info }): boolean => info.isDirectory
     );
   }
   if (!includeDirs) {
     currentMatches = currentMatches.filter(
-      ({ info }): boolean => !info.isDirectory()
+      ({ info }): boolean => !info.isDirectory
     );
   }
   yield* currentMatches;

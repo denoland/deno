@@ -273,7 +273,7 @@ unitTest(
     const filename = tempDir + "/test.txt";
     const f = await Deno.create(filename);
     let fileInfo = Deno.statSync(filename);
-    assert(fileInfo.isFile());
+    assert(fileInfo.isFile);
     assert(fileInfo.size === 0);
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
@@ -297,7 +297,7 @@ unitTest(
     let file = await Deno.open(filename, "w");
     // assert file was created
     let fileInfo = Deno.statSync(filename);
-    assert(fileInfo.isFile());
+    assert(fileInfo.isFile);
     assertEquals(fileInfo.size, 0);
     // write some data
     await file.write(data);
@@ -335,7 +335,7 @@ unitTest(
     const seekPosition = 0;
     // assert file was created
     let fileInfo = Deno.statSync(filename);
-    assert(fileInfo.isFile());
+    assert(fileInfo.isFile);
     assertEquals(fileInfo.size, 0);
     // write some data
     await file.write(data);

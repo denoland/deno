@@ -3,6 +3,9 @@ import { assert, assertEquals, assertThrows } from "../../testing/asserts.ts";
 import Dirent from "./_fs_dirent.ts";
 
 class FileInfoMock implements Deno.FileInfo {
+  isFile = false;
+  isDirectory = false;
+  isSymlink = false;
   size = -1;
   modified = -1;
   accessed = -1;
@@ -17,20 +20,6 @@ class FileInfoMock implements Deno.FileInfo {
   rdev = -1;
   blksize = -1;
   blocks: number | null = null;
-
-  isFileMock = false;
-  isDirectoryMock = false;
-  isSymlinkMock = false;
-
-  isFile(): boolean {
-    return this.isFileMock;
-  }
-  isDirectory(): boolean {
-    return this.isDirectoryMock;
-  }
-  isSymlink(): boolean {
-    return this.isSymlinkMock;
-  }
 }
 
 test({
@@ -57,9 +46,9 @@ test({
   name: "Directories are correctly identified",
   fn() {
     const fileInfo: FileInfoMock = new FileInfoMock();
-    fileInfo.isDirectoryMock = true;
-    fileInfo.isFileMock = false;
-    fileInfo.isSymlinkMock = false;
+    fileInfo.isDirectory = true;
+    fileInfo.isFile = false;
+    fileInfo.isSymlink = false;
     assert(new Dirent(fileInfo).isDirectory());
     assert(!new Dirent(fileInfo).isFile());
     assert(!new Dirent(fileInfo).isSymbolicLink());
@@ -70,9 +59,9 @@ test({
   name: "Files are correctly identified",
   fn() {
     const fileInfo: FileInfoMock = new FileInfoMock();
-    fileInfo.isDirectoryMock = false;
-    fileInfo.isFileMock = true;
-    fileInfo.isSymlinkMock = false;
+    fileInfo.isDirectory = false;
+    fileInfo.isFile = true;
+    fileInfo.isSymlink = false;
     assert(!new Dirent(fileInfo).isDirectory());
     assert(new Dirent(fileInfo).isFile());
     assert(!new Dirent(fileInfo).isSymbolicLink());
@@ -83,9 +72,9 @@ test({
   name: "Symlinks are correctly identified",
   fn() {
     const fileInfo: FileInfoMock = new FileInfoMock();
-    fileInfo.isDirectoryMock = false;
-    fileInfo.isFileMock = false;
-    fileInfo.isSymlinkMock = true;
+    fileInfo.isDirectory = false;
+    fileInfo.isFile = false;
+    fileInfo.isSymlink = true;
     assert(!new Dirent(fileInfo).isDirectory());
     assert(!new Dirent(fileInfo).isFile());
     assert(new Dirent(fileInfo).isSymbolicLink());

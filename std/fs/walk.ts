@@ -55,7 +55,7 @@ export interface WalkInfo {
  *
  *      for await (const { filename, info } of walk(".")) {
  *        console.log(filename);
- *        assert(info.isFile());
+ *        assert(info.isFile);
  *      };
  */
 export async function* walk(
@@ -81,7 +81,7 @@ export async function* walk(
   }
   const ls: FileInfo[] = await readdir(root);
   for (const info of ls) {
-    if (info.isSymlink()) {
+    if (info.isSymlink) {
       if (followSymlinks) {
         // TODO(ry) Re-enable followSymlinks.
         unimplemented();
@@ -93,7 +93,7 @@ export async function* walk(
     assert(info.name != null);
     const filename = join(root, info.name);
 
-    if (info.isFile()) {
+    if (info.isFile) {
       if (includeFiles && include(filename, exts, match, skip)) {
         yield { filename, info };
       }
@@ -135,7 +135,7 @@ export function* walkSync(
   }
   const ls: FileInfo[] = readdirSync(root);
   for (const info of ls) {
-    if (info.isSymlink()) {
+    if (info.isSymlink) {
       if (followSymlinks) {
         unimplemented();
       } else {
@@ -146,7 +146,7 @@ export function* walkSync(
     assert(info.name != null);
     const filename = join(root, info.name);
 
-    if (info.isFile()) {
+    if (info.isFile) {
       if (includeFiles && include(filename, exts, match, skip)) {
         yield { filename, info };
       }
