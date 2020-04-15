@@ -1391,28 +1391,25 @@ System.register("$deno$/errors.ts", [], function (exports_9, context_9) {
           this.name = "Http";
         }
       };
-      exports_9(
-        "errors",
-        ({
-          NotFound: NotFound,
-          PermissionDenied: PermissionDenied,
-          ConnectionRefused: ConnectionRefused,
-          ConnectionReset: ConnectionReset,
-          ConnectionAborted: ConnectionAborted,
-          NotConnected: NotConnected,
-          AddrInUse: AddrInUse,
-          AddrNotAvailable: AddrNotAvailable,
-          BrokenPipe: BrokenPipe,
-          AlreadyExists: AlreadyExists,
-          InvalidData: InvalidData,
-          TimedOut: TimedOut,
-          Interrupted: Interrupted,
-          WriteZero: WriteZero,
-          UnexpectedEof: UnexpectedEof,
-          BadResource: BadResource,
-          Http: Http,
-        })
-      );
+      exports_9("errors", {
+        NotFound: NotFound,
+        PermissionDenied: PermissionDenied,
+        ConnectionRefused: ConnectionRefused,
+        ConnectionReset: ConnectionReset,
+        ConnectionAborted: ConnectionAborted,
+        NotConnected: NotConnected,
+        AddrInUse: AddrInUse,
+        AddrNotAvailable: AddrNotAvailable,
+        BrokenPipe: BrokenPipe,
+        AlreadyExists: AlreadyExists,
+        InvalidData: InvalidData,
+        TimedOut: TimedOut,
+        Interrupted: Interrupted,
+        WriteZero: WriteZero,
+        UnexpectedEof: UnexpectedEof,
+        BadResource: BadResource,
+        Http: Http,
+      });
     },
   };
 });
@@ -1706,7 +1703,7 @@ System.register(
 );
 System.register("$deno$/internals.ts", [], function (exports_15, context_15) {
   "use strict";
-  let internalSymbol, internalObject;
+  let internalObject;
   const __moduleName = context_15 && context_15.id;
   // Register a field to internalObject for test access,
   // through Deno[Deno.symbols.internal][name].
@@ -1722,7 +1719,7 @@ System.register("$deno$/internals.ts", [], function (exports_15, context_15) {
     setters: [],
     execute: function () {
       // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-      exports_15("internalSymbol", (internalSymbol = Symbol("Deno.internal")));
+      exports_15("internalSymbol", Symbol("Deno.internal"));
       // The object where all the internal fields for testing will be living.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       exports_15("internalObject", (internalObject = {}));
@@ -3138,14 +3135,7 @@ System.register(
   ],
   function (exports_32, context_32) {
     "use strict";
-    let resources_ts_1,
-      io_ts_3,
-      seek_ts_1,
-      open_ts_1,
-      File,
-      stdin,
-      stdout,
-      stderr;
+    let resources_ts_1, io_ts_3, seek_ts_1, open_ts_1, File;
     const __moduleName = context_32 && context_32.id;
     /**@internal*/
     function openSync(path, modeOrOptions = "r") {
@@ -3246,9 +3236,9 @@ System.register(
           }
         };
         exports_32("File", File);
-        exports_32("stdin", (stdin = new File(0)));
-        exports_32("stdout", (stdout = new File(1)));
-        exports_32("stderr", (stderr = new File(2)));
+        exports_32("stdin", new File(0));
+        exports_32("stdout", new File(1));
+        exports_32("stderr", new File(2));
       },
     };
   }
@@ -4859,7 +4849,7 @@ System.register(
   ["$deno$/ops/permissions.ts"],
   function (exports_48, context_48) {
     "use strict";
-    let permissionsOps, PermissionStatus, Permissions, permissions;
+    let permissionsOps, PermissionStatus, Permissions;
     const __moduleName = context_48 && context_48.id;
     return {
       setters: [
@@ -4889,7 +4879,7 @@ System.register(
           }
         };
         exports_48("Permissions", Permissions);
-        exports_48("permissions", (permissions = new Permissions()));
+        exports_48("permissions", new Permissions());
       },
     };
   }
@@ -5324,13 +5314,7 @@ System.register(
   ["$deno$/ops/signal.ts", "$deno$/build.ts"],
   function (exports_60, context_60) {
     "use strict";
-    let signal_ts_1,
-      build_ts_4,
-      LinuxSignal,
-      MacOSSignal,
-      Signal,
-      signals,
-      SignalStream;
+    let signal_ts_1, build_ts_4, LinuxSignal, MacOSSignal, Signal, SignalStream;
     const __moduleName = context_60 && context_60.id;
     function setSignals() {
       if (build_ts_4.build.os === "mac") {
@@ -5426,44 +5410,41 @@ System.register(
           MacOSSignal[(MacOSSignal["SIGUSR2"] = 31)] = "SIGUSR2";
         })(MacOSSignal || (MacOSSignal = {}));
         exports_60("Signal", (Signal = {}));
-        exports_60(
-          "signals",
-          (signals = {
-            alarm() {
-              return signal(Signal.SIGALRM);
-            },
-            child() {
-              return signal(Signal.SIGCHLD);
-            },
-            hungup() {
-              return signal(Signal.SIGHUP);
-            },
-            interrupt() {
-              return signal(Signal.SIGINT);
-            },
-            io() {
-              return signal(Signal.SIGIO);
-            },
-            pipe() {
-              return signal(Signal.SIGPIPE);
-            },
-            quit() {
-              return signal(Signal.SIGQUIT);
-            },
-            terminate() {
-              return signal(Signal.SIGTERM);
-            },
-            userDefined1() {
-              return signal(Signal.SIGUSR1);
-            },
-            userDefined2() {
-              return signal(Signal.SIGUSR2);
-            },
-            windowChange() {
-              return signal(Signal.SIGWINCH);
-            },
-          })
-        );
+        exports_60("signals", {
+          alarm() {
+            return signal(Signal.SIGALRM);
+          },
+          child() {
+            return signal(Signal.SIGCHLD);
+          },
+          hungup() {
+            return signal(Signal.SIGHUP);
+          },
+          interrupt() {
+            return signal(Signal.SIGINT);
+          },
+          io() {
+            return signal(Signal.SIGIO);
+          },
+          pipe() {
+            return signal(Signal.SIGPIPE);
+          },
+          quit() {
+            return signal(Signal.SIGQUIT);
+          },
+          terminate() {
+            return signal(Signal.SIGTERM);
+          },
+          userDefined1() {
+            return signal(Signal.SIGUSR1);
+          },
+          userDefined2() {
+            return signal(Signal.SIGUSR2);
+          },
+          windowChange() {
+            return signal(Signal.SIGWINCH);
+          },
+        });
         SignalStream = class SignalStream {
           constructor(signo) {
             this.#disposed = false;
@@ -6172,7 +6153,7 @@ System.register(
   ["$deno$/internals.ts", "$deno$/web/console.ts"],
   function (exports_70, context_70) {
     "use strict";
-    let internals_ts_4, console_ts_2, symbols;
+    let internals_ts_4, console_ts_2;
     const __moduleName = context_70 && context_70.id;
     return {
       setters: [
@@ -6184,13 +6165,10 @@ System.register(
         },
       ],
       execute: function () {
-        exports_70(
-          "symbols",
-          (symbols = {
-            internal: internals_ts_4.internalSymbol,
-            customInspect: console_ts_2.customInspect,
-          })
-        );
+        exports_70("symbols", {
+          internal: internals_ts_4.internalSymbol,
+          customInspect: console_ts_2.customInspect,
+        });
       },
     };
   }
@@ -6540,7 +6518,7 @@ System.register(
         },
       ],
       execute: function () {
-        exports_71("args", ([]));
+        exports_71("args", []);
       },
     };
   }
@@ -6828,8 +6806,8 @@ System.register("$deno$/web/streams/shared-internals.ts", [], function (
     setters: [],
     execute: function () {
       // common stream fields
-      exports_73("state_", (Symbol("state_")));
-      exports_73("storedError_", (Symbol("storedError_")));
+      exports_73("state_", Symbol("state_"));
+      exports_73("storedError_", Symbol("storedError_"));
       // helper memoisation map for object values
       // weak so it doesn't keep memoized versions of old objects indefinitely.
       objectCloneMemo = new WeakMap();
@@ -9160,11 +9138,7 @@ System.register(
   ],
   function (exports_84, context_84) {
     "use strict";
-    let text_encoding_ts_6,
-      build_ts_8,
-      mod_ts_1,
-      bytesSymbol,
-      DenoBlob;
+    let text_encoding_ts_6, build_ts_8, mod_ts_1, bytesSymbol, DenoBlob;
     const __moduleName = context_84 && context_84.id;
     function containsOnlyASCII(str) {
       if (typeof str !== "string") {
@@ -9312,7 +9286,7 @@ System.register(
         exports_84("bytesSymbol", (bytesSymbol = Symbol("bytes")));
         // A WeakMap holding blob to byte array mapping.
         // Ensures it does not impact garbage collection.
-        exports_84("blobBytesWeakMap", (new WeakMap()));
+        exports_84("blobBytesWeakMap", new WeakMap());
         DenoBlob = class DenoBlob {
           constructor(blobParts, options) {
             this.size = 0;
