@@ -10,6 +10,12 @@ unitTest({ perms: { read: true } }, function readFileSyncSuccess(): void {
   assertEquals(pkg.name, "deno");
 });
 
+unitTest({ perms: { read: true } }, function readFileSyncLoop(): void {
+  for (let i = 0; i < 256; i++) {
+    Deno.readFileSync("cli/tests/fixture.json");
+  }
+});
+
 unitTest({ perms: { read: false } }, function readFileSyncPerm(): void {
   let caughtError = false;
   try {
