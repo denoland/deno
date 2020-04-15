@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { red, green, white, gray, bold } from "../fmt/colors.ts";
 import diff, { DiffType, DiffResult } from "./diff.ts";
-import { format } from "./format.ts";
 
 const CAN_NOT_DISPLAY = "[Cannot display]";
 
@@ -17,12 +16,12 @@ export class AssertionError extends Error {
   }
 }
 
-function createStr(v: unknown): string {
-  try {
-    return format(v);
-  } catch (e) {
-    return red(CAN_NOT_DISPLAY);
+function format(v: unknown): string {
+  let string = Deno.inspect(v);
+  if (typeof v == "string") {
+    string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
   }
+  return string;
 }
 
 function createColor(diffType: DiffType): (s: string) => string {
@@ -150,8 +149,8 @@ export function assertEquals(
     return;
   }
   let message = "";
-  const actualString = createStr(actual);
-  const expectedString = createStr(expected);
+  const actualString = format(actual);
+  const expectedString = format(expected);
   try {
     const diffResult = diff(
       actualString.split("\n"),
