@@ -10,6 +10,7 @@ export class AbortSignalImpl extends EventTargetImpl implements AbortSignal {
   #aborted?: boolean;
   #abortAlgorithms = new Set<() => void>();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onabort: ((this: AbortSignal, ev: Event) => any) | null = null;
 
   [add](algorithm: () => void): void {
