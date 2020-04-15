@@ -44,13 +44,12 @@ fn op_cache(
 
   let state_ = &state.borrow().global_state;
   let ts_compiler = state_.ts_compiler.clone();
-  let fut = ts_compiler.cache_compiler_output(
+  ts_compiler.cache_compiler_output(
     &module_specifier,
     &args.extension,
     &args.contents,
-  );
+  )?;
 
-  futures::executor::block_on(fut)?;
   Ok(JsonOp::Sync(json!({})))
 }
 

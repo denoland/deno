@@ -78,7 +78,7 @@ pub fn op_fs_events_open(
       let mut sender = sender.lock().unwrap();
       // Ignore result, if send failed it means that watcher was already closed,
       // but not all messages have been flushed.
-      let _ = futures::executor::block_on(sender.send(res2));
+      let _ = sender.try_send(res2);
     })
     .map_err(ErrBox::from)?;
   let recursive_mode = if args.recursive {
