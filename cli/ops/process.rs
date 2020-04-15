@@ -27,7 +27,8 @@ fn clone_file(rid: u32, state: &State) -> Result<std::fs::File, OpError> {
     .get_mut::<StreamResourceHolder>(rid)
     .ok_or_else(OpError::bad_resource_id)?;
   let file = match repr_holder.resource {
-    StreamResource::FsFile(ref mut file, _) => file,
+    StreamResource::FsFile(Some((ref mut file, _))) => file,
+    StreamResource::FsFile(None) => todo!(),
     _ => return Err(OpError::bad_resource_id()),
   };
   let tokio_file = futures::executor::block_on(file.try_clone())?;

@@ -122,11 +122,12 @@ pub fn op_set_raw(
           StreamResource::Stdin(_, ref mut metadata) => {
             (std::io::stdin().as_raw_fd(), &mut metadata.mode)
           }
-          StreamResource::FsFile(f, ref mut metadata) => {
+          StreamResource::FsFile(Some((f, ref mut metadata))) => {
             let tokio_file = futures::executor::block_on(f.try_clone())?;
             let std_file = futures::executor::block_on(tokio_file.into_std());
             (std_file.as_raw_fd(), &mut metadata.tty.mode)
           }
+          StreamResource::FsFile(None) => todo!(),
           _ => {
             return Err(OpError::other("Not supported".to_owned()));
           }
@@ -165,11 +166,12 @@ pub fn op_set_raw(
           StreamResource::Stdin(_, ref mut metadata) => {
             (std::io::stdin().as_raw_fd(), &mut metadata.mode)
           }
-          StreamResource::FsFile(f, ref mut metadata) => {
+          StreamResource::FsFile(Some((f, ref mut metadata))) => {
             let tokio_file = futures::executor::block_on(f.try_clone())?;
             let std_file = futures::executor::block_on(tokio_file.into_std());
             (std_file.as_raw_fd(), &mut metadata.tty.mode)
           }
+          StreamResource::FsFile(None) => todo!(),
           _ => {
             return Err(OpError::other("Not supported".to_owned()));
           }
@@ -217,7 +219,8 @@ pub fn op_isatty(
     StreamResource::Stderr(_) => {
       Ok(JsonOp::Sync(json!(atty::is(atty::Stream::Stderr))))
     }
-    StreamResource::FsFile(f, _) => {
+    StreamResource::FsFile(None) => todo!(),
+    StreamResource::FsFile(Some((f, _))) => {
       let tokio_file = futures::executor::block_on(f.try_clone())?;
       let std_file = futures::executor::block_on(tokio_file.into_std());
       #[cfg(windows)]

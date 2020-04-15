@@ -170,10 +170,10 @@ fn op_open(
     let mut state = state_.borrow_mut();
     let rid = state.resource_table.add(
       "fsFile",
-      Box::new(StreamResourceHolder::new(StreamResource::FsFile(
+      Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
         fs_file,
         FileMetadata::default(),
-      ))),
+      ))))),
     );
     Ok(json!(rid))
   };
@@ -224,7 +224,7 @@ fn op_seek(
     .ok_or_else(OpError::bad_resource_id)?;
 
   let tokio_file = match resource_holder.resource {
-    StreamResource::FsFile(ref file, _) => file,
+    StreamResource::FsFile(Some((ref file, _))) => file,
     _ => return Err(OpError::bad_resource_id()),
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;

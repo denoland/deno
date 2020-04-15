@@ -103,6 +103,13 @@ impl OpError {
   pub fn invalid_utf8() -> OpError {
     Self::new(ErrorKind::InvalidData, "invalid utf8".to_string())
   }
+
+  pub fn resource_unavailable() -> OpError {
+    Self::new(
+      ErrorKind::InvalidData,
+      "resource is unavailable because it is in by a promise".to_string(),
+    )
+  }
 }
 
 impl Error for OpError {}
