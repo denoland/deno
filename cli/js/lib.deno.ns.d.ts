@@ -1877,7 +1877,7 @@ declare namespace Deno {
     close(): void;
     /** Return the address of the `UDPConn`. */
     readonly addr: Addr;
-    [Symbol.asyncIterator](): AsyncIterator<[Uint8Array, Addr]>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
   }
 
   /** A generic network listener for stream-oriented protocols. */
@@ -1890,7 +1890,7 @@ declare namespace Deno {
     /** Return the address of the `Listener`. */
     readonly addr: Addr;
 
-    [Symbol.asyncIterator](): AsyncIterator<Conn>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
   }
 
   export interface Conn extends Reader, Writer, Closer {
