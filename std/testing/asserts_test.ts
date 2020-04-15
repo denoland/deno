@@ -14,7 +14,7 @@ import {
   unimplemented,
   unreachable,
 } from "./asserts.ts";
-import { red, green, white, gray, bold } from "../fmt/colors.ts";
+import { red, green, gray, bold } from "../fmt/colors.ts";
 const { test } = Deno;
 
 test(function testingEqual(): void {
@@ -302,12 +302,8 @@ test({
       AssertionError,
       [
         ...createHeader(),
-        white("    Array ["),
-        removed(`-     1,`),
-        added(`+     "1",`),
-        white('      "2",'),
-        white("      3,"),
-        white("    ]"),
+        removed(`-   [ 1, "2", 3 ]`),
+        added(`+   [ "1", "2", 3 ]`),
         "",
       ].join("\n")
     );
@@ -322,15 +318,8 @@ test({
       AssertionError,
       [
         ...createHeader(),
-        white("    Object {"),
-        white(`      "a": 1,`),
-        added(`+     "b": 2,`),
-        added(`+     "c": Array [`),
-        added(`+       3,`),
-        added(`+     ],`),
-        removed(`-     "b": "2",`),
-        removed(`-     "c": 3,`),
-        white("    }"),
+        removed(`-   { a: 1, b: "2", c: 3 }`),
+        added(`+   { a: 1, b: 2, c: [ 3 ] }`),
         "",
       ].join("\n")
     );
