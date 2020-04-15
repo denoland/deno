@@ -446,7 +446,16 @@ impl Isolate {
     let tc = try_catch.enter();
 
     let mut script =
-      v8::Script::compile(scope, context, source, Some(&origin)).unwrap();
+      match v8::Script::compile(scope, context, source, Some(&origin)) {
+        Some(script) => script,
+        None => {
+          return Err(JSError::create(JSError {
+            message: String::from("Error compiling script"),
+            ..Default::default()
+          }))
+        }
+      };
+
     match script.run(scope, context) {
       Some(_) => Ok(()),
       None => {
@@ -1146,6 +1155,20 @@ pub mod tests {
           include_str!("shared_queue_test.js"),
         ),
       );
+      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
+        unreachable!();
+      }
+    });
+  }
+
+  #[test]
+  fn test_invalid_js() {
+    run_in_task(|mut cx| {
+      let (mut isolate, _dispatch_count) = setup(Mode::Async);
+      match isolate.execute("i.js", "hocuspocus(") {
+        Ok(_) => panic!("Test failed"),
+        Err(e) => print!("Successfully failed: {}", e),
+      }
       if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
         unreachable!();
       }
