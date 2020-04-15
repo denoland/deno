@@ -2,6 +2,8 @@
 
 import "./lib.deno.shared_globals.d.ts";
 
+import * as abortController from "./web/abort_controller.ts";
+import * as abortSignal from "./web/abort_signal.ts";
 import * as blob from "./web/blob.ts";
 import * as consoleTypes from "./web/console.ts";
 import * as promiseTypes from "./web/promise.ts";
@@ -207,6 +209,8 @@ export const windowOrWorkerGlobalScopeMethods = {
 // Other properties shared between WindowScope and WorkerGlobalScope
 export const windowOrWorkerGlobalScopeProperties = {
   console: writable(new consoleTypes.Console(core.print)),
+  AbortController: nonEnumerable(abortController.AbortControllerImpl),
+  AbortSignal: nonEnumerable(abortSignal.AbortSignalImpl),
   Blob: nonEnumerable(blob.DenoBlob),
   File: nonEnumerable(domFile.DomFileImpl),
   CustomEvent: nonEnumerable(customEvent.CustomEventImpl),
