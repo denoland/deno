@@ -2348,8 +2348,8 @@ System.register(
       let canceled2 = false;
       let reason1;
       let reason2;
-      const branch1 = {};
-      const branch2 = {};
+      let branch1 = {};
+      let branch2 = {};
       let cancelResolve;
       const cancelPromise = new Promise((resolve) => (cancelResolve = resolve));
       const pullAlgorithm = () => {
