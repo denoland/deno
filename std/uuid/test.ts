@@ -4,7 +4,7 @@
 // Generic Tests
 import "./tests/isNil.ts";
 
-// V4 Tests
+// V1 Tests
 import "./tests/v1/validate.ts";
 import "./tests/v1/generate.ts";
 
