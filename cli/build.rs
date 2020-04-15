@@ -33,7 +33,7 @@ fn main() {
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   // Main snapshot
-  let script_dir = PathBuf::from("rt/");
+  let script_dir = PathBuf::from("js/rt/");
   let snapshot_path = o.join("CLI_SNAPSHOT.bin");
   assert!(script_dir.exists());
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
@@ -46,7 +46,7 @@ fn main() {
   .expect("Failed to create snapshot");
 
   // Compiler snapshot
-  let script_dir = PathBuf::from("tsrt/");
+  let script_dir = PathBuf::from("js/tsrt/");
   let snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
   assert!(script_dir.exists());
 
