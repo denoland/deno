@@ -2,7 +2,7 @@
 
 // @deno-types="../react.d.ts"
 import React from "./react_mock.js";
-import { assertEquals } from "../../testing/asserts.ts";
+import { assertEquals } from "../../../../testing/asserts.ts";
 
 const { test } = Deno;
 

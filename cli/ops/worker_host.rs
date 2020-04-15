@@ -32,6 +32,7 @@ pub fn init(i: &mut Isolate, s: &State) {
 }
 
 fn create_web_worker(
+  worker_id: u32,
   name: String,
   global_state: GlobalState,
   permissions: DenoPermissions,
@@ -42,7 +43,12 @@ fn create_web_worker(
 
   let mut worker =
     WebWorker::new(name.to_string(), startup_data::deno_isolate_init(), state);
-  let script = format!("bootstrapWorkerRuntime(\"{}\")", name);
+  // Instead of using name for log we use `worker-${id}` because
+  // WebWorkers can have empty string as name.
+  let script = format!(
+    "bootstrapWorkerRuntime(\"{}\", \"worker-{}\")",
+    name, worker_id
+  );
   worker.execute(&script)?;
 
   Ok(worker)
@@ -50,6 +56,7 @@ fn create_web_worker(
 
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
 fn run_worker_thread(
+  worker_id: u32,
   name: String,
   global_state: GlobalState,
   permissions: DenoPermissions,
@@ -61,14 +68,19 @@ fn run_worker_thread(
     std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, ErrBox>>(1);
 
   let builder =
-    std::thread::Builder::new().name(format!("deno-worker-{}", name));
+    std::thread::Builder::new().name(format!("deno-worker-{}", worker_id));
   let join_handle = builder.spawn(move || {
     // Any error inside this block is terminal:
     // - JS worker is useless - meaning it throws an exception and can't do anything else,
     //  all action done upon it should be noops
     // - newly spawned thread exits
-    let result =
-      create_web_worker(name, global_state, permissions, specifier.clone());
+    let result = create_web_worker(
+      worker_id,
+      name,
+      global_state,
+      permissions,
+      specifier.clone(),
+    );
 
     if let Err(err) = result {
       handle_sender.send(Err(err)).unwrap();
@@ -149,20 +161,20 @@ fn op_create_worker(
   let source_code = args.source_code.clone();
   let args_name = args.name;
   let parent_state = state.clone();
-  let state = state.borrow();
+  let mut state = state.borrow_mut();
   let global_state = state.global_state.clone();
   let permissions = state.permissions.clone();
   let referrer = state.main_module.to_string();
+  let worker_id = state.next_worker_id;
+  state.next_worker_id += 1;
   drop(state);
 
   let module_specifier =
     ModuleSpecifier::resolve_import(&specifier, &referrer)?;
-  let worker_name = args_name.unwrap_or_else(|| {
-    // TODO(bartlomieju): change it to something more descriptive
-    format!("USER-WORKER-{}", specifier)
-  });
+  let worker_name = args_name.unwrap_or_else(|| "".to_string());
 
   let (join_handle, worker_handle) = run_worker_thread(
+    worker_id,
     worker_name,
     global_state,
     permissions,
@@ -174,8 +186,6 @@ fn op_create_worker(
   // At this point all interactions with worker happen using thread
   // safe handler returned from previous function call
   let mut parent_state = parent_state.borrow_mut();
-  let worker_id = parent_state.next_worker_id;
-  parent_state.next_worker_id += 1;
   parent_state
     .workers
     .insert(worker_id, (join_handle, worker_handle));

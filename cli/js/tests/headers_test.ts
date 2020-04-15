@@ -1,5 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import {
+  unitTest,
+  assert,
+  assertEquals,
+  assertStrContains,
+} from "./test_util.ts";
 const {
   stringifyArgs,
   // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
@@ -276,9 +281,9 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertEquals(
+    assertStrContains(
       errMsg,
-      `Headers.${method} requires at least 1 argument, but only 0 present`
+      `${method} requires at least 1 argument, but only 0 present`
     );
   });
 
@@ -300,9 +305,9 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertEquals(
+    assertStrContains(
       errMsg,
-      `Headers.${method} requires at least 2 arguments, but only 0 present`
+      `${method} requires at least 2 arguments, but only 0 present`
     );
 
     hasThrown = 0;
@@ -320,9 +325,9 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertEquals(
+    assertStrContains(
       errMsg,
-      `Headers.${method} requires at least 2 arguments, but only 1 present`
+      `${method} requires at least 2 arguments, but only 1 present`
     );
   });
 });

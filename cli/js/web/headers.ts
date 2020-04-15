@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types.d.ts";
 import { DomIterableMixin } from "./dom_iterable.ts";
 import { requiredArguments } from "./util.ts";
 import { customInspect } from "./console.ts";
@@ -10,7 +9,7 @@ const invalidTokenRegex = /[^\^_`a-zA-Z\-0-9!#$%&'*+.|~]/;
 const invalidHeaderCharRegex = /[^\t\x20-\x7e\x80-\xff]/;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function isHeaders(value: any): value is domTypes.Headers {
+function isHeaders(value: any): value is Headers {
   // eslint-disable-next-line @typescript-eslint/no-use-before-define
   return value instanceof Headers;
 }
@@ -44,7 +43,7 @@ function validateValue(value: string): void {
 class HeadersBase {
   [headerMap]: Map<string, string>;
 
-  constructor(init?: domTypes.HeadersInit) {
+  constructor(init?: HeadersInit) {
     if (init === null) {
       throw new TypeError(
         "Failed to construct 'Headers'; The provided value was not valid"
@@ -145,7 +144,7 @@ class HeadersBase {
 }
 
 // @internal
-export class Headers extends DomIterableMixin<
+export class HeadersImpl extends DomIterableMixin<
   string,
   string,
   typeof HeadersBase

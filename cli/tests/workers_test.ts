@@ -34,7 +34,6 @@ Deno.test({
 
     const jsWorker = new Worker("../tests/subdir/test_worker.js", {
       type: "module",
-      name: "jsWorker",
     });
     const tsWorker = new Worker("../tests/subdir/test_worker.ts", {
       type: "module",
@@ -182,5 +181,79 @@ Deno.test({
     };
 
     await promise;
+  },
+});
+
+Deno.test({
+  name: "worker is event listener",
+  fn: async function (): Promise<void> {
+    let messageHandlersCalled = 0;
+    let errorHandlersCalled = 0;
+
+    const promise1 = createResolvable();
+    const promise2 = createResolvable();
+
+    const worker = new Worker("../tests/subdir/event_worker.js", {
+      type: "module",
+    });
+
+    worker.onmessage = (_e: Event): void => {
+      messageHandlersCalled++;
+    };
+    worker.addEventListener("message", (_e: Event) => {
+      messageHandlersCalled++;
+    });
+    worker.addEventListener("message", (_e: Event) => {
+      messageHandlersCalled++;
+      promise1.resolve();
+    });
+
+    worker.onerror = (e): void => {
+      errorHandlersCalled++;
+      e.preventDefault();
+    };
+    worker.addEventListener("error", (_e: Event) => {
+      errorHandlersCalled++;
+    });
+    worker.addEventListener("error", (_e: Event) => {
+      errorHandlersCalled++;
+      promise2.resolve();
+    });
+
+    worker.postMessage("ping");
+    await promise1;
+    assertEquals(messageHandlersCalled, 3);
+
+    worker.postMessage("boom");
+    await promise2;
+    assertEquals(errorHandlersCalled, 3);
+    worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "worker scope is event listener",
+  fn: async function (): Promise<void> {
+    const promise1 = createResolvable();
+
+    const worker = new Worker("../tests/subdir/event_worker_scope.js", {
+      type: "module",
+    });
+
+    worker.onmessage = (e: MessageEvent): void => {
+      const { messageHandlersCalled, errorHandlersCalled } = e.data;
+      assertEquals(messageHandlersCalled, 4);
+      assertEquals(errorHandlersCalled, 4);
+      promise1.resolve();
+    };
+
+    worker.onerror = (_e): void => {
+      throw new Error("unreachable");
+    };
+
+    worker.postMessage("boom");
+    worker.postMessage("ping");
+    await promise1;
+    worker.terminate();
   },
 });
