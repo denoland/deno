@@ -76,22 +76,20 @@ fn op_open(
   let path = resolve_from_cwd(Path::new(&args.path))?;
   let state_ = state.clone();
 
-  let mut open_options = if let Some(mode) = args.mode {
-    #[allow(unused_mut)]
-    let mut std_options = std::fs::OpenOptions::new();
+  #[allow(unused_mut)]
+  let mut open_options = std::fs::OpenOptions::new();
+
+  if let Some(mode) = args.mode {
     // mode only used if creating the file on Unix
     // if not specified, defaults to 0o666
     #[cfg(unix)]
     {
       use std::os::unix::fs::OpenOptionsExt;
-      std_options.mode(mode & 0o777);
+      open_options.mode(mode & 0o777);
     }
     #[cfg(not(unix))]
     let _ = mode; // avoid unused warning
-    tokio::fs::OpenOptions::from(std_options)
-  } else {
-    tokio::fs::OpenOptions::new()
-  };
+  }
 
   if let Some(options) = args.options {
     if options.read {
@@ -166,23 +164,33 @@ fn op_open(
 
   let is_sync = args.promise_id.is_none();
 
-  let fut = async move {
-    let fs_file = open_options.open(path).await?;
+  if is_sync {
+    let std_file = open_options.open(path)?;
+    let tokio_file = tokio::fs::File::from_std(std_file);
     let mut state = state_.borrow_mut();
     let rid = state.resource_table.add(
       "fsFile",
       Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
-        fs_file,
+        tokio_file,
         FileMetadata::default(),
       ))))),
     );
-    Ok(json!(rid))
-  };
-
-  if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    Ok(JsonOp::Sync(json!(rid)))
   } else {
+    let fut = async move {
+      let tokio_file = tokio::fs::OpenOptions::from(open_options)
+        .open(path)
+        .await?;
+      let mut state = state_.borrow_mut();
+      let rid = state.resource_table.add(
+        "fsFile",
+        Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
+          tokio_file,
+          FileMetadata::default(),
+        ))))),
+      );
+      Ok(json!(rid))
+    };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }

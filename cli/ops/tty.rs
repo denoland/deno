@@ -223,7 +223,6 @@ pub fn op_isatty(
       Err(StreamResource::FsFile(_)) => unreachable!(),
       Err(StreamResource::Stdin(_, _)) => Ok(atty::is(atty::Stream::Stdin)),
       _ => Ok(false),
-    })
-    .unwrap();
+    })?;
   Ok(JsonOp::Sync(json!(isatty)))
 }
