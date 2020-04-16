@@ -1,16 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
+use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
 use crate::fs::resolve_from_cwd;
 use crate::op_error::OpError;
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
-use deno_core::*;
+use deno_core::Isolate;
+use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
-use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -75,22 +76,19 @@ fn op_open(
   let path = resolve_from_cwd(Path::new(&args.path))?;
   let state_ = state.clone();
 
-  let mut open_options = if let Some(mode) = args.mode {
-    #[allow(unused_mut)]
-    let mut std_options = std::fs::OpenOptions::new();
+  let mut open_options = std::fs::OpenOptions::new();
+
+  if let Some(mode) = args.mode {
     // mode only used if creating the file on Unix
     // if not specified, defaults to 0o666
     #[cfg(unix)]
     {
       use std::os::unix::fs::OpenOptionsExt;
-      std_options.mode(mode & 0o777);
+      open_options.mode(mode & 0o777);
     }
     #[cfg(not(unix))]
     let _ = mode; // avoid unused warning
-    tokio::fs::OpenOptions::from(std_options)
-  } else {
-    tokio::fs::OpenOptions::new()
-  };
+  }
 
   if let Some(options) = args.options {
     if options.read {
@@ -165,23 +163,33 @@ fn op_open(
 
   let is_sync = args.promise_id.is_none();
 
-  let fut = async move {
-    let fs_file = open_options.open(path).await?;
+  if is_sync {
+    let std_file = open_options.open(path)?;
+    let tokio_file = tokio::fs::File::from_std(std_file);
     let mut state = state_.borrow_mut();
     let rid = state.resource_table.add(
       "fsFile",
-      Box::new(StreamResourceHolder::new(StreamResource::FsFile(
-        fs_file,
+      Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
+        tokio_file,
         FileMetadata::default(),
-      ))),
+      ))))),
     );
-    Ok(json!(rid))
-  };
-
-  if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    Ok(JsonOp::Sync(json!(rid)))
   } else {
+    let fut = async move {
+      let tokio_file = tokio::fs::OpenOptions::from(open_options)
+        .open(path)
+        .await?;
+      let mut state = state_.borrow_mut();
+      let rid = state.resource_table.add(
+        "fsFile",
+        Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
+          tokio_file,
+          FileMetadata::default(),
+        ))))),
+      );
+      Ok(json!(rid))
+    };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -200,6 +208,7 @@ fn op_seek(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  use std::io::{Seek, SeekFrom};
   let args: SeekArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let offset = args.offset;
@@ -217,29 +226,31 @@ fn op_seek(
     }
   };
 
-  let state = state.borrow();
-  let resource_holder = state
-    .resource_table
-    .get::<StreamResourceHolder>(rid)
-    .ok_or_else(OpError::bad_resource_id)?;
-
-  let tokio_file = match resource_holder.resource {
-    StreamResource::FsFile(ref file, _) => file,
-    _ => return Err(OpError::bad_resource_id()),
-  };
-  let mut file = futures::executor::block_on(tokio_file.try_clone())?;
-
+  let state = state.clone();
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
-    debug!("op_seek {} {} {}", rid, offset, whence);
-    let pos = file.seek(seek_from).await?;
-    Ok(json!(pos))
-  };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let mut s = state.borrow_mut();
+    let pos = std_file_resource(&mut s.resource_table, rid, |r| match r {
+      Ok(std_file) => std_file.seek(seek_from).map_err(OpError::from),
+      Err(_) => Err(OpError::type_error(
+        "cannot seek on this type of resource".to_string(),
+      )),
+    })?;
+    Ok(JsonOp::Sync(json!(pos)))
   } else {
+    // TODO(ry) This is a fake async op. We need to use poll_fn,
+    // tokio::fs::File::start_seek and tokio::fs::File::poll_complete
+    let fut = async move {
+      let mut s = state.borrow_mut();
+      let pos = std_file_resource(&mut s.resource_table, rid, |r| match r {
+        Ok(std_file) => std_file.seek(seek_from).map_err(OpError::from),
+        Err(_) => Err(OpError::type_error(
+          "cannot seek on this type of resource".to_string(),
+        )),
+      })?;
+      Ok(json!(pos))
+    };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }

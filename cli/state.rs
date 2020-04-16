@@ -145,15 +145,15 @@ impl State {
   pub fn stateful_minimal_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(i32, Option<ZeroCopyBuf>) -> Pin<Box<MinimalOp>>
+  ) -> impl Fn(bool, i32, Option<ZeroCopyBuf>) -> MinimalOp
   where
-    D: Fn(&State, i32, Option<ZeroCopyBuf>) -> Pin<Box<MinimalOp>>,
+    D: Fn(&State, bool, i32, Option<ZeroCopyBuf>) -> MinimalOp,
   {
     let state = self.clone();
-
-    move |rid: i32, zero_copy: Option<ZeroCopyBuf>| -> Pin<Box<MinimalOp>> {
-      dispatcher(&state, rid, zero_copy)
-    }
+    move |is_sync: bool,
+          rid: i32,
+          zero_copy: Option<ZeroCopyBuf>|
+          -> MinimalOp { dispatcher(&state, is_sync, rid, zero_copy) }
   }
 
   /// This is a special function that provides `state` argument to dispatcher.
@@ -169,7 +169,6 @@ impl State {
     D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
   {
     let state = self.clone();
-
     move |args: Value,
           zero_copy: Option<ZeroCopyBuf>|
           -> Result<JsonOp, OpError> { dispatcher(&state, args, zero_copy) }
