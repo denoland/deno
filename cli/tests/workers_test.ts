@@ -257,3 +257,36 @@ Deno.test({
     worker.terminate();
   },
 });
+
+Deno.test({
+  name: "worker with Deno namespace",
+  fn: async function (): Promise<void> {
+    const promise = createResolvable();
+    const promise2 = createResolvable();
+
+    const regularWorker = new Worker("../tests/subdir/non_deno_worker.js", {
+      type: "module",
+    });
+    const denoWorker = new Worker("../tests/subdir/deno_worker.ts", {
+      type: "module",
+      deno: true,
+    });
+
+    regularWorker.onmessage = (e): void => {
+      assertEquals(e.data, "Hello World");
+      regularWorker.terminate();
+      promise.resolve();
+    };
+
+    denoWorker.onmessage = (e): void => {
+      assertEquals(e.data, "Hello World");
+      denoWorker.terminate();
+      promise2.resolve();
+    };
+
+    regularWorker.postMessage("Hello World");
+    await promise;
+    denoWorker.postMessage("Hello World");
+    await promise2;
+  },
+});
