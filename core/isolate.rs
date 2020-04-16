@@ -1162,16 +1162,12 @@ pub mod tests {
 
   #[test]
   fn syntax_error() {
-    run_in_task(|mut cx| {
-      let (mut isolate, _dispatch_count) = setup(Mode::Async);
-      match isolate.execute("i.js", "hocuspocus(") {
-        Ok(_) => panic!("Test failed"),
-        Err(e) => print!("Successfully failed: {}", e),
-      }
-      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
-        unreachable!();
-      }
-    });
+    let mut isolate = Isolate::new(StartupData::None, false);
+    let src = "hocuspocus(";
+    let r = isolate.execute("i.js", src);
+    let e = r.unwrap_err();
+    let js_error = e.downcast::<JSError>().unwrap();
+    assert_eq!(js_error.end_column, Some(11));
   }
 
   #[test]
