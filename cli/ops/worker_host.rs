@@ -3,6 +3,7 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
 use crate::op_error::OpError;
+use crate::ops::io::get_stdio;
 use crate::permissions::DenoPermissions;
 use crate::startup_data;
 use crate::state::State;
@@ -37,17 +38,31 @@ fn create_web_worker(
   global_state: GlobalState,
   permissions: DenoPermissions,
   specifier: ModuleSpecifier,
+  has_deno_namespace: bool,
 ) -> Result<WebWorker, ErrBox> {
   let state =
     State::new_for_worker(global_state, Some(permissions), specifier)?;
 
-  let mut worker =
-    WebWorker::new(name.to_string(), startup_data::deno_isolate_init(), state);
+  if has_deno_namespace {
+    let mut s = state.borrow_mut();
+    let (stdin, stdout, stderr) = get_stdio();
+    s.resource_table.add("stdin", Box::new(stdin));
+    s.resource_table.add("stdout", Box::new(stdout));
+    s.resource_table.add("stderr", Box::new(stderr));
+  }
+
+  let mut worker = WebWorker::new(
+    name.clone(),
+    startup_data::deno_isolate_init(),
+    state,
+    has_deno_namespace,
+  );
+
   // Instead of using name for log we use `worker-${id}` because
   // WebWorkers can have empty string as name.
   let script = format!(
-    "bootstrapWorkerRuntime(\"{}\", \"worker-{}\")",
-    name, worker_id
+    "bootstrapWorkerRuntime(\"{}\", {}, \"worker-{}\")",
+    name, worker.has_deno_namespace, worker_id
   );
   worker.execute(&script)?;
 
@@ -61,6 +76,7 @@ fn run_worker_thread(
   global_state: GlobalState,
   permissions: DenoPermissions,
   specifier: ModuleSpecifier,
+  has_deno_namespace: bool,
   has_source_code: bool,
   source_code: String,
 ) -> Result<(JoinHandle<()>, WebWorkerHandle), ErrBox> {
@@ -80,6 +96,7 @@ fn run_worker_thread(
       global_state,
       permissions,
       specifier.clone(),
+      has_deno_namespace,
     );
 
     if let Err(err) = result {
@@ -146,6 +163,7 @@ struct CreateWorkerArgs {
   specifier: String,
   has_source_code: bool,
   source_code: String,
+  use_deno_namespace: bool,
 }
 
 /// Create worker as the host
@@ -160,6 +178,7 @@ fn op_create_worker(
   let has_source_code = args.has_source_code;
   let source_code = args.source_code.clone();
   let args_name = args.name;
+  let use_deno_namespace = args.use_deno_namespace;
   let parent_state = state.clone();
   let mut state = state.borrow_mut();
   let global_state = state.global_state.clone();
@@ -179,6 +198,7 @@ fn op_create_worker(
     global_state,
     permissions,
     module_specifier,
+    use_deno_namespace,
     has_source_code,
     source_code,
   )

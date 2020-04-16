@@ -77,10 +77,16 @@ pub struct WebWorker {
   event_loop_idle: bool,
   terminate_rx: mpsc::Receiver<()>,
   handle: WebWorkerHandle,
+  pub has_deno_namespace: bool,
 }
 
 impl WebWorker {
-  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
+  pub fn new(
+    name: String,
+    startup_data: StartupData,
+    state: State,
+    has_deno_namespace: bool,
+  ) -> Self {
     let state_ = state.clone();
     let mut worker = Worker::new(name, startup_data, state_);
 
@@ -105,6 +111,7 @@ impl WebWorker {
       event_loop_idle: false,
       terminate_rx,
       handle,
+      has_deno_namespace,
     };
 
     let handle = web_worker.thread_safe_handle();
@@ -124,6 +131,22 @@ impl WebWorker {
       ops::errors::init(isolate, &state);
       ops::timers::init(isolate, &state);
       ops::fetch::init(isolate, &state);
+
+      if has_deno_namespace {
+        let op_registry = isolate.op_registry.clone();
+        ops::runtime_compiler::init(isolate, &state);
+        ops::fs::init(isolate, &state);
+        ops::fs_events::init(isolate, &state);
+        ops::plugins::init(isolate, &state, op_registry);
+        ops::net::init(isolate, &state);
+        ops::tls::init(isolate, &state);
+        ops::os::init(isolate, &state);
+        ops::permissions::init(isolate, &state);
+        ops::process::init(isolate, &state);
+        ops::random::init(isolate, &state);
+        ops::signal::init(isolate, &state);
+        ops::tty::init(isolate, &state);
+      }
     }
 
     web_worker
@@ -238,8 +261,11 @@ mod tests {
       "TEST".to_string(),
       startup_data::deno_isolate_init(),
       state,
+      false,
     );
-    worker.execute("bootstrapWorkerRuntime(\"TEST\")").unwrap();
+    worker
+      .execute("bootstrapWorkerRuntime(\"TEST\", false)")
+      .unwrap();
     worker
   }
   #[test]

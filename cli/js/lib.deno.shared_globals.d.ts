@@ -1080,6 +1080,7 @@ declare class Worker extends EventTarget {
     options?: {
       type?: "classic" | "module";
       name?: string;
+      deno?: boolean;
     }
   );
   postMessage(message: any, transfer: ArrayBuffer[]): void;
