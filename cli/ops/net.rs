@@ -81,9 +81,9 @@ fn accept_tcp(
     let mut state = state_.borrow_mut();
     let rid = state.resource_table.add(
       "tcpStream",
-      Box::new(StreamResourceHolder::new(StreamResource::TcpStream(
+      Box::new(StreamResourceHolder::new(StreamResource::TcpStream(Some(
         tcp_stream,
-      ))),
+      )))),
     );
     Ok(json!({
       "rid": rid,
@@ -280,9 +280,9 @@ fn op_connect(
         let mut state = state_.borrow_mut();
         let rid = state.resource_table.add(
           "tcpStream",
-          Box::new(StreamResourceHolder::new(StreamResource::TcpStream(
+          Box::new(StreamResourceHolder::new(StreamResource::TcpStream(Some(
             tcp_stream,
-          ))),
+          )))),
         );
         Ok(json!({
           "rid": rid,
@@ -367,7 +367,7 @@ fn op_shutdown(
     .get_mut::<StreamResourceHolder>(rid)
     .ok_or_else(OpError::bad_resource_id)?;
   match resource_holder.resource {
-    StreamResource::TcpStream(ref mut stream) => {
+    StreamResource::TcpStream(Some(ref mut stream)) => {
       TcpStream::shutdown(stream, shutdown_mode).map_err(OpError::from)?;
     }
     #[cfg(unix)]
