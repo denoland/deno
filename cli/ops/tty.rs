@@ -1,5 +1,5 @@
 use super::dispatch_json::JsonOp;
-use super::io::blocking_fs_file_helper;
+use super::io::std_file_resource;
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
 use crate::ops::json_op;
@@ -209,7 +209,7 @@ pub fn op_isatty(
 
   let resource_table = &mut state.borrow_mut().resource_table;
   let isatty: bool =
-    blocking_fs_file_helper(resource_table, rid as u32, move |r| match r {
+    std_file_resource(resource_table, rid as u32, move |r| match r {
       Ok(std_file) => {
         #[cfg(windows)]
         {

@@ -228,7 +228,7 @@ pub fn op_read(
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
       let resource_table = &mut state.borrow_mut().resource_table;
-      blocking_fs_file_helper(resource_table, rid as u32, move |r| match r {
+      std_file_resource(resource_table, rid as u32, move |r| match r {
         Ok(std_file) => {
           use std::io::Read;
           std_file
@@ -351,7 +351,7 @@ pub fn op_write(
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
       let resource_table = &mut state.borrow_mut().resource_table;
-      blocking_fs_file_helper(resource_table, rid as u32, move |r| match r {
+      std_file_resource(resource_table, rid as u32, move |r| match r {
         Ok(std_file) => {
           use std::io::Write;
           std_file
@@ -396,12 +396,14 @@ pub fn op_write(
   }
 }
 
-/// Helper function for doing blocking fs ops on the main thread.
+/// Helper function for operating on a std::fs::File stored in the resource table.
 ///
-/// For many types of resources, it does not make sense to do blocking
-/// operations of the main thread - and we should not support it - such as for
-/// sockets.
-pub fn blocking_fs_file_helper<F, T>(
+/// We store file system file resources as tokio::fs::File, so this is a little
+/// utility function that gets a std::fs:File when you need to do blocking
+/// operations.
+///
+/// Returns ErrorKind::Busy if the resource is being used by another op.
+pub fn std_file_resource<F, T>(
   resource_table: &mut ResourceTable,
   rid: u32,
   mut f: F,
@@ -421,25 +423,28 @@ where
         // The object in the resource table is a tokio::fs::File - but in
         // order to do a blocking write on it, we must turn it into a
         // std::fs::File. Hopefully this code compiles down to nothing.
-        let (tokio_file, metadata) = option_file_metadata.take().unwrap();
-        match tokio_file.try_into_std() {
-          Ok(mut std_file) => {
-            let result = f(Ok(&mut std_file));
-            // Turn the std_file handle back into a tokio file, put it back
-            // in the resource table.
-            let tokio_file = tokio::fs::File::from_std(std_file);
-            resource_holder.resource =
-              StreamResource::FsFile(Some((tokio_file, metadata)));
-            // return the result.
-            result
+        if let Some((tokio_file, metadata)) = option_file_metadata.take() {
+          match tokio_file.try_into_std() {
+            Ok(mut std_file) => {
+              let result = f(Ok(&mut std_file));
+              // Turn the std_file handle back into a tokio file, put it back
+              // in the resource table.
+              let tokio_file = tokio::fs::File::from_std(std_file);
+              resource_holder.resource =
+                StreamResource::FsFile(Some((tokio_file, metadata)));
+              // return the result.
+              result
+            }
+            Err(tokio_file) => {
+              // This function will return an error containing the file if
+              // some operation is in-flight.
+              resource_holder.resource =
+                StreamResource::FsFile(Some((tokio_file, metadata)));
+              Err(OpError::resource_unavailable())
+            }
           }
-          Err(tokio_file) => {
-            // This function will return an error containing the file if
-            // some operation is in-flight.
-            resource_holder.resource =
-              StreamResource::FsFile(Some((tokio_file, metadata)));
-            Err(OpError::resource_unavailable())
-          }
+        } else {
+          Err(OpError::resource_unavailable())
         }
       }
       _ => f(Err(&mut resource_holder.resource)),
