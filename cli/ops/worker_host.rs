@@ -174,7 +174,7 @@ struct CreateWorkerArgs {
 fn op_create_worker(
   state: &State,
   args: Value,
-  _data: Option<ZeroCopyBuf>,
+  _data: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
@@ -230,7 +230,7 @@ struct WorkerArgs {
 fn op_host_terminate_worker(
   state: &State,
   args: Value,
-  _data: Option<ZeroCopyBuf>,
+  _data: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -296,7 +296,7 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
 fn op_host_get_message(
   state: &State,
   args: Value,
-  _data: Option<ZeroCopyBuf>,
+  _data: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -345,11 +345,14 @@ fn op_host_get_message(
 fn op_host_post_message(
   state: &State,
   args: Value,
-  data: Option<ZeroCopyBuf>,
+  data: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
+  if data.len() != 1 {
+    panic!("Invalid number of arguments");
+  }
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
-  let msg = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
+  let msg = Vec::from(&*data[0]).into_boxed_slice();
 
   debug!("post message to worker {}", id);
   let state = state.borrow();

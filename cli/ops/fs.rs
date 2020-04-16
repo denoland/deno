@@ -72,7 +72,7 @@ fn op_open(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: OpenArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
@@ -155,7 +155,7 @@ fn op_seek(
   isolate_state: &mut CoreIsolateState,
   _state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   use std::io::{Seek, SeekFrom};
   let args: SeekArgs = serde_json::from_value(args)?;
@@ -212,7 +212,7 @@ struct UmaskArgs {
 fn op_umask(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.umask");
   let args: UmaskArgs = serde_json::from_value(args)?;
@@ -250,7 +250,7 @@ struct ChdirArgs {
 fn op_chdir(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: ChdirArgs = serde_json::from_value(args)?;
   let d = PathBuf::from(&args.directory);
@@ -271,7 +271,7 @@ struct MkdirArgs {
 fn op_mkdir(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
@@ -305,7 +305,7 @@ struct ChmodArgs {
 fn op_chmod(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: ChmodArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
@@ -345,7 +345,7 @@ struct ChownArgs {
 fn op_chown(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: ChownArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
@@ -384,7 +384,7 @@ struct RemoveArgs {
 fn op_remove(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: RemoveArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
@@ -435,7 +435,7 @@ struct CopyFileArgs {
 fn op_copy_file(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: CopyFileArgs = serde_json::from_value(args)?;
   let from = PathBuf::from(&args.from);
@@ -529,7 +529,7 @@ struct StatArgs {
 fn op_stat(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: StatArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
@@ -559,7 +559,7 @@ struct RealpathArgs {
 fn op_realpath(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: RealpathArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
@@ -594,7 +594,7 @@ struct ReadDirArgs {
 fn op_read_dir(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: ReadDirArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
@@ -637,7 +637,7 @@ struct RenameArgs {
 fn op_rename(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: RenameArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
@@ -666,7 +666,7 @@ struct LinkArgs {
 fn op_link(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.link");
   let args: LinkArgs = serde_json::from_value(args)?;
@@ -704,7 +704,7 @@ struct SymlinkOptions {
 fn op_symlink(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.symlink");
   let args: SymlinkArgs = serde_json::from_value(args)?;
@@ -764,7 +764,7 @@ struct ReadLinkArgs {
 fn op_read_link(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: ReadLinkArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
@@ -791,7 +791,7 @@ struct TruncateArgs {
 fn op_truncate(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: TruncateArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
@@ -865,7 +865,7 @@ struct MakeTempArgs {
 fn op_make_temp_dir(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: MakeTempArgs = serde_json::from_value(args)?;
 
@@ -896,7 +896,7 @@ fn op_make_temp_dir(
 fn op_make_temp_file(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let args: MakeTempArgs = serde_json::from_value(args)?;
 
@@ -936,7 +936,7 @@ struct UtimeArgs {
 fn op_utime(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.utime");
 
@@ -956,7 +956,7 @@ fn op_utime(
 fn op_cwd(
   state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: Box<[ZeroCopyBuf]>,
 ) -> Result<JsonOp, OpError> {
   let path = current_dir()?;
   state.check_read_blind(&path, "CWD")?;

@@ -452,17 +452,32 @@ fn send(
     Err(_) => &[],
   };
 
-  let zero_copy: Option<ZeroCopyBuf> =
-    v8::Local::<v8::ArrayBufferView>::try_from(args.get(2))
-      .map(ZeroCopyBuf::new)
-      .ok();
+  // Collect all ArrayBufferView's
+  let zero_copy_bufs_count = args.length() - 2;
+  let mut zero_copy_bufs = Vec::with_capacity(
+    usize::try_from(std::cmp::max(zero_copy_bufs_count, 0)).unwrap(),
+  );
+  for i in 2..args.length() {
+    zero_copy_bufs.push(
+      match v8::Local::<v8::ArrayBufferView>::try_from(args.get(i)) {
+        Ok(view) => ZeroCopyBuf::new(view),
+        Err(err) => {
+          let s = format!("invalid argument {}", err);
+          let msg = v8::String::new(scope, &s).unwrap();
+          scope.isolate().throw_exception(msg.into());
+          return;
+        }
+      },
+    );
+  }
 
   let state_rc = CoreIsolate::state(scope.isolate());
   let mut state = state_rc.borrow_mut();
   assert!(!state.global_context.is_empty());
 
   // If response is empty then it's either async op or exception was thrown
-  let maybe_response = state.dispatch_op(scope, op_id, control, zero_copy);
+  let maybe_response =
+    state.dispatch_op(scope, op_id, control, zero_copy_bufs.into_boxed_slice());
 
   if let Some(response) = maybe_response {
     // Synchronous response.

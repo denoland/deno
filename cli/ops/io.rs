@@ -211,15 +211,15 @@ pub fn op_read(
   _state: &State,
   is_sync: bool,
   rid: i32,
-  zero_copy: Option<ZeroCopyBuf>,
+  mut zero_copy: Box<[ZeroCopyBuf]>,
 ) -> MinimalOp {
   debug!("read rid={}", rid);
-  if zero_copy.is_none() {
-    return MinimalOp::Sync(Err(no_buffer_specified()));
+  match zero_copy.len() {
+    0 => return MinimalOp::Sync(Err(no_buffer_specified())),
+    1 => {}
+    _ => panic!("Invalid number of arguments"),
   }
   let resource_table = isolate_state.resource_table.clone();
-
-  let mut buf = zero_copy.unwrap();
 
   if is_sync {
     MinimalOp::Sync({
@@ -229,7 +229,7 @@ pub fn op_read(
         Ok(std_file) => {
           use std::io::Read;
           std_file
-            .read(&mut buf)
+            .read(&mut zero_copy[0])
             .map(|n: usize| n as i32)
             .map_err(OpError::from)
         }
@@ -249,7 +249,7 @@ pub fn op_read(
         let mut task_tracker_id: Option<usize> = None;
         let nread = match resource_holder
           .resource
-          .poll_read(cx, &mut buf.as_mut()[..])
+          .poll_read(cx, &mut zero_copy[0])
           .map_err(OpError::from)
         {
           Poll::Ready(t) => {
@@ -335,14 +335,14 @@ pub fn op_write(
   _state: &State,
   is_sync: bool,
   rid: i32,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: Box<[ZeroCopyBuf]>,
 ) -> MinimalOp {
   debug!("write rid={}", rid);
-  if zero_copy.is_none() {
-    return MinimalOp::Sync(Err(no_buffer_specified()));
+  match zero_copy.len() {
+    0 => return MinimalOp::Sync(Err(no_buffer_specified())),
+    1 => {}
+    _ => panic!("Invalid number of arguments"),
   }
-
-  let buf = zero_copy.unwrap();
 
   if is_sync {
     MinimalOp::Sync({
@@ -352,7 +352,7 @@ pub fn op_write(
         Ok(std_file) => {
           use std::io::Write;
           std_file
-            .write(&buf)
+            .write(&zero_copy[0])
             .map(|nwritten: usize| nwritten as i32)
             .map_err(OpError::from)
         }
@@ -370,7 +370,7 @@ pub fn op_write(
           let resource_holder = resource_table
             .get_mut::<StreamResourceHolder>(rid as u32)
             .ok_or_else(OpError::bad_resource_id)?;
-          resource_holder.resource.poll_write(cx, &buf.as_ref()[..])
+          resource_holder.resource.poll_write(cx, &zero_copy[0])
         })
         .await?;
 
