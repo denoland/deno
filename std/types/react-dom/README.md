@@ -14,7 +14,7 @@ import ReactDOM from "https://cdn.pika.dev/@pika/react-dom@v16.13.1";
 
 ```typescript
 // @deno-types="https://deno.land/std/types/react-dom/v16.9.0/server/react-dom-server.d.ts"
-import ReactDOM from "https://dev.jspm.io/react-dom@16.13.1/server.js";
+import ReactDomServer from "https://dev.jspm.io/react-dom@16.13.1/server.js";
 ```
 
 #### Notes:
