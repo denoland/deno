@@ -106,8 +106,6 @@ impl OpError {
   }
 
   pub fn resource_unavailable() -> OpError {
-    // TODO(ry) Is InvalidData the right error code here? BadResource? Should we
-    // create a new one? What would be the corresponding posix situation?
     Self::new(
       ErrorKind::Busy,
       "resource is unavailable because it is in use by a promise".to_string(),
