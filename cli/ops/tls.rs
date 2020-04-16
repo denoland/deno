@@ -61,7 +61,7 @@ pub fn op_start_tls(
   let cert_file = args.cert_file.clone();
   let state_ = state.clone();
 
-  let mut domain = args.hostname.clone();
+  let mut domain = args.hostname;
   if domain.is_empty() {
     domain.push_str("localhost");
   }
