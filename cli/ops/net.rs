@@ -215,7 +215,7 @@ fn op_send(
             OpError::bad_resource("Socket has been closed".to_string())
           })?;
         let socket = &mut resource.socket;
-        let addr = resolve_addr(&args.hostname, args.port).await?;
+        let addr = resolve_addr(&args.hostname, args.port)?;
         socket.send_to(&buf, addr).await?;
         Ok(json!({}))
       };
@@ -273,7 +273,7 @@ fn op_connect(
       let state_ = state.clone();
       state.check_net(&args.hostname, args.port)?;
       let op = async move {
-        let addr = resolve_addr(&args.hostname, args.port).await?;
+        let addr = resolve_addr(&args.hostname, args.port)?;
         let tcp_stream = TcpStream::connect(&addr).await?;
         let local_addr = tcp_stream.local_addr()?;
         let remote_addr = tcp_stream.peer_addr()?;
@@ -500,8 +500,7 @@ fn op_listen(
       transport_args: ArgsEnum::Ip(args),
     } => {
       state.check_net(&args.hostname, args.port)?;
-      let addr =
-        futures::executor::block_on(resolve_addr(&args.hostname, args.port))?;
+      let addr = resolve_addr(&args.hostname, args.port)?;
       let (rid, local_addr) = if transport == "tcp" {
         listen_tcp(state, addr)?
       } else {

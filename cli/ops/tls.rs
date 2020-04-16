@@ -61,7 +61,7 @@ pub fn op_connect_tls(
   }
 
   let op = async move {
-    let addr = resolve_addr(&args.hostname, args.port).await?;
+    let addr = resolve_addr(&args.hostname, args.port)?;
     let tcp_stream = TcpStream::connect(&addr).await?;
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
@@ -237,8 +237,7 @@ fn op_listen_tls(
     .set_single_cert(load_certs(&cert_file)?, load_keys(&key_file)?.remove(0))
     .expect("invalid key or certificate");
   let tls_acceptor = TlsAcceptor::from(Arc::new(config));
-  let addr =
-    futures::executor::block_on(resolve_addr(&args.hostname, args.port))?;
+  let addr = resolve_addr(&args.hostname, args.port)?;
   let listener = futures::executor::block_on(TcpListener::bind(&addr))?;
   let local_addr = listener.local_addr()?;
   let tls_listener_resource = TlsListenerResource {
