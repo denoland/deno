@@ -65,7 +65,7 @@ pub fn op_set_raw(
     use winapi::shared::minwindef::FALSE;
     use winapi::um::{consoleapi, handleapi};
 
-    let state = state_.borrow_mut();
+    let mut state = state_.borrow_mut();
     let resource_holder =
       state.resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
@@ -76,10 +76,10 @@ pub fn op_set_raw(
     // For now, only stdin.
     let handle = match &resource_holder.resource {
       StreamResource::Stdin(_, _) => std::io::stdin().as_raw_handle(),
-      StreamResource::FsFile(option_file_metadata) => {
+      StreamResource::FsFile(ref mut option_file_metadata) => {
         if let Some((tokio_file, metadata)) = option_file_metadata.take() {
           match tokio_file.try_into_std() {
-            Ok(mut std_file) => {
+            Ok(std_file) => {
               let raw_handle = std_file.as_raw_handle();
               // Turn the std_file handle back into a tokio file, put it back
               // in the resource table.
