@@ -53,7 +53,7 @@ pub enum DenoSubcommand {
     file: Option<String>,
   },
   Install {
-    dir: Option<PathBuf>,
+    root: Option<PathBuf>,
     exe_name: String,
     module_url: String,
     args: Vec<String>,
@@ -181,10 +181,13 @@ impl Flags {
 }
 
 static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
-    DENO_DIR       Set deno's base directory
-    NO_COLOR       Set to disable color
-    HTTP_PROXY     Proxy address for HTTP requests (module downloads, fetch)
-    HTTPS_PROXY    Same but for HTTPS";
+    DENO_DIR             Set deno's base directory (defaults to $HOME/.deno)
+    DENO_INSTALL_ROOT    Set deno install's output directory
+                         (defaults to $HOME/.deno/bin)
+    NO_COLOR             Set to disable color
+    HTTP_PROXY           Proxy address for HTTP requests
+                         (module downloads, fetch)
+    HTTPS_PROXY          Same but for HTTPS";
 
 static DENO_HELP: &str = "A secure JavaScript and TypeScript runtime
 
@@ -344,9 +347,9 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   permission_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
 
-  let dir = if matches.is_present("dir") {
-    let install_dir = matches.value_of("dir").unwrap();
-    Some(PathBuf::from(install_dir))
+  let root = if matches.is_present("root") {
+    let install_root = matches.value_of("root").unwrap();
+    Some(PathBuf::from(install_root))
   } else {
     None
   };
@@ -364,7 +367,7 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let args = cmd_args[1..].to_vec();
 
   flags.subcommand = DenoSubcommand::Install {
-    dir,
+    root,
     exe_name,
     module_url,
     args,
@@ -624,10 +627,9 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
   permission_args(SubCommand::with_name("install"))
         .setting(AppSettings::TrailingVarArg)
         .arg(
-          Arg::with_name("dir")
-            .long("dir")
-            .short("d")
-            .help("Installation directory (defaults to $HOME/.deno/bin)")
+          Arg::with_name("root")
+            .long("root")
+            .help("Installation root")
             .takes_value(true)
             .multiple(false))
         .arg(
@@ -647,15 +649,21 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
             .allow_hyphen_values(true)
         )
         .arg(ca_file_arg())
-        .about("Install script as executable")
+        .about("Install script as an executable")
         .long_about(
-"Installs a script as executable. The default installation directory is
-$HOME/.deno/bin and it must be added to the path manually.
+"Installs a script as an executable in the installation root's bin directory.
   deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
   deno install colors https://deno.land/std/examples/colors.ts
 
-To change installation directory use -d/--dir flag:
-  deno install --allow-net --allow-read -d /usr/local/bin file_server https://deno.land/std/http/file_server.ts")
+To change the installation root, use --root:
+  deno install --allow-net --allow-read --root /usr/local file_server https://deno.land/std/http/file_server.ts
+
+The installation root is determined, in order of precedence:
+  - --root option
+  - DENO_INSTALL_ROOT environment variable
+  - $HOME/.deno
+
+These must be added to the path manually if required.")
 }
 
 fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -2029,7 +2037,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install {
-          dir: None,
+          root: None,
           exe_name: "deno_colors".to_string(),
           module_url: "https://deno.land/std/examples/colors.ts".to_string(),
           args: vec![],
@@ -2054,7 +2062,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install {
-          dir: None,
+          root: None,
           exe_name: "file_server".to_string(),
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
           args: vec![],
@@ -2072,8 +2080,8 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "install",
-      "-d",
-      "/usr/local/bin",
+      "--root",
+      "/usr/local",
       "-f",
       "--allow-net",
       "--allow-read",
@@ -2086,7 +2094,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install {
-          dir: Some(PathBuf::from("/usr/local/bin")),
+          root: Some(PathBuf::from("/usr/local")),
           exe_name: "file_server".to_string(),
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
           args: svec!["arg1", "arg2"],
@@ -2478,7 +2486,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install {
-          dir: None,
+          root: None,
           exe_name: "deno_colors".to_string(),
           module_url: "https://deno.land/std/examples/colors.ts".to_string(),
           args: vec![],

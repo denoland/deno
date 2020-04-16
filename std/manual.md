@@ -874,14 +874,14 @@ Or you could import it into another ES module to consume:
 
 ### Installing executable scripts
 
-Deno provides ability to easily install and distribute executable code via
-`deno install` command.
+Deno provides `deno install` to easily install and distribute executable code.
 
 `deno install [FLAGS...] [EXE_NAME] [URL] [SCRIPT_ARGS...]` will install the
 script available at `URL` under the name `EXE_NAME`.
 
-This command is a thin wrapper that creates executable shell scripts which
-invoke `deno` with specified permissions and CLI flags.
+This command creates a thin, executable shell script which invokes `deno` using
+the specified CLI flags and main module. It is place in the installation root's
+`bin` directory.
 
 Example:
 
@@ -893,36 +893,37 @@ $ deno install --allow-net --allow-read file_server https://deno.land/std/http/f
 /Users/deno/.deno/bin/file_server
 ```
 
-By default scripts are installed at `$HOME/.deno/bin` or
-`$USERPROFILE/.deno/bin` and one of that directories must be added to the path
-manually.
+To change the installation root, use `--root`:
+
+```shell
+$ deno install --allow-net --allow-read --root /usr/local file_server https://deno.land/std/http/file_server.ts
+```
+
+The installation root is determined, in order of precedence:
+
+- `--root` option
+- `DENO_INSTALL_ROOT` environment variable
+- `$HOME/.deno`
+
+These must be added to the path manually if required.
 
 ```shell
 $ echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc
 ```
 
-Installation directory can be changed using `-d/--dir` flag:
-
-```shell
-$ deno install --allow-net --allow-read --dir /usr/local/bin file_server https://deno.land/std/http/file_server.ts
-```
-
-When installing a script you can specify permissions that will be used to run
-the script.
-
-Example:
+You must specify permissions that will be used to run the script at installation
+time.
 
 ```shell
 $ deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts 8080
 ```
 
-Above command creates an executable called `file_server` that runs with write
-and read permissions and binds to port 8080.
+The above command creates an executable called `file_server` that runs with
+write and read permissions and binds to port 8080.
 
-It is a good practice to use `import.meta.main` idiom for an entry point for
-executable file. See
-[Testing if current file is the main program](#testing-if-current-file-is-the-main-program)
-section.
+For good practice, use the
+[`import.meta.main`](#testing-if-current-file-is-the-main-program) idiom to
+specify the entry point in an executable script.
 
 Example:
 
