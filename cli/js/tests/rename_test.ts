@@ -16,12 +16,12 @@ function assertMissing(path: string): void {
 
 function assertFile(path: string): void {
   const info = Deno.lstatSync(path);
-  assert(info.isFile());
+  assert(info.isFile);
 }
 
 function assertDirectory(path: string, mode?: number): void {
   const info = Deno.lstatSync(path);
-  assert(info.isDirectory());
+  assert(info.isDirectory);
   if (Deno.build.os !== "win" && mode !== undefined) {
     assertEquals(info.mode! & 0o777, mode & ~Deno.umask());
   }

@@ -1317,9 +1317,17 @@ declare namespace Deno {
   export function readFile(path: string): Promise<Uint8Array>;
 
   /** A FileInfo describes a file and is returned by `stat`, `lstat`,
-   * `statSync`, `lstatSync`. A list of FileInfo is returned by `readdir`,
-   * `readdirSync`. */
+   * `statSync`, `lstatSync`. */
   export interface FileInfo {
+    /** True if this is info for a regular file. Mutually exclusive to
+     * `FileInfo.isDirectory` and `FileInfo.isSymlink`. */
+    isFile: boolean;
+    /** True if this is info for a regular directory. Mutually exclusive to
+     * `FileInfo.isFile` and `FileInfo.isSymlink`. */
+    isDirectory: boolean;
+    /** True if this is info for a symlink. Mutually exclusive to
+     * `FileInfo.isFile` and `FileInfo.isDirectory`. */
+    isSymlink: boolean;
     /** The size of the file, in bytes. */
     size: number;
     /** The last modification time of the file. This corresponds to the `mtime`
@@ -1334,8 +1342,6 @@ declare namespace Deno {
      * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may not
      * be available on all platforms. */
     created: number | null;
-    /** The file or directory name. */
-    name: string | null;
     /** ID of the device containing the file.
      *
      * _Linux/Mac OS only._ */
@@ -1373,15 +1379,6 @@ declare namespace Deno {
      *
      * _Linux/Mac OS only._ */
     blocks: number | null;
-    /** Returns whether this is info for a regular file. This result is mutually
-     * exclusive to `FileInfo.isDirectory` and `FileInfo.isSymlink`. */
-    isFile(): boolean;
-    /** Returns whether this is info for a regular directory. This result is
-     * mutually exclusive to `FileInfo.isFile` and `FileInfo.isSymlink`. */
-    isDirectory(): boolean;
-    /** Returns whether this is info for a symlink. This result is
-     * mutually exclusive to `FileInfo.isFile` and `FileInfo.isDirectory`. */
-    isSymlink(): boolean;
   }
 
   /** Returns absolute normalized path, with symbolic links resolved.
@@ -1408,28 +1405,33 @@ declare namespace Deno {
    * Requires `allow-read` permission. */
   export function realpath(path: string): Promise<string>;
 
-  /** UNSTABLE: This API is likely to change to return an iterable object instead
-   *
-   * Synchronously reads the directory given by `path` and returns an array of
-   * `Deno.FileInfo`.
-   *
-   *       const files = Deno.readdirSync("/");
-   *
-   * Throws error if `path` is not a directory.
-   *
-   * Requires `allow-read` permission. */
-  export function readdirSync(path: string): FileInfo[];
+  export interface DirEntry extends FileInfo {
+    name: string;
+  }
 
-  /** UNSTABLE: This API is likely to change to return an `AsyncIterable`.
+  /** Synchronously reads the directory given by `path` and returns an iterable
+   * of `Deno.DirEntry`.
    *
-   * Reads the directory given by `path` and resolves to an array of `Deno.FileInfo`.
-   *
-   *       const files = await Deno.readdir("/");
+   *       for (const dirEntry of Deno.readdirSync("/")) {
+   *         console.log(dirEntry.name);
+   *       }
    *
    * Throws error if `path` is not a directory.
    *
    * Requires `allow-read` permission. */
-  export function readdir(path: string): Promise<FileInfo[]>;
+  export function readdirSync(path: string): Iterable<DirEntry>;
+
+  /** Reads the directory given by `path` and returns an async iterable of
+   * `Deno.DirEntry`.
+   *
+   *       for await (const dirEntry of Deno.readdir("/")) {
+   *         console.log(dirEntry.name);
+   *       }
+   *
+   * Throws error if `path` is not a directory.
+   *
+   * Requires `allow-read` permission. */
+  export function readdir(path: string): AsyncIterable<DirEntry>;
 
   /** Synchronously copies the contents and permissions of one file to another
    * specified path, by default creating a new file if needed, else overwriting.
@@ -1476,7 +1478,7 @@ declare namespace Deno {
    * points to.
    *
    *       const fileInfo = await Deno.lstat("hello.txt");
-   *       assert(fileInfo.isFile());
+   *       assert(fileInfo.isFile);
    *
    * Requires `allow-read` permission. */
   export function lstat(path: string): Promise<FileInfo>;
@@ -1486,7 +1488,7 @@ declare namespace Deno {
    * what it points to..
    *
    *       const fileInfo = Deno.lstatSync("hello.txt");
-   *       assert(fileInfo.isFile());
+   *       assert(fileInfo.isFile);
    *
    * Requires `allow-read` permission. */
   export function lstatSync(path: string): FileInfo;
@@ -1495,7 +1497,7 @@ declare namespace Deno {
    * follow symlinks.
    *
    *       const fileInfo = await Deno.stat("hello.txt");
-   *       assert(fileInfo.isFile());
+   *       assert(fileInfo.isFile);
    *
    * Requires `allow-read` permission. */
   export function stat(path: string): Promise<FileInfo>;
@@ -1504,7 +1506,7 @@ declare namespace Deno {
    * always follow symlinks.
    *
    *       const fileInfo = Deno.statSync("hello.txt");
-   *       assert(fileInfo.isFile());
+   *       assert(fileInfo.isFile);
    *
    * Requires `allow-read` permission. */
   export function statSync(path: string): FileInfo;
