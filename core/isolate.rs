@@ -449,10 +449,9 @@ impl Isolate {
       match v8::Script::compile(scope, context, source, Some(&origin)) {
         Some(script) => script,
         None => {
-          return Err(JSError::create(JSError {
-            message: String::from("Error compiling script"),
-            ..Default::default()
-          }))
+          assert!(tc.has_caught());
+          let exception = tc.exception().unwrap();
+          return exception_to_err_result(scope, exception, js_error_create_fn);
         }
       };
 
@@ -1162,7 +1161,7 @@ pub mod tests {
   }
 
   #[test]
-  fn test_invalid_js() {
+  fn syntax_error() {
     run_in_task(|mut cx| {
       let (mut isolate, _dispatch_count) = setup(Mode::Async);
       match isolate.execute("i.js", "hocuspocus(") {
