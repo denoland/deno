@@ -2,7 +2,7 @@
 
 // @deno-types="../../../react/v16.13.1/react.d.ts"
 import React from "https://cdn.pika.dev/@pika/react@v16.13.1";
-// @deno-types="../server/react-dom-server.d.ts"
+// @deno-types="../server.d.ts"
 import ReactDomServer from "https://dev.jspm.io/react-dom@16.13.1/server.js";
 import { assertEquals } from "../../../../testing/asserts.ts";
 
