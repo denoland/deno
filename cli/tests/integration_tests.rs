@@ -197,6 +197,8 @@ fn upgrade_in_tmpdir() {
 #[test]
 fn installer_test_local_module_run() {
   let temp_dir = TempDir::new().expect("tempdir fail");
+  let bin_dir = temp_dir.path().join("bin");
+  std::fs::create_dir(&bin_dir).unwrap();
   let local_module = std::env::current_dir().unwrap().join("tests/echo.ts");
   let local_module_str = local_module.to_string_lossy();
   deno::installer::install(
@@ -208,7 +210,7 @@ fn installer_test_local_module_run() {
     false,
   )
   .expect("Failed to install");
-  let mut file_path = temp_dir.path().join("echo_test");
+  let mut file_path = bin_dir.join("echo_test");
   if cfg!(windows) {
     file_path = file_path.with_extension("cmd");
   }
@@ -235,6 +237,8 @@ fn installer_test_local_module_run() {
 fn installer_test_remote_module_run() {
   let g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
+  let bin_dir = temp_dir.path().join("bin");
+  std::fs::create_dir(&bin_dir).unwrap();
   deno::installer::install(
     deno::flags::Flags::default(),
     Some(temp_dir.path().to_path_buf()),
@@ -244,7 +248,7 @@ fn installer_test_remote_module_run() {
     false,
   )
   .expect("Failed to install");
-  let mut file_path = temp_dir.path().join("echo_test");
+  let mut file_path = bin_dir.join("echo_test");
   if cfg!(windows) {
     file_path = file_path.with_extension("cmd");
   }
@@ -1654,6 +1658,8 @@ fn cafile_install_remote_module() {
 
   let g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
+  let bin_dir = temp_dir.path().join("bin");
+  std::fs::create_dir(&bin_dir).unwrap();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
 
@@ -1663,7 +1669,7 @@ fn cafile_install_remote_module() {
     .arg("install")
     .arg("--cert")
     .arg(cafile)
-    .arg("--dir")
+    .arg("--root")
     .arg(temp_dir.path())
     .arg("echo_test")
     .arg("https://localhost:5545/cli/tests/echo.ts")
@@ -1671,7 +1677,7 @@ fn cafile_install_remote_module() {
     .expect("Failed to spawn script");
   assert!(install_output.status.success());
 
-  let mut echo_test_path = temp_dir.path().join("echo_test");
+  let mut echo_test_path = bin_dir.join("echo_test");
   if cfg!(windows) {
     echo_test_path = echo_test_path.with_extension("cmd");
   }

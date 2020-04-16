@@ -78,8 +78,8 @@ deno {} "$@"
   Ok(())
 }
 
-fn get_installer_dir() -> Result<PathBuf, Error> {
-  if let Ok(env_dir) = env::var("DENO_INSTALL_DIR").map(PathBuf::from) {
+fn get_installer_root() -> Result<PathBuf, Error> {
+  if let Ok(env_dir) = env::var("DENO_INSTALL_ROOT").map(PathBuf::from) {
     return env_dir.canonicalize();
   }
   // In Windows's Powershell $HOME environmental variable maybe null
@@ -99,23 +99,23 @@ fn get_installer_dir() -> Result<PathBuf, Error> {
 
   let mut home_path = PathBuf::from(home_path);
   home_path.push(".deno");
-  home_path.push("bin");
   Ok(home_path)
 }
 
 pub fn install(
   flags: Flags,
-  installation_dir: Option<PathBuf>,
+  root: Option<PathBuf>,
   exec_name: &str,
   module_url: &str,
   args: Vec<String>,
   force: bool,
 ) -> Result<(), Error> {
-  let installation_dir = if let Some(dir) = installation_dir {
-    dir.canonicalize()?
+  let root = if let Some(root) = root {
+    root.canonicalize()?
   } else {
-    get_installer_dir()?
+    get_installer_root()?
   };
+  let installation_dir = root.join("bin");
 
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&installation_dir) {
@@ -273,6 +273,9 @@ mod tests {
   #[test]
   fn install_custom_dir_option() {
     let temp_dir = TempDir::new().expect("tempdir fail");
+    let bin_dir = temp_dir.path().join("bin");
+    std::fs::create_dir(&bin_dir).unwrap();
+
     install(
       Flags::default(),
       Some(temp_dir.path().to_path_buf()),
@@ -283,7 +286,7 @@ mod tests {
     )
     .expect("Install failed");
 
-    let mut file_path = temp_dir.path().join("echo_test");
+    let mut file_path = bin_dir.join("echo_test");
     if cfg!(windows) {
       file_path = file_path.with_extension("cmd");
     }
@@ -297,7 +300,10 @@ mod tests {
   #[test]
   fn install_custom_dir_env_var() {
     let temp_dir = TempDir::new().expect("tempdir fail");
-    env::set_var("DENO_INSTALL_DIR", temp_dir.path().to_path_buf());
+    let bin_dir = temp_dir.path().join("bin");
+    std::fs::create_dir(&bin_dir).unwrap();
+    env::set_var("DENO_INSTALL_ROOT", temp_dir.path().to_path_buf());
+
     install(
       Flags::default(),
       None,
@@ -308,7 +314,7 @@ mod tests {
     )
     .expect("Install failed");
 
-    let mut file_path = temp_dir.path().join("echo_test");
+    let mut file_path = bin_dir.join("echo_test");
     if cfg!(windows) {
       file_path = file_path.with_extension("cmd");
     }
@@ -322,6 +328,8 @@ mod tests {
   #[test]
   fn install_with_flags() {
     let temp_dir = TempDir::new().expect("tempdir fail");
+    let bin_dir = temp_dir.path().join("bin");
+    std::fs::create_dir(&bin_dir).unwrap();
 
     install(
       Flags {
@@ -338,7 +346,7 @@ mod tests {
     )
     .expect("Install failed");
 
-    let mut file_path = temp_dir.path().join("echo_test");
+    let mut file_path = bin_dir.join("echo_test");
     if cfg!(windows) {
       file_path = file_path.with_extension("cmd");
     }
@@ -351,6 +359,8 @@ mod tests {
   #[test]
   fn install_local_module() {
     let temp_dir = TempDir::new().expect("tempdir fail");
+    let bin_dir = temp_dir.path().join("bin");
+    std::fs::create_dir(&bin_dir).unwrap();
     let local_module = env::current_dir().unwrap().join("echo_server.ts");
     let local_module_url = Url::from_file_path(&local_module).unwrap();
     let local_module_str = local_module.to_string_lossy();
@@ -365,7 +375,7 @@ mod tests {
     )
     .expect("Install failed");
 
-    let mut file_path = temp_dir.path().join("echo_test");
+    let mut file_path = bin_dir.join("echo_test");
     if cfg!(windows) {
       file_path = file_path.with_extension("cmd");
     }
@@ -378,6 +388,8 @@ mod tests {
   #[test]
   fn install_force() {
     let temp_dir = TempDir::new().expect("tempdir fail");
+    let bin_dir = temp_dir.path().join("bin");
+    std::fs::create_dir(&bin_dir).unwrap();
 
     install(
       Flags::default(),
@@ -389,7 +401,7 @@ mod tests {
     )
     .expect("Install failed");
 
-    let mut file_path = temp_dir.path().join("echo_test");
+    let mut file_path = bin_dir.join("echo_test");
     if cfg!(windows) {
       file_path = file_path.with_extension("cmd");
     }

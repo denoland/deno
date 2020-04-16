@@ -880,7 +880,8 @@ Deno provides `deno install` to easily install and distribute executable code.
 script available at `URL` under the name `EXE_NAME`.
 
 This command creates a thin, executable shell script which invokes `deno` using
-the specified CLI flags and main module.
+the specified CLI flags and main module. It is place in the installation root's
+`bin` directory.
 
 Example:
 
@@ -892,16 +893,17 @@ $ deno install --allow-net --allow-read file_server https://deno.land/std/http/f
 /Users/deno/.deno/bin/file_server
 ```
 
-To change the installation directory, use `-d/--dir`:
+To change the installation root, use `--root`:
 
 ```shell
-$ deno install --allow-net --allow-read --dir /usr/local/bin file_server https://deno.land/std/http/file_server.ts
+$ deno install --allow-net --allow-read --root /usr/local file_server https://deno.land/std/http/file_server.ts
 ```
 
-The installation directory is determined, in order of precedence:
-  - `--dir` option
-  - `DENO_INSTALL_DIR` environment variable
-  - `$HOME/.deno/bin`
+The installation root is determined, in order of precedence:
+
+- `--root` option
+- `DENO_INSTALL_ROOT` environment variable
+- `$HOME/.deno`
 
 These must be added to the path manually if required.
 

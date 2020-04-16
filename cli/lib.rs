@@ -279,7 +279,7 @@ async fn info_command(
 
 async fn install_command(
   flags: Flags,
-  dir: Option<PathBuf>,
+  root: Option<PathBuf>,
   exe_name: String,
   module_url: String,
   args: Vec<String>,
@@ -292,7 +292,7 @@ async fn install_command(
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
   let mut worker = create_main_worker(global_state, main_module.clone())?;
   worker.preload_module(&main_module).await?;
-  installer::install(flags, dir, &exe_name, &module_url, args, force)
+  installer::install(flags, root, &exe_name, &module_url, args, force)
     .map_err(ErrBox::from)
 }
 
@@ -570,12 +570,12 @@ pub fn main() {
     }
     DenoSubcommand::Info { file } => info_command(flags, file).boxed_local(),
     DenoSubcommand::Install {
-      dir,
+      root,
       exe_name,
       module_url,
       args,
       force,
-    } => install_command(flags, dir, exe_name, module_url, args, force)
+    } => install_command(flags, root, exe_name, module_url, args, force)
       .boxed_local(),
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
