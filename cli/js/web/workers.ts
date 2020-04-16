@@ -105,6 +105,7 @@ export interface Worker {
 export interface WorkerOptions {
   type?: "classic" | "module";
   name?: string;
+  deno?: boolean;
 }
 
 export class WorkerImpl extends EventTarget implements Worker {
@@ -146,10 +147,13 @@ export class WorkerImpl extends EventTarget implements Worker {
     }
     */
 
+    const useDenoNamespace = options ? !!options.deno : false;
+
     const { id } = createWorker(
       specifier,
       hasSourceCode,
       sourceCode,
+      useDenoNamespace,
       options?.name
     );
     this.#id = id;

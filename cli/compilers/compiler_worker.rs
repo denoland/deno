@@ -30,7 +30,7 @@ pub struct CompilerWorker(WebWorker);
 impl CompilerWorker {
   pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let state_ = state.clone();
-    let mut worker = WebWorker::new(name, startup_data, state_);
+    let mut worker = WebWorker::new(name, startup_data, state_, false);
     {
       let isolate = &mut worker.isolate;
       ops::compiler::init(isolate, &state);
