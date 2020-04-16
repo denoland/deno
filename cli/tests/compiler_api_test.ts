@@ -223,3 +223,28 @@ Deno.test({
     });
   },
 });
+
+Deno.test({
+  name: "compile change file",
+  async fn() {
+    const source1 = "console.log(1);";
+    const source2 = "console.log(2);";
+    const tempDir = await Deno.makeTempDir();
+    const filename = tempDir + "/test.ts";
+    const jsFilename = "file://" + tempDir + "/test.js";
+    const encoder = new TextEncoder();
+
+    await Deno.writeFile(filename, encoder.encode(source1));
+    const [diagnostics1, emitMap1] = await Deno.compile(filename);
+    console.log(jsFilename, emitMap1);
+    assert(!diagnostics1);
+    assert(emitMap1[jsFilename]);
+
+    await Deno.writeFile(filename, encoder.encode(source2));
+    const [diagnostics2, emitMap2] = await Deno.compile(filename);
+    assert(!diagnostics2);
+    assert(emitMap2[jsFilename]);
+
+    assert(emitMap1[jsFilename] !== emitMap2[jsFilename]);
+  },
+});

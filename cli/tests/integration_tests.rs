@@ -1417,6 +1417,7 @@ fn compiler_api() {
     .arg("--unstable")
     .arg("--reload")
     .arg("--allow-read")
+    .arg("--allow-write")
     .arg("compiler_api_test.ts")
     .spawn()
     .unwrap()
