@@ -446,7 +446,14 @@ impl Isolate {
     let tc = try_catch.enter();
 
     let mut script =
-      v8::Script::compile(scope, context, source, Some(&origin)).unwrap();
+      match v8::Script::compile(scope, context, source, Some(&origin)) {
+        Some(script) => script,
+        None => {
+          let exception = tc.exception().unwrap();
+          return exception_to_err_result(scope, exception, js_error_create_fn);
+        }
+      };
+
     match script.run(scope, context) {
       Some(_) => Ok(()),
       None => {
@@ -1150,6 +1157,16 @@ pub mod tests {
         unreachable!();
       }
     });
+  }
+
+  #[test]
+  fn syntax_error() {
+    let mut isolate = Isolate::new(StartupData::None, false);
+    let src = "hocuspocus(";
+    let r = isolate.execute("i.js", src);
+    let e = r.unwrap_err();
+    let js_error = e.downcast::<JSError>().unwrap();
+    assert_eq!(js_error.end_column, Some(11));
   }
 
   #[test]
