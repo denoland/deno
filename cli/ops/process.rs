@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use super::io::{StreamResource, StreamResourceHolder};
+use super::io::{std_file_resource, StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
 use crate::signal::kill;
 use crate::state::State;
@@ -22,19 +22,11 @@ pub fn init(i: &mut Isolate, s: &State) {
 
 fn clone_file(rid: u32, state: &State) -> Result<std::fs::File, OpError> {
   let mut state = state.borrow_mut();
-  let repr_holder = state
-    .resource_table
-    .get_mut::<StreamResourceHolder>(rid)
-    .ok_or_else(OpError::bad_resource_id)?;
-  match repr_holder.resource {
-    StreamResource::FsFile(Some((ref mut file, _))) => {
-      let tokio_file = futures::executor::block_on(file.try_clone())?;
-      let std_file = futures::executor::block_on(tokio_file.into_std());
-      Ok(std_file)
-    }
-    StreamResource::FsFile(None) => Err(OpError::resource_unavailable()),
-    _ => Err(OpError::bad_resource_id()),
-  }
+
+  std_file_resource(&mut state.resource_table, rid, move |r| match r {
+    Ok(std_file) => std_file.try_clone().map_err(OpError::from),
+    Err(_) => Err(OpError::bad_resource_id()),
+  })
 }
 
 fn subprocess_stdio_map(s: &str) -> std::process::Stdio {
