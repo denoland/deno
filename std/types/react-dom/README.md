@@ -19,7 +19,8 @@ import ReactDomServer from "https://dev.jspm.io/react-dom@16.13.1/server.js";
 
 #### Notes:
 
-React Dom tests were removed to be implemented later in a full test suit that covers all cases
+React Dom tests were removed to be implemented later in a full test suit that
+covers all cases
 
 React Dom Server is partially implemented due to current incompatibility with
 Node's Readable Streams.
