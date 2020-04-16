@@ -17,6 +17,9 @@ pub(crate) type PendingOpFuture =
 
 pub type OpResult<E> = Result<Op<E>, E>;
 
+// TODO(ry) Op::Async should be Op::Async(Pin<Box<dyn Future<Output = Buf>>>)
+// The error should be encoded in the Buf. Notice how Sync ops do not return a
+// result. The Sync and Async should be symmetrical!
 pub enum Op<E> {
   Sync(Buf),
   Async(OpAsyncFuture<E>),
