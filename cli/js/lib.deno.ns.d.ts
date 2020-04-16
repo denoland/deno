@@ -2060,7 +2060,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    */
-  export function startTLS(options: StartTLSOptions): Promise<Conn>;
+  export function startTLS(conn:Conn, options?: StartTLSOptions): Promise<Conn>;
 
   /** **UNSTABLE**: not sure if broken or not */
   export interface Metrics {

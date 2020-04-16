@@ -80,10 +80,13 @@ pub fn op_start_tls(
       _ => return Err(OpError::bad_resource_id()),
     };
 
-    if tcp_stream.is_none() {
-      return Err(OpError::bad_resource_id());
-    }
+    let tcp_stream = match tcp_stream {
+      Some(stream) => stream,
+      _ => return Err(OpError::bad_resource_id()),
+    };
 
+    let local_addr = tcp_stream.local_addr()?;
+    let remote_addr = tcp_stream.peer_addr()?;
     let mut config = ClientConfig::new();
     config
       .root_store
@@ -97,16 +100,27 @@ pub fn op_start_tls(
     let tls_connector = TlsConnector::from(Arc::new(config));
     let dnsname =
       DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
-    let tls_stream =
-      tls_connector.connect(dnsname, tcp_stream.unwrap()).await?;
-    let mut state = state_.borrow_mut();
+    let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
+
     let rid = state.resource_table.add(
       "clientTlsStream",
       Box::new(StreamResourceHolder::new(StreamResource::ClientTlsStream(
         Box::new(tls_stream),
       ))),
     );
-    Ok(json!({ "rid": rid }))
+    Ok(json!({
+        "rid": rid,
+        "localAddr": {
+          "hostname": local_addr.ip().to_string(),
+          "port": local_addr.port(),
+          "transport": "tcp",
+        },
+        "remoteAddr": {
+          "hostname": remote_addr.ip().to_string(),
+          "port": remote_addr.port(),
+          "transport": "tcp",
+        }
+    }))
   };
 
   Ok(JsonOp::Async(op.boxed_local()))
