@@ -77,8 +77,7 @@ fn run_worker_thread(
   permissions: DenoPermissions,
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
-  has_source_code: bool,
-  source_code: String,
+  maybe_source_code: Option<String>,
 ) -> Result<(JoinHandle<()>, WebWorkerHandle), ErrBox> {
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, ErrBox>>(1);
@@ -125,7 +124,7 @@ fn run_worker_thread(
     // TODO: run with using select with terminate
 
     // Execute provided source code immediately
-    let result = if has_source_code {
+    let result = if let Some(source_code) = maybe_source_code {
       worker.execute(&source_code)
     } else {
       // TODO(bartlomieju): add "type": "classic", ie. ability to load
@@ -175,8 +174,11 @@ fn op_create_worker(
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
   let specifier = args.specifier.clone();
-  let has_source_code = args.has_source_code;
-  let source_code = args.source_code.clone();
+  let maybe_source_code = if args.has_source_code {
+    Some(args.source_code.clone())
+  } else {
+    None
+  };
   let args_name = args.name;
   let use_deno_namespace = args.use_deno_namespace;
   let parent_state = state.clone();
@@ -199,8 +201,7 @@ fn op_create_worker(
     permissions,
     module_specifier,
     use_deno_namespace,
-    has_source_code,
-    source_code,
+    maybe_source_code,
   )
   .map_err(|e| OpError::other(e.to_string()))?;
   // At this point all interactions with worker happen using thread

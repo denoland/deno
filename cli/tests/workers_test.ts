@@ -267,7 +267,7 @@ Deno.test({
     const regularWorker = new Worker("../tests/subdir/non_deno_worker.js", {
       type: "module",
     });
-    const denoWorker = new Worker("../tests/subdir/deno_worker.js", {
+    const denoWorker = new Worker("../tests/subdir/deno_worker.ts", {
       type: "module",
       deno: true,
     });
