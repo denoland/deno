@@ -1663,6 +1663,7 @@ declare namespace Deno {
     UnexpectedEof: ErrorConstructor;
     BadResource: ErrorConstructor;
     Http: ErrorConstructor;
+    Busy: ErrorConstructor;
   };
 
   /** **UNSTABLE**: potentially want names to overlap more with browser.
