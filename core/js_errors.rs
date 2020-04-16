@@ -16,7 +16,7 @@ use std::fmt;
 /// A `JSError` represents an exception coming from V8, with stack frames and
 /// line numbers. The deno_cli crate defines another `JSError` type, which wraps
 /// the one defined here, that adds source map support and colorful formatting.
-#[derive(Default, Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct JSError {
   pub message: String,
   pub source_line: Option<String>,

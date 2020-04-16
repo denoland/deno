@@ -449,7 +449,6 @@ impl Isolate {
       match v8::Script::compile(scope, context, source, Some(&origin)) {
         Some(script) => script,
         None => {
-          assert!(tc.has_caught());
           let exception = tc.exception().unwrap();
           return exception_to_err_result(scope, exception, js_error_create_fn);
         }
