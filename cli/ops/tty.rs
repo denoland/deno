@@ -74,13 +74,30 @@ pub fn op_set_raw(
     // For now, only stdin.
     let handle = match &resource_holder.unwrap().resource {
       StreamResource::Stdin(_, _) => std::io::stdin().as_raw_handle(),
-      StreamResource::FsFile(None) => {
-        return Err(OpError::resource_unavailable())
-      }
-      StreamResource::FsFile(Some((f, _))) => {
-        let tokio_file = futures::executor::block_on(f.try_clone())?;
-        let std_file = futures::executor::block_on(tokio_file.into_std());
-        std_file.as_raw_handle()
+      StreamResource::FsFile(maybe_file_metadata) => {
+        if let Some((tokio_file, metadata)) = option_file_metadata.take() {
+          match tokio_file.try_into_std() {
+            Ok(mut std_file) => {
+              let raw_handle = std_file.as_raw_handle();
+              // Turn the std_file handle back into a tokio file, put it back
+              // in the resource table.
+              let tokio_file = tokio::fs::File::from_std(std_file);
+              resource_holder.resource =
+                StreamResource::FsFile(Some((tokio_file, metadata)));
+              // return the result.
+              raw_handle
+            }
+            Err(tokio_file) => {
+              // This function will return an error containing the file if
+              // some operation is in-flight.
+              resource_holder.resource =
+                StreamResource::FsFile(Some((tokio_file, metadata)));
+              return Err(OpError::resource_unavailable());
+            }
+          }
+        } else {
+          return Err(OpError::resource_unavailable());
+        }
       }
       _ => {
         return Err(OpError::bad_resource_id());
@@ -127,9 +144,7 @@ pub fn op_set_raw(
             (std::io::stdin().as_raw_fd(), &mut metadata.mode)
           }
           StreamResource::FsFile(Some((f, ref mut metadata))) => {
-            let tokio_file = futures::executor::block_on(f.try_clone())?;
-            let std_file = futures::executor::block_on(tokio_file.into_std());
-            (std_file.as_raw_fd(), &mut metadata.tty.mode)
+            (f.as_raw_fd(), &mut metadata.tty.mode)
           }
           StreamResource::FsFile(None) => {
             return Err(OpError::resource_unavailable())
@@ -173,9 +188,7 @@ pub fn op_set_raw(
             (std::io::stdin().as_raw_fd(), &mut metadata.mode)
           }
           StreamResource::FsFile(Some((f, ref mut metadata))) => {
-            let tokio_file = futures::executor::block_on(f.try_clone())?;
-            let std_file = futures::executor::block_on(tokio_file.into_std());
-            (std_file.as_raw_fd(), &mut metadata.tty.mode)
+            (f.as_raw_fd(), &mut metadata.tty.mode)
           }
           StreamResource::FsFile(None) => {
             return Err(OpError::resource_unavailable());
