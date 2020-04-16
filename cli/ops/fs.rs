@@ -76,7 +76,6 @@ fn op_open(
   let path = resolve_from_cwd(Path::new(&args.path))?;
   let state_ = state.clone();
 
-  #[allow(unused_mut)]
   let mut open_options = std::fs::OpenOptions::new();
 
   if let Some(mode) = args.mode {
