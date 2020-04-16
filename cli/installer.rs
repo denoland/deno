@@ -79,6 +79,9 @@ deno {} "$@"
 }
 
 fn get_installer_dir() -> Result<PathBuf, Error> {
+  if let Ok(env_dir) = env::var("DENO_INSTALL_DIR").map(PathBuf::from) {
+    return env_dir.canonicalize();
+  }
   // In Windows's Powershell $HOME environmental variable maybe null
   // if so use $USERPROFILE instead.
   let home = env::var("HOME")
@@ -268,11 +271,36 @@ mod tests {
   }
 
   #[test]
-  fn install_custom_dir() {
+  fn install_custom_dir_option() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     install(
       Flags::default(),
       Some(temp_dir.path().to_path_buf()),
+      "echo_test",
+      "http://localhost:4545/cli/tests/echo_server.ts",
+      vec![],
+      false,
+    )
+    .expect("Install failed");
+
+    let mut file_path = temp_dir.path().join("echo_test");
+    if cfg!(windows) {
+      file_path = file_path.with_extension("cmd");
+    }
+
+    assert!(file_path.exists());
+    let content = fs::read_to_string(file_path).unwrap();
+    assert!(content
+      .contains(r#""run" "http://localhost:4545/cli/tests/echo_server.ts""#));
+  }
+
+  #[test]
+  fn install_custom_dir_env_var() {
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    env::set_var("DENO_INSTALL_DIR", temp_dir.path().to_path_buf());
+    install(
+      Flags::default(),
+      None,
       "echo_test",
       "http://localhost:4545/cli/tests/echo_server.ts",
       vec![],

@@ -181,10 +181,13 @@ impl Flags {
 }
 
 static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
-    DENO_DIR       Set deno's base directory
-    NO_COLOR       Set to disable color
-    HTTP_PROXY     Proxy address for HTTP requests (module downloads, fetch)
-    HTTPS_PROXY    Same but for HTTPS";
+    DENO_DIR            Set deno's base directory (defaults to $HOME/.deno)
+    DENO_INSTALL_DIR    Set deno install's output directory
+                        (defaults to $HOME/.deno/bin)
+    NO_COLOR            Set to disable color
+    HTTP_PROXY          Proxy address for HTTP requests
+                        (module downloads, fetch)
+    HTTPS_PROXY         Same but for HTTPS";
 
 static DENO_HELP: &str = "A secure JavaScript and TypeScript runtime
 
@@ -627,7 +630,7 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
           Arg::with_name("dir")
             .long("dir")
             .short("d")
-            .help("Installation directory (defaults to $HOME/.deno/bin)")
+            .help("Installation directory")
             .takes_value(true)
             .multiple(false))
         .arg(
@@ -647,15 +650,21 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
             .allow_hyphen_values(true)
         )
         .arg(ca_file_arg())
-        .about("Install script as executable")
+        .about("Install script as an executable")
         .long_about(
-"Installs a script as executable. The default installation directory is
-$HOME/.deno/bin and it must be added to the path manually.
+"Installs a script as executable.
   deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
   deno install colors https://deno.land/std/examples/colors.ts
 
-To change installation directory use -d/--dir flag:
-  deno install --allow-net --allow-read -d /usr/local/bin file_server https://deno.land/std/http/file_server.ts")
+To change the installation directory, use -d/--dir:
+  deno install --allow-net --allow-read -d /usr/local/bin file_server https://deno.land/std/http/file_server.ts
+
+The installation directory is determined, in order of precedence:
+  - --dir option
+  - DENO_INSTALL_DIR environment variable
+  - $HOME/.deno/bin
+
+These must be added to the path manually if required.")
 }
 
 fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
