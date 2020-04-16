@@ -2,8 +2,8 @@ import Dirent from "./_fs_dirent.ts";
 
 export default class Dir {
   private dirPath: string | Uint8Array;
-  private files: Dirent[] = [];
-  private filesReadComplete = false;
+  private syncIterator!: Iterator<Deno.DirEntry> | null;
+  private asyncIterator!: AsyncIterator<Deno.DirEntry> | null;
 
   constructor(path: string | Uint8Array) {
     this.dirPath = path;
@@ -16,35 +16,19 @@ export default class Dir {
     return this.dirPath;
   }
 
-  /**
-   * NOTE: Deno doesn't provide an interface to the filesystem like readdir
-   * where each call to readdir returns the next file.  This function simulates this
-   * behaviour by fetching all the entries on the first call, putting them on a stack
-   * and then popping them off the stack one at a time.
-   *
-   * TODO: Rework this implementation once https://github.com/denoland/deno/issues/4218
-   * is resolved.
-   */
   read(callback?: Function): Promise<Dirent | null> {
     return new Promise(async (resolve, reject) => {
       try {
-        if (this.initializationOfDirectoryFilesIsRequired()) {
-          const denoFiles: Deno.DirEntry[] = [];
-          for await (const dirEntry of Deno.readdir(this.path)) {
-            denoFiles.push(dirEntry);
-          }
-          this.files = denoFiles.map((file) => new Dirent(file));
+        if (!this.asyncIterator) {
+          this.asyncIterator = Deno.readdir(this.path)[Symbol.asyncIterator]();
         }
-        const nextFile = this.files.pop();
-        if (nextFile) {
-          resolve(nextFile);
-          this.filesReadComplete = this.files.length === 0;
-        } else {
-          this.filesReadComplete = true;
-          resolve(null);
-        }
+
+        const result: Dirent | null = await (await this.asyncIterator?.next())
+          .value;
+        resolve(result ? result : null);
+
         if (callback) {
-          callback(null, !nextFile ? null : nextFile);
+          callback(null, result ? result : null);
         }
       } catch (err) {
         if (callback) {
@@ -56,19 +40,13 @@ export default class Dir {
   }
 
   readSync(): Dirent | null {
-    if (this.initializationOfDirectoryFilesIsRequired()) {
-      this.files.push(
-        ...[...Deno.readdirSync(this.path)].map((file) => new Dirent(file))
-      );
+    if (!this.syncIterator) {
+      this.syncIterator = Deno.readdirSync(this.path)![Symbol.iterator]();
     }
-    const dirent: Dirent | undefined = this.files.pop();
-    this.filesReadComplete = this.files.length === 0;
 
-    return !dirent ? null : dirent;
-  }
+    const file: Deno.DirEntry = this.syncIterator.next().value;
 
-  private initializationOfDirectoryFilesIsRequired(): boolean {
-    return this.files.length === 0 && !this.filesReadComplete;
+    return file ? new Dirent(file) : null;
   }
 
   /**
