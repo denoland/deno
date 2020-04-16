@@ -65,7 +65,6 @@ function runTestOpCount() {
 }
 
 function runTestPluginClose() {
-
   plugin.close();
 
   const resourcesPost = Deno.resources();
