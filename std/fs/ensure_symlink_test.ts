@@ -67,8 +67,8 @@ Deno.test(async function ensureSymlinkIfItExist(): Promise<void> {
   const srcStat = await Deno.lstat(testFile);
   const linkStat = await Deno.lstat(linkFile);
 
-  assertEquals(srcStat.isFile(), true);
-  assertEquals(linkStat.isSymlink(), true);
+  assertEquals(srcStat.isFile, true);
+  assertEquals(linkStat.isSymlink, true);
 
   await Deno.remove(testDir, { recursive: true });
 });
@@ -97,8 +97,8 @@ Deno.test(function ensureSymlinkSyncIfItExist(): void {
 
   const linkStat = Deno.lstatSync(linkFile);
 
-  assertEquals(srcStat.isFile(), true);
-  assertEquals(linkStat.isSymlink(), true);
+  assertEquals(srcStat.isFile, true);
+  assertEquals(linkStat.isSymlink, true);
 
   Deno.removeSync(testDir, { recursive: true });
 });
@@ -127,9 +127,9 @@ Deno.test(async function ensureSymlinkDirectoryIfItExist(): Promise<void> {
   const linkDirStat = await Deno.lstat(linkDir);
   const testFileStat = await Deno.lstat(testFile);
 
-  assertEquals(testFileStat.isFile(), true);
-  assertEquals(testDirStat.isDirectory(), true);
-  assertEquals(linkDirStat.isSymlink(), true);
+  assertEquals(testFileStat.isFile, true);
+  assertEquals(testDirStat.isDirectory, true);
+  assertEquals(linkDirStat.isSymlink, true);
 
   await Deno.remove(linkDir, { recursive: true });
   await Deno.remove(testDir, { recursive: true });
@@ -159,9 +159,9 @@ Deno.test(function ensureSymlinkSyncDirectoryIfItExist(): void {
   const linkDirStat = Deno.lstatSync(linkDir);
   const testFileStat = Deno.lstatSync(testFile);
 
-  assertEquals(testFileStat.isFile(), true);
-  assertEquals(testDirStat.isDirectory(), true);
-  assertEquals(linkDirStat.isSymlink(), true);
+  assertEquals(testFileStat.isFile, true);
+  assertEquals(testDirStat.isDirectory, true);
+  assertEquals(linkDirStat.isSymlink, true);
 
   Deno.removeSync(linkDir, { recursive: true });
   Deno.removeSync(testDir, { recursive: true });

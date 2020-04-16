@@ -29,7 +29,10 @@ export default class Dir {
     return new Promise(async (resolve, reject) => {
       try {
         if (this.initializationOfDirectoryFilesIsRequired()) {
-          const denoFiles: Deno.FileInfo[] = await Deno.readdir(this.path);
+          const denoFiles: Deno.DirEntry[] = [];
+          for await (const dirEntry of Deno.readdir(this.path)) {
+            denoFiles.push(dirEntry);
+          }
           this.files = denoFiles.map((file) => new Dirent(file));
         }
         const nextFile = this.files.pop();
@@ -55,7 +58,7 @@ export default class Dir {
   readSync(): Dirent | null {
     if (this.initializationOfDirectoryFilesIsRequired()) {
       this.files.push(
-        ...Deno.readdirSync(this.path).map((file) => new Dirent(file))
+        ...[...Deno.readdirSync(this.path)].map((file) => new Dirent(file))
       );
     }
     const dirent: Dirent | undefined = this.files.pop();

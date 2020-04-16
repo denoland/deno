@@ -54,7 +54,7 @@ function stat(filename: string): StatResult {
   }
   try {
     const info = Deno.statSync(filename);
-    const result = info.isFile() ? 0 : 1;
+    const result = info.isFile ? 0 : 1;
     if (statCache !== null) statCache.set(filename, result);
     return result;
   } catch (e) {

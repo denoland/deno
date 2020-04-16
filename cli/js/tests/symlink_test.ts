@@ -21,8 +21,8 @@ unitTest(
     } else {
       const newNameInfoLStat = Deno.lstatSync(newname);
       const newNameInfoStat = Deno.statSync(newname);
-      assert(newNameInfoLStat.isSymlink());
-      assert(newNameInfoStat.isDirectory());
+      assert(newNameInfoLStat.isSymlink);
+      assert(newNameInfoStat.isDirectory);
     }
   }
 );
@@ -79,8 +79,8 @@ unitTest(
     } else {
       const newNameInfoLStat = Deno.lstatSync(newname);
       const newNameInfoStat = Deno.statSync(newname);
-      assert(newNameInfoLStat.isSymlink());
-      assert(newNameInfoStat.isDirectory());
+      assert(newNameInfoLStat.isSymlink);
+      assert(newNameInfoStat.isDirectory);
     }
   }
 );

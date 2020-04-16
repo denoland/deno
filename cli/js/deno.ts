@@ -23,7 +23,6 @@ export {
 export { chdir, cwd } from "./ops/fs/dir.ts";
 export { applySourceMap, formatDiagnostics } from "./ops/errors.ts";
 export { errors } from "./errors.ts";
-export { FileInfo } from "./file_info.ts";
 export {
   File,
   open,
@@ -97,7 +96,7 @@ export {
 export { openPlugin } from "./plugins.ts";
 export { kill } from "./ops/process.ts";
 export { run, RunOptions, Process, ProcessStatus } from "./process.ts";
-export { readdirSync, readdir } from "./ops/fs/read_dir.ts";
+export { DirEntry, readdirSync, readdir } from "./ops/fs/read_dir.ts";
 export { readFileSync, readFile } from "./read_file.ts";
 export { readlinkSync, readlink } from "./ops/fs/read_link.ts";
 export { realpathSync, realpath } from "./ops/fs/realpath.ts";
@@ -105,7 +104,7 @@ export { removeSync, remove, RemoveOptions } from "./ops/fs/remove.ts";
 export { renameSync, rename } from "./ops/fs/rename.ts";
 export { resources, close } from "./ops/resources.ts";
 export { signal, signals, Signal, SignalStream } from "./signals.ts";
-export { statSync, lstatSync, stat, lstat } from "./ops/fs/stat.ts";
+export { FileInfo, statSync, lstatSync, stat, lstat } from "./ops/fs/stat.ts";
 export { symlinkSync, symlink } from "./ops/fs/symlink.ts";
 export { connectTLS, listenTLS } from "./tls.ts";
 export { truncateSync, truncate } from "./ops/fs/truncate.ts";

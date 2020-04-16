@@ -10,7 +10,7 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/subdir";
     Deno.mkdirSync(path);
     const pathInfo = Deno.statSync(path);
-    assert(pathInfo.isDirectory()); // check exist first
+    assert(pathInfo.isDirectory); // check exist first
     Deno.removeSync(path); // remove
     // We then check again after remove
     let err;
@@ -33,7 +33,7 @@ unitTest(
     const filename = Deno.makeTempDirSync() + "/test.txt";
     Deno.writeFileSync(filename, data, { mode: 0o666 });
     const fileInfo = Deno.statSync(filename);
-    assert(fileInfo.isFile()); // check exist first
+    assert(fileInfo.isFile); // check exist first
     Deno.removeSync(filename); // remove
     // We then check again after remove
     let err;
@@ -56,9 +56,9 @@ unitTest(
     Deno.mkdirSync(path, { recursive: true });
     Deno.mkdirSync(subPath);
     const pathInfo = Deno.statSync(path);
-    assert(pathInfo.isDirectory()); // check exist first
+    assert(pathInfo.isDirectory); // check exist first
     const subPathInfo = Deno.statSync(subPath);
-    assert(subPathInfo.isDirectory()); // check exist first
+    assert(subPathInfo.isDirectory); // check exist first
     let err;
     try {
       // Should not be able to recursively remove
@@ -94,7 +94,7 @@ unitTest(
       assertEquals(errOnWindows.message, "not implemented");
     } else {
       const pathInfo = Deno.lstatSync(danglingSymlinkPath);
-      assert(pathInfo.isSymlink());
+      assert(pathInfo.isSymlink);
       Deno.removeSync(danglingSymlinkPath);
       let err;
       try {
@@ -127,7 +127,7 @@ unitTest(
       assertEquals(errOnWindows.message, "not implemented");
     } else {
       const symlinkPathInfo = Deno.statSync(validSymlinkPath);
-      assert(symlinkPathInfo.isFile());
+      assert(symlinkPathInfo.isFile);
       Deno.removeSync(validSymlinkPath);
       let err;
       try {
@@ -159,7 +159,7 @@ unitTest(
     let path = Deno.makeTempDirSync() + "/dir/subdir";
     Deno.mkdirSync(path, { recursive: true });
     let pathInfo = Deno.statSync(path);
-    assert(pathInfo.isDirectory()); // check exist first
+    assert(pathInfo.isDirectory); // check exist first
     Deno.removeSync(path, { recursive: true }); // remove
     // We then check again after remove
     let err;
@@ -177,9 +177,9 @@ unitTest(
     Deno.mkdirSync(path, { recursive: true });
     Deno.mkdirSync(subPath);
     pathInfo = Deno.statSync(path);
-    assert(pathInfo.isDirectory()); // check exist first
+    assert(pathInfo.isDirectory); // check exist first
     const subPathInfo = Deno.statSync(subPath);
-    assert(subPathInfo.isDirectory()); // check exist first
+    assert(subPathInfo.isDirectory); // check exist first
     Deno.removeSync(path, { recursive: true }); // remove
     // We then check parent directory again after remove
     try {
@@ -201,7 +201,7 @@ unitTest(
     const filename = Deno.makeTempDirSync() + "/test.txt";
     Deno.writeFileSync(filename, data, { mode: 0o666 });
     const fileInfo = Deno.statSync(filename);
-    assert(fileInfo.isFile()); // check exist first
+    assert(fileInfo.isFile); // check exist first
     Deno.removeSync(filename, { recursive: true }); // remove
     // We then check again after remove
     let err;
@@ -247,7 +247,7 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/dir/subdir";
     Deno.mkdirSync(path, { recursive: true });
     const pathInfo = Deno.statSync(path);
-    assert(pathInfo.isDirectory()); // check exist first
+    assert(pathInfo.isDirectory); // check exist first
     await Deno.remove(path); // remove
     // We then check again after remove
     let err;
@@ -270,7 +270,7 @@ unitTest(
     const filename = Deno.makeTempDirSync() + "/test.txt";
     Deno.writeFileSync(filename, data, { mode: 0o666 });
     const fileInfo = Deno.statSync(filename);
-    assert(fileInfo.isFile()); // check exist first
+    assert(fileInfo.isFile); // check exist first
     await Deno.remove(filename); // remove
     // We then check again after remove
     let err;
@@ -293,9 +293,9 @@ unitTest(
     Deno.mkdirSync(path, { recursive: true });
     Deno.mkdirSync(subPath);
     const pathInfo = Deno.statSync(path);
-    assert(pathInfo.isDirectory()); // check exist first
+    assert(pathInfo.isDirectory); // check exist first
     const subPathInfo = Deno.statSync(subPath);
-    assert(subPathInfo.isDirectory()); // check exist first
+    assert(subPathInfo.isDirectory); // check exist first
     let err;
     try {
       // Should not be able to recursively remove
@@ -330,7 +330,7 @@ unitTest(
       assertEquals(errOnWindows.message, "not implemented");
     } else {
       const pathInfo = Deno.lstatSync(danglingSymlinkPath);
-      assert(pathInfo.isSymlink());
+      assert(pathInfo.isSymlink);
       await Deno.remove(danglingSymlinkPath);
       let err;
       try {
@@ -363,7 +363,7 @@ unitTest(
       assertEquals(errOnWindows.message, "not implemented");
     } else {
       const symlinkPathInfo = Deno.statSync(validSymlinkPath);
-      assert(symlinkPathInfo.isFile());
+      assert(symlinkPathInfo.isFile);
       await Deno.remove(validSymlinkPath);
       let err;
       try {
@@ -397,7 +397,7 @@ unitTest(
     let path = Deno.makeTempDirSync() + "/dir/subdir";
     Deno.mkdirSync(path, { recursive: true });
     let pathInfo = Deno.statSync(path);
-    assert(pathInfo.isDirectory()); // check exist first
+    assert(pathInfo.isDirectory); // check exist first
     await Deno.remove(path, { recursive: true }); // remove
     // We then check again after remove
     let err;
@@ -415,9 +415,9 @@ unitTest(
     Deno.mkdirSync(path, { recursive: true });
     Deno.mkdirSync(subPath);
     pathInfo = Deno.statSync(path);
-    assert(pathInfo.isDirectory()); // check exist first
+    assert(pathInfo.isDirectory); // check exist first
     const subPathInfo = Deno.statSync(subPath);
-    assert(subPathInfo.isDirectory()); // check exist first
+    assert(subPathInfo.isDirectory); // check exist first
     await Deno.remove(path, { recursive: true }); // remove
     // We then check parent directory again after remove
     try {
@@ -439,7 +439,7 @@ unitTest(
     const filename = Deno.makeTempDirSync() + "/test.txt";
     Deno.writeFileSync(filename, data, { mode: 0o666 });
     const fileInfo = Deno.statSync(filename);
-    assert(fileInfo.isFile()); // check exist first
+    assert(fileInfo.isFile); // check exist first
     await Deno.remove(filename, { recursive: true }); // remove
     // We then check again after remove
     let err;

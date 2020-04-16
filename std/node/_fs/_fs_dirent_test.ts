@@ -2,7 +2,10 @@ const { test } = Deno;
 import { assert, assertEquals, assertThrows } from "../../testing/asserts.ts";
 import Dirent from "./_fs_dirent.ts";
 
-class FileInfoMock implements Deno.FileInfo {
+class DirEntryMock implements Deno.DirEntry {
+  isFile = false;
+  isDirectory = false;
+  isSymlink = false;
   size = -1;
   modified = -1;
   accessed = -1;
@@ -17,26 +20,12 @@ class FileInfoMock implements Deno.FileInfo {
   rdev = -1;
   blksize = -1;
   blocks: number | null = null;
-
-  isFileMock = false;
-  isDirectoryMock = false;
-  isSymlinkMock = false;
-
-  isFile(): boolean {
-    return this.isFileMock;
-  }
-  isDirectory(): boolean {
-    return this.isDirectoryMock;
-  }
-  isSymlink(): boolean {
-    return this.isSymlinkMock;
-  }
 }
 
 test({
   name: "Block devices are correctly identified",
   fn() {
-    const fileInfo: FileInfoMock = new FileInfoMock();
+    const fileInfo: DirEntryMock = new DirEntryMock();
     fileInfo.blocks = 5;
     assert(new Dirent(fileInfo).isBlockDevice());
     assert(!new Dirent(fileInfo).isCharacterDevice());
@@ -46,7 +35,7 @@ test({
 test({
   name: "Character devices are correctly identified",
   fn() {
-    const fileInfo: FileInfoMock = new FileInfoMock();
+    const fileInfo: DirEntryMock = new DirEntryMock();
     fileInfo.blocks = null;
     assert(new Dirent(fileInfo).isCharacterDevice());
     assert(!new Dirent(fileInfo).isBlockDevice());
@@ -56,10 +45,10 @@ test({
 test({
   name: "Directories are correctly identified",
   fn() {
-    const fileInfo: FileInfoMock = new FileInfoMock();
-    fileInfo.isDirectoryMock = true;
-    fileInfo.isFileMock = false;
-    fileInfo.isSymlinkMock = false;
+    const fileInfo: DirEntryMock = new DirEntryMock();
+    fileInfo.isDirectory = true;
+    fileInfo.isFile = false;
+    fileInfo.isSymlink = false;
     assert(new Dirent(fileInfo).isDirectory());
     assert(!new Dirent(fileInfo).isFile());
     assert(!new Dirent(fileInfo).isSymbolicLink());
@@ -69,10 +58,10 @@ test({
 test({
   name: "Files are correctly identified",
   fn() {
-    const fileInfo: FileInfoMock = new FileInfoMock();
-    fileInfo.isDirectoryMock = false;
-    fileInfo.isFileMock = true;
-    fileInfo.isSymlinkMock = false;
+    const fileInfo: DirEntryMock = new DirEntryMock();
+    fileInfo.isDirectory = false;
+    fileInfo.isFile = true;
+    fileInfo.isSymlink = false;
     assert(!new Dirent(fileInfo).isDirectory());
     assert(new Dirent(fileInfo).isFile());
     assert(!new Dirent(fileInfo).isSymbolicLink());
@@ -82,10 +71,10 @@ test({
 test({
   name: "Symlinks are correctly identified",
   fn() {
-    const fileInfo: FileInfoMock = new FileInfoMock();
-    fileInfo.isDirectoryMock = false;
-    fileInfo.isFileMock = false;
-    fileInfo.isSymlinkMock = true;
+    const fileInfo: DirEntryMock = new DirEntryMock();
+    fileInfo.isDirectory = false;
+    fileInfo.isFile = false;
+    fileInfo.isSymlink = true;
     assert(!new Dirent(fileInfo).isDirectory());
     assert(!new Dirent(fileInfo).isFile());
     assert(new Dirent(fileInfo).isSymbolicLink());
@@ -95,7 +84,7 @@ test({
 test({
   name: "File name is correct",
   fn() {
-    const fileInfo: FileInfoMock = new FileInfoMock();
+    const fileInfo: DirEntryMock = new DirEntryMock();
     fileInfo.name = "my_file";
     assertEquals(new Dirent(fileInfo).name, "my_file");
   },
@@ -104,7 +93,7 @@ test({
 test({
   name: "Socket and FIFO pipes aren't yet available",
   fn() {
-    const fileInfo: FileInfoMock = new FileInfoMock();
+    const fileInfo: DirEntryMock = new DirEntryMock();
     assertThrows(
       () => {
         new Dirent(fileInfo).isFIFO();
