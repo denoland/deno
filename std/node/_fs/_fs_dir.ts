@@ -23,15 +23,9 @@ export default class Dir {
           this.asyncIterator = Deno.readdir(this.path)[Symbol.asyncIterator]();
         }
 
-        let result: Dirent | null = null;
-
-        if (!this.asyncIterator) {
-          resolve(null);
-          result = null;
-        } else {
-          result = await (await this.asyncIterator?.next()).value;
-          resolve(result ? result : null);
-        }
+        const result: Dirent | null = await (await this.asyncIterator?.next())
+          .value;
+        resolve(result ? result : null);
 
         if (callback) {
           callback(null, result ? result : null);
