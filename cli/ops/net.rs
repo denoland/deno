@@ -460,7 +460,8 @@ fn listen_tcp(
   addr: SocketAddr,
 ) -> Result<(u32, SocketAddr), OpError> {
   let mut state = state.borrow_mut();
-  let listener = futures::executor::block_on(TcpListener::bind(&addr))?;
+  let std_listener = std::net::TcpListener::bind(&addr)?;
+  let listener = TcpListener::from_std(std_listener)?;
   let local_addr = listener.local_addr()?;
   let listener_resource = TcpListenerResource {
     listener,
@@ -479,7 +480,8 @@ fn listen_udp(
   addr: SocketAddr,
 ) -> Result<(u32, SocketAddr), OpError> {
   let mut state = state.borrow_mut();
-  let socket = futures::executor::block_on(UdpSocket::bind(&addr))?;
+  let std_socket = std::net::UdpSocket::bind(&addr)?;
+  let socket = UdpSocket::from_std(std_socket)?;
   let local_addr = socket.local_addr()?;
   let socket_resource = UdpSocketResource { socket };
   let rid = state
