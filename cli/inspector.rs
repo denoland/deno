@@ -87,12 +87,13 @@ impl InspectorServer {
 
 /// Inspector information that is sent from the isolate thread to the server
 /// thread when a new inspector is created.
+#[derive(Clone)]
 struct InspectorInfo {
   host: SocketAddr,
   uuid: Uuid,
   thread_name: Option<String>,
   new_websocket_tx: UnboundedSender<WebSocket>,
-  canary_rx: oneshot::Receiver<Never>,
+  canary_rx: Arc<Mutex<oneshot::Receiver<Never>>>,
 }
 
 impl InspectorInfo {
@@ -160,7 +161,10 @@ async fn server(
   let inspector_map_ = inspector_map_.clone();
   let mut deregister_inspector_handler = future::poll_fn(|cx| {
     let mut g = inspector_map_.lock().unwrap();
-    g.retain(|_, info| info.canary_rx.poll_unpin(cx) == Poll::Pending);
+    g.retain(|_, info| {
+      let mut canary_rx = info.canary_rx.lock().unwrap();
+      canary_rx.poll_unpin(cx) == Poll::Pending
+    });
     Poll::<Never>::Pending
   })
   .fuse();
@@ -239,6 +243,7 @@ pub struct DenoInspector {
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
   _canary_tx: oneshot::Sender<Never>,
+  info: InspectorInfo,
 }
 
 impl Deref for DenoInspector {
@@ -335,6 +340,14 @@ impl DenoInspector {
       let flags = InspectorFlags::new(wait_for_debugger);
       let waker = InspectorWaker::new(scope.isolate().thread_safe_handle());
 
+      let info = InspectorInfo {
+        host,
+        uuid: Uuid::new_v4(),
+        thread_name: thread::current().name().map(|n| n.to_owned()),
+        new_websocket_tx,
+        canary_rx: Arc::new(Mutex::new(canary_rx)),
+      };
+
       Self {
         v8_inspector_client,
         v8_inspector,
@@ -342,6 +355,7 @@ impl DenoInspector {
         flags,
         waker,
         _canary_tx: canary_tx,
+        info,
       }
     });
 
@@ -354,14 +368,7 @@ impl DenoInspector {
     // Note: poll_sessions() might block if we need to wait for a
     // debugger front-end to connect. Therefore the server thread must to be
     // nofified *before* polling.
-    let info = InspectorInfo {
-      host,
-      uuid: Uuid::new_v4(),
-      thread_name: thread::current().name().map(|n| n.to_owned()),
-      new_websocket_tx,
-      canary_rx,
-    };
-    InspectorServer::register_inspector(info);
+    InspectorServer::register_inspector(self_.info.clone());
 
     // Poll the session handler so we will get notified whenever there is
     // new_incoming debugger activity.
