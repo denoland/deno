@@ -128,7 +128,7 @@ impl GlobalState {
       | msg::MediaType::JSX => {
         state1
           .ts_compiler
-          .compile(state1.clone(), &out, target_lib)
+          .transpile(state1.clone(), &out, target_lib)
           .await
       }
       msg::MediaType::JavaScript => {

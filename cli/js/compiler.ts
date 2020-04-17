@@ -55,6 +55,12 @@ interface CompilerRequestCompile {
   outFile?: string;
 }
 
+interface CompilerRequestTranspile {
+  type: CompilerRequestType.Transpile;
+  inputText: string,
+  fileName: string,
+}
+
 interface CompilerRequestRuntimeCompile {
   type: CompilerRequestType.RuntimeCompile;
   target: CompilerHostTarget;
@@ -73,7 +79,8 @@ interface CompilerRequestRuntimeTranspile {
 type CompilerRequest =
   | CompilerRequestCompile
   | CompilerRequestRuntimeCompile
-  | CompilerRequestRuntimeTranspile;
+  | CompilerRequestRuntimeTranspile
+  | CompilerRequestTranspile;
 
 interface CompileResult {
   emitSkipped: boolean;
@@ -328,6 +335,23 @@ function runtimeTranspile(
   return Promise.resolve(result);
 }
 
+function transpile(
+  request: CompilerRequestTranspile
+): Promise<{ source: string, map: string | undefined }> {
+  const { inputText, fileName } = request;
+  const compilerOptions = defaultTranspileOptions;
+
+  const { outputText: source, sourceMapText: map } = ts.transpileModule(
+    inputText,
+    {
+      fileName,
+      compilerOptions,
+    }
+  );
+  
+  return Promise.resolve({ source, map });
+}
+
 async function tsCompilerOnMessage({
   data: request,
 }: {
@@ -336,6 +360,11 @@ async function tsCompilerOnMessage({
   switch (request.type) {
     case CompilerRequestType.Compile: {
       const result = await compile(request as CompilerRequestCompile);
+      globalThis.postMessage(result);
+      break;
+    }
+    case CompilerRequestType.Transpile: {
+      const result = await transpile(request as CompilerRequestTranspile);
       globalThis.postMessage(result);
       break;
     }

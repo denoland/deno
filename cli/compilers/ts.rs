@@ -390,6 +390,84 @@ impl TsCompiler {
     ts_compiler.get_compiled_module(&source_file_.url)
   }
 
+  pub async fn transpile(
+    &self,
+    global_state: GlobalState,
+    source_file: &SourceFile,
+    target: TargetLib,
+  ) -> Result<CompiledModule, ErrBox> {
+    if self.has_compiled(&source_file.url) {
+      return self.get_compiled_module(&source_file.url);
+    }
+
+    if self.use_disk_cache {
+      // Try to load cached version:
+      // 1. check if there's 'meta' file
+      if let Some(metadata) = self.get_metadata(&source_file.url) {
+        // 2. compare version hashes
+        // TODO: it would probably be good idea to make it method implemented on SourceFile
+        let version_hash_to_validate = source_code_version_hash(
+          &source_file.source_code,
+          version::DENO,
+          &self.config.hash,
+        );
+
+        if metadata.version_hash == version_hash_to_validate {
+          debug!("load_cache metadata version hash match");
+          if let Ok(compiled_module) =
+            self.get_compiled_module(&source_file.url)
+          {
+            self.mark_compiled(&source_file.url);
+            return Ok(compiled_module);
+          }
+        }
+      }
+    }
+    let source_file_ = source_file.clone();
+    let module_url = source_file.url.clone();
+    let _target = match target {
+      TargetLib::Main => "main",
+      TargetLib::Worker => "worker",
+    };
+    let _root_names = vec![module_url.to_string()];
+
+    let req_msg = json!({
+      "type": msg::CompilerRequestType::Transpile as i32,
+      "inputText": String::from_utf8(source_file.source_code.clone())?,
+      "fileName": module_url.to_string(),
+    })
+    .to_string()
+    .into_boxed_str()
+    .into_boxed_bytes();
+
+    let ts_compiler = self.clone();
+
+    info!(
+      "{} {}",
+      colors::green("Compile".to_string()),
+      module_url.to_string()
+    );
+
+    let msg = execute_in_thread(global_state.clone(), req_msg).await?;
+
+    let json_str = std::str::from_utf8(&msg).unwrap();
+    // eprintln!("json str {}", json_str);
+    if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+      return Err(ErrBox::from(diagnostics));
+    }
+    let v = serde_json::from_str::<serde_json::Value>(json_str)
+      .expect("Error decoding JSON string.");
+    
+    let specifier = ModuleSpecifier::resolve_url(&module_url.to_string()).unwrap();
+    let js_content = v.get("source").unwrap().as_str().unwrap();
+    self.cache_compiler_output(&specifier, ".js", js_content)?;
+    if let Some(map_content) = v.get("map").unwrap().as_str() {
+      self.cache_compiler_output(&specifier, ".map", map_content)?;
+    }
+
+    ts_compiler.get_compiled_module(&source_file_.url)
+  }
+
   /// Get associated `CompiledFileMetadata` for given module if it exists.
   pub fn get_metadata(&self, url: &Url) -> Option<CompiledFileMetadata> {
     // Try to load cached version:
