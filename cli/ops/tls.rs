@@ -238,7 +238,8 @@ fn op_listen_tls(
     .expect("invalid key or certificate");
   let tls_acceptor = TlsAcceptor::from(Arc::new(config));
   let addr = resolve_addr(&args.hostname, args.port)?;
-  let listener = futures::executor::block_on(TcpListener::bind(&addr))?;
+  let std_listener = std::net::TcpListener::bind(&addr)?;
+  let listener = TcpListener::from_std(std_listener)?;
   let local_addr = listener.local_addr()?;
   let tls_listener_resource = TlsListenerResource {
     listener,
