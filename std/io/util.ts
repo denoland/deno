@@ -5,14 +5,20 @@ type Reader = Deno.Reader;
 import * as path from "../path/mod.ts";
 import { encode } from "../encoding/utf8.ts";
 
-// `off` is the offset into `dst` where it will at which to begin writing values
-// from `src`.
-// Returns the number of bytes copied.
+/**
+ * Copy bytes from one Uint8Array to another.  Bytes from `src` which don't fit
+ * into `dst` will not be copied.
+ *
+ * @param dst Destination byte array
+ * @param src Source byte array
+ * @param off Offset into `dst` at which to begin writing values from `src`.
+ * @return number of bytes copied
+ */
 export function copyBytes(dst: Uint8Array, src: Uint8Array, off = 0): number {
   off = Math.max(0, Math.min(off, dst.byteLength));
-  const r = dst.byteLength - off;
-  if (src.byteLength > r) {
-    src = src.subarray(0, r);
+  const dstBytesAvailable = dst.byteLength - off;
+  if (src.byteLength > dstBytesAvailable) {
+    src = src.subarray(0, dstBytesAvailable);
   }
   dst.set(src, off);
   return src.byteLength;
