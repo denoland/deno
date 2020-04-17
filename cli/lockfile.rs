@@ -1,19 +1,19 @@
 use crate::compilers::CompiledModule;
 use serde_json::json;
 pub use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::io::Result;
 
 pub struct Lockfile {
   need_read: bool,
-  map: HashMap<String, String>,
+  map: BTreeMap<String, String>,
   pub filename: String,
 }
 
 impl Lockfile {
   pub fn new(filename: String) -> Lockfile {
     Lockfile {
-      map: HashMap::new(),
+      map: BTreeMap::new(),
       filename,
       need_read: true,
     }
