@@ -13,6 +13,10 @@ if (Deno.build.os === "mac") {
 
 const filename = `../target/${Deno.args[0]}/${filenamePrefix}${filenameBase}${filenameSuffix}`;
 
+// This will be checked against open resources after Plugin.close()
+// in runTestClose() below.
+const resourcesPre = Deno.resources();
+
 const plugin = Deno.openPlugin(filename);
 
 const { testSync, testAsync } = plugin.ops;
@@ -60,7 +64,22 @@ function runTestOpCount() {
   }
 }
 
+function runTestPluginClose() {
+  plugin.close();
+
+  const resourcesPost = Deno.resources();
+
+  const preStr = JSON.stringify(resourcesPre, null, 2);
+  const postStr = JSON.stringify(resourcesPost, null, 2);
+  if (preStr !== postStr) {
+    throw new Error(`Difference in open resources before openPlugin and after Plugin.close(): 
+Before: ${preStr}
+After: ${postStr}`);
+  }
+}
+
 runTestSync();
 runTestAsync();
 
 runTestOpCount();
+runTestPluginClose();

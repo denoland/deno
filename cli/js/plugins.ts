@@ -1,5 +1,6 @@
 import { openPlugin as openPluginOp } from "./ops/plugins.ts";
 import { core } from "./core.ts";
+import { close } from "./ops/resources.ts";
 
 export interface AsyncHandler {
   (msg: Uint8Array): void;
@@ -32,18 +33,17 @@ class PluginOpImpl implements PluginOp {
   }
 }
 
-// TODO(afinch7): add close method.
-
 interface Plugin {
   ops: {
     [name: string]: PluginOp;
   };
+  close(): void;
 }
 
 class PluginImpl implements Plugin {
   #ops: { [name: string]: PluginOp } = {};
 
-  constructor(_rid: number, ops: { [name: string]: number }) {
+  constructor(readonly rid: number, ops: { [name: string]: number }) {
     for (const op in ops) {
       this.#ops[op] = new PluginOpImpl(ops[op]);
     }
@@ -51,6 +51,10 @@ class PluginImpl implements Plugin {
 
   get ops(): { [name: string]: PluginOp } {
     return Object.assign({}, this.#ops);
+  }
+
+  close(): void {
+    close(this.rid);
   }
 }
 
