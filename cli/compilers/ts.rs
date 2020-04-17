@@ -38,6 +38,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use url::Url;
+use std::thread::JoinHandle;
 
 lazy_static! {
   static ref CHECK_JS_RE: Regex =
@@ -220,6 +221,8 @@ pub struct TsCompilerInner {
   pub use_disk_cache: bool,
   /// This setting is controlled by `compilerOptions.checkJs`
   pub compile_js: bool,
+
+  pub thread_handle: Arc<Mutex<Option<(JoinHandle<()>, WebWorkerHandle)>>>,
 }
 
 #[derive(Clone)]
@@ -247,6 +250,7 @@ impl TsCompiler {
       config,
       compiled: Mutex::new(HashSet::new()),
       use_disk_cache,
+      thread_handle: Arc::new(Mutex::new(None)),
     })))
   }
 
@@ -448,7 +452,32 @@ impl TsCompiler {
       module_url.to_string()
     );
 
-    let msg = execute_in_thread(global_state.clone(), req_msg).await?;
+    let mut thread_handle = self.thread_handle.lock().unwrap();
+    if thread_handle.is_none() {
+      let (handle_sender, handle_receiver) =
+        std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, ErrBox>>(1);
+      let builder =
+        std::thread::Builder::new().name("deno-persisten-ts-compiler".to_string());
+      let join_handle = builder.spawn(move || {
+        let worker = TsCompiler::setup_worker(global_state.clone());
+        handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
+        drop(handle_sender);
+        tokio_util::run_basic(worker).expect("Panic in event loop");
+      })?;
+      let handle = handle_receiver.recv().unwrap()?;
+
+      *thread_handle = Some((join_handle, handle))
+    }
+
+    let (_, handle) = thread_handle.as_ref().unwrap();
+
+    handle.post_message(req_msg)?;
+    let event = handle.get_event().await.expect("Compiler didn't respond");
+    let msg = match event {
+      WorkerEvent::Message(buf) => Ok(buf),
+      WorkerEvent::Error(error) => Err(error),
+      WorkerEvent::TerminalError(error) => Err(error),
+    }?;
 
     let json_str = std::str::from_utf8(&msg).unwrap();
     // eprintln!("json str {}", json_str);
