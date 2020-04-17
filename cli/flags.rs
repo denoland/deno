@@ -116,6 +116,7 @@ pub struct Flags {
   pub lock: Option<String>,
   pub lock_write: bool,
   pub ca_file: Option<String>,
+  pub no_type_check: bool,
 }
 
 fn join_paths(whitelist: &[PathBuf], d: &str) -> String {
@@ -493,6 +494,7 @@ fn run_test_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   permission_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   inspect_arg_parse(flags, matches);
+  no_type_check_arg_parse(flags, matches);
 
   if matches.is_present("cached-only") {
     flags.cached_only = true;
@@ -914,6 +916,7 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
     .arg(no_remote_arg())
     .arg(v8_flags_arg())
     .arg(ca_file_arg())
+    .arg(no_type_check_arg())
     .arg(
       Arg::with_name("cached-only")
         .long("cached-only")
@@ -1040,6 +1043,16 @@ fn ca_file_arg<'a, 'b>() -> Arg<'a, 'b> {
 
 fn ca_file_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.ca_file = matches.value_of("cert").map(ToOwned::to_owned);
+}
+
+fn no_type_check_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("no-type-check")
+    .long("no-type-check")
+    .help("Don't check TS types")
+}
+
+fn no_type_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  flags.no_type_check = matches.is_present("no-type-check");
 }
 
 fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {

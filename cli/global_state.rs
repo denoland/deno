@@ -107,6 +107,7 @@ impl GlobalState {
     let state1 = self.clone();
     let state2 = self.clone();
     let module_specifier = module_specifier.clone();
+    let no_type_check = self.flags.no_type_check;
 
     let out = self
       .file_fetcher
@@ -126,10 +127,17 @@ impl GlobalState {
       msg::MediaType::TypeScript
       | msg::MediaType::TSX
       | msg::MediaType::JSX => {
-        state1
-          .ts_compiler
-          .transpile(state1.clone(), &out, target_lib)
-          .await
+        if no_type_check {
+          state1
+            .ts_compiler
+            .transpile(state1.clone(), &out, target_lib)
+            .await
+        } else {
+          state1
+            .ts_compiler
+            .compile(state1.clone(), &out, target_lib)
+            .await
+        }
       }
       msg::MediaType::JavaScript => {
         if state1.ts_compiler.compile_js {
