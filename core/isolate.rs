@@ -393,6 +393,23 @@ impl Isolate {
       }
     };
 
+    // Tries to eagerly poll async ops once. Often they are immediately ready, in
+    // which case they can be turned into a sync op before we return to V8. This
+    // can save a boundary crossing.
+    let op = match op {
+      Op::Async(mut fut) => {
+        #[allow(clippy::match_wild_err_arm)]
+        let mut cx = Context::from_waker(futures::task::noop_waker_ref());
+        match fut.poll_unpin(&mut cx) {
+          Poll::Ready(Err(_)) => panic!("unexpected op error"),
+          Poll::Ready(Ok(buf)) => Op::Sync(buf),
+          Poll::Pending => Op::Async(fut),
+        }
+      }
+      Op::AsyncUnref(fut) => Op::AsyncUnref(fut),
+      Op::Sync(buf) => Op::Sync(buf),
+    };
+
     debug_assert_eq!(self.shared.size(), 0);
     match op {
       Op::Sync(buf) => {
