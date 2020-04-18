@@ -73,7 +73,7 @@ impl ResourceTable {
     self.map.remove(&rid).map(|(_name, _resource)| ())
   }
 
-  pub fn take<T: Resource>(&mut self, rid: ResourceId) -> Option<Box<T>> {
+  pub fn remove<T: Resource>(&mut self, rid: ResourceId) -> Option<Box<T>> {
     if let Some((_name, resource)) = self.map.remove(&rid) {
       let res = match resource.downcast::<T>() {
         Ok(res) => Some(res),
@@ -156,10 +156,10 @@ mod tests {
     let rid1 = table.add("fake1", Box::new(FakeResource::new(1)));
     let rid2 = table.add("fake2", Box::new(FakeResource::new(2)));
     assert_eq!(table.map.len(), 2);
-    let res1 = table.take::<FakeResource>(rid1);
+    let res1 = table.remove::<FakeResource>(rid1);
     assert_eq!(table.map.len(), 1);
     assert!(res1.is_some());
-    let res2 = table.take::<FakeResource>(rid2);
+    let res2 = table.remove::<FakeResource>(rid2);
     assert_eq!(table.map.len(), 0);
     assert!(res2.is_some());
   }
