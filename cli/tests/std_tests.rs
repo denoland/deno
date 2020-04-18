@@ -4,7 +4,10 @@ mod tests {
   extern crate lazy_static;
   extern crate tempfile;
   use deno::test_util::*;
+  use std;
+  use std::io::Write;
   use std::process::Command;
+  use std::time::Instant;
   use tempfile::TempDir;
 
   #[test]
@@ -15,6 +18,7 @@ mod tests {
 
     let mut cwd = root_path();
     cwd.push("std");
+    let start = Instant::now();
     let mut deno = deno_cmd
       .current_dir(cwd) // note: std tests expect to run from "std" dir
       .arg("test")
@@ -25,5 +29,13 @@ mod tests {
       .expect("failed to spawn script");
     let status = deno.wait().expect("failed to wait for the child process");
     assert!(status.success());
+
+    let duration = Instant::now() - start;
+    write!(
+      std::io::stderr(),
+      "std no type check test took {:#?}\n",
+      duration
+    )
+    .unwrap();
   }
 }
