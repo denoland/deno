@@ -7,20 +7,9 @@ export function copyFile(
   destination: string,
   callback: CallbackWithError
 ): void {
-  new Promise((resolve, reject) => {
-    try {
-      Deno.copyFileSync(source, destination);
-      resolve();
-    } catch (err) {
-      reject(err);
-    }
-  })
-    .then(() => {
-      callback();
-    })
-    .catch((err) => {
-      callback(err);
-    });
+  Deno.copyFile(source, destination)
+    .then(() => callback)
+    .catch(callback);
 }
 
 export function copyFileSync(source: string, destination: string): void {

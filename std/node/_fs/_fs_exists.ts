@@ -5,20 +5,11 @@ type ExitsCallback = (exists: boolean) => void;
 /* Deprecated in node api */
 
 export function exists(path: string, callback: ExitsCallback): void {
-  new Promise((resolve, reject) => {
-    try {
-      Deno.lstatSync(path);
-      resolve();
-    } catch (err) {
-      reject(err);
-    }
-  })
+  Deno.lstat(path)
     .then(() => {
       callback(true);
     })
-    .catch(() => {
-      callback(false);
-    });
+    .catch(() => callback(false));
 }
 
 export function existsSync(path: string): boolean {

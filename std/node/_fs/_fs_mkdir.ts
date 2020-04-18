@@ -29,14 +29,7 @@ export function mkdir(
     throw new Deno.errors.InvalidData(
       "invalid recursive option , must be a boolean"
     );
-  new Promise((resolve, reject) => {
-    try {
-      Deno.mkdirSync(path, { recursive, mode });
-      resolve();
-    } catch (err) {
-      reject(err);
-    }
-  })
+  Deno.mkdir(path, { recursive, mode })
     .then(() => {
       if (callback && typeof callback == "function") {
         callback();
