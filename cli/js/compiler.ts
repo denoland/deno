@@ -57,8 +57,8 @@ interface CompilerRequestCompile {
 
 interface CompilerRequestTranspile {
   type: CompilerRequestType.Transpile;
-  inputText: string,
-  fileName: string,
+  inputText: string;
+  fileName: string;
 }
 
 interface CompilerRequestRuntimeCompile {
@@ -337,7 +337,7 @@ function runtimeTranspile(
 
 function transpile(
   request: CompilerRequestTranspile
-): Promise<{ source: string, map: string | undefined }> {
+): Promise<{ source: string; map: string | undefined }> {
   const { inputText, fileName } = request;
   const compilerOptions = defaultTranspileOptions;
 
@@ -348,7 +348,7 @@ function transpile(
       compilerOptions,
     }
   );
-  
+
   return Promise.resolve({ source, map });
 }
 

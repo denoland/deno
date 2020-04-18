@@ -37,8 +37,8 @@ use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
-use url::Url;
 use std::thread::JoinHandle;
+use url::Url;
 
 lazy_static! {
   static ref CHECK_JS_RE: Regex =
@@ -222,7 +222,7 @@ pub struct TsCompilerInner {
   /// This setting is controlled by `compilerOptions.checkJs`
   pub compile_js: bool,
 
-  pub thread_handle: Arc<Mutex<Option<(JoinHandle<()>, WebWorkerHandle)>>>,
+  pub thread_handle: Mutex<Option<(JoinHandle<()>, WebWorkerHandle)>>,
 }
 
 #[derive(Clone)]
@@ -250,7 +250,7 @@ impl TsCompiler {
       config,
       compiled: Mutex::new(HashSet::new()),
       use_disk_cache,
-      thread_handle: Arc::new(Mutex::new(None)),
+      thread_handle: Mutex::new(None),
     })))
   }
 
@@ -456,8 +456,8 @@ impl TsCompiler {
     if thread_handle.is_none() {
       let (handle_sender, handle_receiver) =
         std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, ErrBox>>(1);
-      let builder =
-        std::thread::Builder::new().name("deno-persisten-ts-compiler".to_string());
+      let builder = std::thread::Builder::new()
+        .name("deno-persisten-ts-compiler".to_string());
       let join_handle = builder.spawn(move || {
         let worker = TsCompiler::setup_worker(global_state.clone());
         handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
@@ -486,8 +486,9 @@ impl TsCompiler {
     }
     let v = serde_json::from_str::<serde_json::Value>(json_str)
       .expect("Error decoding JSON string.");
-    
-    let specifier = ModuleSpecifier::resolve_url(&module_url.to_string()).unwrap();
+
+    let specifier =
+      ModuleSpecifier::resolve_url(&module_url.to_string()).unwrap();
     let js_content = v.get("source").unwrap().as_str().unwrap();
     self.cache_compiler_output(&specifier, ".js", js_content)?;
     if let Some(map_content) = v.get("map").unwrap().as_str() {
