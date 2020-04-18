@@ -1478,7 +1478,7 @@ declare namespace Deno {
    * points to.
    *
    *       const fileInfo = await Deno.lstat("hello.txt");
-   *       console.assert(fileInfo.isFile);
+   *       assert(fileInfo.isFile);
    *
    * Requires `allow-read` permission. */
   export function lstat(path: string): Promise<FileInfo>;
