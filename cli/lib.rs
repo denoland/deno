@@ -534,7 +534,7 @@ async fn test_command(
 
   // TODO: * start collecting coverage
   // coverage_collector.start_collecting();
-  let deno_inspector = worker.inspector.unwrap();
+  let deno_inspector = worker.inspector.as_ref().unwrap();
   let inspector_url = Url::parse(&deno_inspector.debugger_url)?;
   let mut coverage_collector =
     CoverageCollector::connect(inspector_url).await?;
