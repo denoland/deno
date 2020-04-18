@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-#[allow(clippy::write_with_newline)]
 mod tests {
   extern crate lazy_static;
   extern crate tempfile;
@@ -33,6 +32,8 @@ mod tests {
     assert!(status.success());
 
     let duration = Instant::now() - start;
+    #[allow(clippy::write_with_newline)]
+    #[allow(clippy::explicit_write)]
     writeln!(
       std::io::stderr(),
       "std no type check test took {:#?}",
