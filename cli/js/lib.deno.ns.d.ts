@@ -1363,7 +1363,7 @@ declare namespace Deno {
      *
      * _Linux/Mac OS only._ */
     uid: number | null;
-    /** User ID of the owner of this file.
+    /** Group ID of the owner of this file.
      *
      * _Linux/Mac OS only._ */
     gid: number | null;
