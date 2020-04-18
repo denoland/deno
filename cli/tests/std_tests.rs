@@ -32,9 +32,9 @@ mod tests {
     assert!(status.success());
 
     let duration = Instant::now() - start;
-    write!(
+    writeln!(
       std::io::stderr(),
-      "std no type check test took {:#?}\n",
+      "std no type check test took {:#?}",
       duration
     )
     .unwrap();
