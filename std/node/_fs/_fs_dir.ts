@@ -17,6 +17,7 @@ export default class Dir {
   }
 
   read(callback?: Function): Promise<Dirent | null> {
+    // eslint-disable-next-line no-async-promise-executor
     return new Promise(async (resolve, reject) => {
       try {
         if (!this.asyncIterator) {

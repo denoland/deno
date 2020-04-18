@@ -12,9 +12,9 @@ export function chown(
   gid: number,
   callback: CallbackWithError
 ): void {
-  new Promise(async (resolve, reject) => {
+  new Promise((resolve, reject) => {
     try {
-      await Deno.chown(path, uid, gid);
+      Deno.chownSync(path, uid, gid);
       resolve();
     } catch (err) {
       reject(err);

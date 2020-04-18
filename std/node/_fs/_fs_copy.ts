@@ -7,9 +7,9 @@ export function copyFile(
   destination: string,
   callback: CallbackWithError
 ): void {
-  new Promise(async (resolve, reject) => {
+  new Promise((resolve, reject) => {
     try {
-      await Deno.copyFile(source, destination);
+      Deno.copyFileSync(source, destination);
       resolve();
     } catch (err) {
       reject(err);

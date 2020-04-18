@@ -5,9 +5,9 @@ type ExitsCallback = (exists: boolean) => void;
 /* Deprecated in node api */
 
 export function exists(path: string, callback: ExitsCallback): void {
-  new Promise(async (resolve, reject) => {
+  new Promise((resolve, reject) => {
     try {
-      await Deno.lstat(path);
+      Deno.lstatSync(path);
       resolve();
     } catch (err) {
       reject(err);

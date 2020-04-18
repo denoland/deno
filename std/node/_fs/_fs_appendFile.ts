@@ -23,7 +23,7 @@ export function appendFile(
   validateEncoding(options);
 
   let rid = -1;
-  new Promise(async (resolve, reject) => {
+  new Promise((resolve, reject) => {
     try {
       if (typeof pathOrRid === "number") {
         rid = pathOrRid;
@@ -39,13 +39,13 @@ export function appendFile(
           //TODO rework once https://github.com/denoland/deno/issues/4017 completes
           notImplemented("Deno does not yet support setting mode on create");
         }
-        const file = await Deno.open(pathOrRid, getOpenOptions(flag));
+        const file = Deno.openSync(pathOrRid, getOpenOptions(flag));
         rid = file.rid;
       }
 
       const buffer: Uint8Array = new TextEncoder().encode(data);
 
-      await Deno.write(rid, buffer);
+      Deno.writeSync(rid, buffer);
       resolve();
     } catch (err) {
       reject(err);
