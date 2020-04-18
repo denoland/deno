@@ -96,132 +96,136 @@ impl JSError {
       // Read an array of structured frames from error.__callSiteEvals.
       let frames_v8 =
         get_property(scope, context, exception, "__callSiteEvals");
-      let frames_v8: v8::Local<v8::Array> =
-        frames_v8.and_then(|a| a.try_into().ok()).unwrap();
+      let frames_v8: Option<v8::Local<v8::Array>> =
+        frames_v8.and_then(|a| a.try_into().ok());
 
       // Read an array of pre-formatted frames from error.__formattedFrames.
       let formatted_frames_v8 =
         get_property(scope, context, exception, "__formattedFrames");
-      let formatted_frames_v8: v8::Local<v8::Array> =
-        formatted_frames_v8.and_then(|a| a.try_into().ok()).unwrap();
+      let formatted_frames_v8: Option<v8::Local<v8::Array>> =
+        formatted_frames_v8.and_then(|a| a.try_into().ok());
 
       // Convert them into Vec<JSStack> and Vec<String> respectively.
       let mut frames: Vec<JSStackFrame> = vec![];
       let mut formatted_frames: Vec<String> = vec![];
-      for i in 0..frames_v8.length() {
-        let call_site: v8::Local<v8::Object> = frames_v8
-          .get_index(scope, context, i)
-          .unwrap()
-          .try_into()
-          .unwrap();
-        let type_name: Option<v8::Local<v8::String>> =
-          get_property(scope, context, call_site, "typeName")
-            .unwrap()
-            .try_into()
-            .ok();
-        let type_name = type_name.map(|s| s.to_rust_string_lossy(scope));
-        let function_name: Option<v8::Local<v8::String>> =
-          get_property(scope, context, call_site, "functionName")
-            .unwrap()
-            .try_into()
-            .ok();
-        let function_name =
-          function_name.map(|s| s.to_rust_string_lossy(scope));
-        let method_name: Option<v8::Local<v8::String>> =
-          get_property(scope, context, call_site, "methodName")
-            .unwrap()
-            .try_into()
-            .ok();
-        let method_name = method_name.map(|s| s.to_rust_string_lossy(scope));
-        let file_name: Option<v8::Local<v8::String>> =
-          get_property(scope, context, call_site, "fileName")
-            .unwrap()
-            .try_into()
-            .ok();
-        let file_name = file_name.map(|s| s.to_rust_string_lossy(scope));
-        let line_number: Option<v8::Local<v8::Integer>> =
-          get_property(scope, context, call_site, "lineNumber")
-            .unwrap()
-            .try_into()
-            .ok();
-        let line_number = line_number.map(|n| n.value());
-        let column_number: Option<v8::Local<v8::Integer>> =
-          get_property(scope, context, call_site, "columnNumber")
-            .unwrap()
-            .try_into()
-            .ok();
-        let column_number = column_number.map(|n| n.value());
-        let eval_origin: Option<v8::Local<v8::String>> =
-          get_property(scope, context, call_site, "evalOrigin")
-            .unwrap()
-            .try_into()
-            .ok();
-        let eval_origin = eval_origin.map(|s| s.to_rust_string_lossy(scope));
-        let is_top_level: Option<v8::Local<v8::Boolean>> =
-          get_property(scope, context, call_site, "isTopLevel")
-            .unwrap()
-            .try_into()
-            .ok();
-        let is_top_level = is_top_level.map(|b| b.is_true());
-        let is_eval: v8::Local<v8::Boolean> =
-          get_property(scope, context, call_site, "isEval")
+      if let (Some(frames_v8), Some(formatted_frames_v8)) =
+        (frames_v8, formatted_frames_v8)
+      {
+        for i in 0..frames_v8.length() {
+          let call_site: v8::Local<v8::Object> = frames_v8
+            .get_index(scope, context, i)
             .unwrap()
             .try_into()
             .unwrap();
-        let is_eval = is_eval.is_true();
-        let is_native: v8::Local<v8::Boolean> =
-          get_property(scope, context, call_site, "isNative")
+          let type_name: Option<v8::Local<v8::String>> =
+            get_property(scope, context, call_site, "typeName")
+              .unwrap()
+              .try_into()
+              .ok();
+          let type_name = type_name.map(|s| s.to_rust_string_lossy(scope));
+          let function_name: Option<v8::Local<v8::String>> =
+            get_property(scope, context, call_site, "functionName")
+              .unwrap()
+              .try_into()
+              .ok();
+          let function_name =
+            function_name.map(|s| s.to_rust_string_lossy(scope));
+          let method_name: Option<v8::Local<v8::String>> =
+            get_property(scope, context, call_site, "methodName")
+              .unwrap()
+              .try_into()
+              .ok();
+          let method_name = method_name.map(|s| s.to_rust_string_lossy(scope));
+          let file_name: Option<v8::Local<v8::String>> =
+            get_property(scope, context, call_site, "fileName")
+              .unwrap()
+              .try_into()
+              .ok();
+          let file_name = file_name.map(|s| s.to_rust_string_lossy(scope));
+          let line_number: Option<v8::Local<v8::Integer>> =
+            get_property(scope, context, call_site, "lineNumber")
+              .unwrap()
+              .try_into()
+              .ok();
+          let line_number = line_number.map(|n| n.value());
+          let column_number: Option<v8::Local<v8::Integer>> =
+            get_property(scope, context, call_site, "columnNumber")
+              .unwrap()
+              .try_into()
+              .ok();
+          let column_number = column_number.map(|n| n.value());
+          let eval_origin: Option<v8::Local<v8::String>> =
+            get_property(scope, context, call_site, "evalOrigin")
+              .unwrap()
+              .try_into()
+              .ok();
+          let eval_origin = eval_origin.map(|s| s.to_rust_string_lossy(scope));
+          let is_top_level: Option<v8::Local<v8::Boolean>> =
+            get_property(scope, context, call_site, "isTopLevel")
+              .unwrap()
+              .try_into()
+              .ok();
+          let is_top_level = is_top_level.map(|b| b.is_true());
+          let is_eval: v8::Local<v8::Boolean> =
+            get_property(scope, context, call_site, "isEval")
+              .unwrap()
+              .try_into()
+              .unwrap();
+          let is_eval = is_eval.is_true();
+          let is_native: v8::Local<v8::Boolean> =
+            get_property(scope, context, call_site, "isNative")
+              .unwrap()
+              .try_into()
+              .unwrap();
+          let is_native = is_native.is_true();
+          let is_constructor: v8::Local<v8::Boolean> =
+            get_property(scope, context, call_site, "isConstructor")
+              .unwrap()
+              .try_into()
+              .unwrap();
+          let is_constructor = is_constructor.is_true();
+          let is_async: v8::Local<v8::Boolean> =
+            get_property(scope, context, call_site, "isAsync")
+              .unwrap()
+              .try_into()
+              .unwrap();
+          let is_async = is_async.is_true();
+          let is_promise_all: v8::Local<v8::Boolean> =
+            get_property(scope, context, call_site, "isPromiseAll")
+              .unwrap()
+              .try_into()
+              .unwrap();
+          let is_promise_all = is_promise_all.is_true();
+          let promise_index: Option<v8::Local<v8::Integer>> =
+            get_property(scope, context, call_site, "columnNumber")
+              .unwrap()
+              .try_into()
+              .ok();
+          let promise_index = promise_index.map(|n| n.value());
+          frames.push(JSStackFrame {
+            type_name,
+            function_name,
+            method_name,
+            file_name,
+            line_number,
+            column_number,
+            eval_origin,
+            is_top_level,
+            is_eval,
+            is_native,
+            is_constructor,
+            is_async,
+            is_promise_all,
+            promise_index,
+          });
+          let formatted_frame: v8::Local<v8::String> = formatted_frames_v8
+            .get_index(scope, context, i)
             .unwrap()
             .try_into()
             .unwrap();
-        let is_native = is_native.is_true();
-        let is_constructor: v8::Local<v8::Boolean> =
-          get_property(scope, context, call_site, "isConstructor")
-            .unwrap()
-            .try_into()
-            .unwrap();
-        let is_constructor = is_constructor.is_true();
-        let is_async: v8::Local<v8::Boolean> =
-          get_property(scope, context, call_site, "isAsync")
-            .unwrap()
-            .try_into()
-            .unwrap();
-        let is_async = is_async.is_true();
-        let is_promise_all: v8::Local<v8::Boolean> =
-          get_property(scope, context, call_site, "isPromiseAll")
-            .unwrap()
-            .try_into()
-            .unwrap();
-        let is_promise_all = is_promise_all.is_true();
-        let promise_index: Option<v8::Local<v8::Integer>> =
-          get_property(scope, context, call_site, "columnNumber")
-            .unwrap()
-            .try_into()
-            .ok();
-        let promise_index = promise_index.map(|n| n.value());
-        frames.push(JSStackFrame {
-          type_name,
-          function_name,
-          method_name,
-          file_name,
-          line_number,
-          column_number,
-          eval_origin,
-          is_top_level,
-          is_eval,
-          is_native,
-          is_constructor,
-          is_async,
-          is_promise_all,
-          promise_index,
-        });
-        let formatted_frame: v8::Local<v8::String> = formatted_frames_v8
-          .get_index(scope, context, i)
-          .unwrap()
-          .try_into()
-          .unwrap();
-        let formatted_frame = formatted_frame.to_rust_string_lossy(scope);
-        formatted_frames.push(formatted_frame)
+          let formatted_frame = formatted_frame.to_rust_string_lossy(scope);
+          formatted_frames.push(formatted_frame)
+        }
       }
       (message, frames, formatted_frames)
     } else {
