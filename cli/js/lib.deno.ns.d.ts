@@ -2038,6 +2038,33 @@ declare namespace Deno {
    */
   export function connectTLS(options: ConnectTLSOptions): Promise<Conn>;
 
+  export interface StartTLSOptions {
+    /** A literal IP address or host name that can be resolved to an IP address.
+     * If not specified, defaults to `127.0.0.1`. */
+    hostname?: string;
+    /** Server certificate file. */
+    certFile?: string;
+  }
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Start TLS handshake from an existing connection using
+   * an optional cert file, hostname (default is "127.0.0.1").  The
+   * cert file is optional and if not included Mozilla's root certificates will
+   * be used (see also https://github.com/ctz/webpki-roots for specifics)
+   * Using this function requires that the other end of the connection is
+   * prepared for TLS handshake.
+   *
+   *     const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
+   *     const tlsConn = await Deno.startTLS(conn, { certFile: "./certs/my_custom_root_CA.pem", hostname: "127.0.0.1", port: 80 });
+   *
+   * Requires `allow-net` permission.
+   */
+  export function startTLS(
+    conn: Conn,
+    options?: StartTLSOptions
+  ): Promise<Conn>;
+
   /** **UNSTABLE**: not sure if broken or not */
   export interface Metrics {
     opsDispatched: number;

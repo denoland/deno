@@ -8,7 +8,7 @@ export interface ConnectTLSRequest {
   certFile?: string;
 }
 
-interface ConnectTLSResponse {
+interface EstablishTLSResponse {
   rid: number;
   localAddr: {
     hostname: string;
@@ -24,7 +24,7 @@ interface ConnectTLSResponse {
 
 export function connectTLS(
   args: ConnectTLSRequest
-): Promise<ConnectTLSResponse> {
+): Promise<EstablishTLSResponse> {
   return sendAsync("op_connect_tls", args);
 }
 
@@ -65,4 +65,14 @@ interface ListenTLSResponse {
 
 export function listenTLS(args: ListenTLSRequest): ListenTLSResponse {
   return sendSync("op_listen_tls", args);
+}
+
+export interface StartTLSRequest {
+  rid: number;
+  hostname: string;
+  certFile?: string;
+}
+
+export function startTLS(args: StartTLSRequest): Promise<EstablishTLSResponse> {
+  return sendAsync("op_start_tls", args);
 }
