@@ -1046,9 +1046,9 @@ fn ca_file_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn no_type_check_arg<'a, 'b>() -> Arg<'a, 'b> {
-  Arg::with_name("no-type-check")
-    .long("no-type-check")
-    .help("Transpile to JavaScript without enforcing any TypeScript type checking.")
+  Arg::with_name("no-type-check").long("no-type-check").help(
+    "Transpile to JavaScript without enforcing any TypeScript type checking.",
+  )
 }
 
 fn no_type_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
