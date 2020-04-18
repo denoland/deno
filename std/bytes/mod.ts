@@ -7,8 +7,24 @@ import { copyBytes } from "../io/util.ts";
  * @param b pattern to find in source array
  */
 export function findIndex(a: Uint8Array, pat: Uint8Array): number {
-  const indexOf = String(a).indexOf(String(pat));
-  return indexOf == -1 ? indexOf : indexOf / 2;
+  const s = pat[0];
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== s) continue;
+    const pin = i;
+    let matched = 1;
+    let j = i;
+    while (matched < pat.length) {
+      j++;
+      if (a[j] !== pat[j - pin]) {
+        break;
+      }
+      matched++;
+    }
+    if (matched === pat.length) {
+      return pin;
+    }
+  }
+  return -1;
 }
 
 /**
@@ -17,14 +33,30 @@ export function findIndex(a: Uint8Array, pat: Uint8Array): number {
  * @param b pattern to find in source array
  */
 export function findLastIndex(a: Uint8Array, pat: Uint8Array): number {
-  const indexOf = String(a).lastIndexOf(String(pat));
-  return indexOf == -1 ? indexOf : indexOf / 2;
+  const e = pat[pat.length - 1];
+  for (let i = a.length - 1; i >= 0; i--) {
+    if (a[i] !== e) continue;
+    const pin = i;
+    let matched = 1;
+    let j = i;
+    while (matched < pat.length) {
+      j--;
+      if (a[j] !== pat[pat.length - 1 - (pin - j)]) {
+        break;
+      }
+      matched++;
+    }
+    if (matched === pat.length) {
+      return pin - pat.length + 1;
+    }
+  }
+  return -1;
 }
 
 /**
  * Check whether binary arrays are equal to each other.
- * @param a First Array To Check
- * @param b Second Array To Check
+ * @param a First array to check
+ * @param b Second array to check
  */
 export function equal(a: Uint8Array, match: Uint8Array): boolean {
   return String(a) === String(match);
@@ -32,14 +64,11 @@ export function equal(a: Uint8Array, match: Uint8Array): boolean {
 
 /**
  * Check whether binary array starts with prefix.
- * @param a First Array To Concatenate
- * @param b Second Array To Concatenate
+ * @param a First array to concatenate
+ * @param b Second array to concatenate
  */
 export function hasPrefix(a: Uint8Array, prefix: Uint8Array): boolean {
-  for (let i = 0, max = prefix.length; i < max; i++) {
-    if (a[i] !== prefix[i]) return false;
-  }
-  return true;
+  return a.length >= prefix.length && equal(a.slice(0, prefix.length), prefix);
 }
 
 /**
