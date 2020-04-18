@@ -2,7 +2,6 @@
 extern crate deno_core;
 extern crate futures;
 
-use deno_core::CoreOp;
 use deno_core::Op;
 use deno_core::PluginInitContext;
 use deno_core::{Buf, ZeroCopyBuf};
@@ -14,7 +13,7 @@ fn init(context: &mut dyn PluginInitContext) {
 }
 init_fn!(init);
 
-pub fn op_test_sync(data: &[u8], zero_copy: Option<ZeroCopyBuf>) -> CoreOp {
+pub fn op_test_sync(data: &[u8], zero_copy: Option<ZeroCopyBuf>) -> Op {
   if let Some(buf) = zero_copy {
     let data_str = std::str::from_utf8(&data[..]).unwrap();
     let buf_str = std::str::from_utf8(&buf[..]).unwrap();
@@ -28,7 +27,7 @@ pub fn op_test_sync(data: &[u8], zero_copy: Option<ZeroCopyBuf>) -> CoreOp {
   Op::Sync(result_box)
 }
 
-pub fn op_test_async(data: &[u8], zero_copy: Option<ZeroCopyBuf>) -> CoreOp {
+pub fn op_test_async(data: &[u8], zero_copy: Option<ZeroCopyBuf>) -> Op {
   let data_str = std::str::from_utf8(&data[..]).unwrap().to_string();
   let fut = async move {
     if let Some(buf) = zero_copy {
@@ -46,7 +45,7 @@ pub fn op_test_async(data: &[u8], zero_copy: Option<ZeroCopyBuf>) -> CoreOp {
     assert!(rx.await.is_ok());
     let result = b"test";
     let result_box: Buf = Box::new(*result);
-    Ok(result_box)
+    result_box
   };
 
   Op::Async(fut.boxed())
