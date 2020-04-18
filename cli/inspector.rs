@@ -239,8 +239,7 @@ pub struct DenoInspector {
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
   _canary_tx: oneshot::Sender<Never>,
-  #[allow(unused)]
-  debugger_url: String,
+  pub debugger_url: String,
 }
 
 impl Deref for DenoInspector {
