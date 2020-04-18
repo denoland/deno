@@ -485,6 +485,7 @@ async fn test_command(
   fail_fast: bool,
   allow_none: bool,
   filter: Option<String>,
+  coverage: bool,
 ) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
   let cwd = std::env::current_dir().expect("No current directory");
@@ -534,10 +535,21 @@ async fn test_command(
 
   // TODO: * start collecting coverage
   // coverage_collector.start_collecting();
-  let deno_inspector = worker.inspector.as_ref().unwrap();
-  let inspector_url = Url::parse(&deno_inspector.debugger_url)?;
-  let mut coverage_collector =
-    CoverageCollector::connect(inspector_url).await?;
+  let mut maybe_coverage_collector = if coverage {
+    let deno_inspector = match worker.inspector.as_ref() {
+      Some(inspector) => inspector,
+      None => {
+        return Err(
+          OpError::other("coverage option requires --inspect flag".to_string())
+            .into(),
+        )
+      }
+    };
+    let inspector_url = Url::parse(&deno_inspector.debugger_url)?;
+    Some(CoverageCollector::connect(inspector_url).await?)
+  } else {
+    None
+  };
 
   let execute_result = worker.execute_module(&main_module).await;
   execute_result?;
@@ -552,25 +564,27 @@ async fn test_command(
   // * parse coverage report to CoverageParser together with list
   // of test files and prepare a test/JSON report
   // coverage_collector.stop_collecting();
-  coverage_collector.stop_collecting().await?;
-  eprintln!("stop collecting");
-  (&mut *worker).await?;
-  (&mut *worker).await?;
-  (&mut *worker).await?;
-  (&mut *worker).await?;
-  eprintln!("polled worker");
-  let coverage_report = coverage_collector.get_report().await?;
 
-  let test_modules = test_modules
-    .into_iter()
-    .map(|u| u.to_string())
-    .collect::<Vec<String>>();
-  let filtered_report = coverage_report
-    .into_iter()
-    .filter(|e| test_modules.contains(&e.url))
-    .collect::<Vec<CoverageResult>>();
-  eprintln!("test modules {:#?}", test_modules);
-  eprintln!("coverage report: {:#?}", filtered_report);
+  if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+    coverage_collector.stop_collecting().await?;
+    eprintln!("stop collecting");
+    (&mut *worker).await?;
+    (&mut *worker).await?;
+    (&mut *worker).await?;
+    (&mut *worker).await?;
+    eprintln!("polled worker");
+    let coverage_report = coverage_collector.get_report().await?;
+    let test_modules = test_modules
+      .into_iter()
+      .map(|u| u.to_string())
+      .collect::<Vec<String>>();
+    let filtered_report = coverage_report
+      .into_iter()
+      .filter(|e| test_modules.contains(&e.url))
+      .collect::<Vec<CoverageResult>>();
+    eprintln!("test modules {:#?}", test_modules);
+    eprintln!("coverage report: {:#?}", filtered_report);
+  }
 
   Ok(())
 }
@@ -631,9 +645,9 @@ pub fn main() {
       include,
       allow_none,
       filter,
-    } => {
-      test_command(flags, include, fail_fast, allow_none, filter).boxed_local()
-    }
+      coverage,
+    } => test_command(flags, include, fail_fast, allow_none, filter, coverage)
+      .boxed_local(),
     DenoSubcommand::Completions { buf } => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);
