@@ -1338,7 +1338,7 @@ declare namespace Deno {
      * field from `stat` on Unix and `ftLastAccessTime` on Windows. This may not
      * be available on all platforms. */
     accessed: number | null;
-    /** The last access time of the file. This corresponds to the `birthtime`
+    /** The creation time of the file. This corresponds to the `birthtime`
      * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may not
      * be available on all platforms. */
     created: number | null;
