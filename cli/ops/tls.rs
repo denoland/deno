@@ -28,6 +28,7 @@ use tokio_rustls::{
 use webpki::DNSNameRef;
 
 pub fn init(i: &mut Isolate, s: &State) {
+  i.register_op("op_start_tls", s.stateful_json_op(op_start_tls));
   i.register_op("op_connect_tls", s.stateful_json_op(op_connect_tls));
   i.register_op("op_listen_tls", s.stateful_json_op(op_listen_tls));
   i.register_op("op_accept_tls", s.stateful_json_op(op_accept_tls));
@@ -40,6 +41,85 @@ struct ConnectTLSArgs {
   hostname: String,
   port: u16,
   cert_file: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StartTLSArgs {
+  rid: u32,
+  cert_file: Option<String>,
+  hostname: String,
+}
+
+pub fn op_start_tls(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  let args: StartTLSArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let cert_file = args.cert_file.clone();
+  let state_ = state.clone();
+
+  let mut domain = args.hostname;
+  if domain.is_empty() {
+    domain.push_str("localhost");
+  }
+
+  let op = async move {
+    let mut state = state_.borrow_mut();
+
+    let mut resource_holder =
+      match state.resource_table.remove::<StreamResourceHolder>(rid) {
+        Some(resource) => *resource,
+        None => return Err(OpError::bad_resource_id()),
+      };
+
+    if let StreamResource::TcpStream(ref mut tcp_stream) =
+      resource_holder.resource
+    {
+      let tcp_stream = tcp_stream.take().unwrap();
+      let local_addr = tcp_stream.local_addr()?;
+      let remote_addr = tcp_stream.peer_addr()?;
+      let mut config = ClientConfig::new();
+      config
+        .root_store
+        .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+      if let Some(path) = cert_file {
+        let key_file = File::open(path)?;
+        let reader = &mut BufReader::new(key_file);
+        config.root_store.add_pem_file(reader).unwrap();
+      }
+
+      let tls_connector = TlsConnector::from(Arc::new(config));
+      let dnsname =
+        DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
+      let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
+
+      let rid = state.resource_table.add(
+        "clientTlsStream",
+        Box::new(StreamResourceHolder::new(StreamResource::ClientTlsStream(
+          Box::new(tls_stream),
+        ))),
+      );
+      Ok(json!({
+          "rid": rid,
+          "localAddr": {
+            "hostname": local_addr.ip().to_string(),
+            "port": local_addr.port(),
+            "transport": "tcp",
+          },
+          "remoteAddr": {
+            "hostname": remote_addr.ip().to_string(),
+            "port": remote_addr.port(),
+            "transport": "tcp",
+          }
+      }))
+    } else {
+      Err(OpError::bad_resource_id())
+    }
+  };
+  Ok(JsonOp::Async(op.boxed_local()))
 }
 
 pub fn op_connect_tls(

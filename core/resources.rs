@@ -72,6 +72,17 @@ impl ResourceTable {
   pub fn close(&mut self, rid: ResourceId) -> Option<()> {
     self.map.remove(&rid).map(|(_name, _resource)| ())
   }
+
+  pub fn remove<T: Resource>(&mut self, rid: ResourceId) -> Option<Box<T>> {
+    if let Some((_name, resource)) = self.map.remove(&rid) {
+      let res = match resource.downcast::<T>() {
+        Ok(res) => Some(res),
+        Err(_e) => None,
+      };
+      return res;
+    }
+    None
+  }
 }
 
 /// Abstract type representing resource in Deno.
@@ -137,5 +148,19 @@ mod tests {
     assert_eq!(table.map.len(), 1);
     table.close(rid2);
     assert_eq!(table.map.len(), 0);
+  }
+
+  #[test]
+  fn test_take_from_resource_table() {
+    let mut table = ResourceTable::default();
+    let rid1 = table.add("fake1", Box::new(FakeResource::new(1)));
+    let rid2 = table.add("fake2", Box::new(FakeResource::new(2)));
+    assert_eq!(table.map.len(), 2);
+    let res1 = table.remove::<FakeResource>(rid1);
+    assert_eq!(table.map.len(), 1);
+    assert!(res1.is_some());
+    let res2 = table.remove::<FakeResource>(rid2);
+    assert_eq!(table.map.len(), 0);
+    assert!(res2.is_some());
   }
 }
