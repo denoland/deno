@@ -21,11 +21,7 @@ use std::path::PathBuf;
 
 fn is_supported(path: &Path) -> bool {
   if let Some(ext) = path.extension() {
-    if ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx" {
-      true
-    } else {
-      false
-    }
+    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx"
   } else {
     false
   }
