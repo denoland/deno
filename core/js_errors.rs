@@ -73,28 +73,43 @@ impl JSError {
 
     let msg = v8::Exception::create_message(scope, exception);
 
-    let exception: Option<v8::Local<v8::Object>> =
-      exception.clone().try_into().ok();
-    let _ = exception.map(|e| get_property(scope, context, e, "stack"));
+    let (message, frames, formatted_frames) = if exception.is_native_error() {
+      // The exception is a JS Error object.
+      let exception: v8::Local<v8::Object> =
+        exception.clone().try_into().unwrap();
 
-    let maybe_call_sites = exception
-      .and_then(|e| get_property(scope, context, e, "__callSiteEvals"));
-    let maybe_call_sites: Option<v8::Local<v8::Array>> =
-      maybe_call_sites.and_then(|a| a.try_into().ok());
+      // Get the message by formatting error.name and error.message.
+      let name = get_property(scope, context, exception, "name")
+        .and_then(|m| m.to_string(scope))
+        .map(|s| s.to_rust_string_lossy(scope))
+        .unwrap_or_else(|| "undefined".to_string());
+      let message_prop = get_property(scope, context, exception, "message")
+        .and_then(|m| m.to_string(scope))
+        .map(|s| s.to_rust_string_lossy(scope))
+        .unwrap_or_else(|| "undefined".to_string());
+      let message = format!("Uncaught {}: {}", name, message_prop);
 
-    let (frames, formatted_frames) = if let Some(call_sites) = maybe_call_sites
-    {
+      // Access error.stack to ensure that prepareStackTrace() has been called.
+      // This should populate error.__callSiteEvals and error.__formattedFrames.
+      let _ = get_property(scope, context, exception, "stack");
+
+      // Read an array of structured frames from error.__callSiteEvals.
+      let frames_v8 =
+        get_property(scope, context, exception, "__callSiteEvals");
+      let frames_v8: v8::Local<v8::Array> =
+        frames_v8.and_then(|a| a.try_into().ok()).unwrap();
+
+      // Read an array of pre-formatted frames from error.__formattedFrames.
+      let formatted_frames_v8 =
+        get_property(scope, context, exception, "__formattedFrames");
+      let formatted_frames_v8: v8::Local<v8::Array> =
+        formatted_frames_v8.and_then(|a| a.try_into().ok()).unwrap();
+
+      // Convert them into Vec<JSStack> and Vec<String> respectively.
       let mut frames: Vec<JSStackFrame> = vec![];
       let mut formatted_frames: Vec<String> = vec![];
-
-      let formatted_frames_v8 =
-        get_property(scope, context, exception.unwrap(), "__formattedFrames");
-      let formatted_frames_v8: v8::Local<v8::Array> = formatted_frames_v8
-        .and_then(|a| a.try_into().ok())
-        .expect("__formattedFrames should be defined if __callSiteEvals is.");
-
-      for i in 0..call_sites.length() {
-        let call_site: v8::Local<v8::Object> = call_sites
+      for i in 0..frames_v8.length() {
+        let call_site: v8::Local<v8::Object> = frames_v8
           .get_index(scope, context, i)
           .unwrap()
           .try_into()
@@ -208,13 +223,16 @@ impl JSError {
         let formatted_frame = formatted_frame.to_rust_string_lossy(scope);
         formatted_frames.push(formatted_frame)
       }
-      (frames, formatted_frames)
+      (message, frames, formatted_frames)
     } else {
-      (vec![], vec![])
+      // The exception is not a JS Error object.
+      // Get the message given by V8::Exception::create_message(), and provide
+      // empty frames.
+      (msg.get(scope).to_rust_string_lossy(scope), vec![], vec![])
     };
 
     Self {
-      message: msg.get(scope).to_rust_string_lossy(scope),
+      message,
       script_resource_name: msg
         .get_script_resource_name(scope)
         .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())
