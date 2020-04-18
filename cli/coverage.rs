@@ -2,14 +2,14 @@
 
 #![allow(unused)]
 
+use crate::futures::SinkExt;
+use crate::futures::StreamExt;
 use crate::tokio_util;
 use deno_core::ErrBox;
+use serde::Deserialize;
 use std;
 use tokio_tungstenite;
 use url::Url;
-use crate::futures::StreamExt;
-use crate::futures::SinkExt;
-use serde::Deserialize;
 
 pub struct CoverageCollector {
   msg_id: usize,
@@ -19,22 +19,31 @@ pub struct CoverageCollector {
 impl CoverageCollector {
   pub async fn connect(url: Url) -> Result<Self, ErrBox> {
     let (socket, response) = tokio_tungstenite::connect_async(url)
-        .await
-        .expect("Can't connect");
+      .await
+      .expect("Can't connect");
     assert_eq!(response.status(), 101);
 
-    let mut collector = Self {
-        msg_id: 1,
-        socket,
-    };
+    let mut collector = Self { msg_id: 1, socket };
 
     eprintln!("start");
-    collector.socket.send(r#"{"id":1,"method":"Runtime.enable"}"#.into()).await.unwrap();
-    collector.socket.send(r#"{"id":2,"method":"Profiler.enable"}"#.into()).await.unwrap();
+    collector
+      .socket
+      .send(r#"{"id":1,"method":"Runtime.enable"}"#.into())
+      .await
+      .unwrap();
+    collector
+      .socket
+      .send(r#"{"id":2,"method":"Profiler.enable"}"#.into())
+      .await
+      .unwrap();
     collector.socket.send(r#"{"id":3,"method":"Profiler.startPreciseCoverage", "params": {"callCount": false, "detailed": true } }"#.into()).await.unwrap();
-    collector.socket.send(r#"{"id":4,"method":"Runtime.runIfWaitingForDebugger" }"#.into()).await.unwrap();
+    collector
+      .socket
+      .send(r#"{"id":4,"method":"Runtime.runIfWaitingForDebugger" }"#.into())
+      .await
+      .unwrap();
     eprintln!("start1");
-    
+
     Ok(collector)
   }
 
@@ -51,8 +60,16 @@ impl CoverageCollector {
     let msg = self.socket.next().await.unwrap();
     dbg!(msg);
 
-    self.socket.send(r#"{"id":5,"method":"Profiler.takePreciseCoverage" }"#.into()).await.unwrap();
-    self.socket.send(r#"{"id":6,"method":"Profiler.stopPreciseCoverage" }"#.into()).await.unwrap();
+    self
+      .socket
+      .send(r#"{"id":5,"method":"Profiler.takePreciseCoverage" }"#.into())
+      .await
+      .unwrap();
+    self
+      .socket
+      .send(r#"{"id":6,"method":"Profiler.stopPreciseCoverage" }"#.into())
+      .await
+      .unwrap();
     Ok(())
   }
 
@@ -63,13 +80,14 @@ impl CoverageCollector {
     let msg = msg.unwrap();
     let msg_text = msg.to_text()?;
 
-    let coverage_result: CoverageResultMsg = serde_json::from_str(msg_text).unwrap();
+    let coverage_result: CoverageResultMsg =
+      serde_json::from_str(msg_text).unwrap();
     // eprintln!("cover result {:#?}", coverage_result);
 
     // dbg!(msg);
     let msg = self.socket.next().await.unwrap();
     dbg!(msg);
-    
+
     Ok(coverage_result.result.result)
   }
 }
@@ -77,37 +95,36 @@ impl CoverageCollector {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoverageRange {
-    pub start_offset: usize,
-    pub end_offset: usize,
-    pub count: usize,
+  pub start_offset: usize,
+  pub end_offset: usize,
+  pub count: usize,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FunctionCoverageResult {
-    pub function_name: String,
-    pub ranges: Vec<CoverageRange>,
-    pub is_block_coverage: bool,
+  pub function_name: String,
+  pub ranges: Vec<CoverageRange>,
+  pub is_block_coverage: bool,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoverageResult {
-    pub script_id: String,
-    pub url: String,
-    pub functions: Vec<FunctionCoverageResult>,
+  pub script_id: String,
+  pub url: String,
+  pub functions: Vec<FunctionCoverageResult>,
 }
-
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Res {
-    result: Vec<CoverageResult>,
+  result: Vec<CoverageResult>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CoverageResultMsg {
-    id: usize,
-    result: Res,
+  id: usize,
+  result: Res,
 }

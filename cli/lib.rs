@@ -512,8 +512,6 @@ async fn test_command(
   // probably on separate thread
   // * ensure that --inspect flag is on so inspector is available
 
-  let inspector_url = Url::parse("ws://127.0.0.1:9229/ws/463ebedf-b2f2-4a73-96b1-f1987cc22300").unwrap();
-
   let mut worker =
     create_main_worker(global_state.clone(), main_module.clone())?;
 
@@ -536,7 +534,10 @@ async fn test_command(
 
   // TODO: * start collecting coverage
   // coverage_collector.start_collecting();
-  let mut coverage_collector = CoverageCollector::connect(inspector_url).await?;
+  let deno_inspector = worker.inspector.unwrap();
+  let inspector_url = Url::parse(&deno_inspector.debugger_url)?;
+  let mut coverage_collector =
+    CoverageCollector::connect(inspector_url).await?;
 
   let execute_result = worker.execute_module(&main_module).await;
   execute_result?;
@@ -560,10 +561,14 @@ async fn test_command(
   eprintln!("polled worker");
   let coverage_report = coverage_collector.get_report().await?;
 
-  let test_modules = test_modules.into_iter().map(|u| u.to_string()).collect::<Vec<String>>();
-  let filtered_report = coverage_report.into_iter().filter(|e| {
-    test_modules.contains(&e.url)
-  }).collect::<Vec<CoverageResult>>();
+  let test_modules = test_modules
+    .into_iter()
+    .map(|u| u.to_string())
+    .collect::<Vec<String>>();
+  let filtered_report = coverage_report
+    .into_iter()
+    .filter(|e| test_modules.contains(&e.url))
+    .collect::<Vec<CoverageResult>>();
   eprintln!("test modules {:#?}", test_modules);
   eprintln!("coverage report: {:#?}", filtered_report);
 
