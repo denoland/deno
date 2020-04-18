@@ -26,6 +26,11 @@ Deno.test("[bytes] findIndex2", () => {
   assertEquals(i, 1);
 });
 
+Deno.test("[bytes] findIndex3", () => {
+  const i = findIndex(encode("Deno"), encode("D"));
+  assertEquals(i, 0);
+});
+
 Deno.test("[bytes] findLastIndex1", () => {
   const i = findLastIndex(
     new Uint8Array([0, 1, 2, 0, 1, 2, 0, 1, 3]),
