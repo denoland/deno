@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+#[allow(clippy::write_with_newline)]
 mod tests {
   extern crate lazy_static;
   extern crate tempfile;
