@@ -14,7 +14,6 @@ use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use futures::stream::select;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -33,6 +32,8 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex, Once};
 use std::task::Context;
 use std::task::Poll;
+
+type PendingOpFuture = Pin<Box<dyn Future<Output = (OpId, Buf)>>>;
 
 /// A ZeroCopyBuf encapsulates a slice that's been borrowed from a JavaScript
 /// ArrayBuffer object. JavaScript objects can normally be garbage collected,
@@ -344,7 +345,7 @@ impl Isolate {
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
   pub fn register_op<F>(&self, name: &str, op: F) -> OpId
   where
-    F: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + 'static,
+    F: Fn(&[u8], Option<ZeroCopyBuf>) -> Op + 'static,
   {
     self.op_registry.register(name, op)
   }
@@ -402,13 +403,13 @@ impl Isolate {
         Some((op_id, buf))
       }
       Op::Async(fut) => {
-        let fut2 = fut.map_ok(move |buf| (op_id, buf));
+        let fut2 = fut.map(move |buf| (op_id, buf));
         self.pending_ops.push(fut2.boxed_local());
         self.have_unpolled_ops = true;
         None
       }
       Op::AsyncUnref(fut) => {
-        let fut2 = fut.map_ok(move |buf| (op_id, buf));
+        let fut2 = fut.map(move |buf| (op_id, buf));
         self.pending_unref_ops.push(fut2.boxed_local());
         self.have_unpolled_ops = true;
         None
@@ -528,10 +529,9 @@ impl Future for Isolate {
       match select(&mut inner.pending_ops, &mut inner.pending_unref_ops)
         .poll_next_unpin(cx)
       {
-        Poll::Ready(Some(Err(_))) => panic!("unexpected op error"),
         Poll::Ready(None) => break,
         Poll::Pending => break,
-        Poll::Ready(Some(Ok((op_id, buf)))) => {
+        Poll::Ready(Some((op_id, buf))) => {
           let successful_push = inner.shared.push(op_id, &buf);
           if !successful_push {
             // If we couldn't push the response to the shared queue, because
@@ -769,14 +769,14 @@ pub mod tests {
     let mut isolate = Isolate::new(StartupData::None, false);
 
     let dispatcher =
-      move |control: &[u8], _zero_copy: Option<ZeroCopyBuf>| -> CoreOp {
+      move |control: &[u8], _zero_copy: Option<ZeroCopyBuf>| -> Op {
         dispatch_count_.fetch_add(1, Ordering::Relaxed);
         match mode {
           Mode::Async => {
             assert_eq!(control.len(), 1);
             assert_eq!(control[0], 42);
             let buf = vec![43u8].into_boxed_slice();
-            Op::Async(futures::future::ok(buf).boxed())
+            Op::Async(futures::future::ready(buf).boxed())
           }
           Mode::AsyncUnref => {
             assert_eq!(control.len(), 1);
@@ -784,8 +784,7 @@ pub mod tests {
             let fut = async {
               // This future never finish.
               futures::future::pending::<()>().await;
-              let buf = vec![43u8].into_boxed_slice();
-              Ok(buf)
+              vec![43u8].into_boxed_slice()
             };
             Op::AsyncUnref(fut.boxed())
           }
@@ -806,7 +805,7 @@ pub mod tests {
           Mode::OverflowReqAsync => {
             assert_eq!(control.len(), 100 * 1024 * 1024);
             let buf = vec![43u8].into_boxed_slice();
-            Op::Async(futures::future::ok(buf).boxed())
+            Op::Async(futures::future::ready(buf).boxed())
           }
           Mode::OverflowResAsync => {
             assert_eq!(control.len(), 1);
@@ -815,7 +814,7 @@ pub mod tests {
             vec.resize(100 * 1024 * 1024, 0);
             vec[0] = 4;
             let buf = vec.into_boxed_slice();
-            Op::Async(futures::future::ok(buf).boxed())
+            Op::Async(futures::future::ready(buf).boxed())
           }
         }
       };

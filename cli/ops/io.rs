@@ -157,7 +157,7 @@ impl StreamResourceHolder {
 pub enum StreamResource {
   Stdin(tokio::io::Stdin, TTYMetadata),
   FsFile(Option<(tokio::fs::File, FileMetadata)>),
-  TcpStream(tokio::net::TcpStream),
+  TcpStream(Option<tokio::net::TcpStream>),
   #[cfg(not(windows))]
   UnixStream(tokio::net::UnixStream),
   ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
@@ -195,7 +195,7 @@ impl DenoAsyncRead for StreamResource {
       FsFile(Some((f, _))) => f,
       FsFile(None) => return Poll::Ready(Err(OpError::resource_unavailable())),
       Stdin(f, _) => f,
-      TcpStream(f) => f,
+      TcpStream(Some(f)) => f,
       #[cfg(not(windows))]
       UnixStream(f) => f,
       ClientTlsStream(f) => f,
@@ -297,7 +297,7 @@ impl DenoAsyncWrite for StreamResource {
     let f: &mut dyn UnpinAsyncWrite = match self {
       FsFile(Some((f, _))) => f,
       FsFile(None) => return Poll::Pending,
-      TcpStream(f) => f,
+      TcpStream(Some(f)) => f,
       #[cfg(not(windows))]
       UnixStream(f) => f,
       ClientTlsStream(f) => f,
@@ -315,7 +315,7 @@ impl DenoAsyncWrite for StreamResource {
     let f: &mut dyn UnpinAsyncWrite = match self {
       FsFile(Some((f, _))) => f,
       FsFile(None) => return Poll::Pending,
-      TcpStream(f) => f,
+      TcpStream(Some(f)) => f,
       #[cfg(not(windows))]
       UnixStream(f) => f,
       ClientTlsStream(f) => f,

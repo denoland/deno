@@ -1,5 +1,5 @@
 use crate::isolate::ZeroCopyBuf;
-use crate::ops::CoreOp;
+use crate::ops::Op;
 
 pub type PluginInitFn = fn(context: &mut dyn PluginInitContext);
 
@@ -7,7 +7,7 @@ pub trait PluginInitContext {
   fn register_op(
     &mut self,
     name: &str,
-    op: Box<dyn Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + 'static>,
+    op: Box<dyn Fn(&[u8], Option<ZeroCopyBuf>) -> Op + 'static>,
   );
 }
 
