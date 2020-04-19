@@ -2,8 +2,11 @@
 
 type ExitsCallback = (exists: boolean) => void;
 
-/* Deprecated in node api */
-
+/**
+ * TODO: Also accept 'path' parameter as a Node polyfill Buffer or URL type once these
+ * are implemented. See https://github.com/denoland/deno/issues/3403
+ * Deprecated in node api
+ */
 export function exists(path: string, callback: ExitsCallback): void {
   Deno.lstat(path)
     .then(() => {
