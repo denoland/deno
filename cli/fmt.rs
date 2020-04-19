@@ -164,7 +164,10 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
   let formatter = dprint::Formatter::new(&config);
 
   match formatter.format_text("_stdin.ts", &source) {
-    Ok(None) => unreachable!(),
+    Ok(None) => {
+      // code had a dprint-ignore-file comment
+      stdout().write_all(source.as_bytes())?;
+    },
     Ok(Some(formatted_text)) => {
       if check {
         if formatted_text != source {
