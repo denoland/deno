@@ -19,7 +19,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 fn is_supported(path: &Path) -> bool {
   if let Some(ext) = path.extension() {
@@ -40,6 +40,7 @@ async fn check_source_files(
 ) -> Result<(), ErrBox> {
   let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
   let formatter = Arc::new(dprint::Formatter::new(config));
+  let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
 
   run_parallelized(paths, {
     let not_formatted_files_count = not_formatted_files_count.clone();
@@ -54,6 +55,7 @@ async fn check_source_files(
           }
         }
         Err(e) => {
+          let _ = output_lock.lock().unwrap();
           eprintln!("Error checking: {}", &file_path_str);
           eprintln!("   {}", e);
         }
@@ -93,6 +95,7 @@ async fn format_source_files(
 ) -> Result<(), ErrBox> {
   let formatted_files_count = Arc::new(AtomicUsize::new(0));
   let formatter = Arc::new(dprint::Formatter::new(config));
+  let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
 
   run_parallelized(paths, {
     let formatted_files_count = formatted_files_count.clone();
@@ -103,12 +106,14 @@ async fn format_source_files(
       match r {
         Ok(formatted_text) => {
           if formatted_text != file_contents {
-            println!("{}", file_path_str);
             fs::write(&file_path, formatted_text)?;
             formatted_files_count.fetch_add(1, Ordering::SeqCst);
+            let _ = output_lock.lock().unwrap();
+            println!("{}", file_path_str);
           }
         }
         Err(e) => {
+          let _ = output_lock.lock().unwrap();
           eprintln!("Error formatting: {}", &file_path_str);
           eprintln!("   {}", e);
         }
@@ -196,20 +201,41 @@ async fn run_parallelized<F>(
 where
   F: FnOnce(PathBuf) -> Result<(), ErrBox> + Send + 'static + Clone,
 {
-  let handles = file_paths.into_iter().map(|file_path| {
+  let handles = file_paths.iter().map(|file_path| {
     let f = f.clone();
+    let file_path = file_path.clone();
     tokio::task::spawn_blocking(move || f(file_path))
   });
-  let handle_results = futures::future::try_join_all(handles).await.unwrap();
+  let join_results = futures::future::join_all(handles).await;
 
-  // return the first error, if it exists
-  for result in handle_results {
-    if let Err(err) = result {
-      return Err(err);
-    }
+  // find the tasks that panicked and let the user know which files
+  let panic_file_paths = join_results
+    .iter()
+    .enumerate()
+    .filter_map(|(i, join_result)| {
+      join_result
+        .as_ref()
+        .err()
+        .map(|_| file_paths[i].to_string_lossy())
+    })
+    .collect::<Vec<_>>();
+  if !panic_file_paths.is_empty() {
+    panic!("Panic formatting: {}", panic_file_paths.join(", "))
   }
 
-  Ok(())
+  // check for any errors and if so return the first one
+  let mut errors = join_results.into_iter().filter_map(|join_result| {
+    join_result
+      .ok()
+      .map(|handle_result| handle_result.err())
+      .flatten()
+  });
+
+  if let Some(e) = errors.next() {
+    Err(e)
+  } else {
+    Ok(())
+  }
 }
 
 #[test]
