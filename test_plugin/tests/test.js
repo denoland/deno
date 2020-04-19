@@ -17,14 +17,21 @@ const filename = `../target/${Deno.args[0]}/${filenamePrefix}${filenameBase}${fi
 // in runTestClose() below.
 const resourcesPre = Deno.resources();
 
-const plugin = Deno.openPlugin(filename);
+const rid = Deno.openPlugin(filename);
 
-const { testSync, testAsync } = plugin.ops;
+const { testSync, testAsync } = Deno.core.ops();
+if (!(testSync > 0)) {
+  throw "bad op id for testSync";
+}
+if (!(testAsync > 0)) {
+  throw "bad op id for testAsync";
+}
 
 const textDecoder = new TextDecoder();
 
 function runTestSync() {
-  const response = testSync.dispatch(
+  const response = Deno.core.dispatch(
+    testSync,
     new Uint8Array([116, 101, 115, 116]),
     new Uint8Array([116, 101, 115, 116])
   );
@@ -32,12 +39,13 @@ function runTestSync() {
   console.log(`Plugin Sync Response: ${textDecoder.decode(response)}`);
 }
 
-testAsync.setAsyncHandler((response) => {
+Deno.core.setAsyncHandler(testAsync, (response) => {
   console.log(`Plugin Async Response: ${textDecoder.decode(response)}`);
 });
 
 function runTestAsync() {
-  const response = testAsync.dispatch(
+  const response = Deno.core.dispatch(
+    testAsync,
     new Uint8Array([116, 101, 115, 116]),
     new Uint8Array([116, 101, 115, 116])
   );
@@ -50,22 +58,22 @@ function runTestAsync() {
 function runTestOpCount() {
   const start = Deno.metrics();
 
-  testSync.dispatch(new Uint8Array([116, 101, 115, 116]));
+  Deno.core.dispatch(testSync, new Uint8Array([116, 101, 115, 116]));
 
   const end = Deno.metrics();
 
-  if (end.opsCompleted - start.opsCompleted !== 2) {
+  if (end.opsCompleted - start.opsCompleted !== 1) {
     // one op for the plugin and one for Deno.metrics
     throw new Error("The opsCompleted metric is not correct!");
   }
-  if (end.opsDispatched - start.opsDispatched !== 2) {
+  if (end.opsDispatched - start.opsDispatched !== 1) {
     // one op for the plugin and one for Deno.metrics
     throw new Error("The opsDispatched metric is not correct!");
   }
 }
 
 function runTestPluginClose() {
-  plugin.close();
+  Deno.close(rid);
 
   const resourcesPost = Deno.resources();
 

@@ -29,7 +29,7 @@ fn op_close(
   struct CloseArgs {
     rid: i32,
   }
-  let args: CloseArgs = serde_json::from_value(args)?;
+  let args: CloseArgs = serde_json::from_value(args).unwrap();
   let mut state = state.borrow_mut();
   state
     .resource_table
