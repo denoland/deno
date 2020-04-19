@@ -161,7 +161,8 @@ function parseTrailer(field: string | null): Set<string> | undefined {
 
 export async function writeChunkedBody(
   w: Deno.Writer,
-  r: Deno.Reader
+  r: Deno.Reader,
+  options?: { realTime?: boolean }
 ): Promise<void> {
   const writer = BufWriter.create(w);
   for await (const chunk of Deno.toAsyncIterator(r)) {
@@ -171,6 +172,8 @@ export async function writeChunkedBody(
     await writer.write(start);
     await writer.write(chunk);
     await writer.write(end);
+    if (options && options.realTime)
+      await writer.flush();
   }
 
   const endChunk = encoder.encode("0\r\n\r\n");
@@ -276,7 +279,7 @@ export async function writeResponse(
     const n = await Deno.copy(writer, r.body);
     assert(n === bodyLength);
   } else {
-    await writeChunkedBody(writer, r.body);
+    await writeChunkedBody(writer, r.body, r.options);
   }
   if (r.trailers) {
     const t = await r.trailers();

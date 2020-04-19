@@ -342,6 +342,13 @@ export async function listenAndServeTLS(
   }
 }
 
+export interface ResponseOptions {
+  /** Indicates the body contains time-sensitive information, e.g. a real-time
+   * chat event stream. When body is a Reader, causes writes to the connection
+   * to be flushed after every read returns. */
+  realTime?: boolean;
+}
+
 /**
  * Interface of HTTP server response.
  * If body is a Reader, response would be chunked.
@@ -352,4 +359,5 @@ export interface Response {
   headers?: Headers;
   body?: Uint8Array | Reader | string;
   trailers?: () => Promise<Headers> | Headers;
+  options?: ResponseOptions;
 }

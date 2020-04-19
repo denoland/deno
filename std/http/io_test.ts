@@ -5,6 +5,8 @@ import {
   assert,
   assertNotEOF,
   assertNotEquals,
+  assertStrContains,
+  unreachable,
 } from "../testing/asserts.ts";
 import {
   bodyReader,
@@ -15,11 +17,12 @@ import {
   writeResponse,
 } from "./io.ts";
 import { encode, decode } from "../encoding/utf8.ts";
-import { BufReader, ReadLineResult } from "../io/bufio.ts";
+import { BufReader, ReadLineResult, BufWriter } from "../io/bufio.ts";
 import { chunkedBodyReader } from "./io.ts";
 import { ServerRequest, Response } from "./server.ts";
 import { StringReader } from "../io/readers.ts";
 import { mockConn } from "./mock.ts";
+import { deferred } from "../util/async.ts";
 const { Buffer, test } = Deno;
 
 test("bodyReader", async () => {
@@ -341,6 +344,41 @@ test("writeResponse with trailer", async () => {
     "",
   ].join("\r\n");
   assertEquals(ret, exp);
+});
+
+test("writeResponse with realTime option", async () => {
+  const underlying = new Buffer();
+  const w = new BufWriter(underlying, 1024);
+
+  // Create a Reader that returns 'Time-sensitive message' on the first call,
+  // waits forever on the second.
+  let numReads = 0;
+  const readerDone = deferred<void>()
+  const reader: Deno.Reader = {
+    read(p: Uint8Array) {
+      switch (numReads++) {
+        case 0:
+          const hello = encode('Time-sensitive message');
+          p.set(hello);
+          return Promise.resolve(hello.length);
+        case 1:
+          readerDone.resolve();
+          return deferred(); // never fulfills
+        default:
+          unreachable();
+      }
+    }
+  }
+
+  writeResponse(w, {
+    body: reader,
+    options: { realTime: true }
+  });
+  await readerDone;
+  // Reader has returned 'Time-sensitive message' and received another read().
+  // Data should have been flushed by now.
+  const ret = underlying.toString();
+  assertStrContains(ret, 'Time-sensitive message');
 });
 
 test(async function readRequestError(): Promise<void> {
