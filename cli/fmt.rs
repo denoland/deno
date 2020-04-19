@@ -44,10 +44,7 @@ fn check_source_files(
     let file_contents = fs::read_to_string(&file_path)?;
     let r = formatter.format_text(&file_path_str, &file_contents);
     match r {
-      Ok(None) => {
-        // nothing to format, pass
-      }
-      Ok(Some(formatted_text)) => {
+      Ok(formatted_text) => {
         if formatted_text != file_contents {
           not_formatted_files.push(file_path);
         }
@@ -93,13 +90,12 @@ fn format_source_files(
     let file_contents = fs::read_to_string(&file_path)?;
     let r = formatter.format_text(&file_path_str, &file_contents);
     match r {
-      Ok(None) => {
-        // nothing to format, pass
-      }
-      Ok(Some(formatted_text)) => {
-        println!("{}", file_path_str);
-        fs::write(&file_path, formatted_text)?;
-        not_formatted_files.push(file_path);
+      Ok(formatted_text) => {
+        if formatted_text != file_contents {
+          println!("{}", file_path_str);
+          fs::write(&file_path, formatted_text)?;
+          not_formatted_files.push(file_path);
+        }
       }
       Err(e) => {
         eprintln!("Error formatting: {}", &file_path_str);
@@ -158,19 +154,14 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
   if stdin().read_to_string(&mut source).is_err() {
     return Err(OpError::other("Failed to read from stdin".to_string()).into());
   }
-  let config = get_config();
-  let formatter = dprint::Formatter::new(config);
+  let formatter = dprint::Formatter::new(get_config());
 
   match formatter.format_text("_stdin.ts", &source) {
-    Ok(None) => {
-      if !check {
-        // nothing changed, return back the source bytes
-        stdout().write_all(source.as_bytes())?;
-      }
-    }
-    Ok(Some(formatted_text)) => {
+    Ok(formatted_text) => {
       if check {
-        println!("Not formatted stdin");
+        if formatted_text != source {
+          println!("Not formatted stdin");
+        }
       } else {
         stdout().write_all(formatted_text.as_bytes())?;
       }
