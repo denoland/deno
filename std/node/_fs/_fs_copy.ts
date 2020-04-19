@@ -8,7 +8,7 @@ export function copyFile(
   callback: CallbackWithError
 ): void {
   Deno.copyFile(source, destination)
-    .then(() => callback)
+    .then(() => callback())
     .catch(callback);
 }
 

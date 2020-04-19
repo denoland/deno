@@ -13,7 +13,7 @@ export function chown(
   callback: CallbackWithError
 ): void {
   Deno.chown(path, uid, gid)
-    .then(() => callback)
+    .then(() => callback())
     .catch(callback);
 }
 

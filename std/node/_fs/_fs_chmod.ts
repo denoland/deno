@@ -14,7 +14,7 @@ export function chmod(
   callback: CallbackWithError
 ): void {
   Deno.chmod(path, getResolvedMode(mode))
-    .then(() => callback)
+    .then(() => callback())
     .catch(callback);
 }
 
