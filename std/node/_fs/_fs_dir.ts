@@ -23,7 +23,8 @@ export default class Dir {
         this.asyncIterator = Deno.readdir(this.path)[Symbol.asyncIterator]();
       }
       assert(this.asyncIterator);
-      this.asyncIterator.next()
+      this.asyncIterator
+        .next()
         .then(({ value }) => {
           resolve(value ? value : null);
           if (callback) {
