@@ -7,7 +7,6 @@
 use crate::op_error::OpError;
 use byteorder::{LittleEndian, WriteBytesExt};
 use deno_core::Buf;
-use deno_core::CoreOp;
 use deno_core::Op;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
@@ -114,7 +113,7 @@ fn test_parse_min_record() {
   assert_eq!(parse_min_record(&buf), None);
 }
 
-pub fn minimal_op<D>(d: D) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp
+pub fn minimal_op<D>(d: D) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> Op
 where
   D: Fn(bool, i32, Option<ZeroCopyBuf>) -> MinimalOp,
 {
@@ -153,12 +152,11 @@ where
         }
       }),
       MinimalOp::Async(min_fut) => {
-        // Convert to CoreOp
-        let core_fut = async move {
+        let fut = async move {
           match min_fut.await {
             Ok(r) => {
               record.result = r;
-              Ok(record.into())
+              record.into()
             }
             Err(err) => {
               let error_record = ErrorRecord {
@@ -167,11 +165,11 @@ where
                 error_code: err.kind as i32,
                 error_message: err.msg.as_bytes().to_owned(),
               };
-              Ok(error_record.into())
+              error_record.into()
             }
           }
         };
-        Op::Async(core_fut.boxed_local())
+        Op::Async(fut.boxed_local())
       }
     }
   }
