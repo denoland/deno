@@ -37,7 +37,7 @@ fn check_source_files(
   paths: Vec<PathBuf>,
 ) -> Result<(), ErrBox> {
   let mut not_formatted_files = vec![];
-  let formatter = dprint::Formatter::new(&config);
+  let formatter = dprint::Formatter::new(config);
 
   for file_path in paths {
     let file_path_str = file_path.to_string_lossy();
@@ -86,7 +86,7 @@ fn format_source_files(
   paths: Vec<PathBuf>,
 ) -> Result<(), ErrBox> {
   let mut not_formatted_files = vec![];
-  let formatter = dprint::Formatter::new(&config);
+  let formatter = dprint::Formatter::new(config);
 
   for file_path in paths {
     let file_path_str = file_path.to_string_lossy();
@@ -97,11 +97,9 @@ fn format_source_files(
         // nothing to format, pass
       }
       Ok(Some(formatted_text)) => {
-        if formatted_text != file_contents {
-          println!("{}", file_path_str);
-          fs::write(&file_path, formatted_text)?;
-          not_formatted_files.push(file_path);
-        }
+        println!("{}", file_path_str);
+        fs::write(&file_path, formatted_text)?;
+        not_formatted_files.push(file_path);
       }
       Err(e) => {
         eprintln!("Error formatting: {}", &file_path_str);
@@ -161,18 +159,18 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
     return Err(OpError::other("Failed to read from stdin".to_string()).into());
   }
   let config = get_config();
-  let formatter = dprint::Formatter::new(&config);
+  let formatter = dprint::Formatter::new(config);
 
   match formatter.format_text("_stdin.ts", &source) {
     Ok(None) => {
-      // code had a dprint-ignore-file comment
-      stdout().write_all(source.as_bytes())?;
+      if !check {
+        // nothing changed, return back the source bytes
+        stdout().write_all(source.as_bytes())?;
+      }
     }
     Ok(Some(formatted_text)) => {
       if check {
-        if formatted_text != source {
-          println!("Not formatted stdin");
-        }
+        println!("Not formatted stdin");
       } else {
         stdout().write_all(formatted_text.as_bytes())?;
       }
