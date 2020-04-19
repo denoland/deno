@@ -167,7 +167,7 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
     Ok(None) => {
       // code had a dprint-ignore-file comment
       stdout().write_all(source.as_bytes())?;
-    },
+    }
     Ok(Some(formatted_text)) => {
       if check {
         if formatted_text != source {
