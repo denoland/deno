@@ -15,6 +15,10 @@ export function exists(path: string, callback: ExitsCallback): void {
     .catch(() => callback(false));
 }
 
+/**
+ * TODO: Also accept 'path' parameter as a Node polyfill Buffer or URL type once these
+ * are implemented. See https://github.com/denoland/deno/issues/3403
+ */
 export function existsSync(path: string): boolean {
   try {
     Deno.lstatSync(path);
