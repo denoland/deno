@@ -10,30 +10,18 @@ pub type OpId = u32;
 
 pub type Buf = Box<[u8]>;
 
-pub type OpAsyncFuture<E> = Pin<Box<dyn Future<Output = Result<Buf, E>>>>;
+pub type OpAsyncFuture = Pin<Box<dyn Future<Output = Buf>>>;
 
-pub(crate) type PendingOpFuture =
-  Pin<Box<dyn Future<Output = Result<(OpId, Buf), CoreError>>>>;
-
-pub type OpResult<E> = Result<Op<E>, E>;
-
-// TODO(ry) Op::Async should be Op::Async(Pin<Box<dyn Future<Output = Buf>>>)
-// The error should be encoded in the Buf. Notice how Sync ops do not return a
-// result. The Sync and Async should be symmetrical!
-pub enum Op<E> {
+pub enum Op {
   Sync(Buf),
-  Async(OpAsyncFuture<E>),
+  Async(OpAsyncFuture),
   /// AsyncUnref is the variation of Async, which doesn't block the program
   /// exiting.
-  AsyncUnref(OpAsyncFuture<E>),
+  AsyncUnref(OpAsyncFuture),
 }
 
-pub type CoreError = ();
-
-pub type CoreOp = Op<CoreError>;
-
 /// Main type describing op
-pub type OpDispatcher = dyn Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + 'static;
+pub type OpDispatcher = dyn Fn(&[u8], Option<ZeroCopyBuf>) -> Op + 'static;
 
 #[derive(Default)]
 pub struct OpRegistry {
@@ -54,7 +42,7 @@ impl OpRegistry {
 
   pub fn register<F>(&self, name: &str, op: F) -> OpId
   where
-    F: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + 'static,
+    F: Fn(&[u8], Option<ZeroCopyBuf>) -> Op + 'static,
   {
     let mut lock = self.dispatchers.write().unwrap();
     let op_id = lock.len() as u32;
@@ -83,7 +71,7 @@ impl OpRegistry {
     op_id: OpId,
     control: &[u8],
     zero_copy_buf: Option<ZeroCopyBuf>,
-  ) -> Option<CoreOp> {
+  ) -> Option<Op> {
     // Op with id 0 has special meaning - it's a special op that is always
     // provided to retrieve op id map. The map consists of name to `OpId`
     // mappings.
@@ -113,7 +101,7 @@ fn test_op_registry() {
 
   let test_id = op_registry.register("test", move |_, _| {
     c_.fetch_add(1, atomic::Ordering::SeqCst);
-    CoreOp::Sync(Box::new([]))
+    Op::Sync(Box::new([]))
   });
   assert!(test_id != 0);
 
@@ -149,9 +137,9 @@ fn register_op_during_call() {
     let c__ = c_.clone();
     op_registry_.register("test", move |_, _| {
       c__.fetch_add(1, atomic::Ordering::SeqCst);
-      CoreOp::Sync(Box::new([]))
+      Op::Sync(Box::new([]))
     });
-    CoreOp::Sync(Box::new([]))
+    Op::Sync(Box::new([]))
   });
   assert!(test_id != 0);
 
