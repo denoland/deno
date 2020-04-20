@@ -261,7 +261,7 @@ export async function writeResponse(
     if (key !== "set-cookie") {
       out += `${key}: ${value}\r\n`;
     } else {
-      value.split(", ").forEach(v => {
+      value.split(", ").forEach((v: string) => {
         out += `${key}: ${v}\r\n`;
       });
     }
