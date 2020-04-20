@@ -35,25 +35,17 @@ struct AcceptArgs {
 }
 
 fn accept_tcp(
+  isolate: &mut deno_core::Isolate,
   state: &State,
   args: AcceptArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let rid = args.rid as u32;
-  let state_ = state.clone();
-  {
-    let state = state.borrow();
-    state
-      .resource_table
-      .get::<TcpListenerResource>(rid)
-      .ok_or_else(OpError::bad_resource_id)?;
-  }
-
-  let state = state.clone();
+  let resource_table = isolate.resource_table.clone();
 
   let op = async move {
     let accept_fut = poll_fn(|cx| {
-      let resource_table = &mut state.borrow_mut().resource_table;
+      let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
       let listener_resource = resource_table
         .get_mut::<TcpListenerResource>(rid)
         .ok_or_else(|| {
@@ -78,8 +70,8 @@ fn accept_tcp(
     let (tcp_stream, _socket_addr) = accept_fut.await?;
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
-    let mut state = state_.borrow_mut();
-    let rid = state.resource_table.add(
+    let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+    let rid = resource_table.add(
       "tcpStream",
       Box::new(StreamResourceHolder::new(StreamResource::TcpStream(Some(
         tcp_stream,
@@ -127,6 +119,7 @@ struct ReceiveArgs {
 }
 
 fn receive_udp(
+  isolate: &mut deno_core::Isolate,
   state: &State,
   args: ReceiveArgs,
   zero_copy: Option<ZeroCopyBuf>,
@@ -135,11 +128,11 @@ fn receive_udp(
 
   let rid = args.rid as u32;
 
-  let state_ = state.clone();
+  let resource_table = isolate.resource_table.clone();
 
   let op = async move {
     let receive_fut = poll_fn(|cx| {
-      let resource_table = &mut state_.borrow_mut().resource_table;
+      let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
       let resource = resource_table
         .get_mut::<UdpSocketResource>(rid)
         .ok_or_else(|| {
@@ -191,13 +184,14 @@ struct SendArgs {
 }
 
 fn op_send(
+  isolate: &mut deno_core::Isolate,
   state: &State,
   args: Value,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   assert!(zero_copy.is_some());
   let buf = zero_copy.unwrap();
-  let state_ = state.clone();
+  let resource_table = isolate.resource_table.clone();
   match serde_json::from_value(args)? {
     SendArgs {
       rid,
@@ -207,9 +201,8 @@ fn op_send(
       state.check_net(&args.hostname, args.port)?;
 
       let op = async move {
-        let mut state = state_.borrow_mut();
-        let resource = state
-          .resource_table
+        let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+        let resource = resource_table
           .get_mut::<UdpSocketResource>(rid as u32)
           .ok_or_else(|| {
             OpError::bad_resource("Socket has been closed".to_string())
@@ -231,9 +224,8 @@ fn op_send(
       let address_path = net_unix::Path::new(&args.address);
       state.check_read(&address_path)?;
       let op = async move {
-        let mut state = state_.borrow_mut();
-        let resource = state
-          .resource_table
+        let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+        let resource = resource_table
           .get_mut::<net_unix::UnixDatagramResource>(rid as u32)
           .ok_or_else(|| {
             OpError::other("Socket has been closed".to_string())
@@ -261,10 +253,12 @@ struct ConnectArgs {
 }
 
 fn op_connect(
+  isolate: &mut deno_core::Isolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  let resource_table = isolate.resource_table.clone();
   match serde_json::from_value(args)? {
     ConnectArgs {
       transport,
@@ -277,8 +271,8 @@ fn op_connect(
         let tcp_stream = TcpStream::connect(&addr).await?;
         let local_addr = tcp_stream.local_addr()?;
         let remote_addr = tcp_stream.peer_addr()?;
-        let mut state = state_.borrow_mut();
-        let rid = state.resource_table.add(
+        let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+        let rid = resource_table.add(
           "tcpStream",
           Box::new(StreamResourceHolder::new(StreamResource::TcpStream(Some(
             tcp_stream,
@@ -314,8 +308,8 @@ fn op_connect(
           net_unix::UnixStream::connect(net_unix::Path::new(&address)).await?;
         let local_addr = unix_stream.local_addr()?;
         let remote_addr = unix_stream.peer_addr()?;
-        let mut state = state_.borrow_mut();
-        let rid = state.resource_table.add(
+        let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+        let rid = resource_table.add(
           "unixStream",
           Box::new(StreamResourceHolder::new(StreamResource::UnixStream(
             unix_stream,

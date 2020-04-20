@@ -173,6 +173,7 @@ struct RunStatusArgs {
 }
 
 fn op_run_status(
+  isolate: &mut deno_core::Isolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
@@ -182,10 +183,11 @@ fn op_run_status(
 
   state.check_run()?;
   let state = state.clone();
+  let resource_table = isolate.resource_table.clone();
 
   let future = async move {
     let run_status = poll_fn(|cx| {
-      let resource_table = &mut state.borrow_mut().resource_table;
+      let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
       let child_resource = resource_table
         .get_mut::<ChildResource>(rid)
         .ok_or_else(OpError::bad_resource_id)?;

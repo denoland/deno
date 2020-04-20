@@ -14,7 +14,6 @@ use deno_core::ErrBox;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
-use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use rand::rngs::StdRng;

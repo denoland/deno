@@ -90,6 +90,7 @@ use std::env;
 use std::io::Write;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::rc::Rc;
 use upgrade::upgrade_command;
 use url::Url;
 

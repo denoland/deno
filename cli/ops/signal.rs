@@ -38,13 +38,15 @@ struct SignalArgs {
 
 #[cfg(unix)]
 fn op_signal_bind(
+  isolate: &mut deno_core::Isolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: BindSignalArgs = serde_json::from_value(args)?;
-  let mut state = state.borrow_mut();
-  let rid = state.resource_table.add(
+  let resource_table =
+    std::rc::Rc::get_mut(&mut isolate.resource_table).unwrap();
+  let rid = resource_table.add(
     "signal",
     Box::new(SignalStreamResource(
       signal(SignalKind::from_raw(args.signo)).expect(""),
@@ -58,18 +60,19 @@ fn op_signal_bind(
 
 #[cfg(unix)]
 fn op_signal_poll(
+  isolate: &mut deno_core::Isolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let state_ = state.clone();
+  let resource_table = isolate.resource_table.clone();
 
   let future = poll_fn(move |cx| {
-    let mut state = state_.borrow_mut();
+    let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
     if let Some(mut signal) =
-      state.resource_table.get_mut::<SignalStreamResource>(rid)
+      resource_table.get_mut::<SignalStreamResource>(rid)
     {
       signal.1 = Some(cx.waker().clone());
       return signal.0.poll_recv(cx);

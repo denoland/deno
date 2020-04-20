@@ -23,6 +23,7 @@ struct FetchArgs {
 }
 
 pub fn op_fetch(
+  isolate: &mut deno_core::Isolate,
   state: &State,
   args: Value,
   data: Option<ZeroCopyBuf>,
@@ -66,6 +67,7 @@ pub fn op_fetch(
   debug!("Before fetch {}", url);
   let state_ = state.clone();
 
+  let resource_table = isolate.resource_table.clone();
   let future = async move {
     let res = request.send().await?;
     debug!("Fetch response {}", url);
@@ -76,8 +78,8 @@ pub fn op_fetch(
     }
 
     let body = HttpBody::from(res);
-    let mut state = state_.borrow_mut();
-    let rid = state.resource_table.add(
+    let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+    let rid = resource_table.add(
       "httpBody",
       Box::new(StreamResourceHolder::new(StreamResource::HttpBody(
         Box::new(body),

@@ -334,6 +334,7 @@ impl DenoAsyncWrite for StreamResource {
 }
 
 pub fn op_write(
+  isolate: &mut deno_core::Isolate,
   state: &State,
   is_sync: bool,
   rid: i32,
@@ -350,7 +351,8 @@ pub fn op_write(
   if is_sync {
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
-      let resource_table = &mut state.borrow_mut().resource_table;
+      let resource_table =
+        std::rc::Rc::get_mut(&mut isolate.resource_table).unwrap();
       std_file_resource(resource_table, rid as u32, move |r| match r {
         Ok(std_file) => {
           use std::io::Write;
@@ -365,10 +367,12 @@ pub fn op_write(
       })
     })
   } else {
+    let resource_table = isolate.resource_table.clone();
     MinimalOp::Async(
       async move {
         let nwritten = poll_fn(|cx| {
-          let resource_table = &mut state.borrow_mut().resource_table;
+          let resource_table =
+            std::rc::Rc::get_mut(&mut resource_table).unwrap();
           let resource_holder = resource_table
             .get_mut::<StreamResourceHolder>(rid as u32)
             .ok_or_else(OpError::bad_resource_id)?;
@@ -381,7 +385,8 @@ pub fn op_write(
         // Figure out why it's needed and preferably remove it.
         // https://github.com/denoland/deno/issues/3565
         poll_fn(|cx| {
-          let resource_table = &mut state.borrow_mut().resource_table;
+          let resource_table =
+            std::rc::Rc::get_mut(&mut resource_table).unwrap();
           let resource_holder = resource_table
             .get_mut::<StreamResourceHolder>(rid as u32)
             .ok_or_else(OpError::bad_resource_id)?;

@@ -27,31 +27,33 @@ pub struct UnixListenArgs {
 }
 
 pub fn accept_unix(
+  isolate: &mut deno_core::Isolate,
   state: &State,
   rid: u32,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  let resource_table = isolate.resource_table.clone();
   let state_ = state.clone();
   {
-    let state = state.borrow();
-    state
-      .resource_table
+    let state = resource_table
       .get::<UnixListenerResource>(rid)
       .ok_or_else(OpError::bad_resource_id)?;
   }
   let op = async move {
-    let mut state = state_.borrow_mut();
-    let listener_resource = state
-      .resource_table
-      .get_mut::<UnixListenerResource>(rid)
-      .ok_or_else(|| {
-        OpError::bad_resource("Listener has been closed".to_string())
-      })?;
+    let listener_resource = {
+      let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+      resource_table
+        .get_mut::<UnixListenerResource>(rid)
+        .ok_or_else(|| {
+          OpError::bad_resource("Listener has been closed".to_string())
+        })?
+    };
     let (unix_stream, _socket_addr) =
       listener_resource.listener.accept().await?;
     let local_addr = unix_stream.local_addr()?;
     let remote_addr = unix_stream.peer_addr()?;
-    let rid = state.resource_table.add(
+    let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+    let rid = resource_table.add(
       "unixStream",
       Box::new(StreamResourceHolder::new(StreamResource::UnixStream(
         unix_stream,
@@ -74,17 +76,17 @@ pub fn accept_unix(
 }
 
 pub fn receive_unix_packet(
+  isolate: &mut deno_core::Isolate,
   state: &State,
   rid: u32,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let mut buf = zero_copy.unwrap();
-  let state_ = state.clone();
+  let resource_table = isolate.resource_table.clone();
 
   let op = async move {
-    let mut state = state_.borrow_mut();
-    let resource = state
-      .resource_table
+    let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+    let resource = resource_table
       .get_mut::<UnixDatagramResource>(rid)
       .ok_or_else(|| {
         OpError::bad_resource("Socket has been closed".to_string())
