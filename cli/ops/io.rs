@@ -59,8 +59,8 @@ lazy_static! {
 }
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("op_read", s.core_op(s.stateful_minimal_op2(op_read)));
-  i.register_op("op_write", s.core_op(s.stateful_minimal_op2(op_write)));
+  i.register_op("op_read", s.stateful_minimal_op2(op_read));
+  i.register_op("op_write", s.stateful_minimal_op2(op_write));
 }
 
 pub fn get_stdio() -> (

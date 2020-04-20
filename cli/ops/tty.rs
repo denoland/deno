@@ -2,7 +2,6 @@ use super::dispatch_json::JsonOp;
 use super::io::std_file_resource;
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::state::State;
 use deno_core::*;
 #[cfg(unix)]
@@ -35,8 +34,8 @@ fn get_windows_handle(
 }
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("op_set_raw", s.core_op(json_op(s.stateful_op2(op_set_raw))));
-  i.register_op("op_isatty", s.core_op(json_op(s.stateful_op2(op_isatty))));
+  i.register_op("op_set_raw", s.stateful_json_op2(op_set_raw));
+  i.register_op("op_isatty", s.stateful_json_op2(op_isatty));
 }
 
 #[derive(Deserialize)]
