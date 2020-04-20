@@ -29,10 +29,10 @@ use tokio_rustls::{
 use webpki::DNSNameRef;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("op_start_tls", s.stateful_json_op(op_start_tls));
-  i.register_op("op_connect_tls", s.stateful_json_op(op_connect_tls));
-  i.register_op("op_listen_tls", s.stateful_json_op(op_listen_tls));
-  i.register_op("op_accept_tls", s.stateful_json_op(op_accept_tls));
+  i.register_op("op_start_tls", s.stateful_json_op2(op_start_tls));
+  i.register_op("op_connect_tls", s.stateful_json_op2(op_connect_tls));
+  i.register_op("op_listen_tls", s.stateful_json_op2(op_listen_tls));
+  i.register_op("op_accept_tls", s.stateful_json_op2(op_accept_tls));
 }
 
 #[derive(Deserialize)]
@@ -54,14 +54,13 @@ struct StartTLSArgs {
 
 pub fn op_start_tls(
   isolate: &mut deno_core::Isolate,
-  state: &State,
+  _state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: StartTLSArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let cert_file = args.cert_file.clone();
-  let state_ = state.clone();
   let mut resource_table = isolate.resource_table.clone();
 
   let mut domain = args.hostname;
@@ -70,8 +69,6 @@ pub fn op_start_tls(
   }
 
   let op = async move {
-    let mut state = state_.borrow_mut();
-
     let mut resource_holder = {
       let resource_table_ = std::rc::Rc::get_mut(&mut resource_table).unwrap();
       match resource_table_.remove::<StreamResourceHolder>(rid) {
@@ -101,7 +98,7 @@ pub fn op_start_tls(
         DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
       let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
 
-      let resource_table_ = Rc::get_mut(&mut resource_table);
+      let resource_table = Rc::get_mut(&mut resource_table).unwrap();
       let rid = resource_table.add(
         "clientTlsStream",
         Box::new(StreamResourceHolder::new(StreamResource::ClientTlsStream(
@@ -136,8 +133,7 @@ pub fn op_connect_tls(
 ) -> Result<JsonOp, OpError> {
   let args: ConnectTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file.clone();
-  let resource_table = isolate.resource_table.clone();
-  let state_ = state.clone();
+  let mut resource_table = isolate.resource_table.clone();
   state.check_net(&args.hostname, args.port)?;
   if let Some(path) = cert_file.clone() {
     state.check_read(Path::new(&path))?;
@@ -306,6 +302,7 @@ struct ListenTlsArgs {
 }
 
 fn op_listen_tls(
+  isolate: &mut deno_core::Isolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
@@ -335,10 +332,10 @@ fn op_listen_tls(
     waker: None,
     local_addr,
   };
-  let mut state = state.borrow_mut();
-  let rid = state
-    .resource_table
-    .add("tlsListener", Box::new(tls_listener_resource));
+
+  let resource_table =
+    std::rc::Rc::get_mut(&mut isolate.resource_table).unwrap();
+  let rid = resource_table.add("tlsListener", Box::new(tls_listener_resource));
 
   Ok(JsonOp::Sync(json!({
     "rid": rid,
@@ -357,14 +354,13 @@ struct AcceptTlsArgs {
 
 fn op_accept_tls(
   isolate: &mut deno_core::Isolate,
-  state: &State,
+  _state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: AcceptTlsArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let state = state.clone();
-  let resource_table = isolate.resource_table.clone();
+  let mut resource_table = isolate.resource_table.clone();
   let op = async move {
     let accept_fut = poll_fn(|cx| {
       let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
@@ -400,6 +396,7 @@ fn op_accept_tls(
       resource.tls_acceptor.clone()
     };
     let tls_stream = tls_acceptor.accept(tcp_stream).await?;
+    let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
     let rid = {
       resource_table.add(
         "serverTlsStream",

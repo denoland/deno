@@ -12,7 +12,7 @@ use http::Method;
 use std::convert::From;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("op_fetch", s.stateful_json_op(op_fetch));
+  i.register_op("op_fetch", s.stateful_json_op2(op_fetch));
 }
 
 #[derive(Deserialize)]
@@ -65,9 +65,8 @@ pub fn op_fetch(
     request = request.header(name, v);
   }
   debug!("Before fetch {}", url);
-  let state_ = state.clone();
 
-  let resource_table = isolate.resource_table.clone();
+  let mut resource_table = isolate.resource_table.clone();
   let future = async move {
     let res = request.send().await?;
     debug!("Fetch response {}", url);

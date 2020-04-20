@@ -1,7 +1,6 @@
 use super::dispatch_minimal::MinimalOp;
 use crate::http_util::HttpBody;
 use crate::op_error::OpError;
-use crate::ops::minimal_op;
 use crate::state::State;
 use deno_core::*;
 use futures::future::poll_fn;
@@ -60,14 +59,8 @@ lazy_static! {
 }
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op(
-    "op_read",
-    s.core_op(minimal_op(s.stateful_minimal_op(op_read))),
-  );
-  i.register_op(
-    "op_write",
-    s.core_op(minimal_op(s.stateful_minimal_op(op_write))),
-  );
+  i.register_op("op_read", s.core_op(s.stateful_minimal_op2(op_read)));
+  i.register_op("op_write", s.core_op(s.stateful_minimal_op2(op_write)));
 }
 
 pub fn get_stdio() -> (
@@ -211,7 +204,8 @@ impl DenoAsyncRead for StreamResource {
 }
 
 pub fn op_read(
-  state: &State,
+  isolate: &mut deno_core::Isolate,
+  _state: &State,
   is_sync: bool,
   rid: i32,
   zero_copy: Option<ZeroCopyBuf>,
@@ -220,14 +214,14 @@ pub fn op_read(
   if zero_copy.is_none() {
     return MinimalOp::Sync(Err(no_buffer_specified()));
   }
+  let mut resource_table = isolate.resource_table.clone();
 
-  let state = state.clone();
   let mut buf = zero_copy.unwrap();
 
   if is_sync {
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
-      let resource_table = &mut state.borrow_mut().resource_table;
+      let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
       std_file_resource(resource_table, rid as u32, move |r| match r {
         Ok(std_file) => {
           use std::io::Read;
@@ -244,7 +238,7 @@ pub fn op_read(
   } else {
     MinimalOp::Async(
       poll_fn(move |cx| {
-        let resource_table = &mut state.borrow_mut().resource_table;
+        let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
         let resource_holder = resource_table
           .get_mut::<StreamResourceHolder>(rid as u32)
           .ok_or_else(OpError::bad_resource_id)?;
@@ -335,7 +329,7 @@ impl DenoAsyncWrite for StreamResource {
 
 pub fn op_write(
   isolate: &mut deno_core::Isolate,
-  state: &State,
+  _state: &State,
   is_sync: bool,
   rid: i32,
   zero_copy: Option<ZeroCopyBuf>,
@@ -345,7 +339,6 @@ pub fn op_write(
     return MinimalOp::Sync(Err(no_buffer_specified()));
   }
 
-  let state = state.clone();
   let buf = zero_copy.unwrap();
 
   if is_sync {
@@ -367,7 +360,7 @@ pub fn op_write(
       })
     })
   } else {
-    let resource_table = isolate.resource_table.clone();
+    let mut resource_table = isolate.resource_table.clone();
     MinimalOp::Async(
       async move {
         let nwritten = poll_fn(|cx| {

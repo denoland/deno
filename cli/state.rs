@@ -79,7 +79,25 @@ impl State {
     self.core_op(json_op(self.stateful_op(dispatcher)))
   }
 
+  pub fn stateful_json_op2<D>(
+    &self,
+    dispatcher: D,
+  ) -> impl Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op
+  where
+    D: Fn(
+      &mut deno_core::Isolate,
+      &State,
+      Value,
+      Option<ZeroCopyBuf>,
+    ) -> Result<JsonOp, OpError>,
+  {
+    use crate::ops::json_op;
+    self.core_op(json_op(self.stateful_op2(dispatcher)))
+  }
+
   /// Wrap core `OpDispatcher` to collect metrics.
+  // TODO(ry) this should be private. Is called by stateful_json_op or
+  // stateful_minimal_op
   pub fn core_op<D>(
     &self,
     dispatcher: D,
@@ -140,19 +158,29 @@ impl State {
     }
   }
 
-  /// This is a special function that provides `state` argument to dispatcher.
-  pub fn stateful_minimal_op<D>(
+  pub fn stateful_minimal_op2<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(bool, i32, Option<ZeroCopyBuf>) -> MinimalOp
+  ) -> impl Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op
   where
-    D: Fn(&State, bool, i32, Option<ZeroCopyBuf>) -> MinimalOp,
+    D: Fn(
+      &mut deno_core::Isolate,
+      &State,
+      bool,
+      i32,
+      Option<ZeroCopyBuf>,
+    ) -> MinimalOp,
   {
     let state = self.clone();
-    move |is_sync: bool,
-          rid: i32,
-          zero_copy: Option<ZeroCopyBuf>|
-          -> MinimalOp { dispatcher(&state, is_sync, rid, zero_copy) }
+    self.core_op(crate::ops::minimal_op(
+      move |isolate: &mut deno_core::Isolate,
+            is_sync: bool,
+            rid: i32,
+            zero_copy: Option<ZeroCopyBuf>|
+            -> MinimalOp {
+        dispatcher(isolate, &state, is_sync, rid, zero_copy)
+      },
+    ))
   }
 
   /// This is a special function that provides `state` argument to dispatcher.

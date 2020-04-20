@@ -90,7 +90,6 @@ use std::env;
 use std::io::Write;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::rc::Rc;
 use upgrade::upgrade_command;
 use url::Url;
 
@@ -149,7 +148,7 @@ fn create_main_worker(
 
   {
     let (stdin, stdout, stderr) = get_stdio();
-    let t = Rc::get_mut(&mut worker.resource_table);
+    let t = std::rc::Rc::get_mut(&mut worker.resource_table).unwrap();
     t.add("stdin", Box::new(stdin));
     t.add("stdout", Box::new(stdout));
     t.add("stderr", Box::new(stderr));

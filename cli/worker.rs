@@ -209,6 +209,19 @@ impl Future for Worker {
   }
 }
 
+impl Deref for Worker {
+  type Target = deno_core::EsIsolate;
+  fn deref(&self) -> &Self::Target {
+    &self.isolate
+  }
+}
+
+impl DerefMut for Worker {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.isolate
+  }
+}
+
 /// This worker is created and used by Deno executable.
 ///
 /// It provides ops available in the `Deno` namespace.

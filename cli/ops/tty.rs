@@ -35,8 +35,8 @@ fn get_windows_handle(
 }
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("op_set_raw", s.core_op(json_op(s.stateful_op(op_set_raw))));
-  i.register_op("op_isatty", s.core_op(json_op(s.stateful_op(op_isatty))));
+  i.register_op("op_set_raw", s.core_op(json_op(s.stateful_op2(op_set_raw))));
+  i.register_op("op_isatty", s.core_op(json_op(s.stateful_op2(op_isatty))));
 }
 
 #[derive(Deserialize)]
@@ -46,7 +46,8 @@ struct SetRawArgs {
 }
 
 pub fn op_set_raw(
-  state_: &State,
+  isolate: &mut deno_core::Isolate,
+  _state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
@@ -65,9 +66,9 @@ pub fn op_set_raw(
     use winapi::shared::minwindef::FALSE;
     use winapi::um::{consoleapi, handleapi};
 
-    let mut state = state_.borrow_mut();
-    let resource_holder =
-      state.resource_table.get_mut::<StreamResourceHolder>(rid);
+    let resource_table =
+      std::rc::Rc::get_mut(&mut isolate.resource_table).unwrap();
+    let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
       return Err(OpError::bad_resource_id());
     }
@@ -132,9 +133,9 @@ pub fn op_set_raw(
   {
     use std::os::unix::io::AsRawFd;
 
-    let mut state = state_.borrow_mut();
-    let resource_holder =
-      state.resource_table.get_mut::<StreamResourceHolder>(rid);
+    let resource_table =
+      std::rc::Rc::get_mut(&mut isolate.resource_table).unwrap();
+    let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
       return Err(OpError::bad_resource_id());
     }
@@ -215,14 +216,16 @@ struct IsattyArgs {
 }
 
 pub fn op_isatty(
-  state: &State,
+  isolate: &mut deno_core::Isolate,
+  _state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: IsattyArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
-  let resource_table = &mut state.borrow_mut().resource_table;
+  let resource_table =
+    std::rc::Rc::get_mut(&mut isolate.resource_table).unwrap();
   let isatty: bool =
     std_file_resource(resource_table, rid as u32, move |r| match r {
       Ok(std_file) => {
