@@ -66,8 +66,7 @@ pub fn op_set_raw(
     use winapi::shared::minwindef::FALSE;
     use winapi::um::{consoleapi, handleapi};
 
-    let resource_table =
-      std::rc::Rc::get_mut(&mut isolate.resource_table).unwrap();
+    let mut resource_table = isolate.resource_table.borrow_mut();
     let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
       return Err(OpError::bad_resource_id());
@@ -133,8 +132,7 @@ pub fn op_set_raw(
   {
     use std::os::unix::io::AsRawFd;
 
-    let resource_table =
-      std::rc::Rc::get_mut(&mut isolate.resource_table).unwrap();
+    let mut resource_table = isolate.resource_table.borrow_mut();
     let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
       return Err(OpError::bad_resource_id());
@@ -224,10 +222,9 @@ pub fn op_isatty(
   let args: IsattyArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
-  let resource_table =
-    std::rc::Rc::get_mut(&mut isolate.resource_table).unwrap();
+  let mut resource_table = isolate.resource_table.borrow_mut();
   let isatty: bool =
-    std_file_resource(resource_table, rid as u32, move |r| match r {
+    std_file_resource(&mut resource_table, rid as u32, move |r| match r {
       Ok(std_file) => {
         #[cfg(windows)]
         {

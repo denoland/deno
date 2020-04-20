@@ -66,8 +66,7 @@ fn op_run(
   let run_args: RunArgs = serde_json::from_value(args)?;
 
   state.check_run()?;
-  let resource_table =
-    std::rc::Rc::get_mut(&mut isolate.resource_table).unwrap();
+  let mut resource_table = isolate.resource_table.borrow_mut();
 
   let args = run_args.cmd;
   let env = run_args.env;
@@ -86,7 +85,7 @@ fn op_run(
   // TODO: make this work with other resources, eg. sockets
   let stdin_rid = run_args.stdin_rid;
   if stdin_rid > 0 {
-    let file = clone_file(stdin_rid, resource_table)?;
+    let file = clone_file(stdin_rid, &mut resource_table)?;
     c.stdin(file);
   } else {
     c.stdin(subprocess_stdio_map(run_args.stdin.as_ref()));
@@ -94,7 +93,7 @@ fn op_run(
 
   let stdout_rid = run_args.stdout_rid;
   if stdout_rid > 0 {
-    let file = clone_file(stdout_rid, resource_table)?;
+    let file = clone_file(stdout_rid, &mut resource_table)?;
     c.stdout(file);
   } else {
     c.stdout(subprocess_stdio_map(run_args.stdout.as_ref()));
@@ -102,7 +101,7 @@ fn op_run(
 
   let stderr_rid = run_args.stderr_rid;
   if stderr_rid > 0 {
-    let file = clone_file(stderr_rid, resource_table)?;
+    let file = clone_file(stderr_rid, &mut resource_table)?;
     c.stderr(file);
   } else {
     c.stderr(subprocess_stdio_map(run_args.stderr.as_ref()));
@@ -182,11 +181,11 @@ fn op_run_status(
   let rid = args.rid as u32;
 
   state.check_run()?;
-  let mut resource_table = isolate.resource_table.clone();
+  let resource_table = isolate.resource_table.clone();
 
   let future = async move {
     let run_status = poll_fn(|cx| {
-      let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+      let mut resource_table = resource_table.borrow_mut();
       let child_resource = resource_table
         .get_mut::<ChildResource>(rid)
         .ok_or_else(OpError::bad_resource_id)?;

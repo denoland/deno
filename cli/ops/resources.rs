@@ -15,7 +15,7 @@ fn op_resources(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
-  let serialized_resources = isolate.resource_table.entries();
+  let serialized_resources = isolate.resource_table.borrow().entries();
   Ok(JsonOp::Sync(json!(serialized_resources)))
 }
 
@@ -31,8 +31,7 @@ fn op_close(
     rid: i32,
   }
   let args: CloseArgs = serde_json::from_value(args).unwrap();
-  let resource_table =
-    std::rc::Rc::get_mut(&mut isolate.resource_table).unwrap();
+  let mut resource_table = isolate.resource_table.borrow_mut();
   resource_table
     .close(args.rid as u32)
     .ok_or_else(OpError::bad_resource_id)?;

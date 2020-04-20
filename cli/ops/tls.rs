@@ -12,7 +12,6 @@ use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::rc::Rc;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
@@ -61,7 +60,7 @@ pub fn op_start_tls(
   let args: StartTLSArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let cert_file = args.cert_file.clone();
-  let mut resource_table = isolate.resource_table.clone();
+  let resource_table = isolate.resource_table.clone();
 
   let mut domain = args.hostname;
   if domain.is_empty() {
@@ -70,7 +69,7 @@ pub fn op_start_tls(
 
   let op = async move {
     let mut resource_holder = {
-      let resource_table_ = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+      let mut resource_table_ = resource_table.borrow_mut();
       match resource_table_.remove::<StreamResourceHolder>(rid) {
         Some(resource) => *resource,
         None => return Err(OpError::bad_resource_id()),
@@ -98,7 +97,7 @@ pub fn op_start_tls(
         DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
       let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
 
-      let resource_table = Rc::get_mut(&mut resource_table).unwrap();
+      let mut resource_table = resource_table.borrow_mut();
       let rid = resource_table.add(
         "clientTlsStream",
         Box::new(StreamResourceHolder::new(StreamResource::ClientTlsStream(
@@ -133,7 +132,7 @@ pub fn op_connect_tls(
 ) -> Result<JsonOp, OpError> {
   let args: ConnectTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file.clone();
-  let mut resource_table = isolate.resource_table.clone();
+  let resource_table = isolate.resource_table.clone();
   state.check_net(&args.hostname, args.port)?;
   if let Some(path) = cert_file.clone() {
     state.check_read(Path::new(&path))?;
@@ -162,7 +161,7 @@ pub fn op_connect_tls(
     let dnsname =
       DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
     let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
-    let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+    let mut resource_table = resource_table.borrow_mut();
     let rid = resource_table.add(
       "clientTlsStream",
       Box::new(StreamResourceHolder::new(StreamResource::ClientTlsStream(
@@ -333,8 +332,7 @@ fn op_listen_tls(
     local_addr,
   };
 
-  let resource_table =
-    std::rc::Rc::get_mut(&mut isolate.resource_table).unwrap();
+  let mut resource_table = isolate.resource_table.borrow_mut();
   let rid = resource_table.add("tlsListener", Box::new(tls_listener_resource));
 
   Ok(JsonOp::Sync(json!({
@@ -360,10 +358,10 @@ fn op_accept_tls(
 ) -> Result<JsonOp, OpError> {
   let args: AcceptTlsArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let mut resource_table = isolate.resource_table.clone();
+  let resource_table = isolate.resource_table.clone();
   let op = async move {
     let accept_fut = poll_fn(|cx| {
-      let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+      let mut resource_table = resource_table.borrow_mut();
       let listener_resource = resource_table
         .get_mut::<TlsListenerResource>(rid)
         .ok_or_else(|| {
@@ -388,6 +386,7 @@ fn op_accept_tls(
     let (tcp_stream, _socket_addr) = accept_fut.await?;
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
+    let mut resource_table = resource_table.borrow_mut();
     let tls_acceptor = {
       let resource = resource_table
         .get::<TlsListenerResource>(rid)
@@ -396,7 +395,6 @@ fn op_accept_tls(
       resource.tls_acceptor.clone()
     };
     let tls_stream = tls_acceptor.accept(tcp_stream).await?;
-    let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
     let rid = {
       resource_table.add(
         "serverTlsStream",

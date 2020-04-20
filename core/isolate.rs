@@ -21,6 +21,7 @@ use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use futures::Future;
 use libc::c_void;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::From;
 use std::error::Error;
@@ -165,7 +166,7 @@ pub struct Isolate {
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
   snapshot: Option<SnapshotConfig>,
-  pub resource_table: Rc<ResourceTable>,
+  pub resource_table: Rc<RefCell<ResourceTable>>,
   pub global_context: v8::Global<v8::Context>,
   pub(crate) shared_ab: v8::Global<v8::SharedArrayBuffer>,
   pub(crate) js_recv_cb: v8::Global<v8::Function>,
@@ -300,7 +301,7 @@ impl Isolate {
     let core_isolate = Self {
       v8_isolate: None,
       global_context,
-      resource_table: Rc::new(ResourceTable::default()),
+      resource_table: Rc::new(RefCell::new(ResourceTable::default())),
       pending_promise_exceptions: HashMap::new(),
       shared_ab: v8::Global::<v8::SharedArrayBuffer>::new(),
       js_recv_cb: v8::Global::<v8::Function>::new(),

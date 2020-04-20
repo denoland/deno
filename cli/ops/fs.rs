@@ -75,7 +75,7 @@ fn op_open(
 ) -> Result<JsonOp, OpError> {
   let args: OpenArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
-  let mut resource_table = isolate.resource_table.clone();
+  let resource_table = isolate.resource_table.clone();
 
   let mut open_options = std::fs::OpenOptions::new();
 
@@ -167,7 +167,7 @@ fn op_open(
   if is_sync {
     let std_file = open_options.open(path)?;
     let tokio_file = tokio::fs::File::from_std(std_file);
-    let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+    let mut resource_table = resource_table.borrow_mut();
     let rid = resource_table.add(
       "fsFile",
       Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
@@ -181,7 +181,7 @@ fn op_open(
       let tokio_file = tokio::fs::OpenOptions::from(open_options)
         .open(path)
         .await?;
-      let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+      let mut resource_table = resource_table.borrow_mut();
       let rid = resource_table.add(
         "fsFile",
         Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
@@ -228,12 +228,12 @@ fn op_seek(
     }
   };
 
-  let mut resource_table = isolate.resource_table.clone();
+  let resource_table = isolate.resource_table.clone();
   let is_sync = args.promise_id.is_none();
 
   if is_sync {
-    let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
-    let pos = std_file_resource(resource_table, rid, |r| match r {
+    let mut resource_table = resource_table.borrow_mut();
+    let pos = std_file_resource(&mut resource_table, rid, |r| match r {
       Ok(std_file) => std_file.seek(seek_from).map_err(OpError::from),
       Err(_) => Err(OpError::type_error(
         "cannot seek on this type of resource".to_string(),
@@ -244,8 +244,8 @@ fn op_seek(
     // TODO(ry) This is a fake async op. We need to use poll_fn,
     // tokio::fs::File::start_seek and tokio::fs::File::poll_complete
     let fut = async move {
-      let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
-      let pos = std_file_resource(resource_table, rid, |r| match r {
+      let mut resource_table = resource_table.borrow_mut();
+      let pos = std_file_resource(&mut resource_table, rid, |r| match r {
         Ok(std_file) => std_file.seek(seek_from).map_err(OpError::from),
         Err(_) => Err(OpError::type_error(
           "cannot seek on this type of resource".to_string(),

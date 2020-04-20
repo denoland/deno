@@ -46,10 +46,10 @@ pub fn op_open_plugin(
 
   let lib = open_plugin(filename).unwrap();
   let plugin_resource = PluginResource { lib };
-  let resource_table =
-    std::rc::Rc::get_mut(&mut isolate.resource_table).unwrap();
+
+  let mut resource_table = isolate.resource_table.borrow_mut();
   let rid = resource_table.add("plugin", Box::new(plugin_resource));
-  let plugin_resource = resource_table.get_mut::<PluginResource>(rid).unwrap();
+  let plugin_resource = resource_table.get::<PluginResource>(rid).unwrap();
 
   let deno_plugin_init = *unsafe {
     plugin_resource
@@ -57,6 +57,8 @@ pub fn op_open_plugin(
       .symbol::<PluginInitFn>("deno_plugin_init")
   }
   .unwrap();
+  drop(resource_table);
+
   deno_plugin_init(isolate);
 
   Ok(JsonOp::Sync(json!(rid)))

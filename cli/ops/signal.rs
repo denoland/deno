@@ -44,8 +44,7 @@ fn op_signal_bind(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: BindSignalArgs = serde_json::from_value(args)?;
-  let resource_table =
-    std::rc::Rc::get_mut(&mut isolate.resource_table).unwrap();
+  let mut resource_table = isolate.resource_table.borrow_mut();
   let rid = resource_table.add(
     "signal",
     Box::new(SignalStreamResource(
@@ -67,10 +66,10 @@ fn op_signal_poll(
 ) -> Result<JsonOp, OpError> {
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let mut resource_table = isolate.resource_table.clone();
+  let resource_table = isolate.resource_table.clone();
 
   let future = poll_fn(move |cx| {
-    let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+    let mut resource_table = resource_table.borrow_mut();
     if let Some(mut signal) =
       resource_table.get_mut::<SignalStreamResource>(rid)
     {
@@ -93,8 +92,7 @@ pub fn op_signal_unbind(
 ) -> Result<JsonOp, OpError> {
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let resource_table =
-    std::rc::Rc::get_mut(&mut isolate.resource_table).unwrap();
+  let mut resource_table = isolate.resource_table.borrow_mut();
   let resource = resource_table.get::<SignalStreamResource>(rid);
   if let Some(signal) = resource {
     if let Some(waker) = &signal.1 {

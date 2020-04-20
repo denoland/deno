@@ -51,8 +51,7 @@ fn create_web_worker(
   );
 
   if has_deno_namespace {
-    let resource_table =
-      std::rc::Rc::get_mut(&mut worker.resource_table).unwrap();
+    let mut resource_table = worker.resource_table.borrow_mut();
     let (stdin, stdout, stderr) = get_stdio();
     resource_table.add("stdin", Box::new(stdin));
     resource_table.add("stdout", Box::new(stdout));

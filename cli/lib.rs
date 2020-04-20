@@ -148,7 +148,7 @@ fn create_main_worker(
 
   {
     let (stdin, stdout, stderr) = get_stdio();
-    let t = std::rc::Rc::get_mut(&mut worker.resource_table).unwrap();
+    let mut t = worker.resource_table.borrow_mut();
     t.add("stdin", Box::new(stdin));
     t.add("stdout", Box::new(stdout));
     t.add("stderr", Box::new(stderr));

@@ -214,15 +214,15 @@ pub fn op_read(
   if zero_copy.is_none() {
     return MinimalOp::Sync(Err(no_buffer_specified()));
   }
-  let mut resource_table = isolate.resource_table.clone();
+  let resource_table = isolate.resource_table.clone();
 
   let mut buf = zero_copy.unwrap();
 
   if is_sync {
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
-      let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
-      std_file_resource(resource_table, rid as u32, move |r| match r {
+      let mut resource_table = resource_table.borrow_mut();
+      std_file_resource(&mut resource_table, rid as u32, move |r| match r {
         Ok(std_file) => {
           use std::io::Read;
           std_file
@@ -238,7 +238,7 @@ pub fn op_read(
   } else {
     MinimalOp::Async(
       poll_fn(move |cx| {
-        let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+        let mut resource_table = resource_table.borrow_mut();
         let resource_holder = resource_table
           .get_mut::<StreamResourceHolder>(rid as u32)
           .ok_or_else(OpError::bad_resource_id)?;
@@ -344,9 +344,8 @@ pub fn op_write(
   if is_sync {
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
-      let resource_table =
-        std::rc::Rc::get_mut(&mut isolate.resource_table).unwrap();
-      std_file_resource(resource_table, rid as u32, move |r| match r {
+      let mut resource_table = isolate.resource_table.borrow_mut();
+      std_file_resource(&mut resource_table, rid as u32, move |r| match r {
         Ok(std_file) => {
           use std::io::Write;
           std_file
@@ -360,12 +359,11 @@ pub fn op_write(
       })
     })
   } else {
-    let mut resource_table = isolate.resource_table.clone();
+    let resource_table = isolate.resource_table.clone();
     MinimalOp::Async(
       async move {
         let nwritten = poll_fn(|cx| {
-          let resource_table =
-            std::rc::Rc::get_mut(&mut resource_table).unwrap();
+          let mut resource_table = resource_table.borrow_mut();
           let resource_holder = resource_table
             .get_mut::<StreamResourceHolder>(rid as u32)
             .ok_or_else(OpError::bad_resource_id)?;
@@ -378,8 +376,7 @@ pub fn op_write(
         // Figure out why it's needed and preferably remove it.
         // https://github.com/denoland/deno/issues/3565
         poll_fn(|cx| {
-          let resource_table =
-            std::rc::Rc::get_mut(&mut resource_table).unwrap();
+          let mut resource_table = resource_table.borrow_mut();
           let resource_holder = resource_table
             .get_mut::<StreamResourceHolder>(rid as u32)
             .ok_or_else(OpError::bad_resource_id)?;

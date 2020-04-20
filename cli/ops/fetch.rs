@@ -66,7 +66,7 @@ pub fn op_fetch(
   }
   debug!("Before fetch {}", url);
 
-  let mut resource_table = isolate.resource_table.clone();
+  let resource_table = isolate.resource_table.clone();
   let future = async move {
     let res = request.send().await?;
     debug!("Fetch response {}", url);
@@ -77,7 +77,7 @@ pub fn op_fetch(
     }
 
     let body = HttpBody::from(res);
-    let resource_table = std::rc::Rc::get_mut(&mut resource_table).unwrap();
+    let mut resource_table = resource_table.borrow_mut();
     let rid = resource_table.add(
       "httpBody",
       Box::new(StreamResourceHolder::new(StreamResource::HttpBody(
