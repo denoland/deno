@@ -64,7 +64,6 @@ pub struct StateInner {
   pub next_worker_id: u32,
   pub start_time: Instant,
   pub seeded_rng: Option<StdRng>,
-  pub resource_table: ResourceTable,
   pub target_lib: TargetLib,
   pub debug_type: DebugType,
 }
@@ -300,7 +299,6 @@ impl State {
       next_worker_id: 0,
       start_time: Instant::now(),
       seeded_rng,
-      resource_table: ResourceTable::default(),
       target_lib: TargetLib::Main,
       debug_type,
     }));
@@ -336,7 +334,6 @@ impl State {
       next_worker_id: 0,
       start_time: Instant::now(),
       seeded_rng,
-      resource_table: ResourceTable::default(),
       target_lib: TargetLib::Worker,
       debug_type: DebugType::Dependent,
     }));
