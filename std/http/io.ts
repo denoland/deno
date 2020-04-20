@@ -258,7 +258,7 @@ export async function writeResponse(
   const headers = r.headers;
 
   for (const [key, value] of headers) {
-    if (key !== 'set-cookie') {
+    if (key !== "set-cookie") {
       out += `${key}: ${value}\r\n`;
     } else {
       value.split(", ").forEach(v => {
