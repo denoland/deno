@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-var-requires */
+
 const { test } = Deno;
 import { assertEquals, assert, assertStrContains } from "../testing/asserts.ts";
 import { createRequire } from "./module.ts";
