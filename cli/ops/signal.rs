@@ -109,6 +109,7 @@ pub fn op_signal_unbind(
 
 #[cfg(not(unix))]
 pub fn op_signal_bind(
+  isolate: &mut deno_core::Isolate,
   _state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
@@ -118,6 +119,7 @@ pub fn op_signal_bind(
 
 #[cfg(not(unix))]
 fn op_signal_unbind(
+  isolate: &mut deno_core::Isolate,
   _state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
@@ -127,6 +129,7 @@ fn op_signal_unbind(
 
 #[cfg(not(unix))]
 fn op_signal_poll(
+  isolate: &mut deno_core::Isolate,
   _state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
