@@ -13,20 +13,9 @@ export function chmod(
   mode: string | number,
   callback: CallbackWithError
 ): void {
-  new Promise(async (resolve, reject) => {
-    try {
-      await Deno.chmod(path, getResolvedMode(mode));
-      resolve();
-    } catch (err) {
-      reject(err);
-    }
-  })
-    .then(() => {
-      callback();
-    })
-    .catch((err) => {
-      callback(err);
-    });
+  Deno.chmod(path, getResolvedMode(mode))
+    .then(() => callback())
+    .catch(callback);
 }
 
 /**

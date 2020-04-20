@@ -1,4 +1,5 @@
 import Dirent from "./_fs_dirent.ts";
+import { assert } from "../../testing/asserts.ts";
 
 export default class Dir {
   private dirPath: string | Uint8Array;
@@ -17,25 +18,25 @@ export default class Dir {
   }
 
   read(callback?: Function): Promise<Dirent | null> {
-    return new Promise(async (resolve, reject) => {
-      try {
-        if (!this.asyncIterator) {
-          this.asyncIterator = Deno.readdir(this.path)[Symbol.asyncIterator]();
-        }
-
-        const result: Dirent | null = await (await this.asyncIterator?.next())
-          .value;
-        resolve(result ? result : null);
-
-        if (callback) {
-          callback(null, result ? result : null);
-        }
-      } catch (err) {
-        if (callback) {
-          callback(err, null);
-        }
-        reject(err);
+    return new Promise((resolve, reject) => {
+      if (!this.asyncIterator) {
+        this.asyncIterator = Deno.readdir(this.path)[Symbol.asyncIterator]();
       }
+      assert(this.asyncIterator);
+      this.asyncIterator
+        .next()
+        .then(({ value }) => {
+          resolve(value ? value : null);
+          if (callback) {
+            callback(null, value ? value : null);
+          }
+        })
+        .catch((err) => {
+          if (callback) {
+            callback(err, null);
+          }
+          reject(err);
+        });
     });
   }
 

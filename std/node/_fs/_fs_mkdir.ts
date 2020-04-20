@@ -1,7 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { CallbackWithError } from "./_fs_common.ts";
 
-type Path = string; // TODO path can also be a Buffer or URL.
+/**
+ * TODO: Also accept 'path' parameter as a Node polyfill Buffer or URL type once these
+ * are implemented. See https://github.com/denoland/deno/issues/3403
+ */
+type Path = string;
 type MkdirOptions =
   | { recursive?: boolean; mode?: number | undefined }
   | number
@@ -29,14 +33,7 @@ export function mkdir(
     throw new Deno.errors.InvalidData(
       "invalid recursive option , must be a boolean"
     );
-  new Promise(async (resolve, reject) => {
-    try {
-      await Deno.mkdir(path, { recursive, mode });
-      resolve();
-    } catch (err) {
-      reject(err);
-    }
-  })
+  Deno.mkdir(path, { recursive, mode })
     .then(() => {
       if (callback && typeof callback == "function") {
         callback();
