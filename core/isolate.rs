@@ -28,7 +28,6 @@ use std::mem::forget;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex, Once};
 use std::task::Context;
 use std::task::Poll;
@@ -177,7 +176,7 @@ pub struct Isolate {
   pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
-  pub op_registry: Rc<OpRegistry>,
+  pub op_registry: OpRegistry,
   waker: AtomicWaker,
   error_handler: Option<Box<IsolateErrorHandleFn>>,
 }
@@ -313,7 +312,7 @@ impl Isolate {
       pending_unref_ops: FuturesUnordered::new(),
       have_unpolled_ops: false,
       startup_script,
-      op_registry: Rc::new(OpRegistry::new()),
+      op_registry: OpRegistry::new(),
       waker: AtomicWaker::new(),
       error_handler: None,
     };
@@ -343,9 +342,9 @@ impl Isolate {
   /// corresponds to the second argument of Deno.core.dispatch().
   ///
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
-  pub fn register_op<F>(&self, name: &str, op: F) -> OpId
+  pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&[u8], Option<ZeroCopyBuf>) -> Op + 'static,
+    F: Fn(&mut Isolate, &[u8], Option<ZeroCopyBuf>) -> Op + 'static,
   {
     self.op_registry.register(name, op)
   }
@@ -381,17 +380,14 @@ impl Isolate {
     control_buf: &[u8],
     zero_copy_buf: Option<ZeroCopyBuf>,
   ) -> Option<(OpId, Box<[u8]>)> {
-    let maybe_op = self.op_registry.call(op_id, control_buf, zero_copy_buf);
-
-    let op = match maybe_op {
-      Some(op) => op,
-      None => {
-        let message =
-          v8::String::new(scope, &format!("Unknown op id: {}", op_id)).unwrap();
-        let exception = v8::Exception::type_error(scope, message);
-        scope.isolate().throw_exception(exception);
-        return None;
-      }
+    let op = if let Some(dispatcher) = self.op_registry.get(op_id) {
+      dispatcher(self, control_buf, zero_copy_buf)
+    } else {
+      let message =
+        v8::String::new(scope, &format!("Unknown op id: {}", op_id)).unwrap();
+      let exception = v8::Exception::type_error(scope, message);
+      scope.isolate().throw_exception(exception);
+      return None;
     };
 
     debug_assert_eq!(self.shared.size(), 0);
@@ -768,56 +764,58 @@ pub mod tests {
 
     let mut isolate = Isolate::new(StartupData::None, false);
 
-    let dispatcher =
-      move |control: &[u8], _zero_copy: Option<ZeroCopyBuf>| -> Op {
-        dispatch_count_.fetch_add(1, Ordering::Relaxed);
-        match mode {
-          Mode::Async => {
-            assert_eq!(control.len(), 1);
-            assert_eq!(control[0], 42);
-            let buf = vec![43u8].into_boxed_slice();
-            Op::Async(futures::future::ready(buf).boxed())
-          }
-          Mode::AsyncUnref => {
-            assert_eq!(control.len(), 1);
-            assert_eq!(control[0], 42);
-            let fut = async {
-              // This future never finish.
-              futures::future::pending::<()>().await;
-              vec![43u8].into_boxed_slice()
-            };
-            Op::AsyncUnref(fut.boxed())
-          }
-          Mode::OverflowReqSync => {
-            assert_eq!(control.len(), 100 * 1024 * 1024);
-            let buf = vec![43u8].into_boxed_slice();
-            Op::Sync(buf)
-          }
-          Mode::OverflowResSync => {
-            assert_eq!(control.len(), 1);
-            assert_eq!(control[0], 42);
-            let mut vec = Vec::<u8>::new();
-            vec.resize(100 * 1024 * 1024, 0);
-            vec[0] = 99;
-            let buf = vec.into_boxed_slice();
-            Op::Sync(buf)
-          }
-          Mode::OverflowReqAsync => {
-            assert_eq!(control.len(), 100 * 1024 * 1024);
-            let buf = vec![43u8].into_boxed_slice();
-            Op::Async(futures::future::ready(buf).boxed())
-          }
-          Mode::OverflowResAsync => {
-            assert_eq!(control.len(), 1);
-            assert_eq!(control[0], 42);
-            let mut vec = Vec::<u8>::new();
-            vec.resize(100 * 1024 * 1024, 0);
-            vec[0] = 4;
-            let buf = vec.into_boxed_slice();
-            Op::Async(futures::future::ready(buf).boxed())
-          }
+    let dispatcher = move |_isolate: &mut Isolate,
+                           control: &[u8],
+                           _zero_copy: Option<ZeroCopyBuf>|
+          -> Op {
+      dispatch_count_.fetch_add(1, Ordering::Relaxed);
+      match mode {
+        Mode::Async => {
+          assert_eq!(control.len(), 1);
+          assert_eq!(control[0], 42);
+          let buf = vec![43u8].into_boxed_slice();
+          Op::Async(futures::future::ready(buf).boxed())
         }
-      };
+        Mode::AsyncUnref => {
+          assert_eq!(control.len(), 1);
+          assert_eq!(control[0], 42);
+          let fut = async {
+            // This future never finish.
+            futures::future::pending::<()>().await;
+            vec![43u8].into_boxed_slice()
+          };
+          Op::AsyncUnref(fut.boxed())
+        }
+        Mode::OverflowReqSync => {
+          assert_eq!(control.len(), 100 * 1024 * 1024);
+          let buf = vec![43u8].into_boxed_slice();
+          Op::Sync(buf)
+        }
+        Mode::OverflowResSync => {
+          assert_eq!(control.len(), 1);
+          assert_eq!(control[0], 42);
+          let mut vec = Vec::<u8>::new();
+          vec.resize(100 * 1024 * 1024, 0);
+          vec[0] = 99;
+          let buf = vec.into_boxed_slice();
+          Op::Sync(buf)
+        }
+        Mode::OverflowReqAsync => {
+          assert_eq!(control.len(), 100 * 1024 * 1024);
+          let buf = vec![43u8].into_boxed_slice();
+          Op::Async(futures::future::ready(buf).boxed())
+        }
+        Mode::OverflowResAsync => {
+          assert_eq!(control.len(), 1);
+          assert_eq!(control[0], 42);
+          let mut vec = Vec::<u8>::new();
+          vec.resize(100 * 1024 * 1024, 0);
+          vec[0] = 4;
+          let buf = vec.into_boxed_slice();
+          Op::Async(futures::future::ready(buf).boxed())
+        }
+      }
+    };
 
     isolate.register_op("test", dispatcher);
 

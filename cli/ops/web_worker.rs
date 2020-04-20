@@ -12,7 +12,11 @@ use std::convert::From;
 pub fn web_worker_op<D>(
   sender: mpsc::Sender<WorkerEvent>,
   dispatcher: D,
-) -> impl Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>
+) -> impl Fn(
+  &mut deno_core::Isolate,
+  Value,
+  Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError>
 where
   D: Fn(
     &mpsc::Sender<WorkerEvent>,
@@ -20,7 +24,8 @@ where
     Option<ZeroCopyBuf>,
   ) -> Result<JsonOp, OpError>,
 {
-  move |args: Value,
+  move |_isolate: &mut deno_core::Isolate,
+        args: Value,
         zero_copy: Option<ZeroCopyBuf>|
         -> Result<JsonOp, OpError> { dispatcher(&sender, args, zero_copy) }
 }
@@ -29,7 +34,11 @@ pub fn web_worker_op2<D>(
   handle: WebWorkerHandle,
   sender: mpsc::Sender<WorkerEvent>,
   dispatcher: D,
-) -> impl Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>
+) -> impl Fn(
+  &mut deno_core::Isolate,
+  Value,
+  Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError>
 where
   D: Fn(
     WebWorkerHandle,
@@ -38,7 +47,8 @@ where
     Option<ZeroCopyBuf>,
   ) -> Result<JsonOp, OpError>,
 {
-  move |args: Value,
+  move |_isolate: &mut deno_core::Isolate,
+        args: Value,
         zero_copy: Option<ZeroCopyBuf>|
         -> Result<JsonOp, OpError> {
     dispatcher(handle.clone(), &sender, args, zero_copy)
