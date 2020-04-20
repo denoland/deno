@@ -1,11 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// TODO: This currently only applies to uncaught exceptions. It would be nice to
-// also have source maps for situations like this:
-//   const err = new Error("Boo!");
-//   console.log(err.stack);
-// It would require calling into Rust from Error.prototype.prepareStackTrace.
-
 use crate::ErrBox;
 use rusty_v8 as v8;
 use std::convert::TryFrom;
@@ -260,7 +254,6 @@ fn format_source_loc(
   line_number: i64,
   column_number: i64,
 ) -> String {
-  // TODO match this style with how typescript displays errors.
   let line_number = line_number;
   let column_number = column_number;
   format!("{}:{}:{}", file_name, line_number, column_number)
