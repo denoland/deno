@@ -1,5 +1,7 @@
-use crate::isolate::ZeroCopyBuf;
-use crate::ops::Op;
+// TODO(ry) This plugin module is superfluous. Try to remove definitions for
+// "init_fn!", "PluginInitFn", and "PluginInitContext".
+
+use crate::ops::OpDispatcher;
 
 pub type PluginInitFn = fn(context: &mut dyn PluginInitContext);
 
@@ -7,7 +9,7 @@ pub trait PluginInitContext {
   fn register_op(
     &mut self,
     name: &str,
-    op: Box<dyn Fn(&[u8], Option<ZeroCopyBuf>) -> Op + 'static>,
+    op: Box<OpDispatcher>, // TODO(ry) rename to dispatcher, not op.
   );
 }
 

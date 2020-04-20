@@ -49,11 +49,14 @@ pub struct TSState {
 fn compiler_op<D>(
   ts_state: Arc<Mutex<TSState>>,
   dispatcher: D,
-) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> Op
+) -> impl Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op
 where
   D: Fn(&mut TSState, &[u8]) -> Op,
 {
-  move |control: &[u8], zero_copy_buf: Option<ZeroCopyBuf>| -> Op {
+  move |_isolate: &mut deno_core::Isolate,
+        control: &[u8],
+        zero_copy_buf: Option<ZeroCopyBuf>|
+        -> Op {
     assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in compiler.
     let mut s = ts_state.lock().unwrap();
     dispatcher(&mut s, control)
@@ -326,11 +329,14 @@ pub fn trace_serializer() {
 /// Isolate.
 pub fn op_fetch_asset<S: ::std::hash::BuildHasher>(
   custom_assets: HashMap<String, PathBuf, S>,
-) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> Op {
+) -> impl Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op {
   for (_, path) in custom_assets.iter() {
     println!("cargo:rerun-if-changed={}", path.display());
   }
-  move |control: &[u8], zero_copy_buf: Option<ZeroCopyBuf>| -> Op {
+  move |_isolate: &mut deno_core::Isolate,
+        control: &[u8],
+        zero_copy_buf: Option<ZeroCopyBuf>|
+        -> Op {
     assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in this op.
     let name = std::str::from_utf8(control).unwrap();
 

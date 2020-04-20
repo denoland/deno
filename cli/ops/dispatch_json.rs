@@ -41,11 +41,19 @@ struct AsyncArgs {
   promise_id: Option<u64>,
 }
 
-pub fn json_op<D>(d: D) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> Op
+pub fn json_op<D>(
+  d: D,
+) -> impl Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op
 where
-  D: Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
+  D: Fn(
+    &mut deno_core::Isolate,
+    Value,
+    Option<ZeroCopyBuf>,
+  ) -> Result<JsonOp, OpError>,
 {
-  move |control: &[u8], zero_copy: Option<ZeroCopyBuf>| {
+  move |isolate: &mut deno_core::Isolate,
+        control: &[u8],
+        zero_copy: Option<ZeroCopyBuf>| {
     let async_args: AsyncArgs = match serde_json::from_slice(control) {
       Ok(args) => args,
       Err(e) => {
@@ -58,7 +66,7 @@ where
 
     let result = serde_json::from_slice(control)
       .map_err(OpError::from)
-      .and_then(|args| d(args, zero_copy));
+      .and_then(|args| d(isolate, args, zero_copy));
 
     // Convert to Op
     match result {

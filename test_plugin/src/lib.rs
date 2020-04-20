@@ -13,7 +13,11 @@ fn init(context: &mut dyn PluginInitContext) {
 }
 init_fn!(init);
 
-pub fn op_test_sync(data: &[u8], zero_copy: Option<ZeroCopyBuf>) -> Op {
+pub fn op_test_sync(
+  _isolate: &mut deno_core::Isolate,
+  data: &[u8],
+  zero_copy: Option<ZeroCopyBuf>,
+) -> Op {
   if let Some(buf) = zero_copy {
     let data_str = std::str::from_utf8(&data[..]).unwrap();
     let buf_str = std::str::from_utf8(&buf[..]).unwrap();
@@ -27,7 +31,11 @@ pub fn op_test_sync(data: &[u8], zero_copy: Option<ZeroCopyBuf>) -> Op {
   Op::Sync(result_box)
 }
 
-pub fn op_test_async(data: &[u8], zero_copy: Option<ZeroCopyBuf>) -> Op {
+pub fn op_test_async(
+  _isolate: &mut deno_core::Isolate,
+  data: &[u8],
+  zero_copy: Option<ZeroCopyBuf>,
+) -> Op {
   let data_str = std::str::from_utf8(&data[..]).unwrap().to_string();
   let fut = async move {
     if let Some(buf) = zero_copy {

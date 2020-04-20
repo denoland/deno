@@ -3,20 +3,21 @@ use crate::fs as deno_fs;
 use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
-use deno_core::*;
+use deno_core::Isolate;
+use deno_core::OpDispatcher;
+use deno_core::OpId;
+use deno_core::PluginInitContext;
+use deno_core::PluginInitFn;
+use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::Path;
-use std::rc::Rc;
 
-pub fn init(i: &mut Isolate, s: &State, r: Rc<deno_core::OpRegistry>) {
-  let r_ = r;
+pub fn init(i: &mut Isolate, s: &State) {
   i.register_op(
     "op_open_plugin",
-    s.core_op(json_op(s.stateful_op(move |state, args, zero_copy| {
-      op_open_plugin(&r_, state, args, zero_copy)
-    }))),
+    s.core_op(json_op(s.stateful_op2(op_open_plugin))),
   );
 }
 
@@ -52,7 +53,7 @@ struct OpenPluginArgs {
 }
 
 pub fn op_open_plugin(
-  registry: &Rc<deno_core::OpRegistry>,
+  isolate: &mut deno_core::Isolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
@@ -91,8 +92,8 @@ pub fn op_open_plugin(
     // The inclusion of prefix and rid is designed to avoid any
     // op name collision beyond the bound of a single loaded
     // plugin instance.
-    let op_id = registry
-      .register(&format!("plugin_{}_{}", rid, op.0), state.core_op(op.1));
+    let op_id = isolate
+      .register_op(&format!("plugin_{}_{}", rid, op.0), state.core_op(op.1));
     plugin_resource.ops.insert(op.0, op_id);
   }
 

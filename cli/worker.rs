@@ -222,7 +222,6 @@ impl MainWorker {
     let state_ = state.clone();
     let mut worker = Worker::new(name, startup_data, state_);
     {
-      let op_registry = worker.isolate.op_registry.clone();
       let isolate = &mut worker.isolate;
       ops::runtime::init(isolate, &state);
       ops::runtime_compiler::init(isolate, &state);
@@ -231,7 +230,7 @@ impl MainWorker {
       ops::fs::init(isolate, &state);
       ops::fs_events::init(isolate, &state);
       ops::io::init(isolate, &state);
-      ops::plugins::init(isolate, &state, op_registry);
+      ops::plugins::init(isolate, &state);
       ops::net::init(isolate, &state);
       ops::tls::init(isolate, &state);
       ops::os::init(isolate, &state);

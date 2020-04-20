@@ -73,7 +73,7 @@ impl State {
   pub fn stateful_json_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> Op
+  ) -> impl Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op
   where
     D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
   {
@@ -85,18 +85,21 @@ impl State {
   pub fn core_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> Op
+  ) -> impl Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op
   where
-    D: Fn(&[u8], Option<ZeroCopyBuf>) -> Op,
+    D: Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op,
   {
     let state = self.clone();
 
-    move |control: &[u8], zero_copy: Option<ZeroCopyBuf>| -> Op {
+    move |isolate: &mut deno_core::Isolate,
+          control: &[u8],
+          zero_copy: Option<ZeroCopyBuf>|
+          -> Op {
       let bytes_sent_control = control.len() as u64;
       let bytes_sent_zero_copy =
         zero_copy.as_ref().map(|b| b.len()).unwrap_or(0) as u64;
 
-      let op = dispatcher(control, zero_copy);
+      let op = dispatcher(isolate, control, zero_copy);
 
       match op {
         Op::Sync(buf) => {
@@ -162,14 +165,44 @@ impl State {
   pub fn stateful_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>
+  ) -> impl Fn(
+    &mut deno_core::Isolate,
+    Value,
+    Option<ZeroCopyBuf>,
+  ) -> Result<JsonOp, OpError>
   where
     D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
   {
     let state = self.clone();
-    move |args: Value,
+    move |_isolate: &mut deno_core::Isolate,
+          args: Value,
           zero_copy: Option<ZeroCopyBuf>|
           -> Result<JsonOp, OpError> { dispatcher(&state, args, zero_copy) }
+  }
+
+  pub fn stateful_op2<D>(
+    &self,
+    dispatcher: D,
+  ) -> impl Fn(
+    &mut deno_core::Isolate,
+    Value,
+    Option<ZeroCopyBuf>,
+  ) -> Result<JsonOp, OpError>
+  where
+    D: Fn(
+      &mut deno_core::Isolate,
+      &State,
+      Value,
+      Option<ZeroCopyBuf>,
+    ) -> Result<JsonOp, OpError>,
+  {
+    let state = self.clone();
+    move |isolate: &mut deno_core::Isolate,
+          args: Value,
+          zero_copy: Option<ZeroCopyBuf>|
+          -> Result<JsonOp, OpError> {
+      dispatcher(isolate, &state, args, zero_copy)
+    }
   }
 }
 
