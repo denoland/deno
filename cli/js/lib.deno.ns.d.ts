@@ -1796,35 +1796,23 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function truncate(name: string, len?: number): Promise<void>;
 
-  export interface AsyncHandler {
-    (msg: Uint8Array): void;
-  }
-
-  export interface PluginOp {
-    dispatch(
-      control: Uint8Array,
-      zeroCopy?: ArrayBufferView | null
-    ): Uint8Array | null;
-    setAsyncHandler(handler: AsyncHandler): void;
-  }
-
-  export interface Plugin {
-    ops: {
-      [name: string]: PluginOp;
-    };
-  }
-
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Open and initalize a plugin.
    *
-   *        const plugin = Deno.openPlugin("./path/to/some/plugin.so");
-   *        const some_op = plugin.ops.some_op;
-   *        const response = some_op.dispatch(new Uint8Array([1,2,3,4]));
+   *        const rid = Deno.openPlugin("./path/to/some/plugin.so");
+   *        const opId = Deno.core.ops()["some_op"];
+   *        const response = Deno.core.dispatch(opId, new Uint8Array([1,2,3,4]));
    *        console.log(`Response from plugin ${response}`);
    *
-   * Requires `allow-plugin` permission. */
-  export function openPlugin(filename: string): Plugin;
+   * Requires `allow-plugin` permission.
+   *
+   * The plugin system is not stable and will change in the future, hence the
+   * lack of docs. For now take a look at the example
+   * https://github.com/denoland/deno/tree/master/test_plugin
+   */
+  export function openPlugin(filename: string): number;
+
   export interface NetAddr {
     transport: "tcp" | "udp";
     hostname: string;

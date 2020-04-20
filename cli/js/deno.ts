@@ -93,7 +93,7 @@ export {
   PermissionStatus,
   Permissions,
 } from "./permissions.ts";
-export { openPlugin } from "./plugins.ts";
+export { openPlugin } from "./ops/plugins.ts";
 export { kill } from "./ops/process.ts";
 export { run, RunOptions, Process, ProcessStatus } from "./process.ts";
 export { DirEntry, readdirSync, readdir } from "./ops/fs/read_dir.ts";
