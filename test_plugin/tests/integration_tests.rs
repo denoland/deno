@@ -1,3 +1,7 @@
+// To run this test manually:
+//   cd test_plugin
+//   ../target/debug/deno --allow-plugin tests/test.js debug
+
 // TODO(ry) Re-enable this test on windows. It is flaky for an unknown reason.
 #![cfg(not(windows))]
 
@@ -38,11 +42,7 @@ fn basic() {
     println!("stderr {}", stderr);
   }
   assert!(output.status.success());
-  let expected = if cfg!(target_os = "windows") {
-    "Hello from plugin. data: test | zero_copy: test\nPlugin Sync Response: test\r\nHello from plugin. data: test | zero_copy: test\nPlugin Async Response: test\r\n"
-  } else {
-    "Hello from plugin. data: test | zero_copy: test\nPlugin Sync Response: test\nHello from plugin. data: test | zero_copy: test\nPlugin Async Response: test\n"
-  };
+  let expected = "Hello from plugin. data: test | zero_copy: test\nPlugin Sync Response: test\nHello from plugin. data: test | zero_copy: test\nPlugin Async Response: test\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }
