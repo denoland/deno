@@ -115,9 +115,10 @@ export class ServerRequest {
   async finalize(): Promise<void> {
     if (this.finalized) return;
     // Consume unread body
-    const body = this.body;
+    if (!this._body) return;
+
     const buf = new Uint8Array(1024);
-    while ((await body.read(buf)) !== Deno.EOF) {}
+    while ((await this._body.read(buf)) !== Deno.EOF) {}
     this.finalized = true;
   }
 }
