@@ -107,7 +107,7 @@ test("readTrailer should throw if undeclared headers found in trailer", async ()
         await readTrailers(h, new BufReader(new Buffer(encode(trailer))));
       },
       Error,
-      "Undeclared trailer field"
+      "Undeclared trailer field",
     );
   }
 });
@@ -122,7 +122,7 @@ test("readTrailer should throw if trailer contains prohibited fields", async () 
         await readTrailers(h, new BufReader(new Buffer()));
       },
       Error,
-      "Prohibited field for trailer"
+      "Prohibited field for trailer",
     );
   }
 });
@@ -132,7 +132,7 @@ test("writeTrailer", async () => {
   await writeTrailers(
     w,
     new Headers({ "transfer-encoding": "chunked", trailer: "deno,node" }),
-    new Headers({ deno: "land", node: "js" })
+    new Headers({ deno: "land", node: "js" }),
   );
   assertEquals(w.toString(), "deno: land\r\nnode: js\r\n\r\n");
 });
@@ -144,14 +144,14 @@ test("writeTrailer should throw", async () => {
       return writeTrailers(w, new Headers(), new Headers());
     },
     Error,
-    'must have "trailer"'
+    'must have "trailer"',
   );
   await assertThrowsAsync(
     () => {
       return writeTrailers(w, new Headers({ trailer: "deno" }), new Headers());
     },
     Error,
-    "only allowed"
+    "only allowed",
   );
   for (const f of ["content-length", "trailer", "transfer-encoding"]) {
     await assertThrowsAsync(
@@ -159,11 +159,11 @@ test("writeTrailer should throw", async () => {
         return writeTrailers(
           w,
           new Headers({ "transfer-encoding": "chunked", trailer: f }),
-          new Headers({ [f]: "1" })
+          new Headers({ [f]: "1" }),
         );
       },
       AssertionError,
-      "prohibited"
+      "prohibited",
     );
   }
   await assertThrowsAsync(
@@ -171,11 +171,11 @@ test("writeTrailer should throw", async () => {
       return writeTrailers(
         w,
         new Headers({ "transfer-encoding": "chunked", trailer: "deno" }),
-        new Headers({ node: "js" })
+        new Headers({ node: "js" }),
       );
     },
     AssertionError,
-    "Not trailer"
+    "Not trailer",
   );
 });
 
@@ -343,6 +343,42 @@ test("writeResponse with trailer", async () => {
   assertEquals(ret, exp);
 });
 
+test("writeResponse with repeating headers", async () => {
+  const body = "Hello";
+
+  const res: Response = { body, headers: new Headers(
+    [
+      ["set-cookie", "user.session=qwertz; Max-Age=86400"],
+      [
+        "set-cookie",
+        "mykey=myvalue; expires=Mon, 17-Jul-2017 16:06:00 GMT; Max-Age=31449600; Path=/; secure",
+      ],
+      ["set-cookie", "b=456; Domain=example.com; Secure; HttpOnly"],
+      ["x-other-header", "some, value"],
+      ["x-other-header", "custom=pair; values"],
+    ],
+  ) };
+
+  const w = new Buffer();
+  await writeResponse(w, res);
+
+  const ret = w.toString();
+  const exp = [
+    "HTTP/1.1 200 OK",
+    `content-length: ${body.length}`,
+    "set-cookie: user.session=qwertz; Max-Age=86400",
+    "set-cookie: mykey=myvalue; expires=Mon, 17-Jul-2017 16:06:00 GMT; Max-Age=31449600; Path=/; secure",
+    "set-cookie: b=456; Domain=example.com; Secure; HttpOnly",
+    "x-other-header: some, value, custom=pair; values",
+    "",
+    "5",
+    body,
+    "0",
+    "",
+  ].join("\r\n");
+  assertEquals(ret, exp);
+});
+
 test(async function readRequestError(): Promise<void> {
   const input = `GET / HTTP/1.1
 malformedHeader
@@ -384,20 +420,17 @@ test(async function testReadRequestError(): Promise<void> {
     // deduplicated if same or reject otherwise
     // See Issue 16490.
     {
-      in:
-        "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 0\r\n\r\n" +
+      in: "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 0\r\n\r\n" +
         "Gopher hey\r\n",
       err: "cannot contain multiple Content-Length headers",
     },
     {
-      in:
-        "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 6\r\n\r\n" +
+      in: "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 6\r\n\r\n" +
         "Gopher\r\n",
       err: "cannot contain multiple Content-Length headers",
     },
     {
-      in:
-        "PUT / HTTP/1.1\r\nContent-Length: 6 \r\nContent-Length: 6\r\n" +
+      in: "PUT / HTTP/1.1\r\nContent-Length: 6 \r\nContent-Length: 6\r\n" +
         "Content-Length:6\r\n\r\nGopher\r\n",
       headers: [{ key: "Content-Length", value: "6" }],
     },
@@ -416,8 +449,7 @@ test(async function testReadRequestError(): Promise<void> {
       headers: [{ key: "Content-Length", value: "0" }],
     },
     {
-      in:
-        "POST / HTTP/1.1\r\nContent-Length:0\r\ntransfer-encoding: " +
+      in: "POST / HTTP/1.1\r\nContent-Length:0\r\ntransfer-encoding: " +
         "chunked\r\n\r\n",
       headers: [],
       err: "http: Transfer-Encoding and Content-Length cannot be send together",
