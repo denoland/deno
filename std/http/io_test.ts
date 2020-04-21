@@ -351,7 +351,8 @@ test("writeResponse with repeating headers", async () => {
       ["set-cookie", "user.session=qwertz; Max-Age=86400"],
       [
         "set-cookie",
-        "mykey=myvalue; expires=Mon, 17-Jul-2017 16:06:00 GMT; Max-Age=31449600; Path=/; secure",
+        "mykey=myvalue; expires=Mon, 17-Jul-2017" +
+        " 16:06:00 GMT; Max-Age=31449600; Path=/; secure",
       ],
       ["set-cookie", "b=456; Domain=example.com; Secure; HttpOnly"],
       ["x-other-header", "some, value"],
@@ -367,7 +368,8 @@ test("writeResponse with repeating headers", async () => {
     "HTTP/1.1 200 OK",
     `content-length: ${body.length}`,
     "set-cookie: user.session=qwertz; Max-Age=86400",
-    "set-cookie: mykey=myvalue; expires=Mon, 17-Jul-2017 16:06:00 GMT; Max-Age=31449600; Path=/; secure",
+    "set-cookie: mykey=myvalue; expires=Mon, 17-Jul-2017" +
+    " 16:06:00 GMT; Max-Age=31449600; Path=/; secure",
     "set-cookie: b=456; Domain=example.com; Secure; HttpOnly",
     "x-other-header: some, value, custom=pair; values",
     "",
