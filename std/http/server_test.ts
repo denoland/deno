@@ -117,6 +117,12 @@ function totalReader(r: Deno.Reader): TotalReader {
   }
   return {
     read,
+    next(): Promise<IteratorResult<Uint8Array>> {
+      return Promise.resolve({ done: true, value: undefined });
+    },
+    [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
+      return this;
+    },
     get total(): number {
       return _total;
     },

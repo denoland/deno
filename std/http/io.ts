@@ -10,12 +10,11 @@ export function emptyReader(): Deno.Reader {
     read(_: Uint8Array): Promise<number | Deno.EOF> {
       return Promise.resolve(Deno.EOF);
     },
-    // eslint-disable-next-line require-await
-    async next(): Promise<IteratorResult<Uint8Array>> {
-      return { done: true, value: undefined };
-    },
     [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
       return this;
+    },
+    next(): Promise<IteratorResult<Uint8Array>> {
+      return Promise.resolve({ done: true, value: undefined });
     },
   };
 }
@@ -41,9 +40,8 @@ export function bodyReader(contentLength: number, r: BufReader): Deno.Reader {
   }
   return {
     read,
-    // eslint-disable-next-line require-await
-    async next(): Promise<IteratorResult<Uint8Array>> {
-      return { done: true, value: undefined };
+    next(): Promise<IteratorResult<Uint8Array>> {
+      return Promise.resolve({ done: true, value: undefined });
     },
     [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
       return this;
@@ -128,9 +126,8 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   }
   return {
     read,
-    // eslint-disable-next-line require-await
-    async next(): Promise<IteratorResult<Uint8Array>> {
-      return { done: true, value: undefined };
+    next(): Promise<IteratorResult<Uint8Array>> {
+      return Promise.resolve({ done: true, value: undefined });
     },
     [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
       return this;

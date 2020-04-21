@@ -7,7 +7,7 @@
  * each non-empty Read by reading one byte from r.
  */
 export class OneByteReader extends Deno.Reader {
-  constructor(readonly r: Reader) {
+  constructor(readonly r: Deno.Reader) {
     super();
   }
 
@@ -26,7 +26,7 @@ export class OneByteReader extends Deno.Reader {
  * by reading half as many requested bytes from r.
  */
 export class HalfReader extends Deno.Reader {
-  constructor(readonly r: Reader) {
+  constructor(readonly r: Deno.Reader) {
     super();
   }
 
@@ -44,7 +44,7 @@ export class HalfReader extends Deno.Reader {
  */
 export class TimeoutReader extends Deno.Reader {
   count = 0;
-  constructor(readonly r: Reader) {
+  constructor(readonly r: Deno.Reader) {
     super();
   }
 
