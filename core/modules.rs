@@ -74,6 +74,14 @@ pub trait ModuleLoader {
     maybe_referrer: Option<ModuleSpecifier>,
     is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>>;
+
+  //TODO(bartlomieju): add docstring
+  fn prepare_load(
+    &self,
+    module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
+    is_dyn_import: bool,
+  ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>>;
 }
 
 #[derive(Debug, Eq, PartialEq)]
