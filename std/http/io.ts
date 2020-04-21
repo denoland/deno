@@ -125,7 +125,7 @@ const kProhibitedTrailerHeaders = [
  * */
 export async function readTrailers(
   headers: Headers,
-  r: BufReader,
+  r: BufReader
 ): Promise<void> {
   const keys = parseTrailer(headers.get("trailer"));
   if (!keys) return;
@@ -161,7 +161,7 @@ function parseTrailer(field: string | null): Set<string> | undefined {
 
 export async function writeChunkedBody(
   w: Deno.Writer,
-  r: Deno.Reader,
+  r: Deno.Reader
 ): Promise<void> {
   const writer = BufWriter.create(w);
   for await (const chunk of Deno.toAsyncIterator(r)) {
@@ -181,7 +181,7 @@ export async function writeChunkedBody(
 export async function writeTrailers(
   w: Deno.Writer,
   headers: Headers,
-  trailers: Headers,
+  trailers: Headers
 ): Promise<void> {
   const trailer = headers.get("trailer");
   if (trailer === null) {
@@ -190,7 +190,7 @@ export async function writeTrailers(
   const transferEncoding = headers.get("transfer-encoding");
   if (transferEncoding === null || !transferEncoding.match(/^chunked/)) {
     throw new Error(
-      `trailer headers is only allowed for "transfer-encoding: chunked": got "${transferEncoding}"`,
+      `trailer headers is only allowed for "transfer-encoding: chunked": got "${transferEncoding}"`
     );
   }
   const writer = BufWriter.create(w);
@@ -200,13 +200,13 @@ export async function writeTrailers(
   for (const f of trailerHeaderFields) {
     assert(
       !kProhibitedTrailerHeaders.includes(f),
-      `"${f}" is prohibited for trailer header`,
+      `"${f}" is prohibited for trailer header`
     );
   }
   for (const [key, value] of trailers) {
     assert(
       trailerHeaderFields.includes(key),
-      `Not trailer header field: ${key}`,
+      `Not trailer header field: ${key}`
     );
     await writer.write(encoder.encode(`${key}: ${value}\r\n`));
   }
@@ -234,7 +234,7 @@ export function setContentLength(r: Response): void {
 
 export async function writeResponse(
   w: Deno.Writer,
-  r: Response,
+  r: Response
 ): Promise<void> {
   const protoMajor = 1;
   const protoMinor = 1;
@@ -348,7 +348,7 @@ export function parseHTTPVersion(vers: string): [number, number] {
 
 export async function readRequest(
   conn: Deno.Conn,
-  bufr: BufReader,
+  bufr: BufReader
 ): Promise<ServerRequest | Deno.EOF> {
   const tp = new TextProtoReader(bufr);
   const firstLine = await tp.readLine(); // e.g. GET /index.html HTTP/1.0
@@ -387,7 +387,7 @@ function fixLength(req: ServerRequest): void {
       // that contains a Transfer-Encoding header field.
       // rfc: https://tools.ietf.org/html/rfc7230#section-3.3.2
       throw new Error(
-        "http: Transfer-Encoding and Content-Length cannot be send together",
+        "http: Transfer-Encoding and Content-Length cannot be send together"
       );
     }
   }
