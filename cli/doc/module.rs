@@ -19,6 +19,7 @@ pub fn get_doc_node_for_export_decl(
     .lookup_char_pos(export_span.lo())
     .into();
 
+  eprintln!("decl {:#?}", export_decl);
   match &export_decl.decl {
     Decl::Class(class_decl) => {
       let (name, class_def) =

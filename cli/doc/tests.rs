@@ -968,6 +968,67 @@ declare namespace RootNs {
       .contains("namespace RootNs")
   );
 }
+
+#[tokio::test]
+async fn export_default() {
+  let source_code = r#"
+function foo(a: number) {
+  return a;
+}
+
+const bar = "bar";
+
+var fizz = "buzz";
+
+export default {
+  fooFn: foo,
+  bar,
+  fizz,
+};
+    "#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  assert_eq!(entries.len(), 1);
+  let entry = &entries[0];
+  let expected_json = json!({
+    "kind": "function",
+    "name": "foo",
+    "location": {
+      "filename": "test.ts",
+      "line": 2,
+      "col": 2
+    },
+    "jsDoc": null,
+    "functionDef": {
+      "params": [
+          {
+            "name": "a",
+            "kind": "identifier",
+            "optional": false,
+            "tsType": {
+              "keyword": "number",
+              "kind": "keyword",
+              "repr": "number",
+            },
+          }
+      ],
+      "typeParams": [],
+      "returnType": null,
+      "isAsync": false,
+      "isGenerator": false
+    }
+  });
+  let actual = serde_json::to_value(entry).unwrap();
+  assert_eq!(actual, expected_json);
+
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("function foo(a: number)")
+  );
+}
+
+
 #[tokio::test]
 async fn optional_return_type() {
   let source_code = r#"
@@ -1024,6 +1085,8 @@ async fn reexports() {
   * JSDoc for bar
   */
 export const bar = "bar";
+
+export default 42;
 "#;
   let reexport_source_code = r#"
 import { bar } from "./nested_reexport.ts";
@@ -1034,7 +1097,7 @@ import { bar } from "./nested_reexport.ts";
 export const foo = "foo";
 "#;
   let test_source_code = r#"
-export { foo as fooConst } from "./reexport.ts";
+export { default, foo as fooConst } from "./reexport.ts";
 
 /** JSDoc for function */
 export function fooFn(a: number) {
