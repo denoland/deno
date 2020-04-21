@@ -36,6 +36,16 @@ const headerDict: Record<string, string> = {
   name4: undefined,
   "Content-Type": "value4",
 };
+
+const cookiesHeadersArray: string[][] = [
+  ["set-cookie", "node=js"],
+  ["set-cookie", "deno=land; Domain=deno.land;"],
+  // Only last one with same name should be kept
+  ["set-cookie", "deno=land; Domain=example.com; Secure; HttpOnly"],
+  ["name1", "value1"],
+  ["name2", "name2"],
+];
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const headerSeq: any[] = [];
 for (const name in headerDict) {
@@ -79,6 +89,14 @@ unitTest(function newHeaderWithHeadersInstanceWithCookies(): void {
     assertEquals(cookie, expectedCookieValue);
 });
 
+unitTest(function newHeaderWithCookieHeadersArray(): void {
+  const headers = new Headers(cookiesHeadersArray);
+  for (const [name, value] of cookiesHeadersArray) {
+    if (name !== "set-cookie") assertEquals(headers.get(name), value);
+  }
+  assert([...headers.cookies()].length === 2);
+});
+
 unitTest(function headerAppendSuccess(): void {
   const headers = new Headers();
   for (const name in headerDict) {
@@ -113,6 +131,13 @@ unitTest(function headerDeleteSuccess(): void {
     headers.delete(name);
     assert(!headers.has(name), "headers do not have anymore a header: " + name);
   }
+});
+
+unitTest(function headerDeleteCookiesSuccess(): void {
+  const headers = new Headers(cookiesHeadersArray);
+  headers.set("Set-Cookie", "foo=bar");
+  headers.delete("Set-Cookie");
+  assert([...headers.cookies()].length === 0);
 });
 
 unitTest(function headerGetSuccess(): void {
@@ -152,6 +177,23 @@ unitTest(function headerValuesSuccess(): void {
   }
   for (const it of iterators) {
     assert(values.includes(it));
+  }
+});
+
+unitTest(function headerCookiesSuccess(): void {
+  const headers = new Headers();
+  const cookies: { [key: string]: boolean } = {
+    "deno=land": false,
+    "deno=land; Path=/;": true,
+    "foo=bar; Path=/;": false,
+    "node=js": true,
+    "foo=bar": true,
+  };
+
+  for (const cookie of Object.keys(cookies)) headers.set("Set-Cookie", cookie);
+
+  for (const cookie of headers.cookies()) {
+    assert(cookies[cookie]);
   }
 });
 

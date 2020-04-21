@@ -343,6 +343,47 @@ test("writeResponse with trailer", async () => {
   assertEquals(ret, exp);
 });
 
+test("writeResponse with repeating headers", async () => {
+  const body = "Hello";
+
+  const res: Response = {
+    body,
+    headers: new Headers([
+      ["set-cookie", "user.session=qwertz; Max-Age=86400"],
+      [
+        "set-cookie",
+        "mykey=myvalue; expires=Mon, 17-Jul-2017" +
+          " 16:06:00 GMT; Max-Age=31449600; Path=/; secure",
+      ],
+      ["set-cookie", "b=456; Domain=example.com;"],
+      // Only last one with same name should be kept
+      ["set-cookie", "b=456; Domain=example.com; Secure; HttpOnly"],
+      ["x-other-header", "some, value"],
+      ["x-other-header", "custom=pair; values"],
+    ]),
+  };
+
+  const w = new Buffer();
+  await writeResponse(w, res);
+
+  const ret = w.toString();
+  const exp = [
+    "HTTP/1.1 200 OK",
+    `content-length: ${body.length}`,
+    "set-cookie: user.session=qwertz; Max-Age=86400",
+    "set-cookie: mykey=myvalue; expires=Mon, 17-Jul-2017" +
+      " 16:06:00 GMT; Max-Age=31449600; Path=/; secure",
+    "set-cookie: b=456; Domain=example.com; Secure; HttpOnly",
+    "x-other-header: some, value, custom=pair; values",
+    "",
+    "5",
+    body,
+    "0",
+    "",
+  ].join("\r\n");
+  assertEquals(ret, exp);
+});
+
 test(async function readRequestError(): Promise<void> {
   const input = `GET / HTTP/1.1
 malformedHeader
