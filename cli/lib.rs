@@ -140,19 +140,20 @@ fn create_main_worker(
 ) -> Result<MainWorker, ErrBox> {
   let state = State::new(global_state, None, main_module, DebugType::Main)?;
 
-  {
-    let mut s = state.borrow_mut();
-    let (stdin, stdout, stderr) = get_stdio();
-    s.resource_table.add("stdin", Box::new(stdin));
-    s.resource_table.add("stdout", Box::new(stdout));
-    s.resource_table.add("stderr", Box::new(stderr));
-  }
-
   let mut worker = MainWorker::new(
     "main".to_string(),
     startup_data::deno_isolate_init(),
     state,
   );
+
+  {
+    let (stdin, stdout, stderr) = get_stdio();
+    let mut t = worker.resource_table.borrow_mut();
+    t.add("stdin", Box::new(stdin));
+    t.add("stdout", Box::new(stdout));
+    t.add("stderr", Box::new(stderr));
+  }
+
   worker.execute("bootstrapMainRuntime()")?;
   Ok(worker)
 }

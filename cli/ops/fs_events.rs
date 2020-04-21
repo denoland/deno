@@ -17,8 +17,8 @@ use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("op_fs_events_open", s.stateful_json_op(op_fs_events_open));
-  i.register_op("op_fs_events_poll", s.stateful_json_op(op_fs_events_poll));
+  i.register_op("op_fs_events_open", s.stateful_json_op2(op_fs_events_open));
+  i.register_op("op_fs_events_poll", s.stateful_json_op2(op_fs_events_poll));
 }
 
 struct FsEventsResource {
@@ -60,6 +60,7 @@ impl From<NotifyEvent> for FsEvent {
 }
 
 pub fn op_fs_events_open(
+  isolate: &mut deno_core::Isolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
@@ -91,13 +92,14 @@ pub fn op_fs_events_open(
     watcher.watch(path, recursive_mode).map_err(ErrBox::from)?;
   }
   let resource = FsEventsResource { watcher, receiver };
-  let table = &mut state.borrow_mut().resource_table;
-  let rid = table.add("fsEvents", Box::new(resource));
+  let mut resource_table = isolate.resource_table.borrow_mut();
+  let rid = resource_table.add("fsEvents", Box::new(resource));
   Ok(JsonOp::Sync(json!(rid)))
 }
 
 pub fn op_fs_events_poll(
-  state: &State,
+  isolate: &mut deno_core::Isolate,
+  _state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
@@ -106,9 +108,9 @@ pub fn op_fs_events_poll(
     rid: u32,
   }
   let PollArgs { rid } = serde_json::from_value(args)?;
-  let state = state.clone();
+  let resource_table = isolate.resource_table.clone();
   let f = poll_fn(move |cx| {
-    let resource_table = &mut state.borrow_mut().resource_table;
+    let mut resource_table = resource_table.borrow_mut();
     let watcher = resource_table
       .get_mut::<FsEventsResource>(rid)
       .ok_or_else(OpError::bad_resource_id)?;
