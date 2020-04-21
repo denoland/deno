@@ -1578,7 +1578,7 @@ declare namespace Deno {
    *
    *       const encoder = new TextEncoder();
    *       const data = encoder.encode("Hello world\n");
-   *       Deno.writeFileSync("hello1.txt", data);  //overwrite "hello.txt" or create it
+   *       Deno.writeFileSync("hello1.txt", data);  //overwrite "hello1.txt" or create it
    *       Deno.writeFileSync("hello2.txt", data, {create: false});  //only works if "hello2.txt" exists
    *       Deno.writeFileSync("hello3.txt", data, {mode: 0o777});  //set permissions on new file
    *       Deno.writeFileSync("hello4.txt", data, {append: true});  //add data to the end of the file
@@ -1597,7 +1597,7 @@ declare namespace Deno {
    *
    *       const encoder = new TextEncoder();
    *       const data = encoder.encode("Hello world\n");
-   *       await Deno.writeFile("hello1.txt", data);  //overwrite "hello.txt" or create it
+   *       await Deno.writeFile("hello1.txt", data);  //overwrite "hello1.txt" or create it
    *       await Deno.writeFile("hello2.txt", data, {create: false});  //only works if "hello2.txt" exists
    *       await Deno.writeFile("hello3.txt", data, {mode: 0o777});  //set permissions on new file
    *       await Deno.writeFile("hello4.txt", data, {append: true});  //add data to the end of the file
