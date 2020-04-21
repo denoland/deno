@@ -49,7 +49,6 @@ pub fn accept_unix(
 
     let (unix_stream, _socket_addr) =
       listener_resource.listener.accept().await?;
-    drop(listener_resource);
     drop(resource_table_);
 
     let local_addr = unix_stream.local_addr()?;
