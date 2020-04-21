@@ -172,8 +172,9 @@ export async function writeChunkedBody(
     await writer.write(start);
     await writer.write(chunk);
     await writer.write(end);
-    if (options && options.realTime)
+    if (options && options.realTime) {
       await writer.flush();
+    }
   }
 
   const endChunk = encoder.encode("0\r\n\r\n");

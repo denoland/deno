@@ -353,12 +353,12 @@ test("writeResponse with realTime option", async () => {
   // Create a Reader that returns 'Time-sensitive message' on the first call,
   // waits forever on the second.
   let numReads = 0;
-  const readerDone = deferred<void>()
+  const readerDone = deferred<void>();
   const reader: Deno.Reader = {
     read(p: Uint8Array) {
       switch (numReads++) {
         case 0:
-          const hello = encode('Time-sensitive message');
+          const hello = encode("Time-sensitive message");
           p.set(hello);
           return Promise.resolve(hello.length);
         case 1:
@@ -367,18 +367,18 @@ test("writeResponse with realTime option", async () => {
         default:
           unreachable();
       }
-    }
-  }
+    },
+  };
 
   writeResponse(w, {
     body: reader,
-    options: { realTime: true }
+    options: { realTime: true },
   });
   await readerDone;
   // Reader has returned 'Time-sensitive message' and received another read().
   // Data should have been flushed by now.
   const ret = underlying.toString();
-  assertStrContains(ret, 'Time-sensitive message');
+  assertStrContains(ret, "Time-sensitive message");
 });
 
 test(async function readRequestError(): Promise<void> {

@@ -8,9 +8,8 @@ import util
 
 def main():
     util.run([sys.executable, "tools/format.py"])
-    result = util.run_output(
-        ["git", "diff", "--ignore-submodules"],
-        exit_on_fail=True)
+    result = util.run_output(["git", "diff", "--ignore-submodules"],
+                             exit_on_fail=True)
     print result.out
     result = util.run_output(
         ["git", "status", "-uno", "--porcelain", "--ignore-submodules"],
