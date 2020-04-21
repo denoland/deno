@@ -372,7 +372,7 @@ test({
       .catch((_): void => {}); // Ignores the error when closing the process.
 
     try {
-      const r = new TextProtoReader(new BufReader(p.stdout!));
+      const r = new TextProtoReader(new BufReader(p.stdout));
       const s = await r.readLine();
       assert(s !== null && s.includes("server listening"));
       await delay(100);
@@ -387,7 +387,7 @@ test({
       // Stops the sever and allows `p.status()` promise to resolve
       Deno.kill(p.pid, Deno.Signal.SIGKILL);
       await statusPromise;
-      p.stdout!.close();
+      p.stdout.close();
       p.close();
     }
   },
@@ -417,7 +417,7 @@ test({
       .catch((_): void => {}); // Ignores the error when closing the process.
 
     try {
-      const r = new TextProtoReader(new BufReader(p.stdout!));
+      const r = new TextProtoReader(new BufReader(p.stdout));
       const s = await r.readLine();
       assert(
         s !== null && s.includes("server listening"),
@@ -444,7 +444,7 @@ test({
       // Stops the sever and allows `p.status()` promise to resolve
       Deno.kill(p.pid, Deno.Signal.SIGKILL);
       await statusPromise;
-      p.stdout!.close();
+      p.stdout.close();
       p.close();
     }
   },
