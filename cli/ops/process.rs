@@ -15,15 +15,16 @@ use tokio::process::Command;
 use std::os::unix::process::ExitStatusExt;
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("op_run", s.stateful_json_op(op_run));
-  i.register_op("op_run_status", s.stateful_json_op(op_run_status));
+  i.register_op("op_run", s.stateful_json_op2(op_run));
+  i.register_op("op_run_status", s.stateful_json_op2(op_run_status));
   i.register_op("op_kill", s.stateful_json_op(op_kill));
 }
 
-fn clone_file(rid: u32, state: &State) -> Result<std::fs::File, OpError> {
-  let mut state = state.borrow_mut();
-
-  std_file_resource(&mut state.resource_table, rid, move |r| match r {
+fn clone_file(
+  rid: u32,
+  resource_table: &mut ResourceTable,
+) -> Result<std::fs::File, OpError> {
+  std_file_resource(resource_table, rid, move |r| match r {
     Ok(std_file) => std_file.try_clone().map_err(OpError::from),
     Err(_) => Err(OpError::bad_resource_id()),
   })
@@ -57,6 +58,7 @@ struct ChildResource {
 }
 
 fn op_run(
+  isolate: &mut deno_core::Isolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
@@ -64,7 +66,7 @@ fn op_run(
   let run_args: RunArgs = serde_json::from_value(args)?;
 
   state.check_run()?;
-  let state_ = state.clone();
+  let mut resource_table = isolate.resource_table.borrow_mut();
 
   let args = run_args.cmd;
   let env = run_args.env;
@@ -83,7 +85,7 @@ fn op_run(
   // TODO: make this work with other resources, eg. sockets
   let stdin_rid = run_args.stdin_rid;
   if stdin_rid > 0 {
-    let file = clone_file(stdin_rid, &state_)?;
+    let file = clone_file(stdin_rid, &mut resource_table)?;
     c.stdin(file);
   } else {
     c.stdin(subprocess_stdio_map(run_args.stdin.as_ref()));
@@ -91,7 +93,7 @@ fn op_run(
 
   let stdout_rid = run_args.stdout_rid;
   if stdout_rid > 0 {
-    let file = clone_file(stdout_rid, &state_)?;
+    let file = clone_file(stdout_rid, &mut resource_table)?;
     c.stdout(file);
   } else {
     c.stdout(subprocess_stdio_map(run_args.stdout.as_ref()));
@@ -99,7 +101,7 @@ fn op_run(
 
   let stderr_rid = run_args.stderr_rid;
   if stderr_rid > 0 {
-    let file = clone_file(stderr_rid, &state_)?;
+    let file = clone_file(stderr_rid, &mut resource_table)?;
     c.stderr(file);
   } else {
     c.stderr(subprocess_stdio_map(run_args.stderr.as_ref()));
@@ -112,12 +114,9 @@ fn op_run(
   let mut child = c.spawn()?;
   let pid = child.id();
 
-  let mut state = state_.borrow_mut();
-  let table = &mut state.resource_table;
-
   let stdin_rid = match child.stdin.take() {
     Some(child_stdin) => {
-      let rid = table.add(
+      let rid = resource_table.add(
         "childStdin",
         Box::new(StreamResourceHolder::new(StreamResource::ChildStdin(
           child_stdin,
@@ -130,7 +129,7 @@ fn op_run(
 
   let stdout_rid = match child.stdout.take() {
     Some(child_stdout) => {
-      let rid = table.add(
+      let rid = resource_table.add(
         "childStdout",
         Box::new(StreamResourceHolder::new(StreamResource::ChildStdout(
           child_stdout,
@@ -143,7 +142,7 @@ fn op_run(
 
   let stderr_rid = match child.stderr.take() {
     Some(child_stderr) => {
-      let rid = table.add(
+      let rid = resource_table.add(
         "childStderr",
         Box::new(StreamResourceHolder::new(StreamResource::ChildStderr(
           child_stderr,
@@ -155,7 +154,7 @@ fn op_run(
   };
 
   let child_resource = ChildResource { child };
-  let child_rid = table.add("child", Box::new(child_resource));
+  let child_rid = resource_table.add("child", Box::new(child_resource));
 
   Ok(JsonOp::Sync(json!({
     "rid": child_rid,
@@ -173,6 +172,7 @@ struct RunStatusArgs {
 }
 
 fn op_run_status(
+  isolate: &mut deno_core::Isolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
@@ -181,11 +181,11 @@ fn op_run_status(
   let rid = args.rid as u32;
 
   state.check_run()?;
-  let state = state.clone();
+  let resource_table = isolate.resource_table.clone();
 
   let future = async move {
     let run_status = poll_fn(|cx| {
-      let resource_table = &mut state.borrow_mut().resource_table;
+      let mut resource_table = resource_table.borrow_mut();
       let child_resource = resource_table
         .get_mut::<ChildResource>(rid)
         .ok_or_else(OpError::bad_resource_id)?;

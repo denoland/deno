@@ -1,7 +1,6 @@
 use super::dispatch_json::{Deserialize, JsonOp};
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
-use crate::state::State;
 use futures::future::FutureExt;
 
 use deno_core::*;
@@ -27,31 +26,35 @@ pub struct UnixListenArgs {
 }
 
 pub fn accept_unix(
-  state: &State,
+  isolate: &mut deno_core::Isolate,
   rid: u32,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
-  let state_ = state.clone();
+  let resource_table = isolate.resource_table.clone();
   {
-    let state = state.borrow();
-    state
-      .resource_table
+    let _ = resource_table
+      .borrow()
       .get::<UnixListenerResource>(rid)
       .ok_or_else(OpError::bad_resource_id)?;
   }
   let op = async move {
-    let mut state = state_.borrow_mut();
-    let listener_resource = state
-      .resource_table
-      .get_mut::<UnixListenerResource>(rid)
-      .ok_or_else(|| {
-        OpError::bad_resource("Listener has been closed".to_string())
-      })?;
+    let mut resource_table_ = resource_table.borrow_mut();
+    let listener_resource = {
+      resource_table_
+        .get_mut::<UnixListenerResource>(rid)
+        .ok_or_else(|| {
+          OpError::bad_resource("Listener has been closed".to_string())
+        })?
+    };
+
     let (unix_stream, _socket_addr) =
       listener_resource.listener.accept().await?;
+    drop(resource_table_);
+
     let local_addr = unix_stream.local_addr()?;
     let remote_addr = unix_stream.peer_addr()?;
-    let rid = state.resource_table.add(
+    let mut resource_table_ = resource_table.borrow_mut();
+    let rid = resource_table_.add(
       "unixStream",
       Box::new(StreamResourceHolder::new(StreamResource::UnixStream(
         unix_stream,
@@ -74,17 +77,16 @@ pub fn accept_unix(
 }
 
 pub fn receive_unix_packet(
-  state: &State,
+  isolate: &mut deno_core::Isolate,
   rid: u32,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let mut buf = zero_copy.unwrap();
-  let state_ = state.clone();
+  let resource_table = isolate.resource_table.clone();
 
   let op = async move {
-    let mut state = state_.borrow_mut();
-    let resource = state
-      .resource_table
+    let mut resource_table_ = resource_table.borrow_mut();
+    let resource = resource_table_
       .get_mut::<UnixDatagramResource>(rid)
       .ok_or_else(|| {
         OpError::bad_resource("Socket has been closed".to_string())
@@ -103,28 +105,24 @@ pub fn receive_unix_packet(
 }
 
 pub fn listen_unix(
-  state: &State,
+  resource_table: &mut ResourceTable,
   addr: &Path,
 ) -> Result<(u32, unix::net::SocketAddr), OpError> {
-  let mut state = state.borrow_mut();
   if addr.exists() {
     remove_file(&addr).unwrap();
   }
   let listener = UnixListener::bind(&addr)?;
   let local_addr = listener.local_addr()?;
   let listener_resource = UnixListenerResource { listener };
-  let rid = state
-    .resource_table
-    .add("unixListener", Box::new(listener_resource));
+  let rid = resource_table.add("unixListener", Box::new(listener_resource));
 
   Ok((rid, local_addr))
 }
 
 pub fn listen_unix_packet(
-  state: &State,
+  resource_table: &mut ResourceTable,
   addr: &Path,
 ) -> Result<(u32, unix::net::SocketAddr), OpError> {
-  let mut state = state.borrow_mut();
   if addr.exists() {
     remove_file(&addr).unwrap();
   }
@@ -134,9 +132,7 @@ pub fn listen_unix_packet(
     socket,
     local_addr: local_addr.clone(),
   };
-  let rid = state
-    .resource_table
-    .add("unixDatagram", Box::new(datagram_resource));
+  let rid = resource_table.add("unixDatagram", Box::new(datagram_resource));
 
   Ok((rid, local_addr))
 }
