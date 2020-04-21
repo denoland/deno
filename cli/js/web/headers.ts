@@ -96,7 +96,7 @@ class HeadersBase {
     return `Headers {${output}}`;
   }
 
-  cookies() {
+  cookies(): IterableIterator<string> {
     return this[cookieMap].values();
   }
 
