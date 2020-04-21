@@ -15,28 +15,20 @@ export enum SeekMode {
 }
 
 export abstract class Reader {
-  #b: Uint8Array | undefined;
-
   abstract read(p: Uint8Array): Promise<number | EOF>;
 
-  [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
-    return this;
-  }
+  async *[Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
+    const b = new Uint8Array(1024);
 
-  async next(): Promise<IteratorResult<Uint8Array>> {
-    if (typeof this.#b === "undefined") {
-      this.#b = new Uint8Array(1024);
+    while (true) {
+      const result = await this.read(b);
+
+      if (result === EOF) {
+        return { value: new Uint8Array(), done: true };
+      }
+
+      yield b.subarray(0, result);
     }
-
-    const result = await this.read(this.#b);
-    if (result === EOF) {
-      return { value: new Uint8Array(), done: true };
-    }
-
-    return {
-      value: this.#b.subarray(0, result),
-      done: false,
-    };
   }
 }
 

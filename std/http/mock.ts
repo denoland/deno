@@ -17,11 +17,9 @@ export function mockConn(base: Partial<Deno.Conn> = {}): Deno.Conn {
     read: (): Promise<number | Deno.EOF> => {
       return Promise.resolve(0);
     },
-    next(): Promise<IteratorResult<Uint8Array>> {
-      return Promise.resolve({ done: true, value: undefined });
-    },
-    [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
-      return this;
+    // eslint-disable-next-line require-await
+    async *[Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
+      yield new Uint8Array();
     },
     write: (): Promise<number> => {
       return Promise.resolve(-1);

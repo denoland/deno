@@ -5,61 +5,59 @@ import { encoder } from "../encoding/utf8.ts";
 import { ServerRequest, Response } from "./server.ts";
 import { STATUS_TEXT } from "./http_status.ts";
 
-export function emptyReader(): Deno.Reader {
-  return {
-    read(_: Uint8Array): Promise<number | Deno.EOF> {
-      return Promise.resolve(Deno.EOF);
-    },
-    [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
-      return this;
-    },
-    next(): Promise<IteratorResult<Uint8Array>> {
-      return Promise.resolve({ done: true, value: undefined });
-    },
-  };
+export class EmptyReader extends Deno.Reader {
+  constructor() {
+    super();
+  }
+
+  read(_: Uint8Array): Promise<number | Deno.EOF> {
+    return Promise.resolve(Deno.EOF);
+  }
 }
 
-export function bodyReader(contentLength: number, r: BufReader): Deno.Reader {
-  let totalRead = 0;
-  let finished = false;
-  async function read(buf: Uint8Array): Promise<number | Deno.EOF> {
-    if (finished) return Deno.EOF;
+export class BodyReader extends Deno.Reader {
+  private totalRead = 0;
+  private finished = false;
+
+  constructor(private contentLength: number, private r: BufReader) {
+    super();
+  }
+
+  async read(buf: Uint8Array): Promise<number | Deno.EOF> {
+    if (this.finished) return Deno.EOF;
     let result: number | Deno.EOF;
-    const remaining = contentLength - totalRead;
+    const remaining = this.contentLength - this.totalRead;
     if (remaining >= buf.byteLength) {
-      result = await r.read(buf);
+      result = await this.r.read(buf);
     } else {
       const readBuf = buf.subarray(0, remaining);
-      result = await r.read(readBuf);
+      result = await this.r.read(readBuf);
     }
     if (result !== Deno.EOF) {
-      totalRead += result;
+      this.totalRead += result;
     }
-    finished = totalRead === contentLength;
+    this.finished = this.totalRead === this.contentLength;
     return result;
   }
-  return {
-    read,
-    next(): Promise<IteratorResult<Uint8Array>> {
-      return Promise.resolve({ done: true, value: undefined });
-    },
-    [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
-      return this;
-    },
-  };
 }
 
-export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
+export class ChunkedBodyReader extends Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
-  const tp = new TextProtoReader(r);
-  let finished = false;
-  const chunks: Array<{
+  private tp!: TextProtoReader;
+  private finished = false;
+  private chunks: Array<{
     offset: number;
     data: Uint8Array;
   }> = [];
-  async function read(buf: Uint8Array): Promise<number | Deno.EOF> {
-    if (finished) return Deno.EOF;
-    const [chunk] = chunks;
+
+  constructor(private h: Headers, private r: BufReader) {
+    super();
+    this.tp = new TextProtoReader(r);
+  }
+
+  async read(buf: Uint8Array): Promise<number | Deno.EOF> {
+    if (this.finished) return Deno.EOF;
+    const [chunk] = this.chunks;
     if (chunk) {
       const chunkRemaining = chunk.data.byteLength - chunk.offset;
       const readLength = Math.min(chunkRemaining, buf.byteLength);
@@ -68,15 +66,15 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
       }
       chunk.offset += readLength;
       if (chunk.offset === chunk.data.byteLength) {
-        chunks.shift();
+        this.chunks.shift();
         // Consume \r\n;
-        if ((await tp.readLine()) === Deno.EOF) {
+        if ((await this.tp.readLine()) === Deno.EOF) {
           throw new Deno.errors.UnexpectedEof();
         }
       }
       return readLength;
     }
-    const line = await tp.readLine();
+    const line = await this.tp.readLine();
     if (line === Deno.EOF) throw new Deno.errors.UnexpectedEof();
     // TODO: handle chunk extension
     const [chunkSizeString] = line.split(";");
@@ -86,16 +84,16 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
     }
     if (chunkSize > 0) {
       if (chunkSize > buf.byteLength) {
-        let eof = await r.readFull(buf);
+        let eof = await this.r.readFull(buf);
         if (eof === Deno.EOF) {
           throw new Deno.errors.UnexpectedEof();
         }
         const restChunk = new Uint8Array(chunkSize - buf.byteLength);
-        eof = await r.readFull(restChunk);
+        eof = await this.r.readFull(restChunk);
         if (eof === Deno.EOF) {
           throw new Deno.errors.UnexpectedEof();
         } else {
-          chunks.push({
+          this.chunks.push({
             offset: 0,
             data: restChunk,
           });
@@ -103,12 +101,12 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
         return buf.byteLength;
       } else {
         const bufToFill = buf.subarray(0, chunkSize);
-        const eof = await r.readFull(bufToFill);
+        const eof = await this.r.readFull(bufToFill);
         if (eof === Deno.EOF) {
           throw new Deno.errors.UnexpectedEof();
         }
         // Consume \r\n
-        if ((await tp.readLine()) === Deno.EOF) {
+        if ((await this.tp.readLine()) === Deno.EOF) {
           throw new Deno.errors.UnexpectedEof();
         }
         return chunkSize;
@@ -116,23 +114,14 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
     } else {
       assert(chunkSize === 0);
       // Consume \r\n
-      if ((await r.readLine()) === Deno.EOF) {
+      if ((await this.r.readLine()) === Deno.EOF) {
         throw new Deno.errors.UnexpectedEof();
       }
-      await readTrailers(h, r);
-      finished = true;
+      await readTrailers(this.h, this.r);
+      this.finished = true;
       return Deno.EOF;
     }
   }
-  return {
-    read,
-    next(): Promise<IteratorResult<Uint8Array>> {
-      return Promise.resolve({ done: true, value: undefined });
-    },
-    [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
-      return this;
-    },
-  };
 }
 
 const kProhibitedTrailerHeaders = [

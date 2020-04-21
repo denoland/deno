@@ -4,9 +4,9 @@ import { BufReader, BufWriter } from "../io/bufio.ts";
 import { assert } from "../testing/asserts.ts";
 import { deferred, Deferred, MuxAsyncIterator } from "../util/async.ts";
 import {
-  bodyReader,
-  chunkedBodyReader,
-  emptyReader,
+  BodyReader,
+  ChunkedBodyReader,
+  EmptyReader,
   writeResponse,
   readRequest,
 } from "./io.ts";
@@ -69,7 +69,7 @@ export class ServerRequest {
   get body(): Deno.Reader {
     if (!this._body) {
       if (this.contentLength != null) {
-        this._body = bodyReader(this.contentLength, this.r);
+        this._body = new BodyReader(this.contentLength, this.r);
       } else {
         const transferEncoding = this.headers.get("transfer-encoding");
         if (transferEncoding != null) {
@@ -80,10 +80,10 @@ export class ServerRequest {
             parts.includes("chunked"),
             'transfer-encoding must include "chunked" if content-length is not set'
           );
-          this._body = chunkedBodyReader(this.headers, this.r);
+          this._body = new ChunkedBodyReader(this.headers, this.r);
         } else {
           // Neither content-length nor transfer-encoding: chunked
-          this._body = emptyReader();
+          this._body = new EmptyReader();
         }
       }
     }

@@ -466,7 +466,6 @@ declare namespace Deno {
      * Implementations should not retain a reference to `p`.
      */
     abstract read(p: Uint8Array): Promise<number | EOF>;
-    next(): Promise<IteratorResult<Uint8Array>>;
     [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array>;
   }
 

@@ -279,11 +279,9 @@ function dummyConn(r: Reader, w: Writer): Conn {
     closeRead: (): void => {},
     closeWrite: (): void => {},
     read: (x): Promise<number | Deno.EOF> => r.read(x),
-    next(): Promise<IteratorResult<Uint8Array>> {
-      return Promise.resolve({ done: true, value: undefined });
-    },
-    [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
-      return this;
+    // eslint-disable-next-line require-await
+    async *[Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
+      yield new Uint8Array();
     },
     write: (x): Promise<number> => w.write(x),
     close: (): void => {},
@@ -344,11 +342,9 @@ test("[ws] WebSocket should throw `Deno.errors.ConnectionReset` when peer closed
     read(_: Uint8Array): Promise<number | Deno.EOF> {
       return Promise.resolve(Deno.EOF);
     },
-    next(): Promise<IteratorResult<Uint8Array>> {
-      return Promise.resolve({ done: true, value: undefined });
-    },
-    [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
-      return this;
+    // eslint-disable-next-line require-await
+    async *[Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
+      yield new Uint8Array();
     },
   };
   const conn = dummyConn(eofReader, buf);
@@ -368,11 +364,9 @@ test("[ws] WebSocket shouldn't throw `Deno.errors.UnexpectedEof` on recive()", a
     read(_: Uint8Array): Promise<number | Deno.EOF> {
       return Promise.resolve(Deno.EOF);
     },
-    next(): Promise<IteratorResult<Uint8Array>> {
-      return Promise.resolve({ done: true, value: undefined });
-    },
-    [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
-      return this;
+    // eslint-disable-next-line require-await
+    async *[Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
+      yield new Uint8Array();
     },
   };
   const conn = dummyConn(eofReader, buf);

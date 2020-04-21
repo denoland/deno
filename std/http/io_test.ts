@@ -7,7 +7,7 @@ import {
   assertNotEquals,
 } from "../testing/asserts.ts";
 import {
-  bodyReader,
+  BodyReader,
   writeTrailers,
   readTrailers,
   parseHTTPVersion,
@@ -16,7 +16,7 @@ import {
 } from "./io.ts";
 import { encode, decode } from "../encoding/utf8.ts";
 import { BufReader, ReadLineResult } from "../io/bufio.ts";
-import { chunkedBodyReader } from "./io.ts";
+import { ChunkedBodyReader } from "./io.ts";
 import { ServerRequest, Response } from "./server.ts";
 import { StringReader } from "../io/readers.ts";
 import { mockConn } from "./mock.ts";
@@ -24,7 +24,10 @@ const { Buffer, test } = Deno;
 
 test("bodyReader", async () => {
   const text = "Hello, Deno";
-  const r = bodyReader(text.length, new BufReader(new Buffer(encode(text))));
+  const r = new BodyReader(
+    text.length,
+    new BufReader(new Buffer(encode(text)))
+  );
   assertEquals(decode(await Deno.readAll(r)), text);
 });
 function chunkify(n: number, char: string): string {
@@ -42,7 +45,7 @@ test("chunkedBodyReader", async () => {
     chunkify(0, ""),
   ].join("");
   const h = new Headers();
-  const r = chunkedBodyReader(h, new BufReader(new Buffer(encode(body))));
+  const r = new ChunkedBodyReader(h, new BufReader(new Buffer(encode(body))));
   let result: number | Deno.EOF;
   // Use small buffer as some chunks exceed buffer size
   const buf = new Uint8Array(5);
@@ -69,7 +72,7 @@ test("chunkedBodyReader with trailers", async () => {
   const h = new Headers({
     trailer: "deno,node",
   });
-  const r = chunkedBodyReader(h, new BufReader(new Buffer(encode(body))));
+  const r = new ChunkedBodyReader(h, new BufReader(new Buffer(encode(body))));
   assertEquals(h.has("trailer"), true);
   assertEquals(h.has("deno"), false);
   assertEquals(h.has("node"), false);
