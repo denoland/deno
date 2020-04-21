@@ -258,7 +258,12 @@ export async function writeResponse(
   const headers = r.headers;
 
   for (const [key, value] of headers) {
-    out += `${key}: ${value}\r\n`;
+    if (key === "set-cookie") {
+      for (const cookie of headers.cookies()) {
+        // Multiple set-cookie headers should be allowed
+        out += `${key}: ${cookie}\r\n`;
+      }
+    } else out += `${key}: ${value}\r\n`;
   }
   out += "\r\n";
 

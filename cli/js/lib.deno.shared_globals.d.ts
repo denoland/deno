@@ -555,6 +555,7 @@ interface Headers {
     callbackfn: (value: string, key: string, parent: Headers) => void,
     thisArg?: any
   ): void;
+  cookies(): IterableIterator<string>;
 }
 
 interface Headers extends DomIterable<string, string> {

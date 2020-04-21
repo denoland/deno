@@ -65,6 +65,20 @@ unitTest(function newHeaderWithHeadersInstance(): void {
   }
 });
 
+unitTest(function newHeaderWithHeadersInstanceWithCookies(): void {
+  const headers = new Headers(headerDict);
+  const expectedCookieValue = 'deno=lands'
+  headers.append('Set-Cookie', 'deno=land')
+  headers.append('Set-Cookie', expectedCookieValue)
+  const headers2 = new Headers(headers);
+  for (const name in headerDict) {
+    assertEquals(headers2.get(name), String(headerDict[name]));
+  }
+
+  for(const cookie of headers2.cookies())
+    assertEquals(cookie, expectedCookieValue)
+});
+
 unitTest(function headerAppendSuccess(): void {
   const headers = new Headers();
   for (const name in headerDict) {

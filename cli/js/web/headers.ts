@@ -15,6 +15,7 @@ function isHeaders(value: any): value is Headers {
 }
 
 const headerMap = Symbol("header map");
+const cookieMap = Symbol("cookie map");
 
 // TODO: headerGuard? Investigate if it is needed
 // node-fetch did not implement this but it is in the spec
@@ -43,6 +44,11 @@ function validateValue(value: string): void {
 class HeadersBase {
   [headerMap]: Map<string, string>;
 
+  // https://tools.ietf.org/html/rfc6265#section-4.1.1
+  // Servers SHOULD NOT include more than one Set-Cookie header field in
+  // the same response with the same cookie-name
+  [cookieMap]: Map<string, string>;
+
   constructor(init?: HeadersInit) {
     if (init === null) {
       throw new TypeError(
@@ -50,8 +56,11 @@ class HeadersBase {
       );
     } else if (isHeaders(init)) {
       this[headerMap] = new Map(init);
+      // @ts-ignore
+      this[cookieMap] = init[cookieMap] || new Map();
     } else {
       this[headerMap] = new Map();
+      this[cookieMap] = new Map();
       if (Array.isArray(init)) {
         for (const tuple of init) {
           // If header does not contain exactly two items,
@@ -63,23 +72,13 @@ class HeadersBase {
             2
           );
 
-          const [name, value] = normalizeParams(tuple[0], tuple[1]);
-          validateName(name);
-          validateValue(value);
-          const existingValue = this[headerMap].get(name);
-          this[headerMap].set(
-            name,
-            existingValue ? `${existingValue}, ${value}` : value
-          );
+          this.append(tuple[0], tuple[1]);
         }
       } else if (init) {
         const names = Object.keys(init);
         for (const rawName of names) {
           const rawValue = init[rawName];
-          const [name, value] = normalizeParams(rawName, rawValue);
-          validateName(name);
-          validateValue(value);
-          this[headerMap].set(name, value);
+          this.set(rawName, rawValue);
         }
       }
     }
@@ -97,12 +96,22 @@ class HeadersBase {
     return `Headers {${output}}`;
   }
 
+  cookies() {
+    return this[cookieMap].values();
+  }
+
   // ref: https://fetch.spec.whatwg.org/#concept-headers-append
   append(name: string, value: string): void {
     requiredArguments("Headers.append", arguments.length, 2);
     const [newname, newvalue] = normalizeParams(name, value);
     validateName(newname);
     validateValue(newvalue);
+
+    if (newname === "set-cookie") {
+      const [cookieName] = newvalue.split("=");
+      this[cookieMap].set(cookieName, newvalue);
+    }
+
     const v = this[headerMap].get(newname);
     const str = v ? `${v}, ${newvalue}` : newvalue;
     this[headerMap].set(newname, str);
@@ -112,6 +121,11 @@ class HeadersBase {
     requiredArguments("Headers.delete", arguments.length, 1);
     const [newname] = normalizeParams(name);
     validateName(newname);
+
+    if (newname === "set-cookie") {
+      this[cookieMap].clear();
+    }
+
     this[headerMap].delete(newname);
   }
 
@@ -135,6 +149,12 @@ class HeadersBase {
     const [newname, newvalue] = normalizeParams(name, value);
     validateName(newname);
     validateValue(newvalue);
+
+    if (newname === "set-cookie") {
+      const [cookieName] = newvalue.split("=");
+      this[cookieMap].set(cookieName, newvalue);
+    }
+
     this[headerMap].set(newname, newvalue);
   }
 
