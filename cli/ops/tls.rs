@@ -97,8 +97,8 @@ pub fn op_start_tls(
         DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
       let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
 
-      let mut resource_table = resource_table.borrow_mut();
-      let rid = resource_table.add(
+      let mut resource_table_ = resource_table.borrow_mut();
+      let rid = resource_table_.add(
         "clientTlsStream",
         Box::new(StreamResourceHolder::new(StreamResource::ClientTlsStream(
           Box::new(tls_stream),
@@ -161,8 +161,8 @@ pub fn op_connect_tls(
     let dnsname =
       DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
     let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
-    let mut resource_table = resource_table.borrow_mut();
-    let rid = resource_table.add(
+    let mut resource_table_ = resource_table.borrow_mut();
+    let rid = resource_table_.add(
       "clientTlsStream",
       Box::new(StreamResourceHolder::new(StreamResource::ClientTlsStream(
         Box::new(tls_stream),
@@ -386,8 +386,8 @@ fn op_accept_tls(
     let (tcp_stream, _socket_addr) = accept_fut.await?;
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
-    let mut resource_table = resource_table.borrow_mut();
     let tls_acceptor = {
+      let resource_table = resource_table.borrow();
       let resource = resource_table
         .get::<TlsListenerResource>(rid)
         .ok_or_else(OpError::bad_resource_id)
@@ -396,6 +396,7 @@ fn op_accept_tls(
     };
     let tls_stream = tls_acceptor.accept(tcp_stream).await?;
     let rid = {
+      let mut resource_table = resource_table.borrow_mut();
       resource_table.add(
         "serverTlsStream",
         Box::new(StreamResourceHolder::new(StreamResource::ServerTlsStream(

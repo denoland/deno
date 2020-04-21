@@ -49,6 +49,9 @@ pub fn accept_unix(
 
     let (unix_stream, _socket_addr) =
       listener_resource.listener.accept().await?;
+    drop(listener_resource);
+    drop(resource_table_);
+
     let local_addr = unix_stream.local_addr()?;
     let remote_addr = unix_stream.peer_addr()?;
     let mut resource_table_ = resource_table.borrow_mut();
@@ -83,8 +86,8 @@ pub fn receive_unix_packet(
   let resource_table = isolate.resource_table.clone();
 
   let op = async move {
-    let mut resource_table = resource_table.borrow_mut();
-    let resource = resource_table
+    let mut resource_table_ = resource_table.borrow_mut();
+    let resource = resource_table_
       .get_mut::<UnixDatagramResource>(rid)
       .ok_or_else(|| {
         OpError::bad_resource("Socket has been closed".to_string())
