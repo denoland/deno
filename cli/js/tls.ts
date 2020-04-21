@@ -57,3 +57,20 @@ export function listenTLS({
   });
   return new TLSListenerImpl(res.rid, res.localAddr);
 }
+
+interface StartTLSOptions {
+  hostname?: string;
+  certFile?: string;
+}
+
+export async function startTLS(
+  conn: Conn,
+  { hostname = "127.0.0.1", certFile = undefined }: StartTLSOptions = {}
+): Promise<Conn> {
+  const res = await tlsOps.startTLS({
+    rid: conn.rid,
+    hostname,
+    certFile,
+  });
+  return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
+}

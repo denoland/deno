@@ -1363,7 +1363,7 @@ declare namespace Deno {
      *
      * _Linux/Mac OS only._ */
     uid: number | null;
-    /** User ID of the owner of this file.
+    /** Group ID of the owner of this file.
      *
      * _Linux/Mac OS only._ */
     gid: number | null;
@@ -1578,7 +1578,7 @@ declare namespace Deno {
    *
    *       const encoder = new TextEncoder();
    *       const data = encoder.encode("Hello world\n");
-   *       Deno.writeFileSync("hello1.txt", data);  // overwrite "hello.txt" or create it
+   *       Deno.writeFileSync("hello1.txt", data);  // overwrite "hello1.txt" or create it
    *       Deno.writeFileSync("hello2.txt", data, {create: false});  // only works if "hello2.txt" exists
    *       Deno.writeFileSync("hello3.txt", data, {mode: 0o777});  // set permissions on new file
    *       Deno.writeFileSync("hello4.txt", data, {append: true});  // add data to the end of the file
@@ -1597,7 +1597,7 @@ declare namespace Deno {
    *
    *       const encoder = new TextEncoder();
    *       const data = encoder.encode("Hello world\n");
-   *       await Deno.writeFile("hello1.txt", data);  // overwrite "hello.txt" or create it
+   *       await Deno.writeFile("hello1.txt", data);  // overwrite "hello1.txt" or create it
    *       await Deno.writeFile("hello2.txt", data, {create: false});  // only works if "hello2.txt" exists
    *       await Deno.writeFile("hello3.txt", data, {mode: 0o777});  // set permissions on new file
    *       await Deno.writeFile("hello4.txt", data, {append: true});  // add data to the end of the file
@@ -1796,35 +1796,23 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function truncate(name: string, len?: number): Promise<void>;
 
-  export interface AsyncHandler {
-    (msg: Uint8Array): void;
-  }
-
-  export interface PluginOp {
-    dispatch(
-      control: Uint8Array,
-      zeroCopy?: ArrayBufferView | null
-    ): Uint8Array | null;
-    setAsyncHandler(handler: AsyncHandler): void;
-  }
-
-  export interface Plugin {
-    ops: {
-      [name: string]: PluginOp;
-    };
-  }
-
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Open and initalize a plugin.
    *
-   *        const plugin = Deno.openPlugin("./path/to/some/plugin.so");
-   *        const some_op = plugin.ops.some_op;
-   *        const response = some_op.dispatch(new Uint8Array([1,2,3,4]));
+   *        const rid = Deno.openPlugin("./path/to/some/plugin.so");
+   *        const opId = Deno.core.ops()["some_op"];
+   *        const response = Deno.core.dispatch(opId, new Uint8Array([1,2,3,4]));
    *        console.log(`Response from plugin ${response}`);
    *
-   * Requires `allow-plugin` permission. */
-  export function openPlugin(filename: string): Plugin;
+   * Requires `allow-plugin` permission.
+   *
+   * The plugin system is not stable and will change in the future, hence the
+   * lack of docs. For now take a look at the example
+   * https://github.com/denoland/deno/tree/master/test_plugin
+   */
+  export function openPlugin(filename: string): number;
+
   export interface NetAddr {
     transport: "tcp" | "udp";
     hostname: string;
@@ -2037,6 +2025,33 @@ declare namespace Deno {
    * Requires `allow-net` permission.
    */
   export function connectTLS(options: ConnectTLSOptions): Promise<Conn>;
+
+  export interface StartTLSOptions {
+    /** A literal IP address or host name that can be resolved to an IP address.
+     * If not specified, defaults to `127.0.0.1`. */
+    hostname?: string;
+    /** Server certificate file. */
+    certFile?: string;
+  }
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Start TLS handshake from an existing connection using
+   * an optional cert file, hostname (default is "127.0.0.1").  The
+   * cert file is optional and if not included Mozilla's root certificates will
+   * be used (see also https://github.com/ctz/webpki-roots for specifics)
+   * Using this function requires that the other end of the connection is
+   * prepared for TLS handshake.
+   *
+   *     const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
+   *     const tlsConn = await Deno.startTLS(conn, { certFile: "./certs/my_custom_root_CA.pem", hostname: "127.0.0.1", port: 80 });
+   *
+   * Requires `allow-net` permission.
+   */
+  export function startTLS(
+    conn: Conn,
+    options?: StartTLSOptions
+  ): Promise<Conn>;
 
   /** **UNSTABLE**: not sure if broken or not */
   export interface Metrics {

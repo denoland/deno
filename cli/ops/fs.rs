@@ -18,8 +18,8 @@ use std::time::UNIX_EPOCH;
 use rand::{thread_rng, Rng};
 
 pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("op_open", s.stateful_json_op(op_open));
-  i.register_op("op_seek", s.stateful_json_op(op_seek));
+  i.register_op("op_open", s.stateful_json_op2(op_open));
+  i.register_op("op_seek", s.stateful_json_op2(op_seek));
   i.register_op("op_umask", s.stateful_json_op(op_umask));
   i.register_op("op_chdir", s.stateful_json_op(op_chdir));
   i.register_op("op_mkdir", s.stateful_json_op(op_mkdir));
@@ -68,13 +68,14 @@ struct OpenOptions {
 }
 
 fn op_open(
+  isolate: &mut deno_core::Isolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: OpenArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
-  let state_ = state.clone();
+  let resource_table = isolate.resource_table.clone();
 
   let mut open_options = std::fs::OpenOptions::new();
 
@@ -166,8 +167,8 @@ fn op_open(
   if is_sync {
     let std_file = open_options.open(path)?;
     let tokio_file = tokio::fs::File::from_std(std_file);
-    let mut state = state_.borrow_mut();
-    let rid = state.resource_table.add(
+    let mut resource_table = resource_table.borrow_mut();
+    let rid = resource_table.add(
       "fsFile",
       Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
         tokio_file,
@@ -180,8 +181,8 @@ fn op_open(
       let tokio_file = tokio::fs::OpenOptions::from(open_options)
         .open(path)
         .await?;
-      let mut state = state_.borrow_mut();
-      let rid = state.resource_table.add(
+      let mut resource_table = resource_table.borrow_mut();
+      let rid = resource_table.add(
         "fsFile",
         Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
           tokio_file,
@@ -204,7 +205,8 @@ struct SeekArgs {
 }
 
 fn op_seek(
-  state: &State,
+  isolate: &mut deno_core::Isolate,
+  _state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
@@ -226,12 +228,12 @@ fn op_seek(
     }
   };
 
-  let state = state.clone();
+  let resource_table = isolate.resource_table.clone();
   let is_sync = args.promise_id.is_none();
 
   if is_sync {
-    let mut s = state.borrow_mut();
-    let pos = std_file_resource(&mut s.resource_table, rid, |r| match r {
+    let mut resource_table = resource_table.borrow_mut();
+    let pos = std_file_resource(&mut resource_table, rid, |r| match r {
       Ok(std_file) => std_file.seek(seek_from).map_err(OpError::from),
       Err(_) => Err(OpError::type_error(
         "cannot seek on this type of resource".to_string(),
@@ -242,8 +244,8 @@ fn op_seek(
     // TODO(ry) This is a fake async op. We need to use poll_fn,
     // tokio::fs::File::start_seek and tokio::fs::File::poll_complete
     let fut = async move {
-      let mut s = state.borrow_mut();
-      let pos = std_file_resource(&mut s.resource_table, rid, |r| match r {
+      let mut resource_table = resource_table.borrow_mut();
+      let pos = std_file_resource(&mut resource_table, rid, |r| match r {
         Ok(std_file) => std_file.seek(seek_from).map_err(OpError::from),
         Err(_) => Err(OpError::type_error(
           "cannot seek on this type of resource".to_string(),

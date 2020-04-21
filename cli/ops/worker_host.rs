@@ -43,20 +43,20 @@ fn create_web_worker(
   let state =
     State::new_for_worker(global_state, Some(permissions), specifier)?;
 
-  if has_deno_namespace {
-    let mut s = state.borrow_mut();
-    let (stdin, stdout, stderr) = get_stdio();
-    s.resource_table.add("stdin", Box::new(stdin));
-    s.resource_table.add("stdout", Box::new(stdout));
-    s.resource_table.add("stderr", Box::new(stderr));
-  }
-
   let mut worker = WebWorker::new(
     name.clone(),
     startup_data::deno_isolate_init(),
     state,
     has_deno_namespace,
   );
+
+  if has_deno_namespace {
+    let mut resource_table = worker.resource_table.borrow_mut();
+    let (stdin, stdout, stderr) = get_stdio();
+    resource_table.add("stdin", Box::new(stdin));
+    resource_table.add("stdout", Box::new(stdout));
+    resource_table.add("stderr", Box::new(stderr));
+  }
 
   // Instead of using name for log we use `worker-${id}` because
   // WebWorkers can have empty string as name.

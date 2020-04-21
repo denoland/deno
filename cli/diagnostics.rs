@@ -6,9 +6,7 @@
 // serde_json.
 
 use crate::colors;
-use crate::fmt_errors::format_maybe_source_line;
-use crate::fmt_errors::format_maybe_source_name;
-use crate::fmt_errors::DisplayFormatter;
+use crate::fmt_errors::format_stack;
 use serde_json::value::Value;
 use std::error::Error;
 use std::fmt;
@@ -56,14 +54,14 @@ impl fmt::Display for Diagnostic {
     let mut i = 0;
     for item in &self.items {
       if i > 0 {
-        writeln!(f)?;
+        write!(f, "\n\n")?;
       }
       write!(f, "{}", item.to_string())?;
       i += 1;
     }
 
     if i > 1 {
-      write!(f, "\n\nFound {} errors.\n", i)?;
+      write!(f, "\n\nFound {} errors.", i)?;
     }
 
     Ok(())
@@ -181,91 +179,126 @@ impl DiagnosticItem {
   }
 }
 
-impl DisplayFormatter for DiagnosticItem {
-  fn format_category_and_code(&self) -> String {
-    let category = match self.category {
-      DiagnosticCategory::Error => {
-        format!("{}", colors::red_bold("error".to_string()))
-      }
-      DiagnosticCategory::Warning => "warn".to_string(),
-      DiagnosticCategory::Debug => "debug".to_string(),
-      DiagnosticCategory::Info => "info".to_string(),
-      _ => "".to_string(),
-    };
+fn format_category_and_code(
+  category: &DiagnosticCategory,
+  code: i64,
+) -> String {
+  let category = match category {
+    DiagnosticCategory::Error => {
+      format!("{}", colors::red_bold("error".to_string()))
+    }
+    DiagnosticCategory::Warning => "warn".to_string(),
+    DiagnosticCategory::Debug => "debug".to_string(),
+    DiagnosticCategory::Info => "info".to_string(),
+    _ => "".to_string(),
+  };
 
-    let code =
-      colors::bold(format!(" TS{}", self.code.to_string())).to_string();
+  let code = colors::bold(format!("TS{}", code.to_string())).to_string();
 
-    format!("{}{}: ", category, code)
+  format!("{} {}", category, code)
+}
+
+fn format_message(
+  message_chain: &Option<DiagnosticMessageChain>,
+  message: &str,
+  level: usize,
+) -> String {
+  debug!("format_message");
+  if message_chain.is_none() {
+    return format!("{:indent$}{}", "", message, indent = level);
   }
 
-  fn format_message(&self, level: usize) -> String {
-    debug!("format_message");
-    if self.message_chain.is_none() {
-      return format!("{:indent$}{}", "", self.message, indent = level);
-    }
+  let mut s = message_chain.clone().unwrap().format_message(level);
+  s.pop();
 
-    let mut s = self.message_chain.clone().unwrap().format_message(level);
-    s.pop();
+  s
+}
 
-    s
+/// Formats optional source, line and column numbers into a single string.
+fn format_maybe_frame(
+  file_name: Option<String>,
+  line_number: Option<i64>,
+  column_number: Option<i64>,
+) -> String {
+  if file_name.is_none() {
+    return "".to_string();
   }
 
-  fn format_related_info(&self) -> String {
-    if self.related_information.is_none() {
-      return "".to_string();
-    }
+  assert!(line_number.is_some());
+  assert!(column_number.is_some());
 
-    let mut s = String::new();
-    let related_information = self.related_information.clone().unwrap();
-    for related_diagnostic in related_information {
-      let rd = &related_diagnostic;
-      s.push_str(&format!(
-        "\n{}\n\n    ► {}{}\n",
-        rd.format_message(2),
-        rd.format_source_name(),
-        rd.format_source_line(4),
-      ));
-    }
+  let line_number = line_number.unwrap();
+  let column_number = column_number.unwrap();
+  let file_name_c = colors::cyan(file_name.unwrap());
+  let line_c = colors::yellow(line_number.to_string());
+  let column_c = colors::yellow(column_number.to_string());
+  format!("{}:{}:{}", file_name_c, line_c, column_c)
+}
 
-    s
+fn format_maybe_related_information(
+  related_information: &Option<Vec<DiagnosticItem>>,
+) -> String {
+  if related_information.is_none() {
+    return "".to_string();
   }
 
-  fn format_source_line(&self, level: usize) -> String {
-    // Formatter expects 1-based line numbers, but ours are 0-based.
-    format_maybe_source_line(
-      self.source_line.clone(),
-      self.line_number.map(|n| n + 1),
-      self.start_column,
-      self.end_column,
-      match self.category {
+  let mut s = String::new();
+  let related_information = related_information.clone().unwrap();
+  for rd in related_information {
+    s.push_str("\n\n");
+    s.push_str(&format_stack(
+      match rd.category {
         DiagnosticCategory::Error => true,
         _ => false,
       },
-      level,
-    )
+      format_message(&rd.message_chain, &rd.message, 0),
+      rd.source_line.clone(),
+      rd.start_column,
+      rd.end_column,
+      // Formatter expects 1-based line and column numbers, but ours are 0-based.
+      &[format_maybe_frame(
+        rd.script_resource_name.clone(),
+        rd.line_number.map(|n| n + 1),
+        rd.start_column.map(|n| n + 1),
+      )],
+      4,
+    ));
   }
 
-  fn format_source_name(&self) -> String {
-    // Formatter expects 1-based line and column numbers, but ours are 0-based.
-    format_maybe_source_name(
-      self.script_resource_name.clone(),
-      self.line_number.map(|n| n + 1),
-      self.start_column.map(|n| n + 1),
-    )
-  }
+  s
 }
 
 impl fmt::Display for DiagnosticItem {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     write!(
       f,
-      "{}{}\n\n► {}{}{}",
-      self.format_category_and_code(),
-      self.format_message(0),
-      self.format_source_name(),
-      self.format_source_line(0),
-      self.format_related_info(),
+      "{}",
+      format_stack(
+        match self.category {
+          DiagnosticCategory::Error => true,
+          _ => false,
+        },
+        format!(
+          "{}: {}",
+          format_category_and_code(&self.category, self.code),
+          format_message(&self.message_chain, &self.message, 0)
+        ),
+        self.source_line.clone(),
+        self.start_column,
+        self.end_column,
+        // Formatter expects 1-based line and column numbers, but ours are 0-based.
+        &[format_maybe_frame(
+          self.script_resource_name.clone(),
+          self.line_number.map(|n| n + 1),
+          self.start_column.map(|n| n + 1)
+        )],
+        0
+      )
+    )?;
+    write!(
+      f,
+      "{}",
+      format_maybe_related_information(&self.related_information),
     )
   }
 }
@@ -575,14 +608,30 @@ mod tests {
   #[test]
   fn diagnostic_to_string1() {
     let d = diagnostic1();
-    let expected = "error TS2322: Type \'(o: T) => { v: any; f: (x: B) => string; }[]\' is not assignable to type \'(r: B) => Value<B>[]\'.\n  Types of parameters \'o\' and \'r\' are incompatible.\n    Type \'B\' is not assignable to type \'T\'.\n\n► deno/tests/complex_diagnostics.ts:19:3\n\n19   values: o => [\n     ~~~~~~\n\n  The expected type comes from property \'values\' which is declared here on type \'SettingsInterface<B>\'\n\n    ► deno/tests/complex_diagnostics.ts:7:3\n\n    7   values?: (r: T) => Array<Value<T>>;\n        ~~~~~~\n\n";
+    let expected = "error TS2322: Type \'(o: T) => { v: any; f: (x: B) => string; }[]\' is not assignable to type \'(r: B) => Value<B>[]\'.\n  Types of parameters \'o\' and \'r\' are incompatible.\n    Type \'B\' is not assignable to type \'T\'.\n  values: o => [\n  ~~~~~~\n    at deno/tests/complex_diagnostics.ts:19:3\n\n    The expected type comes from property \'values\' which is declared here on type \'SettingsInterface<B>\'\n      values?: (r: T) => Array<Value<T>>;\n      ~~~~~~\n        at deno/tests/complex_diagnostics.ts:7:3";
     assert_eq!(expected, strip_ansi_codes(&d.to_string()));
   }
 
   #[test]
   fn diagnostic_to_string2() {
     let d = diagnostic2();
-    let expected = "error TS2322: Example 1\n\n► deno/tests/complex_diagnostics.ts:19:3\n\n19   values: o => [\n     ~~~~~~\n\nerror TS2000: Example 2\n\n► /foo/bar.ts:129:3\n\n129   values: undefined,\n      ~~~~~~\n\n\nFound 2 errors.\n";
+    let expected = "error TS2322: Example 1\n  values: o => [\n  ~~~~~~\n    at deno/tests/complex_diagnostics.ts:19:3\n\nerror TS2000: Example 2\n  values: undefined,\n  ~~~~~~\n    at /foo/bar.ts:129:3\n\nFound 2 errors.";
     assert_eq!(expected, strip_ansi_codes(&d.to_string()));
+  }
+
+  #[test]
+  fn test_format_none_frame() {
+    let actual = format_maybe_frame(None, None, None);
+    assert_eq!(actual, "");
+  }
+
+  #[test]
+  fn test_format_some_frame() {
+    let actual = format_maybe_frame(
+      Some("file://foo/bar.ts".to_string()),
+      Some(1),
+      Some(2),
+    );
+    assert_eq!(strip_ansi_codes(&actual), "file://foo/bar.ts:1:2");
   }
 }

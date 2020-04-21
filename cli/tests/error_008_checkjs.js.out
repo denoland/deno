@@ -1,7 +1,4 @@
 [WILDCARD]error: Uncaught ReferenceError: consol is not defined
-[WILDCARD]tests/error_008_checkjs.js:2:1
-
-2 consol.log("hello world!");
-  ^
-
+consol.log("hello world!");
+^
     at [WILDCARD]tests/error_008_checkjs.js:2:1

@@ -10,15 +10,12 @@ use crate::ops::MinimalOp;
 use crate::permissions::DenoPermissions;
 use crate::web_worker::WebWorkerHandle;
 use deno_core::Buf;
-use deno_core::CoreOp;
 use deno_core::ErrBox;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
-use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde_json::Value;
@@ -66,7 +63,6 @@ pub struct StateInner {
   pub next_worker_id: u32,
   pub start_time: Instant,
   pub seeded_rng: Option<StdRng>,
-  pub resource_table: ResourceTable,
   pub target_lib: TargetLib,
   pub debug_type: DebugType,
 }
@@ -75,7 +71,7 @@ impl State {
   pub fn stateful_json_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp
+  ) -> impl Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op
   where
     D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
   {
@@ -83,22 +79,43 @@ impl State {
     self.core_op(json_op(self.stateful_op(dispatcher)))
   }
 
+  pub fn stateful_json_op2<D>(
+    &self,
+    dispatcher: D,
+  ) -> impl Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op
+  where
+    D: Fn(
+      &mut deno_core::Isolate,
+      &State,
+      Value,
+      Option<ZeroCopyBuf>,
+    ) -> Result<JsonOp, OpError>,
+  {
+    use crate::ops::json_op;
+    self.core_op(json_op(self.stateful_op2(dispatcher)))
+  }
+
   /// Wrap core `OpDispatcher` to collect metrics.
+  // TODO(ry) this should be private. Is called by stateful_json_op or
+  // stateful_minimal_op
   pub fn core_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp
+  ) -> impl Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op
   where
-    D: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp,
+    D: Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op,
   {
     let state = self.clone();
 
-    move |control: &[u8], zero_copy: Option<ZeroCopyBuf>| -> CoreOp {
+    move |isolate: &mut deno_core::Isolate,
+          control: &[u8],
+          zero_copy: Option<ZeroCopyBuf>|
+          -> Op {
       let bytes_sent_control = control.len() as u64;
       let bytes_sent_zero_copy =
         zero_copy.as_ref().map(|b| b.len()).unwrap_or(0) as u64;
 
-      let op = dispatcher(control, zero_copy);
+      let op = dispatcher(isolate, control, zero_copy);
 
       match op {
         Op::Sync(buf) => {
@@ -116,7 +133,7 @@ impl State {
             .metrics
             .op_dispatched_async(bytes_sent_control, bytes_sent_zero_copy);
           let state = state.clone();
-          let result_fut = fut.map_ok(move |buf: Buf| {
+          let result_fut = fut.map(move |buf: Buf| {
             let mut state_ = state.borrow_mut();
             state_.metrics.op_completed_async(buf.len() as u64);
             buf
@@ -130,7 +147,7 @@ impl State {
             bytes_sent_zero_copy,
           );
           let state = state.clone();
-          let result_fut = fut.map_ok(move |buf: Buf| {
+          let result_fut = fut.map(move |buf: Buf| {
             let mut state_ = state.borrow_mut();
             state_.metrics.op_completed_async_unref(buf.len() as u64);
             buf
@@ -141,19 +158,29 @@ impl State {
     }
   }
 
-  /// This is a special function that provides `state` argument to dispatcher.
-  pub fn stateful_minimal_op<D>(
+  pub fn stateful_minimal_op2<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(bool, i32, Option<ZeroCopyBuf>) -> MinimalOp
+  ) -> impl Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op
   where
-    D: Fn(&State, bool, i32, Option<ZeroCopyBuf>) -> MinimalOp,
+    D: Fn(
+      &mut deno_core::Isolate,
+      &State,
+      bool,
+      i32,
+      Option<ZeroCopyBuf>,
+    ) -> MinimalOp,
   {
     let state = self.clone();
-    move |is_sync: bool,
-          rid: i32,
-          zero_copy: Option<ZeroCopyBuf>|
-          -> MinimalOp { dispatcher(&state, is_sync, rid, zero_copy) }
+    self.core_op(crate::ops::minimal_op(
+      move |isolate: &mut deno_core::Isolate,
+            is_sync: bool,
+            rid: i32,
+            zero_copy: Option<ZeroCopyBuf>|
+            -> MinimalOp {
+        dispatcher(isolate, &state, is_sync, rid, zero_copy)
+      },
+    ))
   }
 
   /// This is a special function that provides `state` argument to dispatcher.
@@ -164,14 +191,44 @@ impl State {
   pub fn stateful_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>
+  ) -> impl Fn(
+    &mut deno_core::Isolate,
+    Value,
+    Option<ZeroCopyBuf>,
+  ) -> Result<JsonOp, OpError>
   where
     D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
   {
     let state = self.clone();
-    move |args: Value,
+    move |_isolate: &mut deno_core::Isolate,
+          args: Value,
           zero_copy: Option<ZeroCopyBuf>|
           -> Result<JsonOp, OpError> { dispatcher(&state, args, zero_copy) }
+  }
+
+  pub fn stateful_op2<D>(
+    &self,
+    dispatcher: D,
+  ) -> impl Fn(
+    &mut deno_core::Isolate,
+    Value,
+    Option<ZeroCopyBuf>,
+  ) -> Result<JsonOp, OpError>
+  where
+    D: Fn(
+      &mut deno_core::Isolate,
+      &State,
+      Value,
+      Option<ZeroCopyBuf>,
+    ) -> Result<JsonOp, OpError>,
+  {
+    let state = self.clone();
+    move |isolate: &mut deno_core::Isolate,
+          args: Value,
+          zero_copy: Option<ZeroCopyBuf>|
+          -> Result<JsonOp, OpError> {
+      dispatcher(isolate, &state, args, zero_copy)
+    }
   }
 }
 
@@ -269,7 +326,6 @@ impl State {
       next_worker_id: 0,
       start_time: Instant::now(),
       seeded_rng,
-      resource_table: ResourceTable::default(),
       target_lib: TargetLib::Main,
       debug_type,
     }));
@@ -305,7 +361,6 @@ impl State {
       next_worker_id: 0,
       start_time: Instant::now(),
       seeded_rng,
-      resource_table: ResourceTable::default(),
       target_lib: TargetLib::Worker,
       debug_type: DebugType::Dependent,
     }));

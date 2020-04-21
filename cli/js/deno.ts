@@ -93,7 +93,7 @@ export {
   PermissionStatus,
   Permissions,
 } from "./permissions.ts";
-export { openPlugin } from "./plugins.ts";
+export { openPlugin } from "./ops/plugins.ts";
 export { kill } from "./ops/process.ts";
 export { run, RunOptions, Process, ProcessStatus } from "./process.ts";
 export { DirEntry, readdirSync, readdir } from "./ops/fs/read_dir.ts";
@@ -106,7 +106,7 @@ export { resources, close } from "./ops/resources.ts";
 export { signal, signals, Signal, SignalStream } from "./signals.ts";
 export { FileInfo, statSync, lstatSync, stat, lstat } from "./ops/fs/stat.ts";
 export { symlinkSync, symlink } from "./ops/fs/symlink.ts";
-export { connectTLS, listenTLS } from "./tls.ts";
+export { connectTLS, listenTLS, startTLS } from "./tls.ts";
 export { truncateSync, truncate } from "./ops/fs/truncate.ts";
 export { isatty, setRaw } from "./ops/tty.ts";
 export { umask } from "./ops/fs/umask.ts";
