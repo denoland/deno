@@ -346,19 +346,22 @@ test("writeResponse with trailer", async () => {
 test("writeResponse with repeating headers", async () => {
   const body = "Hello";
 
-  const res: Response = { body, headers: new Headers(
-    [
-      ["set-cookie", "user.session=qwertz; Max-Age=86400"],
+  const res: Response = {
+    body,
+    headers: new Headers(
       [
-        "set-cookie",
-        "mykey=myvalue; expires=Mon, 17-Jul-2017" +
-        " 16:06:00 GMT; Max-Age=31449600; Path=/; secure",
+        ["set-cookie", "user.session=qwertz; Max-Age=86400"],
+        [
+          "set-cookie",
+          "mykey=myvalue; expires=Mon, 17-Jul-2017" +
+          " 16:06:00 GMT; Max-Age=31449600; Path=/; secure",
+        ],
+        ["set-cookie", "b=456; Domain=example.com; Secure; HttpOnly"],
+        ["x-other-header", "some, value"],
+        ["x-other-header", "custom=pair; values"],
       ],
-      ["set-cookie", "b=456; Domain=example.com; Secure; HttpOnly"],
-      ["x-other-header", "some, value"],
-      ["x-other-header", "custom=pair; values"],
-    ],
-  ) };
+    ),
+  };
 
   const w = new Buffer();
   await writeResponse(w, res);
