@@ -36,10 +36,12 @@ const ustar = "ustar\u000000";
 /**
  * Simple file reader
  */
-class FileReader implements Deno.Reader {
+class FileReader extends Deno.Reader {
   private file?: Deno.File;
 
-  constructor(private filePath: string, private mode: Deno.OpenMode = "r") {}
+  constructor(private filePath: string, private mode: Deno.OpenMode = "r") {
+    super();
+  }
 
   public async read(p: Uint8Array): Promise<number | Deno.EOF> {
     if (!this.file) {

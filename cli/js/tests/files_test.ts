@@ -27,12 +27,12 @@ unitTest({ perms: { read: true } }, async function filesCopyToStdout(): Promise<
 
 unitTest(
   { perms: { read: true } },
-  async function filesToAsyncIterator(): Promise<void> {
+  async function fileIsAsyncIterator(): Promise<void> {
     const filename = "cli/tests/hello.txt";
     const file = await Deno.open(filename);
 
     let totalSize = 0;
-    for await (const buf of Deno.toAsyncIterator(file)) {
+    for await (const buf of file) {
       totalSize += buf.byteLength;
     }
 
@@ -41,15 +41,16 @@ unitTest(
   }
 );
 
-unitTest(async function readerToAsyncIterator(): Promise<void> {
+unitTest(async function readerIsAsyncIterator(): Promise<void> {
   // ref: https://github.com/denoland/deno/issues/2330
   const encoder = new TextEncoder();
 
-  class TestReader implements Deno.Reader {
+  class TestReader extends Deno.Reader {
     #offset = 0;
     #buf: Uint8Array;
 
     constructor(s: string) {
+      super();
       this.#buf = new Uint8Array(encoder.encode(s));
     }
 
@@ -69,7 +70,7 @@ unitTest(async function readerToAsyncIterator(): Promise<void> {
   const reader = new TestReader("hello world!");
 
   let totalSize = 0;
-  for await (const buf of Deno.toAsyncIterator(reader)) {
+  for await (const buf of reader) {
     totalSize += buf.byteLength;
   }
 

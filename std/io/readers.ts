@@ -1,13 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-type Reader = Deno.Reader;
 import { encode } from "../encoding/utf8.ts";
 
 /** Reader utility for strings */
-export class StringReader implements Reader {
+export class StringReader extends Deno.Reader {
   private offs = 0;
   private buf = new Uint8Array(encode(this.s));
 
-  constructor(private readonly s: string) {}
+  constructor(private readonly s: string) {
+    super();
+  }
 
   read(p: Uint8Array): Promise<number | Deno.EOF> {
     const n = Math.min(p.byteLength, this.buf.byteLength - this.offs);
@@ -21,11 +22,12 @@ export class StringReader implements Reader {
 }
 
 /** Reader utility for combining multiple readers */
-export class MultiReader implements Reader {
-  private readonly readers: Reader[];
+export class MultiReader extends Deno.Reader {
+  private readonly readers: Deno.Reader[];
   private currentIndex = 0;
 
-  constructor(...readers: Reader[]) {
+  constructor(...readers: Deno.Reader[]) {
+    super();
     this.readers = readers;
   }
 

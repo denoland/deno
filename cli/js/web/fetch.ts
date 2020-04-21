@@ -28,8 +28,8 @@ function hasHeaderValueOf(s: string, value: string): boolean {
   return new RegExp(`^${value}[\t\s]*;?`).test(s);
 }
 
-class Body
-  implements domTypes.Body, domTypes.ReadableStream<Uint8Array>, io.ReadCloser {
+class Body extends io.Reader
+  implements domTypes.Body, domTypes.ReadableStream<Uint8Array>, io.Closer {
   #bodyUsed = false;
   #bodyPromise: Promise<ArrayBuffer> | null = null;
   #data: ArrayBuffer | null = null;
@@ -38,6 +38,7 @@ class Body
   readonly body: domTypes.ReadableStream<Uint8Array>;
 
   constructor(rid: number, readonly contentType: string) {
+    super();
     this.#rid = rid;
     this.body = this;
   }
@@ -244,10 +245,6 @@ class Body
 
   tee(): [domTypes.ReadableStream, domTypes.ReadableStream] {
     return notImplemented();
-  }
-
-  [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
-    return io.toAsyncIterator(this);
   }
 
   get bodyUsed(): boolean {

@@ -189,8 +189,10 @@ const testInputrn = encoder.encode(
 const testOutput = encoder.encode("0123456789abcdefghijklmnopqrstuvwxy");
 
 // TestReader wraps a Uint8Array and returns reads of a specific length.
-class TestReader implements Reader {
-  constructor(private data: Uint8Array, private stride: number) {}
+class TestReader extends Deno.Reader {
+  constructor(private data: Uint8Array, private stride: number) {
+    super();
+  }
 
   read(buf: Uint8Array): Promise<number | Deno.EOF> {
     let nread = this.stride;

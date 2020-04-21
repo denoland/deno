@@ -10,6 +10,13 @@ export function emptyReader(): Deno.Reader {
     read(_: Uint8Array): Promise<number | Deno.EOF> {
       return Promise.resolve(Deno.EOF);
     },
+    // eslint-disable-next-line require-await
+    async next(): Promise<IteratorResult<Uint8Array>> {
+      return { done: true, value: undefined };
+    },
+    [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
+      return this;
+    },
   };
 }
 
@@ -32,7 +39,16 @@ export function bodyReader(contentLength: number, r: BufReader): Deno.Reader {
     finished = totalRead === contentLength;
     return result;
   }
-  return { read };
+  return {
+    read,
+    // eslint-disable-next-line require-await
+    async next(): Promise<IteratorResult<Uint8Array>> {
+      return { done: true, value: undefined };
+    },
+    [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
+      return this;
+    },
+  };
 }
 
 export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
@@ -110,7 +126,16 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
       return Deno.EOF;
     }
   }
-  return { read };
+  return {
+    read,
+    // eslint-disable-next-line require-await
+    async next(): Promise<IteratorResult<Uint8Array>> {
+      return { done: true, value: undefined };
+    },
+    [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
+      return this;
+    },
+  };
 }
 
 const kProhibitedTrailerHeaders = [
@@ -164,7 +189,7 @@ export async function writeChunkedBody(
   r: Deno.Reader
 ): Promise<void> {
   const writer = BufWriter.create(w);
-  for await (const chunk of Deno.toAsyncIterator(r)) {
+  for await (const chunk of r) {
     if (chunk.byteLength <= 0) continue;
     const start = encoder.encode(`${chunk.byteLength.toString(16)}\r\n`);
     const end = encoder.encode("\r\n");

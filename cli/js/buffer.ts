@@ -27,11 +27,13 @@ function copyBytes(dst: Uint8Array, src: Uint8Array, off = 0): number {
   return src.byteLength;
 }
 
-export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
+export class Buffer extends Reader implements SyncReader, Writer, SyncWriter {
   #buf: Uint8Array; // contents are the bytes buf[off : len(buf)]
   #off = 0; // read at buf[off], write at buf[buf.byteLength]
 
   constructor(ab?: ArrayBuffer) {
+    super();
+
     if (ab == null) {
       this.#buf = new Uint8Array(0);
       return;

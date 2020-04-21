@@ -3,7 +3,6 @@
 const { Buffer, copy, remove } = Deno;
 const { min, max } = Math;
 type Closer = Deno.Closer;
-type Reader = Deno.Reader;
 type Writer = Deno.Writer;
 import { equal, findIndex, findLastIndex, hasPrefix } from "../bytes/mod.ts";
 import { copyN } from "../io/ioutil.ts";
@@ -150,11 +149,13 @@ export function scanUntilBoundary(
   return buf.length;
 }
 
-class PartReader implements Reader, Closer {
+class PartReader extends Deno.Reader implements Closer {
   n: number | Deno.EOF = 0;
   total = 0;
 
-  constructor(private mr: MultipartReader, public readonly headers: Headers) {}
+  constructor(private mr: MultipartReader, public readonly headers: Headers) {
+    super();
+  }
 
   async read(p: Uint8Array): Promise<number | Deno.EOF> {
     const br = this.mr.bufReader;
@@ -270,7 +271,7 @@ export class MultipartReader {
   readonly dashBoundary = encoder.encode(`--${this.boundary}`);
   readonly bufReader: BufReader;
 
-  constructor(reader: Reader, private boundary: string) {
+  constructor(reader: Deno.Reader, private boundary: string) {
     this.bufReader = new BufReader(reader);
   }
 
@@ -570,7 +571,7 @@ export class MultipartWriter {
   async writeFile(
     field: string,
     filename: string,
-    file: Reader
+    file: Deno.Reader
   ): Promise<void> {
     const f = await this.createFormFile(field, filename);
     await copy(f, file);

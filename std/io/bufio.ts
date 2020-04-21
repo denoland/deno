@@ -3,7 +3,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-type Reader = Deno.Reader;
 type Writer = Deno.Writer;
 type SyncWriter = Deno.SyncWriter;
 import { charCode, copyBytes } from "./util.ts";
@@ -37,9 +36,9 @@ export interface ReadLineResult {
 }
 
 /** BufReader implements buffering for a Reader object. */
-export class BufReader implements Reader {
+export class BufReader extends Deno.Reader {
   private buf!: Uint8Array;
-  private rd!: Reader; // Reader provided by caller.
+  private rd!: Deno.Reader; // Reader provided by caller.
   private r = 0; // buf read position.
   private w = 0; // buf write position.
   private eof = false;
@@ -47,11 +46,12 @@ export class BufReader implements Reader {
   // private lastCharSize: number;
 
   /** return new BufReader unless r is BufReader */
-  static create(r: Reader, size: number = DEFAULT_BUF_SIZE): BufReader {
+  static create(r: Deno.Reader, size: number = DEFAULT_BUF_SIZE): BufReader {
     return r instanceof BufReader ? r : new BufReader(r, size);
   }
 
-  constructor(rd: Reader, size: number = DEFAULT_BUF_SIZE) {
+  constructor(rd: Deno.Reader, size: number = DEFAULT_BUF_SIZE) {
+    super();
     if (size < MIN_BUF_SIZE) {
       size = MIN_BUF_SIZE;
     }
@@ -102,11 +102,11 @@ export class BufReader implements Reader {
   /** Discards any buffered data, resets all state, and switches
    * the buffered reader to read from r.
    */
-  reset(r: Reader): void {
+  reset(r: Deno.Reader): void {
     this._reset(this.buf, r);
   }
 
-  private _reset(buf: Uint8Array, rd: Reader): void {
+  private _reset(buf: Uint8Array, rd: Deno.Reader): void {
     this.buf = buf;
     this.rd = rd;
     this.eof = false;
@@ -641,7 +641,7 @@ function createLPS(pat: Uint8Array): Uint8Array {
 
 /** Read delimited bytes from a Reader. */
 export async function* readDelim(
-  reader: Reader,
+  reader: Deno.Reader,
   delim: Uint8Array
 ): AsyncIterableIterator<Uint8Array> {
   // Avoid unicode problems
@@ -700,7 +700,7 @@ export async function* readDelim(
 
 /** Read delimited strings from a Reader. */
 export async function* readStringDelim(
-  reader: Reader,
+  reader: Deno.Reader,
   delim: string
 ): AsyncIterableIterator<string> {
   const encoder = new TextEncoder();
@@ -713,7 +713,7 @@ export async function* readStringDelim(
 /** Read strings line-by-line from a Reader. */
 // eslint-disable-next-line require-await
 export async function* readLines(
-  reader: Reader
+  reader: Deno.Reader
 ): AsyncIterableIterator<string> {
   yield* readStringDelim(reader, "\n");
 }

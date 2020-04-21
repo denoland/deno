@@ -74,16 +74,11 @@ export function create(path: string): Promise<File> {
   return open(path, "w+");
 }
 
-export class File
-  implements
-    Reader,
-    SyncReader,
-    Writer,
-    SyncWriter,
-    Seeker,
-    SyncSeeker,
-    Closer {
-  constructor(readonly rid: number) {}
+export class File extends Reader
+  implements SyncReader, Writer, SyncWriter, Seeker, SyncSeeker, Closer {
+  constructor(readonly rid: number) {
+    super();
+  }
 
   write(p: Uint8Array): Promise<number> {
     return write(this.rid, p);

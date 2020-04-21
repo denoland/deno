@@ -2,13 +2,14 @@
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-type Reader = Deno.Reader;
 
 /** OneByteReader returns a Reader that implements
  * each non-empty Read by reading one byte from r.
  */
-export class OneByteReader implements Reader {
-  constructor(readonly r: Reader) {}
+export class OneByteReader extends Deno.Reader {
+  constructor(readonly r: Reader) {
+    super();
+  }
 
   read(p: Uint8Array): Promise<number | Deno.EOF> {
     if (p.byteLength === 0) {
@@ -24,8 +25,10 @@ export class OneByteReader implements Reader {
 /** HalfReader returns a Reader that implements Read
  * by reading half as many requested bytes from r.
  */
-export class HalfReader implements Reader {
-  constructor(readonly r: Reader) {}
+export class HalfReader extends Deno.Reader {
+  constructor(readonly r: Reader) {
+    super();
+  }
 
   read(p: Uint8Array): Promise<number | Deno.EOF> {
     if (!(p instanceof Uint8Array)) {
@@ -39,9 +42,11 @@ export class HalfReader implements Reader {
 /** TimeoutReader returns `Deno.errors.TimedOut` on the second read
  * with no data. Subsequent calls to read succeed.
  */
-export class TimeoutReader implements Reader {
+export class TimeoutReader extends Deno.Reader {
   count = 0;
-  constructor(readonly r: Reader) {}
+  constructor(readonly r: Reader) {
+    super();
+  }
 
   read(p: Uint8Array): Promise<number | Deno.EOF> {
     this.count++;

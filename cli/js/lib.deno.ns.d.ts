@@ -446,8 +446,7 @@ declare namespace Deno {
     SEEK_END = 2,
   }
 
-  /** **UNSTABLE**: might make `Reader` into iterator of some sort. */
-  export interface Reader {
+  export abstract class Reader {
     /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number of
      * bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
      * encountered. Even if `read()` resolves to `n` < `p.byteLength`, it may
@@ -466,7 +465,9 @@ declare namespace Deno {
      *
      * Implementations should not retain a reference to `p`.
      */
-    read(p: Uint8Array): Promise<number | EOF>;
+    abstract read(p: Uint8Array): Promise<number | EOF>;
+
+    [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array>;
   }
 
   export interface SyncReader {
@@ -572,14 +573,6 @@ declare namespace Deno {
    * @param src The source to copy from
    */
   export function copy(dst: Writer, src: Reader): Promise<number>;
-
-  /** Turns a Reader, `r`, into an async iterator.
-   *
-   *      for await (const chunk of toAsyncIterator(reader)) {
-   *        console.log(chunk);
-   *      }
-   */
-  export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array>;
 
   /** Synchronously open a file and return an instance of `Deno.File`.  The
    * file does not need to previously exist if using the `create` or `createNew`
@@ -770,15 +763,8 @@ declare namespace Deno {
   export function close(rid: number): void;
 
   /** The Deno abstraction for reading and writing files. */
-  export class File
-    implements
-      Reader,
-      SyncReader,
-      Writer,
-      SyncWriter,
-      Seeker,
-      SyncSeeker,
-      Closer {
+  export class File extends Reader
+    implements SyncReader, Writer, SyncWriter, Seeker, SyncSeeker, Closer {
     readonly rid: number;
     constructor(rid: number);
     write(p: Uint8Array): Promise<number>;
@@ -875,7 +861,7 @@ declare namespace Deno {
   /** A variable-sized buffer of bytes with `read()` and `write()` methods.
    *
    * Based on [Go Buffer](https://golang.org/pkg/bytes/#Buffer). */
-  export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
+  export class Buffer extends Reader implements SyncReader, Writer, SyncWriter {
     constructor(ab?: ArrayBuffer);
     /** Returns a slice holding the unread portion of the buffer.
      *

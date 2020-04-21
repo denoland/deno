@@ -14,10 +14,30 @@ export enum SeekMode {
   SEEK_END = 2,
 }
 
-// Reader is the interface that wraps the basic read() method.
-// https://golang.org/pkg/io/#Reader
-export interface Reader {
-  read(p: Uint8Array): Promise<number | EOF>;
+export abstract class Reader {
+  #b: Uint8Array | undefined;
+
+  abstract read(p: Uint8Array): Promise<number | EOF>;
+
+  [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
+    return this;
+  }
+
+  async next(): Promise<IteratorResult<Uint8Array>> {
+    if (typeof this.#b === "undefined") {
+      this.#b = new Uint8Array(1024);
+    }
+
+    const result = await this.read(this.#b);
+    if (result === EOF) {
+      return { value: new Uint8Array(), done: true };
+    }
+
+    return {
+      value: this.#b.subarray(0, result),
+      done: false,
+    };
+  }
 }
 
 export interface SyncReader {
@@ -82,25 +102,4 @@ export async function copy(dst: Writer, src: Reader): Promise<number> {
     }
   }
   return n;
-}
-
-export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array> {
-  const b = new Uint8Array(1024);
-  return {
-    [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
-      return this;
-    },
-
-    async next(): Promise<IteratorResult<Uint8Array>> {
-      const result = await r.read(b);
-      if (result === EOF) {
-        return { value: new Uint8Array(), done: true };
-      }
-
-      return {
-        value: b.subarray(0, result),
-        done: false,
-      };
-    },
-  };
 }

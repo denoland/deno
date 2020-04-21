@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { Buffer } = Deno;
-type Reader = Deno.Reader;
 import { assertEquals } from "../testing/asserts.ts";
 import {
   copyN,
@@ -12,10 +11,12 @@ import {
 import { BufReader } from "./bufio.ts";
 import { stringsReader } from "./util.ts";
 
-class BinaryReader implements Reader {
+class BinaryReader extends Deno.Reader {
   index = 0;
 
-  constructor(private bytes: Uint8Array = new Uint8Array(0)) {}
+  constructor(private bytes: Uint8Array = new Uint8Array(0)) {
+    super();
+  }
 
   read(p: Uint8Array): Promise<number | Deno.EOF> {
     p.set(this.bytes.subarray(this.index, p.byteLength));

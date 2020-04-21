@@ -29,12 +29,14 @@ export interface Listener extends AsyncIterable<Conn> {
   [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
 }
 
-export class ConnImpl implements Conn {
+export class ConnImpl extends Reader implements Conn {
   constructor(
     readonly rid: number,
     readonly remoteAddr: Addr,
     readonly localAddr: Addr
-  ) {}
+  ) {
+    super();
+  }
 
   write(p: Uint8Array): Promise<number> {
     return write(this.rid, p);
