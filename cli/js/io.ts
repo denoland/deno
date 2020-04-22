@@ -84,50 +84,32 @@ export async function copy(dst: Writer, src: Reader): Promise<number> {
   return n;
 }
 
-export function iter(
+export async function* iter(
   r: Reader,
   bufSize?: number
 ): AsyncIterableIterator<Uint8Array> {
   const b = new Uint8Array(bufSize ?? 1024);
-  return {
-    [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
-      return this;
-    },
+  while (true) {
+    const result = await r.read(b);
+    if (result === EOF) {
+      break;
+    }
 
-    async next(): Promise<IteratorResult<Uint8Array>> {
-      const result = await r.read(b);
-      if (result === EOF) {
-        return { value: new Uint8Array(), done: true };
-      }
-
-      return {
-        value: b.subarray(0, result),
-        done: false,
-      };
-    },
-  };
+    yield b.subarray(0, result);
+  }
 }
 
-export function iterSync(
+export function* iterSync(
   r: SyncReader,
   bufSize?: number
 ): IterableIterator<Uint8Array> {
   const b = new Uint8Array(bufSize ?? 1024);
-  return {
-    [Symbol.iterator](): IterableIterator<Uint8Array> {
-      return this;
-    },
+  while (true) {
+    const result = r.readSync(b);
+    if (result === EOF) {
+      break;
+    }
 
-    next(): IteratorResult<Uint8Array> {
-      const result = r.readSync(b);
-      if (result === EOF) {
-        return { value: new Uint8Array(), done: true };
-      }
-
-      return {
-        value: b.subarray(0, result),
-        done: false,
-      };
-    },
-  };
+    yield b.subarray(0, result);
+  }
 }

@@ -575,16 +575,21 @@ declare namespace Deno {
 
   /** Turns a Reader, `r`, into an async iterator.
    *
-   *      for await (const chunk of iter(reader)) {
+   *      let f = await open("/etc/passwd");
+   *      for await (const chunk of iter(f)) {
    *        console.log(chunk);
    *      }
+   *      f.close();
    *
-   * Second argument can be used to tune size of buffer.
-   * Default size of buffer is 1024 bytes.
+   * Second argument can be used to tune size of a buffer.
+   * Default size of the buffer is 1024 bytes.
    *
-   *      for await (const chunk of iter(reader, 1024 * 1024)) {
+   *      let f = await open("/etc/passwd");
+   *      for await (const chunk of iter(f, 1024 * 1024)) {
    *        console.log(chunk);
    *      }
+   *      f.close();
+   *
    */
   export function iter(
     r: Reader,
@@ -593,16 +598,21 @@ declare namespace Deno {
 
   /** Turns a SyncReader, `r`, into an iterator.
    *
+   *      let f = await open("/etc/passwd");
    *      for (const chunk of iterSync(reader)) {
    *        console.log(chunk);
    *      }
+   *      f.close();
    *
-   * Second argument can be used to tune size of buffer.
-   * Default size of buffer is 1024 bytes.
+   * Second argument can be used to tune size of a buffer.
+   * Default size of the buffer is 1024 bytes.
    *
+   *      let f = await open("/etc/passwd");
    *      for (const chunk of iterSync(reader, 1024 * 1024)) {
    *        console.log(chunk);
    *      }
+   *      f.close()
+   *
    */
   export function iterSync(
     r: SyncReader,
