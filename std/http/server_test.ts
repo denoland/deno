@@ -189,10 +189,7 @@ test("ServerRequest.finalize() should consume unread body / content-length / mul
   console.log("buf.length: " + buf.length);
   await req.finalize();
   assertEquals(buf.length, 0);
-
 });
-
-
 
 test("ServerRequest.finalize() should consume unread body / chunked, trailers", async () => {
   const text = [

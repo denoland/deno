@@ -123,7 +123,7 @@ export class ServerRequest {
     if (this.r.buffered() > 0) {
       const body = this.body;
       const buf = new Uint8Array(1024);
-      while ((await body.read(buf)) !== Deno.EOF) { }
+      while ((await body.read(buf)) !== Deno.EOF) {}
     }
   }
 }
