@@ -446,7 +446,6 @@ declare namespace Deno {
     SEEK_END = 2,
   }
 
-  /** **UNSTABLE**: might make `Reader` into iterator of some sort. */
   export interface Reader {
     /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number of
      * bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
@@ -465,6 +464,8 @@ declare namespace Deno {
      * after reading some bytes and also both of the allowed EOF behaviors.
      *
      * Implementations should not retain a reference to `p`.
+     *
+     * Use Deno.iter() to turn a Reader into an AsyncIterator.
      */
     read(p: Uint8Array): Promise<number | EOF>;
   }
@@ -487,6 +488,8 @@ declare namespace Deno {
      * after reading some bytes and also both of the allowed EOF behaviors.
      *
      * Implementations should not retain a reference to `p`.
+     *
+     * Use Deno.iterSync() to turn a SyncReader into an Iterator.
      */
     readSync(p: Uint8Array): number | EOF;
   }
