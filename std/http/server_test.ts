@@ -166,8 +166,8 @@ test("ServerRequest.finalize() should consume unread body / content-length / mul
   req.headers = new Headers();
   req.headers.set("content-length", "" + text.length);
   //const tr = totalReader(new Buffer(encode(text)));
-  let buf = new Buffer(encode(text));
-  let reader = new BufReader(buf);
+  const buf = new Buffer(encode(text));
+  const reader = new BufReader(buf);
 
   req.r = reader;
   req.w = new BufWriter(new Buffer());
