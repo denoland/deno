@@ -573,7 +573,8 @@ declare namespace Deno {
    */
   export function copy(dst: Writer, src: Reader): Promise<number>;
 
-  /** Turns a Reader, `r`, into an async iterator.
+  /** **UNSTABLE**: new API, yet to be vetted
+   * Turns a Reader, `r`, into an async iterator.
    *
    *      let f = await open("/etc/passwd");
    *      for await (const chunk of iter(f)) {
@@ -590,13 +591,18 @@ declare namespace Deno {
    *      }
    *      f.close();
    *
+   * Iterator uses internal buffer of fixed size for efficiency returning
+   * a view on that buffer on each iteration. It it therefore callers
+   * responsibility to copy contents of the buffer if needed; otherwise
+   * next iteration will overwrite contents of previously returned chunk.
    */
   export function iter(
     r: Reader,
     bufSize?: number
   ): AsyncIterableIterator<Uint8Array>;
 
-  /** Turns a SyncReader, `r`, into an iterator.
+  /** **UNSTABLE**: new API, yet to be vetted
+   * Turns a SyncReader, `r`, into an iterator.
    *
    *      let f = await open("/etc/passwd");
    *      for (const chunk of iterSync(reader)) {
@@ -613,6 +619,10 @@ declare namespace Deno {
    *      }
    *      f.close()
    *
+   * Iterator uses internal buffer of fixed size for efficiency returning
+   * a view on that buffer on each iteration. It it therefore callers
+   * responsibility to copy contents of the buffer if needed; otherwise
+   * next iteration will overwrite contents of previously returned chunk.
    */
   export function iterSync(
     r: SyncReader,
