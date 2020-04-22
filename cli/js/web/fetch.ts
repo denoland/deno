@@ -28,14 +28,13 @@ function hasHeaderValueOf(s: string, value: string): boolean {
   return new RegExp(`^${value}[\t\s]*;?`).test(s);
 }
 
-class Body
-  implements domTypes.Body, domTypes.ReadableStream<Uint8Array>, io.ReadCloser {
+class Body implements domTypes.Body, ReadableStream<Uint8Array>, io.ReadCloser {
   #bodyUsed = false;
   #bodyPromise: Promise<ArrayBuffer> | null = null;
   #data: ArrayBuffer | null = null;
   #rid: number;
   readonly locked: boolean = false; // TODO
-  readonly body: domTypes.ReadableStream<Uint8Array>;
+  readonly body: ReadableStream<Uint8Array>;
 
   constructor(rid: number, readonly contentType: string) {
     this.#rid = rid;
@@ -234,15 +233,17 @@ class Body
     return notImplemented();
   }
 
-  getReader(options: { mode: "byob" }): domTypes.ReadableStreamBYOBReader;
-  getReader(): domTypes.ReadableStreamDefaultReader<Uint8Array>;
-  getReader():
-    | domTypes.ReadableStreamBYOBReader
-    | domTypes.ReadableStreamDefaultReader<Uint8Array> {
+  getIterator(_options?: {
+    preventCancel?: boolean;
+  }): AsyncIterableIterator<Uint8Array> {
     return notImplemented();
   }
 
-  tee(): [domTypes.ReadableStream, domTypes.ReadableStream] {
+  getReader(): ReadableStreamDefaultReader<Uint8Array> {
+    return notImplemented();
+  }
+
+  tee(): [ReadableStream, ReadableStream] {
     return notImplemented();
   }
 
@@ -257,16 +258,16 @@ class Body
   pipeThrough<T>(
     _: {
       writable: domTypes.WritableStream<Uint8Array>;
-      readable: domTypes.ReadableStream<T>;
+      readable: ReadableStream<T>;
     },
-    _options?: domTypes.PipeOptions
-  ): domTypes.ReadableStream<T> {
+    _options?: PipeOptions
+  ): ReadableStream<T> {
     return notImplemented();
   }
 
   pipeTo(
     _dest: domTypes.WritableStream<Uint8Array>,
-    _options?: domTypes.PipeOptions
+    _options?: PipeOptions
   ): Promise<void> {
     return notImplemented();
   }

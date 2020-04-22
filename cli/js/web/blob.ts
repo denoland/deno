@@ -1,8 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types.d.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { build } from "../build.ts";
-import { ReadableStream } from "./streams/mod.ts";
+import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 
 export const bytesSymbol = Symbol("bytes");
 
@@ -124,40 +123,36 @@ function processBlobParts(
   return bytes;
 }
 
-function getStream(blobBytes: Uint8Array): domTypes.ReadableStream<Uint8Array> {
-  return new ReadableStream<Uint8Array>({
-    start: (
-      controller: domTypes.ReadableStreamDefaultController<Uint8Array>
-    ): void => {
+function getStream(blobBytes: Uint8Array): ReadableStream<ArrayBufferView> {
+  // TODO: Align to spec https://fetch.spec.whatwg.org/#concept-construct-readablestream
+  return new ReadableStreamImpl({
+    type: "bytes",
+    start: (controller: ReadableByteStreamController): void => {
       controller.enqueue(blobBytes);
       controller.close();
     },
-  }) as domTypes.ReadableStream<Uint8Array>;
+  });
 }
 
 async function readBytes(
-  reader: domTypes.ReadableStreamReader<Uint8Array>
+  reader: ReadableStreamReader<ArrayBufferView>
 ): Promise<ArrayBuffer> {
   const chunks: Uint8Array[] = [];
   while (true) {
-    try {
-      const { done, value } = await reader.read();
-      if (!done && value instanceof Uint8Array) {
-        chunks.push(value);
-      } else if (done) {
-        const size = chunks.reduce((p, i) => p + i.byteLength, 0);
-        const bytes = new Uint8Array(size);
-        let offs = 0;
-        for (const chunk of chunks) {
-          bytes.set(chunk, offs);
-          offs += chunk.byteLength;
-        }
-        return Promise.resolve(bytes);
-      } else {
-        return Promise.reject(new TypeError());
+    const { done, value } = await reader.read();
+    if (!done && value instanceof Uint8Array) {
+      chunks.push(value);
+    } else if (done) {
+      const size = chunks.reduce((p, i) => p + i.byteLength, 0);
+      const bytes = new Uint8Array(size);
+      let offs = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offs);
+        offs += chunk.byteLength;
       }
-    } catch (e) {
-      return Promise.reject(e);
+      return bytes;
+    } else {
+      throw new TypeError("Invalid reader result.");
     }
   }
 }
@@ -207,7 +202,7 @@ export class DenoBlob implements Blob {
     });
   }
 
-  stream(): domTypes.ReadableStream<Uint8Array> {
+  stream(): ReadableStream<ArrayBufferView> {
     return getStream(this[bytesSymbol]);
   }
 

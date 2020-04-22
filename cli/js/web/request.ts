@@ -1,9 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as body from "./body.ts";
 import * as domTypes from "./dom_types.d.ts";
-import * as streams from "./streams/mod.ts";
-
-const { ReadableStream } = streams;
+import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 
 function byteUpperCase(s: string): string {
   return String(s).replace(/[a-z]/g, function byteUpperCaseReplace(c): string {
@@ -124,8 +122,8 @@ export class Request extends body.Body implements domTypes.Request {
 
     let body2 = this._bodySource;
 
-    if (this._bodySource instanceof ReadableStream) {
-      const tees = (this._bodySource as domTypes.ReadableStream).tee();
+    if (this._bodySource instanceof ReadableStreamImpl) {
+      const tees = this._bodySource.tee();
       this._stream = this._bodySource = tees[0];
       body2 = tees[1];
     }
