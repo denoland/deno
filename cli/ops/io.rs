@@ -370,20 +370,6 @@ pub fn op_write(
           resource_holder.resource.poll_write(cx, &buf.as_ref()[..])
         })
         .await?;
-
-        // TODO(bartlomieju): this step was added during upgrade to Tokio 0.2
-        // and the reasons for the need to explicitly flush are not fully known.
-        // Figure out why it's needed and preferably remove it.
-        // https://github.com/denoland/deno/issues/3565
-        poll_fn(|cx| {
-          let mut resource_table = resource_table.borrow_mut();
-          let resource_holder = resource_table
-            .get_mut::<StreamResourceHolder>(rid as u32)
-            .ok_or_else(OpError::bad_resource_id)?;
-          resource_holder.resource.poll_flush(cx)
-        })
-        .await?;
-
         Ok(nwritten as i32)
       }
       .boxed_local(),
