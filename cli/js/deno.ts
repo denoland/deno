@@ -42,7 +42,8 @@ export { FsEvent, fsEvents } from "./ops/fs_events.ts";
 export {
   EOF,
   copy,
-  toAsyncIterator,
+  iter,
+  iterSync,
   SeekMode,
   Reader,
   SyncReader,
