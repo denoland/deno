@@ -248,7 +248,7 @@ class Body implements domTypes.Body, ReadableStream<Uint8Array>, io.ReadCloser {
   }
 
   [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
-    return io.toAsyncIterator(this);
+    return io.iter(this);
   }
 
   get bodyUsed(): boolean {

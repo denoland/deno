@@ -25,23 +25,71 @@ unitTest({ perms: { read: true } }, async function filesCopyToStdout(): Promise<
   file.close();
 });
 
+unitTest({ perms: { read: true } }, async function filesIter(): Promise<void> {
+  const filename = "cli/tests/hello.txt";
+  const file = await Deno.open(filename);
+
+  let totalSize = 0;
+  for await (const buf of Deno.iter(file)) {
+    totalSize += buf.byteLength;
+  }
+
+  assertEquals(totalSize, 12);
+  file.close();
+});
+
 unitTest(
   { perms: { read: true } },
-  async function filesToAsyncIterator(): Promise<void> {
+  async function filesIterCustomBufSize(): Promise<void> {
     const filename = "cli/tests/hello.txt";
     const file = await Deno.open(filename);
 
     let totalSize = 0;
-    for await (const buf of Deno.toAsyncIterator(file)) {
+    let iterations = 0;
+    for await (const buf of Deno.iter(file, 6)) {
       totalSize += buf.byteLength;
+      iterations += 1;
     }
 
     assertEquals(totalSize, 12);
+    assertEquals(iterations, 2);
     file.close();
   }
 );
 
-unitTest(async function readerToAsyncIterator(): Promise<void> {
+unitTest({ perms: { read: true } }, function filesIterSync(): void {
+  const filename = "cli/tests/hello.txt";
+  const file = Deno.openSync(filename);
+
+  let totalSize = 0;
+  for (const buf of Deno.iterSync(file)) {
+    totalSize += buf.byteLength;
+  }
+
+  assertEquals(totalSize, 12);
+  file.close();
+});
+
+unitTest(
+  { perms: { read: true } },
+  function filesIterSyncCustomBufSize(): void {
+    const filename = "cli/tests/hello.txt";
+    const file = Deno.openSync(filename);
+
+    let totalSize = 0;
+    let iterations = 0;
+    for (const buf of Deno.iterSync(file, 6)) {
+      totalSize += buf.byteLength;
+      iterations += 1;
+    }
+
+    assertEquals(totalSize, 12);
+    assertEquals(iterations, 2);
+    file.close();
+  }
+);
+
+unitTest(async function readerIter(): Promise<void> {
   // ref: https://github.com/denoland/deno/issues/2330
   const encoder = new TextEncoder();
 
@@ -69,7 +117,42 @@ unitTest(async function readerToAsyncIterator(): Promise<void> {
   const reader = new TestReader("hello world!");
 
   let totalSize = 0;
-  for await (const buf of Deno.toAsyncIterator(reader)) {
+  for await (const buf of Deno.iter(reader)) {
+    totalSize += buf.byteLength;
+  }
+
+  assertEquals(totalSize, 12);
+});
+
+unitTest(async function readerIterSync(): Promise<void> {
+  // ref: https://github.com/denoland/deno/issues/2330
+  const encoder = new TextEncoder();
+
+  class TestReader implements Deno.SyncReader {
+    #offset = 0;
+    #buf: Uint8Array;
+
+    constructor(s: string) {
+      this.#buf = new Uint8Array(encoder.encode(s));
+    }
+
+    readSync(p: Uint8Array): number | Deno.EOF {
+      const n = Math.min(p.byteLength, this.#buf.byteLength - this.#offset);
+      p.set(this.#buf.slice(this.#offset, this.#offset + n));
+      this.#offset += n;
+
+      if (n === 0) {
+        return Deno.EOF;
+      }
+
+      return n;
+    }
+  }
+
+  const reader = new TestReader("hello world!");
+
+  let totalSize = 0;
+  for await (const buf of Deno.iterSync(reader)) {
     totalSize += buf.byteLength;
   }
 

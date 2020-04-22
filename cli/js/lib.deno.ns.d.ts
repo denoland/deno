@@ -575,11 +575,39 @@ declare namespace Deno {
 
   /** Turns a Reader, `r`, into an async iterator.
    *
-   *      for await (const chunk of toAsyncIterator(reader)) {
+   *      for await (const chunk of iter(reader)) {
+   *        console.log(chunk);
+   *      }
+   *
+   * Second argument can be used to tune size of buffer.
+   * Default size of buffer is 1024 bytes.
+   *
+   *      for await (const chunk of iter(reader, 1024 * 1024)) {
    *        console.log(chunk);
    *      }
    */
-  export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array>;
+  export function iter(
+    r: Reader,
+    bufSize?: number
+  ): AsyncIterableIterator<Uint8Array>;
+
+  /** Turns a SyncReader, `r`, into an iterator.
+   *
+   *      for (const chunk of iterSync(reader)) {
+   *        console.log(chunk);
+   *      }
+   *
+   * Second argument can be used to tune size of buffer.
+   * Default size of buffer is 1024 bytes.
+   *
+   *      for (const chunk of iterSync(reader, 1024 * 1024)) {
+   *        console.log(chunk);
+   *      }
+   */
+  export function iterSync(
+    r: SyncReader,
+    bufSize?: number
+  ): IterableIterator<Uint8Array>;
 
   /** Synchronously open a file and return an instance of `Deno.File`.  The
    * file does not need to previously exist if using the `create` or `createNew`
