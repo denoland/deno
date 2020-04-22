@@ -22,7 +22,7 @@ import * as urlSearchParams from "./web/url_search_params.ts";
 import * as workers from "./web/workers.ts";
 import * as performanceUtil from "./web/performance.ts";
 import * as request from "./web/request.ts";
-import * as streams from "./web/streams/mod.ts";
+import * as readableStream from "./web/streams/readable_stream.ts";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
@@ -223,7 +223,7 @@ export const windowOrWorkerGlobalScopeProperties = {
   FormData: nonEnumerable(formData.FormDataImpl),
   TextEncoder: nonEnumerable(textEncoding.TextEncoder),
   TextDecoder: nonEnumerable(textEncoding.TextDecoder),
-  ReadableStream: nonEnumerable(streams.ReadableStream),
+  ReadableStream: nonEnumerable(readableStream.ReadableStreamImpl),
   Request: nonEnumerable(request.Request),
   Response: nonEnumerable(fetchTypes.Response),
   performance: writable(new performanceUtil.Performance()),

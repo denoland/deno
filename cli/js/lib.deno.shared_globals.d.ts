@@ -245,6 +245,24 @@ interface ReadableStreamDefaultReader<R = any> {
   releaseLock(): void;
 }
 
+interface ReadableStreamReader<R = any> {
+  cancel(): Promise<void>;
+  read(): Promise<ReadableStreamReadResult<R>>;
+  releaseLock(): void;
+}
+
+interface ReadableByteStreamControllerCallback {
+  (controller: ReadableByteStreamController): void | PromiseLike<void>;
+}
+
+interface UnderlyingByteSource {
+  autoAllocateChunkSize?: number;
+  cancel?: ReadableStreamErrorCallback;
+  pull?: ReadableByteStreamControllerCallback;
+  start?: ReadableByteStreamControllerCallback;
+  type: "bytes";
+}
+
 interface UnderlyingSource<R = any> {
   cancel?: ReadableStreamErrorCallback;
   pull?: ReadableStreamDefaultControllerCallback<R>;
@@ -260,11 +278,35 @@ interface ReadableStreamDefaultControllerCallback<R> {
   (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
 }
 
-interface ReadableStreamDefaultController<R> {
-  readonly desiredSize: number;
-  enqueue(chunk?: R): void;
+interface ReadableStreamDefaultController<R = any> {
+  readonly desiredSize: number | null;
   close(): void;
-  error(e?: any): void;
+  enqueue(chunk: R): void;
+  error(error?: any): void;
+}
+
+interface ReadableByteStreamController {
+  readonly byobRequest: undefined;
+  readonly desiredSize: number | null;
+  close(): void;
+  enqueue(chunk: ArrayBufferView): void;
+  error(error?: any): void;
+}
+
+interface PipeOptions {
+  preventAbort?: boolean;
+  preventCancel?: boolean;
+  preventClose?: boolean;
+  signal?: AbortSignal;
+}
+
+interface QueuingStrategySizeCallback<T = any> {
+  (chunk: T): number;
+}
+
+interface QueuingStrategy<T = any> {
+  highWaterMark?: number;
+  size?: QueuingStrategySizeCallback<T>;
 }
 
 /** This Streams API interface represents a readable stream of byte data. The
@@ -273,16 +315,36 @@ interface ReadableStreamDefaultController<R> {
 interface ReadableStream<R = any> {
   readonly locked: boolean;
   cancel(reason?: any): Promise<void>;
-  // TODO(ry) It doesn't seem like Chrome supports this.
+  getIterator(options?: { preventCancel?: boolean }): AsyncIterableIterator<R>;
   // getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
   getReader(): ReadableStreamDefaultReader<R>;
+  pipeThrough<T>(
+    {
+      writable,
+      readable,
+    }: {
+      writable: WritableStream<R>;
+      readable: ReadableStream<T>;
+    },
+    options?: PipeOptions
+  ): ReadableStream<T>;
+  pipeTo(dest: WritableStream<R>, options?: PipeOptions): Promise<void>;
   tee(): [ReadableStream<R>, ReadableStream<R>];
+  [Symbol.asyncIterator](options?: {
+    preventCancel?: boolean;
+  }): AsyncIterableIterator<R>;
 }
 
-declare const ReadableStream: {
+declare var ReadableStream: {
   prototype: ReadableStream;
-  // TODO(ry) This doesn't match lib.dom.d.ts
-  new <R = any>(src?: UnderlyingSource<R>): ReadableStream<R>;
+  new (
+    underlyingSource: UnderlyingByteSource,
+    strategy?: { highWaterMark?: number; size?: undefined }
+  ): ReadableStream<Uint8Array>;
+  new <R = any>(
+    underlyingSource?: UnderlyingSource<R>,
+    strategy?: QueuingStrategy<R>
+  ): ReadableStream<R>;
 };
 
 /** This Streams API interface provides a standard abstraction for writing streaming data to a destination, known as a sink. This object comes with built-in backpressure and queuing. */
