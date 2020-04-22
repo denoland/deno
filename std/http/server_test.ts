@@ -159,6 +159,41 @@ test("ServerRequest.finalize() should consume unread body / content-length", asy
   await req.finalize();
   assertEquals(tr.total, text.length);
 });
+
+test("ServerRequest.finalize() should consume unread body / content-length / multiple requests", async () => {
+  let text = "deno.land";
+  let req = new ServerRequest();
+  req.headers = new Headers();
+  req.headers.set("content-length", "" + text.length);
+  //const tr = totalReader(new Buffer(encode(text)));
+  let buf = new Buffer(encode(text));
+  let reader = new BufReader(buf);
+
+  req.r = reader;
+  req.w = new BufWriter(new Buffer());
+  await req.respond({ status: 200, body: "ok" });
+  assertEquals(buf.length, text.length);
+  await req.finalize();
+  assertEquals(buf.length, 0);
+
+  text = "2nd request";
+  buf.write(encode(text));
+  reader.peek(1);
+
+  req = new ServerRequest();
+  req.headers = new Headers();
+  req.headers.set("content-length", "" + text.length);
+  req.r = reader;
+  req.w = new BufWriter(new Buffer());
+  await req.respond({ status: 200, body: "ok" });
+  console.log("buf.length: " + buf.length);
+  await req.finalize();
+  assertEquals(buf.length, 0);
+
+});
+
+
+
 test("ServerRequest.finalize() should consume unread body / chunked, trailers", async () => {
   const text = [
     "5",

@@ -114,12 +114,17 @@ export class ServerRequest {
   private finalized = false;
   async finalize(): Promise<void> {
     if (this.finalized) return;
-    // Consume unread body
-    if (!this._body) return;
-
-    const buf = new Uint8Array(1024);
-    while ((await this._body.read(buf)) !== Deno.EOF) {}
     this.finalized = true;
+
+    try {
+      await this.r.peek(1);
+    } catch (e) {}
+    // Consume unread body
+    if (this.r.buffered() > 0) {
+      const body = this.body;
+      const buf = new Uint8Array(1024);
+      while ((await body.read(buf)) !== Deno.EOF) { }
+    }
   }
 }
 
