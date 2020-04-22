@@ -233,7 +233,7 @@ impl EsIsolate {
     let scope = cs.enter();
 
     let info = self.modules.get_info(id).expect("ModuleInfo not found");
-    let mut module = info.handle.get(scope).expect("Empty module handle");
+    let module = info.handle.get(scope).expect("Empty module handle");
     let mut status = module.get_status();
 
     if status == v8::ModuleStatus::Instantiated {
@@ -312,7 +312,7 @@ impl EsIsolate {
       .dyn_import_map
       .remove(&id)
       .expect("Invalid dyn import id");
-    let mut resolver = resolver_handle.get(scope).unwrap();
+    let resolver = resolver_handle.get(scope).unwrap();
     resolver_handle.reset(scope);
 
     let exception = err
@@ -348,7 +348,7 @@ impl EsIsolate {
       .dyn_import_map
       .remove(&id)
       .expect("Invalid dyn import id");
-    let mut resolver = resolver_handle.get(scope).unwrap();
+    let resolver = resolver_handle.get(scope).unwrap();
     resolver_handle.reset(scope);
     let info = self
       .modules

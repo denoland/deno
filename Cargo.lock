@@ -2065,9 +2065,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.3.11"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54e2d68d8404b3902796736c0d3dec8073b35ba02413aa126e15ad09e9e70842"
+checksum = "d7ccfa96e1b3ce6f807a93b58d38fc5e984e617506e52cb336888ab890cd884a"
 dependencies = [
  "bitflags",
  "cargo_gn",

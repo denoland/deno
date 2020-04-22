@@ -8,6 +8,7 @@ use crate::js_errors::JSError;
 use rusty_v8 as v8;
 use v8::MapFnTo;
 
+use std::cell::Cell;
 use std::convert::TryFrom;
 use std::option::Option;
 use url::Url;
@@ -236,9 +237,8 @@ pub fn boxed_slice_to_uint8array<'sc>(
   assert!(!buf.is_empty());
   let buf_len = buf.len();
   let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
-  let mut backing_store_shared = backing_store.make_shared();
-  let ab =
-    v8::ArrayBuffer::with_backing_store(scope, &mut backing_store_shared);
+  let backing_store_shared = backing_store.make_shared();
+  let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
   v8::Uint8Array::new(ab, 0, buf_len).expect("Failed to create UintArray8")
 }
 
@@ -271,7 +271,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let host_defined_options = referrer.get_host_defined_options();
   assert_eq!(host_defined_options.length(), 0);
 
-  let mut resolver = v8::PromiseResolver::new(scope, context).unwrap();
+  let resolver = v8::PromiseResolver::new(scope, context).unwrap();
   let promise = resolver.get_promise(scope);
 
   let mut resolver_handle = v8::Global::new();
@@ -355,6 +355,29 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   };
 }
 
+pub(crate) unsafe fn get_backing_store_slice(
+  backing_store: &v8::SharedRef<v8::BackingStore>,
+  byte_offset: usize,
+  byte_length: usize,
+) -> &[u8] {
+  let cells: *const [Cell<u8>] =
+    &backing_store[byte_offset..byte_offset + byte_length];
+  let bytes = cells as *const [u8];
+  &*bytes
+}
+
+#[allow(clippy::mut_from_ref)]
+pub(crate) unsafe fn get_backing_store_slice_mut(
+  backing_store: &v8::SharedRef<v8::BackingStore>,
+  byte_offset: usize,
+  byte_length: usize,
+) -> &mut [u8] {
+  let cells: *const [Cell<u8>] =
+    &backing_store[byte_offset..byte_offset + byte_length];
+  let bytes = cells as *const _ as *mut [u8];
+  &mut *bytes
+}
+
 fn print(
   scope: v8::FunctionCallbackScope,
   args: v8::FunctionCallbackArguments,
@@ -416,26 +439,27 @@ fn send(
     unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
   assert!(!deno_isolate.global_context.is_empty());
 
-  let r = v8::Local::<v8::Uint32>::try_from(args.get(0));
-
-  if let Err(err) = r {
-    let s = format!("bad op id {}", err);
-    let msg = v8::String::new(scope, &s).unwrap();
-    scope.isolate().throw_exception(msg.into());
-    return;
-  }
-
-  let op_id = r.unwrap().value() as u32;
-
-  let control = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(1)) {
-    Ok(view) => {
-      let byte_offset = view.byte_offset();
-      let byte_length = view.byte_length();
-      let backing_store = view.buffer().unwrap().get_backing_store();
-      let buf = unsafe { &**backing_store.get() };
-      &buf[byte_offset..byte_offset + byte_length]
+  let op_id = match v8::Local::<v8::Uint32>::try_from(args.get(0)) {
+    Ok(op_id) => op_id.value() as u32,
+    Err(err) => {
+      let msg = format!("invalid op id: {}", err);
+      let msg = v8::String::new(scope, &msg).unwrap();
+      scope.isolate().throw_exception(msg.into());
+      return;
     }
-    Err(..) => &[],
+  };
+
+  let control_backing_store: v8::SharedRef<v8::BackingStore>;
+  let control = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(1)) {
+    Ok(view) => unsafe {
+      control_backing_store = view.buffer().unwrap().get_backing_store();
+      get_backing_store_slice(
+        &control_backing_store,
+        view.byte_offset(),
+        view.byte_length(),
+      )
+    },
+    Err(_) => &[],
   };
 
   let zero_copy: Option<ZeroCopyBuf> =
@@ -654,9 +678,8 @@ fn encode(
     let buf_len = text_bytes.len();
     let backing_store =
       v8::ArrayBuffer::new_backing_store_from_boxed_slice(text_bytes);
-    let mut backing_store_shared = backing_store.make_shared();
-    let ab =
-      v8::ArrayBuffer::with_backing_store(scope, &mut backing_store_shared);
+    let backing_store_shared = backing_store.make_shared();
+    let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
     v8::Uint8Array::new(ab, 0, buf_len).expect("Failed to create UintArray8")
   };
 
@@ -668,20 +691,23 @@ fn decode(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let buf = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(0)) {
-    Ok(view) => {
-      let byte_offset = view.byte_offset();
-      let byte_length = view.byte_length();
-      let backing_store = view.buffer().unwrap().get_backing_store();
-      let buf = unsafe { &**backing_store.get() };
-      &buf[byte_offset..byte_offset + byte_length]
-    }
-    Err(..) => {
+  let view = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(0)) {
+    Ok(view) => view,
+    Err(_) => {
       let msg = v8::String::new(scope, "Invalid argument").unwrap();
       let exception = v8::Exception::type_error(scope, msg);
       scope.isolate().throw_exception(exception);
       return;
     }
+  };
+
+  let backing_store = view.buffer().unwrap().get_backing_store();
+  let buf = unsafe {
+    get_backing_store_slice(
+      &backing_store,
+      view.byte_offset(),
+      view.byte_length(),
+    )
   };
 
   let text_str =
@@ -791,7 +817,7 @@ fn get_promise_details(
   assert!(!deno_isolate.global_context.is_empty());
   let context = deno_isolate.global_context.get(scope).unwrap();
 
-  let mut promise = match v8::Local::<v8::Promise>::try_from(args.get(0)) {
+  let promise = match v8::Local::<v8::Promise>::try_from(args.get(0)) {
     Ok(val) => val,
     Err(_) => {
       let msg = v8::String::new(scope, "Invalid argument").unwrap();
