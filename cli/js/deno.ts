@@ -12,7 +12,7 @@ export { build, OperatingSystem, Arch } from "./build.ts";
 export { chmodSync, chmod } from "./ops/fs/chmod.ts";
 export { chownSync, chown } from "./ops/fs/chown.ts";
 export { transpileOnly, compile, bundle } from "./compiler/api.ts";
-export { inspect } from "./web/console.ts";
+export { customInspect, inspect } from "./web/console.ts";
 export { copyFileSync, copyFile } from "./ops/fs/copy_file.ts";
 export {
   Diagnostic,
@@ -38,6 +38,7 @@ export {
 } from "./files.ts";
 export { read, readSync, write, writeSync } from "./ops/io.ts";
 export { FsEvent, watchFs } from "./ops/fs_events.ts";
+export { internalSymbol as internal } from "./internals.ts";
 export {
   EOF,
   copy,
@@ -123,5 +124,3 @@ export { core } from "./core.ts";
 export let pid: number;
 
 export let noColor: boolean;
-
-export { symbols } from "./symbols.ts";
