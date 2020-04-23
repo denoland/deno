@@ -100,7 +100,7 @@ export function generate(
 
   b[i++] = clockseq & 0xff;
 
-  for (let n = 0; n < 16; ++n) {
+  for (let n = 0; n < 6; ++n) {
     b[i + n] = node[n];
   }
 
