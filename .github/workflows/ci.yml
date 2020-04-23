@@ -107,13 +107,10 @@ jobs:
             target/*/.*
             target/*/build
             target/*/deps
-            target/*/gn_out
           key:
             ${{ matrix.config.os }}-${{ matrix.config.kind }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            ${{ matrix.config.os }}-${{ matrix.config.kind }}-${{ hashFiles('Cargo.lock') }}
             ${{ matrix.config.os }}-${{ matrix.config.kind }}-
-            ${{ matrix.config.os }}-
 
       - name: lint.py
         if: matrix.config.kind == 'lint'

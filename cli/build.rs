@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use deno_core::include_crate_modules;
-use deno_core::Isolate;
+use deno_core::CoreIsolate;
 use deno_core::StartupData;
 use std::collections::HashMap;
 use std::env;
@@ -48,10 +48,10 @@ fn main() {
   .expect("Bundle compilation failed");
   assert!(bundle_path.exists());
 
-  let runtime_isolate = &mut Isolate::new(StartupData::None, true);
+  let mut runtime_isolate = CoreIsolate::new(StartupData::None, true);
 
   deno_typescript::mksnapshot_bundle(
-    runtime_isolate,
+    &mut runtime_isolate,
     &snapshot_path,
     &bundle_path,
     &main_module_name,
@@ -71,7 +71,7 @@ fn main() {
   .expect("Bundle compilation failed");
   assert!(bundle_path.exists());
 
-  let runtime_isolate = &mut Isolate::new(StartupData::None, true);
+  let mut runtime_isolate = CoreIsolate::new(StartupData::None, true);
 
   let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
   custom_libs.insert(
@@ -96,7 +96,7 @@ fn main() {
   );
 
   deno_typescript::mksnapshot_bundle_ts(
-    runtime_isolate,
+    &mut runtime_isolate,
     &snapshot_path,
     &bundle_path,
     &main_module_name,

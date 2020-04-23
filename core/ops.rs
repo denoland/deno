@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::Isolate;
+use crate::CoreIsolate;
 use crate::ZeroCopyBuf;
 use futures::Future;
 use std::collections::HashMap;
@@ -22,7 +22,7 @@ pub enum Op {
 
 /// Main type describing op
 pub type OpDispatcher =
-  dyn Fn(&mut Isolate, &[u8], Option<ZeroCopyBuf>) -> Op + 'static;
+  dyn Fn(&mut CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op + 'static;
 
 #[derive(Default)]
 pub struct OpRegistry {
@@ -43,7 +43,7 @@ impl OpRegistry {
 
   pub fn register<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&mut Isolate, &[u8], Option<ZeroCopyBuf>) -> Op + 'static,
+    F: Fn(&mut CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op + 'static,
   {
     let op_id = self.dispatchers.len() as u32;
 
@@ -86,7 +86,7 @@ fn test_op_registry() {
   expected.insert("test".to_string(), 1);
   assert_eq!(op_registry.name_to_id, expected);
 
-  let mut isolate = Isolate::new(crate::StartupData::None, false);
+  let mut isolate = CoreIsolate::new(crate::StartupData::None, false);
 
   let dispatch = op_registry.get(test_id).unwrap();
   let res = dispatch(&mut isolate, &[], None);
@@ -126,7 +126,7 @@ fn register_op_during_call() {
   };
   assert!(test_id != 0);
 
-  let mut isolate = Isolate::new(crate::StartupData::None, false);
+  let mut isolate = CoreIsolate::new(crate::StartupData::None, false);
 
   let dispatcher1 = {
     let g = op_registry.lock().unwrap();

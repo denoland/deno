@@ -11,12 +11,15 @@ use crate::tokio_util::create_basic_runtime;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
-use deno_core::*;
+use deno_core::CoreIsolate;
+use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
+use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::convert::From;
 use std::thread::JoinHandle;
 
-pub fn init(i: &mut Isolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_create_worker", s.stateful_json_op(op_create_worker));
   i.register_op(
     "op_host_terminate_worker",

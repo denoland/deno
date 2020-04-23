@@ -607,7 +607,7 @@ declare namespace Deno {
   /** **UNSTABLE**: new API, yet to be vetted
    * Turns a SyncReader, `r`, into an iterator.
    *
-   *      let f = await open("/etc/passwd");
+   *      let f = openSync("/etc/passwd");
    *      for (const chunk of iterSync(reader)) {
    *        console.log(chunk);
    *      }
@@ -616,7 +616,7 @@ declare namespace Deno {
    * Second argument can be used to tune size of a buffer.
    * Default size of the buffer is 1024 bytes.
    *
-   *      let f = await open("/etc/passwd");
+   *      let f = openSync("/etc/passwd");
    *      for (const chunk of iterSync(reader, 1024 * 1024)) {
    *        console.log(chunk);
    *      }

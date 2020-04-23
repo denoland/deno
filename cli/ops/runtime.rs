@@ -5,7 +5,8 @@ use crate::op_error::OpError;
 use crate::state::State;
 use crate::version;
 use crate::DenoSubcommand;
-use deno_core::*;
+use deno_core::CoreIsolate;
+use deno_core::ZeroCopyBuf;
 use std::env;
 
 /// BUILD_OS and BUILD_ARCH match the values in Deno.build. See js/build.ts.
@@ -18,7 +19,7 @@ static BUILD_OS: &str = "win";
 #[cfg(target_arch = "x86_64")]
 static BUILD_ARCH: &str = "x64";
 
-pub fn init(i: &mut Isolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_start", s.stateful_json_op(op_start));
   i.register_op("op_metrics", s.stateful_json_op(op_metrics));
 }

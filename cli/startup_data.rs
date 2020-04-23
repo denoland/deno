@@ -4,6 +4,7 @@ use deno_core::Script;
 
 use crate::js::CLI_SNAPSHOT;
 use crate::js::COMPILER_SNAPSHOT;
+use deno_core::Snapshot;
 use deno_core::StartupData;
 
 #[cfg(feature = "no-snapshot-init")]
@@ -29,7 +30,7 @@ pub fn deno_isolate_init() -> StartupData<'static> {
   #[cfg(feature = "check-only")]
   let data = b"";
 
-  StartupData::Snapshot(data)
+  StartupData::Snapshot(Snapshot::Static(data))
 }
 
 #[cfg(feature = "no-snapshot-init")]
@@ -55,5 +56,5 @@ pub fn compiler_isolate_init() -> StartupData<'static> {
   #[cfg(feature = "check-only")]
   let data = b"";
 
-  StartupData::Snapshot(data)
+  StartupData::Snapshot(Snapshot::Static(data))
 }
