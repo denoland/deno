@@ -1,4 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+/** Get log level numeric values through enum constants
+ */
 export enum LogLevels {
   NOTSET = 0,
   DEBUG = 10,
@@ -8,10 +10,12 @@ export enum LogLevels {
   CRITICAL = 50,
 }
 
+/** Permitted log level names */
 export const LogLevelNames = Object.keys(LogLevels).filter((key) =>
   isNaN(Number(key))
 );
 
+/** Union of valid log level strings */
 export type LogLevel = keyof typeof LogLevels;
 
 const byLevel: Record<string, LogLevel> = {
@@ -23,6 +27,9 @@ const byLevel: Record<string, LogLevel> = {
   [String(LogLevels.CRITICAL)]: "CRITICAL",
 };
 
+/** Returns the numeric log level associated with the passed,
+ * stringy log level name.
+ */
 export function getLevelByName(name: LogLevel): number {
   switch (name) {
     case "NOTSET":
@@ -42,6 +49,7 @@ export function getLevelByName(name: LogLevel): number {
   }
 }
 
+/** Returns the stringy log level name provided the numeric log level */
 export function getLevelName(level: number): LogLevel {
   const levelName = byLevel[level];
   if (levelName) {
