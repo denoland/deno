@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::DocParser;
 use crate::colors;
-use serde_json;
 use serde_json::json;
 
 use super::parser::DocFileLoader;
