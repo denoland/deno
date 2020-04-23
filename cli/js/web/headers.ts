@@ -14,6 +14,8 @@ function isHeaders(value: any): value is Headers {
   return value instanceof Headers;
 }
 
+export const cookiesIteratorSymbol = Symbol("Deno.cookiesIterator");
+
 const headerMap = Symbol("header map");
 const cookieMap = Symbol("cookie map");
 
@@ -96,7 +98,7 @@ class HeadersBase {
     return `Headers {${output}}`;
   }
 
-  cookies(): IterableIterator<string> {
+  [cookiesIteratorSymbol](): IterableIterator<string> {
     return this[cookieMap].values();
   }
 

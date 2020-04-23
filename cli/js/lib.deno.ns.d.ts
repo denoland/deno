@@ -2871,6 +2871,8 @@ declare namespace Deno {
      * called when `Deno.inspect()` is called, or when the object is logged to
      * the console. */
     readonly customInspect: unique symbol;
+    /** Symbol to access Headers' cookies iterator */
+    readonly cookiesIterator: unique symbol;
     // TODO(ry) move EOF here?
   };
 }
