@@ -281,10 +281,10 @@ export class MultipartReader {
    * null value means parsing or writing to file was failed in some reason.
    * @param maxMemory maximum memory size to store file in memory. bytes. @default 1048576 (1MB)
    *  */
-  async readForm(maxMemory = 10 << 20): Promise<MultipartFormData> {
+  async readForm(maxMemory = 1 << 20): Promise<MultipartFormData> {
     const fileMap = new Map<string, FormFile>();
     const valueMap = new Map<string, string>();
-    let maxValueBytes = maxMemory + (10 << 20);
+    let maxValueBytes = maxMemory + (1 << 20);
     const buf = new Buffer(new Uint8Array(maxValueBytes));
     for (;;) {
       const p = await this.nextPart();
