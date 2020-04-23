@@ -319,11 +319,7 @@ export class MultipartReader {
           postfix: ext,
         });
         try {
-          const size = await copyN(
-            file,
-            new MultiReader(buf, p),
-            maxValueBytes
-          );
+          const size = await copyN(file, new MultiReader(buf, p), n);
           file.close();
           formFile = {
             filename: p.fileName,
