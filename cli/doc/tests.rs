@@ -1104,6 +1104,99 @@ export default class Foobar {
 }
 
 #[tokio::test]
+async fn export_default_interface() {
+  let source_code = r#"
+/**
+ * Interface js doc
+ */
+export default interface Reader {
+    /** Read n bytes */
+    read?(buf: Uint8Array, something: unknown): Promise<number>
+}
+    "#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  assert_eq!(entries.len(), 1);
+  let entry = &entries[0];
+  let expected_json = json!({
+      "kind": "interface",
+      "name": "default",
+      "location": {
+        "filename": "test.ts",
+        "line": 5,
+        "col": 0
+      },
+      "jsDoc": "Interface js doc",
+      "interfaceDef": {
+        "extends": [],
+        "methods": [
+          {
+            "name": "read",
+            "location": {
+              "filename": "test.ts",
+              "line": 7,
+              "col": 4
+            },
+            "optional": true,
+            "jsDoc": "Read n bytes",
+            "params": [
+              {
+                "name": "buf",
+                "kind": "identifier",
+                "optional": false,
+                "tsType": {
+                  "repr": "Uint8Array",
+                  "kind": "typeRef",
+                  "typeRef": {
+                    "typeParams": null,
+                    "typeName": "Uint8Array"
+                  }
+                }
+              },
+              {
+                "name": "something",
+                "kind": "identifier",
+                "optional": false,
+                "tsType": {
+                  "repr": "unknown",
+                  "kind": "keyword",
+                  "keyword": "unknown"
+                }
+              }
+            ],
+            "typeParams": [],
+            "returnType": {
+              "repr": "Promise",
+              "kind": "typeRef",
+              "typeRef": {
+                "typeParams": [
+                  {
+                    "repr": "number",
+                    "kind": "keyword",
+                    "keyword": "number"
+                  }
+                ],
+                "typeName": "Promise"
+              }
+            }
+          }
+        ],
+        "properties": [],
+        "callSignatures": [],
+        "typeParams": [],
+    }
+  });
+  let actual = serde_json::to_value(entry).unwrap();
+  assert_eq!(actual, expected_json);
+
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("interface default")
+  );
+}
+
+#[tokio::test]
 async fn optional_return_type() {
   let source_code = r#"
   export function foo(a: number) {
