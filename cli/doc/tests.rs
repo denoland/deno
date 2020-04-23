@@ -970,21 +970,11 @@ declare namespace RootNs {
 }
 
 #[tokio::test]
-async fn export_default() {
+async fn export_default_fn() {
   let source_code = r#"
-function foo(a: number) {
+export default function foo(a: number) {
   return a;
 }
-
-const bar = "bar";
-
-var fizz = "buzz";
-
-export default {
-  fooFn: foo,
-  bar,
-  fizz,
-};
     "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
@@ -993,11 +983,11 @@ export default {
   let entry = &entries[0];
   let expected_json = json!({
     "kind": "function",
-    "name": "foo",
+    "name": "default",
     "location": {
       "filename": "test.ts",
       "line": 2,
-      "col": 2
+      "col": 15
     },
     "jsDoc": null,
     "functionDef": {
@@ -1024,10 +1014,9 @@ export default {
 
   assert!(
     colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("function foo(a: number)")
+      .contains("function default(a: number)")
   );
 }
-
 
 #[tokio::test]
 async fn optional_return_type() {

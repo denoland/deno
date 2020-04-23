@@ -14,6 +14,7 @@ use crate::swc_common::SourceMap;
 use crate::swc_common::Span;
 use crate::swc_ecma_ast;
 use crate::swc_ecma_ast::Decl;
+use crate::swc_ecma_ast::DefaultDecl;
 use crate::swc_ecma_ast::ModuleDecl;
 use crate::swc_ecma_ast::Stmt;
 use crate::swc_ecma_parser::lexer::Lexer;
@@ -309,15 +310,50 @@ impl DocParser {
           self,
           export_decl,
         )]
-      },
+      }
       ModuleDecl::ExportDefaultDecl(export_default_decl) => {
-        eprintln!("export default decl {:#?}", export_default_decl);
-        vec![]
-      },
+        let (js_doc, location) =
+          self.details_for_span(export_default_decl.span);
+        let name = "default".to_string();
+
+        let maybe_doc_node = match &export_default_decl.decl {
+          DefaultDecl::Class(class_expr) => {
+            eprintln!("class expr {:#?}", class_expr);
+            None
+          }
+          DefaultDecl::Fn(fn_expr) => {
+            let function_def =
+              crate::doc::function::function_to_function_def(&fn_expr.function);
+            Some(DocNode {
+              kind: DocNodeKind::Function,
+              name,
+              location,
+              js_doc,
+              class_def: None,
+              function_def: Some(function_def),
+              variable_def: None,
+              enum_def: None,
+              type_alias_def: None,
+              namespace_def: None,
+              interface_def: None,
+            })
+          }
+          DefaultDecl::TsInterfaceDecl(interface_decl) => {
+            eprintln!("interface decl {:#?}", interface_decl);
+            None
+          }
+        };
+
+        if let Some(doc_node) = maybe_doc_node {
+          vec![doc_node]
+        } else {
+          vec![]
+        }
+      }
       ModuleDecl::ExportDefaultExpr(export_default_expr) => {
         eprintln!("export default expr {:#?}", export_default_expr);
         vec![]
-      },
+      }
       _ => vec![],
     }
   }
