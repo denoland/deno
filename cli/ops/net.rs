@@ -4,7 +4,9 @@ use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
-use deno_core::*;
+use deno_core::CoreIsolate;
+use deno_core::ResourceTable;
+use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
 use std::convert::From;
@@ -19,7 +21,7 @@ use tokio::net::UdpSocket;
 #[cfg(unix)]
 use super::net_unix;
 
-pub fn init(i: &mut Isolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_accept", s.stateful_json_op2(op_accept));
   i.register_op("op_connect", s.stateful_json_op2(op_connect));
   i.register_op("op_shutdown", s.stateful_json_op2(op_shutdown));
@@ -35,7 +37,7 @@ struct AcceptArgs {
 }
 
 fn accept_tcp(
-  isolate: &mut deno_core::Isolate,
+  isolate: &mut CoreIsolate,
   args: AcceptArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
@@ -95,7 +97,7 @@ fn accept_tcp(
 }
 
 fn op_accept(
-  isolate: &mut deno_core::Isolate,
+  isolate: &mut CoreIsolate,
   _state: &State,
   args: Value,
   zero_copy: Option<ZeroCopyBuf>,
@@ -119,7 +121,7 @@ struct ReceiveArgs {
 }
 
 fn receive_udp(
-  isolate: &mut deno_core::Isolate,
+  isolate: &mut CoreIsolate,
   _state: &State,
   args: ReceiveArgs,
   zero_copy: Option<ZeroCopyBuf>,
@@ -156,7 +158,7 @@ fn receive_udp(
 }
 
 fn op_receive(
-  isolate: &mut deno_core::Isolate,
+  isolate: &mut CoreIsolate,
   state: &State,
   args: Value,
   zero_copy: Option<ZeroCopyBuf>,
@@ -185,7 +187,7 @@ struct SendArgs {
 }
 
 fn op_send(
-  isolate: &mut deno_core::Isolate,
+  isolate: &mut CoreIsolate,
   state: &State,
   args: Value,
   zero_copy: Option<ZeroCopyBuf>,
@@ -254,7 +256,7 @@ struct ConnectArgs {
 }
 
 fn op_connect(
-  isolate: &mut deno_core::Isolate,
+  isolate: &mut CoreIsolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
@@ -339,7 +341,7 @@ struct ShutdownArgs {
 }
 
 fn op_shutdown(
-  isolate: &mut deno_core::Isolate,
+  isolate: &mut CoreIsolate,
   _state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
@@ -479,7 +481,7 @@ fn listen_udp(
 }
 
 fn op_listen(
-  isolate: &mut deno_core::Isolate,
+  isolate: &mut CoreIsolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,

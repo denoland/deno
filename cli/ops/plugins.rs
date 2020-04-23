@@ -3,15 +3,15 @@ use crate::fs as deno_fs;
 use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
-use deno_core::Isolate;
+use deno_core::CoreIsolate;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use std::ffi::OsStr;
 use std::path::Path;
 
-pub type PluginInitFn = fn(isolate: &mut deno_core::Isolate);
+pub type PluginInitFn = fn(isolate: &mut CoreIsolate);
 
-pub fn init(i: &mut Isolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op(
     "op_open_plugin",
     s.core_op(json_op(s.stateful_op2(op_open_plugin))),
@@ -34,7 +34,7 @@ struct OpenPluginArgs {
 }
 
 pub fn op_open_plugin(
-  isolate: &mut deno_core::Isolate,
+  isolate: &mut CoreIsolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,

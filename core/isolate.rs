@@ -140,15 +140,15 @@ type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
 type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
-/// Worker" concept in the DOM. An Isolate is a Future that can be used with
-/// Tokio.  The Isolate future complete when there is an error or when all
+/// Worker" concept in the DOM. An CoreIsolate is a Future that can be used with
+/// Tokio.  The CoreIsolate future complete when there is an error or when all
 /// pending ops have completed.
 ///
 /// Ops are created in JavaScript by calling Deno.core.dispatch(), and in Rust
 /// by implementing dispatcher function that takes control buffer and optional zero copy buffer
 /// as arguments. An async Op corresponds exactly to a Promise in JavaScript.
 #[allow(unused)]
-pub struct Isolate {
+pub struct CoreIsolate {
   pub v8_isolate: Option<v8::OwnedIsolate>,
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
@@ -171,7 +171,7 @@ pub struct Isolate {
   error_handler: Option<Box<IsolateErrorHandleFn>>,
 }
 
-impl Drop for Isolate {
+impl Drop for CoreIsolate {
   fn drop(&mut self) {
     if let Some(creator) = self.snapshot_creator.take() {
       // TODO(ry): in rusty_v8, `SnapShotCreator::get_owned_isolate()` returns
@@ -212,7 +212,7 @@ pub unsafe fn v8_init() {
   v8::V8::set_flags_from_command_line(argv);
 }
 
-impl Isolate {
+impl CoreIsolate {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
   pub fn new(startup_data: StartupData, will_snapshot: bool) -> Box<Self> {
@@ -233,7 +233,7 @@ impl Isolate {
       let mut creator =
         v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
       let isolate = unsafe { creator.get_owned_isolate() };
-      let mut isolate = Isolate::setup_isolate(isolate);
+      let mut isolate = CoreIsolate::setup_isolate(isolate);
 
       let mut hs = v8::HandleScope::new(&mut isolate);
       let scope = hs.enter();
@@ -257,7 +257,7 @@ impl Isolate {
       };
 
       let isolate = v8::Isolate::new(params);
-      let mut isolate = Isolate::setup_isolate(isolate);
+      let mut isolate = CoreIsolate::setup_isolate(isolate);
 
       let mut hs = v8::HandleScope::new(&mut isolate);
       let scope = hs.enter();
@@ -314,7 +314,7 @@ impl Isolate {
     boxed_isolate
   }
 
-  pub fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
+  fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(bindings::promise_reject_callback);
     isolate
@@ -327,7 +327,7 @@ impl Isolate {
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
   pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&mut Isolate, &[u8], Option<ZeroCopyBuf>) -> Op + 'static,
+    F: Fn(&mut CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op + 'static,
   {
     self.op_registry.register(name, op)
   }
@@ -400,7 +400,7 @@ impl Isolate {
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is JSError, however it may be a
-  /// different type if Isolate::set_js_error_create_fn() has been used.
+  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
   pub fn execute(
     &mut self,
     js_filename: &str,
@@ -449,7 +449,7 @@ impl Isolate {
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is JSError, however it may be a
-  /// different type if Isolate::set_js_error_create_fn() has been used.
+  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
   pub fn snapshot(&mut self) -> v8::StartupData {
     assert!(self.snapshot_creator.is_some());
 
@@ -473,7 +473,7 @@ impl Isolate {
   }
 }
 
-impl Future for Isolate {
+impl Future for CoreIsolate {
   type Output = Result<(), ErrBox>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -727,7 +727,7 @@ pub mod tests {
       }
     }
     panic!(
-      "Isolate still not ready after polling {} times.",
+      "CoreIsolate still not ready after polling {} times.",
       max_poll_count
     )
   }
@@ -741,13 +741,13 @@ pub mod tests {
     OverflowResAsync,
   }
 
-  pub fn setup(mode: Mode) -> (Box<Isolate>, Arc<AtomicUsize>) {
+  pub fn setup(mode: Mode) -> (Box<CoreIsolate>, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let mut isolate = Isolate::new(StartupData::None, false);
+    let mut isolate = CoreIsolate::new(StartupData::None, false);
 
-    let dispatcher = move |_isolate: &mut Isolate,
+    let dispatcher = move |_isolate: &mut CoreIsolate,
                            control: &[u8],
                            _zero_copy: Option<ZeroCopyBuf>|
           -> Op {
@@ -1141,7 +1141,7 @@ pub mod tests {
 
   #[test]
   fn syntax_error() {
-    let mut isolate = Isolate::new(StartupData::None, false);
+    let mut isolate = CoreIsolate::new(StartupData::None, false);
     let src = "hocuspocus(";
     let r = isolate.execute("i.js", src);
     let e = r.unwrap_err();
@@ -1166,13 +1166,13 @@ pub mod tests {
   #[test]
   fn will_snapshot() {
     let snapshot = {
-      let mut isolate = Isolate::new(StartupData::None, true);
+      let mut isolate = CoreIsolate::new(StartupData::None, true);
       js_check(isolate.execute("a.js", "a = 1 + 2"));
       isolate.snapshot()
     };
 
     let startup_data = StartupData::Snapshot(Snapshot::JustCreated(snapshot));
-    let mut isolate2 = Isolate::new(startup_data, false);
+    let mut isolate2 = CoreIsolate::new(startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 }

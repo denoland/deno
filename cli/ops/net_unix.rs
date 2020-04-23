@@ -1,9 +1,10 @@
 use super::dispatch_json::{Deserialize, JsonOp};
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
+use deno_core::CoreIsolate;
+use deno_core::ResourceTable;
+use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
-
-use deno_core::*;
 use std::fs::remove_file;
 use std::os::unix;
 pub use std::path::Path;
@@ -26,7 +27,7 @@ pub struct UnixListenArgs {
 }
 
 pub fn accept_unix(
-  isolate: &mut deno_core::Isolate,
+  isolate: &mut CoreIsolate,
   rid: u32,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
@@ -77,7 +78,7 @@ pub fn accept_unix(
 }
 
 pub fn receive_unix_packet(
-  isolate: &mut deno_core::Isolate,
+  isolate: &mut CoreIsolate,
   rid: u32,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {

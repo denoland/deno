@@ -2,13 +2,14 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::op_error::OpError;
 use crate::state::State;
-use deno_core::*;
+use deno_core::CoreIsolate;
+use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
 use std::env;
 use std::io::{Error, ErrorKind};
 use url::Url;
 
-pub fn init(i: &mut Isolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_exit", s.stateful_json_op(op_exit));
   i.register_op("op_env", s.stateful_json_op(op_env));
   i.register_op("op_exec_path", s.stateful_json_op(op_exec_path));

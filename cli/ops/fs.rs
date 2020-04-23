@@ -7,7 +7,7 @@ use crate::fs::resolve_from_cwd;
 use crate::op_error::OpError;
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
-use deno_core::Isolate;
+use deno_core::CoreIsolate;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::convert::From;
@@ -17,7 +17,7 @@ use std::time::UNIX_EPOCH;
 
 use rand::{thread_rng, Rng};
 
-pub fn init(i: &mut Isolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op2(op_open));
   i.register_op("op_seek", s.stateful_json_op2(op_seek));
   i.register_op("op_umask", s.stateful_json_op(op_umask));
@@ -68,7 +68,7 @@ struct OpenOptions {
 }
 
 fn op_open(
-  isolate: &mut deno_core::Isolate,
+  isolate: &mut CoreIsolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
@@ -205,7 +205,7 @@ struct SeekArgs {
 }
 
 fn op_seek(
-  isolate: &mut deno_core::Isolate,
+  isolate: &mut CoreIsolate,
   _state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
