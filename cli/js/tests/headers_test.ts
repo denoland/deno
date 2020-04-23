@@ -84,8 +84,8 @@ unitTest(function newHeaderWithHeadersInstanceWithCookies(): void {
   for (const name in headerDict) {
     assertEquals(headers2.get(name), String(headerDict[name]));
   }
-
-  for (const cookie of headers2.cookies())
+  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+  for (const cookie of headers2[Deno.symbols.cookiesIterator]())
     assertEquals(cookie, expectedCookieValue);
 });
 
@@ -94,7 +94,8 @@ unitTest(function newHeaderWithCookieHeadersArray(): void {
   for (const [name, value] of cookiesHeadersArray) {
     if (name !== "set-cookie") assertEquals(headers.get(name), value);
   }
-  assert([...headers.cookies()].length === 2);
+  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+  assert([...headers[Deno.symbols.cookiesIterator]()].length === 2);
 });
 
 unitTest(function headerAppendSuccess(): void {
@@ -137,7 +138,8 @@ unitTest(function headerDeleteCookiesSuccess(): void {
   const headers = new Headers(cookiesHeadersArray);
   headers.set("Set-Cookie", "foo=bar");
   headers.delete("Set-Cookie");
-  assert([...headers.cookies()].length === 0);
+  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+  assert([...headers[Deno.symbols.cookiesIterator]()].length === 0);
 });
 
 unitTest(function headerGetSuccess(): void {
@@ -191,8 +193,8 @@ unitTest(function headerCookiesSuccess(): void {
   };
 
   for (const cookie of Object.keys(cookies)) headers.set("Set-Cookie", cookie);
-
-  for (const cookie of headers.cookies()) {
+  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+  for (const cookie of headers[Deno.symbols.cookiesIterator]()) {
     assert(cookies[cookie]);
   }
 });
