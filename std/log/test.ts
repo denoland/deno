@@ -4,7 +4,7 @@ import { assertEquals, assertThrows } from "../testing/asserts.ts";
 import * as log from "./mod.ts";
 import {
   LogLevelNames,
-  LogLevel,
+  LevelName,
   getLevelByName,
   getLevelName,
 } from "./levels.ts";
@@ -34,7 +34,7 @@ test(async function defaultHandlers(): Promise<void> {
     }
 
     const logger = loggers[levelName];
-    const handler = new TestHandler(levelName as LogLevel);
+    const handler = new TestHandler(levelName as LevelName);
 
     await log.setup({
       handlers: {
@@ -42,7 +42,7 @@ test(async function defaultHandlers(): Promise<void> {
       },
       loggers: {
         default: {
-          level: levelName as LogLevel,
+          level: levelName as LevelName,
           handlers: ["default"],
         },
       },
@@ -110,6 +110,6 @@ test(async function getLoggerUnknown(): Promise<void> {
 });
 
 test(function getInvalidLoggerLevels(): void {
-  assertThrows(() => getLevelByName("FAKE_LOG_LEVEL" as LogLevel));
+  assertThrows(() => getLevelByName("FAKE_LOG_LEVEL" as LevelName));
   assertThrows(() => getLevelName(5000));
 });

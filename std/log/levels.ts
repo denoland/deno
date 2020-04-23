@@ -16,9 +16,9 @@ export const LogLevelNames = Object.keys(LogLevels).filter((key) =>
 );
 
 /** Union of valid log level strings */
-export type LogLevel = keyof typeof LogLevels;
+export type LevelName = keyof typeof LogLevels;
 
-const byLevel: Record<string, LogLevel> = {
+const byLevel: Record<string, LevelName> = {
   [String(LogLevels.NOTSET)]: "NOTSET",
   [String(LogLevels.DEBUG)]: "DEBUG",
   [String(LogLevels.INFO)]: "INFO",
@@ -30,7 +30,7 @@ const byLevel: Record<string, LogLevel> = {
 /** Returns the numeric log level associated with the passed,
  * stringy log level name.
  */
-export function getLevelByName(name: LogLevel): number {
+export function getLevelByName(name: LevelName): number {
   switch (name) {
     case "NOTSET":
       return LogLevels.NOTSET;
@@ -50,7 +50,7 @@ export function getLevelByName(name: LogLevel): number {
 }
 
 /** Returns the stringy log level name provided the numeric log level */
-export function getLevelName(level: number): LogLevel {
+export function getLevelName(level: number): LevelName {
   const levelName = byLevel[level];
   if (levelName) {
     return levelName;

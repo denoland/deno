@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { LogLevels, getLevelByName, getLevelName, LogLevel } from "./levels.ts";
+import { LogLevels, getLevelByName, getLevelName, LevelName } from "./levels.ts";
 import { BaseHandler } from "./handlers.ts";
 
 export class LogRecord {
@@ -26,11 +26,11 @@ export class LogRecord {
 
 export class Logger {
   level: number;
-  levelName: LogLevel;
+  levelName: LevelName;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlers: any[];
 
-  constructor(levelName: LogLevel, handlers?: BaseHandler[]) {
+  constructor(levelName: LevelName, handlers?: BaseHandler[]) {
     this.level = getLevelByName(levelName);
     this.levelName = levelName;
 

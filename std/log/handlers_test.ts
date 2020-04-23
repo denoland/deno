@@ -6,7 +6,7 @@ import {
   LogLevelNames,
   getLevelName,
   getLevelByName,
-  LogLevel,
+  LevelName,
 } from "./levels.ts";
 import { BaseHandler, FileHandler, RotatingFileHandler } from "./handlers.ts";
 import { LogRecord } from "./logger.ts";
@@ -56,7 +56,7 @@ test(function simpleHandler(): void {
     const handler = new TestHandler(testLevel);
 
     for (const levelName of LogLevelNames) {
-      const level = getLevelByName(levelName as LogLevel);
+      const level = getLevelByName(levelName as LevelName);
       handler.handle(
         new LogRecord(`${levelName.toLowerCase()}-test`, [], level)
       );

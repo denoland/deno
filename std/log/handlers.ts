@@ -2,7 +2,7 @@
 const { open, openSync, close, renameSync, statSync } = Deno;
 type File = Deno.File;
 type Writer = Deno.Writer;
-import { getLevelByName, LogLevel, LogLevels } from "./levels.ts";
+import { getLevelByName, LevelName, LogLevels } from "./levels.ts";
 import { LogRecord } from "./logger.ts";
 import { red, yellow, blue, bold } from "../fmt/colors.ts";
 import { existsSync, exists } from "../fs/exists.ts";
@@ -17,10 +17,10 @@ interface HandlerOptions {
 
 export class BaseHandler {
   level: number;
-  levelName: LogLevel;
+  levelName: LevelName;
   formatter: string | FormatterFunction;
 
-  constructor(levelName: LogLevel, options: HandlerOptions = {}) {
+  constructor(levelName: LevelName, options: HandlerOptions = {}) {
     this.level = getLevelByName(levelName);
     this.levelName = levelName;
 
@@ -103,7 +103,7 @@ export class FileHandler extends WriterHandler {
   protected _mode: LogMode;
   #encoder = new TextEncoder();
 
-  constructor(levelName: LogLevel, options: FileHandlerOptions) {
+  constructor(levelName: LevelName, options: FileHandlerOptions) {
     super(levelName, options);
     this._filename = options.filename;
     // default to append mode, write only
@@ -133,7 +133,7 @@ export class RotatingFileHandler extends FileHandler {
   #maxBytes: number;
   #maxBackupCount: number;
 
-  constructor(levelName: LogLevel, options: RotatingFileHandlerOptions) {
+  constructor(levelName: LevelName, options: RotatingFileHandlerOptions) {
     super(levelName, options);
     this.#maxBytes = options.maxBytes;
     this.#maxBackupCount = options.maxBackupCount;
