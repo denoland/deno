@@ -12,8 +12,9 @@ import {
 } from "./test_util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const reportToConsole = (Deno as any)[Deno.symbols.internal]
-  .reportToConsole as (message: Deno.TestMessage) => void;
+const reportToConsole = (Deno as any)[Deno.internal].reportToConsole as (
+  message: Deno.TestMessage
+) => void;
 
 interface PermissionSetTestResult {
   perms: Permissions;
