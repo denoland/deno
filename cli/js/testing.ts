@@ -96,7 +96,11 @@ export function test(
   fn?: () => void | Promise<void>
 ): void {
   let testDef: TestDefinition;
-  const defaults = { ignore: false, sanitizeOps: true, sanitizeResources: true };
+  const defaults = {
+    ignore: false,
+    sanitizeOps: true,
+    sanitizeResources: true,
+  };
 
   if (typeof t === "string") {
     if (!fn || typeof fn != "function") {
