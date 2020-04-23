@@ -374,5 +374,3 @@ export class ServerResponse {
     Object.assign(this, init);
   }
 }
-
-const res = new ServerResponse();
