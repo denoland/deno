@@ -11,7 +11,7 @@ export function validate(id: string): boolean {
   return UUID_RE.test(id);
 }
 
-export function generate(buf?: number[], offset?: number): string {
+export function generate(buf?: number[], offset?: number): string | number[] {
   const i = (buf && offset) || 0;
 
   const rnds = crypto.getRandomValues(new Uint8Array(16));
