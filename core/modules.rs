@@ -16,13 +16,21 @@ use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
+<<<<<<< HEAD
 use std::sync::atomic::AtomicI32;
+=======
+use std::sync::atomic::AtomicU32;
+>>>>>>> wip
 use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
 
 lazy_static! {
+<<<<<<< HEAD
   pub static ref NEXT_LOAD_ID: AtomicI32 = AtomicI32::new(0);
+=======
+  pub static ref NEXT_LOAD_ID: AtomicU32 = AtomicU32::new(0);
+>>>>>>> wip
 }
 
 /// EsModule source code that will be loaded into V8.
@@ -78,10 +86,13 @@ pub trait ModuleLoader {
   //TODO(bartlomieju): add docstring
   fn prepare_load(
     &self,
-    module_specifier: &ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
-    is_dyn_import: bool,
-  ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>>;
+    _load_id: u32,
+    _module_specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<ModuleSpecifier>,
+    _is_dyn_import: bool,
+  ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+    async { Ok(()) }.boxed_local()
+  }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -103,6 +114,8 @@ pub enum LoadState {
 /// that is consumed by the isolate.
 pub struct RecursiveModuleLoad {
   kind: Kind,
+  // TODO(bartlomieju): in future this value should
+  // be randomized
   pub id: ModuleLoadId,
   pub root_module_id: Option<ModuleId>,
   pub state: LoadState,
@@ -148,6 +161,30 @@ impl RecursiveModuleLoad {
       pending: FuturesUnordered::new(),
       is_pending: HashSet::new(),
     }
+  }
+
+  pub async fn prepare(&mut self) -> Result<(), ErrBox> {
+    let (module_specifier, maybe_referrer) = match self.state {
+      LoadState::ResolveMain(ref specifier, _) => {
+        let spec = self.loader.resolve(specifier, ".", true)?;
+        (spec, None)
+      }
+      LoadState::ResolveImport(ref specifier, ref referrer) => {
+        let spec = self.loader.resolve(specifier, referrer, false)?;
+        (spec, Some(ModuleSpecifier::resolve_url(referrer).unwrap()))
+      }
+      _ => unreachable!(),
+    };
+
+    self
+      .loader
+      .prepare_load(
+        self.id,
+        &module_specifier,
+        maybe_referrer,
+        self.is_dynamic_import(),
+      )
+      .await
   }
 
   fn add_root(&mut self) -> Result<(), ErrBox> {

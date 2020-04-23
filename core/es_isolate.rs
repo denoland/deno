@@ -308,6 +308,10 @@ impl EsIsolate {
   ) {
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
+    let import_id = self.next_dyn_import_id;
+    self.next_dyn_import_id += 1;
+    self.dyn_import_map.insert(import_id, resolver_handle);
+
     let load = RecursiveModuleLoad::dynamic_import(
       specifier,
       referrer,
@@ -516,6 +520,7 @@ impl EsIsolate {
       code,
       self.loader.clone(),
     );
+    load.prepare().await?;
 
     while let Some(info_result) = load.next().await {
       let info = info_result?;
