@@ -1019,6 +1019,91 @@ export default function foo(a: number) {
 }
 
 #[tokio::test]
+async fn export_default_class() {
+  let source_code = r#"
+/** Class doc */
+export default class Foobar {
+    /** Constructor js doc */
+    constructor(name: string, private private2: number, protected protected2: number) {}
+}
+"#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  assert_eq!(entries.len(), 1);
+  let expected_json = json!({
+    "kind": "class",
+    "name": "default",
+    "location": {
+      "filename": "test.ts",
+      "line": 3,
+      "col": 0
+    },
+    "jsDoc": "Class doc",
+    "classDef": {
+      "isAbstract": false,
+      "extends": null,
+      "implements": [],
+      "typeParams": [],
+      "constructors": [
+        {
+          "jsDoc": "Constructor js doc",
+          "accessibility": null,
+          "name": "constructor",
+          "params": [
+            {
+              "name": "name",
+              "kind": "identifier",
+              "optional": false,
+              "tsType": {
+                "repr": "string",
+                "kind": "keyword",
+                "keyword": "string"
+              }
+            },
+            {
+              "name": "private2",
+              "kind": "identifier",
+              "optional": false,
+              "tsType": {
+                "repr": "number",
+                "kind": "keyword",
+                "keyword": "number"
+              }
+            },
+            {
+              "name": "protected2",
+              "kind": "identifier",
+              "optional": false,
+              "tsType": {
+                "repr": "number",
+                "kind": "keyword",
+                "keyword": "number"
+              }
+            }
+          ],
+          "location": {
+            "filename": "test.ts",
+            "line": 5,
+            "col": 4
+          }
+        }
+      ],
+      "properties": [],
+      "methods": []
+    }
+  });
+  let entry = &entries[0];
+  let actual = serde_json::to_value(entry).unwrap();
+  assert_eq!(actual, expected_json);
+
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("class default")
+  );
+}
+
+#[tokio::test]
 async fn optional_return_type() {
   let source_code = r#"
   export function foo(a: number) {

@@ -318,8 +318,21 @@ impl DocParser {
 
         let maybe_doc_node = match &export_default_decl.decl {
           DefaultDecl::Class(class_expr) => {
-            eprintln!("class expr {:#?}", class_expr);
-            None
+            let class_def =
+              crate::doc::class::class_to_class_def(self, &class_expr.class);
+            Some(DocNode {
+              kind: DocNodeKind::Class,
+              name,
+              location,
+              js_doc,
+              class_def: Some(class_def),
+              function_def: None,
+              variable_def: None,
+              enum_def: None,
+              type_alias_def: None,
+              namespace_def: None,
+              interface_def: None,
+            })
           }
           DefaultDecl::Fn(fn_expr) => {
             let function_def =
