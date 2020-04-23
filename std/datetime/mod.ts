@@ -152,7 +152,7 @@ export function toIMF(date: Date): string {
 
 /**
  * Check given year is a leap year or not.
- * @param yaer year in number or Date format
+ * @param year year in number or Date format
  */
 export function isLeap(year: Date | number): boolean {
   year = year instanceof Date ? year.getFullYear() : year;
@@ -167,6 +167,7 @@ export type Unit =
   | "days"
   | "weeks"
   | "months"
+  | "quarters"
   | "years";
 
 export type DifferenceFormat = {
@@ -177,6 +178,7 @@ export type DifferenceFormat = {
   days?: number;
   weeks?: number;
   months?: number;
+  quarters?: number;
   years?: number;
 };
 
@@ -186,9 +188,10 @@ export type DifferenceOptions = {
 
 /**
  * Calculate difference between two dates.
- * @param {Date} from Year to calculate difference
- * @param {Date} to Year to calculate difference with
- * @param {DifferenceOptions} options Extra options for calculating
+ * @param from Year to calculate difference
+ * @param to Year to calculate difference with
+ * @param options Options for determining how to respond
+ *
  * example :
  *
  * ```typescript
@@ -259,7 +262,7 @@ export function difference(
         const quarters =
           (differences.months != undefined && differences.months / 4) ||
           calculateMonthDifference(bigger, smaller) / 4;
-        differences.years = Math.floor(quarters);
+        differences.quarters = Math.floor(quarters);
         break;
       case "years":
         const years =
