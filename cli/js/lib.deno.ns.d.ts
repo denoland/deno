@@ -17,7 +17,7 @@ declare namespace Deno {
     name: string;
     ignore?: boolean;
     sanitizeOps?: boolean;
-    santizeResources?: boolean;
+    sanitizeResources?: boolean;
   }
 
   /** Register a test which will be run when `deno test` is used on the command

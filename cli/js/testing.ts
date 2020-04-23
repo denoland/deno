@@ -81,7 +81,7 @@ export interface TestDefinition {
   name: string;
   ignore?: boolean;
   sanitizeOps?: boolean;
-  santizeResources?: boolean;
+  sanitizeResources?: boolean;
 }
 
 const TEST_REGISTRY: TestDefinition[] = [];
@@ -96,7 +96,7 @@ export function test(
   fn?: () => void | Promise<void>
 ): void {
   let testDef: TestDefinition;
-  const defaults = { ignore: false, sanitizeOps: true, santizeResources: true };
+  const defaults = { ignore: false, sanitizeOps: true, sanitizeResources: true };
 
   if (typeof t === "string") {
     if (!fn || typeof fn != "function") {
@@ -125,7 +125,7 @@ export function test(
     testDef.fn = assertOps(testDef.fn);
   }
 
-  if (testDef.santizeResources) {
+  if (testDef.sanitizeResources) {
     testDef.fn = assertResources(testDef.fn);
   }
 
