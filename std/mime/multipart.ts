@@ -311,7 +311,7 @@ export class MultipartReader {
       const n = await copyN(buf, p, maxValueBytes);
       const contentType = p.headers.get("content-type");
       assert(contentType != null, "content-type must be set");
-      if (n >= maxValueBytes) {
+      if (n > maxMemory) {
         // too big, write to disk and flush buffer
         const ext = extname(p.fileName);
         const { file, filepath } = await tempFile(".", {
