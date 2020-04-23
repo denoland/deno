@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// This module provides higher level implementation of Isolate that
+// This module provides higher level implementation of CoreIsolate that
 // supports asynchronous loading and executution of ES Modules.
 // The isolate.rs should never depend on this module.
 
@@ -27,7 +27,7 @@ use std::task::Poll;
 
 use crate::isolate::attach_handle_to_error;
 use crate::isolate::exception_to_err_result;
-use crate::isolate::Isolate;
+use crate::isolate::CoreIsolate;
 use crate::isolate::StartupData;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::LoadState;
@@ -39,14 +39,14 @@ use crate::modules::RecursiveModuleLoad;
 pub type ModuleId = i32;
 pub type DynImportId = i32;
 
-/// More specialized version of `Isolate` that provides loading
+/// More specialized version of `CoreIsolate` that provides loading
 /// and execution of ES Modules.
 ///
 /// Creating `EsIsolate` requires to pass `loader` argument
 /// that implements `ModuleLoader` trait - that way actual resolution and
 /// loading of modules can be customized by the implementor.
 pub struct EsIsolate {
-  core_isolate: Box<Isolate>,
+  core_isolate: Box<CoreIsolate>,
   loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
   pub(crate) next_dyn_import_id: DynImportId,
@@ -58,7 +58,7 @@ pub struct EsIsolate {
 }
 
 impl Deref for EsIsolate {
-  type Target = Isolate;
+  type Target = CoreIsolate;
 
   fn deref(&self) -> &Self::Target {
     &self.core_isolate
@@ -77,7 +77,7 @@ impl EsIsolate {
     startup_data: StartupData,
     will_snapshot: bool,
   ) -> Box<Self> {
-    let mut core_isolate = Isolate::new(startup_data, will_snapshot);
+    let mut core_isolate = CoreIsolate::new(startup_data, will_snapshot);
     {
       let v8_isolate = core_isolate.v8_isolate.as_mut().unwrap();
       v8_isolate.set_host_initialize_import_meta_object_callback(
@@ -174,7 +174,7 @@ impl EsIsolate {
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is JSError, however it may be a
-  /// different type if Isolate::set_js_error_create_fn() has been used.
+  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
   fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     let v8_isolate = self.core_isolate.v8_isolate.as_mut().unwrap();
     let js_error_create_fn = &*self.core_isolate.js_error_create_fn;
@@ -219,7 +219,7 @@ impl EsIsolate {
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is JSError, however it may be a
-  /// different type if Isolate::set_js_error_create_fn() has been used.
+  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
   pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     let core_isolate = &mut self.core_isolate;
     let v8_isolate = core_isolate.v8_isolate.as_mut().unwrap();
@@ -580,7 +580,7 @@ pub mod tests {
 
     let mut isolate = EsIsolate::new(loader, StartupData::None, false);
 
-    let dispatcher = move |_isolate: &mut Isolate,
+    let dispatcher = move |_isolate: &mut CoreIsolate,
                            control: &[u8],
                            _zero_copy: Option<ZeroCopyBuf>|
           -> Op {

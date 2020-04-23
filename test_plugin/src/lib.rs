@@ -2,18 +2,19 @@ extern crate deno_core;
 extern crate futures;
 
 use deno_core::Buf;
+use deno_core::CoreIsolate;
 use deno_core::Op;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 
 #[no_mangle]
-pub fn deno_plugin_init(isolate: &mut deno_core::Isolate) {
+pub fn deno_plugin_init(isolate: &mut CoreIsolate) {
   isolate.register_op("testSync", op_test_sync);
   isolate.register_op("testAsync", op_test_async);
 }
 
 pub fn op_test_sync(
-  _isolate: &mut deno_core::Isolate,
+  _isolate: &mut CoreIsolate,
   data: &[u8],
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Op {
@@ -31,7 +32,7 @@ pub fn op_test_sync(
 }
 
 pub fn op_test_async(
-  _isolate: &mut deno_core::Isolate,
+  _isolate: &mut CoreIsolate,
   data: &[u8],
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Op {

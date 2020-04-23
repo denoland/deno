@@ -2,7 +2,9 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::op_error::OpError;
 use crate::state::State;
-use deno_core::*;
+use deno_core::CoreIsolate;
+use deno_core::ErrBox;
+use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
 use notify::event::Event as NotifyEvent;
@@ -16,7 +18,7 @@ use std::convert::From;
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 
-pub fn init(i: &mut Isolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_fs_events_open", s.stateful_json_op2(op_fs_events_open));
   i.register_op("op_fs_events_poll", s.stateful_json_op2(op_fs_events_poll));
 }
@@ -60,7 +62,7 @@ impl From<NotifyEvent> for FsEvent {
 }
 
 pub fn op_fs_events_open(
-  isolate: &mut deno_core::Isolate,
+  isolate: &mut CoreIsolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
@@ -98,7 +100,7 @@ pub fn op_fs_events_open(
 }
 
 pub fn op_fs_events_poll(
-  isolate: &mut deno_core::Isolate,
+  isolate: &mut CoreIsolate,
   _state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,

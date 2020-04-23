@@ -5,10 +5,11 @@ use crate::op_error::OpError;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
 use crate::state::State;
-use deno_core::*;
+use deno_core::CoreIsolate;
+use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
 
-pub fn init(i: &mut Isolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op(
     "op_apply_source_map",
     s.stateful_json_op(op_apply_source_map),
