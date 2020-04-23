@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertThrows } from "../testing/asserts.ts";
+import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import * as datetime from "./mod.ts";
 
 Deno.test(function parseDateTime(): void {
@@ -91,5 +91,39 @@ Deno.test({
     const actual = datetime.toIMF(new Date(0));
     const expected = "Thu, 01 Jan 1970 00:00:00 GMT";
     assertEquals(actual, expected);
+  },
+});
+
+Deno.test({
+  name: "[DateTime] isLeap",
+  fn(): void {
+    assert(datetime.isLeap(1992));
+    assert(datetime.isLeap(2000));
+    assert(!datetime.isLeap(2003));
+    assert(!datetime.isLeap(2007));
+  },
+});
+
+Deno.test({
+  name: "[DateTime] Difference",
+  fn(): void {
+    const denoInit = new Date("2018/5/14");
+    const denoRelaseV1 = new Date("2020/5/13");
+    let difference = datetime.difference(denoRelaseV1, denoInit, {
+      units: ["days", "months", "years"],
+    });
+    assertEquals(difference.days, 730);
+    assertEquals(difference.months, 23);
+    assertEquals(difference.years, 1);
+
+    const first = new Date("1998/2/23 10:10:10");
+    const second = new Date("1998/2/23 11:11:11");
+    difference = datetime.difference(first, second, {
+      units: ["miliseconds", "minutes", "seconds", "hours"],
+    });
+    assertEquals(difference.miliseconds, 3661000);
+    assertEquals(difference.seconds, 3661);
+    assertEquals(difference.minutes, 61);
+    assertEquals(difference.hours, 1);
   },
 });

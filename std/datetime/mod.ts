@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert } from "../testing/asserts.ts";
-
+import { SECONDS, MINUTES, HOURS, DAYS, WEEKS } from "./_constants.ts";
 export type DateFormat = "mm-dd-yyyy" | "dd-mm-yyyy" | "yyyy-mm-dd";
 
 function execForce(reg: RegExp, pat: string): RegExpExecArray {
@@ -96,13 +96,12 @@ export function parseDateTime(
  * @return Number of the day in year
  */
 export function dayOfYear(date: Date): number {
-  const dayMs = 1000 * 60 * 60 * 24;
   const yearStart = new Date(date.getFullYear(), 0, 0);
   const diff =
     date.getTime() -
     yearStart.getTime() +
     (yearStart.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000;
-  return Math.floor(diff / dayMs);
+  return Math.floor(diff / DAYS);
 }
 
 /**
@@ -149,4 +148,127 @@ export function toIMF(date: Date): string {
   return `${days[date.getUTCDay()]}, ${d} ${
     months[date.getUTCMonth()]
   } ${y} ${h}:${min}:${s} GMT`;
+}
+
+/**
+ * Check given year is a leap year or not.
+ * @param yaer year in number or Date format
+ */
+export function isLeap(year: Date | number): boolean {
+  year = year instanceof Date ? year.getFullYear() : year;
+  return !(year % 400) || (year % 4 === 0 && year % 100 !== 0);
+}
+
+export type Unit =
+  | "miliseconds"
+  | "seconds"
+  | "minutes"
+  | "hours"
+  | "days"
+  | "weeks"
+  | "months"
+  | "years";
+
+export type DifferenceFormat = {
+  miliseconds?: number;
+  seconds?: number;
+  minutes?: number;
+  hours?: number;
+  days?: number;
+  weeks?: number;
+  months?: number;
+  years?: number;
+};
+
+export type DifferenceOptions = {
+  units?: Unit[];
+};
+
+/**
+ * Calculate difference between two dates.
+ * @param {Date} from Year to calculate difference
+ * @param {Date} to Year to calculate difference with
+ * @param {DifferenceOptions} options Extra options for calculating
+ * example :
+ *
+ * ```typescript
+ * datetime.difference(new Date("2020/1/1"),new Date("2020/2/2"),{ units : ["days","months"] })
+ * ```
+ */
+export function difference(
+  from: Date,
+  to: Date,
+  options?: DifferenceOptions
+): DifferenceFormat {
+  const uniqueUnits = options?.units
+    ? [...new Set(options?.units)]
+    : [
+        "miliseconds",
+        "seconds",
+        "minutes",
+        "hours",
+        "days",
+        "weeks",
+        "months",
+        "quarters",
+        "years",
+      ];
+
+  const bigger = from > to ? from : to;
+  const smaller = from > to ? to : from;
+  const differenceInMs = bigger.getTime() - smaller.getTime();
+
+  function calculateMonthDifference(biger: Date, smaller: Date): number {
+    const yearDiff = biger.getFullYear() - smaller.getFullYear();
+    const monthsDiff = biger.getMonth() - smaller.getMonth();
+    const calendarDiffrences = Math.abs(yearDiff * 12 + monthsDiff);
+    const compareResult = biger > smaller ? 1 : -1;
+    biger.setMonth(biger.getMonth() - compareResult * calendarDiffrences);
+    const isLastMonthNotFull =
+      biger > smaller ? 1 : -1 === -compareResult ? 1 : 0;
+    const months = compareResult * (calendarDiffrences - isLastMonthNotFull);
+    return months === 0 ? 0 : months;
+  }
+
+  const differences: DifferenceFormat = {};
+
+  for (let i = 0; i < uniqueUnits.length; i++) {
+    switch (uniqueUnits[i]) {
+      case "miliseconds":
+        differences.miliseconds = differenceInMs;
+        break;
+      case "seconds":
+        differences.seconds = Math.floor(differenceInMs / SECONDS);
+        break;
+      case "minutes":
+        differences.minutes = Math.floor(differenceInMs / MINUTES);
+        break;
+      case "hours":
+        differences.hours = Math.floor(differenceInMs / HOURS);
+        break;
+      case "days":
+        differences.days = Math.floor(differenceInMs / DAYS);
+        break;
+      case "weeks":
+        differences.weeks = Math.floor(differenceInMs / WEEKS);
+        break;
+      case "months":
+        differences.months = calculateMonthDifference(bigger, smaller);
+        break;
+      case "quarters":
+        const quarters =
+          (differences.months != undefined && differences.months / 4) ||
+          calculateMonthDifference(bigger, smaller) / 4;
+        differences.years = Math.floor(quarters);
+        break;
+      case "years":
+        const years =
+          (differences.months != undefined && differences.months / 12) ||
+          calculateMonthDifference(bigger, smaller) / 12;
+        differences.years = Math.floor(years);
+        break;
+    }
+  }
+
+  return differences;
 }
