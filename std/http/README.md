@@ -3,11 +3,16 @@
 ```typescript
 import { serve } from "https://deno.land/std/http/server.ts";
 const s = serve({ port: 8000 });
+
 console.log("http://localhost:8000/");
+
 for await (const req of s) {
   req.respond({ body: "Hello World\n" });
 }
 ```
+
+`req.respond()` will pass its argument to the `ServerResponse` class. The
+default `status` code will be `200`.
 
 ### File Server
 
@@ -20,7 +25,7 @@ deno --allow-net --allow-read https://deno.land/std/http/file_server.ts
 
 ## Cookie
 
-Helper to manipulate `Cookie` through `ServerRequest` and `Response`.
+Helper to manipulate `Cookie` through `ServerRequest` and `ServerResponse`.
 
 ```ts
 import { ServerRequest } from "https://deno.land/std/http/server.ts";
@@ -38,10 +43,10 @@ console.log("cookies:", cookies);
 To set a `Cookie` you can add `CookieOptions` to properly set your `Cookie`
 
 ```ts
-import { Response } from "https://deno.land/std/http/server.ts";
+import { ServerResponse } from "https://deno.land/std/http/server.ts";
 import { Cookie, setCookie } from "https://deno.land/std/http/cookie.ts";
 
-let response: Response = {};
+let response = new ServerResponse();
 const cookie: Cookie = { name: "Space", value: "Cat" };
 setCookie(response, cookie);
 
@@ -54,10 +59,10 @@ Deleting a `Cookie` will set its expiration date before now. Forcing the browser
 to delete it.
 
 ```ts
-import { Response } from "https://deno.land/std/http/server.ts";
+import { ServerResponseInit } from "https://deno.land/std/http/server.ts";
 import { delCookie } from "https://deno.land/std/http/cookie.ts";
 
-let response: Response = {};
+let response = new ServerResponseInit();
 delCookie(response, "deno");
 
 const cookieHeader = response.headers.get("set-cookie");
@@ -65,4 +70,5 @@ console.log("Set-Cookie:", cookieHeader);
 // Set-Cookie: deno=; Expires=Thus, 01 Jan 1970 00:00:00 GMT
 ```
 
-**Note**: At the moment multiple `Set-Cookie` in a `Response` is not handled.
+**Note**: At the moment multiple `Set-Cookie` in a `ServerResponseInit` is not
+handled.

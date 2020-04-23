@@ -8,7 +8,7 @@
 
 const { args, stat, readdir, open, exit } = Deno;
 import { posix, extname } from "../path/mod.ts";
-import { listenAndServe, ServerRequest, Response } from "./server.ts";
+import { listenAndServe, ServerRequest, ServerResponse } from "./server.ts";
 import { parse } from "../flags/mod.ts";
 import { assert } from "../testing/asserts.ts";
 import { setContentLength } from "./io.ts";
@@ -118,26 +118,22 @@ function fileLenToString(len: number): string {
 export async function serveFile(
   req: ServerRequest,
   filePath: string
-): Promise<Response> {
+): Promise<ServerResponse> {
   const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
-  const headers = new Headers();
-  headers.set("content-length", fileInfo.size.toString());
-  const contentTypeValue = contentType(filePath);
-  if (contentTypeValue) {
-    headers.set("content-type", contentTypeValue);
-  }
-  return {
-    status: 200,
+
+  return new ServerResponse({
     body: file,
-    headers,
-  };
+    headers: {
+      "content-type": contentType(filePath) ?? fileInfo.size.toString(),
+    },
+  });
 }
 
 // TODO: simplify this after deno.stat and deno.readdir are fixed
 async function serveDir(
   req: ServerRequest,
   dirPath: string
-): Promise<Response> {
+): Promise<ServerResponse> {
   const dirUrl = `/${posix.relative(target, dirPath)}`;
   const listEntry: EntryInfo[] = [];
   for await (const dirEntry of readdir(dirPath)) {
@@ -165,43 +161,34 @@ async function serveDir(
   const formattedDirUrl = `${dirUrl.replace(/\/$/, "")}/`;
   const page = encoder.encode(dirViewerTemplate(formattedDirUrl, listEntry));
 
-  const headers = new Headers();
-  headers.set("content-type", "text/html");
-
-  const res = {
-    status: 200,
+  const res = new ServerResponse({
     body: page,
-    headers,
-  };
+    headers: { "content-type": "text/html" },
+  });
+
   setContentLength(res);
   return res;
 }
 
-function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
-  if (e instanceof Deno.errors.NotFound) {
-    return Promise.resolve({
-      status: 404,
-      body: encoder.encode("Not found"),
-    });
-  } else {
-    return Promise.resolve({
-      status: 500,
-      body: encoder.encode("Internal server error"),
-    });
-  }
+function serveFallback(req: ServerRequest, e: Error): Promise<ServerResponse> {
+  const error = e instanceof Deno.errors.NotFound;
+
+  return Promise.resolve(
+    new ServerResponse({
+      status: error ? 404 : 500,
+      body: encoder.encode(error ? "Not found" : "Internal server error"),
+    })
+  );
 }
 
-function serverLog(req: ServerRequest, res: Response): void {
+function serverLog(req: ServerRequest, res: ServerResponse): void {
   const d = new Date().toISOString();
   const dateFmt = `[${d.slice(0, 10)} ${d.slice(11, 19)}]`;
   const s = `${dateFmt} "${req.method} ${req.url} ${req.proto}" ${res.status}`;
   console.log(s);
 }
 
-function setCORS(res: Response): void {
-  if (!res.headers) {
-    res.headers = new Headers();
-  }
+function setCORS(res: ServerResponse): void {
   res.headers.append("access-control-allow-origin", "*");
   res.headers.append(
     "access-control-allow-headers",
@@ -329,7 +316,7 @@ function main(): void {
       }
       const fsPath = posix.join(target, normalizedUrl);
 
-      let response: Response | undefined;
+      let response: ServerResponse | undefined;
       try {
         const info = await stat(fsPath);
         if (info.isDirectory) {

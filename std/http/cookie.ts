@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Structured similarly to Go's cookie.go
 // https://github.com/golang/go/blob/master/src/net/http/cookie.go
-import { ServerRequest, Response } from "./server.ts";
+import { ServerRequest, ServerResponse } from "./server.ts";
 import { assert } from "../testing/asserts.ts";
 import { toIMF } from "../datetime/mod.ts";
 
@@ -92,8 +92,8 @@ export function getCookies(req: ServerRequest): Cookies {
 }
 
 /**
- * Set the cookie header properly in the Response
- * @param res Server Response
+ * Set the cookie header properly in the ServerResponse
+ * @param res ServerResponse
  * @param cookie Cookie to set
  * @param [cookie.name] Name of the cookie
  * @param [cookie.value] Value of the cookie
@@ -111,7 +111,7 @@ export function getCookies(req: ServerRequest): Cookies {
  *     setCookie(response, { name: 'deno', value: 'runtime',
  *        httpOnly: true, secure: true, maxAge: 2, domain: "deno.land" });
  */
-export function setCookie(res: Response, cookie: Cookie): void {
+export function setCookie(res: ServerResponse, cookie: Cookie): void {
   if (!res.headers) {
     res.headers = new Headers();
   }
@@ -125,14 +125,14 @@ export function setCookie(res: Response, cookie: Cookie): void {
 }
 
 /**
- *  Set the cookie header properly in the Response to delete it
- * @param res Server Response
+ *  Set the cookie header properly in the ServerResponse to delete it
+ * @param res ServerResponse
  * @param name Name of the cookie to Delete
  * Example:
  *
  *     delCookie(res,'foo');
  */
-export function delCookie(res: Response, name: string): void {
+export function delCookie(res: ServerResponse, name: string): void {
   setCookie(res, {
     name: name,
     value: "",

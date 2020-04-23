@@ -90,11 +90,11 @@ export class ServerRequest {
     return this._body;
   }
 
-  async respond(r: Response): Promise<void> {
+  async respond(r: ServerResponseOptions): Promise<void> {
     let err: Error | undefined;
     try {
       // Write our response!
-      await writeResponse(this.w, r);
+      await writeResponse(this.w, new ServerResponse(r));
     } catch (e) {
       try {
         // Eagerly close on error.
@@ -160,10 +160,13 @@ export class Server implements AsyncIterable<ServerRequest> {
           error instanceof Deno.errors.UnexpectedEof
         ) {
           // An error was thrown while parsing request headers.
-          await writeResponse(writer, {
-            status: 400,
-            body: encode(`${error.message}\r\n\r\n`),
-          });
+          await writeResponse(
+            writer,
+            new ServerResponse({
+              status: 400,
+              body: encode(`${error.message}\r\n\r\n`),
+            })
+          );
         }
         break;
       }
@@ -342,14 +345,34 @@ export async function listenAndServeTLS(
   }
 }
 
-/**
- * Interface of HTTP server response.
- * If body is a Reader, response would be chunked.
- * If body is a string, it would be UTF-8 encoded by default.
- */
-export interface Response {
+export interface ServerResponseOptions {
   status?: number;
-  headers?: Headers;
+  headers?: HeadersInit;
   body?: Uint8Array | Reader | string;
   trailers?: () => Promise<Headers> | Headers;
 }
+
+/**
+ * An HTTP server response class.
+ * If body is a Reader, response would be chunked.
+ * If body is a string, it would be UTF-8 encoded by default.
+ */
+export class ServerResponse {
+  status = 200;
+  headers = new Headers();
+  body?: Uint8Array | Reader | string;
+  trailers?: () => Promise<Headers> | Headers;
+
+  constructor(init: ServerResponseOptions = {}) {
+    // Check here so that we don't have to check anywhere else.
+    if (init instanceof ServerResponse) return init;
+
+    // In the headers prop we accept all the types that the
+    // `Headers` constructor accepts, just to make it feel
+    // more native, so if it is declared, pass it to the constructor.
+    init.headers = new Headers(init?.headers);
+    Object.assign(this, init);
+  }
+}
+
+const res = new ServerResponse();

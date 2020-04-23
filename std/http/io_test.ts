@@ -17,7 +17,7 @@ import {
 import { encode, decode } from "../encoding/utf8.ts";
 import { BufReader, ReadLineResult } from "../io/bufio.ts";
 import { chunkedBodyReader } from "./io.ts";
-import { ServerRequest, Response } from "./server.ts";
+import { ServerRequest, ServerResponse } from "./server.ts";
 import { StringReader } from "../io/readers.ts";
 import { mockConn } from "./mock.ts";
 const { Buffer, test } = Deno;
@@ -214,7 +214,7 @@ test(async function writeUint8ArrayResponse(): Promise<void> {
   const shortText = "Hello";
 
   const body = new TextEncoder().encode(shortText);
-  const res: Response = { body };
+  const res = new ServerResponse({ body });
 
   const buf = new Deno.Buffer();
   await writeResponse(buf, res);
@@ -246,7 +246,7 @@ test(async function writeUint8ArrayResponse(): Promise<void> {
 test(async function writeStringResponse(): Promise<void> {
   const body = "Hello";
 
-  const res: Response = { body };
+  const res = new ServerResponse({ body });
 
   const buf = new Deno.Buffer();
   await writeResponse(buf, res);
@@ -279,7 +279,7 @@ test(async function writeStringReaderResponse(): Promise<void> {
   const shortText = "Hello";
 
   const body = new StringReader(shortText);
-  const res: Response = { body };
+  const res = new ServerResponse({ body });
 
   const buf = new Deno.Buffer();
   await writeResponse(buf, res);

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { ServerRequest, Response } from "./server.ts";
+import { ServerRequest, ServerResponse } from "./server.ts";
 import { getCookies, delCookie, setCookie } from "./cookie.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
 const { test } = Deno;
@@ -35,7 +35,7 @@ test({
 test({
   name: "Cookie Delete",
   fn(): void {
-    const res: Response = {};
+    const res = new ServerResponse();
     delCookie(res, "deno");
     assertEquals(
       res.headers?.get("Set-Cookie"),
@@ -47,9 +47,8 @@ test({
 test({
   name: "Cookie Set",
   fn(): void {
-    const res: Response = {};
+    const res = new ServerResponse();
 
-    res.headers = new Headers();
     setCookie(res, { name: "Space", value: "Cat" });
     assertEquals(res.headers.get("Set-Cookie"), "Space=Cat");
 

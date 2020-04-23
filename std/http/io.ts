@@ -2,7 +2,7 @@ import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { assert } from "../testing/asserts.ts";
 import { encoder } from "../encoding/utf8.ts";
-import { ServerRequest, Response } from "./server.ts";
+import { ServerRequest, ServerResponse } from "./server.ts";
 import { STATUS_TEXT } from "./http_status.ts";
 
 export function emptyReader(): Deno.Reader {
@@ -214,11 +214,7 @@ export async function writeTrailers(
   await writer.flush();
 }
 
-export function setContentLength(r: Response): void {
-  if (!r.headers) {
-    r.headers = new Headers();
-  }
-
+export function setContentLength(r: ServerResponse): void {
   if (r.body) {
     if (!r.headers.has("content-length")) {
       // typeof r.body === "string" handled in writeResponse.
@@ -234,7 +230,7 @@ export function setContentLength(r: Response): void {
 
 export async function writeResponse(
   w: Deno.Writer,
-  r: Response
+  r: ServerResponse
 ): Promise<void> {
   const protoMajor = 1;
   const protoMinor = 1;
