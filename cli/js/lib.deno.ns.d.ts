@@ -16,8 +16,8 @@ declare namespace Deno {
     fn: () => void | Promise<void>;
     name: string;
     ignore?: boolean;
-    disableOpSanitizer?: boolean;
-    disableResourceSanitizer?: boolean;
+    sanitizeOps?: boolean;
+    sanitizeResources?: boolean;
   }
 
   /** Register a test which will be run when `deno test` is used on the command

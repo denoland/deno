@@ -80,8 +80,8 @@ export interface TestDefinition {
   fn: () => void | Promise<void>;
   name: string;
   ignore?: boolean;
-  disableOpSanitizer?: boolean;
-  disableResourceSanitizer?: boolean;
+  sanitizeOps?: boolean;
+  sanitizeResources?: boolean;
 }
 
 const TEST_REGISTRY: TestDefinition[] = [];
@@ -96,6 +96,11 @@ export function test(
   fn?: () => void | Promise<void>
 ): void {
   let testDef: TestDefinition;
+  const defaults = {
+    ignore: false,
+    sanitizeOps: true,
+    sanitizeResources: true,
+  };
 
   if (typeof t === "string") {
     if (!fn || typeof fn != "function") {
@@ -104,12 +109,12 @@ export function test(
     if (!t) {
       throw new TypeError("The test name can't be empty");
     }
-    testDef = { fn: fn as () => void | Promise<void>, name: t, ignore: false };
+    testDef = { fn: fn as () => void | Promise<void>, name: t, ...defaults };
   } else if (typeof t === "function") {
     if (!t.name) {
       throw new TypeError("The test function can't be anonymous");
     }
-    testDef = { fn: t, name: t.name, ignore: false };
+    testDef = { fn: t, name: t.name, ...defaults };
   } else {
     if (!t.fn) {
       throw new TypeError("Missing test function");
@@ -117,14 +122,14 @@ export function test(
     if (!t.name) {
       throw new TypeError("The test name can't be empty");
     }
-    testDef = { ...t, ignore: Boolean(t.ignore) };
+    testDef = { ...defaults, ...t };
   }
 
-  if (testDef.disableOpSanitizer !== true) {
+  if (testDef.sanitizeOps) {
     testDef.fn = assertOps(testDef.fn);
   }
 
-  if (testDef.disableResourceSanitizer !== true) {
+  if (testDef.sanitizeResources) {
     testDef.fn = assertResources(testDef.fn);
   }
 
