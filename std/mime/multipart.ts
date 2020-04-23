@@ -308,10 +308,10 @@ export class MultipartReader {
       }
       // file
       let formFile: FormFile | undefined;
-      const n = await copy(buf, p);
+      const n = await copyN(buf, p, maxValueBytes);
       const contentType = p.headers.get("content-type");
       assert(contentType != null, "content-type must be set");
-      if (n > maxMemory) {
+      if (n >= maxValueBytes) {
         // too big, write to disk and flush buffer
         const ext = extname(p.fileName);
         const { file, filepath } = await tempFile(".", {
@@ -319,7 +319,11 @@ export class MultipartReader {
           postfix: ext,
         });
         try {
-          const size = await copyN(file, new MultiReader(buf, p), n);
+          // write buffer to file
+          let size = await copyN(file, buf, n);
+          // Write the rest of the file
+          size += await copy(file, new MultiReader(buf, p));
+
           file.close();
           formFile = {
             filename: p.fileName,
