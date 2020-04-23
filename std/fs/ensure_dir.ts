@@ -10,7 +10,7 @@ const { lstat, lstatSync, mkdir, mkdirSync } = Deno;
 export async function ensureDir(dir: string): Promise<void> {
   try {
     const fileInfo = await lstat(dir);
-    if (!fileInfo.isDirectory()) {
+    if (!fileInfo.isDirectory) {
       throw new Error(
         `Ensure path exists, expected 'dir', got '${getFileInfoType(fileInfo)}'`
       );
@@ -33,7 +33,7 @@ export async function ensureDir(dir: string): Promise<void> {
 export function ensureDirSync(dir: string): void {
   try {
     const fileInfo = lstatSync(dir);
-    if (!fileInfo.isDirectory()) {
+    if (!fileInfo.isDirectory) {
       throw new Error(
         `Ensure path exists, expected 'dir', got '${getFileInfoType(fileInfo)}'`
       );

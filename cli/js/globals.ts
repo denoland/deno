@@ -2,6 +2,8 @@
 
 import "./lib.deno.shared_globals.d.ts";
 
+import * as abortController from "./web/abort_controller.ts";
+import * as abortSignal from "./web/abort_signal.ts";
 import * as blob from "./web/blob.ts";
 import * as consoleTypes from "./web/console.ts";
 import * as promiseTypes from "./web/promise.ts";
@@ -20,7 +22,7 @@ import * as urlSearchParams from "./web/url_search_params.ts";
 import * as workers from "./web/workers.ts";
 import * as performanceUtil from "./web/performance.ts";
 import * as request from "./web/request.ts";
-import * as streams from "./web/streams/mod.ts";
+import * as readableStream from "./web/streams/readable_stream.ts";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
@@ -31,15 +33,15 @@ import { core } from "./core.ts";
 declare global {
   interface CallSite {
     getThis(): unknown;
-    getTypeName(): string;
-    getFunction(): Function;
-    getFunctionName(): string;
-    getMethodName(): string;
-    getFileName(): string;
+    getTypeName(): string | null;
+    getFunction(): Function | null;
+    getFunctionName(): string | null;
+    getMethodName(): string | null;
+    getFileName(): string | null;
     getLineNumber(): number | null;
     getColumnNumber(): number | null;
     getEvalOrigin(): string | null;
-    isToplevel(): boolean;
+    isToplevel(): boolean | null;
     isEval(): boolean;
     isNative(): boolean;
     isConstructor(): boolean;
@@ -207,6 +209,8 @@ export const windowOrWorkerGlobalScopeMethods = {
 // Other properties shared between WindowScope and WorkerGlobalScope
 export const windowOrWorkerGlobalScopeProperties = {
   console: writable(new consoleTypes.Console(core.print)),
+  AbortController: nonEnumerable(abortController.AbortControllerImpl),
+  AbortSignal: nonEnumerable(abortSignal.AbortSignalImpl),
   Blob: nonEnumerable(blob.DenoBlob),
   File: nonEnumerable(domFile.DomFileImpl),
   CustomEvent: nonEnumerable(customEvent.CustomEventImpl),
@@ -215,11 +219,11 @@ export const windowOrWorkerGlobalScopeProperties = {
   EventTarget: nonEnumerable(eventTarget.EventTargetImpl),
   URL: nonEnumerable(url.URLImpl),
   URLSearchParams: nonEnumerable(urlSearchParams.URLSearchParamsImpl),
-  Headers: nonEnumerable(headers.Headers),
-  FormData: nonEnumerable(formData.FormData),
+  Headers: nonEnumerable(headers.HeadersImpl),
+  FormData: nonEnumerable(formData.FormDataImpl),
   TextEncoder: nonEnumerable(textEncoding.TextEncoder),
   TextDecoder: nonEnumerable(textEncoding.TextDecoder),
-  ReadableStream: nonEnumerable(streams.ReadableStream),
+  ReadableStream: nonEnumerable(readableStream.ReadableStreamImpl),
   Request: nonEnumerable(request.Request),
   Response: nonEnumerable(fetchTypes.Response),
   performance: writable(new performanceUtil.Performance()),

@@ -209,3 +209,54 @@ unitTest(
     await resolvable;
   }
 );
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function startTLS(): Promise<void> {
+    const hostname = "smtp.gmail.com";
+    const port = 587;
+    const encoder = new TextEncoder();
+
+    let conn = await Deno.connect({
+      hostname,
+      port,
+    });
+
+    let writer = new BufWriter(conn);
+    let reader = new TextProtoReader(new BufReader(conn));
+
+    let line: string | Deno.EOF = (await reader.readLine()) as string;
+    assert(line.startsWith("220"));
+
+    await writer.write(encoder.encode(`EHLO ${hostname}\r\n`));
+    await writer.flush();
+
+    while ((line = (await reader.readLine()) as string)) {
+      assert(line.startsWith("250"));
+      if (line.startsWith("250 ")) break;
+    }
+
+    await writer.write(encoder.encode("STARTTLS\r\n"));
+    await writer.flush();
+
+    line = await reader.readLine();
+
+    // Received the message that the server is ready to establish TLS
+    assertEquals(line, "220 2.0.0 Ready to start TLS");
+
+    conn = await Deno.startTLS(conn, { hostname });
+    writer = new BufWriter(conn);
+    reader = new TextProtoReader(new BufReader(conn));
+
+    // After that use TLS communication again
+    await writer.write(encoder.encode(`EHLO ${hostname}\r\n`));
+    await writer.flush();
+
+    while ((line = (await reader.readLine()) as string)) {
+      assert(line.startsWith("250"));
+      if (line.startsWith("250 ")) break;
+    }
+
+    conn.close();
+  }
+);

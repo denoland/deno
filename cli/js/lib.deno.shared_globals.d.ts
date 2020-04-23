@@ -245,6 +245,24 @@ interface ReadableStreamDefaultReader<R = any> {
   releaseLock(): void;
 }
 
+interface ReadableStreamReader<R = any> {
+  cancel(): Promise<void>;
+  read(): Promise<ReadableStreamReadResult<R>>;
+  releaseLock(): void;
+}
+
+interface ReadableByteStreamControllerCallback {
+  (controller: ReadableByteStreamController): void | PromiseLike<void>;
+}
+
+interface UnderlyingByteSource {
+  autoAllocateChunkSize?: number;
+  cancel?: ReadableStreamErrorCallback;
+  pull?: ReadableByteStreamControllerCallback;
+  start?: ReadableByteStreamControllerCallback;
+  type: "bytes";
+}
+
 interface UnderlyingSource<R = any> {
   cancel?: ReadableStreamErrorCallback;
   pull?: ReadableStreamDefaultControllerCallback<R>;
@@ -260,11 +278,35 @@ interface ReadableStreamDefaultControllerCallback<R> {
   (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
 }
 
-interface ReadableStreamDefaultController<R> {
-  readonly desiredSize: number;
-  enqueue(chunk?: R): void;
+interface ReadableStreamDefaultController<R = any> {
+  readonly desiredSize: number | null;
   close(): void;
-  error(e?: any): void;
+  enqueue(chunk: R): void;
+  error(error?: any): void;
+}
+
+interface ReadableByteStreamController {
+  readonly byobRequest: undefined;
+  readonly desiredSize: number | null;
+  close(): void;
+  enqueue(chunk: ArrayBufferView): void;
+  error(error?: any): void;
+}
+
+interface PipeOptions {
+  preventAbort?: boolean;
+  preventCancel?: boolean;
+  preventClose?: boolean;
+  signal?: AbortSignal;
+}
+
+interface QueuingStrategySizeCallback<T = any> {
+  (chunk: T): number;
+}
+
+interface QueuingStrategy<T = any> {
+  highWaterMark?: number;
+  size?: QueuingStrategySizeCallback<T>;
 }
 
 /** This Streams API interface represents a readable stream of byte data. The
@@ -273,16 +315,36 @@ interface ReadableStreamDefaultController<R> {
 interface ReadableStream<R = any> {
   readonly locked: boolean;
   cancel(reason?: any): Promise<void>;
-  // TODO(ry) It doesn't seem like Chrome supports this.
+  getIterator(options?: { preventCancel?: boolean }): AsyncIterableIterator<R>;
   // getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
   getReader(): ReadableStreamDefaultReader<R>;
+  pipeThrough<T>(
+    {
+      writable,
+      readable,
+    }: {
+      writable: WritableStream<R>;
+      readable: ReadableStream<T>;
+    },
+    options?: PipeOptions
+  ): ReadableStream<T>;
+  pipeTo(dest: WritableStream<R>, options?: PipeOptions): Promise<void>;
   tee(): [ReadableStream<R>, ReadableStream<R>];
+  [Symbol.asyncIterator](options?: {
+    preventCancel?: boolean;
+  }): AsyncIterableIterator<R>;
 }
 
-declare const ReadableStream: {
+declare var ReadableStream: {
   prototype: ReadableStream;
-  // TODO(ry) This doesn't match lib.dom.d.ts
-  new <R = any>(src?: UnderlyingSource<R>): ReadableStream<R>;
+  new (
+    underlyingSource: UnderlyingByteSource,
+    strategy?: { highWaterMark?: number; size?: undefined }
+  ): ReadableStream<Uint8Array>;
+  new <R = any>(
+    underlyingSource?: UnderlyingSource<R>,
+    strategy?: QueuingStrategy<R>
+  ): ReadableStream<R>;
 };
 
 /** This Streams API interface provides a standard abstraction for writing streaming data to a destination, known as a sink. This object comes with built-in backpressure and queuing. */
@@ -1037,18 +1099,93 @@ declare const URL: {
   revokeObjectURL(url: string): void;
 };
 
-declare class Worker {
-  onerror?: (e: Event) => void;
-  onmessage?: (data: any) => void;
-  onmessageerror?: () => void;
+interface MessageEventInit extends EventInit {
+  data?: any;
+  origin?: string;
+  lastEventId?: string;
+}
+
+declare class MessageEvent extends Event {
+  readonly data: any;
+  readonly origin: string;
+  readonly lastEventId: string;
+  constructor(type: string, eventInitDict?: MessageEventInit);
+}
+
+interface ErrorEventInit extends EventInit {
+  message?: string;
+  filename?: string;
+  lineno?: number;
+  colno?: number;
+  error?: any;
+}
+
+declare class ErrorEvent extends Event {
+  readonly message: string;
+  readonly filename: string;
+  readonly lineno: number;
+  readonly colno: number;
+  readonly error: any;
+  constructor(type: string, eventInitDict?: ErrorEventInit);
+}
+
+interface PostMessageOptions {
+  transfer?: any[];
+}
+
+declare class Worker extends EventTarget {
+  onerror?: (e: ErrorEvent) => void;
+  onmessage?: (e: MessageEvent) => void;
+  onmessageerror?: (e: MessageEvent) => void;
   constructor(
     specifier: string,
     options?: {
       type?: "classic" | "module";
       name?: string;
+      /** UNSTABLE: New API. Expect many changes; most likely this
+       * field will be made into an object for more granular
+       * configuration of worker thread (permissions, import map, etc.).
+       *
+       * Set to `true` to make `Deno` namespace and all of its methods
+       * available to worker thread.
+       *
+       * Currently worker inherits permissions from main thread (permissions
+       * given using `--allow-*` flags).
+       * Configurable permissions are on the roadmap to be implemented.
+       *
+       * Example:
+       *    // mod.ts
+       *    const worker = new Worker("./deno_worker.ts", { type: "module", deno: true });
+       *    worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
+       *
+       *    // deno_worker.ts
+       *
+       *
+       *    self.onmessage = async function (e) {
+       *        const { cmd, fileName } = e.data;
+       *        if (cmd !== "readFile") {
+       *            throw new Error("Invalid command");
+       *        }
+       *        const buf = await Deno.readFile(fileName);
+       *        const fileContents = new TextDecoder().decode(buf);
+       *        console.log(fileContents);
+       *    }
+       *
+       *    // log.txt
+       *    hello world
+       *    hello world 2
+       *
+       *    // run program
+       *    $ deno run --allow-read mod.ts
+       *    hello world
+       *    hello world2
+       *
+       */
+      deno?: boolean;
     }
   );
-  postMessage(data: any): void;
+  postMessage(message: any, transfer: ArrayBuffer[]): void;
+  postMessage(message: any, options?: PostMessageOptions): void;
   terminate(): void;
 }
 
@@ -1221,6 +1358,16 @@ declare class CustomEvent<T = any> extends Event {
   readonly detail: T;
 }
 
+/** A controller object that allows you to abort one or more DOM requests as and
+ * when desired. */
+declare class AbortController {
+  /** Returns the AbortSignal object associated with this object. */
+  readonly signal: AbortSignal;
+  /** Invoking this method will set this object's AbortSignal's aborted flag and
+   * signal to any observers that the associated activity is to be aborted. */
+  abort(): void;
+}
+
 interface AbortSignalEventMap {
   abort: Event;
 }
@@ -1228,10 +1375,8 @@ interface AbortSignalEventMap {
 /** A signal object that allows you to communicate with a DOM request (such as a
  * Fetch) and abort it if required via an AbortController object. */
 interface AbortSignal extends EventTarget {
-  /**
-   * Returns true if this AbortSignal's AbortController has signaled to abort,
-   * and false otherwise.
-   */
+  /** Returns true if this AbortSignal's AbortController has signaled to abort,
+   * and false otherwise. */
   readonly aborted: boolean;
   onabort: ((this: AbortSignal, ev: Event) => any) | null;
   addEventListener<K extends keyof AbortSignalEventMap>(

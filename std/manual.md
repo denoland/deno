@@ -41,7 +41,7 @@ programmer.
 
 Deno will always be distributed as a single executable. Given a URL to a Deno
 program, it is runnable with nothing more than
-[the 10 megabyte zipped executable](https://github.com/denoland/deno/releases).
+[the ~15 megabyte zipped executable](https://github.com/denoland/deno/releases).
 Deno explicitly takes on the role of both runtime and package manager. It uses a
 standard browser-compatible protocol for loading modules: URLs.
 
@@ -96,14 +96,14 @@ have been historically written with bash or python.
 - bundling (`deno bundle`)
 - runtime type info (`deno types`)
 - test runner (`deno test`)
-- command-line debugger (`--debug`) [coming soon](https://github.com/denoland/deno/issues/1120)
+- command-line debugger (`--debug`)
 - linter (`deno lint`) [coming soon](https://github.com/denoland/deno/issues/1880)
 
 <!-- prettier-ignore-end -->
 
 ## Setup
 
-Deno works on OSX, Linux, and Windows. Deno is a single binary executable. It
+Deno works on macOS, Linux, and Windows. Deno is a single binary executable. It
 has no external dependencies.
 
 ### Download and Install
@@ -123,19 +123,19 @@ Using PowerShell:
 iwr https://deno.land/x/install/install.ps1 -useb | iex
 ```
 
-Using [Scoop](https://scoop.sh/) (windows):
+Using [Scoop](https://scoop.sh/) (Windows):
 
 ```shell
 scoop install deno
 ```
 
-Using [Chocolatey](https://chocolatey.org/packages/deno) (windows):
+Using [Chocolatey](https://chocolatey.org/packages/deno) (Windows):
 
 ```shell
 choco install deno
 ```
 
-Using [Homebrew](https://formulae.brew.sh/formula/deno) (mac):
+Using [Homebrew](https://formulae.brew.sh/formula/deno) (macOS):
 
 ```shell
 brew install deno
@@ -151,7 +151,7 @@ Deno binaries can also be installed manually, by downloading a tarball or zip
 file at
 [github.com/denoland/deno/releases](https://github.com/denoland/deno/releases).
 These packages contain just a single executable file. You will have to set the
-executable bit on Mac and Linux.
+executable bit on macOS and Linux.
 
 Once it's installed and in your `$PATH`, try it:
 
@@ -874,14 +874,14 @@ Or you could import it into another ES module to consume:
 
 ### Installing executable scripts
 
-Deno provides ability to easily install and distribute executable code via
-`deno install` command.
+Deno provides `deno install` to easily install and distribute executable code.
 
 `deno install [FLAGS...] [EXE_NAME] [URL] [SCRIPT_ARGS...]` will install the
 script available at `URL` under the name `EXE_NAME`.
 
-This command is a thin wrapper that creates executable shell scripts which
-invoke `deno` with specified permissions and CLI flags.
+This command creates a thin, executable shell script which invokes `deno` using
+the specified CLI flags and main module. It is place in the installation root's
+`bin` directory.
 
 Example:
 
@@ -893,36 +893,37 @@ $ deno install --allow-net --allow-read file_server https://deno.land/std/http/f
 /Users/deno/.deno/bin/file_server
 ```
 
-By default scripts are installed at `$HOME/.deno/bin` or
-`$USERPROFILE/.deno/bin` and one of that directories must be added to the path
-manually.
+To change the installation root, use `--root`:
+
+```shell
+$ deno install --allow-net --allow-read --root /usr/local file_server https://deno.land/std/http/file_server.ts
+```
+
+The installation root is determined, in order of precedence:
+
+- `--root` option
+- `DENO_INSTALL_ROOT` environment variable
+- `$HOME/.deno`
+
+These must be added to the path manually if required.
 
 ```shell
 $ echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc
 ```
 
-Installation directory can be changed using `-d/--dir` flag:
-
-```shell
-$ deno install --allow-net --allow-read --dir /usr/local/bin file_server https://deno.land/std/http/file_server.ts
-```
-
-When installing a script you can specify permissions that will be used to run
-the script.
-
-Example:
+You must specify permissions that will be used to run the script at installation
+time.
 
 ```shell
 $ deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts 8080
 ```
 
-Above command creates an executable called `file_server` that runs with write
-and read permissions and binds to port 8080.
+The above command creates an executable called `file_server` that runs with
+write and read permissions and binds to port 8080.
 
-It is a good practice to use `import.meta.main` idiom for an entry point for
-executable file. See
-[Testing if current file is the main program](#testing-if-current-file-is-the-main-program)
-section.
+For good practice, use the
+[`import.meta.main`](#testing-if-current-file-is-the-main-program) idiom to
+specify the entry point in an executable script.
 
 Example:
 

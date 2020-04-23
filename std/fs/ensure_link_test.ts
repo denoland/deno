@@ -50,8 +50,8 @@ Deno.test(async function ensureLinkIfItExist(): Promise<void> {
   const srcStat = await Deno.lstat(testFile);
   const linkStat = await Deno.lstat(linkFile);
 
-  assertEquals(srcStat.isFile(), true);
-  assertEquals(linkStat.isFile(), true);
+  assertEquals(srcStat.isFile, true);
+  assertEquals(linkStat.isFile, true);
 
   // har link success. try to change one of them. they should be change both.
 
@@ -98,8 +98,8 @@ Deno.test(function ensureLinkSyncIfItExist(): void {
 
   const linkStat = Deno.lstatSync(linkFile);
 
-  assertEquals(srcStat.isFile(), true);
-  assertEquals(linkStat.isFile(), true);
+  assertEquals(srcStat.isFile, true);
+  assertEquals(linkStat.isFile, true);
 
   // har link success. try to change one of them. they should be change both.
 

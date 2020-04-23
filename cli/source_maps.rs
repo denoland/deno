@@ -6,10 +6,10 @@ use std::str;
 
 pub trait SourceMapGetter {
   /// Returns the raw source map file.
-  fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>>;
+  fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>>;
   fn get_source_line(
     &self,
-    script_name: &str,
+    file_name: &str,
     line_number: usize,
   ) -> Option<String>;
 }
@@ -29,10 +29,10 @@ fn builtin_source_map(_: &str) -> Option<Vec<u8>> {
 }
 
 #[cfg(not(feature = "check-only"))]
-fn builtin_source_map(script_name: &str) -> Option<Vec<u8>> {
-  if script_name.ends_with("CLI_SNAPSHOT.js") {
+fn builtin_source_map(file_name: &str) -> Option<Vec<u8>> {
+  if file_name.ends_with("CLI_SNAPSHOT.js") {
     Some(crate::js::CLI_SNAPSHOT_MAP.to_vec())
-  } else if script_name.ends_with("COMPILER_SNAPSHOT.js") {
+  } else if file_name.ends_with("COMPILER_SNAPSHOT.js") {
     Some(crate::js::COMPILER_SNAPSHOT_MAP.to_vec())
   } else {
     None
@@ -54,10 +54,12 @@ pub fn apply_source_map<G: SourceMapGetter>(
     get_maybe_orig_position(
       js_error.script_resource_name.clone(),
       js_error.line_number,
-      js_error.start_column,
+      // start_column is 0-based, we need 1-based here.
+      js_error.start_column.map(|n| n + 1),
       &mut mappings_map,
       getter,
     );
+  let start_column = start_column.map(|n| n - 1);
   // It is better to just move end_column to be the same distance away from
   // start column because sometimes the code point is not available in the
   // source file map.
@@ -79,7 +81,8 @@ pub fn apply_source_map<G: SourceMapGetter>(
     {
       getter.get_source_line(
         &js_error.script_resource_name.clone().unwrap(),
-        ln as usize,
+        // Getter expects 0-based line numbers, but ours are 1-based.
+        ln as usize - 1,
       )
     }
     _ => js_error.source_line.clone(),
@@ -98,48 +101,47 @@ pub fn apply_source_map<G: SourceMapGetter>(
 }
 
 fn get_maybe_orig_position<G: SourceMapGetter>(
-  script_name: Option<String>,
+  file_name: Option<String>,
   line_number: Option<i64>,
-  column: Option<i64>,
+  column_number: Option<i64>,
   mappings_map: &mut CachedMaps,
   getter: &G,
 ) -> (Option<String>, Option<i64>, Option<i64>) {
-  match (script_name, line_number, column) {
-    (Some(script_name_v), Some(line_v), Some(column_v)) => {
-      let (script_name, line_number, column) = get_orig_position(
-        script_name_v,
-        line_v - 1,
-        column_v,
-        mappings_map,
-        getter,
-      );
-      (Some(script_name), Some(line_number), Some(column))
+  match (file_name, line_number, column_number) {
+    (Some(file_name_v), Some(line_v), Some(column_v)) => {
+      let (file_name, line_number, column_number) =
+        get_orig_position(file_name_v, line_v, column_v, mappings_map, getter);
+      (Some(file_name), Some(line_number), Some(column_number))
     }
     _ => (None, None, None),
   }
 }
 
 pub fn get_orig_position<G: SourceMapGetter>(
-  script_name: String,
+  file_name: String,
   line_number: i64,
-  column: i64,
+  column_number: i64,
   mappings_map: &mut CachedMaps,
   getter: &G,
 ) -> (String, i64, i64) {
-  let maybe_source_map = get_mappings(&script_name, mappings_map, getter);
-  let default_pos = (script_name, line_number, column);
+  let maybe_source_map = get_mappings(&file_name, mappings_map, getter);
+  let default_pos = (file_name, line_number, column_number);
+
+  // Lookup expects 0-based line and column numbers, but ours are 1-based.
+  let line_number = line_number - 1;
+  let column_number = column_number - 1;
 
   match maybe_source_map {
     None => default_pos,
     Some(source_map) => {
-      match source_map.lookup_token(line_number as u32, column as u32) {
+      match source_map.lookup_token(line_number as u32, column_number as u32) {
         None => default_pos,
         Some(token) => match token.get_source() {
           None => default_pos,
           Some(original) => (
             original.to_string(),
-            i64::from(token.get_src_line()),
-            i64::from(token.get_src_col()),
+            i64::from(token.get_src_line()) + 1,
+            i64::from(token.get_src_col()) + 1,
           ),
         },
       }
@@ -148,23 +150,23 @@ pub fn get_orig_position<G: SourceMapGetter>(
 }
 
 fn get_mappings<'a, G: SourceMapGetter>(
-  script_name: &str,
+  file_name: &str,
   mappings_map: &'a mut CachedMaps,
   getter: &G,
 ) -> &'a Option<SourceMap> {
   mappings_map
-    .entry(script_name.to_string())
-    .or_insert_with(|| parse_map_string(script_name, getter))
+    .entry(file_name.to_string())
+    .or_insert_with(|| parse_map_string(file_name, getter))
 }
 
 // TODO(kitsonk) parsed source maps should probably be cached in state in
 // the module meta data.
 fn parse_map_string<G: SourceMapGetter>(
-  script_name: &str,
+  file_name: &str,
   getter: &G,
 ) -> Option<SourceMap> {
-  builtin_source_map(script_name)
-    .or_else(|| getter.get_source_map(script_name))
+  builtin_source_map(file_name)
+    .or_else(|| getter.get_source_map(file_name))
     .and_then(|raw_source_map| SourceMap::from_slice(&raw_source_map).ok())
 }
 
@@ -175,8 +177,8 @@ mod tests {
   struct MockSourceMapGetter {}
 
   impl SourceMapGetter for MockSourceMapGetter {
-    fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
-      let s = match script_name {
+    fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
+      let s = match file_name {
         "foo_bar.ts" => {
           r#"{"sources": ["foo_bar.ts"], "mappings":";;;IAIA,OAAO,CAAC,GAAG,CAAC,qBAAqB,EAAE,EAAE,CAAC,OAAO,CAAC,CAAC;IAC/C,OAAO,CAAC,GAAG,CAAC,eAAe,EAAE,IAAI,CAAC,QAAQ,CAAC,IAAI,CAAC,CAAC;IACjD,OAAO,CAAC,GAAG,CAAC,WAAW,EAAE,IAAI,CAAC,QAAQ,CAAC,EAAE,CAAC,CAAC;IAE3C,OAAO,CAAC,GAAG,CAAC,GAAG,CAAC,CAAC"}"#
         }
@@ -190,10 +192,10 @@ mod tests {
 
     fn get_source_line(
       &self,
-      script_name: &str,
+      file_name: &str,
       line_number: usize,
     ) -> Option<String> {
-      let s = match script_name {
+      let s = match file_name {
         "foo_bar.ts" => vec![
           "console.log('foo');",
           "console.log('foo');",

@@ -239,6 +239,7 @@ pub struct DenoInspector {
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
   _canary_tx: oneshot::Sender<Never>,
+  pub debugger_url: String,
 }
 
 impl Deref for DenoInspector {
@@ -307,11 +308,11 @@ impl DenoInspector {
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
-    isolate: &mut deno_core::Isolate,
+    isolate: &mut deno_core::CoreIsolate,
     host: SocketAddr,
     wait_for_debugger: bool,
   ) -> Box<Self> {
-    let deno_core::Isolate {
+    let deno_core::CoreIsolate {
       v8_isolate,
       global_context,
       ..
@@ -323,6 +324,14 @@ impl DenoInspector {
 
     let (new_websocket_tx, new_websocket_rx) = mpsc::unbounded::<WebSocket>();
     let (canary_tx, canary_rx) = oneshot::channel::<Never>();
+
+    let info = InspectorInfo {
+      host,
+      uuid: Uuid::new_v4(),
+      thread_name: thread::current().name().map(|n| n.to_owned()),
+      new_websocket_tx,
+      canary_rx,
+    };
 
     // Create DenoInspector instance.
     let mut self_ = new_box_with(|self_ptr| {
@@ -342,6 +351,7 @@ impl DenoInspector {
         flags,
         waker,
         _canary_tx: canary_tx,
+        debugger_url: info.get_websocket_debugger_url(),
       }
     });
 
@@ -354,13 +364,6 @@ impl DenoInspector {
     // Note: poll_sessions() might block if we need to wait for a
     // debugger front-end to connect. Therefore the server thread must to be
     // nofified *before* polling.
-    let info = InspectorInfo {
-      host,
-      uuid: Uuid::new_v4(),
-      thread_name: thread::current().name().map(|n| n.to_owned()),
-      new_websocket_tx,
-      canary_rx,
-    };
     InspectorServer::register_inspector(info);
 
     // Poll the session handler so we will get notified whenever there is

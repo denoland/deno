@@ -28,7 +28,7 @@ Here are the dedicated documentations of modules:
 - [fs](fs/README.md)
 - [http](http/README.md)
 - [log](log/README.md)
-- [strings](strings/README.md)
+- [node](node/README.md)
 - [testing](testing/README.md)
 - [uuid](uuid/README.md)
 - [ws](ws/README.md)

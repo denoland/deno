@@ -1,5 +1,4 @@
 [WILDCARD]error: Uncaught URIError: relative import path "baz" not prefixed with / or ./ or ../ Imported from "[WILDCARD]/type_definitions/bar.d.ts"
-[WILDCARD]ops/dispatch_json.ts:[WILDCARD]
     at unwrapResponse ([WILDCARD]ops/dispatch_json.ts:[WILDCARD])
     at Object.sendSync ([WILDCARD]ops/dispatch_json.ts:[WILDCARD])
     at Object.resolveModules ([WILDCARD]ops/compiler.ts:[WILDCARD])

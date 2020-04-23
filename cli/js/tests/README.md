@@ -69,6 +69,8 @@ target/debug/deno -A cli/js/tests/unit_test_runner.ts --worker --addr=127.0.0.1:
 
 # Run specific tests
 target/debug/deno --allow-net cli/js/tests/unit_test_runner.ts -- netTcpListenClose
+
+RUST_BACKTRACE=1 cargo run --  --allow-read --allow-write cli/js/tests/unit_test_runner.ts -- netUnixDialListen
 ```
 
 ### Http server

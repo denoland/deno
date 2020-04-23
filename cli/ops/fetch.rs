@@ -4,15 +4,16 @@ use super::io::{StreamResource, StreamResourceHolder};
 use crate::http_util::{create_http_client, HttpBody};
 use crate::op_error::OpError;
 use crate::state::State;
-use deno_core::*;
+use deno_core::CoreIsolate;
+use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::Method;
 use std::convert::From;
 
-pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("op_fetch", s.stateful_json_op(op_fetch));
+pub fn init(i: &mut CoreIsolate, s: &State) {
+  i.register_op("op_fetch", s.stateful_json_op2(op_fetch));
 }
 
 #[derive(Deserialize)]
@@ -23,6 +24,7 @@ struct FetchArgs {
 }
 
 pub fn op_fetch(
+  isolate: &mut CoreIsolate,
   state: &State,
   args: Value,
   data: Option<ZeroCopyBuf>,
@@ -64,8 +66,8 @@ pub fn op_fetch(
     request = request.header(name, v);
   }
   debug!("Before fetch {}", url);
-  let state_ = state.clone();
 
+  let resource_table = isolate.resource_table.clone();
   let future = async move {
     let res = request.send().await?;
     debug!("Fetch response {}", url);
@@ -76,8 +78,8 @@ pub fn op_fetch(
     }
 
     let body = HttpBody::from(res);
-    let mut state = state_.borrow_mut();
-    let rid = state.resource_table.add(
+    let mut resource_table = resource_table.borrow_mut();
+    let rid = resource_table.add(
       "httpBody",
       Box::new(StreamResourceHolder::new(StreamResource::HttpBody(
         Box::new(body),

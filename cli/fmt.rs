@@ -21,15 +21,7 @@ use std::path::PathBuf;
 
 fn is_supported(path: &Path) -> bool {
   if let Some(ext) = path.extension() {
-    if ext == "tsx" || ext == "js" || ext == "jsx" {
-      true
-    } else if ext == "ts" {
-      // Currently dprint does not support d.ts files.
-      // https://github.com/dsherret/dprint/issues/100
-      !path.as_os_str().to_string_lossy().ends_with(".d.ts")
-    } else {
-      false
-    }
+    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx"
   } else {
     false
   }
@@ -37,7 +29,7 @@ fn is_supported(path: &Path) -> bool {
 
 fn get_config() -> dprint::configuration::Configuration {
   use dprint::configuration::*;
-  ConfigurationBuilder::new().prettier().build()
+  ConfigurationBuilder::new().deno().build()
 }
 
 fn check_source_files(
@@ -45,16 +37,14 @@ fn check_source_files(
   paths: Vec<PathBuf>,
 ) -> Result<(), ErrBox> {
   let mut not_formatted_files = vec![];
+  let formatter = dprint::Formatter::new(config);
 
   for file_path in paths {
     let file_path_str = file_path.to_string_lossy();
     let file_contents = fs::read_to_string(&file_path)?;
-    let r = dprint::format_text(&file_path_str, &file_contents, &config);
+    let r = formatter.format_text(&file_path_str, &file_contents);
     match r {
-      Ok(None) => {
-        // nothing to format, pass
-      }
-      Ok(Some(formatted_text)) => {
+      Ok(formatted_text) => {
         if formatted_text != file_contents {
           not_formatted_files.push(file_path);
         }
@@ -93,16 +83,14 @@ fn format_source_files(
   paths: Vec<PathBuf>,
 ) -> Result<(), ErrBox> {
   let mut not_formatted_files = vec![];
+  let formatter = dprint::Formatter::new(config);
 
   for file_path in paths {
     let file_path_str = file_path.to_string_lossy();
     let file_contents = fs::read_to_string(&file_path)?;
-    let r = dprint::format_text(&file_path_str, &file_contents, &config);
+    let r = formatter.format_text(&file_path_str, &file_contents);
     match r {
-      Ok(None) => {
-        // nothing to format, pass
-      }
-      Ok(Some(formatted_text)) => {
+      Ok(formatted_text) => {
         if formatted_text != file_contents {
           println!("{}", file_path_str);
           fs::write(&file_path, formatted_text)?;
@@ -166,11 +154,10 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
   if stdin().read_to_string(&mut source).is_err() {
     return Err(OpError::other("Failed to read from stdin".to_string()).into());
   }
-  let config = get_config();
+  let formatter = dprint::Formatter::new(get_config());
 
-  match dprint::format_text("_stdin.ts", &source, &config) {
-    Ok(None) => unreachable!(),
-    Ok(Some(formatted_text)) => {
+  match formatter.format_text("_stdin.ts", &source) {
+    Ok(formatted_text) => {
       if check {
         if formatted_text != source {
           println!("Not formatted stdin");
@@ -190,7 +177,7 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
 fn test_is_supported() {
   assert!(!is_supported(Path::new("tests/subdir/redirects")));
   assert!(!is_supported(Path::new("README.md")));
-  assert!(!is_supported(Path::new("lib/typescript.d.ts")));
+  assert!(is_supported(Path::new("lib/typescript.d.ts")));
   assert!(is_supported(Path::new("cli/tests/001_hello.js")));
   assert!(is_supported(Path::new("cli/tests/002_hello.ts")));
   assert!(is_supported(Path::new("foo.jsx")));

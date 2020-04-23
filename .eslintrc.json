@@ -23,7 +23,8 @@
     "@typescript-eslint/ban-ts-ignore": ["off"],
     "@typescript-eslint/no-empty-function": ["off"],
     "no-return-await": "error",
-    "require-await": "error"
+    "require-await": "error",
+    "no-async-promise-executor": "error"
   },
   "overrides": [
     {

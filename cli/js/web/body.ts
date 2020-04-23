@@ -1,30 +1,18 @@
-import * as formData from "./form_data.ts";
 import * as blob from "./blob.ts";
 import * as encoding from "./text_encoding.ts";
-import * as headers from "./headers.ts";
 import * as domTypes from "./dom_types.d.ts";
-import { ReadableStream } from "./streams/mod.ts";
-
-const { Headers } = headers;
+import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 
 // only namespace imports work for now, plucking out what we need
-const { FormData } = formData;
 const { TextEncoder, TextDecoder } = encoding;
 const DenoBlob = blob.DenoBlob;
-
-type ReadableStreamReader = domTypes.ReadableStreamReader;
-
-interface ReadableStreamController {
-  enqueue(chunk: string | ArrayBuffer): void;
-  close(): void;
-}
 
 export type BodySource =
   | Blob
   | BufferSource
-  | domTypes.FormData
+  | FormData
   | URLSearchParams
-  | domTypes.ReadableStream
+  | ReadableStream
   | string;
 
 function validateBodyType(owner: Body, bodySource: BodySource): boolean {
@@ -44,7 +32,7 @@ function validateBodyType(owner: Body, bodySource: BodySource): boolean {
     return true;
   } else if (typeof bodySource === "string") {
     return true;
-  } else if (bodySource instanceof ReadableStream) {
+  } else if (bodySource instanceof ReadableStreamImpl) {
     return true;
   } else if (bodySource instanceof FormData) {
     return true;
@@ -123,7 +111,7 @@ export const BodyUsedError =
   "Failed to execute 'clone' on 'Body': body is already used";
 
 export class Body implements domTypes.Body {
-  protected _stream: domTypes.ReadableStream<string | ArrayBuffer> | null;
+  protected _stream: ReadableStreamImpl<string | ArrayBuffer> | null;
 
   constructor(protected _bodySource: BodySource, readonly contentType: string) {
     validateBodyType(this, _bodySource);
@@ -132,23 +120,23 @@ export class Body implements domTypes.Body {
     this._stream = null;
   }
 
-  get body(): domTypes.ReadableStream | null {
+  get body(): ReadableStream | null {
     if (this._stream) {
       return this._stream;
     }
 
-    if (this._bodySource instanceof ReadableStream) {
+    if (this._bodySource instanceof ReadableStreamImpl) {
       // @ts-ignore
       this._stream = this._bodySource;
     }
     if (typeof this._bodySource === "string") {
       const bodySource = this._bodySource;
-      this._stream = new ReadableStream({
-        start(controller: ReadableStreamController): void {
+      this._stream = new ReadableStreamImpl<string | ArrayBuffer>({
+        start(controller: ReadableStreamDefaultController): void {
           controller.enqueue(bodySource);
           controller.close();
         },
-      }) as domTypes.ReadableStream<ArrayBuffer | string>;
+      });
     }
     return this._stream;
   }
@@ -165,7 +153,7 @@ export class Body implements domTypes.Body {
   }
 
   // ref: https://fetch.spec.whatwg.org/#body-mixin
-  public async formData(): Promise<domTypes.FormData> {
+  public async formData(): Promise<FormData> {
     const formData = new FormData();
     const enc = new TextEncoder();
     if (hasHeaderValueOf(this.contentType, "multipart/form-data")) {
@@ -325,7 +313,7 @@ export class Body implements domTypes.Body {
       return Promise.resolve(
         enc.encode(this._bodySource).buffer as ArrayBuffer
       );
-    } else if (this._bodySource instanceof ReadableStream) {
+    } else if (this._bodySource instanceof ReadableStreamImpl) {
       // @ts-ignore
       return bufferFromStream(this._bodySource.getReader());
     } else if (this._bodySource instanceof FormData) {

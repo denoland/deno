@@ -105,10 +105,8 @@ impl SourceFileFetcher {
     Ok(())
   }
 
-  // TODO(bartlomieju): fetching cached resources should be done
-  // using blocking fs syscalls
   /// Required for TS compiler and source maps.
-  pub async fn fetch_cached_source_file(
+  pub fn fetch_cached_source_file(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<SourceFile> {
@@ -124,10 +122,13 @@ impl SourceFileFetcher {
     // It should be safe to for caller block on this
     // future, because it doesn't actually do any asynchronous
     // action in that path.
-    self
-      .get_source_file(specifier.as_url(), true, false, true)
-      .await
-      .ok()
+    if let Ok(maybe_source_file) =
+      self.get_source_file_from_local_cache(specifier.as_url())
+    {
+      return maybe_source_file;
+    }
+
+    None
   }
 
   /// Save a given source file into cache.
@@ -216,6 +217,22 @@ impl SourceFileFetcher {
         Err(err)
       }
     }
+  }
+
+  fn get_source_file_from_local_cache(
+    &self,
+    module_url: &Url,
+  ) -> Result<Option<SourceFile>, ErrBox> {
+    let url_scheme = module_url.scheme();
+    let is_local_file = url_scheme == "file";
+    SourceFileFetcher::check_if_supported_scheme(&module_url)?;
+
+    // Local files are always fetched from disk bypassing cache entirely.
+    if is_local_file {
+      return self.fetch_local_file(&module_url).map(Some);
+    }
+
+    self.fetch_cached_remote_source(&module_url)
   }
 
   /// This is main method that is responsible for fetching local or remote files.

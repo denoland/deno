@@ -164,7 +164,7 @@ export async function writeChunkedBody(
   r: Deno.Reader
 ): Promise<void> {
   const writer = BufWriter.create(w);
-  for await (const chunk of Deno.toAsyncIterator(r)) {
+  for await (const chunk of Deno.iter(r)) {
     if (chunk.byteLength <= 0) continue;
     const start = encoder.encode(`${chunk.byteLength.toString(16)}\r\n`);
     const end = encoder.encode("\r\n");

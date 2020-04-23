@@ -4,12 +4,10 @@ import { isTypedArray } from "./util.ts";
 import * as domTypes from "./dom_types.d.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob.ts";
-import { Headers } from "./headers.ts";
 import * as io from "../io.ts";
 import { read } from "../ops/io.ts";
 import { close } from "../ops/resources.ts";
 import { Buffer } from "../buffer.ts";
-import { FormData } from "./form_data.ts";
 import { fetch as opFetch, FetchResponse } from "../ops/fetch.ts";
 import { DomFileImpl } from "./dom_file.ts";
 
@@ -30,14 +28,13 @@ function hasHeaderValueOf(s: string, value: string): boolean {
   return new RegExp(`^${value}[\t\s]*;?`).test(s);
 }
 
-class Body
-  implements domTypes.Body, domTypes.ReadableStream<Uint8Array>, io.ReadCloser {
+class Body implements domTypes.Body, ReadableStream<Uint8Array>, io.ReadCloser {
   #bodyUsed = false;
   #bodyPromise: Promise<ArrayBuffer> | null = null;
   #data: ArrayBuffer | null = null;
   #rid: number;
   readonly locked: boolean = false; // TODO
-  readonly body: domTypes.ReadableStream<Uint8Array>;
+  readonly body: ReadableStream<Uint8Array>;
 
   constructor(rid: number, readonly contentType: string) {
     this.#rid = rid;
@@ -86,7 +83,7 @@ class Body
   }
 
   // ref: https://fetch.spec.whatwg.org/#body-mixin
-  async formData(): Promise<domTypes.FormData> {
+  async formData(): Promise<FormData> {
     const formData = new FormData();
     const enc = new TextEncoder();
     if (hasHeaderValueOf(this.contentType, "multipart/form-data")) {
@@ -236,20 +233,22 @@ class Body
     return notImplemented();
   }
 
-  getReader(options: { mode: "byob" }): domTypes.ReadableStreamBYOBReader;
-  getReader(): domTypes.ReadableStreamDefaultReader<Uint8Array>;
-  getReader():
-    | domTypes.ReadableStreamBYOBReader
-    | domTypes.ReadableStreamDefaultReader<Uint8Array> {
+  getIterator(_options?: {
+    preventCancel?: boolean;
+  }): AsyncIterableIterator<Uint8Array> {
     return notImplemented();
   }
 
-  tee(): [domTypes.ReadableStream, domTypes.ReadableStream] {
+  getReader(): ReadableStreamDefaultReader<Uint8Array> {
+    return notImplemented();
+  }
+
+  tee(): [ReadableStream, ReadableStream] {
     return notImplemented();
   }
 
   [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
-    return io.toAsyncIterator(this);
+    return io.iter(this);
   }
 
   get bodyUsed(): boolean {
@@ -259,26 +258,26 @@ class Body
   pipeThrough<T>(
     _: {
       writable: domTypes.WritableStream<Uint8Array>;
-      readable: domTypes.ReadableStream<T>;
+      readable: ReadableStream<T>;
     },
-    _options?: domTypes.PipeOptions
-  ): domTypes.ReadableStream<T> {
+    _options?: PipeOptions
+  ): ReadableStream<T> {
     return notImplemented();
   }
 
   pipeTo(
     _dest: domTypes.WritableStream<Uint8Array>,
-    _options?: domTypes.PipeOptions
+    _options?: PipeOptions
   ): Promise<void> {
     return notImplemented();
   }
 }
 
 export class Response implements domTypes.Response {
-  readonly type: domTypes.ResponseType;
+  readonly type: ResponseType;
   readonly redirected: boolean;
-  headers: domTypes.Headers;
-  readonly trailer: Promise<domTypes.Headers>;
+  headers: Headers;
+  readonly trailer: Promise<Headers>;
   readonly body: Body | null;
 
   constructor(
@@ -288,7 +287,7 @@ export class Response implements domTypes.Response {
     headersList: Array<[string, string]>,
     rid: number,
     redirected_: boolean,
-    readonly type_: null | domTypes.ResponseType = "default",
+    readonly type_: null | ResponseType = "default",
     body_: null | Body = null
   ) {
     this.trailer = createResolvable();
@@ -389,7 +388,7 @@ export class Response implements domTypes.Response {
     return this.body.blob();
   }
 
-  formData(): Promise<domTypes.FormData> {
+  formData(): Promise<FormData> {
     if (this.#bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
@@ -467,7 +466,7 @@ export class Response implements domTypes.Response {
 function sendFetchReq(
   url: string,
   method: string | null,
-  headers: domTypes.Headers | null,
+  headers: Headers | null,
   body: ArrayBufferView | undefined
 ): Promise<FetchResponse> {
   let headerArray: Array<[string, string]> = [];
@@ -490,7 +489,7 @@ export async function fetch(
 ): Promise<Response> {
   let url: string;
   let method: string | null = null;
-  let headers: domTypes.Headers | null = null;
+  let headers: Headers | null = null;
   let body: ArrayBufferView | undefined;
   let redirected = false;
   let remRedirectCount = 20; // TODO: use a better way to handle
