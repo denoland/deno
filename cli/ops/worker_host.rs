@@ -64,7 +64,7 @@ fn create_web_worker(
   // Instead of using name for log we use `worker-${id}` because
   // WebWorkers can have empty string as name.
   let script = format!(
-    "bootstrapWorkerRuntime(\"{}\", {}, \"worker-{}\")",
+    "bootstrap.workerRuntime(\"{}\", {}, \"worker-{}\")",
     name, worker.has_deno_namespace, worker_id
   );
   worker.execute(&script)?;

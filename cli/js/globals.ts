@@ -134,12 +134,19 @@ declare global {
   };
   var onload: ((e: Event) => void) | undefined;
   var onunload: ((e: Event) => void) | undefined;
-  var bootstrapMainRuntime: (() => void) | undefined;
 
-  // Assigned to `self` global - worker runtime and compiler
-  var bootstrapWorkerRuntime:
-    | ((name: string) => Promise<void> | void)
-    | undefined;
+  // These methods are used to prepare different runtime
+  // environments. After bootrapping, this namespace
+  // should be removed from global scope.
+  var bootstrap: {
+    mainRuntime: (() => void) | undefined;
+    // Assigned to `self` global - worker runtime and compiler
+    workerRuntime: ((name: string) => Promise<void> | void) | undefined;
+    // Assigned to `self` global - compiler
+    tsCompilerRuntime: (() => void) | undefined;
+    wasmCompilerRuntime: (() => void) | undefined;
+  };
+
   var onerror:
     | ((
         msg: string,
@@ -156,9 +163,6 @@ declare global {
   var close: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   var postMessage: (msg: any) => void;
-  // Assigned to `self` global - compiler
-  var bootstrapTsCompilerRuntime: (() => void) | undefined;
-  var bootstrapWasmCompilerRuntime: (() => void) | undefined;
   /* eslint-enable */
 }
 

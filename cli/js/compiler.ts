@@ -407,16 +407,13 @@ function bootstrapWasmCompilerRuntime(): void {
 delete (Object.prototype as any).__proto__;
 
 Object.defineProperties(globalThis, {
-  bootstrapWasmCompilerRuntime: {
-    value: bootstrapWasmCompilerRuntime,
-    enumerable: false,
-    writable: false,
-    configurable: false,
-  },
-  bootstrapTsCompilerRuntime: {
-    value: bootstrapTsCompilerRuntime,
-    enumerable: false,
-    writable: false,
-    configurable: false,
+  bootstrap: {
+    value: {
+      ...globalThis.bootstrap,
+      wasmCompilerRuntime: bootstrapWasmCompilerRuntime,
+      tsCompilerRuntime: bootstrapTsCompilerRuntime,
+    },
+    configurable: true,
+    writable: true,
   },
 });

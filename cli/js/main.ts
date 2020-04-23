@@ -9,16 +9,12 @@ import { bootstrapWorkerRuntime } from "./runtime_worker.ts";
 delete (Object.prototype as any).__proto__;
 
 Object.defineProperties(globalThis, {
-  bootstrapMainRuntime: {
-    value: bootstrapMainRuntime,
-    enumerable: false,
-    writable: false,
-    configurable: false,
-  },
-  bootstrapWorkerRuntime: {
-    value: bootstrapWorkerRuntime,
-    enumerable: false,
-    writable: false,
-    configurable: false,
+  bootstrap: {
+    value: {
+      mainRuntime: bootstrapMainRuntime,
+      workerRuntime: bootstrapWorkerRuntime,
+    },
+    configurable: true,
+    writable: true,
   },
 });

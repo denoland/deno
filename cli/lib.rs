@@ -154,7 +154,7 @@ fn create_main_worker(
     t.add("stderr", Box::new(stderr));
   }
 
-  worker.execute("bootstrapMainRuntime()")?;
+  worker.execute("bootstrap.mainRuntime()")?;
   Ok(worker)
 }
 

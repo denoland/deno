@@ -30,7 +30,7 @@ fn cli_snapshot() {
   deno_core::js_check(isolate.execute(
     "<anon>",
     r#"
-      if (!(bootstrapMainRuntime && bootstrapWorkerRuntime)) {
+      if (!(bootstrap.mainRuntime && bootstrap.workerRuntime)) {
         throw Error("bad");
       }
       console.log("we have console.log!!!");
@@ -49,7 +49,7 @@ fn compiler_snapshot() {
   deno_core::js_check(isolate.execute(
     "<anon>",
     r#"
-    if (!(bootstrapTsCompilerRuntime && bootstrapTsCompilerRuntime)) {
+    if (!(bootstrap.tsCompilerRuntime && bootstrap.wasmCompilerRuntime)) {
         throw Error("bad");
       }
       console.log(`ts version: ${ts.version}`);
