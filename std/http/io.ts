@@ -3,7 +3,7 @@ import { TextProtoReader } from "../textproto/mod.ts";
 import { assert } from "../testing/asserts.ts";
 import { encoder } from "../encoding/utf8.ts";
 import { ServerRequest, ServerResponse } from "./server.ts";
-import { statusMap } from "./http_status.ts";
+import { STATUS_TEXT } from "./http_status.ts";
 
 export function emptyReader(): Deno.Reader {
   return {
@@ -235,7 +235,7 @@ export async function writeResponse(
   const protoMajor = 1;
   const protoMinor = 1;
   const statusCode = r.status || 200;
-  const statusText = statusMap[statusCode];
+  const statusText = STATUS_TEXT.get(statusCode);
   const writer = BufWriter.create(w);
   if (!statusText) {
     throw new Deno.errors.InvalidData("Bad status code");
