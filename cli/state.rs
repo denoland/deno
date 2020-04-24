@@ -236,9 +236,14 @@ impl State {
   /// This is intentionally a non-recoverable check so that people cannot probe
   /// for unstable APIs from stable programs.
   pub fn check_unstable(&self, api_name: &str) {
+    // TODO(ry) Maybe use IsolateHandle::terminate_execution here to provide a
+    // stack trace in JS.
     let s = self.0.borrow();
     if !s.global_state.flags.unstable {
-      eprintln!("--unstable flag not provided for '{}'", api_name);
+      eprintln!(
+        "Unstable API '{}'. The --unstable flag must be provided.",
+        api_name
+      );
       std::process::exit(70);
     }
   }
