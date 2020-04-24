@@ -70,8 +70,7 @@ export interface ReadWriteCloser extends Reader, Writer, Closer {}
 // https://golang.org/pkg/io/#ReadWriteSeeker
 export interface ReadWriteSeeker extends Reader, Writer, Seeker {}
 
-// https://golang.org/pkg/io/#Copy
-export async function copy(dst: Writer, src: Reader): Promise<number> {
+export async function copy(src: Reader, dst: Writer): Promise<number> {
   let n = 0;
   const b = new Uint8Array(DEFAULT_BUFFER_SIZE);
   let gotEOF = false;

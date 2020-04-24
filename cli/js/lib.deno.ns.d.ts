@@ -565,16 +565,16 @@ declare namespace Deno {
    *
    *       const source = await Deno.open("my_file.txt");
    *       const buffer = new Deno.Buffer()
-   *       const bytesCopied1 = await Deno.copy(Deno.stdout, source);
-   *       const bytesCopied2 = await Deno.copy(buffer, source);
+   *       const bytesCopied1 = await Deno.copy(source, Deno.stdout);
+   *       const bytesCopied2 = await Deno.copy(source, buffer);
    *
    * Because `copy()` is defined to read from `src` until `EOF`, it does not
    * treat an `EOF` from `read()` as an error to be reported.
    *
-   * @param dst The destination to copy to
    * @param src The source to copy from
+   * @param dst The destination to copy to
    */
-  export function copy(dst: Writer, src: Reader): Promise<number>;
+  export function copy(src: Reader, dst: Writer): Promise<number>;
 
   /** Turns a Reader, `r`, into an async iterator.
    *

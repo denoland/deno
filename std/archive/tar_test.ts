@@ -30,8 +30,8 @@ Deno.test(async function createTarArchive(): Promise<void> {
   await tar.append("dir/tar.ts", { filePath });
 
   // write tar data to a buffer
-  const writer = new Deno.Buffer(),
-    wrote = await Deno.copy(writer, tar.getReader());
+  const writer = new Deno.Buffer();
+  const wrote = await Deno.copy(tar.getReader(), writer);
 
   /**
    * 3072 = 512 (header) + 512 (content) + 512 (header) + 512 (content)
