@@ -55,7 +55,7 @@ async fn check_source_files(
           }
         }
         Err(e) => {
-          let _ = output_lock.lock().unwrap();
+          let _g = output_lock.lock().unwrap();
           eprintln!("Error checking: {}", &file_path_str);
           eprintln!("   {}", e);
         }
@@ -108,12 +108,12 @@ async fn format_source_files(
           if formatted_text != file_contents {
             fs::write(&file_path, formatted_text)?;
             formatted_files_count.fetch_add(1, Ordering::SeqCst);
-            let _ = output_lock.lock().unwrap();
+            let _g = output_lock.lock().unwrap();
             println!("{}", file_path_str);
           }
         }
         Err(e) => {
-          let _ = output_lock.lock().unwrap();
+          let _g = output_lock.lock().unwrap();
           eprintln!("Error formatting: {}", &file_path_str);
           eprintln!("   {}", e);
         }
