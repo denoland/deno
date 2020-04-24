@@ -230,6 +230,18 @@ impl State {
       dispatcher(isolate, &state, args, zero_copy)
     }
   }
+
+  /// Quits the process if the --unstable flag was not provided.
+  ///
+  /// This is intentionally a non-recoverable check so that people cannot probe
+  /// for unstable APIs from stable programs.
+  pub fn check_unstable(&self, api_name: &str) {
+    let s = self.0.borrow();
+    if !s.global_state.flags.unstable {
+      eprintln!("--unstable flag not provided for '{}'", api_name);
+      std::process::exit(70);
+    }
+  }
 }
 
 impl ModuleLoader for State {
