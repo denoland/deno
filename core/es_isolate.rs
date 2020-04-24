@@ -586,7 +586,7 @@ pub mod tests {
 
     let mut isolate = EsIsolate::new(loader, StartupData::None, false);
 
-    let dispatcher = move |_isolate: &mut CoreIsolate,
+    let dispatcher = move |_state: &mut crate::CoreIsolateState,
                            control: &[u8],
                            _zero_copy: Option<ZeroCopyBuf>|
           -> Op {
@@ -627,7 +627,9 @@ pub mod tests {
       .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    let imports = isolate.modules.get_children(mod_a);
+    let state_rc = EsIsolate::state(&isolate);
+    let state = state_rc.borrow();
+    let imports = state.modules.get_children(mod_a);
     assert_eq!(
       imports,
       Some(&vec![ModuleSpecifier::resolve_url("file:///b.js").unwrap()])
@@ -635,7 +637,7 @@ pub mod tests {
     let mod_b = isolate
       .mod_new(false, "file:///b.js", "export function b() { return 'b' }")
       .unwrap();
-    let imports = isolate.modules.get_children(mod_b).unwrap();
+    let imports = state.modules.get_children(mod_b).unwrap();
     assert_eq!(imports.len(), 0);
 
     js_check(isolate.mod_instantiate(mod_b));

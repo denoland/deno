@@ -21,8 +21,8 @@ pub enum Op {
 }
 
 /// Main type describing op
-pub type OpDispatcher =
-  dyn Fn(&mut CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op + 'static;
+pub type OpDispatcher = dyn Fn(Rc<RefCell<CoreIsolateState>>, &[u8], Option<ZeroCopyBuf>) -> Op
+  + 'static;
 
 #[derive(Default)]
 pub struct OpRegistry {
@@ -89,7 +89,7 @@ fn test_op_registry() {
   let mut isolate = crate::CoreIsolate::new(crate::StartupData::None, false);
 
   let dispatch = op_registry.get(test_id).unwrap();
-  let res = dispatch(&mut isolate, &[], None);
+  let res = dispatch(crate::CoreIsolate::state(&isolate), &[], None);
   if let Op::Sync(buf) = res {
     assert_eq!(buf.len(), 0);
   } else {
@@ -132,7 +132,7 @@ fn register_op_during_call() {
     let g = op_registry.lock().unwrap();
     g.get(test_id).unwrap()
   };
-  dispatcher1(&mut isolate, &[], None);
+  dispatcher1(crate::CoreIsolate::state(&isolate), &[], None);
 
   let mut expected = HashMap::new();
   expected.insert("ops".to_string(), 0);
@@ -147,7 +147,7 @@ fn register_op_during_call() {
     let g = op_registry.lock().unwrap();
     g.get(2).unwrap()
   };
-  let res = dispatcher2(&mut isolate, &[], None);
+  let res = dispatcher2(crate::CoreIsolate::state(&isolate), &[], None);
   if let Op::Sync(buf) = res {
     assert_eq!(buf.len(), 0);
   } else {

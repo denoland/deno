@@ -419,6 +419,20 @@ impl CoreIsolate {
     let s = isolate.get_slot::<Rc<RefCell<CoreIsolateState>>>().unwrap();
     s.clone()
   }
+
+  /// Defines the how Deno.core.dispatch() acts.
+  /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
+  /// corresponds to the second argument of Deno.core.dispatch().
+  ///
+  /// Requires runtime to explicitly ask for op ids before using any of the ops.
+  pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
+  where
+    F: Fn(&mut CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op + 'static,
+  {
+    let state_rc = Self::state(self);
+    let mut state = state_rc.borrow_mut();
+    state.op_registry.register(name, op)
+  }
 }
 
 impl CoreIsolateState {
@@ -750,13 +764,13 @@ pub mod tests {
     OverflowResAsync,
   }
 
-  pub fn setup(mode: Mode) -> (Box<CoreIsolate>, Arc<AtomicUsize>) {
+  pub fn setup(mode: Mode) -> (CoreIsolate, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
     let mut isolate = CoreIsolate::new(StartupData::None, false);
 
-    let dispatcher = move |_isolate: &mut CoreIsolate,
+    let dispatcher = move |_state: &mut CoreIsolateState,
                            control: &[u8],
                            _zero_copy: Option<ZeroCopyBuf>|
           -> Op {

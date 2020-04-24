@@ -304,6 +304,8 @@ fn op_chdir(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  // TODO(ry) Need to check allow-read
+  // state.check_read(&from)?;
   let args: ChdirArgs = serde_json::from_value(args)?;
   set_current_dir(&args.directory)?;
   Ok(JsonOp::Sync(json!({})))
