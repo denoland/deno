@@ -51,7 +51,10 @@ Before:
   - completed: ${pre.opsCompletedAsync}
 After:
   - dispatched: ${post.opsDispatchedAsync}
-  - completed: ${post.opsCompletedAsync}`
+  - completed: ${post.opsCompletedAsync}
+  
+Make sure to await all promises returned from Deno APIs before 
+finishing test case.`
     );
   };
 }
@@ -71,7 +74,10 @@ function assertResources(
     const postStr = JSON.stringify(post, null, 2);
     const msg = `Test case is leaking resources.
 Before: ${preStr}
-After: ${postStr}`;
+After: ${postStr}
+
+Make sure to close all open resource handles returned from Deno APIs before 
+finishing test case.`;
     assert(preStr === postStr, msg);
   };
 }
