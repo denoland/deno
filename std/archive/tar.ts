@@ -470,7 +470,7 @@ export class Untar {
     while (rest > 0) {
       await this.reader.readFull(this.block);
       const arr = rest < recordSize ? this.block.subarray(0, rest) : this.block;
-      await Deno.copy(writer, new Deno.Buffer(arr));
+      await Deno.copy(new Deno.Buffer(arr), writer);
       rest -= recordSize;
     }
 
