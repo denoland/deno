@@ -953,7 +953,7 @@ export class Console {
   }
 }
 
-export const customInspect = Symbol.for("Deno.customInspect");
+export const customInspect = Symbol("Deno.symbols.customInspect");
 
 export function inspect(
   value: unknown,
