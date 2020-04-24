@@ -39,15 +39,15 @@ const ustar = "ustar\u000000";
 class FileReader implements Deno.Reader {
   private file?: Deno.File;
 
-  constructor(private filePath: string, private mode: Deno.OpenMode = "r") {}
+  constructor(private filePath: string) {}
 
   public async read(p: Uint8Array): Promise<number | Deno.EOF> {
     if (!this.file) {
-      this.file = await Deno.open(this.filePath, this.mode);
+      this.file = await Deno.open(this.filePath, { read: true });
     }
     const res = await Deno.read(this.file.rid, p);
     if (res === Deno.EOF) {
-      await Deno.close(this.file.rid);
+      Deno.close(this.file.rid);
       this.file = undefined;
     }
     return res;
