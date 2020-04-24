@@ -576,60 +576,68 @@ declare namespace Deno {
    */
   export function copy(dst: Writer, src: Reader): Promise<number>;
 
-  /** **UNSTABLE**: new API, yet to be vetted
-   * Turns a Reader, `r`, into an async iterator.
+  /** Turns a Reader, `r`, into an async iterator.
    *
-   *      let f = await open("/etc/passwd");
-   *      for await (const chunk of iter(f)) {
+   *      let f = await Deno.open("/etc/passwd");
+   *      for await (const chunk of Deno.iter(f)) {
    *        console.log(chunk);
    *      }
    *      f.close();
    *
    * Second argument can be used to tune size of a buffer.
-   * Default size of the buffer is 1024 bytes.
+   * Default size of the buffer is 32kB.
    *
-   *      let f = await open("/etc/passwd");
-   *      for await (const chunk of iter(f, 1024 * 1024)) {
+   *      let f = await Deno.open("/etc/passwd");
+   *      const iter = Deno.iter(f, {
+   *        bufSize: 1024 * 1024
+   *      });
+   *      for await (const chunk of iter) {
    *        console.log(chunk);
    *      }
    *      f.close();
    *
-   * Iterator uses internal buffer of fixed size for efficiency returning
-   * a view on that buffer on each iteration. It it therefore callers
-   * responsibility to copy contents of the buffer if needed; otherwise
+   * Iterator uses an internal buffer of fixed size for efficiency; it returns
+   * a view on that buffer on each iteration. It is therefore caller's
+   * responsibility to copy contents of the buffer if needed; otherwise the
    * next iteration will overwrite contents of previously returned chunk.
    */
   export function iter(
     r: Reader,
-    bufSize?: number
+    options?: {
+      bufSize?: number;
+    }
   ): AsyncIterableIterator<Uint8Array>;
 
-  /** **UNSTABLE**: new API, yet to be vetted
-   * Turns a SyncReader, `r`, into an iterator.
+  /** Turns a SyncReader, `r`, into an iterator.
    *
-   *      let f = openSync("/etc/passwd");
-   *      for (const chunk of iterSync(reader)) {
+   *      let f = Deno.openSync("/etc/passwd");
+   *      for (const chunk of Deno.iterSync(reader)) {
    *        console.log(chunk);
    *      }
    *      f.close();
    *
    * Second argument can be used to tune size of a buffer.
-   * Default size of the buffer is 1024 bytes.
+   * Default size of the buffer is 32kB.
    *
-   *      let f = openSync("/etc/passwd");
-   *      for (const chunk of iterSync(reader, 1024 * 1024)) {
+   *      let f = await Deno.open("/etc/passwd");
+   *      const iter = Deno.iterSync(f, {
+   *        bufSize: 1024 * 1024
+   *      });
+   *      for (const chunk of iter) {
    *        console.log(chunk);
    *      }
-   *      f.close()
+   *      f.close();
    *
-   * Iterator uses internal buffer of fixed size for efficiency returning
-   * a view on that buffer on each iteration. It it therefore callers
-   * responsibility to copy contents of the buffer if needed; otherwise
+   * Iterator uses an internal buffer of fixed size for efficiency; it returns
+   * a view on that buffer on each iteration. It is therefore caller's
+   * responsibility to copy contents of the buffer if needed; otherwise the
    * next iteration will overwrite contents of previously returned chunk.
    */
   export function iterSync(
     r: SyncReader,
-    bufSize?: number
+    options?: {
+      bufSize?: number;
+    }
   ): IterableIterator<Uint8Array>;
 
   /** Synchronously open a file and return an instance of `Deno.File`.  The

@@ -46,7 +46,7 @@ unitTest(
 
     let totalSize = 0;
     let iterations = 0;
-    for await (const buf of Deno.iter(file, 6)) {
+    for await (const buf of Deno.iter(file, { bufSize: 6 })) {
       totalSize += buf.byteLength;
       iterations += 1;
     }
@@ -78,7 +78,7 @@ unitTest(
 
     let totalSize = 0;
     let iterations = 0;
-    for (const buf of Deno.iterSync(file, 6)) {
+    for (const buf of Deno.iterSync(file, { bufSize: 6 })) {
       totalSize += buf.byteLength;
       iterations += 1;
     }
