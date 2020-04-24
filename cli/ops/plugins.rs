@@ -43,6 +43,8 @@ pub fn op_open_plugin(
   let args: OpenPluginArgs = serde_json::from_value(args).unwrap();
   let filename = deno_fs::resolve_from_cwd(Path::new(&args.filename))?;
 
+  state.check_plugin(&filename)?;
+
   let lib = open_plugin(filename).unwrap();
   let plugin_resource = PluginResource { lib };
 
