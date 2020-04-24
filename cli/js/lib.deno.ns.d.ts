@@ -841,12 +841,12 @@ declare namespace Deno {
     close(): void;
   }
 
-  /** An instance of `Deno.File` for `stdin`. */
-  export const stdin: File;
-  /** An instance of `Deno.File` for `stdout`. */
-  export const stdout: File;
-  /** An instance of `Deno.File` for `stderr`. */
-  export const stderr: File;
+  /** A handle for `stdin`. */
+  export const stdin: Reader & SyncReader & Closer;
+  /** A handle for `stdout`. */
+  export const stdout: Writer & SyncWriter & Closer;
+  /** A handle for `stderr`. */
+  export const stderr: Writer & SyncWriter & Closer;
 
   export interface OpenOptions {
     /** Sets the option for read access. This option, when `true`, means that the
