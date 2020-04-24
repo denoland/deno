@@ -470,8 +470,8 @@ The above for-await loop exits after 5 seconds when sig.dispose() is called.
 To poll for file system events:
 
 ```ts
-const iter = Deno.fsEvents("/");
-for await (const event of iter) {
+const watcher = Deno.watchFs("/");
+for await (const event of watcher) {
   console.log(">>>> event", event);
   // { kind: "create", paths: [ "/foo.txt" ] }
 }
