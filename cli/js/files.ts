@@ -97,9 +97,66 @@ export class File
   }
 }
 
-export const stdin = new File(0);
-export const stdout = new File(1);
-export const stderr = new File(2);
+class Stdin implements Reader, SyncReader, Closer {
+  readonly rid: number;
+  constructor() {
+    this.rid = 0;
+  }
+
+  read(p: Uint8Array): Promise<number | EOF> {
+    return read(this.rid, p);
+  }
+
+  readSync(p: Uint8Array): number | EOF {
+    return readSync(this.rid, p);
+  }
+
+  close(): void {
+    close(this.rid);
+  }
+}
+
+class Stdout implements Writer, SyncWriter, Closer {
+  readonly rid: number;
+  constructor() {
+    this.rid = 1;
+  }
+
+  write(p: Uint8Array): Promise<number> {
+    return write(this.rid, p);
+  }
+
+  writeSync(p: Uint8Array): number {
+    return writeSync(this.rid, p);
+  }
+
+  close(): void {
+    close(this.rid);
+  }
+}
+
+export class Stderr implements Writer, SyncWriter, Closer {
+  readonly rid: number;
+  constructor() {
+    this.rid = 2;
+  }
+
+  write(p: Uint8Array): Promise<number> {
+    return write(this.rid, p);
+  }
+
+  writeSync(p: Uint8Array): number {
+    return writeSync(this.rid, p);
+  }
+
+  close(): void {
+    close(this.rid);
+  }
+}
+
+export const stdin = new Stdin();
+export const stdout = new Stdout();
+export const stderr = new Stderr();
 
 function checkOpenOptions(options: OpenOptions): void {
   if (Object.values(options).filter((val) => val === true).length === 0) {

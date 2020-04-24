@@ -1,7 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { isTypedArray, TypedArray } from "./util.ts";
 import { TextEncoder } from "./text_encoding.ts";
-import { File, stdout } from "../files.ts";
+import { SyncWriter } from "../io.ts";
+import { stdout } from "../files.ts";
 import { cliTable } from "./console_table.ts";
 import { exposeForTest } from "../internals.ts";
 import { PromiseState } from "./promise.ts";
@@ -38,12 +39,12 @@ export class CSI {
 
 /* eslint-disable @typescript-eslint/no-use-before-define */
 
-function cursorTo(stream: File, _x: number, _y?: number): void {
+function cursorTo(stream: SyncWriter, _x: number, _y?: number): void {
   const uint8 = new TextEncoder().encode(CSI.kClear);
   stream.writeSync(uint8);
 }
 
-function clearScreenDown(stream: File): void {
+function clearScreenDown(stream: SyncWriter): void {
   const uint8 = new TextEncoder().encode(CSI.kClearScreenDown);
   stream.writeSync(uint8);
 }

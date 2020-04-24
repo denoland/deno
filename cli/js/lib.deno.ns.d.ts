@@ -825,12 +825,24 @@ declare namespace Deno {
     close(): void;
   }
 
-  /** An instance of `Deno.File` for `stdin`. */
-  export const stdin: File;
-  /** An instance of `Deno.File` for `stdout`. */
-  export const stdout: File;
-  /** An instance of `Deno.File` for `stderr`. */
-  export const stderr: File;
+  export interface Stdin extends Reader, SyncReader, Closer {
+    readonly rid: number;
+  }
+
+  export interface Stdout extends Writer, SyncWriter, Closer {
+    readonly rid: number;
+  }
+
+  export interface Stderr extends Writer, SyncWriter, Closer {
+    readonly rid: number;
+  }
+
+  /** A handle for `stdin`. */
+  export const stdin: Stdin;
+  /** A handle for `stdout`. */
+  export const stdout: Stdout;
+  /** A handle for `stderr`. */
+  export const stderr: Stderr;
 
   export interface OpenOptions {
     /** Sets the option for read access. This option, when `true`, means that the
