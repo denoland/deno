@@ -405,9 +405,6 @@ declare namespace Deno {
   export function cwd(): string;
 
   /**
-   * **UNSTABLE**: Currently under evaluation to decide if explicit permission is
-   * required to change the current working directory.
-   *
    * Change the current working directory to the specified path.
    *
    *       Deno.chdir("/home/userA");
@@ -417,6 +414,8 @@ declare namespace Deno {
    * Throws `Deno.errors.NotFound` if directory not found.
    * Throws `Deno.errors.PermissionDenied` if the user does not have access
    * rights
+   *
+   * Requires --allow-write.
    */
   export function chdir(directory: string): void;
 

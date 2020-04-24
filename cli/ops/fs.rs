@@ -245,12 +245,14 @@ struct ChdirArgs {
 }
 
 fn op_chdir(
-  _state: &State,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: ChdirArgs = serde_json::from_value(args)?;
-  set_current_dir(&args.directory)?;
+  let d = PathBuf::from(&args.directory);
+  state.check_write(&d)?;
+  set_current_dir(&d)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
