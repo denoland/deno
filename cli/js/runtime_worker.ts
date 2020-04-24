@@ -126,6 +126,9 @@ export function bootstrapWorkerRuntime(
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
   }
+  // Remove bootstrapping methods from global scope
+  // @ts-ignore
+  globalThis.bootstrap = undefined;
   log("bootstrapWorkerRuntime");
   hasBootstrapped = true;
   Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);

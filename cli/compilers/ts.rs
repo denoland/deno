@@ -267,7 +267,7 @@ impl TsCompiler {
       startup_data::compiler_isolate_init(),
       worker_state,
     );
-    worker.execute("bootstrapTsCompilerRuntime()").unwrap();
+    worker.execute("bootstrap.tsCompilerRuntime()").unwrap();
     worker
   }
 
