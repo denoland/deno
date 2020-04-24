@@ -15,7 +15,6 @@ use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use crate::ResourceTable;
 use futures::future::FutureExt;
-use futures::stream::select;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
@@ -298,15 +297,7 @@ impl CoreIsolate {
       (isolate, None)
     };
 
-    let core_isolate = Self {
-      v8_isolate: Some(isolate),
-      snapshot_creator: maybe_snapshot_creator,
-      needs_init: true,
-      has_snapshotted: false,
-      startup_script,
-    };
-
-    core_isolate.set_slot(Rc::new(RefCell::new(CoreIsolateState {
+    isolate.set_slot(Rc::new(RefCell::new(CoreIsolateState {
       global_context,
       resource_table: Rc::new(RefCell::new(ResourceTable::default())),
       pending_promise_exceptions: HashMap::new(),
@@ -323,7 +314,13 @@ impl CoreIsolate {
       error_handler: None,
     })));
 
-    core_isolate
+    Self {
+      v8_isolate: Some(isolate),
+      snapshot_creator: maybe_snapshot_creator,
+      needs_init: true,
+      has_snapshotted: false,
+      startup_script,
+    }
   }
 
   fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
@@ -418,7 +415,7 @@ impl CoreIsolate {
     snapshot
   }
 
-  fn state(isolate: &v8::Isolate) -> Rc<RefCell<CoreIsolateState>> {
+  pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<CoreIsolateState>> {
     let s = isolate.get_slot::<Rc<RefCell<CoreIsolateState>>>().unwrap();
     s.clone()
   }
@@ -495,7 +492,8 @@ impl Future for CoreIsolate {
     let core_isolate = self.get_mut();
     core_isolate.shared_init();
 
-    let state = Self::state(core_isolate).borrow();
+    let state_rc = Self::state(core_isolate);
+    let state = state_rc.borrow();
 
     state.waker.register(cx.waker());
 
@@ -510,18 +508,16 @@ impl Future for CoreIsolate {
     let mut overflow_response: Option<(OpId, Buf)> = None;
 
     loop {
-      let state_rc = CoreIsolate::state(scope.isolate());
       let mut state = state_rc.borrow_mut();
 
       // Now handle actual ops.
       state.have_unpolled_ops = false;
 
-      let state = state_rc.borrow();
-
       #[allow(clippy::match_wild_err_arm)]
-      match select(&mut state.pending_ops, &mut state.pending_unref_ops)
-        .poll_next_unpin(cx)
-      {
+      // TODO(ry) select isn't working with state somehow
+      // use futures::stream::select;
+      // match select(&mut state.pending_ops, &mut state.pending_unref_ops)
+      match state.pending_ops.poll_next_unpin(cx) {
         Poll::Ready(None) => break,
         Poll::Pending => break,
         Poll::Ready(Some((op_id, buf))) => {
@@ -539,24 +535,14 @@ impl Future for CoreIsolate {
     }
 
     if state.shared.size() > 0 {
-      async_op_response(
-        scope,
-        None,
-        &state.js_recv_cb,
-        &state.js_error_create_fn,
-      )?;
+      async_op_response(scope, None)?;
       // The other side should have shifted off all the messages.
       assert_eq!(state.shared.size(), 0);
     }
 
     if overflow_response.is_some() {
       let (op_id, buf) = overflow_response.take().unwrap();
-      async_op_response(
-        scope,
-        Some((op_id, buf)),
-        &state.js_recv_cb,
-        &state.js_error_create_fn,
-      )?;
+      async_op_response(scope, Some((op_id, buf)))?;
     }
 
     drain_macrotasks(scope)?;
@@ -578,12 +564,14 @@ impl Future for CoreIsolate {
 fn async_op_response<'s>(
   scope: &mut impl v8::ToLocal<'s>,
   maybe_buf: Option<(OpId, Box<[u8]>)>,
-  js_recv_cb: &v8::Global<v8::Function>,
-  js_error_create_fn: &JSErrorCreateFn,
 ) -> Result<(), ErrBox> {
   let context = scope.get_current_context().unwrap();
   let global: v8::Local<v8::Value> = context.global(scope).into();
-  let js_recv_cb = js_recv_cb
+
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let state = state_rc.borrow();
+  let js_recv_cb = state
+    .js_recv_cb
     .get(scope)
     .expect("Deno.core.recv has not been called.");
 
@@ -613,9 +601,10 @@ fn drain_macrotasks<'s>(
 ) -> Result<(), ErrBox> {
   let context = scope.get_current_context().unwrap();
   let global: v8::Local<v8::Value> = context.global(scope).into();
-  let i = scope.isolate();
+
   let state_rc = CoreIsolate::state(scope.isolate());
   let state = state_rc.borrow();
+
   let js_macrotask_cb = state.js_macrotask_cb.get(scope);
   if js_macrotask_cb.is_none() {
     return Ok(());

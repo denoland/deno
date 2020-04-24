@@ -1,7 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::es_isolate::EsIsolate;
 use crate::es_isolate::EsIsolateState;
-use crate::isolate::CoreIsolateState;
+use crate::isolate::CoreIsolate;
 use crate::isolate::ZeroCopyBuf;
 use crate::js_errors::JSError;
 
@@ -294,7 +295,8 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let mut hs = v8::HandleScope::new(cbs.enter());
   let scope = hs.enter();
 
-  let state = scope.isolate().get_slot::<EsIsolateState>().unwrap();
+  let state_rc = EsIsolate::state(scope.isolate());
+  let state = state_rc.borrow();
 
   let id = module.get_identity_hash();
   assert_ne!(id, 0);
@@ -318,7 +320,8 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   let mut hs = v8::HandleScope::new(cbs.enter());
   let scope = hs.enter();
 
-  let state = scope.isolate().get_slot::<CoreIsolateState>().unwrap();
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let mut state = state_rc.borrow_mut();
 
   let context = state.global_context.get(scope).unwrap();
   let mut cs = v8::ContextScope::new(scope, context);
@@ -412,7 +415,8 @@ fn recv(
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
-  let state = scope.isolate().get_slot::<CoreIsolateState>().unwrap();
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let mut state = state_rc.borrow_mut();
 
   if !state.js_recv_cb.is_empty() {
     let msg = v8::String::new(scope, "Deno.core.recv already called.").unwrap();
@@ -429,7 +433,8 @@ fn send(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let state = scope.isolate().get_slot::<CoreIsolateState>().unwrap();
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let mut state = state_rc.borrow_mut();
   assert!(!state.global_context.is_empty());
 
   let op_id = match v8::Local::<v8::Uint32>::try_from(args.get(0)) {
@@ -480,7 +485,8 @@ fn set_macrotask_callback(
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
-  let state = scope.isolate().get_slot::<CoreIsolateState>().unwrap();
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let mut state = state_rc.borrow_mut();
 
   if !state.js_macrotask_cb.is_empty() {
     let msg =
@@ -500,7 +506,9 @@ fn eval_context(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let state = scope.isolate().get_slot::<CoreIsolateState>().unwrap();
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let state = state_rc.borrow();
+
   let context = state.global_context.get(scope).unwrap();
 
   let source = match v8::Local::<v8::String>::try_from(args.get(0)) {
@@ -634,7 +642,8 @@ fn format_error(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let state = scope.isolate().get_slot::<CoreIsolateState>().unwrap();
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let state = state_rc.borrow();
   let e = JSError::from_v8_exception(scope, args.get(0));
   let e = (state.js_error_create_fn)(e);
   let e = e.to_string();
@@ -724,7 +733,8 @@ fn shared_getter(
   _args: v8::PropertyCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let state = scope.isolate().get_slot::<CoreIsolateState>().unwrap();
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let mut state = state_rc.borrow_mut();
 
   // Lazily initialize the persistent external ArrayBuffer.
   if state.shared_ab.is_empty() {
@@ -748,7 +758,8 @@ pub fn module_resolve_callback<'s>(
   let mut scope = v8::EscapableHandleScope::new(scope.enter());
   let scope = scope.enter();
 
-  let state = scope.isolate().get_slot::<EsIsolateState>().unwrap();
+  let state_rc = EsIsolate::state(scope.isolate());
+  let mut state = state_rc.borrow_mut();
 
   let referrer_id = referrer.get_identity_hash();
   let referrer_name = state
@@ -798,7 +809,9 @@ fn get_promise_details(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let state = scope.isolate().get_slot::<CoreIsolateState>().unwrap();
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let state = state_rc.borrow();
+
   let context = state.global_context.get(scope).unwrap();
 
   let promise = match v8::Local::<v8::Promise>::try_from(args.get(0)) {

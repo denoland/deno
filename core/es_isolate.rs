@@ -12,7 +12,6 @@ use crate::futures::FutureExt;
 use crate::isolate::attach_handle_to_error;
 use crate::isolate::exception_to_err_result;
 use crate::isolate::CoreIsolate;
-use crate::isolate::CoreIsolateState;
 use crate::isolate::StartupData;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::LoadState;
@@ -27,6 +26,7 @@ use futures::stream::StreamExt;
 use futures::stream::StreamFuture;
 use futures::task::AtomicWaker;
 use futures::Future;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
@@ -85,15 +85,14 @@ impl EsIsolate {
         bindings::host_import_module_dynamically_callback,
       );
     }
-    core_isolate.set_slot(EsIsolateState {
+    core_isolate.set_slot(Rc::new(RefCell::new(EsIsolateState {
       modules: Modules::new(),
       loader,
       next_dyn_import_id: 0,
       dyn_import_map: HashMap::new(),
       pending_dyn_imports: FuturesUnordered::new(),
       waker: AtomicWaker::new(),
-    });
-
+    })));
     EsIsolate(core_isolate)
   }
 
@@ -106,10 +105,11 @@ impl EsIsolate {
     name: &str,
     source: &str,
   ) -> Result<ModuleId, ErrBox> {
-    let state = self.get_slot::<EsIsolateState>().unwrap();
-    let core_state = self.get_slot::<CoreIsolateState>().unwrap();
+    let state_rc = Self::state(self);
+    let mut state = state_rc.borrow_mut();
 
-    let js_error_create_fn = &*core_state.js_error_create_fn;
+    let core_state_rc = CoreIsolate::state(self);
+    let core_state = core_state_rc.borrow();
 
     let mut hs = v8::HandleScope::new(&mut self.0);
     let scope = hs.enter();
@@ -159,10 +159,11 @@ impl EsIsolate {
   /// the V8 exception. By default this type is JSError, however it may be a
   /// different type if CoreIsolate::set_js_error_create_fn() has been used.
   fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
-    let state = self.get_slot::<EsIsolateState>().unwrap();
-    let core_state = self.get_slot::<CoreIsolateState>().unwrap();
+    let state_rc = Self::state(self);
+    let state = state_rc.borrow();
 
-    let js_error_create_fn = &*core_state.js_error_create_fn;
+    let core_state_rc = CoreIsolate::state(self);
+    let core_state = core_state_rc.borrow();
 
     let mut hs = v8::HandleScope::new(&mut self.0);
     let scope = hs.enter();
@@ -201,8 +202,11 @@ impl EsIsolate {
   /// the V8 exception. By default this type is JSError, however it may be a
   /// different type if CoreIsolate::set_js_error_create_fn() has been used.
   pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
-    let state = self.get_slot::<EsIsolateState>().unwrap();
-    let core_state = self.get_slot::<CoreIsolateState>().unwrap();
+    let state_rc = Self::state(self);
+    let state = state_rc.borrow();
+
+    let core_state_rc = CoreIsolate::state(self);
+    let core_state = core_state_rc.borrow();
 
     let mut hs = v8::HandleScope::new(&mut self.0);
     let scope = hs.enter();
@@ -244,8 +248,11 @@ impl EsIsolate {
     id: DynImportId,
     err: ErrBox,
   ) -> Result<(), ErrBox> {
-    let state = self.get_slot::<EsIsolateState>().unwrap();
-    let core_state = self.get_slot::<CoreIsolateState>().unwrap();
+    let state_rc = Self::state(self);
+    let mut state = state_rc.borrow_mut();
+
+    let core_state_rc = CoreIsolate::state(self);
+    let core_state = core_state_rc.borrow();
 
     let mut hs = v8::HandleScope::new(&mut self.0);
     let scope = hs.enter();
@@ -279,8 +286,11 @@ impl EsIsolate {
     id: DynImportId,
     mod_id: ModuleId,
   ) -> Result<(), ErrBox> {
-    let state = self.get_slot::<EsIsolateState>().unwrap();
-    let core_state = self.get_slot::<CoreIsolateState>().unwrap();
+    let state_rc = Self::state(self);
+    let mut state = state_rc.borrow_mut();
+
+    let core_state_rc = CoreIsolate::state(self);
+    let core_state = core_state_rc.borrow();
 
     debug!("dyn_import_done {} {:?}", id, mod_id);
     assert!(mod_id != 0);
@@ -310,7 +320,9 @@ impl EsIsolate {
   }
 
   fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
-    let state = self.get_slot_mut::<EsIsolateState>().unwrap();
+    let state_rc = Self::state(self);
+    let mut state = state_rc.borrow_mut();
+
     loop {
       match state.pending_dyn_imports.poll_next_unpin(cx) {
         Poll::Pending | Poll::Ready(None) => {
@@ -374,7 +386,8 @@ impl EsIsolate {
     let referrer_specifier =
       ModuleSpecifier::resolve_url(&module_url_found).unwrap();
 
-    let state = self.get_slot::<EsIsolateState>().unwrap();
+    let state_rc = Self::state(self);
+    let mut state = state_rc.borrow_mut();
 
     // #A There are 3 cases to handle at this moment:
     // 1. Source code resolved result have the same module name as requested
@@ -454,6 +467,11 @@ impl EsIsolate {
     let root_id = load.root_module_id.expect("Root module id empty");
     self.mod_instantiate(root_id).map(|_| root_id)
   }
+
+  pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<EsIsolateState>> {
+    let s = isolate.get_slot::<Rc<RefCell<EsIsolateState>>>().unwrap();
+    s.clone()
+  }
 }
 
 impl Future for EsIsolate {
@@ -462,8 +480,8 @@ impl Future for EsIsolate {
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let es_isolate = self.get_mut();
 
-    let state = es_isolate.get_slot::<EsIsolateState>().unwrap();
-    state.waker.register(cx.waker());
+    let state_rc = Self::state(es_isolate);
+    let state = state_rc.borrow();
 
     // If there are any pending dyn_import futures, do those first.
     if !state.pending_dyn_imports.is_empty() {
