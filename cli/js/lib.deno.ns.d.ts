@@ -2169,15 +2169,12 @@ declare namespace Deno {
    */
   export function resources(): ResourceMap;
 
-  /** **UNSTABLE**: new API. Needs docs. */
   export interface FsEvent {
     kind: "any" | "access" | "create" | "modify" | "remove";
     paths: string[];
   }
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Watch for file system events against one or more `paths`, which can be files
+  /** Watch for file system events against one or more `paths`, which can be files
    * or directories.  These paths must exist already.  One user action (e.g.
    * `touch test.file`) can  generate multiple file system events.  Likewise,
    * one user action can result in multiple file paths in one event (e.g. `mv
@@ -2185,14 +2182,15 @@ declare namespace Deno {
    * for directories, will watch the specified directory and all sub directories.
    * Note that the exact ordering of the events can vary between operating systems.
    *
-   *       const iter = Deno.fsEvents("/");
-   *       for await (const event of iter) {
-   *          console.log(">>>> event", event);  // e.g. { kind: "create", paths: [ "/foo.txt" ] }
+   *       const watcher = Deno.watchFs("/");
+   *       for await (const event of watcher) {
+   *          console.log(">>>> event", event);
+   *          // { kind: "create", paths: [ "/foo.txt" ] }
    *       }
    *
    * Requires `allow-read` permission.
    */
-  export function fsEvents(
+  export function watchFs(
     paths: string | string[],
     options?: { recursive: boolean }
   ): AsyncIterableIterator<FsEvent>;
