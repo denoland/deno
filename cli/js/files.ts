@@ -18,60 +18,43 @@ import {
   open as opOpen,
   openSync as opOpenSync,
   OpenOptions,
-  OpenMode,
 } from "./ops/fs/open.ts";
-export { OpenOptions, OpenMode } from "./ops/fs/open.ts";
+export { OpenOptions } from "./ops/fs/open.ts";
 
-export function openSync(path: string, options?: OpenOptions): File;
-export function openSync(path: string, openMode?: OpenMode): File;
-
-/**@internal*/
 export function openSync(
   path: string,
-  modeOrOptions: OpenOptions | OpenMode = "r"
+  options: OpenOptions = { read: true }
 ): File {
-  let openMode = undefined;
-  let options = undefined;
-
-  if (typeof modeOrOptions === "string") {
-    openMode = modeOrOptions;
-  } else {
-    checkOpenOptions(modeOrOptions);
-    options = modeOrOptions as OpenOptions;
-  }
-
-  const rid = opOpenSync(path, openMode as OpenMode, options);
+  checkOpenOptions(options);
+  const rid = opOpenSync(path, options);
   return new File(rid);
 }
 
-export async function open(path: string, options?: OpenOptions): Promise<File>;
-export async function open(path: string, openMode?: OpenMode): Promise<File>;
-
-/**@internal*/
 export async function open(
   path: string,
-  modeOrOptions: OpenOptions | OpenMode = "r"
+  options: OpenOptions = { read: true }
 ): Promise<File> {
-  let openMode = undefined;
-  let options = undefined;
-
-  if (typeof modeOrOptions === "string") {
-    openMode = modeOrOptions;
-  } else {
-    checkOpenOptions(modeOrOptions);
-    options = modeOrOptions as OpenOptions;
-  }
-
-  const rid = await opOpen(path, openMode as OpenMode, options);
+  checkOpenOptions(options);
+  const rid = await opOpen(path, options);
   return new File(rid);
 }
 
 export function createSync(path: string): File {
-  return openSync(path, "w+");
+  return openSync(path, {
+    read: true,
+    write: true,
+    truncate: true,
+    create: true,
+  });
 }
 
 export function create(path: string): Promise<File> {
-  return open(path, "w+");
+  return open(path, {
+    read: true,
+    write: true,
+    truncate: true,
+    create: true,
+  });
 }
 
 export class File

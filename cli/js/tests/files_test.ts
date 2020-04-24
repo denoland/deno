@@ -201,11 +201,11 @@ unitTest(
   { perms: { write: false } },
   async function writePermFailure(): Promise<void> {
     const filename = "tests/hello.txt";
-    const writeModes: Deno.OpenMode[] = ["w", "a", "x"];
-    for (const mode of writeModes) {
+    const openOptions: Deno.OpenOptions[] = [{ write: true }, { append: true }];
+    for (const options of openOptions) {
       let err;
       try {
-        await Deno.open(filename, mode);
+        await Deno.open(filename, options);
       } catch (e) {
         err = e;
       }
@@ -266,8 +266,8 @@ unitTest({ perms: { read: false } }, async function readPermFailure(): Promise<
 > {
   let caughtError = false;
   try {
-    await Deno.open("package.json", "r");
-    await Deno.open("cli/tests/fixture.json", "r");
+    await Deno.open("package.json", { read: true });
+    await Deno.open("cli/tests/fixture.json", { read: true });
   } catch (e) {
     caughtError = true;
     assert(e instanceof Deno.errors.PermissionDenied);
@@ -308,7 +308,12 @@ unitTest(
   async function readNullBufferFailure(): Promise<void> {
     const tempDir = Deno.makeTempDirSync();
     const filename = tempDir + "hello.txt";
-    const file = await Deno.open(filename, "w+");
+    const file = await Deno.open(filename, {
+      read: true,
+      write: true,
+      truncate: true,
+      create: true,
+    });
 
     // reading into an empty buffer should return 0 immediately
     const bytesRead = await file.read(new Uint8Array(0));
@@ -334,18 +339,15 @@ unitTest(
   { perms: { write: false, read: false } },
   async function readWritePermFailure(): Promise<void> {
     const filename = "tests/hello.txt";
-    const writeModes: Deno.OpenMode[] = ["r+", "w+", "a+", "x+"];
-    for (const mode of writeModes) {
-      let err;
-      try {
-        await Deno.open(filename, mode);
-      } catch (e) {
-        err = e;
-      }
-      assert(!!err);
-      assert(err instanceof Deno.errors.PermissionDenied);
-      assertEquals(err.name, "PermissionDenied");
+    let err;
+    try {
+      await Deno.open(filename, { read: true });
+    } catch (e) {
+      err = e;
     }
+    assert(!!err);
+    assert(err instanceof Deno.errors.PermissionDenied);
+    assertEquals(err.name, "PermissionDenied");
   }
 );
 
@@ -377,7 +379,11 @@ unitTest(
     const encoder = new TextEncoder();
     const filename = tempDir + "hello.txt";
     const data = encoder.encode("Hello world!\n");
-    let file = await Deno.open(filename, "w");
+    let file = await Deno.open(filename, {
+      create: true,
+      write: true,
+      truncate: true,
+    });
     // assert file was created
     let fileInfo = Deno.statSync(filename);
     assert(fileInfo.isFile);
@@ -398,7 +404,10 @@ unitTest(
     }
     file.close();
     // assert that existing file is truncated on open
-    file = await Deno.open(filename, "w");
+    file = await Deno.open(filename, {
+      write: true,
+      truncate: true,
+    });
     file.close();
     const fileSize = Deno.statSync(filename).size;
     assertEquals(fileSize, 0);
@@ -414,7 +423,12 @@ unitTest(
     const filename = tempDir + "hello.txt";
     const data = encoder.encode("Hello world!\n");
 
-    const file = await Deno.open(filename, "w+");
+    const file = await Deno.open(filename, {
+      write: true,
+      truncate: true,
+      create: true,
+      read: true,
+    });
     const seekPosition = 0;
     // assert file was created
     let fileInfo = Deno.statSync(filename);

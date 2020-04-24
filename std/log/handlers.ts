@@ -2,6 +2,7 @@
 const { open, openSync, close, renameSync, statSync } = Deno;
 type File = Deno.File;
 type Writer = Deno.Writer;
+type OpenOptions = Deno.OpenOptions;
 import { getLevelByName, LogLevel } from "./levels.ts";
 import { LogRecord } from "./logger.ts";
 import { red, yellow, blue, bold } from "../fmt/colors.ts";
@@ -101,6 +102,7 @@ export class FileHandler extends WriterHandler {
   protected _file!: File;
   protected _filename: string;
   protected _mode: LogMode;
+  protected _openOptions: OpenOptions;
   #encoder = new TextEncoder();
 
   constructor(levelName: string, options: FileHandlerOptions) {
@@ -108,10 +110,17 @@ export class FileHandler extends WriterHandler {
     this._filename = options.filename;
     // default to append mode, write only
     this._mode = options.mode ? options.mode : "a";
+    this._openOptions = {
+      createNew: this._mode === "x",
+      create: this._mode !== "x",
+      append: this._mode === "a",
+      truncate: this._mode !== "a",
+      write: true,
+    };
   }
 
   async setup(): Promise<void> {
-    this._file = await open(this._filename, this._mode);
+    this._file = await open(this._filename, this._openOptions);
     this._writer = this._file;
   }
 
@@ -119,8 +128,9 @@ export class FileHandler extends WriterHandler {
     Deno.writeSync(this._file.rid, this.#encoder.encode(msg + "\n"));
   }
 
-  async destroy(): Promise<void> {
-    await this._file.close();
+  destroy(): Promise<void> {
+    this._file.close();
+    return Promise.resolve();
   }
 }
 
@@ -193,7 +203,7 @@ export class RotatingFileHandler extends FileHandler {
       }
     }
 
-    this._file = openSync(this._filename, this._mode);
+    this._file = openSync(this._filename, this._openOptions);
     this._writer = this._file;
   }
 }

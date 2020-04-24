@@ -35,7 +35,6 @@ export {
   seek,
   seekSync,
   OpenOptions,
-  OpenMode,
 } from "./files.ts";
 export { read, readSync, write, writeSync } from "./ops/io.ts";
 export { FsEvent, watchFs } from "./ops/fs_events.ts";

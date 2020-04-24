@@ -653,18 +653,6 @@ declare namespace Deno {
    */
   export function openSync(path: string, options?: OpenOptions): File;
 
-  /** Synchronously open a file and return an instance of `Deno.File`.  The file
-   * may be created depending on the mode passed in.  It is the callers responsibility
-   * to close the file when finished with it.
-   *
-   *       const file = Deno.openSync("/foo/bar.txt", "r");
-   *       // Do work with file
-   *       Deno.close(file.rid);
-   *
-   * Requires `allow-read` and/or `allow-write` permissions depending on openMode.
-   */
-  export function openSync(path: string, openMode?: OpenMode): File;
-
   /** Open a file and resolve to an instance of `Deno.File`.  The
    * file does not need to previously exist if using the `create` or `createNew`
    * open options.  It is the callers responsibility to close the file when finished
@@ -677,18 +665,6 @@ declare namespace Deno {
    * Requires `allow-read` and/or `allow-write` permissions depending on options.
    */
   export function open(path: string, options?: OpenOptions): Promise<File>;
-
-  /** Open a file and resolve to an instance of `Deno.File`.  The file may be
-   * created depending on the mode passed in.  It is the callers responsibility
-   * to close the file when finished with it.
-   *
-   *       const file = await Deno.open("/foo/bar.txt", "w+");
-   *       // Do work with file
-   *       Deno.close(file.rid);
-   *
-   * Requires `allow-read` and/or `allow-write` permissions depending on openMode.
-   */
-  export function open(path: string, openMode?: OpenMode): Promise<File>;
 
   /** Creates a file if none exists or truncates an existing file and returns
    *  an instance of `Deno.File`.
@@ -889,21 +865,6 @@ declare namespace Deno {
      * Ignored on Windows. */
     mode?: number;
   }
-
-  /** A set of string literals which specify how to open a file.
-   *
-   * |Value |Description                                                                                       |
-   * |------|--------------------------------------------------------------------------------------------------|
-   * |`"r"` |Read-only. Default. Starts at beginning of file.                                                  |
-   * |`"r+"`|Read-write. Start at beginning of file.                                                           |
-   * |`"w"` |Write-only. Opens and truncates existing file or creates new one for writing only.                |
-   * |`"w+"`|Read-write. Opens and truncates existing file or creates new one for writing and reading.         |
-   * |`"a"` |Write-only. Opens existing file or creates new one. Each write appends content to the end of file.|
-   * |`"a+"`|Read-write. Behaves like `"a"` and allows to read from file.                                      |
-   * |`"x"` |Write-only. Exclusive create - creates new file only if one doesn't exist already.                |
-   * |`"x+"`|Read-write. Behaves like `x` and allows reading from file.                                        |
-   */
-  export type OpenMode = "r" | "r+" | "w" | "w+" | "a" | "a+" | "x" | "x+";
 
   /** **UNSTABLE**: new API, yet to be vetted
    *
