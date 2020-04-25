@@ -65,6 +65,8 @@ pub enum DenoSubcommand {
   },
   Test {
     fail_fast: bool,
+    report_to_console: bool,
+    disable_log: bool,
     allow_none: bool,
     include: Option<Vec<String>>,
     filter: Option<String>,
@@ -541,6 +543,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   let failfast = matches.is_present("failfast");
   let allow_none = matches.is_present("allow_none");
+  let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
   let include = if matches.is_present("files") {
     let files: Vec<String> = matches
@@ -555,6 +558,8 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   flags.subcommand = DenoSubcommand::Test {
     fail_fast: failfast,
+    report_to_console: !quiet,
+    disable_log: quiet,
     include,
     filter,
     allow_none,
