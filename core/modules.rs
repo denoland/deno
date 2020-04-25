@@ -163,7 +163,7 @@ impl RecursiveModuleLoad {
     }
   }
 
-  pub async fn prepare(&mut self) -> Result<(), ErrBox> {
+  pub async fn prepare(self) -> Result<Self, ErrBox> {
     let (module_specifier, maybe_referrer) = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
         let spec = self.loader.resolve(specifier, ".", true)?;
@@ -184,7 +184,8 @@ impl RecursiveModuleLoad {
         maybe_referrer,
         self.is_dynamic_import(),
       )
-      .await
+      .await?;
+    Ok(self)
   }
 
   fn add_root(&mut self) -> Result<(), ErrBox> {

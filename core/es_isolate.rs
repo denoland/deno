@@ -53,6 +53,7 @@ pub struct EsIsolate {
   pub(crate) dyn_import_map:
     HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
 
+  preparing_dyn_imports: FuturesUnordered<Pin<Box<dyn Future<Output = Result<RecursiveModuleLoad, ErrBox>>>>>,
   pending_dyn_imports: FuturesUnordered<StreamFuture<RecursiveModuleLoad>>,
   waker: AtomicWaker,
 }
@@ -93,6 +94,7 @@ impl EsIsolate {
       loader,
       core_isolate,
       dyn_import_map: HashMap::new(),
+      preparing_dyn_imports: FuturesUnordered::new(),
       pending_dyn_imports: FuturesUnordered::new(),
       waker: AtomicWaker::new(),
     };
@@ -308,18 +310,18 @@ impl EsIsolate {
   ) {
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
-    let import_id = self.next_dyn_import_id;
-    self.next_dyn_import_id += 1;
-    self.dyn_import_map.insert(import_id, resolver_handle);
-
-    let load = RecursiveModuleLoad::dynamic_import(
+    let mut load = RecursiveModuleLoad::dynamic_import(
       specifier,
       referrer,
       self.loader.clone(),
     );
     self.dyn_import_map.insert(load.id, resolver_handle);
+
+    let fut = load.prepare().boxed_local();
+    self.preparing_dyn_imports.push(fut);
     self.waker.wake();
-    self.pending_dyn_imports.push(load.into_future());
+
+    // self.pending_dyn_imports.push(load.into_future());
   }
 
   fn dyn_import_error(
@@ -389,6 +391,26 @@ impl EsIsolate {
     resolver.resolve(context, module_namespace).unwrap();
     scope.isolate().run_microtasks();
     Ok(())
+  }
+
+  fn prepare_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
+    loop {
+      match self.preparing_dyn_imports.poll_next_unpin(cx) {
+        Poll::Pending | Poll::Ready(None) => {
+          // There are no active dynamic import loaders, or none are ready.
+          return Poll::Ready(Ok(()));
+        },
+        Poll::Ready(Some(prepare_poll)) => {
+          // TODO: even if error then dyn_import_id must be returned
+
+          // let maybe_result = prepare_poll.0;
+          // let mut load = prepare_poll.1;
+          // let dyn_import_id = load.dyn_import_id.unwrap();
+
+
+        }
+      }
+    }
   }
 
   fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
@@ -515,12 +537,12 @@ impl EsIsolate {
     specifier: &ModuleSpecifier,
     code: Option<String>,
   ) -> Result<ModuleId, ErrBox> {
-    let mut load = RecursiveModuleLoad::main(
+    let load = RecursiveModuleLoad::main(
       &specifier.to_string(),
       code,
       self.loader.clone(),
     );
-    load.prepare().await?;
+    let mut load = load.prepare().await?;
 
     while let Some(info_result) = load.next().await {
       let info = info_result?;
@@ -539,6 +561,12 @@ impl Future for EsIsolate {
     let inner = self.get_mut();
 
     inner.waker.register(cx.waker());
+
+    // If there are any preparing dyn_import futures, do those first.
+    if !inner.preparing_dyn_imports.is_empty() {
+      let poll_imports = inner.prepare_dyn_imports(cx)?;
+      assert!(poll_imports.is_ready());
+    }
 
     // If there are any pending dyn_import futures, do those first.
     if !inner.pending_dyn_imports.is_empty() {
