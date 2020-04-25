@@ -3,7 +3,7 @@ const { open, openSync, close, renameSync, statSync } = Deno;
 type File = Deno.File;
 type Writer = Deno.Writer;
 type OpenOptions = Deno.OpenOptions;
-import { getLevelByName, LogLevel } from "./levels.ts";
+import { getLevelByName, LevelName, LogLevels } from "./levels.ts";
 import { LogRecord } from "./logger.ts";
 import { red, yellow, blue, bold } from "../fmt/colors.ts";
 import { existsSync, exists } from "../fs/exists.ts";
@@ -18,10 +18,10 @@ interface HandlerOptions {
 
 export class BaseHandler {
   level: number;
-  levelName: string;
+  levelName: LevelName;
   formatter: string | FormatterFunction;
 
-  constructor(levelName: string, options: HandlerOptions = {}) {
+  constructor(levelName: LevelName, options: HandlerOptions = {}) {
     this.level = getLevelByName(levelName);
     this.levelName = levelName;
 
@@ -62,16 +62,16 @@ export class ConsoleHandler extends BaseHandler {
     let msg = super.format(logRecord);
 
     switch (logRecord.level) {
-      case LogLevel.INFO:
+      case LogLevels.INFO:
         msg = blue(msg);
         break;
-      case LogLevel.WARNING:
+      case LogLevels.WARNING:
         msg = yellow(msg);
         break;
-      case LogLevel.ERROR:
+      case LogLevels.ERROR:
         msg = red(msg);
         break;
-      case LogLevel.CRITICAL:
+      case LogLevels.CRITICAL:
         msg = bold(red(msg));
         break;
       default:
@@ -105,7 +105,7 @@ export class FileHandler extends WriterHandler {
   protected _openOptions: OpenOptions;
   #encoder = new TextEncoder();
 
-  constructor(levelName: string, options: FileHandlerOptions) {
+  constructor(levelName: LevelName, options: FileHandlerOptions) {
     super(levelName, options);
     this._filename = options.filename;
     // default to append mode, write only
@@ -143,7 +143,7 @@ export class RotatingFileHandler extends FileHandler {
   #maxBytes: number;
   #maxBackupCount: number;
 
-  constructor(levelName: string, options: RotatingFileHandlerOptions) {
+  constructor(levelName: LevelName, options: RotatingFileHandlerOptions) {
     super(levelName, options);
     this.#maxBytes = options.maxBytes;
     this.#maxBackupCount = options.maxBackupCount;
