@@ -1562,12 +1562,16 @@ declare namespace Deno {
 
   /** Creates `newpath` as a hard link to `oldpath`.
    *
+   *  **UNSTABLE**: needs security review.
+   *
    *       await Deno.link("old/name", "new/name");
    *
    * Requires `allow-read` and `allow-write` permissions. */
   export function link(oldpath: string, newpath: string): Promise<void>;
 
   /** **UNSTABLE**: `type` argument type may be changed to `"dir" | "file"`.
+   *
+   *  **UNSTABLE**: needs security review.
    *
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
@@ -1586,6 +1590,8 @@ declare namespace Deno {
   ): void;
 
   /** **UNSTABLE**: `type` argument may be changed to `"dir" | "file"`
+   *
+   *  **UNSTABLE**: needs security review.
    *
    * Creates `newpath` as a symbolic link to `oldpath`.
    *

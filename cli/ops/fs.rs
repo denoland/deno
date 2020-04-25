@@ -647,6 +647,7 @@ fn op_link(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.link");
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = resolve_from_cwd(Path::new(&args.oldpath))?;
   let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
@@ -675,6 +676,7 @@ fn op_symlink(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.symlink");
   let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = resolve_from_cwd(Path::new(&args.oldpath))?;
   let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
