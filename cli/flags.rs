@@ -2305,7 +2305,7 @@ mod tests {
           fail_fast: false,
           filter: None,
           allow_none: true,
-          quiet: true,
+          quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
         },
         allow_read: true,
