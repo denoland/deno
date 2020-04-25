@@ -481,8 +481,7 @@ async fn test_command(
   flags: Flags,
   include: Option<Vec<String>>,
   fail_fast: bool,
-  report_to_console: bool,
-  disable_log: bool,
+  quiet: bool,
   allow_none: bool,
   filter: Option<String>,
 ) -> Result<(), ErrBox> {
@@ -502,13 +501,8 @@ async fn test_command(
   let test_file_path = cwd.join(".deno.test.ts");
   let test_file_url =
     Url::from_file_path(&test_file_path).expect("Should be valid file url");
-  let test_file = test_runner::render_test_file(
-    test_modules,
-    fail_fast,
-    report_to_console,
-    disable_log,
-    filter,
-  );
+  let test_file =
+    test_runner::render_test_file(test_modules, fail_fast, quiet, filter);
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
   let mut worker =
@@ -589,21 +583,12 @@ pub fn main() {
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
       fail_fast,
-      report_to_console,
-      disable_log,
+      quiet,
       include,
       allow_none,
       filter,
-    } => test_command(
-      flags,
-      include,
-      fail_fast,
-      report_to_console,
-      disable_log,
-      allow_none,
-      filter,
-    )
-    .boxed_local(),
+    } => test_command(flags, include, fail_fast, quiet, allow_none, filter)
+      .boxed_local(),
     DenoSubcommand::Completions { buf } => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);
