@@ -90,6 +90,7 @@ function spawnWorkerRunner(
   const cmd = [
     Deno.execPath(),
     "run",
+    "--unstable", // TODO(ry) be able to test stable vs unstable
     "-A",
     "cli/js/tests/unit_test_runner.ts",
     "--worker",

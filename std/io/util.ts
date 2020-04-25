@@ -47,6 +47,11 @@ export async function tempFile(
     `${dir}/${opts.prefix || ""}${r}${opts.postfix || ""}`
   );
   await mkdir(path.dirname(filepath), { recursive: true });
-  const file = await open(filepath, "a");
+  const file = await open(filepath, {
+    create: true,
+    read: true,
+    write: true,
+    append: true,
+  });
   return { file, filepath };
 }

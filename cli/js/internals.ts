@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-export const internalSymbol = Symbol("Deno.internal");
+export const internalSymbol = Symbol("Deno.symbols.internal");
 
 // The object where all the internal fields for testing will be living.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

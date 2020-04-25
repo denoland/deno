@@ -631,7 +631,7 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
   assertEquals(stringify(new B({ a: "a" })), "a");
   assertEquals(
     stringify(B.prototype),
-    "{ Symbol(Deno.customInspect): [Function: [Deno.customInspect]] }"
+    "{ Symbol(Deno.symbols.customInspect): [Function: [Deno.symbols.customInspect]] }"
   );
 });
 

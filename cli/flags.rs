@@ -112,6 +112,7 @@ pub struct Flags {
   pub inspect_brk: Option<SocketAddr>,
   pub seed: Option<u64>,
   pub v8_flags: Option<Vec<String>>,
+  pub unstable: bool,
 
   pub lock: Option<String>,
   pub lock_write: bool,
@@ -496,6 +497,10 @@ fn run_test_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   if matches.is_present("cached-only") {
     flags.cached_only = true;
+  }
+
+  if matches.is_present("unstable") {
+    flags.unstable = true;
   }
 
   if matches.is_present("seed") {
@@ -918,6 +923,11 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
       Arg::with_name("cached-only")
         .long("cached-only")
         .help("Require that remote dependencies are already cached"),
+    )
+    .arg(
+      Arg::with_name("unstable")
+        .long("unstable")
+        .help("Enable unstable APIs"),
     )
     .arg(
       Arg::with_name("seed")

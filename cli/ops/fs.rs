@@ -50,8 +50,7 @@ fn into_string(s: std::ffi::OsString) -> Result<String, OpError> {
 struct OpenArgs {
   promise_id: Option<u64>,
   path: String,
-  options: Option<OpenOptions>,
-  open_mode: Option<String>,
+  options: OpenOptions,
   mode: Option<u32>,
 }
 
@@ -91,76 +90,22 @@ fn op_open(
     let _ = mode; // avoid unused warning
   }
 
-  if let Some(options) = args.options {
-    if options.read {
-      state.check_read(&path)?;
-    }
+  let options = args.options;
+  if options.read {
+    state.check_read(&path)?;
+  }
 
-    if options.write || options.append {
-      state.check_write(&path)?;
-    }
+  if options.write || options.append {
+    state.check_write(&path)?;
+  }
 
-    open_options
-      .read(options.read)
-      .create(options.create)
-      .write(options.write)
-      .truncate(options.truncate)
-      .append(options.append)
-      .create_new(options.create_new);
-  } else if let Some(open_mode) = args.open_mode {
-    let open_mode = open_mode.as_ref();
-    match open_mode {
-      "r" => {
-        state.check_read(&path)?;
-      }
-      "w" | "a" | "x" => {
-        state.check_write(&path)?;
-      }
-      &_ => {
-        state.check_read(&path)?;
-        state.check_write(&path)?;
-      }
-    };
-
-    match open_mode {
-      "r" => {
-        open_options.read(true);
-      }
-      "r+" => {
-        open_options.read(true).write(true);
-      }
-      "w" => {
-        open_options.create(true).write(true).truncate(true);
-      }
-      "w+" => {
-        open_options
-          .read(true)
-          .create(true)
-          .write(true)
-          .truncate(true);
-      }
-      "a" => {
-        open_options.create(true).append(true);
-      }
-      "a+" => {
-        open_options.read(true).create(true).append(true);
-      }
-      "x" => {
-        open_options.create_new(true).write(true);
-      }
-      "x+" => {
-        open_options.create_new(true).read(true).write(true);
-      }
-      &_ => {
-        // TODO: this should be type error
-        return Err(OpError::other("Unknown open mode.".to_string()));
-      }
-    }
-  } else {
-    return Err(OpError::other(
-      "Open requires either openMode or options.".to_string(),
-    ));
-  };
+  open_options
+    .read(options.read)
+    .create(options.create)
+    .write(options.write)
+    .truncate(options.truncate)
+    .append(options.append)
+    .create_new(options.create_new);
 
   let is_sync = args.promise_id.is_none();
 
@@ -300,12 +245,14 @@ struct ChdirArgs {
 }
 
 fn op_chdir(
-  _state: &State,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: ChdirArgs = serde_json::from_value(args)?;
-  set_current_dir(&args.directory)?;
+  let d = PathBuf::from(&args.directory);
+  state.check_write(&d)?;
+  set_current_dir(&d)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -700,6 +647,7 @@ fn op_link(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.link");
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = resolve_from_cwd(Path::new(&args.oldpath))?;
   let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
@@ -728,6 +676,7 @@ fn op_symlink(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.symlink");
   let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = resolve_from_cwd(Path::new(&args.oldpath))?;
   let newpath = resolve_from_cwd(Path::new(&args.newpath))?;

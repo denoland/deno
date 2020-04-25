@@ -1568,6 +1568,13 @@ itest!(top_level_for_await_ts {
   output: "top_level_for_await.out",
 });
 
+itest!(unstable {
+  args: "run unstable.js",
+  check_stderr: true,
+  exit_code: 70,
+  output: "unstable.out",
+});
+
 itest!(_053_import_compression {
   args: "run --reload --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",

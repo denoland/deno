@@ -14,7 +14,7 @@ const decoder = new TextDecoder();
 unitTest(async function connectTLSNoPerm(): Promise<void> {
   let err;
   try {
-    await Deno.connectTLS({ hostname: "github.com", port: 443 });
+    await Deno.connectTls({ hostname: "github.com", port: 443 });
   } catch (e) {
     err = e;
   }
@@ -25,7 +25,7 @@ unitTest(async function connectTLSNoPerm(): Promise<void> {
 unitTest(async function connectTLSCertFileNoReadPerm(): Promise<void> {
   let err;
   try {
-    await Deno.connectTLS({
+    await Deno.connectTls({
       hostname: "github.com",
       port: 443,
       certFile: "cli/tests/tls/RootCA.crt",
@@ -49,7 +49,7 @@ unitTest(
     };
 
     try {
-      Deno.listenTLS({
+      Deno.listenTls({
         ...options,
         certFile: "./non/existent/file",
       });
@@ -59,7 +59,7 @@ unitTest(
     assert(err instanceof Deno.errors.NotFound);
 
     try {
-      Deno.listenTLS({
+      Deno.listenTls({
         ...options,
         keyFile: "./non/existent/file",
       });
@@ -73,7 +73,7 @@ unitTest(
 unitTest({ perms: { net: true } }, function listenTLSNoReadPerm(): void {
   let err;
   try {
-    Deno.listenTLS({
+    Deno.listenTls({
       hostname: "localhost",
       port: 4500,
       certFile: "cli/tests/tls/localhost.crt",
@@ -106,7 +106,7 @@ unitTest(
     });
 
     try {
-      Deno.listenTLS({
+      Deno.listenTls({
         ...options,
         keyFile: keyFilename,
       });
@@ -135,7 +135,7 @@ unitTest(
     });
 
     try {
-      Deno.listenTLS({
+      Deno.listenTls({
         ...options,
         certFile: certFilename,
       });
@@ -153,7 +153,7 @@ unitTest(
     const hostname = "localhost";
     const port = 4500;
 
-    const listener = Deno.listenTLS({
+    const listener = Deno.listenTls({
       hostname,
       port,
       certFile: "cli/tests/tls/localhost.crt",
@@ -177,7 +177,7 @@ unitTest(
       }
     );
 
-    const conn = await Deno.connectTLS({
+    const conn = await Deno.connectTls({
       hostname,
       port,
       certFile: "cli/tests/tls/RootCA.pem",
@@ -212,7 +212,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, net: true } },
-  async function startTLS(): Promise<void> {
+  async function startTls(): Promise<void> {
     const hostname = "smtp.gmail.com";
     const port = 587;
     const encoder = new TextEncoder();
@@ -244,7 +244,7 @@ unitTest(
     // Received the message that the server is ready to establish TLS
     assertEquals(line, "220 2.0.0 Ready to start TLS");
 
-    conn = await Deno.startTLS(conn, { hostname });
+    conn = await Deno.startTls(conn, { hostname });
     writer = new BufWriter(conn);
     reader = new TextProtoReader(new BufReader(conn));
 

@@ -573,7 +573,7 @@ export class MultipartWriter {
     file: Reader
   ): Promise<void> {
     const f = await this.createFormFile(field, filename);
-    await copy(f, file);
+    await copy(file, f);
   }
 
   private flush(): Promise<void> {

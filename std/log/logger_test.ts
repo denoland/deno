@@ -2,7 +2,7 @@
 const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import { LogRecord, Logger } from "./logger.ts";
-import { LogLevel } from "./levels.ts";
+import { LogLevels, LevelName } from "./levels.ts";
 import { BaseHandler } from "./handlers.ts";
 
 class TestHandler extends BaseHandler {
@@ -23,7 +23,7 @@ test(function simpleLogger(): void {
   const handler = new TestHandler("DEBUG");
   let logger = new Logger("DEBUG");
 
-  assertEquals(logger.level, LogLevel.DEBUG);
+  assertEquals(logger.level, LogLevels.DEBUG);
   assertEquals(logger.levelName, "DEBUG");
   assertEquals(logger.handlers, []);
 
@@ -41,14 +41,14 @@ test(function customHandler(): void {
   const record = handler.records[0];
   assertEquals(record.msg, "foo");
   assertEquals(record.args, [1, 2]);
-  assertEquals(record.level, LogLevel.DEBUG);
+  assertEquals(record.level, LogLevels.DEBUG);
   assertEquals(record.levelName, "DEBUG");
 
   assertEquals(handler.messages, ["DEBUG foo"]);
 });
 
 test(function logFunctions(): void {
-  const doLog = (level: string): TestHandler => {
+  const doLog = (level: LevelName): TestHandler => {
     const handler = new TestHandler(level);
     const logger = new Logger(level, [handler]);
     logger.debug("foo");

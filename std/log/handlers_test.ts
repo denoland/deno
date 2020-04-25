@@ -1,7 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { test } = Deno;
 import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
-import { LogLevel, getLevelName, getLevelByName } from "./levels.ts";
+import {
+  LogLevels,
+  LogLevelNames,
+  getLevelName,
+  getLevelByName,
+  LevelName,
+} from "./levels.ts";
 import { BaseHandler, FileHandler, RotatingFileHandler } from "./handlers.ts";
 import { LogRecord } from "./logger.ts";
 import { existsSync } from "../fs/exists.ts";
@@ -19,7 +25,7 @@ class TestHandler extends BaseHandler {
 test(function simpleHandler(): void {
   const cases = new Map<number, string[]>([
     [
-      LogLevel.DEBUG,
+      LogLevels.DEBUG,
       [
         "DEBUG debug-test",
         "INFO info-test",
@@ -29,7 +35,7 @@ test(function simpleHandler(): void {
       ],
     ],
     [
-      LogLevel.INFO,
+      LogLevels.INFO,
       [
         "INFO info-test",
         "WARNING warning-test",
@@ -38,19 +44,19 @@ test(function simpleHandler(): void {
       ],
     ],
     [
-      LogLevel.WARNING,
+      LogLevels.WARNING,
       ["WARNING warning-test", "ERROR error-test", "CRITICAL critical-test"],
     ],
-    [LogLevel.ERROR, ["ERROR error-test", "CRITICAL critical-test"]],
-    [LogLevel.CRITICAL, ["CRITICAL critical-test"]],
+    [LogLevels.ERROR, ["ERROR error-test", "CRITICAL critical-test"]],
+    [LogLevels.CRITICAL, ["CRITICAL critical-test"]],
   ]);
 
   for (const [testCase, messages] of cases.entries()) {
     const testLevel = getLevelName(testCase);
     const handler = new TestHandler(testLevel);
 
-    for (const levelName in LogLevel) {
-      const level = getLevelByName(levelName);
+    for (const levelName of LogLevelNames) {
+      const level = getLevelByName(levelName as LevelName);
       handler.handle(
         new LogRecord(`${levelName.toLowerCase()}-test`, [], level)
       );
@@ -67,7 +73,7 @@ test(function testFormatterAsString(): void {
     formatter: "test {levelName} {msg}",
   });
 
-  handler.handle(new LogRecord("Hello, world!", [], LogLevel.DEBUG));
+  handler.handle(new LogRecord("Hello, world!", [], LogLevels.DEBUG));
 
   assertEquals(handler.messages, ["test DEBUG Hello, world!"]);
 });
@@ -78,7 +84,7 @@ test(function testFormatterAsFunction(): void {
       `fn formatter ${logRecord.levelName} ${logRecord.msg}`,
   });
 
-  handler.handle(new LogRecord("Hello, world!", [], LogLevel.ERROR));
+  handler.handle(new LogRecord("Hello, world!", [], LogLevels.ERROR));
 
   assertEquals(handler.messages, ["fn formatter ERROR Hello, world!"]);
 });
@@ -92,12 +98,12 @@ test({
     });
 
     await fileHandler.setup();
-    fileHandler.handle(new LogRecord("Hello World", [], LogLevel.WARNING));
+    fileHandler.handle(new LogRecord("Hello World", [], LogLevels.WARNING));
     await fileHandler.destroy();
     const firstFileSize = (await Deno.stat(LOG_FILE)).size;
 
     await fileHandler.setup();
-    fileHandler.handle(new LogRecord("Hello World", [], LogLevel.WARNING));
+    fileHandler.handle(new LogRecord("Hello World", [], LogLevels.WARNING));
     await fileHandler.destroy();
     const secondFileSize = (await Deno.stat(LOG_FILE)).size;
 
@@ -198,11 +204,11 @@ test({
     });
     await fileHandler.setup();
 
-    fileHandler.handle(new LogRecord("AAA", [], LogLevel.ERROR)); // 'ERROR AAA\n' = 10 bytes
+    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR)); // 'ERROR AAA\n' = 10 bytes
     assertEquals((await Deno.stat(LOG_FILE)).size, 10);
-    fileHandler.handle(new LogRecord("AAA", [], LogLevel.ERROR));
+    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
     assertEquals((await Deno.stat(LOG_FILE)).size, 20);
-    fileHandler.handle(new LogRecord("AAA", [], LogLevel.ERROR));
+    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
     // Rollover occurred. Log file now has 1 record, rollover file has the original 2
     assertEquals((await Deno.stat(LOG_FILE)).size, 10);
     assertEquals((await Deno.stat(LOG_FILE + ".1")).size, 20);
@@ -238,7 +244,7 @@ test({
       mode: "a",
     });
     await fileHandler.setup();
-    fileHandler.handle(new LogRecord("AAA", [], LogLevel.ERROR)); // 'ERROR AAA\n' = 10 bytes
+    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR)); // 'ERROR AAA\n' = 10 bytes
     await fileHandler.destroy();
 
     const decoder = new TextDecoder();

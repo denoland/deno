@@ -16,8 +16,8 @@ declare namespace Deno {
     fn: () => void | Promise<void>;
     name: string;
     ignore?: boolean;
-    disableOpSanitizer?: boolean;
-    disableResourceSanitizer?: boolean;
+    sanitizeOps?: boolean;
+    sanitizeResources?: boolean;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -405,9 +405,6 @@ declare namespace Deno {
   export function cwd(): string;
 
   /**
-   * **UNSTABLE**: Currently under evaluation to decide if explicit permission is
-   * required to change the current working directory.
-   *
    * Change the current working directory to the specified path.
    *
    *       Deno.chdir("/home/userA");
@@ -417,6 +414,8 @@ declare namespace Deno {
    * Throws `Deno.errors.NotFound` if directory not found.
    * Throws `Deno.errors.PermissionDenied` if the user does not have access
    * rights
+   *
+   * Requires --allow-write.
    */
   export function chdir(directory: string): void;
 
@@ -565,71 +564,79 @@ declare namespace Deno {
    *
    *       const source = await Deno.open("my_file.txt");
    *       const buffer = new Deno.Buffer()
-   *       const bytesCopied1 = await Deno.copy(Deno.stdout, source);
-   *       const bytesCopied2 = await Deno.copy(buffer, source);
+   *       const bytesCopied1 = await Deno.copy(source, Deno.stdout);
+   *       const bytesCopied2 = await Deno.copy(source, buffer);
    *
    * Because `copy()` is defined to read from `src` until `EOF`, it does not
    * treat an `EOF` from `read()` as an error to be reported.
    *
-   * @param dst The destination to copy to
    * @param src The source to copy from
+   * @param dst The destination to copy to
    */
-  export function copy(dst: Writer, src: Reader): Promise<number>;
+  export function copy(src: Reader, dst: Writer): Promise<number>;
 
-  /** **UNSTABLE**: new API, yet to be vetted
-   * Turns a Reader, `r`, into an async iterator.
+  /** Turns a Reader, `r`, into an async iterator.
    *
-   *      let f = await open("/etc/passwd");
-   *      for await (const chunk of iter(f)) {
+   *      let f = await Deno.open("/etc/passwd");
+   *      for await (const chunk of Deno.iter(f)) {
    *        console.log(chunk);
    *      }
    *      f.close();
    *
    * Second argument can be used to tune size of a buffer.
-   * Default size of the buffer is 1024 bytes.
+   * Default size of the buffer is 32kB.
    *
-   *      let f = await open("/etc/passwd");
-   *      for await (const chunk of iter(f, 1024 * 1024)) {
+   *      let f = await Deno.open("/etc/passwd");
+   *      const iter = Deno.iter(f, {
+   *        bufSize: 1024 * 1024
+   *      });
+   *      for await (const chunk of iter) {
    *        console.log(chunk);
    *      }
    *      f.close();
    *
-   * Iterator uses internal buffer of fixed size for efficiency returning
-   * a view on that buffer on each iteration. It it therefore callers
-   * responsibility to copy contents of the buffer if needed; otherwise
+   * Iterator uses an internal buffer of fixed size for efficiency; it returns
+   * a view on that buffer on each iteration. It is therefore caller's
+   * responsibility to copy contents of the buffer if needed; otherwise the
    * next iteration will overwrite contents of previously returned chunk.
    */
   export function iter(
     r: Reader,
-    bufSize?: number
+    options?: {
+      bufSize?: number;
+    }
   ): AsyncIterableIterator<Uint8Array>;
 
-  /** **UNSTABLE**: new API, yet to be vetted
-   * Turns a SyncReader, `r`, into an iterator.
+  /** Turns a SyncReader, `r`, into an iterator.
    *
-   *      let f = openSync("/etc/passwd");
-   *      for (const chunk of iterSync(reader)) {
+   *      let f = Deno.openSync("/etc/passwd");
+   *      for (const chunk of Deno.iterSync(reader)) {
    *        console.log(chunk);
    *      }
    *      f.close();
    *
    * Second argument can be used to tune size of a buffer.
-   * Default size of the buffer is 1024 bytes.
+   * Default size of the buffer is 32kB.
    *
-   *      let f = openSync("/etc/passwd");
-   *      for (const chunk of iterSync(reader, 1024 * 1024)) {
+   *      let f = await Deno.open("/etc/passwd");
+   *      const iter = Deno.iterSync(f, {
+   *        bufSize: 1024 * 1024
+   *      });
+   *      for (const chunk of iter) {
    *        console.log(chunk);
    *      }
-   *      f.close()
+   *      f.close();
    *
-   * Iterator uses internal buffer of fixed size for efficiency returning
-   * a view on that buffer on each iteration. It it therefore callers
-   * responsibility to copy contents of the buffer if needed; otherwise
+   * Iterator uses an internal buffer of fixed size for efficiency; it returns
+   * a view on that buffer on each iteration. It is therefore caller's
+   * responsibility to copy contents of the buffer if needed; otherwise the
    * next iteration will overwrite contents of previously returned chunk.
    */
   export function iterSync(
     r: SyncReader,
-    bufSize?: number
+    options?: {
+      bufSize?: number;
+    }
   ): IterableIterator<Uint8Array>;
 
   /** Synchronously open a file and return an instance of `Deno.File`.  The
@@ -645,18 +652,6 @@ declare namespace Deno {
    */
   export function openSync(path: string, options?: OpenOptions): File;
 
-  /** Synchronously open a file and return an instance of `Deno.File`.  The file
-   * may be created depending on the mode passed in.  It is the callers responsibility
-   * to close the file when finished with it.
-   *
-   *       const file = Deno.openSync("/foo/bar.txt", "r");
-   *       // Do work with file
-   *       Deno.close(file.rid);
-   *
-   * Requires `allow-read` and/or `allow-write` permissions depending on openMode.
-   */
-  export function openSync(path: string, openMode?: OpenMode): File;
-
   /** Open a file and resolve to an instance of `Deno.File`.  The
    * file does not need to previously exist if using the `create` or `createNew`
    * open options.  It is the callers responsibility to close the file when finished
@@ -669,18 +664,6 @@ declare namespace Deno {
    * Requires `allow-read` and/or `allow-write` permissions depending on options.
    */
   export function open(path: string, options?: OpenOptions): Promise<File>;
-
-  /** Open a file and resolve to an instance of `Deno.File`.  The file may be
-   * created depending on the mode passed in.  It is the callers responsibility
-   * to close the file when finished with it.
-   *
-   *       const file = await Deno.open("/foo/bar.txt", "w+");
-   *       // Do work with file
-   *       Deno.close(file.rid);
-   *
-   * Requires `allow-read` and/or `allow-write` permissions depending on openMode.
-   */
-  export function open(path: string, openMode?: OpenMode): Promise<File>;
 
   /** Creates a file if none exists or truncates an existing file and returns
    *  an instance of `Deno.File`.
@@ -841,12 +824,24 @@ declare namespace Deno {
     close(): void;
   }
 
-  /** An instance of `Deno.File` for `stdin`. */
-  export const stdin: File;
-  /** An instance of `Deno.File` for `stdout`. */
-  export const stdout: File;
-  /** An instance of `Deno.File` for `stderr`. */
-  export const stderr: File;
+  export interface Stdin extends Reader, SyncReader, Closer {
+    readonly rid: number;
+  }
+
+  export interface Stdout extends Writer, SyncWriter, Closer {
+    readonly rid: number;
+  }
+
+  export interface Stderr extends Writer, SyncWriter, Closer {
+    readonly rid: number;
+  }
+
+  /** A handle for `stdin`. */
+  export const stdin: Stdin;
+  /** A handle for `stdout`. */
+  export const stdout: Stdout;
+  /** A handle for `stderr`. */
+  export const stderr: Stderr;
 
   export interface OpenOptions {
     /** Sets the option for read access. This option, when `true`, means that the
@@ -881,21 +876,6 @@ declare namespace Deno {
      * Ignored on Windows. */
     mode?: number;
   }
-
-  /** A set of string literals which specify how to open a file.
-   *
-   * |Value |Description                                                                                       |
-   * |------|--------------------------------------------------------------------------------------------------|
-   * |`"r"` |Read-only. Default. Starts at beginning of file.                                                  |
-   * |`"r+"`|Read-write. Start at beginning of file.                                                           |
-   * |`"w"` |Write-only. Opens and truncates existing file or creates new one for writing only.                |
-   * |`"w+"`|Read-write. Opens and truncates existing file or creates new one for writing and reading.         |
-   * |`"a"` |Write-only. Opens existing file or creates new one. Each write appends content to the end of file.|
-   * |`"a+"`|Read-write. Behaves like `"a"` and allows to read from file.                                      |
-   * |`"x"` |Write-only. Exclusive create - creates new file only if one doesn't exist already.                |
-   * |`"x+"`|Read-write. Behaves like `x` and allows reading from file.                                        |
-   */
-  export type OpenMode = "r" | "r+" | "w" | "w+" | "a" | "a+" | "x" | "x+";
 
   /** **UNSTABLE**: new API, yet to be vetted
    *
@@ -1582,12 +1562,16 @@ declare namespace Deno {
 
   /** Creates `newpath` as a hard link to `oldpath`.
    *
+   *  **UNSTABLE**: needs security review.
+   *
    *       await Deno.link("old/name", "new/name");
    *
    * Requires `allow-read` and `allow-write` permissions. */
   export function link(oldpath: string, newpath: string): Promise<void>;
 
   /** **UNSTABLE**: `type` argument type may be changed to `"dir" | "file"`.
+   *
+   *  **UNSTABLE**: needs security review.
    *
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
@@ -1606,6 +1590,8 @@ declare namespace Deno {
   ): void;
 
   /** **UNSTABLE**: `type` argument may be changed to `"dir" | "file"`
+   *
+   *  **UNSTABLE**: needs security review.
    *
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
@@ -2018,7 +2004,7 @@ declare namespace Deno {
     options: UnixListenOptions & { transport: "unixpacket" }
   ): DatagramConn;
 
-  export interface ListenTLSOptions extends ListenOptions {
+  export interface ListenTlsOptions extends ListenOptions {
     /** Server certificate file. */
     certFile: string;
     /** Server public key file. */
@@ -2030,10 +2016,10 @@ declare namespace Deno {
   /** Listen announces on the local transport address over TLS (transport layer
    * security).
    *
-   *      const lstnr = Deno.listenTLS({ port: 443, certFile: "./server.crt", keyFile: "./server.key" });
+   *      const lstnr = Deno.listenTls({ port: 443, certFile: "./server.crt", keyFile: "./server.key" });
    *
    * Requires `allow-net` permission. */
-  export function listenTLS(options: ListenTLSOptions): Listener;
+  export function listenTls(options: ListenTlsOptions): Listener;
 
   export interface ConnectOptions {
     /** The port to connect to. */
@@ -2064,7 +2050,7 @@ declare namespace Deno {
     options: ConnectOptions | UnixConnectOptions
   ): Promise<Conn>;
 
-  export interface ConnectTLSOptions {
+  export interface ConnectTlsOptions {
     /** The port to connect to. */
     port: number;
     /** A literal IP address or host name that can be resolved to an IP address.
@@ -2079,16 +2065,16 @@ declare namespace Deno {
    * cert file is optional and if not included Mozilla's root certificates will
    * be used (see also https://github.com/ctz/webpki-roots for specifics)
    *
-   *     const conn1 = await Deno.connectTLS({ port: 80 });
-   *     const conn2 = await Deno.connectTLS({ certFile: "./certs/my_custom_root_CA.pem", hostname: "192.0.2.1", port: 80 });
-   *     const conn3 = await Deno.connectTLS({ hostname: "[2001:db8::1]", port: 80 });
-   *     const conn4 = await Deno.connectTLS({ certFile: "./certs/my_custom_root_CA.pem", hostname: "golang.org", port: 80});
+   *     const conn1 = await Deno.connectTls({ port: 80 });
+   *     const conn2 = await Deno.connectTls({ certFile: "./certs/my_custom_root_CA.pem", hostname: "192.0.2.1", port: 80 });
+   *     const conn3 = await Deno.connectTls({ hostname: "[2001:db8::1]", port: 80 });
+   *     const conn4 = await Deno.connectTls({ certFile: "./certs/my_custom_root_CA.pem", hostname: "golang.org", port: 80});
    *
    * Requires `allow-net` permission.
    */
-  export function connectTLS(options: ConnectTLSOptions): Promise<Conn>;
+  export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
 
-  export interface StartTLSOptions {
+  export interface StartTlsOptions {
     /** A literal IP address or host name that can be resolved to an IP address.
      * If not specified, defaults to `127.0.0.1`. */
     hostname?: string;
@@ -2106,13 +2092,13 @@ declare namespace Deno {
    * prepared for TLS handshake.
    *
    *     const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
-   *     const tlsConn = await Deno.startTLS(conn, { certFile: "./certs/my_custom_root_CA.pem", hostname: "127.0.0.1", port: 80 });
+   *     const tlsConn = await Deno.startTls(conn, { certFile: "./certs/my_custom_root_CA.pem", hostname: "127.0.0.1", port: 80 });
    *
    * Requires `allow-net` permission.
    */
-  export function startTLS(
+  export function startTls(
     conn: Conn,
-    options?: StartTLSOptions
+    options?: StartTlsOptions
   ): Promise<Conn>;
 
   /** **UNSTABLE**: not sure if broken or not */
@@ -2169,15 +2155,12 @@ declare namespace Deno {
    */
   export function resources(): ResourceMap;
 
-  /** **UNSTABLE**: new API. Needs docs. */
   export interface FsEvent {
     kind: "any" | "access" | "create" | "modify" | "remove";
     paths: string[];
   }
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Watch for file system events against one or more `paths`, which can be files
+  /** Watch for file system events against one or more `paths`, which can be files
    * or directories.  These paths must exist already.  One user action (e.g.
    * `touch test.file`) can  generate multiple file system events.  Likewise,
    * one user action can result in multiple file paths in one event (e.g. `mv
@@ -2185,14 +2168,15 @@ declare namespace Deno {
    * for directories, will watch the specified directory and all sub directories.
    * Note that the exact ordering of the events can vary between operating systems.
    *
-   *       const iter = Deno.fsEvents("/");
-   *       for await (const event of iter) {
-   *          console.log(">>>> event", event);  // e.g. { kind: "create", paths: [ "/foo.txt" ] }
+   *       const watcher = Deno.watchFs("/");
+   *       for await (const event of watcher) {
+   *          console.log(">>>> event", event);
+   *          // { kind: "create", paths: [ "/foo.txt" ] }
    *       }
    *
    * Requires `allow-read` permission.
    */
-  export function fsEvents(
+  export function watchFs(
     paths: string | string[],
     options?: { recursive: boolean }
   ): AsyncIterableIterator<FsEvent>;

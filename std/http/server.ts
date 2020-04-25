@@ -13,7 +13,7 @@ import {
 import Listener = Deno.Listener;
 import Conn = Deno.Conn;
 import Reader = Deno.Reader;
-const { listen, listenTLS } = Deno;
+const { listen, listenTls } = Deno;
 
 export class ServerRequest {
   url!: string;
@@ -286,7 +286,7 @@ export async function listenAndServe(
 }
 
 /** Options for creating an HTTPS server. */
-export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
+export type HTTPSOptions = Omit<Deno.ListenTlsOptions, "transport">;
 
 /**
  * Create an HTTPS server with given options
@@ -306,11 +306,11 @@ export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
  * @return Async iterable server instance for incoming requests
  */
 export function serveTLS(options: HTTPSOptions): Server {
-  const tlsOptions: Deno.ListenTLSOptions = {
+  const tlsOptions: Deno.ListenTlsOptions = {
     ...options,
     transport: "tcp",
   };
-  const listener = listenTLS(tlsOptions);
+  const listener = listenTls(tlsOptions);
   return new Server(listener);
 }
 

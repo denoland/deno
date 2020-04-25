@@ -1,5 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { LogLevel, getLevelByName, getLevelName } from "./levels.ts";
+import {
+  LogLevels,
+  getLevelByName,
+  getLevelName,
+  LevelName,
+} from "./levels.ts";
 import { BaseHandler } from "./handlers.ts";
 
 export class LogRecord {
@@ -26,11 +31,11 @@ export class LogRecord {
 
 export class Logger {
   level: number;
-  levelName: string;
+  levelName: LevelName;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlers: any[];
 
-  constructor(levelName: string, handlers?: BaseHandler[]) {
+  constructor(levelName: LevelName, handlers?: BaseHandler[]) {
     this.level = getLevelByName(levelName);
     this.levelName = levelName;
 
@@ -48,22 +53,22 @@ export class Logger {
   }
 
   debug(msg: string, ...args: unknown[]): void {
-    this._log(LogLevel.DEBUG, msg, ...args);
+    this._log(LogLevels.DEBUG, msg, ...args);
   }
 
   info(msg: string, ...args: unknown[]): void {
-    this._log(LogLevel.INFO, msg, ...args);
+    this._log(LogLevels.INFO, msg, ...args);
   }
 
   warning(msg: string, ...args: unknown[]): void {
-    this._log(LogLevel.WARNING, msg, ...args);
+    this._log(LogLevels.WARNING, msg, ...args);
   }
 
   error(msg: string, ...args: unknown[]): void {
-    this._log(LogLevel.ERROR, msg, ...args);
+    this._log(LogLevels.ERROR, msg, ...args);
   }
 
   critical(msg: string, ...args: unknown[]): void {
-    this._log(LogLevel.CRITICAL, msg, ...args);
+    this._log(LogLevels.CRITICAL, msg, ...args);
   }
 }

@@ -24,8 +24,10 @@ export function writeFileSync(
     }
   }
 
-  const openMode = !!options.append ? "a" : "w";
-  const file = openSync(path, openMode);
+  const openOptions = !!options.append
+    ? { write: true, create: true, append: true }
+    : { write: true, create: true, truncate: true };
+  const file = openSync(path, openOptions);
 
   if (
     options.mode !== undefined &&
@@ -52,8 +54,10 @@ export async function writeFile(
     }
   }
 
-  const openMode = !!options.append ? "a" : "w";
-  const file = await open(path, openMode);
+  const openOptions = !!options.append
+    ? { write: true, create: true, append: true }
+    : { write: true, create: true, truncate: true };
+  const file = await open(path, openOptions);
 
   if (
     options.mode !== undefined &&

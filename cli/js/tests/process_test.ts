@@ -229,7 +229,10 @@ unitTest(
   async function runRedirectStdoutStderr(): Promise<void> {
     const tempDir = await makeTempDir();
     const fileName = tempDir + "/redirected_stdio.txt";
-    const file = await open(fileName, "w");
+    const file = await open(fileName, {
+      create: true,
+      write: true,
+    });
 
     const p = run({
       cmd: [
@@ -261,7 +264,7 @@ unitTest(
     const fileName = tempDir + "/redirected_stdio.txt";
     const encoder = new TextEncoder();
     await writeFile(fileName, encoder.encode("hello"));
-    const file = await open(fileName, "r");
+    const file = await open(fileName);
 
     const p = run({
       cmd: ["python", "-c", "import sys; assert 'hello' == sys.stdin.read();"],
