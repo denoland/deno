@@ -586,7 +586,9 @@ impl Future for EsIsolate {
 
     match ready!(inner.core_isolate.poll_unpin(cx)) {
       Ok(()) => {
-        if inner.pending_dyn_imports.is_empty() {
+        if inner.pending_dyn_imports.is_empty()
+          && inner.preparing_dyn_imports.is_empty()
+        {
           Poll::Ready(Ok(()))
         } else {
           Poll::Pending
