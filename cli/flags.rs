@@ -2307,6 +2307,8 @@ mod tests {
           fail_fast: false,
           filter: None,
           allow_none: true,
+          report_to_console: true,
+          disable_log: false,
           include: Some(svec!["dir1/", "dir2/"]),
         },
         allow_read: true,
@@ -2325,6 +2327,8 @@ mod tests {
         subcommand: DenoSubcommand::Test {
           fail_fast: false,
           allow_none: false,
+          report_to_console: true,
+          disable_log: false,
           filter: Some("foo".to_string()),
           include: Some(svec!["dir1"]),
         },
