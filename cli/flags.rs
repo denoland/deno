@@ -2324,7 +2324,7 @@ mod tests {
         subcommand: DenoSubcommand::Test {
           fail_fast: false,
           allow_none: false,
-          quiet : false,
+          quiet: false,
           filter: Some("foo".to_string()),
           include: Some(svec!["dir1"]),
         },
