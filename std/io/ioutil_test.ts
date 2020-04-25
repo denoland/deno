@@ -73,7 +73,7 @@ Deno.test(function testSliceLongToBytes2(): void {
 Deno.test(async function testCopyN1(): Promise<void> {
   const w = new Buffer();
   const r = stringsReader("abcdefghij");
-  const n = await copyN(w, r, 3);
+  const n = await copyN(r, w, 3);
   assertEquals(n, 3);
   assertEquals(w.toString(), "abc");
 });
@@ -81,7 +81,7 @@ Deno.test(async function testCopyN1(): Promise<void> {
 Deno.test(async function testCopyN2(): Promise<void> {
   const w = new Buffer();
   const r = stringsReader("abcdefghij");
-  const n = await copyN(w, r, 11);
+  const n = await copyN(r, w, 11);
   assertEquals(n, 10);
   assertEquals(w.toString(), "abcdefghij");
 });
