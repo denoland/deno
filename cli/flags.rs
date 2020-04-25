@@ -65,8 +65,7 @@ pub enum DenoSubcommand {
   },
   Test {
     fail_fast: bool,
-    report_to_console: bool,
-    disable_log: bool,
+    quiet: bool,
     allow_none: bool,
     include: Option<Vec<String>>,
     filter: Option<String>,
@@ -558,8 +557,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   flags.subcommand = DenoSubcommand::Test {
     fail_fast: failfast,
-    report_to_console: !quiet,
-    disable_log: quiet,
+    quiet,
     include,
     filter,
     allow_none,
@@ -2307,8 +2305,7 @@ mod tests {
           fail_fast: false,
           filter: None,
           allow_none: true,
-          report_to_console: true,
-          disable_log: false,
+          quiet: true,
           include: Some(svec!["dir1/", "dir2/"]),
         },
         allow_read: true,
@@ -2327,8 +2324,7 @@ mod tests {
         subcommand: DenoSubcommand::Test {
           fail_fast: false,
           allow_none: false,
-          report_to_console: true,
-          disable_log: false,
+          quiet : false,
           filter: Some("foo".to_string()),
           include: Some(svec!["dir1"]),
         },
