@@ -1,8 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { isTypedArray, TypedArray } from "./util.ts";
-import { TextEncoder } from "./text_encoding.ts";
-import { SyncWriter } from "../io.ts";
-import { stdout } from "../files.ts";
 import { cliTable } from "./console_table.ts";
 import { exposeForTest } from "../internals.ts";
 import { PromiseState } from "./promise.ts";
@@ -38,16 +35,6 @@ export class CSI {
 }
 
 /* eslint-disable @typescript-eslint/no-use-before-define */
-
-function cursorTo(stream: SyncWriter, _x: number, _y?: number): void {
-  const uint8 = new TextEncoder().encode(CSI.kClear);
-  stream.writeSync(uint8);
-}
-
-function clearScreenDown(stream: SyncWriter): void {
-  const uint8 = new TextEncoder().encode(CSI.kClearScreenDown);
-  stream.writeSync(uint8);
-}
 
 function getClassInstanceName(instance: unknown): string {
   if (typeof instance !== "object") {
@@ -934,8 +921,8 @@ export class Console {
 
   clear = (): void => {
     this.indentLevel = 0;
-    cursorTo(stdout, 0, 0);
-    clearScreenDown(stdout);
+    this.#printFunc(CSI.kClear, false);
+    this.#printFunc(CSI.kClearScreenDown, false);
   };
 
   trace = (...args: unknown[]): void => {
