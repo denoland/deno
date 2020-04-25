@@ -63,8 +63,7 @@ pub fn prepare_test_modules_urls(
 pub fn render_test_file(
   modules: Vec<Url>,
   fail_fast: bool,
-  report_to_console: bool,
-  disable_log: bool,
+  quiet: bool,
   filter: Option<String>,
 ) -> String {
   let mut test_file = "".to_string();
@@ -74,9 +73,9 @@ pub fn render_test_file(
   }
 
   let options = if let Some(filter) = filter {
-    json!({ "failFast": fail_fast, "reportToConsole": report_to_console, "disableLog": disable_log, "filter": filter })
+    json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet, "filter": filter })
   } else {
-    json!({ "failFast": fail_fast, "reportToConsole": report_to_console, "disableLog": disable_log })
+    json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet })
   };
 
   let run_tests_cmd = format!("Deno.runTests({});\n", options);
