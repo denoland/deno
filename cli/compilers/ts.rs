@@ -16,8 +16,8 @@ use crate::startup_data;
 use crate::state::*;
 use crate::tokio_util;
 use crate::version;
+use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
-use crate::worker::WorkerHandle;
 use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
@@ -267,7 +267,7 @@ impl TsCompiler {
       startup_data::compiler_isolate_init(),
       worker_state,
     );
-    worker.execute("bootstrapTsCompilerRuntime()").unwrap();
+    worker.execute("bootstrap.tsCompilerRuntime()").unwrap();
     worker
   }
 
@@ -455,7 +455,7 @@ impl TsCompiler {
   ///
   /// Along compiled file a special metadata file is saved as well containing
   /// hash that can be validated to avoid unnecessary recompilation.
-  async fn cache_compiled_file(
+  fn cache_compiled_file(
     &self,
     module_specifier: &ModuleSpecifier,
     contents: &str,
@@ -468,7 +468,6 @@ impl TsCompiler {
     let source_file = self
       .file_fetcher
       .fetch_cached_source_file(&module_specifier)
-      .await
       .expect("Source file not found");
 
     let version_hash = source_code_version_hash(
@@ -528,7 +527,7 @@ impl TsCompiler {
   }
 
   /// This method is called by TS compiler via an "op".
-  pub async fn cache_compiler_output(
+  pub fn cache_compiler_output(
     &self,
     module_specifier: &ModuleSpecifier,
     extension: &str,
@@ -536,7 +535,7 @@ impl TsCompiler {
   ) -> std::io::Result<()> {
     match extension {
       ".map" => self.cache_source_map(module_specifier, contents),
-      ".js" => self.cache_compiled_file(module_specifier, contents).await,
+      ".js" => self.cache_compiled_file(module_specifier, contents),
       _ => unreachable!(),
     }
   }
@@ -578,10 +577,9 @@ impl TsCompiler {
     script_name: &str,
   ) -> Option<SourceFile> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
-      let fut = self
+      return self
         .file_fetcher
         .fetch_cached_source_file(&module_specifier);
-      return futures::executor::block_on(fut);
     }
 
     None
@@ -609,7 +607,7 @@ async fn execute_in_thread(
   req: Buf,
 ) -> Result<Buf, ErrBox> {
   let (handle_sender, handle_receiver) =
-    std::sync::mpsc::sync_channel::<Result<WorkerHandle, ErrBox>>(1);
+    std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, ErrBox>>(1);
   let builder =
     std::thread::Builder::new().name("deno-ts-compiler".to_string());
   let join_handle = builder.spawn(move || {
@@ -618,15 +616,16 @@ async fn execute_in_thread(
     drop(handle_sender);
     tokio_util::run_basic(worker).expect("Panic in event loop");
   })?;
-  let mut handle = handle_receiver.recv().unwrap()?;
-  handle.post_message(req).await?;
+  let handle = handle_receiver.recv().unwrap()?;
+  handle.post_message(req)?;
   let event = handle.get_event().await.expect("Compiler didn't respond");
   let buf = match event {
     WorkerEvent::Message(buf) => Ok(buf),
     WorkerEvent::Error(error) => Err(error),
+    WorkerEvent::TerminalError(error) => Err(error),
   }?;
   // Shutdown worker and wait for thread to finish
-  handle.sender.close_channel();
+  handle.terminate();
   join_handle.join().unwrap();
   Ok(buf)
 }

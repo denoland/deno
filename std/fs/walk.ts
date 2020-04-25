@@ -4,7 +4,6 @@
 import { unimplemented, assert } from "../testing/asserts.ts";
 import { join } from "../path/mod.ts";
 const { readdir, readdirSync, stat, statSync } = Deno;
-type FileInfo = Deno.FileInfo;
 
 export interface WalkOptions {
   maxDepth?: number;
@@ -34,9 +33,9 @@ function include(
   return true;
 }
 
-export interface WalkInfo {
+export interface WalkEntry {
   filename: string;
-  info: FileInfo;
+  info: Deno.FileInfo;
 }
 
 /** Walks the file tree rooted at root, yielding each file or directory in the
@@ -55,7 +54,7 @@ export interface WalkInfo {
  *
  *      for await (const { filename, info } of walk(".")) {
  *        console.log(filename);
- *        assert(info.isFile());
+ *        assert(info.isFile);
  *      };
  */
 export async function* walk(
@@ -69,7 +68,7 @@ export async function* walk(
     match = undefined,
     skip = undefined,
   }: WalkOptions = {}
-): AsyncIterableIterator<WalkInfo> {
+): AsyncIterableIterator<WalkEntry> {
   if (maxDepth < 0) {
     return;
   }
@@ -79,9 +78,8 @@ export async function* walk(
   if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
-  const ls: FileInfo[] = await readdir(root);
-  for (const info of ls) {
-    if (info.isSymlink()) {
+  for await (const dirEntry of readdir(root)) {
+    if (dirEntry.isSymlink) {
       if (followSymlinks) {
         // TODO(ry) Re-enable followSymlinks.
         unimplemented();
@@ -90,12 +88,11 @@ export async function* walk(
       }
     }
 
-    assert(info.name != null);
-    const filename = join(root, info.name);
+    const filename = join(root, dirEntry.name);
 
-    if (info.isFile()) {
+    if (dirEntry.isFile) {
       if (includeFiles && include(filename, exts, match, skip)) {
-        yield { filename, info };
+        yield { filename, info: dirEntry };
       }
     } else {
       yield* walk(filename, {
@@ -123,7 +120,7 @@ export function* walkSync(
     match = undefined,
     skip = undefined,
   }: WalkOptions = {}
-): IterableIterator<WalkInfo> {
+): IterableIterator<WalkEntry> {
   if (maxDepth < 0) {
     return;
   }
@@ -133,9 +130,8 @@ export function* walkSync(
   if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
-  const ls: FileInfo[] = readdirSync(root);
-  for (const info of ls) {
-    if (info.isSymlink()) {
+  for (const dirEntry of readdirSync(root)) {
+    if (dirEntry.isSymlink) {
       if (followSymlinks) {
         unimplemented();
       } else {
@@ -143,12 +139,12 @@ export function* walkSync(
       }
     }
 
-    assert(info.name != null);
-    const filename = join(root, info.name);
+    assert(dirEntry.name != null);
+    const filename = join(root, dirEntry.name);
 
-    if (info.isFile()) {
+    if (dirEntry.isFile) {
       if (includeFiles && include(filename, exts, match, skip)) {
-        yield { filename, info };
+        yield { filename, info: dirEntry };
       }
     } else {
       yield* walkSync(filename, {

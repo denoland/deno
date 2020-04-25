@@ -6,6 +6,62 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.41.0 / 2020.04.16
+
+- BREAKING: Improve readdir() and FileInfo interfaces (#4763)
+- BREAKING: Remove depracated APIs for mkdir and mkdirSync (#4615)
+- BREAKING: Make fetch API more web compatible (#4687)
+- BREAKING: Remove std/testing/format.ts (#4749)
+- BREAKING: Migrate std/types to deno.land/x/types/ (#4713, #4771)
+- feat(doc): support for runtime built-ins (#4635)
+- feat(std/log): rotating handler, docs improvements (#4674)
+- feat(std/node): Add isPrimitive method (#4673)
+- feat(std/node/fs): Add copyFile and copyFileSync methods (#4726)
+- feat(std/signal): Add onSignal method (#4696)
+- feat(std/testing): Change output of diff (#4697)
+- feat(std/http): Verify cookie name (#4685)
+- feat(std/multipart): Make readForm() type safe (#4710)
+- feat(std/uuid): Add UUID v1 (#4758)
+- feat(install): Honor log level arg (#4714)
+- feat(workers): Make Worker API more web compatible (#4684, #4734, #4391,
+  #4737, #4746)
+- feat: Add AbortController and AbortSignal API (#4757)
+- fix(install): Clean up output on Windows (#4764)
+- fix(core): Handle SyntaxError during script compilation (#4770)
+- fix(cli): Async stack traces and stack formatting (#4690, #4706, #4715)
+- fix(cli): Remove unnecessary namespaces in "deno types" (#4683, #4698, #4718,
+  #4719, #4736, #4741)
+- fix(cli): Panic on invalid UTF-8 string (#4704)
+- fix(cli/js/net): Make generator return types iterable (#4661)
+- fix(doc): Handle optional and extends fields (#4738, #4739)
+- refactor: Event and EventTarget implementation (#4707)
+- refactor: Use synchronous syscalls where applicable (#4762)
+- refactor: Remove calls to futures::executor::block_on (#4760, #4775)
+- upgrade: Rust crates (#4742)
+
+### v0.40.0 / 2020.04.08
+
+- BREAKING: Rename 'deno fetch' subcommand to 'deno cache' (#4656)
+- BREAKING: Remove std/testing/runner.ts (#4649)
+- feat(std/flags): Pass key and value to unknown (#4637)
+- feat(std/http): Respond with 400 on request parse failure (#4614)
+- feat(std/node): Add exists and existsSync (#4655)
+- feat: Add File support in FormData (#4632)
+- feat: Expose ReadableStream and make Blob more standardized (#4581)
+- feat: add --importmap flag to deno bundle (#4651)
+- fix(#4546): Added Math.trunc to toSecondsFromEpoch to conform the result to
+  u64 (#4575)
+- fix(file_server): use text/typescript instead of application/typescript
+  (#4620)
+- fix(std/testing): format bigint (#4626)
+- fix: Drop headers with trailing whitespace in header name (#4642)
+- fix: Fetch reference types for JS files (#4652)
+- fix: Improve deno doc (#4672, #4625)
+- fix: On init create disk_cache directory if it doesn't already exists (#4617)
+- fix: Remove unnecessary namespaces in "deno types" (#4677, #4675, #4669,
+  #4668, #4665, #4663, #4662)
+- upgrade: Rust crates (#4679)
+
 ### v0.39.0 / 2020.04.03
 
 - BREAKING CHANGE: Move encode, decode helpers to /std/encoding/utf8.ts, delete

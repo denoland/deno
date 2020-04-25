@@ -9,6 +9,8 @@ import * as constants from "./_fs/_fs_constants.ts";
 import { readFile, readFileSync } from "./_fs/_fs_readFile.ts";
 import { readlink, readlinkSync } from "./_fs/_fs_readlink.ts";
 import { exists, existsSync } from "./_fs/_fs_exists.ts";
+import { mkdir, mkdirSync } from "./_fs/_fs_mkdir.ts";
+import { copyFile, copyFileSync } from "./_fs/_fs_copy.ts";
 
 export {
   access,
@@ -22,10 +24,14 @@ export {
   close,
   closeSync,
   constants,
+  copyFile,
+  copyFileSync,
+  exists,
+  existsSync,
   readFile,
   readFileSync,
   readlink,
   readlinkSync,
-  exists,
-  existsSync,
+  mkdir,
+  mkdirSync,
 };

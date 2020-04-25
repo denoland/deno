@@ -6,6 +6,8 @@
 export const EOF: unique symbol = Symbol("EOF");
 export type EOF = typeof EOF;
 
+const DEFAULT_BUFFER_SIZE = 32 * 1024;
+
 // Seek whence values.
 // https://golang.org/pkg/io/#pkg-constants
 export enum SeekMode {
@@ -68,10 +70,9 @@ export interface ReadWriteCloser extends Reader, Writer, Closer {}
 // https://golang.org/pkg/io/#ReadWriteSeeker
 export interface ReadWriteSeeker extends Reader, Writer, Seeker {}
 
-// https://golang.org/pkg/io/#Copy
-export async function copy(dst: Writer, src: Reader): Promise<number> {
+export async function copy(src: Reader, dst: Writer): Promise<number> {
   let n = 0;
-  const b = new Uint8Array(32 * 1024);
+  const b = new Uint8Array(DEFAULT_BUFFER_SIZE);
   let gotEOF = false;
   while (gotEOF === false) {
     const result = await src.read(b);
@@ -84,23 +85,38 @@ export async function copy(dst: Writer, src: Reader): Promise<number> {
   return n;
 }
 
-export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array> {
-  const b = new Uint8Array(1024);
-  return {
-    [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
-      return this;
-    },
+export async function* iter(
+  r: Reader,
+  options?: {
+    bufSize?: number;
+  }
+): AsyncIterableIterator<Uint8Array> {
+  const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
+  const b = new Uint8Array(bufSize);
+  while (true) {
+    const result = await r.read(b);
+    if (result === EOF) {
+      break;
+    }
 
-    async next(): Promise<IteratorResult<Uint8Array>> {
-      const result = await r.read(b);
-      if (result === EOF) {
-        return { value: new Uint8Array(), done: true };
-      }
+    yield b.subarray(0, result);
+  }
+}
 
-      return {
-        value: b.subarray(0, result),
-        done: false,
-      };
-    },
-  };
+export function* iterSync(
+  r: SyncReader,
+  options?: {
+    bufSize?: number;
+  }
+): IterableIterator<Uint8Array> {
+  const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
+  const b = new Uint8Array(bufSize);
+  while (true) {
+    const result = r.readSync(b);
+    if (result === EOF) {
+      break;
+    }
+
+    yield b.subarray(0, result);
+  }
 }

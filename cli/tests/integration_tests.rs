@@ -96,7 +96,7 @@ fn fetch_test() {
   let output = Command::new(deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
-    .arg("fetch")
+    .arg("cache")
     .arg(module_url.to_string())
     .output()
     .expect("Failed to spawn script");
@@ -197,6 +197,8 @@ fn upgrade_in_tmpdir() {
 #[test]
 fn installer_test_local_module_run() {
   let temp_dir = TempDir::new().expect("tempdir fail");
+  let bin_dir = temp_dir.path().join("bin");
+  std::fs::create_dir(&bin_dir).unwrap();
   let local_module = std::env::current_dir().unwrap().join("tests/echo.ts");
   let local_module_str = local_module.to_string_lossy();
   deno::installer::install(
@@ -208,7 +210,7 @@ fn installer_test_local_module_run() {
     false,
   )
   .expect("Failed to install");
-  let mut file_path = temp_dir.path().join("echo_test");
+  let mut file_path = bin_dir.join("echo_test");
   if cfg!(windows) {
     file_path = file_path.with_extension("cmd");
   }
@@ -235,6 +237,8 @@ fn installer_test_local_module_run() {
 fn installer_test_remote_module_run() {
   let g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
+  let bin_dir = temp_dir.path().join("bin");
+  std::fs::create_dir(&bin_dir).unwrap();
   deno::installer::install(
     deno::flags::Flags::default(),
     Some(temp_dir.path().to_path_buf()),
@@ -244,7 +248,7 @@ fn installer_test_remote_module_run() {
     false,
   )
   .expect("Failed to install");
-  let mut file_path = temp_dir.path().join("echo_test");
+  let mut file_path = bin_dir.join("echo_test");
   if cfg!(windows) {
     file_path = file_path.with_extension("cmd");
   }
@@ -1031,12 +1035,12 @@ itest_ignore!(_035_cached_only_flag {
 
 itest!(_036_import_map_fetch {
   args:
-    "fetch --reload --importmap=importmaps/import_map.json importmaps/test.ts",
+    "cache --reload --importmap=importmaps/import_map.json importmaps/test.ts",
   output: "036_import_map_fetch.out",
 });
 
 itest!(_037_fetch_multiple {
-  args: "fetch --reload fetch/test.ts fetch/other.ts",
+  args: "cache --reload fetch/test.ts fetch/other.ts",
   check_stderr: true,
   http_server: true,
   output: "037_fetch_multiple.out",
@@ -1371,11 +1375,46 @@ itest!(error_018_hide_long_source_js {
   exit_code: 1,
 });
 
-itest!(error_stack {
-  args: "run --reload error_stack.ts",
+itest!(error_019_stack_function {
+  args: "error_019_stack_function.ts",
+  output: "error_019_stack_function.ts.out",
   check_stderr: true,
   exit_code: 1,
-  output: "error_stack.ts.out",
+});
+
+itest!(error_020_stack_constructor {
+  args: "error_020_stack_constructor.ts",
+  output: "error_020_stack_constructor.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
+itest!(error_021_stack_method {
+  args: "error_021_stack_method.ts",
+  output: "error_021_stack_method.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
+itest!(error_022_stack_custom_error {
+  args: "error_022_stack_custom_error.ts",
+  output: "error_022_stack_custom_error.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
+itest!(error_023_stack_async {
+  args: "error_023_stack_async.ts",
+  output: "error_023_stack_async.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
+itest!(error_024_stack_promise_all {
+  args: "error_024_stack_promise_all.ts",
+  output: "error_024_stack_promise_all.ts.out",
+  check_stderr: true,
+  exit_code: 1,
 });
 
 itest!(error_syntax {
@@ -1591,7 +1630,7 @@ fn cafile_fetch() {
   let output = Command::new(deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
-    .arg("fetch")
+    .arg("cache")
     .arg("--cert")
     .arg(cafile)
     .arg(module_url.to_string())
@@ -1619,6 +1658,8 @@ fn cafile_install_remote_module() {
 
   let g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
+  let bin_dir = temp_dir.path().join("bin");
+  std::fs::create_dir(&bin_dir).unwrap();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
 
@@ -1628,7 +1669,7 @@ fn cafile_install_remote_module() {
     .arg("install")
     .arg("--cert")
     .arg(cafile)
-    .arg("--dir")
+    .arg("--root")
     .arg(temp_dir.path())
     .arg("echo_test")
     .arg("https://localhost:5545/cli/tests/echo.ts")
@@ -1636,7 +1677,7 @@ fn cafile_install_remote_module() {
     .expect("Failed to spawn script");
   assert!(install_output.status.success());
 
-  let mut echo_test_path = temp_dir.path().join("echo_test");
+  let mut echo_test_path = bin_dir.join("echo_test");
   if cfg!(windows) {
     echo_test_path = echo_test_path.with_extension("cmd");
   }

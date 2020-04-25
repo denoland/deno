@@ -1,6 +1,6 @@
-const { cwd, chdir, makeTempDir, mkdir, open, symlink } = Deno;
+const { cwd, chdir, makeTempDir, mkdir, create, symlink } = Deno;
 const { remove } = Deno;
-import { walk, walkSync, WalkOptions, WalkInfo } from "./walk.ts";
+import { walk, walkSync, WalkOptions, WalkEntry } from "./walk.ts";
 import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 
 const isWindows = Deno.build.os == "win";
@@ -26,7 +26,7 @@ export function testWalk(
   Deno.test({ ignore, name: `[walk] ${name}`, fn });
 }
 
-function normalize({ filename }: WalkInfo): string {
+function normalize({ filename }: WalkEntry): string {
   return filename.replace(/\\/g, "/");
 }
 
@@ -46,7 +46,7 @@ export async function walkArray(
 }
 
 export async function touch(path: string): Promise<void> {
-  const f = await open(path, "w");
+  const f = await create(path);
   f.close();
 }
 

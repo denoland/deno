@@ -46,6 +46,12 @@ export function isRegExp(value: unknown): boolean {
   return value instanceof RegExp;
 }
 
+export function isPrimitive(value: unknown): boolean {
+  return (
+    value === null || (typeof value !== "object" && typeof value !== "function")
+  );
+}
+
 export function validateIntegerRange(
   value: number,
   name: string,

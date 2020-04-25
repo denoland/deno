@@ -90,6 +90,7 @@ test({
         }
       );
       const thirdRead: Dirent | null = await dir.read();
+      const fourthRead: Dirent | null = await dir.read();
 
       if (firstRead?.name === "foo.txt") {
         assertEquals(secondRead?.name, "bar.txt");
@@ -100,6 +101,7 @@ test({
       }
       assert(secondCallback);
       assert(thirdRead === null);
+      assert(fourthRead === null);
     } finally {
       Deno.removeSync(testDir, { recursive: true });
     }
@@ -120,6 +122,7 @@ test({
       const firstRead: Dirent | null = dir.readSync();
       const secondRead: Dirent | null = dir.readSync();
       const thirdRead: Dirent | null = dir.readSync();
+      const fourthRead: Dirent | null = dir.readSync();
 
       if (firstRead?.name === "foo.txt") {
         assertEquals(secondRead?.name, "bar.txt");
@@ -129,6 +132,7 @@ test({
         fail("File not found during read");
       }
       assert(thirdRead === null);
+      assert(fourthRead === null);
     } finally {
       Deno.removeSync(testDir, { recursive: true });
     }

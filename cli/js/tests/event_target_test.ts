@@ -40,7 +40,7 @@ unitTest(function anEventTargetCanBeSubclassed(): void {
     on(
       type: string,
       callback: ((e: Event) => void) | null,
-      options?: __domTypes.AddEventListenerOptions
+      options?: AddEventListenerOptions
     ): void {
       this.addEventListener(type, callback, options);
     }
@@ -48,7 +48,7 @@ unitTest(function anEventTargetCanBeSubclassed(): void {
     off(
       type: string,
       callback: ((e: Event) => void) | null,
-      options?: __domTypes.EventListenerOptions
+      options?: EventListenerOptions
     ): void {
       this.removeEventListener(type, callback, options);
     }

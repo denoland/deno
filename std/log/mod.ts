@@ -5,11 +5,15 @@ import {
   ConsoleHandler,
   WriterHandler,
   FileHandler,
+  RotatingFileHandler,
 } from "./handlers.ts";
 import { assert } from "../testing/asserts.ts";
+import { LevelName } from "./levels.ts";
+
+export { LogLevels } from "./levels.ts";
 
 export class LoggerConfig {
-  level?: string;
+  level?: LevelName;
   handlers?: string[];
 }
 
@@ -47,6 +51,7 @@ export const handlers = {
   ConsoleHandler,
   WriterHandler,
   FileHandler,
+  RotatingFileHandler,
 };
 
 export function getLogger(name?: string): Logger {

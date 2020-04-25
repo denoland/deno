@@ -1,8 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { test } = Deno;
-import { assertEquals } from "../testing/asserts.ts";
+import { assertEquals, assertThrows } from "../testing/asserts.ts";
 import * as log from "./mod.ts";
-import { LogLevel } from "./levels.ts";
+import {
+  LogLevelNames,
+  LevelName,
+  getLevelByName,
+  getLevelName,
+} from "./levels.ts";
 
 class TestHandler extends log.handlers.BaseHandler {
   public messages: string[] = [];
@@ -23,13 +28,13 @@ test(async function defaultHandlers(): Promise<void> {
     CRITICAL: log.critical,
   };
 
-  for (const levelName in LogLevel) {
+  for (const levelName of LogLevelNames) {
     if (levelName === "NOTSET") {
       continue;
     }
 
     const logger = loggers[levelName];
-    const handler = new TestHandler(levelName);
+    const handler = new TestHandler(levelName as LevelName);
 
     await log.setup({
       handlers: {
@@ -37,7 +42,7 @@ test(async function defaultHandlers(): Promise<void> {
       },
       loggers: {
         default: {
-          level: levelName,
+          level: levelName as LevelName,
           handlers: ["default"],
         },
       },
@@ -102,4 +107,9 @@ test(async function getLoggerUnknown(): Promise<void> {
 
   assertEquals(logger.levelName, "NOTSET");
   assertEquals(logger.handlers, []);
+});
+
+test(function getInvalidLoggerLevels(): void {
+  assertThrows(() => getLevelByName("FAKE_LOG_LEVEL" as LevelName));
+  assertThrows(() => getLevelName(5000));
 });

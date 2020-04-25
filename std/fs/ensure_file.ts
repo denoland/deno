@@ -16,7 +16,7 @@ export async function ensureFile(filePath: string): Promise<void> {
   try {
     // if file exists
     const stat = await lstat(filePath);
-    if (!stat.isFile()) {
+    if (!stat.isFile) {
       throw new Error(
         `Ensure path exists, expected 'file', got '${getFileInfoType(stat)}'`
       );
@@ -47,7 +47,7 @@ export function ensureFileSync(filePath: string): void {
   try {
     // if file exists
     const stat = lstatSync(filePath);
-    if (!stat.isFile()) {
+    if (!stat.isFile) {
       throw new Error(
         `Ensure path exists, expected 'file', got '${getFileInfoType(stat)}'`
       );

@@ -54,7 +54,7 @@ function stat(filename: string): StatResult {
   }
   try {
     const info = Deno.statSync(filename);
-    const result = info.isFile() ? 0 : 1;
+    const result = info.isFile ? 0 : 1;
     if (statCache !== null) statCache.set(filename, result);
     return result;
   } catch (e) {
@@ -510,10 +510,10 @@ class Module {
    * with `node_modules` lookup and `index.js` lookup support.
    * Also injects available Node.js builtin module polyfills.
    *
-   *     const require_ = createRequire(import.meta.url);
-   *     const fs = require_("fs");
-   *     const leftPad = require_("left-pad");
-   *     const cjsModule = require_("./cjs_mod");
+   *     const require = createRequire(import.meta.url);
+   *     const fs = require("fs");
+   *     const leftPad = require("left-pad");
+   *     const cjsModule = require("./cjs_mod");
    *
    * @param filename path or URL to current module
    * @return Require function to import CJS modules

@@ -243,3 +243,33 @@ unitTest(
     assertEquals(params1.get("1"), "2");
   }
 );
+
+// If a class extends URLSearchParams, override one method should not change another's behavior.
+unitTest(
+  function urlSearchParamsOverridingAppendNotChangeConstructorAndSet(): void {
+    let overridedAppendCalled = 0;
+    class CustomSearchParams extends URLSearchParams {
+      append(name: string, value: string): void {
+        ++overridedAppendCalled;
+        super.append(name, value);
+      }
+    }
+    new CustomSearchParams("foo=bar");
+    new CustomSearchParams([["foo", "bar"]]);
+    new CustomSearchParams(new CustomSearchParams({ foo: "bar" }));
+    new CustomSearchParams().set("foo", "bar");
+    assertEquals(overridedAppendCalled, 0);
+  }
+);
+
+unitTest(function urlSearchParamsOverridingEntriesNotChangeForEach(): void {
+  class CustomSearchParams extends URLSearchParams {
+    *entries(): IterableIterator<[string, string]> {
+      yield* [];
+    }
+  }
+  let loopCount = 0;
+  const params = new CustomSearchParams({ foo: "bar" });
+  params.forEach(() => void ++loopCount);
+  assertEquals(loopCount, 1);
+});

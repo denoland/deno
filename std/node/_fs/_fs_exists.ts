@@ -2,25 +2,23 @@
 
 type ExitsCallback = (exists: boolean) => void;
 
-/* Deprecated in node api */
-
+/**
+ * TODO: Also accept 'path' parameter as a Node polyfill Buffer or URL type once these
+ * are implemented. See https://github.com/denoland/deno/issues/3403
+ * Deprecated in node api
+ */
 export function exists(path: string, callback: ExitsCallback): void {
-  new Promise(async (resolve, reject) => {
-    try {
-      await Deno.lstat(path);
-      resolve();
-    } catch (err) {
-      reject(err);
-    }
-  })
+  Deno.lstat(path)
     .then(() => {
       callback(true);
     })
-    .catch(() => {
-      callback(false);
-    });
+    .catch(() => callback(false));
 }
 
+/**
+ * TODO: Also accept 'path' parameter as a Node polyfill Buffer or URL type once these
+ * are implemented. See https://github.com/denoland/deno/issues/3403
+ */
 export function existsSync(path: string): boolean {
   try {
     Deno.lstatSync(path);

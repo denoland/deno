@@ -14,6 +14,7 @@ import {
 import {
   BufReader,
   BufWriter,
+  BufWriterSync,
   BufferFullError,
   PartialReadError,
   readStringDelim,
@@ -342,6 +343,40 @@ Deno.test(async function bufioWriter(): Promise<void> {
       assertEquals(n, nwrite, context);
 
       await buf.flush();
+
+      const written = w.bytes();
+      assertEquals(written.byteLength, nwrite);
+
+      for (let l = 0; l < written.byteLength; l++) {
+        assertEquals(written[l], data[l]);
+      }
+    }
+  }
+});
+
+Deno.test(function bufioWriterSync(): void {
+  const data = new Uint8Array(8192);
+
+  for (let i = 0; i < data.byteLength; i++) {
+    // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
+    data[i] = charCode(" ") + (i % (charCode("~") - charCode(" ")));
+  }
+
+  const w = new Buffer();
+  for (const nwrite of bufsizes) {
+    for (const bs of bufsizes) {
+      // Write nwrite bytes using buffer size bs.
+      // Check that the right amount makes it out
+      // and that the data is correct.
+
+      w.reset();
+      const buf = new BufWriterSync(w, bs);
+
+      const context = `nwrite=${nwrite} bufsize=${bs}`;
+      const n = buf.writeSync(data.subarray(0, nwrite));
+      assertEquals(n, nwrite, context);
+
+      buf.flush();
 
       const written = w.bytes();
       assertEquals(written.byteLength, nwrite);

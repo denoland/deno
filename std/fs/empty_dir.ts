@@ -10,7 +10,10 @@ const { readdir, readdirSync, mkdir, mkdirSync, remove, removeSync } = Deno;
  */
 export async function emptyDir(dir: string): Promise<void> {
   try {
-    const items = await readdir(dir);
+    const items = [];
+    for await (const dirEntry of readdir(dir)) {
+      items.push(dirEntry);
+    }
 
     while (items.length) {
       const item = items.shift();
@@ -38,7 +41,7 @@ export async function emptyDir(dir: string): Promise<void> {
  */
 export function emptyDirSync(dir: string): void {
   try {
-    const items = readdirSync(dir);
+    const items = [...readdirSync(dir)];
 
     // if directory already exist. then remove it's child item.
     while (items.length) {

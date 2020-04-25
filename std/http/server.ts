@@ -353,7 +353,7 @@ export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport"> &
  * @return Async iterable server instance for incoming requests
  */
 export function serveTLS(options: HTTPSOptions): Server {
-  const tlsOptions: Deno.ListenTLSOptions = {
+  const tlsOptions: Deno.ListenTlsOptions = {
     ...options,
     transport: "tcp",
   };

@@ -162,7 +162,7 @@ export async function writeChunkedBody(
   r: Deno.Reader
 ): Promise<void> {
   const writer = BufWriter.create(w);
-  for await (const chunk of Deno.toAsyncIterator(r)) {
+  for await (const chunk of Deno.iter(r)) {
     if (chunk.byteLength <= 0) continue;
     const start = encoder.encode(`${chunk.byteLength.toString(16)}\r\n`);
     const end = encoder.encode("\r\n");
@@ -316,7 +316,7 @@ export async function writeResponse(
     const contentLength = headers.get("content-length");
     assert(contentLength != null);
     const bodyLength = parseInt(contentLength);
-    const n = await Deno.copy(writer, r.body);
+    const n = await Deno.copy(r.body, writer);
     assert(n === bodyLength);
   } else {
     await writeChunkedBody(writer, r.body);

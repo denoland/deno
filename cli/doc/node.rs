@@ -16,8 +16,19 @@ pub enum DocNodeKind {
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub enum ParamKind {
+  Identifier,
+  Rest,
+  Array,
+  Object,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ParamDef {
   pub name: String,
+  pub kind: ParamKind,
+  pub optional: bool,
   pub ts_type: Option<super::ts_type::TsTypeDef>,
 }
 
@@ -44,6 +55,35 @@ impl Into<Location> for swc_common::Loc {
       col: self.col_display,
     }
   }
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub enum ReexportKind {
+  /// export * from "./path/to/module.js";
+  All,
+  /// export * as someNamespace from "./path/to/module.js";
+  Namespace(String),
+  /// export default from "./path/to/module.js";
+  Default,
+  /// (identifier, optional alias)
+  /// export { foo } from "./path/to/module.js";
+  /// export { foo as bar } from "./path/to/module.js";
+  Named(String, Option<String>),
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Reexport {
+  pub kind: ReexportKind,
+  pub src: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ModuleDoc {
+  pub exports: Vec<DocNode>,
+  pub reexports: Vec<Reexport>,
 }
 
 #[derive(Debug, Serialize, Clone)]

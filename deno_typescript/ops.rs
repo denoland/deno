@@ -1,5 +1,4 @@
 use crate::TSState;
-use deno_core::CoreOp;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
@@ -16,7 +15,7 @@ pub struct WrittenFile {
 
 type Dispatcher = fn(state: &mut TSState, args: Value) -> Result<Value, ErrBox>;
 
-pub fn json_op(d: Dispatcher) -> impl Fn(&mut TSState, &[u8]) -> CoreOp {
+pub fn json_op(d: Dispatcher) -> impl Fn(&mut TSState, &[u8]) -> Op {
   move |state: &mut TSState, control: &[u8]| {
     let result = serde_json::from_slice(control)
       .map_err(ErrBox::from)

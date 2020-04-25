@@ -6,11 +6,13 @@ use crate::futures::future::try_join_all;
 use crate::msg;
 use crate::op_error::OpError;
 use crate::state::State;
+use deno_core::CoreIsolate;
 use deno_core::ModuleLoader;
-use deno_core::*;
+use deno_core::ModuleSpecifier;
+use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 
-pub fn init(i: &mut Isolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_cache", s.stateful_json_op(op_cache));
   i.register_op("op_resolve_modules", s.stateful_json_op(op_resolve_modules));
   i.register_op(
@@ -44,13 +46,12 @@ fn op_cache(
 
   let state_ = &state.borrow().global_state;
   let ts_compiler = state_.ts_compiler.clone();
-  let fut = ts_compiler.cache_compiler_output(
+  ts_compiler.cache_compiler_output(
     &module_specifier,
     &args.extension,
     &args.contents,
-  );
+  )?;
 
-  futures::executor::block_on(fut)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -156,7 +157,8 @@ fn op_fetch_source_files(
               .map_err(|e| OpError::other(e.to_string()))?
               .code
           }
-          _ => String::from_utf8(file.source_code).unwrap(),
+          _ => String::from_utf8(file.source_code)
+            .map_err(|_| OpError::invalid_utf8())?,
         };
         Ok::<_, OpError>(json!({
           "url": file.url.to_string(),

@@ -35,11 +35,11 @@ export type PathType = "file" | "dir" | "symlink";
  *                 `lstat`
  */
 export function getFileInfoType(fileInfo: Deno.FileInfo): PathType | undefined {
-  return fileInfo.isFile()
+  return fileInfo.isFile
     ? "file"
-    : fileInfo.isDirectory()
+    : fileInfo.isDirectory
     ? "dir"
-    : fileInfo.isSymlink()
+    : fileInfo.isSymlink
     ? "symlink"
     : undefined;
 }

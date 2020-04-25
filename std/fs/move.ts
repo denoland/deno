@@ -14,7 +14,7 @@ export async function move(
 ): Promise<void> {
   const srcStat = await Deno.stat(src);
 
-  if (srcStat.isDirectory() && isSubdir(src, dest)) {
+  if (srcStat.isDirectory && isSubdir(src, dest)) {
     throw new Error(
       `Cannot move '${src}' to a subdirectory of itself, '${dest}'.`
     );
@@ -41,7 +41,7 @@ export function moveSync(
 ): void {
   const srcStat = Deno.statSync(src);
 
-  if (srcStat.isDirectory() && isSubdir(src, dest)) {
+  if (srcStat.isDirectory && isSubdir(src, dest)) {
     throw new Error(
       `Cannot move '${src}' to a subdirectory of itself, '${dest}'.`
     );

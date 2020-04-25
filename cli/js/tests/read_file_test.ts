@@ -57,3 +57,9 @@ unitTest({ perms: { read: false } }, async function readFilePerm(): Promise<
   }
   assert(caughtError);
 });
+
+unitTest({ perms: { read: true } }, function readFileSyncLoop(): void {
+  for (let i = 0; i < 256; i++) {
+    Deno.readFileSync("cli/tests/fixture.json");
+  }
+});

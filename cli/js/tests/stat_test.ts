@@ -5,16 +5,16 @@ import { unitTest, assert, assertEquals } from "./test_util.ts";
 // to create temp files.
 unitTest({ perms: { read: true } }, function statSyncSuccess(): void {
   const packageInfo = Deno.statSync("README.md");
-  assert(packageInfo.isFile());
-  assert(!packageInfo.isSymlink());
+  assert(packageInfo.isFile);
+  assert(!packageInfo.isSymlink);
 
   const modulesInfo = Deno.statSync("cli/tests/symlink_to_subdir");
-  assert(modulesInfo.isDirectory());
-  assert(!modulesInfo.isSymlink());
+  assert(modulesInfo.isDirectory);
+  assert(!modulesInfo.isSymlink);
 
   const testsInfo = Deno.statSync("cli/tests");
-  assert(testsInfo.isDirectory());
-  assert(!testsInfo.isSymlink());
+  assert(testsInfo.isDirectory);
+  assert(!testsInfo.isSymlink);
 });
 
 unitTest({ perms: { read: false } }, function statSyncPerm(): void {
@@ -45,16 +45,16 @@ unitTest({ perms: { read: true } }, function statSyncNotFound(): void {
 
 unitTest({ perms: { read: true } }, function lstatSyncSuccess(): void {
   const packageInfo = Deno.lstatSync("README.md");
-  assert(packageInfo.isFile());
-  assert(!packageInfo.isSymlink());
+  assert(packageInfo.isFile);
+  assert(!packageInfo.isSymlink);
 
   const modulesInfo = Deno.lstatSync("cli/tests/symlink_to_subdir");
-  assert(!modulesInfo.isDirectory());
-  assert(modulesInfo.isSymlink());
+  assert(!modulesInfo.isDirectory);
+  assert(modulesInfo.isSymlink);
 
   const coreInfo = Deno.lstatSync("core");
-  assert(coreInfo.isDirectory());
-  assert(!coreInfo.isSymlink());
+  assert(coreInfo.isDirectory);
+  assert(!coreInfo.isSymlink);
 });
 
 unitTest({ perms: { read: false } }, function lstatSyncPerm(): void {
@@ -87,16 +87,16 @@ unitTest({ perms: { read: true } }, async function statSuccess(): Promise<
   void
 > {
   const packageInfo = await Deno.stat("README.md");
-  assert(packageInfo.isFile());
-  assert(!packageInfo.isSymlink());
+  assert(packageInfo.isFile);
+  assert(!packageInfo.isSymlink);
 
   const modulesInfo = await Deno.stat("cli/tests/symlink_to_subdir");
-  assert(modulesInfo.isDirectory());
-  assert(!modulesInfo.isSymlink());
+  assert(modulesInfo.isDirectory);
+  assert(!modulesInfo.isSymlink);
 
   const testsInfo = await Deno.stat("cli/tests");
-  assert(testsInfo.isDirectory());
-  assert(!testsInfo.isSymlink());
+  assert(testsInfo.isDirectory);
+  assert(!testsInfo.isSymlink);
 });
 
 unitTest({ perms: { read: false } }, async function statPerm(): Promise<void> {
@@ -131,16 +131,16 @@ unitTest({ perms: { read: true } }, async function lstatSuccess(): Promise<
   void
 > {
   const packageInfo = await Deno.lstat("README.md");
-  assert(packageInfo.isFile());
-  assert(!packageInfo.isSymlink());
+  assert(packageInfo.isFile);
+  assert(!packageInfo.isSymlink);
 
   const modulesInfo = await Deno.lstat("cli/tests/symlink_to_subdir");
-  assert(!modulesInfo.isDirectory());
-  assert(modulesInfo.isSymlink());
+  assert(!modulesInfo.isDirectory);
+  assert(modulesInfo.isSymlink);
 
   const coreInfo = await Deno.lstat("core");
-  assert(coreInfo.isDirectory());
-  assert(!coreInfo.isSymlink());
+  assert(coreInfo.isDirectory);
+  assert(!coreInfo.isSymlink);
 });
 
 unitTest({ perms: { read: false } }, async function lstatPerm(): Promise<void> {

@@ -1,8 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { build } from "../build.ts";
-import { ReadableStream } from "./streams/mod.ts";
+import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 
 export const bytesSymbol = Symbol("bytes");
 
@@ -63,7 +62,7 @@ function collectSequenceNotCRLF(
 }
 
 function toUint8Arrays(
-  blobParts: domTypes.BlobPart[],
+  blobParts: BlobPart[],
   doNormalizeLineEndingsToNative: boolean
 ): Uint8Array[] {
   const ret: Uint8Array[] = [];
@@ -102,8 +101,8 @@ function toUint8Arrays(
 }
 
 function processBlobParts(
-  blobParts: domTypes.BlobPart[],
-  options: domTypes.BlobPropertyBag
+  blobParts: BlobPart[],
+  options: BlobPropertyBag
 ): Uint8Array {
   const normalizeLineEndingsToNative = options.ending === "native";
   // ArrayBuffer.transfer is not yet implemented in V8, so we just have to
@@ -124,57 +123,50 @@ function processBlobParts(
   return bytes;
 }
 
-function getStream(blobBytes: Uint8Array): domTypes.ReadableStream<Uint8Array> {
-  return new ReadableStream<Uint8Array>({
-    start: (
-      controller: domTypes.ReadableStreamDefaultController<Uint8Array>
-    ): void => {
+function getStream(blobBytes: Uint8Array): ReadableStream<ArrayBufferView> {
+  // TODO: Align to spec https://fetch.spec.whatwg.org/#concept-construct-readablestream
+  return new ReadableStreamImpl({
+    type: "bytes",
+    start: (controller: ReadableByteStreamController): void => {
       controller.enqueue(blobBytes);
       controller.close();
     },
-  }) as domTypes.ReadableStream<Uint8Array>;
+  });
 }
 
 async function readBytes(
-  reader: domTypes.ReadableStreamReader<Uint8Array>
+  reader: ReadableStreamReader<ArrayBufferView>
 ): Promise<ArrayBuffer> {
   const chunks: Uint8Array[] = [];
   while (true) {
-    try {
-      const { done, value } = await reader.read();
-      if (!done && value instanceof Uint8Array) {
-        chunks.push(value);
-      } else if (done) {
-        const size = chunks.reduce((p, i) => p + i.byteLength, 0);
-        const bytes = new Uint8Array(size);
-        let offs = 0;
-        for (const chunk of chunks) {
-          bytes.set(chunk, offs);
-          offs += chunk.byteLength;
-        }
-        return Promise.resolve(bytes);
-      } else {
-        return Promise.reject(new TypeError());
+    const { done, value } = await reader.read();
+    if (!done && value instanceof Uint8Array) {
+      chunks.push(value);
+    } else if (done) {
+      const size = chunks.reduce((p, i) => p + i.byteLength, 0);
+      const bytes = new Uint8Array(size);
+      let offs = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offs);
+        offs += chunk.byteLength;
       }
-    } catch (e) {
-      return Promise.reject(e);
+      return bytes;
+    } else {
+      throw new TypeError("Invalid reader result.");
     }
   }
 }
 
 // A WeakMap holding blob to byte array mapping.
 // Ensures it does not impact garbage collection.
-export const blobBytesWeakMap = new WeakMap<domTypes.Blob, Uint8Array>();
+export const blobBytesWeakMap = new WeakMap<Blob, Uint8Array>();
 
-export class DenoBlob implements domTypes.Blob {
+export class DenoBlob implements Blob {
   [bytesSymbol]: Uint8Array;
   readonly size: number = 0;
   readonly type: string = "";
 
-  constructor(
-    blobParts?: domTypes.BlobPart[],
-    options?: domTypes.BlobPropertyBag
-  ) {
+  constructor(blobParts?: BlobPart[], options?: BlobPropertyBag) {
     if (arguments.length === 0) {
       this[bytesSymbol] = new Uint8Array();
       return;
@@ -210,7 +202,7 @@ export class DenoBlob implements domTypes.Blob {
     });
   }
 
-  stream(): domTypes.ReadableStream<Uint8Array> {
+  stream(): ReadableStream<ArrayBufferView> {
     return getStream(this[bytesSymbol]);
   }
 

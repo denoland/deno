@@ -21,34 +21,31 @@ export function appendFile(
   }
 
   validateEncoding(options);
-
   let rid = -1;
-  new Promise(async (resolve, reject) => {
-    try {
-      if (typeof pathOrRid === "number") {
-        rid = pathOrRid;
-      } else {
-        const mode: number | undefined = isFileOptions(options)
-          ? options.mode
-          : undefined;
-        const flag: string | undefined = isFileOptions(options)
-          ? options.flag
-          : undefined;
+  const buffer: Uint8Array = new TextEncoder().encode(data);
+  new Promise((resolve, reject) => {
+    if (typeof pathOrRid === "number") {
+      rid = pathOrRid;
+      Deno.write(rid, buffer).then(resolve).catch(reject);
+    } else {
+      const mode: number | undefined = isFileOptions(options)
+        ? options.mode
+        : undefined;
+      const flag: string | undefined = isFileOptions(options)
+        ? options.flag
+        : undefined;
 
-        if (mode) {
-          //TODO rework once https://github.com/denoland/deno/issues/4017 completes
-          notImplemented("Deno does not yet support setting mode on create");
-        }
-        const file = await Deno.open(pathOrRid, getOpenOptions(flag));
-        rid = file.rid;
+      if (mode) {
+        //TODO rework once https://github.com/denoland/deno/issues/4017 completes
+        notImplemented("Deno does not yet support setting mode on create");
       }
-
-      const buffer: Uint8Array = new TextEncoder().encode(data);
-
-      await Deno.write(rid, buffer);
-      resolve();
-    } catch (err) {
-      reject(err);
+      Deno.open(pathOrRid, getOpenOptions(flag))
+        .then(({ rid: openedFileRid }) => {
+          rid = openedFileRid;
+          return Deno.write(openedFileRid, buffer);
+        })
+        .then(resolve)
+        .catch(reject);
     }
   })
     .then(() => {

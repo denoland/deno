@@ -266,7 +266,7 @@ testCopy(
     }
 
     assert(
-      (await Deno.lstat(srcLink)).isSymlink(),
+      (await Deno.lstat(srcLink)).isSymlink,
       `'${srcLink}' should be symlink type`
     );
 
@@ -274,7 +274,7 @@ testCopy(
 
     const statInfo = await Deno.lstat(destLink);
 
-    assert(statInfo.isSymlink(), `'${destLink}' should be symlink type`);
+    assert(statInfo.isSymlink, `'${destLink}' should be symlink type`);
   }
 );
 
@@ -296,7 +296,7 @@ testCopy(
     await ensureSymlink(srcDir, srcLink);
 
     assert(
-      (await Deno.lstat(srcLink)).isSymlink(),
+      (await Deno.lstat(srcLink)).isSymlink,
       `'${srcLink}' should be symlink type`
     );
 
@@ -304,7 +304,7 @@ testCopy(
 
     const statInfo = await Deno.lstat(destLink);
 
-    assert(statInfo.isSymlink());
+    assert(statInfo.isSymlink);
   }
 );
 
@@ -506,7 +506,7 @@ testCopySync(
     }
 
     assert(
-      Deno.lstatSync(srcLink).isSymlink(),
+      Deno.lstatSync(srcLink).isSymlink,
       `'${srcLink}' should be symlink type`
     );
 
@@ -514,7 +514,7 @@ testCopySync(
 
     const statInfo = Deno.lstatSync(destLink);
 
-    assert(statInfo.isSymlink(), `'${destLink}' should be symlink type`);
+    assert(statInfo.isSymlink, `'${destLink}' should be symlink type`);
   }
 );
 
@@ -536,7 +536,7 @@ testCopySync(
     ensureSymlinkSync(originDir, srcLink);
 
     assert(
-      Deno.lstatSync(srcLink).isSymlink(),
+      Deno.lstatSync(srcLink).isSymlink,
       `'${srcLink}' should be symlink type`
     );
 
@@ -544,6 +544,6 @@ testCopySync(
 
     const statInfo = Deno.lstatSync(destLink);
 
-    assert(statInfo.isSymlink());
+    assert(statInfo.isSymlink);
   }
 );

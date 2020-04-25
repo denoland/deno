@@ -1,14 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// Note that source_map_mappings requires 0-indexed line and column numbers but
-// V8 Exceptions are 1-indexed.
-
-// TODO: This currently only applies to uncaught exceptions. It would be nice to
-// also have source maps for situations like this:
-//   const err = new Error("Boo!");
-//   console.log(err.stack);
-// It would require calling into Rust from Error.prototype.prepareStackTrace.
-
 use crate::ErrBox;
 use rusty_v8 as v8;
 use std::convert::TryFrom;
@@ -18,26 +9,45 @@ use std::fmt;
 
 /// A `JSError` represents an exception coming from V8, with stack frames and
 /// line numbers. The deno_cli crate defines another `JSError` type, which wraps
-/// the one defined here, that adds source map support and colorful formatting.  
+/// the one defined here, that adds source map support and colorful formatting.
 #[derive(Debug, PartialEq, Clone)]
 pub struct JSError {
   pub message: String,
   pub source_line: Option<String>,
   pub script_resource_name: Option<String>,
   pub line_number: Option<i64>,
-  pub start_column: Option<i64>,
-  pub end_column: Option<i64>,
+  pub start_column: Option<i64>, // 0-based
+  pub end_column: Option<i64>,   // 0-based
   pub frames: Vec<JSStackFrame>,
+  pub formatted_frames: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct JSStackFrame {
-  pub line_number: i64, // zero indexed
-  pub column: i64,      // zero indexed
-  pub script_name: String,
-  pub function_name: String,
+  pub type_name: Option<String>,
+  pub function_name: Option<String>,
+  pub method_name: Option<String>,
+  pub file_name: Option<String>,
+  pub line_number: Option<i64>,
+  pub column_number: Option<i64>,
+  pub eval_origin: Option<String>,
+  pub is_top_level: Option<bool>,
   pub is_eval: bool,
+  pub is_native: bool,
   pub is_constructor: bool,
+  pub is_async: bool,
+  pub is_promise_all: bool,
+  pub promise_index: Option<i64>,
+}
+
+fn get_property<'a>(
+  scope: &mut impl v8::ToLocal<'a>,
+  context: v8::Local<v8::Context>,
+  object: v8::Local<v8::Object>,
+  key: &str,
+) -> Option<v8::Local<'a, v8::Value>> {
+  let key = v8::String::new(scope, key).unwrap();
+  object.get(scope, context, key.into())
 }
 
 impl JSError {
@@ -53,12 +63,174 @@ impl JSError {
     // handles below.
     let mut hs = v8::HandleScope::new(scope);
     let scope = hs.enter();
-    let context = scope.get_current_context().unwrap();
+    let context = { scope.get_current_context().unwrap() };
 
     let msg = v8::Exception::create_message(scope, exception);
 
+    let (message, frames, formatted_frames) = if exception.is_native_error() {
+      // The exception is a JS Error object.
+      let exception: v8::Local<v8::Object> =
+        exception.clone().try_into().unwrap();
+
+      // Get the message by formatting error.name and error.message.
+      let name = get_property(scope, context, exception, "name")
+        .and_then(|m| m.to_string(scope))
+        .map(|s| s.to_rust_string_lossy(scope))
+        .unwrap_or_else(|| "undefined".to_string());
+      let message_prop = get_property(scope, context, exception, "message")
+        .and_then(|m| m.to_string(scope))
+        .map(|s| s.to_rust_string_lossy(scope))
+        .unwrap_or_else(|| "undefined".to_string());
+      let message = format!("Uncaught {}: {}", name, message_prop);
+
+      // Access error.stack to ensure that prepareStackTrace() has been called.
+      // This should populate error.__callSiteEvals and error.__formattedFrames.
+      let _ = get_property(scope, context, exception, "stack");
+
+      // Read an array of structured frames from error.__callSiteEvals.
+      let frames_v8 =
+        get_property(scope, context, exception, "__callSiteEvals");
+      let frames_v8: Option<v8::Local<v8::Array>> =
+        frames_v8.and_then(|a| a.try_into().ok());
+
+      // Read an array of pre-formatted frames from error.__formattedFrames.
+      let formatted_frames_v8 =
+        get_property(scope, context, exception, "__formattedFrames");
+      let formatted_frames_v8: Option<v8::Local<v8::Array>> =
+        formatted_frames_v8.and_then(|a| a.try_into().ok());
+
+      // Convert them into Vec<JSStack> and Vec<String> respectively.
+      let mut frames: Vec<JSStackFrame> = vec![];
+      let mut formatted_frames: Vec<String> = vec![];
+      if let (Some(frames_v8), Some(formatted_frames_v8)) =
+        (frames_v8, formatted_frames_v8)
+      {
+        for i in 0..frames_v8.length() {
+          let call_site: v8::Local<v8::Object> = frames_v8
+            .get_index(scope, context, i)
+            .unwrap()
+            .try_into()
+            .unwrap();
+          let type_name: Option<v8::Local<v8::String>> =
+            get_property(scope, context, call_site, "typeName")
+              .unwrap()
+              .try_into()
+              .ok();
+          let type_name = type_name.map(|s| s.to_rust_string_lossy(scope));
+          let function_name: Option<v8::Local<v8::String>> =
+            get_property(scope, context, call_site, "functionName")
+              .unwrap()
+              .try_into()
+              .ok();
+          let function_name =
+            function_name.map(|s| s.to_rust_string_lossy(scope));
+          let method_name: Option<v8::Local<v8::String>> =
+            get_property(scope, context, call_site, "methodName")
+              .unwrap()
+              .try_into()
+              .ok();
+          let method_name = method_name.map(|s| s.to_rust_string_lossy(scope));
+          let file_name: Option<v8::Local<v8::String>> =
+            get_property(scope, context, call_site, "fileName")
+              .unwrap()
+              .try_into()
+              .ok();
+          let file_name = file_name.map(|s| s.to_rust_string_lossy(scope));
+          let line_number: Option<v8::Local<v8::Integer>> =
+            get_property(scope, context, call_site, "lineNumber")
+              .unwrap()
+              .try_into()
+              .ok();
+          let line_number = line_number.map(|n| n.value());
+          let column_number: Option<v8::Local<v8::Integer>> =
+            get_property(scope, context, call_site, "columnNumber")
+              .unwrap()
+              .try_into()
+              .ok();
+          let column_number = column_number.map(|n| n.value());
+          let eval_origin: Option<v8::Local<v8::String>> =
+            get_property(scope, context, call_site, "evalOrigin")
+              .unwrap()
+              .try_into()
+              .ok();
+          let eval_origin = eval_origin.map(|s| s.to_rust_string_lossy(scope));
+          let is_top_level: Option<v8::Local<v8::Boolean>> =
+            get_property(scope, context, call_site, "isTopLevel")
+              .unwrap()
+              .try_into()
+              .ok();
+          let is_top_level = is_top_level.map(|b| b.is_true());
+          let is_eval: v8::Local<v8::Boolean> =
+            get_property(scope, context, call_site, "isEval")
+              .unwrap()
+              .try_into()
+              .unwrap();
+          let is_eval = is_eval.is_true();
+          let is_native: v8::Local<v8::Boolean> =
+            get_property(scope, context, call_site, "isNative")
+              .unwrap()
+              .try_into()
+              .unwrap();
+          let is_native = is_native.is_true();
+          let is_constructor: v8::Local<v8::Boolean> =
+            get_property(scope, context, call_site, "isConstructor")
+              .unwrap()
+              .try_into()
+              .unwrap();
+          let is_constructor = is_constructor.is_true();
+          let is_async: v8::Local<v8::Boolean> =
+            get_property(scope, context, call_site, "isAsync")
+              .unwrap()
+              .try_into()
+              .unwrap();
+          let is_async = is_async.is_true();
+          let is_promise_all: v8::Local<v8::Boolean> =
+            get_property(scope, context, call_site, "isPromiseAll")
+              .unwrap()
+              .try_into()
+              .unwrap();
+          let is_promise_all = is_promise_all.is_true();
+          let promise_index: Option<v8::Local<v8::Integer>> =
+            get_property(scope, context, call_site, "columnNumber")
+              .unwrap()
+              .try_into()
+              .ok();
+          let promise_index = promise_index.map(|n| n.value());
+          frames.push(JSStackFrame {
+            type_name,
+            function_name,
+            method_name,
+            file_name,
+            line_number,
+            column_number,
+            eval_origin,
+            is_top_level,
+            is_eval,
+            is_native,
+            is_constructor,
+            is_async,
+            is_promise_all,
+            promise_index,
+          });
+          let formatted_frame: v8::Local<v8::String> = formatted_frames_v8
+            .get_index(scope, context, i)
+            .unwrap()
+            .try_into()
+            .unwrap();
+          let formatted_frame = formatted_frame.to_rust_string_lossy(scope);
+          formatted_frames.push(formatted_frame)
+        }
+      }
+      (message, frames, formatted_frames)
+    } else {
+      // The exception is not a JS Error object.
+      // Get the message given by V8::Exception::create_message(), and provide
+      // empty frames.
+      (msg.get(scope).to_rust_string_lossy(scope), vec![], vec![])
+    };
+
     Self {
-      message: msg.get(scope).to_rust_string_lossy(scope),
+      message,
       script_resource_name: msg
         .get_script_resource_name(scope)
         .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())
@@ -69,38 +241,8 @@ impl JSError {
       line_number: msg.get_line_number(context).and_then(|v| v.try_into().ok()),
       start_column: msg.get_start_column().try_into().ok(),
       end_column: msg.get_end_column().try_into().ok(),
-      frames: msg
-        .get_stack_trace(scope)
-        .map(|stack_trace| {
-          (0..stack_trace.get_frame_count())
-            .map(|i| {
-              let frame = stack_trace.get_frame(scope, i).unwrap();
-              JSStackFrame {
-                line_number: frame
-                  .get_line_number()
-                  .checked_sub(1)
-                  .and_then(|v| v.try_into().ok())
-                  .unwrap(),
-                column: frame
-                  .get_column()
-                  .checked_sub(1)
-                  .and_then(|v| v.try_into().ok())
-                  .unwrap(),
-                script_name: frame
-                  .get_script_name_or_source_url(scope)
-                  .map(|v| v.to_rust_string_lossy(scope))
-                  .unwrap_or_else(|| "<unknown>".to_owned()),
-                function_name: frame
-                  .get_function_name(scope)
-                  .map(|v| v.to_rust_string_lossy(scope))
-                  .unwrap_or_else(|| "".to_owned()),
-                is_constructor: frame.is_constructor(),
-                is_eval: frame.is_eval(),
-              }
-            })
-            .collect::<Vec<_>>()
-        })
-        .unwrap_or_else(Vec::<_>::new),
+      frames,
+      formatted_frames,
     }
   }
 }
@@ -108,28 +250,13 @@ impl JSError {
 impl Error for JSError {}
 
 fn format_source_loc(
-  script_name: &str,
+  file_name: &str,
   line_number: i64,
-  column: i64,
+  column_number: i64,
 ) -> String {
-  // TODO match this style with how typescript displays errors.
-  let line_number = line_number + 1;
-  let column = column + 1;
-  format!("{}:{}:{}", script_name, line_number, column)
-}
-
-fn format_stack_frame(frame: &JSStackFrame) -> String {
-  // Note when we print to string, we change from 0-indexed to 1-indexed.
-  let source_loc =
-    format_source_loc(&frame.script_name, frame.line_number, frame.column);
-
-  if !frame.function_name.is_empty() {
-    format!("    at {} ({})", frame.function_name, source_loc)
-  } else if frame.is_eval {
-    format!("    at eval ({})", source_loc)
-  } else {
-    format!("    at {}", source_loc)
-  }
+  let line_number = line_number;
+  let column_number = column_number;
+  format!("{}:{}:{}", file_name, line_number, column_number)
 }
 
 impl fmt::Display for JSError {
@@ -141,8 +268,8 @@ impl fmt::Display for JSError {
         assert!(self.start_column.is_some());
         let source_loc = format_source_loc(
           script_resource_name,
-          self.line_number.unwrap() - 1,
-          self.start_column.unwrap() - 1,
+          self.line_number.unwrap(),
+          self.start_column.unwrap(),
         );
         write!(f, "{}", source_loc)?;
       }
@@ -162,55 +289,10 @@ impl fmt::Display for JSError {
 
     write!(f, "{}", self.message)?;
 
-    for frame in &self.frames {
-      write!(f, "\n{}", format_stack_frame(frame))?;
+    for formatted_frame in &self.formatted_frames {
+      // TODO: Strip ANSI color from formatted_frame.
+      write!(f, "\n    at {}", formatted_frame)?;
     }
     Ok(())
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn js_error_to_string() {
-    let js_error = JSError {
-      message: "Error: foo bar".to_string(),
-      source_line: None,
-      script_resource_name: None,
-      line_number: None,
-      start_column: None,
-      end_column: None,
-      frames: vec![
-        JSStackFrame {
-          line_number: 4,
-          column: 16,
-          script_name: "foo_bar.ts".to_string(),
-          function_name: "foo".to_string(),
-          is_eval: false,
-          is_constructor: false,
-        },
-        JSStackFrame {
-          line_number: 5,
-          column: 20,
-          script_name: "bar_baz.ts".to_string(),
-          function_name: "qat".to_string(),
-          is_eval: false,
-          is_constructor: false,
-        },
-        JSStackFrame {
-          line_number: 1,
-          column: 1,
-          script_name: "deno_main.js".to_string(),
-          function_name: "".to_string(),
-          is_eval: false,
-          is_constructor: false,
-        },
-      ],
-    };
-    let actual = js_error.to_string();
-    let expected = "Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2";
-    assert_eq!(actual, expected);
   }
 }
