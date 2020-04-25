@@ -42,7 +42,7 @@ export function start(source?: string): Start {
   setBuildInfo(s.os, s.arch);
   util.setLogDebug(s.debugFlag, source);
   util.setErrorLevel(s.errorLevel);
-  
+
   setPrepareStackTrace(Error);
   return s;
 }
