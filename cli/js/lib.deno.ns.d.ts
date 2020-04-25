@@ -2139,19 +2139,20 @@ declare namespace Deno {
    */
   export function metrics(): Metrics;
 
-  /** **UNSTABLE**: reconsider representation. */
   interface ResourceMap {
-    [rid: number]: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    [rid: number]: any;
   }
 
-  /** **UNSTABLE**: The return type is under consideration and may change.
+  /** Returns a map of open resource ids (rid) along with their string
+   * representations. This is an internal API and as such resource
+   * representation has `any` type; that means it can change any time.
    *
-   * Returns a map of open _file like_ resource ids (rid) along with their string
-   * representations.
-   *
-   *       console.log(Deno.resources()); // e.g. { 0: "stdin", 1: "stdout", 2: "stderr" }
+   *       console.log(Deno.resources());
+   *       // { 0: "stdin", 1: "stdout", 2: "stderr" }
    *       Deno.openSync('../test.file');
-   *       console.log(Deno.resources()); // e.g. { 0: "stdin", 1: "stdout", 2: "stderr", 3: "fsFile" }
+   *       console.log(Deno.resources());
+   *       // { 0: "stdin", 1: "stdout", 2: "stderr", 3: "fsFile" }
    */
   export function resources(): ResourceMap;
 
