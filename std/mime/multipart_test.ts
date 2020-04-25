@@ -93,7 +93,9 @@ test(async function multipartMultipartWriter(): Promise<void> {
   const mw = new MultipartWriter(buf);
   await mw.writeField("foo", "foo");
   await mw.writeField("bar", "bar");
-  const f = await open(path.resolve("./mime/testdata/sample.txt"), "r");
+  const f = await open(path.resolve("./mime/testdata/sample.txt"), {
+    read: true,
+  });
   await mw.writeFile("file", "sample.txt", f);
   await mw.close();
   f.close();
@@ -208,7 +210,7 @@ test({
       assert(file.tempfile != null);
       const f = await open(file.tempfile);
       const w = new StringWriter();
-      await copy(w, f);
+      await copy(f, w);
       const json = JSON.parse(w.toString());
       assertEquals(json["compilerOptions"]["target"], "es2018");
       f.close();

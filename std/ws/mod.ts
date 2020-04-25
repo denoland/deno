@@ -527,7 +527,7 @@ export async function connectWebSocket(
     conn = await Deno.connect({ hostname, port });
   } else if (url.protocol === "https:" || url.protocol === "wss:") {
     const port = parseInt(url.port || "443");
-    conn = await Deno.connectTLS({ hostname, port });
+    conn = await Deno.connectTls({ hostname, port });
   } else {
     throw new Error("ws: unsupported protocol: " + url.protocol);
   }

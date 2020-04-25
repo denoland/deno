@@ -67,7 +67,7 @@ impl WasmCompiler {
       startup_data::compiler_isolate_init(),
       worker_state,
     );
-    worker.execute("bootstrapWasmCompilerRuntime()").unwrap();
+    worker.execute("bootstrap.wasmCompilerRuntime()").unwrap();
     worker
   }
 

@@ -154,7 +154,7 @@ fn create_main_worker(
     t.add("stderr", Box::new(stderr));
   }
 
-  worker.execute("bootstrapMainRuntime()")?;
+  worker.execute("bootstrap.mainRuntime()")?;
   Ok(worker)
 }
 
@@ -567,7 +567,7 @@ pub fn main() {
       cache_command(flags, files).boxed_local()
     }
     DenoSubcommand::Fmt { check, files } => {
-      async move { fmt::format(files, check) }.boxed_local()
+      fmt::format(files, check).boxed_local()
     }
     DenoSubcommand::Info { file } => info_command(flags, file).boxed_local(),
     DenoSubcommand::Install {

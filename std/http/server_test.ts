@@ -423,7 +423,7 @@ test({
         "server must be started"
       );
       // Requests to the server and immediately closes the connection
-      const conn = await Deno.connectTLS({
+      const conn = await Deno.connectTls({
         hostname: "localhost",
         port: 4503,
         certFile: "http/testdata/tls/RootCA.pem",

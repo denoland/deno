@@ -22,7 +22,7 @@ interface EstablishTLSResponse {
   };
 }
 
-export function connectTLS(
+export function connectTls(
   args: ConnectTLSRequest
 ): Promise<EstablishTLSResponse> {
   return sendAsync("op_connect_tls", args);
@@ -63,7 +63,7 @@ interface ListenTLSResponse {
   };
 }
 
-export function listenTLS(args: ListenTLSRequest): ListenTLSResponse {
+export function listenTls(args: ListenTLSRequest): ListenTLSResponse {
   return sendSync("op_listen_tls", args);
 }
 
@@ -73,6 +73,6 @@ export interface StartTLSRequest {
   certFile?: string;
 }
 
-export function startTLS(args: StartTLSRequest): Promise<EstablishTLSResponse> {
+export function startTls(args: StartTLSRequest): Promise<EstablishTLSResponse> {
   return sendAsync("op_start_tls", args);
 }

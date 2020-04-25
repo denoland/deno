@@ -308,7 +308,7 @@ export class MultipartReader {
       }
       // file
       let formFile: FormFile | undefined;
-      const n = await copy(buf, p);
+      const n = await copy(p, buf);
       const contentType = p.headers.get("content-type");
       assert(contentType != null, "content-type must be set");
       if (n > maxMemory) {
@@ -573,7 +573,7 @@ export class MultipartWriter {
     file: Reader
   ): Promise<void> {
     const f = await this.createFormFile(field, filename);
-    await copy(f, file);
+    await copy(file, f);
   }
 
   private flush(): Promise<void> {

@@ -3,10 +3,10 @@ import { unitTest, assert } from "./test_util.ts";
 
 // TODO(ry) Add more tests to specify format.
 
-unitTest({ perms: { read: false } }, function fsEventsPermissions() {
+unitTest({ perms: { read: false } }, function watchFsPermissions() {
   let thrown = false;
   try {
-    Deno.fsEvents(".");
+    Deno.watchFs(".");
   } catch (err) {
     assert(err instanceof Deno.errors.PermissionDenied);
     thrown = true;
@@ -14,10 +14,10 @@ unitTest({ perms: { read: false } }, function fsEventsPermissions() {
   assert(thrown);
 });
 
-unitTest({ perms: { read: true } }, function fsEventsInvalidPath() {
+unitTest({ perms: { read: true } }, function watchFsInvalidPath() {
   let thrown = false;
   try {
-    Deno.fsEvents("non-existant.file");
+    Deno.watchFs("non-existant.file");
   } catch (err) {
     console.error(err);
     if (Deno.build.os === "win") {
@@ -47,9 +47,9 @@ async function getTwoEvents(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function fsEventsBasic(): Promise<void> {
+  async function watchFsBasic(): Promise<void> {
     const testDir = await Deno.makeTempDir();
-    const iter = Deno.fsEvents(testDir);
+    const iter = Deno.watchFs(testDir);
 
     // Asynchornously capture two fs events.
     const eventsPromise = getTwoEvents(iter);

@@ -9,6 +9,6 @@ test(async function ioStringWriter(): Promise<void> {
   const r = new StringReader("0123456789");
   await copyN(w, r, 4);
   assertEquals(w.toString(), "base0123");
-  await copy(w, r);
+  await copy(r, w);
   assertEquals(w.toString(), "base0123456789");
 });

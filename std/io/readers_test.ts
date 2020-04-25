@@ -33,6 +33,6 @@ test(async function ioMultiReader(): Promise<void> {
   const n = await copyN(w, r, 4);
   assertEquals(n, 4);
   assertEquals(w.toString(), "abcd");
-  await copy(w, r);
+  await copy(r, w);
   assertEquals(w.toString(), "abcdef");
 });
