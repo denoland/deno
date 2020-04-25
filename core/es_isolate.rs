@@ -35,6 +35,7 @@ use crate::modules::LoadState;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleSource;
 use crate::modules::Modules;
+use crate::modules::PrepareLoadFuture;
 use crate::modules::RecursiveModuleLoad;
 
 pub type ModuleId = i32;
@@ -53,7 +54,7 @@ pub struct EsIsolate {
   pub(crate) dyn_import_map:
     HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
 
-  preparing_dyn_imports: FuturesUnordered<Pin<Box<dyn Future<Output = Result<RecursiveModuleLoad, ErrBox>>>>>,
+  preparing_dyn_imports: FuturesUnordered<Pin<Box<PrepareLoadFuture>>>,
   pending_dyn_imports: FuturesUnordered<StreamFuture<RecursiveModuleLoad>>,
   waker: AtomicWaker,
 }
@@ -310,7 +311,7 @@ impl EsIsolate {
   ) {
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
-    let mut load = RecursiveModuleLoad::dynamic_import(
+    let load = RecursiveModuleLoad::dynamic_import(
       specifier,
       referrer,
       self.loader.clone(),
@@ -393,21 +394,28 @@ impl EsIsolate {
     Ok(())
   }
 
-  fn prepare_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
+  fn prepare_dyn_imports(
+    &mut self,
+    cx: &mut Context,
+  ) -> Poll<Result<(), ErrBox>> {
     loop {
       match self.preparing_dyn_imports.poll_next_unpin(cx) {
         Poll::Pending | Poll::Ready(None) => {
           // There are no active dynamic import loaders, or none are ready.
           return Poll::Ready(Ok(()));
-        },
+        }
         Poll::Ready(Some(prepare_poll)) => {
-          // TODO: even if error then dyn_import_id must be returned
+          let dyn_import_id = prepare_poll.0;
+          let prepare_result = prepare_poll.1;
 
-          // let maybe_result = prepare_poll.0;
-          // let mut load = prepare_poll.1;
-          // let dyn_import_id = load.dyn_import_id.unwrap();
-
-
+          match prepare_result {
+            Ok(load) => {
+              self.pending_dyn_imports.push(load.into_future());
+            }
+            Err(err) => {
+              self.dyn_import_error(dyn_import_id, err)?;
+            }
+          }
         }
       }
     }
@@ -542,7 +550,9 @@ impl EsIsolate {
       code,
       self.loader.clone(),
     );
-    let mut load = load.prepare().await?;
+    let (_load_id, prepare_result) = load.prepare().await;
+
+    let mut load = prepare_result?;
 
     while let Some(info_result) = load.next().await {
       let info = info_result?;
@@ -753,7 +763,7 @@ pub mod tests {
       if let Poll::Ready(Ok(_)) = result {
         unreachable!();
       }
-      assert_eq!(count.load(Ordering::Relaxed), 1);
+      assert_eq!(count.load(Ordering::Relaxed), 2);
     })
   }
 
@@ -861,11 +871,8 @@ pub mod tests {
         _is_main: bool,
       ) -> Result<ModuleSpecifier, ErrBox> {
         let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
-        match c {
-          0 => assert_eq!(specifier, "./b.js"),
-          1 => assert_eq!(specifier, "./b.js"),
-          _ => unreachable!(),
-        }
+        assert!(c < 4);
+        assert_eq!(specifier, "./b.js");
         assert_eq!(referrer, "file:///dyn_import3.js");
         let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
         Ok(s)
@@ -916,12 +923,12 @@ pub mod tests {
         _ => false,
       });
       assert_eq!(resolve_count.load(Ordering::Relaxed), 2);
-      assert_eq!(load_count.load(Ordering::Relaxed), 2);
+      assert_eq!(load_count.load(Ordering::Relaxed), 1);
       assert!(match isolate.poll_unpin(cx) {
         Poll::Ready(Ok(_)) => true,
         _ => false,
       });
-      assert_eq!(resolve_count.load(Ordering::Relaxed), 2);
+      assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
     })
   }

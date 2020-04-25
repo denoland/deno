@@ -16,21 +16,13 @@ use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
-<<<<<<< HEAD
 use std::sync::atomic::AtomicI32;
-=======
-use std::sync::atomic::AtomicU32;
->>>>>>> wip
 use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
 
 lazy_static! {
-<<<<<<< HEAD
   pub static ref NEXT_LOAD_ID: AtomicI32 = AtomicI32::new(0);
-=======
-  pub static ref NEXT_LOAD_ID: AtomicU32 = AtomicU32::new(0);
->>>>>>> wip
 }
 
 /// EsModule source code that will be loaded into V8.
@@ -55,6 +47,8 @@ pub struct ModuleSource {
   pub module_url_found: String,
 }
 
+pub type PrepareLoadFuture =
+  dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, ErrBox>)>;
 pub type ModuleSourceFuture = dyn Future<Output = Result<ModuleSource, ErrBox>>;
 
 pub trait ModuleLoader {
@@ -86,7 +80,7 @@ pub trait ModuleLoader {
   //TODO(bartlomieju): add docstring
   fn prepare_load(
     &self,
-    _load_id: u32,
+    _load_id: ModuleLoadId,
     _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
     _is_dyn_import: bool,
@@ -163,20 +157,26 @@ impl RecursiveModuleLoad {
     }
   }
 
-  pub async fn prepare(self) -> Result<Self, ErrBox> {
+  pub async fn prepare(self) -> (ModuleLoadId, Result<Self, ErrBox>) {
     let (module_specifier, maybe_referrer) = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
-        let spec = self.loader.resolve(specifier, ".", true)?;
+        let spec = match self.loader.resolve(specifier, ".", true) {
+          Ok(spec) => spec,
+          Err(e) => return (self.id, Err(e)),
+        };
         (spec, None)
       }
       LoadState::ResolveImport(ref specifier, ref referrer) => {
-        let spec = self.loader.resolve(specifier, referrer, false)?;
+        let spec = match self.loader.resolve(specifier, referrer, false) {
+          Ok(spec) => spec,
+          Err(e) => return (self.id, Err(e)),
+        };
         (spec, Some(ModuleSpecifier::resolve_url(referrer).unwrap()))
       }
       _ => unreachable!(),
     };
 
-    self
+    let prepare_result = self
       .loader
       .prepare_load(
         self.id,
@@ -184,8 +184,12 @@ impl RecursiveModuleLoad {
         maybe_referrer,
         self.is_dynamic_import(),
       )
-      .await?;
-    Ok(self)
+      .await;
+
+    match prepare_result {
+      Ok(()) => (self.id, Ok(self)),
+      Err(e) => (self.id, Err(e)),
+    }
   }
 
   fn add_root(&mut self) -> Result<(), ErrBox> {
