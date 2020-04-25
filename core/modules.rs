@@ -82,7 +82,7 @@ pub trait ModuleLoader {
     &self,
     _load_id: ModuleLoadId,
     _module_specifier: &ModuleSpecifier,
-    _maybe_referrer: Option<ModuleSpecifier>,
+    _maybe_referrer: Option<String>,
     _is_dyn_import: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
     async { Ok(()) }.boxed_local()
@@ -171,7 +171,7 @@ impl RecursiveModuleLoad {
           Ok(spec) => spec,
           Err(e) => return (self.id, Err(e)),
         };
-        (spec, Some(ModuleSpecifier::resolve_url(referrer).unwrap()))
+        (spec, Some(referrer.to_string()))
       }
       _ => unreachable!(),
     };
