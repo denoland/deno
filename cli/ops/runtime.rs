@@ -39,7 +39,6 @@ fn op_start(
     "repl": gs.flags.subcommand == DenoSubcommand::Repl,
     "location": state.main_module.to_string(),
     "debugFlag": gs.flags.log_level.map_or(false, |l| l == log::Level::Debug),
-    "errorLevel": gs.flags.log_level.map_or(false, |l| l == log::Level::Error),
     "versionFlag": gs.flags.version,
     "v8Version": version::v8(),
     "denoVersion": version::DENO,
