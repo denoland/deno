@@ -7,7 +7,7 @@ import { exposeForTest } from "./internals.ts";
 import { TextEncoder } from "./web/text_encoding.ts";
 import { metrics } from "./ops/runtime.ts";
 import { resources } from "./ops/resources.ts";
-import { assert } from "./util.ts";
+import { assert, errorLevel } from "./util.ts";
 
 const RED_FAILED = red("FAILED");
 const GREEN_OK = green("ok");
@@ -170,14 +170,14 @@ function log(msg: string, noNewLine = false): void {
 }
 
 function reportToConsole(message: TestMessage): void {
-  if (message.start != null) {
+  if (message.start != null && !errorLevel) {
     log(`running ${message.start.tests.length} tests`);
-  } else if (message.testStart != null) {
+  } else if (message.testStart != null && !errorLevel) {
     const { name } = message.testStart;
 
     log(`test ${name} ... `, true);
     return;
-  } else if (message.testEnd != null) {
+  } else if (message.testEnd != null && !errorLevel) {
     switch (message.testEnd.status) {
       case "passed":
         log(`${GREEN_OK} ${formatDuration(message.testEnd.duration)}`);

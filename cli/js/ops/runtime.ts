@@ -16,6 +16,7 @@ export interface Start {
   debugFlag: boolean;
   depsFlag: boolean;
   typesFlag: boolean;
+  errorLevel: boolean;
   versionFlag: boolean;
   denoVersion: string;
   v8Version: string;
