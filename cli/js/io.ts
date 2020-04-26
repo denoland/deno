@@ -73,10 +73,13 @@ export interface ReadWriteSeeker extends Reader, Writer, Seeker {}
 export async function copy(
   src: Reader,
   dst: Writer,
-  bufSize?: number
+  options?: {
+    bufSize?: number;
+  }
 ): Promise<number> {
   let n = 0;
-  const b = new Uint8Array(bufSize ?? DEFAULT_BUFFER_SIZE);
+  const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
+  const b = new Uint8Array(bufSize);
   let gotEOF = false;
   while (gotEOF === false) {
     const result = await src.read(b);
