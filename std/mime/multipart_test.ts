@@ -205,7 +205,7 @@ test({
     const size = fileData.length;
 
     await Deno.writeFile(sampleFile, fileData);
-    const bigFile = await open(sampleFile, "r");
+    const bigFile = await open(sampleFile, { read: true });
 
     const mw = new MultipartWriter(writer);
     await mw.writeField("deno", "land");
