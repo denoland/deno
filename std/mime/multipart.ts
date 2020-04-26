@@ -297,7 +297,7 @@ export class MultipartReader {
       buf.reset();
       if (!p.fileName) {
         // value
-        const n = await copyN(buf, p, maxValueBytes);
+        const n = await copyN(p, buf, maxValueBytes);
         maxValueBytes -= n;
         if (maxValueBytes < 0) {
           throw new RangeError("message too large");
@@ -320,8 +320,8 @@ export class MultipartReader {
         });
         try {
           const size = await copyN(
-            file,
             new MultiReader(buf, p),
+            file,
             maxValueBytes
           );
           file.close();

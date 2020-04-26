@@ -30,7 +30,7 @@ test(async function ioStringReader(): Promise<void> {
 test(async function ioMultiReader(): Promise<void> {
   const r = new MultiReader(new StringReader("abc"), new StringReader("def"));
   const w = new StringWriter();
-  const n = await copyN(w, r, 4);
+  const n = await copyN(r, w, 4);
   assertEquals(n, 4);
   assertEquals(w.toString(), "abcd");
   await copy(r, w);

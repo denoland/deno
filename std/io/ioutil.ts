@@ -8,8 +8,8 @@ import { assert } from "../testing/asserts.ts";
  *  If read size is lesser than N, then returns nread
  * */
 export async function copyN(
-  dest: Writer,
   r: Reader,
+  dest: Writer,
   size: number
 ): Promise<number> {
   let bytesRead = 0;
