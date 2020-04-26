@@ -37,7 +37,7 @@ use crate::modules::Modules;
 use crate::modules::RecursiveModuleLoad;
 
 pub type ModuleId = i32;
-pub type DynImportId = i32;
+pub type ModuleLoadId = i32;
 
 /// More specialized version of `CoreIsolate` that provides loading
 /// and execution of ES Modules.
@@ -49,9 +49,8 @@ pub struct EsIsolate {
   core_isolate: Box<CoreIsolate>,
   loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
-  pub(crate) next_dyn_import_id: DynImportId,
   pub(crate) dyn_import_map:
-    HashMap<DynImportId, v8::Global<v8::PromiseResolver>>,
+    HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
 
   pending_dyn_imports: FuturesUnordered<StreamFuture<RecursiveModuleLoad>>,
   waker: AtomicWaker,
@@ -92,7 +91,6 @@ impl EsIsolate {
       modules: Modules::new(),
       loader,
       core_isolate,
-      next_dyn_import_id: 0,
       dyn_import_map: HashMap::new(),
       pending_dyn_imports: FuturesUnordered::new(),
       waker: AtomicWaker::new(),
@@ -278,25 +276,25 @@ impl EsIsolate {
   // Called by V8 during `Isolate::mod_instantiate`.
   pub fn dyn_import_cb(
     &mut self,
+    resolver_handle: v8::Global<v8::PromiseResolver>,
     specifier: &str,
     referrer: &str,
-    id: DynImportId,
   ) {
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
     let load = RecursiveModuleLoad::dynamic_import(
-      id,
       specifier,
       referrer,
       self.loader.clone(),
     );
+    self.dyn_import_map.insert(load.id, resolver_handle);
     self.waker.wake();
     self.pending_dyn_imports.push(load.into_future());
   }
 
   fn dyn_import_error(
     &mut self,
-    id: DynImportId,
+    id: ModuleLoadId,
     err: ErrBox,
   ) -> Result<(), ErrBox> {
     let core_isolate = &mut self.core_isolate;
@@ -331,7 +329,7 @@ impl EsIsolate {
 
   fn dyn_import_done(
     &mut self,
-    id: DynImportId,
+    id: ModuleLoadId,
     mod_id: ModuleId,
   ) -> Result<(), ErrBox> {
     debug!("dyn_import_done {} {:?}", id, mod_id);
@@ -373,7 +371,7 @@ impl EsIsolate {
         Poll::Ready(Some(load_stream_poll)) => {
           let maybe_result = load_stream_poll.0;
           let mut load = load_stream_poll.1;
-          let dyn_import_id = load.dyn_import_id.unwrap();
+          let dyn_import_id = load.id;
 
           if let Some(load_stream_result) = maybe_result {
             match load_stream_result {
