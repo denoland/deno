@@ -572,8 +572,13 @@ declare namespace Deno {
    *
    * @param src The source to copy from
    * @param dst The destination to copy to
+   * @param bufsize An optional size for the buffer. Default size is 32kB
    */
-  export function copy(src: Reader, dst: Writer): Promise<number>;
+  export function copy(
+    src: Reader,
+    dst: Writer,
+    bufsize?: number
+  ): Promise<number>;
 
   /** Turns a Reader, `r`, into an async iterator.
    *
