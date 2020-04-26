@@ -317,11 +317,10 @@ impl EsIsolate {
       self.loader.clone(),
     );
     self.dyn_import_map.insert(load.id, resolver_handle);
-
+    self.waker.wake();
     let fut = load.prepare().boxed_local();
     self.preparing_dyn_imports.push(fut);
-    self.waker.wake();
-
+    // eprintln!("woke id {}", id_);
     // self.pending_dyn_imports.push(load.into_future());
   }
 
@@ -330,6 +329,7 @@ impl EsIsolate {
     id: ModuleLoadId,
     err: ErrBox,
   ) -> Result<(), ErrBox> {
+    // eprintln!("dyn import error {} {}", id, err);
     let core_isolate = &mut self.core_isolate;
     let v8_isolate = core_isolate.v8_isolate.as_mut().unwrap();
 
@@ -398,9 +398,11 @@ impl EsIsolate {
     &mut self,
     cx: &mut Context,
   ) -> Poll<Result<(), ErrBox>> {
+    // eprintln!("prepare dyn imports");
     loop {
       match self.preparing_dyn_imports.poll_next_unpin(cx) {
         Poll::Pending | Poll::Ready(None) => {
+          // eprintln!("prepare dyn imports pending or ready none");
           // There are no active dynamic import loaders, or none are ready.
           return Poll::Ready(Ok(()));
         }
@@ -408,6 +410,7 @@ impl EsIsolate {
           let dyn_import_id = prepare_poll.0;
           let prepare_result = prepare_poll.1;
 
+          // eprintln!("prepare result {} {:#?}", dyn_import_id, prepare_result.is_ok());
           match prepare_result {
             Ok(load) => {
               self.pending_dyn_imports.push(load.into_future());
@@ -572,15 +575,15 @@ impl Future for EsIsolate {
 
     inner.waker.register(cx.waker());
 
-    // If there are any preparing dyn_import futures, do those first.
-    if !inner.preparing_dyn_imports.is_empty() {
-      let poll_imports = inner.prepare_dyn_imports(cx)?;
-      assert!(poll_imports.is_ready());
-    }
-
     // If there are any pending dyn_import futures, do those first.
     if !inner.pending_dyn_imports.is_empty() {
       let poll_imports = inner.poll_dyn_imports(cx)?;
+      assert!(poll_imports.is_ready());
+    }
+
+    // If there are any preparing dyn_import futures, do those first.
+    if !inner.preparing_dyn_imports.is_empty() {
+      let poll_imports = inner.prepare_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
     }
 
