@@ -924,6 +924,10 @@ pub mod tests {
       ));
 
       assert!(match isolate.poll_unpin(cx) {
+        Poll::Pending => true,
+        _ => false,
+      });
+      assert!(match isolate.poll_unpin(cx) {
         Poll::Ready(Ok(_)) => true,
         _ => false,
       });
@@ -933,7 +937,7 @@ pub mod tests {
         Poll::Ready(Ok(_)) => true,
         _ => false,
       });
-      assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
+      assert_eq!(resolve_count.load(Ordering::Relaxed), 2);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
     })
   }
