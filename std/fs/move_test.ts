@@ -42,6 +42,27 @@ Deno.test(async function moveDirectoryIfDestNotExists(): Promise<void> {
   await Deno.remove(destDir);
 });
 
+Deno.test(async function moveDirectoryIfDestNotExistsAndOverwrite(): Promise<
+  void
+> {
+  const srcDir = path.join(testdataDir, "move_test_src_2");
+  const destDir = path.join(testdataDir, "move_test_dest_2");
+
+  await Deno.mkdir(srcDir, { recursive: true });
+
+  // if dest directory not exist
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await move(srcDir, destDir, { overwrite: true });
+      throw new Error("should not throw error");
+    },
+    Error,
+    "should not throw error"
+  );
+
+  await Deno.remove(destDir);
+});
+
 Deno.test(async function moveFileIfSrcNotExists(): Promise<void> {
   const srcFile = path.join(testdataDir, "move_test_src_3", "test.txt");
   const destFile = path.join(testdataDir, "move_test_dest_3", "test.txt");
@@ -199,6 +220,25 @@ Deno.test(function moveSyncDirectoryIfDestNotExists(): void {
   assertThrows(
     (): void => {
       moveSync(srcDir, destDir);
+      throw new Error("should not throw error");
+    },
+    Error,
+    "should not throw error"
+  );
+
+  Deno.removeSync(destDir);
+});
+
+Deno.test(function moveSyncDirectoryIfDestNotExistsAndOverwrite(): void {
+  const srcDir = path.join(testdataDir, "move_sync_test_src_2");
+  const destDir = path.join(testdataDir, "move_sync_test_dest_2");
+
+  Deno.mkdirSync(srcDir, { recursive: true });
+
+  // if dest directory not exist width overwrite
+  assertThrows(
+    (): void => {
+      moveSync(srcDir, destDir, { overwrite: true });
       throw new Error("should not throw error");
     },
     Error,
