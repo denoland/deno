@@ -42,7 +42,9 @@ Deno.test(async function moveDirectoryIfDestNotExists(): Promise<void> {
   await Deno.remove(destDir);
 });
 
-Deno.test(async function moveDirectoryIfDestNotExistsAndOverwrite(): Promise<void> {
+Deno.test(async function moveDirectoryIfDestNotExistsAndOverwrite(): Promise<
+  void
+> {
   const srcDir = path.join(testdataDir, "move_test_src_2");
   const destDir = path.join(testdataDir, "move_test_dest_2");
 
