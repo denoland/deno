@@ -4,6 +4,8 @@ type Reader = Deno.Reader;
 type Writer = Deno.Writer;
 import { assert } from "../testing/asserts.ts";
 
+const DEFAULT_BUFFER_SIZE = 32 * 1024;
+
 /** copy N size at the most.
  *  If read size is lesser than N, then returns nread
  * */
@@ -13,9 +15,9 @@ export async function copyN(
   size: number
 ): Promise<number> {
   let bytesRead = 0;
-  let buf = new Uint8Array(1024);
+  let buf = new Uint8Array(DEFAULT_BUFFER_SIZE);
   while (bytesRead < size) {
-    if (size - bytesRead < 1024) {
+    if (size - bytesRead < DEFAULT_BUFFER_SIZE) {
       buf = new Uint8Array(size - bytesRead);
     }
     const result = await r.read(buf);
