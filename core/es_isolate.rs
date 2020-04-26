@@ -18,7 +18,7 @@ use futures::task::AtomicWaker;
 use futures::Future;
 use libc::c_void;
 use std::collections::HashMap;
-use std::convert::TryInto;
+use std::convert::TryFrom;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
@@ -236,17 +236,20 @@ impl EsIsolate {
     let mut status = module.get_status();
     if status == v8::ModuleStatus::Instantiated {
       // IMPORTANT: Top-level-await is enabled, which means that return value
-      // of module evaluation should be a promise.
+      // of module evaluation is a promise.
       //
-      // If error occurs during module evaluation then promise rejection callback will
-      // be called (`bindings::promise_reject_callback`) and add error from the promise
-      // to be returned on next poll. This situation is not desirable as we want to
-      // manually return error as the end of this function to handle it further,
-      // so we need to manually remove pending promise rejection.
-      // 
+      // Because that promise is created internally by V8, when error occurs during
+      // module evaluation the promise is rejected, and since the promise has no rejection
+      // handler it will result in call to `bindings::promise_reject_callback` adding
+      // the promise to pending promise rejection table - meaning Isolate will return
+      // error on next poll().
+      //
+      // This situation is not desirable as we want to manually return error at the
+      // end of this function to handle it further. It means we need to manually
+      // remove this promise from pending promise rejection table.
+      //
       // For more details see:
       // https://github.com/denoland/deno/issues/4908
-      // https://source.chromium.org/chromium/chromium/src/+/master:v8/test/cctest/test-modules.cc;l=238-246;drc=c1b3b0cbacc3033bd0aee8725065be9a0e8d6701
       // https://v8.dev/features/top-level-await#module-execution-order
       let maybe_value = module.evaluate(scope, context);
 
@@ -258,9 +261,7 @@ impl EsIsolate {
           status == v8::ModuleStatus::Evaluated
             || status == v8::ModuleStatus::Errored
         );
-        let obj = value.to_object(scope).unwrap();
-        let promise: v8::Local<v8::Promise> = obj
-          .try_into()
+        let promise = v8::Local::<v8::Promise>::try_from(value)
           .expect("Expected to get promise as module evaluation result");
         let promise_id = promise.get_identity_hash();
         if let Some(mut handle) =
