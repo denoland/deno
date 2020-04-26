@@ -322,7 +322,7 @@ export class MultipartReader {
           // write buffer to file
           let size = await copyN(file, buf, n);
           // Write the rest of the file
-          size += await copy(file, new MultiReader(buf, p));
+          size += await copy(new MultiReader(buf, p), file);
 
           file.close();
           formFile = {
