@@ -575,15 +575,15 @@ impl Future for EsIsolate {
 
     inner.waker.register(cx.waker());
 
-    // If there are any pending dyn_import futures, do those first.
-    if !inner.pending_dyn_imports.is_empty() {
-      let poll_imports = inner.poll_dyn_imports(cx)?;
-      assert!(poll_imports.is_ready());
-    }
-
     // If there are any preparing dyn_import futures, do those first.
     if !inner.preparing_dyn_imports.is_empty() {
       let poll_imports = inner.prepare_dyn_imports(cx)?;
+      assert!(poll_imports.is_ready());
+    }
+
+    // If there are any pending dyn_import futures, do those first.
+    if !inner.pending_dyn_imports.is_empty() {
+      let poll_imports = inner.poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
     }
 
