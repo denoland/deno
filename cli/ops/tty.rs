@@ -216,11 +216,10 @@ struct IsattyArgs {
 
 pub fn op_isatty(
   isolate: &mut CoreIsolate,
-  state: &State,
+  _state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
-  state.check_unstable("Deno.isatty");
   let args: IsattyArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
