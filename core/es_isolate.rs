@@ -931,13 +931,13 @@ pub mod tests {
         Poll::Ready(Ok(_)) => true,
         _ => false,
       });
-      assert_eq!(resolve_count.load(Ordering::Relaxed), 2);
-      assert_eq!(load_count.load(Ordering::Relaxed), 1);
+      assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
+      assert_eq!(load_count.load(Ordering::Relaxed), 2);
       assert!(match isolate.poll_unpin(cx) {
         Poll::Ready(Ok(_)) => true,
         _ => false,
       });
-      assert_eq!(resolve_count.load(Ordering::Relaxed), 2);
+      assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
     })
   }
