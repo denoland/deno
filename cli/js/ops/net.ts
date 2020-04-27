@@ -22,8 +22,9 @@ export enum ShutdownMode {
   ReadWrite, // unused
 }
 
-export async function shutdown(rid: number, how: ShutdownMode): Promise<void> {
-  return sendSync("op_shutdown", { rid, how });
+export function shutdown(rid: number, how: ShutdownMode): Promise<void> {
+  sendSync("op_shutdown", { rid, how });
+  return Promise.resolve();
 }
 
 interface AcceptResponse {
