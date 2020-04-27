@@ -1,24 +1,25 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-export type OperatingSystem = "mac" | "win" | "linux";
+//@ts-ignore
+export const build: {
+    target: string,
+    arch: string,
+    os: string,
+    vendor: string,
+    env?: string,
+}= {};
 
-export type Arch = "x64" | "arm64";
-
-// Do not add unsupported platforms.
-export interface BuildInfo {
-  arch: Arch;
-
-  os: OperatingSystem;
-}
-
-export const build: BuildInfo = {
-  arch: "" as Arch,
-  os: "" as OperatingSystem,
-};
-
-export function setBuildInfo(os: OperatingSystem, arch: Arch): void {
-  build.os = os;
+export function setBuildInfo(target: string): void {
+  const [arch, vendor, os, env] = target.split("-", 4);
+  //@ts-ignore
+  build.target = target;
+  //@ts-ignore
   build.arch = arch;
-
+  //@ts-ignore
+  build.vendor = vendor;
+  //@ts-ignore
+  build.os = os;
+  //@ts-ignore
+  build.env = env;
   Object.freeze(build);
 }

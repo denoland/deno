@@ -21,11 +21,10 @@ export interface Start {
   v8Version: string;
   tsVersion: string;
   noColor: boolean;
-  os: OperatingSystem;
-  arch: Arch;
+  target: string;
 }
 
-export function start(): Start {
+export function opStart(): Start {
   return sendSync("op_start");
 }
 

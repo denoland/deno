@@ -2342,19 +2342,20 @@ declare namespace Deno {
    */
   export function inspect(value: unknown, options?: InspectOptions): string;
 
-  export type OperatingSystem = "mac" | "win" | "linux";
-
-  export type Arch = "x64" | "arm64";
-
-  interface BuildInfo {
-    /** The CPU architecture. */
-    arch: Arch;
-    /** The operating system. */
-    os: OperatingSystem;
-  }
 
   /** Build related information. */
-  export const build: BuildInfo;
+  export const build: {
+    /** The LLVM target triple */
+    target: string,
+    /** Instruction set architecture */
+    arch: "x86_64",
+    /** Operating system */
+    os: "darwin" | "linux" | "windows",
+    /** Computer vendor */
+    vendor: string,
+    /** Optional environment */
+    env?: string,
+  };
 
   interface Version {
     deno: string;
