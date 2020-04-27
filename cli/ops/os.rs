@@ -156,6 +156,7 @@ fn op_loadavg(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.loadavg");
   state.check_env()?;
   match sys_info::loadavg() {
     Ok(loadavg) => Ok(JsonOp::Sync(json!([
@@ -182,6 +183,7 @@ fn op_os_release(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.osRelease");
   state.check_env()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(JsonOp::Sync(json!(release)))

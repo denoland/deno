@@ -97,6 +97,9 @@ declare namespace Deno {
    *       console.log(Deno.loadavg());  // e.g. [ 0.71, 0.44, 0.44 ]
    *
    * Requires `allow-env` permission.
+   *
+   * **Unstable**  There are questions around which permission this needs. And
+   * maybe should be renamed (loadAverage?)
    */
   export function loadavg(): number[];
 
@@ -113,6 +116,9 @@ declare namespace Deno {
    *       console.log(Deno.osRelease());
    *
    * Requires `allow-env` permission.
+   *
+   * **Unstable** new API maybe move to Deno.build or Deno.versions? Depends on
+   * sys-info, which we don't necessarally want to depend on.
    */
   export function osRelease(): string;
 
