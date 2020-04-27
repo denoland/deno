@@ -342,10 +342,12 @@ struct ShutdownArgs {
 
 fn op_shutdown(
   isolate: &mut CoreIsolate,
-  _state: &State,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.shutdown");
+
   let args: ShutdownArgs = serde_json::from_value(args)?;
 
   let rid = args.rid as u32;
