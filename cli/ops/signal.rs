@@ -40,10 +40,11 @@ struct SignalArgs {
 #[cfg(unix)]
 fn op_signal_bind(
   isolate: &mut CoreIsolate,
-  _state: &State,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.signal");
   let args: BindSignalArgs = serde_json::from_value(args)?;
   let mut resource_table = isolate.resource_table.borrow_mut();
   let rid = resource_table.add(
@@ -65,6 +66,7 @@ fn op_signal_poll(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.signal");
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let resource_table = isolate.resource_table.clone();
@@ -91,6 +93,7 @@ pub fn op_signal_unbind(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.signal");
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let mut resource_table = isolate.resource_table.borrow_mut();
