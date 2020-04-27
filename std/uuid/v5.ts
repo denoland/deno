@@ -32,7 +32,7 @@ export function generate(
   if (isString(value)) value = stringToBytes(value as string);
   if (isString(namespace)) namespace = uuidToBytes(namespace as string);
   assert(
-    namespace.length !== 16,
+    namespace.length === 16,
     "namespace must be uuid string or an Array of 16 byte values"
   );
 
