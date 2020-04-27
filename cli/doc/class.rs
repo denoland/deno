@@ -118,7 +118,7 @@ pub fn get_doc_for_class_decl(
       Constructor(ctor) => {
         let ctor_js_doc = doc_parser.js_doc_for_span(ctor.span());
         let constructor_name =
-          prop_name_to_string(&doc_parser.source_map, &ctor.key);
+          prop_name_to_string(&doc_parser.ast_parser.source_map, &ctor.key);
 
         let mut params = vec![];
 
@@ -146,17 +146,16 @@ pub fn get_doc_for_class_decl(
           accessibility: ctor.accessibility,
           name: constructor_name,
           params,
-          location: doc_parser
-            .source_map
-            .lookup_char_pos(ctor.span.lo())
-            .into(),
+          location: doc_parser.ast_parser.get_span_location(ctor.span).into(),
         };
         constructors.push(constructor_def);
       }
       Method(class_method) => {
         let method_js_doc = doc_parser.js_doc_for_span(class_method.span());
-        let method_name =
-          prop_name_to_string(&doc_parser.source_map, &class_method.key);
+        let method_name = prop_name_to_string(
+          &doc_parser.ast_parser.source_map,
+          &class_method.key,
+        );
         let fn_def = function_to_function_def(&class_method.function);
         let method_def = ClassMethodDef {
           js_doc: method_js_doc,
@@ -168,8 +167,8 @@ pub fn get_doc_for_class_decl(
           kind: class_method.kind,
           function_def: fn_def,
           location: doc_parser
-            .source_map
-            .lookup_char_pos(class_method.span.lo())
+            .ast_parser
+            .get_span_location(class_method.span)
             .into(),
         };
         methods.push(method_def);
@@ -198,8 +197,8 @@ pub fn get_doc_for_class_decl(
           accessibility: class_prop.accessibility,
           name: prop_name,
           location: doc_parser
-            .source_map
-            .lookup_char_pos(class_prop.span.lo())
+            .ast_parser
+            .get_span_location(class_prop.span)
             .into(),
         };
         properties.push(prop_def);

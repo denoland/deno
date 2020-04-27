@@ -53,6 +53,7 @@ pub mod signal;
 pub mod source_maps;
 mod startup_data;
 pub mod state;
+mod swc_util;
 mod test_runner;
 pub mod test_util;
 mod tokio_util;
