@@ -31,6 +31,7 @@ fn op_get_dir(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.dir");
   state.check_env()?;
   let args: GetDirArgs = serde_json::from_value(args)?;
 

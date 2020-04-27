@@ -21,8 +21,8 @@ declare namespace Deno {
   }
 
   /** Register a test which will be run when `deno test` is used on the command
-   * line and the containing module looks like a test module, or explicitly
-   * when `Deno.runTests` is used.  `fn` can be async if required.
+   * line and the containing module looks like a test module.
+   * `fn` can be async if required.
    *
    *          import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
    *
@@ -53,8 +53,8 @@ declare namespace Deno {
   export function test(t: TestDefinition): void;
 
   /** Register a test which will be run when `deno test` is used on the command
-   * line and the containing module looks like a test module, or explicitly
-   * when `Deno.runTests` is used
+   * line and the containing module looks like a test module.
+   * `fn` can be async if required.
    *
    *        import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
    *
@@ -71,8 +71,8 @@ declare namespace Deno {
   export function test(fn: () => void | Promise<void>): void;
 
   /** Register a test which will be run when `deno test` is used on the command
-   * line and the containing module looks like a test module, or explicitly
-   * when `Deno.runTests` is used
+   * line and the containing module looks like a test module.
+   * `fn` can be async if required.
    *
    *        import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
    *
@@ -87,72 +87,6 @@ declare namespace Deno {
    *        });
    * */
   export function test(name: string, fn: () => void | Promise<void>): void;
-
-  export interface TestMessage {
-    start?: {
-      tests: TestDefinition[];
-    };
-    testStart?: {
-      [P in keyof TestDefinition]: TestDefinition[P];
-    };
-    testEnd?: {
-      name: string;
-      status: "passed" | "failed" | "ignored";
-      duration: number;
-      error?: Error;
-    };
-    end?: {
-      filtered: number;
-      ignored: number;
-      measured: number;
-      passed: number;
-      failed: number;
-      duration: number;
-      results: Array<TestMessage["testEnd"] & {}>;
-    };
-  }
-
-  export interface RunTestsOptions {
-    /** If `true`, Deno will exit with status code 1 if there was
-     * test failure. Defaults to `true`. */
-    exitOnFail?: boolean;
-    /** If `true`, Deno will exit upon first test failure. Defaults to `false`. */
-    failFast?: boolean;
-    /** String or RegExp used to filter test to run. Only test with names
-     * matching provided `String` or `RegExp` will be run. */
-    filter?: string | RegExp;
-    /** String or RegExp used to skip tests to run. Tests with names
-     * matching provided `String` or `RegExp` will not be run. */
-    skip?: string | RegExp;
-    /** Disable logging of the results. Defaults to `false`. */
-    disableLog?: boolean;
-    /** If true, report results to the console as is done for `deno test`. Defaults to `true`. */
-    reportToConsole?: boolean;
-    /** Called for each message received from the test run. */
-    onMessage?: (message: TestMessage) => void | Promise<void>;
-  }
-
-  /** Run any tests which have been registered via `Deno.test()`. Always resolves
-   * asynchronously.
-   *
-   *        // Register test
-   *        Deno.test({
-   *          name: "example test",
-   *          fn(): void {
-   *            assertEquals("world", "world");
-   *            assertEquals({ hello: "world" }, { hello: "world" });
-   *          },
-   *        });
-   *
-   *        // Run tests
-   *        const runInfo = await Deno.runTests();
-   *        console.log(runInfo.duration);  // all tests duration, e.g. "5" (in ms)
-   *        console.log(runInfo.stats.passed);  // e.g. 1
-   *        console.log(runInfo.results[0].name);  // e.g. "example test"
-   */
-  export function runTests(
-    opts?: RunTestsOptions
-  ): Promise<TestMessage["end"]> & {};
 
   /** Returns an array containing the 1, 5, and 15 minute load averages. The
    * load average is a measure of CPU and IO utilization of the last one, five,

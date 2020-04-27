@@ -17,8 +17,8 @@ pub fn get_doc_for_ts_namespace_decl(
 ) -> DocNode {
   let js_doc = doc_parser.js_doc_for_span(ts_namespace_decl.span);
   let location = doc_parser
-    .source_map
-    .lookup_char_pos(ts_namespace_decl.span.lo())
+    .ast_parser
+    .get_span_location(ts_namespace_decl.span)
     .into();
   let namespace_name = ts_namespace_decl.id.sym.to_string();
 

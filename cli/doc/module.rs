@@ -14,10 +14,7 @@ pub fn get_doc_node_for_export_decl(
   use crate::swc_ecma_ast::Decl;
 
   let js_doc = doc_parser.js_doc_for_span(export_span);
-  let location = doc_parser
-    .source_map
-    .lookup_char_pos(export_span.lo())
-    .into();
+  let location = doc_parser.ast_parser.get_span_location(export_span).into();
 
   match &export_decl.decl {
     Decl::Class(class_decl) => {

@@ -55,16 +55,8 @@ import {
   ensureSymlinkSync,
 } from "https://deno.land/std/fs/mod.ts";
 
-ensureSymlink(
-  "./folder/targetFile.dat",
-  "./folder/targetFile.link.dat",
-  "file"
-); // returns promise
-ensureSymlinkSync(
-  "./folder/targetFile.dat",
-  "./folder/targetFile.link.dat",
-  "file"
-); // void
+ensureSymlink("./folder/targetFile.dat", "./folder/targetFile.link.dat"); // returns promise
+ensureSymlinkSync("./folder/targetFile.dat", "./folder/targetFile.link.dat"); // void
 ```
 
 ### eol

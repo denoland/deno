@@ -142,7 +142,7 @@ export function test(
   TEST_REGISTRY.push(testDef);
 }
 
-export interface TestMessage {
+interface TestMessage {
   start?: {
     tests: TestDefinition[];
   };
@@ -317,7 +317,7 @@ function createFilterFn(
   };
 }
 
-export interface RunTestsOptions {
+interface RunTestsOptions {
   exitOnFail?: boolean;
   failFast?: boolean;
   filter?: string | RegExp;
@@ -327,7 +327,7 @@ export interface RunTestsOptions {
   onMessage?: (message: TestMessage) => void | Promise<void>;
 }
 
-export async function runTests({
+async function runTests({
   exitOnFail = true,
   failFast = false,
   filter = undefined,
@@ -372,3 +372,5 @@ export async function runTests({
 
   return endMsg!;
 }
+
+exposeForTest("runTests", runTests);
