@@ -11,9 +11,9 @@ const DEFAULT_BUFFER_SIZE = 32 * 1024;
 // Seek whence values.
 // https://golang.org/pkg/io/#pkg-constants
 export enum SeekMode {
-  SEEK_START = 0,
-  SEEK_CURRENT = 1,
-  SEEK_END = 2,
+  Start = 0,
+  Current = 1,
+  End = 2,
 }
 
 // Reader is the interface that wraps the basic read() method.
