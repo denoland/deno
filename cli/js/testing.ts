@@ -104,7 +104,7 @@ export function test(
   let testDef: TestDefinition;
   const defaults = {
     ignore: false,
-    sanitizeOps: false,
+    sanitizeOps: true,
     sanitizeResources: true,
   };
 
