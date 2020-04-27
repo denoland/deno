@@ -317,10 +317,9 @@ export class Tar {
 
     const mode =
         opts.fileMode || (info && info.mode) || parseInt("777", 8) & 0xfff,
-      mtime =
-        opts.mtime ||
-        (info && info.modified) ||
-        Math.floor(new Date().getTime() / 1000),
+      mtime = Math.floor(
+        opts.mtime ?? (info?.mtime ?? new Date()).valueOf() / 1000
+      ),
       uid = opts.uid || 0,
       gid = opts.gid || 0;
     if (typeof opts.owner === "string" && opts.owner.length >= 32) {

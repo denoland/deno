@@ -818,7 +818,7 @@ declare namespace Deno {
     mode?: number;
   }
 
-  /** **UNSTABLE**: new API, yet to be vetted
+  /**
    *
    *  Check if a given resource id (`rid`) is a TTY.
    *
@@ -1316,15 +1316,15 @@ declare namespace Deno {
     /** The last modification time of the file. This corresponds to the `mtime`
      * field from `stat` on Linux/Mac OS and `ftLastWriteTime` on Windows. This
      * may not be available on all platforms. */
-    modified: number | null;
+    mtime: Date | null;
     /** The last access time of the file. This corresponds to the `atime`
      * field from `stat` on Unix and `ftLastAccessTime` on Windows. This may not
      * be available on all platforms. */
-    accessed: number | null;
+    atime: Date | null;
     /** The creation time of the file. This corresponds to the `birthtime`
-     * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may not
-     * be available on all platforms. */
-    created: number | null;
+     * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may
+     * not be available on all platforms. */
+    birthtime: Date | null;
     /** ID of the device containing the file.
      *
      * _Linux/Mac OS only._ */
