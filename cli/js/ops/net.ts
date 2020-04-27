@@ -22,7 +22,7 @@ export enum ShutdownMode {
   ReadWrite, // unused
 }
 
-export function shutdown(rid: number, how: ShutdownMode): Promise<void> {
+export async function shutdown(rid: number, how: ShutdownMode): Promise<void> {
   return sendSync("op_shutdown", { rid, how });
 }
 
