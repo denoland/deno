@@ -986,7 +986,7 @@ itest!(workers {
 });
 
 itest!(compiler_api {
-  args: "test --reload compiler_api_test.ts",
+  args: "test --unstable --reload compiler_api_test.ts",
   output: "compiler_api_test.out",
 });
 
