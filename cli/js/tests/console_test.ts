@@ -5,8 +5,6 @@ import { assert, assertEquals, unitTest } from "./test_util.ts";
 // in order to "trick" TypeScript.
 const {
   inspect,
-  writeSync,
-  stdout,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } = Deno as any;
 
@@ -744,21 +742,10 @@ unitTest(function consoleTestError(): void {
 });
 
 unitTest(function consoleTestClear(): void {
-  const stdoutWriteSync = stdout.writeSync;
-  const uint8 = new TextEncoder().encode("\x1b[1;1H" + "\x1b[0J");
-  let buffer = new Uint8Array(0);
-
-  stdout.writeSync = (u8: Uint8Array): Promise<number> => {
-    const tmp = new Uint8Array(buffer.length + u8.length);
-    tmp.set(buffer, 0);
-    tmp.set(u8, buffer.length);
-    buffer = tmp;
-
-    return writeSync(stdout.rid, u8);
-  };
-  console.clear();
-  stdout.writeSync = stdoutWriteSync;
-  assertEquals(buffer, uint8);
+  mockConsole((console, out) => {
+    console.clear();
+    assertEquals(out.toString(), "\x1b[1;1H" + "\x1b[0J");
+  });
 });
 
 // Test bound this issue
