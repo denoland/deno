@@ -1919,7 +1919,7 @@ declare namespace Deno {
    *
    *     const listener = Deno.listen({ address: "/foo/bar.sock", transport: "unix" })
    *
-   * Requires `allow-read` permission. */
+   * Requires `allow-read` and `allow-write` permission. */
   export function listen(
     options: UnixListenOptions & { transport: "unix" }
   ): Listener;
@@ -1940,7 +1940,7 @@ declare namespace Deno {
    *
    *     const listener = Deno.listen({ address: "/foo/bar.sock", transport: "unixpacket" })
    *
-   * Requires `allow-read` permission. */
+   * Requires `allow-read` and `allow-write` permission. */
   export function listen(
     options: UnixListenOptions & { transport: "unixpacket" }
   ): DatagramConn;

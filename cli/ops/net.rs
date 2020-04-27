@@ -521,6 +521,7 @@ fn op_listen(
     } if transport == "unix" || transport == "unixpacket" => {
       let address_path = net_unix::Path::new(&args.address);
       state.check_read(&address_path)?;
+      state.check_write(&address_path)?;
       let (rid, local_addr) = if transport == "unix" {
         net_unix::listen_unix(&mut resource_table, &address_path)?
       } else {
