@@ -18,6 +18,7 @@ use futures::task::AtomicWaker;
 use futures::Future;
 use libc::c_void;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
@@ -233,16 +234,41 @@ impl EsIsolate {
     let info = self.modules.get_info(id).expect("ModuleInfo not found");
     let module = info.handle.get(scope).expect("Empty module handle");
     let mut status = module.get_status();
-
     if status == v8::ModuleStatus::Instantiated {
-      let ok = module.evaluate(scope, context).is_some();
+      // IMPORTANT: Top-level-await is enabled, which means that return value
+      // of module evaluation is a promise.
+      //
+      // Because that promise is created internally by V8, when error occurs during
+      // module evaluation the promise is rejected, and since the promise has no rejection
+      // handler it will result in call to `bindings::promise_reject_callback` adding
+      // the promise to pending promise rejection table - meaning Isolate will return
+      // error on next poll().
+      //
+      // This situation is not desirable as we want to manually return error at the
+      // end of this function to handle it further. It means we need to manually
+      // remove this promise from pending promise rejection table.
+      //
+      // For more details see:
+      // https://github.com/denoland/deno/issues/4908
+      // https://v8.dev/features/top-level-await#module-execution-order
+      let maybe_value = module.evaluate(scope, context);
+
       // Update status after evaluating.
       status = module.get_status();
-      if ok {
+
+      if let Some(value) = maybe_value {
         assert!(
           status == v8::ModuleStatus::Evaluated
             || status == v8::ModuleStatus::Errored
         );
+        let promise = v8::Local::<v8::Promise>::try_from(value)
+          .expect("Expected to get promise as module evaluation result");
+        let promise_id = promise.get_identity_hash();
+        if let Some(mut handle) =
+          core_isolate.pending_promise_exceptions.remove(&promise_id)
+        {
+          handle.reset(scope);
+        }
       } else {
         assert!(status == v8::ModuleStatus::Errored);
       }

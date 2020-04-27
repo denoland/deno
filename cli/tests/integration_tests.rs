@@ -1341,7 +1341,6 @@ itest!(error_013_missing_script {
 itest!(error_014_catch_dynamic_import_error {
   args: "run  --reload --allow-read error_014_catch_dynamic_import_error.js",
   output: "error_014_catch_dynamic_import_error.js.out",
-  exit_code: 1,
 });
 
 itest!(error_015_dynamic_import_permissions {
