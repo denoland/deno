@@ -147,25 +147,6 @@ declare namespace Deno {
    * Requires `allow-env` permission. */
   export function env(key: string): string | undefined;
 
-  /** **UNSTABLE** */
-  export type DirKind =
-    | "home"
-    | "cache"
-    | "config"
-    | "executable"
-    | "data"
-    | "data_local"
-    | "audio"
-    | "desktop"
-    | "document"
-    | "download"
-    | "font"
-    | "picture"
-    | "public"
-    | "template"
-    | "tmp"
-    | "video";
-
   /**
    * **UNSTABLE**: Currently under evaluation to decide if method name `dir` and
    * parameter type alias name `DirKind` should be renamed.
@@ -312,7 +293,25 @@ declare namespace Deno {
    * | Windows | `{FOLDERID_Videos}` | C:\Users\Alice\Videos |
    *
    */
-  export function dir(kind: DirKind): string | null;
+  export function dir(
+    kind:
+      | "home"
+      | "cache"
+      | "config"
+      | "executable"
+      | "data"
+      | "data_local"
+      | "audio"
+      | "desktop"
+      | "document"
+      | "download"
+      | "font"
+      | "picture"
+      | "public"
+      | "template"
+      | "tmp"
+      | "video"
+  ): string | null;
 
   /**
    * Returns the path to the current deno executable.
