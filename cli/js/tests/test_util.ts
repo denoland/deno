@@ -200,11 +200,14 @@ const encoder = new TextEncoder();
 
 // Replace functions with null, errors with their stack strings, and JSONify.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function serializeTestMessage(message: Deno.TestMessage): string {
+function serializeTestMessage(message: any): string {
   return JSON.stringify({
     start: message.start && {
       ...message.start,
-      tests: message.start.tests.map((test) => ({ ...test, fn: null })),
+      tests: message.start.tests.map((test: Deno.TestDefinition) => ({
+        ...test,
+        fn: null,
+      })),
     },
     testStart: message.testStart && { ...message.testStart, fn: null },
     testEnd: message.testEnd && {
@@ -213,7 +216,8 @@ function serializeTestMessage(message: Deno.TestMessage): string {
     },
     end: message.end && {
       ...message.end,
-      results: message.end.results.map((result) => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      results: message.end.results.map((result: any) => ({
         ...result,
         error: result.error?.stack,
       })),
@@ -223,7 +227,8 @@ function serializeTestMessage(message: Deno.TestMessage): string {
 
 export async function reportToConn(
   conn: Deno.Conn,
-  message: Deno.TestMessage
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  message: any
 ): Promise<void> {
   const line = serializeTestMessage(message);
   const encodedMsg = encoder.encode(line + (message.end == null ? "\n" : ""));
