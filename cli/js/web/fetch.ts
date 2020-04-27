@@ -28,7 +28,8 @@ function hasHeaderValueOf(s: string, value: string): boolean {
   return new RegExp(`^${value}[\t\s]*;?`).test(s);
 }
 
-class Body implements domTypes.Body, ReadableStream<Uint8Array>, io.ReadCloser {
+class Body
+  implements domTypes.Body, ReadableStream<Uint8Array>, io.Reader, io.Closer {
   #bodyUsed = false;
   #bodyPromise: Promise<ArrayBuffer> | null = null;
   #data: ArrayBuffer | null = null;

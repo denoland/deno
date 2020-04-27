@@ -50,13 +50,6 @@ export {
   SyncWriter,
   Closer,
   Seeker,
-  SyncSeeker,
-  ReadCloser,
-  WriteCloser,
-  ReadSeeker,
-  WriteSeeker,
-  ReadWriteCloser,
-  ReadWriteSeeker,
 } from "./io.ts";
 export { linkSync, link } from "./ops/fs/link.ts";
 export {

@@ -491,13 +491,6 @@ declare namespace Deno {
     seekSync(offset: number, whence: SeekMode): number;
   }
 
-  export interface ReadCloser extends Reader, Closer {}
-  export interface WriteCloser extends Writer, Closer {}
-  export interface ReadSeeker extends Reader, Seeker {}
-  export interface WriteSeeker extends Writer, Seeker {}
-  export interface ReadWriteCloser extends Reader, Writer, Closer {}
-  export interface ReadWriteSeeker extends Reader, Writer, Seeker {}
-
   /** Copies from `src` to `dst` until either `EOF` is reached on `src` or an
    * error occurs. It resolves to the number of bytes copied or rejects with
    * the first error encountered while copying.
@@ -2166,9 +2159,9 @@ declare namespace Deno {
   export class Process {
     readonly rid: number;
     readonly pid: number;
-    readonly stdin?: WriteCloser;
-    readonly stdout?: ReadCloser;
-    readonly stderr?: ReadCloser;
+    readonly stdin?: Writer & Closer;
+    readonly stdout?: Reader & Closer;
+    readonly stderr?: Reader & Closer;
     /** Resolves to the current status of the process. */
     status(): Promise<ProcessStatus>;
     /** Buffer the stdout and return it as `Uint8Array` after `Deno.EOF`.

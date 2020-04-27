@@ -52,24 +52,6 @@ export interface SyncSeeker {
   seekSync(offset: number, whence: SeekMode): number;
 }
 
-// https://golang.org/pkg/io/#ReadCloser
-export interface ReadCloser extends Reader, Closer {}
-
-// https://golang.org/pkg/io/#WriteCloser
-export interface WriteCloser extends Writer, Closer {}
-
-// https://golang.org/pkg/io/#ReadSeeker
-export interface ReadSeeker extends Reader, Seeker {}
-
-// https://golang.org/pkg/io/#WriteSeeker
-export interface WriteSeeker extends Writer, Seeker {}
-
-// https://golang.org/pkg/io/#ReadWriteCloser
-export interface ReadWriteCloser extends Reader, Writer, Closer {}
-
-// https://golang.org/pkg/io/#ReadWriteSeeker
-export interface ReadWriteSeeker extends Reader, Writer, Seeker {}
-
 export async function copy(
   src: Reader,
   dst: Writer,
