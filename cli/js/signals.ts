@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { bindSignal, pollSignal, unbindSignal } from "./ops/signal.ts";
 import { build } from "./build.ts";
+import { notImplemented } from "./util.ts";
 
 // From `kill -l`
 enum LinuxSignal {
@@ -84,7 +85,7 @@ export function setSignals(): void {
 
 export function signal(signo: number): SignalStream {
   if (build.os === "win") {
-    throw new Error("not implemented!");
+    notImplemented();
   }
   return new SignalStream(signo);
 }

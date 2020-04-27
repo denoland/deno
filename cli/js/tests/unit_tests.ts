@@ -5,6 +5,7 @@
 // Test runner automatically spawns subprocesses for each required permissions combination.
 
 import "./abort_controller_test.ts";
+import "./assertion_error_test.ts";
 import "./blob_test.ts";
 import "./body_test.ts";
 import "./buffer_test.ts";

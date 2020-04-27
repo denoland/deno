@@ -1702,26 +1702,36 @@ declare namespace Deno {
   export function applySourceMap(location: Location): Location;
 
   /** A set of error constructors that are raised by Deno APIs. */
-  export const errors: {
-    NotFound: ErrorConstructor;
-    PermissionDenied: ErrorConstructor;
-    ConnectionRefused: ErrorConstructor;
-    ConnectionReset: ErrorConstructor;
-    ConnectionAborted: ErrorConstructor;
-    NotConnected: ErrorConstructor;
-    AddrInUse: ErrorConstructor;
-    AddrNotAvailable: ErrorConstructor;
-    BrokenPipe: ErrorConstructor;
-    AlreadyExists: ErrorConstructor;
-    InvalidData: ErrorConstructor;
-    TimedOut: ErrorConstructor;
-    Interrupted: ErrorConstructor;
-    WriteZero: ErrorConstructor;
-    UnexpectedEof: ErrorConstructor;
-    BadResource: ErrorConstructor;
-    Http: ErrorConstructor;
-    Busy: ErrorConstructor;
-  };
+  export namespace errors {
+    export const NotFound: ErrorConstructor;
+    export const PermissionDenied: ErrorConstructor;
+    export const ConnectionRefused: ErrorConstructor;
+    export const ConnectionReset: ErrorConstructor;
+    export const ConnectionAborted: ErrorConstructor;
+    export const NotConnected: ErrorConstructor;
+    export const AddrInUse: ErrorConstructor;
+    export const AddrNotAvailable: ErrorConstructor;
+    export const BrokenPipe: ErrorConstructor;
+    export const AlreadyExists: ErrorConstructor;
+    export const InvalidData: ErrorConstructor;
+    export const TimedOut: ErrorConstructor;
+    export const Interrupted: ErrorConstructor;
+    export const WriteZero: ErrorConstructor;
+    export const UnexpectedEof: ErrorConstructor;
+    export const BadResource: ErrorConstructor;
+    export const Http: ErrorConstructor;
+    export const Busy: ErrorConstructor;
+    /** An error raised when an internal API assertion fails.  Can also be used
+     * for raising other assertion failures. */
+    export class AssertionError extends Error {
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      constructor(message?: string, options?: { actual: any; expected: any });
+      readonly actual?: any;
+      readonly expected?: any;
+      /* eslint-enable */
+    }
+    export const NotImplemented: ErrorConstructor;
+  }
 
   /** **UNSTABLE**: potentially want names to overlap more with browser.
    *

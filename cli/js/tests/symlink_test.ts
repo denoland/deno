@@ -55,7 +55,10 @@ unitTest(
     if (err) {
       assertEquals(Deno.build.os, "win");
       // from cli/js/util.ts:notImplemented
-      assertEquals(err.message, "not implemented");
+      assertEquals(
+        err.message,
+        "This capability is currently not implemented in Deno."
+      );
     }
   }
 );

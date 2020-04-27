@@ -20,85 +20,85 @@ unitTest(
       () => {
         Deno.signal(1);
       },
-      Error,
-      "not implemented"
+      Deno.errors.NotImplemented,
+      "This capability is currently not implemented in Deno."
     );
     assertThrows(
       () => {
         Deno.signals.alarm(); // for SIGALRM
       },
-      Error,
-      "not implemented"
+      Deno.errors.NotImplemented,
+      "This capability is currently not implemented in Deno."
     );
     assertThrows(
       () => {
         Deno.signals.child(); // for SIGCHLD
       },
-      Error,
-      "not implemented"
+      Deno.errors.NotImplemented,
+      "This capability is currently not implemented in Deno."
     );
     assertThrows(
       () => {
         Deno.signals.hungup(); // for SIGHUP
       },
-      Error,
-      "not implemented"
+      Deno.errors.NotImplemented,
+      "This capability is currently not implemented in Deno."
     );
     assertThrows(
       () => {
         Deno.signals.interrupt(); // for SIGINT
       },
-      Error,
-      "not implemented"
+      Deno.errors.NotImplemented,
+      "This capability is currently not implemented in Deno."
     );
     assertThrows(
       () => {
         Deno.signals.io(); // for SIGIO
       },
-      Error,
-      "not implemented"
+      Deno.errors.NotImplemented,
+      "This capability is currently not implemented in Deno."
     );
     assertThrows(
       () => {
         Deno.signals.pipe(); // for SIGPIPE
       },
-      Error,
-      "not implemented"
+      Deno.errors.NotImplemented,
+      "This capability is currently not implemented in Deno."
     );
     assertThrows(
       () => {
         Deno.signals.quit(); // for SIGQUIT
       },
-      Error,
-      "not implemented"
+      Deno.errors.NotImplemented,
+      "This capability is currently not implemented in Deno."
     );
     assertThrows(
       () => {
         Deno.signals.terminate(); // for SIGTERM
       },
-      Error,
-      "not implemented"
+      Deno.errors.NotImplemented,
+      "This capability is currently not implemented in Deno."
     );
     assertThrows(
       () => {
         Deno.signals.userDefined1(); // for SIGUSR1
       },
-      Error,
-      "not implemented"
+      Deno.errors.NotImplemented,
+      "This capability is currently not implemented in Deno."
     );
     assertThrows(
       () => {
         Deno.signals.userDefined2(); // for SIGURS2
       },
-      Error,
-      "not implemented"
+      Deno.errors.NotImplemented,
+      "This capability is currently not implemented in Deno."
     );
     assertThrows(
       () => {
         Deno.signals.windowChange(); // for SIGWINCH
       },
-      Error,
-      "not implemented"
+      Deno.errors.NotImplemented,
+      "This capability is currently not implemented in Deno."
     );
   }
 );

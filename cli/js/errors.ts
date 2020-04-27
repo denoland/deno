@@ -181,24 +181,55 @@ class Busy extends Error {
     this.name = "Busy";
   }
 }
+/* eslint-disable @typescript-eslint/no-explicit-any */
+class AssertionError extends Error {
+  #actual: any;
+  #expected: any;
+  constructor(
+    message?: string,
+    { actual, expected }: { actual?: any; expected?: any } = {}
+  ) {
+    super(message);
+    this.name = "AssertionError";
+    this.#actual = actual;
+    this.#expected = expected;
+  }
+
+  get actual(): any {
+    return this.#actual;
+  }
+
+  get expected(): any {
+    return this.#expected;
+  }
+}
+/* eslint-enable */
+class NotImplemented extends Error {
+  constructor(msg: string) {
+    super(msg);
+    this.name = "NotImplemented";
+  }
+}
 
 export const errors = {
-  NotFound: NotFound,
-  PermissionDenied: PermissionDenied,
-  ConnectionRefused: ConnectionRefused,
-  ConnectionReset: ConnectionReset,
-  ConnectionAborted: ConnectionAborted,
-  NotConnected: NotConnected,
-  AddrInUse: AddrInUse,
-  AddrNotAvailable: AddrNotAvailable,
-  BrokenPipe: BrokenPipe,
-  AlreadyExists: AlreadyExists,
-  InvalidData: InvalidData,
-  TimedOut: TimedOut,
-  Interrupted: Interrupted,
-  WriteZero: WriteZero,
-  UnexpectedEof: UnexpectedEof,
-  BadResource: BadResource,
-  Http: Http,
-  Busy: Busy,
+  NotFound,
+  PermissionDenied,
+  ConnectionRefused,
+  ConnectionReset,
+  ConnectionAborted,
+  NotConnected,
+  AddrInUse,
+  AddrNotAvailable,
+  BrokenPipe,
+  AlreadyExists,
+  InvalidData,
+  TimedOut,
+  Interrupted,
+  WriteZero,
+  UnexpectedEof,
+  BadResource,
+  Http,
+  Busy,
+  AssertionError,
+  NotImplemented,
 };

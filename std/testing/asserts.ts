@@ -9,12 +9,7 @@ interface Constructor {
   new (...args: any[]): any;
 }
 
-export class AssertionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AssertionError";
-  }
-}
+export const { AssertionError } = Deno.errors;
 
 function format(v: unknown): string {
   let string = Deno.inspect(v);

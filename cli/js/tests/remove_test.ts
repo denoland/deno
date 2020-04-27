@@ -91,7 +91,10 @@ unitTest(
       errOnWindows = err;
     }
     if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.message, "not implemented");
+      assertEquals(
+        errOnWindows.message,
+        "This capability is currently not implemented in Deno."
+      );
     } else {
       const pathInfo = Deno.lstatSync(danglingSymlinkPath);
       assert(pathInfo.isSymlink);
@@ -124,7 +127,10 @@ unitTest(
       errOnWindows = err;
     }
     if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.message, "not implemented");
+      assertEquals(
+        errOnWindows.message,
+        "This capability is currently not implemented in Deno."
+      );
     } else {
       const symlinkPathInfo = Deno.statSync(validSymlinkPath);
       assert(symlinkPathInfo.isFile);
@@ -327,7 +333,10 @@ unitTest(
       errOnWindows = e;
     }
     if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.message, "not implemented");
+      assertEquals(
+        errOnWindows.message,
+        "This capability is currently not implemented in Deno."
+      );
     } else {
       const pathInfo = Deno.lstatSync(danglingSymlinkPath);
       assert(pathInfo.isSymlink);
@@ -360,7 +369,10 @@ unitTest(
       errOnWindows = e;
     }
     if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.message, "not implemented");
+      assertEquals(
+        errOnWindows.message,
+        "This capability is currently not implemented in Deno."
+      );
     } else {
       const symlinkPathInfo = Deno.statSync(validSymlinkPath);
       assert(symlinkPathInfo.isFile);
