@@ -2849,14 +2849,7 @@ declare namespace Deno {
     windowChange: () => SignalStream;
   };
 
-  /** **UNSTABLE**: recently moved out of the `Deno.symbols` namespace.
-   *
-   * Symbol to access exposed internal Deno API */
-  export const internal: unique symbol;
-
-  /** **UNSTABLE**: recently moved out of the `Deno.symbols` namespace.
-   *
-   * A symbol which can be used as a key for a custom method which will be
+  /** A symbol which can be used as a key for a custom method which will be
    * called when `Deno.inspect()` is called, or when the object is logged to
    * the console. */
   export const customInspect: unique symbol;
