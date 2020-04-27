@@ -50,7 +50,7 @@ test("file_server serveFile", async (): Promise<void> => {
   }
 });
 
-test(async function serveDirectory(): Promise<void> {
+test("serveDirectory", async function (): Promise<void> {
   await startFileServer();
   try {
     const res = await fetch("http://localhost:4500/");
@@ -72,7 +72,7 @@ test(async function serveDirectory(): Promise<void> {
   }
 });
 
-test(async function serveFallback(): Promise<void> {
+test("serveFallback", async function (): Promise<void> {
   await startFileServer();
   try {
     const res = await fetch("http://localhost:4500/badfile.txt");
@@ -85,7 +85,7 @@ test(async function serveFallback(): Promise<void> {
   }
 });
 
-test(async function serveWithUnorthodoxFilename(): Promise<void> {
+test("serveWithUnorthodoxFilename", async function (): Promise<void> {
   await startFileServer();
   try {
     let res = await fetch("http://localhost:4500/http/testdata/%");
@@ -103,7 +103,7 @@ test(async function serveWithUnorthodoxFilename(): Promise<void> {
   }
 });
 
-test(async function servePermissionDenied(): Promise<void> {
+test("servePermissionDenied", async function (): Promise<void> {
   const deniedServer = Deno.run({
     cmd: [Deno.execPath(), "run", "--allow-net", "http/file_server.ts"],
     stdout: "piped",
@@ -130,7 +130,7 @@ test(async function servePermissionDenied(): Promise<void> {
   }
 });
 
-test(async function printHelp(): Promise<void> {
+test("printHelp", async function (): Promise<void> {
   const helpProcess = Deno.run({
     cmd: [Deno.execPath(), "run", "http/file_server.ts", "--help"],
     stdout: "piped",

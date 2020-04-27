@@ -6,7 +6,7 @@ import { createRequire } from "./module.ts";
 
 const require = createRequire(import.meta.url);
 
-test(function requireSuccess() {
+test("requireSuccess", function () {
   // Relative to import.meta.url
   const result = require("./tests/cjs/cjs_a.js");
   assert("helloA" in result);
@@ -19,14 +19,14 @@ test(function requireSuccess() {
   assertEquals(result.leftPad("pad", 4), " pad");
 });
 
-test(function requireCycle() {
+test("requireCycle", function () {
   const resultA = require("./tests/cjs/cjs_cycle_a");
   const resultB = require("./tests/cjs/cjs_cycle_b");
   assert(resultA);
   assert(resultB);
 });
 
-test(function requireBuiltin() {
+test("requireBuiltin", function () {
   const fs = require("fs");
   assert("readFileSync" in fs);
   const { readFileSync, isNull, extname } = require("./tests/cjs/cjs_builtin");
@@ -38,18 +38,18 @@ test(function requireBuiltin() {
   assertEquals(extname("index.html"), ".html");
 });
 
-test(function requireIndexJS() {
+test("requireIndexJS", function () {
   const { isIndex } = require("./tests/cjs");
   assert(isIndex);
 });
 
-test(function requireNodeOs() {
+test("requireNodeOs", function () {
   const os = require("os");
   assert(os.arch);
   assert(typeof os.arch() == "string");
 });
 
-test(function requireStack() {
+test("requireStack", function () {
   const { hello } = require("./tests/cjs/cjs_throw");
   try {
     hello();

@@ -239,10 +239,10 @@ test({
   },
 });
 
-test(function normalizeGlobGlobstar(): void {
+test("normalizeGlobGlobstar", function (): void {
   assertEquals(normalizeGlob(`**${SEP}..`, { globstar: true }), `**${SEP}..`);
 });
 
-test(function joinGlobsGlobstar(): void {
+test("joinGlobsGlobstar", function (): void {
   assertEquals(joinGlobs(["**", ".."], { globstar: true }), `**${SEP}..`);
 });
