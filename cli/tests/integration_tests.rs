@@ -986,7 +986,7 @@ itest!(workers {
 });
 
 itest!(compiler_api {
-  args: "test --reload compiler_api_test.ts",
+  args: "test --unstable --reload compiler_api_test.ts",
   output: "compiler_api_test.out",
 });
 
@@ -1468,12 +1468,12 @@ itest!(import_meta {
 });
 
 itest!(lib_ref {
-  args: "run --reload lib_ref.ts",
+  args: "run --unstable --reload lib_ref.ts",
   output: "lib_ref.ts.out",
 });
 
 itest!(lib_runtime_api {
-  args: "run --reload lib_runtime_api.ts",
+  args: "run --unstable --reload lib_runtime_api.ts",
   output: "lib_runtime_api.ts.out",
 });
 
