@@ -10,6 +10,7 @@ import { ensureSymlink, ensureSymlinkSync } from "./ensure_symlink.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 const isWindows = Deno.build.os === "win";
+const { NotImplemented } = Deno.errors;
 
 Deno.test(async function ensureSymlinkIfItNotExist(): Promise<void> {
   const testDir = path.join(testdataDir, "link_file_1");
@@ -114,7 +115,7 @@ Deno.test(async function ensureSymlinkDirectoryIfItExist(): Promise<void> {
   if (isWindows) {
     await assertThrowsAsync(
       (): Promise<void> => ensureSymlink(testDir, linkDir),
-      Error,
+      NotImplemented,
       "not implemented"
     );
     await Deno.remove(testDir, { recursive: true });
