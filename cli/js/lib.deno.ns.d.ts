@@ -16,7 +16,12 @@ declare namespace Deno {
     fn: () => void | Promise<void>;
     name: string;
     ignore?: boolean;
+    /** Check that the number of async completed ops after the test is the same
+     * as number of dispatched ops. Defaults to true.*/
     sanitizeOps?: boolean;
+    /** Ensure the test case does not "leak" resources - ie. the resource table
+     * after the test has exactly the same contents as before the test. Defaults
+     * to true. */
     sanitizeResources?: boolean;
   }
 
