@@ -15,9 +15,9 @@ declare namespace Deno {
   export interface TestDefinition {
     fn: () => void | Promise<void>;
     name: string;
-    ignore?: boolean;
-    sanitizeOps?: boolean;
-    sanitizeResources?: boolean;
+    ignore?: boolean; // Defaults to false
+    sanitizeOps?: boolean; // Defaults to true
+    sanitizeResources?: boolean; // Defaults to true
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -68,6 +68,7 @@ declare namespace Deno {
    *          assertEquals(decoder.decode(data), "Hello world")
    *        });
    **/
+  // TODO(ry) remove this version of the test sig ... replace with one below
   export function test(fn: () => void | Promise<void>): void;
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -218,6 +219,9 @@ declare namespace Deno {
   // setting: Deno.env.path = "foo"
   // getting: Deno.env.path
   // get all: Deno.env
+  // Deno.setEnv()
+  // Deno.getEnv()
+  // Deno.getAllEnv()
   export function env(): {
     [index: string]: string;
   };
@@ -446,13 +450,15 @@ declare namespace Deno {
    *
    * NOTE:  This API is not implemented on Windows
    */
+  // TODO(ry) make this crash without unstable flag.
   export function umask(mask?: number): number;
 
-  /** **UNSTABLE**: might move to `Deno.symbols`. */
   export const EOF: unique symbol;
   export type EOF = typeof EOF;
 
   /** **UNSTABLE**: might remove `"SEEK_"` prefix. Might not use all-caps. */
+  // TODO(ry) Shoud be Deno.SeekMode.Start and Deno.SeekMode.Current
+  // Then can be made stable.
   export enum SeekMode {
     SEEK_START = 0,
     SEEK_CURRENT = 1,
@@ -483,6 +489,7 @@ declare namespace Deno {
     read(p: Uint8Array): Promise<number | EOF>;
   }
 
+  // TODO(ry) Rename to ReaderSync
   export interface SyncReader {
     /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number
      * of bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
@@ -520,6 +527,7 @@ declare namespace Deno {
     write(p: Uint8Array): Promise<number>;
   }
 
+  // TODO(ry) Rename to WriterSync
   export interface SyncWriter {
     /** Writes `p.byteLength` bytes from `p` to the underlying data
      * stream. It returns the number of bytes written from `p` (`0` <= `n`
@@ -552,6 +560,7 @@ declare namespace Deno {
     seek(offset: number, whence: SeekMode): Promise<number>;
   }
 
+  // TODO(ry) Rename to SeekerSync
   export interface SyncSeeker {
     /** Seek sets the offset for the next `readSync()` or `writeSync()` to
      * offset, interpreted according to `whence`: `SEEK_START` means relative
@@ -565,6 +574,8 @@ declare namespace Deno {
     seekSync(offset: number, whence: SeekMode): number;
   }
 
+  // TODO(ry) Remove these combined interfaces replace 
+  // EG ReadCloser with Reader & Closer
   export interface ReadCloser extends Reader, Closer {}
   export interface WriteCloser extends Writer, Closer {}
   export interface ReadSeeker extends Reader, Seeker {}
@@ -758,6 +769,8 @@ declare namespace Deno {
    *       const file = Deno.openSync("/foo/bar.txt");
    *       const bytesWritten = Deno.writeSync(file.rid, data); // 11
    *       Deno.close(file.rid);
+   *
+   * This is a low-level API not meant to be used by most users.
    */
   export function writeSync(rid: number, data: Uint8Array): number;
 
@@ -770,6 +783,8 @@ declare namespace Deno {
    *      const file = await Deno.open("/foo/bar.txt");
    *      const bytesWritten = await Deno.write(file.rid, data); // 11
    *      Deno.close(file.rid);
+   *
+   * This is a low-level API not meant to be used by most users.
    */
   export function write(rid: number, data: Uint8Array): Promise<number>;
 
@@ -840,7 +855,10 @@ declare namespace Deno {
    */
   export function close(rid: number): void;
 
-  /** The Deno abstraction for reading and writing files. */
+  /** The Deno abstraction for reading and writing files.
+   *
+   * This is what is returned from Deno.open().
+   */
   export class File
     implements
       Reader,
@@ -862,7 +880,7 @@ declare namespace Deno {
   }
 
   /** An instance of `Deno.File` for `stdin`. */
-  export const stdin: File;  // TODO(ry) Reader SyncReader Closer
+  export const stdin: Reader & SyncReader & Closer & { rid: number };
   /** An instance of `Deno.File` for `stdout`. */
   export const stdout: File; // TODO(ry) Writer SyncWriter Closer
   /** An instance of `Deno.File` for `stderr`. */
@@ -956,6 +974,7 @@ declare namespace Deno {
    * of ArrayBuffer.
    *
    * Based on [Go Buffer](https://golang.org/pkg/bytes/#Buffer). */
+  // TODO(ry) Remove the async read/write since this is sync only.
   export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
     constructor(ab?: ArrayBuffer);
     /** Returns a slice holding the unread portion of the buffer.
@@ -1296,6 +1315,9 @@ declare namespace Deno {
    *       Deno.utimeSync("myfile.txt", 1556495550, new Date());
    *
    * Requires `allow-write` permission. */
+  // TODO(ry) Crash on unstable flag, there is some discussion about whether
+  // number should be in seconds or milliseconds.
+  // We can make this stable if we remove the number varient.
   export function utimeSync(
     path: string,
     atime: number | Date,
@@ -1311,6 +1333,9 @@ declare namespace Deno {
    *       await Deno.utime("myfile.txt", 1556495550, new Date());
    *
    * Requires `allow-write` permission. */
+  // TODO(ry) Crash on unstable flag, there is some discussion about whether
+  // number should be in seconds or milliseconds.
+  // We can make this stable if we remove the number varient.
   export function utime(
     path: string,
     atime: number | Date,
@@ -1402,6 +1427,9 @@ declare namespace Deno {
   /** A FileInfo describes a file and is returned by `stat`, `lstat`,
    * `statSync`, `lstatSync`. */
   export interface FileInfo {
+    // TODO(ry) isFile, isDirectory, isSymlink should be getter methods to match
+    // node's api https://nodejs.org/api/fs.html#fs_class_fs_stats
+
     /** True if this is info for a regular file. Mutually exclusive to
      * `FileInfo.isDirectory` and `FileInfo.isSymlink`. */
     isFile: boolean;
@@ -1411,8 +1439,16 @@ declare namespace Deno {
     /** True if this is info for a symlink. Mutually exclusive to
      * `FileInfo.isFile` and `FileInfo.isDirectory`. */
     isSymlink: boolean;
+
     /** The size of the file, in bytes. */
     size: number;
+
+    // TODO(ry) make modified, accessed, created to Date objects.
+    // should we rename to match node's fields?
+    // modified -> mtime
+    // accessed -> atime
+    // created -> birthtime
+
     /** The last modification time of the file. This corresponds to the `mtime`
      * field from `stat` on Linux/Mac OS and `ftLastWriteTime` on Windows. This
      * may not be available on all platforms. */
@@ -1425,6 +1461,7 @@ declare namespace Deno {
      * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may not
      * be available on all platforms. */
     created: number | null;
+
     /** ID of the device containing the file.
      *
      * _Linux/Mac OS only._ */
@@ -1826,6 +1863,8 @@ declare namespace Deno {
     | PluginPermissionDescriptor
     | HrtimePermissionDescriptor;
 
+  // TODO(ry) Should not be exposed to users. Deno.permissions should just
+  // return an interface object.
   export class Permissions {
     /** Resolves to the current status of a permission.
      *
@@ -1858,7 +1897,10 @@ declare namespace Deno {
   /** **UNSTABLE**: maybe move to `navigator.permissions` to match web API. */
   export const permissions: Permissions;
 
-  /** see: https://w3c.github.io/permissions/#permissionstatus */
+  /**
+   * **Unstable** New API.
+   * see: https://w3c.github.io/permissions/#permissionstatus
+   */
   export class PermissionStatus {
     state: PermissionState;
     constructor(state: PermissionState);
@@ -1922,7 +1964,7 @@ declare namespace Deno {
 
   export interface UnixAddr {
     transport: "unix" | "unixpacket";
-    address: string;
+    address: string; // TODO(ry) rename to "path"?
   }
 
   export type Addr = NetAddr | UnixAddr;
@@ -1948,6 +1990,7 @@ declare namespace Deno {
    *       const conn = await listener.accept();
    *       Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
    */
+  // TODO(ry) should be async
   export function shutdown(rid: number, how: ShutdownMode): void;
 
   /** **UNSTABLE**: new API, yet to be vetted.
@@ -1982,6 +2025,8 @@ declare namespace Deno {
     /** Return the address of the `Listener`. */
     readonly addr: Addr;
 
+    // TODO(ry) when breaking out of async iterator it should use the return
+    // method of async iterator to close the listener.
     [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
   }
 
@@ -1992,11 +2037,17 @@ declare namespace Deno {
     readonly remoteAddr: Addr;
     /** The resource ID of the connection. */
     readonly rid: number;
+
     /** Shuts down (`shutdown(2)`) the reading side of the TCP connection. Most
-     * callers should just use `close()`. */
+     * callers should just use `close()`.  */
+    // TODO(ry) Remove.
     closeRead(): void;
+
     /** Shuts down (`shutdown(2)`) the writing side of the TCP connection. Most
-     * callers should just use `close()`. */
+     * callers should just use `close()`.
+     *
+     * **Unstable** The shutdown API is unstable.
+     */
     closeWrite(): void;
   }
 
@@ -2169,12 +2220,13 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    */
+  // TODO(ry) certFile might need allow-read permission
+  // TODO(ry) you should be able to provide string for cert rather than path
   export function startTLS(
     conn: Conn,
     options?: StartTLSOptions
   ): Promise<Conn>;
 
-  /** **UNSTABLE**: not sure if broken or not */
   export interface Metrics {
     opsDispatched: number;
     opsDispatchedSync: number;
@@ -2339,8 +2391,6 @@ declare namespace Deno {
         signal: number;
       };
 
-  /** **UNSTABLE**: `args` has been recently renamed to `cmd` to differentiate from
-   * `Deno.args`. */
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
      * binary */
@@ -2503,10 +2553,23 @@ declare namespace Deno {
 
   interface BuildInfo {
     /** The CPU architecture. */
+    // TODO Remove
     arch: Arch;
     /** The operating system. */
     os: OperatingSystem;
   }
+
+  // TODO(ry) Should use LLVM target triple https://clang.llvm.org/docs/CrossCompilation.html
+  // if (Deno.build.os === "win")
+  // if (Deno.build.includes("windows"))
+  //  Deno.build.isWin()
+  //  Deno.build.os() == "windows"
+  //  Deno.build.target
+  //  Deno.build.arch()
+  //  Deno.build.triple
+  //  Deno.build.sys
+  //  Deno.build.arch
+  //  Deno.build.abi
 
   /** Build related information. */
   export const build: BuildInfo;
@@ -2519,7 +2582,10 @@ declare namespace Deno {
   /** Version related information. */
   export const version: Version;
 
-  /** The log category for a diagnostic message. */
+  /** The log category for a diagnostic message.
+   *
+   * **Unstable** New API
+   */
   export enum DiagnosticCategory {
     Log = 0,
     Debug = 1,
@@ -2529,6 +2595,7 @@ declare namespace Deno {
     Suggestion = 5,
   }
 
+  /** **Unstable** New API */
   export interface DiagnosticMessageChain {
     message: string;
     category: DiagnosticCategory;
@@ -2536,6 +2603,7 @@ declare namespace Deno {
     next?: DiagnosticMessageChain[];
   }
 
+  /** **Unstable** New API */
   export interface DiagnosticItem {
     /** A string message summarizing the diagnostic. */
     message: string;
@@ -2564,6 +2632,7 @@ declare namespace Deno {
     endColumn?: number;
   }
 
+  /** **Unstable** New API */
   export interface Diagnostic {
     /** An array of diagnostic items. */
     items: DiagnosticItem[];
@@ -3004,16 +3073,17 @@ declare namespace Deno {
     windowChange: () => SignalStream;
   };
 
-  /** **UNSTABLE**: new API. Maybe move `Deno.EOF` here.
+  /** **UNSTABLE**: Remove symbols namespace
    *
    * Special Deno related symbols. */
   export const symbols: {
     /** Symbol to access exposed internal Deno API */
+    // TODO(ry) Should not be exposed to users in the d.ts file.
     readonly internal: unique symbol;
     /** A symbol which can be used as a key for a custom method which will be
      * called when `Deno.inspect()` is called, or when the object is logged to
      * the console. */
+    // TODO(ry) Should be Deno.customInspect
     readonly customInspect: unique symbol;
-    // TODO(ry) move EOF here?
   };
 }
