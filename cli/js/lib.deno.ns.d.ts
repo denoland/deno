@@ -147,7 +147,7 @@ declare namespace Deno {
    *        // Run tests
    *        const runInfo = await Deno.runTests();
    *        console.log(runInfo.duration);  // all tests duration, e.g. "5" (in ms)
-   *        console.log(runInfo.stats.passed);  // e.g. 1
+   *        console.log(runInfo.passed);  // e.g. 1
    *        console.log(runInfo.results[0].name);  // e.g. "example test"
    */
   export function runTests(
