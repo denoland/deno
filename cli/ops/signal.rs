@@ -62,7 +62,7 @@ fn op_signal_bind(
 #[cfg(unix)]
 fn op_signal_poll(
   isolate: &mut CoreIsolate,
-  _state: &State,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
@@ -89,7 +89,7 @@ fn op_signal_poll(
 #[cfg(unix)]
 pub fn op_signal_unbind(
   isolate: &mut CoreIsolate,
-  _state: &State,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
