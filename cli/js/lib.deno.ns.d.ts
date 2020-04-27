@@ -2342,19 +2342,18 @@ declare namespace Deno {
    */
   export function inspect(value: unknown, options?: InspectOptions): string;
 
-
   /** Build related information. */
   export const build: {
     /** The LLVM target triple */
-    target: string,
+    target: string;
     /** Instruction set architecture */
-    arch: "x86_64",
+    arch: "x86_64";
     /** Operating system */
-    os: "darwin" | "linux" | "windows",
+    os: "darwin" | "linux" | "windows";
     /** Computer vendor */
-    vendor: string,
+    vendor: string;
     /** Optional environment */
-    env?: string,
+    env?: string;
   };
 
   interface Version {

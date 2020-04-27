@@ -2,12 +2,12 @@
 
 //@ts-ignore
 export const build: {
-    target: string,
-    arch: string,
-    os: string,
-    vendor: string,
-    env?: string,
-}= {};
+  target: string;
+  arch: string;
+  os: string;
+  vendor: string;
+  env?: string;
+} = {};
 
 export function setBuildInfo(target: string): void {
   const [arch, vendor, os, env] = target.split("-", 4);
