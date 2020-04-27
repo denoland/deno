@@ -320,8 +320,6 @@ impl EsIsolate {
     self.waker.wake();
     let fut = load.prepare().boxed_local();
     self.preparing_dyn_imports.push(fut);
-    // eprintln!("woke id {}", id_);
-    // self.pending_dyn_imports.push(load.into_future());
   }
 
   fn dyn_import_error(
@@ -329,7 +327,6 @@ impl EsIsolate {
     id: ModuleLoadId,
     err: ErrBox,
   ) -> Result<(), ErrBox> {
-    // eprintln!("dyn import error {} {}", id, err);
     let core_isolate = &mut self.core_isolate;
     let v8_isolate = core_isolate.v8_isolate.as_mut().unwrap();
 
@@ -398,11 +395,9 @@ impl EsIsolate {
     &mut self,
     cx: &mut Context,
   ) -> Poll<Result<(), ErrBox>> {
-    // eprintln!("prepare dyn imports");
     loop {
       match self.preparing_dyn_imports.poll_next_unpin(cx) {
         Poll::Pending | Poll::Ready(None) => {
-          // eprintln!("prepare dyn imports pending or ready none");
           // There are no active dynamic import loaders, or none are ready.
           return Poll::Ready(Ok(()));
         }
@@ -410,7 +405,6 @@ impl EsIsolate {
           let dyn_import_id = prepare_poll.0;
           let prepare_result = prepare_poll.1;
 
-          // eprintln!("prepare result {} {:#?}", dyn_import_id, prepare_result.is_ok());
           match prepare_result {
             Ok(load) => {
               self.pending_dyn_imports.push(load.into_future());
@@ -575,13 +569,11 @@ impl Future for EsIsolate {
 
     inner.waker.register(cx.waker());
 
-    // If there are any preparing dyn_import futures, do those first.
     if !inner.preparing_dyn_imports.is_empty() {
       let poll_imports = inner.prepare_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
     }
 
-    // If there are any pending dyn_import futures, do those first.
     if !inner.pending_dyn_imports.is_empty() {
       let poll_imports = inner.poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
@@ -864,6 +856,7 @@ pub mod tests {
   fn dyn_import_ok() {
     #[derive(Clone, Default)]
     struct DynImportOkLoader {
+      pub prepare_load_count: Arc<AtomicUsize>,
       pub resolve_count: Arc<AtomicUsize>,
       pub load_count: Arc<AtomicUsize>,
     }
@@ -897,10 +890,22 @@ pub mod tests {
         };
         async move { Ok(info) }.boxed()
       }
+
+      fn prepare_load(
+        &self,
+        _load_id: ModuleLoadId,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<String>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+        self.prepare_load_count.fetch_add(1, Ordering::Relaxed);
+        async { Ok(()) }.boxed_local()
+      }
     }
 
     run_in_task(|cx| {
       let loader = Rc::new(DynImportOkLoader::default());
+      let prepare_load_count = loader.prepare_load_count.clone();
       let resolve_count = loader.resolve_count.clone();
       let load_count = loader.load_count.clone();
       let mut isolate = EsIsolate::new(loader, StartupData::None, false);
@@ -927,6 +932,7 @@ pub mod tests {
         Poll::Pending => true,
         _ => false,
       });
+      assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
       assert!(match isolate.poll_unpin(cx) {
         Poll::Ready(Ok(_)) => true,
         _ => false,
