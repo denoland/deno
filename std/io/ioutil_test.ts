@@ -17,7 +17,7 @@ class BinaryReader implements Reader {
 
   constructor(private bytes: Uint8Array = new Uint8Array(0)) {}
 
-  read(p: Uint8Array): Promise<number | Deno.EOF> {
+  read(p: Uint8Array): Promise<number | null> {
     p.set(this.bytes.subarray(this.index, p.byteLength));
     this.index += p.byteLength;
     return Promise.resolve(p.byteLength);

@@ -31,7 +31,7 @@ test(function multipartScanUntilBoundary1(): void {
     0,
     true
   );
-  assertEquals(n, Deno.EOF);
+  assertEquals(n, null);
 });
 
 test(function multipartScanUntilBoundary2(): void {

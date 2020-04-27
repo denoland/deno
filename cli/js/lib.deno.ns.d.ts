@@ -379,10 +379,6 @@ declare namespace Deno {
    */
   export function umask(mask?: number): number;
 
-  /** **UNSTABLE**: might be removed in favor of `null` (#3932). */
-  export const EOF: unique symbol;
-  export type EOF = typeof EOF;
-
   /** **UNSTABLE**: might remove `"SEEK_"` prefix. Might not use all-caps. */
   export enum SeekMode {
     SEEK_START = 0,
@@ -398,20 +394,19 @@ declare namespace Deno {
      * available but not `p.byteLength` bytes, `read()` conventionally resolves
      * to what is available instead of waiting for more.
      *
-     * When `read()` encounters end-of-file condition, it resolves to
-     * `Deno.EOF` symbol.
+     * When `read()` encounters end-of-file condition, it resolves to `null`.
      *
      * When `read()` encounters an error, it rejects with an error.
      *
      * Callers should always process the `n` > `0` bytes returned before
-     * considering the `EOF`. Doing so correctly handles I/O errors that happen
+     * considering the `null`. Doing so correctly handles I/O errors that happen
      * after reading some bytes and also both of the allowed EOF behaviors.
      *
      * Implementations should not retain a reference to `p`.
      *
      * Use Deno.iter() to turn a Reader into an AsyncIterator.
      */
-    read(p: Uint8Array): Promise<number | EOF>;
+    read(p: Uint8Array): Promise<number | null>;
   }
 
   export interface SyncReader {
@@ -422,20 +417,19 @@ declare namespace Deno {
      * but not `p.byteLength` bytes, `read()` conventionally returns what is
      * available instead of waiting for more.
      *
-     * When `readSync()` encounters end-of-file condition, it returns `Deno.EOF`
-     * symbol.
+     * When `readSync()` encounters end-of-file condition, it returns `null`.
      *
      * When `readSync()` encounters an error, it throws with an error.
      *
      * Callers should always process the `n` > `0` bytes returned before
-     * considering the `EOF`. Doing so correctly handles I/O errors that happen
+     * considering the `null`. Doing so correctly handles I/O errors that happen
      * after reading some bytes and also both of the allowed EOF behaviors.
      *
      * Implementations should not retain a reference to `p`.
      *
      * Use Deno.iterSync() to turn a SyncReader into an Iterator.
      */
-    readSync(p: Uint8Array): number | EOF;
+    readSync(p: Uint8Array): number | null;
   }
 
   export interface Writer {
@@ -503,7 +497,7 @@ declare namespace Deno {
   export interface ReadWriteCloser extends Reader, Writer, Closer {}
   export interface ReadWriteSeeker extends Reader, Writer, Seeker {}
 
-  /** Copies from `src` to `dst` until either `EOF` is reached on `src` or an
+  /** Copies from `src` to `dst` until either `null` is reached on `src` or an
    * error occurs. It resolves to the number of bytes copied or rejects with
    * the first error encountered while copying.
    *
@@ -512,8 +506,8 @@ declare namespace Deno {
    *       const bytesCopied1 = await Deno.copy(source, Deno.stdout);
    *       const bytesCopied2 = await Deno.copy(source, buffer);
    *
-   * Because `copy()` is defined to read from `src` until `EOF`, it does not
-   * treat an `EOF` from `read()` as an error to be reported.
+   * Because `copy()` is defined to read from `src` until `null`, it does not
+   * treat an `null` from `read()` as an error to be reported.
    *
    * @param src The source to copy from
    * @param dst The destination to copy to
@@ -637,8 +631,8 @@ declare namespace Deno {
 
   /** Synchronously read from a resource ID (`rid`) into an array buffer (`buffer`).
    *
-   * Returns either the number of bytes read during the operation or End Of File
-   * (`Symbol(EOF)`) if there was nothing to read.
+   * Returns either the number of bytes read during the operation or `null` if
+   * there was nothing to read.
    *
    *      // if "/foo/bar.txt" contains the text "hello world":
    *      const file = Deno.openSync("/foo/bar.txt");
@@ -647,12 +641,12 @@ declare namespace Deno {
    *      const text = new TextDecoder().decode(buf);  // "hello world"
    *      Deno.close(file.rid);
    */
-  export function readSync(rid: number, buffer: Uint8Array): number | EOF;
+  export function readSync(rid: number, buffer: Uint8Array): number | null;
 
   /** Read from a resource ID (`rid`) into an array buffer (`buffer`).
    *
-   * Resolves to either the number of bytes read during the operation or End Of
-   * File (`Symbol(EOF)`) if there was nothing to read.
+   * Resolves to either the number of bytes read during the operation or `null`
+   * if there was nothing to read.
    *
    *      // if "/foo/bar.txt" contains the text "hello world":
    *      const file = await Deno.open("/foo/bar.txt");
@@ -661,7 +655,7 @@ declare namespace Deno {
    *      const text = new TextDecoder().decode(buf);  // "hello world"
    *      Deno.close(file.rid);
    */
-  export function read(rid: number, buffer: Uint8Array): Promise<number | EOF>;
+  export function read(rid: number, buffer: Uint8Array): Promise<number | null>;
 
   /** Synchronously write to the resource ID (`rid`) the contents of the array
    * buffer (`data`).
@@ -769,8 +763,8 @@ declare namespace Deno {
     constructor(rid: number);
     write(p: Uint8Array): Promise<number>;
     writeSync(p: Uint8Array): number;
-    read(p: Uint8Array): Promise<number | EOF>;
-    readSync(p: Uint8Array): number | EOF;
+    read(p: Uint8Array): Promise<number | null>;
+    readSync(p: Uint8Array): number | null;
     seek(offset: number, whence: SeekMode): Promise<number>;
     seekSync(offset: number, whence: SeekMode): number;
     close(): void;
@@ -901,12 +895,12 @@ declare namespace Deno {
     reset(): void;
     /** Reads the next `p.length` bytes from the buffer or until the buffer is
      * drained. Returns the number of bytes read. If the buffer has no data to
-     * return, the return is `Deno.EOF`. */
-    readSync(p: Uint8Array): number | EOF;
+     * return, the return is `null`. */
+    readSync(p: Uint8Array): number | null;
     /** Reads the next `p.length` bytes from the buffer or until the buffer is
      * drained. Resolves to the number of bytes read. If the buffer has no
-     * data to return, resolves to `Deno.EOF`. */
-    read(p: Uint8Array): Promise<number | EOF>;
+     * data to return, resolves to `null`. */
+    read(p: Uint8Array): Promise<number | null>;
     writeSync(p: Uint8Array): number;
     write(p: Uint8Array): Promise<number>;
     /** Grows the buffer's capacity, if necessary, to guarantee space for
@@ -917,14 +911,14 @@ declare namespace Deno {
      * Based on Go Lang's
      * [Buffer.Grow](https://golang.org/pkg/bytes/#Buffer.Grow). */
     grow(n: number): void;
-    /** Reads data from `r` until `Deno.EOF` and appends it to the buffer,
+    /** Reads data from `r` until `null` and appends it to the buffer,
      * growing the buffer as needed. It resolves to the number of bytes read.
      * If the buffer becomes too large, `.readFrom()` will reject with an error.
      *
      * Based on Go Lang's
      * [Buffer.ReadFrom](https://golang.org/pkg/bytes/#Buffer.ReadFrom). */
     readFrom(r: Reader): Promise<number>;
-    /** Reads data from `r` until `Deno.EOF` and appends it to the buffer,
+    /** Reads data from `r` until `null` and appends it to the buffer,
      * growing the buffer as needed. It returns the number of bytes read. If the
      * buffer becomes too large, `.readFromSync()` will throw an error.
      *
@@ -933,7 +927,7 @@ declare namespace Deno {
     readFromSync(r: SyncReader): number;
   }
 
-  /** Read Reader `r` until end of file (`Deno.EOF`) and resolve to the content
+  /** Read Reader `r` until end of file (`null`) and resolve to the content
    * as `Uint8Array`.
    *
    *       // Example from stdin
@@ -952,7 +946,7 @@ declare namespace Deno {
    */
   export function readAll(r: Reader): Promise<Uint8Array>;
 
-  /** Synchronously reads Reader `r` until end of file (`Deno.EOF`) and returns
+  /** Synchronously reads Reader `r` until end of file (`null`) and returns
    * the content as `Uint8Array`.
    *
    *       // Example from stdin
@@ -2176,13 +2170,13 @@ declare namespace Deno {
     readonly stderr?: ReadCloser;
     /** Resolves to the current status of the process. */
     status(): Promise<ProcessStatus>;
-    /** Buffer the stdout and return it as `Uint8Array` after `Deno.EOF`.
+    /** Buffer the stdout until EOF and return it as `Uint8Array`.
      *
      * You must set stdout to `"piped"` when creating the process.
      *
      * This calls `close()` on stdout after its done. */
     output(): Promise<Uint8Array>;
-    /** Buffer the stderr and return it as `Uint8Array` after `Deno.EOF`.
+    /** Buffer the stderr until EOF and return it as `Uint8Array`.
      *
      * You must set stderr to `"piped"` when creating the process.
      *

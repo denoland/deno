@@ -101,13 +101,13 @@ unitTest(async function readerIter(): Promise<void> {
       this.#buf = new Uint8Array(encoder.encode(s));
     }
 
-    read(p: Uint8Array): Promise<number | Deno.EOF> {
+    read(p: Uint8Array): Promise<number | null> {
       const n = Math.min(p.byteLength, this.#buf.byteLength - this.#offset);
       p.set(this.#buf.slice(this.#offset, this.#offset + n));
       this.#offset += n;
 
       if (n === 0) {
-        return Promise.resolve(Deno.EOF);
+        return Promise.resolve(null);
       }
 
       return Promise.resolve(n);
@@ -136,13 +136,13 @@ unitTest(async function readerIterSync(): Promise<void> {
       this.#buf = new Uint8Array(encoder.encode(s));
     }
 
-    readSync(p: Uint8Array): number | Deno.EOF {
+    readSync(p: Uint8Array): number | null {
       const n = Math.min(p.byteLength, this.#buf.byteLength - this.#offset);
       p.set(this.#buf.slice(this.#offset, this.#offset + n));
       this.#offset += n;
 
       if (n === 0) {
-        return Deno.EOF;
+        return null;
       }
 
       return n;
