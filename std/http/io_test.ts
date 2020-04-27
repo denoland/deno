@@ -193,6 +193,7 @@ test("parseHttpVersion", (): void => {
     { in: "HTTP/0.-1", err: true },
     { in: "HTTP/", err: true },
     { in: "HTTP/1,0", err: true },
+    { in: "HTTP/1.1000001", err: true },
   ];
   for (const t of testCases) {
     let r, err;
