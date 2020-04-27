@@ -16,7 +16,7 @@ export function assert(cond: unknown): asserts cond {
   }
 }
 
-function genFunc(grant: Deno.PermissionName): () => Promise<void> {
+function genFunc(grant: Deno.PermissionName): [string, () => Promise<void>] {
   const gen: () => Promise<void> = async function Granted(): Promise<void> {
     const status0 = await Deno.permissions.query({ name: grant });
     assert(status0 != null);
@@ -26,11 +26,11 @@ function genFunc(grant: Deno.PermissionName): () => Promise<void> {
     assert(status1 != null);
     assert(status1.state === "prompt");
   };
-  // Properly name these generated functions.
-  Object.defineProperty(gen, "name", { value: grant + "Granted" });
-  return gen;
+  const name = grant + "Granted";
+  return [name, gen];
 }
 
 for (const grant of knownPermissions) {
-  Deno.test(genFunc(grant));
+  const [name, fn] = genFunc(grant);
+  Deno.test(name, fn);
 }
