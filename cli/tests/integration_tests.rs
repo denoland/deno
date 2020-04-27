@@ -540,6 +540,7 @@ fn bundle_import_map() {
     .arg("bundle")
     .arg("--importmap")
     .arg(import_map_path)
+    .arg("--unstable")
     .arg(import)
     .arg(&bundle)
     .spawn()
@@ -1014,8 +1015,15 @@ itest!(_030_eval_ts {
 
 itest!(_033_import_map {
   args:
-    "run --reload --importmap=importmaps/import_map.json importmaps/test.ts",
+    "run --reload --importmap=importmaps/import_map.json --unstable importmaps/test.ts",
   output: "033_import_map.out",
+});
+
+itest!(import_map_no_unstable {
+  args:
+    "run --reload --importmap=importmaps/import_map.json importmaps/test.ts",
+  output: "import_map_no_unstable.out",
+  exit_code: 70,
 });
 
 itest!(_034_onload {
@@ -1035,7 +1043,7 @@ itest_ignore!(_035_cached_only_flag {
 
 itest!(_036_import_map_fetch {
   args:
-    "cache --reload --importmap=importmaps/import_map.json importmaps/test.ts",
+    "cache --reload --importmap=importmaps/import_map.json --unstable importmaps/test.ts",
   output: "036_import_map_fetch.out",
 });
 
