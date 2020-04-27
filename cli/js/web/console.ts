@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { isTypedArray, TypedArray } from "./util.ts";
+import { isInvalidDate, isTypedArray, TypedArray } from "./util.ts";
 import { cliTable } from "./console_table.ts";
 import { exposeForTest } from "../internals.ts";
 import { PromiseState } from "./promise.ts";
@@ -409,8 +409,7 @@ function createWeakMapString(): string {
 }
 
 function createDateString(value: Date): string {
-  // without quotes, ISO format
-  return value.toISOString();
+  return isInvalidDate(value) ? "Invalid Date" : value.toISOString(); // without quotes, ISO format
 }
 
 function createRegExpString(value: RegExp): string {

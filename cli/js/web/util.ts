@@ -19,6 +19,11 @@ export function isTypedArray(x: unknown): x is TypedArray {
 }
 
 // @internal
+export function isInvalidDate(x: Date): boolean {
+  return isNaN(x.getTime());
+}
+
+// @internal
 export function requiredArguments(
   name: string,
   length: number,

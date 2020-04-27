@@ -1067,6 +1067,15 @@ unitTest(function consoleLogShouldNotThrowError(): void {
   });
 });
 
+// console.log(Invalid Date) test
+unitTest(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed(): void {
+  mockConsole((console, out) => {
+    const invalidDate = new Date("test");
+    console.log(invalidDate);
+    assertEquals(out.toString(), "Invalid Date\n");
+  });
+});
+
 // console.dir test
 unitTest(function consoleDir(): void {
   mockConsole((console, out): void => {
