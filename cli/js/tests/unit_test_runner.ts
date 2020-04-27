@@ -12,13 +12,17 @@ import {
 } from "./test_util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const reportToConsole = (Deno as any)[Deno.symbols.internal]
-  .reportToConsole as (message: Deno.TestMessage) => void;
+const internalObj = (Deno as any)[Deno.symbols.internal];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const reportToConsole = internalObj.reportToConsole as (message: any) => void;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const runTests = internalObj.runTests as (options: any) => Promise<any>;
 
 interface PermissionSetTestResult {
   perms: Permissions;
   passed: boolean;
-  endMessage: Deno.TestMessage["end"];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  endMessage: any;
   permsStr: string;
 }
 
@@ -66,7 +70,7 @@ async function workerRunnerMain(
   // Register unit tests that match process permissions
   await registerUnitTests();
   // Execute tests
-  await Deno.runTests({
+  await runTests({
     exitOnFail: false,
     filter,
     reportToConsole: false,
@@ -129,11 +133,13 @@ async function runTestsForPermissionSet(
   const conn = await listener.accept();
 
   let expectedPassedTests;
-  let endMessage: Deno.TestMessage["end"];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let endMessage: any;
 
   try {
     for await (const line of readLines(conn)) {
-      const message = JSON.parse(line) as Deno.TestMessage;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const message = JSON.parse(line) as any;
       reportToConsole(message);
       if (message.start != null) {
         expectedPassedTests = message.start.tests.length;
@@ -297,7 +303,7 @@ async function main(): Promise<void> {
 
   // Running tests matching current process permissions
   await registerUnitTests();
-  await Deno.runTests({ filter });
+  await runTests({ filter });
 }
 
 main();

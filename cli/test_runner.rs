@@ -78,7 +78,10 @@ pub fn render_test_file(
     json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet })
   };
 
-  let run_tests_cmd = format!("Deno.runTests({});\n", options);
+  let run_tests_cmd = format!(
+    "(Deno as any)[Deno.symbols.internal].runTests({});\n",
+    options
+  );
   test_file.push_str(&run_tests_cmd);
 
   test_file
