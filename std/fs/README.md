@@ -44,9 +44,21 @@ ensureFile("./folder/targetFile.dat"); // returns promise
 ensureFileSync("./folder/targetFile.dat"); // void
 ```
 
+### ensureLink
+
+Ensures that the hard link exists. If the directory structure does not exist, it
+is created.
+
+```ts
+import { ensureLink, ensureLinkSync } from "https://deno.land/std/fs/mod.ts";
+
+ensureLink("./folder/targetFile.dat", "./folder/targetFile.link.dat"); // returns promise
+ensureLinkSync("./folder/targetFile.dat", "./folder/targetFile.link.dat"); // void
+```
+
 ### ensureSymlink
 
-Ensures that the link exists. If the directory structure does not exist, it is
+Ensures that the symlink exists. If the directory structure does not exist, it is
 created.
 
 ```ts
