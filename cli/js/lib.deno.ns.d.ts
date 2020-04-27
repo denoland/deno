@@ -382,22 +382,25 @@ declare namespace Deno {
    * | Windows | `{FOLDERID_Videos}` | C:\Users\Alice\Videos |
    *
    */
-  export function dir(kind: "home"
-    | "cache"
-    | "config"
-    | "executable"
-    | "data"
-    | "data_local"
-    | "audio"
-    | "desktop"
-    | "document"
-    | "download"
-    | "font"
-    | "picture"
-    | "public"
-    | "template"
-    | "tmp"
-    | "video" ): string | null;
+  export function dir(
+    kind:
+      | "home"
+      | "cache"
+      | "config"
+      | "executable"
+      | "data"
+      | "data_local"
+      | "audio"
+      | "desktop"
+      | "document"
+      | "download"
+      | "font"
+      | "picture"
+      | "public"
+      | "template"
+      | "tmp"
+      | "video"
+  ): string | null;
 
   /**
    * Returns the path to the current deno executable.
@@ -574,7 +577,7 @@ declare namespace Deno {
     seekSync(offset: number, whence: SeekMode): number;
   }
 
-  // TODO(ry) Remove these combined interfaces replace 
+  // TODO(ry) Remove these combined interfaces replace
   // EG ReadCloser with Reader & Closer
   export interface ReadCloser extends Reader, Closer {}
   export interface WriteCloser extends Writer, Closer {}
@@ -2137,7 +2140,7 @@ declare namespace Deno {
    *      });
    *
    * Requires `allow-net` permission. */
-  // TODO(ry) Rename listenTls.... 
+  // TODO(ry) Rename listenTls....
   export function listenTLS(options: ListenTLSOptions): Listener;
 
   export interface ConnectOptions {
@@ -2305,7 +2308,8 @@ declare namespace Deno {
    *       }
    *
    * Requires `allow-read` permission.
-   */ 
+   */
+
   // -> TODO Rename Deno.watchFs() / FsEvent then stable ???
   export function fsEvents(
     paths: string | string[],
@@ -2375,7 +2379,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE* In the case of getting a signal because we're not sure if we
-   * want to expose raw signal numbers to the API. 
+   * want to expose raw signal numbers to the API.
    */
   export type ProcessStatus =
     | {
