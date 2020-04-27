@@ -368,7 +368,6 @@ declare namespace Deno {
    */
   export function umask(mask?: number): number;
 
-  /** **UNSTABLE**: will be removed in favor of `null` (#3932). */
   export const EOF: unique symbol;
   export type EOF = typeof EOF;
 
