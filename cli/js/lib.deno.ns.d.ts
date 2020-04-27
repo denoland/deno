@@ -35,7 +35,7 @@ declare namespace Deno {
    *
    *          Deno.test({
    *            name: "example ignored test",
-   *            ignore: Deno.build.os === "win"
+   *            ignore: Deno.build.os === "windows"
    *            fn(): void {
    *              // This test is ignored only on Windows machines
    *            },
