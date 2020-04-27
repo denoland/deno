@@ -287,7 +287,7 @@ export async function writeResponse(
 
 /**
  * ParseHTTPVersion parses a HTTP version string.
- * "HTTP/1.0" returns (1, 0, true).
+ * "HTTP/1.0" returns (1, 0).
  * Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request.go#L766-L792
  */
 export function parseHTTPVersion(vers: string): [number, number] {
