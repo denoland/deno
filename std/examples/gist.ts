@@ -7,7 +7,7 @@ function pathBase(p: string): string {
   return parts[parts.length - 1];
 }
 
-const token = Deno.env()["GIST_TOKEN"];
+const token = Deno.env.get("GIST_TOKEN");
 if (!token) {
   console.error("GIST_TOKEN environmental variable not set.");
   console.error("Get a token here: https://github.com/settings/tokens");
