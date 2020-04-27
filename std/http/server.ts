@@ -286,7 +286,7 @@ export async function listenAndServe(
 }
 
 /** Options for creating an HTTPS server. */
-export type HTTPSOptions = Omit<Deno.ListenTlsOptions, "transport">;
+export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
 
 /**
  * Create an HTTPS server with given options
@@ -306,7 +306,7 @@ export type HTTPSOptions = Omit<Deno.ListenTlsOptions, "transport">;
  * @return Async iterable server instance for incoming requests
  */
 export function serveTLS(options: HTTPSOptions): Server {
-  const tlsOptions: Deno.ListenTlsOptions = {
+  const tlsOptions: Deno.ListenTLSOptions = {
     ...options,
     transport: "tcp",
   };
