@@ -1386,8 +1386,11 @@ declare namespace Deno {
    * Requires `allow-read` permission. */
   export function realpath(path: string): Promise<string>;
 
-  export interface DirEntry extends FileInfo {
+  export interface DirEntry {
     name: string;
+    isFile: boolean;
+    isDirectory: boolean;
+    isSymlink: boolean;
   }
 
   /** Synchronously reads the directory given by `path` and returns an iterable

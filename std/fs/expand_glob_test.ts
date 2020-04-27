@@ -19,12 +19,12 @@ async function expandGlobArray(
   options: ExpandGlobOptions
 ): Promise<string[]> {
   const paths: string[] = [];
-  for await (const { filename } of expandGlob(globString, options)) {
-    paths.push(filename);
+  for await (const { path } of expandGlob(globString, options)) {
+    paths.push(path);
   }
   paths.sort();
   const pathsSync = [...expandGlobSync(globString, options)].map(
-    ({ filename }): string => filename
+    ({ path }): string => path
   );
   pathsSync.sort();
   assertEquals(paths, pathsSync);

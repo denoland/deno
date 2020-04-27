@@ -24,8 +24,8 @@ export function testWalk(
   Deno.test({ ignore, name: `[walk] ${name}`, fn });
 }
 
-function normalize({ filename }: WalkEntry): string {
-  return filename.replace(/\\/g, "/");
+function normalize({ path }: WalkEntry): string {
+  return path.replace(/\\/g, "/");
 }
 
 export async function walkArray(

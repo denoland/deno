@@ -3,107 +3,74 @@ import { assert, assertEquals, assertThrows } from "../../testing/asserts.ts";
 import Dirent from "./_fs_dirent.ts";
 
 class DirEntryMock implements Deno.DirEntry {
+  name = "";
   isFile = false;
   isDirectory = false;
   isSymlink = false;
-  size = -1;
-  mtime = new Date(-1);
-  atime = new Date(-1);
-  birthtime = new Date(-1);
-  name = "";
-  dev = -1;
-  ino = -1;
-  mode = -1;
-  nlink = -1;
-  uid = -1;
-  gid = -1;
-  rdev = -1;
-  blksize = -1;
-  blocks: number | null = null;
 }
-
-test({
-  name: "Block devices are correctly identified",
-  fn() {
-    const fileInfo: DirEntryMock = new DirEntryMock();
-    fileInfo.blocks = 5;
-    assert(new Dirent(fileInfo).isBlockDevice());
-    assert(!new Dirent(fileInfo).isCharacterDevice());
-  },
-});
-
-test({
-  name: "Character devices are correctly identified",
-  fn() {
-    const fileInfo: DirEntryMock = new DirEntryMock();
-    fileInfo.blocks = null;
-    assert(new Dirent(fileInfo).isCharacterDevice());
-    assert(!new Dirent(fileInfo).isBlockDevice());
-  },
-});
 
 test({
   name: "Directories are correctly identified",
   fn() {
-    const fileInfo: DirEntryMock = new DirEntryMock();
-    fileInfo.isDirectory = true;
-    fileInfo.isFile = false;
-    fileInfo.isSymlink = false;
-    assert(new Dirent(fileInfo).isDirectory());
-    assert(!new Dirent(fileInfo).isFile());
-    assert(!new Dirent(fileInfo).isSymbolicLink());
+    const entry: DirEntryMock = new DirEntryMock();
+    entry.isDirectory = true;
+    entry.isFile = false;
+    entry.isSymlink = false;
+    assert(new Dirent(entry).isDirectory());
+    assert(!new Dirent(entry).isFile());
+    assert(!new Dirent(entry).isSymbolicLink());
   },
 });
 
 test({
   name: "Files are correctly identified",
   fn() {
-    const fileInfo: DirEntryMock = new DirEntryMock();
-    fileInfo.isDirectory = false;
-    fileInfo.isFile = true;
-    fileInfo.isSymlink = false;
-    assert(!new Dirent(fileInfo).isDirectory());
-    assert(new Dirent(fileInfo).isFile());
-    assert(!new Dirent(fileInfo).isSymbolicLink());
+    const entry: DirEntryMock = new DirEntryMock();
+    entry.isDirectory = false;
+    entry.isFile = true;
+    entry.isSymlink = false;
+    assert(!new Dirent(entry).isDirectory());
+    assert(new Dirent(entry).isFile());
+    assert(!new Dirent(entry).isSymbolicLink());
   },
 });
 
 test({
   name: "Symlinks are correctly identified",
   fn() {
-    const fileInfo: DirEntryMock = new DirEntryMock();
-    fileInfo.isDirectory = false;
-    fileInfo.isFile = false;
-    fileInfo.isSymlink = true;
-    assert(!new Dirent(fileInfo).isDirectory());
-    assert(!new Dirent(fileInfo).isFile());
-    assert(new Dirent(fileInfo).isSymbolicLink());
+    const entry: DirEntryMock = new DirEntryMock();
+    entry.isDirectory = false;
+    entry.isFile = false;
+    entry.isSymlink = true;
+    assert(!new Dirent(entry).isDirectory());
+    assert(!new Dirent(entry).isFile());
+    assert(new Dirent(entry).isSymbolicLink());
   },
 });
 
 test({
   name: "File name is correct",
   fn() {
-    const fileInfo: DirEntryMock = new DirEntryMock();
-    fileInfo.name = "my_file";
-    assertEquals(new Dirent(fileInfo).name, "my_file");
+    const entry: DirEntryMock = new DirEntryMock();
+    entry.name = "my_file";
+    assertEquals(new Dirent(entry).name, "my_file");
   },
 });
 
 test({
   name: "Socket and FIFO pipes aren't yet available",
   fn() {
-    const fileInfo: DirEntryMock = new DirEntryMock();
+    const entry: DirEntryMock = new DirEntryMock();
     assertThrows(
       () => {
-        new Dirent(fileInfo).isFIFO();
+        new Dirent(entry).isFIFO();
       },
       Error,
       "does not yet support"
     );
     assertThrows(
       () => {
-        new Dirent(fileInfo).isSocket();
+        new Dirent(entry).isSocket();
       },
       Error,
       "does not yet support"

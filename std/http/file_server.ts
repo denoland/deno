@@ -140,22 +140,22 @@ async function serveDir(
 ): Promise<Response> {
   const dirUrl = `/${posix.relative(target, dirPath)}`;
   const listEntry: EntryInfo[] = [];
-  for await (const dirEntry of readdir(dirPath)) {
-    const filePath = posix.join(dirPath, dirEntry.name);
-    const fileUrl = posix.join(dirUrl, dirEntry.name);
-    if (dirEntry.name === "index.html" && dirEntry.isFile) {
+  for await (const entry of readdir(dirPath)) {
+    const filePath = posix.join(dirPath, entry.name);
+    const fileUrl = posix.join(dirUrl, entry.name);
+    if (entry.name === "index.html" && entry.isFile) {
       // in case index.html as dir...
       return serveFile(req, filePath);
     }
     // Yuck!
-    let mode = null;
+    let fileInfo = null;
     try {
-      mode = (await stat(filePath)).mode;
+      fileInfo = await stat(filePath);
     } catch (e) {}
     listEntry.push({
-      mode: modeToString(dirEntry.isDirectory, mode),
-      size: dirEntry.isFile ? fileLenToString(dirEntry.size) : "",
-      name: dirEntry.name,
+      mode: modeToString(entry.isDirectory, fileInfo?.mode ?? null),
+      size: entry.isFile ? fileLenToString(fileInfo?.size ?? 0) : "",
+      name: entry.name,
       url: fileUrl,
     });
   }
@@ -331,8 +331,8 @@ function main(): void {
 
       let response: Response | undefined;
       try {
-        const info = await stat(fsPath);
-        if (info.isDirectory) {
+        const fileInfo = await stat(fsPath);
+        if (fileInfo.isDirectory) {
           response = await serveDir(req, fsPath);
         } else {
           response = await serveFile(req, fsPath);

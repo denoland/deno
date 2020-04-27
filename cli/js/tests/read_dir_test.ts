@@ -4,19 +4,14 @@ import { unitTest, assert, assertEquals } from "./test_util.ts";
 function assertSameContent(files: Deno.DirEntry[]): void {
   let counter = 0;
 
-  for (const file of files) {
-    if (file.name === "subdir") {
-      assert(file.isDirectory);
-      counter++;
-    }
-
-    if (file.name === "002_hello.ts") {
-      assertEquals(file.mode!, Deno.statSync(`cli/tests/${file.name}`).mode!);
+  for (const entry of files) {
+    if (entry.name === "subdir") {
+      assert(entry.isDirectory);
       counter++;
     }
   }
 
-  assertEquals(counter, 2);
+  assertEquals(counter, 1);
 }
 
 unitTest({ perms: { read: true } }, function readdirSyncSuccess(): void {
