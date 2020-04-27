@@ -47,10 +47,11 @@ struct SetRawArgs {
 
 pub fn op_set_raw(
   isolate: &mut CoreIsolate,
-  _state: &State,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.setRaw");
   let args: SetRawArgs = serde_json::from_value(args)?;
   let rid = args.rid;
   let is_raw = args.mode;
@@ -219,6 +220,7 @@ pub fn op_isatty(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.isatty");
   let args: IsattyArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
