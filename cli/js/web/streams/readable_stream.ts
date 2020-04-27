@@ -18,8 +18,8 @@ import { ReadableByteStreamControllerImpl } from "./readable_byte_stream_control
 import { ReadableStreamAsyncIteratorPrototype } from "./readable_stream_async_iterator.ts";
 import { ReadableStreamDefaultControllerImpl } from "./readable_stream_default_controller.ts";
 import * as sym from "./symbols.ts";
-import { symbols } from "../../symbols.ts";
 import { notImplemented } from "../../util.ts";
+import { customInspect } from "../../web/console.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class ReadableStreamImpl<R = any> implements ReadableStream<R> {
@@ -202,7 +202,7 @@ export class ReadableStreamImpl<R = any> implements ReadableStream<R> {
     return readableStreamTee(this, false);
   }
 
-  [symbols.customInspect](): string {
+  [customInspect](): string {
     return `ReadableStream { locked: ${String(this.locked)} }`;
   }
 

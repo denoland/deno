@@ -79,7 +79,7 @@ pub fn render_test_file(
   };
 
   let run_tests_cmd = format!(
-    "(Deno as any)[Deno.symbols.internal].runTests({});\n",
+    "// @ts-ignore\nDeno[Deno.internal].runTests({});\n",
     options
   );
   test_file.push_str(&run_tests_cmd);
