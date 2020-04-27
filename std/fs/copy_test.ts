@@ -143,8 +143,8 @@ testCopy(
 
     const srcStatInfo = await Deno.stat(srcFile);
 
-    assert(typeof srcStatInfo.accessed === "number");
-    assert(typeof srcStatInfo.modified === "number");
+    assert(srcStatInfo.atime instanceof Date);
+    assert(srcStatInfo.mtime instanceof Date);
 
     // Copy with overwrite and preserve timestamps options.
     await copy(srcFile, destFile, {
@@ -154,10 +154,10 @@ testCopy(
 
     const destStatInfo = await Deno.stat(destFile);
 
-    assert(typeof destStatInfo.accessed === "number");
-    assert(typeof destStatInfo.modified === "number");
-    assertEquals(destStatInfo.accessed, srcStatInfo.accessed);
-    assertEquals(destStatInfo.modified, srcStatInfo.modified);
+    assert(destStatInfo.atime instanceof Date);
+    assert(destStatInfo.mtime instanceof Date);
+    assertEquals(destStatInfo.atime, srcStatInfo.atime);
+    assertEquals(destStatInfo.mtime, srcStatInfo.mtime);
   }
 );
 
@@ -327,8 +327,8 @@ testCopySync(
 
     const srcStatInfo = Deno.statSync(srcFile);
 
-    assert(typeof srcStatInfo.accessed === "number");
-    assert(typeof srcStatInfo.modified === "number");
+    assert(srcStatInfo.atime instanceof Date);
+    assert(srcStatInfo.mtime instanceof Date);
 
     // Copy with overwrite and preserve timestamps options.
     copySync(srcFile, destFile, {
@@ -338,12 +338,12 @@ testCopySync(
 
     const destStatInfo = Deno.statSync(destFile);
 
-    assert(typeof destStatInfo.accessed === "number");
-    assert(typeof destStatInfo.modified === "number");
+    assert(destStatInfo.atime instanceof Date);
+    assert(destStatInfo.mtime instanceof Date);
     // TODO: Activate test when https://github.com/denoland/deno/issues/2411
     // is fixed
-    // assertEquals(destStatInfo.accessed, srcStatInfo.accessed);
-    // assertEquals(destStatInfo.modified, srcStatInfo.modified);
+    // assertEquals(destStatInfo.atime, srcStatInfo.atime);
+    // assertEquals(destStatInfo.mtime, srcStatInfo.mtime);
   }
 );
 

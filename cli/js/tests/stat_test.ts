@@ -1,21 +1,31 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals } from "./test_util.ts";
 
-// TODO Add tests for modified, accessed, and created fields once there is a way
-// to create temp files.
-unitTest({ perms: { read: true } }, function statSyncSuccess(): void {
-  const packageInfo = Deno.statSync("README.md");
-  assert(packageInfo.isFile);
-  assert(!packageInfo.isSymlink);
+unitTest(
+  { perms: { read: true, write: true } },
+  function statSyncSuccess(): void {
+    const packageInfo = Deno.statSync("README.md");
+    assert(packageInfo.isFile);
+    assert(!packageInfo.isSymlink);
 
-  const modulesInfo = Deno.statSync("cli/tests/symlink_to_subdir");
-  assert(modulesInfo.isDirectory);
-  assert(!modulesInfo.isSymlink);
+    const modulesInfo = Deno.statSync("cli/tests/symlink_to_subdir");
+    assert(modulesInfo.isDirectory);
+    assert(!modulesInfo.isSymlink);
 
-  const testsInfo = Deno.statSync("cli/tests");
-  assert(testsInfo.isDirectory);
-  assert(!testsInfo.isSymlink);
-});
+    const testsInfo = Deno.statSync("cli/tests");
+    assert(testsInfo.isDirectory);
+    assert(!testsInfo.isSymlink);
+
+    const tempFile = Deno.makeTempFileSync();
+    const tempInfo = Deno.statSync(tempFile);
+    const now = Date.now();
+    assert(tempInfo.atime !== null && now - tempInfo.atime.valueOf() < 1000);
+    assert(tempInfo.mtime !== null && now - tempInfo.mtime.valueOf() < 1000);
+    assert(
+      tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 1000
+    );
+  }
+);
 
 unitTest({ perms: { read: false } }, function statSyncPerm(): void {
   let caughtError = false;
@@ -83,21 +93,32 @@ unitTest({ perms: { read: true } }, function lstatSyncNotFound(): void {
   assertEquals(badInfo, undefined);
 });
 
-unitTest({ perms: { read: true } }, async function statSuccess(): Promise<
-  void
-> {
-  const packageInfo = await Deno.stat("README.md");
-  assert(packageInfo.isFile);
-  assert(!packageInfo.isSymlink);
+unitTest(
+  { perms: { read: true, write: true } },
+  async function statSuccess(): Promise<void> {
+    const packageInfo = await Deno.stat("README.md");
+    assert(packageInfo.isFile);
+    assert(!packageInfo.isSymlink);
 
-  const modulesInfo = await Deno.stat("cli/tests/symlink_to_subdir");
-  assert(modulesInfo.isDirectory);
-  assert(!modulesInfo.isSymlink);
+    const modulesInfo = await Deno.stat("cli/tests/symlink_to_subdir");
+    assert(modulesInfo.isDirectory);
+    assert(!modulesInfo.isSymlink);
 
-  const testsInfo = await Deno.stat("cli/tests");
-  assert(testsInfo.isDirectory);
-  assert(!testsInfo.isSymlink);
-});
+    const testsInfo = await Deno.stat("cli/tests");
+    assert(testsInfo.isDirectory);
+    assert(!testsInfo.isSymlink);
+
+    const tempFile = await Deno.makeTempFile();
+    const tempInfo = await Deno.stat(tempFile);
+    const now = Date.now();
+    assert(tempInfo.atime !== null && now - tempInfo.atime.valueOf() < 1000);
+    assert(tempInfo.mtime !== null && now - tempInfo.mtime.valueOf() < 1000);
+
+    assert(
+      tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 1000
+    );
+  }
+);
 
 unitTest({ perms: { read: false } }, async function statPerm(): Promise<void> {
   let caughtError = false;

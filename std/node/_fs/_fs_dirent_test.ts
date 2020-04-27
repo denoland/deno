@@ -7,9 +7,9 @@ class DirEntryMock implements Deno.DirEntry {
   isDirectory = false;
   isSymlink = false;
   size = -1;
-  modified = -1;
-  accessed = -1;
-  created = -1;
+  mtime = new Date(-1);
+  atime = new Date(-1);
+  birthtime = new Date(-1);
   name = "";
   dev = -1;
   ino = -1;

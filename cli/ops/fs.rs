@@ -12,7 +12,9 @@ use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
+use std::io;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use rand::{thread_rng, Rng};
@@ -441,14 +443,19 @@ fn op_copy_file(
   })
 }
 
-macro_rules! to_seconds {
-  ($time:expr) => {{
-    // Unwrap is safe here as if the file is before the unix epoch
-    // something is very wrong.
-    $time
-      .and_then(|t| Ok(t.duration_since(UNIX_EPOCH).unwrap().as_secs()))
-      .unwrap_or(0)
-  }};
+fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> serde_json::Value {
+  match maybe_time {
+    Ok(time) => {
+      let msec = time
+        .duration_since(UNIX_EPOCH)
+        .map(|t| t.as_secs_f64() * 1000f64)
+        .unwrap_or_else(|err| err.duration().as_secs_f64() * -1000f64);
+      serde_json::Number::from_f64(msec)
+        .map(serde_json::Value::Number)
+        .unwrap_or(serde_json::Value::Null)
+    }
+    Err(_) => serde_json::Value::Null,
+  }
 }
 
 #[inline(always)]
@@ -477,10 +484,10 @@ fn get_stat_json(
     "isDirectory": metadata.is_dir(),
     "isSymlink": metadata.file_type().is_symlink(),
     "size": metadata.len(),
-    // In seconds. Available on both Unix or Windows.
-    "modified":to_seconds!(metadata.modified()),
-    "accessed":to_seconds!(metadata.accessed()),
-    "created":to_seconds!(metadata.created()),
+    // In milliseconds, like JavaScript. Available on both Unix or Windows.
+    "mtime": to_msec(metadata.modified()),
+    "atime": to_msec(metadata.accessed()),
+    "birthtime": to_msec(metadata.created()),
     // Following are only valid under Unix.
     "dev": usm!(dev),
     "ino": usm!(ino),
