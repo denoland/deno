@@ -216,7 +216,7 @@ struct IsattyArgs {
 
 pub fn op_isatty(
   isolate: &mut CoreIsolate,
-  _state: &State,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
