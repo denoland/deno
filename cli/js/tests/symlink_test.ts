@@ -17,7 +17,10 @@ unitTest(
     }
     if (errOnWindows) {
       assertEquals(Deno.build.os, "win");
-      assertEquals(errOnWindows.message, "not implemented");
+      assertEquals(
+        errOnWindows.message,
+        "This capability is currently not implemented in Deno."
+      );
     } else {
       const newNameInfoLStat = Deno.lstatSync(newname);
       const newNameInfoStat = Deno.statSync(newname);
@@ -78,7 +81,10 @@ unitTest(
       errOnWindows = e;
     }
     if (errOnWindows) {
-      assertEquals(errOnWindows.message, "not implemented");
+      assertEquals(
+        errOnWindows.message,
+        "This capability is currently not implemented in Deno."
+      );
     } else {
       const newNameInfoLStat = Deno.lstatSync(newname);
       const newNameInfoStat = Deno.statSync(newname);
