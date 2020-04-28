@@ -2210,13 +2210,15 @@ declare namespace Deno {
     | {
         success: true;
         code: 0;
-        signal?: undefined;
       }
     | {
         success: false;
         code: number;
-        signal?: number;
-      };
+      }
+    | {
+        success: false;
+        signal: number;
+      }
 
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
