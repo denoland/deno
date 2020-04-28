@@ -9,12 +9,11 @@ export interface WriteFileOptions {
   append?: boolean;
   create?: boolean;
   mode?: number;
-  encoding?: string;
 }
 
 export function writeFileSync(
   path: string,
-  data: Uint8Array | string,
+  data: Uint8Array,
   options: WriteFileOptions = {}
 ): void {
   if (options.create !== undefined) {
@@ -38,17 +37,13 @@ export function writeFileSync(
     chmodSync(path, options.mode);
   }
 
-  if (typeof data == "string") {
-    const enc = new TextEncoder();
-    data = enc.encode(data);
-  }
   writeAllSync(file, data);
   file.close();
 }
 
 export async function writeFile(
   path: string,
-  data: Uint8Array | string,
+  data: Uint8Array,
   options: WriteFileOptions = {}
 ): Promise<void> {
   if (options.create !== undefined) {
@@ -70,11 +65,6 @@ export async function writeFile(
     build.os !== "win"
   ) {
     await chmod(path, options.mode);
-  }
-
-  if (typeof data == "string") {
-    const enc = new TextEncoder();
-    data = enc.encode(data);
   }
 
   await writeAll(file, data);

@@ -922,23 +922,6 @@ declare namespace Deno {
   }
 
   /** Read Reader `r` until end of file (`Deno.EOF`) and resolve to the content
-   * as `string`.
-   *
-   *       // Example from stdin
-   *       const stdinContent = await Deno.readAll(Deno.stdin, { encoding: "utf8" });
-   *
-   *       // Example from file
-   *       const file = await Deno.open("my_file.txt", {read: true});
-   *       const myFileContent = await Deno.readAll(file, { encoding: "utf8" });
-   *       Deno.close(file.rid);
-   *
-   */
-  export function readAll(
-    r: Reader,
-    options: { encoding: "utf8" }
-  ): Promise<string>;
-
-  /** Read Reader `r` until end of file (`Deno.EOF`) and resolve to the content
    * as `Uint8Array`.
    *
    *       // Example from stdin
@@ -969,28 +952,6 @@ declare namespace Deno {
    *       Deno.close(file.rid);
    *
    *       // Example from buffer
-   *       const myData = new Uint8Array(100);
-   *       // ... fill myData array with data
-   *       const reader = new Deno.Buffer(myData.buffer as ArrayBuffer);
-   *       const bufferContent = Deno.readAllSync(reader);
-   */
-  export function readAllSync(
-    r: SyncReader,
-    options: { encoding: "utf8" }
-  ): string;
-
-  /** Synchronously reads Reader `r` until end of file (`Deno.EOF`) and returns
-   * the content as `Uint8Array`.
-   *
-   *       //Example from stdin
-   *       const stdinContent = Deno.readAllSync(Deno.stdin);
-   *
-   *       //Example from file
-   *       const file = Deno.openSync("my_file.txt", {read: true});
-   *       const myFileContent = Deno.readAllSync(file);
-   *       Deno.close(file.rid);
-   *
-   *       //Example from buffer
    *       const myData = new Uint8Array(100);
    *       // ... fill myData array with data
    *       const reader = new Deno.Buffer(myData.buffer as ArrayBuffer);
@@ -1315,19 +1276,24 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permission. */
   export function rename(oldpath: string, newpath: string): Promise<void>;
 
-  /** Synchronously reads and returns the entire contents of a file as an array
-   * of bytes. `TextDecoder` can be used to transform the bytes to string if
-   * required.  Reading a directory returns an empty data array.
+  /** Synchronously reads and returns the entire contents of a file as utf8 encoded string
+   *  encoded string. Reading a directory returns an empty string.
+   *
+   *       const data = Deno.readTextFileSync("hello.txt");
+   *       console.log(data);
+   *
+   * Requires `allow-read` permission. */
+  export function readTextFileSync(path: string): string;
+
+  /** Asynchronously reads and returns the entire contents of a file as a utf8
+   *  encoded string. Reading a directory returns an empty data array.
    *
    *       const decoder = new TextDecoder("utf-8");
    *       const data = Deno.readFileSync("hello.txt");
    *       console.log(decoder.decode(data));
    *
    * Requires `allow-read` permission. */
-  export function readFileSync(
-    path: string,
-    options: { encoding: "utf8" }
-  ): string;
+  export function readTextFile(path: string): Promise<string>;
 
   /** Synchronously reads and returns the entire contents of a file as an array
    * of bytes. `TextDecoder` can be used to transform the bytes to string if
@@ -1338,7 +1304,7 @@ declare namespace Deno {
    *       console.log(decoder.decode(data));
    *
    * Requires `allow-read` permission. */
-  export function readFileSync(path: string, options?: {}): Uint8Array;
+  export function readFileSync(path: string): Uint8Array;
 
   /** Reads and resolves to the entire contents of a file as an array of bytes.
    * `TextDecoder` can be used to transform the bytes to string if required.
@@ -1349,21 +1315,7 @@ declare namespace Deno {
    *       console.log(decoder.decode(data));
    *
    * Requires `allow-read` permission. */
-  export function readFile(
-    path: string,
-    options: { encoding: "utf8" }
-  ): Promise<string>;
-
-  /** Reads and resolves to the entire contents of a file as an array of bytes.
-   * `TextDecoder` can be used to transform the bytes to string if required.
-   * Reading a directory returns an empty data array.
-   *
-   *       const decoder = new TextDecoder("utf-8");
-   *       const data = await Deno.readFile("hello.txt");
-   *       console.log(decoder.decode(data));
-   *
-   * Requires `allow-read` permission. */
-  export function readFile(path: string, options?: {}): Promise<Uint8Array>;
+  export function readFile(path: string): Promise<Uint8Array>;
 
   /** A FileInfo describes a file and is returned by `stat`, `lstat`,
    * `statSync`, `lstatSync`. */
@@ -1626,7 +1578,6 @@ declare namespace Deno {
     create?: boolean;
     /** Permissions always applied to file. */
     mode?: number;
-    encoding?: string;
   }
 
   /** Synchronously write `data` to the given `path`, by default creating a new
@@ -1644,7 +1595,7 @@ declare namespace Deno {
    */
   export function writeFileSync(
     path: string,
-    data: Uint8Array | string,
+    data: Uint8Array,
     options?: WriteFileOptions
   ): void;
 
@@ -1662,9 +1613,27 @@ declare namespace Deno {
    */
   export function writeFile(
     path: string,
-    data: Uint8Array | string,
+    data: Uint8Array,
     options?: WriteFileOptions
   ): Promise<void>;
+
+  /** Synchronously write string `data` to the given `path`, by default creating a new file if needed,
+   * else overwriting.
+   *
+   *       await Deno.writeTextFileSync("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
+   *
+   * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
+   */
+  export function writeTextFileSync(path: string, data: string): void;
+
+  /** Asynchronously write string `data` to the given `path`, by default creating a new file if needed,
+   * else overwriting.
+   *
+   *       await Deno.writeTextFile("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
+   *
+   * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
+   */
+  export function writeTextFile(path: string, data: string): Promise<void>;
 
   /** **UNSTABLE**: Should not have same name as `window.location` type. */
   interface Location {
