@@ -73,7 +73,7 @@ pub fn op_start_tls(
   if let Some(path) = cert_file.clone() {
     state.check_read(Path::new(&path))?;
   }
-  
+
   let op = async move {
     let mut resource_holder = {
       let mut resource_table_ = resource_table.borrow_mut();
