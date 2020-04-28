@@ -273,6 +273,7 @@ fn js_unit_tests() {
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
+    .arg("--unstable")
     .arg("--reload")
     .arg("-A")
     .arg("cli/js/tests/unit_test_runner.ts")
