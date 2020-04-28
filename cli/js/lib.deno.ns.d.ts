@@ -1276,6 +1276,25 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permission. */
   export function rename(oldpath: string, newpath: string): Promise<void>;
 
+  /** Synchronously reads and returns the entire contents of a file as utf8 encoded string
+   *  encoded string. Reading a directory returns an empty string.
+   *
+   *       const data = Deno.readTextFileSync("hello.txt");
+   *       console.log(data);
+   *
+   * Requires `allow-read` permission. */
+  export function readTextFileSync(path: string): string;
+
+  /** Asynchronously reads and returns the entire contents of a file as a utf8
+   *  encoded string. Reading a directory returns an empty data array.
+   *
+   *       const decoder = new TextDecoder("utf-8");
+   *       const data = Deno.readFileSync("hello.txt");
+   *       console.log(decoder.decode(data));
+   *
+   * Requires `allow-read` permission. */
+  export function readTextFile(path: string): Promise<string>;
+
   /** Synchronously reads and returns the entire contents of a file as an array
    * of bytes. `TextDecoder` can be used to transform the bytes to string if
    * required.  Reading a directory returns an empty data array.
@@ -1597,6 +1616,24 @@ declare namespace Deno {
     data: Uint8Array,
     options?: WriteFileOptions
   ): Promise<void>;
+
+  /** Synchronously write string `data` to the given `path`, by default creating a new file if needed,
+   * else overwriting.
+   *
+   *       await Deno.writeTextFileSync("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
+   *
+   * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
+   */
+  export function writeTextFileSync(path: string, data: string): void;
+
+  /** Asynchronously write string `data` to the given `path`, by default creating a new file if needed,
+   * else overwriting.
+   *
+   *       await Deno.writeTextFile("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
+   *
+   * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
+   */
+  export function writeTextFile(path: string, data: string): Promise<void>;
 
   /** **UNSTABLE**: Should not have same name as `window.location` type. */
   interface Location {
