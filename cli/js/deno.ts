@@ -8,7 +8,7 @@ export {
   writeAll,
   writeAllSync,
 } from "./buffer.ts";
-export { build, OperatingSystem, Arch } from "./build.ts";
+export { build } from "./build.ts";
 export { chmodSync, chmod } from "./ops/fs/chmod.ts";
 export { chownSync, chown } from "./ops/fs/chown.ts";
 export { transpileOnly, compile, bundle } from "./compiler/api.ts";

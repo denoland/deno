@@ -9,16 +9,6 @@ use deno_core::CoreIsolate;
 use deno_core::ZeroCopyBuf;
 use std::env;
 
-/// BUILD_OS and BUILD_ARCH match the values in Deno.build. See js/build.ts.
-#[cfg(target_os = "macos")]
-static BUILD_OS: &str = "mac";
-#[cfg(target_os = "linux")]
-static BUILD_OS: &str = "linux";
-#[cfg(target_os = "windows")]
-static BUILD_OS: &str = "win";
-#[cfg(target_arch = "x86_64")]
-static BUILD_ARCH: &str = "x64";
-
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_start", s.stateful_json_op(op_start));
   i.register_op("op_metrics", s.stateful_json_op(op_metrics));
@@ -45,8 +35,7 @@ fn op_start(
     "denoVersion": version::DENO,
     "tsVersion": version::TYPESCRIPT,
     "noColor": !colors::use_color(),
-    "os": BUILD_OS,
-    "arch": BUILD_ARCH,
+    "target": env!("TARGET"),
   })))
 }
 

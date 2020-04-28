@@ -27,7 +27,7 @@ async function startServer(): Promise<Deno.Process> {
 }
 
 // TODO: https://github.com/denoland/deno/issues/4108
-const ignore = build.os == "win";
+const ignore = build.os == "windows";
 
 test({
   ignore,

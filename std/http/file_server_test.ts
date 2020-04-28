@@ -62,9 +62,9 @@ test("serveDirectory", async function (): Promise<void> {
     // `Deno.FileInfo` is not completely compatible with Windows yet
     // TODO: `mode` should work correctly in the future.
     // Correct this test case accordingly.
-    Deno.build.os !== "win" &&
+    Deno.build.os !== "windows" &&
       assert(/<td class="mode">(\s)*\([a-zA-Z-]{10}\)(\s)*<\/td>/.test(page));
-    Deno.build.os === "win" &&
+    Deno.build.os === "windows" &&
       assert(/<td class="mode">(\s)*\(unknown mode\)(\s)*<\/td>/.test(page));
     assert(page.includes(`<a href="/README.md">README.md</a>`));
   } finally {

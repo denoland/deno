@@ -13,7 +13,7 @@ export function containsOnlyASCII(str: string): boolean {
 }
 
 function convertLineEndingsToNative(s: string): string {
-  const nativeLineEnd = build.os == "win" ? "\r\n" : "\n";
+  const nativeLineEnd = build.os == "windows" ? "\r\n" : "\n";
 
   let position = 0;
 
