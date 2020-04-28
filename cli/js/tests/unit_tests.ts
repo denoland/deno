@@ -52,7 +52,6 @@ import "./request_test.ts";
 import "./resources_test.ts";
 import "./signal_test.ts";
 import "./stat_test.ts";
-import "./symbols_test.ts";
 import "./symlink_test.ts";
 import "./text_encoding_test.ts";
 import "./testing_test.ts";

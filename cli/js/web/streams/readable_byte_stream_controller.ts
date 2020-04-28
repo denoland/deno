@@ -22,7 +22,7 @@ import {
 import { ReadableStreamImpl } from "./readable_stream.ts";
 import * as sym from "./symbols.ts";
 import { assert } from "../../util.ts";
-import { symbols } from "../../symbols.ts";
+import { customInspect } from "../../web/console.ts";
 
 export class ReadableByteStreamControllerImpl
   implements ReadableByteStreamController {
@@ -135,7 +135,7 @@ export class ReadableByteStreamControllerImpl
     return promise;
   }
 
-  [symbols.customInspect](): string {
+  [customInspect](): string {
     return `ReadableByteStreamController { byobRequest: ${String(
       this.byobRequest
     )}, desiredSize: ${String(this.desiredSize)} }`;

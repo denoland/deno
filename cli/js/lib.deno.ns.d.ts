@@ -16,7 +16,12 @@ declare namespace Deno {
     fn: () => void | Promise<void>;
     name: string;
     ignore?: boolean;
+    /** Check that the number of async completed ops after the test is the same
+     * as number of dispatched ops. Defaults to true.*/
     sanitizeOps?: boolean;
+    /** Ensure the test case does not "leak" resources - ie. the resource table
+     * after the test has exactly the same contents as before the test. Defaults
+     * to true. */
     sanitizeResources?: boolean;
   }
 
@@ -374,7 +379,7 @@ declare namespace Deno {
    */
   export function umask(mask?: number): number;
 
-  /** **UNSTABLE**: might move to `Deno.symbols`. */
+  /** **UNSTABLE**: might be removed in favor of `null` (#3932). */
   export const EOF: unique symbol;
   export type EOF = typeof EOF;
 
@@ -771,24 +776,12 @@ declare namespace Deno {
     close(): void;
   }
 
-  export interface Stdin extends Reader, SyncReader, Closer {
-    readonly rid: number;
-  }
-
-  export interface Stdout extends Writer, SyncWriter, Closer {
-    readonly rid: number;
-  }
-
-  export interface Stderr extends Writer, SyncWriter, Closer {
-    readonly rid: number;
-  }
-
   /** A handle for `stdin`. */
-  export const stdin: Stdin;
+  export const stdin: Reader & SyncReader & Closer & { rid: number };
   /** A handle for `stdout`. */
-  export const stdout: Stdout;
+  export const stdout: Writer & SyncWriter & Closer & { rid: number };
   /** A handle for `stderr`. */
-  export const stderr: Stderr;
+  export const stderr: Writer & SyncWriter & Closer & { rid: number };
 
   export interface OpenOptions {
     /** Sets the option for read access. This option, when `true`, means that the
@@ -2333,7 +2326,7 @@ declare namespace Deno {
    *      class A {
    *        x = 10;
    *        y = "hello";
-   *        [Deno.symbols.customInspect](): string {
+   *        [Deno.customInspect](): string {
    *          return "x=" + this.x + ", y=" + this.y;
    *        }
    *      }
@@ -2855,16 +2848,8 @@ declare namespace Deno {
     windowChange: () => SignalStream;
   };
 
-  /** **UNSTABLE**: new API. Maybe move `Deno.EOF` here.
-   *
-   * Special Deno related symbols. */
-  export const symbols: {
-    /** Symbol to access exposed internal Deno API */
-    readonly internal: unique symbol;
-    /** A symbol which can be used as a key for a custom method which will be
-     * called when `Deno.inspect()` is called, or when the object is logged to
-     * the console. */
-    readonly customInspect: unique symbol;
-    // TODO(ry) move EOF here?
-  };
+  /** A symbol which can be used as a key for a custom method which will be
+   * called when `Deno.inspect()` is called, or when the object is logged to
+   * the console. */
+  export const customInspect: unique symbol;
 }

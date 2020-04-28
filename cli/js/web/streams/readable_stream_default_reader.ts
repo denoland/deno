@@ -12,7 +12,7 @@ import {
 } from "./internals.ts";
 import { ReadableStreamImpl } from "./readable_stream.ts";
 import * as sym from "./symbols.ts";
-import { symbols } from "../../symbols.ts";
+import { customInspect } from "../../web/console.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class ReadableStreamDefaultReaderImpl<R = any>
@@ -83,7 +83,7 @@ export class ReadableStreamDefaultReaderImpl<R = any>
     readableStreamReaderGenericRelease(this);
   }
 
-  [symbols.customInspect](): string {
+  [customInspect](): string {
     return `ReadableStreamDefaultReader { closed: Promise }`;
   }
 }
