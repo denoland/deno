@@ -519,7 +519,7 @@ fn op_listen(
       transport,
       transport_args: ArgsEnum::Unix(args),
     } if transport == "unix" || transport == "unixpacket" => {
-      let address_path = net_unix::Path::new(&args.address);
+      let address_path = net_unix::Path::new(&args.path);
       state.check_read(&address_path)?;
       state.check_write(&address_path)?;
       let (rid, local_addr) = if transport == "unix" {
