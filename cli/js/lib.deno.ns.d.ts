@@ -857,7 +857,7 @@ declare namespace Deno {
    * of ArrayBuffer.
    *
    * Based on [Go Buffer](https://golang.org/pkg/bytes/#Buffer). */
-  export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
+  export class Buffer implements SyncReader, SyncWriter {
     constructor(ab?: ArrayBuffer);
     /** Returns a slice holding the unread portion of the buffer.
      *
@@ -894,9 +894,7 @@ declare namespace Deno {
     /** Reads the next `p.length` bytes from the buffer or until the buffer is
      * drained. Resolves to the number of bytes read. If the buffer has no
      * data to return, resolves to `Deno.EOF`. */
-    read(p: Uint8Array): Promise<number | EOF>;
     writeSync(p: Uint8Array): number;
-    write(p: Uint8Array): Promise<number>;
     /** Grows the buffer's capacity, if necessary, to guarantee space for
      * another `n` bytes. After `.grow(n)`, at least `n` bytes can be written to
      * the buffer without another allocation. If `n` is negative, `.grow()` will
@@ -906,13 +904,6 @@ declare namespace Deno {
      * [Buffer.Grow](https://golang.org/pkg/bytes/#Buffer.Grow). */
     grow(n: number): void;
     /** Reads data from `r` until `Deno.EOF` and appends it to the buffer,
-     * growing the buffer as needed. It resolves to the number of bytes read.
-     * If the buffer becomes too large, `.readFrom()` will reject with an error.
-     *
-     * Based on Go Lang's
-     * [Buffer.ReadFrom](https://golang.org/pkg/bytes/#Buffer.ReadFrom). */
-    readFrom(r: Reader): Promise<number>;
-    /** Reads data from `r` until `Deno.EOF` and appends it to the buffer,
      * growing the buffer as needed. It returns the number of bytes read. If the
      * buffer becomes too large, `.readFromSync()` will throw an error.
      *
@@ -920,25 +911,6 @@ declare namespace Deno {
      * [Buffer.ReadFrom](https://golang.org/pkg/bytes/#Buffer.ReadFrom). */
     readFromSync(r: SyncReader): number;
   }
-
-  /** Read Reader `r` until end of file (`Deno.EOF`) and resolve to the content
-   * as `Uint8Array`.
-   *
-   *       // Example from stdin
-   *       const stdinContent = await Deno.readAll(Deno.stdin);
-   *
-   *       // Example from file
-   *       const file = await Deno.open("my_file.txt", {read: true});
-   *       const myFileContent = await Deno.readAll(file);
-   *       Deno.close(file.rid);
-   *
-   *       // Example from buffer
-   *       const myData = new Uint8Array(100);
-   *       // ... fill myData array with data
-   *       const reader = new Deno.Buffer(myData.buffer as ArrayBuffer);
-   *       const bufferContent = await Deno.readAll(reader);
-   */
-  export function readAll(r: Reader): Promise<Uint8Array>;
 
   /** Synchronously reads Reader `r` until end of file (`Deno.EOF`) and returns
    * the content as `Uint8Array`.

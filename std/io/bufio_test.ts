@@ -64,11 +64,11 @@ const readMakers: ReadMaker[] = [
 ];
 
 // Call read to accumulate the text of a file
-async function reads(buf: BufReader, m: number): Promise<string> {
+function reads(buf: BufReader, m: number): string {
   const b = new Uint8Array(1000);
   let nb = 0;
   while (true) {
-    const result = await buf.read(b.subarray(nb, nb + m));
+    const result = buf.readSync(b.subarray(nb, nb + m));
     if (result === Deno.EOF) {
       break;
     }
@@ -80,16 +80,16 @@ async function reads(buf: BufReader, m: number): Promise<string> {
 
 interface NamedBufReader {
   name: string;
-  fn: (r: BufReader) => Promise<string>;
+  fn: (r: BufReader) => string;
 }
 
 const bufreaders: NamedBufReader[] = [
-  { name: "1", fn: (b: BufReader): Promise<string> => reads(b, 1) },
-  { name: "2", fn: (b: BufReader): Promise<string> => reads(b, 2) },
-  { name: "3", fn: (b: BufReader): Promise<string> => reads(b, 3) },
-  { name: "4", fn: (b: BufReader): Promise<string> => reads(b, 4) },
-  { name: "5", fn: (b: BufReader): Promise<string> => reads(b, 5) },
-  { name: "7", fn: (b: BufReader): Promise<string> => reads(b, 7) },
+  { name: "1", fn: (b: BufReader): string => reads(b, 1) },
+  { name: "2", fn: (b: BufReader): string => reads(b, 2) },
+  { name: "3", fn: (b: BufReader): string => reads(b, 3) },
+  { name: "4", fn: (b: BufReader): string => reads(b, 4) },
+  { name: "5", fn: (b: BufReader): string => reads(b, 5) },
+  { name: "7", fn: (b: BufReader): string => reads(b, 7) },
   { name: "bytes", fn: readBytes },
   // { name: "lines", fn: readLines },
 ];
@@ -125,7 +125,7 @@ Deno.test(async function bufioBufReader(): Promise<void> {
         for (const bufsize of bufsizes) {
           const read = readmaker.fn(stringsReader(text));
           const buf = new BufReader(read, bufsize);
-          const s = await bufreader.fn(buf);
+          const s = bufreader.fn(buf);
           const debugStr =
             `reader=${readmaker.name} ` +
             `fn=${bufreader.name} bufsize=${bufsize} want=${text} got=${s}`;
