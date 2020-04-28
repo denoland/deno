@@ -196,21 +196,19 @@ test({
   name:
     "[mime/multipart] readForm() should store big file completely in temp file",
   async fn() {
-    const encoder = new TextEncoder();
     const multipartFile = path.join(testdataDir, "form-data.dat");
-    const sampleFile = path.resolve(testdataDir, "bigfile.txt");
+    const sampleFile = await Deno.makeTempFile();
     const writer = await open(multipartFile, { write: true, create: true });
 
-    const fileData = encoder.encode("a".repeat(1 << 24)); // 16mb
-    const size = fileData.length;
+    const size = 1 << 24; // 16mb
 
-    await Deno.writeFile(sampleFile, fileData);
+    await Deno.truncate(sampleFile, size);
     const bigFile = await open(sampleFile, { read: true });
 
     const mw = new MultipartWriter(writer);
     await mw.writeField("deno", "land");
     await mw.writeField("bar", "bar");
-    await mw.writeFile("file", "sample.txt", bigFile);
+    await mw.writeFile("file", "sample.bin", bigFile);
 
     await mw.close();
     writer.close();
