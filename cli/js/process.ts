@@ -2,7 +2,7 @@
 import { File } from "./files.ts";
 import { close } from "./ops/resources.ts";
 import { ReadCloser, WriteCloser } from "./io.ts";
-import { readAll } from "./buffer.ts";
+import { readAllSync } from "./buffer.ts";
 import { kill, runStatus as runStatusOp, run as runOp } from "./ops/process.ts";
 
 export type ProcessStdio = "inherit" | "piped" | "null";
@@ -64,7 +64,7 @@ export class Process {
       throw new Error("Process.output: stdout is undefined");
     }
     try {
-      return await readAll(this.stdout);
+      return readAllSync(this.stdout);
     } finally {
       this.stdout.close();
     }
@@ -75,7 +75,7 @@ export class Process {
       throw new Error("Process.stderrOutput: stderr is undefined");
     }
     try {
-      return await readAll(this.stderr);
+      return readAllSync(this.stderr);
     } finally {
       this.stderr.close();
     }
