@@ -20,7 +20,7 @@ unitTest({ perms: { read: true } }, function watchFsInvalidPath() {
     Deno.watchFs("non-existant.file");
   } catch (err) {
     console.error(err);
-    if (Deno.build.os === "win") {
+    if (Deno.build.os === "windows") {
       assert(
         err.message.includes(
           "Input watch path is neither a file nor a directory"

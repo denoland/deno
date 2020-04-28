@@ -4,7 +4,7 @@ import { unitTest, assert, assertEquals, assertThrows } from "./test_util.ts";
 function assertDirectory(path: string, mode?: number): void {
   const info = Deno.lstatSync(path);
   assert(info.isDirectory);
-  if (Deno.build.os !== "win" && mode !== undefined) {
+  if (Deno.build.os !== "windows" && mode !== undefined) {
     assertEquals(info.mode! & 0o777, mode & ~Deno.umask());
   }
 }
@@ -178,7 +178,7 @@ unitTest(
       Deno.mkdirSync(file, { recursive: true });
     }, Deno.errors.AlreadyExists);
 
-    if (Deno.build.os !== "win") {
+    if (Deno.build.os !== "windows") {
       const fileLink = testDir + "/fileLink";
       const dirLink = testDir + "/dirLink";
       const danglingLink = testDir + "/danglingLink";

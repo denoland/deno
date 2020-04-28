@@ -49,7 +49,7 @@ unitTest(
 unitTest(
   {
     // No signals on windows.
-    ignore: Deno.build.os === "win",
+    ignore: Deno.build.os === "windows",
     perms: { run: true },
   },
   async function runCommandFailedWithSignal(): Promise<void> {
@@ -326,7 +326,7 @@ unitTest(function signalNumbers(): void {
 });
 
 // Ignore signal tests on windows for now...
-if (Deno.build.os !== "win") {
+if (Deno.build.os !== "windows") {
   unitTest(function killPermissions(): void {
     let caughtError = false;
     try {

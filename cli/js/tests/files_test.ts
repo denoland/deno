@@ -172,7 +172,7 @@ unitTest(
     });
     file.close();
     const pathInfo = Deno.statSync(path);
-    if (Deno.build.os !== "win") {
+    if (Deno.build.os !== "windows") {
       assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
     }
   }
@@ -191,7 +191,7 @@ unitTest(
     });
     file.close();
     const pathInfo = Deno.statSync(path);
-    if (Deno.build.os !== "win") {
+    if (Deno.build.os !== "windows") {
       assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
     }
   }
