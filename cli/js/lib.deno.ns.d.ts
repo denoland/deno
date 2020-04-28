@@ -1872,7 +1872,7 @@ declare namespace Deno {
    *       const conn = await listener.accept();
    *       Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
    */
-  export function shutdown(rid: number, how: ShutdownMode): void;
+  export function shutdown(rid: number, how: ShutdownMode): Promise<void>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
