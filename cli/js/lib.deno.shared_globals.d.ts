@@ -1155,7 +1155,12 @@ declare class Worker extends EventTarget {
        *
        * Example:
        *    // mod.ts
-       *    const worker = new Worker("./deno_worker.ts", { type: "module", deno: true });
+       *    const worker = new Worker("./deno_worker.ts", {
+       *      type: "module",
+       *      [Deno.extensions]: {
+       *        includeNamespace: true,
+       *      },
+       *    });
        *    worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
        *
        *    // deno_worker.ts
@@ -1181,7 +1186,9 @@ declare class Worker extends EventTarget {
        *    hello world2
        *
        */
-      deno?: boolean;
+      [Deno.extensions]?: {
+        includeNamespace: boolean;
+      };
     }
   );
   postMessage(message: any, transfer: ArrayBuffer[]): void;

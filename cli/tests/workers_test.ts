@@ -269,7 +269,7 @@ Deno.test({
     });
     const denoWorker = new Worker("../tests/subdir/deno_worker.ts", {
       type: "module",
-      deno: true,
+      [Deno.extensions]: { includeNamespace: true },
     });
 
     regularWorker.onmessage = (e): void => {

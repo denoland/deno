@@ -131,6 +131,7 @@ declare global {
   // Assigned to `window` global - main runtime
   var Deno: {
     core: DenoCore;
+    readonly extensions: unique symbol;
   };
   var onload: ((e: Event) => void) | undefined;
   var onunload: ((e: Event) => void) | undefined;

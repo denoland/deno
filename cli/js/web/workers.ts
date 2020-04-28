@@ -13,6 +13,7 @@ import { blobURLMap } from "./web/url.ts";
 */
 import { EventImpl as Event } from "./event.ts";
 import { EventTargetImpl as EventTarget } from "./event_target.ts";
+import { extensions } from "./extensions.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -105,7 +106,9 @@ export interface Worker {
 export interface WorkerOptions {
   type?: "classic" | "module";
   name?: string;
-  deno?: boolean;
+  [extensions]?: {
+    includeNamespace: boolean;
+  };
 }
 
 export class WorkerImpl extends EventTarget implements Worker {
@@ -119,7 +122,11 @@ export class WorkerImpl extends EventTarget implements Worker {
 
   constructor(specifier: string, options?: WorkerOptions) {
     super();
-    const { type = "classic", name = "unknown" } = options ?? {};
+    const {
+      type = "classic",
+      name = "unknown",
+      [extensions]: { includeNamespace = false } = {},
+    } = options ?? {};
 
     if (type !== "module") {
       throw new Error(
@@ -147,13 +154,11 @@ export class WorkerImpl extends EventTarget implements Worker {
     }
     */
 
-    const useDenoNamespace = options ? !!options.deno : false;
-
     const { id } = createWorker(
       specifier,
       hasSourceCode,
       sourceCode,
-      useDenoNamespace,
+      includeNamespace,
       options?.name
     );
     this.#id = id;

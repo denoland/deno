@@ -2872,8 +2872,20 @@ declare namespace Deno {
     windowChange: () => SignalStream;
   };
 
-  /** A symbol which can be used as a key for a custom method which will be
-   * called when `Deno.inspect()` is called, or when the object is logged to
-   * the console. */
+  /** A key for a custom method which will be called when `Deno.inspect()` is
+   * called, or when the object is logged to the console. */
   export const customInspect: unique symbol;
+
+  /** A key for a bag of Deno-owned extensions to an API which is not
+   * Deno-owned, usually a web API.
+
+   *      new Worker("./worker.ts", {
+   *        type: "module",
+   *        name: "my-worker",
+   *        [Deno.extensions]: {
+   *          includeNamespace: true,
+   *        },
+   *      });
+   *  */
+  export const extensions: unique symbol;
 }

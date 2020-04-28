@@ -110,6 +110,7 @@ export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";
 export { writeTextFileSync, writeTextFile } from "./write_text_file.ts";
 export const args: string[] = [];
 export { TestDefinition, test } from "./testing.ts";
+export { extensions } from "./web/extensions.ts";
 
 // These are internal Deno APIs.  We are marking them as internal so they do not
 // appear in the runtime type library.
