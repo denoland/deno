@@ -212,3 +212,104 @@ unitTest(function createBadUrl(): void {
     new URL("0.0.0.0:8080");
   });
 });
+
+unitTest(function throwForInvalidPortConstructor(): void {
+  const urls = [
+    // If port is greater than 2^16 − 1, validation error, return failure.
+    `https://baz.qat:${2 ** 16}`,
+    "https://baz.qat:-32",
+    "https://baz.qat:deno",
+  ];
+
+  for (const url of urls) {
+    assertThrows(() => new URL(url));
+  }
+});
+
+unitTest(function doNotOverridePortIfInvalid(): void {
+  const initialPort = "3000";
+  const ports = [
+    // If port is greater than 2^16 − 1, validation error, return failure.
+    `${2 ** 16}`,
+    "-32",
+    "deno",
+  ];
+
+  for (const port of ports) {
+    const url = new URL(`https://deno.land:${initialPort}`);
+    url.port = port;
+    assertEquals(url.port, initialPort);
+  }
+});
+
+unitTest(function doNotOverridePortIfInvalid(): void {
+  const initialPort = "3000";
+  const ports = [
+    // If port is greater than 2^16 − 1, validation error, return failure.
+    `${2 ** 16}`,
+    "-32",
+    "deno",
+  ];
+
+  for (const port of ports) {
+    const url = new URL(`https://deno.land:${initialPort}`);
+    url.port = port;
+    assertEquals(url.port, initialPort);
+  }
+});
+
+unitTest(function emptyPortForSchemeDefaultPort(): void {
+  const nonDefaultPort = "3500";
+  const urls = [
+    { url: "ftp://baz.qat:21", port: "21", protocol: "ftp:" },
+    { url: "https://baz.qat:443", port: "443", protocol: "https:" },
+    { url: "wss://baz.qat:443", port: "443", protocol: "wss:" },
+    { url: "http://baz.qat:80", port: "80", protocol: "http:" },
+    { url: "ws://baz.qat:80", port: "80", protocol: "ws:" },
+    { url: "file://home/index.html", port: "", protocol: "file:" },
+    { url: "/foo", baseUrl: "ftp://baz.qat:21", port: "21", protocol: "ftp:" },
+    {
+      url: "/foo",
+      baseUrl: "https://baz.qat:443",
+      port: "443",
+      protocol: "https:",
+    },
+    {
+      url: "/foo",
+      baseUrl: "wss://baz.qat:443",
+      port: "443",
+      protocol: "wss:",
+    },
+    {
+      url: "/foo",
+      baseUrl: "http://baz.qat:80",
+      port: "80",
+      protocol: "http:",
+    },
+    { url: "/foo", baseUrl: "ws://baz.qat:80", port: "80", protocol: "ws:" },
+    {
+      url: "/foo",
+      baseUrl: "file://home/index.html",
+      port: "",
+      protocol: "file:",
+    },
+  ];
+
+  for (const { url: urlString, baseUrl, port, protocol } of urls) {
+    const url = new URL(urlString, baseUrl);
+    assertEquals(url.port, "");
+
+    url.port = nonDefaultPort;
+    assertEquals(url.port, nonDefaultPort);
+
+    url.port = port;
+    assertEquals(url.port, "");
+
+    // change scheme
+    url.protocol = "sftp:";
+    assertEquals(url.port, port);
+
+    url.protocol = protocol;
+    assertEquals(url.port, "");
+  }
+});

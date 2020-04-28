@@ -11,7 +11,7 @@ import { emptyDir, emptyDirSync } from "./empty_dir.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-Deno.test(async function emptyDirIfItNotExist(): Promise<void> {
+Deno.test("emptyDirIfItNotExist", async function (): Promise<void> {
   const testDir = path.join(testdataDir, "empty_dir_test_1");
   const testNestDir = path.join(testDir, "nest");
   // empty a dir which not exist. then it will create new one
@@ -27,7 +27,7 @@ Deno.test(async function emptyDirIfItNotExist(): Promise<void> {
   }
 });
 
-Deno.test(function emptyDirSyncIfItNotExist(): void {
+Deno.test("emptyDirSyncIfItNotExist", function (): void {
   const testDir = path.join(testdataDir, "empty_dir_test_2");
   const testNestDir = path.join(testDir, "nest");
   // empty a dir which not exist. then it will create new one
@@ -43,7 +43,7 @@ Deno.test(function emptyDirSyncIfItNotExist(): void {
   }
 });
 
-Deno.test(async function emptyDirIfItExist(): Promise<void> {
+Deno.test("emptyDirIfItExist", async function (): Promise<void> {
   const testDir = path.join(testdataDir, "empty_dir_test_3");
   const testNestDir = path.join(testDir, "nest");
   // create test dir
@@ -86,7 +86,7 @@ Deno.test(async function emptyDirIfItExist(): Promise<void> {
   }
 });
 
-Deno.test(function emptyDirSyncIfItExist(): void {
+Deno.test("emptyDirSyncIfItExist", function (): void {
   const testDir = path.join(testdataDir, "empty_dir_test_4");
   const testNestDir = path.join(testDir, "nest");
   // create test dir

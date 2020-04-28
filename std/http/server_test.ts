@@ -54,7 +54,7 @@ const responseTests: ResponseTest[] = [
   },
 ];
 
-test(async function responseWrite(): Promise<void> {
+test("responseWrite", async function (): Promise<void> {
   for (const testCase of responseTests) {
     const buf = new Buffer();
     const bufw = new BufWriter(buf);
@@ -69,7 +69,7 @@ test(async function responseWrite(): Promise<void> {
   }
 });
 
-test(function requestContentLength(): void {
+test("requestContentLength", function (): void {
   // Has content length
   {
     const req = new ServerRequest();
@@ -122,7 +122,7 @@ function totalReader(r: Deno.Reader): TotalReader {
     },
   };
 }
-test(async function requestBodyWithContentLength(): Promise<void> {
+test("requestBodyWithContentLength", async function (): Promise<void> {
   {
     const req = new ServerRequest();
     req.headers = new Headers();
@@ -191,7 +191,7 @@ test("ServerRequest.finalize() should consume unread body / chunked, trailers", 
   assertEquals(req.headers.get("deno"), "land");
   assertEquals(req.headers.get("node"), "js");
 });
-test(async function requestBodyWithTransferEncoding(): Promise<void> {
+test("requestBodyWithTransferEncoding", async function (): Promise<void> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
@@ -240,7 +240,7 @@ test(async function requestBodyWithTransferEncoding(): Promise<void> {
   }
 });
 
-test(async function requestBodyReaderWithContentLength(): Promise<void> {
+test("requestBodyReaderWithContentLength", async function (): Promise<void> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
@@ -283,7 +283,7 @@ test(async function requestBodyReaderWithContentLength(): Promise<void> {
   }
 });
 
-test(async function requestBodyReaderWithTransferEncoding(): Promise<void> {
+test("requestBodyReaderWithTransferEncoding", async function (): Promise<void> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();

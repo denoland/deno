@@ -8,12 +8,12 @@ const {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } = Deno as any;
 
-const customInspect = Deno.symbols.customInspect;
+const customInspect = Deno.customInspect;
 const {
   Console,
   stringifyArgs,
   // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
-} = Deno[Deno.symbols.internal];
+} = Deno[Deno.internal];
 
 function stringify(...args: unknown[]): string {
   return stringifyArgs(args).replace(/\n$/, "");
