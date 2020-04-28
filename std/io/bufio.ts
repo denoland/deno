@@ -143,7 +143,7 @@ export class BufReader implements Reader {
       this.r = 0;
       this.w = 0;
       rr = await this.rd.read(this.buf);
-      if (rr == 0 || rr === null) return rr;
+      if (rr === 0 || rr === null) return rr;
       assert(rr >= 0, "negative read");
       this.w += rr;
     }
