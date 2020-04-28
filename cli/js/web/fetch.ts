@@ -5,7 +5,7 @@ import * as domTypes from "./dom_types.d.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob.ts";
 import * as io from "../io.ts";
-import { read } from "../ops/io.ts";
+import { readSync } from "../ops/io.ts";
 import { close } from "../ops/resources.ts";
 import { Buffer } from "../buffer.ts";
 import { fetch as opFetch, FetchResponse } from "../ops/fetch.ts";
