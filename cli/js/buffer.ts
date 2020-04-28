@@ -4,13 +4,13 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 
-import { Reader, Writer, EOF, SyncReader, SyncWriter } from "./io.ts";
+import { Writer, EOF, SyncReader, SyncWriter } from "./io.ts";
 import { assert } from "./util.ts";
 import { TextDecoder } from "./web/text_encoding.ts";
 
 // MIN_READ is the minimum ArrayBuffer size passed to a read call by
 // buffer.ReadFrom. As long as the Buffer has at least MIN_READ bytes beyond
-// what is required to hold the contents of r, readFrom() will not grow the
+// what is required to hold the contents of r, readFromSync() will not grow the
 // underlying buffer.
 const MIN_READ = 512;
 const MAX_SIZE = 2 ** 32 - 2;
@@ -151,25 +151,6 @@ export class Buffer implements SyncReader, SyncWriter {
     this.#reslice(m);
   }
 
-  async readFrom(r: Reader): Promise<number> {
-    let n = 0;
-    while (true) {
-      try {
-        const i = this.#grow(MIN_READ);
-        this.#reslice(i);
-        const fub = new Uint8Array(this.#buf.buffer, i);
-        const nread = await r.read(fub);
-        if (nread === EOF) {
-          return n;
-        }
-        this.#reslice(i + nread);
-        n += nread;
-      } catch (e) {
-        return n;
-      }
-    }
-  }
-
   readFromSync(r: SyncReader): number {
     let n = 0;
     while (true) {
@@ -190,12 +171,7 @@ export class Buffer implements SyncReader, SyncWriter {
   }
 }
 
-export async function readAll(r: Reader): Promise<Uint8Array> {
-  const buf = new Buffer();
-  await buf.readFrom(r);
-  return buf.bytes();
-}
-
+      
 export function readAllSync(r: SyncReader): Uint8Array {
   const buf = new Buffer();
   buf.readFromSync(r);
