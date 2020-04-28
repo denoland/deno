@@ -140,43 +140,16 @@ export interface ListenOptions {
   transport?: "tcp" | "udp";
 }
 
-export interface UnixListenOptions {
-  transport: "unix" | "unixpacket";
-  address: string;
-}
-
 export function listen(
   options: ListenOptions & { transport?: "tcp" }
 ): Listener;
 export function listen(
-  options: UnixListenOptions & { transport: "unix" }
-): Listener;
-export function listen(
   options: ListenOptions & { transport: "udp" }
 ): DatagramConn;
-export function listen(
-  options: UnixListenOptions & { transport: "unixpacket" }
-): DatagramConn;
-export function listen(
-  options: ListenOptions | UnixListenOptions
-): Listener | DatagramConn {
+export function listen(options: ListenOptions): Listener | DatagramConn {
   let res;
 
-  if (options.transport === "unix" || options.transport === "unixpacket") {
-    res = netOps.listen(options);
-  } else {
-    res = netOps.listen({
-      transport: "tcp",
-      hostname: "127.0.0.1",
-      ...(options as ListenOptions),
-    });
-  }
-
-  if (
-    !options.transport ||
-    options.transport === "tcp" ||
-    options.transport === "unix"
-  ) {
+  if (!options.transport || options.transport === "tcp") {
     return new ListenerImpl(res.rid, res.localAddr);
   } else {
     return new DatagramImpl(res.rid, res.localAddr);

@@ -11,7 +11,6 @@ export {
 export { build, OperatingSystem, Arch } from "./build.ts";
 export { chmodSync, chmod } from "./ops/fs/chmod.ts";
 export { chownSync, chown } from "./ops/fs/chown.ts";
-export { transpileOnly, compile, bundle } from "./compiler/api.ts";
 export { customInspect, inspect } from "./web/console.ts";
 export { copyFileSync, copyFile } from "./ops/fs/copy_file.ts";
 export {
@@ -21,7 +20,6 @@ export {
   DiagnosticMessageChain,
 } from "./diagnostics.ts";
 export { chdir, cwd } from "./ops/fs/dir.ts";
-export { applySourceMap, formatDiagnostics } from "./ops/errors.ts";
 export { errors } from "./errors.ts";
 export {
   File,
@@ -59,7 +57,6 @@ export {
   ReadWriteCloser,
   ReadWriteSeeker,
 } from "./io.ts";
-export { linkSync, link } from "./ops/fs/link.ts";
 export {
   makeTempDirSync,
   makeTempDir,
@@ -75,18 +72,8 @@ export {
   DatagramConn,
   Listener,
   Conn,
-  ShutdownMode,
-  shutdown,
 } from "./net.ts";
-export {
-  dir,
-  env,
-  exit,
-  execPath,
-  hostname,
-  loadavg,
-  osRelease,
-} from "./ops/os.ts";
+export { dir, env, exit, execPath, hostname } from "./ops/os.ts";
 export {
   permissions,
   PermissionName,
@@ -94,7 +81,6 @@ export {
   PermissionStatus,
   Permissions,
 } from "./permissions.ts";
-export { openPlugin } from "./ops/plugins.ts";
 export { kill } from "./ops/process.ts";
 export { run, RunOptions, Process, ProcessStatus } from "./process.ts";
 export { DirEntry, readdirSync, readdir } from "./ops/fs/read_dir.ts";
@@ -104,14 +90,10 @@ export { realpathSync, realpath } from "./ops/fs/realpath.ts";
 export { removeSync, remove, RemoveOptions } from "./ops/fs/remove.ts";
 export { renameSync, rename } from "./ops/fs/rename.ts";
 export { resources, close } from "./ops/resources.ts";
-export { signal, signals, Signal, SignalStream } from "./signals.ts";
 export { FileInfo, statSync, lstatSync, stat, lstat } from "./ops/fs/stat.ts";
-export { symlinkSync, symlink } from "./ops/fs/symlink.ts";
 export { connectTls, listenTls, startTls } from "./tls.ts";
 export { truncateSync, truncate } from "./ops/fs/truncate.ts";
-export { isatty, setRaw } from "./ops/tty.ts";
-export { umask } from "./ops/fs/umask.ts";
-export { utimeSync, utime } from "./ops/fs/utime.ts";
+export { isatty } from "./ops/tty.ts";
 export { version } from "./version.ts";
 export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";
 export const args: string[] = [];
