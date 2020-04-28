@@ -52,7 +52,7 @@ unitTest(
   function netUnixPacketListenClose(): void {
     const filePath = Deno.makeTempFileSync();
     const socket = Deno.listenDatagram({
-      address: filePath,
+      path: filePath,
       transport: "unixpacket",
     });
     assert(socket.addr.transport === "unixpacket");
@@ -257,14 +257,14 @@ unitTest(
   async function netUnixPacketSendReceive(): Promise<void> {
     const filePath = await Deno.makeTempFile();
     const alice = Deno.listenDatagram({
-      address: filePath,
+      path: filePath,
       transport: "unixpacket",
     });
     assert(alice.addr.transport === "unixpacket");
     assertEquals(alice.addr.path, filePath);
 
     const bob = Deno.listenDatagram({
-      address: filePath,
+      path: filePath,
       transport: "unixpacket",
     });
     assert(bob.addr.transport === "unixpacket");
@@ -330,7 +330,7 @@ unitTest(
   async function netUnixPacketListenCloseWhileIterating(): Promise<void> {
     const filePath = Deno.makeTempFileSync();
     const socket = Deno.listenDatagram({
-      address: filePath,
+      path: filePath,
       transport: "unixpacket",
     });
     const nextWhileClosing = socket[Symbol.asyncIterator]().next();
