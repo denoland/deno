@@ -495,7 +495,7 @@ fn op_listen(
       transport_args: ArgsEnum::Ip(args),
     } => {
       if transport == "udp" {
-        state.check_unstable("Deno.listenDatagram")?;
+        state.check_unstable("Deno.listenDatagram");
       }
       state.check_net(&args.hostname, args.port)?;
       let addr = resolve_addr(&args.hostname, args.port)?;
@@ -525,7 +525,7 @@ fn op_listen(
       transport_args: ArgsEnum::Unix(args),
     } if transport == "unix" || transport == "unixpacket" => {
       if transport == "unixpacket" {
-        state.check_unstable("Deno.listenDatagram")?;
+        state.check_unstable("Deno.listenDatagram");
       }
       let address_path = net_unix::Path::new(&args.path);
       state.check_read(&address_path)?;
