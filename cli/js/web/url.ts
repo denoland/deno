@@ -392,7 +392,6 @@ export class URLImpl implements URL {
       throw new TypeError("URL requires a base URL.");
     }
 
-    this.port = port;
     this.#updateSearchParams();
   }
 
