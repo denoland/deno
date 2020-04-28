@@ -28,7 +28,7 @@ function hasHeaderValueOf(s: string, value: string): boolean {
   return new RegExp(`^${value}[\t\s]*;?`).test(s);
 }
 
-class Body implements domTypes.Body, ReadableStream<Uint8Array>, io.ReadCloser {
+class Body implements domTypes.Body, ReadableStream<Uint8Array>, io.ReadCloser, io.SyncReader {
   #bodyUsed = false;
   #bodyPromise: Promise<ArrayBuffer> | null = null;
   #data: ArrayBuffer | null = null;
@@ -45,7 +45,7 @@ class Body implements domTypes.Body, ReadableStream<Uint8Array>, io.ReadCloser {
     assert(this.#bodyPromise == null);
     const buf = new Buffer();
     try {
-      const nread = await buf.readFrom(this);
+      const nread = buf.readFromSync(this);
       const ui8 = buf.bytes();
       assert(ui8.byteLength === nread);
       this.#data = ui8.buffer.slice(
@@ -57,7 +57,7 @@ class Body implements domTypes.Body, ReadableStream<Uint8Array>, io.ReadCloser {
       this.close();
     }
 
-    return this.#data;
+    return Promise.resolve(this.#data);
   };
 
   // eslint-disable-next-line require-await
@@ -222,6 +222,11 @@ class Body implements domTypes.Body, ReadableStream<Uint8Array>, io.ReadCloser {
   read(p: Uint8Array): Promise<number | io.EOF> {
     this.#bodyUsed = true;
     return read(this.#rid, p);
+  }
+
+  readSync(p: Uint8Array): number | io.EOF {
+    this.#bodyUsed = true;
+    return readSync(this.#rid, p);
   }
 
   close(): Promise<void> {
