@@ -1667,11 +1667,12 @@ declare namespace Deno {
     Busy: ErrorConstructor;
   };
 
-  /** **UNSTABLE**: potentially want names to overlap more with browser.
+  /** The name of a "powerful feature" which needs permission.
    *
-   * The permissions as granted by the caller.
+   * See: https://w3c.github.io/permissions/#permission-registry
    *
-   * See: https://w3c.github.io/permissions/#permission-registry */
+   * Note that the definition of `PermissionName` in the above spec is swapped
+   * out for a set of Deno permissions which are not web-compatible. */
   export type PermissionName =
     | "run"
     | "read"
@@ -1686,39 +1687,45 @@ declare namespace Deno {
    * See: https://w3c.github.io/permissions/#status-of-a-permission */
   export type PermissionState = "granted" | "denied" | "prompt";
 
-  interface RunPermissionDescriptor {
+  export interface RunPermissionDescriptor {
     name: "run";
   }
 
-  interface ReadWritePermissionDescriptor {
-    name: "read" | "write";
+  export interface ReadPermissionDescriptor {
+    name: "read";
     path?: string;
   }
 
-  interface NetPermissionDescriptor {
+  export interface WritePermissionDescriptor {
+    name: "write";
+    path?: string;
+  }
+
+  export interface NetPermissionDescriptor {
     name: "net";
     url?: string;
   }
 
-  interface EnvPermissionDescriptor {
+  export interface EnvPermissionDescriptor {
     name: "env";
   }
 
-  interface PluginPermissionDescriptor {
+  export interface PluginPermissionDescriptor {
     name: "plugin";
   }
 
-  interface HrtimePermissionDescriptor {
+  export interface HrtimePermissionDescriptor {
     name: "hrtime";
   }
 
-  /** Permission descriptors which define a permission which can be queried,
+  /** Permission descriptors which define a permission and can be queried,
    * requested, or revoked.
    *
    * See: https://w3c.github.io/permissions/#permission-descriptor */
-  type PermissionDescriptor =
+  export type PermissionDescriptor =
     | RunPermissionDescriptor
-    | ReadWritePermissionDescriptor
+    | ReadPermissionDescriptor
+    | WritePermissionDescriptor
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
     | PluginPermissionDescriptor
@@ -1753,7 +1760,9 @@ declare namespace Deno {
     request(desc: PermissionDescriptor): Promise<PermissionStatus>;
   }
 
-  /** **UNSTABLE**: maybe move to `navigator.permissions` to match web API. */
+  /** **UNSTABLE**: maybe move to `navigator.permissions` to match web API. It
+   * could look like `navigator.permissions.query({ name: Deno.symbols.read })`.
+   */
   export const permissions: Permissions;
 
   /** see: https://w3c.github.io/permissions/#permissionstatus */
