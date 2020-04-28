@@ -607,21 +607,22 @@ checksum = "52ba6eb47c2131e784a38b726eb54c1e1484904f013e576a25354d0124161af6"
 
 [[package]]
 name = "dprint-core"
-version = "0.14.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93213397182b20fc4565e6ad93cc30cb1825a276d11bcac969cd06c63006898c"
+checksum = "2fe2ae2e02c20dcb77d422c6326db6c2a11a3dd37eb012b1cf69703685d272fb"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.13.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdb73fe3655b530e17c5606b950cc55b0a05e7bdda50be11578f8eddade7ef96"
+checksum = "677d80078f5e36e7e697f5f1cc175cacb4cb206fd5f95c918023778b0a944b33"
 dependencies = [
  "dprint-core",
  "serde",
+ "serde_json",
  "swc_common",
  "swc_ecma_ast",
  "swc_ecma_parser",

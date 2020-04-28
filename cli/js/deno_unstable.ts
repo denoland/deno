@@ -13,4 +13,4 @@ export { signal, signals, Signal, SignalStream } from "./signals.ts";
 export { setRaw } from "./ops/tty.ts";
 export { utimeSync, utime } from "./ops/fs/utime.ts";
 export { ShutdownMode, shutdown } from "./net.ts";
-export { listen, connect } from "./net_unstable.ts";
+export { listen, listenDatagram, connect } from "./net_unstable.ts";

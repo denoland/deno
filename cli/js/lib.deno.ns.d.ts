@@ -1486,28 +1486,6 @@ declare namespace Deno {
 
   export type Addr = NetAddr | UnixAddr;
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * A generic transport listener for message-oriented protocols. */
-  export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
-    /** **UNSTABLE**: new API, yet to be vetted.
-     *
-     * Waits for and resolves to the next message to the `UDPConn`. */
-    receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
-    /** UNSTABLE: new API, yet to be vetted.
-     *
-     * Sends a message to the target. */
-    send(p: Uint8Array, addr: Addr): Promise<void>;
-    /** UNSTABLE: new API, yet to be vetted.
-     *
-     * Close closes the socket. Any pending message promises will be rejected
-     * with errors. */
-    close(): void;
-    /** Return the address of the `UDPConn`. */
-    readonly addr: Addr;
-    [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
-  }
-
   /** A generic network listener for stream-oriented protocols. */
   export interface Listener extends AsyncIterable<Conn> {
     /** Waits for and resolves to the next connection to the `Listener`. */
@@ -1528,11 +1506,12 @@ declare namespace Deno {
     readonly remoteAddr: Addr;
     /** The resource ID of the connection. */
     readonly rid: number;
-    /** Shuts down (`shutdown(2)`) the reading side of the TCP connection. Most
-     * callers should just use `close()`. */
-    closeRead(): void;
     /** Shuts down (`shutdown(2)`) the writing side of the TCP connection. Most
-     * callers should just use `close()`. */
+     * callers should just use `close()`.
+     *
+     * **Unstable** because of lack of testing and because Deno.shutdown is also
+     * unstable.
+     * */
     closeWrite(): void;
   }
 
@@ -1544,9 +1523,7 @@ declare namespace Deno {
     hostname?: string;
   }
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Listen announces on the local transport address.
+  /** Listen announces on the local transport address.
    *
    *      const listener1 = Deno.listen({ port: 80 })
    *      const listener2 = Deno.listen({ hostname: "192.0.2.1", port: 80 })
@@ -1557,18 +1534,6 @@ declare namespace Deno {
   export function listen(
     options: ListenOptions & { transport?: "tcp" }
   ): Listener;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Listen announces on the local transport address.
-   *
-   *      const listener1 = Deno.listen({ port: 80, transport: "udp" })
-   *      const listener2 = Deno.listen({ hostname: "golang.org", port: 80, transport: "udp" });
-   *
-   * Requires `allow-net` permission. */
-  export function listen(
-    options: ListenOptions & { transport: "udp" }
-  ): DatagramConn;
 
   export interface ListenTlsOptions extends ListenOptions {
     /** Server certificate file. */
@@ -1925,16 +1890,10 @@ declare namespace Deno {
   export const Signal: typeof MacOSSignal | typeof LinuxSignal;
 
   interface InspectOptions {
-    showHidden?: boolean;
     depth?: number;
-    colors?: boolean;
-    indentLevel?: number;
   }
 
-  /** **UNSTABLE**: The exact form of the string output is under consideration
-   * and may change.
-   *
-   * Converts the input into a string that has the same format as printed by
+  /** Converts the input into a string that has the same format as printed by
    * `console.log()`.
    *
    *      const obj = {};

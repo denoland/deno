@@ -276,7 +276,6 @@ test("[ws] ws.close() should use 1000 as close code", async () => {
 function dummyConn(r: Reader, w: Writer): Conn {
   return {
     rid: -1,
-    closeRead: (): void => {},
     closeWrite: (): void => {},
     read: (x): Promise<number | null> => r.read(x),
     write: (x): Promise<number> => w.write(x),

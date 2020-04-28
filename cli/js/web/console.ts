@@ -6,9 +6,7 @@ import { PromiseState } from "./promise.ts";
 
 type ConsoleContext = Set<unknown>;
 type InspectOptions = Partial<{
-  showHidden: boolean;
   depth: number;
-  colors: boolean;
   indentLevel: number;
 }>;
 

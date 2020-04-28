@@ -48,12 +48,7 @@ export class ConnImpl implements Conn {
     close(this.rid);
   }
 
-  // TODO(lucacasonato): make these unavailable in stable
-  closeRead(): void {
-    netOps.shutdown(this.rid, netOps.ShutdownMode.Read);
-  }
-
-  // TODO(lucacasonato): make these unavailable in stable
+  // TODO(lucacasonato): make this unavailable in stable
   closeWrite(): void {
     netOps.shutdown(this.rid, netOps.ShutdownMode.Write);
   }
@@ -132,34 +127,26 @@ export interface Conn extends Reader, Writer, Closer {
   localAddr: Addr;
   remoteAddr: Addr;
   rid: number;
-  closeRead(): void;
   closeWrite(): void;
 }
 
 export interface ListenOptions {
   port: number;
   hostname?: string;
-  transport?: "tcp" | "udp";
+  transport?: "tcp";
 }
 
 export function listen(
   options: ListenOptions & { transport?: "tcp" }
 ): Listener;
-export function listen(
-  options: ListenOptions & { transport: "udp" }
-): DatagramConn;
-export function listen(options: ListenOptions): Listener | DatagramConn {
+export function listen(options: ListenOptions): Listener {
   const res = netOps.listen({
     transport: "tcp",
     hostname: "127.0.0.1",
     ...(options as ListenOptions),
   });
 
-  if (!options.transport || options.transport === "tcp") {
-    return new ListenerImpl(res.rid, res.localAddr);
-  } else {
-    return new DatagramImpl(res.rid, res.localAddr);
-  }
+  return new ListenerImpl(res.rid, res.localAddr);
 }
 
 export interface ConnectOptions {

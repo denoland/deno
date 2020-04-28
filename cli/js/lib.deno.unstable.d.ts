@@ -850,6 +850,28 @@ declare namespace Deno {
    */
   export function shutdown(rid: number, how: ShutdownMode): Promise<void>;
 
+  /** **UNSTABLE**:: new API, yet to be vetted.
+   *
+   * A generic transport listener for message-oriented protocols. */
+  export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Waits for and resolves to the next message to the `UDPConn`. */
+    receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
+    /** UNSTABLE: new API, yet to be vetted.
+     *
+     * Sends a message to the target. */
+    send(p: Uint8Array, addr: Addr): Promise<void>;
+    /** UNSTABLE: new API, yet to be vetted.
+     *
+     * Close closes the socket. Any pending message promises will be rejected
+     * with errors. */
+    close(): void;
+    /** Return the address of the `UDPConn`. */
+    readonly addr: Addr;
+    [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
+  }
+
   export interface UnixListenOptions {
     /** A Path to the Unix Socket. */
     path: string;
@@ -866,14 +888,36 @@ declare namespace Deno {
     options: UnixListenOptions & { transport: "unix" }
   ): Listener;
 
-  /** **UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: new API
    *
    * Listen announces on the local transport address.
    *
-   *     const listener = Deno.listen({ path: "/foo/bar.sock", transport: "unixpacket" })
+   *      const listener1 = Deno.listenDatagram({
+   *        port: 80,
+   *        transport: "udp"
+   *      });
+   *      const listener2 = Deno.listenDatagram({
+   *        hostname: "golang.org",
+   *        port: 80,
+   *        transport: "udp"
+   *      });
+   *
+   * Requires `allow-net` permission. */
+  export function listenDatagram(
+    options: ListenOptions & { transport: "udp" }
+  ): DatagramConn;
+
+  /** **UNSTABLE**: new API
+   *
+   * Listen announces on the local transport address.
+   *
+   *     const listener = Deno.listenDatagram({
+   *       address: "/foo/bar.sock",
+   *       transport: "unixpacket"
+   *     });
    *
    * Requires `allow-read` and `allow-write` permission. */
-  export function listen(
+  export function listenDatagram(
     options: UnixListenOptions & { transport: "unixpacket" }
   ): DatagramConn;
 

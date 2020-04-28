@@ -1,6 +1,5 @@
 import * as netOps from "./ops/net.ts";
 import {
-  ListenOptions,
   Listener,
   DatagramConn,
   ListenerImpl,
@@ -11,6 +10,12 @@ import {
   listen as stableListen,
   connect as stableConnect,
 } from "./net.ts";
+
+export interface ListenOptions {
+  port: number;
+  hostname?: string;
+  transport?: "tcp" | "udp";
+}
 
 export interface UnixListenOptions {
   transport: "unix" | "unixpacket";
@@ -23,26 +28,36 @@ export function listen(
 export function listen(
   options: UnixListenOptions & { transport: "unix" }
 ): Listener;
-export function listen(
-  options: ListenOptions & { transport: "udp" }
-): DatagramConn;
-export function listen(
-  options: UnixListenOptions & { transport: "unixpacket" }
-): DatagramConn;
-export function listen(
-  options: ListenOptions | UnixListenOptions
-): Listener | DatagramConn {
-  if (options.transport === "unix" || options.transport === "unixpacket") {
+export function listen(options: ListenOptions | UnixListenOptions): Listener {
+  if (options.transport === "unix") {
     const res = netOps.listen(options);
-    if (options.transport === "unix") {
-      return new ListenerImpl(res.rid, res.localAddr);
-    } else {
-      return new DatagramImpl(res.rid, res.localAddr);
-    }
+    return new ListenerImpl(res.rid, res.localAddr);
   } else {
-    // Contrary to what the typing says it can also be "udp"
     return stableListen(options as ListenOptions & { transport?: "tcp" });
   }
+}
+
+export function listenDatagram(
+  options: ListenOptions & { transport: "udp" }
+): DatagramConn;
+export function listenDatagram(
+  options: UnixListenOptions & { transport: "unixpacket" }
+): DatagramConn;
+export function listenDatagram(
+  options: ListenOptions | UnixListenOptions
+): DatagramConn {
+  let res;
+  if (options.transport === "unixpacket") {
+    res = netOps.listen(options);
+  } else {
+    res = netOps.listen({
+      transport: "udp",
+      hostname: "127.0.0.1",
+      ...(options as ListenOptions),
+    });
+  }
+
+  return new DatagramImpl(res.rid, res.localAddr);
 }
 
 export interface UnixConnectOptions {

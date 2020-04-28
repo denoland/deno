@@ -58,7 +58,7 @@ export {
 } from "./ops/fs/make_temp.ts";
 export { metrics, Metrics } from "./ops/runtime.ts";
 export { mkdirSync, mkdir, MkdirOptions } from "./ops/fs/mkdir.ts";
-export { connect, listen, DatagramConn, Listener, Conn } from "./net.ts";
+export { connect, listen, Listener, Conn } from "./net.ts";
 export { dir, env, exit, execPath, hostname } from "./ops/os.ts";
 export {
   permissions,

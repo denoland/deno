@@ -12,7 +12,6 @@ export function mockConn(base: Partial<Deno.Conn> = {}): Deno.Conn {
       port: 0,
     },
     rid: -1,
-    closeRead: (): void => {},
     closeWrite: (): void => {},
     read: (): Promise<number | null> => {
       return Promise.resolve(0);
