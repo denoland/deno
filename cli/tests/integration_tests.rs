@@ -1582,6 +1582,18 @@ itest!(unstable {
   output: "unstable.out",
 });
 
+itest!(unstable_disabled {
+  args: "run --reload unstable.ts",
+  check_stderr: true,
+  exit_code: 1,
+  output: "unstable_disabled.out",
+});
+
+itest!(unstable_enabled {
+  args: "run --reload --unstable unstable.ts",
+  output: "unstable_enabled.out",
+});
+
 itest!(_053_import_compression {
   args: "run --reload --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",

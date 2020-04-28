@@ -1,0 +1,7 @@
+[WILDCARD]error TS2339: Property '__unstable' does not exist on type 'typeof Deno'.
+
+[WILDCARD]cli/tests/unstable.ts:1:18
+
+1 console.log(Deno.__unstable);
+                   ~~~~~~~~~~
+
