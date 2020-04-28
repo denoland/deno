@@ -48,10 +48,6 @@ export class ConnImpl implements Conn {
     close(this.rid);
   }
 
-  closeRead(): void {
-    netOps.shutdown(this.rid, netOps.ShutdownMode.Read);
-  }
-
   closeWrite(): void {
     netOps.shutdown(this.rid, netOps.ShutdownMode.Write);
   }
@@ -130,7 +126,6 @@ export interface Conn extends Reader, Writer, Closer {
   localAddr: Addr;
   remoteAddr: Addr;
   rid: number;
-  closeRead(): void;
   closeWrite(): void;
 }
 
