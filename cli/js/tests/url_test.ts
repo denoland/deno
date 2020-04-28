@@ -219,11 +219,17 @@ unitTest(function throwForInvalidPortConstructor(): void {
     `https://baz.qat:${2 ** 16}`,
     "https://baz.qat:-32",
     "https://baz.qat:deno",
+    "https://baz.qat:9land",
+    "https://baz.qat:10.5",
   ];
 
   for (const url of urls) {
     assertThrows(() => new URL(url));
   }
+
+  // Do not throw for 0 & 65535
+  new URL("https://baz.qat:65535");
+  new URL("https://baz.qat:0");
 });
 
 unitTest(function doNotOverridePortIfInvalid(): void {
@@ -233,22 +239,8 @@ unitTest(function doNotOverridePortIfInvalid(): void {
     `${2 ** 16}`,
     "-32",
     "deno",
-  ];
-
-  for (const port of ports) {
-    const url = new URL(`https://deno.land:${initialPort}`);
-    url.port = port;
-    assertEquals(url.port, initialPort);
-  }
-});
-
-unitTest(function doNotOverridePortIfInvalid(): void {
-  const initialPort = "3000";
-  const ports = [
-    // If port is greater than 2^16 − 1, validation error, return failure.
-    `${2 ** 16}`,
-    "-32",
-    "deno",
+    "9land",
+    "10.5",
   ];
 
   for (const port of ports) {

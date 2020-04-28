@@ -193,10 +193,10 @@ export class URLImpl implements URL {
     // https://url.spec.whatwg.org/#port-state
     if (value === "") return value;
 
-    const port = parseInt(value, 10);
-
-    if (!Number.isNaN(port) && port > 0 && port <= MAX_PORT)
+    const port = Number(value);
+    if (Number.isInteger(port) && port >= 0 && port <= MAX_PORT) {
       return port.toString();
+    }
 
     return undefined;
   };
