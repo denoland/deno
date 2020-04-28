@@ -10,7 +10,7 @@ test("ioStringReader", async function (): Promise<void> {
   const res0 = await r.read(new Uint8Array(6));
   assertEquals(res0, 6);
   const res1 = await r.read(new Uint8Array(6));
-  assertEquals(res1, Deno.EOF);
+  assertEquals(res1, null);
 });
 
 test("ioStringReader", async function (): Promise<void> {
@@ -23,7 +23,7 @@ test("ioStringReader", async function (): Promise<void> {
   assertEquals(res2, 3);
   assertEquals(decode(buf), "def");
   const res3 = await r.read(buf);
-  assertEquals(res3, Deno.EOF);
+  assertEquals(res3, null);
   assertEquals(decode(buf), "def");
 });
 

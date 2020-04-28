@@ -6,12 +6,7 @@
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "./mod.ts";
 import { stringsReader } from "../io/util.ts";
-import {
-  assert,
-  assertEquals,
-  assertThrows,
-  assertNotEOF,
-} from "../testing/asserts.ts";
+import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 const { test } = Deno;
 
 function reader(s: string): TextProtoReader {
@@ -31,7 +26,7 @@ test({
 test("[textproto] ReadEmpty", async () => {
   const r = reader("");
   const m = await r.readMIMEHeader();
-  assertEquals(m, Deno.EOF);
+  assertEquals(m, null);
 });
 
 test("[textproto] Reader", async () => {
@@ -43,7 +38,7 @@ test("[textproto] Reader", async () => {
   assertEquals(s, "line2");
 
   s = await r.readLine();
-  assert(s === Deno.EOF);
+  assert(s === null);
 });
 
 test({
@@ -53,7 +48,8 @@ test({
       "my-key: Value 1  \r\nLong-key: Even Longer Value\r\nmy-Key: " +
       "Value 2\r\n\n";
     const r = reader(input);
-    const m = assertNotEOF(await r.readMIMEHeader());
+    const m = await r.readMIMEHeader();
+    assert(m !== null);
     assertEquals(m.get("My-Key"), "Value 1, Value 2");
     assertEquals(m.get("Long-key"), "Even Longer Value");
   },
@@ -64,7 +60,8 @@ test({
   async fn(): Promise<void> {
     const input = "Foo: bar\n\n";
     const r = reader(input);
-    const m = assertNotEOF(await r.readMIMEHeader());
+    const m = await r.readMIMEHeader();
+    assert(m !== null);
     assertEquals(m.get("Foo"), "bar");
   },
 });
@@ -74,7 +71,8 @@ test({
   async fn(): Promise<void> {
     const input = ": bar\ntest-1: 1\n\n";
     const r = reader(input);
-    const m = assertNotEOF(await r.readMIMEHeader());
+    const m = await r.readMIMEHeader();
+    assert(m !== null);
     assertEquals(m.get("Test-1"), "1");
   },
 });
@@ -89,7 +87,8 @@ test({
     }
     const sdata = data.join("");
     const r = reader(`Cookie: ${sdata}\r\n\r\n`);
-    const m = assertNotEOF(await r.readMIMEHeader());
+    const m = await r.readMIMEHeader();
+    assert(m !== null);
     assertEquals(m.get("Cookie"), sdata);
   },
 });
@@ -106,7 +105,8 @@ test({
       "Audio Mode : None\r\n" +
       "Privilege : 127\r\n\r\n";
     const r = reader(input);
-    const m = assertNotEOF(await r.readMIMEHeader());
+    const m = await r.readMIMEHeader();
+    assert(m !== null);
     assertEquals(m.get("Foo"), "bar");
     assertEquals(m.get("Content-Language"), "en");
     // Make sure we drop headers with trailing whitespace
@@ -174,7 +174,8 @@ test({
       "------WebKitFormBoundaryimeZ2Le9LjohiUiG--\r\n\n",
     ];
     const r = reader(input.join(""));
-    const m = assertNotEOF(await r.readMIMEHeader());
+    const m = await r.readMIMEHeader();
+    assert(m !== null);
     assertEquals(m.get("Accept"), "*/*");
     assertEquals(m.get("Content-Disposition"), 'form-data; name="test"');
   },

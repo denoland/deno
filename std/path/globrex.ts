@@ -2,7 +2,7 @@
 // MIT License
 // Copyright (c) 2018 Terkel Gjervig Nielsen
 
-const isWin = Deno.build.os === "win";
+const isWin = Deno.build.os === "windows";
 const SEP = isWin ? `(?:\\\\|\\/)` : `\\/`;
 const SEP_ESC = isWin ? `\\\\` : `/`;
 const SEP_RAW = isWin ? `\\` : `/`;

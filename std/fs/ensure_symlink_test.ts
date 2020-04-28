@@ -9,7 +9,7 @@ import * as path from "../path/mod.ts";
 import { ensureSymlink, ensureSymlinkSync } from "./ensure_symlink.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
-const isWindows = Deno.build.os === "win";
+const isWindows = Deno.build.os === "windows";
 
 Deno.test("ensureSymlinkIfItNotExist", async function (): Promise<void> {
   const testDir = path.join(testdataDir, "link_file_1");

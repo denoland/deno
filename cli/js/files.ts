@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  EOF,
   Reader,
   Writer,
   Seeker,
@@ -76,11 +75,11 @@ export class File
     return writeSync(this.rid, p);
   }
 
-  read(p: Uint8Array): Promise<number | EOF> {
+  read(p: Uint8Array): Promise<number | null> {
     return read(this.rid, p);
   }
 
-  readSync(p: Uint8Array): number | EOF {
+  readSync(p: Uint8Array): number | null {
     return readSync(this.rid, p);
   }
 
@@ -103,11 +102,11 @@ class Stdin implements Reader, ReaderSync, Closer {
     this.rid = 0;
   }
 
-  read(p: Uint8Array): Promise<number | EOF> {
+  read(p: Uint8Array): Promise<number | null> {
     return read(this.rid, p);
   }
 
-  readSync(p: Uint8Array): number | EOF {
+  readSync(p: Uint8Array): number | null {
     return readSync(this.rid, p);
   }
 

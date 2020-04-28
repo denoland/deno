@@ -83,7 +83,7 @@ export class BufReader implements Reader {
     // Read new data: try a limited number of times.
     for (let i = MAX_CONSECUTIVE_EMPTY_READS; i > 0; i--) {
       const rr = await this.rd.read(this.buf.subarray(this.w));
-      if (rr === Deno.EOF) {
+      if (rr === null) {
         this.eof = true;
         return;
       }
@@ -120,8 +120,8 @@ export class BufReader implements Reader {
    * hence n may be less than len(p).
    * To read exactly len(p) bytes, use io.ReadFull(b, p).
    */
-  async read(p: Uint8Array): Promise<number | Deno.EOF> {
-    let rr: number | Deno.EOF = p.byteLength;
+  async read(p: Uint8Array): Promise<number | null> {
+    let rr: number | null = p.byteLength;
     if (p.byteLength === 0) return rr;
 
     if (this.r === this.w) {
@@ -129,7 +129,7 @@ export class BufReader implements Reader {
         // Large read, empty buffer.
         // Read directly into p to avoid copy.
         const rr = await this.rd.read(p);
-        const nread = rr === Deno.EOF ? 0 : rr;
+        const nread = rr ?? 0;
         assert(nread >= 0, "negative read");
         // if (rr.nread > 0) {
         //   this.lastByte = p[rr.nread - 1];
@@ -143,7 +143,7 @@ export class BufReader implements Reader {
       this.r = 0;
       this.w = 0;
       rr = await this.rd.read(this.buf);
-      if (rr === 0 || rr === Deno.EOF) return rr;
+      if (rr === 0 || rr === null) return rr;
       assert(rr >= 0, "negative read");
       this.w += rr;
     }
@@ -161,7 +161,7 @@ export class BufReader implements Reader {
    * If successful, `p` is returned.
    *
    * If the end of the underlying stream has been reached, and there are no more
-   * bytes available in the buffer, `readFull()` returns `EOF` instead.
+   * bytes available in the buffer, `readFull()` returns `null` instead.
    *
    * An error is thrown if some bytes could be read, but not enough to fill `p`
    * entirely before the underlying stream reported an error or EOF. Any error
@@ -170,14 +170,14 @@ export class BufReader implements Reader {
    *
    * Ported from https://golang.org/pkg/io/#ReadFull
    */
-  async readFull(p: Uint8Array): Promise<Uint8Array | Deno.EOF> {
+  async readFull(p: Uint8Array): Promise<Uint8Array | null> {
     let bytesRead = 0;
     while (bytesRead < p.length) {
       try {
         const rr = await this.read(p.subarray(bytesRead));
-        if (rr === Deno.EOF) {
+        if (rr === null) {
           if (bytesRead === 0) {
-            return Deno.EOF;
+            return null;
           } else {
             throw new PartialReadError();
           }
@@ -191,10 +191,10 @@ export class BufReader implements Reader {
     return p;
   }
 
-  /** Returns the next byte [0, 255] or `EOF`. */
-  async readByte(): Promise<number | Deno.EOF> {
+  /** Returns the next byte [0, 255] or `null`. */
+  async readByte(): Promise<number | null> {
     while (this.r === this.w) {
-      if (this.eof) return Deno.EOF;
+      if (this.eof) return null;
       await this._fill(); // buffer is empty.
     }
     const c = this.buf[this.r];
@@ -207,17 +207,17 @@ export class BufReader implements Reader {
    * returning a string containing the data up to and including the delimiter.
    * If ReadString encounters an error before finding a delimiter,
    * it returns the data read before the error and the error itself
-   * (often io.EOF).
+   * (often `null`).
    * ReadString returns err != nil if and only if the returned data does not end
    * in delim.
    * For simple uses, a Scanner may be more convenient.
    */
-  async readString(delim: string): Promise<string | Deno.EOF> {
+  async readString(delim: string): Promise<string | null> {
     if (delim.length !== 1) {
       throw new Error("Delimiter should be a single character");
     }
     const buffer = await this.readSlice(delim.charCodeAt(0));
-    if (buffer == Deno.EOF) return Deno.EOF;
+    if (buffer === null) return null;
     return new TextDecoder().decode(buffer);
   }
 
@@ -237,14 +237,14 @@ export class BufReader implements Reader {
    * When the end of the underlying stream is reached, the final bytes in the
    * stream are returned. No indication or error is given if the input ends
    * without a final line end. When there are no more trailing bytes to read,
-   * `readLine()` returns the `EOF` symbol.
+   * `readLine()` returns `null`.
    *
    * Calling `unreadByte()` after `readLine()` will always unread the last byte
    * read (possibly a character belonging to the line end) even if that byte is
    * not part of the line returned by `readLine()`.
    */
-  async readLine(): Promise<ReadLineResult | Deno.EOF> {
-    let line: Uint8Array | Deno.EOF;
+  async readLine(): Promise<ReadLineResult | null> {
+    let line: Uint8Array | null;
 
     try {
       line = await this.readSlice(LF);
@@ -277,8 +277,8 @@ export class BufReader implements Reader {
       return { line: partial, more: !this.eof };
     }
 
-    if (line === Deno.EOF) {
-      return Deno.EOF;
+    if (line === null) {
+      return null;
     }
 
     if (line.byteLength === 0) {
@@ -306,12 +306,12 @@ export class BufReader implements Reader {
    * If `readSlice()` encounters the end of the underlying stream and there are
    * any bytes left in the buffer, the rest of the buffer is returned. In other
    * words, EOF is always treated as a delimiter. Once the buffer is empty,
-   * it returns `EOF`.
+   * it returns `null`.
    *
    * Because the data returned from `readSlice()` will be overwritten by the
    * next I/O operation, most clients should use `readString()` instead.
    */
-  async readSlice(delim: number): Promise<Uint8Array | Deno.EOF> {
+  async readSlice(delim: number): Promise<Uint8Array | null> {
     let s = 0; // search start index
     let slice: Uint8Array | undefined;
 
@@ -328,7 +328,7 @@ export class BufReader implements Reader {
       // EOF?
       if (this.eof) {
         if (this.r === this.w) {
-          return Deno.EOF;
+          return null;
         }
         slice = this.buf.subarray(this.r, this.w);
         this.r = this.w;
@@ -367,13 +367,13 @@ export class BufReader implements Reader {
    *
    * When the end of the underlying stream is reached, but there are unread
    * bytes left in the buffer, those bytes are returned. If there are no bytes
-   * left in the buffer, it returns `EOF`.
+   * left in the buffer, it returns `null`.
    *
    * If an error is encountered before `n` bytes are available, `peek()` throws
    * an error with the `partial` property set to a slice of the buffer that
    * contains the bytes that were available before the error occurred.
    */
-  async peek(n: number): Promise<Uint8Array | Deno.EOF> {
+  async peek(n: number): Promise<Uint8Array | null> {
     if (n < 0) {
       throw Error("negative count");
     }
@@ -390,7 +390,7 @@ export class BufReader implements Reader {
     }
 
     if (avail === 0 && this.eof) {
-      return Deno.EOF;
+      return null;
     } else if (avail < n && this.eof) {
       return this.buf.subarray(this.r, this.r + avail);
     } else if (avail < n) {
@@ -656,7 +656,7 @@ export async function* readDelim(
   let matchIndex = 0;
   while (true) {
     const result = await reader.read(inspectArr);
-    if (result === Deno.EOF) {
+    if (result === null) {
       // Yield last chunk.
       yield inputBuffer.bytes();
       return;

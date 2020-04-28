@@ -3,9 +3,6 @@
 // Documentation liberally lifted from them too.
 // Thank you! We love Go!
 
-export const EOF: unique symbol = Symbol("EOF");
-export type EOF = typeof EOF;
-
 const DEFAULT_BUFFER_SIZE = 32 * 1024;
 
 // Seek whence values.
@@ -19,11 +16,11 @@ export enum SeekMode {
 // Reader is the interface that wraps the basic read() method.
 // https://golang.org/pkg/io/#Reader
 export interface Reader {
-  read(p: Uint8Array): Promise<number | EOF>;
+  read(p: Uint8Array): Promise<number | null>;
 }
 
 export interface ReaderSync {
-  readSync(p: Uint8Array): number | EOF;
+  readSync(p: Uint8Array): number | null;
 }
 
 // Writer is the interface that wraps the basic write() method.
@@ -65,7 +62,7 @@ export async function copy(
   let gotEOF = false;
   while (gotEOF === false) {
     const result = await src.read(b);
-    if (result === EOF) {
+    if (result === null) {
       gotEOF = true;
     } else {
       n += await dst.write(b.subarray(0, result));
@@ -84,7 +81,7 @@ export async function* iter(
   const b = new Uint8Array(bufSize);
   while (true) {
     const result = await r.read(b);
-    if (result === EOF) {
+    if (result === null) {
       break;
     }
 
@@ -102,7 +99,7 @@ export function* iterSync(
   const b = new Uint8Array(bufSize);
   while (true) {
     const result = r.readSync(b);
-    if (result === EOF) {
+    if (result === null) {
       break;
     }
 

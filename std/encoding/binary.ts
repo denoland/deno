@@ -51,19 +51,16 @@ export async function getNBytes(
 ): Promise<Uint8Array> {
   const scratch = new Uint8Array(n);
   const nRead = await r.read(scratch);
-  if (nRead === Deno.EOF || nRead < n) throw new Deno.errors.UnexpectedEof();
+  if (nRead === null || nRead < n) throw new Deno.errors.UnexpectedEof();
   return scratch;
 }
 
 /** Decode a number from `b`, and return it as a `number`. Data-type defaults to `int32`.
- * Returns `EOF` if `b` is too short for the data-type given in `o`. */
-export function varnum(
-  b: Uint8Array,
-  o: VarnumOptions = {}
-): number | Deno.EOF {
+ * Returns `null` if `b` is too short for the data-type given in `o`. */
+export function varnum(b: Uint8Array, o: VarnumOptions = {}): number | null {
   o.dataType = o.dataType ?? "int32";
   const littleEndian = (o.endian ?? "big") === "little" ? true : false;
-  if (b.length < sizeof(o.dataType)) return Deno.EOF;
+  if (b.length < sizeof(o.dataType)) return null;
   const view = new DataView(b.buffer);
   switch (o.dataType) {
     case "int8":
@@ -86,14 +83,11 @@ export function varnum(
 }
 
 /** Decode an integer from `b`, and return it as a `bigint`. Data-type defaults to `int64`.
- * Returns `EOF` if `b` is too short for the data-type given in `o`. */
-export function varbig(
-  b: Uint8Array,
-  o: VarbigOptions = {}
-): bigint | Deno.EOF {
+ * Returns `null` if `b` is too short for the data-type given in `o`. */
+export function varbig(b: Uint8Array, o: VarbigOptions = {}): bigint | null {
   o.dataType = o.dataType ?? "int64";
   const littleEndian = (o.endian ?? "big") === "little" ? true : false;
-  if (b.length < sizeof(o.dataType)) return Deno.EOF;
+  if (b.length < sizeof(o.dataType)) return null;
   const view = new DataView(b.buffer);
   switch (o.dataType) {
     case "int8":
