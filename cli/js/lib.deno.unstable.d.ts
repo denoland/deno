@@ -3,8 +3,6 @@
 /// <reference no-default-lib="true" />
 
 declare namespace Deno {
-  const __unstable: true;
-
   /**
    * **UNSTABLE**: New API, yet to be vetted.  This API is under consideration to
    * determine if permissions are required to call it.

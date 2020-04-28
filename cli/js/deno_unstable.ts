@@ -14,5 +14,3 @@ export { setRaw } from "./ops/tty.ts";
 export { utimeSync, utime } from "./ops/fs/utime.ts";
 export { ShutdownMode, shutdown } from "./net.ts";
 export { listen, connect } from "./net_unstable.ts";
-
-export const __unstable = true;

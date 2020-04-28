@@ -1,1 +1,1 @@
-console.log(Deno.__unstable);
+console.log(Deno.loadavg);
