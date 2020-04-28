@@ -776,24 +776,12 @@ declare namespace Deno {
     close(): void;
   }
 
-  export interface Stdin extends Reader, SyncReader, Closer {
-    readonly rid: number;
-  }
-
-  export interface Stdout extends Writer, SyncWriter, Closer {
-    readonly rid: number;
-  }
-
-  export interface Stderr extends Writer, SyncWriter, Closer {
-    readonly rid: number;
-  }
-
   /** A handle for `stdin`. */
-  export const stdin: Stdin;
+  export const stdin: Reader & SyncReader & Closer & { rid: number };
   /** A handle for `stdout`. */
-  export const stdout: Stdout;
+  export const stdout: Writer & SyncWriter & Closer & { rid: number };
   /** A handle for `stderr`. */
-  export const stderr: Stderr;
+  export const stderr: Writer & SyncWriter & Closer & { rid: number };
 
   export interface OpenOptions {
     /** Sets the option for read access. This option, when `true`, means that the
