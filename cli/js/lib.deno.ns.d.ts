@@ -2218,7 +2218,7 @@ declare namespace Deno {
     | {
         success: false;
         signal: number;
-      }
+      };
 
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
