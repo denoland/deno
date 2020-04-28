@@ -2052,7 +2052,6 @@ declare namespace Deno {
     options?: StartTlsOptions
   ): Promise<Conn>;
 
-  /** **UNSTABLE**: not sure if broken or not */
   export interface Metrics {
     opsDispatched: number;
     opsDispatchedSync: number;
@@ -2210,8 +2209,6 @@ declare namespace Deno {
         signal?: number;
       };
 
-  /** **UNSTABLE**: `args` has been recently renamed to `cmd` to differentiate from
-   * `Deno.args`. */
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
      * binary */
