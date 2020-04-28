@@ -65,7 +65,11 @@ export async function copy(
     if (result === null) {
       gotEOF = true;
     } else {
-      n += await dst.write(b.subarray(0, result));
+      let nwritten = 0;
+      while (nwritten < result) {
+        nwritten += await dst.write(b.subarray(nwritten, result));
+      }
+      n += nwritten;
     }
   }
   return n;
