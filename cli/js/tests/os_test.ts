@@ -116,7 +116,7 @@ unitTest(function osPid(): void {
 });
 
 unitTest({ perms: { env: true } }, function getDir(): void {
-  type supportOS = "mac" | "win" | "linux";
+  type supportOS = "darwin" | "windows" | "linux";
 
   interface Runtime {
     os: supportOS;
@@ -132,120 +132,120 @@ unitTest({ perms: { env: true } }, function getDir(): void {
     {
       kind: "config",
       runtime: [
-        { os: "mac", shouldHaveValue: true },
-        { os: "win", shouldHaveValue: true },
+        { os: "darwin", shouldHaveValue: true },
+        { os: "windows", shouldHaveValue: true },
         { os: "linux", shouldHaveValue: true },
       ],
     },
     {
       kind: "cache",
       runtime: [
-        { os: "mac", shouldHaveValue: true },
-        { os: "win", shouldHaveValue: true },
+        { os: "darwin", shouldHaveValue: true },
+        { os: "windows", shouldHaveValue: true },
         { os: "linux", shouldHaveValue: true },
       ],
     },
     {
       kind: "executable",
       runtime: [
-        { os: "mac", shouldHaveValue: false },
-        { os: "win", shouldHaveValue: false },
+        { os: "darwin", shouldHaveValue: false },
+        { os: "windows", shouldHaveValue: false },
         { os: "linux", shouldHaveValue: true },
       ],
     },
     {
       kind: "data",
       runtime: [
-        { os: "mac", shouldHaveValue: true },
-        { os: "win", shouldHaveValue: true },
+        { os: "darwin", shouldHaveValue: true },
+        { os: "windows", shouldHaveValue: true },
         { os: "linux", shouldHaveValue: true },
       ],
     },
     {
       kind: "data_local",
       runtime: [
-        { os: "mac", shouldHaveValue: true },
-        { os: "win", shouldHaveValue: true },
+        { os: "darwin", shouldHaveValue: true },
+        { os: "windows", shouldHaveValue: true },
         { os: "linux", shouldHaveValue: true },
       ],
     },
     {
       kind: "audio",
       runtime: [
-        { os: "mac", shouldHaveValue: true },
-        { os: "win", shouldHaveValue: true },
+        { os: "darwin", shouldHaveValue: true },
+        { os: "windows", shouldHaveValue: true },
         { os: "linux", shouldHaveValue: false },
       ],
     },
     {
       kind: "desktop",
       runtime: [
-        { os: "mac", shouldHaveValue: true },
-        { os: "win", shouldHaveValue: true },
+        { os: "darwin", shouldHaveValue: true },
+        { os: "windows", shouldHaveValue: true },
         { os: "linux", shouldHaveValue: false },
       ],
     },
     {
       kind: "document",
       runtime: [
-        { os: "mac", shouldHaveValue: true },
-        { os: "win", shouldHaveValue: true },
+        { os: "darwin", shouldHaveValue: true },
+        { os: "windows", shouldHaveValue: true },
         { os: "linux", shouldHaveValue: false },
       ],
     },
     {
       kind: "download",
       runtime: [
-        { os: "mac", shouldHaveValue: true },
-        { os: "win", shouldHaveValue: true },
+        { os: "darwin", shouldHaveValue: true },
+        { os: "windows", shouldHaveValue: true },
         { os: "linux", shouldHaveValue: false },
       ],
     },
     {
       kind: "font",
       runtime: [
-        { os: "mac", shouldHaveValue: true },
-        { os: "win", shouldHaveValue: false },
+        { os: "darwin", shouldHaveValue: true },
+        { os: "windows", shouldHaveValue: false },
         { os: "linux", shouldHaveValue: true },
       ],
     },
     {
       kind: "picture",
       runtime: [
-        { os: "mac", shouldHaveValue: true },
-        { os: "win", shouldHaveValue: true },
+        { os: "darwin", shouldHaveValue: true },
+        { os: "windows", shouldHaveValue: true },
         { os: "linux", shouldHaveValue: false },
       ],
     },
     {
       kind: "public",
       runtime: [
-        { os: "mac", shouldHaveValue: true },
-        { os: "win", shouldHaveValue: true },
+        { os: "darwin", shouldHaveValue: true },
+        { os: "windows", shouldHaveValue: true },
         { os: "linux", shouldHaveValue: false },
       ],
     },
     {
       kind: "template",
       runtime: [
-        { os: "mac", shouldHaveValue: false },
-        { os: "win", shouldHaveValue: true },
+        { os: "darwin", shouldHaveValue: false },
+        { os: "windows", shouldHaveValue: true },
         { os: "linux", shouldHaveValue: false },
       ],
     },
     {
       kind: "tmp",
       runtime: [
-        { os: "mac", shouldHaveValue: true },
-        { os: "win", shouldHaveValue: true },
+        { os: "darwin", shouldHaveValue: true },
+        { os: "windows", shouldHaveValue: true },
         { os: "linux", shouldHaveValue: true },
       ],
     },
     {
       kind: "video",
       runtime: [
-        { os: "mac", shouldHaveValue: true },
-        { os: "win", shouldHaveValue: true },
+        { os: "darwin", shouldHaveValue: true },
+        { os: "windows", shouldHaveValue: true },
         { os: "linux", shouldHaveValue: false },
       ],
     },

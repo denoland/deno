@@ -2,11 +2,6 @@
 
 import { sendSync } from "./dispatch_json.ts";
 
-// TODO(bartlomieju): these two types are duplicated
-// in `cli/js/build.ts` - deduplicate
-export type OperatingSystem = "mac" | "win" | "linux";
-export type Arch = "x64" | "arm64";
-
 export interface Start {
   cwd: string;
   pid: number;

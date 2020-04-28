@@ -45,7 +45,7 @@ export interface StatResponse {
 
 // @internal
 export function parseFileInfo(response: StatResponse): FileInfo {
-  const isUnix = build.os === "mac" || build.os === "linux";
+  const isUnix = build.os === "darwin" || build.os === "linux";
   return {
     isFile: response.isFile,
     isDirectory: response.isDirectory,
