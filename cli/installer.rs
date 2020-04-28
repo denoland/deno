@@ -24,7 +24,8 @@ lazy_static! {
 }
 
 pub fn is_remote_url(module_url: &str) -> bool {
-  module_url.starts_with("http://") || module_url.starts_with("https://")
+  let lower = module_url.to_lowercase();
+  lower.starts_with("http://") || lower.starts_with("https://")
 }
 
 fn validate_exec_name(exec_name: &str) -> Result<(), Error> {
@@ -222,6 +223,8 @@ mod tests {
   fn test_is_remote_url() {
     assert!(is_remote_url("https://deno.land/std/http/file_server.ts"));
     assert!(is_remote_url("http://deno.land/std/http/file_server.ts"));
+    assert!(is_remote_url("HTTP://deno.land/std/http/file_server.ts"));
+    assert!(is_remote_url("HTTp://deno.land/std/http/file_server.ts"));
     assert!(!is_remote_url("file:///dev/deno_std/http/file_server.ts"));
     assert!(!is_remote_url("./dev/deno_std/http/file_server.ts"));
   }

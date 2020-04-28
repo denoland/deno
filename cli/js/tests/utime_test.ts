@@ -4,9 +4,9 @@ import { unitTest, assert } from "./test_util.ts";
 // Allow 10 second difference.
 // Note this might not be enough for FAT (but we are not testing on such fs).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function assertFuzzyTimestampEquals(t1: any, t2: number): void {
-  assert(typeof t1 === "number");
-  assert(Math.abs(t1 - t2) < 10);
+function assertFuzzyTimestampEquals(t1: Date | null, t2: Date): void {
+  assert(t1 instanceof Date);
+  assert(Math.abs(t1.valueOf() - t2.valueOf()) < 10_000);
 }
 
 unitTest(
@@ -23,8 +23,8 @@ unitTest(
     Deno.utimeSync(filename, atime, mtime);
 
     const fileInfo = Deno.statSync(filename);
-    assertFuzzyTimestampEquals(fileInfo.accessed, atime);
-    assertFuzzyTimestampEquals(fileInfo.modified, mtime);
+    assertFuzzyTimestampEquals(fileInfo.atime, new Date(atime * 1000));
+    assertFuzzyTimestampEquals(fileInfo.mtime, new Date(mtime * 1000));
   }
 );
 
@@ -38,8 +38,8 @@ unitTest(
     Deno.utimeSync(testDir, atime, mtime);
 
     const dirInfo = Deno.statSync(testDir);
-    assertFuzzyTimestampEquals(dirInfo.accessed, atime);
-    assertFuzzyTimestampEquals(dirInfo.modified, mtime);
+    assertFuzzyTimestampEquals(dirInfo.atime, new Date(atime * 1000));
+    assertFuzzyTimestampEquals(dirInfo.mtime, new Date(mtime * 1000));
   }
 );
 
@@ -48,13 +48,13 @@ unitTest(
   function utimeSyncDateSuccess(): void {
     const testDir = Deno.makeTempDirSync();
 
-    const atime = 1000;
-    const mtime = 50000;
-    Deno.utimeSync(testDir, new Date(atime * 1000), new Date(mtime * 1000));
+    const atime = new Date(1000_000);
+    const mtime = new Date(50000_000);
+    Deno.utimeSync(testDir, atime, mtime);
 
     const dirInfo = Deno.statSync(testDir);
-    assertFuzzyTimestampEquals(dirInfo.accessed, atime);
-    assertFuzzyTimestampEquals(dirInfo.modified, mtime);
+    assertFuzzyTimestampEquals(dirInfo.atime, atime);
+    assertFuzzyTimestampEquals(dirInfo.mtime, mtime);
   }
 );
 
@@ -71,15 +71,8 @@ unitTest(
     Deno.utimeSync(filename, atime, mtime);
 
     const fileInfo = Deno.statSync(filename);
-    // atime and mtime must be scaled by a factor of 1000 to be recorded in seconds
-    assertFuzzyTimestampEquals(
-      fileInfo.accessed,
-      Math.trunc(atime.valueOf() / 1000)
-    );
-    assertFuzzyTimestampEquals(
-      fileInfo.modified,
-      Math.trunc(mtime.valueOf() / 1000)
-    );
+    assertFuzzyTimestampEquals(fileInfo.atime, atime);
+    assertFuzzyTimestampEquals(fileInfo.mtime, mtime);
   }
 );
 
@@ -95,8 +88,8 @@ unitTest(
     Deno.utimeSync(testDir, atime, mtime);
 
     const dirInfo = Deno.statSync(testDir);
-    assertFuzzyTimestampEquals(dirInfo.accessed, atime);
-    assertFuzzyTimestampEquals(dirInfo.modified, mtime);
+    assertFuzzyTimestampEquals(dirInfo.atime, new Date(atime * 1000));
+    assertFuzzyTimestampEquals(dirInfo.mtime, new Date(mtime * 1000));
   }
 );
 
@@ -148,8 +141,8 @@ unitTest(
     await Deno.utime(filename, atime, mtime);
 
     const fileInfo = Deno.statSync(filename);
-    assertFuzzyTimestampEquals(fileInfo.accessed, atime);
-    assertFuzzyTimestampEquals(fileInfo.modified, mtime);
+    assertFuzzyTimestampEquals(fileInfo.atime, new Date(atime * 1000));
+    assertFuzzyTimestampEquals(fileInfo.mtime, new Date(mtime * 1000));
   }
 );
 
@@ -163,8 +156,8 @@ unitTest(
     await Deno.utime(testDir, atime, mtime);
 
     const dirInfo = Deno.statSync(testDir);
-    assertFuzzyTimestampEquals(dirInfo.accessed, atime);
-    assertFuzzyTimestampEquals(dirInfo.modified, mtime);
+    assertFuzzyTimestampEquals(dirInfo.atime, new Date(atime * 1000));
+    assertFuzzyTimestampEquals(dirInfo.mtime, new Date(mtime * 1000));
   }
 );
 
@@ -173,13 +166,13 @@ unitTest(
   async function utimeDateSuccess(): Promise<void> {
     const testDir = Deno.makeTempDirSync();
 
-    const atime = 1000;
-    const mtime = 50000;
-    await Deno.utime(testDir, new Date(atime * 1000), new Date(mtime * 1000));
+    const atime = new Date(100_000);
+    const mtime = new Date(5000_000);
+    await Deno.utime(testDir, atime, mtime);
 
     const dirInfo = Deno.statSync(testDir);
-    assertFuzzyTimestampEquals(dirInfo.accessed, atime);
-    assertFuzzyTimestampEquals(dirInfo.modified, mtime);
+    assertFuzzyTimestampEquals(dirInfo.atime, atime);
+    assertFuzzyTimestampEquals(dirInfo.mtime, mtime);
   }
 );
 
@@ -197,15 +190,8 @@ unitTest(
     await Deno.utime(filename, atime, mtime);
 
     const fileInfo = Deno.statSync(filename);
-    // The dates must be scaled by a factored of 1000 to make them seconds
-    assertFuzzyTimestampEquals(
-      fileInfo.accessed,
-      Math.trunc(atime.valueOf() / 1000)
-    );
-    assertFuzzyTimestampEquals(
-      fileInfo.modified,
-      Math.trunc(mtime.valueOf() / 1000)
-    );
+    assertFuzzyTimestampEquals(fileInfo.atime, atime);
+    assertFuzzyTimestampEquals(fileInfo.mtime, mtime);
   }
 );
 

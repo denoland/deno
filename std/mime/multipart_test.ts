@@ -23,7 +23,7 @@ const dashBoundary = e.encode("--" + boundary);
 const nlDashBoundary = e.encode("\r\n--" + boundary);
 const testdataDir = path.resolve("mime", "testdata");
 
-test(function multipartScanUntilBoundary1(): void {
+test("multipartScanUntilBoundary1", function (): void {
   const data = `--${boundary}`;
   const n = scanUntilBoundary(
     e.encode(data),
@@ -35,7 +35,7 @@ test(function multipartScanUntilBoundary1(): void {
   assertEquals(n, Deno.EOF);
 });
 
-test(function multipartScanUntilBoundary2(): void {
+test("multipartScanUntilBoundary2", function (): void {
   const data = `foo\r\n--${boundary}`;
   const n = scanUntilBoundary(
     e.encode(data),
@@ -47,7 +47,7 @@ test(function multipartScanUntilBoundary2(): void {
   assertEquals(n, 3);
 });
 
-test(function multipartScanUntilBoundary3(): void {
+test("multipartScanUntilBoundary3", function (): void {
   const data = `foobar`;
   const n = scanUntilBoundary(
     e.encode(data),
@@ -59,7 +59,7 @@ test(function multipartScanUntilBoundary3(): void {
   assertEquals(n, data.length);
 });
 
-test(function multipartScanUntilBoundary4(): void {
+test("multipartScanUntilBoundary4", function (): void {
   const data = `foo\r\n--`;
   const n = scanUntilBoundary(
     e.encode(data),
@@ -71,25 +71,25 @@ test(function multipartScanUntilBoundary4(): void {
   assertEquals(n, 3);
 });
 
-test(function multipartMatchAfterPrefix1(): void {
+test("multipartMatchAfterPrefix1", function (): void {
   const data = `${boundary}\r`;
   const v = matchAfterPrefix(e.encode(data), e.encode(boundary), false);
   assertEquals(v, 1);
 });
 
-test(function multipartMatchAfterPrefix2(): void {
+test("multipartMatchAfterPrefix2", function (): void {
   const data = `${boundary}hoge`;
   const v = matchAfterPrefix(e.encode(data), e.encode(boundary), false);
   assertEquals(v, -1);
 });
 
-test(function multipartMatchAfterPrefix3(): void {
+test("multipartMatchAfterPrefix3", function (): void {
   const data = `${boundary}`;
   const v = matchAfterPrefix(e.encode(data), e.encode(boundary), false);
   assertEquals(v, 0);
 });
 
-test(async function multipartMultipartWriter(): Promise<void> {
+test("multipartMultipartWriter", async function (): Promise<void> {
   const buf = new Buffer();
   const mw = new MultipartWriter(buf);
   await mw.writeField("foo", "foo");
@@ -102,7 +102,7 @@ test(async function multipartMultipartWriter(): Promise<void> {
   f.close();
 });
 
-test(function multipartMultipartWriter2(): void {
+test("multipartMultipartWriter2", function (): void {
   const w = new StringWriter();
   assertThrows(
     (): MultipartWriter => new MultipartWriter(w, ""),
@@ -131,7 +131,7 @@ test(function multipartMultipartWriter2(): void {
   );
 });
 
-test(async function multipartMultipartWriter3(): Promise<void> {
+test("multipartMultipartWriter3", async function (): Promise<void> {
   const w = new StringWriter();
   const mw = new MultipartWriter(w);
   await mw.writeField("foo", "foo");

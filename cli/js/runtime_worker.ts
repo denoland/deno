@@ -24,8 +24,7 @@ import { log, assert, immutableDefine } from "./util.ts";
 import { MessageEvent, ErrorEvent } from "./web/workers.ts";
 import { TextEncoder } from "./web/text_encoding.ts";
 import * as runtime from "./runtime.ts";
-import { internalObject } from "./internals.ts";
-import { symbols } from "./symbols.ts";
+import { internalObject, internalSymbol } from "./internals.ts";
 import { setSignals } from "./signals.ts";
 
 // FIXME(bartlomieju): duplicated in `runtime_main.ts`
@@ -33,7 +32,7 @@ import { setSignals } from "./signals.ts";
 // Add internal object to Deno object.
 // This is not exposed as part of the Deno types.
 // @ts-ignore
-Deno[symbols.internal] = internalObject;
+Deno[internalSymbol] = internalObject;
 
 const encoder = new TextEncoder();
 

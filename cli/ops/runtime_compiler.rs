@@ -27,6 +27,7 @@ fn op_compile(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.compile");
   let args: CompileArgs = serde_json::from_value(args)?;
   Ok(JsonOp::Async(runtime_compile(
     state.borrow().global_state.clone(),
@@ -48,6 +49,7 @@ fn op_transpile(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;
   Ok(JsonOp::Async(runtime_transpile(
     state.borrow().global_state.clone(),

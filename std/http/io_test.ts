@@ -193,6 +193,7 @@ test("parseHttpVersion", (): void => {
     { in: "HTTP/0.-1", err: true },
     { in: "HTTP/", err: true },
     { in: "HTTP/1,0", err: true },
+    { in: "HTTP/1.1000001", err: true },
   ];
   for (const t of testCases) {
     let r, err;
@@ -210,7 +211,7 @@ test("parseHttpVersion", (): void => {
   }
 });
 
-test(async function writeUint8ArrayResponse(): Promise<void> {
+test("writeUint8ArrayResponse", async function (): Promise<void> {
   const shortText = "Hello";
 
   const body = new TextEncoder().encode(shortText);
@@ -243,7 +244,7 @@ test(async function writeUint8ArrayResponse(): Promise<void> {
   assertEquals(eof, Deno.EOF);
 });
 
-test(async function writeStringResponse(): Promise<void> {
+test("writeStringResponse", async function (): Promise<void> {
   const body = "Hello";
 
   const res: Response = { body };
@@ -275,7 +276,7 @@ test(async function writeStringResponse(): Promise<void> {
   assertEquals(eof, Deno.EOF);
 });
 
-test(async function writeStringReaderResponse(): Promise<void> {
+test("writeStringReaderResponse", async function (): Promise<void> {
   const shortText = "Hello";
 
   const body = new StringReader(shortText);
@@ -343,7 +344,7 @@ test("writeResponse with trailer", async () => {
   assertEquals(ret, exp);
 });
 
-test(async function readRequestError(): Promise<void> {
+test("readRequestError", async function (): Promise<void> {
   const input = `GET / HTTP/1.1
 malformedHeader
 `;
@@ -361,7 +362,7 @@ malformedHeader
 // Ported from Go
 // https://github.com/golang/go/blob/go1.12.5/src/net/http/request_test.go#L377-L443
 // TODO(zekth) fix tests
-test(async function testReadRequestError(): Promise<void> {
+test("testReadRequestError", async function (): Promise<void> {
   const testCases = [
     {
       in: "GET / HTTP/1.1\r\nheader: foo\r\n\r\n",

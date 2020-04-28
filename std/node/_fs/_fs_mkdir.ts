@@ -20,7 +20,7 @@ export function mkdir(
   let recursive = false;
 
   if (typeof options == "function") {
-    callback == options;
+    callback = options;
   } else if (typeof options === "number") {
     mode = options;
   } else if (typeof options === "boolean") {

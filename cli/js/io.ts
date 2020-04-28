@@ -11,9 +11,9 @@ const DEFAULT_BUFFER_SIZE = 32 * 1024;
 // Seek whence values.
 // https://golang.org/pkg/io/#pkg-constants
 export enum SeekMode {
-  SEEK_START = 0,
-  SEEK_CURRENT = 1,
-  SEEK_END = 2,
+  Start = 0,
+  Current = 1,
+  End = 2,
 }
 
 // Reader is the interface that wraps the basic read() method.
@@ -22,7 +22,7 @@ export interface Reader {
   read(p: Uint8Array): Promise<number | EOF>;
 }
 
-export interface SyncReader {
+export interface ReaderSync {
   readSync(p: Uint8Array): number | EOF;
 }
 
@@ -32,7 +32,7 @@ export interface Writer {
   write(p: Uint8Array): Promise<number>;
 }
 
-export interface SyncWriter {
+export interface WriterSync {
   writeSync(p: Uint8Array): number;
 }
 
@@ -48,31 +48,20 @@ export interface Seeker {
   seek(offset: number, whence: SeekMode): Promise<number>;
 }
 
-export interface SyncSeeker {
+export interface SeekerSync {
   seekSync(offset: number, whence: SeekMode): number;
 }
 
-// https://golang.org/pkg/io/#ReadCloser
-export interface ReadCloser extends Reader, Closer {}
-
-// https://golang.org/pkg/io/#WriteCloser
-export interface WriteCloser extends Writer, Closer {}
-
-// https://golang.org/pkg/io/#ReadSeeker
-export interface ReadSeeker extends Reader, Seeker {}
-
-// https://golang.org/pkg/io/#WriteSeeker
-export interface WriteSeeker extends Writer, Seeker {}
-
-// https://golang.org/pkg/io/#ReadWriteCloser
-export interface ReadWriteCloser extends Reader, Writer, Closer {}
-
-// https://golang.org/pkg/io/#ReadWriteSeeker
-export interface ReadWriteSeeker extends Reader, Writer, Seeker {}
-
-export async function copy(src: Reader, dst: Writer): Promise<number> {
+export async function copy(
+  src: Reader,
+  dst: Writer,
+  options?: {
+    bufSize?: number;
+  }
+): Promise<number> {
   let n = 0;
-  const b = new Uint8Array(DEFAULT_BUFFER_SIZE);
+  const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
+  const b = new Uint8Array(bufSize);
   let gotEOF = false;
   while (gotEOF === false) {
     const result = await src.read(b);
@@ -104,7 +93,7 @@ export async function* iter(
 }
 
 export function* iterSync(
-  r: SyncReader,
+  r: ReaderSync,
   options?: {
     bufSize?: number;
   }

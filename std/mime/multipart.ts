@@ -279,7 +279,7 @@ export class MultipartReader {
    * overflowed file data will be written to temporal files.
    * String field values are never written to files.
    * null value means parsing or writing to file was failed in some reason.
-   * @param maxMemory maximum memory size to store file in memory. bytes. @default 10485760 (10MB)
+   * @param maxMemory maximum memory size to store file in memory. bytes. @default 1048576 (1MB)
    *  */
   async readForm(maxMemory = 10 << 20): Promise<MultipartFormData> {
     const fileMap = new Map<string, FormFile>();
@@ -297,7 +297,7 @@ export class MultipartReader {
       buf.reset();
       if (!p.fileName) {
         // value
-        const n = await copyN(buf, p, maxValueBytes);
+        const n = await copyN(p, buf, maxValueBytes);
         maxValueBytes -= n;
         if (maxValueBytes < 0) {
           throw new RangeError("message too large");
@@ -308,7 +308,7 @@ export class MultipartReader {
       }
       // file
       let formFile: FormFile | undefined;
-      const n = await copyN(buf, p, maxValueBytes);
+      const n = await copyN(p, buf, maxValueBytes);
       const contentType = p.headers.get("content-type");
       assert(contentType != null, "content-type must be set");
       if (n > maxMemory) {
@@ -320,7 +320,7 @@ export class MultipartReader {
         });
         try {
           // write buffer to file
-          let size = await copyN(file, buf, n);
+          let size = await copyN(buf, file, n);
           // Write the rest of the file
           size += await copy(new MultiReader(buf, p), file);
 

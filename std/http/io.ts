@@ -287,7 +287,7 @@ export async function writeResponse(
 
 /**
  * ParseHTTPVersion parses a HTTP version string.
- * "HTTP/1.0" returns (1, 0, true).
+ * "HTTP/1.0" returns (1, 0).
  * Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request.go#L766-L792
  */
 export function parseHTTPVersion(vers: string): [number, number] {
@@ -300,7 +300,6 @@ export function parseHTTPVersion(vers: string): [number, number] {
 
     default: {
       const Big = 1000000; // arbitrary upper bound
-      const digitReg = /^\d+$/; // test if string is only digit
 
       if (!vers.startsWith("HTTP/")) {
         break;
@@ -312,24 +311,14 @@ export function parseHTTPVersion(vers: string): [number, number] {
       }
 
       const majorStr = vers.substring(vers.indexOf("/") + 1, dot);
-      const major = parseInt(majorStr);
-      if (
-        !digitReg.test(majorStr) ||
-        isNaN(major) ||
-        major < 0 ||
-        major > Big
-      ) {
+      const major = Number(majorStr);
+      if (!Number.isInteger(major) || major < 0 || major > Big) {
         break;
       }
 
       const minorStr = vers.substring(dot + 1);
-      const minor = parseInt(minorStr);
-      if (
-        !digitReg.test(minorStr) ||
-        isNaN(minor) ||
-        minor < 0 ||
-        minor > Big
-      ) {
+      const minor = Number(minorStr);
+      if (!Number.isInteger(minor) || minor < 0 || minor > Big) {
         break;
       }
 
