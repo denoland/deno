@@ -3,7 +3,6 @@
 // Public deno module.
 export {
   Buffer,
-  readAll,
   readAllSync,
   writeAll,
   writeAllSync,
