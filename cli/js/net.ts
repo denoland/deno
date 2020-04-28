@@ -146,18 +146,10 @@ export function listen(
 export function listen(
   options: UnixListenOptions & { transport: "unix" }
 ): Listener;
-export function listen(
-  options: ListenOptions & { transport: "udp" }
-): DatagramConn;
-export function listen(
-  options: UnixListenOptions & { transport: "unixpacket" }
-): DatagramConn;
-export function listen(
-  options: ListenOptions | UnixListenOptions
-): Listener | DatagramConn {
+export function listen(options: ListenOptions | UnixListenOptions): Listener {
   let res;
 
-  if (options.transport === "unix" || options.transport === "unixpacket") {
+  if (options.transport === "unix") {
     res = netOps.listen(options);
   } else {
     res = netOps.listen({
@@ -167,15 +159,30 @@ export function listen(
     });
   }
 
-  if (
-    !options.transport ||
-    options.transport === "tcp" ||
-    options.transport === "unix"
-  ) {
-    return new ListenerImpl(res.rid, res.localAddr);
+  return new ListenerImpl(res.rid, res.localAddr);
+}
+
+export function listenDatagram(
+  options: ListenOptions & { transport: "udp" }
+): DatagramConn;
+export function listenDatagram(
+  options: UnixListenOptions & { transport: "unixpacket" }
+): DatagramConn;
+export function listenDatagram(
+  options: ListenOptions | UnixListenOptions
+): DatagramConn {
+  let res;
+  if (options.transport === "unixpacket") {
+    res = netOps.listen(options);
   } else {
-    return new DatagramImpl(res.rid, res.localAddr);
+    res = netOps.listen({
+      transport: "udp",
+      hostname: "127.0.0.1",
+      ...(options as ListenOptions),
+    });
   }
+
+  return new DatagramImpl(res.rid, res.localAddr);
 }
 
 export interface ConnectOptions {
