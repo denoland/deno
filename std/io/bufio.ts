@@ -5,7 +5,7 @@
 
 type Reader = Deno.Reader;
 type Writer = Deno.Writer;
-type SyncWriter = Deno.SyncWriter;
+type WriterSync = Deno.WriterSync;
 import { charCode, copyBytes } from "./util.ts";
 import { assert } from "../testing/asserts.ts";
 
@@ -524,17 +524,17 @@ export class BufWriter extends AbstractBufBase implements Writer {
   }
 }
 
-/** BufWriterSync implements buffering for a deno.SyncWriter object.
- * If an error occurs writing to a SyncWriter, no more data will be
+/** BufWriterSync implements buffering for a deno.WriterSync object.
+ * If an error occurs writing to a WriterSync, no more data will be
  * accepted and all subsequent writes, and flush(), will return the error.
  * After all data has been written, the client should call the
  * flush() method to guarantee all data has been forwarded to
- * the underlying deno.SyncWriter.
+ * the underlying deno.WriterSync.
  */
-export class BufWriterSync extends AbstractBufBase implements SyncWriter {
+export class BufWriterSync extends AbstractBufBase implements WriterSync {
   /** return new BufWriterSync unless writer is BufWriterSync */
   static create(
-    writer: SyncWriter,
+    writer: WriterSync,
     size: number = DEFAULT_BUF_SIZE
   ): BufWriterSync {
     return writer instanceof BufWriterSync
@@ -542,7 +542,7 @@ export class BufWriterSync extends AbstractBufBase implements SyncWriter {
       : new BufWriterSync(writer, size);
   }
 
-  constructor(private writer: SyncWriter, size: number = DEFAULT_BUF_SIZE) {
+  constructor(private writer: WriterSync, size: number = DEFAULT_BUF_SIZE) {
     super();
     if (size <= 0) {
       size = DEFAULT_BUF_SIZE;
@@ -553,13 +553,13 @@ export class BufWriterSync extends AbstractBufBase implements SyncWriter {
   /** Discards any unflushed buffered data, clears any error, and
    * resets buffer to write its output to w.
    */
-  reset(w: SyncWriter): void {
+  reset(w: WriterSync): void {
     this.err = null;
     this.usedBufferBytes = 0;
     this.writer = w;
   }
 
-  /** Flush writes any buffered data to the underlying io.SyncWriter. */
+  /** Flush writes any buffered data to the underlying io.WriterSync. */
   flush(): void {
     if (this.err !== null) throw this.err;
     if (this.usedBufferBytes === 0) return;

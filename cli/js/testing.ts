@@ -93,12 +93,11 @@ export interface TestDefinition {
 const TEST_REGISTRY: TestDefinition[] = [];
 
 export function test(t: TestDefinition): void;
-export function test(fn: () => void | Promise<void>): void;
 export function test(name: string, fn: () => void | Promise<void>): void;
 // Main test function provided by Deno, as you can see it merely
 // creates a new object with "name" and "fn" fields.
 export function test(
-  t: string | TestDefinition | (() => void | Promise<void>),
+  t: string | TestDefinition,
   fn?: () => void | Promise<void>
 ): void {
   let testDef: TestDefinition;
@@ -116,11 +115,6 @@ export function test(
       throw new TypeError("The test name can't be empty");
     }
     testDef = { fn: fn as () => void | Promise<void>, name: t, ...defaults };
-  } else if (typeof t === "function") {
-    if (!t.name) {
-      throw new TypeError("The test function can't be anonymous");
-    }
-    testDef = { fn: t, name: t.name, ...defaults };
   } else {
     if (!t.fn) {
       throw new TypeError("Missing test function");

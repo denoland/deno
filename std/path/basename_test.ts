@@ -5,7 +5,7 @@ const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import * as path from "./mod.ts";
 
-test(function basename() {
+test("basename", function () {
   assertEquals(path.basename(".js", ".js"), "");
   assertEquals(path.basename(""), "");
   assertEquals(path.basename("/dir/basename.ext"), "basename.ext");
@@ -50,7 +50,7 @@ test(function basename() {
   );
 });
 
-test(function basenameWin32() {
+test("basenameWin32", function () {
   assertEquals(path.win32.basename("\\dir\\basename.ext"), "basename.ext");
   assertEquals(path.win32.basename("\\basename.ext"), "basename.ext");
   assertEquals(path.win32.basename("basename.ext"), "basename.ext");

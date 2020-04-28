@@ -3,7 +3,7 @@ import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
 // flag boolean true (default all --args to boolean)
-Deno.test(function flagBooleanTrue(): void {
+Deno.test("flagBooleanTrue", function (): void {
   const argv = parse(["moo", "--honk", "cow"], {
     boolean: true,
   });
@@ -17,7 +17,7 @@ Deno.test(function flagBooleanTrue(): void {
 });
 
 // flag boolean true only affects double hyphen arguments without equals signs
-Deno.test(function flagBooleanTrueOnlyAffectsDoubleDash(): void {
+Deno.test("flagBooleanTrueOnlyAffectsDoubleDash", function (): void {
   const argv = parse(["moo", "--honk", "cow", "-p", "55", "--tacos=good"], {
     boolean: true,
   });

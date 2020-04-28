@@ -11,8 +11,8 @@ import {
   reportToConn,
 } from "./test_util.ts";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const internalObj = (Deno as any)[Deno.symbols.internal];
+// @ts-ignore
+const internalObj = Deno[Deno.internal];
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const reportToConsole = internalObj.reportToConsole as (message: any) => void;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

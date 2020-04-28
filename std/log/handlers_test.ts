@@ -22,7 +22,7 @@ class TestHandler extends BaseHandler {
   }
 }
 
-test(function simpleHandler(): void {
+test("simpleHandler", function (): void {
   const cases = new Map<number, string[]>([
     [
       LogLevels.DEBUG,
@@ -68,7 +68,7 @@ test(function simpleHandler(): void {
   }
 });
 
-test(function testFormatterAsString(): void {
+test("testFormatterAsString", function (): void {
   const handler = new TestHandler("DEBUG", {
     formatter: "test {levelName} {msg}",
   });
@@ -78,7 +78,7 @@ test(function testFormatterAsString(): void {
   assertEquals(handler.messages, ["test DEBUG Hello, world!"]);
 });
 
-test(function testFormatterAsFunction(): void {
+test("testFormatterAsFunction", function (): void {
   const handler = new TestHandler("DEBUG", {
     formatter: (logRecord): string =>
       `fn formatter ${logRecord.levelName} ${logRecord.msg}`,
