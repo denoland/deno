@@ -34,7 +34,7 @@ const posixTests =
     [["/foo/tmp.3/", "../tmp.3/cycles/root.js"], "/foo/tmp.3/cycles/root.js"],
   ];
 
-test(function resolve() {
+test("resolve", function () {
   posixTests.forEach(function (p) {
     const _p = p[0] as string[];
     const actual = path.posix.resolve.apply(null, _p);
@@ -42,7 +42,7 @@ test(function resolve() {
   });
 });
 
-test(function resolveWin32() {
+test("resolveWin32", function () {
   windowsTests.forEach(function (p) {
     const _p = p[0] as string[];
     const actual = path.win32.resolve.apply(null, _p);

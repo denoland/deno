@@ -24,19 +24,19 @@ class BinaryReader implements Reader {
   }
 }
 
-Deno.test(async function testReadShort(): Promise<void> {
+Deno.test("testReadShort", async function (): Promise<void> {
   const r = new BinaryReader(new Uint8Array([0x12, 0x34]));
   const short = await readShort(new BufReader(r));
   assertEquals(short, 0x1234);
 });
 
-Deno.test(async function testReadInt(): Promise<void> {
+Deno.test("testReadInt", async function (): Promise<void> {
   const r = new BinaryReader(new Uint8Array([0x12, 0x34, 0x56, 0x78]));
   const int = await readInt(new BufReader(r));
   assertEquals(int, 0x12345678);
 });
 
-Deno.test(async function testReadLong(): Promise<void> {
+Deno.test("testReadLong", async function (): Promise<void> {
   const r = new BinaryReader(
     new Uint8Array([0x00, 0x00, 0x00, 0x78, 0x12, 0x34, 0x56, 0x78])
   );
@@ -44,7 +44,7 @@ Deno.test(async function testReadLong(): Promise<void> {
   assertEquals(long, 0x7812345678);
 });
 
-Deno.test(async function testReadLong2(): Promise<void> {
+Deno.test("testReadLong2", async function (): Promise<void> {
   const r = new BinaryReader(
     new Uint8Array([0, 0, 0, 0, 0x12, 0x34, 0x56, 0x78])
   );
@@ -52,7 +52,7 @@ Deno.test(async function testReadLong2(): Promise<void> {
   assertEquals(long, 0x12345678);
 });
 
-Deno.test(function testSliceLongToBytes(): void {
+Deno.test("testSliceLongToBytes", function (): void {
   const arr = sliceLongToBytes(0x1234567890abcdef);
   const actual = readLong(new BufReader(new BinaryReader(new Uint8Array(arr))));
   const expected = readLong(
@@ -65,12 +65,12 @@ Deno.test(function testSliceLongToBytes(): void {
   assertEquals(actual, expected);
 });
 
-Deno.test(function testSliceLongToBytes2(): void {
+Deno.test("testSliceLongToBytes2", function (): void {
   const arr = sliceLongToBytes(0x12345678);
   assertEquals(arr, [0, 0, 0, 0, 0x12, 0x34, 0x56, 0x78]);
 });
 
-Deno.test(async function testCopyN1(): Promise<void> {
+Deno.test("testCopyN1", async function (): Promise<void> {
   const w = new Buffer();
   const r = stringsReader("abcdefghij");
   const n = await copyN(r, w, 3);
@@ -78,7 +78,7 @@ Deno.test(async function testCopyN1(): Promise<void> {
   assertEquals(w.toString(), "abc");
 });
 
-Deno.test(async function testCopyN2(): Promise<void> {
+Deno.test("testCopyN2", async function (): Promise<void> {
   const w = new Buffer();
   const r = stringsReader("abcdefghij");
   const n = await copyN(r, w, 11);

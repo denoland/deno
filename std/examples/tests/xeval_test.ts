@@ -9,13 +9,13 @@ import {
 } from "../../testing/asserts.ts";
 const { execPath, run } = Deno;
 
-Deno.test(async function xevalSuccess(): Promise<void> {
+Deno.test("xevalSuccess", async function (): Promise<void> {
   const chunks: string[] = [];
   await xeval(stringsReader("a\nb\nc"), ($): number => chunks.push($));
   assertEquals(chunks, ["a", "b", "c"]);
 });
 
-Deno.test(async function xevalDelimiter(): Promise<void> {
+Deno.test("xevalDelimiter", async function (): Promise<void> {
   const chunks: string[] = [];
   await xeval(stringsReader("!MADMADAMADAM!"), ($): number => chunks.push($), {
     delimiter: "MADAM",
@@ -43,7 +43,7 @@ Deno.test({
   },
 });
 
-Deno.test(async function xevalCliSyntaxError(): Promise<void> {
+Deno.test("xevalCliSyntaxError", async function (): Promise<void> {
   const p = run({
     cmd: [execPath(), xevalPath, "("],
     stdin: "null",

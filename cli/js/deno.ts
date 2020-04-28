@@ -44,18 +44,11 @@ export {
   iterSync,
   SeekMode,
   Reader,
-  SyncReader,
+  ReaderSync,
   Writer,
-  SyncWriter,
+  WriterSync,
   Closer,
   Seeker,
-  SyncSeeker,
-  ReadCloser,
-  WriteCloser,
-  ReadSeeker,
-  WriteSeeker,
-  ReadWriteCloser,
-  ReadWriteSeeker,
 } from "./io.ts";
 export {
   makeTempDirSync,
@@ -85,6 +78,7 @@ export { kill } from "./ops/process.ts";
 export { run, RunOptions, Process, ProcessStatus } from "./process.ts";
 export { DirEntry, readdirSync, readdir } from "./ops/fs/read_dir.ts";
 export { readFileSync, readFile } from "./read_file.ts";
+export { readTextFileSync, readTextFile } from "./read_text_file.ts";
 export { readlinkSync, readlink } from "./ops/fs/read_link.ts";
 export { realpathSync, realpath } from "./ops/fs/realpath.ts";
 export { removeSync, remove, RemoveOptions } from "./ops/fs/remove.ts";
@@ -96,6 +90,7 @@ export { truncateSync, truncate } from "./ops/fs/truncate.ts";
 export { isatty } from "./ops/tty.ts";
 export { version } from "./version.ts";
 export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";
+export { writeTextFileSync, writeTextFile } from "./write_text_file.ts";
 export const args: string[] = [];
 export { TestDefinition, test } from "./testing.ts";
 

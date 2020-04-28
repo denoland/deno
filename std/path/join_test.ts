@@ -106,7 +106,7 @@ const windowsJoinTests = [
   [["c:", "file"], "c:\\file"],
 ];
 
-test(function join() {
+test("join", function () {
   joinTests.forEach(function (p) {
     const _p = p[0] as string[];
     const actual = path.posix.join.apply(null, _p);
@@ -114,7 +114,7 @@ test(function join() {
   });
 });
 
-test(function joinWin32() {
+test("joinWin32", function () {
   joinTests.forEach(function (p) {
     const _p = p[0] as string[];
     const actual = path.win32.join.apply(null, _p).replace(backslashRE, "/");

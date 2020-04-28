@@ -40,6 +40,17 @@ const searchParamsMethods: Array<keyof URLSearchParams> = [
   "set",
 ];
 
+// https://url.spec.whatwg.org/#special-scheme
+const schemePorts: { [key: string]: string } = {
+  ftp: "21",
+  file: "",
+  http: "80",
+  https: "443",
+  ws: "80",
+  wss: "443",
+};
+const MAX_PORT = 2 ** 16 - 1;
+
 function parse(url: string): URLParts | undefined {
   const urlMatch = urlRegExp.exec(url);
   if (urlMatch) {
@@ -178,6 +189,18 @@ export class URLImpl implements URL {
     urls.set(searchParams, this);
   };
 
+  #validatePort = (value: string): string | undefined => {
+    // https://url.spec.whatwg.org/#port-state
+    if (value === "") return value;
+
+    const port = parseInt(value, 10);
+
+    if (!Number.isNaN(port) && port > 0 && port <= MAX_PORT)
+      return port.toString();
+
+    return undefined;
+  };
+
   get hash(): string {
     return parts.get(this)!.hash;
   }
@@ -268,14 +291,17 @@ export class URLImpl implements URL {
   }
 
   get port(): string {
-    return parts.get(this)!.port;
+    const port = parts.get(this)!.port;
+    if (schemePorts[parts.get(this)!.protocol] === port) {
+      return "";
+    }
+
+    return port;
   }
 
   set port(value: string) {
-    const port = parseInt(String(value), 10);
-    parts.get(this)!.port = isNaN(port)
-      ? ""
-      : Math.max(0, port % 2 ** 16).toString();
+    const port = this.#validatePort(value);
+    parts.get(this)!.port = port ?? this.port;
   }
 
   get protocol(): string {
@@ -344,6 +370,11 @@ export class URLImpl implements URL {
       throw new TypeError("Invalid URL.");
     }
 
+    const { port } = (urlParts.protocol ? urlParts : baseParts) as URLParts;
+    if (this.#validatePort(port) === undefined) {
+      throw new TypeError("Invalid URL.");
+    }
+
     if (urlParts.protocol) {
       parts.set(this, urlParts);
     } else if (baseParts) {
@@ -360,6 +391,7 @@ export class URLImpl implements URL {
     } else {
       throw new TypeError("URL requires a base URL.");
     }
+
     this.#updateSearchParams();
   }
 

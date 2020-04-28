@@ -4,7 +4,7 @@ import { StringWriter } from "./writers.ts";
 import { StringReader } from "./readers.ts";
 import { copyN } from "./ioutil.ts";
 
-test(async function ioStringWriter(): Promise<void> {
+test("ioStringWriter", async function (): Promise<void> {
   const w = new StringWriter("base");
   const r = new StringReader("0123456789");
   await copyN(r, w, 4);

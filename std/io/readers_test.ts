@@ -5,7 +5,7 @@ import { StringWriter } from "./writers.ts";
 import { copyN } from "./ioutil.ts";
 import { decode } from "../encoding/utf8.ts";
 
-test(async function ioStringReader(): Promise<void> {
+test("ioStringReader", async function (): Promise<void> {
   const r = new StringReader("abcdef");
   const res0 = await r.read(new Uint8Array(6));
   assertEquals(res0, 6);
@@ -13,7 +13,7 @@ test(async function ioStringReader(): Promise<void> {
   assertEquals(res1, Deno.EOF);
 });
 
-test(async function ioStringReader(): Promise<void> {
+test("ioStringReader", async function (): Promise<void> {
   const r = new StringReader("abcdef");
   const buf = new Uint8Array(3);
   const res1 = await r.read(buf);
@@ -27,7 +27,7 @@ test(async function ioStringReader(): Promise<void> {
   assertEquals(decode(buf), "def");
 });
 
-test(async function ioMultiReader(): Promise<void> {
+test("ioMultiReader", async function (): Promise<void> {
   const r = new MultiReader(new StringReader("abc"), new StringReader("def"));
   const w = new StringWriter();
   const n = await copyN(r, w, 4);

@@ -2,7 +2,7 @@
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
 import * as datetime from "./mod.ts";
 
-Deno.test(function parseDateTime(): void {
+Deno.test("parseDateTime", function (): void {
   assertEquals(
     datetime.parseDateTime("01-03-2019 16:30", "mm-dd-yyyy hh:mm"),
     new Date(2019, 0, 3, 16, 30)
@@ -29,7 +29,7 @@ Deno.test(function parseDateTime(): void {
   );
 });
 
-Deno.test(function invalidParseDateTimeFormatThrows(): void {
+Deno.test("invalidParseDateTimeFormatThrows", function (): void {
   assertThrows(
     (): void => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -40,7 +40,7 @@ Deno.test(function invalidParseDateTimeFormatThrows(): void {
   );
 });
 
-Deno.test(function parseDate(): void {
+Deno.test("parseDate", function (): void {
   assertEquals(
     datetime.parseDate("01-03-2019", "mm-dd-yyyy"),
     new Date(2019, 0, 3)
@@ -55,7 +55,7 @@ Deno.test(function parseDate(): void {
   );
 });
 
-Deno.test(function invalidParseDateFormatThrows(): void {
+Deno.test("invalidParseDateFormatThrows", function (): void {
   assertThrows(
     (): void => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,13 +66,13 @@ Deno.test(function invalidParseDateFormatThrows(): void {
   );
 });
 
-Deno.test(function DayOfYear(): void {
+Deno.test("DayOfYear", function (): void {
   assertEquals(1, datetime.dayOfYear(new Date("2019-01-01T03:24:00")));
   assertEquals(70, datetime.dayOfYear(new Date("2019-03-11T03:24:00")));
   assertEquals(365, datetime.dayOfYear(new Date("2019-12-31T03:24:00")));
 });
 
-Deno.test(function currentDayOfYear(): void {
+Deno.test("currentDayOfYear", function (): void {
   assertEquals(datetime.currentDayOfYear(), datetime.dayOfYear(new Date()));
 });
 
