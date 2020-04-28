@@ -62,7 +62,7 @@ export async function copy(
   let gotEOF = false;
   while (gotEOF === false) {
     const result = await src.read(b);
-    if (result == null) {
+    if (result === null) {
       gotEOF = true;
     } else {
       n += await dst.write(b.subarray(0, result));
@@ -81,7 +81,7 @@ export async function* iter(
   const b = new Uint8Array(bufSize);
   while (true) {
     const result = await r.read(b);
-    if (result == null) {
+    if (result === null) {
       break;
     }
 
@@ -99,7 +99,7 @@ export function* iterSync(
   const b = new Uint8Array(bufSize);
   while (true) {
     const result = r.readSync(b);
-    if (result == null) {
+    if (result === null) {
       break;
     }
 

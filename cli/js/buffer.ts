@@ -169,7 +169,7 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
         this.#reslice(i);
         const fub = new Uint8Array(this.#buf.buffer, i);
         const nread = await r.read(fub);
-        if (nread == null) {
+        if (nread === null) {
           return n;
         }
         this.#reslice(i + nread);
@@ -188,7 +188,7 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
         this.#reslice(i);
         const fub = new Uint8Array(this.#buf.buffer, i);
         const nread = r.readSync(fub);
-        if (nread == null) {
+        if (nread === null) {
           return n;
         }
         this.#reslice(i + nread);

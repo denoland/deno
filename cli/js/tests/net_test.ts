@@ -523,7 +523,7 @@ unitTest(
       try {
         while (true) {
           const nread = await conn.read(p);
-          if (nread == null) {
+          if (nread === null) {
             break;
           }
           await conn.write(new Uint8Array([1, 2, 3]));

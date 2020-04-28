@@ -60,7 +60,7 @@ export class ServerRequest {
    *     let totRead = 0;
    *     while (true) {
    *       const nread = await req.body.read(bufSlice);
-   *       if (nread == null) break;
+   *       if (nread === null) break;
    *       totRead += nread;
    *       if (totRead >= req.contentLength) break;
    *       bufSlice = bufSlice.subarray(nread);
@@ -167,7 +167,7 @@ export class Server implements AsyncIterable<ServerRequest> {
         }
         break;
       }
-      if (request == null) {
+      if (request === null) {
         break;
       }
 

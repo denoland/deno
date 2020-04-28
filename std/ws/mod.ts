@@ -483,7 +483,7 @@ export async function handshake(
 
   const tpReader = new TextProtoReader(bufReader);
   const statusLine = await tpReader.readLine();
-  if (statusLine == null) {
+  if (statusLine === null) {
     throw new Deno.errors.UnexpectedEof();
   }
   const m = statusLine.match(/^(?<version>\S+) (?<statusCode>\S+) /);
@@ -501,7 +501,7 @@ export async function handshake(
   }
 
   const responseHeaders = await tpReader.readMIMEHeader();
-  if (responseHeaders == null) {
+  if (responseHeaders === null) {
     throw new Deno.errors.UnexpectedEof();
   }
 

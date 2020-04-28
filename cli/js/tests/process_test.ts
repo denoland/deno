@@ -154,7 +154,7 @@ unitTest({ perms: { run: true } }, async function runStdoutPiped(): Promise<
 
   const data = new Uint8Array(10);
   let r = await p.stdout!.read(data);
-  if (r == null) {
+  if (r === null) {
     throw new Error("p.stdout.read(...) should not be null");
   }
   assertEquals(r, 5);
@@ -183,7 +183,7 @@ unitTest({ perms: { run: true } }, async function runStderrPiped(): Promise<
 
   const data = new Uint8Array(10);
   let r = await p.stderr!.read(data);
-  if (r == null) {
+  if (r === null) {
     throw new Error("p.stderr.read should not return null here");
   }
   assertEquals(r, 5);

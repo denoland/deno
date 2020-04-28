@@ -69,7 +69,7 @@ async function readRecord(
   const lineIndex = Startline;
   let line = await readLine(tp);
 
-  if (line == null) return null;
+  if (line === null) return null;
   if (line.length === 0) {
     return [];
   }
@@ -147,7 +147,7 @@ async function readRecord(
           // Hit end of line (copy all data so far).
           recordBuffer += line;
           const r = await readLine(tp);
-          if (r == null) {
+          if (r === null) {
             if (!opt.lazyQuotes) {
               quoteError = ERR_QUOTE;
               break parseField;
@@ -182,13 +182,13 @@ async function readRecord(
 }
 
 async function isEOF(tp: TextProtoReader): Promise<boolean> {
-  return (await tp.r.peek(0)) == null;
+  return (await tp.r.peek(0)) === null;
 }
 
 async function readLine(tp: TextProtoReader): Promise<string | null> {
   let line: string;
   const r = await tp.readLine();
-  if (r == null) return null;
+  if (r === null) return null;
   line = r;
 
   // For backwards compatibility, drop trailing \r before EOF.
@@ -226,7 +226,7 @@ export async function readMatrix(
 
   for (;;) {
     const r = await readRecord(lineIndex, reader, opt);
-    if (r == null) break;
+    if (r === null) break;
     lineResult = r;
     lineIndex++;
     // If fieldsPerRecord is 0, Read sets it to

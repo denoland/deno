@@ -33,7 +33,7 @@ export class MultiReader implements Reader {
     const r = this.readers[this.currentIndex];
     if (!r) return null;
     const result = await r.read(p);
-    if (result == null) {
+    if (result === null) {
       this.currentIndex++;
       return 0;
     }

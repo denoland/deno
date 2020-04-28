@@ -38,7 +38,7 @@ test("[textproto] Reader", async () => {
   assertEquals(s, "line2");
 
   s = await r.readLine();
-  assert(s == null);
+  assert(s === null);
 });
 
 test({

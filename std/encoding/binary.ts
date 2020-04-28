@@ -51,7 +51,7 @@ export async function getNBytes(
 ): Promise<Uint8Array> {
   const scratch = new Uint8Array(n);
   const nRead = await r.read(scratch);
-  if (nRead == null || nRead < n) throw new Deno.errors.UnexpectedEof();
+  if (nRead === null || nRead < n) throw new Deno.errors.UnexpectedEof();
   return scratch;
 }
 

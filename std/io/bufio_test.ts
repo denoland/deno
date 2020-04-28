@@ -25,7 +25,7 @@ async function readBytes(buf: BufReader): Promise<string> {
   let nb = 0;
   while (true) {
     const c = await buf.readByte();
-    if (c == null) {
+    if (c === null) {
       break; // EOF
     }
     b[nb] = c;
@@ -64,7 +64,7 @@ async function reads(buf: BufReader, m: number): Promise<string> {
   let nb = 0;
   while (true) {
     const result = await buf.read(b.subarray(nb, nb + m));
-    if (result == null) {
+    if (result === null) {
       break;
     }
     nb += result;
@@ -214,7 +214,7 @@ async function testReadLine(input: Uint8Array): Promise<void> {
     const l = new BufReader(reader, input.byteLength + 1);
     while (true) {
       const r = await l.readLine();
-      if (r == null) {
+      if (r === null) {
         break;
       }
       const { line, more } = r;
@@ -303,7 +303,7 @@ Deno.test("bufioPeek", async function (): Promise<void> {
   assertEquals(decoder.decode(actual), "");
 
   const r = await buf.peek(1);
-  assert(r == null);
+  assert(r === null);
   /* TODO
 	Test for issue 3022, not exposing a reader's error on a successful Peek.
 	buf = NewReaderSize(dataAndEOFReader("abcd"), 32)

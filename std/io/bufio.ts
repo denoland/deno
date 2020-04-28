@@ -83,7 +83,7 @@ export class BufReader implements Reader {
     // Read new data: try a limited number of times.
     for (let i = MAX_CONSECUTIVE_EMPTY_READS; i > 0; i--) {
       const rr = await this.rd.read(this.buf.subarray(this.w));
-      if (rr == null) {
+      if (rr === null) {
         this.eof = true;
         return;
       }
@@ -143,7 +143,7 @@ export class BufReader implements Reader {
       this.r = 0;
       this.w = 0;
       rr = await this.rd.read(this.buf);
-      if (rr == 0 || rr == null) return rr;
+      if (rr == 0 || rr === null) return rr;
       assert(rr >= 0, "negative read");
       this.w += rr;
     }
@@ -175,7 +175,7 @@ export class BufReader implements Reader {
     while (bytesRead < p.length) {
       try {
         const rr = await this.read(p.subarray(bytesRead));
-        if (rr == null) {
+        if (rr === null) {
           if (bytesRead === 0) {
             return null;
           } else {
@@ -217,7 +217,7 @@ export class BufReader implements Reader {
       throw new Error("Delimiter should be a single character");
     }
     const buffer = await this.readSlice(delim.charCodeAt(0));
-    if (buffer == null) return null;
+    if (buffer === null) return null;
     return new TextDecoder().decode(buffer);
   }
 
@@ -277,7 +277,7 @@ export class BufReader implements Reader {
       return { line: partial, more: !this.eof };
     }
 
-    if (line == null) {
+    if (line === null) {
       return null;
     }
 
@@ -656,7 +656,7 @@ export async function* readDelim(
   let matchIndex = 0;
   while (true) {
     const result = await reader.read(inspectArr);
-    if (result == null) {
+    if (result === null) {
       // Yield last chunk.
       yield inputBuffer.bytes();
       return;

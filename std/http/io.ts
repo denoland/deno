@@ -56,14 +56,14 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
       if (chunk.offset === chunk.data.byteLength) {
         chunks.shift();
         // Consume \r\n;
-        if ((await tp.readLine()) == null) {
+        if ((await tp.readLine()) === null) {
           throw new Deno.errors.UnexpectedEof();
         }
       }
       return readLength;
     }
     const line = await tp.readLine();
-    if (line == null) throw new Deno.errors.UnexpectedEof();
+    if (line === null) throw new Deno.errors.UnexpectedEof();
     // TODO: handle chunk extension
     const [chunkSizeString] = line.split(";");
     const chunkSize = parseInt(chunkSizeString, 16);
@@ -73,12 +73,12 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
     if (chunkSize > 0) {
       if (chunkSize > buf.byteLength) {
         let eof = await r.readFull(buf);
-        if (eof == null) {
+        if (eof === null) {
           throw new Deno.errors.UnexpectedEof();
         }
         const restChunk = new Uint8Array(chunkSize - buf.byteLength);
         eof = await r.readFull(restChunk);
-        if (eof == null) {
+        if (eof === null) {
           throw new Deno.errors.UnexpectedEof();
         } else {
           chunks.push({
@@ -90,11 +90,11 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
       } else {
         const bufToFill = buf.subarray(0, chunkSize);
         const eof = await r.readFull(bufToFill);
-        if (eof == null) {
+        if (eof === null) {
           throw new Deno.errors.UnexpectedEof();
         }
         // Consume \r\n
-        if ((await tp.readLine()) == null) {
+        if ((await tp.readLine()) === null) {
           throw new Deno.errors.UnexpectedEof();
         }
         return chunkSize;
@@ -102,7 +102,7 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
     } else {
       assert(chunkSize === 0);
       // Consume \r\n
-      if ((await r.readLine()) == null) {
+      if ((await r.readLine()) === null) {
         throw new Deno.errors.UnexpectedEof();
       }
       await readTrailers(h, r);
@@ -335,9 +335,9 @@ export async function readRequest(
 ): Promise<ServerRequest | null> {
   const tp = new TextProtoReader(bufr);
   const firstLine = await tp.readLine(); // e.g. GET /index.html HTTP/1.0
-  if (firstLine == null) return null;
+  if (firstLine === null) return null;
   const headers = await tp.readMIMEHeader();
-  if (headers == null) throw new Deno.errors.UnexpectedEof();
+  if (headers === null) throw new Deno.errors.UnexpectedEof();
 
   const req = new ServerRequest();
   req.conn = conn;

@@ -165,7 +165,7 @@ class PartReader implements Reader, Closer {
     while (this.n === 0) {
       peekLength = max(peekLength, br.buffered());
       const peekBuf = await br.peek(peekLength);
-      if (peekBuf == null) {
+      if (peekBuf === null) {
         throw new Deno.errors.UnexpectedEof();
       }
       const eof = peekBuf.length < peekLength;
@@ -183,7 +183,7 @@ class PartReader implements Reader, Closer {
       }
     }
 
-    if (this.n == null) {
+    if (this.n === null) {
       return null;
     }
 
@@ -288,7 +288,7 @@ export class MultipartReader {
     const buf = new Buffer(new Uint8Array(maxValueBytes));
     for (;;) {
       const p = await this.nextPart();
-      if (p == null) {
+      if (p === null) {
         break;
       }
       if (p.formName === "") {
@@ -364,14 +364,14 @@ export class MultipartReader {
     let expectNewPart = false;
     for (;;) {
       const line = await this.bufReader.readSlice("\n".charCodeAt(0));
-      if (line == null) {
+      if (line === null) {
         throw new Deno.errors.UnexpectedEof();
       }
       if (this.isBoundaryDelimiterLine(line)) {
         this.partsRead++;
         const r = new TextProtoReader(this.bufReader);
         const headers = await r.readMIMEHeader();
-        if (headers == null) {
+        if (headers === null) {
           throw new Deno.errors.UnexpectedEof();
         }
         const np = new PartReader(this, headers);

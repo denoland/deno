@@ -24,7 +24,7 @@ export class TextProtoReader {
    */
   async readLine(): Promise<string | null> {
     const s = await this.readLineSlice();
-    if (s == null) return null;
+    if (s === null) return null;
     return str(s);
   }
 
@@ -54,14 +54,14 @@ export class TextProtoReader {
 
     // The first line cannot start with a leading space.
     let buf = await this.r.peek(1);
-    if (buf == null) {
+    if (buf === null) {
       return null;
     } else if (buf[0] == charCode(" ") || buf[0] == charCode("\t")) {
       line = (await this.readLineSlice()) as Uint8Array;
     }
 
     buf = await this.r.peek(1);
-    if (buf == null) {
+    if (buf === null) {
       throw new Deno.errors.UnexpectedEof();
     } else if (buf[0] == charCode(" ") || buf[0] == charCode("\t")) {
       throw new Deno.errors.InvalidData(
@@ -71,7 +71,7 @@ export class TextProtoReader {
 
     while (true) {
       const kv = await this.readLineSlice(); // readContinuedLineSlice
-      if (kv == null) throw new Deno.errors.UnexpectedEof();
+      if (kv === null) throw new Deno.errors.UnexpectedEof();
       if (kv.byteLength === 0) return m;
 
       // Key ends at first colon
@@ -117,7 +117,7 @@ export class TextProtoReader {
     let line: Uint8Array | undefined;
     while (true) {
       const r = await this.r.readLine();
-      if (r == null) return null;
+      if (r === null) return null;
       const { line: l, more } = r;
 
       // Avoid the copy if the first call produced a full line.

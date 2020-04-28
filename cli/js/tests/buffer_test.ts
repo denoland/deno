@@ -65,7 +65,7 @@ async function empty(buf: Buffer, s: string, fub: Uint8Array): Promise<void> {
   check(buf, s);
   while (true) {
     const r = await buf.read(fub);
-    if (r == null) {
+    if (r === null) {
       break;
     }
     s = s.slice(r);

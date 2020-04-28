@@ -46,7 +46,7 @@ class FileReader implements Deno.Reader {
       this.file = await Deno.open(this.filePath, { read: true });
     }
     const res = await Deno.read(this.file.rid, p);
-    if (res == null) {
+    if (res === null) {
       Deno.close(this.file.rid);
       this.file = undefined;
     }
