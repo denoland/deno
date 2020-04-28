@@ -4,7 +4,7 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 
-import { Reader, Writer, EOF, SyncReader, SyncWriter } from "./io.ts";
+import { EOF, SyncReader, SyncWriter } from "./io.ts";
 import { assert } from "./util.ts";
 import { TextDecoder } from "./web/text_encoding.ts";
 
@@ -27,7 +27,7 @@ function copyBytes(dst: Uint8Array, src: Uint8Array, off = 0): number {
   return src.byteLength;
 }
 
-export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
+export class Buffer implements SyncReader, SyncWriter {
   #buf: Uint8Array; // contents are the bytes buf[off : len(buf)]
   #off = 0; // read at buf[off], write at buf[buf.byteLength]
 
@@ -106,19 +106,9 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
     return nread;
   }
 
-  read(p: Uint8Array): Promise<number | EOF> {
-    const rr = this.readSync(p);
-    return Promise.resolve(rr);
-  }
-
   writeSync(p: Uint8Array): number {
     const m = this.#grow(p.byteLength);
     return copyBytes(this.#buf, p, m);
-  }
-
-  write(p: Uint8Array): Promise<number> {
-    const n = this.writeSync(p);
-    return Promise.resolve(n);
   }
 
   #grow = (n: number): number => {
