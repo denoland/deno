@@ -2177,6 +2177,13 @@ declare namespace Deno {
      * This calls `close()` on stderr after its done. */
     stderrOutput(): Promise<Uint8Array>;
     close(): void;
+
+    /** **UNSTABLE**: The `signo` argument may change to require the Deno.Signal
+     * enum.
+     *
+     * Send a signal to process. This functionality currently only works on
+     * Linux and Mac OS.
+     */
     kill(signo: number): void;
   }
 
