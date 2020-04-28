@@ -2,7 +2,7 @@
 import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
-Deno.test(function hyphen(): void {
+Deno.test("hyphen", function (): void {
   assertEquals(parse(["-n", "-"]), { n: "-", _: [] });
   assertEquals(parse(["-"]), { _: ["-"] });
   assertEquals(parse(["-f-"]), { f: "-", _: [] });
@@ -10,13 +10,13 @@ Deno.test(function hyphen(): void {
   assertEquals(parse(["-s", "-"], { string: "s" }), { s: "-", _: [] });
 });
 
-Deno.test(function doubleDash(): void {
+Deno.test("doubleDash", function (): void {
   assertEquals(parse(["-a", "--", "b"]), { a: true, _: ["b"] });
   assertEquals(parse(["--a", "--", "b"]), { a: true, _: ["b"] });
   assertEquals(parse(["--a", "--", "b"]), { a: true, _: ["b"] });
 });
 
-Deno.test(function moveArgsAfterDoubleDashIntoOwnArray(): void {
+Deno.test("moveArgsAfterDoubleDashIntoOwnArray", function (): void {
   assertEquals(
     parse(["--name", "John", "before", "--", "after"], { "--": true }),
     {

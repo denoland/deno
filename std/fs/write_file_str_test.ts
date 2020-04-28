@@ -4,7 +4,7 @@ import { writeFileStr, writeFileStrSync } from "./write_file_str.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-Deno.test(function testReadFileSync(): void {
+Deno.test("testReadFileSync", function (): void {
   const jsonFile = path.join(testdataDir, "write_file_1.json");
   const content = "write_file_str_test";
   writeFileStrSync(jsonFile, content);
@@ -20,7 +20,7 @@ Deno.test(function testReadFileSync(): void {
   assertEquals(content, result);
 });
 
-Deno.test(async function testReadFile(): Promise<void> {
+Deno.test("testReadFile", async function (): Promise<void> {
   const jsonFile = path.join(testdataDir, "write_file_2.json");
   const content = "write_file_str_test";
   await writeFileStr(jsonFile, content);

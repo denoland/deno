@@ -35,7 +35,7 @@ async function readBytes(buf: BufReader): Promise<string> {
   return decoder.decode(b.subarray(0, nb));
 }
 
-Deno.test(async function bufioReaderSimple(): Promise<void> {
+Deno.test("bufioReaderSimple", async function (): Promise<void> {
   const data = "hello world";
   const b = new BufReader(stringsReader(data));
   const s = await readBytes(b);
@@ -103,7 +103,7 @@ const bufsizes: number[] = [
   4096,
 ];
 
-Deno.test(async function bufioBufReader(): Promise<void> {
+Deno.test("bufioBufReader", async function (): Promise<void> {
   const texts = new Array<string>(31);
   let str = "";
   let all = "";
@@ -131,7 +131,7 @@ Deno.test(async function bufioBufReader(): Promise<void> {
   }
 });
 
-Deno.test(async function bufioBufferFull(): Promise<void> {
+Deno.test("bufioBufferFull", async function (): Promise<void> {
   const longString =
     "And now, hello, world! It is the time for all good men to come to the" +
     " aid of their party";
@@ -153,7 +153,7 @@ Deno.test(async function bufioBufferFull(): Promise<void> {
   assertEquals(actual, "world!");
 });
 
-Deno.test(async function bufioReadString(): Promise<void> {
+Deno.test("bufioReadString", async function (): Promise<void> {
   const string = "And now, hello world!";
   const buf = new BufReader(stringsReader(string), MIN_READ_BUFFER_SIZE);
 
@@ -237,12 +237,12 @@ async function testReadLine(input: Uint8Array): Promise<void> {
   }
 }
 
-Deno.test(async function bufioReadLine(): Promise<void> {
+Deno.test("bufioReadLine", async function (): Promise<void> {
   await testReadLine(testInput);
   await testReadLine(testInputrn);
 });
 
-Deno.test(async function bufioPeek(): Promise<void> {
+Deno.test("bufioPeek", async function (): Promise<void> {
   const decoder = new TextDecoder();
   const p = new Uint8Array(10);
   // string is 16 (minReadBufferSize) long.
@@ -326,7 +326,7 @@ Deno.test(async function bufioPeek(): Promise<void> {
   */
 });
 
-Deno.test(async function bufioWriter(): Promise<void> {
+Deno.test("bufioWriter", async function (): Promise<void> {
   const data = new Uint8Array(8192);
 
   for (let i = 0; i < data.byteLength; i++) {
@@ -360,7 +360,7 @@ Deno.test(async function bufioWriter(): Promise<void> {
   }
 });
 
-Deno.test(function bufioWriterSync(): void {
+Deno.test("bufioWriterSync", function (): void {
   const data = new Uint8Array(8192);
 
   for (let i = 0; i < data.byteLength; i++) {
@@ -394,7 +394,7 @@ Deno.test(function bufioWriterSync(): void {
   }
 });
 
-Deno.test(async function bufReaderReadFull(): Promise<void> {
+Deno.test("bufReaderReadFull", async function (): Promise<void> {
   const enc = new TextEncoder();
   const dec = new TextDecoder();
   const text = "Hello World";
@@ -421,7 +421,7 @@ Deno.test(async function bufReaderReadFull(): Promise<void> {
   }
 });
 
-Deno.test(async function readStringDelimAndLines(): Promise<void> {
+Deno.test("readStringDelimAndLines", async function (): Promise<void> {
   const enc = new TextEncoder();
   const data = new Buffer(
     enc.encode("Hello World\tHello World 2\tHello World 3")

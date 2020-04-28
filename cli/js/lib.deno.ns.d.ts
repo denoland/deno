@@ -63,24 +63,6 @@ declare namespace Deno {
    *
    *        import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
    *
-   *        Deno.test(function myTestFunction():void {
-   *          assertEquals("hello", "hello");
-   *        });
-   *
-   *        Deno.test(async function myAsyncTestFunction():Promise<void> {
-   *          const decoder = new TextDecoder("utf-8");
-   *          const data = await Deno.readFile("hello_world.txt");
-   *          assertEquals(decoder.decode(data), "Hello world")
-   *        });
-   **/
-  export function test(fn: () => void | Promise<void>): void;
-
-  /** Register a test which will be run when `deno test` is used on the command
-   * line and the containing module looks like a test module.
-   * `fn` can be async if required.
-   *
-   *        import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
-   *
    *        Deno.test("My test description", ():void => {
    *          assertEquals("hello", "hello");
    *        });
@@ -379,11 +361,10 @@ declare namespace Deno {
    */
   export function umask(mask?: number): number;
 
-  /** **UNSTABLE**: might remove `"SEEK_"` prefix. Might not use all-caps. */
   export enum SeekMode {
-    SEEK_START = 0,
-    SEEK_CURRENT = 1,
-    SEEK_END = 2,
+    Start = 0,
+    Current = 1,
+    End = 2,
   }
 
   export interface Reader {
@@ -464,9 +445,9 @@ declare namespace Deno {
 
   export interface Seeker {
     /** Seek sets the offset for the next `read()` or `write()` to offset,
-     * interpreted according to `whence`: `SEEK_START` means relative to the
-     * start of the file, `SEEK_CURRENT` means relative to the current offset,
-     * and `SEEK_END` means relative to the end. Seek resolves to the new offset
+     * interpreted according to `whence`: `Start` means relative to the
+     * start of the file, `Current` means relative to the current offset,
+     * and `End` means relative to the end. Seek resolves to the new offset
      * relative to the start of the file.
      *
      * Seeking to an offset before the start of the file is an error. Seeking to
@@ -479,9 +460,9 @@ declare namespace Deno {
 
   export interface SyncSeeker {
     /** Seek sets the offset for the next `readSync()` or `writeSync()` to
-     * offset, interpreted according to `whence`: `SEEK_START` means relative
-     * to the start of the file, `SEEK_CURRENT` means relative to the current
-     * offset, and `SEEK_END` means relative to the end.
+     * offset, interpreted according to `whence`: `Start` means relative
+     * to the start of the file, `Current` means relative to the current
+     * offset, and `End` means relative to the end.
      *
      * Seeking to an offset before the start of the file is an error. Seeking to
      * any positive offset is legal, but the behavior of subsequent I/O
@@ -490,14 +471,7 @@ declare namespace Deno {
     seekSync(offset: number, whence: SeekMode): number;
   }
 
-  export interface ReadCloser extends Reader, Closer {}
-  export interface WriteCloser extends Writer, Closer {}
-  export interface ReadSeeker extends Reader, Seeker {}
-  export interface WriteSeeker extends Writer, Seeker {}
-  export interface ReadWriteCloser extends Reader, Writer, Closer {}
-  export interface ReadWriteSeeker extends Reader, Writer, Seeker {}
-
-  /** Copies from `src` to `dst` until either `null` is reached on `src` or an
+  /** Copies from `src` to `dst` until either `null` is read from `src` or an
    * error occurs. It resolves to the number of bytes copied or rejects with
    * the first error encountered while copying.
    *
@@ -505,9 +479,6 @@ declare namespace Deno {
    *       const buffer = new Deno.Buffer()
    *       const bytesCopied1 = await Deno.copy(source, Deno.stdout);
    *       const bytesCopied2 = await Deno.copy(source, buffer);
-   *
-   * Because `copy()` is defined to read from `src` until `null`, it does not
-   * treat an `null` from `read()` as an error to be reported.
    *
    * @param src The source to copy from
    * @param dst The destination to copy to
@@ -689,7 +660,7 @@ declare namespace Deno {
    *        const file = Deno.openSync('hello.txt', {read: true, write: true, truncate: true, create: true});
    *        Deno.writeSync(file.rid, new TextEncoder().encode("Hello world"));
    *        // advance cursor 6 bytes
-   *        const cursorPosition = Deno.seekSync(file.rid, 6, Deno.SeekMode.SEEK_START);
+   *        const cursorPosition = Deno.seekSync(file.rid, 6, Deno.SeekMode.Start);
    *        console.log(cursorPosition);  // 6
    *        const buf = new Uint8Array(100);
    *        file.readSync(buf);
@@ -699,11 +670,11 @@ declare namespace Deno {
    *
    *        // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
    *        // Seek 6 bytes from the start of the file
-   *        console.log(Deno.seekSync(file.rid, 6, Deno.SeekMode.SEEK_START)); // "6"
+   *        console.log(Deno.seekSync(file.rid, 6, Deno.SeekMode.Start)); // "6"
    *        // Seek 2 more bytes from the current position
-   *        console.log(Deno.seekSync(file.rid, 2, Deno.SeekMode.SEEK_CURRENT)); // "8"
+   *        console.log(Deno.seekSync(file.rid, 2, Deno.SeekMode.Current)); // "8"
    *        // Seek backwards 2 bytes from the end of the file
-   *        console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.SEEK_END)); // "9" (e.g. 11-2)
+   *        console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
    */
   export function seekSync(
     rid: number,
@@ -717,7 +688,7 @@ declare namespace Deno {
    *        const file = await Deno.open('hello.txt', {read: true, write: true, truncate: true, create: true});
    *        await Deno.write(file.rid, new TextEncoder().encode("Hello world"));
    *        // advance cursor 6 bytes
-   *        const cursorPosition = await Deno.seek(file.rid, 6, Deno.SeekMode.SEEK_START);
+   *        const cursorPosition = await Deno.seek(file.rid, 6, Deno.SeekMode.Start);
    *        console.log(cursorPosition);  // 6
    *        const buf = new Uint8Array(100);
    *        await file.read(buf);
@@ -727,11 +698,11 @@ declare namespace Deno {
    *
    *        // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
    *        // Seek 6 bytes from the start of the file
-   *        console.log(await Deno.seek(file.rid, 6, Deno.SeekMode.SEEK_START)); // "6"
+   *        console.log(await Deno.seek(file.rid, 6, Deno.SeekMode.Start)); // "6"
    *        // Seek 2 more bytes from the current position
-   *        console.log(await Deno.seek(file.rid, 2, Deno.SeekMode.SEEK_CURRENT)); // "8"
+   *        console.log(await Deno.seek(file.rid, 2, Deno.SeekMode.Current)); // "8"
    *        // Seek backwards 2 bytes from the end of the file
-   *        console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.SEEK_END)); // "9" (e.g. 11-2)
+   *        console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
    */
   export function seek(
     rid: number,
@@ -770,24 +741,12 @@ declare namespace Deno {
     close(): void;
   }
 
-  export interface Stdin extends Reader, SyncReader, Closer {
-    readonly rid: number;
-  }
-
-  export interface Stdout extends Writer, SyncWriter, Closer {
-    readonly rid: number;
-  }
-
-  export interface Stderr extends Writer, SyncWriter, Closer {
-    readonly rid: number;
-  }
-
   /** A handle for `stdin`. */
-  export const stdin: Stdin;
+  export const stdin: Reader & SyncReader & Closer & { rid: number };
   /** A handle for `stdout`. */
-  export const stdout: Stdout;
+  export const stdout: Writer & SyncWriter & Closer & { rid: number };
   /** A handle for `stderr`. */
-  export const stderr: Stderr;
+  export const stderr: Writer & SyncWriter & Closer & { rid: number };
 
   export interface OpenOptions {
     /** Sets the option for read access. This option, when `true`, means that the
@@ -1282,6 +1241,25 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permission. */
   export function rename(oldpath: string, newpath: string): Promise<void>;
 
+  /** Synchronously reads and returns the entire contents of a file as utf8 encoded string
+   *  encoded string. Reading a directory returns an empty string.
+   *
+   *       const data = Deno.readTextFileSync("hello.txt");
+   *       console.log(data);
+   *
+   * Requires `allow-read` permission. */
+  export function readTextFileSync(path: string): string;
+
+  /** Asynchronously reads and returns the entire contents of a file as a utf8
+   *  encoded string. Reading a directory returns an empty data array.
+   *
+   *       const decoder = new TextDecoder("utf-8");
+   *       const data = Deno.readFileSync("hello.txt");
+   *       console.log(decoder.decode(data));
+   *
+   * Requires `allow-read` permission. */
+  export function readTextFile(path: string): Promise<string>;
+
   /** Synchronously reads and returns the entire contents of a file as an array
    * of bytes. `TextDecoder` can be used to transform the bytes to string if
    * required.  Reading a directory returns an empty data array.
@@ -1604,6 +1582,24 @@ declare namespace Deno {
     options?: WriteFileOptions
   ): Promise<void>;
 
+  /** Synchronously write string `data` to the given `path`, by default creating a new file if needed,
+   * else overwriting.
+   *
+   *       await Deno.writeTextFileSync("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
+   *
+   * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
+   */
+  export function writeTextFileSync(path: string, data: string): void;
+
+  /** Asynchronously write string `data` to the given `path`, by default creating a new file if needed,
+   * else overwriting.
+   *
+   *       await Deno.writeTextFile("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
+   *
+   * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
+   */
+  export function writeTextFile(path: string, data: string): Promise<void>;
+
   /** **UNSTABLE**: Should not have same name as `window.location` type. */
   interface Location {
     /** The full url for the module, e.g. `file://some/file.ts` or
@@ -1841,7 +1837,7 @@ declare namespace Deno {
    *       const conn = await listener.accept();
    *       Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
    */
-  export function shutdown(rid: number, how: ShutdownMode): void;
+  export function shutdown(rid: number, how: ShutdownMode): Promise<void>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
@@ -2047,7 +2043,6 @@ declare namespace Deno {
     options?: StartTlsOptions
   ): Promise<Conn>;
 
-  /** **UNSTABLE**: not sure if broken or not */
   export interface Metrics {
     opsDispatched: number;
     opsDispatchedSync: number;
@@ -2165,9 +2160,9 @@ declare namespace Deno {
   export class Process {
     readonly rid: number;
     readonly pid: number;
-    readonly stdin?: WriteCloser;
-    readonly stdout?: ReadCloser;
-    readonly stderr?: ReadCloser;
+    readonly stdin?: Writer & Closer;
+    readonly stdout?: Reader & Closer;
+    readonly stderr?: Reader & Closer;
     /** Resolves to the current status of the process. */
     status(): Promise<ProcessStatus>;
     /** Buffer the stdout until EOF and return it as `Uint8Array`.
@@ -2183,6 +2178,13 @@ declare namespace Deno {
      * This calls `close()` on stderr after its done. */
     stderrOutput(): Promise<Uint8Array>;
     close(): void;
+
+    /** **UNSTABLE**: The `signo` argument may change to require the Deno.Signal
+     * enum.
+     *
+     * Send a signal to process. This functionality currently only works on
+     * Linux and Mac OS.
+     */
     kill(signo: number): void;
   }
 
@@ -2198,8 +2200,6 @@ declare namespace Deno {
         signal?: number;
       };
 
-  /** **UNSTABLE**: `args` has been recently renamed to `cmd` to differentiate from
-   * `Deno.args`. */
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
      * binary */

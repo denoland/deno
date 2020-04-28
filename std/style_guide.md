@@ -281,7 +281,7 @@ Example of test:
 import { assertEquals } from "https://deno.land/std@v0.11/testing/asserts.ts";
 import { foo } from "./mod.ts";
 
-Deno.test(function myTestFunction() {
+Deno.test("myTestFunction" function() {
   assertEquals(foo(), { bar: "bar" });
 });
 ```

@@ -50,13 +50,6 @@ export {
   SyncWriter,
   Closer,
   Seeker,
-  SyncSeeker,
-  ReadCloser,
-  WriteCloser,
-  ReadSeeker,
-  WriteSeeker,
-  ReadWriteCloser,
-  ReadWriteSeeker,
 } from "./io.ts";
 export { linkSync, link } from "./ops/fs/link.ts";
 export {
@@ -98,6 +91,7 @@ export { kill } from "./ops/process.ts";
 export { run, RunOptions, Process, ProcessStatus } from "./process.ts";
 export { DirEntry, readdirSync, readdir } from "./ops/fs/read_dir.ts";
 export { readFileSync, readFile } from "./read_file.ts";
+export { readTextFileSync, readTextFile } from "./read_text_file.ts";
 export { readlinkSync, readlink } from "./ops/fs/read_link.ts";
 export { realpathSync, realpath } from "./ops/fs/realpath.ts";
 export { removeSync, remove, RemoveOptions } from "./ops/fs/remove.ts";
@@ -113,6 +107,7 @@ export { umask } from "./ops/fs/umask.ts";
 export { utimeSync, utime } from "./ops/fs/utime.ts";
 export { version } from "./version.ts";
 export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";
+export { writeTextFileSync, writeTextFile } from "./write_text_file.ts";
 export const args: string[] = [];
 export { TestDefinition, test } from "./testing.ts";
 
