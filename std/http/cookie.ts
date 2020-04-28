@@ -10,15 +10,26 @@ export interface Cookies {
 }
 
 export interface Cookie {
+  /** Name of the cookie. */
   name: string;
+  /** Value of the cookie. */
   value: string;
+  /** Expiration date of the cookie. */
   expires?: Date;
+  /** Max-Age of the Cookie. Must be integer superior to 0. */
   maxAge?: number;
+  /** Specifies those hosts to which the cookie will be sent. */
   domain?: string;
+  /** Indicates a URL path that must exist in the request. */
   path?: string;
+  /** Indicates if the cookie is made using SSL & HTTPS. */
   secure?: boolean;
+  /** Indicates that cookie is not accessible via Javascript. **/
   httpOnly?: boolean;
+  /** Allows servers to assert that a cookie ought not to
+   * be sent along with cross-site requests. */
   sameSite?: SameSite;
+  /** Additional key value pairs with the form "key=value" */
   unparsed?: string[];
 }
 
@@ -95,17 +106,6 @@ export function getCookies(req: ServerRequest): Cookies {
  * Set the cookie header properly in the Response
  * @param res Server Response
  * @param cookie Cookie to set
- * @param [cookie.name] Name of the cookie
- * @param [cookie.value] Value of the cookie
- * @param [cookie.expires] Expiration Date of the cookie
- * @param [cookie.maxAge] Max-Age of the Cookie. Must be integer superior to 0
- * @param [cookie.domain] Specifies those hosts to which the cookie will be sent
- * @param [cookie.path] Indicates a URL path that must exist in the request.
- * @param [cookie.secure] Indicates if the cookie is made using SSL & HTTPS.
- * @param [cookie.httpOnly] Indicates that cookie is not accessible via
- *                          Javascript
- * @param [cookie.sameSite] Allows servers to assert that a cookie ought not to
- *                          be sent along with cross-site requests
  * Example:
  *
  *     setCookie(response, { name: 'deno', value: 'runtime',

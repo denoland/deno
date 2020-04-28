@@ -12,18 +12,23 @@ const GLOBSTAR_SEGMENT = `((?:[^${SEP_ESC}/]*(?:${SEP_ESC}|\/|$))*)`;
 const WILDCARD_SEGMENT = `(?:[^${SEP_ESC}/]*)`;
 
 export interface GlobrexOptions {
-  // Allow ExtGlob features
+  /** Allow ExtGlob features.
+   * @default false */
   extended?: boolean;
-  // When globstar is true, '/foo/**' is equivelant
-  // to '/foo/*' when globstar is false.
-  // Having globstar set to true is the same usage as
-  // using wildcards in bash
+  /** Support globstar.
+   * @remarks When globstar is `true`, '/foo/**' is equivelant
+   * to '/foo/*' when globstar is `false`.
+   * Having globstar set to `true` is the same usage as
+   * using wildcards in bash.
+   * @default false */
   globstar?: boolean;
-  // be laissez faire about mutiple slashes
+  /** Be laissez-faire about mutiple slashes.
+   * @default true */
   strict?: boolean;
-  // Parse as filepath for extra path related features
+  /** Parse as filepath for extra path related features.
+   * @default false */
   filepath?: boolean;
-  // Flag to use in the generated RegExp
+  /** Flag to use in the generated RegExp. */
   flags?: string;
 }
 
@@ -40,11 +45,6 @@ export interface GlobrexResult {
  * Convert any glob pattern to a JavaScript Regexp object
  * @param glob Glob pattern to convert
  * @param opts Configuration object
- * @param [opts.extended=false] Support advanced ext globbing
- * @param [opts.globstar=false] Support globstar
- * @param [opts.strict=true] be laissez faire about mutiple slashes
- * @param [opts.filepath=""] Parse as filepath for extra path related features
- * @param [opts.flags=""] RegExp globs
  * @returns Converted object with string, segments and RegExp object
  */
 export function globrex(
