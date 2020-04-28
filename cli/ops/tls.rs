@@ -54,7 +54,7 @@ struct StartTLSArgs {
 
 pub fn op_start_tls(
   isolate: &mut CoreIsolate,
-  _state: &State,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
