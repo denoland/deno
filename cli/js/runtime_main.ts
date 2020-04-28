@@ -117,7 +117,7 @@ export function bootstrapMainRuntime(): void {
     noColor: readOnly(noColor),
     args: readOnly(Object.freeze(args)),
   });
- 
+
   if (unstableFlag) {
     Object.defineProperties(globalThis, unstableMethods);
     Object.defineProperties(globalThis, unstableProperties);
