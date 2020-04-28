@@ -147,7 +147,11 @@ export function listen(
   options: ListenOptions & { transport: "udp" }
 ): DatagramConn;
 export function listen(options: ListenOptions): Listener | DatagramConn {
-  let res;
+  const res = netOps.listen({
+    transport: "tcp",
+    hostname: "127.0.0.1",
+    ...(options as ListenOptions),
+  });
 
   if (!options.transport || options.transport === "tcp") {
     return new ListenerImpl(res.rid, res.localAddr);
