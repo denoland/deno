@@ -666,7 +666,7 @@ export async function* readDelim(
       return;
     }
     const sliceRead = inspectArr.subarray(0, result as number);
-    await Deno.writeAll(inputBuffer, sliceRead);
+    Deno.writeAllSync(inputBuffer, sliceRead);
 
     let sliceToProcess = inputBuffer.bytes();
     while (inspectIndex < sliceToProcess.length) {

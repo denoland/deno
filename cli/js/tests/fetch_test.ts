@@ -346,19 +346,18 @@ function bufferServer(addr: string): Deno.Buffer {
   }) as Deno.Listener;
   const buf = new Deno.Buffer();
   listener.accept().then(async (conn: Deno.Conn) => {
-    const p1 = buf.readFrom(conn);
-    const p2 = conn.write(
+    const writePromise = conn.write(
       new TextEncoder().encode(
         "HTTP/1.0 404 Not Found\r\nContent-Length: 2\r\n\r\nNF"
       )
     );
+    buf.readFromSync(conn);
     // Wait for both an EOF on the read side of the socket and for the write to
     // complete before closing it. Due to keep-alive, the EOF won't be sent
     // until the Connection close (HTTP/1.0) response, so readFrom() can't
-    // proceed write. Conversely, if readFrom() is async, waiting for the
-    // write() to complete is not a guarantee that we've read the incoming
-    // request.
-    await Promise.all([p1, p2]);
+    // proceed write. Conversely, waiting for the write() to complete is not a
+    // guarantee that we've read the incoming request.
+    await writePromise;
     conn.close();
     listener.close();
   });

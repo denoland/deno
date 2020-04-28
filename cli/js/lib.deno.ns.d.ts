@@ -1881,7 +1881,7 @@ declare namespace Deno {
     [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
   }
 
-  export interface Conn extends Reader, Writer, Closer {
+  export interface Conn extends SyncReader, Reader, Writer, Closer {
     /** The local address of the connection. */
     readonly localAddr: Addr;
     /** The remote address of the connection. */

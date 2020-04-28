@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { errors } from "./errors.ts";
-import { EOF, Reader, Writer, Closer } from "./io.ts";
-import { read, write } from "./ops/io.ts";
+import { EOF, SyncReader, Reader, Writer, Closer } from "./io.ts";
+import { readSync, read, write } from "./ops/io.ts";
 import { close } from "./ops/resources.ts";
 import * as netOps from "./ops/net.ts";
 import { Addr } from "./ops/net.ts";
@@ -42,6 +42,11 @@ export class ConnImpl implements Conn {
 
   read(p: Uint8Array): Promise<number | EOF> {
     return read(this.rid, p);
+  }
+
+  readSync(p: Uint8Array): number | EOF {
+    // TODO(jcao219): Verify that readSync op works for all conn rids.
+    return readSync(this.rid, p);
   }
 
   close(): void {
@@ -126,7 +131,7 @@ export class DatagramImpl implements DatagramConn {
   }
 }
 
-export interface Conn extends Reader, Writer, Closer {
+export interface Conn extends SyncReader, Reader, Writer, Closer {
   localAddr: Addr;
   remoteAddr: Addr;
   rid: number;

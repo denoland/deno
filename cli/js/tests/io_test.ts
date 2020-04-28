@@ -12,14 +12,36 @@ function repeat(c: string, bytes: number): Uint8Array {
   return ui8;
 }
 
-function spyRead(obj: Deno.Buffer): Spy {
+// TODO(jcao219): This should go into Deno.
+function copySync(
+  src: Deno.SyncReader,
+  dst: Deno.SyncWriter,
+  options?: {
+    bufSize?: number;
+  }
+): number {
+  let n = 0;
+  const bufSize = options?.bufSize ?? DEFAULT_BUF_SIZE;
+  const b = new Uint8Array(bufSize);
+  while (true) {
+    const result = src.readSync(b);
+    if (result === Deno.EOF) {
+      break;
+    } else {
+      n += dst.writeSync(b.subarray(0, result));
+    }
+  }
+  return n;
+}
+
+function spyReadSync(obj: Deno.Buffer): Spy {
   const spy: Spy = {
     calls: 0,
   };
 
-  const orig = obj.read.bind(obj);
+  const orig = obj.readSync.bind(obj);
 
-  obj.read = (p: Uint8Array): Promise<number | Deno.EOF> => {
+  obj.readSync = (p: Uint8Array): number | Deno.EOF => {
     spy.calls++;
     return orig(p);
   };
@@ -32,9 +54,9 @@ unitTest(async function copyWithDefaultBufferSize() {
   const reader = new Deno.Buffer(xBytes.buffer as ArrayBuffer);
   const write = new Deno.Buffer();
 
-  const readSpy = spyRead(reader);
+  const readSpy = spyReadSync(reader);
 
-  const n = await Deno.copy(reader, write);
+  const n = copySync(reader, write);
 
   assertEquals(n, xBytes.length);
   assertEquals(write.length, xBytes.length);
@@ -47,9 +69,9 @@ unitTest(async function copyWithCustomBufferSize() {
   const reader = new Deno.Buffer(xBytes.buffer as ArrayBuffer);
   const write = new Deno.Buffer();
 
-  const readSpy = spyRead(reader);
+  const readSpy = spyReadSync(reader);
 
-  const n = await Deno.copy(reader, write, { bufSize });
+  const n = copySync(reader, write, { bufSize });
 
   assertEquals(n, xBytes.length);
   assertEquals(write.length, xBytes.length);

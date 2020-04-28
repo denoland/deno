@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { Buffer, mkdir, open } = Deno;
 type File = Deno.File;
-type Reader = Deno.Reader;
+type SyncReader = Deno.SyncReader;
 import * as path from "../path/mod.ts";
 import { encode } from "../encoding/utf8.ts";
 
@@ -28,7 +28,7 @@ export function charCode(s: string): number {
   return s.charCodeAt(0);
 }
 
-export function stringsReader(s: string): Reader {
+export function stringsReader(s: string): SyncReader {
   return new Buffer(encode(s).buffer);
 }
 
