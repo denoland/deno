@@ -1899,11 +1899,12 @@ declare namespace Deno {
     readonly remoteAddr: Addr;
     /** The resource ID of the connection. */
     readonly rid: number;
-    /** Shuts down (`shutdown(2)`) the reading side of the TCP connection. Most
-     * callers should just use `close()`. */
-    closeRead(): void;
     /** Shuts down (`shutdown(2)`) the writing side of the TCP connection. Most
-     * callers should just use `close()`. */
+     * callers should just use `close()`.
+     *
+     * **Unstable** because of lack of testing and because Deno.shutdown is also
+     * unstable.
+     * */
     closeWrite(): void;
   }
 
