@@ -22,9 +22,9 @@ export class TextProtoReader {
   /** readLine() reads a single line from the TextProtoReader,
    * eliding the final \n or \r\n from the returned string.
    */
-  async readLine(): Promise<string | Deno.EOF> {
+  async readLine(): Promise<string | null> {
     const s = await this.readLineSlice();
-    if (s === Deno.EOF) return Deno.EOF;
+    if (s === null) return null;
     return str(s);
   }
 
@@ -48,20 +48,20 @@ export class TextProtoReader {
    *		"Long-Key": {"Even Longer Value"},
    *	}
    */
-  async readMIMEHeader(): Promise<Headers | Deno.EOF> {
+  async readMIMEHeader(): Promise<Headers | null> {
     const m = new Headers();
     let line: Uint8Array | undefined;
 
     // The first line cannot start with a leading space.
     let buf = await this.r.peek(1);
-    if (buf === Deno.EOF) {
-      return Deno.EOF;
+    if (buf === null) {
+      return null;
     } else if (buf[0] == charCode(" ") || buf[0] == charCode("\t")) {
       line = (await this.readLineSlice()) as Uint8Array;
     }
 
     buf = await this.r.peek(1);
-    if (buf === Deno.EOF) {
+    if (buf === null) {
       throw new Deno.errors.UnexpectedEof();
     } else if (buf[0] == charCode(" ") || buf[0] == charCode("\t")) {
       throw new Deno.errors.InvalidData(
@@ -71,7 +71,7 @@ export class TextProtoReader {
 
     while (true) {
       const kv = await this.readLineSlice(); // readContinuedLineSlice
-      if (kv === Deno.EOF) throw new Deno.errors.UnexpectedEof();
+      if (kv === null) throw new Deno.errors.UnexpectedEof();
       if (kv.byteLength === 0) return m;
 
       // Key ends at first colon
@@ -112,12 +112,12 @@ export class TextProtoReader {
     }
   }
 
-  async readLineSlice(): Promise<Uint8Array | Deno.EOF> {
+  async readLineSlice(): Promise<Uint8Array | null> {
     // this.closeDot();
     let line: Uint8Array | undefined;
     while (true) {
       const r = await this.r.readLine();
-      if (r === Deno.EOF) return Deno.EOF;
+      if (r === null) return null;
       const { line: l, more } = r;
 
       // Avoid the copy if the first call produced a full line.

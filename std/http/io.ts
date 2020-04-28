@@ -7,8 +7,8 @@ import { STATUS_TEXT } from "./http_status.ts";
 
 export function emptyReader(): Deno.Reader {
   return {
-    read(_: Uint8Array): Promise<number | Deno.EOF> {
-      return Promise.resolve(Deno.EOF);
+    read(_: Uint8Array): Promise<number | null> {
+      return Promise.resolve(null);
     },
   };
 }
@@ -16,9 +16,9 @@ export function emptyReader(): Deno.Reader {
 export function bodyReader(contentLength: number, r: BufReader): Deno.Reader {
   let totalRead = 0;
   let finished = false;
-  async function read(buf: Uint8Array): Promise<number | Deno.EOF> {
-    if (finished) return Deno.EOF;
-    let result: number | Deno.EOF;
+  async function read(buf: Uint8Array): Promise<number | null> {
+    if (finished) return null;
+    let result: number | null;
     const remaining = contentLength - totalRead;
     if (remaining >= buf.byteLength) {
       result = await r.read(buf);
@@ -26,7 +26,7 @@ export function bodyReader(contentLength: number, r: BufReader): Deno.Reader {
       const readBuf = buf.subarray(0, remaining);
       result = await r.read(readBuf);
     }
-    if (result !== Deno.EOF) {
+    if (result !== null) {
       totalRead += result;
     }
     finished = totalRead === contentLength;
@@ -43,8 +43,8 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
     offset: number;
     data: Uint8Array;
   }> = [];
-  async function read(buf: Uint8Array): Promise<number | Deno.EOF> {
-    if (finished) return Deno.EOF;
+  async function read(buf: Uint8Array): Promise<number | null> {
+    if (finished) return null;
     const [chunk] = chunks;
     if (chunk) {
       const chunkRemaining = chunk.data.byteLength - chunk.offset;
@@ -56,14 +56,14 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
       if (chunk.offset === chunk.data.byteLength) {
         chunks.shift();
         // Consume \r\n;
-        if ((await tp.readLine()) === Deno.EOF) {
+        if ((await tp.readLine()) === null) {
           throw new Deno.errors.UnexpectedEof();
         }
       }
       return readLength;
     }
     const line = await tp.readLine();
-    if (line === Deno.EOF) throw new Deno.errors.UnexpectedEof();
+    if (line === null) throw new Deno.errors.UnexpectedEof();
     // TODO: handle chunk extension
     const [chunkSizeString] = line.split(";");
     const chunkSize = parseInt(chunkSizeString, 16);
@@ -73,12 +73,12 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
     if (chunkSize > 0) {
       if (chunkSize > buf.byteLength) {
         let eof = await r.readFull(buf);
-        if (eof === Deno.EOF) {
+        if (eof === null) {
           throw new Deno.errors.UnexpectedEof();
         }
         const restChunk = new Uint8Array(chunkSize - buf.byteLength);
         eof = await r.readFull(restChunk);
-        if (eof === Deno.EOF) {
+        if (eof === null) {
           throw new Deno.errors.UnexpectedEof();
         } else {
           chunks.push({
@@ -90,11 +90,11 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
       } else {
         const bufToFill = buf.subarray(0, chunkSize);
         const eof = await r.readFull(bufToFill);
-        if (eof === Deno.EOF) {
+        if (eof === null) {
           throw new Deno.errors.UnexpectedEof();
         }
         // Consume \r\n
-        if ((await tp.readLine()) === Deno.EOF) {
+        if ((await tp.readLine()) === null) {
           throw new Deno.errors.UnexpectedEof();
         }
         return chunkSize;
@@ -102,12 +102,12 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
     } else {
       assert(chunkSize === 0);
       // Consume \r\n
-      if ((await r.readLine()) === Deno.EOF) {
+      if ((await r.readLine()) === null) {
         throw new Deno.errors.UnexpectedEof();
       }
       await readTrailers(h, r);
       finished = true;
-      return Deno.EOF;
+      return null;
     }
   }
   return { read };
@@ -131,7 +131,7 @@ export async function readTrailers(
   if (!keys) return;
   const tp = new TextProtoReader(r);
   const result = await tp.readMIMEHeader();
-  assert(result != Deno.EOF, "trailer must be set");
+  assert(result !== null, "trailer must be set");
   for (const [k, v] of result) {
     if (!keys.has(k)) {
       throw new Error("Undeclared trailer field");
@@ -332,12 +332,12 @@ export function parseHTTPVersion(vers: string): [number, number] {
 export async function readRequest(
   conn: Deno.Conn,
   bufr: BufReader
-): Promise<ServerRequest | Deno.EOF> {
+): Promise<ServerRequest | null> {
   const tp = new TextProtoReader(bufr);
   const firstLine = await tp.readLine(); // e.g. GET /index.html HTTP/1.0
-  if (firstLine === Deno.EOF) return Deno.EOF;
+  if (firstLine === null) return null;
   const headers = await tp.readMIMEHeader();
-  if (headers === Deno.EOF) throw new Deno.errors.UnexpectedEof();
+  if (headers === null) throw new Deno.errors.UnexpectedEof();
 
   const req = new ServerRequest();
   req.conn = conn;

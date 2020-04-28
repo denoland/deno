@@ -25,7 +25,7 @@ async function startFileServer(): Promise<void> {
   assert(fileServer.stdout != null);
   const r = new TextProtoReader(new BufReader(fileServer.stdout));
   const s = await r.readLine();
-  assert(s !== Deno.EOF && s.includes("server listening"));
+  assert(s !== null && s.includes("server listening"));
 }
 
 function killFileServer(): void {
@@ -114,7 +114,7 @@ test("servePermissionDenied", async function (): Promise<void> {
   assert(deniedServer.stderr != null);
   const errReader = new TextProtoReader(new BufReader(deniedServer.stderr));
   const s = await reader.readLine();
-  assert(s !== Deno.EOF && s.includes("server listening"));
+  assert(s !== null && s.includes("server listening"));
 
   try {
     const res = await fetch("http://localhost:4500/");
@@ -138,7 +138,7 @@ test("printHelp", async function (): Promise<void> {
   assert(helpProcess.stdout != null);
   const r = new TextProtoReader(new BufReader(helpProcess.stdout));
   const s = await r.readLine();
-  assert(s !== Deno.EOF && s.includes("Deno File Server"));
+  assert(s !== null && s.includes("Deno File Server"));
   helpProcess.close();
   helpProcess.stdout.close();
 });

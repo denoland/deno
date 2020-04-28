@@ -154,14 +154,14 @@ unitTest({ perms: { run: true } }, async function runStdoutPiped(): Promise<
 
   const data = new Uint8Array(10);
   let r = await p.stdout!.read(data);
-  if (r === Deno.EOF) {
-    throw new Error("p.stdout.read(...) should not be EOF");
+  if (r === null) {
+    throw new Error("p.stdout.read(...) should not be null");
   }
   assertEquals(r, 5);
   const s = new TextDecoder().decode(data.subarray(0, r));
   assertEquals(s, "hello");
   r = await p.stdout!.read(data);
-  assertEquals(r, Deno.EOF);
+  assertEquals(r, null);
   p.stdout!.close();
 
   const status = await p.status();
@@ -183,14 +183,14 @@ unitTest({ perms: { run: true } }, async function runStderrPiped(): Promise<
 
   const data = new Uint8Array(10);
   let r = await p.stderr!.read(data);
-  if (r === Deno.EOF) {
-    throw new Error("p.stderr.read should not return EOF here");
+  if (r === null) {
+    throw new Error("p.stderr.read should not return null here");
   }
   assertEquals(r, 5);
   const s = new TextDecoder().decode(data.subarray(0, r));
   assertEquals(s, "hello");
   r = await p.stderr!.read(data);
-  assertEquals(r, Deno.EOF);
+  assertEquals(r, null);
   p.stderr!.close();
 
   const status = await p.status();
@@ -313,7 +313,7 @@ unitTest({ perms: { run: true } }, async function runClose(): Promise<void> {
 
   const data = new Uint8Array(10);
   const r = await p.stderr!.read(data);
-  assertEquals(r, Deno.EOF);
+  assertEquals(r, null);
   p.stderr!.close();
 });
 

@@ -179,10 +179,10 @@ unitTest({ perms: { net: true } }, async function netTcpDialListen(): Promise<
   assertEquals(3, buf[2]);
   assert(conn.rid > 0);
 
-  assert(readResult !== Deno.EOF);
+  assert(readResult !== null);
 
   const readResult2 = await conn.read(buf);
-  assertEquals(Deno.EOF, readResult2);
+  assertEquals(readResult2, null);
 
   listener.close();
   conn.close();
@@ -214,10 +214,10 @@ unitTest(
     assertEquals(3, buf[2]);
     assert(conn.rid > 0);
 
-    assert(readResult !== Deno.EOF);
+    assert(readResult !== null);
 
     const readResult2 = await conn.read(buf);
-    assertEquals(Deno.EOF, readResult2);
+    assertEquals(readResult2, null);
 
     listener.close();
     conn.close();
@@ -358,10 +358,10 @@ unitTest(
     assertEquals(3, buf[2]);
     assert(conn.rid > 0);
 
-    assert(readResult !== Deno.EOF);
+    assert(readResult !== null);
 
     const readResult2 = await conn.read(buf);
-    assertEquals(Deno.EOF, readResult2);
+    assertEquals(readResult2, null);
 
     listener.close();
     conn.close();
@@ -396,7 +396,7 @@ unitTest(
     closeReadDeferred.resolve();
     const buf = new Uint8Array(1024);
     const readResult = await conn.read(buf);
-    assertEquals(Deno.EOF, readResult); // with immediate EOF
+    assertEquals(readResult, null); // with immediate EOF
     // Ensure closeRead does not impact write
     await conn.write(new Uint8Array([4, 5, 6]));
     await closeDeferred;
@@ -523,7 +523,7 @@ unitTest(
       try {
         while (true) {
           const nread = await conn.read(p);
-          if (nread === Deno.EOF) {
+          if (nread === null) {
             break;
           }
           await conn.write(new Uint8Array([1, 2, 3]));

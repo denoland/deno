@@ -105,7 +105,7 @@ export function scanUntilBoundary(
   newLineDashBoundary: Uint8Array,
   total: number,
   eof: boolean
-): number | Deno.EOF {
+): number | null {
   if (total === 0) {
     // At beginning of body, allow dashBoundary.
     if (hasPrefix(buf, dashBoundary)) {
@@ -115,7 +115,7 @@ export function scanUntilBoundary(
         case 0:
           return 0;
         case 1:
-          return Deno.EOF;
+          return null;
       }
     }
     if (hasPrefix(dashBoundary, buf)) {
@@ -132,7 +132,7 @@ export function scanUntilBoundary(
       case 0:
         return i;
       case 1:
-        return i > 0 ? i : Deno.EOF;
+        return i > 0 ? i : null;
     }
   }
   if (hasPrefix(newLineDashBoundary, buf)) {
@@ -151,12 +151,12 @@ export function scanUntilBoundary(
 }
 
 class PartReader implements Reader, Closer {
-  n: number | Deno.EOF = 0;
+  n: number | null = 0;
   total = 0;
 
   constructor(private mr: MultipartReader, public readonly headers: Headers) {}
 
-  async read(p: Uint8Array): Promise<number | Deno.EOF> {
+  async read(p: Uint8Array): Promise<number | null> {
     const br = this.mr.bufReader;
 
     // Read into buffer until we identify some data to return,
@@ -165,7 +165,7 @@ class PartReader implements Reader, Closer {
     while (this.n === 0) {
       peekLength = max(peekLength, br.buffered());
       const peekBuf = await br.peek(peekLength);
-      if (peekBuf === Deno.EOF) {
+      if (peekBuf === null) {
         throw new Deno.errors.UnexpectedEof();
       }
       const eof = peekBuf.length < peekLength;
@@ -183,8 +183,8 @@ class PartReader implements Reader, Closer {
       }
     }
 
-    if (this.n === Deno.EOF) {
-      return Deno.EOF;
+    if (this.n === null) {
+      return null;
     }
 
     const nread = min(p.length, this.n);
@@ -288,7 +288,7 @@ export class MultipartReader {
     const buf = new Buffer(new Uint8Array(maxValueBytes));
     for (;;) {
       const p = await this.nextPart();
-      if (p === Deno.EOF) {
+      if (p === null) {
         break;
       }
       if (p.formName === "") {
@@ -354,7 +354,7 @@ export class MultipartReader {
   private currentPart: PartReader | undefined;
   private partsRead = 0;
 
-  private async nextPart(): Promise<PartReader | Deno.EOF> {
+  private async nextPart(): Promise<PartReader | null> {
     if (this.currentPart) {
       this.currentPart.close();
     }
@@ -364,14 +364,14 @@ export class MultipartReader {
     let expectNewPart = false;
     for (;;) {
       const line = await this.bufReader.readSlice("\n".charCodeAt(0));
-      if (line === Deno.EOF) {
+      if (line === null) {
         throw new Deno.errors.UnexpectedEof();
       }
       if (this.isBoundaryDelimiterLine(line)) {
         this.partsRead++;
         const r = new TextProtoReader(this.bufReader);
         const headers = await r.readMIMEHeader();
-        if (headers === Deno.EOF) {
+        if (headers === null) {
           throw new Deno.errors.UnexpectedEof();
         }
         const np = new PartReader(this, headers);
@@ -379,7 +379,7 @@ export class MultipartReader {
         return np;
       }
       if (this.isFinalBoundary(line)) {
-        return Deno.EOF;
+        return null;
       }
       if (expectNewPart) {
         throw new Error(`expecting a new Part; got line ${line}`);

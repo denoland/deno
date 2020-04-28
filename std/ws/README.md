@@ -102,7 +102,7 @@ const tpr = new TextProtoReader(new BufReader(Deno.stdin));
 while (true) {
   await Deno.stdout.write(encode("> "));
   const line = await tpr.readLine();
-  if (line === Deno.EOF) {
+  if (line === null) {
     break;
   }
   if (line === "close") {
