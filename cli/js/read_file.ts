@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { open, openSync } from "./files.ts";
-import { readAll, readAllSync } from "./buffer.ts";
+import { readAllSync } from "./buffer.ts";
 
 export function readFileSync(path: string): Uint8Array {
   const file = openSync(path);
@@ -11,7 +11,7 @@ export function readFileSync(path: string): Uint8Array {
 
 export async function readFile(path: string): Promise<Uint8Array> {
   const file = await open(path);
-  const contents = await readAll(file);
+  const contents = readAllSync(file);
   file.close();
   return contents;
 }
