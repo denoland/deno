@@ -47,7 +47,7 @@ export function listen(
 
 export interface UnixConnectOptions {
   transport: "unix";
-  address: string;
+  path: string;
 }
 
 export async function connect(options: UnixConnectOptions): Promise<Conn>;
