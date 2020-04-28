@@ -2326,16 +2326,10 @@ declare namespace Deno {
   export const Signal: typeof MacOSSignal | typeof LinuxSignal;
 
   interface InspectOptions {
-    showHidden?: boolean;
     depth?: number;
-    colors?: boolean;
-    indentLevel?: number;
   }
 
-  /** **UNSTABLE**: The exact form of the string output is under consideration
-   * and may change.
-   *
-   * Converts the input into a string that has the same format as printed by
+  /** Converts the input into a string that has the same format as printed by
    * `console.log()`.
    *
    *      const obj = {};
