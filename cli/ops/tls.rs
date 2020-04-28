@@ -58,6 +58,7 @@ pub fn op_start_tls(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.startTls");
   let args: StartTLSArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let cert_file = args.cert_file.clone();
@@ -68,6 +69,11 @@ pub fn op_start_tls(
     domain.push_str("localhost");
   }
 
+  state.check_net(&domain, 0)?;
+  if let Some(path) = cert_file.clone() {
+    state.check_read(Path::new(&path))?;
+  }
+  
   let op = async move {
     let mut resource_holder = {
       let mut resource_table_ = resource_table.borrow_mut();
