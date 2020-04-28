@@ -3,8 +3,9 @@ const { test } = Deno;
 import { fail, assertEquals } from "../../testing/asserts.ts";
 import { chown, chownSync } from "./_fs_chown.ts";
 
-//chown is difficult to test.  Best we can do is set the existing user id/group id again
-const ignore = Deno.build.os == "win";
+// chown is difficult to test.  Best we can do is set the existing user id/group
+// id again
+const ignore = Deno.build.os == "windows";
 
 test({
   ignore,
