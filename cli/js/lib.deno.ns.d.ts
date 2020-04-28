@@ -152,7 +152,7 @@ declare namespace Deno {
    * Requires --allow-write.
    */
   export function chdir(directory: string): void;
-  
+
   export enum SeekMode {
     Start = 0,
     Current = 1,
