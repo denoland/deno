@@ -19,7 +19,7 @@ export interface Reader {
   read(p: Uint8Array): Promise<number | null>;
 }
 
-export interface SyncReader {
+export interface ReaderSync {
   readSync(p: Uint8Array): number | null;
 }
 
@@ -29,7 +29,7 @@ export interface Writer {
   write(p: Uint8Array): Promise<number>;
 }
 
-export interface SyncWriter {
+export interface WriterSync {
   writeSync(p: Uint8Array): number;
 }
 
@@ -45,7 +45,7 @@ export interface Seeker {
   seek(offset: number, whence: SeekMode): Promise<number>;
 }
 
-export interface SyncSeeker {
+export interface SeekerSync {
   seekSync(offset: number, whence: SeekMode): number;
 }
 
@@ -90,7 +90,7 @@ export async function* iter(
 }
 
 export function* iterSync(
-  r: SyncReader,
+  r: ReaderSync,
   options?: {
     bufSize?: number;
   }

@@ -45,9 +45,9 @@ export {
   iterSync,
   SeekMode,
   Reader,
-  SyncReader,
+  ReaderSync,
   Writer,
-  SyncWriter,
+  WriterSync,
   Closer,
   Seeker,
 } from "./io.ts";
