@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { File } from "./files.ts";
 import { close } from "./ops/resources.ts";
-import { ReadCloser, WriteCloser } from "./io.ts";
+import { SyncReader, Closer, WriteCloser } from "./io.ts";
 import { readAllSync } from "./buffer.ts";
 import { kill, runStatus as runStatusOp, run as runOp } from "./ops/process.ts";
 
@@ -34,8 +34,8 @@ export class Process {
   readonly rid: number;
   readonly pid: number;
   readonly stdin?: WriteCloser;
-  readonly stdout?: ReadCloser;
-  readonly stderr?: ReadCloser;
+  readonly stdout?: SyncReader & Closer;
+  readonly stderr?: SyncReader & Closer;
 
   // @internal
   constructor(res: RunResponse) {
