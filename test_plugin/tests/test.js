@@ -3,11 +3,11 @@ const filenameBase = "test_plugin";
 let filenameSuffix = ".so";
 let filenamePrefix = "lib";
 
-if (Deno.build.os === "win") {
+if (Deno.build.os === "windows") {
   filenameSuffix = ".dll";
   filenamePrefix = "";
 }
-if (Deno.build.os === "mac") {
+if (Deno.build.os === "darwin") {
   filenameSuffix = ".dylib";
 }
 
