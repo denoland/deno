@@ -19,7 +19,7 @@ function spyRead(obj: Deno.Buffer): Spy {
 
   const orig = obj.read.bind(obj);
 
-  obj.read = (p: Uint8Array): Promise<number | Deno.EOF> => {
+  obj.read = (p: Uint8Array): Promise<number | null> => {
     spy.calls++;
     return orig(p);
   };

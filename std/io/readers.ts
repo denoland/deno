@@ -9,12 +9,12 @@ export class StringReader implements Reader {
 
   constructor(private readonly s: string) {}
 
-  read(p: Uint8Array): Promise<number | Deno.EOF> {
+  read(p: Uint8Array): Promise<number | null> {
     const n = Math.min(p.byteLength, this.buf.byteLength - this.offs);
     p.set(this.buf.slice(this.offs, this.offs + n));
     this.offs += n;
     if (n === 0) {
-      return Promise.resolve(Deno.EOF);
+      return Promise.resolve(null);
     }
     return Promise.resolve(n);
   }
@@ -29,11 +29,11 @@ export class MultiReader implements Reader {
     this.readers = readers;
   }
 
-  async read(p: Uint8Array): Promise<number | Deno.EOF> {
+  async read(p: Uint8Array): Promise<number | null> {
     const r = this.readers[this.currentIndex];
-    if (!r) return Deno.EOF;
+    if (!r) return null;
     const result = await r.read(p);
-    if (result === Deno.EOF) {
+    if (result === null) {
       this.currentIndex++;
       return 0;
     }

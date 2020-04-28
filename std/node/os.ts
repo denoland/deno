@@ -146,7 +146,7 @@ export function hostname(): string {
 
 /** Returns an array containing the 1, 5, and 15 minute load averages */
 export function loadavg(): number[] {
-  if (Deno.build.os == "win") {
+  if (Deno.build.os === "windows") {
     return [0, 0, 0];
   }
   return Deno.loadavg();
@@ -222,4 +222,4 @@ export const constants = {
   },
 };
 
-export const EOL = Deno.build.os == "win" ? fsEOL.CRLF : fsEOL.LF;
+export const EOL = Deno.build.os == "windows" ? fsEOL.CRLF : fsEOL.LF;

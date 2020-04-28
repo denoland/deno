@@ -220,7 +220,7 @@ class Body
     return decoder.decode(ab);
   }
 
-  read(p: Uint8Array): Promise<number | io.EOF> {
+  read(p: Uint8Array): Promise<number | null> {
     this.#bodyUsed = true;
     return read(this.#rid, p);
   }

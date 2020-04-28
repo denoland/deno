@@ -4,7 +4,7 @@ import { unitTest, assert } from "./test_util.ts";
 unitTest({ perms: { read: true } }, function realpathSyncSuccess(): void {
   const incompletePath = "cli/tests/fixture.json";
   const realPath = Deno.realpathSync(incompletePath);
-  if (Deno.build.os !== "win") {
+  if (Deno.build.os !== "windows") {
     assert(realPath.startsWith("/"));
   } else {
     assert(/^[A-Z]/.test(realPath));
@@ -14,7 +14,7 @@ unitTest({ perms: { read: true } }, function realpathSyncSuccess(): void {
 
 unitTest(
   {
-    ignore: Deno.build.os === "win",
+    ignore: Deno.build.os === "windows",
     perms: { read: true, write: true },
   },
   function realpathSyncSymlink(): void {
@@ -56,7 +56,7 @@ unitTest({ perms: { read: true } }, async function realpathSuccess(): Promise<
 > {
   const incompletePath = "cli/tests/fixture.json";
   const realPath = await Deno.realpath(incompletePath);
-  if (Deno.build.os !== "win") {
+  if (Deno.build.os !== "windows") {
     assert(realPath.startsWith("/"));
   } else {
     assert(/^[A-Z]/.test(realPath));
@@ -66,7 +66,7 @@ unitTest({ perms: { read: true } }, async function realpathSuccess(): Promise<
 
 unitTest(
   {
-    ignore: Deno.build.os === "win",
+    ignore: Deno.build.os === "windows",
     perms: { read: true, write: true },
   },
   async function realpathSymlink(): Promise<void> {

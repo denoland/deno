@@ -7,10 +7,7 @@ const versions = {
   ...Deno.version,
 };
 
-const osToPlatform = (os: Deno.OperatingSystem): string =>
-  os === "win" ? "win32" : os === "mac" ? "darwin" : os;
-
-const platform = osToPlatform(Deno.build.os);
+const platform = Deno.build.os === "windows" ? "win32" : Deno.build.os;
 
 const { arch } = Deno.build;
 

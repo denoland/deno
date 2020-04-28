@@ -13,7 +13,7 @@ async function startServer(): Promise<void> {
   assert(server.stdout != null);
   const r = new TextProtoReader(new BufReader(server.stdout));
   const s = await r.readLine();
-  assert(s !== Deno.EOF && s.includes("Racing server listening..."));
+  assert(s !== null && s.includes("Racing server listening..."));
 }
 function killServer(): void {
   server.close();
