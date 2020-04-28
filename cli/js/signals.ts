@@ -83,7 +83,7 @@ export function setSignals(): void {
 }
 
 export function signal(signo: number): SignalStream {
-  if (build.os === "win") {
+  if (build.os === "windows") {
     throw new Error("not implemented!");
   }
   return new SignalStream(signo);
