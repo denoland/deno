@@ -751,11 +751,11 @@ declare namespace Deno {
   }
 
   /** A handle for `stdin`. */
-  export const stdin: Reader & SyncReader & Closer & { rid: number };
+  export const stdin: Reader & ReaderSync & Closer & { rid: number };
   /** A handle for `stdout`. */
-  export const stdout: Writer & SyncWriter & Closer & { rid: number };
+  export const stdout: Writer & WriterSync & Closer & { rid: number };
   /** A handle for `stderr`. */
-  export const stderr: Writer & SyncWriter & Closer & { rid: number };
+  export const stderr: Writer & WriterSync & Closer & { rid: number };
 
   export interface OpenOptions {
     /** Sets the option for read access. This option, when `true`, means that the
