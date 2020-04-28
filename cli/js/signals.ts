@@ -75,7 +75,7 @@ enum MacOSSignal {
 export const Signal: { [key: string]: number } = {};
 
 export function setSignals(): void {
-  if (build.os === "mac") {
+  if (build.os === "darwin") {
     Object.assign(Signal, MacOSSignal);
   } else {
     Object.assign(Signal, LinuxSignal);

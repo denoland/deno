@@ -318,7 +318,7 @@ unitTest({ perms: { run: true } }, async function runClose(): Promise<void> {
 });
 
 unitTest(function signalNumbers(): void {
-  if (Deno.build.os === "mac") {
+  if (Deno.build.os === "darwin") {
     assertEquals(Deno.Signal.SIGSTOP, 17);
   } else if (Deno.build.os === "linux") {
     assertEquals(Deno.Signal.SIGSTOP, 19);

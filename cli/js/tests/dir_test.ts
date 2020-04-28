@@ -10,7 +10,7 @@ unitTest({ perms: { write: true } }, function dirCwdChdirSuccess(): void {
   const path = Deno.makeTempDirSync();
   Deno.chdir(path);
   const current = Deno.cwd();
-  if (Deno.build.os === "mac") {
+  if (Deno.build.os === "darwin") {
     assertEquals(current, "/private" + path);
   } else {
     assertEquals(current, path);
