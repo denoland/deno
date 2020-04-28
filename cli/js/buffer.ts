@@ -4,7 +4,7 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 
-import { EOF, SyncReader, SyncWriter } from "./io.ts";
+import { Reader, Writer, EOF, SyncReader, SyncWriter } from "./io.ts";
 import { assert } from "./util.ts";
 import { TextDecoder } from "./web/text_encoding.ts";
 
