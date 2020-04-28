@@ -128,7 +128,7 @@ unitTest(async function readerIterSync(): Promise<void> {
   // ref: https://github.com/denoland/deno/issues/2330
   const encoder = new TextEncoder();
 
-  class TestReader implements Deno.SyncReader {
+  class TestReader implements Deno.ReaderSync {
     #offset = 0;
     #buf: Uint8Array;
 

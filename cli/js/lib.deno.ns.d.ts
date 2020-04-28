@@ -395,7 +395,7 @@ declare namespace Deno {
     read(p: Uint8Array): Promise<number | EOF>;
   }
 
-  export interface SyncReader {
+  export interface ReaderSync {
     /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number
      * of bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
      * encountered. Even if `read()` returns `n` < `p.byteLength`, it may use
@@ -414,7 +414,7 @@ declare namespace Deno {
      *
      * Implementations should not retain a reference to `p`.
      *
-     * Use Deno.iterSync() to turn a SyncReader into an Iterator.
+     * Use Deno.iterSync() to turn a ReaderSync into an Iterator.
      */
     readSync(p: Uint8Array): number | EOF;
   }
@@ -432,7 +432,7 @@ declare namespace Deno {
     write(p: Uint8Array): Promise<number>;
   }
 
-  export interface SyncWriter {
+  export interface WriterSync {
     /** Writes `p.byteLength` bytes from `p` to the underlying data
      * stream. It returns the number of bytes written from `p` (`0` <= `n`
      * <= `p.byteLength`) and any error encountered that caused the write to
@@ -464,7 +464,7 @@ declare namespace Deno {
     seek(offset: number, whence: SeekMode): Promise<number>;
   }
 
-  export interface SyncSeeker {
+  export interface SeekerSync {
     /** Seek sets the offset for the next `readSync()` or `writeSync()` to
      * offset, interpreted according to `whence`: `Start` means relative
      * to the start of the file, `Current` means relative to the current
@@ -533,7 +533,7 @@ declare namespace Deno {
     }
   ): AsyncIterableIterator<Uint8Array>;
 
-  /** Turns a SyncReader, `r`, into an iterator.
+  /** Turns a ReaderSync, `r`, into an iterator.
    *
    *      let f = Deno.openSync("/etc/passwd");
    *      for (const chunk of Deno.iterSync(reader)) {
@@ -559,7 +559,7 @@ declare namespace Deno {
    * next iteration will overwrite contents of previously returned chunk.
    */
   export function iterSync(
-    r: SyncReader,
+    r: ReaderSync,
     options?: {
       bufSize?: number;
     }
@@ -733,11 +733,11 @@ declare namespace Deno {
   export class File
     implements
       Reader,
-      SyncReader,
+      ReaderSync,
       Writer,
-      SyncWriter,
+      WriterSync,
       Seeker,
-      SyncSeeker,
+      SeekerSync,
       Closer {
     readonly rid: number;
     constructor(rid: number);
@@ -751,11 +751,11 @@ declare namespace Deno {
   }
 
   /** A handle for `stdin`. */
-  export const stdin: Reader & SyncReader & Closer & { rid: number };
+  export const stdin: Reader & ReaderSync & Closer & { rid: number };
   /** A handle for `stdout`. */
-  export const stdout: Writer & SyncWriter & Closer & { rid: number };
+  export const stdout: Writer & WriterSync & Closer & { rid: number };
   /** A handle for `stderr`. */
-  export const stderr: Writer & SyncWriter & Closer & { rid: number };
+  export const stderr: Writer & WriterSync & Closer & { rid: number };
 
   export interface OpenOptions {
     /** Sets the option for read access. This option, when `true`, means that the
@@ -831,7 +831,7 @@ declare namespace Deno {
    * of ArrayBuffer.
    *
    * Based on [Go Buffer](https://golang.org/pkg/bytes/#Buffer). */
-  export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
+  export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
     constructor(ab?: ArrayBuffer);
     /** Returns a slice holding the unread portion of the buffer.
      *
@@ -892,7 +892,7 @@ declare namespace Deno {
      *
      * Based on Go Lang's
      * [Buffer.ReadFrom](https://golang.org/pkg/bytes/#Buffer.ReadFrom). */
-    readFromSync(r: SyncReader): number;
+    readFromSync(r: ReaderSync): number;
   }
 
   /** Read Reader `r` until end of file (`Deno.EOF`) and resolve to the content
@@ -931,7 +931,7 @@ declare namespace Deno {
    *       const reader = new Deno.Buffer(myData.buffer as ArrayBuffer);
    *       const bufferContent = Deno.readAllSync(reader);
    */
-  export function readAllSync(r: SyncReader): Uint8Array;
+  export function readAllSync(r: ReaderSync): Uint8Array;
 
   /** Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
@@ -972,7 +972,7 @@ declare namespace Deno {
    *       Deno.writeAllSync(writer, contentBytes);
    *       console.log(writer.bytes().length);  // 11
    */
-  export function writeAllSync(w: SyncWriter, arr: Uint8Array): void;
+  export function writeAllSync(w: WriterSync, arr: Uint8Array): void;
 
   export interface MkdirOptions {
     /** Defaults to `false`. If set to `true`, means that any intermediate
