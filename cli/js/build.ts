@@ -5,7 +5,7 @@ export const build = {
   arch: "unknown",
   os: "unknown",
   vendor: "unknown",
-  env: undefined as (string | undefined)
+  env: undefined as string | undefined,
 };
 
 export function setBuildInfo(target: string): void {
