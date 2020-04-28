@@ -16,13 +16,18 @@ declare namespace Deno {
     fn: () => void | Promise<void>;
     name: string;
     ignore?: boolean;
-    disableOpSanitizer?: boolean;
-    disableResourceSanitizer?: boolean;
+    /** Check that the number of async completed ops after the test is the same
+     * as number of dispatched ops. Defaults to true.*/
+    sanitizeOps?: boolean;
+    /** Ensure the test case does not "leak" resources - ie. the resource table
+     * after the test has exactly the same contents as before the test. Defaults
+     * to true. */
+    sanitizeResources?: boolean;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
-   * line and the containing module looks like a test module, or explicitly
-   * when `Deno.runTests` is used.  `fn` can be async if required.
+   * line and the containing module looks like a test module.
+   * `fn` can be async if required.
    *
    *          import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
    *
@@ -37,7 +42,7 @@ declare namespace Deno {
    *            name: "example ignored test",
    *            ignore: Deno.build.os === "win"
    *            fn(): void {
-   *              //This test is ignored only on Windows machines
+   *              // This test is ignored only on Windows machines
    *            },
    *          });
    *
@@ -53,8 +58,8 @@ declare namespace Deno {
   export function test(t: TestDefinition): void;
 
   /** Register a test which will be run when `deno test` is used on the command
-   * line and the containing module looks like a test module, or explicitly
-   * when `Deno.runTests` is used
+   * line and the containing module looks like a test module.
+   * `fn` can be async if required.
    *
    *        import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
    *
@@ -71,8 +76,8 @@ declare namespace Deno {
   export function test(fn: () => void | Promise<void>): void;
 
   /** Register a test which will be run when `deno test` is used on the command
-   * line and the containing module looks like a test module, or explicitly
-   * when `Deno.runTests` is used
+   * line and the containing module looks like a test module.
+   * `fn` can be async if required.
    *
    *        import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
    *
@@ -88,81 +93,18 @@ declare namespace Deno {
    * */
   export function test(name: string, fn: () => void | Promise<void>): void;
 
-  export interface TestMessage {
-    start?: {
-      tests: TestDefinition[];
-    };
-    testStart?: {
-      [P in keyof TestDefinition]: TestDefinition[P];
-    };
-    testEnd?: {
-      name: string;
-      status: "passed" | "failed" | "ignored";
-      duration: number;
-      error?: Error;
-    };
-    end?: {
-      filtered: number;
-      ignored: number;
-      measured: number;
-      passed: number;
-      failed: number;
-      duration: number;
-      results: Array<TestMessage["testEnd"] & {}>;
-    };
-  }
-
-  export interface RunTestsOptions {
-    /** If `true`, Deno will exit with status code 1 if there was
-     * test failure. Defaults to `true`. */
-    exitOnFail?: boolean;
-    /** If `true`, Deno will exit upon first test failure. Defaults to `false`. */
-    failFast?: boolean;
-    /** String or RegExp used to filter test to run. Only test with names
-     * matching provided `String` or `RegExp` will be run. */
-    filter?: string | RegExp;
-    /** String or RegExp used to skip tests to run. Tests with names
-     * matching provided `String` or `RegExp` will not be run. */
-    skip?: string | RegExp;
-    /** Disable logging of the results. Defaults to `false`. */
-    disableLog?: boolean;
-    /** If true, report results to the console as is done for `deno test`. Defaults to `true`. */
-    reportToConsole?: boolean;
-    /** Called for each message received from the test run. */
-    onMessage?: (message: TestMessage) => void | Promise<void>;
-  }
-
-  /** Run any tests which have been registered via `Deno.test()`. Always resolves
-   * asynchronously.
-   *
-   *        //Register test
-   *        Deno.test({
-   *          name: "example test",
-   *          fn(): void {
-   *            assertEquals("world", "world");
-   *            assertEquals({ hello: "world" }, { hello: "world" });
-   *          },
-   *        });
-   *
-   *        //Run tests
-   *        const runInfo = await Deno.runTests();
-   *        console.log(runInfo.duration);  // all tests duration, e.g. "5" (in ms)
-   *        console.log(runInfo.stats.passed);  //e.g. 1
-   *        console.log(runInfo.results[0].name);  //e.g. "example test"
-   */
-  export function runTests(
-    opts?: RunTestsOptions
-  ): Promise<TestMessage["end"]> & {};
-
   /** Returns an array containing the 1, 5, and 15 minute load averages. The
    * load average is a measure of CPU and IO utilization of the last one, five,
    * and 15 minute periods expressed as a fractional number.  Zero means there
    * is no load. On Windows, the three values are always the same and represent
    * the current load, not the 1, 5 and 15 minute load averages.
    *
-   *       console.log(Deno.loadavg());  //e.g. [ 0.71, 0.44, 0.44 ]
+   *       console.log(Deno.loadavg());  // e.g. [ 0.71, 0.44, 0.44 ]
    *
    * Requires `allow-env` permission.
+   *
+   * **Unstable**  There are questions around which permission this needs. And
+   * maybe should be renamed (loadAverage?)
    */
   export function loadavg(): number[];
 
@@ -179,6 +121,9 @@ declare namespace Deno {
    *       console.log(Deno.osRelease());
    *
    * Requires `allow-env` permission.
+   *
+   * **Unstable** new API maybe move to Deno.build or Deno.versions? Depends on
+   * sys-info, which we don't necessarally want to depend on.
    */
   export function osRelease(): string;
 
@@ -197,7 +142,7 @@ declare namespace Deno {
    *       console.log(myEnv.SHELL);
    *       myEnv.TEST_VAR = "HELLO";
    *       const newEnv = Deno.env();
-   *       console.log(myEnv.TEST_VAR === newEnv.TEST_VAR);  //outputs "true"
+   *       console.log(myEnv.TEST_VAR === newEnv.TEST_VAR);  // outputs "true"
    *
    * Requires `allow-env` permission. */
   export function env(): {
@@ -207,8 +152,8 @@ declare namespace Deno {
   /** Retrieve the value of an environment variable. Returns undefined if that
    * key doesn't exist.
    *
-   *       console.log(Deno.env("HOME"));  //e.g. outputs "/home/alice"
-   *       console.log(Deno.env("MADE_UP_VAR"));  //outputs "Undefined"
+   *       console.log(Deno.env("HOME"));  // e.g. outputs "/home/alice"
+   *       console.log(Deno.env("MADE_UP_VAR"));  // outputs "Undefined"
    *
    * Requires `allow-env` permission. */
   export function env(key: string): string | undefined;
@@ -383,7 +328,7 @@ declare namespace Deno {
   /**
    * Returns the path to the current deno executable.
    *
-   *       console.log(Deno.execPath());  //e.g. "/home/alice/.local/bin/deno"
+   *       console.log(Deno.execPath());  // e.g. "/home/alice/.local/bin/deno"
    *
    * Requires `allow-env` permission.
    */
@@ -405,9 +350,6 @@ declare namespace Deno {
   export function cwd(): string;
 
   /**
-   * **UNSTABLE**: Currently under evaluation to decide if explicit permission is
-   * required to change the current working directory.
-   *
    * Change the current working directory to the specified path.
    *
    *       Deno.chdir("/home/userA");
@@ -417,6 +359,8 @@ declare namespace Deno {
    * Throws `Deno.errors.NotFound` if directory not found.
    * Throws `Deno.errors.PermissionDenied` if the user does not have access
    * rights
+   *
+   * Requires --allow-write.
    */
   export function chdir(directory: string): void;
 
@@ -427,15 +371,15 @@ declare namespace Deno {
    * Retrieve the process umask.  If `mask` is provided, sets the process umask.
    * This call always returns what the umask was before the call.
    *
-   *        console.log(Deno.umask());  //e.g. 18 (0o022)
-   *        const prevUmaskValue = Deno.umask(0o077);  //e.g. 18 (0o022)
-   *        console.log(Deno.umask());  //e.g. 63 (0o077)
+   *        console.log(Deno.umask());  // e.g. 18 (0o022)
+   *        const prevUmaskValue = Deno.umask(0o077);  // e.g. 18 (0o022)
+   *        console.log(Deno.umask());  // e.g. 63 (0o077)
    *
    * NOTE:  This API is not implemented on Windows
    */
   export function umask(mask?: number): number;
 
-  /** **UNSTABLE**: might move to `Deno.symbols`. */
+  /** **UNSTABLE**: might be removed in favor of `null` (#3932). */
   export const EOF: unique symbol;
   export type EOF = typeof EOF;
 
@@ -446,7 +390,6 @@ declare namespace Deno {
     SEEK_END = 2,
   }
 
-  /** **UNSTABLE**: might make `Reader` into iterator of some sort. */
   export interface Reader {
     /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number of
      * bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
@@ -465,6 +408,8 @@ declare namespace Deno {
      * after reading some bytes and also both of the allowed EOF behaviors.
      *
      * Implementations should not retain a reference to `p`.
+     *
+     * Use Deno.iter() to turn a Reader into an AsyncIterator.
      */
     read(p: Uint8Array): Promise<number | EOF>;
   }
@@ -487,6 +432,8 @@ declare namespace Deno {
      * after reading some bytes and also both of the allowed EOF behaviors.
      *
      * Implementations should not retain a reference to `p`.
+     *
+     * Use Deno.iterSync() to turn a SyncReader into an Iterator.
      */
     readSync(p: Uint8Array): number | EOF;
   }
@@ -562,24 +509,87 @@ declare namespace Deno {
    *
    *       const source = await Deno.open("my_file.txt");
    *       const buffer = new Deno.Buffer()
-   *       const bytesCopied1 = await Deno.copy(Deno.stdout, source);
-   *       const bytesCopied2 = await Deno.copy(buffer, source);
+   *       const bytesCopied1 = await Deno.copy(source, Deno.stdout);
+   *       const bytesCopied2 = await Deno.copy(source, buffer);
    *
    * Because `copy()` is defined to read from `src` until `EOF`, it does not
    * treat an `EOF` from `read()` as an error to be reported.
    *
-   * @param dst The destination to copy to
    * @param src The source to copy from
+   * @param dst The destination to copy to
+   * @param options Can be used to tune size of the buffer. Default size is 32kB
    */
-  export function copy(dst: Writer, src: Reader): Promise<number>;
+  export function copy(
+    src: Reader,
+    dst: Writer,
+    options?: {
+      bufSize?: number;
+    }
+  ): Promise<number>;
 
   /** Turns a Reader, `r`, into an async iterator.
    *
-   *      for await (const chunk of toAsyncIterator(reader)) {
+   *      let f = await Deno.open("/etc/passwd");
+   *      for await (const chunk of Deno.iter(f)) {
    *        console.log(chunk);
    *      }
+   *      f.close();
+   *
+   * Second argument can be used to tune size of a buffer.
+   * Default size of the buffer is 32kB.
+   *
+   *      let f = await Deno.open("/etc/passwd");
+   *      const iter = Deno.iter(f, {
+   *        bufSize: 1024 * 1024
+   *      });
+   *      for await (const chunk of iter) {
+   *        console.log(chunk);
+   *      }
+   *      f.close();
+   *
+   * Iterator uses an internal buffer of fixed size for efficiency; it returns
+   * a view on that buffer on each iteration. It is therefore caller's
+   * responsibility to copy contents of the buffer if needed; otherwise the
+   * next iteration will overwrite contents of previously returned chunk.
    */
-  export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array>;
+  export function iter(
+    r: Reader,
+    options?: {
+      bufSize?: number;
+    }
+  ): AsyncIterableIterator<Uint8Array>;
+
+  /** Turns a SyncReader, `r`, into an iterator.
+   *
+   *      let f = Deno.openSync("/etc/passwd");
+   *      for (const chunk of Deno.iterSync(reader)) {
+   *        console.log(chunk);
+   *      }
+   *      f.close();
+   *
+   * Second argument can be used to tune size of a buffer.
+   * Default size of the buffer is 32kB.
+   *
+   *      let f = await Deno.open("/etc/passwd");
+   *      const iter = Deno.iterSync(f, {
+   *        bufSize: 1024 * 1024
+   *      });
+   *      for (const chunk of iter) {
+   *        console.log(chunk);
+   *      }
+   *      f.close();
+   *
+   * Iterator uses an internal buffer of fixed size for efficiency; it returns
+   * a view on that buffer on each iteration. It is therefore caller's
+   * responsibility to copy contents of the buffer if needed; otherwise the
+   * next iteration will overwrite contents of previously returned chunk.
+   */
+  export function iterSync(
+    r: SyncReader,
+    options?: {
+      bufSize?: number;
+    }
+  ): IterableIterator<Uint8Array>;
 
   /** Synchronously open a file and return an instance of `Deno.File`.  The
    * file does not need to previously exist if using the `create` or `createNew`
@@ -594,18 +604,6 @@ declare namespace Deno {
    */
   export function openSync(path: string, options?: OpenOptions): File;
 
-  /** Synchronously open a file and return an instance of `Deno.File`.  The file
-   * may be created depending on the mode passed in.  It is the callers responsibility
-   * to close the file when finished with it.
-   *
-   *       const file = Deno.openSync("/foo/bar.txt", "r");
-   *       // Do work with file
-   *       Deno.close(file.rid);
-   *
-   * Requires `allow-read` and/or `allow-write` permissions depending on openMode.
-   */
-  export function openSync(path: string, openMode?: OpenMode): File;
-
   /** Open a file and resolve to an instance of `Deno.File`.  The
    * file does not need to previously exist if using the `create` or `createNew`
    * open options.  It is the callers responsibility to close the file when finished
@@ -618,18 +616,6 @@ declare namespace Deno {
    * Requires `allow-read` and/or `allow-write` permissions depending on options.
    */
   export function open(path: string, options?: OpenOptions): Promise<File>;
-
-  /** Open a file and resolve to an instance of `Deno.File`.  The file may be
-   * created depending on the mode passed in.  It is the callers responsibility
-   * to close the file when finished with it.
-   *
-   *       const file = await Deno.open("/foo/bar.txt", "w+");
-   *       // Do work with file
-   *       Deno.close(file.rid);
-   *
-   * Requires `allow-read` and/or `allow-write` permissions depending on openMode.
-   */
-  export function open(path: string, openMode?: OpenMode): Promise<File>;
 
   /** Creates a file if none exists or truncates an existing file and returns
    *  an instance of `Deno.File`.
@@ -708,7 +694,7 @@ declare namespace Deno {
    *
    *        const file = Deno.openSync('hello.txt', {read: true, write: true, truncate: true, create: true});
    *        Deno.writeSync(file.rid, new TextEncoder().encode("Hello world"));
-   *        //advance cursor 6 bytes
+   *        // advance cursor 6 bytes
    *        const cursorPosition = Deno.seekSync(file.rid, 6, Deno.SeekMode.SEEK_START);
    *        console.log(cursorPosition);  // 6
    *        const buf = new Uint8Array(100);
@@ -717,13 +703,13 @@ declare namespace Deno {
    *
    * The seek modes work as follows:
    *
-   *        //Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   *        //Seek 6 bytes from the start of the file
-   *        console.log(Deno.seekSync(file.rid, 6, Deno.SeekMode.SEEK_START)); //"6"
-   *        //Seek 2 more bytes from the current position
-   *        console.log(Deno.seekSync(file.rid, 2, Deno.SeekMode.SEEK_CURRENT)); //"8"
-   *        //Seek backwards 2 bytes from the end of the file
-   *        console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.SEEK_END)); //"9" (e.g. 11-2)
+   *        // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+   *        // Seek 6 bytes from the start of the file
+   *        console.log(Deno.seekSync(file.rid, 6, Deno.SeekMode.SEEK_START)); // "6"
+   *        // Seek 2 more bytes from the current position
+   *        console.log(Deno.seekSync(file.rid, 2, Deno.SeekMode.SEEK_CURRENT)); // "8"
+   *        // Seek backwards 2 bytes from the end of the file
+   *        console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.SEEK_END)); // "9" (e.g. 11-2)
    */
   export function seekSync(
     rid: number,
@@ -736,7 +722,7 @@ declare namespace Deno {
    *
    *        const file = await Deno.open('hello.txt', {read: true, write: true, truncate: true, create: true});
    *        await Deno.write(file.rid, new TextEncoder().encode("Hello world"));
-   *        //advance cursor 6 bytes
+   *        // advance cursor 6 bytes
    *        const cursorPosition = await Deno.seek(file.rid, 6, Deno.SeekMode.SEEK_START);
    *        console.log(cursorPosition);  // 6
    *        const buf = new Uint8Array(100);
@@ -745,13 +731,13 @@ declare namespace Deno {
    *
    * The seek modes work as follows:
    *
-   *        //Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   *        //Seek 6 bytes from the start of the file
-   *        console.log(await Deno.seek(file.rid, 6, Deno.SeekMode.SEEK_START)); //"6"
-   *        //Seek 2 more bytes from the current position
-   *        console.log(await Deno.seek(file.rid, 2, Deno.SeekMode.SEEK_CURRENT)); //"8"
-   *        //Seek backwards 2 bytes from the end of the file
-   *        console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.SEEK_END)); //"9" (e.g. 11-2)
+   *        // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+   *        // Seek 6 bytes from the start of the file
+   *        console.log(await Deno.seek(file.rid, 6, Deno.SeekMode.SEEK_START)); // "6"
+   *        // Seek 2 more bytes from the current position
+   *        console.log(await Deno.seek(file.rid, 2, Deno.SeekMode.SEEK_CURRENT)); // "8"
+   *        // Seek backwards 2 bytes from the end of the file
+   *        console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.SEEK_END)); // "9" (e.g. 11-2)
    */
   export function seek(
     rid: number,
@@ -790,12 +776,12 @@ declare namespace Deno {
     close(): void;
   }
 
-  /** An instance of `Deno.File` for `stdin`. */
-  export const stdin: File;
-  /** An instance of `Deno.File` for `stdout`. */
-  export const stdout: File;
-  /** An instance of `Deno.File` for `stderr`. */
-  export const stderr: File;
+  /** A handle for `stdin`. */
+  export const stdin: Reader & SyncReader & Closer & { rid: number };
+  /** A handle for `stdout`. */
+  export const stdout: Writer & SyncWriter & Closer & { rid: number };
+  /** A handle for `stderr`. */
+  export const stderr: Writer & SyncWriter & Closer & { rid: number };
 
   export interface OpenOptions {
     /** Sets the option for read access. This option, when `true`, means that the
@@ -831,26 +817,11 @@ declare namespace Deno {
     mode?: number;
   }
 
-  /** A set of string literals which specify how to open a file.
-   *
-   * |Value |Description                                                                                       |
-   * |------|--------------------------------------------------------------------------------------------------|
-   * |`"r"` |Read-only. Default. Starts at beginning of file.                                                  |
-   * |`"r+"`|Read-write. Start at beginning of file.                                                           |
-   * |`"w"` |Write-only. Opens and truncates existing file or creates new one for writing only.                |
-   * |`"w+"`|Read-write. Opens and truncates existing file or creates new one for writing and reading.         |
-   * |`"a"` |Write-only. Opens existing file or creates new one. Each write appends content to the end of file.|
-   * |`"a+"`|Read-write. Behaves like `"a"` and allows to read from file.                                      |
-   * |`"x"` |Write-only. Exclusive create - creates new file only if one doesn't exist already.                |
-   * |`"x+"`|Read-write. Behaves like `x` and allows reading from file.                                        |
-   */
-  export type OpenMode = "r" | "r+" | "w" | "w+" | "a" | "a+" | "x" | "x+";
-
   /** **UNSTABLE**: new API, yet to be vetted
    *
    *  Check if a given resource id (`rid`) is a TTY.
    *
-   *       //This example is system and context specific
+   *       // This example is system and context specific
    *       const nonTTYRid = Deno.openSync("my_file.txt").rid;
    *       const ttyRid = Deno.openSync("/dev/tty6").rid;
    *       console.log(Deno.isatty(nonTTYRid)); // false
@@ -873,6 +844,17 @@ declare namespace Deno {
   export function setRaw(rid: number, mode: boolean): void;
 
   /** A variable-sized buffer of bytes with `read()` and `write()` methods.
+   *
+   * Deno.Buffer is almost always used with some I/O like files and sockets. It
+   * allows one to buffer up a download from a socket. Buffer grows and shrinks
+   * as necessary.
+   *
+   * Deno.Buffer is NOT the same thing as Node's Buffer. Node's Buffer was
+   * created in 2009 before JavaScript had the concept of ArrayBuffers. It's
+   * simply a non-standard ArrayBuffer.
+   *
+   * ArrayBuffer is a fixed memory allocation. Deno.Buffer is implemented on top
+   * of ArrayBuffer.
    *
    * Based on [Go Buffer](https://golang.org/pkg/bytes/#Buffer). */
   export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
@@ -942,15 +924,15 @@ declare namespace Deno {
   /** Read Reader `r` until end of file (`Deno.EOF`) and resolve to the content
    * as `Uint8Array`.
    *
-   *       //Example from stdin
+   *       // Example from stdin
    *       const stdinContent = await Deno.readAll(Deno.stdin);
    *
-   *       //Example from file
+   *       // Example from file
    *       const file = await Deno.open("my_file.txt", {read: true});
    *       const myFileContent = await Deno.readAll(file);
    *       Deno.close(file.rid);
    *
-   *       //Example from buffer
+   *       // Example from buffer
    *       const myData = new Uint8Array(100);
    *       // ... fill myData array with data
    *       const reader = new Deno.Buffer(myData.buffer as ArrayBuffer);
@@ -961,15 +943,15 @@ declare namespace Deno {
   /** Synchronously reads Reader `r` until end of file (`Deno.EOF`) and returns
    * the content as `Uint8Array`.
    *
-   *       //Example from stdin
+   *       // Example from stdin
    *       const stdinContent = Deno.readAllSync(Deno.stdin);
    *
-   *       //Example from file
+   *       // Example from file
    *       const file = Deno.openSync("my_file.txt", {read: true});
    *       const myFileContent = Deno.readAllSync(file);
    *       Deno.close(file.rid);
    *
-   *       //Example from buffer
+   *       // Example from buffer
    *       const myData = new Uint8Array(100);
    *       // ... fill myData array with data
    *       const reader = new Deno.Buffer(myData.buffer as ArrayBuffer);
@@ -979,17 +961,17 @@ declare namespace Deno {
 
   /** Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
-   *       //Example writing to stdout
+   *       // Example writing to stdout
    *       const contentBytes = new TextEncoder().encode("Hello World");
    *       await Deno.writeAll(Deno.stdout, contentBytes);
    *
-   *       //Example writing to file
+   *       // Example writing to file
    *       const contentBytes = new TextEncoder().encode("Hello World");
    *       const file = await Deno.open('test.file', {write: true});
    *       await Deno.writeAll(file, contentBytes);
    *       Deno.close(file.rid);
    *
-   *       //Example writing to buffer
+   *       // Example writing to buffer
    *       const contentBytes = new TextEncoder().encode("Hello World");
    *       const writer = new Deno.Buffer();
    *       await Deno.writeAll(writer, contentBytes);
@@ -1000,17 +982,17 @@ declare namespace Deno {
   /** Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
    *
-   *       //Example writing to stdout
+   *       // Example writing to stdout
    *       const contentBytes = new TextEncoder().encode("Hello World");
    *       Deno.writeAllSync(Deno.stdout, contentBytes);
    *
-   *       //Example writing to file
+   *       // Example writing to file
    *       const contentBytes = new TextEncoder().encode("Hello World");
    *       const file = Deno.openSync('test.file', {write: true});
    *       Deno.writeAllSync(file, contentBytes);
    *       Deno.close(file.rid);
    *
-   *       //Example writing to buffer
+   *       // Example writing to buffer
    *       const contentBytes = new TextEncoder().encode("Hello World");
    *       const writer = new Deno.Buffer();
    *       Deno.writeAllSync(writer, contentBytes);
@@ -1114,7 +1096,7 @@ declare namespace Deno {
    * needed.
    *
    *       const tempFileName0 = Deno.makeTempFileSync(); // e.g. /tmp/419e0bf2
-   *       const tempFileName1 = Deno.makeTempFileSync({ prefix: 'my_temp' });  //e.g. /tmp/my_temp754d3098
+   *       const tempFileName1 = Deno.makeTempFileSync({ prefix: 'my_temp' });  // e.g. /tmp/my_temp754d3098
    *
    * Requires `allow-write` permission. */
   export function makeTempFileSync(options?: MakeTempOptions): string;
@@ -1131,7 +1113,7 @@ declare namespace Deno {
    * needed.
    *
    *       const tmpFileName0 = await Deno.makeTempFile();  // e.g. /tmp/419e0bf2
-   *       const tmpFileName1 = await Deno.makeTempFile({ prefix: 'my_temp' });  //e.g. /tmp/my_temp754d3098
+   *       const tmpFileName1 = await Deno.makeTempFile({ prefix: 'my_temp' });  // e.g. /tmp/my_temp754d3098
    *
    * Requires `allow-write` permission. */
   export function makeTempFile(options?: MakeTempOptions): Promise<string>;
@@ -1333,15 +1315,15 @@ declare namespace Deno {
     /** The last modification time of the file. This corresponds to the `mtime`
      * field from `stat` on Linux/Mac OS and `ftLastWriteTime` on Windows. This
      * may not be available on all platforms. */
-    modified: number | null;
+    mtime: Date | null;
     /** The last access time of the file. This corresponds to the `atime`
      * field from `stat` on Unix and `ftLastAccessTime` on Windows. This may not
      * be available on all platforms. */
-    accessed: number | null;
-    /** The last access time of the file. This corresponds to the `birthtime`
-     * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may not
-     * be available on all platforms. */
-    created: number | null;
+    atime: Date | null;
+    /** The creation time of the file. This corresponds to the `birthtime`
+     * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may
+     * not be available on all platforms. */
+    birthtime: Date | null;
     /** ID of the device containing the file.
      *
      * _Linux/Mac OS only._ */
@@ -1363,7 +1345,7 @@ declare namespace Deno {
      *
      * _Linux/Mac OS only._ */
     uid: number | null;
-    /** User ID of the owner of this file.
+    /** Group ID of the owner of this file.
      *
      * _Linux/Mac OS only._ */
     gid: number | null;
@@ -1388,7 +1370,7 @@ declare namespace Deno {
    *       const realPath = Deno.realpathSync("./file.txt");
    *       const realSymLinkPath = Deno.realpathSync("./symlink_file.txt");
    *       console.log(realPath);  // outputs "/home/alice/file.txt"
-   *       console.log(realSymLinkPath);  //outputs "/home/alice/file.txt"
+   *       console.log(realSymLinkPath);  // outputs "/home/alice/file.txt"
    *
    * Requires `allow-read` permission. */
   export function realpathSync(path: string): string;
@@ -1400,7 +1382,7 @@ declare namespace Deno {
    *       const realPath = await Deno.realpath("./file.txt");
    *       const realSymLinkPath = await Deno.realpath("./symlink_file.txt");
    *       console.log(realPath);  // outputs "/home/alice/file.txt"
-   *       console.log(realSymLinkPath);  //outputs "/home/alice/file.txt"
+   *       console.log(realSymLinkPath);  // outputs "/home/alice/file.txt"
    *
    * Requires `allow-read` permission. */
   export function realpath(path: string): Promise<string>;
@@ -1520,12 +1502,16 @@ declare namespace Deno {
 
   /** Creates `newpath` as a hard link to `oldpath`.
    *
+   *  **UNSTABLE**: needs security review.
+   *
    *       await Deno.link("old/name", "new/name");
    *
    * Requires `allow-read` and `allow-write` permissions. */
   export function link(oldpath: string, newpath: string): Promise<void>;
 
   /** **UNSTABLE**: `type` argument type may be changed to `"dir" | "file"`.
+   *
+   *  **UNSTABLE**: needs security review.
    *
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
@@ -1544,6 +1530,8 @@ declare namespace Deno {
   ): void;
 
   /** **UNSTABLE**: `type` argument may be changed to `"dir" | "file"`
+   *
+   *  **UNSTABLE**: needs security review.
    *
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
@@ -1578,10 +1566,10 @@ declare namespace Deno {
    *
    *       const encoder = new TextEncoder();
    *       const data = encoder.encode("Hello world\n");
-   *       Deno.writeFileSync("hello1.txt", data);  //overwrite "hello.txt" or create it
-   *       Deno.writeFileSync("hello2.txt", data, {create: false});  //only works if "hello2.txt" exists
-   *       Deno.writeFileSync("hello3.txt", data, {mode: 0o777});  //set permissions on new file
-   *       Deno.writeFileSync("hello4.txt", data, {append: true});  //add data to the end of the file
+   *       Deno.writeFileSync("hello1.txt", data);  // overwrite "hello1.txt" or create it
+   *       Deno.writeFileSync("hello2.txt", data, {create: false});  // only works if "hello2.txt" exists
+   *       Deno.writeFileSync("hello3.txt", data, {mode: 0o777});  // set permissions on new file
+   *       Deno.writeFileSync("hello4.txt", data, {append: true});  // add data to the end of the file
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is
    * `false`.
@@ -1597,10 +1585,10 @@ declare namespace Deno {
    *
    *       const encoder = new TextEncoder();
    *       const data = encoder.encode("Hello world\n");
-   *       await Deno.writeFile("hello1.txt", data);  //overwrite "hello.txt" or create it
-   *       await Deno.writeFile("hello2.txt", data, {create: false});  //only works if "hello2.txt" exists
-   *       await Deno.writeFile("hello3.txt", data, {mode: 0o777});  //set permissions on new file
-   *       await Deno.writeFile("hello4.txt", data, {append: true});  //add data to the end of the file
+   *       await Deno.writeFile("hello1.txt", data);  // overwrite "hello1.txt" or create it
+   *       await Deno.writeFile("hello2.txt", data, {create: false});  // only works if "hello2.txt" exists
+   *       await Deno.writeFile("hello3.txt", data, {mode: 0o777});  // set permissions on new file
+   *       await Deno.writeFile("hello4.txt", data, {append: true});  // add data to the end of the file
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
    */
@@ -1767,10 +1755,10 @@ declare namespace Deno {
    * specified `len`.  If `len` is not specified then the entire file contents
    * are truncated.
    *
-   *       //truncate the entire file
+   *       // truncate the entire file
    *       Deno.truncateSync("my_file.txt");
    *
-   *       //truncate part of the file
+   *       // truncate part of the file
    *       const file = Deno.makeTempFileSync();
    *       Deno.writeFileSync(file, new TextEncoder().encode("Hello World"));
    *       Deno.truncateSync(file, 7);
@@ -1783,48 +1771,36 @@ declare namespace Deno {
   /** Truncates or extends the specified file, to reach the specified `len`. If
    * `len` is not specified then the entire file contents are truncated.
    *
-   *       //truncate the entire file
+   *       // truncate the entire file
    *       await Deno.truncate("my_file.txt");
    *
-   *       //truncate part of the file
+   *       // truncate part of the file
    *       const file = await Deno.makeTempFile();
    *       await Deno.writeFile(file, new TextEncoder().encode("Hello World"));
    *       await Deno.truncate(file, 7);
    *       const data = await Deno.readFile(file);
-   *       console.log(new TextDecoder().decode(data));  //"Hello W"
+   *       console.log(new TextDecoder().decode(data));  // "Hello W"
    *
    * Requires `allow-write` permission. */
   export function truncate(name: string, len?: number): Promise<void>;
-
-  export interface AsyncHandler {
-    (msg: Uint8Array): void;
-  }
-
-  export interface PluginOp {
-    dispatch(
-      control: Uint8Array,
-      zeroCopy?: ArrayBufferView | null
-    ): Uint8Array | null;
-    setAsyncHandler(handler: AsyncHandler): void;
-  }
-
-  export interface Plugin {
-    ops: {
-      [name: string]: PluginOp;
-    };
-  }
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Open and initalize a plugin.
    *
-   *        const plugin = Deno.openPlugin("./path/to/some/plugin.so");
-   *        const some_op = plugin.ops.some_op;
-   *        const response = some_op.dispatch(new Uint8Array([1,2,3,4]));
+   *        const rid = Deno.openPlugin("./path/to/some/plugin.so");
+   *        const opId = Deno.core.ops()["some_op"];
+   *        const response = Deno.core.dispatch(opId, new Uint8Array([1,2,3,4]));
    *        console.log(`Response from plugin ${response}`);
    *
-   * Requires `allow-plugin` permission. */
-  export function openPlugin(filename: string): Plugin;
+   * Requires `allow-plugin` permission.
+   *
+   * The plugin system is not stable and will change in the future, hence the
+   * lack of docs. For now take a look at the example
+   * https://github.com/denoland/deno/tree/master/test_plugin
+   */
+  export function openPlugin(filename: string): number;
+
   export interface NetAddr {
     transport: "tcp" | "udp";
     hostname: string;
@@ -1833,7 +1809,7 @@ declare namespace Deno {
 
   export interface UnixAddr {
     transport: "unix" | "unixpacket";
-    address: string;
+    path: string;
   }
 
   export type Addr = NetAddr | UnixAddr;
@@ -1921,7 +1897,7 @@ declare namespace Deno {
 
   export interface UnixListenOptions {
     /** A Path to the Unix Socket. */
-    address: string;
+    path: string;
   }
   /** **UNSTABLE**: new API, yet to be vetted.
    *
@@ -1940,9 +1916,9 @@ declare namespace Deno {
    *
    * Listen announces on the local transport address.
    *
-   *     const listener = Deno.listen({ address: "/foo/bar.sock", transport: "unix" })
+   *     const listener = Deno.listen({ path: "/foo/bar.sock", transport: "unix" })
    *
-   * Requires `allow-read` permission. */
+   * Requires `allow-read` and `allow-write` permission. */
   export function listen(
     options: UnixListenOptions & { transport: "unix" }
   ): Listener;
@@ -1961,14 +1937,14 @@ declare namespace Deno {
    *
    * Listen announces on the local transport address.
    *
-   *     const listener = Deno.listen({ address: "/foo/bar.sock", transport: "unixpacket" })
+   *     const listener = Deno.listen({ path: "/foo/bar.sock", transport: "unixpacket" })
    *
-   * Requires `allow-read` permission. */
+   * Requires `allow-read` and `allow-write` permission. */
   export function listen(
     options: UnixListenOptions & { transport: "unixpacket" }
   ): DatagramConn;
 
-  export interface ListenTLSOptions extends ListenOptions {
+  export interface ListenTlsOptions extends ListenOptions {
     /** Server certificate file. */
     certFile: string;
     /** Server public key file. */
@@ -1980,10 +1956,10 @@ declare namespace Deno {
   /** Listen announces on the local transport address over TLS (transport layer
    * security).
    *
-   *      const lstnr = Deno.listenTLS({ port: 443, certFile: "./server.crt", keyFile: "./server.key" });
+   *      const lstnr = Deno.listenTls({ port: 443, certFile: "./server.crt", keyFile: "./server.key" });
    *
    * Requires `allow-net` permission. */
-  export function listenTLS(options: ListenTLSOptions): Listener;
+  export function listenTls(options: ListenTlsOptions): Listener;
 
   export interface ConnectOptions {
     /** The port to connect to. */
@@ -1996,7 +1972,7 @@ declare namespace Deno {
 
   export interface UnixConnectOptions {
     transport: "unix";
-    address: string;
+    path: string;
   }
 
   /**
@@ -2007,14 +1983,14 @@ declare namespace Deno {
    *     const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 });
    *     const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
    *     const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
-   *     const conn5 = await Deno.connect({ address: "/foo/bar.sock", transport: "unix" });
+   *     const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
    *
    * Requires `allow-net` permission for "tcp" and `allow-read` for unix. */
   export function connect(
     options: ConnectOptions | UnixConnectOptions
   ): Promise<Conn>;
 
-  export interface ConnectTLSOptions {
+  export interface ConnectTlsOptions {
     /** The port to connect to. */
     port: number;
     /** A literal IP address or host name that can be resolved to an IP address.
@@ -2029,14 +2005,41 @@ declare namespace Deno {
    * cert file is optional and if not included Mozilla's root certificates will
    * be used (see also https://github.com/ctz/webpki-roots for specifics)
    *
-   *     const conn1 = await Deno.connectTLS({ port: 80 });
-   *     const conn2 = await Deno.connectTLS({ certFile: "./certs/my_custom_root_CA.pem", hostname: "192.0.2.1", port: 80 });
-   *     const conn3 = await Deno.connectTLS({ hostname: "[2001:db8::1]", port: 80 });
-   *     const conn4 = await Deno.connectTLS({ certFile: "./certs/my_custom_root_CA.pem", hostname: "golang.org", port: 80});
+   *     const conn1 = await Deno.connectTls({ port: 80 });
+   *     const conn2 = await Deno.connectTls({ certFile: "./certs/my_custom_root_CA.pem", hostname: "192.0.2.1", port: 80 });
+   *     const conn3 = await Deno.connectTls({ hostname: "[2001:db8::1]", port: 80 });
+   *     const conn4 = await Deno.connectTls({ certFile: "./certs/my_custom_root_CA.pem", hostname: "golang.org", port: 80});
    *
    * Requires `allow-net` permission.
    */
-  export function connectTLS(options: ConnectTLSOptions): Promise<Conn>;
+  export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
+
+  export interface StartTlsOptions {
+    /** A literal IP address or host name that can be resolved to an IP address.
+     * If not specified, defaults to `127.0.0.1`. */
+    hostname?: string;
+    /** Server certificate file. */
+    certFile?: string;
+  }
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Start TLS handshake from an existing connection using
+   * an optional cert file, hostname (default is "127.0.0.1").  The
+   * cert file is optional and if not included Mozilla's root certificates will
+   * be used (see also https://github.com/ctz/webpki-roots for specifics)
+   * Using this function requires that the other end of the connection is
+   * prepared for TLS handshake.
+   *
+   *     const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
+   *     const tlsConn = await Deno.startTls(conn, { certFile: "./certs/my_custom_root_CA.pem", hostname: "127.0.0.1", port: 80 });
+   *
+   * Requires `allow-net` permission.
+   */
+  export function startTls(
+    conn: Conn,
+    options?: StartTlsOptions
+  ): Promise<Conn>;
 
   /** **UNSTABLE**: not sure if broken or not */
   export interface Metrics {
@@ -2076,31 +2079,29 @@ declare namespace Deno {
    */
   export function metrics(): Metrics;
 
-  /** **UNSTABLE**: reconsider representation. */
   interface ResourceMap {
-    [rid: number]: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    [rid: number]: any;
   }
 
-  /** **UNSTABLE**: The return type is under consideration and may change.
+  /** Returns a map of open resource ids (rid) along with their string
+   * representations. This is an internal API and as such resource
+   * representation has `any` type; that means it can change any time.
    *
-   * Returns a map of open _file like_ resource ids (rid) along with their string
-   * representations.
-   *
-   *       console.log(Deno.resources()); //e.g. { 0: "stdin", 1: "stdout", 2: "stderr" }
+   *       console.log(Deno.resources());
+   *       // { 0: "stdin", 1: "stdout", 2: "stderr" }
    *       Deno.openSync('../test.file');
-   *       console.log(Deno.resources()); //e.g. { 0: "stdin", 1: "stdout", 2: "stderr", 3: "fsFile" }
+   *       console.log(Deno.resources());
+   *       // { 0: "stdin", 1: "stdout", 2: "stderr", 3: "fsFile" }
    */
   export function resources(): ResourceMap;
 
-  /** **UNSTABLE**: new API. Needs docs. */
   export interface FsEvent {
     kind: "any" | "access" | "create" | "modify" | "remove";
     paths: string[];
   }
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Watch for file system events against one or more `paths`, which can be files
+  /** Watch for file system events against one or more `paths`, which can be files
    * or directories.  These paths must exist already.  One user action (e.g.
    * `touch test.file`) can  generate multiple file system events.  Likewise,
    * one user action can result in multiple file paths in one event (e.g. `mv
@@ -2108,14 +2109,15 @@ declare namespace Deno {
    * for directories, will watch the specified directory and all sub directories.
    * Note that the exact ordering of the events can vary between operating systems.
    *
-   *       const iter = Deno.fsEvents("/");
-   *       for await (const event of iter) {
-   *          console.log(">>>> event", event);  //e.g. { kind: "create", paths: [ "/foo.txt" ] }
+   *       const watcher = Deno.watchFs("/");
+   *       for await (const event of watcher) {
+   *          console.log(">>>> event", event);
+   *          // { kind: "create", paths: [ "/foo.txt" ] }
    *       }
    *
    * Requires `allow-read` permission.
    */
-  export function fsEvents(
+  export function watchFs(
     paths: string | string[],
     options?: { recursive: boolean }
   ): AsyncIterableIterator<FsEvent>;
@@ -2315,8 +2317,8 @@ declare namespace Deno {
    *      const obj = {};
    *      obj.propA = 10;
    *      obj.propB = "hello"
-   *      const objAsString = Deno.inspect(obj); //{ propA: 10, propB: "hello" }
-   *      console.log(obj);  //prints same value as objAsString, e.g. { propA: 10, propB: "hello" }
+   *      const objAsString = Deno.inspect(obj); // { propA: 10, propB: "hello" }
+   *      console.log(obj);  // prints same value as objAsString, e.g. { propA: 10, propB: "hello" }
    *
    * You can also register custom inspect functions, via the `customInspect` Deno
    * symbol on objects, to control and customize the output.
@@ -2324,13 +2326,13 @@ declare namespace Deno {
    *      class A {
    *        x = 10;
    *        y = "hello";
-   *        [Deno.symbols.customInspect](): string {
+   *        [Deno.customInspect](): string {
    *          return "x=" + this.x + ", y=" + this.y;
    *        }
    *      }
    *
-   *      const inStringFormat = Deno.inspect(new A()); //"x=10, y=hello"
-   *      console.log(inStringFormat);  //prints "x=10, y=hello"
+   *      const inStringFormat = Deno.inspect(new A()); // "x=10, y=hello"
+   *      console.log(inStringFormat);  // prints "x=10, y=hello"
    *
    * Finally, a number of output options are also available.
    *
@@ -2417,8 +2419,8 @@ declare namespace Deno {
    * user friendly format.
    *
    *       const [diagnostics, result] = Deno.compile("file_with_compile_issues.ts");
-   *       console.table(diagnostics);  //Prints raw diagnostic data
-   *       console.log(Deno.formatDiagnostics(diagnostics));  //User friendly output of diagnostics
+   *       console.table(diagnostics);  // Prints raw diagnostic data
+   *       console.log(Deno.formatDiagnostics(diagnostics));  // User friendly output of diagnostics
    *
    * @param items An array of diagnostic items to format
    */
@@ -2714,7 +2716,7 @@ declare namespace Deno {
    * the key is the module name and the value is the content. The extension of the
    * module name will be used to determine the media type of the module.
    *
-   *      //equivalent to "deno bundle foo.ts" from the command line
+   *      // equivalent to "deno bundle foo.ts" from the command line
    *      const [ maybeDiagnostics1, output1 ] = await Deno.bundle("foo.ts");
    *
    *      const [ maybeDiagnostics2, output2 ] = await Deno.bundle("/foo.ts", {
@@ -2846,1371 +2848,8 @@ declare namespace Deno {
     windowChange: () => SignalStream;
   };
 
-  /** **UNSTABLE**: new API. Maybe move `Deno.EOF` here.
-   *
-   * Special Deno related symbols. */
-  export const symbols: {
-    /** Symbol to access exposed internal Deno API */
-    readonly internal: unique symbol;
-    /** A symbol which can be used as a key for a custom method which will be
-     * called when `Deno.inspect()` is called, or when the object is logged to
-     * the console. */
-    readonly customInspect: unique symbol;
-    // TODO(ry) move EOF here?
-  };
+  /** A symbol which can be used as a key for a custom method which will be
+   * called when `Deno.inspect()` is called, or when the object is logged to
+   * the console. */
+  export const customInspect: unique symbol;
 }
-
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, no-var */
-
-/// <reference no-default-lib="true" />
-/// <reference lib="esnext" />
-
-// This follows the WebIDL at: https://webassembly.github.io/spec/js-api/
-// and: https://webassembly.github.io/spec/web-api/
-declare namespace WebAssembly {
-  interface WebAssemblyInstantiatedSource {
-    module: Module;
-    instance: Instance;
-  }
-
-  /** Compiles a `WebAssembly.Module` from WebAssembly binary code.  This
-   * function is useful if it is necessary to a compile a module before it can
-   * be instantiated (otherwise, the `WebAssembly.instantiate()` function
-   * should be used). */
-  function compile(bufferSource: BufferSource): Promise<Module>;
-
-  /** Compiles a `WebAssembly.Module` directly from a streamed underlying
-   * source. This function is useful if it is necessary to a compile a module
-   * before it can be instantiated (otherwise, the
-   * `WebAssembly.instantiateStreaming()` function should be used). */
-  function compileStreaming(source: Promise<Response>): Promise<Module>;
-
-  /** Takes the WebAssembly binary code, in the form of a typed array or
-   * `ArrayBuffer`, and performs both compilation and instantiation in one step.
-   * The returned `Promise` resolves to both a compiled `WebAssembly.Module` and
-   * its first `WebAssembly.Instance`. */
-  function instantiate(
-    bufferSource: BufferSource,
-    importObject?: object
-  ): Promise<WebAssemblyInstantiatedSource>;
-
-  /** Takes an already-compiled `WebAssembly.Module` and returns a `Promise`
-   * that resolves to an `Instance` of that `Module`. This overload is useful if
-   * the `Module` has already been compiled. */
-  function instantiate(
-    module: Module,
-    importObject?: object
-  ): Promise<Instance>;
-
-  /** Compiles and instantiates a WebAssembly module directly from a streamed
-   * underlying source. This is the most efficient, optimized way to load wasm
-   * code. */
-  function instantiateStreaming(
-    source: Promise<Response>,
-    importObject?: object
-  ): Promise<WebAssemblyInstantiatedSource>;
-
-  /** Validates a given typed array of WebAssembly binary code, returning
-   * whether the bytes form a valid wasm module (`true`) or not (`false`). */
-  function validate(bufferSource: BufferSource): boolean;
-
-  type ImportExportKind = "function" | "table" | "memory" | "global";
-
-  interface ModuleExportDescriptor {
-    name: string;
-    kind: ImportExportKind;
-  }
-  interface ModuleImportDescriptor {
-    module: string;
-    name: string;
-    kind: ImportExportKind;
-  }
-
-  class Module {
-    constructor(bufferSource: BufferSource);
-
-    /** Given a `Module` and string, returns a copy of the contents of all
-     * custom sections in the module with the given string name. */
-    static customSections(
-      moduleObject: Module,
-      sectionName: string
-    ): ArrayBuffer;
-
-    /** Given a `Module`, returns an array containing descriptions of all the
-     * declared exports. */
-    static exports(moduleObject: Module): ModuleExportDescriptor[];
-
-    /** Given a `Module`, returns an array containing descriptions of all the
-     * declared imports. */
-    static imports(moduleObject: Module): ModuleImportDescriptor[];
-  }
-
-  class Instance<T extends object = { [key: string]: any }> {
-    constructor(module: Module, importObject?: object);
-
-    /** An object containing as its members all the functions exported from the
-     * WebAssembly module instance, to allow them to be accessed and used by
-     * JavaScript. */
-    readonly exports: T;
-  }
-
-  interface MemoryDescriptor {
-    initial: number;
-    maximum?: number;
-  }
-
-  class Memory {
-    constructor(descriptor: MemoryDescriptor);
-
-    /** An accessor property that returns the buffer contained in the memory. */
-    readonly buffer: ArrayBuffer;
-
-    /** Increases the size of the memory instance by a specified number of
-     * WebAssembly pages (each one is 64KB in size). */
-    grow(delta: number): number;
-  }
-
-  type TableKind = "anyfunc";
-
-  interface TableDescriptor {
-    element: TableKind;
-    initial: number;
-    maximum?: number;
-  }
-
-  class Table {
-    constructor(descriptor: TableDescriptor);
-
-    /** Returns the length of the table, i.e. the number of elements. */
-    readonly length: number;
-
-    /** Accessor function — gets the element stored at a given index. */
-    get(index: number): (...args: any[]) => any;
-
-    /** Increases the size of the Table instance by a specified number of
-     * elements. */
-    grow(delta: number): number;
-
-    /** Sets an element stored at a given index to a given value. */
-    set(index: number, value: (...args: any[]) => any): void;
-  }
-
-  type ValueType = "i32" | "i64" | "f32" | "f64";
-
-  interface GlobalDescriptor {
-    value: ValueType;
-    mutable?: boolean;
-  }
-
-  /** Represents a global variable instance, accessible from both JavaScript and
-   * importable/exportable across one or more `WebAssembly.Module` instances.
-   * This allows dynamic linking of multiple modules. */
-  class Global {
-    constructor(descriptor: GlobalDescriptor, value?: any);
-
-    /** Old-style method that returns the value contained inside the global
-     * variable. */
-    valueOf(): any;
-
-    /** The value contained inside the global variable — this can be used to
-     * directly set and get the global's value. */
-    value: any;
-  }
-
-  /** Indicates an error during WebAssembly decoding or validation */
-  class CompileError extends Error {
-    constructor(message: string, fileName?: string, lineNumber?: string);
-  }
-
-  /** Indicates an error during module instantiation (besides traps from the
-   * start function). */
-  class LinkError extends Error {
-    constructor(message: string, fileName?: string, lineNumber?: string);
-  }
-
-  /** Is thrown whenever WebAssembly specifies a trap. */
-  class RuntimeError extends Error {
-    constructor(message: string, fileName?: string, lineNumber?: string);
-  }
-}
-
-/** Sets a timer which executes a function once after the timer expires. */
-declare function setTimeout(
-  cb: (...args: unknown[]) => void,
-  delay?: number,
-  ...args: unknown[]
-): number;
-
-/** Repeatedly calls a function , with a fixed time delay between each call. */
-declare function setInterval(
-  cb: (...args: unknown[]) => void,
-  delay?: number,
-  ...args: unknown[]
-): number;
-declare function clearTimeout(id?: number): void;
-declare function clearInterval(id?: number): void;
-declare function queueMicrotask(func: Function): void;
-
-declare var console: Console;
-declare var location: Location;
-
-declare function addEventListener(
-  type: string,
-  callback: EventListenerOrEventListenerObject | null,
-  options?: boolean | AddEventListenerOptions | undefined
-): void;
-
-declare function dispatchEvent(event: Event): boolean;
-
-declare function removeEventListener(
-  type: string,
-  callback: EventListenerOrEventListenerObject | null,
-  options?: boolean | EventListenerOptions | undefined
-): void;
-
-declare interface ImportMeta {
-  url: string;
-  main: boolean;
-}
-
-interface DomIterable<K, V> {
-  keys(): IterableIterator<K>;
-  values(): IterableIterator<V>;
-  entries(): IterableIterator<[K, V]>;
-  [Symbol.iterator](): IterableIterator<[K, V]>;
-  forEach(
-    callback: (value: V, key: K, parent: this) => void,
-    thisArg?: any
-  ): void;
-}
-
-interface ReadableStreamReadDoneResult<T> {
-  done: true;
-  value?: T;
-}
-
-interface ReadableStreamReadValueResult<T> {
-  done: false;
-  value: T;
-}
-
-type ReadableStreamReadResult<T> =
-  | ReadableStreamReadValueResult<T>
-  | ReadableStreamReadDoneResult<T>;
-
-interface ReadableStreamDefaultReader<R = any> {
-  readonly closed: Promise<void>;
-  cancel(reason?: any): Promise<void>;
-  read(): Promise<ReadableStreamReadResult<R>>;
-  releaseLock(): void;
-}
-
-interface UnderlyingSource<R = any> {
-  cancel?: ReadableStreamErrorCallback;
-  pull?: ReadableStreamDefaultControllerCallback<R>;
-  start?: ReadableStreamDefaultControllerCallback<R>;
-  type?: undefined;
-}
-
-interface ReadableStreamErrorCallback {
-  (reason: any): void | PromiseLike<void>;
-}
-
-interface ReadableStreamDefaultControllerCallback<R> {
-  (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
-}
-
-interface ReadableStreamDefaultController<R> {
-  readonly desiredSize: number;
-  enqueue(chunk?: R): void;
-  close(): void;
-  error(e?: any): void;
-}
-
-/** This Streams API interface represents a readable stream of byte data. The
- * Fetch API offers a concrete instance of a ReadableStream through the body
- * property of a Response object. */
-interface ReadableStream<R = any> {
-  readonly locked: boolean;
-  cancel(reason?: any): Promise<void>;
-  // TODO(ry) It doesn't seem like Chrome supports this.
-  // getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
-  getReader(): ReadableStreamDefaultReader<R>;
-  tee(): [ReadableStream<R>, ReadableStream<R>];
-}
-
-declare const ReadableStream: {
-  prototype: ReadableStream;
-  // TODO(ry) This doesn't match lib.dom.d.ts
-  new <R = any>(src?: UnderlyingSource<R>): ReadableStream<R>;
-};
-
-/** This Streams API interface provides a standard abstraction for writing streaming data to a destination, known as a sink. This object comes with built-in backpressure and queuing. */
-interface WritableStream<W = any> {
-  readonly locked: boolean;
-  abort(reason?: any): Promise<void>;
-  getWriter(): WritableStreamDefaultWriter<W>;
-}
-
-interface WritableStreamDefaultWriter<W = any> {
-  readonly closed: Promise<void>;
-  readonly desiredSize: number | null;
-  readonly ready: Promise<void>;
-  abort(reason?: any): Promise<void>;
-  close(): Promise<void>;
-  releaseLock(): void;
-  write(chunk: W): Promise<void>;
-}
-
-interface DOMStringList {
-  /** Returns the number of strings in strings. */
-  readonly length: number;
-  /** Returns true if strings contains string, and false otherwise. */
-  contains(string: string): boolean;
-  /** Returns the string with index index from strings. */
-  item(index: number): string | null;
-  [index: number]: string;
-}
-
-declare class DOMException extends Error {
-  constructor(message?: string, name?: string);
-  readonly name: string;
-  readonly message: string;
-}
-
-/** The location (URL) of the object it is linked to. Changes done on it are
- * reflected on the object it relates to. Both the Document and Window
- * interface have such a linked Location, accessible via Document.location and
- * Window.location respectively. */
-declare interface Location {
-  /** Returns a DOMStringList object listing the origins of the ancestor
-   * browsing contexts, from the parent browsing context to the top-level
-   * browsing context. */
-  readonly ancestorOrigins: DOMStringList;
-  /** Returns the Location object's URL's fragment (includes leading "#" if
-   * non-empty).
-   *
-   * Can be set, to navigate to the same URL with a changed fragment (ignores
-   * leading "#"). */
-  hash: string;
-  /** Returns the Location object's URL's host and port (if different from the
-   * default port for the scheme).
-   *
-   * Can be set, to navigate to the same URL with a changed host and port. */
-  host: string;
-  /** Returns the Location object's URL's host.
-   *
-   * Can be set, to navigate to the same URL with a changed host. */
-  hostname: string;
-  /** Returns the Location object's URL.
-   *
-   * Can be set, to navigate to the given URL. */
-  href: string;
-  toString(): string;
-  /** Returns the Location object's URL's origin. */
-  readonly origin: string;
-  /** Returns the Location object's URL's path.
-   *
-   * Can be set, to navigate to the same URL with a changed path. */
-  pathname: string;
-  /** Returns the Location object's URL's port.
-   *
-   * Can be set, to navigate to the same URL with a changed port. */
-  port: string;
-  /** Returns the Location object's URL's scheme.
-   *
-   * Can be set, to navigate to the same URL with a changed scheme. */
-  protocol: string;
-  /** Returns the Location object's URL's query (includes leading "?" if
-   * non-empty).
-   *
-   * Can be set, to navigate to the same URL with a changed query (ignores
-   * leading "?"). */
-  search: string;
-  /**
-   * Navigates to the given URL.
-   */
-  assign(url: string): void;
-  /**
-   * Reloads the current page.
-   */
-  reload(): void;
-  /** Removes the current page from the session history and navigates to the
-   * given URL. */
-  replace(url: string): void;
-}
-
-type BufferSource = ArrayBufferView | ArrayBuffer;
-type BlobPart = BufferSource | Blob | string;
-
-interface BlobPropertyBag {
-  type?: string;
-  ending?: "transparent" | "native";
-}
-
-/** A file-like object of immutable, raw data. Blobs represent data that isn't necessarily in a JavaScript-native format. The File interface is based on Blob, inheriting blob functionality and expanding it to support files on the user's system. */
-interface Blob {
-  readonly size: number;
-  readonly type: string;
-  arrayBuffer(): Promise<ArrayBuffer>;
-  slice(start?: number, end?: number, contentType?: string): Blob;
-  stream(): ReadableStream;
-  text(): Promise<string>;
-}
-
-declare const Blob: {
-  prototype: Blob;
-  new (blobParts?: BlobPart[], options?: BlobPropertyBag): Blob;
-};
-
-interface FilePropertyBag extends BlobPropertyBag {
-  lastModified?: number;
-}
-
-/** Provides information about files and allows JavaScript in a web page to
- * access their content. */
-interface File extends Blob {
-  readonly lastModified: number;
-  readonly name: string;
-}
-
-declare const File: {
-  prototype: File;
-  new (fileBits: BlobPart[], fileName: string, options?: FilePropertyBag): File;
-};
-
-declare const isConsoleInstance: unique symbol;
-
-declare class Console {
-  indentLevel: number;
-  [isConsoleInstance]: boolean;
-  /** Writes the arguments to stdout */
-  log: (...args: unknown[]) => void;
-  /** Writes the arguments to stdout */
-  debug: (...args: unknown[]) => void;
-  /** Writes the arguments to stdout */
-  info: (...args: unknown[]) => void;
-  /** Writes the properties of the supplied `obj` to stdout */
-  dir: (
-    obj: unknown,
-    options?: Partial<{
-      showHidden: boolean;
-      depth: number;
-      colors: boolean;
-      indentLevel: number;
-    }>
-  ) => void;
-
-  /** From MDN:
-   * Displays an interactive tree of the descendant elements of
-   * the specified XML/HTML element. If it is not possible to display
-   * as an element the JavaScript Object view is shown instead.
-   * The output is presented as a hierarchical listing of expandable
-   * nodes that let you see the contents of child nodes.
-   *
-   * Since we write to stdout, we can't display anything interactive
-   * we just fall back to `console.dir`.
-   */
-  dirxml: (
-    obj: unknown,
-    options?: Partial<{
-      showHidden: boolean;
-      depth: number;
-      colors: boolean;
-      indentLevel: number;
-    }>
-  ) => void;
-
-  /** Writes the arguments to stdout */
-  warn: (...args: unknown[]) => void;
-  /** Writes the arguments to stdout */
-  error: (...args: unknown[]) => void;
-  /** Writes an error message to stdout if the assertion is `false`. If the
-   * assertion is `true`, nothing happens.
-   *
-   * ref: https://console.spec.whatwg.org/#assert
-   */
-  assert: (condition?: boolean, ...args: unknown[]) => void;
-  count: (label?: string) => void;
-  countReset: (label?: string) => void;
-  table: (data: unknown, properties?: string[] | undefined) => void;
-  time: (label?: string) => void;
-  timeLog: (label?: string, ...args: unknown[]) => void;
-  timeEnd: (label?: string) => void;
-  group: (...label: unknown[]) => void;
-  groupCollapsed: (...label: unknown[]) => void;
-  groupEnd: () => void;
-  clear: () => void;
-  trace: (...args: unknown[]) => void;
-  static [Symbol.hasInstance](instance: Console): boolean;
-}
-
-type FormDataEntryValue = File | string;
-
-/** Provides a way to easily construct a set of key/value pairs representing
- * form fields and their values, which can then be easily sent using the
- * XMLHttpRequest.send() method. It uses the same format a form would use if the
- * encoding type were set to "multipart/form-data". */
-interface FormData extends DomIterable<string, FormDataEntryValue> {
-  append(name: string, value: string | Blob, fileName?: string): void;
-  delete(name: string): void;
-  get(name: string): FormDataEntryValue | null;
-  getAll(name: string): FormDataEntryValue[];
-  has(name: string): boolean;
-  set(name: string, value: string | Blob, fileName?: string): void;
-}
-
-declare const FormData: {
-  prototype: FormData;
-  // TODO(ry) FormData constructor is non-standard.
-  // new(form?: HTMLFormElement): FormData;
-  new (): FormData;
-};
-
-interface Body {
-  /** A simple getter used to expose a `ReadableStream` of the body contents. */
-  readonly body: ReadableStream<Uint8Array> | null;
-  /** Stores a `Boolean` that declares whether the body has been used in a
-   * response yet.
-   */
-  readonly bodyUsed: boolean;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
-   * that resolves with an `ArrayBuffer`.
-   */
-  arrayBuffer(): Promise<ArrayBuffer>;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
-   * that resolves with a `Blob`.
-   */
-  blob(): Promise<Blob>;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
-   * that resolves with a `FormData` object.
-   */
-  formData(): Promise<FormData>;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
-   * that resolves with the result of parsing the body text as JSON.
-   */
-  json(): Promise<any>;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
-   * that resolves with a `USVString` (text).
-   */
-  text(): Promise<string>;
-}
-
-type HeadersInit = Headers | string[][] | Record<string, string>;
-
-/** This Fetch API interface allows you to perform various actions on HTTP
- * request and response headers. These actions include retrieving, setting,
- * adding to, and removing. A Headers object has an associated header list,
- * which is initially empty and consists of zero or more name and value pairs.
- *  You can add to this using methods like append() (see Examples.) In all
- * methods of this interface, header names are matched by case-insensitive byte
- * sequence. */
-interface Headers {
-  append(name: string, value: string): void;
-  delete(name: string): void;
-  get(name: string): string | null;
-  has(name: string): boolean;
-  set(name: string, value: string): void;
-  forEach(
-    callbackfn: (value: string, key: string, parent: Headers) => void,
-    thisArg?: any
-  ): void;
-}
-
-interface Headers extends DomIterable<string, string> {
-  /** Appends a new value onto an existing header inside a `Headers` object, or
-   * adds the header if it does not already exist.
-   */
-  append(name: string, value: string): void;
-  /** Deletes a header from a `Headers` object. */
-  delete(name: string): void;
-  /** Returns an iterator allowing to go through all key/value pairs
-   * contained in this Headers object. The both the key and value of each pairs
-   * are ByteString objects.
-   */
-  entries(): IterableIterator<[string, string]>;
-  /** Returns a `ByteString` sequence of all the values of a header within a
-   * `Headers` object with a given name.
-   */
-  get(name: string): string | null;
-  /** Returns a boolean stating whether a `Headers` object contains a certain
-   * header.
-   */
-  has(name: string): boolean;
-  /** Returns an iterator allowing to go through all keys contained in
-   * this Headers object. The keys are ByteString objects.
-   */
-  keys(): IterableIterator<string>;
-  /** Sets a new value for an existing header inside a Headers object, or adds
-   * the header if it does not already exist.
-   */
-  set(name: string, value: string): void;
-  /** Returns an iterator allowing to go through all values contained in
-   * this Headers object. The values are ByteString objects.
-   */
-  values(): IterableIterator<string>;
-  forEach(
-    callbackfn: (value: string, key: string, parent: this) => void,
-    thisArg?: any
-  ): void;
-  /** The Symbol.iterator well-known symbol specifies the default
-   * iterator for this Headers object
-   */
-  [Symbol.iterator](): IterableIterator<[string, string]>;
-}
-
-declare const Headers: {
-  prototype: Headers;
-  new (init?: HeadersInit): Headers;
-};
-
-type RequestInfo = Request | string;
-type RequestCache =
-  | "default"
-  | "force-cache"
-  | "no-cache"
-  | "no-store"
-  | "only-if-cached"
-  | "reload";
-type RequestCredentials = "include" | "omit" | "same-origin";
-type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
-type RequestRedirect = "error" | "follow" | "manual";
-type ReferrerPolicy =
-  | ""
-  | "no-referrer"
-  | "no-referrer-when-downgrade"
-  | "origin"
-  | "origin-when-cross-origin"
-  | "same-origin"
-  | "strict-origin"
-  | "strict-origin-when-cross-origin"
-  | "unsafe-url";
-type BodyInit =
-  | Blob
-  | BufferSource
-  | FormData
-  | URLSearchParams
-  | ReadableStream<Uint8Array>
-  | string;
-type RequestDestination =
-  | ""
-  | "audio"
-  | "audioworklet"
-  | "document"
-  | "embed"
-  | "font"
-  | "image"
-  | "manifest"
-  | "object"
-  | "paintworklet"
-  | "report"
-  | "script"
-  | "sharedworker"
-  | "style"
-  | "track"
-  | "video"
-  | "worker"
-  | "xslt";
-
-interface RequestInit {
-  /**
-   * A BodyInit object or null to set request's body.
-   */
-  body?: BodyInit | null;
-  /**
-   * A string indicating how the request will interact with the browser's cache
-   * to set request's cache.
-   */
-  cache?: RequestCache;
-  /**
-   * A string indicating whether credentials will be sent with the request
-   * always, never, or only when sent to a same-origin URL. Sets request's
-   * credentials.
-   */
-  credentials?: RequestCredentials;
-  /**
-   * A Headers object, an object literal, or an array of two-item arrays to set
-   * request's headers.
-   */
-  headers?: HeadersInit;
-  /**
-   * A cryptographic hash of the resource to be fetched by request. Sets
-   * request's integrity.
-   */
-  integrity?: string;
-  /**
-   * A boolean to set request's keepalive.
-   */
-  keepalive?: boolean;
-  /**
-   * A string to set request's method.
-   */
-  method?: string;
-  /**
-   * A string to indicate whether the request will use CORS, or will be
-   * restricted to same-origin URLs. Sets request's mode.
-   */
-  mode?: RequestMode;
-  /**
-   * A string indicating whether request follows redirects, results in an error
-   * upon encountering a redirect, or returns the redirect (in an opaque
-   * fashion). Sets request's redirect.
-   */
-  redirect?: RequestRedirect;
-  /**
-   * A string whose value is a same-origin URL, "about:client", or the empty
-   * string, to set request's referrer.
-   */
-  referrer?: string;
-  /**
-   * A referrer policy to set request's referrerPolicy.
-   */
-  referrerPolicy?: ReferrerPolicy;
-  /**
-   * An AbortSignal to set request's signal.
-   */
-  signal?: AbortSignal | null;
-  /**
-   * Can only be null. Used to disassociate request from any Window.
-   */
-  window?: any;
-}
-
-/** This Fetch API interface represents a resource request. */
-interface Request extends Body {
-  /**
-   * Returns the cache mode associated with request, which is a string
-   * indicating how the request will interact with the browser's cache when
-   * fetching.
-   */
-  readonly cache: RequestCache;
-  /**
-   * Returns the credentials mode associated with request, which is a string
-   * indicating whether credentials will be sent with the request always, never,
-   * or only when sent to a same-origin URL.
-   */
-  readonly credentials: RequestCredentials;
-  /**
-   * Returns the kind of resource requested by request, e.g., "document" or "script".
-   */
-  readonly destination: RequestDestination;
-  /**
-   * Returns a Headers object consisting of the headers associated with request.
-   * Note that headers added in the network layer by the user agent will not be
-   * accounted for in this object, e.g., the "Host" header.
-   */
-  readonly headers: Headers;
-  /**
-   * Returns request's subresource integrity metadata, which is a cryptographic
-   * hash of the resource being fetched. Its value consists of multiple hashes
-   * separated by whitespace. [SRI]
-   */
-  readonly integrity: string;
-  /**
-   * Returns a boolean indicating whether or not request is for a history
-   * navigation (a.k.a. back-foward navigation).
-   */
-  readonly isHistoryNavigation: boolean;
-  /**
-   * Returns a boolean indicating whether or not request is for a reload
-   * navigation.
-   */
-  readonly isReloadNavigation: boolean;
-  /**
-   * Returns a boolean indicating whether or not request can outlive the global
-   * in which it was created.
-   */
-  readonly keepalive: boolean;
-  /**
-   * Returns request's HTTP method, which is "GET" by default.
-   */
-  readonly method: string;
-  /**
-   * Returns the mode associated with request, which is a string indicating
-   * whether the request will use CORS, or will be restricted to same-origin
-   * URLs.
-   */
-  readonly mode: RequestMode;
-  /**
-   * Returns the redirect mode associated with request, which is a string
-   * indicating how redirects for the request will be handled during fetching. A
-   * request will follow redirects by default.
-   */
-  readonly redirect: RequestRedirect;
-  /**
-   * Returns the referrer of request. Its value can be a same-origin URL if
-   * explicitly set in init, the empty string to indicate no referrer, and
-   * "about:client" when defaulting to the global's default. This is used during
-   * fetching to determine the value of the `Referer` header of the request
-   * being made.
-   */
-  readonly referrer: string;
-  /**
-   * Returns the referrer policy associated with request. This is used during
-   * fetching to compute the value of the request's referrer.
-   */
-  readonly referrerPolicy: ReferrerPolicy;
-  /**
-   * Returns the signal associated with request, which is an AbortSignal object
-   * indicating whether or not request has been aborted, and its abort event
-   * handler.
-   */
-  readonly signal: AbortSignal;
-  /**
-   * Returns the URL of request as a string.
-   */
-  readonly url: string;
-  clone(): Request;
-}
-
-declare const Request: {
-  prototype: Request;
-  new (input: RequestInfo, init?: RequestInit): Request;
-};
-
-type ResponseType =
-  | "basic"
-  | "cors"
-  | "default"
-  | "error"
-  | "opaque"
-  | "opaqueredirect";
-
-/** This Fetch API interface represents the response to a request. */
-interface Response extends Body {
-  readonly headers: Headers;
-  readonly ok: boolean;
-  readonly redirected: boolean;
-  readonly status: number;
-  readonly statusText: string;
-  readonly trailer: Promise<Headers>;
-  readonly type: ResponseType;
-  readonly url: string;
-  clone(): Response;
-}
-
-declare const Response: {
-  prototype: Response;
-
-  // TODO(#4667) Response constructor is non-standard.
-  // new(body?: BodyInit | null, init?: ResponseInit): Response;
-  new (
-    url: string,
-    status: number,
-    statusText: string,
-    headersList: Array<[string, string]>,
-    rid: number,
-    redirected_: boolean,
-    type_?: null | ResponseType,
-    body_?: null | Body
-  ): Response;
-
-  error(): Response;
-  redirect(url: string, status?: number): Response;
-};
-
-/** Fetch a resource from the network. */
-declare function fetch(
-  input: Request | URL | string,
-  init?: RequestInit
-): Promise<Response>;
-
-declare function atob(s: string): string;
-
-/** Creates a base-64 ASCII string from the input string. */
-declare function btoa(s: string): string;
-
-declare class TextDecoder {
-  /** Returns encoding's name, lowercased. */
-  readonly encoding: string;
-  /** Returns `true` if error mode is "fatal", and `false` otherwise. */
-  readonly fatal: boolean;
-  /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
-  readonly ignoreBOM = false;
-  constructor(
-    label?: string,
-    options?: { fatal?: boolean; ignoreBOM?: boolean }
-  );
-  /** Returns the result of running encoding's decoder. */
-  decode(input?: BufferSource, options?: { stream?: false }): string;
-  readonly [Symbol.toStringTag]: string;
-}
-
-declare class TextEncoder {
-  /** Returns "utf-8". */
-  readonly encoding = "utf-8";
-  /** Returns the result of running UTF-8's encoder. */
-  encode(input?: string): Uint8Array;
-  encodeInto(
-    input: string,
-    dest: Uint8Array
-  ): { read: number; written: number };
-  readonly [Symbol.toStringTag]: string;
-}
-
-interface URLSearchParams {
-  /** Appends a specified key/value pair as a new search parameter.
-   *
-   *       let searchParams = new URLSearchParams();
-   *       searchParams.append('name', 'first');
-   *       searchParams.append('name', 'second');
-   */
-  append(name: string, value: string): void;
-
-  /** Deletes the given search parameter and its associated value,
-   * from the list of all search parameters.
-   *
-   *       let searchParams = new URLSearchParams([['name', 'value']]);
-   *       searchParams.delete('name');
-   */
-  delete(name: string): void;
-
-  /** Returns all the values associated with a given search parameter
-   * as an array.
-   *
-   *       searchParams.getAll('name');
-   */
-  getAll(name: string): string[];
-
-  /** Returns the first value associated to the given search parameter.
-   *
-   *       searchParams.get('name');
-   */
-  get(name: string): string | null;
-
-  /** Returns a Boolean that indicates whether a parameter with the
-   * specified name exists.
-   *
-   *       searchParams.has('name');
-   */
-  has(name: string): boolean;
-
-  /** Sets the value associated with a given search parameter to the
-   * given value. If there were several matching values, this method
-   * deletes the others. If the search parameter doesn't exist, this
-   * method creates it.
-   *
-   *       searchParams.set('name', 'value');
-   */
-  set(name: string, value: string): void;
-
-  /** Sort all key/value pairs contained in this object in place and
-   * return undefined. The sort order is according to Unicode code
-   * points of the keys.
-   *
-   *       searchParams.sort();
-   */
-  sort(): void;
-
-  /** Calls a function for each element contained in this object in
-   * place and return undefined. Optionally accepts an object to use
-   * as this when executing callback as second argument.
-   *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       params.forEach((value, key, parent) => {
-   *         console.log(value, key, parent);
-   *       });
-   *
-   */
-  forEach(
-    callbackfn: (value: string, key: string, parent: this) => void,
-    thisArg?: any
-  ): void;
-
-  /** Returns an iterator allowing to go through all keys contained
-   * in this object.
-   *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const key of params.keys()) {
-   *         console.log(key);
-   *       }
-   */
-  keys(): IterableIterator<string>;
-
-  /** Returns an iterator allowing to go through all values contained
-   * in this object.
-   *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const value of params.values()) {
-   *         console.log(value);
-   *       }
-   */
-  values(): IterableIterator<string>;
-
-  /** Returns an iterator allowing to go through all key/value
-   * pairs contained in this object.
-   *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const [key, value] of params.entries()) {
-   *         console.log(key, value);
-   *       }
-   */
-  entries(): IterableIterator<[string, string]>;
-
-  /** Returns an iterator allowing to go through all key/value
-   * pairs contained in this object.
-   *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const [key, value] of params) {
-   *         console.log(key, value);
-   *       }
-   */
-  [Symbol.iterator](): IterableIterator<[string, string]>;
-
-  /** Returns a query string suitable for use in a URL.
-   *
-   *        searchParams.toString();
-   */
-  toString(): string;
-}
-
-declare const URLSearchParams: {
-  prototype: URLSearchParams;
-  new (
-    init?: string[][] | Record<string, string> | string | URLSearchParams
-  ): URLSearchParams;
-  toString(): string;
-};
-
-/** The URL interface represents an object providing static methods used for creating object URLs. */
-interface URL {
-  hash: string;
-  host: string;
-  hostname: string;
-  href: string;
-  toString(): string;
-  readonly origin: string;
-  password: string;
-  pathname: string;
-  port: string;
-  protocol: string;
-  search: string;
-  readonly searchParams: URLSearchParams;
-  username: string;
-  toJSON(): string;
-}
-
-declare const URL: {
-  prototype: URL;
-  new (url: string, base?: string | URL): URL;
-  createObjectURL(object: any): string;
-  revokeObjectURL(url: string): void;
-};
-
-interface MessageEventInit extends EventInit {
-  data?: any;
-  origin?: string;
-  lastEventId?: string;
-}
-
-declare class MessageEvent extends Event {
-  readonly data: any;
-  readonly origin: string;
-  readonly lastEventId: string;
-  constructor(type: string, eventInitDict?: MessageEventInit);
-}
-
-interface ErrorEventInit extends EventInit {
-  message?: string;
-  filename?: string;
-  lineno?: number;
-  colno?: number;
-  error?: any;
-}
-
-declare class ErrorEvent extends Event {
-  readonly message: string;
-  readonly filename: string;
-  readonly lineno: number;
-  readonly colno: number;
-  readonly error: any;
-  constructor(type: string, eventInitDict?: ErrorEventInit);
-}
-
-interface PostMessageOptions {
-  transfer?: any[];
-}
-
-declare class Worker extends EventTarget {
-  onerror?: (e: ErrorEvent) => void;
-  onmessage?: (e: MessageEvent) => void;
-  onmessageerror?: (e: MessageEvent) => void;
-  constructor(
-    specifier: string,
-    options?: {
-      type?: "classic" | "module";
-      name?: string;
-    }
-  );
-  postMessage(message: any, transfer: ArrayBuffer[]): void;
-  postMessage(message: any, options?: PostMessageOptions): void;
-  terminate(): void;
-}
-
-declare namespace performance {
-  /** Returns a current time from Deno's start in milliseconds.
-   *
-   * Use the flag --allow-hrtime return a precise value.
-   *
-   *       const t = performance.now();
-   *       console.log(`${t} ms since start!`);
-   */
-  export function now(): number;
-}
-
-interface EventInit {
-  bubbles?: boolean;
-  cancelable?: boolean;
-  composed?: boolean;
-}
-
-/** An event which takes place in the DOM. */
-declare class Event {
-  constructor(type: string, eventInitDict?: EventInit);
-  /** Returns true or false depending on how event was initialized. True if
-   * event goes through its target's ancestors in reverse tree order, and
-   * false otherwise. */
-  readonly bubbles: boolean;
-  cancelBubble: boolean;
-  /** Returns true or false depending on how event was initialized. Its return
-   * value does not always carry meaning, but true can indicate that part of the
-   * operation during which event was dispatched, can be canceled by invoking
-   * the preventDefault() method. */
-  readonly cancelable: boolean;
-  /** Returns true or false depending on how event was initialized. True if
-   * event invokes listeners past a ShadowRoot node that is the root of its
-   * target, and false otherwise. */
-  readonly composed: boolean;
-  /** Returns the object whose event listener's callback is currently being
-   * invoked. */
-  readonly currentTarget: EventTarget | null;
-  /** Returns true if preventDefault() was invoked successfully to indicate
-   * cancellation, and false otherwise. */
-  readonly defaultPrevented: boolean;
-  /** Returns the event's phase, which is one of NONE, CAPTURING_PHASE,
-   * AT_TARGET, and BUBBLING_PHASE. */
-  readonly eventPhase: number;
-  /** Returns true if event was dispatched by the user agent, and false
-   * otherwise. */
-  readonly isTrusted: boolean;
-  /** Returns the object to which event is dispatched (its target). */
-  readonly target: EventTarget | null;
-  /** Returns the event's timestamp as the number of milliseconds measured
-   * relative to the time origin. */
-  readonly timeStamp: number;
-  /** Returns the type of event, e.g. "click", "hashchange", or "submit". */
-  readonly type: string;
-  /** Returns the invocation target objects of event's path (objects on which
-   * listeners will be invoked), except for any nodes in shadow trees of which
-   * the shadow root's mode is "closed" that are not reachable from event's
-   * currentTarget. */
-  composedPath(): EventTarget[];
-  /** If invoked when the cancelable attribute value is true, and while
-   * executing a listener for the event with passive set to false, signals to
-   * the operation that caused event to be dispatched that it needs to be
-   * canceled. */
-  preventDefault(): void;
-  /** Invoking this method prevents event from reaching any registered event
-   * listeners after the current one finishes running and, when dispatched in a
-   * tree, also prevents event from reaching any other objects. */
-  stopImmediatePropagation(): void;
-  /** When dispatched in a tree, invoking this method prevents event from
-   * reaching any objects other than the current object. */
-  stopPropagation(): void;
-  readonly AT_TARGET: number;
-  readonly BUBBLING_PHASE: number;
-  readonly CAPTURING_PHASE: number;
-  readonly NONE: number;
-  static readonly AT_TARGET: number;
-  static readonly BUBBLING_PHASE: number;
-  static readonly CAPTURING_PHASE: number;
-  static readonly NONE: number;
-}
-
-/**
- * EventTarget is a DOM interface implemented by objects that can receive events
- * and may have listeners for them.
- */
-declare class EventTarget {
-  /** Appends an event listener for events whose type attribute value is type.
-   * The callback argument sets the callback that will be invoked when the event
-   * is dispatched.
-   *
-   * The options argument sets listener-specific options. For compatibility this
-   * can be a boolean, in which case the method behaves exactly as if the value
-   * was specified as options's capture.
-   *
-   * When set to true, options's capture prevents callback from being invoked
-   * when the event's eventPhase attribute value is BUBBLING_PHASE. When false
-   * (or not present), callback will not be invoked when event's eventPhase
-   * attribute value is CAPTURING_PHASE. Either way, callback will be invoked if
-   * event's eventPhase attribute value is AT_TARGET.
-   *
-   * When set to true, options's passive indicates that the callback will not
-   * cancel the event by invoking preventDefault(). This is used to enable
-   * performance optimizations described in § 2.8 Observing event listeners.
-   *
-   * When set to true, options's once indicates that the callback will only be
-   * invoked once after which the event listener will be removed.
-   *
-   * The event listener is appended to target's event listener list and is not
-   * appended if it has the same type, callback, and capture. */
-  addEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject | null,
-    options?: boolean | AddEventListenerOptions
-  ): void;
-  /** Dispatches a synthetic event event to target and returns true if either
-   * event's cancelable attribute value is false or its preventDefault() method
-   * was not invoked, and false otherwise. */
-  dispatchEvent(event: Event): boolean;
-  /** Removes the event listener in target's event listener list with the same
-   * type, callback, and options. */
-  removeEventListener(
-    type: string,
-    callback: EventListenerOrEventListenerObject | null,
-    options?: EventListenerOptions | boolean
-  ): void;
-  [Symbol.toStringTag]: string;
-}
-
-interface EventListener {
-  (evt: Event): void | Promise<void>;
-}
-
-interface EventListenerObject {
-  handleEvent(evt: Event): void | Promise<void>;
-}
-
-declare type EventListenerOrEventListenerObject =
-  | EventListener
-  | EventListenerObject;
-
-interface AddEventListenerOptions extends EventListenerOptions {
-  once?: boolean;
-  passive?: boolean;
-}
-
-interface EventListenerOptions {
-  capture?: boolean;
-}
-
-/** Events measuring progress of an underlying process, like an HTTP request
- * (for an XMLHttpRequest, or the loading of the underlying resource of an
- * <img>, <audio>, <video>, <style> or <link>). */
-interface ProgressEvent<T extends EventTarget = EventTarget> extends Event {
-  readonly lengthComputable: boolean;
-  readonly loaded: number;
-  readonly target: T | null;
-  readonly total: number;
-}
-
-interface CustomEventInit<T = any> extends EventInit {
-  detail?: T;
-}
-
-declare class CustomEvent<T = any> extends Event {
-  constructor(typeArg: string, eventInitDict?: CustomEventInit<T>);
-  /** Returns any custom data event was created with. Typically used for
-   * synthetic events. */
-  readonly detail: T;
-}
-
-/** A controller object that allows you to abort one or more DOM requests as and
- * when desired. */
-declare class AbortController {
-  /** Returns the AbortSignal object associated with this object. */
-  readonly signal: AbortSignal;
-  /** Invoking this method will set this object's AbortSignal's aborted flag and
-   * signal to any observers that the associated activity is to be aborted. */
-  abort(): void;
-}
-
-interface AbortSignalEventMap {
-  abort: Event;
-}
-
-/** A signal object that allows you to communicate with a DOM request (such as a
- * Fetch) and abort it if required via an AbortController object. */
-interface AbortSignal extends EventTarget {
-  /** Returns true if this AbortSignal's AbortController has signaled to abort,
-   * and false otherwise. */
-  readonly aborted: boolean;
-  onabort: ((this: AbortSignal, ev: Event) => any) | null;
-  addEventListener<K extends keyof AbortSignalEventMap>(
-    type: K,
-    listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-    options?: boolean | AddEventListenerOptions
-  ): void;
-  addEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject,
-    options?: boolean | AddEventListenerOptions
-  ): void;
-  removeEventListener<K extends keyof AbortSignalEventMap>(
-    type: K,
-    listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-    options?: boolean | EventListenerOptions
-  ): void;
-  removeEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject,
-    options?: boolean | EventListenerOptions
-  ): void;
-}
-
-declare const AbortSignal: {
-  prototype: AbortSignal;
-  new (): AbortSignal;
-};
-
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
-/// <reference no-default-lib="true" />
-/// <reference lib="deno.ns" />
-/// <reference lib="deno.shared_globals" />
-/// <reference lib="esnext" />
-
-declare interface Window extends EventTarget {
-  readonly window: Window & typeof globalThis;
-  readonly self: Window & typeof globalThis;
-  onload: ((this: Window, ev: Event) => any) | null;
-  onunload: ((this: Window, ev: Event) => any) | null;
-  location: Location;
-  crypto: Crypto;
-  close: () => void;
-  readonly closed: boolean;
-  Deno: typeof Deno;
-}
-
-declare const window: Window & typeof globalThis;
-declare const self: Window & typeof globalThis;
-declare const onload: ((this: Window, ev: Event) => any) | null;
-declare const onunload: ((this: Window, ev: Event) => any) | null;
-declare const crypto: Crypto;
-
-declare interface Crypto {
-  readonly subtle: null;
-  getRandomValues<
-    T extends
-      | Int8Array
-      | Int16Array
-      | Int32Array
-      | Uint8Array
-      | Uint16Array
-      | Uint32Array
-      | Uint8ClampedArray
-      | Float32Array
-      | Float64Array
-      | DataView
-      | null
-  >(
-    array: T
-  ): T;
-}
-
-/* eslint-enable @typescript-eslint/no-explicit-any */
