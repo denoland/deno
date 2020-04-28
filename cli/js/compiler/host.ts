@@ -14,9 +14,8 @@ export enum CompilerHostTarget {
 
 export interface CompilerHostOptions {
   bundle?: boolean;
-
   target: CompilerHostTarget;
-
+  unstable?: boolean;
   writeFile: WriteFileCallback;
 }
 
@@ -146,12 +145,25 @@ export class Host implements ts.CompilerHost {
 
   /* Deno specific APIs */
 
-  constructor({ bundle = false, target, writeFile }: CompilerHostOptions) {
+  constructor({
+    bundle = false,
+    target,
+    unstable,
+    writeFile,
+  }: CompilerHostOptions) {
     this.#target = target;
     this.#writeFile = writeFile;
     if (bundle) {
       // options we need to change when we are generating a bundle
       Object.assign(this.#options, defaultBundlerOptions);
+    }
+    if (unstable) {
+      this.#options.lib = [
+        target === CompilerHostTarget.Worker
+          ? "lib.deno.worker.d.ts"
+          : "lib.deno.window.d.ts",
+        "lib.deno.unstable.d.ts",
+      ];
     }
   }
 

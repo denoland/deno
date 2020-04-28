@@ -90,34 +90,33 @@ pub struct Flags {
   pub argv: Vec<String>,
   pub subcommand: DenoSubcommand,
 
-  pub log_level: Option<Level>,
-  pub version: bool,
-  pub reload: bool,
+  pub allow_env: bool,
+  pub allow_hrtime: bool,
+  pub allow_net: bool,
+  pub allow_plugin: bool,
+  pub allow_read: bool,
+  pub allow_run: bool,
+  pub allow_write: bool,
+  pub cache_blacklist: Vec<String>,
+  pub ca_file: Option<String>,
+  pub cached_only: bool,
   pub config_path: Option<String>,
   pub import_map_path: Option<String>,
-  pub allow_read: bool,
-  pub read_whitelist: Vec<PathBuf>,
-  pub cache_blacklist: Vec<String>,
-  pub allow_write: bool,
-  pub write_whitelist: Vec<PathBuf>,
-  pub allow_net: bool,
-  pub net_whitelist: Vec<String>,
-  pub allow_env: bool,
-  pub allow_run: bool,
-  pub allow_plugin: bool,
-  pub allow_hrtime: bool,
-  pub no_prompts: bool,
-  pub no_remote: bool,
-  pub cached_only: bool,
   pub inspect: Option<SocketAddr>,
   pub inspect_brk: Option<SocketAddr>,
-  pub seed: Option<u64>,
-  pub v8_flags: Option<Vec<String>>,
-  pub unstable: bool,
-
   pub lock: Option<String>,
   pub lock_write: bool,
-  pub ca_file: Option<String>,
+  pub log_level: Option<Level>,
+  pub net_whitelist: Vec<String>,
+  pub no_prompts: bool,
+  pub no_remote: bool,
+  pub read_whitelist: Vec<PathBuf>,
+  pub reload: bool,
+  pub seed: Option<u64>,
+  pub unstable: bool,
+  pub v8_flags: Option<Vec<String>>,
+  pub version: bool,
+  pub write_whitelist: Vec<PathBuf>,
 }
 
 fn join_paths(whitelist: &[PathBuf], d: &str) -> String {
@@ -577,6 +576,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
+
   let source_file = matches.value_of("source_file").map(String::from);
   let json = matches.is_present("json");
   let filter = matches.value_of("filter").map(String::from);

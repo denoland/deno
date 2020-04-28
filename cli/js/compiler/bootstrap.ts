@@ -20,6 +20,7 @@ ts.libMap.set("deno.ns", "lib.deno.ns.d.ts");
 ts.libMap.set("deno.window", "lib.deno.window.d.ts");
 ts.libMap.set("deno.worker", "lib.deno.worker.d.ts");
 ts.libMap.set("deno.shared_globals", "lib.deno.shared_globals.d.ts");
+ts.libMap.set("deno.unstable", "lib.deno.unstable.d.ts");
 
 // this pre-populates the cache at snapshot time of our library files, so they
 // are available in the future when needed.
@@ -30,6 +31,7 @@ host.getSourceFile(
   `${ASSETS}/lib.deno.shared_globals.d.ts`,
   ts.ScriptTarget.ESNext
 );
+host.getSourceFile(`${ASSETS}/lib.deno.unstable.d.ts`, ts.ScriptTarget.ESNext);
 
 export const TS_SNAPSHOT_PROGRAM = ts.createProgram({
   rootNames: [`${ASSETS}/bootstrap.ts`],

@@ -175,6 +175,7 @@ fn req(
   out_file: Option<PathBuf>,
   target: &str,
   bundle: bool,
+  unstable: bool,
 ) -> Buf {
   let j = match (compiler_config.path, compiler_config.content) {
     (Some(config_path), Some(config_data)) => json!({
@@ -183,6 +184,7 @@ fn req(
       "rootNames": root_names,
       "outFile": out_file,
       "bundle": bundle,
+      "unstable": unstable,
       "configPath": config_path,
       "config": str::from_utf8(&config_data).unwrap(),
     }),
@@ -192,6 +194,7 @@ fn req(
       "rootNames": root_names,
       "outFile": out_file,
       "bundle": bundle,
+      "unstable": unstable,
     }),
   };
 
@@ -290,6 +293,7 @@ impl TsCompiler {
       out_file,
       "main",
       true,
+      global_state.flags.unstable,
     );
 
     let msg = execute_in_thread(global_state.clone(), req_msg).await?;
@@ -371,6 +375,7 @@ impl TsCompiler {
       None,
       target,
       false,
+      global_state.flags.unstable,
     );
 
     let ts_compiler = self.clone();
@@ -655,6 +660,7 @@ pub fn runtime_compile<S: BuildHasher>(
     "sources": sources,
     "options": options,
     "bundle": bundle,
+    "unstable": global_state.flags.unstable,
   })
   .to_string()
   .into_boxed_str()

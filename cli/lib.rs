@@ -253,13 +253,23 @@ async fn print_file_info(
   Ok(())
 }
 
-fn get_types() -> String {
-  format!(
-    "{}\n{}\n{}",
-    crate::js::DENO_NS_LIB,
-    crate::js::SHARED_GLOBALS_LIB,
-    crate::js::WINDOW_LIB
-  )
+fn get_types(unstable: bool) -> String {
+  if unstable {
+    format!(
+      "{}\n{}\n{}\n{}",
+      crate::js::DENO_NS_LIB,
+      crate::js::SHARED_GLOBALS_LIB,
+      crate::js::WINDOW_LIB,
+      crate::js::UNSTABLE_NS_LIB,
+    )
+  } else {
+    format!(
+      "{}\n{}\n{}",
+      crate::js::DENO_NS_LIB,
+      crate::js::SHARED_GLOBALS_LIB,
+      crate::js::WINDOW_LIB,
+    )
+  }
 }
 
 async fn info_command(
@@ -409,7 +419,7 @@ async fn doc_command(
   let doc_parser = doc::DocParser::new(loader);
 
   let parse_result = if source_file == "--builtin" {
-    doc_parser.parse_source("lib.deno.d.ts", get_types().as_str())
+    doc_parser.parse_source("lib.deno.d.ts", get_types(flags.unstable).as_str())
   } else {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
@@ -598,7 +608,7 @@ pub fn main() {
       return;
     }
     DenoSubcommand::Types => {
-      let types = get_types();
+      let types = get_types(flags.unstable);
       if let Err(e) = write_to_stdout_ignore_sigpipe(types.as_bytes()) {
         eprintln!("{}", e);
         std::process::exit(1);
