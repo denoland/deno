@@ -40,7 +40,8 @@ export function listen(
       return new DatagramImpl(res.rid, res.localAddr);
     }
   } else {
-    return stableListen(options);
+    // Contrary to what the typing says it can also be "udp"
+    return stableListen(options as ListenOptions & { transport?: "tcp" });
   }
 }
 
@@ -58,6 +59,6 @@ export async function connect(
     const res = await netOps.connect(options);
     return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
   } else {
-    return stableConnect(options);
+    return stableConnect(options as ConnectOptions);
   }
 }
