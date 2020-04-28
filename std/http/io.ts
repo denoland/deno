@@ -26,7 +26,7 @@ export function bodyReader(contentLength: number, r: BufReader): Deno.Reader {
       const readBuf = buf.subarray(0, remaining);
       result = await r.read(readBuf);
     }
-    if (result != null) {
+    if (result !== null) {
       totalRead += result;
     }
     finished = totalRead === contentLength;
@@ -131,7 +131,7 @@ export async function readTrailers(
   if (!keys) return;
   const tp = new TextProtoReader(r);
   const result = await tp.readMIMEHeader();
-  assert(result != null, "trailer must be set");
+  assert(result !== null, "trailer must be set");
   for (const [k, v] of result) {
     if (!keys.has(k)) {
       throw new Error("Undeclared trailer field");

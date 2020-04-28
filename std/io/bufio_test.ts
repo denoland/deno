@@ -148,7 +148,7 @@ Deno.test("bufioBufferFull", async function (): Promise<void> {
   }
 
   const line = await buf.readSlice(charCode("!"));
-  assert(line != null);
+  assert(line !== null);
   const actual = decoder.decode(line);
   assertEquals(actual, "world!");
 });
@@ -158,12 +158,12 @@ Deno.test("bufioReadString", async function (): Promise<void> {
   const buf = new BufReader(stringsReader(string), MIN_READ_BUFFER_SIZE);
 
   const line = await buf.readString(",");
-  assert(line != null);
+  assert(line !== null);
   assertEquals(line, "And now,");
   assertEquals(line.length, 8);
 
   const line2 = await buf.readString(",");
-  assert(line2 != null);
+  assert(line2 !== null);
   assertEquals(line2, " hello world!");
 
   assertEquals(await buf.readString(","), null);
@@ -252,11 +252,11 @@ Deno.test("bufioPeek", async function (): Promise<void> {
   );
 
   let actual = await buf.peek(1);
-  assert(actual != null);
+  assert(actual !== null);
   assertEquals(decoder.decode(actual), "a");
 
   actual = await buf.peek(4);
-  assert(actual != null);
+  assert(actual !== null);
   assertEquals(decoder.decode(actual), "abcd");
 
   try {
@@ -272,34 +272,34 @@ Deno.test("bufioPeek", async function (): Promise<void> {
   assertEquals(decoder.decode(p.subarray(0, 3)), "abc");
 
   actual = await buf.peek(1);
-  assert(actual != null);
+  assert(actual !== null);
   assertEquals(decoder.decode(actual), "d");
 
   actual = await buf.peek(1);
-  assert(actual != null);
+  assert(actual !== null);
   assertEquals(decoder.decode(actual), "d");
 
   actual = await buf.peek(1);
-  assert(actual != null);
+  assert(actual !== null);
   assertEquals(decoder.decode(actual), "d");
 
   actual = await buf.peek(2);
-  assert(actual != null);
+  assert(actual !== null);
   assertEquals(decoder.decode(actual), "de");
 
   const res = await buf.read(p.subarray(0, 3));
   assertEquals(decoder.decode(p.subarray(0, 3)), "def");
-  assert(res != null);
+  assert(res !== null);
 
   actual = await buf.peek(4);
-  assert(actual != null);
+  assert(actual !== null);
   assertEquals(decoder.decode(actual), "ghij");
 
   await buf.read(p);
   assertEquals(decoder.decode(p), "ghijklmnop");
 
   actual = await buf.peek(0);
-  assert(actual != null);
+  assert(actual !== null);
   assertEquals(decoder.decode(actual), "");
 
   const r = await buf.peek(1);
@@ -403,7 +403,7 @@ Deno.test("bufReaderReadFull", async function (): Promise<void> {
   {
     const buf = new Uint8Array(6);
     const r = await bufr.readFull(buf);
-    assert(r != null);
+    assert(r !== null);
     assertEquals(r, buf);
     assertEquals(dec.decode(buf), "Hello ");
   }

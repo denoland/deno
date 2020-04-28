@@ -117,7 +117,7 @@ export class ServerRequest {
     // Consume unread body
     const body = this.body;
     const buf = new Uint8Array(1024);
-    while ((await body.read(buf)) != null) {}
+    while ((await body.read(buf)) !== null) {}
     this.finalized = true;
   }
 }

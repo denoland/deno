@@ -179,7 +179,7 @@ unitTest({ perms: { net: true } }, async function netTcpDialListen(): Promise<
   assertEquals(3, buf[2]);
   assert(conn.rid > 0);
 
-  assert(readResult != null);
+  assert(readResult !== null);
 
   const readResult2 = await conn.read(buf);
   assertEquals(readResult2, null);
@@ -214,7 +214,7 @@ unitTest(
     assertEquals(3, buf[2]);
     assert(conn.rid > 0);
 
-    assert(readResult != null);
+    assert(readResult !== null);
 
     const readResult2 = await conn.read(buf);
     assertEquals(readResult2, null);
@@ -358,7 +358,7 @@ unitTest(
     assertEquals(3, buf[2]);
     assert(conn.rid > 0);
 
-    assert(readResult != null);
+    assert(readResult !== null);
 
     const readResult2 = await conn.read(buf);
     assertEquals(readResult2, null);

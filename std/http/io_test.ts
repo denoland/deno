@@ -46,7 +46,7 @@ test("chunkedBodyReader", async () => {
   // Use small buffer as some chunks exceed buffer size
   const buf = new Uint8Array(5);
   const dest = new Buffer();
-  while ((result = await r.read(buf)) != null) {
+  while ((result = await r.read(buf)) !== null) {
     const len = Math.min(buf.byteLength, result);
     await dest.write(buf.subarray(0, len));
   }
@@ -223,22 +223,22 @@ test("writeUint8ArrayResponse", async function (): Promise<void> {
   const reader = new BufReader(buf);
 
   let r: ReadLineResult | null = await reader.readLine();
-  assert(r != null);
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), "HTTP/1.1 200 OK");
   assertEquals(r.more, false);
 
   r = await reader.readLine();
-  assert(r != null);
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), `content-length: ${shortText.length}`);
   assertEquals(r.more, false);
 
   r = await reader.readLine();
-  assert(r != null);
+  assert(r !== null);
   assertEquals(r.line.byteLength, 0);
   assertEquals(r.more, false);
 
   r = await reader.readLine();
-  assert(r != null);
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), shortText);
   assertEquals(r.more, false);
 
@@ -258,22 +258,22 @@ test("writeStringResponse", async function (): Promise<void> {
   const reader = new BufReader(buf);
 
   let r: ReadLineResult | null = await reader.readLine();
-  assert(r != null);
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), "HTTP/1.1 200 OK");
   assertEquals(r.more, false);
 
   r = await reader.readLine();
-  assert(r != null);
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), `content-length: ${body.length}`);
   assertEquals(r.more, false);
 
   r = await reader.readLine();
-  assert(r != null);
+  assert(r !== null);
   assertEquals(r.line.byteLength, 0);
   assertEquals(r.more, false);
 
   r = await reader.readLine();
-  assert(r != null);
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), body);
   assertEquals(r.more, false);
 
@@ -294,32 +294,32 @@ test("writeStringReaderResponse", async function (): Promise<void> {
   const reader = new BufReader(buf);
 
   let r: ReadLineResult | null = await reader.readLine();
-  assert(r != null);
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), "HTTP/1.1 200 OK");
   assertEquals(r.more, false);
 
   r = await reader.readLine();
-  assert(r != null);
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), "transfer-encoding: chunked");
   assertEquals(r.more, false);
 
   r = await reader.readLine();
-  assert(r != null);
+  assert(r !== null);
   assertEquals(r.line.byteLength, 0);
   assertEquals(r.more, false);
 
   r = await reader.readLine();
-  assert(r != null);
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), shortText.length.toString());
   assertEquals(r.more, false);
 
   r = await reader.readLine();
-  assert(r != null);
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), shortText);
   assertEquals(r.more, false);
 
   r = await reader.readLine();
-  assert(r != null);
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), "0");
   assertEquals(r.more, false);
 });

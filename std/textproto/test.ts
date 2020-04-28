@@ -49,7 +49,7 @@ test({
       "Value 2\r\n\n";
     const r = reader(input);
     const m = await r.readMIMEHeader();
-    assert(m != null);
+    assert(m !== null);
     assertEquals(m.get("My-Key"), "Value 1, Value 2");
     assertEquals(m.get("Long-key"), "Even Longer Value");
   },
@@ -61,7 +61,7 @@ test({
     const input = "Foo: bar\n\n";
     const r = reader(input);
     const m = await r.readMIMEHeader();
-    assert(m != null);
+    assert(m !== null);
     assertEquals(m.get("Foo"), "bar");
   },
 });
@@ -72,7 +72,7 @@ test({
     const input = ": bar\ntest-1: 1\n\n";
     const r = reader(input);
     const m = await r.readMIMEHeader();
-    assert(m != null);
+    assert(m !== null);
     assertEquals(m.get("Test-1"), "1");
   },
 });
@@ -88,7 +88,7 @@ test({
     const sdata = data.join("");
     const r = reader(`Cookie: ${sdata}\r\n\r\n`);
     const m = await r.readMIMEHeader();
-    assert(m != null);
+    assert(m !== null);
     assertEquals(m.get("Cookie"), sdata);
   },
 });
@@ -106,7 +106,7 @@ test({
       "Privilege : 127\r\n\r\n";
     const r = reader(input);
     const m = await r.readMIMEHeader();
-    assert(m != null);
+    assert(m !== null);
     assertEquals(m.get("Foo"), "bar");
     assertEquals(m.get("Content-Language"), "en");
     // Make sure we drop headers with trailing whitespace
@@ -175,7 +175,7 @@ test({
     ];
     const r = reader(input.join(""));
     const m = await r.readMIMEHeader();
-    assert(m != null);
+    assert(m !== null);
     assertEquals(m.get("Accept"), "*/*");
     assertEquals(m.get("Content-Disposition"), 'form-data; name="test"');
   },

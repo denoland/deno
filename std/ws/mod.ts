@@ -150,7 +150,7 @@ export async function writeFrame(
  */
 export async function readFrame(buf: BufReader): Promise<WebSocketFrame> {
   let b = await buf.readByte();
-  assert(b != null);
+  assert(b !== null);
   let isLastFrame = false;
   switch (b >>> 4) {
     case 0b1000:
@@ -165,27 +165,27 @@ export async function readFrame(buf: BufReader): Promise<WebSocketFrame> {
   const opcode = b & 0x0f;
   // has_mask & payload
   b = await buf.readByte();
-  assert(b != null);
+  assert(b !== null);
   const hasMask = b >>> 7;
   let payloadLength = b & 0b01111111;
   if (payloadLength === 126) {
     const l = await readShort(buf);
-    assert(l != null);
+    assert(l !== null);
     payloadLength = l;
   } else if (payloadLength === 127) {
     const l = await readLong(buf);
-    assert(l != null);
+    assert(l !== null);
     payloadLength = Number(l);
   }
   // mask
   let mask: Uint8Array | undefined;
   if (hasMask) {
     mask = new Uint8Array(4);
-    assert((await buf.readFull(mask)) != null);
+    assert((await buf.readFull(mask)) !== null);
   }
   // payload
   const payload = new Uint8Array(payloadLength);
-  assert((await buf.readFull(payload)) != null);
+  assert((await buf.readFull(payload)) !== null);
   return {
     isLastFrame,
     opcode,
