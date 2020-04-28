@@ -7,15 +7,13 @@ export interface Start {
   cwd: string;
   debugFlag: boolean;
   denoVersion: string;
-  depsFlag: boolean;
   location: string; // Absolute URL.
   noColor: boolean;
   pid: number;
   repl: boolean;
   target: string;
   tsVersion: string;
-  typesFlag: boolean;
-  unstable: boolean;
+  unstableFlag: boolean;
   v8Version: string;
   versionFlag: boolean;
 }
