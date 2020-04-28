@@ -2,29 +2,25 @@
 
 import { sendSync } from "./dispatch_json.ts";
 
-// TODO(bartlomieju): these two types are duplicated
-// in `cli/js/build.ts` - deduplicate
-export type OperatingSystem = "mac" | "win" | "linux";
-export type Arch = "x64" | "arm64";
-
 export interface Start {
-  arch: Arch;
   args: string[];
   cwd: string;
   debugFlag: boolean;
   denoVersion: string;
+  depsFlag: boolean;
   location: string; // Absolute URL.
   noColor: boolean;
-  os: OperatingSystem;
   pid: number;
   repl: boolean;
+  target: string;
   tsVersion: string;
-  unstableFlag: boolean;
+  typesFlag: boolean;
+  unstable: boolean;
   v8Version: string;
   versionFlag: boolean;
 }
 
-export function start(): Start {
+export function opStart(): Start {
   return sendSync("op_start");
 }
 

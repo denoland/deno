@@ -14,7 +14,7 @@ function defer(n: number): Promise<void> {
 }
 
 unitTest(
-  { ignore: Deno.build.os !== "win" },
+  { ignore: Deno.build.os !== "windows" },
   function signalsNotImplemented(): void {
     assertThrows(
       () => {
@@ -104,7 +104,7 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "win", perms: { run: true, net: true } },
+  { ignore: Deno.build.os === "windows", perms: { run: true, net: true } },
   async function signalStreamTest(): Promise<void> {
     const resolvable = createResolvable();
     // This prevents the program from exiting.
@@ -135,7 +135,7 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "win", perms: { run: true } },
+  { ignore: Deno.build.os === "windows", perms: { run: true } },
   async function signalPromiseTest(): Promise<void> {
     const resolvable = createResolvable();
     // This prevents the program from exiting.
@@ -155,7 +155,7 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "win", perms: { run: true } },
+  { ignore: Deno.build.os === "windows", perms: { run: true } },
   function signalShorthandsTest(): void {
     let s: Deno.SignalStream;
     s = Deno.signals.alarm(); // for SIGALRM

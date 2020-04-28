@@ -23,7 +23,7 @@ pub struct UnixDatagramResource {
 
 #[derive(Deserialize)]
 pub struct UnixListenArgs {
-  pub address: String,
+  pub path: String,
 }
 
 pub fn accept_unix(
@@ -64,11 +64,11 @@ pub fn accept_unix(
     Ok(json!({
       "rid": rid,
       "localAddr": {
-        "address": local_addr.as_pathname(),
+        "path": local_addr.as_pathname(),
         "transport": "unix",
       },
       "remoteAddr": {
-        "address": remote_addr.as_pathname(),
+        "path": remote_addr.as_pathname(),
         "transport": "unix",
       }
     }))
@@ -96,7 +96,7 @@ pub fn receive_unix_packet(
     Ok(json!({
       "size": size,
       "remoteAddr": {
-        "address": remote_addr.as_pathname(),
+        "path": remote_addr.as_pathname(),
         "transport": "unixpacket",
       }
     }))

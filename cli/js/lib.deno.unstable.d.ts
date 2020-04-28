@@ -852,14 +852,14 @@ declare namespace Deno {
 
   export interface UnixListenOptions {
     /** A Path to the Unix Socket. */
-    address: string;
+    path: string;
   }
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Listen announces on the local transport address.
    *
-   *     const listener = Deno.listen({ address: "/foo/bar.sock", transport: "unix" })
+   *     const listener = Deno.listen({ path: "/foo/bar.sock", transport: "unix" })
    *
    * Requires `allow-read` and `allow-write` permission. */
   export function listen(
@@ -870,7 +870,7 @@ declare namespace Deno {
    *
    * Listen announces on the local transport address.
    *
-   *     const listener = Deno.listen({ address: "/foo/bar.sock", transport: "unixpacket" })
+   *     const listener = Deno.listen({ path: "/foo/bar.sock", transport: "unixpacket" })
    *
    * Requires `allow-read` and `allow-write` permission. */
   export function listen(
@@ -879,7 +879,7 @@ declare namespace Deno {
 
   export interface UnixConnectOptions {
     transport: "unix";
-    address: string;
+    path: string;
   }
 
   /**
@@ -890,15 +890,10 @@ declare namespace Deno {
    *     const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 });
    *     const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
    *     const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
-   *     const conn5 = await Deno.connect({ address: "/foo/bar.sock", transport: "unix" });
+   *     const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
    *
    * Requires `allow-net` permission for "tcp" and `allow-read` for unix. */
   export function connect(
     options: ConnectOptions | UnixConnectOptions
   ): Promise<Conn>;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-declare interface WindowOrWorkerGlobalScope {
-  //
 }

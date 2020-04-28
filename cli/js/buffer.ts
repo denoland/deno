@@ -4,7 +4,7 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 
-import { Reader, Writer, EOF, ReaderSync, WriterSync } from "./io.ts";
+import { Reader, Writer, ReaderSync, WriterSync } from "./io.ts";
 import { assert } from "./util.ts";
 import { TextDecoder } from "./web/text_encoding.ts";
 
@@ -91,7 +91,7 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
     this.#buf = new Uint8Array(this.#buf.buffer, 0, len);
   };
 
-  readSync(p: Uint8Array): number | EOF {
+  readSync(p: Uint8Array): number | null {
     if (this.empty()) {
       // Buffer is empty, reset to recover space.
       this.reset();
@@ -99,14 +99,14 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
         // this edge case is tested in 'bufferReadEmptyAtEOF' test
         return 0;
       }
-      return EOF;
+      return null;
     }
     const nread = copyBytes(p, this.#buf.subarray(this.#off));
     this.#off += nread;
     return nread;
   }
 
-  read(p: Uint8Array): Promise<number | EOF> {
+  read(p: Uint8Array): Promise<number | null> {
     const rr = this.readSync(p);
     return Promise.resolve(rr);
   }
@@ -169,7 +169,7 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
         this.#reslice(i);
         const fub = new Uint8Array(this.#buf.buffer, i);
         const nread = await r.read(fub);
-        if (nread === EOF) {
+        if (nread === null) {
           return n;
         }
         this.#reslice(i + nread);
@@ -188,7 +188,7 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
         this.#reslice(i);
         const fub = new Uint8Array(this.#buf.buffer, i);
         const nread = r.readSync(fub);
-        if (nread === EOF) {
+        if (nread === null) {
           return n;
         }
         this.#reslice(i + nread);

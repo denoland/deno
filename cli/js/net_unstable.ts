@@ -14,7 +14,7 @@ import {
 
 export interface UnixListenOptions {
   transport: "unix" | "unixpacket";
-  address: string;
+  path: string;
 }
 
 export function listen(

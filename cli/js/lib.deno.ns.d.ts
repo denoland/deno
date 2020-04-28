@@ -40,7 +40,7 @@ declare namespace Deno {
    *
    *          Deno.test({
    *            name: "example ignored test",
-   *            ignore: Deno.build.os === "win"
+   *            ignore: Deno.build.os === "windows"
    *            fn(): void {
    *              // This test is ignored only on Windows machines
    *            },
@@ -152,11 +152,7 @@ declare namespace Deno {
    * Requires --allow-write.
    */
   export function chdir(directory: string): void;
-
-  /** **UNSTABLE**: might be removed in favor of `null` (#3932). */
-  export const EOF: unique symbol;
-  export type EOF = typeof EOF;
-
+  
   export enum SeekMode {
     Start = 0,
     Current = 1,
@@ -171,20 +167,21 @@ declare namespace Deno {
      * available but not `p.byteLength` bytes, `read()` conventionally resolves
      * to what is available instead of waiting for more.
      *
-     * When `read()` encounters end-of-file condition, it resolves to
-     * `Deno.EOF` symbol.
+     * When `read()` encounters end-of-file condition, it resolves to EOF
+     * (`null`).
      *
      * When `read()` encounters an error, it rejects with an error.
      *
      * Callers should always process the `n` > `0` bytes returned before
-     * considering the `EOF`. Doing so correctly handles I/O errors that happen
-     * after reading some bytes and also both of the allowed EOF behaviors.
+     * considering the EOF (`null`). Doing so correctly handles I/O errors that
+     * happen after reading some bytes and also both of the allowed EOF
+     * behaviors.
      *
      * Implementations should not retain a reference to `p`.
      *
      * Use Deno.iter() to turn a Reader into an AsyncIterator.
      */
-    read(p: Uint8Array): Promise<number | EOF>;
+    read(p: Uint8Array): Promise<number | null>;
   }
 
   export interface ReaderSync {
@@ -195,20 +192,20 @@ declare namespace Deno {
      * but not `p.byteLength` bytes, `read()` conventionally returns what is
      * available instead of waiting for more.
      *
-     * When `readSync()` encounters end-of-file condition, it returns `Deno.EOF`
-     * symbol.
+     * When `readSync()` encounters end-of-file condition, it returns EOF
+     * (`null`).
      *
      * When `readSync()` encounters an error, it throws with an error.
      *
      * Callers should always process the `n` > `0` bytes returned before
-     * considering the `EOF`. Doing so correctly handles I/O errors that happen
+     * considering the EOF (`null`). Doing so correctly handles I/O errors that happen
      * after reading some bytes and also both of the allowed EOF behaviors.
      *
      * Implementations should not retain a reference to `p`.
      *
      * Use Deno.iterSync() to turn a ReaderSync into an Iterator.
      */
-    readSync(p: Uint8Array): number | EOF;
+    readSync(p: Uint8Array): number | null;
   }
 
   export interface Writer {
@@ -269,17 +266,14 @@ declare namespace Deno {
     seekSync(offset: number, whence: SeekMode): number;
   }
 
-  /** Copies from `src` to `dst` until either `EOF` is reached on `src` or an
-   * error occurs. It resolves to the number of bytes copied or rejects with
+  /** Copies from `src` to `dst` until either EOF (`null`) is read from `src` or
+   * an error occurs. It resolves to the number of bytes copied or rejects with
    * the first error encountered while copying.
    *
    *       const source = await Deno.open("my_file.txt");
    *       const buffer = new Deno.Buffer()
    *       const bytesCopied1 = await Deno.copy(source, Deno.stdout);
    *       const bytesCopied2 = await Deno.copy(source, buffer);
-   *
-   * Because `copy()` is defined to read from `src` until `EOF`, it does not
-   * treat an `EOF` from `read()` as an error to be reported.
    *
    * @param src The source to copy from
    * @param dst The destination to copy to
@@ -403,8 +397,11 @@ declare namespace Deno {
 
   /** Synchronously read from a resource ID (`rid`) into an array buffer (`buffer`).
    *
-   * Returns either the number of bytes read during the operation or End Of File
-   * (`Symbol(EOF)`) if there was nothing to read.
+   * Returns either the number of bytes read during the operation or EOF
+   * (`null`) if there was nothing more to read.
+   *
+   * It is possible for a read to successfully return with `0` bytes. This does
+   * not indicate EOF.
    *
    *      // if "/foo/bar.txt" contains the text "hello world":
    *      const file = Deno.openSync("/foo/bar.txt");
@@ -413,12 +410,15 @@ declare namespace Deno {
    *      const text = new TextDecoder().decode(buf);  // "hello world"
    *      Deno.close(file.rid);
    */
-  export function readSync(rid: number, buffer: Uint8Array): number | EOF;
+  export function readSync(rid: number, buffer: Uint8Array): number | null;
 
   /** Read from a resource ID (`rid`) into an array buffer (`buffer`).
    *
-   * Resolves to either the number of bytes read during the operation or End Of
-   * File (`Symbol(EOF)`) if there was nothing to read.
+   * Resolves to either the number of bytes read during the operation or EOF
+   * (`null`) if there was nothing more to read.
+   *
+   * It is possible for a read to successfully return with `0` bytes. This does
+   * not indicate EOF.
    *
    *      // if "/foo/bar.txt" contains the text "hello world":
    *      const file = await Deno.open("/foo/bar.txt");
@@ -427,7 +427,7 @@ declare namespace Deno {
    *      const text = new TextDecoder().decode(buf);  // "hello world"
    *      Deno.close(file.rid);
    */
-  export function read(rid: number, buffer: Uint8Array): Promise<number | EOF>;
+  export function read(rid: number, buffer: Uint8Array): Promise<number | null>;
 
   /** Synchronously write to the resource ID (`rid`) the contents of the array
    * buffer (`data`).
@@ -535,8 +535,8 @@ declare namespace Deno {
     constructor(rid: number);
     write(p: Uint8Array): Promise<number>;
     writeSync(p: Uint8Array): number;
-    read(p: Uint8Array): Promise<number | EOF>;
-    readSync(p: Uint8Array): number | EOF;
+    read(p: Uint8Array): Promise<number | null>;
+    readSync(p: Uint8Array): number | null;
     seek(offset: number, whence: SeekMode): Promise<number>;
     seekSync(offset: number, whence: SeekMode): number;
     close(): void;
@@ -643,12 +643,12 @@ declare namespace Deno {
     reset(): void;
     /** Reads the next `p.length` bytes from the buffer or until the buffer is
      * drained. Returns the number of bytes read. If the buffer has no data to
-     * return, the return is `Deno.EOF`. */
-    readSync(p: Uint8Array): number | EOF;
+     * return, the return is EOF (`null`). */
+    readSync(p: Uint8Array): number | null;
     /** Reads the next `p.length` bytes from the buffer or until the buffer is
      * drained. Resolves to the number of bytes read. If the buffer has no
-     * data to return, resolves to `Deno.EOF`. */
-    read(p: Uint8Array): Promise<number | EOF>;
+     * data to return, resolves to EOF (`null`). */
+    read(p: Uint8Array): Promise<number | null>;
     writeSync(p: Uint8Array): number;
     write(p: Uint8Array): Promise<number>;
     /** Grows the buffer's capacity, if necessary, to guarantee space for
@@ -659,14 +659,14 @@ declare namespace Deno {
      * Based on Go Lang's
      * [Buffer.Grow](https://golang.org/pkg/bytes/#Buffer.Grow). */
     grow(n: number): void;
-    /** Reads data from `r` until `Deno.EOF` and appends it to the buffer,
+    /** Reads data from `r` until EOF (`null`) and appends it to the buffer,
      * growing the buffer as needed. It resolves to the number of bytes read.
      * If the buffer becomes too large, `.readFrom()` will reject with an error.
      *
      * Based on Go Lang's
      * [Buffer.ReadFrom](https://golang.org/pkg/bytes/#Buffer.ReadFrom). */
     readFrom(r: Reader): Promise<number>;
-    /** Reads data from `r` until `Deno.EOF` and appends it to the buffer,
+    /** Reads data from `r` until EOF (`null`) and appends it to the buffer,
      * growing the buffer as needed. It returns the number of bytes read. If the
      * buffer becomes too large, `.readFromSync()` will throw an error.
      *
@@ -675,8 +675,8 @@ declare namespace Deno {
     readFromSync(r: ReaderSync): number;
   }
 
-  /** Read Reader `r` until end of file (`Deno.EOF`) and resolve to the content
-   * as `Uint8Array`.
+  /** Read Reader `r` until EOF (`null`) and resolve to the content as
+   * Uint8Array`.
    *
    *       // Example from stdin
    *       const stdinContent = await Deno.readAll(Deno.stdin);
@@ -694,8 +694,8 @@ declare namespace Deno {
    */
   export function readAll(r: Reader): Promise<Uint8Array>;
 
-  /** Synchronously reads Reader `r` until end of file (`Deno.EOF`) and returns
-   * the content as `Uint8Array`.
+  /** Synchronously reads Reader `r` until EOF (`null`) and returns the content
+   * as `Uint8Array`.
    *
    *       // Example from stdin
    *       const stdinContent = Deno.readAllSync(Deno.stdin);
@@ -1336,11 +1336,12 @@ declare namespace Deno {
     Busy: ErrorConstructor;
   };
 
-  /** **UNSTABLE**: potentially want names to overlap more with browser.
+  /** The name of a "powerful feature" which needs permission.
    *
-   * The permissions as granted by the caller.
+   * See: https://w3c.github.io/permissions/#permission-registry
    *
-   * See: https://w3c.github.io/permissions/#permission-registry */
+   * Note that the definition of `PermissionName` in the above spec is swapped
+   * out for a set of Deno permissions which are not web-compatible. */
   export type PermissionName =
     | "run"
     | "read"
@@ -1355,39 +1356,45 @@ declare namespace Deno {
    * See: https://w3c.github.io/permissions/#status-of-a-permission */
   export type PermissionState = "granted" | "denied" | "prompt";
 
-  interface RunPermissionDescriptor {
+  export interface RunPermissionDescriptor {
     name: "run";
   }
 
-  interface ReadWritePermissionDescriptor {
-    name: "read" | "write";
+  export interface ReadPermissionDescriptor {
+    name: "read";
     path?: string;
   }
 
-  interface NetPermissionDescriptor {
+  export interface WritePermissionDescriptor {
+    name: "write";
+    path?: string;
+  }
+
+  export interface NetPermissionDescriptor {
     name: "net";
     url?: string;
   }
 
-  interface EnvPermissionDescriptor {
+  export interface EnvPermissionDescriptor {
     name: "env";
   }
 
-  interface PluginPermissionDescriptor {
+  export interface PluginPermissionDescriptor {
     name: "plugin";
   }
 
-  interface HrtimePermissionDescriptor {
+  export interface HrtimePermissionDescriptor {
     name: "hrtime";
   }
 
-  /** Permission descriptors which define a permission which can be queried,
+  /** Permission descriptors which define a permission and can be queried,
    * requested, or revoked.
    *
    * See: https://w3c.github.io/permissions/#permission-descriptor */
-  type PermissionDescriptor =
+  export type PermissionDescriptor =
     | RunPermissionDescriptor
-    | ReadWritePermissionDescriptor
+    | ReadPermissionDescriptor
+    | WritePermissionDescriptor
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
     | PluginPermissionDescriptor
@@ -1422,7 +1429,9 @@ declare namespace Deno {
     request(desc: PermissionDescriptor): Promise<PermissionStatus>;
   }
 
-  /** **UNSTABLE**: maybe move to `navigator.permissions` to match web API. */
+  /** **UNSTABLE**: maybe move to `navigator.permissions` to match web API. It
+   * could look like `navigator.permissions.query({ name: Deno.symbols.read })`.
+   */
   export const permissions: Permissions;
 
   /** see: https://w3c.github.io/permissions/#permissionstatus */
@@ -1472,7 +1481,7 @@ declare namespace Deno {
 
   export interface UnixAddr {
     transport: "unix" | "unixpacket";
-    address: string;
+    path: string;
   }
 
   export type Addr = NetAddr | UnixAddr;
@@ -1595,7 +1604,7 @@ declare namespace Deno {
    *     const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 });
    *     const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
    *     const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
-   *     const conn5 = await Deno.connect({ address: "/foo/bar.sock", transport: "unix" });
+   *     const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
    *
    * Requires `allow-net` permission for "tcp" and `allow-read` for unix. */
   export function connect(options: ConnectOptions): Promise<Conn>;
@@ -1773,13 +1782,13 @@ declare namespace Deno {
     readonly stderr?: Reader & Closer;
     /** Resolves to the current status of the process. */
     status(): Promise<ProcessStatus>;
-    /** Buffer the stdout and return it as `Uint8Array` after `Deno.EOF`.
+    /** Buffer the stdout until EOF and return it as `Uint8Array`.
      *
      * You must set stdout to `"piped"` when creating the process.
      *
      * This calls `close()` on stdout after its done. */
     output(): Promise<Uint8Array>;
-    /** Buffer the stderr and return it as `Uint8Array` after `Deno.EOF`.
+    /** Buffer the stderr until EOF and return it as `Uint8Array`.
      *
      * You must set stderr to `"piped"` when creating the process.
      *
@@ -1955,19 +1964,19 @@ declare namespace Deno {
    */
   export function inspect(value: unknown, options?: InspectOptions): string;
 
-  export type OperatingSystem = "mac" | "win" | "linux";
-
-  export type Arch = "x64" | "arm64";
-
-  interface BuildInfo {
-    /** The CPU architecture. */
-    arch: Arch;
-    /** The operating system. */
-    os: OperatingSystem;
-  }
-
   /** Build related information. */
-  export const build: BuildInfo;
+  export const build: {
+    /** The LLVM target triple */
+    target: string;
+    /** Instruction set architecture */
+    arch: "x86_64";
+    /** Operating system */
+    os: "darwin" | "linux" | "windows";
+    /** Computer vendor */
+    vendor: string;
+    /** Optional environment */
+    env?: string;
+  };
 
   interface Version {
     deno: string;

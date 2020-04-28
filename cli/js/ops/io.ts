@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { sendAsyncMinimal, sendSyncMinimal } from "./dispatch_minimal.ts";
-import { EOF } from "../io.ts";
 // TODO(bartlomieju): remove this import and maybe lazy-initialize
 // OPS_CACHE that belongs only to this module
 import { OPS_CACHE } from "../runtime.ts";
@@ -10,7 +9,7 @@ import { OPS_CACHE } from "../runtime.ts";
 let OP_READ = -1;
 let OP_WRITE = -1;
 
-export function readSync(rid: number, buffer: Uint8Array): number | EOF {
+export function readSync(rid: number, buffer: Uint8Array): number | null {
   if (buffer.length == 0) {
     return 0;
   }
@@ -21,7 +20,7 @@ export function readSync(rid: number, buffer: Uint8Array): number | EOF {
   if (nread < 0) {
     throw new Error("read error");
   } else if (nread == 0) {
-    return EOF;
+    return null;
   } else {
     return nread;
   }
@@ -30,7 +29,7 @@ export function readSync(rid: number, buffer: Uint8Array): number | EOF {
 export async function read(
   rid: number,
   buffer: Uint8Array
-): Promise<number | EOF> {
+): Promise<number | null> {
   if (buffer.length == 0) {
     return 0;
   }
@@ -41,7 +40,7 @@ export async function read(
   if (nread < 0) {
     throw new Error("read error");
   } else if (nread == 0) {
-    return EOF;
+    return null;
   } else {
     return nread;
   }

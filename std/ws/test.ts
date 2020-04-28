@@ -278,7 +278,7 @@ function dummyConn(r: Reader, w: Writer): Conn {
     rid: -1,
     closeRead: (): void => {},
     closeWrite: (): void => {},
-    read: (x): Promise<number | Deno.EOF> => r.read(x),
+    read: (x): Promise<number | null> => r.read(x),
     write: (x): Promise<number> => w.write(x),
     close: (): void => {},
     localAddr: { transport: "tcp", hostname: "0.0.0.0", port: 0 },
@@ -335,8 +335,8 @@ test("[ws] createSecKeyHasCorrectLength", () => {
 test("[ws] WebSocket should throw `Deno.errors.ConnectionReset` when peer closed connection without close frame", async () => {
   const buf = new Buffer();
   const eofReader: Deno.Reader = {
-    read(_: Uint8Array): Promise<number | Deno.EOF> {
-      return Promise.resolve(Deno.EOF);
+    read(_: Uint8Array): Promise<number | null> {
+      return Promise.resolve(null);
     },
   };
   const conn = dummyConn(eofReader, buf);
@@ -353,8 +353,8 @@ test("[ws] WebSocket should throw `Deno.errors.ConnectionReset` when peer closed
 test("[ws] WebSocket shouldn't throw `Deno.errors.UnexpectedEof` on recive()", async () => {
   const buf = new Buffer();
   const eofReader: Deno.Reader = {
-    read(_: Uint8Array): Promise<number | Deno.EOF> {
-      return Promise.resolve(Deno.EOF);
+    read(_: Uint8Array): Promise<number | null> {
+      return Promise.resolve(null);
     },
   };
   const conn = dummyConn(eofReader, buf);
