@@ -15,7 +15,7 @@ import { ensureSymlink, ensureSymlinkSync } from "./ensure_symlink.ts";
 const testdataDir = path.resolve("fs", "testdata");
 
 // TODO(axetroy): Add test for Windows once symlink is implemented for Windows.
-const isWindows = Deno.build.os === "win";
+const isWindows = Deno.build.os === "windows";
 
 function testCopy(name: string, cb: (tempDir: string) => Promise<void>): void {
   Deno.test({

@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { errors } from "./errors.ts";
-import { EOF, Reader, Writer, Closer } from "./io.ts";
+import { Reader, Writer, Closer } from "./io.ts";
 import { read, write } from "./ops/io.ts";
 import { close } from "./ops/resources.ts";
 import * as netOps from "./ops/net.ts";
@@ -40,7 +40,7 @@ export class ConnImpl implements Conn {
     return write(this.rid, p);
   }
 
-  read(p: Uint8Array): Promise<number | EOF> {
+  read(p: Uint8Array): Promise<number | null> {
     return read(this.rid, p);
   }
 
@@ -142,7 +142,7 @@ export interface ListenOptions {
 
 export interface UnixListenOptions {
   transport: "unix" | "unixpacket";
-  address: string;
+  path: string;
 }
 
 export function listen(
@@ -190,7 +190,7 @@ export interface ConnectOptions {
 }
 export interface UnixConnectOptions {
   transport: "unix";
-  address: string;
+  path: string;
 }
 export async function connect(options: UnixConnectOptions): Promise<Conn>;
 export async function connect(options: ConnectOptions): Promise<Conn>;

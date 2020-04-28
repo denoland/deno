@@ -6,7 +6,7 @@ import * as util from "./util.ts";
 import { setBuildInfo } from "./build.ts";
 import { setVersions } from "./version.ts";
 import { setPrepareStackTrace } from "./error_stack.ts";
-import { Start, start as startOp } from "./ops/runtime.ts";
+import { Start, opStart } from "./ops/runtime.ts";
 import { handleTimerMacrotask } from "./web/timers.ts";
 
 export let OPS_CACHE: { [name: string]: number };
@@ -36,12 +36,10 @@ export function start(source?: string): Start {
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI
   // args and other info.
-  const s = startOp();
-
+  const s = opStart();
   setVersions(s.denoVersion, s.v8Version, s.tsVersion);
-  setBuildInfo(s.os, s.arch);
+  setBuildInfo(s.target);
   util.setLogDebug(s.debugFlag, source);
-
   setPrepareStackTrace(Error);
   return s;
 }

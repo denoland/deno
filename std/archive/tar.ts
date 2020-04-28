@@ -41,12 +41,12 @@ class FileReader implements Deno.Reader {
 
   constructor(private filePath: string) {}
 
-  public async read(p: Uint8Array): Promise<number | Deno.EOF> {
+  public async read(p: Uint8Array): Promise<number | null> {
     if (!this.file) {
       this.file = await Deno.open(this.filePath, { read: true });
     }
     const res = await Deno.read(this.file.rid, p);
-    if (res === Deno.EOF) {
+    if (res === null) {
       Deno.close(this.file.rid);
       this.file = undefined;
     }

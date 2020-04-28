@@ -16,7 +16,7 @@ Deno.test("[examples/echo_server]", async () => {
     const processReader = new BufReader(process.stdout!);
     const message = await processReader.readLine();
 
-    assertNotEquals(message, Deno.EOF);
+    assertNotEquals(message, null);
     assertStrictEq(
       decoder.decode((message as ReadLineResult).line).trim(),
       "Listening on 0.0.0.0:8080"
@@ -28,7 +28,7 @@ Deno.test("[examples/echo_server]", async () => {
     await conn.write(encoder.encode("Hello echo_server\n"));
     const result = await connReader.readLine();
 
-    assertNotEquals(result, Deno.EOF);
+    assertNotEquals(result, null);
 
     const actualResponse = decoder
       .decode((result as ReadLineResult).line)

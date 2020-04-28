@@ -75,7 +75,7 @@ enum MacOSSignal {
 export const Signal: { [key: string]: number } = {};
 
 export function setSignals(): void {
-  if (build.os === "mac") {
+  if (build.os === "darwin") {
     Object.assign(Signal, MacOSSignal);
   } else {
     Object.assign(Signal, LinuxSignal);
@@ -83,7 +83,7 @@ export function setSignals(): void {
 }
 
 export function signal(signo: number): SignalStream {
-  if (build.os === "win") {
+  if (build.os === "windows") {
     throw new Error("not implemented!");
   }
   return new SignalStream(signo);

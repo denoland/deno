@@ -10,7 +10,7 @@ unitTest(
     Deno.mkdirSync(target);
     // TODO Add test for Windows once symlink is implemented for Windows.
     // See https://github.com/denoland/deno/issues/815.
-    if (Deno.build.os !== "win") {
+    if (Deno.build.os !== "windows") {
       Deno.symlinkSync(target, symlink);
       const targetPath = Deno.readlinkSync(symlink);
       assertEquals(targetPath, target);
@@ -51,7 +51,7 @@ unitTest(
     Deno.mkdirSync(target);
     // TODO Add test for Windows once symlink is implemented for Windows.
     // See https://github.com/denoland/deno/issues/815.
-    if (Deno.build.os !== "win") {
+    if (Deno.build.os !== "windows") {
       Deno.symlinkSync(target, symlink);
       const targetPath = await Deno.readlink(symlink);
       assertEquals(targetPath, target);

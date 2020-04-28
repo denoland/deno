@@ -21,13 +21,13 @@ export async function copyN(
       buf = new Uint8Array(size - bytesRead);
     }
     const result = await r.read(buf);
-    const nread = result === Deno.EOF ? 0 : result;
+    const nread = result ?? 0;
     bytesRead += nread;
     if (nread > 0) {
       const n = await dest.write(buf.slice(0, nread));
       assert(n === nread, "could not write");
     }
-    if (result === Deno.EOF) {
+    if (result === null) {
       break;
     }
   }
@@ -35,31 +35,31 @@ export async function copyN(
 }
 
 /** Read big endian 16bit short from BufReader */
-export async function readShort(buf: BufReader): Promise<number | Deno.EOF> {
+export async function readShort(buf: BufReader): Promise<number | null> {
   const high = await buf.readByte();
-  if (high === Deno.EOF) return Deno.EOF;
+  if (high === null) return null;
   const low = await buf.readByte();
-  if (low === Deno.EOF) throw new Deno.errors.UnexpectedEof();
+  if (low === null) throw new Deno.errors.UnexpectedEof();
   return (high << 8) | low;
 }
 
 /** Read big endian 32bit integer from BufReader */
-export async function readInt(buf: BufReader): Promise<number | Deno.EOF> {
+export async function readInt(buf: BufReader): Promise<number | null> {
   const high = await readShort(buf);
-  if (high === Deno.EOF) return Deno.EOF;
+  if (high === null) return null;
   const low = await readShort(buf);
-  if (low === Deno.EOF) throw new Deno.errors.UnexpectedEof();
+  if (low === null) throw new Deno.errors.UnexpectedEof();
   return (high << 16) | low;
 }
 
 const MAX_SAFE_INTEGER = BigInt(Number.MAX_SAFE_INTEGER);
 
 /** Read big endian 64bit long from BufReader */
-export async function readLong(buf: BufReader): Promise<number | Deno.EOF> {
+export async function readLong(buf: BufReader): Promise<number | null> {
   const high = await readInt(buf);
-  if (high === Deno.EOF) return Deno.EOF;
+  if (high === null) return null;
   const low = await readInt(buf);
-  if (low === Deno.EOF) throw new Deno.errors.UnexpectedEof();
+  if (low === null) throw new Deno.errors.UnexpectedEof();
   const big = (BigInt(high) << 32n) | BigInt(low);
   // We probably should provide a similar API that returns BigInt values.
   if (big > MAX_SAFE_INTEGER) {
