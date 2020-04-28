@@ -138,7 +138,7 @@ export function bootstrapWorkerRuntime(
   Object.defineProperties(globalThis, eventTargetProperties);
   Object.defineProperties(globalThis, { name: readOnly(name) });
   setEventTargetData(globalThis);
-  const { location, unstableFlag, pid, noColor, args } = runtime.start(name);
+  const { location, unstableFlag, pid, noColor, args } = runtime.start(internalName ?? name);
 
   const location_ = new LocationImpl(location);
   immutableDefine(globalThis, "location", location_);
