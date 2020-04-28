@@ -267,7 +267,7 @@ export function serve(addr: string | HTTPOptions): Server {
  *
  *     const body = "Hello World\n";
  *     const options = { port: 8000 };
- *     listenAndServeTLS(options, (req) => {
+ *     listenAndServe(options, (req) => {
  *       req.respond({ body });
  *     });
  *
