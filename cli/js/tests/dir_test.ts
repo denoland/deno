@@ -20,7 +20,7 @@ unitTest({ perms: { write: true } }, function dirCwdChdirSuccess(): void {
 
 unitTest({ perms: { write: true } }, function dirCwdError(): void {
   // excluding windows since it throws resource busy, while removeSync
-  if (["linux", "mac"].includes(Deno.build.os)) {
+  if (["linux", "darwin"].includes(Deno.build.os)) {
     const initialdir = Deno.cwd();
     const path = Deno.makeTempDirSync();
     Deno.chdir(path);
