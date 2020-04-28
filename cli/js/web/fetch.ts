@@ -41,6 +41,7 @@ class Body implements domTypes.Body, ReadableStream<Uint8Array>, io.ReadCloser, 
     this.body = this;
   }
 
+  // eslint-disable-next-line require-await
   #bodyBuffer = async (): Promise<ArrayBuffer> => {
     assert(this.#bodyPromise == null);
     const buf = new Buffer();
