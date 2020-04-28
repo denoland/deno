@@ -535,7 +535,7 @@ fn op_listen(
       Ok(JsonOp::Sync(json!({
       "rid": rid,
       "localAddr": {
-        "address": local_addr.as_pathname(),
+        "path": local_addr.as_pathname(),
         "transport": transport,
       },
       })))
