@@ -1,5 +1,5 @@
 import { open, openSync } from "./files.ts";
-import { readAll, readAllSync } from "./buffer.ts";
+import { readAllSync } from "./buffer.ts";
 
 export function readTextFileSync(path: string): string {
   const decoder = new TextDecoder();
@@ -12,7 +12,7 @@ export function readTextFileSync(path: string): string {
 export async function readTextFile(path: string): Promise<string> {
   const decoder = new TextDecoder();
   const file = await open(path);
-  const content = await readAll(file);
+  const content = readAllSync(file);
   file.close();
   return decoder.decode(content);
 }
