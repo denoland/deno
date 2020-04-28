@@ -6,13 +6,13 @@ const testDir = Deno.makeTempDirSync();
 const oldname = testDir + "/oldname";
 const newname = testDir + "/newname";
 
-if (Deno.build.os !== "win") {
+if (Deno.build.os !== "windows") {
   Deno.symlinkSync(oldname, newname);
 }
 
 test({
   name: "readlinkSuccess",
-  ignore: Deno.build.os === "win",
+  ignore: Deno.build.os === "windows",
   async fn() {
     const data = await new Promise((res, rej) => {
       readlink(newname, (err, data) => {
@@ -30,7 +30,7 @@ test({
 
 test({
   name: "readlinkEncodeBufferSuccess",
-  ignore: Deno.build.os === "win",
+  ignore: Deno.build.os === "windows",
   async fn() {
     const data = await new Promise((res, rej) => {
       readlink(newname, { encoding: "buffer" }, (err, data) => {
@@ -48,7 +48,7 @@ test({
 
 test({
   name: "readlinkSyncSuccess",
-  ignore: Deno.build.os === "win",
+  ignore: Deno.build.os === "windows",
   fn() {
     const data = readlinkSync(newname);
     assertEquals(typeof data, "string");
@@ -58,7 +58,7 @@ test({
 
 test({
   name: "readlinkEncodeBufferSuccess",
-  ignore: Deno.build.os === "win",
+  ignore: Deno.build.os === "windows",
   fn() {
     const data = readlinkSync(newname, { encoding: "buffer" });
     assert(data instanceof Uint8Array);
