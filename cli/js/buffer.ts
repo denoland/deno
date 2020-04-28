@@ -171,7 +171,6 @@ export class Buffer implements SyncReader, SyncWriter {
   }
 }
 
-      
 export function readAllSync(r: SyncReader): Uint8Array {
   const buf = new Buffer();
   buf.readFromSync(r);

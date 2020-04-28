@@ -1,12 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Public deno module.
-export {
-  Buffer,
-  readAllSync,
-  writeAll,
-  writeAllSync,
-} from "./buffer.ts";
+export { Buffer, readAllSync, writeAll, writeAllSync } from "./buffer.ts";
 export { build, OperatingSystem, Arch } from "./build.ts";
 export { chmodSync, chmod } from "./ops/fs/chmod.ts";
 export { chownSync, chown } from "./ops/fs/chown.ts";
