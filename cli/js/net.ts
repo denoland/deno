@@ -58,8 +58,6 @@ export class ConnImpl implements Conn {
 }
 
 export class ListenerImpl implements Listener {
-  #closed = false;
-
   constructor(readonly rid: number, readonly addr: Addr) {}
 
   async accept(): Promise<Conn> {
