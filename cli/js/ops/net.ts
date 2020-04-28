@@ -9,7 +9,7 @@ export interface NetAddr {
 
 export interface UnixAddr {
   transport: "unix" | "unixpacket";
-  address: string;
+  path: string;
 }
 
 export type Addr = NetAddr | UnixAddr;

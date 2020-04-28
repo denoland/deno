@@ -142,7 +142,7 @@ export interface ListenOptions {
 
 export interface UnixListenOptions {
   transport: "unix" | "unixpacket";
-  address: string;
+  path: string;
 }
 
 export function listen(
@@ -190,7 +190,7 @@ export interface ConnectOptions {
 }
 export interface UnixConnectOptions {
   transport: "unix";
-  address: string;
+  path: string;
 }
 export async function connect(options: UnixConnectOptions): Promise<Conn>;
 export async function connect(options: ConnectOptions): Promise<Conn>;
