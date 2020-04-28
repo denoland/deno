@@ -48,10 +48,12 @@ export class ConnImpl implements Conn {
     close(this.rid);
   }
 
+  // TODO(lucacasonato): make these unavailable in stable
   closeRead(): void {
     netOps.shutdown(this.rid, netOps.ShutdownMode.Read);
   }
 
+  // TODO(lucacasonato): make these unavailable in stable
   closeWrite(): void {
     netOps.shutdown(this.rid, netOps.ShutdownMode.Write);
   }
