@@ -1939,7 +1939,7 @@ declare namespace Deno {
     options: UnixListenOptions & { transport: "unix" }
   ): Listener;
 
-  /** **UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: new API
    *
    * Listen announces on the local transport address.
    *
@@ -1958,7 +1958,7 @@ declare namespace Deno {
     options: ListenOptions & { transport: "udp" }
   ): DatagramConn;
 
-  /** **UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: new API
    *
    * Listen announces on the local transport address.
    *
