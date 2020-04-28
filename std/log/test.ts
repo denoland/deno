@@ -17,7 +17,7 @@ class TestHandler extends log.handlers.BaseHandler {
   }
 }
 
-test(async function defaultHandlers(): Promise<void> {
+test("defaultHandlers", async function (): Promise<void> {
   const loggers: {
     [key: string]: (msg: string, ...args: unknown[]) => void;
   } = {
@@ -55,7 +55,7 @@ test(async function defaultHandlers(): Promise<void> {
   }
 });
 
-test(async function getLogger(): Promise<void> {
+test("getLogger", async function (): Promise<void> {
   const handler = new TestHandler("DEBUG");
 
   await log.setup({
@@ -76,7 +76,7 @@ test(async function getLogger(): Promise<void> {
   assertEquals(logger.handlers, [handler]);
 });
 
-test(async function getLoggerWithName(): Promise<void> {
+test("getLoggerWithName", async function (): Promise<void> {
   const fooHandler = new TestHandler("DEBUG");
 
   await log.setup({
@@ -97,7 +97,7 @@ test(async function getLoggerWithName(): Promise<void> {
   assertEquals(logger.handlers, [fooHandler]);
 });
 
-test(async function getLoggerUnknown(): Promise<void> {
+test("getLoggerUnknown", async function (): Promise<void> {
   await log.setup({
     handlers: {},
     loggers: {},
@@ -109,7 +109,7 @@ test(async function getLoggerUnknown(): Promise<void> {
   assertEquals(logger.handlers, []);
 });
 
-test(function getInvalidLoggerLevels(): void {
+test("getInvalidLoggerLevels", function (): void {
   assertThrows(() => getLevelByName("FAKE_LOG_LEVEL" as LevelName));
   assertThrows(() => getLevelName(5000));
 });

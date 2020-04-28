@@ -113,20 +113,20 @@ function checkFormat(path: any, testCases: unknown[][]): void {
   });
 }
 
-test(function parseWin32() {
+test("parseWin32", function () {
   checkParseFormat(path.win32, winPaths);
   checkSpecialCaseParseFormat(path.win32, winSpecialCaseParseTests);
 });
 
-test(function parse() {
+test("parse", function () {
   checkParseFormat(path.posix, unixPaths);
 });
 
-test(function formatWin32() {
+test("formatWin32", function () {
   checkFormat(path.win32, winSpecialCaseFormatTests);
 });
 
-test(function format() {
+test("format", function () {
   checkFormat(path.posix, unixSpecialCaseFormatTests);
 });
 
@@ -162,7 +162,7 @@ const posixTrailingTests = [
   ],
 ];
 
-test(function parseTrailingWin32() {
+test("parseTrailingWin32", function () {
   windowsTrailingTests.forEach(function (p) {
     const actual = path.win32.parse(p[0] as string);
     const expected = p[1];
@@ -170,7 +170,7 @@ test(function parseTrailingWin32() {
   });
 });
 
-test(function parseTrailing() {
+test("parseTrailing", function () {
   posixTrailingTests.forEach(function (p) {
     const actual = path.posix.parse(p[0] as string);
     const expected = p[1];

@@ -58,7 +58,7 @@ content-length: 6
 Step7
 `;
 
-test(async function serverPipelineRace(): Promise<void> {
+test("serverPipelineRace", async function (): Promise<void> {
   await startServer();
 
   const conn = await connect({ port: 4501 });
