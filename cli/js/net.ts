@@ -61,21 +61,30 @@ export class ListenerImpl implements Listener {
     return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
   }
 
+  async next(): Promise<IteratorResult<Conn>> {
+    let conn: Conn;
+    try {
+      conn = await this.accept();
+    } catch (error) {
+      if (error instanceof errors.BadResource) {
+        return { value: undefined, done: true };
+      }
+      throw error;
+    }
+    return { value: conn!, done: false };
+  }
+
+  return(value?: Conn): Promise<IteratorResult<Conn>> {
+    this.close();
+    return Promise.resolve({ value, done: true });
+  }
+
   close(): void {
     close(this.rid);
   }
 
-  async *[Symbol.asyncIterator](): AsyncIterableIterator<Conn> {
-    while (true) {
-      try {
-        yield await this.accept();
-      } catch (error) {
-        if (error instanceof errors.BadResource) {
-          break;
-        }
-        throw error;
-      }
-    }
+  [Symbol.asyncIterator](): AsyncIterableIterator<Conn> {
+    return this;
   }
 }
 
