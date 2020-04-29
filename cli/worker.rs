@@ -121,7 +121,7 @@ impl Worker {
 
     let (internal_channels, external_channels) = create_channels();
 
-    Self {
+    let mut worker = Self {
       name,
       isolate,
       state,
@@ -129,7 +129,13 @@ impl Worker {
       internal_channels,
       external_channels,
       inspector,
+    };
+
+    if worker.inspector.is_some() {
+      worker.execute("globalThis.__isInspector = true;").expect("Could not set inspector status");
     }
+
+    worker
   }
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".

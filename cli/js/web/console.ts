@@ -684,6 +684,8 @@ const countMap = new Map<string, number>();
 const timerMap = new Map<string, number>();
 const isConsoleInstance = Symbol("isConsoleInstance");
 
+const builtinConsole = globalThis.console;
+
 export class Console {
   #printFunc: PrintFunc;
   indentLevel: number;
@@ -704,6 +706,12 @@ export class Console {
   }
 
   log = (...args: unknown[]): void => {
+
+    if ((globalThis as any).__isInspector) {
+      builtinConsole.log.apply(builtinConsole, args);
+      return;
+    }
+
     this.#printFunc(
       stringifyArgs(args, {
         indentLevel: this.indentLevel,
