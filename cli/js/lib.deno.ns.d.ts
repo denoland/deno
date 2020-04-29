@@ -847,12 +847,6 @@ declare namespace Deno {
      * least until the next buffer modification, so immediate changes to the
      * slice will affect the result of future reads. */
     bytes(): Uint8Array;
-    /** Returns the contents of the unread portion of the buffer as a `string`.
-     *
-     * **Warning**: if multibyte characters are present when data is flowing
-     * through the buffer, this method may result in incorrect strings due to a
-     * character being split. */
-    toString(): string;
     /** Returns whether the unread portion of the buffer is empty. */
     empty(): boolean;
     /** A read only number of bytes of the unread portion of the buffer. */
@@ -873,9 +867,15 @@ declare namespace Deno {
     readSync(p: Uint8Array): number | null;
     /** Reads the next `p.length` bytes from the buffer or until the buffer is
      * drained. Resolves to the number of bytes read. If the buffer has no
-     * data to return, resolves to EOF (`null`). */
+     * data to return, resolves to EOF (`null`).
+     *
+     * NOTE: This methods reads bytes sychronously; it's provided for
+     * compatibility with `Reader` interfaces.
+     */
     read(p: Uint8Array): Promise<number | null>;
     writeSync(p: Uint8Array): number;
+    /** NOTE: This methods writes bytes sychronously; it's provided for
+     * compatibility with `Writer` interface. */
     write(p: Uint8Array): Promise<number>;
     /** Grows the buffer's capacity, if necessary, to guarantee space for
      * another `n` bytes. After `.grow(n)`, at least `n` bytes can be written to

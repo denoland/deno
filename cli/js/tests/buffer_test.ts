@@ -35,7 +35,6 @@ function check(buf: Deno.Buffer, s: string): void {
   const decoder = new TextDecoder();
   const bytesStr = decoder.decode(bytes);
   assertEquals(bytesStr, s);
-  assertEquals(buf.length, buf.toString().length);
   assertEquals(buf.length, s.length);
 }
 

@@ -6,7 +6,6 @@
 
 import { Reader, Writer, ReaderSync, WriterSync } from "./io.ts";
 import { assert } from "./util.ts";
-import { TextDecoder } from "./web/text_encoding.ts";
 
 // MIN_READ is the minimum ArrayBuffer size passed to a read call by
 // buffer.ReadFrom. As long as the Buffer has at least MIN_READ bytes beyond
@@ -42,11 +41,6 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
 
   bytes(): Uint8Array {
     return this.#buf.subarray(this.#off);
-  }
-
-  toString(): string {
-    const decoder = new TextDecoder();
-    return decoder.decode(this.#buf.subarray(this.#off));
   }
 
   empty(): boolean {

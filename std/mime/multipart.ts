@@ -302,7 +302,7 @@ export class MultipartReader {
         if (maxValueBytes < 0) {
           throw new RangeError("message too large");
         }
-        const value = buf.toString();
+        const value = new TextDecoder().decode(buf.bytes());
         valueMap.set(p.formName, value);
         continue;
       }
