@@ -2,8 +2,34 @@
 // https://golang.org/pkg/path/filepath/#Walk
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 import { unimplemented, assert } from "../testing/asserts.ts";
-import { join } from "../path/mod.ts";
+import { basename, join, normalize } from "../path/mod.ts";
 const { readdir, readdirSync, stat, statSync } = Deno;
+
+export function createWalkEntrySync(path: string): WalkEntry {
+  path = normalize(path);
+  const name = basename(path);
+  const info = statSync(path);
+  return {
+    path,
+    name,
+    isFile: info.isFile,
+    isDirectory: info.isDirectory,
+    isSymlink: info.isSymlink,
+  };
+}
+
+export async function createWalkEntry(path: string): Promise<WalkEntry> {
+  path = normalize(path);
+  const name = basename(path);
+  const info = await stat(path);
+  return {
+    path,
+    name,
+    isFile: info.isFile,
+    isDirectory: info.isDirectory,
+    isSymlink: info.isSymlink,
+  };
+}
 
 export interface WalkOptions {
   maxDepth?: number;
@@ -16,26 +42,25 @@ export interface WalkOptions {
 }
 
 function include(
-  filename: string,
+  path: string,
   exts?: string[],
   match?: RegExp[],
   skip?: RegExp[]
 ): boolean {
-  if (exts && !exts.some((ext): boolean => filename.endsWith(ext))) {
+  if (exts && !exts.some((ext): boolean => path.endsWith(ext))) {
     return false;
   }
-  if (match && !match.some((pattern): boolean => !!filename.match(pattern))) {
+  if (match && !match.some((pattern): boolean => !!path.match(pattern))) {
     return false;
   }
-  if (skip && skip.some((pattern): boolean => !!filename.match(pattern))) {
+  if (skip && skip.some((pattern): boolean => !!path.match(pattern))) {
     return false;
   }
   return true;
 }
 
-export interface WalkEntry {
-  filename: string;
-  info: Deno.FileInfo;
+export interface WalkEntry extends Deno.DirEntry {
+  path: string;
 }
 
 /** Walks the file tree rooted at root, yielding each file or directory in the
@@ -52,8 +77,8 @@ export interface WalkEntry {
  * - match?: RegExp[];
  * - skip?: RegExp[];
  *
- *      for await (const { filename, info } of walk(".")) {
- *        console.log(filename);
+ *      for await (const { name, info } of walk(".")) {
+ *        console.log(name);
  *        assert(info.isFile);
  *      };
  */
@@ -73,13 +98,13 @@ export async function* walk(
     return;
   }
   if (includeDirs && include(root, exts, match, skip)) {
-    yield { filename: root, info: await stat(root) };
+    yield await createWalkEntry(root);
   }
   if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
-  for await (const dirEntry of readdir(root)) {
-    if (dirEntry.isSymlink) {
+  for await (const entry of readdir(root)) {
+    if (entry.isSymlink) {
       if (followSymlinks) {
         // TODO(ry) Re-enable followSymlinks.
         unimplemented();
@@ -88,14 +113,15 @@ export async function* walk(
       }
     }
 
-    const filename = join(root, dirEntry.name);
+    assert(entry.name != null);
+    const path = join(root, entry.name);
 
-    if (dirEntry.isFile) {
-      if (includeFiles && include(filename, exts, match, skip)) {
-        yield { filename, info: dirEntry };
+    if (entry.isFile) {
+      if (includeFiles && include(path, exts, match, skip)) {
+        yield { path, ...entry };
       }
     } else {
-      yield* walk(filename, {
+      yield* walk(path, {
         maxDepth: maxDepth - 1,
         includeFiles,
         includeDirs,
@@ -125,13 +151,13 @@ export function* walkSync(
     return;
   }
   if (includeDirs && include(root, exts, match, skip)) {
-    yield { filename: root, info: statSync(root) };
+    yield createWalkEntrySync(root);
   }
   if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
-  for (const dirEntry of readdirSync(root)) {
-    if (dirEntry.isSymlink) {
+  for (const entry of readdirSync(root)) {
+    if (entry.isSymlink) {
       if (followSymlinks) {
         unimplemented();
       } else {
@@ -139,15 +165,15 @@ export function* walkSync(
       }
     }
 
-    assert(dirEntry.name != null);
-    const filename = join(root, dirEntry.name);
+    assert(entry.name != null);
+    const path = join(root, entry.name);
 
-    if (dirEntry.isFile) {
-      if (includeFiles && include(filename, exts, match, skip)) {
-        yield { filename, info: dirEntry };
+    if (entry.isFile) {
+      if (includeFiles && include(path, exts, match, skip)) {
+        yield { path, ...entry };
       }
     } else {
-      yield* walkSync(filename, {
+      yield* walkSync(path, {
         maxDepth: maxDepth - 1,
         includeFiles,
         includeDirs,

@@ -460,10 +460,7 @@ fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> serde_json::Value {
 }
 
 #[inline(always)]
-fn get_stat_json(
-  metadata: std::fs::Metadata,
-  maybe_name: Option<String>,
-) -> JsonResult {
+fn get_stat_json(metadata: std::fs::Metadata) -> JsonResult {
   // Unix stat member (number types only). 0 if not on unix.
   macro_rules! usm {
     ($member: ident) => {{
@@ -480,7 +477,7 @@ fn get_stat_json(
 
   #[cfg(unix)]
   use std::os::unix::fs::MetadataExt;
-  let mut json_val = json!({
+  let json_val = json!({
     "isFile": metadata.is_file(),
     "isDirectory": metadata.is_dir(),
     "isSymlink": metadata.file_type().is_symlink(),
@@ -502,14 +499,6 @@ fn get_stat_json(
     "blksize": usm!(blksize),
     "blocks": usm!(blocks),
   });
-
-  // "name" is an optional field by our design.
-  if let Some(name) = maybe_name {
-    if let serde_json::Value::Object(ref mut m) = json_val {
-      m.insert("name".to_owned(), json!(name));
-    }
-  }
-
   Ok(json_val)
 }
 
@@ -540,7 +529,7 @@ fn op_stat(
     } else {
       std::fs::metadata(&path)?
     };
-    get_stat_json(metadata, None)
+    get_stat_json(metadata)
   })
 }
 
@@ -599,10 +588,15 @@ fn op_read_dir(
     let entries: Vec<_> = std::fs::read_dir(path)?
       .filter_map(|entry| {
         let entry = entry.unwrap();
-        let metadata = entry.metadata().unwrap();
+        let file_type = entry.file_type().unwrap();
         // Not all filenames can be encoded as UTF-8. Skip those for now.
-        if let Ok(filename) = into_string(entry.file_name()) {
-          Some(get_stat_json(metadata, Some(filename)).unwrap())
+        if let Ok(name) = into_string(entry.file_name()) {
+          Some(json!({
+            "name": name,
+            "isFile": file_type.is_file(),
+            "isDirectory": file_type.is_dir(),
+            "isSymlink": file_type.is_symlink()
+          }))
         } else {
           None
         }

@@ -157,15 +157,15 @@ async function copyDir(
     await Deno.utime(dest, srcStatInfo.atime, srcStatInfo.mtime);
   }
 
-  for await (const file of Deno.readdir(src)) {
-    const srcPath = path.join(src, file.name);
+  for await (const entry of Deno.readdir(src)) {
+    const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, path.basename(srcPath as string));
-    if (file.isDirectory) {
-      await copyDir(srcPath, destPath, options);
-    } else if (file.isFile) {
-      await copyFile(srcPath, destPath, options);
-    } else if (file.isSymlink) {
+    if (entry.isSymlink) {
       await copySymLink(srcPath, destPath, options);
+    } else if (entry.isDirectory) {
+      await copyDir(srcPath, destPath, options);
+    } else if (entry.isFile) {
+      await copyFile(srcPath, destPath, options);
     }
   }
 }
@@ -185,16 +185,16 @@ function copyDirSync(src: string, dest: string, options: CopyOptions): void {
     Deno.utimeSync(dest, srcStatInfo.atime, srcStatInfo.mtime);
   }
 
-  for (const file of Deno.readdirSync(src)) {
-    assert(file.name != null, "file.name must be set");
-    const srcPath = path.join(src, file.name);
+  for (const entry of Deno.readdirSync(src)) {
+    assert(entry.name != null, "file.name must be set");
+    const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, path.basename(srcPath as string));
-    if (file.isDirectory) {
-      copyDirSync(srcPath, destPath, options);
-    } else if (file.isFile) {
-      copyFileSync(srcPath, destPath, options);
-    } else if (file.isSymlink) {
+    if (entry.isSymlink) {
       copySymlinkSync(srcPath, destPath, options);
+    } else if (entry.isDirectory) {
+      copyDirSync(srcPath, destPath, options);
+    } else if (entry.isFile) {
+      copyFileSync(srcPath, destPath, options);
     }
   }
 }
@@ -229,12 +229,12 @@ export async function copy(
     );
   }
 
-  if (srcStat.isDirectory) {
+  if (srcStat.isSymlink) {
+    await copySymLink(src, dest, options);
+  } else if (srcStat.isDirectory) {
     await copyDir(src, dest, options);
   } else if (srcStat.isFile) {
     await copyFile(src, dest, options);
-  } else if (srcStat.isSymlink) {
-    await copySymLink(src, dest, options);
   }
 }
 
@@ -268,11 +268,11 @@ export function copySync(
     );
   }
 
-  if (srcStat.isDirectory) {
+  if (srcStat.isSymlink) {
+    copySymlinkSync(src, dest, options);
+  } else if (srcStat.isDirectory) {
     copyDirSync(src, dest, options);
   } else if (srcStat.isFile) {
     copyFileSync(src, dest, options);
-  } else if (srcStat.isSymlink) {
-    copySymlinkSync(src, dest, options);
   }
 }

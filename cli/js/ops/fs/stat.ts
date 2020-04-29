@@ -29,8 +29,6 @@ export interface StatResponse {
   mtime: number | null;
   atime: number | null;
   birthtime: number | null;
-  // Null for stat(), but exists for readdir().
-  name: string | null;
   // Unix only members
   dev: number;
   ino: number;
