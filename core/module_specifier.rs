@@ -66,20 +66,11 @@ impl ModuleSpecifier {
     self.0.as_str()
   }
 
+  /// Resolves module using this algorithm:
+  /// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
   pub fn resolve_import(
     specifier: &str,
     base: &str,
-  ) -> Result<ModuleSpecifier, ModuleResolutionError> {
-    let curr_dir = Url::from_file_path(current_dir().unwrap()).unwrap();
-    ModuleSpecifier::resolve_dir_import(specifier, base, &curr_dir)
-  }
-
-  /// Resolves module using this algorithm:
-  /// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
-  pub fn resolve_dir_import(
-    specifier: &str,
-    base: &str,
-    curr_dir: &Url,
   ) -> Result<ModuleSpecifier, ModuleResolutionError> {
     let url = match Url::parse(specifier) {
       // 1. Apply the URL parser to specifier.
@@ -106,23 +97,19 @@ impl ModuleSpecifier {
       // 3. Return the result of applying the URL parser to specifier with base
       //    URL as the base URL.
       Err(ParseError::RelativeUrlWithoutBase) => {
-        if ModuleSpecifier::is_dummy_specifier(base) {
+        let base = if ModuleSpecifier::is_dummy_specifier(base) {
           // Handle <unknown> case, happening under e.g. repl.
           // Use CWD for such case.
 
-          // Forcefully set base to current dir. (Remember, base is <unknown> here)
-          // The "specifier" starts with "/", so we add a "." in front of it.
-          // If "curr_dir" is "/opt/app" and "specifier" is "/awesome.ts", the final path will be
-          // "/opt/app/awesome.ts"
-          curr_dir
-            .join(format!(".{}", &specifier).as_str())
-            .map_err(InvalidUrl)?
+          // The original base is the string "<unknown>".
+          // Forcefully use the current directory as base.
+          // Otherwise, later joining in Url would be interpreted in
+          // the parent directory (appending trailing slash does not work)
+          Url::from_file_path(current_dir().unwrap()).unwrap()
         } else {
-          Url::parse(base)
-            .map_err(InvalidBaseUrl)?
-            .join(&specifier)
-            .map_err(InvalidUrl)?
-        }
+          Url::parse(base).map_err(InvalidBaseUrl)?
+        };
+        base.join(&specifier).map_err(InvalidUrl)?
       }
 
       // If parsing the specifier as a URL failed for a different reason than
@@ -226,14 +213,13 @@ mod tests {
 
   #[test]
   fn test_resolve_import() {
-    let curr_dir: Url =
-      Url::from_directory_path(current_dir().unwrap()).unwrap();
-    let awesome = curr_dir.join("./awesome.ts").unwrap().to_string();
-    let awesome_service =
-      curr_dir.join("./service/awesome.ts").unwrap().to_string();
     let tests = vec![
-      ("/awesome.ts", "<unknown>", awesome.as_str()),
-      ("/service/awesome.ts", "<unknown>", awesome_service.as_str()),
+      ("/awesome.ts", "<unknown>", "file:///awesome.ts"),
+      (
+        "/service/awesome.ts",
+        "<unknown>",
+        "file:///service/awesome.ts",
+      ),
       (
         "./005_more_imports.ts",
         "http://deno.land/core/tests/006_url_imports.ts",
@@ -299,7 +285,7 @@ mod tests {
     ];
 
     for (specifier, base, expected_url) in tests {
-      let url = ModuleSpecifier::resolve_dir_import(specifier, base, &curr_dir)
+      let url = ModuleSpecifier::resolve_import(specifier, base)
         .unwrap()
         .to_string();
       assert_eq!(url, expected_url);
