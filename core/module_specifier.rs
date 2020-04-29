@@ -219,8 +219,8 @@ mod tests {
 
   #[test]
   fn test_resolve_import() {
-    let awesome = get_path("/awesome.ts").to_owned();
-    let awesome_srv = get_path("/service/awesome.ts").to_owned();
+    let awesome = get_path("/awesome.ts");
+    let awesome_srv = get_path("/service/awesome.ts");
     let tests = vec![
       ("/awesome.ts", "<unknown>", awesome.as_str()),
       ("/service/awesome.ts", "<unknown>", awesome_srv.as_str()),
