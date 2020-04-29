@@ -421,3 +421,7 @@ export function parse(path: string): ParsedPath {
 
   return ret;
 }
+
+export function fromUrl(url: string | URL): string {
+  return new URL(url).pathname;
+}

@@ -356,7 +356,7 @@ export class URLImpl implements URL {
     return this.#searchParams;
   }
 
-  constructor(url: string, base?: string | URL) {
+  constructor(url: string | URL, base?: string | URL) {
     let baseParts: URLParts | undefined;
     if (base) {
       baseParts = typeof base === "string" ? parse(base) : parts.get(base);
@@ -365,7 +365,7 @@ export class URLImpl implements URL {
       }
     }
 
-    const urlParts = parse(url);
+    const urlParts = typeof url === "string" ? parse(url) : parts.get(url);
     if (!urlParts) {
       throw new TypeError("Invalid URL.");
     }
