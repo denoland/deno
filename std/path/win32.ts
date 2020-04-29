@@ -904,8 +904,8 @@ export function parse(path: string): ParsedPath {
  *      fromFileUrl("file:///C:/Users/foo"); // "C:\\Users\\foo"
  *      fromFileUrl("file:///home/foo"); // "\\home\\foo"
  *
- * Note that non-file URLs are treated as file URLs with irrelevant components
- * ignored.
+ * Note that non-file URLs are treated as file URLs and irrelevant components
+ * are ignored.
  */
 export function fromFileUrl(url: string | URL): string {
   return new URL(url).pathname
