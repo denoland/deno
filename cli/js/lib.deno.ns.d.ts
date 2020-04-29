@@ -1760,9 +1760,7 @@ declare namespace Deno {
     request(desc: PermissionDescriptor): Promise<PermissionStatus>;
   }
 
-  /** **UNSTABLE**: maybe move to `navigator.permissions` to match web API. It
-   * could look like `navigator.permissions.query({ name: Deno.symbols.read })`.
-   */
+  /** Functions that can be used to query and update permission status. */
   export const permissions: Permissions;
 
   /** see: https://w3c.github.io/permissions/#permissionstatus */
