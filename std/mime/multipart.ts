@@ -308,7 +308,7 @@ export class MultipartReader {
       }
       // file
       let formFile: FormFile | undefined;
-      const n = await copy(p, buf);
+      const n = await copyN(p, buf, maxValueBytes);
       const contentType = p.headers.get("content-type");
       assert(contentType != null, "content-type must be set");
       if (n > maxMemory) {
@@ -319,11 +319,8 @@ export class MultipartReader {
           postfix: ext,
         });
         try {
-          const size = await copyN(
-            new MultiReader(buf, p),
-            file,
-            maxValueBytes
-          );
+          const size = await copy(new MultiReader(buf, p), file);
+
           file.close();
           formFile = {
             filename: p.fileName,
@@ -333,6 +330,7 @@ export class MultipartReader {
           };
         } catch (e) {
           await remove(filepath);
+          throw e;
         }
       } else {
         formFile = {
