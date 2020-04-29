@@ -13,9 +13,5 @@ export function copyFile(
 }
 
 export function copyFileSync(source: string, destination: string): void {
-  try {
-    Deno.copyFileSync(source, destination);
-  } catch (err) {
-    throw err;
-  }
+  Deno.copyFileSync(source, destination);
 }
