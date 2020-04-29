@@ -16,3 +16,11 @@ export { ShutdownMode, shutdown } from "./net.ts";
 export { listen, listenDatagram, connect } from "./net_unstable.ts";
 export { cwd } from "./ops/fs/dir.ts";
 export { startTls } from "./tls.ts";
+export { kill } from "./ops/process.ts";
+export {
+  permissions,
+  PermissionName,
+  PermissionState,
+  PermissionStatus,
+  Permissions,
+} from "./permissions.ts";
