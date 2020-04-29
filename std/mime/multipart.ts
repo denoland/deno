@@ -319,10 +319,8 @@ export class MultipartReader {
           postfix: ext,
         });
         try {
-          // write buffer to file
-          let size = await copyN(buf, file, n);
-          // Write the rest of the file
-          size += await copy(new MultiReader(buf, p), file);
+          // Write to the file
+          const size = await copy(new MultiReader(buf, p), file);
 
           file.close();
           formFile = {
