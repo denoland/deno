@@ -791,7 +791,7 @@ declare namespace Deno {
     mode?: number;
   }
 
-  /** **UNSTABLE**: new API, yet to be vetted
+  /**
    *
    *  Check if a given resource id (`rid`) is a TTY.
    *
