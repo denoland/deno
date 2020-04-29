@@ -19,7 +19,7 @@ await log.setup({
   handlers: {
     console: new log.handlers.ConsoleHandler("DEBUG"),
 
-    file: new log.handlers.FileHandler(log.LogLevels.DEBUG, {
+    file: new log.handlers.FileHandler("WARNING", {
       filename: "./log.txt",
       // you can change format of output message using any keys in `LogRecord`
       formatter: "{levelName} {msg}",
@@ -34,7 +34,7 @@ await log.setup({
     },
 
     tasks: {
-      level: log.LogLevels.ERROR,
+      level: "ERROR",
       handlers: ["console"],
     },
   },
@@ -55,7 +55,7 @@ logger.error("buzz"); // log to `console`
 // if you try to use a logger that hasn't been configured
 // you're good to go, it gets created automatically with level set to 0
 // so no message is logged
-unknownLogger = log.getLogger("mystery");
+const unknownLogger = log.getLogger("mystery");
 unknownLogger.info("foobar"); // no-op
 ```
 

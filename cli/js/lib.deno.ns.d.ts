@@ -90,29 +90,35 @@ declare namespace Deno {
    */
   export function exit(code?: number): never;
 
-  /** Returns a snapshot of the environment variables at invocation. Changing a
-   * property in the object will set that variable in the environment for the
-   * process. The environment object will only accept `string`s as values.
-   *
-   *       const myEnv = Deno.env();
-   *       console.log(myEnv.SHELL);
-   *       myEnv.TEST_VAR = "HELLO";
-   *       const newEnv = Deno.env();
-   *       console.log(myEnv.TEST_VAR === newEnv.TEST_VAR);  // outputs "true"
-   *
-   * Requires `allow-env` permission. */
-  export function env(): {
-    [index: string]: string;
-  };
+  export const env: {
+    /** Retrieve the value of an environment variable. Returns undefined if that
+     * key doesn't exist.
+     *
+     *       console.log(Deno.env.get("HOME"));  // e.g. outputs "/home/alice"
+     *       console.log(Deno.env.get("MADE_UP_VAR"));  // outputs "Undefined"
+     *
+     * Requires `allow-env` permission. */
+    get(key: string): string | undefined;
 
-  /** Retrieve the value of an environment variable. Returns undefined if that
-   * key doesn't exist.
-   *
-   *       console.log(Deno.env("HOME"));  // e.g. outputs "/home/alice"
-   *       console.log(Deno.env("MADE_UP_VAR"));  // outputs "Undefined"
-   *
-   * Requires `allow-env` permission. */
-  export function env(key: string): string | undefined;
+    /** Set the value of an environment variable.
+     *
+     *       Deno.env.set("SOME_VAR", "Value"));
+     *       Deno.env.get("SOME_VAR");  // outputs "Value"
+     *
+     * Requires `allow-env` permission. */
+    set(key: string, value: string): void;
+
+    /** Returns a snapshot of the environment variables at invocation.
+     *
+     *       Deno.env.set("TEST_VAR", "A");
+     *       const myEnv = Deno.env.toObject();
+     *       console.log(myEnv.SHELL);
+     *       Deno.env.set("TEST_VAR", "B");
+     *       console.log(myEnv.TEST_VAR);  // outputs "A"
+     *
+     * Requires `allow-env` permission. */
+    toObject(): { [index: string]: string };
+  };
 
   /**
    * Returns the path to the current deno executable.
@@ -583,7 +589,7 @@ declare namespace Deno {
     mode?: number;
   }
 
-  /** **UNSTABLE**: new API, yet to be vetted
+  /**
    *
    *  Check if a given resource id (`rid`) is a TTY.
    *
@@ -621,12 +627,6 @@ declare namespace Deno {
      * least until the next buffer modification, so immediate changes to the
      * slice will affect the result of future reads. */
     bytes(): Uint8Array;
-    /** Returns the contents of the unread portion of the buffer as a `string`.
-     *
-     * **Warning**: if multibyte characters are present when data is flowing
-     * through the buffer, this method may result in incorrect strings due to a
-     * character being split. */
-    toString(): string;
     /** Returns whether the unread portion of the buffer is empty. */
     empty(): boolean;
     /** A read only number of bytes of the unread portion of the buffer. */
@@ -647,9 +647,15 @@ declare namespace Deno {
     readSync(p: Uint8Array): number | null;
     /** Reads the next `p.length` bytes from the buffer or until the buffer is
      * drained. Resolves to the number of bytes read. If the buffer has no
-     * data to return, resolves to EOF (`null`). */
+     * data to return, resolves to EOF (`null`).
+     *
+     * NOTE: This methods reads bytes sychronously; it's provided for
+     * compatibility with `Reader` interfaces.
+     */
     read(p: Uint8Array): Promise<number | null>;
     writeSync(p: Uint8Array): number;
+    /** NOTE: This methods writes bytes sychronously; it's provided for
+     * compatibility with `Writer` interface. */
     write(p: Uint8Array): Promise<number>;
     /** Grows the buffer's capacity, if necessary, to guarantee space for
      * another `n` bytes. After `.grow(n)`, at least `n` bytes can be written to
@@ -1110,53 +1116,56 @@ declare namespace Deno {
    *
    *       // e.g. given /home/alice/file.txt and current directory /home/alice
    *       Deno.symlinkSync("file.txt", "symlink_file.txt");
-   *       const realPath = Deno.realpathSync("./file.txt");
-   *       const realSymLinkPath = Deno.realpathSync("./symlink_file.txt");
+   *       const realPath = Deno.realPathSync("./file.txt");
+   *       const realSymLinkPath = Deno.realPathSync("./symlink_file.txt");
    *       console.log(realPath);  // outputs "/home/alice/file.txt"
    *       console.log(realSymLinkPath);  // outputs "/home/alice/file.txt"
    *
    * Requires `allow-read` permission. */
-  export function realpathSync(path: string): string;
+  export function realPathSync(path: string): string;
 
   /** Resolves to the absolute normalized path, with symbolic links resolved.
    *
    *       // e.g. given /home/alice/file.txt and current directory /home/alice
    *       await Deno.symlink("file.txt", "symlink_file.txt");
-   *       const realPath = await Deno.realpath("./file.txt");
-   *       const realSymLinkPath = await Deno.realpath("./symlink_file.txt");
+   *       const realPath = await Deno.realPath("./file.txt");
+   *       const realSymLinkPath = await Deno.realPath("./symlink_file.txt");
    *       console.log(realPath);  // outputs "/home/alice/file.txt"
    *       console.log(realSymLinkPath);  // outputs "/home/alice/file.txt"
    *
    * Requires `allow-read` permission. */
-  export function realpath(path: string): Promise<string>;
+  export function realPath(path: string): Promise<string>;
 
-  export interface DirEntry extends FileInfo {
+  export interface DirEntry {
     name: string;
+    isFile: boolean;
+    isDirectory: boolean;
+    isSymlink: boolean;
   }
 
   /** Synchronously reads the directory given by `path` and returns an iterable
    * of `Deno.DirEntry`.
    *
-   *       for (const dirEntry of Deno.readdirSync("/")) {
+   *       for (const dirEntry of Deno.readDirSync("/")) {
    *         console.log(dirEntry.name);
    *       }
    *
    * Throws error if `path` is not a directory.
    *
    * Requires `allow-read` permission. */
-  export function readdirSync(path: string): Iterable<DirEntry>;
+  export function readDirSync(path: string): Iterable<DirEntry>;
 
   /** Reads the directory given by `path` and returns an async iterable of
    * `Deno.DirEntry`.
    *
-   *       for await (const dirEntry of Deno.readdir("/")) {
+   *       for await (const dirEntry of Deno.readDir("/")) {
    *         console.log(dirEntry.name);
    *       }
    *
    * Throws error if `path` is not a directory.
    *
    * Requires `allow-read` permission. */
-  export function readdir(path: string): AsyncIterable<DirEntry>;
+  export function readDir(path: string): AsyncIterable<DirEntry>;
 
   /** Synchronously copies the contents and permissions of one file to another
    * specified path, by default creating a new file if needed, else overwriting.
@@ -1181,22 +1190,22 @@ declare namespace Deno {
   /** Returns the full path destination of the named symbolic link.
    *
    *       Deno.symlinkSync("./test.txt", "./test_link.txt");
-   *       const target = Deno.readlinkSync("./test_link.txt"); // full path of ./test.txt
+   *       const target = Deno.readLinkSync("./test_link.txt"); // full path of ./test.txt
    *
    * Throws TypeError if called with a hard link
    *
    * Requires `allow-read` permission. */
-  export function readlinkSync(path: string): string;
+  export function readLinkSync(path: string): string;
 
   /** Resolves to the full path destination of the named symbolic link.
    *
    *       await Deno.symlink("./test.txt", "./test_link.txt");
-   *       const target = await Deno.readlink("./test_link.txt"); // full path of ./test.txt
+   *       const target = await Deno.readLink("./test_link.txt"); // full path of ./test.txt
    *
    * Throws TypeError if called with a hard link
    *
    * Requires `allow-read` permission. */
-  export function readlink(path: string): Promise<string>;
+  export function readLink(path: string): Promise<string>;
 
   /** Resolves to a `Deno.FileInfo` for the specified `path`. If `path` is a
    * symlink, information for the symlink will be returned instead of what it

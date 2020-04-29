@@ -287,6 +287,42 @@ unitTest(
 
 unitTest(
   { perms: { net: true } },
+  async function netTcpListenIteratorBreakClosesResource(): Promise<void> {
+    const promise = createResolvable();
+
+    async function iterate(listener: Deno.Listener): Promise<void> {
+      let i = 0;
+
+      for await (const conn of listener) {
+        conn.close();
+        i++;
+
+        if (i > 1) {
+          break;
+        }
+      }
+
+      promise.resolve();
+    }
+
+    const addr = { hostname: "127.0.0.1", port: 8888 };
+    const listener = Deno.listen(addr);
+    iterate(listener);
+
+    await new Promise((resolve: () => void, _) => {
+      setTimeout(resolve, 100);
+    });
+    const conn1 = await Deno.connect(addr);
+    conn1.close();
+    const conn2 = await Deno.connect(addr);
+    conn2.close();
+
+    await promise;
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
   async function netTcpListenCloseWhileIterating(): Promise<void> {
     const listener = Deno.listen({ port: 8000 });
     const nextWhileClosing = listener[Symbol.asyncIterator]().next();

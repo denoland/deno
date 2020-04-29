@@ -1,28 +1,26 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "../dispatch_json.ts";
-import { FileInfo, StatResponse, parseFileInfo } from "./stat.ts";
 
-export interface DirEntry extends FileInfo {
+export interface DirEntry {
   name: string;
+  isFile: boolean;
+  isDirectory: boolean;
+  isSymlink: boolean;
 }
 
 interface ReadDirResponse {
-  entries: StatResponse[];
+  entries: DirEntry[];
 }
 
 function res(response: ReadDirResponse): DirEntry[] {
-  return response.entries.map(
-    (statRes: StatResponse): DirEntry => {
-      return { ...parseFileInfo(statRes), name: statRes.name! };
-    }
-  );
+  return response.entries;
 }
 
-export function readdirSync(path: string): Iterable<DirEntry> {
+export function readDirSync(path: string): Iterable<DirEntry> {
   return res(sendSync("op_read_dir", { path }))[Symbol.iterator]();
 }
 
-export function readdir(path: string): AsyncIterable<DirEntry> {
+export function readDir(path: string): AsyncIterable<DirEntry> {
   const array = sendAsync("op_read_dir", { path }).then(res);
   return {
     async *[Symbol.asyncIterator](): AsyncIterableIterator<DirEntry> {

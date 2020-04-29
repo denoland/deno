@@ -6,7 +6,7 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-const { args, stat, readdir, open, exit } = Deno;
+const { args, stat, readDir, open, exit } = Deno;
 import { posix, extname } from "../path/mod.ts";
 import { listenAndServe, ServerRequest, Response } from "./server.ts";
 import { parse } from "../flags/mod.ts";
@@ -133,29 +133,29 @@ export async function serveFile(
   };
 }
 
-// TODO: simplify this after deno.stat and deno.readdir are fixed
+// TODO: simplify this after deno.stat and deno.readDir are fixed
 async function serveDir(
   req: ServerRequest,
   dirPath: string
 ): Promise<Response> {
   const dirUrl = `/${posix.relative(target, dirPath)}`;
   const listEntry: EntryInfo[] = [];
-  for await (const dirEntry of readdir(dirPath)) {
-    const filePath = posix.join(dirPath, dirEntry.name);
-    const fileUrl = posix.join(dirUrl, dirEntry.name);
-    if (dirEntry.name === "index.html" && dirEntry.isFile) {
+  for await (const entry of readDir(dirPath)) {
+    const filePath = posix.join(dirPath, entry.name);
+    const fileUrl = posix.join(dirUrl, entry.name);
+    if (entry.name === "index.html" && entry.isFile) {
       // in case index.html as dir...
       return serveFile(req, filePath);
     }
     // Yuck!
-    let mode = null;
+    let fileInfo = null;
     try {
-      mode = (await stat(filePath)).mode;
+      fileInfo = await stat(filePath);
     } catch (e) {}
     listEntry.push({
-      mode: modeToString(dirEntry.isDirectory, mode),
-      size: dirEntry.isFile ? fileLenToString(dirEntry.size) : "",
-      name: dirEntry.name,
+      mode: modeToString(entry.isDirectory, fileInfo?.mode ?? null),
+      size: entry.isFile ? fileLenToString(fileInfo?.size ?? 0) : "",
+      name: entry.name,
       url: fileUrl,
     });
   }
@@ -331,8 +331,8 @@ function main(): void {
 
       let response: Response | undefined;
       try {
-        const info = await stat(fsPath);
-        if (info.isDirectory) {
+        const fileInfo = await stat(fsPath);
+        if (fileInfo.isDirectory) {
           response = await serveDir(req, fsPath);
         } else {
           response = await serveFile(req, fsPath);

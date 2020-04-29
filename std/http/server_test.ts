@@ -63,7 +63,7 @@ test("responseWrite", async function (): Promise<void> {
     request.conn = mockConn();
 
     await request.respond(testCase.response);
-    assertEquals(buf.toString(), testCase.raw);
+    assertEquals(new TextDecoder().decode(buf.bytes()), testCase.raw);
     await request.done;
   }
 });
