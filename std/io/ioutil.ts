@@ -24,7 +24,10 @@ export async function copyN(
     const nread = result ?? 0;
     bytesRead += nread;
     if (nread > 0) {
-      const n = await dest.write(buf.slice(0, nread));
+      let n = 0;
+      while (n < nread) {
+        n += await dest.write(buf.slice(n, nread));
+      }
       assert(n === nread, "could not write");
     }
     if (result === null) {

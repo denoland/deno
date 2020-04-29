@@ -496,9 +496,7 @@ declare class Console {
   dir: (
     obj: unknown,
     options?: Partial<{
-      showHidden: boolean;
       depth: number;
-      colors: boolean;
       indentLevel: number;
     }>
   ) => void;

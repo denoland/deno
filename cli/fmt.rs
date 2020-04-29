@@ -22,7 +22,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 fn is_supported(path: &Path) -> bool {
-  if let Some(ext) = path.extension() {
+  let lowercase_ext = path
+    .extension()
+    .and_then(|e| e.to_str())
+    .map(|e| e.to_lowercase());
+  if let Some(ext) = lowercase_ext {
     ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx"
   } else {
     false
@@ -45,9 +49,8 @@ async fn check_source_files(
   run_parallelized(paths, {
     let not_formatted_files_count = not_formatted_files_count.clone();
     move |file_path| {
-      let file_path_str = file_path.to_string_lossy();
       let file_contents = fs::read_to_string(&file_path)?;
-      let r = formatter.format_text(&file_path_str, &file_contents);
+      let r = formatter.format_text(&file_path, &file_contents);
       match r {
         Ok(formatted_text) => {
           if formatted_text != file_contents {
@@ -56,7 +59,7 @@ async fn check_source_files(
         }
         Err(e) => {
           let _g = output_lock.lock().unwrap();
-          eprintln!("Error checking: {}", &file_path_str);
+          eprintln!("Error checking: {}", file_path.to_string_lossy());
           eprintln!("   {}", e);
         }
       }
@@ -100,21 +103,20 @@ async fn format_source_files(
   run_parallelized(paths, {
     let formatted_files_count = formatted_files_count.clone();
     move |file_path| {
-      let file_path_str = file_path.to_string_lossy();
       let file_contents = fs::read_to_string(&file_path)?;
-      let r = formatter.format_text(&file_path_str, &file_contents);
+      let r = formatter.format_text(&file_path, &file_contents);
       match r {
         Ok(formatted_text) => {
           if formatted_text != file_contents {
             fs::write(&file_path, formatted_text)?;
             formatted_files_count.fetch_add(1, Ordering::SeqCst);
             let _g = output_lock.lock().unwrap();
-            println!("{}", file_path_str);
+            println!("{}", file_path.to_string_lossy());
           }
         }
         Err(e) => {
           let _g = output_lock.lock().unwrap();
-          eprintln!("Error formatting: {}", &file_path_str);
+          eprintln!("Error formatting: {}", file_path.to_string_lossy());
           eprintln!("   {}", e);
         }
       }
@@ -160,11 +162,10 @@ pub async fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
   }
   let config = get_config();
   if check {
-    check_source_files(config, target_files).await?;
+    check_source_files(config, target_files).await
   } else {
-    format_source_files(config, target_files).await?;
+    format_source_files(config, target_files).await
   }
-  Ok(())
 }
 
 /// Format stdin and write result to stdout.
@@ -177,7 +178,8 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
   }
   let formatter = dprint::Formatter::new(get_config());
 
-  match formatter.format_text("_stdin.ts", &source) {
+  // dprint will fallback to jsx parsing if parsing this as a .ts file doesn't work
+  match formatter.format_text(&PathBuf::from("_stdin.ts"), &source) {
     Ok(formatted_text) => {
       if check {
         if formatted_text != source {
@@ -247,6 +249,10 @@ fn test_is_supported() {
   assert!(is_supported(Path::new("cli/tests/002_hello.ts")));
   assert!(is_supported(Path::new("foo.jsx")));
   assert!(is_supported(Path::new("foo.tsx")));
+  assert!(is_supported(Path::new("foo.TS")));
+  assert!(is_supported(Path::new("foo.TSX")));
+  assert!(is_supported(Path::new("foo.JS")));
+  assert!(is_supported(Path::new("foo.JSX")));
 }
 
 #[tokio::test]
