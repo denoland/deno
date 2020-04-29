@@ -232,6 +232,7 @@ export function initializeReadableStream<R>(
   stream[sym.disturbed] = false;
 }
 
+<<<<<<< HEAD
 export function initializeTransformStream<I, O>(
   stream: TransformStreamImpl<I, O>,
   startPromise: Promise<void>,
@@ -294,12 +295,24 @@ export function invokeOrNoop<O extends Record<string, any>, P extends keyof O>(
   p: P,
   ...args: Parameters<O[P]>
 ): ReturnType<O[P]> | undefined {
+=======
+function invokeOrNoop<
+  O extends any,
+  P extends keyof O
+  // @ts-ignore see: https://github.com/microsoft/TypeScript/issues/38238
+>(o: O, p: P, ...args: Parameters<O[P]>): ReturnType<O[P]> | undefined {
+>>>>>>> Ignore some errors
   assert(o);
   const method = o[p];
   if (!method) {
     return undefined;
   }
+<<<<<<< HEAD
   return call(method, o, args);
+=======
+  // @ts-ignore see: https://github.com/microsoft/TypeScript/issues/38238
+  return method.call(o, ...args);
+>>>>>>> Ignore some errors
 }
 
 function isCallable(value: unknown): value is (...args: any) => any {
