@@ -299,6 +299,14 @@ mod tests {
 
     let tests = vec![
       (
+        "awesome.ts",
+        "<unknown>",
+        ImportPrefixMissing(
+          "awesome.ts".to_string(),
+          Some("<unknown>".to_string()),
+        ),
+      ),
+      (
         "005_more_imports.ts",
         "http://deno.land/core/tests/006_url_imports.ts",
         ImportPrefixMissing(
