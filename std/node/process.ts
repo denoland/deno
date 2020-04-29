@@ -38,9 +38,9 @@ export const process = {
   },
 };
 
-Object.defineProperty(globalThis, 'process', {
+Object.defineProperty(globalThis, "process", {
   value: process,
   enumerable: false,
   writable: true,
-  configurable: true
+  configurable: true,
 });
