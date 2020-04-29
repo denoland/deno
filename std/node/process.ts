@@ -30,7 +30,7 @@ export const process = {
   on,
   get env(): { [index: string]: string } {
     // using getter to avoid --allow-env unless it's used
-    return Deno.env();
+    return Deno.env.toObject();
   },
   get argv(): string[] {
     // Deno.execPath() also requires --allow-env

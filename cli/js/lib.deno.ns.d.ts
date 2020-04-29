@@ -116,29 +116,35 @@ declare namespace Deno {
    */
   export function exit(code?: number): never;
 
-  /** Returns a snapshot of the environment variables at invocation. Changing a
-   * property in the object will set that variable in the environment for the
-   * process. The environment object will only accept `string`s as values.
-   *
-   *       const myEnv = Deno.env();
-   *       console.log(myEnv.SHELL);
-   *       myEnv.TEST_VAR = "HELLO";
-   *       const newEnv = Deno.env();
-   *       console.log(myEnv.TEST_VAR === newEnv.TEST_VAR);  // outputs "true"
-   *
-   * Requires `allow-env` permission. */
-  export function env(): {
-    [index: string]: string;
-  };
+  export const env: {
+    /** Retrieve the value of an environment variable. Returns undefined if that
+     * key doesn't exist.
+     *
+     *       console.log(Deno.env.get("HOME"));  // e.g. outputs "/home/alice"
+     *       console.log(Deno.env.get("MADE_UP_VAR"));  // outputs "Undefined"
+     *
+     * Requires `allow-env` permission. */
+    get(key: string): string | undefined;
 
-  /** Retrieve the value of an environment variable. Returns undefined if that
-   * key doesn't exist.
-   *
-   *       console.log(Deno.env("HOME"));  // e.g. outputs "/home/alice"
-   *       console.log(Deno.env("MADE_UP_VAR"));  // outputs "Undefined"
-   *
-   * Requires `allow-env` permission. */
-  export function env(key: string): string | undefined;
+    /** Set the value of an environment variable.
+     *
+     *       Deno.env.set("SOME_VAR", "Value"));
+     *       Deno.env.get("SOME_VAR");  // outputs "Value"
+     *
+     * Requires `allow-env` permission. */
+    set(key: string, value: string): void;
+
+    /** Returns a snapshot of the environment variables at invocation.
+     *
+     *       Deno.env.set("TEST_VAR", "A");
+     *       const myEnv = Deno.env.toObject();
+     *       console.log(myEnv.SHELL);
+     *       Deno.env.set("TEST_VAR", "B");
+     *       console.log(myEnv.TEST_VAR);  // outputs "A"
+     *
+     * Requires `allow-env` permission. */
+    toObject(): { [index: string]: string };
+  };
 
   /** **UNSTABLE** */
   export type DirKind =
