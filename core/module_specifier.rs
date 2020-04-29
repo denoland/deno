@@ -79,7 +79,7 @@ impl ModuleSpecifier {
   pub fn resolve_dir_import(
     specifier: &str,
     base: &str,
-    curr_dir: &Url
+    curr_dir: &Url,
   ) -> Result<ModuleSpecifier, ModuleResolutionError> {
     let url = match Url::parse(specifier) {
       // 1. Apply the URL parser to specifier.
@@ -105,7 +105,7 @@ impl ModuleSpecifier {
 
       // 3. Return the result of applying the URL parser to specifier with base
       //    URL as the base URL.
-      Err(ParseError::RelativeUrlWithoutBase) =>
+      Err(ParseError::RelativeUrlWithoutBase) => {
         if ModuleSpecifier::is_dummy_specifier(base) {
           // Handle <unknown> case, happening under e.g. repl.
           // Use CWD for such case.
@@ -114,11 +114,16 @@ impl ModuleSpecifier {
           // The "specifier" starts with "/", so we add a "." in front of it.
           // If "curr_dir" is "/opt/app" and "specifier" is "/awesome.ts", the final path will be
           // "/opt/app/awesome.ts"
-          curr_dir.join(format!(".{}", &specifier).as_str()).map_err(InvalidUrl)?
+          curr_dir
+            .join(format!(".{}", &specifier).as_str())
+            .map_err(InvalidUrl)?
         } else {
-          Url::parse(base).map_err(InvalidBaseUrl)?
-              .join(&specifier).map_err(InvalidUrl)?
+          Url::parse(base)
+            .map_err(InvalidBaseUrl)?
+            .join(&specifier)
+            .map_err(InvalidUrl)?
         }
+      }
 
       // If parsing the specifier as a URL failed for a different reason than
       // it being relative, always return the original error. We don't want to
@@ -221,20 +226,14 @@ mod tests {
 
   #[test]
   fn test_resolve_import() {
-    let curr_dir: Url = Url::from_directory_path(current_dir().unwrap()).unwrap();
+    let curr_dir: Url =
+      Url::from_directory_path(current_dir().unwrap()).unwrap();
     let awesome = curr_dir.join("./awesome.ts").unwrap().to_string();
-    let awesome_service = curr_dir.join("./service/awesome.ts").unwrap().to_string();
+    let awesome_service =
+      curr_dir.join("./service/awesome.ts").unwrap().to_string();
     let tests = vec![
-      (
-        "/awesome.ts",
-        "<unknown>",
-        awesome.as_str(),
-      ),
-      (
-        "/service/awesome.ts",
-        "<unknown>",
-        awesome_service.as_str(),
-      ),
+      ("/awesome.ts", "<unknown>", awesome.as_str()),
+      ("/service/awesome.ts", "<unknown>", awesome_service.as_str()),
       (
         "./005_more_imports.ts",
         "http://deno.land/core/tests/006_url_imports.ts",
