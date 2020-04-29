@@ -214,6 +214,12 @@ mod tests {
   #[test]
   fn test_resolve_import() {
     let tests = vec![
+      ("/awesome.ts", "<unknown>", "file:///awesome.ts"),
+      (
+        "/service/awesome.ts",
+        "<unknown>",
+        "file:///service/awesome.ts",
+      ),
       (
         "./005_more_imports.ts",
         "http://deno.land/core/tests/006_url_imports.ts",
@@ -292,6 +298,14 @@ mod tests {
     use ModuleResolutionError::*;
 
     let tests = vec![
+      (
+        "awesome.ts",
+        "<unknown>",
+        ImportPrefixMissing(
+          "awesome.ts".to_string(),
+          Some("<unknown>".to_string()),
+        ),
+      ),
       (
         "005_more_imports.ts",
         "http://deno.land/core/tests/006_url_imports.ts",
