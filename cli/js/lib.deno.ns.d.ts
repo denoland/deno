@@ -130,21 +130,6 @@ declare namespace Deno {
   export function execPath(): string;
 
   /**
-   * **UNSTABLE**: Currently under evaluation to decide if explicit permission is
-   * required to get the value of the current working directory.
-   *
-   * Return a string representing the current working directory.
-   *
-   * If the current directory can be reached via multiple paths (due to symbolic
-   * links), `cwd()` may return any one of them.
-   *
-   *       const currentWorkingDirectory = Deno.cwd();
-   *
-   * Throws `Deno.errors.NotFound` if directory not available.
-   */
-  export function cwd(): string;
-
-  /**
    * Change the current working directory to the specified path.
    *
    *       Deno.chdir("/home/userA");
