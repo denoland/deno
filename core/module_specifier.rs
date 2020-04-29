@@ -211,15 +211,19 @@ impl PartialEq<String> for ModuleSpecifier {
 mod tests {
   use super::*;
 
+  fn get_path(specifier: &str) -> Url {
+    let base_path = current_dir().unwrap().join("<unknown>");
+    let base_url = Url::from_file_path(base_path).unwrap();
+    base_url.join(specifier).unwrap()
+  }
+
   #[test]
   fn test_resolve_import() {
+    let awesome = get_path("/awesome.ts").to_owned();
+    let awesome_srv = get_path("/service/awesome.ts").to_owned();
     let tests = vec![
-      ("/awesome.ts", "<unknown>", "file:///awesome.ts"),
-      (
-        "/service/awesome.ts",
-        "<unknown>",
-        "file:///service/awesome.ts",
-      ),
+      ("/awesome.ts", "<unknown>", awesome.as_str()),
+      ("/service/awesome.ts", "<unknown>", awesome_srv.as_str()),
       (
         "./005_more_imports.ts",
         "http://deno.land/core/tests/006_url_imports.ts",
