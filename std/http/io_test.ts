@@ -51,7 +51,7 @@ test("chunkedBodyReader", async () => {
     await dest.write(buf.subarray(0, len));
   }
   const exp = "aaabbbbbcccccccccccdddddddddddddddddddddd";
-  assertEquals(dest.toString(), exp);
+  assertEquals(new TextDecoder().decode(dest.bytes()), exp);
 });
 
 test("chunkedBodyReader with trailers", async () => {
@@ -133,7 +133,10 @@ test("writeTrailer", async () => {
     new Headers({ "transfer-encoding": "chunked", trailer: "deno,node" }),
     new Headers({ deno: "land", node: "js" })
   );
-  assertEquals(w.toString(), "deno: land\r\nnode: js\r\n\r\n");
+  assertEquals(
+    new TextDecoder().decode(w.bytes()),
+    "deno: land\r\nnode: js\r\n\r\n"
+  );
 });
 
 test("writeTrailer should throw", async () => {
@@ -336,7 +339,7 @@ test("writeResponse with trailer", async () => {
     body,
     trailers: () => new Headers({ deno: "land", node: "js" }),
   });
-  const ret = w.toString();
+  const ret = new TextDecoder().decode(w.bytes());
   const exp = [
     "HTTP/1.1 200 OK",
     "transfer-encoding: chunked",
