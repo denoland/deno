@@ -758,7 +758,7 @@ function toRealPath(requestPath: string): string {
   let fullPath = requestPath;
   while (true) {
     try {
-      fullPath = Deno.readlinkSync(fullPath);
+      fullPath = Deno.readLinkSync(fullPath);
     } catch {
       break;
     }

@@ -1440,22 +1440,22 @@ declare namespace Deno {
   /** Returns the full path destination of the named symbolic link.
    *
    *       Deno.symlinkSync("./test.txt", "./test_link.txt");
-   *       const target = Deno.readlinkSync("./test_link.txt"); // full path of ./test.txt
+   *       const target = Deno.readLinkSync("./test_link.txt"); // full path of ./test.txt
    *
    * Throws TypeError if called with a hard link
    *
    * Requires `allow-read` permission. */
-  export function readlinkSync(path: string): string;
+  export function readLinkSync(path: string): string;
 
   /** Resolves to the full path destination of the named symbolic link.
    *
    *       await Deno.symlink("./test.txt", "./test_link.txt");
-   *       const target = await Deno.readlink("./test_link.txt"); // full path of ./test.txt
+   *       const target = await Deno.readLink("./test_link.txt"); // full path of ./test.txt
    *
    * Throws TypeError if called with a hard link
    *
    * Requires `allow-read` permission. */
-  export function readlink(path: string): Promise<string>;
+  export function readLink(path: string): Promise<string>;
 
   /** Resolves to a `Deno.FileInfo` for the specified `path`. If `path` is a
    * symlink, information for the symlink will be returned instead of what it

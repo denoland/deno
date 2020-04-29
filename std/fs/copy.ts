@@ -109,7 +109,7 @@ async function copySymLink(
   options: CopyOptions
 ): Promise<void> {
   await ensureValidCopy(src, dest, options);
-  const originSrcFilePath = await Deno.readlink(src);
+  const originSrcFilePath = await Deno.readLink(src);
   const type = getFileInfoType(await Deno.lstat(src));
   await Deno.symlink(originSrcFilePath, dest, type);
   if (options.preserveTimestamps) {
@@ -127,7 +127,7 @@ function copySymlinkSync(
   options: CopyOptions
 ): void {
   ensureValidCopySync(src, dest, options);
-  const originSrcFilePath = Deno.readlinkSync(src);
+  const originSrcFilePath = Deno.readLinkSync(src);
   const type = getFileInfoType(Deno.lstatSync(src));
   Deno.symlinkSync(originSrcFilePath, dest, type);
   if (options.preserveTimestamps) {
