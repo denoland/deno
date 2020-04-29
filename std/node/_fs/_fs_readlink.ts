@@ -5,7 +5,7 @@ import {
   notImplemented,
 } from "../_utils.ts";
 
-const { readlink: denoReadlink, readlinkSync: denoReadlinkSync } = Deno;
+const { readLink: denoReadlink, readLinkSync: denoReadlinkSync } = Deno;
 
 type ReadlinkCallback = (
   err: MaybeEmpty<Error>,

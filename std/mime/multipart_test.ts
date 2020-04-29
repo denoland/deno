@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-const { Buffer, copy, open, test } = Deno;
+const { Buffer, open, test } = Deno;
 import {
   assert,
   assertEquals,
@@ -21,6 +21,7 @@ const e = new TextEncoder();
 const boundary = "--abcde";
 const dashBoundary = e.encode("--" + boundary);
 const nlDashBoundary = e.encode("\r\n--" + boundary);
+const testdataDir = path.resolve("mime", "testdata");
 
 test("multipartScanUntilBoundary1", function (): void {
   const data = `--${boundary}`;
@@ -192,29 +193,43 @@ test({
 });
 
 test({
-  name: "[mime/multipart] readForm() should store big file in temp file",
+  name:
+    "[mime/multipart] readForm() should store big file completely in temp file",
   async fn() {
-    const o = await open(path.resolve("./mime/testdata/sample.txt"));
-    const mr = new MultipartReader(
-      o,
-      "--------------------------434049563556637648550474"
-    );
+    const multipartFile = path.join(testdataDir, "form-data.dat");
+    const sampleFile = await Deno.makeTempFile();
+    const writer = await open(multipartFile, { write: true, create: true });
+
+    const size = 1 << 24; // 16mb
+
+    await Deno.truncate(sampleFile, size);
+    const bigFile = await open(sampleFile, { read: true });
+
+    const mw = new MultipartWriter(writer);
+    await mw.writeField("deno", "land");
+    await mw.writeField("bar", "bar");
+    await mw.writeFile("file", "sample.bin", bigFile);
+
+    await mw.close();
+    writer.close();
+    bigFile.close();
+
+    const o = await Deno.open(multipartFile);
+    const mr = new MultipartReader(o, mw.boundary);
     // use low-memory to write "file" into temp file.
     const form = await mr.readForm(20);
     try {
-      assertEquals(form.value("foo"), "foo");
+      assertEquals(form.value("deno"), "land");
       assertEquals(form.value("bar"), "bar");
       const file = form.file("file");
       assert(file != null);
-      assertEquals(file.type, "application/octet-stream");
       assert(file.tempfile != null);
-      const f = await open(file.tempfile);
-      const w = new StringWriter();
-      await copy(f, w);
-      const json = JSON.parse(w.toString());
-      assertEquals(json["compilerOptions"]["target"], "es2018");
-      f.close();
+      assertEquals(file.size, size);
+      assertEquals(file.type, "application/octet-stream");
+      // TODO checksum of tmp & sampleFile
     } finally {
+      await Deno.remove(multipartFile);
+      await Deno.remove(sampleFile);
       await form.removeAll();
       o.close();
     }

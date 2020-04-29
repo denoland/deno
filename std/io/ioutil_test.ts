@@ -76,7 +76,7 @@ Deno.test("testCopyN1", async function (): Promise<void> {
   const r = stringsReader("abcdefghij");
   const n = await copyN(r, w, 3);
   assertEquals(n, 3);
-  assertEquals(w.toString(), "abc");
+  assertEquals(new TextDecoder().decode(w.bytes()), "abc");
 });
 
 Deno.test("testCopyN2", async function (): Promise<void> {
@@ -84,7 +84,7 @@ Deno.test("testCopyN2", async function (): Promise<void> {
   const r = stringsReader("abcdefghij");
   const n = await copyN(r, w, 11);
   assertEquals(n, 10);
-  assertEquals(w.toString(), "abcdefghij");
+  assertEquals(new TextDecoder().decode(w.bytes()), "abcdefghij");
 });
 
 Deno.test("copyNWriteAllData", async function (): Promise<void> {
