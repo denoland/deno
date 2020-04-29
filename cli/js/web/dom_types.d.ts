@@ -253,22 +253,6 @@ export interface Body {
   text(): Promise<string>;
 }
 
-export interface WritableStream<W = any> {
-  readonly locked: boolean;
-  abort(reason?: any): Promise<void>;
-  getWriter(): WritableStreamDefaultWriter<W>;
-}
-
-export interface WritableStreamDefaultWriter<W = any> {
-  readonly closed: Promise<void>;
-  readonly desiredSize: number | null;
-  readonly ready: Promise<void>;
-  abort(reason?: any): Promise<void>;
-  close(): Promise<void>;
-  releaseLock(): void;
-  write(chunk: W): Promise<void>;
-}
-
 export interface RequestInit {
   body?: BodyInit | null;
   cache?: RequestCache;

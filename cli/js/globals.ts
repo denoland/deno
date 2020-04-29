@@ -23,6 +23,8 @@ import * as workers from "./web/workers.ts";
 import * as performanceUtil from "./web/performance.ts";
 import * as request from "./web/request.ts";
 import * as readableStream from "./web/streams/readable_stream.ts";
+import * as queuingStrategy from "./web/streams/queuing_strategy.ts";
+import * as writableStream from "./web/streams/writable_stream.ts";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
@@ -216,6 +218,10 @@ export const windowOrWorkerGlobalScopeProperties = {
   AbortController: nonEnumerable(abortController.AbortControllerImpl),
   AbortSignal: nonEnumerable(abortSignal.AbortSignalImpl),
   Blob: nonEnumerable(blob.DenoBlob),
+  ByteLengthQueuingStrategy: nonEnumerable(
+    queuingStrategy.ByteLengthQueuingStrategyImpl
+  ),
+  CountQueuingStrategy: nonEnumerable(queuingStrategy.CountQueuingStrategyImpl),
   File: nonEnumerable(domFile.DomFileImpl),
   CustomEvent: nonEnumerable(customEvent.CustomEventImpl),
   DOMException: nonEnumerable(domException.DOMExceptionImpl),
@@ -232,6 +238,7 @@ export const windowOrWorkerGlobalScopeProperties = {
   Response: nonEnumerable(fetchTypes.Response),
   performance: writable(new performanceUtil.Performance()),
   Worker: nonEnumerable(workers.WorkerImpl),
+  WritableStream: nonEnumerable(writableStream.WritableStreamImpl),
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
