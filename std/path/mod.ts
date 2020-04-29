@@ -16,7 +16,7 @@ export const {
   dirname,
   extname,
   format,
-  fromUrl,
+  fromFileUrl,
   isAbsolute,
   join,
   normalize,

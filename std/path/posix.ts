@@ -422,6 +422,13 @@ export function parse(path: string): ParsedPath {
   return ret;
 }
 
-export function fromUrl(url: string | URL): string {
+/** Converts a file URL to a path string.
+ *
+ *      fromFileUrl("file:///home/foo"); // "/home/foo"
+ *
+ * Note that non-file URLs are treated as file URLs with irrelevant components
+ * ignored.
+ */
+export function fromFileUrl(url: string | URL): string {
   return new URL(url).pathname;
 }
