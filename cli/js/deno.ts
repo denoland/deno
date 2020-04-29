@@ -78,7 +78,7 @@ export { removeSync, remove, RemoveOptions } from "./ops/fs/remove.ts";
 export { renameSync, rename } from "./ops/fs/rename.ts";
 export { resources, close } from "./ops/resources.ts";
 export { FileInfo, statSync, lstatSync, stat, lstat } from "./ops/fs/stat.ts";
-export { connectTls, listenTls, startTls } from "./tls.ts";
+export { connectTls, listenTls } from "./tls.ts";
 export { truncateSync, truncate } from "./ops/fs/truncate.ts";
 export { isatty } from "./ops/tty.ts";
 export { version } from "./version.ts";
