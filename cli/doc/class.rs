@@ -17,6 +17,7 @@ use super::ts_type_param::maybe_type_param_decl_to_type_param_defs;
 use super::ts_type_param::TsTypeParamDef;
 use super::Location;
 use super::ParamDef;
+use super::interface::expr_to_name;
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -181,11 +182,7 @@ pub fn get_doc_for_class_decl(
           .as_ref()
           .map(|rt| ts_type_ann_to_def(rt));
 
-        use crate::swc_ecma_ast::Expr;
-        let prop_name = match &*class_prop.key {
-          Expr::Ident(ident) => ident.sym.to_string(),
-          _ => "<TODO>".to_string(),
-        };
+        let prop_name = expr_to_name(&*class_prop.key);
 
         let prop_def = ClassPropertyDef {
           js_doc: prop_js_doc,
