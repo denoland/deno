@@ -10,7 +10,8 @@ import {
   sliceLongToBytes,
 } from "./ioutil.ts";
 import { BufReader } from "./bufio.ts";
-import { stringsReader } from "./util.ts";
+import { stringsReader, tempFile } from "./util.ts";
+import * as path from "../path/mod.ts";
 
 class BinaryReader implements Reader {
   index = 0;
@@ -84,4 +85,16 @@ Deno.test("testCopyN2", async function (): Promise<void> {
   const n = await copyN(r, w, 11);
   assertEquals(n, 10);
   assertEquals(w.toString(), "abcdefghij");
+});
+
+Deno.test("copyNWriteAllData", async function (): Promise<void> {
+  const { filepath, file } = await tempFile(path.resolve("io"));
+  const size = 16 * 1024 + 1;
+  const data = "a".repeat(32 * 1024);
+  const r = stringsReader(data);
+  const n = await copyN(r, file, size); // Over max file possible buffer
+  file.close();
+  await Deno.remove(filepath);
+
+  assertEquals(n, size);
 });
