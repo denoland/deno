@@ -16,7 +16,7 @@ import {
   walkSync,
 } from "./walk.ts";
 import { assert } from "../testing/asserts.ts";
-const { cwd, stat, statSync } = Deno;
+const { cwd } = Deno;
 type FileInfo = Deno.FileInfo;
 
 export interface ExpandGlobOptions extends GlobOptions {

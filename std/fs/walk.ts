@@ -2,7 +2,7 @@
 // https://golang.org/pkg/path/filepath/#Walk
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 import { unimplemented, assert } from "../testing/asserts.ts";
-import { basename, isAbsolute, join, normalize } from "../path/mod.ts";
+import { basename, join, normalize } from "../path/mod.ts";
 const { readdir, readdirSync, stat, statSync } = Deno;
 
 export function createWalkEntrySync(path: string): WalkEntry {

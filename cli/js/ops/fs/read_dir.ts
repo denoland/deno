@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "../dispatch_json.ts";
-import { FileInfo, StatResponse, parseFileInfo } from "./stat.ts";
 
 export interface DirEntry {
   name: string;
