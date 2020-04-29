@@ -332,7 +332,7 @@ unitTest(function permissionsMatches(): void {
 unitTest(
   { perms: { read: true } },
   function assertAllUnitTestFilesImported(): void {
-    const directoryTestFiles = [...Deno.readdirSync("./cli/js/tests/")]
+    const directoryTestFiles = [...Deno.readDirSync("./cli/js/tests/")]
       .map((k) => k.name)
       .filter(
         (file) =>
