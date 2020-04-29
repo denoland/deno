@@ -436,7 +436,7 @@ test("[ws] WebSocket should implement Reader", async () => {
   const helloLength = "Hello".length;
 
   assertEquals(read, helloLength);
-  assertEquals(new Buffer(p.subarray(0, helloLength)).toString(), "Hello");
+  assertEquals(decode(new Buffer(p.subarray(0, helloLength)).bytes()), "Hello");
   assertEquals(readLast, null);
 });
 
@@ -520,6 +520,6 @@ test("[ws] WebSocket Reader should ignore non-message frames", async () => {
   const helloLength = "Hello".length;
 
   assertEquals(p.byteLength, helloLength + dataPayloadLength);
-  assertEquals(new Buffer(p.subarray(0, helloLength)).toString(), "Hello");
+  assertEquals(decode(new Buffer(p.subarray(0, helloLength)).bytes()), "Hello");
   assertEquals(p.subarray(helloLength), data.subarray(4));
 });
