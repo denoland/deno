@@ -211,14 +211,13 @@ impl PartialEq<String> for ModuleSpecifier {
 mod tests {
   use super::*;
 
-  fn get_path(specifier: &str) -> Url {
-    let base_path = current_dir().unwrap().join("<unknown>");
-    let base_url = Url::from_file_path(base_path).unwrap();
-    base_url.join(specifier).unwrap()
-  }
-
   #[test]
   fn test_resolve_import() {
+    fn get_path(specifier: &str) -> Url {
+      let base_path = current_dir().unwrap().join("<unknown>");
+      let base_url = Url::from_file_path(base_path).unwrap();
+      base_url.join(specifier).unwrap()
+    }
     let awesome = get_path("/awesome.ts");
     let awesome_srv = get_path("/service/awesome.ts");
     let tests = vec![
