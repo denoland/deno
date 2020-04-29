@@ -16,11 +16,11 @@ function res(response: ReadDirResponse): DirEntry[] {
   return response.entries;
 }
 
-export function readdirSync(path: string): Iterable<DirEntry> {
+export function readDirSync(path: string): Iterable<DirEntry> {
   return res(sendSync("op_read_dir", { path }))[Symbol.iterator]();
 }
 
-export function readdir(path: string): AsyncIterable<DirEntry> {
+export function readDir(path: string): AsyncIterable<DirEntry> {
   const array = sendAsync("op_read_dir", { path }).then(res);
   return {
     async *[Symbol.asyncIterator](): AsyncIterableIterator<DirEntry> {

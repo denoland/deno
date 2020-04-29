@@ -3,7 +3,7 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 import { unimplemented, assert } from "../testing/asserts.ts";
 import { basename, join, normalize } from "../path/mod.ts";
-const { readdir, readdirSync, stat, statSync } = Deno;
+const { readDir, readDirSync, stat, statSync } = Deno;
 
 export function createWalkEntrySync(path: string): WalkEntry {
   path = normalize(path);
@@ -103,7 +103,7 @@ export async function* walk(
   if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
-  for await (const entry of readdir(root)) {
+  for await (const entry of readDir(root)) {
     if (entry.isSymlink) {
       if (followSymlinks) {
         // TODO(ry) Re-enable followSymlinks.
@@ -156,7 +156,7 @@ export function* walkSync(
   if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
-  for (const entry of readdirSync(root)) {
+  for (const entry of readDirSync(root)) {
     if (entry.isSymlink) {
       if (followSymlinks) {
         unimplemented();

@@ -90,11 +90,11 @@ export {
 export { openPlugin } from "./ops/plugins.ts";
 export { kill } from "./ops/process.ts";
 export { run, RunOptions, Process, ProcessStatus } from "./process.ts";
-export { DirEntry, readdirSync, readdir } from "./ops/fs/read_dir.ts";
+export { DirEntry, readDirSync, readDir } from "./ops/fs/read_dir.ts";
 export { readFileSync, readFile } from "./read_file.ts";
 export { readTextFileSync, readTextFile } from "./read_text_file.ts";
-export { readlinkSync, readlink } from "./ops/fs/read_link.ts";
-export { realpathSync, realpath } from "./ops/fs/realpath.ts";
+export { readLinkSync, readLink } from "./ops/fs/read_link.ts";
+export { realPathSync, realPath } from "./ops/fs/real_path.ts";
 export { removeSync, remove, RemoveOptions } from "./ops/fs/remove.ts";
 export { renameSync, rename } from "./ops/fs/rename.ts";
 export { resources, close } from "./ops/resources.ts";

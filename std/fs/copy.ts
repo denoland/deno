@@ -109,7 +109,7 @@ async function copySymLink(
   options: CopyOptions
 ): Promise<void> {
   await ensureValidCopy(src, dest, options);
-  const originSrcFilePath = await Deno.readlink(src);
+  const originSrcFilePath = await Deno.readLink(src);
   const type = getFileInfoType(await Deno.lstat(src));
   await Deno.symlink(originSrcFilePath, dest, type);
   if (options.preserveTimestamps) {
@@ -127,7 +127,7 @@ function copySymlinkSync(
   options: CopyOptions
 ): void {
   ensureValidCopySync(src, dest, options);
-  const originSrcFilePath = Deno.readlinkSync(src);
+  const originSrcFilePath = Deno.readLinkSync(src);
   const type = getFileInfoType(Deno.lstatSync(src));
   Deno.symlinkSync(originSrcFilePath, dest, type);
   if (options.preserveTimestamps) {
@@ -157,7 +157,7 @@ async function copyDir(
     await Deno.utime(dest, srcStatInfo.atime, srcStatInfo.mtime);
   }
 
-  for await (const entry of Deno.readdir(src)) {
+  for await (const entry of Deno.readDir(src)) {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, path.basename(srcPath as string));
     if (entry.isSymlink) {
@@ -185,7 +185,7 @@ function copyDirSync(src: string, dest: string, options: CopyOptions): void {
     Deno.utimeSync(dest, srcStatInfo.atime, srcStatInfo.mtime);
   }
 
-  for (const entry of Deno.readdirSync(src)) {
+  for (const entry of Deno.readDirSync(src)) {
     assert(entry.name != null, "file.name must be set");
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, path.basename(srcPath as string));
