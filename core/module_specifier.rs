@@ -111,6 +111,9 @@ impl ModuleSpecifier {
           // Use CWD for such case.
 
           // Forcefully set base to current dir. (Remember, base is <unknown> here)
+          // The "specifier" starts with "/", so we add a "." in front of it.
+          // If "curr_dir" is "/opt/app" and "specifier" is "/awesome.ts", the final path will be
+          // "/opt/app/awesome.ts"
           curr_dir.join(format!(".{}", &specifier).as_str()).map_err(InvalidUrl)?
         } else {
           Url::parse(base).map_err(InvalidBaseUrl)?
@@ -219,12 +222,18 @@ mod tests {
   #[test]
   fn test_resolve_import() {
     let curr_dir: Url = Url::from_directory_path(current_dir().unwrap()).unwrap();
-    let expected = curr_dir.join("./awesome.ts").unwrap().to_string();
+    let awesome = curr_dir.join("./awesome.ts").unwrap().to_string();
+    let awesome_service = curr_dir.join("./service/awesome.ts").unwrap().to_string();
     let tests = vec![
       (
         "/awesome.ts",
         "<unknown>",
-        expected.as_str(),
+        awesome.as_str(),
+      ),
+      (
+        "/service/awesome.ts",
+        "<unknown>",
+        awesome_service.as_str(),
       ),
       (
         "./005_more_imports.ts",
