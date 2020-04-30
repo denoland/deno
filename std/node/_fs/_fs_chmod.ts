@@ -31,10 +31,8 @@ function getResolvedMode(mode: string | number): number {
     return mode;
   }
 
-  if (typeof mode === "string") {
-    if (!allowedModes.test(mode)) {
-      throw new Error("Unrecognized mode: " + mode);
-    }
+  if (typeof mode === "string" && !allowedModes.test(mode)) {
+    throw new Error("Unrecognized mode: " + mode);
   }
 
   return parseInt(mode, 8);
