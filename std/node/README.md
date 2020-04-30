@@ -69,7 +69,7 @@ they are stable:
 ## CommonJS Module Loading
 
 `createRequire(...)` is provided to create a `require` function for loading CJS
-modules.
+modules. It also sets supported globals.
 
 ```ts
 import { createRequire } from "https://deno.land/std/node/module.ts";
