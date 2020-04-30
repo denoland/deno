@@ -180,7 +180,7 @@ export function pwrite(options: PWrite) {}
 
 Although `cli/js` and `std` have no external dependencies, we must still be
 careful to keep internal dependencies simple and manageable. In particular, be
-careful to not to introduce circular imports.
+careful not to introduce circular imports.
 
 ### If a filename starts with an underscore: `_foo.ts`, do not link to it.
 
