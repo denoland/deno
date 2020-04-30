@@ -928,11 +928,14 @@ pub mod tests {
           "#,
       ));
 
+      // First poll runs `prepare_load` hook.
       assert!(match isolate.poll_unpin(cx) {
         Poll::Pending => true,
         _ => false,
       });
       assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
+
+      // Second poll actually loads modules into the isolate.
       assert!(match isolate.poll_unpin(cx) {
         Poll::Ready(Ok(_)) => true,
         _ => false,

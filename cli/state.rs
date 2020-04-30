@@ -318,7 +318,7 @@ impl ModuleLoader for State {
     _maybe_referrer: Option<String>,
     _is_dyn_import: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
-    // TODO:
+    // TODO(bartlomieju):
     // 1. recursively:
     //    a) resolve specifier
     //    b) check permission if dynamic import

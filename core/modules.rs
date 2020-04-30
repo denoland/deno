@@ -77,7 +77,14 @@ pub trait ModuleLoader {
     is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>>;
 
-  //TODO(bartlomieju): add docstring
+  /// This hook can be used by implementors to do some preparation
+  /// work before starting loading of modules.
+  ///
+  /// For example implementor might download multiple modules in
+  /// parallel and transpile them to final JS sources before
+  /// yielding control back to Isolate.
+  ///
+  /// It's not required to implement this method.
   fn prepare_load(
     &self,
     _load_id: ModuleLoadId,
