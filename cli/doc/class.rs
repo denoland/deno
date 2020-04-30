@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use super::function::function_to_function_def;
 use super::function::FunctionDef;
+use super::interface::expr_to_name;
 use super::params::assign_pat_to_param_def;
 use super::params::ident_to_param_def;
 use super::params::pat_to_param_def;
@@ -181,11 +182,7 @@ pub fn get_doc_for_class_decl(
           .as_ref()
           .map(|rt| ts_type_ann_to_def(rt));
 
-        use crate::swc_ecma_ast::Expr;
-        let prop_name = match &*class_prop.key {
-          Expr::Ident(ident) => ident.sym.to_string(),
-          _ => "<TODO>".to_string(),
-        };
+        let prop_name = expr_to_name(&*class_prop.key);
 
         let prop_def = ClassPropertyDef {
           js_doc: prop_js_doc,
