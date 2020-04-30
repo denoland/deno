@@ -140,8 +140,14 @@ test("servePermissionDenied", async function (): Promise<void> {
 
 test("printHelp", async function (): Promise<void> {
   const helpProcess = Deno.run({
-  // TODO(lucacasonato): remove unstable when stabilized
-  cmd: [Deno.execPath(), "run", "--unstable", "http/file_server.ts", "--help"],
+    // TODO(lucacasonato): remove unstable when stabilized
+    cmd: [
+      Deno.execPath(),
+      "run",
+      "--unstable",
+      "http/file_server.ts",
+      "--help",
+    ],
     stdout: "piped",
   });
   assert(helpProcess.stdout != null);
