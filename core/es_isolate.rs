@@ -35,6 +35,7 @@ use crate::modules::LoadState;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleSource;
 use crate::modules::Modules;
+use crate::modules::PrepareLoadFuture;
 use crate::modules::RecursiveModuleLoad;
 
 pub type ModuleId = i32;
@@ -53,6 +54,7 @@ pub struct EsIsolate {
   pub(crate) dyn_import_map:
     HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
 
+  preparing_dyn_imports: FuturesUnordered<Pin<Box<PrepareLoadFuture>>>,
   pending_dyn_imports: FuturesUnordered<StreamFuture<RecursiveModuleLoad>>,
   waker: AtomicWaker,
 }
@@ -93,6 +95,7 @@ impl EsIsolate {
       loader,
       core_isolate,
       dyn_import_map: HashMap::new(),
+      preparing_dyn_imports: FuturesUnordered::new(),
       pending_dyn_imports: FuturesUnordered::new(),
       waker: AtomicWaker::new(),
     };
@@ -315,7 +318,8 @@ impl EsIsolate {
     );
     self.dyn_import_map.insert(load.id, resolver_handle);
     self.waker.wake();
-    self.pending_dyn_imports.push(load.into_future());
+    let fut = load.prepare().boxed_local();
+    self.preparing_dyn_imports.push(fut);
   }
 
   fn dyn_import_error(
@@ -385,6 +389,33 @@ impl EsIsolate {
     resolver.resolve(context, module_namespace).unwrap();
     scope.isolate().run_microtasks();
     Ok(())
+  }
+
+  fn prepare_dyn_imports(
+    &mut self,
+    cx: &mut Context,
+  ) -> Poll<Result<(), ErrBox>> {
+    loop {
+      match self.preparing_dyn_imports.poll_next_unpin(cx) {
+        Poll::Pending | Poll::Ready(None) => {
+          // There are no active dynamic import loaders, or none are ready.
+          return Poll::Ready(Ok(()));
+        }
+        Poll::Ready(Some(prepare_poll)) => {
+          let dyn_import_id = prepare_poll.0;
+          let prepare_result = prepare_poll.1;
+
+          match prepare_result {
+            Ok(load) => {
+              self.pending_dyn_imports.push(load.into_future());
+            }
+            Err(err) => {
+              self.dyn_import_error(dyn_import_id, err)?;
+            }
+          }
+        }
+      }
+    }
   }
 
   fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
@@ -511,11 +542,14 @@ impl EsIsolate {
     specifier: &ModuleSpecifier,
     code: Option<String>,
   ) -> Result<ModuleId, ErrBox> {
-    let mut load = RecursiveModuleLoad::main(
+    let load = RecursiveModuleLoad::main(
       &specifier.to_string(),
       code,
       self.loader.clone(),
     );
+    let (_load_id, prepare_result) = load.prepare().await;
+
+    let mut load = prepare_result?;
 
     while let Some(info_result) = load.next().await {
       let info = info_result?;
@@ -535,7 +569,11 @@ impl Future for EsIsolate {
 
     inner.waker.register(cx.waker());
 
-    // If there are any pending dyn_import futures, do those first.
+    if !inner.preparing_dyn_imports.is_empty() {
+      let poll_imports = inner.prepare_dyn_imports(cx)?;
+      assert!(poll_imports.is_ready());
+    }
+
     if !inner.pending_dyn_imports.is_empty() {
       let poll_imports = inner.poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
@@ -543,7 +581,9 @@ impl Future for EsIsolate {
 
     match ready!(inner.core_isolate.poll_unpin(cx)) {
       Ok(()) => {
-        if inner.pending_dyn_imports.is_empty() {
+        if inner.pending_dyn_imports.is_empty()
+          && inner.preparing_dyn_imports.is_empty()
+        {
           Poll::Ready(Ok(()))
         } else {
           Poll::Pending
@@ -720,7 +760,7 @@ pub mod tests {
       if let Poll::Ready(Ok(_)) = result {
         unreachable!();
       }
-      assert_eq!(count.load(Ordering::Relaxed), 1);
+      assert_eq!(count.load(Ordering::Relaxed), 2);
     })
   }
 
@@ -816,6 +856,7 @@ pub mod tests {
   fn dyn_import_ok() {
     #[derive(Clone, Default)]
     struct DynImportOkLoader {
+      pub prepare_load_count: Arc<AtomicUsize>,
       pub resolve_count: Arc<AtomicUsize>,
       pub load_count: Arc<AtomicUsize>,
     }
@@ -828,11 +869,8 @@ pub mod tests {
         _is_main: bool,
       ) -> Result<ModuleSpecifier, ErrBox> {
         let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
-        match c {
-          0 => assert_eq!(specifier, "./b.js"),
-          1 => assert_eq!(specifier, "./b.js"),
-          _ => unreachable!(),
-        }
+        assert!(c < 4);
+        assert_eq!(specifier, "./b.js");
         assert_eq!(referrer, "file:///dyn_import3.js");
         let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
         Ok(s)
@@ -852,10 +890,22 @@ pub mod tests {
         };
         async move { Ok(info) }.boxed()
       }
+
+      fn prepare_load(
+        &self,
+        _load_id: ModuleLoadId,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<String>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+        self.prepare_load_count.fetch_add(1, Ordering::Relaxed);
+        async { Ok(()) }.boxed_local()
+      }
     }
 
     run_in_task(|cx| {
       let loader = Rc::new(DynImportOkLoader::default());
+      let prepare_load_count = loader.prepare_load_count.clone();
       let resolve_count = loader.resolve_count.clone();
       let load_count = loader.load_count.clone();
       let mut isolate = EsIsolate::new(loader, StartupData::None, false);
@@ -878,17 +928,25 @@ pub mod tests {
           "#,
       ));
 
+      // First poll runs `prepare_load` hook.
+      assert!(match isolate.poll_unpin(cx) {
+        Poll::Pending => true,
+        _ => false,
+      });
+      assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
+
+      // Second poll actually loads modules into the isolate.
       assert!(match isolate.poll_unpin(cx) {
         Poll::Ready(Ok(_)) => true,
         _ => false,
       });
-      assert_eq!(resolve_count.load(Ordering::Relaxed), 2);
+      assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
       assert!(match isolate.poll_unpin(cx) {
         Poll::Ready(Ok(_)) => true,
         _ => false,
       });
-      assert_eq!(resolve_count.load(Ordering::Relaxed), 2);
+      assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
     })
   }
