@@ -213,7 +213,7 @@ def bundle_benchmark(deno_exe):
     for name, url in bundles.items():
         # bundle
         path = name + ".bundle.js"
-        run([deno_exe, "bundle", url, path])
+        run([deno_exe, "bundle", "--unstable", url, path])
         # get size of bundle
         assert os.path.exists(path)
         sizes[name] = os.path.getsize(path)
