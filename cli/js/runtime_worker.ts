@@ -17,7 +17,9 @@ import {
   eventTargetProperties,
   setEventTargetData,
 } from "./globals.ts";
-import * as Deno from "./deno.ts";
+import { unstableMethods, unstableProperties } from "./globals_unstable.ts";
+import * as denoNs from "./deno.ts";
+import * as denoUnstableNs from "./deno_unstable.ts";
 import * as webWorkerOps from "./ops/web_worker.ts";
 import { LocationImpl } from "./web/location.ts";
 import { log, assert, immutableDefine } from "./util.ts";
@@ -32,7 +34,7 @@ import { setSignals } from "./signals.ts";
 // Add internal object to Deno object.
 // This is not exposed as part of the Deno types.
 // @ts-ignore
-Deno[internalSymbol] = internalObject;
+denoNs[internalSymbol] = internalObject;
 
 const encoder = new TextEncoder();
 
@@ -136,21 +138,31 @@ export function bootstrapWorkerRuntime(
   Object.defineProperties(globalThis, eventTargetProperties);
   Object.defineProperties(globalThis, { name: readOnly(name) });
   setEventTargetData(globalThis);
-  const s = runtime.start(internalName ?? name);
+  const { location, unstableFlag, pid, noColor, args } = runtime.start(
+    internalName ?? name
+  );
 
-  const location = new LocationImpl(s.location);
-  immutableDefine(globalThis, "location", location);
+  const location_ = new LocationImpl(location);
+  immutableDefine(globalThis, "location", location_);
   Object.freeze(globalThis.location);
 
+  if (unstableFlag) {
+    Object.defineProperties(globalThis, unstableMethods);
+    Object.defineProperties(globalThis, unstableProperties);
+  }
+
   if (useDenoNamespace) {
-    Object.defineProperties(Deno, {
-      pid: readOnly(s.pid),
-      noColor: readOnly(s.noColor),
-      args: readOnly(Object.freeze(s.args)),
+    if (unstableFlag) {
+      Object.assign(denoNs, denoUnstableNs);
+    }
+    Object.defineProperties(denoNs, {
+      pid: readOnly(pid),
+      noColor: readOnly(noColor),
+      args: readOnly(Object.freeze(args)),
     });
     // Setup `Deno` global - we're actually overriding already
     // existing global `Deno` with `Deno` namespace from "./deno.ts".
-    immutableDefine(globalThis, "Deno", Deno);
+    immutableDefine(globalThis, "Deno", denoNs);
     Object.freeze(globalThis.Deno);
     Object.freeze(globalThis.Deno.core);
     Object.freeze(globalThis.Deno.core.sharedQueue);

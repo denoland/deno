@@ -12,6 +12,7 @@ async function startFileServer(): Promise<void> {
     cmd: [
       Deno.execPath(),
       "run",
+      "--unstable",
       "--allow-read",
       "--allow-net",
       "http/file_server.ts",
@@ -105,7 +106,14 @@ test("serveWithUnorthodoxFilename", async function (): Promise<void> {
 
 test("servePermissionDenied", async function (): Promise<void> {
   const deniedServer = Deno.run({
-    cmd: [Deno.execPath(), "run", "--allow-net", "http/file_server.ts"],
+    // TODO(lucacasonato): remove unstable when stabilized
+    cmd: [
+      Deno.execPath(),
+      "run",
+      "--unstable",
+      "--allow-net",
+      "http/file_server.ts",
+    ],
     stdout: "piped",
     stderr: "piped",
   });
@@ -132,7 +140,14 @@ test("servePermissionDenied", async function (): Promise<void> {
 
 test("printHelp", async function (): Promise<void> {
   const helpProcess = Deno.run({
-    cmd: [Deno.execPath(), "run", "http/file_server.ts", "--help"],
+    // TODO(lucacasonato): remove unstable when stabilized
+    cmd: [
+      Deno.execPath(),
+      "run",
+      "--unstable",
+      "http/file_server.ts",
+      "--help",
+    ],
     stdout: "piped",
   });
   assert(helpProcess.stdout != null);

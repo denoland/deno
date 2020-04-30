@@ -95,6 +95,10 @@ fn main() {
     "lib.deno.ns.d.ts".to_string(),
     c.join("js/lib.deno.ns.d.ts"),
   );
+  custom_libs.insert(
+    "lib.deno.unstable.d.ts".to_string(),
+    c.join("js/lib.deno.unstable.d.ts"),
+  );
   runtime_isolate.register_op(
     "op_fetch_asset",
     deno_typescript::op_fetch_asset(custom_libs),

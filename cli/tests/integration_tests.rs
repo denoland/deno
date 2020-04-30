@@ -273,6 +273,7 @@ fn js_unit_tests() {
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
+    .arg("--unstable")
     .arg("--reload")
     .arg("-A")
     .arg("cli/js/tests/unit_test_runner.ts")
@@ -952,8 +953,9 @@ itest_ignore!(_024_import_no_ext_with_headers {
   output: "024_import_no_ext_with_headers.ts.out",
 });
 
+// TODO(lucacasonato): remove --unstable when permissions goes stable
 itest!(_025_hrtime {
-  args: "run --allow-hrtime --reload 025_hrtime.ts",
+  args: "run --allow-hrtime --unstable --reload 025_hrtime.ts",
   output: "025_hrtime.ts.out",
 });
 
@@ -1158,13 +1160,16 @@ itest!(_055_import_wasm_via_network {
   http_server: true,
 });
 
+// TODO(lucacasonato): remove --unstable when cwd goes stable
 itest!(_056_make_temp_file_write_perm {
-  args: "run --allow-write=./subdir/ 056_make_temp_file_write_perm.ts",
+  args:
+    "run --allow-write=./subdir/ --unstable 056_make_temp_file_write_perm.ts",
   output: "056_make_temp_file_write_perm.out",
 });
 
+// TODO(lucacasonato): remove --unstable when permissions goes stable
 itest!(_057_revoke_permissions {
-  args: "test -A 057_revoke_permissions.ts",
+  args: "test -A --unstable 057_revoke_permissions.ts",
   output: "057_revoke_permissions.out",
 });
 
@@ -1575,11 +1580,26 @@ itest!(top_level_for_await_ts {
   output: "top_level_for_await.out",
 });
 
-itest!(unstable {
-  args: "run unstable.js",
+itest!(unstable_disabled {
+  args: "run --reload unstable.ts",
   check_stderr: true,
-  exit_code: 70,
-  output: "unstable.out",
+  exit_code: 1,
+  output: "unstable_disabled.out",
+});
+
+itest!(unstable_enabled {
+  args: "run --reload --unstable unstable.ts",
+  output: "unstable_enabled.out",
+});
+
+itest!(unstable_disabled_js {
+  args: "run --reload unstable.js",
+  output: "unstable_disabled_js.out",
+});
+
+itest!(unstable_enabled_js {
+  args: "run --reload --unstable unstable.ts",
+  output: "unstable_enabled_js.out",
 });
 
 itest!(_053_import_compression {

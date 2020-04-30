@@ -3,20 +3,19 @@
 import { sendSync } from "./dispatch_json.ts";
 
 export interface Start {
-  cwd: string;
-  pid: number;
   args: string[];
-  location: string; // Absolute URL.
-  repl: boolean;
+  cwd: string;
   debugFlag: boolean;
-  depsFlag: boolean;
-  typesFlag: boolean;
-  versionFlag: boolean;
   denoVersion: string;
-  v8Version: string;
-  tsVersion: string;
+  location: string; // Absolute URL.
   noColor: boolean;
+  pid: number;
+  repl: boolean;
   target: string;
+  tsVersion: string;
+  unstableFlag: boolean;
+  v8Version: string;
+  versionFlag: boolean;
 }
 
 export function opStart(): Start {

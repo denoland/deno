@@ -51,7 +51,8 @@ interface CompilerRequestCompile {
   // options: ts.CompilerOptions;
   configPath?: string;
   config?: string;
-  bundle?: boolean;
+  unstable: boolean;
+  bundle: boolean;
   outFile?: string;
 }
 
@@ -60,6 +61,7 @@ interface CompilerRequestRuntimeCompile {
   target: CompilerHostTarget;
   rootName: string;
   sources?: Record<string, string>;
+  unstable?: boolean;
   bundle?: boolean;
   options?: string;
 }
@@ -90,7 +92,15 @@ type RuntimeBundleResult = [undefined | DiagnosticItem[], string];
 async function compile(
   request: CompilerRequestCompile
 ): Promise<CompileResult> {
-  const { bundle, config, configPath, outFile, rootNames, target } = request;
+  const {
+    bundle,
+    config,
+    configPath,
+    outFile,
+    rootNames,
+    target,
+    unstable,
+  } = request;
   util.log(">>> compile start", {
     rootNames,
     type: CompilerRequestType[request.type],
@@ -116,6 +126,7 @@ async function compile(
     bundle,
     target,
     writeFile,
+    unstable,
   }));
   let diagnostics: readonly ts.Diagnostic[] | undefined;
 
@@ -185,7 +196,7 @@ async function compile(
 async function runtimeCompile(
   request: CompilerRequestRuntimeCompile
 ): Promise<RuntimeCompileResult | RuntimeBundleResult> {
-  const { rootName, sources, options, bundle, target } = request;
+  const { bundle, options, rootName, sources, target, unstable } = request;
 
   util.log(">>> runtime compile start", {
     rootName,
@@ -258,6 +269,14 @@ async function runtimeCompile(
   const compilerOptions = [defaultRuntimeCompileOptions];
   if (convertedOptions) {
     compilerOptions.push(convertedOptions);
+  }
+  if (unstable) {
+    compilerOptions.push({
+      lib: [
+        "deno.unstable",
+        ...((convertedOptions && convertedOptions.lib) || ["deno.window"]),
+      ],
+    });
   }
   if (bundle) {
     compilerOptions.push(defaultBundlerOptions);

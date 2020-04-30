@@ -115,7 +115,7 @@ Deno.test("expandGlobIncludeDirs", async function (): Promise<void> {
 Deno.test("expandGlobPermError", async function (): Promise<void> {
   const exampleUrl = new URL("testdata/expand_wildcard.js", import.meta.url);
   const p = run({
-    cmd: [execPath(), exampleUrl.toString()],
+    cmd: [execPath(), "--unstable", exampleUrl.toString()],
     stdin: "null",
     stdout: "piped",
     stderr: "piped",

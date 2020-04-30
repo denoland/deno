@@ -9,7 +9,14 @@ const { test } = Deno;
 
 async function startServer(): Promise<Deno.Process> {
   const server = Deno.run({
-    cmd: [Deno.execPath(), "--allow-net", "--allow-read", "server.ts"],
+    // TODO(lucacasonato): remove unstable once possible
+    cmd: [
+      Deno.execPath(),
+      "--allow-net",
+      "--allow-read",
+      "--unstable",
+      "server.ts",
+    ],
     cwd: "examples/chat",
     stdout: "piped",
   });
