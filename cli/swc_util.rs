@@ -1,4 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+#![allow(unused)]
+
 use crate::swc_common;
 use crate::swc_common::comments::Comments;
 use crate::swc_common::errors::Diagnostic;
@@ -18,6 +20,8 @@ use crate::swc_ecma_parser::Session;
 use crate::swc_ecma_parser::SourceFileInput;
 use crate::swc_ecma_parser::Syntax;
 use crate::swc_ecma_parser::TsConfig;
+use swc_ecma_visit::Node;
+use swc_ecma_visit::Visit;
 
 use std::error::Error;
 use std::fmt;
@@ -161,4 +165,83 @@ impl AstParser {
       .take_leading_comments(span.lo())
       .unwrap_or_else(|| vec![])
   }
+}
+
+struct DependencyCollector {
+  dependencies: Vec<String>,
+}
+
+impl DependencyCollector {
+  pub fn get_dependencies(self) -> Vec<String> {
+    self.dependencies
+  }
+}
+
+impl Visit for DependencyCollector {
+  fn visit_import_decl(
+    &mut self,
+    import_decl: &swc_ecma_ast::ImportDecl,
+    _parent: &dyn Node,
+  ) {
+    let src_str = import_decl.src.value.to_string();
+    self.dependencies.push(src_str);
+  }
+
+  fn visit_named_export(
+    &mut self,
+    named_export: &swc_ecma_ast::NamedExport,
+    _parent: &dyn Node,
+  ) {
+    if let Some(src) = &named_export.src {
+      let src_str = src.value.to_string();
+      self.dependencies.push(src_str);
+    }
+  }
+
+  fn visit_export_all(
+    &mut self,
+    export_all: &swc_ecma_ast::ExportAll,
+    _parent: &dyn Node,
+  ) {
+    let src_str = export_all.src.value.to_string();
+    self.dependencies.push(src_str);
+  }
+}
+
+/// Given file name and source code return vector
+/// of unresolved import specifiers.
+pub fn analyze_dependencies(
+  file_name: &str,
+  source_code: &str,
+) -> Result<Vec<String>, SwcDiagnosticBuffer> {
+  let parser = AstParser::new();
+  parser.parse_module(file_name, source_code, |parse_result| {
+    let module = parse_result?;
+    let mut collector = DependencyCollector {
+      dependencies: vec![],
+    };
+    collector.visit_module(&module, &module);
+    let dependencies = collector.get_dependencies();
+    Ok(dependencies)
+  })
+}
+
+#[test]
+fn test_analyze_dependencies() {
+  let source = r#"
+import { foo } from "./foo.ts";
+export { bar } from "./foo.ts";
+export * from "./bar.ts";
+"#;
+
+  let dependencies =
+    analyze_dependencies("main.ts", source).expect("Failed to parse");
+  assert_eq!(
+    dependencies,
+    vec![
+      "./foo.ts".to_string(),
+      "./foo.ts".to_string(),
+      "./bar.ts".to_string(),
+    ]
+  );
 }
