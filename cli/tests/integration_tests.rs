@@ -1592,6 +1592,16 @@ itest!(unstable_enabled {
   output: "unstable_enabled.out",
 });
 
+itest!(unstable_disabled_js {
+  args: "run --reload unstable.js",
+  output: "unstable_disabled_js.out",
+});
+
+itest!(unstable_enabled_js {
+  args: "run --reload --unstable unstable.ts",
+  output: "unstable_enabled_js.out",
+});
+
 itest!(_053_import_compression {
   args: "run --reload --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",
