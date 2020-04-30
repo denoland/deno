@@ -229,6 +229,7 @@ fn op_kill(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.kill");
   state.check_run()?;
 
   let args: KillArgs = serde_json::from_value(args)?;

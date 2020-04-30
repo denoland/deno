@@ -19,7 +19,7 @@ function spyRead(obj: Deno.Buffer): Spy {
 
   const orig = obj.read.bind(obj);
 
-  obj.read = (p: Uint8Array): Promise<number | Deno.EOF> => {
+  obj.read = (p: Uint8Array): Promise<number | null> => {
     spy.calls++;
     return orig(p);
   };
@@ -54,4 +54,20 @@ unitTest(async function copyWithCustomBufferSize() {
   assertEquals(n, xBytes.length);
   assertEquals(write.length, xBytes.length);
   assertEquals(readSpy.calls, DEFAULT_BUF_SIZE / bufSize + 1);
+});
+
+unitTest({ perms: { write: true } }, async function copyBufferToFile() {
+  const filePath = "test-file.txt";
+  // bigger than max File possible buffer 16kb
+  const bufSize = 32 * 1024;
+  const xBytes = repeat("b", bufSize);
+  const reader = new Deno.Buffer(xBytes.buffer as ArrayBuffer);
+  const write = await Deno.open(filePath, { write: true, create: true });
+
+  const n = await Deno.copy(reader, write, { bufSize });
+
+  assertEquals(n, xBytes.length);
+
+  write.close();
+  await Deno.remove(filePath);
 });

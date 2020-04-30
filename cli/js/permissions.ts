@@ -13,29 +13,41 @@ export type PermissionName =
 
 export type PermissionState = "granted" | "denied" | "prompt";
 
-interface RunPermissionDescriptor {
+export interface RunPermissionDescriptor {
   name: "run";
 }
-interface ReadWritePermissionDescriptor {
-  name: "read" | "write";
+
+export interface ReadPermissionDescriptor {
+  name: "read";
   path?: string;
 }
-interface NetPermissionDescriptor {
+
+export interface WritePermissionDescriptor {
+  name: "write";
+  path?: string;
+}
+
+export interface NetPermissionDescriptor {
   name: "net";
   url?: string;
 }
-interface EnvPermissionDescriptor {
+
+export interface EnvPermissionDescriptor {
   name: "env";
 }
-interface PluginPermissionDescriptor {
+
+export interface PluginPermissionDescriptor {
   name: "plugin";
 }
-interface HrtimePermissionDescriptor {
+
+export interface HrtimePermissionDescriptor {
   name: "hrtime";
 }
-type PermissionDescriptor =
+
+export type PermissionDescriptor =
   | RunPermissionDescriptor
-  | ReadWritePermissionDescriptor
+  | ReadPermissionDescriptor
+  | WritePermissionDescriptor
   | NetPermissionDescriptor
   | EnvPermissionDescriptor
   | PluginPermissionDescriptor

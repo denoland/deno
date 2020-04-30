@@ -8,12 +8,12 @@ const {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } = Deno as any;
 
-const customInspect = Deno.symbols.customInspect;
+const customInspect = Deno.customInspect;
 const {
   Console,
   stringifyArgs,
   // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
-} = Deno[Deno.symbols.internal];
+} = Deno[Deno.internal];
 
 function stringify(...args: unknown[]): string {
   return stringifyArgs(args).replace(/\n$/, "");
@@ -1064,6 +1064,15 @@ unitTest(function consoleLogShouldNotThrowError(): void {
   mockConsole((console, out): void => {
     console.log(new Error("foo"));
     assertEquals(out.toString().includes("Uncaught"), false);
+  });
+});
+
+// console.log(Invalid Date) test
+unitTest(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed(): void {
+  mockConsole((console, out) => {
+    const invalidDate = new Date("test");
+    console.log(invalidDate);
+    assertEquals(out.toString(), "Invalid Date\n");
   });
 });
 

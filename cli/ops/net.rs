@@ -224,7 +224,7 @@ fn op_send(
       transport,
       transport_args: ArgsEnum::Unix(args),
     } if transport == "unixpacket" => {
-      let address_path = net_unix::Path::new(&args.address);
+      let address_path = net_unix::Path::new(&args.path);
       state.check_read(&address_path)?;
       let op = async move {
         let mut resource_table = resource_table.borrow_mut();
@@ -301,12 +301,12 @@ fn op_connect(
       transport,
       transport_args: ArgsEnum::Unix(args),
     } if transport == "unix" => {
-      let address_path = net_unix::Path::new(&args.address);
+      let address_path = net_unix::Path::new(&args.path);
       state.check_read(&address_path)?;
       let op = async move {
-        let address = args.address;
+        let path = args.path;
         let unix_stream =
-          net_unix::UnixStream::connect(net_unix::Path::new(&address)).await?;
+          net_unix::UnixStream::connect(net_unix::Path::new(&path)).await?;
         let local_addr = unix_stream.local_addr()?;
         let remote_addr = unix_stream.peer_addr()?;
         let mut resource_table = resource_table.borrow_mut();
@@ -319,11 +319,11 @@ fn op_connect(
         Ok(json!({
           "rid": rid,
           "localAddr": {
-            "address": local_addr.as_pathname(),
+            "path": local_addr.as_pathname(),
             "transport": transport,
           },
           "remoteAddr": {
-            "address": remote_addr.as_pathname(),
+            "path": remote_addr.as_pathname(),
             "transport": transport,
           }
         }))
@@ -342,10 +342,12 @@ struct ShutdownArgs {
 
 fn op_shutdown(
   isolate: &mut CoreIsolate,
-  _state: &State,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.shutdown");
+
   let args: ShutdownArgs = serde_json::from_value(args)?;
 
   let rid = args.rid as u32;
@@ -492,6 +494,9 @@ fn op_listen(
       transport,
       transport_args: ArgsEnum::Ip(args),
     } => {
+      if transport == "udp" {
+        state.check_unstable("Deno.listenDatagram");
+      }
       state.check_net(&args.hostname, args.port)?;
       let addr = resolve_addr(&args.hostname, args.port)?;
       let (rid, local_addr) = if transport == "tcp" {
@@ -519,8 +524,12 @@ fn op_listen(
       transport,
       transport_args: ArgsEnum::Unix(args),
     } if transport == "unix" || transport == "unixpacket" => {
-      let address_path = net_unix::Path::new(&args.address);
+      if transport == "unixpacket" {
+        state.check_unstable("Deno.listenDatagram");
+      }
+      let address_path = net_unix::Path::new(&args.path);
       state.check_read(&address_path)?;
+      state.check_write(&address_path)?;
       let (rid, local_addr) = if transport == "unix" {
         net_unix::listen_unix(&mut resource_table, &address_path)?
       } else {
@@ -534,7 +543,7 @@ fn op_listen(
       Ok(JsonOp::Sync(json!({
       "rid": rid,
       "localAddr": {
-        "address": local_addr.as_pathname(),
+        "path": local_addr.as_pathname(),
         "transport": transport,
       },
       })))

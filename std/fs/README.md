@@ -156,8 +156,8 @@ for (const fileInfo of walkSync(".")) {
 
 // Async
 async function printFilesNames() {
-  for await (const fileInfo of walk()) {
-    console.log(fileInfo.filename);
+  for await (const entry of walk()) {
+    console.log(entry.path);
   }
 }
 

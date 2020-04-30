@@ -31,7 +31,8 @@ test("[ws] read unmasked text frame", async () => {
   const frame = await readFrame(buf);
   assertEquals(frame.opcode, OpCode.TextFrame);
   assertEquals(frame.mask, undefined);
-  assertEquals(new Buffer(frame.payload).toString(), "Hello");
+  const actual = new TextDecoder().decode(new Buffer(frame.payload).bytes());
+  assertEquals(actual, "Hello");
   assertEquals(frame.isLastFrame, true);
 });
 
@@ -57,7 +58,8 @@ test("[ws] read masked text frame", async () => {
   const frame = await readFrame(buf);
   assertEquals(frame.opcode, OpCode.TextFrame);
   unmask(frame.payload, frame.mask);
-  assertEquals(new Buffer(frame.payload).toString(), "Hello");
+  const actual = new TextDecoder().decode(new Buffer(frame.payload).bytes());
+  assertEquals(actual, "Hello");
   assertEquals(frame.isLastFrame, true);
 });
 
@@ -72,12 +74,14 @@ test("[ws] read unmasked split text frames", async () => {
   assertEquals(f1.isLastFrame, false);
   assertEquals(f1.mask, undefined);
   assertEquals(f1.opcode, OpCode.TextFrame);
-  assertEquals(new Buffer(f1.payload).toString(), "Hel");
+  const actual1 = new TextDecoder().decode(new Buffer(f1.payload).bytes());
+  assertEquals(actual1, "Hel");
 
   assertEquals(f2.isLastFrame, true);
   assertEquals(f2.mask, undefined);
   assertEquals(f2.opcode, OpCode.Continue);
-  assertEquals(new Buffer(f2.payload).toString(), "lo");
+  const actual2 = new TextDecoder().decode(new Buffer(f2.payload).bytes());
+  assertEquals(actual2, "lo");
 });
 
 test("[ws] read unmasked ping / pong frame", async () => {
@@ -87,7 +91,8 @@ test("[ws] read unmasked ping / pong frame", async () => {
   );
   const ping = await readFrame(buf);
   assertEquals(ping.opcode, OpCode.Ping);
-  assertEquals(new Buffer(ping.payload).toString(), "Hello");
+  const actual1 = new TextDecoder().decode(new Buffer(ping.payload).bytes());
+  assertEquals(actual1, "Hello");
   // prettier-ignore
   const pongFrame= [0x8a, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58]
   const buf2 = new BufReader(new Buffer(new Uint8Array(pongFrame)));
@@ -95,7 +100,8 @@ test("[ws] read unmasked ping / pong frame", async () => {
   assertEquals(pong.opcode, OpCode.Pong);
   assert(pong.mask !== undefined);
   unmask(pong.payload, pong.mask);
-  assertEquals(new Buffer(pong.payload).toString(), "Hello");
+  const actual2 = new TextDecoder().decode(new Buffer(pong.payload).bytes());
+  assertEquals(actual2, "Hello");
 });
 
 test("[ws] read unmasked big binary frame", async () => {
@@ -276,9 +282,8 @@ test("[ws] ws.close() should use 1000 as close code", async () => {
 function dummyConn(r: Reader, w: Writer): Conn {
   return {
     rid: -1,
-    closeRead: (): void => {},
     closeWrite: (): void => {},
-    read: (x): Promise<number | Deno.EOF> => r.read(x),
+    read: (x): Promise<number | null> => r.read(x),
     write: (x): Promise<number> => w.write(x),
     close: (): void => {},
     localAddr: { transport: "tcp", hostname: "0.0.0.0", port: 0 },
@@ -335,8 +340,8 @@ test("[ws] createSecKeyHasCorrectLength", () => {
 test("[ws] WebSocket should throw `Deno.errors.ConnectionReset` when peer closed connection without close frame", async () => {
   const buf = new Buffer();
   const eofReader: Deno.Reader = {
-    read(_: Uint8Array): Promise<number | Deno.EOF> {
-      return Promise.resolve(Deno.EOF);
+    read(_: Uint8Array): Promise<number | null> {
+      return Promise.resolve(null);
     },
   };
   const conn = dummyConn(eofReader, buf);
@@ -353,8 +358,8 @@ test("[ws] WebSocket should throw `Deno.errors.ConnectionReset` when peer closed
 test("[ws] WebSocket shouldn't throw `Deno.errors.UnexpectedEof` on recive()", async () => {
   const buf = new Buffer();
   const eofReader: Deno.Reader = {
-    read(_: Uint8Array): Promise<number | Deno.EOF> {
-      return Promise.resolve(Deno.EOF);
+    read(_: Uint8Array): Promise<number | null> {
+      return Promise.resolve(null);
     },
   };
   const conn = dummyConn(eofReader, buf);
@@ -397,4 +402,124 @@ test({
     // to resolve, otherwise we'll get "op leak".
     await delay(10);
   },
+});
+
+test("[ws] WebSocket should implement Writer", async () => {
+  const buf = new Buffer();
+
+  const conn = dummyConn(buf, buf);
+  const sock = createWebSocket({ conn });
+
+  const [write0, write1, write2] = await Promise.all([
+    sock.write(new Uint8Array([1, 2, 3])),
+    sock.write(new Uint8Array([])),
+    sock.write(new Uint8Array([0])),
+  ]);
+
+  assertEquals(write0, 3);
+  assertEquals(write1, 0);
+  assertEquals(write2, 1);
+});
+
+test("[ws] WebSocket should implement Reader", async () => {
+  const hello = new Uint8Array([0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]);
+
+  const bufHello = new Buffer(hello);
+
+  const conn = dummyConn(bufHello, new Buffer());
+  const sock = createWebSocket({ conn });
+
+  const p = new Uint8Array(100);
+  const read = await sock.read(p);
+  const readLast = await sock.read(p);
+
+  const helloLength = "Hello".length;
+
+  assertEquals(read, helloLength);
+  assertEquals(decode(new Buffer(p.subarray(0, helloLength)).bytes()), "Hello");
+  assertEquals(readLast, null);
+});
+
+test("[ws] WebSocket Reader should ignore non-message frames", async () => {
+  const pong = new Uint8Array([
+    0x8a,
+    0x85,
+    0x37,
+    0xfa,
+    0x21,
+    0x3d,
+    0x7f,
+    0x9f,
+    0x4d,
+    0x51,
+    0x58,
+  ]);
+  const pingHello = new Uint8Array([0x89, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]);
+  const hello = new Uint8Array([0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]);
+  const close = new Uint8Array([0x88]);
+
+  const dataPayloadLength = 0x100;
+  const dataArr = [0x82, 0x7e, 0x01, 0x00];
+  for (let i = 0; i < dataPayloadLength; i++) {
+    dataArr.push(i);
+  }
+  const data = new Uint8Array(dataArr);
+
+  enum Frames {
+    ping,
+    text,
+    pong,
+    data,
+    close,
+    end,
+  }
+
+  let frame = Frames.ping;
+
+  const reader: Reader = {
+    read(p: Uint8Array): Promise<number | null> {
+      if (frame === Frames.ping) {
+        frame = Frames.text;
+        p.set(pingHello);
+        return Promise.resolve(pingHello.byteLength);
+      }
+
+      if (frame === Frames.text) {
+        frame = Frames.pong;
+        p.set(hello);
+        return Promise.resolve(hello.byteLength);
+      }
+
+      if (frame === Frames.pong) {
+        frame = Frames.data;
+        p.set(pong);
+        return Promise.resolve(pong.byteLength);
+      }
+
+      if (frame === Frames.data) {
+        frame = Frames.close;
+        p.set(data);
+        return Promise.resolve(data.byteLength);
+      }
+
+      if (frame === Frames.close) {
+        frame = Frames.end;
+        p.set(close);
+        return Promise.resolve(close.byteLength);
+      }
+
+      return Promise.resolve(null);
+    },
+  };
+
+  const conn = dummyConn(reader, new Buffer());
+  const sock = createWebSocket({ conn });
+
+  const p = await Deno.readAll(sock);
+
+  const helloLength = "Hello".length;
+
+  assertEquals(p.byteLength, helloLength + dataPayloadLength);
+  assertEquals(decode(new Buffer(p.subarray(0, helloLength)).bytes()), "Hello");
+  assertEquals(p.subarray(helloLength), data.subarray(4));
 });

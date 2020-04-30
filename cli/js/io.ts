@@ -3,27 +3,24 @@
 // Documentation liberally lifted from them too.
 // Thank you! We love Go!
 
-export const EOF: unique symbol = Symbol("EOF");
-export type EOF = typeof EOF;
-
 const DEFAULT_BUFFER_SIZE = 32 * 1024;
 
 // Seek whence values.
 // https://golang.org/pkg/io/#pkg-constants
 export enum SeekMode {
-  SEEK_START = 0,
-  SEEK_CURRENT = 1,
-  SEEK_END = 2,
+  Start = 0,
+  Current = 1,
+  End = 2,
 }
 
 // Reader is the interface that wraps the basic read() method.
 // https://golang.org/pkg/io/#Reader
 export interface Reader {
-  read(p: Uint8Array): Promise<number | EOF>;
+  read(p: Uint8Array): Promise<number | null>;
 }
 
-export interface SyncReader {
-  readSync(p: Uint8Array): number | EOF;
+export interface ReaderSync {
+  readSync(p: Uint8Array): number | null;
 }
 
 // Writer is the interface that wraps the basic write() method.
@@ -32,7 +29,7 @@ export interface Writer {
   write(p: Uint8Array): Promise<number>;
 }
 
-export interface SyncWriter {
+export interface WriterSync {
   writeSync(p: Uint8Array): number;
 }
 
@@ -48,27 +45,9 @@ export interface Seeker {
   seek(offset: number, whence: SeekMode): Promise<number>;
 }
 
-export interface SyncSeeker {
+export interface SeekerSync {
   seekSync(offset: number, whence: SeekMode): number;
 }
-
-// https://golang.org/pkg/io/#ReadCloser
-export interface ReadCloser extends Reader, Closer {}
-
-// https://golang.org/pkg/io/#WriteCloser
-export interface WriteCloser extends Writer, Closer {}
-
-// https://golang.org/pkg/io/#ReadSeeker
-export interface ReadSeeker extends Reader, Seeker {}
-
-// https://golang.org/pkg/io/#WriteSeeker
-export interface WriteSeeker extends Writer, Seeker {}
-
-// https://golang.org/pkg/io/#ReadWriteCloser
-export interface ReadWriteCloser extends Reader, Writer, Closer {}
-
-// https://golang.org/pkg/io/#ReadWriteSeeker
-export interface ReadWriteSeeker extends Reader, Writer, Seeker {}
 
 export async function copy(
   src: Reader,
@@ -83,10 +62,14 @@ export async function copy(
   let gotEOF = false;
   while (gotEOF === false) {
     const result = await src.read(b);
-    if (result === EOF) {
+    if (result === null) {
       gotEOF = true;
     } else {
-      n += await dst.write(b.subarray(0, result));
+      let nwritten = 0;
+      while (nwritten < result) {
+        nwritten += await dst.write(b.subarray(nwritten, result));
+      }
+      n += nwritten;
     }
   }
   return n;
@@ -102,7 +85,7 @@ export async function* iter(
   const b = new Uint8Array(bufSize);
   while (true) {
     const result = await r.read(b);
-    if (result === EOF) {
+    if (result === null) {
       break;
     }
 
@@ -111,7 +94,7 @@ export async function* iter(
 }
 
 export function* iterSync(
-  r: SyncReader,
+  r: ReaderSync,
   options?: {
     bufSize?: number;
   }
@@ -120,7 +103,7 @@ export function* iterSync(
   const b = new Uint8Array(bufSize);
   while (true) {
     const result = r.readSync(b);
-    if (result === EOF) {
+    if (result === null) {
       break;
     }
 

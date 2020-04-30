@@ -241,13 +241,17 @@ impl State {
     // stack trace in JS.
     let s = self.0.borrow();
     if !s.global_state.flags.unstable {
-      eprintln!(
-        "Unstable API '{}'. The --unstable flag must be provided.",
-        api_name
-      );
-      std::process::exit(70);
+      exit_unstable(api_name);
     }
   }
+}
+
+fn exit_unstable(api_name: &str) {
+  eprintln!(
+    "Unstable API '{}'. The --unstable flag must be provided.",
+    api_name
+  );
+  std::process::exit(70);
 }
 
 impl ModuleLoader for State {
@@ -340,7 +344,12 @@ impl State {
     let import_map: Option<ImportMap> =
       match global_state.flags.import_map_path.as_ref() {
         None => None,
-        Some(file_path) => Some(ImportMap::load(file_path)?),
+        Some(file_path) => {
+          if !global_state.flags.unstable {
+            exit_unstable("--importmap")
+          }
+          Some(ImportMap::load(file_path)?)
+        }
       };
 
     let seeded_rng = match global_state.flags.seed {

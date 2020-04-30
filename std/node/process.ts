@@ -7,10 +7,7 @@ const versions = {
   ...Deno.version,
 };
 
-const osToPlatform = (os: Deno.OperatingSystem): string =>
-  os === "win" ? "win32" : os === "mac" ? "darwin" : os;
-
-const platform = osToPlatform(Deno.build.os);
+const platform = Deno.build.os === "windows" ? "win32" : Deno.build.os;
 
 const { arch } = Deno.build;
 
@@ -33,7 +30,7 @@ export const process = {
   on,
   get env(): { [index: string]: string } {
     // using getter to avoid --allow-env unless it's used
-    return Deno.env();
+    return Deno.env.toObject();
   },
   get argv(): string[] {
     // Deno.execPath() also requires --allow-env

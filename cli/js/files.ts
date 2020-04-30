@@ -1,14 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  EOF,
   Reader,
   Writer,
   Seeker,
   Closer,
   SeekMode,
-  SyncReader,
-  SyncWriter,
-  SyncSeeker,
+  ReaderSync,
+  WriterSync,
+  SeekerSync,
 } from "./io.ts";
 import { close } from "./ops/resources.ts";
 import { read, readSync, write, writeSync } from "./ops/io.ts";
@@ -60,11 +59,11 @@ export function create(path: string): Promise<File> {
 export class File
   implements
     Reader,
-    SyncReader,
+    ReaderSync,
     Writer,
-    SyncWriter,
+    WriterSync,
     Seeker,
-    SyncSeeker,
+    SeekerSync,
     Closer {
   constructor(readonly rid: number) {}
 
@@ -76,11 +75,11 @@ export class File
     return writeSync(this.rid, p);
   }
 
-  read(p: Uint8Array): Promise<number | EOF> {
+  read(p: Uint8Array): Promise<number | null> {
     return read(this.rid, p);
   }
 
-  readSync(p: Uint8Array): number | EOF {
+  readSync(p: Uint8Array): number | null {
     return readSync(this.rid, p);
   }
 
@@ -97,17 +96,17 @@ export class File
   }
 }
 
-class Stdin implements Reader, SyncReader, Closer {
+class Stdin implements Reader, ReaderSync, Closer {
   readonly rid: number;
   constructor() {
     this.rid = 0;
   }
 
-  read(p: Uint8Array): Promise<number | EOF> {
+  read(p: Uint8Array): Promise<number | null> {
     return read(this.rid, p);
   }
 
-  readSync(p: Uint8Array): number | EOF {
+  readSync(p: Uint8Array): number | null {
     return readSync(this.rid, p);
   }
 
@@ -116,7 +115,7 @@ class Stdin implements Reader, SyncReader, Closer {
   }
 }
 
-class Stdout implements Writer, SyncWriter, Closer {
+class Stdout implements Writer, WriterSync, Closer {
   readonly rid: number;
   constructor() {
     this.rid = 1;
@@ -135,7 +134,7 @@ class Stdout implements Writer, SyncWriter, Closer {
   }
 }
 
-export class Stderr implements Writer, SyncWriter, Closer {
+export class Stderr implements Writer, WriterSync, Closer {
   readonly rid: number;
   constructor() {
     this.rid = 2;

@@ -5,6 +5,6 @@ unitTest(function buildInfo(): void {
   // Deno.build is injected by rollup at compile time. Here
   // we check it has been properly transformed.
   const { arch, os } = Deno.build;
-  assert(arch === "x64");
-  assert(os === "mac" || os === "win" || os === "linux");
+  assert(arch.length > 0);
+  assert(os === "darwin" || os === "windows" || os === "linux");
 });

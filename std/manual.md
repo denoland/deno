@@ -200,7 +200,7 @@ is opened, and printed to stdout.
 for (let i = 0; i < Deno.args.length; i++) {
   let filename = Deno.args[i];
   let file = await Deno.open(filename);
-  await Deno.copy(Deno.stdout, file);
+  await Deno.copy(file, Deno.stdout);
   file.close();
 }
 ```
@@ -491,11 +491,11 @@ uses a URL to import an assertion library:
 ```ts
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 
-Deno.test(function t1() {
+Deno.test("t1", function () {
   assertEquals("hello", "hello");
 });
 
-Deno.test(function t2() {
+Deno.test("t2", function () {
   assertEquals("world", "world");
 });
 ```

@@ -101,13 +101,13 @@ unitTest(async function readerIter(): Promise<void> {
       this.#buf = new Uint8Array(encoder.encode(s));
     }
 
-    read(p: Uint8Array): Promise<number | Deno.EOF> {
+    read(p: Uint8Array): Promise<number | null> {
       const n = Math.min(p.byteLength, this.#buf.byteLength - this.#offset);
       p.set(this.#buf.slice(this.#offset, this.#offset + n));
       this.#offset += n;
 
       if (n === 0) {
-        return Promise.resolve(Deno.EOF);
+        return Promise.resolve(null);
       }
 
       return Promise.resolve(n);
@@ -128,7 +128,7 @@ unitTest(async function readerIterSync(): Promise<void> {
   // ref: https://github.com/denoland/deno/issues/2330
   const encoder = new TextEncoder();
 
-  class TestReader implements Deno.SyncReader {
+  class TestReader implements Deno.ReaderSync {
     #offset = 0;
     #buf: Uint8Array;
 
@@ -136,13 +136,13 @@ unitTest(async function readerIterSync(): Promise<void> {
       this.#buf = new Uint8Array(encoder.encode(s));
     }
 
-    readSync(p: Uint8Array): number | Deno.EOF {
+    readSync(p: Uint8Array): number | null {
       const n = Math.min(p.byteLength, this.#buf.byteLength - this.#offset);
       p.set(this.#buf.slice(this.#offset, this.#offset + n));
       this.#offset += n;
 
       if (n === 0) {
-        return Deno.EOF;
+        return null;
       }
 
       return n;
@@ -172,7 +172,7 @@ unitTest(
     });
     file.close();
     const pathInfo = Deno.statSync(path);
-    if (Deno.build.os !== "win") {
+    if (Deno.build.os !== "windows") {
       assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
     }
   }
@@ -191,7 +191,7 @@ unitTest(
     });
     file.close();
     const pathInfo = Deno.statSync(path);
-    if (Deno.build.os !== "win") {
+    if (Deno.build.os !== "windows") {
       assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
     }
   }
@@ -441,10 +441,7 @@ unitTest(
 
     const buf = new Uint8Array(20);
     // seeking from beginning of a file
-    const cursorPosition = await file.seek(
-      seekPosition,
-      Deno.SeekMode.SEEK_START
-    );
+    const cursorPosition = await file.seek(seekPosition, Deno.SeekMode.Start);
     assertEquals(seekPosition, cursorPosition);
     const result = await file.read(buf);
     assertEquals(result, 13);
@@ -462,10 +459,7 @@ unitTest({ perms: { read: true } }, async function seekStart(): Promise<void> {
   await file.read(new Uint8Array(1)); // "H"
   // Skipping "Hello "
   // seeking from beginning of a file plus seekPosition
-  const cursorPosition = await file.seek(
-    seekPosition,
-    Deno.SeekMode.SEEK_START
-  );
+  const cursorPosition = await file.seek(seekPosition, Deno.SeekMode.Start);
   assertEquals(seekPosition, cursorPosition);
   const buf = new Uint8Array(6);
   await file.read(buf);
@@ -482,7 +476,7 @@ unitTest({ perms: { read: true } }, function seekSyncStart(): void {
   file.readSync(new Uint8Array(1)); // "H"
   // Skipping "Hello "
   // seeking from beginning of a file plus seekPosition
-  const cursorPosition = file.seekSync(seekPosition, Deno.SeekMode.SEEK_START);
+  const cursorPosition = file.seekSync(seekPosition, Deno.SeekMode.Start);
   assertEquals(seekPosition, cursorPosition);
   const buf = new Uint8Array(6);
   file.readSync(buf);
@@ -501,10 +495,7 @@ unitTest({ perms: { read: true } }, async function seekCurrent(): Promise<
   // Skipping "ello "
   const seekPosition = 5;
   // seekPosition is relative to current cursor position after read
-  const cursorPosition = await file.seek(
-    seekPosition,
-    Deno.SeekMode.SEEK_CURRENT
-  );
+  const cursorPosition = await file.seek(seekPosition, Deno.SeekMode.Current);
   assertEquals(seekPosition + 1, cursorPosition);
   const buf = new Uint8Array(6);
   await file.read(buf);
@@ -521,10 +512,7 @@ unitTest({ perms: { read: true } }, function seekSyncCurrent(): void {
   // Skipping "ello "
   const seekPosition = 5;
   // seekPosition is relative to current cursor position after read
-  const cursorPosition = file.seekSync(
-    seekPosition,
-    Deno.SeekMode.SEEK_CURRENT
-  );
+  const cursorPosition = file.seekSync(seekPosition, Deno.SeekMode.Current);
   assertEquals(seekPosition + 1, cursorPosition);
   const buf = new Uint8Array(6);
   file.readSync(buf);
@@ -538,7 +526,7 @@ unitTest({ perms: { read: true } }, async function seekEnd(): Promise<void> {
   const file = await Deno.open(filename);
   const seekPosition = -6;
   // seek from end of file that has 12 chars, 12 - 6  = 6
-  const cursorPosition = await file.seek(seekPosition, Deno.SeekMode.SEEK_END);
+  const cursorPosition = await file.seek(seekPosition, Deno.SeekMode.End);
   assertEquals(6, cursorPosition);
   const buf = new Uint8Array(6);
   await file.read(buf);
@@ -552,7 +540,7 @@ unitTest({ perms: { read: true } }, function seekSyncEnd(): void {
   const file = Deno.openSync(filename);
   const seekPosition = -6;
   // seek from end of file that has 12 chars, 12 - 6  = 6
-  const cursorPosition = file.seekSync(seekPosition, Deno.SeekMode.SEEK_END);
+  const cursorPosition = file.seekSync(seekPosition, Deno.SeekMode.End);
   assertEquals(6, cursorPosition);
   const buf = new Uint8Array(6);
   file.readSync(buf);

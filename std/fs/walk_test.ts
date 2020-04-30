@@ -3,8 +3,6 @@ const { remove } = Deno;
 import { walk, walkSync, WalkOptions, WalkEntry } from "./walk.ts";
 import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 
-const isWindows = Deno.build.os == "win";
-
 export function testWalk(
   setup: (arg0: string) => void | Promise<void>,
   t: () => void | Promise<void>,
@@ -26,8 +24,8 @@ export function testWalk(
   Deno.test({ ignore, name: `[walk] ${name}`, fn });
 }
 
-function normalize({ filename }: WalkEntry): string {
-  return filename.replace(/\\/g, "/");
+function normalize({ path }: WalkEntry): string {
+  return path.replace(/\\/g, "/");
 }
 
 export async function walkArray(
@@ -254,13 +252,13 @@ testWalk(
     try {
       await symlink(d + "/b", d + "/a/bb");
     } catch (err) {
-      assert(isWindows);
+      assert(Deno.build.os == "windows");
       assertEquals(err.message, "Not implemented");
     }
   },
   async function symlink(): Promise<void> {
     // symlink is not yet implemented on Windows.
-    if (isWindows) {
+    if (Deno.build.os == "windows") {
       return;
     }
 

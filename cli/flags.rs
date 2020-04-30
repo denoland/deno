@@ -380,6 +380,7 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   ca_file_arg_parse(flags, matches);
   importmap_arg_parse(flags, matches);
+  unstable_arg_parse(flags, matches);
 
   let source_file = matches.value_of("source_file").unwrap().to_string();
 
@@ -459,6 +460,7 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
+  unstable_arg_parse(flags, matches);
   let files = matches
     .values_of("file")
     .unwrap()
@@ -495,13 +497,10 @@ fn run_test_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   permission_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   inspect_arg_parse(flags, matches);
+  unstable_arg_parse(flags, matches);
 
   if matches.is_present("cached-only") {
     flags.cached_only = true;
-  }
-
-  if matches.is_present("unstable") {
-    flags.unstable = true;
   }
 
   if matches.is_present("seed") {
@@ -684,6 +683,7 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(Arg::with_name("out_file").takes_value(true).required(false))
     .arg(ca_file_arg())
     .arg(importmap_arg())
+    .arg(unstable_arg())
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
@@ -768,6 +768,7 @@ fn cache_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(lock_arg())
     .arg(lock_write_arg())
     .arg(importmap_arg())
+    .arg(unstable_arg())
     .arg(config_arg())
     .arg(no_remote_arg())
     .arg(
@@ -915,6 +916,7 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
 fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
   permission_args(inspect_args(app))
     .arg(importmap_arg())
+    .arg(unstable_arg())
     .arg(reload_arg())
     .arg(config_arg())
     .arg(lock_arg())
@@ -926,11 +928,6 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
       Arg::with_name("cached-only")
         .long("cached-only")
         .help("Require that remote dependencies are already cached"),
-    )
-    .arg(
-      Arg::with_name("unstable")
-        .long("unstable")
-        .help("Enable unstable APIs"),
     )
     .arg(
       Arg::with_name("seed")
@@ -1055,6 +1052,18 @@ fn ca_file_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.ca_file = matches.value_of("cert").map(ToOwned::to_owned);
 }
 
+fn unstable_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("unstable")
+    .long("unstable")
+    .help("Enable unstable APIs")
+}
+
+fn unstable_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  if matches.is_present("unstable") {
+    flags.unstable = true;
+  }
+}
+
 fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
   app
     .arg(
@@ -1152,9 +1161,10 @@ fn importmap_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("importmap")
     .long("importmap")
     .value_name("FILE")
-    .help("Load import map file")
+    .help("UNSTABLE: Load import map file")
     .long_help(
-      "Load import map file
+      "UNSTABLE:
+Load import map file
 Docs: https://deno.land/std/manual.md#import-maps
 Specification: https://wicg.github.io/import-maps/
 Examples: https://github.com/WICG/import-maps#the-import-map",

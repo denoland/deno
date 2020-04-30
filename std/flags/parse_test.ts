@@ -2,7 +2,7 @@
 import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
-Deno.test(function parseArgs(): void {
+Deno.test("parseArgs", function (): void {
   assertEquals(parse(["--no-moo"]), { moo: false, _: [] });
   assertEquals(parse(["-v", "a", "-v", "b", "-v", "c"]), {
     v: ["a", "b", "c"],
@@ -10,7 +10,7 @@ Deno.test(function parseArgs(): void {
   });
 });
 
-Deno.test(function comprehensive(): void {
+Deno.test("comprehensive", function (): void {
   assertEquals(
     parse([
       "--name=meowmers",
@@ -47,13 +47,13 @@ Deno.test(function comprehensive(): void {
   );
 });
 
-Deno.test(function flagBoolean(): void {
+Deno.test("flagBoolean", function (): void {
   const argv = parse(["-t", "moo"], { boolean: "t" });
   assertEquals(argv, { t: true, _: ["moo"] });
   assertEquals(typeof argv.t, "boolean");
 });
 
-Deno.test(function flagBooleanValue(): void {
+Deno.test("flagBooleanValue", function (): void {
   const argv = parse(["--verbose", "false", "moo", "-t", "true"], {
     boolean: ["t", "verbose"],
     default: { verbose: true },
@@ -69,7 +69,7 @@ Deno.test(function flagBooleanValue(): void {
   assertEquals(typeof argv.t, "boolean");
 });
 
-Deno.test(function newlinesInParams(): void {
+Deno.test("newlinesInParams", function (): void {
   const args = parse(["-s", "X\nX"]);
   assertEquals(args, { _: [], s: "X\nX" });
 
@@ -81,7 +81,7 @@ Deno.test(function newlinesInParams(): void {
   assertEquals(args2, { _: [], s: "X\nX" });
 });
 
-Deno.test(function strings(): void {
+Deno.test("strings", function (): void {
   const s = parse(["-s", "0001234"], { string: "s" }).s;
   assertEquals(s, "0001234");
   assertEquals(typeof s, "string");
@@ -91,7 +91,7 @@ Deno.test(function strings(): void {
   assertEquals(typeof x, "string");
 });
 
-Deno.test(function stringArgs(): void {
+Deno.test("stringArgs", function (): void {
   const s = parse(["  ", "  "], { string: "_" })._;
   assertEquals(s.length, 2);
   assertEquals(typeof s[0], "string");
@@ -100,7 +100,7 @@ Deno.test(function stringArgs(): void {
   assertEquals(s[1], "  ");
 });
 
-Deno.test(function emptyStrings(): void {
+Deno.test("emptyStrings", function (): void {
   const s = parse(["-s"], { string: "s" }).s;
   assertEquals(s, "");
   assertEquals(typeof s, "string");
@@ -118,7 +118,7 @@ Deno.test(function emptyStrings(): void {
   assertEquals(letters.t, "");
 });
 
-Deno.test(function stringAndAlias(): void {
+Deno.test("stringAndAlias", function (): void {
   const x = parse(["--str", "000123"], {
     string: "s",
     alias: { s: "str" },
@@ -140,7 +140,7 @@ Deno.test(function stringAndAlias(): void {
   assertEquals(typeof y.s, "string");
 });
 
-Deno.test(function slashBreak(): void {
+Deno.test("slashBreak", function (): void {
   assertEquals(parse(["-I/foo/bar/baz"]), { I: "/foo/bar/baz", _: [] });
   assertEquals(parse(["-xyz/foo/bar/baz"]), {
     x: true,
@@ -150,7 +150,7 @@ Deno.test(function slashBreak(): void {
   });
 });
 
-Deno.test(function alias(): void {
+Deno.test("alias", function (): void {
   const argv = parse(["-f", "11", "--zoom", "55"], {
     alias: { z: "zoom" },
   });
@@ -159,7 +159,7 @@ Deno.test(function alias(): void {
   assertEquals(argv.f, 11);
 });
 
-Deno.test(function multiAlias(): void {
+Deno.test("multiAlias", function (): void {
   const argv = parse(["-f", "11", "--zoom", "55"], {
     alias: { z: ["zm", "zoom"] },
   });
@@ -169,7 +169,7 @@ Deno.test(function multiAlias(): void {
   assertEquals(argv.f, 11);
 });
 
-Deno.test(function nestedDottedObjects(): void {
+Deno.test("nestedDottedObjects", function (): void {
   const argv = parse([
     "--foo.bar",
     "3",
@@ -192,7 +192,7 @@ Deno.test(function nestedDottedObjects(): void {
   assertEquals(argv.beep, { boop: true });
 });
 
-Deno.test(function flagBuiltinProperty(): void {
+Deno.test("flagBuiltinProperty", function (): void {
   const argv = parse(["--toString", "--valueOf", "foo"]);
   assertEquals(argv, { toString: true, valueOf: "foo", _: [] });
   assertEquals(typeof argv.toString, "boolean");

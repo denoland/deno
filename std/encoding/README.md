@@ -17,8 +17,8 @@ Available Functions:
 ```typescript
 sizeof(dataType: RawTypes): number
 getNBytes(r: Deno.Reader, n: number): Promise<Uint8Array>
-varnum(b: Uint8Array, o: VarnumOptions = {}): number | Deno.EOF
-varbig(b: Uint8Array, o: VarbigOptions = {}): bigint | Deno.EOF
+varnum(b: Uint8Array, o: VarnumOptions = {}): number | null
+varbig(b: Uint8Array, o: VarbigOptions = {}): bigint | null
 putVarnum(b: Uint8Array, x: number, o: VarnumOptions = {}): number
 putVarbig(b: Uint8Array, x: bigint, o: VarbigOptions = {}): number
 readVarnum(r: Deno.Reader, o: VarnumOptions = {}): Promise<number>

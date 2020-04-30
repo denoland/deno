@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { errors } from "./errors.ts";
-import { EOF, Reader, Writer, Closer } from "./io.ts";
+import { Reader, Writer, Closer } from "./io.ts";
 import { read, write } from "./ops/io.ts";
 import { close } from "./ops/resources.ts";
 import * as netOps from "./ops/net.ts";
@@ -40,16 +40,12 @@ export class ConnImpl implements Conn {
     return write(this.rid, p);
   }
 
-  read(p: Uint8Array): Promise<number | EOF> {
+  read(p: Uint8Array): Promise<number | null> {
     return read(this.rid, p);
   }
 
   close(): void {
     close(this.rid);
-  }
-
-  closeRead(): void {
-    netOps.shutdown(this.rid, netOps.ShutdownMode.Read);
   }
 
   closeWrite(): void {
@@ -65,21 +61,30 @@ export class ListenerImpl implements Listener {
     return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
   }
 
+  async next(): Promise<IteratorResult<Conn>> {
+    let conn: Conn;
+    try {
+      conn = await this.accept();
+    } catch (error) {
+      if (error instanceof errors.BadResource) {
+        return { value: undefined, done: true };
+      }
+      throw error;
+    }
+    return { value: conn!, done: false };
+  }
+
+  return(value?: Conn): Promise<IteratorResult<Conn>> {
+    this.close();
+    return Promise.resolve({ value, done: true });
+  }
+
   close(): void {
     close(this.rid);
   }
 
-  async *[Symbol.asyncIterator](): AsyncIterableIterator<Conn> {
-    while (true) {
-      try {
-        yield await this.accept();
-      } catch (error) {
-        if (error instanceof errors.BadResource) {
-          break;
-        }
-        throw error;
-      }
-    }
+  [Symbol.asyncIterator](): AsyncIterableIterator<Conn> {
+    return this;
   }
 }
 
@@ -130,7 +135,6 @@ export interface Conn extends Reader, Writer, Closer {
   localAddr: Addr;
   remoteAddr: Addr;
   rid: number;
-  closeRead(): void;
   closeWrite(): void;
 }
 
@@ -142,7 +146,7 @@ export interface ListenOptions {
 
 export interface UnixListenOptions {
   transport: "unix" | "unixpacket";
-  address: string;
+  path: string;
 }
 
 export function listen(
@@ -151,18 +155,10 @@ export function listen(
 export function listen(
   options: UnixListenOptions & { transport: "unix" }
 ): Listener;
-export function listen(
-  options: ListenOptions & { transport: "udp" }
-): DatagramConn;
-export function listen(
-  options: UnixListenOptions & { transport: "unixpacket" }
-): DatagramConn;
-export function listen(
-  options: ListenOptions | UnixListenOptions
-): Listener | DatagramConn {
+export function listen(options: ListenOptions | UnixListenOptions): Listener {
   let res;
 
-  if (options.transport === "unix" || options.transport === "unixpacket") {
+  if (options.transport === "unix") {
     res = netOps.listen(options);
   } else {
     res = netOps.listen({
@@ -172,15 +168,30 @@ export function listen(
     });
   }
 
-  if (
-    !options.transport ||
-    options.transport === "tcp" ||
-    options.transport === "unix"
-  ) {
-    return new ListenerImpl(res.rid, res.localAddr);
+  return new ListenerImpl(res.rid, res.localAddr);
+}
+
+export function listenDatagram(
+  options: ListenOptions & { transport: "udp" }
+): DatagramConn;
+export function listenDatagram(
+  options: UnixListenOptions & { transport: "unixpacket" }
+): DatagramConn;
+export function listenDatagram(
+  options: ListenOptions | UnixListenOptions
+): DatagramConn {
+  let res;
+  if (options.transport === "unixpacket") {
+    res = netOps.listen(options);
   } else {
-    return new DatagramImpl(res.rid, res.localAddr);
+    res = netOps.listen({
+      transport: "udp",
+      hostname: "127.0.0.1",
+      ...(options as ListenOptions),
+    });
   }
+
+  return new DatagramImpl(res.rid, res.localAddr);
 }
 
 export interface ConnectOptions {
@@ -190,7 +201,7 @@ export interface ConnectOptions {
 }
 export interface UnixConnectOptions {
   transport: "unix";
-  address: string;
+  path: string;
 }
 export async function connect(options: UnixConnectOptions): Promise<Conn>;
 export async function connect(options: ConnectOptions): Promise<Conn>;

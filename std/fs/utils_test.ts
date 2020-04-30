@@ -8,7 +8,7 @@ import { ensureDirSync } from "./ensure_dir.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-Deno.test(function _isSubdir(): void {
+Deno.test("_isSubdir", function (): void {
   const pairs = [
     ["", "", false, path.posix.sep],
     ["/first/second", "/first", false, path.posix.sep],
@@ -33,7 +33,7 @@ Deno.test(function _isSubdir(): void {
   });
 });
 
-Deno.test(function _getFileInfoType(): void {
+Deno.test("_getFileInfoType", function (): void {
   const pairs = [
     [path.join(testdataDir, "file_type_1"), "file"],
     [path.join(testdataDir, "file_type_dir_1"), "dir"],
