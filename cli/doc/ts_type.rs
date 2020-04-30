@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use super::interface::expr_to_name;
 use super::params::ts_fn_param_to_param_def;
 use super::ts_type_param::maybe_type_param_decl_to_type_param_defs;
 use super::ts_type_param::TsTypeParamDef;
@@ -24,7 +25,6 @@ use crate::swc_ecma_ast::TsTypeQuery;
 use crate::swc_ecma_ast::TsTypeRef;
 use crate::swc_ecma_ast::TsUnionOrIntersectionType;
 use serde::Serialize;
-use super::interface::expr_to_name;
 // pub enum TsType {
 //  *      TsKeywordType(TsKeywordType),
 //  *      TsThisType(TsThisType),

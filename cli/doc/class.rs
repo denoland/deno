@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use super::function::function_to_function_def;
 use super::function::FunctionDef;
+use super::interface::expr_to_name;
 use super::params::assign_pat_to_param_def;
 use super::params::ident_to_param_def;
 use super::params::pat_to_param_def;
@@ -17,7 +18,6 @@ use super::ts_type_param::maybe_type_param_decl_to_type_param_defs;
 use super::ts_type_param::TsTypeParamDef;
 use super::Location;
 use super::ParamDef;
-use super::interface::expr_to_name;
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
