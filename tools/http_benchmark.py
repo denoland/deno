@@ -45,7 +45,7 @@ def deno_tcp(deno_exe):
 def deno_http(deno_exe):
     port = get_port()
     deno_cmd = [
-        deno_exe, "run", "--allow-net", "std/http/http_bench.ts",
+        deno_exe, "run", "--allow-net", "--reload", "std/http/http_bench.ts",
         server_addr(port)
     ]
     print "http_benchmark testing DENO using net/http."
