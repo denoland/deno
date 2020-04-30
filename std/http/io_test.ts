@@ -380,7 +380,7 @@ test("writeResponse with repeating headers", async () => {
   const w = new Buffer();
   await writeResponse(w, res);
 
-  const ret = w.toString();
+  const ret = new TextDecoder().decode(w.bytes());
   const exp = [
     "HTTP/1.1 200 OK",
     "set-cookie: user.session=qwertz; Max-Age=86400",

@@ -38,6 +38,7 @@ export {
 } from "./files.ts";
 export { read, readSync, write, writeSync } from "./ops/io.ts";
 export { FsEvent, watchFs } from "./ops/fs_events.ts";
+export { cookiesIteratorSymbol } from "./web/headers.ts";
 export { internalSymbol as internal } from "./internals.ts";
 export {
   copy,

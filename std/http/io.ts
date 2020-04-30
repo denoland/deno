@@ -260,7 +260,7 @@ export async function writeResponse(
   for (const [key, value] of headers) {
     if (key === "set-cookie") {
       // @ts-ignore
-      for (const cookie of headers[Deno.symbols.cookiesIterator]()) {
+      for (const cookie of headers[Deno.cookiesIteratorSymbol]()) {
         // Multiple set-cookie headers should be allowed
         out += `${key}: ${cookie}\r\n`;
       }
