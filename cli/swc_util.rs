@@ -1,6 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-#![allow(unused)]
-
 use crate::swc_common;
 use crate::swc_common::comments::Comments;
 use crate::swc_common::errors::Diagnostic;
@@ -167,17 +165,11 @@ impl AstParser {
   }
 }
 
-struct DependencyCollector {
+struct DependencyVisitor {
   dependencies: Vec<String>,
 }
 
-impl DependencyCollector {
-  pub fn get_dependencies(self) -> Vec<String> {
-    self.dependencies
-  }
-}
-
-impl Visit for DependencyCollector {
+impl Visit for DependencyVisitor {
   fn visit_import_decl(
     &mut self,
     import_decl: &swc_ecma_ast::ImportDecl,
@@ -210,6 +202,9 @@ impl Visit for DependencyCollector {
 
 /// Given file name and source code return vector
 /// of unresolved import specifiers.
+///
+/// Returned vector may contain duplicate entries.
+#[allow(unused)]
 pub fn analyze_dependencies(
   file_name: &str,
   source_code: &str,
@@ -217,12 +212,11 @@ pub fn analyze_dependencies(
   let parser = AstParser::new();
   parser.parse_module(file_name, source_code, |parse_result| {
     let module = parse_result?;
-    let mut collector = DependencyCollector {
+    let mut collector = DependencyVisitor {
       dependencies: vec![],
     };
     collector.visit_module(&module, &module);
-    let dependencies = collector.get_dependencies();
-    Ok(dependencies)
+    Ok(collector.dependencies)
   })
 }
 
