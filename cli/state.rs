@@ -71,7 +71,7 @@ impl State {
   pub fn stateful_json_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op
+  ) -> impl Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
   where
     D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
   {
@@ -82,10 +82,10 @@ impl State {
   pub fn stateful_json_op2<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op
+  ) -> impl Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
   where
     D: Fn(
-      &mut deno_core::Isolate,
+      &mut deno_core::CoreIsolate,
       &State,
       Value,
       Option<ZeroCopyBuf>,
@@ -101,13 +101,13 @@ impl State {
   pub fn core_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op
+  ) -> impl Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
   where
-    D: Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op,
+    D: Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op,
   {
     let state = self.clone();
 
-    move |isolate: &mut deno_core::Isolate,
+    move |isolate: &mut deno_core::CoreIsolate,
           control: &[u8],
           zero_copy: Option<ZeroCopyBuf>|
           -> Op {
@@ -161,10 +161,10 @@ impl State {
   pub fn stateful_minimal_op2<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op
+  ) -> impl Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
   where
     D: Fn(
-      &mut deno_core::Isolate,
+      &mut deno_core::CoreIsolate,
       &State,
       bool,
       i32,
@@ -173,7 +173,7 @@ impl State {
   {
     let state = self.clone();
     self.core_op(crate::ops::minimal_op(
-      move |isolate: &mut deno_core::Isolate,
+      move |isolate: &mut deno_core::CoreIsolate,
             is_sync: bool,
             rid: i32,
             zero_copy: Option<ZeroCopyBuf>|
@@ -186,13 +186,13 @@ impl State {
   /// This is a special function that provides `state` argument to dispatcher.
   ///
   /// NOTE: This only works with JSON dispatcher.
-  /// This is a band-aid for transition to `Isolate.register_op` API as most of our
+  /// This is a band-aid for transition to `CoreIsolate.register_op` API as most of our
   /// ops require `state` argument.
   pub fn stateful_op<D>(
     &self,
     dispatcher: D,
   ) -> impl Fn(
-    &mut deno_core::Isolate,
+    &mut deno_core::CoreIsolate,
     Value,
     Option<ZeroCopyBuf>,
   ) -> Result<JsonOp, OpError>
@@ -200,7 +200,7 @@ impl State {
     D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
   {
     let state = self.clone();
-    move |_isolate: &mut deno_core::Isolate,
+    move |_isolate: &mut deno_core::CoreIsolate,
           args: Value,
           zero_copy: Option<ZeroCopyBuf>|
           -> Result<JsonOp, OpError> { dispatcher(&state, args, zero_copy) }
@@ -210,26 +210,47 @@ impl State {
     &self,
     dispatcher: D,
   ) -> impl Fn(
-    &mut deno_core::Isolate,
+    &mut deno_core::CoreIsolate,
     Value,
     Option<ZeroCopyBuf>,
   ) -> Result<JsonOp, OpError>
   where
     D: Fn(
-      &mut deno_core::Isolate,
+      &mut deno_core::CoreIsolate,
       &State,
       Value,
       Option<ZeroCopyBuf>,
     ) -> Result<JsonOp, OpError>,
   {
     let state = self.clone();
-    move |isolate: &mut deno_core::Isolate,
+    move |isolate: &mut deno_core::CoreIsolate,
           args: Value,
           zero_copy: Option<ZeroCopyBuf>|
           -> Result<JsonOp, OpError> {
       dispatcher(isolate, &state, args, zero_copy)
     }
   }
+
+  /// Quits the process if the --unstable flag was not provided.
+  ///
+  /// This is intentionally a non-recoverable check so that people cannot probe
+  /// for unstable APIs from stable programs.
+  pub fn check_unstable(&self, api_name: &str) {
+    // TODO(ry) Maybe use IsolateHandle::terminate_execution here to provide a
+    // stack trace in JS.
+    let s = self.0.borrow();
+    if !s.global_state.flags.unstable {
+      exit_unstable(api_name);
+    }
+  }
+}
+
+fn exit_unstable(api_name: &str) {
+  eprintln!(
+    "Unstable API '{}'. The --unstable flag must be provided.",
+    api_name
+  );
+  std::process::exit(70);
 }
 
 impl ModuleLoader for State {
@@ -301,7 +322,12 @@ impl State {
     let import_map: Option<ImportMap> =
       match global_state.flags.import_map_path.as_ref() {
         None => None,
-        Some(file_path) => Some(ImportMap::load(file_path)?),
+        Some(file_path) => {
+          if !global_state.flags.unstable {
+            exit_unstable("--importmap")
+          }
+          Some(ImportMap::load(file_path)?)
+        }
       };
 
     let seeded_rng = match global_state.flags.seed {

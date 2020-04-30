@@ -3,8 +3,8 @@
 use rusty_v8 as v8;
 
 use crate::any_error::ErrBox;
-use crate::es_isolate::DynImportId;
 use crate::es_isolate::ModuleId;
+use crate::es_isolate::ModuleLoadId;
 use crate::module_specifier::ModuleSpecifier;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
@@ -16,8 +16,14 @@ use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
+
+lazy_static! {
+  pub static ref NEXT_LOAD_ID: AtomicI32 = AtomicI32::new(0);
+}
 
 /// EsModule source code that will be loaded into V8.
 ///
@@ -89,10 +95,8 @@ pub enum LoadState {
 /// that is consumed by the isolate.
 pub struct RecursiveModuleLoad {
   kind: Kind,
-  // Kind::Main
+  pub id: ModuleLoadId,
   pub root_module_id: Option<ModuleId>,
-  // Kind::Main
-  pub dyn_import_id: Option<DynImportId>,
   pub state: LoadState,
   pub loader: Rc<dyn ModuleLoader>,
   pub pending: FuturesUnordered<Pin<Box<ModuleSourceFuture>>>,
@@ -108,11 +112,10 @@ impl RecursiveModuleLoad {
   ) -> Self {
     let kind = Kind::Main;
     let state = LoadState::ResolveMain(specifier.to_owned(), code);
-    Self::new(kind, state, loader, None)
+    Self::new(kind, state, loader)
   }
 
   pub fn dynamic_import(
-    id: DynImportId,
     specifier: &str,
     referrer: &str,
     loader: Rc<dyn ModuleLoader>,
@@ -120,22 +123,17 @@ impl RecursiveModuleLoad {
     let kind = Kind::DynamicImport;
     let state =
       LoadState::ResolveImport(specifier.to_owned(), referrer.to_owned());
-    Self::new(kind, state, loader, Some(id))
+    Self::new(kind, state, loader)
   }
 
   pub fn is_dynamic_import(&self) -> bool {
     self.kind != Kind::Main
   }
 
-  fn new(
-    kind: Kind,
-    state: LoadState,
-    loader: Rc<dyn ModuleLoader>,
-    dyn_import_id: Option<DynImportId>,
-  ) -> Self {
+  fn new(kind: Kind, state: LoadState, loader: Rc<dyn ModuleLoader>) -> Self {
     Self {
+      id: NEXT_LOAD_ID.fetch_add(1, Ordering::SeqCst),
       root_module_id: None,
-      dyn_import_id,
       kind,
       state,
       loader,

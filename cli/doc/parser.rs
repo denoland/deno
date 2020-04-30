@@ -1,39 +1,20 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::op_error::OpError;
-use crate::swc_common;
 use crate::swc_common::comments::CommentKind;
-use crate::swc_common::comments::Comments;
-use crate::swc_common::errors::Diagnostic;
-use crate::swc_common::errors::DiagnosticBuilder;
-use crate::swc_common::errors::Emitter;
-use crate::swc_common::errors::Handler;
-use crate::swc_common::errors::HandlerFlags;
-use crate::swc_common::FileName;
-use crate::swc_common::Globals;
-use crate::swc_common::SourceMap;
 use crate::swc_common::Span;
 use crate::swc_ecma_ast;
 use crate::swc_ecma_ast::Decl;
 use crate::swc_ecma_ast::ModuleDecl;
 use crate::swc_ecma_ast::Stmt;
-use crate::swc_ecma_parser::lexer::Lexer;
-use crate::swc_ecma_parser::JscTarget;
-use crate::swc_ecma_parser::Parser;
-use crate::swc_ecma_parser::Session;
-use crate::swc_ecma_parser::SourceFileInput;
-use crate::swc_ecma_parser::Syntax;
-use crate::swc_ecma_parser::TsConfig;
+use crate::swc_util::AstParser;
+use crate::swc_util::SwcDiagnosticBuffer;
 
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::Future;
 use regex::Regex;
 use std::collections::HashMap;
-use std::error::Error;
-use std::fmt;
 use std::pin::Pin;
-use std::sync::Arc;
-use std::sync::RwLock;
 
 use super::namespace::NamespaceDef;
 use super::node;
@@ -41,50 +22,6 @@ use super::node::ModuleDoc;
 use super::DocNode;
 use super::DocNodeKind;
 use super::Location;
-
-#[derive(Clone, Debug)]
-pub struct SwcDiagnosticBuffer {
-  pub diagnostics: Vec<Diagnostic>,
-}
-
-impl Error for SwcDiagnosticBuffer {}
-
-impl fmt::Display for SwcDiagnosticBuffer {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    let msg = self
-      .diagnostics
-      .iter()
-      .map(|d| d.message())
-      .collect::<Vec<String>>()
-      .join(",");
-
-    f.pad(&msg)
-  }
-}
-
-#[derive(Clone)]
-pub struct SwcErrorBuffer(Arc<RwLock<SwcDiagnosticBuffer>>);
-
-impl SwcErrorBuffer {
-  pub fn default() -> Self {
-    Self(Arc::new(RwLock::new(SwcDiagnosticBuffer {
-      diagnostics: vec![],
-    })))
-  }
-}
-
-impl Emitter for SwcErrorBuffer {
-  fn emit(&mut self, db: &DiagnosticBuilder) {
-    self.0.write().unwrap().diagnostics.push((**db).clone());
-  }
-}
-
-impl From<SwcErrorBuffer> for SwcDiagnosticBuffer {
-  fn from(buf: SwcErrorBuffer) -> Self {
-    let s = buf.0.read().unwrap();
-    s.clone()
-  }
-}
 
 pub trait DocFileLoader {
   fn resolve(
@@ -102,34 +39,15 @@ pub trait DocFileLoader {
 }
 
 pub struct DocParser {
+  pub ast_parser: AstParser,
   pub loader: Box<dyn DocFileLoader>,
-  pub buffered_error: SwcErrorBuffer,
-  pub source_map: Arc<SourceMap>,
-  pub handler: Handler,
-  pub comments: Comments,
-  pub globals: Globals,
 }
 
 impl DocParser {
   pub fn new(loader: Box<dyn DocFileLoader>) -> Self {
-    let buffered_error = SwcErrorBuffer::default();
-
-    let handler = Handler::with_emitter_and_flags(
-      Box::new(buffered_error.clone()),
-      HandlerFlags {
-        dont_buffer_diagnostics: true,
-        can_emit_warnings: true,
-        ..Default::default()
-      },
-    );
-
     DocParser {
       loader,
-      buffered_error,
-      source_map: Arc::new(SourceMap::default()),
-      handler,
-      comments: Comments::default(),
-      globals: Globals::new(),
+      ast_parser: AstParser::new(),
     }
   }
 
@@ -138,47 +56,19 @@ impl DocParser {
     file_name: &str,
     source_code: &str,
   ) -> Result<ModuleDoc, SwcDiagnosticBuffer> {
-    swc_common::GLOBALS.set(&self.globals, || {
-      let swc_source_file = self.source_map.new_source_file(
-        FileName::Custom(file_name.to_string()),
-        source_code.to_string(),
-      );
-
-      let buffered_err = self.buffered_error.clone();
-      let session = Session {
-        handler: &self.handler,
-      };
-
-      let mut ts_config = TsConfig::default();
-      ts_config.dynamic_import = true;
-      let syntax = Syntax::Typescript(ts_config);
-
-      let lexer = Lexer::new(
-        session,
-        syntax,
-        JscTarget::Es2019,
-        SourceFileInput::from(&*swc_source_file),
-        Some(&self.comments),
-      );
-
-      let mut parser = Parser::new_from(session, lexer);
-
-      let module =
-        parser
-          .parse_module()
-          .map_err(move |mut err: DiagnosticBuilder| {
-            err.cancel();
-            SwcDiagnosticBuffer::from(buffered_err)
-          })?;
-
-      let doc_entries = self.get_doc_nodes_for_module_body(module.body.clone());
-      let reexports = self.get_reexports_for_module_body(module.body);
-      let module_doc = ModuleDoc {
-        exports: doc_entries,
-        reexports,
-      };
-      Ok(module_doc)
-    })
+    self
+      .ast_parser
+      .parse_module(file_name, source_code, |parse_result| {
+        let module = parse_result?;
+        let doc_entries =
+          self.get_doc_nodes_for_module_body(module.body.clone());
+        let reexports = self.get_reexports_for_module_body(module.body);
+        let module_doc = ModuleDoc {
+          exports: doc_entries,
+          reexports,
+        };
+        Ok(module_doc)
+      })
   }
 
   pub async fn parse(&self, file_name: &str) -> Result<Vec<DocNode>, ErrBox> {
@@ -323,7 +213,7 @@ impl DocParser {
 
   fn details_for_span(&self, span: Span) -> (Option<String>, Location) {
     let js_doc = self.js_doc_for_span(span);
-    let location = self.source_map.lookup_char_pos(span.lo()).into();
+    let location = self.ast_parser.get_span_location(span).into();
     (js_doc, location)
   }
 
@@ -567,13 +457,13 @@ impl DocParser {
   }
 
   pub fn js_doc_for_span(&self, span: Span) -> Option<String> {
-    let comments = self.comments.take_leading_comments(span.lo())?;
+    let comments = self.ast_parser.get_span_comments(span);
     let js_doc_comment = comments.iter().find(|comment| {
       comment.kind == CommentKind::Block && comment.text.starts_with('*')
     })?;
 
     let mut margin_pat = String::from("");
-    if let Some(margin) = self.source_map.span_to_margin(span) {
+    if let Some(margin) = self.ast_parser.source_map.span_to_margin(span) {
       for _ in 0..margin {
         margin_pat.push(' ');
       }

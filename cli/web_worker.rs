@@ -263,7 +263,7 @@ mod tests {
       false,
     );
     worker
-      .execute("bootstrapWorkerRuntime(\"TEST\", false)")
+      .execute("bootstrap.workerRuntime(\"TEST\", false)")
       .unwrap();
     worker
   }

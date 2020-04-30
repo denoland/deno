@@ -114,8 +114,8 @@ pub fn get_doc_for_ts_interface_decl(
           name,
           js_doc: method_js_doc,
           location: doc_parser
-            .source_map
-            .lookup_char_pos(ts_method_sig.span.lo())
+            .ast_parser
+            .get_span_location(ts_method_sig.span)
             .into(),
           optional: ts_method_sig.optional,
           params,
@@ -151,8 +151,8 @@ pub fn get_doc_for_ts_interface_decl(
           name,
           js_doc: prop_js_doc,
           location: doc_parser
-            .source_map
-            .lookup_char_pos(ts_prop_sig.span.lo())
+            .ast_parser
+            .get_span_location(ts_prop_sig.span)
             .into(),
           params,
           ts_type,
@@ -183,8 +183,8 @@ pub fn get_doc_for_ts_interface_decl(
         let call_sig_def = InterfaceCallSignatureDef {
           js_doc: call_sig_js_doc,
           location: doc_parser
-            .source_map
-            .lookup_char_pos(ts_call_sig.span.lo())
+            .ast_parser
+            .get_span_location(ts_call_sig.span)
             .into(),
           params,
           ts_type,

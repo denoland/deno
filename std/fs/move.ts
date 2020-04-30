@@ -21,7 +21,9 @@ export async function move(
   }
 
   if (overwrite) {
-    await Deno.remove(dest, { recursive: true });
+    if (await exists(dest)) {
+      await Deno.remove(dest, { recursive: true });
+    }
     await Deno.rename(src, dest);
   } else {
     if (await exists(dest)) {
@@ -48,7 +50,9 @@ export function moveSync(
   }
 
   if (overwrite) {
-    Deno.removeSync(dest, { recursive: true });
+    if (existsSync(dest)) {
+      Deno.removeSync(dest, { recursive: true });
+    }
     Deno.renameSync(src, dest);
   } else {
     if (existsSync(dest)) {

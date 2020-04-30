@@ -2,7 +2,7 @@
 import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
-Deno.test(function longOpts(): void {
+Deno.test("longOpts", function (): void {
   assertEquals(parse(["--bool"]), { bool: true, _: [] });
   assertEquals(parse(["--pow", "xixxle"]), { pow: "xixxle", _: [] });
   assertEquals(parse(["--pow=xixxle"]), { pow: "xixxle", _: [] });

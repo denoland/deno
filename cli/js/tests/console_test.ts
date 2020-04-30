@@ -5,17 +5,15 @@ import { assert, assertEquals, unitTest } from "./test_util.ts";
 // in order to "trick" TypeScript.
 const {
   inspect,
-  writeSync,
-  stdout,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } = Deno as any;
 
-const customInspect = Deno.symbols.customInspect;
+const customInspect = Deno.customInspect;
 const {
   Console,
   stringifyArgs,
   // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
-} = Deno[Deno.symbols.internal];
+} = Deno[Deno.internal];
 
 function stringify(...args: unknown[]): string {
   return stringifyArgs(args).replace(/\n$/, "");
@@ -631,7 +629,7 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
   assertEquals(stringify(new B({ a: "a" })), "a");
   assertEquals(
     stringify(B.prototype),
-    "{ Symbol(Deno.customInspect): [Function: [Deno.customInspect]] }"
+    "{ Symbol(Deno.symbols.customInspect): [Function: [Deno.symbols.customInspect]] }"
   );
 });
 
@@ -744,21 +742,10 @@ unitTest(function consoleTestError(): void {
 });
 
 unitTest(function consoleTestClear(): void {
-  const stdoutWriteSync = stdout.writeSync;
-  const uint8 = new TextEncoder().encode("\x1b[1;1H" + "\x1b[0J");
-  let buffer = new Uint8Array(0);
-
-  stdout.writeSync = (u8: Uint8Array): Promise<number> => {
-    const tmp = new Uint8Array(buffer.length + u8.length);
-    tmp.set(buffer, 0);
-    tmp.set(u8, buffer.length);
-    buffer = tmp;
-
-    return writeSync(stdout.rid, u8);
-  };
-  console.clear();
-  stdout.writeSync = stdoutWriteSync;
-  assertEquals(buffer, uint8);
+  mockConsole((console, out) => {
+    console.clear();
+    assertEquals(out.toString(), "\x1b[1;1H" + "\x1b[0J");
+  });
 });
 
 // Test bound this issue
@@ -1077,6 +1064,15 @@ unitTest(function consoleLogShouldNotThrowError(): void {
   mockConsole((console, out): void => {
     console.log(new Error("foo"));
     assertEquals(out.toString().includes("Uncaught"), false);
+  });
+});
+
+// console.log(Invalid Date) test
+unitTest(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed(): void {
+  mockConsole((console, out) => {
+    const invalidDate = new Date("test");
+    console.log(invalidDate);
+    assertEquals(out.toString(), "Invalid Date\n");
   });
 });
 

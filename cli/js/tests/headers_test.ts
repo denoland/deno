@@ -8,7 +8,7 @@ import {
 const {
   stringifyArgs,
   // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
-} = Deno[Deno.symbols.internal];
+} = Deno[Deno.internal];
 
 // Logic heavily copied from web-platform-tests, make
 // sure pass mostly header basic test

@@ -540,6 +540,7 @@ fn bundle_import_map() {
     .arg("bundle")
     .arg("--importmap")
     .arg(import_map_path)
+    .arg("--unstable")
     .arg(import)
     .arg(&bundle)
     .spawn()
@@ -986,7 +987,7 @@ itest!(workers {
 });
 
 itest!(compiler_api {
-  args: "test --reload compiler_api_test.ts",
+  args: "test --unstable --reload compiler_api_test.ts",
   output: "compiler_api_test.out",
 });
 
@@ -1014,8 +1015,15 @@ itest!(_030_eval_ts {
 
 itest!(_033_import_map {
   args:
-    "run --reload --importmap=importmaps/import_map.json importmaps/test.ts",
+    "run --reload --importmap=importmaps/import_map.json --unstable importmaps/test.ts",
   output: "033_import_map.out",
+});
+
+itest!(import_map_no_unstable {
+  args:
+    "run --reload --importmap=importmaps/import_map.json importmaps/test.ts",
+  output: "import_map_no_unstable.out",
+  exit_code: 70,
 });
 
 itest!(_034_onload {
@@ -1035,7 +1043,7 @@ itest_ignore!(_035_cached_only_flag {
 
 itest!(_036_import_map_fetch {
   args:
-    "cache --reload --importmap=importmaps/import_map.json importmaps/test.ts",
+    "cache --reload --importmap=importmaps/import_map.json --unstable importmaps/test.ts",
   output: "036_import_map_fetch.out",
 });
 
@@ -1341,7 +1349,6 @@ itest!(error_013_missing_script {
 itest!(error_014_catch_dynamic_import_error {
   args: "run  --reload --allow-read error_014_catch_dynamic_import_error.js",
   output: "error_014_catch_dynamic_import_error.js.out",
-  exit_code: 1,
 });
 
 itest!(error_015_dynamic_import_permissions {
@@ -1468,12 +1475,12 @@ itest!(import_meta {
 });
 
 itest!(lib_ref {
-  args: "run --reload lib_ref.ts",
+  args: "run --unstable --reload lib_ref.ts",
   output: "lib_ref.ts.out",
 });
 
 itest!(lib_runtime_api {
-  args: "run --reload lib_runtime_api.ts",
+  args: "run --unstable --reload lib_runtime_api.ts",
   output: "lib_runtime_api.ts.out",
 });
 
@@ -1566,6 +1573,13 @@ itest!(top_level_for_await {
 itest!(top_level_for_await_ts {
   args: "top_level_for_await.ts",
   output: "top_level_for_await.out",
+});
+
+itest!(unstable {
+  args: "run unstable.js",
+  check_stderr: true,
+  exit_code: 70,
+  output: "unstable.out",
 });
 
 itest!(_053_import_compression {

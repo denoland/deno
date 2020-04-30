@@ -19,20 +19,19 @@ import {
   eventTargetProperties,
   setEventTargetData,
 } from "./globals.ts";
-import { internalObject } from "./internals.ts";
+import { internalObject, internalSymbol } from "./internals.ts";
 import { setSignals } from "./signals.ts";
 import { replLoop } from "./repl.ts";
 import { LocationImpl } from "./web/location.ts";
 import { setTimeout } from "./web/timers.ts";
 import * as runtime from "./runtime.ts";
-import { symbols } from "./symbols.ts";
 import { log, immutableDefine } from "./util.ts";
 
 // TODO: factor out `Deno` global assignment to separate function
 // Add internal object to Deno object.
 // This is not exposed as part of the Deno types.
 // @ts-ignore
-Deno[symbols.internal] = internalObject;
+Deno[internalSymbol] = internalObject;
 
 let windowIsClosing = false;
 
@@ -72,6 +71,9 @@ export function bootstrapMainRuntime(): void {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
   }
+  // Remove bootstrapping methods from global scope
+  // @ts-ignore
+  globalThis.bootstrap = undefined;
   log("bootstrapMainRuntime");
   hasBootstrapped = true;
   Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);

@@ -17,14 +17,6 @@ and limitations under the License.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-type BodyInit =
-  | Blob
-  | BufferSource
-  | FormData
-  | URLSearchParams
-  | ReadableStream
-  | string;
-
 export type RequestInfo = Request | string;
 
 export interface ProgressEventInit extends EventInit {
@@ -261,82 +253,6 @@ export interface Body {
   text(): Promise<string>;
 }
 
-export interface ReadableStreamReadDoneResult<T> {
-  done: true;
-  value?: T;
-}
-
-export interface ReadableStreamReadValueResult<T> {
-  done: false;
-  value: T;
-}
-
-export type ReadableStreamReadResult<T> =
-  | ReadableStreamReadValueResult<T>
-  | ReadableStreamReadDoneResult<T>;
-
-export interface ReadableStreamDefaultReader<R = any> {
-  readonly closed: Promise<void>;
-  cancel(reason?: any): Promise<void>;
-  read(): Promise<ReadableStreamReadResult<R>>;
-  releaseLock(): void;
-}
-
-export interface PipeOptions {
-  preventAbort?: boolean;
-  preventCancel?: boolean;
-  preventClose?: boolean;
-  signal?: AbortSignal;
-}
-
-export interface UnderlyingSource<R = any> {
-  cancel?: ReadableStreamErrorCallback;
-  pull?: ReadableStreamDefaultControllerCallback<R>;
-  start?: ReadableStreamDefaultControllerCallback<R>;
-  type?: undefined;
-}
-export interface ReadableStreamErrorCallback {
-  (reason: any): void | PromiseLike<void>;
-}
-
-export interface ReadableStreamDefaultControllerCallback<R> {
-  (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
-}
-
-export interface ReadableStreamConstructor {
-  new <R = any>(source?: UnderlyingSource<R>): ReadableStream<R>;
-}
-
-export interface ReadableStream<R = any> {
-  readonly locked: boolean;
-  cancel(reason?: any): Promise<void>;
-  getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
-  getReader(): ReadableStreamDefaultReader<R>;
-  /* disabled for now
-  pipeThrough<T>(
-    {
-      writable,
-      readable
-    }: {
-      writable: WritableStream<R>;
-      readable: ReadableStream<T>;
-    },
-    options?: PipeOptions
-  ): ReadableStream<T>;
-  pipeTo(dest: WritableStream<R>, options?: PipeOptions): Promise<void>;
-  */
-  tee(): [ReadableStream<R>, ReadableStream<R>];
-}
-
-export interface ReadableStreamBYOBReader {
-  readonly closed: Promise<void>;
-  cancel(reason?: any): Promise<void>;
-  read<T extends ArrayBufferView>(
-    view: T
-  ): Promise<ReadableStreamReadResult<T>>;
-  releaseLock(): void;
-}
-
 export interface WritableStream<W = any> {
   readonly locked: boolean;
   abort(reason?: any): Promise<void>;
@@ -351,69 +267,6 @@ export interface WritableStreamDefaultWriter<W = any> {
   close(): Promise<void>;
   releaseLock(): void;
   write(chunk: W): Promise<void>;
-}
-
-export interface UnderlyingSource<R = any> {
-  cancel?: ReadableStreamErrorCallback;
-  pull?: ReadableStreamDefaultControllerCallback<R>;
-  start?: ReadableStreamDefaultControllerCallback<R>;
-  type?: undefined;
-}
-
-export interface UnderlyingByteSource {
-  autoAllocateChunkSize?: number;
-  cancel?: ReadableStreamErrorCallback;
-  pull?: ReadableByteStreamControllerCallback;
-  start?: ReadableByteStreamControllerCallback;
-  type: "bytes";
-}
-
-export interface ReadableStreamReader<R = any> {
-  cancel(reason: any): Promise<void>;
-  read(): Promise<ReadableStreamReadResult<R>>;
-  releaseLock(): void;
-}
-
-export interface ReadableStreamErrorCallback {
-  (reason: any): void | PromiseLike<void>;
-}
-
-export interface ReadableByteStreamControllerCallback {
-  (controller: ReadableByteStreamController): void | PromiseLike<void>;
-}
-
-export interface ReadableStreamDefaultControllerCallback<R> {
-  (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
-}
-
-export interface ReadableStreamDefaultController<R = any> {
-  readonly desiredSize: number | null;
-  close(): void;
-  enqueue(chunk: R): void;
-  error(error?: any): void;
-}
-
-export interface ReadableByteStreamController {
-  readonly byobRequest: ReadableStreamBYOBRequest | undefined;
-  readonly desiredSize: number | null;
-  close(): void;
-  enqueue(chunk: ArrayBufferView): void;
-  error(error?: any): void;
-}
-
-export interface ReadableStreamBYOBRequest {
-  readonly view: ArrayBufferView;
-  respond(bytesWritten: number): void;
-  respondWithNewView(view: ArrayBufferView): void;
-}
-
-export interface QueuingStrategy<T = any> {
-  highWaterMark?: number;
-  size?: QueuingStrategySizeCallback<T>;
-}
-
-export interface QueuingStrategySizeCallback<T = any> {
-  (chunk: T): number;
 }
 
 export interface RequestInit {

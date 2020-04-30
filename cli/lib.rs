@@ -53,6 +53,7 @@ pub mod signal;
 pub mod source_maps;
 mod startup_data;
 pub mod state;
+mod swc_util;
 mod test_runner;
 pub mod test_util;
 mod tokio_util;
@@ -154,7 +155,7 @@ fn create_main_worker(
     t.add("stderr", Box::new(stderr));
   }
 
-  worker.execute("bootstrapMainRuntime()")?;
+  worker.execute("bootstrap.mainRuntime()")?;
   Ok(worker)
 }
 
@@ -481,6 +482,7 @@ async fn test_command(
   flags: Flags,
   include: Option<Vec<String>>,
   fail_fast: bool,
+  quiet: bool,
   allow_none: bool,
   filter: Option<String>,
 ) -> Result<(), ErrBox> {
@@ -501,7 +503,7 @@ async fn test_command(
   let test_file_url =
     Url::from_file_path(&test_file_path).expect("Should be valid file url");
   let test_file =
-    test_runner::render_test_file(test_modules, fail_fast, filter);
+    test_runner::render_test_file(test_modules, fail_fast, quiet, filter);
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
   let mut worker =
@@ -567,7 +569,7 @@ pub fn main() {
       cache_command(flags, files).boxed_local()
     }
     DenoSubcommand::Fmt { check, files } => {
-      async move { fmt::format(files, check) }.boxed_local()
+      fmt::format(files, check).boxed_local()
     }
     DenoSubcommand::Info { file } => info_command(flags, file).boxed_local(),
     DenoSubcommand::Install {
@@ -582,12 +584,12 @@ pub fn main() {
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
       fail_fast,
+      quiet,
       include,
       allow_none,
       filter,
-    } => {
-      test_command(flags, include, fail_fast, allow_none, filter).boxed_local()
-    }
+    } => test_command(flags, include, fail_fast, quiet, allow_none, filter)
+      .boxed_local(),
     DenoSubcommand::Completions { buf } => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);

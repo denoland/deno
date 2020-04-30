@@ -1,6 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::op_error::OpError;
-use deno_core::*;
+use deno_core::Buf;
+use deno_core::CoreIsolate;
+use deno_core::Op;
+use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 pub use serde_derive::Deserialize;
 use serde_json::json;
@@ -43,15 +46,12 @@ struct AsyncArgs {
 
 pub fn json_op<D>(
   d: D,
-) -> impl Fn(&mut deno_core::Isolate, &[u8], Option<ZeroCopyBuf>) -> Op
+) -> impl Fn(&mut CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
 where
-  D: Fn(
-    &mut deno_core::Isolate,
-    Value,
-    Option<ZeroCopyBuf>,
-  ) -> Result<JsonOp, OpError>,
+  D:
+    Fn(&mut CoreIsolate, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
 {
-  move |isolate: &mut deno_core::Isolate,
+  move |isolate: &mut CoreIsolate,
         control: &[u8],
         zero_copy: Option<ZeroCopyBuf>| {
     let async_args: AsyncArgs = match serde_json::from_slice(control) {

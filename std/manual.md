@@ -470,8 +470,8 @@ The above for-await loop exits after 5 seconds when sig.dispose() is called.
 To poll for file system events:
 
 ```ts
-const iter = Deno.fsEvents("/");
-for await (const event of iter) {
+const watcher = Deno.watchFs("/");
+for await (const event of watcher) {
   console.log(">>>> event", event);
   // { kind: "create", paths: [ "/foo.txt" ] }
 }
@@ -491,11 +491,11 @@ uses a URL to import an assertion library:
 ```ts
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 
-Deno.test(function t1() {
+Deno.test("t1", function () {
   assertEquals("hello", "hello");
 });
 
-Deno.test(function t2() {
+Deno.test("t2", function () {
   assertEquals("world", "world");
 });
 ```

@@ -308,11 +308,11 @@ impl DenoInspector {
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
-    isolate: &mut deno_core::Isolate,
+    isolate: &mut deno_core::CoreIsolate,
     host: SocketAddr,
     wait_for_debugger: bool,
   ) -> Box<Self> {
-    let deno_core::Isolate {
+    let deno_core::CoreIsolate {
       v8_isolate,
       global_context,
       ..

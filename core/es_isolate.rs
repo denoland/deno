@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// This module provides higher level implementation of Isolate that
+// This module provides higher level implementation of CoreIsolate that
 // supports asynchronous loading and executution of ES Modules.
 // The isolate.rs should never depend on this module.
 
@@ -18,6 +18,7 @@ use futures::task::AtomicWaker;
 use futures::Future;
 use libc::c_void;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
@@ -27,7 +28,7 @@ use std::task::Poll;
 
 use crate::isolate::attach_handle_to_error;
 use crate::isolate::exception_to_err_result;
-use crate::isolate::Isolate;
+use crate::isolate::CoreIsolate;
 use crate::isolate::StartupData;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::LoadState;
@@ -37,28 +38,27 @@ use crate::modules::Modules;
 use crate::modules::RecursiveModuleLoad;
 
 pub type ModuleId = i32;
-pub type DynImportId = i32;
+pub type ModuleLoadId = i32;
 
-/// More specialized version of `Isolate` that provides loading
+/// More specialized version of `CoreIsolate` that provides loading
 /// and execution of ES Modules.
 ///
 /// Creating `EsIsolate` requires to pass `loader` argument
 /// that implements `ModuleLoader` trait - that way actual resolution and
 /// loading of modules can be customized by the implementor.
 pub struct EsIsolate {
-  core_isolate: Box<Isolate>,
+  core_isolate: Box<CoreIsolate>,
   loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
-  pub(crate) next_dyn_import_id: DynImportId,
   pub(crate) dyn_import_map:
-    HashMap<DynImportId, v8::Global<v8::PromiseResolver>>,
+    HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
 
   pending_dyn_imports: FuturesUnordered<StreamFuture<RecursiveModuleLoad>>,
   waker: AtomicWaker,
 }
 
 impl Deref for EsIsolate {
-  type Target = Isolate;
+  type Target = CoreIsolate;
 
   fn deref(&self) -> &Self::Target {
     &self.core_isolate
@@ -77,7 +77,7 @@ impl EsIsolate {
     startup_data: StartupData,
     will_snapshot: bool,
   ) -> Box<Self> {
-    let mut core_isolate = Isolate::new(startup_data, will_snapshot);
+    let mut core_isolate = CoreIsolate::new(startup_data, will_snapshot);
     {
       let v8_isolate = core_isolate.v8_isolate.as_mut().unwrap();
       v8_isolate.set_host_initialize_import_meta_object_callback(
@@ -92,7 +92,6 @@ impl EsIsolate {
       modules: Modules::new(),
       loader,
       core_isolate,
-      next_dyn_import_id: 0,
       dyn_import_map: HashMap::new(),
       pending_dyn_imports: FuturesUnordered::new(),
       waker: AtomicWaker::new(),
@@ -174,7 +173,7 @@ impl EsIsolate {
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is JSError, however it may be a
-  /// different type if Isolate::set_js_error_create_fn() has been used.
+  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
   fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     let v8_isolate = self.core_isolate.v8_isolate.as_mut().unwrap();
     let js_error_create_fn = &*self.core_isolate.js_error_create_fn;
@@ -219,7 +218,7 @@ impl EsIsolate {
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is JSError, however it may be a
-  /// different type if Isolate::set_js_error_create_fn() has been used.
+  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
   pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     let core_isolate = &mut self.core_isolate;
     let v8_isolate = core_isolate.v8_isolate.as_mut().unwrap();
@@ -233,18 +232,43 @@ impl EsIsolate {
     let scope = cs.enter();
 
     let info = self.modules.get_info(id).expect("ModuleInfo not found");
-    let mut module = info.handle.get(scope).expect("Empty module handle");
+    let module = info.handle.get(scope).expect("Empty module handle");
     let mut status = module.get_status();
-
     if status == v8::ModuleStatus::Instantiated {
-      let ok = module.evaluate(scope, context).is_some();
+      // IMPORTANT: Top-level-await is enabled, which means that return value
+      // of module evaluation is a promise.
+      //
+      // Because that promise is created internally by V8, when error occurs during
+      // module evaluation the promise is rejected, and since the promise has no rejection
+      // handler it will result in call to `bindings::promise_reject_callback` adding
+      // the promise to pending promise rejection table - meaning Isolate will return
+      // error on next poll().
+      //
+      // This situation is not desirable as we want to manually return error at the
+      // end of this function to handle it further. It means we need to manually
+      // remove this promise from pending promise rejection table.
+      //
+      // For more details see:
+      // https://github.com/denoland/deno/issues/4908
+      // https://v8.dev/features/top-level-await#module-execution-order
+      let maybe_value = module.evaluate(scope, context);
+
       // Update status after evaluating.
       status = module.get_status();
-      if ok {
+
+      if let Some(value) = maybe_value {
         assert!(
           status == v8::ModuleStatus::Evaluated
             || status == v8::ModuleStatus::Errored
         );
+        let promise = v8::Local::<v8::Promise>::try_from(value)
+          .expect("Expected to get promise as module evaluation result");
+        let promise_id = promise.get_identity_hash();
+        if let Some(mut handle) =
+          core_isolate.pending_promise_exceptions.remove(&promise_id)
+        {
+          handle.reset(scope);
+        }
       } else {
         assert!(status == v8::ModuleStatus::Errored);
       }
@@ -278,25 +302,25 @@ impl EsIsolate {
   // Called by V8 during `Isolate::mod_instantiate`.
   pub fn dyn_import_cb(
     &mut self,
+    resolver_handle: v8::Global<v8::PromiseResolver>,
     specifier: &str,
     referrer: &str,
-    id: DynImportId,
   ) {
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
     let load = RecursiveModuleLoad::dynamic_import(
-      id,
       specifier,
       referrer,
       self.loader.clone(),
     );
+    self.dyn_import_map.insert(load.id, resolver_handle);
     self.waker.wake();
     self.pending_dyn_imports.push(load.into_future());
   }
 
   fn dyn_import_error(
     &mut self,
-    id: DynImportId,
+    id: ModuleLoadId,
     err: ErrBox,
   ) -> Result<(), ErrBox> {
     let core_isolate = &mut self.core_isolate;
@@ -312,7 +336,7 @@ impl EsIsolate {
       .dyn_import_map
       .remove(&id)
       .expect("Invalid dyn import id");
-    let mut resolver = resolver_handle.get(scope).unwrap();
+    let resolver = resolver_handle.get(scope).unwrap();
     resolver_handle.reset(scope);
 
     let exception = err
@@ -331,7 +355,7 @@ impl EsIsolate {
 
   fn dyn_import_done(
     &mut self,
-    id: DynImportId,
+    id: ModuleLoadId,
     mod_id: ModuleId,
   ) -> Result<(), ErrBox> {
     debug!("dyn_import_done {} {:?}", id, mod_id);
@@ -348,7 +372,7 @@ impl EsIsolate {
       .dyn_import_map
       .remove(&id)
       .expect("Invalid dyn import id");
-    let mut resolver = resolver_handle.get(scope).unwrap();
+    let resolver = resolver_handle.get(scope).unwrap();
     resolver_handle.reset(scope);
     let info = self
       .modules
@@ -373,7 +397,7 @@ impl EsIsolate {
         Poll::Ready(Some(load_stream_poll)) => {
           let maybe_result = load_stream_poll.0;
           let mut load = load_stream_poll.1;
-          let dyn_import_id = load.dyn_import_id.unwrap();
+          let dyn_import_id = load.id;
 
           if let Some(load_stream_result) = maybe_result {
             match load_stream_result {
@@ -580,7 +604,7 @@ pub mod tests {
 
     let mut isolate = EsIsolate::new(loader, StartupData::None, false);
 
-    let dispatcher = move |_isolate: &mut Isolate,
+    let dispatcher = move |_isolate: &mut CoreIsolate,
                            control: &[u8],
                            _zero_copy: Option<ZeroCopyBuf>|
           -> Op {

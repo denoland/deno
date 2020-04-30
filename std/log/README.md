@@ -55,7 +55,7 @@ logger.error("buzz"); // log to `console`
 // if you try to use a logger that hasn't been configured
 // you're good to go, it gets created automatically with level set to 0
 // so no message is logged
-unknownLogger = log.getLogger("mystery");
+const unknownLogger = log.getLogger("mystery");
 unknownLogger.info("foobar"); // no-op
 ```
 

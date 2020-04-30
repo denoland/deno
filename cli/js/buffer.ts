@@ -4,9 +4,8 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 
-import { Reader, Writer, EOF, SyncReader, SyncWriter } from "./io.ts";
+import { Reader, Writer, ReaderSync, WriterSync } from "./io.ts";
 import { assert } from "./util.ts";
-import { TextDecoder } from "./web/text_encoding.ts";
 
 // MIN_READ is the minimum ArrayBuffer size passed to a read call by
 // buffer.ReadFrom. As long as the Buffer has at least MIN_READ bytes beyond
@@ -27,7 +26,7 @@ function copyBytes(dst: Uint8Array, src: Uint8Array, off = 0): number {
   return src.byteLength;
 }
 
-export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
+export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
   #buf: Uint8Array; // contents are the bytes buf[off : len(buf)]
   #off = 0; // read at buf[off], write at buf[buf.byteLength]
 
@@ -42,11 +41,6 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
 
   bytes(): Uint8Array {
     return this.#buf.subarray(this.#off);
-  }
-
-  toString(): string {
-    const decoder = new TextDecoder();
-    return decoder.decode(this.#buf.subarray(this.#off));
   }
 
   empty(): boolean {
@@ -91,7 +85,7 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
     this.#buf = new Uint8Array(this.#buf.buffer, 0, len);
   };
 
-  readSync(p: Uint8Array): number | EOF {
+  readSync(p: Uint8Array): number | null {
     if (this.empty()) {
       // Buffer is empty, reset to recover space.
       this.reset();
@@ -99,14 +93,14 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
         // this edge case is tested in 'bufferReadEmptyAtEOF' test
         return 0;
       }
-      return EOF;
+      return null;
     }
     const nread = copyBytes(p, this.#buf.subarray(this.#off));
     this.#off += nread;
     return nread;
   }
 
-  read(p: Uint8Array): Promise<number | EOF> {
+  read(p: Uint8Array): Promise<number | null> {
     const rr = this.readSync(p);
     return Promise.resolve(rr);
   }
@@ -169,7 +163,7 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
         this.#reslice(i);
         const fub = new Uint8Array(this.#buf.buffer, i);
         const nread = await r.read(fub);
-        if (nread === EOF) {
+        if (nread === null) {
           return n;
         }
         this.#reslice(i + nread);
@@ -180,7 +174,7 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
     }
   }
 
-  readFromSync(r: SyncReader): number {
+  readFromSync(r: ReaderSync): number {
     let n = 0;
     while (true) {
       try {
@@ -188,7 +182,7 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
         this.#reslice(i);
         const fub = new Uint8Array(this.#buf.buffer, i);
         const nread = r.readSync(fub);
-        if (nread === EOF) {
+        if (nread === null) {
           return n;
         }
         this.#reslice(i + nread);
@@ -206,7 +200,7 @@ export async function readAll(r: Reader): Promise<Uint8Array> {
   return buf.bytes();
 }
 
-export function readAllSync(r: SyncReader): Uint8Array {
+export function readAllSync(r: ReaderSync): Uint8Array {
   const buf = new Buffer();
   buf.readFromSync(r);
   return buf.bytes();
@@ -219,7 +213,7 @@ export async function writeAll(w: Writer, arr: Uint8Array): Promise<void> {
   }
 }
 
-export function writeAllSync(w: SyncWriter, arr: Uint8Array): void {
+export function writeAllSync(w: WriterSync, arr: Uint8Array): void {
   let nwritten = 0;
   while (nwritten < arr.length) {
     nwritten += w.writeSync(arr.subarray(nwritten));

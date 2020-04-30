@@ -4,10 +4,11 @@ use crate::compilers::runtime_compile;
 use crate::compilers::runtime_transpile;
 use crate::op_error::OpError;
 use crate::state::State;
-use deno_core::*;
+use deno_core::CoreIsolate;
+use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
 
-pub fn init(i: &mut Isolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_compile", s.stateful_json_op(op_compile));
   i.register_op("op_transpile", s.stateful_json_op(op_transpile));
 }
@@ -26,6 +27,7 @@ fn op_compile(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.compile");
   let args: CompileArgs = serde_json::from_value(args)?;
   Ok(JsonOp::Async(runtime_compile(
     state.borrow().global_state.clone(),
@@ -47,6 +49,7 @@ fn op_transpile(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;
   Ok(JsonOp::Async(runtime_transpile(
     state.borrow().global_state.clone(),

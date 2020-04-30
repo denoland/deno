@@ -5,7 +5,7 @@ import { signal, onSignal } from "./mod.ts";
 
 test({
   name: "signal() throws when called with empty signals",
-  ignore: Deno.build.os === "win",
+  ignore: Deno.build.os === "windows",
   fn() {
     assertThrows(
       () => {
@@ -20,7 +20,7 @@ test({
 
 test({
   name: "signal() iterates for multiple signals",
-  ignore: Deno.build.os === "win",
+  ignore: Deno.build.os === "windows",
   fn: async (): Promise<void> => {
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);
@@ -61,7 +61,7 @@ test({
 
 test({
   name: "onSignal() registers and disposes of event handler",
-  ignore: Deno.build.os === "win",
+  ignore: Deno.build.os === "windows",
   async fn() {
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);

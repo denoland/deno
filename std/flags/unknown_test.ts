@@ -2,7 +2,7 @@
 import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
-Deno.test(function booleanAndAliasIsNotUnknown(): void {
+Deno.test("booleanAndAliasIsNotUnknown", function (): void {
   const unknown: unknown[] = [];
   function unknownFn(arg: string, k?: string, v?: unknown): boolean {
     unknown.push({ arg, k, v });
@@ -24,28 +24,31 @@ Deno.test(function booleanAndAliasIsNotUnknown(): void {
   ]);
 });
 
-Deno.test(function flagBooleanTrueAnyDoubleHyphenArgumentIsNotUnknown(): void {
-  const unknown: unknown[] = [];
-  function unknownFn(arg: string, k?: string, v?: unknown): boolean {
-    unknown.push({ arg, k, v });
-    return false;
+Deno.test(
+  "flagBooleanTrueAnyDoubleHyphenArgumentIsNotUnknown",
+  function (): void {
+    const unknown: unknown[] = [];
+    function unknownFn(arg: string, k?: string, v?: unknown): boolean {
+      unknown.push({ arg, k, v });
+      return false;
+    }
+    const argv = parse(["--honk", "--tacos=good", "cow", "-p", "55"], {
+      boolean: true,
+      unknown: unknownFn,
+    });
+    assertEquals(unknown, [
+      { arg: "--tacos=good", k: "tacos", v: "good" },
+      { arg: "cow", k: undefined, v: undefined },
+      { arg: "-p", k: "p", v: "55" },
+    ]);
+    assertEquals(argv, {
+      honk: true,
+      _: [],
+    });
   }
-  const argv = parse(["--honk", "--tacos=good", "cow", "-p", "55"], {
-    boolean: true,
-    unknown: unknownFn,
-  });
-  assertEquals(unknown, [
-    { arg: "--tacos=good", k: "tacos", v: "good" },
-    { arg: "cow", k: undefined, v: undefined },
-    { arg: "-p", k: "p", v: "55" },
-  ]);
-  assertEquals(argv, {
-    honk: true,
-    _: [],
-  });
-});
+);
 
-Deno.test(function stringAndAliasIsNotUnkown(): void {
+Deno.test("stringAndAliasIsNotUnkown", function (): void {
   const unknown: unknown[] = [];
   function unknownFn(arg: string, k?: string, v?: unknown): boolean {
     unknown.push({ arg, k, v });
@@ -67,7 +70,7 @@ Deno.test(function stringAndAliasIsNotUnkown(): void {
   ]);
 });
 
-Deno.test(function defaultAndAliasIsNotUnknown(): void {
+Deno.test("defaultAndAliasIsNotUnknown", function (): void {
   const unknown: unknown[] = [];
   function unknownFn(arg: string, k?: string, v?: unknown): boolean {
     unknown.push({ arg, k, v });
@@ -86,7 +89,7 @@ Deno.test(function defaultAndAliasIsNotUnknown(): void {
   assertEquals(unknown, []);
 });
 
-Deno.test(function valueFollowingDoubleHyphenIsNotUnknown(): void {
+Deno.test("valueFollowingDoubleHyphenIsNotUnknown", function (): void {
   const unknown: unknown[] = [];
   function unknownFn(arg: string, k?: string, v?: unknown): boolean {
     unknown.push({ arg, k, v });

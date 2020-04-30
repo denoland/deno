@@ -27,22 +27,13 @@ function getEnv(key: string): string | undefined {
   return sendSync("op_get_env", { key })[0];
 }
 
-export function env(): { [index: string]: string };
-export function env(key: string): string | undefined;
-export function env(
-  key?: string
-): { [index: string]: string } | string | undefined {
-  if (key) {
-    return getEnv(key);
-  }
-  const env = sendSync("op_env");
-  return new Proxy(env, {
-    set(obj, prop: string, value: string): boolean {
-      setEnv(prop, value);
-      return Reflect.set(obj, prop, value);
-    },
-  });
-}
+export const env = {
+  get: getEnv,
+  toObject(): { [key: string]: string } {
+    return sendSync("op_env");
+  },
+  set: setEnv,
+};
 
 type DirKind =
   | "home"
