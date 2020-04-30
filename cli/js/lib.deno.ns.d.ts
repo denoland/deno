@@ -2884,8 +2884,6 @@ declare namespace Deno {
     windowChange: () => SignalStream;
   };
 
-  /** Symbol to access Headers' cookies iterator */
-  export const cookiesIterator: unique symbol;
   /** A symbol which can be used as a key for a custom method which will be
    * called when `Deno.inspect()` is called, or when the object is logged to
    * the console. */
