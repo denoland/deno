@@ -6,7 +6,8 @@ const { connect, run, test } = Deno;
 let server: Deno.Process;
 async function startServer(): Promise<void> {
   server = run({
-    cmd: [Deno.execPath(), "run", "-A", "http/racing_server.ts"],
+    // TODO(lucacasonato): remove unstable when stabilized
+    cmd: [Deno.execPath(), "run", "--unstable", "-A", "http/racing_server.ts"],
     stdout: "piped",
   });
   // Once racing server is ready it will write to its stdout.

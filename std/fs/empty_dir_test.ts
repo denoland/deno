@@ -203,7 +203,8 @@ for (const s of scenes) {
       );
 
       try {
-        const args = [Deno.execPath(), "run"];
+        // TODO(lucacasonato): remove unstable when stabilized
+        const args = [Deno.execPath(), "run", "--unstable"];
 
         if (s.read) {
           args.push("--allow-read");
