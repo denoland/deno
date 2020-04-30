@@ -1086,7 +1086,7 @@ declare namespace Deno {
    * Requires `allow-run` permission. */
   export function kill(pid: number, signo: number): void;
 
-    /** The name of a "powerful feature" which needs permission.
+  /** The name of a "powerful feature" which needs permission.
    *
    * See: https://w3c.github.io/permissions/#permission-registry
    *
