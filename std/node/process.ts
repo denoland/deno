@@ -37,3 +37,10 @@ export const process = {
     return [Deno.execPath(), ...Deno.args];
   },
 };
+
+Object.defineProperty(globalThis, "process", {
+  value: process,
+  enumerable: false,
+  writable: true,
+  configurable: true,
+});

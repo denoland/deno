@@ -47,6 +47,8 @@ pub struct ModuleSource {
   pub module_url_found: String,
 }
 
+pub type PrepareLoadFuture =
+  dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, ErrBox>)>;
 pub type ModuleSourceFuture = dyn Future<Output = Result<ModuleSource, ErrBox>>;
 
 pub trait ModuleLoader {
@@ -74,6 +76,24 @@ pub trait ModuleLoader {
     maybe_referrer: Option<ModuleSpecifier>,
     is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>>;
+
+  /// This hook can be used by implementors to do some preparation
+  /// work before starting loading of modules.
+  ///
+  /// For example implementor might download multiple modules in
+  /// parallel and transpile them to final JS sources before
+  /// yielding control back to Isolate.
+  ///
+  /// It's not required to implement this method.
+  fn prepare_load(
+    &self,
+    _load_id: ModuleLoadId,
+    _module_specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<String>,
+    _is_dyn_import: bool,
+  ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+    async { Ok(()) }.boxed_local()
+  }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -95,6 +115,8 @@ pub enum LoadState {
 /// that is consumed by the isolate.
 pub struct RecursiveModuleLoad {
   kind: Kind,
+  // TODO(bartlomieju): in future this value should
+  // be randomized
   pub id: ModuleLoadId,
   pub root_module_id: Option<ModuleId>,
   pub state: LoadState,
@@ -139,6 +161,41 @@ impl RecursiveModuleLoad {
       loader,
       pending: FuturesUnordered::new(),
       is_pending: HashSet::new(),
+    }
+  }
+
+  pub async fn prepare(self) -> (ModuleLoadId, Result<Self, ErrBox>) {
+    let (module_specifier, maybe_referrer) = match self.state {
+      LoadState::ResolveMain(ref specifier, _) => {
+        let spec = match self.loader.resolve(specifier, ".", true) {
+          Ok(spec) => spec,
+          Err(e) => return (self.id, Err(e)),
+        };
+        (spec, None)
+      }
+      LoadState::ResolveImport(ref specifier, ref referrer) => {
+        let spec = match self.loader.resolve(specifier, referrer, false) {
+          Ok(spec) => spec,
+          Err(e) => return (self.id, Err(e)),
+        };
+        (spec, Some(referrer.to_string()))
+      }
+      _ => unreachable!(),
+    };
+
+    let prepare_result = self
+      .loader
+      .prepare_load(
+        self.id,
+        &module_specifier,
+        maybe_referrer,
+        self.is_dynamic_import(),
+      )
+      .await;
+
+    match prepare_result {
+      Ok(()) => (self.id, Ok(self)),
+      Err(e) => (self.id, Err(e)),
     }
   }
 

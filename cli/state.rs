@@ -11,11 +11,13 @@ use crate::permissions::DenoPermissions;
 use crate::web_worker::WebWorkerHandle;
 use deno_core::Buf;
 use deno_core::ErrBox;
+use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
+use futures::Future;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde_json::Value;
@@ -28,7 +30,6 @@ use std::rc::Rc;
 use std::str;
 use std::thread::JoinHandle;
 use std::time::Instant;
-
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum DebugType {
   /// Can be debugged, will wait for debugger when --inspect-brk given.
@@ -308,6 +309,27 @@ impl ModuleLoader for State {
     };
 
     fut.boxed_local()
+  }
+
+  fn prepare_load(
+    &self,
+    _load_id: ModuleLoadId,
+    _module_specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<String>,
+    _is_dyn_import: bool,
+  ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+    // TODO(bartlomieju):
+    // 1. recursively:
+    //    a) resolve specifier
+    //    b) check permission if dynamic import
+    //    c) fetch/download source code
+    //    d) parse the source code and extract all import/exports (dependencies)
+    //    e) add discovered deps and loop algorithm until no new dependencies
+    //        are discovered
+    // 2. run through appropriate compiler giving it access only to
+    //     discovered files
+
+    async { Ok(()) }.boxed_local()
   }
 }
 
