@@ -1,8 +1,8 @@
 Object.defineProperty(globalThis, Symbol.toStringTag, {
-  value: 'global',
+  value: "global",
   writable: false,
   enumerable: false,
-  configurable: true
+  configurable: true,
 });
 
 // @ts-ignore
