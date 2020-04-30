@@ -309,6 +309,21 @@ interface QueuingStrategy<T = any> {
   size?: QueuingStrategySizeCallback<T>;
 }
 
+/** This Streams API interface provides a built-in byte length queuing strategy
+ * that can be used when constructing streams. */
+declare class CountQueuingStrategy implements QueuingStrategy {
+  constructor(options: { highWaterMark: number });
+  highWaterMark: number;
+  size(chunk: any): 1;
+}
+
+declare class ByteLengthQueuingStrategy
+  implements QueuingStrategy<ArrayBufferView> {
+  constructor(options: { highWaterMark: number });
+  highWaterMark: number;
+  size(chunk: ArrayBufferView): number;
+}
+
 /** This Streams API interface represents a readable stream of byte data. The
  * Fetch API offers a concrete instance of a ReadableStream through the body
  * property of a Response object. */
@@ -347,13 +362,58 @@ declare var ReadableStream: {
   ): ReadableStream<R>;
 };
 
-/** This Streams API interface provides a standard abstraction for writing streaming data to a destination, known as a sink. This object comes with built-in backpressure and queuing. */
-interface WritableStream<W = any> {
+interface WritableStreamDefaultControllerCloseCallback {
+  (): void | PromiseLike<void>;
+}
+
+interface WritableStreamDefaultControllerStartCallback {
+  (controller: WritableStreamDefaultController): void | PromiseLike<void>;
+}
+
+interface WritableStreamDefaultControllerWriteCallback<W> {
+  (chunk: W, controller: WritableStreamDefaultController): void | PromiseLike<
+    void
+  >;
+}
+
+interface WritableStreamErrorCallback {
+  (reason: any): void | PromiseLike<void>;
+}
+
+interface UnderlyingSink<W = any> {
+  abort?: WritableStreamErrorCallback;
+  close?: WritableStreamDefaultControllerCloseCallback;
+  start?: WritableStreamDefaultControllerStartCallback;
+  type?: undefined;
+  write?: WritableStreamDefaultControllerWriteCallback<W>;
+}
+
+/** This Streams API interface provides a standard abstraction for writing
+ * streaming data to a destination, known as a sink. This object comes with
+ * built-in backpressure and queuing. */
+declare class WritableStream<W = any> {
+  constructor(
+    underlyingSink?: UnderlyingSink<W>,
+    strategy?: QueuingStrategy<W>
+  );
   readonly locked: boolean;
   abort(reason?: any): Promise<void>;
+  close(): Promise<void>;
   getWriter(): WritableStreamDefaultWriter<W>;
 }
 
+/** This Streams API interface represents a controller allowing control of a
+ * WritableStream's state. When constructing a WritableStream, the underlying
+ * sink is given a corresponding WritableStreamDefaultController instance to
+ * manipulate. */
+interface WritableStreamDefaultController {
+  error(error?: any): void;
+}
+
+/** This Streams API interface is the object returned by
+ * WritableStream.getWriter() and once created locks the < writer to the
+ * WritableStream ensuring that no other streams can write to the underlying
+ * sink. */
 interface WritableStreamDefaultWriter<W = any> {
   readonly closed: Promise<void>;
   readonly desiredSize: number | null;

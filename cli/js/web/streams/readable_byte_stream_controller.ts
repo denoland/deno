@@ -18,11 +18,12 @@ import {
   readableStreamHasDefaultReader,
   readableStreamGetNumReadRequests,
   readableStreamCreateReadResult,
+  setFunctionName,
 } from "./internals.ts";
 import { ReadableStreamImpl } from "./readable_stream.ts";
 import * as sym from "./symbols.ts";
 import { assert } from "../../util.ts";
-import { customInspect } from "../../web/console.ts";
+import { customInspect } from "../console.ts";
 
 export class ReadableByteStreamControllerImpl
   implements ReadableByteStreamController {
@@ -136,8 +137,13 @@ export class ReadableByteStreamControllerImpl
   }
 
   [customInspect](): string {
-    return `ReadableByteStreamController { byobRequest: ${String(
+    return `${this.constructor.name} { byobRequest: ${String(
       this.byobRequest
     )}, desiredSize: ${String(this.desiredSize)} }`;
   }
 }
+
+setFunctionName(
+  ReadableByteStreamControllerImpl,
+  "ReadableByteStreamController"
+);

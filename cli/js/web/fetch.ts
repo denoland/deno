@@ -258,7 +258,7 @@ class Body
 
   pipeThrough<T>(
     _: {
-      writable: domTypes.WritableStream<Uint8Array>;
+      writable: WritableStream<Uint8Array>;
       readable: ReadableStream<T>;
     },
     _options?: PipeOptions
@@ -267,7 +267,7 @@ class Body
   }
 
   pipeTo(
-    _dest: domTypes.WritableStream<Uint8Array>,
+    _dest: WritableStream<Uint8Array>,
     _options?: PipeOptions
   ): Promise<void> {
     return notImplemented();
