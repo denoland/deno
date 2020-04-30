@@ -5,7 +5,7 @@ import { BufReader } from "../../io/bufio.ts";
 import { connectWebSocket, WebSocket } from "../../ws/mod.ts";
 import { delay } from "../../util/async.ts";
 
-const { test, build } = Deno;
+const { test } = Deno;
 
 async function startServer(): Promise<Deno.Process> {
   const server = Deno.run({
@@ -26,12 +26,8 @@ async function startServer(): Promise<Deno.Process> {
   return server;
 }
 
-// TODO: https://github.com/denoland/deno/issues/4108
-const ignore = build.os == "windows";
-
 test({
-  ignore,
-  name: "GET / should serve html",
+  name: "[examples/chat] GET / should serve html",
   async fn() {
     const server = await startServer();
     try {
@@ -49,8 +45,7 @@ test({
 });
 
 test({
-  ignore,
-  name: "GET /ws should upgrade conn to ws",
+  name: "[examples/chat] GET /ws should upgrade conn to ws",
   async fn() {
     const server = await startServer();
     let ws: WebSocket | undefined;
