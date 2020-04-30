@@ -68,7 +68,10 @@ export function equal(source: Uint8Array, match: Uint8Array): boolean {
  * @param prefix prefix array to check in source
  */
 export function hasPrefix(source: Uint8Array, prefix: Uint8Array): boolean {
-  return source.length >= prefix.length && equal(source.slice(0, prefix.length), prefix);
+  return (
+    source.length >= prefix.length &&
+    equal(source.slice(0, prefix.length), prefix)
+  );
 }
 
 /**
@@ -77,7 +80,10 @@ export function hasPrefix(source: Uint8Array, prefix: Uint8Array): boolean {
  * @param suffix suffix array to check in source
  */
 export function hasSuffix(source: Uint8Array, suffix: Uint8Array): boolean {
-  return source.length >= suffix.length && equal(source.slice(suffix.length - 1), suffix);
+  return (
+    source.length >= suffix.length &&
+    equal(source.slice(suffix.length - 1), suffix)
+  );
 }
 
 /**
