@@ -2,11 +2,11 @@ const { cwd, execPath, run } = Deno;
 import { decode } from "../encoding/utf8.ts";
 import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
 import {
-  isWindows,
   join,
   joinGlobs,
   normalize,
   relative,
+  fromFileUrl,
 } from "../path/mod.ts";
 import {
   ExpandGlobOptions,
@@ -39,13 +39,8 @@ async function expandGlobArray(
   return relativePaths;
 }
 
-function urlToFilePath(url: URL): string {
-  // Since `new URL('file:///C:/a').pathname` is `/C:/a`, remove leading slash.
-  return url.pathname.slice(url.protocol == "file:" && isWindows ? 1 : 0);
-}
-
 const EG_OPTIONS: ExpandGlobOptions = {
-  root: urlToFilePath(new URL(join("testdata", "glob"), import.meta.url)),
+  root: fromFileUrl(new URL(join("testdata", "glob"), import.meta.url)),
   includeDirs: true,
   extended: false,
   globstar: false,
