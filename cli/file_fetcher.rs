@@ -6,6 +6,7 @@ use crate::http_util::create_http_client;
 use crate::http_util::FetchOnceResult;
 use crate::msg;
 use crate::op_error::OpError;
+use crate::permissions::DenoPermissions;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
@@ -109,6 +110,7 @@ impl SourceFileFetcher {
   pub fn fetch_cached_source_file(
     &self,
     specifier: &ModuleSpecifier,
+    _permissions: DenoPermissions,
   ) -> Option<SourceFile> {
     let maybe_source_file = self.source_file_cache.get(specifier.to_string());
 
@@ -148,6 +150,7 @@ impl SourceFileFetcher {
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
+    _permissions: DenoPermissions,
   ) -> Result<SourceFile, ErrBox> {
     let module_url = specifier.as_url().to_owned();
     debug!("fetch_source_file specifier: {} ", &module_url);
@@ -930,7 +933,9 @@ mod tests {
       fetcher.http_cache.get_cache_filename(&specifier.as_url());
 
     // first download
-    let r = fetcher.fetch_source_file(&specifier, None).await;
+    let r = fetcher
+      .fetch_source_file(&specifier, None, DenoPermissions::default())
+      .await;
     assert!(r.is_ok());
 
     let headers_file_name =
@@ -946,7 +951,9 @@ mod tests {
     // `use_disk_cache` is set to false, this can be verified using source
     // header file creation timestamp (should be the same as after first
     // download)
-    let r = fetcher.fetch_source_file(&specifier, None).await;
+    let r = fetcher
+      .fetch_source_file(&specifier, None, DenoPermissions::default())
+      .await;
     assert!(r.is_ok());
 
     let result = fs::File::open(&headers_file_name);
@@ -1328,14 +1335,18 @@ mod tests {
     // Test failure case.
     let specifier =
       ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-    let r = fetcher.fetch_source_file(&specifier, None).await;
+    let r = fetcher
+      .fetch_source_file(&specifier, None, DenoPermissions::default())
+      .await;
     assert!(r.is_err());
 
     let p =
       std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("js/main.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    let r = fetcher.fetch_source_file(&specifier, None).await;
+    let r = fetcher
+      .fetch_source_file(&specifier, None, DenoPermissions::default())
+      .await;
     assert!(r.is_ok());
   }
 
@@ -1347,14 +1358,18 @@ mod tests {
     // Test failure case.
     let specifier =
       ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-    let r = fetcher.fetch_source_file(&specifier, None).await;
+    let r = fetcher
+      .fetch_source_file(&specifier, None, DenoPermissions::default())
+      .await;
     assert!(r.is_err());
 
     let p =
       std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("js/main.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    let r = fetcher.fetch_source_file(&specifier, None).await;
+    let r = fetcher
+      .fetch_source_file(&specifier, None, DenoPermissions::default())
+      .await;
     assert!(r.is_ok());
   }
 
@@ -1367,7 +1382,9 @@ mod tests {
       .join("tests/001_hello.js");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    let r = fetcher.fetch_source_file(&specifier, None).await;
+    let r = fetcher
+      .fetch_source_file(&specifier, None, DenoPermissions::default())
+      .await;
     assert!(r.is_ok());
   }
 

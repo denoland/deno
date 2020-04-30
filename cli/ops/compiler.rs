@@ -4,6 +4,7 @@ use super::dispatch_json::JsonOp;
 use super::dispatch_json::Value;
 use crate::futures::future::try_join_all;
 use crate::op_error::OpError;
+use crate::permissions::DenoPermissions;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::ModuleLoader;
@@ -69,6 +70,10 @@ fn op_fetch_source_files(
     None
   };
 
+  // TODO(bartlomieju): currently unused, but file fetcher will
+  // require them in the near future
+  let permissions = DenoPermissions::default();
+  let perms_ = permissions.clone();
   let global_state = state.borrow().global_state.clone();
   let file_fetcher = global_state.file_fetcher.clone();
   let specifiers = args.specifiers.clone();
@@ -78,6 +83,7 @@ fn op_fetch_source_files(
       .map(|specifier| {
         let file_fetcher_ = file_fetcher.clone();
         let ref_specifier_ = ref_specifier.clone();
+        let perms_ = perms_.clone();
         async move {
           let resolved_specifier = ModuleSpecifier::resolve_url(&specifier)
             .expect("Invalid specifier");
@@ -100,7 +106,7 @@ fn op_fetch_source_files(
             }
           }
           file_fetcher_
-            .fetch_source_file(&resolved_specifier, ref_specifier_)
+            .fetch_source_file(&resolved_specifier, ref_specifier_, perms_)
             .await
         }
         .boxed_local()
@@ -118,7 +124,11 @@ fn op_fetch_source_files(
             let types_specifier = ModuleSpecifier::from(types_url);
             global_state
               .file_fetcher
-              .fetch_source_file(&types_specifier, ref_specifier.clone())
+              .fetch_source_file(
+                &types_specifier,
+                ref_specifier.clone(),
+                permissions.clone(),
+              )
               .await
               .map_err(OpError::from)?
           }

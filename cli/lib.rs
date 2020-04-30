@@ -73,6 +73,7 @@ use crate::global_state::GlobalState;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
 use crate::ops::io::get_stdio;
+use crate::permissions::DenoPermissions;
 use crate::state::DebugType;
 use crate::state::State;
 use crate::tsc::TargetLib;
@@ -187,7 +188,7 @@ async fn print_file_info(
 
   let out = global_state
     .file_fetcher
-    .fetch_source_file(&module_specifier, None)
+    .fetch_source_file(&module_specifier, None, DenoPermissions::default())
     .await?;
 
   println!(
@@ -407,7 +408,9 @@ async fn doc_command(
       let fetcher = self.clone();
 
       async move {
-        let source_file = fetcher.fetch_source_file(&specifier, None).await?;
+        let source_file = fetcher
+          .fetch_source_file(&specifier, None, DenoPermissions::default())
+          .await?;
         String::from_utf8(source_file.source_code)
           .map_err(|_| OpError::other("failed to parse".to_string()))
       }

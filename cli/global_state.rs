@@ -100,9 +100,13 @@ impl GlobalState {
     let state2 = self.clone();
     let module_specifier = module_specifier.clone();
 
+    // TODO(bartlomieju): currently unused, but file fetcher will
+    // require them in the near future
+    let permissions = DenoPermissions::default();
+
     let out = self
       .file_fetcher
-      .fetch_source_file(&module_specifier, maybe_referrer)
+      .fetch_source_file(&module_specifier, maybe_referrer, permissions.clone())
       .await?;
 
     // TODO(ry) Try to lift compile_lock as high up in the call stack for
@@ -132,6 +136,7 @@ impl GlobalState {
               .fetch_source_file(
                 &types_specifier,
                 Some(module_specifier.clone()),
+                permissions.clone(),
               )
               .await
               .ok();
