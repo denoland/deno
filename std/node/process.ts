@@ -42,7 +42,7 @@ Object.defineProperty(process, Symbol.toStringTag, {
   enumerable: false,
   writable: true,
   configurable: false,
-  value: 'process'
+  value: "process",
 });
 
 Object.defineProperty(globalThis, "process", {
