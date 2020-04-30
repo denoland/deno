@@ -21,7 +21,7 @@ test("[io/tuil] copyBytes", function (): void {
 
   dst.fill(0);
   src = Uint8Array.of(1, 2, 3, 4, 5);
-  len = copyBytes(dst, src);
+  len = copyBytes(src, dst);
   assert(len === 4);
   assertEquals(dst, Uint8Array.of(1, 2, 3, 4));
 
