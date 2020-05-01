@@ -11,7 +11,6 @@ import { posix, extname } from "../path/mod.ts";
 import { listenAndServe, ServerRequest, Response } from "./server.ts";
 import { parse } from "../flags/mod.ts";
 import { assert } from "../testing/asserts.ts";
-import { setContentLength } from "./io.ts";
 
 interface EntryInfo {
   mode: string;
@@ -173,7 +172,6 @@ async function serveDir(
     body: page,
     headers,
   };
-  setContentLength(res);
   return res;
 }
 
