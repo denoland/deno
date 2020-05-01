@@ -50,9 +50,13 @@ impl ModuleGraphLoader {
       self.visit_module(&spec).await?;
       let file = self.graph.0.get(&spec.to_string()).unwrap();
       for dep in &file.deps {
-        self
-          .to_visit
-          .push(ModuleSpecifier::resolve_url_or_path(dep).unwrap());
+        if let Some(_exists) = self.graph.0.get(dep) {
+          continue;
+        } else {
+          self
+            .to_visit
+            .push(ModuleSpecifier::resolve_url_or_path(dep).unwrap());
+        }
       }
     }
     Ok(self.graph.0)
@@ -123,6 +127,27 @@ mod tests {
     let r = graph
       .get("http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts");
     assert!(r.is_some());
+
+    println!("{}", serde_json::to_string_pretty(&graph).unwrap());
+
+    drop(http_server_guard);
+  }
+
+  #[tokio::test]
+  async fn source_graph_fetch_circular() {
+    let http_server_guard = crate::test_util::http_server();
+
+    let global_state = GlobalState::new(Default::default()).unwrap();
+    let module_specifier = rel_module_specifier("tests/circular1.js");
+
+    let graph_loader =
+      ModuleGraphLoader::new(global_state.file_fetcher.clone());
+    let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
+
+    // assert_eq!(graph.len(), 9);
+    // let r = graph
+    //   .get("http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts");
+    // assert!(r.is_some());
 
     println!("{}", serde_json::to_string_pretty(&graph).unwrap());
 
