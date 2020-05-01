@@ -1045,6 +1045,19 @@ unitTest(function consoleTable(): void {
     console.table("test");
     assertEquals(out.toString(), "test\n");
   });
+  mockConsole((console, out): void => {
+    console.table(["Hello", "你好"]);
+    assertEquals(
+      out.toString(),
+      `┌─────────┬─────────┐
+│ (index) │ Values  │
+├─────────┼─────────┤
+│    0    │ "Hello" │
+│    1    │ "你好"  │
+└─────────┴─────────┘
+`
+    );
+  });
 });
 
 // console.log(Error) test
