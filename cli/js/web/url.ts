@@ -405,7 +405,7 @@ export class URLImpl implements URL {
 
   // TODO(kevinkassimo): implement MediaSource version in the future.
   static createObjectURL(b: Blob): string {
-    const origin = globalThis.location.origin || "http://deno-opaque-origin";
+    const origin = "http://deno-opaque-origin";
     const key = `blob:${origin}/${generateUUID()}`;
     blobURLMap.set(key, b);
     return key;
