@@ -42,6 +42,7 @@ pub mod installer;
 mod js;
 mod lockfile;
 mod metrics;
+mod module_graph;
 pub mod msg;
 pub mod op_error;
 pub mod ops;
