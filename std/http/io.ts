@@ -239,8 +239,7 @@ export async function writeResponse(
 
   if (r.body && !headers.get("content-length")) {
     if (r.body instanceof Uint8Array) {
-      const bodyLength = r.body.byteLength;
-      out += `content-length: ${bodyLength}\r\n`;
+      out += `content-length: ${r.body.byteLength}\r\n`;
     } else if (!headers.get("transfer-encoding")) {
       out += "transfer-encoding: chunked\r\n";
     }
