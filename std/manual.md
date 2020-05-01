@@ -896,7 +896,7 @@ $ deno install --allow-net --allow-read https://deno.land/std/http/file_server.t
 To change the executable name, use `-n`/`--name`:
 
 ```shell
-  deno install --allow-net --allow-read --root /usr/local -n serve https://deno.land/std/http/file_server.ts
+  deno install --allow-net --allow-read -n serve https://deno.land/std/http/file_server.ts
 ```
 
 The executable name is inferred by default:

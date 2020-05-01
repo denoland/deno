@@ -673,7 +673,7 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
   deno install https://deno.land/std/examples/colors.ts
 
 To change the executable name, use -n/--name:
-  deno install --allow-net --allow-read --root /usr/local -n serve https://deno.land/std/http/file_server.ts
+  deno install --allow-net --allow-read -n serve https://deno.land/std/http/file_server.ts
 
 The executable name is inferred by default:
   - Attempt to take the file stem of the URL path. The above example would
