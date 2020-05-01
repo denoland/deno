@@ -7,7 +7,6 @@ export interface Start {
   cwd: string;
   debugFlag: boolean;
   denoVersion: string;
-  location: string; // Absolute URL.
   noColor: boolean;
   pid: number;
   repl: boolean;

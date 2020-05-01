@@ -24,7 +24,6 @@ import { unstableMethods, unstableProperties } from "./globals_unstable.ts";
 import { internalObject, internalSymbol } from "./internals.ts";
 import { setSignals } from "./signals.ts";
 import { replLoop } from "./repl.ts";
-import { LocationImpl } from "./web/location.ts";
 import { setTimeout } from "./web/timers.ts";
 import * as runtime from "./runtime.ts";
 import { log, immutableDefine } from "./util.ts";
@@ -98,19 +97,7 @@ export function bootstrapMainRuntime(): void {
     }
   });
 
-  const {
-    args,
-    cwd,
-    location,
-    noColor,
-    pid,
-    repl,
-    unstableFlag,
-  } = runtime.start();
-
-  const location_ = new LocationImpl(location);
-  immutableDefine(globalThis, "location", location_);
-  Object.freeze(globalThis.location);
+  const { args, cwd, noColor, pid, repl, unstableFlag } = runtime.start();
 
   Object.defineProperties(denoNs, {
     pid: readOnly(pid),

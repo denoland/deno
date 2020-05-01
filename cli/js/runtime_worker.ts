@@ -21,7 +21,6 @@ import { unstableMethods, unstableProperties } from "./globals_unstable.ts";
 import * as denoNs from "./deno.ts";
 import * as denoUnstableNs from "./deno_unstable.ts";
 import * as webWorkerOps from "./ops/web_worker.ts";
-import { LocationImpl } from "./web/location.ts";
 import { log, assert, immutableDefine } from "./util.ts";
 import { MessageEvent, ErrorEvent } from "./web/workers.ts";
 import { TextEncoder } from "./web/text_encoding.ts";
@@ -138,13 +137,9 @@ export function bootstrapWorkerRuntime(
   Object.defineProperties(globalThis, eventTargetProperties);
   Object.defineProperties(globalThis, { name: readOnly(name) });
   setEventTargetData(globalThis);
-  const { location, unstableFlag, pid, noColor, args } = runtime.start(
+  const { unstableFlag, pid, noColor, args } = runtime.start(
     internalName ?? name
   );
-
-  const location_ = new LocationImpl(location);
-  immutableDefine(globalThis, "location", location_);
-  Object.freeze(globalThis.location);
 
   if (unstableFlag) {
     Object.defineProperties(globalThis, unstableMethods);

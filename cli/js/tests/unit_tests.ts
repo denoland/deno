@@ -33,7 +33,6 @@ import "./headers_test.ts";
 import "./internals_test.ts";
 import "./io_test.ts";
 import "./link_test.ts";
-import "./location_test.ts";
 import "./make_temp_test.ts";
 import "./metrics_test.ts";
 import "./dom_iterable_test.ts";

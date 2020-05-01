@@ -31,11 +31,6 @@ Some of the Web APIs are using ops under the hood, eg. `console`, `performance`.
   Promise-based HTTP Request API
 - [FormData](https://developer.mozilla.org/en-US/docs/Web/API/FormData): access
   to a `multipart/form-data` serialization
-- [Location](https://developer.mozilla.org/en-US/docs/Web/API/Location): parsing
-  the current script's URL
-  - **Implementation notes:** the `globalThis.location` object cannot be
-    manipulated using `assign()`, `reload()` and `replace()` methods. They are
-    not implemented.
 - [Performance](https://developer.mozilla.org/en-US/docs/Web/API/Performance):
   retrieving current time with a high precision
 - [setTimeout](https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope/setTimeout),
