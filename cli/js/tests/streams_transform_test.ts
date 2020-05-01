@@ -49,7 +49,7 @@ unitTest(function transformStreamConstructedNoTransform() {
 });
 
 unitTest(function transformStreamIntstancesHaveProperProperties() {
-  const ts = new TransformStream({ transform() {} });
+  const ts = new TransformStream({ transform(): void {} });
   const proto = Object.getPrototypeOf(ts);
 
   const writableStream = Object.getOwnPropertyDescriptor(proto, "writable");
@@ -496,7 +496,7 @@ unitTest(async function transformStreamTerminateAfterReadableCancelIsNoop() {
 unitTest(async function transformStreamStartCalledOnce() {
   let calls = 0;
   new TransformStream({
-    start() {
+    start(): void {
       ++calls;
     },
   });
