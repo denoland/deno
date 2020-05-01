@@ -1705,6 +1705,7 @@ fn cafile_install_remote_module() {
     .arg(cafile)
     .arg("--root")
     .arg(temp_dir.path())
+    .arg("-n")
     .arg("echo_test")
     .arg("https://localhost:5545/cli/tests/echo.ts")
     .output()
