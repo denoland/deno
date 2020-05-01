@@ -149,14 +149,6 @@ fn op_fetch_source_files(
               .map_err(|e| OpError::other(e.to_string()))?
               .code
           }
-          msg::MediaType::Json => {
-            global_state
-              .json_compiler
-              .compile(&file)
-              .await
-              .map_err(|e| OpError::other(e.to_string()))?
-              .code
-          }
           _ => String::from_utf8(file.source_code)
             .map_err(|_| OpError::invalid_utf8())?,
         };

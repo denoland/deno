@@ -396,38 +396,6 @@ fn bundle_single_module() {
 }
 
 #[test]
-fn bundle_json() {
-  let json_modules = util::root_path().join("cli/tests/020_json_modules.ts");
-  assert!(json_modules.is_file());
-  let t = TempDir::new().expect("tempdir fail");
-  let bundle = t.path().join("020_json_modules.bundle.js");
-  let mut deno = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("bundle")
-    .arg(json_modules)
-    .arg(&bundle)
-    .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
-  assert!(status.success());
-  assert!(bundle.is_file());
-
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("run")
-    .arg("--reload")
-    .arg(&bundle)
-    .output()
-    .expect("failed to spawn script");
-  // check the output of the the bundle program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("{\"foo\":{\"bar\":true,\"baz\":[\"qat\",1]}}"));
-  assert_eq!(output.stderr, b"");
-}
-
-#[test]
 fn bundle_tla() {
   // First we have to generate a bundle of some module that has exports.
   let tla_import = util::root_path().join("cli/tests/subdir/tla.ts");
@@ -927,7 +895,9 @@ itest_ignore!(_019_media_types {
 
 itest!(_020_json_modules {
   args: "run --reload 020_json_modules.ts",
+  check_stderr: true,
   output: "020_json_modules.ts.out",
+  exit_code: 1,
 });
 
 itest!(_021_mjs_modules {
@@ -1125,11 +1095,6 @@ itest_ignore!(_049_info_flag_script_jsx {
   args: "info http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts",
   output: "049_info_flag_script_jsx.out",
   http_server: true,
-});
-
-itest!(_050_more_jsons {
-  args: "run --reload 050_more_jsons.ts",
-  output: "050_more_jsons.ts.out",
 });
 
 itest!(_051_wasm_import {

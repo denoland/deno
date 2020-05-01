@@ -34,11 +34,6 @@ function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
       return fileName.endsWith(".d.ts") ? ts.Extension.Dts : ts.Extension.Ts;
     case MediaType.TSX:
       return ts.Extension.Tsx;
-    case MediaType.Json:
-      // we internally compile JSON, so what gets provided to the TypeScript
-      // compiler is an ES module, but in order to get TypeScript to handle it
-      // properly we have to pretend it is TS.
-      return ts.Extension.Ts;
     case MediaType.Wasm:
       // Custom marker for Wasm type.
       return ts.Extension.Js;
