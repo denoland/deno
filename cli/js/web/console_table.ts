@@ -4,8 +4,6 @@
 import { TextEncoder } from "./text_encoding.ts";
 import { hasOwnProperty } from "./util.ts";
 
-const encoder = new TextEncoder();
-
 const tableChars = {
   middleMiddle: "─",
   rowMiddle: "┼",
