@@ -18,7 +18,7 @@ async function wsHandler(ws: WebSocket): Promise<void> {
   const id = ++clientId;
   clients.set(id, ws);
   dispatch(`Connected: [${id}]`);
-  for await (const msg of ws.receive()) {
+  for await (const msg of ws) {
     console.log(`msg:${id}`, msg);
     if (typeof msg === "string") {
       dispatch(`[${id}]: ${msg}`);

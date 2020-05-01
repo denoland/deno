@@ -58,10 +58,9 @@ test({
     let ws: WebSocket | undefined;
     try {
       ws = await connectWebSocket("http://127.0.0.1:8080/ws");
-      const it = ws.receive();
-      assertEquals((await it.next()).value, "Connected: [1]");
+      assertEquals((await ws[Symbol.asyncIterator]().next()).value, "Connected: [1]");
       ws.send("Hello");
-      assertEquals((await it.next()).value, "[1]: Hello");
+      assertEquals((await ws[Symbol.asyncIterator]().next()).value, "[1]: Hello");
     } finally {
       server.close();
       server.stdout!.close();
