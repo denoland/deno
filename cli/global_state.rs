@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::compilers::CompiledModule;
 use crate::compilers::JsCompiler;
-use crate::compilers::JsonCompiler;
 use crate::compilers::TargetLib;
 use crate::compilers::TsCompiler;
 use crate::compilers::WasmCompiler;
@@ -36,7 +35,6 @@ pub struct GlobalStateInner {
   pub dir: deno_dir::DenoDir,
   pub file_fetcher: SourceFileFetcher,
   pub js_compiler: JsCompiler,
-  pub json_compiler: JsonCompiler,
   pub ts_compiler: TsCompiler,
   pub wasm_compiler: WasmCompiler,
   pub lockfile: Option<Mutex<Lockfile>>,
@@ -88,7 +86,6 @@ impl GlobalState {
       file_fetcher,
       ts_compiler,
       js_compiler: JsCompiler {},
-      json_compiler: JsonCompiler {},
       wasm_compiler: WasmCompiler::default(),
       lockfile,
       compiler_starts: AtomicUsize::new(0),
@@ -118,8 +115,9 @@ impl GlobalState {
     let compile_lock = self.compile_lock.lock().await;
 
     let compiled_module = match out.media_type {
-      msg::MediaType::Unknown => state1.js_compiler.compile(out).await,
-      msg::MediaType::Json => state1.json_compiler.compile(&out).await,
+      msg::MediaType::Json | msg::MediaType::Unknown => {
+        state1.js_compiler.compile(out).await
+      }
       msg::MediaType::Wasm => {
         state1.wasm_compiler.compile(state1.clone(), &out).await
       }
