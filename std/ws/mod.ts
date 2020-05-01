@@ -67,11 +67,14 @@ export interface WebSocketFrame {
   payload: Uint8Array;
 }
 
-export interface WebSocket extends Reader, Writer {
+export interface WebSocket
+  extends Reader,
+    Writer,
+    AsyncIterable<WebSocketEvent> {
   readonly conn: Conn;
   readonly isClosed: boolean;
 
-  receive(): AsyncIterableIterator<WebSocketEvent>;
+  [Symbol.asyncIterator](): AsyncIterableIterator<WebSocketEvent>;
 
   /**
    * @throws `Deno.errors.ConnectionReset`
@@ -228,7 +231,7 @@ class WebSocketImpl implements WebSocket {
     this.bufWriter = bufWriter || new BufWriter(conn);
   }
 
-  async *receive(): AsyncIterableIterator<WebSocketEvent> {
+  async *[Symbol.asyncIterator](): AsyncIterableIterator<WebSocketEvent> {
     let frames: WebSocketFrame[] = [];
     let payloadsLength = 0;
     while (!this._isClosed) {
@@ -336,7 +339,7 @@ class WebSocketImpl implements WebSocket {
   }
 
   async read(p: Uint8Array): Promise<number | null> {
-    for await (const ev of this.receive()) {
+    for await (const ev of this) {
       if (ev instanceof Uint8Array) {
         return copyBytes(ev, p);
       }
