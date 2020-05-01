@@ -166,7 +166,7 @@ pub fn install(
     Some(name) => name,
     None => return Err(Error::new(
       ErrorKind::Other,
-      "An executable name was not provided. Could not infer one from the URL. Aborting.",
+      "An executable name was not provided. One could not be inferred from the URL. Aborting.",
     )),
   };
 
