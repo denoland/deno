@@ -1046,7 +1046,7 @@ unitTest(function consoleTable(): void {
     assertEquals(out.toString(), "test\n");
   });
   mockConsole((console, out): void => {
-    console.table(["Hello", "你好"]);
+    console.table(["Hello", "你好", "Amapá"]);
     assertEquals(
       out.toString(),
       `┌─────────┬─────────┐
@@ -1054,6 +1054,7 @@ unitTest(function consoleTable(): void {
 ├─────────┼─────────┤
 │    0    │ "Hello" │
 │    1    │ "你好"  │
+│    2    │ "Amapá" │
 └─────────┴─────────┘
 `
     );
