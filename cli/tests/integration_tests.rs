@@ -203,10 +203,10 @@ fn installer_test_local_module_run() {
   let local_module_str = local_module.to_string_lossy();
   deno::installer::install(
     deno::flags::Flags::default(),
-    Some(temp_dir.path().to_path_buf()),
-    "echo_test",
     &local_module_str,
     vec!["hello".to_string()],
+    Some("echo_test".to_string()),
+    Some(temp_dir.path().to_path_buf()),
     false,
   )
   .expect("Failed to install");
@@ -241,10 +241,10 @@ fn installer_test_remote_module_run() {
   std::fs::create_dir(&bin_dir).unwrap();
   deno::installer::install(
     deno::flags::Flags::default(),
-    Some(temp_dir.path().to_path_buf()),
-    "echo_test",
     "http://localhost:4545/cli/tests/echo.ts",
     vec!["hello".to_string()],
+    Some("echo_test".to_string()),
+    Some(temp_dir.path().to_path_buf()),
     false,
   )
   .expect("Failed to install");
