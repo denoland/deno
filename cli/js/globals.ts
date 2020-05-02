@@ -245,6 +245,7 @@ export const windowOrWorkerGlobalScopeProperties = {
 let localStorageIsReady = false;
 export const windowGlobalScopeProperties = {
   localStorage: getterOnly(() => {
+    // @ts-ignore
     const { origin } = location;
     // if (origin === "file://") {
     // throw new domException.DOMExceptionImpl(

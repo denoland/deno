@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assertEquals, assertThrows } from "./test_util.ts";
+import { unitTest, assertEquals } from "./test_util.ts";
 
 unitTest(function getItemFromUnknownKeyShouldReturnNull() {
   assertEquals(sessionStorage.getItem("unknonw_key"), null);

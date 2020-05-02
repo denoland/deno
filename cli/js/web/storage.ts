@@ -44,6 +44,7 @@ class PersistantStorageImpl implements Storage {
   }
   key(index: number): string | null {
     throw "Unimplemented";
+    index;
   }
   getItem(keyName: string): string | null {
     return localStorageGetItem(keyName);
