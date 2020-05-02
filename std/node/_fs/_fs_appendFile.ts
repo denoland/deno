@@ -28,9 +28,7 @@ export function appendFile(
   new Promise((resolve, reject) => {
     if (typeof pathOrRid === "number") {
       rid = pathOrRid;
-      Deno.write(rid, buffer)
-        .then(resolve)
-        .catch(reject);
+      Deno.write(rid, buffer).then(resolve).catch(reject);
     } else {
       const mode: number | undefined = isFileOptions(options)
         ? options.mode
@@ -56,7 +54,7 @@ export function appendFile(
       closeRidIfNecessary(typeof pathOrRid === "string", rid);
       callbackFn();
     })
-    .catch(err => {
+    .catch((err) => {
       closeRidIfNecessary(typeof pathOrRid === "string", rid);
       callbackFn(err);
     });

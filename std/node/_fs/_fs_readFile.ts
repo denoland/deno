@@ -3,7 +3,7 @@
 import {
   notImplemented,
   intoCallbackAPIWithIntercept,
-  MaybeEmpty
+  MaybeEmpty,
 } from "../_utils.ts";
 import { fromFileUrl } from "../path.ts";
 

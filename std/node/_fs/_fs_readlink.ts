@@ -2,7 +2,7 @@
 import {
   intoCallbackAPIWithIntercept,
   MaybeEmpty,
-  notImplemented
+  notImplemented,
 } from "../_utils.ts";
 import { fromFileUrl } from "../path.ts";
 

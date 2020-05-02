@@ -41,7 +41,7 @@ export function mkdir(
         callback();
       }
     })
-    .catch(err => {
+    .catch((err) => {
       if (typeof callback === "function") {
         callback(err);
       }
