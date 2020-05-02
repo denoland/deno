@@ -1,21 +1,23 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { CallbackWithError } from "./_fs_common.ts";
+import { fromFileUrl } from "../path.ts";
 
 /**
- * TODO: Also accept 'path' parameter as a Node polyfill Buffer or URL type once these
+ * TODO: Also accept 'path' parameter as a Node polyfill Buffer type once these
  * are implemented. See https://github.com/denoland/deno/issues/3403
  */
-type Path = string;
 type MkdirOptions =
   | { recursive?: boolean; mode?: number | undefined }
   | number
   | boolean;
 
 export function mkdir(
-  path: Path,
+  path: string | URL,
   options?: MkdirOptions | CallbackWithError,
   callback?: CallbackWithError
 ): void {
+  path = path instanceof URL ? fromFileUrl(path) : path;
+
   let mode = 0o777;
   let recursive = false;
 
@@ -39,14 +41,15 @@ export function mkdir(
         callback();
       }
     })
-    .catch((err) => {
+    .catch(err => {
       if (typeof callback === "function") {
         callback(err);
       }
     });
 }
 
-export function mkdirSync(path: Path, options?: MkdirOptions): void {
+export function mkdirSync(path: string | URL, options?: MkdirOptions): void {
+  path = path instanceof URL ? fromFileUrl(path) : path;
   let mode = 0o777;
   let recursive = false;
 
