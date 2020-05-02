@@ -6,39 +6,14 @@ import {
   MaybeEmpty,
 } from "../_utils.ts";
 
+import { getEncoding, FileOptions } from "./_fs_common.ts";
+
 const { readFile: denoReadFile, readFileSync: denoReadFileSync } = Deno;
 
 type ReadFileCallback = (
   err: MaybeEmpty<Error>,
   data: MaybeEmpty<string | Uint8Array>
 ) => void;
-
-interface ReadFileOptions {
-  encoding?: string | null;
-  flag?: string;
-}
-
-function getEncoding(
-  optOrCallback?: ReadFileOptions | ReadFileCallback
-): string | null {
-  if (!optOrCallback || typeof optOrCallback === "function") {
-    return null;
-  } else {
-    if (optOrCallback.encoding) {
-      if (
-        optOrCallback.encoding === "utf8" ||
-        optOrCallback.encoding === "utf-8"
-      ) {
-        return "utf8";
-      } else if (optOrCallback.encoding === "buffer") {
-        return "buffer";
-      } else {
-        notImplemented();
-      }
-    }
-    return null;
-  }
-}
 
 function maybeDecode(
   data: Uint8Array,
@@ -52,7 +27,7 @@ function maybeDecode(
 
 export function readFile(
   path: string,
-  optOrCallback: ReadFileCallback | ReadFileOptions,
+  optOrCallback: ReadFileCallback | FileOptions,
   callback?: ReadFileCallback
 ): void {
   let cb: ReadFileCallback | undefined;
@@ -74,7 +49,7 @@ export function readFile(
 
 export function readFileSync(
   path: string,
-  opt?: ReadFileOptions
+  opt?: FileOptions
 ): string | Uint8Array {
   return maybeDecode(denoReadFileSync(path), getEncoding(opt));
 }
