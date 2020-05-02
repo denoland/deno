@@ -4,11 +4,15 @@ export default class Dirent {
   constructor(private entry: Deno.DirEntry) {}
 
   isBlockDevice(): boolean {
-    return this.entry.blocks != null;
+    notImplemented("Deno does not yet support identification of block devices");
+    return false;
   }
 
   isCharacterDevice(): boolean {
-    return this.entry.blocks == null;
+    notImplemented(
+      "Deno does not yet support identification of character devices"
+    );
+    return false;
   }
 
   isDirectory(): boolean {

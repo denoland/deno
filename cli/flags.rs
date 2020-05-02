@@ -53,10 +53,10 @@ pub enum DenoSubcommand {
     file: Option<String>,
   },
   Install {
-    root: Option<PathBuf>,
-    exe_name: String,
     module_url: String,
     args: Vec<String>,
+    name: Option<String>,
+    root: Option<PathBuf>,
     force: bool,
   },
   Repl,
@@ -65,6 +65,7 @@ pub enum DenoSubcommand {
   },
   Test {
     fail_fast: bool,
+    quiet: bool,
     allow_none: bool,
     include: Option<Vec<String>>,
     filter: Option<String>,
@@ -89,33 +90,33 @@ pub struct Flags {
   pub argv: Vec<String>,
   pub subcommand: DenoSubcommand,
 
-  pub log_level: Option<Level>,
-  pub version: bool,
-  pub reload: bool,
+  pub allow_env: bool,
+  pub allow_hrtime: bool,
+  pub allow_net: bool,
+  pub allow_plugin: bool,
+  pub allow_read: bool,
+  pub allow_run: bool,
+  pub allow_write: bool,
+  pub cache_blacklist: Vec<String>,
+  pub ca_file: Option<String>,
+  pub cached_only: bool,
   pub config_path: Option<String>,
   pub import_map_path: Option<String>,
-  pub allow_read: bool,
-  pub read_whitelist: Vec<PathBuf>,
-  pub cache_blacklist: Vec<String>,
-  pub allow_write: bool,
-  pub write_whitelist: Vec<PathBuf>,
-  pub allow_net: bool,
-  pub net_whitelist: Vec<String>,
-  pub allow_env: bool,
-  pub allow_run: bool,
-  pub allow_plugin: bool,
-  pub allow_hrtime: bool,
-  pub no_prompts: bool,
-  pub no_remote: bool,
-  pub cached_only: bool,
   pub inspect: Option<SocketAddr>,
   pub inspect_brk: Option<SocketAddr>,
-  pub seed: Option<u64>,
-  pub v8_flags: Option<Vec<String>>,
-
   pub lock: Option<String>,
   pub lock_write: bool,
-  pub ca_file: Option<String>,
+  pub log_level: Option<Level>,
+  pub net_whitelist: Vec<String>,
+  pub no_prompts: bool,
+  pub no_remote: bool,
+  pub read_whitelist: Vec<PathBuf>,
+  pub reload: bool,
+  pub seed: Option<u64>,
+  pub unstable: bool,
+  pub v8_flags: Option<Vec<String>>,
+  pub version: bool,
+  pub write_whitelist: Vec<PathBuf>,
 }
 
 fn join_paths(whitelist: &[PathBuf], d: &str) -> String {
@@ -328,7 +329,8 @@ If the flag is set, restrict these messages to errors.",
     .after_help(ENV_VARIABLES_HELP)
 }
 
-fn types_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
+fn types_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  unstable_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Types;
 }
 
@@ -346,6 +348,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   permission_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
+  unstable_arg_parse(flags, matches);
 
   let root = if matches.is_present("root") {
     let install_root = matches.value_of("root").unwrap();
@@ -355,22 +358,21 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 
   let force = matches.is_present("force");
-  let exe_name = matches.value_of("exe_name").unwrap().to_string();
+  let name = matches.value_of("name").map(|s| s.to_string());
   let cmd_values = matches.values_of("cmd").unwrap();
-  let mut cmd_args = vec![];
-
+  let mut cmd = vec![];
   for value in cmd_values {
-    cmd_args.push(value.to_string());
+    cmd.push(value.to_string());
   }
 
-  let module_url = cmd_args[0].to_string();
-  let args = cmd_args[1..].to_vec();
+  let module_url = cmd[0].to_string();
+  let args = cmd[1..].to_vec();
 
   flags.subcommand = DenoSubcommand::Install {
-    root,
-    exe_name,
+    name,
     module_url,
     args,
+    root,
     force,
   };
 }
@@ -378,6 +380,7 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   ca_file_arg_parse(flags, matches);
   importmap_arg_parse(flags, matches);
+  unstable_arg_parse(flags, matches);
 
   let source_file = matches.value_of("source_file").unwrap().to_string();
 
@@ -413,6 +416,7 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   v8_flags_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   inspect_arg_parse(flags, matches);
+  unstable_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Repl;
   flags.allow_net = true;
   flags.allow_env = true;
@@ -427,6 +431,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   v8_flags_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   inspect_arg_parse(flags, matches);
+  unstable_arg_parse(flags, matches);
   flags.allow_net = true;
   flags.allow_env = true;
   flags.allow_run = true;
@@ -444,6 +449,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   ca_file_arg_parse(flags, matches);
+  unstable_arg_parse(flags, matches);
 
   flags.subcommand = DenoSubcommand::Info {
     file: matches.value_of("file").map(|f| f.to_string()),
@@ -457,6 +463,7 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
+  unstable_arg_parse(flags, matches);
   let files = matches
     .values_of("file")
     .unwrap()
@@ -493,6 +500,7 @@ fn run_test_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   permission_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   inspect_arg_parse(flags, matches);
+  unstable_arg_parse(flags, matches);
 
   if matches.is_present("cached-only") {
     flags.cached_only = true;
@@ -541,6 +549,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   let failfast = matches.is_present("failfast");
   let allow_none = matches.is_present("allow_none");
+  let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
   let include = if matches.is_present("files") {
     let files: Vec<String> = matches
@@ -555,6 +564,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   flags.subcommand = DenoSubcommand::Test {
     fail_fast: failfast,
+    quiet,
     include,
     filter,
     allow_none,
@@ -569,6 +579,8 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
+  unstable_arg_parse(flags, matches);
+
   let source_file = matches.value_of("source_file").map(String::from);
   let json = matches.is_present("json");
   let filter = matches.value_of("filter").map(String::from);
@@ -581,6 +593,7 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("types")
+    .arg(unstable_arg())
     .about("Print runtime TypeScript declarations")
     .long_about(
       "Print runtime TypeScript declarations.
@@ -621,11 +634,24 @@ fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Read Eval Print Loop")
     .arg(v8_flags_arg())
     .arg(ca_file_arg())
+    .arg(unstable_arg())
 }
 
 fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
   permission_args(SubCommand::with_name("install"))
         .setting(AppSettings::TrailingVarArg)
+        .arg(
+          Arg::with_name("cmd")
+            .required(true)
+            .multiple(true)
+            .allow_hyphen_values(true))
+        .arg(
+          Arg::with_name("name")
+          .long("name")
+          .short("n")
+          .help("Executable file name")
+          .takes_value(true)
+          .required(false))
         .arg(
           Arg::with_name("root")
             .long("root")
@@ -638,25 +664,26 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
             .short("f")
             .help("Forcefully overwrite existing installation")
             .takes_value(false))
-        .arg(
-          Arg::with_name("exe_name")
-            .required(true)
-        )
-        .arg(
-          Arg::with_name("cmd")
-            .required(true)
-            .multiple(true)
-            .allow_hyphen_values(true)
-        )
         .arg(ca_file_arg())
+        .arg(unstable_arg())
         .about("Install script as an executable")
         .long_about(
 "Installs a script as an executable in the installation root's bin directory.
-  deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
-  deno install colors https://deno.land/std/examples/colors.ts
+  deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
+  deno install https://deno.land/std/examples/colors.ts
+
+To change the executable name, use -n/--name:
+  deno install --allow-net --allow-read -n serve https://deno.land/std/http/file_server.ts
+
+The executable name is inferred by default:
+  - Attempt to take the file stem of the URL path. The above example would
+    become 'file_server'.
+  - If the file stem is something generic like 'main', 'mod', 'index' or 'cli',
+    and the path has no parent, take the file name of the parent path. Otherwise
+    settle with the generic name.
 
 To change the installation root, use --root:
-  deno install --allow-net --allow-read --root /usr/local file_server https://deno.land/std/http/file_server.ts
+  deno install --allow-net --allow-read --root /usr/local https://deno.land/std/http/file_server.ts
 
 The installation root is determined, in order of precedence:
   - --root option
@@ -676,6 +703,7 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(Arg::with_name("out_file").takes_value(true).required(false))
     .arg(ca_file_arg())
     .arg(importmap_arg())
+    .arg(unstable_arg())
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
@@ -705,6 +733,7 @@ fn completions_subcommand<'a, 'b>() -> App<'a, 'b> {
 fn eval_subcommand<'a, 'b>() -> App<'a, 'b> {
   inspect_args(SubCommand::with_name("eval"))
     .arg(ca_file_arg())
+    .arg(unstable_arg())
     .about("Eval script")
     .long_about(
       "Evaluate JavaScript from the command line.
@@ -752,6 +781,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     )
     .arg(Arg::with_name("file").takes_value(true).required(false))
     .arg(ca_file_arg())
+    .arg(unstable_arg())
 }
 
 fn cache_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -760,6 +790,7 @@ fn cache_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(lock_arg())
     .arg(lock_write_arg())
     .arg(importmap_arg())
+    .arg(unstable_arg())
     .arg(config_arg())
     .arg(no_remote_arg())
     .arg(
@@ -807,6 +838,7 @@ and is used to replace the current executable.",
 
 fn doc_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("doc")
+    .arg(unstable_arg())
     .about("Show documentation for a module")
     .long_about(
       "Show documentation for a module.
@@ -907,6 +939,7 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
 fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
   permission_args(inspect_args(app))
     .arg(importmap_arg())
+    .arg(unstable_arg())
     .arg(reload_arg())
     .arg(config_arg())
     .arg(lock_arg())
@@ -1042,6 +1075,18 @@ fn ca_file_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.ca_file = matches.value_of("cert").map(ToOwned::to_owned);
 }
 
+fn unstable_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("unstable")
+    .long("unstable")
+    .help("Enable unstable APIs")
+}
+
+fn unstable_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  if matches.is_present("unstable") {
+    flags.unstable = true;
+  }
+}
+
 fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
   app
     .arg(
@@ -1139,9 +1184,10 @@ fn importmap_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("importmap")
     .long("importmap")
     .value_name("FILE")
-    .help("Load import map file")
+    .help("UNSTABLE: Load import map file")
     .long_help(
-      "Load import map file
+      "UNSTABLE:
+Load import map file
 Docs: https://deno.land/std/manual.md#import-maps
 Specification: https://wicg.github.io/import-maps/
 Examples: https://github.com/WICG/import-maps#the-import-map",
@@ -1625,11 +1671,40 @@ mod tests {
   }
 
   #[test]
+  fn types_unstable() {
+    let r = flags_from_vec_safe(svec!["deno", "types", "--unstable"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        unstable: true,
+        subcommand: DenoSubcommand::Types,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn cache() {
     let r = flags_from_vec_safe(svec!["deno", "cache", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
+        subcommand: DenoSubcommand::Cache {
+          files: svec!["script.ts"],
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn cache_unstable() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "cache", "--unstable", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        unstable: true,
         subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts"],
         },
@@ -1706,6 +1781,34 @@ mod tests {
   }
 
   #[test]
+  fn eval_unstable() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "eval",
+      "--unstable",
+      "'console.log(\"hello\")'"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        unstable: true,
+        subcommand: DenoSubcommand::Eval {
+          code: "'console.log(\"hello\")'".to_string(),
+          as_typescript: false,
+        },
+        allow_net: true,
+        allow_env: true,
+        allow_run: true,
+        allow_read: true,
+        allow_write: true,
+        allow_plugin: true,
+        allow_hrtime: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn eval_typescript() {
     let r = flags_from_vec_safe(svec![
       "deno",
@@ -1762,6 +1865,26 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
+        subcommand: DenoSubcommand::Repl,
+        allow_net: true,
+        allow_env: true,
+        allow_run: true,
+        allow_read: true,
+        allow_write: true,
+        allow_plugin: true,
+        allow_hrtime: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn repl_unstable() {
+    let r = flags_from_vec_safe(svec!["deno", "repl", "--unstable"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        unstable: true,
         subcommand: DenoSubcommand::Repl,
         allow_net: true,
         allow_env: true,
@@ -1885,6 +2008,23 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
+        subcommand: DenoSubcommand::Bundle {
+          source_file: "source.ts".to_string(),
+          out_file: None,
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bundle_unstable() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "bundle", "--unstable", "source.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        unstable: true,
         subcommand: DenoSubcommand::Bundle {
           source_file: "source.ts".to_string(),
           out_file: None,
@@ -2030,17 +2170,16 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "install",
-      "deno_colors",
       "https://deno.land/std/examples/colors.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install {
-          root: None,
-          exe_name: "deno_colors".to_string(),
+          name: None,
           module_url: "https://deno.land/std/examples/colors.ts".to_string(),
           args: vec![],
+          root: None,
           force: false,
         },
         ..Flags::default()
@@ -2055,6 +2194,7 @@ mod tests {
       "install",
       "--allow-net",
       "--allow-read",
+      "-n",
       "file_server",
       "https://deno.land/std/http/file_server.ts"
     ]);
@@ -2062,10 +2202,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install {
-          root: None,
-          exe_name: "file_server".to_string(),
+          name: Some("file_server".to_string()),
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
           args: vec![],
+          root: None,
           force: false,
         },
         allow_net: true,
@@ -2085,6 +2225,7 @@ mod tests {
       "-f",
       "--allow-net",
       "--allow-read",
+      "-n",
       "file_server",
       "https://deno.land/std/http/file_server.ts",
       "arg1",
@@ -2094,10 +2235,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install {
-          root: Some(PathBuf::from("/usr/local")),
-          exe_name: "file_server".to_string(),
+          name: Some("file_server".to_string()),
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
           args: svec!["arg1", "arg2"],
+          root: Some(PathBuf::from("/usr/local")),
           force: true,
         },
         allow_net: true,
@@ -2302,6 +2443,7 @@ mod tests {
           fail_fast: false,
           filter: None,
           allow_none: true,
+          quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
         },
         allow_read: true,
@@ -2320,6 +2462,7 @@ mod tests {
         subcommand: DenoSubcommand::Test {
           fail_fast: false,
           allow_none: false,
+          quiet: false,
           filter: Some("foo".to_string()),
           include: Some(svec!["dir1"]),
         },
@@ -2479,6 +2622,7 @@ mod tests {
       "install",
       "--cert",
       "example.crt",
+      "-n",
       "deno_colors",
       "https://deno.land/std/examples/colors.ts"
     ]);
@@ -2486,10 +2630,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install {
-          root: None,
-          exe_name: "deno_colors".to_string(),
+          name: Some("deno_colors".to_string()),
           module_url: "https://deno.land/std/examples/colors.ts".to_string(),
           args: vec![],
+          root: None,
           force: false,
         },
         ca_file: Some("example.crt".to_owned()),

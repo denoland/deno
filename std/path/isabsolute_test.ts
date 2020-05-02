@@ -5,14 +5,14 @@ const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import * as path from "./mod.ts";
 
-test(function isAbsolute() {
+test("isAbsolute", function () {
   assertEquals(path.posix.isAbsolute("/home/foo"), true);
   assertEquals(path.posix.isAbsolute("/home/foo/.."), true);
   assertEquals(path.posix.isAbsolute("bar/"), false);
   assertEquals(path.posix.isAbsolute("./baz"), false);
 });
 
-test(function isAbsoluteWin32() {
+test("isAbsoluteWin32", function () {
   assertEquals(path.win32.isAbsolute("/"), true);
   assertEquals(path.win32.isAbsolute("//"), true);
   assertEquals(path.win32.isAbsolute("//server"), true);

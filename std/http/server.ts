@@ -181,7 +181,7 @@ export class Server implements AsyncIterable<ServerRequest> {
     const w = new BufWriter(conn);
     let keepAlive: KeepAlive | undefined;
     while (!this.closing) {
-      let request: ServerRequest | Deno.EOF;
+      let request: ServerRequest | null;
       try {
         let timeout = this.readTimeout;
         if (keepAlive?.timeout) {
@@ -201,8 +201,7 @@ export class Server implements AsyncIterable<ServerRequest> {
         }
         break;
       }
-
-      if (request === Deno.EOF) {
+      if (request === null) {
         break;
       }
 
@@ -311,7 +310,7 @@ export function serve(addr: string | HTTPOptions): Server {
  *
  *     const body = "Hello World\n";
  *     const options = { port: 8000 };
- *     listenAndServeTLS(options, (req) => {
+ *     listenAndServe(options, (req) => {
  *       req.respond({ body });
  *     });
  *

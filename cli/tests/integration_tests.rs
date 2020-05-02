@@ -203,10 +203,10 @@ fn installer_test_local_module_run() {
   let local_module_str = local_module.to_string_lossy();
   deno::installer::install(
     deno::flags::Flags::default(),
-    Some(temp_dir.path().to_path_buf()),
-    "echo_test",
     &local_module_str,
     vec!["hello".to_string()],
+    Some("echo_test".to_string()),
+    Some(temp_dir.path().to_path_buf()),
     false,
   )
   .expect("Failed to install");
@@ -241,10 +241,10 @@ fn installer_test_remote_module_run() {
   std::fs::create_dir(&bin_dir).unwrap();
   deno::installer::install(
     deno::flags::Flags::default(),
-    Some(temp_dir.path().to_path_buf()),
-    "echo_test",
     "http://localhost:4545/cli/tests/echo.ts",
     vec!["hello".to_string()],
+    Some("echo_test".to_string()),
+    Some(temp_dir.path().to_path_buf()),
     false,
   )
   .expect("Failed to install");
@@ -273,6 +273,7 @@ fn js_unit_tests() {
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
+    .arg("--unstable")
     .arg("--reload")
     .arg("-A")
     .arg("cli/js/tests/unit_test_runner.ts")
@@ -395,38 +396,6 @@ fn bundle_single_module() {
 }
 
 #[test]
-fn bundle_json() {
-  let json_modules = util::root_path().join("cli/tests/020_json_modules.ts");
-  assert!(json_modules.is_file());
-  let t = TempDir::new().expect("tempdir fail");
-  let bundle = t.path().join("020_json_modules.bundle.js");
-  let mut deno = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("bundle")
-    .arg(json_modules)
-    .arg(&bundle)
-    .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
-  assert!(status.success());
-  assert!(bundle.is_file());
-
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("run")
-    .arg("--reload")
-    .arg(&bundle)
-    .output()
-    .expect("failed to spawn script");
-  // check the output of the the bundle program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("{\"foo\":{\"bar\":true,\"baz\":[\"qat\",1]}}"));
-  assert_eq!(output.stderr, b"");
-}
-
-#[test]
 fn bundle_tla() {
   // First we have to generate a bundle of some module that has exports.
   let tla_import = util::root_path().join("cli/tests/subdir/tla.ts");
@@ -540,6 +509,7 @@ fn bundle_import_map() {
     .arg("bundle")
     .arg("--importmap")
     .arg(import_map_path)
+    .arg("--unstable")
     .arg(import)
     .arg(&bundle)
     .spawn()
@@ -925,7 +895,9 @@ itest_ignore!(_019_media_types {
 
 itest!(_020_json_modules {
   args: "run --reload 020_json_modules.ts",
+  check_stderr: true,
   output: "020_json_modules.ts.out",
+  exit_code: 1,
 });
 
 itest!(_021_mjs_modules {
@@ -951,8 +923,9 @@ itest_ignore!(_024_import_no_ext_with_headers {
   output: "024_import_no_ext_with_headers.ts.out",
 });
 
+// TODO(lucacasonato): remove --unstable when permissions goes stable
 itest!(_025_hrtime {
-  args: "run --allow-hrtime --reload 025_hrtime.ts",
+  args: "run --allow-hrtime --unstable --reload 025_hrtime.ts",
   output: "025_hrtime.ts.out",
 });
 
@@ -986,7 +959,7 @@ itest!(workers {
 });
 
 itest!(compiler_api {
-  args: "test --reload compiler_api_test.ts",
+  args: "test --unstable --reload compiler_api_test.ts",
   output: "compiler_api_test.out",
 });
 
@@ -1014,8 +987,15 @@ itest!(_030_eval_ts {
 
 itest!(_033_import_map {
   args:
-    "run --reload --importmap=importmaps/import_map.json importmaps/test.ts",
+    "run --reload --importmap=importmaps/import_map.json --unstable importmaps/test.ts",
   output: "033_import_map.out",
+});
+
+itest!(import_map_no_unstable {
+  args:
+    "run --reload --importmap=importmaps/import_map.json importmaps/test.ts",
+  output: "import_map_no_unstable.out",
+  exit_code: 70,
 });
 
 itest!(_034_onload {
@@ -1035,7 +1015,7 @@ itest_ignore!(_035_cached_only_flag {
 
 itest!(_036_import_map_fetch {
   args:
-    "cache --reload --importmap=importmaps/import_map.json importmaps/test.ts",
+    "cache --reload --importmap=importmaps/import_map.json --unstable importmaps/test.ts",
   output: "036_import_map_fetch.out",
 });
 
@@ -1117,11 +1097,6 @@ itest_ignore!(_049_info_flag_script_jsx {
   http_server: true,
 });
 
-itest!(_050_more_jsons {
-  args: "run --reload 050_more_jsons.ts",
-  output: "050_more_jsons.ts.out",
-});
-
 itest!(_051_wasm_import {
   args: "run --reload --allow-net --allow-read 051_wasm_import.ts",
   output: "051_wasm_import.ts.out",
@@ -1150,13 +1125,16 @@ itest!(_055_import_wasm_via_network {
   http_server: true,
 });
 
+// TODO(lucacasonato): remove --unstable when cwd goes stable
 itest!(_056_make_temp_file_write_perm {
-  args: "run --allow-write=./subdir/ 056_make_temp_file_write_perm.ts",
+  args:
+    "run --allow-write=./subdir/ --unstable 056_make_temp_file_write_perm.ts",
   output: "056_make_temp_file_write_perm.out",
 });
 
+// TODO(lucacasonato): remove --unstable when permissions goes stable
 itest!(_057_revoke_permissions {
-  args: "test -A 057_revoke_permissions.ts",
+  args: "test -A --unstable 057_revoke_permissions.ts",
   output: "057_revoke_permissions.out",
 });
 
@@ -1341,7 +1319,6 @@ itest!(error_013_missing_script {
 itest!(error_014_catch_dynamic_import_error {
   args: "run  --reload --allow-read error_014_catch_dynamic_import_error.js",
   output: "error_014_catch_dynamic_import_error.js.out",
-  exit_code: 1,
 });
 
 itest!(error_015_dynamic_import_permissions {
@@ -1417,6 +1394,13 @@ itest!(error_024_stack_promise_all {
   exit_code: 1,
 });
 
+itest!(error_025_tab_indent {
+  args: "error_025_tab_indent",
+  output: "error_025_tab_indent.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
 itest!(error_syntax {
   args: "run --reload error_syntax.js",
   check_stderr: true,
@@ -1468,12 +1452,12 @@ itest!(import_meta {
 });
 
 itest!(lib_ref {
-  args: "run --reload lib_ref.ts",
+  args: "run --unstable --reload lib_ref.ts",
   output: "lib_ref.ts.out",
 });
 
 itest!(lib_runtime_api {
-  args: "run --reload lib_runtime_api.ts",
+  args: "run --unstable --reload lib_runtime_api.ts",
   output: "lib_runtime_api.ts.out",
 });
 
@@ -1566,6 +1550,28 @@ itest!(top_level_for_await {
 itest!(top_level_for_await_ts {
   args: "top_level_for_await.ts",
   output: "top_level_for_await.out",
+});
+
+itest!(unstable_disabled {
+  args: "run --reload unstable.ts",
+  check_stderr: true,
+  exit_code: 1,
+  output: "unstable_disabled.out",
+});
+
+itest!(unstable_enabled {
+  args: "run --reload --unstable unstable.ts",
+  output: "unstable_enabled.out",
+});
+
+itest!(unstable_disabled_js {
+  args: "run --reload unstable.js",
+  output: "unstable_disabled_js.out",
+});
+
+itest!(unstable_enabled_js {
+  args: "run --reload --unstable unstable.ts",
+  output: "unstable_enabled_js.out",
 });
 
 itest!(_053_import_compression {
@@ -1671,6 +1677,7 @@ fn cafile_install_remote_module() {
     .arg(cafile)
     .arg("--root")
     .arg(temp_dir.path())
+    .arg("-n")
     .arg("echo_test")
     .arg("https://localhost:5545/cli/tests/echo.ts")
     .output()

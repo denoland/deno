@@ -64,12 +64,12 @@ async function readRecord(
   Startline: number,
   reader: BufReader,
   opt: ReadOptions = { comma: ",", trimLeadingSpace: false }
-): Promise<string[] | Deno.EOF> {
+): Promise<string[] | null> {
   const tp = new TextProtoReader(reader);
   const lineIndex = Startline;
   let line = await readLine(tp);
 
-  if (line === Deno.EOF) return Deno.EOF;
+  if (line === null) return null;
   if (line.length === 0) {
     return [];
   }
@@ -147,7 +147,7 @@ async function readRecord(
           // Hit end of line (copy all data so far).
           recordBuffer += line;
           const r = await readLine(tp);
-          if (r === Deno.EOF) {
+          if (r === null) {
             if (!opt.lazyQuotes) {
               quoteError = ERR_QUOTE;
               break parseField;
@@ -182,13 +182,13 @@ async function readRecord(
 }
 
 async function isEOF(tp: TextProtoReader): Promise<boolean> {
-  return (await tp.r.peek(0)) === Deno.EOF;
+  return (await tp.r.peek(0)) === null;
 }
 
-async function readLine(tp: TextProtoReader): Promise<string | Deno.EOF> {
+async function readLine(tp: TextProtoReader): Promise<string | null> {
   let line: string;
   const r = await tp.readLine();
-  if (r === Deno.EOF) return Deno.EOF;
+  if (r === null) return null;
   line = r;
 
   // For backwards compatibility, drop trailing \r before EOF.
@@ -226,7 +226,7 @@ export async function readMatrix(
 
   for (;;) {
     const r = await readRecord(lineIndex, reader, opt);
-    if (r === Deno.EOF) break;
+    if (r === null) break;
     lineResult = r;
     lineIndex++;
     // If fieldsPerRecord is 0, Read sets it to
@@ -264,6 +264,20 @@ export interface HeaderOptions {
 
 export interface ParseOptions extends ReadOptions {
   header: boolean | string[] | HeaderOptions[];
+  /** Parse function for rows.
+   * Example:
+   *     const r = await parseFile('a,b,c\ne,f,g\n', {
+   *      header: ["this", "is", "sparta"],
+   *       parse: (e: Record<string, unknown>) => {
+   *         return { super: e.this, street: e.is, fighter: e.sparta };
+   *       }
+   *     });
+   * // output
+   * [
+   *   { super: "a", street: "b", fighter: "c" },
+   *   { super: "e", street: "f", fighter: "g" }
+   * ]
+   */
   parse?: (input: unknown) => unknown;
 }
 
@@ -273,20 +287,6 @@ export interface ParseOptions extends ReadOptions {
  * for columns and rows.
  * @param input Input to parse. Can be a string or BufReader.
  * @param opt options of the parser.
- * @param [opt.header=false] HeaderOptions
- * @param [opt.parse=null] Parse function for rows.
- * Example:
- *     const r = await parseFile('a,b,c\ne,f,g\n', {
- *      header: ["this", "is", "sparta"],
- *       parse: (e: Record<string, unknown>) => {
- *         return { super: e.this, street: e.is, fighter: e.sparta };
- *       }
- *     });
- * // output
- * [
- *   { super: "a", street: "b", fighter: "c" },
- *   { super: "e", street: "f", fighter: "g" }
- * ]
  */
 export async function parse(
   input: string | BufReader,

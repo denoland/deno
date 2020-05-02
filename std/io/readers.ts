@@ -1,42 +1,41 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { encode } from "../encoding/utf8.ts";
 
-/** @deprecated Use stringReader() */
+/** Reader utility for strings */
 export class StringReader implements Deno.Reader {
-  #r: Deno.Reader;
-  constructor(private readonly s: string) {
-    this.#r = stringReader(s);
-  }
-  read(p: Uint8Array): Promise<number | Deno.EOF> {
-    return this.#r.read(p);
+  private offs = 0;
+  private buf = new Uint8Array(encode(this.s));
+
+  constructor(private readonly s: string) {}
+
+  read(p: Uint8Array): Promise<number | null> {
+    const n = Math.min(p.byteLength, this.buf.byteLength - this.offs);
+    p.set(this.buf.slice(this.offs, this.offs + n));
+    this.offs += n;
+    if (n === 0) {
+      return Promise.resolve(null);
+    }
+    return Promise.resolve(n);
   }
 }
 
-/** @deprecated use multiReader() */
 export class MultiReader implements Deno.Reader {
-  #r: Deno.Reader;
+  currentIndex = 0;
+  readers: Deno.Reader[]
   constructor(...readers: Deno.Reader[]) {
-    this.#r = multiReader(...readers);
+    this.readers = readers;
   }
-  read(p: Uint8Array): Promise<number | Deno.EOF> {
-    return this.#r.read(p);
-  }
-}
 
-/** Reader utility for combining multiple readers */
-export function multiReader(...readers: Deno.Reader[]): Deno.Reader {
-  let currentIndex = 0;
-  async function read(p: Uint8Array): Promise<number | Deno.EOF> {
-    const r = readers[currentIndex];
-    if (!r) return Deno.EOF;
+  async read(p: Uint8Array): Promise<number | null> {
+    const r = this.readers[this.currentIndex];
+    if (!r) return null;
     const result = await r.read(p);
-    if (result === Deno.EOF) {
-      currentIndex++;
-      return read(p);
+    if (result === null) {
+      this.currentIndex++;
+      return 0;
     }
     return result;
   }
-  return { read };
 }
 
 export function stringReader(s: string): Deno.Reader {
@@ -45,13 +44,13 @@ export function stringReader(s: string): Deno.Reader {
 
 export function bytesReader(buf: Uint8Array): Deno.Reader {
   let offs = 0;
-  function read(p: Uint8Array): Promise<number | Deno.EOF> {
+  function read(p: Uint8Array): Promise<number | null> {
     try {
       const n = Math.min(p.byteLength, buf.byteLength - offs);
       p.set(buf.subarray(offs, offs + n));
       offs += n;
       if (n === 0) {
-        return Promise.resolve(Deno.EOF);
+        return Promise.resolve(null);
       }
       return Promise.resolve(n);
     } catch (e) {
@@ -64,8 +63,8 @@ export function bytesReader(buf: Uint8Array): Deno.Reader {
 /** Reader that returns EOF everytime */
 export function emptyReader(): Deno.Reader {
   return {
-    read(_: Uint8Array): Promise<number | Deno.EOF> {
-      return Promise.resolve(Deno.EOF);
+    read(_: Uint8Array): Promise<number | null> {
+      return Promise.resolve(null);
     },
   };
 }

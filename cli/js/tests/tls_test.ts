@@ -191,7 +191,7 @@ unitTest(
     await w.flush();
     const tpr = new TextProtoReader(r);
     const statusLine = await tpr.readLine();
-    assert(statusLine !== Deno.EOF, `line must be read: ${String(statusLine)}`);
+    assert(statusLine !== null, `line must be read: ${String(statusLine)}`);
     const m = statusLine.match(/^(.+?) (.+?) (.+?)$/);
     assert(m !== null, "must be matched");
     const [_, proto, status, ok] = m;
@@ -199,7 +199,7 @@ unitTest(
     assertEquals(status, "200");
     assertEquals(ok, "OK");
     const headers = await tpr.readMIMEHeader();
-    assert(headers !== Deno.EOF);
+    assert(headers !== null);
     const contentLength = parseInt(headers.get("content-length")!);
     const bodyBuf = new Uint8Array(contentLength);
     await r.readFull(bodyBuf);
@@ -225,7 +225,7 @@ unitTest(
     let writer = new BufWriter(conn);
     let reader = new TextProtoReader(new BufReader(conn));
 
-    let line: string | Deno.EOF = (await reader.readLine()) as string;
+    let line: string | null = (await reader.readLine()) as string;
     assert(line.startsWith("220"));
 
     await writer.write(encoder.encode(`EHLO ${hostname}\r\n`));

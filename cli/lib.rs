@@ -53,6 +53,7 @@ pub mod signal;
 pub mod source_maps;
 mod startup_data;
 pub mod state;
+mod swc_util;
 mod test_runner;
 pub mod test_util;
 mod tokio_util;
@@ -252,13 +253,23 @@ async fn print_file_info(
   Ok(())
 }
 
-fn get_types() -> String {
-  format!(
-    "{}\n{}\n{}",
-    crate::js::DENO_NS_LIB,
-    crate::js::SHARED_GLOBALS_LIB,
-    crate::js::WINDOW_LIB
-  )
+fn get_types(unstable: bool) -> String {
+  if unstable {
+    format!(
+      "{}\n{}\n{}\n{}",
+      crate::js::DENO_NS_LIB,
+      crate::js::SHARED_GLOBALS_LIB,
+      crate::js::WINDOW_LIB,
+      crate::js::UNSTABLE_NS_LIB,
+    )
+  } else {
+    format!(
+      "{}\n{}\n{}",
+      crate::js::DENO_NS_LIB,
+      crate::js::SHARED_GLOBALS_LIB,
+      crate::js::WINDOW_LIB,
+    )
+  }
 }
 
 async fn info_command(
@@ -280,10 +291,10 @@ async fn info_command(
 
 async fn install_command(
   flags: Flags,
-  root: Option<PathBuf>,
-  exe_name: String,
   module_url: String,
   args: Vec<String>,
+  name: Option<String>,
+  root: Option<PathBuf>,
   force: bool,
 ) -> Result<(), ErrBox> {
   // Firstly fetch and compile module, this step ensures that module exists.
@@ -293,7 +304,7 @@ async fn install_command(
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
   let mut worker = create_main_worker(global_state, main_module.clone())?;
   worker.preload_module(&main_module).await?;
-  installer::install(flags, root, &exe_name, &module_url, args, force)
+  installer::install(flags, &module_url, args, name, root, force)
     .map_err(ErrBox::from)
 }
 
@@ -408,7 +419,7 @@ async fn doc_command(
   let doc_parser = doc::DocParser::new(loader);
 
   let parse_result = if source_file == "--builtin" {
-    doc_parser.parse_source("lib.deno.d.ts", get_types().as_str())
+    doc_parser.parse_source("lib.deno.d.ts", get_types(flags.unstable).as_str())
   } else {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
@@ -481,6 +492,7 @@ async fn test_command(
   flags: Flags,
   include: Option<Vec<String>>,
   fail_fast: bool,
+  quiet: bool,
   allow_none: bool,
   filter: Option<String>,
 ) -> Result<(), ErrBox> {
@@ -501,7 +513,7 @@ async fn test_command(
   let test_file_url =
     Url::from_file_path(&test_file_path).expect("Should be valid file url");
   let test_file =
-    test_runner::render_test_file(test_modules, fail_fast, filter);
+    test_runner::render_test_file(test_modules, fail_fast, quiet, filter);
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
   let mut worker =
@@ -571,23 +583,24 @@ pub fn main() {
     }
     DenoSubcommand::Info { file } => info_command(flags, file).boxed_local(),
     DenoSubcommand::Install {
-      root,
-      exe_name,
       module_url,
       args,
+      name,
+      root,
       force,
-    } => install_command(flags, root, exe_name, module_url, args, force)
-      .boxed_local(),
+    } => {
+      install_command(flags, module_url, args, name, root, force).boxed_local()
+    }
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
       fail_fast,
+      quiet,
       include,
       allow_none,
       filter,
-    } => {
-      test_command(flags, include, fail_fast, allow_none, filter).boxed_local()
-    }
+    } => test_command(flags, include, fail_fast, quiet, allow_none, filter)
+      .boxed_local(),
     DenoSubcommand::Completions { buf } => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);
@@ -596,7 +609,7 @@ pub fn main() {
       return;
     }
     DenoSubcommand::Types => {
-      let types = get_types();
+      let types = get_types(flags.unstable);
       if let Err(e) = write_to_stdout_ignore_sigpipe(types.as_bytes()) {
         eprintln!("{}", e);
         std::process::exit(1);

@@ -246,28 +246,125 @@ export function foo([e,,f, ...g]: number[], { c, d: asdf, i = "asdf", ...rest}, 
 
 #[tokio::test]
 async fn export_const() {
-  let source_code =
-    "/** Something about fizzBuzz */\nexport const fizzBuzz = \"fizzBuzz\";\n";
+  let source_code = r#"
+/** Something about fizzBuzz */
+export const fizzBuzz = "fizzBuzz";
+
+export const env: {
+  /** get doc */
+  get(key: string): string | undefined;
+
+  /** set doc */
+  set(key: string, value: string): void;
+}
+"#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
   let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
-  assert_eq!(entries.len(), 1);
-  let entry = &entries[0];
-  let expected_json = json!({
-    "kind": "variable",
-    "name": "fizzBuzz",
-    "location": {
-      "filename": "test.ts",
-      "line": 2,
-      "col": 0
+  assert_eq!(entries.len(), 2);
+  let expected_json = json!([
+  {
+    "kind":"variable",
+    "name":"fizzBuzz",
+    "location":{
+      "filename":"test.ts",
+      "line":3,
+      "col":0
     },
-    "jsDoc": "Something about fizzBuzz",
-    "variableDef": {
-      "tsType": null,
-      "kind": "const"
+    "jsDoc":"Something about fizzBuzz",
+    "variableDef":{
+      "tsType":null,
+      "kind":"const"
     }
-  });
-  let actual = serde_json::to_value(entry).unwrap();
+  },
+  {
+    "kind":"variable",
+    "name":"env",
+    "location":{
+      "filename":"test.ts",
+      "line":5,
+      "col":0
+    },
+    "jsDoc":null,
+    "variableDef":{
+      "tsType":{
+        "repr":"",
+        "kind":"typeLiteral",
+        "typeLiteral":{
+          "methods":[{
+            "name":"get",
+            "params":[
+              {
+                "name":"key",
+                "kind":"identifier",
+                "optional":false,
+                "tsType":{
+                  "repr":"string",
+                  "kind":"keyword",
+                  "keyword":"string"
+                }
+              }
+            ],
+            "returnType":{
+              "repr":"",
+              "kind":"union",
+              "union":[
+                {
+                  "repr":"string",
+                  "kind":"keyword",
+                  "keyword":"string"
+                },
+                {
+                  "repr":"undefined",
+                  "kind":"keyword",
+                  "keyword":"undefined"
+                }
+              ]
+            },
+            "typeParams":[]
+          }, {
+            "name":"set",
+            "params":[
+              {
+                "name":"key",
+                "kind":"identifier",
+                "optional":false,
+                "tsType":{
+                  "repr":"string",
+                  "kind":"keyword",
+                  "keyword":"string"
+                }
+              },
+              {
+                "name":"value",
+                "kind":"identifier",
+                "optional":false,
+                "tsType":{
+                  "repr":"string",
+                  "kind":"keyword",
+                  "keyword":"string"
+                }
+              }
+              ],
+              "returnType":{
+                "repr":"void",
+                "kind":"keyword",
+                "keyword":"void"
+              },
+              "typeParams":[]
+            }
+            ],
+            "properties":[],
+            "callSignatures":[]
+          }
+        },
+        "kind":"const"
+      }
+    }
+    ]
+  );
+
+  let actual = serde_json::to_value(entries.clone()).unwrap();
   assert_eq!(actual, expected_json);
 
   assert!(

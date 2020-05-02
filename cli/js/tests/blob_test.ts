@@ -66,7 +66,7 @@ unitTest(function nativeEndLine(): void {
   };
   const blob = new Blob(["Hello\nWorld"], options);
 
-  assertEquals(blob.size, Deno.build.os === "win" ? 12 : 11);
+  assertEquals(blob.size, Deno.build.os === "windows" ? 12 : 11);
 });
 
 unitTest(async function blobText(): Promise<void> {

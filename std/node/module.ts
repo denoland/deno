@@ -534,8 +534,8 @@ class Module {
   }
 
   static _initPaths(): void {
-    const homeDir = Deno.env("HOME");
-    const nodePath = Deno.env("NODE_PATH");
+    const homeDir = Deno.env.get("HOME");
+    const nodePath = Deno.env.get("NODE_PATH");
 
     // Removed $PREFIX/bin/node case
 
@@ -758,7 +758,7 @@ function toRealPath(requestPath: string): string {
   let fullPath = requestPath;
   while (true) {
     try {
-      fullPath = Deno.readlinkSync(fullPath);
+      fullPath = Deno.readLinkSync(fullPath);
     } catch {
       break;
     }

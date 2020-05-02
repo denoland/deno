@@ -1,13 +1,13 @@
 #!/usr/bin/env -S deno --allow-net --allow-env
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { parse } from "https://deno.land/std/flags/mod.ts";
+import { parse } from "../flags/mod.ts";
 
 function pathBase(p: string): string {
   const parts = p.split("/");
   return parts[parts.length - 1];
 }
 
-const token = Deno.env()["GIST_TOKEN"];
+const token = Deno.env.get("GIST_TOKEN");
 if (!token) {
   console.error("GIST_TOKEN environmental variable not set.");
   console.error("Get a token here: https://github.com/settings/tokens");

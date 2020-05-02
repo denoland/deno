@@ -20,7 +20,7 @@ export default class Dir {
   read(callback?: Function): Promise<Dirent | null> {
     return new Promise((resolve, reject) => {
       if (!this.asyncIterator) {
-        this.asyncIterator = Deno.readdir(this.path)[Symbol.asyncIterator]();
+        this.asyncIterator = Deno.readDir(this.path)[Symbol.asyncIterator]();
       }
       assert(this.asyncIterator);
       this.asyncIterator
@@ -42,7 +42,7 @@ export default class Dir {
 
   readSync(): Dirent | null {
     if (!this.syncIterator) {
-      this.syncIterator = Deno.readdirSync(this.path)![Symbol.iterator]();
+      this.syncIterator = Deno.readDirSync(this.path)![Symbol.iterator]();
     }
 
     const file: Deno.DirEntry = this.syncIterator.next().value;

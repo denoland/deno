@@ -48,7 +48,7 @@ unitTest({ perms: { write: false } }, function writeFileSyncPerm(): void {
 unitTest(
   { perms: { read: true, write: true } },
   function writeFileSyncUpdateMode(): void {
-    if (Deno.build.os !== "win") {
+    if (Deno.build.os !== "windows") {
       const enc = new TextEncoder();
       const data = enc.encode("Hello");
       const filename = Deno.makeTempDirSync() + "/test.txt";
@@ -164,7 +164,7 @@ unitTest(
 unitTest(
   { perms: { read: true, write: true } },
   async function writeFileUpdateMode(): Promise<void> {
-    if (Deno.build.os !== "win") {
+    if (Deno.build.os !== "windows") {
       const enc = new TextEncoder();
       const data = enc.encode("Hello");
       const filename = Deno.makeTempDirSync() + "/test.txt";

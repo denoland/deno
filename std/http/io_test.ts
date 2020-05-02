@@ -3,7 +3,6 @@ import {
   assertThrowsAsync,
   assertEquals,
   assert,
-  assertNotEOF,
   assertNotEquals,
 } from "../testing/asserts.ts";
 import {
@@ -27,14 +26,14 @@ import { mockConn } from "./testing.ts";
 import { ClientRequest } from "./client.ts";
 import { TimeoutError, deferred } from "../util/async.ts";
 import { readUntilEOF } from "../io/ioutil.ts";
-const { Buffer, test } = Deno;
+const { Buffer, test, readAll } = Deno;
 
 const kBuf = new Uint8Array(1);
 test("[http/io] bodyReader", async () => {
   const text = "Hello, Deno";
   const r = bodyReader(text.length, new BufReader(new Buffer(encode(text))));
   assertEquals(decode(await Deno.readAll(r)), text);
-  assertEquals(await r.read(kBuf), Deno.EOF);
+  assertEquals(await r.read(kBuf), null);
 });
 function chunkify(n: number, char: string): string {
   const v = Array.from({ length: n })
@@ -52,17 +51,17 @@ test("[http/io] chunkedBodyReader", async () => {
   ].join("");
   const h = new Headers();
   const r = chunkedBodyReader(h, new BufReader(new Buffer(encode(body))));
-  let result: number | Deno.EOF;
+  let result: number | null;
   // Use small buffer as some chunks exceed buffer size
   const buf = new Uint8Array(5);
   const dest = new Buffer();
-  while ((result = await r.read(buf)) !== Deno.EOF) {
+  while ((result = await r.read(buf)) !== null) {
     const len = Math.min(buf.byteLength, result);
     await dest.write(buf.subarray(0, len));
   }
   const exp = "aaabbbbbcccccccccccdddddddddddddddddddddd";
-  assertEquals(dest.toString(), exp);
-  assertEquals(await r.read(kBuf), Deno.EOF);
+  assertEquals(new TextDecoder().decode(dest.bytes()), exp);
+  assertEquals(await r.read(kBuf), null);
 });
 
 test("[http/io] chunkedBodyReader with trailers", async () => {
@@ -89,7 +88,7 @@ test("[http/io] chunkedBodyReader with trailers", async () => {
   assertEquals(h.has("trailer"), false);
   assertEquals(h.get("deno"), "land");
   assertEquals(h.get("node"), "js");
-  assertEquals(await r.read(kBuf), Deno.EOF);
+  assertEquals(await r.read(kBuf), null);
 });
 
 test("[http/io] readTrailers", async () => {
@@ -145,7 +144,10 @@ test("[http/io] writeTrailer", async () => {
     new Headers({ "transfer-encoding": "chunked", trailer: "deno,node" }),
     new Headers({ deno: "land", node: "js" })
   );
-  assertEquals(w.toString(), "deno: land\r\nnode: js\r\n\r\n");
+  assertEquals(
+    new TextDecoder().decode(w.bytes()),
+    "deno: land\r\nnode: js\r\n\r\n"
+  );
 });
 
 test("[http/io] writeTrailer should throw", async () => {
@@ -204,6 +206,7 @@ test("[http/io] parseHttpVersion", (): void => {
     { in: "HTTP/0.-1", err: true },
     { in: "HTTP/", err: true },
     { in: "HTTP/1,0", err: true },
+    { in: "HTTP/1.1000001", err: true },
   ];
   for (const t of testCases) {
     let r, err;
@@ -233,25 +236,28 @@ test("[http/io] writeUint8ArrayResponse", async function (): Promise<void> {
   const decoder = new TextDecoder("utf-8");
   const reader = new BufReader(buf);
 
-  let r: ReadLineResult;
-  r = assertNotEOF(await reader.readLine());
+  let r: ReadLineResult | null = await reader.readLine();
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), "HTTP/1.1 200 OK");
   assertEquals(r.more, false);
 
-  r = assertNotEOF(await reader.readLine());
+  r = await reader.readLine();
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), `content-length: ${shortText.length}`);
   assertEquals(r.more, false);
 
-  r = assertNotEOF(await reader.readLine());
+  r = await reader.readLine();
+  assert(r !== null);
   assertEquals(r.line.byteLength, 0);
   assertEquals(r.more, false);
 
-  r = assertNotEOF(await reader.readLine());
+  r = await reader.readLine();
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), shortText);
   assertEquals(r.more, false);
 
   const eof = await reader.readLine();
-  assertEquals(eof, Deno.EOF);
+  assertEquals(eof, null);
 });
 
 test("[http/io] writeStringResponse", async function (): Promise<void> {
@@ -265,25 +271,28 @@ test("[http/io] writeStringResponse", async function (): Promise<void> {
   const decoder = new TextDecoder("utf-8");
   const reader = new BufReader(buf);
 
-  let r: ReadLineResult;
-  r = assertNotEOF(await reader.readLine());
+  let r: ReadLineResult | null = await reader.readLine();
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), "HTTP/1.1 200 OK");
   assertEquals(r.more, false);
 
-  r = assertNotEOF(await reader.readLine());
+  r = await reader.readLine();
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), `content-length: ${body.length}`);
   assertEquals(r.more, false);
 
-  r = assertNotEOF(await reader.readLine());
+  r = await reader.readLine();
+  assert(r !== null);
   assertEquals(r.line.byteLength, 0);
   assertEquals(r.more, false);
 
-  r = assertNotEOF(await reader.readLine());
+  r = await reader.readLine();
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), body);
   assertEquals(r.more, false);
 
   const eof = await reader.readLine();
-  assertEquals(eof, Deno.EOF);
+  assertEquals(eof, null);
 });
 
 test("[http/io] writeStringReaderResponse", async function (): Promise<void> {
@@ -298,28 +307,33 @@ test("[http/io] writeStringReaderResponse", async function (): Promise<void> {
   const decoder = new TextDecoder("utf-8");
   const reader = new BufReader(buf);
 
-  let r: ReadLineResult;
-  r = assertNotEOF(await reader.readLine());
+  let r: ReadLineResult | null = await reader.readLine();
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), "HTTP/1.1 200 OK");
   assertEquals(r.more, false);
 
-  r = assertNotEOF(await reader.readLine());
+  r = await reader.readLine();
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), "transfer-encoding: chunked");
   assertEquals(r.more, false);
 
-  r = assertNotEOF(await reader.readLine());
+  r = await reader.readLine();
+  assert(r !== null);
   assertEquals(r.line.byteLength, 0);
   assertEquals(r.more, false);
 
-  r = assertNotEOF(await reader.readLine());
+  r = await reader.readLine();
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), shortText.length.toString());
   assertEquals(r.more, false);
 
-  r = assertNotEOF(await reader.readLine());
+  r = await reader.readLine();
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), shortText);
   assertEquals(r.more, false);
 
-  r = assertNotEOF(await reader.readLine());
+  r = await reader.readLine();
+  assert(r !== null);
   assertEquals(decoder.decode(r.line), "0");
   assertEquals(r.more, false);
 });
@@ -336,7 +350,7 @@ test("[http/io] writeResponse with trailer", async () => {
     body,
     trailers: () => new Headers({ deno: "land", node: "js" }),
   });
-  const ret = w.toString();
+  const ret = new TextDecoder().decode(w.bytes());
   const exp = [
     "HTTP/1.1 200 OK",
     "transfer-encoding: chunked",
@@ -354,7 +368,18 @@ test("[http/io] writeResponse with trailer", async () => {
   assertEquals(ret, exp);
 });
 
-test("[http/io] readRequestError", async function (): Promise<void> {
+test("writeResponseShouldNotModifyOriginHeaders", async () => {
+  const headers = new Headers();
+  const buf = new Deno.Buffer();
+
+  await writeResponse(buf, { body: "foo", headers });
+  assert(decode(await readAll(buf)).includes("content-length: 3"));
+
+  await writeResponse(buf, { body: "hello", headers });
+  assert(decode(await readAll(buf)).includes("content-length: 5"));
+});
+
+test("readRequestError", async function (): Promise<void> {
   const input = `GET / HTTP/1.1
 malformedHeader
 `;
@@ -382,7 +407,7 @@ test("[http/io] testReadRequestError", async function (): Promise<void> {
       in: "GET / HTTP/1.1\r\nheader:foo\r\n",
       err: Deno.errors.UnexpectedEof,
     },
-    { in: "", err: Deno.EOF },
+    { in: "", eof: true },
     {
       in: "HEAD / HTTP/1.1\r\nContent-Length:4\r\n\r\n",
       err: "http: method cannot contain a Content-Length",
@@ -437,14 +462,14 @@ test("[http/io] testReadRequestError", async function (): Promise<void> {
   for (const test of testCases) {
     const reader = new BufReader(new StringReader(test.in));
     let err;
-    let req: ServerRequest | Deno.EOF | undefined;
+    let req: ServerRequest | null = null;
     try {
       req = await readRequest(mockConn(), { r: reader });
     } catch (e) {
       err = e;
     }
-    if (test.err === Deno.EOF) {
-      assertEquals(req, Deno.EOF);
+    if (test.eof) {
+      assertEquals(req, null);
     } else if (typeof test.err === "string") {
       assertEquals(err.message, test.err);
     } else if (test.err) {
@@ -453,7 +478,7 @@ test("[http/io] testReadRequestError", async function (): Promise<void> {
       assert(req instanceof ServerRequest);
       assert(test.headers);
       assertEquals(err, undefined);
-      assertNotEquals(req, Deno.EOF);
+      assertNotEquals(req, null);
       for (const h of test.headers) {
         assertEquals(req.headers.get(h.key), h.value);
       }
@@ -466,9 +491,9 @@ test({
   async fn() {
     const conn = mockConn();
     const d = deferred();
-    conn.read = async (_: Uint8Array): Promise<number | Deno.EOF> => {
+    conn.read = async (_: Uint8Array): Promise<number | null> => {
       await d;
-      return Deno.EOF;
+      return null;
     };
     await assertThrowsAsync(async () => {
       await readRequest(conn, { timeout: 100 });
@@ -482,9 +507,9 @@ test({
   async fn() {
     const d = deferred();
     const body = {
-      async read(_: Uint8Array): Promise<number | Deno.EOF> {
+      async read(_: Uint8Array): Promise<number | null> {
         await d;
-        return Deno.EOF;
+        return null;
       },
     };
     const conn = mockConn();
@@ -497,7 +522,7 @@ test({
     const r = multiReader(stringReader(head), body);
     conn.read = r.read;
     const req = await readRequest(conn, { timeout: 100 });
-    assert(req != Deno.EOF);
+    assert(req != null);
     assertEquals(req.headers.get("content-length"), "20");
     assert(req.body != null);
     await assertThrowsAsync(async () => {
@@ -703,9 +728,9 @@ test({
     const head = ["HTTP/1.1 200 OK", "content-length: 20", "\r\n"].join("\r\n");
     const d = deferred();
     const body = {
-      async read(_: Uint8Array): Promise<number | Deno.EOF> {
+      async read(_: Uint8Array): Promise<number | null> {
         await d;
-        return Deno.EOF;
+        return null;
       },
     };
     const r = multiReader(stringReader(head), body);

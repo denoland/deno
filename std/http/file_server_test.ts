@@ -12,6 +12,7 @@ async function startFileServer(): Promise<void> {
     cmd: [
       Deno.execPath(),
       "run",
+      "--unstable",
       "--allow-read",
       "--allow-net",
       "http/file_server.ts",
@@ -25,7 +26,7 @@ async function startFileServer(): Promise<void> {
   assert(fileServer.stdout != null);
   const r = new TextProtoReader(new BufReader(fileServer.stdout));
   const s = await r.readLine();
-  assert(s !== Deno.EOF && s.includes("server listening"));
+  assert(s !== null && s.includes("server listening"));
 }
 
 function killFileServer(): void {
@@ -50,7 +51,7 @@ test("file_server serveFile", async (): Promise<void> => {
   }
 });
 
-test(async function serveDirectory(): Promise<void> {
+test("serveDirectory", async function (): Promise<void> {
   await startFileServer();
   try {
     const res = await fetch("http://localhost:4500/");
@@ -62,9 +63,9 @@ test(async function serveDirectory(): Promise<void> {
     // `Deno.FileInfo` is not completely compatible with Windows yet
     // TODO: `mode` should work correctly in the future.
     // Correct this test case accordingly.
-    Deno.build.os !== "win" &&
+    Deno.build.os !== "windows" &&
       assert(/<td class="mode">(\s)*\([a-zA-Z-]{10}\)(\s)*<\/td>/.test(page));
-    Deno.build.os === "win" &&
+    Deno.build.os === "windows" &&
       assert(/<td class="mode">(\s)*\(unknown mode\)(\s)*<\/td>/.test(page));
     assert(page.includes(`<a href="/README.md">README.md</a>`));
   } finally {
@@ -72,7 +73,7 @@ test(async function serveDirectory(): Promise<void> {
   }
 });
 
-test(async function serveFallback(): Promise<void> {
+test("serveFallback", async function (): Promise<void> {
   await startFileServer();
   try {
     const res = await fetch("http://localhost:4500/badfile.txt");
@@ -85,7 +86,7 @@ test(async function serveFallback(): Promise<void> {
   }
 });
 
-test(async function serveWithUnorthodoxFilename(): Promise<void> {
+test("serveWithUnorthodoxFilename", async function (): Promise<void> {
   await startFileServer();
   try {
     let res = await fetch("http://localhost:4500/http/testdata/%");
@@ -103,9 +104,16 @@ test(async function serveWithUnorthodoxFilename(): Promise<void> {
   }
 });
 
-test(async function servePermissionDenied(): Promise<void> {
+test("servePermissionDenied", async function (): Promise<void> {
   const deniedServer = Deno.run({
-    cmd: [Deno.execPath(), "run", "--allow-net", "http/file_server.ts"],
+    // TODO(lucacasonato): remove unstable when stabilized
+    cmd: [
+      Deno.execPath(),
+      "run",
+      "--unstable",
+      "--allow-net",
+      "http/file_server.ts",
+    ],
     stdout: "piped",
     stderr: "piped",
   });
@@ -114,7 +122,7 @@ test(async function servePermissionDenied(): Promise<void> {
   assert(deniedServer.stderr != null);
   const errReader = new TextProtoReader(new BufReader(deniedServer.stderr));
   const s = await reader.readLine();
-  assert(s !== Deno.EOF && s.includes("server listening"));
+  assert(s !== null && s.includes("server listening"));
 
   try {
     const res = await fetch("http://localhost:4500/");
@@ -130,15 +138,22 @@ test(async function servePermissionDenied(): Promise<void> {
   }
 });
 
-test(async function printHelp(): Promise<void> {
+test("printHelp", async function (): Promise<void> {
   const helpProcess = Deno.run({
-    cmd: [Deno.execPath(), "run", "http/file_server.ts", "--help"],
+    // TODO(lucacasonato): remove unstable when stabilized
+    cmd: [
+      Deno.execPath(),
+      "run",
+      "--unstable",
+      "http/file_server.ts",
+      "--help",
+    ],
     stdout: "piped",
   });
   assert(helpProcess.stdout != null);
   const r = new TextProtoReader(new BufReader(helpProcess.stdout));
   const s = await r.readLine();
-  assert(s !== Deno.EOF && s.includes("Deno File Server"));
+  assert(s !== null && s.includes("Deno File Server"));
   helpProcess.close();
   helpProcess.stdout.close();
 });

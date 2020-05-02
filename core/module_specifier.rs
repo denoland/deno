@@ -213,7 +213,16 @@ mod tests {
 
   #[test]
   fn test_resolve_import() {
+    fn get_path(specifier: &str) -> Url {
+      let base_path = current_dir().unwrap().join("<unknown>");
+      let base_url = Url::from_file_path(base_path).unwrap();
+      base_url.join(specifier).unwrap()
+    }
+    let awesome = get_path("/awesome.ts");
+    let awesome_srv = get_path("/service/awesome.ts");
     let tests = vec![
+      ("/awesome.ts", "<unknown>", awesome.as_str()),
+      ("/service/awesome.ts", "<unknown>", awesome_srv.as_str()),
       (
         "./005_more_imports.ts",
         "http://deno.land/core/tests/006_url_imports.ts",
@@ -292,6 +301,14 @@ mod tests {
     use ModuleResolutionError::*;
 
     let tests = vec![
+      (
+        "awesome.ts",
+        "<unknown>",
+        ImportPrefixMissing(
+          "awesome.ts".to_string(),
+          Some("<unknown>".to_string()),
+        ),
+      ),
       (
         "005_more_imports.ts",
         "http://deno.land/core/tests/006_url_imports.ts",

@@ -2,7 +2,7 @@
 import { unitTest, assertEquals, assert } from "./test_util.ts";
 
 // chown on Windows is noop for now, so ignore its testing on Windows
-if (Deno.build.os !== "win") {
+if (Deno.build.os !== "windows") {
   async function getUidAndGid(): Promise<{ uid: number; gid: number }> {
     // get the user ID and group ID of the current process
     const uidProc = Deno.run({

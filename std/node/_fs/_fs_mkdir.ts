@@ -20,7 +20,7 @@ export function mkdir(
   let recursive = false;
 
   if (typeof options == "function") {
-    callback == options;
+    callback = options;
   } else if (typeof options === "number") {
     mode = options;
   } else if (typeof options === "boolean") {
@@ -35,12 +35,12 @@ export function mkdir(
     );
   Deno.mkdir(path, { recursive, mode })
     .then(() => {
-      if (callback && typeof callback == "function") {
+      if (typeof callback === "function") {
         callback();
       }
     })
     .catch((err) => {
-      if (callback && typeof callback == "function") {
+      if (typeof callback === "function") {
         callback(err);
       }
     });
@@ -62,9 +62,6 @@ export function mkdirSync(path: Path, options?: MkdirOptions): void {
     throw new Deno.errors.InvalidData(
       "invalid recursive option , must be a boolean"
     );
-  try {
-    Deno.mkdirSync(path, { recursive, mode });
-  } catch (err) {
-    throw err;
-  }
+
+  Deno.mkdirSync(path, { recursive, mode });
 }

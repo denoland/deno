@@ -32,7 +32,7 @@ export function writeFileSync(
   if (
     options.mode !== undefined &&
     options.mode !== null &&
-    build.os !== "win"
+    build.os !== "windows"
   ) {
     chmodSync(path, options.mode);
   }
@@ -62,7 +62,7 @@ export async function writeFile(
   if (
     options.mode !== undefined &&
     options.mode !== null &&
-    build.os !== "win"
+    build.os !== "windows"
   ) {
     await chmod(path, options.mode);
   }

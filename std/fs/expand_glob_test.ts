@@ -2,11 +2,11 @@ const { cwd, execPath, run } = Deno;
 import { decode } from "../encoding/utf8.ts";
 import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
 import {
-  isWindows,
   join,
   joinGlobs,
   normalize,
   relative,
+  fromFileUrl,
 } from "../path/mod.ts";
 import {
   ExpandGlobOptions,
@@ -19,12 +19,12 @@ async function expandGlobArray(
   options: ExpandGlobOptions
 ): Promise<string[]> {
   const paths: string[] = [];
-  for await (const { filename } of expandGlob(globString, options)) {
-    paths.push(filename);
+  for await (const { path } of expandGlob(globString, options)) {
+    paths.push(path);
   }
   paths.sort();
   const pathsSync = [...expandGlobSync(globString, options)].map(
-    ({ filename }): string => filename
+    ({ path }): string => path
   );
   pathsSync.sort();
   assertEquals(paths, pathsSync);
@@ -39,19 +39,14 @@ async function expandGlobArray(
   return relativePaths;
 }
 
-function urlToFilePath(url: URL): string {
-  // Since `new URL('file:///C:/a').pathname` is `/C:/a`, remove leading slash.
-  return url.pathname.slice(url.protocol == "file:" && isWindows ? 1 : 0);
-}
-
 const EG_OPTIONS: ExpandGlobOptions = {
-  root: urlToFilePath(new URL(join("testdata", "glob"), import.meta.url)),
+  root: fromFileUrl(new URL(join("testdata", "glob"), import.meta.url)),
   includeDirs: true,
   extended: false,
   globstar: false,
 };
 
-Deno.test(async function expandGlobWildcard(): Promise<void> {
+Deno.test("expandGlobWildcard", async function (): Promise<void> {
   const options = EG_OPTIONS;
   assertEquals(await expandGlobArray("*", options), [
     "abc",
@@ -61,12 +56,12 @@ Deno.test(async function expandGlobWildcard(): Promise<void> {
   ]);
 });
 
-Deno.test(async function expandGlobTrailingSeparator(): Promise<void> {
+Deno.test("expandGlobTrailingSeparator", async function (): Promise<void> {
   const options = EG_OPTIONS;
   assertEquals(await expandGlobArray("*/", options), ["subdir"]);
 });
 
-Deno.test(async function expandGlobParent(): Promise<void> {
+Deno.test("expandGlobParent", async function (): Promise<void> {
   const options = EG_OPTIONS;
   assertEquals(await expandGlobArray("subdir/../*", options), [
     "abc",
@@ -76,7 +71,7 @@ Deno.test(async function expandGlobParent(): Promise<void> {
   ]);
 });
 
-Deno.test(async function expandGlobExt(): Promise<void> {
+Deno.test("expandGlobExt", async function (): Promise<void> {
   const options = { ...EG_OPTIONS, extended: true };
   assertEquals(await expandGlobArray("abc?(def|ghi)", options), [
     "abc",
@@ -96,7 +91,7 @@ Deno.test(async function expandGlobExt(): Promise<void> {
   assertEquals(await expandGlobArray("abc!(def|ghi)", options), ["abc"]);
 });
 
-Deno.test(async function expandGlobGlobstar(): Promise<void> {
+Deno.test("expandGlobGlobstar", async function (): Promise<void> {
   const options = { ...EG_OPTIONS, globstar: true };
   assertEquals(
     await expandGlobArray(joinGlobs(["**", "abc"], options), options),
@@ -104,7 +99,7 @@ Deno.test(async function expandGlobGlobstar(): Promise<void> {
   );
 });
 
-Deno.test(async function expandGlobGlobstarParent(): Promise<void> {
+Deno.test("expandGlobGlobstarParent", async function (): Promise<void> {
   const options = { ...EG_OPTIONS, globstar: true };
   assertEquals(
     await expandGlobArray(joinGlobs(["subdir", "**", ".."], options), options),
@@ -112,15 +107,15 @@ Deno.test(async function expandGlobGlobstarParent(): Promise<void> {
   );
 });
 
-Deno.test(async function expandGlobIncludeDirs(): Promise<void> {
+Deno.test("expandGlobIncludeDirs", async function (): Promise<void> {
   const options = { ...EG_OPTIONS, includeDirs: false };
   assertEquals(await expandGlobArray("subdir", options), []);
 });
 
-Deno.test(async function expandGlobPermError(): Promise<void> {
+Deno.test("expandGlobPermError", async function (): Promise<void> {
   const exampleUrl = new URL("testdata/expand_wildcard.js", import.meta.url);
   const p = run({
-    cmd: [execPath(), exampleUrl.toString()],
+    cmd: [execPath(), "--unstable", exampleUrl.toString()],
     stdin: "null",
     stdout: "piped",
     stderr: "piped",

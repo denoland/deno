@@ -2,7 +2,7 @@
 import { unitTest, assert, assertEquals } from "./test_util.ts";
 
 unitTest(
-  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
+  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
   function chmodSyncSuccess(): void {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
@@ -21,7 +21,7 @@ unitTest(
 // Check symlink when not on windows
 unitTest(
   {
-    ignore: Deno.build.os === "win",
+    ignore: Deno.build.os === "windows",
     perms: { read: true, write: true },
   },
   function chmodSyncSymlinkSuccess(): void {
@@ -73,7 +73,7 @@ unitTest({ perms: { write: false } }, function chmodSyncPerm(): void {
 });
 
 unitTest(
-  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
+  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
   async function chmodSuccess(): Promise<void> {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
@@ -93,7 +93,7 @@ unitTest(
 
 unitTest(
   {
-    ignore: Deno.build.os === "win",
+    ignore: Deno.build.os === "windows",
     perms: { read: true, write: true },
   },
   async function chmodSymlinkSuccess(): Promise<void> {

@@ -9,10 +9,11 @@ import {
   readableStreamReaderGenericCancel,
   readableStreamReaderGenericInitialize,
   readableStreamReaderGenericRelease,
+  setFunctionName,
 } from "./internals.ts";
 import { ReadableStreamImpl } from "./readable_stream.ts";
 import * as sym from "./symbols.ts";
-import { symbols } from "../../symbols.ts";
+import { customInspect } from "../console.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class ReadableStreamDefaultReaderImpl<R = any>
@@ -83,7 +84,9 @@ export class ReadableStreamDefaultReaderImpl<R = any>
     readableStreamReaderGenericRelease(this);
   }
 
-  [symbols.customInspect](): string {
-    return `ReadableStreamDefaultReader { closed: Promise }`;
+  [customInspect](): string {
+    return `${this.constructor.name} { closed: Promise }`;
   }
 }
+
+setFunctionName(ReadableStreamDefaultReaderImpl, "ReadableStreamDefaultReader");

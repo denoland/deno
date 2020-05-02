@@ -90,7 +90,7 @@ unitTest(
     } catch (err) {
       errOnWindows = err;
     }
-    if (Deno.build.os === "win") {
+    if (Deno.build.os === "windows") {
       assertEquals(errOnWindows.message, "not implemented");
     } else {
       const pathInfo = Deno.lstatSync(danglingSymlinkPath);
@@ -123,7 +123,7 @@ unitTest(
     } catch (err) {
       errOnWindows = err;
     }
-    if (Deno.build.os === "win") {
+    if (Deno.build.os === "windows") {
       assertEquals(errOnWindows.message, "not implemented");
     } else {
       const symlinkPathInfo = Deno.statSync(validSymlinkPath);
@@ -326,7 +326,7 @@ unitTest(
     } catch (e) {
       errOnWindows = e;
     }
-    if (Deno.build.os === "win") {
+    if (Deno.build.os === "windows") {
       assertEquals(errOnWindows.message, "not implemented");
     } else {
       const pathInfo = Deno.lstatSync(danglingSymlinkPath);
@@ -359,7 +359,7 @@ unitTest(
     } catch (e) {
       errOnWindows = e;
     }
-    if (Deno.build.os === "win") {
+    if (Deno.build.os === "windows") {
       assertEquals(errOnWindows.message, "not implemented");
     } else {
       const symlinkPathInfo = Deno.statSync(validSymlinkPath);
