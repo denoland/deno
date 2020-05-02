@@ -42,12 +42,15 @@ export function bytesReader(buf: Uint8Array): Deno.Reader {
   let offs = 0;
   function read(p: Uint8Array): Promise<number | null> {
     try {
+      if (offs === buf.byteLength) {
+        return Promise.resolve(null);
+      }
       const n = Math.min(p.byteLength, buf.byteLength - offs);
-      p.set(buf.subarray(offs, offs + n));
-      offs += n;
       if (n === 0) {
         return Promise.resolve(null);
       }
+      p.set(buf.subarray(offs, offs + n));
+      offs += n;
       return Promise.resolve(n);
     } catch (e) {
       return Promise.reject(e);
