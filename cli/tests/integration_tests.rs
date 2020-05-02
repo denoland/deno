@@ -1395,7 +1395,7 @@ itest!(error_024_stack_promise_all {
 });
 
 itest!(error_025_tab_indent {
-  args: "error_025_tab_indent",
+  args: "run error_025_tab_indent",
   output: "error_025_tab_indent.out",
   check_stderr: true,
   exit_code: 1,
@@ -1518,7 +1518,7 @@ itest!(run_v8_flags {
 });
 
 itest!(run_v8_help {
-  args: "run --v8-flags=--help",
+  args: "repl --v8-flags=--help",
   output: "v8_help.out",
 });
 
