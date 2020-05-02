@@ -66,6 +66,7 @@ pub struct StateInner {
   pub seeded_rng: Option<StdRng>,
   pub target_lib: TargetLib,
   pub debug_type: DebugType,
+  pub local_storage_db: Option<sled::Db>,
 }
 
 impl State {
@@ -394,6 +395,7 @@ impl State {
       seeded_rng,
       target_lib: TargetLib::Main,
       debug_type,
+      local_storage_db: None,
     }));
 
     Ok(Self(state))
@@ -429,6 +431,7 @@ impl State {
       seeded_rng,
       target_lib: TargetLib::Worker,
       debug_type: DebugType::Dependent,
+      local_storage_db: None,
     }));
 
     Ok(Self(state))

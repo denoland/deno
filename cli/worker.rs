@@ -243,6 +243,7 @@ impl MainWorker {
       ops::fs::init(isolate, &state);
       ops::fs_events::init(isolate, &state);
       ops::io::init(isolate, &state);
+      ops::local_storage::init(isolate, &state);
       ops::plugins::init(isolate, &state);
       ops::net::init(isolate, &state);
       ops::tls::init(isolate, &state);

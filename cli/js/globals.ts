@@ -242,9 +242,21 @@ export const windowOrWorkerGlobalScopeProperties = {
   WritableStream: nonEnumerable(writableStream.WritableStreamImpl),
 };
 
+let localStorageIsReady = false;
 export const windowGlobalScopeProperties = {
   localStorage: getterOnly(() => {
-    throw new (class SecurityError extends domException.DOMExceptionImpl {})();
+    const { origin } = location;
+    // if (origin === "file://") {
+    // throw new domException.DOMExceptionImpl(
+    //   "localStorage is disabled on non-trusted origin",
+    //   "SecurityError"
+    // );
+    // } else
+    if (!localStorageIsReady) {
+      storage.localStorageInit(origin);
+      localStorageIsReady = true;
+    }
+    return storage.localStorage;
   }),
   sessionStorage: readOnly(storage.sessionStorage),
 };

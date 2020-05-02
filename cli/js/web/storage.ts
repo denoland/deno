@@ -1,4 +1,13 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+import {
+  localStorageInit,
+  localStorageClear,
+  localStorageGetItem,
+  localStorageGetLength,
+  localStorageRemoveItem,
+  localStorageSetItem,
+} from "../ops/local_storage.ts";
+import { DOMExceptionImpl } from "./dom_exception.ts";
 
 const data = Symbol("internal Storage data");
 
@@ -26,6 +35,30 @@ class NonPersistantStorageImpl implements Storage {
   }
   clear(): void {
     this[data].clear();
+  }
+}
+
+class PersistantStorageImpl implements Storage {
+  get length(): number {
+    return localStorageGetLength();
+  }
+  key(index: number): string | null {
+    throw "Unimplemented";
+  }
+  getItem(keyName: string): string | null {
+    return localStorageGetItem(keyName);
+  }
+  setItem(keyName: string, keyValue: string): void {
+    if ("error" in localStorageSetItem(keyName, keyValue)) {
+      throw new DOMExceptionImpl("Failed to set item", "QuotaExceededError");
+    }
+  }
+  removeItem(keyName: string): void {
+    localStorageRemoveItem(keyName);
+  }
+  clear(): void {
+    // TODO: make it atomic somehow
+    localStorageClear();
   }
 }
 
@@ -59,3 +92,8 @@ export const sessionStorage = new Proxy(
   new NonPersistantStorageImpl(),
   storageHandler
 );
+export const localStorage = new Proxy(
+  new PersistantStorageImpl(),
+  storageHandler
+);
+export { localStorageInit };
