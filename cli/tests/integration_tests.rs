@@ -1422,6 +1422,22 @@ itest!(error_type_definitions {
   output: "error_type_definitions.ts.out",
 });
 
+itest!(error_local_static_import_from_remote_ts {
+  args: "run --reload http://localhost:4545/cli/tests/error_local_static_import_from_remote.ts",
+  check_stderr: true,
+  exit_code: 1,
+  http_server: true,
+  output: "error_local_static_import_from_remote.ts.out",
+});
+
+itest!(error_local_static_import_from_remote_js {
+  args: "run --reload http://localhost:4545/cli/tests/error_local_static_import_from_remote.js",
+  check_stderr: true,
+  exit_code: 1,
+  http_server: true,
+  output: "error_local_static_import_from_remote.js.out",
+});
+
 // TODO(bartlomieju) Re-enable
 itest_ignore!(error_worker_dynamic {
   args: "run --reload error_worker_dynamic.ts",
