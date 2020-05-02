@@ -201,7 +201,7 @@ class TestReader implements Reader {
     if (nread === 0) {
       return Promise.resolve(null);
     }
-    copyBytes(buf as Uint8Array, this.data);
+    copyBytes(this.data, buf as Uint8Array);
     this.data = this.data.subarray(nread);
     return Promise.resolve(nread);
   }

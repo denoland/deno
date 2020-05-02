@@ -149,7 +149,7 @@ export class BufReader implements Reader {
     }
 
     // copy as much as we can
-    const copied = copyBytes(p, this.buf.subarray(this.r, this.w), 0);
+    const copied = copyBytes(this.buf.subarray(this.r, this.w), p, 0);
     this.r += copied;
     // this.lastByte = this.buf[this.r - 1];
     // this.lastCharSize = -1;
@@ -509,7 +509,7 @@ export class BufWriter extends AbstractBufBase implements Writer {
           throw e;
         }
       } else {
-        numBytesWritten = copyBytes(this.buf, data, this.usedBufferBytes);
+        numBytesWritten = copyBytes(data, this.buf, this.usedBufferBytes);
         this.usedBufferBytes += numBytesWritten;
         await this.flush();
       }
@@ -517,7 +517,7 @@ export class BufWriter extends AbstractBufBase implements Writer {
       data = data.subarray(numBytesWritten);
     }
 
-    numBytesWritten = copyBytes(this.buf, data, this.usedBufferBytes);
+    numBytesWritten = copyBytes(data, this.buf, this.usedBufferBytes);
     this.usedBufferBytes += numBytesWritten;
     totalBytesWritten += numBytesWritten;
     return totalBytesWritten;
@@ -603,7 +603,7 @@ export class BufWriterSync extends AbstractBufBase implements WriterSync {
           throw e;
         }
       } else {
-        numBytesWritten = copyBytes(this.buf, data, this.usedBufferBytes);
+        numBytesWritten = copyBytes(data, this.buf, this.usedBufferBytes);
         this.usedBufferBytes += numBytesWritten;
         this.flush();
       }
@@ -611,7 +611,7 @@ export class BufWriterSync extends AbstractBufBase implements WriterSync {
       data = data.subarray(numBytesWritten);
     }
 
-    numBytesWritten = copyBytes(this.buf, data, this.usedBufferBytes);
+    numBytesWritten = copyBytes(data, this.buf, this.usedBufferBytes);
     this.usedBufferBytes += numBytesWritten;
     totalBytesWritten += numBytesWritten;
     return totalBytesWritten;

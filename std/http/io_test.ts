@@ -19,7 +19,7 @@ import { chunkedBodyReader } from "./io.ts";
 import { ServerRequest, Response } from "./server.ts";
 import { StringReader } from "../io/readers.ts";
 import { mockConn } from "./mock.ts";
-const { Buffer, test } = Deno;
+const { Buffer, test, readAll } = Deno;
 
 test("bodyReader", async () => {
   const text = "Hello, Deno";
@@ -355,6 +355,17 @@ test("writeResponse with trailer", async () => {
     "",
   ].join("\r\n");
   assertEquals(ret, exp);
+});
+
+test("writeResponseShouldNotModifyOriginHeaders", async () => {
+  const headers = new Headers();
+  const buf = new Deno.Buffer();
+
+  await writeResponse(buf, { body: "foo", headers });
+  assert(decode(await readAll(buf)).includes("content-length: 3"));
+
+  await writeResponse(buf, { body: "hello", headers });
+  assert(decode(await readAll(buf)).includes("content-length: 5"));
 });
 
 test("readRequestError", async function (): Promise<void> {

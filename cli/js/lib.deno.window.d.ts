@@ -12,7 +12,6 @@ declare interface Window extends EventTarget {
   readonly self: Window & typeof globalThis;
   onload: ((this: Window, ev: Event) => any) | null;
   onunload: ((this: Window, ev: Event) => any) | null;
-  location: Location;
   crypto: Crypto;
   close: () => void;
   readonly closed: boolean;

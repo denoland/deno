@@ -44,10 +44,10 @@ pub enum DenoSubcommand {
     file: Option<String>,
   },
   Install {
-    root: Option<PathBuf>,
-    exe_name: String,
     module_url: String,
     args: Vec<String>,
+    name: Option<String>,
+    root: Option<PathBuf>,
     force: bool,
   },
   Repl,
@@ -346,22 +346,21 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 
   let force = matches.is_present("force");
-  let exe_name = matches.value_of("exe_name").unwrap().to_string();
+  let name = matches.value_of("name").map(|s| s.to_string());
   let cmd_values = matches.values_of("cmd").unwrap();
-  let mut cmd_args = vec![];
-
+  let mut cmd = vec![];
   for value in cmd_values {
-    cmd_args.push(value.to_string());
+    cmd.push(value.to_string());
   }
 
-  let module_url = cmd_args[0].to_string();
-  let args = cmd_args[1..].to_vec();
+  let module_url = cmd[0].to_string();
+  let args = cmd[1..].to_vec();
 
   flags.subcommand = DenoSubcommand::Install {
-    root,
-    exe_name,
+    name,
     module_url,
     args,
+    root,
     force,
   };
 }
@@ -630,6 +629,18 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
   permission_args(SubCommand::with_name("install"))
         .setting(AppSettings::TrailingVarArg)
         .arg(
+          Arg::with_name("cmd")
+            .required(true)
+            .multiple(true)
+            .allow_hyphen_values(true))
+        .arg(
+          Arg::with_name("name")
+          .long("name")
+          .short("n")
+          .help("Executable file name")
+          .takes_value(true)
+          .required(false))
+        .arg(
           Arg::with_name("root")
             .long("root")
             .help("Installation root")
@@ -641,26 +652,26 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
             .short("f")
             .help("Forcefully overwrite existing installation")
             .takes_value(false))
-        .arg(
-          Arg::with_name("exe_name")
-            .required(true)
-        )
-        .arg(
-          Arg::with_name("cmd")
-            .required(true)
-            .multiple(true)
-            .allow_hyphen_values(true)
-        )
         .arg(ca_file_arg())
         .arg(unstable_arg())
         .about("Install script as an executable")
         .long_about(
 "Installs a script as an executable in the installation root's bin directory.
-  deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
-  deno install colors https://deno.land/std/examples/colors.ts
+  deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
+  deno install https://deno.land/std/examples/colors.ts
+
+To change the executable name, use -n/--name:
+  deno install --allow-net --allow-read -n serve https://deno.land/std/http/file_server.ts
+
+The executable name is inferred by default:
+  - Attempt to take the file stem of the URL path. The above example would
+    become 'file_server'.
+  - If the file stem is something generic like 'main', 'mod', 'index' or 'cli',
+    and the path has no parent, take the file name of the parent path. Otherwise
+    settle with the generic name.
 
 To change the installation root, use --root:
-  deno install --allow-net --allow-read --root /usr/local file_server https://deno.land/std/http/file_server.ts
+  deno install --allow-net --allow-read --root /usr/local https://deno.land/std/http/file_server.ts
 
 The installation root is determined, in order of precedence:
   - --root option
@@ -2025,17 +2036,16 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "install",
-      "deno_colors",
       "https://deno.land/std/examples/colors.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install {
-          root: None,
-          exe_name: "deno_colors".to_string(),
+          name: None,
           module_url: "https://deno.land/std/examples/colors.ts".to_string(),
           args: vec![],
+          root: None,
           force: false,
         },
         ..Flags::default()
@@ -2050,6 +2060,7 @@ mod tests {
       "install",
       "--allow-net",
       "--allow-read",
+      "-n",
       "file_server",
       "https://deno.land/std/http/file_server.ts"
     ]);
@@ -2057,10 +2068,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install {
-          root: None,
-          exe_name: "file_server".to_string(),
+          name: Some("file_server".to_string()),
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
           args: vec![],
+          root: None,
           force: false,
         },
         allow_net: true,
@@ -2080,6 +2091,7 @@ mod tests {
       "-f",
       "--allow-net",
       "--allow-read",
+      "-n",
       "file_server",
       "https://deno.land/std/http/file_server.ts",
       "arg1",
@@ -2089,10 +2101,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install {
-          root: Some(PathBuf::from("/usr/local")),
-          exe_name: "file_server".to_string(),
+          name: Some("file_server".to_string()),
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
           args: svec!["arg1", "arg2"],
+          root: Some(PathBuf::from("/usr/local")),
           force: true,
         },
         allow_net: true,
@@ -2484,6 +2496,7 @@ mod tests {
       "install",
       "--cert",
       "example.crt",
+      "-n",
       "deno_colors",
       "https://deno.land/std/examples/colors.ts"
     ]);
@@ -2491,10 +2504,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install {
-          root: None,
-          exe_name: "deno_colors".to_string(),
+          name: Some("deno_colors".to_string()),
           module_url: "https://deno.land/std/examples/colors.ts".to_string(),
           args: vec![],
+          root: None,
           force: false,
         },
         ca_file: Some("example.crt".to_owned()),

@@ -28,13 +28,13 @@ pub fn is_remote_url(module_url: &str) -> bool {
   lower.starts_with("http://") || lower.starts_with("https://")
 }
 
-fn validate_exec_name(exec_name: &str) -> Result<(), Error> {
+fn validate_name(exec_name: &str) -> Result<(), Error> {
   if EXEC_NAME_RE.is_match(exec_name) {
     Ok(())
   } else {
     Err(Error::new(
       ErrorKind::Other,
-      format!("Invalid module name: {}", exec_name),
+      format!("Invalid executable name: {}", exec_name),
     ))
   }
 }
@@ -103,12 +103,28 @@ fn get_installer_root() -> Result<PathBuf, Error> {
   Ok(home_path)
 }
 
+fn infer_name_from_url(url: &Url) -> Option<String> {
+  let path = PathBuf::from(url.path());
+  let stem = match path.file_stem() {
+    Some(stem) => stem.to_string_lossy().to_string(),
+    None => return None,
+  };
+  if let Some(parent_path) = path.parent() {
+    if stem == "main" || stem == "mod" || stem == "index" || stem == "cli" {
+      if let Some(parent_name) = parent_path.file_name() {
+        return Some(parent_name.to_string_lossy().to_string());
+      }
+    }
+  }
+  Some(stem)
+}
+
 pub fn install(
   flags: Flags,
-  root: Option<PathBuf>,
-  exec_name: &str,
   module_url: &str,
   args: Vec<String>,
+  name: Option<String>,
+  root: Option<PathBuf>,
   force: bool,
 ) -> Result<(), Error> {
   let root = if let Some(root) = root {
@@ -144,8 +160,18 @@ pub fn install(
     Url::from_file_path(module_path).expect("Path should be absolute")
   };
 
-  validate_exec_name(exec_name)?;
-  let mut file_path = installation_dir.join(exec_name);
+  let name = name.or_else(|| infer_name_from_url(&module_url));
+
+  let name = match name {
+    Some(name) => name,
+    None => return Err(Error::new(
+      ErrorKind::Other,
+      "An executable name was not provided. One could not be inferred from the URL. Aborting.",
+    )),
+  };
+
+  validate_name(name.as_str())?;
+  let mut file_path = installation_dir.join(&name);
 
   if cfg!(windows) {
     file_path = file_path.with_extension("cmd");
@@ -154,7 +180,7 @@ pub fn install(
   if file_path.exists() && !force {
     return Err(Error::new(
       ErrorKind::Other,
-      "Existing installation found. Aborting (Use -f to overwrite)",
+      "Existing installation found. Aborting (Use -f to overwrite).",
     ));
   };
 
@@ -187,7 +213,7 @@ pub fn install(
 
   generate_executable_file(file_path.to_owned(), executable_args)?;
 
-  println!("✅ Successfully installed {}", exec_name);
+  println!("✅ Successfully installed {}", name);
   println!("{}", file_path.to_string_lossy());
   let installation_dir_str = installation_dir.to_string_lossy();
 
@@ -230,6 +256,61 @@ mod tests {
   }
 
   #[test]
+  fn install_infer_name_from_url() {
+    assert_eq!(
+      infer_name_from_url(
+        &Url::parse("https://example.com/abc/server.ts").unwrap()
+      ),
+      Some("server".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(
+        &Url::parse("https://example.com/abc/main.ts").unwrap()
+      ),
+      Some("abc".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(
+        &Url::parse("https://example.com/abc/mod.ts").unwrap()
+      ),
+      Some("abc".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(
+        &Url::parse("https://example.com/abc/index.ts").unwrap()
+      ),
+      Some("abc".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(
+        &Url::parse("https://example.com/abc/cli.ts").unwrap()
+      ),
+      Some("abc".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(&Url::parse("https://example.com/main.ts").unwrap()),
+      Some("main".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(&Url::parse("https://example.com").unwrap()),
+      None
+    );
+    assert_eq!(
+      infer_name_from_url(&Url::parse("file:///abc/server.ts").unwrap()),
+      Some("server".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(&Url::parse("file:///abc/main.ts").unwrap()),
+      Some("abc".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(&Url::parse("file:///main.ts").unwrap()),
+      Some("main".to_string())
+    );
+    assert_eq!(infer_name_from_url(&Url::parse("file:///").unwrap()), None);
+  }
+
+  #[test]
   fn install_basic() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
@@ -244,10 +325,10 @@ mod tests {
 
     install(
       Flags::default(),
-      None,
-      "echo_test",
       "http://localhost:4545/cli/tests/echo_server.ts",
       vec![],
+      Some("echo_test".to_string()),
+      None,
       false,
     )
     .expect("Install failed");
@@ -274,6 +355,60 @@ mod tests {
   }
 
   #[test]
+  fn install_inferred_name() {
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let bin_dir = temp_dir.path().join("bin");
+    std::fs::create_dir(&bin_dir).unwrap();
+
+    install(
+      Flags::default(),
+      "http://localhost:4545/cli/tests/echo_server.ts",
+      vec![],
+      None,
+      Some(temp_dir.path().to_path_buf()),
+      false,
+    )
+    .expect("Install failed");
+
+    let mut file_path = bin_dir.join("echo_server");
+    if cfg!(windows) {
+      file_path = file_path.with_extension("cmd");
+    }
+
+    assert!(file_path.exists());
+    let content = fs::read_to_string(file_path).unwrap();
+    assert!(content
+      .contains(r#""run" "http://localhost:4545/cli/tests/echo_server.ts""#));
+  }
+
+  #[test]
+  fn install_inferred_name_from_parent() {
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let bin_dir = temp_dir.path().join("bin");
+    std::fs::create_dir(&bin_dir).unwrap();
+
+    install(
+      Flags::default(),
+      "http://localhost:4545/cli/tests/subdir/main.ts",
+      vec![],
+      None,
+      Some(temp_dir.path().to_path_buf()),
+      false,
+    )
+    .expect("Install failed");
+
+    let mut file_path = bin_dir.join("subdir");
+    if cfg!(windows) {
+      file_path = file_path.with_extension("cmd");
+    }
+
+    assert!(file_path.exists());
+    let content = fs::read_to_string(file_path).unwrap();
+    assert!(content
+      .contains(r#""run" "http://localhost:4545/cli/tests/subdir/main.ts""#));
+  }
+
+  #[test]
   fn install_custom_dir_option() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
@@ -281,10 +416,10 @@ mod tests {
 
     install(
       Flags::default(),
-      Some(temp_dir.path().to_path_buf()),
-      "echo_test",
       "http://localhost:4545/cli/tests/echo_server.ts",
       vec![],
+      Some("echo_test".to_string()),
+      Some(temp_dir.path().to_path_buf()),
       false,
     )
     .expect("Install failed");
@@ -309,10 +444,10 @@ mod tests {
 
     install(
       Flags::default(),
-      None,
-      "echo_test",
       "http://localhost:4545/cli/tests/echo_server.ts",
       vec![],
+      Some("echo_test".to_string()),
+      None,
       false,
     )
     .expect("Install failed");
@@ -341,10 +476,10 @@ mod tests {
         log_level: Some(Level::Error),
         ..Flags::default()
       },
-      Some(temp_dir.path().to_path_buf()),
-      "echo_test",
       "http://localhost:4545/cli/tests/echo_server.ts",
       vec!["--foobar".to_string()],
+      Some("echo_test".to_string()),
+      Some(temp_dir.path().to_path_buf()),
       false,
     )
     .expect("Install failed");
@@ -370,10 +505,10 @@ mod tests {
 
     install(
       Flags::default(),
-      Some(temp_dir.path().to_path_buf()),
-      "echo_test",
       &local_module_str,
       vec![],
+      Some("echo_test".to_string()),
+      Some(temp_dir.path().to_path_buf()),
       false,
     )
     .expect("Install failed");
@@ -396,10 +531,10 @@ mod tests {
 
     install(
       Flags::default(),
-      Some(temp_dir.path().to_path_buf()),
-      "echo_test",
       "http://localhost:4545/cli/tests/echo_server.ts",
       vec![],
+      Some("echo_test".to_string()),
+      Some(temp_dir.path().to_path_buf()),
       false,
     )
     .expect("Install failed");
@@ -413,10 +548,10 @@ mod tests {
     // No force. Install failed.
     let no_force_result = install(
       Flags::default(),
-      Some(temp_dir.path().to_path_buf()),
-      "echo_test",
       "http://localhost:4545/cli/tests/cat.ts", // using a different URL
       vec![],
+      Some("echo_test".to_string()),
+      Some(temp_dir.path().to_path_buf()),
       false,
     );
     assert!(no_force_result.is_err());
@@ -431,10 +566,10 @@ mod tests {
     // Force. Install success.
     let force_result = install(
       Flags::default(),
-      Some(temp_dir.path().to_path_buf()),
-      "echo_test",
       "http://localhost:4545/cli/tests/cat.ts", // using a different URL
       vec![],
+      Some("echo_test".to_string()),
+      Some(temp_dir.path().to_path_buf()),
       true,
     );
     assert!(force_result.is_ok());

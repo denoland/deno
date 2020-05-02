@@ -203,10 +203,10 @@ fn installer_test_local_module_run() {
   let local_module_str = local_module.to_string_lossy();
   deno::installer::install(
     deno::flags::Flags::default(),
-    Some(temp_dir.path().to_path_buf()),
-    "echo_test",
     &local_module_str,
     vec!["hello".to_string()],
+    Some("echo_test".to_string()),
+    Some(temp_dir.path().to_path_buf()),
     false,
   )
   .expect("Failed to install");
@@ -241,10 +241,10 @@ fn installer_test_remote_module_run() {
   std::fs::create_dir(&bin_dir).unwrap();
   deno::installer::install(
     deno::flags::Flags::default(),
-    Some(temp_dir.path().to_path_buf()),
-    "echo_test",
     "http://localhost:4545/cli/tests/echo.ts",
     vec!["hello".to_string()],
+    Some("echo_test".to_string()),
+    Some(temp_dir.path().to_path_buf()),
     false,
   )
   .expect("Failed to install");
@@ -392,38 +392,6 @@ fn bundle_single_module() {
     .unwrap()
     .trim()
     .ends_with("Hello world!"));
-  assert_eq!(output.stderr, b"");
-}
-
-#[test]
-fn bundle_json() {
-  let json_modules = util::root_path().join("cli/tests/020_json_modules.ts");
-  assert!(json_modules.is_file());
-  let t = TempDir::new().expect("tempdir fail");
-  let bundle = t.path().join("020_json_modules.bundle.js");
-  let mut deno = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("bundle")
-    .arg(json_modules)
-    .arg(&bundle)
-    .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
-  assert!(status.success());
-  assert!(bundle.is_file());
-
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("run")
-    .arg("--reload")
-    .arg(&bundle)
-    .output()
-    .expect("failed to spawn script");
-  // check the output of the the bundle program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("{\"foo\":{\"bar\":true,\"baz\":[\"qat\",1]}}"));
   assert_eq!(output.stderr, b"");
 }
 
@@ -927,7 +895,9 @@ itest_ignore!(_019_media_types {
 
 itest!(_020_json_modules {
   args: "run --reload 020_json_modules.ts",
+  check_stderr: true,
   output: "020_json_modules.ts.out",
+  exit_code: 1,
 });
 
 itest!(_021_mjs_modules {
@@ -1125,11 +1095,6 @@ itest_ignore!(_049_info_flag_script_jsx {
   args: "info http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts",
   output: "049_info_flag_script_jsx.out",
   http_server: true,
-});
-
-itest!(_050_more_jsons {
-  args: "run --reload 050_more_jsons.ts",
-  output: "050_more_jsons.ts.out",
 });
 
 itest!(_051_wasm_import {
@@ -1429,6 +1394,13 @@ itest!(error_024_stack_promise_all {
   exit_code: 1,
 });
 
+itest!(error_025_tab_indent {
+  args: "error_025_tab_indent",
+  output: "error_025_tab_indent.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
 itest!(error_syntax {
   args: "run --reload error_syntax.js",
   check_stderr: true,
@@ -1705,6 +1677,7 @@ fn cafile_install_remote_module() {
     .arg(cafile)
     .arg("--root")
     .arg(temp_dir.path())
+    .arg("-n")
     .arg("echo_test")
     .arg("https://localhost:5545/cli/tests/echo.ts")
     .output()
