@@ -112,6 +112,24 @@ fn op_fetch_source_files(
         async move {
           let resolved_specifier = ModuleSpecifier::resolve_url(&specifier)
             .expect("Invalid specifier");
+          // TODO(bartlomieju): duplicated from `state.rs::ModuleLoader::load` - deduplicate
+          // Verify that remote file doesn't try to statically import local file.
+          if let Some(referrer) = ref_specifier_.as_ref() {
+            let referrer_url = referrer.as_url();
+            match referrer_url.scheme() {
+              "http" | "https" => {
+                let specifier_url = resolved_specifier.as_url();
+                match specifier_url.scheme() {
+                  "http" | "https" => {},
+                  _ => {
+                    let e = OpError::permission_denied("Remote module are not allowed to statically import local modules. Use dynamic import instead.".to_string());
+                    return Err(e.into());
+                  }
+                }
+              },
+              _ => {}
+            }
+          }
           file_fetcher_
             .fetch_source_file(&resolved_specifier, ref_specifier_)
             .await
