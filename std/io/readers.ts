@@ -21,7 +21,7 @@ export class StringReader implements Deno.Reader {
 
 export class MultiReader implements Deno.Reader {
   currentIndex = 0;
-  readers: Deno.Reader[]
+  readers: Deno.Reader[];
   constructor(...readers: Deno.Reader[]) {
     this.readers = readers;
   }
@@ -36,10 +36,6 @@ export class MultiReader implements Deno.Reader {
     }
     return result;
   }
-}
-
-export function stringReader(s: string): Deno.Reader {
-  return bytesReader(encode(s));
 }
 
 export function bytesReader(buf: Uint8Array): Deno.Reader {

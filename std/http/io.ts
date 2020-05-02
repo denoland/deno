@@ -9,14 +9,6 @@ import { bytesReader } from "../io/readers.ts";
 import { ClientResponse, ClientRequest } from "./client.ts";
 import { readUntilEOF } from "../io/ioutil.ts";
 
-export function emptyReader(): Deno.Reader {
-  return {
-    read(_: Uint8Array): Promise<number | null> {
-      return Promise.resolve(null);
-    },
-  };
-}
-
 /** Reader for HTTP/1.1 fixed size body part */
 export function bodyReader(contentLength: number, r: BufReader): Deno.Reader {
   let totalRead = 0;
@@ -437,7 +429,7 @@ export async function writeRequest(
     if (contentLength == null) {
       await writeChunkedBody(bufw, body);
     } else {
-      await Deno.copy(body,bufw);
+      await Deno.copy(body, bufw);
     }
     await bufw.flush();
   }

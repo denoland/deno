@@ -88,5 +88,5 @@ export async function readUntilEOF(
   bufSize = 1024
 ): Promise<void> {
   const buf = new Uint8Array(bufSize);
-  while ((await r.read(buf)) !== Deno.EOF) {}
+  while ((await r.read(buf)) !== null) {}
 }

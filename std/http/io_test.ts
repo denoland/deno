@@ -21,7 +21,7 @@ import { encode, decode } from "../encoding/utf8.ts";
 import { BufReader, ReadLineResult } from "../io/bufio.ts";
 import { chunkedBodyReader } from "./io.ts";
 import { ServerResponse, ServerRequest } from "./server.ts";
-import { StringReader, stringReader, multiReader } from "../io/readers.ts";
+import { StringReader, MultiReader } from "../io/readers.ts";
 import { mockConn } from "./testing.ts";
 import { ClientRequest } from "./client.ts";
 import { TimeoutError, deferred } from "../util/async.ts";
@@ -519,8 +519,10 @@ test({
       "content-length: 20",
       "\r\n",
     ].join("\r\n");
-    const r = multiReader(stringReader(head), body);
-    conn.read = r.read;
+    const r = new MultiReader(new StringReader(head), body);
+    conn.read = (p: Uint8Array): Promise<number | null> => {
+      return r.read(p);
+    };
     const req = await readRequest(conn, { timeout: 100 });
     assert(req != null);
     assertEquals(req.headers.get("content-length"), "20");
@@ -660,7 +662,7 @@ for (const { title, exp, req, ignore } of writeRequestCases) {
     async fn() {
       const dest = new Deno.Buffer();
       await writeRequest(dest, req);
-      assertEquals(dest.toString(), exp.join("\r\n"));
+      assertEquals(decode(dest.bytes()), exp.join("\r\n"));
     },
   });
 }
@@ -733,7 +735,7 @@ test({
         return null;
       },
     };
-    const r = multiReader(stringReader(head), body);
+    const r = new MultiReader(new StringReader(head), body);
     const resp = await readResponse(r, { timeout: 100 });
     assertEquals(resp.headers.get("content-length"), "20");
     await assertThrowsAsync(async () => {

@@ -331,7 +331,7 @@ export function listenAndServe(
 }
 
 /** Options for creating an HTTPS server. */
-export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport"> &
+export type HTTPSOptions = Omit<Deno.ListenTlsOptions, "transport"> &
   ServeOptions;
 
 /**
@@ -356,7 +356,7 @@ export function serveTLS(options: HTTPSOptions): Server {
     ...options,
     transport: "tcp",
   };
-  const listener = Deno.listenTLS(tlsOptions);
+  const listener = Deno.listenTls(tlsOptions);
   const serveOpts: ServeOptions = {
     readTimeout: options.readTimeout,
   };
