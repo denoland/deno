@@ -29,7 +29,7 @@ Deno.test({
   name: "xevalCliReplvar",
   fn: async function (): Promise<void> {
     const p = run({
-      cmd: [execPath(), xevalPath, "run", "--replvar=abc", "console.log(abc)"],
+      cmd: [execPath(), "run", xevalPath, "--replvar=abc", "console.log(abc)"],
       stdin: "piped",
       stdout: "piped",
       stderr: "null",
