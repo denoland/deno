@@ -224,12 +224,20 @@ unitTest(function throwForInvalidPortConstructor(): void {
   ];
 
   for (const url of urls) {
-    assertThrows(() => new URL(url));
+    assertThrows(() => new URL(url), TypeError, "Invalid URL.");
   }
 
   // Do not throw for 0 & 65535
   new URL("https://baz.qat:65535");
   new URL("https://baz.qat:0");
+});
+
+unitTest(function throwForInvalidSchemeConstructor(): void {
+  assertThrows(
+    () => new URL("invalid_scheme://baz.qat"),
+    TypeError,
+    "Invalid URL."
+  );
 });
 
 unitTest(function doNotOverridePortIfInvalid(): void {
