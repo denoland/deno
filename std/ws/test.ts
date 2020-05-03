@@ -364,7 +364,8 @@ test("[ws] WebSocket shouldn't throw `Deno.errors.UnexpectedEof`", async () => {
   };
   const conn = dummyConn(eofReader, buf);
   const sock = createWebSocket({ conn });
-  const { value, done } = await sock[Symbol.asyncIterator]().next();
+  const it = sock[Symbol.asyncIterator]();
+  const { value, done } = await it.next();
   assertEquals(value, undefined);
   assertEquals(done, true);
 });
