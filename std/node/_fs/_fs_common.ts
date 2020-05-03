@@ -2,7 +2,7 @@
 
 import { notImplemented } from "../_utils.ts";
 
-export type CallbackWithError = (err?: Error) => void;
+export type CallbackWithError = (err?: Error | null) => void;
 
 export interface FileOptions {
   encoding?: string;

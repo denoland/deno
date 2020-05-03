@@ -9,7 +9,7 @@ export async function writeFile(
 	options?: string | WriteFileOptions
 ) {
 	return new Promise((resolve, reject) => {
-		writeFileCallback(pathOrRid, data, options, (err?: Error) => {
+		writeFileCallback(pathOrRid, data, options, (err?: Error | null) => {
 			if (err) return reject(err);
 			resolve();
 		});

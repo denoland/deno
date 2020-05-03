@@ -55,6 +55,7 @@ export function writeFile(
       }
 
       await Deno.writeAll(file, data as Uint8Array);
+      callbackFn(null);
     } catch (e) {
       callbackFn(e);
     } finally {
