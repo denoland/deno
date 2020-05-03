@@ -1,6 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
-import { writeFile as writeFilePromise } from "./promises/_fs_writeFile.ts";
 import { notImplemented } from "../_utils.ts";
 
 import {
@@ -43,7 +41,7 @@ export function writeFile(
   const isRid = typeof pathOrRid === "number";
   let file;
 
-  (async () => {
+  (async (): Promise<void> => {
     try {
       file = isRid
         ? new Deno.File(pathOrRid as number)

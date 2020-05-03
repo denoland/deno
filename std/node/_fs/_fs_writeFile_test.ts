@@ -113,7 +113,7 @@ test("Data is written to correct rid", async function testCorrectWriteUsingRid()
 });
 
 test("Data is written to correct file", async function testCorrectWriteUsingPath() {
-  const res = await new Promise((resolve, reject) => {
+  const res = await new Promise((resolve) => {
     writeFile("_fs_writeFile_test_file.txt", "hello world", resolve);
   });
 
@@ -127,7 +127,7 @@ test("Mode is correctly set", async function testCorrectFileMode() {
   if (Deno.build.os === "windows") return;
   const filename = "_fs_writeFile_test_file.txt";
 
-  const res = await new Promise((resolve, reject) => {
+  const res = await new Promise((resolve) => {
     writeFile(filename, "hello world", { mode: 0o777 }, resolve);
   });
 
@@ -164,8 +164,6 @@ test("Mode is not set when rid is passed", async function testCorrectFileModeRid
 
 test("Mode is not implemented on windows", function testModeNotImplementedWindows(): void {
   if (Deno.build.os !== "windows") return;
-
-  const filename = "_fs_writeFile_test_file.txt";
 
   assertThrowsAsync(
     () => {

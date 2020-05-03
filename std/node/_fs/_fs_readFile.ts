@@ -1,10 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import {
-  notImplemented,
-  intoCallbackAPIWithIntercept,
-  MaybeEmpty,
-} from "../_utils.ts";
+import { intoCallbackAPIWithIntercept, MaybeEmpty } from "../_utils.ts";
 
 import { getEncoding, FileOptions } from "./_fs_common.ts";
 

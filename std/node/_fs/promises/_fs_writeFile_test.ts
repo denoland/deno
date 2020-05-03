@@ -109,8 +109,6 @@ test("Mode is not set when rid is passed", async function testCorrectFileModeRid
 test("Mode is not implemented on windows", function testModeNotImplementedWindows(): void {
 	if (Deno.build.os !== "windows") return;
 
-	const filename = "_fs_writeFile_test_file.txt";
-
 	assertThrowsAsync(
 		async () => {
 			await writeFile("fail.txt", "some data", { mode: 0o777 });
