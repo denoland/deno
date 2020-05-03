@@ -1,1 +1,9 @@
-{"foo":{"bar":true,"baz":["qat",1]}}
+[WILDCARD]
+error: Uncaught TypeError: Cannot resolve extension for "[WILDCARD]config.json" with mediaType "Json".
+    at getExtension ($deno$/compiler/sourcefile.ts:[WILDCARD])
+    at new SourceFile ($deno$/compiler/sourcefile.ts:[WILDCARD])
+    at processImports ($deno$/compiler/imports.ts:[WILDCARD])
+    at async Object.processImports ($deno$/compiler/imports.ts:[WILDCARD])
+    at async compile ([WILDCARD]compiler.ts:[WILDCARD])
+    at async tsCompilerOnMessage ([WILDCARD]compiler.ts:[WILDCARD])
+    at async workerMessageRecvCallback ($deno$/runtime_worker.ts:[WILDCARD])

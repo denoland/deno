@@ -83,8 +83,6 @@ function getMediaType(filename: string): MediaType {
       return MediaType.JavaScript;
     case "jsx":
       return MediaType.JSX;
-    case "json":
-      return MediaType.Json;
     case "ts":
       return MediaType.TypeScript;
     case "tsx":
