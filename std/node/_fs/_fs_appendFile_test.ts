@@ -2,6 +2,7 @@
 const { test } = Deno;
 import { assertEquals, assertThrows, fail } from "../../testing/asserts.ts";
 import { appendFile, appendFileSync } from "./_fs_appendFile.ts";
+import { fromFileUrl } from "../path.ts";
 
 const decoder = new TextDecoder("utf-8");
 
@@ -113,26 +114,23 @@ test({
   name: "Async: Data is written to passed in URL",
   async fn() {
     const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
+    const fileURL = new URL("_fs_appendFile_test_file.txt", import.meta.url);
     await new Promise((resolve, reject) => {
-      appendFile(
-        new URL("_fs_appendFile_test_file.txt", import.meta.url),
-        "hello world",
-        (err) => {
-          if (err) reject(err);
-          else resolve();
-        }
-      );
+      appendFile(fileURL, "hello world", (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
     })
       .then(async () => {
         assertEquals(Deno.resources(), openResourcesBeforeAppend);
-        const data = await Deno.readFile("_fs_appendFile_test_file.txt");
+        const data = await Deno.readFile(fromFileUrl(fileURL));
         assertEquals(decoder.decode(data), "hello world");
       })
       .catch((err) => {
         fail("No error was expected: " + err);
       })
       .finally(async () => {
-        await Deno.remove("_fs_appendFile_test_file.txt");
+        await Deno.remove(fromFileUrl(fileURL));
       });
   },
 });
