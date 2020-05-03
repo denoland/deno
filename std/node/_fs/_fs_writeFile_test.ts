@@ -91,19 +91,35 @@ test("Data is written to correct rid", async function testCorrectWriteUsingRid()
   assertEquals(decoder.decode(data), "hello world");
 });
 
-test("Data is written to correct file", async function testCorrectWriteUsingPath() {
-  const openResourcesBeforeWrite: Deno.ResourceMap = Deno.resources();
+test("Data is written to correct rid", async function testCorrectWriteUsingRid() {
+  const tempFile: string = await Deno.makeTempFile();
+  const file: Deno.File = await Deno.open(tempFile, {
+    create: true,
+    write: true,
+    read: true,
+  });
 
   await new Promise((resolve, reject) => {
-    writeFile("_fs_writeFile_test_file.txt", "hello world", (err) => {
+    writeFile(file.rid, "hello world", (err) => {
       if (err) return reject(err);
       resolve();
     });
   });
+  Deno.close(file.rid);
 
-  assertEquals(Deno.resources(), openResourcesBeforeWrite);
+  const data = await Deno.readFile(tempFile);
+  await Deno.remove(tempFile);
+  assertEquals(decoder.decode(data), "hello world");
+});
+
+test("Data is written to correct file", async function testCorrectWriteUsingPath() {
+  const res = await new Promise((resolve, reject) => {
+    writeFile("_fs_writeFile_test_file.txt", "hello world", resolve);
+  });
+
   const data = await Deno.readFile("_fs_writeFile_test_file.txt");
   await Deno.remove("_fs_writeFile_test_file.txt");
+  assertEquals(res, null);
   assertEquals(decoder.decode(data), "hello world");
 });
 
@@ -111,15 +127,13 @@ test("Mode is correctly set", async function testCorrectFileMode() {
   if (Deno.build.os === "windows") return;
   const filename = "_fs_writeFile_test_file.txt";
 
-  await new Promise((resolve, reject) => {
-    writeFile(filename, "hello world", { mode: 0o777 }, (err) => {
-      if (err) return reject(err);
-      resolve();
-    });
+  const res = await new Promise((resolve, reject) => {
+    writeFile(filename, "hello world", { mode: 0o777 }, resolve);
   });
 
   const fileInfo = await Deno.stat(filename);
   await Deno.remove(filename);
+  assertEquals(res, null);
   assert(fileInfo && fileInfo.mode);
   assertEquals(fileInfo.mode & 0o777, 0o777);
 });
