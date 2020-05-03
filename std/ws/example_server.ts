@@ -50,5 +50,6 @@ for await (const req of serve(`:${port}`)) {
     }
   } catch (err) {
     console.error(`failed to accept websocket: ${err}`);
+    await req.respond({ status: 400 });
   }
 }
