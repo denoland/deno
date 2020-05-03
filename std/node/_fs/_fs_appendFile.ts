@@ -1,17 +1,19 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { FileOptions, isFileOptions, CallbackWithError } from "./_fs_common.ts";
 import { notImplemented } from "../_utils.ts";
+import { fromFileUrl } from "../path.ts";
 
 /**
- * TODO: Also accept 'data' parameter as a Node polyfill Buffer or URL type once these
+ * TODO: Also accept 'data' parameter as a Node polyfill Buffer type once these
  * are implemented. See https://github.com/denoland/deno/issues/3403
  */
 export function appendFile(
-  pathOrRid: string | number,
+  pathOrRid: string | number | URL,
   data: string,
   optionsOrCallback: string | FileOptions | CallbackWithError,
   callback?: CallbackWithError
 ): void {
+  pathOrRid = pathOrRid instanceof URL ? fromFileUrl(pathOrRid) : pathOrRid;
   const callbackFn: CallbackWithError | undefined =
     optionsOrCallback instanceof Function ? optionsOrCallback : callback;
   const options: string | FileOptions | undefined =
@@ -39,7 +41,7 @@ export function appendFile(
         //TODO rework once https://github.com/denoland/deno/issues/4017 completes
         notImplemented("Deno does not yet support setting mode on create");
       }
-      Deno.open(pathOrRid, getOpenOptions(flag))
+      Deno.open(pathOrRid as string, getOpenOptions(flag))
         .then(({ rid: openedFileRid }) => {
           rid = openedFileRid;
           return Deno.write(openedFileRid, buffer);
@@ -66,17 +68,18 @@ function closeRidIfNecessary(isPathString: boolean, rid: number): void {
 }
 
 /**
- * TODO: Also accept 'data' parameter as a Node polyfill Buffer or URL type once these
+ * TODO: Also accept 'data' parameter as a Node polyfill Buffer type once these
  * are implemented. See https://github.com/denoland/deno/issues/3403
  */
 export function appendFileSync(
-  pathOrRid: string | number,
+  pathOrRid: string | number | URL,
   data: string,
   options?: string | FileOptions
 ): void {
   let rid = -1;
 
   validateEncoding(options);
+  pathOrRid = pathOrRid instanceof URL ? fromFileUrl(pathOrRid) : pathOrRid;
 
   try {
     if (typeof pathOrRid === "number") {
