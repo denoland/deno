@@ -41,6 +41,7 @@ export function writeFile(
   const isRid = typeof pathOrRid === "number";
   let file;
 
+  let error: Error | null = null;
   (async (): Promise<void> => {
     try {
       file = isRid
@@ -53,12 +54,12 @@ export function writeFile(
       }
 
       await Deno.writeAll(file, data as Uint8Array);
-      callbackFn(null);
     } catch (e) {
-      callbackFn(e);
+      error = e;
     } finally {
       // Make sure to close resource
       if (!isRid && file) file.close();
+      callbackFn(error);
     }
   })();
 }
