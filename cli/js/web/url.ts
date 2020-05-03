@@ -16,7 +16,7 @@ interface URLParts {
 
 const patterns = {
   protocol: "(?:([a-z]+):)",
-  authority: "(?://([^/?#]*))",
+  authority: "(?:[/\\\\][/\\\\]([^/\\\\?#]*))",
   path: "([^?#]*)",
   query: "(\\?[^#]*)",
   hash: "(#.*)",
@@ -65,7 +65,7 @@ function parse(url: string): URLParts | undefined {
         password: authorityMatch[2] || "",
         hostname: authorityMatch[3] || "",
         port: authorityMatch[4] || "",
-        path: urlMatch[3] || "",
+        path: urlMatch[3].replace(/\\/g, "/") || "",
         query: urlMatch[4] || "",
         hash: urlMatch[5] || "",
       };
