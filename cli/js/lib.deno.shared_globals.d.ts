@@ -423,6 +423,42 @@ interface WritableStreamDefaultWriter<W = any> {
   write(chunk: W): Promise<void>;
 }
 
+declare class TransformStream<I = any, O = any> {
+  constructor(
+    transformer?: Transformer<I, O>,
+    writableStrategy?: QueuingStrategy<I>,
+    readableStrategy?: QueuingStrategy<O>
+  );
+  readonly readable: ReadableStream<O>;
+  readonly writable: WritableStream<I>;
+}
+
+interface TransformStreamDefaultController<O = any> {
+  readonly desiredSize: number | null;
+  enqueue(chunk: O): void;
+  error(reason?: any): void;
+  terminate(): void;
+}
+
+interface Transformer<I = any, O = any> {
+  flush?: TransformStreamDefaultControllerCallback<O>;
+  readableType?: undefined;
+  start?: TransformStreamDefaultControllerCallback<O>;
+  transform?: TransformStreamDefaultControllerTransformCallback<I, O>;
+  writableType?: undefined;
+}
+
+interface TransformStreamDefaultControllerCallback<O> {
+  (controller: TransformStreamDefaultController<O>): void | PromiseLike<void>;
+}
+
+interface TransformStreamDefaultControllerTransformCallback<I, O> {
+  (
+    chunk: I,
+    controller: TransformStreamDefaultController<O>
+  ): void | PromiseLike<void>;
+}
+
 interface DOMStringList {
   /** Returns the number of strings in strings. */
   readonly length: number;
