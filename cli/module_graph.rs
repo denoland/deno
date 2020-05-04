@@ -23,15 +23,6 @@ struct ModuleGraphLoader {
   pub graph: ModuleGraph,
 }
 
-// struct ModuleGraphFuture {
-//   file_fetcher: SourceFileFetcher,
-//   to_visit: Vec<ModuleSpecifier>,
-//   pending_lods:
-//     FuturesUnordered<Pin<Box<dyn Future<Output = Result<SourceFile, ErrBox>>>>>,
-//   has_loaded: HashSet<ModuleSpecifier>,
-//   pending_analysis: HashSet<ModuleSpecifier>,
-// }
-
 impl ModuleGraphLoader {
   pub fn new(file_fetcher: SourceFileFetcher) -> Self {
     Self {
@@ -102,34 +93,77 @@ mod tests {
   use crate::GlobalState;
   use std::path::PathBuf;
 
-  fn rel_module_specifier(relpath: &str) -> ModuleSpecifier {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .join(relpath)
-      .into_os_string();
-    let ps = p.to_str().unwrap();
-    // TODO(ry) Why doesn't ModuleSpecifier::resolve_path actually take a
-    // Path?!
-    ModuleSpecifier::resolve_url_or_path(ps).unwrap()
-  }
+  // fn rel_module_specifier(relpath: &str) -> ModuleSpecifier {
+  //   let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+  //     .join(relpath)
+  //     .into_os_string();
+  //   let ps = p.to_str().unwrap();
+  //   ModuleSpecifier::resolve_url_or_path(ps).unwrap()
+  // }
 
   #[tokio::test]
   async fn source_graph_fetch() {
     let http_server_guard = crate::test_util::http_server();
 
     let global_state = GlobalState::new(Default::default()).unwrap();
-    let module_specifier = rel_module_specifier("tests/019_media_types.ts");
-
+    let module_specifier = ModuleSpecifier::resolve_url_or_path(
+      "http://localhost:4545/cli/tests/019_media_types.ts",
+    )
+    .unwrap();
     let graph_loader =
       ModuleGraphLoader::new(global_state.file_fetcher.clone());
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
-    assert_eq!(graph.len(), 9);
-    let r = graph
-      .get("http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts");
-    assert!(r.is_some());
-
-    println!("{}", serde_json::to_string_pretty(&graph).unwrap());
-
+    assert_eq!(
+      serde_json::to_value(&graph).unwrap(),
+      json!({
+        "http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts": {
+          "specifier": "http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts",
+          "deps": []
+        },
+        "http://localhost:4545/cli/tests/019_media_types.ts": {
+          "specifier": "http://localhost:4545/cli/tests/019_media_types.ts",
+          "deps": [
+            "http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts",
+            "http://localhost:4545/cli/tests/subdir/mt_video_vdn.t2.ts",
+            "http://localhost:4545/cli/tests/subdir/mt_video_mp2t.t3.ts",
+            "http://localhost:4545/cli/tests/subdir/mt_application_x_typescript.t4.ts",
+            "http://localhost:4545/cli/tests/subdir/mt_text_javascript.j1.js",
+            "http://localhost:4545/cli/tests/subdir/mt_application_ecmascript.j2.js",
+            "http://localhost:4545/cli/tests/subdir/mt_text_ecmascript.j3.js",
+            "http://localhost:4545/cli/tests/subdir/mt_application_x_javascript.j4.js"
+          ]
+        },
+        "http://localhost:4545/cli/tests/subdir/mt_text_ecmascript.j3.js": {
+          "specifier": "http://localhost:4545/cli/tests/subdir/mt_text_ecmascript.j3.js",
+          "deps": []
+        },
+        "http://localhost:4545/cli/tests/subdir/mt_video_vdn.t2.ts": {
+          "specifier": "http://localhost:4545/cli/tests/subdir/mt_video_vdn.t2.ts",
+          "deps": []
+        },
+        "http://localhost:4545/cli/tests/subdir/mt_application_x_typescript.t4.ts": {
+          "specifier": "http://localhost:4545/cli/tests/subdir/mt_application_x_typescript.t4.ts",
+          "deps": []
+        },
+        "http://localhost:4545/cli/tests/subdir/mt_video_mp2t.t3.ts": {
+          "specifier": "http://localhost:4545/cli/tests/subdir/mt_video_mp2t.t3.ts",
+          "deps": []
+        },
+        "http://localhost:4545/cli/tests/subdir/mt_application_x_javascript.j4.js": {
+          "specifier": "http://localhost:4545/cli/tests/subdir/mt_application_x_javascript.j4.js",
+          "deps": []
+        },
+        "http://localhost:4545/cli/tests/subdir/mt_application_ecmascript.j2.js": {
+          "specifier": "http://localhost:4545/cli/tests/subdir/mt_application_ecmascript.j2.js",
+          "deps": []
+        },
+        "http://localhost:4545/cli/tests/subdir/mt_text_javascript.j1.js": {
+          "specifier": "http://localhost:4545/cli/tests/subdir/mt_text_javascript.j1.js",
+          "deps": []
+        }
+      })
+    );
     drop(http_server_guard);
   }
 
@@ -138,19 +172,32 @@ mod tests {
     let http_server_guard = crate::test_util::http_server();
 
     let global_state = GlobalState::new(Default::default()).unwrap();
-    let module_specifier = rel_module_specifier("tests/circular1.js");
+    let module_specifier = ModuleSpecifier::resolve_url_or_path(
+      "http://localhost:4545/cli/tests/circular1.js",
+    )
+    .unwrap();
 
     let graph_loader =
       ModuleGraphLoader::new(global_state.file_fetcher.clone());
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
-    // assert_eq!(graph.len(), 9);
-    // let r = graph
-    //   .get("http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts");
-    // assert!(r.is_some());
-
-    println!("{}", serde_json::to_string_pretty(&graph).unwrap());
-
+    assert_eq!(
+      serde_json::to_value(&graph).unwrap(),
+      json!({
+        "http://localhost:4545/cli/tests/circular2.js": {
+          "specifier": "http://localhost:4545/cli/tests/circular2.js",
+          "deps": [
+            "http://localhost:4545/cli/tests/circular1.js"
+          ]
+        },
+        "http://localhost:4545/cli/tests/circular1.js": {
+          "specifier": "http://localhost:4545/cli/tests/circular1.js",
+          "deps": [
+            "http://localhost:4545/cli/tests/circular2.js"
+          ]
+        }
+      })
+    );
     drop(http_server_guard);
   }
 }
