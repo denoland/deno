@@ -55,9 +55,9 @@ function stringToCodePoints(input: string): number[] {
 }
 
 class UTF8Encoder implements Encoder {
-  handler(codePoint: number): 'finished' | number[] {
+  handler(codePoint: number): "finished" | number[] {
     if (codePoint === END_OF_STREAM) {
-      return 'finished';
+      return "finished";
     }
 
     if (inRange(codePoint, 0x00, 0x7f)) {
@@ -144,7 +144,7 @@ interface Decoder {
 }
 
 interface Encoder {
-  handler(codePoint: number): 'finished' | number[];
+  handler(codePoint: number): "finished" | number[];
 }
 
 class SingleByteDecoder implements Decoder {
@@ -534,7 +534,7 @@ export class TextEncoder {
 
     while (true) {
       const result = encoder.handler(inputStream.read());
-      if (result === 'finished') {
+      if (result === "finished") {
         break;
       }
       output.push(...result);
@@ -550,7 +550,7 @@ export class TextEncoder {
     let read = 0;
     while (true) {
       const result = encoder.handler(inputStream.read());
-      if (result === 'finished') {
+      if (result === "finished") {
         break;
       }
       if (dest.length - written >= result.length) {
