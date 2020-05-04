@@ -106,12 +106,11 @@ test("serveWithUnorthodoxFilename", async function (): Promise<void> {
 
 test("servePermissionDenied", async function (): Promise<void> {
   const deniedServer = Deno.run({
-    // TODO(lucacasonato): remove unstable when stabilized
     cmd: [
       Deno.execPath(),
       "run",
-      "--unstable",
       "--allow-net",
+      "--allow-read",
       "http/file_server.ts",
     ],
     stdout: "piped",
@@ -140,11 +139,10 @@ test("servePermissionDenied", async function (): Promise<void> {
 
 test("printHelp", async function (): Promise<void> {
   const helpProcess = Deno.run({
-    // TODO(lucacasonato): remove unstable when stabilized
     cmd: [
       Deno.execPath(),
       "run",
-      "--unstable",
+      "--allow-read",
       "http/file_server.ts",
       "--help",
     ],
