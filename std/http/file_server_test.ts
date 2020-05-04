@@ -12,7 +12,6 @@ async function startFileServer(): Promise<void> {
     cmd: [
       Deno.execPath(),
       "run",
-      "--unstable",
       "--allow-read",
       "--allow-net",
       "http/file_server.ts",
@@ -101,39 +100,6 @@ test("serveWithUnorthodoxFilename", async function (): Promise<void> {
     _ = await res.text();
   } finally {
     killFileServer();
-  }
-});
-
-test("servePermissionDenied", async function (): Promise<void> {
-  const deniedServer = Deno.run({
-    cmd: [
-      Deno.execPath(),
-      "run",
-      "--allow-net",
-      "--allow-read",
-      "http/file_server.ts",
-    ],
-    stdout: "piped",
-    stderr: "piped",
-  });
-  assert(deniedServer.stdout != null);
-  const reader = new TextProtoReader(new BufReader(deniedServer.stdout));
-  assert(deniedServer.stderr != null);
-  const errReader = new TextProtoReader(new BufReader(deniedServer.stderr));
-  const s = await reader.readLine();
-  assert(s !== null && s.includes("server listening"));
-
-  try {
-    const res = await fetch("http://localhost:4500/");
-    const _ = await res.text();
-    assertStrContains(
-      (await errReader.readLine()) as string,
-      "run again with the --allow-read flag"
-    );
-  } finally {
-    deniedServer.close();
-    deniedServer.stdout.close();
-    deniedServer.stderr.close();
   }
 });
 
