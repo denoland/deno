@@ -113,9 +113,9 @@ pub struct Permissions {
 
 impl Permissions {
   pub fn from_flags(flags: &Flags) -> Self {
-    // assert each whitelist path is absolute, cwd may change.
+    // assert each whitelist path is absolute, since the cwd may change.
     for path in &flags.read_whitelist {
-      assert!(path.has_root()); // TODO path.has_root() instead?
+      assert!(path.has_root());
     }
     for path in &flags.write_whitelist {
       assert!(path.has_root());
