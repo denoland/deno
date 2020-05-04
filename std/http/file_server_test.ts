@@ -108,6 +108,8 @@ test("printHelp", async function (): Promise<void> {
     cmd: [
       Deno.execPath(),
       "run",
+      // TODO(ry) It ought to be possible to get the help output without
+      // --allow-read.
       "--allow-read",
       "http/file_server.ts",
       "--help",
