@@ -608,7 +608,6 @@ Ignore formatting code by preceding it with an ignore comment:
 
 Ignore formatting a file by adding an ignore comment at the top of the file:
   // deno-fmt-ignore-file",
-
     )
     .arg(
       Arg::with_name("check")
