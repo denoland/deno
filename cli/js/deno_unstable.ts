@@ -14,7 +14,6 @@ export { setRaw } from "./ops/tty.ts";
 export { utimeSync, utime } from "./ops/fs/utime.ts";
 export { ShutdownMode, shutdown } from "./net.ts";
 export { listen, listenDatagram, connect } from "./net_unstable.ts";
-export { cwd } from "./ops/fs/dir.ts";
 export { startTls } from "./tls.ts";
 export { kill } from "./ops/process.ts";
 export {

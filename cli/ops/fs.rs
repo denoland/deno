@@ -905,11 +905,12 @@ fn op_utime(
 }
 
 fn op_cwd(
-  _state: &State,
+  state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let path = current_dir()?;
+  state.check_read(&path)?;
   let path_str = into_string(path.into_os_string())?;
   Ok(JsonOp::Sync(json!(path_str)))
 }

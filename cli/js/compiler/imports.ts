@@ -1,60 +1,30 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { MediaType, SourceFile, SourceFileJson } from "./sourcefile.ts";
-import { normalizeString, CHAR_FORWARD_SLASH } from "./util.ts";
-import { cwd } from "../ops/fs/dir.ts";
 import { assert } from "../util.ts";
 import * as util from "../util.ts";
 import * as compilerOps from "../ops/compiler.ts";
 
-function resolvePath(...pathSegments: string[]): string {
-  let resolvedPath = "";
-  let resolvedAbsolute = false;
-
-  for (let i = pathSegments.length - 1; i >= -1 && !resolvedAbsolute; i--) {
-    let path: string;
-
-    if (i >= 0) path = pathSegments[i];
-    else path = cwd();
-
-    // Skip empty entries
-    if (path.length === 0) {
-      continue;
-    }
-
-    resolvedPath = `${path}/${resolvedPath}`;
-    resolvedAbsolute = path.charCodeAt(0) === CHAR_FORWARD_SLASH;
-  }
-
-  // At this point the path should be resolved to a full absolute path, but
-  // handle relative paths to be safe (might happen when cwd() fails)
-
-  // Normalize the path
-  resolvedPath = normalizeString(
-    resolvedPath,
-    !resolvedAbsolute,
-    "/",
-    (code) => code === CHAR_FORWARD_SLASH
-  );
-
-  if (resolvedAbsolute) {
-    if (resolvedPath.length > 0) return `/${resolvedPath}`;
-    else return "/";
-  } else if (resolvedPath.length > 0) return resolvedPath;
-  else return ".";
-}
-
 function resolveSpecifier(specifier: string, referrer: string): string {
-  if (!specifier.startsWith(".")) {
-    return specifier;
+  // The resolveModules op only handles fully qualified URLs for referrer.
+  // However we will have cases where referrer is "/foo.ts". We add this dummy
+  // prefix "file://" in order to use the op.
+  // TODO(ry) Maybe we should perhaps ModuleSpecifier::resolve_import() to
+  // handle this situation.
+  let dummyPrefix = false;
+  const prefix = "file://";
+  if (referrer.startsWith("/")) {
+    dummyPrefix = true;
+    referrer = prefix + referrer;
   }
-  const pathParts = referrer.split("/");
-  pathParts.pop();
-  let path = pathParts.join("/");
-  path = path.endsWith("/") ? path : `${path}/`;
-  return resolvePath(path, specifier);
+  let r = resolveModules([specifier], referrer)[0];
+  if (dummyPrefix) {
+    r = r.replace(prefix, "");
+  }
+  return r;
 }
 
+// TODO(ry) Remove. Unnecessary redirection to compilerOps.resolveModules.
 export function resolveModules(
   specifiers: string[],
   referrer?: string
@@ -63,6 +33,7 @@ export function resolveModules(
   return compilerOps.resolveModules(specifiers, referrer);
 }
 
+// TODO(ry) Remove. Unnecessary redirection to compilerOps.fetchSourceFiles.
 function fetchSourceFiles(
   specifiers: string[],
   referrer?: string

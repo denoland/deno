@@ -35,7 +35,12 @@ console.log(`fetch check code: ${fetchCheckProcCode}`);
 const runProc = Deno.run({
   stdout: "null",
   stderr: "null",
-  cmd: [Deno.execPath(), "--lock=lock_write_fetch.json", "https_import.ts"],
+  cmd: [
+    Deno.execPath(),
+    "run",
+    "--lock=lock_write_fetch.json",
+    "https_import.ts",
+  ],
 });
 
 const runCode = (await runProc.status()).code;

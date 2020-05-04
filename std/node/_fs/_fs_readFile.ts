@@ -3,6 +3,7 @@
 import { intoCallbackAPIWithIntercept, MaybeEmpty } from "../_utils.ts";
 
 import { getEncoding, FileOptions } from "./_fs_common.ts";
+import { fromFileUrl } from "../path.ts";
 
 const { readFile: denoReadFile, readFileSync: denoReadFileSync } = Deno;
 
@@ -22,10 +23,11 @@ function maybeDecode(
 }
 
 export function readFile(
-  path: string,
+  path: string | URL,
   optOrCallback: ReadFileCallback | FileOptions,
   callback?: ReadFileCallback
 ): void {
+  path = path instanceof URL ? fromFileUrl(path) : path;
   let cb: ReadFileCallback | undefined;
   if (typeof optOrCallback === "function") {
     cb = optOrCallback;
@@ -44,8 +46,9 @@ export function readFile(
 }
 
 export function readFileSync(
-  path: string,
+  path: string | URL,
   opt?: FileOptions
 ): string | Uint8Array {
+  path = path instanceof URL ? fromFileUrl(path) : path;
   return maybeDecode(denoReadFileSync(path), getEncoding(opt));
 }

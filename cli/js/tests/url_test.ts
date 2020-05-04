@@ -132,6 +132,43 @@ unitTest(function urlSearchParamsReuse(): void {
   assert(sp === url.searchParams, "Search params should be reused.");
 });
 
+unitTest(function urlBackSlashes(): void {
+  const url = new URL(
+    "https:\\\\foo:bar@baz.qat:8000\\qux\\quux?foo=bar&baz=12#qat"
+  );
+  assertEquals(
+    url.href,
+    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
+  );
+});
+
+unitTest(function urlRequireHost(): void {
+  assertEquals(new URL("file:///").href, "file:///");
+  assertThrows(() => {
+    new URL("ftp:///");
+  });
+  assertThrows(() => {
+    new URL("http:///");
+  });
+  assertThrows(() => {
+    new URL("https:///");
+  });
+  assertThrows(() => {
+    new URL("ws:///");
+  });
+  assertThrows(() => {
+    new URL("wss:///");
+  });
+});
+
+unitTest(function urlDriveLetter() {
+  assertEquals(
+    new URL("file:///C:").href,
+    Deno.build.os == "windows" ? "file:///C:/" : "file:///C:"
+  );
+  assertEquals(new URL("http://example.com/C:").href, "http://example.com/C:");
+});
+
 unitTest(function urlBaseURL(): void {
   const base = new URL(
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
@@ -156,6 +193,25 @@ unitTest(function urlRelativeWithBase(): void {
   assertEquals(new URL("b", "file:///a/a/a/").href, "file:///a/a/a/b");
   assertEquals(new URL("b/", "file:///a/a/a").href, "file:///a/a/b/");
   assertEquals(new URL("../b", "file:///a/a/a").href, "file:///a/b");
+});
+
+unitTest(function urlDriveLetterBase() {
+  assertEquals(
+    new URL("/b", "file:///C:/a/b").href,
+    Deno.build.os == "windows" ? "file:///C:/b" : "file:///b"
+  );
+  assertEquals(
+    new URL("D:", "file:///C:/a/b").href,
+    Deno.build.os == "windows" ? "file:///D:/" : "file:///C:/a/D:"
+  );
+  assertEquals(
+    new URL("/D:", "file:///C:/a/b").href,
+    Deno.build.os == "windows" ? "file:///D:/" : "file:///D:"
+  );
+  assertEquals(
+    new URL("D:/b", "file:///C:/a/b").href,
+    Deno.build.os == "windows" ? "file:///D:/b" : "file:///C:/a/D:/b"
+  );
 });
 
 unitTest(function emptyBasePath(): void {
@@ -224,12 +280,20 @@ unitTest(function throwForInvalidPortConstructor(): void {
   ];
 
   for (const url of urls) {
-    assertThrows(() => new URL(url));
+    assertThrows(() => new URL(url), TypeError, "Invalid URL.");
   }
 
   // Do not throw for 0 & 65535
   new URL("https://baz.qat:65535");
   new URL("https://baz.qat:0");
+});
+
+unitTest(function throwForInvalidSchemeConstructor(): void {
+  assertThrows(
+    () => new URL("invalid_scheme://baz.qat"),
+    TypeError,
+    "Invalid URL."
+  );
 });
 
 unitTest(function doNotOverridePortIfInvalid(): void {

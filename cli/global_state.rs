@@ -10,7 +10,7 @@ use crate::flags;
 use crate::http_cache;
 use crate::lockfile::Lockfile;
 use crate::msg;
-use crate::permissions::DenoPermissions;
+use crate::permissions::Permissions;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use std::env;
@@ -31,7 +31,7 @@ pub struct GlobalStateInner {
   /// Flags parsed from `argv` contents.
   pub flags: flags::Flags,
   /// Permissions parsed from `flags`.
-  pub permissions: DenoPermissions,
+  pub permissions: Permissions,
   pub dir: deno_dir::DenoDir,
   pub file_fetcher: SourceFileFetcher,
   pub js_compiler: JsCompiler,
@@ -81,7 +81,7 @@ impl GlobalState {
 
     let inner = GlobalStateInner {
       dir,
-      permissions: DenoPermissions::from_flags(&flags),
+      permissions: Permissions::from_flags(&flags),
       flags,
       file_fetcher,
       ts_compiler,

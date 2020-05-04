@@ -144,6 +144,20 @@ declare namespace Deno {
    */
   export function chdir(directory: string): void;
 
+  /**
+   * Return a string representing the current working directory.
+   *
+   * If the current directory can be reached via multiple paths (due to symbolic
+   * links), `cwd()` may return any one of them.
+   *
+   *       const currentWorkingDirectory = Deno.cwd();
+   *
+   * Throws `Deno.errors.NotFound` if directory not available.
+   *
+   * Requires --allow-read
+   */
+  export function cwd(): string;
+
   export enum SeekMode {
     Start = 0,
     Current = 1,
