@@ -5,9 +5,23 @@ import { assert } from "../util.ts";
 import * as util from "../util.ts";
 import * as compilerOps from "../ops/compiler.ts";
 
-// TODO(ry) Remove. Unnecessary redirection to compilerOps.resolveModules.
 function resolveSpecifier(specifier: string, referrer: string): string {
-  return resolveModules([specifier], referrer)[0];
+  // The resolveModules op only handles fully qualified URLs for referrer.
+  // However we will have cases where referrer is "/foo.ts". We add this dummy
+  // prefix "file://" in order to use the op.
+  // TODO(ry) Maybe we should perhaps ModuleSpecifier::resolve_import() to
+  // handle this situation.
+  let dummyPrefix = false;
+  const prefix = "file://";
+  if (referrer.startsWith("/")) {
+    dummyPrefix = true;
+    referrer = prefix + referrer;
+  }
+  let r = resolveModules([specifier], referrer)[0];
+  if (dummyPrefix) {
+    r = r.replace(prefix, "");
+  }
+  return r;
 }
 
 // TODO(ry) Remove. Unnecessary redirection to compilerOps.resolveModules.
