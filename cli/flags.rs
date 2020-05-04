@@ -2054,6 +2054,30 @@ mod tests {
   }
 
   #[test]
+  fn install_unstable() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "install",
+      "--unstable",
+      "https://deno.land/std/examples/colors.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        unstable: true,
+        subcommand: DenoSubcommand::Install {
+          name: None,
+          module_url: "https://deno.land/std/examples/colors.ts".to_string(),
+          args: svec![],
+          root: None,
+          force: false,
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn install_with_args() {
     let r = flags_from_vec_safe(svec![
       "deno",
