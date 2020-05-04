@@ -5,11 +5,10 @@ import { CompilerOptions } from "./api.ts";
 import { buildBundle } from "./bundler.ts";
 import { ConfigureResponse, Host } from "./host.ts";
 import { MediaType, SourceFile } from "./sourcefile.ts";
-import { atob, TextEncoder } from "../web/text_encoding.ts";
+import { atob } from "../web/text_encoding.ts";
 import * as compilerOps from "../ops/compiler.ts";
 import * as util from "../util.ts";
 import { assert } from "../util.ts";
-import { writeFileSync } from "../write_file.ts";
 
 export type WriteFileCallback = (
   fileName: string,
@@ -20,6 +19,7 @@ export type WriteFileCallback = (
 export interface WriteFileState {
   type: CompilerRequestType;
   bundle?: boolean;
+  bundleOutput?: string;
   host?: Host;
   outFile?: string;
   rootNames: string[];
@@ -70,7 +70,9 @@ export function getAsset(name: string): string {
   return compilerOps.getAsset(name);
 }
 
-export function createRuntimeBundleWriteFile(state: WriteFileState): WriteFileCallback {
+export function createRuntimeBundleWriteFile(
+  state: WriteFileState
+): WriteFileCallback {
   return function writeFile(
     _fileName: string,
     data: string,
@@ -79,13 +81,16 @@ export function createRuntimeBundleWriteFile(state: WriteFileState): WriteFileCa
     assert(sourceFiles != null);
     assert(state.host);
     assert(state.emitMap);
+    assert(state.bundle);
     // we only support single root names for bundles
     assert(state.rootNames.length === 1);
     state.emitBundle = buildBundle(state.rootNames[0], data, sourceFiles);
   };
 }
 
-export function createRuntimeWriteFile(state: WriteFileState): WriteFileCallback {
+export function createRuntimeWriteFile(
+  state: WriteFileState
+): WriteFileCallback {
   return function writeFile(
     fileName: string,
     data: string,
@@ -94,29 +99,25 @@ export function createRuntimeWriteFile(state: WriteFileState): WriteFileCallback
     assert(sourceFiles != null);
     assert(state.host);
     assert(state.emitMap);
-    if (!state.bundle) {
-      assert(sourceFiles.length === 1);
-      state.emitMap[fileName] = data;
-      // we only want to cache the compiler output if we are resolving
-      // modules externally
-      if (!state.sources) {
-        cache(
-          sourceFiles[0].fileName,
-          fileName,
-          data,
-          state.host.getCompilationSettings().checkJs
-        );
-      }
-    } else {
-      // we only support single root names for bundles
-      assert(state.rootNames.length === 1);
-      state.emitBundle = buildBundle(state.rootNames[0], data, sourceFiles);
+    assert(!state.bundle);
+    assert(sourceFiles.length === 1);
+    state.emitMap[fileName] = data;
+    // we only want to cache the compiler output if we are resolving
+    // modules externally
+    if (!state.sources) {
+      cache(
+        sourceFiles[0].fileName,
+        fileName,
+        data,
+        state.host.getCompilationSettings().checkJs
+      );
     }
   };
 }
 
-export function createBundleWriteFile(state: WriteFileState): WriteFileCallback {
-  const encoder = new TextEncoder();
+export function createBundleWriteFile(
+  state: WriteFileState
+): WriteFileCallback {
   return function writeFile(
     fileName: string,
     data: string,
@@ -127,32 +128,18 @@ export function createBundleWriteFile(state: WriteFileState): WriteFileCallback 
       `Unexpected emit of "${fileName}" which isn't part of a program.`
     );
     assert(state.host);
-    // if the fileName is set to an internal value, just noop, this is
-    // used in the Rust unit tests.
-    if (state.outFile && state.outFile.startsWith(OUT_DIR)) {
-      return;
-    }
+    assert(state.bundle);
     // we only support single root names for bundles
     assert(
       state.rootNames.length === 1,
-      `Only one root name supported.  Got "${JSON.stringify(
-        state.rootNames
-      )}"`
+      `Only one root name supported.  Got "${JSON.stringify(state.rootNames)}"`
     );
     // this enriches the string with the loader and re-exports the
     // exports of the root module
     const content = buildBundle(state.rootNames[0], data, sourceFiles);
-    if (state.outFile) {
-      const encodedData = encoder.encode(content);
-      console.warn(`Emitting bundle to "${state.outFile}"`);
-      writeFileSync(state.outFile, encodedData);
-      console.warn(`${humanFileSize(encodedData.length)} emitted.`);
-    } else {
-      console.log(content);
-    }
+    state.bundleOutput = content;
   };
 }
-
 
 export function createWriteFile(state: WriteFileState): WriteFileCallback {
   return function writeFile(
@@ -165,6 +152,7 @@ export function createWriteFile(state: WriteFileState): WriteFileCallback {
       `Unexpected emit of "${fileName}" which isn't part of a program.`
     );
     assert(state.host);
+    assert(!state.bundle);
     assert(sourceFiles.length === 1);
     cache(
       sourceFiles[0].fileName,
@@ -405,20 +393,6 @@ export function commonPath(paths: string[], sep = "/"): string {
   }
   const prefix = parts.slice(0, endOfPrefix).join(sep);
   return prefix.endsWith(sep) ? prefix : `${prefix}${sep}`;
-}
-
-function humanFileSize(bytes: number): string {
-  const thresh = 1000;
-  if (Math.abs(bytes) < thresh) {
-    return bytes + " B";
-  }
-  const units = ["kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
-  let u = -1;
-  do {
-    bytes /= thresh;
-    ++u;
-  } while (Math.abs(bytes) >= thresh && u < units.length - 1);
-  return `${bytes.toFixed(1)} ${units[u]}`;
 }
 
 // @internal

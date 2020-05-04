@@ -123,11 +123,7 @@ export async function processImports(
     sourceFile.cache(specifiers[i][0], referrer);
     if (!sourceFile.processed) {
       const sourceFileImports = sourceFile.imports(processJsImports);
-      await processImports(
-        sourceFileImports,
-        sourceFile.url,
-        processJsImports
-      );
+      await processImports(sourceFileImports, sourceFile.url, processJsImports);
     }
   }
   return resolvedSources;

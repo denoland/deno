@@ -11,7 +11,7 @@ use serde_json::value::Value;
 use std::error::Error;
 use std::fmt;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Diagnostic {
   pub items: Vec<DiagnosticItem>,
 }

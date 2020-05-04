@@ -84,6 +84,7 @@ type CompilerRequest =
 
 interface CompileResult {
   emitSkipped: boolean;
+  bundleOutput?: string;
   diagnostics?: Diagnostic;
 }
 
@@ -130,7 +131,7 @@ async function compile(
   if (bundle) {
     writeFile = createBundleWriteFile(state);
   } else {
-    writeFile = createWriteFile(state)
+    writeFile = createWriteFile(state);
   }
   const host = (state.host = new Host({
     bundle,
@@ -188,8 +189,16 @@ async function compile(
     }
   }
 
+  let bundleOutput = undefined;
+
+  if (bundle) {
+    assert(state.bundleOutput);
+    bundleOutput = state.bundleOutput;
+  }
+
   const result: CompileResult = {
     emitSkipped,
+    bundleOutput,
     diagnostics: diagnostics.length
       ? fromTypeScriptDiagnostic(diagnostics)
       : undefined,
@@ -273,7 +282,7 @@ async function runtimeCompile(
   if (bundle) {
     writeFile = createRuntimeBundleWriteFile(state);
   } else {
-    writeFile = createRuntimeWriteFile(state)
+    writeFile = createRuntimeWriteFile(state);
   }
 
   const host = (state.host = new Host({

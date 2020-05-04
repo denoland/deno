@@ -303,11 +303,11 @@ export class Host implements ts.CompilerHost {
       } else if (typeof maybeUrl !== "undefined") {
         sourceFile = SourceFile.get(maybeUrl);
       }
-      
-      if (!sourceFile) { 
+
+      if (!sourceFile) {
         return undefined;
       }
-      
+
       return {
         resolvedFileName: sourceFile.url,
         isExternalLibraryImport: specifier.startsWith(ASSETS),

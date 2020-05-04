@@ -7,6 +7,7 @@ use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
+use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg;
 use crate::op_error::OpError;
@@ -293,7 +294,7 @@ impl TsCompiler {
       msg::CompilerRequestType::Compile,
       root_names,
       self.config.clone(),
-      out_file,
+      out_file.clone(),
       "main",
       true,
       global_state.flags.unstable,
@@ -302,9 +303,34 @@ impl TsCompiler {
     let msg = execute_in_thread(global_state.clone(), req_msg).await?;
     let json_str = std::str::from_utf8(&msg).unwrap();
     debug!("Message: {}", json_str);
+
+    // TODO(bartlomieju): refactor into deserialize
     if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
       return Err(ErrBox::from(diagnostics));
     }
+
+    let v = serde_json::from_str::<serde_json::Value>(json_str)
+      .expect("Error decoding JSON string.");
+    let bundle_output = v
+      .get("bundleOutput")
+      .expect("Missing bundle output")
+      .as_str()
+      .expect("Bundle output is not a string");
+    // TODO(bartlomieju): end of refactor into deserialize
+
+    if let Some(out_file_) = out_file.as_ref() {
+      eprintln!("Emitting bundle to {:?}", out_file_);
+
+      let output_bytes = bundle_output.as_bytes();
+      let output_len = output_bytes.len();
+
+      deno_fs::write_file(out_file_, output_bytes, 0o666)?;
+      // TODO(bartlomieju): add "humanFileSize" method
+      eprintln!("{} bytes emmited.", output_len);
+    } else {
+      println!("{}", bundle_output);
+    }
+
     Ok(())
   }
 
@@ -745,11 +771,7 @@ mod tests {
 
     let result = state
       .ts_compiler
-      .bundle(
-        state.clone(),
-        module_name,
-        Some(PathBuf::from("$deno$/bundle.js")),
-      )
+      .bundle(state.clone(), module_name, None)
       .await;
     assert!(result.is_ok());
   }

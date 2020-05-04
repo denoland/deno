@@ -92,13 +92,14 @@ export class SourceFile {
     }
 
     const readImportFiles = true;
-    const detectJsImports = this.mediaType === MediaType.JavaScript ||
+    const detectJsImports =
+      this.mediaType === MediaType.JavaScript ||
       this.mediaType === MediaType.JSX;
 
     const preProcessedFileInfo = ts.preProcessFile(
       this.sourceCode,
       readImportFiles,
-      detectJsImports,
+      detectJsImports
     );
     this.processed = true;
     const files: Array<[string, string]> = [];
