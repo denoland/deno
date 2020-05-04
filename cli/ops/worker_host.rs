@@ -4,7 +4,7 @@ use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
 use crate::op_error::OpError;
 use crate::ops::io::get_stdio;
-use crate::permissions::DenoPermissions;
+use crate::permissions::Permissions;
 use crate::startup_data;
 use crate::state::State;
 use crate::tokio_util::create_basic_runtime;
@@ -39,7 +39,7 @@ fn create_web_worker(
   worker_id: u32,
   name: String,
   global_state: GlobalState,
-  permissions: DenoPermissions,
+  permissions: Permissions,
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
 ) -> Result<WebWorker, ErrBox> {
@@ -77,7 +77,7 @@ fn run_worker_thread(
   worker_id: u32,
   name: String,
   global_state: GlobalState,
-  permissions: DenoPermissions,
+  permissions: Permissions,
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
   maybe_source_code: Option<String>,

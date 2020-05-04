@@ -7,7 +7,7 @@ use crate::metrics::Metrics;
 use crate::op_error::OpError;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
-use crate::permissions::DenoPermissions;
+use crate::permissions::Permissions;
 use crate::web_worker::WebWorkerHandle;
 use deno_core::Buf;
 use deno_core::ErrBox;
@@ -53,7 +53,7 @@ impl Deref for State {
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct StateInner {
   pub global_state: GlobalState,
-  pub permissions: DenoPermissions,
+  pub permissions: Permissions,
   pub main_module: ModuleSpecifier,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
@@ -355,7 +355,7 @@ impl State {
   /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new(
     global_state: GlobalState,
-    shared_permissions: Option<DenoPermissions>,
+    shared_permissions: Option<Permissions>,
     main_module: ModuleSpecifier,
     debug_type: DebugType,
   ) -> Result<Self, ErrBox> {
@@ -402,7 +402,7 @@ impl State {
   /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new_for_worker(
     global_state: GlobalState,
-    shared_permissions: Option<DenoPermissions>,
+    shared_permissions: Option<Permissions>,
     main_module: ModuleSpecifier,
   ) -> Result<Self, ErrBox> {
     let seeded_rng = match global_state.flags.seed {
