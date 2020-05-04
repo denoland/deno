@@ -1314,7 +1314,7 @@ deno fmt --check
 cat file.ts | deno fmt -
 ```
 
-Ignore code to format by preceding it with a `// deno-fmt-ignore` comment:
+Ignore formatting code by preceding it with a `// deno-fmt-ignore` comment:
 
 <!-- prettier-ignore-start -->
 

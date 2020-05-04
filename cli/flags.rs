@@ -603,7 +603,7 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
 Format stdin and write to stdout:
   cat file.ts | deno fmt -
 
-Ignore formatting code by adding an ignore comment before the code:
+Ignore formatting code by preceding it with an ignore comment:
   // deno-fmt-ignore
 
 Ignore formatting a file by adding an ignore comment at the top of the file:
