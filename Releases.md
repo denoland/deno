@@ -6,6 +6,38 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v1.0.0-rc1 / 2020.05.04
+
+- BREAKING: make WebSocket directly implement AsyncIterable (#5045)
+- BREAKING: remove CLI 'deno script.ts' alias to 'deno run script.ts' (#5026)
+- BREAKING: remove support for JSON imports (#5037)
+- BREAKING: remove window.location and self.location (#5034)
+- BREAKING: reorder std/io/utils copyBytes arguments (#5022, #5021)
+- feat(URL): Support drive letters for file URLs on Windows (#5074)
+- feat(deno install): simplify CLI flags (#5036)
+- feat(deno fmt): Add `deno-fmt-ignore` and `deno-fmt-ignore-file` comment
+  support #5075
+- feat(std): Add sha256 and sha224 support (along with HMAC variants) (#5066)
+- feat(std/node): ability add to path argument to be URL type (#5055)
+- feat(std/node): make process global (#4985)
+- feat(std/node): toString for globals (#5013)
+- feat: Add WritableStreams, TransformStream, TransformStreamController (#5042,
+  #4980)
+- feat: Make WebSocket Reader/Writer (#5002)
+- feat: make Deno.cwd stable (#5068)
+- fix(console): Formatting misalignment on console.table (#5046)
+- fix(deno doc): Better repr for object literal types (#4998)
+- fix(deno fmt): Format `abstract async` as `abstract async` (#5020)
+- fix(std): Use fromFileUrl (#5005)
+- fix(std/http): Hang when content-length unhandled (#5024)
+- fix: Deno.chdir Should require allow-read not allow-write (#5033)
+- fix: Respect NO_COLOR for stack frames (#5051)
+- fix: URL constructor throws confusing error on invalid scheme (#5057)
+- fix: Disallow static import of local modules from remote modules (#5050)
+- fix: Misaligned error reporting on tab char (#5032)
+- refactor(core): Add "prepare_load" hook to ModuleLoader trait (#4866)
+- refactor: Don't expose unstable APIs to runtime (#5061 #4957)
+
 ### v0.42.0 / 2020.04.29
 
 - BREAKING: "address" renamed to "path" in
