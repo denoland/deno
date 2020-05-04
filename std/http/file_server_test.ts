@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
+import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { ServerRequest } from "./server.ts";
@@ -12,7 +12,6 @@ async function startFileServer(): Promise<void> {
     cmd: [
       Deno.execPath(),
       "run",
-      "--unstable",
       "--allow-read",
       "--allow-net",
       "http/file_server.ts",
@@ -104,47 +103,14 @@ test("serveWithUnorthodoxFilename", async function (): Promise<void> {
   }
 });
 
-test("servePermissionDenied", async function (): Promise<void> {
-  const deniedServer = Deno.run({
-    // TODO(lucacasonato): remove unstable when stabilized
-    cmd: [
-      Deno.execPath(),
-      "run",
-      "--unstable",
-      "--allow-net",
-      "http/file_server.ts",
-    ],
-    stdout: "piped",
-    stderr: "piped",
-  });
-  assert(deniedServer.stdout != null);
-  const reader = new TextProtoReader(new BufReader(deniedServer.stdout));
-  assert(deniedServer.stderr != null);
-  const errReader = new TextProtoReader(new BufReader(deniedServer.stderr));
-  const s = await reader.readLine();
-  assert(s !== null && s.includes("server listening"));
-
-  try {
-    const res = await fetch("http://localhost:4500/");
-    const _ = await res.text();
-    assertStrContains(
-      (await errReader.readLine()) as string,
-      "run again with the --allow-read flag"
-    );
-  } finally {
-    deniedServer.close();
-    deniedServer.stdout.close();
-    deniedServer.stderr.close();
-  }
-});
-
 test("printHelp", async function (): Promise<void> {
   const helpProcess = Deno.run({
-    // TODO(lucacasonato): remove unstable when stabilized
     cmd: [
       Deno.execPath(),
       "run",
-      "--unstable",
+      // TODO(ry) It ought to be possible to get the help output without
+      // --allow-read.
+      "--allow-read",
       "http/file_server.ts",
       "--help",
     ],

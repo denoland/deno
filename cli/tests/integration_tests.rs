@@ -1146,10 +1146,9 @@ itest!(_055_import_wasm_via_network {
   http_server: true,
 });
 
-// TODO(lucacasonato): remove --unstable when cwd goes stable
 itest!(_056_make_temp_file_write_perm {
   args:
-    "run --allow-write=./subdir/ --unstable 056_make_temp_file_write_perm.ts",
+    "run --allow-read --allow-write=./subdir/ 056_make_temp_file_write_perm.ts",
   output: "056_make_temp_file_write_perm.out",
 });
 

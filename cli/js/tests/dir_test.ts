@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals } from "./test_util.ts";
 
-unitTest(function dirCwdNotNull(): void {
+unitTest({ perms: { read: true } }, function dirCwdNotNull(): void {
   assert(Deno.cwd() != null);
 });
 

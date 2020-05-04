@@ -19,7 +19,7 @@ export {
   DiagnosticItem,
   DiagnosticMessageChain,
 } from "./diagnostics.ts";
-export { chdir } from "./ops/fs/dir.ts";
+export { chdir, cwd } from "./ops/fs/dir.ts";
 export { errors } from "./errors.ts";
 export {
   File,
