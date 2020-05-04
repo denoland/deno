@@ -288,6 +288,22 @@ fn js_unit_tests() {
 }
 
 #[test]
+fn sandbox_symlink_open() {
+  // Trys to read symlink sandbox/hello.txt which reaches out of sandbox.
+  // Expecting failure.
+  let status = util::deno_cmd()
+    .current_dir(util::tests_path().join("sandbox"))
+    .arg("run")
+    .arg("--allow-read=.")
+    .arg("symlink_open.js")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(!status.success(), "expected failure but got success");
+}
+
+#[test]
 fn bundle_exports() {
   // First we have to generate a bundle of some module that has exports.
   let mod1 = util::root_path().join("cli/tests/subdir/mod1.ts");
