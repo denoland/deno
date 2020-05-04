@@ -161,6 +161,14 @@ unitTest(function urlRequireHost(): void {
   });
 });
 
+unitTest(function urlDriveLetter() {
+  assertEquals(
+    new URL("file:///C:").href,
+    Deno.build.os == "windows" ? "file:///C:/" : "file:///C:"
+  );
+  assertEquals(new URL("http://example.com/C:").href, "http://example.com/C:");
+});
+
 unitTest(function urlBaseURL(): void {
   const base = new URL(
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
@@ -185,6 +193,25 @@ unitTest(function urlRelativeWithBase(): void {
   assertEquals(new URL("b", "file:///a/a/a/").href, "file:///a/a/a/b");
   assertEquals(new URL("b/", "file:///a/a/a").href, "file:///a/a/b/");
   assertEquals(new URL("../b", "file:///a/a/a").href, "file:///a/b");
+});
+
+unitTest(function urlDriveLetterBase() {
+  assertEquals(
+    new URL("/b", "file:///C:/a/b").href,
+    Deno.build.os == "windows" ? "file:///C:/b" : "file:///b"
+  );
+  assertEquals(
+    new URL("D:", "file:///C:/a/b").href,
+    Deno.build.os == "windows" ? "file:///D:/" : "file:///C:/a/D:"
+  );
+  assertEquals(
+    new URL("/D:", "file:///C:/a/b").href,
+    Deno.build.os == "windows" ? "file:///D:/" : "file:///D:"
+  );
+  assertEquals(
+    new URL("D:/b", "file:///C:/a/b").href,
+    Deno.build.os == "windows" ? "file:///D:/b" : "file:///C:/a/D:/b"
+  );
 });
 
 unitTest(function emptyBasePath(): void {
