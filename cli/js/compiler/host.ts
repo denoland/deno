@@ -294,15 +294,20 @@ export class Host implements ts.CompilerHost {
       containingFile,
     });
     return moduleNames.map((specifier) => {
-      const url = SourceFile.getUrl(specifier, containingFile);
-      const sourceFile = specifier.startsWith(ASSETS)
-        ? getAssetInternal(specifier)
-        : url
-        ? SourceFile.get(url)
-        : undefined;
-      if (!sourceFile) {
+      const maybeUrl = SourceFile.getUrl(specifier, containingFile);
+
+      let sourceFile: SourceFile | undefined = undefined;
+
+      if (specifier.startsWith(ASSETS)) {
+        sourceFile = getAssetInternal(specifier);
+      } else if (typeof maybeUrl !== "undefined") {
+        sourceFile = SourceFile.get(maybeUrl);
+      }
+      
+      if (!sourceFile) { 
         return undefined;
       }
+      
       return {
         resolvedFileName: sourceFile.url,
         isExternalLibraryImport: specifier.startsWith(ASSETS),

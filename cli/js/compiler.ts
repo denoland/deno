@@ -29,7 +29,11 @@ import {
   resolveModules,
 } from "./compiler/imports.ts";
 import {
+  WriteFileCallback,
+  createRuntimeWriteFile,
+  createRuntimeBundleWriteFile,
   createWriteFile,
+  createBundleWriteFile,
   CompilerRequestType,
   convertCompilerOptions,
   ignoredDiagnostics,
@@ -122,8 +126,12 @@ async function compile(
     outFile,
     rootNames,
   };
-  const writeFile = createWriteFile(state);
-
+  let writeFile: WriteFileCallback;
+  if (bundle) {
+    writeFile = createBundleWriteFile(state);
+  } else {
+    writeFile = createWriteFile(state)
+  }
   const host = (state.host = new Host({
     bundle,
     target,
@@ -261,7 +269,12 @@ async function runtimeCompile(
     emitMap: {},
     emitBundle: undefined,
   };
-  const writeFile = createWriteFile(state);
+  let writeFile: WriteFileCallback;
+  if (bundle) {
+    writeFile = createRuntimeBundleWriteFile(state);
+  } else {
+    writeFile = createRuntimeWriteFile(state)
+  }
 
   const host = (state.host = new Host({
     bundle,

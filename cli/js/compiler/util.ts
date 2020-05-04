@@ -70,55 +70,22 @@ export function getAsset(name: string): string {
   return compilerOps.getAsset(name);
 }
 
-export function createWriteFile(state: WriteFileState): WriteFileCallback {
-  const encoder = new TextEncoder();
-  if (state.type === CompilerRequestType.Compile) {
-    return function writeFile(
-      fileName: string,
-      data: string,
-      sourceFiles?: readonly ts.SourceFile[]
-    ): void {
-      assert(
-        sourceFiles != null,
-        `Unexpected emit of "${fileName}" which isn't part of a program.`
-      );
-      assert(state.host);
-      if (!state.bundle) {
-        assert(sourceFiles.length === 1);
-        cache(
-          sourceFiles[0].fileName,
-          fileName,
-          data,
-          state.host.getCompilationSettings().checkJs
-        );
-      } else {
-        // if the fileName is set to an internal value, just noop, this is
-        // used in the Rust unit tests.
-        if (state.outFile && state.outFile.startsWith(OUT_DIR)) {
-          return;
-        }
-        // we only support single root names for bundles
-        assert(
-          state.rootNames.length === 1,
-          `Only one root name supported.  Got "${JSON.stringify(
-            state.rootNames
-          )}"`
-        );
-        // this enriches the string with the loader and re-exports the
-        // exports of the root module
-        const content = buildBundle(state.rootNames[0], data, sourceFiles);
-        if (state.outFile) {
-          const encodedData = encoder.encode(content);
-          console.warn(`Emitting bundle to "${state.outFile}"`);
-          writeFileSync(state.outFile, encodedData);
-          console.warn(`${humanFileSize(encodedData.length)} emitted.`);
-        } else {
-          console.log(content);
-        }
-      }
-    };
-  }
+export function createRuntimeBundleWriteFile(state: WriteFileState): WriteFileCallback {
+  return function writeFile(
+    _fileName: string,
+    data: string,
+    sourceFiles?: readonly ts.SourceFile[]
+  ): void {
+    assert(sourceFiles != null);
+    assert(state.host);
+    assert(state.emitMap);
+    // we only support single root names for bundles
+    assert(state.rootNames.length === 1);
+    state.emitBundle = buildBundle(state.rootNames[0], data, sourceFiles);
+  };
+}
 
+export function createRuntimeWriteFile(state: WriteFileState): WriteFileCallback {
   return function writeFile(
     fileName: string,
     data: string,
@@ -145,6 +112,66 @@ export function createWriteFile(state: WriteFileState): WriteFileCallback {
       assert(state.rootNames.length === 1);
       state.emitBundle = buildBundle(state.rootNames[0], data, sourceFiles);
     }
+  };
+}
+
+export function createBundleWriteFile(state: WriteFileState): WriteFileCallback {
+  const encoder = new TextEncoder();
+  return function writeFile(
+    fileName: string,
+    data: string,
+    sourceFiles?: readonly ts.SourceFile[]
+  ): void {
+    assert(
+      sourceFiles != null,
+      `Unexpected emit of "${fileName}" which isn't part of a program.`
+    );
+    assert(state.host);
+    // if the fileName is set to an internal value, just noop, this is
+    // used in the Rust unit tests.
+    if (state.outFile && state.outFile.startsWith(OUT_DIR)) {
+      return;
+    }
+    // we only support single root names for bundles
+    assert(
+      state.rootNames.length === 1,
+      `Only one root name supported.  Got "${JSON.stringify(
+        state.rootNames
+      )}"`
+    );
+    // this enriches the string with the loader and re-exports the
+    // exports of the root module
+    const content = buildBundle(state.rootNames[0], data, sourceFiles);
+    if (state.outFile) {
+      const encodedData = encoder.encode(content);
+      console.warn(`Emitting bundle to "${state.outFile}"`);
+      writeFileSync(state.outFile, encodedData);
+      console.warn(`${humanFileSize(encodedData.length)} emitted.`);
+    } else {
+      console.log(content);
+    }
+  };
+}
+
+
+export function createWriteFile(state: WriteFileState): WriteFileCallback {
+  return function writeFile(
+    fileName: string,
+    data: string,
+    sourceFiles?: readonly ts.SourceFile[]
+  ): void {
+    assert(
+      sourceFiles != null,
+      `Unexpected emit of "${fileName}" which isn't part of a program.`
+    );
+    assert(state.host);
+    assert(sourceFiles.length === 1);
+    cache(
+      sourceFiles[0].fileName,
+      fileName,
+      data,
+      state.host.getCompilationSettings().checkJs
+    );
   };
 }
 
