@@ -289,7 +289,7 @@ await Deno.remove("request.log");
 This one serves a local directory in HTTP.
 
 ```bash
-deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
+deno install --allow-net --allow-read --unstable https://deno.land/std/http/file_server.ts
 ```
 
 Run it:
@@ -886,7 +886,7 @@ the specified CLI flags and main module. It is place in the installation root's
 Example:
 
 ```shell
-$ deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
+$ deno install --allow-net --allow-read --unstable https://deno.land/std/http/file_server.ts
 [1/1] Compiling https://deno.land/std/http/file_server.ts
 
 ✅ Successfully installed file_server.
@@ -896,7 +896,7 @@ $ deno install --allow-net --allow-read https://deno.land/std/http/file_server.t
 To change the executable name, use `-n`/`--name`:
 
 ```shell
-  deno install --allow-net --allow-read -n serve https://deno.land/std/http/file_server.ts
+  deno install --allow-net --allow-read --unstable -n serve https://deno.land/std/http/file_server.ts
 ```
 
 The executable name is inferred by default:
@@ -910,7 +910,7 @@ The executable name is inferred by default:
 To change the installation root, use `--root`:
 
 ```shell
-$ deno install --allow-net --allow-read --root /usr/local https://deno.land/std/http/file_server.ts
+$ deno install --allow-net --allow-read --unstable --root /usr/local https://deno.land/std/http/file_server.ts
 ```
 
 The installation root is determined, in order of precedence:
@@ -929,7 +929,7 @@ You must specify permissions that will be used to run the script at installation
 time.
 
 ```shell
-$ deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts 8080
+$ deno install --allow-net --allow-read --unstable https://deno.land/std/http/file_server.ts 8080
 ```
 
 The above command creates an executable called `file_server` that runs with
