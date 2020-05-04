@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { SYSTEM_LOADER } from "./bootstrap.ts";
-import { commonPath, normalizeString, CHAR_FORWARD_SLASH } from "./util.ts";
+import { commonPath, normalizeString } from "./util.ts";
 import { assert } from "../util.ts";
 
 let rootExports: string[] | undefined;
@@ -10,12 +10,7 @@ function normalizeUrl(rootName: string): string {
   const match = /^(\S+:\/{2,3})(.+)$/.exec(rootName);
   if (match) {
     const [, protocol, path] = match;
-    return `${protocol}${normalizeString(
-      path,
-      false,
-      "/",
-      (code) => code === CHAR_FORWARD_SLASH
-    )}`;
+    return `${protocol}${normalizeString(path)}`;
   } else {
     return rootName;
   }
