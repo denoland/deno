@@ -140,7 +140,7 @@ declare namespace Deno {
    * Throws `Deno.errors.PermissionDenied` if the user does not have access
    * rights
    *
-   * Requires --allow-write.
+   * Requires --allow-read.
    */
   export function chdir(directory: string): void;
 

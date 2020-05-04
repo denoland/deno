@@ -29,7 +29,7 @@ Deno.test({
   name: "xevalCliReplvar",
   fn: async function (): Promise<void> {
     const p = run({
-      cmd: [execPath(), xevalPath, "--replvar=abc", "console.log(abc)"],
+      cmd: [execPath(), "run", xevalPath, "--replvar=abc", "console.log(abc)"],
       stdin: "piped",
       stdout: "piped",
       stderr: "null",
@@ -45,7 +45,7 @@ Deno.test({
 
 Deno.test("xevalCliSyntaxError", async function (): Promise<void> {
   const p = run({
-    cmd: [execPath(), xevalPath, "("],
+    cmd: [execPath(), "run", xevalPath, "("],
     stdin: "null",
     stdout: "piped",
     stderr: "piped",

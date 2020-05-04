@@ -30,6 +30,7 @@ fn basic() {
   let build_plugin_output = build_plugin.output().unwrap();
   assert!(build_plugin_output.status.success());
   let output = deno_cmd()
+    .arg("run")
     .arg("--allow-plugin")
     .arg("--unstable")
     .arg("tests/test.js")

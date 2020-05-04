@@ -177,6 +177,7 @@ fn req(
   bundle: bool,
   unstable: bool,
 ) -> Buf {
+  let cwd = std::env::current_dir().unwrap();
   let j = match (compiler_config.path, compiler_config.content) {
     (Some(config_path), Some(config_data)) => json!({
       "type": request_type as i32,
@@ -187,6 +188,7 @@ fn req(
       "unstable": unstable,
       "configPath": config_path,
       "config": str::from_utf8(&config_data).unwrap(),
+      "cwd": cwd,
     }),
     _ => json!({
       "type": request_type as i32,
@@ -195,6 +197,7 @@ fn req(
       "outFile": out_file,
       "bundle": bundle,
       "unstable": unstable,
+      "cwd": cwd,
     }),
   };
 

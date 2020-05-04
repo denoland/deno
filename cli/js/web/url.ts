@@ -370,7 +370,7 @@ export class URLImpl implements URL {
       throw new TypeError("Invalid URL.");
     }
 
-    const { port } = (urlParts.protocol ? urlParts : baseParts) as URLParts;
+    const { port } = !urlParts.protocol && baseParts ? baseParts : urlParts;
     if (this.#validatePort(port) === undefined) {
       throw new TypeError("Invalid URL.");
     }
@@ -389,7 +389,7 @@ export class URLImpl implements URL {
         hash: urlParts.hash,
       });
     } else {
-      throw new TypeError("URL requires a base URL.");
+      throw new TypeError("Invalid URL.");
     }
 
     this.#updateSearchParams();
