@@ -21,21 +21,38 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-fn is_supported(path: &Path) -> bool {
-  let lowercase_ext = path
-    .extension()
-    .and_then(|e| e.to_str())
-    .map(|e| e.to_lowercase());
-  if let Some(ext) = lowercase_ext {
-    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx"
-  } else {
-    false
+/// Format JavaScript/TypeScript files.
+///
+/// First argument supports globs, and if it is `None`
+/// then the current directory is recursively walked.
+pub async fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
+  if args.len() == 1 && args[0] == "-" {
+    return format_stdin(check);
   }
-}
 
-fn get_config() -> dprint::configuration::Configuration {
-  use dprint::configuration::*;
-  ConfigurationBuilder::new().deno().build()
+  let mut target_files: Vec<PathBuf> = vec![];
+
+  if args.is_empty() {
+    target_files.extend(files_in_subtree(
+      std::env::current_dir().unwrap(),
+      is_supported,
+    ));
+  } else {
+    for arg in args {
+      let p = PathBuf::from(arg);
+      if p.is_dir() {
+        target_files.extend(files_in_subtree(p, is_supported));
+      } else {
+        target_files.push(p);
+      };
+    }
+  }
+  let config = get_config();
+  if check {
+    check_source_files(config, target_files).await
+  } else {
+    format_source_files(config, target_files).await
+  }
 }
 
 async fn check_source_files(
@@ -84,14 +101,6 @@ async fn check_source_files(
   }
 }
 
-fn files_str(len: usize) -> &'static str {
-  if len == 1 {
-    "file"
-  } else {
-    "files"
-  }
-}
-
 async fn format_source_files(
   config: dprint::configuration::Configuration,
   paths: Vec<PathBuf>,
@@ -134,40 +143,6 @@ async fn format_source_files(
   Ok(())
 }
 
-/// Format JavaScript/TypeScript files.
-///
-/// First argument supports globs, and if it is `None`
-/// then the current directory is recursively walked.
-pub async fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
-  if args.len() == 1 && args[0] == "-" {
-    return format_stdin(check);
-  }
-
-  let mut target_files: Vec<PathBuf> = vec![];
-
-  if args.is_empty() {
-    target_files.extend(files_in_subtree(
-      std::env::current_dir().unwrap(),
-      is_supported,
-    ));
-  } else {
-    for arg in args {
-      let p = PathBuf::from(arg);
-      if p.is_dir() {
-        target_files.extend(files_in_subtree(p, is_supported));
-      } else {
-        target_files.push(p);
-      };
-    }
-  }
-  let config = get_config();
-  if check {
-    check_source_files(config, target_files).await
-  } else {
-    format_source_files(config, target_files).await
-  }
-}
-
 /// Format stdin and write result to stdout.
 /// Treats input as TypeScript.
 /// Compatible with `--check` flag.
@@ -194,6 +169,31 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
     }
   }
   Ok(())
+}
+
+fn files_str(len: usize) -> &'static str {
+  if len == 1 {
+    "file"
+  } else {
+    "files"
+  }
+}
+
+fn is_supported(path: &Path) -> bool {
+  let lowercase_ext = path
+    .extension()
+    .and_then(|e| e.to_str())
+    .map(|e| e.to_lowercase());
+  if let Some(ext) = lowercase_ext {
+    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx"
+  } else {
+    false
+  }
+}
+
+fn get_config() -> dprint::configuration::Configuration {
+  use dprint::configuration::*;
+  ConfigurationBuilder::new().deno().build()
 }
 
 async fn run_parallelized<F>(

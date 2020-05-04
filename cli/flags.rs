@@ -601,7 +601,13 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
   deno fmt --check
 
 Format stdin and write to stdout:
-  cat file.ts | deno fmt -",
+  cat file.ts | deno fmt -
+
+Ignore formatting code by preceding it with an ignore comment:
+  // deno-fmt-ignore
+
+Ignore formatting a file by adding an ignore comment at the top of the file:
+  // deno-fmt-ignore-file",
     )
     .arg(
       Arg::with_name("check")
