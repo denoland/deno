@@ -952,16 +952,37 @@ itest!(deno_test {
   output: "deno_test.out",
 });
 
-itest!(workers {
-  args: "test --reload --allow-net workers_test.ts",
-  http_server: true,
-  output: "workers_test.out",
-});
+#[test]
+fn workers() {
+  let g = util::http_server();
+  let status = util::deno_cmd()
+    .current_dir(util::tests_path())
+    .arg("test")
+    .arg("--reload")
+    .arg("--allow-net")
+    .arg("workers_test.ts")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+  drop(g);
+}
 
-itest!(compiler_api {
-  args: "test --unstable --reload compiler_api_test.ts",
-  output: "compiler_api_test.out",
-});
+#[test]
+fn compiler_api() {
+  let status = util::deno_cmd()
+    .current_dir(util::tests_path())
+    .arg("test")
+    .arg("--unstable")
+    .arg("--reload")
+    .arg("compiler_api_test.ts")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
 
 itest!(_027_redirect_typescript {
   args: "run --reload 027_redirect_typescript.ts",
