@@ -118,23 +118,31 @@ impl Deref for JSError {
 
 impl fmt::Display for JSError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    let mut formatted_frames = self.0.formatted_frames.clone();
+
+    // The formatted_frames passed from prepareStackTrace() are colored.
+    if !colors::use_color() {
+      formatted_frames = formatted_frames
+        .iter()
+        .map(|s| colors::strip_ansi_codes(s).to_string())
+        .collect();
+    }
+
     // When the stack frame array is empty, but the source location given by
     // (script_resource_name, line_number, start_column + 1) exists, this is
     // likely a syntax error. For the sake of formatting we treat it like it was
     // given as a single stack frame.
-    let formatted_frames = if self.0.formatted_frames.is_empty()
+    if formatted_frames.is_empty()
       && self.0.script_resource_name.is_some()
       && self.0.line_number.is_some()
       && self.0.start_column.is_some()
     {
-      vec![format!(
+      formatted_frames = vec![format!(
         "{}:{}:{}",
         colors::cyan(self.0.script_resource_name.clone().unwrap()),
         colors::yellow(self.0.line_number.unwrap().to_string()),
         colors::yellow((self.0.start_column.unwrap() + 1).to_string())
       )]
-    } else {
-      self.0.formatted_frames.clone()
     };
 
     write!(
