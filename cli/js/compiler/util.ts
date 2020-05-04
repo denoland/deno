@@ -299,12 +299,7 @@ export function processConfigureResponse(
 export const CHAR_DOT = 46; /* . */
 export const CHAR_FORWARD_SLASH = 47; /* / */
 
-export function normalizeString(
-  path: string,
-  allowAboveRoot: boolean,
-  separator: string,
-  isPathSeparator: (code: number) => boolean
-): string {
+export function normalizeString(path: string): string {
   let res = "";
   let lastSegmentLength = 0;
   let lastSlash = -1;
@@ -312,10 +307,10 @@ export function normalizeString(
   let code: number;
   for (let i = 0, len = path.length; i <= len; ++i) {
     if (i < len) code = path.charCodeAt(i);
-    else if (isPathSeparator(code!)) break;
+    else if (code! === CHAR_FORWARD_SLASH) break;
     else code = CHAR_FORWARD_SLASH;
 
-    if (isPathSeparator(code)) {
+    if (code === CHAR_FORWARD_SLASH) {
       if (lastSlash === i - 1 || dots === 1) {
         // NOOP
       } else if (lastSlash !== i - 1 && dots === 2) {
@@ -326,13 +321,13 @@ export function normalizeString(
           res.charCodeAt(res.length - 2) !== CHAR_DOT
         ) {
           if (res.length > 2) {
-            const lastSlashIndex = res.lastIndexOf(separator);
+            const lastSlashIndex = res.lastIndexOf("/");
             if (lastSlashIndex === -1) {
               res = "";
               lastSegmentLength = 0;
             } else {
               res = res.slice(0, lastSlashIndex);
-              lastSegmentLength = res.length - 1 - res.lastIndexOf(separator);
+              lastSegmentLength = res.length - 1 - res.lastIndexOf("/");
             }
             lastSlash = i;
             dots = 0;
@@ -345,13 +340,8 @@ export function normalizeString(
             continue;
           }
         }
-        if (allowAboveRoot) {
-          if (res.length > 0) res += `${separator}..`;
-          else res = "..";
-          lastSegmentLength = 2;
-        }
       } else {
-        if (res.length > 0) res += separator + path.slice(lastSlash + 1, i);
+        if (res.length > 0) res += "/" + path.slice(lastSlash + 1, i);
         else res = path.slice(lastSlash + 1, i);
         lastSegmentLength = i - lastSlash - 1;
       }
