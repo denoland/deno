@@ -115,10 +115,10 @@ impl Permissions {
   pub fn from_flags(flags: &Flags) -> Self {
     // assert each whitelist path is absolute, cwd may change.
     for path in &flags.read_whitelist {
-      assert!(path.is_absolute()); // TODO path.has_root() instead?
+      assert!(path.has_root()); // TODO path.has_root() instead?
     }
     for path in &flags.write_whitelist {
-      assert!(path.is_absolute());
+      assert!(path.has_root());
     }
     Self {
       allow_read: PermissionState::from(flags.allow_read),
