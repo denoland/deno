@@ -1,0 +1,67 @@
+{
+  "introduction": {
+    "name": "Introduction"
+  },
+  "getting-started": {
+    "name": "Getting Started",
+    "children": {
+      "installation": "Installation",
+      "first-steps": "First Steps",
+      "typescript": "Using TypeScript",
+      "webassembly": "Using WebAssembly"
+    }
+  },
+  "runtime": {
+    "name": "The Runtime",
+    "children": {
+      "web-apis": "Web APIs",
+      "deno-global": "The Deno Global",
+      "unstable": "Unstable APIs"
+    }
+  },
+  "linking-to-external-code": {
+    "name": "Linking to external code",
+    "children": {
+      "best-practices": "Best practices",
+      "integrity-checking": "Integrity checking",
+      "proxies": "Proxies"
+    }
+  },
+  "testing": {
+    "name": "Testing",
+    "children": {
+      "writing": "Writing tests",
+      "running": "Running tests"
+    }
+  },
+  "plugins": {
+    "name": "Plugins",
+    "children": {
+      "how-do-they-work": "How do plugins work?",
+      "creating-plugins": "Creating plugins",
+      "using-plugins": "Using plugins"
+    }
+  },
+  "tools": {
+    "name": "Tools",
+    "children": {
+      "debugging": "Debugging",
+      "fmt": "Formatter",
+      "bundle": "Bundler",
+      "doc": "Documentation",
+      "info": "Dependency inspector",
+      "types": "Runtime types"
+    }
+  },
+  "contributing": {
+    "name": "Contributing",
+    "children": {
+      "building-from-source": "Building from source",
+      "internal-details": "Internal details"
+    }
+  },
+  "examples": {
+    "name": "Examples",
+    "children": {}
+  }
+}
