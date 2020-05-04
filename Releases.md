@@ -13,6 +13,7 @@ https://github.com/denoland/deno_install
 - BREAKING: remove support for JSON imports (#5037)
 - BREAKING: remove window.location and self.location (#5034)
 - BREAKING: reorder std/io/utils copyBytes arguments (#5022, #5021)
+- feat(URL): Support drive letters for file URLs on Windows (#5074)
 - feat(deno install): simplify CLI flags (#5036)
 - feat(std): Add sha256 and sha224 support (along with HMAC variants) (#5066)
 - feat(std/node): ability add to path argument to be URL type (#5055)
