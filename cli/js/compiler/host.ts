@@ -2,7 +2,6 @@
 
 import { ASSETS, MediaType, SourceFile } from "./sourcefile.ts";
 import { OUT_DIR, WriteFileCallback, getAsset } from "./util.ts";
-import { cwd } from "../ops/fs/dir.ts";
 import { assert, notImplemented } from "../util.ts";
 import * as util from "../util.ts";
 
@@ -167,7 +166,11 @@ export class Host implements ts.CompilerHost {
     }
   }
 
-  configure(path: string, configurationText: string): ConfigureResponse {
+  configure(
+    cwd: string,
+    path: string,
+    configurationText: string
+  ): ConfigureResponse {
     util.log("compiler::host.configure", path);
     assert(configurationText);
     const { config, error } = ts.parseConfigFileTextToJson(
@@ -179,7 +182,7 @@ export class Host implements ts.CompilerHost {
     }
     const { options, errors } = ts.convertCompilerOptionsFromJson(
       config.compilerOptions,
-      cwd()
+      cwd
     );
     const ignoredOptions: string[] = [];
     for (const key of Object.keys(options)) {
