@@ -1322,7 +1322,7 @@ itest!(error_014_catch_dynamic_import_error {
 });
 
 itest!(error_015_dynamic_import_permissions {
-  args: "--reload error_015_dynamic_import_permissions.js",
+  args: "run --reload error_015_dynamic_import_permissions.js",
   output: "error_015_dynamic_import_permissions.out",
   check_stderr: true,
   exit_code: 1,
@@ -1331,7 +1331,7 @@ itest!(error_015_dynamic_import_permissions {
 
 // We have an allow-net flag but not allow-read, it should still result in error.
 itest!(error_016_dynamic_import_permissions2 {
-  args: "--reload --allow-net error_016_dynamic_import_permissions2.js",
+  args: "run --reload --allow-net error_016_dynamic_import_permissions2.js",
   output: "error_016_dynamic_import_permissions2.out",
   check_stderr: true,
   exit_code: 1,
@@ -1339,63 +1339,63 @@ itest!(error_016_dynamic_import_permissions2 {
 });
 
 itest!(error_017_hide_long_source_ts {
-  args: "--reload error_017_hide_long_source_ts.ts",
+  args: "run --reload error_017_hide_long_source_ts.ts",
   output: "error_017_hide_long_source_ts.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_018_hide_long_source_js {
-  args: "error_018_hide_long_source_js.js",
+  args: "run error_018_hide_long_source_js.js",
   output: "error_018_hide_long_source_js.js.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_019_stack_function {
-  args: "error_019_stack_function.ts",
+  args: "run error_019_stack_function.ts",
   output: "error_019_stack_function.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_020_stack_constructor {
-  args: "error_020_stack_constructor.ts",
+  args: "run error_020_stack_constructor.ts",
   output: "error_020_stack_constructor.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_021_stack_method {
-  args: "error_021_stack_method.ts",
+  args: "run error_021_stack_method.ts",
   output: "error_021_stack_method.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_022_stack_custom_error {
-  args: "error_022_stack_custom_error.ts",
+  args: "run error_022_stack_custom_error.ts",
   output: "error_022_stack_custom_error.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_023_stack_async {
-  args: "error_023_stack_async.ts",
+  args: "run error_023_stack_async.ts",
   output: "error_023_stack_async.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_024_stack_promise_all {
-  args: "error_024_stack_promise_all.ts",
+  args: "run error_024_stack_promise_all.ts",
   output: "error_024_stack_promise_all.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_025_tab_indent {
-  args: "error_025_tab_indent",
+  args: "run error_025_tab_indent",
   output: "error_025_tab_indent.out",
   check_stderr: true,
   exit_code: 1,
@@ -1534,7 +1534,7 @@ itest!(run_v8_flags {
 });
 
 itest!(run_v8_help {
-  args: "--v8-flags=--help",
+  args: "repl --v8-flags=--help",
   output: "v8_help.out",
 });
 
@@ -1544,27 +1544,27 @@ itest!(wasm {
 });
 
 itest!(wasm_async {
-  args: "wasm_async.js",
+  args: "run wasm_async.js",
   output: "wasm_async.out",
 });
 
 itest!(top_level_await {
-  args: "--allow-read top_level_await.js",
+  args: "run --allow-read top_level_await.js",
   output: "top_level_await.out",
 });
 
 itest!(top_level_await_ts {
-  args: "--allow-read top_level_await.ts",
+  args: "run --allow-read top_level_await.ts",
   output: "top_level_await.out",
 });
 
 itest!(top_level_for_await {
-  args: "top_level_for_await.js",
+  args: "run top_level_for_await.js",
   output: "top_level_for_await.out",
 });
 
 itest!(top_level_for_await_ts {
-  args: "top_level_for_await.ts",
+  args: "run top_level_for_await.ts",
   output: "top_level_for_await.out",
 });
 

@@ -12,6 +12,7 @@ async function startServer(): Promise<Deno.Process> {
     // TODO(lucacasonato): remove unstable once possible
     cmd: [
       Deno.execPath(),
+      "run",
       "--allow-net",
       "--allow-read",
       "--unstable",
