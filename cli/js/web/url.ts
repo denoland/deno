@@ -14,31 +14,13 @@ interface URLParts {
   hash: string;
 }
 
-const patterns = {
-  protocol: "(?:([a-z]+):)",
-  authority: "(?:[/\\\\][/\\\\]([^/\\\\?#]*))",
-  path: "([^?#]*)",
-  query: "(\\?[^#]*)",
-  hash: "(#.*)",
-
-  authentication: "(?:([^:]*)(?::([^@]*))?@)",
-  hostname: "([^:]+)",
-  port: "(?::(\\d+))",
-};
-
-const urlRegExp = new RegExp(
-  `^${patterns.protocol}?${patterns.authority}?${patterns.path}${patterns.query}?${patterns.hash}?`
-);
-
-const authorityRegExp = new RegExp(
-  `^${patterns.authentication}?${patterns.hostname}${patterns.port}?$`
-);
-
 const searchParamsMethods: Array<keyof URLSearchParams> = [
   "append",
   "delete",
   "set",
 ];
+
+const specialSchemes = ["ftp", "file", "http", "https", "ws", "wss"];
 
 // https://url.spec.whatwg.org/#special-scheme
 const schemePorts: { [key: string]: string } = {
@@ -51,27 +33,69 @@ const schemePorts: { [key: string]: string } = {
 };
 const MAX_PORT = 2 ** 16 - 1;
 
-function parse(url: string): URLParts | undefined {
-  const urlMatch = urlRegExp.exec(url);
-  if (urlMatch) {
-    const [, , authority] = urlMatch;
-    const authorityMatch = authority
-      ? authorityRegExp.exec(authority)
-      : [null, null, null, null, null];
-    if (authorityMatch) {
-      return {
-        protocol: urlMatch[1] || "",
-        username: authorityMatch[1] || "",
-        password: authorityMatch[2] || "",
-        hostname: authorityMatch[3] || "",
-        port: authorityMatch[4] || "",
-        path: urlMatch[3].replace(/\\/g, "/") || "",
-        query: urlMatch[4] || "",
-        hash: urlMatch[5] || "",
-      };
-    }
+// Remove the part of the string that matches the pattern and return the
+// remainder (RHS) as well as the first captured group of the matched substring
+// (LHS). e.g.
+//      takePattern("https://deno.land:80", /^([a-z]+):[/]{2}/)
+//        = ["http", "deno.land:80"]
+//      takePattern("deno.land:80", /^([^:]+):)
+//        = ["deno.land", "80"]
+function takePattern(string: string, pattern: RegExp): [string, string] {
+  let capture = "";
+  const rest = string.replace(pattern, (match, capture_) => {
+    capture = capture_;
+    return "";
+  });
+  return [capture, rest];
+}
+
+function parse(url: string, isBase = true): URLParts | undefined {
+  const parts: Partial<URLParts> = {};
+  let restUrl;
+  [parts.protocol, restUrl] = takePattern(url, /^([a-z]+):/);
+  if (isBase && parts.protocol == "") {
+    return undefined;
   }
-  return undefined;
+  if (parts.protocol == "file") {
+    parts.username = "";
+    parts.password = "";
+    [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);
+    if (parts.hostname.includes(":")) {
+      return undefined;
+    }
+    parts.port = "";
+  } else if (specialSchemes.includes(parts.protocol)) {
+    let restAuthority;
+    [restAuthority, restUrl] = takePattern(
+      restUrl,
+      /^[/\\]{2}[/\\]*([^/\\?#]+)/
+    );
+    if (isBase && restAuthority == "") {
+      return undefined;
+    }
+    let restAuthentication;
+    [restAuthentication, restAuthority] = takePattern(restAuthority, /^(.*)@/);
+    [parts.username, restAuthentication] = takePattern(
+      restAuthentication,
+      /^([^:]*)/
+    );
+    [parts.password] = takePattern(restAuthentication, /^:(.*)/);
+    [parts.hostname, restAuthority] = takePattern(restAuthority, /^([^:]+)/);
+    [parts.port] = takePattern(restAuthority, /^:(.*)/);
+    if (!isValidPort(parts.port)) {
+      return undefined;
+    }
+  } else {
+    parts.username = "";
+    parts.password = "";
+    parts.hostname = "";
+    parts.port = "";
+  }
+  [parts.path, restUrl] = takePattern(restUrl, /^([^?#]*)/);
+  parts.path = parts.path.replace(/\\/g, "/");
+  [parts.query, restUrl] = takePattern(restUrl, /^(\?[^#]*)/);
+  [parts.hash] = takePattern(restUrl, /^(#.*)/);
+  return parts as URLParts;
 }
 
 // Based on https://github.com/kelektiv/node-uuid
@@ -146,6 +170,13 @@ function resolvePathFromBase(path: string, basePath: string): string {
   return normalizePath(prefix + suffix);
 }
 
+function isValidPort(value: string): boolean {
+  // https://url.spec.whatwg.org/#port-state
+  if (value === "") true;
+  const port = Number(value);
+  return Number.isInteger(port) && port >= 0 && port <= MAX_PORT;
+}
+
 /** @internal */
 export const parts = new WeakMap<URL, URLParts>();
 
@@ -187,18 +218,6 @@ export class URLImpl implements URL {
     this.#searchParams = searchParams;
 
     urls.set(searchParams, this);
-  };
-
-  #validatePort = (value: string): string | undefined => {
-    // https://url.spec.whatwg.org/#port-state
-    if (value === "") return value;
-
-    const port = Number(value);
-    if (Number.isInteger(port) && port >= 0 && port <= MAX_PORT) {
-      return port.toString();
-    }
-
-    return undefined;
   };
 
   get hash(): string {
@@ -300,8 +319,10 @@ export class URLImpl implements URL {
   }
 
   set port(value: string) {
-    const port = this.#validatePort(value);
-    parts.get(this)!.port = port ?? this.port;
+    if (!isValidPort(value)) {
+      return;
+    }
+    parts.get(this)!.port = value.toString();
   }
 
   get protocol(): string {
@@ -360,18 +381,14 @@ export class URLImpl implements URL {
     let baseParts: URLParts | undefined;
     if (base) {
       baseParts = typeof base === "string" ? parse(base) : parts.get(base);
-      if (!baseParts || baseParts.protocol == "") {
+      if (baseParts == undefined) {
         throw new TypeError("Invalid base URL.");
       }
     }
 
-    const urlParts = typeof url === "string" ? parse(url) : parts.get(url);
-    if (!urlParts) {
-      throw new TypeError("Invalid URL.");
-    }
-
-    const { port } = !urlParts.protocol && baseParts ? baseParts : urlParts;
-    if (this.#validatePort(port) === undefined) {
+    const urlParts =
+      typeof url === "string" ? parse(url, !baseParts) : parts.get(url);
+    if (urlParts == undefined) {
       throw new TypeError("Invalid URL.");
     }
 

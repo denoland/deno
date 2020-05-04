@@ -142,6 +142,25 @@ unitTest(function urlBackSlashes(): void {
   );
 });
 
+unitTest(function urlRequireHost(): void {
+  assertEquals(new URL("file:///").href, "file:///");
+  assertThrows(() => {
+    new URL("ftp:///");
+  });
+  assertThrows(() => {
+    new URL("http:///");
+  });
+  assertThrows(() => {
+    new URL("https:///");
+  });
+  assertThrows(() => {
+    new URL("ws:///");
+  });
+  assertThrows(() => {
+    new URL("wss:///");
+  });
+});
+
 unitTest(function urlBaseURL(): void {
   const base = new URL(
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
