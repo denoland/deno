@@ -38,15 +38,3 @@ export function getAsset(name: string): string {
   const sourceCodeBytes = core.dispatch(opId, encoder.encode(name));
   return decoder.decode(sourceCodeBytes!);
 }
-
-export function cache(
-  extension: string,
-  moduleId: string,
-  contents: string
-): void {
-  sendSync("op_cache", {
-    extension,
-    moduleId,
-    contents,
-  });
-}

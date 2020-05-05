@@ -29,6 +29,7 @@ import {
   resolveModules,
 } from "./compiler/imports.ts";
 import {
+  EmmitedSource,
   WriteFileCallback,
   createRuntimeWriteFile,
   createRuntimeBundleWriteFile,
@@ -83,17 +84,21 @@ type CompilerRequest =
   | CompilerRequestRuntimeTranspile;
 
 interface CompileResult {
+  emitMap?: Record<string, EmmitedSource>;
   emitSkipped: boolean;
   bundleOutput?: string;
   diagnostics?: Diagnostic;
 }
 
-type RuntimeCompileResult = [
-  undefined | DiagnosticItem[],
-  Record<string, string>
-];
+interface RuntimeCompileResult {
+  emitMap: Record<string, EmmitedSource>;
+  diagnostics: DiagnosticItem[];
+}
 
-type RuntimeBundleResult = [undefined | DiagnosticItem[], string];
+interface RuntimeBundleResult {
+  output: string;
+  diagnostics: DiagnosticItem[];
+}
 
 async function compile(
   request: CompilerRequestCompile
@@ -122,6 +127,7 @@ async function compile(
   // out the bundle or log it to the console.
   const state: WriteFileState = {
     type: request.type,
+    compiledMap: {},
     bundle,
     host: undefined,
     outFile,
@@ -198,6 +204,7 @@ async function compile(
 
   const result: CompileResult = {
     emitSkipped,
+    emitMap: state.compiledMap,
     bundleOutput,
     diagnostics: diagnostics.length
       ? fromTypeScriptDiagnostic(diagnostics)
@@ -276,7 +283,8 @@ async function runtimeCompile(
     rootNames,
     sources,
     emitMap: {},
-    emitBundle: undefined,
+    compiledMap: {},
+    bundleOutput: undefined,
   };
   let writeFile: WriteFileCallback;
   if (bundle) {
@@ -336,12 +344,18 @@ async function runtimeCompile(
 
   const maybeDiagnostics = diagnostics.length
     ? fromTypeScriptDiagnostic(diagnostics).items
-    : undefined;
+    : [];
 
   if (bundle) {
-    return [maybeDiagnostics, state.emitBundle] as RuntimeBundleResult;
+    return {
+      diagnostics: maybeDiagnostics,
+      output: state.bundleOutput,
+    } as RuntimeBundleResult;
   } else {
-    return [maybeDiagnostics, state.emitMap] as RuntimeCompileResult;
+    return {
+      diagnostics: maybeDiagnostics,
+      emitMap: state.compiledMap,
+    } as RuntimeCompileResult;
   }
 }
 

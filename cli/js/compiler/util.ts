@@ -4,11 +4,16 @@ import { bold, cyan, yellow } from "../colors.ts";
 import { CompilerOptions } from "./api.ts";
 import { buildBundle } from "./bundler.ts";
 import { ConfigureResponse, Host } from "./host.ts";
-import { MediaType, SourceFile } from "./sourcefile.ts";
 import { atob } from "../web/text_encoding.ts";
 import * as compilerOps from "../ops/compiler.ts";
-import * as util from "../util.ts";
 import { assert } from "../util.ts";
+
+export interface EmmitedSource {
+  // original filename
+  filename: string;
+  // compiled contents
+  contents: string;
+}
 
 export type WriteFileCallback = (
   fileName: string,
@@ -24,7 +29,7 @@ export interface WriteFileState {
   outFile?: string;
   rootNames: string[];
   emitMap?: Record<string, string>;
-  emitBundle?: string;
+  compiledMap?: Record<string, EmmitedSource>;
   sources?: Record<string, string>;
 }
 
@@ -37,34 +42,6 @@ export enum CompilerRequestType {
 }
 
 export const OUT_DIR = "$deno$";
-
-function cache(
-  moduleId: string,
-  emittedFileName: string,
-  contents: string,
-  checkJs = false
-): void {
-  util.log("compiler::cache", { moduleId, emittedFileName, checkJs });
-  const sf = SourceFile.get(moduleId);
-
-  if (sf) {
-    // NOTE: JavaScript files are only cached to disk if `checkJs`
-    // option in on
-    if (sf.mediaType === MediaType.JavaScript && !checkJs) {
-      return;
-    }
-  }
-
-  if (emittedFileName.endsWith(".map")) {
-    // Source Map
-    compilerOps.cache(".map", moduleId, contents);
-  } else if (emittedFileName.endsWith(".js")) {
-    // Compiled JavaScript
-    compilerOps.cache(".js", moduleId, contents);
-  } else {
-    assert(false, `Trying to cache unhandled file type "${emittedFileName}"`);
-  }
-}
 
 export function getAsset(name: string): string {
   return compilerOps.getAsset(name);
@@ -84,7 +61,7 @@ export function createRuntimeBundleWriteFile(
     assert(state.bundle);
     // we only support single root names for bundles
     assert(state.rootNames.length === 1);
-    state.emitBundle = buildBundle(state.rootNames[0], data, sourceFiles);
+    state.bundleOutput = buildBundle(state.rootNames[0], data, sourceFiles);
   };
 }
 
@@ -99,19 +76,13 @@ export function createRuntimeWriteFile(
     assert(sourceFiles != null);
     assert(state.host);
     assert(state.emitMap);
+    assert(state.compiledMap);
     assert(!state.bundle);
     assert(sourceFiles.length === 1);
-    state.emitMap[fileName] = data;
-    // we only want to cache the compiler output if we are resolving
-    // modules externally
-    if (!state.sources) {
-      cache(
-        sourceFiles[0].fileName,
-        fileName,
-        data,
-        state.host.getCompilationSettings().checkJs
-      );
-    }
+    state.compiledMap[fileName] = {
+      filename: sourceFiles[0].fileName,
+      contents: data,
+    };
   };
 }
 
@@ -153,13 +124,12 @@ export function createWriteFile(state: WriteFileState): WriteFileCallback {
     );
     assert(state.host);
     assert(!state.bundle);
+    assert(state.compiledMap);
     assert(sourceFiles.length === 1);
-    cache(
-      sourceFiles[0].fileName,
-      fileName,
-      data,
-      state.host.getCompilationSettings().checkJs
-    );
+    state.compiledMap[fileName] = {
+      filename: sourceFiles[0].fileName,
+      contents: data,
+    };
   };
 }
 

@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::compiler_worker::CompilerWorker;
 use crate::colors;
-use crate::compilers::CompilationResultFuture;
 use crate::compilers::CompiledModule;
 use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
@@ -11,7 +10,6 @@ use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg;
 use crate::op_error::OpError;
-use crate::ops::JsonResult;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::*;
@@ -22,10 +20,10 @@ use crate::worker::WorkerEvent;
 use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use futures::future::FutureExt;
 use log::info;
 use regex::Regex;
 use serde_json::json;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -33,7 +31,6 @@ use std::hash::BuildHasher;
 use std::io;
 use std::ops::Deref;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -416,10 +413,34 @@ impl TsCompiler {
     );
 
     let msg = execute_in_thread(global_state.clone(), req_msg).await?;
-
     let json_str = std::str::from_utf8(&msg).unwrap();
     if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
       return Err(ErrBox::from(diagnostics));
+    }
+
+    let v = serde_json::from_str::<serde_json::Value>(json_str)
+      .expect("Error decoding JSON string.");
+    let emit_map = v.get("emitMap").expect("Missing emitMap");
+
+    let emit_hash_map: HashMap<String, HashMap<String, String>> =
+      serde_json::from_value(emit_map.clone())
+        .expect("emitMap is not a hash map");
+
+    // Cache compiled modules
+    for (emmited_name, emmited_source) in emit_hash_map.iter() {
+      let specifier_str =
+        emmited_source.get("filename").expect("Missing filename");
+      let contents = emmited_source.get("contents").expect("Missing contents");
+      let specifier = ModuleSpecifier::resolve_url(specifier_str)
+        .expect("Should be a valid module specifier");
+
+      if emmited_name.ends_with(".map") {
+        self.cache_source_map(&specifier, contents)?;
+      } else if emmited_name.ends_with(".js") {
+        self.cache_compiled_file(&specifier, contents)?;
+      } else {
+        panic!("Trying to cache unknown file type {}", emmited_name);
+      }
     }
     ts_compiler.get_compiled_module(&source_file_.url)
   }
@@ -494,15 +515,23 @@ impl TsCompiler {
     module_specifier: &ModuleSpecifier,
     contents: &str,
   ) -> std::io::Result<()> {
+    let source_file = self
+      .file_fetcher
+      .fetch_cached_source_file(&module_specifier)
+      .expect("Source file not found");
+
+    // NOTE: JavaScript files are only cached to disk if `checkJs`
+    // option in on
+    if source_file.media_type == msg::MediaType::JavaScript && !self.compile_js
+    {
+      return Ok(());
+    }
+
     let js_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js");
     self.disk_cache.set(&js_key, contents.as_bytes())?;
     self.mark_compiled(module_specifier.as_url());
-    let source_file = self
-      .file_fetcher
-      .fetch_cached_source_file(&module_specifier)
-      .expect("Source file not found");
 
     let version_hash = source_code_version_hash(
       &source_file.source_code,
@@ -554,6 +583,18 @@ impl TsCompiler {
     module_specifier: &ModuleSpecifier,
     contents: &str,
   ) -> std::io::Result<()> {
+    let source_file = self
+      .file_fetcher
+      .fetch_cached_source_file(&module_specifier)
+      .expect("Source file not found");
+
+    // NOTE: JavaScript files are only cached to disk if `checkJs`
+    // option in on
+    if source_file.media_type == msg::MediaType::JavaScript && !self.compile_js
+    {
+      return Ok(());
+    }
+
     let source_map_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js.map");
@@ -664,24 +705,13 @@ async fn execute_in_thread(
   Ok(buf)
 }
 
-async fn execute_in_thread_json(
-  req_msg: Buf,
-  global_state: GlobalState,
-) -> JsonResult {
-  let msg = execute_in_thread(global_state, req_msg)
-    .await
-    .map_err(|e| OpError::other(e.to_string()))?;
-  let json_str = std::str::from_utf8(&msg).unwrap();
-  Ok(json!(json_str))
-}
-
-pub fn runtime_compile<S: BuildHasher>(
+pub async fn runtime_compile<S: BuildHasher>(
   global_state: GlobalState,
   root_name: &str,
   sources: &Option<HashMap<String, String, S>>,
   bundle: bool,
   options: &Option<String>,
-) -> Pin<Box<CompilationResultFuture>> {
+) -> Result<Value, OpError> {
   let req_msg = json!({
     "type": msg::CompilerRequestType::RuntimeCompile as i32,
     "target": "runtime",
@@ -695,14 +725,58 @@ pub fn runtime_compile<S: BuildHasher>(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  execute_in_thread_json(req_msg, global_state).boxed_local()
+  let compiler = global_state.ts_compiler.clone();
+
+  let msg = execute_in_thread(global_state, req_msg).await?;
+  let json_str = std::str::from_utf8(&msg).unwrap();
+  let v = serde_json::from_str::<serde_json::Value>(json_str)
+    .expect("Error decoding JSON string.");
+  let diagnostics_array = v
+    .get("diagnostics")
+    .expect("Missing diagnostics field")
+    .as_array()
+    .unwrap();
+  if !diagnostics_array.is_empty() {
+    return Ok(v);
+  }
+
+  if bundle {
+    return Ok(v);
+  }
+
+  let emit_map = v.get("emitMap").expect("Missing emitMap");
+
+  let emit_hash_map: HashMap<String, HashMap<String, String>> =
+    serde_json::from_value(emit_map.clone())
+      .expect("emitMap is not a hash map");
+
+  if sources.is_none() {
+    // Cache compiled modules
+    for (emmited_name, emmited_source) in emit_hash_map.iter() {
+      let specifier_str =
+        emmited_source.get("filename").expect("Missing filename");
+      let contents = emmited_source.get("contents").expect("Missing contents");
+      let specifier = ModuleSpecifier::resolve_url(specifier_str)
+        .expect("Should be a valid module specifier");
+
+      if emmited_name.ends_with(".map") {
+        compiler.cache_source_map(&specifier, contents)?;
+      } else if emmited_name.ends_with(".js") {
+        compiler.cache_compiled_file(&specifier, contents)?;
+      } else {
+        panic!("Trying to cache unknown file type {}", emmited_name);
+      }
+    }
+  }
+
+  Ok(v)
 }
 
-pub fn runtime_transpile<S: BuildHasher>(
+pub async fn runtime_transpile<S: BuildHasher>(
   global_state: GlobalState,
   sources: &HashMap<String, String, S>,
   options: &Option<String>,
-) -> Pin<Box<CompilationResultFuture>> {
+) -> Result<Value, OpError> {
   let req_msg = json!({
     "type": msg::CompilerRequestType::RuntimeTranspile as i32,
     "sources": sources,
@@ -712,7 +786,11 @@ pub fn runtime_transpile<S: BuildHasher>(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  execute_in_thread_json(req_msg, global_state).boxed_local()
+  let msg = execute_in_thread(global_state, req_msg).await?;
+  let json_str = std::str::from_utf8(&msg).unwrap();
+  let v = serde_json::from_str::<serde_json::Value>(json_str)
+    .expect("Error decoding JSON string.");
+  Ok(v)
 }
 
 #[cfg(test)]
