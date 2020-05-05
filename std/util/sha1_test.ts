@@ -2,6 +2,7 @@
 const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import { Sha1 } from "./sha1.ts";
+import { join } from "../path/mod.ts";
 
 test("[util/sha] test1", () => {
   const sha1 = new Sha1();
@@ -24,7 +25,7 @@ test("[util/sha] testSha1WithBuffer", () => {
 });
 
 test("[util/sha] test Uint8Array from Reader", async () => {
-  const data = await Deno.readFile("testdata/hashtest");
+  const data = await Deno.readFile(join("testdata", "hashtest"));
 
   const hash = new Sha1().update(data).hex();
   assertEquals(hash, "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3");
