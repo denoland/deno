@@ -1,11 +1,11 @@
-## Introduction
+# Introduction
 
 Deno is a JavaScript/TypeScript runtime with secure defaults and a great
 developer experience.
 
 It's built on V8, Rust, and Tokio.
 
-### Feature Highlights
+## Feature Highlights
 
 - Secure by default. No file, network, or environment access (unless explicitly
   enabled).
@@ -18,7 +18,7 @@ It's built on V8, Rust, and Tokio.
   that are guaranteed to work with Deno.
 - Scripts can be bundled into a single javascript file.
 
-### Philosophy
+## Philosophy
 
 Deno aims to be a productive and secure scripting environment for the modern
 programmer.
@@ -32,7 +32,7 @@ standard browser-compatible protocol for loading modules: URLs.
 Among other things, Deno is a great replacement for utility scripts that may
 have been historically written with bash or python.
 
-### Goals
+## Goals
 
 - Only ship a single executable (`deno`).
 - Provide Secure Defaults
@@ -46,7 +46,7 @@ have been historically written with bash or python.
 - Does not leak V8 concepts into user land.
 - Be able to serve HTTP efficiently
 
-### Comparison to Node.js
+## Comparison to Node.js
 
 - Deno does not use `npm`
   - It uses modules referenced as URLs or file paths
@@ -62,7 +62,7 @@ have been historically written with bash or python.
   import * as log from "https://deno.land/std/log/mod.ts";
   ```
 
-### Other key behaviors
+## Other key behaviors
 
 - Remote code is fetched and cached on first execution, and never updated until
   the code is run with the `--reload` flag. (So, this will still work on an
