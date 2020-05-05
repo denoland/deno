@@ -10,28 +10,27 @@ Contributions are welcome!
 
 These modules are tagged in accordance with Deno releases. So, for example, the
 v0.3.0 tag is guaranteed to work with deno v0.3.0. You can link to v0.3.0 using
-the URL `https://deno.land/std@v0.3.0/`
+the URL `https://deno.land/std@v0.3.0/`. Not specifying a tag will link to the
+master branch.
 
-It's strongly recommended that you link to tagged releases rather than the
-master branch. The project is still young and we expect disruptive renames in
-the future.
+It is strongly recommended that you link to tagged releases to avoid unintended
+updates.
+
+Don't link to / import any module whose path:
+
+- Has a name or parent with an underscore prefix: `_foo.ts`, `_util/bar.ts`.
+- Is that of a test module or test data: `test.ts`, `foo_test.ts`,
+  `testdata/bar.txt`.
+
+No stability is guaranteed for these files.
 
 ## Documentation
 
-Here are the dedicated documentations of modules:
+To browse documentation for modules:
 
-- [colors](fmt/colors.ts)
-- [datetime](datetime/README.md)
-- [encoding](encoding/README.md)
-- [examples](examples/README.md)
-- [flags](flags/README.md)
-- [fs](fs/README.md)
-- [http](http/README.md)
-- [log](log/README.md)
-- [node](node/README.md)
-- [testing](testing/README.md)
-- [uuid](uuid/README.md)
-- [ws](ws/README.md)
+- Go to https://deno.land/std/.
+- Navigate to any module of interest.
+- Click the "DOCUMENTATION" link.
 
 ## Contributing
 
