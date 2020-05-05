@@ -257,7 +257,9 @@ class SourceFile {
     innerCache.set(moduleSpecifier, this);
   }
 
-  imports(processJsImports: boolean): Array<[string, string]> {
+  imports(
+    processJsImports: boolean
+  ): Array<{ original: string; mapped: string }> {
     if (this.processed) {
       throw new Error("SourceFile has already been processed.");
     }
@@ -270,9 +272,10 @@ class SourceFile {
     }
 
     const readImportFiles = true;
-    const detectJsImports =
+    const isJsOrJsx =
       this.mediaType === MediaType.JavaScript ||
       this.mediaType === MediaType.JSX;
+    const detectJsImports = isJsOrJsx;
 
     const preProcessedFileInfo = ts.preProcessFile(
       this.sourceCode,
@@ -280,11 +283,11 @@ class SourceFile {
       detectJsImports
     );
     this.processed = true;
-    const files: Array<[string, string]> = [];
+    const files: Array<{ original: string; mapped: string }> = [];
 
     function process(references: Array<{ fileName: string }>): void {
       for (const { fileName } of references) {
-        files.push([fileName, fileName]);
+        files.push({ original: fileName, mapped: fileName });
       }
     }
 
@@ -297,18 +300,12 @@ class SourceFile {
     const typeDirectives = parseTypeDirectives(this.sourceCode);
     if (typeDirectives) {
       for (const importedFile of importedFiles) {
-        files.push([
-          importedFile.fileName,
-          getMappedModuleName(importedFile, typeDirectives),
-        ]);
+        files.push({
+          original: importedFile.fileName,
+          mapped: getMappedModuleName(importedFile, typeDirectives),
+        });
       }
-    } else if (
-      !(
-        !processJsImports &&
-        (this.mediaType === MediaType.JavaScript ||
-          this.mediaType === MediaType.JSX)
-      )
-    ) {
+    } else if (processJsImports || !isJsOrJsx) {
       process(importedFiles);
     }
     process(referencedFiles);
@@ -316,11 +313,10 @@ class SourceFile {
     // out during pre-processing as they are either already cached or they will
     // be lazily fetched by the compiler host.  Ones that contain full files are
     // not filtered out and will be fetched as normal.
-    process(
-      libReferenceDirectives.filter(
-        ({ fileName }) => !ts.libMap.has(fileName.toLowerCase())
-      )
+    const filteredLibs = libReferenceDirectives.filter(
+      ({ fileName }) => !ts.libMap.has(fileName.toLowerCase())
     );
+    process(filteredLibs);
     process(typeReferenceDirectives);
     return files;
   }
@@ -647,20 +643,24 @@ function getMediaType(filename: string): MediaType {
 
 function processLocalImports(
   sources: Record<string, string>,
-  specifiers: Array<[string, string]>,
+  specifiers: Array<{ original: string; mapped: string }>,
   referrer?: string,
   processJsImports = false
 ): string[] {
   if (!specifiers.length) {
     return [];
   }
-  const moduleNames = specifiers.map(
-    referrer
-      ? ([, specifier]): string => resolveSpecifier(specifier, referrer)
-      : ([, specifier]): string => specifier
-  );
+  const moduleNames = specifiers.map((specifierMap) => {
+    if (referrer) {
+      return resolveSpecifier(specifierMap.mapped, referrer);
+    } else {
+      return specifierMap.mapped;
+    }
+  });
+
   for (let i = 0; i < moduleNames.length; i++) {
     const moduleName = moduleNames[i];
+    const specifierMap = specifiers[i];
     assert(moduleName in sources, `Missing module in sources: "${moduleName}"`);
     const sourceFile =
       SourceFile.get(moduleName) ||
@@ -670,7 +670,7 @@ function processLocalImports(
         sourceCode: sources[moduleName],
         mediaType: getMediaType(moduleName),
       });
-    sourceFile.cache(specifiers[i][0], referrer);
+    sourceFile.cache(specifierMap.original, referrer);
     if (!sourceFile.processed) {
       processLocalImports(
         sources,
@@ -684,22 +684,23 @@ function processLocalImports(
 }
 
 async function processImports(
-  specifiers: Array<[string, string]>,
+  specifiers: Array<{ original: string; mapped: string }>,
   referrer?: string,
   processJsImports = false
 ): Promise<string[]> {
   if (!specifiers.length) {
     return [];
   }
-  const sources = specifiers.map(([, moduleSpecifier]) => moduleSpecifier);
+  const sources = specifiers.map(({ mapped }) => mapped);
   const resolvedSources = resolveModules(sources, referrer);
   const sourceFiles = await fetchSourceFiles(resolvedSources, referrer);
   assert(sourceFiles.length === specifiers.length);
   for (let i = 0; i < sourceFiles.length; i++) {
+    const specifierMap = specifiers[i];
     const sourceFileJson = sourceFiles[i];
     const sourceFile =
       SourceFile.get(sourceFileJson.url) || new SourceFile(sourceFileJson);
-    sourceFile.cache(specifiers[i][0], referrer);
+    sourceFile.cache(specifierMap.original, referrer);
     if (!sourceFile.processed) {
       const sourceFileImports = sourceFile.imports(processJsImports);
       await processImports(sourceFileImports, sourceFile.url, processJsImports);
@@ -1272,8 +1273,11 @@ async function compile(
   // This will recursively analyse all the code for other imports,
   // requesting those from the privileged side, populating the in memory
   // cache which will be used by the host, before resolving.
+  const specifiers = rootNames.map((rootName) => {
+    return { original: rootName, mapped: rootName };
+  });
   const resolvedRootModules = await processImports(
-    rootNames.map((rootName) => [rootName, rootName]),
+    specifiers,
     undefined,
     bundle || host.getCompilationSettings().checkJs
   );
@@ -1361,30 +1365,32 @@ async function runtimeCompile(
   // recursively process imports, loading each file into memory.  If there
   // are sources, these files are pulled out of the there, otherwise the
   // files are retrieved from the privileged side
+  const specifiers = [
+    {
+      original: resolvedRootName,
+      mapped: resolvedRootName,
+    },
+  ];
   const rootNames = sources
-    ? processLocalImports(
-        sources,
-        [[resolvedRootName, resolvedRootName]],
-        undefined,
-        checkJsImports
-      )
-    : await processImports(
-        [[resolvedRootName, resolvedRootName]],
-        undefined,
-        checkJsImports
-      );
+    ? processLocalImports(sources, specifiers, undefined, checkJsImports)
+    : await processImports(specifiers, undefined, checkJsImports);
 
   if (additionalFiles) {
     // any files supplied in the configuration are resolved externally,
     // even if sources are provided
     const resolvedNames = resolveModules(additionalFiles);
-    rootNames.push(
-      ...(await processImports(
-        resolvedNames.map((rn) => [rn, rn]),
-        undefined,
-        checkJsImports
-      ))
+    const resolvedSpecifiers = resolvedNames.map((rn) => {
+      return {
+        original: rn,
+        mapped: rn,
+      };
+    });
+    const additionalImports = await processImports(
+      resolvedSpecifiers,
+      undefined,
+      checkJsImports
     );
+    rootNames.push(...additionalImports);
   }
 
   const state: WriteFileState = {
