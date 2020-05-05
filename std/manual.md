@@ -464,62 +464,6 @@ example installation command to your repository:
 $ deno install awesome_cli https://example.com/awesome/cli.ts
 ```
 
-## Proxies
-
-Deno supports proxies for module downloads and `fetch` API.
-
-Proxy configuration is read from environmental variables: `HTTP_PROXY` and
-`HTTPS_PROXY`.
-
-In case of Windows if environmental variables are not found Deno falls back to
-reading proxies from registry.
-
-## Lock file
-
-Deno can store and check module subresource integrity for modules using a small
-JSON file. Use the `--lock=lock.json` to enable and specify lock file checking.
-To update or create a lock use `--lock=lock.json --lock-write`.
-
-## Import maps
-
-Deno supports [import maps](https://github.com/WICG/import-maps).
-
-You can use import map with the `--importmap=<FILE>` CLI flag.
-
-Current limitations:
-
-- single import map
-- no fallback URLs
-- Deno does not support `std:` namespace
-- supports only `file:`, `http:` and `https:` schemes
-
-Example:
-
-```js
-// import_map.json
-
-{
-   "imports": {
-      "http/": "https://deno.land/std/http/"
-   }
-}
-```
-
-```ts
-// hello_server.ts
-
-import { serve } from "http/server.ts";
-
-const body = new TextEncoder().encode("Hello World\n");
-for await (const req of serve(":8000")) {
-  req.respond({ body });
-}
-```
-
-```shell
-$ deno run --importmap=import_map.json hello_server.ts
-```
-
 ## Compiler API
 
 Deno supports runtime access to the built-in TypeScript compiler. There are

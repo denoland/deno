@@ -20,7 +20,7 @@ console.log(wasmInstance.exports.main().toString());
 
 ### ES Module style imports
 
-> This is an unstable Deno feature. Learn more about
+> This is an unstable feature. Learn more about
 > [unstable features](../../runtime/unstable).
 
 WASM files can also be loaded using imports:

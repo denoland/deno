@@ -24,7 +24,8 @@
     "name": "Linking to external code",
     "children": {
       "integrity_checking": "Integrity checking",
-      "proxies": "Proxies"
+      "proxies": "Proxies",
+      "import_maps": "Import maps"
     }
   },
   "testing": {
@@ -46,11 +47,12 @@
     "name": "Tools",
     "children": {
       "debugging": "Debugging",
-      "fmt": "Formatter",
-      "bundle": "Bundler",
-      "doc": "Documentation",
-      "info": "Dependency inspector",
-      "types": "Runtime types"
+      "script_installer": "Script installer",
+      "formatter": "Formatter",
+      "bundler": "Bundler",
+      "documentation": "Documentation",
+      "dependency_inspector": "Dependency inspector",
+      "runtime_types": "Runtime types"
     }
   },
   "contributing": {
