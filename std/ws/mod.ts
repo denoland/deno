@@ -7,7 +7,7 @@ import { readLong, readShort, sliceLongToBytes } from "../io/ioutil.ts";
 import { Sha1 } from "../_util/sha1.ts";
 import { writeResponse } from "../http/_io.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { Deferred, deferred } from "../_util/async.ts";
+import { Deferred, deferred } from "../async/deferred.ts";
 import { assert } from "../testing/asserts.ts";
 import { concat } from "../bytes/mod.ts";
 import Conn = Deno.Conn;

@@ -1,13 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
-import { deferred, MuxAsyncIterator } from "./async.ts";
-
-test("asyncDeferred", function (): Promise<void> {
-  const d = deferred<number>();
-  d.resolve(12);
-  return Promise.resolve();
-});
+import { MuxAsyncIterator } from "./mux_async_iterator.ts";
 
 // eslint-disable-next-line require-await
 async function* gen123(): AsyncIterableIterator<number> {
@@ -23,7 +16,7 @@ async function* gen456(): AsyncIterableIterator<number> {
   yield 6;
 }
 
-test("asyncMuxAsyncIterator", async function (): Promise<void> {
+Deno.test("[async] MuxAsyncIterator", async function (): Promise<void> {
   const mux = new MuxAsyncIterator<number>();
   mux.add(gen123());
   mux.add(gen456());

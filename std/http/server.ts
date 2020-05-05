@@ -2,7 +2,7 @@
 import { encode } from "../encoding/utf8.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { assert } from "../testing/asserts.ts";
-import { deferred, Deferred, MuxAsyncIterator } from "../_util/async.ts";
+import { deferred, Deferred, MuxAsyncIterator } from "../async/mod.ts";
 import {
   bodyReader,
   chunkedBodyReader,
